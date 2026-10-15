@@ -27,6 +27,9 @@ require_once ROOT_PATH . '/whatsapp/aisensy.php';
 
 $admin   = admin_boot('reports.view');
 $canEdit = Auth::canManageSettings();
+// 15 Oct 2026: Resend on a failed row posts to booking-view's own resend_wa (its gate: payments.verify).
+$canResend = Auth::isSuperadmin() || Auth::can('payments.verify');
+require_once INCLUDE_PATH . '/wabooking.php';     // WaBooking::stats() - the chat-sale figures
 $e       = static fn($v): string => Security::e((string) $v);
 $self    = '/admin/wa-manager.php';
 $ready   = MsgLedger::ready();
@@ -186,6 +189,46 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
             MsgLedger::price();
             Logger::audit('wam.rates', 'settings', 'whatsapp', null, ['n' => $n], 'WhatsApp rate card saved by admin #' . (int) $admin['id']);
             $flash = ['ok', 'Rate card saved — costs recalculated. / रेट सेभ भयो।'];
+        } elseif ($act === 'switches') {
+            /* 15 Oct 2026 (2G-toggles): the WhatsApp ON/OFF switches on one
+               card - chat selling, the combined question, the optional AI
+               assistant, agent routing, and what may cost money (wa_policy +
+               the daily paid cap). Same gate as the rate card; every save is
+               audited with the values before and after. */
+            if (!$canEdit) {
+                throw new RuntimeException('Changing the WhatsApp switches needs the Settings permission.');
+            }
+            $lim   = trim((string) ($_POST['wa_paid_daily_limit'] ?? ''));
+            $allow = trim((string) ($_POST['wa_meta_free_allowance'] ?? '0'));
+            $pol   = (string) ($_POST['wa_policy'] ?? WaRoute::policy());
+            if ($lim !== '' && (!ctype_digit($lim) || (int) $lim > 100000)) {
+                throw new RuntimeException('Paid messages per day: leave it empty for no limit, or write a whole number (0 = never pay).');
+            }
+            if ($allow !== '' && (!ctype_digit($allow) || (int) $allow > 10000000)) {
+                throw new RuntimeException('Free allowance per month must be a whole number (0 = not tracked).');
+            }
+            if (!in_array($pol, [WaRoute::META_FIRST, WaRoute::META_ONLY, WaRoute::AISENSY_ONLY], true)) {
+                throw new RuntimeException('Unknown sending policy.');
+            }
+            $switches = ['wa_booking_on' => true, 'wa_book_combo_on' => true, 'wa_agent_on' => false, 'wa_route_on' => true];
+            $before = [];
+            $after  = [];
+            foreach ($switches as $k => $default) {
+                $before[$k] = Settings::getBool($k, $default) ? 1 : 0;
+                $after[$k]  = (string) ($_POST[$k] ?? '0') === '1' ? 1 : 0;
+            }
+            $before += ['wa_policy' => WaRoute::policy(), 'wa_paid_daily_limit' => Settings::getString('wa_paid_daily_limit', ''),
+                        'wa_meta_free_allowance' => (string) Settings::getInt('wa_meta_free_allowance', 0)];
+            $after  += ['wa_policy' => $pol, 'wa_paid_daily_limit' => $lim === '' ? '' : (string) (int) $lim,
+                        'wa_meta_free_allowance' => (string) (int) ($allow === '' ? 0 : $allow)];
+            foreach ($switches as $k => $default) {
+                Settings::set($k, $after[$k] === 1 ? '1' : '0', 'bool', 'whatsapp');
+            }
+            Settings::set('wa_policy', $after['wa_policy'], 'string', 'whatsapp');
+            Settings::set('wa_paid_daily_limit', $after['wa_paid_daily_limit'], 'string', 'whatsapp');
+            Settings::set('wa_meta_free_allowance', $after['wa_meta_free_allowance'], 'int', 'whatsapp');
+            Logger::audit('wam.switches', 'settings', 'whatsapp', $before, $after, 'WhatsApp switches saved by admin #' . (int) $admin['id']);
+            $flash = ['ok', 'WhatsApp switches saved. / स्विच सेभ भयो।'];
         }
     } catch (Throwable $ex) {
         $flash = ['bad', $ex->getMessage()];
@@ -300,6 +343,13 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
 .wm-rates{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
 .wm-rates label{display:grid;gap:3px;font-size:12px;color:var(--mut)}
 .wm-rates input{width:100%}
+.wm-rates select{width:100%;min-width:0}
+.wm-sw-row{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.wm-sw-row input{margin-top:3px;flex:none;width:20px;height:20px}
+.wm-sw-row span{min-width:0}.wm-sw-row b{display:block;font-size:13.5px}.wm-sw-row small{display:block;color:var(--mut);font-size:12px;overflow-wrap:anywhere}
+.wm-act{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.wm-act form{margin:0}
+.wm-act .btn{min-height:32px;padding:0 10px;font-size:12px}
 @media (max-width:760px){.wm-body{max-width:none}.wm-live{margin-left:0}}
 </style>
 
@@ -373,12 +423,31 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
       <dt>Policy</dt><dd><?= $e($rtPolicy) ?></dd>
       <dt>Meta number</dt><dd><?= $rt['metaReady'] ? 'connected' : 'not configured' ?> · <?= (int) $rt['windows'] ?> open window<?= (int) $rt['windows'] === 1 ? '' : 's' ?></dd>
       <dt>Last inbound</dt><dd><?= $e($rt['lastInbound'] !== '' ? $rt['lastInbound'] : '—') ?></dd>
-      <dt>7 days</dt><dd><?= (int) $rt['free7'] ?> free on Meta · <?= (int) $rt['ais7'] ?> AiSensy templates</dd>
+      <dt>7 days</dt><dd><?= (int) $rt['free7'] ?> free on Meta · <?= (int) $rt['ais7'] ?> AiSensy templates<?= (int) $rt['metaTpl7'] > 0 ? ' · ' . (int) $rt['metaTpl7'] . ' Meta templates (paid)' : '' ?></dd>
       <dt>Saved (est.)</dt><dd><?= $money($rt['savedToday']) ?> today · <?= $money($rt['saved7']) ?> in 7 days</dd>
       <dt>Meta templates</dt><dd><?= WaRoute::metaTemplatesOn() ? 'ON (Meta first)' : 'off — AiSensy carries templates' ?></dd>
       <dt>AiSensy pays for</dt><dd><?= AiSensyAPI::ticketOnly() ? 'the customer\'s ticket only (cold number)' : 'everything' ?> · <?= WaRoute::utilityOnly() ? 'utility templates only' : 'any template' ?></dd>
+      <dt>Paid today</dt><dd><?= (int) $rt['paidToday'] ?> <?= $rt['paidLimit'] === null ? '· no daily limit' : '/ ' . (int) $rt['paidLimit'] . ' allowed' . ((int) $rt['paidLimit'] === 0 ? ' (never pay)' : '') ?></dd>
+      <dt>Meta this month</dt><dd><?= (int) $rt['metaFreeMonth'] ?> free · <?= (int) $rt['billableMonth'] ?> billable<?= $rt['allowanceLeft'] !== null ? ' · ' . (int) $rt['allowanceLeft'] . ' of ' . (int) $rt['allowance'] . ' allowance left' : '' ?></dd>
     </dl>
-    <p class="text-xs">A customer who wrote to the Meta number in the last 24 h is answered there for free (tickets, OTP, bus updates, staff notes). Everyone else gets the AiSensy utility template. Change under <a href="/admin/settings.php#cat=whatsapp">Settings → WhatsApp</a> (wa_policy, wa_meta_templates_on, aisensy_utility_only).</p>
+    <p class="text-xs">A customer who wrote to the Meta number in the last 24 h is answered there for free (tickets, OTP, bus updates, staff notes). Everyone else gets the AiSensy utility template. "Billable / free" is Meta's own word on each delivered message. Change below under <b>Switches</b>, or in <a href="/admin/settings.php#cat=whatsapp">Settings → WhatsApp</a> (wa_policy, wa_meta_templates_on, aisensy_utility_only).</p>
+  </div>
+  <?php
+    /* 15 Oct 2026 (2G): the chat-sale side - conversations open now, what the
+       WhatsApp channel sold, and how fast a chat sale is. */
+    $wb = WaBooking::stats();
+    $wbOn = Settings::getBool('wa_booking_on', true);
+  ?>
+  <div class="wm-card <?= $wbOn ? 'good' : 'warn' ?>">
+    <h4><svg class="a-ic"><use href="#a-whatsapp"/></svg>WhatsApp booking (chat)</h4>
+    <div class="big"><?= (int) $wb['waToday'] ?> <small class="muted" style="font-size:12px;font-weight:600">WhatsApp bookings today</small></div>
+    <dl>
+      <dt>Chat selling</dt><dd><?= $wbOn ? 'ON' : 'OFF' ?> · <?= Settings::getBool('wa_book_combo_on', true) ? 'one combined question' : 'one question at a time' ?></dd>
+      <dt>Open chats</dt><dd><?= (int) $wb['openChats'] ?> booking chat<?= (int) $wb['openChats'] === 1 ? '' : 's' ?> in the last 30 min</dd>
+      <dt>7 days</dt><dd><?= (int) $wb['wa7'] ?> WhatsApp bookings · <?= (int) $wb['chatSales7'] ?> sold in the chat itself</dd>
+      <dt>Per chat sale</dt><dd><?= $wb['avgMessages'] !== null ? $e(number_format((float) $wb['avgMessages'], 1)) . ' messages' : '—' ?> · <?= $wb['avgSeconds'] !== null ? $e(gmdate((int) $wb['avgSeconds'] >= 3600 ? 'G\h i\m' : 'i\m s\s', (int) $wb['avgSeconds'])) . ' average' : '—' ?></dd>
+    </dl>
+    <p class="text-xs">Messages = what the passenger sent, from the first message to the yes. Bookings = every booking tagged WhatsApp (chat, website hand-over, seller orders).</p>
   </div>
   <?php
     $smsH = null;
@@ -518,6 +587,46 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
 </div>
 <?php endif; ?>
 
+<details class="panel" id="wmSwitches">
+  <summary style="cursor:pointer;font-weight:700;padding:14px 18px">Switches — chat selling, AI, paid messages</summary>
+  <div class="panel-body">
+  <form method="post" class="wm-sw">
+    <?= Security::csrfField() ?>
+    <input type="hidden" name="action" value="switches">
+    <?php
+      $sw = [
+          'wa_booking_on'    => [Settings::getBool('wa_booking_on', true), 'Chat selling', 'Customers book and get the ticket inside the WhatsApp chat (WaBooking).'],
+          'wa_book_combo_on' => [Settings::getBool('wa_book_combo_on', true), 'One combined question', 'Name, boarding, date and how many asked in ONE message. Off = one question at a time.'],
+          'wa_agent_on'      => [Settings::getBool('wa_agent_on', false), 'AI assistant (optional)', 'Questions the local answers do not know go to the AI. Selling never needs it.'],
+          'wa_route_on'      => [Settings::getBool('wa_route_on', true), 'Agent routing', 'A ticket the customer did not get is handed to the route agent (free messages only).'],
+      ];
+    ?>
+    <?php foreach ($sw as $k => [$on, $title, $help]): ?>
+      <label class="wm-sw-row">
+        <input type="checkbox" name="<?= $e($k) ?>" value="1" <?= $on ? 'checked' : '' ?> <?= $canEdit ? '' : 'disabled' ?>>
+        <span><b><?= $e($title) ?></b><small><?= $e($help) ?></small></span>
+      </label>
+    <?php endforeach; ?>
+    <div class="wm-rates" style="margin-top:10px">
+      <label>Sending policy (what may cost money)
+        <select name="wa_policy" <?= $canEdit ? '' : 'disabled' ?>>
+          <?php foreach ([WaRoute::META_FIRST => 'Meta first (free), AiSensy when needed', WaRoute::META_ONLY => 'Meta only — never AiSensy (no paid)', WaRoute::AISENSY_ONLY => 'AiSensy only'] as $pv => $pl): ?>
+            <option value="<?= $e($pv) ?>" <?= WaRoute::policy() === $pv ? 'selected' : '' ?>><?= $e($pl) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label>Paid messages per day (empty = no limit, 0 = never pay)
+        <input type="number" min="0" step="1" name="wa_paid_daily_limit" value="<?= $e(Settings::getString('wa_paid_daily_limit', '')) ?>" placeholder="no limit" <?= $canEdit ? '' : 'disabled' ?>>
+      </label>
+      <label>Meta free allowance per month (0 = not tracked)
+        <input type="number" min="0" step="1" name="wa_meta_free_allowance" value="<?= (int) Settings::getInt('wa_meta_free_allowance', 0) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+      </label>
+    </div>
+    <p class="muted text-xs" style="margin:8px 0 0">Past the paid limit a ticket is not lost: it waits for the customer's "hi" on the Meta number (free) and shows on <a href="/admin/wa-pending.php">Tickets to hand over</a>.</p>
+    <?php if ($canEdit): ?><p style="margin:10px 0 0"><button class="btn" type="submit">Save switches</button></p><?php else: ?><p class="muted text-xs">Changing these needs the Settings permission.</p><?php endif; ?>
+  </form></div>
+</details>
+
 <details class="panel">
   <summary style="cursor:pointer;font-weight:700;padding:14px 18px">Rate card (₹ per delivered message)</summary>
   <div class="panel-body"><p class="muted text-sm" style="margin-top:0">Meta charges a template when it is delivered; replies inside the customer's 24 h chat are free. These numbers only make the estimate — the wallet figure above is what AiSensy really took.</p>
@@ -539,6 +648,15 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
   var FEED = <?= json_encode(array_map('wm_row', $feed), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
   var PUR = <?= json_encode($purLabels, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
   var maxId = <?= $maxId ?>, chgAt = <?= json_encode($lastStatusAt) ?>;
+  /* 15 Oct 2026 (2G): a failed ticket row offers Resend (booking-view's own
+     resend_wa - same gate, same send path) and the hand-over list. */
+  var CAN_RESEND = <?= $canResend ? 'true' : 'false' ?>, CSRF_N = <?= json_encode(CSRF_TOKEN_NAME, JSON_HEX_TAG) ?>, CSRF_V = <?= json_encode(Security::csrfToken(), JSON_HEX_TAG) ?>;
+  function actHtml(r){
+    if(r.st!=='failed'||!r.pnr) return '';
+    return '<div class="wm-act">'
+      +(CAN_RESEND?'<form method="post" action="/admin/booking-view.php?pnr='+encodeURIComponent(r.pnr)+'"><input type="hidden" name="'+esc(CSRF_N)+'" value="'+esc(CSRF_V)+'"><input type="hidden" name="action" value="resend_wa"><button class="btn ghost" type="submit">↻ Resend</button></form>':'')
+      +'<a class="btn ghost" href="/admin/wa-pending.php">📤 Share by hand</a></div>';
+  }
   var tbody = document.getElementById('wmRows'), live = document.getElementById('wmLive');
   var params = new URLSearchParams(location.search); params.delete('export');
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
@@ -556,7 +674,7 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
         +(r.body?'<div class="wm-body">'+esc(r.body)+'</div>':'')
         +(r.media?'<div class="text-xs"><a href="'+esc(r.media)+'" target="_blank" rel="noopener">📎 attachment</a></div>':'')
         +(r.by?'<div class="muted text-xs">by '+esc(r.by)+'</div>':'')+'</td>'
-      +'<td class="wm-stc">'+stHtml(r)+'</td>'
+      +'<td class="wm-stc">'+stHtml(r)+actHtml(r)+'</td>'
       +'<td class="n wm-cost">'+(r.cost>0?r.cost.toFixed(2):'—')+'</td>';
   }
   function add(rows, top, flash){

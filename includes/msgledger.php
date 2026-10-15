@@ -103,6 +103,21 @@ final class MsgLedger
      */
     public static function recordAiSensy(string $to, string $label, array $req, array $out, string $status = ''): void
     {
+        /* 15 Oct 2026 (2D-paid-limit): an accepted TEMPLATE is a paid message.
+           Counted before the ledger check, so the daily cap holds even on a
+           server where the ledger tables are not installed. */
+        if (($req['type'] ?? '') === 'template' && !empty($out['success'])) {
+            try {
+                if (!class_exists('WaRoute') && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/waroute.php')) {
+                    require_once INCLUDE_PATH . '/waroute.php';
+                }
+                if (class_exists('WaRoute')) {
+                    WaRoute::count('paid');
+                }
+            } catch (Throwable $e) {
+                // a counter must never break a send
+            }
+        }
         try {
             if (!self::ready()) {
                 return;
@@ -155,7 +170,12 @@ final class MsgLedger
     private static function mask(string $body): string
     {
         $body = preg_replace('/(code\D{0,12}?)(\d{4,8})/iu', '$1••••', $body) ?? $body;
-        return preg_replace('~([?&]t=)[A-Za-z0-9]{16,}~', '$1[hidden]', $body) ?? $body;
+        $body = preg_replace('~([?&]t=)[A-Za-z0-9]{16,}~', '$1[hidden]', $body) ?? $body;
+        /* 15 Oct 2026 (2F-logs): the ticket download key (&k=…) and the short
+           ticket code (view.php?code=…) open a passenger's ticket - a log
+           reader needs neither. The message itself went out whole. */
+        $body = preg_replace('~([?&]k=)[A-Za-z0-9]{8,}~', '$1[hidden]', $body) ?? $body;
+        return preg_replace('~(view\.php\?code=)[A-Za-z0-9]{6,}~', '$1[hidden]', $body) ?? $body;
     }
 
     /** UTILITY / MARKETING / AUTHENTICATION for an AiSensy template, from the cached list. */
@@ -208,8 +228,6 @@ final class MsgLedger
                 }
             }
             $provider = (string) $m['provider'];
-            $channel  = (string) $m['channel'];
-            $body     = (string) ($m['body'] ?? '');
             /* 7 Oct 2026: a FAILED AiSensy send has no provider_ref, so it never
                merges above - yet recordAiSensy() already wrote it the moment
                AiSensy refused. Copying it again counted every failure twice (or
@@ -225,24 +243,7 @@ final class MsgLedger
                     continue;
                 }
             }
-            Database::insertIgnore('msg_ledger', [
-                'log_id'       => (int) $m['id'],
-                'provider'     => mb_substr($provider, 0, 20),
-                'channel'      => $channel,
-                'to_number'    => substr(preg_replace('/\D+/', '', (string) $m['to_number']) ?? '', 0, 40),
-                'country'      => self::countryOf((string) $m['to_number']),
-                'booking_id'   => $m['booking_id'] !== null ? (int) $m['booking_id'] : null,
-                'purpose'      => $purpose,
-                'label'        => self::labelFor($provider, $channel, (string) $purpose, $body),
-                'category'     => self::categoryFor($provider, $channel, (string) $purpose, $body),
-                'body'         => mb_substr($body, 0, 700),
-                'media_url'    => $hasPurpose && !empty($m['media_url']) ? mb_substr((string) $m['media_url'], 0, 255) : null,
-                'status'       => self::mapLogStatus($provider, (string) $m['status']),
-                'error'        => $m['error'] !== null ? mb_substr((string) $m['error'], 0, 255) : null,
-                'provider_ref' => $ref !== '' ? mb_substr($ref, 0, 190) : null,
-                'admin_id'     => $hasPurpose && $m['admin_id'] !== null ? (int) $m['admin_id'] : null,
-                'created_at'   => (string) $m['created_at'],
-            ]);
+            self::copyOne($m, $hasPurpose);
             $res['copied']++;
         }
         if ($rows !== []) {
@@ -251,14 +252,18 @@ final class MsgLedger
 
         /* A Meta / Twilio webhook rewrites message_logs.status in place
            (accepted → delivered → "sent", or → failed). Carry those changes
-           over for the last three days. AiSensy rows are polled instead. */
+           over for the last three days. AiSensy rows are polled instead.
+           15 Oct 2026: never back DOWN - a Meta delivered / read written
+           straight into the ledger (noteMetaStatus) reads "sent" in
+           message_logs, and this used to turn it back into "sent". */
         $res['refreshed'] = (int) Database::run(
             "UPDATE msg_ledger l JOIN message_logs m ON m.id = l.log_id
                 SET l.status = m.status, l.error = m.error, l.status_at = NOW()
               WHERE l.provider <> 'aisensy'
                 AND l.created_at > NOW() - INTERVAL 3 DAY
                 AND m.status IN ('sent','failed','skipped','queued')
-                AND l.status <> m.status"
+                AND l.status <> m.status
+                AND NOT (m.status = 'sent' AND l.status IN ('delivered','read'))"
         );
 
         /* The ticket queue already asks AiSensy about its own sends: take
@@ -278,6 +283,80 @@ final class MsgLedger
 
         $res['names'] = self::resolveNames(300);
         return $res;
+    }
+
+    /** One message_logs row into the book (sync() and noteMetaStatus()). */
+    private static function copyOne(array $m, bool $hasPurpose): void
+    {
+        $provider = (string) $m['provider'];
+        $channel  = (string) $m['channel'];
+        $body     = (string) ($m['body'] ?? '');
+        $purpose  = $hasPurpose ? ($m['purpose'] ?? null) : null;
+        $ref      = trim((string) ($m['provider_ref'] ?? ''));
+        Database::insertIgnore('msg_ledger', [
+            'log_id'       => (int) $m['id'],
+            'provider'     => mb_substr($provider, 0, 20),
+            'channel'      => $channel,
+            'to_number'    => substr(preg_replace('/\D+/', '', (string) $m['to_number']) ?? '', 0, 40),
+            'country'      => self::countryOf((string) $m['to_number']),
+            'booking_id'   => $m['booking_id'] !== null ? (int) $m['booking_id'] : null,
+            'purpose'      => $purpose,
+            'label'        => self::labelFor($provider, $channel, (string) $purpose, $body),
+            'category'     => self::categoryFor($provider, $channel, (string) $purpose, $body),
+            'body'         => mb_substr($body, 0, 700),
+            'media_url'    => $hasPurpose && !empty($m['media_url']) ? mb_substr((string) $m['media_url'], 0, 255) : null,
+            'status'       => self::mapLogStatus($provider, (string) $m['status']),
+            'error'        => $m['error'] !== null ? mb_substr((string) $m['error'], 0, 255) : null,
+            'provider_ref' => $ref !== '' ? mb_substr($ref, 0, 190) : null,
+            'admin_id'     => $hasPurpose && $m['admin_id'] !== null ? (int) $m['admin_id'] : null,
+            'created_at'   => (string) $m['created_at'],
+        ]);
+    }
+
+    /**
+     * A Meta delivered / read status, straight into the book (15 Oct 2026).
+     *
+     * The webhook can only write "sent" into message_logs (its status enum
+     * has no delivered / read), and sync() copied that "sent" - so no free
+     * Meta message ever reached Delivered or Read, and the WhatsApp
+     * Manager's Reached / Read figures counted only the "hi" queue. The
+     * webhook now hands every delivered / read here: the ledger row moves
+     * forward (never back), and Meta's own pricing says whether it was a
+     * free service message - a free one costs nothing in the estimate.
+     * A row sync() has not copied yet is copied first.
+     */
+    public static function noteMetaStatus(string $wamid, string $state, ?array $pricing = null): bool
+    {
+        if ($wamid === '' || !in_array($state, ['delivered', 'read'], true) || !self::ready()) {
+            return false;
+        }
+        $from = $state === 'read' ? "'queued','accepted','sent','delivered'" : "'queued','accepted','sent'";
+        $set  = 'status = :s, status_at = NOW()';
+        $params = ['s' => $state, 'r' => mb_substr($wamid, 0, 190)];
+        if (is_array($pricing) && ($pricing['billable'] ?? null) === false) {
+            $set .= ", category = IF(channel = 'whatsapp', 'service', category)";
+        }
+        try {
+            if (!Database::exists('SELECT 1 FROM msg_ledger WHERE provider_ref = :r LIMIT 1', ['r' => $params['r']])) {
+                $hasPurpose = self::messageLogsHasPurpose();
+                $m = Database::fetch(
+                    'SELECT id, booking_id, channel, provider, to_number, body, status, provider_ref, error, created_at'
+                    . ($hasPurpose ? ', purpose, admin_id, media_url' : '')
+                    . ' FROM message_logs WHERE provider_ref = :r ORDER BY id DESC LIMIT 1',
+                    ['r' => substr($wamid, 0, 64)]
+                );
+                if ($m === null) {
+                    return false;
+                }
+                self::copyOne($m, $hasPurpose);
+            }
+            return (int) Database::run(
+                "UPDATE msg_ledger SET $set WHERE provider_ref = :r AND status IN ($from)",
+                $params
+            ) > 0;
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 
     /** message_logs "sent" means accepted for the async providers. */

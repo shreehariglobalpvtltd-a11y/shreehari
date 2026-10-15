@@ -65,10 +65,29 @@ if (!function_exists('waGraphPost')) {
     }
 
     /**
+     * A mobile number for a FILE log (15 Oct 2026, 2F-logs): the country code
+     * and the last four digits stay, the middle is hidden -
+     * 919876543210 → 91••••••3210. Enough to match a complaint to a line,
+     * not enough to harvest numbers from a leaked log. message_logs keeps the
+     * full number: the retry cron and Resend need it.
+     */
+    function waMaskPhone(string $phone): string
+    {
+        $d = preg_replace('/\D/', '', $phone) ?? '';
+        if (strlen($d) < 8) {
+            return $phone;                       // not a number ('-', a short code)
+        }
+        $cc = str_starts_with($d, '977') && strlen($d) >= 12 ? '977'
+            : (str_starts_with($d, '91') && strlen($d) === 12 ? '91' : substr($d, 0, 2));
+        return $cc . str_repeat('•', max(1, strlen($d) - strlen($cc) - 4)) . substr($d, -4);
+    }
+
+    /**
      * Append one line to whatsapp/logs/YYYY-MM-DD.log:
      *   [timestamp] TYPE | phone | status | message_id | detail
      * The directory is denied by nginx (*.log), and one-time codes are
-     * masked before anything is written.
+     * masked before anything is written; since 15 Oct 2026 so are the
+     * middle digits of the phone (waMaskPhone).
      */
     function logWhatsAppEvent(string $type, string $phone, mixed $data, mixed $response): void
     {
@@ -94,7 +113,7 @@ if (!function_exists('waGraphPost')) {
                 "[%s] %s | %s | %s | %s%s\n",
                 date('Y-m-d H:i:s'),
                 strtoupper($type),
-                $phone !== '' ? $phone : '-',
+                $phone !== '' ? waMaskPhone($phone) : '-',
                 $status,
                 $msgId !== '' ? $msgId : '-',
                 $detail !== '' ? ' | ' . $detail : ''

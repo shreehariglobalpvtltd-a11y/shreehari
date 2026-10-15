@@ -296,11 +296,23 @@ final class WaFaq
         } catch (Throwable $e) {
             $offer = '';
         }
+        /* 15 Oct 2026 (2A-hi): the hello already teaches the one-message
+           booking line, so a customer can book in their very next message
+           ("Ram, Surat, bholi, 2" - WaBooking reads it whole). Only while
+           chat selling and the combined question are both on. */
+        $book = '';
+        if (Settings::getBool('wa_booking_on', true) && Settings::getBool('wa_book_combo_on', true)) {
+            $book = "\n🎫 " . self::t($lang,
+                'टिकट बुक गर्न एउटै सन्देश: नाम, चढ्ने ठाउँ, मिति, कति जना — जस्तै: Ram, Surat, bholi, 2',
+                'टिकट बुक करने के लिए एक ही संदेश: नाम, चढ़ने की जगह, तारीख, कितने लोग — जैसे: Ram, Surat, kal, 2',
+                'To book, one message: name, boarding point, date, how many — e.g. Ram, Surat, tomorrow, 2',
+                'ટિકિટ બુક કરવા એક જ સંદેશ: નામ, ચઢવાની જગ્યા, તારીખ, કેટલા લોકો — દા.ત.: Ram, Surat, કાલે, 2');
+        }
         return $open . $hi . self::t($lang,
             'म S Hari Global को सहायक हुँ। टिकट, भाडा, बसको समय वा आफ्नो टिकटबारे सोध्नुहोस्।',
             'मैं S Hari Global का सहायक हूँ। टिकट, किराया, बस का समय या अपने टिकट के बारे में पूछिए।',
             "I'm S Hari Global's assistant. Ask me about tickets, fares, bus times or your own ticket.",
-            "હું S Hari Global નો સહાયક છું. ટિકિટ, ભાડું, બસનો સમય કે તમારી ટિકિટ વિશે પૂછો.") . $offer;
+            "હું S Hari Global નો સહાયક છું. ટિકિટ, ભાડું, બસનો સમય કે તમારી ટિકિટ વિશે પૂછો.") . $offer . $book;
     }
 
     private static function fare(string $text, string $lang, bool $withOffer): string

@@ -196,8 +196,14 @@ $alreadyHasTicket = " AND NOT EXISTS (SELECT 1 FROM message_logs a
                                       WHERE q.booking_id = b.id AND q.role IN ('customer','alt')
                                         AND q.status IN ('sent','delivered','read'))" : '');
 
+/* 15 Oct 2026 (2F-retry): exponential backoff. A booking is tried again
+   15 min after its last failed attempt, then 30, 60, 120, 240 (12 h at the
+   most) - the same doubling msg-ledger's AiSensy poll uses. A flat 15-minute
+   beat spent all MAX_TRIES inside ~90 minutes of one bad hour; spread out,
+   the tries outlast an outage the owner fixes the same day. Bot replies are
+   never retried here: a stale answer is worse than none. */
 $due = Database::fetchAll(
-    "SELECT b.id, b.pnr, b.contact_phone,
+    "SELECT b.id, b.pnr, b.contact_phone, m.created_at AS last_at,
             (SELECT COUNT(*) FROM message_logs t
               WHERE t.booking_id = b.id AND t.channel = 'whatsapp'
                 AND t.status IN ('sent','failed')
@@ -215,6 +221,7 @@ $due = Database::fetchAll(
         AND EXISTS (SELECT 1 FROM booking_legs bl
                      WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
       HAVING tries < :max
+         AND last_at < NOW() - INTERVAL LEAST(720, 15 * POW(2, GREATEST(tries - 1, 0))) MINUTE
       ORDER BY b.id DESC
       LIMIT " . BATCH_SIZE,
     ['max' => MAX_TRIES]

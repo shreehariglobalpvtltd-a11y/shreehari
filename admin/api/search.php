@@ -104,23 +104,30 @@ foreach ($tickets as $t) {
     ];
 }
 
-/* --- Passengers by seat / name / phone (own row) -------------------- */
+/* --- Passengers by seat / name / phone (own row) --------------------
+   15 Oct 2026: the seat as PRINTED (A7, B5-6 - what the ticket, register and
+   manifest show) finds it too, per booking mode; the stored id (L5) still
+   does. The hit names the seat as printed. */
+require_once dirname(__DIR__) . '/_booking_filters.php';
+$paxParams = ['qA' => $like, 'seatExact' => strtoupper($q)] + $scopeParam;
+$seatLbl   = shg_seat_label_match($q, 'bp.seat_no', $paxParams, 'sl');
 $pax = Database::fetchAll(
-    "SELECT bp.full_name, bp.seat_no, bp.gender, b.pnr, b.contact_phone, r.from_city, r.to_city
+    "SELECT bp.full_name, bp.seat_no, bp.gender, b.pnr, b.contact_phone, b.booking_mode, r.from_city, r.to_city,
+            COALESCE(s.coach_type_override, r.coach_type) AS coach_type
        FROM booking_passengers bp
        JOIN bookings b ON b.id = bp.booking_id
        LEFT JOIN booking_legs bl ON bl.booking_id=b.id AND bl.leg_type='outbound'
        LEFT JOIN schedules s     ON s.id=bl.schedule_id
        LEFT JOIN routes r        ON r.id=s.route_id
-      WHERE (bp.full_name LIKE :qA OR bp.seat_no = :seatExact)"
+      WHERE (bp.full_name LIKE :qA OR bp.seat_no = :seatExact" . ($seatLbl !== null ? ' OR ' . $seatLbl : '') . ")"
     . $scopeSql .
    " ORDER BY bp.id DESC LIMIT " . (int) $limit,
-    ['qA' => $like, 'seatExact' => strtoupper($q)] + $scopeParam
+    $paxParams
 );
 foreach ($pax as $p) {
     $rows[] = [
         'type'     => 'passenger',
-        'title'    => (string) $p['full_name'] . ' · ' . (string) $p['seat_no'],
+        'title'    => (string) $p['full_name'] . ' · ' . Seats::displayLabel((string) $p['seat_no'], (string) ($p['coach_type'] ?: 'sleeper'), (string) ($p['booking_mode'] ?: 'sharing')),
         'subtitle' => (string) $p['pnr'] . ' · ' . (string) $p['contact_phone'],
         'meta'     => trim(($p['from_city'] ?? '') . '→' . ($p['to_city'] ?? ''), ' →'),
         'href'     => '/admin/booking-view.php?pnr=' . urlencode((string) $p['pnr']),
@@ -191,13 +198,20 @@ if ($scopeId === null && preg_match('/^\s*(?:SHG[-\s]?)?0*(\d{1,4})\s*$/i', $q, 
         );
         if ($ag) {
             $codeLabel = 'SHG-' . str_pad((string) $codeNum, 4, '0', STR_PAD_LEFT);
-            $rows[] = [
-                'type'     => 'agent',
-                'title'    => $codeLabel . ' — ' . (string) ($ag['full_name'] ?: $ag['username']),
-                'subtitle' => 'Agent · ' . (string) ($ag['phone'] ?? ''),
-                'meta'     => 'Panel',
-                'href'     => '/admin/agent.php?agent=' . (int) $ag['id'],
-            ];
+            /* 15 Oct 2026: the Agent hit opens the Agent Panel, which needs
+               commissions.view - a counter (unscoped, no commissions.view)
+               was offered a link that only ever answered "not for your
+               role". The agent's bookings below stay: the register shows
+               them to the same desk anyway. */
+            if (Auth::can('commissions.view')) {
+                $rows[] = [
+                    'type'     => 'agent',
+                    'title'    => $codeLabel . ' — ' . (string) ($ag['full_name'] ?: $ag['username']),
+                    'subtitle' => 'Agent · ' . (string) ($ag['phone'] ?? ''),
+                    'meta'     => 'Panel',
+                    'href'     => '/admin/agent.php?agent=' . (int) $ag['id'],
+                ];
+            }
             $agBookings = Database::fetchAll(
                 "SELECT b.pnr, b.status, b.contact_phone, r.from_city, r.to_city
                    FROM bookings b

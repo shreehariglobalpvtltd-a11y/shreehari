@@ -119,13 +119,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 // no break
             case 'batch_draft':
                 /* One draft per ticked agent, each for its own default period. An
-                   agent that cannot be drafted is reported, the rest still are. */
+                   agent that cannot be drafted is reported, the rest still are.
+                   15 Oct 2026 (owner: bulk settlement): an agent who is owed no
+                   commission but holds ticket cash can be drafted too — that
+                   draft exists to collect the cash, so "Cash the agent hands
+                   over now" is prefilled with what the ledger says they hold
+                   (editable on the draft; nothing moves until Mark paid).
+                   A commission draft is left exactly as before. */
                 $made = 0; $skipped = [];
                 foreach ((array) ($_POST['agents'] ?? []) as $aid) {
                     $aid = (int) $aid;
                     try {
                         [$f, $t] = AgentSettlement::defaultPeriod($aid);
-                        AgentSettlement::createDraft($aid, $f, $t, [], $selfId);
+                        $calc = AgentSettlement::compute($aid, $f, $t);
+                        $in   = (float) $calc['due'] <= 0.009 && (float) $calc['cashHeld'] > 0.009 ? ['cash_received' => (float) $calc['cashHeld']] : [];
+                        AgentSettlement::createDraft($aid, $f, $t, $in, $selfId);
                         $made++;
                     } catch (Throwable $ex) {
                         $skipped[] = (AgentWallet::agentCodeLabel($aid) ?: '#' . $aid) . ': ' . $ex->getMessage();
@@ -146,6 +154,42 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
                 $flash = [$done > 0 ? 'ok' : 'bad', $done . ' settlement' . ($done === 1 ? '' : 's') . ' approved.'
                     . ($skipped !== [] ? ' Skipped: ' . implode(' · ', $skipped) : '')];
+                break;
+            case 'batch_pay':
+                /* Mark several APPROVED settlements paid in one go (15 Oct 2026,
+                   owner: bulk settlement). Never automatic: a person ticks the
+                   rows, chooses how the money went and confirms. Each row is
+                   still AgentSettlement::markPaid on its own — its row lock and
+                   its ledger re-check unchanged — so a row the ledger no longer
+                   backs (or one already paid) is refused and reported while the
+                   rest go through. A row with nothing to hand over (a net-off or
+                   cash-collection settlement) is recorded as "No payment". */
+                $mode = (string) ($_POST['mode'] ?? '');
+                if (!isset(AgentSettlement::MODES[$mode]) || $mode === 'adjust') {
+                    throw new RuntimeException('Choose how the agents were paid — cash, UPI, bank or eSewa.');
+                }
+                $refPrefix = trim(Security::clean((string) ($_POST['ref'] ?? ''), 40));
+                $done = 0; $paidSum = 0.0; $skipped = [];
+                foreach (array_unique(array_map('intval', (array) ($_POST['ids'] ?? []))) as $sid) {
+                    if ($sid <= 0) {
+                        continue;
+                    }
+                    $sr = null;
+                    try {
+                        $sr = AgentSettlement::get($sid);
+                        if ($sr === null) {
+                            throw new RuntimeException('not found');
+                        }
+                        $net = (float) $sr['net_amount'];
+                        AgentSettlement::markPaid($sid, $net > 0.009 ? $mode : 'adjust', $refPrefix !== '' ? $refPrefix . '-' . $sid : '', $selfId);
+                        $done++;
+                        $paidSum += $net;
+                    } catch (Throwable $ex) {
+                        $skipped[] = ($sr !== null ? AgentSettlement::number($sr) : '#' . $sid) . ': ' . $ex->getMessage();
+                    }
+                }
+                $flash = [$done > 0 ? 'ok' : 'bad', $done . ' settlement' . ($done === 1 ? '' : 's') . ' marked paid (' . inr($paidSum) . ' to the agents) — the ledger is updated.'
+                    . ($skipped !== [] ? ' Not paid: ' . implode(' · ', $skipped) : '')];
                 break;
             default:
                 throw new RuntimeException('Unknown action.');
@@ -636,12 +680,19 @@ document.getElementById('stNewAgent').addEventListener('change', function () { i
       <thead><tr><?php if ($canPay): ?><th class="bulk-col"><input type="checkbox" id="stAll" aria-label="Select every agent that can be drafted"></th><?php endif; ?>
         <th>Agent / seller</th><th>Commission due</th><th>Ticket cash held</th><th>Net</th><th>Waiting</th><th>Last paid</th><th></th></tr></thead>
       <tbody>
-      <?php foreach ($pending as $p): $canDraft = $canPay && $p['open'] === null && $p['commission'] > 0.009; ?>
+      <?php /* 15 Oct 2026: an agent holding cash with no commission due can be
+               batch-drafted too (the draft collects the cash), and cash above
+               the agent's limit (AgentWallet::effectiveCashLimit) reads late. */
+            $limBy = AgentWallet::cashLimitMap(array_column($pending, 'id'));
+            foreach ($pending as $p):
+              $canDraft = $canPay && $p['open'] === null && $p['role'] === 'agent' && ($p['commission'] > 0.009 || $p['cash'] > 0.009);
+              $lim      = (float) ($limBy[(int) $p['id']] ?? 0);
+              $overLim  = $lim > 0.009 && $p['cash'] > $lim + 0.009; ?>
       <tr>
         <?php if ($canPay): ?><td class="bulk-col" data-label="Select"><?php if ($canDraft): ?><input type="checkbox" class="st-cb" name="agents[]" value="<?= (int) $p['id'] ?>" aria-label="Select <?= $e($p['name']) ?>"><?php endif; ?></td><?php endif; ?>
         <td data-label="Agent"><?php if ($p['role'] === 'agent'): ?><a href="/admin/agent-360.php?agent=<?= (int) $p['id'] ?>"><b><?= $e($p['name']) ?></b></a><?php else: ?><b><?= $e($p['name']) ?></b> <span class="pill st-info" style="font-size:10.5px"><?= $e($p['role']) ?></span><?php endif; ?><?= $p['code'] !== '' ? ' <span class="muted mono">' . $e($p['code']) . '</span>' : '' ?></td>
         <td data-label="Commission due"><?= $p['role'] === 'agent' ? '<b>' . $e(inr($p['commission'])) . '</b>' : '<span class="muted">—</span>' ?></td>
-        <td data-label="Ticket cash held"><?= $p['cash'] > 0.009 ? '<b>' . $e(inr($p['cash'])) . '</b>' . ($p['cashDays'] > 0 ? ' <span class="' . ($p['cashDays'] > $cashDays ? 'st-wait late' : 'muted') . '">· ' . (int) $p['cashDays'] . ' d</span>' : '') : '—' ?></td>
+        <td data-label="Ticket cash held"><?= $p['cash'] > 0.009 ? '<b' . ($overLim ? ' class="st-wait late" title="Over the ' . $e(inr($lim)) . ' cash limit"' : '') . '>' . $e(inr($p['cash'])) . '</b>' . ($overLim ? ' <span class="pill st-bad" style="font-size:10.5px">over ' . $e(inr($lim)) . '</span>' : '') . ($p['cashDays'] > 0 ? ' <span class="' . ($p['cashDays'] > $cashDays || $overLim ? 'st-wait late' : 'muted') . '">· ' . (int) $p['cashDays'] . ' d</span>' : '') : '—' ?></td>
         <td data-label="Net"><?= $p['net'] >= 0 ? '<span style="color:#1FA35B;font-weight:700">we owe ' . $e(inr($p['net'])) . '</span>' : '<span style="color:#DC3B3B;font-weight:700">' . ($p['role'] === 'agent' ? 'agent owes ' : 'to hand over ') . $e(inr(-$p['net'])) . '</span>' ?></td>
         <td data-label="Waiting"><?= $p['commission'] > 0.009 ? '<span class="st-wait' . ($p['days'] > $dueDays ? ' late' : '') . '">' . (int) $p['days'] . ' day' . ($p['days'] === 1 ? '' : 's') . '</span>' : '—' ?></td>
         <td data-label="Last paid"><?= $p['lastPaid'] !== '' ? $e(formatDate($p['lastPaid'])) : '<span class="muted">never</span>' ?></td>
@@ -654,7 +705,7 @@ document.getElementById('stNewAgent').addEventListener('change', function () { i
     </table></div>
     <?php if ($canPay): ?>
     <div class="st-acts"><button class="btn" type="submit" id="stBatchGo" disabled>Create drafts for the selected agents</button>
-      <span class="muted" style="font-size:12.5px">Batch mode makes one draft per agent (period = since their last settlement). You still approve and pay each one.</span></div>
+      <span class="muted" style="font-size:12.5px">Batch mode makes one draft per agent (period = since their last settlement). An agent owed nothing but holding cash gets a cash-collection draft with the cash they hold filled in. You still approve and pay each one.</span></div>
     <?php endif; ?>
   </form>
   <script>
@@ -676,7 +727,9 @@ document.getElementById('stNewAgent').addEventListener('change', function () { i
     $lmEnd  = addDaysISO($m1, -1);
     $presets = ['Today' => [$today, $today], 'Yesterday' => [addDaysISO($today, -1), addDaysISO($today, -1)], 'This week' => [$monday, $today],
                 'This month' => [$m1, $today], 'Last month' => [substr($lmEnd, 0, 8) . '01', $lmEnd]];
-    $drafts = array_values(array_filter($list, static fn(array $r): bool => $r['status'] === 'draft')); ?>
+    $drafts = array_values(array_filter($list, static fn(array $r): bool => $r['status'] === 'draft'));
+    // 15 Oct 2026: approved rows can be ticked and marked paid together (batch_pay).
+    $payable = $canPay && array_filter($list, static fn(array $r): bool => $r['status'] === 'approved') !== []; ?>
 <div class="panel">
   <form method="get" class="st-form" style="margin:0 0 6px">
     <input type="hidden" name="tab" value="register">
@@ -703,10 +756,11 @@ document.getElementById('stNewAgent').addEventListener('change', function () { i
     <?= admin_empty('No settlement matches', 'Change the filters, or start one from “Waiting to be settled”.', '🧾') ?>
   <?php else: ?>
   <div class="tbl-scroll"><table class="card-table dt">
-    <thead><tr><th>No.</th><th>Agent</th><th>Period</th><th>Earned</th><th>Due</th><th>Deductions</th><th>Net</th><th>Status</th><th>Created</th><th></th></tr></thead>
+    <thead><tr><?php if ($payable): ?><th class="bulk-col"><input type="checkbox" id="stPayAll" aria-label="Select every approved settlement shown"></th><?php endif; ?><th>No.</th><th>Agent</th><th>Period</th><th>Earned</th><th>Due</th><th>Deductions</th><th>Net</th><th>Status</th><th>Created</th><th></th></tr></thead>
     <tbody>
     <?php foreach ($list as $r): ?>
     <tr>
+      <?php if ($payable): ?><td class="bulk-col" data-label="Pay"><?php if ($r['status'] === 'approved'): ?><input type="checkbox" class="st-pay" name="ids[]" form="stPayForm" value="<?= (int) $r['id'] ?>" data-net="<?= $e((float) $r['net_amount']) ?>" aria-label="Mark <?= $e(AgentSettlement::number($r)) ?> paid"><?php endif; ?></td><?php endif; ?>
       <td data-label="No." class="mono"><a href="<?= $e($self . '?id=' . (int) $r['id']) ?>"><b><?= $e(AgentSettlement::number($r)) ?></b></a></td>
       <td data-label="Agent"><?= $e($r['full_name'] ?: $r['username']) ?> <span class="muted mono"><?= $e(AgentWallet::agentCodeLabel((int) $r['agent_admin_id'])) ?></span></td>
       <td data-label="Period"><?= $e(formatDate((string) $r['period_from'], 'j M')) ?> – <?= $e(formatDate((string) $r['period_to'], 'j M Y')) ?></td>
@@ -727,6 +781,31 @@ document.getElementById('stNewAgent').addEventListener('change', function () { i
     <?php foreach ($drafts as $d): ?><input type="hidden" name="ids[]" value="<?= (int) $d['id'] ?>"><?php endforeach; ?>
     <button class="btn" type="submit">✅ Approve all <?= count($drafts) ?> drafts shown</button>
   </form>
+  <?php endif; ?>
+  <?php if ($payable): ?>
+  <form method="post" action="<?= $e($self . '?' . http_build_query($qsBase)) ?>" id="stPayForm" class="st-form" style="align-items:end"
+        onsubmit="var n=document.querySelectorAll('.st-pay:checked').length;if(!n){return false}return confirm('Mark ' + n + ' approved settlement' + (n === 1 ? '' : 's') + ' PAID (' + document.getElementById('stPayGo').getAttribute('data-sum') + ')? This writes the agent ledger for each one.')">
+    <?= Security::csrfField() ?><input type="hidden" name="action" value="batch_pay">
+    <label>Paid by<select name="mode" required>
+      <?php foreach (AgentSettlement::MODES as $mk => $ml): if ($mk === 'adjust') { continue; } ?><option value="<?= $e($mk) ?>"><?= $e($ml) ?></option><?php endforeach; ?></select></label>
+    <label>Reference prefix <span style="font-weight:400">(optional — each row gets “-&lt;no.&gt;”)</span><input type="text" name="ref" maxlength="40" placeholder="e.g. UPI-15OCT"></label>
+    <button class="btn ok" type="submit" id="stPayGo" data-sum="₹0" disabled style="min-height:48px">💸 Mark selected paid</button>
+    <span class="muted" style="font-size:12.5px;grid-column:1/-1">Tick approved settlements above. Each one is paid on its own, with the same checks as one “Mark paid”; a row the ledger no longer backs is skipped and named. A row with nothing to pay is recorded as “No payment (net-off only)”.</span>
+  </form>
+  <script>
+  (function () {
+    var all = document.getElementById('stPayAll'), go = document.getElementById('stPayGo'), cbs = document.querySelectorAll('.st-pay');
+    function sync() {
+      var n = 0, sum = 0;
+      cbs.forEach(function (c) { if (c.checked) { n++; sum += parseFloat(c.getAttribute('data-net')) || 0; } });
+      var s = '₹' + sum.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+      go.disabled = n === 0; go.setAttribute('data-sum', s);
+      go.textContent = n ? '💸 Mark ' + n + ' paid · ' + s : '💸 Mark selected paid';
+    }
+    if (all) all.addEventListener('change', function () { cbs.forEach(function (c) { c.checked = all.checked; }); sync(); });
+    cbs.forEach(function (c) { c.addEventListener('change', sync); });
+  })();
+  </script>
   <?php endif; ?>
   <?php endif; ?>
 </div>

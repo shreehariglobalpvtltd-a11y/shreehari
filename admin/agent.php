@@ -503,14 +503,29 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $adjDirection = (($_POST['direction'] ?? 'credit') === 'debit') ? 'debit' : 'credit';
                 $adjRef       = Security::clean((string) ($_POST['ref'] ?? ''), 60);
                 $adjAmt       = round(abs((float) ($_POST['amount'] ?? 0)), 2);
-                AgentWallet::record($targetId, 'adjustment', $adjAmt, [
-                    'account'   => $adjAccount,
-                    'direction' => $adjDirection,
-                    'note'      => $adjNote,
-                    'ref'       => 'ADJ' . ($adjRef !== '' ? ' ' . $adjRef : ''),
-                    'by'        => $selfId,
-                ]);
-                $flash = ['ok', 'Correction recorded: ' . $adjDirection . ' of ' . inr($adjAmt) . ' on the ' . $adjAccount . ' account.'];
+                /* Two-person rule (15 Oct 2026, agent_adjust_two_step — off by
+                   default, and then nothing here changes): for anyone but a
+                   super-admin a commission correction is STAGED on the agent's
+                   draft settlement (a different person approves, Mark paid
+                   writes the ledger) and a cash-account correction is refused. */
+                require_once INCLUDE_PATH . '/agentsettlement.php';
+                if (AgentSettlement::twoStepOn() && !Auth::isSuperadmin()) {
+                    if ($adjAccount === 'cash') {
+                        throw new RuntimeException('Two-person rule is on: a cash-account correction needs a super-admin.');
+                    }
+                    $staged = AgentSettlement::stageAdjustment($targetId, $adjDirection, $adjAmt, $adjNote . ($adjRef !== '' ? ' (' . $adjRef . ')' : ''), $selfId);
+                    $flash  = ['ok', 'Correction staged on ' . ($staged['created'] ? 'a new draft settlement ' : 'draft settlement ') . $staged['number']
+                        . ': ' . $adjDirection . ' of ' . inr($adjAmt) . ' on the commission account. Nothing is in the ledger yet — a different person approves it on Settlements, then Mark paid writes it.'];
+                } else {
+                    AgentWallet::record($targetId, 'adjustment', $adjAmt, [
+                        'account'   => $adjAccount,
+                        'direction' => $adjDirection,
+                        'note'      => $adjNote,
+                        'ref'       => 'ADJ' . ($adjRef !== '' ? ' ' . $adjRef : ''),
+                        'by'        => $selfId,
+                    ]);
+                    $flash = ['ok', 'Correction recorded: ' . $adjDirection . ' of ' . inr($adjAmt) . ' on the ' . $adjAccount . ' account.'];
+                }
                 $viewId = $targetId;
 
             } elseif ($action === 'tier_rates') {
@@ -1456,6 +1471,11 @@ $tripCard = static function (array $t) use ($today, $base): void {
       <div class="muted" style="font-size:11px;margin-top:6px">
         Credit on commission = the company owes the agent more; debit on cash = the agent holds less for the company.
       </div>
+      <?php require_once INCLUDE_PATH . '/agentsettlement.php'; if (AgentSettlement::twoStepOn() && !Auth::isSuperadmin()): ?>
+      <div class="muted" style="font-size:11px;margin-top:4px">
+        <b>Two-person rule is on:</b> a commission correction goes onto the agent's draft settlement for a different person to approve; a cash-account correction needs a super-admin.
+      </div>
+      <?php endif; ?>
     </form>
   </div>
   <p class="muted" style="padding:0 18px 14px;font-size:12px;margin:0">

@@ -71,21 +71,40 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             } elseif (Database::fetch('SELECT id FROM admins WHERE username = :u', ['u' => $username]) !== null) {
                 $flash = ['bad', 'That username is already taken.'];
             } else {
-                $newId = Database::insert('admins', [
-                    'username'       => $username,
-                    'password_hash'  => password_hash($pw, PASSWORD_DEFAULT),
-                    'full_name'      => $fullName,
-                    'email'          => $email !== '' ? $email : null,
-                    'phone'          => $phone !== '' ? $phone : null,
-                    'role'           => $role,
-                    'is_active'      => 1,
-                    // An agent's password is issued by the office and used as
-                    // handed over; forcing a change would bounce them to a page
-                    // built for office staff. Everyone else still must change it.
-                    'must_change_pw' => $role === 'agent' ? 0 : 1,
-                ]);
-                Logger::audit('staff.create', 'admin', $username, null, ['role' => $role], 'new staff account');
-
+                $newId = 0;
+                if ($role === 'agent') {
+                    /* 15 Oct 2026 (owner: one way to add an agent): the agent
+                       row, its profile (kind / contact / WhatsApp), the next
+                       free SHG serial, the welcome WhatsApp and the staff.create
+                       audit all come from AgentWallet::createAgent — the same
+                       helper the register's Quick add uses. */
+                    try {
+                        $newId = AgentWallet::createAgent($fullName, $phone, $kind, '', $email, (int) ($admin['id'] ?? 0), [
+                            'username'       => $username,
+                            'password'       => $pw,
+                            'contact_person' => $contact,
+                            'whatsapp'       => $whatsapp,
+                        ]);
+                    } catch (RuntimeException $e) {
+                        $flash = ['bad', $e->getMessage()];
+                    }
+                } else {
+                    $newId = Database::insert('admins', [
+                        'username'       => $username,
+                        'password_hash'  => password_hash($pw, PASSWORD_DEFAULT),
+                        'full_name'      => $fullName,
+                        'email'          => $email !== '' ? $email : null,
+                        'phone'          => $phone !== '' ? $phone : null,
+                        'role'           => $role,
+                        'is_active'      => 1,
+                        // Everyone but an agent must change the temporary
+                        // password on first login (agents: createAgent above).
+                        'must_change_pw' => 1,
+                    ]);
+                    Logger::audit('staff.create', 'admin', $username, null, ['role' => $role], 'new staff account');
+                }
+            }
+            if ($flash === null && $newId > 0) {
                 /* The desk, in the same step (4 Oct 2026): a counter login
                    with no desk prints no town and stamps no sale, and the
                    second form further down the page was easy to forget. */
@@ -104,37 +123,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
                 $codeNote = '';
                 if ($role === 'agent') {
-                    // Kind + contact + WhatsApp on the profile first, so the
-                    // serial below can follow the right band.
-                    try {
-                        AgentWallet::saveProfile($newId, [
-                            'agent_kind'     => $kind,
-                            'contact_person' => $contact,
-                            'whatsapp'       => $whatsapp,
-                            'display_phone'  => preg_replace('/\D+/', '', $phone) ?: $phone,
-                        ]);
-                    } catch (Throwable $e) {
-                        Logger::error('Agent profile save failed on create', ['e' => $e->getMessage()], 'automation');
+                    // createAgent() issued the next free SHG code in the kind's
+                    // band (organization 1-20, person 21+), so code + mobile +
+                    // OTP works immediately; say which one.
+                    $code = AgentWallet::agentCodeFor($newId);
+                    if ($code !== null) {
+                        $codeNote = ' ' . AgentWallet::kindLabel($kind) . ' agent code SHG-' . str_pad((string) $code, 4, '0', STR_PAD_LEFT) . ' assigned (serial ' . $code . ').';
                     }
-                    // Make the agent login-ready in one step: issue the next
-                    // free SHG code (organization 1-20, person 21+) so
-                    // code+mobile+OTP works immediately.
-                    // Best-effort — a full code map must not block the account.
-                    try {
-                        $code = AgentWallet::nextFreeAgentCode($kind);
-                        if ($code !== null) {
-                            AgentWallet::setAgentCode($newId, $code, (int) ($admin['id'] ?? 0));
-                            $codeNote = ' ' . AgentWallet::kindLabel($kind) . ' agent code SHG-' . str_pad((string) $code, 4, '0', STR_PAD_LEFT) . ' assigned (serial ' . $code . ').';
-                        }
-                    } catch (Throwable $e) {
-                        Logger::error('Auto agent-code failed', ['e' => $e->getMessage()], 'automation');
-                    }
-                    // Welcome WhatsApp with their code + agent-portal link.
-                    EventBus::emit('agent.registered', [
-                        'admin_id'  => $newId,
-                        'full_name' => $fullName,
-                        'phone'     => $phone,
-                    ]);
                 }
 
                 $flash = ['ok', 'Staff account "' . $username . '" created.' . $deskNote . $codeNote
@@ -337,10 +332,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
 
         } elseif ($act === 'delete_agent') {
-            // Full superadmin control (owner ask): delete an agent outright —
-            // but ONLY when they have no sales or wallet history, or the delete
-            // would orphan money records. Anyone with history must be
-            // deactivated instead (kept for the audit trail).
+            // Full superadmin control (owner ask): delete a staff account
+            // outright — but ONLY when it has no sales or wallet history, or the
+            // delete would orphan money records. Anyone with history must be
+            // deactivated instead (kept for the audit trail). Since 15 Oct 2026
+            // an AGENT is never deleted at all (owner rule) — refused below.
             $id     = (int) ($_POST['id'] ?? 0);
             $target = Database::fetch('SELECT id, username, full_name, role FROM admins WHERE id = :id', ['id' => $id]);
             if ($target === null) {
@@ -349,6 +345,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $flash = ['bad', 'You cannot delete your own account.'];
             } elseif ((string) $target['role'] === 'superadmin') {
                 $flash = ['bad', 'A superadmin account cannot be deleted here.'];
+            } elseif ((string) $target['role'] === 'agent') {
+                // 15 Oct 2026 (owner rule: never delete agents). An agent is
+                // deactivated, never removed — the code, the tickets they sold
+                // and the wallet stay on record.
+                $flash = ['bad', 'Agents are never deleted — use Deactivate instead. Their code, tickets and wallet stay on record.'];
             } else {
                 $hasBookings = Database::exists('SELECT 1 FROM bookings WHERE sold_by_admin_id = :a LIMIT 1', ['a' => $id]);
                 $hasLedger   = false;
@@ -381,11 +382,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
                 $codeNote = '';
                 try {
-                    // The applicant said whether they are an organization or a
-                    // person on the sign-up form; the serial follows that band.
-                    $code = AgentWallet::nextFreeAgentCode(AgentWallet::agentKindFor((int) $target['id']));
+                    // 15 Oct 2026: an agent who already holds an SHG number keeps
+                    // it — the number is printed on every ticket they sold, so
+                    // approving must never quietly re-number them. Only an
+                    // applicant without one gets the next free serial; the
+                    // applicant said org or person on the sign-up form, and the
+                    // serial follows that band.
+                    $code = AgentWallet::agentCodeFor((int) $target['id']);
+                    if ($code === null) {
+                        $code = AgentWallet::nextFreeAgentCode(AgentWallet::agentKindFor((int) $target['id']));
+                        if ($code !== null) {
+                            AgentWallet::setAgentCode((int) $target['id'], $code, (int) ($admin['id'] ?? 0));
+                        }
+                    }
                     if ($code !== null) {
-                        AgentWallet::setAgentCode((int) $target['id'], $code, (int) ($admin['id'] ?? 0));
                         $codeNote = 'SHG-' . str_pad((string) $code, 4, '0', STR_PAD_LEFT);
                     }
                 } catch (Throwable $e) {
@@ -409,17 +419,30 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
 
         } elseif ($act === 'reject_agent') {
-            // Reject and delete a pending agent application.
+            /* Reject a pending agent application. 15 Oct 2026 (owner rule:
+               never delete agents): the account is no longer DELETEd — that
+               also wiped the seller off every ticket of a deactivated agent
+               the old list mistook for an application. It stays switched off
+               with "Application rejected" on its profile, which takes it off
+               the pending list for good. A deactivated agent with history is
+               not an application at all and is refused here. */
             $id     = (int) ($_POST['id'] ?? 0);
             $target = Database::fetch('SELECT id, username, full_name, role, is_active FROM admins WHERE id = :id', ['id' => $id]);
+            $hasLedger = false;
+            try { $hasLedger = Database::exists('SELECT 1 FROM agent_ledger WHERE agent_admin_id = :a LIMIT 1', ['a' => $id]); } catch (Throwable $e) {}
             if ($target === null) {
                 $flash = ['bad', 'Application not found.'];
             } elseif ((string) $target['role'] !== 'agent' || (int) $target['is_active'] !== 0) {
                 $flash = ['bad', 'Can only reject a pending application (not an active account). Use deactivate for active accounts.'];
+            } elseif ($hasLedger || AgentWallet::agentCodeFor($id) !== null
+                || Database::exists('SELECT 1 FROM bookings WHERE sold_by_admin_id = :a LIMIT 1', ['a' => $id])) {
+                $flash = ['bad', 'This is a deactivated agent with a code or history, not an application — manage it on the Agents register.'];
             } else {
-                Database::run('DELETE FROM admins WHERE id = :id AND is_active = 0 AND role = \'agent\'', ['id' => $id]);
-                Logger::audit('staff.reject_agent', 'admin', (string) $target['username'], null, null, 'agent application rejected and deleted');
-                $flash = ['ok', 'Application from "' . $target['full_name'] . '" rejected and removed.'];
+                AgentWallet::saveProfile($id, ['suspended_reason' => 'Application rejected', 'suspended_at' => date('Y-m-d H:i:s')]);
+                Database::update('admins', ['is_active' => 0], 'id = :id', ['id' => $id]);
+                Logger::audit('staff.reject_agent', 'admin', (string) $target['username'], null, ['suspended_reason' => 'Application rejected'],
+                    'agent application rejected (account kept, switched off — never deleted)');
+                $flash = ['ok', 'Application from "' . $target['full_name'] . '" rejected. The account stays switched off (nothing is deleted) and leaves the pending list.'];
             }
         }
     }
@@ -448,21 +471,36 @@ $k    = CSRF_TOKEN_NAME;
    line, so a new window (Birgunj, Butwal) is added without a deploy. */
 $counterLocs = Settings::counterLocations();
 
-/* ── Pending Agent Applications ─────────────────────────────────── */
-$pending = Database::fetchAll(
-    "SELECT a.id, a.username, a.full_name, a.phone, a.created_at,
-            COALESCE(ap.counter_name,'—') AS counter_name,
-            ap.address
-       FROM admins a
-       LEFT JOIN admin_profiles ap ON ap.admin_id = a.id
-      WHERE a.role = 'agent' AND a.is_active = 0
-      ORDER BY a.id DESC LIMIT 50"
-);
+/* ── Pending Agent Applications ─────────────────────────────────────
+   15 Oct 2026: only REAL applications. Every switched-off agent used to be
+   listed here — a deactivated agent with years of tickets included — one
+   Reject click from being deleted and one Approve from being re-numbered.
+   An application has sold nothing, has no wallet row, holds no SHG number
+   (the same "pending" rule as the Agents register) and was not rejected
+   before. If the read fails the panel shows nothing rather than everyone. */
+$pending = [];
+try {
+    $pending = Database::fetchAll(
+        "SELECT a.id, a.username, a.full_name, a.phone, a.created_at,
+                COALESCE(ap.counter_name,'—') AS counter_name,
+                ap.address
+           FROM admins a
+           LEFT JOIN admin_profiles ap ON ap.admin_id = a.id
+          WHERE a.role = 'agent' AND a.is_active = 0
+            AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.sold_by_admin_id = a.id)
+            AND NOT EXISTS (SELECT 1 FROM agent_ledger l WHERE l.agent_admin_id = a.id)
+            AND (ap.suspended_reason IS NULL OR ap.suspended_reason = '')
+          ORDER BY a.id DESC LIMIT 50"
+    );
+    $pending = array_values(array_filter($pending, static fn(array $pa): bool => AgentWallet::agentCodeFor((int) $pa['id']) === null));
+} catch (Throwable $e) {
+    $pending = [];
+}
 if (count($pending) > 0): ?>
 <div class="panel" style="border-left:4px solid #F07C1F">
   <h2 style="color:var(--warning)">⏳ Pending Agent Applications (<?= count($pending) ?>)</h2>
   <p style="color:#6b7688;font-size:13px;margin:0 0 14px">
-    These agents applied via the public signup form. Approve to activate their account and send them their SHG code, or reject to delete the application.
+    These agents applied via the public signup form. Approve to activate their account and send them their SHG code, or reject to close the application (the account stays switched off — nothing is deleted).
   </p>
   <table style="font-size:13.5px">
     <thead><tr>
@@ -490,7 +528,7 @@ if (count($pending) > 0): ?>
           <input type="hidden" name="action" value="reject_agent">
           <input type="hidden" name="id" value="<?= (int) $pa['id'] ?>">
           <button type="submit" class="btn danger btn-sm"
-                  onclick="return confirm('Reject and delete this application from <?= Security::e(addslashes($pa['full_name'])) ?>?')">
+                  onclick="return confirm('Reject this application from <?= Security::e(addslashes($pa['full_name'])) ?>? The account stays switched off and is never deleted.')">
             ❌ Reject
           </button>
         </form>
@@ -840,7 +878,8 @@ if ($pageIds !== []) {
               <input type="hidden" name="id" value="<?= (int) $s['id'] ?>">
               <button class="btn ghost" type="submit" style="padding:4px 10px;font-size:12px"><?= $isActive ? '🚫 Deactivate' : '✅ Activate' ?></button>
             </form>
-            <?php if ((string) $s['role'] !== 'superadmin'): ?>
+            <?php /* 15 Oct 2026 (owner rule): agents are never deleted, only deactivated. */ ?>
+            <?php if ((string) $s['role'] !== 'superadmin' && !$isAgent): ?>
             <form method="post" style="margin:0;display:inline"
                   onsubmit="return confirm('Delete <?= Security::e(addslashes((string) ($s['full_name'] ?: $s['username']))) ?> permanently?\n\nThis only works if they have NO sales or wallet history — otherwise use Deactivate.')">
               <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
@@ -1010,7 +1049,7 @@ if ($pageIds !== []) {
             </form>
           </details>
           <?php endif; ?>
-          <?php if (!$self && (string) $s['role'] !== 'superadmin'): ?>
+          <?php if (!$self && (string) $s['role'] !== 'superadmin' && (string) $s['role'] !== 'agent'): ?>
           <form method="post" style="margin:0"
                 onsubmit="return confirm('Delete <?= Security::e(addslashes((string) ($s['full_name'] ?: $s['username']))) ?> permanently?\n\nOnly works with NO sales/wallet history — otherwise use Deactivate.')">
             <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">

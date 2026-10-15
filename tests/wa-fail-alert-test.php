@@ -17,7 +17,8 @@ if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
 
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 
-if (stripos((string) DB_NAME, 'test') === false) {
+// 15 Oct 2026: the per-builder clones (lt_f1..lt_f5) are test databases too.
+if (stripos((string) DB_NAME, 'test') === false && !str_starts_with((string) DB_NAME, 'lt_')) {
     exit("Refusing: DB_NAME must be a test database.\n");
 }
 

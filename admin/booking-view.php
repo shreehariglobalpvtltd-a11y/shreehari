@@ -6,11 +6,13 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/tripstatus.php';   // edit-window gate for seat changes (5 Sep 2026)
 require_once INCLUDE_PATH . '/passengerdocs.php'; // passenger photo / ID documents (17 Sep 2026)
+require_once INCLUDE_PATH . '/ticketedit.php';    // Quick Edit: fare fix, correction requests, Auto Assign (15 Oct 2026)
 $admin = admin_boot('bookings.view');
 
 $base  = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
 $pnr   = Security::clean($_GET['pnr'] ?? '', 40);
 $flash = null;
+$bvEdited = false;   // 15 Oct 2026: a correction just saved - offer Share / Send ticket under the flash
 /* Desk isolation (7 Oct 2026): a clerk sees only their own desk's tickets on
    this page too, not just in the lists. Emptying the PNR turns every action
    block below and the detail load into "not found". */
@@ -58,7 +60,7 @@ function bv_sync_ticket(int $bookingId, string $pnr, string $kind, array $ctx = 
        conversation; never blocks the edit. */
     try {
         $who = (string) ((Auth::admin()['full_name'] ?? '') ?: (Auth::admin()['username'] ?? 'staff'));
-        $what = ['passenger' => 'passenger name', 'contact' => 'contact', 'payment' => 'payment', 'seat' => 'seat', 'reschedule' => 'date'][$kind] ?? $kind;
+        $what = ['passenger' => 'passenger name', 'contact' => 'contact', 'payment' => 'payment', 'seat' => 'seat', 'reschedule' => 'date', 'stops' => 'pickup / drop'][$kind] ?? $kind;
         StaffMsg::system($bookingId, '✏️ Ticket updated by ' . $who . ' — ' . $what . ' · टिकट अपडेट भयो');
     } catch (Throwable $e) {
         // the chat line is a courtesy
@@ -91,6 +93,54 @@ function bv_log_message(int $bookingId, string $to, string $status, string $prov
     } catch (Throwable $e) { /* message_logs is informational */ }
 }
 
+/**
+ * Correct the latest payment row's method / reference / note (5 Sep 2026;
+ * one function since 15 Oct 2026 so the Quick Edit block and an approved
+ * "Request correction" run the SAME path). A method moved between cash and
+ * UPI / bank moves the seller's cash_due with it (AgentWallet::syncCashDue).
+ * The caller checks the right to do it.
+ *
+ * @return array{changed: list<string>, flash: string}
+ */
+function bv_apply_payment(array $b, string $method, string $utr, string $note, int $adminId, string $pnr): array
+{
+    $payId = (int) Database::scalar('SELECT COALESCE(MAX(id),0) FROM payments WHERE booking_id = :b', ['b' => (int) $b['id']], 0);
+    if ($payId <= 0) { throw new RuntimeException('This booking has no payment record yet.'); }
+    $cur = Database::fetch('SELECT method, utr_number, admin_note, status FROM payments WHERE id = :i', ['i' => $payId]) ?? [];
+    $method = strtolower(trim($method));
+    $upd = []; $oldVals = []; $newVals = [];
+    if ($method !== '' && in_array($method, TicketEdit::PAY_METHODS, true) && $method !== (string) ($cur['method'] ?? '')) { $upd['method'] = $method; $oldVals['method'] = $cur['method'] ?? null; $newVals['method'] = $method; }
+    if ($utr !== '' && $utr !== (string) ($cur['utr_number'] ?? '')) { $upd['utr_number'] = $utr; $oldVals['utr_number'] = $cur['utr_number'] ?? null; $newVals['utr_number'] = $utr; }
+    if ($note !== '' && $note !== (string) ($cur['admin_note'] ?? '')) { $upd['admin_note'] = $note; $oldVals['admin_note'] = $cur['admin_note'] ?? null; $newVals['admin_note'] = $note; }
+    if ($upd === []) {
+        return ['changed' => [], 'flash' => 'Nothing changed on the payment.'];
+    }
+    Database::update('payments', $upd, 'id = :i', ['i' => $payId]);
+    Logger::audit('payment.edit', 'payment', (string) $payId, $oldVals, $newVals, 'Payment details edited on ' . $pnr . ' by admin #' . $adminId, $note);
+    // 3 Oct 2026: a method corrected between cash and UPI/bank moves
+    // the seller's "cash held" with it (it was decided only at sale).
+    if (isset($upd['method'])) {
+        $fresh = Database::fetch('SELECT * FROM bookings WHERE id = :i', ['i' => (int) $b['id']]);
+        if ($fresh !== null) { AgentWallet::syncCashDue($fresh, 'payment method corrected'); }
+    }
+    // the invoice prints the method, the ticket PNG the payment pill
+    // (office-side: REV + redraw + audit, no passenger message)
+    return ['changed' => array_keys($upd), 'flash' => 'Payment record updated (' . implode(', ', array_keys($upd)) . ').'
+        . bv_sync_ticket((int) $b['id'], $pnr, 'payment', ['new' => implode(', ', array_keys($upd))], null, $note)];
+}
+
+/**
+ * 15 Oct 2026 (owner: agent_cancel_mode): when the office set agent cancels
+ * to 'request', an agent who may cancel only their OWN sales files a cancel
+ * request instead (the office settles cancel + refund by hand). Office roles
+ * holding bookings.cancel are never affected.
+ */
+function bv_cancel_is_request(): bool
+{
+    return !Auth::can('bookings.cancel') && Auth::can('bookings.cancel_own')
+        && Settings::getString('agent_cancel_mode', 'direct') === 'request';
+}
+
 /* ---- Cancel action ----------------------------------------------- */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'cancel') {
     if (!Security::verifyCsrf()) {
@@ -101,9 +151,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                 throw new RuntimeException('You may only cancel tickets you sold yourself.');
             }
             $reason = Security::clean($_POST['reason'] ?? 'Cancelled by staff', 255);
-            $res = BookingService::cancel($pnr, $reason, false);
-            $flash = ['ok', 'Booking cancelled. Refund: ' . inr((float) ($res['refund']['amount'] ?? 0))
-                          . ' (' . (int) ($res['refund']['percent'] ?? 0) . '%).'];
+            if (bv_cancel_is_request()) {
+                $cRow = BookingService::findByPnr($pnr);
+                if ($cRow === null) { throw new RuntimeException('Booking not found.'); }
+                $rid = TicketEdit::request($cRow, 'cancel_request', '', $reason !== '' ? $reason : 'Cancel requested by the agent', $admin);
+                $flash = ['ok', 'Cancel request #' . $rid . ' sent to the office — they cancel it and settle any refund by hand. The ticket stays valid until then.'];
+            } else {
+                $res = BookingService::cancel($pnr, $reason, false);
+                $flash = ['ok', 'Booking cancelled. Refund: ' . inr((float) ($res['refund']['amount'] ?? 0))
+                              . ' (' . (int) ($res['refund']['percent'] ?? 0) . '%).'];
+                // An open "please cancel" request is answered by this cancel.
+                TicketEdit::closeOpenCancels((int) ($res['booking']['id'] ?? 0), (string) (($admin['full_name'] ?? '') ?: ($admin['username'] ?? 'staff')) . ' #' . (int) $admin['id']);
+            }
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
         }
@@ -121,12 +180,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             }
             $seat   = strtoupper(Security::clean($_POST['seat_no'] ?? '', 10));
             $reason = Security::clean($_POST['reason'] ?? 'Seat cancelled by staff', 255);
-            $res    = BookingService::cancelSeat((int) ($_POST['booking_id'] ?? 0), $seat, (int) $admin['id'], $reason);
-            $seatMode = (string) Database::scalar('SELECT booking_mode FROM bookings WHERE id = :i', ['i' => (int) ($_POST['booking_id'] ?? 0)], 'sharing');
-            $flash  = ['ok', 'Seat ' . Security::e(Seats::displayLabel($seat, 'sleeper', $seatMode !== '' ? $seatMode : 'sharing')) . ' cancelled. Refund for this seat: '
-                            . inr((float) ($res['refund']['amount'] ?? 0))
-                            . ' (' . (int) ($res['refund']['percent'] ?? 0) . '%).'];
-            $pnr = (string) ($res['booking']['pnr'] ?? $pnr);
+            if (bv_cancel_is_request()) {   // 15 Oct 2026: agent_cancel_mode = request
+                $cRow = BookingService::findByPnr($pnr);
+                if ($cRow === null || (int) $cRow['id'] !== (int) ($_POST['booking_id'] ?? 0)) { throw new RuntimeException('Booking not found.'); }
+                $rid   = TicketEdit::request($cRow, 'cancel_request', $seat, $reason, $admin);
+                $flash = ['ok', 'Cancel request #' . $rid . ' for seat ' . $seat . ' sent to the office — they settle it by hand.'];
+            } else {
+                $res    = BookingService::cancelSeat((int) ($_POST['booking_id'] ?? 0), $seat, (int) $admin['id'], $reason);
+                $seatMode = (string) Database::scalar('SELECT booking_mode FROM bookings WHERE id = :i', ['i' => (int) ($_POST['booking_id'] ?? 0)], 'sharing');
+                $flash  = ['ok', 'Seat ' . Security::e(Seats::displayLabel($seat, 'sleeper', $seatMode !== '' ? $seatMode : 'sharing')) . ' cancelled. Refund for this seat: '
+                                . inr((float) ($res['refund']['amount'] ?? 0))
+                                . ' (' . (int) ($res['refund']['percent'] ?? 0) . '%).'];
+                $pnr = (string) ($res['booking']['pnr'] ?? $pnr);
+            }
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
         }
@@ -144,15 +210,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
         $flash = ['bad', 'Session expired — please try again.'];
     } else {
         try {
-            Auth::requireAdmin('bookings.edit');
+            /* 15 Oct 2026 (Quick Edit): checked field by field. Office roles keep
+               bookings.edit; a counter AGENT may correct only the fields the owner
+               switched on (settings ticket_edit_rules -> Auth::mayEditField) on a
+               ticket they sold, while its trip is still editable. */
+            if (!Auth::can('bookings.edit') && !Auth::isCounterAgent()) {
+                Auth::requireAdmin('bookings.edit');   // the usual refusal page
+            }
             $bid = (int) ($_POST['booking_id'] ?? 0);
             $reason  = Security::clean($_POST['reason'] ?? '', 255);   // SHG AI BRAIN 1.6: why, in the desk's words
-            $changes = [];
-            $oldVals = [];   // 5 Sep 2026: every edit records what it was → what it is now
-            $newVals = [];
-            $paxNames = [];  // 17 Sep 2026: who was edited, for the change notice
 
-            $cur = Database::fetch('SELECT id, pnr, contact_phone, contact_country_code, contact_email, sold_by_admin_id FROM bookings WHERE id = :id', ['id' => $bid]);
+            $cur = Database::fetch('SELECT id, pnr, status, contact_phone, contact_country_code, contact_email, sold_by_admin_id FROM bookings WHERE id = :id', ['id' => $bid]);
             if ($cur === null || (string) $cur['pnr'] !== $pnr) {
                 throw new RuntimeException('Booking not found.');
             }
@@ -167,84 +235,171 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             if ($editScope !== null && (int) ($cur['sold_by_admin_id'] ?? 0) !== $editScope) {
                 throw new RuntimeException('Booking not found.');
             }
-            $curLeg = Database::fetch("SELECT boarding_stop, drop_stop FROM booking_legs WHERE booking_id = :b AND leg_type = 'outbound' LIMIT 1", ['b' => $bid]) ?? [];
-
-            // Contact details
-            $newPhone = preg_replace('/\D/', '', $_POST['contact_phone'] ?? '');
-            $newEmail = Security::clean($_POST['contact_email'] ?? '', 120);
-            $upd = ['updated_at' => date('Y-m-d H:i:s')];
-            if ($newPhone !== '' && $newPhone !== (string) $cur['contact_phone']) {
-                if (strlen($newPhone) < 10 || strlen($newPhone) > 15) { throw new RuntimeException('Enter a valid phone number (10-15 digits).'); }
-                $upd['contact_phone'] = $newPhone; $changes[] = 'phone';
-                $oldVals['contact_phone'] = $cur['contact_phone']; $newVals['contact_phone'] = $newPhone;
-                /* India and Nepal share the 10-digit mobile format, so the dialing
-                   code is CAPTURED at booking (contact_country_code) and the
-                   notifier trusts it. A corrected number that carries its own
-                   prefix (+977… / +91…) re-derives the code here; a bare 10-digit
-                   correction says nothing about the country, so the stored code
-                   is kept (17 Sep 2026). */
-                $newCc = countryDialCode(resolvePhoneCountry('', $newPhone));
-                if ($newCc !== '' && $newCc !== (string) ($cur['contact_country_code'] ?? '')) {
-                    $upd['contact_country_code'] = $newCc;
-                    $oldVals['contact_country_code'] = $cur['contact_country_code']; $newVals['contact_country_code'] = $newCc;
+            if (Auth::isCounterAgent()) {
+                // An agent corrects a LIVE ticket of their own, before the trip closes.
+                if (!in_array((string) $cur['status'], ['pending', 'confirmed'], true)) {
+                    throw new RuntimeException('Only a pending or confirmed ticket can be corrected.');
+                }
+                $agSid  = (int) Database::scalar("SELECT schedule_id FROM booking_legs WHERE booking_id = :b AND leg_type = 'outbound' LIMIT 1", ['b' => $bid], 0);
+                $agGate = $agSid > 0 ? TripStatus::editableFor($agSid) : ['editable' => true];
+                if (!($agGate['editable'] ?? false)) {
+                    throw new RuntimeException('Trip is ' . ($agGate['label'] ?? 'closed') . ' — ask the office (Request correction or Office chat).');
                 }
             }
-            if ($newEmail !== '' && $newEmail !== (string) ($cur['contact_email'] ?? '')) {
-                $upd['contact_email'] = $newEmail; $changes[] = 'email';
-                $oldVals['contact_email'] = $cur['contact_email']; $newVals['contact_email'] = $newEmail;
-            }
+            $isSuper = Auth::isSuperadmin();
+            $mayF    = static fn(string $f): bool => Auth::mayEditField($cur, $f);
+            $deny    = static function (string $what): void {
+                throw new RuntimeException('Your role may not change the ' . $what . ' on this ticket — use “Request correction” or Office chat.');
+            };
 
-            // Boarding/drop stops
+            // What the desk typed. Every Quick Edit box comes PREFILLED with the
+            // current value, so an untouched box compares equal below and a
+            // no-op save stays a no-op; an empty box still means "keep".
+            $newPhone = (string) preg_replace('/\D/', '', (string) ($_POST['contact_phone'] ?? ''));
+            $newEmail = Security::clean($_POST['contact_email'] ?? '', 120);
+            // 15 Oct 2026: the pickup / drop are now picked from the route's real
+            // stops, with "Other…" still allowed for a stop that is not listed.
+            // A typed "Other" stop loses any "@ 21:00" / "[lat,lng]" tail, so it can
+            // never pose as a configured stop's time on the ticket (as at the sale).
+            $otherStop = static function (string $raw): string {
+                $s = (string) preg_replace('/\s*\[[^\]]*\]\s*$/u', '', Security::clean($raw, 120));
+                $s = trim((string) preg_replace('/\s+/u', ' ', (string) preg_replace('/\s*@\s*[0-2]?\d:\d{2}\s*$/u', '', $s)));
+                if (mb_strlen($s) < 3) {
+                    throw new RuntimeException('Type the other stop (at least 3 letters).');
+                }
+                return $s;
+            };
             $newBoard = Security::clean($_POST['boarding_stop'] ?? '', 191);
+            if ($newBoard === '__other__') { $newBoard = $otherStop((string) ($_POST['boarding_other'] ?? '')); }
             $newDrop  = Security::clean($_POST['drop_stop'] ?? '', 191);
-            if ($newBoard !== '' || $newDrop !== '') {
+            if ($newDrop === '__other__') { $newDrop = $otherStop((string) ($_POST['drop_other'] ?? '')); }
+            $remark   = Security::clean($_POST['remark'] ?? '', 180);
+            $paxIn    = is_array($_POST['pax'] ?? null) ? $_POST['pax'] : [];
+            $staffWho = (string) (($admin['full_name'] ?? '') ?: ($admin['username'] ?? 'staff'));
+
+            /* 15 Oct 2026 (1G-rollback): ONE transaction - a failure halfway
+               (say the stops saved but a name refused) used to leave a
+               half-applied edit with no audit row. The audit is written inside,
+               the ticket is re-synced after the commit. */
+            $done = Database::transaction(static function () use (
+                $bid, $pnr, $admin, $reason, $isSuper, $mayF, $deny,
+                $newPhone, $newEmail, $newBoard, $newDrop, $remark, $paxIn, $staffWho
+            ): array {
+                $changes  = [];
+                $oldVals  = [];   // 5 Sep 2026: every edit records what it was → what it is now
+                $newVals  = [];
+                $paxNames = [];   // 17 Sep 2026: who was edited, for the change notice
+                $cur = Database::fetchForUpdate('SELECT id, pnr, contact_phone, contact_country_code, contact_email, admin_note FROM bookings WHERE id = :id', ['id' => $bid])[0] ?? null;
+                if ($cur === null) { throw new RuntimeException('Booking not found.'); }
+                $curLeg = Database::fetch("SELECT boarding_stop, drop_stop FROM booking_legs WHERE booking_id = :b AND leg_type = 'outbound' LIMIT 1", ['b' => $bid]) ?? [];
+
+                // Contact details
+                $upd = ['updated_at' => date('Y-m-d H:i:s')];
+                if ($newPhone !== '' && $newPhone !== (string) $cur['contact_phone']) {
+                    if (!$mayF('phone')) { $deny('phone number'); }
+                    if (strlen($newPhone) < 10 || strlen($newPhone) > 15) { throw new RuntimeException('Enter a valid phone number (10-15 digits).'); }
+                    $upd['contact_phone'] = $newPhone; $changes[] = 'phone';
+                    $oldVals['contact_phone'] = $cur['contact_phone']; $newVals['contact_phone'] = $newPhone;
+                    /* India and Nepal share the 10-digit mobile format, so the dialing
+                       code is CAPTURED at booking (contact_country_code) and the
+                       notifier trusts it. A corrected number that carries its own
+                       prefix (+977… / +91…) re-derives the code here; a bare 10-digit
+                       correction says nothing about the country, so the stored code
+                       is kept (17 Sep 2026). */
+                    $newCc = countryDialCode(resolvePhoneCountry('', $newPhone));
+                    if ($newCc !== '' && $newCc !== (string) ($cur['contact_country_code'] ?? '')) {
+                        $upd['contact_country_code'] = $newCc;
+                        $oldVals['contact_country_code'] = $cur['contact_country_code']; $newVals['contact_country_code'] = $newCc;
+                    }
+                }
+                if ($newEmail !== '' && $newEmail !== (string) ($cur['contact_email'] ?? '')) {
+                    if (!$mayF('email')) { $deny('email'); }
+                    $upd['contact_email'] = $newEmail; $changes[] = 'email';
+                    $oldVals['contact_email'] = $cur['contact_email']; $newVals['contact_email'] = $newEmail;
+                }
+
+                // Boarding/drop stops
                 $legUpd = [];
                 if ($newBoard !== '' && $newBoard !== (string) ($curLeg['boarding_stop'] ?? '')) {
+                    if (!$mayF('pickup')) { $deny('pickup point'); }
                     $legUpd['boarding_stop'] = $newBoard; $changes[] = 'boarding stop';
                     $oldVals['boarding_stop'] = $curLeg['boarding_stop'] ?? null; $newVals['boarding_stop'] = $newBoard;
                 }
                 if ($newDrop !== '' && $newDrop !== (string) ($curLeg['drop_stop'] ?? '')) {
+                    if (!$mayF('pickup')) { $deny('drop point'); }
                     $legUpd['drop_stop'] = $newDrop; $changes[] = 'drop stop';
                     $oldVals['drop_stop'] = $curLeg['drop_stop'] ?? null; $newVals['drop_stop'] = $newDrop;
                 }
+                $stopsText = '';
                 if ($legUpd !== []) {
+                    /* 15 Oct 2026 (1A-stops): a pickup with its own fare (Admin ->
+                       Routes) re-prices the seat. The ticket keeps the fare it was
+                       sold at, so a stop change that moves the price is refused
+                       for everyone but a super-admin, naming the difference; the
+                       super-admin's override is written to the audit row. */
+                    $fareDiff = TicketEdit::stopFareDelta($bid,
+                        (string) ($curLeg['boarding_stop'] ?? ''), (string) ($curLeg['drop_stop'] ?? ''),
+                        (string) ($legUpd['boarding_stop'] ?? ($curLeg['boarding_stop'] ?? '')), (string) ($legUpd['drop_stop'] ?? ($curLeg['drop_stop'] ?? '')));
+                    if (abs($fareDiff) >= 0.005) {
+                        if (!$isSuper) {
+                            throw new RuntimeException('The fare for that pickup / drop differs by ' . inr(abs($fareDiff))
+                                . ' (' . ($fareDiff > 0 ? 'dearer' : 'cheaper') . ') — ask the office (Request correction → Fare), or cancel and rebook.');
+                        }
+                        $oldVals['fare_difference'] = 0; $newVals['fare_difference'] = $fareDiff;
+                    }
                     Database::update('booking_legs', $legUpd,
                         "booking_id = :b AND leg_type = 'outbound'",
                         ['b' => $bid]);
+                    $stopsText = trim((isset($legUpd['boarding_stop']) ? 'pickup ' . $legUpd['boarding_stop'] : '')
+                        . (isset($legUpd['drop_stop']) ? (isset($legUpd['boarding_stop']) ? ' · ' : '') . 'drop ' . $legUpd['drop_stop'] : ''));
                 }
-            }
 
-            if (count($upd) > 1) {
-                Database::update('bookings', $upd, 'id = :id', ['id' => $bid]);
-                // The payment row carries the payer's number too (invoice, refund
-                // desk); a corrected contact must not leave it stale (17 Sep 2026).
-                if (isset($upd['contact_phone'])) {
-                    Database::update('payments', ['payer_phone' => $newPhone], 'booking_id = :b', ['b' => $bid]);
+                if (count($upd) > 1) {
+                    Database::update('bookings', $upd, 'id = :id', ['id' => $bid]);
+                    // The payment row carries the payer's number too (invoice, refund
+                    // desk); a corrected contact must not leave it stale (17 Sep 2026).
+                    if (isset($upd['contact_phone'])) {
+                        Database::update('payments', ['payer_phone' => $newPhone], 'booking_id = :b', ['b' => $bid]);
+                    }
                 }
-            }
 
-            // Per-passenger updates (name / age / gender / ID document)
-            foreach (($_POST['pax'] ?? []) as $paxId => $paxData) {
-                $paxId = (int) $paxId;
-                $curPax = Database::fetch('SELECT full_name, age, gender, id_type, id_number, seat_no FROM booking_passengers WHERE id = :id AND booking_id = :b', ['id' => $paxId, 'b' => $bid]);
-                if ($curPax === null) { continue; }
-                $pUpd = [];
-                $pName = Security::clean((string) ($paxData['name'] ?? ''), 120);
-                if ($pName !== '' && $pName !== (string) $curPax['full_name']) { $pUpd['full_name'] = $pName; }
-                $pAge = isset($paxData['age']) && $paxData['age'] !== '' ? (int) $paxData['age'] : null;
-                if ($pAge !== null && $pAge !== (int) ($curPax['age'] ?? 0)) { $pUpd['age'] = $pAge; }
-                $pGender = in_array($paxData['gender'] ?? '', ['Male', 'Female', 'Other'], true) ? (string) $paxData['gender'] : null;
-                if ($pGender !== null && $pGender !== (string) ($curPax['gender'] ?? '')) { $pUpd['gender'] = $pGender; }
-                $pIdT = Security::clean((string) ($paxData['id_type'] ?? ''), 60);
-                if ($pIdT !== '' && $pIdT !== (string) ($curPax['id_type'] ?? '')) { $pUpd['id_type'] = $pIdT; }
-                $pIdN = Security::clean((string) ($paxData['id_number'] ?? ''), 60);
-                if ($pIdN !== '' && $pIdN !== (string) ($curPax['id_number'] ?? '')) { $pUpd['id_number'] = $pIdN; }
-                if ($pUpd !== []) {
+                // Per-passenger updates (name / age / gender / ID document)
+                foreach ($paxIn as $paxId => $paxData) {
+                    $paxId = (int) $paxId;
+                    if (!is_array($paxData)) { continue; }
+                    $curPax = Database::fetch('SELECT full_name, age, gender, id_type, id_number, seat_no FROM booking_passengers WHERE id = :id AND booking_id = :b', ['id' => $paxId, 'b' => $bid]);
+                    if ($curPax === null) { continue; }
+                    $pUpd = [];
+                    $pName = Security::clean((string) ($paxData['name'] ?? ''), 120);
+                    if ($pName !== '' && $pName !== (string) $curPax['full_name']) { $pUpd['full_name'] = $pName; }
+                    $pAge = isset($paxData['age']) && $paxData['age'] !== '' ? (int) $paxData['age'] : null;
+                    if ($pAge !== null && $pAge !== (int) ($curPax['age'] ?? 0)) { $pUpd['age'] = $pAge; }
+                    $pGender = in_array($paxData['gender'] ?? '', ['Male', 'Female', 'Other'], true) ? (string) $paxData['gender'] : null;
+                    if ($pGender !== null && $pGender !== (string) ($curPax['gender'] ?? '')) { $pUpd['gender'] = $pGender; }
+                    $pIdT = Security::clean((string) ($paxData['id_type'] ?? ''), 60);
+                    if ($pIdT !== '' && $pIdT !== (string) ($curPax['id_type'] ?? '')) { $pUpd['id_type'] = $pIdT; }
+                    $pIdN = Security::clean((string) ($paxData['id_number'] ?? ''), 60);
+                    if ($pIdN !== '' && $pIdN !== (string) ($curPax['id_number'] ?? '')) { $pUpd['id_number'] = $pIdN; }
+                    if ($pUpd === []) { continue; }
+                    foreach (['full_name' => 'name', 'age' => 'age', 'gender' => 'gender', 'id_type' => 'id', 'id_number' => 'id'] as $col => $right) {
+                        if (isset($pUpd[$col]) && !$mayF($right)) { $deny($right === 'id' ? 'ID document' : 'passenger ' . $right); }
+                    }
+                    $seatKey = (string) ($curPax['seat_no'] ?: ('#' . $paxId));
+
+                    /* 15 Oct 2026 (1G-validate): a gender correction must not put a
+                       man and a woman of DIFFERENT bookings in one shared cabin -
+                       recomputeUnitLock below would then lock that cabin against
+                       every future sale. The passenger moves first (Change seat).
+                       A super-admin may still record the truth. */
+                    if (isset($pUpd['gender']) && !$isSuper && $seatKey !== '' && $seatKey[0] !== '#'
+                        && TicketEdit::genderClash($bid, $seatKey, (string) $pUpd['gender'])) {
+                        throw new RuntimeException('Seat ' . $seatKey . ' shares its cabin with a passenger of another booking — move the passenger to another cabin first (Change seat), then correct the gender.');
+                    }
+
                     Database::run(
                         "UPDATE booking_passengers SET " . implode(', ', array_map(fn($k) => "$k = :$k", array_keys($pUpd))) . " WHERE id = :id AND booking_id = :bid",
                         array_merge($pUpd, ['id' => $paxId, 'bid' => $bid])
                     );
-                    $seatKey = (string) ($curPax['seat_no'] ?: ('#' . $paxId));
 
                     /* A gender correction changes who may share the cabin, so
                        the cabin's lock has to be recomputed — schedule_unit_locks
@@ -280,28 +435,57 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                         $newVals['pax ' . $seatKey . ' ' . $fk] = $fv;
                     }
                 }
-            }
 
+                /* 15 Oct 2026 (1A-remarks): an internal remark is APPENDED to
+                   bookings.admin_note with who and when - never replacing the
+                   earlier ones (the per-seat cancel log lives there too). */
+                if ($remark !== '') {
+                    if (!$mayF('remark')) { $deny('remarks'); }
+                    $note = BookingService::appendNote((string) ($cur['admin_note'] ?? ''), $remark . ' — ' . $staffWho . ' [' . date('j M H:i') . ']');
+                    Database::update('bookings', ['admin_note' => $note], 'id = :id', ['id' => $bid]);
+                    $changes[] = 'remark';
+                    $oldVals['admin_note'] = $cur['admin_note'] ?? null; $newVals['admin_note'] = $note;
+                }
+
+                if ($changes !== []) {
+                    /* The QR payload is signed over the contact phone
+                       (Ticket::qrPayload), so a corrected number re-mints the QR
+                       exactly as a seat change does — otherwise the PNG on the
+                       passenger's phone keeps a QR signed for a number the booking
+                       no longer has (17 Sep 2026). */
+                    Logger::audit('booking.edit_passenger', 'booking', $pnr, $oldVals, $newVals,
+                        'Edited ' . implode(', ', $changes) . ' by admin #' . $admin['id'], $reason);
+                }
+                return [
+                    'changes'  => $changes,
+                    'paxNames' => $paxNames,
+                    'contact'  => isset($upd['contact_phone']) || isset($upd['contact_email']),
+                    'stops'    => $stopsText,
+                ];
+            });
+
+            $changes = $done['changes'];
+            $onTicket = array_values(array_diff($changes, ['remark']));
             if ($changes === []) {
                 $flash = ['ok', 'Nothing changed — the values you typed match the booking already.'];
+            } elseif ($onTicket === []) {
+                // An internal remark is not on the ticket: no re-issue, no message.
+                $flash = ['ok', 'Remark added to the booking (internal — the passenger is not told).'];
             } else {
-                /* The QR payload is signed over the contact phone
-                   (Ticket::qrPayload), so a corrected number re-mints the QR
-                   exactly as a seat change does — otherwise the PNG on the
-                   passenger's phone keeps a QR signed for a number the booking
-                   no longer has (17 Sep 2026). Before the cache drop below. */
-                Logger::audit('booking.edit_passenger', 'booking', $pnr, $oldVals, $newVals,
-                    'Edited ' . implode(', ', $changes) . ' by admin #' . $admin['id'], $reason);
                 // Any edit: new QR / REV, dropped caches, redrawn PNG, one audit row.
                 // A phone / email change is a 'contact' notice (it reaches the NEW
-                // number); anything else is a 'passenger' notice naming who changed.
+                // number); a pickup / drop change alone is a 'stops' notice (15 Oct
+                // 2026 - it used to read as a passenger-details edit); anything
+                // else is a 'passenger' notice naming who changed.
                 // notify=true: office-side kinds by default, but this desk edit has
                 // always told the passenger (settings notify_ticket_edit).
-                $regenNote = bv_sync_ticket($bid, $pnr, isset($upd['contact_phone']) || isset($upd['contact_email']) ? 'contact' : 'passenger', [
-                    'name' => implode(', ', array_unique($paxNames)),
-                    'new'  => implode(', ', $changes),
-                ], true, $reason);
+                $kind = $done['contact'] ? 'contact' : ($done['paxNames'] !== [] ? 'passenger' : 'stops');
+                $regenNote = bv_sync_ticket($bid, $pnr, $kind, $kind === 'stops'
+                    ? ['new' => (string) $done['stops']]
+                    : ['name' => implode(', ', array_unique($done['paxNames'])), 'new' => implode(', ', $onTicket)],
+                    true, $reason);
                 $flash = ['ok', 'Booking details updated: ' . implode(', ', $changes) . '.' . $regenNote];
+                $bvEdited = true;
             }
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
@@ -403,7 +587,12 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
         $flash = ['bad', 'Session expired — please try again.'];
     } else {
         try {
-            Auth::requireAdmin('bookings.edit');
+            // 15 Oct 2026 (Quick Edit): the seat right per role (Auth::mayEditField
+            // - bookings.edit, or the agent / counter field rules).
+            if (!Auth::mayEditField($b, 'seat')) {
+                if (!Auth::can('bookings.edit')) { Auth::requireAdmin('bookings.edit'); }
+                throw new RuntimeException('Your role may not move seats on this ticket — use Office chat.');
+            }
             if (!in_array((string) $b['status'], ['pending', 'confirmed'], true)) {
                 throw new RuntimeException('Only a pending or confirmed booking can change seat.');
             }
@@ -414,7 +603,10 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
             if (!($tGate['editable'] ?? false) && !Auth::isSuperadmin()) {
                 throw new RuntimeException('Trip is ' . ($tGate['label'] ?? 'closed') . ' — seat changes are locked.');
             }
-            $coach = (string) (Database::scalar('SELECT r.coach_type FROM schedules s JOIN routes r ON r.id = s.route_id WHERE s.id = :s', ['s' => $sid], 'sleeper') ?: 'sleeper');
+            /* 15 Oct 2026 (1B-freeseats): THIS departure's coach. An extra bus
+               may run its own layout (schedules.coach_type_override); the route's
+               coach put the unit key and the gender check in the wrong layout. */
+            $coach = Seats::coachForSchedule($sid);
             $fromSeat = strtoupper(Security::clean($_POST['from_seat'] ?? '', 10));
             $toSeat   = strtoupper(Security::clean($_POST['to_seat'] ?? '', 10));
             if (!in_array($fromSeat, array_map('strval', $legRow['seats'] ?? []), true)) {
@@ -446,34 +638,173 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
         $flash = ['bad', 'Session expired — please try again.'];
     } else {
         try {
-            Auth::requireAdmin('payments.verify');
-            $payId = (int) Database::scalar('SELECT COALESCE(MAX(id),0) FROM payments WHERE booking_id = :b', ['b' => (int) $b['id']], 0);
-            if ($payId <= 0) { throw new RuntimeException('This booking has no payment record yet.'); }
-            $cur = Database::fetch('SELECT method, utr_number, admin_note, status FROM payments WHERE id = :i', ['i' => $payId]) ?? [];
-            $method = strtolower(trim((string) ($_POST['pay_method'] ?? '')));
-            $utr    = Security::clean($_POST['utr_number'] ?? '', 60);
-            $note   = Security::clean($_POST['pay_note'] ?? '', 255);
-            $allowed = ['upi', 'esewa', 'cash', 'bank', 'wallet', 'cod'];
-            $upd = []; $oldVals = []; $newVals = [];
-            if ($method !== '' && in_array($method, $allowed, true) && $method !== (string) ($cur['method'] ?? '')) { $upd['method'] = $method; $oldVals['method'] = $cur['method'] ?? null; $newVals['method'] = $method; }
-            if ($utr !== '' && $utr !== (string) ($cur['utr_number'] ?? '')) { $upd['utr_number'] = $utr; $oldVals['utr_number'] = $cur['utr_number'] ?? null; $newVals['utr_number'] = $utr; }
-            if ($note !== '' && $note !== (string) ($cur['admin_note'] ?? '')) { $upd['admin_note'] = $note; $oldVals['admin_note'] = $cur['admin_note'] ?? null; $newVals['admin_note'] = $note; }
-            if ($upd === []) {
-                $flash = ['ok', 'Nothing changed on the payment.'];
-            } else {
-                Database::update('payments', $upd, 'id = :i', ['i' => $payId]);
-                Logger::audit('payment.edit', 'payment', (string) $payId, $oldVals, $newVals, 'Payment details edited on ' . $pnr . ' by admin #' . $admin['id']);
-                // 3 Oct 2026: a method corrected between cash and UPI/bank moves
-                // the seller's "cash held" with it (it was decided only at sale).
-                if (isset($upd['method'])) {
-                    $fresh = Database::fetch('SELECT * FROM bookings WHERE id = :i', ['i' => (int) $b['id']]);
-                    if ($fresh !== null) { AgentWallet::syncCashDue($fresh, 'payment method corrected'); }
-                }
-                // the invoice prints the method, the ticket PNG the payment pill
-                // (office-side: REV + redraw + audit, no passenger message)
-                $flash = ['ok', 'Payment record updated (' . implode(', ', array_keys($upd)) . ').'
-                    . bv_sync_ticket((int) $b['id'], $pnr, 'payment', ['new' => implode(', ', array_keys($upd))], null, $note)];
+            // 15 Oct 2026: payments.verify, or the counter / agent field rule
+            // (Auth::mayEditField 'payment'); the body is bv_apply_payment().
+            if (!Auth::mayEditField($b, 'payment')) {
+                if (!Auth::can('payments.verify')) { Auth::requireAdmin('payments.verify'); }
+                throw new RuntimeException('Your role may not change the payment record — use “Request correction”.');
             }
+            $payRes = bv_apply_payment($b,
+                (string) ($_POST['pay_method'] ?? ''),
+                Security::clean($_POST['utr_number'] ?? '', 60),
+                Security::clean($_POST['pay_note'] ?? '', 255),
+                (int) $admin['id'], $pnr);
+            $flash = ['ok', $payRes['flash']];
+            $bvEdited = $payRes['changed'] !== [];
+            $b = BookingService::detail($pnr);
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
+/* ---- Fare / discount correction (15 Oct 2026, owner: Quick Edit) ----
+   SUPER-ADMIN ONLY. TicketEdit::correctFare() moves the booking total /
+   discount, the latest payment, the seller's commission (re-rated, UPDATED in
+   place) and the cash they hold in ONE transaction, audited with the reason.
+   Every other role asks through "Request correction" below. Refunds are not
+   touched - the owner settles those by hand. */
+if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'fare_correct') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } else {
+        try {
+            if (!Auth::isSuperadmin()) {
+                throw new RuntimeException('Only a super-admin corrects a fare — use “Request correction”.');
+            }
+            $num = static function (string $k): ?float {
+                $v = str_replace([',', '₹', ' '], '', trim((string) ($_POST[$k] ?? '')));
+                if ($v === '') { return null; }
+                if (!is_numeric($v)) { throw new RuntimeException('Type the amount in numbers only.'); }
+                return round((float) $v, 2);
+            };
+            $ft = $num('new_total');
+            $fd = $num('new_discount');
+            // Both boxes come prefilled: an unchanged total next to a changed
+            // discount means "move the total by the discount".
+            if ($ft !== null && abs($ft - (float) $b['total_amount']) < 0.005) { $ft = null; }
+            if ($fd !== null && abs($fd - (float) ($b['coupon_discount'] ?? 0)) < 0.005) { $fd = null; }
+            if ($ft === null && $fd === null) {
+                $flash = ['ok', 'Nothing changed — that is the fare on the ticket already.'];
+            } else {
+                $fr = TicketEdit::correctFare((int) $b['id'], $ft, $fd, (int) $admin['id'], (string) ($_POST['reason'] ?? ''));
+                $flash = ['ok', 'Fare corrected ' . inr($fr['oldTotal']) . ' → ' . inr($fr['newTotal'])
+                    . ($fr['commission'] !== null ? ' · agent commission ' . inr($fr['commission']['old']) . ' → ' . inr($fr['commission']['new']) : '')
+                    . ($fr['cash'] !== null ? ' · cash held ' . inr($fr['cash']['old']) . ' → ' . inr($fr['cash']['new']) : '')
+                    . '. Refunds are not touched.' . TicketSync::note(TicketSync::last((int) $b['id']))];
+                $bvEdited = true;
+            }
+            $b = BookingService::detail($pnr);
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
+/* ---- Request correction (15 Oct 2026, owner: approval for money edits) --
+   Anyone who can open this ticket (the scope guard above already nulled a
+   foreign one) may ASK the office to correct the fare, the payment method,
+   the selling agent, or to cancel. The request is a ticket_edit_audit row
+   (outcome 'requested') + the office bell; nothing on the booking changes. */
+if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'edit_request') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } else {
+        try {
+            $rField = (string) ($_POST['req_field'] ?? '');
+            $rValue = match ($rField) {
+                'fare'           => (string) ($_POST['req_fare'] ?? ''),
+                'payment_method' => (string) ($_POST['req_method'] ?? ''),
+                'cancel_request' => '',
+                'agent'          => (static function (): string {
+                    $raw = trim((string) ($_POST['req_agent'] ?? ''));
+                    if ($raw === '' || in_array(strtolower($raw), ['0', 'office', 'none'], true)) { return '0'; }
+                    $aid = AgentWallet::resolveAgentCodeFromString($raw);
+                    if ($aid === null) { throw new RuntimeException('Type the agent code, e.g. SHG-0007 (or "office").'); }
+                    return (string) $aid;
+                })(),
+                default          => throw new RuntimeException('Choose what should be corrected.'),
+            };
+            $rid = TicketEdit::request($b, $rField, $rValue, (string) ($_POST['req_reason'] ?? ''), $admin);
+            $flash = ['ok', 'Request #' . $rid . ' sent to the office — a super-admin or manager applies or refuses it on this page. Nothing on the ticket has changed yet.'];
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
+/* ---- Apply / refuse a correction request (15 Oct 2026) -------------
+   Super-admin or a manager (canManageSettings). "Apply" runs the SAME path a
+   direct edit uses, with the stored value, inside one transaction that holds
+   the request row FOR UPDATE (two approvers cannot apply it twice), then
+   marks it done naming the approver. A cancel request is never applied from
+   here - the normal Cancel button does it (owner settles refunds by hand). */
+if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'edit_decide') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } else {
+        try {
+            if (!Auth::isSuperadmin() && !Auth::canManageSettings()) {
+                throw new RuntimeException('Only a super-admin or manager decides correction requests.');
+            }
+            $reqId    = (int) ($_POST['request_id'] ?? 0);
+            $decision = (string) ($_POST['decision'] ?? '');
+            $decNote  = Security::clean($_POST['decide_note'] ?? '', 120);
+            $by       = (string) (($admin['full_name'] ?? '') ?: ($admin['username'] ?? 'staff')) . ' #' . (int) $admin['id'];
+            $bk       = $b;
+            $flashMsg = Database::transaction(static function () use ($reqId, $decision, $decNote, $by, $bk, $admin, $pnr): string {
+                $row = Database::fetchForUpdate(
+                    "SELECT * FROM ticket_edit_audit WHERE id = :i AND booking_id = :b AND outcome = 'requested' AND changed_by LIKE 'staff:%'",
+                    ['i' => $reqId, 'b' => (int) $bk['id']]
+                )[0] ?? null;
+                if ($row === null) {
+                    throw new RuntimeException('That request is already closed.');
+                }
+                $field = (string) $row['field_changed'];
+                $label = TicketEdit::REQUEST_FIELDS[$field] ?? $field;
+                if ($decision === 'refuse') {
+                    TicketEdit::close($reqId, 'refused', $by, $decNote);
+                    Logger::audit('booking.edit_request_refused', 'booking', $pnr, [$field => $row['old_value']], [$field => $row['new_value']],
+                        'Correction request #' . $reqId . ' refused by ' . $by, $decNote);
+                    return 'Request #' . $reqId . ' (' . $label . ') refused.';
+                }
+                if ($decision !== 'apply') {
+                    throw new RuntimeException('Unknown decision.');
+                }
+                $why = 'request #' . $reqId . ($decNote !== '' ? ' — ' . $decNote : '') . ' (' . (string) $row['detail'] . ')';
+                switch ($field) {
+                    case 'fare':
+                        if (!Auth::isSuperadmin()) {
+                            throw new RuntimeException('A fare correction is applied by a super-admin — you may refuse it.');
+                        }
+                        $fr  = TicketEdit::correctFare((int) $bk['id'], (float) $row['new_value'], null, (int) $admin['id'], $why);
+                        $msg = 'Fare corrected ' . inr($fr['oldTotal']) . ' → ' . inr($fr['newTotal']) . '.';
+                        break;
+                    case 'payment_method':
+                        if (!Auth::can('payments.verify')) {
+                            throw new RuntimeException('Your role cannot change a payment record.');
+                        }
+                        $pr  = bv_apply_payment($bk, (string) $row['new_value'], '', '', (int) $admin['id'], $pnr);
+                        $msg = $pr['flash'];
+                        break;
+                    case 'agent':
+                        if (!Auth::mayReassignSeller()) {
+                            throw new RuntimeException('Your role cannot change the selling agent.');
+                        }
+                        $ar  = AgentWallet::reassignSeller($bk, (int) $row['new_value'], (int) $admin['id']);
+                        $msg = 'Selling agent changed to ' . TicketEdit::sellerLabel((int) $row['new_value'])
+                            . ($ar['commission'] > 0 ? ' · commission re-posted ' . inr($ar['commission']) : '') . '. Cash-in-hand is not moved.';
+                        break;
+                    default:   // cancel_request
+                        throw new RuntimeException('A cancel is done with the Cancel button below (the refund is settled by hand) — the request closes by itself then. Or refuse it.');
+                }
+                TicketEdit::close($reqId, 'done', $by, $decNote);
+                Logger::audit('booking.edit_request_applied', 'booking', $pnr, [$field => $row['old_value']], [$field => $row['new_value']],
+                    'Correction request #' . $reqId . ' applied by ' . $by, $decNote);
+                return 'Request #' . $reqId . ' applied: ' . $msg;
+            });
+            $flash = ['ok', $flashMsg];
+            $bvEdited = $decision === 'apply';
             $b = BookingService::detail($pnr);
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
@@ -731,47 +1062,65 @@ if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'PO
         $flash = ['bad', 'Session expired.'];
     } else {
         try {
-            $newPhone = preg_replace('/\D/', '', $_POST['contact_phone'] ?? '');
+            $newPhone = (string) preg_replace('/\D/', '', (string) ($_POST['contact_phone'] ?? ''));
             $newEmail = Security::clean($_POST['contact_email'] ?? '', 120);
-            $newNote  = Security::clean($_POST['admin_note'] ?? '', 255);
-            $upd = ['updated_at' => date('Y-m-d H:i:s')];
-            $oldVals = []; $newVals = [];
-            if ($newPhone !== '' && $newPhone !== (string) $b['contact_phone']) {
-                $upd['contact_phone'] = $newPhone; $oldVals['contact_phone'] = $b['contact_phone']; $newVals['contact_phone'] = $newPhone;
-                // Same dialing-code rule as edit_passenger (17 Sep 2026): re-derived
-                // only when the typed number carries its own +977 / +91 prefix.
-                $newCc = countryDialCode(resolvePhoneCountry('', $newPhone));
-                if ($newCc !== '' && $newCc !== (string) ($b['contact_country_code'] ?? '')) {
-                    $upd['contact_country_code'] = $newCc; $oldVals['contact_country_code'] = $b['contact_country_code'] ?? null; $newVals['contact_country_code'] = $newCc;
+            $newNote  = Security::clean($_POST['admin_note'] ?? '', 180);
+            $paxNames = is_array($_POST['pax_name'] ?? null) ? $_POST['pax_name'] : [];
+            $contactReason = Security::clean($_POST['reason'] ?? '', 255);
+            $staffWho = (string) (($admin['full_name'] ?? '') ?: ($admin['username'] ?? 'staff'));
+            $bidC     = (int) $b['id'];
+            /* 15 Oct 2026: one transaction (1G-rollback), the audit inside, and
+               the internal note is APPENDED with who / when - it used to REPLACE
+               bookings.admin_note, wiping the per-seat cancel log kept there. */
+            [$oldVals, $newVals, $upd] = Database::transaction(static function () use (
+                $bidC, $pnr, $admin, $newPhone, $newEmail, $newNote, $paxNames, $contactReason, $staffWho
+            ): array {
+                $cur = Database::fetchForUpdate('SELECT contact_phone, contact_country_code, contact_email, admin_note FROM bookings WHERE id = :id', ['id' => $bidC])[0] ?? null;
+                if ($cur === null) { throw new RuntimeException('Booking not found.'); }
+                $upd = ['updated_at' => date('Y-m-d H:i:s')];
+                $oldVals = []; $newVals = [];
+                if ($newPhone !== '' && $newPhone !== (string) $cur['contact_phone']) {
+                    $upd['contact_phone'] = $newPhone; $oldVals['contact_phone'] = $cur['contact_phone']; $newVals['contact_phone'] = $newPhone;
+                    // Same dialing-code rule as edit_passenger (17 Sep 2026): re-derived
+                    // only when the typed number carries its own +977 / +91 prefix.
+                    $newCc = countryDialCode(resolvePhoneCountry('', $newPhone));
+                    if ($newCc !== '' && $newCc !== (string) ($cur['contact_country_code'] ?? '')) {
+                        $upd['contact_country_code'] = $newCc; $oldVals['contact_country_code'] = $cur['contact_country_code'] ?? null; $newVals['contact_country_code'] = $newCc;
+                    }
                 }
-            }
-            if ($newEmail !== '' && $newEmail !== (string) ($b['contact_email'] ?? '')) { $upd['contact_email'] = $newEmail; $oldVals['contact_email'] = $b['contact_email'] ?? null; $newVals['contact_email'] = $newEmail; }
-            if ($newNote  !== '') { $upd['admin_note'] = $newNote; $oldVals['admin_note'] = $b['admin_note'] ?? null; $newVals['admin_note'] = $newNote; }
-            if (count($upd) > 1) {
-                Database::update('bookings', $upd, 'id = :id', ['id' => $b['id']]);
-                if (isset($upd['contact_phone'])) {   // the payer's number on the payment row too (17 Sep 2026)
-                    Database::update('payments', ['payer_phone' => $newPhone], 'booking_id = :b', ['b' => (int) $b['id']]);
+                if ($newEmail !== '' && $newEmail !== (string) ($cur['contact_email'] ?? '')) { $upd['contact_email'] = $newEmail; $oldVals['contact_email'] = $cur['contact_email'] ?? null; $newVals['contact_email'] = $newEmail; }
+                if ($newNote  !== '') {
+                    $note = BookingService::appendNote((string) ($cur['admin_note'] ?? ''), $newNote . ' — ' . $staffWho . ' [' . date('j M H:i') . ']');
+                    $upd['admin_note'] = $note; $oldVals['admin_note'] = $cur['admin_note'] ?? null; $newVals['admin_note'] = $note;
                 }
-            }
-            // Update passengers if pax name provided
-            foreach (($_POST['pax_name'] ?? []) as $paxId => $paxName) {
-                $paxName = Security::clean((string) $paxName, 120);
-                if ($paxName !== '') {
-                    $was = (string) Database::scalar('SELECT full_name FROM booking_passengers WHERE id = :id AND booking_id = :bid', ['id' => (int) $paxId, 'bid' => $b['id']], '');
-                    if ($was === $paxName) { continue; }
-                    Database::run(
-                        "UPDATE booking_passengers SET full_name=:n WHERE id=:id AND booking_id=:bid",
-                        ['n' => $paxName, 'id' => (int) $paxId, 'bid' => $b['id']]
-                    );
-                    $oldVals['pax #' . (int) $paxId] = $was; $newVals['pax #' . (int) $paxId] = $paxName;
+                if (count($upd) > 1) {
+                    Database::update('bookings', $upd, 'id = :id', ['id' => $bidC]);
+                    if (isset($upd['contact_phone'])) {   // the payer's number on the payment row too (17 Sep 2026)
+                        Database::update('payments', ['payer_phone' => $newPhone], 'booking_id = :b', ['b' => $bidC]);
+                    }
                 }
-            }
+                // Update passengers if pax name provided
+                foreach ($paxNames as $paxId => $paxName) {
+                    $paxName = Security::clean((string) $paxName, 120);
+                    if ($paxName !== '') {
+                        $was = (string) Database::scalar('SELECT full_name FROM booking_passengers WHERE id = :id AND booking_id = :bid', ['id' => (int) $paxId, 'bid' => $bidC], '');
+                        if ($was === $paxName) { continue; }
+                        Database::run(
+                            "UPDATE booking_passengers SET full_name=:n WHERE id=:id AND booking_id=:bid",
+                            ['n' => $paxName, 'id' => (int) $paxId, 'bid' => $bidC]
+                        );
+                        $oldVals['pax #' . (int) $paxId] = $was; $newVals['pax #' . (int) $paxId] = $paxName;
+                    }
+                }
+                if ($oldVals !== [] || $newVals !== []) {
+                    Logger::audit('booking.edit_contact', 'booking', $pnr, $oldVals, $newVals, 'superadmin contact edit by admin #' . $admin['id'],
+                        $contactReason);
+                }
+                return [$oldVals, $newVals, $upd];
+            });
             if ($oldVals === [] && $newVals === []) {
                 $flash = ['ok', 'Nothing changed.'];
             } else {
-                $contactReason = Security::clean($_POST['reason'] ?? '', 255);
-                Logger::audit('booking.edit_contact', 'booking', $pnr, $oldVals, $newVals, 'superadmin contact edit by admin #' . $admin['id'],
-                    $contactReason);
                 // Say what changed; an internal note alone is not the passenger's business.
                 $contactWhat = [];
                 if (isset($upd['contact_phone'])) { $contactWhat[] = 'phone'; }
@@ -793,12 +1142,17 @@ if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'PO
 /* ── Reassign the selling agent (requirement 3: change WHO sold a ticket,
       even after it exists — "ticket banisakepachhi pani agent assign/change
       garna milne"). Moves the sale AND its commission/cash to the new seller,
-      atomically, and audit-logs the correction. 0 = detach to the office. ── */
-if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'reassign_agent') {
+      atomically, and audit-logs the correction. 0 = detach to the office.
+      15 Oct 2026: Auth::mayReassignSeller() - super-admin, or a manager /
+      anyone granted bookings.reassign - and no longer in the red panel. ── */
+if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'reassign_agent') {
     if (!Security::verifyCsrf()) {
         $flash = ['bad', 'Session expired.'];
     } else {
         try {
+            if (!Auth::mayReassignSeller()) {
+                throw new RuntimeException('Your role cannot change the selling agent — use “Request correction”.');
+            }
             $newAgentId = (int) ($_POST['new_agent_id'] ?? 0);   // 0 = office / online, no agent
             $res = AgentWallet::reassignSeller($b, $newAgentId, (int) $admin['id']);
             if ($res['old'] === $res['new']) {
@@ -845,10 +1199,7 @@ if ($isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST[
                 // the last female was hard-deleted.
                 // The rendered PNG/PDF/invoice must not outlive the row (they were
                 // orphaned on disk before): void + unlink through the one hook.
-                try { TicketSync::afterBookingChange($bid, 'delete', [], ['reason' => 'superadmin permanent delete']); }
-                catch (Throwable $e) { Logger::warning('Ticket cleanup before hard delete failed', ['pnr' => $pnr, 'e' => $e->getMessage()]); }
-                // The rendered PNG/PDF/invoice must not outlive the row (they were
-                // orphaned on disk before): void + unlink through the one hook.
+                // ONCE (15 Oct 2026: a duplicated copy wrote two ticket.voided rows).
                 try { TicketSync::afterBookingChange($bid, 'delete', [], ['reason' => 'superadmin permanent delete']); }
                 catch (Throwable $e) { Logger::warning('Ticket cleanup before hard delete failed', ['pnr' => $pnr, 'e' => $e->getMessage()]); }
                 Database::transaction(static function () use ($bid, $b): void {
@@ -878,8 +1229,38 @@ if ($b === null) {
     exit;
 }
 
+/**
+ * Share + Send-ticket buttons (15 Oct 2026, 1F-resend). Share hands the
+ * keyed ticket picture link to the phone's share sheet (clipboard copy on a
+ * desktop). Send: the resend form for payments.verify holders, else the
+ * WhatsApp composer button (admin/api/wa-send.php scopes an agent to their
+ * own sales, so the button never appears for a ticket the API would refuse).
+ */
+function bv_share_tools(array $b, string $pnr, bool $withSend): string
+{
+    if ((string) ($b['status'] ?? '') !== 'confirmed') {
+        return '';
+    }
+    $url = Ticket::imageUrl($pnr);
+    $h = '<button type="button" class="btn ghost" data-share-url="' . Security::e($url) . '" data-share-title="' . Security::e('Ticket ' . $pnr) . '">🔗 Share ticket</button>';
+    if (!$withSend || Notify::usablePhone($b['contact_phone'] ?? '') === '') {
+        return $h;
+    }
+    if (Auth::can('payments.verify')) {
+        $h .= '<form method="post" style="display:inline-flex;margin:0" onsubmit="return confirm(\'Send the corrected ticket to ' . Security::e((string) $b['contact_phone']) . ' on WhatsApp?\')">'
+            . Security::csrfField() . '<button class="btn ok" type="submit" name="action" value="resend_wa">📲 Send ticket on WhatsApp</button></form>';
+    } else {
+        $h .= admin_wa_button('booking_ticket', ['pnr' => $pnr], '📲 Send ticket on WhatsApp', ['class' => 'btn ok']);
+    }
+    return $h;
+}
+
 if ($flash !== null) {
     echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>';
+    // After a successful correction: share / send the corrected ticket right here.
+    if ($bvEdited && $flash[0] === 'ok' && ($share = bv_share_tools($b, $pnr, true)) !== '') {
+        echo '<div class="qe-after">' . $share . '<span class="muted">The ticket was regenerated — share or send the corrected copy.</span></div>';
+    }
 }
 if (!empty($waManualLink)) {
     echo '<div class="flash ok" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
@@ -937,7 +1318,7 @@ $currentSeller = !empty($b['agent'])
     ? trim(($agentCode !== '' ? $agentCode . ' · ' : '') . (string) ($b['agent']['full_name'] ?: $b['agent']['username']))
     : 'Office / Online (no agent)';
 $reassignAgents = [];
-if ($isSuperHere) {
+if (Auth::mayReassignSeller()) {   // 15 Oct 2026: was super-admin only
     foreach (Database::fetchAll(
         "SELECT id, username, full_name FROM admins WHERE role = 'agent' AND is_active = 1"
     ) as $ra) {
@@ -1193,6 +1574,48 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
 @media(pointer:coarse){
   .btn,.toolbar .btn,.power-actions .btn,button[type="submit"]{min-height:44px}
 }
+
+/* ── Quick Edit (15 Oct 2026) — one card on top, every box prefilled ── */
+.qe-bar{position:sticky;top:var(--tb-h,56px);z-index:20;display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+  margin:0 0 14px;padding:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 4px 14px rgba(20,40,80,.08);scrollbar-width:thin}
+.qe-bar a,.qe-bar button{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);
+  background:var(--head);color:var(--ink);font:700 13px/1.1 var(--f-ui,inherit);text-decoration:none;cursor:pointer;white-space:nowrap;min-height:38px}
+.qe-bar a:hover,.qe-bar button:hover{filter:brightness(.96)}
+.qe-bar .bad{color:var(--bad,#8a1f1f)}
+.qe{padding:0}
+.qe>summary{list-style:none;cursor:pointer;padding:14px 18px;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.qe>summary::-webkit-details-marker{display:none}
+.qe>summary h2{margin:0;font-size:17px}
+.qe>summary .muted{font-size:12.5px}
+.qe-body{padding:0 18px 16px;display:flex;flex-direction:column;gap:14px}
+.qe-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.qe-chips b{font-size:12px;color:var(--mut);margin-right:2px}
+.qe-chip{display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card);
+  color:var(--ink);font-size:12.5px;font-weight:700;text-decoration:none;min-height:36px}
+.qe-chip.req{border-style:dashed}
+.qe-chip.off{opacity:.45;cursor:not-allowed}
+.qe-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px}
+.qe-block{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--head);min-width:0}
+.qe-block h3{margin:0 0 8px;font-size:12.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.qe-row{display:flex;flex-direction:column;gap:3px;margin-bottom:8px;min-width:0}
+.qe-row label{font-size:12px;font-weight:700;color:var(--mut)}
+.qe input[type=text],.qe input[type=tel],.qe input[type=email],.qe input[type=number],.qe select{width:100%;min-width:0;max-width:100%;padding:8px 10px;
+  border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--card);color:var(--ink);box-sizing:border-box}
+.qe-pax{display:grid;grid-template-columns:52px minmax(0,2fr) 70px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:6px;align-items:center;margin-bottom:6px}
+.qe-pax .mono{font-weight:800}
+.qe-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.qe-actions input[type=text]{flex:1 1 220px}
+.qe-hint{font-size:12px;color:var(--mut);margin:4px 0 0}
+.qe-req-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.qe-req-list li{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--card);font-size:13px}
+.qe-req-list form{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.qe-after{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:-6px 0 14px}
+.qe-after .muted{font-size:12.5px}
+@media(max-width:640px){
+  .qe-pax{grid-template-columns:44px minmax(0,1fr) 64px;}
+  .qe-pax .qe-wide{grid-column:2 / -1}
+  .qe-bar{top:var(--tb-h,52px)}
+}
 </style>
 
 <?php if ($isSuperHere): ?>
@@ -1283,35 +1706,14 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
       </div>
       <?php endforeach; ?>
       <div>
-        <label>Admin Note (internal)</label>
-        <textarea name="admin_note" rows="2" placeholder="Internal note — not shown to customer"></textarea>
+        <label>Add an internal note <span style="font-weight:500">(added under the earlier notes with your name — never replaces them)</span></label>
+        <textarea name="admin_note" rows="2" maxlength="180" placeholder="Internal note — not shown to customer"></textarea>
       </div>
       <button type="submit" class="btn btn-ok btn-sm" style="width:auto">💾 Save Changes</button>
     </form>
   </details>
-
-  <!-- Assign / change / add the selling agent (also on a customer online ticket) -->
-  <details>
-    <summary>🧑‍💼 Assign / change selling agent — add an agent to a customer ticket anytime (for settlement)</summary>
-    <form method="post" class="sub-form"
-          onsubmit="return confirm('Move this booking&#39;s sale — and its commission/cash — to the chosen seller?')">
-      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
-      <input type="hidden" name="action" value="reassign_agent">
-      <div>
-        <label>Currently: <b><?= Security::e($currentSeller) ?></b>. Change seller to:</label>
-        <select name="new_agent_id">
-          <option value="0" <?= $soldById === 0 ? 'selected' : '' ?>>— Office / Online (no agent) —</option>
-          <?php foreach ($reassignAgents as $ra): ?>
-            <option value="<?= (int) $ra['id'] ?>" <?= (int) $ra['id'] === $soldById ? 'selected' : '' ?>>
-              <?= Security::e(trim(($ra['code'] !== '' ? $ra['code'] . ' · ' : '') . ($ra['full_name'] ?: $ra['username']))) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-      <p style="font-size:12px;color:var(--warning);margin:2px 0 6px">The old seller&#39;s commission is reversed and the new seller&#39;s is posted from the ledger — the change is audit-logged.</p>
-      <button type="submit" class="btn btn-ok btn-sm" style="width:auto">🧑‍💼 Reassign seller</button>
-    </form>
-  </details>
+  <?php /* 15 Oct 2026: "Assign / change selling agent" moved to the Quick Edit
+       card (#reassign) — a manager holds bookings.reassign now too. */ ?>
 
   <!-- Hard Delete -->
   <details>
@@ -1340,6 +1742,478 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
   <a class="muted" href="<?= $base ?>/admin/bookings.php">← All bookings</a>
   &nbsp;·&nbsp; <?= admin_pill((string) $b['status']) ?>
 </p>
+
+<?php
+/* ========================================================================
+ *  QUICK EDIT (15 Oct 2026, owner: "ticket ma galti bhayo bhane ek thau
+ *  bata chhito milaune — Search → Quick Edit → Change → Save")
+ *
+ *  One sticky action bar and one compact card at the top of the ticket.
+ *  Every box is PREFILLED with the current value and posts to the SAME
+ *  handlers as before (edit_passenger, change_seat, edit_payment,
+ *  reassign_agent) — an untouched box compares equal there, so a save that
+ *  changes nothing changes nothing. Which boxes a role sees is
+ *  Auth::mayEditField() (bookings.edit / payments.verify for the office,
+ *  settings ticket_edit_rules for agents and counters). A field a role may
+ *  not change becomes a "Request correction" (fare / payment / agent /
+ *  cancel) or an Office-chat preset. Works at 360 px: blocks stack, the
+ *  action bar scrolls sideways inside itself.
+ * ======================================================================== */
+$qeLeg = $leg;
+foreach (($b['legs'] ?? []) as $qeL) {
+    if ((string) ($qeL['leg_type'] ?? '') === 'outbound') { $qeLeg = $qeL; break; }
+}
+$qeSid    = (int) ($qeLeg['schedule_id'] ?? 0);
+$qeRoute  = (int) ($qeLeg['schedule_route_id'] ?? 0);
+$qeMode   = (string) (($b['booking_mode'] ?? '') ?: 'sharing');
+$qeCoach  = $qeSid > 0 ? Seats::coachForSchedule($qeSid) : 'sleeper';
+$qeLive   = in_array((string) $b['status'], ['pending', 'confirmed'], true);
+$qeGate   = $qeSid > 0 ? TripStatus::editableFor($qeSid) : ['editable' => true, 'label' => ''];
+$qeAgentLocked = Auth::isCounterAgent() && !($qeGate['editable'] ?? true);
+$qeMay = [];
+foreach (['name', 'phone', 'email', 'pickup', 'gender', 'age', 'id', 'seat', 'payment', 'remark', 'fare', 'agent'] as $qeF) {
+    $qeMay[$qeF] = $qeLive && !$qeAgentLocked && Auth::mayEditField($b, $qeF);
+}
+$qeMay['seat']    = $qeMay['seat'] && (($qeGate['editable'] ?? true) || Auth::isSuperadmin());
+$qeMay['payment'] = $qeMay['payment'] && !empty($pay);
+$qeCanResched = $qeLive && (Auth::can('bookings.edit') || Auth::can('schedules.edit') || Auth::isSuperadmin());
+$qeFieldRole  = in_array(StaffMsg::role(), ['agent', 'counter'], true);
+$qeChat       = static fn(string $q): string => $base . '/admin/staff-chat.php?pnr=' . rawurlencode($pnr) . '&q=' . $q;
+$qeLbl        = static fn(string $s): string => Seats::displayLabel($s, $qeCoach, $qeMode);
+
+// What may only be ASKED for (the office applies it — owner rule for money).
+$qeReqFields = [];
+if (TicketEdit::available() && $qeLive) {
+    if (!$qeMay['fare'])                                  { $qeReqFields['fare'] = TicketEdit::REQUEST_FIELDS['fare']; }
+    if (!$qeMay['payment'] && !empty($pay))               { $qeReqFields['payment_method'] = TicketEdit::REQUEST_FIELDS['payment_method']; }
+    if (!$qeMay['agent'])                                 { $qeReqFields['agent'] = TicketEdit::REQUEST_FIELDS['agent']; }
+    if (!Auth::mayCancelBooking($b) || bv_cancel_is_request()) { $qeReqFields['cancel_request'] = TicketEdit::REQUEST_FIELDS['cancel_request']; }
+}
+$qeApprover = Auth::isSuperadmin() || Auth::canManageSettings();
+$qeRequests = TicketEdit::requests((int) $b['id'], false, 10);
+$qeShowVal  = static function (string $field, ?string $v): string {
+    $v = (string) $v;
+    return match ($field) {
+        'fare'           => $v !== '' ? inr((float) $v) : '—',
+        'payment_method' => $v !== '' ? strtoupper($v) : '—',
+        'agent'          => TicketEdit::sellerLabel((int) $v),
+        default          => $v !== '' ? $v : '—',
+    };
+};
+
+// Route stops for the pickup / drop pickers ("Other…" stays allowed), in the
+// canonical "Name @ HH:MM" form a sale stores, so the ticket keeps the time.
+$qeStopLabel = static fn(array $s): string => trim((string) $s['name']) . (!empty($s['time']) ? ' @ ' . substr((string) $s['time'], 0, 5) : '');
+$qeBoardOpts = $qeRoute > 0 ? array_values(array_map($qeStopLabel, Boarding::stopsFor($qeRoute))) : [];
+$qeDropOpts  = $qeRoute > 0 ? array_values(array_map($qeStopLabel,
+    array_filter(Boarding::allStopsFor($qeRoute, 'drop'), static fn(array $s): bool => (bool) $s['active']))) : [];
+$qeStopPick = static function (string $name, string $otherName, string $id, string $label, array $opts, string $cur): string {
+    $h = '<select name="' . $name . '" id="' . $id . '" class="qe-stop" data-old="' . Security::e($cur) . '" data-label="' . Security::e($label) . '">';
+    if ($cur === '') {
+        $h .= '<option value="" selected>— not set —</option>';
+    } elseif (!in_array($cur, $opts, true)) {
+        $h .= '<option value="' . Security::e($cur) . '" selected>' . Security::e($cur) . ' (on ticket)</option>';
+    }
+    foreach ($opts as $o) {
+        $h .= '<option value="' . Security::e($o) . '"' . ($o === $cur ? ' selected' : '') . '>' . Security::e($o) . '</option>';
+    }
+    return $h . '<option value="__other__">Other… (type it)</option></select>'
+        . '<input type="text" name="' . $otherName . '" class="qe-other" maxlength="191" placeholder="Type the stop" hidden disabled aria-label="' . Security::e($label) . ' (other)">';
+};
+
+/* Change seat: THIS departure's own coach and free seats (an extra bus has
+   its own), and only seats the passenger's gender may take — the same hard
+   rules AutoBerth applies at the sale (women-only berth, cabin held for the
+   other gender). Per passenger: an option lists the "from" seats it fits. */
+$qeSeatOk = []; $qeSeatList = []; $qeSeatErr = ''; $qeAutoPick = null; $qeAutoFrom = '';
+$qePaxBySeat = [];
+foreach (($b['passengers'] ?? []) as $qeP) { $qePaxBySeat[(string) $qeP['seat_no']] = $qeP; }
+if ($qeMay['seat'] && $qeSid > 0 && !empty($qeLeg['seats'])) {
+    try {
+        $qeAv       = Seats::availabilityForSchedule($qeSid, $qeMode);
+        $qeSeatList = array_values(array_map('strval', (array) ($qeAv['available'] ?? [])));
+        $qeShared   = Seats::isSharedBooking($qeCoach, $qeMode);
+        foreach ($qeLeg['seats'] as $qeFs) {
+            $qeG = (string) ($qePaxBySeat[(string) $qeFs]['gender'] ?? '');
+            foreach ($qeSeatList as $qeTs) {
+                if (!$qeShared || TicketEdit::seatOk($qeAv, $qeTs, $qeG, $qeCoach)) { $qeSeatOk[$qeTs][] = (string) $qeFs; }
+            }
+        }
+        // One-click Auto Assign for one passenger (?auto_from=L5&pref=lower#seat)
+        $qeAutoFrom = strtoupper(Security::clean($_GET['auto_from'] ?? '', 10));
+        if ($qeAutoFrom !== '' && in_array($qeAutoFrom, array_map('strval', $qeLeg['seats']), true)) {
+            $qeRow = $qePaxBySeat[$qeAutoFrom] ?? ['gender' => ''];
+            // moved alone, so placed as an adult (the child-beside-adult rule needs the party)
+            if ((int) ($qeRow['age'] ?? 0) > 0 && (int) $qeRow['age'] < 12) { $qeRow['age'] = null; $qeRow['special_need'] = ''; }
+            $qeAutoPick = TicketEdit::autoSeats($qeSid, $qeMode, [$qeRow], (string) ($_GET['pref'] ?? 'any'), 1);
+        }
+    } catch (Throwable $e) { $qeSeatErr = $e->getMessage(); }
+}
+$qeFirstFrom = (string) ($qeAutoFrom !== '' ? $qeAutoFrom : ($qeLeg['seats'][0] ?? ''));
+$qeAutoSeat  = ($qeAutoPick['ok'] ?? false) ? (string) ($qeAutoPick['seats'][0] ?? '') : '';
+
+// The one-tap "Wrong …" chips: focus the box, open the flow, or ask.
+$qeChips = [
+    ['Name',    $qeMay['name'],    '#qe-name',   'qe-name',  '',               'q_name'],
+    ['Phone',   $qeMay['phone'],   '#qe-phone',  'qe-phone', '',               'q_phone'],
+    ['Date',    $qeCanResched,     $base . '/admin/reschedule.php?pnr=' . urlencode($pnr), '', '', 'q_date'],
+    ['Seat',    $qeMay['seat'],    '#seat',      'qe-to',    '',               'q_seat'],
+    ['Pickup',  $qeMay['pickup'],  '#qe-board',  'qe-board', '',               'q_pickup'],
+    ['Fare',    $qeMay['fare'],    '#fare',      'qe-fare',  'fare',           'q_fare'],
+    ['Payment', $qeMay['payment'], '#qe-pay',    'qe-pay',   'payment_method', 'q_paid'],
+    ['Agent',   $qeMay['agent'],   '#reassign',  'qe-agent', 'agent',          'q_agent'],
+];
+$qeEditAny = $qeMay['name'] || $qeMay['phone'] || $qeMay['email'] || $qeMay['pickup'] || $qeMay['gender'] || $qeMay['age'] || $qeMay['id'] || $qeMay['remark'];
+$qePrimary = '';
+foreach (($b['passengers'] ?? []) as $qeP) {
+    if ($qePrimary === '' || (int) ($qeP['is_primary'] ?? 0) === 1) { $qePrimary = (string) $qeP['full_name']; }
+    if ((int) ($qeP['is_primary'] ?? 0) === 1) { break; }
+}
+$qePhone = Notify::usablePhone($b['contact_phone'] ?? '') !== '' ? (string) $b['contact_phone'] : '';
+?>
+<nav class="qe-bar" aria-label="Ticket actions">
+  <a href="#quick">✏️ Quick Edit</a>
+  <?php if ($qeCanResched): ?><a href="<?= $base ?>/admin/reschedule.php?pnr=<?= urlencode($pnr) ?>">📅 Change Date</a><?php endif; ?>
+  <?php if ($qeMay['seat']): ?><a href="#seat">💺 Change Seat</a><?php endif; ?>
+  <?php if ($qeCanResched && !empty($qeLeg['travel_date'])): ?><a href="<?= $base ?>/admin/reschedule.php?pnr=<?= urlencode($pnr) ?>&amp;date=<?= urlencode((string) $qeLeg['travel_date']) ?>" title="Other buses on the same day">🚌 Change Bus</a><?php endif; ?>
+  <?php if ($qeLive && Auth::mayCancelBooking($b)): ?><a href="#cancel" class="bad"><?= bv_cancel_is_request() ? '✕ Request cancel' : '✕ Cancel' ?></a><?php endif; ?>
+  <a href="#audit">📋 History</a>
+  <?php if ((string) $b['status'] === 'confirmed'): ?><button type="button" data-share-url="<?= Security::e(Ticket::imageUrl($pnr)) ?>" data-share-title="<?= Security::e('Ticket ' . $pnr) ?>">🔗 Share</button><?php endif; ?>
+</nav>
+
+<details class="panel qe" id="quick" open>
+  <summary><h2>✏️ Quick Edit · <span class="mono"><?= Security::e($pnr) ?></span></h2>
+    <span class="muted">Current values are filled in — change only what is wrong, then Save. Every change is audited old → new.</span></summary>
+  <div class="qe-body">
+    <div class="qe-chips" role="group" aria-label="Quick fixes">
+      <b>Wrong:</b>
+      <?php foreach ($qeChips as [$cLabel, $cMay, $cHref, $cFocus, $cReq, $cQ]):
+        if ($cMay) {
+            echo '<a class="qe-chip" href="' . Security::e($cHref) . '"' . ($cFocus !== '' ? ' data-focus="' . $cFocus . '"' : '') . '>' . Security::e($cLabel) . '</a>';
+        } elseif ($cReq !== '' && isset($qeReqFields[$cReq])) {
+            echo '<a class="qe-chip req" href="#req" data-req="' . $cReq . '" title="Ask the office to correct it">' . Security::e($cLabel) . ' · ask</a>';
+        } elseif ($qeFieldRole && $qeLive) {
+            echo '<a class="qe-chip req" href="' . Security::e($qeChat($cQ)) . '" title="Ask the office in Office chat">' . Security::e($cLabel) . ' · chat</a>';
+        } else {
+            echo '<span class="qe-chip off" title="Your role cannot change this">' . Security::e($cLabel) . '</span>';
+        }
+      endforeach; ?>
+    </div>
+
+    <?php if (!$qeLive): ?>
+      <p class="qe-hint">This ticket is <b><?= Security::e((string) $b['status']) ?></b> — nothing on it can be changed any more.</p>
+    <?php elseif ($qeAgentLocked): ?>
+      <p class="qe-hint">⚠️ The trip is <b><?= Security::e((string) ($qeGate['label'] ?? 'closed')) ?></b> — ask the office for any correction (Office chat or Request correction).</p>
+    <?php endif; ?>
+
+    <?php if ($qeEditAny): ?>
+    <form method="post" class="qe-form" id="qe-main">
+      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+      <input type="hidden" name="action" value="edit_passenger">
+      <input type="hidden" name="booking_id" value="<?= (int) $b['id'] ?>">
+      <div class="qe-grid">
+        <?php if ($qeMay['phone'] || $qeMay['email']): ?>
+        <div class="qe-block">
+          <h3>📞 Contact</h3>
+          <?php if ($qeMay['phone']): ?>
+          <div class="qe-row"><label for="qe-phone">Mobile / WhatsApp</label>
+            <input type="tel" id="qe-phone" name="contact_phone" inputmode="tel" maxlength="15" value="<?= Security::e((string) $b['contact_phone']) ?>" data-old="<?= Security::e((string) $b['contact_phone']) ?>" data-label="Phone"></div>
+          <?php endif; ?>
+          <?php if ($qeMay['email']): ?>
+          <div class="qe-row"><label for="qe-email">Email</label>
+            <input type="email" id="qe-email" name="contact_email" maxlength="120" value="<?= Security::e((string) ($b['contact_email'] ?? '')) ?>" data-old="<?= Security::e((string) ($b['contact_email'] ?? '')) ?>" data-label="Email"></div>
+          <?php endif; ?>
+        </div>
+        <?php endif; ?>
+        <?php if ($qeMay['pickup']): ?>
+        <div class="qe-block">
+          <h3>📍 Pickup / drop</h3>
+          <div class="qe-row"><label for="qe-board">Boarding / चढ्ने ठाउँ</label>
+            <?= $qeStopPick('boarding_stop', 'boarding_other', 'qe-board', 'Pickup', $qeBoardOpts, (string) ($qeLeg['boarding_stop'] ?? '')) ?></div>
+          <div class="qe-row"><label for="qe-drop">Drop / ओर्लिने ठाउँ</label>
+            <?= $qeStopPick('drop_stop', 'drop_other', 'qe-drop', 'Drop', $qeDropOpts, (string) ($qeLeg['drop_stop'] ?? '')) ?></div>
+          <p class="qe-hint">A stop with a different fare is refused<?= Auth::isSuperadmin() ? ' for other roles (your override is audited)' : ' — ask the office' ?>.</p>
+        </div>
+        <?php endif; ?>
+      </div>
+
+      <?php if ($qeMay['name'] || $qeMay['age'] || $qeMay['gender'] || $qeMay['id']): ?>
+      <div class="qe-block">
+        <h3>🧍 Passengers</h3>
+        <?php $qeFirstName = true; foreach (($b['passengers'] ?? []) as $pax): $pid = (int) $pax['id']; $pSeat = Seats::displayLabel((string) $pax['seat_no'], $qeCoach, $qeMode); ?>
+        <div class="qe-pax">
+          <span class="mono"><?= Security::e($pSeat) ?></span>
+          <?php if ($qeMay['name']): ?>
+            <input type="text" name="pax[<?= $pid ?>][name]" <?= $qeFirstName ? 'id="qe-name"' : '' ?> maxlength="120" value="<?= Security::e((string) $pax['full_name']) ?>" data-old="<?= Security::e((string) $pax['full_name']) ?>" data-label="<?= Security::e($pSeat) ?> name" aria-label="<?= Security::e($pSeat) ?> name">
+          <?php else: ?><span><?= Security::e((string) $pax['full_name']) ?></span><?php endif; ?>
+          <?php if ($qeMay['age']): ?>
+            <input type="number" name="pax[<?= $pid ?>][age]" min="1" max="120" value="<?= $pax['age'] !== null ? (int) $pax['age'] : '' ?>" data-old="<?= $pax['age'] !== null ? (int) $pax['age'] : '' ?>" data-label="<?= Security::e($pSeat) ?> age" aria-label="Age" placeholder="Age">
+          <?php else: ?><span><?= $pax['age'] !== null ? (int) $pax['age'] : '—' ?></span><?php endif; ?>
+          <?php if ($qeMay['gender']): ?>
+            <select name="pax[<?= $pid ?>][gender]" class="qe-wide" data-old="<?= Security::e((string) ($pax['gender'] ?? '')) ?>" data-label="<?= Security::e($pSeat) ?> gender" aria-label="Gender">
+              <?php if ((string) ($pax['gender'] ?? '') === ''): ?><option value="">—</option><?php endif; ?>
+              <?php foreach (['Male', 'Female', 'Other'] as $gOpt): ?><option value="<?= $gOpt ?>" <?= ($pax['gender'] ?? '') === $gOpt ? 'selected' : '' ?>><?= $gOpt ?></option><?php endforeach; ?>
+            </select>
+          <?php else: ?><span class="qe-wide"><?= Security::e((string) ($pax['gender'] ?? '—')) ?></span><?php endif; ?>
+          <?php if ($qeMay['id']): ?>
+            <input type="text" name="pax[<?= $pid ?>][id_type]" class="qe-wide" maxlength="60" value="<?= Security::e((string) ($pax['id_type'] ?? '')) ?>" data-old="<?= Security::e((string) ($pax['id_type'] ?? '')) ?>" data-label="<?= Security::e($pSeat) ?> ID type" placeholder="ID type" aria-label="ID type" title="Aadhaar / Citizenship / Passport">
+            <input type="text" name="pax[<?= $pid ?>][id_number]" class="qe-wide" maxlength="60" value="<?= Security::e((string) ($pax['id_number'] ?? '')) ?>" data-old="<?= Security::e((string) ($pax['id_number'] ?? '')) ?>" data-label="<?= Security::e($pSeat) ?> ID number" placeholder="ID number" aria-label="ID number">
+          <?php endif; ?>
+        </div>
+        <?php $qeFirstName = false; endforeach; ?>
+        <?php if ($qeMay['gender'] && $qeMode !== 'private'): ?><p class="qe-hint">A gender that would share a cabin with another booking's passenger of the other gender is refused — move the seat first.</p><?php endif; ?>
+      </div>
+      <?php endif; ?>
+
+      <div class="qe-actions">
+        <?php if ($qeMay['remark']): ?>
+          <input type="text" name="remark" maxlength="180" placeholder="Add a remark (internal, kept with your name)" aria-label="Remark" data-add-label="Remark">
+        <?php endif; ?>
+        <input type="text" name="reason" maxlength="255" placeholder="Reason for the change (audit)" aria-label="Reason for the change">
+        <button type="submit" class="btn ok">💾 Save changes</button>
+      </div>
+      <p class="qe-hint">You will see a Before → After summary before it saves. The ticket QR / PNG regenerate and the passenger is told what changed.</p>
+    </form>
+    <?php endif; ?>
+
+    <div class="qe-grid">
+      <?php if ($qeMay['seat']): ?>
+      <div class="qe-block" id="seat">
+        <h3>💺 Change seat <span class="muted" style="text-transform:none;font-weight:600"><?= count($qeSeatList) ?> free on this bus</span></h3>
+        <?php if ($qeSeatErr !== ''): ?><p class="qe-hint">Seat map unavailable: <?= Security::e($qeSeatErr) ?></p>
+        <?php else: ?>
+        <form method="get" action="<?= $base ?>/admin/booking-view.php#seat" class="qe-actions" style="margin-bottom:8px">
+          <input type="hidden" name="pnr" value="<?= Security::e($pnr) ?>">
+          <select name="auto_from" aria-label="Passenger to place" style="flex:1 1 90px">
+            <?php foreach ($qeLeg['seats'] as $sn): ?><option value="<?= Security::e((string) $sn) ?>" <?= (string) $sn === $qeFirstFrom ? 'selected' : '' ?>><?= Security::e($qeLbl((string) $sn) . ' · ' . (string) ($qePaxBySeat[(string) $sn]['full_name'] ?? '')) ?></option><?php endforeach; ?>
+          </select>
+          <select name="pref" aria-label="Berth preference" style="flex:1 1 90px">
+            <?php foreach (['any' => 'Any berth', 'lower' => 'Lower first', 'upper' => 'Upper first'] as $pv => $pl): ?><option value="<?= $pv ?>" <?= (string) ($_GET['pref'] ?? 'any') === $pv ? 'selected' : '' ?>><?= $pl ?></option><?php endforeach; ?>
+          </select>
+          <button type="submit" class="btn ghost">✨ Auto Assign</button>
+        </form>
+        <?php if ($qeAutoPick !== null): ?>
+          <p class="qe-hint"><?= $qeAutoSeat !== '' ? '✨ Suggested: <b>' . Security::e($qeLbl($qeAutoSeat)) . '</b> — chosen below; press Move seat to save.' : 'No berth on this bus keeps every rule for this passenger.' ?></p>
+        <?php endif; ?>
+        <form method="post" class="qe-actions" id="qe-seat-form"
+              onsubmit="return confirm('Seat: ' + this.from_seat.options[this.from_seat.selectedIndex].text + ' → ' + (this.to_seat.options[this.to_seat.selectedIndex] || {}).text + '\nThe ticket QR and PNG are re-issued.')">
+          <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+          <input type="hidden" name="action" value="change_seat">
+          <select name="from_seat" id="qe-from" aria-label="From seat" style="flex:1 1 90px">
+            <?php foreach ($qeLeg['seats'] as $sn): ?><option value="<?= Security::e((string) $sn) ?>" <?= (string) $sn === $qeFirstFrom ? 'selected' : '' ?>><?= Security::e($qeLbl((string) $sn)) ?></option><?php endforeach; ?>
+          </select>
+          <select name="to_seat" id="qe-to" aria-label="To seat" required style="flex:1 1 90px">
+            <option value="">— free seat —</option>
+            <?php foreach ($qeSeatOk as $ts => $froms): $fits = in_array($qeFirstFrom, $froms, true); ?>
+              <option value="<?= Security::e((string) $ts) ?>" data-for="<?= Security::e(implode(' ', $froms)) ?>" <?= $fits ? '' : 'hidden disabled' ?> <?= (string) $ts === $qeAutoSeat ? 'selected' : '' ?>><?= Security::e($qeLbl((string) $ts)) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <input type="text" name="reason" maxlength="255" placeholder="Reason (audit)" aria-label="Reason">
+          <button type="submit" class="btn ok">💺 Move seat</button>
+        </form>
+        <p class="qe-hint">Only seats this passenger may take are listed (women-only berths and cabins held for the other gender are hidden). Double booking is blocked by the seat lock.</p>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($qeMay['payment']): ?>
+      <div class="qe-block">
+        <h3>💳 Payment record</h3>
+        <form method="post" class="qe-form">
+          <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+          <input type="hidden" name="action" value="edit_payment">
+          <div class="qe-row"><label for="qe-pay">Method</label>
+            <select name="pay_method" id="qe-pay" data-old="<?= Security::e((string) ($pay['method'] ?? '')) ?>" data-label="Payment method">
+              <?php foreach (TicketEdit::PAY_METHODS as $pm): ?><option value="<?= $pm ?>" <?= ($pay['method'] ?? '') === $pm ? 'selected' : '' ?>><?= strtoupper($pm) ?></option><?php endforeach; ?>
+            </select></div>
+          <div class="qe-row"><label for="qe-utr">UTR / reference</label>
+            <input type="text" name="utr_number" id="qe-utr" maxlength="60" value="<?= Security::e((string) ($pay['utr_number'] ?? '')) ?>" data-old="<?= Security::e((string) ($pay['utr_number'] ?? '')) ?>" data-label="UTR"></div>
+          <div class="qe-actions"><input type="text" name="pay_note" maxlength="255" placeholder="Office note (optional)" aria-label="Office note" data-add-label="Office note">
+            <button type="submit" class="btn ok">💾 Save payment</button></div>
+          <p class="qe-hint">Status is <?= admin_pill((string) ($pay['status'] ?? 'pending')) ?> — Approve / Reject / Cash collected change it. Cash ↔ UPI moves the seller's cash held.</p>
+        </form>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($qeMay['fare']): ?>
+      <div class="qe-block" id="fare">
+        <h3>₹ Fare correction <span class="muted" style="text-transform:none;font-weight:600">super-admin</span></h3>
+        <form method="post" class="qe-form">
+          <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+          <input type="hidden" name="action" value="fare_correct">
+          <div class="qe-row"><label for="qe-fare">Total fare ₹</label>
+            <input type="number" step="0.01" min="0" name="new_total" id="qe-fare" value="<?= Security::e(number_format((float) $b['total_amount'], 2, '.', '')) ?>" data-old="<?= Security::e(number_format((float) $b['total_amount'], 2, '.', '')) ?>" data-label="Total fare"></div>
+          <div class="qe-row"><label for="qe-disc">Approved discount ₹</label>
+            <input type="number" step="0.01" min="0" name="new_discount" id="qe-disc" value="<?= Security::e(number_format((float) ($b['coupon_discount'] ?? 0), 2, '.', '')) ?>" data-old="<?= Security::e(number_format((float) ($b['coupon_discount'] ?? 0), 2, '.', '')) ?>" data-label="Discount"></div>
+          <div class="qe-actions"><input type="text" name="reason" maxlength="255" required minlength="3" placeholder="Reason (required)" aria-label="Reason">
+            <button type="submit" class="btn ok">₹ Correct fare</button></div>
+          <p class="qe-hint">Moves the payment amount, the seller's commission (re-rated) and cash held with it, in one step. A discount alone moves the total by the same amount. Refunds are not touched.</p>
+        </form>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($qeMay['agent']): ?>
+      <div class="qe-block" id="reassign">
+        <h3>🧑‍💼 Selling agent</h3>
+        <form method="post" onsubmit="return confirm('Agent: <?= Security::e(str_replace("'", '', $currentSeller)) ?> → ' + this.new_agent_id.options[this.new_agent_id.selectedIndex].text.trim() + '\nThe commission follows the new seller; cash stays with whoever collected it.')">
+          <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+          <input type="hidden" name="action" value="reassign_agent">
+          <div class="qe-row"><label for="qe-agent">Now: <b><?= Security::e($currentSeller) ?></b></label>
+            <select name="new_agent_id" id="qe-agent">
+              <option value="0" <?= $soldById === 0 ? 'selected' : '' ?>>— Office / Online (no agent) —</option>
+              <?php foreach ($reassignAgents as $ra): ?>
+                <option value="<?= (int) $ra['id'] ?>" <?= (int) $ra['id'] === $soldById ? 'selected' : '' ?>><?= Security::e(trim(($ra['code'] !== '' ? $ra['code'] . ' · ' : '') . ($ra['full_name'] ?: $ra['username']))) ?></option>
+              <?php endforeach; ?>
+            </select></div>
+          <button type="submit" class="btn ok">🧑‍💼 Reassign seller</button>
+          <p class="qe-hint">The old seller's commission is reversed and the new seller's posted from the ledger — audit-logged.</p>
+        </form>
+      </div>
+      <?php endif; ?>
+
+      <?php if (Auth::isSellingStaff()): ?>
+      <div class="qe-block">
+        <h3>➕ New ticket</h3>
+        <p class="qe-hint" style="margin:0 0 8px">This PNR is never changed by these — a new ticket is sold through the normal counter checkout, then shows under "Other tickets on this number".</p>
+        <div class="qe-actions">
+          <?php if ($qeLive && $qeRoute > 0 && !empty($qeLeg['travel_date'])): ?>
+          <a class="btn ghost" href="<?= $base ?>/admin/new-booking.php?<?= Security::e(http_build_query(array_filter(['route' => $qeRoute, 'date' => (string) $qeLeg['travel_date'], 'sid' => $qeSid, 'cphone' => $qePhone, 'cname' => $qePrimary], static fn($v) => $v !== '' && $v !== 0))) ?>">➕ Add passenger (new ticket)</a>
+          <?php endif; ?>
+          <a class="btn ghost" href="<?= $base ?>/admin/new-booking.php?<?= Security::e(http_build_query(array_filter(['cphone' => $qePhone, 'cname' => $qePrimary], static fn($v) => $v !== ''))) ?>">🔀 Different route → new ticket</a>
+        </div>
+        <?php if ($qeLive): ?><p class="qe-hint">Moving to another route? Sell the new ticket, then cancel this one with the Cancel button — the refund is settled by hand.</p><?php endif; ?>
+      </div>
+      <?php endif; ?>
+    </div>
+
+    <?php if ($qeReqFields !== []): ?>
+    <div class="qe-block" id="req">
+      <h3>📝 Request correction <span class="muted" style="text-transform:none;font-weight:600">the office applies or refuses it here</span></h3>
+      <form method="post" class="qe-actions" id="qe-req-form">
+        <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+        <input type="hidden" name="action" value="edit_request">
+        <select name="req_field" id="qe-req-field" aria-label="What is wrong" style="flex:1 1 160px">
+          <?php foreach ($qeReqFields as $rk => $rl): ?><option value="<?= Security::e($rk) ?>"><?= Security::e($rl) ?></option><?php endforeach; ?>
+        </select>
+        <?php if (isset($qeReqFields['fare'])): ?>
+          <input type="number" step="0.01" min="0" name="req_fare" data-for="fare" placeholder="Correct total ₹ (now <?= Security::e(inr((float) $b['total_amount'])) ?>)" aria-label="Correct total fare" style="flex:1 1 160px">
+        <?php endif; ?>
+        <?php if (isset($qeReqFields['payment_method'])): ?>
+          <select name="req_method" data-for="payment_method" aria-label="Correct payment method" style="flex:1 1 120px">
+            <?php foreach (TicketEdit::PAY_METHODS as $pm): ?><option value="<?= $pm ?>" <?= ($pay['method'] ?? '') === $pm ? 'selected' : '' ?>><?= strtoupper($pm) ?></option><?php endforeach; ?>
+          </select>
+        <?php endif; ?>
+        <?php if (isset($qeReqFields['agent'])): ?>
+          <input type="text" name="req_agent" data-for="agent" maxlength="20" placeholder="Agent code (SHG-0007) or office" aria-label="Correct agent code" style="flex:1 1 160px">
+        <?php endif; ?>
+        <input type="text" name="req_reason" required minlength="3" maxlength="200" placeholder="Why (required)" aria-label="Why" style="flex:2 1 200px">
+        <button type="submit" class="btn warn">📝 Send request</button>
+      </form>
+      <?php if (isset($qeReqFields['cancel_request'])): ?><p class="qe-hint">A cancel request is settled by the office by hand (cancel + refund) — the ticket stays valid until then.</p><?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <?php if ($qeRequests !== []): ?>
+    <div class="qe-block" id="requests">
+      <h3>🗂️ Corrections asked on this ticket</h3>
+      <ul class="qe-req-list">
+        <?php foreach ($qeRequests as $rq): $rf = (string) $rq['field_changed']; $rOpen = (string) $rq['outcome'] === 'requested'; ?>
+        <li>
+          <b>#<?= (int) $rq['id'] ?> · <?= Security::e(TicketEdit::REQUEST_FIELDS[$rf] ?? $rf) ?></b>
+          <?php if ($rf !== 'cancel_request'): ?>: <?= Security::e($qeShowVal($rf, $rq['old_value'])) ?> → <b><?= Security::e($qeShowVal($rf, $rq['new_value'])) ?></b><?php else: ?>: <?= Security::e((string) $rq['new_value']) ?><?php endif; ?>
+          · <?= admin_pill($rOpen ? 'pending' : ((string) $rq['outcome'] === 'done' ? 'confirmed' : 'rejected')) ?>
+          <div class="muted" style="font-size:12px"><?= Security::e((string) $rq['detail']) ?> · <?= Security::e(formatDate((string) $rq['changed_at'], 'j M, g:i A')) ?></div>
+          <?php if ($rOpen && $qeApprover): ?>
+          <form method="post">
+            <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+            <input type="hidden" name="action" value="edit_decide">
+            <input type="hidden" name="request_id" value="<?= (int) $rq['id'] ?>">
+            <input type="text" name="decide_note" maxlength="120" placeholder="Note (optional)" aria-label="Decision note" style="flex:1 1 160px">
+            <?php if ($rf === 'cancel_request'): ?>
+              <a class="btn ghost" href="#cancel">Use the Cancel button</a>
+            <?php elseif ($rf === 'fare' && !Auth::isSuperadmin()): ?>
+              <span class="muted" style="font-size:12px;align-self:center">A super-admin applies fare corrections.</span>
+            <?php else: ?>
+              <button type="submit" name="decision" value="apply" class="btn ok" onclick="return confirm('Apply request #<?= (int) $rq['id'] ?>?')">✓ Apply</button>
+            <?php endif; ?>
+            <button type="submit" name="decision" value="refuse" class="btn bad">✕ Refuse</button>
+          </form>
+          <?php endif; ?>
+        </li>
+        <?php endforeach; ?>
+      </ul>
+    </div>
+    <?php endif; ?>
+  </div>
+</details>
+
+<script>
+/* Quick Edit (15 Oct 2026): Before → After summary, chips, stop "Other…",
+   seat list per passenger, request field, Share. Progressive: without
+   JavaScript every form still posts and the server re-checks everything. */
+(function () {
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  function pairOf(sel) { var n = sel.nextElementSibling; return n && n.classList.contains('qe-other') ? n : null; }
+  $$('select.qe-stop').forEach(function (sel) {
+    sel.addEventListener('change', function () {
+      var o = pairOf(sel); if (!o) return;
+      var other = sel.value === '__other__';
+      o.hidden = !other; o.disabled = !other; if (other) o.focus();
+    });
+  });
+  $$('form.qe-form').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      var lines = [];
+      $$('[data-old]', f).forEach(function (el) {
+        if (el.disabled) return;
+        var v = String(el.value || '').trim(), o = el.getAttribute('data-old') || '';
+        if (el.classList.contains('qe-stop') && v === '__other__') { var p = pairOf(el); v = p ? String(p.value || '').trim() : ''; }
+        if (v === '' || v === o) return;
+        lines.push((el.getAttribute('data-label') || el.name) + ': ' + (o || '—') + ' → ' + v);
+      });
+      $$('[data-add-label]', f).forEach(function (el) {
+        if (!el.disabled && String(el.value || '').trim()) lines.push(el.getAttribute('data-add-label') + ': + ' + String(el.value).trim());
+      });
+      if (!lines.length) { e.preventDefault(); alert('Nothing changed yet — edit a box first. / केही बदलिएको छैन।'); return; }
+      if (!confirm('Save these changes?\n\n' + lines.join('\n'))) e.preventDefault();
+    });
+  });
+  $$('.qe-chip[data-focus], .qe-chip[data-req]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      var q = document.getElementById('quick'); if (q) q.open = true;
+      var req = a.getAttribute('data-req'), el;
+      if (req) { var rs = document.getElementById('qe-req-field'); if (rs) { rs.value = req; rs.dispatchEvent(new Event('change')); } el = rs; }
+      else el = document.getElementById(a.getAttribute('data-focus'));
+      if (!el) return;
+      e.preventDefault();
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      try { el.focus({ preventScroll: true }); } catch (x) { el.focus(); }
+    });
+  });
+  var from = document.getElementById('qe-from'), to = document.getElementById('qe-to');
+  if (from && to) from.addEventListener('change', function () {
+    $$('option[data-for]', to).forEach(function (op) {
+      var ok = (' ' + op.getAttribute('data-for') + ' ').indexOf(' ' + from.value + ' ') > -1;
+      op.hidden = !ok; op.disabled = !ok; if (!ok && op.selected) to.value = '';
+    });
+  });
+  var rf = document.getElementById('qe-req-field');
+  if (rf) {
+    var paint = function () { $$('#qe-req-form [data-for]').forEach(function (el) { var on = el.getAttribute('data-for') === rf.value; el.hidden = !on; el.disabled = !on; }); };
+    rf.addEventListener('change', paint); paint();
+  }
+  // Share (delegated: the toolbar's button sits further down the page).
+  document.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest ? e.target.closest('[data-share-url]') : null;
+    if (!b) return;
+    var u = b.getAttribute('data-share-url'), t = b.getAttribute('data-share-title') || '';
+    if (navigator.share) { navigator.share({ title: t, text: t, url: u }).catch(function () {}); return; }
+    var done = function () { b.textContent = '✓ Link copied'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(u).then(done, function () { window.prompt('Copy the ticket link', u); });
+    else window.prompt('Copy the ticket link', u);
+  });
+})();
+</script>
 
 <?php /* 9 Oct 2026 — Office chat about THIS ticket: the agent asks the office,
          the office messages the seller; the last lines show here. Scoped by
@@ -1371,6 +2245,12 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
         <?php endif; ?>
         <?php if (!empty($b['source'])): ?> <span class="muted">· via <?= Security::e((string) $b['source']) ?></span><?php endif; ?>
       </td></tr>
+      <?php /* 15 Oct 2026 (1A-remarks): the internal remarks (bookings.admin_note -
+           Quick Edit remarks, per-seat cancel lines), read-only, for the office
+           and the counter. Never on the ticket; not shown to agents. */ ?>
+      <?php if (trim((string) ($b['admin_note'] ?? '')) !== '' && (Auth::can('bookings.edit') || StaffMsg::isOffice())): ?>
+      <tr><th>Remarks</th><td style="white-space:pre-line;font-size:13px"><?= Security::e(trim((string) $b['admin_note'])) ?></td></tr>
+      <?php endif; ?>
     </table>
   </div>
 
@@ -1581,7 +2461,7 @@ $ticket = $b['ticket'] ?? null;
             <input type="hidden" name="booking_id" value="<?= (int) $b['id'] ?>">
             <input type="hidden" name="seat_no" value="<?= Security::e((string) $p['seat_no']) ?>">
             <input type="hidden" name="reason" value="Per-seat cancel by admin">
-            <button class="btn bad" type="submit" style="font-size:11px;padding:4px 10px;white-space:nowrap">✕ Cancel seat</button>
+            <button class="btn bad" type="submit" style="font-size:11px;padding:4px 10px;white-space:nowrap"><?= bv_cancel_is_request() ? '✕ Request seat cancel' : '✕ Cancel seat' ?></button>
           </form>
         </td>
         <?php endif; ?>
@@ -1636,61 +2516,11 @@ $ticket = $b['ticket'] ?? null;
   $editGate = !empty($leg['schedule_id']) ? TripStatus::editableFor((int) $leg['schedule_id']) : ['editable' => true, 'label' => ''];
 ?>
 <div class="panel" id="edit">
-  <h2>✏️ Edit booking details</h2>
-  <?php if (!($editGate['editable'] ?? true)): ?>
-    <p class="muted" style="margin:10px 18px 0;font-size:12.5px">⚠️ This trip is <b><?= Security::e((string) ($editGate['label'] ?? 'closed')) ?></b> — passenger details can still be corrected for the record, but seat changes are locked<?= Auth::isSuperadmin() ? ' (super-admin override applies)' : '' ?>.</p>
-  <?php endif; ?>
-  <form method="post">
-    <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
-    <input type="hidden" name="action" value="edit_passenger">
-    <input type="hidden" name="booking_id" value="<?= (int) $b['id'] ?>">
-    <div class="edit-grid">
-      <div class="edit-section">
-        <h3>Contact</h3>
-        <div class="edit-row">
-          <label>Phone</label>
-          <input type="tel" name="contact_phone" placeholder="<?= Security::e((string)$b['contact_phone']) ?>" maxlength="15">
-        </div>
-        <div class="edit-row">
-          <label>Email</label>
-          <input type="email" name="contact_email" placeholder="<?= Security::e((string)($b['contact_email'] ?? '')) ?>" maxlength="120">
-        </div>
-      </div>
-      <div class="edit-section">
-        <h3>Journey</h3>
-        <div class="edit-row">
-          <label>Boarding / चढ्ने ठाउँ</label>
-          <input type="text" name="boarding_stop" placeholder="<?= Security::e($leg['boarding_stop'] ?? '—') ?>" maxlength="191">
-        </div>
-        <div class="edit-row">
-          <label>Drop / ओर्लिने ठाउँ</label>
-          <input type="text" name="drop_stop" placeholder="<?= Security::e($leg['drop_stop'] ?? '—') ?>" maxlength="191">
-        </div>
-      </div>
-    </div>
-    <h3 style="margin-top:16px">Passengers</h3>
-    <?php foreach (($b['passengers'] ?? []) as $pax): ?>
-    <div class="pax-edit-row">
-      <span class="mono" style="min-width:40px"><?= Security::e(Seats::displayLabel((string) $pax['seat_no'], 'sleeper', (string) ($b['booking_mode'] ?? 'sharing'))) ?></span>
-      <input type="text" name="pax[<?= (int)$pax['id'] ?>][name]" placeholder="<?= Security::e((string) $pax['full_name']) ?>" maxlength="120" style="flex:2">
-      <input type="number" name="pax[<?= (int)$pax['id'] ?>][age]" placeholder="<?= $pax['age'] !== null ? (int) $pax['age'] : 'Age' ?>" min="1" max="120" style="width:60px">
-      <select name="pax[<?= (int)$pax['id'] ?>][gender]" style="width:90px">
-        <option value="">—</option>
-        <option value="Male" <?= ($pax['gender'] ?? '') === 'Male' ? 'selected' : '' ?>>Male</option>
-        <option value="Female" <?= ($pax['gender'] ?? '') === 'Female' ? 'selected' : '' ?>>Female</option>
-        <option value="Other" <?= ($pax['gender'] ?? '') === 'Other' ? 'selected' : '' ?>>Other</option>
-      </select>
-      <input type="text" name="pax[<?= (int)$pax['id'] ?>][id_type]" placeholder="<?= Security::e((string) ($pax['id_type'] ?: 'ID type')) ?>" maxlength="60" style="width:110px" title="Aadhaar / Citizenship / Passport">
-      <input type="text" name="pax[<?= (int)$pax['id'] ?>][id_number]" placeholder="<?= Security::e((string) ($pax['id_number'] ?: 'ID number')) ?>" maxlength="60" style="width:130px">
-      <?php if ($paxDocsAvail): $pdN = count($paxDocs[(int) $pax['id']] ?? []); ?><a class="chip<?= $pdN > 0 ? ' on' : '' ?>" href="#paxdocs" title="Photo / ID documents — below"><svg class="a-ic"><use href="#a-camera"/></svg> <?= $pdN > 0 ? $pdN . ' file' . ($pdN === 1 ? '' : 's') : 'add photo / ID' ?></a><?php endif; ?>
-    </div>
-    <?php endforeach; ?>
-    <p class="muted" style="font-size:12px;margin:8px 0 0">Leave a box empty to keep its current value (shown as the placeholder). Every change is written to the audit trail below as old → new, and the ticket PDF regenerates on the next download.</p>
-    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <input type="text" name="reason" maxlength="255" placeholder="Reason for the change (e.g. customer request, typo)" style="flex:1 1 260px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px" title="Written to the audit trail beside the old → new values">
-      <button type="submit" class="btn ok" onclick="return confirm('Save these changes to the booking?')">💾 Save changes</button>
-    </div>
-  </form>
+  <h2>📎 Documents &amp; payment proof</h2>
+  <?php /* 15 Oct 2026: the edit form, Change seat and Payment record moved into
+       the Quick Edit card at the top (#quick) — prefilled, one screen. This
+       panel keeps the passenger documents and the office proof upload. */ ?>
+  <p class="muted" style="margin:10px 18px 0;font-size:12.5px">Passenger details, seat and payment are corrected in <a href="#quick">✏️ Quick Edit</a> at the top.<?php if (!($editGate['editable'] ?? true)): ?> ⚠️ This trip is <b><?= Security::e((string) ($editGate['label'] ?? 'closed')) ?></b> — seat changes are locked<?= Auth::isSuperadmin() ? ' (super-admin override applies)' : '' ?>.<?php endif; ?></p>
 
   <?php /* ---- Passenger photos & ID documents (17 Sep 2026) ----------------
        Kept OUTSIDE the edit form above on purpose: a file input needs
@@ -1751,66 +2581,6 @@ $ticket = $b['ticket'] ?? null;
     </div>
     <?php endforeach; ?>
     <?php endif; ?>
-  </div>
-  <?php endif; ?>
-
-  <?php /* ---- Change seat (5 Sep 2026) ---- */
-    $seatOptions = [];
-    $seatErr = '';
-    if (!empty($leg['schedule_id']) && !empty($leg['seats'])) {
-        try {
-            $rid  = (int) Database::scalar('SELECT route_id FROM schedules WHERE id = :s', ['s' => (int) $leg['schedule_id']], 0);
-            $mode = ($b['booking_mode'] ?? 'sharing') === 'private' ? 'private' : 'sharing';
-            $av   = Seats::availability($rid, (string) $leg['travel_date'], $mode);
-            $seatOptions = $av['available'] ?? [];
-        } catch (Throwable $e) { $seatErr = $e->getMessage(); }
-    }
-  ?>
-  <?php if (!empty($leg['seats'])): ?>
-  <div style="border-top:1px solid var(--line);padding:14px 18px">
-    <h3 style="margin:0 0 8px">💺 Change seat</h3>
-    <?php if ($seatErr !== ''): ?><p class="muted" style="font-size:12.5px">Seat map unavailable: <?= Security::e($seatErr) ?></p>
-    <?php elseif (!($editGate['editable'] ?? true) && !Auth::isSuperadmin()): ?><p class="muted" style="font-size:12.5px">Locked — the trip is <?= Security::e((string) ($editGate['label'] ?? 'closed')) ?>.</p>
-    <?php else: ?>
-    <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"
-          onsubmit="return confirm('Move passenger from seat ' + this.from_seat.value + ' to ' + this.to_seat.value + '? The ticket QR and PDF are re-issued.')">
-      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
-      <input type="hidden" name="action" value="change_seat">
-      <label style="font-size:12.5px">From
-        <select name="from_seat" style="margin-left:4px;padding:7px 9px;border:1px solid var(--line);border-radius:8px">
-          <?php foreach ($leg['seats'] as $sn): ?><option value="<?= Security::e((string) $sn) ?>"><?= Security::e(Seats::displayLabel((string) $sn, 'sleeper', (string) ($mode ?? 'sharing'))) ?></option><?php endforeach; ?>
-        </select></label>
-      <label style="font-size:12.5px">To
-        <select name="to_seat" style="margin-left:4px;padding:7px 9px;border:1px solid var(--line);border-radius:8px" required>
-          <option value="">— free seat —</option>
-          <?php foreach ($seatOptions as $sn): ?><option value="<?= Security::e((string) $sn) ?>"><?= Security::e(Seats::displayLabel((string) $sn, 'sleeper', (string) ($mode ?? 'sharing'))) ?></option><?php endforeach; ?>
-        </select></label>
-      <input type="text" name="reason" maxlength="255" placeholder="Reason (audit)" style="padding:7px 9px;border:1px solid var(--line);border-radius:8px;min-width:0;width:170px">
-      <button type="submit" class="btn ok">💺 Move seat</button>
-      <span class="muted" style="font-size:12px"><?= count($seatOptions) ?> free seat<?= count($seatOptions) === 1 ? '' : 's' ?> on this bus · double booking is blocked by the seat lock.</span>
-    </form>
-    <?php endif; ?>
-  </div>
-  <?php endif; ?>
-
-  <?php /* ---- Payment method / reference (5 Sep 2026) ---- */ ?>
-  <?php if (Auth::can('payments.verify') && !empty($pay)): ?>
-  <div style="border-top:1px solid var(--line);padding:14px 18px">
-    <h3 style="margin:0 0 8px">💳 Payment record</h3>
-    <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
-      <input type="hidden" name="action" value="edit_payment">
-      <label style="font-size:12.5px">Method
-        <select name="pay_method" style="margin-left:4px;padding:7px 9px;border:1px solid var(--line);border-radius:8px">
-          <?php foreach (['upi', 'esewa', 'cash', 'bank', 'wallet', 'cod'] as $pm): ?>
-            <option value="<?= $pm ?>" <?= ($pay['method'] ?? '') === $pm ? 'selected' : '' ?>><?= strtoupper($pm) ?></option>
-          <?php endforeach; ?>
-        </select></label>
-      <input type="text" name="utr_number" placeholder="<?= Security::e((string) ($pay['utr_number'] ?: 'UTR / txn reference')) ?>" maxlength="60" style="padding:7px 9px;border:1px solid var(--line);border-radius:8px;min-width:180px">
-      <input type="text" name="pay_note" placeholder="Office note (optional)" maxlength="255" style="padding:7px 9px;border:1px solid var(--line);border-radius:8px;min-width:180px">
-      <button type="submit" class="btn ok">💾 Save payment</button>
-      <span class="muted" style="font-size:12px">Status is <?= admin_pill((string) ($pay['status'] ?? 'pending')) ?> — change it with Approve / Reject / Cash collected below.</span>
-    </form>
   </div>
   <?php endif; ?>
 
@@ -2015,7 +2785,13 @@ $ticket = $b['ticket'] ?? null;
           <span class="wa-pill wa-muted" title="No WhatsApp message has been sent for this booking yet.">⏳ WA not sent yet</span>
         <?php endif; ?>
       </form>
+    <?php elseif (Notify::usablePhone($b['contact_phone'] ?? '') !== ''): ?>
+      <?php /* 15 Oct 2026 (1F-resend): roles without payments.verify (agents) send
+           through the WhatsApp composer — admin/api/wa-send.php scopes an agent
+           to their own sales, so this never offers a ticket it would refuse. */ ?>
+      <?= admin_wa_button('booking_ticket', ['pnr' => $pnr], '📲 Send ticket on WhatsApp', ['class' => 'btn ok']) ?>
     <?php endif; ?>
+    <button type="button" class="btn ghost" data-share-url="<?= Security::e(Ticket::imageUrl($pnr)) ?>" data-share-title="<?= Security::e('Ticket ' . $pnr) ?>">🔗 Share ticket</button>
   <?php elseif ($b['status'] === 'pending'): ?>
     <a class="btn ok" href="<?= $base ?>/admin/payments.php">Go to verification queue →</a>
   <?php endif; ?>
@@ -2051,12 +2827,13 @@ $ticket = $b['ticket'] ?? null;
     <a class="btn ghost" href="<?= $base ?>/admin/missed-bus.php?pnr=<?= urlencode($pnr) ?>">🚌 Missed bus — rebook (24h)</a>
   <?php endif; ?>
 
-  <?php if (in_array($b['status'], ['pending', 'confirmed'], true) && Auth::mayCancelBooking($b)): ?>
-    <form method="post" class="row-actions" style="margin-left:auto"
-          onsubmit="return confirm('Cancel this booking? Seats will be released and the refund slab applied.')">
+  <?php if (in_array($b['status'], ['pending', 'confirmed'], true) && Auth::mayCancelBooking($b)):
+    $bvCancelReq = bv_cancel_is_request();   // 15 Oct 2026: agent_cancel_mode = request ?>
+    <form method="post" class="row-actions" id="cancel" style="margin-left:auto"
+          onsubmit="return confirm('<?= $bvCancelReq ? 'Send a cancel request to the office? They cancel it and settle any refund by hand.' : 'Cancel this booking? Seats will be released and the refund slab applied.' ?>')">
       <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
-      <input type="text" name="reason" placeholder="Reason" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-      <button class="btn bad" type="submit" name="action" value="cancel">Cancel booking</button>
+      <input type="text" name="reason" placeholder="Reason" <?= $bvCancelReq ? 'required minlength="3"' : '' ?> style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+      <button class="btn bad" type="submit" name="action" value="cancel"><?= $bvCancelReq ? 'Request cancellation' : 'Cancel booking' ?></button>
     </form>
   <?php endif; ?>
 </div>
@@ -2124,8 +2901,9 @@ try {
     $auditLogs = [];
 }
 ?>
-<div class="panel">
-  <h2>📋 Audit Trail</h2>
+<div class="panel" id="audit">
+  <h2>📋 Audit Trail
+    <?php if (Auth::can('dashboard.view')): ?><a class="btn ghost sm" style="margin-left:auto;font-size:12px" href="<?= $base ?>/admin/activity-log.php?booking=<?= urlencode($pnr) ?>">Full activity log →</a><?php endif; ?></h2>
   <?php if ($auditLogs === []): ?>
     <div style="padding:18px;color:var(--mut);font-size:14px">No audit entries recorded for this booking.</div>
   <?php else: ?>
@@ -2144,13 +2922,15 @@ try {
             <?php if (!empty($log['detail'])): ?>
               <div class="audit-detail"><?= Security::e((string) $log['detail']) ?></div>
             <?php endif; ?>
-            <?php if (Auth::isSuperadmin()): ?>
-              <?php if (!empty($log['old_value']) || !empty($log['new_value'])): ?>
-                <div class="audit-detail" style="font-size:11px;margin-top:6px">
-                  <?php if (!empty($log['old_value'])): ?><span>Old: <?= Security::e(mb_substr((string) $log['old_value'], 0, 120)) ?></span><?php endif; ?>
-                  <?php if (!empty($log['new_value'])): ?><span> → New: <?= Security::e(mb_substr((string) $log['new_value'], 0, 120)) ?></span><?php endif; ?>
+            <?php /* 15 Oct 2026 (1G-summary): old → new for everyone who may edit
+                 bookings (the counter sees what it changed); the IP stays super-admin. */ ?>
+            <?php if (Auth::can('bookings.edit') && (!empty($log['old_value']) || !empty($log['new_value']))): ?>
+                <div class="audit-detail" style="font-size:11px;margin-top:6px;overflow-wrap:anywhere">
+                  <?php if (!empty($log['old_value'])): ?><span>Old: <?= Security::e(mb_substr((string) $log['old_value'], 0, 160)) ?></span><?php endif; ?>
+                  <?php if (!empty($log['new_value'])): ?><span> → New: <?= Security::e(mb_substr((string) $log['new_value'], 0, 160)) ?></span><?php endif; ?>
                 </div>
-              <?php endif; ?>
+            <?php endif; ?>
+            <?php if (Auth::isSuperadmin()): ?>
               <?php if (!empty($log['ip_address'])): ?>
                 <div class="audit-detail mono" style="font-size:11px">IP: <?= Security::e((string) $log['ip_address']) ?></div>
               <?php endif; ?>

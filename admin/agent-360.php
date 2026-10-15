@@ -30,6 +30,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/agentreport.php';
+require_once INCLUDE_PATH . '/agentsettlement.php';   // 15 Oct 2026: the two-person rule stages adjustments on a draft
 $admin = admin_boot('customers.view');
 Auth::requireAdmin('commissions.view');
 if (Auth::isCounterAgent()) {
@@ -473,6 +474,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $note = Security::clean((string) ($_POST['note'] ?? ''), 255);
             if (mb_strlen($note) < 5) {
                 throw new RuntimeException('Write a short reason (at least 5 characters) for this commission change.');
+            }
+            /* Two-person rule (15 Oct 2026, agent_adjust_two_step — off by
+               default, and then nothing below changes): anyone but a
+               super-admin STAGES the change on the agent's draft settlement;
+               a different person approves it and Mark paid writes the ledger. */
+            if (AgentSettlement::twoStepOn() && !Auth::isSuperadmin()) {
+                $st = AgentSettlement::stageAdjustment($targetId, $dir, $amt, $note, $selfId);
+                a360_flash('ok', ($dir === 'credit' ? 'Addition of ' : 'Deduction of ') . inr($amt) . ' staged on '
+                    . ($st['created'] ? 'a new draft settlement ' : 'draft settlement ') . $st['number']
+                    . ' — nothing is in the ledger yet. A different person approves it on Settlements; Mark paid then writes it.');
+                a360_go($targetId, $backTab);
             }
             $balBefore = AgentWallet::balances($targetId)['commission'];
             AgentWallet::record($targetId, 'adjustment', $amt, [
@@ -1043,6 +1055,10 @@ $imgData = [
       <?= admin_kpi('Corrections', ((float) $rt['adjust'] < 0 ? '−' : '+') . inr(abs((float) $rt['adjust'])), 'manual ± in this period', 'ledger', 'orange') ?>
     <?php endif; ?>
     <?= admin_kpi('Commission due now', inr($balances['commission']), ((float) $rt['payout'] > 0 ? 'paid ' . inr((float) $rt['payout']) . ' in period · ' : '') . 'cash held ' . inr($balances['cash']), 'wallet', 'teal') ?>
+    <?php /* 15 Oct 2026: the ticket cash the agent handed over in this period
+             (AgentReport's cash_in — handovers and settlement net-offs), next
+             to what they still hold. */ ?>
+    <?= admin_kpi('Cash received · नगद बुझियो', inr((float) ($rt['cash_in'] ?? 0)), 'handed over in this period · holds ' . inr($balances['cash']) . ' now', 'coins', (float) $balances['cash'] > 0.009 ? 'orange' : 'green') ?>
   </div>
 
   <div class="rp-grid">
@@ -1168,6 +1184,9 @@ $imgData = [
           </div>
         </form>
         <p class="hint">Commission due now <b><?= $e(inr($balances['commission'])) ?></b>. Every change is on the statement and the audit trail.</p>
+        <?php if (AgentSettlement::twoStepOn() && !Auth::isSuperadmin()): ?>
+          <p class="hint"><b>Two-person rule is on:</b> the change goes onto this agent's draft settlement — a different person approves it, then “Mark paid” writes the ledger.</p>
+        <?php endif; ?>
       </div>
       <?php endif; ?>
 

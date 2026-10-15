@@ -35,10 +35,18 @@
 
 declare(strict_types=1);
 
-define('SHG_APP', true);
+defined('SHG_APP') || define('SHG_APP', true);
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/api.php';
+
+/* 15 Oct 2026 (2F-queue): cron/wa-inbound.php loads this file only for its
+   functions (wh_process_inbound and the wa_inbound helpers below - PHP
+   declares a file's top-level functions before running it) and replays
+   stuck messages from the table. It must never run the HTTP part. */
+if (defined('SHG_WA_INBOUND_REPLAY')) {
+    return;
+}
 
 /* ---------------------------------------------------------------
  *  GET — webhook verification. PHP turns "hub.mode" into "hub_mode".
@@ -160,6 +168,26 @@ function wh_status(array $st): void
         } catch (Throwable $e) {
             Logger::exception($e, 'whatsapp');
         }
+
+        /* 15 Oct 2026 — message_logs can only say "sent", so a free Meta
+           message never reached Delivered / Read in the WhatsApp Manager
+           (its Reached and Read figures counted the "hi" queue alone). The
+           book is told directly; and Meta's pricing block is counted once
+           per message, billable or free, for the allowance on the Routing card. */
+        try {
+            require_once INCLUDE_PATH . '/msgledger.php';
+            MsgLedger::noteMetaStatus($wamid, $state, is_array($st['pricing'] ?? null) ? $st['pricing'] : null);
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
+        if (is_array($st['pricing'] ?? null)) {
+            try {
+                require_once INCLUDE_PATH . '/waroute.php';
+                WaRoute::noteMetaBilling($wamid, $state, $st['pricing']);
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+            }
+        }
     }
 
     // Same mapping as api/twilio-status.php: only terminal states rewrite a row.
@@ -243,18 +271,85 @@ function wh_tapped(array $interactive): string
     return (string) ($hit['title'] ?? '');
 }
 
-/** A customer wrote to us: note the 24 h window and answer with the PNR bot. */
+/**
+ * 15 Oct 2026 (2F-queue) — the inbound message is written down FIRST
+ * (wa_inbound, wamid UNIQUE): INSERT IGNORE is both the durable copy and the
+ * dedupe. true = a new row, false = already seen, null = the table is not
+ * there yet (the rate-limit dedupe below then works alone, as before).
+ */
+function wh_queue_add(string $wamid, string $from, string $type, array $msg): ?bool
+{
+    try {
+        return Database::run(
+            "INSERT IGNORE INTO wa_inbound (wamid, from_digits, msg_type, payload, status, attempts, next_at)
+             VALUES (:w, :f, :t, :p, 'pending', 1, NOW() + INTERVAL 2 MINUTE)",
+            ['w' => substr($wamid, 0, 128), 'f' => substr($from, 0, 20), 't' => substr($type, 0, 20),
+             'p' => (string) json_encode($msg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
+        ) > 0;
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
+/** done | failed for one queued message (the replay cron sets its own backoff). */
+function wh_queue_mark(string $wamid, string $status, string $error = ''): void
+{
+    try {
+        Database::run(
+            'UPDATE wa_inbound SET status = :s, last_error = :e WHERE wamid = :w',
+            ['s' => $status, 'e' => $error !== '' ? mb_substr($error, 0, 250) : null, 'w' => substr($wamid, 0, 128)]
+        );
+    } catch (Throwable $e) {
+        // the row stays pending; the replay cron decides
+    }
+}
+
+/**
+ * A customer wrote to us. Queue it, answer it INLINE exactly as before, mark
+ * it done. A crash between the two leaves the row pending, and
+ * cron/wa-inbound.php answers it a couple of minutes later instead of the
+ * message being lost.
+ */
 function wh_inbound(array $msg): void
+{
+    $from  = preg_replace('/\D/', '', (string) ($msg['from'] ?? '')) ?? '';
+    $wamid = (string) ($msg['id'] ?? '');
+    if ($from === '' || $wamid === '') {
+        return;
+    }
+
+    $queued = wh_queue_add($wamid, $from, (string) ($msg['type'] ?? ''), $msg);
+    if ($queued === false) {
+        return;                                   // Meta re-delivered a message already taken
+    }
+    // Meta re-delivers when it is unsure we got an event: answer each message once.
+    if (!Security::rateLimit('wa_meta_seen', $wamid, 1, 172800)) {
+        if ($queued === true) {
+            wh_queue_mark($wamid, 'done', 'already answered');
+        }
+        return;
+    }
+
+    try {
+        wh_process_inbound($msg);
+    } catch (Throwable $e) {
+        if ($queued === true) {
+            wh_queue_mark($wamid, 'failed', $e->getMessage());
+        }
+        throw $e;                                  // logged by the caller, as before
+    }
+    if ($queued === true) {
+        wh_queue_mark($wamid, 'done');
+    }
+}
+
+/** Note the 24 h window and answer with the PNR bot (the queue's work). */
+function wh_process_inbound(array $msg): void
 {
     $from  = preg_replace('/\D/', '', (string) ($msg['from'] ?? '')) ?? '';
     $wamid = (string) ($msg['id'] ?? '');
     $type  = (string) ($msg['type'] ?? '');
     if ($from === '' || $wamid === '') {
-        return;
-    }
-
-    // Meta re-delivers when it is unsure we got an event: answer each message once.
-    if (!Security::rateLimit('wa_meta_seen', $wamid, 1, 172800)) {
         return;
     }
 

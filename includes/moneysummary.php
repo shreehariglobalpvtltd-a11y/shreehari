@@ -12,6 +12,12 @@ declare(strict_types=1);
  *   collected     money actually in: confirmed/completed bookings whose
  *                 confirmation falls in the window, EXCEPT cash-on-delivery
  *                 still marked cod_pending. NPR converted at npr_per_inr.
+ *   collectedCash / collectedOnline  the same money split by the booking's
+ *                 LATEST payment method, accounting.php's rule: cash or a
+ *                 settled cod = cash in a drawer; every other method (UPI,
+ *                 eSewa, bank, wallet, gateway, none recorded) = online.
+ *                 collectedCash + collectedOnline == collected, always
+ *                 (15 Oct 2026, owner: "cash vs online on the dashboard").
  *   confirmedFare revenue: the fare of every confirmed/completed booking in
  *                 the window, collected or not (= collected + codPending).
  *   codPending    confirmed fares whose cash is still to be collected.
@@ -30,7 +36,7 @@ declare(strict_types=1);
  */
 final class MoneySummary
 {
-    /** @return array{codOutstanding: float, codOutstandingCount: int, collected: float, collectedCount: int, confirmedFare: float, confirmedCount: int, codPending: float, codCount: int, agentCash: float, commission: float, expenses: float, expenseRows: int, peg: float} */
+    /** @return array{codOutstanding: float, codOutstandingCount: int, collected: float, collectedCount: int, collectedCash: float, collectedCashCount: int, collectedOnline: float, collectedOnlineCount: int, confirmedFare: float, confirmedCount: int, codPending: float, codCount: int, agentCash: float, commission: float, expenses: float, expenseRows: int, peg: float} */
     public static function window(string $from, string $to): array
     {
         $peg = Settings::getFloat('npr_per_inr', (float) NPR_PER_INR);
@@ -40,6 +46,7 @@ final class MoneySummary
         $t1  = addDaysISO($to, 1);
         $out = [
             'collected' => 0.0, 'collectedCount' => 0, 'confirmedFare' => 0.0, 'confirmedCount' => 0,
+            'collectedCash' => 0.0, 'collectedCashCount' => 0, 'collectedOnline' => 0.0, 'collectedOnlineCount' => 0,
             'codPending' => 0.0, 'codCount' => 0, 'agentCash' => 0.0, 'commission' => 0.0,
             'expenses' => 0.0, 'expenseRows' => 0, 'peg' => $peg,
             'codOutstanding' => 0.0, 'codOutstandingCount' => 0,
@@ -61,7 +68,8 @@ final class MoneySummary
         try {
             $rows = Database::fetchAll(
                 "SELECT b.total_amount, b.currency,
-                        (SELECT p2.status FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) AS pay_status
+                        (SELECT p2.status FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) AS pay_status,
+                        (SELECT p2.method FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) AS pay_method
                    FROM bookings b
                   WHERE b.status IN ('confirmed','completed')
                     AND b.confirmed_at >= :f AND b.confirmed_at < :t1",
@@ -78,6 +86,14 @@ final class MoneySummary
                 }
                 $out['collectedCount']++;
                 $out['collected'] += $amt;
+                // a settled COD is cash in the drawer (accounting.php's rule)
+                if (in_array(strtolower((string) ($r['pay_method'] ?? '')), ['cash', 'cod'], true)) {
+                    $out['collectedCashCount']++;
+                    $out['collectedCash'] += $amt;
+                } else {
+                    $out['collectedOnlineCount']++;
+                    $out['collectedOnline'] += $amt;
+                }
             }
         } catch (Throwable $e) {
             // leave zeros — the page still renders

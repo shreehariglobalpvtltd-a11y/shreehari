@@ -2798,6 +2798,74 @@ final class Seats
         return implode($glue, $out);
     }
 
+    /**
+     * The inverse of displayLabel() (15 Oct 2026, owner: chalani register):
+     * the STORED seat id(s) a printed label names, in one booking mode's
+     * namespace, so a desk that types the berth it can read on the ticket or
+     * the register ("A7", "B5-6") finds the booking that holds it. Storage
+     * keeps L{n}/U{n}; only the search edge translates.
+     *
+     *   sleeper sharing "B5"   -> ["L11"]          the bed itself
+     *   sleeper private "B5"   -> ["L6"]           the cabin that covers it
+     *   sleeper sharing "B5-6" -> ["L11", "L12"]   private "B5-6" -> ["L6"]
+     *   seater "3C" / extra "EX1" -> unchanged     (printed as stored)
+     *
+     * Walks the deck grid through the same bedLabel() the printer uses and
+     * folds each bed with physicalToMode(), so the two directions can never
+     * disagree. A raw "L11" is not a printed label and returns [] — callers
+     * keep their own raw-id match beside this one.
+     *
+     * @return array<int, string> stored ids (empty = not a label we print)
+     */
+    public static function storageIdsForLabel(string $label, string $coachType = 'sleeper', string $bookingType = 'sharing'): array
+    {
+        $s = strtoupper((string) preg_replace('/\s+/', '', $label));
+        if ($s === '' || strlen($s) > 16) {
+            return [];
+        }
+        $coach = $coachType !== '' ? $coachType : 'sleeper';
+
+        // A cabin label names its beds: "B5-6" -> B5, B6; "A1+B1" -> A1, B1.
+        if (preg_match('/^([A-Z]+)(\d+)-(\d+)$/', $s, $m) === 1) {
+            $lo = (int) $m[2];
+            $hi = (int) $m[3];
+            if ($hi < $lo || $hi - $lo > 8) {
+                return [];
+            }
+            $parts = [];
+            for ($n = $lo; $n <= $hi; $n++) {
+                $parts[] = $m[1] . $n;
+            }
+        } else {
+            $parts = explode('+', $s);
+        }
+
+        // Every bed of the coach, keyed by the label the printer gives it.
+        $spec    = self::modeMap($coach);
+        $perDeck = max(1, (int) ($spec['perDeck'] ?? 36));
+        $index   = [];
+        foreach ((array) ($spec['decks'] ?? ['L', 'U']) as $deck) {
+            for ($n = 1; $n <= $perDeck; $n++) {
+                $index[self::bedLabel($deck . $n, $coach)] = $deck . $n;
+            }
+        }
+
+        $out = [];
+        foreach ($parts as $p) {
+            if (isset($index[$p])) {
+                $id = self::physicalToMode($index[$p], $bookingType, $coach);
+                if ($id !== null) {
+                    $out[$id] = true;
+                }
+            } elseif (preg_match('/^\d{1,2}[A-Z]$/', $p) === 1 || self::isExtraSeat($p)) {
+                $out[$p] = true;       // seater "3C" / extra "EX1": the label IS the id
+            } else {
+                return [];             // one unknown part = not a label we print
+            }
+        }
+        return array_keys($out);
+    }
+
     /** 0-based index -> spreadsheet-style row letter (A..Z, AA..). Total, though
      *  a real coach never has more than a handful of rows per deck. */
     private static function rowLetter(int $idx): string

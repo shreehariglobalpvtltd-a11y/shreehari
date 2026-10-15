@@ -19,6 +19,7 @@ require dirname(__DIR__) . '/_guard.php';
 $admin = admin_boot('dashboard.view');
 require_once INCLUDE_PATH . '/tripstatus.php';
 require_once INCLUDE_PATH . '/tripnotify.php';
+require_once INCLUDE_PATH . '/aiwatch.php';   // the "To verify" count, shared with the dashboard tile (15 Oct 2026)
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -44,7 +45,10 @@ if ($requestedDate !== '' && Security::isValidDate($requestedDate)) {
    delay_minutes stays a separate DELTA — TripStatus::compute() layers
    it on top of the resulting timestamp. is_blocked is selected so the
    dashboard row can carry T5's "blocked" pill; blocked schedules are
-   still returned to admins (only customer-facing views hide them). */
+   still returned to admins (only customer-facing views hide them).
+   15 Oct 2026: `pax` = people on board by the manifest's rule (confirmed,
+   pending or completed bookings). A passenger row tied to the other leg of
+   a round trip is not this bus's; an old row with no leg is. */
 $rows = Database::fetchAll(
     "SELECT s.id, s.travel_date, s.status, s.delay_minutes, s.delay_note, s.total_seats,
             s.is_blocked,
@@ -53,7 +57,11 @@ $rows = Database::fetchAll(
             bu.bus_number, bu.bus_name,
             d.full_name AS driver_name, d.phone AS driver_phone,
             (SELECT COUNT(*) FROM booking_seats bs
-              WHERE bs.schedule_id=s.id AND bs.released_at IS NULL) AS sold
+              WHERE bs.schedule_id=s.id AND bs.released_at IS NULL) AS sold,
+            (SELECT COUNT(*) FROM booking_passengers bp
+               JOIN booking_legs blp ON blp.booking_id = bp.booking_id AND blp.schedule_id = s.id
+                                    AND (bp.leg_id IS NULL OR bp.leg_id = blp.id)
+               JOIN bookings bpb ON bpb.id = bp.booking_id AND bpb.status IN ('confirmed','pending','completed')) AS pax
        FROM schedules s
        JOIN routes r ON r.id=s.route_id
        LEFT JOIN buses   bu ON bu.id = s.bus_id
@@ -79,7 +87,10 @@ unset($_r);
 
 $rows = TripStatus::annotate($rows);
 
-$kpi = ['todayTrips' => count($rows), 'departingSoon' => 0, 'departed' => 0, 'onRoute' => 0];
+$kpi = ['todayTrips' => count($rows), 'departingSoon' => 0, 'departed' => 0, 'onRoute' => 0,
+        // 15 Oct 2026: the dashboard's "To verify · now" tile — Verify
+        // Payments' default list, the same number AI Watch shows.
+        'toVerify' => AiWatch::proofsWaiting()['n']];
 $trips = [];
 foreach ($rows as $r) {
     $st = $r['_status'];
@@ -116,6 +127,7 @@ foreach ($rows as $r) {
         'detail'       => $st['detail'],
         'sold'         => (int) $r['sold'],
         'total'        => (int) $r['total_seats'],
+        'pax'          => (int) ($r['pax'] ?? 0),
         'bus_number'   => (string) ($r['bus_number'] ?? ''),
         'bus_name'     => (string) ($r['bus_name']   ?? ''),
         'driver_name'  => (string) ($r['driver_name'] ?? ''),

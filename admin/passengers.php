@@ -12,7 +12,8 @@
  *   ?phone=   every traveller booked from one number (linked from Customers,
  *             the customer page and the ticket page)
  *   ?q=       name, ID number, PNR or phone (one bound LIKE per column via
- *             sqlSearchClause — prepares are not emulated on this connection)
+ *             sqlSearchClause — prepares are not emulated on this connection);
+ *             15 Oct 2026: or a seat, stored (L11) or as printed (B5, B5-6)
  *   ?from= ?to=   travel-date window; with nothing asked for, today onwards
  *   ?route=   routes.id
  *   ?export=csv   the same set as a spreadsheet (shg_export_csv)
@@ -81,6 +82,13 @@ if ($q !== '') {
         'b.pnr LIKE %s',
         'b.contact_phone LIKE %s',
     ], $q, $params);
+    /* 15 Oct 2026: a seat as stored (L11) or as PRINTED on the ticket (B5,
+       B5-6) finds that passenger's own row, on any date in the window. */
+    require_once __DIR__ . '/_booking_filters.php';
+    $seatArm = shg_seat_label_match($q, 'bp.seat_no', $params, 'pqSl');
+    $lastKey = array_key_last($where);
+    $where[$lastKey] = '(' . $where[$lastKey] . ' OR bp.seat_no = :pqSeat' . ($seatArm !== null ? ' OR ' . $seatArm : '') . ')';
+    $params['pqSeat'] = strtoupper($q);
 }
 if ($from !== '') {
     $where[] = 'bl.travel_date >= :tfrom';
@@ -206,7 +214,7 @@ if ($loadErr !== '') {
   <div class="form-grid">
     <div class="field">
       <label for="pxQ">Search</label>
-      <input id="pxQ" type="search" name="q" value="<?= $e($q) ?>" placeholder="Name, ID number, PNR or phone">
+      <input id="pxQ" type="search" name="q" value="<?= $e($q) ?>" placeholder="Name, ID number, PNR, phone or seat (A7)">
     </div>
     <div class="field">
       <label for="pxPhone">Contact phone</label>

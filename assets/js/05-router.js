@@ -3399,7 +3399,77 @@ if (store.local && !store.remote) {
     var label = document.getElementById('waReqNoteLabel');
     label.setAttribute('data-i18n', reqType === 'correction' ? 'waReqFixNote' : reqType === 'help' ? 'waReqHelpPh' : 'waReqNotePh');
     label.textContent = t(label.getAttribute('data-i18n'));
+    botRefresh();
     say('', false);
+  }
+  /* 15 Oct 2026 (2E-button): "Book on WhatsApp" now opens a chat with the
+     BOOKING BOT (the Meta number the webhook answers) with the request
+     already typed, in a line the bot sells from as it stands: a booking
+     word, the count beside a seat word, the ISO date, the stop and the way
+     ("ticket 2 seat Surat 2026-10-20 to nepal"). It asks only the name, then
+     shows the fare and books on a yes - the same sale and records as the
+     site. Sending the request to the office stays, as the second button. */
+  var BOT_TXT = {
+    en: ['💬 Book on WhatsApp now', 'The booking assistant answers at once — ticket right in the chat'],
+    hi: ['💬 WhatsApp पर अभी बुक करें', 'बुकिंग सहायक तुरंत जवाब देगा — टिकट चैट में ही'],
+    ne: ['💬 WhatsApp मा अहिले बुक गर्नुहोस्', 'बुकिङ सहायकले तुरुन्तै जवाफ दिन्छ — टिकट च्याटमै'],
+    gu: ['💬 WhatsApp પર હમણાં બુક કરો', 'બુકિંગ સહાયક તરત જવાબ આપશે — ટિકિટ ચેટમાં જ']
+  };
+  function botNum() {
+    var n = '';
+    try { n = String(fact('support.whatsapp', '') || ''); } catch (e) {}
+    if (!n) n = String((window.SHG_BOOT && window.SHG_BOOT.waHi) || '');
+    n = n.replace(/\D/g, '').replace(/^00/, '');
+    if (n.length === 10) n = '91' + n;
+    return /^[1-9]\d{7,14}$/.test(n) ? n : '';
+  }
+  function botLine() {
+    var back = val('waReqDirection') === 'toIndia';
+    var pax = Math.max(1, parseInt(val('waReqPax'), 10) || 1);
+    // The picker shows "Surat — 1:00 PM": the stop is the part before the time.
+    var town = val('waReqPoint').split(/\s+[—–-]\s+/)[0].trim();
+    // Coming back the bus is boarded at the border; the Gujarat town is the drop.
+    return 'ticket ' + pax + ' seat ' + (back ? 'rupaidiha' : town) + ' ' + val('waReqDate') + ' ' + (back ? 'to india' : 'to nepal');
+  }
+  var botA = null;
+  function botRefresh() {
+    var go = document.getElementById('waReqGo');
+    if (!go) return;
+    var num = botNum();
+    if (!botA && num) {
+      botA = document.createElement('a');
+      botA.id = 'waReqBot';
+      botA.className = 'wa-req-go';
+      botA.target = '_blank';
+      botA.rel = 'noopener';
+      botA.href = 'https://wa.me/' + num;
+      botA.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:8px 12px;text-align:center;text-decoration:none;min-width:0';
+      botA.innerHTML = '<b style="font-size:15px"></b><small style="font-size:11.5px;font-weight:700;opacity:.9;overflow-wrap:anywhere"></small>';
+      go.parentNode.insertBefore(botA, go);
+      botA.addEventListener('click', function (e) {
+        var date = document.getElementById('waReqDate');
+        if (!date.value || !date.checkValidity()) { e.preventDefault(); say(t('waReqDateError'), true); date.focus(); return; }
+        if (!val('waReqPoint')) { e.preventDefault(); say(t('waReqPointError'), true); return; }
+        var n = botNum();
+        if (!n) { e.preventDefault(); say(t('waReqUnavailable'), true); return; }
+        this.href = waUrl(n, botLine());
+      });
+    }
+    var booking = reqType === 'booking' && !!botA;
+    if (botA) {
+      var lang = (typeof LANG !== 'undefined' && BOT_TXT[LANG]) ? LANG : 'en';
+      botA.querySelector('b').textContent = BOT_TXT[lang][0];
+      botA.querySelector('small').textContent = BOT_TXT[lang][1];
+      botA.hidden = !booking;
+      botA.style.display = booking ? 'flex' : 'none';
+    }
+    // The office request steps back to a plain second button while the bot leads.
+    if (booking) {
+      go.style.background = 'var(--card,#fff)'; go.style.color = 'var(--ink)'; go.style.border = '1.5px solid #85bfa0';
+      go.style.boxShadow = 'none'; go.style.fontSize = '13px'; go.style.minHeight = '44px';
+    } else {
+      go.removeAttribute('style');
+    }
   }
   function say(text, bad) {
     var msg = document.getElementById('waReqMsg');
@@ -3439,6 +3509,7 @@ if (store.local && !store.remote) {
       var digits = p.value.replace(/\D/g, '').replace(/^00/, '');
       if ((digits.length === 13 && digits.indexOf('977') === 0) || (me && me.country === 'NP')) document.getElementById('waReqCountry').value = '977';
     }
+    botRefresh();
     say('', false);
   }
   function validateRequest() {

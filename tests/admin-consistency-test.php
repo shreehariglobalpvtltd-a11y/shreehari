@@ -121,7 +121,8 @@ check('bus Delete is a danger button with no inline #C00', str_contains($bus, '<
 check('bus Activate is green, Deactivate amber', str_contains($bus, "class=\"btn <?= \$isActive ? 'btn-warn' : 'btn-ok' ?> btn-sm\""));
 check('booking Delete Forever is a danger button', (bool) preg_match('~class="btn danger btn-sm" style="width:auto"\s*\R\s*onclick="return confirm\(\'PERMANENTLY DELETE~', $bv));
 check('booking page has no inline #C00 button face left', !str_contains($bv, 'background:#C00'));
-check('agent application Reject (deletes it) is red', (bool) preg_match('~class="btn danger btn-sm"\s*\R\s*onclick="return confirm\(\'Reject and delete~', $stf));
+// 15 Oct 2026: Reject switches the account off and never deletes it (owner rule) - still a red button.
+check('agent application Reject is red (and never deletes)', (bool) preg_match('~class="btn danger btn-sm"\s*\R\s*onclick="return confirm\(\'Reject this application~', $stf) && str_contains($stf, 'is never deleted'));
 check('dashboard QuickBot keeps the royal action face (not caution)', str_contains($idx, '<a class="btn" href="\' . $base . \'/admin/quick-ticket.php">'));
 
 echo "\n-- 3. Trip status + dark-mode text (D9-05, D9-04) --\n";

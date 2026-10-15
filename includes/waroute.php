@@ -241,6 +241,14 @@ final class WaRoute
         if (!self::metaTemplatesOn() || trim($name) === '') {
             return null;
         }
+        /* 15 Oct 2026 (2D-paid-limit): a Meta template is a PAID message too.
+           Past the office's daily cap it is not attempted; the caller carries
+           on to its own fallback (the "hi" queue, click-to-chat). */
+        $cap = self::paidRefusal();
+        if ($cap !== '') {
+            Logger::info('WaRoute: Meta template not sent - ' . $cap, ['template' => $name, 'purpose' => $purpose], 'whatsapp');
+            return null;
+        }
         $to = self::intl($phone);
         if ($to === '') {
             return null;
@@ -290,6 +298,11 @@ final class WaRoute
         if (!self::aisensyOn()) {
             return 'wa_policy is meta_only - AiSensy is switched off';
         }
+        // 15 Oct 2026: the office's daily cap on paid messages, every template alike.
+        $cap = self::paidRefusal();
+        if ($cap !== '') {
+            return $cap;
+        }
         if ($explicitMarketing || !self::utilityOnly()) {
             return '';
         }
@@ -310,18 +323,115 @@ final class WaRoute
     }
 
     /* -----------------------------------------------------------------
+     *  The paid cap and the Meta allowance (15 Oct 2026, owner: "paid
+     *  template default ma hoina; kharcha ko limit rakhna milos, 0 pani")
+     *
+     *  wa_paid_daily_limit  ''  = no cap (exactly the behaviour before);
+     *                       '0' = never pay - templates are refused and
+     *                             tickets wait for the "hi" queue / the
+     *                             click-to-chat hand-over;
+     *                       'N' = at most N paid messages a day (AiSensy
+     *                             templates + Meta templates together).
+     *  Counted at the moment a paid send is ACCEPTED (kv wa_route
+     *  'Y-m-d:paid' from MsgLedger::recordAiSensy, 'Y-m-d:meta_tpl' here).
+     *
+     *  Meta tells us per delivered message whether it was billable
+     *  (statuses[].pricing.billable): whatsapp/webhook.php hands that to
+     *  noteMetaBilling(), which keeps 'Y-m-d:billable' / 'Y-m-d:metafree'.
+     *  wa_meta_free_allowance (per month, 0 = not tracked) is set against it.
+     * ----------------------------------------------------------------- */
+
+    /** The daily cap on paid messages, or null for none. */
+    public static function paidLimit(): ?int
+    {
+        $raw = trim(Settings::getString('wa_paid_daily_limit', ''));
+        if ($raw === '' || !is_numeric($raw)) {
+            return null;
+        }
+        return max(0, (int) $raw);
+    }
+
+    /** Paid messages accepted today (AiSensy templates + Meta templates). */
+    public static function paidToday(): int
+    {
+        return self::counter(date('Y-m-d') . ':paid') + self::counter(date('Y-m-d') . ':meta_tpl');
+    }
+
+    /** '' when a paid message may go now, else why not. */
+    public static function paidRefusal(): string
+    {
+        $cap = self::paidLimit();
+        if ($cap === null) {
+            return '';
+        }
+        if ($cap === 0) {
+            return 'wa_paid_daily_limit is 0 - no paid WhatsApp messages';
+        }
+        $used = self::paidToday();
+        return $used >= $cap ? 'paid WhatsApp limit reached for today (' . $used . '/' . $cap . ', wa_paid_daily_limit)' : '';
+    }
+
+    /**
+     * One Meta status with its pricing block: counted once per message
+     * (first delivered / read wins), as billable or free, per day.
+     */
+    public static function noteMetaBilling(string $wamid, string $state, array $pricing): void
+    {
+        if ($wamid === '' || !in_array($state, ['delivered', 'read'], true) || !array_key_exists('billable', $pricing)) {
+            return;
+        }
+        try {
+            // Meta re-sends statuses: the same once-only guard the webhook uses for messages.
+            if (!Security::rateLimit('wa_meta_bill', substr($wamid, 0, 128), 1, 172800)) {
+                return;
+            }
+        } catch (Throwable $e) {
+            return;
+        }
+        self::count($pricing['billable'] === true ? 'billable' : 'metafree');
+    }
+
+    /** Free allowance per month (wa_meta_free_allowance; 0 = not tracked). */
+    public static function freeAllowance(): int
+    {
+        return max(0, Settings::getInt('wa_meta_free_allowance', 0));
+    }
+
+    /** Month-to-date sum of one wa_route counter ('billable', 'metafree', 'paid', 'meta_tpl'). */
+    public static function monthCount(string $what): int
+    {
+        try {
+            return (int) Database::scalar(
+                "SELECT COALESCE(SUM(CAST(kvalue AS UNSIGNED)), 0) FROM kv_store
+                  WHERE kscope = 'wa_route' AND kkey LIKE :k",
+                ['k' => date('Y-m') . '-__:' . $what], 0
+            );
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    /* -----------------------------------------------------------------
      *  Figures for the admin card
      * ----------------------------------------------------------------- */
 
     /**
      * @return array{policy:string, metaReady:bool, windows:int, freeToday:int, free7:int,
-     *               aisToday:int, ais7:int, savedToday:float, saved7:float, lastInbound:string, rate:float}
+     *               aisToday:int, ais7:int, savedToday:float, saved7:float, lastInbound:string, rate:float,
+     *               metaTplToday:int, metaTpl7:int, paidToday:int, paidLimit:?int,
+     *               billableMonth:int, metaFreeMonth:int, allowance:int, allowanceLeft:?int}
      */
     public static function stats(): array
     {
         $out = ['policy' => self::policy(), 'metaReady' => self::metaReady(), 'windows' => self::openWindows(),
                 'freeToday' => 0, 'free7' => 0, 'aisToday' => 0, 'ais7' => 0, 'savedToday' => 0.0, 'saved7' => 0.0,
-                'lastInbound' => '', 'rate' => 0.13];
+                'lastInbound' => '', 'rate' => 0.13,
+                'metaTplToday' => 0, 'metaTpl7' => 0, 'paidToday' => self::paidToday(), 'paidLimit' => self::paidLimit(),
+                'billableMonth' => self::monthCount('billable'), 'metaFreeMonth' => self::monthCount('metafree'),
+                'allowance' => self::freeAllowance(), 'allowanceLeft' => null];
+        if ($out['allowance'] > 0) {
+            $out['allowanceLeft'] = max(0, $out['allowance'] - $out['billableMonth']);
+        }
         try {
             if (!class_exists('MsgLedger') && is_file(INCLUDE_PATH . '/msgledger.php')) {
                 require_once INCLUDE_PATH . '/msgledger.php';
@@ -329,16 +439,26 @@ final class WaRoute
             if (class_exists('MsgLedger')) {
                 $out['rate'] = MsgLedger::rate('IN', 'utility');
             }
+            /* 15 Oct 2026: a Meta TEMPLATE (metaTemplate() logs it as "Template
+               <name> (Meta)") is paid - it was counted here as free and as
+               money saved. And `purpose <> 'bot_reply'` silently dropped every
+               row with no purpose at all (NULL <> x is never true). */
             $rows = Database::fetchAll(
-                "SELECT provider, (created_at >= CURDATE()) AS today, COUNT(*) n
+                "SELECT provider, (created_at >= CURDATE()) AS today,
+                        (provider = 'cloud_api' AND COALESCE(body, '') LIKE 'Template %(Meta)') AS tpl, COUNT(*) n
                    FROM message_logs
                   WHERE channel = 'whatsapp' AND status = 'sent' AND provider IN ('cloud_api', 'aisensy')
-                    AND purpose <> 'bot_reply' AND created_at >= CURDATE() - INTERVAL 6 DAY
-                  GROUP BY provider, today"
+                    AND COALESCE(purpose, '') <> 'bot_reply' AND created_at >= CURDATE() - INTERVAL 6 DAY
+                  GROUP BY provider, today, tpl"
             );
             foreach ($rows as $r) {
                 $n = (int) $r['n'];
-                if ((string) $r['provider'] === 'cloud_api') {
+                if ((int) $r['tpl'] === 1) {
+                    $out['metaTpl7'] += $n;
+                    if ((int) $r['today'] === 1) {
+                        $out['metaTplToday'] += $n;
+                    }
+                } elseif ((string) $r['provider'] === 'cloud_api') {
                     $out['free7'] += $n;
                     if ((int) $r['today'] === 1) {
                         $out['freeToday'] += $n;
@@ -399,8 +519,12 @@ final class WaRoute
         return $r;
     }
 
-    /** ok counters per day (kv scope wa_route) — never breaks a send. */
-    private static function count(string $what): void
+    /**
+     * ok counters per day (kv scope wa_route) — never breaks a send.
+     * Public since 15 Oct 2026: MsgLedger counts accepted paid AiSensy
+     * templates here ('paid'), the webhook Meta's billable / free deliveries.
+     */
+    public static function count(string $what): void
     {
         try {
             $k = date('Y-m-d') . ':' . $what;
@@ -410,6 +534,19 @@ final class WaRoute
                 ['k' => $k]
             );
         } catch (Throwable $e) {
+        }
+    }
+
+    /** One wa_route counter's value ('Y-m-d:what'), 0 when unset. */
+    private static function counter(string $key): int
+    {
+        try {
+            return (int) Database::scalar(
+                "SELECT CAST(kvalue AS UNSIGNED) FROM kv_store WHERE kscope = 'wa_route' AND kkey = :k",
+                ['k' => $key], 0
+            );
+        } catch (Throwable $e) {
+            return 0;
         }
     }
 }

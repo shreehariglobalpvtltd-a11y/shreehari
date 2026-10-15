@@ -21,6 +21,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/tripstatus.php';
+require_once INCLUDE_PATH . '/ticketedit.php';   // seat filter + Auto Assign (15 Oct 2026)
 $admin = admin_boot('bookings.view');
 
 $base  = '';
@@ -67,6 +68,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                 static fn($s) => strtoupper(Security::clean((string) $s, 10)),
                 (array) ($_POST['seats'] ?? [])
             );
+            /* 15 Oct 2026 (Auto Assign): the engine maps seats to passengers BY
+               INDEX (performLegMove), and ticked boxes post in seat-map order. An
+               Auto Assign answer is placed per passenger, so its order rides in
+               seat_order and wins - only when it names exactly the ticked seats. */
+            $seatOrder = array_values(array_filter(array_map(
+                static fn($s) => strtoupper(Security::clean((string) $s, 10)),
+                explode(',', (string) ($_POST['seat_order'] ?? ''))
+            ), static fn(string $s) => $s !== ''));
+            if ($seatOrder !== [] && count($seatOrder) === count($seats)
+                && array_diff($seatOrder, $seats) === [] && array_diff($seats, $seatOrder) === []) {
+                $seats = $seatOrder;
+            }
             $reason = Security::clean($_POST['reason'] ?? '', 255);   // SHG AI BRAIN 1.6: the desk's reason rides with the audit row
 
             // What the passenger is leaving — read BEFORE the move so the
@@ -164,6 +177,12 @@ $curSeats = pluck(Database::fetchAll(
 ), 'seat_no');
 $curSeatLabels = array_map(static fn($s) => Seats::displayLabel((string) $s, $curCoach, $bookingMode), $curSeats);
 
+// 15 Oct 2026: this leg's passengers, in the order rebookLeg() maps the new
+// seats onto them (by id) - for the seat filter and Auto Assign below.
+$legPax   = Database::fetchAll('SELECT * FROM booking_passengers WHERE booking_id = :b AND leg_id = :l ORDER BY id', ['b' => $bookingId, 'l' => (int) $leg['id']]);
+$autoPref = in_array((string) ($_GET['pref'] ?? ''), ['lower', 'upper'], true) ? (string) $_GET['pref'] : 'any';
+$autoPick = null;
+
 $srcGate     = TripStatus::editableFor($curScheduleId);
 $srcMoveable = ($srcGate['editable'] ?? false) || Auth::isSuperadmin();
 
@@ -223,6 +242,26 @@ if ($targetDate !== '' && Security::isValidDate($targetDate)) {
         try {
             $avail = Seats::availability($routeId, $targetDate, $bookingMode, $targetSid);
             $openSeats = $avail['available'] ?? [];
+            /* 15 Oct 2026 (1B-freeseats): hide the seats none of this booking's
+               passengers may take — a women-only berth for an all-male party, a
+               cabin held for the other gender — the same hard rules AutoBerth
+               applies at the sale (rebookLeg still re-checks on save). A private
+               cabin is never shared, so nothing is hidden there. */
+            if (Seats::isSharedBooking($targetCoach, $bookingMode) && $legPax !== []) {
+                $openSeats = array_values(array_filter($openSeats, static function ($s) use ($avail, $legPax, $targetCoach): bool {
+                    foreach ($legPax as $lp) {
+                        if (TicketEdit::seatOk($avail, (string) $s, (string) ($lp['gender'] ?? ''), $targetCoach)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }));
+            }
+            // One-click Auto Assign (?auto=1&pref=lower|upper|any): AutoBerth /
+            // SmartBook's own placement, pre-ticked below; Reschedule saves it.
+            if (($_GET['auto'] ?? '') === '1') {
+                $autoPick = TicketEdit::autoSeats($targetSid, $bookingMode, $legPax, $autoPref, $seatCount);
+            }
         } catch (Throwable $e) {
             $openSeats = [];
         }
@@ -237,14 +276,16 @@ function rsDepLabel(array $d): string
         . ($t !== '' ? ' · ' . $t : '')
         . ' · ' . ucfirst((string) ($d['coach_type'] ?? 'sleeper'));
 }
-/** Page URL for a given leg / date / departure. */
-function rsUrl(string $pnr, string $leg, string $date = '', int $sid = 0): string
+/** Page URL for a given leg / date / departure (and an Auto Assign preference). */
+function rsUrl(string $pnr, string $leg, string $date = '', int $sid = 0, string $autoPref = ''): string
 {
     $q = ['pnr' => $pnr, 'leg' => $leg];
     if ($date !== '') { $q['date'] = $date; }
     if ($sid > 0)     { $q['sid']  = $sid; }
+    if ($autoPref !== '') { $q['auto'] = 1; $q['pref'] = $autoPref; }
     return '/admin/reschedule.php?' . http_build_query($q);
 }
+$autoSeats = ($autoPick['ok'] ?? false) ? array_values(array_map('strval', $autoPick['seats'])) : [];
 ?>
 <style>
 .rs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 22px;margin:0}
@@ -375,6 +416,22 @@ function rsUrl(string $pnr, string $leg, string $date = '', int $sid = 0): strin
       <?php else: ?>
 
       <h3 style="margin:18px 0 8px;font-size:14px">3 · Choose <?= $seatCount ?> seat<?= $seatCount === 1 ? '' : 's' ?> on <?= Security::e(rsDepLabel($targetSchedule)) ?></h3>
+      <?php /* 15 Oct 2026 (1B-auto): one click places the whole party by the
+           SmartBook seat rules (gender cabins, women-only berths, a child beside
+           an adult) with a lower / upper preference. It only TICKS the boxes —
+           Reschedule below still saves through the one transactional move. */ ?>
+      <div class="rs-deps" style="margin:0 0 10px">
+        <span class="seg">
+          <?php foreach (['any' => '✨ Auto Assign', 'lower' => 'Lower first', 'upper' => 'Upper first'] as $ap => $al): ?>
+            <a class="<?= isset($_GET['auto']) && $autoPref === $ap ? 'on' : '' ?>" href="<?= Security::e(rsUrl($pnr, $legType, $targetDate, (int) $targetSchedule['id'], $ap)) ?>"><?= Security::e($al) ?></a>
+          <?php endforeach; ?>
+        </span>
+        <?php if ($autoPick !== null): ?>
+          <span class="rs-hint" style="margin:0"><?= $autoSeats !== []
+              ? 'Suggested: <b>' . Security::e(implode(', ', array_map(static fn($s) => Seats::displayLabel($s, $targetCoach !== '' ? $targetCoach : 'sleeper', $bookingMode), $autoSeats))) . '</b> — ticked below, press Reschedule to save.'
+              : 'No set of berths on this bus keeps every rule for this party — pick by hand or another bus.' ?></span>
+        <?php endif; ?>
+      </div>
       <form method="post" id="rsForm" onsubmit="return rsValidate()">
         <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
         <input type="hidden" name="action" value="reschedule">
@@ -382,6 +439,7 @@ function rsUrl(string $pnr, string $leg, string $date = '', int $sid = 0): strin
         <input type="hidden" name="leg" value="<?= Security::e($legType) ?>">
         <input type="hidden" name="new_date" value="<?= Security::e($targetDate) ?>">
         <input type="hidden" name="new_schedule_id" value="<?= (int) $targetSchedule['id'] ?>">
+        <input type="hidden" name="seat_order" id="rsOrder" value="<?= Security::e(implode(',', $autoSeats)) ?>">
         <?php
           /* Group free seats by deck using Seats::layoutFor() — the same
              source-of-truth every seat surface uses since the 29 Aug 2026
@@ -419,7 +477,7 @@ function rsUrl(string $pnr, string $leg, string $date = '', int $sid = 0): strin
             <div class="rs-seats">
               <?php foreach ($deck['seats'] as $seat): ?>
                 <span class="rs-seat">
-                  <input type="checkbox" name="seats[]" value="<?= Security::e($seat) ?>" id="rs-<?= Security::e($seat) ?>" onchange="rsSync(this)">
+                  <input type="checkbox" name="seats[]" value="<?= Security::e($seat) ?>" id="rs-<?= Security::e($seat) ?>" onchange="rsSync(this)"<?= in_array((string) $seat, $autoSeats, true) ? ' checked' : '' ?>>
                   <label for="rs-<?= Security::e($seat) ?>"><?= Security::e(Seats::displayLabel((string) $seat, $rsCoach, $bookingMode)) ?></label>
                 </span>
               <?php endforeach; ?>
@@ -447,6 +505,8 @@ function rsUrl(string $pnr, string $leg, string $date = '', int $sid = 0): strin
           var n = 0; boxes.forEach(function(b){ if(b.checked) n++; });
           // cap at the required count
           if (n > RS_NEED && el) { el.checked = false; n = RS_NEED; }
+          // a hand-ticked box ends the Auto Assign order (seat-map order again)
+          if (el) { var o = document.getElementById('rsOrder'); if (o) o.value = ''; }
           document.getElementById('rsCount').textContent = n;
           document.getElementById('rsGo').disabled = (n !== RS_NEED);
         }
@@ -454,6 +514,7 @@ function rsUrl(string $pnr, string $leg, string $date = '', int $sid = 0): strin
           var n = document.querySelectorAll('#rsForm input[name="seats[]"]:checked').length;
           return n === RS_NEED;
         }
+        rsSync(null);   // Auto Assign may have pre-ticked the boxes
       </script>
       <?php endif; /* gate + seats */ ?>
     </div>

@@ -111,6 +111,61 @@ $r = req('GET', '/admin/export.php?format=xlsx&pay_status=verified');
 // export.php serves native XLSX only when ZipArchive is loaded; otherwise the same filtered CSV.
 check('xlsx export still served with filters', $r['code'] === 200 && (str_starts_with($r['body'], 'PK') || csvRows($r['body']) === $ps), 'HTTP ' . $r['code'] . (str_starts_with($r['body'], 'PK') ? ' xlsx' : ' csv-fallback'));
 
+/* 15 Oct 2026 (chalani register): the column funnels and "only my sales" reach
+   the file exactly as the screen applies them - one case per key, each against
+   an independent count straight from the DB. */
+echo "\n=== Column filters (f_ticket / f_pax / f_mob / f_seat / mine) ===\n";
+require_once INCLUDE_PATH . '/seats.php';
+$head = preg_split('/\r?\n/', preg_replace('/^\xEF\xBB\xBF/', '', $csv['body']) ?? '')[0] ?? '';
+check('export header carries Ticket no + Payment status + Seat ids', str_contains($head, 'Ticket no') && str_contains($head, 'Payment status') && str_contains($head, 'Seat ids'), $head);
+$tk = Database::fetch('SELECT t.ticket_number FROM tickets t ORDER BY t.id DESC LIMIT 1');
+if ($tk !== null) {
+    $frag = substr((string) $tk['ticket_number'], -6);
+    $want = (int) Database::scalar('SELECT COUNT(*) FROM bookings b WHERE b.pnr LIKE :a OR EXISTS (SELECT 1 FROM tickets t WHERE t.booking_id = b.id AND t.ticket_number LIKE :b)',
+        ['a' => '%' . $frag . '%', 'b' => '%' . $frag . '%'], 0);
+    $r = req('GET', '/admin/export.php?f_ticket=' . urlencode($frag));
+    check('f_ticket=' . $frag . ' → ' . $want . ' rows', csvRows($r['body']) === $want, 'csv=' . csvRows($r['body']));
+} else { echo "  SKIP  no tickets\n"; }
+$px = Database::fetch("SELECT full_name FROM booking_passengers WHERE CHAR_LENGTH(full_name) >= 4 ORDER BY id DESC LIMIT 1");
+if ($px !== null) {
+    $frag = mb_substr((string) $px['full_name'], 0, 4);
+    $want = (int) Database::scalar('SELECT COUNT(*) FROM bookings b WHERE EXISTS (SELECT 1 FROM booking_passengers bp WHERE bp.booking_id = b.id AND bp.full_name LIKE :n)', ['n' => '%' . $frag . '%'], 0);
+    $r = req('GET', '/admin/export.php?f_pax=' . urlencode($frag));
+    check('f_pax=' . $frag . ' → ' . $want . ' rows', csvRows($r['body']) === $want, 'csv=' . csvRows($r['body']));
+}
+$mb = Database::fetch("SELECT contact_phone FROM bookings WHERE contact_phone REGEXP '^[0-9]{10,}$' ORDER BY id DESC LIMIT 1");
+if ($mb !== null) {
+    $frag = substr((string) $mb['contact_phone'], -6);
+    $want = (int) Database::scalar('SELECT COUNT(*) FROM bookings b WHERE b.contact_phone LIKE :m', ['m' => '%' . $frag . '%'], 0);
+    $r = req('GET', '/admin/export.php?f_mob=' . urlencode(substr($frag, 0, 3) . '-' . substr($frag, 3)));
+    check('f_mob=' . $frag . ' (typed with a dash) → ' . $want . ' rows', csvRows($r['body']) === $want, 'csv=' . csvRows($r['body']));
+}
+/* f_seat: the PRINTED label of a live sharing berth. Oracle = every live seat
+   expanded to the beds it occupies and run through Seats::displayLabel() in
+   PHP (not the new inverse helper): a booking matches when one of its beds
+   prints as the typed label (a private cabin covers two). */
+$live = Database::fetchAll("SELECT bs.booking_id, bs.seat_no, COALESCE(b.booking_mode, 'sharing') AS mode, COALESCE(s.coach_type_override, r.coach_type, 'sleeper') AS coach
+                              FROM booking_seats bs JOIN bookings b ON b.id = bs.booking_id
+                              LEFT JOIN schedules s ON s.id = bs.schedule_id LEFT JOIN routes r ON r.id = s.route_id
+                             WHERE bs.released_at IS NULL AND bs.seat_no REGEXP '^[LU][0-9]+$' ORDER BY bs.id DESC");
+$sample = array_values(array_filter($live, static fn(array $x): bool => $x['mode'] !== 'private'))[0] ?? null;
+if ($sample !== null) {
+    $lbl  = Seats::displayLabel((string) $sample['seat_no'], (string) $sample['coach'], 'sharing');
+    $hit  = [];
+    foreach ($live as $ls) {
+        $beds = Seats::physicalSeats((string) $ls['seat_no'], (string) $ls['mode'], (string) $ls['coach']);
+        $bedLabels = array_map(static fn($bd): string => Seats::displayLabel((string) $bd, (string) $ls['coach'], 'sharing'), $beds);
+        if (in_array($lbl, $bedLabels, true) || strtoupper((string) $ls['seat_no']) === strtoupper($lbl)) {
+            $hit[(int) $ls['booking_id']] = true;
+        }
+    }
+    $r = req('GET', '/admin/export.php?f_seat=' . urlencode($lbl));
+    check('f_seat=' . $lbl . ' (as printed; stored ' . $sample['seat_no'] . ') → ' . count($hit) . ' rows', csvRows($r['body']) === count($hit), 'csv=' . csvRows($r['body']));
+} else { echo "  SKIP  no live sleeper seats\n"; }
+$r = req('GET', '/admin/export.php?mine=1');
+$mine = (int) Database::scalar('SELECT COUNT(*) FROM bookings WHERE sold_by_admin_id = (SELECT id FROM admins WHERE username = :u)', ['u' => $user], 0);
+check('mine=1 → only the signed-in seller\'s sales (' . $mine . ')', csvRows($r['body']) === $mine, 'csv=' . csvRows($r['body']));
+
 echo "\n=== agent-sales.php export link ===\n";
 $as = req('GET', '/admin/agent-sales.php?range=yesterday');
 check('agent-sales renders', $as['code'] === 200, 'HTTP ' . $as['code']);

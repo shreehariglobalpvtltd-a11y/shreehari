@@ -7,7 +7,8 @@
  * agent, or change a single row's agent in place. Each move goes through
  * AgentWallet::reassignSeller(), so commission follows the agent, cash stays
  * with whoever collected it, and every change is audit-logged. Viewing needs
- * commissions.view; changing needs a super-admin (same gate as booking-view).
+ * commissions.view; changing needs Auth::mayReassignSeller() - a super-admin
+ * or a bookings.reassign holder (managers, 15 Oct 2026) - same gate as booking-view.
  */
 
 declare(strict_types=1);
@@ -22,7 +23,8 @@ if (Auth::isCounterAgent()) {
     exit;
 }
 
-$canEdit = Auth::isSuperadmin();
+// 15 Oct 2026: the one reassign rule (super-admin, or bookings.reassign - managers).
+$canEdit = Auth::mayReassignSeller();
 $today   = todayISO();
 $isDate  = static fn(string $d): bool => preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) === 1;
 
@@ -52,7 +54,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!Security::verifyCsrf()) {
         $flash = ['bad', 'Session expired — please try again.'];
     } elseif (!$canEdit) {
-        $flash = ['bad', 'Only a super-admin can change the agent on a ticket.'];
+        $flash = ['bad', 'Only a super-admin or manager can change the agent on a ticket.'];
     } else {
         $changes = [];
         foreach ((array) ($_POST['row_agent'] ?? []) as $bid => $aid) {
@@ -241,7 +243,7 @@ admin_page_head('हरेक टिकटमा एजेन्ट · Every tic
     <span class="muted" style="font-size:12px">Commission moves to the new agent; cash stays with whoever collected it. Every change is logged.</span>
   </div>
   <?php elseif (!$canEdit): ?>
-    <div class="flash">View only — a super-admin can change agents here.</div>
+    <div class="flash">View only — a super-admin or manager can change agents here.</div>
   <?php endif; ?>
 
   <div class="panel" style="overflow-x:auto">

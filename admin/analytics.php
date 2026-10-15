@@ -922,7 +922,7 @@ admin_page_head(
     <div class="an-body">
       <?php if ($agentData !== []): ?>
       <div class="an-canvas tall"><canvas id="agentChart" aria-label="Top agents by confirmed bookings"></canvas></div>
-      <p class="muted" style="margin:10px 0 0;font-size:12.5px">Full table, commission and PDF: <a href="/admin/agent-ranking.php?from=<?= $e($from) ?>&amp;to=<?= $e($to) ?>">Agent ranking →</a></p>
+      <p class="muted" style="margin:10px 0 0;font-size:12.5px">Full table, commission and PDF: <a href="/admin/agent-ranking.php?range=custom&amp;from=<?= $e($from) ?>&amp;to=<?= $e($to) ?>">Agent ranking →</a></p>
       <?php else: ?><p class="muted" style="margin:0">No agent sale was confirmed in this window.</p><?php endif; ?>
     </div>
   </div>

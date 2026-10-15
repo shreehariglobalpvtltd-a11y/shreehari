@@ -2007,6 +2007,11 @@ final class Notify
         // 24 Sep 2026: the same for a one-time link token (step-up verification,
         // document share) — the bot's reply carrying it is logged here too.
         $body = preg_replace('~([?&]t=)[A-Za-z0-9]{16,}~', '$1[hidden]', $body) ?? $body;
+        /* 15 Oct 2026 (2F-logs): and the ticket keys - the download key (&k=)
+           and the short ticket code (view.php?code=) each open the ticket.
+           to_number stays whole: the retry cron and Resend need it. */
+        $body = preg_replace('~([?&]k=)[A-Za-z0-9]{8,}~', '$1[hidden]', $body) ?? $body;
+        $body = preg_replace('~(view\.php\?code=)[A-Za-z0-9]{6,}~', '$1[hidden]', $body) ?? $body;
         $row = [
             'booking_id'   => isset($meta['bookingId']) && $meta['bookingId'] ? (int) $meta['bookingId'] : null,
             'channel'      => $channel,
@@ -2153,12 +2158,30 @@ final class Notify
         if ($when !== '')           { $factRowsHtml .= '<p>Journey date: <strong>' . e($when) . '</strong></p>'; }
         if ($facts['seats'] !== '') { $factRowsHtml .= '<p>Seat(s): <strong>' . e($facts['seats']) . '</strong></p>'; }
 
+        /* 15 Oct 2026 (2C-cash-due): a pay-at-boarding booking is CONFIRMED
+           with the fare still owed. The ticket picture says PAYMENT DUE; the
+           email said "Total paid" - now it says what is owed and where. */
+        $codDue = 0.0;
+        if (!empty($booking['is_cod']) && $bid > 0) {
+            try {
+                $codDue = max(0.0, (float) ($booking['total_amount'] ?? 0) - (float) Database::scalar(
+                    "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE booking_id = :b AND status = 'verified'",
+                    ['b' => $bid], 0
+                ));
+            } catch (Throwable $e) {
+                $codDue = (float) ($booking['total_amount'] ?? 0);   // unsure → never claim it was paid
+            }
+        }
+        $totalLine = $codDue > 0
+            ? '<p>Total: <strong>' . e($amount) . '</strong> — to pay in cash at the counter or when boarding: <strong>' . e(inr($codDue)) . '</strong></p>'
+            : '<p>Total paid: <strong>' . e($amount) . '</strong></p>';
+
         $html = self::wrapEmail(
             'Booking confirmed 🎉',
             '<p>Namaste,</p>'
             . '<p>Your booking <strong>' . e($pnr) . '</strong> with ' . e($company) . ' is confirmed.</p>'
             . $factRowsHtml
-            . '<p>Total paid: <strong>' . e($amount) . '</strong></p>'
+            . $totalLine
             . '<p>Download your ticket any time from '
             . '<a href="' . e($ticketUrl) . '">this link</a>'
             . ' (or as a <a href="' . e(Ticket::downloadUrl($pnr)) . '">printable PDF</a>).</p>'
@@ -2225,6 +2248,19 @@ final class Notify
 
         // WhatsApp: bilingual Nepali message with dynamic boarding data.
         if (Settings::getBool('whatsapp_notify_customer', true) && self::usablePhone($booking['contact_phone'] ?? '') !== '') {
+            /* 15 Oct 2026 (2C-links): the short View link (always the current
+               ticket) and the printable PDF ride under the picture link. */
+            $viewUrl = '';
+            if ($bid > 0) {
+                try {
+                    if (!class_exists('TicketLink')) {
+                        require_once __DIR__ . '/ticketlink.php';
+                    }
+                    $viewUrl = TicketLink::ready() ? TicketLink::forBooking($bid) : '';
+                } catch (Throwable $e) {
+                    $viewUrl = '';
+                }
+            }
             $text = "नमस्कार 🙏\n\n"
                   . $company . " बाट तपाईंको बस टिकट सफलतापूर्वक बुक भएको छ।\n\n"
                   . "बुकिङ नं.: " . $pnr . "\n"
@@ -2234,7 +2270,9 @@ final class Notify
                   . ($facts['seats'] !== '' ? "सिट: " . $facts['seats'] . "\n" : '')
                   . ($waDateNep !== '' ? "यात्रा मिति: " . $waDateNep . "\n" : '')
                   . "\nजम्मा: " . $amount . "\n\n"
-                  . "तपाईंको E-Ticket: " . $ticketUrl . "\n\n"
+                  . "तपाईंको E-Ticket: " . $ticketUrl . "\n"
+                  . ($viewUrl !== '' ? "हेर्नुहोस् / View: " . $viewUrl . "\n" : '')
+                  . "PDF: " . Ticket::downloadUrl($pnr) . "\n\n"
                   . "धन्यवाद।\n" . $company;
             $mediaUrl = Settings::getBool('whatsapp_send_pdf', true) ? $ticketUrl : null;
 

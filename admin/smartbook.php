@@ -74,7 +74,9 @@ $wallet = null;
 if ($mode === 'agent') {
     $code   = AgentWallet::agentCodeLabel($admin['role'] === 'agent' ? $me : $me);
     $bal    = AgentWallet::balances($me);
-    $limit  = Settings::getFloat('agent_cash_limit_inr', 0.0);
+    // 15 Oct 2026: the agent's own cash limit (profile; falls back to
+    // agent_cash_limit_default) — 'agent_cash_limit_inr' was never defined anywhere.
+    $limit  = (float) AgentWallet::profile($me)['cash_limit'];
     $wallet = ['code' => $code, 'cash' => (float) $bal['cash'], 'commission' => (float) $bal['commission'], 'limit' => $limit];
     $label  = 'Agent ' . ($code !== '' ? $code : '#' . $me);
 } elseif ($mode === 'counter') {

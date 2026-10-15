@@ -29,7 +29,8 @@ require_once INCLUDE_PATH . '/wabooking.php';
 require_once INCLUDE_PATH . '/waorder.php';
 require_once INCLUDE_PATH . '/wabot.php';
 
-if (stripos((string) DB_NAME, 'test') === false) {
+// 15 Oct 2026: the per-builder clones (lt_f1..lt_f5) are test databases too.
+if (stripos((string) DB_NAME, 'test') === false && !str_starts_with((string) DB_NAME, 'lt_')) {
     exit("Refusing: DB_NAME must be a test database.\n");
 }
 
@@ -50,11 +51,18 @@ const WO_C2    = '9700011102';
 const WO_C3    = '9700011103';
 const WO_AGENT = '9700011190';
 const WO_PAX   = '9700011104';
+const WO_C4    = '9700011105';
 
 $keep = [];
+/* 15 Oct 2026: a customer's Book button now asks ONE combined question
+   (wa_book_combo_on, default on - tests/wa-booking-upgrade-test.php). This
+   suite walks the guided one-question-at-a-time order, which stays for
+   sellers and behind the switch, so it runs with the switch off and turns
+   it on for its own combined-question section at the end. */
 foreach (['gemini_api_key' => '', 'anthropic_api_key' => '', 'wa_local_first' => '1', 'wa_booking_on' => '1', 'wa_faq_on' => '1',
           'wa_agent_on' => '0', 'wa_bulk_on' => '0', 'wa_login_on' => '0', 'wa_order_menu_on' => '1', 'wa_order_staff_on' => '1',
-          'wa_seat_photo_on' => '0', 'allow_cod' => '1', 'upi_id' => 'test@upi', 'quick_ticket_customer_on' => '1'] as $k => $v) {
+          'wa_seat_photo_on' => '0', 'allow_cod' => '1', 'upi_id' => 'test@upi', 'quick_ticket_customer_on' => '1',
+          'wa_book_combo_on' => '0'] as $k => $v) {
     // null = the row did not exist: it is removed again afterwards, never left behind as ''.
     $keep[$k] = Database::exists('SELECT 1 FROM settings WHERE skey = :k', ['k' => $k]) ? Settings::getString($k, '') : null;
     Settings::set($k, $v, 'string', 'whatsapp', false);
@@ -130,7 +138,9 @@ try {
     check('then the names of both travellers', str_contains($r['text'], '2') && $r['ui'] === null, $r['text']);
     $r = WaBot::reply('+91' . WO_C1, 'Ram Bahadur 35, Sita Gurung 30');
     check('the summary names both, with the total', str_contains($r['text'], 'Ram Bahadur') && str_contains($r['text'], 'Sita Gurung') && str_contains($r['text'], '₹'), $r['text']);
-    check('  and offers pay-on-bus / UPI / cancel', ids($r['ui'] ?? null) === ['shg:pay cash', 'shg:pay upi', 'shg:cancel'], json_encode(ids($r['ui'] ?? null)));
+    // 15 Oct 2026: + CHANGE - four choices, so a list (buttons stop at three).
+    check('  and offers pay-on-bus / UPI / change / cancel as a list', ($r['ui']['kind'] ?? '') === 'list'
+        && ids($r['ui'] ?? null) === ['shg:pay cash', 'shg:pay upi', 'shg:change', 'shg:cancel'], json_encode(ids($r['ui'] ?? null)));
     check('  still nothing booked', !Database::exists('SELECT 1 FROM bookings WHERE contact_phone = :p', ['p' => WO_C1]));
 
     $r = WaBot::reply('+91' . WO_C1, 'pay cash');
@@ -147,7 +157,7 @@ try {
 
     echo "\n— pay by UPI now\n";
     $r = $walk('+91' . WO_C2, ['1', '3', '1', '1', 'Maya Thapa']);
-    check('one traveller reaches the summary', ids($r['ui'] ?? null) === ['shg:pay cash', 'shg:pay upi', 'shg:cancel'], $r['text']);
+    check('one traveller reaches the summary', ids($r['ui'] ?? null) === ['shg:pay cash', 'shg:pay upi', 'shg:change', 'shg:cancel'], $r['text']);
     $r = WaBot::reply('+91' . WO_C2, 'pay upi');
     $b2 = Database::fetch('SELECT id, pnr, status, is_cod FROM bookings WHERE contact_phone = :p', ['p' => WO_C2]);
     check('"UPI now" holds the seat as PENDING', $b2 !== null && (string) $b2['status'] === 'pending' && (int) $b2['is_cod'] === 0, $r['text']);
@@ -193,6 +203,21 @@ try {
     check('"0" is accepted as no phone', ids($r['ui'] ?? null) === ['shg:ho', 'shg:cancel'] && str_contains($r['text'], 'नम्बर छैन'), $r['text']);
     $r = WaBot::reply('+91' . WO_AGENT, 'cancel');
     check('  and cancel sells nothing', (int) Database::scalar('SELECT COUNT(*) FROM bookings WHERE sold_by_admin_id = :a', ['a' => $agentId], 0) === 1);
+
+    echo "\n— 15 Oct 2026: the Book button asks a customer ONE combined question\n";
+    Settings::set('wa_book_combo_on', '1', 'string', 'whatsapp', false);
+    Settings::flush();
+    $r = WaBot::reply('+91' . WO_C4, 'ticket book ne');
+    check('one message: name, boarding, date, how many, with an example', str_contains($r['text'], 'Ram, Surat, bholi, 2'), $r['text']);
+    check('  with Today / Tomorrow to tap', ids($r['ui'] ?? null) === ['shg:today', 'shg:tomorrow'], json_encode(ids($r['ui'] ?? null)));
+    $r = WaBot::reply('+91' . WO_C4, 'Hari Thapa, Surat, bholi, 1');
+    check('the combined answer goes straight to the summary', str_contains($r['text'], 'Hari Thapa') && str_contains($r['text'], '₹')
+        && ids($r['ui'] ?? null) === ['shg:pay cash', 'shg:pay upi', 'shg:change', 'shg:cancel'], $r['text']);
+    check('  nothing booked before the yes', !Database::exists('SELECT 1 FROM bookings WHERE contact_phone = :p', ['p' => WO_C4]));
+    WaBot::reply('+91' . WO_C4, 'cancel');
+    $r = WaBot::reply('+91' . WO_AGENT, 'ticket book ne');
+    check('a SELLER keeps the guided order (which way, two buttons)', ids($r['ui'] ?? null) === ['shg:1', 'shg:2'], $r['text']);
+    WaBot::reply('+91' . WO_AGENT, 'cancel');
 
     echo "\n— wiring\n";
     $root = dirname(__DIR__);

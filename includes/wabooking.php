@@ -80,6 +80,15 @@ final class WaBooking
         $command = self::orderCommand($text);
         if ($command !== null) {
             $lang  = $command;
+            /* 15 Oct 2026 (owner: "Hi bhane pachhi ekai choti sabai sodhos"): a
+               CUSTOMER is asked everything in ONE message - name, boarding,
+               date, how many, with an example - and Today / Tomorrow to tap.
+               The guided order cost five round trips. A seller keeps the guided
+               questions (whose ticket it is comes into it). wa_book_combo_on = 0
+               puts the guided order back for everyone. */
+            if ($seller === null && self::comboOn()) {
+                return self::comboStart($phoneDigits, $lang);
+            }
             $state = ['slots' => ['_guided' => true], 'awaiting' => '', 'options' => [], 'lang' => $lang];
             $text  = '';
         }
@@ -112,7 +121,8 @@ final class WaBooking
 
         // Nothing in progress and nothing bookable in the message — let the
         // PNR lookup, the assistant or the menu answer instead.
-        if ($state === null && !self::looksLikeRequest($text)) {
+        if ($state === null && !self::looksLikeRequest($text)
+            && !($seller === null && self::comboOn() && self::comboRead($text))) {
             return null;
         }
 
@@ -125,10 +135,69 @@ final class WaBooking
         $slots  = is_array($state['slots'] ?? null) ? $state['slots'] : [];
         $guided = !empty($slots['_guided']);
 
+        /* 15 Oct 2026: "Ram, Surat, bholi, 2" on a fresh chat is the combined
+           answer itself - the line the greeting and the website button teach.
+           It is read in the combined mode: every one of the four is required,
+           and whatever is missing is asked for in ONE message. */
+        if ($state === null && $seller === null && self::comboOn() && self::comboRead($text)) {
+            $slots['_combo'] = true;
+        }
+        $combo = !empty($slots['_combo']);
+
         /* A tapped-looking answer ("2") replies to the question we asked, not
            to the whole message. Options were stored with the question. */
         $awaiting = (string) ($state['awaiting'] ?? '');
-        if ($awaiting !== '' && $awaiting !== 'confirm') {
+        /* 15 Oct 2026: CHANGE (the ✏️ button under the summary, or the word at
+           any question) keeps everything already said and puts the combined
+           question back with the current values on it, so one message
+           ("bholi", "3", "Kamrej", "naam Hari") fixes it. "change" is never
+           taken for a passenger's name. */
+        if ($seller === null && $awaiting !== '' && $awaiting !== 'combo' && self::isChange($text)) {
+            return self::comboChange($phoneDigits, $slots, $lang);
+        }
+        if ($awaiting === 'dup') {
+            /* 15 Oct 2026 (2E-resume): this number already holds a booking for
+               that trip. "Use this booking" answers with it; "Book another"
+               goes on to the summary; anything else is read as a correction. */
+            $choice = self::dupChoice($text, (array) ($state['options'] ?? []));
+            if ($choice === 'use') {
+                return self::dupUse($phoneDigits, $slots, $lang);
+            }
+            if ($choice === 'another') {
+                $slots['_dupSeen'] = true;
+                $text = '';
+            }
+        } elseif ($awaiting === 'combo') {
+            /* The combined question is on the table. A tap on one of the
+               offered answers fills the one field it was asked for; "same as
+               last time" fills the trip from this number's own history (the
+               date never: it is always said); a question is handed to the
+               assistant and the order waits. Everything else is read below. */
+            $field  = (string) ($slots['_comboField'] ?? '');
+            unset($slots['_comboField']);
+            $picked = ($field !== '' && $text !== '') ? self::pickOption($text, (array) ($state['options'] ?? [])) : null;
+            if ($picked !== null) {
+                $slots[$field] = $field === 'seats' ? (int) $picked : $picked;
+                $text = '';
+            } elseif (self::isSameAsLast($text)) {
+                $last = self::lastTrip($phoneDigits);
+                if ($last !== null) {
+                    foreach (['boarding', 'direction', 'name'] as $k) {
+                        if (trim((string) ($slots[$k] ?? '')) === '' && $last[$k] !== '') {
+                            $slots[$k] = $last[$k];
+                        }
+                    }
+                    if ((int) ($slots['seats'] ?? 0) <= 0 && $last['party'] > 0) {
+                        $slots['seats'] = $last['party'];
+                    }
+                }
+                $text = '';
+            } elseif (self::isChange($text)) {
+                $text = '';                          // "change" again: the question is simply asked again
+            } elseif ($text !== '' && self::isQuestion(mb_strtolower($text)) && !self::saysTrip($text)) {
+                return null;
+            }
+        } elseif ($awaiting !== '' && $awaiting !== 'confirm') {
             $picked = self::pickOption($text, (array) ($state['options'] ?? []));
             if ($picked !== null) {
                 $slots[$awaiting] = $picked;
@@ -170,6 +239,16 @@ final class WaBooking
                     $slots['name'] = $lead;
                 }
                 $text = '';
+            }
+        }
+
+        /* The bare count of a combined answer ("Ram, Surat, bholi, 2"): the
+           shared parser reads a count only beside a seat word, and the desk
+           depends on that, so the lone number is read here instead. */
+        if ($combo && $text !== '') {
+            $n = self::bareCount($text, $awaiting === 'combo');
+            if ($n > 0) {
+                $slots['seats'] = $n;
             }
         }
 
@@ -224,6 +303,15 @@ final class WaBooking
                 if ($v !== '' && $v !== 0 && $v !== null) {
                     $slots[$k] = $v;
                 }
+            }
+            /* In the combined mode the NAME in the line wins too ("Ram,
+               Surat, bholi, 2" - and after CHANGE, "Hari Prasad" alone). A
+               stop is never taken as a name; a new name drops the old party. */
+            $nm = $combo ? trim((string) ($fresh['name'] ?? '')) : '';
+            if ($nm !== '' && PersonName::clean($nm) !== '' && !self::looksLikePlace($nm, $slots)
+                && mb_strtolower($nm) !== mb_strtolower(trim((string) ($slots['name'] ?? '')))) {
+                $slots['name'] = $nm;
+                unset($slots['party'], $slots['namesAsked']);
             }
         }
 
@@ -314,11 +402,49 @@ final class WaBooking
             if ($k === 'name' && (self::looksLikePlace((string) $v, $slots) || PersonName::clean((string) $v) === '')) {
                 continue;                 // "Chahiyo" is a request word, not a passenger
             }
+            /* 15 Oct 2026: in the combined mode an engine DEFAULT (today, one
+               seat, the yard) is never taken for an answer - it would read as
+               "said" on the next turn. What they wrote, or their own history
+               (shown in the summary, confirmed by a yes), only. */
+            if ($combo && in_array((string) ($sug['fields'][$k]['source'] ?? ''), ['auto', 'none'], true)) {
+                continue;
+            }
             $slots[$k] = $v;
         }
 
-        $ask = $sug['ask'] ?? null;
+        /* 15 Oct 2026 (2D-combine): everything still missing, in ONE message. */
+        $planNow = is_array($sug['plan'] ?? null) ? $sug['plan'] : null;
+        if ($combo) {
+            $missing = self::comboMissing($slots, $sug);
+            if ($missing !== [] && $missing !== ['name']) {
+                return self::comboAsk($phoneDigits, $slots, $missing, $lang, $planNow, $opener);
+            }
+            /* The four are said but nothing can be sold for that day (no bus,
+               full, cut-off passed): say why and ask for another day, keeping
+               the rest - instead of dropping the whole conversation. */
+            if ($planNow === null && trim((string) ($sug['planError'] ?? '')) !== '') {
+                unset($slots['date']);
+                return self::comboAsk($phoneDigits, $slots, ['date'], $lang, null, trim((string) $sug['planError']) . "\n\n");
+            }
+        }
+
+        $ask = $combo ? null : ($sug['ask'] ?? null);
         if (is_array($ask) && ($ask['field'] ?? '') !== '') {
+            /* A customer with more than one gap is asked for all of them at
+               once (and the answer is read in the combined mode). */
+            if ($seller === null && self::comboOn()) {
+                $missing = self::comboMissing($slots, $sug);
+                if (count($missing) > 1) {
+                    // The engine's defaults were folded in above: they are not answers.
+                    foreach (['name', 'seats', 'date', 'direction', 'boarding', 'country'] as $k) {
+                        if (in_array((string) ($sug['fields'][$k]['source'] ?? ''), ['auto', 'none'], true)) {
+                            unset($slots[$k]);
+                        }
+                    }
+                    $slots['_combo'] = true;
+                    return self::comboAsk($phoneDigits, $slots, $missing, $lang, $planNow, $opener);
+                }
+            }
             $options = array_values(array_filter(
                 (array) ($ask['options'] ?? []),
                 static fn ($o): bool => is_array($o) && ($o['value'] ?? '') !== '' && ($o['value'] ?? '') !== 'other'
@@ -372,6 +498,14 @@ final class WaBooking
             return self::out($why !== '' ? $why : self::say('noPlan', $lang));
         }
 
+        /* 15 Oct 2026 (2E-resume): a booking for this trip already sits on this
+           number (started on the website, or an earlier chat). Say so and let
+           them pick it up, instead of a silent refusal or a second booking. */
+        $dup = $sug['duplicate'] ?? null;
+        if ($seller === null && is_array($dup) && (string) ($dup['pnr'] ?? '') !== '' && empty($slots['_dupSeen'])) {
+            return self::dupAsk($phoneDigits, $slots, $dup, $lang, $opener);
+        }
+
         // Everything is known: show what it will cost and wait for a yes.
         self::save($phoneDigits, $slots, 'confirm', [], $lang);
         /* 23 Sep 2026 (owner: "customer lai seat photo"): the summary rides on
@@ -397,7 +531,7 @@ final class WaBooking
         return self::out(
             $opener . $summary . "\n" . self::confirmHelp($lang, $seller !== null),
             $picture,
-            ['kind' => 'buttons', 'body' => $opener . $summary, 'buttons' => self::confirmButtons($lang, $seller !== null)]
+            self::confirmUi($opener . $summary, $lang, $seller !== null)
         );
     }
 
@@ -447,6 +581,479 @@ final class WaBooking
             }
         }
         return null;
+    }
+
+    /* -----------------------------------------------------------------
+     *  The combined question (15 Oct 2026, owner: "WhatsApp bata super
+     *  fast ticket - Hi bhane pachhi ek choti ma sabai sodhne")
+     *
+     *  A customer is asked name, boarding, date and how many in ONE message;
+     *  the answer "Ram, Surat, bholi, 2" is read whole, and whatever is still
+     *  missing is asked for in ONE more. Nothing here sells: the summary and
+     *  its explicit yes are exactly as before.
+     * --------------------------------------------------------------- */
+
+    /** wa_book_combo_on (default on): customers get the combined question. */
+    private static function comboOn(): bool
+    {
+        return Settings::getBool('wa_book_combo_on', true);
+    }
+
+    /** "ticket" / the Book button from a customer: the one combined question. */
+    private static function comboStart(string $who, string $lang): array
+    {
+        $last  = self::lastTrip($who);
+        $lines = [self::say('comboAsk', $lang)];
+        if ($last !== null) {
+            /* 2A-returning: their own last trip, offered - one tap fills it,
+               the date is still theirs to say and the summary still waits
+               for an explicit yes. */
+            $lines[] = '';
+            $lines[] = sprintf(self::say('sameLast', $lang), self::lastLine($last, $lang));
+        }
+        $text = implode("\n", $lines);
+        self::save($who, ['_combo' => true], 'combo', [], $lang);
+        return self::out($text, null, ['kind' => 'buttons', 'body' => $text, 'buttons' => self::comboButtons($lang, $last !== null, false)]);
+    }
+
+    /** CHANGE under the summary: the same question, showing what we hold now. */
+    private static function comboChange(string $who, array $slots, string $lang): array
+    {
+        $slots['_combo'] = true;
+        unset($slots['_comboField']);
+        $text = sprintf(self::say('comboNow', $lang), self::haveLine($slots, $lang)) . "\n" . self::say('comboChange', $lang);
+        self::save($who, $slots, 'combo', [], $lang);
+        return self::out($text, null, ['kind' => 'buttons', 'body' => $text, 'buttons' => self::comboButtons($lang, false, true)]);
+    }
+
+    /**
+     * [Today] [Tomorrow], and [Same as last time] or [No change]. The ids are
+     * WORDS ("shg:tomorrow"), not numbers, so a tap reads exactly like typing
+     * them and a typed "2" stays a passenger count.
+     *
+     * @return list<array{id: string, title: string}>
+     */
+    private static function comboButtons(string $lang, bool $same, bool $keep): array
+    {
+        $t = static fn (array $w): string => $w[$lang] ?? $w['en'];
+        $b = [
+            ['id' => 'shg:today',    'title' => $t(['en' => '📅 Today', 'hi' => '📅 आज', 'ne' => '📅 आज', 'gu' => '📅 આજે'])],
+            ['id' => 'shg:tomorrow', 'title' => $t(['en' => '📅 Tomorrow', 'hi' => '📅 कल', 'ne' => '📅 भोलि', 'gu' => '📅 કાલે'])],
+        ];
+        if ($same) {
+            $b[] = ['id' => 'shg:same as last time', 'title' => $t(['en' => '🔁 Same as last time', 'hi' => '🔁 पहले जैसा', 'ne' => '🔁 पहिले जस्तै', 'gu' => '🔁 પહેલાં જેવું'])];
+        } elseif ($keep) {
+            $b[] = ['id' => 'shg:ok', 'title' => $t(['en' => '✅ No change', 'hi' => '✅ कोई बदलाव नहीं', 'ne' => '✅ केही नबदल्ने', 'gu' => '✅ ફેરફાર નહીં'])];
+        }
+        return $b;
+    }
+
+    /**
+     * Which of the four the combined mode still lacks. A value counts when it
+     * was said (or tapped) or comes from this number's own history - never
+     * an engine default. The boarding point is not needed when the way was
+     * said and that way has a single pickup ahead.
+     *
+     * @return list<string> of name | boarding | date | seats
+     */
+    private static function comboMissing(array $slots, array $sug): array
+    {
+        $told = static fn (string $f): bool => !in_array((string) ($sug['fields'][$f]['source'] ?? 'none'), ['auto', 'none'], true);
+        $missing = [];
+        if (trim((string) ($slots['name'] ?? '')) === '') {
+            $missing[] = 'name';
+        }
+        if (!$told('boarding')) {
+            $ahead = 0;
+            foreach ((array) ($sug['plan']['stops'] ?? []) as $s) {
+                if (!empty($s['ahead'])) {
+                    $ahead++;
+                }
+            }
+            if (!($told('direction') && is_array($sug['plan'] ?? null) && $ahead <= 1)) {
+                $missing[] = 'boarding';
+            }
+        }
+        if (!$told('date')) {
+            $missing[] = 'date';
+        }
+        if (!$told('seats')) {
+            $missing[] = 'seats';
+        }
+        return $missing;
+    }
+
+    /**
+     * Ask for everything still missing in ONE message. A single gap gets its
+     * own question with tappable answers (a tap, or its number, answers it);
+     * several gaps get one line naming them all, with an example.
+     */
+    private static function comboAsk(string $who, array $slots, array $missing, string $lang, ?array $plan, string $prefix): array
+    {
+        $slots['_combo'] = true;
+        unset($slots['_comboField']);
+        $have = self::haveLine($slots, $lang);
+        $head = $prefix . ($have !== '' ? '✔️ ' . $have . "\n" : '');
+
+        if (count($missing) === 1 && in_array($missing[0], ['date', 'seats', 'boarding'], true)) {
+            $q = self::guidedQuestion($missing[0], $lang, $plan, false);
+            $slots['_comboField'] = $missing[0];
+            self::save($who, $slots, 'combo', $q['options'], $lang);
+            return self::out(
+                $head . self::withOptions($q['question'], $q['options'], $lang),
+                null,
+                self::choiceUi($head . $q['question'], $q['options'], $lang)
+            );
+        }
+
+        $names = [];
+        $eg    = [];
+        $day   = ['en' => 'tomorrow', 'hi' => 'kal', 'ne' => 'bholi', 'gu' => 'કાલે'][$lang] ?? 'tomorrow';
+        foreach (['name' => ['name', 'Ram'], 'boarding' => ['board', 'Surat'], 'date' => ['date', $day], 'seats' => ['pax', '2']] as $f => [$labelKey, $sample]) {
+            if (in_array($f, $missing, true)) {
+                $names[] = self::label($labelKey, $lang);
+                $eg[]    = $sample;
+            }
+        }
+        $text = $head . sprintf(self::say('comboMore', $lang), implode(', ', $names)) . "\n"
+              . sprintf(self::say('example', $lang), implode(', ', $eg));
+        self::save($who, $slots, 'combo', [], $lang);
+        $ui = in_array('date', $missing, true)
+            ? ['kind' => 'buttons', 'body' => $text, 'buttons' => self::comboButtons($lang, false, false)]
+            : null;
+        return self::out($text, null, $ui);
+    }
+
+    /** "Name Ram · Boarding Surat · Date Fri, 16 Oct · Passengers 2" — what we hold. */
+    private static function haveLine(array $slots, string $lang): string
+    {
+        $parts = [];
+        $name  = trim((string) ($slots['name'] ?? ''));
+        if ($name !== '') {
+            $parts[] = self::label('name', $lang) . ' ' . $name;
+        }
+        $board = trim((string) ($slots['boarding'] ?? ''));
+        if ($board !== '') {
+            $parts[] = self::label('board', $lang) . ' ' . self::stopName($board);
+        } elseif (in_array((string) ($slots['direction'] ?? ''), ['toNepal', 'toIndia'], true)) {
+            $parts[] = self::wayName((string) $slots['direction'], $lang);
+        }
+        $date = trim((string) ($slots['date'] ?? ''));
+        if ($date !== '' && Security::isValidDate($date)) {
+            $parts[] = self::label('date', $lang) . ' ' . formatDate($date, 'D, j M');
+        }
+        if ((int) ($slots['seats'] ?? 0) > 0) {
+            $parts[] = self::label('pax', $lang) . ' ' . (int) $slots['seats'];
+        }
+        return implode(' · ', $parts);
+    }
+
+    /** "Surat · Station Road @ 23:00" → "Surat". */
+    private static function stopName(string $value): string
+    {
+        try {
+            if (class_exists('Boarding')) {
+                $n = trim((string) (Boarding::stopDisplay($value)['name'] ?? ''));
+                if ($n !== '') {
+                    return $n;
+                }
+            }
+        } catch (Throwable $e) {
+            // fall through to the value itself
+        }
+        return trim((string) preg_replace('/\s*@.*$/u', '', $value));
+    }
+
+    private static function wayName(string $dir, string $lang): string
+    {
+        return [
+            'toNepal' => ['en' => 'To Nepal', 'hi' => 'नेपाल जाना', 'ne' => 'नेपाल जाने', 'gu' => 'નેપાળ જવું'],
+            'toIndia' => ['en' => 'To Gujarat', 'hi' => 'गुजरात जाना', 'ne' => 'गुजरात जाने', 'gu' => 'ગુજરાત જવું'],
+        ][$dir][$lang] ?? $dir;
+    }
+
+    /**
+     * A fresh message that IS the combined answer: three or more pieces
+     * split by commas, a day or a stop among them, and a name left over -
+     * "Ram, Surat, bholi, 2", "राम, सूरत, भोलि, २". Questions and messages
+     * about an existing ticket never qualify.
+     */
+    private static function comboRead(string $text): bool
+    {
+        $t = trim($text);
+        if ($t === '' || mb_strlen($t) > 200) {
+            return false;
+        }
+        $parts = array_filter(preg_split('/\s*[,;،।]+\s*/u', $t) ?: [], static fn ($p): bool => trim((string) $p) !== '');
+        if (count($parts) < 3) {
+            return false;
+        }
+        $lower = mb_strtolower($t);
+        if (self::isAboutExistingTicket($lower) || self::isQuestion($lower)) {
+            return false;
+        }
+        $p = TicketBot::parse($t);
+        if ((string) ($p['date'] ?? '') === '' && (string) ($p['boarding'] ?? '') === '') {
+            return false;
+        }
+        $name = trim((string) ($p['name'] ?? ''));
+        return $name !== '' && PersonName::clean($name) !== '';
+    }
+
+    /**
+     * The lone passenger count of a combined answer: the last comma piece
+     * that is just a number ("Ram, Surat, bholi, 2"; Devanagari and Gujarati
+     * digits too), or a message that is only the number. Inside the combined
+     * question ($loose) a number closing a line without commas also counts
+     * ("Ram Surat bholi 2") - never one that follows a month or a date word
+     * ("Nov 5", "miti 5"). 0 when there is none, or it is more than a
+     * customer may book.
+     */
+    private static function bareCount(string $text, bool $loose): int
+    {
+        $t = trim(TicketBot::asciiDigits($text));
+        if ($t === '') {
+            return 0;
+        }
+        $max  = BookingService::maxSeatsFor(false);
+        $pick = static fn (string $tok): int => (preg_match('/^\d{1,2}$/', $tok) === 1 && (int) $tok >= 1 && (int) $tok <= $max) ? (int) $tok : 0;
+        $parts = preg_split('/\s*[,;،।|\n]+\s*/u', $t) ?: [];
+        if (count($parts) > 1) {
+            foreach (array_reverse($parts) as $piece) {
+                $n = $pick(trim((string) $piece));
+                if ($n > 0) {
+                    return $n;
+                }
+            }
+            return 0;
+        }
+        if ($pick($t) > 0) {
+            return $pick($t);
+        }
+        if ($loose && preg_match('/^(.*\S)\s+(\d{1,2})$/u', $t, $m) === 1) {
+            $before = mb_strtolower((string) preg_replace('/^.*\s/u', '', trim($m[1])));
+            $dateWords = ['jan', 'january', 'feb', 'february', 'mar', 'march', 'apr', 'april', 'may', 'jun', 'june', 'jul', 'july',
+                          'aug', 'august', 'sep', 'sept', 'september', 'oct', 'october', 'nov', 'november', 'dec', 'december',
+                          'on', 'date', 'miti', 'मिति', 'तारीख', 'तारिख', 'તારીખ'];
+            if (!in_array($before, $dateWords, true)) {
+                return $pick($m[2]);
+            }
+        }
+        return 0;
+    }
+
+    /** Does a question in the combined mode also carry part of the trip? */
+    private static function saysTrip(string $text): bool
+    {
+        if (self::bareCount($text, true) > 0) {
+            return true;
+        }
+        $p = TicketBot::parse($text);
+        return (string) ($p['date'] ?? '') !== '' || (string) ($p['boarding'] ?? '') !== ''
+            || (string) ($p['direction'] ?? '') !== '' || (int) ($p['seats'] ?? 0) > 0;
+    }
+
+    /** Lower-case, no emoji or punctuation, single spaces. */
+    private static function words(string $text): string
+    {
+        $t = mb_strtolower(trim((string) preg_replace('/[^\p{L}\p{M}\p{N}\s]+/u', ' ', $text)));
+        return trim((string) preg_replace('/\s+/u', ' ', $t));
+    }
+
+    /** "change" / "badal" / "बदल" under the summary (the ✏️ button says "change"). */
+    private static function isChange(string $text): bool
+    {
+        return in_array(self::words($text), ['change', 'change it', 'change booking', 'edit', 'badal', 'badla', 'badlau', 'badalnu',
+            'badalne', 'badlo', 'badlna', 'change garne', 'change garnu', 'बदल', 'बदल्ने', 'बदल्नु', 'बदल्नुहोस्', 'बदलें', 'बदलना',
+            'बदलो', 'બદલો', 'બદલ', 'બદલવું'], true);
+    }
+
+    /** "same as last time" (the 🔁 button) and the ways people say it. */
+    private static function isSameAsLast(string $text): bool
+    {
+        return in_array(self::words($text), ['same as last time', 'same as last', 'same', 'same again', 'as last time', 'pahile jastai',
+            'pahile jasto', 'pahila jastai', 'pailako jastai', 'paila jastai', 'pahle jaisa', 'pehle jaisa', 'pahle jaise',
+            'पहिले जस्तै', 'पहिलेजस्तै', 'पहिलो जस्तै', 'पहले जैसा', 'पहले जैसे', 'પહેલાં જેવું', 'પહેલા જેવું'], true);
+    }
+
+    /**
+     * This number's own usual trip (TicketBot::profile - the same memory the
+     * desk card uses, only ever read for the number's own chat). Null when
+     * it has never travelled with us.
+     *
+     * @return array{name: string, boarding: string, boardingName: string, direction: string, party: int}|null
+     */
+    private static function lastTrip(string $who): ?array
+    {
+        try {
+            $p = TicketBot::profile($who);
+        } catch (Throwable $e) {
+            return null;
+        }
+        if (!is_array($p)) {
+            return null;
+        }
+        $board = (string) ($p['boarding']['value'] ?? '');
+        $dir   = (string) ($p['direction']['value'] ?? '');
+        if ($board === '' && $dir === '') {
+            return null;
+        }
+        $name = trim((string) ($p['name'] ?? ''));
+        return [
+            'name'         => $name !== '' && PersonName::clean($name) !== '' ? $name : '',
+            'boarding'     => $board,
+            'boardingName' => trim((string) ($p['boarding']['name'] ?? '')) !== '' ? (string) $p['boarding']['name'] : self::stopName($board),
+            'direction'    => $dir,
+            'party'        => max(1, (int) ($p['party']['size'] ?? 1)),
+        ];
+    }
+
+    private static function lastLine(array $last, string $lang): string
+    {
+        $parts = [];
+        if ($last['name'] !== '') {
+            $parts[] = $last['name'];
+        }
+        if ($last['boarding'] !== '') {
+            $parts[] = $last['boardingName'];
+        }
+        if ($last['direction'] !== '') {
+            $parts[] = self::wayName($last['direction'], $lang);
+        }
+        $parts[] = self::label('pax', $lang) . ' ' . $last['party'];
+        return implode(' · ', $parts);
+    }
+
+    /* -----------------------------------------------------------------
+     *  A booking already on this number (15 Oct 2026, 2E-resume)
+     * --------------------------------------------------------------- */
+
+    private static function dupAsk(string $who, array $slots, array $dup, string $lang, string $opener): array
+    {
+        $t = static fn (array $w): string => $w[$lang] ?? $w['en'];
+        $slots['_dupPnr'] = (string) $dup['pnr'];
+        $options = [
+            ['value' => 'use',     'label' => $t(['en' => '📋 Use this booking', 'hi' => '📋 यही बुकिंग', 'ne' => '📋 यही बुकिङ', 'gu' => '📋 આ જ બુકિંગ'])],
+            ['value' => 'another', 'label' => $t(['en' => '🎫 Book another', 'hi' => '🎫 एक और बुक करें', 'ne' => '🎫 अर्को बुक गर्ने', 'gu' => '🎫 બીજી બુક કરો'])],
+        ];
+        $date  = (string) ($dup['date'] ?? '');
+        $q = sprintf(
+            self::say('dupFound', $lang),
+            (string) $dup['pnr'],
+            self::say((string) ($dup['status'] ?? '') === 'confirmed' ? 'dupConfirmed' : 'dupPending', $lang),
+            $date !== '' && Security::isValidDate($date) ? formatDate($date, 'D, j M') : $date
+        );
+        self::save($who, $slots, 'dup', $options, $lang);
+        return self::out($opener . self::withOptions($q, $options, $lang), null, self::choiceUi($opener . $q, $options, $lang));
+    }
+
+    /** 'use' | 'another' | '' — the tap, its number, or the words. */
+    private static function dupChoice(string $text, array $options): string
+    {
+        $picked = self::pickOption($text, $options);
+        if ($picked === 'use' || $picked === 'another') {
+            return $picked;
+        }
+        $w = self::words($text);
+        if (in_array($w, ['use', 'use this', 'use this booking', 'use it', 'yo', 'yehi', 'yahi', 'tyahi', 'tehi', 'यही', 'यो', 'त्यही', 'उही', 'એ જ', 'આ જ'], true)) {
+            return 'use';
+        }
+        if (in_array($w, ['another', 'book another', 'new', 'new booking', 'arko', 'naya', 'nayan', 'अर्को', 'नयाँ', 'दूसरा', 'दूसरी', 'नया', 'બીજી', 'નવી'], true)) {
+            return 'another';
+        }
+        return '';
+    }
+
+    /**
+     * "Use this booking": the booking itself - the ticket (with its links)
+     * when confirmed, the payment link and QR when it still waits for money.
+     * Only ever a booking whose contact number IS this sender.
+     */
+    private static function dupUse(string $who, array $slots, string $lang): array
+    {
+        $pnr = (string) ($slots['_dupPnr'] ?? '');
+        self::clear($who);
+        try {
+            $d = $pnr !== '' ? BookingService::detail($pnr) : null;
+        } catch (Throwable $e) {
+            $d = null;
+        }
+        if ($d === null || normalisePhone((string) ($d['contact_phone'] ?? '')) !== $who
+            || !in_array((string) ($d['status'] ?? ''), ['pending', 'confirmed'], true)) {
+            return self::out(self::say('dupGone', $lang));
+        }
+        $bid   = (int) ($d['id'] ?? 0);
+        $date  = (string) Database::scalar('SELECT MIN(travel_date) FROM booking_legs WHERE booking_id = :b', ['b' => $bid], '');
+        $lines = [self::say('dupHere', $lang), '', self::label('pnr', $lang) . ': ' . $pnr];
+        if ($date !== '') {
+            $lines[] = self::label('date', $lang) . ': ' . formatDate($date, 'D, j M');
+        }
+        $lines[] = self::label('total', $lang) . ': ' . inr((float) ($d['total_amount'] ?? 0));
+        $lines[] = '';
+        if ((string) $d['status'] === 'confirmed') {
+            foreach (self::ticketLinks($pnr, $bid, $lang) as $l) {
+                $lines[] = $l;
+            }
+            return self::out(implode("\n", $lines), Ticket::imageUrl($pnr));
+        }
+        $lines[] = self::say('payNow', $lang);
+        $lines[] = appUrl('pay.php?pnr=' . urlencode($pnr));
+        return self::out(implode("\n", $lines), appUrl('pay-image.php?pnr=' . urlencode($pnr)));
+    }
+
+    /**
+     * Figures for the WhatsApp Manager (15 Oct 2026, 2G): booking chats
+     * active in the last 30 minutes, WhatsApp bookings today / 7 days, and -
+     * from the booking.wa_sale audit rows - how long a chat sale takes and
+     * how many messages the passenger needed.
+     *
+     * @return array{openChats: int, waToday: int, wa7: int, chatSales7: int, avgSeconds: ?int, avgMessages: ?float}
+     */
+    public static function stats(): array
+    {
+        $out = ['openChats' => 0, 'waToday' => 0, 'wa7' => 0, 'chatSales7' => 0, 'avgSeconds' => null, 'avgMessages' => null];
+        try {
+            $out['openChats'] = (int) Database::scalar(
+                'SELECT COUNT(*) FROM kv_store WHERE kscope = :s AND updated_at >= NOW() - INTERVAL 30 MINUTE',
+                ['s' => self::SCOPE], 0
+            );
+        } catch (Throwable $e) {
+            // a missing figure, never a broken page
+        }
+        try {
+            if (!class_exists('BookingChannel')) {
+                require_once INCLUDE_PATH . '/bookingchannel.php';
+            }
+            $today = todayISO();
+            $out['waToday'] = (int) (BookingChannel::counts($today, $today)['WHATSAPP']['n'] ?? 0);
+            $out['wa7']     = (int) (BookingChannel::counts(addDaysISO($today, -6), $today)['WHATSAPP']['n'] ?? 0);
+        } catch (Throwable $e) {
+        }
+        try {
+            $secs = [];
+            $msgs = [];
+            foreach (Database::fetchAll(
+                "SELECT new_value FROM audit_logs
+                  WHERE action = 'booking.wa_sale' AND created_at >= NOW() - INTERVAL 7 DAY
+                  ORDER BY id DESC LIMIT 500"
+            ) as $r) {
+                $v = json_decode((string) ($r['new_value'] ?? ''), true);
+                if (!is_array($v)) {
+                    continue;
+                }
+                if (isset($v['seconds']) && is_numeric($v['seconds'])) {
+                    $secs[] = (int) $v['seconds'];
+                }
+                if (isset($v['messages']) && is_numeric($v['messages'])) {
+                    $msgs[] = (int) $v['messages'];
+                }
+            }
+            $out['chatSales7']  = max(count($secs), count($msgs));
+            $out['avgSeconds']  = $secs !== [] ? (int) round(array_sum($secs) / count($secs)) : null;
+            $out['avgMessages'] = $msgs !== [] ? round(array_sum($msgs) / count($msgs), 1) : null;
+        } catch (Throwable $e) {
+        }
+        return $out;
     }
 
     /**
@@ -600,17 +1207,47 @@ final class WaBooking
                 $cancel,
             ];
         }
+        $change = ['id' => 'shg:change', 'title' => $t(['en' => '✏️ Change', 'hi' => '✏️ बदलें', 'ne' => '✏️ बदल्ने', 'gu' => '✏️ બદલો'])];
         $ways = self::payWays();
         if ($ways['cod'] && $ways['upi']) {
+            // Four choices: confirmUi() sends these as a list (buttons stop at three).
             return [
                 ['id' => 'shg:pay cash', 'title' => $t(['en' => '💵 Pay on the bus', 'hi' => '💵 बस में भुगतान', 'ne' => '💵 बसमा तिर्ने', 'gu' => '💵 બસમાં ચૂકવો'])],
                 ['id' => 'shg:pay upi', 'title' => $t(['en' => '📲 Pay by UPI now', 'hi' => '📲 अभी UPI से', 'ne' => '📲 अहिले UPI', 'gu' => '📲 હમણાં UPI'])],
+                $change,
                 $cancel,
             ];
         }
         return [
             ['id' => 'shg:ho', 'title' => $t(['en' => '✅ Confirm', 'hi' => '✅ बुक करो', 'ne' => '✅ बुक गर्ने', 'gu' => '✅ બુક કરો'])],
+            $change,
             $cancel,
+        ];
+    }
+
+    /**
+     * The tappable form of the summary (15 Oct 2026): [Confirm][Change][Cancel]
+     * as buttons; with pay-on-bus AND UPI both on that is four choices, so a
+     * list (Pay on the bus / Pay by UPI now / Change / Cancel) - the payment
+     * choice still closes the sale in one tap.
+     *
+     * @return array<string,mixed>
+     */
+    private static function confirmUi(string $body, string $lang, bool $forSeller): array
+    {
+        $choices = self::confirmButtons($lang, $forSeller);
+        if (count($choices) <= 3) {
+            return ['kind' => 'buttons', 'body' => $body, 'buttons' => $choices];
+        }
+        $rows = [];
+        foreach ($choices as $c) {
+            $rows[] = ['id' => (string) $c['id'], 'title' => mb_substr((string) $c['title'], 0, 24), 'desc' => ''];
+        }
+        return [
+            'kind'   => 'list',
+            'body'   => $body,
+            'button' => ['en' => '✅ Book · pay', 'hi' => '✅ बुक · भुगतान', 'ne' => '✅ बुक · भुक्तानी', 'gu' => '✅ બુક · ચુકવણી'][$lang] ?? '✅ Book · pay',
+            'rows'   => $rows,
         ];
     }
 
@@ -684,6 +1321,11 @@ final class WaBooking
         if ($seller !== null) {
             return self::sellAsSeller($phoneDigits, $slots, $lang, $paxName, $seller);
         }
+        // Where the WhatsApp journal stood before this sale (2C-dedupe, below).
+        if (!class_exists('Notify')) {
+            require_once INCLUDE_PATH . '/notify.php';
+        }
+        $journalAt = count(Notify::whatsappJournal());
         try {
             $res = QuickTicket::sellCustomer([
                 'name'      => $paxName,
@@ -729,6 +1371,9 @@ final class WaBooking
                English and a Nepali customer would suddenly be answered in
                English about their own ticket. */
             self::rememberSale($phoneDigits, $pnr, $lang);
+            /* 15 Oct 2026 (2G): how long the chat sale took and how many
+               messages it needed - the WhatsApp Manager averages these. */
+            self::auditSale($pnr, $slots);
         }
         $seats  = implode(', ', array_map('strval', (array) ($res['seats'] ?? [])));
         $total  = (string) ($res['totalLabel'] ?? '');
@@ -743,9 +1388,14 @@ final class WaBooking
 
         $media = null;
         if ($isPaid) {
+            /* 15 Oct 2026 (2C-dedupe): the confirmation fan-out has usually
+               just put the ticket picture into THIS chat already (the Meta
+               number, free inside the open window). Sending it again as the
+               reply was the same PNG twice - the reply now says "above". */
+            $sentAbove = self::ticketSentAbove($phoneDigits, $journalAt);
             $lines[] = '';
-            $lines[] = self::say('ticketBelow', $lang);
-            $media   = Ticket::imageUrl($pnr);
+            $lines[] = self::say($sentAbove ? 'ticketAbove' : 'ticketBelow', $lang);
+            $media   = $sentAbove ? null : Ticket::imageUrl($pnr);
             /* D4-06 (8 Oct 2026): a pay-at-counter ticket is CONFIRMED with
                nothing paid yet. "Safe journey!" alone read as if it were
                settled — say plainly what is owed and when. */
@@ -759,6 +1409,13 @@ final class WaBooking
                     $lines[] = sprintf(self::say('codDue', $lang), inr($codDue), inr($codDue));
                 }
             }
+            /* 15 Oct 2026 (2C-links): the short View link, the printable PDF
+               and a one-tap Share, so the ticket can be opened, printed or
+               forwarded to the family without asking the office. */
+            $lines[] = '';
+            foreach (self::ticketLinks($pnr, (int) ($res['bookingId'] ?? 0), $lang) as $l) {
+                $lines[] = $l;
+            }
         } else {
             $lines[] = '';
             $lines[] = self::say('payNow', $lang);
@@ -767,6 +1424,71 @@ final class WaBooking
         }
 
         return self::out(implode("\n", $lines), $media);
+    }
+
+    /**
+     * View / PDF / Share lines for a confirmed ticket. The View link is the
+     * short ticket/view.php?code= link (TicketLink) - it always opens the
+     * CURRENT ticket - and the keyed picture when that table is not there.
+     *
+     * @return list<string>
+     */
+    private static function ticketLinks(string $pnr, int $bookingId, string $lang): array
+    {
+        if ($pnr === '') {
+            return [];
+        }
+        $view = '';
+        try {
+            if (!class_exists('TicketLink')) {
+                require_once INCLUDE_PATH . '/ticketlink.php';
+            }
+            $view = $bookingId > 0 && TicketLink::ready() ? TicketLink::forBooking($bookingId) : '';
+        } catch (Throwable $e) {
+            $view = '';
+        }
+        if ($view === '') {
+            $view = Ticket::imageUrl($pnr);
+        }
+        $company = trim(Settings::getString('company_name', APP_NAME));
+        $share   = '🎫 ' . $company . ' · ' . $pnr . "\n" . $view;
+        return [
+            '👁 ' . self::label('view', $lang) . ': ' . $view,
+            '📄 PDF: ' . Ticket::downloadUrl($pnr),
+            '📤 ' . self::label('share', $lang) . ': https://wa.me/?text=' . rawurlencode($share),
+        ];
+    }
+
+    /**
+     * Did this sale's own confirmation already put the ticket picture into
+     * this very chat? Only the Meta number's sends count (free window or a
+     * Meta template): an AiSensy send lands in a different chat.
+     */
+    private static function ticketSentAbove(string $who, int $journalFrom): bool
+    {
+        $tail = substr(preg_replace('/\D/', '', $who) ?? '', -8);
+        if (strlen($tail) < 8 || !class_exists('Notify')) {
+            return false;
+        }
+        foreach (array_slice(Notify::whatsappJournal(), max(0, $journalFrom)) as $j) {
+            if (!empty($j['ok']) && in_array((string) ($j['reason'] ?? ''), ['meta_free', 'meta_template'], true)
+                && substr(preg_replace('/\D/', '', (string) ($j['to'] ?? '')) ?? '', -8) === $tail) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** One audit row per chat sale: seconds from the first message, messages it took. */
+    private static function auditSale(string $pnr, array $slots): void
+    {
+        $started = (int) ($slots['_started'] ?? 0);
+        Logger::audit('booking.wa_sale', 'booking', $pnr, null, [
+            'seconds'  => $started > 0 ? max(0, time() - $started) : null,
+            // every question this conversation asked was answered once, plus the final yes
+            'messages' => max(1, (int) ($slots['_turns'] ?? 0) + 1),
+            'combo'    => !empty($slots['_combo']),
+        ], 'Sold in the WhatsApp chat');
     }
 
     /**
@@ -804,7 +1526,9 @@ final class WaBooking
         if ($pnr !== '') {
             BookingChannel::markWhatsappPnr($pnr, 'ordered on WhatsApp by ' . trim((string) ($seller['full_name'] ?? 'staff')));
             Logger::audit('booking.wa_order_seller', 'booking', $pnr, null,
-                ['seller' => (int) ($seller['id'] ?? 0), 'from' => $phoneDigits], 'Ticket ordered on WhatsApp by a seller');
+                ['seller' => (int) ($seller['id'] ?? 0), 'from' => $phoneDigits,
+                 'seconds' => (int) ($slots['_started'] ?? 0) > 0 ? max(0, time() - (int) $slots['_started']) : null,
+                 'messages' => max(1, (int) ($slots['_turns'] ?? 0) + 1)], 'Ticket ordered on WhatsApp by a seller');
         }
         $seats = implode(', ', array_map('strval', (array) ($res['seats'] ?? [])));
         $lines = [self::say('soldSeller', $lang), ''];
@@ -986,10 +1710,10 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 'gu' => 'આ બુકિંગ જોઈ લો:',
             ],
             'confirmQ' => [
-                'en' => 'Shall I book it? Reply YES to confirm, NO to cancel.',
-                'hi' => 'बुक कर दूँ? हाँ लिखें, या नहीं लिखें।',
-                'ne' => 'बुक गरौं? हो लेख्नुहोस्, वा होइन लेख्नुहोस्।',
-                'gu' => 'બુક કરી દઉં? હા લખો, કે ના લખો.',
+                'en' => 'Shall I book it? Reply YES to confirm, CHANGE to change something, NO to cancel.',
+                'hi' => 'बुक कर दूँ? हाँ लिखें, कुछ बदलना हो तो "बदल", या नहीं लिखें।',
+                'ne' => 'बुक गरौं? हो लेख्नुहोस्, केही बदल्नु परे "बदल", वा होइन लेख्नुहोस्।',
+                'gu' => 'બુક કરી દઉં? હા લખો, કંઈ બદલવું હોય તો "બદલો", કે ના લખો.',
             ],
             'howToFix' => [
                 'en' => 'To change something, just write it: another date, more seats, a different pickup, or "name Ram Bahadur".',
@@ -1008,6 +1732,70 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 'hi' => 'आपका ई-टिकट साथ में है। यात्रा शुभ हो!',
                 'ne' => 'तपाईंको ई-टिकट संलग्न छ। शुभ यात्रा!',
                 'gu' => 'તમારી ઈ-ટિકિટ સાથે છે. શુભ યાત્રા!',
+            ],
+            'ticketAbove' => [
+                'en' => 'Your e-ticket picture is just above. Safe journey!',
+                'hi' => 'आपका ई-टिकट ठीक ऊपर भेजा गया है। यात्रा शुभ हो!',
+                'ne' => 'तपाईंको ई-टिकट माथि नै पठाइएको छ। शुभ यात्रा!',
+                'gu' => 'તમારી ઈ-ટિકિટ ઉપર જ મોકલી છે. શુભ યાત્રા!',
+            ],
+            /* 15 Oct 2026 — the combined question (2A-hi). The example is a
+               line the parser reads as it stands: name, a stop, a day word, a
+               count. */
+            'comboAsk' => [
+                'en' => "To book, send all four in ONE message:\nname, boarding point, date, how many\nExample: Ram, Surat, tomorrow, 2",
+                'hi' => "बुक करने के लिए चारों बातें एक ही संदेश में भेजिए:\nनाम, चढ़ने की जगह, तारीख, कितने लोग\nजैसे: Ram, Surat, kal, 2",
+                'ne' => "बुक गर्न चारवटै कुरा एउटै सन्देशमा पठाउनुहोस्:\nनाम, चढ्ने ठाउँ, मिति, कति जना\nजस्तै: Ram, Surat, bholi, 2",
+                'gu' => "બુક કરવા ચારેય વાત એક જ સંદેશમાં મોકલો:\nનામ, ચઢવાની જગ્યા, તારીખ, કેટલા લોકો\nદા.ત.: Ram, Surat, કાલે, 2",
+            ],
+            'comboMore' => [
+                'en' => 'Please also send, in one message: %s',
+                'hi' => 'कृपया यह भी एक ही संदेश में भेजिए: %s',
+                'ne' => 'कृपया यो पनि एउटै सन्देशमा पठाउनुहोस्: %s',
+                'gu' => 'કૃપા કરીને આ પણ એક જ સંદેશમાં મોકલો: %s',
+            ],
+            'example' => [
+                'en' => 'Example: %s', 'hi' => 'जैसे: %s', 'ne' => 'जस्तै: %s', 'gu' => 'દા.ત.: %s',
+            ],
+            'comboNow' => [
+                'en' => 'Now: %s',
+                'hi' => 'अभी: %s',
+                'ne' => 'अहिले: %s',
+                'gu' => 'હમણાં: %s',
+            ],
+            'comboChange' => [
+                'en' => 'Send only what should change, e.g. tomorrow · 3 · Kamrej · name Hari',
+                'hi' => 'सिर्फ़ जो बदलना है वही भेजिए, जैसे: kal · 3 · Kamrej · नाम Hari',
+                'ne' => 'बदल्नु पर्ने कुरा मात्र पठाउनुहोस्, जस्तै: bholi · 3 · Kamrej · नाम Hari',
+                'gu' => 'જે બદલવું હોય તે જ મોકલો, દા.ત.: કાલે · 3 · Kamrej · નામ Hari',
+            ],
+            'sameLast' => [
+                'en' => '🔁 Last time: %s — tap "Same as last time" and send just the date.',
+                'hi' => '🔁 पिछली बार: %s — "पहले जैसा" दबाइए और बस तारीख भेजिए।',
+                'ne' => '🔁 पछिल्लो पटक: %s — "पहिले जस्तै" थिच्नुहोस् र मिति मात्र पठाउनुहोस्।',
+                'gu' => '🔁 ગઈ વખતે: %s — "પહેલાં જેવું" દબાવો અને માત્ર તારીખ મોકલો.',
+            ],
+            /* 2E-resume: %1$s PNR, %2$s its state, %3$s the travel day. */
+            'dupFound' => [
+                'en' => 'This number already has booking %1$s (%2$s) for %3$s.' . "\n" . 'Use that booking, or book another seat?',
+                'hi' => 'इस नंबर पर %3$s के लिए बुकिंग %1$s (%2$s) पहले से है।' . "\n" . 'वही बुकिंग लें, या एक और सीट बुक करें?',
+                'ne' => 'यो नम्बरमा %3$s को बुकिङ %1$s (%2$s) पहिले नै छ।' . "\n" . 'त्यही बुकिङ लिने, कि अर्को सिट बुक गर्ने?',
+                'gu' => 'આ નંબર પર %3$s માટે બુકિંગ %1$s (%2$s) પહેલેથી છે.' . "\n" . 'એ જ બુકિંગ લેવી, કે બીજી સીટ બુક કરવી?',
+            ],
+            'dupPending' => [
+                'en' => 'payment pending', 'hi' => 'भुगतान बाकी', 'ne' => 'भुक्तानी बाँकी', 'gu' => 'ચુકવણી બાકી',
+            ],
+            'dupConfirmed' => [
+                'en' => 'confirmed', 'hi' => 'कन्फर्म', 'ne' => 'पक्का', 'gu' => 'કન્ફર્મ',
+            ],
+            'dupHere' => [
+                'en' => 'Here is your booking:', 'hi' => 'यह रही आपकी बुकिंग:', 'ne' => 'तपाईंको बुकिङ यो हो:', 'gu' => 'આ રહી તમારી બુકિંગ:',
+            ],
+            'dupGone' => [
+                'en' => 'That booking is no longer open. Write "ticket" to book again.',
+                'hi' => 'वह बुकिंग अब खुली नहीं है। फिर से बुक करने के लिए "ticket" लिखें।',
+                'ne' => 'त्यो बुकिङ अब खुला छैन। फेरि बुक गर्न "ticket" लेख्नुहोस्।',
+                'gu' => 'એ બુકિંગ હવે ખુલ્લી નથી. ફરી બુક કરવા "ticket" લખો.',
             ],
             /* Two %s, both the amount: the line is bilingual on purpose so the
                crew reading it over the passenger's shoulder understands it too. */
@@ -1060,6 +1848,8 @@ Example: Ram Bahadur 35, Sita Gurung 30",
             'bus'   => ['en' => 'Bus',        'hi' => 'बस',        'ne' => 'बस',      'gu' => 'બસ'],
             'custPhone' => ['en' => 'Passenger mobile', 'hi' => 'यात्री मोबाइल', 'ne' => 'यात्रु मोबाइल', 'gu' => 'મુસાફર મોબાઇલ'],
             'seller'    => ['en' => 'Sold by', 'hi' => 'बेचने वाला', 'ne' => 'बिक्रेता', 'gu' => 'વેચનાર'],
+            'view'      => ['en' => 'View ticket', 'hi' => 'टिकट देखें', 'ne' => 'टिकट हेर्नुहोस्', 'gu' => 'ટિકિટ જુઓ'],
+            'share'     => ['en' => 'Share', 'hi' => 'शेयर करें', 'ne' => 'सेयर गर्नुहोस्', 'gu' => 'શેર કરો'],
         ];
         return $l[$key][$lang] ?? $l[$key]['en'];
     }
@@ -1690,6 +2480,12 @@ Example: Ram Bahadur 35, Sita Gurung 30",
 
     private static function save(string $who, array $slots, string $awaiting, array $options, string $lang): void
     {
+        /* 15 Oct 2026 (2G): when the conversation began and how many answers
+           it has needed - read back by auditSale() at the sale. */
+        if ((int) ($slots['_started'] ?? 0) <= 0) {
+            $slots['_started'] = time();
+        }
+        $slots['_turns'] = (int) ($slots['_turns'] ?? 0) + 1;
         $json = json_encode([
             'slots'    => $slots,
             'awaiting' => $awaiting,
@@ -1813,14 +2609,21 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 }
             }
 
+            /* 15 Oct 2026 (2A-returning): `bookings` has no full_name column -
+               the name lives on the manifest - so this query always threw and
+               no returning passenger was ever greeted by name. The lead
+               traveller of their newest real trip. */
             $prev = (string) Database::scalar(
-                "SELECT full_name FROM bookings
-                  WHERE contact_phone = :p AND status IN ('confirmed','completed')
-                  ORDER BY id DESC LIMIT 1",
+                "SELECT bp.full_name
+                   FROM booking_passengers bp
+                   JOIN bookings b ON b.id = bp.booking_id
+                  WHERE b.contact_phone = :p AND b.status IN ('confirmed','completed')
+                  ORDER BY b.id DESC, bp.is_primary DESC, bp.id ASC
+                  LIMIT 1",
                 ['p' => $who],
                 ''
             );
-            return self::firstName($prev);
+            return PersonName::clean($prev) !== '' ? self::firstName($prev) : '';
         } catch (Throwable $e) {
             return '';
         }

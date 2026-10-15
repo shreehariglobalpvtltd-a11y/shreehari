@@ -34,7 +34,8 @@ require_once INCLUDE_PATH . '/waqueue.php';
 require_once INCLUDE_PATH . '/msgledger.php';
 require_once ROOT_PATH . '/whatsapp/aisensy.php';
 
-if (stripos((string) DB_NAME, 'test') === false) {
+// 15 Oct 2026: the per-builder clones (lt_f1..lt_f5) are test databases too.
+if (stripos((string) DB_NAME, 'test') === false && !str_starts_with((string) DB_NAME, 'lt_')) {
     exit("Refusing: DB_NAME must be a test database.\n");
 }
 

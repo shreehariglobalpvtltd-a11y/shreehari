@@ -33,6 +33,10 @@ final class Auth
     private const ROLE_PERMISSIONS = [
         'manager' => [
             'dashboard.view', 'bookings.view', 'bookings.edit', 'bookings.cancel',
+            // 15 Oct 2026 (owner: Quick Edit): a manager may correct WHO sold a
+            // ticket (Auth::mayReassignSeller) - the commission follows the seller,
+            // cash never moves, every change is audit-logged. Was super-admin only.
+            'bookings.reassign',
             'payments.view', 'payments.verify', 'payments.reject',
             // A branch manager works the refund desk alongside accounts —
             // waiting for the accountant to log in would strand a customer
@@ -182,6 +186,111 @@ final class Auth
     public static function mayCancelAny(): bool
     {
         return self::can('bookings.cancel') || self::can('bookings.cancel_own');
+    }
+
+    /* =================================================================
+     *  Quick Edit field rights (15 Oct 2026, owner: "agent / counter le
+     *  kun kun kura afai milauna pauni - admin le rojne")
+     * ================================================================= */
+
+    /**
+     * Default per-role field rules; settings `ticket_edit_rules` (json, Admin
+     * -> Settings -> Booking rules) overrides them key by key. Only the two
+     * FIELD roles are listed: every office role keeps its permission
+     * (bookings.edit / payments.verify) exactly as before.
+     */
+    public const TICKET_EDIT_DEFAULTS = [
+        'agent'   => ['name' => true, 'phone' => true, 'pickup' => false],
+        'counter' => ['name' => true, 'phone' => true, 'pickup' => true, 'seat' => true, 'payment' => true],
+    ];
+
+    /** Fields the rules may name (anything else is ignored). */
+    public const TICKET_EDIT_FIELDS = ['name', 'phone', 'email', 'pickup', 'gender', 'age', 'id', 'seat', 'payment', 'remark'];
+
+    /**
+     * The live field rules: defaults, overridden per role and per field by
+     * the setting. A broken setting falls back to the defaults.
+     *
+     * @return array{agent: array<string,bool>, counter: array<string,bool>}
+     */
+    public static function ticketEditRules(): array
+    {
+        $out = self::TICKET_EDIT_DEFAULTS;
+        $cfg = Settings::getArray('ticket_edit_rules', []);
+        foreach (['agent', 'counter'] as $role) {
+            if (!isset($cfg[$role]) || !is_array($cfg[$role])) {
+                continue;
+            }
+            foreach ($cfg[$role] as $field => $on) {
+                if (in_array((string) $field, self::TICKET_EDIT_FIELDS, true)) {
+                    $out[$role][(string) $field] = filter_var($on, FILTER_VALIDATE_BOOLEAN);
+                }
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * May the signed-in staff member change WHO sold a ticket (and with it the
+     * commission)? Super-admins always; anyone granted bookings.reassign
+     * (managers by default since 15 Oct 2026). The one rule for booking-view,
+     * Assign Agents and the seat map.
+     */
+    public static function mayReassignSeller(): bool
+    {
+        return self::isSuperadmin() || self::can('bookings.reassign');
+    }
+
+    /**
+     * May the signed-in staff member correct one field of THIS ticket
+     * directly (Quick Edit)? Fields: name, phone, email, pickup, gender, age,
+     * id, seat, payment, remark, plus fare (super-admin only) and agent
+     * (mayReassignSeller). Otherwise the page offers "Request correction".
+     *
+     *   super-admin      everything
+     *   counter agent    only a field the rules switch ON, only on a ticket
+     *                    they sold, only while it is pending / confirmed
+     *   counter (desk)   bookings.edit (payments.verify for payment), unless
+     *                    the rules switch that field OFF
+     *   every other role its permission, as before
+     *
+     * The trip's edit window (TripStatus) is checked by the handlers.
+     *
+     * @param array<string,mixed> $booking needs sold_by_admin_id, status
+     */
+    public static function mayEditField(array $booking, string $field): bool
+    {
+        $admin = self::admin();
+        if ($admin === null) {
+            return false;
+        }
+        if (self::isSuperadmin()) {
+            return true;
+        }
+        if ($field === 'fare') {
+            return false;
+        }
+        if ($field === 'agent') {
+            return self::mayReassignSeller();
+        }
+        if (!in_array($field, self::TICKET_EDIT_FIELDS, true)) {
+            return false;
+        }
+
+        $role  = (string) ($admin['role'] ?? '');
+        $rules = self::ticketEditRules();
+        if ($role === 'agent') {
+            $me = (int) ($admin['id'] ?? 0);
+            return ($rules['agent'][$field] ?? false) === true
+                && $me > 0 && (int) ($booking['sold_by_admin_id'] ?? 0) === $me
+                && in_array((string) ($booking['status'] ?? ''), ['pending', 'confirmed'], true);
+        }
+
+        $base = $field === 'payment' ? self::can('payments.verify') : self::can('bookings.edit');
+        if ($role === 'counter') {
+            return $base && ($rules['counter'][$field] ?? true) === true;
+        }
+        return $base;
     }
 
 

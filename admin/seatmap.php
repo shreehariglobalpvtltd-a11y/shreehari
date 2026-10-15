@@ -185,8 +185,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             } elseif ($action === 'assign_agent') {
                 // Same rule and path as booking-view / Assign Agents: commission
                 // follows the agent, cash stays with whoever collected it, logged.
-                if (!Auth::isSuperadmin()) {
-                    throw new RuntimeException('Only a super-admin can change the agent on a ticket.');
+                // 15 Oct 2026: Auth::mayReassignSeller() (super-admin or bookings.reassign).
+                if (!Auth::mayReassignSeller()) {
+                    throw new RuntimeException('Only a super-admin or manager can change the agent on a ticket.');
                 }
                 $agentId = (int) ($_POST['agent_id'] ?? 0);
                 if (AgentWallet::agentCodeLabel($agentId) === ''
@@ -367,8 +368,9 @@ $canSeatOps = $canEdit && !Auth::isCounterAgent();
 // separate from $canEdit so the control is hidden rather than 403-ing.
 $canPolicy = Auth::can('routes.edit');
 
-// Agents for "select seats → assign agent" (super-admin only, like booking-view).
-$canAssign = Auth::isSuperadmin();
+// Agents for "select seats → assign agent" (same rule as booking-view:
+// Auth::mayReassignSeller - super-admin, or a manager since 15 Oct 2026).
+$canAssign = Auth::mayReassignSeller();
 $smAgents  = [];
 if ($canAssign) {
     foreach (Database::fetchAll("SELECT id, username, full_name FROM admins WHERE role = 'agent' AND is_active = 1") as $a) {

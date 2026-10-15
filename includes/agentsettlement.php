@@ -40,6 +40,54 @@ final class AgentSettlement
     public const MAX_DEDUCTIONS = 8;
 
     private static ?bool $hasTable = null;
+    private static ?bool $hasMakers = null;
+
+    /**
+     * The two-person rule for money adjustments (15 Oct 2026, owner: "manual
+     * credit / debit with a reason AND admin approval"). Setting
+     * agent_adjust_two_step, OFF by default — off, nothing changes anywhere.
+     * On, for everyone but a super-admin:
+     *   - a commission add / deduct is STAGED on the agent's draft settlement
+     *     (stageAdjustment) instead of hitting the ledger;
+     *   - a cash-account correction needs a super-admin (the pages refuse it);
+     *   - approve() refuses the person who drafted or changed the draft's money.
+     * The ledger is then written only by markPaid(), as for every settlement.
+     */
+    public static function twoStepOn(): bool
+    {
+        return Settings::getBool('agent_adjust_two_step', false);
+    }
+
+    /** agent_settlements.adjusted_by exists (database/upgrade-2026-10-15-agents.sql). */
+    private static function hasMakerColumn(): bool
+    {
+        if (self::$hasMakers === null) {
+            try {
+                self::$hasMakers = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'agent_settlements' AND COLUMN_NAME = 'adjusted_by'",
+                    [], 0
+                ) > 0;
+            } catch (Throwable $e) {
+                self::$hasMakers = false;
+            }
+        }
+        return self::$hasMakers;
+    }
+
+    /**
+     * Everyone who put money on this settlement: the person who drafted it and
+     * anyone who later changed its deductions, bonus or cash lines.
+     *
+     * @return list<int>
+     */
+    public static function makersOf(array $row): array
+    {
+        $ids = [(int) ($row['created_by'] ?? 0)];
+        foreach (explode(',', (string) ($row['adjusted_by'] ?? '')) as $x) {
+            $ids[] = (int) $x;
+        }
+        return array_values(array_unique(array_filter($ids, static fn(int $i): bool => $i > 0)));
+    }
 
     public static function hasTable(): bool
     {
@@ -275,12 +323,99 @@ final class AgentSettlement
         $calc = self::compute((int) $row['agent_admin_id'], $from, $to);
         $ded  = $in['deductions'] ?? self::deductionsOf($row);
         $tot  = self::totals($calc, $ded, (float) ($in['bonus'] ?? $row['bonus']), (float) ($in['cash_offset'] ?? $row['cash_offset']), (float) ($in['cash_received'] ?? $row['cash_received']));
-        Database::update('agent_settlements', self::snapshotColumns($calc, $ded, $tot) + [
+        $cols = self::snapshotColumns($calc, $ded, $tot) + [
             'period_from' => $from,
             'period_to'   => $to,
             'bonus_note'  => Security::clean((string) ($in['bonus_note'] ?? $row['bonus_note']), 160),
             'notes'       => Security::clean((string) ($in['notes'] ?? $row['notes']), 500),
-        ], "id = :id AND status = 'draft'", ['id' => $id]);
+        ];
+        /* 15 Oct 2026 (two-person rule): whoever changes the money a person
+           typed on the draft — deductions, bonus, net-off, cash received —
+           joins its makers, and approve() will not take them as the checker.
+           A re-read of the ledger alone (approve's own refresh) changes none
+           of these, so it never marks anybody. */
+        if ($by > 0 && self::hasMakerColumn()) {
+            $changed = self::deductionsOf($row) != $ded
+                || abs((float) $row['bonus'] - $tot['bonus']) > 0.004
+                || abs((float) $row['cash_offset'] - $tot['cash_offset']) > 0.004
+                || abs((float) $row['cash_received'] - $tot['cash_received']) > 0.004;
+            if ($changed && !in_array($by, self::makersOf($row), true)) {
+                $cols['adjusted_by'] = mb_substr(trim((string) ($row['adjusted_by'] ?? '') . ',' . $by, ','), 0, 255);
+            }
+        }
+        Database::update('agent_settlements', $cols, "id = :id AND status = 'draft'", ['id' => $id]);
+    }
+
+    /**
+     * Stage a commission add / deduct on the agent's draft settlement instead
+     * of writing the ledger (15 Oct 2026, the two-person rule — see
+     * twoStepOn()). A deduction becomes one more deductions line, an addition
+     * goes onto the bonus with its reason; the agent's open draft is used, or
+     * a new one is drafted for their default period. Nothing moves until a
+     * DIFFERENT person approves and someone marks it paid.
+     *
+     * Refused, with a message the form shows: an approved settlement already
+     * waiting to be paid (pay or cancel it first), a deduction larger than the
+     * commission due, a ninth deduction line, a reason under 5 characters.
+     *
+     * @return array{id: int, created: bool, number: string}
+     */
+    public static function stageAdjustment(int $agentId, string $direction, float $amount, string $note, int $by): array
+    {
+        if (!self::hasTable()) {
+            throw new RuntimeException('Settlements are not set up on this database yet (run the 5 Oct migration).');
+        }
+        $amount = round(abs($amount), 2);
+        $note   = trim(Security::clean($note, 255));
+        $debit  = $direction === 'debit';
+        if ($amount <= 0) {
+            throw new RuntimeException('Enter an amount above zero.');
+        }
+        if (mb_strlen($note) < 5) {
+            throw new RuntimeException('Write a short reason (at least 5 characters) for this commission change.');
+        }
+        $open = Database::fetch(
+            "SELECT id, status, created_at FROM agent_settlements WHERE agent_admin_id = :a AND status IN ('draft','approved') ORDER BY id DESC LIMIT 1",
+            ['a' => $agentId]
+        );
+        if ($open !== null && $open['status'] === 'approved') {
+            throw new RuntimeException('Settlement ' . self::number($open) . ' is approved and waiting to be paid — mark it paid or cancel it, then add this change.');
+        }
+
+        if ($open === null) {
+            [$from, $to] = self::defaultPeriod($agentId);
+            $in = $debit
+                ? ['deductions' => [['label' => mb_substr($note, 0, 80), 'amount' => $amount]]]
+                : ['bonus' => $amount, 'bonus_note' => mb_substr($note, 0, 160)];
+            $id      = self::createDraft($agentId, $from, $to, $in, $by);   // totals() refuses a deduction above the commission due
+            $created = true;
+        } else {
+            $id  = (int) $open['id'];
+            $row = self::get($id);
+            if ($row === null) {
+                throw new RuntimeException('That settlement was not found.');
+            }
+            $ded = self::deductionsOf($row);
+            $in  = [];
+            if ($debit) {
+                if (count($ded) >= self::MAX_DEDUCTIONS) {
+                    throw new RuntimeException('Settlement ' . self::number($row) . ' already has ' . self::MAX_DEDUCTIONS . ' deductions — settle it first.');
+                }
+                $ded[] = ['label' => mb_substr($note, 0, 80), 'amount' => $amount];
+                $in['deductions'] = $ded;
+            } else {
+                $in['bonus']      = round((float) $row['bonus'] + $amount, 2);
+                $prevNote         = trim((string) ($row['bonus_note'] ?? ''));
+                $in['bonus_note'] = mb_substr(($prevNote !== '' ? $prevNote . '; ' : '') . $note, 0, 160);
+            }
+            self::updateDraft($id, $in, $by);   // totals() refuses a deduction above the commission due
+            $created = false;
+        }
+        $num = self::number(self::get($id) ?? ['id' => $id]);
+        Logger::audit('settlement.adjust_staged', 'settlement', (string) $id, null,
+            ['agent' => $agentId, 'change' => $debit ? -$amount : $amount, 'by' => $by, 'new_draft' => $created],
+            'commission ' . ($debit ? 'deduction' : 'addition') . ' staged on ' . $num . ' (two-person rule)', $note);
+        return ['id' => $id, 'created' => $created, 'number' => $num];
     }
 
     /** draft -> approved: the figures are re-read once more and frozen. */
@@ -289,6 +424,13 @@ final class AgentSettlement
         $row = self::get($id);
         if ($row === null || $row['status'] !== 'draft') {
             throw new RuntimeException('Only a draft can be approved.');
+        }
+        /* Maker-checker (15 Oct 2026, agent_adjust_two_step): with the rule on,
+           the person who drafted this settlement — or changed its money — is
+           not the one who approves it. A super-admin is exempt (the owner). */
+        if (self::twoStepOn() && $by > 0 && in_array($by, self::makersOf($row), true)
+            && (string) Database::scalar('SELECT role FROM admins WHERE id = :b', ['b' => $by], '') !== 'superadmin') {
+            throw new RuntimeException('Two-person rule: you drafted or changed ' . self::number($row) . ' — a different person must approve it.');
         }
         self::updateDraft($id, [], $by);
         $n = Database::run(
@@ -343,7 +485,10 @@ final class AgentSettlement
                payout typed on Agent 360). Never pay a figure it no longer backs. */
             $bal     = AgentWallet::balances($agentId);
             $needCom = round($net + $offset + (float) $row['deductions_total'] - (float) $row['bonus'], 2);
-            if ($needCom > (float) $bal['commission'] + 0.001) {
+            // 15 Oct 2026: a settlement that takes nothing from the commission
+            // account (a cash-collection draft, a bonus alone) is not stopped by
+            // a commission balance below zero (an open advance) — it needs none.
+            if ($needCom > 0.001 && $needCom > (float) $bal['commission'] + 0.001) {
                 throw new RuntimeException('The ledger changed after approval: only ' . inr((float) $bal['commission'])
                     . ' is owed now, this settlement needs ' . inr($needCom) . '. Cancel it and draft a new one.');
             }

@@ -12,7 +12,7 @@ require_once INCLUDE_PATH . '/waroute.php';
 require_once INCLUDE_PATH . '/walocal.php';
 require_once INCLUDE_PATH . '/wabot.php';
 require_once INCLUDE_PATH . '/wahabit.php';
-if (stripos((string) DB_NAME, 'test') === false) { exit("Refusing: DB_NAME must be a test database.\n"); }
+if (stripos((string) DB_NAME, 'test') === false && !str_starts_with((string) DB_NAME, 'lt_')) { exit("Refusing: DB_NAME must be a test database.\n"); }
 
 $PASS = 0; $FAIL = 0;
 function check(string $l, bool $ok, string $extra = ''): void {

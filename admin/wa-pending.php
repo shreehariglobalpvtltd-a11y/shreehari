@@ -27,6 +27,10 @@ require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/notify.php';
 
 $canSend = Auth::isSuperadmin() || Auth::can('bookings.edit') || Auth::can('payments.verify');
+/* 15 Oct 2026 (2G-retry-share): "Resend" posts to booking-view.php's own
+   resend_wa - the same handler, gate (payments.verify) and send path as the
+   button on the booking page; nothing new sends from here. */
+$canResend = Auth::isSuperadmin() || Auth::can('payments.verify');
 $flash   = null;
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -138,6 +142,7 @@ admin_header('Tickets to hand over', 'wa-pending');
   <em>Handed over</em> so the passenger drops off this list.
 </div>
 
+<div class="tbl-scroll"><!-- 15 Oct 2026: the extra Resend button must not push a phone into a page-wide scroll -->
 <table class="dt">
   <thead><tr>
     <th>PNR</th><th>Travel</th><th>Phone</th><th>Amount</th><th>Last attempt</th><th style="min-width:260px">Action</th>
@@ -169,6 +174,13 @@ admin_header('Tickets to hand over', 'wa-pending');
         <div><?= Security::e(mb_substr((string) $r['last_error'], 0, 60)) ?></div>
       </td>
       <td>
+        <?php if ($canResend): ?>
+          <form method="post" action="booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>" style="display:inline">
+            <?= Security::csrfField() ?>
+            <input type="hidden" name="action" value="resend_wa">
+            <button class="btn ghost" type="submit" title="Try the automatic WhatsApp send again">↻ Resend</button>
+          </form>
+        <?php endif; ?>
         <?php if ($link !== ''): ?>
           <a class="btn" href="<?= Security::e($link) ?>" target="_blank" rel="noopener">💬 Send on WhatsApp</a>
           <?php if ($canSend): ?>
@@ -186,5 +198,6 @@ admin_header('Tickets to hand over', 'wa-pending');
   <?php endforeach; endif; ?>
   </tbody>
 </table>
+</div>
 
 <?php admin_footer(); ?>

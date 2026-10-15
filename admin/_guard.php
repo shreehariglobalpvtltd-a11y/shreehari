@@ -604,6 +604,13 @@ function admin_mobile_nav(array $items, string $active = ''): string
        counter - no dashboard.view) gets the Map in slot four, where its
        passengers by pickup and the live bus are; the office keeps money. */
     $home    = Auth::isCounterAgent() ? $find('agent.php') : $find('index.php');
+    /* 15 Oct 2026 (owner: counter landing): a counter clerk has no
+       dashboard.view, so index.php is not in its menu and the Home slot was
+       an empty hole - Home is the desk's sale screen (SmartBook), else the
+       tickets register. */
+    if ($home === null && (string) (Auth::admin()['role'] ?? '') === 'counter') {
+        $home = $find('smartbook.php') ?? $find('bookings.php');
+    }
     $tickets = $find('bookings.php');
     $new     = $find('quick-ticket.php') ?? $find('/index.php?counter=1#/');
     $desk    = !Auth::can('dashboard.view');

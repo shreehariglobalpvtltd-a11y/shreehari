@@ -54,7 +54,7 @@ switch ($preset) {
    zero rather than vanishing — a missing agent reads as a data bug, and
    "sold nothing this month" is exactly what a supervisor needs to see. */
 $rows = Database::fetchAll(
-    "SELECT a.id, a.username, a.full_name, a.is_active,
+    "SELECT a.id, a.username, a.full_name, a.is_active, a.created_at,
             COALESCE(COUNT(b.id), 0) AS tickets,
             COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN 1 ELSE 0 END), 0) AS confirmed,
             COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.total_amount ELSE 0 END), 0) AS revenue,
@@ -64,7 +64,7 @@ $rows = Database::fetchAll(
               ON b.sold_by_admin_id = a.id
              AND b.created_at >= :from AND b.created_at < :to
       WHERE a.role = 'agent'
-      GROUP BY a.id, a.username, a.full_name, a.is_active",
+      GROUP BY a.id, a.username, a.full_name, a.is_active, a.created_at",
     ['from' => $from, 'to' => $to]
 );
 
@@ -82,6 +82,38 @@ $commissionBy = [];
 foreach ($commissionRows as $c) {
     $commissionBy[(int) $c['agent_admin_id']] = (float) $c['earned'];
 }
+
+/* 15 Oct 2026 (owner, Agent Management): the ticket cash each agent holds
+   RIGHT NOW (the cash account's balance, whatever the window) and the day of
+   their last sale ever — the two facts the Cash held column and the Low flag
+   read. Two grouped reads, nothing written. */
+$cashBy = [];
+try {
+    foreach (Database::fetchAll(
+        "SELECT agent_admin_id, COALESCE(SUM(amount), 0) AS bal FROM agent_ledger WHERE account = 'cash' GROUP BY agent_admin_id"
+    ) as $c) {
+        $cashBy[(int) $c['agent_admin_id']] = round((float) $c['bal'], 2);
+    }
+} catch (Throwable $e) {
+    $cashBy = [];
+}
+$lastSaleBy = [];
+foreach (Database::fetchAll(
+    'SELECT sold_by_admin_id AS id, MAX(created_at) AS last_sale FROM bookings WHERE sold_by_admin_id IS NOT NULL GROUP BY sold_by_admin_id'
+) as $ls) {
+    $lastSaleBy[(int) $ls['id']] = (string) $ls['last_sale'];
+}
+require_once INCLUDE_PATH . '/adminalerts.php';
+$idleDays   = max(1, (int) (AdminAlerts::prefs()['agent_inactive']['days'] ?? 7));
+$idleCut    = addDaysISO($today, -$idleDays) . ' 00:00:00';
+$target     = Settings::getFloat('agent_target_monthly', 0.0);
+$lowPct     = max(0, min(100, Settings::getInt('agent_low_perf_pct', 30)));
+// The share of the monthly target this window should have reached: the
+// window's days / 30 (the open month counts only the days gone). "All time"
+// has no month to scale to, so only inactivity marks an agent Low there.
+$windowDays = (int) max(1, round(((int) strtotime($to) - (int) strtotime($from)) / 86400));
+$targetBar  = ($target > 0 && $preset !== 'all') ? $target * $windowDays / 30 * $lowPct / 100 : 0.0;
+$limBy      = AgentWallet::cashLimitMap(array_map(static fn(array $r): int => (int) $r['id'], $rows));
 
 /* 5 Oct 2026 (owner's Point 4): passengers carried, repeat customers and the
    cancellation rate per agent, same window. A repeat customer = a phone number
@@ -129,11 +161,38 @@ foreach ($rows as &$r) {
     $r['repeaters']  = $repeatBy[(int) $r['id']]['repeaters'] ?? 0;
     $r['cancelPct']  = (int) $r['tickets'] > 0 ? round((int) $r['cancelled'] * 100 / (int) $r['tickets'], 1) : 0.0;
     $r['repeatPct']  = $r['customers'] > 0 ? round($r['repeaters'] * 100 / $r['customers'], 1) : 0.0;
+    // Cash held now, red above the agent's limit (own, else default, else the cash alert's amount).
+    $r['cash']       = max(0.0, $cashBy[(int) $r['id']] ?? 0.0);
+    $r['cash_lim']   = (float) ($limBy[(int) $r['id']] ?? 0);
+    $r['over_cash']  = $r['cash_lim'] > 0.009 && $r['cash'] > $r['cash_lim'] + 0.009;
+    /* Low performer (display only): an ACTIVE agent below the target share
+       for this window (agent_target_monthly x days/30 x agent_low_perf_pct %,
+       when a target is set), or with no sale for the inactivity days of the
+       alert — counting one who never sold once they are older than those days
+       (the same grace the bell gives a new agent). */
+    $last            = $lastSaleBy[(int) $r['id']] ?? '';
+    $r['last_sale']  = $last;
+    $r['low_why']    = '';
+    if ((int) $r['is_active'] === 1) {
+        if ($targetBar > 0 && $r['revenue'] < $targetBar) {
+            $r['low_why'] = 'below ' . $lowPct . '% of the target for this window (' . inr($targetBar) . ')';
+        } elseif ($last !== '' && $last < $idleCut) {
+            $r['low_why'] = 'no sale since ' . formatDate(substr($last, 0, 10));
+        } elseif ($last === '' && (string) ($r['created_at'] ?? '') !== '' && (string) $r['created_at'] < $idleCut) {
+            $r['low_why'] = 'has never sold';
+        }
+    }
+    $r['low'] = $r['low_why'] !== '';
 }
 unset($r);
 
+// "Low performers only" (15 Oct 2026) — hides the other rows of the board
+// (each keeps its real rank); totals, the leader and the comparison are unchanged.
+$lowOnly = ($_GET['low'] ?? '') === '1';
+$lowN    = count(array_filter($rows, static fn(array $r): bool => $r['low']));
+
 $metric  = (string) ($_GET['by'] ?? 'revenue');
-$metrics = ['revenue' => 'Top revenue', 'confirmed' => 'Top sales (tickets)', 'commission' => 'Top commission', 'seats' => 'Most passengers', 'lowcancel' => 'Lowest cancellation', 'repeaters' => 'Most repeat customers'];
+$metrics = ['revenue' => 'Top revenue', 'confirmed' => 'Top sales (tickets)', 'commission' => 'Top commission', 'seats' => 'Most passengers', 'lowcancel' => 'Lowest cancellation', 'repeaters' => 'Most repeat customers', 'cash' => 'Most cash held'];
 if (!isset($metrics[$metric])) {
     $metric = 'revenue';
 }
@@ -210,6 +269,8 @@ admin_header('Agent Ranking', 'agent-ranking');
     <?php endforeach; ?>
   </select>
   <?php foreach ($cmpIds as $__c): ?><input type="hidden" name="cmp[]" value="<?= (int) $__c ?>"><?php endforeach; ?>
+  <label style="display:inline-flex;flex-direction:row;gap:8px;align-items:center;font-size:13px;min-height:44px" title="<?= Security::e($targetBar > 0 ? 'Below ' . $lowPct . '% of the target for this window, or no sale for ' . $idleDays . '+ days' : 'No sale for ' . $idleDays . '+ days (set agent_target_monthly to also flag sellers below target)') ?>">
+    <input type="checkbox" name="low" value="1" style="width:20px;height:20px;min-height:0;flex:none"<?= $lowOnly ? ' checked' : '' ?>> Low performers only<?= $lowN > 0 ? ' (' . $lowN . ')' : '' ?></label>
   <button class="btn" type="submit">Apply</button>
   <?php
     $pdfQs = ['range' => $preset, 'from' => $customFrom, 'to' => $customTo, 'by' => $metric, 'format' => 'pdf'];
@@ -298,31 +359,37 @@ admin_header('Agent Ranking', 'agent-ranking');
 
 <form method="get" id="cmpForm" class="panel">
   <input type="hidden" name="range" value="<?= Security::e($preset) ?>"><input type="hidden" name="by" value="<?= Security::e($metric) ?>">
+  <?php if ($lowOnly): ?><input type="hidden" name="low" value="1"><?php endif; ?>
   <?php if ($preset === 'custom'): ?><input type="hidden" name="from" value="<?= Security::e($customFrom) ?>"><input type="hidden" name="to" value="<?= Security::e($customTo) ?>"><?php endif; ?>
   <h2>📊 Leaderboard — <?= Security::e($metrics[$metric]) ?> <span class="muted" style="font-size:12.5px;font-weight:400">· tick 2 or 3 agents to compare them side by side</span></h2>
   <div class="tbl-scroll"><table>
     <thead><tr>
       <th style="width:34px"><span class="sr-only">Compare</span>⚖️</th><th style="width:56px">#</th><th>Agent</th><th>Code</th><th>Tickets</th><th>Pax</th><th>Revenue</th>
-      <th>Avg ticket</th><th>Cancel %</th><th>Repeat customers</th><th>Commission</th><th style="width:16%">Share of revenue</th>
+      <th>Avg ticket</th><th>Cancel %</th><th>Repeat customers</th><th>Commission</th><th>Cash held</th><th style="width:16%">Share of revenue</th>
     </tr></thead>
     <tbody>
     <?php if ($rows === []): ?>
-      <tr><td colspan="12" class="muted" style="padding:22px;text-align:center">
-        No agents yet. Create one under Staff &amp; Agents.
+      <tr><td colspan="13" class="muted" style="padding:22px;text-align:center">
+        No agents yet. Create one with Quick add on the Agents register.
       </td></tr>
-    <?php elseif (!$hasAny): ?>
-      <tr><td colspan="12" class="muted" style="padding:22px;text-align:center">
+    <?php elseif (!$hasAny && !$lowOnly): ?>
+      <tr><td colspan="13" class="muted" style="padding:22px;text-align:center">
         No sales in this window — try a wider range.
+      </td></tr>
+    <?php elseif ($lowOnly && $lowN === 0): ?>
+      <tr><td colspan="13" class="muted" style="padding:22px;text-align:center">
+        No low performer in this window. 🎉
       </td></tr>
     <?php else:
       $medals = ['🥇', '🥈', '🥉'];
       foreach ($rows as $i => $r):
+        if ($lowOnly && !$r['low']) { continue; }
         $share = $totalRevenue > 0 ? (int) round($r['revenue'] * 100 / $totalRevenue) : 0;
     ?>
       <tr>
         <td data-label="Compare"><input type="checkbox" class="cmp-pick" name="cmp[]" value="<?= (int) $r['id'] ?>"<?= in_array((int) $r['id'], $cmpIds, true) ? ' checked' : '' ?> aria-label="Compare <?= Security::e((string) ($r['full_name'] ?: $r['username'])) ?>"></td>
         <td style="font-size:17px"><?= $medals[$i] ?? '<span class="muted" style="font-size:14px">' . ($i + 1) . '</span>' ?></td>
-        <td><strong><?= Security::e((string) ($r['full_name'] ?: $r['username'])) ?></strong>
+        <td><strong><?= Security::e((string) ($r['full_name'] ?: $r['username'])) ?></strong><?php if ($r['low']): ?> <span class="pill st-bad" style="font-size:10.5px" title="<?= Security::e('Low: ' . $r['low_why']) ?>">Low</span><?php endif; ?>
           <div class="muted mono" style="font-size:11px"><?= Security::e((string) $r['username']) ?><?= (int) $r['is_active'] === 1 ? '' : ' · inactive' ?></div></td>
         <td class="mono"><?= Security::e(AgentWallet::agentCodeLabel((int) $r['id'])) ?></td>
         <td><?= (int) $r['confirmed'] ?>
@@ -335,6 +402,7 @@ admin_header('Agent Ranking', 'agent-ranking');
         <td style="font-weight:700;color:<?= $r['cancelPct'] > 20 ? '#DC3B3B' : ($r['cancelPct'] > 0 ? '#B26A00' : 'inherit') ?>"><?= (int) $r['tickets'] > 0 ? $r['cancelPct'] . '%' : '—' ?></td>
         <td><?= $r['customers'] > 0 ? (int) $r['repeaters'] . ' <span class="muted">of ' . (int) $r['customers'] . ' · ' . $r['repeatPct'] . '%</span>' : '—' ?></td>
         <td style="color:#0a6b3b;font-weight:700"><?= Security::e(inr((float) $r['commission'])) ?></td>
+        <td<?= $r['over_cash'] ? ' style="color:#DC3B3B;font-weight:800" title="' . Security::e('Over the ' . inr($r['cash_lim']) . ' cash limit') . '"' : '' ?>><?= $r['cash'] > 0.009 ? Security::e(inr($r['cash'])) : '<span class="muted">—</span>' ?><?= $r['over_cash'] ? '<div style="font-size:11px">over ' . Security::e(inr($r['cash_lim'])) . '</div>' : '' ?></td>
         <td>
           <div style="height:7px;border-radius:99px;background:var(--line);overflow:hidden" title="<?= $share ?>%">
             <div style="width:<?= $share ?>%;height:100%;background:<?= $i === 0 ? '#d4af37' : '#2E5FA8' ?>"></div>

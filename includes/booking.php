@@ -2593,12 +2593,43 @@ final class BookingService
                 );
             }
 
+            /* 15 Oct 2026 (owner: refunds are settled by hand - a figure the
+               refund desk shows must never silently vanish). A per-seat cancel
+               (cancelSeat) PARKS its seat's refund in refund_amount; cancelling
+               the rest used to OVERWRITE it with the slab of the remaining
+               total, so the earlier seat's pending refund disappeared from
+               admin/refunds.php - and a refund the owner had already PAID
+               ('processed') flipped back to 'pending' with another amount.
+               Now: a pending refund grows by this cancel's slab; a processed
+               one stays processed and untouched, and the new remainder is
+               written into the audit detail and the office bell for the owner
+               to settle by hand. 'none' / 'denied' behave as before. Only the
+               future changes - no stored row is rewritten. */
+            $prevRefund = round((float) ($booking['refund_amount'] ?? 0), 2);
+            $prevStatus = (string) ($booking['refund_status'] ?? 'none');
+            $refundNote = '';
+            if ($prevStatus === 'processed') {
+                $newRefundAmount = $prevRefund;
+                $newRefundStatus = 'processed';
+                if ($refund['amount'] > 0) {
+                    $refundNote = ' | earlier refund ' . inr($prevRefund) . ' already processed - remainder '
+                        . inr($refund['amount']) . ' NOT added, settle by hand';
+                }
+            } elseif ($prevStatus === 'pending' && $prevRefund > 0) {
+                $newRefundAmount = round($prevRefund + $refund['amount'], 2);
+                $newRefundStatus = 'pending';
+                $refundNote      = ' | added to the pending per-seat refund ' . inr($prevRefund) . ' = ' . inr($newRefundAmount);
+            } else {
+                $newRefundAmount = $refund['amount'];
+                $newRefundStatus = $refund['amount'] > 0 ? 'pending' : 'none';
+            }
+
             Database::update('bookings', [
                 'status'        => 'cancelled',
                 'cancel_reason' => Security::clean($reason, 255),
                 'cancelled_at'  => date('Y-m-d H:i:s'),
-                'refund_amount' => $refund['amount'],
-                'refund_status' => $refund['amount'] > 0 ? 'pending' : 'none',
+                'refund_amount' => $newRefundAmount,
+                'refund_status' => $newRefundStatus,
             ], 'id = :id', ['id' => $booking['id']]);
 
             Seats::releaseBooking((int) $booking['id']);
@@ -2619,14 +2650,21 @@ final class BookingService
             if ($via === 'undo' && $refund['amount'] <= 0) {
                 self::notifyAdmin('↩️', 'Ticket undone · ' . $pnr, 'The passenger undid this QuickBot ticket inside the free window — seat released, nothing to refund.', (int) $booking['id']);
             } else {
-                self::notifyAdmin('🚫', 'Booking cancelled · ' . $pnr, ucfirst($actor) . ' cancelled. Refund due: ' . inr($refund['amount']), (int) $booking['id']);
+                self::notifyAdmin('🚫', 'Booking cancelled · ' . $pnr, ucfirst($actor) . ' cancelled. Refund due: ' . inr($refund['amount']) . $refundNote, (int) $booking['id']);
             }
 
             // The ticket must stop looking live (R3f, G6): voided, rendered
             // PNG/PDF/invoice removed, audited — after this commit.
             TicketSync::afterBookingChange((int) $booking['id'], 'void', [], ['reason' => $reason, 'actor' => $actor]);
 
-            Logger::audit('booking.cancel', 'booking', $pnr, null, null, $reason . ' | refund ' . inr($refund['amount']), $reason);
+            // 15 Oct 2026: the trail keeps what the ticket WAS (status, amount,
+            // refund) - it used to store null on both sides.
+            Logger::audit('booking.cancel', 'booking', $pnr,
+                ['status' => (string) $booking['status'], 'amount' => (float) $booking['total_amount'],
+                 'refund_amount' => $prevRefund, 'refund_status' => $prevStatus],
+                ['status' => 'cancelled', 'refund' => (float) $refund['amount'],
+                 'refund_amount' => $newRefundAmount, 'refund_status' => $newRefundStatus],
+                $reason . ' | refund ' . inr($refund['amount']) . $refundNote, $reason);
 
             return [
                 'booking' => Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $booking['id']]),
@@ -2646,6 +2684,27 @@ final class BookingService
         }
 
         return $result;
+    }
+
+    /**
+     * One more line on an internal note column (bookings.admin_note is
+     * VARCHAR(255)) - APPENDED, never replacing what is there (15 Oct 2026,
+     * Quick Edit remarks; the per-seat cancel log shares the column). When
+     * the column would overflow, the OLDEST lines are dropped first so the
+     * newest remark always fits; a single line longer than the column is cut.
+     */
+    public static function appendNote(string $old, string $line, int $max = 255): string
+    {
+        $line = trim(str_replace(["\r", "\n"], ' ', $line));
+        $note = trim(trim($old) . "\n" . $line);
+        if (mb_strlen($note) <= $max) {
+            return $note;
+        }
+        $lines = array_values(array_filter(explode("\n", $note), static fn(string $l): bool => trim($l) !== ''));
+        while (count($lines) > 1 && mb_strlen(implode("\n", $lines)) > $max) {
+            array_shift($lines);
+        }
+        return mb_substr(implode("\n", $lines), 0, $max);
     }
 
     /**
@@ -2841,6 +2900,13 @@ final class BookingService
             $locked = Database::fetchForUpdate('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId])[0] ?? null;
             if ($locked === null) { throw new RuntimeException('Booking not found.'); }
 
+            // 15 Oct 2026: who sat here, read BEFORE the row goes - the audit
+            // below keeps the cancelled passenger's identity (it was lost).
+            $gonePax = Database::fetch(
+                'SELECT full_name, gender, age FROM booking_passengers WHERE booking_id = :b AND seat_no = :s LIMIT 1',
+                ['b' => $bookingId, 's' => $seatNo]
+            ) ?? [];
+
             // 1) Release the single seat.
             Seats::releaseSingleSeat($bookingId, $seatNo);
 
@@ -2860,7 +2926,9 @@ final class BookingService
                 'refund_amount' => $newRefundTotal,
                 'refund_status' => $newRefundTotal > 0 ? 'pending' : ($locked['refund_status'] ?? 'none'),
                 'updated_at'    => date('Y-m-d H:i:s'),
-                'admin_note'    => trim(($locked['admin_note'] ?? '') . "\n" . 'Seat ' . $seatNo . ' cancelled' . ($reason !== '' ? ': ' . $reason : '') . ' [' . date('j M H:i') . ']'),
+                // appendNote keeps the newest lines inside the 255-character
+                // column (strict mode refused the whole cancel once it filled).
+                'admin_note'    => self::appendNote((string) ($locked['admin_note'] ?? ''), 'Seat ' . $seatNo . ' cancelled' . ($reason !== '' ? ': ' . $reason : '') . ' [' . date('j M H:i') . ']'),
             ], 'id = :id', ['id' => $bookingId]);
 
             // 4) Update the outbound leg's seat_count.
@@ -2935,9 +3003,10 @@ final class BookingService
             ], ['reason' => $reason]);
 
             Logger::audit('booking.cancel_seat', 'booking', (string) $locked['pnr'],
-                ['seat' => $seatNo, 'seats_before' => $seatCount, 'total_before' => (float) $locked['total_amount']],
+                ['seat' => $seatNo, 'seats_before' => $seatCount, 'total_before' => (float) $locked['total_amount'],
+                 'passenger' => $gonePax['full_name'] ?? null, 'gender' => $gonePax['gender'] ?? null, 'age' => $gonePax['age'] ?? null],
                 ['seats_after' => $seatCount - 1, 'total_after' => $newTotal, 'refund' => $refund['amount']],
-                'Per-seat cancel by admin #' . $adminId . ($reason !== '' ? ' · ' . $reason : ''));
+                'Per-seat cancel by admin #' . $adminId . ($reason !== '' ? ' · ' . $reason : ''), $reason);
 
             return [
                 'booking'       => Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId]) ?? [],

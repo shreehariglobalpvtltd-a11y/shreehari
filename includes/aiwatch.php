@@ -11,12 +11,14 @@
  *
  *    office — payments to verify, buses/drivers missing on a running
  *             trip, a bus that is filling slowly (or nearly full), failed
- *             WhatsApp tickets, agents sitting on cash, refunds due,
- *             support / offline-desk / enquiry queues, yesterday's
+ *             WhatsApp tickets, agents sitting on cash, payouts asked for
+ *             or overdue, refunds due, customers asking to cancel / for a
+ *             refund, support / offline-desk / enquiry queues, yesterday's
  *             expenses not entered, a pickup with no time, unpaid staff.
  *    seller — their own bookings waiting for payment, cash to hand over,
  *             passengers travelling tomorrow, free berths on the next bus,
- *             commission earned this month.
+ *             commission earned this month (agents; a counter clerk's
+ *             cards open the counter's own screens — 15 Oct 2026).
  *
  *  Rules, not a language model: every line is a fact read from the DB a
  *  moment ago, so it is instant, free, never wrong about a number and
@@ -43,6 +45,9 @@ final class AiWatch
     /** @var null|callable(string):bool */
     private static $can = null;
 
+    /** Role of the seller forSeller() is building for ('agent', 'counter' …). */
+    private static string $sellerRole = '';
+
     /**
      * The office list (owner, manager, accountant …).
      *
@@ -55,7 +60,7 @@ final class AiWatch
         $out = [];
         foreach ([
             'pendingPayments', 'tripsMissingCrew', 'seatFill', 'waFailed',
-            'agentCash', 'refundsDue', 'supportOpen', 'offlineDesk',
+            'agentCash', 'payoutsDue', 'refundsDue', 'cancelRequests', 'supportOpen', 'offlineDesk',
             'enquiriesNew', 'expensesMissing', 'pickupTimes', 'payrollDue',
         ] as $watcher) {
             try {
@@ -73,12 +78,33 @@ final class AiWatch
     /**
      * One seller's own list (agent / counter): only their book, their cash.
      *
+     * 15 Oct 2026 (owner: "a counter's cards must open a page the counter
+     * may use"): a counter clerk holds no commissions.view, so the agent
+     * pages (agent.php, agent-passengers.php, agent-sales.php) refuse it.
+     * For role 'counter' the cash card opens the cash book (or the shift
+     * screen when shifts are on), tomorrow's card opens tomorrow's manifest,
+     * the pending card opens only the clerk's own pending tickets, and the
+     * commission card is skipped. An agent's list is unchanged.
+     *
+     * @param ?string $role the seller's role; null = read it from admins
      * @return list<array{key:string,level:string,icon:string,title:string,detail:string,href:string,cta:string}>
      */
-    public static function forSeller(int $adminId): array
+    public static function forSeller(int $adminId, ?string $role = null): array
     {
+        if ($role === null) {
+            try {
+                $role = (string) (Database::scalar('SELECT role FROM admins WHERE id = :a', ['a' => $adminId], '') ?? '');
+            } catch (Throwable $e) {
+                $role = '';
+            }
+        }
+        self::$sellerRole = $role;
+        $watchers = ['sellerPending', 'sellerCash', 'sellerTomorrow', 'nextBusFree'];
+        if ($role !== 'counter') {
+            $watchers[] = 'sellerMonth';   // a counter's commission is not settled to the clerk
+        }
         $out = [];
-        foreach (['sellerPending', 'sellerCash', 'sellerTomorrow', 'nextBusFree', 'sellerMonth'] as $watcher) {
+        foreach ($watchers as $watcher) {
             try {
                 foreach (self::$watcher($adminId) as $s) {
                     $out[] = $s;
@@ -87,6 +113,7 @@ final class AiWatch
                 // see forOffice()
             }
         }
+        self::$sellerRole = '';
         return self::rank($out);
     }
 
@@ -94,23 +121,30 @@ final class AiWatch
      *  Office watchers — each returns 0..n suggestions
      * ================================================================= */
 
-    /** Payment proofs (UTR / screenshot) waiting for a person. */
+    /**
+     * Payment proofs (UTR / screenshot) waiting for a person.
+     *
+     * 15 Oct 2026: counts exactly the list the button opens — Verify
+     * Payments' default "Proof received" view (proofsWaiting()). It used to
+     * count every payments row still 'pending', so it said "5 waiting" over
+     * a page that listed 2 (holds with no UTR yet, old retries).
+     */
     private static function pendingPayments(): array
     {
         if (!self::can('payments.view')) {
             return [];
         }
-        $r = Database::fetch("SELECT COUNT(*) AS n, MIN(created_at) AS oldest FROM payments WHERE status = 'pending'");
-        $n = (int) ($r['n'] ?? 0);
+        $r = self::proofsWaiting();
+        $n = $r['n'];
         if ($n === 0) {
             return [];
         }
-        $mins = self::minutesSince((string) ($r['oldest'] ?? ''));
+        $mins = self::minutesSince($r['oldest']);
         $out = [self::item(
             'pay', $mins >= 15 ? 'high' : 'warn', '💳',
             $n . ' payment' . self::s($n) . ' waiting to be verified',
             'Oldest ' . self::ago($mins) . '. The passenger has no confirmed ticket until someone checks the UTR / screenshot.',
-            '/admin/payments.php', 'Verify now'
+            '/admin/payments.php?tab=pending&sub=proof', 'Verify now'
         )];
 
         /* 9 Oct 2026 (anti-fake): HIGH-risk proofs among them (duplicate UTR,
@@ -218,7 +252,9 @@ final class AiWatch
             $when = self::dayWord((string) $t['travel_date']) . ' ' . self::hm((string) $t['dep']);
             $trip = $t['from_city'] . ' → ' . $t['to_city'];
             $hrs  = (int) $t['_hours'];
-            if ($pct >= 90) {
+            // 15 Oct 2026: "Plan extra bus" opens Bus Fleet (schedules.view) —
+            // a support / viewer desk without it was handed a refused page.
+            if ($pct >= 90 && self::can('schedules.view')) {
                 $out[] = self::item(
                     'full-' . (int) $t['id'], 'info', '🔥',
                     $when . ' ' . $trip . ' is ' . $pct . '% full — only ' . $free . ' berth' . self::s($free) . ' left',
@@ -310,19 +346,22 @@ final class AiWatch
                     '/admin/agent.php?agent=' . (int) $o['id'], 'Open agent'
                 )];
             }
+            /* 15 Oct 2026: "See who" opens Settlements → Waiting to be settled
+               (commissions.view, the gate of this card). It opened Accounting,
+               which needs reports.view — the operations desk got a refusal. */
             $sum = array_sum(array_map(static fn(array $o): float => (float) $o['bal'], $overdue));
             return [self::item(
                 'cash', 'warn', '💰',
                 count($overdue) . ' agents are past the hand-over date with ' . inr($sum) . ' cash',
-                'Oldest first in Accounting → "Agents holding our cash".',
-                '/admin/accounting.php', 'See who'
+                'Longest-waiting first in Settlements → "Waiting to be settled".',
+                '/admin/settlements.php?tab=pending', 'See who'
             )];
         }
         return [self::item(
             'cash', 'info', '💰',
             'Agents are holding ' . inr($total) . ' of ticket cash',
             count($rows) . ' agent' . self::s(count($rows)) . ' — collect it at the next hand-over.',
-            '/admin/accounting.php', 'See who'
+            '/admin/settlements.php?tab=pending', 'See who'
         )];
     }
 
@@ -344,14 +383,79 @@ final class AiWatch
         )];
     }
 
+    /**
+     * Agents who asked for their commission, or have waited longer than the
+     * office's own due days (15 Oct 2026, owner: "pending payouts on the
+     * dashboard"). Advisory only: paying stays commissions.pay → approve →
+     * "Mark paid" in Settlements; this card moves no money.
+     */
+    private static function payoutsDue(): array
+    {
+        if (!self::can('commissions.view')) {
+            return [];
+        }
+        $p = self::payoutCounts();
+        if ($p['requests'] === 0 && $p['late'] === 0) {
+            return [];
+        }
+        $bits = [];
+        if ($p['requests'] > 0) {
+            $bits[] = $p['requests'] . ' payout request' . self::s($p['requests']) . ' open · ' . inr($p['requestAmt']);
+        }
+        if ($p['late'] > 0) {
+            $bits[] = $p['late'] . ' agent' . self::s($p['late']) . ' owed commission for over ' . $p['dueDays'] . ' days · ' . inr($p['lateAmt']);
+        }
+        return [self::item(
+            'payouts', 'warn', '🧾',
+            implode(' · ', $bits),
+            'Settle them in Settlements: draft → approve → pay → "Mark paid". Nothing is paid from this card.',
+            '/admin/settlements.php?tab=pending', 'Open settlements'
+        )];
+    }
+
+    /**
+     * Customers asking to cancel or for their money back (15 Oct 2026):
+     * a code-verified WhatsApp cancel request (ticket_edit_audit, includes/
+     * waedit.php) on a booking that is still live, and Help Desk tickets
+     * filed under Refund / cancel that are open or being worked on.
+     * Advisory only — the office settles every cancel and refund by hand;
+     * nothing here cancels a seat or touches a refund.
+     */
+    private static function cancelRequests(): array
+    {
+        $c   = self::cancelRequestCounts();
+        $out = [];
+        if ($c['wa'] > 0 && self::can('bookings.view')) {
+            $one = $c['wa'] === 1 && $c['waPnr'] !== '';
+            $out[] = self::item(
+                'cancel-req', 'warn', '📝',
+                $c['wa'] . ' passenger' . self::s($c['wa']) . ' asked on WhatsApp to cancel' . ($one ? ' · ' . $c['waPnr'] : ''),
+                'Code-verified requests on tickets that are still live. The office settles the cancel and any refund by hand — call the passenger first.',
+                $one ? '/admin/booking-view.php?pnr=' . rawurlencode($c['waPnr']) : '/admin/wa-routing.php',
+                $one ? 'Open ticket' : 'See requests'
+            );
+        }
+        if ($c['desk'] > 0 && self::can('support.view')) {
+            $out[] = self::item(
+                'refund-req', $c['deskHot'] > 0 ? 'high' : 'warn', '🙋',
+                $c['desk'] . ' refund / cancel request' . self::s($c['desk']) . ' at the Help Desk',
+                'Open or being worked on. Reply to the customer; the money is settled by hand on Refunds.',
+                '/admin/support-inbox.php?cat=refund', 'Reply'
+            );
+        }
+        return $out;
+    }
+
     private static function supportOpen(): array
     {
         if (!self::can('support.view')) {
             return [];
         }
+        // 15 Oct 2026: Refund / cancel tickets have their own line now
+        // (cancelRequests), so they are not counted twice here.
         $r = Database::fetch(
             "SELECT COUNT(*) AS n, COALESCE(SUM(priority IN ('high','urgent')), 0) AS hot, MIN(created_at) AS oldest
-               FROM support_tickets WHERE status = 'open'"
+               FROM support_tickets WHERE status = 'open' AND COALESCE(category, '') <> 'refund'"
         );
         $n = (int) ($r['n'] ?? 0);
         if ($n === 0) {
@@ -491,11 +595,13 @@ final class AiWatch
         if ($n === 0) {
             return [];
         }
+        // A counter's register is the whole company's; mine=1 narrows it to
+        // the clerk's own sales (an agent's register is scoped already).
         return [self::item(
             'my-pending', 'warn', '⏳',
             $n . ' of your booking' . self::s($n) . ' still wait for payment',
             'The seat is only held — collect the payment or the hold runs out.',
-            '/admin/bookings.php?status=pending', 'Open'
+            self::$sellerRole === 'counter' ? '/admin/bookings.php?status=pending&mine=1' : '/admin/bookings.php?status=pending', 'Open'
         )];
     }
 
@@ -506,9 +612,25 @@ final class AiWatch
             return [];
         }
         $days = AgentWallet::settlementOverdueDays($adminId);
+        $title = 'You hold ' . inr($cash) . ' ticket cash' . ($days > 0 ? ' — ' . $days . ' day' . self::s($days) . ' past hand-over' : '');
+        if (self::$sellerRole === 'counter') {
+            // The wallet page refuses a counter; the desk's own cash screens do not.
+            $shift = false;
+            try {
+                require_once __DIR__ . '/countershift.php';
+                $shift = CounterShift::enabled();
+            } catch (Throwable $e) {
+                $shift = false;
+            }
+            return [self::item(
+                'my-cash', $days > 0 ? 'warn' : 'info', '💰', $title,
+                'Hand it to the office at the end of your shift (or pay it in by UPI).',
+                $shift ? '/admin/shift.php' : '/admin/cash-book.php?status=collected',
+                $shift ? 'My shift' : 'Cash book'
+            )];
+        }
         return [self::item(
-            'my-cash', $days > 0 ? 'warn' : 'info', '💰',
-            'You hold ' . inr($cash) . ' ticket cash' . ($days > 0 ? ' — ' . $days . ' day' . self::s($days) . ' past hand-over' : ''),
+            'my-cash', $days > 0 ? 'warn' : 'info', '💰', $title,
             'Hand it to the office (or pay by UPI) so your commission can be paid out.',
             '/admin/agent.php', 'My wallet'
         )];
@@ -526,11 +648,13 @@ final class AiWatch
         if ($n === 0) {
             return [];
         }
+        $counter = self::$sellerRole === 'counter';
         return [self::item(
             'my-tomorrow', 'info', '🧳',
             $n . ' of your booking' . self::s($n) . ' travel tomorrow',
             'A quick reminder call: pickup point, time, ID card. Fewer missed buses, happier passengers.',
-            '/admin/agent-passengers.php', 'See passengers'
+            $counter ? '/admin/manifest.php?date=' . addDaysISO(todayISO(), 1) : '/admin/agent-passengers.php',
+            $counter ? 'Tomorrow\'s manifest' : 'See passengers'
         )];
     }
 
@@ -566,6 +690,119 @@ final class AiWatch
             'Keep going — every confirmed sale adds to it the moment it is confirmed.',
             '/admin/agent-sales.php', 'My sales'
         )];
+    }
+
+    /* =================================================================
+     *  Shared counts (15 Oct 2026) — the dashboard's tiles read the same
+     *  numbers as the cards above, so a tile and a card never disagree.
+     * ================================================================= */
+
+    /**
+     * Pending bookings whose latest payment carries a proof (a UTR or a
+     * screenshot) — exactly Verify Payments' default list (admin/payments.php
+     * tab=pending&sub=proof, same SQL). `await` = pending bookings with a
+     * payment row but no proof yet (the "Awaiting payment" sub-tab).
+     *
+     * @return array{n:int, await:int, oldest:string}
+     */
+    public static function proofsWaiting(): array
+    {
+        $proofExpr = "(TRIM(COALESCE(p.utr_number,'')) <> '' OR EXISTS (SELECT 1 FROM payment_screenshots ps0 WHERE ps0.booking_id = b.id))";
+        try {
+            $r = Database::fetch(
+                "SELECT COUNT(*) AS n, COALESCE(SUM(t.pf), 0) AS proof, MIN(CASE WHEN t.pf = 1 THEN t.created_at END) AS oldest
+                   FROM (SELECT p.created_at, {$proofExpr} AS pf
+                           FROM bookings b
+                           JOIN payments p ON p.id = (SELECT MAX(p2.id) FROM payments p2 WHERE p2.booking_id = b.id)
+                          WHERE b.status = 'pending') t"
+            ) ?? [];
+        } catch (Throwable $e) {
+            return ['n' => 0, 'await' => 0, 'oldest' => ''];
+        }
+        $proof = (int) ($r['proof'] ?? 0);
+        return ['n' => $proof, 'await' => max(0, (int) ($r['n'] ?? 0) - $proof), 'oldest' => (string) ($r['oldest'] ?? '')];
+    }
+
+    /**
+     * Open customer cancel / refund requests. `wa` = distinct live bookings
+     * (pending / confirmed, travel date not more than a day gone) with a
+     * code-verified WhatsApp cancel request still marked 'requested';
+     * `waPnr` = its PNR when there is exactly one. `desk` = Help Desk tickets
+     * in the Refund / cancel category that are open or in progress (`deskHot`
+     * of them high / urgent). Read-only.
+     *
+     * @return array{wa:int, waPnr:string, desk:int, deskHot:int}
+     */
+    public static function cancelRequestCounts(): array
+    {
+        $out = ['wa' => 0, 'waPnr' => '', 'desk' => 0, 'deskHot' => 0];
+        try {
+            /* A refused request would nag for ever (nothing marks one done and
+               a confirmed booking stays confirmed after the trip), so a request
+               drops off once its bus has been gone a day. */
+            $r = Database::fetch(
+                "SELECT COUNT(DISTINCT t.booking_id) AS n, MIN(b.pnr) AS pnr
+                   FROM ticket_edit_audit t
+                   JOIN bookings b ON b.id = t.booking_id AND b.status IN ('pending','confirmed')
+                  WHERE t.field_changed = 'cancel_request' AND t.outcome = 'requested'
+                    AND NOT EXISTS (SELECT 1 FROM booking_legs bl
+                                     WHERE bl.booking_id = b.id AND bl.leg_type = 'outbound' AND bl.travel_date < :d)",
+                ['d' => addDaysISO(todayISO(), -1)]
+            ) ?? [];
+            $out['wa']    = (int) ($r['n'] ?? 0);
+            $out['waPnr'] = $out['wa'] === 1 ? (string) ($r['pnr'] ?? '') : '';
+        } catch (Throwable $e) {
+            // ticket_edit_audit not installed — the Help Desk count still runs
+        }
+        try {
+            $r = Database::fetch(
+                "SELECT COUNT(*) AS n, COALESCE(SUM(priority IN ('high','urgent')), 0) AS hot
+                   FROM support_tickets WHERE category = 'refund' AND status IN ('open','in_progress')"
+            ) ?? [];
+            $out['desk']    = (int) ($r['n'] ?? 0);
+            $out['deskHot'] = (int) ($r['hot'] ?? 0);
+        } catch (Throwable $e) {
+            // support_tickets not installed
+        }
+        return $out;
+    }
+
+    /**
+     * Payouts the office owes attention to: open agent payout requests
+     * (AgentWallet::openPayoutRequests) and agents owed commission for longer
+     * than Settings alert_settlement_due_days with no settlement in progress
+     * — the "Over N days" rule of admin/settlements.php. Read-only.
+     *
+     * @param ?list<array<string,mixed>> $pending AgentSettlement::pending() when the caller already has it (one ledger pass, not two)
+     * @return array{requests:int, requestAmt:float, late:int, lateAmt:float, dueDays:int}
+     */
+    public static function payoutCounts(?array $pending = null): array
+    {
+        $dueDays = max(1, Settings::getInt('alert_settlement_due_days', 15));
+        $out = ['requests' => 0, 'requestAmt' => 0.0, 'late' => 0, 'lateAmt' => 0.0, 'dueDays' => $dueDays];
+        try {
+            foreach (AgentWallet::openPayoutRequests() as $r) {
+                $out['requests']++;
+                $out['requestAmt'] += (float) ($r['amount'] ?? 0);
+            }
+        } catch (Throwable $e) {
+            // payout requests not installed
+        }
+        try {
+            if ($pending === null) {
+                require_once __DIR__ . '/agentsettlement.php';
+                $pending = AgentSettlement::pending();
+            }
+            foreach ($pending as $p) {
+                if ($p['commission'] > 0.009 && $p['days'] > $dueDays && $p['open'] === null) {
+                    $out['late']++;
+                    $out['lateAmt'] += (float) $p['commission'];
+                }
+            }
+        } catch (Throwable $e) {
+            // ledger not installed
+        }
+        return $out;
     }
 
     /* =================================================================

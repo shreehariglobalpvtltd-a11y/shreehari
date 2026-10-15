@@ -884,6 +884,63 @@ final class AgentWallet
     }
 
     /**
+     * The cash-in-hand limit the lists highlight against (15 Oct 2026, owner:
+     * "agents holding more than Rs 10,000 — show them in red"). The agent's
+     * own profile cash_limit, else the company default
+     * (agent_cash_limit_default), else the amount of the "Ticket cash held too
+     * long" alert (Admin -> Notifications), so the register, the settlement
+     * list and the ranking all name the same agents the bell does.
+     * 0 = no limit anywhere. DISPLAY ONLY — nothing here blocks a sale
+     * (agent_cash_limit_enforce in assertMaySell() does that, unchanged).
+     */
+    public static function effectiveCashLimit(float $own): float
+    {
+        if ($own > 0.009) {
+            return round($own, 2);
+        }
+        // Both reads come from the Settings cache - cheap per row.
+        $fallback = Settings::getFloat('agent_cash_limit_default', 0.0);
+        if ($fallback <= 0.009) {
+            try {
+                require_once INCLUDE_PATH . '/adminalerts.php';
+                $fallback = (float) Settings::getInt('alert_cash_holding_amount', (int) (AdminAlerts::RULES['cash_holding'][3]['amount'][1] ?? 0));
+            } catch (Throwable $e) {
+                $fallback = 0.0;
+            }
+        }
+        return max(0.0, round($fallback, 2));
+    }
+
+    /**
+     * effectiveCashLimit() for many sellers in ONE profile read (the
+     * settlement list and the ranking board show every agent at once).
+     *
+     * @param  list<int> $ids
+     * @return array<int, float> admin id => limit (0 = none)
+     */
+    public static function cashLimitMap(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $i): bool => $i > 0)));
+        $own = [];
+        if ($ids !== []) {
+            try {
+                foreach (Database::fetchAll(
+                    'SELECT admin_id, cash_limit FROM admin_profiles WHERE admin_id IN (' . implode(',', $ids) . ')'   // ints only - safe to inline
+                ) as $p) {
+                    $own[(int) $p['admin_id']] = (float) ($p['cash_limit'] ?? 0);
+                }
+            } catch (Throwable $e) {
+                $own = [];
+            }
+        }
+        $out = [];
+        foreach ($ids as $id) {
+            $out[$id] = self::effectiveCashLimit($own[$id] ?? 0.0);
+        }
+        return $out;
+    }
+
+    /**
      * Create or update a profile. Only the keys given are written, so a
      * form that shows half the fields cannot blank the other half.
      *
@@ -1025,6 +1082,119 @@ final class AgentWallet
         }
 
         Logger::audit('agent.profile', 'admin', (string) $adminId, null, $clean, 'Agent profile updated');
+    }
+
+    /**
+     * Create one agent account — THE creation path (15 Oct 2026, owner: "add a
+     * new agent in under 30 seconds, minimal fields"). The register's Quick add
+     * (admin/agents.php) and Staff & Approvals' agent form (admin/staff.php)
+     * both come through here, so a new agent is always made the same way:
+     *
+     *   username  = the mobile (the agent-signup.php rule; 'agent_<mobile>' when
+     *               that is taken) unless the caller typed one
+     *   password  = the one typed, else an unguessable random hash — the office
+     *               issues the real one later (agent.php#loginCredentials);
+     *               until then the code + mobile + OTP door works
+     *   active, never forced to change the password (the agent rule)
+     *   profile   = kind, contact person, WhatsApp, display phone, city
+     *   SHG code  = the next free number in the kind's band (org 1-20, person 21+)
+     *   then agent.registered (the welcome WhatsApp) and one staff.create audit row.
+     *
+     * The mobile and the email must not belong to any other staff account.
+     *
+     * @param  array{username?: string, password?: string, contact_person?: string, whatsapp?: string} $opt
+     * @return int the new admins.id
+     * @throws RuntimeException with a message the form can show as it is
+     */
+    public static function createAgent(string $name, string $mobile, string $kind, string $city, ?string $email, int $by, array $opt = []): int
+    {
+        $name     = trim(Security::clean($name, 120));
+        $phone    = trim(Security::clean($mobile, 20));
+        $digits   = preg_replace('/\D+/', '', $phone) ?? '';
+        $kind     = self::normaliseKind($kind);
+        $city     = trim(Security::clean($city, 120));
+        $emailRaw = trim((string) $email);
+        $emailOk  = $emailRaw === '' ? '' : Security::email($emailRaw);
+        $username = strtolower(trim(Security::clean((string) ($opt['username'] ?? ''), 60)));
+        $password = (string) ($opt['password'] ?? '');
+
+        if (mb_strlen($name) < 2) {
+            throw new RuntimeException('Enter the agent\'s name (at least 2 letters).');
+        }
+        // No typed username: the mobile IS the username, so it must be real.
+        if ($username === '' && (strlen($digits) < 10 || strlen($digits) > 15)) {
+            throw new RuntimeException('Enter a valid mobile number (10 to 15 digits).');
+        }
+        if ($username !== '' && !preg_match('/^[a-z0-9_.@\-]{3,60}$/', $username)) {
+            throw new RuntimeException('Username must be 3–60 chars: letters, numbers, . _ - @ only.');
+        }
+        if ($password !== '' && strlen($password) < 8) {
+            throw new RuntimeException('The password must be at least 8 characters.');
+        }
+        if ($emailRaw !== '' && $emailOk === '') {
+            throw new RuntimeException('Enter a valid email address (or leave it blank).');
+        }
+        if ($emailOk !== '' && Database::exists('SELECT 1 FROM admins WHERE LOWER(email) = :e LIMIT 1', ['e' => strtolower($emailOk)])) {
+            throw new RuntimeException('That email is already used by another staff account.');
+        }
+        // The same mobile on two accounts makes the register's Edit refuse both
+        // (agents.php) and the OTP door ambiguous — checked as typed and as digits.
+        if ($phone !== '' && Database::exists('SELECT 1 FROM admins WHERE phone = :p1 OR phone = :p2 LIMIT 1', ['p1' => $phone, 'p2' => $digits !== '' ? $digits : $phone])) {
+            throw new RuntimeException('That mobile number already belongs to another staff account.');
+        }
+        if ($username === '') {
+            $username = $digits;
+            if (Database::exists('SELECT 1 FROM admins WHERE username = :u LIMIT 1', ['u' => $username])) {
+                $username = 'agent_' . $digits;
+            }
+        }
+        if (Database::exists('SELECT 1 FROM admins WHERE username = :u LIMIT 1', ['u' => $username])) {
+            throw new RuntimeException('That username is already taken.');
+        }
+
+        $newId = Database::insert('admins', [
+            'username'       => $username,
+            'password_hash'  => password_hash($password !== '' ? $password : bin2hex(random_bytes(12)), PASSWORD_DEFAULT),
+            'full_name'      => $name,
+            'email'          => $emailOk !== '' ? $emailOk : null,
+            'phone'          => $phone !== '' ? $phone : null,
+            'role'           => 'agent',
+            'is_active'      => 1,
+            // An agent's password is issued by the office and used as handed
+            // over; the forced change bounces them to a page built for staff.
+            'must_change_pw' => 0,
+        ]);
+        Logger::audit('staff.create', 'admin', $username, null,
+            ['role' => 'agent', 'kind' => $kind, 'by' => $by, 'password' => $password !== '' ? 'typed' : 'not issued yet'], 'new agent account');
+
+        // Kind first, so the serial below follows the right band.
+        try {
+            $prof = [
+                'agent_kind'     => $kind,
+                'contact_person' => (string) ($opt['contact_person'] ?? ''),
+                'whatsapp'       => (string) ($opt['whatsapp'] ?? ''),
+                'display_phone'  => $digits !== '' ? $digits : $phone,
+            ];
+            if ($city !== '') {
+                $prof['counter_name'] = $city;
+            }
+            self::saveProfile($newId, $prof);
+        } catch (Throwable $e) {
+            Logger::error('Agent profile save failed on create', ['e' => $e->getMessage()], 'automation');
+        }
+        // Login-ready in one step. Best effort: a full code map never blocks the account.
+        try {
+            $code = self::nextFreeAgentCode($kind);
+            if ($code !== null) {
+                self::setAgentCode($newId, $code, $by);
+            }
+        } catch (Throwable $e) {
+            Logger::error('Auto agent-code failed', ['e' => $e->getMessage()], 'automation');
+        }
+        // Welcome WhatsApp with the code + agent-portal link (agent_notify_enabled).
+        EventBus::emit('agent.registered', ['admin_id' => $newId, 'full_name' => $name, 'phone' => $phone]);
+
+        return $newId;
     }
 
 

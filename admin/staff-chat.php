@@ -43,6 +43,10 @@ $office  = StaffMsg::isOffice();
 $field   = !$office;
 $openId  = max(0, (int) ($_GET['t'] ?? 0));
 $pnrQ    = strtoupper(Security::clean((string) ($_GET['pnr'] ?? ''), 40));
+// 15 Oct 2026 (Quick Edit "Wrong …" chips): ?pnr=…&q=q_name opens the ticket's
+// thread with that quick request already written in the box (never sent).
+$quickQ  = in_array((string) ($_GET['q'] ?? ''), ['q_seat', 'q_name', 'q_phone', 'q_date', 'q_pickup', 'q_fare', 'q_paid', 'q_agent', 'q_cancel'], true)
+    ? (string) $_GET['q'] : '';
 $agentQ  = $office ? max(0, (int) ($_GET['agent'] ?? 0)) : 0;
 $general = 0;
 if ($field) {
@@ -68,6 +72,7 @@ $boot = [
     'role'      => StaffMsg::role(),
     'open'      => $openId,
     'pnr'       => $pnrQ,
+    'quick'     => $pnrQ !== '' ? $quickQ : '',
     'agent'     => $agentQ,
     'general'   => $general,
     'broadcast' => StaffMsg::canBroadcast(),
@@ -379,7 +384,8 @@ html[data-motion="reduced"] .sc-b,html[data-motion="reduced"] .sc-conv{animation
       message: 'सन्देश', audience: 'कसलाई पठाउने', audAll: 'सबै एजेन्ट र काउन्टर', audAgents: 'एजेन्ट मात्र', audCounters: 'काउन्टर मात्र', start: 'पठाउनुहोस्', cancel: 'रद्द',
       reached: '{n} जनालाई पठाइयो ✓', pickPerson: 'पहिले व्यक्ति छान्नुहोस्।', needPnr: 'PNR लेख्नुहोस्।', needMsg: 'सन्देश लेख्नुहोस्।', hello: 'नमस्ते भन्नुहोस् 👋', ann: 'घोषणा',
       handled: '{n} ले हेर्दै', agent: 'एजेन्ट', counter: 'काउन्टर', call: 'फोन', sendFail: 'पठाउन सकिएन', reportHint: 'नक्कली देखिने टिकटको PNR/कोड र के देख्नुभयो लेख्नुहोस्। अफिसलाई तुरुन्त थाहा हुन्छ।',
-      q_seat: '🪑 सिट परिवर्तन', q_name: '✏️ नाम सच्याउने', q_paid: '💸 भुक्तानी प्रमाण', q_cancel: '❌ रद्द अनुरोध', q_pickup: '📍 चढ्ने ठाउँ', q_done: '✅ भयो', q_check: '👀 हेर्दैछौं', q_call: '📞 फोन गर्दैछु', q_shot: '📎 स्क्रिनसट पठाउनुहोस्', q_wait: '🕐 १० मिनेट', q_cancelOk: '❌ रद्द अनुरोध मिल्यो' },
+      q_seat: '🪑 सिट परिवर्तन', q_name: '✏️ नाम सच्याउने', q_paid: '💸 भुक्तानी प्रमाण', q_cancel: '❌ रद्द अनुरोध', q_pickup: '📍 चढ्ने ठाउँ', q_done: '✅ भयो',
+      q_phone: '📞 नम्बर सच्याउने', q_date: '📅 मिति परिवर्तन', q_fare: '₹ भाडा सच्याउने', q_agent: '🧑‍💼 एजेन्ट परिवर्तन', q_check: '👀 हेर्दैछौं', q_call: '📞 फोन गर्दैछु', q_shot: '📎 स्क्रिनसट पठाउनुहोस्', q_wait: '🕐 १० मिनेट', q_cancelOk: '❌ रद्द अनुरोध मिल्यो' },
     en: { titleOffice: 'Agent chat', titleField: 'Office chat', new: 'New', search: 'Search name, PNR', fOpen: 'Open', fWaiting: 'Waiting', fUrgent: 'Urgent', fMine: 'Mine', fAll: 'All', fClosed: 'Closed',
       loading: 'Loading…', emptyOffice: 'No conversations yet. Agents and counters write from their panel — or tap ＋ New.', emptyFilter: 'Nothing here.',
       pickT: 'Pick a conversation', pickS: 'Tickets, settlements, payouts — everything with the office in one place.', type: 'Type a message…', online: 'online now', officeOn: 'Office is online', officeOff: 'Office offline — they reply when back',
@@ -392,7 +398,8 @@ html[data-motion="reduced"] .sc-b,html[data-motion="reduced"] .sc-conv{animation
       message: 'Message', audience: 'Send to', audAll: 'Every agent and counter', audAgents: 'Agents only', audCounters: 'Counters only', start: 'Send', cancel: 'Cancel',
       reached: 'Sent to {n} people ✓', pickPerson: 'Pick a person first.', needPnr: 'Type the PNR.', needMsg: 'Type a message.', hello: 'Say hello 👋', ann: 'Announcement',
       handled: 'Handled by {n}', agent: 'Agent', counter: 'Counter', call: 'Call', sendFail: 'Could not send', reportHint: 'Type the PNR / code of the ticket that looks fake and what you saw. The office hears at once.',
-      q_seat: '🪑 Seat change', q_name: '✏️ Name fix', q_paid: '💸 Payment proof', q_cancel: '❌ Cancel request', q_pickup: '📍 Pickup change', q_done: '✅ Done', q_check: '👀 Checking', q_call: '📞 Calling you', q_shot: '📎 Send screenshot', q_wait: '🕐 10 minutes', q_cancelOk: '❌ Cancel request noted' },
+      q_seat: '🪑 Seat change', q_name: '✏️ Name fix', q_paid: '💸 Payment proof', q_cancel: '❌ Cancel request', q_pickup: '📍 Pickup change', q_done: '✅ Done',
+      q_phone: '📞 Phone fix', q_date: '📅 Date change', q_fare: '₹ Fare fix', q_agent: '🧑‍💼 Agent change', q_check: '👀 Checking', q_call: '📞 Calling you', q_shot: '📎 Send screenshot', q_wait: '🕐 10 minutes', q_cancelOk: '❌ Cancel request noted' },
     hi: { titleOffice: 'एजेंट चैट', titleField: 'ऑफिस चैट', new: 'नया', search: 'खोजें — नाम, PNR', fOpen: 'खुले', fWaiting: 'जवाब बाकी', fUrgent: 'ज़रूरी', fMine: 'मेरे', fAll: 'सभी', fClosed: 'बंद',
       loading: 'लोड हो रहा है…', emptyOffice: 'अभी कोई बातचीत नहीं। एजेंट/काउंटर अपने पैनल से लिखते हैं — या ＋ नया दबाएँ।', emptyFilter: 'यहाँ कुछ नहीं है।',
       pickT: 'बातचीत चुनें', pickS: 'टिकट, सेटलमेंट, भुगतान — ऑफिस से सब कुछ एक जगह।', type: 'संदेश लिखें…', online: 'ऑनलाइन', officeOn: 'ऑफिस ऑनलाइन है', officeOff: 'ऑफिस ऑफ़लाइन — लौटकर जवाब देंगे',
@@ -405,7 +412,8 @@ html[data-motion="reduced"] .sc-b,html[data-motion="reduced"] .sc-conv{animation
       message: 'संदेश', audience: 'किसे भेजें', audAll: 'सभी एजेंट और काउंटर', audAgents: 'सिर्फ़ एजेंट', audCounters: 'सिर्फ़ काउंटर', start: 'भेजें', cancel: 'रद्द',
       reached: '{n} लोगों को भेजा ✓', pickPerson: 'पहले व्यक्ति चुनें।', needPnr: 'PNR लिखें।', needMsg: 'संदेश लिखें।', hello: 'नमस्ते कहें 👋', ann: 'घोषणा',
       handled: '{n} देख रहे हैं', agent: 'एजेंट', counter: 'काउंटर', call: 'कॉल', sendFail: 'भेज नहीं सके', reportHint: 'नकली लगने वाले टिकट का PNR/कोड और आपने क्या देखा लिखें। ऑफिस को तुरंत पता चलेगा।',
-      q_seat: '🪑 सीट बदलना', q_name: '✏️ नाम सुधार', q_paid: '💸 भुगतान प्रमाण', q_cancel: '❌ रद्द अनुरोध', q_pickup: '📍 पिकअप बदलना', q_done: '✅ हो गया', q_check: '👀 देख रहे हैं', q_call: '📞 कॉल कर रहा हूँ', q_shot: '📎 स्क्रीनशॉट भेजें', q_wait: '🕐 10 मिनट', q_cancelOk: '❌ रद्द अनुरोध मिला' }
+      q_seat: '🪑 सीट बदलना', q_name: '✏️ नाम सुधार', q_paid: '💸 भुगतान प्रमाण', q_cancel: '❌ रद्द अनुरोध', q_pickup: '📍 पिकअप बदलना', q_done: '✅ हो गया',
+      q_phone: '📞 नंबर सुधार', q_date: '📅 तारीख बदलना', q_fare: '₹ किराया सुधार', q_agent: '🧑‍💼 एजेंट बदलना', q_check: '👀 देख रहे हैं', q_call: '📞 कॉल कर रहा हूँ', q_shot: '📎 स्क्रीनशॉट भेजें', q_wait: '🕐 10 मिनट', q_cancelOk: '❌ रद्द अनुरोध मिला' }
   };
   /* what a quick reply writes (bilingual on purpose — the reader may be on any language) */
   var QT = {
@@ -414,6 +422,10 @@ html[data-motion="reduced"] .sc-b,html[data-motion="reduced"] .sc-conv{animation
     q_paid: 'भुक्तानी प्रमाण पठाइयो · Payment proof sent — {PNR}. कृपया जाँच गर्नुहोस् / please verify.',
     q_cancel: 'रद्द अनुरोध · Cancel request — {PNR}: यात्रुले टिकट रद्द गर्न चाहनुहुन्छ / passenger wants to cancel. कारण / reason: ',
     q_pickup: 'चढ्ने ठाउँ परिवर्तन · Pickup change — {PNR}: नयाँ ठाउँ / new pickup: ',
+    q_phone: 'मोबाइल नम्बर सच्याउनु पर्‍यो · Phone correction — {PNR}: सही नम्बर / correct number: ',
+    q_date: 'मिति परिवर्तन अनुरोध · Date change — {PNR}: नयाँ मिति / new date: ',
+    q_fare: 'भाडा सच्याउनु पर्‍यो · Fare correction — {PNR}: सही भाडा / correct fare ₹',
+    q_agent: 'एजेन्ट परिवर्तन · Agent change — {PNR}: सही एजेन्ट कोड / correct agent code: ',
     q_done: '✅ भयो · Done.',
     q_check: '👀 हेर्दैछौं — छिट्टै जानकारी दिन्छौं · Checking — will update you shortly.',
     q_call: '📞 तपाईंलाई फोन गर्दैछु · Calling you now.',
@@ -421,7 +433,8 @@ html[data-motion="reduced"] .sc-b,html[data-motion="reduced"] .sc-conv{animation
     q_wait: '🕐 कृपया १० मिनेट पर्खनुहोस् · Please wait 10 minutes.',
     q_cancelOk: '❌ रद्द अनुरोध मिल्यो — अफिसले टिकट पेजबाट हातैले मिलाउँछ · Cancel request received — the office settles it by hand from the ticket page.'
   };
-  var QF = B.office ? ['q_done', 'q_check', 'q_call', 'q_shot', 'q_wait', 'q_cancelOk'] : ['q_seat', 'q_name', 'q_paid', 'q_cancel', 'q_pickup'];
+  // 15 Oct 2026: phone / date / fare / agent join the field chips (Quick Edit "Wrong …").
+  var QF = B.office ? ['q_done', 'q_check', 'q_call', 'q_shot', 'q_wait', 'q_cancelOk'] : ['q_seat', 'q_name', 'q_phone', 'q_date', 'q_pickup', 'q_fare', 'q_paid', 'q_agent', 'q_cancel'];
 
   var LANGS = ['ne', 'en', 'hi'], LBL = { ne: 'ने', en: 'EN', hi: 'हि' };
   var lang = 'ne'; try { var sl = localStorage.getItem('shg_chat_lang'); if (LANGS.indexOf(sl) > -1) lang = sl; } catch (e) {}
@@ -1026,7 +1039,17 @@ html[data-motion="reduced"] .sc-b,html[data-motion="reduced"] .sc-conv{animation
     if (B.open) { openThread(B.open, false); try { history.replaceState({ t: B.open }, '', location.href); } catch (e) {} return; }
     if (B.pnr) {
       post({ action: 'open', kind: 'booking', pnr: B.pnr }).then(function (j) {
-        if (j && j.ok && j.thread_id) { openThread(j.thread_id, false); try { history.replaceState({ t: j.thread_id }, '', '/admin/staff-chat.php?t=' + j.thread_id); } catch (e) {} }
+        if (j && j.ok && j.thread_id) {
+          var opened = openThread(j.thread_id, false);
+          try { history.replaceState({ t: j.thread_id }, '', '/admin/staff-chat.php?t=' + j.thread_id); } catch (e) {}
+          // 15 Oct 2026: a Quick Edit "Wrong …" chip writes its request in the box (the staff member sends it).
+          if (B.quick && QT[B.quick] && opened && opened.then) opened.then(function () {
+            if (ta.value.trim()) return;
+            ta.value = QT[B.quick].replace('{PNR}', (S.meta && S.meta.pnr) || B.pnr); grow();
+            try { ta.focus({ preventScroll: true }); var end = ta.value.length; ta.setSelectionRange(end, end); } catch (e) {}
+            note(B.quick === 'q_cancel' ? t('cancelNote') : '');
+          });
+        }
         else toast((j && j.error) || t('sendFail'));
       });
       return;

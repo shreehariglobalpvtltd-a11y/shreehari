@@ -13,7 +13,8 @@
  *   advance_limit   an agent's outstanding advance is above ₹X
  *   low_bookings    yesterday had fewer bookings than N
  *   cancel_spike    today's cancellations are above N % of the day's bookings
- *   agent_inactive  active agents who have sold nothing for N days
+ *   agent_inactive  active agents who have sold nothing for N days (or never
+ *                   sold, once the account is N days old — 15 Oct 2026)
  *   online_booking  a customer booked on the website with no agent in between
  *
  * Every rule has an on/off switch and its own numbers (settings rows
@@ -44,7 +45,7 @@ final class AdminAlerts
                              ['min' => ['Fewer than (bookings in the day)', 5]]],
         'cancel_spike'   => ['Cancellation spike', 'Today\'s cancellations pass this share of the day\'s bookings.', true,
                              ['pct' => ['More than (%)', 20], 'min' => ['only when the day has at least (bookings)', 5]]],
-        'agent_inactive' => ['Agent inactive', 'An active agent who used to sell has sold nothing for this long.', true,
+        'agent_inactive' => ['Agent inactive', 'An active agent has sold nothing for this long — or has never sold since joining that long ago.', true,
                              ['days' => ['No sale for more than (days)', 7]]],
         'online_booking' => ['New online customer 🎉', 'A customer booked on the website by themselves, no agent in between.', true, []],
     ];
@@ -254,17 +255,22 @@ final class AdminAlerts
                 }
             }
             if ($on('agent_inactive')) {
+                /* 15 Oct 2026: LEFT JOIN, so an active agent who has NEVER sold
+                   is caught too (the plain JOIN only saw agents with a sale).
+                   A brand-new account gets the same grace — it must be older
+                   than the inactivity days before it counts. */
+                $cut  = addDaysISO($today, -$num('agent_inactive', 'days')) . ' 00:00:00';
                 $idle = Database::fetchAll(
                     "SELECT a.id, a.full_name, a.username, MAX(b.created_at) AS last_sale
-                       FROM admins a JOIN bookings b ON b.sold_by_admin_id = a.id
-                      WHERE a.role = 'agent' AND a.is_active = 1
+                       FROM admins a LEFT JOIN bookings b ON b.sold_by_admin_id = a.id
+                      WHERE a.role = 'agent' AND a.is_active = 1 AND a.created_at < :cut1
                       GROUP BY a.id, a.full_name, a.username
-                     HAVING last_sale < :cut
+                     HAVING last_sale IS NULL OR last_sale < :cut2
                       ORDER BY last_sale",
-                    ['cut' => addDaysISO($today, -$num('agent_inactive', 'days')) . ' 00:00:00']
+                    ['cut1' => $cut, 'cut2' => $cut]
                 );
                 if ($idle !== []) {
-                    $names = array_map(static fn(array $r): string => (string) ($r['full_name'] ?: $r['username']), array_slice($idle, 0, 6));
+                    $names = array_map(static fn(array $r): string => (string) ($r['full_name'] ?: $r['username']) . ($r['last_sale'] === null ? ' (never sold)' : ''), array_slice($idle, 0, 6));
                     $add('agent_inactive', 'idle:' . $week, count($idle) . ' agent' . (count($idle) === 1 ? ' has' : 's have') . ' not sold for ' . $num('agent_inactive', 'days') . '+ days',
                         implode(', ', $names) . (count($idle) > 6 ? ' …' : '') . '. A call or an offer may bring them back.',
                         '/admin/agents.php', '😴');

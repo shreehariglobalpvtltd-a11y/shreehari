@@ -84,6 +84,9 @@ $extraFilters    = [
 ];
 
 
+require_once __DIR__ . '/_booking_filters.php';
+require_once __DIR__ . '/_export.php';
+
 $where  = [];
 $params = [];
 if ($scopeId !== null) {
@@ -109,6 +112,12 @@ if ($q !== '') {
                   WHERE a2.id = b.sold_by_admin_id
                     AND CONCAT_WS(\' \', a2.full_name, a2.username) LIKE %s)',
     ], $q, $params);
+    // 15 Oct 2026: a seat typed as PRINTED (A7, B5-6) - same arm as bookings.php.
+    $qSeatArm = shg_seat_label_exists($q, $params);
+    if ($qSeatArm !== null) {
+        $lastKey = array_key_last($where);
+        $where[$lastKey] = '(' . $where[$lastKey] . ' OR ' . $qSeatArm . ')';
+    }
     // A typed SHG code ("SHG-027"), exactly as bookings.php resolves it.
     $qAgentId = $scopeId === null ? AgentWallet::resolveAgentCodeFromString($q) : null;
     if ($qAgentId !== null) {
@@ -184,8 +193,10 @@ if ($counterFilter !== '' && CounterDesk::stampColumn()) {
     $where[] = CounterDesk::scopeClause('b', 'ctrFlt');
     $params['ctrFlt'] = $counterFilter;
 }
-require_once __DIR__ . '/_booking_filters.php';
 shg_booking_extra_filters($where, $params, $_GET);
+// 15 Oct 2026: the register's column filters (ticket / passenger / mobile /
+// seat as printed) and "only my sales" - the file is still the screen.
+shg_booking_column_filters($where, $params, $_GET);
 
 // The bookings PDF (7 Oct 2026) takes this exact WHERE: it used to rebuild
 // its own from a few filters and ignored method, counter, desk scope, phone,
@@ -210,17 +221,26 @@ if ($formatParam === 'pdf') {
     exit;
 }
 
-$sql = "SELECT b.pnr, b.status, b.booking_mode, b.cabin_label,
+/* 15 Oct 2026 (chalani register): the file now carries what the register
+   shows - the Ticket no and the payment status - and counts only LIVE seats
+   (a released seat is no longer on the ticket), printed as the grid label
+   the ticket uses (raw ids kept in their own column). A booking with no
+   is_primary row falls back to its first passenger instead of a blank. */
+$sql = "SELECT b.pnr, b.status, b.booking_mode, b.cabin_label, b.expires_at,
                r.from_city, r.to_city, bl.travel_date, bl.boarding_stop, bl.drop_stop,
+               COALESCE(s.coach_type_override, r.coach_type) AS coach_type,
                b.contact_phone, b.contact_email, b.total_amount, b.currency,
                b.created_at, b.confirmed_at, b.sold_by_admin_id,
-               (SELECT COUNT(*) FROM booking_seats bs WHERE bs.booking_id=b.id) AS seat_count,
+               (SELECT COUNT(*) FROM booking_seats bs WHERE bs.booking_id=b.id AND bs.released_at IS NULL) AS seat_count,
                (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
-                  FROM booking_seats bs WHERE bs.booking_id=b.id) AS seats,
+                  FROM booking_seats bs WHERE bs.booking_id=b.id AND bs.released_at IS NULL) AS seats,
                (SELECT bp.full_name FROM booking_passengers bp
-                 WHERE bp.booking_id=b.id AND bp.is_primary=1 LIMIT 1) AS primary_passenger,
+                 WHERE bp.booking_id=b.id ORDER BY bp.is_primary DESC, bp.id LIMIT 1) AS primary_passenger,
                (SELECT p.method FROM payments p
                  WHERE p.booking_id=b.id ORDER BY p.id DESC LIMIT 1) AS pay_method,
+               (SELECT p.status FROM payments p
+                 WHERE p.booking_id=b.id ORDER BY p.id DESC LIMIT 1) AS pay_status,
+               (SELECT t.ticket_number FROM tickets t WHERE t.booking_id=b.id LIMIT 1) AS ticket_number,
                ad.full_name AS seller_name, ad.username AS seller_user
           FROM bookings b
           LEFT JOIN booking_legs bl ON bl.booking_id=b.id AND bl.leg_type='outbound'
@@ -233,11 +253,13 @@ $sql = "SELECT b.pnr, b.status, b.booking_mode, b.cabin_label,
 $rows = Database::fetchAll($sql, $params);
 
 $header = [
-    'PNR', 'Status', 'Route', 'Travel date', 'Boarding', 'Drop', 'Seats',
+    'PNR', 'Ticket no', 'Status', 'Route', 'Travel date', 'Boarding', 'Drop', 'Seats', 'Seat ids',
     'Seat count', 'Passenger', 'Phone', 'Email', 'Cabin', 'Mode',
-    'Amount', 'Currency', 'Payment', 'Created', 'Confirmed',
+    'Amount', 'Currency', 'Payment', 'Payment status', 'Created', 'Confirmed',
     'Seller', 'Agent Code',
 ];
+// The register's payment pill, in words (payments.status of the LATEST row).
+$payWords = ['verified' => 'Paid', 'pending' => 'Unverified', 'cod_pending' => 'Cash due', 'rejected' => 'Rejected', 'refunded' => 'Refunded'];
 
 $data = [];
 foreach ($rows as $b) {
@@ -246,15 +268,22 @@ foreach ($rows as $b) {
     $sellerId = (int) ($b['sold_by_admin_id'] ?? 0);
     $seller   = $sellerId > 0 ? (string) ($b['seller_name'] ?: $b['seller_user']) : 'Online';
     $agentCd  = $sellerId > 0 ? AgentWallet::agentCodeLabel($sellerId) : '';
+    $seatIds  = array_values(array_filter(explode(' ', (string) ($b['seats'] ?? '')), static fn($t) => $t !== ''));
+    $paySt    = (string) ($b['pay_status'] ?? '');
+    // Proof sent and parked for review (expires_at NULL) reads as on screen.
+    $payLbl   = ($paySt === 'pending' && (string) $b['status'] === 'pending' && empty($b['expires_at']))
+        ? 'Verification pending' : ($payWords[$paySt] ?? $paySt);
 
     $data[] = [
         $b['pnr'],
+        $b['ticket_number'] ?? '',
         $b['status'],
         ($b['from_city'] ?? '') . ' -> ' . ($b['to_city'] ?? ''),
         $b['travel_date'] ?? '',
         $b['boarding_stop'] ?? '',
         $b['drop_stop'] ?? '',
-        $b['seats'] ?? '',
+        Seats::displayLabels($seatIds, (string) ($b['coach_type'] ?: 'sleeper'), (string) ($b['booking_mode'] ?: 'sharing'), ' '),
+        implode(' ', $seatIds),
         (int) $b['seat_count'],
         $b['primary_passenger'] ?? '',
         $b['contact_phone'] ?? '',
@@ -264,6 +293,7 @@ foreach ($rows as $b) {
         (float) $b['total_amount'],
         $b['currency'],
         $b['pay_method'] ?? '',
+        $payLbl,
         $b['created_at'] ?? '',
         $b['confirmed_at'] ?? '',
         $seller,
@@ -271,112 +301,11 @@ foreach ($rows as $b) {
     ];
 }
 
-// Native XLSX when asked for (and ZipArchive is available); CSV otherwise.
-$wantXlsx = ($_GET['format'] ?? '') === 'xlsx' && class_exists('ZipArchive');
-
-if ($wantXlsx) {
-    // Columns that should be real numbers in the sheet (0-indexed): Seat count, Amount.
-    export_xlsx('SHG-bookings-' . date('Y-m-d') . '.xlsx', 'Bookings', $header, $data, [7, 13]);
-    exit;
+/* 15 Oct 2026: ONE writer for every admin list (admin/_export.php). Its CSV
+   prefixes a cell that starts with = + - @, so a passenger name typed as a
+   formula can no longer run in Excel; the XLSX falls back to that CSV when
+   ZipArchive is missing. Numeric columns (0-indexed): Seat count, Amount. */
+if (($_GET['format'] ?? '') === 'xlsx') {
+    shg_export_xlsx('SHG-bookings-' . date('Y-m-d') . '.xlsx', 'Bookings', $header, $data, [9, 15]);
 }
-
-$fname = 'SHG-bookings-' . date('Y-m-d') . '.csv';
-header('Content-Type: text/csv; charset=UTF-8');
-header('Content-Disposition: attachment; filename="' . $fname . '"');
-header('Cache-Control: no-store');
-
-$out = fopen('php://output', 'wb');
-fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads Unicode (Nepali/Hindi) names
-csv_put($out, $header);
-foreach ($data as $row) {
-    csv_put($out, $row);
-}
-fclose($out);
-exit;
-
-
-/**
- * Stream a minimal, valid .xlsx (Office Open XML) built by hand — no library.
- * An .xlsx is a ZIP of a few XML parts; values are written as inline strings,
- * except columns listed in $numericCols which are written as numbers so Excel
- * can SUM them. Falls back to nothing (caller already gated on ZipArchive).
- *
- * @param array<int,string>      $header
- * @param array<int,array<int,mixed>> $data
- * @param array<int,int>         $numericCols 0-indexed numeric columns
- */
-function export_xlsx(string $filename, string $sheetName, array $header, array $data, array $numericCols = []): void
-{
-    $numeric = array_flip($numericCols);
-
-    $xesc = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES | ENT_XML1, 'UTF-8');
-    $colRef = static function (int $i): string { // 0 -> A, 26 -> AA
-        $s = '';
-        for ($i++; $i > 0; $i = intdiv($i - 1, 26)) {
-            $s = chr(65 + (($i - 1) % 26)) . $s;
-        }
-        return $s;
-    };
-
-    $rowXml = static function (array $cells, int $rowNum, bool $headerRow) use ($numeric, $xesc, $colRef): string {
-        $x = '<row r="' . $rowNum . '">';
-        foreach (array_values($cells) as $ci => $val) {
-            $ref = $colRef($ci) . $rowNum;
-            if (!$headerRow && isset($numeric[$ci]) && is_numeric($val)) {
-                $x .= '<c r="' . $ref . '"><v>' . $xesc($val) . '</v></c>';
-            } else {
-                $x .= '<c r="' . $ref . '" t="inlineStr"><is><t xml:space="preserve">' . $xesc($val) . '</t></is></c>';
-            }
-        }
-        return $x . '</row>';
-    };
-
-    $sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
-    $sheet .= $rowXml($header, 1, true);
-    $r = 2;
-    foreach ($data as $row) {
-        $sheet .= $rowXml($row, $r++, false);
-    }
-    $sheet .= '</sheetData></worksheet>';
-
-    $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-        . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-        . '<Default Extension="xml" ContentType="application/xml"/>'
-        . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-        . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-        . '</Types>';
-
-    $rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-        . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
-        . '</Relationships>';
-
-    $workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
-        . 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-        . '<sheets><sheet name="' . htmlspecialchars($sheetName, ENT_QUOTES | ENT_XML1) . '" sheetId="1" r:id="rId1"/></sheets></workbook>';
-
-    $wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-        . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
-        . '</Relationships>';
-
-    $tmp = tempnam(sys_get_temp_dir(), 'xlsx');
-    $zip = new ZipArchive();
-    $zip->open($tmp, ZipArchive::OVERWRITE);
-    $zip->addFromString('[Content_Types].xml', $contentTypes);
-    $zip->addFromString('_rels/.rels', $rels);
-    $zip->addFromString('xl/workbook.xml', $workbook);
-    $zip->addFromString('xl/_rels/workbook.xml.rels', $wbRels);
-    $zip->addFromString('xl/worksheets/sheet1.xml', $sheet);
-    $zip->close();
-
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Content-Length: ' . filesize($tmp));
-    header('Cache-Control: no-store');
-    readfile($tmp);
-    @unlink($tmp);
-}
+shg_export_csv('SHG-bookings-' . date('Y-m-d') . '.csv', $header, $data);

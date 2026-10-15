@@ -38,6 +38,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && !isset($_GET['legacy'])) 
         if ($rr !== null) { $qs['from'] = (string) $rr['from_city']; $qs['to'] = (string) $rr['to_city']; }
     }
     if (Security::isValidDate((string) ($_GET['date'] ?? ''))) { $qs['date'] = (string) $_GET['date']; }
+    /* 15 Oct 2026 (Quick Edit "+ Add passenger (new ticket)"): the exact
+       departure rides along (14-counter.js opens it), so an extra-bus
+       passenger lands on the same bus. Only a schedule of THIS route on THIS
+       date is forwarded; anything else is dropped (the daily bus as before). */
+    $sidQ = (int) ($_GET['sid'] ?? 0);
+    if ($sidQ > 0 && $rq > 0 && isset($qs['date'], $qs['from'])
+        && Database::exists('SELECT 1 FROM schedules WHERE id = :s AND route_id = :r AND travel_date = :d', ['s' => $sidQ, 'r' => $rq, 'd' => $qs['date']])) {
+        $qs['sid'] = $sidQ;
+    }
     // Customer 360 "New booking" (3 Oct 2026): the customer's name + mobile
     // ride along and land in the seat view's quick passenger line.
     $cphone = normalisePhone((string) ($_GET['cphone'] ?? ''));

@@ -314,23 +314,12 @@ final class SmartBook
             'SELECT full_name, age, gender, special_need, is_primary FROM booking_passengers WHERE booking_id = :b ORDER BY is_primary DESC, id',
             ['b' => (int) $b['id']]
         );
-        $pax  = [];
+        $pax  = self::paxFromRows($rows);
         $name = '';
         foreach ($rows as $r) {
             if ($name === '' && (int) $r['is_primary'] === 1) {
                 $name = (string) preg_replace('/\s*\(\d+\)$/', '', (string) $r['full_name']);
             }
-            $age  = $r['age'] !== null ? (int) $r['age'] : null;
-            $band = 'adult';
-            $sp   = strtolower((string) ($r['special_need'] ?? ''));
-            if (in_array($sp, ['patient', 'senior', 'child'], true)) {
-                $band = $sp;
-            } elseif ($age !== null && $age > 0 && $age < 12) {
-                $band = 'child';
-            } elseif ($age !== null && $age >= 60) {
-                $band = 'senior';
-            }
-            $pax[] = ['gender' => (string) (AutoBerth::gender($r['gender']) ?? ''), 'band' => $band];
         }
         // The usual pickup across all of this number's trips, not just the last one.
         $most = Database::fetch(
@@ -347,6 +336,35 @@ final class SmartBook
             'drop'      => (string) ($b['drop_stop'] ?? ''),
             'pax'       => array_slice($pax, 0, 6),
         ];
+    }
+
+    /**
+     * The party as AutoBerth reads it: one {gender, band} per passenger row
+     * (booking_passengers age / gender / special_need), in row order.
+     * Extracted 15 Oct 2026 (Quick Edit Auto Assign) from history() above,
+     * unchanged, so the ticket page and reschedule place a party the same way
+     * SmartBook does.
+     *
+     * @param list<array<string, mixed>> $rows
+     * @return list<array{gender: string, band: string}>
+     */
+    public static function paxFromRows(array $rows): array
+    {
+        $pax = [];
+        foreach ($rows as $r) {
+            $age  = ($r['age'] ?? null) !== null ? (int) $r['age'] : null;
+            $band = 'adult';
+            $sp   = strtolower((string) ($r['special_need'] ?? ''));
+            if (in_array($sp, ['patient', 'senior', 'child'], true)) {
+                $band = $sp;
+            } elseif ($age !== null && $age > 0 && $age < 12) {
+                $band = 'child';
+            } elseif ($age !== null && $age >= 60) {
+                $band = 'senior';
+            }
+            $pax[] = ['gender' => (string) (AutoBerth::gender($r['gender'] ?? null) ?? ''), 'band' => $band];
+        }
+        return $pax;
     }
 
     private static function mostUsedDirection(): string

@@ -15,9 +15,16 @@
  * the commission tier are deliberately left alone when it is.
  *
  * Search / filter / sort in the browser; View expands the row; Edit /
- * activate / deactivate / switch kind / delete post back here (super-admin
- * or staff.manage); Export streams CSV / .xlsx. Row actions link out to the
+ * activate / deactivate / switch kind post back here (super-admin or
+ * staff.manage); Export streams CSV / .xlsx. Row actions link out to the
  * wallet, sales, commission and ticket pages that already exist.
+ *
+ * 15 Oct 2026 (owner, Agent Management): a one-line Quick add (name, mobile,
+ * Org / Person, optional city and email) through AgentWallet::createAgent —
+ * the same helper Staff & Approvals uses; agents are NEVER deleted any more,
+ * only deactivated; and an agent holding more cash than their limit
+ * (AgentWallet::effectiveCashLimit) gets a red "Over ₹X" pill, a KPI card and
+ * an "Over cash limit" filter. Display only — nothing here moves money.
  *
  * Approvals, PIN / password resets and route permissions stay on
  * staff.php and agent.php — this page is the register, not a second copy
@@ -54,6 +61,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $flash = ['bad', 'Session expired — please try again.'];
     } elseif (!$canManage) {
         $flash = ['bad', 'Only a super-admin (or staff manager) can change agent records.'];
+    } elseif ((string) ($_POST['action'] ?? '') === 'quick_add') {
+        /* Quick add (15 Oct 2026, owner: "a new agent in under 30 seconds").
+           Five boxes, one tap. Everything else — username = mobile, a random
+           password until the office issues one, the next free SHG serial in
+           the band, the welcome WhatsApp, the audit row — is
+           AgentWallet::createAgent, the one creation path. */
+        $qaPhone = preg_replace('/\D/', '', (string) ($_POST['qa_phone'] ?? '')) ?? '';
+        try {
+            $newId = AgentWallet::createAgent(
+                (string) ($_POST['qa_name'] ?? ''),
+                $qaPhone,
+                (string) ($_POST['qa_kind'] ?? AgentWallet::KIND_ORG),
+                (string) ($_POST['qa_city'] ?? ''),
+                (string) ($_POST['qa_email'] ?? ''),
+                $selfId
+            );
+            $qaCode = AgentWallet::agentCodeLabel($newId);
+            $flash  = ['ok', 'Agent added' . ($qaCode !== '' ? ' — ' . $qaCode : '') . '. They can sign in now with their code + mobile + OTP; issue a password when you are ready.',
+                       'agent.php?agent=' . $newId . '#loginCredentials', '🔑 Set their login / password'];
+        } catch (RuntimeException $ex) {
+            $flash = ['bad', $ex->getMessage()];
+        }
     } else {
         $act = (string) ($_POST['action'] ?? '');
         $id  = (int) ($_POST['id'] ?? 0);
@@ -178,26 +207,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $flash = ['ok', 'Agent ' . ($to ? 'activated' : 'deactivated') . '.'];
             }
         } elseif ($act === 'delete') {
-            // Same rule as Staff & Agents: only an agent with no sales and no
-            // wallet history can be removed; everyone else is deactivated.
-            if (!Auth::isSuperadmin()) {
-                $flash = ['bad', 'Only a super-admin can delete an agent.'];
-            } elseif ((int) $a['id'] === $selfId) {
-                $flash = ['bad', 'You cannot delete your own account.'];
-            } else {
-                $hasBookings = Database::exists('SELECT 1 FROM bookings WHERE sold_by_admin_id = :a LIMIT 1', ['a' => $id]);
-                $hasLedger   = false;
-                try { $hasLedger = Database::exists('SELECT 1 FROM agent_ledger WHERE agent_admin_id = :a LIMIT 1', ['a' => $id]); } catch (Throwable $e) {}
-                if ($hasBookings || $hasLedger) {
-                    $flash = ['bad', 'This agent has sales / wallet history — deleting would break those records. Deactivate instead.'];
-                } else {
-                    try { AgentWallet::setAgentCode($id, null, $selfId); } catch (Throwable $e) {}
-                    try { Database::delete('admin_profiles', 'admin_id = :a', ['a' => $id]); } catch (Throwable $e) {}
-                    Database::run("DELETE FROM admins WHERE id = :id AND role = 'agent'", ['id' => $id]);
-                    Logger::audit('agent.delete', 'admin', (string) $a['username'], null, null, 'agent deleted (no sales/wallet history)');
-                    $flash = ['ok', 'Agent "' . ($a['full_name'] ?: $a['username']) . '" deleted.'];
-                }
-            }
+            // 15 Oct 2026 (owner rule: never delete agents). The Delete button
+            // is gone; a stale form that still posts it is refused.
+            $flash = ['bad', 'Agents are never deleted — deactivate instead. Their code, tickets and wallet stay on record.'];
         }
     }
 }
@@ -240,7 +252,9 @@ foreach ($rows as &$r) {
     $r['code']    = AgentWallet::agentCodeLabel($id);
     $r['kind']    = AgentWallet::normaliseKind((string) ($r['agent_kind'] ?? AgentWallet::KIND_ORG));
     $r['tier']    = AgentWallet::agentTypeFor($id);
-    $bal          = ['commission' => 0.0, 'cash' => 0.0] + ($balMap[$id] ?? []);
+    // 15 Oct 2026: the ledger's figures first — with the defaults on the left,
+    // PHP's "+" kept the zeros and every row read "settled · due ₹0 · cash ₹0".
+    $bal          = ($balMap[$id] ?? []) + ['commission' => 0.0, 'cash' => 0.0];
     $r['comm_due'] = (float) ($bal['commission'] ?? 0);
     $r['cash_bal'] = (float) ($bal['cash'] ?? 0);
     // Net position — same sign rule as AgentWallet::netPosition() (cash − commission,
@@ -255,7 +269,14 @@ foreach ($rows as &$r) {
     // Settlement overdue (agent_settlement_due_days, 0 = off). Only agents actually
     // holding cash are asked, so this costs nothing while the rule is off.
     $r['overdue'] = $r['cash_bal'] > 0.009 ? AgentWallet::settlementOverdueDays($id) : 0;
-    $r['status']  = (int) $r['is_active'] === 1 ? 'active' : ($r['code'] === '' && (int) $r['sales_all'] === 0 ? 'pending' : 'inactive');
+    // Over the cash limit (15 Oct 2026): own limit, else the company default,
+    // else the cash alert's amount — the same agents the bell names.
+    $r['cash_lim']  = AgentWallet::effectiveCashLimit((float) ($r['cash_limit'] ?? 0));
+    $r['over_cash'] = $r['cash_lim'] > 0.009 && $r['cash_bal'] > $r['cash_lim'] + 0.009;
+    // A rejected application (staff.php keeps it, switched off, with a
+    // suspended_reason) is not "pending" any more.
+    $r['status']  = (int) $r['is_active'] === 1 ? 'active'
+        : ($r['code'] === '' && (int) $r['sales_all'] === 0 && trim((string) ($r['suspended_reason'] ?? '')) === '' ? 'pending' : 'inactive');
     $r['wa']      = (string) ($r['whatsapp'] ?: $r['phone'] ?: $r['display_phone'] ?: '');
     // What this agent is actually paid per passenger (override > tier > percent engine).
     $ov = AgentWallet::commissionOverrideFor($id);
@@ -307,6 +328,8 @@ $orgs    = count(array_filter($rows, static fn($r) => $r['kind'] === AgentWallet
 $persons = count($rows) - $orgs;
 $dueSum  = array_sum(array_map(static fn($r) => $r['comm_due'], $rows));
 $overdueN = count(array_filter($rows, static fn($r) => (int) $r['overdue'] > 0));
+$overCashN = count(array_filter($rows, static fn($r) => $r['over_cash']));
+$overCashSum = array_sum(array_map(static fn($r) => $r['over_cash'] ? $r['cash_bal'] : 0.0, $rows));
 $kycVerified = count(array_filter($rows, static fn($r) => $r['kyc'] === 'verified'));
 $kycWaiting  = count(array_filter($rows, static fn($r) => $r['kyc'] === 'submitted'));
 $csrf    = Security::e(Security::csrfToken());
@@ -318,7 +341,11 @@ $nextOrg    = AgentWallet::nextFreeAgentCode(AgentWallet::KIND_ORG);
 $nextPerson = AgentWallet::nextFreeAgentCode(AgentWallet::KIND_PERSON);
 
 admin_header('Agents', 'agents');
-if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>'; }
+if ($flash !== null) {
+    // [kind, text] or, after a Quick add, [kind, text, link, link label].
+    echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1])
+       . (isset($flash[2], $flash[3]) ? ' <a href="' . Security::e($flash[2]) . '"><b>' . Security::e($flash[3]) . ' →</b></a>' : '') . '</div>';
+}
 ?>
 <div class="cards">
   <div class="card"><div class="k">Agents</div><div class="v"><?= count($rows) ?></div><div class="muted" style="font-size:12px"><?= $orgs ?> organization · <?= $persons ?> person</div></div>
@@ -327,7 +354,34 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
   <div class="card"><div class="k">Commission due</div><div class="v">₹<?= number_format($dueSum) ?></div></div>
   <div class="card"><div class="k">KYC verified</div><div class="v"><?= $kycVerified ?><small> / <?= count($rows) ?></small></div><div class="muted" style="font-size:12px"><?= $kycWaiting > 0 ? $kycWaiting . ' waiting for review' : 'none waiting' ?></div></div>
   <?php if ($overdueN > 0): ?><div class="card"><div class="k">Settlement overdue</div><div class="v" style="color:var(--danger)"><?= $overdueN ?></div><div class="muted" style="font-size:12px">holding cash past the due days</div></div><?php endif; ?>
+  <?php if ($overCashN > 0): ?><div class="card"><div class="k">Over cash limit</div><div class="v" style="color:var(--danger)"><?= $overCashN ?></div><div class="muted" style="font-size:12px">holding ₹<?= number_format($overCashSum) ?> — collect or net it off</div></div><?php endif; ?>
 </div>
+
+<?php if ($canManage): ?>
+<?php /* Quick add (15 Oct 2026): one line on a laptop, a short stack on a
+         phone — name, mobile, Org / Person, then the two optional boxes.
+         Everything else is filled in by AgentWallet::createAgent. */ ?>
+<style>
+.ag-qa{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1.2fr) auto;gap:8px;align-items:end;margin:0 0 12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.ag-qa label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;font-weight:700;color:var(--mut);min-width:0}
+.ag-qa input,.ag-qa select{width:100%;min-height:44px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font-size:15px;box-sizing:border-box;min-width:0}
+.ag-qa .btn{min-height:44px;white-space:nowrap}
+.ag-qa .ag-qa-h{grid-column:1/-1;font-size:13px;font-weight:800;color:var(--ink);margin:0}
+@media (max-width:900px){.ag-qa{grid-template-columns:repeat(2,minmax(0,1fr))}.ag-qa .ag-qa-wide,.ag-qa .btn{grid-column:1/-1}}
+</style>
+<form method="post" class="ag-qa" id="agQuickAdd" autocomplete="off">
+  <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="quick_add">
+  <p class="ag-qa-h">⚡ Quick add agent <span class="muted" style="font-weight:500">· login = their mobile; the next free SHG code is issued at once</span></p>
+  <?php // A refused Quick add keeps what was typed, so the fix is one box, not five.
+        $qaKeep = static fn(string $f): string => ($flash[0] ?? '') === 'bad' && ($_POST['action'] ?? '') === 'quick_add' && is_string($_POST[$f] ?? null) ? $e($_POST[$f]) : ''; ?>
+  <label class="ag-qa-wide">Name / organization<input name="qa_name" required minlength="2" maxlength="120" placeholder="Ram Bahadur / Krishna Travels" value="<?= $qaKeep('qa_name') ?>"></label>
+  <label>Mobile<input name="qa_phone" required inputmode="tel" minlength="10" maxlength="20" placeholder="98765 43210" value="<?= $qaKeep('qa_phone') ?>"></label>
+  <label>Type<select name="qa_kind"><option value="org">🏢 Org</option><option value="person"<?= $qaKeep('qa_kind') === 'person' ? ' selected' : '' ?>>👤 Person</option></select></label>
+  <label>City <span style="font-weight:400">(optional)</span><input name="qa_city" list="counterLocList" maxlength="120" placeholder="Nepalgunj" value="<?= $qaKeep('qa_city') ?>"></label>
+  <label>Email <span style="font-weight:400">(optional)</span><input name="qa_email" type="email" maxlength="191" placeholder="agent@example.com" value="<?= $qaKeep('qa_email') ?>"></label>
+  <button class="btn" type="submit">＋ Add agent</button>
+</form>
+<?php endif; ?>
 
 <div class="dt-bar" id="agCtl">
   <input class="dt-q" type="search" placeholder="Search serial / name / mobile / SHG code / contact / city" aria-label="Search agents">
@@ -342,10 +396,12 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
   <?php endif; ?>
   <select data-dt-filter="sold" aria-label="Sales"><option value="">Any sales</option><option value="1">Has sales</option><option value="0">No sales yet</option></select>
   <select data-dt-filter="kyc" aria-label="KYC"><option value="">Any KYC</option><option value="verified">KYC verified</option><option value="submitted">KYC submitted</option><option value="rejected">KYC rejected</option><option value="none">No KYC</option></select>
+  <select data-dt-filter="cash" aria-label="Cash held"><option value="">Any cash held</option><option value="over">Over cash limit</option></select>
   <a class="btn ghost" href="agents.php?export=csv">⬇ CSV</a>
   <a class="btn ghost" href="agents.php?export=xlsx">⬇ Excel</a>
   <a class="btn ghost" href="agreements.php" title="Applications from the website, KYC and agreement status of every agent and partner">🤝 Agreements &amp; KYC</a>
-  <?php if ($canManage): ?><a class="btn" href="staff.php#addStaff">＋ New agent</a><?php endif; ?>
+  <?php /* staff.php is super-admin only — anyone else adds through Quick add above. */ ?>
+  <?php if (Auth::isSuperadmin()): ?><a class="btn ghost" href="staff.php#addStaff" title="The full form: username, password, desk, contact person">＋ Full new-agent form</a><?php endif; ?>
   <span class="dt-count"></span>
 </div>
 <p class="muted" style="margin:-4px 0 10px;font-size:12px">Serial bands: <b>Organization 1–20</b> (next free <?= $nextOrg === null ? 'none' : (int) $nextOrg ?>) · <b>Person 21+</b> (next free <?= $nextPerson === null ? 'none' : (int) $nextPerson ?>). Switching an agent's type keeps their serial, wallet and commission history.</p>
@@ -404,7 +460,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
   </tr></thead>
   <tbody>
   <?php if ($rows === []): ?>
-    <tr><td colspan="9" class="muted" style="padding:22px;white-space:normal">No agents yet — add one on Staff &amp; Agents, or approve an application from the public agent sign-up form.</td></tr>
+    <tr><td colspan="9" class="muted" style="padding:22px;white-space:normal">No agents yet — add one with Quick add above, or approve an application from the public agent sign-up form on Staff &amp; Approvals.</td></tr>
   <?php endif; ?>
   <?php foreach ($rows as $i => $r):
     $rid = 'a' . (int) $r['id'];
@@ -414,7 +470,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
     $waDigits = preg_replace('/\D/', '', $r['wa']);
     if ($waDigits !== '' && strlen($waDigits) === 10) { $waDigits = '91' . $waDigits; }
   ?>
-    <tr data-search="<?= $e($search) ?>" data-kind="<?= $e($r['kind']) ?>" data-status="<?= $e($r['status']) ?>" data-city="<?= $e($r['counter_name']) ?>" data-sold="<?= (int) $r['sales'] > 0 ? '1' : '0' ?>" data-kyc="<?= $e($r['kyc']) ?>"<?= $r['status'] === 'inactive' ? ' style="opacity:.75"' : '' ?>>
+    <tr data-search="<?= $e($search) ?>" data-kind="<?= $e($r['kind']) ?>" data-status="<?= $e($r['status']) ?>" data-city="<?= $e($r['counter_name']) ?>" data-sold="<?= (int) $r['sales'] > 0 ? '1' : '0' ?>" data-kyc="<?= $e($r['kyc']) ?>" data-cash="<?= $r['over_cash'] ? 'over' : 'ok' ?>"<?= $r['status'] === 'inactive' ? ' style="opacity:.75"' : '' ?>>
       <td class="num" data-sort="<?= $r['serial'] === null ? 99999 : (int) $r['serial'] ?>"><?= $r['serial'] === null ? '<span class="muted">—</span>' : '<b>' . (int) $r['serial'] . '</b>' ?></td>
       <td class="ag-who" data-sort="<?= $e(strtolower((string) ($r['full_name'] ?: $r['username']))) ?>">
         <?php $codeBand = $r['code'] === '' ? 'none' : (AgentWallet::isCompanyCode($r['code']) ? 'co' : 'in'); ?>
@@ -432,6 +488,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
         <?php elseif ($r['net'] < -0.009): ?><b style="color:#2E5FA8">₹<?= number_format(abs($r['net'])) ?> company owes</b>
         <?php else: ?><b class="muted" style="font-weight:600">settled</b><?php endif; ?>
         <small>due ₹<?= number_format($r['comm_due']) ?> · cash ₹<?= number_format($r['cash_bal']) ?><?= (int) $r['overdue'] > 0 ? ' · <b style="display:inline;color:var(--danger)">overdue ' . (int) $r['overdue'] . 'd</b>' : '' ?></small>
+        <?php if ($r['over_cash']): ?><span class="pill st-bad" style="font-size:10.5px;margin-top:3px" title="Holding ₹<?= number_format($r['cash_bal']) ?> against a ₹<?= number_format($r['cash_lim']) ?> cash limit">Over ₹<?= number_format($r['cash_lim']) ?></span><?php endif; ?>
       </td>
       <td class="num ag-2l" data-sort="<?= (float) $r['salary'] ?>"><b><?= $r['salary'] > 0 ? '₹' . number_format($r['salary']) : '<span class="muted" style="font-weight:500">—</span>' ?></b><small>adv. <?= $r['advance'] > 0 ? '<b style="display:inline;color:#b45309">₹' . number_format($r['advance']) . '</b>' : '₹0' ?></small></td>
       <td class="ag-papers" data-sort="<?= $e($r['kyc']) ?>"><div>
@@ -490,9 +547,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
         <?php if ($canManage): ?>
           <a class="btn ghost" href="staff.php#agent-<?= (int) $r['id'] ?>">🔑 PIN / routes</a>
           <form method="post" style="display:inline" onsubmit="return confirm('Switch this agent to <?= $isOrg ? 'Person' : 'Organization' ?>? The serial, wallet and commission history stay exactly as they are.')"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><input type="hidden" name="agent_kind" value="<?= $isOrg ? 'person' : 'org' ?>"><button class="btn ghost" name="action" value="kind">🔁 Make <?= $isOrg ? 'Person' : 'Organization' ?></button></form>
-          <?php if ((int) $r['sales_all'] === 0 && Auth::isSuperadmin()): ?>
-            <form method="post" style="display:inline" onsubmit="return confirm('Delete this agent account? Only possible because they have no sales or wallet history.')"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><button class="btn danger" name="action" value="delete">🗑 Delete</button></form>
-          <?php endif; ?>
+          <?php /* 15 Oct 2026 (owner rule): no Delete here — an agent is deactivated from the ⋯ menu, never removed. */ ?>
         <?php endif; ?>
       </div>
     </td></tr>
