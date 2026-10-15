@@ -108,7 +108,7 @@ check('share fetches the server PNG', str_contains($src('assets/js/11-pdf-ticket
    suite: chalani-png-test.php. */
 check('PNG names who issued the ticket', str_contains($src('includes/ticket.php'), '$issued = self::issuedBy($booking);'));
 check('the agent code is drawn big, and the channel is named',
-    str_contains($src('includes/ticket.php'), '154, $gold, $issued')
+    str_contains($src('includes/ticket.php'), '126, $gold, $issued')
     && str_contains($src('includes/ticket.php'), 'टिकट काट्ने'));
 check('the PDF names the same seller too', substr_count($src('includes/ticket.php'), 'self::issuedBy($booking)') >= 2);
 check('PNG fits a long stop name before adding an ellipsis', str_contains($src('includes/ticket.php'), 'foreach ([23, 20, 18] as $try)'));

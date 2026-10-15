@@ -72,7 +72,13 @@ check('a booking carries an idempotency key', str_contains($js, 'S.idem = S.idem
 check('the shown berths are the berths sold', str_contains($js, 'body.seats = S.q.seats; body.autoPicked = !!S.q.auto;'));
 check('the price shown is the price expected', str_contains($js, 'body.expect = { total: S.q.price ? S.q.price.total : null, date: S.q.date };'));
 check('a moved quote (409 changed) re-renders the card', str_contains($js, "er.fields.code === 'changed'"));
-check('Cash opens the ticket and downloads the PDF by itself', str_contains($js, "if (fresh && r.ticket && r.ticket.pdf)") && str_contains($js, "'#/?ticket='"));
+/* 15 Oct 2026: the PDF no longer downloads by itself (on a phone that
+   navigation closed the ticket); the PNG on the card is the delivery, with
+   Share first and the downloads beside it. */
+check('Cash opens the ticket on the page, nothing downloads by itself', !str_contains($js, "if (fresh && r.ticket && r.ticket.pdf)") && str_contains($js, "'#/?ticket='") && str_contains($js, 'function wireTicketImg(host)'));
+check('  Share leads the ticket actions, PNG and PDF beside it', str_contains($js, 'class="sb-main-act" data-tk="share"') && str_contains($js, 'download="SHG-Ticket-'));
+check('  the booking API pre-draws the PNG after the answer is flushed', str_contains($src('api/smartbook.php'), 'fastcgi_finish_request();') && str_contains($src('api/smartbook.php'), 'Ticket::pngPath($preBid);'));
+check('  download-ticket lets go of the session before rendering', str_contains($src('download-ticket.php'), 'session_write_close();'));
 check('Online goes to the QR page (customer) / the pay link (agent)', str_contains($js, "location.href = r.payPage") && str_contains($js, 'showPayLink(r)'));
 check('counter keyboard: Ctrl+Enter books Cash and prints', str_contains($js, "(e.ctrlKey || e.metaKey)") && str_contains($js, "'/admin/ticket-80mm.php?pnr='"));
 check('Sahayak / QuickBot share fillFromText', str_contains($js, 'function fillFromText(text)') && str_contains($src('assets/js/16-lazy.js'), 'data-sb-fill="'));

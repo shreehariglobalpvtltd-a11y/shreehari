@@ -189,6 +189,34 @@ try {
                 0
             );
         }
+        if ($out['status'] === 'confirmed' && empty($out['replayed'])) {
+            /* 15 Oct 2026 (owner: "ticket ekdum kam time ma, same page mai"):
+               the PNG is drawn right after this answer leaves - the response
+               is flushed first (fastcgi_finish_request), then the ticket is
+               rendered into its cache, so the card's <img> that follows a
+               moment later is served from disk instead of waiting on GD. */
+            $preBid = (int) $out['bookingId'];
+            register_shutdown_function(static function () use ($preBid): void {
+                try {
+                    if (session_status() === PHP_SESSION_ACTIVE) {
+                        session_write_close();
+                    }
+                    if (function_exists('fastcgi_finish_request')) {
+                        fastcgi_finish_request();
+                    } else {
+                        while (ob_get_level() > 0) { ob_end_flush(); }
+                        flush();
+                    }
+                    require_once INCLUDE_PATH . '/fare.php';
+                    require_once INCLUDE_PATH . '/qr.php';
+                    require_once INCLUDE_PATH . '/pdf.php';
+                    require_once INCLUDE_PATH . '/ticket.php';
+                    Ticket::pngPath($preBid);
+                } catch (Throwable $e) {
+                    Logger::warning('SmartBook ticket pre-render failed', ['booking' => $preBid, 'e' => $e->getMessage()]);
+                }
+            });
+        }
         Response::success($out, $out['status'] === 'confirmed'
             ? 'Ticket confirmed. / टिकट पक्का भयो।'
             : 'Berths held — pay by QR to confirm. / बर्थ राखियो — QR बाट तिर्नुहोस्।');

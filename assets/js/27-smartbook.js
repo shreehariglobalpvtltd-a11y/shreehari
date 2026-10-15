@@ -30,7 +30,7 @@
       adult: 'Adult', child: 'Child <12', senior: 'Senior 60+', patient: 'Patient', lower: 'lower floor', upper: 'upper floor', autoTag: 'auto', yours: 'your choice',
       report: 'report', needPhone: 'Enter a valid mobile', needPhoneNp: 'Nepal mobile: 10 digits starting 96 / 97 / 98', needPhoneIn: 'India mobile: 10 digits starting 6–9',
       needName: 'Enter the lead passenger\'s name', needGender: 'Tap F / M for every passenger', loading: 'Finding the best berths…',
-      booking: 'Booking…', ticketOk: 'Ticket confirmed', codNote: 'Cash — pay at the boarding counter', pnr: 'PNR', dlPdf: 'Download PDF', dlPng: 'Download PNG',
+      booking: 'Booking…', making: 'Preparing your ticket…', ticketOk: 'Ticket confirmed', codNote: 'Cash — pay at the boarding counter', pnr: 'PNR', dlPdf: 'Download PDF', dlPng: 'Download PNG',
       share: 'Share', print: 'Print', copy: 'Copy PNR', track: 'Track bus', copied: 'PNR copied', newB: 'Book another', heldQr: 'Berths held — opening the QR page…',
       paxN: '{n} passenger(s)', left: '{n} left', changed: 'The price or date changed — please check and tap again.', geoNo: 'Location not available — choose from the list.',
       pickN: '{a} of {b} chosen', women: 'Women only', taken: 'Taken', free: 'Free', mine: 'Your pick', pickAll: 'Choose one berth for each passenger',
@@ -48,7 +48,7 @@
       adult: 'वयस्क', child: 'बच्चा <12', senior: 'वरिष्ठ 60+', patient: 'मरीज़', lower: 'नीचे', upper: 'ऊपर', autoTag: 'ऑटो', yours: 'आपकी पसंद',
       report: 'रिपोर्ट', needPhone: 'सही मोबाइल लिखें', needPhoneNp: 'नेपाल मोबाइल: 96 / 97 / 98 से 10 अंक', needPhoneIn: 'भारत मोबाइल: 6–9 से 10 अंक',
       needName: 'मुख्य यात्री का नाम लिखें', needGender: 'हर यात्री के लिए म / पु दबाएँ', loading: 'सबसे अच्छी बर्थ ढूँढ रहे हैं…',
-      booking: 'बुक हो रहा है…', ticketOk: 'टिकट पक्का', codNote: 'कैश — चढ़ते समय काउंटर पर भुगतान', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
+      booking: 'बुक हो रहा है…', making: 'टिकट तैयार हो रहा है…', ticketOk: 'टिकट पक्का', codNote: 'कैश — चढ़ते समय काउंटर पर भुगतान', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
       share: 'शेयर', print: 'प्रिंट', copy: 'PNR कॉपी', track: 'बस ट्रैक', copied: 'PNR कॉपी हुआ', newB: 'और बुक करें', heldQr: 'बर्थ रखी गई — QR पेज खुल रहा है…',
       paxN: '{n} यात्री', left: '{n} बाकी', changed: 'किराया या तारीख बदली — जाँचकर फिर दबाएँ।', geoNo: 'लोकेशन नहीं मिली — सूची से चुनें।',
       pickN: '{b} में {a} चुनी', women: 'केवल महिला', taken: 'बुक', free: 'खाली', mine: 'आपकी', pickAll: 'हर यात्री के लिए एक बर्थ चुनें',
@@ -66,7 +66,7 @@
       adult: 'वयस्क', child: 'बच्चा <१२', senior: 'ज्येष्ठ ६०+', patient: 'बिरामी', lower: 'तल्लो तला', upper: 'माथिल्लो तला', autoTag: 'अटो', yours: 'तपाईंको रोजाइ',
       report: 'रिपोर्ट', needPhone: 'सही मोबाइल लेख्नुहोस्', needPhoneNp: 'नेपाल मोबाइल: ९६ / ९७ / ९८ बाट १० अङ्क', needPhoneIn: 'भारत मोबाइल: ६–९ बाट १० अङ्क',
       needName: 'मुख्य यात्रुको नाम लेख्नुहोस्', needGender: 'हरेक यात्रुको म / पु थिच्नुहोस्', loading: 'सबैभन्दा राम्रो बर्थ खोज्दै…',
-      booking: 'बुक हुँदैछ…', ticketOk: 'टिकट पक्का भयो', codNote: 'नगद — चढ्दा काउन्टरमा तिर्ने', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
+      booking: 'बुक हुँदैछ…', making: 'टिकट तयार हुँदैछ…', ticketOk: 'टिकट पक्का भयो', codNote: 'नगद — चढ्दा काउन्टरमा तिर्ने', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
       share: 'सेयर', print: 'प्रिन्ट', copy: 'PNR कपी', track: 'बस ट्र्याक', copied: 'PNR कपी भयो', newB: 'अर्को बुक', heldQr: 'बर्थ राखियो — QR पेज खुल्दैछ…',
       paxN: '{n} जना', left: '{n} बाँकी', changed: 'भाडा वा मिति बदलियो — हेरेर फेरि थिच्नुहोस्।', geoNo: 'लोकेसन भेटिएन — सूचीबाट छान्नुहोस्।',
       pickN: '{b} मध्ये {a} छानियो', women: 'महिला मात्र', taken: 'बुक भइसक्यो', free: 'खाली', mine: 'तपाईंको', pickAll: 'हरेक यात्रुका लागि एउटा बर्थ छान्नुहोस्',
@@ -615,15 +615,18 @@
       + '<div class="sb-tk-h"><span class="sb-tk-ok" aria-hidden="true">✓</span><div><b>' + esc(tr('ticketOk')) + '</b><small>' + esc(r.route || '') + ' · ' + esc(r.dateLabel || '') + '</small></div>'
       + '<button type="button" class="sb-x" data-tk="close" aria-label="Close" style="margin-left:auto">✕</button></div>'
       + '<div class="sb-tk-pnr">' + esc(tr('pnr')) + ' ' + esc(r.pnr) + '</div>'
-      + (t.view ? '<img class="sb-tk-img" src="' + esc(t.view) + '" alt="Ticket ' + esc(r.pnr) + '" loading="eager" decoding="async">' : '')
+      + (t.view ? '<div class="sb-tk-imgw" data-tkimg><img class="sb-tk-img" src="' + esc(t.view) + '" alt="Ticket ' + esc(r.pnr) + '" loading="eager" decoding="async"><span class="sb-tk-wait">' + esc(tr('making')) + '</span></div>' : '')
       + '<div class="sb-tk-row">' + esc((r.seatLabels || []).join(', ')) + ' · ' + esc(r.totalLabel || '') + ' <small>(≈ ' + esc(npr(r.npr)) + ')</small></div>'
       + (r.boardingTime ? '<div class="sb-tk-row">' + esc(r.boarding || '') + ' · <small>' + esc(tr('report')) + ' ' + esc(r.reportTime || '') + '</small></div>' : '')
       + (r.isCod ? '<div class="sb-tk-cod">💵 ' + esc(tr('codNote')) + ' — ' + esc(r.totalLabel || '') + '</div>' : '')
       + '<div class="sb-tk-acts">'
-      + (t.pdf ? '<a class="sb-main-act" href="' + esc(t.pdf) + '" download>' + esc(tr('dlPdf')) + '</a>' : '')
-      + (t.png ? '<a href="' + esc(t.png) + '" download>' + esc(tr('dlPng')) + '</a>' : '')
-      + '<button type="button" data-tk="share">' + esc(tr('share')) + '</button>'
-      + (t.print ? '<a href="' + esc(t.print) + '" target="_blank" rel="noopener">' + esc(tr('print')) + '</a>' : '')
+      /* 15 Oct 2026 (owner: "same page mai delivery, share ya download button"):
+         the picture above IS the ticket; Share leads (WhatsApp on a phone),
+         then the PNG, then the PDF for print. Nothing downloads by itself. */
+      + '<button type="button" class="sb-main-act" data-tk="share">📤 ' + esc(tr('share')) + '</button>'
+      + (t.png ? '<a href="' + esc(t.png) + '" download="SHG-Ticket-' + esc(r.pnr) + '.png">⬇️ ' + esc(tr('dlPng')) + '</a>' : '')
+      + (t.pdf ? '<a href="' + esc(t.pdf) + '" download>' + esc(tr('dlPdf')) + '</a>' : '')
+      + (t.print && STAFF ? '<a href="' + esc(t.print) + '" target="_blank" rel="noopener">' + esc(tr('print')) + '</a>' : '')
       + '<button type="button" data-tk="copy">' + esc(tr('copy')) + '</button>'
       + '<a href="#/trip/' + encodeURIComponent(r.pnr) + '">' + esc(tr('track')) + '</a>'
       + '</div><button type="button" class="sb-tk-new" data-tk="new">＋ ' + esc(tr('newB')) + '</button></div>';
@@ -632,13 +635,29 @@
   function showTicket(r, fresh) {
     lastTicket = r;
     var html = ticketHtml(r);
-    if (wide()) { var tk = $('sbTicket'); tk.innerHTML = html; tk.hidden = false; tk.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
-    else { $('sbModalIn').innerHTML = html; $('sbModal').hidden = false; document.body.classList.add('shg-modal-open'); }
+    var host;
+    if (wide()) { host = $('sbTicket'); host.innerHTML = html; host.hidden = false; host.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    else { host = $('sbModalIn'); host.innerHTML = html; $('sbModal').hidden = false; document.body.classList.add('shg-modal-open'); }
+    wireTicketImg(host);
     try { if (!STAFF && location.hash.indexOf('#/?ticket=') !== 0) history.replaceState(null, '', '#/?ticket=' + encodeURIComponent(r.pnr)); } catch (e) {}
-    if (fresh && r.ticket && r.ticket.pdf) {
-      // the PDF downloads by itself (§7); the buttons stay for PNG / share / print
-      setTimeout(function () { var a = document.createElement('a'); a.href = r.ticket.pdf; a.download = ''; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); }, 600);
-    }
+    /* 15 Oct 2026: the PDF no longer downloads by itself - on a phone that
+       navigation closed the ticket the customer had just been shown. The PNG
+       on the page is the delivery (the server pre-draws it while the booking
+       answer is still in flight); Share / Download are one tap away. */
+  }
+  /* The ticket picture: a "preparing…" shimmer until it has loaded, and a
+     couple of quiet retries if the first fetch failed (a cold render on a
+     busy server) - the customer never sees a broken image. */
+  function wireTicketImg(host) {
+    var w = host.querySelector('[data-tkimg]'); if (!w) return;
+    var img = w.querySelector('img'), tries = 0, src = img.getAttribute('src');
+    function ok() { w.classList.add('ok'); }
+    img.addEventListener('load', ok);
+    img.addEventListener('error', function () {
+      if (++tries > 3) { w.classList.add('bad'); return; }
+      setTimeout(function () { img.src = src + '&t=' + Date.now(); }, 1200 * tries);
+    });
+    if (img.complete && img.naturalWidth > 0) ok();
   }
   function closeTicket() {
     $('sbModal').hidden = true; document.body.classList.remove('shg-modal-open');

@@ -1554,6 +1554,168 @@ final class Ticket
         }
     }
 
+    /**
+     * The centred letterhead on top of the PNG ticket (15 Oct 2026, owner:
+     * "logo thulo suru ma, tyesko tala company ko name"). $bandB is the
+     * bottom of the navy band (the foil bar sits on it); everything is laid
+     * out from the top so the band may be any height >= 254.
+     *
+     * Top strip: the mantra. Then the big gold seal with the emblem in the
+     * middle, the company name under it, the e-ticket line with the two
+     * flags, and the desk / route / website line. The PAYMENT pill sits top
+     * left under the mantra, the ISSUED-BY chip top right - both clear of
+     * the seal.
+     */
+    private static function pngHeader($im, int $W, int $bandB, array $booking, array $co, array $issued, bool $toIndia): void
+    {
+        $navyHi = DocArt::col($im, DocArt::ROYAL);
+        $gold   = DocArt::col($im, DocArt::GOLD_LIGHT);
+        $goldM  = DocArt::col($im, DocArt::GOLD);
+        $goldD  = DocArt::col($im, DocArt::GOLD_DEEP);
+        $green  = imagecolorallocate($im, 23, 122, 72);
+        $red    = imagecolorallocate($im, 160, 32, 40);
+        $white  = imagecolorallocate($im, 255, 255, 255);
+        $sub    = imagecolorallocate($im, 170, 185, 215);
+
+        DocArt::softShadow($im, 36, 36, $W - 36, $bandB, 24, 12, 6, [40, 30, 10], 12);
+        DocArt::gradBox($im, 36, 36, $W - 36, $bandB, 24, DocArt::NAVY, DocArt::ROYAL);
+        imagefilledrectangle($im, 36, $bandB - 12, $W - 36, $bandB, $navyHi);   // square foot (the foil bar sits on it)
+        /* A quiet Himalayan ridge along the foot of the band (9 Oct 2026). */
+        DocArt::peaks($im, 36, $bandB - 104, $W - 36, $bandB - 12, [30, 64, 128], [36, 72, 140], [84, 112, 166]);
+        /* Gold-foil DOUBLE rule round the band with corner ornaments, and
+           the MANTRA line at the very top (9 Oct 2026, owner: "bhagwan ko
+           mantra"), gold on a deeper navy strip inside the frame. */
+        DocArt::goldFrame($im, 42, 40, $W - 42, $bandB - 8, 4, 6, 14);
+        $mantra = DocArt::mantraLine();
+        if ($mantra !== '') {
+            DocArt::gradBox($im, 51, 51, $W - 51, 80, 0, [8, 18, 42], DocArt::NAVY);
+            imageline($im, 51, 81, $W - 51, 81, $goldM);
+            $mSz = 17;
+            while ($mSz > 11 && self::gdWidth($mSz, $mantra) > $W - 260) { $mSz--; }
+            $mw = self::gdWidth($mSz, $mantra);
+            $mx = (int) (($W - $mw) / 2);
+            self::gdText($im, $mSz, $mx, 73, $gold, $mantra, false);
+            foreach ([$mx - 30, $mx + $mw + 30] as $dx) {
+                imagefilledpolygon($im, [$dx, 58, $dx + 8, 66, $dx, 74, $dx - 8, 66], $goldM);
+                imagefilledpolygon($im, [$dx, 61, $dx + 5, 66, $dx, 66], $gold);
+                imageline($im, $dx + ($dx < $mx ? -14 : 14), 66, $dx + ($dx < $mx ? -60 : 60), 66, $goldD);
+            }
+        }
+
+        $clampTo = static function (float $size, string $text, int $maxW): string {
+            while ($text !== '' && self::gdWidth($size, $text) > $maxW) {
+                $text = mb_substr($text, 0, mb_strlen($text) - 2) . '…';
+            }
+            return $text;
+        };
+
+        /* THE EMBLEM, big and centred: an embossed gold seal with a royal
+           enamel face (9 Oct 2026 design) scaled up ~1.6x. A company's own
+           uploaded logo (the Nepal company's) still wins inside it. */
+        $cx = (int) ($W / 2);
+        $sealFace = DocArt::seal($im, $cx, 200, 150, 104, [20, 44, 98]);
+        DocArt::mark($im, $sealFace['x'], $sealFace['y'], $sealFace['w'], $sealFace['h'], true, self::ownLogo($co), 'center');
+
+        /* Payment pill - top LEFT under the mantra, clear of the seal. */
+        $pay  = $booking['payment'] ?? null;
+        $paid = self::paymentSummary($booking)['due'] <= 0;
+        if ($paid) {
+            $pillCol = $green;
+            $method  = strtoupper((string) ($pay['method'] ?? ''));
+            $pillTxt = 'PAID' . ($method !== '' ? ' · ' . ($method === 'COD' ? 'CASH' : $method) : '');
+        } elseif ((int) ($booking['is_cod'] ?? 0) === 1) {
+            $pillCol = $goldD;
+            $pillTxt = 'PAY CASH ON BOARDING';
+        } else {
+            $pillCol = $red;
+            $pillTxt = 'PAYMENT PENDING';
+        }
+        $pSz = 16;
+        while ($pSz > 11 && self::gdWidth($pSz, $pillTxt) + 40 > $cx - 150 - 60 - 12) { $pSz--; }
+        $pw = self::gdWidth($pSz, $pillTxt) + 40;
+        self::gdRounded($im, 58, 97, 60 + $pw + 2, 133, 18, $goldM);
+        self::gdRounded($im, 60, 99, 60 + $pw, 131, 16, $pillCol);
+        self::gdText($im, $pSz, 80, 122, $white, $pillTxt, true);
+
+        /* ISSUED-BY chip - top RIGHT (owner ask 10 Sep 2026: "agent code
+           pani include hunu paryo - kasko through bata kateko tha hos"):
+           WHERE the ticket was cut, then WHO. An agent's SHG number is the
+           identity that settles a commission, so it takes the big line; a
+           counter or office sale has no number, so the desk that sold it
+           takes that line instead. */
+        $iCode  = self::latinUpper($issued['code']);
+        $chipX1 = $W - 60 - 268;
+        $chipX2 = $W - 60;
+        DocArt::softShadow($im, $chipX1, 96, $chipX2, 196, 18, 8, 4, [0, 0, 0], 22);
+        DocArt::gradBox($im, $chipX1, 96, $chipX2, 196, 18, [10, 24, 54], DocArt::ROYAL);
+        DocArt::roundOutline($im, $chipX1, 96, $chipX2, 196, 18, $goldM, 2);
+        self::gdText($im, 15, $chipX1 + 20, 126, $gold, $issued['label'], false);
+        $iBig = $issued['kind'] === 'agent'
+            ? $iCode
+            : self::display($issued['kind'] === 'online' ? $co['web'] : $issued['name']);
+        $cSz = 30;
+        foreach ([30, 26, 22, 19, 17] as $try) { $cSz = $try; if (self::gdWidth($try, $iBig) <= 228) { break; } }
+        self::gdText($im, $cSz, $chipX1 + 20, 168, $white, $clampTo($cSz, $iBig, 228), true);
+        if ($issued['kind'] === 'agent') {
+            $iWho = self::display($issued['name']);
+        } else {
+            $iWho = '';
+            foreach ([
+                self::latin((string) ($issued['location'] ?? '')),
+                self::latin(trim((string) preg_replace('/\s*\([^)]*\)\s*$/', '', (string) ($issued['location'] ?? '')))),
+                self::latinUpper((string) ($issued['locCode'] ?? '')),
+            ] as $try) {
+                if ($try !== '' && self::gdWidth(14, $try) <= 228) { $iWho = $try; break; }
+            }
+        }
+        self::gdText($im, 14, $chipX1 + 20, 188, $sub, $clampTo(14, $iWho, 228), false);
+
+        /* COMPANY NAME, centred under the seal - the biggest letters in the
+           band. A longer name steps down a size rather than running under
+           the frame. */
+        $brand = self::latinUpper($co['name']);
+        $brandMax = $W - 160;
+        $bSz = 40;
+        foreach ([40, 36, 32, 28, 24, 21] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $brandMax) { break; } }
+        $brand = $clampTo($bSz, $brand, $brandMax);
+        self::gdText($im, $bSz, (int) (($W - self::gdWidth($bSz, $brand)) / 2), 352, $white, $brand, true);
+
+        /* Which way this ticket runs (3 Oct 2026): label in Nepali, the
+           countries Roman (house ticket rule), then the two flags - the
+           side the bus leaves from first (9 Oct 2026). Centred as one unit. */
+        $corridor = $toIndia ? 'Nepal -> India  ·  Rupaidiha -> Gujarat' : 'India -> Nepal  ·  Gujarat -> Rupaidiha';
+        $flagsW = DocArt::flagPairWidth(22, 8);
+        $eLine  = $clampTo(19, $toIndia ? 'ई-टिकट  ·  NEPAL -> INDIA' : 'ई-टिकट  ·  INDIA -> NEPAL', $W - 200 - $flagsW - 18);
+        $eW     = self::gdWidth(19, $eLine);
+        $ex     = (int) (($W - ($eW + 18 + $flagsW)) / 2);
+        self::gdText($im, 19, $ex, 388, $gold, $eLine, false);
+        DocArt::flagPair($im, $ex + $eW + 18, 369, 22, 8, $toIndia ? 'NP' : 'IN');
+
+        /* The desk this ticket was cut at, then the route and the website
+           (owner, 24 Sep 2026): the line gives ground rather than the desk -
+           desk + route, then desk + website, then the desk alone, the first
+           that fits WHOLE. No desk = the route and the website. */
+        $deskLine = self::latin($issued['location'] ?? '');
+        $subMax   = $W - 160;
+        $brandSub = $corridor . '  ·  ' . self::latin($co['web']);
+        if (self::gdWidth(16, $brandSub) > $subMax) {
+            $brandSub = $corridor;
+        }
+        if ($deskLine !== '') {
+            foreach ([
+                $deskLine . '  ·  ' . $corridor . '  ·  ' . self::latin($co['web']),
+                $deskLine . '  ·  ' . $corridor,
+                $deskLine . '  ·  ' . self::latin($co['web']),
+                $deskLine,
+            ] as $try) {
+                $brandSub = $try;
+                if (self::gdWidth(16, $try) <= $subMax) { break; }
+            }
+        }
+        $brandSub = $clampTo(16, $brandSub, $subMax);
+        self::gdText($im, 16, (int) (($W - self::gdWidth(16, $brandSub)) / 2), 418, $sub, $brandSub, false);
+    }
+
     private static function renderTicketPng(array $booking, array $ticket, string $path, string $mark = ''): void
     {
         /* The passenger list decides the height (owner ask, 10 Sep 2026:
@@ -1620,187 +1782,30 @@ final class Ticket
 
         imagefilledrectangle($im, 0, 0, $W, $H, $cream);
 
-        /* ---- Header band: navy -> royal + gold-foil double rule ---------- */
-        DocArt::softShadow($im, 36, 36, $W - 36, 262, 24, 12, 6, [40, 30, 10], 12);
-        DocArt::gradBox($im, 36, 36, $W - 36, 262, 24, DocArt::NAVY, DocArt::ROYAL);
-        imagefilledrectangle($im, 36, 250, $W - 36, 262, $navyHi);   // square foot (the foil bar sits on it)
-
-        /* The AGENT CODE chip claims the right edge of the band from y=124
-           down, so the two brand lines beside it are clamped to stop short
-           of it. The name itself steps down a size instead — a longer
-           company_name must never run under the code. */
+        /* ---- Header band -------------------------------------------------
+           15 Oct 2026 (owner: "logo thulo suru ma, tyesko tala company ko
+           name"): the band is now a TALL centred letterhead - the emblem in
+           a big gold seal on top, the company name under it, the e-ticket
+           line and the desk line under that. It is drawn LAST, on a taller
+           canvas, by pngHeader(); the whole body below keeps every
+           coordinate it has always had and is copied down by
+           PNG_HEAD_EXTRA at the end (see the splice before imagepng). The
+           values the body shares with the band are resolved here. */
         $co     = self::companyOf($booking);   // the ISSUING company - India or Nepal (4 Oct 2026)
-        $chipX1 = $W - 60 - 268;
-
-        /* A quiet Himalayan ridge along the foot of the band (9 Oct 2026) —
-           a shade lighter than the gradient, drawn before the emblem, the
-           text and the chips so all of them sit on top of it. */
-        DocArt::peaks($im, 36, 150, $W - 36, 250, [30, 64, 128], [36, 72, 140], [84, 112, 166]);
-
-        /* Gold-foil DOUBLE rule round the band with corner ornaments, and
-           the MANTRA line at the very top (9 Oct 2026, owner: "bhagwan ko
-           mantra"), gold on a deeper navy strip inside the frame. */
-        DocArt::goldFrame($im, 42, 40, $W - 42, 254, 4, 6, 14);
-        $mantra = DocArt::mantraLine();
-        if ($mantra !== '') {
-            DocArt::gradBox($im, 51, 51, $W - 51, 80, 0, [8, 18, 42], DocArt::NAVY);
-            imageline($im, 51, 81, $W - 51, 81, $goldM);
-            $mSz = 17;
-            while ($mSz > 11 && self::gdWidth($mSz, $mantra) > $W - 260) { $mSz--; }
-            $mw = self::gdWidth($mSz, $mantra);
-            $mx = (int) (($W - $mw) / 2);
-            self::gdText($im, $mSz, $mx, 73, $gold, $mantra, false);
-            // a small lotus-diamond either side of the line
-            foreach ([$mx - 30, $mx + $mw + 30] as $dx) {
-                imagefilledpolygon($im, [$dx, 58, $dx + 8, 66, $dx, 74, $dx - 8, 66], $goldM);
-                imagefilledpolygon($im, [$dx, 61, $dx + 5, 66, $dx, 66], $gold);
-                imageline($im, $dx + ($dx < $mx ? -14 : 14), 66, $dx + ($dx < $mx ? -60 : 60), 66, $goldD);
-            }
+        /* Resolved here rather than at the chip below, because the line
+           under the company name needs the desk too (owner, 24 Sep 2026:
+           "company ko name ko tala location lekhne thau"). */
+        $issued = self::issuedBy($booking);
+        if (!class_exists('Boarding')) {
+            require_once __DIR__ . '/boarding.php';
         }
-
-        /* The EMBLEM alone (9 Oct 2026, owner: "logo haru ma name ni join xa,
-           background hataidinu, only logo matra rakhdeu"): no white chip, no
-           baked name — the company name is the live text beside it. Aspect
-           kept (the mark is ~1.93:1). Gold version (9 Oct 2026): it sits in
-           an EMBOSSED GOLD SEAL with a royal-navy enamel face and a soft glow,
-           so the navy globe still reads. A company's own uploaded logo (the
-           Nepal company's) still wins. */
-        $sealFace = DocArt::seal($im, 150, 154, 92, 70, [20, 44, 98]);
-        DocArt::mark($im, $sealFace['x'], $sealFace['y'], $sealFace['w'], $sealFace['h'], true, self::ownLogo($co), 'center');
-        $bx = 262;   // the seal is drawn with or without the emblem file
+        $toIndia = Boarding::routeDirection(['from_city' => (string) ($booking['from_city'] ?? ''), 'to_city' => (string) ($booking['to_city'] ?? '')]) === 'toIndia';
         $clampTo = static function (float $size, string $text, int $maxW): string {
             while ($text !== '' && self::gdWidth($size, $text) > $maxW) {
                 $text = mb_substr($text, 0, mb_strlen($text) - 2) . '…';
             }
             return $text;
         };
-        /* Resolved here rather than at the chip below, because the line
-           under the company name needs the desk too (owner, 24 Sep 2026:
-           "company ko name ko tala location lekhne thau"). */
-        $issued = self::issuedBy($booking);
-
-        /* Payment pill (top-right of the band) */
-        $pay  = $booking['payment'] ?? null;
-        $paid = self::paymentSummary($booking)['due'] <= 0;
-        if ($paid) {
-            $pillCol = $green;
-            $method  = strtoupper((string) ($pay['method'] ?? ''));
-            $pillTxt = 'PAID' . ($method !== '' ? ' · ' . ($method === 'COD' ? 'CASH' : $method) : '');
-        } elseif ((int) ($booking['is_cod'] ?? 0) === 1) {
-            $pillCol = $goldD;
-            $pillTxt = 'PAY CASH ON BOARDING';
-        } else {
-            $pillCol = $red;
-            $pillTxt = 'PAYMENT PENDING';
-        }
-        /* Under the mantra strip now (9 Oct 2026): 86..120, a gold rim. */
-        $pw = self::gdWidth(16, $pillTxt) + 40;
-        self::gdRounded($im, $W - 60 - $pw - 2, 85, $W - 58, 121, 18, $goldM);
-        self::gdRounded($im, $W - 60 - $pw, 87, $W - 60, 119, 16, $pillCol);
-        self::gdText($im, 16, $W - 60 - $pw + 20, 110, $white, $pillTxt, true);
-
-        $brand = self::latinUpper($co['name']);
-        $bSz   = 30;
-        /* Stops short of the chip / pay pill on the right (4 Oct 2026): a
-           longer company name - the Nepal company's - ran under the pill. */
-        $brandMax = min($chipX1, $W - 60 - $pw) - 24 - $bx;
-        foreach ([30, 27, 24, 21, 18] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $brandMax) { break; } }
-        self::gdText($im, $bSz, $bx, 122, $white, $clampTo($bSz, $brand, $brandMax), true);
-        /* Which way this ticket runs (3 Oct 2026, owner: "Nepal bata pathauda
-           ticket ma ni Nepal to India"): the return run says so in the band
-           instead of the fixed "Gujarat <-> Rupaidiha" both runs printed. */
-        if (!class_exists('Boarding')) {
-            require_once __DIR__ . '/boarding.php';
-        }
-        $toIndia  = Boarding::routeDirection(['from_city' => (string) ($booking['from_city'] ?? ''), 'to_city' => (string) ($booking['to_city'] ?? '')]) === 'toIndia';
-        $corridor = $toIndia ? 'Nepal -> India  ·  Rupaidiha -> Gujarat' : 'India -> Nepal  ·  Gujarat -> Rupaidiha';
-        /* Label in Nepali, the countries Roman (house ticket rule), then the
-           two flags — the side the bus leaves from first (9 Oct 2026). */
-        $flagsW = DocArt::flagPairWidth(22, 8);
-        $eLine  = $clampTo(19, $toIndia ? 'ई-टिकट  ·  NEPAL -> INDIA' : 'ई-टिकट  ·  INDIA -> NEPAL', $chipX1 - 24 - $bx - $flagsW - 18);
-        self::gdText($im, 19, $bx, 162, $gold, $eLine, false);
-        DocArt::flagPair($im, $bx + self::gdWidth(19, $eLine) + 18, 143, 22, 8, $toIndia ? 'NP' : 'IN');
-        /* The desk this ticket was cut at, directly under the company name.
-           A Nepalgunj walk-in should be able to see which window sold it
-           without reading the small print. No desk (an online sale, or a
-           counter that has not been given a location yet) leaves the line
-           exactly as it was — the route and the website. */
-        $deskLine = self::latin($issued['location'] ?? '');
-        /* This line is ~480px wide and the desk name is the new thing on it,
-           so the line gives ground rather than the desk: try desk + route,
-           then desk + website, then the desk alone, and take the first that
-           fits WHOLE. Nothing is lost by dropping the other two — the route
-           is set in 60px letters in the middle of the ticket (STV -> RPD)
-           and the website is printed in full beside the QR. With no desk
-           the line is exactly what it always was. */
-        $brandSub = $corridor . '  ·  ' . self::latin($co['web']);
-        if (self::gdWidth(16, $brandSub) > $chipX1 - 24 - $bx) {
-            $brandSub = $corridor;
-        }
-        if ($deskLine !== '') {
-            foreach ([
-                $deskLine . '  ·  ' . $corridor,
-                $deskLine . '  ·  ' . self::latin($co['web']),
-                $deskLine,
-            ] as $try) {
-                $brandSub = $try;
-                if (self::gdWidth(16, $try) <= $chipX1 - 24 - $bx) { break; }
-            }
-        }
-        self::gdText($im, 16, $bx, 200, imagecolorallocate($im, 170, 185, 215),
-            $clampTo(16, $brandSub, $chipX1 - 24 - $bx), false);
-
-
-        /* ---- AGENT CODE chip (owner ask 10 Sep 2026: "agent code pani
-           include hunu paryo — kasko through bata kateko tha hos") -------
-           The code used to appear only as 17px grey small print at the very
-           bottom of the ticket, which is the first thing WhatsApp's JPEG
-           pass smears. It now also sits in the header, in the same size
-           class as the PNR, so whoever picks the ticket up reads the code
-           before anything else — and a commission question is settled off
-           the picture instead of off the register. */
-        $iCode  = self::latinUpper($issued['code']);
-        $chipX2 = $W - 60;
-        DocArt::softShadow($im, $chipX1, 124, $chipX2, 224, 18, 8, 4, [0, 0, 0], 22);
-        DocArt::gradBox($im, $chipX1, 124, $chipX2, 224, 18, [10, 24, 54], DocArt::ROYAL);
-        DocArt::roundOutline($im, $chipX1, 124, $chipX2, 224, 18, $goldM, 2);
-        /* The chip says WHERE the ticket was cut, then WHO. An agent's SHG
-           number is the identity that settles a commission, so it takes the
-           big line; a counter or office sale has no number, so the desk that
-           sold it takes that line instead of repeating the word above it. */
-        self::gdText($im, 15, $chipX1 + 20, 154, $gold, $issued['label'], false);
-        $iBig = $issued['kind'] === 'agent'
-            ? $iCode
-            : self::display($issued['kind'] === 'online' ? $co['web'] : $issued['name']);
-        $cSz = 30;
-        foreach ([30, 26, 22, 19, 17] as $try) { $cSz = $try; if (self::gdWidth($try, $iBig) <= 228) { break; } }
-        self::gdText($im, $cSz, $chipX1 + 20, 196, $white, $clampTo($cSz, $iBig, 228), true);
-        /* The third line of the chip. An agent sale spends it on the person
-           behind the code (the code is the identity; the name is the
-           courtesy). A counter or office sale has already spent the big
-           line on the seller's NAME, so this one carries WHERE they sold it
-           — the half of "by name and counter location" that was missing. */
-        if ($issued['kind'] === 'agent') {
-            $iWho = self::display($issued['name']);
-        } else {
-            /* 228px at 14px is about 30 characters. "Nepalgunj — Bus Park
-               (NPJ)" is 26 and fits; "Nepalgunj — Dhamboji Chowk (NPJD)" is
-               not, and clamping it produced "Nepalgunj — Dhamboji Cho…" —
-               an ellipsis where the CODE should be, which is the one part
-               of a desk name that has to survive. So: try the whole label,
-               then the town without its bracket, then the bare code, and
-               take the first that fits whole. */
-            $iWho = '';
-            foreach ([
-                self::latin((string) ($issued['location'] ?? '')),
-                self::latin(trim((string) preg_replace('/\s*\([^)]*\)\s*$/', '', (string) ($issued['location'] ?? '')))),
-                self::latinUpper((string) ($issued['locCode'] ?? '')),
-            ] as $try) {
-                if ($try !== '' && self::gdWidth(14, $try) <= 228) { $iWho = $try; break; }
-            }
-        }
-        self::gdText($im, 14, $chipX1 + 20, 216, imagecolorallocate($im, 170, 185, 215),
-            $clampTo(14, $iWho, 228), false);
 
         /* ---- White card ---------------------------------------------- */
         // 21 Sep 2026: the card now sits ON the cream page instead of being
@@ -2272,18 +2277,34 @@ final class Ticket
             self::gdHeritage($im, $W, $artY + 6, $toIndia ? 'NP' : 'IN', $pageRgb);
         }
 
+        /* ---- The tall letterhead (15 Oct 2026) -------------------------
+           The body above was drawn with the band bottom at y=254 as it
+           always was. Now the canvas grows by PNG_HEAD_EXTRA, the body
+           (from the foil bar at 254 down) is copied that far down, and the
+           centred letterhead is drawn in the taller band on top. */
+        $hx  = self::PNG_HEAD_EXTRA;
+        $out = imagecreatetruecolor($W, $H + $hx);
+        imagealphablending($out, true);
+        imagefilledrectangle($out, 0, 0, $W, $H + $hx, DocArt::col($out, $pageRgb));
+        self::pngHeader($out, $W, 254 + $hx, $booking, $co, $issued, $toIndia);
+        imagecopy($out, $im, 0, 254 + $hx, 0, 254, $W, $H - 254);
+        imagedestroy($im);
+        $im = $out;
+
         /* CORRECTED / DUPLICATE band in the 36px margin above the header. */
         $markTxt = self::markText($ticket, $mark);
         if ($markTxt !== '') {
-            imagefilledrectangle($im, 0, 0, $W, 34, $mark === 'dup' ? imagecolorallocate($im, 70, 78, 94) : $red);
+            imagefilledrectangle($im, 0, 0, $W, 34, $mark === 'dup' ? imagecolorallocate($im, 70, 78, 94) : imagecolorallocate($im, 160, 32, 40));
             $mSz = 16;
             while ($mSz > 11 && self::gdWidth($mSz, $markTxt) > $W - 40) { $mSz--; }
-            self::gdText($im, $mSz, (int) (($W - self::gdWidth($mSz, $markTxt)) / 2), 24, $white, $markTxt, true);
+            self::gdText($im, $mSz, (int) (($W - self::gdWidth($mSz, $markTxt)) / 2), 24, imagecolorallocate($im, 255, 255, 255), $markTxt, true);
         }
 
-        /* Atomic write: tmp then rename, so a half-written PNG is never served. */
+        /* Atomic write: tmp then rename, so a half-written PNG is never served.
+           Compression 4 (was 6): ~25% quicker to encode for a few KB more;
+           WhatsApp re-encodes it anyway. */
         $tmp = $path . '.tmp';
-        imagepng($im, $tmp, 6);
+        imagepng($im, $tmp, 4);
         imagedestroy($im);
         @rename($tmp, $path);
     }
@@ -2493,7 +2514,7 @@ final class Ticket
      *  the later of the two) to the moment it is applied - apply it AFTER the
      *  files are live. The integrator may still move both stamps to the
      *  deploy minute. */
-    private const PNG_LAYOUT_CHANGED = '2026-10-14 22:15:00';   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-10-15 10:12:00';   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
@@ -2507,6 +2528,8 @@ final class Ticket
      * picture is a manifest, and the chalani is the document for that.
      */
     private const PNG_MAX_PAX_ROWS = 12;
+    /** 15 Oct 2026: the centred letterhead - the band grows from 254 to 254 + this; the body is copied down by it (pngHeader / the splice in renderTicketPng). Public: the PNG tests add it to every body coordinate. */
+    public const PNG_HEAD_EXTRA = 184;
 
     /** Heritage band under the PNG footer: 6 gap + art + 74 caption + 28 margin. */
     private const PNG_ART_IMG_H = 228;

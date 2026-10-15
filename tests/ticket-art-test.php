@@ -207,7 +207,9 @@ if ($row === null) {
             if ($r > 235 && $gg > 235 && $b > 235) { $white++; }
         }
         check('no white chip behind the emblem (old chip area reads navy)', $white === 0, $white . ' white probes');
-        [$r, $gg, $b] = $px(140, 100);
+        /* 15 Oct 2026: the letterhead - the emblem is centred and the pay
+           pill took the top-left, so the navy probe moved under the pill. */
+        [$r, $gg, $b] = $px(140, 160);
         check('the header band is still navy around the emblem', $b > $r && $b > 60, "$r,$gg,$b");
         // the band: a navy caption strip near the very bottom, art above it
         $capY = $sz[1] - 28 - 30;
@@ -259,7 +261,7 @@ check('ticket: flags on PNG + PDF', str_contains($t, 'DocArt::flagPair(') && str
 check('ticket: Nepali label + Roman nouns in the heritage caption', str_contains($t, 'सगरमाथा · Sagarmatha') && str_contains($t, 'लुम्बिनी — गौतम बुद्धको जन्मस्थल · Lumbini'));
 check('ticket: header line localised (ई-टिकट)', str_contains($t, "'ई-टिकट  ·  INDIA -> NEPAL'"));
 check('ticket: diagonal microtext + security tile', str_contains($t, 'self::gdWatermark(') && str_contains($t, 'सुरक्षा कोड  ·  SECURITY CODE'));
-check('ticket: pinned literals kept', str_contains($t, '154, $gold, $issued') && str_contains($t, 'टिकट काट्ने') && str_contains($t, 'foreach ([23, 20, 18] as $try)') && str_contains($t, 'imagecolorallocate($im, 84, 96, 118)'));
+check('ticket: pinned literals kept', str_contains($t, '126, $gold, $issued') && str_contains($t, 'टिकट काट्ने') && str_contains($t, 'foreach ([23, 20, 18] as $try)') && str_contains($t, 'imagecolorallocate($im, 84, 96, 118)'));
 $v = $src('verify-ticket.php');
 check('verify: NOT GENUINE state for a wrong key / bad signature', str_contains($v, "\$state = 'forged'") && str_contains($v, '!Ticket::checkDownloadToken($pnr, $token)') && str_contains($v, "str_starts_with(\$payload, 'SHG-TICKET|')"));
 check('verify: forged check audited + office alert deduped per PNR / hour', str_contains($v, "Logger::audit('ticket.verify_forged'") && str_contains($v, "'verifyforged:' . \$fp . ':' . date('YmdH')"));

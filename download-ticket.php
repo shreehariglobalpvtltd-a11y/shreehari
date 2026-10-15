@@ -103,6 +103,14 @@ try {
         exit;
     }
 
+    /* 15 Oct 2026 (owner: "ticket ekdum fast"): authorisation is done, so
+       let go of the session file NOW. PHP serialises every request of one
+       session on that lock, and the booking card asks for the PNG and the
+       PDF together — the second render used to queue behind the first. */
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+
     $wantInvoice = !empty($_GET['invoice']);
 
     if ($wantInvoice) {

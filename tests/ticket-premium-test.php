@@ -241,19 +241,20 @@ try {
     $im = @imagecreatefrompng($f1);
     check('family COD ticket renders 1080 wide', $im !== false && imagesx($im) === 1080, $im ? imagesx($im) . 'x' . imagesy($im) : 'no image');
     if ($im !== false) {
+        $hx = Ticket::PNG_HEAD_EXTRA;   // 15 Oct 2026: the tall letterhead shifts the whole body down
         $rgb = static function ($im, int $x, int $y): array { $c = imagecolorat($im, $x, $y); return [($c >> 16) & 255, ($c >> 8) & 255, $c & 255]; };
         /* Tile face colour: [246,248,252] until the GOLD template (9 Oct
            2026) made the tiles warm white on the ivory card (Ticket::PNG_TILE). */
         $isTile = static fn(array $c): bool => $c === [255, 253, 246];
-        check('right-hand tiles end inside the card (x=1030 is not tile colour)', !$isTile($rgb($im, 1030, 800)) && !$isTile($rgb($im, 1030, 950)) && $isTile($rgb($im, 1010, 800)),
-            json_encode([$rgb($im, 1030, 800), $rgb($im, 1010, 800)]));
+        check('right-hand tiles end inside the card (x=1030 is not tile colour)', !$isTile($rgb($im, 1030, 800 + $hx)) && !$isTile($rgb($im, 1030, 950 + $hx)) && $isTile($rgb($im, 1010, 800 + $hx)),
+            json_encode([$rgb($im, 1030, 800 + $hx), $rgb($im, 1010, 800 + $hx)]));
         $grow = max(0, (60 + 3 * 44 + 16) - 108);
         $dark = static function ($im, int $x1, int $y1, int $x2, int $y2) use ($rgb): int {
             $n = 0; for ($x = $x1; $x < $x2; $x += 3) { for ($y = $y1; $y < $y2; $y += 3) { $c = $rgb($im, $x, $y); if ($c[0] < 60 && $c[1] < 60 && $c[2] < 60) { $n++; } } } return $n;
         };
         if ($upiOn && $mehsanaGeo !== null && Settings::getBool('ticket_maps_qr', true)) {
-            check('pay QR drawn → the pickup-map QR sits BESIDE the verification QR', $dark($im, 345, 1335 + $grow, 525, 1515 + $grow) > 200, 'dark samples ' . $dark($im, 345, 1335 + $grow, 525, 1515 + $grow));
-            check('  and the gap between the two QRs stays clear', $dark($im, 324, 1320 + $grow, 338, 1530 + $grow) === 0);
+            check('pay QR drawn → the pickup-map QR sits BESIDE the verification QR', $dark($im, 345, 1335 + $grow + $hx, 525, 1515 + $grow + $hx) > 200, 'dark samples ' . $dark($im, 345, 1335 + $grow + $hx, 525, 1515 + $grow + $hx));
+            check('  and the gap between the two QRs stays clear', $dark($im, 324, 1320 + $grow + $hx, 338, 1530 + $grow + $hx) === 0);
         } else {
             echo "  SKIP  map-QR-beside-pay check (upi_id empty or Mehsana stop has no coordinates)\n";
         }
