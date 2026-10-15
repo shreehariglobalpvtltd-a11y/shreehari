@@ -1609,12 +1609,21 @@ final class Ticket
             return $text;
         };
 
-        /* THE EMBLEM, big and centred: an embossed gold seal with a royal
-           enamel face (9 Oct 2026 design) scaled up ~1.6x. A company's own
-           uploaded logo (the Nepal company's) still wins inside it. */
-        $cx = (int) ($W / 2);
-        $sealFace = DocArt::seal($im, $cx, 200, 150, 104, [20, 44, 98]);
-        DocArt::mark($im, $sealFace['x'], $sealFace['y'], $sealFace['w'], $sealFace['h'], true, self::ownLogo($co), 'center');
+        /* THE EMBLEM, big and free (15 Oct 2026, owner: "logo lai ali kati
+           thulo, mathi upload gareko jastai" - like the company logo itself):
+           no seal frame round it any more, ~1.9x the old seal face, on a
+           soft light glow so the navy globe reads on the navy band. The HD
+           cut (logo-mark-ticket.png, glow baked in) is used while the office
+           has not set a mark of its own; a company's own uploaded logo (the
+           Nepal company's) or an admin mark goes in the same box. */
+        $cx   = (int) ($W / 2);
+        $embX = $cx - (int) (self::PNG_EMBLEM_W / 2);
+        $hd   = self::ownLogo($co) === '' ? self::ticketMarkFile() : null;
+        if ($hd !== null) {
+            DocArt::placeImage($im, $hd, $embX - 26, self::PNG_EMBLEM_Y - 26, self::PNG_EMBLEM_W + 52, self::PNG_EMBLEM_H + 52, 'center');
+        } else {
+            DocArt::mark($im, $embX, self::PNG_EMBLEM_Y, self::PNG_EMBLEM_W, self::PNG_EMBLEM_H, true, self::ownLogo($co), 'center');
+        }
 
         /* Payment pill - top LEFT under the mantra, clear of the seal. */
         $pay  = $booking['payment'] ?? null;
@@ -1631,7 +1640,7 @@ final class Ticket
             $pillTxt = 'PAYMENT PENDING';
         }
         $pSz = 16;
-        while ($pSz > 11 && self::gdWidth($pSz, $pillTxt) + 40 > $cx - 150 - 60 - 12) { $pSz--; }
+        while ($pSz > 11 && self::gdWidth($pSz, $pillTxt) + 40 > $embX + 50 - 60) { $pSz--; }   // the emblem's top-left corner is empty sky: the pill may run under its glow to x = embX + 50, clear of the globe
         $pw = self::gdWidth($pSz, $pillTxt) + 40;
         self::gdRounded($im, 58, 97, 60 + $pw + 2, 133, 18, $goldM);
         self::gdRounded($im, 60, 99, 60 + $pw, 131, 16, $pillCol);
@@ -1644,8 +1653,9 @@ final class Ticket
            counter or office sale has no number, so the desk that sold it
            takes that line instead. */
         $iCode  = self::latinUpper($issued['code']);
-        $chipX1 = $W - 60 - 268;
+        $chipX1 = $W - 60 - 236;   // 268 until 15 Oct 2026; narrowed so the bigger emblem keeps clear of it
         $chipX2 = $W - 60;
+        $chipT  = $chipX2 - $chipX1 - 40;   // text width inside the chip
         DocArt::softShadow($im, $chipX1, 96, $chipX2, 196, 18, 8, 4, [0, 0, 0], 22);
         DocArt::gradBox($im, $chipX1, 96, $chipX2, 196, 18, [10, 24, 54], DocArt::ROYAL);
         DocArt::roundOutline($im, $chipX1, 96, $chipX2, 196, 18, $goldM, 2);
@@ -1654,8 +1664,8 @@ final class Ticket
             ? $iCode
             : self::display($issued['kind'] === 'online' ? $co['web'] : $issued['name']);
         $cSz = 30;
-        foreach ([30, 26, 22, 19, 17] as $try) { $cSz = $try; if (self::gdWidth($try, $iBig) <= 228) { break; } }
-        self::gdText($im, $cSz, $chipX1 + 20, 168, $white, $clampTo($cSz, $iBig, 228), true);
+        foreach ([30, 26, 22, 19, 17] as $try) { $cSz = $try; if (self::gdWidth($try, $iBig) <= $chipT) { break; } }
+        self::gdText($im, $cSz, $chipX1 + 20, 168, $white, $clampTo($cSz, $iBig, $chipT), true);
         if ($issued['kind'] === 'agent') {
             $iWho = self::display($issued['name']);
         } else {
@@ -1665,20 +1675,49 @@ final class Ticket
                 self::latin(trim((string) preg_replace('/\s*\([^)]*\)\s*$/', '', (string) ($issued['location'] ?? '')))),
                 self::latinUpper((string) ($issued['locCode'] ?? '')),
             ] as $try) {
-                if ($try !== '' && self::gdWidth(14, $try) <= 228) { $iWho = $try; break; }
+                if ($try !== '' && self::gdWidth(14, $try) <= $chipT) { $iWho = $try; break; }
             }
         }
-        self::gdText($im, 14, $chipX1 + 20, 188, $sub, $clampTo(14, $iWho, 228), false);
+        self::gdText($im, 14, $chipX1 + 20, 188, $sub, $clampTo(14, $iWho, $chipT), false);
 
-        /* COMPANY NAME, centred under the seal - the biggest letters in the
-           band. A longer name steps down a size rather than running under
-           the frame. */
-        $brand = self::latinUpper($co['name']);
-        $brandMax = $W - 160;
-        $bSz = 40;
-        foreach ([40, 36, 32, 28, 24, 21] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $brandMax) { break; } }
-        $brand = $clampTo($bSz, $brand, $brandMax);
-        self::gdText($im, $bSz, (int) (($W - self::gdWidth($bSz, $brand)) / 2), 352, $white, $brand, true);
+        /* COMPANY NAME under the emblem, set like the company logo (15 Oct
+           2026): the brand in big letters with the trademark sign ™ beside
+           it, the legal form ("- PRIVATE LIMITED -") on its own gold line
+           under it. The India company's brand is the logo's own lettering
+           (logo-wordmark*.png, cut from the owner's logo file); any other
+           name - the Nepal company's - is set as live text the same way. */
+        [$brand, $legal] = self::brandParts((string) $co['name']);
+        $tmSz  = 19;
+        $tmW   = self::gdWidth($tmSz, self::TM);
+        $word  = $brand === 'S HARI GLOBAL' ? DocArt::asset('assets/img/logo-wordmark.png') : null;
+        $wInfo = $word !== null ? @getimagesize($word) : false;
+        if ($wInfo !== false && $wInfo[0] > 0) {
+            $ww = (int) $wInfo[0];
+            $wh = (int) $wInfo[1];
+            $wx = (int) (($W - ($ww + 6 + $tmW)) / 2);
+            $wy = self::PNG_WORD_Y;
+            DocArt::placeImage($im, $word, $wx, $wy, $ww, $wh);
+            self::gdText($im, $tmSz, $wx + $ww + 6, $wy + 22, $white, self::TM, true);
+        } else {
+            $brandMax = $W - 200 - $tmW;
+            $bSz = 44;
+            foreach ([44, 40, 36, 32, 28, 24, 21] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $brandMax) { break; } }
+            $brand = $clampTo($bSz, $brand, $brandMax);
+            $bw    = self::gdWidth($bSz, $brand);
+            $wx    = (int) (($W - ($bw + 6 + $tmW)) / 2);
+            $base  = self::PNG_WORD_Y + 56;
+            self::gdText($im, $bSz, $wx, $base, $white, $brand, true);
+            self::gdText($im, $tmSz, $wx + $bw + 6, $base - (int) round($bSz * 1.333 * 0.72) + 18, $white, self::TM, true);
+        }
+        if ($legal !== '') {
+            $legalImg = ($wInfo !== false && $legal === 'PRIVATE LIMITED') ? DocArt::asset('assets/img/logo-wordmark-sub.png') : null;
+            $lInfo    = $legalImg !== null ? @getimagesize($legalImg) : false;
+            if ($lInfo !== false && $lInfo[0] > 0) {
+                DocArt::placeImage($im, $legalImg, (int) (($W - $lInfo[0]) / 2), self::PNG_WORD_Y + 73, (int) $lInfo[0], (int) $lInfo[1]);
+            } else {
+                self::gdSpaced($im, 16, (int) ($W / 2), self::PNG_WORD_Y + 93, $gold, $clampTo(16, $legal, $W - 360), 4, 44);
+            }
+        }
 
         /* Which way this ticket runs (3 Oct 2026): label in Nepali, the
            countries Roman (house ticket rule), then the two flags - the
@@ -1688,8 +1727,8 @@ final class Ticket
         $eLine  = $clampTo(19, $toIndia ? 'ई-टिकट  ·  NEPAL -> INDIA' : 'ई-टिकट  ·  INDIA -> NEPAL', $W - 200 - $flagsW - 18);
         $eW     = self::gdWidth(19, $eLine);
         $ex     = (int) (($W - ($eW + 18 + $flagsW)) / 2);
-        self::gdText($im, 19, $ex, 388, $gold, $eLine, false);
-        DocArt::flagPair($im, $ex + $eW + 18, 369, 22, 8, $toIndia ? 'NP' : 'IN');
+        self::gdText($im, 19, $ex, $bandB - 52, $gold, $eLine, false);
+        DocArt::flagPair($im, $ex + $eW + 18, $bandB - 71, 22, 8, $toIndia ? 'NP' : 'IN');
 
         /* The desk this ticket was cut at, then the route and the website
            (owner, 24 Sep 2026): the line gives ground rather than the desk -
@@ -1713,7 +1752,64 @@ final class Ticket
             }
         }
         $brandSub = $clampTo(16, $brandSub, $subMax);
-        self::gdText($im, 16, (int) (($W - self::gdWidth(16, $brandSub)) / 2), 418, $sub, $brandSub, false);
+        self::gdText($im, 16, (int) (($W - self::gdWidth(16, $brandSub)) / 2), $bandB - 22, $sub, $brandSub, false);
+    }
+
+    /**
+     * A company name split the way the logo sets it (15 Oct 2026): the brand,
+     * then its legal form on a line of its own. "S Hari Global Pvt Ltd" ->
+     * ['S HARI GLOBAL', 'PRIVATE LIMITED']; "Shree Hari Global Pvt Ltd Nepal"
+     * -> ['SHREE HARI GLOBAL', 'PRIVATE LIMITED · NEPAL']. A name with no
+     * legal form comes back whole with ''.
+     *
+     * @return array{0:string,1:string}
+     */
+    public static function brandParts(string $name): array
+    {
+        $n = trim((string) preg_replace('/\s+/', ' ', self::latinUpper($name)));
+        if (preg_match('/^(.*?)[\s,.]*\b(?:PVT|PRIVATE)\.?\s*(?:LTD|LIMITED)\b\.?\s*(.*)$/', $n, $m) === 1 && trim($m[1]) !== '') {
+            $rest = trim($m[2], " \t.,-");
+            return [trim($m[1]), 'PRIVATE LIMITED' . ($rest !== '' ? ' · ' . $rest : '')];
+        }
+        return [$n, ''];
+    }
+
+    /**
+     * The HD emblem for the ticket letterhead (glow baked in), or null when
+     * the office has set a mark of its own (company_logo_mark / the Brand
+     * helper) - theirs then goes in the same box through DocArt::mark().
+     */
+    private static function ticketMarkFile(): ?string
+    {
+        $def = DocArt::markFile('');
+        // markFile() answers a RELATIVE path when the cwd is the docroot
+        if ($def === null || preg_match('#(^|/)assets/img/logo-mark\.png$#', strtolower(str_replace('\\', '/', $def))) !== 1) {
+            return null;
+        }
+        return DocArt::asset('assets/img/logo-mark-ticket.png');
+    }
+
+    /**
+     * Letter-spaced Latin text centred on $cx at baseline $y, with a short
+     * rule either side ("— PRIVATE LIMITED —", the logo's legal-form line).
+     */
+    private static function gdSpaced($im, float $size, int $cx, int $y, int $col, string $text, int $track, int $rule): void
+    {
+        $chars = preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $ws = array_map(static fn(string $c): int => $c === ' ' ? (int) round($size * 0.5) : self::gdWidth($size, $c), $chars);
+        $tw = array_sum($ws) + $track * max(0, count($chars) - 1);
+        $x  = $cx - intdiv($tw, 2);
+        foreach ($chars as $i => $c) {
+            if ($c !== ' ') {
+                self::gdText($im, $size, $x, $y, $col, $c, false);
+            }
+            $x += $ws[$i] + $track;
+        }
+        if ($rule > 0) {
+            $ry = $y - (int) round($size * 0.45);
+            imagefilledrectangle($im, $cx - intdiv($tw, 2) - 18 - $rule, $ry, $cx - intdiv($tw, 2) - 18, $ry + 2, $col);
+            imagefilledrectangle($im, $cx + intdiv($tw, 2) + 18, $ry, $cx + intdiv($tw, 2) + 18 + $rule, $ry + 2, $col);
+        }
     }
 
     private static function renderTicketPng(array $booking, array $ticket, string $path, string $mark = ''): void
@@ -2514,13 +2610,13 @@ final class Ticket
      *  the later of the two) to the moment it is applied - apply it AFTER the
      *  files are live. The integrator may still move both stamps to the
      *  deploy minute. */
-    private const PNG_LAYOUT_CHANGED = '2026-10-15 10:12:00';   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-10-15 11:50:00';   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-10-14 22:15:00';   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-10-15 11:50:00';   // IST: LOGO - bigger gold seal (116x74), brand + TM sign with the legal form letter-spaced in gold under it. Was 2026-10-14 22:15:00:   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -2529,7 +2625,15 @@ final class Ticket
      */
     private const PNG_MAX_PAX_ROWS = 12;
     /** 15 Oct 2026: the centred letterhead - the band grows from 254 to 254 + this; the body is copied down by it (pngHeader / the splice in renderTicketPng). Public: the PNG tests add it to every body coordinate. */
-    public const PNG_HEAD_EXTRA = 184;
+    public const PNG_HEAD_EXTRA = 298;   // 184 until 15 Oct 2026 noon; +114 for the bigger free emblem and the logo-style name (brand + TM, PRIVATE LIMITED line)
+    /** The letterhead emblem box (15 Oct 2026): ~1.9x the old seal face, top-centred under the mantra strip. */
+    private const PNG_EMBLEM_W = 480;
+    private const PNG_EMBLEM_H = 249;
+    private const PNG_EMBLEM_Y = 104;
+    /** Top of the brand wordmark under the emblem; the legal-form line hangs off it. */
+    private const PNG_WORD_Y = 368;
+    /** The trademark sign beside the brand (owner, 15 Oct 2026). */
+    public const TM = "™";
 
     /** Heritage band under the PNG footer: 6 gap + art + 74 caption + 28 margin. */
     private const PNG_ART_IMG_H = 228;
@@ -2708,23 +2812,35 @@ final class Ticket
            company name stays live text beside it. */
         /* Gold version: the emblem in an embossed gold seal (a cartouche -
            deep rim, foil ring, light bevel, royal enamel face). */
-        $pdf->roundedRect(27, 21, 106, 68, 34, [6, 14, 32], true);                   // shadow
-        $pdf->roundedRect(24, 18, 106, 68, 34, DocArt::GOLD_DEEP, true);
-        $pdf->roundedRect(25.5, 19.2, 103, 65, 32.5, DocArt::GOLD_LIGHT, true);
-        $pdf->roundedRect(27, 20.8, 100, 62.4, 31.2, DocArt::GOLD, true);
-        $pdf->roundedRect(30.5, 24.3, 93, 55.4, 27.7, DocArt::GOLD_DEEP, true);
-        $pdf->roundedRect(31.5, 25.3, 91, 53.4, 26.7, [20, 44, 98], true);
-        $mk = DocArt::pdfMark($pdf, 37, 29, 80, 46, self::ownLogo($coId), 'center', true);
-        $textX = 144;
+        /* 15 Oct 2026 (owner: "logo ali kati thulo"): the seal grows from
+           106x68 to 116x74 - the most the 96 pt band holds under the mantra. */
+        $pdf->roundedRect(23, 19, 116, 74, 37, [6, 14, 32], true);                   // shadow
+        $pdf->roundedRect(20, 16, 116, 74, 37, DocArt::GOLD_DEEP, true);
+        $pdf->roundedRect(21.5, 17.2, 113, 71, 35.5, DocArt::GOLD_LIGHT, true);
+        $pdf->roundedRect(23, 18.8, 110, 68.4, 34.2, DocArt::GOLD, true);
+        $pdf->roundedRect(26.5, 22.3, 103, 61.4, 30.7, DocArt::GOLD_DEEP, true);
+        $pdf->roundedRect(27.5, 23.3, 101, 59.4, 29.7, [20, 44, 98], true);
+        $mk = DocArt::pdfMark($pdf, 33, 27, 90, 51, self::ownLogo($coId), 'center', true);
+        $textX = 150;
         // both flags, top right of the band — the side the bus leaves from first
         DocArt::pdfFlags($pdf, $W - 40 - DocArt::pdfFlagsWidth(14, 4), 19, 14, 4, self::flagFirst($booking));
         /* The name stops short of the title block at W-220 (4 Oct 2026): a
            longer company name - the Nepal company's - ran under it. Helvetica
            Bold capitals average ~0.68 em, so the size steps down to fit. */
-        $coSz = 17.0;
-        while ($coSz > 9 && mb_strlen($company) * $coSz * 0.68 > ($W - 232 - $textX)) { $coSz -= 0.5; }
-        $pdf->text($textX, 20, strtoupper($company), $coSz, 'F2', [255, 255, 255]);
-        self::devText($pdf, $textX, 44, 'भारत–नेपाल बस सेवा', 11, $F7, self::GOLD);
+        /* 15 Oct 2026 (owner): set like the logo - the brand with the ™
+           sign, its legal form letter-spaced in gold under it. */
+        [$coBrand, $coLegal] = self::brandParts($company);
+        $coSz = 18.0;
+        while ($coSz > 9 && $pdf->textWidth($coBrand, $coSz, 'F2') + 10 > ($W - 232 - $textX)) { $coSz -= 0.5; }
+        $pdf->text($textX, 17, $coBrand, $coSz, 'F2', [255, 255, 255]);
+        $pdf->text($textX + $pdf->textWidth($coBrand, $coSz, 'F2') - 0.5, 16.5, self::TM, 7.5, 'F2', [255, 255, 255]);
+        if ($coLegal !== '') {
+            $spaced = implode(' ', preg_split('//u', str_replace('·', '-', $coLegal), -1, PREG_SPLIT_NO_EMPTY) ?: []);
+            $lgSz = 7.0;
+            while ($lgSz > 5 && $pdf->textWidth($spaced, $lgSz, 'F2') > ($W - 232 - $textX)) { $lgSz -= 0.25; }
+            $pdf->text($textX, 17 + $coSz + 3, $spaced, $lgSz, 'F2', self::GOLD);
+        }
+        self::devText($pdf, $textX, 49, 'भारत–नेपाल बस सेवा', 10.5, $F7, self::GOLD);
         if ($cin !== '') {
             $pdf->text($textX, 68, $coId['regLabel'] . ': ' . self::latin($cin), 7.5, 'F1', [200, 190, 170]);
         }

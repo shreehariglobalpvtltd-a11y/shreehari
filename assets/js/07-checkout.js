@@ -2469,6 +2469,19 @@ function tkGoldPay(b) {
     url: biz ? 'https://wa.me/' + biz + '?text=' + enc('Payment for booking ' + b.id + (due > 0 ? ' - ' + cur + ' ' + due : ''))
       : (tel ? 'tel:' + tel : 'https://' + location.host + '/#/ticket/' + enc(b.id)) };
 }
+/* The company name set like the logo (15 Oct 2026, owner: name with the
+   trademark sign): the brand + ™, its legal form on a line of its own -
+   "S Hari Global Pvt Ltd" -> S HARI GLOBAL™ / PRIVATE LIMITED. The same
+   split as Ticket::brandParts() on the PNG / PDF ticket. */
+function tkBrandHtml(name) {
+  const n = String(name || 'S HARI GLOBAL PRIVATE LIMITED').replace(/\s+/g, ' ').trim().toUpperCase();
+  const m = n.match(/^(.*?)[\s,.]*\b(?:PVT|PRIVATE)\.?\s*(?:LTD|LIMITED)\b\.?\s*(.*)$/);
+  const brand = m && m[1].trim() ? m[1].trim() : n;
+  const rest = m ? m[2].replace(/^[\s.,-]+|[\s.,-]+$/g, '') : '';
+  const legal = m && m[1].trim() ? 'PRIVATE LIMITED' + (rest ? ' · ' + rest : '') : '';
+  return '<b class="tk-brandname">' + esc(brand) + '<sup class="tk-tm">™</sup></b>'
+    + (legal ? '<span class="tk-legal">' + esc(legal) + '</span>' : '');
+}
 /* The mantra line: the office's own wording when the server ever sends one
    (doc_mantra_line), else the i18n default (same Devanagari in every language). */
 function tkMantraLine() {
@@ -2844,8 +2857,8 @@ function renderStatus(id) {
     <div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ${esc(tkMantraLine())} <span aria-hidden="true">❖</span></div>
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo-mark-96h.png?v=20261015e" width="185" height="96" alt="" loading="lazy" decoding="async">
-        <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
+        <img src="/assets/img/logo-mark.webp?v=20261015h" width="439" height="228" alt="" loading="lazy" decoding="async">
+        <div>${tkBrandHtml(CONFIG.company.name)}<small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
       <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261015e" width="600" height="312" alt="" decoding="async">
     </div>

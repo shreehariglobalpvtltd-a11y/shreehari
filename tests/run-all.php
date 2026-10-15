@@ -142,6 +142,7 @@ const CORE_SUITES = [
     'bus-calendar-slot-test.php'   => 'extra buses live in their own slot',
     'export-filters-test.php'      => 'a register exports exactly what it shows',
     'ticket-png-test.php'          => 'the PNG ticket renders and stays fresh',
+    'ticket-logo-test.php'         => 'the ticket letterhead is set like the company logo: big HD emblem, brand + ™, PRIVATE LIMITED line (PNG + PDF)',
     'ticket-premium-test.php'      => 'honest WhatsApp state, pickup-time clock, trip cancel/delay notices, track token, public pages',
     'pickup-retime-test.php'       => 'a retimed or extra bus moves every pickup by the same delta; reminders never chase a departed bus',
     'challan-png-test.php'         => 'the bus challan PNG draws the whole coach and stays fresh',
