@@ -47,6 +47,7 @@ function admin_nav(): array
         ['href' => 'enquiries.php','icon' => '📝', 'label' => 'Enquiries',      'perm' => 'bookings.view'],
         ['href' => 'routes.php',   'icon' => '🛣️', 'label' => 'Routes',         'perm' => 'routes.view'],
         ['href' => 'scan.php',     'icon' => '📷', 'label' => 'Scan Ticket',    'perm' => 'tickets.scan'],
+        ['href' => 'company.php',  'icon' => '🏢', 'label' => 'Company',        'perm' => 'dashboard.view'],
         ['href' => 'settings.php', 'icon' => '⚙️', 'label' => 'Settings',       'perm' => 'dashboard.view'],
     ];
 
