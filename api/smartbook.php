@@ -169,6 +169,18 @@ try {
         Response::success(SmartBookBot::fields($text, $mode));
     }
 
+    /* 15 Oct 2026: the F / M guess for a typed name (NameGuess) - the card
+       pre-sets the chip and marks it 🤖; one tap changes it. */
+    if ($action === 'guess') {
+        require_once INCLUDE_PATH . '/nameguess.php';
+        $g = NameGuess::gender(Security::clean((string) ($in['name'] ?? ''), 120));
+        Response::success([
+            'gender'     => $g['confidence'] >= NameGuess::SHOW ? $g['gender'] : '',
+            'confidence' => $g['confidence'],
+            'why'        => $g['why'],
+        ]);
+    }
+
     if ($action === 'book') {
         Security::requireRateLimit($mode === 'customer' ? 'smartbook_book' : 'smartbook_book_staff', $ip, $mode === 'customer' ? 12 : 120, 300);
         $pay    = ($in['pay'] ?? '') === 'online' ? 'online' : 'cash';

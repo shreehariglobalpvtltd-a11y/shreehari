@@ -32,8 +32,20 @@ $force = PHP_SAPI === 'cli'
     ? in_array('--force', $argv ?? [], true)
     : (string) ($_GET['force'] ?? '') === '1';
 
+/* 15 Oct 2026: the name -> F / M guess relearns from every passenger on file
+   (NameGuess, ai_name_gender). Independent of brain_on: it only reads names. */
+require_once INCLUDE_PATH . '/nameguess.php';
+$names = null;
+if (NameGuess::on()) {
+    try {
+        $names = NameGuess::rebuild();
+    } catch (Throwable $e) {
+        $names = ['error' => $e->getMessage()];   // table not migrated yet
+    }
+}
+
 if (!TicketBrain::enabled()) {
-    cron_done(['skipped' => 'brain_on is off']);
+    cron_done(['skipped' => 'brain_on is off', 'names' => $names]);
     exit(0);
 }
 
@@ -53,7 +65,7 @@ if (!$force && !EventBus::claim('brain-nightly:' . $today, 'cron.brain_nightly')
     exit(0);
 }
 
-$out = ['date' => $today];
+$out = ['date' => $today, 'names' => $names];
 
 try {
     $out['think'] = TicketBrain::think($today);

@@ -29,7 +29,7 @@
       today: 'Today', tomorrow: 'Tomorrow', pickDate: 'Pick a date', female: 'Female', male: 'Male', gender: 'F / M?',
       adult: 'Adult', child: 'Child <12', senior: 'Senior 60+', patient: 'Patient', lower: 'lower floor', upper: 'upper floor', autoTag: 'auto', yours: 'your choice',
       report: 'report', needPhone: 'Enter a valid mobile', needPhoneNp: 'Nepal mobile: 10 digits starting 96 / 97 / 98', needPhoneIn: 'India mobile: 10 digits starting 6–9',
-      needName: 'Enter the lead passenger\'s name', needGender: 'Tap F / M for every passenger', loading: 'Finding the best berths…',
+      needName: 'Enter the lead passenger\'s name', needGender: 'Tap F / M for every passenger', aiGuess: 'AI guessed from the name — tap to change', loading: 'Finding the best berths…',
       booking: 'Booking…', making: 'Preparing your ticket…', ticketOk: 'Ticket confirmed', codNote: 'Cash — pay at the boarding counter', pnr: 'PNR', dlPdf: 'Download PDF', dlPng: 'Download PNG',
       share: 'Share', print: 'Print', copy: 'Copy PNR', track: 'Track bus', copied: 'PNR copied', newB: 'Book another', heldQr: 'Berths held — opening the QR page…',
       needAgent: 'Choose the agent this sale is credited to (or Other = company)', agentPick: 'Type a code, name or city — or tap Other', agentBlank: 'Blank = company code',
@@ -49,7 +49,7 @@
       today: 'आज', tomorrow: 'कल', pickDate: 'तारीख चुनें', female: 'महिला', male: 'पुरुष', gender: 'म / पु?',
       adult: 'वयस्क', child: 'बच्चा <12', senior: 'वरिष्ठ 60+', patient: 'मरीज़', lower: 'नीचे', upper: 'ऊपर', autoTag: 'ऑटो', yours: 'आपकी पसंद',
       report: 'रिपोर्ट', needPhone: 'सही मोबाइल लिखें', needPhoneNp: 'नेपाल मोबाइल: 96 / 97 / 98 से 10 अंक', needPhoneIn: 'भारत मोबाइल: 6–9 से 10 अंक',
-      needName: 'मुख्य यात्री का नाम लिखें', needGender: 'हर यात्री के लिए म / पु दबाएँ', loading: 'सबसे अच्छी बर्थ ढूँढ रहे हैं…',
+      needName: 'मुख्य यात्री का नाम लिखें', needGender: 'हर यात्री के लिए म / पु दबाएँ', aiGuess: 'नाम से AI का अनुमान — बदलने के लिए दबाएँ', loading: 'सबसे अच्छी बर्थ ढूँढ रहे हैं…',
       booking: 'बुक हो रहा है…', making: 'टिकट तैयार हो रहा है…', ticketOk: 'टिकट पक्का', codNote: 'कैश — चढ़ते समय काउंटर पर भुगतान', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
       share: 'शेयर', print: 'प्रिंट', copy: 'PNR कॉपी', track: 'बस ट्रैक', copied: 'PNR कॉपी हुआ', newB: 'और बुक करें', heldQr: 'बर्थ रखी गई — QR पेज खुल रहा है…',
       needAgent: 'यह बिक्री किस एजेंट की है चुनें (या Other = कंपनी)', agentPick: 'कोड, नाम या शहर लिखें — या Other दबाएँ', agentBlank: 'खाली = कंपनी कोड',
@@ -69,7 +69,7 @@
       today: 'आज', tomorrow: 'भोलि', pickDate: 'मिति छान्नुहोस्', female: 'महिला', male: 'पुरुष', gender: 'म / पु?',
       adult: 'वयस्क', child: 'बच्चा <१२', senior: 'ज्येष्ठ ६०+', patient: 'बिरामी', lower: 'तल्लो तला', upper: 'माथिल्लो तला', autoTag: 'अटो', yours: 'तपाईंको रोजाइ',
       report: 'रिपोर्ट', needPhone: 'सही मोबाइल लेख्नुहोस्', needPhoneNp: 'नेपाल मोबाइल: ९६ / ९७ / ९८ बाट १० अङ्क', needPhoneIn: 'भारत मोबाइल: ६–९ बाट १० अङ्क',
-      needName: 'मुख्य यात्रुको नाम लेख्नुहोस्', needGender: 'हरेक यात्रुको म / पु थिच्नुहोस्', loading: 'सबैभन्दा राम्रो बर्थ खोज्दै…',
+      needName: 'मुख्य यात्रुको नाम लेख्नुहोस्', needGender: 'हरेक यात्रुको म / पु थिच्नुहोस्', aiGuess: 'नामबाट AI को अनुमान — बदल्न थिच्नुहोस्', loading: 'सबैभन्दा राम्रो बर्थ खोज्दै…',
       booking: 'बुक हुँदैछ…', making: 'टिकट तयार हुँदैछ…', ticketOk: 'टिकट पक्का भयो', codNote: 'नगद — चढ्दा काउन्टरमा तिर्ने', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
       share: 'सेयर', print: 'प्रिन्ट', copy: 'PNR कपी', track: 'बस ट्र्याक', copied: 'PNR कपी भयो', newB: 'अर्को बुक', heldQr: 'बर्थ राखियो — QR पेज खुल्दैछ…',
       needAgent: 'यो बिक्री कुन एजेन्टको हो छान्नुहोस् (वा Other = कम्पनी)', agentPick: 'कोड, नाम वा सहर लेख्नुहोस् — वा Other थिच्नुहोस्', agentBlank: 'खाली = कम्पनी कोड',
@@ -222,7 +222,8 @@
     S.pax.forEach(function (p, i) {
       var g = p.gender === 'Female' ? 'f' : (p.gender === 'Male' ? 'm' : 'u');
       var gl = p.gender === 'Female' ? '♀ ' + tr('female') : (p.gender === 'Male' ? '♂ ' + tr('male') : tr('gender'));
-      h += '<span class="sb-p' + (g === 'u' && S.touched.book ? ' sb-need' : '') + '"><button type="button" class="sb-g ' + g + '" data-i="' + i + '" data-act="g" aria-label="Passenger ' + (i + 1) + ' gender">' + esc(gl) + '</button>'
+      if (p.ai && g !== 'u') gl = '🤖 ' + gl;
+      h += '<span class="sb-p' + (g === 'u' && S.touched.book ? ' sb-need' : '') + '"><button type="button" class="sb-g ' + g + (p.ai && g !== 'u' ? ' sb-ai' : '') + '" data-i="' + i + '" data-act="g"' + (p.ai && g !== 'u' ? ' title="' + esc(tr('aiGuess')) + '"' : '') + ' aria-label="Passenger ' + (i + 1) + ' gender">' + esc(gl) + '</button>'
         + '<button type="button" class="sb-b" data-i="' + i + '" data-act="b" aria-label="Passenger ' + (i + 1) + ' age band">' + esc(bandLabel(p.band)) + '</button></span>';
     });
     var row = $('sbPax'); row.innerHTML = h;
@@ -367,7 +368,7 @@
     }
     if ((b = e.target.closest('#sbPax button'))) {
       var i = +b.getAttribute('data-i'), p = S.pax[i]; if (!p) return;
-      if (b.getAttribute('data-act') === 'g') p.gender = p.gender === 'Female' ? 'Male' : (p.gender === 'Male' ? 'Female' : 'Female');
+      if (b.getAttribute('data-act') === 'g') { p.gender = p.gender === 'Female' ? 'Male' : (p.gender === 'Male' ? 'Female' : 'Female'); p.ai = false; }
       else { var order = ['adult', 'child', 'senior', 'patient']; p.band = order[(order.indexOf(p.band) + 1) % order.length]; }
       S.manual = []; renderPax(); changed('pax'); return;
     }
@@ -401,7 +402,26 @@
   $('sbCc').addEventListener('change', function () { S.cc = this.value; changed('phone'); });
   $('sbPhone').addEventListener('input', function () { S.phone = this.value; S.idem = null; store.set(); showErrs(false); syncButtons(); });
   $('sbPhone').addEventListener('blur', function () { S.touched.phone = true; showErrs(false); if (S.q) requote(); });
-  $('sbName').addEventListener('input', function () { S.name = this.value; S.idem = null; store.set(); showErrs(false); syncButtons(); });
+  $('sbName').addEventListener('input', function () { S.name = this.value; S.idem = null; store.set(); showErrs(false); syncButtons(); guessSoon(); });
+  /* 15 Oct 2026 (owner: "naam bata gender guess"): the lead passenger's F / M
+     chip is pre-set from the typed name (NameGuess on the server: titles,
+     Kumari / Bahadur, -ben / -bhai, what the office learned from earlier
+     tickets). Marked 🤖; one tap changes it; a chip somebody tapped is never
+     overwritten. */
+  var guessT = 0, guessFor = '';
+  function guessSoon() {
+    clearTimeout(guessT);
+    var p0 = S.pax[0]; if (!p0 || (p0.gender && !p0.ai)) return;
+    var nm = String(S.name || '').trim(); if (nm.length < 3) return;
+    guessT = setTimeout(function () {
+      if (nm === guessFor) return; guessFor = nm;
+      api({ action: 'guess', name: nm }).then(function (r) {
+        var q = S.pax[0]; if (!q || (q.gender && !q.ai) || String(S.name || '').trim() !== nm) return;
+        if (r && r.gender) { if (q.gender !== r.gender) { q.gender = r.gender; q.ai = true; S.manual = []; renderPax(); changed('pax'); } }
+        else if (q.ai) { q.gender = ''; q.ai = false; renderPax(); changed('pax'); }
+      }).catch(function () {});
+    }, 450);
+  }
   $('sbName').addEventListener('blur', function () { S.touched.name = true; showErrs(false); });
 
   function nearMe() {
@@ -439,6 +459,7 @@
       if (f.phone) { S.phone = f.phone; if (f.country) S.cc = f.country; }
       if (f.name) S.name = f.name;
       if (f.pax && f.pax.length) S.pax = f.pax.slice(0, S.maxPax).map(function (p) { return { gender: p.gender || '', band: p.band || 'adult' }; });
+      if (f.guessed && f.guessed.indexOf('gender') >= 0 && S.pax[0]) S.pax[0].ai = true;
       S.manual = []; S.seatMode = 'auto';
       fill(); applyWords(); store.set(); requote(0);
       $('sbBotIn').value = '';

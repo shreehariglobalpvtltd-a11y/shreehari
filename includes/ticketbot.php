@@ -1231,13 +1231,19 @@ final class TicketBot
             $set('name', '', 'none', '', 0.0);
         }
 
-        /* gender — never inferred from a name */
+        /* gender — said, recorded, or (15 Oct 2026) a clear name at NameGuess::AUTO, flagged check */
         [$v, $src] = $pick('gender');
         if ($v !== null && in_array($v, ['Male', 'Female', 'Other'], true)) {
             $set('gender', $v, $src, $src === 'text' ? 'Gender word found in your line.' : '', 1.0);
         } elseif ($isStaff && $profile !== null && $profile['gender'] !== null && $profile['genderShare'] >= 0.6 && $trust('gender')) {
             // Desk only: a family phone must never seat a passenger by another traveller's gender (women-only berths).
             $set('gender', $profile['gender'], 'history', 'Gender as recorded on ' . $profile['genderN'] . ' earlier ticket' . ($profile['genderN'] > 1 ? 's' : '') . '.', (float) $profile['genderShare']);
+        } elseif (($nameNow = (string) ($fields['name']['value'] ?? '')) !== ''
+            && (int) ($pick('seats')[0] ?? 1) <= 1                // lone traveller: a family is never split by a guess
+            && (require_once __DIR__ . '/nameguess.php') !== false
+            && ($ng = NameGuess::gender($nameNow))['gender'] !== '' && $ng['confidence'] >= NameGuess::AUTO) {
+            // 15 Oct 2026: a clear name ("Sita Kumari", "Ram Bahadur") - flagged for a look, never silent
+            $set('gender', $ng['gender'], 'name', 'Gender guessed from the name (' . $ng['why'] . ').', (float) $ng['confidence'], true);
         } else {
             $set('gender', null, 'none', '', 0.0);
         }

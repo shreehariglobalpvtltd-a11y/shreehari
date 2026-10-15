@@ -976,6 +976,9 @@ final class SmartBook
         if (!empty($q['override'])) {
             Logger::audit('smartbook.override', 'booking', $pnr, null, $q['override'], 'hard-rule override by admin #' . (int) (Auth::admin()['id'] ?? 0));
         }
+        // 15 Oct 2026: the lead passenger's name teaches the F / M guess (NameGuess).
+        require_once __DIR__ . '/nameguess.php';
+        NameGuess::teach($name, (string) ($req['pax'][0]['gender'] ?? ''));
         // Online: the berths are held for the QR payment window, then released by cron/expire.php.
         if (($booking['status'] ?? '') === 'pending') {
             $hold = max(5, Settings::getInt('smartbook_online_hold_min', 15));

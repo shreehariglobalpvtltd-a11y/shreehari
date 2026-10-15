@@ -244,7 +244,10 @@ try {
     $s = TicketBot::suggest(['phone' => TB_PHONE . '003'], $staffRow);
     check('an unknown number: no name, gender NOT guessed', ($s['prefill']['name'] ?? 'x') === '' && array_key_exists('gender', $s['prefill']) && $s['prefill']['gender'] === null && $s['profile'] === null);
     $s = TicketBot::suggest(['text' => 'Sita Devi 9000000009'], $staffRow);
-    check('a feminine-looking name never sets a gender', array_key_exists('gender', $s['prefill']) && $s['prefill']['gender'] === null && ($s['prefill']['name'] ?? '') === 'Sita Devi');
+    // 15 Oct 2026 (owner): a clear name now sets the gender - flagged for a look, source "name"
+    check('a clear female name is guessed and flagged', ($s['prefill']['gender'] ?? '') === 'Female' && ($s['fields']['gender']['source'] ?? '') === 'name' && !empty($s['fields']['gender']['check']) && ($s['prefill']['name'] ?? '') === 'Sita Devi');
+    $s = TicketBot::suggest(['text' => 'Sita Devi 9000000009 2 seats'], $staffRow);
+    check('a party is never given a guessed gender', array_key_exists('gender', $s['prefill']) && $s['prefill']['gender'] === null);
     $cap = max(1, Settings::getInt('max_seats_per_booking', MAX_SEATS_BOOKING));
     $s = TicketBot::suggest(['text' => '9 seats 9000000010'], null);
     check('a customer suggestion keeps the public seat cap', (int) ($s['prefill']['seats'] ?? 0) === $cap, (string) ($s['prefill']['seats'] ?? ''));

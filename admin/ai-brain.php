@@ -17,6 +17,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/aibrain.php';
+require_once INCLUDE_PATH . '/nameguess.php';
 
 $admin   = admin_boot('dashboard.view');
 $canEdit = Auth::canManageSettings();
@@ -63,6 +64,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             // Never log a key — only which settings moved.
             Logger::audit('ai.brain', 'settings', 'ai', null, ['changed' => $changed], 'AI brain saved by admin #' . (int) $admin['id']);
             $flash = ['ok', 'Saved. / सेभ भयो। Order now: ' . (implode(' → ', AiBrain::order()) ?: 'no key yet')];
+        } elseif ($act === 'booking_ai') {
+            /* 15 Oct 2026: the booking brain - name -> F / M guess and the
+               one-message WhatsApp sale. */
+            $inst = (string) ($_POST['wa_instant_sale'] ?? 'staff');
+            if (!in_array($inst, ['off', 'staff', 'all'], true)) {
+                throw new RuntimeException('Unknown WhatsApp one-message setting.');
+            }
+            $before = ['ai_name_guess_on' => NameGuess::on() ? 1 : 0, 'wa_instant_sale' => Settings::getString('wa_instant_sale', 'staff')];
+            $after  = ['ai_name_guess_on' => (string) ($_POST['ai_name_guess_on'] ?? '0') === '1' ? 1 : 0, 'wa_instant_sale' => $inst];
+            Settings::set('ai_name_guess_on', $after['ai_name_guess_on'] ? '1' : '0', 'bool', 'ai');
+            Settings::set('wa_instant_sale', $inst, 'string', 'whatsapp');
+            Logger::audit('ai.booking', 'settings', 'ai', $before, $after, 'Booking AI saved by admin #' . (int) $admin['id']);
+            $flash = ['ok', 'Booking AI saved. / सेभ भयो।'];
+        } elseif ($act === 'relearn') {
+            $r = NameGuess::rebuild();
+            $flash = ['ok', 'Relearned ' . $r['names'] . ' names from ' . $r['passengers'] . ' passengers. / नाम फेरि सिकियो।'];
         } elseif ($act === 'test') {
             $p = (string) ($_POST['test'] ?? '');
             $r = AiBrain::test($p);
@@ -152,6 +169,51 @@ admin_page_head('One AI brain for the whole system — the WhatsApp bot, the web
   <div class="panel-body ab-uses">
     <?php foreach ($uses as $u): ?><div><b><?= $e($u[0]) ?></b><span class="muted"><?= $e($u[1]) ?></span></div><?php endforeach; ?>
     <p class="muted text-xs" style="margin:6px 0 0">Keys are kept server-side only and are never shown again after saving. Get keys at aistudio.google.com (Gemini, free), platform.openai.com (GPT), console.anthropic.com (Claude).</p>
+  </div>
+</div>
+<?php
+/* 15 Oct 2026 - the booking brain: what it learned, the switches, a try box. */
+$ng     = NameGuess::stats(16);
+$try    = Security::clean((string) ($_GET['try'] ?? ''), 120);
+$tryRes = $try !== '' ? NameGuess::gender($try) : null;
+$inst   = Settings::getString('wa_instant_sale', 'staff');
+?>
+<div class="panel" id="bookingAi">
+  <h2>Booking AI — learns from every ticket</h2>
+  <div class="panel-body ab-uses">
+    <p class="muted" style="margin:0">The same brain works on all three booking doors — the customer app, the office SmartBook / counter and WhatsApp.
+      It guesses <b>Female / Male from the name</b> (Mrs, Kumari, Devi, Bahadur, -ben, -bhai, and every name your passengers already carried),
+      the <b>usual pickup and direction from the mobile's own history</b>, and the <b>nearest pickup from the phone's location</b>.
+      A guess is always shown with 🤖 and one tap changes it. Learned now: <b><?= (int) $ng['names'] ?></b> names from <b><?= (int) $ng['passengers'] ?></b> passengers (relearned every night).</p>
+    <?php if ($ng['top'] !== []): ?>
+      <div style="display:flex;flex-wrap:wrap;gap:6px"><?php foreach ($ng['top'] as $t): ?>
+        <span class="chip" title="<?= (int) $t['male'] ?> male · <?= (int) $t['female'] ?> female"><?= $e(ucfirst($t['name'])) ?> <?= $t['female'] > $t['male'] ? '♀' : '♂' ?> <?= (int) ($t['male'] + $t['female']) ?></span>
+      <?php endforeach; ?></div>
+    <?php endif; ?>
+    <form method="get" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <label>Try a name <input name="try" value="<?= $e($try) ?>" placeholder="Sita Kumari Thapa" maxlength="120"></label>
+      <button class="btn btn-ghost" type="submit">Guess</button>
+      <?php if ($tryRes !== null): ?>
+        <span><b><?= $tryRes['gender'] !== '' ? $e($tryRes['gender']) : 'No guess' ?></b>
+          <?php if ($tryRes['gender'] !== ''): ?> · <?= (int) round($tryRes['confidence'] * 100) ?>% · <?= $e($tryRes['why']) ?>
+            · <?= $tryRes['confidence'] >= NameGuess::AUTO ? 'used everywhere' : ($tryRes['confidence'] >= NameGuess::SHOW ? 'shown on the card only' : 'too weak - not used') ?><?php endif; ?></span>
+      <?php endif; ?>
+    </form>
+    <?php if ($canEdit): ?>
+    <form method="post" style="display:grid;gap:8px">
+      <?= Security::csrfField() ?>
+      <input type="hidden" name="action" value="booking_ai">
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="ai_name_guess_on" value="1" <?= NameGuess::on() ? 'checked' : '' ?>> Guess Female / Male from the name</label>
+      <label>WhatsApp — a complete order in ONE message (name, mobile, pickup, date, seats)
+        <select name="wa_instant_sale">
+          <?php foreach (['staff' => 'Agents / counter numbers: ticket at once, no "yes" step', 'all' => 'Everyone (customers too): ticket at once', 'off' => 'Always show the summary and wait for "yes"'] as $v => $l): ?>
+            <option value="<?= $v ?>" <?= $inst === $v ? 'selected' : '' ?>><?= $e($l) ?></option>
+          <?php endforeach; ?>
+        </select></label>
+      <p><button class="btn" type="submit">Save</button></p>
+    </form>
+    <form method="post"><?= Security::csrfField() ?><input type="hidden" name="action" value="relearn"><button class="btn btn-ghost" type="submit">Relearn names now</button></form>
+    <?php endif; ?>
   </div>
 </div>
 <?php

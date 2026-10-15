@@ -94,6 +94,7 @@ html.sb-on #search-anchor, html.sb-on #quick-ticket{display:none}
 #smartBook .sb-p .sb-g.f{background:var(--sb-women-bg);color:var(--sb-women)}
 #smartBook .sb-p .sb-g.m{background:var(--sb-on);color:var(--sb-primary)}
 #smartBook .sb-p .sb-g.u{color:var(--sb-err)}
+#smartBook .sb-p .sb-g.sb-ai{outline:1px dashed currentColor;outline-offset:-3px}
 #smartBook .sb-p .sb-b{border-left:1px solid var(--sb-line);color:var(--sb-muted)}
 #smartBook .sb-p.sb-need{border-color:var(--sb-err)}
 

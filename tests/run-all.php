@@ -245,6 +245,8 @@ const CORE_SUITES = [
     'showcase-test.php'           => 'home showcase: emblem-only logo, 3D widgets, colourful help buttons, CEO card, amenities, quick-booking demo',
     // 15 Oct 2026 SmartBook v5 phase 2.
     'smartbook-engine-test.php'   => 'SmartBook engine: AutoBerth H1-H5 scenarios < 50 ms, manual check, Default Rules, quote = priceFor, idempotent Cash/Online book, 20 parallel holds = 1 win',
+    'nameguess-test.php'          => 'Booking AI: name -> Female / Male guess (titles, Kumari / Bahadur, -ben / -bhai, learned table), SHOW / AUTO bars, teach + nightly rebuild',
+    'wa-instant-test.php'         => 'WhatsApp one-message ticket (wa_instant_sale staff / all / off), day must be said, name guess rides on the ticket',
     'smartbook-ui-test.php'       => 'SmartBook card + pages: markup, no code field for customers (D1/D13), one API door, pinned berths, QR page, cash book, staff page, rules page, 80 mm receipt',
     'smartbook-facts-test.php'    => 'D8 one refund policy (48h 75 / 24-48h 50 / <24h 0, 5-7 days), D9 1,375 km, D10 Rajkot: calculator, facts, ratchet, wiring',
     'homeinfo-test.php'           => 'home info: fares board, route strip, India-Nepal timeline, places worth the trip, localized links',

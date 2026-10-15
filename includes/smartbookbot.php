@@ -66,6 +66,19 @@ final class SmartBookBot
         if ($n === 0 && $g !== null) {
             $n = 1;   // 15 Oct 2026: "Sita 98…, female, Vadodara bholi" = one traveller, gender known (desk Auto-book)
         }
+        /* 15 Oct 2026 (owner: "naam bata gender guess"): no gender word in the
+           line, a name that is clearly one way - the lead passenger takes it.
+           Only at NameGuess::AUTO, because a desk Auto-book counts it as said;
+           the card marks it 🤖 and one tap changes it. */
+        $out['guessed'] = [];
+        if ($g === null && $out['name'] !== '') {
+            require_once __DIR__ . '/nameguess.php';
+            $g = NameGuess::confident($out['name']);
+            if ($g !== null) {
+                $out['guessed'][] = 'gender';
+                $n = max(1, $n);
+            }
+        }
         for ($i = 0; $i < $n; $i++) {
             $out['pax'][] = ['gender' => $i === 0 && $g !== null ? $g : '', 'band' => 'adult'];
         }

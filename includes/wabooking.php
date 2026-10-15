@@ -52,6 +52,7 @@ final class WaBooking
         if ($text === '' || $phoneDigits === '') {
             return null;
         }
+        $firstText = $text;                       // the message as it came (one-message sale)
         if (!Settings::getBool('wa_booking_on', true)) {
             return null;
         }
@@ -468,6 +469,16 @@ final class WaBooking
 
         /* A seller is asked whose ticket this is BEFORE the name: a number we
            have met fills the name in from its own last ticket. */
+        /* 15 Oct 2026 (owner: "WhatsApp bata 1 msg ma ticket"): a seller's
+           first message that already carries the passenger's mobile
+           ("Ram 9812345678 Surat bholi 2") needs no "whose number?" turn. */
+        if ($seller !== null && !array_key_exists('custPhone', $slots) && $state === null) {
+            $inLine = (string) (TicketBot::parse($firstText)['phone'] ?? '');
+            $cust   = $inLine !== '' ? self::readCustomerPhone($inLine) : null;
+            if ($cust !== null && $cust !== '') {
+                $slots['custPhone'] = $cust;
+            }
+        }
         if ($seller !== null && !array_key_exists('custPhone', $slots)) {
             self::save($phoneDigits, $slots, 'custPhone', [], $lang);
             return self::out(self::say('askCustPhone', $lang));
@@ -515,6 +526,14 @@ final class WaBooking
             return self::dupAsk($phoneDigits, $slots, $dup, $lang, $opener);
         }
 
+        /* 15 Oct 2026: ONE message carried the whole order - sold at once,
+           no "yes" turn (wa_instant_sale: staff = agents / counter numbers,
+           all = customers too, off = always ask). Only what was SAID counts:
+           a default day or the yard pickup never sells by itself. */
+        if (self::instantOk($seller, $state === null, $sug, $slots, $combo)) {
+            return self::sell($phoneDigits, $slots, $lang, $senderCountry, '', $seller);
+        }
+
         // Everything is known: show what it will cost and wait for a yes.
         self::save($phoneDigits, $slots, 'confirm', [], $lang);
         /* 23 Sep 2026 (owner: "customer lai seat photo"): the summary rides on
@@ -547,6 +566,34 @@ final class WaBooking
     /* -----------------------------------------------------------------
      *  The guided order (5 Oct 2026): commands, questions, tappable answers
      * --------------------------------------------------------------- */
+
+    /**
+     * May this order be sold without the summary + yes? (15 Oct 2026)
+     * Fresh conversation (the whole order in ONE message), the switch allows
+     * this sender, and the day and the pickup were said - in the line, or the
+     * pickup from this passenger's own history - never an engine default.
+     */
+    private static function instantOk(?array $seller, bool $fresh, array $sug, array $slots, bool $combo): bool
+    {
+        if (!$fresh) {
+            return false;
+        }
+        $mode = strtolower(trim(Settings::getString('wa_instant_sale', 'staff')));
+        if (!in_array($mode, ['staff', 'all'], true) || ($mode === 'staff' && $seller === null)) {
+            return false;
+        }
+        $src = static fn(string $k): string => (string) ($sug['fields'][$k]['source'] ?? '');
+        if (!in_array($src('date'), ['text', 'input'], true)) {
+            return false;
+        }
+        if (!in_array($src('boarding'), ['text', 'input', 'history'], true)) {
+            return false;
+        }
+        if ($seller === null && !$combo) {
+            return false;                          // a customer's line is read in the combined mode only
+        }
+        return trim((string) ($slots['name'] ?? '')) !== '';
+    }
 
     /** Is an order conversation open for this number? */
     public static function isOpen(string $phoneDigits): bool
@@ -1393,6 +1440,8 @@ final class WaBooking
         try {
             $res = QuickTicket::sellCustomer([
                 'name'      => $paxName,
+                // 15 Oct 2026: a clear name ("Sita Kumari") seats by gender; unsure = none, as before
+                'gender'    => (int) ($slots['seats'] ?? 1) <= 1 ? self::guessGender($paxName) : null,
                 /* 15 Oct 2026: the booking form's own Mobile box books for that
                    number (the ticket goes there); blank = the sender. */
                 'phone'     => $contact !== '' ? $contact : $phoneDigits,
@@ -1570,6 +1619,7 @@ final class WaBooking
         try {
             $res = QuickTicket::sell([
                 'name'       => $paxName,
+                'gender'     => (int) ($slots['seats'] ?? 1) <= 1 ? self::guessGender($paxName) : null,
                 'phone'      => $cust,
                 'country'    => (str_starts_with($cust, '977') && strlen($cust) === 13) ? 'NP' : (string) ($slots['country'] ?? ''),
                 'seats'      => (int) ($slots['seats'] ?? 1),
@@ -1647,7 +1697,7 @@ final class WaBooking
                          . ($p['age'] !== null ? ' (' . $p['age'] . ')' : '');
             }
         } else {
-            $lines[] = self::label('name', $lang) . ': ' . (string) ($slots['name'] ?? '');
+            $lines[] = self::label('name', $lang) . ': ' . (string) ($slots['name'] ?? '') . ((int) ($slots['seats'] ?? 1) <= 1 ? self::genderMark((string) ($slots['name'] ?? '')) : '');
         }
         if ($route !== '') {
             $lines[] = self::label('route', $lang) . ': ' . $route;
@@ -2236,6 +2286,21 @@ Example: Ram Bahadur 35, Sita Gurung 30",
      *
      * @return list<array{name: string, age: int|null}>
      */
+    /** 'Female' / 'Male' when the name is clear (NameGuess::AUTO), else null.
+        Lone travellers only: a family sharing a cabin is never split by a guess (the shared-cabin lock). */
+    private static function guessGender(string $name): ?string
+    {
+        require_once INCLUDE_PATH . '/nameguess.php';
+        return NameGuess::confident($name);
+    }
+
+    /** The ♀ / ♂ shown beside a name in the summary (the guess the sale will use). */
+    private static function genderMark(string $name): string
+    {
+        $g = self::guessGender($name);
+        return $g === 'Female' ? ' ♀' : ($g === 'Male' ? ' ♂' : '');
+    }
+
     private static function partyForSale(array $slots): array
     {
         $party = is_array($slots['party'] ?? null) ? $slots['party'] : [];
