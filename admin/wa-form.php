@@ -35,7 +35,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             Logger::audit('wa.flow_publish', 'settings', 'whatsapp', null, $r, 'WhatsApp booking form published by admin #' . (int) $admin['id']);
             $flash = $r['ok']
                 ? ['ok', 'Form published on Meta (id ' . $r['id'] . '). "ticket" on WhatsApp now opens it. / फारम चालु भयो।']
-                : ['bad', 'Meta said: ' . $r['error'] . ($r['errors'] !== [] ? ' — ' . implode(' · ', $r['errors']) : '')];
+                : ['bad', ($r['id'] !== '' ? 'Meta made the form (id ' . $r['id'] . ') but kept it as a DRAFT — customers still get the chat questions; "Send form" works for testing. ' : '')
+                    . 'Meta said: ' . $r['error'] . ($r['errors'] !== [] ? ' — ' . implode(' · ', $r['errors']) : '')
+                    . (stripos($r['error'], 'integrity') !== false ? ' → Meta Business Manager: finish Business Verification / fix the phone number quality, then press Publish again.' : '')];
         } elseif ($act === 'template') {
             $r = WaFlow::createTemplate();
             $flash = $r['ok'] ? ['ok', 'Template ' . WaFlow::TEMPLATE . ' sent to Meta for review (usually a few minutes).'] : ['bad', 'Meta said: ' . $r['error']];
@@ -115,7 +117,7 @@ admin_page_head('The one-sheet booking form inside WhatsApp: pickup, date, seats
       <?php if ($canEdit): ?>
       <div class="wf-row">
         <form method="post"><?= Security::csrfField() ?><input type="hidden" name="action" value="publish">
-          <button class="btn" type="submit" <?= $metaOk ? '' : 'disabled' ?>>🚀 <?= $id === '' ? 'Publish form on Meta' : 'Publish again (new version)' ?></button></form>
+          <button class="btn" type="submit" <?= $metaOk ? '' : 'disabled' ?>>🚀 <?= $id === '' ? 'Publish form on Meta' : ($draft ? 'Publish the draft' : 'Publish again (new version)') ?></button></form>
         <form method="post"><?= Security::csrfField() ?><input type="hidden" name="action" value="template">
           <button class="btn ghost" type="submit" <?= $id !== '' && $metaOk ? '' : 'disabled' ?>>📨 Make the template (reach anyone)</button></form>
         <a class="btn ghost" href="?json=1">⬇ Form JSON</a>

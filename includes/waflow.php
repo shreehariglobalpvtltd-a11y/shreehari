@@ -348,6 +348,18 @@ final class WaFlow
             $out['error'] = 'The Meta token or WABA id is missing (Settings → WhatsApp: whatsapp_api_token, whatsapp_waba_id).';
             return $out;
         }
+        // A draft made earlier (Meta refused to publish it then): publish THAT one - no duplicate forms.
+        if (self::flowId() !== '' && Settings::getBool('wa_flow_draft', false)) {
+            $res = self::graph('POST', '/' . self::flowId() . '/publish', []);
+            if ($res['http'] >= 200 && $res['http'] < 300 && !empty($res['json']['success'])) {
+                Settings::set('wa_flow_draft', '0', 'bool', 'whatsapp');
+                Settings::set('wa_flow_on', '1', 'bool', 'whatsapp');
+                return ['ok' => true, 'id' => self::flowId(), 'error' => '', 'errors' => []];
+            }
+            $out['id']    = self::flowId();
+            $out['error'] = self::metaError($res);
+            return $out;
+        }
         $fields = [
             'name'       => 'SHG booking ' . date('Y-m-d H:i'),
             'categories' => json_encode(['APPOINTMENT_BOOKING']),
@@ -356,22 +368,38 @@ final class WaFlow
         ];
         $res = self::graph('POST', '/' . rawurlencode(META_WABA_ID) . '/flows', $fields);
         $id  = (string) ($res['json']['id'] ?? '');
+        // Created but not published: Meta names the new flow inside the error ("Flow ID: 123…").
+        if ($id === '' && preg_match('/Flow ID:\s*(\d{6,})/', self::metaError($res), $m) === 1) {
+            $id = $m[1];
+        }
         foreach ((array) ($res['json']['validation_errors'] ?? []) as $v) {
             $out['errors'][] = trim((string) ($v['error'] ?? '') . ': ' . (string) ($v['message'] ?? ''), ': ');
         }
-        if ($res['http'] < 200 || $res['http'] >= 300 || $id === '') {
-            $out['error'] = (string) ($res['json']['error']['error_user_msg'] ?? ($res['json']['error']['message'] ?? ('HTTP ' . $res['http'])));
-            return $out;
-        }
         $out['id'] = $id;
-        if ($out['errors'] !== []) {
-            $out['error'] = 'Meta created the form as a draft but refused to publish it.';
+        $published = $res['http'] >= 200 && $res['http'] < 300 && $id !== '' && $out['errors'] === [];
+        if ($id !== '') {
+            /* Kept either way. A DRAFT is stored switched OFF for customers - the
+               admin page can still send it to a test number (mode = draft) and
+               "Publish" retries this same draft once Meta allows it. */
+            Settings::set('wa_flow_book_id', $id, 'string', 'whatsapp');
+            Settings::set('wa_flow_draft', $published ? '0' : '1', 'bool', 'whatsapp');
+            if (!$published) {
+                Settings::set('wa_flow_on', '0', 'bool', 'whatsapp');
+            }
+        }
+        if (!$published) {
+            $out['error'] = self::metaError($res) !== '' ? self::metaError($res) : 'Meta created the form as a draft but did not publish it.';
             return $out;
         }
-        Settings::set('wa_flow_book_id', $id, 'string', 'whatsapp');
-        Settings::set('wa_flow_draft', '0', 'bool', 'whatsapp');
+        Settings::set('wa_flow_on', '1', 'bool', 'whatsapp');
         $out['ok'] = true;
         return $out;
+    }
+
+    private static function metaError(array $res): string
+    {
+        $e = (array) ($res['json']['error'] ?? []);
+        return trim((string) ($e['error_user_msg'] ?? ($e['message'] ?? ($res['http'] >= 300 ? 'HTTP ' . $res['http'] : ''))));
     }
 
     public const TEMPLATE = 'shg_book_form';
@@ -419,8 +447,9 @@ final class WaFlow
     {
         require_once ROOT_PATH . '/whatsapp/api.php';
         $to = waCleanPhone($phone);
-        if ($to === '' || !self::enabled()) {
-            return ['success' => false, 'error' => $to === '' ? 'Not a mobile number.' : 'The form is not published / switched off.', 'via' => ''];
+        // A test send works while the form is switched off for customers (a draft included).
+        if ($to === '' || self::flowId() === '') {
+            return ['success' => false, 'error' => $to === '' ? 'Not a mobile number.' : 'The form is not on Meta yet - press Publish first.', 'via' => ''];
         }
         $ui = self::ui($to, $lang, $forSeller);
         $r  = sendWhatsAppInteractive($to, (string) $ui['body'], $ui);
