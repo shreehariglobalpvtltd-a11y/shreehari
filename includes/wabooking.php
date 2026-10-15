@@ -121,9 +121,18 @@ final class WaBooking
             }
         }
 
+        /* 15 Oct 2026 (owner: "naam + mobile number - teti bhanepachhi ticket
+           done"): a fresh message that is a NAME and a MOBILE ("Ram Bahadur
+           9812345678", "Name: Ram / Mobile: 98...") is the quick order. Date,
+           pickup and seats come from the defaults (next catchable bus, this
+           number's usual / the most-used pickup, one seat) - anything else the
+           line says still wins. Sold at once where wa_instant_sale allows this
+           sender; elsewhere it goes to the usual summary + yes. */
+        $quick = $state === null && $command === null ? self::quickOrder($text) : null;
+
         // Nothing in progress and nothing bookable in the message — let the
         // PNR lookup, the assistant or the menu answer instead.
-        if ($state === null && !self::looksLikeRequest($text)
+        if ($state === null && $quick === null && !self::looksLikeRequest($text)
             && !($seller === null && self::comboOn() && self::comboRead($text))) {
             return null;
         }
@@ -136,12 +145,21 @@ final class WaBooking
 
         $slots  = is_array($state['slots'] ?? null) ? $state['slots'] : [];
         $guided = !empty($slots['_guided']);
+        if ($quick !== null) {
+            $slots['_quick'] = true;
+            $slots['name']   = $quick['name'];
+            if ($seller !== null) {
+                $slots['custPhone'] = $quick['phone'];     // the passenger's own WhatsApp
+            } elseif ($quick['phone'] !== '' && normalisePhone($quick['phone']) !== normalisePhone($phoneDigits)) {
+                $slots['contact'] = $quick['phone'];       // booking for somebody else: their number gets it
+            }
+        }
 
         /* 15 Oct 2026: "Ram, Surat, bholi, 2" on a fresh chat is the combined
            answer itself - the line the greeting and the website button teach.
            It is read in the combined mode: every one of the four is required,
            and whatever is missing is asked for in ONE message. */
-        if ($state === null && $seller === null && self::comboOn() && self::comboRead($text)) {
+        if ($quick === null && $state === null && $seller === null && self::comboOn() && self::comboRead($text)) {
             $slots['_combo'] = true;
         }
         $combo = !empty($slots['_combo']);
@@ -258,7 +276,7 @@ final class WaBooking
         /* "naam Ram Bahadur" / "नाम राम" — the one correction the parser cannot
            make for itself, since any word could be a name. A list behind the
            same word is the whole family: "naam Ram, Sita 30, Maya 12". */
-        if (preg_match('/^\s*(?:naam|nam|name|नाम|નામ)\s*[:\-]?\s*(.{2,400})$/ui', $text, $m)) {
+        if ($quick === null && preg_match('/^\s*(?:naam|nam|name|नाम|નામ)\s*[:\-]?\s*(.{2,400})$/ui', $text, $m)) {
             $party = self::parseParty($m[1], max(1, (int) ($slots['seats'] ?? 1)));
             $lead  = $party !== [] ? (string) $party[0]['name'] : trim($m[1]);
             if (PersonName::clean($lead) === '') {
@@ -281,7 +299,7 @@ final class WaBooking
                office default. */
             $pay = self::payChoice($text);
             if ($pay !== '' || self::isYes($text)) {
-                return self::sell($phoneDigits, $slots, $lang, $senderCountry, $pay, $seller);
+                return self::sell($phoneDigits, $slots, $lang, $senderCountry, $pay, $seller, (string) ($slots['contact'] ?? ''));
             }
             if (self::isNo($text)) {
                 self::clear($phoneDigits);
@@ -438,7 +456,7 @@ final class WaBooking
             }
         }
 
-        $ask = $combo ? null : ($sug['ask'] ?? null);
+        $ask = ($combo || !empty($slots['_quick'])) ? null : ($sug['ask'] ?? null);
         if (is_array($ask) && ($ask['field'] ?? '') !== '') {
             /* A customer with more than one gap is asked for all of them at
                once (and the answer is read in the combined mode). */
@@ -531,7 +549,7 @@ final class WaBooking
            all = customers too, off = always ask). Only what was SAID counts:
            a default day or the yard pickup never sells by itself. */
         if (self::instantOk($seller, $state === null, $sug, $slots, $combo)) {
-            return self::sell($phoneDigits, $slots, $lang, $senderCountry, '', $seller);
+            return self::sell($phoneDigits, $slots, $lang, $senderCountry, '', $seller, (string) ($slots['contact'] ?? ''));
         }
 
         // Everything is known: show what it will cost and wait for a yes.
@@ -582,6 +600,9 @@ final class WaBooking
         if (!in_array($mode, ['staff', 'all'], true) || ($mode === 'staff' && $seller === null)) {
             return false;
         }
+        if (!empty($slots['_quick'])) {
+            return trim((string) ($slots['name'] ?? '')) !== '';   // name + mobile: the defaults are the owner's rule
+        }
         $src = static fn(string $k): string => (string) ($sug['fields'][$k]['source'] ?? '');
         if (!in_array($src('date'), ['text', 'input'], true)) {
             return false;
@@ -593,6 +614,31 @@ final class WaBooking
             return false;                          // a customer's line is read in the combined mode only
         }
         return trim((string) ($slots['name'] ?? '')) !== '';
+    }
+
+    /**
+     * A name and a mobile, and nothing that makes it something else (15 Oct 2026).
+     * "Ram Bahadur 9812345678" / "Name: Ram Bahadur\nMobile: 98123 45678" /
+     * "Sita 98... Surat bholi" -> ['name' => 'Ram Bahadur', 'phone' => '9812345678'].
+     * A complaint, a question or a PNR is never an order.
+     *
+     * @return array{name: string, phone: string}|null
+     */
+    private static function quickOrder(string $text): ?array
+    {
+        $t = mb_strtolower(trim($text));
+        if ($t === '' || mb_strlen($t) > 200 || self::isAboutExistingTicket($t) || self::isQuestion($t)
+            || preg_match('/shg-\d{4}-\d+|pnr/i', $t) === 1) {
+            return null;
+        }
+        $p     = TicketBot::parse($text);
+        $phone = trim((string) ($p['phone'] ?? ''));
+        $cust  = $phone !== '' ? self::readCustomerPhone($phone) : null;
+        $name  = PersonName::clean((string) ($p['name'] ?? ''));
+        if ($cust === null || $cust === '' || $name === '' || self::looksLikePlace($name, [])) {
+            return null;
+        }
+        return ['name' => $name, 'phone' => $cust];
     }
 
     /** Is an order conversation open for this number? */

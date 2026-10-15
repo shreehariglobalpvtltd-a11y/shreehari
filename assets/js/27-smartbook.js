@@ -86,6 +86,40 @@
   var MODE = STAFF ? String(STAFF.mode || 'admin') : 'customer';
   function api(body) { if (STAFF) body.mode = MODE; return shgApi.post('/smartbook.php', body); }
   function lang() { var l = (typeof LANG === 'string' && LANG) ? LANG : 'en'; return W[l] ? l : 'en'; }
+  /* 15 Oct 2026 (owner: "catalog form jasto - naam + mobile, baaki default; customer lai k lekhne demo + voice"). */
+  var QW = {
+    en: { qQuick: '⚡ Quick — name + mobile', qFull: 'Full form', qHelp: '❓ How?', mic: 'Speak your name and mobile', qChange: '✏️ Change',
+      micNo: 'Voice is not available in this browser — please type.', micHear: 'Listening… say the name and the mobile',
+      hT: '⚡ Ticket in 10 seconds — how?', h1: 'Write the NAME and the MOBILE — that is all.',
+      h2: 'Date, pickup and seat are filled by the AI (the next bus, the most-used pickup, the best berth). Tap “✏️ Change” to change any of them.',
+      h3: 'Tap 🎫 Book — the ticket comes on WhatsApp.', hVoiceT: '🎤 Or just speak — tap the mic and say:',
+      hVoiceEx: '“Ram Bahadur, 98123 45678, Surat, tomorrow”', hWaT: '💬 On WhatsApp — ONE message is enough:',
+      hWaEx1: 'Ram Bahadur 9812345678', hWaEx2: 'Sita Kumari 9812345678 Surat tomorrow 2 seat', hWaBtn: '💬 Send on WhatsApp', hListen: '🔊 Listen',
+      hChatBot: '✅ Ticket ready · SHG-2026-0xxxx · Surat 13:00 · LB3', hChatBot2: '🎫 Ticket picture + PDF sent on this WhatsApp',
+      hWaTpl: 'Name: \nMobile: ',
+      hSpeak: 'Booking a ticket is very easy. Just write the passenger name and the mobile number, and tap Book. The date, the pickup and the seat are filled automatically. You can also tap the microphone and speak the name and the number. On WhatsApp, one message with the name and the mobile number is enough, and the ticket comes back on WhatsApp.' },
+    hi: { qQuick: '⚡ जल्दी — नाम + मोबाइल', qFull: 'पूरा फ़ॉर्म', qHelp: '❓ कैसे?', mic: 'नाम और मोबाइल बोलिए', qChange: '✏️ बदलें',
+      micNo: 'इस ब्राउज़र में आवाज़ नहीं चलती — लिखिए।', micHear: 'सुन रहे हैं… नाम और मोबाइल बोलिए',
+      hT: '⚡ 10 सेकंड में टिकट — कैसे?', h1: 'नाम और मोबाइल लिखिए — बस इतना।',
+      h2: 'तारीख, चढ़ने की जगह और सीट AI खुद भरता है (अगली बस, सबसे ज़्यादा चढ़ने वाली जगह, अच्छी बर्थ)। बदलना हो तो “✏️ बदलें” दबाइए।',
+      h3: '🎫 Book दबाइए — टिकट WhatsApp पर आ जाएगा।', hVoiceT: '🎤 या बोलिए — माइक दबाकर कहिए:',
+      hVoiceEx: '“राम बहादुर, 98123 45678, सूरत, कल”', hWaT: '💬 WhatsApp पर — एक ही मैसेज काफ़ी है:',
+      hWaEx1: 'Ram Bahadur 9812345678', hWaEx2: 'Sita Kumari 9812345678 Surat kal 2 seat', hWaBtn: '💬 WhatsApp पर भेजें', hListen: '🔊 सुनिए',
+      hChatBot: '✅ टिकट तैयार · SHG-2026-0xxxx · Surat 13:00 · LB3', hChatBot2: '🎫 टिकट फ़ोटो + PDF इसी WhatsApp पर',
+      hWaTpl: 'Name: \nMobile: ',
+      hSpeak: 'टिकट बुक करना बहुत आसान है। बस यात्री का नाम और मोबाइल नंबर लिखिए और बुक दबाइए। तारीख, चढ़ने की जगह और सीट अपने आप भर जाती है। आप माइक दबाकर नाम और नंबर बोल भी सकते हैं। व्हाट्सऐप पर नाम और मोबाइल नंबर का एक मैसेज काफ़ी है, टिकट व्हाट्सऐप पर ही आ जाएगा।' },
+    ne: { qQuick: '⚡ छिटो — नाम + मोबाइल', qFull: 'पूरा फारम', qHelp: '❓ कसरी?', mic: 'नाम र मोबाइल बोल्नुहोस्', qChange: '✏️ बदल्नुहोस्',
+      micNo: 'यो ब्राउजरमा आवाज चल्दैन — लेख्नुहोस्।', micHear: 'सुन्दैछ… नाम र मोबाइल भन्नुहोस्',
+      hT: '⚡ १० सेकेन्डमा टिकट — कसरी?', h1: 'नाम र मोबाइल लेख्नुहोस् — बस् यति।',
+      h2: 'मिति, चढ्ने ठाउँ र सिट AI आफैं भर्छ (अर्को बस, धेरै चढ्ने ठाउँ, राम्रो बर्थ)। बदल्न “✏️ बदल्नुहोस्” थिच्नुहोस्।',
+      h3: '🎫 Book थिच्नुहोस् — टिकट WhatsApp मा आउँछ।', hVoiceT: '🎤 वा बोल्नुहोस् — माइक थिचेर भन्नुहोस्:',
+      hVoiceEx: '“राम बहादुर, 98123 45678, सुरत, भोलि”', hWaT: '💬 WhatsApp मा — एउटै मेसेज पुग्छ:',
+      hWaEx1: 'Ram Bahadur 9812345678', hWaEx2: 'Sita Kumari 9812345678 Surat bholi 2 seat', hWaBtn: '💬 WhatsApp मा पठाउनुहोस्', hListen: '🔊 सुन्नुहोस्',
+      hChatBot: '✅ टिकट तयार · SHG-2026-0xxxx · Surat 13:00 · LB3', hChatBot2: '🎫 टिकटको फोटो + PDF यही WhatsApp मा',
+      hWaTpl: 'Name: \nMobile: ',
+      hSpeak: 'टिकट बुक गर्न धेरै सजिलो छ। यात्रुको नाम र मोबाइल नम्बर लेख्नुहोस् र बुक थिच्नुहोस्। मिति, चढ्ने ठाउँ र सिट आफैं भरिन्छ। माइक थिचेर नाम र नम्बर बोल्न पनि सक्नुहुन्छ। व्हाट्सएपमा नाम र मोबाइल नम्बरको एउटै मेसेज पुग्छ, टिकट व्हाट्सएपमै आउँछ।' }
+  };
+  ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in QW[l]) { W[l][k] = QW[l][k]; } } });
   function tr(k, v) {
     var s = (W[lang()] && W[lang()][k]) || W.en[k] || k;
     if (v) Object.keys(v).forEach(function (x) { s = s.split('{' + x + '}').join(v[x]); });
@@ -103,6 +137,7 @@
     dirs: [], points: {}, dir: 'toNepal', date: '', point: '', cc: 'IN', phone: '', name: '',
     pax: [{ gender: '', band: 'adult' }], type: 'sharing', cabin: 'single', berth: 'any', seatMode: 'auto', manual: [],
     q: null, busy: false, idem: null, touched: {}, why: {}, allowCod: true, maxPax: 6, last: null,
+    quick: (function () { try { return localStorage.getItem('sb:quick') !== '0'; } catch (e) { return true; } })(),
     agent: ''   // staff desks only: the SHG code the sale is credited to ('OTHER' = company) - never on the customer page
   };
   var store = {
@@ -151,7 +186,7 @@
           .map(function (p) { return { gender: p.gender === 'Female' || p.gender === 'Male' ? p.gender : '', band: p.band || 'adult' }; });
         S.type = saved.type || df.type || 'sharing'; S.cabin = saved.cabin || df.cabin || 'single'; S.berth = saved.berth || df.berth || 'any';
         if (!S.allowCod) $('sbCash').hidden = true;
-        fill(); applyWords(); requote(0);
+        fill(); applyWords(); applyQuick(); requote(0);
       })
       .catch(function (e) {
         // the engine is unreachable: the classic search card takes over
@@ -228,6 +263,7 @@
     });
     var row = $('sbPax'); row.innerHTML = h;
     row.classList.toggle('sb-scroll', S.pax.length >= 5);
+    renderQLine();
   }
 
   /* ------------------------------------------------------- validation */
@@ -350,6 +386,29 @@
     $('sbNpr').textContent = q && q.ok && q.price ? '≈ ' + npr(q.price.npr) : '';
     $('sbBarTotal').textContent = tot;
     $('sbBarSeats').textContent = q && q.ok ? (seatSummary(q) + (q.price ? ' · ≈ ' + npr(q.price.npr) : '')) : (q && q.error ? q.error : tr('loading'));
+    renderQLine();
+  }
+  /* Quick form: everything that was not typed, on one line, each a default the
+     engine chose (next catchable bus, this mobile's / the most-used pickup,
+     AutoBerth). "✏️ Change" opens the full form. */
+  function applyQuick() {
+    root.classList.toggle('sb-quick', !!S.quick);
+    var m = $('sbQMode'); if (!m) return;
+    m.querySelectorAll('button').forEach(function (b) { var on = (b.getAttribute('data-m') === 'quick') === !!S.quick; b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
+    renderQLine();
+  }
+  function setQuick(on) { S.quick = !!on; try { localStorage.setItem('sb:quick', on ? '1' : '0'); } catch (e) {} applyQuick(); }
+  function renderQLine() {
+    root.classList.toggle('sb-q-needg', S.pax.some(function (p) { return !p.gender; }));
+    var el = $('sbQLine'); if (!el) return;
+    var q = S.q, parts = [];
+    parts.push((S.dir === 'toIndia' ? '🇳🇵→🇮🇳 ' : '🇮🇳→🇳🇵 ') + (q ? q.from + ' → ' + q.to : ''));
+    if (q && q.dateLabel) parts.push('📅 ' + q.dateLabel + (q.depTime ? ' · ' + q.depTime : ''));
+    if (q) parts.push('📍 ' + (q.pointType === 'drop' ? (q.point || '') : (q.boardingName || '')));
+    parts.push('👤 ' + tr('paxN', { n: S.pax.length }) + ' ' + S.pax.map(function (p) { return p.gender === 'Female' ? '♀' : (p.gender === 'Male' ? '♂' : ''); }).join('') + (S.pax[0] && S.pax[0].ai ? ' 🤖' : ''));
+    if (q && q.ok) parts.push('🛏 ' + seatSummary(q));
+    el.innerHTML = parts.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('')
+      + '<button type="button" data-q="full">' + esc(tr('qChange')) + '</button>';
   }
 
   /* ------------------------------------------------------------ events */
@@ -440,6 +499,76 @@
       $('sbPointWhy').textContent = '📍 ' + (best.short || best.name) + ' · ~' + best.km + ' km';
       changed();
     }, function () { say(tr('geoNo')); }, { timeout: 6000, maximumAge: 600000 });
+  }
+
+  root.addEventListener('click', function (e) {
+    var b;
+    if ((b = e.target.closest('#sbQMode button'))) { setQuick(b.getAttribute('data-m') === 'quick'); return; }
+    if (e.target.closest('[data-q="full"]')) { setQuick(false); try { $('sbDates').scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (x) {} return; }
+    if (e.target.closest('#sbHelpBtn')) { openHelp(); return; }
+    if (e.target.closest('#sbMic')) { listen(); return; }
+    if (e.target.closest('.sb-help-x') || e.target.classList.contains('sb-help')) { closeHelp(); return; }
+    if (e.target.closest('.sb-h-say')) { speakHelp(); return; }
+  });
+
+  /* 🎤 Voice: the browser hears "Ram Bahadur, 98123 45678, Surat, bholi" and the
+     SAME server reader as the QuickBot line fills the card (TicketBot::parse). */
+  var SRx = window.SpeechRecognition || window.webkitSpeechRecognition, recog = null;
+  if (SRx && $('sbMic')) $('sbMic').hidden = false;
+  function listen() {
+    if (!SRx) { say(tr('micNo')); return; }
+    if (recog) { try { recog.stop(); } catch (x) {} return; }
+    try {
+      recog = new SRx();
+      recog.lang = { en: 'en-IN', hi: 'hi-IN', ne: 'ne-NP' }[lang()] || 'hi-IN';
+      recog.interimResults = false; recog.maxAlternatives = 1;
+      recog.onstart = function () { $('sbMic').classList.add('on'); say(tr('micHear')); };
+      recog.onend = function () { $('sbMic').classList.remove('on'); recog = null; };
+      recog.onerror = function (ev) { if (ev && ev.error === 'not-allowed') say(tr('micNo')); };
+      recog.onresult = function (ev) {
+        var t = ev.results && ev.results[0] && ev.results[0][0] ? String(ev.results[0][0].transcript || '').trim() : '';
+        if (!t) return;
+        $('sbBotIn').value = t;
+        fillFromText(t);
+      };
+      recog.start();
+    } catch (x) { recog = null; say(tr('micNo')); }
+  }
+
+  /* ❓ How? - what to write / say, a short animated chat, a 🔊 voice that reads
+     it out, and the WhatsApp one-message order with the template pre-typed. */
+  function openHelp() {
+    var box = root.querySelector('.sb-help');
+    if (!box) { box = document.createElement('div'); box.className = 'sb-help'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); root.appendChild(box); }
+    var wa = '';
+    try { if (!STAFF && typeof quickTicketNumber === 'function') wa = String(quickTicketNumber() || ''); } catch (x) {}
+    box.innerHTML = '<div class="sb-help-in"><h3><span>' + esc(tr('hT')) + '</span><button type="button" class="sb-help-x" aria-label="Close">✕</button></h3>'
+      + '<ol><li>' + esc(tr('h1')) + '</li><li>' + esc(tr('h2')) + '</li><li>' + esc(tr('h3')) + '</li></ol>'
+      + '<div class="sb-h-sec"><b>' + esc(tr('hVoiceT')) + '</b><code>' + esc(tr('hVoiceEx')) + '</code></div>'
+      + '<div class="sb-h-sec"><b>' + esc(tr('hWaT')) + '</b><code>' + esc(tr('hWaEx1')) + '</code><code>' + esc(tr('hWaEx2')) + '</code>'
+      + '<div class="sb-chat"><p class="me">' + esc(tr('hWaEx1')) + '</p><p class="bot">' + esc(tr('hChatBot')) + '</p><p class="bot bot2">' + esc(tr('hChatBot2')) + '</p></div></div>'
+      + '<div class="sb-h-btns">' + ('speechSynthesis' in window ? '<button type="button" class="sb-h-say">' + esc(tr('hListen')) + '</button>' : '')
+      + (wa.length >= 10 ? '<a class="sb-h-wa" target="_blank" rel="noopener" href="https://wa.me/' + esc(wa) + '?text=' + encodeURIComponent(tr('hWaTpl').replace(/\\n/g, '\n')) + '">' + esc(tr('hWaBtn')) + '</a>' : '')
+      + '</div></div>';
+    box.hidden = false; document.body.classList.add('shg-modal-open');
+    try { box.querySelector('.sb-help-x').focus(); } catch (x) {}
+  }
+  function closeHelp() {
+    var box = root.querySelector('.sb-help'); if (!box) return;
+    box.hidden = true; document.body.classList.remove('shg-modal-open');
+    try { window.speechSynthesis.cancel(); } catch (x) {}
+  }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeHelp(); });
+  function speakHelp() {
+    try {
+      var syn = window.speechSynthesis, u = new SpeechSynthesisUtterance(tr('hSpeak'));
+      var want = lang() === 'en' ? 'en' : (lang() === 'hi' ? 'hi' : 'ne');
+      var vs = syn.getVoices() || [], v = null;
+      [want, 'hi', 'en'].some(function (w) { v = vs.filter(function (x) { return String(x.lang || '').toLowerCase().indexOf(w) === 0; })[0] || null; return !!v; });
+      if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = want === 'en' ? 'en-IN' : 'hi-IN'; }
+      u.rate = 0.95;
+      syn.cancel(); syn.speak(u);
+    } catch (x) { say(tr('micNo')); }
   }
 
   /* ----------------------------------------------------- QuickBot line */

@@ -150,7 +150,7 @@ html,body{margin:0;background:#F4F6FB}
   <link rel="stylesheet" href="/assets/css/themes.css?v=20261015e">
   <link rel="stylesheet" href="/assets/css/showcase.css?v=20261015h">
   <link rel="stylesheet" href="/assets/css/homeinfo.css?v=20261015e">
-  <link rel="stylesheet" href="/assets/css/smartbook.css?v=20261015k">
+  <link rel="stylesheet" href="/assets/css/smartbook.css?v=20261015m">
   <!-- 10 Oct 2026: the owner's HD visual pack in the page (hero coach, illustrations,
        live-tracking section, sprite-icon sizes). Before depth.css, which stays last. -->
   <link rel="stylesheet" href="/assets/css/hd.css?v=20261015e">
@@ -190,7 +190,7 @@ html,body{margin:0;background:#F4F6FB}
 <script defer src="/assets/js/22-routeline.js?v=20261015e"></script>
 <script defer src="/assets/js/23-flags.js?v=20261015e"></script>
 <script defer src="/assets/js/24-homeinfo.js?v=20261015e"></script>
-<script defer src="/assets/js/27-smartbook.js?v=20261015k"></script>
+<script defer src="/assets/js/27-smartbook.js?v=20261015m"></script>
 <meta property="og:title" content="Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper | S Hari Global">
 <meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal, Rajkot &amp; Ahmedabad (S Hari Parking, Nana Chiloda). Book online, on WhatsApp or by phone. Private &amp; sharing cabins.">
 <meta property="og:type" content="website">
@@ -531,8 +531,19 @@ s.addEventListener('click',function(e){e.preventDefault();
             <span class="sb-bot-ic" aria-hidden="true">⚡</span>
             <label class="sr-only" for="sbBotIn" data-sbi="botLbl">QuickBot — type it in one line</label>
             <input id="sbBotIn" type="text" maxlength="200" enterkeyhint="go" data-sbi-ph="botPh" placeholder="Ram 98…, 2 people, Vadodara tomorrow">
+            <button type="button" class="sb-mic" id="sbMic" data-sbi-title="mic" aria-label="Speak" hidden>🎤</button>
             <button type="submit" class="sb-bot-go" data-sbi-title="botGo" aria-label="Fill the card"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button>
           </form>
+          <!-- 15 Oct 2026 (owner: "catalog form jasto - naam + mobile, baaki default"): Quick = only
+               name + mobile (+ the desk pick on staff pages); date, pickup, seats come from the most-used
+               defaults and show on one line. Full = every control. -->
+          <div class="sb-qbar">
+            <div class="sb-qmode" id="sbQMode" role="radiogroup" aria-label="Form">
+              <button type="button" class="on" data-m="quick" role="radio" aria-checked="true" data-sbi="qQuick">⚡ Quick — name + mobile</button>
+              <button type="button" data-m="full" role="radio" aria-checked="false" data-sbi="qFull">Full form</button>
+            </div>
+            <button type="button" class="sb-qhelp" id="sbHelpBtn" data-sbi="qHelp">❓ How?</button>
+          </div>
           <div class="sb-dir" role="radiogroup" aria-label="Direction">
             <button type="button" class="sb-dir-b on" role="radio" aria-checked="true" data-dir="toNepal"><span aria-hidden="true">🇮🇳→🇳🇵</span> <b data-sbi="dirGo">Gujarat → Rupaidiha</b></button>
             <button type="button" class="sb-dir-b" role="radio" aria-checked="false" data-dir="toIndia"><span aria-hidden="true">🇳🇵→🇮🇳</span> <b data-sbi="dirBack">Rupaidiha → Gujarat</b></button>
@@ -562,6 +573,7 @@ s.addEventListener('click',function(e){e.preventDefault();
               <small class="sb-fe" id="sbNameE" hidden></small>
             </div>
           </div>
+          <div class="sb-qline" id="sbQLine" aria-live="polite"></div>
           <div class="sb-f sb-f-pax">
             <span class="sb-l" id="sbPaxL" data-sbi="pax">Passengers</span>
             <div class="sb-paxline">

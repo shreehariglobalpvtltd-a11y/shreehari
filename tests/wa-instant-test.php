@@ -7,8 +7,10 @@
  *   staff  agents / counter numbers only (default)
  *   all    customers too
  *   off    always the summary + yes
- * The day must be SAID (a default day never sells by itself), and a clear
- * name carries its gender onto the ticket (NameGuess::AUTO, lone traveller).
+ * NAME + MOBILE is enough (owner, 15 Oct 2026): the next catchable bus, the
+ * usual / most-used pickup and one seat are the defaults. Without a mobile in
+ * the line the day must be said. A clear name carries its gender onto the
+ * ticket (NameGuess::AUTO, lone traveller).
  *
  *   php tests/wa-instant-test.php
  */
@@ -39,6 +41,12 @@ const WI_AGENT = '9700022290';
 const WI_PAX1  = '9700022201';
 const WI_PAX2  = '9700022202';
 const WI_CUST  = '9700022203';
+const WI_CUST2 = '9700022204';
+const WI_CUST3 = '9700022205';
+const WI_PAX3  = '9700022206';
+const WI_PAX4  = '9700022207';
+const WI_CUST4 = '9700022208';
+const WI_CUST5 = '9700022209';
 
 $keep = [];
 foreach (['gemini_api_key' => '', 'anthropic_api_key' => '', 'wa_local_first' => '1', 'wa_booking_on' => '1', 'wa_faq_on' => '1',
@@ -94,10 +102,10 @@ try {
     $g = $b !== null ? Database::scalar('SELECT gender FROM booking_passengers WHERE booking_id = :b AND is_primary = 1', ['b' => (int) $b['id']]) : null;
     check('  "Sita Kumari" rides as Female (name guess)', $g === 'Female', (string) $g);
 
-    echo "\n— no day said: the summary + yes, never a sale on a default day\n";
+    echo "\n— no day said: name + mobile is enough, the next bus is the default (owner, 15 Oct)\n";
     $r = WaBot::reply('+91' . WI_AGENT, 'Hari Thapa ' . WI_PAX2 . ' ' . $town . ' 1 seat');
-    check('nothing sold yet', $booked(WI_PAX2) === null, $r['text'] ?? '');
-    WaBot::reply('+91' . WI_AGENT, 'cancel');
+    check('sold on the next catchable bus', $booked(WI_PAX2) !== null, $r['text'] ?? '');
+    $cleanup();
 
     echo "\n— switch off: an agent gets the summary\n";
     Settings::set('wa_instant_sale', 'off', 'string', 'whatsapp', false); Settings::flush();
@@ -119,6 +127,30 @@ try {
     check('all mode: the customer\'s one message is a ticket', $b3 !== null, $r['text'] ?? '');
     $g3 = $b3 !== null ? Database::scalar('SELECT gender FROM booking_passengers WHERE booking_id = :b AND is_primary = 1', ['b' => (int) $b3['id']]) : null;
     check('  "Ram Bahadur" rides as Male', $g3 === 'Male', (string) $g3);
+
+    echo "
+— 15 Oct 2026: NAME + MOBILE is enough (defaults fill the rest)
+";
+    Settings::set('wa_instant_sale', 'all', 'string', 'whatsapp', false); Settings::flush();
+    $r = WaBot::reply('+91' . WI_CUST2, 'Ram Bahadur ' . WI_CUST2);
+    $q1 = $booked(WI_CUST2);
+    check('"Ram Bahadur <own mobile>" = a ticket at once', $q1 !== null, $r['text'] ?? '');
+    $r = WaBot::reply('+91' . WI_CUST3, "Name: Sita Kumari
+Mobile: " . WI_PAX3);
+    $q2 = $booked(WI_PAX3);
+    check('the WhatsApp template "Name: / Mobile:" books for THAT mobile', $q2 !== null && $booked(WI_CUST3) === null, $r['text'] ?? '');
+    $g2 = $q2 !== null ? Database::scalar('SELECT full_name FROM booking_passengers WHERE booking_id = :b AND is_primary = 1', ['b' => (int) $q2['id']]) : '';
+    check('  the name is the passenger, not "Name"', (string) $g2 === 'Sita Kumari', (string) $g2);
+    $r = WaBot::reply('+91' . WI_AGENT, 'Gopal Thapa ' . WI_PAX4);
+    $q3 = $booked(WI_PAX4);
+    check('an agent: name + passenger mobile = ticket under the agent', $q3 !== null && (int) $q3['sold_by_admin_id'] === $agentId, $r['text'] ?? '');
+    $r = WaBot::reply('+91' . WI_CUST4, 'mero ticket SHG-2026-01234 ma naam galat cha 9812345678');
+    check('a complaint with a number is never an order', $booked(WI_CUST4) === null);
+    Settings::set('wa_instant_sale', 'staff', 'string', 'whatsapp', false); Settings::flush();
+    $r = WaBot::reply('+91' . WI_CUST5, 'Hari Prasad ' . WI_CUST5);
+    check('staff mode: a customer name + mobile gets the summary, nothing sold', $booked(WI_CUST5) === null && WaBooking::isOpen(WI_CUST5), $r['text'] ?? '');
+    $r = WaBot::reply('+91' . WI_CUST5, 'ho');
+    check('  "ho" then sells it on the defaults', $booked(WI_CUST5) !== null, $r['text'] ?? '');
 } finally {
     $cleanup();
     foreach ($keep as $k => $v) {

@@ -288,3 +288,39 @@ html #view-home > #smartBook{order:-1 !important}   /* redesign.css sets #view-h
   #smartBook .sb-seg button{padding:0 8px;font-size:12.5px}
   #smartBook .sb-pay{min-width:78px}
 }
+/* 15 Oct 2026 - Quick form (name + mobile, the rest from the defaults), mic, help demo */
+#smartBook .sb-mic{width:40px;height:36px;border:0;border-radius:9px;background:rgba(255,255,255,.18);color:#fff;font-size:17px;cursor:pointer}
+#smartBook .sb-mic.on{background:#e11d48;animation:sbPulse 1s infinite}
+@keyframes sbPulse{50%{box-shadow:0 0 0 6px rgba(225,29,72,.25)}}
+#smartBook .sb-qbar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin:0 0 10px;flex-wrap:wrap}
+#smartBook .sb-qmode{display:inline-flex;border:1px solid var(--sb-line);border-radius:999px;padding:3px;background:var(--sb-panel,transparent)}
+#smartBook .sb-qmode button{border:0;background:transparent;border-radius:999px;padding:7px 12px;font:inherit;font-size:13px;font-weight:700;color:inherit;cursor:pointer;min-height:36px}
+#smartBook .sb-qmode button.on{background:var(--sb-primary);color:#fff}
+#smartBook .sb-qhelp{border:1px solid var(--sb-line);background:transparent;color:var(--sb-primary);border-radius:999px;padding:7px 12px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;min-height:36px}
+#smartBook .sb-qline{display:none}
+#smartBook.sb-quick .sb-qline{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 10px;font-size:13px}
+#smartBook .sb-qline span{padding:5px 10px;border-radius:999px;background:var(--sb-on);color:var(--sb-primary);font-weight:600}
+#smartBook .sb-qline button{border:0;background:transparent;color:var(--sb-primary);font:inherit;font-weight:700;text-decoration:underline;cursor:pointer;min-height:32px}
+#smartBook.sb-quick .sb-dir,#smartBook.sb-quick .sb-f-date,#smartBook.sb-quick .sb-f-point,#smartBook.sb-quick .sb-row2,#smartBook.sb-quick .sb-seat,#smartBook.sb-quick .sb-suggest{display:none}
+#smartBook.sb-quick:not(.sb-q-needg) .sb-f-pax{display:none}
+.sb-help{position:fixed;inset:0;z-index:1200;background:rgba(2,8,23,.55);display:grid;place-items:end center;padding:12px}
+.sb-help[hidden]{display:none}
+.sb-help-in{width:min(560px,100%);max-height:88vh;overflow:auto;background:var(--sb-panel,#fff);color:var(--sb-text,#122445);border-radius:18px;padding:16px 16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.sb-help h3{margin:0 0 10px;font-size:18px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.sb-help h3 button{border:0;background:transparent;font-size:20px;cursor:pointer;color:inherit;min-width:40px;min-height:40px}
+.sb-help ol{margin:0 0 12px;padding-left:20px;display:grid;gap:6px;font-size:14px}
+.sb-help .sb-h-sec{border:1px solid var(--sb-line,#e2e8f0);border-radius:14px;padding:10px 12px;margin:0 0 10px}
+.sb-help .sb-h-sec b{display:block;margin:0 0 6px}
+.sb-help code{display:block;background:rgba(24,91,237,.08);border-radius:10px;padding:8px 10px;margin:4px 0;font-size:14px;white-space:pre-wrap;word-break:break-word}
+.sb-help .sb-h-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.sb-help .sb-h-btns a,.sb-help .sb-h-btns button{flex:1 1 150px;text-align:center;border:0;border-radius:12px;padding:11px 12px;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;min-height:44px}
+.sb-help .sb-h-wa{background:#16a34a;color:#fff}
+.sb-help .sb-h-say{background:#185bed;color:#fff}
+.sb-help .sb-chat{background:#e7f6ea;border-radius:14px;padding:10px;display:grid;gap:8px;margin:6px 0 2px}
+.sb-help .sb-chat p{margin:0;padding:8px 10px;border-radius:12px;max-width:85%;font-size:14px;opacity:0;animation:sbIn .4s forwards}
+.sb-help .sb-chat .me{background:#d9fdd3;justify-self:end;color:#0b3d17;animation-delay:.3s}
+.sb-help .sb-chat .bot{background:#fff;justify-self:start;color:#111;animation-delay:1.4s}
+.sb-help .sb-chat .bot2{animation-delay:2.2s}
+@keyframes sbIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+:root[data-theme="dark"] .sb-help code,:root[data-display="amoled"] .sb-help code{background:rgba(255,255,255,.08)}:root[data-theme="dark"] .sb-help .sb-chat,:root[data-display="amoled"] .sb-help .sb-chat{background:#0b2a1a}
+@media (prefers-reduced-motion:reduce){.sb-help .sb-chat p{animation:none;opacity:1}#smartBook .sb-mic.on{animation:none}}
