@@ -776,8 +776,18 @@ final class AiWatch
      * @param ?list<array<string,mixed>> $pending AgentSettlement::pending() when the caller already has it (one ledger pass, not two)
      * @return array{requests:int, requestAmt:float, late:int, lateAmt:float, dueDays:int}
      */
+    /** @var ?list<array<string,mixed>> AgentSettlement::pending() the dashboard already read (one ledger pass per page) */
+    private static ?array $pendingHint = null;
+
+    /** The dashboard hands over the pending list it already has, so forOffice() does not scan the ledger again. */
+    public static function hintPending(array $pending): void
+    {
+        self::$pendingHint = $pending;
+    }
+
     public static function payoutCounts(?array $pending = null): array
     {
+        $pending ??= self::$pendingHint;
         $dueDays = max(1, Settings::getInt('alert_settlement_due_days', 15));
         $out = ['requests' => 0, 'requestAmt' => 0.0, 'late' => 0, 'lateAmt' => 0.0, 'dueDays' => $dueDays];
         try {

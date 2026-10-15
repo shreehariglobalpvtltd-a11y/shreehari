@@ -66,6 +66,12 @@ $tickets = Database::fetchAll(
     ['qA' => $like, 'qB' => $like] + $scopeParam
 );
 
+/* 15 Oct 2026: the seat as PRINTED on the ticket (A7, B5) finds its
+   passenger too - the stored id (L1/U1) is not what the desk sees. */
+require_once __DIR__ . '/_booking_filters.php';
+$paxParams = ['qA' => $like, 'seatExact' => strtoupper($q)] + $scopeParam;
+$seatLbl   = preg_match('/^[A-Za-z]{1,2}\d{1,2}$/', $q) === 1
+    ? shg_seat_label_match(strtoupper($q), 'bp.seat_no', $paxParams, 'gsl') : null;
 $passengers = Database::fetchAll(
     "SELECT bp.full_name, bp.seat_no, bp.gender, b.pnr, b.contact_phone, r.from_city, r.to_city
        FROM booking_passengers bp
@@ -73,10 +79,10 @@ $passengers = Database::fetchAll(
        LEFT JOIN booking_legs bl ON bl.booking_id=b.id AND bl.leg_type='outbound'
        LEFT JOIN schedules s     ON s.id=bl.schedule_id
        LEFT JOIN routes r        ON r.id=s.route_id
-      WHERE (bp.full_name LIKE :qA OR bp.seat_no = :seatExact)"
+      WHERE (bp.full_name LIKE :qA OR bp.seat_no = :seatExact" . ($seatLbl !== null ? ' OR ' . $seatLbl : '') . ")"
     . $scopeSql .
    " ORDER BY bp.id DESC LIMIT 30",
-    ['qA' => $like, 'seatExact' => strtoupper($q)] + $scopeParam
+    $paxParams
 );
 
 $buses = Database::fetchAll(

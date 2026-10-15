@@ -192,6 +192,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                                 . inr((float) ($res['refund']['amount'] ?? 0))
                                 . ' (' . (int) ($res['refund']['percent'] ?? 0) . '%).'];
                 $pnr = (string) ($res['booking']['pnr'] ?? $pnr);
+                // an agent's open request for THIS seat is now settled
+                TicketEdit::closeOpenCancels((int) ($_POST['booking_id'] ?? 0), (string) (($admin['full_name'] ?? '') ?: ($admin['username'] ?? 'staff')) . ' #' . (int) $admin['id'], $seat);
             }
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];

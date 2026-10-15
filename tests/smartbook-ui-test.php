@@ -100,7 +100,7 @@ check('staff SmartBook refuses a customer session', str_contains($sb, "if (\$mod
 /* 15 Oct 2026 — the desk's agent pick (owner: "Agent Code entry in Agent Mode and
    especially Counter Mode, with agent selection/search, automatic commission") */
 check('staff SmartBook splices the agent field in (never in the template)', str_contains($sb, 'id="sbAgent" list="sbAgentList"') && str_contains($sb, 'AgentWallet::sellableAgents()') && !str_contains($tpl, 'sbAgent'));
-check('  an agent login gets its own code, locked', str_contains($sb, 'AgentWallet::isAgentRow($me) ? AgentWallet::agentCodeLabel($me)') && str_contains($sb, 'id="sbAgentOwn"'));
+check('  an agent login gets its own code, locked', str_contains($sb, "AgentWallet::isAgentRow((int) \$admin['id']) ? AgentWallet::agentCodeLabel((int) \$admin['id'])") && str_contains($sb, 'id="sbAgentOwn"'));
 check('  the pick is remembered per clerk under the counter-mode key', str_contains($js, "'shg_ctr_agent_' + (STAFF.id || 0)") && str_contains($src('assets/js/14-counter.js'), "'shg_ctr_agent_' + (STAFF.id || 0)"));
 check('  the card sends the pick; the server validates it', str_contains($js, 'body.agentCode = S.agent') && str_contains($src('api/smartbook.php'), 'AgentWallet::deskAgentCode($typed)') && str_contains($src('api/smartbook.php'), "unset(\$in['referralCode'])"));
 check('  a refused pick lands on the agent field', str_contains($js, "er.fields.field === 'agent'") && str_contains($src('api/smartbook.php'), "['field' => 'agent']"));

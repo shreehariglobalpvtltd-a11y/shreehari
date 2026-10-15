@@ -408,6 +408,22 @@ try {
     $h = drive('booking-view.php', $agentId, ['pnr' => $q3['pnr']], ['action' => 'cancel', 'reason' => 'agent cancel']);
     check('direct mode (default): the agent cancels their own sale as before', bk((int) $q3['id'])['status'] === 'cancelled', flash($h)[1]);
 
+    // a SEAT cancel request: the seat must be on the ticket; a per-seat cancel closes only that seat's request
+    $ownRow  = bk((int) $own['id']);
+    $ownSeat = (string) Database::scalar('SELECT seat_no FROM booking_seats WHERE booking_id = :b AND released_at IS NULL ORDER BY id LIMIT 1', ['b' => (int) $own['id']], '');
+    $actorA  = ['id' => $agentId, 'full_name' => 'QE Agent', 'username' => 'qe-agent'];
+    $bad = '';
+    try { TicketEdit::request($ownRow, 'cancel_request', 'U99', 'not mine', $actorA); } catch (Throwable $e) { $bad = $e->getMessage(); }
+    check('a seat cancel request for a seat not on the ticket is refused', str_contains($bad, 'not on this ticket'), $bad);
+    $sreq = TicketEdit::request($ownRow, 'cancel_request', $ownSeat, 'one seat off', $actorA);
+    $dup = '';
+    try { TicketEdit::request($ownRow, 'cancel_request', $ownSeat, 'again', $actorA); } catch (Throwable $e) { $dup = $e->getMessage(); }
+    check('a second tap files no second request', str_contains($dup, 'already waiting'), $dup);
+    check('a per-seat cancel of ANOTHER seat leaves the request open', TicketEdit::closeOpenCancels((int) $own['id'], 'test', 'L99') === 0
+        && Database::scalar('SELECT outcome FROM ticket_edit_audit WHERE id = :i', ['i' => $sreq]) === 'requested');
+    check('a per-seat cancel of THAT seat closes it as done', TicketEdit::closeOpenCancels((int) $own['id'], 'test', $ownSeat) === 1
+        && Database::scalar('SELECT outcome FROM ticket_edit_audit WHERE id = :i', ['i' => $sreq]) === 'done');
+
     /* ============================================================== */
     echo "\nG · edit_passenger: rights, rollback, stops, remarks, gender\n";
     $ownPax = $own['passengers'];

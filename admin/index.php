@@ -180,6 +180,9 @@ foreach ($settlePending as $sp) {
     }
 }
 $payouts = $seeAgentMoney ? AiWatch::payoutCounts($settlePending) : null;
+if ($seeAgentMoney) {
+    AiWatch::hintPending($settlePending);   // AI Watch reuses it - one ledger pass per page
+}
 
 /* Customers asking to cancel / for their money back, and refunds due —
    counted only; the office settles every one by hand (owner rule). */

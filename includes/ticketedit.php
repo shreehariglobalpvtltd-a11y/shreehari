@@ -159,6 +159,11 @@ final class TicketEdit
                 }
                 break;
             case 'cancel_request':
+                // a seat named must be a live seat of THIS ticket (15 Oct 2026)
+                if ($newValue !== '' && !Database::exists('SELECT 1 FROM booking_seats WHERE booking_id = :b AND seat_no = :s AND released_at IS NULL',
+                        ['b' => $bid, 's' => strtoupper($newValue)])) {
+                    throw new RuntimeException('Seat ' . strtoupper($newValue) . ' is not on this ticket.');
+                }
                 $newValue = $newValue !== '' ? mb_substr('seat ' . strtoupper($newValue), 0, 40) : 'cancel';
                 $old      = (string) ($booking['status'] ?? '');
                 $shown    = $newValue === 'cancel' ? 'cancel the whole ticket' : 'cancel ' . $newValue;
@@ -239,13 +244,20 @@ final class TicketEdit
     }
 
     /** A cancelled ticket answers its open cancel requests (the Cancel button ran). */
-    public static function closeOpenCancels(int $bookingId, string $by): int
+    public static function closeOpenCancels(int $bookingId, string $by, string $seat = ''): int
     {
+        // $seat given = the office cancelled that ONE seat: only the request
+        // naming it is closed (a whole-ticket request stays open).
+        $want = $seat !== '' ? 'seat ' . strtoupper(trim($seat)) : '';
         $n = 0;
         foreach (self::requests($bookingId, true) as $r) {
-            if ((string) $r['field_changed'] === 'cancel_request') {
-                $n += self::close((int) $r['id'], 'done', $by, 'ticket cancelled');
+            if ((string) $r['field_changed'] !== 'cancel_request') {
+                continue;
             }
+            if ($want !== '' && strtoupper((string) $r['new_value']) !== strtoupper($want)) {
+                continue;
+            }
+            $n += self::close((int) $r['id'], 'done', $by, $want !== '' ? 'seat cancelled' : 'ticket cancelled');
         }
         return $n;
     }
