@@ -412,7 +412,7 @@ function describeWhereAmI(onUpdate) {
    themes.css to the HD visual guide, shown first in the sheet under their own
    label (SHG_BRAND_LOOK_IDS); professional is the owner default. */
 const SHG_PALETTES = [
-  ['professional', ['#154faa', '#b8d5ff', '#d59a37'], ['#0f2f66', '#10203a'], '#0a1018', 'प्रोफेसनल (मूल)', 'Professional (default)', 'प्रोफ़ेशनल (मूल)'],
+  ['professional', ['#1a44c8', '#b8d5ff', '#e8730c'], ['#0a2a8f', '#10203a'], '#0a1018', 'लोगो निलो-सुन्तला (मूल)', 'Logo Blue & Orange (default)', 'लोगो नीला-नारंगी (मूल)'],
   ['whiteblue',  ['#0054a8', '#d9e7fa', '#8fbfff'], ['#0c306c', '#0f1f3d'], '#0b1220', 'सेतो-निलो', 'White & Blue', 'सफ़ेद-नीला'],
   ['goldenorange', ['#b4530a', '#ffb26e', '#e2a528'], ['#3a1f05', '#241608'], '#15100b', 'सुनौलो-सुन्तला', 'Golden & Orange', 'सुनहरा-नारंगी'],
   ['himalaya',   ['#3567d3', '#bbc3ff', '#dd8eb3'], ['#003175', '#141a32'], '#12131b', 'हिमालय नीलो', 'Himalaya Blue', 'हिमालय नीला'],

@@ -208,7 +208,7 @@ $choiceKeys = [
        The ids must match assets/css/themes.css (tests/theme-palette-test.php).
        10 Oct 2026: three brand looks lead the list; professional is the default
        (database/upgrade-2026-10-10-themes.sql). */
-    'app_theme_palette'    => ['professional' => 'Professional - calm navy, mist blue, ivory, a little gold (recommended default)',
+    'app_theme_palette'    => ['professional' => 'Logo Blue & Orange - the logo\'s royal blue with its orange arrow (recommended default)',
                                'whiteblue' => 'White & Blue - crisp white with the logo\'s royal blue',
                                'goldenorange' => 'Golden & Orange - the logo\'s arrow orange and container gold',
                                '' => 'S Hari brand colours (navy, royal blue, red)', 'himalaya' => 'Himalaya Blue', 'laligurans' => 'Laligurans Red',

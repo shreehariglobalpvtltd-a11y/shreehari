@@ -346,7 +346,7 @@ final class ChalaniPng
         );
         /* The GOLD template (9 Oct 2026) — the palette the ticket shares. */
         $white  = $c('#FFFFFF'); $ink   = $c('#1A1A2E'); $muted = $c('#5F5747'); $hair = $c('#DCC27C');
-        $navy   = $c('#0E1E3F'); $royal = $c('#1B3A7A'); $maroon = $c('#7A1E2C');
+        $navy   = $c('#0A2A8F'); $royal = $c('#1A44C8'); $maroon = $c('#C2540A');
         $goldD  = $c('#8A6A1F'); $gold  = $c('#C9A227'); $goldL = $c('#F3DE8A'); $cream = $c('#FFF8E7');
         $green  = $c('#157A47'); $pale  = $c('#EFE3BF'); $dim   = $c('#C9D2E6'); $sub = $c('#F7EBC2');
 
@@ -361,7 +361,7 @@ final class ChalaniPng
         $chalaniNo = self::chalaniNo($trip, $date);
 
         /* ================= mantra strip ================= */
-        imagefilledrectangle($im, 0, 0, $W, 30, $c('#09162F'));
+        imagefilledrectangle($im, 0, 0, $W, 30, $c('#071E6B'));
         imageline($im, 0, 30, $W, 30, $goldD);
         $mantra = GoldSheet::mantra();
         if ($mantra !== '') {
@@ -404,7 +404,7 @@ final class ChalaniPng
         if (DocArt::heritageOn() && $artR - $artL >= 330) {
             $aw  = min(460, $artR - $artL);
             $ax1 = $artR - $aw;
-            DocArt::band($im, $ax1, 40, $artR, 150, 14, [14, 30, 63], 0.5, 0.8);
+            DocArt::band($im, $ax1, 40, $artR, 150, 14, [10, 42, 143], 0.5, 0.8);
             self::tC($im, 13, $ax1, $artR, 158, $goldL, 'सगरमाथा · Sagarmatha  ·  लुम्बिनी · Lumbini', false);
         }
         $coach = strtoupper($roman(trim((string) ($trip['coach_type'] ?? ''))));

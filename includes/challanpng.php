@@ -360,7 +360,7 @@ final class ChallanPng
         $c = static fn(string $hex): int => imagecolorallocate($im, (int) hexdec(substr($hex, 1, 2)), (int) hexdec(substr($hex, 3, 2)), (int) hexdec(substr($hex, 5, 2)));
         /* The GOLD template (9 Oct 2026) — the palette the ticket shares. */
         $white = $c('#FFFFFF'); $ink = $c('#1A1A2E'); $muted = $c('#5F5747'); $line = $c('#DCC27C');
-        $navy = $c('#0E1E3F'); $maroon = $c('#7A1E2C');
+        $navy = $c('#0A2A8F'); $maroon = $c('#C2540A');
         $goldD = $c('#8A6A1F'); $gold = $c('#C9A227'); $goldL = $c('#F3DE8A'); $cream = $c('#FFF8E7');
         $pale = $c('#EFE3BF'); $dim = $c('#C9D2E6');
         $stroke = ['open' => $c('#CDB77A'), 'booked' => $c('#2E8B57'), 'private' => $c('#B8901C'), 'held' => $c('#E0A800'),
@@ -372,7 +372,7 @@ final class ChallanPng
         GoldSheet::watermark($im, (int) ($W / 2), (int) ($H * 0.42), 560, 114);
 
         /* ---- mantra strip ---- */
-        imagefilledrectangle($im, 0, 0, $W, 30, $c('#09162F'));
+        imagefilledrectangle($im, 0, 0, $W, 30, $c('#071E6B'));
         imageline($im, 0, 30, $W, 30, $goldD);
         $mantra = GoldSheet::mantra();
         if ($mantra !== '') {
@@ -440,7 +440,7 @@ final class ChallanPng
         $y += 46;
 
         /* ---- decks — Lower Floor (1F) A1-F6 blue, Upper Floor (2F) A7-F12 green ---- */
-        $floorCol = ['L' => [[30, 90, 168], [14, 30, 63], [240, 244, 251]], 'U' => [[21, 128, 61], [12, 70, 40], [238, 247, 240]]];
+        $floorCol = ['L' => [[30, 90, 168], [10, 42, 143], [240, 244, 251]], 'U' => [[21, 128, 61], [12, 70, 40], [238, 247, 240]]];
         foreach ($layout['decks'] as $deck) {
             $key = (string) ($deck['key'] ?? 'L');
             $ids = [];

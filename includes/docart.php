@@ -835,9 +835,9 @@ final class DocArt
      *  Every helper is fail-safe like the rest of this class.
      * ================================================================ */
 
-    public const NAVY       = [14, 30, 63];      // #0E1E3F brand
-    public const ROYAL      = [27, 58, 122];     // #1B3A7A
-    public const MAROON     = [122, 30, 44];     // #7A1E2C
+    public const NAVY       = [10, 42, 143];      // #0A2A8F brand
+    public const ROYAL      = [26, 68, 200];     // #1A44C8
+    public const MAROON     = [194, 84, 10];     // #C2540A
     public const GOLD_DEEP  = [138, 106, 31];    // #8A6A1F
     public const GOLD       = [201, 162, 39];    // #C9A227
     public const GOLD_LIGHT = [243, 222, 138];   // #F3DE8A

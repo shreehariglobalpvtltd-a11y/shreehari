@@ -137,7 +137,10 @@
     dirs: [], points: {}, dir: 'toNepal', date: '', point: '', cc: 'IN', phone: '', name: '',
     pax: [{ gender: '', band: 'adult' }], type: 'sharing', cabin: 'single', berth: 'any', seatMode: 'auto', manual: [],
     q: null, busy: false, idem: null, touched: {}, why: {}, allowCod: true, maxPax: 6, last: null,
-    quick: (function () { try { return localStorage.getItem('sb:quick') !== '0'; } catch (e) { return true; } })(),
+    /* 16 Oct 2026 (owner: "fast quick name number system lai default, tesai
+       rakhdeu sabai"): every visit opens on Quick (name + mobile). "✏️ Change"
+       still opens the full form for this visit only - it is no longer saved. */
+    quick: true,
     agent: ''   // staff desks only: the SHG code the sale is credited to ('OTHER' = company) - never on the customer page
   };
   var store = {
@@ -418,7 +421,7 @@
     m.querySelectorAll('button').forEach(function (b) { var on = (b.getAttribute('data-m') === 'quick') === !!S.quick; b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
     renderQLine();
   }
-  function setQuick(on) { S.quick = !!on; try { localStorage.setItem('sb:quick', on ? '1' : '0'); } catch (e) {} applyQuick(); }
+  function setQuick(on) { S.quick = !!on; try { localStorage.removeItem('sb:quick'); } catch (e) {} applyQuick(); }
   function renderQLine() {
     root.classList.toggle('sb-q-needg', S.pax.some(function (p) { return !p.gender; }));
     var el = $('sbQLine'); if (!el) return;

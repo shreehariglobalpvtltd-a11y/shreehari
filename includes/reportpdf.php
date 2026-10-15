@@ -26,17 +26,17 @@ require_once __DIR__ . '/docart.php';   // emblem + flags for the banner (no tic
 final class ReportPdf
 {
     /* Brand colours — same palette the ticket uses. */
-    private const NAVY   = [26, 58, 106];
-    private const BLUE   = [46, 95, 168];
+    private const NAVY   = [10, 42, 143];   // logo deep blue (16 Oct 2026)
+    private const BLUE   = [26, 68, 200];   // logo royal
     private const WHITE  = [255, 255, 255];
     private const INK    = [30, 30, 40];
     private const MUTE   = [120, 120, 130];
     private const LINE   = [210, 210, 218];
-    private const HEADER = [234, 238, 246];
+    private const HEADER = [230, 236, 255];
     private const STRIPE = [248, 249, 252];
     private const GREEN  = [16, 130, 60];
     private const RED    = [180, 40, 40];
-    private const ORANGE = [220, 120, 20];
+    private const ORANGE = [240, 120, 0];    // logo arrow orange
 
     /* Page geometry (A4 landscape for tables). */
     private const PAGE_W  = 841.89;

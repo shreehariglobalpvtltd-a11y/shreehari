@@ -12,8 +12,8 @@
  *  the payment QR target). The callers keep their own text engines (the
  *  DevShape / dev_shape boundary), so nothing here draws a glyph.
  *
- *  Palette (shared with the ticket): NAVY #0E1E3F, ROYAL #1B3A7A,
- *  MAROON #7A1E2C, GOLD_DEEP #8A6A1F, GOLD #C9A227, GOLD_LIGHT #F3DE8A,
+ *  Palette (shared with the ticket): NAVY #0A2A8F, ROYAL #1A44C8,
+ *  MAROON #C2540A, GOLD_DEEP #8A6A1F, GOLD #C9A227, GOLD_LIGHT #F3DE8A,
  *  CREAM #FFF8E7, INK #1A1A2E. Gold foil = vertical GOLD_DEEP -> GOLD_LIGHT
  *  -> GOLD.
  *
@@ -35,9 +35,9 @@ require_once __DIR__ . '/docart.php';
 
 final class GoldSheet
 {
-    public const NAVY       = [14, 30, 63];
-    public const ROYAL      = [27, 58, 122];
-    public const MAROON     = [122, 30, 44];
+    public const NAVY       = [10, 42, 143];
+    public const ROYAL      = [26, 68, 200];
+    public const MAROON     = [194, 84, 10];
     public const GOLD_DEEP  = [138, 106, 31];
     public const GOLD       = [201, 162, 39];
     public const GOLD_LIGHT = [243, 222, 138];

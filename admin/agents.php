@@ -362,29 +362,55 @@ if ($flash !== null) {
          phone — name, mobile, Org / Person, then the two optional boxes.
          Everything else is filled in by AgentWallet::createAgent. */ ?>
 <style>
-.ag-qa{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1.2fr) auto;gap:8px;align-items:end;margin:0 0 12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.ag-qa{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,.7fr) auto;gap:8px;align-items:end;margin:0 0 12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.ag-qa .ag-qa-opt{grid-column:1/-1;display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ag-qa.more .ag-qa-opt{display:grid}
+.ag-qa .ag-qa-tg{background:none;border:0;padding:0;color:var(--royal,#1a3fc4);font:700 12px/1 inherit;cursor:pointer;margin-left:6px}
 .ag-qa label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;font-weight:700;color:var(--mut);min-width:0}
 .ag-qa input,.ag-qa select{width:100%;min-height:44px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font-size:15px;box-sizing:border-box;min-width:0}
 .ag-qa .btn{min-height:44px;white-space:nowrap}
 .ag-qa .ag-qa-h{grid-column:1/-1;font-size:13px;font-weight:800;color:var(--ink);margin:0}
-@media (max-width:900px){.ag-qa{grid-template-columns:repeat(2,minmax(0,1fr))}.ag-qa .ag-qa-wide,.ag-qa .btn{grid-column:1/-1}}
+@media (max-width:900px){.ag-qa{grid-template-columns:repeat(2,minmax(0,1fr))}.ag-qa .ag-qa-wide,.ag-qa .btn{grid-column:1/-1}.ag-qa .ag-qa-opt{grid-template-columns:minmax(0,1fr)}}
 </style>
 <form method="post" class="ag-qa" id="agQuickAdd" autocomplete="off">
   <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="quick_add">
-  <p class="ag-qa-h">⚡ Quick add agent <span class="muted" style="font-weight:500">· login = their mobile; the next free SHG code is issued at once</span></p>
+  <p class="ag-qa-h">⚡ Quick add — just name + mobile <span class="muted" style="font-weight:500">· login = their mobile, next free SHG code at once</span><button type="button" class="ag-qa-tg" onclick="this.closest('form').classList.toggle('more')">＋ city / email</button></p>
   <?php // A refused Quick add keeps what was typed, so the fix is one box, not five.
         $qaKeep = static fn(string $f): string => ($flash[0] ?? '') === 'bad' && ($_POST['action'] ?? '') === 'quick_add' && is_string($_POST[$f] ?? null) ? $e($_POST[$f]) : ''; ?>
   <label class="ag-qa-wide">Name / organization<input name="qa_name" required minlength="2" maxlength="120" placeholder="Ram Bahadur / Krishna Travels" value="<?= $qaKeep('qa_name') ?>"></label>
   <label>Mobile<input name="qa_phone" required inputmode="tel" minlength="10" maxlength="20" placeholder="98765 43210" value="<?= $qaKeep('qa_phone') ?>"></label>
   <label>Type<select name="qa_kind"><option value="org">🏢 Org</option><option value="person"<?= $qaKeep('qa_kind') === 'person' ? ' selected' : '' ?>>👤 Person</option></select></label>
-  <label>City <span style="font-weight:400">(optional)</span><input name="qa_city" list="counterLocList" maxlength="120" placeholder="Nepalgunj" value="<?= $qaKeep('qa_city') ?>"></label>
-  <label>Email <span style="font-weight:400">(optional)</span><input name="qa_email" type="email" maxlength="191" placeholder="agent@example.com" value="<?= $qaKeep('qa_email') ?>"></label>
   <button class="btn" type="submit">＋ Add agent</button>
+  <div class="ag-qa-opt">
+    <label>City <span style="font-weight:400">(optional)</span><input name="qa_city" list="counterLocList" maxlength="120" placeholder="Nepalgunj" value="<?= $qaKeep('qa_city') ?>"></label>
+    <label>Email <span style="font-weight:400">(optional)</span><input name="qa_email" type="email" maxlength="191" placeholder="agent@example.com" value="<?= $qaKeep('qa_email') ?>"></label>
+  </div>
 </form>
 <?php endif; ?>
 
-<div class="dt-bar" id="agCtl">
-  <input class="dt-q" type="search" placeholder="Search serial / name / mobile / SHG code / contact / city" aria-label="Search agents">
+<?php /* 16 Oct 2026 (owner: "dherai option xa, category wise milau, nachaine
+         falda"): one search box + one row of category chips with counts. The
+         six dropdowns, exports and links fold into "☰ More" - same filters,
+         nothing removed, just out of the way until needed. */ ?>
+<div id="agCtl">
+<div class="dt-bar">
+  <input class="dt-q" type="search" placeholder="🔍 Name or mobile (/ to jump here) — code, city, contact also work" aria-label="Search agents" autocomplete="off">
+  <span class="dt-count"></span>
+</div>
+<div class="dt-chips" role="toolbar" aria-label="Agent categories">
+  <button type="button" class="dt-chip" data-dt-chip="{}">All</button>
+  <button type="button" class="dt-chip" data-dt-chip='{"status":"active"}'>✅ Active</button>
+  <button type="button" class="dt-chip" data-dt-chip='{"status":"pending"}' data-dt-hide0>⏳ Pending</button>
+  <button type="button" class="dt-chip" data-dt-chip='{"kind":"org"}'>🏢 Organization</button>
+  <button type="button" class="dt-chip" data-dt-chip='{"kind":"person"}'>👤 Person</button>
+  <button type="button" class="dt-chip warn" data-dt-chip='{"cash":"over"}' data-dt-hide0>💰 Over cash limit</button>
+  <button type="button" class="dt-chip" data-dt-chip='{"kyc":"submitted"}' data-dt-hide0>🪪 KYC waiting</button>
+  <button type="button" class="dt-chip" data-dt-chip='{"sold":"0","status":"active"}' data-dt-hide0>😴 No sales yet</button>
+  <button type="button" class="dt-chip" data-dt-chip='{"status":"inactive"}' data-dt-hide0>⏸ Deactivated</button>
+</div>
+<details class="dt-bar dt-more">
+  <summary class="btn ghost">☰ More filters &amp; tools</summary>
+  <div class="dt-more-p">
   <select data-dt-filter="kind" aria-label="Type">
     <option value="">All types</option><option value="org">Organization (1–20)</option><option value="person">Person (21+)</option>
   </select>
@@ -402,9 +428,10 @@ if ($flash !== null) {
   <a class="btn ghost" href="agreements.php" title="Applications from the website, KYC and agreement status of every agent and partner">🤝 Agreements &amp; KYC</a>
   <?php /* staff.php is super-admin only — anyone else adds through Quick add above. */ ?>
   <?php if (Auth::isSuperadmin()): ?><a class="btn ghost" href="staff.php#addStaff" title="The full form: username, password, desk, contact person">＋ Full new-agent form</a><?php endif; ?>
-  <span class="dt-count"></span>
+  <span class="muted" style="font-size:12px;flex-basis:100%">Serial bands: <b>Organization 1–20</b> (next free <?= $nextOrg === null ? 'none' : (int) $nextOrg ?>) · <b>Person 21+</b> (next free <?= $nextPerson === null ? 'none' : (int) $nextPerson ?>). Switching an agent's type keeps their serial, wallet and commission history.</span>
+  </div>
+</details>
 </div>
-<p class="muted" style="margin:-4px 0 10px;font-size:12px">Serial bands: <b>Organization 1–20</b> (next free <?= $nextOrg === null ? 'none' : (int) $nextOrg ?>) · <b>Person 21+</b> (next free <?= $nextPerson === null ? 'none' : (int) $nextPerson ?>). Switching an agent's type keeps their serial, wallet and commission history.</p>
 
 <!-- The desks the office has defined, offered to every "City / counter" box
      on this page. One <datalist> for all of them — each row's edit panel
@@ -455,12 +482,12 @@ if ($flash !== null) {
 <table class="dt no-card ag-t" data-controls="agCtl">
   <thead><tr>
     <th data-type="num">#</th><th>Agent</th><th>Contact</th>
-    <th data-type="num">Sales</th><th data-type="num">Commission</th><th data-type="num">Wallet · net</th><th data-type="num">Salary · adv.</th>
+    <th data-type="num">Sales</th><th data-type="num">Commission</th><th data-type="num">Wallet · net</th>
     <th>KYC · papers</th><th data-nosort>Actions</th>
   </tr></thead>
   <tbody>
   <?php if ($rows === []): ?>
-    <tr><td colspan="9" class="muted" style="padding:22px;white-space:normal">No agents yet — add one with Quick add above, or approve an application from the public agent sign-up form on Staff &amp; Approvals.</td></tr>
+    <tr><td colspan="8" class="muted" style="padding:22px;white-space:normal">No agents yet — add one with Quick add above, or approve an application from the public agent sign-up form on Staff &amp; Approvals.</td></tr>
   <?php endif; ?>
   <?php foreach ($rows as $i => $r):
     $rid = 'a' . (int) $r['id'];
@@ -490,7 +517,6 @@ if ($flash !== null) {
         <small>due ₹<?= number_format($r['comm_due']) ?> · cash ₹<?= number_format($r['cash_bal']) ?><?= (int) $r['overdue'] > 0 ? ' · <b style="display:inline;color:var(--danger)">overdue ' . (int) $r['overdue'] . 'd</b>' : '' ?></small>
         <?php if ($r['over_cash']): ?><span class="pill st-bad" style="font-size:10.5px;margin-top:3px" title="Holding ₹<?= number_format($r['cash_bal']) ?> against a ₹<?= number_format($r['cash_lim']) ?> cash limit">Over ₹<?= number_format($r['cash_lim']) ?></span><?php endif; ?>
       </td>
-      <td class="num ag-2l" data-sort="<?= (float) $r['salary'] ?>"><b><?= $r['salary'] > 0 ? '₹' . number_format($r['salary']) : '<span class="muted" style="font-weight:500">—</span>' ?></b><small>adv. <?= $r['advance'] > 0 ? '<b style="display:inline;color:#b45309">₹' . number_format($r['advance']) . '</b>' : '₹0' ?></small></td>
       <td class="ag-papers" data-sort="<?= $e($r['kyc']) ?>"><div>
         <?php if ($r['kyc'] === 'verified'): ?><span class="pill st-ok">KYC ✓</span><?php elseif ($r['kyc'] === 'submitted'): ?><span class="pill st-warn">KYC waiting</span><?php elseif ($r['kyc'] === 'rejected'): ?><span class="pill st-bad">KYC rejected</span><?php else: ?><span class="pill st-muted">No KYC</span><?php endif; ?></div>
         <div class="ag-docs"><?= $r['has_id'] ? '<a href="/admin/agent-kyc-file.php?agent=' . (int) $r['id'] . '&amp;slot=1" target="_blank" title="ID card on file">🪪✓</a>' : '<span class="muted" title="No ID card">🪪✗</span>' ?>
@@ -523,7 +549,7 @@ if ($flash !== null) {
         </details>
       </span></td>
     </tr>
-    <tr class="dt-x" id="<?= $rid ?>v" hidden><td colspan="9">
+    <tr class="dt-x" id="<?= $rid ?>v" hidden><td colspan="8">
       <div class="dt-grid">
         <div class="kv"><label>Serial · type · code</label><b><?= $r['serial'] === null ? 'not assigned' : '#' . (int) $r['serial'] ?> · <?= $e(AgentWallet::kindLabel($r['kind'])) ?> · <?= $e($r['code'] ?: '—') ?></b></div>
         <div class="kv"><label>Name · login username</label><b><?= $e($r['full_name']) ?> <span class="muted mono">· <?= $e($r['username']) ?></span></b></div>
@@ -536,6 +562,7 @@ if ($flash !== null) {
         <div class="kv"><label>Sales (confirmed / all) · revenue</label><b><?= (int) $r['sales'] ?> / <?= (int) $r['sales_all'] ?> · ₹<?= number_format((float) $r['revenue']) ?></b></div>
         <div class="kv"><label>Commission due · cash held · net</label><b>₹<?= number_format($r['comm_due']) ?> · ₹<?= number_format($r['cash_bal']) ?> · <?= $r['net'] > 0.009 ? 'agent owes ₹' . number_format($r['net']) : ($r['net'] < -0.009 ? 'company owes ₹' . number_format(abs($r['net'])) : 'settled') ?><?= (int) $r['overdue'] > 0 ? ' · overdue ' . (int) $r['overdue'] . 'd' : '' ?></b></div>
         <div class="kv"><label>Daily booking limit · cash limit</label><b><?= (int) ($r['daily_booking_limit'] ?? 0) ?: 'no limit' ?> · ₹<?= number_format((float) ($r['cash_limit'] ?? 0)) ?></b></div>
+        <div class="kv"><label>Salary · advance</label><b><?= $r['salary'] > 0 ? '₹' . number_format($r['salary']) : '—' ?> · ₹<?= number_format($r['advance']) ?></b></div>
         <div class="kv"><label>Payout</label><b><?= $e(trim(($r['payout_method'] ?? '') . ' ' . ($r['payout_account'] ?? '')) ?: '—') ?></b></div>
         <div class="kv"><label>Joined · last login · last sale</label><b><?= $e($r['joined_on'] ?: substr((string) $r['created_at'], 0, 10)) ?> · <?= $e($r['last_login_at'] ?: '—') ?><br><?= $e($r['last_sale'] ?: '—') ?></b></div>
         <?php if (!empty($r['suspended_reason'])): ?><div class="kv"><label>Suspended</label><b><?= $e($r['suspended_reason']) ?> (<?= $e($r['suspended_at']) ?>)</b></div><?php endif; ?>
@@ -552,7 +579,7 @@ if ($flash !== null) {
       </div>
     </td></tr>
     <?php if ($canManage): ?>
-    <tr class="dt-x" id="<?= $rid ?>e" hidden><td colspan="9">
+    <tr class="dt-x" id="<?= $rid ?>e" hidden><td colspan="8">
       <form method="post">
         <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="edit"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
         <div class="dt-grid">

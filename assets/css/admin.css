@@ -271,3 +271,26 @@ html:root[data-display="amoled"] { --orange: var(--royal); --orange-600: var(--r
    browser's Arial. Zero specificity: any page that sets its own field
    font (monospace codes, the WhatsApp note) still wins. */
 :where(.shg-adm) :where(input, select, textarea, button) { font-family: inherit; }
+
+/* D10 - LOGO COLOURS (16 Oct 2026, owner: "application color haru ramro design
+   gardeu" + the company logo). The panel takes the logo's own colours: the
+   deep-to-vivid royal blue of its background, the orange of its arrow as the
+   one accent (the top-bar rule, the active menu marker, the chips), white
+   type. Light mode only re-points the brand tokens; dark / AMOLED keep their
+   tuned values. Status colours (paid, pending, refund...) never change. */
+html:root:not([data-theme="dark"]) body.shg-adm {
+  --navy: #0A2A8F; --royal: #1A44C8; --royal-strong: #12339E; --royal-soft: #DDE5FF; --royal-tint: #EEF2FF;
+  --on-navy-muted: #D3DDF2; --shg-logo-orange: #F07800; --shg-logo-gold: #FFB81C;
+}
+body.shg-adm { --shg-logo-orange: #F07800; }
+html:root:not([data-theme="dark"]) body.shg-adm .tb {
+  background: radial-gradient(90% 180% at 18% 0%, #1F4FD8 0%, rgba(31, 79, 216, 0) 60%), linear-gradient(100deg, #0A2A8F 0%, #1036B4 60%, #1846CC 100%) !important;
+  border-bottom: 3px solid transparent !important;
+  border-image: linear-gradient(90deg, #F07800 0%, #FFB81C 55%, #F07800 100%) 1 !important;
+}
+html:root[data-theme="dark"] body.shg-adm .tb { border-bottom-color: var(--shg-logo-orange) !important; }
+html:root:not([data-theme="dark"]) body.shg-adm .side { background: linear-gradient(180deg, #0A2A8F 0%, #0B2580 100%) !important; }
+body.shg-adm .side a.on { box-shadow: inset 4px 0 0 var(--shg-logo-orange) !important; }
+body.shg-adm .dt-chip.on { box-shadow: 0 2px 0 var(--shg-logo-orange); }
+html:root:not([data-theme="dark"]) body.shg-adm .cards .card { border-top: 3px solid var(--royal) !important; }
+html:root:not([data-theme="dark"]) body.shg-adm .cards .card:nth-child(4n+2) { border-top-color: var(--shg-logo-orange) !important; }

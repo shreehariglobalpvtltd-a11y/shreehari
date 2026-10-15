@@ -29,6 +29,39 @@ if (Auth::isCounterAgent()) {
 $canManage = Auth::isSuperadmin() || Auth::can('bookings.edit');
 $flash     = null;
 
+/* 16 Oct 2026 (owner: "chito name ra number matra haler aune"): the live
+   finder behind the top box. Name OR mobile (any part, spaces ignored),
+   accounts first, then numbers known only from bookings. Read-only, 10 rows,
+   two small LIKE queries - no register aggregates on a keystroke. */
+if (($_GET['ajax'] ?? '') === 'find') {
+    $fq     = trim(Security::clean($_GET['q'] ?? '', 60));
+    $digits = preg_replace('/\D/', '', $fq) ?? '';
+    $out    = [];
+    if (mb_strlen($fq) >= 2) {
+        $isNum = $digits !== '' && strlen($digits) >= 2 && preg_match('/^[\d\s+\-()]+$/', $fq);
+        $like  = '%' . ($isNum ? $digits : $fq) . '%';
+        $col   = $isNum ? 'u.phone' : 'u.full_name';
+        foreach (Database::fetchAll(
+            "SELECT u.phone, u.full_name AS name, u.is_blocked,
+                    (SELECT COUNT(*) FROM bookings b WHERE b.contact_phone = u.phone) AS cnt
+               FROM users u WHERE u.role = 'customer' AND $col LIKE :q ORDER BY u.last_login_at DESC, u.id DESC LIMIT 10",
+            ['q' => $like]
+        ) as $r) { $out[(string) $r['phone']] = $r; }
+        if (count($out) < 10) {
+            $bcol = $isNum ? 'b.contact_phone' : 'bp.full_name';
+            foreach (Database::fetchAll(
+                "SELECT b.contact_phone AS phone, MAX(bp.full_name) AS name, 0 AS is_blocked, COUNT(DISTINCT b.id) AS cnt
+                   FROM bookings b JOIN booking_passengers bp ON bp.booking_id = b.id AND bp.is_primary = 1
+                  WHERE $bcol LIKE :q AND b.contact_phone <> '' GROUP BY b.contact_phone ORDER BY MAX(b.id) DESC LIMIT 10",
+                ['q' => $like]
+            ) as $r) { if (!isset($out[(string) $r['phone']])) { $out[(string) $r['phone']] = $r; } }
+        }
+    }
+    Response::json(['ok' => true, 'rows' => array_map(static fn ($r) => [
+        'phone' => (string) $r['phone'], 'name' => (string) ($r['name'] ?? ''), 'cnt' => (int) $r['cnt'], 'blocked' => (int) $r['is_blocked'] === 1,
+    ], array_slice(array_values($out), 0, 10))]);
+}
+
 /* ---------- actions ---------- */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!Security::verifyCsrf()) {
@@ -59,7 +92,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             return $u = Database::fetch('SELECT * FROM users WHERE id = :id', ['id' => $id]);
         };
 
-        if ($phone === '' || !Security::isValidPhone($phone)) {
+        if ($act === 'quick_add') {
+            // Name + mobile, nothing else; the rest is completed later only if needed.
+            $name = trim(Security::clean($_POST['full_name'] ?? '', 120));
+            if (!Security::isValidPhone($phone)) {
+                $flash = ['bad', 'Enter a valid 10-digit mobile number.'];
+            } elseif (mb_strlen($name) < 2) {
+                $flash = ['bad', 'Enter the customer\'s name.'];
+            } elseif ($u !== null) {
+                $flash = ['ok', 'Already a customer: ' . ($u['full_name'] ?: $phone) . ' — opened below.', 'customer-view.php?phone=' . urlencode($phone), 'Open profile'];
+                $_GET['q'] = $phone;
+            } else {
+                $id = Database::insert('users', [
+                    'phone' => $phone, 'full_name' => $name, 'role' => 'customer',
+                    'country_code' => in_array((string) ($_POST['country_code'] ?? ''), ['91', '977'], true) ? (string) $_POST['country_code'] : '91',
+                    'phone_verified' => 0,
+                ]);
+                Logger::audit('customer.quick_add', 'user', (string) $id, null, ['phone' => $phone, 'full_name' => $name], 'customers quick add');
+                $flash = ['ok', 'Customer saved: ' . $name . ' · ' . $phone . '.', 'smartbook.php?' . http_build_query(['cphone' => $phone, 'cname' => $name]), 'Book a ticket'];
+                $_GET['q'] = $phone;
+            }
+        } elseif ($phone === '' || !Security::isValidPhone($phone)) {
             $flash = ['bad', 'Customer not found.'];
         } elseif ($act === 'edit') {
             $name  = trim(Security::clean($_POST['full_name'] ?? '', 120));
@@ -238,7 +291,10 @@ $k       = CSRF_TOKEN_NAME;
 $e       = static fn($v): string => Security::e((string) ($v ?? ''));
 
 admin_header('Customers', 'customers');
-if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>'; }
+if ($flash !== null) {
+    echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1])
+       . (isset($flash[2], $flash[3]) ? ' <a href="' . Security::e($flash[2]) . '"><b>' . Security::e($flash[3]) . ' →</b></a>' : '') . '</div>';
+}
 ?>
 <div class="cards">
   <div class="card"><div class="k">Customers</div><div class="v"><?= $total ?></div></div>
@@ -247,41 +303,140 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
   <div class="card"><div class="k">Blocked</div><div class="v"><?= $blocked ?></div></div>
 </div>
 
-<form method="get" class="dt-bar" id="custCtl" style="margin-bottom:10px">
-  <input type="search" name="q" value="<?= $e($q) ?>" placeholder="Search name / mobile / email / PNR / document — press Enter" aria-label="Search customers" style="flex:1 1 260px;min-width:0">
-  <?php /* 5 Oct 2026: these filters used to hide rows of the CURRENT PAGE only (50 of
-           the register); they are part of the query now - count, pages and export. */ ?>
-  <select name="state" aria-label="Status" onchange="this.form.submit()">
-    <option value="">All statuses</option>
-    <option value="account" <?= $fState === 'account' ? 'selected' : '' ?>>Has an account</option>
-    <option value="bookingonly" <?= $fState === 'bookingonly' ? 'selected' : '' ?>>Booking only (no account)</option>
-    <option value="blocked" <?= $fState === 'blocked' ? 'selected' : '' ?>>Blocked</option>
-  </select>
-  <select name="trips" aria-label="Bookings" onchange="this.form.submit()">
-    <option value="">Any bookings</option>
-    <option value="0" <?= $fTrips === '0' ? 'selected' : '' ?>>No booking yet</option>
-    <option value="1" <?= $fTrips === '1' ? 'selected' : '' ?>>1 booking</option>
-    <option value="2" <?= $fTrips === '2' ? 'selected' : '' ?>>Repeat (2+)</option>
-    <option value="5" <?= $fTrips === '5' ? 'selected' : '' ?>>Regular (5+)</option>
-  </select>
-  <select name="agent" aria-label="Sold by" onchange="this.form.submit()">
-    <option value="">Any agent / counter</option>
-    <?php foreach ($custAgents as $ca): ?>
-      <option value="<?= (int) $ca['id'] ?>" <?= $fAgent === (int) $ca['id'] ? 'selected' : '' ?>><?= $e($ca['full_name'] ?: $ca['username']) ?></option>
+<?php /* 16 Oct 2026 (owner: "dherai option, category wise milau, chito name ra
+         number matra haler aune"): ONE box - type a name or a mobile and the
+         matches drop down as you type (Enter still runs the full register
+         search); one row of category chips; the agent / date / status
+         dropdowns, exports and links fold into "☰ More". Quick add is just
+         name + mobile - everything else is filled in later, only if needed. */
+      $chipOn = static fn (array $want): bool => $fTrips === ($want['trips'] ?? '') && $fState === ($want['state'] ?? '') && $fAgent === 0 && $fFrom === '' && $fTo === '';
+      $chipUrl = static fn (array $want): string => 'customers.php' . (($want + ($q !== '' ? ['q' => $q] : [])) !== [] ? '?' . http_build_query($want + ($q !== '' ? ['q' => $q] : [])) : '');
+      $chips  = [
+          ['All', []], ['🔁 Repeat (2+)', ['trips' => '2']], ['⭐ Regular (5+)', ['trips' => '5']], ['🆕 1 booking', ['trips' => '1']],
+          ['🧾 Booking only', ['state' => 'bookingonly']], ['👤 Has account', ['state' => 'account']], ['💤 No booking', ['trips' => '0']], ['⛔ Blocked', ['state' => 'blocked']],
+      ];
+      $moreOpen = $fAgent > 0 || $fFrom !== '' || $fTo !== ''; ?>
+<style>
+.cu-find{position:relative;display:flex;gap:8px;margin:0 0 10px}
+.cu-find input[type=search]{flex:1 1 auto;min-width:0;min-height:48px;padding:11px 14px;font-size:16px;border:2px solid var(--royal,#1a3fc4);border-radius:12px;background:var(--card);color:var(--ink)}
+.cu-find .btn{min-height:48px}
+.cu-sug{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:60;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.18);padding:4px;max-height:60vh;overflow:auto}
+.cu-sug[hidden]{display:none}
+.cu-sug a{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;color:var(--ink);text-decoration:none}
+.cu-sug a:hover,.cu-sug a.on{background:var(--hover)}
+.cu-sug .nm{font-weight:700;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cu-sug .ph{font:600 13px ui-monospace,Consolas,monospace;color:var(--mut)}
+.cu-sug .ct{font-size:11.5px;font-weight:800;padding:3px 8px;border-radius:999px;background:var(--soft,#eef2fa);color:var(--mut)}
+.cu-sug .bk{color:#fff;background:#c2540a;font-size:11.5px;font-weight:800;padding:5px 10px;border-radius:999px}
+.cu-sug .none{padding:10px 12px;color:var(--mut);font-size:13px}
+.cu-qa{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto auto;gap:8px;align-items:center;margin:0 0 12px;padding:10px 12px;border:1px dashed var(--line);border-radius:12px;background:var(--card)}
+.cu-qa b{grid-column:1/-1;font-size:13px}
+.cu-qa input,.cu-qa select{min-height:44px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font-size:15px;min-width:0;width:100%;box-sizing:border-box}
+.cu-qa .btn{min-height:44px;white-space:nowrap}
+@media (max-width:700px){.cu-qa{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cu-qa .btn{grid-column:1/-1}.cu-sug .ph{display:none}}
+</style>
+<form method="get" id="custCtl" autocomplete="off">
+  <div class="cu-find">
+    <input type="search" name="q" id="cuQ" value="<?= $e($q) ?>" placeholder="🔍 Type a name or mobile number…" aria-label="Find a customer by name or mobile" aria-autocomplete="list" aria-controls="cuSug">
+    <button class="btn" type="submit">Search</button>
+    <div class="cu-sug" id="cuSug" role="listbox" hidden></div>
+  </div>
+  <?php foreach (['trips' => $fTrips, 'state' => $fState] as $hk => $hv): if ($hv !== ''): ?><input type="hidden" name="<?= $hk ?>" value="<?= $e($hv) ?>"><?php endif; endforeach; ?>
+  <div class="dt-chips" role="toolbar" aria-label="Customer categories">
+    <?php foreach ($chips as [$label, $want]): ?>
+      <a class="dt-chip<?= $chipOn($want) ? ' on' : '' ?>" href="<?= $e($chipUrl($want)) ?>"<?= $chipOn($want) ? ' aria-current="true"' : '' ?>><?= $e($label) ?></a>
     <?php endforeach; ?>
-  </select>
-  <label class="muted" style="font-size:12px">Last booking <input type="date" name="from" value="<?= $e($fFrom) ?>" aria-label="Last booking from"> – <input type="date" name="to" value="<?= $e($fTo) ?>" aria-label="Last booking to"></label>
-  <button class="btn" type="submit">Search</button>
-  <?php if ($filterQs !== []): ?><a class="btn ghost" href="customers.php">Clear</a><?php endif; ?>
+  </div>
 </form>
+
+<?php if ($canManage): ?>
+<form method="post" class="cu-qa" autocomplete="off">
+  <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="quick_add">
+  <b>⚡ New customer — just name + mobile</b>
+  <input name="full_name" required minlength="2" maxlength="120" placeholder="Name" aria-label="Customer name">
+  <input name="phone" required inputmode="tel" minlength="10" maxlength="15" placeholder="Mobile (10 digits)" aria-label="Mobile number">
+  <select name="country_code" aria-label="Country"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>
+  <button class="btn" type="submit">＋ Save</button>
+</form>
+<?php endif; ?>
+
+<details class="dt-bar dt-more" id="custMore"<?= $moreOpen ? ' open' : '' ?>>
+  <summary class="btn ghost">☰ More filters &amp; tools<?= $moreOpen ? ' · on' : '' ?></summary>
+  <form method="get" class="dt-more-p">
+    <?php if ($q !== ''): ?><input type="hidden" name="q" value="<?= $e($q) ?>"><?php endif; ?>
+    <select name="state" aria-label="Status">
+      <option value="">All statuses</option>
+      <option value="account" <?= $fState === 'account' ? 'selected' : '' ?>>Has an account</option>
+      <option value="bookingonly" <?= $fState === 'bookingonly' ? 'selected' : '' ?>>Booking only (no account)</option>
+      <option value="blocked" <?= $fState === 'blocked' ? 'selected' : '' ?>>Blocked</option>
+    </select>
+    <select name="trips" aria-label="Bookings">
+      <option value="">Any bookings</option>
+      <option value="0" <?= $fTrips === '0' ? 'selected' : '' ?>>No booking yet</option>
+      <option value="1" <?= $fTrips === '1' ? 'selected' : '' ?>>1 booking</option>
+      <option value="2" <?= $fTrips === '2' ? 'selected' : '' ?>>Repeat (2+)</option>
+      <option value="5" <?= $fTrips === '5' ? 'selected' : '' ?>>Regular (5+)</option>
+    </select>
+    <select name="agent" aria-label="Sold by">
+      <option value="">Any agent / counter</option>
+      <?php foreach ($custAgents as $ca): ?>
+        <option value="<?= (int) $ca['id'] ?>" <?= $fAgent === (int) $ca['id'] ? 'selected' : '' ?>><?= $e($ca['full_name'] ?: $ca['username']) ?></option>
+      <?php endforeach; ?>
+    </select>
+    <label class="muted" style="font-size:12px">Last booking <input type="date" name="from" value="<?= $e($fFrom) ?>" aria-label="Last booking from"> – <input type="date" name="to" value="<?= $e($fTo) ?>" aria-label="Last booking to"></label>
+    <button class="btn" type="submit">Apply</button>
+    <?php if ($filterQs !== []): ?><a class="btn ghost" href="customers.php">Clear all</a><?php endif; ?>
+    <span style="flex-basis:100%;height:0"></span>
+    <a class="btn ghost" href="customer-ledger.php" title="Date-wise ledger of every booking by customer">📒 Ledger</a>
+    <a class="btn ghost" href="customer-duplicates.php" title="Same person on two numbers, name spelling variants">👥 Duplicates</a>
+    <a class="btn ghost" href="customers.php?<?= $e(http_build_query($filterQs + ['export' => 'csv'])) ?>">⬇ CSV</a>
+    <a class="btn ghost" href="customers.php?<?= $e(http_build_query($filterQs + ['export' => 'xlsx'])) ?>">⬇ Excel</a>
+  </form>
+</details>
 <div class="dt-bar" id="custCtl2">
-  <a class="btn ghost" href="customer-ledger.php" title="Date-wise ledger of every booking by customer">📒 Ledger</a>
-  <a class="btn ghost" href="customer-duplicates.php" title="Same person on two numbers, name spelling variants">👥 Duplicates</a>
-  <a class="btn ghost" href="customers.php?<?= $e(http_build_query($filterQs + ['export' => 'csv'])) ?>">⬇ CSV</a>
-  <a class="btn ghost" href="customers.php?<?= $e(http_build_query($filterQs + ['export' => 'xlsx'])) ?>">⬇ Excel</a>
   <span class="dt-count"></span>
   <span class="muted" style="font-size:12px">· <?= number_format($total) ?> customer<?= $total === 1 ? '' : 's' ?><?= $filterQs !== [] ? ' matching' : '' ?><?= $pages > 1 ? ' · page ' . $page . ' of ' . $pages : '' ?></span>
 </div>
+<script>
+/* Live finder: 180 ms after the last key, 2+ characters. Up / Down + Enter
+   open a match; Enter with nothing picked runs the normal register search. */
+(function(){
+  var q=document.getElementById('cuQ'),box=document.getElementById('cuSug'); if(!q||!box) return;
+  var t=0,seq=0,idx=-1;
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function links(){return box.querySelectorAll('a[data-go]');}
+  function mark(i){var l=links();idx=Math.max(-1,Math.min(i,l.length-1));for(var k=0;k<l.length;k++)l[k].classList.toggle('on',k===idx);}
+  function run(){
+    var v=q.value.trim(); if(v.length<2){box.hidden=true;return;}
+    var my=++seq;
+    fetch('customers.php?ajax=find&q='+encodeURIComponent(v),{credentials:'same-origin',headers:{'Accept':'application/json'}})
+      .then(function(r){return r.json();}).then(function(d){
+        if(my!==seq) return; var rows=(d&&d.rows)||[];
+        box.innerHTML=rows.length?rows.map(function(r){
+          return '<a href="customer-view.php?phone='+encodeURIComponent(r.phone)+'" data-go role="option"><span class="nm">'+esc(r.name||'—')+(r.blocked?' ⛔':'')+'</span><span class="ph">'+esc(r.phone)+'</span><span class="ct">'+r.cnt+' trip'+(r.cnt===1?'':'s')+'</span>'
+            +'<span class="bk" data-book="'+esc(r.phone)+'" data-name="'+esc(r.name||'')+'">🎫 Book</span></a>';
+        }).join(''):'<div class="none">No customer with “'+esc(v)+'” — add them below with name + mobile.</div>';
+        box.hidden=false; idx=-1;
+      }).catch(function(){});
+  }
+  q.addEventListener('input',function(){clearTimeout(t);t=setTimeout(run,180);});
+  q.addEventListener('focus',function(){if(box.innerHTML&&q.value.trim().length>=2)box.hidden=false;});
+  q.addEventListener('keydown',function(e){
+    if(box.hidden) return;
+    if(e.key==='ArrowDown'){e.preventDefault();mark(idx+1);}
+    else if(e.key==='ArrowUp'){e.preventDefault();mark(idx-1);}
+    else if(e.key==='Enter'&&idx>=0){e.preventDefault();location.href=links()[idx].href;}
+    else if(e.key==='Escape'){box.hidden=true;}
+  });
+  box.addEventListener('click',function(e){var b=e.target.closest('[data-book]'); if(!b) return; e.preventDefault();
+    location.href='smartbook.php?cphone='+encodeURIComponent(b.getAttribute('data-book'))+'&cname='+encodeURIComponent(b.getAttribute('data-name'));});
+  document.addEventListener('click',function(e){if(!e.target.closest('.cu-find'))box.hidden=true;});
+  document.addEventListener('keydown',function(e){var tg=e.target&&e.target.tagName;if(e.key==='/'&&tg!=='INPUT'&&tg!=='TEXTAREA'&&tg!=='SELECT'){e.preventDefault();q.focus();q.select();}});
+  /* A quick-add mobile that already exists shows up in the finder before saving. */
+  var qa=document.querySelector('.cu-qa input[name=phone]');
+  if(qa) qa.addEventListener('change',function(){var d=qa.value.replace(/\D/g,''); if(d.length>=10){q.value=d.slice(-10); run();}});
+})();
+</script>
 
 <div class="dt-wrap">
 <table class="dt no-card" data-controls="custCtl2">

@@ -341,7 +341,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261015e';
+    $av = '20261016a';
     /* 5 Oct 2026 (owner, Point 12): Poppins across the panel. display=swap, so a
        slow counter line shows the device font at once and swaps when the file
        lands; Devanagari comes from the same family. The CSP already allows it. */
@@ -822,6 +822,22 @@ table.dt tr.dt-x[hidden]{display:none}
 /* Phones: row buttons and the filter bar meet the 44px touch target the rest
    of the admin already keeps (the compact 32px is a desktop-only density). */
 @media (pointer:coarse){.dt-acts .btn{min-height:44px;padding:8px 12px}.dt-bar input,.dt-bar select{min-height:44px}}
+/* Category chips (16 Oct 2026) - one row, scrolls sideways on a phone. */
+.dt-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 0 10px;padding:2px 1px;-webkit-overflow-scrolling:touch}
+.dt-chips::-webkit-scrollbar{display:none}
+.dt-chip[hidden]{display:none}
+.dt-chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:6px 13px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);font:700 13px/1 inherit;cursor:pointer;white-space:nowrap;text-decoration:none;transition:background .15s,border-color .15s,color .15s}
+.dt-chip:hover{border-color:var(--royal,#1a3fc4)}
+.dt-chip i{font-style:normal;font-weight:800;font-size:11.5px;min-width:20px;padding:3px 6px;border-radius:999px;background:var(--soft,#eef2fa);color:var(--mut);text-align:center}
+.dt-chip.on{background:var(--royal,#1a3fc4);border-color:var(--royal,#1a3fc4);color:#fff}
+.dt-chip.on i{background:rgba(255,255,255,.22);color:#fff}
+.dt-chip.warn i{background:#ffe6cc;color:#9a4a00}.dt-chip.on.warn i{background:rgba(255,255,255,.22);color:#fff}
+.dt-more{position:relative}
+.dt-more>summary{list-style:none;cursor:pointer}
+.dt-more>summary::-webkit-details-marker{display:none}
+.dt-more[open]{flex-basis:100%}.dt-more[open]>summary{background:var(--soft,#eef2fa)}
+.dt-more .dt-more-p{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;flex-basis:100%}
+@media (pointer:coarse){.dt-chip{min-height:44px}}
 </style>
 <script>
 (function(){
@@ -836,25 +852,59 @@ table.dt tr.dt-x[hidden]{display:none}
     var filters=ctrl?Array.prototype.slice.call(ctrl.querySelectorAll('[data-dt-filter]')):[];
     var count=ctrl?ctrl.querySelector('.dt-count'):null;
     function extraOf(r){var n=r.nextElementSibling,out=[];while(n&&n.classList.contains('dt-x')){out.push(n);n=n.nextElementSibling;}return out;}
+    /* 16 Oct 2026 (owner: "category wise milau, chito name ra number"): the
+       search matches every word anywhere (name + mobile in any order), a
+       number ignores spaces / dashes / +, and [data-dt-chip] buttons are
+       one-tap categories - each sets the filters it names, clears the rest,
+       and shows how many rows it holds. */
+    var chips=ctrl?Array.prototype.slice.call(ctrl.querySelectorAll('[data-dt-chip]')):[];
+    function chipSet(c){try{return JSON.parse(c.getAttribute('data-dt-chip')||'{}')||{};}catch(e){return {};}}
+    function fval(r,f){return r.getAttribute('data-'+f.getAttribute('data-dt-filter'))||'';}
+    function passF(r,f,v){
+      var rv=fval(r,f);
+      if(f.tagName==='SELECT') return rv===v;
+      if(f.type==='date'||f.type==='month') return (f.getAttribute('data-dt-mode')==='max')?(rv!==''&&rv.slice(0,v.length)<=v):(rv!==''&&rv.slice(0,v.length)>=v);
+      return rv.toLowerCase().indexOf(v.toLowerCase())>=0;
+    }
+    function passQ(r,words){
+      if(!words.length) return true;
+      var hay=(r.__hay||(r.__hay=(r.getAttribute('data-search')||r.textContent).toLowerCase())),hd=r.__hd||(r.__hd=hay.replace(/[\s\-+().]/g,''));
+      for(var w=0;w<words.length;w++){var x=words[w];
+        if(/^[\d\s\-+()]+$/.test(x)){x=x.replace(/\D/g,''); if(x&&hd.indexOf(x)<0) return false;}
+        else if(hay.indexOf(x)<0) return false;}
+      return true;
+    }
     function apply(){
       var needle=(q&&q.value?q.value:'').trim().toLowerCase(),shown=0;
+      var words=needle?needle.match(/\+?[\d][\d\s\-()]{3,}\d|\S+/g)||[]:[];
       rows.forEach(function(r){
-        var ok=true;
-        if(needle){ok=(r.getAttribute('data-search')||r.textContent).toLowerCase().indexOf(needle)>=0;}
-        for(var k=0;ok&&k<filters.length;k++){
-          var f=filters[k],v=f.value; if(!v) continue;
-          var rv=r.getAttribute('data-'+f.getAttribute('data-dt-filter'))||'';
-          if(f.tagName==='SELECT') ok=(rv===v);
-          else if(f.type==='date'||f.type==='month') ok=(f.getAttribute('data-dt-mode')==='max')?(rv!==''&&rv.slice(0,v.length)<=v):(rv!==''&&rv.slice(0,v.length)>=v);
-          else ok=rv.toLowerCase().indexOf(v.toLowerCase())>=0;
-        }
+        var ok=passQ(r,words);
+        for(var k=0;ok&&k<filters.length;k++){ if(filters[k].value) ok=passF(r,filters[k],filters[k].value); }
         r.style.display=ok?'':'none';
         if(!ok) extraOf(r).forEach(function(x){x.hidden=true;});
         if(ok) shown++;
       });
       if(count) count.textContent=shown+' / '+rows.length;
+      chips.forEach(function(c){
+        var s=chipSet(c),on=true;
+        filters.forEach(function(f){if((s[f.getAttribute('data-dt-filter')]||'')!==(f.value||'')) on=false;});
+        c.classList.toggle('on',on); c.setAttribute('aria-pressed',on?'true':'false');
+      });
     }
-    if(q) q.addEventListener('input',apply);
+    function chipCounts(){
+      chips.forEach(function(c){
+        var s=chipSet(c),n=0,fs=filters.filter(function(f){return s[f.getAttribute('data-dt-filter')];});
+        rows.forEach(function(r){ for(var k=0;k<fs.length;k++){ if(!passF(r,fs[k],s[fs[k].getAttribute('data-dt-filter')])) return; } n++; });
+        var b=c.querySelector('i'); if(!b){b=document.createElement('i');c.appendChild(b);} b.textContent=n;
+        if(!n&&c.hasAttribute('data-dt-hide0')) c.hidden=true;
+      });
+    }
+    chips.forEach(function(c){c.addEventListener('click',function(){
+      var s=chipSet(c); filters.forEach(function(f){f.value=s[f.getAttribute('data-dt-filter')]||'';}); apply();
+    });});
+    chipCounts();
+    if(q){q.addEventListener('input',apply);
+      document.addEventListener('keydown',function(e){var t=e.target&&e.target.tagName;if(e.key==='/'&&t!=='INPUT'&&t!=='TEXTAREA'&&t!=='SELECT'&&!e.ctrlKey&&!e.metaKey){e.preventDefault();q.focus();q.select();}});}
     filters.forEach(function(f){f.addEventListener('change',apply);f.addEventListener('input',apply);});
     var ths=t.tHead&&t.tHead.rows[0]?Array.prototype.slice.call(t.tHead.rows[0].cells):[];
     ths.forEach(function(th,ci){
