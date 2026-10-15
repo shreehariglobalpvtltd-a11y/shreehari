@@ -997,6 +997,113 @@ echo StaffMsg::agentCard($viewId, $isOwn);
 </form>
 <?php endif; ?>
 
+<?php
+/* 15 Oct 2026 (Smart AI upgrade): "My performance" rings — today / this week /
+   this month for THIS agent only: score = revenue vs the window's share of
+   agent_target_monthly (else vs the window's top seller, a percentage only —
+   no other agent's figure is shown), plus the agent's own rank. Read only. */
+$perfWin = [];
+try {
+    $pToday  = todayISO();
+    $pTarget = Settings::getFloat('agent_target_monthly', 0.0);
+    foreach ([
+        'today' => ['Today', $pToday],
+        'week'  => ['This week', date('Y-m-d', strtotime('monday this week'))],
+        'month' => ['This month', date('Y-m-01')],
+    ] as $pk => [$pLbl, $pFrom]) {
+        $pTo   = addDaysISO($pToday, 1);
+        $board = Database::fetchAll(
+            "SELECT b.sold_by_admin_id AS id, COUNT(*) AS n, COALESCE(SUM(b.total_amount), 0) AS rev
+               FROM bookings b JOIN admins a ON a.id = b.sold_by_admin_id AND a.role = 'agent'
+              WHERE b.status IN ('confirmed','completed') AND b.created_at >= :f AND b.created_at < :t
+              GROUP BY b.sold_by_admin_id ORDER BY rev DESC",
+            ['f' => $pFrom, 't' => $pTo]
+        );
+        $mine = ['n' => 0, 'rev' => 0.0]; $rank = 0; $top = 0.0;
+        foreach ($board as $i => $br) {
+            $top = max($top, (float) $br['rev']);
+            if ((int) $br['id'] === $viewId) { $mine = ['n' => (int) $br['n'], 'rev' => (float) $br['rev']]; $rank = $i + 1; }
+        }
+        $pax = (int) Database::scalar(
+            "SELECT COUNT(*) FROM bookings b JOIN booking_seats bs ON bs.booking_id = b.id AND bs.released_at IS NULL
+              WHERE b.sold_by_admin_id = :a AND b.status IN ('confirmed','completed') AND b.created_at >= :f AND b.created_at < :t",
+            ['a' => $viewId, 'f' => $pFrom, 't' => $pTo]
+        );
+        $com = (float) Database::scalar(
+            "SELECT COALESCE(SUM(amount), 0) FROM agent_ledger
+              WHERE agent_admin_id = :a AND account = 'commission' AND entry_type IN ('commission','commission_void')
+                AND created_at >= :f AND created_at < :t",
+            ['a' => $viewId, 'f' => $pFrom, 't' => $pTo]
+        );
+        $days  = max(1, (int) round(((int) strtotime($pTo) - (int) strtotime($pFrom)) / 86400));
+        $goal  = $pTarget > 0 ? $pTarget * $days / 30 : $top;
+        $score = $goal > 0 ? (int) round($mine['rev'] * 100 / $goal) : 0;
+        $perfWin[$pk] = [
+            'lbl' => $pLbl, 'n' => $mine['n'], 'rev' => $mine['rev'], 'pax' => $pax, 'com' => $com,
+            'rank' => $rank, 'of' => count($board), 'score' => $score, 'goal' => $pTarget > 0 ? $goal : 0.0,
+            'band' => $score >= 100 ? 'gold' : ($score >= 75 ? 'good' : ($score >= 40 ? 'mid' : 'low')),
+        ];
+    }
+} catch (Throwable $e) {
+    $perfWin = [];
+}
+if ($perfWin !== []):
+    $pCol = ['gold' => '#C9971C', 'good' => '#1FA35B', 'mid' => '#E08A00', 'low' => '#DC3B3B'];
+    $pC   = 2 * M_PI * 42; ?>
+<div class="panel mp-panel">
+  <div class="mp-head"><h2>🎯 <?= $isOwn ? 'My performance' : 'Performance' ?></h2>
+    <div class="mp-tabs" role="tablist"><?php foreach ($perfWin as $pk => $w): ?><button type="button" role="tab" data-mp="<?= $pk ?>"<?= $pk === 'month' ? ' class="on" aria-selected="true"' : ' aria-selected="false"' ?>><?= Security::e($w['lbl']) ?></button><?php endforeach; ?></div></div>
+  <?php foreach ($perfWin as $pk => $w): ?>
+  <div class="mp-body" data-mp-body="<?= $pk ?>"<?= $pk === 'month' ? '' : ' hidden' ?>>
+    <div class="mp-ringbox">
+      <svg class="mp-ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="42" class="mp-bg"/>
+        <circle cx="50" cy="50" r="42" class="mp-fg" style="stroke:<?= $pCol[$w['band']] ?>" stroke-dasharray="<?= round($pC, 2) ?>" stroke-dashoffset="<?= round($pC, 2) ?>" data-off="<?= round($pC * (1 - min(100, $w['score']) / 100), 2) ?>"/></svg>
+      <div class="mp-mid"><b style="color:<?= $pCol[$w['band']] ?>"><?= (int) $w['score'] ?>%</b><small><?= $w['goal'] > 0 ? 'of target' : 'vs top seller' ?></small></div>
+    </div>
+    <dl class="mp-kv">
+      <div><dt>Rank</dt><dd><?= $w['rank'] > 0 ? ['🥇', '🥈', '🥉'][$w['rank'] - 1] ?? '#' . (int) $w['rank'] : '—' ?><?= $w['rank'] > 0 && $w['of'] > 0 ? ' <small class="muted">of ' . (int) $w['of'] . '</small>' : '' ?></dd></div>
+      <div><dt>Bookings</dt><dd><?= (int) $w['n'] ?></dd></div>
+      <div><dt>Passengers</dt><dd><?= (int) $w['pax'] ?></dd></div>
+      <div><dt>Sales</dt><dd><?= Security::e(inr((float) $w['rev'])) ?></dd></div>
+      <div><dt>Commission</dt><dd style="color:#0a6b3b"><?= Security::e(inr((float) $w['com'])) ?></dd></div>
+      <?php if ($w['goal'] > 0): ?><div><dt>Target</dt><dd><?= Security::e(inr((float) $w['goal'])) ?></dd></div><?php endif; ?>
+    </dl>
+  </div>
+  <?php endforeach; ?>
+</div>
+<style>
+.mp-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between}.mp-head h2{margin:0}
+.mp-tabs{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+.mp-tabs button{border:0;background:transparent;border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;color:inherit;min-height:34px}
+.mp-tabs button.on{background:#2E5FA8;color:#fff}
+.mp-body{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.mp-ringbox{position:relative;width:120px;height:120px;flex:none}
+.mp-ring{width:100%;height:100%;transform:rotate(-90deg)}.mp-ring circle{fill:none;stroke-width:8}.mp-ring .mp-bg{stroke:var(--line)}
+.mp-ring .mp-fg{stroke-linecap:round;transition:stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1)}
+.mp-mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.mp-mid b{font-size:24px;font-weight:800}.mp-mid small{font-size:10.5px;opacity:.7}
+.mp-kv{flex:1;min-width:200px;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px 14px;margin:0}
+.mp-kv dt{font-size:11px;color:var(--muted,#6b7a90)}.mp-kv dd{margin:0;font-weight:800;font-size:15px;font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){.mp-ring .mp-fg{transition:none}}
+</style>
+<script>
+(function () {
+  function fill(box) { box.querySelectorAll('.mp-fg').forEach(function (c) { c.setAttribute('stroke-dashoffset', c.getAttribute('data-off')); }); }
+  var p = document.querySelector('.mp-panel'); if (!p) return;
+  requestAnimationFrame(function () { setTimeout(function () { fill(p.querySelector('.mp-body:not([hidden])')); }, 60); });
+  p.querySelectorAll('[data-mp]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      p.querySelectorAll('[data-mp]').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-selected', x === b ? 'true' : 'false'); });
+      p.querySelectorAll('[data-mp-body]').forEach(function (d) {
+        var on = d.getAttribute('data-mp-body') === b.getAttribute('data-mp'); d.hidden = !on;
+        if (on) { d.querySelectorAll('.mp-fg').forEach(function (c) { c.setAttribute('stroke-dashoffset', c.getAttribute('stroke-dasharray')); }); requestAnimationFrame(function () { setTimeout(function () { fill(d); }, 30); }); }
+      });
+    });
+  });
+})();
+</script>
+<?php endif; ?>
+
 <style>
 /* House style copied from admin/index.php — hero stat cards + panels + sparkline. */
 .dash-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
