@@ -30,7 +30,9 @@ try {
     }
 
     // Authorise: matching phone, owner login, or admin.
-    $authorised = ($phone !== '' && $phone === (string) $booking['contact_phone'])
+    // '0000000000' is the counter-sale placeholder — never authorise by it.
+    $authorised = ($phone !== '' && $phone !== '0000000000' && $phone === (string) $booking['contact_phone']
+                   && (string) $booking['contact_phone'] !== '0000000000')
         || (Auth::isUser() && (int) (Auth::user()['id'] ?? 0) === (int) ($booking['user_id'] ?? -1))
         || Auth::isAdmin();
 

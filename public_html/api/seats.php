@@ -20,6 +20,8 @@ try {
         Response::invalid(['date' => 'Choose a valid travel date.']);
     }
 
+    Security::requireRateLimit('seats', Security::clientIp(), 60, 60);
+
     $availability = Seats::availability($routeId, $date, $bookingMode);
 
     Response::success([

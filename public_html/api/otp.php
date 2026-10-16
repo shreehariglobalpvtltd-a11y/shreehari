@@ -47,8 +47,9 @@ try {
             'resendIn'=> OTP_RESEND_SECONDS,
         ];
 
-        // Never leak the code in production.
-        if (APP_DEBUG) {
+        // Only leak the code in local/CLI dev — never on a real server, even if APP_DEBUG is on.
+        $isLocalCli = PHP_SAPI === 'cli' || in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true);
+        if (APP_DEBUG && $isLocalCli) {
             $payload['debugCode'] = $code;
         }
 

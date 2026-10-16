@@ -97,12 +97,11 @@ try {
     $company = Settings::getString('company_name', APP_NAME);
     $phone   = Settings::getString('company_phone', '');
 
-    // A GET (e.g. someone opening the URL, or a Twilio console probe).
+    // Non-POST requests get a plain 405 — no company info leaked.
     if (!Security::isPost()) {
-        wa_reply(wa_message(
-            "🙏 Namaste! This is the " . $company . " ticket assistant.\n"
-            . "Send your booking PNR (looks like SHG-XXXX-XXXX-XXXX) to check your ticket."
-        ));
+        http_response_code(405);
+        header('Allow: POST');
+        exit;
     }
 
     // Reject forged callers. This FAILS CLOSED: with no auth token configured
