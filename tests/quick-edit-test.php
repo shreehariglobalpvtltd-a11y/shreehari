@@ -623,10 +623,13 @@ try {
     $why = 'rows=' . (int) $vals['n'] . ' withNew=' . (int) $vals['withNew'] . ' withOld=' . (int) $vals['withOld']
          . ' | counter id=' . (int) $STAFF['counter']['id'] . ' role=' . (string) Database::scalar('SELECT role FROM admins WHERE id = :i', ['i' => (int) $STAFF['counter']['id']], '(none)')
          . ' perms=' . substr((string) Database::scalar('SELECT COALESCE(permissions, "(null)") FROM admins WHERE id = :i', ['i' => (int) $STAFF['counter']['id']], '(none)'), 0, 60)
-         . ' | page: audit panel=' . (int) str_contains($h, 'audit-timeline')
+         . ' | page: empty=' . (int) str_contains($h, 'No audit entries recorded')
+         . ' entries=' . substr_count($h, 'class="audit-entry"')
          . ' Old=' . (int) str_contains($h, 'Old: ') . ' New=' . (int) str_contains($h, '→ New:')
-         . ' | boss page: panel=' . (int) str_contains($hBoss, 'audit-timeline')
-         . ' Old=' . (int) str_contains($hBoss, 'Old: ') . ' New=' . (int) str_contains($hBoss, '→ New:');
+         . ' | boss: empty=' . (int) str_contains($hBoss, 'No audit entries recorded')
+         . ' entries=' . substr_count($hBoss, 'class="audit-entry"')
+         . ' Old=' . (int) str_contains($hBoss, 'Old: ') . ' New=' . (int) str_contains($hBoss, '→ New:')
+         . ' | first entry: ' . (preg_match('~<div class="audit-entry">(.{0,420})~s', $hBoss, $aem) ? preg_replace('~\s+~', ' ', strip_tags($aem[1])) : '(none)');
     check('counter: audit old → new now visible (was super-admin only)',
         (int) $vals['withNew'] > 0 ? str_contains($h, '→ New:') : str_contains($h, 'Old: '), $why);
     $h = drive('booking-view.php', (int) $STAFF['manager']['id'], ['pnr' => $own['pnr']]);
