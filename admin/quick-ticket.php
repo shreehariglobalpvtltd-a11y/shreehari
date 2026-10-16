@@ -23,6 +23,24 @@ require_once INCLUDE_PATH . '/quickticket.php';
 require_once INCLUDE_PATH . '/ticketbot.php';
 $admin = admin_boot('bookings.view');
 
+/* 16 Oct 2026 (owner: "3 ta booking system lai eutai ma"): SmartBook is the one
+   booking screen for every desk - same engine, agent code on top. A QuickBot
+   bookmark (or the app's ?name=&phone= link) lands there with the customer
+   filled in. ?legacy=1 keeps this page as an emergency fallback, unlinked. */
+if (($_GET['legacy'] ?? '') !== '1') {
+    $go = [];
+    $nm = Security::clean((string) ($_GET['name'] ?? ''), 120);
+    $ph = preg_replace('/\D/', '', (string) ($_GET['phone'] ?? '')) ?? '';
+    if ($ph !== '') {
+        $go['cphone'] = substr($ph, 0, 13);
+        if ($nm !== '') {
+            $go['cname'] = $nm;
+        }
+    }
+    header('Location: /admin/smartbook.php' . ($go !== [] ? '?' . http_build_query($go) : ''), true, 302);
+    exit;
+}
+
 /* 🤖 AI Ticket Bot (6 Sep 2026): what it has learned so far, for the
    panel header. Never fatal — a cache hiccup must not take the desk down. */
 $bot = ['enabled' => true, 'sample' => 0, 'repeat' => 0, 'windowDays' => 0, 'topStops' => [], 'outcomes' => 0, 'hitRate' => null];

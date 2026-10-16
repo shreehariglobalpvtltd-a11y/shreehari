@@ -84,6 +84,11 @@
      the server ignores an asked mode a session may not use (SmartBook::sessionMode). */
   var STAFF = (window.SB_STAFF && typeof window.SB_STAFF === 'object') ? window.SB_STAFF : null;
   var MODE = STAFF ? String(STAFF.mode || 'admin') : 'customer';
+  /* 16 Oct 2026: selling staff signed in on the website (counter / agent / office)
+     book from the ONE staff face of this card - admin/smartbook.php, with the
+     agent code, the cash book and the 80 mm print - never from the customer face. */
+  var BOOT_STAFF = (window.SHG_BOOT && window.SHG_BOOT.staff) || null;
+  var DESK = (!STAFF && BOOT_STAFF && BOOT_STAFF.canSell) ? '/admin/smartbook.php' : '';
   function api(body) { if (STAFF) body.mode = MODE; return shgApi.post('/smartbook.php', body); }
   function lang() { var l = (typeof LANG === 'string' && LANG) ? LANG : 'en'; return W[l] ? l : 'en'; }
   /* 15 Oct 2026 (owner: "catalog form jasto - naam + mobile, baaki default; customer lai k lekhne demo + voice"). */
@@ -120,6 +125,50 @@
       hSpeak: 'टिकट बुक गर्न धेरै सजिलो छ। यात्रुको नाम र मोबाइल नम्बर लेख्नुहोस् र बुक थिच्नुहोस्। मिति, चढ्ने ठाउँ र सिट आफैं भरिन्छ। माइक थिचेर नाम र नम्बर बोल्न पनि सक्नुहुन्छ। व्हाट्सएपमा नाम र मोबाइल नम्बरको एउटै मेसेज पुग्छ, टिकट व्हाट्सएपमै आउँछ।' }
   };
   ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in QW[l]) { W[l][k] = QW[l][k]; } } });
+  /* 16 Oct 2026 (owner: "cash wala lai verification ko lagi details compulsory,
+     online ma click garda sidhai bank ko QR popup, 60 second timer"). */
+  var VW = {
+    en: { cvT: 'Cash booking — verification', cvSub: 'Pay at boarding needs these details. Online does not.', cvName: 'Full name (first name + surname)',
+      cvAddr: 'Address — village / city, district', cvAddrPh: 'e.g. Kohalpur-5, Banke', cvIdT: 'ID document', cvIdN: 'ID number', cvIdPh: 'number on the card',
+      cvAlt: 'Second mobile (family)', cvOpt: 'optional', cvNote: 'Show this same ID when you board. Wrong details can cancel the ticket.',
+      cvGo: '🎫 Book ticket · Cash', cvOnline: 'Or pay Online — no details needed →', cvPick: 'Choose…',
+      pyT: 'Pay to confirm', pyAmt: 'Amount to pay', pyScan: 'Scan with GPay · PhonePe · Paytm · BHIM — amount and PNR are filled in',
+      pyApp: '📱 Pay in a UPI app', pyCopy: 'Copy', pyCopied: 'Copied', pyLeft: 'QR valid', pyOver: 'QR time is over', pyNew: '🔄 Show a new QR',
+      pyHeld: 'Berths held until', pyPaid: 'Paid? Send the UTR', pyUtr: 'UTR / transaction number', pyShot: 'or a screenshot', pySend: 'Send for verification',
+      pyNeed: 'Write the UTR or add a screenshot', pyVer: 'Payment is being verified', pyVerSub: 'The office checks it in 1–3 minutes. You can close this — the ticket comes on WhatsApp and in My Bookings.',
+      pyGone: 'Time is over — the berths went back on sale. Please book again.', pyEsewa: 'Send this amount from the eSewa app with the PNR in the remarks.',
+      pySafe: 'Secure · checked by the S Hari Global office', pyBank: 'Card / Net banking', pyShare: '📤 Send pay link', pyHelp: 'Help',
+      waGet: '💬 Get the ticket on WhatsApp', waGetSub: 'tap → send “Hi” → ticket comes back in seconds', waSend: '💬 Send ticket on WhatsApp', fast: 'ready in',
+      deskT: 'SmartBook desk', deskSub: 'You are signed in as staff — book from the SmartBook desk (same engine, agent code, 80 mm print).',
+      deskGo: '🎫 Book a ticket — SmartBook desk', deskPanel: 'Panel' },
+    hi: { cvT: 'कैश बुकिंग — सत्यापन', cvSub: 'चढ़ते समय भुगतान के लिए ये जानकारी ज़रूरी है। Online में नहीं।', cvName: 'पूरा नाम (नाम + सरनेम)',
+      cvAddr: 'पता — गाँव / शहर, ज़िला', cvAddrPh: 'जैसे Kohalpur-5, Banke', cvIdT: 'पहचान पत्र', cvIdN: 'पहचान पत्र नंबर', cvIdPh: 'कार्ड पर लिखा नंबर',
+      cvAlt: 'दूसरा मोबाइल (परिवार)', cvOpt: 'वैकल्पिक', cvNote: 'चढ़ते समय यही पहचान पत्र दिखाएँ। गलत जानकारी पर टिकट रद्द हो सकता है।',
+      cvGo: '🎫 टिकट बुक करें · कैश', cvOnline: 'या Online भुगतान करें — जानकारी नहीं चाहिए →', cvPick: 'चुनें…',
+      pyT: 'पक्का करने के लिए भुगतान', pyAmt: 'भुगतान राशि', pyScan: 'GPay · PhonePe · Paytm · BHIM से स्कैन करें — राशि और PNR भरे हुए हैं',
+      pyApp: '📱 UPI ऐप में भुगतान', pyCopy: 'कॉपी', pyCopied: 'कॉपी हुआ', pyLeft: 'QR मान्य', pyOver: 'QR का समय खत्म', pyNew: '🔄 नया QR दिखाएँ',
+      pyHeld: 'बर्थ रखी गई है', pyPaid: 'भुगतान किया? UTR भेजें', pyUtr: 'UTR / ट्रांज़ैक्शन नंबर', pyShot: 'या स्क्रीनशॉट', pySend: 'जाँच के लिए भेजें',
+      pyNeed: 'UTR लिखें या स्क्रीनशॉट जोड़ें', pyVer: 'भुगतान की जाँच हो रही है', pyVerSub: 'ऑफिस 1–3 मिनट में जाँचता है। आप इसे बंद कर सकते हैं — टिकट WhatsApp और My Bookings में आएगा।',
+      pyGone: 'समय खत्म — बर्थ फिर बिक्री में। कृपया फिर बुक करें।', pyEsewa: 'eSewa ऐप से यह राशि भेजें, remarks में PNR लिखें।',
+      pySafe: 'सुरक्षित · S Hari Global ऑफिस द्वारा जाँच', pyBank: 'कार्ड / नेट बैंकिंग', pyShare: '📤 भुगतान लिंक भेजें', pyHelp: 'मदद',
+      waGet: '💬 WhatsApp पर टिकट पाएँ', waGetSub: 'दबाएँ → “Hi” भेजें → टिकट कुछ सेकंड में', waSend: '💬 WhatsApp पर टिकट भेजें', fast: 'तैयार',
+      deskT: 'SmartBook डेस्क', deskSub: 'आप staff के रूप में लॉगिन हैं — टिकट SmartBook डेस्क से काटें (वही इंजन, एजेंट कोड, 80 mm प्रिंट)।',
+      deskGo: '🎫 टिकट काटें — SmartBook डेस्क', deskPanel: 'पैनल' },
+    ne: { cvT: 'नगद बुकिङ — प्रमाणीकरण', cvSub: 'चढ्दा तिर्ने टिकटका लागि यी विवरण अनिवार्य छन्। Online मा चाहिँदैन।', cvName: 'पूरा नाम (नाम + थर)',
+      cvAddr: 'ठेगाना — गाउँ / सहर, जिल्ला', cvAddrPh: 'जस्तै Kohalpur-5, Banke', cvIdT: 'परिचयपत्र', cvIdN: 'परिचयपत्र नम्बर', cvIdPh: 'कार्डमा लेखिएको नम्बर',
+      cvAlt: 'दोस्रो मोबाइल (परिवार)', cvOpt: 'ऐच्छिक', cvNote: 'चढ्दा यही परिचयपत्र देखाउनुहोस्। गलत विवरण भए टिकट रद्द हुन सक्छ।',
+      cvGo: '🎫 टिकट बुक गर्नुहोस् · नगद', cvOnline: 'वा Online तिर्नुहोस् — विवरण चाहिँदैन →', cvPick: 'छान्नुहोस्…',
+      pyT: 'पक्का गर्न भुक्तानी', pyAmt: 'तिर्नुपर्ने रकम', pyScan: 'GPay · PhonePe · Paytm · BHIM ले स्क्यान गर्नुहोस् — रकम र PNR भरिएको छ',
+      pyApp: '📱 UPI एपमा तिर्नुहोस्', pyCopy: 'कपी', pyCopied: 'कपी भयो', pyLeft: 'QR मान्य', pyOver: 'QR को समय सकियो', pyNew: '🔄 नयाँ QR देखाउनुहोस्',
+      pyHeld: 'बर्थ राखिएको छ', pyPaid: 'तिर्नुभयो? UTR पठाउनुहोस्', pyUtr: 'UTR / कारोबार नम्बर', pyShot: 'वा स्क्रिनसट', pySend: 'जाँचका लागि पठाउनुहोस्',
+      pyNeed: 'UTR लेख्नुहोस् वा स्क्रिनसट थप्नुहोस्', pyVer: 'भुक्तानी जाँच हुँदैछ', pyVerSub: 'अफिसले १–३ मिनेटमा जाँच्छ। यो बन्द गर्न सक्नुहुन्छ — टिकट WhatsApp र My Bookings मा आउँछ।',
+      pyGone: 'समय सकियो — बर्थ फेरि बिक्रीमा। कृपया फेरि बुक गर्नुहोस्।', pyEsewa: 'eSewa एपबाट यो रकम पठाउनुहोस्, remarks मा PNR लेख्नुहोस्।',
+      pySafe: 'सुरक्षित · S Hari Global अफिसले जाँच गर्छ', pyBank: 'कार्ड / नेट बैंकिङ', pyShare: '📤 भुक्तानी लिंक पठाउनुहोस्', pyHelp: 'सहयोग',
+      waGet: '💬 WhatsApp मा टिकट पाउनुहोस्', waGetSub: 'थिच्नुहोस् → “Hi” पठाउनुहोस् → टिकट केही सेकेन्डमा', waSend: '💬 WhatsApp मा टिकट पठाउनुहोस्', fast: 'तयार',
+      deskT: 'SmartBook डेस्क', deskSub: 'तपाईं staff को रूपमा लगइन हुनुहुन्छ — टिकट SmartBook डेस्कबाट काट्नुहोस् (उही इन्जिन, एजेन्ट कोड, 80 mm प्रिन्ट)।',
+      deskGo: '🎫 टिकट काट्नुहोस् — SmartBook डेस्क', deskPanel: 'प्यानल' }
+  };
+  ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in VW[l]) { W[l][k] = VW[l][k]; } } });
   function tr(k, v) {
     var s = (W[lang()] && W[lang()][k]) || W.en[k] || k;
     if (v) Object.keys(v).forEach(function (x) { s = s.split('{' + x + '}').join(v[x]); });
@@ -141,7 +190,11 @@
        rakhdeu sabai"): every visit opens on Quick (name + mobile). "✏️ Change"
        still opens the full form for this visit only - it is no longer saved. */
     quick: true,
-    agent: ''   // staff desks only: the SHG code the sale is credited to ('OTHER' = company) - never on the customer page
+    agent: '',  // staff desks only: the SHG code the sale is credited to ('OTHER' = company) - never on the customer page
+    /* Cash verification (customer only) - kept in memory for this visit, never
+       in localStorage (an ID number must not sit on a shared phone). */
+    codVerify: false, idTypes: [], qrSeconds: 60,
+    verify: { address: '', idType: '', idNum: '', altPhone: '', altCc: 'NP' }
   };
   var store = {
     get: function () { try { return JSON.parse(localStorage.getItem('sb:v1') || 'null') || {}; } catch (e) { return {}; } },
@@ -168,10 +221,32 @@
   }
 
   /* -------------------------------------------------------------- boot */
+  function renderDesk() {
+    document.documentElement.classList.add('sb-on');
+    retargetBookLinks();
+    var who = BOOT_STAFF.code ? BOOT_STAFF.code + ' · ' + (BOOT_STAFF.name || '') : (BOOT_STAFF.name || '');
+    var role = BOOT_STAFF.role === 'agent' ? 'Agent' : (BOOT_STAFF.role === 'counter' ? 'Counter' : 'Office');
+    var el = document.createElement('div');
+    el.id = 'sbDesk'; el.className = 'sb-desk';
+    el.innerHTML = '<div class="sb-desk-in"><span class="sb-desk-ic" aria-hidden="true">⚡</span><div class="sb-desk-tx"><b>' + esc(tr('deskT')) + ' · ' + esc(role) + '</b>'
+      + '<small>' + esc(who) + '</small><p>' + esc(tr('deskSub')) + '</p></div>'
+      + '<a class="sb-desk-go" href="' + esc(DESK) + '">' + esc(tr('deskGo')) + '</a>'
+      + '<a class="sb-desk-alt" href="' + esc(BOOT_STAFF.panelUrl || '/admin/') + '">' + esc(tr('deskPanel')) + ' →</a></div>';
+    root.parentNode.insertBefore(el, root);
+    root.hidden = true;
+    new MutationObserver(function () {
+      el.querySelector('b').textContent = tr('deskT') + ' · ' + role;
+      el.querySelector('p').textContent = tr('deskSub');
+      el.querySelector('.sb-desk-go').textContent = tr('deskGo');
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
+    steerClassic();
+  }
   function boot() {
+    if (DESK) { renderDesk(); return; }
     document.documentElement.classList.add('sb-on');
     root.hidden = false;
     retargetBookLinks();
+    steerClassic();
     var saved = store.get();
     api({ action: 'boot', phone: saved.phone || '', direction: saved.dir || '' })
       .then(function (d) {
@@ -179,6 +254,13 @@
         S.points = d.points || {};
         S.allowCod = d.allowCod !== false;
         S.maxPax = d.maxPax || 6;
+        S.codVerify = !STAFF && !!d.codVerify;
+        S.idTypes = d.idTypes || [];
+        S.qrSeconds = d.qrSeconds || 60;
+        if (d.prefill) {
+          ['address', 'idType'].forEach(function (k) { if (d.prefill[k] && !S.verify[k]) S.verify[k] = d.prefill[k]; });
+          if (d.prefill.idNum && !S.verify.idNum) S.verify.idNum = d.prefill.idNum;
+        }
         var df = d.defaults || {};
         S.why = df.why || {};
         S.dir = saved.dir || df.direction || 'toNepal';
@@ -640,9 +722,35 @@
       setTimeout(function () { root.scrollIntoView({ behavior: 'smooth', block: 'start' }); if (tx) fillFromText(tx); }, 120);
       return;
     }
-    var s = e.target.closest('[data-scroll="search-anchor"]');
-    if (s && document.documentElement.classList.contains('sb-on')) s.setAttribute('data-scroll', 'smartBook');
+    /* 16 Oct 2026 (owner: "3 ta booking system lai eutai ma"): every old booking
+       door - the seat-map search card and the QuickBot banner - is this card. */
+    var s = e.target.closest('[data-scroll="search-anchor"], [data-scroll="quick-ticket"], [data-bkmode]');
+    if (s && document.documentElement.classList.contains('sb-on')) {
+      if (s.hasAttribute('data-bkmode')) { e.preventDefault(); e.stopPropagation(); goCard(); return; }
+      s.setAttribute('data-scroll', DESK ? 'sbDesk' : 'smartBook');
+    }
   }, true);
+  function goCard() {
+    if (location.hash && location.hash !== '#/' && location.hash.indexOf('#/?') !== 0) location.hash = '#/';
+    setTimeout(function () { var el = DESK ? $('sbDesk') : root; if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 120);
+  }
+  /* The old Search -> Seats -> Checkout pages: a booking now starts on the card
+     (a staff session goes to the SmartBook desk). Only while the card is
+     running - if its engine is unreachable the classic pages stay the fallback. */
+  function steerClassic() {
+    if (!document.documentElement.classList.contains('sb-on')) return;
+    if (!/^#\/(results|seats|checkout)(\/|\?|$)/.test(location.hash || '')) return;
+    if (DESK) { location.href = DESK; return; }
+    try { history.replaceState(null, '', '#/'); } catch (x) { location.hash = '#/'; }
+    try { window.dispatchEvent(new HashChangeEvent('hashchange')); } catch (x) {}
+    goCard();
+  }
+  window.addEventListener('hashchange', steerClassic);
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if ($('sbPayOv') && !$('sbPayOv').hidden) closePay();
+    else if ($('sbCv') && !$('sbCv').hidden) closeCash();
+  });
 
   /* ---------------------------------------------------- choose seats */
   var pick = [];
@@ -700,7 +808,7 @@
     try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < 16; i++) a[i] = Math.floor(Math.random() * 256); }
     return 'sb' + Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
   }
-  function book(pay, wantPrint) {
+  function book(pay, wantPrint, verify) {
     S.touched.book = S.touched.phone = S.touched.name = S.touched.pax = S.touched.agent = true;
     var e = showErrs(true);
     if (Object.keys(e).length) {
@@ -712,6 +820,8 @@
     }
     if (S.busy) return;
     if (!S.q || !S.q.ok) { say(S.q && S.q.error ? S.q.error : tr('loading')); if (!S.q) requote(0); return; }
+    // Cash for a customer = pay at boarding: the verification sheet first (it calls back with the details).
+    if (pay === 'cash' && S.codVerify && !verify) { openCash(); return; }
     printNext = !!wantPrint;   // only a sale that really starts may print
     S.busy = true; S.idem = S.idem || newKey();
     var btn = $(pay === 'cash' ? 'sbCash' : 'sbOnline'); btn.classList.add('sb-busy');
@@ -721,9 +831,11 @@
     body.seats = S.q.seats; body.autoPicked = !!S.q.auto;   // the shown berths are the berths sold (re-checked on the server)
     body.expect = { total: S.q.price ? S.q.price.total : null, date: S.q.date };
     if (STAFF && $('sbAgent')) body.agentCode = S.agent;   // the desk's pick (the server validates; an agent login never sends one)
+    if (verify) body.verify = verify;
     store.set();
     api(body).then(function (r) {
       S.busy = false; btn.classList.remove('sb-busy'); lbl.textContent = old;
+      closeCash();
       adopt(r);
       S.idem = null;
       if (STAFF && r.agent) say('🤝 ' + r.agent.code + ' · ' + r.agent.name + (r.commission ? ' · 💰 ' + money(r.commission) : ''));
@@ -734,17 +846,19 @@
         printNext = false;
         if (STAFF && typeof window.SB_AFTER === 'function') { try { window.SB_AFTER(r); } catch (x) {} }
       }
+      else if (r.pay) { openPay(r); }
       else if (r.payPage && STAFF) { showPayLink(r); }
       else if (r.payPage) { say(tr('heldQr')); setTimeout(function () { location.href = r.payPage; }, 400); }
     }).catch(function (er) {
       S.busy = false; btn.classList.remove('sb-busy'); lbl.textContent = old;
       printNext = false;
-      if (er && er.fields && er.fields.code === 'changed' && er.fields.quote) { S.q = er.fields.quote; renderDates(); renderQuote(true); say(tr('changed')); S.idem = null; }
+      if (er && er.fields && er.fields.code === 'verify') { openCash(er.fields.field, er.message); }
+      else if (er && er.fields && er.fields.code === 'changed' && er.fields.quote) { closeCash(); S.q = er.fields.quote; renderDates(); renderQuote(true); say(tr('changed')); S.idem = null; }
       else if (er && er.fields && er.fields.field === 'agent' && $('sbAgent')) {   // the server refused the agent pick
         var ae = $('sbAgentE'); ae.textContent = er.message || tr('needAgent'); ae.hidden = false; $('sbAgent').classList.add('sb-bad');
         say(er.message); try { $('sbAgent').focus(); } catch (x) {}
       }
-      else say(er && er.message ? er.message : 'Error');
+      else { say(er && er.message ? er.message : 'Error'); cashErr(er && er.message ? er.message : 'Error'); }
       // The server answered (a refusal): the next tap is a new request with a new key. A lost
       // answer (no status: timeout / offline) keeps the key, so the retry gets the same booking back.
       if (er && er.status) S.idem = null;
@@ -753,6 +867,233 @@
   }
   var printNext = false;
   function staffPrint() { try { return localStorage.getItem('sb:print80') !== '0'; } catch (e) { return true; } }
+
+  /* ------------------------------------------------ Cash verification sheet
+     16 Oct 2026 (owner): Cash = pay at boarding, so a customer gives the full
+     name, address and one ID the crew can match at the door. The server
+     checks the same rules (SmartBook::codVerify) and names the field it
+     wants (422 code 'verify'); the sheet opens on that field. */
+  function cashSheet() {
+    var box = $('sbCv'); if (box) return box;
+    box = document.createElement('div'); box.id = 'sbCv'; box.className = 'sb-cv'; box.hidden = true;
+    box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'sbCvT');
+    root.appendChild(box);
+    box.addEventListener('click', function (e) {
+      if (e.target === box || e.target.closest('[data-cv="x"]')) { closeCash(); return; }
+      if (e.target.closest('[data-cv="online"]')) { closeCash(); book('online'); return; }
+    });
+    box.addEventListener('submit', function (e) { e.preventDefault(); submitCash(); });
+    return box;
+  }
+  function openCash(field, msg) {
+    var box = cashSheet(), q = S.q || {}, v = S.verify;
+    var types = (S.idTypes && S.idTypes.length ? S.idTypes : ['Aadhaar Card', 'Nepali Citizenship Card', 'Voter ID', 'Driving Licence', 'Passport']);
+    if (!v.idType) v.idType = S.cc === 'NP' ? 'Nepali Citizenship Card' : (S.dir === 'toNepal' ? 'Aadhaar Card' : '');
+    var tot = q.price ? money(q.price.total) : '';
+    box.innerHTML = '<form class="sb-cv-in" novalidate>'
+      + '<div class="sb-cv-hd"><span class="sb-cv-ic" aria-hidden="true">🛡️</span><div><h3 id="sbCvT">' + esc(tr('cvT')) + '</h3><small>' + esc(tr('cvSub')) + '</small></div>'
+      + '<button type="button" class="sb-x" data-cv="x" aria-label="Close">✕</button></div>'
+      + '<div class="sb-cv-sum"><b>' + esc(tot) + '</b><span>' + esc((q.from || '') + ' → ' + (q.to || '')) + ' · ' + esc(q.dateLabel || '') + (q.seatLabels ? ' · ' + esc(q.seatLabels.join(', ')) : '') + '</span>'
+      + '<span>📱 ' + esc((S.cc === 'NP' ? '+977 ' : '+91 ') + digits(S.phone)) + ' · ' + esc(tr('paxN', { n: S.pax.length })) + '</span></div>'
+      + '<label class="sb-cv-f"><span>' + esc(tr('cvName')) + ' <i>*</i></span><input id="sbCvName" autocomplete="name" maxlength="120" value="' + esc(S.name) + '"></label>'
+      + '<label class="sb-cv-f"><span>' + esc(tr('cvAddr')) + ' <i>*</i></span><input id="sbCvAddr" autocomplete="address-level2" maxlength="191" placeholder="' + esc(tr('cvAddrPh')) + '" value="' + esc(v.address) + '"></label>'
+      + '<div class="sb-cv-2"><label class="sb-cv-f"><span>' + esc(tr('cvIdT')) + ' <i>*</i></span><select id="sbCvIdT"><option value="">' + esc(tr('cvPick')) + '</option>'
+      + types.map(function (t) { return '<option' + (t === v.idType ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select></label>'
+      + '<label class="sb-cv-f"><span>' + esc(tr('cvIdN')) + ' <i>*</i></span><input id="sbCvIdN" maxlength="40" autocapitalize="characters" placeholder="' + esc(tr('cvIdPh')) + '" value="' + esc(v.idNum) + '"></label></div>'
+      + '<label class="sb-cv-f"><span>' + esc(tr('cvAlt')) + ' <small>(' + esc(tr('cvOpt')) + ')</small></span><span class="sb-cv-ph"><select id="sbCvAltCc" aria-label="Country"><option value="NP"' + (v.altCc !== 'IN' ? ' selected' : '') + '>+977</option><option value="IN"' + (v.altCc === 'IN' ? ' selected' : '') + '>+91</option></select>'
+      + '<input id="sbCvAlt" type="tel" inputmode="numeric" maxlength="14" value="' + esc(v.altPhone) + '"></span></label>'
+      + '<p class="sb-cv-e" id="sbCvE" role="alert"' + (msg ? '' : ' hidden') + '>' + esc(msg || '') + '</p>'
+      + '<p class="sb-cv-note">🪪 ' + esc(tr('cvNote')) + '</p>'
+      + '<button type="submit" class="sb-cv-go">' + esc(tr('cvGo')) + (tot ? ' · ' + esc(tot) : '') + '</button>'
+      + '<button type="button" class="sb-cv-alt" data-cv="online">' + esc(tr('cvOnline')) + '</button>'
+      + '</form>';
+    box.hidden = false; document.body.classList.add('shg-modal-open');
+    var map = { name: 'sbCvName', address: 'sbCvAddr', idType: 'sbCvIdT', idNum: 'sbCvIdN', altPhone: 'sbCvAlt' };
+    var first = field && map[field] ? map[field] : (S.name.trim().split(/\s+/).length < 2 ? 'sbCvName' : (!v.address ? 'sbCvAddr' : (!v.idType ? 'sbCvIdT' : (!v.idNum ? 'sbCvIdN' : ''))));
+    if (field && map[field]) $(map[field]).classList.add('sb-bad');
+    setTimeout(function () { var f = first ? $(first) : box.querySelector('.sb-cv-go'); if (f) try { f.focus(); } catch (x) {} }, 60);
+  }
+  function closeCash() { var box = $('sbCv'); if (!box || box.hidden) return; box.hidden = true; if (!($('sbPayOv') && !$('sbPayOv').hidden)) document.body.classList.remove('shg-modal-open'); }
+  function cashErr(msg) { var e = $('sbCvE'); if (!e || $('sbCv').hidden) return; e.textContent = msg; e.hidden = false; }
+  function submitCash() {
+    var nm = $('sbCvName').value.trim().replace(/\s+/g, ' ');
+    var v = S.verify;
+    v.address = $('sbCvAddr').value.trim(); v.idType = $('sbCvIdT').value; v.idNum = $('sbCvIdN').value.trim();
+    v.altPhone = digits($('sbCvAlt').value); v.altCc = $('sbCvAltCc').value;
+    $('sbCv').querySelectorAll('.sb-bad').forEach(function (x) { x.classList.remove('sb-bad'); });
+    var bad = nm.split(' ').length < 2 ? ['sbCvName', 'cvName'] : (v.address.length < 5 ? ['sbCvAddr', 'cvAddr'] : (!v.idType ? ['sbCvIdT', 'cvIdT'] : (v.idNum.replace(/[^A-Za-z0-9]/g, '').length < 4 ? ['sbCvIdN', 'cvIdN'] : null)));
+    if (!bad && v.altPhone && v.altPhone.slice(-10).length !== 10) bad = ['sbCvAlt', 'cvAlt'];
+    if (bad) { $(bad[0]).classList.add('sb-bad'); cashErr('⚠️ ' + tr(bad[1])); try { $(bad[0]).focus(); } catch (x) {} return; }
+    if (nm !== S.name) { S.name = nm; $('sbName').value = nm; store.set(); }
+    $('sbCvE').hidden = true;
+    var go = $('sbCv').querySelector('.sb-cv-go'); go.disabled = true; go.classList.add('sb-busy');
+    book('cash', false, { address: v.address, idType: v.idType, idNum: v.idNum, altPhone: v.altPhone, altCountry: v.altCc });
+    setTimeout(function () { if (go) { go.disabled = false; go.classList.remove('sb-busy'); } }, 1500);
+  }
+
+  /* ---------------------------------------------------- Online QR popup
+     16 Oct 2026 (owner: "online ma click garda sidhai bank ko QR popup open
+     hos like Razorpay, 60 second timer"). The booking is made (berths held
+     smartbook_online_hold_min on the server); the popup shows the bank QR
+     with the amount and PNR filled in, a 60-second countdown (then "Show a
+     new QR"), the UPI app button on a phone, eSewa for Nepal, any gateway,
+     and the UTR / screenshot form. It watches the booking: the office's
+     verification (or a bank callback into the verify queue) opens the
+     ticket here. Nothing in this popup confirms a booking. */
+  var PAY = null;
+  function payTicket(r) {
+    var k = '&k=' + encodeURIComponent(r.payKey || ''), p = encodeURIComponent(r.pnr);
+    return { view: '/download-ticket.php?pnr=' + p + k + '&img=1&view=1', png: '/download-ticket.php?pnr=' + p + k + '&img=1',
+      pdf: '/download-ticket.php?pnr=' + p + k, print: '/download-ticket.php?pnr=' + p + k + '&print=1', home: '/#/?ticket=' + p };
+  }
+  function openPay(r) {
+    closePay(true);
+    PAY = { r: r, d: r.pay || {}, tab: (r.pay && r.pay.upi) ? 'upi' : ((r.pay && r.pay.esewa) ? 'esewa' : 'gw'), end: 0, tick: 0, poll: 0, state: 'pay' };
+    var box = $('sbPayOv');
+    if (!box) {
+      box = document.createElement('div'); box.id = 'sbPayOv'; box.className = 'sb-pyo';
+      box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'sbPyT');
+      root.appendChild(box);
+      box.addEventListener('click', payClick);
+      box.addEventListener('submit', function (e) { e.preventDefault(); sendProof(); });
+    }
+    box.hidden = false; document.body.classList.add('shg-modal-open');
+    drawPay(); startQrTimer(); pollPay(2500);
+  }
+  function closePay(silent) {
+    if (!PAY) return;
+    clearInterval(PAY.tick); clearTimeout(PAY.poll);
+    var box = $('sbPayOv'); if (box) box.hidden = true;
+    if (!silent) document.body.classList.remove('shg-modal-open');
+    PAY = null;
+  }
+  function hhmm(sql) { var m = /(\d{2}):(\d{2})/.exec(String(sql || '').split(' ')[1] || ''); return m ? m[1] + ':' + m[2] : ''; }
+  function drawPay() {
+    var P = PAY; if (!P) return;
+    var r = P.r, d = P.d, box = $('sbPayOv');
+    var head = '<div class="sb-py-hd"><span class="sb-py-logo" aria-hidden="true">SH</span><div class="sb-py-who"><b id="sbPyT">S Hari Global</b><small>' + esc(r.pnr) + ' · ' + esc(r.route || '') + '</small></div>'
+      + '<button type="button" class="sb-py-x" data-py="close" aria-label="Close">✕</button></div>'
+      + '<div class="sb-py-amt"><small>' + esc(tr('pyAmt')) + '</small><b>' + esc(d.dueLabel || r.totalLabel || '') + '</b><span>≈ ' + esc(npr(d.npr || r.npr)) + '</span></div>';
+    var body = '';
+    if (P.state === 'verifying') {
+      body = '<div class="sb-py-st"><span class="sb-py-spin" aria-hidden="true"></span><b>' + esc(tr('pyVer')) + '</b><p>' + esc(tr('pyVerSub')) + '</p>'
+        + '<a class="sb-py-ghost" href="/#/my">My Bookings</a></div>';
+    } else if (P.state === 'over') {
+      body = '<div class="sb-py-st"><span class="sb-py-big" aria-hidden="true">⌛</span><p>' + esc(tr('pyGone')) + '</p><button type="button" class="sb-py-main" data-py="close">' + esc(tr('newB')) + '</button></div>';
+    } else {
+      var tabs = [];
+      if (d.upi) tabs.push(['upi', '🇮🇳 UPI']);
+      if (d.esewa) tabs.push(['esewa', '🇳🇵 eSewa']);
+      if (d.gateways && d.gateways.length) tabs.push(['gw', '💳 ' + tr('pyBank')]);
+      body += tabs.length > 1 ? '<div class="sb-py-tabs" role="tablist">' + tabs.map(function (t) { return '<button type="button" role="tab" data-pytab="' + t[0] + '" class="' + (P.tab === t[0] ? 'on' : '') + '" aria-selected="' + (P.tab === t[0]) + '">' + esc(t[1]) + '</button>'; }).join('') + '</div>' : '';
+      if (P.tab === 'upi' && d.upi) {
+        body += '<div class="sb-py-timer" id="sbPyTimer" role="timer" aria-live="off"><svg viewBox="0 0 36 36" aria-hidden="true"><circle class="bg" cx="18" cy="18" r="15"/><circle class="fg" cx="18" cy="18" r="15"/></svg><span><small>' + esc(tr('pyLeft')) + '</small><b id="sbPyClock">' + Math.floor(S.qrSeconds / 60) + ':' + ('0' + (S.qrSeconds % 60)).slice(-2) + '</b></span></div>'
+          + '<div class="sb-py-qrw" id="sbPyQrw"><img class="sb-py-qr" src="' + esc(d.upi.qr) + '" alt="UPI QR ' + esc(d.dueLabel || '') + '" width="240" height="240">'
+          + '<div class="sb-py-exp" hidden><b>⌛ ' + esc(tr('pyOver')) + '</b><button type="button" data-py="newqr">' + esc(tr('pyNew')) + '</button></div></div>'
+          + '<p class="sb-py-note">' + esc(tr('pyScan')) + '</p>'
+          + '<div class="sb-py-apps" aria-hidden="true"><span>GPay</span><span>PhonePe</span><span>Paytm</span><span>BHIM</span></div>'
+          + (d.upi.link ? '<a class="sb-py-main sb-py-upi" href="' + esc(d.upi.link) + '">' + esc(tr('pyApp')) + '</a>' : '')
+          + '<div class="sb-py-id"><span>UPI ID</span><code>' + esc(d.upi.id) + '</code><button type="button" data-pycopy="' + esc(d.upi.id) + '">' + esc(tr('pyCopy')) + '</button></div>';
+      } else if (P.tab === 'esewa' && d.esewa) {
+        body += (d.esewa.qr ? '<div class="sb-py-qrw"><img class="sb-py-qr" src="' + esc(d.esewa.qr) + '" alt="eSewa QR" width="240" height="240"></div>' : '')
+          + '<div class="sb-py-id"><span>eSewa</span><code>' + esc(d.esewa.id) + '</code><button type="button" data-pycopy="' + esc(d.esewa.id) + '">' + esc(tr('pyCopy')) + '</button></div>'
+          + '<div class="sb-py-id"><span>NPR</span><b>' + esc(npr(d.esewa.npr)) + '</b><small>' + esc(d.esewa.name || '') + '</small></div>'
+          + '<p class="sb-py-note">' + esc(tr('pyEsewa')) + '</p>';
+      } else if (d.gateways && d.gateways.length) {
+        body += d.gateways.map(function (g) { return '<a class="sb-py-main" href="' + esc(g.url) + '">' + esc(L3(g.label)) + '</a>'; }).join('');
+      }
+      body += '<form class="sb-py-proof" autocomplete="off"><b>' + esc(tr('pyPaid')) + '</b>'
+        + '<input name="utr" maxlength="40" inputmode="text" placeholder="' + esc(tr('pyUtr')) + '" aria-label="' + esc(tr('pyUtr')) + '">'
+        + '<label class="sb-py-file"><span>📎 ' + esc(tr('pyShot')) + '</span><input type="file" name="screenshot" accept="image/*"></label>'
+        + '<p class="sb-py-err" role="alert" hidden></p><button type="submit" class="sb-py-send">' + esc(tr('pySend')) + '</button></form>';
+      if (STAFF) body += '<button type="button" class="sb-py-ghost" data-py="share">' + esc(tr('pyShare')) + '</button>';
+    }
+    var foot = '<div class="sb-py-ft"><span>🔒 ' + esc(tr('pySafe')) + '</span>'
+      + (d.holdUntil && P.state === 'pay' ? '<span>🛏 ' + esc(tr('pyHeld')) + ' ' + esc(hhmm(d.holdUntil)) + '</span>' : '') + '</div>';
+    box.innerHTML = '<div class="sb-py">' + head + '<div class="sb-py-body">' + body + '</div>' + foot + '</div>';
+    paintQrTimer();
+  }
+  function startQrTimer() {
+    var P = PAY; if (!P) return;
+    clearInterval(P.tick);
+    P.end = Date.now() + S.qrSeconds * 1000;
+    P.tick = setInterval(paintQrTimer, 250);
+    paintQrTimer();
+  }
+  var QR_C = 2 * Math.PI * 15;
+  function paintQrTimer() {
+    var P = PAY; if (!P || P.state !== 'pay') return;
+    var left = Math.max(0, Math.ceil((P.end - Date.now()) / 1000));
+    var t = $('sbPyTimer'), c = $('sbPyClock'), w = $('sbPyQrw');
+    if (c) c.textContent = Math.floor(left / 60) + ':' + ('0' + (left % 60)).slice(-2);
+    if (t) {
+      var fg = t.querySelector('.fg');
+      fg.setAttribute('stroke-dasharray', QR_C.toFixed(2));
+      fg.setAttribute('stroke-dashoffset', (QR_C * (1 - left / S.qrSeconds)).toFixed(2));
+      t.classList.toggle('low', left <= 10);
+    }
+    if (w) { w.classList.toggle('sb-py-dead', left === 0); var ex = w.querySelector('.sb-py-exp'); if (ex) ex.hidden = left !== 0; }
+    if (left === 0) clearInterval(P.tick);
+  }
+  function payClick(e) {
+    var P = PAY; if (!P) return;
+    var b;
+    if (e.target === $('sbPayOv') || e.target.closest('[data-py="close"]')) { closePay(); return; }
+    if ((b = e.target.closest('[data-pytab]'))) { P.tab = b.getAttribute('data-pytab'); drawPay(); if (P.tab === 'upi') startQrTimer(); return; }
+    if ((b = e.target.closest('[data-pycopy]'))) {
+      var v = b.getAttribute('data-pycopy');
+      try { navigator.clipboard.writeText(v).then(function () { b.textContent = tr('pyCopied') + ' ✓'; }); } catch (x) { say(v); }
+      return;
+    }
+    if (e.target.closest('[data-py="newqr"]')) {
+      api({ action: 'payinfo', pnr: P.r.pnr, k: P.r.payKey || '' }).then(function (x) {
+        if (!PAY) return;
+        if (x.status === 'confirmed') { payDone(); return; }
+        if (x.status !== 'pending' || !x.pay) { PAY.state = 'over'; drawPay(); return; }
+        PAY.d = x.pay; drawPay(); startQrTimer();
+      }).catch(function (er) { say(er.message); });
+      return;
+    }
+    if (e.target.closest('[data-py="share"]')) { var r = P.r; closePay(); showPayLink(r); }
+  }
+  function sendProof() {
+    var P = PAY; if (!P) return;
+    var f = $('sbPayOv').querySelector('.sb-py-proof'), err = f.querySelector('.sb-py-err');
+    var utr = f.utr.value.trim(), file = f.screenshot.files && f.screenshot.files[0];
+    if (!utr && !file) { err.textContent = tr('pyNeed'); err.hidden = false; f.utr.focus(); return; }
+    var fd = new FormData();
+    fd.append('pnr', P.r.pnr); fd.append('k', P.r.payKey || ''); fd.append('utr', utr);
+    fd.append('method', P.tab === 'esewa' ? 'esewa' : 'upi'); fd.append('amount', String((P.d && P.d.due) || P.r.total || ''));
+    if (file) fd.append('screenshot', file);
+    var btn = f.querySelector('.sb-py-send'); btn.disabled = true; btn.classList.add('sb-busy');
+    var send = typeof shgApi.postForm === 'function' ? shgApi.postForm('/payment.php', fd)
+      : fetch('/api/payment.php', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': (window.SHG_BOOT || {}).csrf || '' }, body: fd })
+          .then(function (x) { return x.json(); }).then(function (j) { if (!j || j.ok !== true) throw new Error((j && j.error) || 'Error'); return j.data; });
+    send.then(function () {
+      if (!PAY) return;
+      PAY.state = 'verifying'; clearInterval(PAY.tick); drawPay(); pollPay(4000);
+    }).catch(function (er) { btn.disabled = false; btn.classList.remove('sb-busy'); err.textContent = er && er.message ? er.message : 'Error'; err.hidden = false; });
+  }
+  function pollPay(ms) {
+    var P = PAY; if (!P) return;
+    clearTimeout(P.poll);
+    P.poll = setTimeout(function () {
+      if (!PAY || PAY !== P) return;
+      api({ action: 'status', pnr: P.r.pnr, k: P.r.payKey || '' }).then(function (x) {
+        if (!PAY || PAY !== P) return;
+        if (x.status === 'confirmed') { payDone(); return; }
+        if (x.status === 'expired' || x.status === 'cancelled' || x.status === 'rejected') { P.state = 'over'; drawPay(); return; }
+        if (x.proof && P.state === 'pay') { P.state = 'verifying'; clearInterval(P.tick); drawPay(); }
+        pollPay(P.state === 'verifying' ? 5000 : 4000);
+      }).catch(function () { pollPay(8000); });
+    }, ms);
+  }
+  function payDone() {
+    var r = PAY ? PAY.r : null; closePay(true);
+    if (!r) return;
+    r.status = 'confirmed'; r.ticket = payTicket(r);
+    showTicket(r, true);
+  }
   /* Agent + Online: the customer pays by QR on their own phone - the agent sends the link. */
   function showPayLink(r) {
     var url = location.origin + r.payPage;
@@ -881,10 +1222,30 @@
 
   /* ------------------------------------------------------------ ticket */
   var lastTicket = null;
+  /* 16 Oct 2026 (owner: "3-4 second mai ticket delivery"): the picture on this
+     screen is the ticket the moment the sale answers. WhatsApp: a customer taps
+     once and sends "Hi" to our Meta number - the free reply carries the ticket
+     PNG in seconds (paid template sends can fail on an empty wallet); a desk
+     sends the ticket link straight to the customer's own WhatsApp. */
+  function waTicketBtn(r) {
+    if (!STAFF) {
+      var hi = String(((window.SHG_BOOT || {}).waHi) || '').replace(/\D/g, '');
+      if (hi.length < 10) return '';
+      return '<a class="sb-tk-wa" target="_blank" rel="noopener" href="https://wa.me/' + hi + '?text=' + encodeURIComponent('Hi ' + r.pnr) + '">'
+        + '<span>' + esc(tr('waGet')) + '</span><small>' + esc(tr('waGetSub')) + '</small></a>';
+    }
+    var ph = digits(r.phone || ''); if (ph.length < 10) return '';
+    var cc = ph.length > 10 ? '' : (S.cc === 'NP' ? '977' : '91');
+    var link = location.origin + ((r.ticket && r.ticket.view) || '');
+    var text = 'S Hari Global 🎫 ' + r.pnr + ' · ' + (r.route || '') + ' · ' + (r.dateLabel || '') + ' · ' + (r.seatLabels || []).join(', ') + '\n' + link;
+    return '<a class="sb-tk-wa" target="_blank" rel="noopener" href="https://wa.me/' + cc + ph + '?text=' + encodeURIComponent(text) + '"><span>' + esc(tr('waSend')) + '</span><small>+' + esc(cc + ph) + '</small></a>';
+  }
   function ticketHtml(r) {
     var t = r.ticket || {};
+    var secs = r.elapsedMs > 0 ? (r.elapsedMs / 1000).toFixed(1) + ' s' : '';
     return '<div class="sb-tk">'
       + '<div class="sb-tk-h"><span class="sb-tk-ok" aria-hidden="true">✓</span><div><b>' + esc(tr('ticketOk')) + '</b><small>' + esc(r.route || '') + ' · ' + esc(r.dateLabel || '') + '</small></div>'
+      + (secs ? '<span class="sb-tk-fast" title="' + esc(tr('fast')) + '">⚡ ' + esc(secs) + '</span>' : '')
       + '<button type="button" class="sb-x" data-tk="close" aria-label="Close" style="margin-left:auto">✕</button></div>'
       + '<div class="sb-tk-pnr">' + esc(tr('pnr')) + ' ' + esc(r.pnr) + '</div>'
       + (t.view ? '<div class="sb-tk-imgw" data-tkimg><img class="sb-tk-img" src="' + esc(t.view) + '" alt="Ticket ' + esc(r.pnr) + '" loading="eager" decoding="async"><span class="sb-tk-wait">' + esc(tr('making')) + '</span></div>' : '')
@@ -895,6 +1256,7 @@
          answers these only to a staff session; a customer's answer has neither) */
       + (STAFF && r.agent ? '<div class="sb-tk-agent">🤝 ' + esc(tr('credited')) + ' ' + esc(r.agent.code + ' · ' + r.agent.name)
           + (r.commission ? ' · ' + esc(money(r.commission)) + ' ' + esc(tr('commission')) : '') + '</div>' : '')
+      + waTicketBtn(r)
       + '<div class="sb-tk-acts">'
       /* 15 Oct 2026 (owner: "same page mai delivery, share ya download button"):
          the picture above IS the ticket; Share leads (WhatsApp on a phone),
@@ -968,6 +1330,7 @@
 
   /* /#/?ticket=PNR opens the ticket on the home page (§7) */
   function ticketFromHash() {
+    if (DESK) return;
     var m = /^#\/\?ticket=([A-Za-z0-9-]+)/.exec(location.hash || '');
     if (!m) return;
     var pnr = decodeURIComponent(m[1]);
@@ -985,7 +1348,7 @@
 
   /* --------------------------------------------- page-level wiring */
   function retargetBookLinks() {
-    document.querySelectorAll('[data-scroll="search-anchor"]').forEach(function (a) { a.setAttribute('data-scroll', 'smartBook'); });
+    document.querySelectorAll('[data-scroll="search-anchor"], [data-scroll="quick-ticket"]').forEach(function (a) { a.setAttribute('data-scroll', DESK ? 'sbDesk' : 'smartBook'); });
   }
   function homeFlag() {
     var home = document.getElementById('view-home');

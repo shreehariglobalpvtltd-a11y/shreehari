@@ -59,6 +59,7 @@ $pageGate = [
     'bookings.php'      => ['bookings.view'],  'booking-view.php' => ['bookings.view'],
     'reschedule.php'    => ['bookings.view'],  'manifest.php'     => ['bookings.view'],
     'chalan.php'        => ['bookings.view'],  'quick-ticket.php' => ['bookings.view'],
+    'smartbook.php'     => ['bookings.view'],
     'wa-routing.php'    => ['bookings.view'],  'trips.php'        => ['schedules.view'],
     'seatmap.php'       => ['schedules.view'], 'buses.php'        => ['schedules.view'],
     'scan.php'          => ['tickets.scan'],   'payments.php'     => ['payments.view'],
@@ -621,12 +622,12 @@ admin_page_head(
   </div>
 </div>
 
-<?php if ($may('quick-ticket.php')): ?>
-<!-- QuickBot promo (the desk's fast lane) -->
-<a class="promo" href="/admin/quick-ticket.php">
+<?php if ($may('smartbook.php')): ?>
+<!-- 16 Oct 2026: the ONE booking screen for every desk (QuickBot + New Booking folded in) -->
+<a class="promo" href="/admin/smartbook.php">
   <span class="promo-ico"><svg class="a-ic"><use href="#a-bolt"/></svg></span>
-  <span class="promo-txt"><b>QuickBot Ticket — 10-second booking <em>AI</em></b><small>One line — "Ram 9876543210 2 seats Mehsana kal" or just name + mobile. QuickBot fills the route, date, pickup, seat and fare from the passenger's history, confirms, and sends the PNG ticket on WhatsApp.</small></span>
-  <span class="promo-cta">Open desk →</span>
+  <span class="promo-txt"><b>⚡ SmartBook — one booking screen <em>AI</em></b><small>Agent code first, then name + mobile (or one line: "Ram 9876543210 2 seats Mehsana kal"). Bus, date, pickup, berths and fare come from the engine; Cash = ticket now, Online = bank QR. Same screen for counter, agent and office.</small></span>
+  <span class="promo-cta">Book →</span>
 </a>
 <?php endif; ?>
 

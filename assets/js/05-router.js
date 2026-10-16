@@ -1357,7 +1357,7 @@ function initQuickTicket() {
     var btn = $id('qtSend');
     if (btn) { btn.textContent = '🤖 Open the QuickBot desk →'; btn.removeAttribute('data-i18n'); }
     var cta = $id('heroQtCta');
-    if (cta) { cta.textContent = '🤖 QuickBot desk →'; cta.removeAttribute('data-i18n'); cta.removeAttribute('data-scroll'); cta.href = '/admin/quick-ticket.php'; }
+    if (cta) { cta.textContent = '⚡ SmartBook desk →'; cta.removeAttribute('data-i18n'); cta.removeAttribute('data-scroll'); cta.href = '/admin/smartbook.php'; }
     form.classList.remove('qt-onetap');
     var lineS = $id('qtLine'); if (lineS) lineS.hidden = true;
     var lineW = $id('qtLineWrap'); if (lineW) lineW.hidden = true;
@@ -1365,7 +1365,7 @@ function initQuickTicket() {
       e.preventDefault();
       var name  = String(($id('qtName') || {}).value || '').trim();
       var phone = digits(String(($id('qtPhone') || {}).value || ''));
-      location.href = '/admin/quick-ticket.php?name=' + encodeURIComponent(name) + '&phone=' + encodeURIComponent(phone);
+      location.href = '/admin/smartbook.php' + (phone ? '?cphone=' + encodeURIComponent(phone) + (name ? '&cname=' + encodeURIComponent(name) : '') : '');
     });
     return;
   }

@@ -1682,6 +1682,20 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
     <?php endif; ?>
   </div>
 
+  <?php /* 16 Oct 2026: what a Cash (pay at boarding) customer gave for verification
+     on SmartBook - address, ID, second mobile. Call before the bus if unsure. */
+  $cvAddr = trim((string) ($b['contact_address'] ?? ''));
+  if (!empty($b['is_cod']) && ($cvAddr !== '' || trim((string) ($b['id_number'] ?? '')) !== '')): ?>
+  <div class="card" style="margin:10px 0;padding:12px 14px;border-left:4px solid #e8771f">
+    <b>🛡️ Cash verification · नगद प्रमाणीकरण</b>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px 14px;margin-top:6px;font-size:14px">
+      <?php if ($cvAddr !== ''): ?><div><small class="muted">Address · ठेगाना</small><br><?= Security::e($cvAddr) ?></div><?php endif; ?>
+      <?php if (trim((string) ($b['id_number'] ?? '')) !== ''): ?><div><small class="muted">ID · परिचयपत्र</small><br><?= Security::e(trim((string) ($b['id_type'] ?? '') . ' ' . (string) $b['id_number'])) ?></div><?php endif; ?>
+      <?php if (trim((string) ($b['alt_phone'] ?? '')) !== ''): ?><div><small class="muted">Second mobile · दोस्रो मोबाइल</small><br><a href="tel:+<?= Security::e(preg_replace('/\D/', '', (string) ($b['alt_country_code'] ?? '')) . preg_replace('/\D/', '', (string) $b['alt_phone'])) ?>"><?= Security::e((string) $b['alt_phone']) ?></a></div><?php endif; ?>
+    </div>
+  </div>
+  <?php endif; ?>
+
   <!-- Edit Contact + Passengers -->
   <details>
     <summary>✏️ Edit Contact / Passenger Names</summary>

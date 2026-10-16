@@ -221,7 +221,7 @@ admin_header('Shift & Cash', 'shift');
     <?php if ($live['cancelled'] > 0): ?>
       <p class="muted" style="font-size:13px">ℹ️ <?= (int) $live['cancelled'] ?> ticket(s) you took money for were cancelled. If you gave cash back from the drawer, enter it under “Cash paid out”.</p>
     <?php endif; ?>
-    <p class="sh-noprint" style="margin:6px 0 0"><a class="btn" href="<?= $base ?>/admin/quick-ticket.php">🤖 Sell a ticket</a></p>
+    <p class="sh-noprint" style="margin:6px 0 0"><a class="btn" href="<?= $base ?>/admin/smartbook.php">⚡ Sell a ticket</a></p>
   </div>
 
   <div class="panel sh-noprint">

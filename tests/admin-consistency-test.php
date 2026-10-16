@@ -123,7 +123,8 @@ check('booking Delete Forever is a danger button', (bool) preg_match('~class="bt
 check('booking page has no inline #C00 button face left', !str_contains($bv, 'background:#C00'));
 // 15 Oct 2026: Reject switches the account off and never deletes it (owner rule) - still a red button.
 check('agent application Reject is red (and never deletes)', (bool) preg_match('~class="btn danger btn-sm"\s*\R\s*onclick="return confirm\(\'Reject this application~', $stf) && str_contains($stf, 'is never deleted'));
-check('dashboard QuickBot keeps the royal action face (not caution)', str_contains($idx, '<a class="btn" href="\' . $base . \'/admin/quick-ticket.php">'));
+// 16 Oct 2026: SmartBook is the one booking screen; the dashboard's Book button keeps the royal action face.
+check('dashboard Book ticket keeps the royal action face (not caution)', str_contains($idx, '<a class="btn" href="\' . $base . \'/admin/smartbook.php">'));
 
 echo "\n-- 3. Trip status + dark-mode text (D9-05, D9-04) --\n";
 $states = [TripStatus::STATE_UPCOMING, TripStatus::STATE_DEPARTING, TripStatus::STATE_BOARDING, TripStatus::STATE_DEPARTED, TripStatus::STATE_ON_ROUTE,
@@ -229,7 +230,10 @@ if ($base === '' || !function_exists('curl_init')) {
         $li = $req('POST', '/admin/login.php', ['shg_csrf' => $m[1] ?? '', 'username' => $user, 'password' => $pw]);
         check('a super-admin signs in', $li['code'] === 302, 'HTTP ' . $li['code']);
 
-        $pages = ['index.php', 'calendar.php', 'bookings.php', 'settings.php', 'buses.php', 'schedule.php', 'agents.php', 'quick-ticket.php',
+        // 16 Oct 2026: quick-ticket.php forwards to SmartBook (the one booking screen); ?legacy=1 still opens it.
+        $fw = $req('GET', '/admin/quick-ticket.php');
+        check('/admin/quick-ticket.php forwards to SmartBook', $fw['code'] === 302, 'HTTP ' . $fw['code']);
+        $pages = ['index.php', 'calendar.php', 'bookings.php', 'settings.php', 'buses.php', 'schedule.php', 'agents.php', 'smartbook.php', 'quick-ticket.php?legacy=1',
                   'wa-manager.php', 'ai-copilot.php', 'trip-dashboard.php', 'staff.php', 'payroll.php', 'analytics.php', 'payments.php', 'trips.php'];
         foreach ($pages as $p) {
             $r = $req('GET', '/admin/' . $p);

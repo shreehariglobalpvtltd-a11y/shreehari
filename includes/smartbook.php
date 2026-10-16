@@ -56,9 +56,50 @@ final class SmartBookChanged extends RuntimeException
     }
 }
 
+/** A Cash booking missing a verification detail — the card opens that field. */
+final class SmartBookVerifyNeeded extends RuntimeException
+{
+    public function __construct(string $message, public readonly string $field)
+    {
+        parent::__construct($message);
+    }
+}
+
 final class SmartBook
 {
     public const MODES = ['customer', 'agent', 'counter', 'admin'];
+
+    /**
+     * What the Online popup shows for a pending booking: amount, the UPI QR
+     * (amount + PNR filled in), the UPI app link, eSewa, and any gateway
+     * button - the same adapters smartpay.php uses. Nothing here confirms.
+     *
+     * @param array<string, mixed> $booking bookings row
+     * @return array<string, mixed>
+     */
+    public static function payData(array $booking): array
+    {
+        require_once __DIR__ . '/payadapter.php';
+        $due = PaymentAdapters::due($booking);
+        $out = ['due' => $due, 'dueLabel' => inr($due), 'npr' => round($due * (float) SiteFacts::all()['npr']),
+                'upi' => null, 'esewa' => null, 'gateways' => [],
+                'seconds' => max(30, min(600, Settings::getInt('smartbook_qr_seconds', 60))),
+                'holdUntil' => (string) ($booking['expires_at'] ?? '')];
+        try {
+            foreach (PaymentAdapters::all() as $a) {
+                $d = $a->start($booking, $due);
+                if (($d['kind'] ?? '') === 'qr') {
+                    $out['upi']   = $d['upi'] ?? null;
+                    $out['esewa'] = $d['esewa'] ?? null;
+                } elseif (($d['kind'] ?? '') === 'redirect') {
+                    $out['gateways'][] = ['label' => $a->label(), 'url' => (string) $d['url']];
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::warning('SmartBook payData failed', ['pnr' => (string) ($booking['pnr'] ?? ''), 'e' => $e->getMessage()]);
+        }
+        return $out;
+    }
 
     /** The booking mode a SESSION may use — never what the client claims. */
     public static function sessionMode(string $asked = ''): string
@@ -906,11 +947,13 @@ final class SmartBook
         }
 
         $cod = $pay === 'cash';
+        $verify = null;
         if ($mode === 'customer') {
             if ($cod && !Settings::getBool('allow_cod', true)) {
                 throw new RuntimeException('Cash is not available right now — tap Online. / अहिले Cash छैन — Online थिच्नुहोस्।');
             }
             if ($cod) {
+                $verify = self::codVerify($in, $name, $phone);
                 self::assertCodCap($phone, (int) $q['scheduleId'], count($req['pax']));
             }
         }
@@ -938,7 +981,9 @@ final class SmartBook
             'scheduleId'      => (int) $q['slot'] > 1 ? (int) $q['scheduleId'] : 0,
             'seats'           => $q['seats'],
             'passengers'      => $passengers,
-            'contact'         => ['phone' => $phone, 'email' => '', 'idType' => $country === 'NP' ? 'Nepali Citizenship' : '', 'idNum' => '', 'country' => $country],
+            'contact'         => ['phone' => $phone, 'email' => '',
+                'idType' => $verify['idType'] ?? ($country === 'NP' ? 'Nepali Citizenship' : ''), 'idNum' => $verify['idNum'] ?? '',
+                'altPhone' => $verify['altPhone'] ?? '', 'altCountry' => $verify['altCountry'] ?? '', 'country' => $country],
             'bookingMode'     => $q['type'] === 'seater' ? null : $q['type'],
             'cabinType'       => $q['type'] === 'private' ? $q['cabin'] : ($q['type'] === 'sharing' ? 'single' : null),
             'sharingTier'     => null,
@@ -979,6 +1024,14 @@ final class SmartBook
         // 15 Oct 2026: the lead passenger's name teaches the F / M guess (NameGuess).
         require_once __DIR__ . '/nameguess.php';
         NameGuess::teach($name, (string) ($req['pax'][0]['gender'] ?? ''));
+        if ($verify !== null && $verify['address'] !== '') {
+            try {
+                Database::run('UPDATE bookings SET contact_address = :a WHERE id = :id', ['a' => $verify['address'], 'id' => (int) $booking['id']]);
+            } catch (Throwable $e) {
+                // the column arrives with upgrade-2026-10-16-unified-booking.sql; the sale stands without it
+                Logger::warning('contact_address not saved', ['pnr' => $pnr, 'e' => $e->getMessage()]);
+            }
+        }
         // Online: the berths are held for the QR payment window, then released by cron/expire.php.
         if (($booking['status'] ?? '') === 'pending') {
             $hold = max(5, Settings::getInt('smartbook_online_hold_min', 15));
@@ -990,6 +1043,79 @@ final class SmartBook
         }
 
         return self::result($booking, $q, $name, $phone, $pay, $t0);
+    }
+
+    /**
+     * Cash = pay at boarding, so the office must be able to find and check the
+     * customer (owner, 16 Oct 2026: "cash wala lai verification ko lagi details
+     * compulsory"): full name (first + last), the village / city and district,
+     * and one ID document the crew can match at the door. A second mobile is
+     * optional. Online stays name + mobile - the payment is the proof there.
+     *
+     * @param array<string, mixed> $in
+     * @return array{address: string, idType: string, idNum: string, altPhone: string, altCountry: string}|null
+     */
+    private static function codVerify(array $in, string $name, string $phone): ?array
+    {
+        if (!Settings::getBool('cod_verify_on', true)) {
+            return null;
+        }
+        require_once __DIR__ . '/customerprofile.php';
+        $v    = is_array($in['verify'] ?? null) ? $in['verify'] : [];
+        $txt  = static fn(string $k, int $max): string => mb_substr(trim((string) preg_replace('/\s+/u', ' ', (string) ($v[$k] ?? ''))), 0, $max);
+        $addr = Security::clean($txt('address', 191), 191);
+        $type = $txt('idType', 60);
+        $num  = strtoupper((string) preg_replace('/[^A-Za-z0-9\-\/]/', '', $txt('idNum', 60)));
+        $alt  = (string) preg_replace('/\D/', '', $txt('altPhone', 20));
+        $altC = strtoupper($txt('altCountry', 3)) === 'IN' ? 'IN' : 'NP';
+        $bad  = static fn(string $field, string $msg) => new SmartBookVerifyNeeded($msg, $field);
+
+        if (count(preg_split('/\s+/u', trim($name)) ?: []) < 2) {
+            throw $bad('name', 'Cash booking: write the full name (first name and surname). / नगद बुकिङ: पूरा नाम (नाम र थर) लेख्नुहोस्।');
+        }
+        if (mb_strlen($addr) < 5) {
+            throw $bad('address', 'Cash booking: write your address — village / city and district. / नगद बुकिङ: ठेगाना लेख्नुहोस् — गाउँ / सहर र जिल्ला।');
+        }
+        if (!in_array($type, CustomerProfile::ID_TYPES, true)) {
+            throw $bad('idType', 'Cash booking: choose your ID document. / नगद बुकिङ: परिचयपत्रको प्रकार छान्नुहोस्।');
+        }
+        if (strlen($num) < 4) {
+            throw $bad('idNum', 'Cash booking: write the ID number — show this ID when you board. / नगद बुकिङ: परिचयपत्र नम्बर लेख्नुहोस् — चढ्दा यही देखाउनुहोस्।');
+        }
+        if ($alt !== '') {
+            $alt = substr($alt, -10);
+            if (strlen($alt) !== 10 || $alt === substr($phone, -10)) {
+                throw $bad('altPhone', 'Second mobile: 10 digits, different from the first — or leave it empty. / दोस्रो मोबाइल: १० अङ्क, पहिलोभन्दा फरक — वा खाली छोड्नुहोस्।');
+            }
+        }
+        return ['address' => $addr, 'idType' => $type, 'idNum' => $num, 'altPhone' => $alt, 'altCountry' => $altC];
+    }
+
+    /**
+     * What the Cash sheet can fill in for a customer who proved their number
+     * by OTP (their saved profile). Never for an unverified session.
+     *
+     * @return array{name: string, address: string, idType: string, idNum: string}
+     */
+    public static function verifyPrefill(): array
+    {
+        $out = ['name' => '', 'address' => '', 'idType' => '', 'idNum' => ''];
+        try {
+            require_once __DIR__ . '/customerprofile.php';
+            $uid = CustomerProfile::verifiedUserId();
+            if ($uid <= 0) {
+                return $out;
+            }
+            $p = CustomerProfile::forApp($uid);
+            $u = Auth::user();
+            $out['name']    = (string) ($u['full_name'] ?? $u['name'] ?? '');
+            $out['address'] = (string) ($p['address'] ?? '');
+            $out['idType']  = (string) ($p['idType'] ?? '');
+            $out['idNum']   = (string) ($p['idNumber'] ?? '');
+        } catch (Throwable $e) {
+            // a missing profile column never blocks the card
+        }
+        return $out;
     }
 
     /** Pay-at-boarding passengers one mobile may hold on one departure (§7, default 6). */
@@ -1065,6 +1191,9 @@ final class SmartBook
             ] : null,
             'payPage'     => !$confirmed ? '/smartpay.php?pnr=' . rawurlencode($pnr) . '&k=' . rawurlencode(Ticket::downloadToken($pnr)) : null,
             'expiresAt'   => !$confirmed ? (string) ($booking['expires_at'] ?? '') : null,
+            // The Online popup (16 Oct 2026): QR, UPI link, eSewa and the key the proof form and the ticket links need.
+            'payKey'      => Ticket::downloadToken($pnr),
+            'pay'         => !$confirmed ? self::payData($booking) : null,
             'customer'    => $detail !== null ? shg_customer_payload($detail) : null,
             'elapsedMs'   => (int) round((microtime(true) - $t0) * 1000),
         ];

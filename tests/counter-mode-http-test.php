@@ -142,7 +142,7 @@ try {
        staff.agents; QuickBot's page must key the SAME entry on the same id
        so the two desks always agree on the agent. */
     check('staff boot ships id + the agent picker list (desk memory key shg_ctr_agent_<id>)', (int) ($ab['staff']['id'] ?? 0) === $agentId && is_array($ab['staff']['agents'] ?? null), 'id=' . ($ab['staff']['id'] ?? '?') . ' agents=' . count($ab['staff']['agents'] ?? []));
-    $qtp = req($a, 'GET', '/admin/quick-ticket.php');
+    $qtp = req($a, 'GET', '/admin/quick-ticket.php?legacy=1');   // 16 Oct 2026: the plain URL forwards to SmartBook
     check('QuickBot desk keys the remembered agent on the same staff id', $qtp['code'] === 200 && str_contains($qtp['body'], 'var STAFF_ID = ' . $agentId . ';') && str_contains($qtp['body'], "'shg_ctr_agent_' + STAFF_ID") && str_contains($qtp['body'], 'id="qtAgent"'), 'HTTP ' . $qtp['code']);
     $csrfA = (string) ($ab['csrf'] ?? '');
 

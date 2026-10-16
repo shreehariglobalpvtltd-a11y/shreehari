@@ -19,10 +19,15 @@
  *         + reasons, server price + NPR, suggestion / alternatives. Read-only.
  *   { action: "book", pay: "cash"|"online", idem, name, phone, country,
  *     expect{total,date}, …quote fields }
- *       → Cash: CONFIRMED pay-at-boarding ticket now (no OTP). Online: the
- *         berths are held smartbook_online_hold_min and payPage is the QR
- *         page. `idem` makes a double tap / retry return the first booking.
+ *       → Cash: CONFIRMED pay-at-boarding ticket now (no OTP); a customer
+ *         sends verify{address, idType, idNum, altPhone?} (cod_verify_on) or
+ *         gets 422 fields{code:'verify', field}. Online: the berths are held
+ *         smartbook_online_hold_min and `pay` carries the QR popup's data
+ *         (payPage stays as the full-page fallback). `idem` makes a double
+ *         tap / retry return the first booking.
  *         A moved price / date answers 409 fields{code:'changed', quote}.
+ *   { action: "payinfo", pnr, k? } → the QR popup again for a pending booking
+ *         this browser / owner may open.
  *   { action: "parse", text } → QuickBot: the free-text line read on the
  *         server (TicketBot::parse) into card fields. Read-only.
  */
@@ -64,7 +69,27 @@ try {
             'npr'        => (float) $facts['npr'],
             'policy'     => $facts['policy']['line'],
             'holdMin'    => max(5, Settings::getInt('smartbook_online_hold_min', 15)),
+            // 16 Oct 2026: Cash (pay at boarding) asks a customer for verification details.
+            'codVerify'  => $mode === 'customer' && Settings::getBool('cod_verify_on', true),
+            'idTypes'    => (static function (): array { require_once INCLUDE_PATH . '/customerprofile.php'; return CustomerProfile::ID_TYPES; })(),
+            'prefill'    => $mode === 'customer' ? SmartBook::verifyPrefill() : null,
+            'qrSeconds'  => max(30, min(600, Settings::getInt('smartbook_qr_seconds', 60))),
         ]);
+    }
+
+    if ($action === 'payinfo') {
+        // The Online popup re-opened for a booking still waiting for payment -
+        // only for the browser / owner of the booking or its keyed link.
+        require_once INCLUDE_PATH . '/payadapter.php';
+        require_once INCLUDE_PATH . '/ticket.php';
+        $pnr = strtoupper(Security::clean((string) ($in['pnr'] ?? ''), 40));
+        $key = Security::clean((string) ($in['k'] ?? ''), 64);
+        $st  = Security::isValidPnr($pnr) ? SmartPay::status($pnr, $key) : null;
+        if ($st === null) {
+            Response::forbidden('Not your booking.');
+        }
+        $b = BookingService::findByPnr($pnr);
+        Response::success($st + ['pnr' => $pnr, 'pay' => $st['status'] === 'pending' && $b !== null ? SmartBook::payData($b) : null]);
     }
 
     if ($action === 'quote') {
@@ -232,6 +257,8 @@ try {
             $out = SmartBook::book($in, $pay, $mode, $seller, $idem);
         } catch (SmartBookChanged $e) {
             Response::error($e->getMessage(), 409, ['code' => 'changed', 'quote' => $e->quote]);
+        } catch (SmartBookVerifyNeeded $e) {
+            Response::error($e->getMessage(), 422, ['code' => 'verify', 'field' => $e->field]);
         } catch (RuntimeException $e) {
             Response::error($e->getMessage(), 409);
         }

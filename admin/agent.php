@@ -1182,13 +1182,13 @@ if ($perfWin !== []):
 <!-- ============ WALLET ============ -->
 <div class="dash-hero">
   <?php if (Auth::isSellingStaff()): ?>
-  <!-- ⚡ Quick Ticket + 🤖 AI Ticket Bot (6 Sep 2026): the agent's fast lane —
-       the same desk the office uses, sales attributed to this agent. -->
-  <a class="hcard hc-orange" href="/admin/quick-ticket.php" style="text-decoration:none;display:block">
+  <!-- 16 Oct 2026: the agent books on SmartBook - the one booking screen, own
+       agent code locked on top, every sale credited here. -->
+  <a class="hcard hc-orange" href="/admin/smartbook.php" style="text-decoration:none;display:block">
     <span class="hicon">⚡</span>
-    <div class="hk">🤖 QuickBot Ticket</div>
-    <div class="hv" style="font-size:22px">10-Second Booking</div>
-    <div class="hsub">One line: name + mobile (+ seats · town · date)<br>auto route · seat · fare → Confirm → PNG + PDF + WhatsApp</div>
+    <div class="hk">⚡ SmartBook — book a ticket</div>
+    <div class="hv" style="font-size:22px">Name + mobile → ticket</div>
+    <div class="hsub">Your agent code is on top, locked · Cash = ticket now<br>Online = customer scans the bank QR · PNG + PDF + WhatsApp</div>
   </a>
   <?php endif; ?>
   <?php if ($salary > 0): ?>

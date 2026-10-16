@@ -47,8 +47,10 @@ if (preg_match('~<section class="sb" id="smartBook"[^>]*>.*?</section>~s', $tpl,
     $card = (string) preg_replace('/<!--.*?-->/s', '', $card);
 }
 /* The agent field lives in THIS file, not in the template: the customer page
-   can never carry it (smartbook-ui-test keeps the template free of it). It is
-   spliced in above the passengers row. */
+   can never carry it (smartbook-ui-test keeps the template free of it).
+   16 Oct 2026 (owner: "agent code advance ma hune"): it is the FIRST thing on
+   the staff card - spliced in above the QuickBot line - so a counter picks the
+   agent before anything else and an agent sees their locked code on top. */
 $agentField = $ownAgent !== ''
     ? '<div class="sb-f sb-f-agent" id="sbAgentF"><span class="sb-l">Agent code · एजेन्ट कोड</span>'
       . '<div class="sb-agent-lock">🔒 <span id="sbAgentOwn">' . $e($ownAgent) . '</span> · ' . $e((string) ($admin['full_name'] ?: $admin['username'])) . ' <small>from your login — every sale is credited here</small></div></div>'
@@ -57,7 +59,9 @@ $agentField = $ownAgent !== ''
       . '<datalist id="sbAgentList"></datalist>'
       . '<button type="button" class="sb-agent-other" id="sbAgentOther" title="Credit the company\'s own code ' . $e($coCode) . '">🏢 Other / company</button></div>'
       . '<small class="sb-why" id="sbAgentWhy"></small><small class="sb-fe" id="sbAgentE" hidden></small></div>';
-$card = (string) preg_replace('~(<div class="sb-f sb-f-pax">)~', $agentField . '$1', $card, 1);
+$card = str_contains($card, '<form class="sb-bot"')
+    ? (string) preg_replace('~(<form class="sb-bot")~', $agentField . '$1', $card, 1)
+    : (string) preg_replace('~(<div class="sb-f sb-f-pax">)~', $agentField . '$1', $card, 1);
 
 $me     = (int) $admin['id'];
 $label  = ucfirst($mode);
@@ -136,9 +140,9 @@ html.sbx-admin .sbx-ov{display:block}
      each turns green as it is filled; tap one to jump to it. Type the whole order in the
      QuickBot line below ("Ram 98…, 2, Vadodara bholi") and Auto-book does the rest. -->
 <ol class="sbx-line" id="sbxLine" aria-label="Order steps">
+  <?php if ($ownAgent === '' && $agents !== []): ?><li data-k="agent" data-go="sbAgent">Agent</li><?php endif; ?>
   <li data-k="route" data-go="sbDir">Route</li><li data-k="date" data-go="sbDates">Date</li><li data-k="point" data-go="sbPoint">Pickup</li>
   <li data-k="phone" data-go="sbPhone">Mobile</li><li data-k="name" data-go="sbName">Name</li><li data-k="pax" data-go="sbPax">F / M</li>
-  <?php if ($ownAgent === '' && $agents !== []): ?><li data-k="agent" data-go="sbAgent">Agent</li><?php endif; ?>
   <li data-k="book" data-go="sbCash" class="sbx-go">🎫 Book</li>
 </ol>
 <div class="sbx-reg" id="sbxReg" aria-label="Regular customers"></div>

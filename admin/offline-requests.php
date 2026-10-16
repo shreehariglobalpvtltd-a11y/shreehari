@@ -140,7 +140,7 @@ admin_header('Offline Desk', 'offline-requests');
           <input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
           <input type="text" name="note" required minlength="3" maxlength="255" placeholder="What was done? e.g. sold by hand as SHG-…, money returned · के गरियो?">
           <button type="submit" class="btn">Done · भयो</button>
-          <?php if (!$money): ?><a class="btn ghost" href="<?= $base ?>/admin/quick-ticket.php">Sell by hand</a><?php endif; ?>
+          <?php if (!$money): ?><a class="btn ghost" href="<?= $base ?>/admin/smartbook.php">Sell by hand</a><?php endif; ?>
         </form>
       </div>
     <?php endforeach; ?>

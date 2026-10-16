@@ -161,12 +161,12 @@
       + (CTR_VER ? ' <small class="cb-ver" style="opacity:.65">· v' + esc(CTR_VER) + '</small>' : '') + '</span>'
       + '<span class="cb-links">'
       + (CAN ? '<a href="#" id="cbSide" title="Switch this browser to the other side of the border">' + (nep ? '⇄ India side' : '⇄ Nepal side') + '</a>' : '')
-      /* ⚡ Quick Ticket (6 Sep 2026): the desk's fast lane — name + mobile
-         only, the server picks the bus / pickup / seat / fare, confirms and
-         sends the PNG on WhatsApp. Lives in the panel; linked from here so a
-         counter tab never has to hunt for it. */
-      + (CAN ? '<a href="/admin/quick-ticket.php" id="cbQuick" style="background:#F07C1F">🤖 QuickBot Ticket</a>' : '')
-      + '<a href="#/" id="cbSellAnother">＋ Sell another</a><a href="' + esc(PANEL) + '">← Back to panel</a></span>';
+      /* 16 Oct 2026 (owner: "3 ta booking system lai eutai ma"): every sale is
+         made on SmartBook - the one booking screen (agent code on top, same
+         engine for counter, agent and office). QuickBot and this app's old
+         search -> seats -> checkout both lead there now. */
+      + (CAN ? '<a href="/admin/smartbook.php" id="cbQuick" style="background:#F07C1F">⚡ SmartBook — sell</a>' : '')
+      + '<a href="' + (CAN ? '/admin/smartbook.php' : '#/') + '" id="cbSellAnother">＋ Sell another</a><a href="' + esc(PANEL) + '">← Back to panel</a></span>';
     document.body.insertBefore(el, document.body.firstChild);
     var st = document.createElement('style');
     st.textContent = '#counterBar{position:sticky;top:0;z-index:1200;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;justify-content:space-between;padding:8px 14px;background:#0C3B2A;color:#fff;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.25)}'

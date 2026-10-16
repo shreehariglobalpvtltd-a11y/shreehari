@@ -205,7 +205,9 @@ echo "\nE. SmartBook::book (test DB, cleaned up after)\n";
 $made = [];
 try {
     $key = 'test' . bin2hex(random_bytes(10));
-    $in  = ['direction' => 'toNepal', 'point' => 'Vadodara', 'pax' => [$P('Female')], 'name' => 'Test Smartbook', 'phone' => '9000000002', 'country' => 'IN'];
+    // 16 Oct 2026: a customer's Cash (pay at boarding) carries the verification details.
+    $V   = ['address' => 'Kohalpur-5, Banke', 'idType' => 'Aadhaar Card', 'idNum' => '4321 8765 1234'];
+    $in  = ['direction' => 'toNepal', 'point' => 'Vadodara', 'pax' => [$P('Female')], 'name' => 'Test Smartbook', 'phone' => '9000000002', 'country' => 'IN', 'verify' => $V];
     $b1  = SmartBook::book($in, 'cash', 'customer', null, $key);
     $made[] = $b1['pnr'];
     check('Cash → CONFIRMED + pay-at-boarding, no OTP', $b1['status'] === 'confirmed' && $b1['isCod'] === true, $b1['pnr']);
@@ -238,6 +240,34 @@ try {
     $exp = (string) Database::scalar('SELECT expires_at FROM bookings WHERE id = :b', ['b' => $o1['bookingId']]);
     $left = strtotime($exp) - time();
     check('Online → PENDING, berths held ~15 min, QR page link', $o1['status'] === 'pending' && $left > 10 * 60 && $left <= 15 * 60 + 5 && str_contains((string) $o1['payPage'], 'smartpay.php'), $o1['pnr'] . ' ' . $left . 's');
+    // 16 Oct 2026: the Online popup's data rides on the answer (no page change).
+    $pd = $o1['pay'] ?? null;
+    check('Online → popup data: due = total, countdown, hold time, key', is_array($pd) && abs((float) $pd['due'] - (float) $o1['total']) < 0.01
+        && (int) $pd['seconds'] >= 30 && (string) $pd['holdUntil'] !== '' && (string) ($o1['payKey'] ?? '') !== '', json_encode($pd === null ? null : array_diff_key($pd, ['upi' => 1, 'esewa' => 1])));
+    check('Online → the UPI QR carries the amount and the PNR', Settings::getString('upi_id', '') === ''
+        || (is_array($pd['upi'] ?? null) && str_starts_with((string) $pd['upi']['qr'], 'data:image') && str_contains((string) $pd['upi']['link'], rawurlencode((string) $o1['pnr']))));
+    check('Online → no verification details needed', empty($o1['isCod']));
+    check('Cash → the confirmed answer has no QR data', ($b1['pay'] ?? null) === null);
+    $addr = (string) Database::scalar('SELECT contact_address FROM bookings WHERE id = :b', ['b' => $b1['bookingId']], '');
+    $idn  = (string) Database::scalar('SELECT id_number FROM bookings WHERE id = :b', ['b' => $b1['bookingId']], '');
+    check('Cash → address + ID saved for the office', $addr === 'Kohalpur-5, Banke' && $idn === '432187651234', $addr . ' / ' . $idn);
+    // Each missing detail is refused and named (the card opens that field).
+    foreach ([
+        'address' => ['verify' => ['address' => 'Ba'] + $V],
+        'name'    => ['name' => 'Sita'],
+        'idType'  => ['verify' => ['idType' => 'Ration card'] + $V],
+        'idNum'   => ['verify' => ['idNum' => '12'] + $V],
+        'altPhone'=> ['verify' => ['altPhone' => '9000000002'] + $V],
+    ] as $want => $over) {
+        $got = '';
+        try { SmartBook::book($over + $in, 'cash', 'customer', null, 'test' . bin2hex(random_bytes(10))); $got = 'BOOKED'; }
+        catch (SmartBookVerifyNeeded $e) { $got = $e->field; }
+        check('Cash without a good ' . $want . ' → refused, field named', $got === $want, $got);
+    }
+    $got = '';
+    try { $x = SmartBook::book(array_diff_key($in, ['verify' => 1]) + ['phone' => '9000000012'], 'cash', 'customer', null, 'test' . bin2hex(random_bytes(10))); $made[] = $x['pnr']; $got = 'BOOKED'; }
+    catch (SmartBookVerifyNeeded $e) { $got = $e->field; }
+    check('Cash with no details at all → refused (address first)', $got === 'address', $got);
     $err = '';
     try { SmartBook::book($in, 'cash', 'customer', null, 'short'); } catch (RuntimeException $e) { $err = $e->getMessage(); }
     check('a missing / short idem key → refused', $err !== '');
@@ -342,7 +372,8 @@ try {
     $sb2  = (int) Database::scalar('SELECT sold_by_admin_id FROM bookings WHERE id = :b', ['b' => $b2['bookingId']], 0);
     check('OTHER → the company\'s own code (' . Settings::getString('company_agent_code', 'SHG-0001') . ')', $sb2 === ($coId ?? 1), '#' . $sb2);
 
-    $b3 = SmartBook::book(['referralCode' => 'SHG-0007', 'phone' => '9000000009', 'pax' => [$P('Female')]] + $inH, 'cash', 'customer', null, 'test' . bin2hex(random_bytes(10)));
+    $b3 = SmartBook::book(['referralCode' => 'SHG-0007', 'phone' => '9000000009', 'pax' => [$P('Female')],
+        'verify' => ['address' => 'Nepalgunj-1, Banke', 'idType' => 'Nepali Citizenship Card', 'idNum' => '12-01-75-01234']] + $inH, 'cash', 'customer', null, 'test' . bin2hex(random_bytes(10)));
     $madeH[] = $b3['pnr'];
     $sb3 = Database::scalar('SELECT sold_by_admin_id FROM bookings WHERE id = :b', ['b' => $b3['bookingId']]);
     check('customer mode: a code in the payload credits nobody (D13)', $sb3 === null || (int) $sb3 === 0, (string) $sb3);

@@ -570,7 +570,9 @@ try {
     check('api/quick-ticket.php admits selling staff only', str_contains($src('api/quick-ticket.php'), 'isSellingStaff') && str_contains($src('api/quick-ticket.php'), 'requireCsrf'));
     // 15 Oct 2026 (owner: "euta matra book"): SmartBook is the one booking entry; QuickBot stays reachable by URL.
     check('admin nav: SmartBook is the one hot booking entry', str_contains($src('admin/_guard.php'), "'href' => 'smartbook.php'") && !str_contains($src('admin/_guard.php'), "'href' => 'quick-ticket.php'") && is_file(dirname(__DIR__) . '/admin/quick-ticket.php'));
-    check('admin dashboard links the desk', str_contains($src('admin/index.php'), '/admin/quick-ticket.php'));
+    // 16 Oct 2026: QuickBot folded into SmartBook - the desk page forwards there (?legacy=1 keeps it).
+    check('admin dashboard links the one booking screen', str_contains($src('admin/index.php'), '/admin/smartbook.php'));
+    check('the old desk URL forwards to SmartBook with the customer', str_contains($src('admin/quick-ticket.php'), "Location: /admin/smartbook.php") && str_contains($src('admin/quick-ticket.php'), "'cphone'"));
     check('the desk page gates on bookings.view and reads QuickTicket', str_contains($src('admin/quick-ticket.php'), "admin_boot('bookings.view')") && str_contains($src('admin/quick-ticket.php'), '/api/quick-ticket.php'));
     check('the app home highlights the Quick Ticket Service', str_contains($src('app.template.html'), 'id="quickTicket"') && str_contains($src('app.template.html'), 'data-scroll="quick-ticket"'));
     $i18n = $src('assets/js/04-i18n.js');
@@ -578,7 +580,7 @@ try {
         check("i18n key $k in en / hi / ne", substr_count($i18n, ' ' . $k . ': ') === 3, substr_count($i18n, ' ' . $k . ': ') . ' found');
     }
     check('the banner is wired at boot', str_contains($src('assets/js/05-router.js'), 'function initQuickTicket') && str_contains($src('assets/js/13-admin-routes.js'), 'initQuickTicket()'));
-    check('counter mode links the desk', str_contains($src('assets/js/14-counter.js'), '/admin/quick-ticket.php'));
+    check('counter mode links the one booking screen', str_contains($src('assets/js/14-counter.js'), '/admin/smartbook.php') && !str_contains($src('assets/js/14-counter.js'), 'href="/admin/quick-ticket.php"'));
     check('run-all lists this suite', str_contains($src('tests/run-all.php'), 'quick-ticket-test.php'));
     check('role-gates walks the desk page + API', str_contains($src('tests/role-gates-test.php'), '/admin/quick-ticket.php') && str_contains($src('tests/role-gates-test.php'), '/api/quick-ticket.php'));
     check('Notify keeps the WhatsApp journal the desk reads', str_contains($src('includes/notify.php'), 'function whatsappJournal') && str_contains($src('includes/notify.php'), 'function whatsappNumberFor'));
