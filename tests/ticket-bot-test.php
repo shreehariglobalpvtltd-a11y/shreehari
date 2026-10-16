@@ -333,7 +333,7 @@ try {
     check('learning OFF: the line is still read and a plan still comes, with no memory', $s['enabled'] === false && $s['profile'] === null && (int) $s['prefill']['seats'] === 2 && is_array($s['plan']));
     Settings::set('ai_bot_on', true, 'bool', 'booking', false); Settings::flush();
     check('the app banner plans + confirms in place (customer_plan / customer_sell)', str_contains($src('app.template.html'), 'id="qtPlanCard"') && str_contains($src('assets/js/05-router.js'), "action: 'customer_sell'"));
-    check('the agent dashboard links the desk', str_contains($src('admin/agent.php'), '/admin/quick-ticket.php'));
+    check('the agent dashboard links the one booking screen (SmartBook)', str_contains($src('admin/agent.php'), '/admin/smartbook.php'));
     $i18n = $src('assets/js/04-i18n.js');
     foreach (['qtChecking', 'qtIssuing', 'qtPlanT', 'qtDepLbl', 'qtBoardLbl', 'qtSeatLbl', 'qtFareLbl', 'qtSeatsLbl', 'qtPaxLbl', 'qtDirGo', 'qtDirBack', 'qtGAny', 'qtGF', 'qtGM', 'qtLeft', 'qtPayCod', 'qtPayOnline', 'qtConfirm', 'qtTnc', 'qtBack', 'qtDone'] as $k) {
         check("i18n key $k in en / hi / ne", substr_count($i18n, ' ' . $k . ': ') === 3, substr_count($i18n, ' ' . $k . ': ') . ' found');

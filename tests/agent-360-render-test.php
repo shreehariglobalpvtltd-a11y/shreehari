@@ -107,7 +107,7 @@ check('supervisors get a Full 360 view button', str_contains($ag, 'agent-360.php
 check('a payout that covers the open request settles it', str_contains($ag, "AgentWallet::decidePayoutRequest((int) \$oreq['id'], 'paid'"));
 check('the agent is told on WhatsApp after a settlement', str_contains($ag, 'agent_settlement_notify(') && str_contains($ag, "Settings::getBool('agent_notify_settlement', true)"));
 check('design-system KPIs on the top cards', str_contains($ag, 'admin_kpi(') && str_contains($ag, 'admin_page_head('));
-check('the agent dashboard still links the QuickBot desk', str_contains($ag, '/admin/quick-ticket.php'));
+check('the agent dashboard links the one booking screen (SmartBook)', str_contains($ag, '/admin/smartbook.php'));
 
 echo "\n=== admin/agents.php + admin/accounting.php — wired to the 360 view ===\n";
 $ags = $src('admin/agents.php');
