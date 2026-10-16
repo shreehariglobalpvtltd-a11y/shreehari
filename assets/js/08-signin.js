@@ -1046,7 +1046,10 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal
       if (/[?&](counter|pnr|pay|ref|agent)=/i.test(location.search)) return;
       const h = location.hash || '';
       if (h && h !== '#' && h !== '#/' && h !== '#/home' && h !== '#/my') return;
+      /* 16 Oct 2026 (owner: "login ko pop naam magx - ekchoti matra"): asked ONCE per
+         browser, not once per visit - the Login button stays for anyone who wants it. */
       if (sessionStorage.getItem('shg:lgAsked')) return;
+      try { if (localStorage.getItem('shg:lgAsked1')) return; localStorage.setItem('shg:lgAsked1', '1'); } catch (x) {}
       sessionStorage.setItem('shg:lgAsked', '1');
       if (document.getElementById('shgModal') && document.getElementById('shgModal').classList.contains('open')) return;
       if (typeof openLoginModal === 'function') openLoginModal();

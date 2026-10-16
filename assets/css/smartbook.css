@@ -661,3 +661,28 @@ html #view-home > #sbDesk{order:-1 !important}
 :root[data-motion="reduced"] #smartBook .sb-tk,:root[data-motion="reduced"] #smartBook .sb-tk-ok,:root[data-motion="reduced"] #smartBook .sb-tk-ok::after,
 :root[data-motion="reduced"] #smartBook .sb-py-qrw::after{animation:none}
 :root[data-tier="low"] #smartBook .sb-bot::after,:root[data-tier="low"] #smartBook .sb-pay::after,:root[data-tier="low"] #smartBook .sb-py-qrw::after{animation:none}
+
+/* 16 Oct 2026 (owner: "Book Cash ra Online 2 ta button ramro dekhine banos"): two bold
+   app buttons - a glossy top light, a slow shine across, a white ring, bigger type. */
+#smartBook .sb-pay{border:1px solid rgba(255,255,255,.28);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 8px 18px -8px rgba(10,42,143,.45)}
+#smartBook .sb-pay::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;
+  background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,0) 52%),linear-gradient(100deg,transparent 30%,rgba(255,255,255,.32) 48%,transparent 66%) no-repeat;
+  background-size:100% 100%,60% 100%;background-position:0 0,-150% 0}
+#smartBook .sb-pay.sb-ready::before{animation:sbShine 3.6s ease-in-out infinite}
+#smartBook .sb-online.sb-ready::before{animation-delay:1.8s}
+@keyframes sbShine{0%,55%{background-position:0 0,-150% 0}100%{background-position:0 0,250% 0}}
+#smartBook .sb-pay::after{z-index:-2}
+#smartBook .sb-pay span{font-size:16px;font-weight:900}
+#smartBook .sb-pay small{font-size:10.5px;font-weight:700;opacity:.95;margin-top:1px}
+#smartBook .sb-cash.sb-ready{box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 10px 22px -8px rgba(212,87,12,.65)}
+#smartBook .sb-online.sb-ready{box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 10px 22px -8px rgba(26,68,200,.65)}
+#smartBook .sb-pay.sb-wait{opacity:.78;filter:saturate(.8)}
+@media (max-width:859px){
+  #smartBook .sb-bar{gap:8px;padding:8px 10px}
+  #smartBook .sb-pay{min-width:112px;min-height:52px;border-radius:15px;padding:4px 12px}
+  #smartBook .sb-pay span{font-size:15px}
+}
+@media (max-width:380px){#smartBook .sb-pay{min-width:96px;padding:4px 8px}#smartBook .sb-pay span{font-size:14px}}
+@media (min-width:860px){#smartBook .sb-bar{gap:10px}#smartBook .sb-pay{min-height:62px;border-radius:16px}#smartBook .sb-pay span{font-size:17px}}
+@media (prefers-reduced-motion:reduce){#smartBook .sb-pay.sb-ready::before{animation:none}}
+:root[data-motion="reduced"] #smartBook .sb-pay.sb-ready::before,:root[data-tier="low"] #smartBook .sb-pay.sb-ready::before{animation:none}

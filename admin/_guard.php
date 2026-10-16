@@ -742,9 +742,13 @@ function admin_backup_prompt_js(): string
 </style>
 <script>
 (function(){
-  var D={$data}, K='shg:bkAsk', today=new Date().toISOString().slice(0,10);
-  try{ if(localStorage.getItem(K)===today) return; }catch(e){}
-  function skip(){ try{localStorage.setItem(K,today);}catch(e){} box.remove(); }
+  /* 16 Oct 2026 (owner: "google drive backup popup barbar naaos"): it used to come back on
+     EVERY page until Skip was tapped. Now it shows itself once - then stays quiet for a day
+     (Drive connected) or a week (not set up yet) whether or not anything was tapped. */
+  var D={$data}, K='shg:bkAsk2', now=Date.now(), quiet=(D.c?1:7)*864e5;
+  try{ if(now-(+localStorage.getItem(K)||0)<quiet) return; }catch(e){}
+  function mark(){ try{localStorage.setItem(K,String(Date.now()));}catch(e){} }
+  function skip(){ mark(); box.remove(); }
   function post(action){ var f=new FormData(); f.append('action',action); f.append('ajax','1'); f.append('shg_csrf',D.csrf);
     return fetch('/admin/backup.php',{method:'POST',body:f,credentials:'same-origin'}).then(function(r){return r.json();}); }
   var box=document.createElement('div'); box.className='bkp'; box.setAttribute('role','dialog'); box.setAttribute('aria-label','Backup');
@@ -762,14 +766,14 @@ function admin_backup_prompt_js(): string
     if(m) m.textContent='…';
     post(a==='auto'?'auto_on':'run').then(function(j){
       if(a==='auto'){ if(m) m.textContent='✓ हरेक रात Google Drive मा जान्छ'; return a; }
-      if(j&&j.ok){ if(m) m.textContent='✓ Google Drive मा राखियो ('+(j.sizeKB||0)+' KB)'; try{localStorage.setItem(K,today);}catch(e){} }
+      if(j&&j.ok){ if(m) m.textContent='✓ Google Drive मा राखियो ('+(j.sizeKB||0)+' KB)'; mark(); }
       else { if(m) m.textContent='✗ '+((j&&j.error)||'failed'); box.querySelectorAll('button').forEach(function(x){x.disabled=false;}); }
       return a;
-    }).then(function(a){ if(a==='auto'){ return post('run').then(function(j){ if(m) m.textContent += j&&j.ok ? ' · आजको पनि राखियो' : ''; try{localStorage.setItem(K,today);}catch(e){} }); } })
+    }).then(function(a){ if(a==='auto'){ return post('run').then(function(j){ if(m) m.textContent += j&&j.ok ? ' · आजको पनि राखियो' : ''; mark(); }); } })
       .catch(function(){ if(m) m.textContent='✗ network'; box.querySelectorAll('button').forEach(function(x){x.disabled=false;}); })
       .then(function(){ setTimeout(function(){ if(m && /✓/.test(m.textContent)) box.remove(); },4500); });
   });
-  setTimeout(function(){ document.body.appendChild(box); }, 2500);
+  setTimeout(function(){ mark(); document.body.appendChild(box); }, 2500);
 })();
 </script>
 HTML;
