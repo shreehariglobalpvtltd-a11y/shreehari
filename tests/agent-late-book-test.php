@@ -39,12 +39,26 @@ function cleanupAll(): void {
     foreach (Database::fetchAll("SELECT id FROM bookings WHERE contact_phone = '" . PHONE . "'") as $r) {
         Database::delete('bookings', 'id = :i', ['i' => (int) $r['id']]);
     }
+    /* $D1 is two hours ago and $DF thirty hours ahead, so $ALL includes
+       TODAY. Sweeping every booking_leg and schedule on those dates therefore
+       emptied today's register for whatever ran after this suite, which is
+       what made the battery depend on its own order (same trap as
+       missed-bus-test). This suite's own bookings are already gone above, so
+       all that is left is the schedules it made: drop the ones nothing is
+       booked on, and put the departure clock and status back on the ones it
+       cannot drop, since it moves both to fake a departed bus. */
     foreach ($ALL as $d) {
         foreach (pluck(Database::fetchAll('SELECT id FROM schedules WHERE travel_date = :d', ['d' => $d]), 'id') as $sid) {
-            Database::delete('schedule_unit_locks', 'schedule_id = :s', ['s' => (int) $sid]);
+            $sid  = (int) $sid;
+            $live = (int) Database::scalar('SELECT COUNT(*) FROM booking_legs WHERE schedule_id = :s', ['s' => $sid], 0);
+            if ($live > 0) {
+                Database::update('schedules', ['dep_time_override' => null, 'status' => 'scheduled'], 'id = :i', ['i' => $sid]);
+                continue;
+            }
+            Database::delete('schedule_unit_locks', 'schedule_id = :s', ['s' => $sid]);
+            Database::delete('seat_locks', 'schedule_id = :s', ['s' => $sid]);
+            Database::delete('schedules', 'id = :i', ['i' => $sid]);
         }
-        Database::delete('booking_legs', 'travel_date = :d', ['d' => $d]);
-        Database::delete('schedules', 'travel_date = :d', ['d' => $d]);
     }
 }
 

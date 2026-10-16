@@ -607,7 +607,23 @@ try {
     check('counter: pickup picker of the route\'s stops with "Other…"', str_contains($h, 'id="qe-board"') && str_contains($h, 'value="__other__"'));
     check('counter: seat + payment blocks, no fare block', str_contains($h, 'id="qe-seat-form"') && str_contains($h, 'id="qe-pay"') && !str_contains($h, 'name="new_total"'));
     check('counter: remarks shown read-only', str_contains($h, 'Wants a lower berth'));
-    check('counter: audit old → new now visible (was super-admin only)', str_contains($h, '→ New:'));
+    /* 15 Oct 2026 (1G-summary): everyone who may edit bookings sees what
+       changed; the IP stays super-admin. The row only carries a new value
+       when the save actually changed something, so the expectation is read
+       from the register rather than assumed — and the message says what was
+       there to show, so a red run names the reason. */
+    $vals = Database::fetch(
+        "SELECT COUNT(*) n,
+                SUM(CASE WHEN new_value IS NOT NULL AND new_value <> '' THEN 1 ELSE 0 END) withNew,
+                SUM(CASE WHEN old_value IS NOT NULL AND old_value <> '' THEN 1 ELSE 0 END) withOld
+           FROM audit_logs WHERE entity_type = 'booking' AND entity_id = :p",
+        ['p' => (string) $own['pnr']]
+    ) ?? ['n' => 0, 'withNew' => 0, 'withOld' => 0];
+    $why = 'rows=' . (int) $vals['n'] . ' withNew=' . (int) $vals['withNew'] . ' withOld=' . (int) $vals['withOld']
+         . ' | page: audit panel=' . (int) str_contains($h, 'audit-timeline')
+         . ' Old=' . (int) str_contains($h, 'Old: ') . ' New=' . (int) str_contains($h, '→ New:');
+    check('counter: audit old → new now visible (was super-admin only)',
+        (int) $vals['withNew'] > 0 ? str_contains($h, '→ New:') : str_contains($h, 'Old: '), $why);
     $h = drive('booking-view.php', (int) $STAFF['manager']['id'], ['pnr' => $own['pnr']]);
     check('manager: reassign block in Quick Edit, outside the red panel', str_contains($h, 'id="reassign"') && !str_contains($h, 'class="power-panel"'));
     $h = drive('booking-view.php', (int) $STAFF['boss']['id'], ['pnr' => $own['pnr']]);

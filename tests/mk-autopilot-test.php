@@ -53,7 +53,16 @@ foreach ($keepKeys as $k) {
 }
 $kvKeep = Database::fetchAll("SELECT kscope, kkey, kvalue FROM kv_store WHERE (kscope = 'wam' AND kkey = 'project') OR kscope = 'mk_auto'");
 
-$tpl = Database::fetch("SELECT b.* FROM bookings b WHERE b.status = 'confirmed' AND EXISTS (SELECT 1 FROM booking_legs bl WHERE bl.booking_id = b.id) ORDER BY b.id DESC LIMIT 1");
+/* The newest confirmed booking that is whole — leg AND schedule. Asking only
+   for "has a leg" picked up half-cleaned rows another suite had left behind,
+   and the suite then died on a null schedule. */
+$tpl = Database::fetch(
+    "SELECT b.* FROM bookings b
+       JOIN booking_legs bl ON bl.booking_id = b.id
+       JOIN schedules s ON s.id = bl.schedule_id
+      WHERE b.status = 'confirmed'
+      ORDER BY b.id DESC LIMIT 1"
+);
 $tplLeg = $tpl ? Database::fetch('SELECT * FROM booking_legs WHERE booking_id = :b LIMIT 1', ['b' => (int) $tpl['id']]) : null;
 $tplSch = $tplLeg ? Database::fetch('SELECT * FROM schedules WHERE id = :s', ['s' => (int) $tplLeg['schedule_id']]) : null;
 

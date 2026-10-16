@@ -230,13 +230,15 @@ if ($already !== null) {
         $coach = (string) $route['coach_type'];
         $date  = date('Y-m-d');
         $sid   = (int) Seats::schedule($rid, $date)['id'];
-        /* From the FRONT of the layout. Two rules decide this. The seat AI
-           picks rear-first, so the front berth is the one no automatic pick
-           wants. And a single-gender booking locks its shared cabin to that
-           gender, so a berth booked at the BACK took its cabin-mates out of
-           reach of a customer plan - which is how one fixture sale made
-           bot-ladder's "a free preferred berth is taken first" ask for a
-           berth in the locked cabin and be handed another. */
+        /* Which berth matters, because one sale on today's bus is visible to
+           every suite that reads today. The FRONT berths (L1, L3, L5, L6 ...)
+           are hard-coded by dozens of suites. The LAST berth is what the
+           planner suites read as "the last free berth", and a single-gender
+           booking locks its shared CABIN, so taking U36 put U35 out of reach
+           of a customer plan and bot-ladder asked for a berth it could not be
+           given. So: the middle of the upper deck, a cabin no suite names,
+           and only if it is genuinely free - otherwise the first berth that
+           is, which is better than no fixture at all. */
         $seats = [];
         try { $seats = array_values(array_map('strval', Seats::seatIdsForSchedule($sid))); } catch (Throwable $e) { $seats = []; }
         if ($seats === []) { try { $seats = array_values(array_map('strval', Seats::seatIds($coach, 'sharing'))); } catch (Throwable $e) { $seats = []; } }
@@ -244,8 +246,10 @@ if ($already !== null) {
            and never a balcony EX seat, which is staff-only too. */
         $reserved = [];
         try { $reserved = array_map('strval', Seats::staffSeats($coach)); } catch (Throwable $e) { $reserved = []; }
+        $quiet = ['U27', 'U28', 'U25', 'U26', 'U31', 'U32', 'U33', 'U29'];
+        $order = array_values(array_unique(array_merge(array_intersect($quiet, $seats), $seats)));
         $pick = '';
-        foreach ($seats as $no) {
+        foreach ($order as $no) {
             if ($no === '' || in_array($no, $reserved, true) || str_starts_with($no, 'EX')) { continue; }
             try {
                 Seats::assertAvailable($sid, [$no], 'cifx' . bin2hex(random_bytes(3)));
