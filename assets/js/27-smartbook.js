@@ -27,7 +27,7 @@
       sRoute: 'Route', sDate: 'Date', sBoard: 'Boarding', sPax: 'Passengers', sSeats: 'Seats', total: 'Total', cash: '🎫 Book · Cash', cashSub: 'ticket now · pay at boarding',
       online: 'Book · Online', onlineSub: 'UPI · eSewa QR', pickT: 'Choose your berths', done: 'Done',
       today: 'Today', tomorrow: 'Tomorrow', pickDate: 'Pick a date', female: 'Female', male: 'Male', gender: 'F / M?',
-      adult: 'Adult', child: 'Child <12', senior: 'Senior 60+', patient: 'Patient', lower: 'lower floor', upper: 'upper floor', autoTag: 'auto', yours: 'your choice',
+      adult: 'Adult', child: 'Child <12', senior: 'Senior 60+', patient: 'Patient', lower: 'lower floor', upper: 'upper floor', autoTag: '🤖 S Hari AI pick', yours: 'your choice',
       report: 'report', needPhone: 'Enter a valid mobile', needPhoneNp: 'Nepal mobile: 10 digits starting 96 / 97 / 98', needPhoneIn: 'India mobile: 10 digits starting 6–9',
       needName: 'Enter the lead passenger\'s name', needGender: 'Tap F / M for every passenger', aiGuess: 'AI guessed from the name — tap to change', loading: 'Finding the best berths…',
       booking: 'Booking…', making: 'Preparing your ticket…', ticketOk: 'Ticket confirmed', codNote: 'Cash — pay at the boarding counter', pnr: 'PNR', dlPdf: 'Download PDF', dlPng: 'Download PNG',
@@ -47,7 +47,7 @@
       sRoute: 'रूट', sDate: 'तारीख', sBoard: 'चढ़ना', sPax: 'यात्री', sSeats: 'सीट', total: 'कुल', cash: '🎫 बुक · कैश', cashSub: 'टिकट अभी · चढ़ते समय भुगतान',
       online: 'बुक · ऑनलाइन', onlineSub: 'UPI · eSewa QR', pickT: 'अपनी बर्थ चुनें', done: 'हो गया',
       today: 'आज', tomorrow: 'कल', pickDate: 'तारीख चुनें', female: 'महिला', male: 'पुरुष', gender: 'म / पु?',
-      adult: 'वयस्क', child: 'बच्चा <12', senior: 'वरिष्ठ 60+', patient: 'मरीज़', lower: 'नीचे', upper: 'ऊपर', autoTag: 'ऑटो', yours: 'आपकी पसंद',
+      adult: 'वयस्क', child: 'बच्चा <12', senior: 'वरिष्ठ 60+', patient: 'मरीज़', lower: 'नीचे', upper: 'ऊपर', autoTag: '🤖 S Hari AI की पसंद', yours: 'आपकी पसंद',
       report: 'रिपोर्ट', needPhone: 'सही मोबाइल लिखें', needPhoneNp: 'नेपाल मोबाइल: 96 / 97 / 98 से 10 अंक', needPhoneIn: 'भारत मोबाइल: 6–9 से 10 अंक',
       needName: 'मुख्य यात्री का नाम लिखें', needGender: 'हर यात्री के लिए म / पु दबाएँ', aiGuess: 'नाम से AI का अनुमान — बदलने के लिए दबाएँ', loading: 'सबसे अच्छी बर्थ ढूँढ रहे हैं…',
       booking: 'बुक हो रहा है…', making: 'टिकट तैयार हो रहा है…', ticketOk: 'टिकट पक्का', codNote: 'कैश — चढ़ते समय काउंटर पर भुगतान', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
@@ -67,7 +67,7 @@
       sRoute: 'रुट', sDate: 'मिति', sBoard: 'चढ्ने', sPax: 'यात्रु', sSeats: 'सिट', total: 'जम्मा', cash: '🎫 बुक · नगद', cashSub: 'टिकट अहिले · चढ्दा तिर्ने',
       online: 'बुक · अनलाइन', onlineSub: 'UPI · eSewa QR', pickT: 'आफ्नो बर्थ छान्नुहोस्', done: 'भयो',
       today: 'आज', tomorrow: 'भोलि', pickDate: 'मिति छान्नुहोस्', female: 'महिला', male: 'पुरुष', gender: 'म / पु?',
-      adult: 'वयस्क', child: 'बच्चा <१२', senior: 'ज्येष्ठ ६०+', patient: 'बिरामी', lower: 'तल्लो तला', upper: 'माथिल्लो तला', autoTag: 'अटो', yours: 'तपाईंको रोजाइ',
+      adult: 'वयस्क', child: 'बच्चा <१२', senior: 'ज्येष्ठ ६०+', patient: 'बिरामी', lower: 'तल्लो तला', upper: 'माथिल्लो तला', autoTag: '🤖 S Hari AI को रोजाइ', yours: 'तपाईंको रोजाइ',
       report: 'रिपोर्ट', needPhone: 'सही मोबाइल लेख्नुहोस्', needPhoneNp: 'नेपाल मोबाइल: ९६ / ९७ / ९८ बाट १० अङ्क', needPhoneIn: 'भारत मोबाइल: ६–९ बाट १० अङ्क',
       needName: 'मुख्य यात्रुको नाम लेख्नुहोस्', needGender: 'हरेक यात्रुको म / पु थिच्नुहोस्', aiGuess: 'नामबाट AI को अनुमान — बदल्न थिच्नुहोस्', loading: 'सबैभन्दा राम्रो बर्थ खोज्दै…',
       booking: 'बुक हुँदैछ…', making: 'टिकट तयार हुँदैछ…', ticketOk: 'टिकट पक्का भयो', codNote: 'नगद — चढ्दा काउन्टरमा तिर्ने', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
@@ -169,6 +169,22 @@
       deskGo: '🎫 टिकट काट्नुहोस् — SmartBook डेस्क', deskPanel: 'प्यानल' }
   };
   ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in VW[l]) { W[l][k] = VW[l][k]; } } });
+  /* 16 Oct 2026 (owner: "Cash click garda simple final confirmation - summary + OK / Confirm
+     Booking, extra step nahos"): Cash opens ONE summary sheet with one Confirm button. A
+     customer whose boarding check (address + ID) is already on file only taps Confirm. */
+  var OW = {
+    en: { okT: 'Confirm booking', okCash: 'Cash', okSubDesk: 'Cash received at the desk — check and confirm', okSubAgent: 'Cash collected by you — check and confirm',
+      okSubCus: 'Your details are filled in — just confirm', okGo: '✅ Confirm Booking', okBack: '← Back', okEnter: 'Enter = confirm',
+      okPay: 'Pay {amt} in cash at the counter or on the bus when you board.',
+      sName: 'Passenger', sMobile: 'Mobile', cvOnFile: 'Boarding check on file', cvEdit: '✏️ Edit', cvNeed: 'For pay at boarding — one-time details' },
+    hi: { okT: 'बुकिंग पक्की करें', okCash: 'कैश', okSubDesk: 'कैश काउंटर पर लिया — जाँचें और पक्का करें', okSubAgent: 'कैश आपने लिया — जाँचें और पक्का करें',
+      okSubCus: 'आपकी जानकारी भरी हुई है — बस पक्का करें', okPay: '{amt} कैश काउंटर पर या बस में चढ़ते समय दें।', okGo: '✅ बुकिंग पक्की करें', okBack: '← वापस', okEnter: 'Enter = पक्का',
+      sName: 'यात्री', sMobile: 'मोबाइल', cvOnFile: 'पहचान जानकारी सुरक्षित है', cvEdit: '✏️ बदलें', cvNeed: 'चढ़ते समय भुगतान के लिए — एक बार की जानकारी' },
+    ne: { okT: 'बुकिङ पक्का गर्नुहोस्', okCash: 'नगद', okSubDesk: 'नगद काउन्टरमा लिइयो — हेरेर पक्का गर्नुहोस्', okSubAgent: 'नगद तपाईंले लिनुभयो — हेरेर पक्का गर्नुहोस्',
+      okSubCus: 'तपाईंको विवरण भरिसकिएको छ — पक्का मात्र गर्नुहोस्', okPay: '{amt} नगद काउन्टरमा वा बस चढ्दा दिनुहोस्।', okGo: '✅ बुकिङ पक्का गर्नुहोस्', okBack: '← पछाडि', okEnter: 'Enter = पक्का',
+      sName: 'यात्रु', sMobile: 'मोबाइल', cvOnFile: 'परिचय विवरण सुरक्षित छ', cvEdit: '✏️ बदल्नुहोस्', cvNeed: 'चढ्दा तिर्नका लागि — एक पटकको विवरण' }
+  };
+  ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in OW[l]) { W[l][k] = OW[l][k]; } } });
   function tr(k, v) {
     var s = (W[lang()] && W[lang()][k]) || W.en[k] || k;
     if (v) Object.keys(v).forEach(function (x) { s = s.split('{' + x + '}').join(v[x]); });
@@ -560,7 +576,7 @@
       S.manual = []; S.seatMode = 'auto'; fill(); changed(); return;
     }
     if (e.target.closest('#sbNear')) { nearMe(); return; }
-    if ((b = e.target.closest('#sbCash, #sbOnline'))) { book(b.id === 'sbCash' ? 'cash' : 'online'); return; }
+    if ((b = e.target.closest('#sbCash, #sbOnline'))) { book(b.id === 'sbCash' ? 'cash' : 'online', false, null, true); return; }
   });
   $('sbPoint').addEventListener('change', function () { S.point = this.value; S.why.point = null; $('sbPointWhy').textContent = ''; S.manual = []; changed(); });
   $('sbDateIn').addEventListener('change', function () { if (this.value) { S.date = this.value; S.manual = []; renderDates(); changed(); } });
@@ -808,7 +824,10 @@
     try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < 16; i++) a[i] = Math.floor(Math.random() * 256); }
     return 'sb' + Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
   }
-  function book(pay, wantPrint, verify) {
+  /* tap = a customer pressed the Cash button: Cash then asks once (summary + Confirm).
+     16 Oct 2026 (owner: "network wala ma confirm namagne, one click mai ticket"):
+     a staff desk never gets the sheet - one click books, like Ctrl+Enter and Auto-book. */
+  function book(pay, wantPrint, verify, tap) {
     S.touched.book = S.touched.phone = S.touched.name = S.touched.pax = S.touched.agent = true;
     var e = showErrs(true);
     if (Object.keys(e).length) {
@@ -822,6 +841,7 @@
     if (!S.q || !S.q.ok) { say(S.q && S.q.error ? S.q.error : tr('loading')); if (!S.q) requote(0); return; }
     // Cash for a customer = pay at boarding: the verification sheet first (it calls back with the details).
     if (pay === 'cash' && S.codVerify && !verify) { openCash(); return; }
+    if (pay === 'cash' && tap && !verify && !STAFF) { openOk(wantPrint); return; }   // a desk books in one click
     printNext = !!wantPrint;   // only a sale that really starts may print
     S.busy = true; S.idem = S.idem || newKey();
     var btn = $(pay === 'cash' ? 'sbCash' : 'sbOnline'); btn.classList.add('sb-busy');
@@ -881,20 +901,81 @@
     box.addEventListener('click', function (e) {
       if (e.target === box || e.target.closest('[data-cv="x"]')) { closeCash(); return; }
       if (e.target.closest('[data-cv="online"]')) { closeCash(); book('online'); return; }
+      if (e.target.closest('[data-cv="edit"]')) {
+        var fl = box.querySelector('.sb-cv-fields'), of = box.querySelector('.sb-cv-file');
+        if (fl) fl.hidden = false; if (of) of.hidden = true;
+        try { $('sbCvAddr').focus(); } catch (x) {}
+      }
     });
-    box.addEventListener('submit', function (e) { e.preventDefault(); submitCash(); });
+    box.addEventListener('submit', function (e) { e.preventDefault(); if (box.getAttribute('data-kind') === 'ok') submitOk(); else submitCash(); });
     return box;
+  }
+  /* The booking at a glance - the one summary both Cash sheets lead with. */
+  function sumHtml() {
+    var q = S.q || {}, drop = q.pointType === 'drop';
+    var rows = [
+      [tr('sRoute'), (q.from || '') + ' → ' + (q.to || '')],
+      [tr('sDate'), (q.dateLabel || '') + (q.depTime ? ' · ' + q.depTime : '')],
+      [tr(drop ? 'drop' : 'sBoard'), drop ? (q.point || '') : (q.boardingName || '') + (q.boardingTime ? ' · ' + q.boardingTime : '')],
+      [tr('sName'), S.name.trim() + ' · ' + tr('paxN', { n: S.pax.length })],
+      [tr('sMobile'), (S.cc === 'NP' ? '+977 ' : '+91 ') + digits(S.phone)],
+      [tr('sSeats'), seatSummary(q)]
+    ];
+    if (STAFF && (S.agent || STAFF.ownCode)) rows.push([tr('credited'), S.agent === 'OTHER' ? (STAFF.company || '') : (S.agent || STAFF.ownCode)]);
+    return '<div class="sb-ok-sum"><div class="sb-ok-tot"><small>' + esc(tr('total')) + '</small><b>' + esc(q.price ? money(q.price.total) : '—') + '</b>'
+      + (q.price ? '<span>≈ ' + esc(npr(q.price.npr)) + '</span>' : '') + '</div><dl>'
+      + rows.filter(function (r) { return String(r[1] || '').replace(/[\s·→+]/g, '') !== ''; })
+          .map(function (r) { return '<div><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('')
+      + '</dl></div>';
+  }
+  /* Cash with no boarding check to fill (every desk, or a customer site with the
+     check switched off): the summary and ONE Confirm button - Enter confirms. */
+  var okPrint = false;
+  function openOk(wantPrint) {
+    var box = cashSheet(), q = S.q || {};
+    var tot = q.price ? money(q.price.total) : '';
+    okPrint = !!wantPrint;
+    box.setAttribute('data-kind', 'ok');
+    box.innerHTML = '<form class="sb-cv-in sb-ok" novalidate>'
+      + '<div class="sb-cv-hd"><span class="sb-cv-ic sb-ok-ic" aria-hidden="true">💵</span><div><h3 id="sbCvT">' + esc(tr('okT') + ' · ' + tr('okCash')) + '</h3>'
+      + '<small>' + esc(tr(!STAFF ? 'okSubCus' : (MODE === 'agent' ? 'okSubAgent' : 'okSubDesk'))) + '</small></div>'
+      + '<button type="button" class="sb-x" data-cv="x" aria-label="Close">✕</button></div>'
+      + sumHtml()
+      + (!STAFF ? '<p class="sb-ok-pay">💵 ' + esc(tr('okPay', { amt: tot })) + '</p>' : '')
+      + '<p class="sb-cv-e" id="sbCvE" role="alert" hidden></p>'
+      + '<button type="submit" class="sb-cv-go">' + esc(tr('okGo')) + (tot ? ' · ' + esc(tot) : '') + '</button>'
+      + '<div class="sb-ok-row"><button type="button" class="sb-cv-alt" data-cv="x">' + esc(tr('okBack')) + '</button>' + (STAFF ? '<small>' + esc(tr('okEnter')) + '</small>' : '') + '</div>'
+      + '</form>';
+    box.hidden = false; document.body.classList.add('shg-modal-open');
+    setTimeout(function () { var f = box.querySelector('.sb-cv-go'); if (f) try { f.focus(); } catch (x) {} }, 60);
+  }
+  function submitOk() {
+    var go = $('sbCv').querySelector('.sb-cv-go'); if (!go || go.disabled) return;
+    go.disabled = true; go.classList.add('sb-busy');
+    book('cash', okPrint);
+    setTimeout(function () { go.disabled = false; go.classList.remove('sb-busy'); }, 1500);
+  }
+  function cvComplete() {
+    var v = S.verify;
+    return S.name.trim().split(/\s+/).length >= 2 && String(v.address || '').trim().length >= 5 && !!v.idType
+      && String(v.idNum || '').replace(/[^A-Za-z0-9]/g, '').length >= 4;
   }
   function openCash(field, msg) {
     var box = cashSheet(), q = S.q || {}, v = S.verify;
     var types = (S.idTypes && S.idTypes.length ? S.idTypes : ['Aadhaar Card', 'Nepali Citizenship Card', 'Voter ID', 'Driving Licence', 'Passport']);
     if (!v.idType) v.idType = S.cc === 'NP' ? 'Nepali Citizenship Card' : (S.dir === 'toNepal' ? 'Aadhaar Card' : '');
     var tot = q.price ? money(q.price.total) : '';
+    /* details already on file (a verified profile, or typed earlier this visit): one line + Edit */
+    var onFile = !field && cvComplete();
+    var idTail = String(v.idNum || '').replace(/[^A-Za-z0-9]/g, '').slice(-4);
+    box.setAttribute('data-kind', 'cv');
     box.innerHTML = '<form class="sb-cv-in" novalidate>'
-      + '<div class="sb-cv-hd"><span class="sb-cv-ic" aria-hidden="true">🛡️</span><div><h3 id="sbCvT">' + esc(tr('cvT')) + '</h3><small>' + esc(tr('cvSub')) + '</small></div>'
+      + '<div class="sb-cv-hd"><span class="sb-cv-ic sb-ok-ic" aria-hidden="true">💵</span><div><h3 id="sbCvT">' + esc(tr('okT') + ' · ' + tr('okCash')) + '</h3><small>' + esc(tr('okSubCus')) + '</small></div>'
       + '<button type="button" class="sb-x" data-cv="x" aria-label="Close">✕</button></div>'
-      + '<div class="sb-cv-sum"><b>' + esc(tot) + '</b><span>' + esc((q.from || '') + ' → ' + (q.to || '')) + ' · ' + esc(q.dateLabel || '') + (q.seatLabels ? ' · ' + esc(q.seatLabels.join(', ')) : '') + '</span>'
-      + '<span>📱 ' + esc((S.cc === 'NP' ? '+977 ' : '+91 ') + digits(S.phone)) + ' · ' + esc(tr('paxN', { n: S.pax.length })) + '</span></div>'
+      + sumHtml()
+      + '<div class="sb-cv-file"' + (onFile ? '' : ' hidden') + '><span aria-hidden="true">🪪</span><div><b>' + esc(tr('cvOnFile')) + '</b><small>' + esc(v.idType + ' ••' + idTail + ' · ' + v.address) + '</small></div>'
+      + '<button type="button" data-cv="edit">' + esc(tr('cvEdit')) + '</button></div>'
+      + '<div class="sb-cv-fields"' + (onFile ? ' hidden' : '') + '><p class="sb-cv-need">🛡️ ' + esc(tr('cvNeed')) + '</p>'
       + '<label class="sb-cv-f"><span>' + esc(tr('cvName')) + ' <i>*</i></span><input id="sbCvName" autocomplete="name" maxlength="120" value="' + esc(S.name) + '"></label>'
       + '<label class="sb-cv-f"><span>' + esc(tr('cvAddr')) + ' <i>*</i></span><input id="sbCvAddr" autocomplete="address-level2" maxlength="191" placeholder="' + esc(tr('cvAddrPh')) + '" value="' + esc(v.address) + '"></label>'
       + '<div class="sb-cv-2"><label class="sb-cv-f"><span>' + esc(tr('cvIdT')) + ' <i>*</i></span><select id="sbCvIdT"><option value="">' + esc(tr('cvPick')) + '</option>'
@@ -902,9 +983,9 @@
       + '<label class="sb-cv-f"><span>' + esc(tr('cvIdN')) + ' <i>*</i></span><input id="sbCvIdN" maxlength="40" autocapitalize="characters" placeholder="' + esc(tr('cvIdPh')) + '" value="' + esc(v.idNum) + '"></label></div>'
       + '<label class="sb-cv-f"><span>' + esc(tr('cvAlt')) + ' <small>(' + esc(tr('cvOpt')) + ')</small></span><span class="sb-cv-ph"><select id="sbCvAltCc" aria-label="Country"><option value="NP"' + (v.altCc !== 'IN' ? ' selected' : '') + '>+977</option><option value="IN"' + (v.altCc === 'IN' ? ' selected' : '') + '>+91</option></select>'
       + '<input id="sbCvAlt" type="tel" inputmode="numeric" maxlength="14" value="' + esc(v.altPhone) + '"></span></label>'
+      + '<p class="sb-cv-note">🪪 ' + esc(tr('cvNote')) + '</p></div>'
       + '<p class="sb-cv-e" id="sbCvE" role="alert"' + (msg ? '' : ' hidden') + '>' + esc(msg || '') + '</p>'
-      + '<p class="sb-cv-note">🪪 ' + esc(tr('cvNote')) + '</p>'
-      + '<button type="submit" class="sb-cv-go">' + esc(tr('cvGo')) + (tot ? ' · ' + esc(tot) : '') + '</button>'
+      + '<button type="submit" class="sb-cv-go">' + esc(tr('okGo')) + (tot ? ' · ' + esc(tot) : '') + '</button>'
       + '<button type="button" class="sb-cv-alt" data-cv="online">' + esc(tr('cvOnline')) + '</button>'
       + '</form>';
     box.hidden = false; document.body.classList.add('shg-modal-open');
@@ -923,7 +1004,11 @@
     $('sbCv').querySelectorAll('.sb-bad').forEach(function (x) { x.classList.remove('sb-bad'); });
     var bad = nm.split(' ').length < 2 ? ['sbCvName', 'cvName'] : (v.address.length < 5 ? ['sbCvAddr', 'cvAddr'] : (!v.idType ? ['sbCvIdT', 'cvIdT'] : (v.idNum.replace(/[^A-Za-z0-9]/g, '').length < 4 ? ['sbCvIdN', 'cvIdN'] : null)));
     if (!bad && v.altPhone && v.altPhone.slice(-10).length !== 10) bad = ['sbCvAlt', 'cvAlt'];
-    if (bad) { $(bad[0]).classList.add('sb-bad'); cashErr('⚠️ ' + tr(bad[1])); try { $(bad[0]).focus(); } catch (x) {} return; }
+    if (bad) {
+      var fl = $('sbCv').querySelector('.sb-cv-fields'), of = $('sbCv').querySelector('.sb-cv-file');
+      if (fl) fl.hidden = false; if (of) of.hidden = true;
+      $(bad[0]).classList.add('sb-bad'); cashErr('⚠️ ' + tr(bad[1])); try { $(bad[0]).focus(); } catch (x) {} return;
+    }
     if (nm !== S.name) { S.name = nm; $('sbName').value = nm; store.set(); }
     $('sbCvE').hidden = true;
     var go = $('sbCv').querySelector('.sb-cv-go'); go.disabled = true; go.classList.add('sb-busy');

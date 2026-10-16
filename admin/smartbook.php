@@ -96,11 +96,11 @@ admin_header('SmartBook', 'smartbook');
 <link rel="stylesheet" href="/assets/css/smartbook.css?v=<?= $e($ver) ?>">
 <style>
 .sbx-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 6px}
-.sbx-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:#071a40;color:#fff;font-weight:800;font-size:13px}
+.sbx-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:linear-gradient(120deg,#2f6bff,#1a44c8 52%,#0a2a8f);color:#fff;font-weight:800;font-size:13px;box-shadow:0 6px 16px -6px rgba(26,68,200,.6)}
 .sbx-w{display:inline-flex;gap:10px;padding:6px 12px;border-radius:12px;background:var(--card,#fff);border:1px solid var(--line,#e0e8f2);font-size:13px}
 .sbx-w b.low{color:#cd4154}
 .sbx-modes a{padding:6px 10px;border-radius:9px;border:1px solid var(--line,#e0e8f2);text-decoration:none;font-size:12.5px;margin-right:4px}
-.sbx-modes a.on{background:#185bed;color:#fff;border-color:#185bed}
+.sbx-modes a.on{background:#1a44c8;color:#fff;border-color:#1a44c8}
 .sbx-reg{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:thin}
 .sbx-reg button{flex:0 0 auto;min-height:38px;border:1px solid var(--line,#e0e8f2);border-radius:10px;background:var(--card,#fff);color:inherit;font:inherit;font-size:12.5px;padding:0 10px;cursor:pointer;white-space:nowrap}
 .sbx-help{font-size:12px;color:var(--muted,#637491);margin:2px 0 0}
@@ -114,8 +114,9 @@ html.sbx-admin .sbx-ov{display:block}
 .sbx-line li{flex:0 0 auto;counter-increment:sbx;display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 12px 0 6px;border-radius:999px;border:1px solid var(--line,#e0e8f2);background:var(--card,#fff);font-size:12.5px;font-weight:700;cursor:pointer;color:var(--muted,#637491)}
 .sbx-line li::before{content:counter(sbx);display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#e8eef8;color:#3b4a66;font-size:11px}
 .sbx-line li.ok{color:#11603a;border-color:#9fdcb8;background:#eefaf2}.sbx-line li.ok::before{content:'✓';background:#1f9d55;color:#fff}
-.sbx-line li.now{border-color:#185bed;color:#185bed;box-shadow:0 0 0 2px rgba(24,91,237,.15)}
-.sbx-line li.sbx-go::before{content:'→'}.sbx-line li.sbx-go.ok{background:#1f9d55;color:#fff;border-color:#1f9d55}
+.sbx-line li{transition:background-color .2s,border-color .2s,color .2s,box-shadow .25s}
+.sbx-line li.now{border-color:#f07a1e;color:#d4570c;box-shadow:0 0 0 3px rgba(240,122,30,.18)}
+.sbx-line li.sbx-go::before{content:'→'}.sbx-line li.sbx-go.ok{background:linear-gradient(120deg,#ffa24d,#f07a1e 50%,#d4570c);color:#fff;border-color:transparent;box-shadow:0 6px 14px -6px rgba(212,87,12,.6)}
 #smartBook{padding-left:0;padding-right:0}
 </style>
 <div class="sbx-top">

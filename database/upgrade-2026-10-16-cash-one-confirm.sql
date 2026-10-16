@@ -1,0 +1,14 @@
+-- =====================================================================
+--  16 Oct 2026 - Cash = one confirm (owner: "je already fill gareko cha
+--  tyo matra confirm, paisa bus / counter ma dine bhanera lekhdinu,
+--  ekdam quick ticket").
+--
+--  The customer's Cash booking no longer asks for an address and an ID:
+--  the card's name + mobile are shown in one summary with "pay at the
+--  counter / on the bus" and ONE Confirm button. The rule itself stays in
+--  the engine (SmartBook::codVerify) - set this back to '1' to ask again.
+--
+--  Rollback:
+--    UPDATE settings SET svalue = '1' WHERE skey = 'cod_verify_on'
+-- =====================================================================
+UPDATE settings SET svalue = '0' WHERE skey = 'cod_verify_on';
