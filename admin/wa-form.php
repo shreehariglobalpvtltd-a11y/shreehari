@@ -39,8 +39,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     . 'Meta said: ' . $r['error'] . ($r['errors'] !== [] ? ' — ' . implode(' · ', $r['errors']) : '')
                     . (stripos($r['error'], 'integrity') !== false ? ' → Meta Business Manager: finish Business Verification / fix the phone number quality, then press Publish again.' : '')];
         } elseif ($act === 'template') {
-            $r = WaFlow::createTemplate();
-            $flash = $r['ok'] ? ['ok', 'Template ' . WaFlow::TEMPLATE . ' sent to Meta for review (usually a few minutes).'] : ['bad', 'Meta said: ' . $r['error']];
+            // Template needs a PUBLISHED flow — auto-publish the draft first so the office doesn't hit the "flow should be published" wall.
+            $pub = ['ok' => true, 'error' => '', 'errors' => []];
+            if (WaFlow::flowId() !== '' && Settings::getBool('wa_flow_draft', false)) {
+                $pub = WaFlow::publish();
+                Logger::audit('wa.flow_publish', 'settings', 'whatsapp', null, $pub, 'auto-publish before template, admin #' . (int) $admin['id']);
+            }
+            if (!$pub['ok']) {
+                $flash = ['bad', 'Template needs a published form. Meta would not publish the draft: ' . $pub['error']
+                    . ($pub['errors'] !== [] ? ' — ' . implode(' · ', $pub['errors']) : '')
+                    . ' → WhatsApp Manager → Flows → open flow ' . WaFlow::flowId() . ' to see the exact validation message, fix it there, then press this button again.'];
+            } else {
+                $r = WaFlow::createTemplate();
+                $flash = $r['ok'] ? ['ok', 'Template ' . WaFlow::TEMPLATE . ' sent to Meta for review (usually a few minutes).'] : ['bad', 'Meta said: ' . $r['error']];
+            }
         } elseif ($act === 'save') {
             $id = preg_replace('/\D/', '', (string) ($_POST['wa_flow_book_id'] ?? '')) ?? '';
             Settings::set('wa_flow_book_id', $id, 'string', 'whatsapp');
@@ -68,7 +80,7 @@ $id      = WaFlow::flowId();
 $on      = Settings::getBool('wa_flow_on', true);
 $draft   = Settings::getBool('wa_flow_draft', false);
 $metaOk  = META_ACCESS_TOKEN !== '' && META_WABA_ID !== '';
-$status  = $id !== '' && $metaOk ? WaFlow::status() : ['status' => '', 'error' => ''];
+$status  = $id !== '' && $metaOk ? WaFlow::status() : ['status' => '', 'error' => '', 'validation_errors' => []];
 $data    = WaFlow::screenData('ne', false);
 $sold    = (int) Database::scalar(
     "SELECT COUNT(*) FROM audit_logs WHERE action = 'wa.flow_submit' AND created_at >= CURDATE() - INTERVAL 30 DAY", [], 0);
@@ -108,6 +120,13 @@ admin_page_head('The one-sheet booking form inside WhatsApp: pickup, date, seats
       <p>Switched: <?= $on ? '<span class="wf-st ok">ON</span>' : '<span class="wf-st no">OFF</span>' ?>
         · Template <?= $e(WaFlow::TEMPLATE) ?>: <span class="wf-st wait"><?= $e(Settings::getString('wa_flow_template_status', 'not made')) ?></span>
         · Forms filled (30 days): <b><?= $sold ?></b></p>
+      <?php if (!empty($status['validation_errors'])): ?>
+      <div class="flash bad" style="margin:6px 0 10px"><b>Meta won't publish — fix these first:</b>
+        <ul style="margin:4px 0 0 18px;padding:0">
+          <?php foreach ($status['validation_errors'] as $ve): ?><li><?= $e($ve) ?></li><?php endforeach; ?>
+        </ul>
+      </div>
+      <?php endif; ?>
       <ol class="wf-steps">
         <li><b>Publish the form</b> (once). Meta checks it and returns an id — stored here automatically.</li>
         <li>Customer writes <b>ticket</b> / taps 🎫 Book on <?= $e(Settings::bookingWhatsApp()) ?> → the form opens.</li>

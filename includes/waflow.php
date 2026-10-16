@@ -358,6 +358,11 @@ final class WaFlow
             }
             $out['id']    = self::flowId();
             $out['error'] = self::metaError($res);
+            // Why Meta refused: the flow's own validation_errors say exactly which element it rejects.
+            $st = self::status();
+            if (!empty($st['validation_errors'])) {
+                $out['errors'] = $st['validation_errors'];
+            }
             return $out;
         }
         $fields = [
@@ -477,13 +482,18 @@ final class WaFlow
     {
         require_once ROOT_PATH . '/whatsapp/config.php';
         if (self::flowId() === '' || META_ACCESS_TOKEN === '') {
-            return ['status' => '', 'error' => ''];
+            return ['status' => '', 'error' => '', 'validation_errors' => []];
         }
         $res = self::graph('GET', '/' . self::flowId() . '?fields=id,name,status,validation_errors', []);
+        $errs = [];
+        foreach ((array) ($res['json']['validation_errors'] ?? []) as $v) {
+            $errs[] = trim((string) ($v['error'] ?? '') . ': ' . (string) ($v['message'] ?? ''), ': ');
+        }
         return [
             'status' => (string) ($res['json']['status'] ?? ''),
             'name'   => (string) ($res['json']['name'] ?? ''),
             'error'  => (string) ($res['json']['error']['message'] ?? ''),
+            'validation_errors' => $errs,
         ];
     }
 
