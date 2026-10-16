@@ -314,6 +314,9 @@ try {
         'index.php' => ['dashboard.view'], 'bookings.php' => ['bookings.view'], 'booking-view.php' => ['bookings.view'],
         'reschedule.php' => ['bookings.view'], 'manifest.php' => ['bookings.view'], 'chalan.php' => ['bookings.view'],
         'quick-ticket.php' => ['bookings.view'], 'wa-routing.php' => ['bookings.view'], 'wa-pending.php' => ['bookings.view'],
+        // 16 Oct 2026: SmartBook is the one booking screen, and the Book button
+        // on the dashboard now reaches it (it was linked without a gate entry).
+        'smartbook.php' => ['bookings.view'],
         'offline-requests.php' => ['bookings.view'], 'ai-copilot.php' => ['bookings.view'], 'trips.php' => ['schedules.view'],
         'seatmap.php' => ['schedules.view'], 'buses.php' => ['schedules.view'], 'scan.php' => ['tickets.scan'],
         'payments.php' => ['payments.view'], 'refunds.php' => ['refunds.view'], 'support-inbox.php' => ['support.view'],

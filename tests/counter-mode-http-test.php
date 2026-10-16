@@ -112,7 +112,10 @@ try {
     check('guest home renders with a boot payload', $home['code'] === 200 && is_array($gb));
     check('guest boot has NO staff key', is_array($gb) && !array_key_exists('staff', $gb));
     check('guest boot ships the shared seat cap', is_array($gb) && (int) ($gb['settings']['max_seats_per_booking'] ?? 0) > 0, 'cap=' . ($gb['settings']['max_seats_per_booking'] ?? '?'));
-    check('14-counter.js is loaded by the shell', str_contains($home['body'], '/assets/js/14-counter.js'));
+    /* 8 Oct 2026 (D8-08, index.php): the ~70 KB counter bundle is a no-op
+       without SHG_BOOT.staff, so index.php strips it from a customer page.
+       A guest must NOT download it; the staff shell below must. */
+    check('14-counter.js is NOT shipped to a guest', !str_contains($home['body'], '/assets/js/14-counter.js'));
     $csrfG = (string) ($gb['csrf'] ?? '');
     $forb = req($g, 'POST', '/api/book.php', ['json' => $payload(['U9'], $csrfG, ['counterPayment' => 'cash'])]);
     check('guest sending counterPayment is refused (403)', $forb['code'] === 403, 'HTTP ' . $forb['code']);
@@ -135,6 +138,7 @@ try {
     $sh = req($a, 'GET', '/index.php?counter=1');
     $ab = bootOf($sh['body']);
     check('staff boot present for the agent', is_array($ab) && is_array($ab['staff'] ?? null));
+    check('… and the staff shell DOES load 14-counter.js', str_contains($sh['body'], '/assets/js/14-counter.js'));
     check('staff.canSell true, panelUrl = agent.php', !empty($ab['staff']['canSell']) && ($ab['staff']['panelUrl'] ?? '') === '/admin/agent.php', json_encode($ab['staff'] ?? null));
     check('staff boot ships the bulk cap (maxSeats)', (int) ($ab['staff']['maxSeats'] ?? 0) >= 7, 'maxSeats=' . ($ab['staff']['maxSeats'] ?? '?'));
     /* Desk memory (1 Oct 2026, U4): counter mode keys the remembered agent on

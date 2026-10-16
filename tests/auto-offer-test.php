@@ -104,8 +104,15 @@ try {
         'disc=' . $b2['coupon_discount'] . ' total=' . $b2['total_amount']);
 
     $b3 = $sell(['L22'], ['discountType' => 'flat', 'discountValue' => 50]);
-    check("clerk's own ₹50 discount is not stacked with the offer", (float) $b3['coupon_discount'] === 50.0
-        && ($b3['coupon_code'] ?? null) === null, 'disc=' . $b3['coupon_discount']);
+    /* 7 Oct 2026 (live audit, includes/booking.php): the two never stack —
+       the BIGGER of the clerk's own discount and the running offer wins. A
+       ₹50 flat against a 10% offer on a ₹2000 fare means the passenger pays
+       ₹1800, not ₹1950 and not ₹1750. Before that fix any clerk discount,
+       even ₹50, silently replaced the offer. */
+    $offerCut = round(((float) $b3['base_total']) * 0.10, 2);
+    check("clerk's ₹50 loses to the bigger offer, and the two never stack",
+        (float) $b3['coupon_discount'] === $offerCut && (string) ($b3['coupon_code'] ?? '') === AO_CODE,
+        'disc=' . $b3['coupon_discount'] . ' (offer ' . $offerCut . ', clerk 50) code=' . ($b3['coupon_code'] ?? 'NULL'));
 
     $addOffer(addDaysISO($today, 1), addDaysISO($today, 5));
     $q2 = Fare::quote(2000.0, 1, 0, 0, 0, '', AO_PHONE . '0', $rid);

@@ -279,8 +279,10 @@ try {
     $out = page('agents.php', $SUPU, [], ['action' => 'delete', 'id' => (string) $qa1]);
     check('POST delete is refused — agents are never deleted', str_contains($out, 'never deleted') && Database::exists('SELECT 1 FROM admins WHERE id = :i', ['i' => $qa1]));
 
-    // An agent over their own ₹1,000 limit.
+    // An agent over their own ₹1,000 limit. Dated 60 days back so the ranking
+    // board below lists them without needing a sale from another suite.
     $X = mk_admin('agent', 'overcash');
+    Database::run('UPDATE admins SET created_at = :c WHERE id = :i', ['c' => date('Y-m-d H:i:s', strtotime('-60 days')), 'i' => $X]);
     AgentWallet::saveProfile($X, ['cash_limit' => 1000]);
     AgentWallet::record($X, 'cash_due', 1500, ['note' => 'test cash', 'by' => 0]);
     $out = page('agents.php', $SUPU);
@@ -492,8 +494,12 @@ try {
     check('an active agent who never sold (older than the inactivity days) is Low', str_contains($out, 'ZZ lowold ' . $TAG) && str_contains($out, 'Low: has never sold'));
     check('a brand-new agent gets the same grace as the bell', !str_contains($out, 'ZZ lownew ' . $TAG));
     check('"Low performers only" hides everyone else', !str_contains($out, 'ZZ s1 ' . $TAG));
-    $out = page('agent-ranking.php', $SUPU, ['range' => 'month']);
-    check('cash over the limit is red on the board', (bool) preg_match('/ZZ overcash ' . preg_quote($TAG, '/') . '.*?over ₹1,000/s', $out));
+    /* 15 Oct 2026: with no sale at all in the window the board replaces its rows
+       with "No sales in this window — try a wider range", and nothing in this
+       suite sells. "Low performers only" still lists its rows, and Cash held is
+       the balance NOW whatever the window, so the red marker is read there. */
+    $out = page('agent-ranking.php', $SUPU, ['range' => 'month', 'low' => '1']);
+    check('cash over the limit is red on the board', (bool) preg_match('/ZZ overcash ' . preg_quote($TAG, '/') . '.*?over ₹1,000/s', $out), $out === '' ? 'empty page' : 'overcash row ' . (str_contains($out, 'ZZ overcash ' . $TAG) ? 'present' : 'MISSING'));
     set_db('agent_target_monthly', '100000', 'float');
     $out = page('agent-ranking.php', $SUPU, ['range' => 'month', 'low' => '1']);
     check('with a monthly target set, below the target share reads Low', str_contains($out, 'below 30% of the target'));

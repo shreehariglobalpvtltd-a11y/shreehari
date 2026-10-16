@@ -91,8 +91,13 @@ check('the order written is the order returned', array_keys($locs) === ['NPJ', '
 
 /* ---- 2. the printable label --------------------------------------- */
 
-check('code alone resolves its name from the list',
-    Settings::counterLabel('NPJ', '') === 'Nepalgunj — Bus Park (NPJ)', Settings::counterLabel('NPJ', ''));
+/* 4 Oct 2026: counterLabel() resolves a bare code through counterLocations(),
+   which answers from the desk TABLE once the migration has run and from the
+   settings row until then. So the expected name is whatever that one source
+   says — the check is that the code resolves and prints "Name (CODE)". */
+$npjName = Settings::counterLocations()['NPJ'] ?? '';
+check('code alone resolves its name from the one desk source',
+    $npjName !== '' && Settings::counterLabel('NPJ', '') === $npjName . ' (NPJ)', Settings::counterLabel('NPJ', ''));
 check('name alone prints with no empty brackets',
     Settings::counterLabel('', 'Birgunj Office') === 'Birgunj Office', Settings::counterLabel('', 'Birgunj Office'));
 check('a code the list has never heard of still prints',

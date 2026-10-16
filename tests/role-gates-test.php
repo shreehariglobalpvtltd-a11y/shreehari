@@ -272,11 +272,22 @@ echo "\n=== 7. Quick Ticket desk (6 Sep 2026) ===\n";
 $qtGuest = req('GET', '/admin/quick-ticket.php', ['jar' => $guest]);
 check('signed-out /admin/quick-ticket.php bounces to the login door',
     $qtGuest['code'] === 302 && str_contains($qtGuest['location'], 'login.php'), 'HTTP ' . $qtGuest['code']);
-$qtAgent = req('GET', '/admin/quick-ticket.php', ['jar' => $agentJar]);
-check('an agent opens the QuickBot Ticket desk', $qtAgent['code'] === 200 && str_contains($qtAgent['body'], 'QuickBot') && str_contains($qtAgent['body'], 'id="qtLine"'), 'HTTP ' . $qtAgent['code']);
+/* 16 Oct 2026 (owner: "3 ta booking system lai eutai ma"): SmartBook is the
+   one booking screen, so a QuickBot bookmark forwards there; ?legacy=1 keeps
+   this page as an unlinked emergency fallback. Both doors are checked, and
+   the desk's CSRF token comes from the screen the agent actually lands on. */
+$qtFwd = req('GET', '/admin/quick-ticket.php', ['jar' => $agentJar]);
+check('an agent asking for the QuickBot desk lands on SmartBook',
+    $qtFwd['code'] === 302 && str_contains($qtFwd['location'], 'smartbook.php'), 'HTTP ' . $qtFwd['code'] . ' → ' . $qtFwd['location']);
+$sbAgent = req('GET', '/admin/smartbook.php', ['jar' => $agentJar]);
+check('… and SmartBook opens for the agent', $sbAgent['code'] === 200 && str_contains($sbAgent['body'], 'SHG_BOOT'), 'HTTP ' . $sbAgent['code']);
+$qtAgent = req('GET', '/admin/quick-ticket.php?legacy=1', ['jar' => $agentJar]);
+check('an agent opens the legacy QuickBot Ticket desk (?legacy=1)', $qtAgent['code'] === 200 && str_contains($qtAgent['body'], 'QuickBot') && str_contains($qtAgent['body'], 'id="qtLine"'), 'HTTP ' . $qtAgent['code']);
 $qtApiGuest = req('POST', '/api/quick-ticket.php', ['jar' => $guest, 'form' => ['action' => 'plan']]);
 check('signed-out /api/quick-ticket.php is refused', in_array($qtApiGuest['code'], [401, 403, 419], true), 'HTTP ' . $qtApiGuest['code']);
 $qtCsrf = csrfOf($qtAgent['body']);
+if ($qtCsrf === '') { $qtCsrf = preg_match('/"csrf":"([a-f0-9]+)"/', $sbAgent['body'], $sbm) ? $sbm[1] : ''; }
+check('the desk hands the agent a CSRF token', $qtCsrf !== '');
 $qtPlan = req('POST', '/api/quick-ticket.php', ['jar' => $agentJar, 'form' => ['action' => 'plan'], 'headers' => ['X-CSRF-Token: ' . $qtCsrf]]);
 $qtJson = json_decode($qtPlan['body'], true);
 check('an agent gets a plan (next bus · pickup · seat · fare)',

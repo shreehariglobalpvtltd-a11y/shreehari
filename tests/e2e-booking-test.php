@@ -286,7 +286,9 @@ $li = req('POST', '/admin/login.php', ['jar' => $adminJar, 'form' => [
 ]]);
 $dash = req('GET', '/admin/index.php', ['jar' => $adminJar]);
 $loggedIn = $dash['code'] === 200
-    && (str_contains($dash['body'], 'Recent Bookings') || str_contains($dash['body'], 'Latest bookings') || str_contains($dash['body'], 'Recent tickets'));
+    /* 16 Oct 2026: the panel is headed "Last 20 bookings" (admin/index.php). */
+    && (str_contains($dash['body'], 'Last 20 bookings') || str_contains($dash['body'], 'Recent Bookings')
+        || str_contains($dash['body'], 'Latest bookings') || str_contains($dash['body'], 'Recent tickets'));
 check('admin session established', $loggedIn, 'login HTTP ' . $li['code'] . ', dash HTTP ' . $dash['code']);
 
 if ($loggedIn) {

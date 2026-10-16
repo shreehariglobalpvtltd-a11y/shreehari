@@ -23,6 +23,13 @@ class Notify {
 }
 class Logger {
     public static function audit(...$args): void {}
+    /* api/wa-request.php logs a failed send through Logger::exception()
+       (and plain error()); the stub answers both so the eval'd copy of the
+       endpoint runs exactly the code live runs. */
+    public static function exception(...$args): void {}
+    public static function error(...$args): void {}
+    public static function warning(...$args): void {}
+    public static function info(...$args): void {}
 }
 function normalisePhone(string $s): string { return $s; }
 $source = file_get_contents(dirname(__DIR__) . '/api/wa-request.php');
