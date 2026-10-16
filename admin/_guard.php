@@ -292,11 +292,18 @@ function admin_header(string $title, string $active = ''): void
         foreach ($items as $item) {
             if ($active !== '' && str_contains($item['href'], $active)) { $activeSec = (string) ($item['section'] ?? ''); break; }
         }
+        // Default: EVERY named group is open so the admin sees the full menu
+        // on first visit — the one they wanted ("serial-wise, clear, don't
+        // make me hunt"). They can still collapse any group manually; the
+        // open/closed set is remembered in localStorage.
+        $secNum = 0;
         foreach ($groups as $sec => $groupItems) {
             if ($sec === '') { foreach ($groupItems as $item) { $renderLink($item); } continue; }
-            $open = ($sec === $activeSec) ? ' open' : '';
+            $secNum++;
+            $open = ' open';
             echo '<div class="side-group' . $open . '" data-sec="' . Security::e($sec) . '">';
             echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-label="Toggle ' . Security::e($sec) . '">'
+               . '<span class="side-sec-num">' . $secNum . '</span> '
                . Security::e($sec)
                . '<svg class="a-ic nav-caret"><use href="#a-chevron"/></svg></button>';
             echo '<div class="side-items">';
@@ -582,10 +589,14 @@ function shgNavToggle(btn){
 (function(){
   try{
     var raw = localStorage.getItem('shg_nav_open');
-    if(!raw) return;                 // first visit: keep the server default (active section open)
+    if(!raw) return;                 // first visit: keep the server default (all groups open)
     var open = JSON.parse(raw) || [];
+    // Honour the saved set exactly: open the groups the admin left open,
+    // CLOSE the rest. Without this, once the server defaults every group
+    // open, a group the admin collapsed re-opened on the next page load.
     document.querySelectorAll('.side-group').forEach(function(g){
       if(open.indexOf(g.getAttribute('data-sec')) >= 0){ g.classList.add('open'); }
+      else { g.classList.remove('open'); }
     });
   }catch(e){}
 })();
@@ -1240,11 +1251,16 @@ a:hover{color:var(--blue-600)}
 .side a.hot.on span{background:rgba(255,255,255,.25);color:#fff;box-shadow:none}
 .navbadge{margin-left:auto;background:var(--orange);color:#fff;border-radius:999px;font-size:11px;font-weight:800;padding:1px 7px;line-height:1.5;min-width:20px;text-align:center}
 .side a.on .navbadge{background:var(--card);color:var(--navy)}
-.side-sec{padding:14px 12px 4px;font-size:10.5px;font-weight:800;letter-spacing:.12em;color:var(--mut);text-transform:uppercase;user-select:none}
+/* Section headers: readable size + title case so the owner can scan them
+   at a glance ("make them bigger, serial-wise, don't make me hunt"). The
+   little numbered chip in front keeps the order visible. */
+.side-sec{padding:12px 10px 4px;font-size:12.5px;font-weight:800;letter-spacing:.01em;color:var(--ink);text-transform:none;user-select:none}
 .side-sec:first-child{padding-top:6px}
-.side-toggle{display:flex;align-items:center;gap:6px;width:100%;background:none;border:0;text-align:left;cursor:pointer;font:inherit;border-radius:8px}
-.side-sec.side-toggle{color:var(--mut)}
-.side-toggle:hover{color:var(--ink);background:var(--soft)}
+.side-sec-num{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:6px;background:var(--blue-50);color:var(--blue-600);font-size:11px;font-weight:800;margin-right:2px}
+.side-toggle{display:flex;align-items:center;gap:8px;width:100%;background:none;border:0;text-align:left;cursor:pointer;font:inherit;border-radius:8px}
+.side-sec.side-toggle{color:var(--ink)}
+.side-toggle:hover{color:var(--blue-600);background:var(--soft)}
+.side-toggle:hover .side-sec-num{background:var(--blue);color:#fff}
 .side-group .side-items{display:none}
 .side-group.open .side-items{display:block;animation:fadeDown .18s var(--ease)}
 .nav-caret{margin-left:auto;width:14px;height:14px;transition:transform .15s;opacity:.7}
