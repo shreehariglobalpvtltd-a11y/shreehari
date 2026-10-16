@@ -8,7 +8,7 @@ The live branch is whichever `release-*` branch in **`/var/repos/shg.git` on the
 
 Three things that are *not* evidence:
 
-- **GitHub.** The `release-*` branches are not pushed to `origin`, so a local clone cannot tell you what is live.
+- **GitHub.** The `release-*` branches of the current series *are* mirrored to `origin` (since 16 Oct 2026), but the mirror is a copy pushed by hand after the fact - it can lag, and older series were never pushed at all. A branch being on GitHub is not evidence it is live.
 - **The newest commit date.** A release branch can be cut and never deployed.
 - **The release name.** The same name can point at different commits in the two repos — today `release-20261016-tm3` is `7ff1c49` on GitHub but `dbc396d` in `/var/repos/shg.git`. **`deploy-prod.sh` resolves names in `/var/repos/shg.git`, so that is the one that counts.**
 
@@ -46,6 +46,71 @@ curl -s https://www.shreehariglobal.in/ | grep -oE '\?v=[0-9a-z]+' | sort -u
 G='git --git-dir=/var/repos/shg.git'; L=/var/www/shreehariglobal.in/public_html
 diff <($G show <live-branch>:sw.js | tr -d '\r') <(tr -d '\r' < $L/sw.js)
 ```
+
+## 1a. Claiming the next release name
+
+Release names are allocated in **`/var/repos/shg.git` on the VPS** - not on GitHub, not in a
+worktree. A name is taken the moment a branch of that name exists there.
+
+**Check both repos before you claim one.** This must print nothing:
+
+```bash
+NAME=release-20261016-x1
+git ls-remote origin "refs/heads/$NAME"
+ssh -i ~/.ssh/shg_vps_ed25519 root@93.127.167.249 \
+  "git --git-dir=/var/repos/shg.git show-ref --verify refs/heads/$NAME" 2>/dev/null
+```
+
+Any output at all, on either side, means the name is taken - take the next number. Checking only
+one repo is exactly what produced two different `release-20261016-tm3` commits on 16 Oct 2026, one
+on GitHub and one on the VPS, when two sessions each took "the next number after tm2".
+
+`deploy-prod.sh` now refuses a name that is already taken there by a different commit, and warns if
+GitHub has it on a different commit, so you do not have to rely on remembering this. Re-running the
+same release with the same ref is allowed, so a failed deploy can be retried.
+
+Three rules that go with it:
+
+- **A deployed `release-*` branch is immutable.** Never merge into one, never force-update one,
+  never reuse its name. A backup directory is named after it, and other people's work is based on
+  it. Open PRs should target a stable branch, not a release - and a PR based on a release branch
+  must never be merged on GitHub, or that name starts meaning two commits.
+- **The series letter is per topic, not per session** (`tm` brand/trademark, `ui` SmartBook polish,
+  `w` WhatsApp, `p`/`q`/`u` earlier the same way). A new topic starts a new letter, so two people
+  working on different things on the same day never contend for the same number.
+- **The release is not finished until it is on GitHub.** The VPS has no GitHub credentials and must
+  not be given any, so `deploy-prod.sh` prints the `git push` for you at the end - run it from your
+  own machine. Skipping it leaves GitHub a partial mirror, which is worse than no mirror: a reader
+  seeing `tm2 -> tm3 -> tm5` infers a chain that the `tm3` they can see is not part of.
+
+Because `deploy-prod.sh` filters `tests/`, `docs/` and `.github/` out of the file list, a release
+touching only those writes 0 files and **creates no release branch at all**. Test-only work has to
+ride along with a release that carries a web file, or it sits unreleased indefinitely with nothing
+complaining - which is how a test revert went unnoticed for hours on 16 Oct 2026. So release
+numbers are **not dense**: a gap is not evidence that a release was skipped or lost.
+
+### The rule runs in both directions
+
+Checking both repos before claiming a name catches only half of the problem. The other half is work
+that is real on one side and **unrecorded on the side that governs releases**, and on 16 Oct 2026
+that happened three times in one day:
+
+- brand markup was live on the filesystem but untracked in git (`live-logo-20261016c` captured it);
+- `assets/img/logo-tm.png` / `.webp` were served by live but in no branch at all;
+- a merged PR's commit existed only on GitHub, with no copy in `/var/repos/shg.git`.
+
+Only the third is about naming. The shape they share is that **`/var/repos/shg.git` is the only
+repository a deploy can see**, so anything that is not in it cannot be released, however finished it
+looks elsewhere. Two rules follow:
+
+- **Merging a PR on GitHub does not land it.** The merge commit has to be pushed to
+  `/var/repos/shg.git` as well, and then ride a release, before it is anywhere a deploy can reach.
+  Nothing prompts either step - so do both in the same sitting as the merge, or say in the PR where
+  the work now lives.
+- **Never merge a PR into a `release-*` branch.** It moves a name that the VPS has already fixed to
+  a different commit, which is how `release-20261016-tm5` came to mean `c3aeeba` on the VPS and a
+  merge commit on GitHub, within an hour of `tm3` doing the same thing. Base PRs on a stable branch
+  and land them through a release.
 
 ## 2. The route
 
