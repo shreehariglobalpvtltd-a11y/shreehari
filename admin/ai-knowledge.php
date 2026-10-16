@@ -36,6 +36,11 @@ try {
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!Security::verifyCsrf()) {
         $flash = ['bad', 'Session expired — please try again.'];
+    } elseif (!Auth::canManageSettings()) {
+        // Reading the knowledge base is fine for any office role; switching
+        // it off for every customer chat or rewriting an answer is not.
+        http_response_code(403);
+        $flash = ['bad', 'Only a manager or the owner can change the AI knowledge base.'];
     } else {
         $act = (string) ($_POST['action'] ?? '');
         try {

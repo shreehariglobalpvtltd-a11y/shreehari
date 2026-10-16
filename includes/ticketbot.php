@@ -1097,7 +1097,12 @@ final class TicketBot
         }
         $l  = mb_strtolower($text);
         $gu = $score(['joie', 'joiye', 'joiee', 'chhe', 'jovu', 'javu', 'javanu', 'karvu', 'aavu', 'kaale', 'aaje', 'amne', 'ketla', 'ketli', 'thi', 'mate'], $l);
-        $ne = $score(['chahiyo', 'chaiyo', 'chahincha', 'chahinchha', 'chha', 'xa', 'hola', 'bholi', 'parsi', 'malai', 'hamilai', 'kati', 'garnu', 'garidinu', 'dinu', 'dinus', 'farkine', 'ahile', 'aaja', 'bata', 'lagi', 'samma', 'euta', 'dui', 'tin', 'huncha', 'hunchha'], $l);
+        /* 23 Sep 2026: + everyday Nepali-only words. "payment gare tara ticket
+           aayena" and "Dashain ma ghar jana ticket milcha?" matched none and were
+           answered in English. Words shared with Hindi (jana, jane, ho, ghar,
+           kaha) are left out on purpose. */
+        $ne = $score(['chahiyo', 'chaiyo', 'chahincha', 'chahinchha', 'chha', 'xa', 'hola', 'bholi', 'parsi', 'malai', 'hamilai', 'kati', 'garnu', 'garidinu', 'dinu', 'dinus', 'farkine', 'ahile', 'aaja', 'bata', 'lagi', 'samma', 'euta', 'dui', 'tin', 'huncha', 'hunchha',
+                      'mero', 'hamro', 'cha', 'milcha', 'milchha', 'garna', 'garne', 'gare', 'tara', 'aayena', 'aaena', 'bhayo', 'hajur', 'kasari', 'aaune', 'parcha', 'parchha', 'sakchu', 'sakincha', 'pathaideu', 'dekhau'], $l);
         $hi = $score(['chahiye', 'chaiye', 'chahie', 'hai', 'hain', 'hoon', 'mujhe', 'humein', 'hume', 'kitne', 'kitna', 'jaana', 'wapas', 'wapsi', 'karo', 'karna', 'kijiye', 'banao', 'lena', 'liye', 'abhi', 'parso', 'log', 'hoga', 'milega'], $l);
         if ($gu > 0 && $gu > $hi && $gu > $ne) { return 'gu'; }   // Gujarati only when it wins outright — most passengers write Hindi / Nepali
         if ($ne > 0 && $ne >= $hi) { return 'ne'; }
@@ -1319,6 +1324,8 @@ final class TicketBot
             // "Same as last time": the berths to try first when free (QuickTicket::plan `prefer`).
             'prefer'    => array_values(array_filter(array_map(static fn($s): string => strtoupper(trim((string) $s)), (array) ($input['prefer'] ?? [])))),
             'customer'  => !$isStaff,
+            // Priced like the sale (per-passenger offer limits), 23 Sep 2026.
+            'phone'     => (string) ($input['phone'] ?? ''),
         ];
         $plan = null; $planError = '';
         try {

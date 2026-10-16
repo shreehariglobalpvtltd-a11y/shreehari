@@ -85,6 +85,7 @@ require_once INCLUDE_PATH . '/response.php';
 require_once INCLUDE_PATH . '/security.php';
 require_once INCLUDE_PATH . '/settings.php';
 require_once INCLUDE_PATH . '/helpers.php';
+require_once INCLUDE_PATH . '/devshape.php';   // HarfBuzz Devanagari shaping for PNG / PDF text (24 Sep 2026)
 // Before auth.php: Auth records every sign-in attempt through LoginLog.
 require_once INCLUDE_PATH . '/loginlog.php';
 require_once INCLUDE_PATH . '/auth.php';

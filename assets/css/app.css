@@ -21,15 +21,22 @@
 
 /* ---------- [CSS] 1. DESIGN TOKENS (brand colours & type) ---------- */
 :root{
-  /* Brand (from the logo) */
-  --blue:#2E5FA8;          /* primary brand blue  */
-  --blue-deep:#12264E;     /* hero / footer navy   */
-  --blue-800:#1C3B72;
-  --blue-100:#E3ECF9;
-  --blue-50:#F0F5FC;
-  --orange:#F07C1F;        /* primary brand orange */
-  --orange-600:#D96A10;
-  --orange-100:#FCE9D6;
+  /* Brand (measured from assets/img/logo.png, 24 Sep 2026): the globe's
+     navy and royal blue, the arrow's orange into gold. The same values as
+     the "logo" palette in views.css, so the first paint - before any
+     script picks a palette - already matches the logo. */
+  --blue:#0054A8;          /* primary brand blue (royal) */
+  --blue-deep:#0C306C;     /* hero / footer navy         */
+  --blue-800:#0B3F8F;
+  --blue-100:#D9E7FA;
+  --blue-50:#EEF4FC;
+  --orange:#F07800;        /* primary brand orange       */
+  --orange-600:#D95F00;
+  --orange-100:#FFE4C7;
+  --gold:#FFB703;          /* the arrow's tip            */
+  --sky:#2D7BE0;
+  --grad-brand:linear-gradient(135deg,#0C306C 0%,#0054A8 58%,#2D7BE0 100%);
+  --grad-warm:linear-gradient(135deg,#F07800 0%,#FFB703 100%);
 
   /* Flag accents — used ONLY in thin dividers, chips & ribbons */
   --saffron:#FF9933; --igreen:#138808; --chakra:#06038D;
@@ -830,19 +837,14 @@ footer{background:linear-gradient(180deg,var(--blue-deep) 0%,#080E1C 100%);color
    4 berths on the left, aisle, 2 on the right (owner's real coach: 4/2). */
 .seat-row.slp-shr6{grid-template-columns:repeat(4,minmax(0,1fr)) 34px repeat(2,minmax(0,1fr))}
 .berth-labels6{grid-template-columns:4fr 34px 2fr}
-.seat-row.slp-shr6 .seat:nth-of-type(1)::before{content:'A·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
-.seat-row.slp-shr6 .seat:nth-of-type(2)::before{content:'B·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
-.seat-row.slp-shr6 .seat:nth-of-type(3)::before{content:'C·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
-.seat-row.slp-shr6 .seat:nth-of-type(4)::before{content:'D·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
-.seat-row.slp-shr6 .seat:nth-of-type(5)::before{content:'E·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
-.seat-row.slp-shr6 .seat:nth-of-type(6)::before{content:'F·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
+/* (The A·..F· column prefixes were removed 23 Sep 2026: the berth label itself
+   is now row-letter + column — A1..F6 lower, A7..F12 upper.) */
 /* Narrow phones: 4 berths on one side get tight — shrink the seat + label a touch.
    The tuned per-width numbers live with the rest of the phone seat-map rules in
    views.css (it loads after this file); these are the safe fallback. */
 @media(max-width:430px){
   .seat-row.slp-shr6{grid-template-columns:repeat(4,minmax(0,1fr)) 20px repeat(2,minmax(0,1fr));gap:5px}
   .seat-row.slp-shr6 .seat{font-size:11px;min-width:0}
-  .seat-row.slp-shr6 .seat::before{font-size:8.5px;margin-right:1px}
 }
 :root[data-theme="dark"] .cabin-card{background:#0D1530;border-color:#1A2240}
 :root[data-theme="dark"] .cab-free{background:rgba(34,197,94,.14);color:#86efac;border-color:rgba(34,197,94,.3)}

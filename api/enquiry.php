@@ -69,7 +69,9 @@ try {
     // phones them and creates the account by hand in Staff & Agents — there is
     // deliberately no self-service path from this form to a real login.
     $sourceIn = (string) Response::field('source', 'quick_booking');
-    $source   = in_array($sourceIn, ['quick_booking', 'complaint', 'agent_apply'], true)
+    // 'callback' (24 Sep 2026): the contact button on every screen — "call me
+    // back". Lands in the same Enquiries inbox; the office phones them.
+    $source   = in_array($sourceIn, ['quick_booking', 'complaint', 'agent_apply', 'callback'], true)
         ? $sourceIn
         : 'quick_booking';
 
@@ -91,6 +93,7 @@ try {
     // The quick-booking wording ("let's pick your seat") is wrong for the other
     // two desks — an applicant is not about to choose a berth.
     $message = match ($source) {
+        'callback'    => 'Got it — the office will call you back on this number. कार्यालयबाट यही नम्बरमा फोन आउनेछ। / ऑफ़िस इसी नंबर पर कॉल करेगा।',
         'agent_apply' => 'Application received — our office will call you on this number. आवेदन प्राप्त भयो — कार्यालयबाट फोन आउनेछ।',
         'complaint'   => 'Complaint filed — our team will get back to you.',
         default       => 'Details saved — let’s pick your seat.',

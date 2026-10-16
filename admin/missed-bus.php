@@ -201,10 +201,11 @@ if ($targetDate !== '' && Security::isValidDate($targetDate)) {
 .mb-date.on small{color:#cdd6e6}
 .mb-seats-wrap{margin:12px 0;display:flex;flex-direction:column;gap:14px}
 .mb-deck-head{font-size:11px;font-weight:700;color:var(--mut);letter-spacing:.04em;text-transform:uppercase;margin-bottom:-4px}
+.mb-deck-head.floor-head{font-size:12.5px;color:#fff;text-transform:none;letter-spacing:.01em;margin-bottom:8px}
 .mb-seats{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
 .mb-seat{position:relative}
 .mb-seat input{position:absolute;opacity:0;pointer-events:none}
-.mb-seat label{display:block;text-align:center;padding:10px 6px;border:2px solid var(--line);border-radius:9px;
+.mb-seat label{display:block;text-align:center;padding:10px 6px;border:2px solid var(--fl-line,var(--line));border-radius:11px;background:var(--card);
   cursor:pointer;font-weight:800;font-family:ui-monospace,Consolas,monospace;font-size:13px}
 .mb-seat input:checked + label{background:#0a6b3b;color:#fff;border-color:#0a6b3b}
 .mb-hint{font-size:13px;color:var(--mut);margin:4px 0 12px}
@@ -310,17 +311,20 @@ if (!in_array($status, ['pending', 'confirmed'], true)): ?>
                     if (isset($openFlip[$sid])) { $inDeck[] = $sid; }
                 }
             }
-            if ($inDeck !== []) { $decksData[] = ['label' => $deck['label'], 'seats' => $inDeck]; }
+            if ($inDeck !== []) { $decksData[] = ['label' => $deck['label'], 'key' => (string) $deck['key'], 'seats' => $inDeck]; }
         }
         $covered = [];
         foreach ($decksData as $d) { foreach ($d['seats'] as $s) { $covered[$s] = 1; } }
         $orphans = array_values(array_diff($openSeats, array_keys($covered)));
-        if ($orphans !== []) { $decksData[] = ['label' => 'Other', 'seats' => $orphans]; }
+        if ($orphans !== []) { $decksData[] = ['label' => 'Other', 'key' => '', 'seats' => $orphans]; }
       ?>
       <div class="mb-seats-wrap">
-        <?php foreach ($decksData as $deck): ?>
-          <?php if (count($decksData) > 1): ?>
-            <div class="mb-deck-head"><?= Security::e((string) $deck['label']) ?> · <?= count($deck['seats']) ?> free</div>
+        <?php foreach ($decksData as $deck):
+          // Lower Floor (1F) blue / Upper Floor (2F) green (admin/_guard.php .floor-*).
+          $isFloor = in_array($deck['key'], ['L', 'U'], true); ?>
+          <div class="mb-floor<?= $isFloor ? ' floor-' . $deck['key'] : '' ?>">
+          <?php if (count($decksData) > 1 || $isFloor): ?>
+            <div class="mb-deck-head<?= $isFloor ? ' floor-head' : '' ?>"><?= Security::e((string) $deck['label']) ?> · <?= count($deck['seats']) ?> free<?php if ($isFloor): ?><span class="fh-range"><?= Security::e(Seats::floorRange((string) $deck['key'], $mbCoach)) ?></span><?php endif; ?></div>
           <?php endif; ?>
           <div class="mb-seats">
             <?php foreach ($deck['seats'] as $seat): ?>
@@ -329,6 +333,7 @@ if (!in_array($status, ['pending', 'confirmed'], true)): ?>
                 <label for="mb-<?= Security::e($seat) ?>"><?= Security::e(Seats::displayLabel((string) $seat, $mbCoach ?? 'sleeper', (string) ($bookingMode ?? 'sharing'))) ?></label>
               </span>
             <?php endforeach; ?>
+          </div>
           </div>
         <?php endforeach; ?>
       </div>

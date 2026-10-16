@@ -21,9 +21,9 @@
  *  HEADINGS ROMAN, NAMES AS TYPED. The column heads and the labels are
  *  English because this is the crew / border-desk copy; the signed Nepali
  *  chalani stays the PDF (?format=chalanipdf). A PASSENGER NAME, though,
- *  prints in the script it was written in: GD does form the Devanagari
- *  conjuncts, and dev_shape() supplies the one reordering step it misses
- *  (10 Sep 2026 — the name used to be dropped to the ticket number).
+ *  prints in the script it was written in, shaped by HarfBuzz (DevShape,
+ *  24 Sep 2026 — GD alone does NOT form the conjuncts, whatever the 10 Sep
+ *  note here said; dev_shape() remains only as the fallback).
  *  A name in a script the font has no glyphs for still falls back.
  *
  *  Reads only. Writes PNG files under UPLOAD_PATH/chalani/<date>/ and
@@ -47,7 +47,7 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 7;   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 8;   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
@@ -239,12 +239,16 @@ final class ChalaniPng
         if ($text === '') {
             return;
         }
-        $text = dev_shape($text);
-        $box = imagettfbbox($size, 0, self::font(), $text);
+        $flat = dev_shape($text);
+        $box = imagettfbbox($size, 0, self::font(), $flat);
         $baseline = $y - (int) min($box[5], $box[7]);
-        imagettftext($im, $size, 0, $x, $baseline, $col, self::font(), $text);
+        if (class_exists('DevShape') && DevShape::needs($text)
+            && DevShape::gdText($im, $size, $x, $baseline, $col, $text, $bold ? [[0, 0], [1, 0]] : [[0, 0]])) {
+            return;
+        }
+        imagettftext($im, $size, 0, $x, $baseline, $col, self::font(), $flat);
         if ($bold) {
-            imagettftext($im, $size, 0, $x + 1, $baseline, $col, self::font(), $text);
+            imagettftext($im, $size, 0, $x + 1, $baseline, $col, self::font(), $flat);
         }
     }
 
@@ -252,6 +256,9 @@ final class ChalaniPng
     {
         if ($text === '') {
             return 0;
+        }
+        if (class_exists('DevShape') && DevShape::needs($text) && ($sw = DevShape::gdWidth($size, $text)) !== null) {
+            return $sw;
         }
         $box = imagettfbbox($size, 0, self::font(), dev_shape($text));
         return (int) (max($box[2], $box[4]) - min($box[0], $box[6]));

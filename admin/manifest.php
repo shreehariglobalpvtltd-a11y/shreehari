@@ -253,17 +253,17 @@ if ($format === 'csv') {
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");     // BOM so Excel reads the Devanagari names
 
-    fputcsv($out, ['Manifest', ($trip['from_city'] ?? '') . ' -> ' . ($trip['to_city'] ?? '')]);
-    fputcsv($out, ['Travel date', $date]);
-    fputcsv($out, ['Departure', substr((string) ($trip['dep_time'] ?? ''), 0, 5)]);
-    fputcsv($out, ['Bus number', (string) ($trip['bus_number'] ?? 'not assigned')]);
-    fputcsv($out, ['Passengers', (string) count($rows)]);
-    fputcsv($out, []);
-    fputcsv($out, ['Seat', 'Passenger', 'Age', 'Gender', 'Phone', 'Boarding point',
+    csv_put($out, ['Manifest', ($trip['from_city'] ?? '') . ' -> ' . ($trip['to_city'] ?? '')]);
+    csv_put($out, ['Travel date', $date]);
+    csv_put($out, ['Departure', substr((string) ($trip['dep_time'] ?? ''), 0, 5)]);
+    csv_put($out, ['Bus number', (string) ($trip['bus_number'] ?? 'not assigned')]);
+    csv_put($out, ['Passengers', (string) count($rows)]);
+    csv_put($out, []);
+    csv_put($out, ['Seat', 'Passenger', 'Age', 'Gender', 'Phone', 'Boarding point',
                    'Destination', 'Fare', 'Booking ID', 'Payment', 'Source', 'Agent', 'Ticket', 'Booked']);
 
     foreach ($rows as $r) {
-        fputcsv($out, [
+        csv_put($out, [
             Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing')),
             $r['full_name'], $r['age'], $r['gender'], $r['contact_phone'],
             $stopShort((string) $r['boarding_stop']), $stopShort((string) $r['drop_stop']), $farePer($r), $r['pnr'],

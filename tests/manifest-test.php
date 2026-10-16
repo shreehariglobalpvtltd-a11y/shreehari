@@ -155,8 +155,9 @@ try {
     check('manifest page renders', $page['code'] === 200, 'HTTP ' . $page['code']);
 
     // Seats are STORED canonically (L8/L4/L6) but DISPLAYED as the row-letter
-    // grid (Seats::displayLabel) since 11 Sep 2026: L8→LB2, L4→LA4, L6→LA6.
-    foreach ([['Web Customer', 'LB2'], ['Cod Customer', 'LA4'], ['Counter Customer', 'LA6']] as [$who, $seat]) {
+    // grid (Seats::displayLabel): since 23 Sep 2026 the two-floor grid, lower
+    // A1..F6 / upper A7..F12 — L8→B2, L4→A4, L6→A6 (was LB2/LA4/LA6).
+    foreach ([['Web Customer', 'B2'], ['Cod Customer', 'A4'], ['Counter Customer', 'A6']] as [$who, $seat]) {
         check("manifest lists $who ($seat)",
               str_contains($page['body'], $who) && str_contains($page['body'], '>' . $seat . '<'));
     }

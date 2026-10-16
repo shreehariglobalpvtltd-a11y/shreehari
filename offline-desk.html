@@ -164,6 +164,16 @@
     }).catch(function () {});
   }
 
+  /* Stored berth L1..L36 / U1..U36 -> the label every ticket prints: A1..F6 /
+     A7..F12 (Seats::displayLabel for the 4+2 sharing coach, which is what the
+     counter sells). This page loads no bundle, so it carries its own copy. */
+  function seatLbl(s) {
+    var m = /^([LU])(\d+)$/i.exec(String(s));
+    if (!m || +m[2] < 1) return String(s);
+    var n = +m[2] - 1;
+    return String.fromCharCode(65 + Math.floor(n / 6)) + ((n % 6) + 1 + (m[1].toUpperCase() === 'U' ? 6 : 0));
+  }
+
   /* render */
   function render() {
     var q = load(), waiting = q.filter(function (x) { return x.state === 'queued' || x.state === 'received'; }).length;
@@ -171,7 +181,7 @@
     $('list').innerHTML = q.length ? q.slice().reverse().map(function (x) {
       var st = x.state === 'ticketed' ? 'TICKET ✓' : x.state === 'failed' || x.state === 'rejected' ? 'FAILED' : x.state === 'received' ? 'CHECKING…' : 'WAITING';
       var extra = x.state === 'ticketed'
-        ? '<small><b>' + esc(x.pnr || '') + '</b> · seat ' + esc((x.seatsGot || []).join(', ') || '—') + (x.total != null ? ' · ₹' + esc(x.total) : '') + '</small>'
+        ? '<small><b>' + esc(x.pnr || '') + '</b> · seat ' + esc((x.seatsGot || []).map(seatLbl).join(', ') || '—') + (x.total != null ? ' · ₹' + esc(x.total) : '') + '</small>'
         : (x.reason ? '<small style="color:var(--bad)">' + esc(x.reason) + '</small>' : '');
       var acts = '';
       if (x.state === 'ticketed' && x.pnr) acts += '<a href="/#/ticket/' + encodeURIComponent(x.pnr) + '">Open ticket</a>';

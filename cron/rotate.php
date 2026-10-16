@@ -83,8 +83,32 @@ try {
     // health_incidents missing — nothing to prune.
 }
 
+// Inbound WhatsApp attachments kept as handoff evidence (Settings ->
+// wa_ops_media_keep_days, default 30). A file a support request still points
+// at is never touched. Module or table missing — nothing to prune.
+$mediaPurged = 0;
+try {
+    require_once INCLUDE_PATH . '/wamedia.php';
+    $mediaPurged = WaMedia::sweep(Settings::getInt('wa_ops_media_keep_days', 30));
+} catch (Throwable $e) {
+    // best effort, like the rest of this file
+}
+
+// Chart PNGs the assistant drew for WhatsApp (Settings -> ai_chart_keep_days,
+// default 3). A report picture is a moment's answer, not a record; the
+// figures live in the register and can be drawn again on request.
+$chartsPurged = 0;
+try {
+    require_once INCLUDE_PATH . '/aichart.php';
+    $chartsPurged = AiChart::sweep(max(1, min(30, Settings::getInt('ai_chart_keep_days', 3))));
+} catch (Throwable $e) {
+    // nothing drawn yet — nothing to sweep
+}
+
 cron_done([
     'logFilesRemoved'  => $logsRemoved,
+    'waMediaPurged'    => $mediaPurged,
+    'chartsPurged'     => $chartsPurged,
     'rateLimitsPurged' => $rlPurged,
     'otpPurged'        => $otpPurged,
     'loginHistoryPurged' => $loginsPurged,

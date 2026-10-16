@@ -281,6 +281,32 @@ if (!function_exists('waGraphPost')) {
     }
 
     /**
+     * Document (PDF, image, office file) by public https URL, with the file
+     * name WhatsApp shows and an optional caption (24 Sep 2026). Used by the
+     * assistant's company_doc_send: the URL is a single-use, short-lived
+     * share link (company-doc-share.php), never a path to the file itself.
+     * Same contract as every other sender here — it never throws.
+     */
+    function sendWhatsAppDocument(string $phone, string $docUrl, string $filename = '', string $caption = '', ?string $countryHint = null): array
+    {
+        $to = waCleanPhone($phone, $countryHint);
+        if (!preg_match('~^https://~i', $docUrl)) {
+            $r = ['success' => false, 'message_id' => '', 'error' => 'document URL must be public https', 'http' => 0, 'code' => 0];
+            logWhatsAppEvent('document', $to, [], $r);
+            return $r;
+        }
+        $doc  = ['link' => $docUrl];
+        $name = trim(preg_replace('/[^\p{L}\p{N} ._()\-]+/u', '_', $filename) ?? '');
+        if ($name !== '') {
+            $doc['filename'] = mb_substr($name, 0, 120);
+        }
+        if (trim($caption) !== '') {
+            $doc['caption'] = mb_substr($caption, 0, 1024);
+        }
+        return waGraphPost($to, ['type' => 'document', 'document' => $doc], 'document');
+    }
+
+    /**
      * Send ONE contact card — the company's visiting card.
      *
      * This is Meta's `contacts` message type, not a picture of a card: it

@@ -236,13 +236,13 @@ if ($format === 'csv') {
     header('Cache-Control: no-store');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");   // BOM so Excel reads UTF-8 (Devanagari names) correctly
-    fputcsv($out, ['Date', 'Time', 'Action', 'Edited by', 'Role', 'Actor type', 'Target', 'Booking / ID', 'Field', 'Old value', 'New value', 'Reason', 'Detail', 'IP']);
+    csv_put($out, ['Date', 'Time', 'Action', 'Edited by', 'Role', 'Actor type', 'Target', 'Booking / ID', 'Field', 'Old value', 'New value', 'Reason', 'Detail', 'IP']);
     foreach ($rows as $r) {
         $pairs = audit_pairs($r['old_value'] ?? null, $r['new_value'] ?? null);
         if ($pairs === []) { $pairs = [['', '', '']]; }
         $ts = strtotime((string) $r['created_at']) ?: 0;
         foreach ($pairs as [$field, $ov, $nv]) {
-            fputcsv($out, [
+            csv_put($out, [
                 date('Y-m-d', $ts), date('H:i:s', $ts), (string) $r['action'],
                 (string) ($r['actor_name'] ?? ''), (string) ($r['actor_role'] ?? ''), (string) $r['actor_type'],
                 (string) ($r['entity_type'] ?? ''), (string) ($r['entity_id'] ?? ''),

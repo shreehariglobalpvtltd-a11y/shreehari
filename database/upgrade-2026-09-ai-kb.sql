@@ -146,10 +146,10 @@ VALUES
   'track, kaha, location, live',
   '["public"]','seed','Reflects bus_eta / live map, 22 Sep 2026 — office may edit','verified','published'),
  ('fare','online-discount-offers','Is there a discount for booking online?',
-  'Our fare is the same online and at the counter. We do not run a standing discount — if there is ever an offer, it is shown when you book. I will never make up a price or a discount — for the exact fare on your date, just tell me your route and date.',
-  'हाम्रो भाडा online र counter मा उस्तै हो। हामी नियमित छुट दिँदैनौं — कहिल्यै offer भए बुक गर्दा देखिन्छ। म कहिल्यै भाउ वा छुट बनाउँदिन — तपाईंको मितिको ठ्याक्कै भाडाका लागि रुट र मिति भन्नुहोस्।',
-  'हमारा किराया online और counter पर एक समान है। हम नियमित छूट नहीं देते — कभी offer हो तो बुकिंग के समय दिखता है। मैं कभी दाम या छूट नहीं बनाता — आपकी तारीख का सही किराया चाहिए तो रूट और तारीख बताएँ।',
-  'Our fare is the same online and at the counter. We do not run a standing discount — if there is ever an offer, it is shown when you book. I will never make up a price or a discount — for the exact fare on your date, just tell me your route and date.',
+  'Our fare is the same online and at the counter. When the office runs an offer, for example a festival discount, it is applied automatically to every eligible booking and I will tell you the saving. I never make up a discount — for the exact fare on your date, just tell me your route and date.',
+  'हाम्रो भाडा online र counter मा उस्तै हो। कार्यालयले offer (जस्तै चाडपर्वको छुट) चलाएको बेला त्यो हरेक मिल्ने बुकिङमा आफैं लाग्छ र म कति बच्यो भनेर बताउँछु। म कहिल्यै छुट आफैं बनाउँदिन — ठ्याक्कै भाडाका लागि रुट र मिति भन्नुहोस्।',
+  'हमारा किराया online और counter पर एक समान है। जब ऑफिस कोई offer (जैसे त्योहार की छूट) चलाता है, वह हर योग्य बुकिंग पर अपने आप लगता है और मैं बचत बताता हूँ। मैं कभी छूट खुद नहीं बनाता — सही किराया चाहिए तो रूट और तारीख बताएँ।',
+  'Our fare is the same online and at the counter. When the office runs an offer, for example a festival discount, it is applied automatically to every eligible booking and I will tell you the saving. I never make up a discount — for the exact fare on your date, just tell me your route and date.',
   'online book garda discount cha, chhut cha ki, offer cha',
   'online booking par discount, chhut hai kya, offer hai kya',
   'discount offer online fare price same counter',
@@ -175,3 +175,21 @@ VALUES
   'cargo freight import export logistics goods',
   'cargo, saman, freight, logistics',
   '["public"]','seed','Reflects marketing rule H (cargo to office), 22 Sep 2026 — office may edit','verified','published');
+
+-- 23 Sep 2026: facilities, from the owner's own brief (AC sleeper, live GPS, USB / Type-C charging,
+-- comfortable sleeper, safe travel) and the seat engine's women-cabin rule. Wi-Fi is NOT claimed.
+INSERT IGNORE INTO ai_kb_articles
+ (category, slug, canonical_title, canonical_answer, nepali_content, hindi_content, english_content,
+  roman_nepali_examples, roman_hindi_examples, keywords, synonyms, applicable_roles, source_type,
+  source_reference, verification_status, publication_status)
+VALUES
+ ('facilities','bus-facilities','What facilities are on the bus?',
+  'Our own AC sleeper buses with comfortable berths, USB and Type-C charging points, and live GPS tracking that you can follow in the app or ask me about. A shared cabin with a woman in it is kept for women only, for safety. We cannot confirm Wi-Fi on board — please ask the office before you travel if you need it.',
+  'हाम्रो आफ्नै AC sleeper बस, आरामदायी बर्थ, USB र Type-C चार्जिङ पोइन्ट, र live GPS ट्र्याकिङ छ — app मा हेर्न वा मलाई सोध्न सक्नुहुन्छ। सुरक्षाका लागि, महिला भएको shared cabin महिलाका लागि मात्र राखिन्छ। बसमा Wi-Fi छ कि छैन हामी पक्का भन्न सक्दैनौं — चाहिए यात्रा अघि कार्यालयमा सोध्नुहोस्।',
+  'हमारी अपनी AC sleeper बसें, आरामदायक बर्थ, USB और Type-C चार्जिंग पॉइंट, और live GPS ट्रैकिंग — app में देखें या मुझसे पूछें। सुरक्षा के लिए, जिस shared cabin में महिला हो वह सिर्फ महिलाओं के लिए रखा जाता है। बस में Wi-Fi है या नहीं, हम पक्का नहीं कह सकते — ज़रूरत हो तो यात्रा से पहले ऑफिस से पूछें।',
+  'Our own AC sleeper buses with comfortable berths, USB and Type-C charging points, and live GPS tracking that you can follow in the app or ask me about. A shared cabin with a woman in it is kept for women only, for safety. We cannot confirm Wi-Fi on board — please ask the office before you travel if you need it.',
+  'bus ma charging cha, wifi cha, k k subidha cha, AC cha, mobile charge garna milcha',
+  'bus me charging hai, wifi hai kya, kya suvidha hai, AC hai',
+  'facilities amenities charging charger usb type-c wifi gps ac sleeper berth women safety',
+  'subidha, suvidha, charger, charge, wifi, AC',
+  '["public"]','seed','Owner brief 22 Sep 2026 (AC sleeper, live GPS, USB/Type-C charging) + seat engine women-cabin rule — office may edit','verified','published');

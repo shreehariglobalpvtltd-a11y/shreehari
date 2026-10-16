@@ -70,4 +70,15 @@ foreach ($map as $s) {
     $counts[$s['status']] = ($counts[$s['status']] ?? 0) + 1;
 }
 
-echo json_encode(['seats' => $seats, 'counts' => $counts]);
+/* Conditional answer: the office seat map polls every 15 s (and at once on a
+   live "seats" event). When nothing changed the browser's If-None-Match hits
+   the ETag and the reply is an empty 304 instead of the whole map. */
+$json = json_encode(['seats' => $seats, 'counts' => $counts]);
+$etag = '"' . md5((string) $json) . '"';
+header('Cache-Control: private, no-cache, must-revalidate');
+header('ETag: ' . $etag);
+if (trim((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? '')) === $etag) {
+    http_response_code(304);
+    exit;
+}
+echo $json;

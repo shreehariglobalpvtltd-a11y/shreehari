@@ -1,0 +1,690 @@
+/* =====================================================================
+   PREMIUM SHELL — 24 Sep 2026 (owner: "premium, powerful, original mobile
+   app … fast, smooth, easy", and "the top shows unnecessary HTTP/URL text,
+   show our logo instead").
+
+   WHY A SEPARATE FILE
+   app.css and views.css are 144 KB + 316 KB of accumulated rules. This
+   pass changes the shell — the first 160px of every screen, how motion
+   feels, and how far a phone has to scroll before it can book — and those
+   edits would be scattered across forty places in two files that are hard
+   to revert. Everything here is additive, loads LAST (so it wins on equal
+   specificity without !important wars), and deleting the one <link> in
+   app.template.html puts the app back exactly as it was.
+
+   Sections:
+     1. Motion + scroll feel (the "165 Hz" ask)
+     2. The header: the real logo comes back, the chrome above the
+        booking card halves
+     3. Splash credit line
+     4. Elevation, colour and focus polish
+     5. Sound / haptics settings row
+     6. Devanagari: Nepali and Hindi a phone can read (same day, owner:
+        "nepali fonts haru bujeko xain")
+     7. Brand band on the phone home screen
+     8. Brand palette: one navy, one royal, one saffron ("color haru ali
+        profesional, brand lai highlight garera marketing khalko")
+   ===================================================================== */
+
+
+/* ---------------------------------------------------------------------
+   1. MOTION + SCROLL FEEL
+   -------------------------------------------------------------------
+   A 120/165 Hz screen has 6-8ms to produce a frame. Anything the
+   compositor cannot do on its own thread — width, height, top, left,
+   margin, box-shadow, filter — misses that budget and the app reads as
+   "laggy" however fast the network is. These rules do three things:
+
+     a) Give the app one motion vocabulary (the --m-* tokens) built only
+        from transform and opacity, which the compositor animates without
+        the main thread.
+     b) Stop the browser from re-deciding on every touch whether a swipe
+        belongs to the page or to a scroller (touch-action / overscroll-
+        behavior), which is the actual source of the "half a beat behind
+        my finger" feeling on Android.
+     c) Honour prefers-reduced-motion properly: motion off, but nothing
+        invisible (an `animation:none` on a `both`-filled keyframe would
+        leave elements stuck at their 0% state, which is why this uses a
+        1ms duration instead).
+   ------------------------------------------------------------------- */
+:root{
+  /* Springy but short. 190ms is about the shortest duration a person
+     still reads as "it moved" rather than "it teleported". */
+  --m-quick:120ms;
+  --m-base:190ms;
+  --m-slow:280ms;
+  --m-spring:cubic-bezier(.22,1,.36,1);     /* overshoot-free ease-out-quint */
+  --m-snap:cubic-bezier(.2,.9,.28,1);
+  --m-exit:cubic-bezier(.4,0,1,1);
+  /* One elevation ramp, so a card, a sheet and a popup never disagree
+     about how far off the page they are. */
+  --e-1:0 1px 2px rgba(16,32,64,.06),0 2px 8px rgba(16,32,64,.06);
+  --e-2:0 2px 6px rgba(16,32,64,.07),0 10px 26px rgba(16,32,64,.09);
+  --e-3:0 8px 20px rgba(16,32,64,.10),0 24px 56px rgba(16,32,64,.12);
+}
+
+/* Scroll containers: keep a swipe inside the thing it started on, and
+   never let a horizontal scroller's rubber-band pull the page with it. */
+html{scroll-padding-top:120px}          /* anchors land below the sticky header */
+body{overscroll-behavior-y:none}
+.table-wrap,.date-chips,.num-strip,.nav-inner #numInner,.qa-wrap{
+  overscroll-behavior-x:contain;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+.table-wrap::-webkit-scrollbar,.date-chips::-webkit-scrollbar,
+.nav-inner #numInner::-webkit-scrollbar{height:0;width:0}
+
+/* Every control the finger lands on: no 300ms double-tap-zoom wait, no
+   grey flash, no text selection on a long press. */
+button,.btn,a.btn,.nav-link,.bn-item,.seat,.num-pill,.lang-btn,
+.qt-go,.credit-seg{
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* The press. One rule for the whole app so a seat, a nav tab and the
+   Confirm button all answer a finger the same way — a 40ms scale that
+   runs entirely on the compositor. */
+@media (hover:none){
+  button:active,.btn:active,a.btn:active,.seat:active,.num-pill:active,
+  .bn-item:active,.qt-go:active,.credit-seg:active{
+    transform:scale(.97);
+    transition:transform 40ms linear;
+  }
+}
+
+/* NOT content-visibility — views.css line 697 already does it.
+   `.section:not(#top){content-visibility:auto;contain-intrinsic-size:1px 600px}`
+   has been live since long before this pass, and #homeMore / #homeExtra
+   are built from .section, so they were already covered.
+
+   A rule was added here anyway during this pass (24 Sep 2026) and taken
+   back out the same night, because a SECOND content-visibility on the
+   same elements with a DIFFERENT intrinsic-size guess — 520px against
+   the existing 600px — is worse than either one alone: the two estimates
+   disagree about how tall an unrendered section is, and the correction
+   lands as a scroll jump. On a page whose next tap is "Confirm and take
+   the ticket", that is the wrong way round.
+
+   If the "show more" reveal is ever measured and found slow, tune the
+   ONE rule in views.css. Do not add a second one here. */
+
+/* Reduced motion: stop moving, stay visible. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:1ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:1ms!important;
+  }
+  html{scroll-behavior:auto}
+}
+
+
+/* ---------------------------------------------------------------------
+   2. THE HEADER
+   -------------------------------------------------------------------
+   What the owner saw: on a phone the first 161px of the app were four
+   stacked strips of text and contact details, and the company logo was
+   not among them — #logoNav carried `display:none!important` (app.css
+   line 316) and .nav-inner .brand carried `display:none` (views.css line
+   3225), so the brand slot rendered as an empty box on desktop and
+   vanished entirely on a phone. What was left up there read as raw
+   contact / address text.
+
+   The fix keeps every job that chrome was doing and gives the logo the
+   first position:
+
+     divine bar   27px -> 22px   (the mantra, unchanged)
+     topbar       50px -> 0      (hidden on phones: its mantra duplicated
+                                  the divine bar, and its language, theme
+                                  and palette controls move into the nav
+                                  row and the menu)
+     credit rib.  31px -> 26px   (CEO + the 24/7 WhatsApp number stays)
+     nav          53px -> 54px   (NOW: logo + wordmark, then the number
+                                  pills, then language + menu)
+     ---------------------------
+     161px -> 102px, and the booking card climbs 59px up the first screen.
+   ------------------------------------------------------------------- */
+
+/* The logo, everywhere. These two selectors are the exact pair that hid
+   it; they are re-stated here (loading last) rather than deleted in place
+   so the whole header pass reverts with one <link>. */
+#logoNav{display:block!important}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:0 0 auto}
+.brand img{height:46px;width:auto;flex:0 0 auto}
+
+/* The nav bar itself: a real sticky header with a hairline and a blur,
+   and a shadow-only transition so scrolling never relays it out. */
+.nav{
+  z-index:70;
+  transition:box-shadow var(--m-base) var(--m-snap),
+             background var(--m-base) var(--m-snap),
+             border-color var(--m-base) var(--m-snap);
+}
+.nav.scrolled{box-shadow:var(--e-1)}
+
+/* Compact language control (phones). The three-button EN/हिं/ने group is
+   38px tall because of the global button{min-height:44px} floor; on a
+   phone it becomes one pill showing the current language, which opens the
+   other two. Desktop keeps the full group. */
+.lang-mini{display:none;position:relative;flex:0 0 auto}
+/* Double-class on purpose: app.css sets button[type=button]{min-height:44px}
+   (specificity 0,1,1), which a single .lang-mini-btn would lose to — the
+   pill rendered as a 44px circle that swallowed the number pill beside it. */
+.lang-mini .lang-mini-btn{
+  height:34px;min-height:34px;min-width:36px;padding:0 9px;border-radius:999px;
+  font-size:12.5px;font-weight:800;letter-spacing:.04em;
+  color:#fff;background:var(--blue-deep);
+  display:inline-flex;align-items:center;justify-content:center;
+  transition:transform var(--m-quick) var(--m-snap);
+}
+.lang-mini-pop{
+  position:absolute;top:calc(100% + 6px);right:0;z-index:90;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;
+  box-shadow:var(--e-2);padding:4px;display:none;min-width:92px;
+}
+.lang-mini.open .lang-mini-pop{display:block;animation:lmIn var(--m-base) var(--m-spring) both}
+@keyframes lmIn{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:none}}
+.lang-mini-pop button{
+  display:block;width:100%;text-align:left;padding:9px 12px;border-radius:8px;
+  font-size:13.5px;font-weight:700;color:var(--ink);min-height:40px;
+}
+.lang-mini-pop button.on{background:var(--blue-50);color:var(--blue)}
+:root[data-theme="dark"] .lang-mini-pop{background:#101A2E;border-color:#233149}
+:root[data-theme="dark"] .lang-mini-pop button{color:#EAF1FF}
+
+@media (max-width:760px){
+  /* One mantra, not two: the divine bar already carries it. */
+  .topbar{display:none}
+  .divine-bar .container{min-height:22px;padding:3px 10px}
+  .divine-name{font-size:11px}
+
+  .credit-ribbon .credit-inner{min-height:26px}
+
+  /* The brand comes back, and takes only what it needs — the number pills
+     keep the rest of the row and still scroll. */
+  .nav-inner{gap:8px;min-height:54px;flex-wrap:nowrap}
+  .nav-inner .brand{display:flex;flex:0 0 auto}
+  .brand img{height:36px}
+  /* The pills give way, not the brand: this is the element that is allowed
+     to shrink and scroll, and min-width:0 is what lets it (a flex item's
+     default min-width:auto refuses to go below its content). */
+  .nav-inner #numInner{flex:1 1 auto;min-width:0}
+  .lang-mini{display:block}
+  .hamburger{flex:0 0 auto}
+}
+
+/* Desktop: give the header real presence — the logo it never showed, the
+   wordmark beside it, and a taller, calmer bar. */
+@media (min-width:761px){
+  .nav-inner{min-height:76px}
+  .brand img{height:50px}
+}
+
+
+/* ---------------------------------------------------------------------
+   3. SPLASH — the credit line
+   -------------------------------------------------------------------
+   The startup screen already carries the real logo, the real bus and the
+   real CEO photograph. The owner asked for the attribution line under
+   them. The spelling is the one the company uses everywhere else in this
+   app (admin/login.php, the footer, the ticket): Sher Bahadur Bishwokarma.
+   ------------------------------------------------------------------- */
+.splash-by{
+  margin-top:14px;font-size:11.5px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:#7A8AA6;
+  opacity:0;animation:splashByIn var(--m-slow) 420ms var(--m-spring) forwards;
+}
+.splash-by b{color:var(--blue-deep);letter-spacing:.08em;font-weight:800}
+
+/* The CEO's own 24/7 line, under the name on the startup screen. Same
+   number the ticket and the credit ribbon print. */
+.splash-ceo-num{
+  /* block, not the inline the sibling spans use: inline let it wrap up
+     beside "S HARI GLOBAL" and break the number across two lines. */
+  display:block;width:100%;
+  font-family:var(--f-code);font-size:11.5px;font-weight:700;
+  letter-spacing:.02em;color:var(--orange-600);margin-top:4px;white-space:nowrap;
+}
+:root[data-theme="dark"] .splash-ceo-num{color:#FFB765}
+@keyframes splashByIn{to{opacity:1}}
+:root[data-theme="dark"] .splash-by{color:#8296B4}
+:root[data-theme="dark"] .splash-by b{color:#EAF1FF}
+@media (prefers-reduced-motion:reduce){.splash-by{opacity:1;animation:none}}
+
+
+/* ---------------------------------------------------------------------
+   4. ELEVATION, COLOUR AND FOCUS POLISH
+   -------------------------------------------------------------------
+   Cards across the app had picked up five different shadow recipes. One
+   ramp (--e-1..3) reads as one product. The focus ring is rewritten as a
+   box-shadow so it follows a rounded corner instead of boxing it.
+   ------------------------------------------------------------------- */
+.card,.qt-plan,.result-card{box-shadow:var(--e-1)}
+.card:hover,.result-card:hover{box-shadow:var(--e-2)}
+
+:focus-visible{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(240,124,31,.55),0 0 0 5px rgba(240,124,31,.18);
+}
+
+/* The primary action. One gradient, one press, everywhere it appears. */
+.btn-orange,.qt-go{
+  background-image:linear-gradient(135deg,var(--orange),var(--orange-600));
+  box-shadow:0 2px 10px rgba(240,124,31,.28);
+  transition:transform var(--m-quick) var(--m-snap),box-shadow var(--m-base) var(--m-snap);
+}
+.btn-orange:active,.qt-go:active{box-shadow:0 1px 4px rgba(240,124,31,.3)}
+
+
+/* ---------------------------------------------------------------------
+   5. SOUND / HAPTICS SETTINGS ROW  (see assets/js/19-premium.js)
+   -------------------------------------------------------------------
+   Both default ON but are one tap from off, and the switch is rendered
+   into the mobile menu so it is reachable without an account.
+   ------------------------------------------------------------------- */
+.feel-row{
+  display:flex;align-items:center;gap:10px;padding:10px 0;
+  font-size:13.5px;font-weight:700;color:var(--ink);
+}
+.feel-row .feel-lbl{flex:1 1 auto;min-width:0}
+.feel-sw{
+  flex:0 0 auto;width:48px;height:28px;border-radius:999px;
+  background:#C7D3E6;position:relative;min-height:28px;
+  transition:background var(--m-base) var(--m-snap);
+}
+.feel-sw::after{
+  content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;
+  border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);
+  transition:transform var(--m-base) var(--m-spring);
+}
+.feel-sw.on{background:var(--ok)}
+.feel-sw.on::after{transform:translateX(20px)}
+:root[data-theme="dark"] .feel-sw{background:#2A3750}
+
+
+/* ---------------------------------------------------------------------
+   6. DEVANAGARI — Nepali and Hindi that a phone can actually read
+   -------------------------------------------------------------------
+   Owner, 24 Sep: "nepali fonts haru bujeko xain". Measured on the Nepali
+   home page at 375px: 118 Devanagari elements under 12px (the smallest
+   9.5px: the Bikram Sambat date on every day chip), tracking of 0.1-1.4px
+   on 40+ rules, line-heights of 1.05-1.3, and Devanagari set in Cinzel and
+   in the monospace code stack. Tracking is what breaks the script: the
+   gap lands between letter clusters and cuts the head-line (shirorekha)
+   that joins a Devanagari word, so it reads as loose letters.
+
+   v2 (same day, after an independent review of v1 as shipped in 5993747):
+   v1 ended the display stack in `serif`, and Chrome for Android cannot
+   pick a Devanagari face by name, so it asked Android for a SERIF
+   fallback (Noto Serif Devanagari) on every Cinzel element; v1's blanket
+   `letter-spacing:normal!important` also took the tracking off the Latin
+   wordmarks; and its 11.5px floor shrank the 13px booking-step labels.
+
+   Hook: applyLang() (assets/js/04-i18n.js) writes LANG into <html lang>
+   on every switch. Every rule tests the element's OWN language —
+   X:is(:lang(ne),:lang(hi)) — so English never matches, a lang="en"
+   island (the brand name in #brandBand) is skipped, and a lang="ne" span
+   in English markup later picks the fix up. No font is downloaded.
+   Checked in Chrome: with lang=en, 0 of 3,202 elements change computed
+   style; with ne at 320/375px no horizontal scroll, and visible tracked /
+   under-11px / under-1.3 Devanagari went from 44/31/44 to 0/0/0.
+   ------------------------------------------------------------------- */
+
+/* a) Named Devanagari faces right after the Latin face. Cinzel stays
+      first (its @font-face unicode-range is Latin-only, so "S HARI
+      GLOBAL" still draws in Cinzel). The display stack ends in sans-serif
+      so Android's fallback is a SANS Devanagari. The code stack keeps
+      `monospace` ahead of the Devanagari faces: several of them carry
+      Latin glyphs and would otherwise un-monospace the PNRs and times. */
+[lang|="ne"],[lang|="hi"]{
+  --f-deva:'Nirmala UI','Kohinoor Devanagari','Noto Sans Devanagari','Devanagari Sangam MN','Mangal','Lohit Devanagari';
+  --f-body:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,var(--f-deva),sans-serif;
+  --f-display:'Cinzel',var(--f-deva),Georgia,sans-serif;
+  --f-code:ui-monospace,'SF Mono',SFMono-Regular,'Roboto Mono',Menlo,Consolas,monospace,var(--f-deva);
+}
+/* Labels that were set in the code (monospace) face use the body face. */
+:is(.s-field label,.pay-amt small,.ret-tag,.crew-box small,
+    .tk-route .city small,.pricing-card tbody td,.qr-box .upi-id button,
+    .tc-sum .tc-lang):is(:lang(ne),:lang(hi)){
+  font-family:var(--f-body);
+}
+
+/* b) No tracking and no forced capitals on every translated element and
+      on every rule found putting tracking on Devanagari. !important
+      because several of those rules carry #ids. Codes, phone numbers, the
+      splash credit line and the Latin wordmarks are not listed, so they
+      keep their tracking. */
+:is([data-i18n],[data-i18n] *,
+    .divine-name,.topbar .mantra,.f-ceo #ceoMantra,
+    .date-strip-30 button .d-bs,.ec-head,.qt-badge,.fare-live .fl-lbl,.fare-live .fl-off,.fb-off,
+    .s-field label,.pay-amt small,.pricing-card thead th,.tier-select .tier-lbl,
+    .f-grid h4,.ha-card b,.hl-off-badge,.sp-hint,
+    .lang-btn,.lang-mini .lang-mini-btn,.pill,.badge,.tt-sub,.daily-service-note,
+    .deck-tabs .deck-lbl,.bus-card .seats-avail-pill,.ret-tag,.crew-box small,
+    .tk-route .city small,.astat span,.bp-title,.vip-band,
+    .tk2-brand small,.tk2-pill,.tk2-tile small,.tk2-fare .lbl,.pax-table th,
+    .qt-plan-row>span,.qt-plan-facts small):is(:lang(ne),:lang(hi)){
+  letter-spacing:normal!important;
+  text-transform:none!important;
+}
+/* Section labels mix English and Nepali in one line ("Our Speciality ·
+   हाम्रो विशेषता"): drop the tracking, keep the English capitals. */
+:is(.kicker,.h2):is(:lang(ne),:lang(hi)){letter-spacing:normal}
+
+/* c) Line height: every heading (the Latin wordmark keeps its tight
+      1.05-1.12), then each text rule found below 1.35. */
+:is(h1,h2,h3,h4,h5,h6,.h2):is(:lang(ne),:lang(hi)):not(.hero-brand,.shg-name){
+  line-height:1.45;
+}
+:is(.hero-slogan,.qa-card b,.tc-title,.date-chips button,
+    .ai-head b,.ai-wa-txt,.ec-card b,.ec-card small,.fb-price,.pm-tab,.pm-tab b,.pm-tab .pm-sub,
+    .ha-card b,.ha-card small,.home-more-btn .hm-tx,.tk2-brand b,.tk2-qr small,.tk2-tile b,
+    .rov-stops li span,.paystep li b,.nt-route,.qt-go,.qt-collapsed b,.qt-head .qt-badge,
+    .qt-pay,.s-wa-btn,.wa-row b,.splash-ceo [data-i18n],.lt-eta-hero .leh-tx,.tc-livebus .tlb-tx,
+    .rg-txt b,.pwa-head b,.divine-name,
+    .date-strip-30 button .d-bs,#view-seats #deckTabs .deck-tab):is(:lang(ne),:lang(hi)){
+  line-height:1.45;
+}
+
+/* background-clip:text paints only inside the element's box, so a matra
+   above it came out transparent. Grow the painted box; .hero .grad is
+   inline and .sec-head h2 inline-block with no margin of its own, so the
+   equal negative margin leaves the layout where it was. */
+:is(.hero .grad,.sec-head h2):is(:lang(ne),:lang(hi)){
+  padding-block:.16em;
+  margin-block:-.16em;
+}
+
+/* One-line clips: let Nepali wrap instead of being cut off with "...". */
+:is(.pm-tab .pm-sub,.qt-form .btn,.search-grid.simple .btn-search,.tk2-actions .btn,
+    .qt-route>span,.ai-head b,.lt-eta-hero .leh-dest,.co-bpass .bp-name):is(:lang(ne),:lang(hi)){
+  white-space:normal;
+  text-overflow:clip;
+}
+.pm-tab .pm-sub:is(:lang(ne),:lang(hi)){overflow:visible}
+:is(.qt-form .btn,.search-grid.simple .btn-search,.tk2-actions .btn):is(:lang(ne),:lang(hi)){text-align:center}
+
+/* d) Size floor and weight ceiling for small Devanagari. Each base value
+      below is under 11.5px at every width, so this only raises. */
+:is(.pm-tab .pm-sub,.qt-head .qt-badge,.tk2-tile small,.tk2-qr small,.paystep li b,
+    .premium-ticket-head .tk2-brand small,#splash .splash-ceo span[data-i18n],
+    .qt-auto,.field label small,.verify-note small,.crew-box small,.cab-head,.berth-labels,
+    .tt-gone-tag,.qt-plan-facts small):is(:lang(ne),:lang(hi)){
+  font-size:11.5px;
+}
+/* The step labels are 13px (app.css .step) and drop to 10px only at 360px
+   and below, so the floor belongs there only. */
+@media (max-width:360px){
+  .steps .step span:last-child:is(:lang(ne),:lang(hi)){font-size:11.5px}
+}
+.ec-head:is(:lang(ne),:lang(hi)){font-size:13px}
+.date-strip-30 button .d-bs:is(:lang(ne),:lang(hi)){font-size:11px;font-weight:700}
+/* The Bikram Sambat date is var(--orange) (#F07800) on the white chip:
+   2.84:1. Section 8's rule — saffron TEXT on white uses #A84300 — gives
+   6.06:1. Light theme only (the pre-paint script always stamps it); the
+   dark chip (#FFB25E on #1f2937, 8.2:1) and the selected chip keep theirs. */
+:root[data-theme="light"] .date-strip-30 button:not(.on) .d-bs:is(:lang(ne),:lang(hi)){color:var(--brand-saffron-800,#A84300)}
+/* Phones: the 11-11.5px Devanagari labels step up to 12-12.5px. */
+@media (max-width:760px){
+  :is(.bn-item,.fb-price .n,.tt-sub,.qt-plan-facts em,.qt-tnc):is(:lang(ne),:lang(hi)){font-size:12px}
+  :is(.qa-card span:not(.qa-ico),.fb-chip,.tt-live,.qt-plan-row>span,.ec-card small,.qt-ai-chip span,
+      .hero-feats li,.s-wa-btn small,.qt-pay,.divine-name):is(:lang(ne),:lang(hi)){font-size:12.5px}
+}
+:is(.ec-head,.fare-live .fl-lbl,.qt-badge,.tk2-tile small,.tk2-fare .lbl,
+    .pricing-card thead th,.pax-table th,.deck-tabs .deck-lbl,.tier-select .tier-lbl,
+    .seat-count-picker .scp-label):is(:lang(ne),:lang(hi)){
+  font-weight:700;
+}
+:is(.hero-qt-cta,.qt-banner h3,.wa-req-go,.pm-tab b,.s-wa-btn b,.qt-collapsed b):is(:lang(ne),:lang(hi)){
+  font-weight:800;
+}
+
+
+/* ---------------------------------------------------------------------
+   7. BRAND BAND (phones) — markup and reasons above #brandBand in
+      app.template.html
+   -------------------------------------------------------------------
+   The logo palette (views.css :root[data-day="logo"]): navy #0C306C ->
+   royal #0054A8, and the logo arrow's orange for the keyline. Fixed hex,
+   not var(--blue): this band IS the brand, and must not turn purple or
+   bronze when a visitor picks another palette in the menu.
+   Contrast, measured (WCAG 2.x):
+     white on #0C306C 12.7   white on #0054A8 7.4
+     #FFD08A (tagline, PVT LTD) on #0054A8 5.2, on #0C306C 8.9
+     #0C306C on the white route pill 12.7
+     chips: white on white-13% over the gradient >= 6.0
+   ------------------------------------------------------------------- */
+.brand-wrap{display:none}
+@media (max-width:760px){
+  /* The id outranks views.css "#view-home > *:not(.hero):not(.search-wrap)"
+     (1,2,0), which a class selector here would lose to. */
+  #view-home > #brandBand{display:block;order:-1;width:100%;min-width:0;margin-top:12px}
+  .brand-band{
+    position:relative;overflow:hidden;isolation:isolate;
+    padding:16px 14px 18px;border-radius:20px;text-align:center;color:#fff;
+    background:
+      radial-gradient(120% 90% at 100% 0%,rgba(240,120,0,.30),transparent 55%),
+      linear-gradient(135deg,#0C306C 0%,#0A3F8A 55%,#0054A8 100%);
+    box-shadow:0 10px 26px rgba(12,48,108,.26);
+  }
+  /* Orange -> gold keyline along the bottom: the arrow in the logo. */
+  .brand-band::after{
+    content:"";position:absolute;left:0;right:0;bottom:0;height:4px;
+    background:linear-gradient(90deg,#F07800,#FFB547 50%,#F07800);
+  }
+  .bb-route{
+    display:inline-flex;align-items:center;gap:6px;margin:0 0 8px;
+    padding:2px 12px;border-radius:999px;background:#fff;color:#0C306C;
+    font-size:12.5px;font-weight:800;line-height:1.6;
+  }
+  /* One line from 320px up: "S HARI GLOBAL PVT LTD" measures 257px at 22px
+     in Cinzel 800, and the clamp keeps it under the band's inner width
+     (248px on a 320px phone, 301px on a 375px one). */
+  .bb-name{
+    margin:0;font-family:var(--f-display);font-weight:800;color:#fff;
+    font-size:clamp(19px,6vw,24px);line-height:1.2;letter-spacing:.03em;
+    text-shadow:0 2px 10px rgba(0,0,0,.25);
+  }
+  .bb-name small{font-size:.5em;letter-spacing:.12em;color:#FFD08A;vertical-align:middle;margin-left:2px}
+  .bb-tag{margin:4px 0 12px;font-size:15px;font-weight:800;line-height:1.5;color:#FFD08A}
+  /* Four facility tiles in one row: icon over a short label. */
+  .bb-feats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0;padding:0;list-style:none}
+  .bb-feats li{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    padding:6px 2px;border-radius:12px;min-width:0;
+    background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);
+    font-size:12px;font-weight:700;line-height:1.35;color:#fff;text-align:center;
+  }
+  .bb-ic{font-size:17px;line-height:1.1}
+  :root[data-theme="dark"] .brand-band{box-shadow:0 10px 26px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.08)}
+}
+
+/* ---------------------------------------------------------------------
+   8. BRAND PALETTE - one navy, one royal, one saffron (24 Sep 2026)
+   -------------------------------------------------------------------
+   Owner: "color haru ali profesional, ankha ma parne, brand lai
+   highlight garera marketing khalko". Colours measured from the logo
+   (assets/img/logo.png) and the OG image: wordmark navy #0C306C, globe
+   royal #0054A8, arrow saffron #F07800 fading to amber.
+
+   Rules this section enforces:
+     - Brand surfaces (hero, header strips, QuickBot, footer, splash)
+       use FIXED hex, so they stay on-brand whatever the palette picker
+       (data-day) says - same reasoning as the brand band in section 7.
+       Trade-off: the palette picker now re-tints only links, chips,
+       the date strip, the phone nav pills and the seat map.
+     - On LIGHT surfaces the action colour is deep saffron #BF4C00 ->
+       #A84300 with white text (4.94 / 6.06). On NAVY surfaces deep
+       saffron sinks into the ground (2.1-2.6:1), so there the highlight
+       is the bright logo saffron / amber with navy #06163A text
+       (6.25 / 10.1), which stands 4.1-7.2:1 off the navy.
+     - Green belongs to WhatsApp only.
+     - No token that the seat map reads (--orange, --orange-600,
+       --blue, --blue-800, --card) is changed here, so seat states
+       (available / booked / selected / women / men) are untouched.
+     - Hover colours only where a mouse can hover: on a phone :hover
+       sticks to the element that was tapped (views.css (hover:none)).
+   Contrast (WCAG 2.x, measured):
+     white on #BF4C00 4.94, on #A84300 6.06   (CTA on light)
+     #06163A on #FFB547 10.1, on #F07800 6.25  (CTA on navy, badge, lang)
+     #A84300 on #F6F8FC 5.70, on #FFF 6.06     (kicker, active tab)
+     #FFF4E2 on #B84A00 4.80 (was 2.35 on #EC8A12)   (divine bar)
+     white on #0054A8 7.41, #0C306C 12.7, #BF4C00 4.94, #943A00 7.33,
+       #15803D 5.02, #0B5E2E 7.91              (three booking doors)
+     selected language: #FFB547 fill 7.2 vs the topbar, 5.8 vs its group
+     hero: white >= 8.1, #DCE8F7 >= 6.5, #FFD08A 7.0, #FFB547 >= 4.6
+     footer: #B9C9E6 >= 7.6, #FFD08A >= 8.9, #8FA5CC >= 5.1
+     dark: #FFB547 on #0A0E1A 11.0, #9CC3FF 10.7, #DCE8FF 15.6
+   ------------------------------------------------------------------- */
+:root{
+  --brand-navy-950:#06163A;
+  --brand-navy:#0C306C;
+  --brand-royal-700:#0A3F8A;
+  --brand-royal:#0054A8;
+  --brand-saffron:#F07800;      /* fills and keylines; navy text on it */
+  --brand-saffron-700:#BF4C00;  /* white text on it: 4.94 */
+  --brand-saffron-800:#A84300;  /* saffron text on light: 5.70+ */
+  --brand-saffron-900:#943A00;
+  --brand-amber:#FFB547;        /* highlight on navy */
+  --brand-gold:#FFD08A;
+  --brand-cream:#FFF3D9;
+}
+
+/* a) Divine bar: same saffron sweep, but the centre stop under the text
+      is deep enough to read (text #FFF4E2 on #B84A00 4.80). */
+.divine-bar{background:linear-gradient(90deg,#5A1400,#8E2E04 22%,#B84A00 50%,#8E2E04 78%,#5A1400)}
+:root[data-theme="dark"] .divine-bar{background:linear-gradient(90deg,#3A0C00,#6E2204 22%,#9A3A04 50%,#6E2204 78%,#3A0C00)}
+
+/* b) Header strips: one navy family instead of five. */
+.topbar{background:var(--brand-navy)}
+.credit-ribbon{background:linear-gradient(90deg,var(--brand-navy-950),var(--brand-navy) 50%,var(--brand-navy-950))}
+.credit-txt small{color:rgba(207,224,248,.78)}
+.num-strip{background:linear-gradient(90deg,var(--brand-navy),var(--brand-royal-700) 55%,var(--brand-navy))}
+/* Pill hover for mouse pointers only. Unscoped, this (0,2,0) rule also
+   beats the phone nav-row pill (views.css ".nav-inner .num-pill") and a
+   tapped number stayed saffron. */
+@media (hover:hover){
+  .num-pill:hover{background:var(--brand-saffron-700);border-color:var(--brand-saffron-700)}
+}
+.num-pill:focus-visible{background:var(--brand-saffron-700);border-color:var(--brand-saffron-700)}
+/* WhatsApp pill in the phone nav row: green with white text in every
+   state (5.02). views.css ".num-pill.wa:hover/:focus-visible" sets text
+   #06301A, which on this green is 2.90; (0,4,0) outranks it. */
+.nav-inner .num-pill.wa,
+.nav-inner .num-pill.wa:hover,
+.nav-inner .num-pill.wa:focus-visible{background:#15803D;border-color:#15803D;color:#fff}
+/* Selected language on the navy topbar. The fill is the only cue, so it
+   needs 3:1 against its ground (WCAG 1.4.11): amber 7.2 vs the bar and
+   5.8 vs the group pill; deep saffron was 2.57 / 2.06. Text 10.1. */
+.lang-btn.on{background:var(--brand-amber);color:var(--brand-navy-950)}
+
+/* c) Primary action on light surfaces: deep saffron, white text AA in
+      both themes. The selector list with :root[data-theme] matches the
+      dark rule in views.css (same specificity, loads later). Shadow
+      stays on the plain selectors so :hover / :active still win. */
+.btn-orange,.qt-go,
+:root[data-theme] .btn-orange,:root[data-theme] .qt-go{
+  background:linear-gradient(135deg,var(--brand-saffron-700),var(--brand-saffron-800));
+  color:#fff;
+}
+.btn-orange,.qt-go{box-shadow:0 6px 18px rgba(191,76,0,.30),inset 0 1px 0 rgba(255,190,110,.35)}
+/* ...and on navy (the hero's "10-second ticket", the route card's Book
+   Now): amber -> logo saffron with navy text, so the one CTA on the
+   brand ground is the brightest thing on it (4.1-7.0:1 off the navy,
+   deep saffron measured 2.1-2.3). (0,4,0) beats the list above. */
+:root[data-theme] :is(.hero,.shg-hero) .btn-orange{
+  background:linear-gradient(135deg,var(--brand-amber),var(--brand-saffron));
+  color:var(--brand-navy-950);
+}
+
+/* d) Hero: the navy -> royal of the OG image and the brand band, a
+      saffron glow, gold route line, amber-gold slogan sheen. */
+.hero{background:
+  radial-gradient(900px 420px at 85% -10%,rgba(240,120,0,.28),transparent 60%),
+  radial-gradient(700px 500px at -10% 30%,rgba(0,84,168,.45),transparent 60%),
+  linear-gradient(140deg,var(--brand-navy-950) 0%,var(--brand-navy) 50%,var(--brand-royal-700) 100%)}
+:root[data-theme="dark"] .hero{background:
+  radial-gradient(900px 420px at 85% -10%,rgba(240,120,0,.16),transparent 60%),
+  linear-gradient(165deg,#000 0%,var(--brand-navy-950) 45%,#0A2150 100%)}
+.hero .orb.o2{background:var(--brand-royal)}
+.hero .eyebrow{color:var(--brand-gold)}
+.hero-sub{color:#DCE8F7}
+.hero .grad{background-image:linear-gradient(100deg,var(--brand-amber) 0%,var(--brand-gold) 25%,var(--brand-cream) 50%,var(--brand-gold) 75%,var(--brand-amber) 100%)}
+.hero-feats li{border-color:rgba(255,181,71,.40)}
+
+/* e) Three booking doors: blue / orange / green kept, each moved onto
+      the logo's own hue; small line at full opacity (4.61 -> 4.94 on
+      orange); a tinted glow so each door reads as its own colour. */
+.ec-head{position:relative;color:var(--brand-navy)}
+.ec-head::after{content:"";position:absolute;left:50%;bottom:-5px;width:44px;height:3px;margin-left:-22px;
+  border-radius:2px;background:linear-gradient(90deg,var(--brand-saffron),var(--brand-amber))}
+:root[data-theme="dark"] .ec-head{color:#DCE8FF}
+.ec-normal{background:linear-gradient(135deg,var(--brand-royal) 0%,var(--brand-navy) 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 8px 20px rgba(0,84,168,.28)}
+.ec-quick{background:linear-gradient(135deg,var(--brand-saffron-700) 0%,var(--brand-saffron-900) 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 8px 20px rgba(191,76,0,.28)}
+.ec-wa{background:linear-gradient(135deg,#15803D 0%,#0B5E2E 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 8px 20px rgba(21,128,61,.26)}
+.ec-card small{opacity:1}
+.ec-card:focus-visible{outline-color:var(--brand-navy)}
+
+/* f) QuickBot: brand navy -> royal card, and the badge becomes a gold
+      ribbon with navy text (was white on #F07800, 2.84). */
+.qt-banner{background:linear-gradient(135deg,var(--brand-navy) 0%,var(--brand-royal-700) 55%,var(--brand-royal) 100%)}
+:root[data-theme="dark"] .qt-banner{background:linear-gradient(135deg,var(--brand-navy-950),var(--brand-navy) 60%,var(--brand-royal-700))}
+.qt-badge{background:var(--brand-amber);color:var(--brand-navy-950)}
+
+/* g) Section rhythm: saffron kicker that passes AA, headings in the
+      logo gradient navy -> royal -> deep saffron. Dark mode gets a
+      light gradient (the old one started at #0C306C on black, 1.65). */
+.kicker{color:var(--brand-saffron-800)}
+:root[data-theme="dark"] .kicker{color:var(--brand-amber)}
+.sec-head h2{background:linear-gradient(135deg,var(--brand-navy) 0%,var(--brand-royal) 60%,var(--brand-saffron-700) 100%);
+  -webkit-background-clip:text;background-clip:text}
+:root[data-theme="dark"] .sec-head h2{background:linear-gradient(135deg,#FFFFFF 0%,#9CC3FF 60%,var(--brand-amber) 100%);
+  -webkit-background-clip:text;background-clip:text}
+.bn-item.on{color:var(--brand-saffron-800)}
+:root[data-theme="dark"] .bn-item.on{color:var(--brand-amber)}
+
+/* h) Footer: brand navy, gold headings, the CIN in gold (the
+      "registered Indian company" trust line). */
+footer{background:linear-gradient(180deg,var(--brand-navy) 0%,var(--brand-navy-950) 100%)}
+.f-grid h4{color:var(--brand-gold)}
+.f-grid a:hover{color:var(--brand-amber)}
+.f-bottom .code{color:var(--brand-gold)}
+.f-dev{color:#8FA5CC}
+.f-dev a{color:#B9C9E6}
+.f-dev a:hover{color:var(--brand-amber)}
+
+/* i) Splash. The startup screen is painted by the #splash block at the
+      end of views.css (ID selectors, light ground #FFF -> #DCECFF in
+      BOTH themes), so these rules carry #splash to reach it.
+      - title and CEO name: brand navy (was #102A56, a sixth navy);
+      - "S HARI GLOBAL" under the CEO: navy 800 instead of 10px grey;
+      - the CEO number in deep saffron (section 3's orange never won
+        against "#splash .splash-ceo span");
+      - "By Sher Bahadur Bishwokarma": section 3 turns it #8296B4 with
+        the name #EAF1FF in dark mode, on this LIGHT ground - 2.5 and
+        1.06, the name disappears. Same colours in both themes now:
+        #526680 4.90 and #0C306C 10.6 at the #DCECFF edge. */
+#splash .splash-title{color:var(--brand-navy)}
+#splash .splash-ceo b{color:var(--brand-navy)}
+#splash .splash-ceo b + span{color:var(--brand-navy);font-weight:800}
+#splash .splash-ceo .splash-ceo-num{color:var(--brand-saffron-800)}
+.premium-promise{color:var(--brand-navy)}
+.splash-by,:root[data-theme="dark"] .splash-by{color:#526680}
+.splash-by b,:root[data-theme="dark"] .splash-by b{color:var(--brand-navy)}
+.splash-phone{color:var(--brand-saffron-800)}
+
+/* j) Dark mode, booking-flow TEXT only (no seat state): fare, total,
+      amount payable and departure time are painted var(--blue-deep),
+      which in dark mode is #0C306C (logo palette) or #000 (others) on a
+      #0A0E1A card - 1.52 / 1.09. Drop this block if the booking flow
+      must stay byte-identical. */
+:root[data-theme="dark"] .bc-fare .amt,
+:root[data-theme="dark"] .sum-row.total b,
+:root[data-theme="dark"] .pay-amt .big,
+:root[data-theme="dark"] .bus-card .depTime-big,
+:root[data-theme="dark"] .rules-summary summary{color:#DCE8FF}

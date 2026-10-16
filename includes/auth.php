@@ -43,6 +43,10 @@ final class Auth
             // absent from every role list, so only the isSuperadmin() bypass
             // reached it — a manager saw the Staff & Agents nav hidden.
             'staff.manage',
+            // settings.manage: the switches, fares and AI knowledge a branch
+            // manager may change from Settings / System Health / AI Knowledge.
+            // Secrets (API keys, tokens) stay write-only for everyone.
+            'settings.manage',
             'customers.view', 'coupons.view', 'coupons.edit',
             'reports.view', 'liveops.view', 'liveops.edit',
             'messages.view', 'support.view', 'support.reply',
@@ -433,6 +437,10 @@ final class Auth
             'via_otp'        => $viaOtp,
             'logged_in_at'   => time(),
             'last_seen'      => time(),
+            // Stamped only by a real sign-in: admin() re-reads the admins row
+            // against this clock, so a session built by hand in a test (no
+            // stamp) is left exactly as the test wrote it.
+            'checked_at'     => time(),
         ];
 
         // Record the attempt and note whether this browser is new for this
@@ -796,6 +804,52 @@ final class Auth
 
         $_SESSION[ADMIN_SESSION_KEY]['last_seen'] = time();
 
+        /* Re-validate against the admins row, at most once every 30 seconds.
+           Role, permissions, is_active and must_change_pw used to be read
+           ONCE at sign-in and never again, so deactivating a staff member
+           in staff.php, changing their role or trimming their permissions
+           did nothing until they next signed in — a departed counter agent
+           kept selling until their idle timeout. Now a deactivated or
+           deleted account is signed out on its next request, and a changed
+           role or permission set takes effect within half a minute. The
+           check is skipped when the database is unreachable (the page fails
+           for a better reason anyway) and for sessions that carry no
+           checked_at stamp — those are built by hand in tests. */
+        if (isset($admin['checked_at']) && (time() - (int) $admin['checked_at']) > 30) {
+            try {
+                $row = Database::fetch(
+                    'SELECT is_active, role, permissions, must_change_pw, locked_until
+                       FROM admins WHERE id = :id',
+                    ['id' => (int) $admin['id']]
+                );
+            } catch (Throwable $e) {
+                $row = false;
+            }
+
+            if ($row !== false) {
+                $locked = $row !== null && !empty($row['locked_until'])
+                    && strtotime((string) $row['locked_until']) > time();
+                if ($row === null || (int) $row['is_active'] !== 1 || $locked) {
+                    Logger::audit('admin.session_revoked', 'admin', (string) $admin['id'], null, null,
+                        $row === null ? 'account deleted' : ($locked ? 'account locked' : 'account deactivated'));
+                    // Not adminLogout(): that writes a 'logout' login-log row
+                    // in the person's name and regenerates the session id,
+                    // which has no session to regenerate under the CLI.
+                    unset($_SESSION[ADMIN_SESSION_KEY]);
+                    if (session_status() === PHP_SESSION_ACTIVE) {
+                        session_regenerate_id(true);
+                    }
+                    return null;
+                }
+
+                $_SESSION[ADMIN_SESSION_KEY]['role']           = (string) $row['role'];
+                $_SESSION[ADMIN_SESSION_KEY]['permissions']    = jsonColumn($row['permissions']);
+                $_SESSION[ADMIN_SESSION_KEY]['must_change_pw'] = (int) $row['must_change_pw'] === 1;
+                $_SESSION[ADMIN_SESSION_KEY]['checked_at']     = time();
+                $admin = $_SESSION[ADMIN_SESSION_KEY];
+            }
+        }
+
         return $admin;
     }
 
@@ -906,6 +960,17 @@ final class Auth
     }
 
     /**
+     * May the signed-in staff member change configuration — settings rows,
+     * health incident state, the AI knowledge base? Super-admins always; a
+     * manager through 'settings.manage'. Everyone else may read those pages
+     * but every POST on them is refused.
+     */
+    public static function canManageSettings(): bool
+    {
+        return self::isSuperadmin() || self::can('settings.manage');
+    }
+
+    /**
      * Require a signed-in admin, optionally holding a permission.
      * Redirects HTML requests to the login page; answers JSON for the API.
      */
@@ -953,6 +1018,33 @@ final class Auth
             }
 
             http_response_code(403);
+
+            /* Inside the admin panel the refusal is a real page — the
+               panel's own chrome, the reason in two languages and a way
+               back — instead of one bare English sentence with no link,
+               which is what a scanner or an official saw right after
+               signing in. The status stays 403 for every caller that
+               checks it (tests/role-gates-test.php). */
+            if (function_exists('admin_header') && function_exists('admin_footer')) {
+                $home = match ((string) ($admin['role'] ?? '')) {
+                    'agent'   => '/admin/agent.php',
+                    'counter' => '/admin/bookings.php',
+                    'scanner' => '/admin/scan.php',
+                    'official' => '/admin/payments.php',
+                    default   => '/admin/index.php',
+                };
+                admin_header('Not allowed', '');
+                echo '<div class="panel" style="max-width:560px;margin:32px auto;text-align:center;padding:32px 24px">'
+                   . '<div style="font-size:44px;line-height:1">🔒</div>'
+                   . '<h2 style="margin:12px 0 6px">This page is not for your role</h2>'
+                   . '<p class="muted" style="margin:0 0 6px">यो पेज तपाईंको भूमिकाले खोल्न मिल्दैन। / यह पेज आपकी भूमिका के लिए नहीं है।</p>'
+                   . '<p class="muted" style="margin:0 0 18px;font-size:13px">Needs <code>' . Security::e($permission) . '</code>. Ask the office if you should have it.</p>'
+                   . '<a class="btn" href="' . Security::e($home) . '">← Back to my home</a>'
+                   . '</div>';
+                admin_footer();
+                exit;
+            }
+
             exit('You do not have permission to view this page.');
         }
 

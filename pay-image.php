@@ -68,7 +68,7 @@ try {
         $from = trim((string) ($leg['from_city'] ?? ''));
         $to   = trim((string) ($leg['to_city'] ?? ''));
         if ($from !== '' && $to !== '') {
-            $route = $from . ' → ' . $to;
+            $route = $from . ' – ' . $to;   // en dash: the font has no → (it printed an empty box)
         }
         if (!empty($leg['travel_date'])) {
             $ts = strtotime((string) $leg['travel_date']);
@@ -120,7 +120,14 @@ imagerectangle($im, $cardX1, $cardY1, $cardX2, $cardY2, $line);
 
 $font = dirname(__FILE__) . '/assets/fonts/NotoSansDevanagari.ttf';
 
+/* Devanagari through HarfBuzz (DevShape): this image used to print मति, सटि,
+   यात्‌रा — no shaping and not even dev_shape(). Latin keeps the old path. */
 $drawText = function ($size, $x, $y, $col, $text, $bold = false) use ($im, $font) {
+    if (class_exists('DevShape') && DevShape::needs($text)
+        && DevShape::gdText($im, (float) $size, (int) $x, (int) $y, $col, $text, $bold ? [[0, 0], [1, 0], [0, 1]] : [[0, 0]])) {
+        return;
+    }
+    $text = dev_shape($text);
     imagettftext($im, $size, 0, $x, $y, $col, $font, $text);
     if ($bold) {
         imagettftext($im, $size, 0, $x + 1, $y, $col, $font, $text);
@@ -129,7 +136,10 @@ $drawText = function ($size, $x, $y, $col, $text, $bold = false) use ($im, $font
 };
 
 $textWidth = function ($size, $text) use ($font) {
-    $box = imagettfbbox($size, 0, $font, $text);
+    if (class_exists('DevShape') && DevShape::needs($text) && ($sw = DevShape::gdWidth((float) $size, $text)) !== null) {
+        return $sw;
+    }
+    $box = imagettfbbox($size, 0, $font, dev_shape($text));
     return abs($box[2] - $box[0]);
 };
 

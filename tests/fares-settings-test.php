@@ -79,7 +79,7 @@ if (!function_exists('curl_init')) {
     echo "  SKIP  curl extension not loaded (run with -d extension=php_curl.dll)\n";
 } else {
     $jar = sys_get_temp_dir() . '/shg_fares_' . getmypid() . '.cookies'; @unlink($jar);
-    $req = function (string $method, string $url, array $form = null) use ($jar): array {
+    $req = function (string $method, string $url, ?array $form = null) use ($jar): array {
         $ch = curl_init(BASE . $url);
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_COOKIEJAR => $jar, CURLOPT_COOKIEFILE => $jar, CURLOPT_TIMEOUT => 30]);
