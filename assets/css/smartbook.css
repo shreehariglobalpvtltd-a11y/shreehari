@@ -686,3 +686,7 @@ html #view-home > #sbDesk{order:-1 !important}
 @media (min-width:860px){#smartBook .sb-bar{gap:10px}#smartBook .sb-pay{min-height:62px;border-radius:16px}#smartBook .sb-pay span{font-size:17px}}
 @media (prefers-reduced-motion:reduce){#smartBook .sb-pay.sb-ready::before{animation:none}}
 :root[data-motion="reduced"] #smartBook .sb-pay.sb-ready::before,:root[data-tier="low"] #smartBook .sb-pay.sb-ready::before{animation:none}
+/* 16 Oct 2026: Sharing is the default; Private is one tap in the Quick line */
+#smartBook .sb-qline .sb-q-priv{text-decoration:none;border:1px dashed color-mix(in srgb,var(--sb-org) 55%,var(--sb-line));border-radius:999px;padding:4px 10px;color:var(--sb-org-d);background:transparent}
+#smartBook .sb-qline .sb-q-priv.on{border-style:solid;background:var(--sb-ograd);color:#fff;border-color:transparent}
+:root[data-theme="dark"] #smartBook .sb-qline .sb-q-priv:not(.on){color:var(--sb-org-l)}

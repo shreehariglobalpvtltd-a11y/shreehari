@@ -201,6 +201,15 @@ final class AutoBerth
             $ctx['adjacentChild'] = true;
             self::search($singles, 0, $state, $ctx, $best, $nodes);
         }
+        if ($best === null && !self::childRuleApplies($pax)) {
+            /* Third pass (16 Oct 2026): more children than adults, or children
+               only - H4 cannot bind, so they are seated like adults (the group
+               is still kept together by S1). */
+            $grown = array_map(static fn(array $p): array => ['b' => 'adult'] + $p, $party);
+            $ctx['bandOf'] = array_column($grown, 'b', 'i');
+            unset($ctx['adjacentChild']);
+            self::search(self::chunks($grown), 0, $state, $ctx, $best, $nodes);
+        }
         if ($best === null) {
             return $fail('no combination keeps every hard rule');
         }
@@ -265,6 +274,9 @@ final class AutoBerth
             }
         }
         // H4: every child beside an adult of the party (same cabin or the next bed).
+        if (!self::childRuleApplies($pax)) {
+            return '';
+        }
         $adults = [];
         foreach (array_values($seats) as $i => $s) {
             if (self::band($pax[$i]['band'] ?? 'adult') !== 'child') {
@@ -287,6 +299,27 @@ final class AutoBerth
             }
         }
         return '';
+    }
+
+    /**
+     * 16 Oct 2026 (owner: "ticket booking ma problem naos"): H4 binds only when the
+     * party has at least as many adults as children. A booking of children only
+     * (travelling with a grown-up on another ticket, or a mis-tapped "Child" chip)
+     * or more children than adults used to fail on EVERY bus with "No berths keep
+     * every safety rule"; such a party is now seated like adults and the crew
+     * seats the children at boarding.
+     *
+     * @param list<array<string, mixed>> $pax
+     */
+    public static function childRuleApplies(array $pax): bool
+    {
+        $kids = 0;
+        foreach ($pax as $p) {
+            if (self::band($p['band'] ?? 'adult') === 'child') {
+                $kids++;
+            }
+        }
+        return $kids === 0 || count($pax) - $kids >= $kids;
     }
 
     /* ================================================================ */

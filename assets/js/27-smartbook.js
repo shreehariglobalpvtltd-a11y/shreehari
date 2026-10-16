@@ -285,7 +285,9 @@
         S.cc = saved.cc || 'IN'; S.phone = saved.phone || ''; S.name = saved.name || df.name || '';
         S.pax = (saved.pax && saved.pax.length ? saved.pax : (df.pax && df.pax.length ? df.pax : S.pax)).slice(0, S.maxPax)
           .map(function (p) { return { gender: p.gender === 'Female' || p.gender === 'Male' ? p.gender : '', band: p.band || 'adult' }; });
-        S.type = saved.type || df.type || 'sharing'; S.cabin = saved.cabin || df.cabin || 'single'; S.berth = saved.berth || df.berth || 'any';
+        /* 16 Oct 2026 (owner: "badi jaso sharing use hunx - default sharing, private clickable option"):
+           every visit opens on Sharing; Private is one tap (the 🔒 chip / the Full form). */
+        S.type = 'sharing'; S.cabin = 'single'; S.berth = saved.berth || df.berth || 'any';
         if (!S.allowCod) $('sbCash').hidden = true;
         fill(); applyWords(); applyQuick(); requote(0);
       })
@@ -530,6 +532,8 @@
     parts.push('👤 ' + tr('paxN', { n: S.pax.length }) + ' ' + S.pax.map(function (p) { return p.gender === 'Female' ? '♀' : (p.gender === 'Male' ? '♂' : ''); }).join('') + (S.pax[0] && S.pax[0].ai ? ' 🤖' : ''));
     if (q && q.ok) parts.push('🛏 ' + seatSummary(q));
     el.innerHTML = parts.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('')
+      + '<button type="button" class="sb-q-priv' + (S.type === 'private' ? ' on' : '') + '" data-q="private" aria-pressed="' + (S.type === 'private') + '">'
+      + esc(S.type === 'private' ? '🔒 ' + tr('private') + ' ✓' : '🔒 ' + tr('private') + '?') + '</button>'
       + '<button type="button" data-q="full">' + esc(tr('qChange')) + '</button>';
   }
 
@@ -626,6 +630,10 @@
   root.addEventListener('click', function (e) {
     var b;
     if ((b = e.target.closest('#sbQMode button'))) { setQuick(b.getAttribute('data-m') === 'quick'); return; }
+    if (e.target.closest('[data-q="private"]')) {   // Sharing ⇄ Private in one tap
+      S.type = S.type === 'private' ? 'sharing' : 'private'; S.manual = []; S.seatMode = 'auto';
+      seg('sbType', S.type); $('sbCabin').hidden = S.type !== 'private'; changed(); renderQLine(); return;
+    }
     if (e.target.closest('[data-q="full"]')) { setQuick(false); try { $('sbDates').scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (x) {} return; }
     if (e.target.closest('#sbHelpBtn')) { openHelp(); return; }
     if (e.target.closest('#sbMic')) { listen(); return; }

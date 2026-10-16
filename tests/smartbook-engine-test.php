@@ -121,7 +121,7 @@ $r = AutoBerth::pick(coach(), $kids, $o);
 check('1 adult + 2 children → each child beside the adult (H4)', $r['ok'] && hardOk(coach(), $kids, $r['seats']) === '', implode(',', $r['seats']));
 $kids2 = [$P('Female', 'child'), $P('Male', 'child')];
 $r = AutoBerth::pick(coach(), $kids2, $o);
-check('children with no adult at all → no berth', !$r['ok']);
+check('children with no adult at all → still seated (16 Oct owner rule: never refuse the booking)', $r['ok'] && count($r['seats']) === 2, implode(',', $r['seats']));
 $big = [];
 for ($i = 0; $i < 20; $i++) { $big[] = $P($i % 3 === 0 ? 'Female' : 'Male', $i % 7 === 0 ? 'child' : 'adult'); }
 $r = AutoBerth::pick(coach(), $big, $o);
