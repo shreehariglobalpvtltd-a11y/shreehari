@@ -92,7 +92,16 @@ check('no blocking splash: nothing in the scenes delays or hides the booking pan
 preg_match_all('~/assets/img/anim/([a-z0-9-]+\.(?:webp|svg|png))~', $tpl . "\n" . $css, $refs);
 $used = array_values(array_unique($refs[1]));
 // the left-facing coach is swapped in by the controller (name derived from the right-facing one)
-foreach (['shg-bus-left.webp', 'shg-bus-left-mobile.webp'] as $f) {
+$extra = ['shg-bus-left.webp', 'shg-bus-left-mobile.webp'];
+/* shg-phone-frame.svg belongs to the booking demo, which left the home page
+   on 16 Oct 2026. It is not shipped now, so it is not in $used - but if it
+   or the demo ever comes back it must not read as an unused pack file
+   either. Guarded on the file rather than listed flat, so this assertion
+   means the same thing whichever way that goes. The two coach renders stay
+   unconditional: guarding those as well would hide a genuinely missing
+   render from "every artwork file the page references exists" below. */
+if (is_file($dir . '/shg-phone-frame.svg')) { $extra[] = 'shg-phone-frame.svg'; }
+foreach ($extra as $f) {
     if (!in_array($f, $used, true)) { $used[] = $f; }
 }
 sort($used);
