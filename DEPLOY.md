@@ -4,9 +4,33 @@ This branch root **is** the webroot layout: `index.php` here is `/var/www/shreeh
 
 ## 1. What is live, and how to prove it
 
-Live right now: **`release-20261016-tm2`** (service worker `shg-v227`).
+The live branch is whichever `release-*` branch in **`/var/repos/shg.git` on the VPS** matches the webroot. Work it out — do not take it from a name someone handed you, including this file: releases land several times a day.
 
-The truth about branches lives in the bare repo **`/var/repos/shg.git` on the VPS**, not on GitHub — the `release-*` branches are not pushed to `origin`, so a local clone cannot tell you what is live.
+Three things that are *not* evidence:
+
+- **GitHub.** The `release-*` branches are not pushed to `origin`, so a local clone cannot tell you what is live.
+- **The newest commit date.** A release branch can be cut and never deployed.
+- **The release name.** The same name can point at different commits in the two repos — today `release-20261016-tm3` is `7ff1c49` on GitHub but `dbc396d` in `/var/repos/shg.git`. **`deploy-prod.sh` resolves names in `/var/repos/shg.git`, so that is the one that counts.**
+
+Find it by comparing the recent candidates against the webroot (run on the VPS):
+
+```bash
+G='git --git-dir=/var/repos/shg.git'; L=/var/www/shreehariglobal.in/public_html
+for b in $($G for-each-ref --sort=-committerdate --format='%(refname:short)' refs/heads/release-* | head -5); do
+  d=0
+  for f in $($G ls-tree -r --name-only $b | grep -vE '^(docs|tests|\.github)/'); do
+    [ -e "$L/$f" ] || continue
+    a=$($G show $b:$f | tr -d '\r' | md5sum | cut -c1-32)
+    c=$(tr -d '\r' < "$L/$f" | md5sum | cut -c1-32)
+    [ "$a" = "$c" ] || d=$((d+1))
+  done
+  echo "$b: $d file(s) differ from live"
+done
+```
+
+The lowest count is your base. It is rarely zero — files an unlanded PR touches, and `tools/` and `database/` files that are never deployed, both show up. Read the list, do not just trust the number.
+
+At the time of writing (16 Oct 2026, ~20:15 IST) that was **`release-20261016-tm5`** (`c3aeeba`, service worker `shg-v227`), and only `.gitignore`, `deploy/VPS-SETUP.md` and `deploy/navdata/02-build.sh` differed — none of them served. It was `tm4` fifteen minutes earlier. Run the loop; do not reuse that name.
 
 Never trust an HTTP 200 alone: nginx answers 200 from a stale tree just as happily. Grep a marker:
 
@@ -20,7 +44,7 @@ curl -s https://www.shreehariglobal.in/ | grep -oE '\?v=[0-9a-z]+' | sort -u
 ```bash
 # on the VPS
 G='git --git-dir=/var/repos/shg.git'; L=/var/www/shreehariglobal.in/public_html
-diff <($G show release-20261016-tm2:sw.js | tr -d '\r') <(tr -d '\r' < $L/sw.js)
+diff <($G show <live-branch>:sw.js | tr -d '\r') <(tr -d '\r' < $L/sw.js)
 ```
 
 ## 2. The route
@@ -31,7 +55,7 @@ bash deploy-prod.sh <base-branch> <new-ref> <release-name> [--dry-run]
 
 Run it **on the VPS, as root** (`root@93.127.167.249`, key `~/.ssh/shg_vps_ed25519`). The copy that is actually invoked is `/root/deploy-prod.sh`; `deploy/deploy-prod.sh` in this tree is the same script under version control. Its header block documents the arguments and the five steps — read it, this file does not repeat it.
 
-- `<base-branch>` is the release that is live now (today: `release-20261016-tm2`).
+- `<base-branch>` is the release that is live now — work it out per §1, do not assume.
 - `<new-ref>` must already be **pushed to `/var/repos/shg.git`** — push your branch there first, not just to GitHub. The script aborts if the ref is unknown, or if `<new-ref>` is not built on `<base-branch>`.
 - `<new-ref>` must contain the `bump-asset-ver.js` bump, otherwise browsers keep the old cached bundle.
 - **Always run `--dry-run` first.** It prints the exact file list and any `database/` files, and writes nothing.
