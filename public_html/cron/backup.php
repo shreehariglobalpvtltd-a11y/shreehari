@@ -29,18 +29,19 @@ $tables = Database::fetchAll('SHOW TABLES');
 $rowsTotal = 0;
 
 foreach ($tables as $row) {
-    $table = (string) array_values($row)[0];
+    $table     = (string) array_values($row)[0];
+    $tableSafe = str_replace('`', '', $table);
 
     // Structure
-    $create = Database::fetch('SHOW CREATE TABLE `' . str_replace('`', '', $table) . '`');
+    $create = Database::fetch('SHOW CREATE TABLE `' . $tableSafe . '`');
     $ddl    = $create['Create Table'] ?? ($create['Create View'] ?? '');
-    $w("DROP TABLE IF EXISTS `{$table}`;\n{$ddl};\n\n");
+    $w("DROP TABLE IF EXISTS `{$tableSafe}`;\n{$ddl};\n\n");
 
     // Data, streamed in pages so a large table never blows memory.
     $offset = 0;
     $page   = 500;
     while (true) {
-        $data = Database::fetchAll("SELECT * FROM `{$table}` LIMIT {$page} OFFSET {$offset}");
+        $data = Database::fetchAll("SELECT * FROM `{$tableSafe}` LIMIT {$page} OFFSET {$offset}");
         if ($data === []) { break; }
 
         foreach ($data as $r) {
@@ -49,7 +50,7 @@ foreach ($tables as $row) {
                 if ($v === null) { return 'NULL'; }
                 return "'" . str_replace(["\\", "'", "\n", "\r"], ["\\\\", "\\'", "\\n", "\\r"], (string) $v) . "'";
             }, array_values($r));
-            $w('INSERT INTO `' . $table . '` (' . implode(',', $cols) . ') VALUES (' . implode(',', $vals) . ");\n");
+            $w('INSERT INTO `' . $tableSafe . '` (' . implode(',', $cols) . ') VALUES (' . implode(',', $vals) . ");\n");
             $rowsTotal++;
         }
         $offset += $page;

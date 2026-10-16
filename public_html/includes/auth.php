@@ -230,6 +230,16 @@ final class Auth
             Response::redirect('admin/login.php?next=' . rawurlencode($next));
         }
 
+        // Force a password change before allowing any action, including API calls.
+        if (!empty($admin['must_change_pw'])) {
+            if ($wantsJson) {
+                Response::error('Please change your password before continuing.', 403);
+            }
+            if (basename((string) ($_SERVER['SCRIPT_NAME'] ?? '')) !== 'change-password.php') {
+                Response::redirect('admin/change-password.php');
+            }
+        }
+
         if ($permission !== '' && !self::can($permission)) {
             Logger::warning('Permission denied', [
                 'admin'      => $admin['username'] ?? '',

@@ -26,6 +26,15 @@ try {
         Response::invalid(['pnr' => 'A valid booking reference is required.']);
     }
 
+    // If a logged-in customer is submitting, the booking must belong to them.
+    if (Auth::isUser()) {
+        $bk = BookingService::findByPnr($pnr);
+        if ($bk !== null && !empty($bk['user_id'])
+            && (int) $bk['user_id'] !== (int) (Auth::user()['id'] ?? 0)) {
+            Response::forbidden('This booking does not belong to your account.');
+        }
+    }
+
     $hasScreenshot = isset($_FILES['screenshot']) && ($_FILES['screenshot']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK;
 
     if ($utr === '' && !$hasScreenshot) {

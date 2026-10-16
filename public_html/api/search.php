@@ -68,7 +68,6 @@ try {
             'fare'         => (float) $route['base_fare'],
             'amenities'    => jsonColumn($route['amenities']),
             'crewName'     => $route['crew_name'],
-            'crewPhone'    => $route['crew_phone'],
             'seatsLeft'    => $availability['availableCount'],
             'totalSeats'   => $availability['total'],
             'boarding'     => $boarding,
