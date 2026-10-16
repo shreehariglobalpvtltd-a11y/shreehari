@@ -528,7 +528,8 @@ async function downloadTicketPDF(b) {
      the payment QR beside the verify QR (tkGoldPay, 07-checkout.js - the
      same rule as the screen) and the blessing above the footer. jsPDF has no
      Devanagari shaping, so the mantra / blessing print in Roman here. */
-  const NAVY = [14, 30, 63], ROYAL = [27, 58, 122], MAROON = [122, 30, 44], GOLD_DEEP = [138, 106, 31], GOLD = [201, 162, 39],
+  const NAVY = [10, 42, 143], ROYAL = [26, 68, 200], MAROON = [194, 84, 10],   // logo colours (16 Oct 2026)
+    GOLD_DEEP = [138, 106, 31], GOLD = [201, 162, 39],
     GOLD_LIGHT = [243, 222, 138], CREAM = [255, 248, 231], ORANGE = GOLD_DEEP, INK = [26, 26, 46], MUTE = [107, 94, 69], LINE = [221, 201, 140];
   const fill = function (c) { doc.setFillColor(c[0], c[1], c[2]); };
   const draw = function (c) { doc.setDrawColor(c[0], c[1], c[2]); };

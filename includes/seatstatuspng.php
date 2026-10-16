@@ -199,8 +199,8 @@ final class SeatStatusPng
         imageantialias($im, true);
         $c = static fn(string $hex): int => imagecolorallocate($im, (int) hexdec(substr($hex, 1, 2)), (int) hexdec(substr($hex, 3, 2)), (int) hexdec(substr($hex, 5, 2)));
         $white = $c('#FFFFFF'); $ink = $c('#15233B'); $muted = $c('#5B6B85'); $line = $c('#D5DEEA');
-        $navy = $c('#0C306C'); $navy2 = $c('#12407F'); $orange = $c('#F07C1F'); $bg = $c('#F6F8FC');
-        $stroke = ['open' => $c('#0C306C'), 'booked' => $c('#2E8B57'), 'private' => $c('#C9A227'), 'held' => $c('#E0A800'),
+        $navy = $c('#0A2A8F'); $navy2 = $c('#1A44C8'); $orange = $c('#F07800'); $bg = $c('#F6F8FC');
+        $stroke = ['open' => $c('#0A2A8F'), 'booked' => $c('#2E8B57'), 'private' => $c('#C9A227'), 'held' => $c('#E0A800'),
                    'blocked' => $c('#8A94A6'), 'staff' => $c('#2E5FA8'), 'pending' => $c('#D9822B')];
         $fill = ['open' => $white, 'booked' => $c('#2E8B57'), 'private' => $c('#F2C14E'), 'held' => $c('#FFF0BF'),
                  'blocked' => $c('#E4E7EC'), 'staff' => $c('#DDEBFF'), 'pending' => $c('#FFE1C4')];

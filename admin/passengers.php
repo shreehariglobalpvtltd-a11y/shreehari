@@ -253,8 +253,24 @@ if ($loadErr !== '') {
   <?= admin_kpi('Boarded', (string) $boarded, 'scanned in at the door', 'check', 'green') ?>
 </div>
 
-<div class="dt-bar" id="paxCtl">
-  <input class="dt-q" type="search" placeholder="Filter these rows — name, PNR, seat, ID, phone" aria-label="Filter rows">
+<?php /* 16 Oct 2026 (owner: "category wise milau"): chips first, dropdowns under More. */ ?>
+<div id="paxCtl">
+<div class="dt-bar">
+  <input class="dt-q" type="search" placeholder="🔍 Name or mobile (/ to jump here) — PNR, seat, ID also work" aria-label="Filter rows" autocomplete="off">
+  <span class="dt-count"></span>
+</div>
+<div class="dt-chips" role="toolbar" aria-label="Passenger categories">
+  <button type="button" class="dt-chip" data-dt-chip="{}">All</button>
+  <button type="button" class="dt-chip" data-dt-chip='{"status":"confirmed"}'>✅ Confirmed</button>
+  <button type="button" class="dt-chip" data-dt-chip='{"gender":"female"}' data-dt-hide0>♀ Female</button>
+  <button type="button" class="dt-chip" data-dt-chip='{"gender":"male"}' data-dt-hide0>♂ Male</button>
+  <button type="button" class="dt-chip warn" data-dt-chip='{"idfile":"0"}' data-dt-hide0>🪪 No ID</button>
+  <button type="button" class="dt-chip" data-dt-chip='{"docs":"0"}' data-dt-hide0>📄 No file yet</button>
+  <button type="button" class="dt-chip" data-dt-chip='{"status":"cancelled"}' data-dt-hide0>✖ Cancelled</button>
+</div>
+<details class="dt-bar dt-more">
+  <summary class="btn ghost">☰ More filters</summary>
+  <div class="dt-more-p">
   <select data-dt-filter="status" aria-label="Booking status">
     <option value="">All statuses</option>
     <?php foreach (['confirmed', 'pending', 'completed', 'cancelled', 'rejected', 'expired'] as $st): ?>
@@ -264,7 +280,8 @@ if ($loadErr !== '') {
   <select data-dt-filter="idfile" aria-label="ID on file"><option value="">Any ID</option><option value="1">ID on file</option><option value="0">No ID</option></select>
   <select data-dt-filter="docs" aria-label="Documents"><option value="">Any documents</option><option value="1">Has photo / document</option><option value="0">No file yet</option></select>
   <select data-dt-filter="gender" aria-label="Gender"><option value="">Any gender</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
-  <span class="dt-count"></span>
+  </div>
+</details>
 </div>
 
 <div class="dt-wrap">

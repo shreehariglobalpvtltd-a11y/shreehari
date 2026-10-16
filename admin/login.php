@@ -248,7 +248,7 @@ button.alt{background:none;color:<?= $skin['sea'] ?>;margin-top:10px;min-height:
 /* Oct 2026 redesign: one brand on every door — the design-system light values
    (navy ground with the red rule, royal action, 1.5px control borders, a
    visible focus ring). The per-portal skin still sets the heading text. */
-body{background:#0C306C !important;background-image:none !important;border-top:3px solid #DC143C}
+body{background:#0A2A8F !important;background-image:radial-gradient(90% 60% at 20% 0%,#1F4FD8 0%,rgba(31,79,216,0) 60%),linear-gradient(160deg,#0A2A8F 0%,#1036B4 60%,#1846CC 100%) !important;background-attachment:fixed !important;border-top:3px solid #F07800}
 .box{box-shadow:0 14px 34px rgba(0,0,0,.28);border-radius:22px}
 h1{color:#16233C}
 .sub,.who,.ch small{color:#5C6B85}

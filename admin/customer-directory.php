@@ -148,7 +148,17 @@ admin_header('All Customers', 'customer-directory');
   <?php endforeach; ?>
 </div>
 
-<form method="get">
+<?php /* 16 Oct 2026 (owner: "dherai option, nachaine faldeu"): the full filter
+         form folds away; it opens by itself when one of its filters is set. */
+      $cdMore = $f['agent'] !== '' || $f['route'] || $f['country'] !== '' || $f['status'] !== 'confirmed' || $f['min'] || $f['lapsed'] || !$f['alt'] || $f['leads'] || $f['mode'] !== 'booking'; ?>
+<form method="get" class="cd-quick" style="display:flex;gap:8px;margin:0 0 10px">
+  <?php foreach (['range' => $range ?? '', 'from' => $f['from'], 'to' => $f['to']] as $hk => $hv): if ((string) $hv !== ''): ?><input type="hidden" name="<?= $hk ?>" value="<?= $e((string) $hv) ?>"><?php endif; endforeach; ?>
+  <input type="search" name="q" value="<?= $e($f['q']) ?>" placeholder="🔍 Name or mobile digits…" aria-label="Search name or mobile" style="flex:1 1 auto;min-width:0;min-height:46px;padding:10px 14px;font-size:16px;border:2px solid var(--royal,#1a3fc4);border-radius:12px;background:var(--card);color:var(--ink)">
+  <button class="btn" type="submit">Search</button>
+</form>
+<details class="dt-more" style="margin:0 0 12px"<?= $cdMore ? ' open' : '' ?>>
+<summary class="btn ghost">☰ More filters<?= $cdMore ? ' · on' : '' ?></summary>
+<form method="get" style="margin-top:8px">
   <div class="cd-form">
     <label>Date is<select name="mode"><option value="booking" <?= $f['mode'] === 'booking' ? 'selected' : '' ?>>Booking date</option><option value="travel" <?= $f['mode'] === 'travel' ? 'selected' : '' ?>>Travel date</option></select></label>
     <label>From<input type="date" name="from" value="<?= $e($f['from']) ?>"></label>
@@ -174,6 +184,7 @@ admin_header('All Customers', 'customer-directory');
     <a class="btn ghost" href="?">Reset</a>
   </div>
 </form>
+</details>
 
 <div class="kpis">
   <div class="kpi tone-navy"><span class="ki"><svg class="a-ic"><use href="#a-users"/></svg></span><div class="kt"><div class="kk">Numbers</div><div class="kv"><?= number_format($total) ?></div><div class="ks">people in this list</div></div></div>

@@ -299,7 +299,7 @@ if ($row !== null && isset($_GET['print'])) {
        . '<title>Settlement ' . $e($no) . '</title><style>'
        . '*{box-sizing:border-box}body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Devanagari",sans-serif;margin:0;background:#eef1f6;color:#16233c}'
        . '.sheet{max-width:720px;margin:18px auto;background:#fff;border-radius:14px;padding:26px 28px;box-shadow:0 10px 30px rgba(16,38,77,.14)}'
-       . '.top{display:flex;gap:14px;align-items:center;border-bottom:3px solid #0C306C;padding-bottom:14px}.top img{height:56px;width:auto;max-width:116px;object-fit:contain;flex:none}.top>div{flex:1;min-width:0}.top .flg-pair{flex:none;align-self:flex-start}'
+       . '.top{display:flex;gap:14px;align-items:center;border-bottom:3px solid #F07800;padding-bottom:14px}.top img{height:56px;width:auto;max-width:116px;object-fit:contain;flex:none}.top>div{flex:1;min-width:0}.top .flg-pair{flex:none;align-self:flex-start}'
        . '.top h1{margin:0;font-size:20px}.top p{margin:2px 0 0;font-size:12.5px;color:#55627a}'
        . '.ttl{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin:16px 0 10px;flex-wrap:wrap}.ttl h2{margin:0;font-size:18px;letter-spacing:.04em;text-transform:uppercase}'
        . '.ttl b{font:700 15px ui-monospace,Consolas,monospace}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 18px;font-size:13.5px;margin-bottom:14px}'
@@ -308,7 +308,7 @@ if ($row !== null && isset($_GET['print'])) {
        . '.sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:54px;font-size:12.5px;color:#55627a}.sign div{border-top:1px solid #16233c;padding-top:6px}'
        . '.foot{margin-top:18px;font-size:11.5px;color:#7a8499}.bar{max-width:720px;margin:14px auto;display:flex;gap:10px;padding:0 4px}'
        . '.bar button,.bar a{min-height:46px;padding:0 18px;border-radius:12px;border:0;font:700 14px inherit;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}'
-       . '.bar button{background:#0C306C;color:#fff;box-shadow:0 4px 0 #071d44}.bar a{background:#fff;color:#16233c;border:1px solid #cfd9ea}'
+       . '.bar button{background:#1A44C8;color:#fff;box-shadow:0 4px 0 #081d66}.bar a{background:#fff;color:#16233c;border:1px solid #cfd9ea}'
        . '@media print{body{background:#fff}.bar{display:none}.sheet{box-shadow:none;margin:0;max-width:none;border-radius:0}}'
        . '</style></head><body>'
        . '<div class="bar"><button onclick="window.print()">🖨️ Print / Save PDF</button><a href="' . $e($self . '?id=' . (int) $row['id']) . '">← Back</a></div>'
@@ -371,7 +371,7 @@ admin_header($agentView ? 'My settlements' : 'Agent settlements', 'settlements')
 .st-lines tr.net td{font-size:19px;font-weight:900;color:var(--ink)}
 .st-lines small{display:block;color:var(--mut);font-size:12px;font-weight:400}
 .st-net{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;padding:14px 16px;border-radius:14px;color:#fff;
-  background:linear-gradient(135deg,#0C306C,#1C4FA3);box-shadow:0 5px 0 #071d44,0 14px 28px rgba(12,48,108,.3)}
+  background:linear-gradient(135deg,#0A2A8F,#1A44C8);box-shadow:0 5px 0 #081d66,0 14px 28px rgba(10,42,143,.3)}
 .st-net b{font-size:26px;font-variant-numeric:tabular-nums}.st-net span{font-size:13px;opacity:.85}
 .st-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:10px 12px;margin-top:14px}
 .st-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--mut)}

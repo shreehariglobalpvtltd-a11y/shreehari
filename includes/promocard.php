@@ -65,7 +65,7 @@ final class PromoCard
             $t = $y / $H;
             imageline($im, 0, $y, $W, $y, imagecolorallocate($im, (int) (12 + 6 * $t), (int) (48 - 20 * $t), (int) (108 - 60 * $t)));
         }
-        $gold = $c('#F2C14E'); $white = $c('#FFFFFF'); $orange = $c('#F07C1F'); $pale = $c('#C7D6F0'); $navy = $c('#0C306C');
+        $gold = $c('#F2C14E'); $white = $c('#FFFFFF'); $orange = $c('#F07800'); $pale = $c('#C7D6F0'); $navy = $c('#0A2A8F');
         /* The emblem (no baked name, no tile) and the company NAME as a live
            line under it, with both flags (9 Oct 2026). The caller's full logo
            is only the fallback when the emblem file is missing. */

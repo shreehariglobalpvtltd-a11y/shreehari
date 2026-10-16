@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v225';   // Logo colours (deep royal blue + orange arrow) across app, admin, bills, ticket; Agents / Customers lists: category chips + live name/mobile finder + name+mobile quick add; SmartBook always opens on Quick. Was shg-v224: Smart AI: SmartBook completion ring + agent performance rings (score, wallet, cash, edit/settle/history). Was shg-v223: Quick form (name + mobile, rest default), mic, How? demo + voice, WhatsApp name + mobile = ticket. Was shg-v222: One booking AI: name -> F/M guess (learns nightly), WhatsApp one-message ticket. Was shg-v221: WhatsApp booking form (Flow) + SmartBook one booking screen: ordering line, Auto-book, New Booking/QuickBot out of the menu. Was shg-v220: Opus upgrade: Quick Edit, chalani register, dashboard sections, agents, WhatsApp combined booking (Book on WhatsApp sheet). Was shg-v219: Ticket logo: big HD emblem + name set like the company logo (S HARI GLOBAL TM / PRIVATE LIMITED) on the PNG, PDF and the ticket card. Was shg-v218: SmartBook desk: agent code pick (search / Other) at counter + admin, locked own code for agents, commission + credit on the card
+var VERSION = 'shg-v226';   // Logo colours on the on-screen gold ticket card, the PDF ticket, agent statement, settlement receipt, seat-status and promo images, admin sign-in. Was shg-v225: Logo colours (deep royal blue + orange arrow) across app, admin, bills, ticket; Agents / Customers lists: category chips + live name/mobile finder + name+mobile quick add; SmartBook always opens on Quick. Was shg-v224: Smart AI: SmartBook completion ring + agent performance rings (score, wallet, cash, edit/settle/history). Was shg-v223: Quick form (name + mobile, rest default), mic, How? demo + voice, WhatsApp name + mobile = ticket. Was shg-v222: One booking AI: name -> F/M guess (learns nightly), WhatsApp one-message ticket. Was shg-v221: WhatsApp booking form (Flow) + SmartBook one booking screen: ordering line, Auto-book, New Booking/QuickBot out of the menu. Was shg-v220: Opus upgrade: Quick Edit, chalani register, dashboard sections, agents, WhatsApp combined booking (Book on WhatsApp sheet). Was shg-v219: Ticket logo: big HD emblem + name set like the company logo (S HARI GLOBAL TM / PRIVATE LIMITED) on the PNG, PDF and the ticket card. Was shg-v218: SmartBook desk: agent code pick (search / Other) at counter + admin, locked own code for agents, commission + credit on the card
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,7 +43,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261016a';
+var ASSET_VER = '20261016b';
 var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
   /* 8 Oct 2026: the 10 KB nav / home-hero logo (logo.png stays for the footer + PDF) */

@@ -334,14 +334,14 @@ function admin_header(string $title, string $active = ''): void
     // Design system v2 (17 Sep 2026): Inter for the UI (CSP already allows
     // fonts.googleapis.com / fonts.gstatic.com), swap so text never blocks;
     // the system stack in --f-ui covers offline desks and Devanagari.
-    echo '<meta name="theme-color" content="#0C306C">';
+    echo '<meta name="theme-color" content="#0A2A8F">';
     // 17 Sep 2026: the CSRF token for the panel's JSON tools (WhatsApp sends).
     echo '<meta name="csrf" content="' . Security::e(Security::csrfToken()) . '">';
     // Oct 2026 redesign: the S Hari Global design system (the same tokens and
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261016a';
+    $av = '20261016b';
     /* 5 Oct 2026 (owner, Point 12): Poppins across the panel. display=swap, so a
        slow counter line shows the device font at once and swaps when the file
        lands; Devanagari comes from the same family. The CSP already allows it. */
@@ -363,7 +363,7 @@ function admin_header(string $title, string $active = ''): void
     echo '<script>function shgThemeApply(t){var d=document.documentElement;'
        . 'd.setAttribute("data-theme",t==="light"?"light":"dark");'
        . 'if(t==="amoled")d.setAttribute("data-display","amoled");else d.removeAttribute("data-display");'
-       . 'var m=document.querySelector("meta[name=theme-color]");if(m)m.setAttribute("content",t==="amoled"?"#000000":(t==="dark"?"#0F1A2E":"#0C306C"));'
+       . 'var m=document.querySelector("meta[name=theme-color]");if(m)m.setAttribute("content",t==="amoled"?"#000000":(t==="dark"?"#0F1A2E":"#0A2A8F"));'
        . 'var L={light:"Switch to dark mode",dark:"Switch to AMOLED black mode",amoled:"Switch to light mode"}[t]||"";'
        . 'var b=document.querySelectorAll(".theme-tog:not(.snd-tog)");for(var i=0;i<b.length;i++){b[i].setAttribute("aria-label",L);b[i].setAttribute("title",L);}}'
        . '(function(){try{var t=localStorage.getItem("shg_admin_theme");'

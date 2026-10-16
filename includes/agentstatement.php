@@ -355,7 +355,7 @@ final class AgentStatementPng
         imagesavealpha($im, false);
         // design-system colours (ds.css, light theme)
         $c = static fn(string $h) => imagecolorallocate($im, hexdec(substr($h, 1, 2)), hexdec(substr($h, 3, 2)), hexdec(substr($h, 5, 2)));
-        $white = $c('#FFFFFF'); $page_ = $c('#F4F6FB'); $navy = $c('#0C306C'); $red = $c('#DC143C');
+        $white = $c('#FFFFFF'); $page_ = $c('#F4F6FB'); $navy = $c('#0A2A8F'); $red = $c('#F07800');   // the logo's orange rule (16 Oct 2026; was brand red)
         $ink = $c('#16233C'); $muted = $c('#5C6B85'); $line = $c('#E4E9F1'); $lineS = $c('#D5DCE8');
         $royal = $c('#0054A8'); $tint = $c('#EEF4FC'); $ok = $c('#11703F'); $okBg = $c('#E4F6EC');
         $bad = $c('#B42525'); $badBg = $c('#FBE3E3'); $pale = $c('#B9C9E6'); $sunk = $c('#F8FAFD');
