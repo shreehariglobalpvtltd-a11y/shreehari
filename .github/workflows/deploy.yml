@@ -108,8 +108,18 @@ jobs:
               "$SITE" 2>/dev/null || true
             echo "--- DB backup: $BACKUP_DIR/pre-deploy-$STAMP.sql.gz"
             mysqldump --single-transaction shari 2>/dev/null | gzip > "$BACKUP_DIR/pre-deploy-$STAMP.sql.gz" || true
+
+            # Prune old pre-deploy backups so /root does not fill up and start
+            # breaking the next deploy. Keep the 7 most recent of each kind.
+            echo "--- Pruning old backups (keep 7 most recent of each kind)"
+            ls -1t "$BACKUP_DIR"/pre-deploy-*.tar.gz 2>/dev/null | tail -n +8 | xargs -r rm -f
+            ls -1t "$BACKUP_DIR"/pre-deploy-*.sql.gz 2>/dev/null | tail -n +8 | xargs -r rm -f
+            # Also drop any failed_* folder older than 7 days (left by rollback).
+            find "$SITE_PARENT" -maxdepth 1 -type d -name 'failed_*' -mtime +7 -exec rm -rf {} + 2>/dev/null || true
+            df -h /root | tail -n1
           else
             echo "[DRY] Would backup to $BACKUP_DIR/pre-deploy-$STAMP.tar.gz"
+            echo "[DRY] Would prune old pre-deploy-* backups (keep 7)"
           fi
 
           # Show current deployed commit
