@@ -140,15 +140,21 @@ final class SiteFacts
 
         /* Brand */
         $short = trim((string) preg_replace('/\s+(Pvt\.?\s*Ltd\.?|Private\s+Limited|Ltd\.?)$/i', '', $co['name']));
+        /* 16 Oct 2026 (owner, the logo): the legal form on its own line under
+           the name, letter-spaced, as the logo and the PNG ticket set it. The
+           company logo spells it out, so "Pvt Ltd" is spelled out here too. */
+        $suffix = $short !== '' && $short !== $co['name'] ? 'PRIVATE LIMITED' : '';
         $brand = [
             'name'    => $co['name'],
             'legal'   => $co['legal'],
             'legalNe' => $co['legalNe'],
             'short'   => $short !== '' ? $short : $co['name'],
+            'suffix'  => $suffix,
             'web'     => $co['web'],
             'email'   => $co['email'],
             'cin'     => $co['cin'],
             'gstin'   => $g('company_gstin'),
+            'tmNo'    => $g('company_tm_no'),
             'tagline' => $g('company_tagline'),
         ];
         /* Channels + the domain mailbox (10 Oct 2026, owner: "Gmail YouTube /

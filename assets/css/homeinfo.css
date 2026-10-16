@@ -9,7 +9,9 @@
    opacity only and stops for prefers-reduced-motion and html[data-motion="reduced"]. */
 
 /* ---- 1. display order (HOME owns the full map; these are HOMEINFO's four) ---- */
-#view-home > #homeFares { order: 6 !important; }
+/* 16 Oct 2026: the founder's card took slot 6 when the booking demo left the
+   page, so the fare band moves down one. */
+#view-home > #homeFares { order: 7 !important; }
 #view-home > #homeRoute { order: 9 !important; }
 #view-home > #homeIndiaNepal { order: 11 !important; }
 #view-home > #homeExplore { order: 12 !important; }

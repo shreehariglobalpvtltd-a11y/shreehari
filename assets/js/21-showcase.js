@@ -236,7 +236,6 @@
 
   /* ---- 7. boot --------------------------------------------------------- */
   function boot() {
-    reveal(d.getElementById('demoHead'));
     reveal(d.querySelector('#topHero .th-brand'));
     reveal(d.querySelector('#homeCeo .sc-ceo'));
     reveal(d.getElementById('bookHelp'));

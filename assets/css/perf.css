@@ -169,17 +169,9 @@
    shadow that reaches past the section's edge - and these sections have no
    vertical padding. #bookHelp (.bh-btn's 3D ledge), #homeCeo (.sc-ceo) and
    #topHero (.th-brand) all end in a shadowed card, so they are left alone.
-   #animBooking ends in the scene card (anim.css: border, overflow hidden,
-   no outer shadow), and it is the costly one: a phone mock-up of about 160
-   elements on an 8 s loop. tests/perf-hints-test.php pins the list.
-   Anchors still land: scrollIntoView() renders the target before it moves,
-   and 20-anim.js's observers simply see the scene a little later. */
-@supports (content-visibility: auto) {
-  #view-home > #animBooking { content-visibility: auto; contain-intrinsic-size: auto 760px; }
-  @media (min-width: 760px) {
-    #view-home > #animBooking { contain-intrinsic-size: auto 680px; }
-  }
-}
+   16 Oct 2026: the phone mock-up scene (#animBooking) was the one home-page
+   element given a rule here; it left the page with the booking demo, so this
+   file now adds none of its own. tests/perf-hints-test.php pins the list. */
 
 /* ---------- 7. scrolling ---------------------------------------------- */
 /* html { scroll-behavior: smooth } (app.css) and the reduced-motion "auto"

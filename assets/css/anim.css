@@ -3,7 +3,8 @@
    From the owner's premium animation pack (shg-premium-animation-pack.zip):
      #animJourney  01 the coach on the highway        7 s loop
      #animRoute    02 Gujarat → Rupaidiha corridor     10 s loop
-     #animBooking  03 sample booking on a phone        8 s loop
+   (03, the sample booking on a phone, left the home page on 16 Oct 2026 —
+   the owner asked for a minimal, professional page.)
    Every selector is scoped under .shg-animation. Only transform and
    opacity move. Nothing runs until assets/js/20-anim.js marks a scene
    .is-running (on screen, tab visible, not paused, motion allowed).
@@ -15,7 +16,6 @@
 /* Home order: after the booking panel, QuickBot and the brand band. */
 #view-home > #animJourney { order: -3 !important; }  /* 5 Oct 2026: legacy - the banner now sits in #topHero */
 #view-home > #animRoute { order: 6 !important; }
-#view-home > #animBooking { order: 7 !important; }
 
 .shg-animation {
   --sa-navy: #07172f;

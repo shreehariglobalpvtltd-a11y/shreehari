@@ -39,6 +39,7 @@ $INDIA = [
     'company_email'    => ['Email', 'shreehariglobalpvtltd@gmail.com', 120, false],
     'company_cin'      => ['CIN', 'U52291GJ2026PTC174029', 40, false],
     'company_gstin'    => ['GSTIN (invoice says TAX INVOICE only when filled)', 'not registered yet', 20, false],
+    'company_tm_no'    => ['Trade mark no. (shown in the footer once filled)', 'e.g. 6312845 · Class 39', 40, false],
     'upi_id'           => ['UPI ID customers pay to', '', 80, false],
     'esewa_id'         => ['eSewa ID (used by every desk until the Nepal one is filled)', '', 80, false],
 ];
@@ -271,7 +272,7 @@ admin_header('Company details', 'company');
   <h2>🖼️ Nepal company logo</h2>
   <p class="sub">Printed on Nepal-desk tickets once the Nepal company name is filled. No logo uploaded = the India logo.</p>
   <div class="co-logo">
-    <img src="/<?= $e($npLogo !== '' ? $npLogo : (Settings::getString('company_logo', '') !== '' ? Settings::getString('company_logo', '') : 'assets/img/logo.png')) ?>?t=<?= time() ?>" alt="Current logo">
+    <img src="/<?= $e($npLogo !== '' ? $npLogo : (Settings::getString('company_logo', '') !== '' ? Settings::getString('company_logo', '') : 'assets/img/logo-tm.png')) ?>?t=<?= time() ?>" alt="Current logo">
     <span class="muted" style="font-size:13px"><?= $npLogo !== '' ? 'Nepal logo in use' : 'India logo in use (default)' ?></span>
   </div>
   <?php if ($canEdit): ?>

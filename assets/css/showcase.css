@@ -65,16 +65,18 @@
    1. HOME DISPLAY ORDER (PLAN.md map). The pinned redesign.css lines stay
    verbatim (hero 0, booking 1, next trip 2, facilities 3, QuickBot 4); this
    file loads after redesign.css + anim.css, so equal !important rules here
-   win. HOMEINFO sets its own four (#homeFares 6, #homeRoute 9,
+   win. HOMEINFO sets its own four (#homeFares 7, #homeRoute 9,
    #homeIndiaNepal 11, #homeExplore 12) in homeinfo.css.
    ===================================================================== */
-#view-home > #demoHead,
-#view-home > #animBooking { order: 5 !important; }
+/* 16 Oct 2026 (owner: "home page minimal professional, bus mathi, CEO intro ni"):
+   the four-step sample demo (#demoHead + #animBooking) is off the home page, and
+   the two slots it freed go to the coach + offices card (#topHero) and the founder
+   (#homeCeo). The information band that used to be 6 moves down one to 7. */
+#view-home > #topHero { order: 5 !important; }
+#view-home > #homeCeo { order: 6 !important; }   /* homeinfo.css moved #homeFares to 7 */
 /* 10 Oct 2026 (HD pack): the live-tracking section (#homeLive) takes the free slot 10
    between the route (9) and the India-Nepal band (11). The staged coach hero (#top)
    has no order here on purpose: redesign.css keeps it hidden until the owner says yes. */
-#view-home > #topHero { order: 7 !important; }
-#view-home > #homeCeo { order: 8 !important; }
 #view-home > #homeLive { order: 10 !important; }
 #view-home > #homeBiz { order: 12 !important; }   /* 10 Oct 2026 (BIZ): ties with #homeExplore - DOM order keeps it right after */
 #view-home > #animRoute { order: 13 !important; }
@@ -276,12 +278,47 @@ html.sc-io #homeFeat.sc-stagger:not(.sc-in) .sc-perks > li { opacity: 0; transfo
 #quick-ticket.sc-live .sc-qs:nth-child(3), #quick-ticket.sc-live .sc-qs:nth-child(3)::before { animation-delay: 4s; }
 
 /* =====================================================================
-   6. THE BOOKING DEMO — label + "try it" keys, then the scene
+   6. THE BRAND LOCKUP — name, ™, legal form (16 Oct 2026, owner: "logo ma
+   main change garnu paryo ... dekhine garera TM lekhdeu clearly, logo klasile
+   use garna napaos"). The site sets the brand the way the company logo does:
+   the name, a trademark sign beside it, and the legal form letter-spaced in
+   gold under it. The name itself stays live text from the facts, so a rename
+   in Admin reaches every surface; only the ™ is typed into the markup.
+   .b-lock keeps the name and the sign on one line inside the flex rows the
+   nav, hero, offices card and footer each use.
    ===================================================================== */
-#view-home > #demoHead { margin-top: 28px; }
-#demoHead .sc-demo-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-#demoHead .sc-demo-acts .sc-btn { flex: 1 1 220px; }
-#view-home > #animBooking { margin-top: 12px; }
+.b-lock { display: inline-flex; align-items: flex-start; min-width: 0; }
+.b-lock > b { min-width: 0; }
+/* the sign is sized per surface, in px, so it never rides on a parent's
+   inherited size: readable everywhere, never as loud as the name itself */
+.b-tm { font-size: 11px; line-height: 1.1; font-weight: 800; letter-spacing: 0;
+  margin-left: 2px; align-self: flex-start; }
+.nav .brand-word .b-tm { font-size: 9px; }
+#homeHero .sc-hh-eyebrow .b-tm { font-size: 9px; }
+#topHero .th-name .b-tm { font-size: 11px; }
+footer .sc-f-name .b-tm { font-size: 10px; color: #FFFFFF; }
+@media (min-width: 761px) { #topHero .th-name .b-tm { font-size: 14px; } }
+/* the name over the legal form, where the surface sets the brand in a row */
+.b-stack { display: inline-flex; flex-direction: column; align-items: center; min-width: 0; }
+.b-legal { display: block; margin-top: 3px; font: 800 11px/1.3 var(--font-sans);
+  letter-spacing: .26em; color: var(--sc-gold, #F5B942); white-space: nowrap; }
+.b-legal:empty { display: none; }
+.nav .brand-word .b-legal { margin-top: 1px; font-size: 9px; letter-spacing: .2em; color: var(--sc-gold, #F5B942); }
+#homeHero .sc-hh-eyebrow .b-legal { margin-top: 1px; font-size: 9px; letter-spacing: .2em; color: inherit; opacity: .85; }
+/* the nav stacks the name over the tagline, so the lockup is its own row */
+.nav .brand-word .b-lock { display: flex; }
+footer .sc-f-legal { margin: 0 0 6px; font: 800 10.5px/1.4 var(--font-sans);
+  letter-spacing: .26em; color: var(--sc-gold, #F5B942); }
+footer .sc-f-legal:empty { display: none; }
+/* the brand notice above the copyright line */
+footer p.f-tm { margin: 0; padding: 14px 0 0; max-width: 72ch;
+  font: 500 12px/1.65 var(--font-sans); color: #8FA5CC; }
+/* footer b is pinned to --on-navy with !important, so the brand name says so too */
+footer p.f-tm > b { color: var(--sc-gold, #F5B942) !important; font-weight: 800; }
+/* the number only shows once Admin -> Company details carries one */
+.f-tm-no:empty { display: none; }
+.f-tm-no:not(:empty)::before { content: "Trade mark no. "; }
+#trust .f-tm-no { display: block; }
 
 /* =====================================================================
    7. BRAND + OFFICES CARD (#topHero .th-brand; the rows are drawn by
@@ -296,6 +333,10 @@ html.sc-io #homeFeat.sc-stagger:not(.sc-in) .sc-perks > li { opacity: 0; transfo
 #topHero .th-top picture { flex: none; display: block; }
 #topHero .th-name { min-width: 0; }
 #topHero .th-name b { font: 900 19px/1.15 var(--font-sans); letter-spacing: .01em; }
+/* redesign.css styles every span in .th-name as the gold flag line - the
+   lockup wrapper must keep the name's own size, spacing and colour */
+#topHero .th-name .b-lock { display: inline-flex; margin-top: 0;
+  font: inherit; letter-spacing: inherit; color: inherit; }
 #topHero .sc-th-flags { display: flex !important; align-items: center; gap: 6px; margin-top: 4px; font: 800 12px/1.3 var(--font-sans) !important; letter-spacing: .06em !important; color: #FFD28A !important; }
 #topHero .sc-th-flags .flg { height: 13px; }
 #topHero .th-tag { position: relative; z-index: 1; color: #DCE6F7; }
@@ -600,7 +641,7 @@ html[data-motion="reduced"].sc-io #homeCeo .sc-ceo.sc-reveal:not(.sc-in) .sc-ceo
   .sc-hh-sheen, .sc-ping, .sc-rip, .sc-ceo-band i { display: none; }
 }
 @media print {
-  #demoHead, #animBooking, #homeCeo .sc-ceo-acts, #bookHelp, .sc-hh-sheen { display: none !important; }
+  #homeCeo .sc-ceo-acts, #bookHelp, .sc-hh-sheen { display: none !important; }
   /* a printout never waits for the scroll observer */
   html.sc-io .sc-reveal:not(.sc-in), html.sc-io #homeFeat.sc-stagger:not(.sc-in) .sc-perks > li,
   html.sc-io #homeCeo .sc-ceo.sc-reveal:not(.sc-in) .sc-ceo-photo { opacity: 1 !important; transform: none !important; }

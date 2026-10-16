@@ -43,10 +43,13 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261016b';
+var ASSET_VER = '20261016c';
 var PRECACHE = [
-  '/assets/img/logo.png?v=' + ASSET_VER,
-  /* 8 Oct 2026: the 10 KB nav / home-hero logo (logo.png stays for the footer + PDF) */
+  /* 16 Oct 2026 (owner, the logo): the full lockup WITH the ™ sign is now
+     logo-tm.png (tools/make-logo-tm.php cuts it from logo.png). Neither is
+     precached any more: no page loads them - the documents and the PDF read
+     the file from disk on the server. */
+  /* 8 Oct 2026: the 10 KB nav / home-hero logo */
   '/assets/img/logo-nav.png?v=' + ASSET_VER,
   /* 9 Oct 2026: emblem-only mark (tickets, footer) + the small push badge */
   '/assets/img/logo-mark-96h.png?v=' + ASSET_VER,

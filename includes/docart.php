@@ -147,7 +147,8 @@ final class DocArt
             if (self::$rootOverride === null && class_exists('Ticket') && method_exists('Ticket', 'logoFile')) {
                 return Ticket::logoFile();
             }
-            return self::asset('assets/img/logo.png');
+            /* last resort: the full lockup, the one that carries the ™ sign */
+            return self::asset('assets/img/logo-tm.png') ?? self::asset('assets/img/logo.png');
         } catch (\Throwable $e) {
             return null;
         }
