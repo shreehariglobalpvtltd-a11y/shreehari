@@ -114,7 +114,7 @@ if ($home !== '') {
         }
     }
 }
-foreach (['homeHero', 'homeFeat', 'quick-ticket', 'demoHead', 'animBooking', 'topHero', 'homeCeo', 'animRoute', 'bookHelp', 'trust', 'agrBar', 'realReviews', 'homeMoreBar', 'homeExtra', 'homeMore'] as $id) {
+foreach (['homeHero', 'homeFeat', 'quick-ticket', 'topHero', 'homeCeo', 'animRoute', 'bookHelp', 'trust', 'agrBar', 'realReviews', 'homeMoreBar', 'homeExtra', 'homeMore'] as $id) {
     sc_check("#{$id} is a direct child of #view-home", in_array($id, $kids, true));
 }
 /* 10 Oct 2026: #homeLive (HD pack) and #homeBiz (BIZ) joined the HOMEINFO block. */
@@ -123,17 +123,20 @@ foreach (['homeFares', 'homeRoute', 'homeLive', 'homeIndiaNepal', 'homeExplore',
         sc_check("HOMEINFO #{$id} is a direct child of #view-home", in_array($id, $kids, true));
     }
 }
+/* 16 Oct 2026 (owner: "home page minimal professional"): the four-step sample
+   demo is off the home page altogether - neither the label (#demoHead) nor the
+   phone scene (#animBooking) may come back on it, in the guide or outside it. */
 $panel = sc_block($body, 'bookHelpPanel');
-sc_check('the booking demo is no longer folded inside the guide', $panel !== '' && !str_contains($panel, 'animBooking') && !str_contains($panel, 'shg-animation'));
-sc_check('the demo keeps its exact scene class attribute', str_contains($body, '<section class="container shg-animation" id="animBooking"'));
-$demoHead = sc_block($body, 'demoHead');
-sc_check('#demoHead labels the demo and offers QuickBot + seat map', str_contains($demoHead, 'data-i18n="dmEyebrow"') && str_contains($demoHead, 'data-scroll="quick-ticket"') && str_contains($demoHead, 'data-scroll="search-anchor"'));
-sc_check('#demoHead sits before #animBooking in the DOM', $demoHead !== '' && strpos($body, 'id="demoHead"') < strpos($body, 'id="animBooking"'));
+sc_check('the booking demo is not folded inside the guide', $panel !== '' && !str_contains($panel, 'animBooking') && !str_contains($panel, 'shg-animation'));
+sc_check('the booking demo is off the home page', !str_contains($body, 'id="animBooking"') && !str_contains($body, 'id="demoHead"'));
 
 $hero = sc_block($body, 'homeHero');
 sc_check('#homeHero holds no nested <section>', $hero !== '' && substr_count(strtolower($hero), '<section') === 1);
 sc_check('hero: India + Nepal flags beside the headline', str_contains($hero, 'data-flag="IN"') && str_contains($hero, 'data-flag="NP"'));
-sc_check('hero: live company name (token + data-fact)', str_contains($hero, 'data-fact="brand.name"') && str_contains($hero, '{{f:brand.name}}'));
+/* 16 Oct 2026 (the logo): the hero sets the brand the way the logo does —
+   the short name, live from the facts, with the ™ sign beside it. */
+sc_check('hero: live company name (token + data-fact)', str_contains($hero, 'data-fact="brand.short"') && str_contains($hero, '{{f:brand.short}}'));
+sc_check('hero: the name carries the trademark sign', str_contains($hero, '<sup class="b-tm">™</sup>'));
 sc_check('hero: Track key has the radar pings, My-ticket key the ticket icon', (bool) preg_match('/hh-track.*?sc-ping.*?#i-radar/s', $hero) && (bool) preg_match('/hh-my.*?#i-tkt2/s', $hero));
 sc_check('hero: three keys, Book stays primary', substr_count($hero, 'class="hh-act ') === 3 && str_contains($hero, 'class="hh-act hh-book"'));
 
@@ -191,7 +194,7 @@ sc_check('every id in the body is unique', $dupes === [], implode(',', array_sli
 
 /* ---------------------------------------------------------------------- */
 echo "-- 2. Display order --\n";
-$map = ['demoHead' => 5, 'animBooking' => 5, 'topHero' => 7, 'homeCeo' => 8, 'homeLive' => 10, 'homeBiz' => 12, 'animRoute' => 13, 'bookHelp' => 14,
+$map = ['topHero' => 5, 'homeCeo' => 6, 'homeLive' => 10, 'homeBiz' => 12, 'animRoute' => 13, 'bookHelp' => 14,
         'trust' => 30, 'agrBar' => 31, 'realReviews' => 32, 'homeMoreBar' => 33, 'homeExtra' => 34, 'homeMore' => 35];   // homeBiz 12 (BIZ, 10 Oct 2026) ties with #homeExplore: DOM order
 foreach ($map as $id => $n) {
     sc_check("showcase.css: #{$id} order {$n}", (bool) preg_match('/#view-home > #' . preg_quote($id, '/') . '\b[^{]*\{ order: ' . $n . ' !important; \}/', $css)
@@ -215,7 +218,8 @@ echo "-- 3. Logo: emblem only, no white tile --\n";
 sc_check('SPA body never loads logo.png (baked name)', !preg_match('#/assets/img/logo\.png#', $body));
 sc_check('footer uses the emblem (logo-mark)', (bool) preg_match('#id="logoFoot" src="/assets/img/logo-mark\.png#', $body));
 sc_check('offices card uses the emblem', (bool) preg_match('#class="th-logo" src="/assets/img/logo-mark#', $body));
-sc_check('demo phone uses the emblem', substr_count($body, 'class="sa-logo" src="/assets/img/logo-mark') === 4);
+/* 16 Oct 2026: the demo phone's four .sa-logo marks left with the booking demo. */
+sc_check('no stray demo-phone emblem left behind', !str_contains($body, 'class="sa-logo"'));
 sc_check('hero + nav use logo-nav.png (the emblem, 240x125)', str_contains($hero, 'logo-nav.png') && str_contains($body, 'id="logoNav" src="/assets/img/logo-nav.png'));
 foreach (['logo-nav.png' => 20000, 'logo-mark.png' => 200000, 'logo-mark-96h.png' => 60000] as $f => $max) {
     $p = $root . '/assets/img/' . $f;
@@ -271,7 +275,7 @@ function sc_lang_keys(string $i18n, string $lang): array
 }
 $K = ['en' => sc_lang_keys($i18n, 'en'), 'hi' => sc_lang_keys($i18n, 'hi'), 'ne' => sc_lang_keys($i18n, 'ne')];
 sc_check('three language blocks parsed', count($K['en']) > 500 && count($K['hi']) > 500 && count($K['ne']) > 500);
-$scope = $hero . $feat . $qt . $demoHead . $top . $ceo . $help . sc_block($body, 'footer');
+$scope = $hero . $feat . $qt . $top . $ceo . $help . sc_block($body, 'footer');
 if ($scope === '' || !str_contains($scope, 'fTagline')) {
     if (preg_match('#<footer\b.*?</footer>#s', $body, $fm)) $scope .= $fm[0];
 }
@@ -321,10 +325,14 @@ $known = ['brand.name', 'brand.legal', 'brand.cin', 'brand.email', 'brand.short'
           'fares.private.single', 'fares.private.double', 'agent.direct', 'html:offices', 'policy.line.en', 'route.kmText', 'route.hoursText', 'policy.reschedule.en',
           'nepal.phone', 'nepal.tel', 'support.tel',
           // 10 Oct 2026 (trust): the domain mailbox / Gmail, the channel icons + their sprite symbols, the Director's profile
-          'brand.contactEmail', 'html:emails', 'html:social', 'html:socialSymbols', 'html:ceoSocial'];
+          'brand.contactEmail', 'html:emails', 'html:social', 'html:socialSymbols', 'html:ceoSocial',
+          // 16 Oct 2026 (the logo): the legal form under the name, and the trade mark number
+          'brand.suffix', 'brand.tmNo'];
 /* Tokens that are EMPTY BY DESIGN until the office pastes a channel URL in
    Admin -> Settings -> Company (empty = not shown, never a dead icon). */
-$optional = ['html:social', 'html:ceoSocial'];
+$optional = ['html:social', 'html:ceoSocial',
+             // 16 Oct 2026: the trade mark number, until the office fills it in
+             'brand.tmNo'];
 $unknown = array_values(array_diff(array_unique($tok[1]), $known));
 sc_check('every {{f:…}} token in the body is a known fact', $unknown === [], implode(',', $unknown));
 /* with the DB up, ask SiteFacts itself: every token the template uses must be filled */
@@ -345,7 +353,12 @@ if (is_array($tokMap)) {
     sc_check('…and none of them renders empty on this database', $empty === [], implode(',', $empty));
 }
 sc_check('WhatsApp rows that carry a greeting keep their ?text (no data-fact-wa rewrite)', !preg_match('/wa\.me\/[^"]*\?text=[^"]*"[^>]*data-fact-wa=/', $body));
-sc_check('footer: flags + live name + four new pages + /business (BIZ, 10 Oct 2026)', str_contains($footer, 'data-flag="IN"') && str_contains($footer, 'data-fact="brand.name"')
+/* 16 Oct 2026 (the logo): the footer sets the short name with the ™ sign and
+   the legal form under it, the way the company logo does. */
+sc_check('footer: the brand lockup — name, ™, legal form', str_contains($footer, 'data-fact="brand.short"')
+    && str_contains($footer, '<sup class="b-tm">™</sup>') && str_contains($footer, 'data-fact="brand.suffix"'));
+sc_check('footer: the trade mark notice, with the number left to the facts', str_contains($footer, 'data-i18n="fTm"') && str_contains($footer, 'data-fact="brand.tmNo"'));
+sc_check('footer: flags + live name + four new pages + /business (BIZ, 10 Oct 2026)', str_contains($footer, 'data-flag="IN"') && str_contains($footer, '{{f:brand.name}}')
     && str_contains($footer, 'href="/offices"') && str_contains($footer, 'href="/india-nepal"') && str_contains($footer, 'href="/explore"') && str_contains($footer, 'href="/tours"')
     && str_contains($footer, 'href="/business"') && str_contains($footer, 'data-i18n="fBusiness"'));
 

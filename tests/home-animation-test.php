@@ -57,7 +57,9 @@ $sw   = (string) file_get_contents($root . '/sw.js');
 $dir  = $root . '/assets/img/anim';
 
 $sections = [];
-foreach (['animJourney', 'animRoute', 'animBooking'] as $id) {
+/* 16 Oct 2026: scene 03 (the sample booking on a phone) left the home page with
+   the booking demo — the owner asked for a minimal, professional page. */
+foreach (['animJourney', 'animRoute'] as $id) {
     $sections[$id] = preg_match('~<section class="container shg-animation(?: sa-top)?" id="' . $id . '"(.*?)</section>~s', $tpl, $m) ? $m[1] : '';
 }
 $all = implode("\n", $sections);
@@ -79,10 +81,10 @@ check('the coach banner sits below the booking panel and QuickBot, the other sce
     && $posSearch < $posQuickA && $posQuickA < $posFirst
     && strpos($tpl, 'id="animRoute"') > $posFirst && str_contains($tpl, 'class="container shg-animation sa-top" id="animJourney"'));
 check('the old hidden highway scene and route card are gone', !str_contains($tpl, 'id="routeAnim"') && !str_contains($tpl, 'id="homeRouteMap"'));
-check('the coach is first (order -3), the other scenes after the brand band (order 6–7)',
+check('the coach is first (order -3), the corridor after the brand band (order 6)',
     (bool) preg_match('~#view-home > #animJourney \{ order: -3 !important; \}~', $css)
-    && (bool) preg_match('~#view-home > #animRoute \{ order: 6 !important; \}~', $css)
-    && (bool) preg_match('~#view-home > #animBooking \{ order: 7 !important; \}~', $css));
+    && (bool) preg_match('~#view-home > #animRoute \{ order: 6 !important; \}~', $css));
+check('the sample booking scene is off the home page', !str_contains($tpl, 'id="animBooking"'));
 check('no blocking splash: nothing in the scenes delays or hides the booking panel',
     !preg_match('~search-anchor|searchForm|splash~i', $js));
 
@@ -146,18 +148,7 @@ $rup = preg_match('~<text class="sa-lbl" x="([\d.]+)" y="([\d.]+)"[^>]*data-i18n
 check('the Rupaidiha label sits below the border point, on the India side', $rup > 228.12, (string) $rup);
 check('the corridor is the pack\'s illustrative path (Surat · Vadodara · Ahmedabad → Rupaidiha)',
     substr_count($sections['animRoute'], 'M229.61,374.43 L238.71,350.55 L222.86,335.53 C277.86,260.53 377.99,238.12 457.99,228.12') === 2);
-foreach (['animB4Badge' => 'Demo ticket', 'animB4F' => 'Preview only · no booking created', 'animBWaF' => 'Sample preview · not sent', 'animBDemo' => 'Sample animation only'] as $k => $text) {
-    check("the booking scene says \"{$text}\"", str_contains($sections['animBooking'], 'data-i18n="' . $k . '"') && str_contains($i18n, $k . ': "' . $text));
-}
-check('the sample shows sleeper berths, not chairs', substr_count($sections['animBooking'], 'class="sa-berth"') === 8 && !preg_match('~chair~i', $sections['animBooking']));
-check('the sample uses the passenger-facing seat labels (B6 = storage L12), never storage ids',
-    str_contains($sections['animBooking'], '<span>B6</span>') && !preg_match('~>L\d+<|: L\d+~', $sections['animBooking']));
-check('the WhatsApp card shows how a message looks and promises no delivery',
-    str_contains($i18n, 'animBWaS: "This is how a ticket message looks."') && !preg_match('~animBWa[TS]: "[^"]*(?:ready|sent to|delivered)~i', $i18n));
 check('the scenery layer is not squeezed by the site-wide img{max-width:100%}', str_contains($css, '.shg-animation .sa-journey img { max-width: none; }'));
-check('the phone mock-up does not depend on container-query units', !str_contains($css, 'cqw') && str_contains($css, '--u: calc(var(--phone-w) * 0.881 / 360)'));
-check('the ticket appears only after the payment check in the timeline',
-    (bool) preg_match("~show\(st, q\('\.sa-pay-ok'\), 0\.55,~", $js) && (bool) preg_match("~\{ opacity: 0, offset: 0\.64 \}, \{ opacity: 1, offset: 0\.68 \}~", $js));
 check('the controller makes no network or storage call',
     !preg_match('~\bfetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|localStorage|sessionStorage|document\.cookie|import\s*\(~', $js));
 check('the scenes carry no form, link or real booking control', !preg_match('~<form|<a\s|<input|<select|data-bkmode|searchBtn~', $all));

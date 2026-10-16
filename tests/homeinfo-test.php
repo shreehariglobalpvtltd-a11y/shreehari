@@ -165,7 +165,7 @@ hx_check('timeline static fallback: the 1950 treaty and the open border', str_co
 hx_check('no inline event handlers in the block', !preg_match('~\son[a-z]+\s*=~i', $block));
 
 /* ---- 2. order rules + asset wiring ------------------------------------- */
-foreach (['homeFares' => 6, 'homeRoute' => 9, 'homeIndiaNepal' => 11, 'homeExplore' => 12] as $id => $n) {
+foreach (['homeFares' => 7, 'homeRoute' => 9, 'homeIndiaNepal' => 11, 'homeExplore' => 12] as $id => $n) {
     hx_check("order rule #{$id} = {$n}", str_contains($css, "#view-home > #{$id} { order: {$n} !important; }"));
 }
 preg_match("/^var ASSET_VER = '([^']+)';/m", $sw, $av);

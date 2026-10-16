@@ -167,7 +167,9 @@ check('.btn and .seat lose their permanent will-change', (bool) preg_match('~(^|
 check('will-change only on :hover / :active / running scopes', !preg_match('~will-change: (transform|opacity)~', (string) preg_replace('~[^{}]*(:hover|:active|\.is-running|\.sc-live|\.sc-tilting|\.suggested|\.show|\.listening|\.locating)[^{}]*\{[^}]*\}~', '', $code)));
 preg_match_all('~#view-home > #([\w-]+) \{ content-visibility: auto;~', $code, $cv);
 $first = ['homeHero', 'search-anchor', 'nextTripBox', 'homeFeat', 'quick-ticket'];
-check('content-visibility on the heavy animated scene (#animBooking)', in_array('animBooking', $cv[1], true), implode(', ', $cv[1]));
+/* 16 Oct 2026: #animBooking was the one home-page section perf.css gave a
+   content-visibility rule; it left the page with the booking demo. */
+check('perf.css adds no home-page content-visibility rule of its own', $cv[1] === [], implode(', ', $cv[1]));
 check('...never on the first screen', array_intersect($cv[1], $first) === []);
 /* review 10 Oct: content-visibility = paint containment, which clipped the
    shadow of the card each of these sections ends in (no vertical padding) */
@@ -175,14 +177,14 @@ $clips = ['bookHelp', 'homeCeo', 'topHero', 'homeExtra', 'homeMore'];
 check('...never on a section that ends in a shadowed card (bookHelp / homeCeo / topHero / brochure)', array_intersect($cv[1], $clips) === [], implode(', ', array_intersect($cv[1], $clips)));
 $allCss = '';
 foreach (glob($root . '/assets/css/*.css') ?: [] as $f) $allCss .= (string) preg_replace('~/\*.*?\*/~s', '', (string) file_get_contents($f));
-check('...#animBooking ends in the scene card: overflow hidden, no outer shadow', str_contains($allCss, '.shg-animation .sa-scene { position: relative; overflow: hidden;')
+check('...an animation scene still ends in a clean card: overflow hidden, no outer shadow', str_contains($allCss, '.shg-animation .sa-scene { position: relative; overflow: hidden;')
     && !preg_match('~\.sa-(?:scene|grid)(?:[.:\[][\w="-]+\]?)*\s*(?:,[^{]*)?\{[^}]*box-shadow~', $allCss));
 $others = '';
 foreach (glob($root . '/assets/css/*.css') ?: [] as $f) { if (basename($f) !== 'perf.css') $others .= (string) file_get_contents($f); }
 $twice = array_values(array_filter($cv[1], static fn($id) => (bool) preg_match('~#view-home > #' . preg_quote($id, '~') . '[^{]*\{[^}]*content-visibility~', $others)));
 check('...and never a second rule for one element (premium.css note)', $twice === [] && !in_array('homeMore', $cv[1], true), implode(', ', $twice));
 $cvLines = array_filter(preg_split('~\R~', $code), static fn($l) => str_contains($l, 'content-visibility: auto;'));
-check('every content-visibility has contain-intrinsic-size: auto', $cvLines !== [] && array_filter($cvLines, static fn($l) => !str_contains($l, 'contain-intrinsic-size: auto ')) === []);
+check('every content-visibility has contain-intrinsic-size: auto', array_filter($cvLines, static fn($l) => !str_contains($l, 'contain-intrinsic-size: auto ')) === []);
 check('anchors clear the sticky header on phones', str_contains($code, 'scroll-padding-top: calc(var(--appbar-h, 56px) + env(safe-area-inset-top, 0px)'));
 check('30-day strip snaps gently (proximity)', str_contains($code, '.date-strip-30 { scroll-snap-type: x proximity; }'));
 check('dvh sheets behind @supports (height: 1dvh)', str_contains($code, '@supports (height: 1dvh)') && str_contains($code, '.ai-panel { height: min(480px, 62dvh); }') && str_contains($code, '.ai-panel.max { height: auto; }'));
