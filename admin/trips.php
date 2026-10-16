@@ -382,7 +382,7 @@ $csrfT   = Security::e(Security::csrfToken());
 $kT      = CSRF_TOKEN_NAME;
 ?>
 <?php if ($canManage): ?>
-<div class="panel">
+<div class="panel" id="rotation">
   <h2>🔄 Bus rotation <span class="muted" style="font-weight:400">· the fleet takes turns, so a bus recycles on its own</span></h2>
   <form method="post" style="padding:14px 18px">
     <input type="hidden" name="<?= $kT ?>" value="<?= $csrfT ?>">
