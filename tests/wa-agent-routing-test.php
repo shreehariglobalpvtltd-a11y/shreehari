@@ -12,6 +12,7 @@ declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
 define('SHG_APP', true);
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
+require_once INCLUDE_PATH . '/seats.php';
 require_once INCLUDE_PATH . '/notify.php';
 require_once INCLUDE_PATH . '/waroute.php';
 require_once INCLUDE_PATH . '/waqueue.php';
@@ -128,6 +129,12 @@ $src = Database::fetch("SELECT b.* FROM bookings b JOIN booking_legs bl ON bl.bo
     JOIN schedules s ON s.id = bl.schedule_id WHERE b.status = 'confirmed' AND s.route_id = 2 ORDER BY b.id DESC LIMIT 1");
 $travel = date('Y-m-d', time() + 2 * 86400);
 $sched = (int) Database::scalar('SELECT id FROM schedules WHERE route_id = 2 AND travel_date = :d LIMIT 1', ['d' => $travel], 0);
+/* The daily service is generated on demand, exactly as a passenger searching
+   that date would generate it, so the suite no longer depends on some earlier
+   suite in the roster having left a schedule two days out behind. */
+if ($sched === 0) {
+    try { $sched = (int) Seats::schedule(2, $travel)['id']; } catch (Throwable $e) { $sched = 0; }
+}
 $mkBooking = static function (string $pnr, string $phone, int $soldBy, string $source = 'web') use ($src, $travel, $sched): int {
     $row = $src;
     unset($row['id']);

@@ -230,14 +230,23 @@ if ($already !== null) {
         $coach = (string) $route['coach_type'];
         $date  = date('Y-m-d');
         $sid   = (int) Seats::schedule($rid, $date)['id'];
-        /* From the BACK of the layout: the suites that book for today take
-           seats from the front, so the fixture keeps out of their way. */
+        /* From the FRONT of the layout. Two rules decide this. The seat AI
+           picks rear-first, so the front berth is the one no automatic pick
+           wants. And a single-gender booking locks its shared cabin to that
+           gender, so a berth booked at the BACK took its cabin-mates out of
+           reach of a customer plan - which is how one fixture sale made
+           bot-ladder's "a free preferred berth is taken first" ask for a
+           berth in the locked cabin and be handed another. */
         $seats = [];
         try { $seats = array_values(array_map('strval', Seats::seatIdsForSchedule($sid))); } catch (Throwable $e) { $seats = []; }
         if ($seats === []) { try { $seats = array_values(array_map('strval', Seats::seatIds($coach, 'sharing'))); } catch (Throwable $e) { $seats = []; } }
+        /* Never a staff / emergency berth (only a super-admin may sell one)
+           and never a balcony EX seat, which is staff-only too. */
+        $reserved = [];
+        try { $reserved = array_map('strval', Seats::staffSeats($coach)); } catch (Throwable $e) { $reserved = []; }
         $pick = '';
-        foreach (array_reverse($seats) as $no) {
-            if ($no === '') { continue; }
+        foreach ($seats as $no) {
+            if ($no === '' || in_array($no, $reserved, true) || str_starts_with($no, 'EX')) { continue; }
             try {
                 Seats::assertAvailable($sid, [$no], 'cifx' . bin2hex(random_bytes(3)));
                 Seats::assertGenderAllowed($sid, $coach, 'sharing', [$no], ['Male']);

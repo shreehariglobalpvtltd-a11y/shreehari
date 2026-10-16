@@ -66,8 +66,15 @@ function http(string $path, bool $follow = false): array {
 }
 $serverUp = $BASE !== '' && http('/index.php')['code'] === 200;
 
-const TKP_DATE  = '2099-12-07';
-const TKP_DATE2 = '2099-12-08';
+/* Far-future fixture dates, but inside what a MySQL TIMESTAMP can hold
+   (2038-01-19 is the end of it). The "where is my bus" scenario below
+   writes the bus's last fix into kv_store.updated_at at the simulated
+   departure time; on 2099-12-07 that INSERT was refused with
+   "Incorrect datetime value" and the suite died with 76 of its checks
+   still unrun. Nothing in the suite needs the year to be 2099 - only
+   that it is far enough ahead to be a stable fixture. */
+const TKP_DATE  = '2037-12-07';
+const TKP_DATE2 = '2037-12-08';
 const TKP_PHONE = '9198700611';
 const TKP_ALT   = '9198700612';
 const TKP_PNR   = 'SHG-TEST-TKP1';

@@ -39,7 +39,15 @@ $DEAD_DATE = date('Y-m-d', (int) strtotime('-2 days'));  // a cancelled (dead) t
 
 $ALL_DATES = array_values(array_unique([$SRC_DATE, $DST_DATE, $FUT_DATE, $OLD_DATE, $DEAD_DATE]));
 
-function seatCount(int $sid): int { return (int) Database::scalar('SELECT COUNT(*) FROM booking_seats WHERE schedule_id = :s AND released_at IS NULL', ['s' => $sid], 0); }
+/* $SRC_DATE and $FUT_DATE are hours either side of now, so the source trip
+   is TODAY's bus — which carries whatever else the register holds for today.
+   Every count below is therefore about THIS booking's seats on that bus,
+   never about the bus being otherwise empty. */
+function seatCount(int $sid, int $bookingId): int {
+    return (int) Database::scalar(
+        'SELECT COUNT(*) FROM booking_seats WHERE schedule_id = :s AND booking_id = :b AND released_at IS NULL',
+        ['s' => $sid, 'b' => $bookingId], 0);
+}
 
 function cleanupAll(): void {
     global $ALL_DATES;
@@ -48,12 +56,28 @@ function cleanupAll(): void {
         Database::delete('audit_logs', "entity_type='booking' AND entity_id = :p", ['p' => $pnr]);
         Database::delete('bookings', 'id = :i', ['i' => (int) $id]);   // FK cascade drops legs/seats/passengers/payments/tickets
     }
+    /* $SRC_DATE and $FUT_DATE are a few hours either side of now, so they
+       are TODAY. Sweeping every booking_leg and schedule on those dates
+       therefore wiped today's register for whatever ran after this suite —
+       which is how the battery came to depend on its own order: ticket-art,
+       mk-autopilot, wa-agent-routing, wa-local and the dashboard's lead
+       passenger each needed a confirmed booking that this cleanup had just
+       removed. Its own bookings are already gone above (the SHG-TEST-%
+       cascade), so all that is left to tidy is the schedules it made: drop
+       the ones nothing is booked on, and put back the departure clock on the
+       ones it cannot drop, so no later suite inherits a shifted departure. */
     foreach ($ALL_DATES as $d) {
         foreach (pluck(Database::fetchAll('SELECT id FROM schedules WHERE travel_date = :d', ['d' => $d]), 'id') as $sid) {
-            Database::delete('schedule_unit_locks', 'schedule_id = :s', ['s' => (int) $sid]);
+            $sid  = (int) $sid;
+            $live = (int) Database::scalar('SELECT COUNT(*) FROM booking_legs WHERE schedule_id = :s', ['s' => $sid], 0);
+            if ($live > 0) {
+                Database::update('schedules', ['dep_time_override' => null, 'status' => 'scheduled'], 'id = :i', ['i' => $sid]);
+                continue;
+            }
+            Database::delete('schedule_unit_locks', 'schedule_id = :s', ['s' => $sid]);
+            Database::delete('seat_locks', 'schedule_id = :s', ['s' => $sid]);
+            Database::delete('schedules', 'id = :i', ['i' => $sid]);
         }
-        Database::delete('booking_legs', 'travel_date = :d', ['d' => $d]);
-        Database::delete('schedules', 'travel_date = :d', ['d' => $d]);
     }
 }
 
@@ -112,12 +136,12 @@ try {
     // ---- Happy path: passenger missed the 3h-ago bus → move to the next ----
     $bid = mkBooking($sidSrc, $coach, 'L3', 'Female', $SRC_DATE, $agentId > 0 ? $agentId : null);
     $tkBefore = Database::fetch('SELECT qr_payload, ticket_number FROM tickets WHERE booking_id = :b', ['b' => $bid]);
-    check('setup: seat held on source', seatCount($sidSrc) === 1);
+    check('setup: seat held on source', seatCount($sidSrc, $bid) === 1);
 
     $res = BookingService::rebookMissedLeg($bid, $sidDst, ['L7'], $DST_DATE, 1);
     check('rebookMissedLeg returns changed=true', ($res['changed'] ?? false) === true);
-    check('old seat freed on source (count 0)', seatCount($sidSrc) === 0);
-    check('new seat claimed on dest (count 1)', seatCount($sidDst) === 1);
+    check('old seat freed on source (count 0)', seatCount($sidSrc, $bid) === 0);
+    check('new seat claimed on dest (count 1)', seatCount($sidDst, $bid) === 1);
 
     $leg = Database::fetch("SELECT schedule_id, travel_date FROM booking_legs WHERE booking_id = :b AND leg_type='outbound'", ['b' => $bid]);
     check('leg moved to dest schedule', (int) $leg['schedule_id'] === $sidDst);
@@ -181,7 +205,7 @@ try {
     // value is refused up front and the booking stays exactly where it is.
     expectThrow('a bogus leg type is rejected on a missed rebooking',
         fn() => BookingService::rebookMissedLeg($bid, $sidSrc, ['L3'], $SRC_DATE, 1, 'sideways'));
-    check('bogus leg type moved nothing — bid still on dest', seatCount($sidDst) === 1);
+    check('bogus leg type moved nothing — bid still on dest', seatCount($sidDst, $bid) === 1);
 
 } catch (Throwable $e) {
     check('unexpected error: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine(), false);
