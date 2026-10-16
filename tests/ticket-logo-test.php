@@ -112,8 +112,12 @@ if ($im instanceof GdImage) {
     check('white bus drawn in the bottom-right of the emblem box', $bus > 150, "$bus px");
     $wordWhite = $count(200, $WY + 8, 860, $WY + 52, $white);
     check('white wordmark under the emblem', $wordWhite > 2500, "$wordWhite px");
-    $legalGold = $count(300, $WY + 73, 780, $WY + 96, $goldTx);
-    check('gold "PRIVATE LIMITED" line under the wordmark', $legalGold > 300, "$legalGold px");
+    /* 16 Oct 2026 (f50a54b, the owner's own logo): the legal line is WHITE,
+       like the name above it, on the brand blue — logo-wordmark-sub.png was
+       recoloured, same 483x22 footprint, so nothing moved. It used to be
+       drawn in gold. */
+    $legalWhite = $count(300, $WY + 73, 780, $WY + 96, $white);
+    check('white "PRIVATE LIMITED" line under the wordmark', $legalWhite > 300, "$legalWhite px");
     // the TM sign: white ink to the right of the 641-wide wordmark, near its top
     $wInfo = getimagesize($root . '/assets/img/logo-wordmark.png');
     $tmW   = 0;

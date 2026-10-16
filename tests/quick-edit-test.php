@@ -619,9 +619,14 @@ try {
            FROM audit_logs WHERE entity_type = 'booking' AND entity_id = :p",
         ['p' => (string) $own['pnr']]
     ) ?? ['n' => 0, 'withNew' => 0, 'withOld' => 0];
+    $hBoss = drive('booking-view.php', (int) $STAFF['boss']['id'], ['pnr' => $own['pnr']]);
     $why = 'rows=' . (int) $vals['n'] . ' withNew=' . (int) $vals['withNew'] . ' withOld=' . (int) $vals['withOld']
+         . ' | counter id=' . (int) $STAFF['counter']['id'] . ' role=' . (string) Database::scalar('SELECT role FROM admins WHERE id = :i', ['i' => (int) $STAFF['counter']['id']], '(none)')
+         . ' perms=' . substr((string) Database::scalar('SELECT COALESCE(permissions, "(null)") FROM admins WHERE id = :i', ['i' => (int) $STAFF['counter']['id']], '(none)'), 0, 60)
          . ' | page: audit panel=' . (int) str_contains($h, 'audit-timeline')
-         . ' Old=' . (int) str_contains($h, 'Old: ') . ' New=' . (int) str_contains($h, '→ New:');
+         . ' Old=' . (int) str_contains($h, 'Old: ') . ' New=' . (int) str_contains($h, '→ New:')
+         . ' | boss page: panel=' . (int) str_contains($hBoss, 'audit-timeline')
+         . ' Old=' . (int) str_contains($hBoss, 'Old: ') . ' New=' . (int) str_contains($hBoss, '→ New:');
     check('counter: audit old → new now visible (was super-admin only)',
         (int) $vals['withNew'] > 0 ? str_contains($h, '→ New:') : str_contains($h, 'Old: '), $why);
     $h = drive('booking-view.php', (int) $STAFF['manager']['id'], ['pnr' => $own['pnr']]);
