@@ -2896,24 +2896,47 @@ if ($msgLogs !== []): ?>
  * ======================================================================== */
 $bookingId = (int) $b['id'];
 
+/* The payment and ticket rows this booking owns. Read as INTEGERS and
+   compared as integers below.
+   16 Oct 2026: this used to match audit_logs.entity_id (VARCHAR,
+   utf8mb4_unicode_ci) against CAST(id AS CHAR), which carries the
+   connection collation — utf8mb4_general_ci on a stock MariaDB. The
+   server then refused the whole statement with "Illegal mix of collations
+   ... for operation '='" (SQLSTATE HY000, 1267), the catch below swallowed
+   it, and the office was shown "No audit entries recorded for this
+   booking" on EVERY booking, however much history it had. Comparing a
+   VARCHAR column to integer literals coerces the column to a number, so no
+   collation is involved at all. */
+$ownIds = [];
+foreach (['payment' => 'payments', 'ticket' => 'tickets'] as $kind => $table) {
+    $ownIds[$kind] = [];
+    try {
+        foreach (Database::fetchAll("SELECT id FROM `$table` WHERE booking_id = :b", ['b' => $bookingId]) as $r) {
+            $ownIds[$kind][] = (int) $r['id'];
+        }
+    } catch (Throwable $e) {
+        Logger::error('booking-view: could not list ' . $table . ' for the audit trail', ['booking' => $pnr, 'err' => $e->getMessage()], 'admin');
+    }
+}
 $auditLogs = [];
 try {
+    $inList = static fn(array $ids): string => $ids === [] ? 'NULL' : implode(',', array_map('intval', $ids));   // ints only - safe to inline
     $auditLogs = Database::fetchAll(
         "SELECT al.* FROM audit_logs al
           WHERE (al.entity_type = 'booking' AND al.entity_id = :pnr1)
              OR (al.entity_type = 'booking' AND al.entity_id = :bid1)
-             OR (al.entity_type = 'payment' AND al.entity_id IN (SELECT CAST(id AS CHAR) FROM payments WHERE booking_id = :bid2))
-             OR (al.entity_type = 'ticket'  AND al.entity_id IN (SELECT CAST(id AS CHAR) FROM tickets  WHERE booking_id = :bid3))
+             OR (al.entity_type = 'payment' AND al.entity_id IN (" . $inList($ownIds['payment']) . "))
+             OR (al.entity_type = 'ticket'  AND al.entity_id IN (" . $inList($ownIds['ticket']) . "))
          ORDER BY al.created_at ASC",
         [
             'pnr1' => $pnr,
-            'bid1'  => (string) $bookingId,
-            'bid2'  => $bookingId,
-            'bid3'  => $bookingId,
+            'bid1' => (string) $bookingId,
         ]
     );
 } catch (Throwable $e) {
-    // Silently degrade — audit log is informational
+    /* Still informational, so the page stays up — but never silently: an
+       empty Audit Trail has to be an empty history, not a broken query. */
+    Logger::error('booking-view: the audit trail query failed', ['booking' => $pnr, 'err' => $e->getMessage()], 'admin');
     $auditLogs = [];
 }
 ?>

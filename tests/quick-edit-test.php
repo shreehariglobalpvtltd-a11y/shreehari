@@ -630,22 +630,6 @@ try {
          . ' entries=' . substr_count($hBoss, 'class="audit-entry"')
          . ' Old=' . (int) str_contains($hBoss, 'Old: ') . ' New=' . (int) str_contains($hBoss, '→ New:')
          . ' | first entry: ' . (preg_match('~<div class="audit-entry">(.{0,200})~s', $hBoss, $aem) ? preg_replace('~\s+~', ' ', strip_tags($aem[1])) : '(none)');
-    /* The page swallows a failure of this query and shows "No audit entries
-       recorded", so run the same one here and say what it answers. */
-    try {
-        $pageRows = Database::fetchAll(
-            "SELECT al.* FROM audit_logs al
-              WHERE (al.entity_type = 'booking' AND al.entity_id = :pnr1)
-                 OR (al.entity_type = 'booking' AND al.entity_id = :bid1)
-                 OR (al.entity_type = 'payment' AND al.entity_id IN (SELECT CAST(id AS CHAR) FROM payments WHERE booking_id = :bid2))
-                 OR (al.entity_type = 'ticket'  AND al.entity_id IN (SELECT CAST(id AS CHAR) FROM tickets  WHERE booking_id = :bid3))
-              ORDER BY al.created_at ASC",
-            ['pnr1' => (string) $own['pnr'], 'bid1' => (string) (int) $own['id'], 'bid2' => (int) $own['id'], 'bid3' => (int) $own['id']]
-        );
-        $why .= ' | page query: ' . count($pageRows) . ' rows';
-    } catch (Throwable $e) {
-        $why .= ' | page query THREW: ' . get_class($e) . ' ' . substr($e->getMessage(), 0, 200);
-    }
     check('counter: audit old → new now visible (was super-admin only)',
         (int) $vals['withNew'] > 0 ? str_contains($h, '→ New:') : str_contains($h, 'Old: '), $why);
     $h = drive('booking-view.php', (int) $STAFF['manager']['id'], ['pnr' => $own['pnr']]);
