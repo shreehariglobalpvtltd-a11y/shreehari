@@ -374,7 +374,7 @@ if ($flash !== null) {
 </style>
 <form method="post" class="ag-qa" id="agQuickAdd" autocomplete="off">
   <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="quick_add">
-  <p class="ag-qa-h">⚡ Quick add — just name + mobile <span class="muted" style="font-weight:500">· login = their mobile, next free SHG code at once</span><button type="button" class="ag-qa-tg" onclick="this.closest('form').classList.toggle('more')">＋ city / email</button></p>
+  <p class="ag-qa-h">⚡ Quick add agent — just name + mobile <span class="muted" style="font-weight:500">· login = their mobile, next free SHG code at once</span><button type="button" class="ag-qa-tg" onclick="this.closest('form').classList.toggle('more')">＋ city / email</button></p>
   <?php // A refused Quick add keeps what was typed, so the fix is one box, not five.
         $qaKeep = static fn(string $f): string => ($flash[0] ?? '') === 'bad' && ($_POST['action'] ?? '') === 'quick_add' && is_string($_POST[$f] ?? null) ? $e($_POST[$f]) : ''; ?>
   <label class="ag-qa-wide">Name / organization<input name="qa_name" required minlength="2" maxlength="120" placeholder="Ram Bahadur / Krishna Travels" value="<?= $qaKeep('qa_name') ?>"></label>
