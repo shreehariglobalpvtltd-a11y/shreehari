@@ -139,6 +139,52 @@ for ($i = 6; $i >= 0; $i--) {
 }
 $sparkMax = max(1, max(array_column($spark, 'val')));
 
+/* 7-day forward fill preview — one row per upcoming date with
+   sold / total seats. The owner uses this to see where tomorrow's
+   bus is empty and where it's full, without clicking into every
+   schedule. Same window shape as the revenue sparkline above:
+   one query grouped by travel_date, gaps filled with 0. Reads
+   `schedules.total_seats` (planned berths) and the authoritative
+   per-trip occupancy via Seats::occupiedBedsFor so cancelled /
+   released seats don't inflate the number. */
+$fillWindow = [];
+$fwFrom = $today;
+$fwTo   = addDaysISO($today, 7);
+$fwSched = [];
+try {
+    foreach (Database::fetchAll(
+        'SELECT id, travel_date, total_seats FROM schedules WHERE travel_date >= :d0 AND travel_date < :d1',
+        ['d0' => $fwFrom, 'd1' => $fwTo]
+    ) as $sr) {
+        $d = (string) $sr['travel_date'];
+        if (!isset($fwSched[$d])) { $fwSched[$d] = ['ids' => [], 'cap' => 0]; }
+        $fwSched[$d]['ids'][] = (int) $sr['id'];
+        $fwSched[$d]['cap']  += (int) $sr['total_seats'];
+    }
+} catch (Throwable $e) { $fwSched = []; }
+$fwOcc = [];
+try {
+    $allIds = [];
+    foreach ($fwSched as $row) { foreach ($row['ids'] as $id) { $allIds[] = $id; } }
+    if ($allIds !== []) { $fwOcc = Seats::occupiedBedsFor($allIds); }
+} catch (Throwable $e) { $fwOcc = []; }
+for ($i = 0; $i < 7; $i++) {
+    $d  = addDaysISO($today, $i);
+    $row = $fwSched[$d] ?? ['ids' => [], 'cap' => 0];
+    $sold = 0;
+    foreach ($row['ids'] as $id) { $sold += (int) ($fwOcc[$id] ?? 0); }
+    $cap  = (int) $row['cap'];
+    $pct  = $cap > 0 ? (int) round(($sold / $cap) * 100) : 0;
+    $fillWindow[] = [
+        'date' => $d,
+        'day'  => date('D', strtotime($d)),
+        'dd'   => date('d', strtotime($d)),
+        'sold' => $sold,
+        'cap'  => $cap,
+        'pct'  => $pct,
+    ];
+}
+
 /* Today's trips with occupancy + the columns TripStatus needs to
    compute a state (arr_time, day_offset, delay_minutes) and the
    columns the Live Bus Status card wants (bus_number, driver_name).
@@ -282,6 +328,93 @@ admin_page_head(
   <a class="qa" href="<?= $base ?>/admin/seatmap.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-seat"/></svg></span>Seat map</a>
   <a class="qa" href="<?= $base ?>/admin/trips.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-clock"/></svg></span>Trips board</a>
 </div>
+
+<!-- Fleet · dinhu ko kaam — the three fleet operations the owner reaches
+     most often, each a one-tap deep link into its live page. Only shown
+     when the admin can actually use them (schedules.manage); otherwise
+     the whole card is skipped. Pure navigation + a 7-day fill preview —
+     no new business logic. -->
+<?php if (Auth::can('schedules.manage')): ?>
+<div class="fleet-card">
+  <div class="fleet-head">
+    <h2>🚌 Fleet · दिनहुँको काम <span class="muted" style="font-weight:400;font-size:13px">· Daily fleet actions</span></h2>
+  </div>
+  <div class="fleet-grid">
+    <a class="fqa" href="<?= $base ?>/admin/calendar.php#seedDailyBtn">
+      <span class="fqa-ic"><svg class="a-ic"><use href="#a-calendar-plus"/></svg></span>
+      <b>📅 अगाडि ३० दिनको trip बनाउ</b>
+      <small>Top up next 30 days of departures</small>
+    </a>
+    <a class="fqa" href="<?= $base ?>/admin/trips.php#rotation">
+      <span class="fqa-ic"><svg class="a-ic"><use href="#a-bus"/></svg></span>
+      <b>🔄 बस rotation मिलाउ</b>
+      <small>Which bus runs on which day — set the turn order</small>
+    </a>
+    <a class="fqa" href="<?= $base ?>/admin/schedule.php">
+      <span class="fqa-ic"><svg class="a-ic"><use href="#a-clipboard"/></svg></span>
+      <b>📋 एउटा trip अर्को date मा copy गर</b>
+      <small>Duplicate a trip onto another date</small>
+    </a>
+  </div>
+  <div class="fleet-fill">
+    <div class="fleet-fill-head"><b>अगाडि ७ दिन — कति seat बिक्यो?</b> <span class="muted" style="font-size:12px">· next 7 days of fill, sold / planned berths</span></div>
+    <div class="fill-row">
+      <?php foreach ($fillWindow as $f): ?>
+        <?php
+          // One tile per date — anchor into the schedule-manager with
+          // the picked date so the owner lands on that day's trips.
+          $tone = $f['cap'] === 0 ? 'empty' : ($f['pct'] >= 80 ? 'hot' : ($f['pct'] >= 40 ? 'ok' : 'cold'));
+          $title = $f['cap'] === 0
+              ? 'No trips planned on ' . $e(formatDate($f['date']))
+              : $e(formatDate($f['date'])) . ' — ' . (int) $f['sold'] . ' sold / ' . (int) $f['cap'] . ' seats';
+        ?>
+        <a class="fill-cell tone-<?= $tone ?>" href="<?= $base ?>/admin/schedule.php?date=<?= $e($f['date']) ?>" title="<?= $title ?>">
+          <div class="fc-day"><?= $e($f['day']) ?></div>
+          <div class="fc-dd"><?= $e($f['dd']) ?></div>
+          <div class="fc-bar"><span style="width:<?= (int) $f['pct'] ?>%"></span></div>
+          <div class="fc-num">
+            <?php if ($f['cap'] > 0): ?>
+              <b><?= (int) $f['sold'] ?></b>/<?= (int) $f['cap'] ?>
+            <?php else: ?>
+              <span class="muted">—</span>
+            <?php endif; ?>
+          </div>
+        </a>
+      <?php endforeach; ?>
+    </div>
+  </div>
+</div>
+<style>
+.fleet-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:14px 0;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.fleet-head h2{margin:0 0 10px;font-size:17px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.fleet-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.fqa{display:flex;flex-direction:column;gap:4px;padding:14px;border-radius:12px;background:var(--soft);border:1px solid var(--line);color:var(--ink);text-decoration:none;transition:transform .12s var(--ease),background .12s var(--ease),border-color .12s var(--ease);min-height:88px}
+.fqa:hover{background:var(--blue-50);border-color:var(--blue);transform:translateY(-1px)}
+.fqa .fqa-ic{width:34px;height:34px;border-radius:10px;background:var(--blue-100);color:var(--blue-600);display:inline-flex;align-items:center;justify-content:center;margin-bottom:4px}
+.fqa b{font-size:14.5px;line-height:1.3;color:var(--ink)}
+.fqa small{font-size:12px;color:var(--mut);line-height:1.3}
+.fleet-fill{margin-top:14px;border-top:1px dashed var(--line);padding-top:12px}
+.fleet-fill-head{margin-bottom:8px;font-size:14px}
+.fill-row{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.fill-cell{display:flex;flex-direction:column;gap:3px;padding:8px 6px;border-radius:10px;background:var(--soft);border:1px solid var(--line);text-align:center;text-decoration:none;color:var(--ink);min-width:0}
+.fill-cell:hover{border-color:var(--blue);background:var(--blue-50)}
+.fc-day{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.fc-dd{font-size:18px;font-weight:800;line-height:1}
+.fc-bar{height:5px;border-radius:3px;background:var(--line);overflow:hidden;margin:3px 0}
+.fc-bar span{display:block;height:100%;background:var(--blue);border-radius:3px}
+.fc-num{font-size:12px;font-weight:600}
+.fill-cell.tone-hot .fc-bar span{background:#2E8B57}
+.fill-cell.tone-ok  .fc-bar span{background:var(--blue)}
+.fill-cell.tone-cold .fc-bar span{background:var(--orange)}
+.fill-cell.tone-empty .fc-bar span{background:var(--line)}
+@media (max-width:640px){
+  .fill-row{grid-template-columns:repeat(7,1fr);gap:3px}
+  .fill-cell{padding:6px 3px}
+  .fc-dd{font-size:15px}
+  .fc-num{font-size:11px}
+}
+</style>
+<?php endif; ?>
 
 <!-- Revenue chart + channel donut -->
 <div class="dash-grid two-one">
