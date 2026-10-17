@@ -119,54 +119,79 @@
 @keyframes hxPing { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.6) } 100% { box-shadow: 0 0 0 8px rgba(16,185,129,0) } }
 html[data-display="amoled"] #smartBook .hx-vault, html[data-theme="dark"] #smartBook .hx-vault { color: #6ee7b7; }
 
-/* ---- 7. 8D/9D night-highway band (#hyperBus, app.template.html) ----- */
+/* ---- 7. night-highway band (#hyperBus, app.template.html) ------------
+   Owner, 17 Oct 2026: the official white coach photo, nothing drawn. The
+   coach is hd/bus-cutout(-m).webp (1600x800); its rims turn in place:
+   each .hx-hub sits over one rim, the crop inside is stretched back to a
+   circle (the rims are seen in perspective, rx < ry) and the hub box is
+   squeezed by --k = rx/ry, so the turning rim matches the photo exactly.
+   Rims measured on the 1600px file: rear c(307.5,610.5) rx38 ry45,
+   front c(1018,627) rx47 ry52. The tyres end at 90.25% of the height,
+   hence the photo's -4.875% bottom margin (of its own width). */
 html #view-home > #hyperBus { order: -1 !important; }   /* same as SmartBook; DOM after it, so right below the card */
-#hyperBus { width: 100%; max-width: 1100px; margin: 14px auto 6px; padding: 0 12px; box-sizing: border-box; }
-#hyperBus .hx-deck { overflow: hidden; padding: 16px 16px 12px; }
+#hyperBus { --hx-road: 46px; width: 100%; max-width: 1100px; margin: 14px auto 6px; padding: 0 12px; box-sizing: border-box; }
+#hyperBus .hx-deck { overflow: hidden; padding: 14px 16px 0; }
 #hyperBus .hx-mist { position: absolute; width: 320px; height: 160px; border-radius: 50%; filter: blur(48px); pointer-events: none; }
-#hyperBus .hx-mist.m1 { top: -80px; left: 18%; background: rgba(56,189,248,.20); animation: hxDrift 14s ease-in-out infinite alternate; }
-#hyperBus .hx-mist.m2 { bottom: -64px; right: 18%; background: rgba(16,185,129,.20); animation: hxDrift 17s ease-in-out infinite alternate-reverse; }
+#hyperBus .hx-mist.m1 { top: -80px; left: 18%; background: rgba(56,189,248,.14); animation: hxDrift 14s ease-in-out infinite alternate; }
+#hyperBus .hx-mist.m2 { bottom: -64px; right: 18%; background: rgba(148,163,184,.14); animation: hxDrift 17s ease-in-out infinite alternate-reverse; }
 @keyframes hxDrift { 0% { transform: translate3d(-30px,0,0) } 100% { transform: translate3d(40px,10px,0) } }
 
-#hyperBus .hx-top { position: relative; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; font-size: 12px; }
+#hyperBus .hx-top { position: relative; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; font-size: 12.5px; }
 #hyperBus .hx-live { display: flex; align-items: center; gap: 9px; min-width: 0; }
-#hyperBus .hx-dot { position: relative; width: 11px; height: 11px; flex: 0 0 11px; border-radius: 50%; background: #10b981; }
-#hyperBus .hx-dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: #34d399; animation: hxDotPing 1.4s cubic-bezier(0,0,.2,1) infinite; }
+#hyperBus .hx-logo { display: block; width: auto; height: 26px; max-width: none; flex: 0 0 auto; filter: drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
+#hyperBus .hx-dot { position: relative; width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: #10b981; }
+#hyperBus .hx-dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: #34d399; animation: hxDotPing 1.6s cubic-bezier(0,0,.2,1) infinite; }
 @keyframes hxDotPing { 75%, 100% { transform: scale(2.2); opacity: 0 } }
 #hyperBus .hx-corr { font-weight: 700; color: #fff; overflow-wrap: anywhere; }
 #hyperBus .hx-pills { display: flex; flex-wrap: wrap; gap: 6px; }
 #hyperBus .hx-pill { padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
-#hyperBus .hx-pill.c { color: #bae6fd; background: rgba(14,165,233,.15); border: 1px solid rgba(56,189,248,.3); }
-#hyperBus .hx-pill.g { color: #6ee7b7; background: rgba(16,185,129,.15); border: 1px solid rgba(52,211,153,.3); }
+#hyperBus .hx-pill.c { color: #e0f2fe; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.22); }
+#hyperBus .hx-pill.g { color: #d1fae5; background: rgba(16,185,129,.14); border: 1px solid rgba(52,211,153,.3); }
 
-#hyperBus .hx-stage { position: relative; height: 196px; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-user-select: none; }
+#hyperBus .hx-stage { position: relative; display: flex; align-items: flex-end; justify-content: center; padding-top: 6px; user-select: none; -webkit-user-select: none; }
+#hyperBus .hx-coach { position: relative; z-index: 2; width: 82%; max-width: 600px; margin-bottom: calc(var(--hx-road) * .55); }
+#hyperBus .hx-photo { position: relative; margin-bottom: -4.875%; }
+#hyperBus .hx-bus { display: block; width: 100%; max-width: none; height: auto; filter: drop-shadow(0 10px 14px rgba(0,0,0,.45)); }
+#hyperBus .hx-hub { position: absolute; z-index: 1; border-radius: 50%; overflow: hidden; transform: scaleX(var(--k)); -webkit-mask: radial-gradient(circle, #000 90%, transparent 100%); mask: radial-gradient(circle, #000 90%, transparent 100%); }
+#hyperBus .hx-hub i { position: absolute; inset: 0; display: block; border-radius: 50%; overflow: hidden; }
+#hyperBus .hx-hub img { position: absolute; display: block; max-width: none !important; max-height: none !important; }
+#hyperBus .hx-hub.h1 { --k: .8444; left: 16.406%; top: 70.6875%; width: 5.625%; height: 11.25%; }
+#hyperBus .hx-hub.h1 img { width: 2105.26%; height: 888.89%; left: -354.6%; top: -628.33%; }
+#hyperBus .hx-hub.h2 { --k: .90385; left: 60.375%; top: 71.875%; width: 6.5%; height: 13%; }
+#hyperBus .hx-hub.h2 img { width: 1702.13%; height: 769.23%; left: -1032.98%; top: -552.88%; }
+/* LED headlight throw, anchored to the coach's nose so it rides with it */
 #hyperBus .hx-beam {
-  position: absolute; right: 4%; bottom: 44px; width: 38%; height: 112px; pointer-events: none; opacity: .85;
-  background: linear-gradient(90deg, rgba(224,242,254,.68) 0%, rgba(56,189,248,.22) 55%, transparent 100%);
-  clip-path: polygon(0 40%, 100% 0, 100% 96%, 0 66%); filter: blur(5px);
+  position: absolute; left: 95%; top: 60%; width: 46%; height: 26%; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse 100% 60% at 0% 50%, rgba(255,251,235,.45) 0%, rgba(254,243,199,.14) 45%, transparent 80%);
+  clip-path: polygon(0 40%, 100% 8%, 100% 92%, 0 60%); filter: blur(6px);
   animation: hxBeam 2.6s ease-in-out infinite;
 }
-@keyframes hxBeam { 0%, 100% { opacity: .78 } 50% { opacity: .95 } }
-#hyperBus .hx-coach { position: relative; z-index: 2; width: 88%; max-width: 580px; margin-bottom: 22px; }
-#hyperBus .hx-coach svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 18px 32px rgba(56,189,248,.4)); }
-#hyperBus .hx-road { position: absolute; left: 0; right: 0; bottom: 6px; height: 36px; overflow: hidden; display: flex; align-items: center; background: rgba(2,6,23,.95); border-top: 1px solid rgba(56,189,248,.35); border-radius: 0 0 18px 18px; }
+@keyframes hxBeam { 0%, 100% { opacity: .8 } 50% { opacity: 1 } }
+#hyperBus .hx-shadow { position: absolute; z-index: 1; left: 50%; bottom: calc(var(--hx-road) * .55 - 7px); width: min(76%, 560px); height: 16px; transform: translateX(-46%); border-radius: 50%; background: radial-gradient(closest-side, rgba(0,0,0,.65), transparent); }
+/* asphalt with a white edge line and white lane marks */
+#hyperBus .hx-road {
+  position: absolute; left: -16px; right: -16px; bottom: 0; height: var(--hx-road); overflow: hidden; display: flex; align-items: center;
+  background: linear-gradient(180deg, #3a3f47 0%, #2a2e35 40%, #1d2026 100%);
+  border-top: 3px solid rgba(255,255,255,.75);
+  box-shadow: inset 0 6px 10px rgba(0,0,0,.35);
+}
 #hyperBus .hx-dashes { display: flex; gap: 56px; width: max-content; padding-left: 20px; }
-#hyperBus .hx-dashes i { display: block; width: 80px; height: 6px; flex: 0 0 auto; border-radius: 999px; background: rgba(251,191,36,.9); box-shadow: 0 0 10px #fbbf24; }
+#hyperBus .hx-dashes i { display: block; width: 80px; height: 5px; flex: 0 0 auto; border-radius: 2px; background: rgba(255,255,255,.88); }
 
-.shg-bus-suspension { animation: shgCoachSuspension 1.25s ease-in-out infinite; }
-.shg-wheel-spin { transform-box: fill-box; transform-origin: center; animation: shgAlloySpin .28s linear infinite; }
-.shg-highway-dash { animation: shgRoadSpeed .38s linear infinite; }
-@keyframes shgCoachSuspension { 0%, 100% { transform: translate3d(0,-2.5px,0) rotate(-.28deg) } 50% { transform: translate3d(0,2.8px,0) rotate(.28deg) } }
+.shg-bus-suspension { animation: shgCoachSuspension 1.4s ease-in-out infinite; }
+.shg-wheel-spin { transform-origin: center; animation: shgAlloySpin .5s linear infinite; }
+.shg-highway-dash { animation: shgRoadSpeed .42s linear infinite; }
+@keyframes shgCoachSuspension { 0%, 100% { transform: translate3d(0,-1.5px,0) rotate(-.15deg) } 50% { transform: translate3d(0,1.5px,0) rotate(.15deg) } }
 @keyframes shgAlloySpin { 0% { transform: rotate(0) } 100% { transform: rotate(360deg) } }
 @keyframes shgRoadSpeed { 0% { transform: translate3d(0,0,0) } 100% { transform: translate3d(-136px,0,0) } }   /* one dash + gap = seamless */
 
 @media (max-width: 600px) {
-  #hyperBus { padding: 0 10px; margin-top: 10px; }
-  #hyperBus .hx-deck { border-radius: 22px; padding: 12px 10px 8px; }
-  #hyperBus .hx-stage { height: 150px; }
-  #hyperBus .hx-coach { width: 96%; margin-bottom: 18px; }
+  #hyperBus { --hx-road: 34px; padding: 0 10px; margin-top: 10px; }
+  #hyperBus .hx-deck { border-radius: 22px; padding: 12px 10px 0; }
+  #hyperBus .hx-coach { width: 94%; }
   #hyperBus .hx-top { font-size: 11px; }
-  #hyperBus .hx-road { height: 30px; }
+  #hyperBus .hx-logo { height: 22px; }
+  #hyperBus .hx-road { left: -10px; right: -10px; }
 }
 /* the short-phone rule premium3d.css uses for #hero3d: keep the card in view */
 @media (max-width: 859px) and (max-height: 600px) { html.sb-on.sb-home #hyperBus { display: none; } }
@@ -175,9 +200,9 @@ html[data-tier="low"] .shg-3coat-deck { -webkit-backdrop-filter: none; backdrop-
 
 /* ---- 8. motion: the in-app switch stops it, the OS flag does not ----- */
 @media (prefers-reduced-motion: reduce) {
-  html:not([data-motion="reduced"]) .shg-bus-suspension { animation: shgCoachSuspension 1.25s ease-in-out infinite !important; }
-  html:not([data-motion="reduced"]) .shg-wheel-spin { animation: shgAlloySpin .28s linear infinite !important; }
-  html:not([data-motion="reduced"]) .shg-highway-dash { animation: shgRoadSpeed .38s linear infinite !important; }
+  html:not([data-motion="reduced"]) .shg-bus-suspension { animation: shgCoachSuspension 1.4s ease-in-out infinite !important; }
+  html:not([data-motion="reduced"]) .shg-wheel-spin { animation: shgAlloySpin .5s linear infinite !important; }
+  html:not([data-motion="reduced"]) .shg-highway-dash { animation: shgRoadSpeed .42s linear infinite !important; }
   html:not([data-motion="reduced"]) .shg-holo-foil::after { animation: shgHoloPass 4.2s ease-in-out infinite !important; }
   html:not([data-motion="reduced"]) .shg-ai-laser-bar { animation: shgLaserSweep .65s ease-in-out forwards !important; }
   html:not([data-motion="reduced"]) #smartBook .sb-tk.shg-ticket-360-active { animation: shgTicketSpin360 .92s var(--pixel-fluid-spring) forwards !important; }
