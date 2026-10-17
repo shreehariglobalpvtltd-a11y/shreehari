@@ -1181,9 +1181,9 @@ function renderNepalTeam() {
    pieces get a token-only fallback style here. */
 const OFFICE_WORDS = {
   /* tag: the owner's "Mehsana (HEAD)" badge - a Roman code in every language, like the server's first paint */
-  ne: { tag: 'HEAD', head: 'प्रधान कार्यालय', branch: 'शाखा कार्यालय', partner: 'नेपाल कार्यालय', border: 'सीमा कार्यालय', soon: 'छिट्टै खुल्दै', more: 'नयाँ कार्यालय छिट्टै', moreSub: 'नेटवर्क विस्तार हुँदैछ · Network expanding', call: 'फोन गर्नुहोस्' },
-  hi: { tag: 'HEAD', head: 'मुख्यालय', branch: 'शाखा कार्यालय', partner: 'नेपाल कार्यालय', border: 'सीमा कार्यालय', soon: 'जल्द खुल रहा है', more: 'नेटवर्क बढ़ रहा है', moreSub: 'नए ऑफ़िस जल्द · नयाँ कार्यालय छिट्टै', call: 'कॉल करें' },
-  en: { tag: 'HEAD', head: 'Office', branch: 'Branch office', partner: 'Nepal office', border: 'Border office', soon: 'Opening soon', more: 'Network expanding', moreSub: 'नयाँ कार्यालय छिट्टै · new offices soon', call: 'Call' }
+  ne: { tag: 'HEAD', map: 'नक्सा · ठेगाना', head: 'प्रधान कार्यालय', branch: 'शाखा कार्यालय', partner: 'नेपाल कार्यालय', border: 'सीमा कार्यालय', soon: 'छिट्टै खुल्दै', more: 'नयाँ कार्यालय छिट्टै', moreSub: 'नेटवर्क विस्तार हुँदैछ · Network expanding', call: 'फोन गर्नुहोस्' },
+  hi: { tag: 'HEAD', map: 'नक्शा · पता', head: 'मुख्यालय', branch: 'शाखा कार्यालय', partner: 'नेपाल कार्यालय', border: 'सीमा कार्यालय', soon: 'जल्द खुल रहा है', more: 'नेटवर्क बढ़ रहा है', moreSub: 'नए ऑफ़िस जल्द · नयाँ कार्यालय छिट्टै', call: 'कॉल करें' },
+  en: { tag: 'HEAD', map: 'Map · exact location', head: 'Office', branch: 'Branch office', partner: 'Nepal office', border: 'Border office', soon: 'Opening soon', more: 'Network expanding', moreSub: 'नयाँ कार्यालय छिट्टै · new offices soon', call: 'Call' }
 };
 function officeFlag(cc) {
   try { if (typeof window.shgFlag === 'function') { const s = window.shgFlag(cc, 16); if (s) return s; } } catch (e) {}
@@ -1205,6 +1205,8 @@ function renderOffices() {
       + '#saOffices .th-soon{opacity:.8}'
       + '#saOffices .th-more{grid-column:1/-1}'
       + '#saOffices .th-more a{border-style:dashed;min-height:60px}'
+      + '#saOffices .th-o{position:relative;padding-bottom:30px}#saOffices .th-map{position:absolute;left:12px;right:12px;bottom:6px;display:flex;align-items:center;justify-content:center;gap:4px;min-height:24px;border-radius:999px;font-size:11.5px;font-weight:800;color:#0a2a8f;background:rgba(255,255,255,.9);border:1px solid rgba(26,68,200,.25);text-decoration:none;box-shadow:0 2px 6px -2px rgba(10,42,143,.4)}'
+      + '#saOffices .th-map span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#saOffices .th-map:hover{background:#fff;border-color:#f07a1e}'
       /* the sub-line ("शाखा कार्यालय", "HEAD प्रधान कार्यालय", "नेपाल कार्यालय · Puspalal Chowk") wraps
          to two lines instead of ending in "…" on a 360-420px phone (the right padding keeps it clear of the call dot) */
       + '#view-home #topHero #saOffices .th-o .th-sub{white-space:normal;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3}';
@@ -1231,6 +1233,8 @@ function renderOffices() {
     const tel = String(o.tel || '').replace(/\D/g, '');
     return '<li class="th-o ' + (np ? 'th-np' : 'th-in') + (head ? ' th-head' : '') + (soon ? ' th-soon' : '') + '" data-office="' + esc(o.code || '') + '">'
       + (tel ? '<a href="tel:+' + esc(tel) + '" aria-label="' + esc(W.call + ' ' + nameOf(o) + ' ' + (o.phone || '')) + '">' + inner + '</a>' : '<span class="th-a">' + inner + '</span>')
+      /* 17 Oct 2026 (owner): the exact spot - Admin -> Counters sets map_url or the lat/lng pin; the server falls back to a city search */
+      + (!soon && o.mapUrl ? '<a class="th-map" href="' + esc(o.mapUrl) + '" target="_blank" rel="noopener noreferrer" aria-label="' + esc(W.map + ' · ' + nameOf(o)) + '">📍 <span>' + esc(W.map) + '</span></a>' : '')
       + '</li>';
   }).join('');
   const more = F.expanding
@@ -1627,7 +1631,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261017d" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261017e" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

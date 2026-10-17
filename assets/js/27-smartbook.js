@@ -20,7 +20,7 @@
   var W = {
     en: {
       title: 'One page. One tap. Happy journey.', sub: 'Gujarat ⇄ Rupaidiha · AC sleeper', botLbl: 'QuickBot — type it in one line',
-      botPh: 'Ram 98…, 2 people, Vadodara tomorrow', botGo: 'Fill the card', dirGo: 'Gujarat → Rupaidiha', dirBack: 'Rupaidiha → Gujarat',
+      botPh: 'Ram 98…, 2 people, Vadodara tomorrow', botGo: 'Fill the card', pnames: 'Other passengers\' names (optional)', pnPh: 'Passenger {n} name', dirGo: 'Gujarat → Rupaidiha', dirBack: 'Rupaidiha → Gujarat',
       date: 'Date', board: 'Boarding point', drop: 'Getting off at', near: 'Nearest to me', mobile: 'Mobile (WhatsApp ticket)', name: 'Lead passenger name',
       namePh: 'Full name', pax: 'Passengers', sharing: 'Sharing', private: 'Private', cSingle: 'Single', cDouble: 'Double', bAny: 'Any', bLower: 'Lower', bUpper: 'Upper',
       auto: 'Auto', rec: 'Recommended', choose: 'Choose seats', terms: 'By booking I accept the', termsLink: 'Terms', summary: 'Journey Summary',
@@ -40,7 +40,7 @@
     },
     hi: {
       title: 'एक पेज। एक टैप। शुभ यात्रा।', sub: 'गुजरात ⇄ रुपईडीहा · AC स्लीपर', botLbl: 'QuickBot — एक लाइन में लिखें',
-      botPh: 'राम 98…, 2 लोग, वडोदरा कल', botGo: 'कार्ड भरें', dirGo: 'गुजरात → रुपईडीहा', dirBack: 'रुपईडीहा → गुजरात',
+      botPh: 'राम 98…, 2 लोग, वडोदरा कल', botGo: 'कार्ड भरें', pnames: 'अन्य यात्रियों के नाम (वैकल्पिक)', pnPh: 'यात्री {n} का नाम', dirGo: 'गुजरात → रुपईडीहा', dirBack: 'रुपईडीहा → गुजरात',
       date: 'तारीख', board: 'चढ़ने की जगह', drop: 'उतरने की जगह', near: 'मेरे पास', mobile: 'मोबाइल (WhatsApp टिकट)', name: 'मुख्य यात्री का नाम',
       namePh: 'पूरा नाम', pax: 'यात्री', sharing: 'शेयरिंग', private: 'प्राइवेट', cSingle: 'सिंगल', cDouble: 'डबल', bAny: 'कोई भी', bLower: 'नीचे', bUpper: 'ऊपर',
       auto: 'ऑटो', rec: 'सुझाया', choose: 'सीट चुनें', terms: 'बुकिंग करके मैं', termsLink: 'शर्तें मानता हूँ', summary: 'यात्रा सारांश',
@@ -60,7 +60,7 @@
     },
     ne: {
       title: 'एउटै पेज। एउटै ट्याप। शुभ यात्रा।', sub: 'गुजरात ⇄ रुपैडिहा · AC स्लिपर', botLbl: 'QuickBot — एक लाइनमा लेख्नुहोस्',
-      botPh: 'राम 98…, 2 जना, वडोदरा भोलि', botGo: 'कार्ड भर्नुहोस्', dirGo: 'गुजरात → रुपैडिहा', dirBack: 'रुपैडिहा → गुजरात',
+      botPh: 'राम 98…, 2 जना, वडोदरा भोलि', botGo: 'कार्ड भर्नुहोस्', pnames: 'अरू यात्रुको नाम (ऐच्छिक)', pnPh: 'यात्रु {n} को नाम', dirGo: 'गुजरात → रुपैडिहा', dirBack: 'रुपैडिहा → गुजरात',
       date: 'मिति', board: 'चढ्ने ठाउँ', drop: 'ओर्लने ठाउँ', near: 'मेरो नजिक', mobile: 'मोबाइल (WhatsApp टिकट)', name: 'मुख्य यात्रुको नाम',
       namePh: 'पूरा नाम', pax: 'यात्रु', sharing: 'सेयरिङ', private: 'प्राइभेट', cSingle: 'सिंगल', cDouble: 'डबल', bAny: 'जुनसुकै', bLower: 'तल', bUpper: 'माथि',
       auto: 'अटो', rec: 'सिफारिस', choose: 'सिट छान्ने', terms: 'बुकिङ गर्दा', termsLink: 'सर्त मान्छु', summary: 'यात्रा सारांश',
@@ -346,13 +346,36 @@
     list.forEach(function (iso) {
       var d = new Date(iso + 'T00:00:00');
       h += '<button type="button" class="sb-chip' + (iso === cur ? ' on' : '') + '" role="radio" aria-checked="' + (iso === cur) + '" data-date="' + iso + '">'
-        + '<b>' + esc(dayLabel(iso)) + '</b><small>' + d.getDate() + ' ' + d.toLocaleDateString('en-IN', { month: 'short' }) + '</small></button>';
+        + '<b>' + esc(dayLabel(iso)) + '</b><small>' + d.getDate() + ' ' + d.toLocaleDateString('en-IN', { month: 'short' }) + esc(bsShort(iso, ' · ')) + '</small></button>';
     });
     h += '<button type="button" class="sb-chip sb-chip-cal" data-date="cal" aria-label="' + esc(tr('pickDate')) + '">📅</button>';
     box.innerHTML = h;
     if (S.q && S.q.window && !STAFF) { $('sbDateIn').min = S.q.window.from; $('sbDateIn').max = S.q.window.to; }
   }
 
+  /* 17 Oct 2026 (owner): the Nepali calendar beside the English one - nepaliBS() in
+     02-config.js (empty outside its table, so the date degrades to AD only) */
+  function bsShort(iso, sep) {
+    try { var b = typeof nepaliBS === 'function' ? nepaliBS(iso) : null; return b ? (sep || '') + b.monthName + ' ' + bsDevanagari(b.d) : ''; } catch (e) { return ''; }
+  }
+  function bsFull(iso, sep) {
+    try { var t = typeof nepaliBSFull === 'function' ? nepaliBSFull(iso) : ''; return t ? (sep || '') + t : ''; } catch (e) { return ''; }
+  }
+  /* 17 Oct 2026 (owner): every passenger may carry a name - optional, the lead
+     name stays the one typed above; blank = "<lead> (2)" as before (server) */
+  function renderPNames() {
+    var box = $('sbPNames'); if (!box) return;
+    if (S.pax.length < 2) { box.hidden = true; box.innerHTML = ''; return; }
+    var h = '<span class="sb-pn-l">' + esc(tr('pnames')) + '</span>';
+    for (var i = 1; i < S.pax.length; i++) {
+      h += '<label class="sb-pn"><b>' + (i + 1) + '</b><input type="text" maxlength="60" autocomplete="off" data-pn="' + i + '" placeholder="' + esc(tr('pnPh', { n: i + 1 })) + '" value="' + esc(S.pax[i].name || '') + '"></label>';
+    }
+    box.innerHTML = h; box.hidden = false;
+  }
+  document.addEventListener('input', function (e) {
+    var el = e.target; if (!el || !el.hasAttribute || !el.hasAttribute('data-pn')) return;
+    var i = +el.getAttribute('data-pn'); if (S.pax[i]) S.pax[i].name = el.value.slice(0, 60);
+  });
   function bandLabel(b) { return tr(b === 'child' ? 'child' : (b === 'senior' ? 'senior' : (b === 'patient' ? 'patient' : 'adult'))); }
   function renderPax() {
     $('sbCount').textContent = String(S.pax.length);
@@ -366,6 +389,7 @@
     });
     var row = $('sbPax'); row.innerHTML = h;
     row.classList.toggle('sb-scroll', S.pax.length >= 5);
+    renderPNames();
     renderQLine();
   }
 
@@ -441,7 +465,7 @@
   }
   function quoteBody() {
     return { action: 'quote', direction: S.dir, date: S.date, point: S.point, type: S.type, cabin: S.cabin, berth: S.berth,
-      pax: S.pax.map(function (p) { return { gender: p.gender, band: p.band }; }),
+      pax: S.pax.map(function (p) { return { gender: p.gender, band: p.band, name: String(p.name || '').trim().slice(0, 60) }; }),
       seats: S.seatMode === 'manual' ? S.manual : [], phone: digits(S.phone) };
   }
   function doQuote() {
@@ -501,7 +525,7 @@
     // summary rail + phone bar
     var route = q ? (q.from + ' → ' + q.to) : '—';
     $('sbSRoute').textContent = route;
-    $('sbSDate').textContent = q ? (q.dateLabel + (q.depTime ? ' · ' + q.depTime : '')) : '—';
+    $('sbSDate').textContent = q ? (q.dateLabel + bsFull(q.date, ' · ') + (q.depTime ? ' · ' + q.depTime : '')) : '—';
     $('sbSBoard').textContent = q ? ((q.pointType === 'drop' ? q.point : q.boardingName + (q.boardingTime ? ' ' + q.boardingTime : '')) + (q.reportTime && q.pointType !== 'drop' ? ' (' + tr('report') + ' ' + q.reportTime + ')' : '')) : '—';
     $('sbSPax').textContent = tr('paxN', { n: S.pax.length }) + ' · ' + tr(S.type);
     $('sbSSeats').textContent = q && q.ok ? seatSummary(q) : '—';
@@ -527,7 +551,7 @@
     var el = $('sbQLine'); if (!el) return;
     var q = S.q, parts = [];
     parts.push((S.dir === 'toIndia' ? '🇳🇵→🇮🇳 ' : '🇮🇳→🇳🇵 ') + (q ? q.from + ' → ' + q.to : ''));
-    if (q && q.dateLabel) parts.push('📅 ' + q.dateLabel + (q.depTime ? ' · ' + q.depTime : ''));
+    if (q && q.dateLabel) parts.push('📅 ' + q.dateLabel + bsShort(q.date, ' · ') + (q.depTime ? ' · ' + q.depTime : ''));
     if (q) parts.push('📍 ' + (q.pointType === 'drop' ? (q.point || '') : (q.boardingName || '')));
     parts.push('👤 ' + tr('paxN', { n: S.pax.length }) + ' ' + S.pax.map(function (p) { return p.gender === 'Female' ? '♀' : (p.gender === 'Male' ? '♂' : ''); }).join('') + (S.pax[0] && S.pax[0].ai ? ' 🤖' : ''));
     if (q && q.ok) parts.push('🛏 ' + seatSummary(q));
@@ -923,7 +947,7 @@
     var q = S.q || {}, drop = q.pointType === 'drop';
     var rows = [
       [tr('sRoute'), (q.from || '') + ' → ' + (q.to || '')],
-      [tr('sDate'), (q.dateLabel || '') + (q.depTime ? ' · ' + q.depTime : '')],
+      [tr('sDate'), (q.dateLabel || '') + bsFull(q.date, ' · ') + (q.depTime ? ' · ' + q.depTime : '')],
       [tr(drop ? 'drop' : 'sBoard'), drop ? (q.point || '') : (q.boardingName || '') + (q.boardingTime ? ' · ' + q.boardingTime : '')],
       [tr('sName'), S.name.trim() + ' · ' + tr('paxN', { n: S.pax.length })],
       [tr('sMobile'), (S.cc === 'NP' ? '+977 ' : '+91 ') + digits(S.phone)],
