@@ -92,7 +92,14 @@ final class DocVerify
             }
         }
 
-        // Gemini missing, down or not convinced: let the local OCR have a go.
+        // Gemini said "not a real ID card": the OCR may not overrule that
+        // (a paper with the name and number written on it reads fine too).
+        if ($g !== null && $r['is_doc'] === false) {
+            return $r;
+        }
+
+        // Gemini missing, down, or it read the name / number differently:
+        // let the local OCR have a go.
         $text = self::ocr($bin['bytes'], $bin['mime']);
         if ($text !== null) {
             $o = self::judgeText($text, $name, $idno);
