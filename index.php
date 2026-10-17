@@ -696,7 +696,7 @@ if ($heroPaint !== []) {
 /* 17 Oct 2026: the premium 3D hero band (#hero3d) leads the page now, so its
    headline, promise and five badges get the same first-paint treatment -
    the script goes right before the SmartBook card that follows the band. */
-$h3Paint = shg_first_paint_strings(['h3Eye', 'h3Title', 'h3Sub', 'h3F1', 'h3F2', 'h3F3', 'h3F4', 'h3F5', 'h3Tag']);
+$h3Paint = shg_first_paint_strings(['h3Eye', 'h3Title', 'h3Sub', 'h3F1', 'h3F2', 'h3F3', 'h3F4', 'h3F5', 'h3Tag', 'h3Line', 'h3Stamp']);
 if ($h3Paint !== []) {
     $s1 = strpos($html, '<section class="sb" id="smartBook"');
     if ($s1 !== false) {
