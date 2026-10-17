@@ -46,7 +46,8 @@ html.sc-io .sc-reveal,#homeFeat.sc-stagger .sc-perks > li{transition:opacity .38
       They are white / ice-blue now; the light theme is unchanged.
    --------------------------------------------------------------------- */
 :root[data-theme="dark"] #smartBook .sb-qline span{color:#fff;background:linear-gradient(180deg,rgba(120,160,255,.2),rgba(47,107,255,.08));border-color:rgba(140,180,255,.38);text-shadow:0 1px 2px rgba(0,0,0,.35)}
-:root[data-theme="dark"] #smartBook .sb-qline span:first-child{background:linear-gradient(120deg,#1f4fe0,#0a2a8f);border-color:rgba(255,255,255,.3);font-weight:800}
+/* the route chip (🇮🇳→🇳🇵 Surat → Rupaidiha) is a royal-blue ribbon with white letters in every theme, like the ticket */
+#smartBook .sb-qline span:first-child{color:#fff;background:linear-gradient(120deg,#1f4fe0,#0a2a8f);border-color:rgba(255,255,255,.3);font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.3)}
 :root[data-theme="dark"] #smartBook .sb-qline button{color:#cfe0ff}
 :root[data-theme="dark"] #smartBook :is(.sb-chip.on,.sb-dir-b.on,.sb-seg button.on,.sb-seatline b,.sb-p .sb-g.m,.sb-suggest button,.sb-alt button,.sb-qhelp,.sb-near,.sb-agent-other:not(.on)){color:#fff}
 :root[data-theme="dark"] #smartBook .sb-chip.on{border-color:#6f9bff;box-shadow:0 0 0 1px rgba(111,155,255,.35),0 6px 16px -8px rgba(47,107,255,.8)}
