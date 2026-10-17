@@ -1205,8 +1205,12 @@ function renderOffices() {
       + '#saOffices .th-soon{opacity:.8}'
       + '#saOffices .th-more{grid-column:1/-1}'
       + '#saOffices .th-more a{border-style:dashed;min-height:60px}'
-      + '#saOffices .th-o{position:relative;padding-bottom:30px}#saOffices .th-map{position:absolute;left:12px;right:12px;bottom:6px;display:flex;align-items:center;justify-content:center;gap:4px;min-height:24px;border-radius:999px;font-size:11.5px;font-weight:800;color:#0a2a8f;background:rgba(255,255,255,.9);border:1px solid rgba(26,68,200,.25);text-decoration:none;box-shadow:0 2px 6px -2px rgba(10,42,143,.4)}'
-      + '#saOffices .th-map span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#saOffices .th-map:hover{background:#fff;border-color:#f07a1e}'
+      /* 17 Oct 2026: the map pill. showcase.css styles EVERY "#topHero .th-o a" as a full card
+         (grid, padding, min-height 48px), so this selector outranks it and puts the pill back in flow */
+      + '#view-home #topHero #saOffices .th-o a.th-map{display:flex;flex-direction:row;flex-wrap:nowrap;white-space:nowrap;position:static;grid-template-columns:none;align-items:center;justify-content:center;gap:4px;min-height:28px;height:auto;margin:5px 0 0;padding:3px 10px;border-radius:999px;font:800 11.5px/1.2 var(--font-sans,sans-serif);color:#0a2a8f;background:rgba(255,255,255,.92);border:1px solid rgba(26,68,200,.25);text-decoration:none;box-shadow:0 2px 6px -2px rgba(10,42,143,.4);overflow:hidden;transform:none}'
+      /* the card link is height:100% (showcase.css): stack card + pill in a column so the pill never spills */
+      + '#view-home #topHero #saOffices .th-o{display:flex;flex-direction:column}#view-home #topHero #saOffices .th-o > a:not(.th-map),#view-home #topHero #saOffices .th-o > .th-a{height:auto;flex:1 1 auto}'
+      + '#view-home #topHero #saOffices .th-o a.th-map span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#view-home #topHero #saOffices .th-o a.th-map:hover{background:#fff;border-color:#f07a1e;transform:none}'
       /* the sub-line ("शाखा कार्यालय", "HEAD प्रधान कार्यालय", "नेपाल कार्यालय · Puspalal Chowk") wraps
          to two lines instead of ending in "…" on a 360-420px phone (the right padding keeps it clear of the call dot) */
       + '#view-home #topHero #saOffices .th-o .th-sub{white-space:normal;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3}';
@@ -1631,7 +1635,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261017e" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261017f" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

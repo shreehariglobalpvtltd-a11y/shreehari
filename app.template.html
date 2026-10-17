@@ -131,70 +131,70 @@ html,body{margin:0;background:#F4F6FB}
   <!-- 8 Oct 2026 (D8-07 pass 1): the 10 KB nav/hero logo, preloaded at normal
        priority - it is not the LCP and must not compete with the CSS on 3G.
        logo.png (440px) stays for the footer, tickets and the PDF. -->
-  <link rel="preload" as="image" href="/assets/img/logo-nav.png?v=20261017e">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20261017e">
-  <link rel="stylesheet" href="/assets/css/views.css?v=20261017e">
+  <link rel="preload" as="image" href="/assets/img/logo-nav.png?v=20261017f">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20261017f">
+  <link rel="stylesheet" href="/assets/css/views.css?v=20261017f">
   <!-- The shell pass (24 Sep 2026): header + logo, motion, elevation and
        the sound/haptics switches. Loads LAST on purpose — every rule in it
        is meant to win on equal specificity without an !important war, and
        removing this one line reverts the whole pass. -->
-  <link rel="stylesheet" href="/assets/css/premium.css?v=20261017e">
+  <link rel="stylesheet" href="/assets/css/premium.css?v=20261017f">
   <!-- Oct 2026 redesign: the S Hari Global design system (tokens + shared sg-
        components, also used by the company app) and the customer-app layer
        that points every legacy token at it. Both load LAST. -->
-  <link rel="stylesheet" href="/assets/css/ds.css?v=20261017e">
-  <link rel="stylesheet" href="/assets/css/redesign.css?v=20261017e">
-  <link rel="stylesheet" href="/assets/css/anim.css?v=20261017e">
+  <link rel="stylesheet" href="/assets/css/ds.css?v=20261017f">
+  <link rel="stylesheet" href="/assets/css/redesign.css?v=20261017f">
+  <link rel="stylesheet" href="/assets/css/anim.css?v=20261017f">
   <!-- 9 Oct 2026: Pixel / Material-You palettes + UI style (themes.css), then the home
        showcase (showcase.css). Both BEFORE depth.css, which stays the last stylesheet. -->
-  <link rel="stylesheet" href="/assets/css/themes.css?v=20261017e">
-  <link rel="stylesheet" href="/assets/css/showcase.css?v=20261017e">
-  <link rel="stylesheet" href="/assets/css/homeinfo.css?v=20261017e">
-  <link rel="stylesheet" href="/assets/css/smartbook.css?v=20261017e">
+  <link rel="stylesheet" href="/assets/css/themes.css?v=20261017f">
+  <link rel="stylesheet" href="/assets/css/showcase.css?v=20261017f">
+  <link rel="stylesheet" href="/assets/css/homeinfo.css?v=20261017f">
+  <link rel="stylesheet" href="/assets/css/smartbook.css?v=20261017f">
   <!-- 10 Oct 2026: the owner's HD visual pack in the page (hero coach, illustrations,
        live-tracking section, sprite-icon sizes). Before depth.css, which stays last. -->
-  <link rel="stylesheet" href="/assets/css/hd.css?v=20261017e">
+  <link rel="stylesheet" href="/assets/css/hd.css?v=20261017f">
   <!-- 17 Oct 2026: the premium 3D layer (hero band + glass polish) - after smartbook/hd, before perf + depth -->
-  <link rel="stylesheet" href="/assets/css/premium3d.css?v=20261017e">
+  <link rel="stylesheet" href="/assets/css/premium3d.css?v=20261017f">
   <!-- 10 Oct 2026: device / input hygiene - touch, hover guards, tap targets,
        compositor layers, dvh sheets, TV + device tiers (perf.css). Right
        BEFORE depth.css, which stays the last stylesheet. -->
-  <link rel="stylesheet" href="/assets/css/perf.css?v=20261017e">
+  <link rel="stylesheet" href="/assets/css/perf.css?v=20261017f">
   <!-- 4 Oct 2026: pop-out depth in every theme + the AMOLED display. Loads LAST. -->
-  <link rel="stylesheet" href="/assets/css/depth.css?v=20261017e">
+  <link rel="stylesheet" href="/assets/css/depth.css?v=20261017f">
 <!-- App bundle: `defer` keeps the same execution order and still runs after the
      document is parsed, but placing the tags in <head> lets the browser start
      fetching ~1 MB of JS with the FIRST bytes of HTML instead of after it has
      parsed ~190 KB of markup (perf pass, 11 Sep 2026). -->
-<script defer src="/assets/js/01-boot.js?v=20261017e"></script>
-<script defer src="/assets/js/02-config.js?v=20261017e"></script>
-<script defer src="/assets/js/03-accounts.js?v=20261017e"></script>
-<script defer src="/assets/js/04-i18n.js?v=20261017e"></script>
-<script defer src="/assets/js/05-router.js?v=20261017e"></script>
-<script defer src="/assets/js/06-results.js?v=20261017e"></script>
-<script defer src="/assets/js/07-checkout.js?v=20261017e"></script>
-<script defer src="/assets/js/14-counter.js?v=20261017e"></script>
-<script defer src="/assets/js/08-signin.js?v=20261017e"></script>
-<script defer src="/assets/js/10-track.js?v=20261017e"></script>
-<script defer src="/assets/js/11-pdf-ticket.js?v=20261017e"></script>
-<script defer src="/assets/js/13-admin-routes.js?v=20261017e"></script>
+<script defer src="/assets/js/01-boot.js?v=20261017f"></script>
+<script defer src="/assets/js/02-config.js?v=20261017f"></script>
+<script defer src="/assets/js/03-accounts.js?v=20261017f"></script>
+<script defer src="/assets/js/04-i18n.js?v=20261017f"></script>
+<script defer src="/assets/js/05-router.js?v=20261017f"></script>
+<script defer src="/assets/js/06-results.js?v=20261017f"></script>
+<script defer src="/assets/js/07-checkout.js?v=20261017f"></script>
+<script defer src="/assets/js/14-counter.js?v=20261017f"></script>
+<script defer src="/assets/js/08-signin.js?v=20261017f"></script>
+<script defer src="/assets/js/10-track.js?v=20261017f"></script>
+<script defer src="/assets/js/11-pdf-ticket.js?v=20261017f"></script>
+<script defer src="/assets/js/13-admin-routes.js?v=20261017f"></script>
 <!-- 13 Sep 2026: PWA layer — install sheet, Web Push, border prep card,
      split-pay, 7-day seat-fill chart. Last on purpose: it reads the globals
      the files above define and every hook it adds is optional. -->
-<script defer src="/assets/js/17-pwa.js?v=20261017e"></script>
-<script defer src="/assets/js/18-journey.js?v=20261017e"></script>
+<script defer src="/assets/js/17-pwa.js?v=20261017f"></script>
+<script defer src="/assets/js/18-journey.js?v=20261017f"></script>
 <!-- Premium feel (24 Sep 2026). MUST stay after 13-admin-routes.js: it
      takes over that file's SFX object in place, which means the binding has
      to exist by the time this runs. defer preserves document order. -->
-<script defer src="/assets/js/19-premium.js?v=20261017e"></script>
-<script defer src="/assets/js/20-anim.js?v=20261017e"></script>
-<script defer src="/assets/js/21-showcase.js?v=20261017e"></script>
-<script defer src="/assets/js/22-routeline.js?v=20261017e"></script>
-<script defer src="/assets/js/23-flags.js?v=20261017e"></script>
-<script defer src="/assets/js/24-homeinfo.js?v=20261017e"></script>
-<script defer src="/assets/js/27-smartbook.js?v=20261017e"></script>
-<script defer src="/assets/js/28-hero3d.js?v=20261017e"></script>
-<script defer src="/assets/js/29-scrollfx.js?v=20261017e"></script>
+<script defer src="/assets/js/19-premium.js?v=20261017f"></script>
+<script defer src="/assets/js/20-anim.js?v=20261017f"></script>
+<script defer src="/assets/js/21-showcase.js?v=20261017f"></script>
+<script defer src="/assets/js/22-routeline.js?v=20261017f"></script>
+<script defer src="/assets/js/23-flags.js?v=20261017f"></script>
+<script defer src="/assets/js/24-homeinfo.js?v=20261017f"></script>
+<script defer src="/assets/js/27-smartbook.js?v=20261017f"></script>
+<script defer src="/assets/js/28-hero3d.js?v=20261017f"></script>
+<script defer src="/assets/js/29-scrollfx.js?v=20261017f"></script>
 <meta property="og:title" content="Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper | S Hari Global">
 <meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal, Rajkot &amp; Ahmedabad (S Hari Parking, Nana Chiloda). Book online, on WhatsApp or by phone. Private &amp; sharing cabins.">
 <meta property="og:type" content="website">
@@ -225,20 +225,20 @@ html,body{margin:0;background:#F4F6FB}
      same font-display:swap, so the brand face still arrives late and the
      text is readable in Georgia from the first frame, exactly as before.
      Cinzel is SIL OFL 1.1, which allows hosting it ourselves. -->
-<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20261017e" crossorigin>
-<style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261017e) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261017e) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261017e) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261017e) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
+<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20261017f" crossorigin>
+<style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261017f) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261017f) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261017f) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261017f) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
 <title>Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper daily | {{f:brand.name}}</title>
 <meta name="description" content="सूरत से नेपाल बस · सुरत देखि नेपाल बस — daily AC sleeper from Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Rajkot & Ahmedabad to the Rupaidiha (Nepalgunj) border. Book online, on WhatsApp or by phone. Registered Indian company, Mehsana.">
 <!-- Real brand favicon, not the emoji placeholder. PNG first for the tab
      strip, the SVG kept as the scalable fallback. -->
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20261017e">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20261017f">
 <link rel="icon" type="image/svg+xml" href="/icon-shg.svg">
 <!-- PWA / offline navigator: installable app + service-worker cached maps -->
 <link rel="manifest" href="/manifest.webmanifest">
 <!-- iOS ignores SVG here and silently falls back to a screenshot of the
      page, which is why the home-screen icon looked like a web page.
      A 180px opaque PNG is the only thing Safari will use. -->
-<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20261017e">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20261017f">
 <link rel="mask-icon" href="/assets/img/mask-icon.svg" color="#1A3A6A">
 <meta name="msapplication-TileColor" content="#1A3A6A">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -428,7 +428,7 @@ s.addEventListener('click',function(e){e.preventDefault();
          now the transparent emblem with no baked name; the company name is live
          text from the facts (brand.short), so a rename in Admin flows here too. -->
     <a class="brand" href="#/" data-scroll="top" aria-label="{{f:brand.name}} — Home">
-      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo-nav.png?v=20261017e" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
+      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo-nav.png?v=20261017f" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
       <span class="brand-word" aria-hidden="true"><span class="b-lock"><b data-fact="brand.short">S Hari Global</b><sup class="b-tm">™</sup></span><span class="b-legal" data-fact="brand.suffix">PRIVATE LIMITED</span><small>Gujarat ⇄ Rupaidiha</small></span>
     </a>
     <nav class="nav-links" aria-label="Main">
@@ -556,8 +556,8 @@ s.addEventListener('click',function(e){e.preventDefault();
       <figure class="p3-art">
         <span class="p3-tag" data-i18n="h3Tag">Not just a journey,<br>a bond…</span>
         <picture>
-          <source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261017e" width="800" height="400">
-          <img class="p3-bus" id="h3Bus" src="/assets/img/hd/bus-cutout.webp?v=20261017e" width="1600" height="800" alt="S Hari Global AC sleeper coach - promotional render" decoding="async" fetchpriority="high">
+          <source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261017f" width="800" height="400">
+          <img class="p3-bus" id="h3Bus" src="/assets/img/hd/bus-cutout.webp?v=20261017f" width="1600" height="800" alt="S Hari Global AC sleeper coach - promotional render" decoding="async" fetchpriority="high">
         </picture>
         <span class="p3-road" aria-hidden="true"></span><span class="p3-beam" aria-hidden="true"></span>
         <span class="p3-shadow" aria-hidden="true"></span>
@@ -719,7 +719,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="hh-card">
       <span class="sc-hh-sheen" aria-hidden="true"></span>
       <div class="hh-brand">
-        <span class="hh-logo-tile"><img class="hh-logo" src="/assets/img/logo-nav.png?v=20261017e" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
+        <span class="hh-logo-tile"><img class="hh-logo" src="/assets/img/logo-nav.png?v=20261017f" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
         <div class="hh-copy">
           <p class="sc-hh-eyebrow"><span class="flg" data-flag="IN" role="img" aria-label="India"></span><span class="b-stack"><span class="b-lock"><b data-fact="brand.short">{{f:brand.short}}</b><sup class="b-tm">™</sup></span><span class="b-legal" data-fact="brand.suffix">{{f:brand.suffix}}</span></span><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></p>
           <h1 class="hh-title" id="homeHeadline" data-i18n="hhTitle">INDIA ⇄ NEPAL PREMIUM AC SLEEPER BUS</h1>
@@ -936,8 +936,8 @@ s.addEventListener('click',function(e){e.preventDefault();
       </div>
       <figure class="hero-art">
         <picture>
-          <source media="(max-width: 760px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261017e" width="800" height="400">
-          <img src="/assets/img/hd/bus-cutout.webp?v=20261017e" width="1600" height="800" alt="AC sleeper coach - promotional render, not a photo of the fleet" loading="lazy" decoding="async">
+          <source media="(max-width: 760px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261017f" width="800" height="400">
+          <img src="/assets/img/hd/bus-cutout.webp?v=20261017f" width="1600" height="800" alt="AC sleeper coach - promotional render, not a photo of the fleet" loading="lazy" decoding="async">
         </picture>
       </figure>
     </div>
@@ -1055,7 +1055,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <!-- 10 Oct 2026 (HD pack): the phone-and-ticket illustration on the right
            of the card from 761px; hidden on phones so the form stays first
            (hd.css .qt-art). Decorative - the card's own words say what it does. -->
-      <img class="qt-art" src="/assets/img/hd/quick-ticket-t.webp?v=20261017e" width="480" height="480" alt="" loading="lazy" decoding="async" aria-hidden="true">
+      <img class="qt-art" src="/assets/img/hd/quick-ticket-t.webp?v=20261017f" width="480" height="480" alt="" loading="lazy" decoding="async" aria-hidden="true">
     </section>
     <!-- Seat-map mode: the card folds into this one strip (tap = back to QuickBot)
          and the regular search card right below becomes the first thing on screen. -->
@@ -1071,7 +1071,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="container top-hero" id="topHero">
     <aside class="th-brand" aria-label="{{f:brand.name}}">
       <div class="th-top">
-        <picture><source type="image/webp" srcset="/assets/img/logo-mark-96h.webp?v=20261017e"><img class="th-logo" src="/assets/img/logo-mark-96h.png?v=20261017e" alt="" width="185" height="96" loading="lazy" decoding="async"></picture>
+        <picture><source type="image/webp" srcset="/assets/img/logo-mark-96h.webp?v=20261017f"><img class="th-logo" src="/assets/img/logo-mark-96h.png?v=20261017f" alt="" width="185" height="96" loading="lazy" decoding="async"></picture>
         <div class="th-name"><span class="b-lock"><b data-fact="brand.short">{{f:brand.short}}</b><sup class="b-tm">™</sup></span><span class="b-legal" data-fact="brand.suffix">{{f:brand.suffix}}</span><span class="sc-th-flags"><span class="flg" data-flag="IN" role="img" aria-label="India"></span> India ⇄ Nepal <span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></span></div>
       </div>
       <p class="th-tag">Gujarat ⇄ Rupaidiha<small>AC Sleeper Coach · India ⇄ Nepal · 24×7</small></p>
@@ -1094,12 +1094,12 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="sa-scene sa-journey" data-anim="journey">
           <div class="sa-art" role="img" aria-labelledby="animJourneyAria">
             <span class="sa-vh" id="animJourneyAria" data-i18n="animJAria">Animation: the S Hari Global AC sleeper coach driving along a highway</span>
-            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-highway-bg-mobile.webp?v=20261017e" width="800" height="450"><img class="sa-land" data-src="/assets/img/anim/shg-highway-bg.webp?v=20261017e" width="1600" height="900" alt="" loading="lazy" decoding="async"></picture>
-            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-distant-scenery-mobile.webp?v=20261017e" width="800" height="267"><img class="sa-scenery" data-src="/assets/img/anim/shg-distant-scenery.webp?v=20261017e" width="1440" height="480" alt="" loading="lazy" decoding="async"></picture>
+            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-highway-bg-mobile.webp?v=20261017f" width="800" height="450"><img class="sa-land" data-src="/assets/img/anim/shg-highway-bg.webp?v=20261017f" width="1600" height="900" alt="" loading="lazy" decoding="async"></picture>
+            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-distant-scenery-mobile.webp?v=20261017f" width="800" height="267"><img class="sa-scenery" data-src="/assets/img/anim/shg-distant-scenery.webp?v=20261017f" width="1440" height="480" alt="" loading="lazy" decoding="async"></picture>
             <div class="sa-road"></div>
-            <img class="sa-shadow" src="/assets/img/anim/shg-bus-shadow.svg?v=20261017e" width="960" height="110" alt="" loading="lazy" decoding="async">
+            <img class="sa-shadow" src="/assets/img/anim/shg-bus-shadow.svg?v=20261017f" width="960" height="110" alt="" loading="lazy" decoding="async">
             <div class="sa-bus">
-              <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-bus-main-mobile.webp?v=20261017e" width="800" height="400"><img data-src="/assets/img/anim/shg-bus-main.webp?v=20261017e" width="1440" height="720" alt="" loading="lazy" decoding="async"></picture>
+              <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-bus-main-mobile.webp?v=20261017f" width="800" height="400"><img data-src="/assets/img/anim/shg-bus-main.webp?v=20261017f" width="1440" height="720" alt="" loading="lazy" decoding="async"></picture>
               <span class="sa-rim sa-rim--a"></span><span class="sa-rim sa-rim--b"></span>
             </div>
           </div>
@@ -1179,7 +1179,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <!-- decorative (alt="", aria-hidden): the caption is for sighted visitors only;
              the 480 px export, shown at 220 px -->
         <figure class="hx-live-art" aria-hidden="true">
-          <img src="/assets/img/hd/track-journey-t.webp?v=20261017e" width="480" height="480" alt="" loading="lazy" decoding="async">
+          <img src="/assets/img/hd/track-journey-t.webp?v=20261017f" width="480" height="480" alt="" loading="lazy" decoding="async">
           <figcaption data-i18n="hxIllus">Illustration</figcaption>
         </figure>
       </div>
@@ -1193,10 +1193,10 @@ s.addEventListener('click',function(e){e.preventDefault();
            edge figure is cut off; the old nepal-band files stay for the documents. -->
       <div class="hx-band">
         <picture>
-          <source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261017e 800w, /assets/img/hd/nepal-heritage.webp?v=20261017e 1600w" sizes="(max-width: 760px) 100vw, 1080px">
-          <img class="hx-band-img" id="hxBandImg" src="/assets/img/hd/nepal-heritage-m.webp?v=20261017e" width="1600" height="800" loading="lazy" decoding="async" alt="Illustration of Nepal's heritage: a golden Buddha, Himalayan peaks, prayer flags and a stupa">
+          <source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261017f 800w, /assets/img/hd/nepal-heritage.webp?v=20261017f 1600w" sizes="(max-width: 760px) 100vw, 1080px">
+          <img class="hx-band-img" id="hxBandImg" src="/assets/img/hd/nepal-heritage-m.webp?v=20261017f" width="1600" height="800" loading="lazy" decoding="async" alt="Illustration of Nepal's heritage: a golden Buddha, Himalayan peaks, prayer flags and a stupa">
         </picture>
-        <div class="hx-flags" aria-hidden="true"><img class="hx-flag" src="/assets/img/flag-in.svg?v=20261017e" width="33" height="22" alt="" loading="lazy" decoding="async"><span class="hx-flags-x">⇄</span><img class="hx-flag hx-flag-np" src="/assets/img/flag-np.svg?v=20261017e" width="20" height="26" alt="" loading="lazy" decoding="async"></div>
+        <div class="hx-flags" aria-hidden="true"><img class="hx-flag" src="/assets/img/flag-in.svg?v=20261017f" width="33" height="22" alt="" loading="lazy" decoding="async"><span class="hx-flags-x">⇄</span><img class="hx-flag hx-flag-np" src="/assets/img/flag-np.svg?v=20261017f" width="20" height="26" alt="" loading="lazy" decoding="async"></div>
       </div>
       <div class="hx-pad">
         <div class="hx-head">
@@ -1240,9 +1240,9 @@ s.addEventListener('click',function(e){e.preventDefault();
            thumbnails, never the same image twice) over the old CSS art, which stays as
            the fallback behind it. They are inspired illustrations, said so on each card. -->
       <ul class="hx-cards" id="hxPlaces">
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-heritage"><img class="hx-card-img" src="/assets/img/hd/lumbini-t.webp?v=20261017e" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261017e" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatPilgrimage">Pilgrimage</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Lumbini</b><small data-i18n="hxPlLumbini">Birthplace of Gautam Buddha · UNESCO World Heritage Site</small></span></a></li>
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-nature"><img class="hx-card-img" src="/assets/img/hd/pokhara-t.webp?v=20261017e" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261017e" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatNature">Nature</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Pokhara</b><small data-i18n="hxPlPokhara">Lakes and Annapurna mountain views</small></span></a></li>
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-wild"><img class="hx-card-img" src="/assets/img/hd/bardiya-t.webp?v=20261017e" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261017e" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatWildlife">Wildlife</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Bardiya National Park</b><small data-i18n="hxPlBardiya">Wildlife and jungle, near Nepalgunj</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-heritage"><img class="hx-card-img" src="/assets/img/hd/lumbini-t.webp?v=20261017f" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261017f" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatPilgrimage">Pilgrimage</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Lumbini</b><small data-i18n="hxPlLumbini">Birthplace of Gautam Buddha · UNESCO World Heritage Site</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-nature"><img class="hx-card-img" src="/assets/img/hd/pokhara-t.webp?v=20261017f" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261017f" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatNature">Nature</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Pokhara</b><small data-i18n="hxPlPokhara">Lakes and Annapurna mountain views</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-wild"><img class="hx-card-img" src="/assets/img/hd/bardiya-t.webp?v=20261017f" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261017f" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatWildlife">Wildlife</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Bardiya National Park</b><small data-i18n="hxPlBardiya">Wildlife and jungle, near Nepalgunj</small></span></a></li>
       </ul>
       <div class="hx-pkgs" id="hxPkgs" hidden></div>
       <div class="hx-tours">
@@ -1289,7 +1289,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="sc-ceo sc-reveal">
       <div class="sc-ceo-band" aria-hidden="true"><i class="sc-band-in"></i><i class="sc-band-np"></i></div>
       <div class="sc-ceo-top">
-        <div class="sc-ceo-photo"><img src="/assets/img/ceo-sm.webp?v=20261017e" width="480" height="667" alt="{{f:ceo.name}}" loading="lazy" decoding="async"></div>
+        <div class="sc-ceo-photo"><img src="/assets/img/ceo-sm.webp?v=20261017f" width="480" height="667" alt="{{f:ceo.name}}" loading="lazy" decoding="async"></div>
         <div class="sc-ceo-id">
           <p class="sc-eyebrow"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg> <span data-i18n="ceoEyebrow">Meet our founder</span></p>
           <h2 class="sc-ceo-name" id="homeCeoName" data-fact="ceo.name">{{f:ceo.name}}</h2>
@@ -1340,7 +1340,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="sa-art" role="img" aria-labelledby="animRouteAria">
           <span class="sa-vh" id="animRouteAria" data-i18n="animMAria">Illustrative map: a route line from Gujarat to Rupaidiha on the India–Nepal border</span>
           <svg class="sa-map-svg" viewBox="36 145 590 315" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
-            <image class="sa-map-bg" data-href="/assets/img/anim/shg-map-bg.svg?v=20261017e" x="0" y="0" width="960" height="720"/>
+            <image class="sa-map-bg" data-href="/assets/img/anim/shg-map-bg.svg?v=20261017f" x="0" y="0" width="960" height="720"/>
             <path class="sa-route-glow" d="M229.61,374.43 L238.71,350.55 L222.86,335.53 C277.86,260.53 377.99,238.12 457.99,228.12"/>
             <path class="sa-route-track" d="M229.61,374.43 L238.71,350.55 L222.86,335.53 C277.86,260.53 377.99,238.12 457.99,228.12"/>
             <g class="sa-route-segs"></g>
@@ -1351,7 +1351,7 @@ s.addEventListener('click',function(e){e.preventDefault();
             <text class="sa-lbl" x="208.86" y="321.53" text-anchor="end" data-i18n="animMAhd">Ahmedabad</text>
             <text class="sa-lbl" x="457.99" y="272" text-anchor="middle" data-i18n="animMRup">Rupaidiha</text>
             <g class="sa-pulse" transform="translate(457.99 228.12)"><circle r="19"/></g>
-            <g class="sa-map-bus" transform="translate(457.99 228.12)"><image data-href="/assets/img/anim/shg-route-bus-marker.webp?v=20261017e" x="-50" y="-37" width="100" height="50"/></g>
+            <g class="sa-map-bus" transform="translate(457.99 228.12)"><image data-href="/assets/img/anim/shg-route-bus-marker.webp?v=20261017f" x="-50" y="-37" width="100" height="50"/></g>
           </svg>
         </div>
         <button type="button" class="sa-pause" data-paused="false" data-i18n-title="animPause" title="Pause animation" aria-label="Pause animation"><svg class="sa-i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg><svg class="sa-i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
@@ -1372,7 +1372,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <span class="bh-txt"><b id="bookHelpTitle" data-i18n="bhTitle">टिकट कसरी काट्ने? — सजिलो गाइड</b><small data-i18n="bhSub">मोबाइलबाटै केही मिनेटमा आफ्नो टिकट आफैं काट्नुहोस् · यहाँ थिच्नुहोस्</small></span>
       <!-- 10 Oct 2026 (HD pack): the booking helper (support-guide, a fictional illustrated
            character, alpha) beside the guide's title; decorative, hidden under 480px. -->
-      <span class="bh-art" aria-hidden="true"><img src="/assets/img/hd/support-guide-s.webp?v=20261017e" width="128" height="192" alt="" loading="lazy" decoding="async"></span>
+      <span class="bh-art" aria-hidden="true"><img src="/assets/img/hd/support-guide-s.webp?v=20261017f" width="128" height="192" alt="" loading="lazy" decoding="async"></span>
       <span class="bh-go" aria-hidden="true"><svg class="ic"><use href="#i-plus"/></svg></span>
     </button>
     <div class="bh-panel" id="bookHelpPanel" hidden>
@@ -2190,11 +2190,11 @@ s.addEventListener('click',function(e){e.preventDefault();
         </div>
         <div class="vcard-grid">
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20261017e" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20261017e" srcset="/assets/img/card-en-sm.jpg?v=20261017e 720w, /assets/img/card-en.jpg?v=20261017e 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20261017f" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20261017f" srcset="/assets/img/card-en-sm.jpg?v=20261017f 720w, /assets/img/card-en.jpg?v=20261017f 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcEn">🇮🇳 English card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-en.jpg" download="S-Hari-Global-Card-EN.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="en">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20261017e" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20261017e" srcset="/assets/img/card-ne-sm.jpg?v=20261017e 720w, /assets/img/card-ne.jpg?v=20261017e 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20261017f" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20261017f" srcset="/assets/img/card-ne-sm.jpg?v=20261017f 720w, /assets/img/card-ne.jpg?v=20261017f 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcNe">🇳🇵 Nepali card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-ne.jpg" download="S-Hari-Global-Card-NE.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="ne">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
         </div>
@@ -3241,7 +3241,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div>
         <!-- 9 Oct 2026: the emblem only (no white plate, no baked name), the live
              company name between the two flags, and the new public pages. -->
-        <picture><source type="image/webp" srcset="/assets/img/logo-mark.webp?v=20261017e"><img id="logoFoot" src="/assets/img/logo-mark.png?v=20261017e" width="439" height="228" alt="" loading="lazy" decoding="async"></picture>
+        <picture><source type="image/webp" srcset="/assets/img/logo-mark.webp?v=20261017f"><img id="logoFoot" src="/assets/img/logo-mark.png?v=20261017f" width="439" height="228" alt="" loading="lazy" decoding="async"></picture>
         <p class="sc-f-name"><span class="flg" data-flag="IN" role="img" aria-label="India"></span><span class="b-lock"><b style="color:#fff" data-fact="brand.short">{{f:brand.short}}</b><sup class="b-tm">™</sup></span><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></p>
         <p class="sc-f-legal" data-fact="brand.suffix">{{f:brand.suffix}}</p>
         <p data-i18n="fTagline">India–Nepal bus service. Connecting Gujarat with the Rupaidiha border — partner office at Pushpalal Chowk, Nepalgunj — with safe coaches and easy ticket booking.</p>
@@ -3311,7 +3311,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
     <div class="f-dev">Developed by <strong>Dileep Sunar</strong> · <a href="https://wa.me/{{f:head.wa}}" data-fact-wa="head.wa" target="_blank" rel="noopener noreferrer">💬 WhatsApp <span data-fact="head.phone">{{f:head.phone}}</span></a> · <a href="https://www.facebook.com/dileep.soonaar/" target="_blank" rel="noopener noreferrer">Facebook</a></div>
     <div class="f-ceo reveal">
-      <img id="ceoPhoto" src="/assets/img/ceo-sm.webp?v=20261017e" alt="{{f:ceo.name}} — Founder &amp; CEO" width="44" height="44" loading="lazy" decoding="async" onerror="this.style.display='none'">
+      <img id="ceoPhoto" src="/assets/img/ceo-sm.webp?v=20261017f" alt="{{f:ceo.name}} — Founder &amp; CEO" width="44" height="44" loading="lazy" decoding="async" onerror="this.style.display='none'">
       <span>🕉️ <span id="ceoMantra"></span> — <strong id="ceoName"></strong>, Founder &amp; CEO
         <button id="mantraBtn" type="button" title="Play mantra chant · मन्त्र सुन्नुहोस्" aria-label="Play mantra chant">🔊</button>
       </span>

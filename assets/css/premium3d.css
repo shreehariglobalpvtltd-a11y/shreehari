@@ -47,11 +47,11 @@ html #view-home > #hero3d{order:-2 !important}   /* SmartBook is -1 (smartbook.c
 .p3-scene{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 .p3-scene > span{position:absolute;display:block}
 .p3-india{left:0;top:0;bottom:0;width:50%;opacity:.55;
-  background:url(/assets/img/hd/gujarat-city-m.webp?v=20261017e) center 40%/cover no-repeat;
+  background:url(/assets/img/hd/gujarat-city-m.webp?v=20261017f) center 40%/cover no-repeat;
   -webkit-mask-image:linear-gradient(90deg,#000 15%,transparent 100%);mask-image:linear-gradient(90deg,#000 15%,transparent 100%);
   transform:translate3d(calc(var(--p3x) * -8px),calc(var(--p3y) * -5px),0) scale(1.06)}
 .p3-nepal{right:0;top:0;bottom:0;width:56%;opacity:.6;
-  background:url(/assets/img/hd/nepal-heritage-m.webp?v=20261017e) center 35%/cover no-repeat;
+  background:url(/assets/img/hd/nepal-heritage-m.webp?v=20261017f) center 35%/cover no-repeat;
   -webkit-mask-image:linear-gradient(270deg,#000 22%,transparent 100%);mask-image:linear-gradient(270deg,#000 22%,transparent 100%);
   transform:translate3d(calc(var(--p3x) * -12px),calc(var(--p3y) * -6px),0) scale(1.06)}
 .p3-tint{inset:0;background:linear-gradient(180deg,rgba(6,26,74,.18) 0%,rgba(6,26,74,.5) 55%,rgba(6,26,74,.92) 100%)}
@@ -129,7 +129,7 @@ html #view-home > #hero3d{order:-2 !important}   /* SmartBook is -1 (smartbook.c
   transform-origin:left center;transform:scaleX(0);animation:p3Fill 7s linear infinite}
 @keyframes p3Fill{0%{transform:scaleX(0)}92%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:0}}
 .p3-mover{position:absolute;left:0;top:50%;width:100%;height:30px;margin-top:-15px;
-  background:url(/assets/img/anim/shg-route-bus-marker.webp?v=20261017e) 0 50%/60px 30px no-repeat;
+  background:url(/assets/img/anim/shg-route-bus-marker.webp?v=20261017f) 0 50%/60px 30px no-repeat;
   filter:drop-shadow(0 6px 8px rgba(0,0,0,.55));transform:translateX(-60px);animation:p3Drive 7s linear infinite}
 @keyframes p3Drive{0%{transform:translateX(-60px)}92%{transform:translateX(100%);opacity:1}100%{transform:translateX(100%);opacity:0}}
 
@@ -149,8 +149,8 @@ html #view-home > #hero3d{order:-2 !important}   /* SmartBook is -1 (smartbook.c
   .p3-fi{width:40px;height:40px;font-size:17px} .p3-fi .ic{width:19px;height:19px}
   .p3-bus{max-width:100%;filter:drop-shadow(0 16px 14px rgba(0,0,0,.5)) drop-shadow(0 0 20px rgba(47,107,255,.28))}
   .p3-tag,.p3-route{display:none}
-  .p3-india{background-image:url(/assets/img/hd/gujarat-city-t.webp?v=20261017e)}
-  .p3-nepal{background-image:url(/assets/img/hd/nepal-heritage-t.webp?v=20261017e)}
+  .p3-india{background-image:url(/assets/img/hd/gujarat-city-t.webp?v=20261017f)}
+  .p3-nepal{background-image:url(/assets/img/hd/nepal-heritage-t.webp?v=20261017f)}
   .p3-glow,.p3-orb{filter:blur(8px)}
 }
 @media (max-width:420px){ .p3-sub{display:none} .p3-in{padding-top:12px} }
@@ -276,7 +276,7 @@ html[data-tier="low"] .p3-tag{-webkit-backdrop-filter:none;backdrop-filter:none}
     background:linear-gradient(100deg,transparent 35%,rgba(255,255,255,.18) 50%,transparent 65%);transform:translateX(-100%);animation:sbSweep 6s ease-in-out infinite}
   #smartBook .sb-route > i{animation:p3Dot 2.4s var(--p3-ease) infinite}
   #smartBook .sb-route > i:last-child{animation-delay:-1.2s}
-  #smartBook .sb-route-bus{background-image:url(/assets/img/anim/shg-route-bus-marker.webp?v=20261017e);background-size:44px 22px;filter:drop-shadow(0 4px 5px rgba(0,0,0,.35))}
+  #smartBook .sb-route-bus{background-image:url(/assets/img/anim/shg-route-bus-marker.webp?v=20261017f);background-size:44px 22px;filter:drop-shadow(0 4px 5px rgba(0,0,0,.35))}
   #smartBook .sb-dl div{padding:8px 0}
   #smartBook .sb-dl dd{font-weight:700}
   #smartBook .sb-total{padding:12px 0 6px}
@@ -514,3 +514,38 @@ html.p3-fx .p3-scene{will-change:transform}
 /* the date chips: the Nepali date beside the English one */
 #smartBook .sb-chip small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 #smartBook .sb-dl dd{overflow-wrap:anywhere}
+
+/* =====================================================================
+   6. THE BUSES KEEP DRIVING (17 Oct 2026, owner: "app ma bus animation
+      kam gareko chaina, stop cha"). On a phone the OS "reduce motion" flag
+      is often switched on by battery saver / "Remove animations", not by
+      the passenger - and app.css, anim.css, smartbook.css and this file all
+      froze every coach for it. The coaches (slow, transform-only, no
+      flashing) now keep moving unless the app's OWN Motion switch says
+      Reduced (html[data-motion="reduced"], 03-accounts.js); the flashy
+      effects (shine, rays, aurora, pulses) still stop for the OS flag.
+      Specificity (html:not(...) + classes) and !important beat app.css's
+      "* { animation-duration:.01ms !important }" and anim.css's
+      ".sa-scene * { animation:none !important }".
+   ===================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  /* 01 · the coach on the highway (the home banner) */
+  html:not([data-motion="reduced"]) .shg-animation .sa-journey .sa-road { animation: sa-road 9s linear infinite !important; }
+  html:not([data-motion="reduced"]) .shg-animation .sa-journey .sa-bus { animation: sa-ride 9s ease-in-out infinite !important; }
+  html:not([data-motion="reduced"]) .shg-animation .sa-journey .sa-rim { animation: sa-wheel 1.4s linear infinite !important; }
+  html:not([data-motion="reduced"]) .shg-animation .sa-journey .sa-shadow { animation: sa-shadow 9s ease-in-out infinite !important; }
+  html:not([data-motion="reduced"]) .shg-animation .sa-journey .sa-scenery { animation: sa-parallax 9s ease-in-out infinite !important; }
+  html:not([data-motion="reduced"]) .shg-animation .sa-journey.is-left .sa-road,
+  html:not([data-motion="reduced"]) .shg-animation .sa-journey.is-left .sa-rim { animation-direction: reverse !important; }
+  /* the 3D hero coach, its road and the route bus */
+  html:not([data-motion="reduced"]) .p3 .p3-bus { animation: p3Float 7s ease-in-out infinite !important; }
+  html:not([data-motion="reduced"]) .p3 .p3-shadow { animation: p3Shade 7s ease-in-out infinite !important; }
+  html:not([data-motion="reduced"]) .p3 .p3-road::after { animation: p3Lane .8s linear infinite !important; }
+  html:not([data-motion="reduced"]) .p3 .p3-mover { animation: p3Drive 9s linear infinite !important; }
+  html:not([data-motion="reduced"]) .p3 .p3-line::after { animation: p3Fill 9s linear infinite !important; }
+  /* the coach on the booking card's top edge and in the Journey Summary rail */
+  html:not([data-motion="reduced"]) #smartBook .sb-road-bus { animation: sbDrive 13s linear infinite !important; }
+  html:not([data-motion="reduced"]) #smartBook .sb-route-bus { animation: sbDrive 8s cubic-bezier(.45,.05,.55,.95) infinite !important; }
+}
+/* the in-app Motion switch still stops every coach (its own rules above + these) */
+:root[data-motion="reduced"] :is(.p3-bus,.p3-shadow,.p3-mover,.p3-road::after) { animation: none; }

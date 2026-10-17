@@ -19,7 +19,11 @@
   if (!scenes.length) return;
 
   var mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-  var reduced = function () { return window.shgReducedMotion ? !!window.shgReducedMotion() : !!(mq && mq.matches); };
+  /* 17 Oct 2026 (owner: "app ma bus animation stop cha"): the coaches follow the app's OWN
+     Motion switch only. The phone's reduce-motion flag is usually battery saver / "Remove
+     animations", not the passenger asking - and it froze every scene in the installed app.
+     The scenes are slow transform loops (premium3d.css section 6 keeps their CSS running). */
+  var reduced = function () { return document.documentElement.getAttribute('data-motion') === 'reduced'; };
   var canAnimate = typeof Element.prototype.animate === 'function';
   var tr = function (key, fallback) {
     try { if (typeof t === 'function') { var s = t(key); if (s && s !== key) return s; } } catch (e) { /* i18n not ready */ }
