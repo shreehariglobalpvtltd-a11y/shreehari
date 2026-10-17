@@ -213,6 +213,7 @@ final class AgentApplications
     private static ?bool $profileOk = null;
     private static ?bool $kycOk     = null;
     private static ?bool $extraOk   = null;
+    private static ?bool $verifyOk  = null;
 
     /* =================================================================
      *  Schema presence — a page must never 500 because the migration has
@@ -297,6 +298,27 @@ final class AgentApplications
     }
 
     /**
+     * The document check's verdict (18 Oct 2026):
+     * database/upgrade-2026-10-18-agent-doc-verify.sql.
+     */
+    public static function verifyColumnAvailable(): bool
+    {
+        if (self::$verifyOk === null) {
+            try {
+                self::$verifyOk = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'agent_applications'
+                        AND COLUMN_NAME = 'doc_verify'",
+                    [], 0
+                ) === 1;
+            } catch (Throwable $e) {
+                self::$verifyOk = false;
+            }
+        }
+        return self::$verifyOk;
+    }
+
+    /**
      * A finger signature: a real PNG / JPEG / WEBP of at most 150 KB, or
      * nothing. Same checks as cleanPhoto(), smaller budget.
      */
@@ -331,7 +353,7 @@ final class AgentApplications
     /** Tests and long-running scripts: forget the schema answers. */
     public static function resetCache(): void
     {
-        self::$tableOk = self::$profileOk = self::$kycOk = self::$extraOk = null;
+        self::$tableOk = self::$profileOk = self::$kycOk = self::$extraOk = self::$verifyOk = null;
     }
 
     /* =================================================================
@@ -746,6 +768,9 @@ final class AgentApplications
                 'signature' => is_string($clean['signature'] ?? null) ? $clean['signature'] : null,
                 'geo'       => is_string($clean['geo'] ?? null) ? $clean['geo'] : null,
             ];
+        }
+        if (is_string($clean['doc_verify'] ?? null) && $clean['doc_verify'] !== '' && self::verifyColumnAvailable()) {
+            $extra['doc_verify'] = mb_substr((string) $clean['doc_verify'], 0, 255, 'UTF-8');
         }
 
         $id = Database::insert('agent_applications', $extra + [

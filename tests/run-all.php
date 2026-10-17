@@ -58,6 +58,7 @@ const CORE_SUITES = [
        server belongs in HTTP_SUITES only, where --http gates it and the
        summary says "Not run" instead of "FAIL". */
     'agent-wallet-test.php'        => 'commission ledger, no double-claim',
+    'docverify-test.php'           => 'agent form: ID photo name + number comparison',
     'gender-lock-test.php'         => 'shared-cabin gender locking',
     'seat-transfer-test.php'       => 'moving a seat keeps the money straight',
     'paid-pending-hold-test.php'   => 'a paid seat is never swept by expiry',

@@ -81,6 +81,24 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 .done .ref{display:inline-block;margin:8px 0 12px;padding:8px 16px;border-radius:999px;font-weight:900;font-size:20px;letter-spacing:.06em;color:#fff;background:linear-gradient(120deg,var(--sky),var(--navy))}
 .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 .foot{text-align:center;font-size:12px;color:var(--mut);margin-top:6px}
+/* 18 Oct 2026: document check - the photo must show the typed name and number */
+.dv{margin-top:12px;border:1.5px solid var(--line);border-radius:16px;padding:12px;background:var(--bg)}
+.dv.pass{border-color:var(--ok);background:rgba(15,157,107,.08)}
+.dv.fail{border-color:var(--bad);background:rgba(198,40,40,.06)}
+.dv-rows{display:grid;gap:6px;margin:0 0 10px;padding:0;list-style:none}
+.dv-rows li{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
+.dv-rows li b{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:13px;color:#fff;background:#9aa8c4;flex:0 0 24px}
+.dv-rows li.y b{background:var(--ok)}
+.dv-rows li.n b{background:var(--bad)}
+.dv-rows li.w b{background:var(--sky);animation:dvp 1s ease-in-out infinite}
+@keyframes dvp{50%{opacity:.45}}
+.dv-msg{margin:0 0 10px;font-size:13.5px;font-weight:700}
+.dv.pass .dv-msg{color:var(--ok)}
+.dv.fail .dv-msg{color:var(--bad)}
+.dv-use{margin:-4px 0 10px}
+.dv-use[hidden]{display:none}
+.dv-use .btn{width:100%;white-space:normal;text-align:left}
+@media (prefers-reduced-motion:reduce){.dv-rows li.w b{animation:none}}
 </style>
 </head>
 <body>
@@ -97,7 +115,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 <form id="ap" novalidate>
   <section class="card">
     <h2><i>1</i>👤 तपाईंको विवरण · Your details</h2>
-    <label class="f"><span>पूरा नाम · Full name <em>*</em></span><input type="text" id="p_name" autocomplete="name" maxlength="160" required></label>
+    <label class="f"><span>पूरा नाम · Full name <em>*</em></span><input type="text" id="p_name" autocomplete="name" maxlength="160" required>
+      <small class="hint" style="display:block;margin:4px 0 0">डकुमेन्टमा जस्तो लेखिएको छ, ठ्याक्कै त्यस्तै हिज्जे · exactly as on your ID</small></label>
     <label class="f"><span>मोबाइल · Mobile (WhatsApp) <em>*</em></span>
       <div class="row"><select id="cc" aria-label="Country code"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>
       <input type="tel" id="p_phone" inputmode="numeric" autocomplete="tel-national" maxlength="14" placeholder="98XXXXXXXX" required></div></label>
@@ -116,11 +135,22 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     <h2><i>3</i>🪪 डकुमेन्ट · ID document</h2>
     <label class="f"><span>डकुमेन्टको प्रकार · Type</span>
       <select id="p_idtype"><option value="1">नागरिकता · Citizenship</option><option value="0">आधार · Aadhaar</option><option value="2">पासपोर्ट · Passport</option><option value="3">मतदाता परिचयपत्र · Voter ID</option><option value="4">अन्य · Other</option></select></label>
-    <label class="f"><span>डकुमेन्ट नम्बर · ID number <em>*</em></span><input type="text" id="p_idno" maxlength="40" autocomplete="off" required></label>
+    <label class="f"><span>डकुमेन्ट नम्बर · ID number <em>*</em></span><input type="text" id="p_idno" maxlength="40" autocomplete="off" required>
+      <small class="hint" id="idHint" style="display:block;margin:4px 0 0">कार्डमा भएको नम्बर ठ्याक्कै · exactly as printed</small></label>
     <div class="shot">
       <div class="prev doc" id="docPrev">🪪</div>
       <div><div class="pick"><span class="btn">📷 डकुमेन्टको फोटो खिच्नुहोस्</span><input type="file" id="docIn" accept="image/*" capture="environment" aria-label="Take a photo of the ID document"></div>
       <p class="hint" style="margin:6px 0 0">अगाडिको भाग, उज्यालोमा, सबै अक्षर देखिने गरी।</p><div class="ok" id="docOk"></div></div>
+    </div>
+    <div class="dv" id="dv" aria-live="polite">
+      <ul class="dv-rows">
+        <li id="dvDoc"><b>1</b>सक्कली डकुमेन्ट · Real ID</li>
+        <li id="dvName"><b>2</b>नाम मिल्यो · Name matches</li>
+        <li id="dvNum"><b>3</b>नम्बर मिल्यो · Number matches</li>
+      </ul>
+      <p class="dv-msg" id="dvMsg">🔍 नाम, नम्बर र डकुमेन्टको फोटो भएपछि AI ले आफैं जाँच गर्छ।</p>
+      <div class="dv-use" id="dvUse" hidden><button type="button" class="btn ghost small" id="dvUseBtn"></button></div>
+      <button type="button" class="btn ghost" id="dvBtn">🔍 डकुमेन्ट जाँच गर्नुहोस् · Check document</button>
     </div>
   </section>
 
@@ -163,7 +193,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var state = { photo: null, doc: null, geo: null, csrf: null };
+  var state = { photo: null, doc: null, geo: null, csrf: null, verified: null, checking: null, seenName: '' };
 
   /* ---- CSRF + session cookie for the API ---- */
   function token() {
@@ -205,6 +235,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
         var p = $(prevId); p.style.backgroundImage = 'url(' + data + ')'; p.classList.add('has');
         $(okId).textContent = '✓ फोटो तयार · ready (' + Math.round(data.length * 0.75 / 1024) + ' KB)';
         try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
+        if (key === 'doc') { dvReset(); dvAuto(); }
       }).catch(function () { $(okId).textContent = '✗ फोटो खुलेन — फेरि खिच्नुहोस्'; });
     });
   }
@@ -272,6 +303,101 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     return o.toDataURL('image/png');
   }
 
+  /* ---- document check (18 Oct 2026): the photo must show the typed name + number ---- */
+  var ID_RULES = {
+    '0': { re: /^[2-9]\d{11}$/, hint: 'आधार: १२ अङ्क · 12 digits' },
+    '1': { re: /^\d{5,20}$/, hint: 'नागरिकता: कार्डमा भएको नम्बर (अङ्क, - / चलन्छ)' },
+    '2': { re: /^[A-Z0-9]{6,9}$/, hint: 'पासपोर्ट: ६–९ अक्षर/अङ्क' },
+    '3': { re: /^[A-Z0-9]{6,12}$/, hint: 'मतदाता परिचयपत्र: ६–१२ अक्षर/अङ्क' },
+    '4': { re: /^[A-Z0-9]{4,30}$/, hint: 'कार्डमा भएको नम्बर ठ्याक्कै · exactly as printed' }
+  };
+  function rule() { return ID_RULES[$('p_idtype').value] || ID_RULES['4']; }
+  function devDigits(s) { return s.replace(/[०-९]/g, function (d) { return String(d.charCodeAt(0) - 0x0966); }); }
+  function idNorm() { return devDigits($('p_idno').value).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  function idFormatOk() { return rule().re.test(idNorm()); }
+  $('idHint').textContent = rule().hint;
+  $('p_idtype').addEventListener('change', function () { $('idHint').textContent = rule().hint; dvReset(); dvAuto(); });
+  ['dvDoc', 'dvName', 'dvNum'].forEach(function (id, i) { $(id).setAttribute('data-n', String(i + 1)); });
+  function row(id, v) {
+    var li = $(id);
+    li.className = v === true ? 'y' : v === false ? 'n' : v === 'w' ? 'w' : '';
+    li.querySelector('b').textContent = v === true ? '✓' : v === false ? '✗' : li.getAttribute('data-n');
+  }
+  function rows(v) { ['dvDoc', 'dvName', 'dvNum'].forEach(function (id) { row(id, v); }); }
+  function dvReset() {
+    state.verified = null; state.seenName = '';
+    $('dv').className = 'dv'; $('dvUse').hidden = true; rows(null);
+    $('dvMsg').textContent = '🔍 नाम, नम्बर र डकुमेन्टको फोटो भएपछि AI ले आफैं जाँच गर्छ।';
+  }
+  var dvTimer = null;
+  function dvAuto() {
+    clearTimeout(dvTimer);
+    dvTimer = setTimeout(function () {
+      if (state.doc && $('p_name').value.trim().length >= 2 && idFormatOk()) dvCheck();
+    }, 900);
+  }
+  ['p_name', 'p_idno'].forEach(function (id) {
+    $(id).addEventListener('input', function () { if (state.verified !== null) dvReset(); dvAuto(); });
+  });
+  function dvCheck() {
+    if (state.verified === true) return Promise.resolve(true);
+    if (state.checking) return state.checking;
+    if (!state.doc) { need('docIn', 'डकुमेन्टको फोटो खिच्नुहोस्।'); return Promise.resolve(false); }
+    if ($('p_name').value.trim().length < 2) { need('p_name', 'कृपया पूरा नाम लेख्नुहोस्।'); return Promise.resolve(false); }
+    if (!idFormatOk()) { need('p_idno', 'डकुमेन्ट नम्बर मिलेन — ' + rule().hint); return Promise.resolve(false); }
+    var sentName = $('p_name').value.trim(), sentNo = $('p_idno').value.trim(), sentDoc = state.doc, sentType = $('p_idtype').value;
+    $('dv').className = 'dv'; $('dvUse').hidden = true; rows('w');
+    $('dvMsg').textContent = '⏳ AI ले डकुमेन्ट पढ्दैछ… (१०–२० सेकेन्ड)';
+    $('dvBtn').disabled = true;
+    state.checking = token().then(function (t) {
+      return fetch('/api/agreement-doccheck.php', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' },
+        body: JSON.stringify({ doc: sentDoc, name: sentName, idno: sentNo, idtype: sentType }) });
+    }).then(function (r) { return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; }); })
+      .then(function (d) {
+        // something was changed while the card was being read: that answer is stale
+        if (sentName !== $('p_name').value.trim() || sentNo !== $('p_idno').value.trim() || sentDoc !== state.doc || sentType !== $('p_idtype').value) { dvReset(); return false; }
+        if (!d || !d.ok) {
+          if (d && d.code === 419) state.csrf = null;
+          rows(null);
+          $('dvMsg').textContent = (d && (d.error || d.message)) || 'जाँच गर्न सकिएन — फेरि थिच्नुहोस्।';
+          return false;
+        }
+        row('dvDoc', d.is_doc === null ? null : !!d.is_doc);
+        row('dvName', d.name_ok === null ? null : !!d.name_ok);
+        row('dvNum', d.number_ok === null ? null : !!d.number_ok);
+        $('dvMsg').textContent = d.message || '';
+        if (d.status === 'pass') {
+          state.verified = true; $('dv').className = 'dv pass';
+          $('p_name').removeAttribute('aria-invalid'); $('p_idno').removeAttribute('aria-invalid');
+          try { if (navigator.vibrate) navigator.vibrate([10, 40, 10]); } catch (e) {}
+          return true;
+        }
+        if (d.status === 'fail') {
+          state.verified = false; $('dv').className = 'dv fail';
+          if (d.name_ok === false && d.seen_name) {
+            state.seenName = d.seen_name;
+            $('dvUseBtn').textContent = '✏️ डकुमेन्टको नाम राख्नुहोस् · Use: ' + d.seen_name;
+            $('dvUse').hidden = false;
+          }
+          if (d.number_ok === false) $('p_idno').setAttribute('aria-invalid', 'true');
+          if (d.name_ok === false) $('p_name').setAttribute('aria-invalid', 'true');
+          try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {}
+        }
+        return false;
+      })
+      .catch(function () { rows(null); $('dvMsg').textContent = 'इन्टरनेट जाँच गरेर फेरि थिच्नुहोस्।'; return false; })
+      .then(function (ok) { state.checking = null; $('dvBtn').disabled = false; return ok; });
+    return state.checking;
+  }
+  $('dvBtn').addEventListener('click', function () { dvCheck(); });
+  $('dvUseBtn').addEventListener('click', function () {
+    if (!state.seenName) return;
+    $('p_name').value = state.seenName.replace(/([A-Za-z])([A-Za-z]*)/g, function (m, a, b) { return a.toUpperCase() + b.toLowerCase(); });
+    $('p_name').removeAttribute('aria-invalid');
+    dvReset(); dvCheck();
+  });
+
   /* ---- send ---- */
   function say(t) { var m = $('msg'); m.textContent = t; m.hidden = !t; if (t) m.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
   function need(id, text) { var el = $(id); if (el) { el.setAttribute('aria-invalid', 'true'); el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } var m = $('msg'); m.textContent = text; m.hidden = false; return false; }
@@ -283,6 +409,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     if (!$('p_area').value.trim()) return need('p_area', 'काम गर्ने ठाउँ लेख्नुहोस्।');
     if (!$('p_addr').value.trim()) return need('p_addr', 'ठेगाना लेख्नुहोस्।');
     if (!$('p_idno').value.trim()) return need('p_idno', 'डकुमेन्ट नम्बर लेख्नुहोस्।');
+    if (!idFormatOk()) return need('p_idno', 'डकुमेन्ट नम्बर मिलेन — ' + rule().hint);
     if (!state.doc) return need('docIn', 'डकुमेन्टको फोटो खिच्नुहोस्।');
     if (!state.photo) return need('selfIn', 'आफ्नो फोटो खिच्नुहोस्।');
     if (inked <= 40) return need('sig', 'तलको बाकसमा औंलाले सही गर्नुहोस्।');
@@ -294,7 +421,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     say('');
     if (!check()) return;
     var btn = $('send'); if (btn.disabled) return;
-    btn.disabled = true; var label = btn.textContent; btn.textContent = '⏳ पठाउँदै… · Sending…';
+    btn.disabled = true; var label = btn.textContent; btn.textContent = '🔍 डकुमेन्ट जाँच… · Checking ID…';
+    dvCheck().then(function (ok) {
+      if (!ok) {
+        btn.disabled = false; btn.textContent = label;
+        say('❌ डकुमेन्ट नमिलेसम्म फारम पठाइँदैन — माथि रातो भएको ठीक गर्नुहोस्।');
+        $('dv').scrollIntoView({ block: 'center', behavior: 'smooth' });
+        return;
+      }
+      btn.textContent = '⏳ पठाउँदै… · Sending…';
+      send(btn, label);
+    });
+  });
+  function send(btn, label) {
     var phone = '+' + $('cc').value + $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
     var body = {
       type: 'ind', lang: 'ne', website: $('website').value, public_ok: $('public_ok').checked,
@@ -315,13 +454,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
           try { if (navigator.vibrate) navigator.vibrate([12, 30, 12, 30, 40]); } catch (e) {}
           return;
         }
-        if (d && d.fields) { var k = Object.keys(d.fields)[0]; if (k && $(k)) $(k).setAttribute('aria-invalid', 'true'); }
+        if (d && d.fields) { var k = Object.keys(d.fields)[0]; if (k === 'p_name' || k === 'p_idno' || k === 'docIn') dvReset(); if (k && $(k)) $(k).setAttribute('aria-invalid', 'true'); }
         if (d && d.code === 419) state.csrf = null;
         say((d && (d.error || d.message)) || 'पठाउन सकिएन — फेरि प्रयास गर्नुहोस्।');
       })
       .catch(function () { say('इन्टरनेट जाँच गरेर फेरि पठाउनुहोस्।'); })
       .then(function () { btn.disabled = false; btn.textContent = label; });
-  });
+  }
 })();
 </script>
 </body>

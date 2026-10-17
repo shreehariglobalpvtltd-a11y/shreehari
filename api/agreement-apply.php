@@ -39,6 +39,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 require_once INCLUDE_PATH . '/agentapplications.php';
+require_once INCLUDE_PATH . '/docverify.php';
 
 const AGR_BODY_MAX = 2_000_000;   // 18 Oct 2026: photo + document + signature (the page shrinks each first)
 
@@ -138,6 +139,35 @@ try {
     if (is_string($hp) ? trim($hp) !== '' : !empty($hp)) {
         Logger::info('Agreement apply: honeypot filled', ['ip' => $ip]);
         agr_honeypot($clean, $lang);
+    }
+
+    // 18 Oct 2026 (owner): a form that carries an ID photo goes through only
+    // when that photo shows the typed name AND the typed number. The page
+    // checks first (/api/agreement-doccheck.php) and the pass waits in the
+    // session; without it the card is read here once more.
+    $rawDoc = Response::field('doc', null);
+    if (is_string($rawDoc) && trim($rawDoc) !== '' && DocVerify::mode() === 'strict') {
+        $idno = (string) ($clean['fields']['p_idno'] ?? '');
+        if ($clean['doc'] === null) {
+            Response::invalid(['docIn' => 'photo'], 'डकुमेन्टको फोटो खुलेन — फेरि खिच्नुहोस्।');
+        }
+        $vkey = DocVerify::key((string) $clean['doc'], (string) $clean['name'], $idno);
+        $vr   = DocVerify::recall($vkey);
+        if ($vr === null) {
+            $vr = DocVerify::check((string) $clean['doc'], (string) $clean['name'], $idno, (string) ($clean['fields']['p_idtype'] ?? ''));
+            if ($vr['status'] !== 'unavailable') {
+                DocVerify::remember($vkey, $vr);
+            }
+        }
+        if ($vr['status'] !== 'pass') {
+            Logger::info('Agreement apply: document did not match', ['problems' => $vr['problems'], 'ip' => $ip]);
+            $bad = [];
+            if (in_array('name', $vr['problems'], true))   { $bad['p_name'] = 'name'; }
+            if (in_array('number', $vr['problems'], true)) { $bad['p_idno'] = 'number'; }
+            if ($bad === [])                               { $bad['docIn'] = 'doc'; }
+            Response::invalid($bad, DocVerify::message($vr));
+        }
+        $clean['doc_verify'] = DocVerify::summary($vr);
     }
 
     // The same form again: its ref, and nothing is charged or stored.

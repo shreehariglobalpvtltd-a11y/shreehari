@@ -265,6 +265,11 @@ if (!$ready) {
           </dd>
           <?php endif; ?>
         <?php endforeach; ?>
+        <?php if (!empty($open['doc_verify'])): $dvPass = str_starts_with((string) $open['doc_verify'], 'PASS'); ?>
+        <dt>Document check</dt><dd><span style="font-weight:700;color:<?= $dvPass ? 'var(--ok,#0f9d6b)' : 'var(--bad,#c62828)' ?>"><?= $dvPass ? '✅ Name + number match the card' : '⚠️ Not matched' ?></span> <span class="muted text-xs"><?= $h((string) $open['doc_verify']) ?></span></dd>
+        <?php elseif (!empty($open['doc_photo'])): ?>
+        <dt>Document check</dt><dd><span class="muted">Not checked — compare the name and number on the photo by hand</span></dd>
+        <?php endif; ?>
         <dt>Sent on</dt><dd><?= $h(date('d M Y, H:i', (int) strtotime((string) $open['created_at']))) ?> · form in <?= $h(['ne' => 'Nepali', 'hi' => 'Hindi', 'en' => 'English'][(string) $open['lang']] ?? $open['lang']) ?></dd>
         <dt>Public list</dt><dd><?= (int) $open['public_ok'] === 1 ? 'Agreed — the full phone may be shown once approved' : 'Not agreed — the phone is shown masked (98•••••123) once approved' ?></dd>
         <dt>KYC · agreement</dt><dd><?= $kycPill((string) $open['kyc_status']) ?> <?= $agrPill((string) $open['agreement_status'], $open['agreement_end'] ?? null) ?></dd>
