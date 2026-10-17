@@ -374,6 +374,9 @@ en: {
   wlOk: 'Added to the waitlist — we will contact you if seats free up. 🙏',
   bnHome: 'Home', bnBook: 'Book', bnTrips: 'My Trips', bnTickets: 'My Tickets', bnMaps: 'Maps', bnHelp: 'Help',
   hhTitle: 'INDIA ⇄ NEPAL PREMIUM AC SLEEPER BUS', hhTag: 'Safe Journey. Easy Booking. Your Comfort, Our Responsibility.', hhActLbl: 'Book, track or open your ticket', hhBook: 'Book Ticket', hhBookSub: 'Date · seat · pay', hhTrack: 'Track My Bus', hhTrackSub: 'From your ticket', hhMy: 'My Ticket', hhMySub: 'View · download',
+  /* 17 Oct 2026: the premium 3D hero band above SmartBook (#hero3d) */
+  h3Eye: 'From India to Nepal', h3Title: 'One page. One tap. <span class="p3-grad">Happy journey.</span>', h3Sub: 'Comfortable AC sleeper bus service · Safe · On time · Trusted',
+  h3F1: 'AC Sleeper<br>Bus Service', h3F2: 'Safe &amp; Secure<br>Travel', h3F3: 'Experienced<br>Drivers', h3F4: 'On-time<br>Departure', h3F5: 'Thousands of<br>Happy Passengers', h3Tag: 'Not just a journey,<br>a bond…',
   hfTitle: 'On every journey', hfAc: 'AC Sleeper', hfCharge: 'Mobile Charging', hfAid: 'First Aid', hfGps: 'GPS Tracking', hfWa: 'WhatsApp Ticket', hfHelp: 'Customer Support', hfBerth: 'Sleeper Berth', hfSecure: 'Secure Booking',
   /* 9 Oct 2026 home showcase (HOME): living amenity cards, the demo label, offices card, CEO card, the guide, footer */
   pkEyebrow: 'Why travel with us', pkTitle: 'Comfort and trust on every journey', pkAcSub: 'Cool, quiet night ride', pkBerthSub: 'Sleeper berths · private cabins', hfQuick: 'QuickBot Booking', pkQuickSub: 'Name + mobile → ticket in about 10 seconds', hfTrack: 'Live Bus Tracking', pkTrackSub: 'From your ticket · share with family', pkChargeSub: 'USB / Type-C charging', pkWaSub: 'Ticket PNG + PDF on WhatsApp', pkAidSub: 'First-aid kit on board', hf247: '24×7 Support', pkHelpSub: 'Nepali · Hindi · English',
@@ -958,6 +961,8 @@ hi: {
   wlOk: 'वेटलिस्ट में जोड़ दिया गया — सीट खाली होने पर हम संपर्क करेंगे। 🙏',
   bnHome: 'होम', bnBook: 'बुक', bnTrips: 'मेरी यात्रा', bnTickets: 'मेरे टिकट', bnMaps: 'नक्शा', bnHelp: 'सहायता',
   hhTitle: 'भारत ⇄ नेपाल प्रीमियम एसी स्लीपर बस', hhTag: 'सुरक्षित यात्रा। आसान बुकिंग। आपका आराम, हमारी ज़िम्मेदारी।', hhActLbl: 'टिकट बुक करें, बस ट्रैक करें या टिकट खोलें', hhBook: 'टिकट बुक करें', hhBookSub: 'तारीख़ · सीट · भुगतान', hhTrack: 'मेरी बस ट्रैक करें', hhTrackSub: 'अपने टिकट से', hhMy: 'मेरा टिकट', hhMySub: 'देखें · डाउनलोड करें',
+  h3Eye: 'भारत से नेपाल तक', h3Title: 'एक पेज। एक टैप। <span class="p3-grad">शुभ यात्रा।</span>', h3Sub: 'आरामदायक AC स्लीपर बस सेवा · सुरक्षित · समय पर · भरोसेमंद',
+  h3F1: 'AC स्लीपर<br>बस सेवा', h3F2: 'सुरक्षित<br>यात्रा', h3F3: 'अनुभवी<br>ड्राइवर', h3F4: 'समय पर<br>प्रस्थान', h3F5: 'हज़ारों खुश<br>यात्री', h3Tag: 'यात्रा ही नहीं,<br>रिश्ता है…',
   hfTitle: 'हर यात्रा में', hfAc: 'एसी स्लीपर', hfCharge: 'मोबाइल चार्जिंग', hfAid: 'प्राथमिक उपचार', hfGps: 'जीपीएस ट्रैकिंग', hfWa: 'WhatsApp टिकट', hfHelp: 'ग्राहक सहायता', hfBerth: 'स्लीपर बर्थ', hfSecure: 'सुरक्षित बुकिंग',
   /* 9 Oct 2026 home showcase (HOME) */
   pkEyebrow: 'हमारे साथ क्यों चलें', pkTitle: 'हर सफ़र में आराम और भरोसा', pkAcSub: 'ठंडी, शांत रात की यात्रा', pkBerthSub: 'स्लीपर बर्थ · प्राइवेट केबिन', hfQuick: 'QuickBot बुकिंग', pkQuickSub: 'नाम + मोबाइल → लगभग 10 सेकंड में टिकट', hfTrack: 'लाइव बस ट्रैकिंग', pkTrackSub: 'अपने टिकट से · परिवार के साथ शेयर करें', pkChargeSub: 'USB / Type-C चार्जिंग', pkWaSub: 'टिकट PNG + PDF WhatsApp पर', pkAidSub: 'बस में फ़र्स्ट-एड किट', hf247: '24×7 सहायता', pkHelpSub: 'नेपाली · हिन्दी · English',
@@ -1537,6 +1542,8 @@ ne: {
   wlOk: 'प्रतीक्षा सूचीमा थपियो — सिट खाली भएमा हामी सम्पर्क गर्नेछौँ। 🙏',
   bnHome: 'होम', bnBook: 'बुक', bnTrips: 'मेरो यात्रा', bnTickets: 'मेरो टिकट', bnMaps: 'नक्सा', bnHelp: 'सहायता',
   hhTitle: 'भारत ⇄ नेपाल प्रिमियम एसी स्लीपर बस', hhTag: 'सुरक्षित यात्रा। सजिलो बुकिङ। तपाईंको आराम, हाम्रो जिम्मेवारी।', hhActLbl: 'टिकट बुक, बस ट्र्याक वा टिकट खोल्नुहोस्', hhBook: 'टिकट बुक गर्नुहोस्', hhBookSub: 'मिति · सिट · भुक्तानी', hhTrack: 'मेरो बस ट्र्याक गर्नुहोस्', hhTrackSub: 'आफ्नो टिकटबाट', hhMy: 'मेरो टिकट', hhMySub: 'हेर्नुहोस् · डाउनलोड',
+  h3Eye: 'भारत देखि नेपाल सम्म', h3Title: 'एउटै पेज। एउटै ट्याप। <span class="p3-grad">शुभ यात्रा।</span>', h3Sub: 'आरामदायी AC स्लिपर बस सेवा · सुरक्षित · समयमै · विश्वासिलो',
+  h3F1: 'AC स्लिपर<br>बस सेवा', h3F2: 'सुरक्षित<br>यात्रा', h3F3: 'अनुभवी<br>चालक', h3F4: 'समयमै<br>प्रस्थान', h3F5: 'हजारौं खुसी<br>यात्री', h3Tag: 'यात्रा मात्रै हैन,<br>सम्बन्ध हो…',
   hfTitle: 'हरेक यात्रामा', hfAc: 'एसी स्लीपर', hfCharge: 'मोबाइल चार्जिङ', hfAid: 'प्राथमिक उपचार', hfGps: 'जीपीएस ट्र्याकिङ', hfWa: 'WhatsApp टिकट', hfHelp: 'ग्राहक सहायता', hfBerth: 'स्लीपर बर्थ', hfSecure: 'सुरक्षित बुकिङ',
   /* 9 Oct 2026 home showcase (HOME) */
   pkEyebrow: 'हामीसँग किन यात्रा गर्ने', pkTitle: 'हरेक यात्रामा आराम र भरोसा', pkAcSub: 'चिसो, शान्त रातको यात्रा', pkBerthSub: 'स्लीपर बर्थ · निजी केबिन', hfQuick: 'QuickBot बुकिङ', pkQuickSub: 'नाम + मोबाइल → करिब १० सेकेन्डमा टिकट', hfTrack: 'लाइभ बस ट्र्याकिङ', pkTrackSub: 'आफ्नो टिकटबाट · परिवारसँग सेयर गर्नुहोस्', pkChargeSub: 'USB / Type-C चार्जिङ', pkWaSub: 'टिकट PNG + PDF WhatsApp मा', pkAidSub: 'बसमा प्राथमिक उपचार किट', hf247: '२४×७ सहायता', pkHelpSub: 'नेपाली · हिन्दी · English',

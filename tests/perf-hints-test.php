@@ -401,8 +401,10 @@ check('scenes animate with Web Animations (transform / opacity), paused off scre
 echo "\n-- 5. images and fonts --\n";
 $html = (string) preg_replace(['~<!--.*?-->~s', '~<script\b.*?</script>~is'], '', $tpl);
 preg_match_all('~<img\b[^>]*>~i', $html, $im);
-/* the passenger's own upload, shown after they pick it: no size exists yet */
-$exempt = ['ppPreviewImg', 'pvPreview'];
+/* the passenger's own upload, shown after they pick it: no size exists yet.
+   17 Oct 2026: #h3Bus is the coach in the 3D band above the booking card - the
+   first picture on every screen, so it is eager (fetchpriority="high") on purpose. */
+$exempt = ['ppPreviewImg', 'pvPreview', 'h3Bus'];
 $noSize = []; $noAsync = [];
 foreach ($im[0] as $tag) {
     $id = preg_match('~\bid="([^"]+)"~', $tag, $x) ? $x[1] : '';

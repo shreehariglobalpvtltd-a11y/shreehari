@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v229';   // Booking never refuses a children-heavy party; Sharing default every visit, Private one tap
+var VERSION = 'shg-v230';   // Premium 3D UI: the hero band above SmartBook + glass polish (premium3d.css)
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,7 +43,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261016v';
+var ASSET_VER = '20261017a';
 var PRECACHE = [
   /* 16 Oct 2026 (owner, the logo): the full lockup WITH the ™ sign is now
      logo-tm.png (tools/make-logo-tm.php cuts it from logo.png). Neither is
@@ -65,6 +65,9 @@ var PRECACHE = [
   '/assets/css/showcase.css?v=' + ASSET_VER,
   '/assets/css/homeinfo.css?v=' + ASSET_VER,
   '/assets/css/smartbook.css?v=' + ASSET_VER,
+  /* 17 Oct 2026: the premium 3D layer (hero band + glass polish) */
+  '/assets/css/premium3d.css?v=' + ASSET_VER,
+  '/assets/js/28-hero3d.js?v=' + ASSET_VER,
   /* 10 Oct 2026: the HD visual pack styles (the artwork itself is NOT precached) */
   '/assets/css/hd.css?v=' + ASSET_VER,
   /* 10 Oct 2026: touch / compositor / TV / device-tier hygiene (right before depth.css) */

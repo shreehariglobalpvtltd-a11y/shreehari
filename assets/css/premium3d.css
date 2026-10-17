@@ -1,0 +1,322 @@
+/* =====================================================================
+   S HARI GLOBAL — PREMIUM 3D LAYER  (17 Oct 2026, owner's "premium 3D UI" prompt)
+
+   Loads after smartbook.css / hd.css and BEFORE perf.css + depth.css (depth
+   stays the last stylesheet). Two jobs:
+
+   1. THE 3D HERO BAND (#hero3d) above SmartBook: the official coach render
+      (assets/img/hd/bus-cutout) floating over a Gujarat → Nepal scene built
+      from the existing HD artwork, the headline in the visitor's language,
+      five trust badges and the Surat → Rupaidiha route with the bus driving
+      it. Markup is in app.template.html; 28-hero3d.js only feeds --p3x/--p3y
+      (pointer parallax, fine pointers only).
+
+   2. GLASS + GLOW POLISH on what is already there: the topbar language pills,
+      the office-number strip, the navbar, the SmartBook card, the S Hari AI
+      bar, the Journey Summary rail and the Cash / Online keys. Colour, light,
+      shadow and motion only — no id, hook, label or control changes.
+
+   Rules: motion is transform / opacity / box-shadow; it stops for
+   prefers-reduced-motion, html[data-motion="reduced"] and html[data-tier="low"]
+   (perf.css already stops every animation there). Logo colours only:
+   royal blue, orange, white, navy.
+   ===================================================================== */
+:root{
+  --p3-navy:#061a4a; --p3-navy-2:#0a2a8f; --p3-blue:#1a44c8; --p3-blue-l:#2f6bff;
+  --p3-org:#f07a1e; --p3-org-l:#ffa24d; --p3-org-d:#d4570c; --p3-gold:#ffd166;
+  --p3-ease:cubic-bezier(.22,1,.36,1);
+  /* the one shadow recipe every raised glass panel shares */
+  --p3-panel:inset 0 1px 0 #fff,inset 0 0 0 1px rgba(255,255,255,.55),
+    0 1px 2px rgba(10,42,143,.06),0 14px 34px -14px rgba(10,42,143,.35),0 44px 70px -40px rgba(10,42,143,.32);
+}
+:root[data-theme="dark"]{
+  --p3-panel:inset 0 1px 0 rgba(255,255,255,.07),inset 0 0 0 1px rgba(143,178,255,.08),
+    0 1px 2px rgba(0,0,0,.5),0 18px 44px -14px rgba(0,0,0,.7),0 0 60px -20px rgba(47,107,255,.25);
+}
+
+/* =====================================================================
+   1. HERO BAND
+   ===================================================================== */
+html #view-home > #hero3d{order:-2 !important}   /* SmartBook is -1 (smartbook.css) */
+.p3{position:relative;isolation:isolate;overflow:hidden;margin:0 0 2px;color:#fff;
+  background:linear-gradient(180deg,#071c52 0%,#0a2a8f 50%,#0f3fb8 100%);
+  --p3x:0;--p3y:0}
+:root[data-display="amoled"] .p3{background:linear-gradient(180deg,#000 0%,#06163a 60%,#0a2a8f 100%)}
+
+/* the scene: Gujarat on the left, the Himalaya on the right, light in between */
+.p3-scene{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.p3-scene > span{position:absolute;display:block}
+.p3-india{left:0;top:0;bottom:0;width:50%;opacity:.55;
+  background:url(/assets/img/hd/gujarat-city-m.webp?v=20261017a) center 40%/cover no-repeat;
+  -webkit-mask-image:linear-gradient(90deg,#000 15%,transparent 100%);mask-image:linear-gradient(90deg,#000 15%,transparent 100%);
+  transform:translate3d(calc(var(--p3x) * -8px),calc(var(--p3y) * -5px),0) scale(1.06)}
+.p3-nepal{right:0;top:0;bottom:0;width:56%;opacity:.6;
+  background:url(/assets/img/hd/nepal-heritage-m.webp?v=20261017a) center 35%/cover no-repeat;
+  -webkit-mask-image:linear-gradient(270deg,#000 22%,transparent 100%);mask-image:linear-gradient(270deg,#000 22%,transparent 100%);
+  transform:translate3d(calc(var(--p3x) * -12px),calc(var(--p3y) * -6px),0) scale(1.06)}
+.p3-tint{inset:0;background:linear-gradient(180deg,rgba(6,26,74,.18) 0%,rgba(6,26,74,.5) 55%,rgba(6,26,74,.92) 100%)}
+.p3-glow{left:32%;top:-40%;width:48%;height:150%;border-radius:50%;background:radial-gradient(closest-side,rgba(47,107,255,.55),rgba(47,107,255,0) 72%);filter:blur(14px);
+  animation:p3Breathe 7s ease-in-out infinite}
+.p3-orb{right:4%;bottom:-30%;width:36%;height:90%;border-radius:50%;background:radial-gradient(closest-side,rgba(240,122,30,.38),rgba(240,122,30,0) 72%);filter:blur(12px);
+  animation:p3Breathe 9s ease-in-out -3s infinite}
+@keyframes p3Breathe{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.08);opacity:1}}
+.p3-ray{top:-25%;height:150%;width:12%;background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.13) 50%,rgba(255,255,255,0));
+  transform:skewX(-18deg);animation:p3Ray 10s ease-in-out infinite}
+.p3-ray.r1{left:16%} .p3-ray.r2{left:60%;width:7%;animation-delay:-5s}
+@keyframes p3Ray{0%,100%{opacity:.35;transform:skewX(-18deg) translateX(0)}50%{opacity:.9;transform:skewX(-18deg) translateX(34px)}}
+.p3-pt{width:6px;height:6px;border-radius:50%;background:var(--p3-gold);opacity:0;box-shadow:0 0 10px 2px rgba(255,209,102,.6);animation:p3Pt 7s linear infinite}
+.p3-pt.p1{left:8%;bottom:20%} .p3-pt.p2{left:22%;bottom:10%;animation-delay:-2s;width:4px;height:4px}
+.p3-pt.p3{left:44%;bottom:14%;animation-delay:-4s} .p3-pt.p4{left:63%;bottom:8%;animation-delay:-1s;width:4px;height:4px}
+.p3-pt.p5{left:80%;bottom:18%;animation-delay:-5.5s} .p3-pt.p6{left:93%;bottom:26%;animation-delay:-3s;width:5px;height:5px}
+@keyframes p3Pt{0%{transform:translateY(16px) scale(.6);opacity:0}15%{opacity:.95}100%{transform:translateY(-130px) scale(1.15);opacity:0}}
+
+/* the grid: copy + badges left, the coach right, the route underneath */
+.p3-in{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:22px 20px 16px;
+  display:grid;grid-template-columns:minmax(0,1.02fr) minmax(0,1fr);grid-template-areas:"copy art" "feats art" "route route";
+  gap:6px 26px;align-items:center}
+.p3-copy{grid-area:copy;min-width:0;animation:p3In .7s var(--p3-ease) both}
+.p3-eye{margin:0 0 4px;font-size:15px;font-weight:800;letter-spacing:.02em;color:var(--p3-gold);text-shadow:0 1px 10px rgba(0,0,0,.4)}
+.p3-title{margin:0 0 8px;font:900 clamp(24px,3.1vw,40px)/1.15 var(--font-sans);letter-spacing:-.01em;
+  text-shadow:0 2px 0 rgba(0,0,0,.18),0 12px 30px rgba(0,0,0,.4)}
+.p3-grad{background:linear-gradient(100deg,#fff 0%,var(--p3-gold) 48%,var(--p3-org-l) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  text-shadow:none;filter:drop-shadow(0 4px 14px rgba(0,0,0,.35))}
+.p3-sub{margin:0;font-size:15px;font-weight:600;color:#dbe7ff;text-shadow:0 1px 6px rgba(0,0,0,.4)}
+
+.p3-feats{grid-area:feats;display:flex;flex-wrap:wrap;gap:8px 10px;margin:8px 0 0;padding:0;list-style:none;animation:p3In .7s .12s var(--p3-ease) both}
+.p3-feats li{display:flex;flex-direction:column;align-items:center;gap:6px;flex:0 0 auto;width:92px;text-align:center;
+  font-size:11.5px;font-weight:700;line-height:1.2;color:#eaf1ff;text-shadow:0 1px 6px rgba(0,0,0,.45)}
+.p3-fi{width:50px;height:50px;border-radius:50%;display:grid;place-items:center;font-size:21px;color:var(--p3-gold);
+  background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.32),rgba(255,255,255,.04) 58%),linear-gradient(160deg,rgba(47,107,255,.6),rgba(10,42,143,.8));
+  border:1px solid rgba(255,255,255,.32);
+  box-shadow:0 10px 18px -8px rgba(0,0,0,.65),inset 0 1px 0 rgba(255,255,255,.4),0 0 0 4px rgba(255,255,255,.06);
+  transition:transform .35s var(--p3-ease),box-shadow .35s var(--p3-ease)}
+.p3-fi .ic{width:23px;height:23px;stroke-width:2.1}
+.p3-fi .p3-star{fill:currentColor;stroke:none}
+@media (hover:hover){
+  .p3-feats li:hover .p3-fi{transform:translateY(-4px) scale(1.08);
+    box-shadow:0 16px 26px -10px rgba(0,0,0,.7),0 0 20px rgba(255,209,102,.5),inset 0 1px 0 rgba(255,255,255,.45),0 0 0 4px rgba(255,255,255,.1)}
+}
+
+/* the coach */
+.p3-art{grid-area:art;position:relative;margin:0;min-width:0;display:grid;place-items:center;animation:p3Bus .9s var(--p3-ease) both}
+.p3-bus{position:relative;z-index:1;display:block;width:100%;max-width:640px;height:auto;
+  filter:drop-shadow(0 26px 22px rgba(0,0,0,.5)) drop-shadow(0 0 34px rgba(47,107,255,.28));
+  transform:translate3d(calc(var(--p3x) * 14px),calc(var(--p3y) * 8px),0);
+  animation:p3Float 6s ease-in-out infinite;transition:transform .25s var(--p3-ease)}
+@keyframes p3Float{0%,100%{translate:0 0}50%{translate:0 -8px}}
+.p3-shadow{position:absolute;left:14%;right:14%;bottom:9%;height:26px;border-radius:50%;z-index:0;
+  background:radial-gradient(ellipse at center,rgba(0,0,0,.6),rgba(0,0,0,0) 70%);filter:blur(6px);animation:p3Shade 6s ease-in-out infinite}
+@keyframes p3Shade{0%,100%{transform:scaleX(1);opacity:.95}50%{transform:scaleX(.9);opacity:.6}}
+.p3-tag{position:absolute;right:0;top:2px;z-index:2;max-width:46%;padding:7px 12px;border-radius:14px;
+  font:800 clamp(13px,1.35vw,18px)/1.25 var(--font-sans);color:#fff;text-align:center;transform:rotate(-6deg);
+  text-shadow:0 2px 10px rgba(0,0,0,.55);background:rgba(6,26,74,.38);border:1px solid rgba(255,255,255,.24);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);box-shadow:0 10px 24px -12px rgba(0,0,0,.7)}
+.p3-tag::after{content:"";display:block;height:3px;width:72%;margin:5px auto 0;border-radius:3px;background:linear-gradient(90deg,transparent,var(--p3-org-l),transparent)}
+
+/* the route: Surat (INDIA) ---- bus ----> Rupaidiha (NEPAL) */
+.p3-route{grid-area:route;display:flex;align-items:center;gap:14px;margin-top:6px;animation:p3In .7s .2s var(--p3-ease) both}
+.p3-stop{display:flex;flex-direction:column;align-items:center;gap:1px;flex:0 0 auto;line-height:1.1}
+.p3-stop b{font-size:17px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.55)}
+.p3-stop small{font-size:10.5px;font-weight:800;letter-spacing:.08em;color:#cfdcff}
+.p3-pin{width:14px;height:14px;margin:0 0 6px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--p3-org);
+  box-shadow:0 0 0 4px rgba(240,122,30,.28),0 5px 10px rgba(0,0,0,.45);animation:p3Pin 2.4s var(--p3-ease) infinite}
+.p3-stop-b .p3-pin{animation-delay:-1.2s}
+@keyframes p3Pin{0%,100%{box-shadow:0 0 0 4px rgba(240,122,30,.28),0 5px 10px rgba(0,0,0,.45)}50%{box-shadow:0 0 0 10px rgba(240,122,30,0),0 5px 10px rgba(0,0,0,.45)}}
+.p3-line{position:relative;flex:1;height:30px;min-width:90px}
+.p3-line::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:3px dotted rgba(255,255,255,.5)}
+.p3-line::after{content:"";position:absolute;left:0;right:0;top:50%;height:3px;margin-top:-1px;border-radius:3px;
+  background:linear-gradient(90deg,var(--p3-org),var(--p3-gold) 55%,var(--p3-org-l));box-shadow:0 0 10px rgba(255,161,77,.6);
+  transform-origin:left center;transform:scaleX(0);animation:p3Fill 7s linear infinite}
+@keyframes p3Fill{0%{transform:scaleX(0)}92%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:0}}
+.p3-mover{position:absolute;left:0;top:50%;width:100%;height:30px;margin-top:-15px;
+  background:url(/assets/img/anim/shg-route-bus-marker.webp?v=20261017a) 0 50%/60px 30px no-repeat;
+  filter:drop-shadow(0 6px 8px rgba(0,0,0,.55));transform:translateX(-60px);animation:p3Drive 7s linear infinite}
+@keyframes p3Drive{0%{transform:translateX(-60px)}92%{transform:translateX(100%);opacity:1}100%{transform:translateX(100%);opacity:0}}
+
+@keyframes p3In{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes p3Bus{from{opacity:0;transform:translateX(60px)}to{opacity:1;transform:none}}
+
+/* phones: a compact band — headline left, coach right, the five badges on
+   one scrolling row — the booking card is still the second thing on screen */
+@media (max-width:859px){
+  .p3-in{grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);grid-template-areas:"copy art" "feats feats";padding:14px 14px 10px;gap:2px 10px}
+  .p3-eye{font-size:12.5px;margin-bottom:2px}
+  .p3-title{font-size:clamp(19px,5.6vw,25px);margin-bottom:4px}
+  .p3-sub{font-size:12.5px;line-height:1.35}
+  .p3-feats{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;gap:4px 8px;margin-top:8px;padding:2px 0 4px;-webkit-overflow-scrolling:touch}
+  .p3-feats::-webkit-scrollbar{display:none}
+  .p3-feats li{width:auto;min-width:74px;font-size:10.5px}
+  .p3-fi{width:40px;height:40px;font-size:17px} .p3-fi .ic{width:19px;height:19px}
+  .p3-bus{max-width:100%;filter:drop-shadow(0 16px 14px rgba(0,0,0,.5)) drop-shadow(0 0 20px rgba(47,107,255,.28))}
+  .p3-tag,.p3-route{display:none}
+  .p3-india{background-image:url(/assets/img/hd/gujarat-city-t.webp?v=20261017a)}
+  .p3-nepal{background-image:url(/assets/img/hd/nepal-heritage-t.webp?v=20261017a)}
+  .p3-glow,.p3-orb{filter:blur(8px)}
+}
+@media (max-width:420px){ .p3-sub{display:none} .p3-in{padding-top:12px} }
+/* a very short phone: the booking card comes first */
+@media (max-width:859px) and (max-height:600px){ html.sb-on.sb-home #hero3d{display:none} }
+/* wide desktops: more air */
+@media (min-width:1200px){ .p3-in{padding:26px 20px 18px;gap:6px 34px} .p3-feats{flex-wrap:nowrap} .p3-feats li{width:98px;font-size:12px} }
+
+/* stillness */
+@media (prefers-reduced-motion:reduce){
+  .p3-glow,.p3-orb,.p3-ray,.p3-pt,.p3-bus,.p3-shadow,.p3-pin,.p3-line::after,.p3-mover,.p3-copy,.p3-feats,.p3-art,.p3-route{animation:none}
+  .p3-line::after{transform:none}
+}
+:root[data-motion="reduced"] :is(.p3-glow,.p3-orb,.p3-ray,.p3-pt,.p3-bus,.p3-shadow,.p3-pin,.p3-line::after,.p3-mover,.p3-copy,.p3-feats,.p3-art,.p3-route){animation:none}
+:root[data-motion="reduced"] .p3-line::after{transform:none}
+html[data-tier="low"] .p3-scene > :is(.p3-glow,.p3-orb,.p3-ray,.p3-pt){display:none}
+html[data-tier="low"] .p3-bus{filter:drop-shadow(0 16px 14px rgba(0,0,0,.5))}
+html[data-tier="low"] .p3-tag{-webkit-backdrop-filter:none;backdrop-filter:none}
+
+/* =====================================================================
+   2. TOPBAR · OFFICE STRIP · NAVBAR
+   ===================================================================== */
+.topbar{background:linear-gradient(90deg,#071c52,#0a2a8f 55%,#0f3fb8) !important}
+.topbar .lang-switch{display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+.topbar .lang-btn{min-height:26px !important;padding:2px 11px !important;border-radius:999px !important;border:1px solid transparent !important;
+  background:transparent !important;color:#dbe7ff !important;font-weight:800;transition:background .2s,color .2s,transform .15s var(--p3-ease)}
+.topbar .lang-btn.on{background:#fff !important;color:var(--p3-blue) !important;box-shadow:0 2px 8px rgba(0,0,0,.3),inset 0 -2px 0 var(--p3-org) !important}
+.topbar .theme-btn,.topbar .palette-btn{border-radius:999px !important;background:rgba(255,255,255,.1) !important;border:1px solid rgba(255,255,255,.16) !important;color:#fff !important}
+.topbar .tb-right > a{padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#fff;font-weight:700;transition:background .2s,border-color .2s}
+@media (hover:hover){ .topbar .tb-right > a:hover{background:rgba(240,122,30,.3);border-color:rgba(255,162,77,.6)} }
+
+.num-strip{background:linear-gradient(90deg,#061a4a,#0a2a8f 50%,#061a4a) !important;border-bottom:1px solid rgba(255,255,255,.1) !important;position:relative}
+.num-strip::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:linear-gradient(90deg,var(--p3-navy),var(--p3-blue-l) 45%,var(--p3-org-l) 78%,var(--p3-org));opacity:.9}
+.num-strip .num-pill{border-radius:999px !important;border:1px solid rgba(255,255,255,.22) !important;
+  background:linear-gradient(160deg,rgba(255,255,255,.16),rgba(255,255,255,.05)) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 8px 16px -10px rgba(0,0,0,.7) !important;
+  transition:transform .25s var(--p3-ease),box-shadow .25s var(--p3-ease),border-color .2s,background .2s !important}
+.num-strip .num-pill .np-ic{color:var(--p3-org-l) !important}
+.num-strip .num-pill .np-num{color:#fff !important;font-weight:800}
+@media (hover:hover){
+  .num-strip .num-pill:hover{transform:translateY(-2px);border-color:rgba(255,162,77,.7) !important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 12px 22px -10px rgba(0,0,0,.8),0 0 16px rgba(240,122,30,.35) !important}
+}
+
+/* the navbar: a glass shelf with the brand hairline under it (no position change on .nav) */
+.nav::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;pointer-events:none;
+  background:linear-gradient(90deg,var(--p3-navy),var(--p3-blue-l) 45%,var(--p3-org-l) 78%,var(--p3-org))}
+.nav .brand-tile img{filter:drop-shadow(0 4px 12px rgba(26,68,200,.35));transition:transform .35s var(--p3-ease),filter .35s}
+@media (hover:hover){ .nav .brand:hover .brand-tile img{transform:scale(1.04) rotate(-2deg);filter:drop-shadow(0 8px 18px rgba(26,68,200,.45))} }
+.nav .brand-word .b-lock b{background:linear-gradient(100deg,var(--p3-navy-2),var(--p3-blue) 55%,var(--p3-blue-l));-webkit-background-clip:text;background-clip:text;color:transparent}
+:root[data-theme="dark"] .nav .brand-word .b-lock b{background:linear-gradient(100deg,#dbe7ff,#8fb2ff);-webkit-background-clip:text;background-clip:text}
+.nav .brand-word .b-legal{color:var(--p3-org-d)}
+:root[data-theme="dark"] .nav .brand-word .b-legal{color:var(--p3-org-l)}
+.nav-links .nav-link{position:relative;transition:background .2s,color .2s,transform .2s var(--p3-ease)}
+.nav-links .nav-link::after{content:"";position:absolute;left:14px;right:14px;bottom:4px;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,var(--p3-blue-l),var(--p3-org-l));transform:scaleX(0);transform-origin:center;transition:transform .3s var(--p3-ease)}
+@media (hover:hover){ .nav-links .nav-link:hover::after{transform:scaleX(1)} }
+.nav-links .nav-cta{background:linear-gradient(120deg,var(--p3-org-l),var(--p3-org) 55%,var(--p3-org-d)) !important;color:#fff !important;border:1px solid rgba(255,255,255,.35) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 3px 0 #a8420a,0 10px 18px -10px rgba(212,87,12,.8) !important}
+.nav-links .nav-cta:active{transform:translateY(2px);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 1px 0 #a8420a !important}
+
+/* =====================================================================
+   3. SMARTBOOK — the glass card, the S Hari AI bar, the Journey Summary,
+      the Cash / Online keys
+   ===================================================================== */
+#smartBook .sb-card{
+  background:linear-gradient(165deg,#fff 0%,#f7faff 55%,#eef4ff 100%);
+  border:1px solid rgba(26,68,200,.17);box-shadow:var(--p3-panel)}
+:root[data-theme="dark"] #smartBook .sb-card{background:linear-gradient(165deg,#131f36 0%,#101928 60%,#0c1526 100%);border-color:rgba(143,178,255,.16)}
+:root[data-display="amoled"] #smartBook .sb-card{background:#000;border-color:rgba(143,178,255,.2)}
+#smartBook .sb-card:focus-within{box-shadow:var(--p3-panel),0 0 0 3px rgba(26,68,200,.12)}
+/* the Himalaya watermark behind the title (SmartBook demo, the owner's mock-up) */
+#smartBook .sb-head{position:relative}
+#smartBook .sb-head::before{content:"";position:absolute;right:-6px;top:-10px;width:min(52%,380px);height:120px;z-index:0;pointer-events:none;opacity:.13;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 380 120' preserveAspectRatio='xMaxYMax meet'%3E%3Cpath d='M0 120 L48 62 L70 80 L108 30 L140 66 L166 44 L200 86 L236 24 L262 54 L286 36 L322 78 L350 52 L380 90 L380 120 Z' fill='%231a44c8'/%3E%3Cpath d='M108 30 L120 46 L132 40 L140 66 L126 52 L116 58 Z M236 24 L248 40 L258 34 L262 54 L250 44 L242 50 Z' fill='%23ffffff' opacity='.8'/%3E%3C/svg%3E") right bottom/contain no-repeat}
+:root[data-theme="dark"] #smartBook .sb-head::before{opacity:.22}
+#smartBook .sb-head > *{position:relative;z-index:1}
+#smartBook .sb-engine{background:linear-gradient(120deg,rgba(26,68,200,.14),rgba(47,107,255,.08));border:1px solid rgba(26,68,200,.18);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 4px 10px -6px rgba(26,68,200,.4)}
+:root[data-theme="dark"] #smartBook .sb-engine{background:rgba(47,107,255,.14);border-color:rgba(143,178,255,.22);box-shadow:none}
+
+/* the S Hari AI bar: a living glow, a gold "S Hari AI" tag */
+#smartBook .sb-bot{border:1px solid rgba(255,255,255,.28);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.32),0 12px 28px -10px rgba(26,68,200,.8),0 0 0 5px rgba(26,68,200,.07);
+  animation:p3BotGlow 3.4s ease-in-out infinite}
+@keyframes p3BotGlow{
+  0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,.32),0 12px 28px -10px rgba(26,68,200,.8),0 0 0 5px rgba(26,68,200,.07)}
+  50%{box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 14px 34px -10px rgba(47,107,255,.95),0 0 0 8px rgba(47,107,255,.15),0 0 26px rgba(47,107,255,.35)}}
+#smartBook .sb-bot:focus-within{animation:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 0 0 3px rgba(255,157,69,.65),0 14px 30px -8px rgba(26,68,200,.75)}
+#smartBook .sb-bot-ic b{background:linear-gradient(120deg,#fff3dc,var(--p3-gold) 55%,var(--p3-org-l));color:#1b1203;border-color:rgba(255,255,255,.5);
+  box-shadow:0 2px 8px -2px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.7)}
+#smartBook .sb-bot-go,#smartBook .sb-mic{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+#smartBook .sb-bot-go{background:linear-gradient(120deg,var(--p3-org-l),var(--p3-org) 60%,var(--p3-org-d));border-color:rgba(255,255,255,.45);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 6px 14px -6px rgba(212,87,12,.9)}
+@media (hover:hover){ #smartBook .sb-bot-go:hover{filter:brightness(1.08);background:linear-gradient(120deg,var(--p3-org-l),var(--p3-org))} }
+
+/* chips, switches, segments: a glossy top light on the chosen one, a soft well for the rest */
+#smartBook .sb-dir,#smartBook .sb-seg,#smartBook .sb-qmode{box-shadow:inset 0 1px 3px rgba(10,42,143,.08)}
+#smartBook .sb-dir-b.on,#smartBook .sb-chip.on,#smartBook .sb-qmode button.on{
+  background:linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,0) 55%),linear-gradient(120deg,#2f6bff 0%,#1a44c8 52%,#0a2a8f 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4),inset 0 -2px 0 rgba(0,0,0,.14),0 7px 16px -7px rgba(26,68,200,.8)}
+#smartBook .sb-chip:not(.on),#smartBook .sb-near,#smartBook .sb-step button,#smartBook .sb-p,#smartBook .sb-qhelp{
+  background:linear-gradient(180deg,#fff,#f3f7fc);box-shadow:inset 0 1px 0 #fff,0 1px 2px rgba(10,42,143,.08)}
+:root[data-theme="dark"] #smartBook :is(.sb-chip:not(.on),.sb-near,.sb-step button,.sb-p,.sb-qhelp){background:linear-gradient(180deg,#1a2740,#16233a);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+:root[data-display="amoled"] #smartBook :is(.sb-chip:not(.on),.sb-near,.sb-step button,.sb-p,.sb-qhelp){background:#0b0f17}
+#smartBook .sb-seg button.on{box-shadow:inset 0 -2px 0 var(--p3-org),0 3px 10px rgba(26,68,200,.18),inset 0 1px 0 #fff}
+#smartBook .sb-qline span{box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 2px 6px -2px rgba(26,68,200,.3)}
+#smartBook .sb-qline .sb-q-priv.on{background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,0) 55%),linear-gradient(120deg,#ffa24d,#f07a1e 50%,#d4570c);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 6px 14px -6px rgba(212,87,12,.8)}
+/* inputs are wells cut into the glass */
+#smartBook input,#smartBook select{box-shadow:inset 0 2px 4px rgba(10,42,143,.07),inset 0 1px 0 rgba(255,255,255,.8)}
+#smartBook .sb-bot input{box-shadow:none}
+#smartBook input:focus,#smartBook select:focus{box-shadow:inset 0 2px 4px rgba(10,42,143,.05),0 0 0 3px rgba(26,68,200,.18),0 6px 16px -8px rgba(26,68,200,.5)}
+
+/* the Journey Summary rail (desktop) */
+@media (min-width:860px){
+  #smartBook .sb-rail{background:linear-gradient(165deg,#fff 0%,#f5f8ff 60%,#edf3ff 100%);border:1px solid rgba(26,68,200,.18);box-shadow:var(--p3-panel)}
+  :root[data-theme="dark"] #smartBook .sb-rail{background:linear-gradient(165deg,#131f36,#0c1526);border-color:rgba(143,178,255,.16)}
+  :root[data-display="amoled"] #smartBook .sb-rail{background:#000}
+  #smartBook .sb-sum-t{position:relative;overflow:hidden;background:linear-gradient(120deg,#0a2a8f,#1a44c8 55%,#2f6bff);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.22),inset 0 -1px 0 rgba(0,0,0,.18);text-shadow:0 1px 4px rgba(0,0,0,.35)}
+  #smartBook .sb-sum-t::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(100deg,transparent 35%,rgba(255,255,255,.18) 50%,transparent 65%);transform:translateX(-100%);animation:sbSweep 6s ease-in-out infinite}
+  #smartBook .sb-route > i{animation:p3Dot 2.4s var(--p3-ease) infinite}
+  #smartBook .sb-route > i:last-child{animation-delay:-1.2s}
+  #smartBook .sb-route-bus{background-image:url(/assets/img/anim/shg-route-bus-marker.webp?v=20261017a);background-size:44px 22px;filter:drop-shadow(0 4px 5px rgba(0,0,0,.35))}
+  #smartBook .sb-dl div{padding:8px 0}
+  #smartBook .sb-dl dd{font-weight:700}
+  #smartBook .sb-total{padding:12px 0 6px}
+  #smartBook .sb-total b{font-size:36px;letter-spacing:-.02em;filter:drop-shadow(0 6px 12px rgba(26,68,200,.25))}
+  #smartBook .sb-total span{font-weight:700}
+}
+@keyframes p3Dot{0%,100%{box-shadow:0 0 0 3px rgba(26,68,200,.18)}50%{box-shadow:0 0 0 7px rgba(26,68,200,0)}}
+
+/* the two keys: a real 3D edge, pressed 3px on tap, a glow once the card is ready */
+#smartBook .sb-pay{--p3-edge:#06206e;border:1px solid rgba(255,255,255,.38);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),inset 0 -3px 0 rgba(0,0,0,.14),0 5px 0 var(--p3-edge),0 14px 24px -10px rgba(10,42,143,.6)}
+#smartBook .sb-cash{--p3-edge:#a8420a}
+#smartBook .sb-cash.sb-ready{box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.14),0 5px 0 var(--p3-edge),0 16px 26px -10px rgba(212,87,12,.75),0 0 22px -4px rgba(240,122,30,.55)}
+#smartBook .sb-online.sb-ready{box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.14),0 5px 0 var(--p3-edge),0 16px 26px -10px rgba(26,68,200,.75),0 0 22px -4px rgba(47,107,255,.55)}
+@media (hover:hover){ #smartBook .sb-pay:hover{transform:translateY(-2px)} }
+#smartBook .sb-pay:active{transform:translateY(3px) scale(.995);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4),inset 0 -1px 0 rgba(0,0,0,.14),0 2px 0 var(--p3-edge),0 6px 12px -8px rgba(10,42,143,.6)}
+#smartBook .sb-pay.sb-wait{opacity:.86}
+#smartBook .sb-pay span{text-shadow:0 1px 0 rgba(0,0,0,.18),0 2px 8px rgba(0,0,0,.15)}
+/* the phone's book bar: a brighter glass strip with the brand hairline on top */
+@media (max-width:859px){
+  #smartBook .sb-bar{box-shadow:0 -14px 34px -14px rgba(10,42,143,.35),0 -1px 0 rgba(26,68,200,.14)}
+  #smartBook .sb-bar::before{content:"";position:absolute;left:0;right:0;top:-1px;height:2px;background:linear-gradient(90deg,var(--p3-navy),var(--p3-blue-l) 45%,var(--p3-org-l) 78%,var(--p3-org))}
+  #smartBook .sb-pay{box-shadow:inset 0 1px 0 rgba(255,255,255,.45),inset 0 -2px 0 rgba(0,0,0,.14),0 4px 0 var(--p3-edge),0 10px 18px -8px rgba(10,42,143,.6)}
+  #smartBook .sb-pay:active{transform:translateY(2px);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 2px 0 var(--p3-edge)}
+}
+
+/* the ticket, the Cash sheet and the QR card share the glass */
+#smartBook .sb-sheet-in,#smartBook .sb-modal-in,#smartBook .sb-cv-in,#smartBook .sb-py{box-shadow:0 -1px 0 rgba(255,255,255,.6) inset,0 30px 70px -20px rgba(0,0,0,.55)}
+#smartBook .sb-ok-sum,#smartBook .sb-py-qrw{box-shadow:0 14px 30px -14px rgba(10,42,143,.4)}
+
+/* the premium hero card underneath (#homeHero) sits on the same light */
+#homeHero .hh-card{box-shadow:var(--p3-panel)}
+
+/* stillness, again, for the polish layer */
+@media (prefers-reduced-motion:reduce){
+  #smartBook .sb-bot,#smartBook .sb-sum-t::after,#smartBook .sb-route > i{animation:none}
+}
+:root[data-motion="reduced"] #smartBook :is(.sb-bot,.sb-sum-t::after,.sb-route > i){animation:none}
+:root[data-tier="low"] #smartBook .sb-bot{animation:none}
+
+/* print: flat */
+@media print{ #hero3d{display:none} }

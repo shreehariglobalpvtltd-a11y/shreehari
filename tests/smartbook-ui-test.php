@@ -42,7 +42,8 @@ $css = $src('assets/css/smartbook.css');
 echo "\nA. The card markup\n";
 check('one #smartBook section', substr_count($tpl, 'id="smartBook"') === 1);
 $home = preg_match('~<section class="view active" id="view-home"(?: data-first)?>(.*)~s', $tpl, $m) ? $m[1] : '';
-check('it is the first block of the home view', (bool) preg_match('~^\s*(?:<!--.*?-->\s*)*<section class="sb" id="smartBook"~s', $home));
+/* 17 Oct 2026 (premium 3D UI): the decorative 3D band (#hero3d) may stand above the card */
+check('it is the first booking block of the home view (only the 3D band above it)', (bool) preg_match('~^\s*(?:<!--.*?-->\s*)*(?:<div class="p3" id="hero3d"[^>]*>(?:(?!<section\b|<form\b|<a\b|<button\b).)*?)?<section class="sb" id="smartBook"~s', $home));
 foreach (['sbBot' => 'QuickBot line', 'sbDates' => 'date chips', 'sbPoint' => 'boarding / drop point', 'sbNear' => 'nearest-to-me button',
           'sbCc' => '+91 / +977', 'sbPhone' => 'mobile', 'sbName' => 'lead name', 'sbPax' => 'passenger chips', 'sbMinus' => 'fewer passengers',
           'sbPlus' => 'more passengers', 'sbType' => 'Sharing | Private', 'sbCabin' => 'Single | Double', 'sbBerth' => 'berth preference',
