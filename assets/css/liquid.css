@@ -130,8 +130,8 @@ html.sc-io .sc-reveal,#homeFeat.sc-stagger .sc-perks > li{transition:opacity .38
 .lq-layer{position:fixed;inset:0;z-index:2147483000;pointer-events:none;overflow:hidden;contain:strict}
 .lq-drop{position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;pointer-events:none;z-index:5;
   background:radial-gradient(circle,color-mix(in srgb,var(--lq-c,#2f6bff) 60%,#fff) 0%,var(--lq-c,#2f6bff) 38%,transparent 70%);
-  mix-blend-mode:screen;opacity:.85;animation:lqDrop .7s var(--lq-ease) forwards}
-.lq-drop.lq-ring{background:none;border:2px solid var(--lq-c,#2f6bff);mix-blend-mode:normal;animation:lqDropRing .8s var(--lq-ease) forwards}
+  opacity:.8;will-change:transform,opacity;animation:lqDrop .7s var(--lq-ease) forwards}
+.lq-drop.lq-ring{background:none;border:2px solid var(--lq-c,#2f6bff);animation:lqDropRing .8s var(--lq-ease) forwards}
 @keyframes lqDrop{to{transform:scale(14);opacity:0}}
 @keyframes lqDropRing{0%{transform:scale(.6);opacity:.9}100%{transform:scale(10);opacity:0}}
 .lq-squish{animation:lqSquish .5s var(--lq-spring)}
@@ -153,3 +153,18 @@ html.sc-io .sc-reveal,#homeFeat.sc-stagger .sc-perks > li{transition:opacity .38
 :root[data-motion="reduced"] :is(.lq-drop,.lq-squish,.lq-bob,#smartBook .sb-tk.lq-land .sb-tk-pnr,#smartBook .sb-tk.lq-land::before,#smartBook .sb-tk.lq-land .sb-tk-h::after,#view-home > .wa-ticket-highlight::after){animation:none !important}
 :root[data-motion="reduced"] .lq-drop{display:none}
 html[data-tier="low"] #view-home > .wa-ticket-highlight::after{animation:none}
+
+/* ---------------------------------------------------------------------
+   8. HIGH-REFRESH SMOOTH (owner: "165 Hz jasto"). Only transform + opacity
+      move per frame; anything that repaints is kept off the scroll path.
+   --------------------------------------------------------------------- */
+/* the old glow-ring tap animated box-shadow (a repaint every frame); the
+   liquid drop above is the touch feedback now */
+.p3-tap{animation:none}
+#smartBook .sb-pay.p3-tap{animation:p3TapKey .3s var(--p3-ease)}
+/* fixed / sticky layers get their own compositor layer so scrolling never repaints them */
+.p3-aurora,.lq-layer{transform:translateZ(0);backface-visibility:hidden}
+/* no 300 ms wait or double-tap zoom on anything tappable */
+a,button,[role="button"],.hx-tile,.hx-card,#smartBook .sb-chip,#smartBook .sb-pay{touch-action:manipulation}
+/* a booked ticket image decodes off the main thread */
+#smartBook .sb-tk-img{content-visibility:auto}

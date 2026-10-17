@@ -100,7 +100,13 @@ try {
     }
     $text = implode("\n", $lines);
 
-    $admin = Settings::getString('admin_whatsapp', Settings::officePhone());
+    /* 17 Oct 2026 (owner): website WhatsApp ticket requests (name + mobile +
+       journey) go to the owner's own booking number, wa_request_to, when it
+       is set; every other office alert still uses admin_whatsapp. */
+    $admin = Settings::getString('wa_request_to', '');
+    if (strlen(preg_replace('/\D/', '', $admin) ?? '') < 10) {
+        $admin = Settings::getString('admin_whatsapp', Settings::officePhone());
+    }
     $sent  = false;
     $via   = '';
     if ($admin !== '') {

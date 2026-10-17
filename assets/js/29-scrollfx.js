@@ -8,7 +8,7 @@
         (.p3-rv -> .p3-seen, IntersectionObserver; siblings stagger by --p3-i).
         Nothing is hidden unless the observer runs (html.p3-fx), so a browser
         without it, reduced motion and a low-tier device see the plain page.
-     2. progress: --p3-prog (0..1) on <html> - the brand hairline under the
+     2. progress: --p3-prog (0..1) on .nav + .p3-aurora - the brand hairline under the
         navbar fills as you scroll, the aurora behind the page drifts with it.
      3. touch: a pressed tile / chip / key gets .p3-tap for 450 ms (a glow
         ring, premium3d.css) and one short tick through SHGFeel.buzz, which
@@ -75,11 +75,25 @@
   /* ---- 2. progress + 4. hero parallax -------------------------------- */
   var hero = document.getElementById('hero3d'), scene = hero && hero.querySelector('.p3-scene');
   var raf = 0;
+  /* 17 Oct 2026 (owner: "165 Hz jasto smooth"): --p3-prog used to be set on
+     <html>, which re-styles the whole page on every scroll frame. It is now
+     set only on the two things that read it (the navbar hairline and the
+     aurora), and the page height is measured on resize, not per frame. */
+  var progEls = [], maxY = 1;
+  function measure() {
+    maxY = Math.max(1, (de.scrollHeight || 1) - (window.innerHeight || 1));
+    progEls = Array.prototype.slice.call(document.querySelectorAll('.nav, .p3-aurora'));
+  }
+  var lastProg = '';
   function paint() {
     raf = 0;
-    var max = Math.max(1, (de.scrollHeight || 1) - (window.innerHeight || 1));
+    if (!progEls.length) measure();
     var y = window.scrollY || de.scrollTop || 0;
-    de.style.setProperty('--p3-prog', Math.min(1, y / max).toFixed(4));
+    var prog = Math.min(1, y / maxY).toFixed(3);
+    if (prog !== lastProg) {
+      lastProg = prog;
+      for (var k = 0; k < progEls.length; k++) progEls[k].style.setProperty('--p3-prog', prog);
+    }
     if (scene && hero.offsetParent !== null) {
       var hh = hero.offsetHeight || 1;
       scene.style.transform = y < hh ? 'translate3d(0,' + (y * 0.28).toFixed(1) + 'px,0)' : '';
@@ -87,8 +101,10 @@
   }
   function onScroll() { checkPending(); if (!raf) raf = requestAnimationFrame(paint); }
   window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', onScroll, { passive: true });
-  paint();
+  window.addEventListener('resize', function () { measure(); onScroll(); }, { passive: true });
+  /* the home page grows as sections load: re-measure now and then, never per frame */
+  setTimeout(measure, 1500); setTimeout(measure, 5000);
+  window.addEventListener('load', measure);
 
   /* the aurora behind the page (three slow blobs; premium3d.css moves them) */
   if (!document.querySelector('.p3-aurora')) {
@@ -98,6 +114,8 @@
     au.innerHTML = '<i></i><i></i><i></i>';
     document.body.insertBefore(au, document.body.firstChild);
   }
+  measure();
+  paint();
 
   /* ---- 3. touch ------------------------------------------------------ */
   var TAP = '.hx-tile, .hx-card, .p3-feats li, #homeHero .hh-act, #smartBook .sb-chip, #smartBook .sb-dir-b, #smartBook .sb-pay, '
