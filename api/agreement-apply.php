@@ -40,7 +40,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 require_once INCLUDE_PATH . '/agentapplications.php';
 
-const AGR_BODY_MAX = 1_500_000;
+const AGR_BODY_MAX = 2_000_000;   // 18 Oct 2026: photo + document + signature (the page shrinks each first)
 
 /**
  * The one answer shape for a stored form, an exact resend and the honeypot.
@@ -94,8 +94,9 @@ try {
 
     Security::requireCsrf();
 
-    // A 600 KB photo is ~800 KB of base64; anything far above that is not
-    // one of our pages talking. The header is the cheap first check; the
+    // A 600 KB photo is ~800 KB of base64 (the simple form adds a document
+    // photo and a signature, each shrunk on the phone); anything far above
+    // that is not one of our pages talking. The header is the cheap first check; the
     // bound on Response::input() is the real one (a missing or lying
     // Content-Length cannot make PHP read and decode 12 MB).
     if ((int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > AGR_BODY_MAX) {
@@ -121,6 +122,9 @@ try {
         'lang'      => $lang,
         'fields'    => Response::field('fields', []),
         'photo'     => Response::field('photo', null),
+        'doc'       => Response::field('doc', null),
+        'signature' => Response::field('signature', null),
+        'geo'       => Response::field('geo', null),
         'public_ok' => Response::field('public_ok', false),
     ]);
     if (!$check['ok']) {

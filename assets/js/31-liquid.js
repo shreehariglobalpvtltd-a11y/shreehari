@@ -86,7 +86,7 @@
   }
 
   var BUS = '#hyperBus, #hero3d .p3-art, .hx-bus, .hx-coach, #animRoute .sa-bus, #homeHero .hh-bus, .hero-hd img';
-  var BLOCK = '.hx-tile, .hx-card, .th-card, .th-npcard, .hh-card, .p3-feats li, .wa-ticket-highlight, #smartBook .sb-tk';
+  var BLOCK = '.hx-tile, .hx-card, .th-card, .th-npcard, .hh-card, .p3-feats li, .wa-ticket-highlight, #homeAgents .ag-card';
   var KEY = '#smartBook .sb-pay, #smartBook .sb-chip, #smartBook .sb-dir-b, #smartBook .sb-qmode button, #smartBook .sb-seg button, '
     + '.bottom-nav .bn-item, .btn, .num-pill, .p3-stop, .wa-ticket-fix';
 
@@ -108,9 +108,8 @@
     if (bus) {
       var img = bus.querySelector ? (bus.querySelector('img') || bus) : bus;
       squish(img, 'lq-bob');
-      drop(e.clientX, e.clientY, '#2f6bff', false, 0);
-      drop(e.clientX, e.clientY, '#ff8a2b', true, 90);
-      drop(e.clientX, e.clientY, '#ffc23d', true, 190);
+      drop(e.clientX, e.clientY, '#ffc23d', false, 0);
+      drop(e.clientX, e.clientY, '#ffc23d', true, 70);
       if (isTouch) vibrate(BUS_RHYTHM);
       return;
     }
@@ -161,13 +160,8 @@
         else if (tk._lq) continue; else tk._lq = true;
         if (still()) continue;
         tk.classList.add('lq-land');
-        (function (n) { setTimeout(function () { n.classList.remove('lq-land'); }, 2200); })(tk);
+        (function (n) { setTimeout(function () { n.classList.remove('lq-land'); }, 1600); })(tk);
         vibrate(TICKET_RHYTHM);
-        var r = tk.getBoundingClientRect();
-        if (r.width) {
-          var cx = r.left + r.width / 2, cy = r.top + Math.min(60, r.height / 2);
-          drop(cx, cy, '#2f6bff', true, 0); drop(cx, cy, '#ffc23d', true, 160); drop(cx, cy, '#18c98b', true, 320);
-        }
       }
     }).observe(sb, { childList: true, subtree: true });
   }

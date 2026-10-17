@@ -28,7 +28,7 @@
 
   /* ---- 1. reveal ----------------------------------------------------- */
   var SEL = '#view-home .hx-tile, #view-home .hx-card, #view-home .hx-head, #homeHero .hh-card, #homeFares .hx-fares-body > *, '
-    + '#homeRoute .hx-rf, #topHero .th-card, #topHero .th-npcard, #view-home .wa-ticket-highlight, #view-home .sb-tk';
+    + '#homeRoute .hx-rf, #topHero .th-card, #topHero .th-npcard, #view-home .wa-ticket-highlight';   /* 18 Oct: the ticket is never re-animated by scrolling */
   var pending = [];
   var io = new IntersectionObserver(function (entries) {
     entries.forEach(function (en) {
@@ -79,15 +79,16 @@
      <html>, which re-styles the whole page on every scroll frame. It is now
      set only on the two things that read it (the navbar hairline and the
      aurora), and the page height is measured on resize, not per frame. */
-  var progEls = [], maxY = 1;
+  var progEls = [], maxY = 1, lastVh = 0;
   function measure() {
+    lastVh = window.innerHeight || 0;
     maxY = Math.max(1, (de.scrollHeight || 1) - (window.innerHeight || 1));
     progEls = Array.prototype.slice.call(document.querySelectorAll('.nav, .p3-aurora'));
   }
   var lastProg = '';
   function paint() {
     raf = 0;
-    if (!progEls.length) measure();
+    if (!progEls.length || (window.innerHeight || 0) !== lastVh) measure();   /* a resize re-measures inside the frame */
     var y = window.scrollY || de.scrollTop || 0;
     var prog = Math.min(1, y / maxY).toFixed(3);
     if (prog !== lastProg) {
@@ -101,7 +102,7 @@
   }
   function onScroll() { checkPending(); if (!raf) raf = requestAnimationFrame(paint); }
   window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', function () { measure(); onScroll(); }, { passive: true });
+  window.addEventListener('resize', onScroll, { passive: true });
   /* the home page grows as sections load: re-measure now and then, never per frame */
   setTimeout(measure, 1500); setTimeout(measure, 5000);
   window.addEventListener('load', measure);

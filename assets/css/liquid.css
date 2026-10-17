@@ -69,11 +69,8 @@ html.sc-io .sc-reveal,#homeFeat.sc-stagger .sc-perks > li{transition:opacity .38
   background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.35) 46%,transparent 62%);transform:translateX(-120%)}
 #smartBook .sb-tk.lq-land .sb-tk-pnr{animation:lqPnr 1.4s .35s var(--lq-ease) both}
 #smartBook .sb-tk.lq-land .sb-tk-h::after{animation:lqWave 1.3s .25s var(--lq-ease) both}
-#smartBook .sb-tk.lq-land::before{content:"";position:absolute;left:50%;top:40px;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;pointer-events:none;z-index:3;
-  border:2px solid rgba(111,155,255,.8);animation:lqRing 1s .1s var(--lq-ease) both}
 @keyframes lqPnr{0%{box-shadow:0 0 0 0 rgba(47,107,255,.65)}100%{box-shadow:0 0 0 18px rgba(47,107,255,0)}}
 @keyframes lqWave{to{transform:translateX(120%)}}
-@keyframes lqRing{0%{transform:scale(.2);opacity:1}100%{transform:scale(9);opacity:0}}
 
 /* ---------------------------------------------------------------------
    4. THE BOOK BAR (phones). The two keys share the width evenly, the
@@ -128,16 +125,19 @@ html.sc-io .sc-reveal,#homeFeat.sc-stagger .sc-perks > li{transition:opacity .38
       (.lq-squish) like jelly; the coaches bounce (.lq-bob).
    --------------------------------------------------------------------- */
 .lq-layer{position:fixed;inset:0;z-index:2147483000;pointer-events:none;overflow:hidden;contain:strict}
-.lq-drop{position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;pointer-events:none;z-index:5;
-  background:radial-gradient(circle,color-mix(in srgb,var(--lq-c,#2f6bff) 60%,#fff) 0%,var(--lq-c,#2f6bff) 38%,transparent 70%);
-  opacity:.8;will-change:transform,opacity;animation:lqDrop .7s var(--lq-ease) forwards}
-.lq-drop.lq-ring{background:none;border:2px solid var(--lq-c,#2f6bff);animation:lqDropRing .8s var(--lq-ease) forwards}
-@keyframes lqDrop{to{transform:scale(14);opacity:0}}
-@keyframes lqDropRing{0%{transform:scale(.6);opacity:.9}100%{transform:scale(10);opacity:0}}
-.lq-squish{animation:lqSquish .5s var(--lq-spring)}
-@keyframes lqSquish{0%{transform:scale(1)}30%{transform:scale(.965,.95)}65%{transform:scale(1.015,1.02)}100%{transform:scale(1)}}
+/* 18 Oct 2026 (owner: the coloured touch effect was not nice): one soft
+   glass drop, no bigger than a fingertip's reach (~90 px), a thin tinted rim
+   and a quick fade - felt more than seen */
+.lq-drop{position:absolute;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;pointer-events:none;z-index:5;
+  background:radial-gradient(circle,rgba(255,255,255,.55) 0%,color-mix(in srgb,var(--lq-c,#2f6bff) 35%,transparent) 55%,transparent 72%);
+  opacity:.7;will-change:transform,opacity;animation:lqDrop .5s cubic-bezier(.2,.8,.3,1) forwards}
+.lq-drop.lq-ring{background:none;border:1.5px solid color-mix(in srgb,var(--lq-c,#2f6bff) 70%,#fff);opacity:.75;animation:lqDropRing .55s cubic-bezier(.2,.8,.3,1) forwards}
+@keyframes lqDrop{to{transform:scale(5);opacity:0}}
+@keyframes lqDropRing{0%{transform:scale(.8);opacity:.75}100%{transform:scale(4.6);opacity:0}}
+.lq-squish{animation:lqSquish .38s var(--lq-spring)}
+@keyframes lqSquish{0%{transform:scale(1)}35%{transform:scale(.982)}100%{transform:scale(1)}}
 .lq-bob{animation:lqBob .7s var(--lq-spring)}
-@keyframes lqBob{0%{transform:translate3d(0,0,0)}25%{transform:translate3d(0,-10px,0) rotate(-1deg)}55%{transform:translate3d(0,3px,0) rotate(.5deg)}100%{transform:none}}
+@keyframes lqBob{0%{transform:translate3d(0,0,0)}30%{transform:translate3d(0,-5px,0)}65%{transform:translate3d(0,1px,0)}100%{transform:none}}
 /* the colour glow that runs along a coach / band while it is touched or scrolled past */
 .lq-glow{box-shadow:0 0 0 2px color-mix(in srgb,var(--lq-c,#2f6bff) 70%,transparent),0 0 34px -4px var(--lq-c,#2f6bff) !important;transition:box-shadow .35s var(--lq-ease)}
 
@@ -150,7 +150,7 @@ html.sc-io .sc-reveal,#homeFeat.sc-stagger .sc-perks > li{transition:opacity .38
 .lq-vib:focus-visible{outline:3px solid #ffc23d;outline-offset:2px}
 
 /* stillness: the in-app Motion switch turns every liquid effect off */
-:root[data-motion="reduced"] :is(.lq-drop,.lq-squish,.lq-bob,#smartBook .sb-tk.lq-land .sb-tk-pnr,#smartBook .sb-tk.lq-land::before,#smartBook .sb-tk.lq-land .sb-tk-h::after,#view-home > .wa-ticket-highlight::after){animation:none !important}
+:root[data-motion="reduced"] :is(.lq-drop,.lq-squish,.lq-bob,#smartBook .sb-tk.lq-land .sb-tk-pnr,#smartBook .sb-tk.lq-land .sb-tk-h::after,#view-home > .wa-ticket-highlight::after){animation:none !important}
 :root[data-motion="reduced"] .lq-drop{display:none}
 html[data-tier="low"] #view-home > .wa-ticket-highlight::after{animation:none}
 
@@ -168,3 +168,62 @@ html[data-tier="low"] #view-home > .wa-ticket-highlight::after{animation:none}
 a,button,[role="button"],.hx-tile,.hx-card,#smartBook .sb-chip,#smartBook .sb-pay{touch-action:manipulation}
 /* a booked ticket image decodes off the main thread */
 #smartBook .sb-tk-img{content-visibility:auto}
+
+/* ---------------------------------------------------------------------
+   9. CALM TICKET (18 Oct 2026, owner: "ticket ko varipari ghumne animation
+      bulky lagyo"). The 360 turn, the endless holo sheen and the laser bar
+      are off; a ticket rises softly once, the ribbon shines once, the PNR
+      pulses once. Scrolling never re-animates it.
+   --------------------------------------------------------------------- */
+html:not(.lq-off) #smartBook .sb-tk.sb-tk.shg-ticket-360-active{animation:none !important}
+html:not(.lq-off) .shg-holo-foil.shg-holo-foil::after{animation:none !important;opacity:0 !important}
+html:not(.lq-off) #smartBook .shg-ai-laser-bar{display:none !important}
+#smartBook .sb-tk.lq-land{animation:lqTkIn .5s var(--lq-ease) both}
+@keyframes lqTkIn{0%{opacity:.001;transform:translate3d(0,12px,0)}100%{opacity:1;transform:none}}
+
+/* ---------------------------------------------------------------------
+   10. HOME COLOURS (18 Oct 2026). One calm palette: deep navy night, royal
+       blue light, warm saffron accents, white type - every section title
+       gets the same saffron hairline, eyebrows a gold pill, cards a soft
+       gradient rim. Light theme keeps white cards with navy type.
+   --------------------------------------------------------------------- */
+:root[data-theme="dark"] body{background:
+  radial-gradient(120% 60% at 50% -10%,#16307a 0%,rgba(22,48,122,0) 60%),
+  radial-gradient(90% 50% at 100% 100%,rgba(240,122,30,.12) 0%,rgba(240,122,30,0) 60%),
+  #071028}
+#view-home .hx-title{position:relative;padding-bottom:8px}
+#view-home .hx-title::after{content:"";position:absolute;left:0;bottom:0;width:56px;height:3px;border-radius:3px;background:linear-gradient(90deg,#ff8a2b,#ffc23d)}
+:root[data-theme="dark"] #view-home .hx-title{color:#fff}
+:root[data-theme="dark"] #view-home .hx-sub{color:#c9d6f2}
+:root[data-theme="dark"] .hx .hx-eyebrow{color:#ffd27a;background:rgba(255,194,61,.1);border:1px solid rgba(255,194,61,.28)}
+:root[data-theme="dark"] #view-home :is(.hx-tile,.hx-card){border-color:rgba(140,175,255,.22)}
+:root:not([data-theme="dark"]) #view-home .hx-title{color:#0a2a8f}
+
+/* ---------------------------------------------------------------------
+   11. OUR AGENTS on the home page (#homeAgents, 32-agents.js fills it
+       from /api/agent-directory.php) + the "become an agent" door.
+   --------------------------------------------------------------------- */
+#view-home > #homeAgents{order:5 !important}
+#homeAgents{margin:18px auto;max-width:1180px;padding:0 16px;width:100%;box-sizing:border-box}
+#homeAgents .ag-box{border-radius:22px;padding:18px;color:#fff;position:relative;overflow:hidden;
+  background:radial-gradient(120% 90% at 100% 0%,rgba(255,138,43,.28),rgba(255,138,43,0) 55%),linear-gradient(140deg,#0a2a8f,#1f4fe0 60%,#2f6bff);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 18px 40px -22px rgba(10,42,143,.9)}
+#homeAgents .ag-eyebrow{display:inline-flex;gap:6px;align-items:center;margin:0 0 6px;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.03em;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25)}
+#homeAgents h2{margin:0 0 4px;font-size:clamp(20px,5vw,28px);font-weight:900;color:#fff}
+#homeAgents .ag-sub{margin:0 0 14px;font-size:13.5px;line-height:1.45;color:#e2eaff}
+#homeAgents .ag-list{list-style:none;margin:0 0 14px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:10px}
+#homeAgents .ag-list[hidden]{display:none}
+#homeAgents .ag-card{display:flex;align-items:center;gap:10px;min-width:0;padding:10px 12px;border-radius:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2)}
+#homeAgents .ag-av{flex:0 0 44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:900;font-size:16px;color:#0a2a8f;background:linear-gradient(140deg,#fff,#ffd9a8);box-shadow:0 4px 10px -4px rgba(0,0,0,.5)}
+#homeAgents .ag-who{min-width:0;flex:1}
+#homeAgents .ag-who b{display:block;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#homeAgents .ag-who small{display:block;font-size:12px;color:#d6e2ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#homeAgents .ag-badges{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px}
+#homeAgents .ag-badges i{font-style:normal;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:999px;background:rgba(24,201,139,.2);border:1px solid rgba(24,201,139,.5);color:#b9ffe2}
+#homeAgents .ag-call{flex:0 0 auto;min-width:44px;height:40px;padding:0 10px;border-radius:12px;display:grid;place-items:center;font-weight:800;font-size:13px;color:#0a2a8f;background:#fff;text-decoration:none}
+#homeAgents .ag-perks{list-style:none;margin:0 0 14px;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,128px),1fr));gap:8px}
+#homeAgents .ag-perks li{padding:10px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);font-size:12.5px;font-weight:700;line-height:1.35}
+#homeAgents .ag-go{display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px;padding:0 18px;border-radius:16px;text-decoration:none;font-weight:900;font-size:16px;color:#fff;
+  background:linear-gradient(120deg,#ffa24d,#f07a1e 50%,#d4570c);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 4px 0 #9c3f06,0 12px 22px -10px rgba(212,87,12,.9)}
+#homeAgents .ag-go:active{transform:translateY(3px);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 1px 0 #9c3f06}
+@media (min-width:860px){ #homeAgents .ag-box{padding:26px 28px} #homeAgents .ag-go{display:inline-flex;min-width:320px} }

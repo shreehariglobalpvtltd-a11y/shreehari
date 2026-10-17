@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="ne">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a2a8f">
+<meta name="robots" content="index,follow">
+<title>एजेन्ट बन्नुहोस् · Become an agent — S Hari Global</title>
+<meta name="description" content="S Hari Global बस एजेन्ट बन्न अनलाइन फारम: नाम, मोबाइल, लोकेसन, डकुमेन्ट, फोटो र डिजिटल सही।">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png">
+<!--
+  18 Oct 2026 (owner): "agent apply garne simple online form - naam, document,
+  phone number, location, tyahi app bata photo kheechera upload, ra auntha le
+  digital signature". Posts to the same /api/agreement-apply.php as the long
+  agreement pages (type "ind"), with three extras the API now keeps:
+  doc (ID photo), signature (PNG) and geo (lat,lng,accuracy). Photos are shrunk
+  on the phone before sending. Nothing here is shown publicly: the office sees
+  the photo, document and signature in Admin -> Agreements (KYC rights only).
+-->
+<style>
+:root{--navy:#0a2a8f;--blue:#1f4fe0;--sky:#2f6bff;--org:#f07a1e;--org-d:#d4570c;--gold:#ffc23d;--ink:#0d1b3e;--mut:#5b6b8c;--line:#d8e1f3;--bg:#eef3fc;--card:#fff;--ok:#0f9d6b;--bad:#c62828;
+  --font:"Noto Sans Devanagari","Noto Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media (prefers-color-scheme:dark){:root{--ink:#eef3ff;--mut:#a9b8da;--line:#2a3a63;--bg:#071028;--card:#0f1b3d}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--font);color:var(--ink);background:var(--bg);line-height:1.45;-webkit-text-size-adjust:100%}
+a{color:var(--sky)}
+.top{position:relative;overflow:hidden;color:#fff;padding:18px 16px 54px;
+  background:radial-gradient(120% 90% at 100% 0%,rgba(255,138,43,.35),rgba(255,138,43,0) 55%),linear-gradient(140deg,#071a5e,var(--navy) 40%,var(--blue) 80%,var(--sky))}
+.top-in{max-width:640px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:#fff;margin-bottom:14px}
+.brand img{width:52px;height:auto;filter:drop-shadow(0 2px 6px rgba(0,0,0,.35))}
+.brand b{display:block;font-size:15px;letter-spacing:.04em}
+.brand small{display:block;font-size:11px;color:var(--gold);letter-spacing:.12em;font-weight:700}
+h1{margin:0 0 6px;font-size:clamp(24px,6.4vw,32px);line-height:1.15;font-weight:900}
+.lead{margin:0;font-size:14px;color:#dfe8ff}
+.steps{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.steps span{font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25)}
+main{max-width:640px;margin:-38px auto 0;padding:0 12px 120px;position:relative}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:16px;margin-bottom:12px;box-shadow:0 12px 30px -20px rgba(10,42,143,.45)}
+.card h2{margin:0 0 10px;font-size:17px;display:flex;align-items:center;gap:8px}
+.card h2 i{font-style:normal;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:14px;color:#fff;background:linear-gradient(140deg,var(--sky),var(--navy));flex:0 0 30px}
+.hint{margin:-4px 0 10px;font-size:12.5px;color:var(--mut)}
+label.f{display:block;margin:0 0 10px}
+label.f > span{display:block;font-size:13px;font-weight:700;margin-bottom:4px}
+label.f > span em{color:var(--bad);font-style:normal}
+input[type=text],input[type=tel],select,textarea{width:100%;min-height:48px;padding:10px 12px;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:12px;outline:none}
+textarea{min-height:76px;resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0 3px rgba(47,107,255,.18)}
+[aria-invalid=true]{border-color:var(--bad)!important;background:rgba(198,40,40,.06)!important}
+.row{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:50px;padding:0 16px;border:0;border-radius:14px;font:inherit;font-size:15.5px;font-weight:800;cursor:pointer;text-decoration:none;color:#fff;background:linear-gradient(120deg,var(--sky),var(--navy));box-shadow:0 8px 18px -10px rgba(10,42,143,.8)}
+.btn.ghost{background:transparent;color:var(--sky);border:1.5px dashed var(--sky);box-shadow:none}
+.btn.small{min-height:40px;font-size:13.5px;width:auto}
+.btn:active{transform:translateY(1px)}
+.shot{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;align-items:center}
+.prev{width:110px;height:110px;border-radius:16px;border:1.5px dashed var(--line);background:var(--bg) center/cover no-repeat;display:grid;place-items:center;font-size:34px;color:var(--mut);overflow:hidden}
+.prev.has{border-style:solid;border-color:var(--ok);font-size:0}
+.prev.doc{width:110px;height:78px}
+.pick{position:relative}
+.pick input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.ok{color:var(--ok);font-weight:800;font-size:13px}
+.geo-out{margin-top:8px;font-size:13px}
+.sigw{position:relative;border:1.5px solid var(--line);border-radius:16px;background:#fff;overflow:hidden;touch-action:none}
+.sigw canvas{display:block;width:100%;height:190px;touch-action:none;cursor:crosshair}
+.sigw .line{position:absolute;left:16px;right:16px;bottom:44px;border-bottom:1.5px dashed #c5d0e6;pointer-events:none}
+.sigw .ph{position:absolute;left:0;right:0;top:40%;text-align:center;color:#9aa8c4;font-size:15px;pointer-events:none}
+.sigw.drawn .ph{display:none}
+.sig-bar{display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px}
+.chk{display:flex;gap:10px;align-items:flex-start;margin:8px 0;font-size:13.5px}
+.chk input{width:22px;height:22px;flex:0 0 22px;margin:1px 0 0;accent-color:var(--sky)}
+.go{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(0,0,0,0),var(--bg) 30%)}
+.go .btn{max-width:640px;margin:0 auto;min-height:56px;font-size:17px;background:linear-gradient(120deg,#ffa24d,var(--org) 50%,var(--org-d));box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 4px 0 #9c3f06,0 12px 22px -10px rgba(212,87,12,.9)}
+.go .btn[disabled]{opacity:.7}
+.msg{margin:10px 0 0;padding:10px 12px;border-radius:12px;font-size:14px;font-weight:700}
+.msg.bad{background:rgba(198,40,40,.1);color:var(--bad)}
+.msg[hidden]{display:none}
+.done{text-align:center;padding:26px 16px}
+.done .big{font-size:56px;line-height:1}
+.done h2{justify-content:center;font-size:21px}
+.done .ref{display:inline-block;margin:8px 0 12px;padding:8px 16px;border-radius:999px;font-weight:900;font-size:20px;letter-spacing:.06em;color:#fff;background:linear-gradient(120deg,var(--sky),var(--navy))}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.foot{text-align:center;font-size:12px;color:var(--mut);margin-top:6px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="/"><img src="/assets/img/logo-mark.webp" width="439" height="228" alt=""><span><b>S HARI GLOBAL™</b><small>PRIVATE LIMITED</small></span></a>
+    <h1>🤝 एजेन्ट बन्नुहोस्<br><span style="font-size:.62em;font-weight:800;color:#ffd9a8">Become an S Hari Global agent</span></h1>
+    <p class="lead">५ मिनेटको फारम · फोनबाटै फोटो, डकुमेन्ट र सही। कार्यालयले हेरेर फोन गर्छ।</p>
+    <div class="steps"><span>👤 विवरण</span><span>📍 लोकेसन</span><span>🪪 डकुमेन्ट</span><span>🤳 फोटो</span><span>✍️ सही</span></div>
+  </div>
+</header>
+
+<main>
+<form id="ap" novalidate>
+  <section class="card">
+    <h2><i>1</i>👤 तपाईंको विवरण · Your details</h2>
+    <label class="f"><span>पूरा नाम · Full name <em>*</em></span><input type="text" id="p_name" autocomplete="name" maxlength="160" required></label>
+    <label class="f"><span>मोबाइल · Mobile (WhatsApp) <em>*</em></span>
+      <div class="row"><select id="cc" aria-label="Country code"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>
+      <input type="tel" id="p_phone" inputmode="numeric" autocomplete="tel-national" maxlength="14" placeholder="98XXXXXXXX" required></div></label>
+    <label class="f"><span>काम गर्ने ठाउँ / शहर · Work area / city <em>*</em></span><input type="text" id="p_area" maxlength="160" placeholder="जस्तै: Surat, Nepalgunj" required></label>
+    <label class="f"><span>ठेगाना · Address <em>*</em></span><textarea id="p_addr" maxlength="300" placeholder="टोल, नगर, जिल्ला" required></textarea></label>
+  </section>
+
+  <section class="card">
+    <h2><i>2</i>📍 लोकेसन · Location</h2>
+    <p class="hint">एक ट्याप — फोनले तपाईं अहिले भएको ठाउँ पठाउँछ (कार्यालयले मात्र देख्छ)।</p>
+    <button type="button" class="btn ghost" id="geoBtn">📍 मेरो लोकेसन लिनुहोस् · Use my location</button>
+    <div class="geo-out" id="geoOut" aria-live="polite"></div>
+  </section>
+
+  <section class="card">
+    <h2><i>3</i>🪪 डकुमेन्ट · ID document</h2>
+    <label class="f"><span>डकुमेन्टको प्रकार · Type</span>
+      <select id="p_idtype"><option value="1">नागरिकता · Citizenship</option><option value="0">आधार · Aadhaar</option><option value="2">पासपोर्ट · Passport</option><option value="3">मतदाता परिचयपत्र · Voter ID</option><option value="4">अन्य · Other</option></select></label>
+    <label class="f"><span>डकुमेन्ट नम्बर · ID number <em>*</em></span><input type="text" id="p_idno" maxlength="40" autocomplete="off" required></label>
+    <div class="shot">
+      <div class="prev doc" id="docPrev">🪪</div>
+      <div><div class="pick"><span class="btn">📷 डकुमेन्टको फोटो खिच्नुहोस्</span><input type="file" id="docIn" accept="image/*" capture="environment" aria-label="Take a photo of the ID document"></div>
+      <p class="hint" style="margin:6px 0 0">अगाडिको भाग, उज्यालोमा, सबै अक्षर देखिने गरी।</p><div class="ok" id="docOk"></div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><i>4</i>🤳 तपाईंको फोटो · Your photo</h2>
+    <div class="shot">
+      <div class="prev" id="selfPrev">🙂</div>
+      <div><div class="pick"><span class="btn">🤳 फोटो खिच्नुहोस् · Take photo</span><input type="file" id="selfIn" accept="image/*" capture="user" aria-label="Take your photo"></div>
+      <p class="hint" style="margin:6px 0 0">अनुहार स्पष्ट देखिने, चस्मा/टोपी बिना।</p><div class="ok" id="selfOk"></div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><i>5</i>✍️ डिजिटल सही · Signature</h2>
+    <p class="hint">औंलाले तलको बाकसभित्र आफ्नो सही गर्नुहोस्।</p>
+    <div class="sigw" id="sigw"><canvas id="sig" aria-label="Sign here with your finger"></canvas><div class="line"></div><div class="ph">✍️ यहाँ सही गर्नुहोस् · Sign here</div></div>
+    <div class="sig-bar"><span class="ok" id="sigOk"></span><button type="button" class="btn ghost small" id="sigClear">↺ मेटाउनुहोस् · Clear</button></div>
+  </section>
+
+  <section class="card">
+    <label class="chk"><input type="checkbox" id="agree"><span>मैले दिएको विवरण साँचो हो। कार्यालयले मलाई फोन / WhatsApp गर्न सक्छ। <em style="color:var(--bad);font-style:normal">*</em></span></label>
+    <label class="chk"><input type="checkbox" id="public_ok"><span>स्वीकृत भएपछि मेरो नाम र पूरा फोन नम्बर वेबसाइटको एजेन्ट सूचीमा देखाउन सकिन्छ। (नत्र नम्बर लुकाइन्छ)</span></label>
+    <div class="hp" aria-hidden="true"><label>Website <input type="text" id="website" tabindex="-1" autocomplete="off"></label></div>
+    <p class="msg bad" id="msg" hidden role="alert"></p>
+  </section>
+  <p class="foot">🔒 फोटो, डकुमेन्ट र सही S Hari Global कार्यालयले मात्र हेर्छ — सार्वजनिक हुँदैन।<br><a href="/agreements/">पूरा सम्झौता पढ्नुहोस् · Read the full agreement</a> · <a href="/">होम · Home</a></p>
+  <div class="go"><button type="submit" class="btn" id="send">📨 फारम पठाउनुहोस् · Send application</button></div>
+</form>
+
+<section class="card done" id="done" hidden>
+  <div class="big">🎉</div>
+  <h2>फारम पुग्यो! · Application received</h2>
+  <div class="ref" id="ref"></div>
+  <p id="doneMsg" style="margin:0 0 14px"></p>
+  <a class="btn" href="/">🏠 होम पेज · Home</a>
+</section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { photo: null, doc: null, geo: null, csrf: null };
+
+  /* ---- CSRF + session cookie for the API ---- */
+  function token() {
+    if (state.csrf) return Promise.resolve(state.csrf);
+    return fetch('/api/agreement-apply.php', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { state.csrf = d && d.csrf; return state.csrf; });
+  }
+  token().catch(function () {});
+
+  /* ---- a camera / gallery photo, shrunk on the phone to send fast ---- */
+  function shrink(file, maxSide, maxBytes) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, maxSide / Math.max(w, h));
+        var c = document.createElement('canvas');
+        c.width = Math.round(w * k); c.height = Math.round(h * k);
+        var x = c.getContext('2d');
+        x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+        x.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        var q = 0.85, out = c.toDataURL('image/jpeg', q);
+        while (out.length * 0.75 > maxBytes && q > 0.4) { q -= 0.1; out = c.toDataURL('image/jpeg', q); }
+        resolve(out);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('not an image')); };
+      img.src = url;
+    });
+  }
+  function hookShot(inputId, prevId, okId, key, maxSide, maxBytes) {
+    $(inputId).addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      if (!f) return;
+      $(okId).textContent = '⏳ …';
+      shrink(f, maxSide, maxBytes).then(function (data) {
+        state[key] = data;
+        var p = $(prevId); p.style.backgroundImage = 'url(' + data + ')'; p.classList.add('has');
+        $(okId).textContent = '✓ फोटो तयार · ready (' + Math.round(data.length * 0.75 / 1024) + ' KB)';
+        try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
+      }).catch(function () { $(okId).textContent = '✗ फोटो खुलेन — फेरि खिच्नुहोस्'; });
+    });
+  }
+  hookShot('docIn', 'docPrev', 'docOk', 'doc', 1400, 420000);
+  hookShot('selfIn', 'selfPrev', 'selfOk', 'photo', 900, 260000);
+
+  /* ---- location ---- */
+  $('geoBtn').addEventListener('click', function () {
+    var out = $('geoOut');
+    if (!navigator.geolocation) { out.textContent = 'यो फोनले लोकेसन दिँदैन — ठेगाना मात्र भए पुग्छ।'; return; }
+    out.textContent = '⏳ लोकेसन खोज्दै…';
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var la = pos.coords.latitude.toFixed(6), ln = pos.coords.longitude.toFixed(6), acc = Math.round(pos.coords.accuracy || 0);
+      state.geo = la + ',' + ln + (acc ? ',' + acc : '');
+      out.innerHTML = '';
+      var ok = document.createElement('span'); ok.className = 'ok'; ok.textContent = '✓ लोकेसन मिल्यो (± ' + acc + ' m) · ';
+      var a = document.createElement('a'); a.href = 'https://www.google.com/maps?q=' + la + ',' + ln; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'नक्सामा हेर्नुहोस्';
+      out.appendChild(ok); out.appendChild(a);
+      try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
+    }, function () {
+      out.textContent = 'लोकेसन दिन अनुमति चाहिन्छ (Allow)। नदिए पनि ठेगानाले काम चल्छ।';
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+  });
+
+  /* ---- finger signature ---- */
+  var cv = $('sig'), wrap = $('sigw'), ctx = cv.getContext('2d'), drawing = false, inked = 0, last = null;
+  function sizeCanvas() {
+    var r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    var keep = inked ? cv.toDataURL() : null;
+    cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#0a2a8f'; ctx.lineWidth = 2.6;
+    if (keep) { var im = new Image(); im.onload = function () { ctx.drawImage(im, 0, 0, r.width, r.height); }; im.src = keep; }
+  }
+  sizeCanvas();
+  window.addEventListener('resize', function () { clearTimeout(sizeCanvas._t); sizeCanvas._t = setTimeout(sizeCanvas, 150); });
+  function pt(e) { var r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  cv.addEventListener('pointerdown', function (e) { e.preventDefault(); drawing = true; last = pt(e); try { cv.setPointerCapture(e.pointerId); } catch (er) {} ctx.beginPath(); ctx.arc(last.x, last.y, 1.2, 0, Math.PI * 2); ctx.fillStyle = '#0a2a8f'; ctx.fill(); });
+  cv.addEventListener('pointermove', function (e) {
+    if (!drawing) return;
+    e.preventDefault();
+    var p = pt(e);
+    ctx.beginPath(); ctx.moveTo(last.x, last.y);
+    ctx.quadraticCurveTo(last.x, last.y, (last.x + p.x) / 2, (last.y + p.y) / 2);
+    ctx.lineTo(p.x, p.y); ctx.stroke();
+    inked += Math.abs(p.x - last.x) + Math.abs(p.y - last.y);
+    last = p;
+    if (inked > 40) { wrap.classList.add('drawn'); $('sigOk').textContent = '✓ सही भयो · signed'; }
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (n) { cv.addEventListener(n, function () { drawing = false; }); });
+  $('sigClear').addEventListener('click', function () {
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.restore();
+    inked = 0; wrap.classList.remove('drawn'); $('sigOk').textContent = '';
+  });
+  function signaturePng() {
+    // white background, trimmed to the ink, at most 900 px wide
+    var w = cv.width, h = cv.height, d = ctx.getImageData(0, 0, w, h).data, x0 = w, y0 = h, x1 = 0, y1 = 0;
+    for (var y = 0; y < h; y += 2) for (var x = 0; x < w; x += 2) if (d[(y * w + x) * 4 + 3] > 20) { if (x < x0) x0 = x; if (y < y0) y0 = y; if (x > x1) x1 = x; if (y > y1) y1 = y; }
+    if (x1 <= x0 || y1 <= y0) return null;
+    var pad = 16; x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(w, x1 + pad); y1 = Math.min(h, y1 + pad);
+    var k = Math.min(1, 900 / (x1 - x0)), o = document.createElement('canvas');
+    o.width = Math.round((x1 - x0) * k); o.height = Math.round((y1 - y0) * k);
+    var ox = o.getContext('2d'); ox.fillStyle = '#fff'; ox.fillRect(0, 0, o.width, o.height);
+    ox.drawImage(cv, x0, y0, x1 - x0, y1 - y0, 0, 0, o.width, o.height);
+    return o.toDataURL('image/png');
+  }
+
+  /* ---- send ---- */
+  function say(t) { var m = $('msg'); m.textContent = t; m.hidden = !t; if (t) m.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+  function need(id, text) { var el = $(id); if (el) { el.setAttribute('aria-invalid', 'true'); el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } var m = $('msg'); m.textContent = text; m.hidden = false; return false; }
+  function check() {
+    document.querySelectorAll('[aria-invalid]').forEach(function (el) { el.removeAttribute('aria-invalid'); });
+    if ($('p_name').value.trim().length < 2) return need('p_name', 'कृपया पूरा नाम लेख्नुहोस्।');
+    var ph = $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
+    if (ph.length !== 10) return need('p_phone', 'कृपया १० अङ्कको मोबाइल नम्बर लेख्नुहोस्।');
+    if (!$('p_area').value.trim()) return need('p_area', 'काम गर्ने ठाउँ लेख्नुहोस्।');
+    if (!$('p_addr').value.trim()) return need('p_addr', 'ठेगाना लेख्नुहोस्।');
+    if (!$('p_idno').value.trim()) return need('p_idno', 'डकुमेन्ट नम्बर लेख्नुहोस्।');
+    if (!state.doc) return need('docIn', 'डकुमेन्टको फोटो खिच्नुहोस्।');
+    if (!state.photo) return need('selfIn', 'आफ्नो फोटो खिच्नुहोस्।');
+    if (inked <= 40) return need('sig', 'तलको बाकसमा औंलाले सही गर्नुहोस्।');
+    if (!$('agree').checked) return need('agree', 'विवरण साँचो हो भनी ✓ लगाउनुहोस्।');
+    return true;
+  }
+  $('ap').addEventListener('submit', function (e) {
+    e.preventDefault();
+    say('');
+    if (!check()) return;
+    var btn = $('send'); if (btn.disabled) return;
+    btn.disabled = true; var label = btn.textContent; btn.textContent = '⏳ पठाउँदै… · Sending…';
+    var phone = '+' + $('cc').value + $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
+    var body = {
+      type: 'ind', lang: 'ne', website: $('website').value, public_ok: $('public_ok').checked,
+      photo: state.photo, doc: state.doc, signature: signaturePng(), geo: state.geo,
+      fields: { p_name: $('p_name').value.trim(), p_phone: phone, p_area: $('p_area').value.trim(), p_addr: $('p_addr').value.trim(),
+                p_idtype: $('p_idtype').value, p_idno: $('p_idno').value.trim(), p_occ: 'Online form (photo + signature)' }
+    };
+    token().then(function (t) {
+      return fetch('/api/agreement-apply.php', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' }, body: JSON.stringify(body) });
+    }).then(function (r) { return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; }); })
+      .then(function (d) {
+        if (d && d.ok) {
+          $('ap').hidden = true; $('done').hidden = false;
+          $('ref').textContent = d.ref || '';
+          $('doneMsg').textContent = d.message || 'कार्यालयले छिट्टै फोन गर्नेछ।';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          try { if (navigator.vibrate) navigator.vibrate([12, 30, 12, 30, 40]); } catch (e) {}
+          return;
+        }
+        if (d && d.fields) { var k = Object.keys(d.fields)[0]; if (k && $(k)) $(k).setAttribute('aria-invalid', 'true'); }
+        if (d && d.code === 419) state.csrf = null;
+        say((d && (d.error || d.message)) || 'पठाउन सकिएन — फेरि प्रयास गर्नुहोस्।');
+      })
+      .catch(function () { say('इन्टरनेट जाँच गरेर फेरि पठाउनुहोस्।'); })
+      .then(function () { btn.disabled = false; btn.textContent = label; });
+  });
+})();
+</script>
+</body>
+</html>

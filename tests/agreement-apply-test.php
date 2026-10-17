@@ -20,7 +20,7 @@
  *       just past the real ones, the same ref for the same form, nothing
  *       stored; wrong forms (422) never lock a person out; the budgets
  *       (30 tries / 10 stored an hour per IP, 3 a day per phone, 30 an hour
- *       for the whole site, 10 office notes an hour) and a 1.5 MB body = 413
+ *       for the whole site, 10 office notes an hour) and a 2 MB body = 413 (18 Oct 2026: photo + document + signature)
  *    5. /api/agent-directory.php: an unapproved application is absent; an
  *       approved one shows the full phone with consent and a masked one
  *       without; no email / fields / photo / id ever appears; cached 5 min,
@@ -354,8 +354,8 @@ try {
         'HTTP ' . $r['code']);
     aa_reset_limits();
 
-    $big = aa_post($jar, $tok, ['type' => 'ind', 'lang' => 'en', 'fields' => $indFields, 'photo' => 'data:image/jpeg;base64,' . str_repeat('A', 1_600_000)]);
-    aa_check('a body over 1.5 MB = 413', $big['code'] === 413, 'HTTP ' . $big['code']);
+    $big = aa_post($jar, $tok, ['type' => 'ind', 'lang' => 'en', 'fields' => $indFields, 'photo' => 'data:image/jpeg;base64,' . str_repeat('A', 2_100_000)]);
+    aa_check('a body over 2 MB = 413', $big['code'] === 413, 'HTTP ' . $big['code']);
     aa_reset_limits();
 
     echo "\n=== 5. the public list ===\n";

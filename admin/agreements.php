@@ -250,6 +250,21 @@ if (!$ready) {
         <?php if (!empty($open['repeat_of_ref'])): ?><dt>Sent before</dt><dd>The same mobile sent <a href="<?= $h($keep(['id' => (int) $open['duplicate_of']])) ?>#detail" class="mono"><?= $h($open['repeat_of_ref']) ?></a> in the 24 hours before this one — compare the two (a corrected form, or somebody else using this number).</dd><?php endif; ?>
         <dt>Email</dt><dd><?= $h($open['email'] ?: '—') ?></dd>
         <dt>Work area</dt><dd><?= $h($open['area'] ?: '—') ?></dd>
+        <?php /* 18 Oct 2026: the simple online form's document photo, finger signature and phone location */ ?>
+        <?php if (!empty($open['geo']) && preg_match('/^(-?[\d.]+),(-?[\d.]+)(?:,(\d+))?$/', (string) $open['geo'], $gm) === 1): ?>
+        <dt>Location</dt><dd><a href="https://www.google.com/maps?q=<?= $h($gm[1] . ',' . $gm[2]) ?>" target="_blank" rel="noopener">📍 <?= $h($gm[1] . ', ' . $gm[2]) ?></a><?= isset($gm[3]) && $gm[3] !== '' ? ' <span class="muted text-xs">(± ' . $h($gm[3]) . ' m, from the phone)</span>' : '' ?></dd>
+        <?php endif; ?>
+        <?php foreach (['doc_photo' => 'ID document', 'signature' => 'Signature'] as $imgKey => $imgLabel): ?>
+          <?php if (!empty($open[$imgKey]) && str_starts_with((string) $open[$imgKey], 'data:image/')): ?>
+          <dt><?= $h($imgLabel) ?></dt><dd>
+            <?php if ($canKyc): ?>
+            <a href="<?= $h($open[$imgKey]) ?>" target="_blank" rel="noopener" download="<?= $h($open['ref'] . '-' . $imgKey) ?>"><img src="<?= $h($open[$imgKey]) ?>" alt="<?= $h($imgLabel) ?> of <?= $h($open['name']) ?>" style="max-width:260px;max-height:<?= $imgKey === 'signature' ? '110' : '200' ?>px;border:1px solid var(--line);border-radius:10px;background:#fff;display:block"></a>
+            <?php else: ?>
+            <span class="muted">Sent — shown to a manager only</span>
+            <?php endif; ?>
+          </dd>
+          <?php endif; ?>
+        <?php endforeach; ?>
         <dt>Sent on</dt><dd><?= $h(date('d M Y, H:i', (int) strtotime((string) $open['created_at']))) ?> · form in <?= $h(['ne' => 'Nepali', 'hi' => 'Hindi', 'en' => 'English'][(string) $open['lang']] ?? $open['lang']) ?></dd>
         <dt>Public list</dt><dd><?= (int) $open['public_ok'] === 1 ? 'Agreed — the full phone may be shown once approved' : 'Not agreed — the phone is shown masked (98•••••123) once approved' ?></dd>
         <dt>KYC · agreement</dt><dd><?= $kycPill((string) $open['kyc_status']) ?> <?= $agrPill((string) $open['agreement_status'], $open['agreement_end'] ?? null) ?></dd>

@@ -108,6 +108,7 @@ final class AgentApplications
     public const PHONE_MAX       = 13;
     public const PHOTO_MAX_BYTES = 614400;   // 600 KB decoded
     public const PHOTO_MIME      = ['image/jpeg', 'image/png', 'image/webp'];
+    public const SIG_MAX_BYTES   = 153600;   // 150 KB decoded - a finger signature PNG is ~10-40 KB
     public const TERM_MONTHS     = 11;       // the contract's term
     public const DEDUPE_HOURS    = 24;
 
@@ -211,6 +212,7 @@ final class AgentApplications
     private static ?bool $tableOk   = null;
     private static ?bool $profileOk = null;
     private static ?bool $kycOk     = null;
+    private static ?bool $extraOk   = null;
 
     /* =================================================================
      *  Schema presence — a page must never 500 because the migration has
@@ -272,10 +274,64 @@ final class AgentApplications
         return self::$kycOk;
     }
 
+    /**
+     * The simple online form's extras (18 Oct 2026): doc_photo, signature,
+     * geo - database/upgrade-2026-10-18-agent-apply-kyc.sql. Without them an
+     * application is still stored, just without those three.
+     */
+    public static function extraColumnsAvailable(): bool
+    {
+        if (self::$extraOk === null) {
+            try {
+                self::$extraOk = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'agent_applications'
+                        AND COLUMN_NAME IN ('doc_photo','signature','geo')",
+                    [], 0
+                ) === 3;
+            } catch (Throwable $e) {
+                self::$extraOk = false;
+            }
+        }
+        return self::$extraOk;
+    }
+
+    /**
+     * A finger signature: a real PNG / JPEG / WEBP of at most 150 KB, or
+     * nothing. Same checks as cleanPhoto(), smaller budget.
+     */
+    public static function cleanSignature(mixed $sig): ?string
+    {
+        if (!is_string($sig) || trim($sig) === '' || strlen($sig) > (int) (self::SIG_MAX_BYTES * 4 / 3) + 200) {
+            return null;
+        }
+        $c = self::cleanPhoto($sig);
+        if ($c['photo'] === null) {
+            return null;
+        }
+        $bin = base64_decode((string) substr((string) $c['photo'], (int) strpos((string) $c['photo'], ',') + 1), true);
+        return ($bin !== false && strlen($bin) <= self::SIG_MAX_BYTES) ? $c['photo'] : null;
+    }
+
+    /** "lat,lng[,accuracy]" from the phone -> "27.123456,81.123456,25" or null. */
+    public static function cleanGeo(mixed $geo): ?string
+    {
+        if (!is_string($geo) || preg_match('/^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)(?:\s*,\s*(\d{1,6}(?:\.\d+)?))?\s*$/', $geo, $m) !== 1) {
+            return null;
+        }
+        $lat = (float) $m[1];
+        $lng = (float) $m[2];
+        if ($lat < -90 || $lat > 90 || $lng < -180 || $lng > 180 || ($lat == 0.0 && $lng == 0.0)) {
+            return null;
+        }
+        $acc = isset($m[3]) && $m[3] !== '' ? (string) (int) round((float) $m[3]) : '';
+        return sprintf('%.6F,%.6F', $lat, $lng) . ($acc !== '' ? ',' . $acc : '');
+    }
+
     /** Tests and long-running scripts: forget the schema answers. */
     public static function resetCache(): void
     {
-        self::$tableOk = self::$profileOk = self::$kycOk = null;
+        self::$tableOk = self::$profileOk = self::$kycOk = self::$extraOk = null;
     }
 
     /* =================================================================
@@ -568,6 +624,7 @@ final class AgentApplications
         }
 
         $photo = self::cleanPhoto($in['photo'] ?? null);
+        $doc   = self::cleanPhoto($in['doc'] ?? null);
 
         $clean = [
             'type'       => $type,
@@ -581,6 +638,9 @@ final class AgentApplications
             'public_ok'  => filter_var($in['public_ok'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 1 : 0,
             'photo'      => $photo['photo'],
             'photo_note' => $photo['note'],
+            'doc'        => $doc['photo'],
+            'signature'  => self::cleanSignature($in['signature'] ?? null),
+            'geo'        => self::cleanGeo($in['geo'] ?? null),
         ];
 
         return ['ok' => $errors === [], 'errors' => $errors, 'clean' => $clean];
@@ -603,10 +663,18 @@ final class AgentApplications
         $photo = is_string($clean['photo'] ?? null) ? hash('sha256', (string) $clean['photo']) : '';
         $fields = is_array($clean['fields'] ?? null) ? $clean['fields'] : [];
         ksort($fields);
-        return hash('sha256', (string) json_encode([
+        $parts = [
             (string) ($clean['type'] ?? ''), (string) ($clean['lang'] ?? ''), (string) ($clean['phone'] ?? ''),
             $fields, (int) ($clean['public_ok'] ?? 0), $photo,
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        ];
+        // The simple form's extras join the fingerprint only when sent, so a
+        // form without them hashes exactly as before.
+        foreach (['doc', 'signature', 'geo'] as $k) {
+            if (is_string($clean[$k] ?? null) && $clean[$k] !== '') {
+                $parts[] = $k . ':' . hash('sha256', (string) $clean[$k]);
+            }
+        }
+        return hash('sha256', (string) json_encode($parts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
 
     /**
@@ -671,7 +739,16 @@ final class AgentApplications
         );
         $dupOf = $earlier !== null ? (int) ($earlier['duplicate_of'] ?: $earlier['id']) : 0;
 
-        $id = Database::insert('agent_applications', [
+        $extra = [];
+        if (self::extraColumnsAvailable()) {
+            $extra = [
+                'doc_photo' => is_string($clean['doc'] ?? null) ? $clean['doc'] : null,
+                'signature' => is_string($clean['signature'] ?? null) ? $clean['signature'] : null,
+                'geo'       => is_string($clean['geo'] ?? null) ? $clean['geo'] : null,
+            ];
+        }
+
+        $id = Database::insert('agent_applications', $extra + [
             'type'        => (string) $clean['type'],
             'lang'        => (string) $clean['lang'],
             'name'        => (string) $clean['name'],
