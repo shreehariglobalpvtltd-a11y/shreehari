@@ -951,7 +951,7 @@ final class Ticket
             if ($text === '' || !function_exists('imagesetclip')) {
                 return;
             }
-            $col   = imagecolorallocatealpha($im, 110, 84, 22, 117);   // gold-deep on the ivory card (9 Oct 2026)
+            $col   = imagecolorallocatealpha($im, 26, 68, 200, 120);   // faint royal on the white card (17 Oct 2026; gold-deep on ivory before)
             $font  = self::pngFont();
             $angle = 22;
             $unit  = $text . '     ·     ';
@@ -984,13 +984,13 @@ final class Ticket
             return;
         }
         $navy  = DocArt::col($im, DocArt::NAVY);
-        $gold  = DocArt::col($im, DocArt::GOLD);
+        $gold  = DocArt::col($im, self::P_ORG);   // the edge tab: brand orange (gold until 17 Oct 2026)
         $mut   = imagecolorallocate($im, 84, 96, 118);
-        $bg    = imagecolorallocate($im, 253, 246, 224);
-        $wave  = imagecolorallocate($im, 236, 220, 176);
-        DocArt::softShadow($im, $x1, $y1, $x2, $y2, 14, 7, 4, [90, 64, 12], 12);
+        $bg    = DocArt::col($im, self::PNG_TILE);
+        $wave  = imagecolorallocate($im, 206, 220, 248);
+        DocArt::softShadow($im, $x1, $y1, $x2, $y2, 14, 8, 4, [10, 42, 143], 12);
         self::gdRounded($im, $x1, $y1, $x2, $y2, 14, $bg);
-        DocArt::roundOutline($im, $x1, $y1, $x2, $y2, 14, $gold, 1);
+        DocArt::roundOutline($im, $x1, $y1, $x2, $y2, 14, DocArt::col($im, self::P_EDGE), 1);
         // guilloche: three sine hairlines across the tile — hard to retouch, cheap to draw
         for ($k = 0; $k < 3; $k++) {
             $py = null;
@@ -1555,6 +1555,69 @@ final class Ticket
     }
 
     /**
+     * The orange accent bar of the premium blue ticket (17 Oct 2026) - where
+     * the gold foil used to run: deep orange at the ends, light in the middle,
+     * like the lit edge of the homepage's glass panels.
+     */
+    private static function pngAccent($im, int $x1, int $y1, int $x2, int $y2): void
+    {
+        $w = max(1, $x2 - $x1);
+        for ($x = $x1; $x <= $x2; $x++) {
+            $t = abs(($x - $x1) / $w - 0.5) * 2;           // 0 in the middle, 1 at the ends
+            imageline($im, $x, $y1, $x, $y2, DocArt::col($im, DocArt::mix(self::P_ORG_L, self::P_ORG_D, $t)));
+        }
+    }
+
+    /** A perforation in the brand blue: soft dots, half-moon notches in the paper. */
+    private static function pngTear($im, int $x1, int $x2, int $y, array $page, int $notch = 18): void
+    {
+        $dot = DocArt::col($im, [150, 176, 232]);
+        for ($x = $x1 + $notch + 14; $x < $x2 - $notch - 14; $x += 22) {
+            imagefilledellipse($im, $x, $y, 7, 7, $dot);
+        }
+        $pc = DocArt::col($im, $page);
+        imagefilledellipse($im, $x1, $y, 2 * $notch, 2 * $notch, $pc);
+        imagefilledellipse($im, $x2, $y, 2 * $notch, 2 * $notch, $pc);
+        imagearc($im, $x1, $y, 2 * $notch, 2 * $notch, 270, 90, DocArt::col($im, self::P_EDGE));
+        imagearc($im, $x2, $y, 2 * $notch, 2 * $notch, 90, 270, DocArt::col($im, self::P_EDGE));
+    }
+
+    /**
+     * The route line between the two city codes (17 Oct 2026): an orange
+     * origin ring, a dashed royal line, an orange destination pin, and the
+     * S Hari coach (assets/img/ticket-coach.png, cut from the homepage's
+     * bus render) riding it towards the destination. No coach file = the
+     * line alone.
+     */
+    private static function pngRouteLine($im, int $x1, int $x2, int $y): void
+    {
+        $royal = DocArt::col($im, DocArt::ROYAL);
+        $org   = DocArt::col($im, self::P_ORG);
+        $orgD  = DocArt::col($im, self::P_ORG_D);
+        $white = DocArt::col($im, [255, 255, 255]);
+        for ($x = $x1 + 16; $x < $x2 - 16; $x += 18) {
+            imagefilledrectangle($im, $x, $y - 2, min($x + 10, $x2 - 16), $y + 2, $royal);
+        }
+        imagefilledellipse($im, $x1, $y, 26, 26, $orgD);
+        imagefilledellipse($im, $x1, $y, 14, 14, $white);
+        imagefilledellipse($im, $x1, $y, 8, 8, $org);
+        // the destination pin: a drop with a white eye
+        imagefilledellipse($im, $x2, $y - 16, 30, 30, $orgD);
+        imagefilledpolygon($im, [$x2 - 13, $y - 9, $x2 + 13, $y - 9, $x2, $y + 10], $orgD);
+        imagefilledellipse($im, $x2, $y - 16, 12, 12, $white);
+        $coach = DocArt::asset('assets/img/ticket-coach.png');
+        if ($coach !== null) {
+            $cw = 190;
+            $cx = (int) (($x1 + $x2) / 2) - intdiv($cw, 2) + 14;
+            // a soft road shadow under the wheels, then the coach on the line
+            for ($i = 0; $i < 6; $i++) {
+                imagefilledellipse($im, $cx + intdiv($cw, 2), $y + 1, $cw - 20 - $i * 12, 10 - $i, imagecolorallocatealpha($im, 10, 42, 143, 112 - $i * 2));
+            }
+            DocArt::placeImage($im, $coach, $cx, $y - 74, $cw, 76);
+        }
+    }
+
+    /**
      * The centred letterhead on top of the PNG ticket (15 Oct 2026, owner:
      * "logo thulo suru ma, tyesko tala company ko name"). $bandB is the
      * bottom of the navy band (the foil bar sits on it); everything is laid
@@ -1569,32 +1632,40 @@ final class Ticket
     private static function pngHeader($im, int $W, int $bandB, array $booking, array $co, array $issued, bool $toIndia): void
     {
         $navyHi = DocArt::col($im, DocArt::ROYAL);
-        $gold   = DocArt::col($im, DocArt::GOLD_LIGHT);
-        $goldM  = DocArt::col($im, DocArt::GOLD);
-        $goldD  = DocArt::col($im, DocArt::GOLD_DEEP);
+        /* PREMIUM BLUE (17 Oct 2026): the old gold accents on the band are
+           the logo's orange now - $gold is the light orange that reads on
+           navy, $goldM the brand orange, $goldD the deep orange. */
+        $gold   = DocArt::col($im, self::P_ORG_L);
+        $goldM  = DocArt::col($im, self::P_ORG);
+        $goldD  = DocArt::col($im, self::P_ORG_D);
         $green  = imagecolorallocate($im, 23, 122, 72);
         $red    = imagecolorallocate($im, 160, 32, 40);
         $white  = imagecolorallocate($im, 255, 255, 255);
-        $sub    = imagecolorallocate($im, 170, 185, 215);
+        $sub    = imagecolorallocate($im, 190, 205, 238);
 
-        DocArt::softShadow($im, 36, 36, $W - 36, $bandB, 24, 12, 6, [40, 30, 10], 12);
-        DocArt::gradBox($im, 36, 36, $W - 36, $bandB, 24, DocArt::NAVY, DocArt::ROYAL);
-        imagefilledrectangle($im, 36, $bandB - 12, $W - 36, $bandB, $navyHi);   // square foot (the foil bar sits on it)
+        DocArt::softShadow($im, 36, 36, $W - 36, $bandB, 24, 14, 8, [10, 42, 143], 16);
+        DocArt::gradBox($im, 36, 36, $W - 36, $bandB, 24, self::P_DEEP, DocArt::ROYAL);
+        imagefilledrectangle($im, 36, $bandB - 12, $W - 36, $bandB, $navyHi);   // square foot (the accent bar sits on it)
+        /* Light behind the emblem and an orange glow low right - the
+           homepage hero's blue halo and orange orb, in paint. */
+        DocArt::halo($im, (int) ($W / 2), self::PNG_EMBLEM_Y + 120, 380, 190, [47, 107, 255], 18, 0.30);
+        DocArt::halo($im, $W - 170, $bandB - 70, 220, 120, [240, 122, 30], 14, 0.20);
         /* A quiet Himalayan ridge along the foot of the band (9 Oct 2026). */
-        DocArt::peaks($im, 36, $bandB - 104, $W - 36, $bandB - 12, [30, 64, 128], [36, 72, 140], [84, 112, 166]);
-        /* Gold-foil DOUBLE rule round the band with corner ornaments, and
-           the MANTRA line at the very top (9 Oct 2026, owner: "bhagwan ko
-           mantra"), gold on a deeper navy strip inside the frame. */
-        DocArt::goldFrame($im, 42, 40, $W - 42, $bandB - 8, 4, 6, 14);
+        DocArt::peaks($im, 36, $bandB - 104, $W - 36, $bandB - 12, [24, 58, 150], [30, 66, 170], [96, 130, 214]);
+        /* A glass edge: one white hairline inside the band (the gold double
+           rule until 17 Oct 2026). The MANTRA line stays at the very top
+           (9 Oct 2026, owner: "bhagwan ko mantra"), white on a deep strip
+           between orange diamonds. */
+        DocArt::roundOutline($im, 44, 44, $W - 44, $bandB - 4, 18, DocArt::col($im, [255, 255, 255], 96), 1);
         $mantra = DocArt::mantraLine();
         if ($mantra !== '') {
-            DocArt::gradBox($im, 51, 51, $W - 51, 80, 0, [8, 18, 42], DocArt::NAVY);
-            imageline($im, 51, 81, $W - 51, 81, $goldM);
+            DocArt::gradBox($im, 51, 51, $W - 51, 80, 0, [4, 16, 50], self::P_DEEP);
+            self::pngAccent($im, 51, 81, $W - 51, 82);
             $mSz = 17;
             while ($mSz > 11 && self::gdWidth($mSz, $mantra) > $W - 260) { $mSz--; }
             $mw = self::gdWidth($mSz, $mantra);
             $mx = (int) (($W - $mw) / 2);
-            self::gdText($im, $mSz, $mx, 73, $gold, $mantra, false);
+            self::gdText($im, $mSz, $mx, 73, $white, $mantra, false);
             foreach ([$mx - 30, $mx + $mw + 30] as $dx) {
                 imagefilledpolygon($im, [$dx, 58, $dx + 8, 66, $dx, 74, $dx - 8, 66], $goldM);
                 imagefilledpolygon($im, [$dx, 61, $dx + 5, 66, $dx, 66], $gold);
@@ -1642,7 +1713,7 @@ final class Ticket
         $pSz = 16;
         while ($pSz > 11 && self::gdWidth($pSz, $pillTxt) + 40 > $embX + 50 - 60) { $pSz--; }   // the emblem's top-left corner is empty sky: the pill may run under its glow to x = embX + 50, clear of the globe
         $pw = self::gdWidth($pSz, $pillTxt) + 40;
-        self::gdRounded($im, 58, 97, 60 + $pw + 2, 133, 18, $goldM);
+        self::gdRounded($im, 58, 97, 60 + $pw + 2, 133, 18, $white);
         self::gdRounded($im, 60, 99, 60 + $pw, 131, 16, $pillCol);
         self::gdText($im, $pSz, 80, 122, $white, $pillTxt, true);
 
@@ -1657,8 +1728,8 @@ final class Ticket
         $chipX2 = $W - 60;
         $chipT  = $chipX2 - $chipX1 - 40;   // text width inside the chip
         DocArt::softShadow($im, $chipX1, 96, $chipX2, 196, 18, 8, 4, [0, 0, 0], 22);
-        DocArt::gradBox($im, $chipX1, 96, $chipX2, 196, 18, [10, 24, 54], DocArt::ROYAL);
-        DocArt::roundOutline($im, $chipX1, 96, $chipX2, 196, 18, $goldM, 2);
+        DocArt::gradBox($im, $chipX1, 96, $chipX2, 196, 18, self::P_DEEP, DocArt::NAVY);
+        DocArt::roundOutline($im, $chipX1, 96, $chipX2, 196, 18, DocArt::col($im, [255, 255, 255], 70), 2);
         self::gdText($im, 15, $chipX1 + 20, 126, $gold, $issued['label'], false);
         $iBig = $issued['kind'] === 'agent'
             ? $iCode
@@ -1857,14 +1928,20 @@ final class Ticket
         $im = imagecreatetruecolor($W, $H);
         imagealphablending($im, true);
 
-        /* GOLD palette (9 Oct 2026) — the shared DocArt values, so the
-           ticket and the chalani are one family. */
+        /* Palette - the shared DocArt navy/royal (the ticket and the chalani
+           stay one family), with the premium-blue accents below. */
         $navy   = DocArt::col($im, DocArt::NAVY);
         $navyHi = DocArt::col($im, DocArt::ROYAL);
-        $orange = DocArt::col($im, DocArt::MAROON);   // the old orange accents are maroon now
-        $gold   = DocArt::col($im, DocArt::GOLD_LIGHT);   // gold TEXT on navy - the light foil reads best
-        $goldM  = DocArt::col($im, DocArt::GOLD);
-        $goldD  = DocArt::col($im, DocArt::GOLD_DEEP);
+        /* PREMIUM BLUE (17 Oct 2026): the gold accents are the logo's orange.
+           $gold = light orange TEXT on navy, $goldM = brand orange (rims,
+           frames), $goldD = deep orange (text on white), $orange = the deep
+           orange that white text sits on. */
+        $orange = DocArt::col($im, self::P_ORG_D);
+        $gold   = DocArt::col($im, self::P_ORG_L);
+        $goldM  = DocArt::col($im, self::P_ORG);
+        $goldD  = DocArt::col($im, self::P_ORG_D);
+        $royal  = $navyHi;
+        $edge   = DocArt::col($im, self::P_EDGE);
         $green  = imagecolorallocate($im, 23, 122, 72);
         $red    = imagecolorallocate($im, 160, 32, 40);
         $ink    = DocArt::col($im, DocArt::INK);
@@ -1872,9 +1949,10 @@ final class Ticket
         $pageRgb = self::PNG_PAGE;
         $cream  = DocArt::col($im, $pageRgb);              // the paper around the card
         $white  = imagecolorallocate($im, 255, 255, 255);
-        $line   = DocArt::col($im, [232, 214, 170]);
+        $line   = DocArt::col($im, [220, 230, 250]);
         $tile   = DocArt::col($im, self::PNG_TILE);
         $sub    = DocArt::col($im, [196, 206, 228]);       // small print on navy
+        $cardRgb = self::PNG_CARD;
 
         imagefilledrectangle($im, 0, 0, $W, $H, $cream);
 
@@ -1908,38 +1986,49 @@ final class Ticket
         // painted flat against it — a soft shadow under the right and lower
         // edges is what makes the whole ticket read as a physical pass.
         $cardB = 1544 + $grow + $qrExt;
-        DocArt::softShadow($im, 36, 300, $W - 36, $cardB, 24, 14, 8, [70, 50, 10], 14);
-        self::gdRounded($im, 36, 262, $W - 36, $cardB, 24, DocArt::col($im, DocArt::CREAM));
-        imagefilledrectangle($im, 36, 262, $W - 36, 300, DocArt::col($im, DocArt::CREAM));        // square the join
-        imagefilledrectangle($im, 36, 254, $W - 36, 262, $goldM);
-        DocArt::goldFoil($im, 36, 254, $W - 36, 263);                    // the foil bar between band and card
+        DocArt::softShadow($im, 36, 300, $W - 36, $cardB, 24, 16, 10, [10, 42, 143], 16);
+        self::gdRounded($im, 36, 262, $W - 36, $cardB, 24, DocArt::col($im, $cardRgb));
+        imagefilledrectangle($im, 36, 262, $W - 36, 300, DocArt::col($im, $cardRgb));        // square the join
+        self::pngAccent($im, 36, 254, $W - 36, 263);                   // the orange bar between band and card (gold foil until 17 Oct 2026)
 
-        /* Mandala watermark (9 Oct 2026) — a faint gold rosette in the
-           middle of the ivory card, then the anti-fake microtext; both go
-           down before anything else lands on the card, so tiles and QRs
-           paint over them and the quiet zones stay clean. */
-        DocArt::mandala($im, (int) ($W / 2), 560, 300, DocArt::GOLD, 108);
-        DocArt::mandala($im, (int) ($W / 2), 1150 + $grow, 250, DocArt::GOLD, 114);
+        /* Rosette watermark (9 Oct 2026) — a very faint royal-blue rosette
+           on the white card, then the anti-fake microtext; both go down
+           before anything else lands on the card, so tiles and QRs paint
+           over them and the quiet zones stay clean. */
+        DocArt::mandala($im, (int) ($W / 2), 560, 300, DocArt::ROYAL, 118);
+        DocArt::mandala($im, (int) ($W / 2), 1150 + $grow, 250, DocArt::ROYAL, 120);
         $pnr = (string) $booking['pnr'];
         $wmName = strtoupper((string) (preg_split('/\s+/', self::latin((string) ($paxes[0]['full_name'] ?? ''))) ?: [''])[0]);
         self::gdWatermark($im, 40, 268, $W - 40, 1540 + $grow + $qrExt,
             implode('  ·  ', array_filter([$pnr, $wmName, (string) ($ticket['ticket_number'] ?? ''), self::latinUpper((string) $co['name'])], static fn(string $s): bool => $s !== '')));
-        // gold hairline inside the card edge + corner ornaments
-        DocArt::roundOutline($im, 46, 272, $W - 46, $cardB - 10, 18, $goldM, 1);
-        DocArt::corners($im, 46, 272, $W - 46, $cardB - 10, 12);
+        // a pale-blue hairline inside the card edge (gold + corner ornaments until 17 Oct 2026)
+        DocArt::roundOutline($im, 46, 272, $W - 46, $cardB - 10, 18, $edge, 1);
 
-        /* PNR hero */
+        /* PNR hero (17 Oct 2026): the PNR in a pale-blue capsule with a
+           royal rim - the one thing the crew and the office ask for. */
         self::gdText($im, 18, (int) (($W - self::gdWidth(18, 'टिकट / PNR')) / 2), 340, $mut, 'टिकट / PNR', false);
         $pnrW = self::gdWidth(44, $pnr) + 8;
+        $capX1 = (int) (($W - $pnrW) / 2) - 34;
+        $capX2 = (int) (($W + $pnrW) / 2) + 34;
+        DocArt::softShadow($im, $capX1, 352, $capX2, 426, 37, 8, 5, [10, 42, 143], 12);
+        self::gdRounded($im, $capX1, 352, $capX2, 426, 37, $royal);
+        self::gdRounded($im, $capX1 + 2, 354, $capX2 - 2, 424, 35, DocArt::col($im, [238, 244, 255]));
         self::gdText($im, 44, (int) (($W - $pnrW) / 2), 408, $navy, $pnr, true);
-        DocArt::goldFoil($im, (int) (($W - 200) / 2), 427, (int) (($W + 200) / 2), 433);
-        foreach ([(int) (($W - 200) / 2) - 12, (int) (($W + 200) / 2) + 12] as $dx) {
-            imagefilledpolygon($im, [$dx, 422, $dx + 8, 430, $dx, 438, $dx - 8, 430], $goldD);
-        }
+        self::pngAccent($im, (int) (($W - 120) / 2), 431, (int) (($W + 120) / 2), 435);
         if (!empty($ticket['ticket_number'])) {
             $tn = 'Ticket ' . (string) $ticket['ticket_number'];
-            self::gdText($im, 17, (int) (($W - self::gdWidth(17, $tn)) / 2), 466, $mut, $tn, false);
+            self::gdText($im, 17, (int) (($W - self::gdWidth(17, $tn)) / 2), 462, $mut, $tn, false);
         }
+        /* What was bought, in one badge under the ticket number: a whole
+           PRIVATE CABIN (orange) or a SHARING berth (royal); a seater coach
+           says SEAT. Nepali word, Roman name - the house ticket rule. */
+        $isSeater = strtolower((string) ($booking['coach_type'] ?? 'sleeper')) === 'seater';
+        $isPriv   = strtolower((string) ($booking['booking_mode'] ?? 'sharing')) === 'private';
+        $modeTxt  = $isSeater ? 'सिट  ·  SEATER COACH' : ($isPriv ? 'निजी केबिन  ·  PRIVATE CABIN' : 'सेयरिङ बर्थ  ·  SHARING BERTH');
+        $modeW    = self::gdWidth(16, $modeTxt) + 40;
+        $modeX    = (int) (($W - $modeW) / 2);
+        DocArt::gradBox($im, $modeX, 476, $modeX + $modeW, 510, 17, $isPriv ? self::P_ORG : DocArt::ROYAL, $isPriv ? self::P_ORG_D : DocArt::NAVY);
+        self::gdText($im, 16, $modeX + 20, 500, $white, $modeTxt, true);
 
         /* Route: big city codes + arrow — the passenger's OWN boarding and
            drop points, not the route's ends (tripEnds()). A Nana Chiloda
@@ -1960,12 +2049,8 @@ final class Ticket
         self::gdText($im, 56, $W - 120 - $tw, 590, $navy, $toC, true);
         $tw2 = self::gdWidth($nameSz, $toN);
         self::gdText($im, $nameSz, $W - 122 - $tw2, 630, $mut, $toN, false);
-        // arrow — gold foil shaft, gold head, a ringed origin dot
-        DocArt::goldFoil($im, 384, 565, 660, 573);
-        imagefilledpolygon($im, [658, 552, 658, 586, 694, 569], $goldD);
-        imagefilledpolygon($im, [662, 559, 662, 579, 684, 569], $goldM);
-        imagefilledellipse($im, 380, 569, 22, 22, $goldD);
-        imagefilledellipse($im, 380, 569, 12, 12, DocArt::col($im, DocArt::GOLD_LIGHT));
+        // the route line with the coach riding it (gold arrow until 17 Oct 2026)
+        self::pngRouteLine($im, 384, 690, 588);
 
         /* Date · pickup time · bus strip — the time the bus reaches THIS
            passenger's boarding point, which is what "DEP" means to them. */
@@ -1982,7 +2067,7 @@ final class Ticket
         self::gdText($im, $stripSz, (int) (($W - self::gdWidth($stripSz, $strip)) / 2), 690, $ink, $strip, true);
 
         /* Perforation — gold dots, half-moon notches in the paper colour */
-        DocArt::tearLine($im, 36, $W - 36, 727, $pageRgb, 18);
+        self::pngTear($im, 36, $W - 36, 727, $pageRgb, 18);
 
         /* ---- Detail tiles (2 columns) -------------------------------- */
         $lead   = self::displayOr((string) ($paxes[0]['full_name'] ?? ''));
@@ -2004,11 +2089,11 @@ final class Ticket
            in the PASSENGER tile while the list 130px below spelled the SAME
            name correctly. One image, two spellings of one passenger. */
         $tileRow = static function ($im2, int $x, int $y, int $w, string $label, string $value, $lab, $val, $bg, $fn, $fw) {
-            // Gold card (9 Oct 2026): soft lift, warm-white face, gold hairline, a gold tab.
-            DocArt::softShadow($im2, $x, $y, $x + $w, $y + 108, 14, 7, 4, [90, 64, 12], 12);
+            // Glass tile (17 Oct 2026): soft blue lift, pale-blue face, blue hairline, an orange tab.
+            DocArt::softShadow($im2, $x, $y, $x + $w, $y + 108, 14, 8, 4, [10, 42, 143], 12);
             $fn($im2, $x, $y, $x + $w, $y + 108, 14, $bg);
-            DocArt::roundOutline($im2, $x, $y, $x + $w, $y + 108, 14, DocArt::col($im2, [222, 192, 110]), 1);
-            imagefilledrectangle($im2, $x + 22, $y + 46, $x + 58, $y + 47, DocArt::col($im2, DocArt::GOLD));
+            DocArt::roundOutline($im2, $x, $y, $x + $w, $y + 108, 14, DocArt::col($im2, self::P_EDGE), 1);
+            imagefilledrectangle($im2, $x + 22, $y + 46, $x + 58, $y + 48, DocArt::col($im2, self::P_ORG));
             self::gdText($im2, 16, $x + 22, $y + 38, $lab, $label, false);
             /* Fit before cutting (6 Sep 2026): step the size 23 → 20 → 18
                first, so "Rupaidiha India-Nepal border" reads whole instead of
@@ -2062,14 +2147,15 @@ final class Ticket
            all seven are on it — so this is a numbered list, one row per
            passenger with their own berth, headed by the count in Nepali. */
         $panelY = 1020;
-        DocArt::softShadow($im, 60, $panelY, $W - 60, $panelY + $listH, 14, 7, 4, [90, 64, 12], 12);
+        DocArt::softShadow($im, 60, $panelY, $W - 60, $panelY + $listH, 14, 8, 4, [10, 42, 143], 12);
         self::gdRounded($im, 60, $panelY, $W - 60, $panelY + $listH, 14, $tile);
-        DocArt::roundOutline($im, 60, $panelY, $W - 60, $panelY + $listH, 14, DocArt::col($im, [222, 192, 110]), 1);
+        DocArt::roundOutline($im, 60, $panelY, $W - 60, $panelY + $listH, 14, $edge, 1);
+        imagefilledrectangle($im, 60, $panelY + 14, 65, $panelY + $listH - 14, $royal);   // a royal spine down the list
         self::gdText($im, 17, 82, $panelY + 38, $mut, 'यात्रु र सिट  ·  PASSENGERS & SEATS', false);
         $cntTxt = 'जम्मा ' . self::nepaliDigits((string) $paxN) . ' जना';
         $cntW   = self::gdWidth(25, $cntTxt) + 40;
-        self::gdRounded($im, $W - 84 - $cntW, $panelY + 10, $W - 80, $panelY + 60, 16, $goldM);
-        DocArt::gradBox($im, $W - 82 - $cntW, $panelY + 12, $W - 82, $panelY + 58, 14, DocArt::NAVY, DocArt::ROYAL);
+        self::gdRounded($im, $W - 84 - $cntW, $panelY + 10, $W - 80, $panelY + 60, 16, $white);
+        DocArt::gradBox($im, $W - 82 - $cntW, $panelY + 12, $W - 82, $panelY + 58, 14, self::P_ORG, self::P_ORG_D);
         self::gdText($im, 25, $W - 82 - $cntW + 20, $panelY + 46, $white, $cntTxt, true);
 
         $ly = $panelY + 60;
@@ -2086,13 +2172,13 @@ final class Ticket
             }
             $chipW2 = $sn !== '' ? self::gdWidth(21, $sn) + 34 : 0;
             if ($sn !== '') {
-                // maroon chip on a gold rim (9 Oct 2026)
+                // royal berth chip on an orange rim (17 Oct 2026; maroon on gold before)
                 self::gdRounded($im, $W - 84 - $chipW2, $ly, $W - 80, $ly + 42, 14, $goldM);
-                DocArt::gradBox($im, $W - 82 - $chipW2, $ly + 2, $W - 82, $ly + 40, 12, [150, 40, 56], DocArt::MAROON);
+                DocArt::gradBox($im, $W - 82 - $chipW2, $ly + 2, $W - 82, $ly + 40, 12, DocArt::ROYAL, DocArt::NAVY);
                 self::gdText($im, 21, $W - 82 - $chipW2 + 17, $ly + 31, $white, $sn, true);
             }
             if ($i > 0) {
-                imageline($im, 82, $ly - 2, $W - 100 - $chipW2, $ly - 2, DocArt::col($im, [236, 220, 180]));
+                imageline($im, 82, $ly - 2, $W - 100 - $chipW2, $ly - 2, $line);
             }
             self::gdText($im, 18, 82, $ly + 30, $mut, self::nepaliDigits((string) ($i + 1)) . '.', false);
             $nmMax = $W - 82 - $chipW2 - 20 - 130;
@@ -2111,11 +2197,11 @@ final class Ticket
            deepest treatment on the ticket: its own shadow, a navy gradient
            instead of a flat fill, and a gold hairline along the top edge
            that catches the eye the way a foil stripe does on a real pass. */
-        DocArt::softShadow($im, 60, 1152 + $grow, $W - 60, 1250 + $grow, 16, 10, 6, [20, 14, 4], 16);
-        self::gdRounded($im, 58, 1150 + $grow, $W - 58, 1252 + $grow, 18, $goldM);
-        DocArt::gradBox($im, 60, 1152 + $grow, $W - 60, 1250 + $grow, 16, DocArt::NAVY, DocArt::ROYAL);
-        DocArt::goldFoil($im, 76, 1152 + $grow, $W - 76, 1156 + $grow);
-        DocArt::guilloche($im, 560, 1170 + $grow, $W - 80, 1240 + $grow, DocArt::GOLD, 112, 4);
+        DocArt::softShadow($im, 60, 1152 + $grow, $W - 60, 1250 + $grow, 16, 12, 7, [10, 42, 143], 18);
+        self::gdRounded($im, 58, 1150 + $grow, $W - 58, 1252 + $grow, 18, $royal);
+        DocArt::gradBox($im, 60, 1152 + $grow, $W - 60, 1250 + $grow, 16, self::P_DEEP, DocArt::ROYAL);
+        self::pngAccent($im, 76, 1152 + $grow, $W - 76, 1156 + $grow);
+        DocArt::guilloche($im, 560, 1170 + $grow, $W - 80, 1240 + $grow, [255, 255, 255], 116, 4);
         self::gdText($im, 17, 88, 1192 + $grow, $gold, 'जम्मा भाडा  ·  TOTAL FARE', false);
         $amt = $currency . ' ' . number_format((float) ($booking['total_amount'] ?? 0), 2);
         self::gdText($im, 36, 88, 1236 + $grow, $white, $amt, true);
@@ -2180,12 +2266,12 @@ final class Ticket
         };
         /* The STUB (9 Oct 2026): a second perforated tear line between the
            fare and the three QR codes. */
-        DocArt::tearLine($im, 36, $W - 36, 1261 + $grow, $pageRgb, 14);
+        self::pngTear($im, 36, $W - 36, 1261 + $grow, $pageRgb, 14);
 
         self::gdText($im, 20, 76, 1300 + $grow, $navy, 'टिकट जाँच  ·  VERIFY', true);
         try {
             $vs = $qrFit($qrData, 245);
-            self::gdRounded($im, 68, 1312 + $grow, 84 + $vs, 1328 + $grow + $vs, 10, $goldM);
+            self::gdRounded($im, 68, 1312 + $grow, 84 + $vs, 1328 + $grow + $vs, 10, $royal);
             self::gdRounded($im, 70, 1314 + $grow, 82 + $vs, 1326 + $grow + $vs, 9, $white);
             $drawQr($qrData, 76, 1320 + $grow, 245);
         }
@@ -2204,7 +2290,7 @@ final class Ticket
         if ($mapsQr) {
             try {
                 $ms = $qrFit(self::pickupMapsUrl($geo), 190);
-                self::gdRounded($im, 340 - 4, 1330 + $grow - 4, 340 + $ms + 4, 1330 + $grow + $ms + 4, 8, $goldM);
+                self::gdRounded($im, 340 - 4, 1330 + $grow - 4, 340 + $ms + 4, 1330 + $grow + $ms + 4, 8, $royal);
                 self::gdRounded($im, 340 - 2, 1330 + $grow - 2, 340 + $ms + 2, 1330 + $grow + $ms + 2, 7, $white);
                 $drawQr(self::pickupMapsUrl($geo), 340, 1330 + $grow, 190);
                 self::gdText($im, 16, 340, 1545 + $grow, $navy, 'PICKUP MAP · नक्सा', true);
@@ -2225,24 +2311,22 @@ final class Ticket
 
         /* ---- PAYMENT card: mandatory, right half ---------------------- */
         $pcB = 1812 + $grow;
-        DocArt::softShadow($im, 550, 1270 + $grow, 1010, $pcB, 16, 10, 6, [70, 50, 10], 16);
+        DocArt::softShadow($im, 550, 1270 + $grow, 1010, $pcB, 16, 12, 7, [10, 42, 143], 16);
         self::gdRounded($im, 550, 1270 + $grow, 1010, $pcB, 16, $white);
-        DocArt::roundOutline($im, 550, 1270 + $grow, 1010, $pcB, 16, $goldM, 2);
-        DocArt::roundOutline($im, 556, 1276 + $grow, 1004, $pcB - 6, 12, DocArt::col($im, [230, 208, 150]), 1);
+        DocArt::roundOutline($im, 550, 1270 + $grow, 1010, $pcB, 16, $royal, 2);
+        DocArt::roundOutline($im, 556, 1276 + $grow, 1004, $pcB - 6, 12, $edge, 1);
         DocArt::gradBox($im, 556, 1276 + $grow, 1004, 1326 + $grow, 12,
-            $payQ['mode'] === 'due' ? [150, 40, 56] : DocArt::ROYAL, $payQ['mode'] === 'due' ? DocArt::MAROON : DocArt::NAVY);
+            $payQ['mode'] === 'due' ? self::P_ORG : DocArt::ROYAL, $payQ['mode'] === 'due' ? self::P_ORG_D : DocArt::NAVY);
         imagefilledrectangle($im, 556, 1316 + $grow, 1004, 1326 + $grow, $payQ['mode'] === 'due' ? $orange : $navy);
-        DocArt::goldFoil($im, 556, 1326 + $grow, 1004, 1329 + $grow);
+        self::pngAccent($im, 556, 1326 + $grow, 1004, 1329 + $grow);
         $badgeW = 0;
         if ($payQ['mode'] !== 'due' && $settlement['due'] <= 0) {
             /* PAID ✓ — a small gold-foil badge in the header (the tick is
                drawn: the shipped face has no U+2713). */
             $badgeW = self::gdWidth(16, 'PAID') + 58;
             $bx1 = 1004 - 12 - $badgeW;
-            self::gdRounded($im, $bx1 - 2, 1284 + $grow, 992 + 2, 1320 + $grow, 16, $goldD);
-            DocArt::goldFoil($im, $bx1 + 6, 1286 + $grow, 992 - 6, 1318 + $grow);
-            self::gdRounded($im, $bx1, 1286 + $grow, $bx1 + 16, 1318 + $grow, 8, DocArt::col($im, DocArt::foilAt(0.3)));
-            self::gdRounded($im, 976, 1286 + $grow, 992, 1318 + $grow, 8, DocArt::col($im, DocArt::foilAt(0.8)));
+            self::gdRounded($im, $bx1 - 2, 1284 + $grow, 992 + 2, 1320 + $grow, 16, DocArt::col($im, [255, 255, 255], 60));
+            self::gdRounded($im, $bx1, 1286 + $grow, 992, 1318 + $grow, 16, $white);
             self::gdText($im, 16, $bx1 + 14, 1309 + $grow, $navy, 'PAID', true);
             $tx = $bx1 + 14 + self::gdWidth(16, 'PAID') + 10;
             imagesetthickness($im, 4);
@@ -2270,7 +2354,7 @@ final class Ticket
             self::gdText($im, 18, 576, 1716 + $grow, $ink, $clampTo(18, 'UPI: ' . $upiVpa, 410), true);
             self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, $payQ['name'], 410), false);
         }
-        imageline($im, 576, 1756 + $grow, 984, 1756 + $grow, DocArt::col($im, [230, 208, 150]));
+        imageline($im, 576, 1756 + $grow, 984, 1756 + $grow, $edge);
         self::gdText($im, 18, 576, 1782 + $grow, $ink,
             'Paid: ' . $currency . ' ' . number_format($settlement['paid'], 2), true);
         $dueTxt = 'Due: ' . $currency . ' ' . number_format($settlement['due'], 2);
@@ -2286,7 +2370,7 @@ final class Ticket
         $supSz = 19;
         foreach ([19, 17, 15] as $try) { $supSz = $try; if (self::gdWidth($try, $supLine) <= 480) { break; } }
         self::gdText($im, $supSz, 60, 1398 + $grow + $qrExt - 90, $ink, $clampTo($supSz, $supLine, 480), true);
-        self::gdText($im, 18, 60, 1428 + $grow + $qrExt - 90, $goldD, self::latin($co['web']), true);
+        self::gdText($im, 18, 60, 1428 + $grow + $qrExt - 90, $royal, self::latin($co['web']), true);
         $wa = (string) $co['whatsapp'];
         if ($wa !== '') { self::gdText($im, 16, 60, 1456 + $grow + $qrExt - 90, $green, 'WhatsApp: +' . $wa, true); }
 
@@ -2299,14 +2383,14 @@ final class Ticket
            x stops at 540: the pay card (always drawn since 9 Oct 2026)
            starts at 550. */
         $tileR = 540;
-        DocArt::softShadow($im, 60, 1472 + $grow + $qrExt, $tileR, 1541 + $grow + $qrExt, 14, 7, 4, [90, 64, 12], 12);
+        DocArt::softShadow($im, 60, 1472 + $grow + $qrExt, $tileR, 1541 + $grow + $qrExt, 14, 8, 4, [10, 42, 143], 12);
         self::gdRounded($im, 60, 1472 + $grow + $qrExt, $tileR, 1541 + $grow + $qrExt, 14, $tile);
-        DocArt::roundOutline($im, 60, 1472 + $grow + $qrExt, $tileR, 1541 + $grow + $qrExt, 14, DocArt::col($im, [222, 192, 110]), 1);
-        imagefilledrectangle($im, 60, 1486 + $grow + $qrExt, 66, 1527 + $grow + $qrExt, $goldM);
+        DocArt::roundOutline($im, 60, 1472 + $grow + $qrExt, $tileR, 1541 + $grow + $qrExt, 14, $edge, 1);
+        imagefilledrectangle($im, 60, 1486 + $grow + $qrExt, 66, 1527 + $grow + $qrExt, $royal);
         self::gdText($im, 15, 82, 1500 + $grow + $qrExt, $mut, 'टिकट काट्ने  ·  ' . $issued['label'], false);
         $chip  = self::latinUpper($issued['code']);
         $chipW = self::gdWidth(20, $chip) + 34;
-        self::gdRounded($im, $tileR - 18 - $chipW, 1486 + $grow + $qrExt, $tileR - 14, 1530 + $grow + $qrExt, 14, $goldM);
+        self::gdRounded($im, $tileR - 18 - $chipW, 1486 + $grow + $qrExt, $tileR - 14, 1530 + $grow + $qrExt, 14, $white);
         self::gdRounded($im, $tileR - 16 - $chipW, 1488 + $grow + $qrExt, $tileR - 16, 1528 + $grow + $qrExt, 12, $orange);
         self::gdText($im, 20, $tileR - 16 - $chipW + 17, 1517 + $grow + $qrExt, $white, $chip, true);
         /* The parts are sanitised FIRST and the separator added after —
@@ -2357,13 +2441,13 @@ final class Ticket
             while ($bSz2 > 14 && self::gdWidth($bSz2, $blessing) > $W - 300) { $bSz2--; }
             $blW = self::gdWidth($bSz2, $blessing);
             $blX = (int) (($W - $blW) / 2);
-            self::gdText($im, $bSz2, $blX, $blY, $goldD, $blessing, true);
+            self::gdText($im, $bSz2, $blX, $blY, $navy, $blessing, true);
             foreach ([[$blX - 150, $blX - 30], [$blX + $blW + 30, $blX + $blW + 150]] as [$r1, $r2]) {
-                DocArt::goldFoil($im, $r1, $blY - 12, $r2, $blY - 9);
+                self::pngAccent($im, $r1, $blY - 12, $r2, $blY - 9);
             }
             foreach ([$blX - 18, $blX + $blW + 18] as $dx) {
                 imagefilledpolygon($im, [$dx, $blY - 19, $dx + 8, $blY - 11, $dx, $blY - 3, $dx - 8, $blY - 11], $orange);
-                imagefilledpolygon($im, [$dx, $blY - 15, $dx + 4, $blY - 11, $dx, $blY - 7, $dx - 4, $blY - 11], $goldM);
+                imagefilledpolygon($im, [$dx, $blY - 15, $dx + 4, $blY - 11, $dx, $blY - 7, $dx - 4, $blY - 11], $white);
             }
         }
 
@@ -2610,7 +2694,7 @@ final class Ticket
      *  the later of the two) to the moment it is applied - apply it AFTER the
      *  files are live. The integrator may still move both stamps to the
      *  deploy minute. */
-    private const PNG_LAYOUT_CHANGED = '2026-10-16 19:28:00';   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-10-17 13:56:00';   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
@@ -2641,8 +2725,19 @@ final class Ticket
 
     /* Gold ticket (9 Oct 2026): the paper round the card, the warm-white
        tile face, and the strip the blessing line adds under the footer. */
-    private const PNG_PAGE    = [241, 230, 204];
-    private const PNG_TILE    = [255, 253, 246];
+    /* PREMIUM BLUE (17 Oct 2026, owner: "ticket wala ni dekhesau, kei update
+       garna milcha bhane gardinus" - match the new homepage): the logo's
+       royal blue / navy / orange on white, the cream + gold foil retired on
+       the PNG. A cool blue-white paper, a white card, pale-blue tiles. The
+       PDF keeps its own palette. */
+    private const PNG_PAGE    = [232, 238, 250];
+    private const PNG_TILE    = [243, 247, 255];
+    private const PNG_CARD    = [255, 255, 255];
+    private const P_DEEP      = [6, 26, 74];       // --p3-navy
+    private const P_ORG       = [240, 122, 30];    // --p3-org  #f07a1e
+    private const P_ORG_D     = [212, 87, 12];     // --p3-org-d (white text sits on this)
+    private const P_ORG_L     = [255, 178, 102];   // orange text on navy
+    private const P_EDGE      = [200, 214, 244];   // tile hairline
     private const PNG_BLESS_H = 64;
     /* 10 Oct 2026 (trust): the two statutory small-print rows under the
        address (issue time, computer-generated, verify + refund pointers) -

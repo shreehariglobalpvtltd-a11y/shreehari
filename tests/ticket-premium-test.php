@@ -252,7 +252,8 @@ try {
         $rgb = static function ($im, int $x, int $y): array { $c = imagecolorat($im, $x, $y); return [($c >> 16) & 255, ($c >> 8) & 255, $c & 255]; };
         /* Tile face colour: [246,248,252] until the GOLD template (9 Oct
            2026) made the tiles warm white on the ivory card (Ticket::PNG_TILE). */
-        $isTile = static fn(array $c): bool => $c === [255, 253, 246];
+        /* 17 Oct 2026 (premium blue): pale-blue tiles [243,247,255] on a white card. */
+        $isTile = static fn(array $c): bool => $c === [243, 247, 255];
         check('right-hand tiles end inside the card (x=1030 is not tile colour)', !$isTile($rgb($im, 1030, 800 + $hx)) && !$isTile($rgb($im, 1030, 950 + $hx)) && $isTile($rgb($im, 1010, 800 + $hx)),
             json_encode([$rgb($im, 1030, 800 + $hx), $rgb($im, 1010, 800 + $hx)]));
         $grow = max(0, (60 + 3 * 44 + 16) - 108);
