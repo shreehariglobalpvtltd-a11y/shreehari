@@ -5,7 +5,7 @@
 
    Four small things, all decoration, none of them a booking path:
      1. reveal: blocks below the fold slide up the first time they are seen
-        (.p3-rv -> .p3-in, IntersectionObserver; siblings stagger by --p3-i).
+        (.p3-rv -> .p3-seen, IntersectionObserver; siblings stagger by --p3-i).
         Nothing is hidden unless the observer runs (html.p3-fx), so a browser
         without it, reduced motion and a low-tier device see the plain page.
      2. progress: --p3-prog (0..1) on <html> - the brand hairline under the
@@ -33,10 +33,10 @@
   var io = new IntersectionObserver(function (entries) {
     entries.forEach(function (en) {
       if (!en.isIntersecting) return;
-      en.target.classList.add('p3-in');
+      en.target.classList.add('p3-seen');
       io.unobserve(en.target);
     });
-  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.05 });
+  }, { rootMargin: '0px 0px 18% 0px', threshold: 0 });
   /* belt and braces: a throttled observer or a paused rAF (background tab, slow
      phone) must never leave a block that is on screen invisible - the pending
      ones are checked on every scroll and once a second while any remain */
@@ -46,7 +46,7 @@
     var vh = window.innerHeight || 800, keep = [];
     for (var i = 0; i < pending.length; i++) {
       var el = pending[i], b = el.getBoundingClientRect();
-      if (b.top < vh * 0.92 && b.bottom > 0) { el.classList.add('p3-in'); io.unobserve(el); } else keep.push(el);
+      if (b.top < vh * 1.15 && b.bottom > 0) { el.classList.add('p3-seen'); io.unobserve(el); } else keep.push(el);
     }
     pending = keep;
     if (!tick && pending.length) tick = setInterval(checkPending, 1000);
@@ -57,11 +57,11 @@
       if (el._p3rv) return;
       el._p3rv = true;
       var i = 0, s = el;
-      while ((s = s.previousElementSibling) && i < 8) i++;
+      while ((s = s.previousElementSibling) && i < 4) i++;
       el.style.setProperty('--p3-i', String(i));
       el.classList.add('p3-rv');
       var r = el.getBoundingClientRect();
-      if (r.top < h * 0.9 && r.bottom > 0) { el.classList.add('p3-in'); return; }   /* already on screen: never hide it */
+      if (r.top < h * 1.1 && r.bottom > 0) { el.classList.add('p3-seen'); return; }   /* already on screen: never hide it */
       pending.push(el);
       io.observe(el);
     });

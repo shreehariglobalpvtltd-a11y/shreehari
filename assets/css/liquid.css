@@ -1,0 +1,154 @@
+/* =====================================================================
+   liquid.css — "water / liquid display" feel (17 Oct 2026, owner:
+   "animation fast + smooth, water liquid jasto feel, vibrate on/off,
+   home ko blue akshar ramro dekhiyos, ticket ko route line white,
+   mobile ma box + Book now ramro, ticket aauda premium").
+
+   Loads after hyperos.css, before perf.css + depth.css. Colour, light and
+   motion only: no id, hook, label or control of the booking flow changes.
+   The touch / scroll colour drops + vibration live in 31-liquid.js.
+   ===================================================================== */
+:root{
+  --lq-spring:cubic-bezier(.2,1.28,.32,1);     /* a little overshoot, like water settling */
+  --lq-ease:cubic-bezier(.22,1,.36,1);
+  --lq-blue:#2f6bff; --lq-sky:#22c7ff; --lq-org:#ff8a2b; --lq-gold:#ffc23d; --lq-mint:#18c98b; --lq-pink:#ff4f9a; --lq-violet:#8a5cff;
+}
+
+/* ---------------------------------------------------------------------
+   1. LIGHTER + FASTER. The scroll reveal starts before a block reaches the
+      screen (29-scrollfx.js rootMargin) and settles with a spring in about
+      half the old time, so a fast scroll never shows an empty gap.
+   --------------------------------------------------------------------- */
+html.p3-fx .p3-rv{transition:transform .62s var(--lq-spring),opacity .38s var(--lq-ease),box-shadow .3s var(--lq-ease);transition-delay:calc(var(--p3-i,0) * 45ms)}
+html.p3-fx .p3-rv:not(.p3-seen){opacity:0;transform:translate3d(0,22px,0) scale(.97)}
+html.p3-fx .p3-rv.p3-seen{opacity:1;transform:none}
+html.p3-fx .p3-rv.p3-seen:hover{transition-delay:0s;transition-duration:.28s}
+/* the older showcase reveal (21-showcase.js .sc-in) settles on the same spring */
+html.sc-io .sc-reveal,#homeFeat.sc-stagger .sc-perks > li{transition:opacity .38s var(--lq-ease),transform .6s var(--lq-spring)}
+
+/* the aurora blobs were blurred with a 40-60 px filter on a full-screen fixed
+   layer - the single most expensive paint on a phone. The radial gradients
+   are already soft; drop the filter and the third blob on phones. */
+.p3-aurora i{filter:none !important}
+@media (max-width:859px){ .p3-aurora i:nth-child(3){display:none} }
+
+/* below-the-fold home sections skip layout + paint until they come near
+   the screen (content-visibility). The map and the animated route are left
+   alone - they measure themselves. */
+@supports (content-visibility:auto){
+  #view-home > #homeFares,#view-home > #homeRoute,#view-home > #homeIndiaNepal,#view-home > #homeExplore,
+  #view-home > #homeBiz,#view-home > #homeCeo,#view-home > #trust,#view-home > #agrBar{content-visibility:auto;contain-intrinsic-size:auto 760px}
+}
+
+/* ---------------------------------------------------------------------
+   2. READABLE LETTERS. In the dark theme SmartBook's chips, choices and
+      links were royal blue (#1a44c8) on navy - 2.2:1, hard to read.
+      They are white / ice-blue now; the light theme is unchanged.
+   --------------------------------------------------------------------- */
+:root[data-theme="dark"] #smartBook .sb-qline span{color:#fff;background:linear-gradient(180deg,rgba(120,160,255,.2),rgba(47,107,255,.08));border-color:rgba(140,180,255,.38);text-shadow:0 1px 2px rgba(0,0,0,.35)}
+:root[data-theme="dark"] #smartBook .sb-qline span:first-child{background:linear-gradient(120deg,#1f4fe0,#0a2a8f);border-color:rgba(255,255,255,.3);font-weight:800}
+:root[data-theme="dark"] #smartBook .sb-qline button{color:#cfe0ff}
+:root[data-theme="dark"] #smartBook :is(.sb-chip.on,.sb-dir-b.on,.sb-seg button.on,.sb-seatline b,.sb-p .sb-g.m,.sb-suggest button,.sb-alt button,.sb-qhelp,.sb-near,.sb-agent-other:not(.on)){color:#fff}
+:root[data-theme="dark"] #smartBook .sb-chip.on{border-color:#6f9bff;box-shadow:0 0 0 1px rgba(111,155,255,.35),0 6px 16px -8px rgba(47,107,255,.8)}
+:root[data-theme="dark"] #smartBook .sb-tk-pnr{color:#fff;text-shadow:0 0 18px rgba(111,155,255,.55)}
+
+/* ---------------------------------------------------------------------
+   3. THE TICKET. The route line (Surat → Rupaidiha / Nepal → India) sits
+      on a royal-blue ribbon in white, in every theme. When a ticket lands
+      a wave of light runs over the ribbon, a ring spreads, the PNR pulses
+      (the 12D laser + 360 of 30-hyperos.js still play on the card itself).
+   --------------------------------------------------------------------- */
+#smartBook .sb-tk-h{position:relative;overflow:hidden;padding:12px 14px;border-radius:16px;color:#fff;
+  background:linear-gradient(120deg,#0a2a8f 0%,#1f4fe0 55%,#2f6bff 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 10px 24px -12px rgba(10,42,143,.85)}
+#smartBook .sb-tk-h b,#smartBook .sb-tk-h small,#smartBook .sb-tk-h div{color:#fff !important;-webkit-text-fill-color:#fff}
+#smartBook .sb-tk-h small{opacity:.95;font-weight:700;letter-spacing:.01em}
+#smartBook .sb-tk-h .sb-tk-fast{color:#0a2a8f !important;-webkit-text-fill-color:#0a2a8f;background:#fff}
+#smartBook .sb-tk-h::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.35) 46%,transparent 62%);transform:translateX(-120%)}
+#smartBook .sb-tk.lq-land .sb-tk-pnr{animation:lqPnr 1.4s .35s var(--lq-ease) both}
+#smartBook .sb-tk.lq-land .sb-tk-h::after{animation:lqWave 1.3s .25s var(--lq-ease) both}
+#smartBook .sb-tk.lq-land::before{content:"";position:absolute;left:50%;top:40px;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;pointer-events:none;z-index:3;
+  border:2px solid rgba(111,155,255,.8);animation:lqRing 1s .1s var(--lq-ease) both}
+@keyframes lqPnr{0%{box-shadow:0 0 0 0 rgba(47,107,255,.65)}100%{box-shadow:0 0 0 18px rgba(47,107,255,0)}}
+@keyframes lqWave{to{transform:translateX(120%)}}
+@keyframes lqRing{0%{transform:scale(.2);opacity:1}100%{transform:scale(9);opacity:0}}
+
+/* ---------------------------------------------------------------------
+   4. THE BOOK BAR (phones). The two keys share the width evenly, the
+      second line never spills out of the key, and a key that is waiting
+      for the name / mobile stays bright (it only looked broken faded).
+   --------------------------------------------------------------------- */
+@media (max-width:767px){
+  #smartBook .sb-bar{gap:6px;padding:8px 10px}
+  #smartBook .sb-bar-sum{flex:0 0 auto;width:64px;max-width:64px}
+  #smartBook .sb-bar-sum b{font-size:16px}
+  #smartBook .sb-bar-sum small{font-size:10px}
+  #smartBook .sb-pay{flex:1 1 0;min-width:0;min-height:52px;padding:5px 6px;border-radius:14px}
+  #smartBook .sb-pay span{font-size:clamp(12.5px,3.7vw,15px);letter-spacing:0;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  #smartBook .sb-pay small{display:block;max-width:100%;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
+#smartBook .sb-pay.sb-wait{opacity:.94;filter:none}
+/* the keys keep their own gloss + shine (smartbook.css); this sheen is for the WhatsApp card */
+@keyframes lqSheen{0%,55%{background-position:120% 0}100%{background-position:-120% 0}}
+
+/* ---------------------------------------------------------------------
+   5. MOBILE BOXES. Cards and tiles keep one clean column rhythm, equal
+      gutters and rounded glass; nothing pokes out of the screen.
+   --------------------------------------------------------------------- */
+@media (max-width:600px){
+  #view-home .hx-tile,#view-home .hx-card,#topHero .th-card,#homeHero .hh-card{border-radius:18px}
+  #view-home .hx-tile,#view-home .hx-card{min-width:0;overflow:hidden}
+  #view-home img{max-width:100%}
+  #smartBook .sb-qline{gap:6px}
+  #smartBook .sb-qline span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+
+/* ---------------------------------------------------------------------
+   6. WHATSAPP TICKET CARD on the home page, right under SmartBook (owner:
+      send name + mobile on WhatsApp, the office books). It opens the same
+      #waSheet request form as the green button.
+   --------------------------------------------------------------------- */
+#view-home > .wa-ticket-highlight{display:flex !important;order:-1 !important;margin:12px auto 6px;position:relative;overflow:hidden}
+#view-home > .wa-ticket-highlight::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.22) 50%,transparent 65%);background-size:260% 100%;animation:lqSheen 5s ease-in-out infinite}
+#view-home > .wa-ticket-highlight .btn-wa{position:relative;z-index:1}
+@media (max-width:680px){
+  #view-home > .wa-ticket-highlight{padding:14px;gap:10px;border-radius:18px;width:calc(100% - 44px);box-sizing:border-box}
+  #view-home > .wa-ticket-highlight h2{font-size:17px;margin:0 0 2px}
+  #view-home > .wa-ticket-highlight p{font-size:12.5px;margin:0;line-height:1.4}
+  #view-home > .wa-ticket-highlight .wa-ticket-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  #view-home > .wa-ticket-highlight .wa-ticket-actions > *{min-height:46px;font-size:13px}
+}
+
+/* ---------------------------------------------------------------------
+   7. LIQUID TOUCH. 31-liquid.js drops a coloured ripple where a finger
+      lands (.lq-drop, colour from --lq-c) and squishes the touched block
+      (.lq-squish) like jelly; the coaches bounce (.lq-bob).
+   --------------------------------------------------------------------- */
+.lq-layer{position:fixed;inset:0;z-index:2147483000;pointer-events:none;overflow:hidden;contain:strict}
+.lq-drop{position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;pointer-events:none;z-index:5;
+  background:radial-gradient(circle,color-mix(in srgb,var(--lq-c,#2f6bff) 60%,#fff) 0%,var(--lq-c,#2f6bff) 38%,transparent 70%);
+  mix-blend-mode:screen;opacity:.85;animation:lqDrop .7s var(--lq-ease) forwards}
+.lq-drop.lq-ring{background:none;border:2px solid var(--lq-c,#2f6bff);mix-blend-mode:normal;animation:lqDropRing .8s var(--lq-ease) forwards}
+@keyframes lqDrop{to{transform:scale(14);opacity:0}}
+@keyframes lqDropRing{0%{transform:scale(.6);opacity:.9}100%{transform:scale(10);opacity:0}}
+.lq-squish{animation:lqSquish .5s var(--lq-spring)}
+@keyframes lqSquish{0%{transform:scale(1)}30%{transform:scale(.965,.95)}65%{transform:scale(1.015,1.02)}100%{transform:scale(1)}}
+.lq-bob{animation:lqBob .7s var(--lq-spring)}
+@keyframes lqBob{0%{transform:translate3d(0,0,0)}25%{transform:translate3d(0,-10px,0) rotate(-1deg)}55%{transform:translate3d(0,3px,0) rotate(.5deg)}100%{transform:none}}
+/* the colour glow that runs along a coach / band while it is touched or scrolled past */
+.lq-glow{box-shadow:0 0 0 2px color-mix(in srgb,var(--lq-c,#2f6bff) 70%,transparent),0 0 34px -4px var(--lq-c,#2f6bff) !important;transition:box-shadow .35s var(--lq-ease)}
+
+/* the vibration switch pill on the hero band */
+.lq-vib{position:absolute;top:8px;right:8px;z-index:6;display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:999px;
+  border:1px solid rgba(255,255,255,.35);background:rgba(8,20,48,.55);color:#fff;font:700 12px/1 var(--font-sans,system-ui);cursor:pointer;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);box-shadow:0 4px 14px -6px rgba(0,0,0,.6)}
+.lq-vib[aria-pressed="false"]{opacity:.75}
+.lq-vib[aria-pressed="false"] b{text-decoration:line-through}
+.lq-vib:focus-visible{outline:3px solid #ffc23d;outline-offset:2px}
+
+/* stillness: the in-app Motion switch turns every liquid effect off */
+:root[data-motion="reduced"] :is(.lq-drop,.lq-squish,.lq-bob,#smartBook .sb-tk.lq-land .sb-tk-pnr,#smartBook .sb-tk.lq-land::before,#smartBook .sb-tk.lq-land .sb-tk-h::after,#view-home > .wa-ticket-highlight::after){animation:none !important}
+:root[data-motion="reduced"] .lq-drop{display:none}
+html[data-tier="low"] #view-home > .wa-ticket-highlight::after{animation:none}
