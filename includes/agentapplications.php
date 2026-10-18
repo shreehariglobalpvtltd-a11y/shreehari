@@ -214,6 +214,7 @@ final class AgentApplications
     private static ?bool $kycOk     = null;
     private static ?bool $extraOk   = null;
     private static ?bool $verifyOk  = null;
+    private static ?bool $webOk     = null;
 
     /* =================================================================
      *  Schema presence — a page must never 500 because the migration has
@@ -319,6 +320,28 @@ final class AgentApplications
     }
 
     /**
+     * The website card (19 Oct 2026): web_live, web_photo, web_addr, web_key
+     * - database/upgrade-2026-10-19-agent-website-card.sql. Without them the
+     * list works as before (approved = listed, no photo, no address).
+     */
+    public static function webColumnsAvailable(): bool
+    {
+        if (self::$webOk === null) {
+            try {
+                self::$webOk = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'agent_applications'
+                        AND COLUMN_NAME IN ('web_live','web_photo','web_addr','web_key')",
+                    [], 0
+                ) === 4;
+            } catch (Throwable $e) {
+                self::$webOk = false;
+            }
+        }
+        return self::$webOk;
+    }
+
+    /**
      * A finger signature: a real PNG / JPEG / WEBP of at most 150 KB, or
      * nothing. Same checks as cleanPhoto(), smaller budget.
      */
@@ -353,7 +376,7 @@ final class AgentApplications
     /** Tests and long-running scripts: forget the schema answers. */
     public static function resetCache(): void
     {
-        self::$tableOk = self::$profileOk = self::$kycOk = self::$extraOk = self::$verifyOk = null;
+        self::$tableOk = self::$profileOk = self::$kycOk = self::$extraOk = self::$verifyOk = self::$webOk = null;
     }
 
     /* =================================================================
@@ -772,6 +795,12 @@ final class AgentApplications
         if (is_string($clean['doc_verify'] ?? null) && $clean['doc_verify'] !== '' && self::verifyColumnAvailable()) {
             $extra['doc_verify'] = mb_substr((string) $clean['doc_verify'], 0, 255, 'UTF-8');
         }
+        // 19 Oct 2026: the applicant's "show me on the website" tick also
+        // lets the office show the photo; nothing is public before approval.
+        if (self::webColumnsAvailable()) {
+            $extra['web_photo'] = (int) $clean['public_ok'] === 1 && is_string($clean['photo'] ?? null) ? 1 : 0;
+            $extra['web_key']   = self::newWebKey();
+        }
 
         $id = Database::insert('agent_applications', $extra + [
             'type'        => (string) $clean['type'],
@@ -857,7 +886,8 @@ final class AgentApplications
         $limit = max(1, min(1000, $limit));
 
         return Database::fetchAll(
-            'SELECT a.id, a.ref, a.type, a.lang, a.name, a.phone, a.email, a.area, a.public_ok,
+            'SELECT a.id, a.ref, a.type, a.lang, a.name, a.phone, a.email, a.area, a.public_ok, '
+                . (self::webColumnsAvailable() ? 'a.web_live, a.web_photo' : '1 AS web_live, 0 AS web_photo') . ',
                     a.status, a.kyc_status, a.agreement_status, a.agreement_signed_at, a.agreement_end,
                     a.admin_id, a.note, a.reviewed_by, a.reviewed_at, a.created_at, a.duplicate_of,
                     (a.photo IS NOT NULL) AS has_photo, ad.full_name AS admin_name, o.ref AS repeat_of_ref
@@ -1057,6 +1087,308 @@ final class AgentApplications
         return $changed;
     }
 
+    /* =================================================================
+     *  The website card + office add / edit / remove (19 Oct 2026, owner:
+     *  "admin le add remove edit manage garna milos ... name ra photo
+     *  sahit address rakher live gardinu ... kyc garda bank account ni")
+     * ================================================================= */
+
+    /** The KYC / bank fields the office may type or correct (kept in fields_json). */
+    public const OFFICE_KYC_FIELDS = ['p_addr', 'p_idtype', 'p_idno', 'p_pan', 'b_name', 'b_bank', 'b_acc', 'b_ifsc', 'b_upi'];
+
+    public static function newWebKey(): string
+    {
+        return bin2hex(random_bytes(10));
+    }
+
+    /**
+     * A photo the office uploaded (one $_FILES entry): any JPEG / PNG / WEBP
+     * the phone or PC gives, shrunk to at most 640 px and stored as a JPEG
+     * data: URI like the online form's photo. null = no file chosen.
+     *
+     * @param array<string, mixed>|null $file
+     */
+    public static function photoFromUpload(?array $file): ?string
+    {
+        if ($file === null || (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return null;
+        }
+        if ((int) ($file['error'] ?? 1) !== UPLOAD_ERR_OK || !is_uploaded_file((string) ($file['tmp_name'] ?? ''))) {
+            throw new AgreementError('The photo did not arrive — please choose it again.');
+        }
+        if ((int) ($file['size'] ?? 0) > 12 * 1024 * 1024) {
+            throw new AgreementError('That photo is over 12 MB — please choose a smaller one.');
+        }
+        $bin = (string) file_get_contents((string) $file['tmp_name']);
+        return self::shrinkPhoto($bin);
+    }
+
+    /** Raw image bytes -> a JPEG data: URI of at most 640 px (GD), or an AgreementError. */
+    public static function shrinkPhoto(string $bin): string
+    {
+        $info = @getimagesizefromstring($bin);
+        if (!is_array($info) || !in_array((string) ($info['mime'] ?? ''), self::PHOTO_MIME, true)) {
+            throw new AgreementError('That file is not a photo (JPG, PNG or WEBP).');
+        }
+        if (!function_exists('imagecreatefromstring')) {
+            $c = self::cleanPhoto('data:' . $info['mime'] . ';base64,' . base64_encode($bin));
+            if ($c['photo'] === null) {
+                throw new AgreementError('That photo is too big — please choose a smaller one.');
+            }
+            return $c['photo'];
+        }
+        $src = @imagecreatefromstring($bin);
+        if ($src === false) {
+            throw new AgreementError('That photo could not be opened.');
+        }
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $scale = min(1.0, 640 / max($w, $h));
+        $nw = max(1, (int) round($w * $scale));
+        $nh = max(1, (int) round($h * $scale));
+        $dst = imagecreatetruecolor($nw, $nh);
+        imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255));
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
+        ob_start();
+        imagejpeg($dst, null, 84);
+        $jpg = (string) ob_get_clean();
+        imagedestroy($src);
+        imagedestroy($dst);
+        return 'data:image/jpeg;base64,' . base64_encode($jpg);
+    }
+
+    /**
+     * A mobile the office typed: "+977 98…", "98…", "0091 …". Returns
+     * [normalised digits, what was typed (kept when it carried a country)].
+     *
+     * @return array{0: string, 1: ?string}
+     */
+    private static function officePhone(string $typed): array
+    {
+        $typed  = trim($typed);
+        $digits = normalisePhone($typed);
+        if (strlen($digits) < self::PHONE_MIN || strlen($digits) > self::PHONE_MAX || isPlaceholderPhone($digits)) {
+            throw new AgreementError('Please type a real mobile number (10 digits, with +91 / +977 if you know it).');
+        }
+        return [$digits, resolvePhoneCountry('', $typed) !== '' ? mb_substr($typed, 0, 30) : null];
+    }
+
+    /**
+     * Edit an application's website card and (with KYC rights) its KYC and
+     * bank details. Keys read from $in: name, phone, area, web_addr, email,
+     * public_ok, web_photo, web_live, photo (a data: URI already shrunk),
+     * and OFFICE_KYC_FIELDS when $kyc is true.
+     *
+     * @param array<string, mixed> $in
+     * @return array<int, string> the names of what changed
+     */
+    public static function saveCard(int $id, array $in, int $by, bool $kyc): array
+    {
+        $app = self::find($id);
+        if ($app === null) {
+            throw new AgreementError('Application not found.');
+        }
+        $set = [];
+        $name = self::oneLine(Security::clean((string) ($in['name'] ?? $app['name']), 160));
+        if ($name === '') {
+            throw new AgreementError('The name cannot be empty.');
+        }
+        if ($name !== (string) $app['name']) {
+            $set['name'] = $name;
+        }
+        if (isset($in['phone']) && trim((string) $in['phone']) !== '') {
+            [$digits, $raw] = self::officePhone((string) $in['phone']);
+            if ($digits !== (string) $app['phone']) {
+                $set['phone'] = $digits;
+            }
+            if ($raw !== null && $raw !== (string) ($app['phone_raw'] ?? '')) {
+                $set['phone_raw'] = $raw;
+            }
+        }
+        foreach (['area' => 160, 'email' => 160] as $k => $max) {
+            if (array_key_exists($k, $in)) {
+                $v = self::oneLine(Security::clean((string) $in[$k], $max));
+                if ($v !== (string) ($app[$k] ?? '')) {
+                    $set[$k] = $v !== '' ? $v : null;
+                }
+            }
+        }
+        if (array_key_exists('public_ok', $in)) {
+            $v = filter_var($in['public_ok'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+            if ($v !== (int) $app['public_ok']) {
+                $set['public_ok'] = $v;
+            }
+        }
+        if (is_string($in['photo'] ?? null) && $in['photo'] !== '') {
+            $c = self::cleanPhoto($in['photo']);
+            if ($c['photo'] === null) {
+                throw new AgreementError('That photo could not be used — please choose another.');
+            }
+            $set['photo'] = $c['photo'];
+        }
+        if (self::webColumnsAvailable()) {
+            if (array_key_exists('web_addr', $in)) {
+                $v = self::oneLine(Security::clean((string) $in['web_addr'], 200));
+                if ($v !== (string) ($app['web_addr'] ?? '')) {
+                    $set['web_addr'] = $v !== '' ? $v : null;
+                }
+            }
+            foreach (['web_photo', 'web_live'] as $k) {
+                if (array_key_exists($k, $in)) {
+                    $v = filter_var($in[$k], FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+                    if ($v !== (int) ($app[$k] ?? 0)) {
+                        $set[$k] = $v;
+                    }
+                }
+            }
+            if (empty($app['web_key'])) {
+                $set['web_key'] = self::newWebKey();
+            }
+        }
+        $fieldsChanged = [];
+        if ($kyc) {
+            $f = is_array($app['fields'] ?? null) ? $app['fields'] : [];
+            foreach (self::OFFICE_KYC_FIELDS as $k) {
+                if (!array_key_exists($k, $in)) {
+                    continue;
+                }
+                $v = $k === 'p_addr'
+                    ? self::oneLine(Security::clean((string) $in[$k], self::FIELD_MAX), true)
+                    : self::oneLine(Security::clean((string) $in[$k], 80));
+                if ($k === 'p_idtype' && $v !== '' && !isset(self::ID_TYPES[(int) $v])) {
+                    $v = '';
+                }
+                if ($k === 'b_ifsc') {
+                    $v = strtoupper(str_replace(' ', '', $v));
+                }
+                if ($v !== (string) ($f[$k] ?? '')) {
+                    if ($v === '') {
+                        unset($f[$k]);
+                    } else {
+                        $f[$k] = $v;
+                    }
+                    $fieldsChanged[] = $k;
+                }
+            }
+            if (isset($set['name'])) {
+                $f['p_name'] = $set['name'];
+            }
+            if ($fieldsChanged !== [] || isset($set['name'])) {
+                $set['fields_json'] = json_encode($f, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
+            }
+            // Bank details typed in = KYC handed over; the office still marks it verified by hand.
+            if ($fieldsChanged !== [] && (string) $app['kyc_status'] === 'none') {
+                $set['kyc_status'] = 'submitted';
+            }
+        }
+        if ($set === []) {
+            return [];
+        }
+        $set['reviewed_by'] = $by > 0 ? $by : null;
+        $set['reviewed_at'] = date('Y-m-d H:i:s');
+        Database::update('agent_applications', $set, 'id = :id', ['id' => $id]);
+
+        // Only the names of what changed go to the log — never ID or bank numbers.
+        $changed = array_values(array_diff(array_keys($set), ['reviewed_by', 'reviewed_at', 'fields_json', 'web_key']));
+        $changed = array_merge($changed, $fieldsChanged);
+        Logger::audit('agreement_app.card', 'agent_application', (string) ($app['ref'] ?: self::refFor($id)),
+            null, ['changed' => implode(', ', $changed)], 'agreements dashboard (by admin #' . $by . ')');
+        return $changed;
+    }
+
+    /**
+     * The office adds an agent by hand (walked into the office, phoned in).
+     * Goes straight to Approved, so with "live" ticked the card is on the
+     * website at once.
+     *
+     * @param array<string, mixed> $in name, phone, type, area, web_addr, email, photo, public_ok,
+     *                                 web_photo, web_live, kyc_status + OFFICE_KYC_FIELDS
+     * @return array{id: int, ref: string}
+     */
+    public static function adminCreate(array $in, int $by, bool $kyc): array
+    {
+        if (!self::available()) {
+            throw new AgreementError('Run database/upgrade-2026-09-27-agent-applications.sql first.');
+        }
+        $name = self::oneLine(Security::clean((string) ($in['name'] ?? ''), 160));
+        if ($name === '') {
+            throw new AgreementError('Please type the agent\'s name.');
+        }
+        [$digits, $raw] = self::officePhone((string) ($in['phone'] ?? ''));
+        $type = self::normaliseType($in['type'] ?? 'ind') ?? 'ind';
+        $kycSt = (string) ($in['kyc_status'] ?? 'none');
+        $row = [
+            'type'         => $type,
+            'lang'         => 'en',
+            'name'         => $name,
+            'phone'        => $digits,
+            'phone_raw'    => $raw,
+            'fields_json'  => json_encode(['p_name' => $name, 'p_phone' => $digits, 'p_occ' => 'Added by the office'], JSON_UNESCAPED_UNICODE) ?: '{}',
+            'public_ok'    => 0,
+            'status'       => 'approved',
+            'kyc_status'   => in_array($kycSt, self::KYC, true) ? $kycSt : 'none',
+            'payload_hash' => hash('sha256', 'office|' . $digits . '|' . microtime(true) . '|' . random_int(0, PHP_INT_MAX)),
+            'reviewed_by'  => $by > 0 ? $by : null,
+            'reviewed_at'  => date('Y-m-d H:i:s'),
+        ];
+        $id = Database::insert('agent_applications', $row);
+        $ref = self::refFor($id);
+        Database::update('agent_applications', ['ref' => $ref], 'id = :id', ['id' => $id]);
+        Logger::audit('agreement_app.office_add', 'agent_application', $ref, null,
+            ['name' => $name, 'phone' => $digits], 'agreements dashboard (by admin #' . $by . ')');
+        // Everything else (area, address, photo, website switches, KYC) through the one edit path.
+        unset($in['name'], $in['phone']);
+        self::saveCard($id, $in, $by, $kyc);
+        return ['id' => $id, 'ref' => $ref];
+    }
+
+    /** Remove an application for good (a test, a duplicate, a person who left). Audited. */
+    public static function remove(int $id, int $by): string
+    {
+        $app = self::find($id);
+        if ($app === null) {
+            throw new AgreementError('Application not found.');
+        }
+        $ref = (string) ($app['ref'] ?: self::refFor($id));
+        Database::run('DELETE FROM agent_applications WHERE id = :id', ['id' => $id]);
+        Logger::audit('agreement_app.delete', 'agent_application', $ref,
+            ['name' => (string) $app['name'], 'phone' => (string) $app['phone'], 'status' => (string) $app['status']],
+            null, 'agreements dashboard (by admin #' . $by . ')');
+        return $ref;
+    }
+
+    /** Is this application's card on the website right now? */
+    public static function isLive(array $app): bool
+    {
+        return (string) ($app['status'] ?? '') === 'approved'
+            && (!self::webColumnsAvailable() || (int) ($app['web_live'] ?? 1) === 1)
+            && trim((string) ($app['name'] ?? '')) !== '' && (string) ($app['phone'] ?? '') !== '';
+    }
+
+    /**
+     * The photo behind /api/agent-photo.php?k=… — only for an approved card
+     * that is live and whose photo the office allowed. [mime, bytes] or null.
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    public static function publicPhoto(string $key): ?array
+    {
+        if (preg_match('/^[a-f0-9]{20}$/', $key) !== 1 || !self::available() || !self::webColumnsAvailable()) {
+            return null;
+        }
+        $photo = Database::scalar(
+            "SELECT photo FROM agent_applications
+              WHERE web_key = :k AND status = 'approved' AND web_live = 1 AND web_photo = 1 AND photo IS NOT NULL
+              LIMIT 1",
+            ['k' => $key], null
+        );
+        if (!is_string($photo) || preg_match('~^data:(image/(?:jpeg|png|webp));base64,(.+)$~s', $photo, $m) !== 1) {
+            return null;
+        }
+        $bin = base64_decode($m[2], true);
+        return $bin === false || $bin === '' ? null : [$m[1], $bin];
+    }
+
     /**
      * Agreement / public-list state of an existing agent account. Creates
      * the admin_profiles row when the agent never had one.
@@ -1179,7 +1511,7 @@ final class AgentApplications
      * the list). Someone with no phone number at all is left off — the list
      * is names AND numbers. Only the keys below ever leave this method.
      *
-     * @return array<int, array{name: string, kind: string, area: string, phone: string, verified: bool, signed: bool}>
+     * @return array<int, array{name: string, kind: string, area: string, phone: string, verified: bool, signed: bool, addr: string, photo: string, wa: string}>
      */
     public static function directory(): array
     {
@@ -1187,15 +1519,39 @@ final class AgentApplications
         $items = [];
         $isSigned = static fn(string $st, ?string $end): bool =>
             $st === 'signed' && ($end === null || $end === '' || $end >= $today);
+        $web = self::available() && self::webColumnsAvailable();
+        // The WhatsApp / call number with its country code: what the person
+        // typed decides India or Nepal; a bare 10-digit number reads as India.
+        $intl = static function (string $digits, string $raw): string {
+            $cc = countryDialCode(resolvePhoneCountry('', $raw));
+            if (strlen($digits) === 10) {
+                return ($cc !== '' ? $cc : '91') . $digits;
+            }
+            return $digits;
+        };
+        $photoUrl = static fn(array $r): string =>
+            $web && (int) ($r['web_photo'] ?? 0) === 1 && (int) ($r['has_photo'] ?? 0) === 1 && !empty($r['web_key'])
+                ? '/api/agent-photo.php?k=' . rawurlencode((string) $r['web_key']) : '';
 
+        // The website card of a linked account comes from its newest approved application.
+        $linkedCard = [];
         if (self::available()) {
+            $webSel = $web ? 'web_live, web_photo, web_addr, web_key' : '1 AS web_live, 0 AS web_photo, NULL AS web_addr, NULL AS web_key';
             $apps = Database::fetchAll(
-                "SELECT type, name, phone, area, public_ok, kyc_status, agreement_status, agreement_end
+                "SELECT type, name, phone, phone_raw, area, public_ok, kyc_status, agreement_status, agreement_end, admin_id,
+                        (photo IS NOT NULL) AS has_photo, $webSel
                    FROM agent_applications
-                  WHERE status = 'approved' AND admin_id IS NULL
+                  WHERE status = 'approved'
                   ORDER BY id ASC"
             );
             foreach ($apps as $r) {
+                if (!empty($r['admin_id'])) {
+                    $linkedCard[(int) $r['admin_id']] = $r;
+                    continue;
+                }
+                if ((int) ($r['web_live'] ?? 1) !== 1) {
+                    continue;
+                }
                 $name = trim((string) $r['name']);
                 if ($name === '') {
                     continue;
@@ -1204,13 +1560,17 @@ final class AgentApplications
                 if ($phone === '') {
                     continue;
                 }
+                $full = (int) $r['public_ok'] === 1;
                 $items[] = [
                     'name'     => $name,
                     'kind'     => (string) $r['type'] === 'org' ? 'partner' : 'agent',
                     'area'     => trim((string) ($r['area'] ?? '')),
-                    'phone'    => (int) $r['public_ok'] === 1 ? $phone : self::maskPhone($phone),
+                    'phone'    => $full ? $phone : self::maskPhone($phone),
                     'verified' => (string) $r['kyc_status'] === 'verified',
                     'signed'   => $isSigned((string) $r['agreement_status'], $r['agreement_end'] !== null ? (string) $r['agreement_end'] : null),
+                    'addr'     => trim((string) ($r['web_addr'] ?? '')),
+                    'photo'    => $photoUrl($r),
+                    'wa'       => $full ? $intl($phone, (string) ($r['phone_raw'] ?? '')) : '',
                 ];
             }
         }
@@ -1221,7 +1581,7 @@ final class AgentApplications
         // Without the profile columns nobody has opted in, so no account is listed.
         $listing = $prof ? 'AND COALESCE(p.public_listing, 0) = 1' : 'AND 1 = 0';
         $agents = Database::fetchAll(
-            "SELECT a.full_name, a.phone, p.display_phone, p.counter_name, p.agent_kind,
+            "SELECT a.id, a.full_name, a.phone, p.display_phone, p.counter_name, p.agent_kind,
                     COALESCE($kyc, 'none') AS kyc_status, $agrSel
                FROM admins a
                LEFT JOIN admin_profiles p ON p.admin_id = a.id
@@ -1229,6 +1589,11 @@ final class AgentApplications
               ORDER BY a.id ASC"
         );
         foreach ($agents as $r) {
+            $card = $linkedCard[(int) $r['id']] ?? null;
+            // The office hid this agent's card on the Agreements page.
+            if ($card !== null && (int) ($card['web_live'] ?? 1) !== 1) {
+                continue;
+            }
             $name = trim((string) ($r['full_name'] ?? ''));
             if ($name === '') {
                 continue;
@@ -1237,13 +1602,18 @@ final class AgentApplications
             if ($phone === '') {
                 continue;
             }
+            $full = (int) ($r['public_phone'] ?? 0) === 1;
+            $area = trim((string) ($r['counter_name'] ?? ''));
             $items[] = [
                 'name'     => $name,
                 'kind'     => (string) ($r['agent_kind'] ?? 'org') === 'person' ? 'agent' : 'partner',
-                'area'     => trim((string) ($r['counter_name'] ?? '')),
-                'phone'    => (int) ($r['public_phone'] ?? 0) === 1 ? $phone : self::maskPhone($phone),
+                'area'     => $area !== '' ? $area : trim((string) ($card['area'] ?? '')),
+                'phone'    => $full ? $phone : self::maskPhone($phone),
                 'verified' => (string) $r['kyc_status'] === 'verified',
                 'signed'   => $isSigned((string) ($r['agreement_status'] ?? 'none'), $r['agreement_end'] !== null ? (string) $r['agreement_end'] : null),
+                'addr'     => trim((string) ($card['web_addr'] ?? '')),
+                'photo'    => $card !== null ? $photoUrl($card) : '',
+                'wa'       => $full ? $intl($phone, $card !== null && normalisePhone((string) $card['phone']) === $phone ? (string) ($card['phone_raw'] ?? '') : '') : '',
             ];
         }
 

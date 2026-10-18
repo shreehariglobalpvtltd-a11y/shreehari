@@ -221,6 +221,16 @@ html:not(.lq-off) #smartBook .shg-ai-laser-bar{display:none !important}
 #homeAgents .ag-badges{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px}
 #homeAgents .ag-badges i{font-style:normal;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:999px;background:rgba(24,201,139,.2);border:1px solid rgba(24,201,139,.5);color:#b9ffe2}
 #homeAgents .ag-call{flex:0 0 auto;min-width:44px;height:40px;padding:0 10px;border-radius:12px;display:grid;place-items:center;font-weight:800;font-size:13px;color:#0a2a8f;background:#fff;text-decoration:none}
+/* 19 Oct 2026: photo, address, number, WhatsApp on each card */
+#homeAgents .ag-card{align-items:flex-start}
+#homeAgents .ag-av{position:relative;overflow:hidden;flex-basis:52px;width:52px;height:52px}
+#homeAgents .ag-av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;border:2px solid #fff;box-sizing:border-box}
+#homeAgents .ag-who b{white-space:normal;line-height:1.25;overflow-wrap:anywhere}
+#homeAgents .ag-who .ag-addr{white-space:normal;line-height:1.35;margin-top:2px}
+#homeAgents .ag-who .ag-ph{font-variant-numeric:tabular-nums;letter-spacing:.02em;color:#fff;font-weight:700;margin-top:2px}
+#homeAgents .ag-acts{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
+#homeAgents .ag-wa{min-height:40px;padding:0 10px;border-radius:12px;display:grid;place-items:center;font-weight:800;font-size:12.5px;color:#fff;background:#1faa59;text-decoration:none;box-shadow:0 3px 0 #127a3e}
+#homeAgents .ag-acts .ag-call{width:100%;box-sizing:border-box}
 #homeAgents .ag-perks{list-style:none;margin:0 0 14px;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,128px),1fr));gap:8px}
 #homeAgents .ag-perks li{padding:10px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);font-size:12.5px;font-weight:700;line-height:1.35}
 #homeAgents .ag-go{display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px;padding:0 18px;border-radius:16px;text-decoration:none;font-weight:900;font-size:16px;color:#fff;

@@ -9,8 +9,10 @@
  * Who is on it: approved applications, and active agent accounts the office
  * has left listed (admin_profiles.public_listing). The phone is FULL only
  * when that person agreed (application public_ok / admin public_phone),
- * otherwise the first 2 and last 3 digits. Nothing else ever leaves here —
- * no ID number, address, bank detail, email, photo, or any status beyond the
+ * otherwise the first 2 and last 3 digits. 19 Oct 2026: plus the
+ * office-typed public address, the photo URL (only when the office allowed
+ * the photo) and a WhatsApp number (only with the full phone). Nothing else ever leaves here —
+ * no ID number, home address, bank detail, email, or any status beyond the
  * two positive badges. Built key by key in AgentApplications::directory()
  * and again below, so a new column can never leak by accident.
  *
@@ -36,6 +38,12 @@ try {
             'phone'    => (string) $r['phone'],
             'verified' => (bool) $r['verified'],
             'signed'   => (bool) $r['signed'],
+            // 19 Oct 2026: the office-typed shop / office address, the photo
+            // URL (only when the office allowed it) and the WhatsApp number
+            // (only when the full phone may be shown).
+            'addr'     => (string) ($r['addr'] ?? ''),
+            'photo'    => (string) ($r['photo'] ?? ''),
+            'wa'       => (string) ($r['wa'] ?? ''),
         ];
     }
 

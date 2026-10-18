@@ -155,6 +155,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   </section>
 
   <section class="card">
+    <h2><i>₹</i>🏦 बैंक खाता · Bank account (KYC)</h2>
+    <p class="hint">कमिसन यही खातामा पठाइन्छ। कार्यालयले मात्र देख्छ — वेबसाइटमा कहिल्यै देखिँदैन। अहिले थाहा छैन भने पछि कार्यालयमा दिन सकिन्छ।</p>
+    <label class="f"><span>खातावालाको नाम · Account holder</span><input type="text" id="b_name" maxlength="80" autocomplete="off"></label>
+    <label class="f"><span>बैंक र शाखा · Bank &amp; branch</span><input type="text" id="b_bank" maxlength="80" autocomplete="off" placeholder="जस्तै: Nabil Bank, Nepalgunj"></label>
+    <label class="f"><span>खाता नम्बर · Account number</span><input type="text" id="b_acc" maxlength="40" inputmode="numeric" autocomplete="off"></label>
+    <label class="f"><span>IFSC / SWIFT (भारत / India)</span><input type="text" id="b_ifsc" maxlength="20" autocomplete="off" style="text-transform:uppercase"></label>
+    <label class="f"><span>UPI / eSewa / Khalti</span><input type="text" id="b_upi" maxlength="80" autocomplete="off"></label>
+  </section>
+
+  <section class="card">
     <h2><i>4</i>🤳 तपाईंको फोटो · Your photo</h2>
     <div class="shot">
       <div class="prev" id="selfPrev">🙂</div>
@@ -172,11 +182,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 
   <section class="card">
     <label class="chk"><input type="checkbox" id="agree"><span>मैले दिएको विवरण साँचो हो। कार्यालयले मलाई फोन / WhatsApp गर्न सक्छ। <em style="color:var(--bad);font-style:normal">*</em></span></label>
-    <label class="chk"><input type="checkbox" id="public_ok"><span>स्वीकृत भएपछि मेरो नाम र पूरा फोन नम्बर वेबसाइटको एजेन्ट सूचीमा देखाउन सकिन्छ। (नत्र नम्बर लुकाइन्छ)</span></label>
+    <label class="chk"><input type="checkbox" id="public_ok"><span>स्वीकृत भएपछि मेरो नाम, फोटो, काम गर्ने ठाउँ र पूरा फोन नम्बर (WhatsApp) वेबसाइटको एजेन्ट सूचीमा देखाउन सकिन्छ। (नत्र फोटो र नम्बर लुकाइन्छ)</span></label>
     <div class="hp" aria-hidden="true"><label>Website <input type="text" id="website" tabindex="-1" autocomplete="off"></label></div>
     <p class="msg bad" id="msg" hidden role="alert"></p>
   </section>
-  <p class="foot">🔒 फोटो, डकुमेन्ट र सही S Hari Global कार्यालयले मात्र हेर्छ — सार्वजनिक हुँदैन।<br><a href="/agreements/">पूरा सम्झौता पढ्नुहोस् · Read the full agreement</a> · <a href="/">होम · Home</a></p>
+  <p class="foot">🔒 डकुमेन्ट, बैंक खाता र सही S Hari Global कार्यालयले मात्र हेर्छ — सार्वजनिक हुँदैन। फोटो तपाईंले माथि अनुमति दिएमा मात्र वेबसाइटमा देखिन्छ।<br><a href="/agreements/">पूरा सम्झौता पढ्नुहोस् · Read the full agreement</a> · <a href="/">होम · Home</a></p>
   <div class="go"><button type="submit" class="btn" id="send">📨 फारम पठाउनुहोस् · Send application</button></div>
 </form>
 
@@ -441,6 +451,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
       fields: { p_name: $('p_name').value.trim(), p_phone: phone, p_area: $('p_area').value.trim(), p_addr: $('p_addr').value.trim(),
                 p_idtype: $('p_idtype').value, p_idno: $('p_idno').value.trim(), p_occ: 'Online form (photo + signature)' }
     };
+    ['b_name', 'b_bank', 'b_acc', 'b_ifsc', 'b_upi'].forEach(function (k) {
+      var v = $(k).value.trim();
+      if (v) body.fields[k] = k === 'b_ifsc' ? v.toUpperCase().replace(/\s+/g, '') : v;
+    });
     token().then(function (t) {
       return fetch('/api/agreement-apply.php', { method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' }, body: JSON.stringify(body) });

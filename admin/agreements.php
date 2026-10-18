@@ -68,6 +68,46 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
                 $changed = AgentApplications::update($id, $in, $selfId);
                 Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=' . ($changed === [] ? '0' : '1') . '#detail');
+            } elseif ($act === 'card' || $act === 'add') {
+                // 19 Oct 2026: the website card + KYC / bank edit, and the office's own "add agent".
+                $in = [
+                    'name'      => (string) ($_POST['name'] ?? ''),
+                    'phone'     => (string) ($_POST['phone'] ?? ''),
+                    'area'      => (string) ($_POST['area'] ?? ''),
+                    'email'     => (string) ($_POST['email'] ?? ''),
+                    'web_addr'  => (string) ($_POST['web_addr'] ?? ''),
+                    'public_ok' => isset($_POST['public_ok']) ? 1 : 0,
+                    'web_photo' => isset($_POST['web_photo']) ? 1 : 0,
+                    'web_live'  => isset($_POST['web_live']) ? 1 : 0,
+                ];
+                if ($canKyc) {
+                    foreach (AgentApplications::OFFICE_KYC_FIELDS as $k) {
+                        if (array_key_exists($k, $_POST)) {
+                            $in[$k] = (string) $_POST[$k];
+                        }
+                    }
+                }
+                $up = AgentApplications::photoFromUpload(isset($_FILES['photo']) && is_array($_FILES['photo']) ? $_FILES['photo'] : null);
+                if ($up !== null) {
+                    $in['photo'] = $up;
+                }
+                if ($act === 'add') {
+                    $in['type']       = (string) ($_POST['type'] ?? 'ind');
+                    $in['kyc_status'] = (string) ($_POST['kyc_status'] ?? 'none');
+                    $made = AgentApplications::adminCreate($in, $selfId, $canKyc);
+                    Response::redirect('admin/agreements.php?tab=apps&id=' . $made['id'] . '&saved=1#detail');
+                }
+                $id = (int) ($_POST['id'] ?? 0);
+                $changed = AgentApplications::saveCard($id, $in, $selfId, $canKyc);
+                Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=' . ($changed === [] ? '0' : '1') . '#web');
+            } elseif ($act === 'golive') {
+                $id = (int) ($_POST['id'] ?? 0);
+                AgentApplications::update($id, ['status' => 'approved'], $selfId);
+                AgentApplications::saveCard($id, ['web_live' => 1], $selfId, false);
+                Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=1#web');
+            } elseif ($act === 'delete') {
+                $ref = AgentApplications::remove((int) ($_POST['id'] ?? 0), $selfId);
+                Response::redirect('admin/agreements.php?tab=apps&deleted=' . rawurlencode($ref));
             } elseif ($act === 'agent') {
                 $aid = (int) ($_POST['admin_id'] ?? 0);
                 AgentApplications::setAgentProfile($aid, [
@@ -94,6 +134,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 if ($flash === null && isset($_GET['saved'])) {
     $flash = (string) $_GET['saved'] === '1' ? ['ok', 'Saved.'] : ['ok', 'Nothing to change.'];
 }
+if ($flash === null && isset($_GET['deleted'])) {
+    $flash = ['ok', 'Removed ' . Security::clean((string) $_GET['deleted'], 20) . ' — it is off the website and the list.'];
+}
+$webReady = $ready && AgentApplications::webColumnsAvailable();
 
 /* ---------- data ---------- */
 $counts = AgentApplications::counts();
@@ -161,6 +205,8 @@ admin_page_head(
     ['Agents' => '/admin/agents.php', 'Agreements & agents' => ''],
     '<a class="btn ghost sm" href="/agreements/" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-doc"/></svg>Agreement pages</a>'
     . '<a class="btn ghost sm" href="agents.php"><svg class="a-ic"><use href="#a-users"/></svg>Agents register</a>'
+    . '<a class="btn ghost sm" href="staff.php#addStaff"><svg class="a-ic"><use href="#a-user-cog"/></svg>Agent logins</a>'
+    . '<a class="btn sm" href="agreements.php?tab=apps&amp;add=1#add"><svg class="a-ic"><use href="#a-plus"/></svg>Add agent</a>'
 );
 if ($flash !== null) {
     echo '<div class="flash ' . $flash[0] . '">' . $h($flash[1]) . '</div>';
@@ -184,6 +230,12 @@ if (!$ready) {
 .agr-masked{color:var(--mut);font-style:italic}
 .agr-repeat{display:inline-block;margin-left:4px;font-size:11px;font-weight:700;color:var(--mut)}
 .kv-list dd{min-width:0;overflow-wrap:anywhere}
+.agr-add{padding:0}
+.agr-add>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 18px;min-height:48px}
+.agr-add>summary::-webkit-details-marker{display:none}
+.agr-card-prev{display:flex;gap:12px;align-items:center;max-width:420px;padding:10px 12px;border-radius:16px;color:#fff;background:linear-gradient(140deg,#0a2a8f,#1f4fe0 60%,#2f6bff)}
+.agr-card-prev img,.agr-card-prev .agr-ini{flex:0 0 52px;width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid #fff;background:#fff;display:grid;place-items:center;font-weight:900;color:#0a2a8f}
+.agr-card-prev .muted{color:#dbe5ff}
 @media(max-width:560px){.agr-photo,.agr-nophoto{width:108px;height:134px}.kv-list{grid-template-columns:1fr}.kv-list dt{margin-top:6px}.agr-mini{min-height:44px}}
 </style>
 
@@ -339,8 +391,110 @@ if (!$ready) {
     </div>
   </div>
 </div>
+
+<?php /* 19 Oct 2026 (owner): the website card - name, photo, address, number, WhatsApp - and the KYC / bank edit */
+  $isLive = AgentApplications::isLive($open);
+  $waText = rawurlencode('Namaste ' . $open['name'] . ' ji, S Hari Global office bata. Tapaiko agent form (' . $open['ref'] . ') ko barema: ');
+?>
+<div class="panel" id="web">
+  <h2><svg class="a-ic"><use href="#a-globe"/></svg>Website card &amp; KYC
+    <span style="margin-left:auto"><?= $isLive ? '<span class="pill st-ok">🟢 LIVE on website</span>' : '<span class="pill st-muted">⚪ Not on website</span>' ?></span></h2>
+  <div class="panel-body" style="padding:16px 18px">
+    <div class="agr-card-prev">
+      <?php if (!empty($open['photo']) && (int) ($open['web_photo'] ?? 0) === 1): ?><img src="<?= $h($open['photo']) ?>" alt=""><?php else: ?><span class="agr-ini"><?= $h(mb_strtoupper(mb_substr(trim((string) $open['name']), 0, 1, 'UTF-8'), 'UTF-8')) ?></span><?php endif; ?>
+      <div style="min-width:0;flex:1"><b><?= $h($open['name']) ?></b>
+        <div class="muted text-xs"><?= $h(trim(($open['area'] ?? '') . (!empty($open['web_addr']) ? ' · ' . $open['web_addr'] : ''), ' ·') ?: '—') ?></div>
+        <div class="muted text-xs mono"><?= (int) $open['public_ok'] === 1 ? $h($open['phone']) . ' · WhatsApp + call buttons' : $h(AgentApplications::maskPhone((string) $open['phone'])) . ' · number hidden' ?></div></div>
+    </div>
+    <p class="muted text-xs" style="margin:8px 0 0"><?php if ($isLive): ?>This is how the card looks on the home page (“Our agents”) and on /agreements/.<?php elseif ((string) $open['status'] !== 'approved'): ?>Goes on the website once the status is <b>Approved</b> and “Live on website” is ticked.<?php else: ?>Approved, but “Live on website” is off — hidden from the public list.<?php endif; ?>
+      <?php foreach ($waLinks as [$waUrl, $waLabel]): ?> · <a href="<?= $h($waUrl . '?text=' . $waText) ?>" target="_blank" rel="noopener">💬 <?= $h($waLabel) ?> message</a><?php endforeach; ?></p>
+
+    <?php if ($canEdit): ?>
+    <?php if (!$isLive): ?>
+    <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" style="margin:12px 0 0">
+      <?= $csrfField ?><input type="hidden" name="action" value="golive"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
+      <button class="btn" type="submit" style="background:#0f9d6b;border-color:#0f9d6b">✅ Approve &amp; put live on website</button>
+    </form>
+    <?php endif; ?>
+    <?php if (!$webReady): ?><div class="flash bad" style="margin-top:12px">Run <code>database/upgrade-2026-10-19-agent-website-card.sql</code> once for the photo, address and live switch.</div><?php endif; ?>
+    <form method="post" enctype="multipart/form-data" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" style="margin-top:14px">
+      <?= $csrfField ?><input type="hidden" name="action" value="card"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
+      <div class="agr-sec">On the website</div>
+      <div class="form-grid">
+        <div class="field"><label for="cName">Name</label><input id="cName" name="name" class="inp" maxlength="160" required value="<?= $h($open['name']) ?>"></div>
+        <div class="field"><label for="cPhone">Mobile / WhatsApp</label><input id="cPhone" name="phone" class="inp" type="tel" maxlength="20" required value="<?= $h(($open['phone_raw'] ?? '') ?: $open['phone']) ?>"><span class="help">Type +977 or +91 in front so WhatsApp opens the right country.</span></div>
+        <div class="field"><label for="cArea">Area / city</label><input id="cArea" name="area" class="inp" maxlength="160" value="<?= $h($open['area'] ?? '') ?>"></div>
+        <div class="field"><label for="cAddr">Shop / office address (public)</label><input id="cAddr" name="web_addr" class="inp" maxlength="200" value="<?= $h($open['web_addr'] ?? '') ?>" placeholder="e.g. Bus Park Road, Nepalgunj-4"><span class="help">Shown on the website. Not the home address from KYC.</span></div>
+        <div class="field"><label for="cEmail">Email</label><input id="cEmail" name="email" class="inp" type="email" maxlength="160" value="<?= $h($open['email'] ?? '') ?>"></div>
+        <div class="field"><label for="cPhoto">New photo</label><input id="cPhoto" name="photo" class="inp" type="file" accept="image/*"><span class="help">Optional — replaces the photo. Shrunk to 640 px.</span></div>
+        <div class="field" style="grid-column:1/-1;display:flex;gap:4px 18px;flex-wrap:wrap">
+          <label class="agr-check"><input type="checkbox" name="web_live" value="1"<?= (int) ($open['web_live'] ?? 1) === 1 ? ' checked' : '' ?>> 🟢 Live on website</label>
+          <label class="agr-check"><input type="checkbox" name="web_photo" value="1"<?= (int) ($open['web_photo'] ?? 0) === 1 ? ' checked' : '' ?>> 📷 Show photo</label>
+          <label class="agr-check"><input type="checkbox" name="public_ok" value="1"<?= (int) $open['public_ok'] === 1 ? ' checked' : '' ?>> 📞 Show full number + WhatsApp</label>
+        </div>
+      </div>
+      <?php if ($canKyc): $f = is_array($open['fields'] ?? null) ? $open['fields'] : []; ?>
+      <div class="agr-sec">KYC &amp; bank account (office only — never on the website)</div>
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1"><label for="kAddr">Permanent address</label><input id="kAddr" name="p_addr" class="inp" maxlength="300" value="<?= $h($f['p_addr'] ?? '') ?>"></div>
+        <div class="field"><label for="kIdt">ID type</label><select id="kIdt" name="p_idtype" class="inp"><option value="">—</option><?php foreach (AgentApplications::ID_TYPES as $i => $l): ?><option value="<?= $i ?>"<?= isset($f['p_idtype']) && (string) $f['p_idtype'] === (string) $i ? ' selected' : '' ?>><?= $h($l) ?></option><?php endforeach; ?></select></div>
+        <div class="field"><label for="kIdn">ID number</label><input id="kIdn" name="p_idno" class="inp mono" maxlength="40" value="<?= $h($f['p_idno'] ?? '') ?>"></div>
+        <div class="field"><label for="kPan">PAN</label><input id="kPan" name="p_pan" class="inp mono" maxlength="20" value="<?= $h($f['p_pan'] ?? '') ?>"></div>
+        <div class="field"><label for="kBn">Account holder name</label><input id="kBn" name="b_name" class="inp" maxlength="80" value="<?= $h($f['b_name'] ?? '') ?>"></div>
+        <div class="field"><label for="kBb">Bank &amp; branch</label><input id="kBb" name="b_bank" class="inp" maxlength="80" value="<?= $h($f['b_bank'] ?? '') ?>"></div>
+        <div class="field"><label for="kBa">Account number</label><input id="kBa" name="b_acc" class="inp mono" maxlength="40" inputmode="numeric" value="<?= $h($f['b_acc'] ?? '') ?>"></div>
+        <div class="field"><label for="kBi">IFSC / SWIFT</label><input id="kBi" name="b_ifsc" class="inp mono" maxlength="20" value="<?= $h($f['b_ifsc'] ?? '') ?>"></div>
+        <div class="field"><label for="kBu">UPI / eSewa / Khalti</label><input id="kBu" name="b_upi" class="inp" maxlength="80" value="<?= $h($f['b_upi'] ?? '') ?>"></div>
+      </div>
+      <?php endif; ?>
+      <div class="form-actions" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" type="submit"><svg class="a-ic"><use href="#a-check"/></svg>Save card<?= $canKyc ? ' &amp; KYC' : '' ?></button>
+      </div>
+    </form>
+    <form method="post" action="agreements.php?tab=apps" style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px" onsubmit="return confirm('Remove <?= $h($open['ref']) ?> (<?= $h(addslashes((string) $open['name'])) ?>) for good? It goes off the website and its KYC is deleted.')">
+      <?= $csrfField ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
+      <button class="btn ghost sm" type="submit" style="color:var(--bad,#c62828)">🗑 Remove this agent / application</button>
+      <span class="muted text-xs">To only hide from the website, untick “Live on website” instead.</span>
+    </form>
+    <?php endif; ?>
+  </div>
+</div>
 <?php elseif ($openId > 0): ?>
   <div class="flash bad">That application was not found.</div>
+<?php endif; ?>
+
+<?php if ($canEdit && $ready): /* 19 Oct 2026: the office adds an agent by hand - straight to Approved */ ?>
+<details class="panel agr-add" id="add"<?= $openId === 0 && isset($_GET['add']) ? ' open' : '' ?>>
+  <summary><svg class="a-ic"><use href="#a-plus"/></svg><b>Add agent</b> <span class="muted text-xs">— came to the office or phoned in; goes live on the website at once</span></summary>
+  <form method="post" enctype="multipart/form-data" action="agreements.php?tab=apps" style="padding:4px 18px 18px">
+    <?= $csrfField ?><input type="hidden" name="action" value="add">
+    <div class="form-grid">
+      <div class="field"><label for="nName">Name *</label><input id="nName" name="name" class="inp" maxlength="160" required></div>
+      <div class="field"><label for="nPhone">Mobile / WhatsApp *</label><input id="nPhone" name="phone" class="inp" type="tel" maxlength="20" required placeholder="+977 98XXXXXXXX"></div>
+      <div class="field"><label for="nType">Kind</label><select id="nType" name="type" class="inp"><option value="ind">👤 Individual agent</option><option value="org">🏢 Organization partner</option></select></div>
+      <div class="field"><label for="nArea">Area / city</label><input id="nArea" name="area" class="inp" maxlength="160" placeholder="e.g. Nepalgunj"></div>
+      <div class="field"><label for="nAddr">Shop / office address (public)</label><input id="nAddr" name="web_addr" class="inp" maxlength="200"></div>
+      <div class="field"><label for="nPhoto">Photo</label><input id="nPhoto" name="photo" class="inp" type="file" accept="image/*"></div>
+      <?php if ($canKyc): ?>
+      <div class="field" style="grid-column:1/-1"><label for="nPAddr">Permanent address (KYC)</label><input id="nPAddr" name="p_addr" class="inp" maxlength="300"></div>
+      <div class="field"><label for="nIdt">ID type</label><select id="nIdt" name="p_idtype" class="inp"><option value="">—</option><?php foreach (AgentApplications::ID_TYPES as $i => $l): ?><option value="<?= $i ?>"><?= $h($l) ?></option><?php endforeach; ?></select></div>
+      <div class="field"><label for="nIdn">ID number</label><input id="nIdn" name="p_idno" class="inp mono" maxlength="40"></div>
+      <div class="field"><label for="nBn">Account holder</label><input id="nBn" name="b_name" class="inp" maxlength="80"></div>
+      <div class="field"><label for="nBb">Bank &amp; branch</label><input id="nBb" name="b_bank" class="inp" maxlength="80"></div>
+      <div class="field"><label for="nBa">Account number</label><input id="nBa" name="b_acc" class="inp mono" maxlength="40" inputmode="numeric"></div>
+      <div class="field"><label for="nBi">IFSC / SWIFT</label><input id="nBi" name="b_ifsc" class="inp mono" maxlength="20"></div>
+      <div class="field"><label for="nBu">UPI / eSewa / Khalti</label><input id="nBu" name="b_upi" class="inp" maxlength="80"></div>
+      <div class="field"><label for="nKyc">KYC</label><select id="nKyc" name="kyc_status" class="inp"><?php foreach (AgentApplications::KYC_LABELS as $v => $l): ?><option value="<?= $h($v) ?>"<?= $v === 'none' ? ' selected' : '' ?>><?= $h($l) ?></option><?php endforeach; ?></select><span class="help">Verified = you saw the original ID.</span></div>
+      <?php endif; ?>
+      <div class="field" style="grid-column:1/-1;display:flex;gap:4px 18px;flex-wrap:wrap">
+        <label class="agr-check"><input type="checkbox" name="web_live" value="1" checked> 🟢 Live on website</label>
+        <label class="agr-check"><input type="checkbox" name="web_photo" value="1" checked> 📷 Show photo</label>
+        <label class="agr-check"><input type="checkbox" name="public_ok" value="1" checked> 📞 Show full number + WhatsApp</label>
+      </div>
+    </div>
+    <div class="form-actions" style="margin-top:12px"><button class="btn" type="submit"><svg class="a-ic"><use href="#a-plus"/></svg>Add agent</button></div>
+  </form>
+</details>
 <?php endif; ?>
 
 <form class="toolbar" method="get" action="agreements.php" role="search">
@@ -367,7 +521,7 @@ if (!$ready) {
   <?php else: ?>
   <div class="tbl-scroll">
   <table>
-    <thead><tr><th>Ref</th><th>Date</th><th>Kind</th><th>Name</th><th>Mobile</th><th>Area</th><th>Status</th><th>KYC</th><th>Agreement</th><th></th></tr></thead>
+    <thead><tr><th>Ref</th><th>Date</th><th>Kind</th><th>Name</th><th>Mobile</th><th>Area</th><th>Status</th><th>KYC</th><th>Agreement</th><th>Website</th><th></th></tr></thead>
     <tbody>
     <?php foreach ($apps as $a): ?>
       <tr class="<?= (int) $a['id'] === $openId ? 'agr-row-open' : '' ?>">
@@ -380,6 +534,7 @@ if (!$ready) {
         <td><?= $statusPill((string) $a['status']) ?></td>
         <td><?= $kycPill((string) $a['kyc_status']) ?></td>
         <td><?= $agrPill((string) $a['agreement_status'], $a['agreement_end'] ?? null) ?></td>
+        <td style="white-space:nowrap"><?= AgentApplications::isLive($a) ? '<span class="pill st-ok">🟢 Live</span>' : '<span class="muted">—</span>' ?></td>
         <td><a class="btn ghost sm" href="<?= $h($keep(['id' => (int) $a['id']])) ?>#detail"><svg class="a-ic"><use href="#a-eye"/></svg>Open</a></td>
       </tr>
     <?php endforeach; ?>

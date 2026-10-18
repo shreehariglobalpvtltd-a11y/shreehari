@@ -32,21 +32,42 @@
     list.textContent = '';
     items.slice(0, 12).forEach(function (a) {
       var li = el('li', 'ag-card');
-      li.appendChild(el('span', 'ag-av', initials(a.name)));
+      var av = el('span', 'ag-av', initials(a.name));
+      /* 19 Oct 2026: the photo, only when the office allowed it (the API sends '' otherwise) */
+      if (a.photo && /^\/api\/agent-photo\.php\?k=[a-f0-9]+$/.test(a.photo)) {
+        var im = el('img');
+        im.src = a.photo; im.alt = ''; im.loading = 'lazy'; im.decoding = 'async'; im.width = 52; im.height = 52;
+        im.onerror = function () { if (im.parentNode) im.parentNode.removeChild(im); };
+        av.appendChild(im);
+      }
+      li.appendChild(av);
       var who = el('div', 'ag-who');
       who.appendChild(el('b', '', a.name));
       who.appendChild(el('small', '', (a.kind === 'partner' ? '🏢 ' : '👤 ') + (a.area || 'S Hari Global')));
+      if (a.addr) who.appendChild(el('small', 'ag-addr', '📍 ' + a.addr));
+      var digits = String(a.phone || '').replace(/\D/g, '');
+      var full = digits.length >= 10 && String(a.phone).indexOf('•') < 0;
+      who.appendChild(el('small', 'ag-ph', String(a.phone || '')));
       var badges = el('div', 'ag-badges');
       if (a.verified) badges.appendChild(el('i', '', '✓ KYC'));
       if (a.signed) badges.appendChild(el('i', '', '✓ सम्झौता'));
       if (badges.childNodes.length) who.appendChild(badges);
       li.appendChild(who);
-      var digits = String(a.phone || '').replace(/\D/g, '');
-      if (digits.length >= 10 && String(a.phone).indexOf('•') < 0) {
+      if (full) {
+        var acts = el('div', 'ag-acts');
+        var wa = String(a.wa || '').replace(/\D/g, '');
+        if (wa.length >= 10) {
+          var w = el('a', 'ag-wa', 'WhatsApp');
+          w.href = 'https://wa.me/' + wa + '?text=' + encodeURIComponent('Namaste ' + a.name + ' ji, S Hari Global ko website bata. Malai bus ticket chahiyo.');
+          w.target = '_blank'; w.rel = 'noopener';
+          w.setAttribute('aria-label', 'WhatsApp ' + a.name);
+          acts.appendChild(w);
+        }
         var call = el('a', 'ag-call', '📞');
-        call.href = 'tel:+' + (digits.length === 10 ? '91' + digits : digits);
+        call.href = 'tel:+' + (wa.length >= 10 ? wa : (digits.length === 10 ? '91' + digits : digits));
         call.setAttribute('aria-label', 'Call ' + a.name);
-        li.appendChild(call);
+        acts.appendChild(call);
+        li.appendChild(acts);
       }
       list.appendChild(li);
     });
