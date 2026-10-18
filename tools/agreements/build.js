@@ -1054,7 +1054,6 @@ function agreementIndex(CFG) {
     });
     shown.forEach(function (it) {
       var li = el('li'), top = el('div', 'who');
-      if (it.photo) { var im = el('img', 'dp'); im.src = it.photo; im.alt = ''; im.loading = 'lazy'; im.width = 44; im.height = 44; li.appendChild(im); li.className = 'has-dp'; }
       top.appendChild(el('b', null, String(it.name || '')));
       top.appendChild(el('span', 'kind', it.kind === 'partner' ? S.partner : S.agent));
       li.appendChild(top);
@@ -1066,10 +1065,6 @@ function agreementIndex(CFG) {
         if (/^\+?\d{10,15}$/.test(digits) && ph.indexOf('\u2022') < 0) {
           var a = el('a', 'ph', ph); a.href = 'tel:' + digits; meta.appendChild(a);
         } else meta.appendChild(el('span', 'ph', ph));
-      }
-      if (it.addr) meta.appendChild(el('span', 'addr', '📍 ' + String(it.addr)));
-      if (it.wa && /^\d{10,15}$/.test(String(it.wa))) {
-        var w = el('a', 'wa', 'WhatsApp'); w.href = 'https://wa.me/' + it.wa; w.target = '_blank'; w.rel = 'noopener'; meta.appendChild(w);
       }
       li.appendChild(meta);
       if (it.verified || it.signed) {
@@ -1194,10 +1189,6 @@ main.wrap{padding-bottom:32px}
 #dirList{list-style:none;margin:0;padding:0}
 #dirList li{display:grid;gap:2px;padding:11px 0;border-top:1px solid var(--line)}
 #dirList li:first-child{border-top:0}
-#dirList li.has-dp{grid-template-columns:44px 1fr;column-gap:12px}
-#dirList li.has-dp>:not(.dp){grid-column:2}
-#dirList .dp{grid-row:1/span 3;width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid var(--line)}
-.meta .wa{color:#128c3e;font-weight:700}
 .who{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
 .who b{font-size:16px}
 .kind{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px}
