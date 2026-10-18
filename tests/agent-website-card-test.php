@@ -48,6 +48,7 @@ check('migration applied (web_* columns)', AgentApplications::webColumnsAvailabl
 
 $TAG = 'Zz Webcard ' . bin2hex(random_bytes(3));
 $ids = [];
+$ACC = [];
 try {
     // a 200x150 test photo, made here
     $im = imagecreatetruecolor(200, 150);
@@ -112,6 +113,36 @@ try {
     check('remove', $ref !== '' && AgentApplications::find($made['id']) === null);
     $ids = [];
 
+    // one list: agent accounts come in as cards
+    $accName = $TAG . ' Acc';
+    $accId = Database::insert('admins', [
+        'username' => 'zzwc' . bin2hex(random_bytes(3)), 'password_hash' => password_hash('x' . random_int(0, 99999), PASSWORD_DEFAULT),
+        'full_name' => $accName, 'phone' => '9812399988', 'role' => 'agent', 'is_active' => 1,
+    ]);
+    $hiddenId = Database::insert('admins', [
+        'username' => 'zzwh' . bin2hex(random_bytes(3)), 'password_hash' => password_hash('x' . random_int(0, 99999), PASSWORD_DEFAULT),
+        'full_name' => $accName . ' Own', 'phone' => '9812399977', 'role' => 'agent', 'is_active' => 1,
+    ]);
+    $ACC = [$accId, $hiddenId];
+    $res = AgentApplications::importAgents(1, [$hiddenId]);
+    check('import made cards for the accounts', isset($res['made'][$accId], $res['made'][$hiddenId]));
+    $cardId = (int) Database::scalar('SELECT id FROM agent_applications WHERE admin_id = :a', ['a' => $accId], 0);
+    $ids[] = $cardId;
+    $ids[] = (int) Database::scalar('SELECT id FROM agent_applications WHERE admin_id = :a', ['a' => $hiddenId], 0);
+    $card = AgentApplications::find($cardId);
+    check('imported card: approved, linked, live, full number', $card['status'] === 'approved' && (int) $card['admin_id'] === $accId && (int) $card['web_live'] === 1 && (int) $card['public_ok'] === 1);
+    check('imported account on the website once', count(array_filter(AgentApplications::directory(), static fn($i) => $i['name'] === $accName)) === 1);
+    check('hidden account not on the website', $findIn($accName . ' Own') === null);
+    $again = AgentApplications::importAgents(1);
+    check('import again makes nothing new for them', !isset($again['made'][$accId]) && !isset($again['made'][$hiddenId]));
+    AgentApplications::saveCard($cardId, ['phone' => '+91 9876511122', 'web_addr' => 'Station Road'], 1, false);
+    $it = $findIn($accName);
+    check('card number edit shows on the website', $it !== null && $it['phone'] === '9876511122' && $it['wa'] === '919876511122' && $it['addr'] === 'Station Road');
+    Database::update('admins', ['is_active' => 0], 'id = :id', ['id' => $accId]);
+    check('switched-off account: card not shown', $findIn($accName) === null);
+    $agRow = array_values(array_filter(AgentApplications::agents(), static fn($a) => (int) $a['id'] === $accId))[0] ?? [];
+    check('agents() carries the card id', (int) ($agRow['card_id'] ?? 0) === $cardId);
+
     // the apply page sends the bank fields; the page source carries them
     $page = (string) file_get_contents(dirname(__DIR__) . '/agreements/apply.html');
     check('apply form has bank fields', str_contains($page, 'id="b_acc"') && str_contains($page, "'b_name', 'b_bank', 'b_acc', 'b_ifsc', 'b_upi'"));
@@ -120,6 +151,10 @@ try {
 } finally {
     foreach ($ids as $id) {
         Database::run('DELETE FROM agent_applications WHERE id = :id', ['id' => $id]);
+    }
+    foreach ($ACC as $id) {
+        Database::run('DELETE FROM agent_applications WHERE admin_id = :id', ['id' => $id]);
+        Database::run('DELETE FROM admins WHERE id = :id', ['id' => $id]);
     }
 }
 

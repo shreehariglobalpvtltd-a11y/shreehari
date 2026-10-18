@@ -105,6 +105,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 AgentApplications::update($id, ['status' => 'approved'], $selfId);
                 AgentApplications::saveCard($id, ['web_live' => 1], $selfId, false);
                 Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=1#web');
+            } elseif ($act === 'import') {
+                // 19 Oct 2026 (owner): "sabai agent eutai hun" - every agent account gets its card here.
+                // The company's own login (username "shari") is brought in but not put on the website.
+                $own = array_map('intval', array_column(Database::fetchAll("SELECT id FROM admins WHERE role = 'agent' AND username = 'shari'"), 'id'));
+                $res = AgentApplications::importAgents($selfId, $own);
+                Response::redirect('admin/agreements.php?tab=apps&imported=' . count($res['made']));
             } elseif ($act === 'delete') {
                 $ref = AgentApplications::remove((int) ($_POST['id'] ?? 0), $selfId);
                 Response::redirect('admin/agreements.php?tab=apps&deleted=' . rawurlencode($ref));
@@ -133,6 +139,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 }
 if ($flash === null && isset($_GET['saved'])) {
     $flash = (string) $_GET['saved'] === '1' ? ['ok', 'Saved.'] : ['ok', 'Nothing to change.'];
+}
+if ($flash === null && isset($_GET['imported'])) {
+    $flash = ['ok', (int) $_GET['imported'] . ' agent account(s) brought into this list. Open each one to add or correct the number, photo and address.'];
 }
 if ($flash === null && isset($_GET['deleted'])) {
     $flash = ['ok', 'Removed ' . Security::clean((string) $_GET['deleted'], 20) . ' — it is off the website and the list.'];
@@ -463,6 +472,14 @@ if (!$ready) {
   <div class="flash bad">That application was not found.</div>
 <?php endif; ?>
 
+<?php $noCard = count(array_filter($agents, static fn($a) => empty($a['card_id'])));
+if ($canEdit && $ready && $noCard > 0): /* 19 Oct 2026: one agent list - bring the agent accounts in */ ?>
+<form method="post" action="agreements.php?tab=apps" class="flash" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap" onsubmit="return confirm('Bring <?= $noCard ?> agent account(s) into this list and put them on the website (with their number)?')">
+  <?= $csrfField ?><input type="hidden" name="action" value="import">
+  <span style="flex:1 1 260px"><b><?= $noCard ?> agent account(s)</b> from the Agents register are not in this list yet. Bring them in — each becomes an Approved card, live on the website with name and number (those with no number stay off until you add one).</span>
+  <button class="btn sm" type="submit"><svg class="a-ic"><use href="#a-users"/></svg>Bring all agents here</button>
+</form>
+<?php endif; ?>
 <?php if ($canEdit && $ready): /* 19 Oct 2026: the office adds an agent by hand - straight to Approved */ ?>
 <details class="panel agr-add" id="add"<?= $openId === 0 && isset($_GET['add']) ? ' open' : '' ?>>
   <summary><svg class="a-ic"><use href="#a-plus"/></svg><b>Add agent</b> <span class="muted text-xs">— came to the office or phoned in; goes live on the website at once</span></summary>
@@ -546,7 +563,7 @@ if (!$ready) {
 
 <?php else: /* ---------------- tab 2: existing agents & partners ---------------- */ ?>
 
-<p class="muted" style="margin:0 0 12px;font-size:13px">KYC documents are checked on each agent's <b>Agent 360</b> page (tap the name). Here: the agreement and what the public list may show. Nobody is on the public list until you tick <b>Listed</b> — tick it only for real agents and partners who agreed. The list shows only the name, kind, area and phone — the phone masked (98•••••123) unless "Full" is ticked under Phone shown. An account with no mobile number is never listed.</p>
+<p class="muted" style="margin:0 0 12px;font-size:13px">KYC documents are checked on each agent's <b>Agent 360</b> page (tap the name). Here: the agreement and what the public list may show. Nobody is on the public list until you tick <b>Listed</b> — tick it only for real agents and partners who agreed. The list shows only the name, kind, area and phone — the phone masked (98•••••123) unless "Full" is ticked under Phone shown. An account with no mobile number is never listed. <b>An agent with a 🌐 Website card is shown on the website through that card</b> (name, number, photo, address, Live switch) — the Listed / Full ticks here are only for agents without a card.</p>
 <div class="panel">
   <h2><svg class="a-ic"><use href="#a-users"/></svg>Existing agents &amp; partners</h2>
   <?php if ($agents === []): ?>
@@ -564,6 +581,7 @@ if (!$ready) {
               $cp = trim((string) ($ag['contact_person'] ?? ''));
               $sub = ($ag['kind'] === 'partner' ? '🏢 Partner' : '👤 Agent') . (!empty($ag['counter_name']) ? ' · ' . $ag['counter_name'] : ''); ?>
         <td style="min-width:150px"><a href="agent-360.php?agent=<?= (int) $ag['id'] ?>"><b><?= $h($agName) ?></b></a><?php if ($inactive): ?> <span class="pill st-muted">Inactive</span><?php endif; ?>
+          <?php if (!empty($ag['card_id'])): ?><a class="btn ghost sm" style="margin-left:4px" href="agreements.php?tab=apps&amp;id=<?= (int) $ag['card_id'] ?>#web">🌐 Website card</a><?php endif; ?>
           <div class="muted text-xs"><?= $h($sub) ?></div>
           <?php if ($ag['kind'] === 'partner' && $cp !== '' && strcasecmp($cp, $agName) !== 0): ?><div class="muted text-xs">Contact: <?= $h($cp) ?></div><?php endif; ?></td>
         <td class="mono" style="white-space:nowrap"><?= $h($ag['phone_any'] ?: '—') ?></td>
