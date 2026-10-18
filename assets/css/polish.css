@@ -1,0 +1,114 @@
+/* =====================================================================
+   S HARI GLOBAL — POLISH LAYER  (17 Oct 2026, owner's "ultra-polish" prompt)
+
+   Loads LAST (after depth.css). A surgical top-up on the premium3d / hyperos /
+   liquid work that is already live — four small, verified weak spots, nothing
+   rebuilt:
+
+     1. the hero route-band coach marker read as a tiny indistinct shape
+        -> larger and sharper so it reads as a bus
+     2. the phone's feature-icon strip scrolled but cut off flat on the right
+        with no hint there was more -> a soft right-edge fade
+     3. tactile press feedback was on the bespoke keys (sb-pay, nav-cta, hh-act,
+        bottom-nav) but not on the ordinary .btn -> a gentle, consistent press
+     4. the ticket PNR pill simply appeared -> a one-time cinematic light sweep
+        when the ticket is ready (sb-tk-imgw gains .ok)
+
+   Rules, same as the layers below it: colour / light / shadow / transform /
+   opacity only — no id, hook, label, control or logic change. Every bit of
+   motion stops for prefers-reduced-motion, html[data-motion="reduced"] and
+   html[data-tier="low"]. Built on the existing --p3-* tokens so it follows the
+   palette picker and light / dark / AMOLED automatically.
+   ===================================================================== */
+
+/* =====================================================================
+   1. HERO ROUTE-BAND COACH — bigger, sharper, reads as a bus
+   The marker is a flat webp driven along .p3-line by premium3d.css's p3Drive
+   (transform: translateX). We only touch its box, its artwork size and its
+   contrast / shadow — never its transform — so the drive is untouched.
+   ===================================================================== */
+#hero3d .p3-mover{
+  height:40px;margin-top:-20px;background-size:80px 40px;
+  filter:contrast(1.08) saturate(1.06) drop-shadow(0 7px 7px rgba(0,0,0,.6)) drop-shadow(0 1px 1px rgba(0,0,0,.4));
+}
+/* the dotted road and the orange fill a touch stronger so the band reads at a glance */
+#hero3d .p3-line::before{border-top-width:3px;border-top-color:rgba(255,255,255,.6)}
+#hero3d .p3-line::after{height:4px;margin-top:-2px}
+
+/* the Journey-Summary rail coach (desktop): keep its size, just make it legible */
+@media (min-width:860px){
+  #smartBook .sb-route-bus{filter:contrast(1.1) saturate(1.05) drop-shadow(0 4px 5px rgba(0,0,0,.45))}
+}
+
+/* =====================================================================
+   2. PHONE FEATURE STRIP — a soft right-edge fade that says "scroll for more"
+   .p3-feats is a nowrap, overflow-x:auto row below 860px. The mask only fades
+   pixels; it never changes the layout or the scroll.
+   ===================================================================== */
+@media (max-width:859px){
+  .p3-feats{
+    -webkit-mask-image:linear-gradient(90deg,#000 86%,rgba(0,0,0,0));
+    mask-image:linear-gradient(90deg,#000 86%,rgba(0,0,0,0));
+  }
+}
+
+/* =====================================================================
+   3. CONSISTENT TACTILE PRESS on the ordinary .btn
+   The premium keys keep their own, richer :active (higher specificity wins):
+   sb-pay, nav-cta, hh-act, bottom-nav. This only reaches the plain buttons
+   that had no press at all.
+   ===================================================================== */
+/* add a transform (+filter) transition WITHOUT dropping the colour / shadow
+   transitions the base .btn already animates — the shorthand replaces, so the
+   common properties are listed back in. */
+.btn{transition:transform .12s var(--p3-ease,cubic-bezier(.22,1,.36,1)),
+  filter .12s ease,box-shadow .18s ease,background-color .2s ease,
+  color .2s ease,border-color .2s ease;-webkit-tap-highlight-color:transparent}
+.btn:active{transform:translateY(1px) scale(.985)}
+@media (hover:hover){ .btn:not(:disabled):hover{filter:brightness(1.03)} }
+
+/* =====================================================================
+   4. TICKET PNR — a one-time light sweep + a gentle pop when the ticket lands
+   premium3d.css already styles .sb-tk-pnr as a pill; it gets a reveal the
+   moment its wrapper flips to .ok (the real engine state, not a timer).
+   ===================================================================== */
+#smartBook .sb-tk-imgw.ok .sb-tk-pnr{
+  position:relative;overflow:hidden;isolation:isolate;
+  animation:polishPnrPop .5s var(--p3-ease,cubic-bezier(.22,1,.36,1)) both;
+}
+#smartBook .sb-tk-imgw.ok .sb-tk-pnr::after{
+  content:"";position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:linear-gradient(115deg,transparent 38%,rgba(255,255,255,.85) 50%,transparent 62%);
+  transform:translateX(-120%);animation:polishPnrSweep 1.15s var(--p3-ease,ease) .18s 1 both;
+}
+@keyframes polishPnrPop{from{transform:scale(.9);opacity:0}60%{transform:scale(1.03)}to{transform:scale(1);opacity:1}}
+@keyframes polishPnrSweep{to{transform:translateX(120%)}}
+
+/* =====================================================================
+   5. HYPER-BUS COACH WHEELS — make the real rim spin read clearly
+   (18 Oct 2026, owner: the top coach's wheels don't look like they turn,
+   make them turn clearly like the coaches lower down.)
+   The rims already rotate (hyperos.css .shg-wheel-spin / shgAlloySpin) — the
+   motion is just too quiet on the small chrome hub. This keeps the real photo
+   wheel (no drawn spokes) and only: shows more of the alloy (less edge fade),
+   lifts the alloy's contrast so the bolts read, and spins a touch faster.
+   Nothing overrides hyperos's motion gating — the duration here has no
+   !important, so the reduced-motion / data-motion rules there still win.
+   ===================================================================== */
+#hyperBus .hx-hub{-webkit-mask:radial-gradient(circle,#000 95%,transparent 100%);
+  mask:radial-gradient(circle,#000 95%,transparent 100%)}
+#hyperBus .hx-hub .shg-wheel-spin{animation-duration:.42s}
+#hyperBus .hx-hub .shg-wheel-spin img{filter:contrast(1.14) brightness(1.05) saturate(1.04)}
+
+/* =====================================================================
+   STILLNESS — everything above stops where the other layers stop
+   ===================================================================== */
+@media (prefers-reduced-motion:reduce){
+  .btn{transition:none}.btn:active{transform:none}
+  #smartBook .sb-tk-imgw.ok .sb-tk-pnr{animation:none}
+  #smartBook .sb-tk-imgw.ok .sb-tk-pnr::after{animation:none;display:none}
+}
+:root[data-motion="reduced"] .btn:active{transform:none}
+:root[data-motion="reduced"] #smartBook .sb-tk-imgw.ok .sb-tk-pnr{animation:none}
+:root[data-motion="reduced"] #smartBook .sb-tk-imgw.ok .sb-tk-pnr::after{animation:none;display:none}
+html[data-tier="low"] #smartBook .sb-tk-imgw.ok .sb-tk-pnr::after{display:none}
