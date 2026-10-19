@@ -101,6 +101,26 @@
 #hyperBus .hx-hub .shg-wheel-spin img{filter:contrast(1.14) brightness(1.05) saturate(1.04)}
 
 /* =====================================================================
+   6. HERO COACH WHEELS (#hero3d) — same real-photo rims as #hyperBus
+   (19 Oct 2026, owner: of the three coaches only the first one's wheels
+   stood still.) #h3Bus was a bare photo. It now sits in .p3-coach, which
+   carries the .p3-bus class (size, parallax, float, shadow, motion gating
+   all unchanged), so the two rim hubs float WITH the coach. Same file, same
+   rim measurements as hyperos.css §7, so the percentages are identical.
+   ===================================================================== */
+#hero3d .p3-coach{height:auto}
+#hero3d .p3-coach .p3-photo{display:block;width:100%;max-width:none;height:auto}
+#hero3d .p3-coach .hx-hub{position:absolute;z-index:1;border-radius:50%;overflow:hidden;transform:scaleX(var(--k));
+  -webkit-mask:radial-gradient(circle,#000 95%,transparent 100%);mask:radial-gradient(circle,#000 95%,transparent 100%)}
+#hero3d .p3-coach .hx-hub i{position:absolute;inset:0;display:block;border-radius:50%;overflow:hidden;animation-duration:.42s}
+#hero3d .p3-coach .hx-hub img{position:absolute;display:block;max-width:none!important;max-height:none!important;
+  filter:contrast(1.14) brightness(1.05) saturate(1.04)}
+#hero3d .p3-coach .hx-hub.h1{--k:.8444;left:16.406%;top:70.6875%;width:5.625%;height:11.25%}
+#hero3d .p3-coach .hx-hub.h1 img{width:2105.26%;height:888.89%;left:-354.6%;top:-628.33%}
+#hero3d .p3-coach .hx-hub.h2{--k:.90385;left:60.375%;top:71.875%;width:6.5%;height:13%}
+#hero3d .p3-coach .hx-hub.h2 img{width:1702.13%;height:769.23%;left:-1032.98%;top:-552.88%}
+
+/* =====================================================================
    STILLNESS — everything above stops where the other layers stop
    ===================================================================== */
 @media (prefers-reduced-motion:reduce){
