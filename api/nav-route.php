@@ -45,7 +45,14 @@ foreach (array_slice((array) ($in['locations'] ?? []), 0, 5) as $l) {
     if ($lat < 5 || $lat > 40 || $lon < 60 || $lon > 100) {        // India + Nepal and around
         $fail(400, 'Location outside the service area.');
     }
-    $locs[] = ['lat' => round($lat, 6), 'lon' => round($lon, 6)];
+    $loc = ['lat' => round($lat, 6), 'lon' => round($lon, 6)];
+    // the direction the rider is moving (a re-route while driving): Valhalla
+    // then starts on the road ahead, not on the lane going the other way
+    if (is_numeric($l['heading'] ?? null)) {
+        $loc['heading'] = ((int) $l['heading'] % 360 + 360) % 360;
+        $loc['heading_tolerance'] = 60;
+    }
+    $locs[] = $loc;
 }
 if (count($locs) < 2) {
     $fail(400, 'Need a start and a destination.');
@@ -62,6 +69,15 @@ if (preg_match('/^[a-z]{2}(-[A-Z]{2})?$/', $lang) === 1) {
 $alt = (int) ($in['alternates'] ?? 0);
 if ($alt > 0) {
     $body['alternates'] = min(2, $alt);
+}
+/* navigate.html (20 Oct 2026) asks for the OSRM-shaped answer: steps with
+   lanes, banner and voice instructions, GeoJSON lines. Omitted, the answer
+   stays the plain Valhalla JSON assets/js/15-nav.js reads. */
+if (($in['format'] ?? '') === 'osrm') {
+    $body['format'] = 'osrm';
+    $body['shape_format'] = ($in['shape_format'] ?? '') === 'geojson' ? 'geojson' : 'polyline6';
+    $body['banner_instructions'] = true;
+    $body['voice_instructions'] = true;
 }
 if (is_array($in['costing_options'] ?? null)) {
     $co = [];
@@ -99,7 +115,8 @@ if ($http === 200) {
     exit;
 }
 $err = json_decode($raw, true);
-$outside = $http === 0 || $http >= 500 || in_array((int) ($err['error_code'] ?? 0), [170, 171, 442, 443], true);
+$outside = $http === 0 || $http >= 500 || in_array((int) ($err['error_code'] ?? 0), [170, 171, 442, 443], true)
+    || in_array((string) ($err['code'] ?? ''), ['NoSegment', 'NoRoute'], true);              // the same errors, OSRM-shaped
 if ($outside && Settings::getBool('nav_fallback_public', true)) {
     [$http2, $raw2] = $call('https://valhalla1.openstreetmap.de', $q, 12);
     if ($http2 > 0) {
