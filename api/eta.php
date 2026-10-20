@@ -41,8 +41,13 @@ try {
         Response::success(['live' => false, 'stops' => [], 'reason' => count($running) > 1 ? 'two trips on the road' : 'no trip on the road']);
     }
 
+    /* 20 Oct 2026: that one trip's own driver-app fix first (fixForTrip). */
+    [$fix] = EtaAlerts::fixForTrip((int) reset($running)['id'], (int) $route['id'], $now);
+    if ($fix === null) {
+        Response::success(['live' => false, 'stops' => []]);
+    }
     $stops = [];
-    foreach (EtaAlerts::stopEtas((int) $route['id'], null, $now) as $key => $s) {
+    foreach (EtaAlerts::stopEtas((int) $route['id'], $fix, $now) as $key => $s) {
         $stops[] = ['name' => $s['name'], 'key' => $key, 'eta' => (int) (ceil($s['eta'] / 5) * 5), 'km' => $s['km']];
     }
     Response::success(['live' => $stops !== [], 'stops' => $stops]);

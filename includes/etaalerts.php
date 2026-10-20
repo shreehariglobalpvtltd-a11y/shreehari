@@ -28,6 +28,11 @@
  * never shorter than the straight line, so the ETA errs late-side honest
  * rather than promising a bus that is still 20 km of bends away.
  *
+ * 20 Oct 2026: a coach whose driver runs the driver app (driver/, includes/
+ * livetrips.php) has its OWN position, so it is judged on that alone and
+ * the "two buses on the road" silence no longer applies to it. fixForTrip()
+ * is the one place every page asks "where is THIS coach?".
+ *
  * Switch: eta_alert_on (default off) · threshold: eta_alert_minutes (30).
  */
 
@@ -39,6 +44,7 @@ if (!defined('SHG_APP')) {
 }
 
 require_once __DIR__ . '/boarding.php';
+require_once __DIR__ . '/livetrips.php';   // 20 Oct 2026: each coach's own position (driver app)
 
 final class EtaAlerts
 {
@@ -179,6 +185,50 @@ final class EtaAlerts
     }
 
     /**
+     * The position of ONE trip (20 Oct 2026). The driver app's own fix for
+     * this schedule wins. A trip that HAS a driver app never falls back to
+     * the anonymous `livebus` key, even when its own fix is stale, because
+     * that key may be another coach. Without a driver app the old rule
+     * holds: `livebus` answers only when this is the one coach of its route
+     * on the road.
+     *
+     * @return array{0: ?array{lat:float,lng:float,kmh:?float}, 1: string, 2: ?int, 3: string}
+     *         [fix, why-not, age in seconds, source 'trip' | 'livebus' | '']
+     */
+    public static function fixForTrip(int $scheduleId, int $routeId, ?int $nowTs = null): array
+    {
+        $nowTs = $nowTs ?? time();
+        [$own, $why, $age, $hasApp] = LiveTrips::fixFor($scheduleId, $nowTs);
+        if ($own !== null) {
+            return [$own, '', $age, 'trip'];
+        }
+        if ($hasApp) {
+            return [null, $why, $age, 'trip'];
+        }
+        $appRun  = LiveTrips::runningScheduleIds($nowTs);
+        $running = array_filter(self::candidates($nowTs), static fn(array $c): bool => (int) $c['route_id'] === $routeId);
+        if (count($running) !== 1 || (int) reset($running)['id'] !== $scheduleId) {
+            return [null, count($running) > 1 ? 'two buses on this route, not guessing which' : 'this trip is not on the road yet', null, ''];
+        }
+        [$fix, $why] = self::fix($nowTs);
+        if ($fix === null) {
+            return [null, $why, null, ''];
+        }
+        if ($appRun !== []) {
+            // Some coach runs the driver app. If its fix is on THIS route the
+            // anonymous key could be that coach's phone, so do not use it.
+            foreach (LiveTrips::runningWithFix($nowTs) as $t) {
+                if ((int) $t['route_id'] === $routeId) {
+                    return [null, 'another coach of this route sends its own position', null, ''];
+                }
+            }
+        }
+        $row = Database::fetch("SELECT updated_at FROM kv_store WHERE kscope = 'global' AND kkey = 'livebus' LIMIT 1");
+        $age = $row !== null ? max(0, $nowTs - (int) strtotime((string) $row['updated_at'])) : null;
+        return [$fix, '', $age, 'livebus'];
+    }
+
+    /**
      * Trips that can plausibly be on the road now: departure −30 min … +16 h.
      *
      * @return list<array<string,mixed>>
@@ -248,61 +298,86 @@ final class EtaAlerts
     {
         $nowTs  = $nowTs ?? time();
         $result = ['sent' => 0, 'claimed' => 0, 'trips' => 0, 'skipped' => []];
+        $limit  = self::thresholdMinutes();
 
+        /* 20 Oct 2026: every coach running the driver app first, each with its
+           OWN fix - two coaches of one route are no longer ambiguous. (A test
+           passing $fix keeps the old single-position behaviour exactly.) */
+        $ownApp = [];
         if ($fix === null) {
+            foreach (LiveTrips::runningWithFix($nowTs) as $trip) {
+                $ownApp[(int) $trip['id']] = true;
+                self::alertTrip($trip, $trip['fix'], $limit, $nowTs, $send, $result);
+            }
+            $ownApp += LiveTrips::runningScheduleIds($nowTs);
             [$fix, $why] = self::fix($nowTs);
             if ($fix === null) {
-                return $result + ['idle' => $why];
+                return $ownApp === [] ? $result + ['idle' => $why] : $result;
             }
         }
 
+        /* The anonymous `livebus` key: only for a route with ONE coach on
+           the road, and never for a coach that has its own driver app. */
         $byRoute = [];
         foreach (self::candidates($nowTs) as $c) {
             $byRoute[(int) $c['route_id']][] = $c;
         }
-
-        $limit = self::thresholdMinutes();
         foreach ($byRoute as $routeId => $trips) {
             if (count($trips) > 1) {
                 $result['skipped'][] = 'route ' . $routeId . ': ' . count($trips) . ' buses on the road, one position - not guessing';
                 continue;
             }
-            $trip = $trips[0];
-            $geo  = self::routeLine($routeId);
-            $pos  = self::project($geo['line'], $fix['lat'], $fix['lng']);
-            if ($pos === null || $pos['off'] > self::OFF_ROUTE_KM) {
-                continue;   // this coach is not on this route
+            if (isset($ownApp[(int) $trips[0]['id']])) {
+                continue;   // that coach answers for itself
             }
-            $result['trips']++;
-            foreach ($geo['missing'] as $m) {
-                $result['skipped'][] = 'stop "' . $m . '" has no coordinates';
-            }
-
-            foreach ($geo['line'] as $stop) {
-                if ($stop['type'] !== 'boarding') {
-                    continue;
-                }
-                $ahead = $stop['km'] - $pos['km'];
-                if ($ahead <= 0.5 || $ahead > self::MAX_ALERT_KM) {
-                    continue;
-                }
-                $eta = self::etaMinutes($ahead, $fix['kmh']);
-                if ($eta > $limit || $eta < self::MIN_ETA_MIN) {
-                    continue;
-                }
-                /* Timetable sanity: this stop is due around now on THIS trip. */
-                if ($stop['time'] !== null) {
-                    $due = strtotime($trip['travel_date'] . ' ' . $stop['time']);
-                    if ($due < $trip['dep_ts'] - (int) $trip['delay_minutes'] * 60 - 3600) { $due += 86400; }   // past midnight
-                    $due += (int) $trip['delay_minutes'] * 60;
-                    if (abs($due - $nowTs) > self::SCHEDULE_SLACK_H * 3600) {
-                        continue;
-                    }
-                }
-                self::alertStop($trip, $stop, $eta, $ahead, $send, $result);
-            }
+            self::alertTrip($trips[0], $fix, $limit, $nowTs, $send, $result);
         }
         return $result;
+    }
+
+    /**
+     * One coach, one fix: tell the passengers of every boarding stop it is
+     * now about $limit minutes from. Silent when the fix is off this route.
+     *
+     * @param array<string,mixed> $trip  a candidates()-shaped schedule row
+     * @param array{lat:float,lng:float,kmh:?float} $fix
+     * @param array<string,mixed> $result
+     */
+    private static function alertTrip(array $trip, array $fix, int $limit, int $nowTs, ?callable $send, array &$result): void
+    {
+        $geo = self::routeLine((int) $trip['route_id']);
+        $pos = self::project($geo['line'], (float) $fix['lat'], (float) $fix['lng']);
+        if ($pos === null || $pos['off'] > self::OFF_ROUTE_KM) {
+            return;   // this coach is not on this route
+        }
+        $result['trips']++;
+        foreach ($geo['missing'] as $m) {
+            $result['skipped'][] = 'stop "' . $m . '" has no coordinates';
+        }
+
+        foreach ($geo['line'] as $stop) {
+            if ($stop['type'] !== 'boarding') {
+                continue;
+            }
+            $ahead = $stop['km'] - $pos['km'];
+            if ($ahead <= 0.5 || $ahead > self::MAX_ALERT_KM) {
+                continue;
+            }
+            $eta = self::etaMinutes($ahead, $fix['kmh'] ?? null);
+            if ($eta > $limit || $eta < self::MIN_ETA_MIN) {
+                continue;
+            }
+            /* Timetable sanity: this stop is due around now on THIS trip. */
+            if ($stop['time'] !== null) {
+                $due = strtotime($trip['travel_date'] . ' ' . $stop['time']);
+                if ($due < $trip['dep_ts'] - (int) $trip['delay_minutes'] * 60 - 3600) { $due += 86400; }   // past midnight
+                $due += (int) $trip['delay_minutes'] * 60;
+                if (abs($due - $nowTs) > self::SCHEDULE_SLACK_H * 3600) {
+                    continue;
+                }
+            }
+            self::alertStop($trip, $stop, $eta, $ahead, $send, $result);
+        }
     }
 
     /** Tell every confirmed passenger boarding at $stop on $trip — once. */

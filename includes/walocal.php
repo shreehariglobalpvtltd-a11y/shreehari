@@ -766,7 +766,6 @@ final class WaLocal
 
         // Staff, or a customer with no ticket today: every trip on the road.
         $trips = EtaAlerts::candidates($now);
-        [$fix, $why] = EtaAlerts::fix($now);
         $lines = [self::t($lang, '🚌 बस अहिले', '🚌 बस अभी', '🚌 Buses now')];
         if ($trips === []) {
             $lines[] = self::t($lang, 'अहिले कुनै बस बाटोमा छैन।', 'अभी कोई बस रास्ते में नहीं है।', 'No bus is on the road right now.');
@@ -788,7 +787,10 @@ final class WaLocal
                 if ((int) ($tr['delay_minutes'] ?? 0) > 0) {
                     $lines[] = '   ⏱ ' . self::t($lang, (int) $tr['delay_minutes'] . ' मिनेट ढिलो', (int) $tr['delay_minutes'] . ' मिनट देरी', (int) $tr['delay_minutes'] . ' min late');
                 }
-                if ($fix !== null && count($trips) === 1) {
+                /* 20 Oct 2026: each coach answers from its own driver-app fix
+                   (fixForTrip keeps the one-coach rule for the shared key). */
+                [$fix, $why] = EtaAlerts::fixForTrip((int) $tr['id'], (int) $tr['route_id'], $now);
+                if ($fix !== null) {
                     $etas = EtaAlerts::stopEtas((int) $tr['route_id'], $fix, $now);
                     if ($etas !== []) {
                         uasort($etas, static fn(array $a, array $b): int => $a['km'] <=> $b['km']);

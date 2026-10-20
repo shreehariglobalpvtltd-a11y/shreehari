@@ -157,8 +157,10 @@ final class WhereIs
         $out['label'] = (string) ($trip['label'] ?? '');
 
         // The coach's position: only when it is fresh, accurate and on this
-        // route — and only when exactly one bus of this route is on the road.
-        [$fix, $why] = EtaAlerts::fix($now);
+        // route. 20 Oct 2026: THIS coach's own driver-app fix first
+        // (EtaAlerts::fixForTrip); the shared `livebus` key only when this is
+        // the one coach of its route on the road.
+        [$fix, $why, $fixAge] = EtaAlerts::fixForTrip((int) $leg['schedule_id'], (int) $leg['route_id'], $now);
         if ($fix === null) {
             $out['reason'] = $why;
             // A GPS gap on a trip that has left: the last place it was seen,
@@ -167,11 +169,6 @@ final class WhereIs
             if ($lk !== null) {
                 $out = array_merge($out, $lk);
             }
-            return $out;
-        }
-        $running = array_filter(EtaAlerts::candidates($now), static fn(array $c): bool => (int) $c['route_id'] === (int) $leg['route_id']);
-        if (count($running) !== 1 || (int) reset($running)['id'] !== (int) $leg['schedule_id']) {
-            $out['reason'] = count($running) > 1 ? 'two buses on this route, not guessing which' : 'this trip is not on the road yet';
             return $out;
         }
         $etas = EtaAlerts::stopEtas((int) $leg['route_id'], $fix, $now);
@@ -183,8 +180,7 @@ final class WhereIs
         $out['lat']    = $fix['lat'];
         $out['lng']    = $fix['lng'];
         $out['kmh']    = $fix['kmh'] !== null ? (int) round($fix['kmh']) : null;
-        $row = Database::fetch("SELECT updated_at FROM kv_store WHERE kscope = 'global' AND kkey = 'livebus' LIMIT 1");
-        $out['fixAge'] = $row !== null ? max(0, $now - (int) strtotime((string) $row['updated_at'])) : null;
+        $out['fixAge'] = $fixAge;
         $key = Boarding::townKey((string) ($leg['boarding_stop'] ?? ''));
         if (isset($etas[$key])) {
             $out['etaMin'] = (int) (ceil($etas[$key]['eta'] / 5) * 5);
@@ -433,6 +429,16 @@ final class WhereIs
         if (!in_array($state, ['departed', 'on_route', 'delayed'], true)) {
             return null;
         }
+        /* 20 Oct 2026: a coach with the driver app answers from its own last
+           fix, and never from the shared key (that may be another coach). */
+        $own = LiveTrips::forSchedule((int) $leg['schedule_id']);
+        if ($own !== null) {
+            if ($own['last_ping_at'] === null || $own['last_lat'] === null) {
+                return null;
+            }
+            return self::lastKnownAt($leg, (float) $own['last_lat'], (float) $own['last_lng'],
+                (int) strtotime((string) $own['last_ping_at']), '', $now);
+        }
         $running = array_filter(EtaAlerts::candidates($now), static fn(array $c): bool => (int) $c['route_id'] === (int) $leg['route_id']);
         if (count($running) !== 1 || (int) reset($running)['id'] !== (int) $leg['schedule_id']) {
             return null;
@@ -441,23 +447,34 @@ final class WhereIs
         if ($row === null) {
             return null;
         }
-        $at  = (int) strtotime((string) $row['updated_at']);
-        $age = $now - $at;
-        if ($at <= 0 || $age <= EtaAlerts::FIX_MAX_AGE_SEC || $age > self::LAST_KNOWN_MAX_SEC) {
-            return null;   // fresh (refused for another reason — accuracy) or too old to mean anything
-        }
         $v = json_decode((string) $row['kvalue'], true);
         if (is_string($v)) { $v = json_decode($v, true); }     // the client store double-encodes
         if (!is_array($v) || !is_numeric($v['lat'] ?? null) || !is_numeric($v['lng'] ?? null)) {
             return null;
         }
-        $lat = (float) $v['lat']; $lng = (float) $v['lng'];
+        return self::lastKnownAt($leg, (float) $v['lat'], (float) $v['lng'],
+            (int) strtotime((string) $row['updated_at']), trim((string) ($v['stop'] ?? '')), $now);
+    }
+
+    /**
+     * The "last seen" answer for one stored position, or null when it is
+     * fresh (refused for another reason, e.g. accuracy), too old to mean
+     * anything, or not on this route.
+     *
+     * @param array<string,mixed> $leg
+     * @return array<string,mixed>|null
+     */
+    private static function lastKnownAt(array $leg, float $lat, float $lng, int $at, string $stop, int $now): ?array
+    {
+        $age = $now - $at;
+        if ($at <= 0 || $age <= EtaAlerts::FIX_MAX_AGE_SEC || $age > self::LAST_KNOWN_MAX_SEC) {
+            return null;   // fresh (refused for another reason — accuracy) or too old to mean anything
+        }
         $geo = EtaAlerts::routeLine((int) $leg['route_id']);
         $pos = EtaAlerts::project($geo['line'], $lat, $lng);
         if ($pos === null || $pos['off'] > EtaAlerts::OFF_ROUTE_KM) {
             return null;   // not on this route: could be the other coach
         }
-        $stop = trim((string) ($v['stop'] ?? ''));
         if ($stop === '') {
             $best = null;
             foreach ($geo['line'] as $s) {

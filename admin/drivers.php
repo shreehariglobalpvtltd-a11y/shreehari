@@ -87,6 +87,24 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 Logger::audit('driver.toggle', 'driver', (string) $id, null, ['active' => $on], 'toggled by admin #' . $admin['id']);
                 $flash = ['ok', $on ? 'Driver reactivated.' : 'Driver deactivated.'];
 
+            } elseif ($action === 'pin') {
+                /* Driver app PIN (20 Oct 2026, driver/ + includes/driverauth.php).
+                   A new PIN, or "remove", signs every phone of this driver out. */
+                $id    = (int) ($_POST['id'] ?? 0);
+                $clear = !empty($_POST['clear']);
+                $pin   = (string) preg_replace('/\D/', '', (string) ($_POST['pin'] ?? ''));
+                if ($id <= 0) { throw new RuntimeException('Missing driver id.'); }
+                $phoneOnFile = (string) Database::scalar('SELECT phone FROM drivers WHERE id = :id', ['id' => $id], '');
+                if (!$clear && trim($phoneOnFile) === '') {
+                    throw new RuntimeException('Add this driver\'s mobile number first. They sign in with it.');
+                }
+                require_once INCLUDE_PATH . '/driverauth.php';
+                DriverAuth::setPin($id, $clear ? '' : $pin);
+                Logger::audit('driver.pin', 'driver', (string) $id, null, ['set' => !$clear], 'by admin #' . $admin['id']);
+                $flash = ['ok', $clear
+                    ? 'App PIN removed. That driver is signed out of the driver app.'
+                    : 'App PIN saved. The driver opens ' . appUrl('driver/') . ' and signs in with their mobile number and this PIN.'];
+
             } elseif ($action === 'delete') {
                 $id = (int) ($_POST['id'] ?? 0);
                 if ($id <= 0) { throw new RuntimeException('Missing driver id.'); }
@@ -123,7 +141,7 @@ if ($search !== '') {
 $whereSql = $where !== [] ? ' WHERE ' . implode(' AND ', $where) : '';
 
 $drivers = Database::fetchAll(
-    "SELECT id, full_name, phone, role, licence_no, licence_exp, is_active,
+    "SELECT id, full_name, phone, role, licence_no, licence_exp, is_active, (pin_hash IS NOT NULL) AS has_pin,
             (SELECT COUNT(*) FROM schedules WHERE driver_id = drivers.id AND travel_date >= CURDATE()) AS upcoming
        FROM drivers" . $whereSql . "
       ORDER BY is_active DESC, full_name ASC LIMIT 200",
@@ -211,10 +229,10 @@ admin_header('Drivers & Crew', 'drivers');
 <div class="panel">
   <h2>Crew (<?= count($drivers) ?>)</h2>
   <table>
-    <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Licence</th><th>Trips</th><th>Status</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Licence</th><th>Trips</th><th>Driver app</th><th>Status</th><th>Actions</th></tr></thead>
     <tbody>
     <?php if ($drivers === []): ?>
-      <tr><td colspan="7" class="muted" style="padding:22px;text-align:center">No drivers on file. Add one above.</td></tr>
+      <tr><td colspan="8" class="muted" style="padding:22px;text-align:center">No drivers on file. Add one above.</td></tr>
     <?php else: foreach ($drivers as $d): ?>
       <tr>
         <td><strong><?= Security::e((string) $d['full_name']) ?></strong></td>
@@ -234,6 +252,19 @@ admin_header('Drivers & Crew', 'drivers');
           <?php endif; ?>
         </td>
         <td><?= (int) $d['upcoming'] > 0 ? '<strong>' . (int) $d['upcoming'] . '</strong> upcoming' : '<span class="muted">—</span>' ?></td>
+        <td>
+          <?= (int) $d['has_pin'] === 1 ? '<span class="pill" style="background:#d7f4e3;color:#0a6b3b">PIN set</span>' : '<span class="muted" style="font-size:12px">no PIN</span>' ?>
+          <?php if ($canEdit && (int) $d['is_active'] === 1): ?>
+            <form method="post" style="display:flex;gap:4px;margin-top:4px;align-items:center">
+              <?= Security::csrfField() ?>
+              <input type="hidden" name="action" value="pin">
+              <input type="hidden" name="id" value="<?= (int) $d['id'] ?>">
+              <input type="text" name="pin" inputmode="numeric" pattern="\d{4,6}" maxlength="6" placeholder="4-6 digits" autocomplete="off" style="width:86px;padding:4px 6px" aria-label="New driver app PIN">
+              <button class="btn ghost" type="submit" style="padding:4px 8px;font-size:12px"><?= (int) $d['has_pin'] === 1 ? 'Change' : 'Set PIN' ?></button>
+              <?php if ((int) $d['has_pin'] === 1): ?><button class="btn ghost" type="submit" name="clear" value="1" formnovalidate style="padding:4px 8px;font-size:12px" onclick="return confirm('Remove the PIN? The driver is signed out of the driver app.')">Remove</button><?php endif; ?>
+            </form>
+          <?php endif; ?>
+        </td>
         <td><?php if ((int) $d['is_active'] === 1): ?>
           <span class="pill" style="background:#d7f4e3;color:#0a6b3b">Active</span>
         <?php else: ?>
@@ -272,6 +303,7 @@ admin_header('Drivers & Crew', 'drivers');
 <p class="muted">
   Roles: Driver (behind the wheel), Co-driver (relief), Conductor (takes manifest), Host (hospitality).
   A driver can be assigned to a specific trip from the <a href="<?= $base ?>/admin/trips.php">Trips board</a>.
+  <b>Driver app:</b> set a PIN, then the driver opens <b><?= Security::e(appUrl('driver/')) ?></b> on their phone, signs in with their mobile number and PIN, and taps START TRIP. Every coach then shows on the <a href="<?= $base ?>/admin/map.php">Live Map</a>, and each passenger's tracking page and "bus is near" message use that coach's own position.
   Deactivation keeps historical assignments intact; delete only works once the driver has no upcoming trip.
 </p>
 

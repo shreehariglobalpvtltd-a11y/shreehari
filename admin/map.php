@@ -97,14 +97,18 @@ foreach ($jsTrips as $t) {
         continue;
     }
     $rid = $routeOf[$t['id']] ?? 0;
-    $etaCache[$rid] ??= EtaAlerts::stopEtas($rid);
+    /* 20 Oct 2026: per coach - its own driver-app fix first (fixForTrip). */
+    if (!isset($etaCache[$t['id']])) {
+        [$tFix] = EtaAlerts::fixForTrip((int) $t['id'], $rid);
+        $etaCache[$t['id']] = $tFix !== null ? EtaAlerts::stopEtas($rid, $tFix) : [];
+    }
     $groups = [];
     foreach ($rows as $r) {
         $label = trim((string) ($r['boarding_stop'] ?? ''));
         $key   = $label !== '' ? Boarding::townKey($label) : '?';
         $groups[$key] ??= [
             'stop'  => $label !== '' ? Boarding::stopDisplay($label)['name'] : 'Pickup not set',
-            'eta'   => $etaCache[$rid][$key]['eta'] ?? null,
+            'eta'   => $etaCache[$t['id']][$key]['eta'] ?? null,
             'seats' => 0,
             'pax'   => [],
         ];
@@ -125,7 +129,7 @@ admin_header('Live Map', 'map');
 #lmMap{height:calc(100vh - 170px);min-height:420px;border-radius:14px;border:1px solid var(--line);overflow:hidden;background:#0f1a2e;position:relative}
 #lmMap .maplibregl-canvas{outline:none}
 .lm-side{display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 170px);overflow:auto}
-.lm-card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.lm-card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;flex-shrink:0}
 .lm-pax-trip{padding:10px 14px 4px;font-size:13px}
 .lm-pax{border-top:1px solid var(--line)}
 .lm-pax summary{display:flex;gap:8px;align-items:center;padding:10px 14px;cursor:pointer;min-height:46px;list-style:none;font-size:13.5px}
@@ -177,6 +181,9 @@ admin_header('Live Map', 'map');
     <div class="lm-legend"><span><i style="background:#2E5FA8"></i> <?= Security::e($routes[0]['from_city'] ?? 'Outbound') ?> → <?= Security::e($routes[0]['to_city'] ?? '') ?></span><span><i style="background:#0a6b3b"></i> return</span><span>● stop · 🚌 live bus · 🏢 head office (Mehsana)</span></div>
   </div>
   <aside class="lm-side">
+    <div class="lm-card"><h3>🛰️ Buses on the road · driver app <small id="lmFleetAge">…</small></h3>
+      <div id="lmFleet"><div class="muted" style="padding:10px 14px">No driver has started a trip in the driver app. Give a driver a PIN in <a href="<?= $base ?>/admin/drivers.php">Drivers</a>, then they open <b><?= Security::e(appUrl('driver/')) ?></b> on their phone and tap START TRIP.</div></div>
+    </div>
     <div class="lm-card"><h3>🚌 Live bus <small id="lmBusAge">no position yet</small></h3>
       <div class="lm-bus" id="lmBus"><span class="muted">Waiting for the driver's phone. A signed-in driver taps "📡 I'm the driver" in the navigator; the office can also set a stop by hand from the app.</span></div>
     </div>
@@ -220,7 +227,8 @@ admin_header('Live Map', 'map');
 window.ADMAP = {
   routes: <?= json_encode($jsRoutes, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
   office: { lat: 23.588, lng: 72.369, name: <?= json_encode($company, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>, phone: <?= json_encode($phone, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?> },
-  base: <?= json_encode($base) ?>
+  base: <?= json_encode($base) ?>,
+  fleetUrl: <?= json_encode($base . '/admin/api/live-fleet.php') ?>
 };
 (function () {
   var A = window.ADMAP, map = null, busMarker = null, follow = false, lastAt = 0, busDisp = null, busTarget = null, anim = null;
@@ -296,9 +304,57 @@ window.ADMAP = {
       showBus(v);
     }).catch(function(){});
   }
+  /* 🛰️ Every coach the driver app runs (20 Oct 2026): its own marker,
+     gliding to each new fix; grey and "last seen" once the fix is stale. */
+  var fleet = {};
+  function glide(f){
+    f.anim = null;
+    var k = 0.12, dx = f.to.lng - f.at.lng, dy = f.to.lat - f.at.lat;
+    f.at = { lng: f.at.lng + dx * k, lat: f.at.lat + dy * k };
+    f.marker.setLngLat([f.at.lng, f.at.lat]);
+    if (Math.abs(dx) > 1e-7 || Math.abs(dy) > 1e-7) f.anim = requestAnimationFrame(function(){ glide(f); });
+  }
+  function ago(s){ if (s == null) return 'no fix yet'; var m = Math.round(s / 60); return s < 60 ? s + ' s ago' : (m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago'); }
+  function showFleet(list){
+    var box = document.getElementById('lmFleet'), seen = {};
+    document.getElementById('lmFleetAge').textContent = list.length ? list.length + ' running' : 'none';
+    if (!list.length) return;
+    box.innerHTML = list.map(function(t){
+      return '<div class="lm-trip" data-trip="' + t.tripId + '"><div class="t1"><span>' + (t.live ? '🟢' : '⚪') + '</span><span>' + esc(t.route) + '</span>'
+        + '<span class="pill" style="margin-left:auto">' + esc(t.bus || t.routeCode) + '</span></div>'
+        + '<div class="meta"><span>🕐 ' + esc(t.dep) + ' · ' + esc(t.date) + '</span>' + (t.driver ? '<span>👤 ' + esc(t.driver) + (t.driverPhone ? ' · <a href="tel:' + esc(t.driverPhone) + '">' + esc(t.driverPhone) + '</a>' : '') + '</span>' : '')
+        + '<span>🎟 ' + t.pax + '</span>' + (t.kmh != null && t.live ? '<span>' + t.kmh + ' km/h</span>' : '') + '<span>' + (t.live ? '🛰️ ' : '⏸ last seen ') + esc(ago(t.ageSec)) + '</span>'
+        + (t.acc != null ? '<span>±' + t.acc + ' m</span>' : '') + '</div></div>';
+    }).join('');
+    box.querySelectorAll('[data-trip]').forEach(function(el){ el.addEventListener('click', function(e){ if (e.target.closest('a')) return; var f = fleet[el.dataset.trip]; if (f && map) map.easeTo({ center: [f.to.lng, f.to.lat], zoom: Math.max(map.getZoom(), 12), duration: 900 }); }); });
+    if (!map) return;
+    list.forEach(function(t){
+      if (t.lat == null || t.lng == null) return;
+      seen[t.tripId] = true;
+      var f = fleet[t.tripId];
+      if (!f) {
+        var el = document.createElement('div'); el.className = 'lm-busm';
+        el.innerHTML = '🚌<span style="position:absolute;left:30px;top:4px;white-space:nowrap;font:700 11px system-ui;background:#0B1B3A;color:#fff;padding:2px 6px;border-radius:6px"></span>';
+        f = fleet[t.tripId] = { el: el, at: { lng: t.lng, lat: t.lat }, to: { lng: t.lng, lat: t.lat }, anim: null };
+        f.marker = new maplibregl.Marker({ element: el }).setLngLat([t.lng, t.lat]).addTo(map);
+      }
+      f.el.querySelector('span').textContent = (t.bus || t.routeCode) + (t.live && t.kmh != null ? ' · ' + t.kmh + ' km/h' : (t.live ? '' : ' · ' + ago(t.ageSec)));
+      f.el.style.opacity = t.live ? '1' : '.55';
+      f.to = { lng: t.lng, lat: t.lat };
+      if (!f.anim) f.anim = requestAnimationFrame(function(){ glide(f); });
+    });
+    Object.keys(fleet).forEach(function(id){ if (!seen[id]) { fleet[id].marker.remove(); delete fleet[id]; } });
+  }
+  function pollFleet(){
+    fetch(A.fleetUrl, { credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(d){
+      if (d && d.ok && d.data) showFleet(d.data.trips || []);
+    }).catch(function(){});
+  }
   document.getElementById('lmFollow').onclick = function(){ follow = !follow; this.classList.toggle('on', follow); this.textContent = follow ? '🎯 Following bus' : '🎯 Follow bus'; if (follow && busTarget) map.easeTo({ center: [busTarget.lng, busTarget.lat], zoom: Math.max(map.getZoom(), 12), duration: 900 }); };
   document.getElementById('lmFit').onclick = function(){ var b = bounds(); if (b) map.fitBounds(b, { padding: 48, duration: 900 }); };
   document.querySelectorAll('.lm-trip').forEach(function(el){ el.addEventListener('click', function(e){ if (e.target.closest('a')) return; var r = A.routes.find(function(x){ return x.code === el.dataset.code; }); if (!r || !r.stops.length || !map) return; var b = null; r.stops.forEach(function(s){ if (!b) b = new maplibregl.LngLatBounds([s.lng, s.lat], [s.lng, s.lat]); else b.extend([s.lng, s.lat]); }); map.fitBounds(b, { padding: 48, duration: 900 }); }); });
+  /* the list does not wait for the map: a slow tile server must not hide the buses */
+  pollFleet(); setInterval(pollFleet, 10000);
   loadLib().then(function(){
     try {
       map = new maplibregl.Map({ container: 'lmMap', style: 'https://tiles.openfreemap.org/styles/liberty', center: [76.8, 25.6], zoom: 5, fadeDuration: 250, maxBounds: [[61.0, 4.5], [99.5, 38.5]], minZoom: 3.8, attributionControl: { compact: true } });
@@ -310,6 +366,7 @@ window.ADMAP = {
       draw();
       var b = bounds(); if (b) map.fitBounds(b, { padding: 48, duration: 0 });
       poll(); setInterval(poll, 15000);
+      pollFleet();   // draw the markers now the map is ready
     });
   }).catch(function(){ document.getElementById('lmLoad').textContent = 'Map library could not be loaded — check the connection.'; });
 })();
