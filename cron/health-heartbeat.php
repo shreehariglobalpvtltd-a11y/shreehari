@@ -158,6 +158,34 @@ foreach (EXPECTED as $job => $spec) {
     }
 }
 
+/* SHARI NAV's own routing engine (docker shg-valhalla-full on :8003). When it
+   is gone, api/nav-route.php and nav-limits.php quietly fall back to the
+   public valhalla1 server, so nothing fails loudly: on 17 Oct 2026 a disk
+   clean-up removed the container and nobody noticed for 3 days. Observe only. */
+$navUrl = rtrim(Settings::getString('nav_engine_url', ''), '/');
+if ($navUrl !== '') {
+    $ch = curl_init($navUrl . '/status');
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5, CURLOPT_CONNECTTIMEOUT => 3]);
+    curl_exec($ch);
+    $navHttp = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($navHttp === 200) {
+        Health::resolve('nav.engine.down');
+    } else {
+        Health::open(
+            'nav_engine_down',
+            'nav.engine.down',
+            Health::WARN,
+            'SHARI NAV routing engine is not answering',
+            'Our own route engine (' . $navUrl . ') answered HTTP ' . $navHttp . '. Routes, road lines and speed limits '
+                . 'now come from the public valhalla1.openstreetmap.de server, which is rate-limited and may refuse. Selling is unaffected.',
+            "1. On the VPS: docker ps -a | grep shg-valhalla-full\n"
+                . "2. Stopped: docker start shg-valhalla-full (it restarts by itself after a reboot)\n"
+                . "3. Missing: rebuild it, see /srv/shg-nav/bin/02-build.sh valhalla (2-4 hours, run with the watchdog)",
+        );
+    }
+}
+
 cron_done([
     'checked' => count(EXPECTED),
     'healthy' => $healthy,
