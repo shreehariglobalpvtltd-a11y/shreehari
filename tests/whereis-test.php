@@ -9,6 +9,9 @@
  *      share button and three languages for the right key.        [HTTP]
  *   D. api/whereis.php: JSON shape, 404 for a wrong key.            [HTTP]
  *   E. The app payload carries trackUrl for a confirmed booking.
+ *   F. The road map (20 Oct 2026): "Show map" only with a road line, the
+ *      keyed api/track-map.php (stops on road km, position, the line
+ *      cacheable by version), nothing loaded before the tap.     [HTTP]
  */
 
 declare(strict_types=1);
@@ -21,6 +24,7 @@ require_once INCLUDE_PATH . '/seats.php';
 require_once INCLUDE_PATH . '/booking.php';
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/whereis.php';
+require_once INCLUDE_PATH . '/routegeo.php';
 
 define('BASE', rtrim((string) (getenv('SHG_TEST_BASE') ?: 'http://localhost:8899'), '/'));
 $PASS = 0; $FAIL = 0;
@@ -36,6 +40,23 @@ function get(string $path): array {
     return ['code' => $code, 'body' => $body];
 }
 $serverUp = get('/index.php')['code'] === 200;
+function headersOf(string $path): string {
+    $ch = curl_init(BASE . $path);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_HEADER => true, CURLOPT_NOBODY => false]);
+    $raw = (string) curl_exec($ch); $hs = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE); curl_close($ch);
+    return strtolower(substr($raw, 0, $hs));
+}
+/** A fake "router" for the road-line checks: the stops joined by straight steps. */
+function straightRoad(array $st): array {
+    $pts = [[$st[0]['lat'], $st[0]['lng']]];
+    for ($i = 1, $n = count($st); $i < $n; $i++) {
+        for ($k = 1; $k <= 20; $k++) {
+            $t = $k / 20;
+            $pts[] = [$st[$i - 1]['lat'] + $t * ($st[$i]['lat'] - $st[$i - 1]['lat']), $st[$i - 1]['lng'] + $t * ($st[$i]['lng'] - $st[$i - 1]['lng'])];
+        }
+    }
+    return ['ok' => true, 'pts' => $pts, 'source' => 'test', 'error' => ''];
+}
 
 const TD = '2099-12-03'; const PHONE = '9198700088';
 function cleanup(): void {
@@ -115,6 +136,57 @@ try {
         check('JSON with the status shape', $r['code'] === 200 && !empty($j['ok']) && array_key_exists('live', $j['data'] ?? []) && isset($j['data']['stop']), substr($r['body'], 0, 90));
         $r = get('/api/whereis.php?pnr=' . rawurlencode($pnr) . '&k=wrong');
         check('a wrong key → 404', $r['code'] === 404, 'HTTP ' . $r['code']);
+
+        echo "\n-- F. the road map --\n";
+        if (!RouteGeo::available()) {
+            check('route_geometry exists (apply database/upgrade-2026-10-route-geometry.sql)', false);
+        } else {
+            $rid = (int) $route['id'];
+            $savedGeo = Database::fetch('SELECT * FROM route_geometry WHERE route_id = :r', ['r' => $rid]);
+            try {
+                Database::delete('route_geometry', 'route_id = :r', ['r' => $rid]);
+                RouteGeo::resetCache();
+                $r = get('/track.php?pnr=' . rawurlencode($pnr) . '&k=' . $key);
+                check('no road line = no "Show map" button', $r['code'] === 200 && !str_contains($r['body'], 'id="mapBtn"'));
+                $bg = RouteGeo::build($rid, 'straightRoad');
+                check('a road line is built for the test route', $bg['ok'], $bg['error'] ?? '');
+                $r = get('/track.php?pnr=' . rawurlencode($pnr) . '&k=' . $key);
+                check('with a road line the page offers "Show map" - and loads no map until it is tapped',
+                    str_contains($r['body'], 'id="mapBtn"') && !str_contains($r['body'], 'maplibre-gl') && !str_contains($r['body'], 'src="/assets/js/track-map.js'), strlen($r['body']) . ' bytes');
+                check('...and the page stays light', strlen($r['body']) < 20000, strlen($r['body']) . ' bytes');
+                $r = get('/api/track-map.php?pnr=' . rawurlencode($pnr) . '&k=wrong');
+                check('api/track-map.php: a wrong key → 404', $r['code'] === 404, 'HTTP ' . $r['code']);
+                $r = get('/api/track-map.php?pnr=' . rawurlencode($pnr) . '&k=' . $key);
+                $j = json_decode($r['body'], true) ?: [];
+                $d = $j['data'] ?? [];
+                $S = (array) ($d['stops'] ?? []);
+                check('the right key → the line version, the stops on road km and the coach position',
+                    $r['code'] === 200 && ($d['v'] ?? null) === $bg['version'] && count($S) >= 2 && $S[0]['km'] < $S[1]['km']
+                    && array_key_exists('live', (array) ($d['pos'] ?? [])) && $d['pos']['live'] === false, substr($r['body'], 0, 120));
+                $have = [];
+                foreach (EtaAlerts::stopLine($rid)['line'] as $s) { $have[] = round($s['lat'], 6) . ',' . round($s['lng'], 6); }
+                $inv = array_filter($S, static fn(array $s): bool => !in_array(round($s['lat'], 6) . ',' . round($s['lng'], 6), $have, true));
+                check('every stop drawn is a stop with stored coordinates - none invented', $inv === [], json_encode(array_values($inv)));
+                check('the passenger\'s own pickup is marked, or the page is told it has no coordinates',
+                    (bool) ($d['mineMissing'] ?? true) === !in_array('board', array_column($S, 'mine'), true), json_encode(array_column($S, 'mine')));
+                check('no live fix = no bus position in the map answer', ($d['pos']['lat'] ?? null) === null && !isset($d['pos']['road']));
+                $r = get('/api/track-map.php?pnr=' . rawurlencode($pnr) . '&k=' . $key . '&part=line&v=' . $bg['version']);
+                $j = json_decode($r['body'], true) ?: [];
+                check('part=line: the stored road line itself', $r['code'] === 200 && ($j['data']['line'] ?? '') === RouteGeo::load($rid)['polyline6'] && ($j['data']['v'] ?? 0) === $bg['version']);
+                check('...cacheable for its version (a rebuild changes the URL)',
+                    str_contains(headersOf('/api/track-map.php?pnr=' . rawurlencode($pnr) . '&k=' . $key . '&part=line&v=' . $bg['version']), 'immutable'));
+                check('...an old version is never cached',
+                    str_contains(headersOf('/api/track-map.php?pnr=' . rawurlencode($pnr) . '&k=' . $key . '&part=line&v=' . ($bg['version'] + 7)), 'no-store'));
+                $r = get('/api/track-map.php?pnr=' . rawurlencode($pnr) . '&k=wrong&part=line&v=' . $bg['version']);
+                check('...and behind the same door', $r['code'] === 404);
+                $r = get('/assets/js/track-map.js');
+                check('the map script is served (loaded only on the tap)', $r['code'] === 200 && str_contains($r['body'], 'mapUpdate'));
+            } finally {
+                Database::delete('route_geometry', 'route_id = :r', ['r' => $rid]);
+                if ($savedGeo !== null) { Database::insert('route_geometry', $savedGeo); }
+                RouteGeo::resetCache();
+            }
+        }
     }
 } catch (Throwable $e) {
     check('suite ran without an unexpected exception', false, get_class($e) . ': ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine());

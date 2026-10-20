@@ -16,6 +16,9 @@
  *    - silence: off-route position, stale / inaccurate fix, two buses of
  *      one route on the road, a stop whose timetable time is hours away
  *    - nothing is sent through a real channel here: the sender is injected
+ *    - 20 Oct 2026: the stored ROAD line (includes/routegeo.php) - polyline,
+ *      simplify, locate, build with an injected router, km to a stop along
+ *      the road, and every fall-back to the line of stops
  *
  *    php -c .claude/php-dev.ini tests/eta-alerts-test.php
  * =====================================================================
@@ -26,6 +29,11 @@ if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/seats.php';
 require_once INCLUDE_PATH . '/etaalerts.php';
+require_once INCLUDE_PATH . '/routegeo.php';
+
+/* The sections before "the road line" pin the line-of-stops answer, so the
+   road line is off for them whatever this database has built. */
+RouteGeo::$enabled = false;
 
 const ETA_DATE = '2099-11-25';
 const ETA_TAG  = 'SHG-ETA-';
@@ -45,6 +53,24 @@ $cleanup = static function (): void {
     Database::delete('schedules', 'travel_date = :d', ['d' => ETA_DATE]);
     Database::run("DELETE FROM kv_store WHERE kscope = 'global' AND kkey = 'livebus' AND updated_by = 'eta-test'");
 };
+
+/** A fake "router": the stops joined by ~1 km steps, the first gap bowed $bulgeKm to one side. */
+function fakeRoad(array $stops, float $bulgeKm = 0.0, int $shiftStop = -1, float $shiftDeg = 0.0): array {
+    $pts = [];
+    if ($shiftStop >= 0) { $stops[$shiftStop]['lng'] += $shiftDeg; }
+    for ($i = 0, $n = count($stops) - 1; $i < $n; $i++) {
+        $a = $stops[$i]; $b = $stops[$i + 1];
+        $steps = max(4, (int) ceil(EtaAlerts::haversineKm($a['lat'], $a['lng'], $b['lat'], $b['lng'])));
+        $kx = cos(deg2rad(($a['lat'] + $b['lat']) / 2));
+        $dx = ($b['lng'] - $a['lng']) * $kx * 111.32; $dy = ($b['lat'] - $a['lat']) * 110.574; $len = max(1e-9, hypot($dx, $dy));
+        for ($k = $i === 0 ? 0 : 1; $k <= $steps; $k++) {
+            $t = $k / $steps; $o = $i === 0 ? $bulgeKm * sin(M_PI * $t) : 0.0;
+            $pts[] = [$a['lat'] + $t * ($b['lat'] - $a['lat']) + ($dx / $len) * $o / 110.574,
+                      $a['lng'] + $t * ($b['lng'] - $a['lng']) - ($dy / $len) * $o / (111.32 * $kx)];
+        }
+    }
+    return ['ok' => true, 'pts' => $pts, 'source' => 'test', 'error' => ''];
+}
 
 $n = 0;
 function rider(int $sid, string $boarding, string $status = 'confirmed'): int {
@@ -182,6 +208,99 @@ if (!$hasTable) {
             in_array('bus_near', Notify::TRIP_EVENTS, true) && Notify::tripEventEnabled('bus_near') === Settings::getBool('eta_alert_on', false));
         check('the driver\'s publish path (api/kv.php) does not call the alert engine',
             !str_contains((string) file_get_contents(ROOT_PATH . '/api/kv.php'), 'EtaAlerts'));
+
+        echo "-- the road line (20 Oct 2026) --\n";
+        $ref = RouteGeo::decode('_p~iF~ps|U_ulLnnqC_mqNvxq`@', 5);
+        check('polyline: the published reference string decodes to its three points',
+            count($ref) === 3 && abs($ref[0][0] - 38.5) < 1e-9 && abs($ref[1][1] + 120.95) < 1e-9 && abs($ref[2][1] + 126.453) < 1e-9, json_encode($ref));
+        $pp = [[21.1702, 72.8311], [21.2729662, 72.9555969], [28.06, 81.617], [27.999999, 81.000001]];
+        $rt = RouteGeo::decode(RouteGeo::encode($pp));
+        $okRt = count($rt) === 4;
+        foreach ($pp as $i => $q) { $okRt = $okRt && abs($rt[$i][0] - $q[0]) < 6e-7 && abs($rt[$i][1] - $q[1]) < 6e-7; }
+        check('polyline6: encode then decode gives the points back to 1e-6 degree', $okRt);
+        $straight = [];
+        for ($i = 0; $i <= 500; $i++) { $straight[] = [22.0 + $i * 0.002, 73.0]; }
+        check('simplify: 501 points on one straight road become its two ends', count(RouteGeo::simplify($straight)) === 2);
+        $ell = array_merge($straight, [[23.0, 73.5]]);
+        check('...and a real bend is kept', count(RouteGeo::simplify($ell)) === 3);
+        $road = ['lat' => array_column($straight, 0), 'lng' => array_column($straight, 1), 'cum' => RouteGeo::cumulativeKm($straight)];
+        $mLoc = RouteGeo::locate($road, 22.5, 73.0);
+        check('locate: the middle of a 111 km road is at ~55 km and on it', $mLoc !== null && abs($mLoc['km'] - end($road['cum']) / 2) < 0.2 && $mLoc['off'] < 0.01, json_encode($mLoc));
+        $sLoc = RouteGeo::locate($road, 22.5, 73.0485);
+        check('locate: a point ~5 km to the side is ~5 km off the road', $sLoc !== null && abs($sLoc['off'] - 5.0) < 0.3, json_encode($sLoc));
+        $back = RouteGeo::pointAt($road, $mLoc['km']);
+        check('pointAt(locate(p)) is p again', EtaAlerts::haversineKm($back['lat'], $back['lng'], 22.5, 73.0) < 0.05);
+
+        if (!RouteGeo::available()) {
+            check('route_geometry exists (apply database/upgrade-2026-10-route-geometry.sql)', false);
+        } else {
+            $saved = Database::fetch('SELECT * FROM route_geometry WHERE route_id = :r', ['r' => $routeId]);
+            RouteGeo::$enabled = true;
+            try {
+                Database::delete('route_geometry', 'route_id = :r', ['r' => $routeId]);
+                RouteGeo::resetCache();
+                $sl  = EtaAlerts::stopLine($routeId);
+                $res = RouteGeo::build($routeId, static fn(array $st): array => fakeRoad($st, 30.0));
+                check('build: the line through the stops that HAVE coordinates is stored as version 1',
+                    $res['ok'] && $res['version'] === 1 && $res['stops'] === array_column($sl['line'], 'name') && $res['points'] < $res['rawPoints'],
+                    json_encode(array_diff_key($res, ['stops' => 1, 'missing' => 1])));
+                check('...and the stops without coordinates are named, never guessed', $res['missing'] === $sl['missing'], implode(', ', $res['missing']));
+                $geo = EtaAlerts::routeLine($routeId);
+                $L   = $geo['line'];
+                check('every stop is placed on the road, in travel order',
+                    isset($geo['road']) && count($L) === count($sl['line']) && $L[0]['km'] < 0.5 && $L[1]['km'] < $L[2]['km']);
+                $straightKm = ($L[1]['lineKm'] - $L[0]['lineKm']) / EtaAlerts::ROAD_FACTOR;
+                check('km between two stops are ROAD km (the bend counts), not the straight line x 1.25',
+                    $L[1]['km'] - $L[0]['km'] > $straightKm + 5, round($L[1]['km'] - $L[0]['km'], 1) . ' road km vs ' . round($straightKm, 1) . ' straight');
+
+                $peak = RouteGeo::pointAt($geo['road'], ($L[0]['km'] + $L[1]['km']) / 2);
+                $onR  = EtaAlerts::locate($geo, $peak['lat'], $peak['lng']);
+                check('a coach on the bend is ON the road', $onR !== null && $onR['on'] === 'road' && $onR['off'] < 0.5, json_encode($onR));
+                /* on its own two-stop route, so no other part of this database's road can be nearer */
+                $two  = [['lat' => 22.0, 'lng' => 73.0], ['lat' => 23.0, 'lng' => 73.0]];
+                $tr   = array_slice(fakeRoad($two, 40.0)['pts'], 0);
+                $trR  = ['lat' => array_column($tr, 0), 'lng' => array_column($tr, 1), 'cum' => RouteGeo::cumulativeKm($tr)];
+                $tKm  = end($trR['cum']);
+                $tGeo = ['line' => [['name' => 'A', 'lat' => 22.0, 'lng' => 73.0, 'lineKm' => 0.0, 'km' => 0.0],
+                                    ['name' => 'B', 'lat' => 23.0, 'lng' => 73.0, 'lineKm' => 139.0, 'km' => $tKm]], 'road' => $trR];
+                $cut  = EtaAlerts::locate($tGeo, 22.5, 73.0);
+                check('a coach 40 km off the road but on the line of stops falls back to that line, still in road km',
+                    $cut !== null && $cut['on'] === 'line' && $cut['off'] < 1 && abs($cut['km'] - $tKm / 2) < 1, json_encode($cut) . ' of ' . round($tKm, 1));
+
+                Database::run('DELETE FROM trip_eta_alerts WHERE schedule_id = :s', ['s' => $sid]);
+                $told = [];
+                $rp = RouteGeo::pointAt($geo['road'], $L[1]['km'] - 12.0);
+                EtaAlerts::run(['lat' => $rp['lat'], 'lng' => $rp['lng'], 'kmh' => 45.0], $now, $send);
+                $ids = array_column($told, 'id'); sort($ids);
+                $row = Database::fetch('SELECT dist_km, eta_min FROM trip_eta_alerts WHERE booking_id = :b', ['b' => $bMid]);
+                check('"bus is near" measures the 12 ROAD km to the stop and tells the right passengers',
+                    $ids === [$bMid, $bMid2] && $row !== null && abs((float) $row['dist_km'] - 12.0) < 0.6 && abs((int) $row['eta_min'] - EtaAlerts::etaMinutes(12.0, 45.0)) <= 1, json_encode($row));
+                $etas = EtaAlerts::stopEtas($routeId, ['lat' => $rp['lat'], 'lng' => $rp['lng'], 'kmh' => 45.0]);
+                check('the office map\'s minutes use the same road km', abs((float) ($etas[Boarding::townKey($L[1]['name'])]['km'] ?? -1) - 12.0) < 0.6, json_encode($etas));
+
+                $res2 = RouteGeo::build($routeId, static fn(array $st): array => fakeRoad($st, 30.0));
+                check('a rebuild bumps the version (phones fetch the new line)', $res2['ok'] && $res2['version'] === 2);
+                $res3 = RouteGeo::build($routeId, static fn(array $st): array => fakeRoad($st, 0.0, 1, 0.15));
+                check('a road that misses a stop by ~15 km is refused and the stored line is kept',
+                    !$res3['ok'] && str_contains($res3['error'], 'km from the road') && RouteGeo::info($routeId)['version'] === 2, $res3['error'] ?? '');
+                check('a router error is reported, nothing stored',
+                    !RouteGeo::build($routeId, static fn(array $st): array => ['ok' => false, 'error' => 'engine down'])['ok'] && RouteGeo::info($routeId)['version'] === 2);
+
+                $moved = array_map(static fn(array $q): array => [$q[0] + 0.1, $q[1]],
+                    RouteGeo::decode((string) Database::scalar('SELECT polyline6 FROM route_geometry WHERE route_id = :r', ['r' => $routeId])));
+                Database::update('route_geometry', ['polyline6' => RouteGeo::encode($moved)], 'route_id = :r', ['r' => $routeId]);
+                RouteGeo::resetCache();
+                check('stops that no longer sit on the stored road (a stop was moved): the line of stops answers until a rebuild',
+                    !isset(EtaAlerts::routeLine($routeId)['road']));
+                RouteGeo::$enabled = false;
+                check('no road line = exactly the old line of stops', EtaAlerts::routeLine($routeId) === EtaAlerts::stopLine($routeId));
+            } finally {
+                Database::delete('route_geometry', 'route_id = :r', ['r' => $routeId]);
+                if ($saved !== null) { Database::insert('route_geometry', $saved); }
+                RouteGeo::resetCache();
+                RouteGeo::$enabled = false;
+            }
+        }
     } catch (Throwable $e) {
         check('unexpected error: ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine(), false);
     } finally {

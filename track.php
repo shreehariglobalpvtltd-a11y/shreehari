@@ -7,7 +7,9 @@
  *  live position, minutes to the passenger's own boarding stop, and a
  *  button to share the same page with the family at home. Stand-alone
  *  (no app bundle, no map tiles, ~9 KB), so it opens in a second on any
- *  phone from the WhatsApp ticket link.
+ *  phone from the WhatsApp ticket link. 20 Oct 2026: a road map (the
+ *  route's stored road line, the coach gliding along it) loads only when
+ *  the passenger taps "Show map" - assets/js/track-map.js.
  *
  *  Honest by construction: a stale, inaccurate or off-route position is
  *  shown as "not live" with the reason — never a guessed dot. The same
@@ -52,7 +54,7 @@ $T = [
              'approxNote' => '≈ approximate: the crew picks the exact dhaba / hotel and traffic changes the times.', 'ttNote' => 'No live GPS right now — the times and the bar follow the timetable, not the bus’s real position.',
              'border' => 'India–Nepal border', 'across' => 'Nepalgunj is across the border, in Nepal', 'arrive' => 'Arrival time being confirmed',
              'leftSub' => 'The coach has started its run, but its live position is not being sent right now. The times below follow the timetable.',
-             'ttTitle' => 'As per timetable the bus is on its way — not live on GPS right now',
+             'ttTitle' => 'As per timetable the bus is on its way — not live on GPS right now', 'showMap' => 'Show the bus on the map', 'mapSub' => 'The real road route · opens only when you tap (uses some data)', 'mapLoading' => 'Opening the map…', 'mapFail' => 'The map could not open. The times above are still right.', 'mapNoPick' => 'Your pickup is not marked on the map yet.', 'mapLast' => 'Last seen %s', 'mapNotLive' => 'Bus not live', 'mapFit' => 'Bus + my stop',
              'hk' => ['breakfast' => 'Breakfast', 'lunch' => 'Lunch', 'dinner' => 'Dinner', 'meal' => 'Meal', 'tea' => 'Tea break', 'fuel' => 'Fuel', 'rest' => 'Rest', 'border' => 'Border']],
     'hi' => ['title' => 'मेरी बस कहाँ है?', 'sub' => 'आपके टिकट की लाइव स्थिति', 'notFound' => 'यह लिंक सही नहीं है। हमारे भेजे संदेश से पेज खोलें।',
              'stop' => 'आपका बोर्डिंग स्टॉप', 'date' => 'यात्रा की तारीख', 'bus' => 'बस', 'pnr' => 'टिकट', 'route' => 'रूट',
@@ -68,7 +70,7 @@ $T = [
              'approxNote' => '≈ अनुमानित: ढाबा / होटल चालक दल चुनता है, ट्रैफ़िक से समय बदल सकता है।', 'ttNote' => 'अभी लाइव GPS नहीं — समय और पट्टी समय-सारणी के अनुसार हैं, बस की असली जगह नहीं।',
              'border' => 'भारत–नेपाल सीमा', 'across' => 'सीमा पार Nepalgunj, नेपाल में', 'arrive' => 'पहुँचने का समय पक्का हो रहा है',
              'leftSub' => 'बस अपनी यात्रा पर निकल चुकी है, पर अभी उसकी लाइव जगह नहीं आ रही। नीचे के समय समय-सारणी के अनुसार हैं।',
-             'ttTitle' => 'समय-सारणी के अनुसार बस रास्ते में है — अभी लाइव नहीं',
+             'ttTitle' => 'समय-सारणी के अनुसार बस रास्ते में है — अभी लाइव नहीं', 'showMap' => 'बस को नक्शे पर देखें', 'mapSub' => 'सड़क का असली रास्ता · टैप करने पर ही खुलता है (थोड़ा डेटा लगता है)', 'mapLoading' => 'नक्शा खुल रहा है…', 'mapFail' => 'नक्शा नहीं खुला। ऊपर के समय सही हैं।', 'mapNoPick' => 'आपका पिकअप अभी नक्शे पर अंकित नहीं है।', 'mapLast' => 'आखिरी बार %s बजे', 'mapNotLive' => 'बस लाइव नहीं', 'mapFit' => 'बस + मेरा स्टॉप',
              'hk' => ['breakfast' => 'नाश्ता', 'lunch' => 'दोपहर का खाना', 'dinner' => 'रात का खाना', 'meal' => 'खाना', 'tea' => 'चाय ब्रेक', 'fuel' => 'ईंधन', 'rest' => 'आराम', 'border' => 'सीमा']],
     'ne' => ['title' => 'मेरो बस कहाँ छ?', 'sub' => 'तपाईंको टिकटको लाइभ स्थिति', 'notFound' => 'यो लिङ्क मिलेन। हामीले पठाएको सन्देशबाट पेज खोल्नुहोस्।',
              'stop' => 'तपाईं चढ्ने ठाउँ', 'date' => 'यात्राको मिति', 'bus' => 'बस', 'pnr' => 'टिकट', 'route' => 'रुट',
@@ -84,7 +86,7 @@ $T = [
              'approxNote' => '≈ अनुमानित: ढाबा / होटल चालक दलले छान्छ, ट्राफिकले समय फरक पर्न सक्छ।', 'ttNote' => 'अहिले लाइभ GPS छैन — समय र पट्टी समय तालिका अनुसार हुन्, बसको वास्तविक स्थिति होइन।',
              'border' => 'भारत–नेपाल सीमा', 'across' => 'सीमापारि Nepalgunj, नेपालमा', 'arrive' => 'पुग्ने समय पक्का हुँदैछ',
              'leftSub' => 'बस यात्रामा निस्किसकेको छ, तर अहिले यसको लाइभ स्थिति आइरहेको छैन। तलका समय समय तालिका अनुसार हुन्।',
-             'ttTitle' => 'समय तालिका अनुसार बस बाटोमा छ — अहिले लाइभ छैन',
+             'ttTitle' => 'समय तालिका अनुसार बस बाटोमा छ — अहिले लाइभ छैन', 'showMap' => 'बसलाई नक्सामा हेर्नुहोस्', 'mapSub' => 'सडकको वास्तविक बाटो · थिचेपछि मात्र खुल्छ (अलिकति डाटा लाग्छ)', 'mapLoading' => 'नक्सा खुल्दैछ…', 'mapFail' => 'नक्सा खुलेन। माथिका समय सही छन्।', 'mapNoPick' => 'तपाईंको पिकअप अझै नक्सामा चिन्ह लगाइएको छैन।', 'mapLast' => 'अन्तिम पटक %s बजे', 'mapNotLive' => 'बस लाइभ छैन', 'mapFit' => 'बस + मेरो स्टप',
              'hk' => ['breakfast' => 'नास्ता', 'lunch' => 'दिउँसोको खाना', 'dinner' => 'बेलुकाको खाना', 'meal' => 'खाना', 'tea' => 'चिया ब्रेक', 'fuel' => 'इन्धन', 'rest' => 'आराम', 'border' => 'सीमा']],
 ][$lang];
 
@@ -159,6 +161,10 @@ foreach ((array) ($status['timeline'] ?? []) as $r) {
     if (($r['kind'] ?? '') === 'halt') { $haltCnt++; } else { $stopCnt++; }
 }
 $routeEnds = explode(' → ', (string) ($status['route'] ?? ''));
+/* 20 Oct 2026 (phase 2): the road map is offered only when this route has a
+   stored road line (includes/routegeo.php). It costs nothing until tapped. */
+$mapLeg = $authed ? WhereIs::leg($booking) : null;
+$mapV   = $mapLeg !== null ? (RouteGeo::info($mapLeg['route_id'])['version'] ?? null) : null;
 
 http_response_code($authed ? 200 : 404);
 header('Content-Type: text/html; charset=UTF-8');
@@ -230,6 +236,13 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
     <p class="note hidden" id="ttNote"><?= $e($T['ttNote']) ?></p>
   </section>
 
+<?php if ($mapV !== null): ?>
+  <section class="card" id="mapCard">
+    <button type="button" class="btn blue" id="mapBtn">🗺️ <?= $e($T['showMap']) ?></button>
+    <p class="note" id="mapSub"><?= $e($T['mapSub']) ?></p>
+  </section>
+<?php endif; ?>
+
   <section class="card">
     <div class="grid">
       <div><small><?= $e($T['route']) ?></small><b><?= $e((string) ($status['route'] ?? '')) ?></b></div>
@@ -256,7 +269,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
 
 <script>
 (function(){
-  var T = <?= json_encode(array_diff_key($T, array_flip(['title', 'sub', 'notFound', 'stop', 'date', 'bus', 'pnr', 'route', 'share', 'shareText', 'call', 'toStop', 'journey', 'approxNote', 'ttNote', 'across'])), JSON_UNESCAPED_UNICODE) ?>;
+  var T = <?= json_encode(array_diff_key($T, array_flip(['title', 'sub', 'notFound', 'stop', 'date', 'bus', 'pnr', 'route', 'share', 'shareText', 'call', 'toStop', 'journey', 'approxNote', 'ttNote', 'across', 'showMap', 'mapSub'])), JSON_UNESCAPED_UNICODE) ?>;
   var url = '/api/whereis.php?pnr=<?= $e(rawurlencode($pnr)) ?>&k=<?= $e(rawurlencode($tok)) ?>';
   var $ = function(id){ return document.getElementById(id); };
   /* Positional tokens, like the server's sprintf: %1$d / %2$s / %3$d (and a bare %s / %d). */
@@ -287,6 +300,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
     else { maps.classList.add('hidden'); }
     $('meta').textContent = live && d.fixAge !== null ? T.updated.replace('%s', d.fixAge < 60 ? d.fixAge + ' s' : Math.round(d.fixAge / 60) + ' min') : T.refresh;
     if (S.extra) S.extra(d);
+    if (S.mapUpdate) S.mapUpdate(d);   // the road map, once opened (assets/js/track-map.js)
   }
   /* the small ring beside "refreshes every 15 s" fills up to the next refresh */
   function spin(){ var k = $('tk'); k.classList.remove('go'); void k.getBoundingClientRect(); k.classList.add('go'); }
@@ -295,6 +309,15 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
     fetch(url, {cache: 'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
       .then(function(j){ if (j && j.ok && j.data) paint(j.data); spin(); }).catch(function(){});
   }
+  /* 20 Oct 2026: the road map (assets/js/track-map.js + MapLibre) loads only on this tap - 3G phones pay nothing until then. */
+  var mb = $('mapBtn');
+  if (mb) mb.onclick = function(){
+    mb.disabled = true; mb.textContent = T.mapLoading;
+    S.mapCfg = {url: '/api/track-map.php?pnr=<?= $e(rawurlencode($pnr)) ?>&k=<?= $e(rawurlencode($tok)) ?>', css: '/assets/css/track-map.css?v=<?= (int) @filemtime(__DIR__ . '/assets/css/track-map.css') ?>'};
+    var s = document.createElement('script'); s.src = '/assets/js/track-map.js?v=<?= (int) @filemtime(__DIR__ . '/assets/js/track-map.js') ?>';
+    s.onerror = function(){ mb.disabled = false; mb.textContent = T.mapFail; };
+    document.head.appendChild(s);
+  };
   spin();
   setInterval(tick, 15000);
   document.addEventListener('visibilitychange', function(){ if (!document.hidden) tick(); });

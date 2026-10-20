@@ -31,6 +31,22 @@ require_once INCLUDE_PATH . '/driverauth.php';
 require_once INCLUDE_PATH . '/booking.php';
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/whereis.php';
+require_once INCLUDE_PATH . '/routegeo.php';
+
+/* The scenario below is measured on the line of stops; the road line has
+   its own check (and is switched on only there). */
+RouteGeo::$enabled = false;
+/** A fake "router" for the road-line checks: the stops joined by straight steps. */
+function straightRoad(array $st): array {
+    $pts = [[$st[0]['lat'], $st[0]['lng']]];
+    for ($i = 1, $n = count($st); $i < $n; $i++) {
+        for ($k = 1; $k <= 20; $k++) {
+            $t = $k / 20;
+            $pts[] = [$st[$i - 1]['lat'] + $t * ($st[$i]['lat'] - $st[$i - 1]['lat']), $st[$i - 1]['lng'] + $t * ($st[$i]['lng'] - $st[$i - 1]['lng'])];
+        }
+    }
+    return ['ok' => true, 'pts' => $pts, 'source' => 'test', 'error' => ''];
+}
 
 const LT_DATE  = '2099-12-10';
 const LT_PREV  = '2099-12-09';
@@ -172,6 +188,30 @@ try {
 
     $st = WhereIs::status(BookingService::findByPnr((string) Database::scalar('SELECT pnr FROM bookings WHERE id = :b', ['b' => $bMine])), $now + 12);
     check('the passenger\'s track page shows the coach live with minutes to their stop', !empty($st['live']) && $st['etaMin'] !== null, json_encode(['live' => $st['live'], 'eta' => $st['etaMin'], 'reason' => $st['reason']]));
+
+    /* 20 Oct 2026 (phase 2): with a stored road line the same answer carries
+       the coach's place ALONG the road - what the track map glides. */
+    if (RouteGeo::available()) {
+        $savedGeo = Database::fetch('SELECT * FROM route_geometry WHERE route_id = :r', ['r' => $routeId]);
+        RouteGeo::$enabled = true;
+        try {
+            Database::delete('route_geometry', 'route_id = :r', ['r' => $routeId]);
+            RouteGeo::resetCache();
+            $bg = RouteGeo::build($routeId, 'straightRoad');
+            $L  = EtaAlerts::routeLine($routeId)['line'];
+            $st2 = WhereIs::status(BookingService::findByPnr((string) Database::scalar('SELECT pnr FROM bookings WHERE id = :b', ['b' => $bMine])), $now + 12);
+            $rd  = $st2['road'] ?? null;
+            check('with a road line, the driver-app coach\'s track answer carries its km ALONG the road (for the map)',
+                $bg['ok'] && !empty($st2['live']) && is_array($rd) && $rd['on'] === true && $rd['off'] < 0.5 && $rd['v'] === $bg['version']
+                && $rd['km'] > $L[0]['km'] && $rd['km'] < $L[1]['km'], json_encode($rd));
+            check('...and still the minutes to the passenger\'s stop', $st2['etaMin'] !== null && $st2['km'] !== null, (string) $st2['etaMin']);
+        } finally {
+            Database::delete('route_geometry', 'route_id = :r', ['r' => $routeId]);
+            if ($savedGeo !== null) { Database::insert('route_geometry', $savedGeo); }
+            RouteGeo::resetCache();
+            RouteGeo::$enabled = false;
+        }
+    }
 
     $r = LiveTrips::ingest(LiveTrips::find((int) $trip['id']),
         [['seq' => 10, 't' => ($now + 20) * 1000, 'lat' => $mid['lat'] + 0.5005, 'lng' => $mid['lng'], 'acc' => 10]], $now + 20);

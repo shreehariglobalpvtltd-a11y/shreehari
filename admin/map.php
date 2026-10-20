@@ -18,6 +18,34 @@ $admin = admin_boot('schedules.view');
 $base  = '';
 $today = todayISO();
 
+/* 🛣️ Road line (20 Oct 2026, live tracking phase 2): the owner builds each
+   route's real road line once (includes/routegeo.php - Valhalla through the
+   stops that HAVE coordinates). The customer track map draws it and the
+   "bus is near" engine measures km along it. Owner only: it changes what
+   every passenger's ETA is measured on. */
+require_once INCLUDE_PATH . '/routegeo.php';
+$geoFlash = null;
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && (string) ($_POST['action'] ?? '') === 'build_road') {
+    if (!Auth::isSuperadmin()) {
+        $geoFlash = ['bad', 'Only the owner can build a road line.'];
+    } elseif (!Security::verifyCsrf()) {
+        $geoFlash = ['bad', 'Session expired - open the page again.'];
+    } else {
+        $rid = (int) ($_POST['route_id'] ?? 0);
+        $before = RouteGeo::info($rid);
+        try {
+            $res = RouteGeo::build($rid);
+        } catch (Throwable $e) {
+            $res = ['ok' => false, 'error' => $e->getMessage(), 'stops' => [], 'missing' => []];
+        }
+        Logger::audit('route.road_line', 'route', (string) $rid, $before, $res, 'built by admin #' . $admin['id']);
+        $geoFlash = $res['ok']
+            ? ['ok', 'Road line v' . $res['version'] . ' saved: ' . $res['km'] . ' km through ' . implode(' → ', $res['stops']) . ' (' . $res['source'] . ').'
+                . ($res['missing'] !== [] ? ' Not on it (no coordinates yet): ' . implode(', ', $res['missing']) . '.' : '')]
+            : ['bad', 'Road line not saved: ' . $res['error'] . '.'];
+    }
+}
+
 $routes = Database::fetchAll(
     "SELECT r.id, r.route_code, r.from_city, r.to_city, r.dep_time, b.bus_number AS default_bus
        FROM routes r LEFT JOIN buses b ON b.id = r.bus_id
@@ -67,6 +95,13 @@ $jsRoutes = array_map(static fn(array $r): array => [
     'id' => (int) $r['id'], 'code' => (string) $r['route_code'], 'label' => (string) $r['from_city'] . ' → ' . (string) $r['to_city'],
     'time' => substr((string) $r['dep_time'], 0, 5), 'stops' => $stopsByRoute[(int) $r['id']] ?? [],
 ], $routes);
+/* The stored road line per route (null = the straight line of stops is drawn). */
+$roadInfo = [];
+foreach ($jsRoutes as $i => $r) {
+    $rg = RouteGeo::load($r['id']);
+    $roadInfo[$r['id']] = RouteGeo::info($r['id']);
+    $jsRoutes[$i]['road'] = $rg !== null ? $rg['polyline6'] : null;
+}
 /* 👥 Passengers by pickup (19 Sep 2026, owner: "agent mode in the map").
    Who boards where on today's buses, with call / WhatsApp, and - when the
    driver's phone is publishing - roughly how many minutes the bus is from each
@@ -199,6 +234,24 @@ admin_header('Live Map', 'map');
         <?php endforeach; if ($shown === 0): ?><div class="muted" style="padding:14px">No departures today.</div><?php endif; ?>
       </div>
     </div>
+    <div class="lm-card"><h3>🛣️ Road line <small>for the customer map + ETA</small></h3>
+      <?php if ($geoFlash !== null): ?><div class="flash <?= Security::e($geoFlash[0]) ?>" style="margin:10px 14px"><?= Security::e($geoFlash[1]) ?></div><?php endif; ?>
+      <?php foreach ($routes as $r): $gi = $roadInfo[(int) $r['id']] ?? null; $missing = EtaAlerts::stopLine((int) $r['id'])['missing']; ?>
+        <div class="lm-trip" style="cursor:default">
+          <div class="t1"><span><?= Security::e($r['from_city'] . ' → ' . $r['to_city']) ?></span>
+            <span class="pill" style="margin-left:auto"><?= $gi !== null ? 'v' . (int) $gi['version'] . ' · ' . number_format($gi['length_m'] / 1000, 0) . ' km' : 'not built' ?></span></div>
+          <div class="meta"><?= $gi !== null ? '<span>built ' . Security::e(date('j M H:i', (int) strtotime($gi['built_at']))) . '</span><span>' . Security::e($gi['source']) . '</span>' : '<span>The map and ETA use the straight line of stops.</span>' ?>
+            <?= $missing !== [] ? '<span style="color:#9a5b00">No coordinates: ' . Security::e(implode(', ', $missing)) . '</span>' : '' ?></div>
+          <?php if (Auth::isSuperadmin()): ?>
+            <form method="post" class="acts" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Building… (up to a minute)'">
+              <?= Security::csrfField() ?><input type="hidden" name="action" value="build_road"><input type="hidden" name="route_id" value="<?= (int) $r['id'] ?>">
+              <button class="btn ghost" type="submit">🛣️ <?= $gi !== null ? 'Rebuild' : 'Build' ?> road line</button>
+            </form>
+          <?php endif; ?>
+        </div>
+      <?php endforeach; ?>
+      <div class="muted" style="padding:8px 14px 12px;font-size:12px">Built by the route engine through the stops that have coordinates, in travel order. A pickup without coordinates is never guessed - add it in Routes, then rebuild.</div>
+    </div>
     <div class="lm-card"><h3>👥 <?= $paxScope !== null ? 'My passengers' : 'Passengers' ?> · यात्रु <small>by pickup · चढ्ने ठाउँ अनुसार</small></h3>
       <?php if ($paxTrips === []): ?>
         <div class="muted" style="padding:10px 14px"><?= $paxScope !== null ? 'You have no passengers on today&#39;s buses. · आजको बसमा तपाईंको यात्रु छैन।' : 'No passengers on today&#39;s buses yet.' ?></div>
@@ -239,6 +292,11 @@ window.ADMAP = {
       var s = document.createElement('script'); s.src = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s);
     });
   }
+  function decode6(s){
+    var pts = [], i = 0, lat = 0, lng = 0, n = s.length;
+    while (i < n) { for (var k = 0; k < 2; k++) { var sh = 0, res = 0, b; do { b = s.charCodeAt(i++) - 63; res |= (b & 31) << sh; sh += 5; } while (b >= 32 && i < n); var v = (res & 1) ? ~(res >> 1) : (res >> 1); if (k === 0) lat += v; else lng += v; } pts.push([lng / 1e6, lat / 1e6]); }
+    return pts;
+  }
   function bounds(){
     var b = null;
     A.routes.forEach(function(r){ r.stops.forEach(function(s){ if (!b) b = new maplibregl.LngLatBounds([s.lng, s.lat], [s.lng, s.lat]); else b.extend([s.lng, s.lat]); }); });
@@ -248,7 +306,7 @@ window.ADMAP = {
   function draw(){
     A.routes.forEach(function(r, i){
       var pts = r.stops.filter(function(s){ return s.type === 'boarding'; }).concat(r.stops.filter(function(s){ return s.type === 'drop'; }));
-      var coords = pts.map(function(s){ return [s.lng, s.lat]; });
+      var coords = r.road ? decode6(r.road) : pts.map(function(s){ return [s.lng, s.lat]; });   // 20 Oct 2026: the stored road line when built
       if (coords.length < 2) return;
       var color = i === 0 ? '#2E5FA8' : '#0a6b3b';
       map.addSource('r' + r.id, { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: coords } } });

@@ -33,6 +33,12 @@
  * the "two buses on the road" silence no longer applies to it. fixForTrip()
  * is the one place every page asks "where is THIS coach?".
  *
+ * 20 Oct 2026 (phase 2): where the route has a stored ROAD line
+ * (includes/routegeo.php, table route_geometry), km are measured along that
+ * road - every stop and the coach are placed on it - instead of the line of
+ * stops x ROAD_FACTOR. No road line, or a stop that does not sit on it, and
+ * the old line of stops answers exactly as before (routeLine / locate).
+ *
  * Switch: eta_alert_on (default off) · threshold: eta_alert_minutes (30).
  */
 
@@ -45,6 +51,7 @@ if (!defined('SHG_APP')) {
 
 require_once __DIR__ . '/boarding.php';
 require_once __DIR__ . '/livetrips.php';   // 20 Oct 2026: each coach's own position (driver app)
+require_once __DIR__ . '/routegeo.php';    // 20 Oct 2026: the stored road line of a route
 
 final class EtaAlerts
 {
@@ -84,9 +91,79 @@ final class EtaAlerts
      * order (boarding stops, then drops), each with its road-km from the
      * first. Stops without coordinates are returned in 'missing'.
      *
-     * @return array{line: list<array{name:string,type:string,time:?string,lat:float,lng:float,km:float}>, missing: list<string>}
+     * 20 Oct 2026: with a stored road line the km are ROAD km along it (each
+     * stop placed on the road), 'lineKm' keeps the stop-line km, and 'road'
+     * carries the line for locate(). Without one this is stopLine().
+     *
+     * @return array{line: list<array{name:string,type:string,time:?string,lat:float,lng:float,km:float,lineKm?:float}>, missing: list<string>, road?: array<string,mixed>}
      */
     public static function routeLine(int $routeId): array
+    {
+        $geo  = self::stopLine($routeId);
+        $road = RouteGeo::load($routeId);
+        if ($road === null || count($geo['line']) < 2) {
+            return $geo;
+        }
+        static $snap = [];
+        $line = $geo['line'];
+        $prev = -1.0;
+        foreach ($line as $i => $s) {
+            $k = $routeId . ':' . $road['version'] . ':' . $s['lat'] . ':' . $s['lng'];
+            $at = $snap[$k] ??= RouteGeo::locate($road, $s['lat'], $s['lng']);
+            if ($at === null || $at['off'] > RouteGeo::STOP_SNAP_KM || $at['km'] + 0.5 < $prev) {
+                return $geo;   // a stop moved since the line was built: the line of stops, until it is rebuilt
+            }
+            $prev = $at['km'];
+            $line[$i]['lineKm'] = $s['km'];
+            $line[$i]['km']     = round($at['km'], 2);
+        }
+        return ['line' => $line, 'missing' => $geo['missing'], 'road' => $road];
+    }
+
+    /**
+     * Where along this route is a point? On the road line when there is one
+     * and the point is near it; otherwise on the line of stops - mapped onto
+     * road km between the two stops either side when a road line exists, so
+     * every answer for one route is on ONE scale.
+     *
+     * @param array{line: list<array<string,mixed>>, road?: array<string,mixed>} $geo  routeLine()
+     * @return array{km: float, off: float, on: string}|null   on = 'road' | 'line'
+     */
+    public static function locate(array $geo, float $lat, float $lng): ?array
+    {
+        if (!isset($geo['road'])) {
+            $p = self::project($geo['line'], $lat, $lng);
+            return $p === null ? null : $p + ['on' => 'line'];
+        }
+        $p = RouteGeo::locate($geo['road'], $lat, $lng);
+        if ($p !== null && $p['off'] <= self::OFF_ROUTE_KM) {
+            return $p + ['on' => 'road'];
+        }
+        $line = $geo['line'];
+        $flat = array_map(static fn(array $s): array => ['lat' => $s['lat'], 'lng' => $s['lng'], 'km' => (float) $s['lineKm']], $line);
+        $q = self::project($flat, $lat, $lng);
+        if ($q === null) {
+            return null;
+        }
+        $km = $line[count($line) - 1]['km'];
+        for ($i = 0, $n = count($line) - 1; $i < $n; $i++) {
+            if ($q['km'] <= $flat[$i + 1]['km'] || $i === $n - 1) {
+                $span = $flat[$i + 1]['km'] - $flat[$i]['km'];
+                $f    = $span > 0 ? max(0.0, min(1.0, ($q['km'] - $flat[$i]['km']) / $span)) : 0.0;
+                $km   = $line[$i]['km'] + $f * ($line[$i + 1]['km'] - $line[$i]['km']);
+                break;
+            }
+        }
+        return ['km' => $km, 'off' => $q['off'], 'on' => 'line'];
+    }
+
+    /**
+     * The line of stops alone (the pre-road-line answer): stops with
+     * coordinates in travel order, km = straight line x ROAD_FACTOR.
+     *
+     * @return array{line: list<array{name:string,type:string,time:?string,lat:float,lng:float,km:float}>, missing: list<string>}
+     */
+    public static function stopLine(int $routeId): array
     {
         $rows = Database::fetchAll(
             "SELECT stop_name, stop_type, stop_time, latitude, longitude
@@ -270,7 +347,7 @@ final class EtaAlerts
             }
         }
         $geo = self::routeLine($routeId);
-        $pos = self::project($geo['line'], (float) $fix['lat'], (float) $fix['lng']);
+        $pos = self::locate($geo, (float) $fix['lat'], (float) $fix['lng']);
         if ($pos === null || $pos['off'] > self::OFF_ROUTE_KM) {
             return [];
         }
@@ -346,7 +423,7 @@ final class EtaAlerts
     private static function alertTrip(array $trip, array $fix, int $limit, int $nowTs, ?callable $send, array &$result): void
     {
         $geo = self::routeLine((int) $trip['route_id']);
-        $pos = self::project($geo['line'], (float) $fix['lat'], (float) $fix['lng']);
+        $pos = self::locate($geo, (float) $fix['lat'], (float) $fix['lng']);
         if ($pos === null || $pos['off'] > self::OFF_ROUTE_KM) {
             return;   // this coach is not on this route
         }

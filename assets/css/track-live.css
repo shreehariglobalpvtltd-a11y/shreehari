@@ -81,3 +81,4 @@ h3 span{display:block;font-weight:700;font-size:12.5px;color:var(--muted)}
 .tick{width:14px;height:14px;transform:rotate(-90deg);flex:none}
 .tick circle{fill:none;stroke:currentColor;stroke-width:3;stroke-dasharray:38;stroke-dashoffset:38}
 .hidden{display:none!important}
+button.btn{width:100%;font:inherit;font-weight:800;font-size:15px;cursor:pointer}button.btn:disabled{opacity:.75;cursor:progress}

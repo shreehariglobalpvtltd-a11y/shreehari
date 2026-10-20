@@ -181,6 +181,14 @@ final class WhereIs
         $out['lng']    = $fix['lng'];
         $out['kmh']    = $fix['kmh'] !== null ? (int) round($fix['kmh']) : null;
         $out['fixAge'] = $fixAge;
+        /* 20 Oct 2026 (phase 2): the coach's place ALONG the stored road line,
+           for the page's map (grey = driven, blue = to go). on=false: the fix
+           is near the line of stops but not near the road - the map shows it
+           where it is and does not glide it along the road. */
+        $road = self::roadAt((int) $leg['route_id'], (float) $fix['lat'], (float) $fix['lng']);
+        if ($road !== null) {
+            $out['road'] = $road;
+        }
         $key = Boarding::townKey((string) ($leg['boarding_stop'] ?? ''));
         if (isset($etas[$key])) {
             $out['etaMin'] = (int) (ceil($etas[$key]['eta'] / 5) * 5);
@@ -270,7 +278,7 @@ final class WhereIs
         $source = $done ? 'done' : 'none';
         if ($live && !$done) {
             $geo = EtaAlerts::routeLine($routeId);
-            $pos = EtaAlerts::project($geo['line'], (float) $out['lat'], (float) $out['lng']);
+            $pos = EtaAlerts::locate($geo, (float) $out['lat'], (float) $out['lng']);
             if ($pos !== null) {
                 $anch = [];
                 foreach ($geo['line'] as $g) {
@@ -471,7 +479,7 @@ final class WhereIs
             return null;   // fresh (refused for another reason — accuracy) or too old to mean anything
         }
         $geo = EtaAlerts::routeLine((int) $leg['route_id']);
-        $pos = EtaAlerts::project($geo['line'], $lat, $lng);
+        $pos = EtaAlerts::locate($geo, $lat, $lng);
         if ($pos === null || $pos['off'] > EtaAlerts::OFF_ROUTE_KM) {
             return null;   // not on this route: could be the other coach
         }
@@ -483,7 +491,7 @@ final class WhereIs
             }
             $stop = $best !== null ? $best[1] : '';
         }
-        return [
+        $out = [
             'lastKnown'  => true,
             'lastAt'     => date('H:i', $at),
             'lastAtIso'  => date('c', $at),
@@ -492,5 +500,48 @@ final class WhereIs
             'lastLat'    => round($lat, 5),
             'lastLng'    => round($lng, 5),
         ];
+        if (isset($geo['road'])) {
+            $out['road'] = ['v' => (int) $geo['road']['version'], 'km' => round($pos['km'], 2), 'off' => round($pos['off'], 2), 'on' => $pos['on'] === 'road'];
+        }
+        return $out;
+    }
+
+    /**
+     * A position on the route's stored road line (20 Oct 2026, phase 2), or
+     * null when the route has no road line or the point is off the route.
+     *
+     * @return array{v:int, km:float, off:float, on:bool}|null   off = km from the road line
+     */
+    public static function roadAt(int $routeId, float $lat, float $lng): ?array
+    {
+        $geo = EtaAlerts::routeLine($routeId);
+        if (!isset($geo['road'])) {
+            return null;
+        }
+        $at = EtaAlerts::locate($geo, $lat, $lng);
+        if ($at === null || $at['off'] > EtaAlerts::OFF_ROUTE_KM) {
+            return null;
+        }
+        return ['v' => (int) $geo['road']['version'], 'km' => round($at['km'], 2), 'off' => round($at['off'], 2), 'on' => $at['on'] === 'road'];
+    }
+
+    /**
+     * The booking's travelling leg: schedule, route, pickup and drop
+     * (api/track-map.php needs only these, not the whole status).
+     *
+     * @return array{schedule_id:int, route_id:int, boarding_stop:string, drop_stop:string}|null
+     */
+    public static function leg(array $booking): ?array
+    {
+        $l = Database::fetch(
+            "SELECT bl.schedule_id, s.route_id, bl.boarding_stop, bl.drop_stop
+               FROM booking_legs bl JOIN schedules s ON s.id = bl.schedule_id
+              WHERE bl.booking_id = :b
+              ORDER BY (bl.leg_type = 'outbound') DESC, bl.id ASC
+              LIMIT 1",
+            ['b' => (int) $booking['id']]
+        );
+        return $l === null ? null : ['schedule_id' => (int) $l['schedule_id'], 'route_id' => (int) $l['route_id'],
+            'boarding_stop' => (string) ($l['boarding_stop'] ?? ''), 'drop_stop' => (string) ($l['drop_stop'] ?? '')];
     }
 }
