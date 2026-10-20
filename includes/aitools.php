@@ -1173,6 +1173,11 @@ final class AiTools
             'etaMin'   => $st['etaMin'] ?? null,
             'km'       => $st['km'] ?? null,
             'passed'   => !empty($st['passed']),
+            // 21 Oct 2026: past their pickup and plausibly aboard - on the way to their drop
+            'onBoard'    => !empty($st['onBoard']),
+            'drop'       => (string) ($st['drop'] ?? ''),
+            'dropEtaMin' => $st['dropEtaMin'] ?? null,
+            'dropKm'     => $st['dropKm'] ?? null,
             'delayMin' => (int) ($st['delayMin'] ?? 0),
             'reason'   => (string) ($st['reason'] ?? ''),
             // the passenger's own keyed tracker (this sender may read the booking)
@@ -1190,7 +1195,9 @@ final class AiTools
         }
 
         return ['ok' => true,
-                'say' => 'Live position of this ticket\'s own bus. etaMin = approximate minutes to their pickup (passed = the bus is already past it). Offer trackUrl to follow it.',
+                'say' => 'Live position of this ticket\'s own bus. etaMin = approximate minutes to their pickup (passed = the bus is already past it). '
+                       . 'onBoard = the bus has already picked them up: say "the bus is on the way to <drop>", with dropEtaMin (approximate minutes) and dropKm (km to go) '
+                       . 'when given - km alone when dropEtaMin is null, nothing invented when both are null; never "you are on the bus" (we only know they plausibly are). Offer trackUrl to follow it.',
                 'data' => $data, 'media' => null];
     }
 

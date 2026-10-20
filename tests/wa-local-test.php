@@ -167,6 +167,97 @@ try {
     $r = $ask(WL_GUEST, 'kahile chhutcha');
     check('a timing question is left to WaFaq', $r === null, json_encode($r, JSON_UNESCAPED_UNICODE));
 
+    /* 21 Oct 2026: the coach has already picked the passenger up. WhatsApp
+       (and the AI tool) say what track.php says - "on the way to <drop>" -
+       never "passed your pickup" and never the generic "on the road" line.
+       Built like the "-- on board --" section of live-trips-test.php: a
+       driver-app fix past the pickup; the ticket is scanned aboard so the
+       real clock does not matter. */
+    echo "\n— on board\n";
+    require_once INCLUDE_PATH . '/etaalerts.php';
+    require_once INCLUDE_PATH . '/livetrips.php';
+    require_once INCLUDE_PATH . '/whereis.php';
+    require_once INCLUDE_PATH . '/booking.php';
+    require_once INCLUDE_PATH . '/aitools.php';
+    $L0  = $route > 0 ? EtaAlerts::routeLine($route)['line'] : [];
+    $bst = array_values(array_filter($L0, static fn($s) => $s['type'] === 'boarding'));
+    if ($bid > 0 && $sid > 0 && count($bst) >= 2 && LiveTrips::available()) {
+        [$first, $second] = $bst;
+        $obRef   = LiveTrips::tripRef($sid);
+        $obTrip  = Database::fetch('SELECT * FROM live_trips WHERE trip_ref = :r', ['r' => $obRef]);
+        $obLegs  = Database::fetchAll('SELECT id, boarding_stop, drop_stop FROM booking_legs WHERE booking_id = :b', ['b' => $bid]);
+        $obPax   = 'WL-OB-' . $bid;
+        try {
+            Database::delete('live_trips', 'trip_ref = :r', ['r' => $obRef]);
+            $tid = (int) Database::insert('live_trips', ['trip_ref' => $obRef, 'schedule_id' => $sid, 'route_id' => $route,
+                'departure_at' => date('Y-m-d H:i:s', time() - 3600), 'status' => 'running']);
+            $put = static function (float $lat, float $lng) use ($tid): void {
+                Database::update('live_trips', ['last_lat' => $lat, 'last_lng' => $lng, 'last_acc_m' => 10, 'last_speed' => 50,
+                    'last_ping_at' => date('Y-m-d H:i:s')], 'id = :i', ['i' => $tid]);
+            };
+            Database::run('UPDATE booking_legs SET boarding_stop = :s, drop_stop = NULL WHERE booking_id = :b', ['s' => $first['name'], 'b' => $bid]);
+            Database::insert('booking_passengers', ['booking_id' => $bid, 'passenger_ref' => $obPax, 'seat_no' => 'L1',
+                'full_name' => 'WL Rider', 'boarded_at' => date('Y-m-d H:i:s', time() - 1800)]);
+            $whereIs = static fn(): array => WhereIs::status(BookingService::findByPnr($pnr));
+
+            // 90% of the way from the pickup to the next stop: picked up, on the way to the end of the line
+            $put($first['lat'] + 0.9 * ($second['lat'] - $first['lat']), $first['lng'] + 0.9 * ($second['lng'] - $first['lng']));
+            $st = $whereIs();
+            check('setup: WhereIs says on board (live, not "passed")', !empty($st['live']) && !empty($st['onBoard']) && empty($st['passed']),
+                json_encode(['live' => $st['live'] ?? null, 'onBoard' => $st['onBoard'] ?? null, 'reason' => $st['reason'] ?? '']));
+            $kmTxt = ($st['dropKm'] ?? null) === null ? '' : ((float) $st['dropKm'] >= 100 ? (string) (int) round((float) $st['dropKm']) : (string) $st['dropKm']);
+            $r = $ask(WL_CUST, 'bus kaha xa');
+            check('Nepali: "बस <drop> तर्फ जाँदैछ", the drop in Roman', $r !== null && str_contains($txt($r), '📍 बस ' . $st['drop'] . ' तर्फ जाँदैछ'), $txt($r));
+            check('… never "passed your pickup", never the generic "on the road" line', !str_contains($txt($r), 'पार गरिसक्यो') && !str_contains($txt($r), 'बाटोमा छ (live)'), $txt($r));
+            if (($st['dropEtaMin'] ?? null) === null && ($st['dropKm'] ?? null) !== null) {
+                check('… beyond ' . (int) WhereIs::ETA_MAX_KM . ' km: km only, no minutes', str_contains($txt($r), ' — ' . $kmTxt . ' किमी बाँकी') && !str_contains($txt($r), 'करिब'), $txt($r));
+            } elseif (($st['dropEtaMin'] ?? null) !== null) {
+                check('… minutes and km to go', str_contains($txt($r), 'करिब') && str_contains($txt($r), '(' . $kmTxt . ' किमी बाँकी)'), $txt($r));
+            }
+            check('… and the TRACK link', str_contains($txt($r), 'track.php'), $txt($r));
+            $r = $ask(WL_CUST, 'बस कहां है');
+            check('Hindi: "बस <drop> की ओर जा रही है"', $r !== null && str_contains($txt($r), '📍 बस ' . $st['drop'] . ' की ओर जा रही है') && str_contains($txt($r), 'किमी बाकी'), $txt($r));
+            $r = $ask(WL_CUST, 'bus live location');
+            check('English: "The bus is on the way to <drop>"', $r !== null && str_contains($txt($r), '📍 The bus is on the way to ' . $st['drop']) && !str_contains($txt($r), 'passed your pickup'), $txt($r));
+
+            $eta = AiTools::run('bus_eta', ['pnr' => $pnr], AiTools::whoIs('+91' . WL_CUST) + ['turn' => 1]);
+            $d = $eta['data'] ?? [];
+            check('AI bus_eta passes onBoard + drop + dropKm + dropEtaMin, the same as the page',
+                $eta['ok'] === true && ($d['onBoard'] ?? null) === true && ($d['drop'] ?? '') === $st['drop']
+                && array_key_exists('dropKm', $d) && $d['dropKm'] === $st['dropKm'] && array_key_exists('dropEtaMin', $d) && $d['dropEtaMin'] === $st['dropEtaMin'] && ($d['passed'] ?? null) === false, json_encode($d));
+            check('… and its hint says "on the way to <drop>", never "you are on the bus" as a fact', str_contains((string) $eta['say'], 'onBoard') && str_contains((string) $eta['say'], 'on the way to'), (string) $eta['say']);
+
+            // their own drop, close ahead: minutes AND km
+            $drops = array_values(array_filter($L0, static fn($s) => $s['type'] === 'drop'));
+            $dLast = $drops !== [] ? $drops[count($drops) - 1] : null;
+            $dPrev = $L0[count($L0) - 2] ?? null;
+            if ($dLast !== null && $dPrev !== null && $dPrev['km'] < $dLast['km']) {
+                Database::run('UPDATE booking_legs SET drop_stop = :d WHERE booking_id = :b', ['d' => $dLast['name'], 'b' => $bid]);
+                $fr = max(0.6, 1 - 120 / ($dLast['km'] - $dPrev['km']));   // ~120 km short of the drop
+                $put($dPrev['lat'] + $fr * ($dLast['lat'] - $dPrev['lat']), $dPrev['lng'] + $fr * ($dLast['lng'] - $dPrev['lng']));
+                $st = $whereIs();
+                check('setup: near the drop, WhereIs gives minutes', !empty($st['onBoard']) && ($st['dropEtaMin'] ?? null) !== null, json_encode([$st['drop'] ?? '', $st['dropKm'] ?? null, $st['dropEtaMin'] ?? null]));
+                $m = (int) $st['dropEtaMin'];
+                $kmTxt = (float) $st['dropKm'] >= 100 ? (string) (int) round((float) $st['dropKm']) : (string) $st['dropKm'];
+                $durEn = $m < 60 ? $m . ' min' : (intdiv($m, 60) . ' h' . ($m % 60 ? ' ' . ($m % 60) . ' min' : ''));
+                $r = $ask(WL_CUST, 'bus live location');
+                check('English near the drop: "— about <h min> (<km> km to go)."', $r !== null
+                    && str_contains($txt($r), '📍 The bus is on the way to ' . $st['drop'] . ' — about ' . $durEn . ' (' . $kmTxt . ' km to go).'), $txt($r));
+                $r = $ask(WL_CUST, 'bus kaha xa');
+                check('Nepali near the drop: "करिब … (… किमी बाँकी)"', $r !== null && str_contains($txt($r), ' — करिब ') && str_contains($txt($r), '(' . $kmTxt . ' किमी बाँकी)।'), $txt($r));
+            }
+        } finally {
+            Database::delete('booking_passengers', 'passenger_ref = :p', ['p' => $obPax]);
+            foreach ($obLegs as $lg) {
+                Database::update('booking_legs', ['boarding_stop' => $lg['boarding_stop'], 'drop_stop' => $lg['drop_stop']], 'id = :i', ['i' => (int) $lg['id']]);
+            }
+            Database::delete('live_trips', 'trip_ref = :r', ['r' => $obRef]);
+            if ($obTrip !== null) { Database::insert('live_trips', $obTrip); }
+        }
+    } else {
+        echo "  SKIP  on board: needs today's ticket on a route with two boarding stops that have coordinates\n";
+    }
+
     echo "\n— bus & crew\n";
     $r = $ask(WL_BOSS, 'driver');
     check('staff: today\'s buses and crew', $r !== null && $r['intent'] === 'bus_crew' && str_contains($txt($r), '🚌 बस र चालक'), $txt($r));

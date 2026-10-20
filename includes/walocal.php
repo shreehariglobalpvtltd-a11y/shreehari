@@ -740,7 +740,10 @@ final class WaLocal
                              . ((string) ($st['delayNote'] ?? '') !== '' ? ' — ' . $st['delayNote'] : '');
                 }
                 if (!empty($st['live'])) {
-                    if (!empty($st['passed'])) {
+                    if (!empty($st['onBoard'])) {
+                        // 21 Oct 2026: past the pickup and plausibly aboard - what track.php says.
+                        $lines[] = self::onWayLine($st, $lang);
+                    } elseif (!empty($st['passed'])) {
                         $lines[] = self::t($lang, '📍 बस तपाईंको चढ्ने ठाउँ पार गरिसक्यो।', '📍 बस आपकी चढ़ने की जगह पार कर चुकी है।', '📍 The bus has already passed your pickup.');
                     } elseif ($st['etaMin'] !== null) {
                         $lines[] = self::t($lang,
@@ -1377,6 +1380,36 @@ final class WaLocal
     private static function t(string $lang, string $ne, string $hi, string $en, string $gu = ''): string
     {
         return match ($lang) { 'ne' => $ne, 'hi' => $hi, 'gu' => ($gu !== '' ? $gu : $en), default => $en };
+    }
+
+    /**
+     * "📍 The bus is on the way to Rupaidiha — about 2 h 25 min (120 km to go)."
+     * track.php's onWay / onWayEta / onWayKm, for a passenger the coach has
+     * picked up (WhereIs onBoard). Bus-centric on purpose: we only know they
+     * are PLAUSIBLY aboard. Place names stay Roman. Km alone when there are
+     * no minutes (no coordinates for the drop, or more than 400 km to go).
+     *
+     * @param array<string,mixed> $st  WhereIs::status()
+     */
+    private static function onWayLine(array $st, string $lang): string
+    {
+        $drop  = (string) ($st['drop'] ?? '');
+        $km    = $st['dropKm'] ?? null;
+        $min   = $st['dropEtaMin'] ?? null;
+        $kmTxt = $km === null ? '' : ((float) $km >= 100 ? (string) (int) round((float) $km) : (string) $km);   // 1155 km, 42.5 km
+        $line  = self::t($lang, '📍 बस ' . $drop . ' तर्फ जाँदैछ', '📍 बस ' . $drop . ' की ओर जा रही है', '📍 The bus is on the way to ' . $drop);
+        if ($min !== null) {
+            $m = (int) $min;
+            [$h, $r] = [intdiv($m, 60), $m % 60];
+            $dur = $m < 60 ? self::t($lang, $m . ' मिनेट', $m . ' मिनट', $m . ' min')
+                 : ($r > 0 ? self::t($lang, $h . ' घण्टा ' . $r . ' मिनेट', $h . ' घंटे ' . $r . ' मिनट', $h . ' h ' . $r . ' min')
+                           : self::t($lang, $h . ' घण्टा', $h . ' घंटे', $h . ' h'));
+            $line .= self::t($lang, ' — करिब ', ' — लगभग ', ' — about ') . $dur
+                   . ($km !== null ? ' (' . self::t($lang, $kmTxt . ' किमी बाँकी', $kmTxt . ' किमी बाकी', $kmTxt . ' km to go') . ')' : '');
+        } elseif ($km !== null) {
+            $line .= ' — ' . self::t($lang, $kmTxt . ' किमी बाँकी', $kmTxt . ' किमी बाकी', $kmTxt . ' km to go');
+        }
+        return $line . self::t($lang, '।', '।', '.');
     }
 
     private static function clock(string $time): string
