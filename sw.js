@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v243';   // Polish layer (polish.css): Hyper-Bus wheels spin clearer, route-band coach, phone feats fade, consistent .btn press, ticket PNR sweep
+var VERSION = 'shg-v244';   // SHARI NAV drive like Google Maps: staged voice by distance, Then chip, screen on, avoid tolls/highways/ferries, speed-limit sign
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,7 +43,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261019b';
+var ASSET_VER = '20261020a';
 var PRECACHE = [
   /* 16 Oct 2026 (owner, the logo): the full lockup WITH the ™ sign is now
      logo-tm.png (tools/make-logo-tm.php cuts it from logo.png). Neither is
