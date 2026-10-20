@@ -350,14 +350,18 @@ if (is_file($indexFile)) {
    voice (३०० …) while it is spoken as words (तीन सय …) */
 $expect = static fn (string $id): string => (string) ($all[$lang . '_check'][$id] ?? $phrases[$id]);
 /** keeps the better take: a later, worse recording never replaces a good one */
-$save = static function (string $id, array $s, string $heard, float $sim) use ($out, $indexFile, &$index): bool {
-    $prev = $index[$id]['sim'] ?? null;
+$override = getenv('NAVVOICE_FORCE') === '1' || $only !== [];
+$runBest = [];
+$save = static function (string $id, array $s, string $heard, float $sim) use ($out, $indexFile, &$index, $override, &$runBest): bool {
+    /* keep the better take; with FORCE or named ids only takes of this run compete */
+    $prev = $override ? ($runBest[$id] ?? null) : ($index[$id]['sim'] ?? null);
     if ($prev !== null && is_file("$out/$id.wav") && $sim <= $prev) {
         echo "    $id: kept the earlier take ($prev)\n";
         return false;
     }
     file_put_contents("$out/$id.wav.tmp", wav(pack16($s)));
     rename("$out/$id.wav.tmp", "$out/$id.wav");
+    $runBest[$id] = $sim;
     $index[$id] = ['sec' => round(count($s) / RATE, 2), 'heard' => $heard, 'sim' => round($sim, 3)];
     file_put_contents("$indexFile.tmp", json_encode($index, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
     rename("$indexFile.tmp", $indexFile);
@@ -388,24 +392,30 @@ while ($queue !== []) {
         echo "stopping: every TTS model is out of today's quota (or unusable); run again tomorrow for the rest\n";
         break;
     }
-    $chunk = array_shift($queue);
-    foreach ($chunk as $id) {
-        $tries[$id] = ($tries[$id] ?? 0) + 1;
+    if (getenv('NAVVOICE_ALLOW_UNCHECKED') !== '1' && ($GLOBALS['ASR_LEFT'] <= 0 || array_diff(ASR_MODELS, $GLOBALS['ASR_DEAD']) === [])) {
+        echo "stopping: the transcription check is unavailable (quota or cap); run again later\n";
+        break;
     }
+    $chunk = array_shift($queue);
     $text = implode("\n\n", array_map(static fn ($id) => $phrases[$id], $chunk));
     $pcm = speak($key, $voice, $text);
     if ($pcm === null) {
-        if (++$nulls >= 3) {
-            echo "stopping: three requests in a row gave no audio\n";
-            break;
-        }
+        echo '    no audio for: ', implode(',', $chunk), "\n";
         if (count($chunk) > 1) {
             $half = (int) ceil(count($chunk) / 2);
             array_unshift($queue, array_slice($chunk, 0, $half), array_slice($chunk, $half));
-        } elseif ($tries[$chunk[0]] < 3) {
+            continue;
+        }
+        $id0 = $chunk[0];
+        $tries[$id0] = ($tries[$id0] ?? 0) + 1;
+        if (++$nulls >= 3) {
+            echo "stopping: three single phrases in a row gave no audio\n";
+            break;
+        }
+        if ($tries[$id0] < 3) {
             $queue[] = $chunk;
         } else {
-            $gaveUp[] = $chunk[0];
+            $gaveUp[] = $id0;
         }
         continue;
     }
@@ -420,6 +430,7 @@ while ($queue !== []) {
     $fin = [];
     foreach ($chunk as $i => $id) {
         $fin[$id] = finish($pieces[$i]);
+        $tries[$id] = ($tries[$id] ?? 0) + 1;
     }
     /* the check: one call for the batch, per clip if that does not line up */
     $heardAll = null;
@@ -430,7 +441,11 @@ while ($queue !== []) {
     $again = [];
     foreach ($chunk as $id) {
         if ($fin[$id] === null) {
-            $again[] = $id;
+            if ($tries[$id] < 3) {
+                $again[] = $id;
+            } else {
+                $gaveUp[] = $id;
+            }
             continue;
         }
         if ($heardAll !== null) {

@@ -1660,10 +1660,18 @@ function getRoute(mode, a, b, o) {
   var k = rkey(mode, a, b, o.alts, via);
   if (o.fresh) return routeFetch(mode, a, b, Object.assign({}, o, { via: via }));    /* re-routes are never reused: not kept */
   if (S.cache[k]) return S.cache[k];
+  /* the same trip asked a few metres further on (the rider walked while the place card was open): reuse it */
+  var rest = k.split('|'); rest.splice(1, 2); rest = rest.join('|');
+  S.cmeta = S.cmeta || {};
+  for (var ck in S.cmeta) {
+    var cm = S.cmeta[ck];
+    if (S.cache[ck] && cm.rest === rest && hav([cm.a.lng, cm.a.lat], [a.lng, a.lat]) < 60) return S.cache[ck];
+  }
+  S.cmeta[k] = { rest: rest, a: { lng: a.lng, lat: a.lat } };
   var p = routeFetch(mode, a, b, Object.assign({}, o, { via: via })).catch(function (e) { delete S.cache[k]; throw e; });
   S.cache[k] = p;
   var keys = Object.keys(S.cache);
-  if (keys.length > 12) delete S.cache[keys[0]];
+  if (keys.length > 12) { delete S.cache[keys[0]]; if (S.cmeta) delete S.cmeta[keys[0]]; }
   return p;
 }
 async function routeFetch(mode, a, b, o) {
@@ -2087,17 +2095,18 @@ function bindDir() {
    Phone text-to-speech only as the backup.)
 ===================================================================== */
 var PH = {};                                      /* phrase texts: {ne:{id:text}, hi:{...}} */
-var PH_P = null, phTry = 0;
+var PH_P = null, phTry = 0, phT = 0;
 /* the word list, retried with back-off (a coach on a bad road must not stay in English all trip) */
 function loadPhrases() {
   if (PH_P) return PH_P;
+  clearTimeout(phT); phT = 0;
   PH_P = netThenCache('/assets/navvoice/phrases.json?v=' + VOICE_VER, 9000, /json/i).then(function (r) { return r.json(); })
     .then(function (j) {
       PH = j || {}; phTry = 0;
       try { relabel(); if (S.nav && !S.nav.preview) voPrefetchRoute(S.nav.route); } catch (e) {}
       return PH;
     })
-    .catch(function () { PH_P = null; setTimeout(loadPhrases, Math.min(60000, 3000 * Math.pow(2, phTry++))); return PH; });
+    .catch(function () { PH_P = null; clearTimeout(phT); phT = setTimeout(loadPhrases, Math.min(60000, 3000 * Math.pow(2, phTry++))); return PH; });
   return PH_P;
 }
 addEventListener('online', function () { VO.miss = {}; if (!PH[S.lang]) loadPhrases(); loadPack(voPack()); });
@@ -2203,7 +2212,9 @@ function voCtx() {
   var AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return null;
   try {
-    try { VO.ctx = new AC({ latencyHint: 'playback' }); } catch (e) { VO.ctx = new AC(); }   /* bigger buffers: less battery */
+    /* our clips are 24 kHz: a 24 kHz context halves the memory of every decoded clip; bigger buffers save battery */
+    try { VO.ctx = new AC({ latencyHint: 'playback', sampleRate: 24000 }); }
+    catch (e) { try { VO.ctx = new AC({ latencyHint: 'playback' }); } catch (e2) { VO.ctx = new AC(); } }
     /* a compressor after the gain: "Loud" / "Bus" make the voice louder in a noisy coach without clipping */
     var comp = VO.ctx.createDynamicsCompressor();
     comp.threshold.value = -16; comp.knee.value = 10; comp.ratio.value = 6; comp.attack.value = 0.003; comp.release.value = 0.2;
@@ -2215,8 +2226,6 @@ function voCtx() {
 var IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 /* must run inside a tap: phones only let a page make sound after the user touched it */
 function voUnlock() {
-  /* iPhone: the ring/silent switch mutes Web Audio unless the page plays as "media" */
-  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
   var c = voCtx();
   if (c) {
     try {
@@ -2229,7 +2238,10 @@ function voUnlock() {
 /* older iPhones (no audioSession): a looping silent track while driving puts the
    page in the media session, so the voice is heard with the silent switch on */
 function voKeep(on) {
-  if (!IOS || navigator.audioSession) return;
+  /* iPhone: the ring/silent switch mutes Web Audio unless the page plays as "media";
+     only while driving, because that session pauses the rider's own music */
+  try { if (navigator.audioSession) { navigator.audioSession.type = on ? 'playback' : 'auto'; return; } } catch (e) {}
+  if (!IOS) return;
   try {
     if (on) {
       if (!VO.keep) { VO.keep = new Audio('/assets/navvoice/silence.mp3?v=' + VOICE_VER); VO.keep.loop = true; VO.keep.setAttribute('playsinline', ''); }
@@ -2272,7 +2284,8 @@ function voStop() {
 function voIdle() {
   clearTimeout(VO.idleT);
   var c = VO.ctx; if (!c) return;
-  var ms = Math.max(0, ((VO.until || 0) - c.currentTime) * 1000) + 2000;
+  /* a Bluetooth car stereo re-opens its link on every resume: while driving stay awake a while */
+  var ms = Math.max(0, ((VO.until || 0) - c.currentTime) * 1000) + (S.nav ? 45000 : 3000);
   VO.idleT = setTimeout(function () { if (VO.ctx && VO.ctx.state === 'running' && VO.ctx.currentTime >= (VO.until || 0)) VO.ctx.suspend().catch(function () {}); }, ms);
 }
 var ttsVoices = [];
@@ -2289,6 +2302,8 @@ function sayText(text, lang) {
     var u = new SpeechSynthesisUtterance(text);
     u.lang = v ? v.lang : want[0]; if (v) u.voice = v;
     u.rate = lang === 'en' ? 1 : 0.95; u.volume = 1;
+    VO.ttsUntil = performance.now() + text.length * 75 / u.rate + 400;    /* rough: lets a following clip wait for the end */
+    u.onend = function () { VO.ttsUntil = 0; };
     speechSynthesis.cancel(); speechSynthesis.speak(u);
   } catch (e) {}
 }
@@ -2307,13 +2322,16 @@ function voPlay(ids, text, alert, force) {
   Promise.all(ids.map(function (id) { return id === '_gap' ? null : voClip(pack, id); })).then(function (bufs) {
     clearTimeout(late);
     if (seq !== VO.seq || muted(alert, force)) return;
-    return (c.state === 'running' ? Promise.resolve() : c.resume()).then(function () {
+    var woke = c.state !== 'running';
+    return (woke ? c.resume() : Promise.resolve()).then(function () {
       if (seq !== VO.seq) return;
       VO.gain.gain.value = S.vol;
-      /* a prompt that is about to finish (< 2 s left) is allowed to finish and
-         the new one follows it; a long one is cut, the newer words matter more */
-      var t = c.currentTime + 0.04, left = (VO.until || 0) - c.currentTime;
+      /* a prompt that is about to finish (< 2 s left, recorded or phone voice) is
+         allowed to finish and the new one follows; a long one is cut */
+      var t = c.currentTime + (woke ? 0.3 : 0.04), left = (VO.until || 0) - c.currentTime;
+      var ttsLeft = window.speechSynthesis && speechSynthesis.speaking ? ((VO.ttsUntil || 0) - performance.now()) / 1000 : 0;
       if (left > 0 && left < 2) t = VO.until + 0.25;
+      else if (ttsLeft > 0 && ttsLeft < 2) t = c.currentTime + ttsLeft + 0.25;
       else { VO.srcs.forEach(function (s) { try { s.stop(); } catch (e) {} }); VO.srcs = []; try { speechSynthesis.cancel(); } catch (e) {} }
       bufs.forEach(function (b) {
         if (!b) { t += 0.35; return; }
@@ -2339,7 +2357,7 @@ function speak(ids, en, alert, force) {
 function flushSpeak() {
   var q = VO.q; VO.q = null;
   if (!q || muted(q.alert, q.force)) return;
-  if (S.lang === 'en' || !PH[S.lang]) { voStop(); sayText(q.en.join('. '), 'en'); if (S.lang !== 'en') loadPhrases(); return; }
+  if (S.lang === 'en' || !PH[S.lang]) { voStop(); sayText(q.en.join('. '), 'en'); if (S.lang !== 'en' && !phT) loadPhrases(); return; }
   voPlay(q.ids, q.ids.filter(function (id) { return id !== '_gap'; }).map(phr).filter(Boolean).join(' '), q.alert, q.force);
 }
 /* background download of clips: one queue, two at a time, skipped when muted or on data saver */
@@ -2511,7 +2529,13 @@ function startNav(preview, sim) {
   S.cache = {};
   if (S.nav.sim) startSim(); else if (S.me) navFix(S.me);
   updateBanner(); updateBottom();
-  S.nav.raf = requestAnimationFrame(navFrame);
+  kickNav(S.nav);
+}
+/* the drive's frame loop: started when idle, never twice */
+function kickNav(N) {
+  if (!N || N.raf || S.nav !== N) return;
+  clearTimeout(N.idleT); N.idleT = 0;
+  N.raf = requestAnimationFrame(navFrame);
 }
 /* "resume trip?" after the phone kills the page: refreshed every minute and at each event, so
    "stopped N min ago" and the 3-hour limit count from the last moment we were driving */
@@ -2526,7 +2550,9 @@ function stopNav() {
   cancelAnimationFrame(N.raf); clearTimeout(N.idleT); stopSim(); wake(false); voStop(); voKeep(false);
   try { if (VO.ctx && VO.ctx.state === 'running') VO.ctx.suspend(); } catch (e) {}
   S.nav = null;
+  var visited = S.stops.some(function (x) { return x.done; });
   S.stops = S.stops.filter(function (x) { return !x.done; });     /* stops already visited are not routed again */
+  if (visited) S.cur = null;                                       /* directions are worked out again from here */
   if (!N.preview) LS.set('shg:nm:trip', null);          /* left on purpose: no "resume trip?" next time */
   if (S.markers.me) { S.markers.me.setPitchAlignment('viewport'); meEl.classList.remove('nav'); if (S.me) S.markers.me.setLngLat([S.me.lng, S.me.lat]); meHeadingUI(); }
   $('#limit').hidden = true; $('#lanes').hidden = true; $('#then').hidden = true; $('#gpsChip').hidden = true;
@@ -2536,7 +2562,7 @@ function stopNav() {
   S.map.jumpTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 } });
   S.map.easeTo({ pitch: 0, duration: 600 });
   if (exitFull()) {}
-  if (N.rerouted && S.level === 'dir') { S.cur = { routes: [N.route], src: N.route.src }; S.sel = 0; }
+  if (N.rerouted && !visited && S.level === 'dir') { S.cur = { routes: [N.route], src: N.route.src }; S.sel = 0; }
 }
 function navFix(f) {
   var N = S.nav, r = N.route, L = r.L, p = [f.lng, f.lat];
@@ -2544,13 +2570,15 @@ function navFix(f) {
   /* odometer: real movement only (a parked phone's GPS wanders a few metres every fix) */
   if (N.lastP && nowP - N.lastFixAt < 10000) {
     var dd = hav(N.lastP, p), jit = Math.max(5, (f.acc || 20) * 0.5);
-    if (dd < 250 && ((f.speed || 0) > 1 || dd > jit)) { N.odo += dd; N.lastP = p; }
+    if (dd >= 250) N.lastP = p;                                            /* a gap (call, tunnel): start again from here */
+    else if ((f.speed || 0) > 1 || dd > jit) { N.odo += dd; N.lastP = p; }
   } else N.lastP = p;
   if (N.gpsWeak) { var lost = nowP - N.gpsWeakAt; N.gpsWeak = false; $('#gpsChip').hidden = true; if (lost > 20000) speak(['m_gps_back'], 'GPS signal is back', true); }
   N.lastFixAt = nowP;
   if (N.arrived) { S.markers.me.setLngLat(p); return; }
   N.v = f.speed != null && !isNaN(f.speed) ? f.speed : N.v;
-  var q = nearest(L, p, N.i - 25, N.i + 700);
+  var iFar = at(L, N.along + Math.max(2000, (N.v || 0) * 40)).i + 1;
+  var q = nearest(L, p, N.i - 25, Math.min(N.i + 700, iFar));
   if (q.d > 60) { var g = nearest(L, p, 0, L.n - 2); if (g.d < q.d - 15) q = g; }
   var thr = clamp((f.acc || 20) + 25, 38, 110);
   if (q.d > thr) { if (!(N.offRoute && (N.v || 0) < 1)) N.offCnt++; }      /* parked beside the road: do not keep re-routing */
@@ -2558,7 +2586,7 @@ function navFix(f) {
   N.offRoute = N.offCnt >= 2;
   var canRR = !N.rerouting && Date.now() > (N.rrNext || 0) && navigator.onLine !== false;
   if (N.offCnt >= 3 && Date.now() - N.lastRR > 9000 && canRR) reroute(f);
-  else if (N.pendingVia && canRR) reroute(f, 'stop', N.pendingVia);
+  else if (N.pendingVia && !N.rerouting && Date.now() > (N.pvNext || 0) && navigator.onLine !== false) reroute(f, 'stop', N.pendingVia);
   if (!N.offRoute) {
     var a1 = q.along;
     if (a1 < N.along - 40 && q.d > 12) a1 = N.along;          // jitter backwards on a parallel road: hold
@@ -2566,7 +2594,7 @@ function navFix(f) {
     var dur = clamp(nowP - (N.lastAnimT || nowP - 1000), 250, 1600);
     N.lastAnimT = nowP;
     N.anim = { a0: N.disp, a1: Math.max(a1, N.disp - 3), t0: nowP, dur: dur };
-    if (!N.raf) { clearTimeout(N.idleT); N.raf = requestAnimationFrame(navFrame); }
+    kickNav(N);
     while (N.k + 1 < r.steps.length && r.steps[N.k + 1].along <= N.along + 3) {
       N.k++;
       var passed = r.steps[N.k];
@@ -2580,7 +2608,7 @@ function navFix(f) {
      (a route can pass the destination on its way to a stop beyond it) */
   var rem = L.len - N.along, toEnd = hav(p, L.c[L.n - 1]);
   var left = (N.routeStops || []).some(function (x) { return !x.done; });
-  if ((rem < 25 && !N.offRoute) || (toEnd < 22 && rem < 300 && !left)) arrive();
+  if (!left && ((rem < 25 && !N.offRoute) || (toEnd < 22 && rem < 300))) arrive();
 }
 function stopReached(n) {
   var N = S.nav, sp = ((N && N.routeStops) || S.stops)[n - 1];
@@ -2635,13 +2663,13 @@ function navFrame(t) {
     else setProgress(N.mAlong);
   }
   /* full frame rate only while something moves; standing still a few frames a second is plenty */
-  if (N.arrived && !moving) return;
+  if (N.raf || (N.arrived && !moving)) return;          /* already scheduled (re-centre kicked it), or done */
   if (moving || S.map.isMoving()) N.raf = requestAnimationFrame(navFrame);
-  else N.idleT = setTimeout(function () { if (S.nav === N) N.raf = requestAnimationFrame(navFrame); }, 200);
+  else N.idleT = setTimeout(function () { N.idleT = 0; if (S.nav === N && !N.raf) N.raf = requestAnimationFrame(navFrame); }, 200);
 }
 function recenterNav() {
   var N = S.nav; if (!N) return;
-  N.camLast = null; if (!N.raf) { clearTimeout(N.idleT); N.raf = requestAnimationFrame(navFrame); }
+  N.camLast = null; kickNav(N);
   N.follow = true; N.overview = false; N.lastGesture = 0; $('#recenter').hidden = true; $('#navOverview').classList.remove('on');
   var q = at(N.route.L, N.disp);
   N.camHold = performance.now() + 850;
@@ -2653,9 +2681,13 @@ async function reroute(f, why, viaOv) {
   var N = S.nav; if (!N) return;
   if (N.rerouting) { N.rrAgain = { why: why || 'quiet', via: viaOv || (N.rrAgain && N.rrAgain.via) }; return; }
   N.rerouting = true; N.lastRR = Date.now();
-  if (viaOv) N.pendingVia = null;
-  $('#ban').className = 'ban off'; $('#banDist').textContent = T('rr'); $('#banTxt').textContent = T('rrs');
-  $('#then').hidden = true; $('#lanes').hidden = true;
+  /* a stop / option change while on the route: the current guidance keeps going until the new route is in */
+  N.rrQuiet = why === 'stop' || why === 'options';
+  if (viaOv) { N.pendingVia = null; N.rrVia = viaOv; }
+  if (!N.rrQuiet) {
+    $('#ban').className = 'ban off'; $('#banDist').textContent = T('rr'); $('#banTxt').textContent = T('rrs');
+    $('#then').hidden = true; $('#lanes').hidden = true;
+  }
   if (!why && !N.rrFail) speak(['m_rerouting'], 'Rerouting', true);
   try {
     var via = (viaOv || S.stops).filter(function (x) { return !x.done; });
@@ -2663,7 +2695,7 @@ async function reroute(f, why, viaOv) {
     if (S.nav !== N) return;
     var r = prepRoute(res.routes[0]);
     N.route = r; N.along = 0; N.disp = 0; N.i = 0; N.k = 0; N.spoken = {}; N.offCnt = 0; N.offRoute = false; N.anim = null; N.limits = null; N.limNext = 0; N.rerouted = true;
-    N.rrFail = 0; N.rrNext = 0; N.camLast = null;
+    N.rrFail = 0; N.rrNext = 0; N.camLast = null; N.pvFail = 0; N.pvNext = 0;
     N.routeStops = via; S.stops = via;               /* the route's stop numbers now count the stops still ahead */
     S.cur = { routes: [r], src: res.src }; S.sel = 0;
     put('rt-alt', EMPTY); put('rt-main', FC([lineF(r.coords)])); put('rt-steps', FC(r.steps.slice(1, -1).map(function (st) { return ptF(st.loc); })));
@@ -2677,20 +2709,30 @@ async function reroute(f, why, viaOv) {
     saveTrip();
   } catch (e) {
     if (S.nav !== N) return;
-    N.rrFail = (N.rrFail || 0) + 1;
-    N.rrNext = Date.now() + [9, 30, 60, 120][Math.min(N.rrFail - 1, 3)] * 1000;
-    if (viaOv) { N.pendingVia = viaOv; toast('No signal — the stop is added as soon as a route can be fetched'); }
-    else if (N.rrFail === 1) toast('Could not find a new route — keep going, trying again soon');
-    $('#ban').className = 'ban off';
+    if (viaOv) {
+      var hard = e && (e.far || /no route|impossible|NoSegment/i.test(e.message || ''));
+      if (hard) { toast('That stop cannot be reached by road from here'); }
+      else {
+        N.pvFail = (N.pvFail || 0) + 1;
+        N.pvNext = Date.now() + [9, 30, 60, 120][Math.min(N.pvFail - 1, 3)] * 1000;
+        N.pendingVia = viaOv;
+        if (N.pvFail === 1) toast('No signal — the stop is added as soon as a route can be fetched');
+      }
+    } else {
+      N.rrFail = (N.rrFail || 0) + 1;
+      N.rrNext = Date.now() + [9, 30, 60, 120][Math.min(N.rrFail - 1, 3)] * 1000;
+      if (N.rrFail === 1) toast('Could not find a new route — keep going, trying again soon');
+    }
+    if (!N.rrQuiet) $('#ban').className = 'ban off';
   } finally {
     if (S.nav === N) {
-      N.rerouting = false;
+      N.rerouting = false; N.rrQuiet = false; N.rrVia = null;
       if (N.rrAgain && S.me) { var x = N.rrAgain; N.rrAgain = null; reroute(S.me, x.why, x.via); }
     }
   }
 }
 function updateBanner() {
-  var N = S.nav; if (!N || N.preview || N.arrived || N.rerouting) return;
+  var N = S.nav; if (!N || N.preview || N.arrived || (N.rerouting && !N.rrQuiet)) return;
   var st = N.route.steps, m = st[N.k + 1] || st[st.length - 1], d = Math.max(0, m.along - N.along);
   if (N.offRoute) { $('#banIc').innerHTML = tIcon('turn', 'uturn'); $('#banDist').textContent = T('off'); $('#banTxt').textContent = T('offs'); return; }
   $('#banIc').innerHTML = tIcon(m.stop ? 'arrive' : m.type, m.mod);
@@ -2778,6 +2820,7 @@ function arrive() {
   speak(['m_arrived'], 'You have arrived' + (S.b && !S.b.dropped && !S.b.me ? ' at ' + S.b.name : ''), true);
   LS.set('shg:nm:trip', null);
   updateBottom(); setProgress(1, true); wake(false); stopSim();
+  setTimeout(function () { if (S.nav === N) voKeep(false); }, 6000);   /* after the arrival words */
 }
 /* English words for the same prompts (the phone voice speaks them) */
 function pre(d) { return 'In ' + voiceDist(d) + ', '; }
@@ -2789,7 +2832,7 @@ function voiceDist(m) {
 /* far / near / now, distances scaled by speed, plus Google's
    "continue for N km" once a long stretch begins */
 function voiceTick() {
-  var N = S.nav; if (!N || N.offRoute || N.arrived || N.rerouting) return;
+  var N = S.nav; if (!N || N.offRoute || N.arrived || (N.rerouting && !N.rrQuiet)) return;
   var st = N.route.steps, m = st[N.k + 1]; if (!m) return;
   var d = m.along - N.along, v = Math.max(N.v || 0, 4), sp = N.spoken[N.k + 1] || (N.spoken[N.k + 1] = {});
   var leg = m.along - st[N.k].along;
@@ -2843,7 +2886,10 @@ function cycleSound() {
   LS.set('shg:nm:sound', S.sound); navBotUI();
   if (S.sound === 'off') { voStop(); toast(S.lang === 'ne' ? 'आवाज बन्द' : S.lang === 'hi' ? 'आवाज़ बंद' : 'Voice muted'); }
   else if (S.sound === 'alerts') { voStop(); toast(S.lang === 'ne' ? 'महत्त्वपूर्ण सूचना मात्र' : S.lang === 'hi' ? 'सिर्फ़ ज़रूरी सूचनाएँ' : 'Alerts only'); }
-  else { voUnlock(); toast(S.lang === 'ne' ? 'आवाज चालु' : S.lang === 'hi' ? 'आवाज़ चालू' : 'Voice on'); speak(['m_voice_on'], 'Voice guidance on'); }
+  else {
+    voUnlock(); toast(S.lang === 'ne' ? 'आवाज चालु' : S.lang === 'hi' ? 'आवाज़ चालू' : 'Voice on'); speak(['m_voice_on'], 'Voice guidance on');
+    if (S.nav && !S.nav.preview) voPrefetchRoute(S.nav.route);
+  }
 }
 function toggleFull() {
   try {
@@ -2926,11 +2972,12 @@ async function alongSearch(c) {
     b.onclick = function () {
       var p = out[+b.dataset.addstop];
       if (S.nav !== N) { closeModal(); return; }
-      var rest = S.stops.filter(function (x) { return !x.done; });
+      var base = (N.rrAgain && N.rrAgain.via) || N.pendingVia || N.rrVia || S.stops;
+      var rest = base.filter(function (x) { return !x.done; });
       if (rest.length >= 3) { toast('Up to 3 stops'); return; }
       if (!S.me) { toast('Waiting for your location'); return; }
       /* in road order: the new place goes before the first stop that lies further along */
-      var aNew = N.along + p.ahead, L2 = N.route.L;
+      var L2 = N.route.L, aNew = nearest(L2, [p.lng, p.lat], N.i, L2.n - 2).along;
       var idx = rest.findIndex(function (x) { return nearest(L2, [x.lng, x.lat], N.i, L2.n - 2).along > aNew; });
       if (idx < 0) idx = rest.length;
       var nv = rest.slice(); nv.splice(idx, 0, { name: p.name, sub: p.sub, lng: p.lng, lat: p.lat });
@@ -2942,6 +2989,7 @@ async function alongSearch(c) {
     b.onclick = function () {
       var p = out[+b.dataset.ar]; if (S.nav !== N) { closeModal(); return; }
       closeModal(); N.follow = false; N.overview = false; N.lastGesture = performance.now(); $('#recenter').hidden = false;
+      $('#navOverview').classList.remove('on');
       S.map.flyTo({ center: [p.lng, p.lat], zoom: 16, pitch: 0, duration: 900, essential: true });   /* a look; it re-centres by itself */
     };
   });
@@ -2974,7 +3022,7 @@ document.addEventListener('visibilitychange', function () {
   if (document.visibilityState !== 'visible') return;
   if (S.nav && !S.nav.preview && !S.nav.arrived) {
     wake(true); voKeep(true);
-    S.nav.lastFixAt = performance.now(); S.nav.lastAnimT = 0;                 /* the 12 s GPS grace starts again */
+    S.nav.lastFixAt = performance.now(); S.nav.lastAnimT = 0; S.nav.lastP = null;   /* the 12 s GPS grace starts again */
     if (S.nav.gpsWeak) { S.nav.gpsWeak = false; $('#gpsChip').hidden = true; }
   }
   if (VO.ctx && VO.ctx.state === 'suspended' && S.nav) { try { VO.ctx.resume(); } catch (e) {} }
@@ -3174,7 +3222,9 @@ async function boot() {
     if (!window.maplibregl) throw new Error('maplibre');
   } catch (e) { bootFail('The map could not load. Check your internet connection and <a href="" style="color:#D4A843">try again</a>.'); return; }
   loadPhrases();                                  /* Nepali / Hindi words for the banner and the voice (small, cached) */
-  Object.keys(PACKS).forEach(loadPack);            /* which recorded voices exist (three tiny lists) */
+  Object.keys(PACKS).forEach(loadPack);            /* which recorded voices exist (a tiny list each) */
+  /* offline maps saved by the first version lived in a cache the service worker deletes on updates */
+  try { caches.has('shg-nav-offline-v1').then(function (h) { if (h) { caches.delete('shg-nav-offline-v1'); LS.set('shg:nm:off', null); } }).catch(function () {}); } catch (e) {}
   await loadOwnStyles();
   buildModes(); bindControls(); bindSheet(); bindSearch(); bindPick(); bindHome(); bindDir(); bindNav();
   $('#modal').addEventListener('click', function (e) { if (e.target === $('#modal')) closeModal(); });
