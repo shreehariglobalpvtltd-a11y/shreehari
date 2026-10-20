@@ -238,7 +238,30 @@ function cleanupNav(){
      the pro bundle drops its keyboard / visibility / resize listeners too. */
   if(typeof SN.stopCompass==='function') SN.stopCompass();
   if(typeof snProCleanup==='function') snProCleanup();
+  snWakeSync();   /* 20 Oct 2026: leaving the navigator lets the screen sleep again */
 }
+
+/* 20 Oct 2026 — DRIVE LIKE GOOGLE MAPS, step 1: the screen stays on while a
+   route is being driven (Screen Wake Lock), and is let go on arrival, when
+   the route is cleared or the navigator is left. A phone that sleeps mid-
+   route loses the GPS, the voice and the turn banner - the thing Google
+   Maps never does while navigating. Browsers drop the lock whenever the
+   page is hidden, so it is taken again when the page comes back. */
+function snWakeSync(){
+  var want=!!(SN.routeCoords&&SN.persistFollow&&!SN.arrived&&document.visibilityState==='visible');
+  if(want&&!SN.wakeLock&&!SN.wakeReq&&navigator.wakeLock&&navigator.wakeLock.request&&Date.now()-(SN.wakeFailAt||0)>60000){
+    SN.wakeReq=true;
+    navigator.wakeLock.request('screen').then(function(w){
+      SN.wakeReq=false; SN.wakeLock=w;
+      w.addEventListener('release',function(){ if(SN.wakeLock===w) SN.wakeLock=null; });
+      snWakeSync();   /* the route may have ended while the request was pending */
+    }).catch(function(){ SN.wakeReq=false; SN.wakeFailAt=Date.now(); });   /* refused (battery saver): ask again in a minute, not every fix */
+  } else if(!want&&SN.wakeLock){
+    var w=SN.wakeLock; SN.wakeLock=null;
+    try{ w.release(); }catch(e){}
+  }
+}
+document.addEventListener('visibilitychange',function(){ try{ if(document.visibilityState==='visible') SN.wakeFailAt=0; snWakeSync(); }catch(e){} });
 
 function initNavApp(){
   var GLYPHS = SN_OWN ? location.origin + '/navdata/fonts/{fontstack}/{range}.pbf' : 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
@@ -575,6 +598,113 @@ function initNavApp(){
       window.speechSynthesis.speak(u);
     }catch(e){}
   }
+  /* ================================================================
+     20 Oct 2026 — DRIVE LIKE GOOGLE MAPS, step 2: staged voice guidance.
+     Owner: "gadi drive garne bela same to same Google Maps jasto".
+     Before, each turn was spoken ONCE, the moment it became the next one -
+     often 30 km early - and never again. Now, like Google Maps:
+       after a turn     "Continue for 12 kilometres"   (only when the next turn is far)
+       far              "In 1 kilometre, turn right onto NH 48"
+       near             "In 300 metres, turn right…"
+       at the turn      "Turn right now" (~6 s before, by speed)
+     The far / near distances grow with speed (highway 2 km / 600 m, town
+     1 km / 350 m, slow 500 m / 180 m). Two turns close together are said
+     as one ("…, then turn left") and shown as a "Then ↰" chip under the
+     banner. Hindi / Nepali use the same stages with their own phrases;
+     English uses the routing engine's own spoken text.
+  ================================================================ */
+  var SN_THEN={
+    right:{en:'then turn right',hi:'फिर दाएँ मुड़ें',ne:'अनि दायाँ मोड्नुहोस्'},
+    left:{en:'then turn left',hi:'फिर बाएँ मुड़ें',ne:'अनि बायाँ मोड्नुहोस्'},
+    uturn:{en:'then make a U-turn',hi:'फिर यू-टर्न लें',ne:'अनि यू-टर्न लिनुहोस्'},
+    roundabout:{en:'then enter the roundabout',hi:'फिर गोल चक्कर में जाएँ',ne:'अनि गोलचक्करमा जानुहोस्'},
+    merge:{en:'then merge',hi:'फिर मुख्य मार्ग में मिलें',ne:'अनि मुख्य मार्गमा मिसिनुहोस्'},
+    continue:{en:'then continue straight',hi:'फिर सीधे चलें',ne:'अनि सिधा जानुहोस्'},
+    arrive:{en:'then you will arrive',hi:'फिर आप पहुँच जाएँगे',ne:'अनि तपाईं आइपुग्नुहुनेछ'},
+    ferry:{en:'then take the ferry',hi:'फिर नौका लें',ne:'अनि फेरी लिनुहोस्'}
+  };
+  var SN_ARRIVE_SOON={en:'your destination is ahead',hi:'आपकी मंज़िल आगे है',ne:'तपाईंको गन्तव्य अगाडि छ'};
+  function snStageKm(kmh){
+    if(kmh>=70) return {far:2, near:0.6};
+    if(kmh>=40) return {far:1, near:0.35};
+    return {far:0.5, near:0.18};
+  }
+  /* "In 300 metres" / "300 मीटर बाद" / "300 मिटरपछि" - rounded the way people say it */
+  function snSayDist(km){
+    var lg=SN.voiceLang||'en';
+    if(km>=0.95){
+      var r=km>=10?Math.round(km):Math.round(km*2)/2, n=(r%1===0)?r.toFixed(0):r.toFixed(1);
+      return lg==='hi'?n+' किलोमीटर बाद':lg==='ne'?n+' किलोमिटरपछि':'In '+n+(r===1?' kilometre':' kilometres');
+    }
+    var m=km<0.2?Math.max(50,Math.round(km*20)*50):Math.round(km*10)*100;
+    return lg==='hi'?m+' मीटर बाद':lg==='ne'?m+' मिटरपछि':'In '+m+' metres';
+  }
+  function snLcFirst(x){ x=String(x||''); return x.charAt(0).toLowerCase()+x.slice(1); }
+  /* the action of one maneuver, in the voice language */
+  function snManeuverLine(m){
+    /* the engine's own "…. Then turn left." is cut off: snThenOf() adds the "then" once */
+    if((SN.voiceLang||'en')==='en') return (m.verbal_pre_transition_instruction||m.instruction||'').split(/\.\s+Then\s/i)[0].replace(/\.\s*$/,'');
+    return snSpeakManeuver(m.instruction,m.type);
+  }
+  /* the turn right after this one, when it is close enough to say together (≤ 300 m) */
+  function snThenOf(mv,idx){
+    var m=mv[idx], nx=mv[idx+1];
+    if(!m||!nx||snCoarseDir(m.type,m.instruction)==='arrive') return null;
+    if(+nx.type===27) return null;   /* leaving the roundabout is part of "take the 2nd exit", not a second turn */
+    if((nx._distKm||0)-(m._distKm||0)>0.3) return null;
+    var dir=snCoarseDir(nx.type,nx.instruction);
+    return {m:nx, dir:dir, say:(SN_THEN[dir]||SN_THEN.continue)[SN.voiceLang||'en']};
+  }
+  function snVoiceGuide(mv,idx,remainKm,kmh){
+    var m=mv[idx]; if(!m) return;
+    var st=SN.voiceStage;
+    if(!st||st.mv!==mv||st.idx!==idx){ st=SN.voiceStage={mv:mv,idx:idx,post:false,far:false,near:false,now:false}; }
+    var lg=SN.voiceLang||'en', z=snStageKm(kmh), arrive=snCoarseDir(m.type,m.instruction)==='arrive';
+    var nowKm=Math.max(0.03,Math.min(0.12,kmh/3.6*6/1000));
+    var th=snThenOf(mv,idx), thenSay=th?(lg==='en'?', '+th.say:', '+th.say):'';
+    var line=arrive?SN_ARRIVE_SOON[lg]:snManeuverLine(m);
+    var sep=lg==='en'?', ':', ';
+    /* just past a turn and the next one is far: "Continue for 12 kilometres" */
+    if(!st.post){
+      st.post=true;
+      if(remainKm>z.far+0.5){
+        var prev=mv[idx-1], km=remainKm>=10?Math.round(remainKm):Math.round(remainKm*2)/2, kms=(km%1===0)?km.toFixed(0):km.toFixed(1);
+        var cont=lg==='en'?((prev&&prev.verbal_post_transition_instruction)||('Continue for '+kms+' kilometres'))
+                :lg==='hi'?'अगले '+kms+' किलोमीटर तक सीधे चलते रहें':'अर्को '+kms+' किलोमिटर सिधा जानुहोस्';
+        speak(cont);
+        return;
+      }
+    }
+    /* a "continue" step (the road only changes name) is not a turn: Google
+       Maps stays quiet there too, so only the post-turn line above is said */
+    var dir=snCoarseDir(m.type,m.instruction);
+    if(dir==='continue'||dir==='start'||+m.type===27) return;   /* 27 = roundabout exit, already said on entry */
+    if(!st.now&&!arrive&&remainKm<=nowKm){
+      st.now=st.near=st.far=true;
+      speak((lg==='en'?line+' now':'अब '+line)+thenSay);
+    } else if(!st.near&&remainKm<=z.near&&remainKm>nowKm){
+      st.near=st.far=true;
+      speak(snSayDist(remainKm)+sep+(lg==='en'?snLcFirst(line):line)+thenSay);
+    } else if(!st.far&&remainKm<=z.far&&remainKm>z.near){
+      st.far=true;
+      speak(snSayDist(remainKm)+sep+(lg==='en'?snLcFirst(line):line));
+    }
+  }
+  /* "Then ↰" under the banner when two turns come together */
+  function snThenChip(mv,idx,remainKm){
+    var host=s('#snBanInstr'); if(!host||!host.parentNode) return;
+    var el=s('#snBanThen');
+    if(!el){
+      el=document.createElement('span'); el.id='snBanThen';
+      el.style.cssText='display:inline-flex;align-items:center;gap:6px;margin-top:5px;padding:2px 10px;border-radius:999px;background:rgba(0,0,0,.28);font-size:12.5px;font-weight:700;width:max-content;max-width:100%';
+      host.parentNode.appendChild(el);
+    }
+    var th=remainKm<=1.5?snThenOf(mv,idx):null;   /* only as the turn comes up, like Google Maps */
+    if(!th){ el.hidden=true; return; }
+    var word={en:'Then',hi:'फिर',ne:'अनि'}[(typeof LANG==='string'&&LANG)||'en']||'Then';
+    el.textContent=word+' '+snManIcon(th.m.type);
+    el.hidden=false;
+  }
   function updateManeuverBanner(distAlongKm){
     var mv=SN.routeManeuvers; if(!mv||!mv.length){ s('#snBanner').classList.remove('show'); return; }
     var i=0; while(i<mv.length-1&&mv[i+1]._distKm<=distAlongKm) i++;
@@ -590,7 +720,11 @@ function initNavApp(){
     s('#snBanRem').textContent=snT('snLeftFmt',{t:snFmtTime(remainSec)});
     s('#snBanEta').textContent=_h12+':'+(_mm<10?'0'+_mm:_mm)+' '+_ap;
     s('#snBanner').classList.add('show');
-    if(show.instruction&&show.instruction!==SN.lastSpokenInstr){ speak(snSpeakManeuver(show.instruction,show.type)); SN.lastSpokenInstr=show.instruction; }
+    /* 20 Oct 2026: staged prompts (snVoiceGuide) replace the one early announcement */
+    var showIdx=upcoming?i+1:i;
+    snThenChip(mv,showIdx,remainKm);
+    snVoiceGuide(mv,showIdx,remainKm,v);
+    SN.lastSpokenInstr=show.instruction;
   }
   function updateNavCard(distAlongKm){
     var card=s('#snNavCard'); if(!card) return;
@@ -1424,6 +1558,7 @@ function initNavApp(){
        so the camera visibly decelerates instead of feeling "chopped". */
     if(easeOpts&&!SN.camLock){ easeOpts.duration=Math.max(600, Math.min(900, (SN.gpsIntervalMs||1000)*0.85)); snEase(easeOpts); }
 
+    snWakeSync();   /* 20 Oct 2026: screen on while driving a route */
     /* arrival detection — 50m threshold */
     if(SN.dest&&SN.routeCoords&&!SN.arrived){
       var arrDist=haversineKm(SN.gpsPos.lat,SN.gpsPos.lng,SN.dest.lat,SN.dest.lng);
@@ -1438,6 +1573,8 @@ function initNavApp(){
     s('#snHud').classList.remove('off');
     var spd=c.speed!=null?Math.max(0,Math.round(c.speed*3.6)):0;
     s('#snSpeed').textContent=spd;
+    /* 20 Oct 2026: speed-limit sign + red speed when over it (car / bike / bus on a route) */
+    if(SN.routeCoords&&snAvoidOn()){ snLimitFetch(); snLimitPaint(snLimitAt(SN.routeProgKm||0),spd); } else snLimitPaint(null,spd);
     /* The speed / heading panel is for driving: shown once moving or on a route. */
     s('#snHud').classList.toggle('moving', spd>=5 || !!(SN.routeCoords&&SN.routeCoords.length));
     /* 4 Sep 2026 — the pace band (walking / cycle / car / bus) is read from
@@ -1699,7 +1836,7 @@ function initNavApp(){
     var tt=s('#snTrackToggle'); if(tt) tt.title=snT('snTrackT');
     snRefreshGo();
     if(SN.routeCoords&&SN.routeCoords.length&&SN.lastTripSum) snPeekSet(snTripLine(SN.lastTripSum),snT('snTapStart'));
-    if(s('#snSummary')&&s('#snSummary').classList.contains('show')) s('#snSVia').textContent=snT('snVia',{m:snModeName()});
+    if(s('#snSummary')&&s('#snSummary').classList.contains('show')) s('#snSVia').textContent=snT('snVia',{m:snModeName()})+snAvoidNote();
     if(SN.trackingMode) snTrackTick();
     if(typeof snProRelabel==='function') snProRelabel();   /* 10 Oct 2026 (navpro) */
   };
@@ -1718,9 +1855,39 @@ function initNavApp(){
       document.getElementById('view-nav').dataset.navMode=SN.mode;
       snUpdateMeMode();
       snUpdateQuickDist();
+      snAvoidPaint();
       if(SN.origin&&SN.dest) snRoute();
     };
   });
+
+  /* 20 Oct 2026 — DRIVE LIKE GOOGLE MAPS, step 3: route options.
+     "Avoid tolls / highways / ferries" chips under the vehicle chips, for
+     car, bike and bus (walking and cycling never use those roads anyway).
+     Remembered on this phone; changing one re-plans the drawn route at
+     once, and the route summary says what it is avoiding. */
+  var SN_AVOID_TXT={
+    en:{lbl:'Avoid',tolls:'Tolls',highways:'Highways',ferries:'Ferries',sum:function(l){ return 'avoiding '+l; }},
+    hi:{lbl:'बचें',tolls:'टोल',highways:'हाईवे',ferries:'नौका',sum:function(l){ return l+' से बचते हुए'; }},
+    ne:{lbl:'नजाने',tolls:'टोल',highways:'राजमार्ग',ferries:'फेरी',sum:function(l){ return l+' बाहेक'; }}
+  };
+  function snAvoidTxt(){ return SN_AVOID_TXT[(typeof LANG==='string'&&SN_AVOID_TXT[LANG])?LANG:'en']; }
+  (function(){
+    var modes=s('#snModes'); if(!modes||s('#snAvoid')) return;
+    var row=document.createElement('div'); row.id='snAvoid';
+    row.style.cssText='display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:0 12px 8px;font-size:12.5px';
+    var tx=snAvoidTxt();
+    row.innerHTML='<span style="opacity:.75;font-weight:600">'+tx.lbl+':</span>'+['tolls','highways','ferries'].map(function(k){
+      return '<button type="button" class="sn-mode" data-snavoid="'+k+'" aria-pressed="false" style="padding:5px 11px;min-height:32px">'+tx[k]+'</button>';
+    }).join('');
+    modes.parentNode.insertBefore(row,modes.nextSibling);
+    row.querySelectorAll('[data-snavoid]').forEach(function(b){
+      b.onclick=function(){
+        var v=snAvoidGet(), k=b.getAttribute('data-snavoid'); v[k]=!v[k]; snAvoidSet(v); snAvoidPaint();
+        if(SN.origin&&SN.dest&&SN.mode!=='flight') snRoute();
+      };
+    });
+    snAvoidPaint();
+  })();
 
   /* routing */
   /* shg-v59 — tap bounce (item #7). Wraps snRoute so the button flashes the
@@ -1758,7 +1925,7 @@ function initNavApp(){
     snResolveTyped().then(function(ok){ if(ok) snRoute(); }); };
   s('#snClear').onclick=function(){
     SN.origin=SN.dest=SN.routeGeo=SN.routeCoords=SN.routeManeuvers=SN.routeCumKm=null;
-    SN.routeTotalKm=0; SN.routeProgKm=0; SN.offRouteSince=0; SN.lastSpokenInstr=null;
+    SN.routeTotalKm=0; SN.routeProgKm=0; SN.offRouteSince=0; SN.lastSpokenInstr=null; SN.limits=null; SN.limitAt=0;
     SN.arrived=false; SN.altRoutes=null; SN.lastTripSum=null;
     [SN.originMarker,SN.destMarker].forEach(function(m){if(m)m.remove();}); SN.originMarker=SN.destMarker=null;
     ['sn-rline','sn-rglow','sn-rdone','sn-alt0','sn-alt1'].forEach(function(l){if(map.getLayer(l))map.removeLayer(l);});
@@ -1775,11 +1942,105 @@ function initNavApp(){
     snRefreshGo();
   };
 
+  function snAvoidGet(){
+    try{ var v=JSON.parse(localStorage.getItem('shg:navAvoid')||'{}')||{}; return {tolls:!!v.tolls,highways:!!v.highways,ferries:!!v.ferries}; }
+    catch(e){ return {tolls:false,highways:false,ferries:false}; }
+  }
+  function snAvoidSet(v){ try{ localStorage.setItem('shg:navAvoid',JSON.stringify(v)); }catch(e){} }
+  function snAvoidOn(){ return SN.mode==='auto'||SN.mode==='motorcycle'||SN.mode==='bus'; }
+  function snAvoidPaint(){
+    var row=s('#snAvoid'); if(!row) return;
+    row.hidden=!snAvoidOn();
+    var v=snAvoidGet();
+    row.querySelectorAll('[data-snavoid]').forEach(function(b){ var on=!!v[b.getAttribute('data-snavoid')]; b.classList.toggle('on',on); b.setAttribute('aria-pressed',on?'true':'false'); });
+  }
+  /* "· avoiding tolls, ferries" after the route summary's mode line */
+  function snAvoidNote(){
+    if(!snAvoidOn()) return '';
+    var v=snAvoidGet(), tx=snAvoidTxt(), on=['tolls','highways','ferries'].filter(function(k){ return v[k]; });
+    return on.length?' · '+tx.sum(on.map(function(k){ return tx[k].toLowerCase(); }).join(', ')):'';
+  }
   function snCostingOpts(){
-    if(SN.mode==='motorcycle') return {motorcycle:{use_highways:0.85,use_ferry:0.1,use_tracks:0.05,use_hills:0.5,top_speed:90}};
-    if(SN.mode==='bicycle') return {bicycle:{bicycle_type:'Hybrid',use_roads:0.5,use_hills:0.5}};
-    if(SN.mode==='bus') return {bus:{use_highways:1,top_speed:90}};
+    var co=null;
+    if(SN.mode==='motorcycle') co={motorcycle:{use_highways:0.85,use_ferry:0.1,use_tracks:0.05,use_hills:0.5,top_speed:90}};
+    else if(SN.mode==='bicycle') co={bicycle:{bicycle_type:'Hybrid',use_roads:0.5,use_hills:0.5}};
+    else if(SN.mode==='bus') co={bus:{use_highways:1,top_speed:90}};
+    /* 20 Oct 2026: route options (0 = keep off those roads wherever a way round exists) */
+    if(snAvoidOn()){
+      var v=snAvoidGet();
+      if(v.tolls||v.highways||v.ferries){
+        co=co||{}; var o=co[SN.mode]=co[SN.mode]||{};
+        if(v.tolls) o.use_tolls=0;
+        if(v.highways) o.use_highways=0;
+        if(v.ferries) o.use_ferry=0;
+      }
+    }
+    return co;
+  }
+
+  /* 20 Oct 2026 — DRIVE LIKE GOOGLE MAPS, step 4: the speed-limit sign.
+     A round red-ringed sign beside the speedometer with the limit of the
+     road under the vehicle, from OpenStreetMap through our route engine
+     (api/nav-limits.php), fetched for the next ~40 km and topped up as the
+     drive goes on - one small request every half hour of driving, not one
+     per fix. Above the limit (+5 km/h grace) the speed turns red, like
+     Google Maps. A road with no recorded limit shows no sign at all. */
+  function snLimitFetch(){
+    if(SN.limitReq||!SN.routeCoords||!SN.routeCumKm||!snAvoidOn()) return;
+    var prog=SN.routeProgKm||0, total=SN.routeTotalKm||0;
+    if(SN.limits&&SN.limits.toKm>=Math.min(total,prog+8)-0.05) return;   /* enough road ahead is known */
+    if(Date.now()-(SN.limitAt||0)<20000) return;
+    var from=Math.max(0,prog-0.2), to=Math.min(total,from+40);
+    var c=SN.routeCoords, cum=SN.routeCumKm, pts=[], startKm=null, lastKm=-1;
+    for(var i=0;i<c.length;i++){
+      if(cum[i]<from) continue;
+      if(cum[i]>to) break;
+      if(startKm===null) startKm=cum[i];
+      if(cum[i]-lastKm>=0.03||!pts.length){ pts.push([+c[i][1].toFixed(6),+c[i][0].toFixed(6)]); lastKm=cum[i]; }
+    }
+    if(pts.length<2) return;
+    if(pts.length>1500){ var k=Math.ceil(pts.length/1500), n=pts.length; pts=pts.filter(function(_,j){ return j%k===0||j===n-1; }); }
+    var route=SN.routeCoords;
+    SN.limitReq=true; SN.limitAt=Date.now();
+    fetch('/api/nav-limits.php',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({shape:pts,costing:SN.mode})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(SN.routeCoords!==route||!j||!j.ok) return;   /* a new route came meanwhile */
+        SN.limits={fromKm:startKm,toKm:startKm+(+j.km||0),list:(j.limits||[]).map(function(l){ return [startKm+l[0],startKm+l[1],l[2]]; })};
+      })
+      .catch(function(){})
+      .then(function(){ SN.limitReq=false; });
+  }
+  function snLimitAt(km){
+    var L=SN.limits; if(!L||km<L.fromKm-0.05||km>L.toKm+0.05) return null;
+    for(var i=0;i<L.list.length;i++){ if(km>=L.list[i][0]-0.02&&km<=L.list[i][1]+0.02) return L.list[i][2]; }
     return null;
+  }
+  function snLimitPaint(limit,kmh){
+    var sp=s('#snSpeed'); if(!sp||!sp.parentNode) return;
+    var sign=s('#snLimit');
+    if(!sign){
+      sign=document.createElement('span'); sign.id='snLimit'; sign.setAttribute('role','img');
+      sign.style.cssText='display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:#fff;border:4px solid #D7261E;color:#111;font:800 13px/1 system-ui,sans-serif;margin-left:8px;flex:none;align-self:center;box-sizing:border-box';
+      sp.parentNode.appendChild(sign);
+    }
+    sign.hidden=limit==null;
+    if(limit!=null){ sign.textContent=String(limit); sign.setAttribute('aria-label','Speed limit '+limit+' km/h'); }
+    var over=limit!=null&&kmh>limit+5;
+    sp.style.color=over?'#FF4D3D':'';
+    /* the full-screen driving view shows its speed in the focus card: the sign goes there too */
+    var fs=s('#snFcSpeed'), cell=fs&&fs.parentNode;
+    if(cell&&cell.parentNode){
+      var fl=s('#snFcLimitCell');
+      if(!fl){
+        fl=document.createElement('div'); fl.className='fc-cell'; fl.id='snFcLimitCell';
+        fl.innerHTML='<span id="snFcLimit" role="img" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#fff;border:3px solid #D7261E;color:#111;font:800 12px/1 system-ui,sans-serif;box-sizing:border-box"></span>';
+        cell.parentNode.insertBefore(fl,cell);
+      }
+      fl.hidden=limit==null;
+      if(limit!=null){ var fx=s('#snFcLimit'); fx.textContent=String(limit); fx.setAttribute('aria-label','Speed limit '+limit+' km/h'); }
+      fs.style.color=over?'#FF4D3D':'';
+    }
   }
   function snRoute(){
     if(!(SN.origin&&SN.dest)) return;
@@ -1803,7 +2064,7 @@ function initNavApp(){
         SN.routeTotalKm=SN.routeCumKm[SN.routeCumKm.length-1]||0;
         SN.routeManeuvers=leg.maneuvers||[];
         SN.routeManeuvers.forEach(function(m){ m._distKm=SN.routeCumKm[Math.min(m.begin_shape_index,SN.routeCumKm.length-1)]||0; });
-        SN.routeProgKm=0; SN.offRouteSince=0; SN.lastSpokenInstr=null;
+        SN.routeProgKm=0; SN.offRouteSince=0; SN.lastSpokenInstr=null; SN.limits=null; SN.limitAt=0;
         updateTraveledRoute(0);
         /* shg-v59 — sweep the freshly drawn route from origin to destination (item #7)
            so it doesn't just pop onto the map. Fires once per new route. */
@@ -1845,7 +2106,7 @@ function initNavApp(){
   function snShowSummary(sum,maneuvers){
     s('#snSTime').textContent=snFmtTime(sum.time);
     s('#snSDist').textContent=sum.length.toFixed(sum.length<10?1:0)+' km';
-    s('#snSVia').textContent=snT('snVia',{m:snModeName()});
+    s('#snSVia').textContent=snT('snVia',{m:snModeName()})+snAvoidNote();
     s('#snSteps').innerHTML=maneuvers.map(function(m){
       var d=m.length>=1?m.length.toFixed(1)+' km':Math.round(m.length*1000)+' m';
       return '<div class="sn-step"><span class="man">'+snManIcon(m.type)+'</span><div class="txt">'+
