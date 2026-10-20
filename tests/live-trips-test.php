@@ -189,6 +189,81 @@ try {
     $st = WhereIs::status(BookingService::findByPnr((string) Database::scalar('SELECT pnr FROM bookings WHERE id = :b', ['b' => $bMine])), $now + 12);
     check('the passenger\'s track page shows the coach live with minutes to their stop', !empty($st['live']) && $st['etaMin'] !== null, json_encode(['live' => $st['live'], 'eta' => $st['etaMin'], 'reason' => $st['reason']]));
 
+    /* 21 Oct 2026: the coach is PAST a passenger's pickup. Plausibly on board
+       = live, on the way to their drop; the WhatsApp alert stays silent for
+       them; off the route is still silence. */
+    echo "-- on board --\n";
+    $L0   = EtaAlerts::routeLine($routeId)['line'];
+    $tid  = (int) $trip['id'];
+    $put  = static function (float $lat, float $lng, int $ts) use ($tid): void {
+        Database::update('live_trips', ['last_lat' => $lat, 'last_lng' => $lng, 'last_acc_m' => 10, 'last_speed' => 50,
+            'last_ping_at' => date('Y-m-d H:i:s', $ts)], 'id = :i', ['i' => $tid]);
+    };
+    $pnrOf = static fn(int $b): array => BookingService::findByPnr((string) Database::scalar('SELECT pnr FROM bookings WHERE id = :b', ['b' => $b]));
+    $put($at(0.9)['lat'], $at(0.9)['lng'], $now + 30);
+    $bFirst = rider($sid, LT_DATE, $first['name']);
+    $st = WhereIs::status($pnrOf($bFirst), $now + 30);
+    $lastS = $L0[count($L0) - 1];
+    $pos0  = EtaAlerts::locate(['line' => $L0], $at(0.9)['lat'], $at(0.9)['lng']);
+    check('a passenger the coach has already picked up is LIVE (was: silent)', !empty($st['live']) && $st['lat'] !== null, json_encode(['live' => $st['live'], 'reason' => $st['reason']]));
+    check('...on board, not the "passed your stop" warning', !empty($st['onBoard']) && empty($st['passed']) && $st['etaMin'] === null);
+    check('...on the way to the end of the line (no drop on the ticket), km measured to it',
+        Boarding::townKey((string) $st['drop']) === Boarding::townKey($lastS['name'])
+        && $st['dropKm'] === round($lastS['km'] - $pos0['km'], 1), $st['drop'] . ' · ' . json_encode($st['dropKm']));
+    check('...minutes only within ' . (int) WhereIs::ETA_MAX_KM . ' km', $st['dropKm'] > WhereIs::ETA_MAX_KM ? $st['dropEtaMin'] === null : $st['dropEtaMin'] !== null, json_encode($st['dropEtaMin']));
+    $told = [];
+    EtaAlerts::run(null, $now + 30, $send);
+    check('the WhatsApp "bus is near" alert never tells a passenger whose pickup is behind the coach', !in_array($bFirst, $told, true));
+
+    // their own drop, close ahead: minutes to it
+    $drops = array_values(array_filter($L0, static fn($s) => $s['type'] === 'drop'));
+    $dLast = $drops !== [] ? $drops[count($drops) - 1] : null;
+    $dPrev = $L0[count($L0) - 2];
+    if ($dLast !== null && $dPrev['km'] < $dLast['km']) {
+        $bDrop = rider($sid, LT_DATE, $first['name']);
+        Database::update('booking_legs', ['drop_stop' => $dLast['name']], 'booking_id = :b', ['b' => $bDrop]);
+        $fr   = max(0.6, 1 - 120 / ($dLast['km'] - $dPrev['km']));   // ~120 km short of the drop
+        $mLat = $dPrev['lat'] + $fr * ($dLast['lat'] - $dPrev['lat']);
+        $mLng = $dPrev['lng'] + $fr * ($dLast['lng'] - $dPrev['lng']);
+        $put($mLat, $mLng, $now + 40);
+        $st = WhereIs::status($pnrOf($bDrop), $now + 40);
+        $toGo = $dLast['km'] - EtaAlerts::locate(['line' => $L0], $mLat, $mLng)['km'];
+        check('near the end: minutes and km to the passenger\'s OWN drop, the way the pickup ETA is counted',
+            !empty($st['onBoard']) && $st['dropKm'] === round($toGo, 1)
+            && $st['dropEtaMin'] === (int) (ceil(EtaAlerts::etaMinutes($toGo, 50.0) / 5) * 5), json_encode([$st['drop'], $st['dropKm'], $st['dropEtaMin']]));
+        $dest = $st['destEta'] ?? [];
+        check('...and the "To ..." tile says the same minutes as the headline', ($dest['source'] ?? '') !== 'gps' || $dest['min'] === $st['dropEtaMin'], json_encode($dest));
+        $put($dLast['lat'], $dLast['lng'], $now + 45);
+        $st = WhereIs::status($pnrOf($bDrop), $now + 45);
+        check('at the drop itself: live, but no "on the way"', !empty($st['live']) && empty($st['onBoard']) && empty($st['passed']));
+    }
+
+    // past the pickup, but before its time: the passenger may have missed it
+    $nextS = $stops[2];
+    $bEarly = rider($sid, LT_DATE, $mid['name']);
+    Database::update('booking_legs', ['boarding_time' => (string) ($mid['time'] ?? '17:00:00')], 'booking_id = :b', ['b' => $bEarly]);
+    $midTs = strtotime(LT_DATE . ' ' . ($mid['time'] ?? '17:00:00'));
+    $pLat = $mid['lat'] + 0.3 * ($nextS['lat'] - $mid['lat']); $pLng = $mid['lng'] + 0.3 * ($nextS['lng'] - $mid['lng']);
+    $put($pLat, $pLng, $midTs - 3600);
+    $st = WhereIs::status($pnrOf($bEarly), $midTs - 3600);
+    check('coach past the pickup an hour BEFORE its time: the "passed your stop" warning, not "on board"',
+        !empty($st['live']) && !empty($st['passed']) && empty($st['onBoard']), json_encode(['passed' => $st['passed'] ?? null, 'onBoard' => $st['onBoard'] ?? null]));
+    Database::insert('booking_passengers', ['booking_id' => $bEarly, 'passenger_ref' => LT_TAG . 'P' . $bEarly, 'seat_no' => 'L1',
+        'full_name' => 'LT Rider', 'boarded_at' => date('Y-m-d H:i:s', $midTs - 3700)]);
+    $st = WhereIs::status($pnrOf($bEarly), $midTs - 3600);
+    check('...unless the crew scanned the ticket aboard', !empty($st['onBoard']) && empty($st['passed']));
+    $put($pLat, $pLng, $midTs - 10 * 60);
+    Database::delete('booking_passengers', 'booking_id = :b', ['b' => $bEarly]);
+    $st = WhereIs::status($pnrOf($bEarly), $midTs - 10 * 60);
+    check('...or the pickup moment has (nearly) come', !empty($st['onBoard']));
+
+    // off the route: silence, on board or not
+    $put($L0[0]['lat'] - 3.0, $L0[0]['lng'], $now + 50);   // ~330 km south of the start of the line
+    $st = WhereIs::status($pnrOf($bFirst), $now + 50);
+    check('a fix far off the route: not live, no position, no drop ETA', empty($st['live']) && $st['lat'] === null && !isset($st['dropEtaMin']) && str_contains((string) $st['reason'], 'not on this route'), (string) $st['reason']);
+    $put($at(0.9)['lat'], $at(0.9)['lng'], $now);   // back where the next checks expect it (seq 3)
+    Database::update('live_trips', ['last_speed' => 45, 'last_acc_m' => 12], 'id = :i', ['i' => $tid]);
+
     /* 20 Oct 2026 (phase 2): with a stored road line the same answer carries
        the coach's place ALONG the road - what the track map glides. */
     if (RouteGeo::available()) {

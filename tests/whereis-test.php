@@ -113,6 +113,52 @@ try {
     $payload = shg_customer_payload($detail);
     check('trackUrl rides with the ticket link', str_contains((string) ($payload['trackUrl'] ?? ''), 'track.php?pnr=' . rawurlencode($pnr)) && str_contains((string) $payload['trackUrl'], '&k='), (string) ($payload['trackUrl'] ?? 'none'));
 
+    echo "\n-- G. on board (21 Oct 2026) --\n";
+    $rid  = (int) $route['id'];
+    $L    = EtaAlerts::routeLine($rid)['line'];
+    $leg  = WhereIs::leg($row);
+    $pi   = null;
+    foreach ($L as $i => $s) {
+        if ($s['type'] === 'boarding' && Boarding::townKey($s['name']) === Boarding::townKey($leg['boarding_stop'])) { $pi = $i; break; }
+    }
+    $pickTs = (int) (WhereIs::status($row, time())['pickupTs'] ?? 0);
+    if ($pi === null || !isset($L[$pi + 1]) || $pickTs <= 0) {
+        echo "  SKIP  the test booking's pickup has no coordinates (or no stop after it)\n";
+    } else {
+        $savedBus = Database::fetch("SELECT * FROM kv_store WHERE kscope = 'global' AND kkey = 'livebus'");
+        $bus = static function (float $lat, float $lng, int $ts): void {
+            Database::delete('kv_store', "kscope = 'global' AND kkey = 'livebus'");
+            Database::insert('kv_store', ['kscope' => 'global', 'kkey' => 'livebus', 'updated_at' => date('Y-m-d H:i:s', $ts),
+                'kvalue' => json_encode(['lat' => $lat, 'lng' => $lng, 'spd' => 13.9, 'acc' => 15, 'tag' => 'wi-test'])]);
+        };
+        try {
+            $A = $L[$pi]; $B = $L[$pi + 1];
+            $t = $pickTs + 3600;
+            $bus($A['lat'] + 0.5 * ($B['lat'] - $A['lat']), $A['lng'] + 0.5 * ($B['lng'] - $A['lng']), $t);
+            $st = WhereIs::status($row, $t);
+            check('coach past the pickup after its time: live, with its position', !empty($st['live']) && $st['lat'] !== null, (string) $st['reason']);
+            check('...on board and on the way to the drop - not "passed your stop"', !empty($st['onBoard']) && empty($st['passed']) && (string) ($st['drop'] ?? '') !== '' && $st['etaMin'] === null, (string) ($st['drop'] ?? ''));
+            check('...km to the drop only when it has coordinates, minutes only within ' . (int) WhereIs::ETA_MAX_KM . ' km',
+                ($st['dropKm'] === null && $st['dropEtaMin'] === null) || ($st['dropKm'] > 0 && ($st['dropEtaMin'] === null) === ($st['dropKm'] > WhereIs::ETA_MAX_KM)),
+                json_encode([$st['dropKm'], $st['dropEtaMin']]));
+            $bus($L[0]['lat'] - 3.0, $L[0]['lng'], $t);   // ~330 km south of the start of the line
+            $st = WhereIs::status($row, $t);
+            check('a coach far off the route: silence, no position, no "on board"', empty($st['live']) && $st['lat'] === null && empty($st['onBoard']), (string) $st['reason']);
+            if ($pi > 0) {
+                $P = $L[$pi - 1];
+                $bus($P['lat'] + 0.5 * ($A['lat'] - $P['lat']), $P['lng'] + 0.5 * ($A['lng'] - $P['lng']), $pickTs - 1800);
+                $st = WhereIs::status($row, $pickTs - 1800);
+                check('pickup still ahead: minutes to it, as before', !empty($st['live']) && empty($st['onBoard']) && empty($st['passed']) && $st['km'] > 0, json_encode([$st['etaMin'], $st['km']]));
+            }
+        } finally {
+            Database::delete('kv_store', "kscope = 'global' AND kkey = 'livebus'");
+            if ($savedBus !== null) { Database::insert('kv_store', $savedBus); }
+        }
+    }
+    $src = (string) file_get_contents(dirname(__DIR__) . '/track.php');
+    check('track.php says "on the way" in all three languages, and its refresh does too',
+        substr_count($src, "'onWay' =>") === 3 && substr_count($src, "'onWayEta' =>") === 3 && str_contains($src, 'live && d.onBoard'));
+
     if (!$serverUp) {
         echo "\n  SKIP  HTTP parts — no server at " . BASE . "\n";
     } else {

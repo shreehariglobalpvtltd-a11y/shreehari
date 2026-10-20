@@ -71,7 +71,7 @@
     var tl = d.timeline || [], dl = (d.delayMin || 0) * 60000;
     var mine = tl.filter(function (r) { return r.mine === 'board'; })[0] || {};
     var s = '—', se = '';
-    if (d.pickupPassed || mine.passed) s = '✓ ' + T.done;
+    if (d.pickupPassed || mine.passed || d.onBoard) s = '✓ ' + T.done;
     else if (live && d.etaMin != null) { s = '~' + dur(d.etaMin); se = T.gps; }
     else if (d.pickupTs) { s = hm(d.pickupTs * 1000 + dl); se = d.stop || ''; }
     $('tS').textContent = s; $('tSe').textContent = se;

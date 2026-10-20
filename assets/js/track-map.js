@@ -141,6 +141,7 @@
     if (!ready || userMoved) return;
     var pts = [], pick = mine('board');
     if (bus) pts.push(bus.getLngLat().toArray());
+    if (d && d.onBoard) pick = mine('drop');   // on board: the bus and where they get off
     if (pick && !(d && d.passed)) pts.push([pick.lng, pick.lat]);
     if (!pts.length) {
       var b = new maplibregl.LngLatBounds(line[0], line[0]);

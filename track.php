@@ -44,6 +44,7 @@ $T = [
              'stop' => 'Your boarding stop', 'date' => 'Travel date', 'bus' => 'Bus', 'pnr' => 'Ticket', 'route' => 'Route',
              'notLive' => 'The bus is not live yet', 'notLiveSub' => 'We show the position only when the driver\'s phone is sending it. Check again closer to departure.',
              'live' => 'The bus is on the road', 'eta' => 'about %1$d min to %2$s', 'km' => '%s km away', 'passed' => 'The bus has passed your stop — call the office if you missed it.',
+             'onWay' => 'On the way to %s', 'onWayEta' => 'about %1$s · %2$s km to go', 'onWayKm' => '%s km to go',
              'lastKnown' => 'Last seen near %2$s at %1$s (%3$d min ago) — not live', 'gone' => 'The bus has left. Its position is not being sent right now.', 'mapsLast' => 'Last known place in Google Maps',
              'arrived' => 'The bus has arrived', 'cancelled' => 'This trip is cancelled — the office will contact you.', 'delay' => 'Running %d min late',
              'share' => 'Share with family on WhatsApp', 'shareText' => 'Follow my bus live (S Hari Global):', 'maps' => 'Open in Google Maps', 'call' => 'Call the office',
@@ -60,6 +61,7 @@ $T = [
              'stop' => 'आपका बोर्डिंग स्टॉप', 'date' => 'यात्रा की तारीख', 'bus' => 'बस', 'pnr' => 'टिकट', 'route' => 'रूट',
              'notLive' => 'बस अभी लाइव नहीं है', 'notLiveSub' => 'ड्राइवर का फ़ोन स्थिति भेजेगा तभी दिखेगी। रवानगी के समय के पास फिर देखें।',
              'live' => 'बस रास्ते में है', 'eta' => '%2$s तक लगभग %1$d मिनट', 'km' => '%s किमी दूर', 'passed' => 'बस आपके स्टॉप से निकल चुकी है — छूट गई हो तो ऑफ़िस को कॉल करें।',
+             'onWay' => 'बस %s की ओर जा रही है', 'onWayEta' => 'लगभग %1$s · %2$s किमी बाकी', 'onWayKm' => '%s किमी बाकी',
              'lastKnown' => 'आखिरी बार %2$s के पास %1$s बजे दिखी (%3$d मिनट पहले) — लाइव नहीं', 'gone' => 'बस निकल चुकी है। अभी उसकी स्थिति नहीं आ रही।', 'mapsLast' => 'आखिरी जगह Google Maps में',
              'arrived' => 'बस पहुँच गई', 'cancelled' => 'यह यात्रा रद्द है — ऑफ़िस आपसे संपर्क करेगा।', 'delay' => '%d मिनट देरी से चल रही है',
              'share' => 'परिवार को WhatsApp पर भेजें', 'shareText' => 'मेरी बस को लाइव देखें (S Hari Global):', 'maps' => 'Google Maps में खोलें', 'call' => 'ऑफ़िस को कॉल करें',
@@ -76,6 +78,7 @@ $T = [
              'stop' => 'तपाईं चढ्ने ठाउँ', 'date' => 'यात्राको मिति', 'bus' => 'बस', 'pnr' => 'टिकट', 'route' => 'रुट',
              'notLive' => 'बस अहिले लाइभ छैन', 'notLiveSub' => 'ड्राइभरको फोनले स्थिति पठाएपछि मात्र देखिन्छ। छुट्ने समय नजिक फेरि हेर्नुहोस्।',
              'live' => 'बस बाटोमा छ', 'eta' => '%2$s सम्म करिब %1$d मिनेट', 'km' => '%s किमी टाढा', 'passed' => 'बस तपाईंको स्टपबाट अगाडि गइसक्यो — छुटेको भए कार्यालयलाई फोन गर्नुहोस्।',
+             'onWay' => 'बस %s तर्फ जाँदैछ', 'onWayEta' => 'करिब %1$s · %2$s किमी बाँकी', 'onWayKm' => '%s किमी बाँकी',
              'lastKnown' => 'अन्तिम पटक %2$s नजिक %1$s बजे देखियो (%3$d मिनेट अघि) — लाइभ होइन', 'gone' => 'बस छुटिसक्यो। अहिले यसको स्थिति आइरहेको छैन।', 'mapsLast' => 'अन्तिम ठाउँ Google Maps मा',
              'arrived' => 'बस पुग्यो', 'cancelled' => 'यो यात्रा रद्द भयो — कार्यालयले सम्पर्क गर्नेछ।', 'delay' => '%d मिनेट ढिलो चलिरहेको छ',
              'share' => 'परिवारलाई WhatsApp मा पठाउनुहोस्', 'shareText' => 'मेरो बस लाइभ हेर्नुहोस् (S Hari Global):', 'maps' => 'Google Maps मा खोल्नुहोस्', 'call' => 'कार्यालयलाई फोन',
@@ -118,7 +121,15 @@ if ($authed && $status !== null) {
     } elseif (in_array($st, ['arrived', 'completed'], true)) {
         $head = ['icon' => '🏁', 'title' => $T['arrived'], 'sub' => '', 'tone' => 'ok'];
     } elseif (!empty($status['live'])) {
-        if (!empty($status['passed'])) {
+        if (!empty($status['onBoard'])) {
+            // 21 Oct 2026: past the pickup and plausibly aboard - on the way to THEIR drop.
+            $dur = static fn(int $m): string => $m < 60 ? sprintf($T['mins'], $m) : ($m % 60 ? sprintf($T['hm'], intdiv($m, 60), $m % 60) : sprintf($T['hrs'], intdiv($m, 60)));
+            $kmTxt = (float) ($status['dropKm'] ?? 0) >= 100 ? (string) round((float) $status['dropKm']) : (string) ($status['dropKm'] ?? '');   // 1155 km, 42.5 km
+            $head = ['icon' => '🚌', 'title' => sprintf($T['onWay'], (string) $status['drop']),
+                     'sub'  => ($status['dropEtaMin'] ?? null) !== null ? sprintf($T['onWayEta'], $dur((int) $status['dropEtaMin']), $kmTxt)
+                             : (($status['dropKm'] ?? null) !== null ? sprintf($T['onWayKm'], $kmTxt) : ''),
+                     'tone' => 'ok'];
+        } elseif (!empty($status['passed'])) {
             $head = ['icon' => '⚠️', 'title' => $T['passed'], 'sub' => '', 'tone' => 'warn'];
         } else {
             $head = ['icon' => '📍', 'title' => $T['live'],
@@ -274,6 +285,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
   var $ = function(id){ return document.getElementById(id); };
   /* Positional tokens, like the server's sprintf: %1$d / %2$s / %3$d (and a bare %s / %d). */
   function fill(s, a){ return String(s).replace(/%(\d)\$[ds]/g, function(m, n){ var v = a[+n - 1]; return v === undefined || v === null ? '' : String(v); }).replace(/%[ds]/, function(){ var v = a[0]; return v == null ? '' : String(v); }); }
+  /* minutes as the server's headline prints them: 45 min / 2 h / 2 h 15 min */
+  function dur(m){ m = +m; return m < 60 ? fill(T.mins, [m]) : (m % 60 ? fill(T.hm, [Math.floor(m / 60), m % 60]) : fill(T.hrs, [m / 60])); }
   /* The rest of the live screen (chips, bar, tiles, rail, clock) is assets/js/track-live.js. */
   var S = window.SHG_TRACK = {T: T, fill: fill, D: <?= json_encode($slim, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?>};
   function paint(d){
@@ -283,6 +296,9 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
     if (d.bookingStatus !== 'confirmed') { icon = '⏳'; title = T.ticketOnly; sub = ''; }
     else if (d.state === 'cancelled') { icon = '❌'; title = T.cancelled; sub = ''; tone = 'bad'; }
     else if (d.state === 'arrived' || d.state === 'completed') { icon = '🏁'; title = T.arrived; sub = ''; tone = 'ok'; }
+    else if (live && d.onBoard) { title = fill(T.onWay, [d.drop]); tone = 'ok';
+      var dk = d.dropKm >= 100 ? Math.round(d.dropKm) : d.dropKm;
+      sub = d.dropEtaMin != null ? fill(T.onWayEta, [dur(d.dropEtaMin), dk]) : (d.dropKm != null ? fill(T.onWayKm, [dk]) : ''); }
     else if (live && d.passed) { icon = '⚠️'; title = T.passed; sub = ''; tone = 'warn'; }
     else if (live) { icon = '📍'; title = T.live; tone = 'ok';
       sub = d.etaMin !== null ? (fill(T.eta, [d.etaMin, d.stop]) + ' · ' + T.km.replace('%s', d.km)) : ''; }

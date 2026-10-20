@@ -8,6 +8,8 @@
  *    · the published coach position (EtaAlerts::fix — stale or inaccurate
  *      fixes are refused, never guessed)
  *    · minutes and km to THIS passenger's boarding stop (EtaAlerts::stopEtas)
+ *    · once the coach is past that stop and the passenger is plausibly on
+ *      board (21 Oct 2026): onBoard, and minutes / km to THEIR drop
  *
  *  Shared by track.php (the page) and api/whereis.php (its refresh), so the
  *  page and the WhatsApp "bus is near" alert can never disagree.
@@ -171,8 +173,14 @@ final class WhereIs
             }
             return $out;
         }
-        $etas = EtaAlerts::stopEtas((int) $leg['route_id'], $fix, $now);
-        if ($etas === []) {
+        /* 21 Oct 2026: off the route is decided by distance from the line,
+           not by "a boarding stop is still ahead" - that silenced every r7
+           passenger (all board at Rupaidiha) and every r2 passenger once
+           picked up. */
+        $routeId = (int) $leg['route_id'];
+        $geo = EtaAlerts::routeLine($routeId);
+        $pos = EtaAlerts::locate($geo, (float) $fix['lat'], (float) $fix['lng']);
+        if ($pos === null || $pos['off'] > EtaAlerts::OFF_ROUTE_KM) {
             $out['reason'] = 'the coach is not on this route right now';
             return $out;
         }
@@ -189,14 +197,135 @@ final class WhereIs
         if ($road !== null) {
             $out['road'] = $road;
         }
-        $key = Boarding::townKey((string) ($leg['boarding_stop'] ?? ''));
-        if (isset($etas[$key])) {
-            $out['etaMin'] = (int) (ceil($etas[$key]['eta'] / 5) * 5);
-            $out['km']     = $etas[$key]['km'];
-        } else {
-            $out['passed'] = true;      // the bus is already past this stop
+        $kmh   = $fix['kmh'] ?? null;
+        $order = self::stopOrder($routeId);
+        $pick  = self::placeOf($geo, $order, (string) ($leg['boarding_stop'] ?? ''), 'boarding');
+
+        // The pickup still ahead: minutes and km to it (the stopEtas() rule).
+        if ($pick['km'] !== null && $pick['km'] - $pos['km'] > 0.5) {
+            $ahead = $pick['km'] - $pos['km'];
+            if ($ahead <= self::ETA_MAX_KM) {
+                $out['etaMin'] = (int) (ceil(EtaAlerts::etaMinutes($ahead, $kmh) / 5) * 5);
+                $out['km']     = round($ahead, 1);
+            }
+            return $out;
         }
+
+        /* Behind the coach? Only when the km say so: the pickup itself, or -
+           for a pickup without coordinates - the next stop after it that has
+           them. No stop on the line to measure by: the pickup clock. At the
+           stop, or between the bounds: live, and nothing more is claimed. */
+        if ($pick['after'] !== null) {
+            $behind = $pos['km'] - $pick['after'] > 0.5;
+        } elseif ($pick['km'] === null) {
+            $behind = $pickTs > 0 && $now >= $pickTs + $out['delayMin'] * 60;
+        } else {
+            $behind = false;
+        }
+        if (!$behind) {
+            return $out;
+        }
+
+        /* Plausibly on board: the pickup moment has come (a coach a little
+           early still counts) or the crew scanned this ticket aboard. A coach
+           well past the stop before its time keeps the old warning - that is
+           the passenger who may have missed it. */
+        $onBoard = ($pickTs > 0 && $now >= $pickTs - self::ON_BOARD_EARLY_SEC) || self::scannedAboard((int) $booking['id']);
+        if (!$onBoard) {
+            $out['passed'] = true;      // the bus is already past this stop
+            return $out;
+        }
+
+        // Their drop on the ticket, else the end of the line. Without coordinates: no ETA.
+        $dropLabel = trim((string) ($leg['drop_stop'] ?? ''));
+        $drop = $dropLabel !== '' ? self::placeOf($geo, $order, $dropLabel, 'drop') : self::endOfLine($geo, $order);
+        $out['drop'] = $drop['name'] !== '' ? $drop['name'] : (string) Boarding::stopDisplay($dropLabel, (string) $leg['to_city'])['name'];
+        $out['dropEtaMin'] = null;
+        $out['dropKm']     = null;
+        if ($drop['km'] !== null) {
+            $toGo = $drop['km'] - $pos['km'];
+            if ($toGo <= 0.5) {
+                return $out;            // at or past their drop: live, no "on the way"
+            }
+            $out['dropKm'] = round($toGo, 1);
+            if ($toGo <= self::ETA_MAX_KM) {
+                $out['dropEtaMin'] = (int) (ceil(EtaAlerts::etaMinutes($toGo, $kmh) / 5) * 5);
+            }
+        }
+        $out['onBoard'] = true;
         return $out;
+    }
+
+    /** Beyond this many road km a speed-based ETA is not given (the stopEtas() limit). */
+    public const ETA_MAX_KM = 400.0;
+
+    /** A coach this early at a pickup still plausibly picked the passenger up. */
+    public const ON_BOARD_EARLY_SEC = 30 * 60;
+
+    /**
+     * Every stop of the route in travel order (the stopLine() order),
+     * with or without coordinates.
+     *
+     * @return list<array{name:string, type:string}>
+     */
+    private static function stopOrder(int $routeId): array
+    {
+        return array_map(static fn(array $r): array => ['name' => (string) $r['stop_name'], 'type' => (string) $r['stop_type']],
+            Database::fetchAll(
+                "SELECT stop_name, stop_type FROM route_stops WHERE route_id = :r
+                  ORDER BY FIELD(stop_type,'boarding','drop'), sort_order, id",
+                ['r' => $routeId]
+            ));
+    }
+
+    /**
+     * Where a ticket's stop sits on the route line: its own km when it has
+     * coordinates, and 'after' = the km of the first stop from it onwards
+     * that has them (the coach past that is surely past this one). Nothing
+     * is interpolated - a stop without coordinates never gets a km.
+     *
+     * @param array{line: list<array<string,mixed>>} $geo  EtaAlerts::routeLine()
+     * @param list<array{name:string, type:string}> $order  stopOrder()
+     * @return array{km:?float, after:?float, name:string}
+     */
+    private static function placeOf(array $geo, array $order, string $label, string $type): array
+    {
+        $key = Boarding::townKey($label);
+        $kmOf = static function (array $s) use ($geo): ?float {
+            foreach ($geo['line'] as $g) {
+                if ($g['name'] === $s['name'] && $g['type'] === $s['type']) { return (float) $g['km']; }
+            }
+            return null;
+        };
+        foreach ($order as $i => $s) {
+            if ($key === '' || $s['type'] !== $type || Boarding::townKey($s['name']) !== $key) {
+                continue;
+            }
+            $after = null;
+            for ($j = $i, $n = count($order); $j < $n && $after === null; $j++) {
+                $after = $kmOf($order[$j]);
+            }
+            return ['km' => $kmOf($s), 'after' => $after, 'name' => (string) Boarding::stopDisplay($s['name'])['name']];
+        }
+        return ['km' => null, 'after' => null, 'name' => ''];
+    }
+
+    /** The last stop of the route (a ticket with no drop gets off there). */
+    private static function endOfLine(array $geo, array $order): array
+    {
+        $last = end($order);
+        return $last === false ? ['km' => null, 'after' => null, 'name' => '']
+            : self::placeOf($geo, [$last], $last['name'], $last['type']);
+    }
+
+    /** The crew's boarding scan stamped a passenger of this ticket. */
+    private static function scannedAboard(int $bookingId): bool
+    {
+        try {
+            return Database::exists('SELECT 1 FROM booking_passengers WHERE booking_id = :b AND boarded_at IS NOT NULL', ['b' => $bookingId]);
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 
     /**
@@ -354,6 +483,12 @@ final class WhereIs
             // the passenger's own stop says exactly what the headline says
             if ($mineB !== null && isset($etas[$mineB]) && ($out['etaMin'] ?? null) !== null) {
                 $etas[$mineB] = (int) $out['etaMin'];
+            }
+            // ...and on board, their drop says what the "on the way" headline says
+            $dj = $mineD ?? $lastStop;
+            if (!empty($out['onBoard']) && ($out['dropEtaMin'] ?? null) !== null && $dj !== null && isset($etas[$dj])
+                && Boarding::townKey((string) $line[$dj]['name']) === Boarding::townKey((string) $out['drop'])) {
+                $etas[$dj] = (int) $out['dropEtaMin'];
             }
         }
 

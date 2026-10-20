@@ -86,7 +86,7 @@ try {
 
     $st  = WhereIs::status($booking);
     $pos = array_intersect_key($st, array_flip(['live', 'state', 'lat', 'lng', 'kmh', 'fixAge', 'road', 'passed',
-        'lastKnown', 'lastAt', 'lastLat', 'lastLng', 'lastStop', 'etaMin', 'km', 'stop', 'progress', 'updatedAt']));
+        'onBoard', 'drop', 'dropEtaMin', 'dropKm', 'lastKnown', 'lastAt', 'lastLat', 'lastLng', 'lastStop', 'etaMin', 'km', 'stop', 'progress', 'updatedAt']));
 
     echo json_encode(['ok' => true, 'data' => [
         'v'           => $road !== null ? $road['version'] : null,
