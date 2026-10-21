@@ -143,6 +143,13 @@ body[data-lvl=nav] .ctrls{bottom:calc(var(--sb) + 112px)}
 .me.nav{width:46px;height:46px}
 .me.nav .me-arrow{display:block}
 .me.nav .me-dot,.me.nav .me-pulse,.me.nav .me-cone{display:none}
+/* the drive arrow takes the mode colour; walking keeps Google's dot + beam, cycling a smaller arrow */
+.me-arrow path{fill:var(--mode)}
+.me-arrow circle{fill:var(--mode);fill-opacity:.18}
+.me.nav.walk{width:24px;height:24px}
+.me.nav.walk .me-arrow{display:none}
+.me.nav.walk .me-dot,.me.nav.walk .me-cone{display:block}
+.me.nav.bike .me-arrow{width:36px;height:36px;margin:-18px 0 0 -18px}
 .me.stale .me-dot{background:#8A94A6}
 .me.stale .me-pulse{display:none}
 
@@ -306,7 +313,21 @@ body[data-lvl=nav] .ctrls{bottom:calc(var(--sb) + 112px)}
 .ban-ic{width:60px;min-width:60px;height:60px;display:grid;place-items:center}
 .ban-ic svg{width:56px;height:56px}
 .ban-main{flex:1;min-width:0}
-.ban-dist{font:700 28px/1.05 Poppins,sans-serif;letter-spacing:-.3px}
+.ban-dist{font:700 28px/1.05 Poppins,sans-serif;letter-spacing:-.3px;display:inline-block;transform-origin:0 70%;transition:transform .35s var(--ease),color .35s}
+/* the turn is close: the distance grows and turns yellow; at the turn the banner flashes */
+.ban.near .ban-dist{color:#FFD60A;transform:scale(1.14)}
+.ban.now .ban-dist{color:#fff;transform:scale(1.22)}
+.ban.now{animation:turnflash .9s ease-out}
+@keyframes turnflash{0%{background:#1FB866}100%{background:#0E6B43}}
+.faster{position:relative;overflow:hidden;display:flex;align-items:center;gap:10px;margin-top:6px;padding:10px 10px 10px 14px;border-radius:16px;background:rgba(17,29,51,.96);border:1px solid rgba(52,199,89,.45);box-shadow:var(--sh);
+  animation:sdown .3s var(--ease) both}
+.faster .t{flex:1;min-width:0;font-size:14px;line-height:1.3}
+.faster .t b{display:block;color:var(--ok);font:600 15px/1.25 Poppins,sans-serif}
+.faster .btn{height:40px;min-width:44px;padding:0 14px}
+.faster .fx{width:40px;padding:0;display:grid;place-items:center}
+.faster .fx svg{width:18px;height:18px}
+.faster i{position:absolute;left:14px;right:14px;bottom:0;height:3px;border-radius:2px;background:var(--ok);transform-origin:0 50%;animation:fshrink 15s linear both}
+@keyframes fshrink{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 .ban-txt{font:500 17px/1.25 Inter,sans-serif;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ban-sub{display:flex;gap:8px;margin-top:6px;align-items:flex-start}
 .then{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:12px;background:#0A5333;color:#E6FFF1;font-weight:600;font-size:14px;box-shadow:var(--sh);
@@ -393,13 +414,14 @@ body:not([data-lvl=home]) #chips,body:not([data-lvl=home]) #nearChips{display:no
   animation:sup2 .35s var(--ease) both;touch-action:pan-y}
 @keyframes sup2{from{transform:translateY(100%)}to{transform:none}}
 .modal-card h3{font-size:18px;margin:12px 0 12px}
-.types{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.types{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .type{display:flex;flex-direction:column;gap:6px;align-items:center;font-size:13px;color:var(--text2)}
 .type i{width:100%;aspect-ratio:1.3;border-radius:12px;border:2px solid transparent;display:block;transition:border-color .2s}
 .type.on{color:var(--gold);font-weight:600}
 .type.on i{border-color:var(--gold)}
 .t-dark{background:linear-gradient(135deg,#0B1426 30%,#1C2D4F 31%,#1C2D4F 36%,#0B1426 37%),#0B1426}
 .t-light{background:linear-gradient(135deg,#eef0f3 30%,#fff 31%,#fff 36%,#eef0f3 37%),#eef0f3}
+.t-auto{background:linear-gradient(135deg,#eef0f3 49.5%,#0B1426 50.5%)}
 .t-sat{background:radial-gradient(circle at 30% 40%,#4c6b3a,#24361f 60%,#1a2617)}
 .tg{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;border-bottom:1px solid var(--line)}
 .tg span small{display:block;color:var(--text3);font-size:12.5px}
@@ -530,6 +552,7 @@ body[data-lvl=nav] .toast{bottom:calc(var(--sb) + 112px)}
     <div class="ban-main"><div class="ban-dist" id="banDist"></div><div class="ban-txt" id="banTxt"></div></div>
   </div>
   <div class="ban-sub"><div class="lanes" id="lanes" hidden></div><div class="then" id="then" hidden></div><div class="then gps" id="gpsChip" hidden></div></div>
+  <div class="faster" id="faster" role="status" hidden></div>
   <div class="pv" id="pv" hidden>
     <button id="pvPrev" type="button" aria-label="Previous step"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>Back</button>
     <span id="pvIdx"></span>
@@ -734,7 +757,8 @@ function tIcon(type, mod, faint) {
    STATE
 ===================================================================== */
 var S = {
-  map: null, own: null, styleKey: LS.get('shg:nm:style', 'dark'), b3d: LS.get('shg:nm:3d', true),
+  /* stylePref = what the rider picked (auto | dark | light | sat); styleKey = the map shown now */
+  map: null, own: null, stylePref: LS.get('shg:nm:style', 'dark'), styleKey: 'dark', b3d: LS.get('shg:nm:3d', true),
   me: null, watchId: null, follow: 'none', devHead: null, fixWait: [],
   from: { me: true, name: 'Your location' }, to: null, a: null,
   mode: MODES[LS.get('shg:nm:mode', 'car')] ? LS.get('shg:nm:mode', 'car') : 'car',
@@ -748,6 +772,28 @@ var S = {
   sim: null, simX: QS.has('sim') ? clamp(Math.round(+QS.get('sim') || 1), 1, 8) : 0, wake: null
 };
 if (QS.has('debug')) window.SHGNAV = S;
+/* "Auto" map: Day map between sunrise and sunset where the rider is, Night map after dark
+   (NOAA sunrise equation, good to a few minutes; the map centre stands in until GPS answers) */
+function sunUp(lat, lng, t) {
+  var d = t / 86400000 + 2440587.5 - 2451545.0, Js = Math.ceil(d + 0.0008) - lng / 360;
+  var M = (357.5291 + 0.98560028 * Js) % 360, Mr = M * D2R;
+  var C = 1.9148 * Math.sin(Mr) + 0.02 * Math.sin(2 * Mr) + 0.0003 * Math.sin(3 * Mr);
+  var lam = ((M + C + 180 + 102.9372) % 360) * D2R;
+  var Jt = 2451545.0 + Js + 0.0053 * Math.sin(Mr) - 0.0069 * Math.sin(2 * lam);
+  var dec = Math.asin(Math.sin(lam) * Math.sin(23.44 * D2R)), la = lat * D2R;
+  var cw = (Math.sin(-0.83 * D2R) - Math.sin(la) * Math.sin(dec)) / (Math.cos(la) * Math.cos(dec));
+  if (cw > 1) return false;                            /* polar night */
+  if (cw < -1) return true;                            /* midnight sun */
+  var w = Math.acos(cw) * R2D / 360, now = d + 2451545.0;
+  var rise = Jt - w, set = Jt + w;
+  return (now >= rise && now <= set) || (now >= rise + 1 && now <= set + 1) || (now >= rise - 1 && now <= set - 1);
+}
+function effStyle(pref) {
+  if (pref !== 'auto') return pref === 'light' || pref === 'sat' ? pref : 'dark';
+  var c = S.me ? [S.me.lng, S.me.lat] : S.map ? S.map.getCenter().toArray() : [80.2, 24.8];
+  return sunUp(c[1], c[0], Date.now()) ? 'light' : 'dark';
+}
+S.styleKey = effStyle(S.stylePref);
 
 /* =====================================================================
    MAP STYLES  (our own tiles, recoloured to the S Hari navy)
@@ -897,7 +943,9 @@ function add3d() {
                'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': 0.85 } });
   } catch (e) {}
 }
+function meMode() { if (meEl) { meEl.classList.toggle('walk', S.mode === 'walk'); meEl.classList.toggle('bike', S.mode === 'bike'); } }
 function paintRoute() {
+  meMode();
   var m = S.map; if (!m || !m.getLayer('rt-grad')) return;
   var M = MODES[S.mode], walk = S.mode === 'walk';
   m.setPaintProperty('rt-case', 'line-color', M.casing);
@@ -1014,7 +1062,7 @@ function bindControls() {
   $('#c3d').onclick = function () { var p = S.map.getPitch(); S.map.easeTo({ pitch: p > 5 ? 0 : 58, duration: 650 }); };
   $('#cLayers').onclick = openLayers;
   $('#cLoc').onclick = function () {
-    startCompass();
+    startCompass(); startMotion();
     if (!S.me) { S.pendingLocate = true; startGeo(); toast('Finding your location…'); return; }
     if (S.follow === 'none') { S.follow = 'follow'; S.map.flyTo({ center: [S.me.lng, S.me.lat], zoom: Math.max(S.map.getZoom(), 15.5), duration: 900, essential: true }); }
     else if (S.follow === 'follow') { S.follow = 'compass'; if (S.devHead == null) toast('Compass mode: turn your phone to rotate the map'); }
@@ -1040,6 +1088,7 @@ function meMarker() {
   meEl.innerHTML = '<div class="me-cone"></div><div class="me-pulse"></div><div class="me-dot"></div><div class="me-arrow">' + NAV_ARROW + '</div>';
   var driving = !!(S.nav && !S.nav.preview);
   if (driving) meEl.classList.add('nav');
+  meMode();
   S.markers.me = new maplibregl.Marker({ element: meEl, rotationAlignment: 'map', pitchAlignment: driving ? 'map' : 'viewport' }).setLngLat([S.me.lng, S.me.lat]).addTo(S.map);
   return S.markers.me;
 }
@@ -1058,14 +1107,59 @@ function waitFix(ms) {
   startGeo();
   return new Promise(function (res) { S.fixWait.push(res); setTimeout(function () { res(S.me); }, ms || 12000); });
 }
+/* GPS smoothing: a small Kalman filter on the position. It first moves its estimate on by the
+   phone's own speed + heading (so a coach at 90 km/h is not dragged behind its fixes), then
+   blends in the new fix by how accurate the phone says it is. A phone lying still (motion
+   sensor quiet, GPS speed ~0) barely wanders; a jump of a few hundred metres (tunnel exit,
+   first real fix after a cell-tower one) starts it afresh. */
+var KF = { v: -1, lat: 0, lng: 0, t: 0 };
+function kalman(f) {
+  var acc = Math.max(3, f.acc || 30), dt = (f.t - KF.t) / 1000;
+  if (KF.v < 0 || !(dt >= 0) || dt > 20 || hav([KF.lng, KF.lat], [f.lng, f.lat]) > Math.max(250, acc * 4)) {
+    KF.lat = f.lat; KF.lng = f.lng; KF.v = acc * acc; KF.t = f.t; return f;
+  }
+  var sp = f.speed > 0.8 ? f.speed : 0;
+  if (sp && f.heading != null && !isNaN(f.heading)) {
+    var dm = sp * dt, hr = f.heading * D2R;
+    KF.lat += dm * Math.cos(hr) / 111320; KF.lng += dm * Math.sin(hr) / (111320 * Math.cos(KF.lat * D2R));
+  }
+  var q = S.still && !sp ? 0.25 : 1.5 + sp * 0.35;      /* metres per second of doubt */
+  KF.v += dt * q * q;
+  var k = KF.v / (KF.v + acc * acc);
+  KF.lat += k * (f.lat - KF.lat); KF.lng += k * (f.lng - KF.lng); KF.v = (1 - k) * KF.v; KF.t = f.t;
+  return Object.assign({}, f, { lat: KF.lat, lng: KF.lng, raw: { lat: f.lat, lng: f.lng } });
+}
+/* the motion sensor only says "this phone is lying still" (a parked coach, a phone on the
+   counter); asked for in the same tap as the compass, since iPhones want a tap for both */
+function startMotion() {
+  if (S.motionOn || !window.DeviceMotionEvent) return;
+  S.motionOn = true;
+  var buf = [], last = 0;
+  function on(e) {
+    var a = e.acceleration, n = performance.now();
+    if (!a || a.x == null || n - last < 90) return;
+    last = n;
+    buf.push(Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z));
+    if (buf.length > 25) buf.shift();
+    var s = 0; buf.forEach(function (x) { s += x; });
+    S.still = buf.length >= 15 && s / buf.length < 0.12;
+  }
+  try {
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+      DeviceMotionEvent.requestPermission().then(function (st) { if (st === 'granted') addEventListener('devicemotion', on, { passive: true }); }).catch(function () { S.motionOn = false; });   /* not inside a tap: ask on the next one */
+    } else addEventListener('devicemotion', on, { passive: true });
+  } catch (e) {}
+}
 function ingestFix(f) {
-  var prev = S.me;
+  var prev = S.me, pr = prev && (prev.raw || prev);
   if (prev && (f.speed == null || isNaN(f.speed))) {
     var dt = (f.t - prev.t) / 1000;
-    f.speed = dt > 0.4 && dt < 12 ? hav([prev.lng, prev.lat], [f.lng, f.lat]) / dt : (prev.speed || 0);
+    f.speed = dt > 0.4 && dt < 12 ? hav([pr.lng, pr.lat], [f.lng, f.lat]) / dt : (prev.speed || 0);
   }
-  if ((f.heading == null || isNaN(f.heading)) && prev && hav([prev.lng, prev.lat], [f.lng, f.lat]) > 4) f.heading = brg([prev.lng, prev.lat], [f.lng, f.lat]);
+  if ((f.heading == null || isNaN(f.heading)) && prev && hav([pr.lng, pr.lat], [f.lng, f.lat]) > 4) f.heading = brg([pr.lng, pr.lat], [f.lng, f.lat]);
+  if (!S.sim) f = kalman(f);                           /* the simulator's fixes are already exact */
   S.me = f;
+  if (!prev && S.stylePref === 'auto') setStyle();   /* sunset where the rider really is */
   meMarker();
   S.fixWait.splice(0).forEach(function (fn) { fn(f); });
   locUI();
@@ -1683,27 +1777,27 @@ async function routeFetch(mode, a, b, o) {
   var body = { locations: locs, costing: M.costing, directions_options: { units: 'kilometers', language: 'en-US' }, format: 'osrm', shape_format: 'geojson' };
   if (o.alts) body.alternates = 2;
   var co = costingOpts(mode); if (co) body.costing_options = co;
-  var far = false;
-  busy(true);
+  var far = false, q = !!o.quiet;
+  if (!q) busy(true);
   try {
     var r = await fetchT(ROUTE_API + encodeURIComponent(JSON.stringify(body)), { credentials: 'same-origin' }, 15000);
     var j = null; try { j = await r.json(); } catch (e) {}
     if (r.ok && j && j.code === 'Ok' && j.routes && j.routes.length) return { routes: normalize(j, 'own', mode), src: r.headers.get('X-SHG-Nav') || 'own' };
     if (j && (j.code === 'DistanceExceeded' || /exceeds the max distance/i.test(j.message || j.error || ''))) far = true;
-  } catch (e) { /* engine unreachable: fall through to OSRM */ } finally { busy(false); }
+  } catch (e) { /* engine unreachable: fall through to OSRM */ } finally { if (!q) busy(false); }
   if (far) { var fe = new Error('too far'); fe.far = true; throw fe; }
   var pts = [a].concat(via, [b]).map(function (p) { return p.lng.toFixed(6) + ',' + p.lat.toFixed(6); }).join(';');
   var url = OSRM[M.osrm] + pts + '?overview=full&geometries=geojson&steps=true' + (o.alts ? '&alternatives=true' : '');
   if (l0.heading != null) url += '&bearings=' + l0.heading + ',60' + new Array(locs.length).join(';');
   var ex = osrmExclude(mode);
-  busy(true);
+  if (!q) busy(true);
   try {
     var r2 = await fetchT(url + (ex ? '&exclude=' + ex : ''), {}, 16000);
     if (!r2.ok && ex) r2 = await fetchT(url, {}, 16000);
     var j2 = await r2.json();
     if (j2.code !== 'Ok' || !j2.routes || !j2.routes.length) throw new Error(j2.message || 'No route');
     return { routes: normalize(j2, 'osrm', mode), src: 'osrm' };
-  } finally { busy(false); }
+  } finally { if (!q) busy(false); }
 }
 function normalize(j, src, mode) {
   var mult = MODES[mode].mult || 1;          /* a coach: road time x1.3 (the engines' bus costing drives at car speed) */
@@ -2124,6 +2218,9 @@ var LT = {
   gps: { ne: 'जीपीएस कमजोर', hi: 'जीपीएस कमज़ोर', en: 'Weak GPS' },
   rc: { ne: 'फेरि केन्द्र', hi: 'फिर से केंद्र', en: 'Re-centre' },
   prev: { ne: 'पूर्वावलोकन', hi: 'पूर्वावलोकन', en: 'Preview' },
+  fr: { ne: 'छिटो बाटो भेटियो', hi: 'तेज़ रास्ता मिला', en: 'Faster route found' },
+  frs: { ne: '{t} छिटो पुगिन्छ', hi: '{t} जल्दी पहुँचेंगे', en: 'Saves {t}' },
+  frgo: { ne: 'बदल्नुहोस्', hi: 'बदलें', en: 'Switch' },
   min: { ne: 'मिनेट', hi: 'मिनट', en: 'min' }, hr: { ne: 'घण्टा', hi: 'घंटे', en: 'hr' }, day: { ne: 'दिन', hi: 'दिन', en: 'day' }
 };
 function T(k) { var x = LT[k]; return x ? (x[S.lang] || x.en) : k; }
@@ -2493,6 +2590,7 @@ function relabel() {
 function startNav(preview, sim) {
   if (!S.cur) return;
   voUnlock();                                     /* inside the Start tap: the phone now allows sound */
+  if (!preview) startMotion();
   if (!preview) voKeep(true);
   var r = S.cur.routes[S.sel];
   prepRoute(r);
@@ -2556,6 +2654,7 @@ function stopNav() {
   if (!N.preview) LS.set('shg:nm:trip', null);          /* left on purpose: no "resume trip?" next time */
   if (S.markers.me) { S.markers.me.setPitchAlignment('viewport'); meEl.classList.remove('nav'); if (S.me) S.markers.me.setLngLat([S.me.lng, S.me.lat]); meHeadingUI(); }
   $('#limit').hidden = true; $('#lanes').hidden = true; $('#then').hidden = true; $('#gpsChip').hidden = true;
+  dropFaster(N);
   put('rt-done', EMPTY); setProgress(0, true);
   /* the driving padding (puck low on the screen) must not outlive the drive:
      fitBounds/flyTo keep whatever padding the camera already has */
@@ -2602,7 +2701,7 @@ function navFix(f) {
     }
   }
   $('#ban').classList.toggle('off', N.offRoute && !N.rerouting);
-  updateBanner(); voiceTick(); updateBottom(); speedUI(); limitsTick();
+  updateBanner(); voiceTick(); updateBottom(); speedUI(); limitsTick(); fasterTick();
   if (Date.now() - (N.savedAt || 0) > 60000) saveTrip();
   /* the straight-line shortcut only near the end and with every stop visited
      (a route can pass the destination on its way to a stop beyond it) */
@@ -2677,12 +2776,13 @@ function recenterNav() {
 }
 /* why: undefined = off route (spoken once per episode), 'quiet', 'options'
    (avoid tolls…), 'stop' (a stop added: viaOv = the new list of stops) */
-async function reroute(f, why, viaOv) {
+async function reroute(f, why, viaOv, pre) {
   var N = S.nav; if (!N) return;
-  if (N.rerouting) { N.rrAgain = { why: why || 'quiet', via: viaOv || (N.rrAgain && N.rrAgain.via) }; return; }
+  if (N.rerouting) { if (!pre) N.rrAgain = { why: why || 'quiet', via: viaOv || (N.rrAgain && N.rrAgain.via) }; return; }
+  if (N.faster) dropFaster(N);
   N.rerouting = true; N.lastRR = Date.now();
-  /* a stop / option change while on the route: the current guidance keeps going until the new route is in */
-  N.rrQuiet = why === 'stop' || why === 'options';
+  /* a stop / option change / faster route while on the route: the current guidance keeps going until the new route is in */
+  N.rrQuiet = why === 'stop' || why === 'options' || why === 'faster';
   if (viaOv) { N.pendingVia = null; N.rrVia = viaOv; }
   if (!N.rrQuiet) {
     $('#ban').className = 'ban off'; $('#banDist').textContent = T('rr'); $('#banTxt').textContent = T('rrs');
@@ -2691,11 +2791,11 @@ async function reroute(f, why, viaOv) {
   if (!why && !N.rrFail) speak(['m_rerouting'], 'Rerouting', true);
   try {
     var via = (viaOv || S.stops).filter(function (x) { return !x.done; });
-    var res = await getRoute(S.mode, { lng: f.lng, lat: f.lat }, S.b, { heading: f.speed > 2 ? f.heading : null, fresh: true, via: via });
+    var res = pre || await getRoute(S.mode, { lng: f.lng, lat: f.lat }, S.b, { heading: f.speed > 2 ? f.heading : null, fresh: true, via: via });
     if (S.nav !== N) return;
     var r = prepRoute(res.routes[0]);
     N.route = r; N.along = 0; N.disp = 0; N.i = 0; N.k = 0; N.spoken = {}; N.offCnt = 0; N.offRoute = false; N.anim = null; N.limits = null; N.limNext = 0; N.rerouted = true;
-    N.rrFail = 0; N.rrNext = 0; N.camLast = null; N.pvFail = 0; N.pvNext = 0;
+    N.rrFail = 0; N.rrNext = 0; N.camLast = null; N.pvFail = 0; N.pvNext = 0; N.frNext = Date.now() + (FR_EVERY[S.mode] || 60000);
     N.routeStops = via; S.stops = via;               /* the route's stop numbers now count the stops still ahead */
     S.cur = { routes: [r], src: res.src }; S.sel = 0;
     put('rt-alt', EMPTY); put('rt-main', FC([lineF(r.coords)])); put('rt-steps', FC(r.steps.slice(1, -1).map(function (st) { return ptF(st.loc); })));
@@ -2734,7 +2834,12 @@ async function reroute(f, why, viaOv) {
 function updateBanner() {
   var N = S.nav; if (!N || N.preview || N.arrived || (N.rerouting && !N.rrQuiet)) return;
   var st = N.route.steps, m = st[N.k + 1] || st[st.length - 1], d = Math.max(0, m.along - N.along);
-  if (N.offRoute) { $('#banIc').innerHTML = tIcon('turn', 'uturn'); $('#banDist').textContent = T('off'); $('#banTxt').textContent = T('offs'); return; }
+  var ban = $('#ban');
+  if (N.offRoute) { ban.classList.remove('near', 'now'); $('#banIc').innerHTML = tIcon('turn', 'uturn'); $('#banDist').textContent = T('off'); $('#banTxt').textContent = T('offs'); return; }
+  /* countdown: white far off, yellow + bigger inside 200 m, a green flash at the turn itself */
+  var turnish = m.type !== 'arrive' && !m.stop;
+  ban.classList.toggle('near', turnish && d < 200 && d >= 25);
+  ban.classList.toggle('now', turnish && d < 25);
   $('#banIc').innerHTML = tIcon(m.stop ? 'arrive' : m.type, m.mod);
   $('#banDist').textContent = d < 20 ? T('now') : fmtBan(d);
   $('#banTxt').textContent = navText(m);
@@ -2749,6 +2854,49 @@ function updateBanner() {
     }).join('');
     ln.hidden = false;
   } else ln.hidden = true;
+}
+/* "Faster route found" (Google Maps habit): every so often - car / bus each minute, bike every
+   2 min, walking every 3 - ask the engine for the best route from here. It is offered only
+   when it saves at least 2 minutes and 8 % of what is left; Switch takes it, and if the rider
+   does nothing for 15 s the current route stays (asked again 5 minutes later). */
+var FR_EVERY = { car: 60000, bus: 60000, bike: 120000, walk: 180000 };
+function fasterTick() {
+  var N = S.nav; if (!N || N.preview || N.sim || N.arrived || N.offRoute || N.rerouting || N.frBusy || N.faster) return;
+  var now = Date.now();
+  if (!N.frNext) { N.frNext = now + (FR_EVERY[S.mode] || 60000); return; }
+  if (now < N.frNext || navigator.onLine === false || !S.me || !S.b) return;
+  N.frNext = now + (FR_EVERY[S.mode] || 60000);
+  var rm = remaining(); if (rm.dist < 3000 || rm.dur < 300) return;
+  var route = N.route, f = S.me, via = S.stops.filter(function (x) { return !x.done; });
+  N.frBusy = true;
+  getRoute(S.mode, { lng: f.lng, lat: f.lat }, S.b, { heading: f.speed > 2 ? f.heading : null, fresh: true, quiet: true, via: via })
+    .then(function (res) {
+      if (S.nav !== N || N.route !== route || N.rerouting || N.offRoute || N.arrived) return;
+      var nr = res.routes && res.routes[0];
+      if (!nr || nr.src !== route.src) return;           /* the other engine's minutes are not comparable */
+      var cur = remaining().dur, save = cur - nr.dur;
+      if (save >= Math.max(120, cur * 0.08)) offerFaster(N, res, save, via);
+    })
+    .catch(function () {})
+    .finally(function () { N.frBusy = false; });
+}
+function offerFaster(N, res, save, via) {
+  var el = $('#faster');
+  N.faster = { res: res, via: via };
+  el.innerHTML = '<div class="t"><b>' + esc(T('fr')) + '</b>' + esc(T('frs').replace('{t}', fmtDurL(save))) + '</div>' +
+    '<button class="btn cta" type="button" id="frGo">' + esc(T('frgo')) + '</button>' +
+    '<button class="btn ghost fx" type="button" id="frNo" aria-label="Keep this route">' + IC.x + '</button><i></i>';
+  el.hidden = false; vib(20);
+  clearTimeout(N.frT);
+  N.frT = setTimeout(function () { if (S.nav === N && N.faster) dropFaster(N, true); }, 15000);
+  $('#frGo').onclick = function () { var x = N.faster; dropFaster(N); if (x && S.me && S.nav === N) reroute(S.me, 'faster', x.via, x.res); };
+  $('#frNo').onclick = function () { dropFaster(N, true); };
+}
+function dropFaster(N, declined) {
+  if (!N) return;
+  clearTimeout(N.frT);
+  if (declined) N.frNext = Date.now() + 300000;
+  N.faster = null; $('#faster').hidden = true;
 }
 function remaining() {
   var N = S.nav, r = N.route, st = r.steps, k = N.k, s = st[k], nx = st[k + 1];
@@ -2817,6 +2965,7 @@ function arrive() {
   $('#banDist').textContent = T('arr');
   $('#banTxt').textContent = S.b && !S.b.me ? S.b.name : (S.to ? S.to.name : '');
   $('#then').hidden = true; $('#lanes').hidden = true; $('#limit').hidden = true; $('#gpsChip').hidden = true;
+  dropFaster(N);
   speak(['m_arrived'], 'You have arrived' + (S.b && !S.b.dropped && !S.b.me ? ' at ' + S.b.name : ''), true);
   LS.set('shg:nm:trip', null);
   updateBottom(); setProgress(1, true); wake(false); stopSim();
@@ -2903,7 +3052,7 @@ function navMore() {
   var N = S.nav; if (!N) return;
   function render() {
     if (S.nav !== N) { closeModal(); return; }
-    var map = [['dark', 'Night'], ['light', 'Day'], ['sat', 'Satellite']];
+    var map = [['auto', 'Auto'], ['dark', 'Night'], ['light', 'Day'], ['sat', 'Satellite']];
     openModal('<h3>Drive options</h3>' + voiceHtml() +
       (N.preview ? '' : '<h3 style="margin-top:20px">Find on your route</h3><div class="chips" id="alongCats" style="margin:0;padding:2px 0 8px">' +
         ALONG.map(function (c, i) { return '<button class="chip" type="button" data-along="' + i + '"><span class="em">' + c.e + '</span>' + esc(c.l) + '</button>'; }).join('') +
@@ -2911,7 +3060,7 @@ function navMore() {
       (N.preview ? '' : '<h3 style="margin-top:20px">Route</h3>' +
         (S.mode === 'car' || S.mode === 'bus' ? '<button class="tg" type="button" data-av="tolls" style="width:100%;text-align:left"><span>Avoid tolls</span><i class="sw' + (S.avoid.tolls ? ' on' : '') + '"></i></button>' +
           '<button class="tg" type="button" data-av="highways" style="width:100%;text-align:left"><span>Avoid highways</span><i class="sw' + (S.avoid.highways ? ' on' : '') + '"></i></button>' : '')) +
-      '<h3 style="margin-top:20px">Screen</h3><div class="seg" id="navStyle" style="margin-bottom:6px">' + map.map(function (x) { return '<button type="button" data-st="' + x[0] + '" class="' + (S.styleKey === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      '<h3 style="margin-top:20px">Screen</h3><div class="seg" id="navStyle" style="margin-bottom:6px">' + map.map(function (x) { return '<button type="button" data-st="' + x[0] + '" class="' + (S.stylePref === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>' +
       '<button class="tg" type="button" id="tgNorth" style="width:100%;text-align:left"><span>North up<small>Map stays pointed north</small></span><i class="sw' + (N.northUp ? ' on' : '') + '"></i></button>' +
       '<button class="tg" type="button" id="tgBig" style="width:100%;text-align:left"><span>Large text<small>Bigger turn banner and buttons</small></span><i class="sw' + (S.big ? ' on' : '') + '"></i></button>' +
       '<button class="tg" type="button" id="tgFull" style="width:100%;text-align:left"><span>Full screen</span><i class="sw' + (document.fullscreenElement ? ' on' : '') + '"></i></button>' +
@@ -3080,8 +3229,8 @@ function closeModal() { $('#modal').hidden = true; }
 function openLayers() {
   var off = LS.get('shg:nm:off', null);
   openModal('<h3>Map type</h3><div class="types">' +
-    [['dark', 'Night', 't-dark'], ['light', 'Day', 't-light'], ['sat', 'Satellite', 't-sat']].map(function (t) {
-      return '<button class="type' + (S.styleKey === t[0] ? ' on' : '') + '" type="button" data-style="' + t[0] + '"><i class="' + t[2] + '"></i>' + t[1] + '</button>';
+    [['auto', 'Auto', 't-auto'], ['dark', 'Night', 't-dark'], ['light', 'Day', 't-light'], ['sat', 'Satellite', 't-sat']].map(function (t) {
+      return '<button class="type' + (S.stylePref === t[0] ? ' on' : '') + '" type="button" data-style="' + t[0] + '"><i class="' + t[2] + '"></i>' + t[1] + '</button>';
     }).join('') + '</div>' +
     '<h3 style="margin-top:22px">Map details</h3>' +
     '<button class="tg" type="button" id="tg3d" style="width:100%;text-align:left"><span>3D buildings<small>Shown when the map is tilted</small></span><i class="sw' + (S.b3d ? ' on' : '') + '"></i></button>' +
@@ -3099,11 +3248,15 @@ function openLayers() {
   if ($('#offArea')) $('#offArea').onclick = function () { saveAreaOffline(); };
   if ($('#offClear')) $('#offClear').onclick = function () { caches.delete(OFFLINE_CACHE).catch(function () {}); LS.set('shg:nm:off', null); toast('Offline map deleted'); openLayers(); };
 }
-function setStyle(k) {
+function setStyle(pref) {
+  if (pref) { S.stylePref = pref; LS.set('shg:nm:style', pref); }
+  var k = effStyle(S.stylePref);
   if (k === S.styleKey) return;
-  S.styleKey = k; LS.set('shg:nm:style', k);
+  S.styleKey = k;
   S.map.setStyle(styleFor(k), { diff: false });         /* a full load, so style.load re-adds the route layers */
 }
+/* Auto: look again every 5 minutes (sunset happens during a drive too) */
+setInterval(function () { if (S.stylePref === 'auto' && S.map) setStyle(); }, 300000);
 function lon2x(lon, z) { return Math.floor((lon + 180) / 360 * Math.pow(2, z)); }
 function lat2y(lat, z) { var r = lat * D2R; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z)); }
 function tilesForBounds(b, z0, z1) {
