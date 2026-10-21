@@ -486,6 +486,16 @@ body.saver .glass{-webkit-backdrop-filter:none!important;backdrop-filter:none!im
   .badge,.chip,.btn.ghost{border:1px solid var(--line2)}
 }
 @media (forced-colors:active){.ink{border:2px solid CanvasText}}
+/* ---------- ai1 add-on modules ---------- */
+/* @@CSS:AI@@ */
+
+/* @@CSS:TEMPLES@@ */
+
+/* @@CSS:BORDER@@ */
+
+/* @@CSS:SHGROUTE@@ */
+
+/* @@CSS:I18N@@ */
 </style>
 </head>
 <body data-lvl="home">
@@ -608,6 +618,12 @@ body.saver .glass{-webkit-backdrop-filter:none!important;backdrop-filter:none!im
   <button class="nb-btn" id="navMore" type="button" aria-label="Drive options: voice, stops, avoid tolls"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18.5" cy="12" r="2"/></svg></button>
 </section>
 
+<!-- ai1 add-on modules -->
+<!-- @@HTML:AI@@ -->
+<!-- @@HTML:TEMPLES@@ -->
+<!-- @@HTML:BORDER@@ -->
+<!-- @@HTML:SHGROUTE@@ -->
+
 <div class="modal" id="modal" hidden><div class="modal-card" id="modalCard" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" role="status"></div>
 
@@ -625,6 +641,8 @@ var CARTO = { dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style
 var ROUTE_API = '/api/nav-route.php?json=';
 var SEARCH_API = '/api/nav-search.php';
 var LIMITS_API = '/api/nav-limits.php';
+/* ai1 (21 Oct 2026): AI guide, temple layer, S Hari bus line */
+var AI_API = '/api/nav-ai.php', TEMPLE_API = '/api/nav-temples.php', TT_API = '/api/timetable.php';
 var OSRM = { car: 'https://router.project-osrm.org/route/v1/driving/',
              bike: 'https://routing.openstreetmap.de/routed-bike/route/v1/driving/',
              foot: 'https://routing.openstreetmap.de/routed-foot/route/v1/driving/' };
@@ -713,6 +731,39 @@ function toast(msg, ms) {
 }
 var REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 function vib(ms) { try { if (navigator.vibrate) navigator.vibrate(ms || 12); } catch (e) {} }
+
+/* =====================================================================
+   HOOKS  (21 Oct 2026, ai1): the add-on modules (AI guide, temples,
+   border, S Hari bus line, labels) register here and the core calls
+   fire() at a few fixed moments. The core's own functions stay free of
+   module code, so modules can be written and reviewed on their own.
+     styleLoad     every map style (re)load - re-add sources / layers
+     mapReady      once, the first style is up (afterLoad)
+     boot          end of boot(), after initMap()
+     show          (lvl, was)  a screen change
+     back          phone / browser back: return true to consume it
+     placeCard     (p)  the place card is on screen (#placeX is free)
+     dirSheet      (r, res)  the directions sheet is on screen (#costBox, #xBox)
+     navStart      (N)  navigation started (N.preview for the preview)
+     navFix        (f, N)  every GPS fix while navigating
+     navStop       (N)  navigation ended
+     arrive        (N)  arrived
+     lang          the language changed (or labels need a refresh)
+     layersHtml    return HTML for the Map type & settings modal
+     layersBind    (rerender)  bind what layersHtml added
+     navMoreHtml   (N)  return HTML for the Drive options modal
+     navMoreBind   (rerender, N)  bind it
+===================================================================== */
+var HOOKS = {};
+function hook(name, fn) { (HOOKS[name] = HOOKS[name] || []).push(fn); }
+function fire(name, a, b, c) {
+  var out = [];
+  (HOOKS[name] || []).forEach(function (f) {
+    try { var r = f(a, b, c); if (r != null && r !== false) out.push(r); }
+    catch (e) { if (QS.has('debug')) console.error('hook ' + name, e); }
+  });
+  return out;
+}
 
 /* =====================================================================
    ICONS
@@ -809,7 +860,7 @@ var S = {
   /* nv4: battery saver = auto | on | off (auto = on below 20 % while not charging) */
   saverPref: LS.get('shg:nm:saver', 'auto'), saver: false, batt: null
 };
-if (QS.has('debug')) window.SHGNAV = S;
+if (QS.has('debug')) { window.SHGNAV = S; window.SHGHOOKS = HOOKS; }
 /* "Auto" map: Day map between sunrise and sunset where the rider is, Night map after dark
    (NOAA sunrise equation, good to a few minutes; the map centre stands in until GPS answers) */
 function sunUp(lat, lng, t) {
@@ -1050,7 +1101,7 @@ function initMap() {
   var styleTimer = setTimeout(function () {
     if (!styleOk && S.own && S.styleKey !== 'sat') { S.own = null; map.setStyle(styleFor(S.styleKey), { diff: false }); }
   }, 12000);
-  map.on('style.load', function () { styleOk = true; clearTimeout(styleTimer); addOverlays(); });
+  map.on('style.load', function () { styleOk = true; clearTimeout(styleTimer); addOverlays(); fire('styleLoad'); });
   /* the UI opens as soon as the style is ready, not after every first tile
      ('load'): on border-town 3G that wait was the whole splash screen */
   map.once('style.load', function () { $('#boot').classList.add('gone'); setTimeout(function () { $('#boot').hidden = true; }, 600); afterLoad(); });
@@ -1282,6 +1333,7 @@ function back() { if (S.depth > 0) history.back(); else show('home'); }
 function goHome() { if (S.depth > 0) history.go(-S.depth); else show('home'); }
 window.addEventListener('popstate', function (e) {
   if (!$('#modal').hidden) { closeModal(); history.pushState({ lvl: S.level, d: S.depth }, ''); return; }
+  if (fire('back').some(Boolean)) { history.pushState({ lvl: S.level, d: S.depth }, ''); return; }
   var st = e.state || { lvl: 'home', d: 0 };
   S.depth = st.d || 0;
   var lvl = st.lvl;
@@ -1325,6 +1377,7 @@ function show(lvl) {
   }
   else if (lvl === 'nav') { sheetTo('hidden'); }
   else if (lvl === 'pick') { sheetTo('hidden'); $('#pick').hidden = false; pickMoved(); }
+  fire('show', lvl, was);
   compassUI();
 }
 function topUI() {
@@ -1650,7 +1703,7 @@ function renderPlace() {
     '<div class="acts" style="margin-top:4px"><button class="btn ghost" type="button" data-hw="home">' + IC.home + (isHW('home', p) ? 'Home ✓' : 'Set as Home') + '</button>' +
       '<button class="btn ghost" type="button" data-hw="work">' + IC.work + (isHW('work', p) ? 'Work ✓' : 'Set as Work') + '</button></div>' +
     '<div class="note">Coordinates <b>' + p.lat.toFixed(5) + ', ' + p.lng.toFixed(5) + '</b>' +
-      (p.ours ? '<br>This is an S Hari Global pickup point. <a href="/">Book a seat</a>' : '') + '</div>'
+      (p.ours ? '<br>This is an S Hari Global pickup point. <a href="/">Book a seat</a>' : '') + '</div><div id="placeX"></div>'
   );
   $('#pDir').onclick = function () { S.from = { me: true, name: 'Your location' }; S.cur = null; push('dir'); };
   if ($('#pStart')) $('#pStart').onclick = function () {
@@ -1671,6 +1724,7 @@ function renderPlace() {
     p._pf = true; getRoute(S.mode, { lng: S.me.lng, lat: S.me.lat }, p, { alts: true }).catch(function () {});
   }
   $('#pShare').onclick = function () { sharePlace(p); };
+  fire('placeCard', p);
 }
 function isHW(k, p) { var h = LS.get('shg:nm:' + k, null); return !!(h && Math.abs(h.lat - p.lat) < 1e-5 && Math.abs(h.lng - p.lng) < 1e-5); }
 /* one-tap Home / Work chips at the front of the home row */
@@ -2209,13 +2263,14 @@ function renderDirSheet() {
   var h = '<div class="rs"><span class="rs-time' + (fastest ? '' : ' slow') + '">' + esc(fmtDur(r.dur)) + '</span><span class="rs-dist">(' + fmtDist(r.dist) + ')</span></div>' +
     '<div class="rs-via">' + (r.via ? 'via ' + esc(r.via) + ' · ' : '') + 'Arrive ' + fmtClock(Date.now() + r.dur * 1000) + '</div>' +
     '<div class="badges">' + badges + '</div>' +
+    '<div id="costBox"></div>' +
     '<div class="acts">' +
       '<button class="btn go" type="button" id="goBtn">' + IC.go + (me ? 'Start' : 'Preview') + '</button>' +
       (S.simX ? '<button class="btn ghost" type="button" id="simBtn">Demo drive ×' + S.simX + '</button>' : '') +
       '<button class="btn ghost" type="button" id="stepsBtn">' + IC.list + 'Steps</button>' +
       '<button class="btn ghost" type="button" id="shRoute">' + IC.share + 'Share</button>' +
       (S.own ? '<button class="btn ghost" type="button" id="offRoute">' + IC.down + 'Save offline</button>' : '') +
-    '</div><div class="peek-end"></div><div id="wxBox"></div><div id="elBox"></div>';
+    '</div><div class="peek-end"></div><div id="wxBox"></div><div id="elBox"></div><div id="xBox"></div>';
   if (rs.length > 1) {
     h += '<div class="sub-h">Routes</div><div class="alts">' + rs.map(function (x, i) {
       return '<button class="alt' + (i === S.sel ? ' on' : '') + '" type="button" data-alt="' + i + '"><span class="alt-l"><div class="alt-t">' + esc(fmtDur(x.dur)) +
@@ -2238,6 +2293,7 @@ function renderDirSheet() {
   $('#shRoute').onclick = shareRoute;
   if ($('#offRoute')) $('#offRoute').onclick = function () { saveRouteOffline(r); };
   routeExtras(r);
+  fire('dirSheet', r, S.cur);
   $$('#sheetBody [data-alt]').forEach(function (b) { b.onclick = function () { selectAlt(+b.dataset.alt); }; });
   $$('#sheetBody [data-step]').forEach(function (b) {
     b.onclick = function () {
@@ -2758,6 +2814,7 @@ function relabel() {
     updateBottom();
   }
   if (N && N.preview) pvShow(N.pv);
+  fire('lang');
 }
 
 /* =====================================================================
@@ -2778,6 +2835,7 @@ function startNav(preview, sim) {
   S.markers.bubs.forEach(function (m) { m.remove(); }); S.markers.bubs = [];
   put('acc', EMPTY); put('rt-alt', EMPTY);              /* alternatives go away while driving, like Google Maps */
   navBotUI(); relabel();
+  fire('navStart', S.nav);
   document.body.classList.toggle('big', !!S.big);
   if (preview) { $('#pv').hidden = false; $('#navSide').hidden = true; $('#ban').className = 'ban pre'; pvShow(0); return; }
   $('#pv').hidden = true;
@@ -2825,6 +2883,7 @@ function stopNav() {
   cancelAnimationFrame(N.raf); clearTimeout(N.idleT); stopSim(); wake(false); voStop(); voKeep(false);
   try { if (VO.ctx && VO.ctx.state === 'running') VO.ctx.suspend(); } catch (e) {}
   S.nav = null;
+  fire('navStop', N);
   var visited = S.stops.some(function (x) { return x.done; });
   S.stops = S.stops.filter(function (x) { return !x.done; });     /* stops already visited are not routed again */
   if (visited) S.cur = null;                                       /* directions are worked out again from here */
@@ -2881,6 +2940,7 @@ function navFix(f) {
   $('#ban').classList.toggle('off', N.offRoute && !N.rerouting);
   updateBanner(); voiceTick(); updateBottom(); speedUI(); limitsTick(); fasterTick();
   if (Date.now() - (N.savedAt || 0) > 60000) saveTrip();
+  fire('navFix', f, N);
   /* the straight-line shortcut only near the end and with every stop visited
      (a route can pass the destination on its way to a stop beyond it) */
   var rem = L.len - N.along, toEnd = hav(p, L.c[L.n - 1]);
@@ -3209,6 +3269,7 @@ function arrive() {
   logTrip(N, true);
   updateBottom(); setProgress(1, true); wake(false); stopSim();
   setTimeout(function () { if (S.nav === N) voKeep(false); }, 6000);   /* after the arrival words */
+  fire('arrive', N);
 }
 /* English words for the same prompts (the phone voice speaks them) */
 function pre(d) { return 'In ' + voiceDist(d) + ', '; }
@@ -3304,9 +3365,11 @@ function navMore() {
       '<button class="tg" type="button" id="tgBig" style="width:100%;text-align:left"><span>Large text<small>Bigger turn banner and buttons</small></span><i class="sw' + (S.big ? ' on' : '') + '"></i></button>' +
       '<button class="tg" type="button" id="tgFull" style="width:100%;text-align:left"><span>Full screen</span><i class="sw' + (document.fullscreenElement ? ' on' : '') + '"></i></button>' +
       '<h3 style="margin-top:20px">Battery saver</h3>' + saverHtml() +
+      fire('navMoreHtml', N).join('') +
       '<div class="acts" style="margin-top:16px"><button class="btn ghost" type="button" id="mSteps">' + IC.list + 'Steps</button><button class="btn ghost" type="button" id="mShare">' + IC.share + 'Share trip</button>' +
       '<button class="btn ghost" type="button" id="mEnd" style="color:#FF7A70">' + IC.x + 'End</button></div>');
     bindVoice(render); bindSaver(render);
+    fire('navMoreBind', render, N);
     $$('#modalCard [data-along]').forEach(function (b) { b.onclick = function () { alongSearch(ALONG[+b.dataset.along]); }; });
     $$('#modalCard [data-av]').forEach(function (b) {
       b.onclick = function () { var k = b.dataset.av; S.avoid[k] = !S.avoid[k]; LS.set('shg:nm:avoid', S.avoid); render(); if (S.me && !N.preview) reroute(S.me, 'options'); };
@@ -3482,10 +3545,12 @@ function openLayers() {
       '<div class="acts"><button class="btn cta" type="button" id="offArea">' + IC.down + 'Save this area</button>' + (off ? '<button class="btn ghost" type="button" id="offClear">Delete saved</button>' : '') + '</div>' +
       '<div class="prog" id="offProg" hidden><i></i></div><div class="row-s" id="offTxt"></div></div>'
       : '<div class="note" style="margin-top:0">Offline maps need the SHARI NAV map server, which is not reachable right now.</div>') +
+    fire('layersHtml').join('') +
     '<div class="row-s" style="margin-top:18px;text-align:center">Map data © OpenStreetMap contributors · Routing: SHARI NAV (Valhalla) / OSRM</div>');
   $$('#modalCard [data-style]').forEach(function (b) { b.onclick = function () { setStyle(b.dataset.style); openLayers(); }; });
   $('#tg3d').onclick = function () { S.b3d = !S.b3d; LS.set('shg:nm:3d', S.b3d); add3d(); if (S.map.getLayer('b3d') && S.map.getLayer('acc-fill')) S.map.moveLayer('b3d', 'acc-fill'); openLayers(); };
   bindVoice(openLayers); bindSaver(openLayers);
+  fire('layersBind', openLayers);
   if ($('#offArea')) $('#offArea').onclick = function () { saveAreaOffline(); };
   if ($('#offClear')) $('#offClear').onclick = function () { caches.delete(OFFLINE_CACHE).catch(function () {}); LS.set('shg:nm:off', null); toast('Offline map deleted'); openLayers(); };
 }
@@ -3565,6 +3630,22 @@ async function downloadTiles(list) {
 }
 
 /* =====================================================================
+   ADD-ON MODULES (ai1, 21 Oct 2026). Each one registers with hook() and
+   touches the core only through fire(). Order: data first.
+===================================================================== */
+/* @@MODULE:KB@@ */
+
+/* @@MODULE:AI@@ */
+
+/* @@MODULE:TEMPLES@@ */
+
+/* @@MODULE:BORDER@@ */
+
+/* @@MODULE:SHGROUTE@@ */
+
+/* @@MODULE:I18N@@ */
+
+/* =====================================================================
    BOOT
 ===================================================================== */
 function loadScript(src) {
@@ -3573,7 +3654,7 @@ function loadScript(src) {
 function webglOk() { try { var c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } }
 function bootFail(msg) { var e = $('#bootErr'); e.innerHTML = msg; e.hidden = false; }
 function afterLoad() {
-  locUI(); compassUI();
+  locUI(); compassUI(); fire('mapReady');
   /* already allowed? show the blue dot at once, like Google Maps */
   if (navigator.permissions && navigator.permissions.query) {
     navigator.permissions.query({ name: 'geolocation' }).then(function (p) { if (p.state === 'granted') { if (!LS.get('shg:nm:view', null)) S.pendingLocate = true; startGeo(); } }).catch(function () {});
@@ -3629,6 +3710,7 @@ async function boot() {
   addEventListener('scroll', function () { if (scrollY || scrollX) scrollTo(0, 0); }, { passive: true });
   initMap();
   startBattery();
+  fire('boot');
   sheetTo('hidden', 'instant');
   /* the site's service worker (offline tiles, app shell). Its first install
      downloads the whole booking app, so a first visit on slow 3G gets the
