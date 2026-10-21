@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>SHARI NAV · Navigate</title>
 <meta name="description" content="SHARI NAV by Shree Hari Global: free turn-by-turn navigation for India and Nepal. Car, bus, bike and walking routes, voice guidance, speed limits and offline maps.">
-<link rel="manifest" href="/manifest.webmanifest">
+<link rel="manifest" href="/navigate.webmanifest">
 <link rel="icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,6 +23,9 @@
     routing     /api/nav-route.php (our Valhalla, OSRM-shaped answer) -> public OSRM
     search      /api/nav-search.php (our place index) -> Nominatim, on request only
     speed limit /api/nav-limits.php
+    elevation   /api/nav-elevation.php (our Valhalla /height, SRTM tiles)  [nv4, bike/walk]
+    weather     /api/nav-weather.php (MET Norway, cached 30 min)           [nv4]
+  Trip log + battery saver live in this phone's localStorage only.
   No Google API. No build step.
 -->
 <style>
@@ -222,7 +225,7 @@ body[data-lvl=nav] .ctrls{bottom:calc(var(--sb) + 112px)}
 .modes{position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:8px 2px 0;padding:4px;border-radius:12px;background:rgba(0,0,0,.18)}
 .ink{position:absolute;top:4px;bottom:4px;left:4px;border-radius:9px;background:rgba(255,255,255,.07);background:color-mix(in srgb,var(--mode) 18%,transparent);
   border:1.5px solid var(--mode);transition:transform .38s var(--spring),width .38s var(--spring),border-color .25s,background .25s;pointer-events:none}
-.mode{position:relative;z-index:1;height:52px;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+.mode{position:relative;z-index:1;height:58px;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
   color:var(--text2);transition:color .25s}
 .mode svg{width:22px;height:22px;transition:transform .3s var(--spring)}
 .mode .mt{font-size:12px;font-weight:600;white-space:nowrap;min-height:16px}
@@ -451,6 +454,38 @@ body[data-lvl=nav] .toast{bottom:calc(var(--sb) + 112px)}
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
   .me-pulse{display:none}
 }
+/* ---------- nv4: weather, elevation, trips, battery saver, high contrast ---------- */
+.mode .md{font-size:10px;color:var(--text3);white-space:nowrap;line-height:1;min-height:10px}
+.mode.on .md{color:inherit;opacity:.75}
+.wx{display:flex;align-items:center;gap:12px;margin-top:14px;padding:10px 14px;border-radius:var(--r);background:var(--card);border:1px solid var(--line);font-size:13.5px;color:var(--text2)}
+.wx .wx-e{font-size:26px;line-height:1}
+.wx b{color:var(--text);font:600 18px Poppins,sans-serif}
+.wx .wx-h{display:flex;gap:10px;margin-left:auto;overflow-x:auto;scrollbar-width:none}
+.wx .wx-h span{display:flex;flex-direction:column;align-items:center;font-size:11px;color:var(--text3);min-width:30px}
+.wx .wx-h span i{font-style:normal;font-size:15px}
+.wx-warn{border-color:rgba(255,214,10,.35);background:rgba(255,214,10,.07)}
+.wx-warn .acts{margin-top:8px}
+.elev{margin-top:14px;padding:12px 14px 10px;border-radius:var(--r);background:var(--card);border:1px solid var(--line);font-size:13px;color:var(--text2)}
+.elev svg{display:block;width:100%;height:64px;margin:8px 0 4px}
+.elev .el-row{display:flex;flex-wrap:wrap;gap:6px 14px}
+.elev .el-row b{color:var(--text)}
+.trip{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.trip:last-child{border-bottom:0}
+.trip .tr-ic{width:36px;height:36px;flex:none;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--m) 16%,transparent);color:var(--m)}
+.trip .tr-ic svg{width:20px;height:20px}
+.trip .tr-t{color:var(--text);font-weight:600;font-size:14px}
+.trip .tr-s{color:var(--text3);font-size:12.5px;margin-top:2px}
+.tot{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:6px 0 10px}
+.tot div{padding:10px;border-radius:12px;background:var(--card);text-align:center;font-size:11.5px;color:var(--text3)}
+.tot b{display:block;color:var(--text);font:600 17px Poppins,sans-serif}
+body.saver *,body.saver *::before,body.saver *::after{animation:none!important;transition-duration:0s!important}
+body.saver .glass{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+@media (prefers-contrast:more){
+  :root{--text2:#D9E1EF;--text3:#B5C1D7;--line:rgba(255,255,255,.24);--line2:rgba(255,255,255,.4)}
+  .glass{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--surface)}
+  .badge,.chip,.btn.ghost{border:1px solid var(--line2)}
+}
+@media (forced-colors:active){.ink{border:2px solid CanvasText}}
 </style>
 </head>
 <body data-lvl="home">
@@ -482,6 +517,7 @@ body[data-lvl=nav] .toast{bottom:calc(var(--sb) + 112px)}
     <button class="chip" data-act="nearby" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2" stroke-linecap="round"/></svg>Nearby</button>
     <button class="chip" data-act="track" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="4" y="3" width="16" height="15" rx="3"/><path d="M4 11h16M8 18v2.5M16 18v2.5"/><circle cx="8" cy="14.5" r=".6" fill="currentColor"/><circle cx="16" cy="14.5" r=".6" fill="currentColor"/></svg>Track Bus</button>
     <button class="chip" data-act="saved" type="button"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.8l2.8 5.8 6.3.9-4.6 4.5 1.1 6.3L12 17.3l-5.6 3 1.1-6.3L2.9 9.5l6.3-.9z"/></svg>Saved</button>
+    <button class="chip" data-act="trips" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Trips</button>
     <button class="chip" data-act="share" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="M8.2 10.8l7.6-4M8.2 13.2l7.6 4"/></svg>Share</button>
   </div>
   <div class="chips" id="nearChips" hidden></div>
@@ -769,7 +805,9 @@ var S = {
   cache: {}, cur: null, sel: 0, req: 0,
   nav: null, level: 'home', depth: 0, sTarget: 'to', list: null,
   data: {}, markers: { to: null, from: null, pois: [], bubs: [] },
-  sim: null, simX: QS.has('sim') ? clamp(Math.round(+QS.get('sim') || 1), 1, 8) : 0, wake: null
+  sim: null, simX: QS.has('sim') ? clamp(Math.round(+QS.get('sim') || 1), 1, 8) : 0, wake: null,
+  /* nv4: battery saver = auto | on | off (auto = on below 20 % while not charging) */
+  saverPref: LS.get('shg:nm:saver', 'auto'), saver: false, batt: null
 };
 if (QS.has('debug')) window.SHGNAV = S;
 /* "Auto" map: Day map between sunrise and sunset where the rider is, Night map after dark
@@ -933,7 +971,7 @@ function addOverlays() {
 function add3d() {
   var m = S.map;
   if (m.getLayer('b3d')) m.removeLayer('b3d');
-  if (!S.b3d || S.styleKey === 'sat') return;
+  if (!S.b3d || S.styleKey === 'sat' || S.saver) return;
   var src = m.getSource('openmaptiles') ? 'openmaptiles' : (m.getSource('carto') ? 'carto' : null);
   if (!src) return;
   try {
@@ -942,6 +980,35 @@ function add3d() {
                'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, ['coalesce', ['get', 'render_height'], ['get', 'height'], 8]],
                'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': 0.85 } });
   } catch (e) {}
+}
+/* nv4 battery saver: no 3D buildings, no CSS animation, map drawn at 1x pixels,
+   the drive camera at ~10 frames a second. Auto = below 20 % and not charging. */
+function applySaver() {
+  var b = S.batt, on = S.saverPref === 'on' || (S.saverPref === 'auto' && !!b && !b.charging && b.level <= 0.2);
+  if (on === S.saver) return;
+  S.saver = on;
+  document.body.classList.toggle('saver', on);
+  if (!S.map) return;
+  try { if (S.map.setPixelRatio) S.map.setPixelRatio(on ? 1 : (window.devicePixelRatio || 1)); } catch (e) {}
+  add3d();
+  if (on && S.saverPref === 'auto') toast('Battery low · battery saver on');
+}
+function startBattery() {
+  applySaver();
+  if (!navigator.getBattery) return;
+  navigator.getBattery().then(function (b) {
+    S.batt = b; applySaver();
+    b.addEventListener('levelchange', applySaver); b.addEventListener('chargingchange', applySaver);
+  }).catch(function () {});
+}
+function saverHtml() {
+  return '<div class="seg" id="saverSeg" style="margin-bottom:4px">' + [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']].map(function (x) {
+    return '<button type="button" data-sv="' + x[0] + '" class="' + (S.saverPref === x[0] ? 'on' : '') + '">' + x[1] + '</button>';
+  }).join('') + '</div><div class="row-s" style="margin-bottom:6px">' + (S.saver ? 'On now: ' : '') + 'Flat map, fewer animations, less screen work' +
+    (S.batt ? ' · battery ' + Math.round(S.batt.level * 100) + '%' + (S.batt.charging ? ' (charging)' : '') : '') + '</div>';
+}
+function bindSaver(rerender) {
+  $$('#saverSeg [data-sv]').forEach(function (b) { b.onclick = function () { S.saverPref = b.dataset.sv; LS.set('shg:nm:saver', S.saverPref); applySaver(); rerender(); }; });
 }
 function meMode() { if (meEl) { meEl.classList.toggle('walk', S.mode === 'walk'); meEl.classList.toggle('bike', S.mode === 'bike'); } }
 function paintRoute() {
@@ -1714,6 +1781,7 @@ function bindHome() {
     else if (a === 'nearby') nearChipsUI(true);
     else if (a === 'track') location.href = '/#/track';
     else if (a === 'saved') showSaved();
+    else if (a === 'trips') showTrips();
     else if (a === 'share') shareMe();
   });
   $('#nearChips').addEventListener('click', function (e) {
@@ -1919,7 +1987,7 @@ function buildModes() {
     b.className = 'mode'; b.type = 'button'; b.dataset.mode = m; b.setAttribute('role', 'tab');
     b.setAttribute('aria-label', MODES[m].name);
     b.style.setProperty('--mode', MODES[m].color);
-    b.innerHTML = MODE_IC[m] + '<span class="mt" id="mt-' + m + '">&nbsp;</span><span class="tick">' + TICK + '</span>';
+    b.innerHTML = MODE_IC[m] + '<span class="mt" id="mt-' + m + '">&nbsp;</span><span class="md" id="md-' + m + '"></span><span class="tick">' + TICK + '</span>';
     b.onclick = function () { vib(8); selectMode(m); };
     box.appendChild(b);
   });
@@ -1937,11 +2005,16 @@ function paintModes() {
     b.hidden = !rel; b.classList.toggle('on', !!S.avoid[k]);
   });
 }
-function setModeTime(m, dur) {
-  var el = $('#mt-' + m); if (!el) return;
+/* every mode's time AND distance at once, so car / bus / bike / walk compare at a glance */
+function setModeTime(m, dur, dist) {
+  var el = $('#mt-' + m), dl = $('#md-' + m); if (!el) return;
   el.classList.toggle('wait', dur === 'wait');
   el.textContent = dur === 'wait' ? '' : dur == null ? '—' : fmtDur(dur);
+  if (dl) dl.textContent = dur !== 'wait' && dur != null && dist > 0 ? fmtDist(dist) : '';
+  var b = el.closest('.mode');
+  if (b) b.setAttribute('aria-label', MODES[m].name + (dur !== 'wait' && dur != null ? ', ' + fmtDur(dur) + (dist > 0 ? ', ' + fmtDist(dist) : '') : ''));
 }
+function setModeRes(m, res) { var r = res.routes[0]; setModeTime(m, r.dur, r.dist); }
 function renderFields() {
   var f = $('#fFrom'), t = $('#fTo');
   f.textContent = S.from && !S.from.me ? S.from.name : 'Your location';
@@ -1951,8 +2024,21 @@ function renderFields() {
   /* stops on the way: a gold chip each (tap = remove), up to three */
   $('#stopChips').innerHTML = S.stops.map(function (x, i) {
     return '<button class="mini stopc" type="button" data-unstop="' + i + '" aria-label="Remove stop ' + (i + 1) + '"><b>' + (i + 1) + '</b>' + esc(x.name.length > 18 ? x.name.slice(0, 17) + '…' : x.name) + ' ×</button>';
-  }).join('');
+  }).join('') + (S.stops.length >= 2 && S.to ? '<button class="mini stopc" type="button" data-bestorder="1" aria-label="Put the stops in the shortest order">⇅ Best order</button>' : '');
   $('#addStop').hidden = S.stops.length >= 3 || !S.to;
+}
+/* shortest visiting order for up to 3 stops: try every order (3! = 6) on straight-line distance */
+function bestOrder() {
+  var a = S.a || (S.from && !S.from.me ? S.from : S.me), b = S.to && !S.to.me ? S.to : S.me;
+  if (!a || !b || S.stops.length < 2) return;
+  function len(o) { var p = [a.lng, a.lat], d = 0; o.forEach(function (x) { d += hav(p, [x.lng, x.lat]); p = [x.lng, x.lat]; }); return d + hav(p, [b.lng, b.lat]); }
+  function perms(xs) { if (xs.length < 2) return [xs]; var out = []; xs.forEach(function (x, i) { perms(xs.slice(0, i).concat(xs.slice(i + 1))).forEach(function (p) { out.push([x].concat(p)); }); }); return out; }
+  var now = len(S.stops), best = S.stops, bl = now;
+  perms(S.stops.slice()).forEach(function (o) { var l = len(o); if (l < bl - 1) { bl = l; best = o; } });
+  if (best === S.stops || now - bl < 200) { toast('Stops are already in the best order'); return; }
+  S.stops = best; vib(10);
+  toast('Stops re-ordered · about ' + fmtDist(now - bl) + ' shorter');
+  S.cur = null; computeRoutes();
 }
 async function mePt() {
   var f = S.me || await waitFix(12000);
@@ -1986,14 +2072,14 @@ async function computeRoutes() {
   ORDER.filter(function (m) { return m !== act; }).forEach(function (m, i) {
     setTimeout(function () {
       if (id !== S.req) return;
-      getRoute(m, a, b, { via: via }).then(function (res) { if (id === S.req) setModeTime(m, res.routes[0].dur); })
+      getRoute(m, a, b, { via: via }).then(function (res) { if (id === S.req) setModeRes(m, res); })
         .catch(function () { if (id === S.req) setModeTime(m, null); });
     }, 180 * (i + 1));
   });
   try {
     var res = await pA;
     if (id !== S.req || S.mode !== act) return;
-    setModeTime(act, res.routes[0].dur);
+    setModeRes(act, res);
     showResult(res, true, true, auto);
   } catch (e) {
     if (id !== S.req) return;
@@ -2013,7 +2099,7 @@ function selectMode(m) {
   else { sheetLoading(); setModeTime(m, 'wait'); }
   getRoute(m, a, b, { alts: true, via: via }).then(function (res) {
     if (id !== S.req || S.mode !== m) return;
-    setModeTime(m, res.routes[0].dur);
+    setModeRes(m, res);
     if (!S.cur || S.cur !== res) showResult(res, !quick, !quick);
   }).catch(function (e) {
     if (id !== S.req || S.mode !== m || quick) return;
@@ -2129,7 +2215,7 @@ function renderDirSheet() {
       '<button class="btn ghost" type="button" id="stepsBtn">' + IC.list + 'Steps</button>' +
       '<button class="btn ghost" type="button" id="shRoute">' + IC.share + 'Share</button>' +
       (S.own ? '<button class="btn ghost" type="button" id="offRoute">' + IC.down + 'Save offline</button>' : '') +
-    '</div><div class="peek-end"></div>';
+    '</div><div class="peek-end"></div><div id="wxBox"></div><div id="elBox"></div>';
   if (rs.length > 1) {
     h += '<div class="sub-h">Routes</div><div class="alts">' + rs.map(function (x, i) {
       return '<button class="alt' + (i === S.sel ? ' on' : '') + '" type="button" data-alt="' + i + '"><span class="alt-l"><div class="alt-t">' + esc(fmtDur(x.dur)) +
@@ -2151,6 +2237,7 @@ function renderDirSheet() {
   $('#stepsBtn').onclick = function () { sheetTo('full'); setTimeout(function () { var s = $('#stepsH'); if (s) $('#sheetBody').scrollTop = s.offsetTop - 10; }, 420); };
   $('#shRoute').onclick = shareRoute;
   if ($('#offRoute')) $('#offRoute').onclick = function () { saveRouteOffline(r); };
+  routeExtras(r);
   $$('#sheetBody [data-alt]').forEach(function (b) { b.onclick = function () { selectAlt(+b.dataset.alt); }; });
   $$('#sheetBody [data-step]').forEach(function (b) {
     b.onclick = function () {
@@ -2160,6 +2247,94 @@ function renderDirSheet() {
     };
   });
 }
+/* =====================================================================
+   nv4 ROUTE EXTRAS: weather at the destination (MET Norway via our
+   /api/nav-weather.php) and, for bike / walk, the height profile from our
+   own engine (/api/nav-elevation.php). Both load after the route is drawn
+   and never hold it up; a failure just leaves the box empty.
+===================================================================== */
+var WX = {}, EL = {};
+var WX_API = '/api/nav-weather.php', ELEV_API = '/api/nav-elevation.php';
+function wxEmoji(s) {
+  s = s || '';
+  return /thunder/.test(s) ? '⛈️' : /snow|sleet/.test(s) ? '🌨️' : /rain/.test(s) ? '🌧️' : /fog/.test(s) ? '🌫️' :
+    /partlycloudy|fair/.test(s) ? (/night/.test(s) ? '☁️' : '⛅') : /cloudy/.test(s) ? '☁️' : /night/.test(s) ? '🌙' : '☀️';
+}
+function wxWord(s) {
+  s = s || '';
+  return /thunder/.test(s) ? 'Thunderstorm' : /heavyrain/.test(s) ? 'Heavy rain' : /lightrain/.test(s) ? 'Light rain' : /rain/.test(s) ? 'Rain' :
+    /snow|sleet/.test(s) ? 'Snow' : /fog/.test(s) ? 'Fog' : /partlycloudy/.test(s) ? 'Partly cloudy' : /fair/.test(s) ? 'Mostly clear' : /cloudy/.test(s) ? 'Cloudy' : 'Clear';
+}
+function routeExtras(r) {
+  var b = S.b, res = S.cur;
+  if (b && !b.me) {
+    var k = b.lat.toFixed(2) + ',' + b.lng.toFixed(2), hit = WX[k];
+    if (!hit || Date.now() - hit.t > 1800000) {
+      hit = WX[k] = { t: Date.now(), p: fetchT(WX_API + '?lat=' + b.lat.toFixed(4) + '&lng=' + b.lng.toFixed(4), { credentials: 'same-origin' }, 9000)
+        .then(function (x) { return x.json(); }).then(function (j) { if (!j || !j.ok) throw 0; return j; }) };
+      hit.p.catch(function () { if (WX[k] === hit) delete WX[k]; });
+    }
+    hit.p.then(function (j) { if (S.cur === res && S.cur.routes[S.sel] === r) wxBox(j, r); }).catch(function () {});
+  }
+  if (S.mode === 'bike' || S.mode === 'walk') elevBox(r, res);
+}
+function wxBox(j, r) {
+  var box = $('#wxBox'); if (!box) return;
+  var arr = Date.now() + r.dur * 1000, at = j.hours[0];
+  j.hours.forEach(function (h) { if (Math.abs(h.at * 1000 - arr) < Math.abs(at.at * 1000 - arr)) at = h; });
+  var hrs = j.hours.slice(0, 6).map(function (h) {
+    return '<span><i>' + wxEmoji(h.sym) + '</i>' + new Date(h.at * 1000).toLocaleTimeString('en-IN', { hour: 'numeric' }).replace(' ', '') + '</span>';
+  }).join('');
+  var soft = S.mode === 'bike' || S.mode === 'walk', wet = j.rain || /rain|thunder|snow|sleet/.test(at.sym);
+  var h = '<div class="wx' + (wet && soft ? ' wx-warn' : '') + '" role="note"><span class="wx-e" aria-hidden="true">' + wxEmoji(at.sym) + '</span>' +
+    '<span><b>' + at.t + '°</b> ' + esc(wxWord(at.sym)) + '<br><small>At ' + esc(S.b.name.length > 22 ? S.b.name.slice(0, 21) + '…' : S.b.name) + ' on arrival' + (at.wind >= 25 ? ' · wind ' + at.wind + ' km/h' : '') + '</small></span>' +
+    '<span class="wx-h" aria-label="Next hours">' + hrs + '</span></div>';
+  if (wet && soft) {
+    h += '<div class="note wx-warn" style="margin-top:8px"><b>Rain expected</b> on this ' + (S.mode === 'bike' ? 'ride' : 'walk') + '. Car or Bus may be better.' +
+      '<div class="acts"><button class="btn ghost" type="button" data-wxm="car">' + MODE_IC.car + 'Car</button><button class="btn ghost" type="button" data-wxm="bus">' + MODE_IC.bus + 'Bus</button></div></div>';
+  }
+  h += '<div class="row-s" style="margin-top:4px;font-size:11px;color:var(--text3)">Weather: MET Norway</div>';
+  box.innerHTML = h;
+  $$('#wxBox [data-wxm]').forEach(function (x) { x.onclick = function () { selectMode(x.dataset.wxm); }; });
+}
+function elevBox(r, res) {
+  var L = r.L; if (!L || L.len < 300) return;
+  var key = S.mode + '|' + r.coords.length + '|' + Math.round(L.len), hit = EL[key];
+  if (!hit) {
+    var n = clamp(Math.round(L.len / 50), 20, 200), pts = [];
+    for (var i = 0; i < n; i++) { var p = at(L, L.len * i / (n - 1)).p; pts.push([+p[1].toFixed(5), +p[0].toFixed(5)]); }
+    hit = EL[key] = fetchT(ELEV_API, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shape: pts }) }, 12000)
+      .then(function (x) { return x.json(); }).then(function (j) { if (!j || !j.ok) throw 0; return j.h; });
+    hit.catch(function () { if (EL[key] === hit) delete EL[key]; });
+  }
+  hit.then(function (h) {
+    if (S.cur !== res || S.cur.routes[S.sel] !== r) return;
+    var box = $('#elBox'); if (!box) return;
+    /* fill gaps from the neighbours; ascent counts only rises over 3 m (SRTM noise) */
+    var v = h.slice(), last = null;
+    for (var i = 0; i < v.length; i++) { if (v[i] == null) v[i] = last; else last = v[i]; }
+    for (i = v.length - 1; i >= 0; i--) { if (v[i] == null) v[i] = last; else last = v[i]; }
+    if (v[0] == null) return;
+    var up = 0, down = 0, ref = v[0], lo = Math.min.apply(null, v), hi = Math.max.apply(null, v), grade = 0, seg = L.len / (v.length - 1);
+    v.forEach(function (x, i) {
+      if (x - ref >= 3) { up += x - ref; ref = x; } else if (ref - x >= 3) { down += ref - x; ref = x; }
+      if (i >= 4) grade = Math.max(grade, (x - v[i - 4]) / (seg * 4) * 100);
+    });
+    var km = L.len / 1000, perKm = up / Math.max(km, 0.5);
+    var diff = perKm < 8 && grade < 4 ? ['Easy', 'g'] : perKm < 20 && grade < 8 ? ['Moderate', 'y'] : ['Hard', 'r'];
+    /* calories for a 70 kg rider: walking ~0.5 kcal/kg/km, cycling ~0.28, plus ~0.66 kcal per metre climbed */
+    var kcal = Math.round(70 * km * (S.mode === 'walk' ? 0.5 : 0.28) + up * 0.66);
+    var W = 300, H = 60, span = Math.max(hi - lo, 20);
+    var path = v.map(function (x, i) { return (i ? 'L' : 'M') + (i / (v.length - 1) * W).toFixed(1) + ',' + (H - 4 - (x - lo) / span * (H - 10)).toFixed(1); }).join('');
+    var col = MODES[S.mode].color;
+    box.innerHTML = '<div class="elev"><div style="display:flex;justify-content:space-between;align-items:center"><b style="color:var(--text)">Elevation</b><span class="badge ' + diff[1] + '">' + diff[0] + '</span></div>' +
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Height profile: ' + Math.round(up) + ' metres up, ' + Math.round(down) + ' metres down">' +
+      '<path d="' + path + 'L' + W + ',' + H + 'L0,' + H + 'Z" fill="' + col + '" fill-opacity=".18"/><path d="' + path + '" fill="none" stroke="' + col + '" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>' +
+      '<div class="el-row"><span>↑ <b>' + Math.round(up) + ' m</b></span><span>↓ <b>' + Math.round(down) + ' m</b></span><span>' + Math.round(lo) + '–' + Math.round(hi) + ' m high</span>' +
+      (grade >= 3 ? '<span>steepest ~<b>' + Math.round(grade) + '%</b></span>' : '') + '<span>≈ <b>' + kcal.toLocaleString('en-IN') + ' kcal</b> <small>(70 kg)</small></span></div></div>';
+  }).catch(function () {});
+}
+
 function bindDir() {
   $('#fFrom').onclick = function () { openSearch('from'); };
   $('#fTo').onclick = function () { openSearch('to2'); };
@@ -2177,6 +2352,7 @@ function bindDir() {
   $('#dirOpts').addEventListener('click', function (e) {
     var u = e.target.closest('[data-unstop]');
     if (u) { S.stops.splice(+u.dataset.unstop, 1); S.cur = null; computeRoutes(); return; }
+    if (e.target.closest('[data-bestorder]')) { bestOrder(); return; }
     var b = e.target.closest('[data-avoid]'); if (!b) return;
     var k = b.dataset.avoid; S.avoid[k] = !S.avoid[k]; LS.set('shg:nm:avoid', S.avoid);
     paintModes(); S.cur = null; computeRoutes();
@@ -2645,6 +2821,7 @@ function saveTrip() {
 function navPadding() { return { top: Math.round(innerHeight * 0.4), bottom: 90, left: 0, right: 0 }; }
 function stopNav() {
   var N = S.nav; if (!N) return;
+  if (!N.preview) logTrip(N, false);
   cancelAnimationFrame(N.raf); clearTimeout(N.idleT); stopSim(); wake(false); voStop(); voKeep(false);
   try { if (VO.ctx && VO.ctx.state === 'running') VO.ctx.suspend(); } catch (e) {}
   S.nav = null;
@@ -2676,6 +2853,7 @@ function navFix(f) {
   N.lastFixAt = nowP;
   if (N.arrived) { S.markers.me.setLngLat(p); return; }
   N.v = f.speed != null && !isNaN(f.speed) ? f.speed : N.v;
+  if (N.v > (N.vmax || 0) && N.v < 55 && (f.acc || 20) < 40) N.vmax = N.v;     /* top speed for the trip log (≤ 200 km/h, good fixes only) */
   var iFar = at(L, N.along + Math.max(2000, (N.v || 0) * 40)).i + 1;
   var q = nearest(L, p, N.i - 25, Math.min(N.i + 700, iFar));
   if (q.d > 60) { var g = nearest(L, p, 0, L.n - 2); if (g.d < q.d - 15) q = g; }
@@ -2720,6 +2898,8 @@ function stopReached(n) {
 function navFrame(t) {
   var N = S.nav; if (!N || N.preview) return;
   N.raf = 0;
+  if (S.saver && N.lastT && t - N.lastT < 90) { N.raf = requestAnimationFrame(navFrame); return; }   /* battery saver: ~10 frames a second */
+  N.lastT = t;
   var L = N.route.L, a = N.along, moving = false;
   if (N.anim) {
     var k = clamp((t - N.anim.t0) / N.anim.dur, 0, 1);
@@ -2733,12 +2913,12 @@ function navFrame(t) {
   else { pos = at(L, a).p; bT = brg(at(L, Math.max(0, a - 8)).p, at(L, Math.min(L.len, a + 35)).p); }
   if (L.len < 1) bT = N.smBear;
   var dB = angDiff(N.smBear, bT);
-  if (Math.abs(dB) > 0.2) { N.smBear = (N.smBear + dB * 0.1 + 360) % 360; moving = true; }
+  if (Math.abs(dB) > 0.2) { N.smBear = (N.smBear + dB * (S.saver ? 0.45 : 0.1) + 360) % 360; moving = true; }
   if (S.markers.me) { S.markers.me.setLngLat(pos); S.markers.me.setRotation(N.smBear); }
   var v = N.v || 0, zT = v < 6 ? 17.2 : v < 14 ? 16.6 : v < 22 ? 16 : 15.4;     /* faster = see further ahead */
   var nxt = N.route.steps[N.k + 1];
   if (nxt && nxt.along - N.along < 180 && nxt.type !== 'arrive') zT += 0.4;
-  if (Math.abs(zT - N.smZoom) > 0.003) { N.smZoom += (zT - N.smZoom) * 0.025; moving = true; } else N.smZoom = zT;
+  if (Math.abs(zT - N.smZoom) > 0.003) { N.smZoom += (zT - N.smZoom) * (S.saver ? 0.14 : 0.025); moving = true; } else N.smZoom = zT;
   if (N.follow && t > N.camHold && !S.map.isMoving()) {
     /* repaint the map only when the camera really changes (a coach standing at a
        counter for 20 minutes must not redraw the whole map 60 times a second) */
@@ -2929,7 +3109,65 @@ function speedUI() {
   $('#spdV').textContent = kmh;
   var lim = currentLimit(), over = !!lim && kmh > lim + 5;
   $('#speed').classList.toggle('over', over);
+  /* the moment the speed goes over: a short double beep + buzz (not while muted; at most every 30 s) */
+  if (over && !N.wasOver && Date.now() - (N.beepAt || 0) > 30000) { N.beepAt = Date.now(); vib([200, 100, 200]); if (S.sound !== 'off') beep(); }
+  N.wasOver = over;
   if (lim && kmh > lim + 8 && Date.now() - (N.speedWarnAt || 0) > 120000) { N.speedWarnAt = Date.now(); speak(['m_speed'], 'Please slow down', true); }
+}
+function beep() {
+  var c = voCtx(); if (!c) return;
+  try {
+    if (c.state === 'suspended') c.resume();
+    [0, 0.18].forEach(function (d) {
+      var o = c.createOscillator(), g = c.createGain(), t = c.currentTime + d;
+      o.type = 'sine'; o.frequency.value = 1046;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+      o.connect(g); g.connect(VO.gain || c.destination); o.start(t); o.stop(t + 0.15);
+    });
+  } catch (e) {}
+}
+/* =====================================================================
+   nv4 TRIP LOG: every real drive (≥ 300 m moved) is kept on this phone,
+   newest first, last 100. Export = CSV for expense claims.
+===================================================================== */
+function logTrip(N, done) {
+  if (!N || N.logged || (N.sim && !QS.has('debug')) || (N.odo || 0) < 300) return;
+  N.logged = true;
+  var el = Math.round((Date.now() - N.startAt) / 1000);
+  var a = S.a && !S.a.me ? S.a.name : 'Your location', b = S.b && !S.b.me ? S.b.name : (S.to ? S.to.name : '');
+  var list = LS.get('shg:nm:trips', []);
+  list.unshift({ t: N.startAt, s: el, m: S.mode, a: a, b: b, km: Math.round(N.odo / 100) / 10, plan: Math.round(N.route.dist / 100) / 10,
+                 avg: el > 30 ? Math.round(N.odo / el * 3.6) : 0, max: Math.round((N.vmax || 0) * 3.6), done: !!done, sim: !!N.sim });
+  LS.set('shg:nm:trips', list.slice(0, 100));
+}
+function showTrips() {
+  var list = LS.get('shg:nm:trips', []), now = new Date(), m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  var month = list.filter(function (x) { return x.t >= m0; }), km = 0, sec = 0;
+  month.forEach(function (x) { km += x.km; sec += x.s; });
+  var h = '<h3>Your trips</h3><div class="tot"><div><b>' + month.length + '</b>trips this month</div><div><b>' + (Math.round(km * 10) / 10).toLocaleString('en-IN') + '</b>km this month</div><div><b>' + fmtDur(sec) + '</b>on the road</div></div>';
+  if (!list.length) h += '<div class="empty">Trips you navigate are saved here on this phone: distance, time and speed. Nothing is sent anywhere.</div>';
+  else {
+    h += '<div>' + list.slice(0, 40).map(function (x) {
+      var d = new Date(x.t);
+      return '<div class="trip" style="--m:' + MODES[x.m].color + '"><span class="tr-ic">' + MODE_IC[x.m] + '</span><span style="min-width:0"><div class="tr-t">' + esc(x.b || 'Trip') + (x.done ? '' : ' <small style="color:var(--text3);font-weight:500">· ended early</small>') + '</div>' +
+        '<div class="tr-s">' + d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ', ' + fmtClock(x.t) + ' · ' + x.km + ' km · ' + fmtDur(x.s) + (x.avg ? ' · ' + x.avg + ' km/h avg' : '') + (x.max ? ' · top ' + x.max : '') + '</div></span></div>';
+    }).join('') + '</div>' +
+      '<div class="acts" style="margin-top:14px"><button class="btn cta" type="button" id="trCsv">' + IC.down + 'Export CSV</button><button class="btn ghost" type="button" id="trClr" style="color:#FF7A70">' + IC.x + 'Clear</button></div>';
+  }
+  openModal(h);
+  if ($('#trCsv')) $('#trCsv').onclick = function () {
+    var q = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var rows = [['Date', 'Start time', 'Mode', 'From', 'To', 'Distance km', 'Planned km', 'Duration min', 'Avg km/h', 'Top km/h', 'Completed']];
+    list.forEach(function (x) { var d = new Date(x.t); rows.push([d.toLocaleDateString('en-CA'), d.toTimeString().slice(0, 5), MODES[x.m].name, x.a, x.b, x.km, x.plan, Math.round(x.s / 60), x.avg, x.max, x.done ? 'yes' : 'no']); });
+    var blob = new Blob(['﻿' + rows.map(function (r) { return r.map(q).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'shari-nav-trips-' + new Date().toLocaleDateString('en-CA') + '.csv';
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  };
+  if ($('#trClr')) $('#trClr').onclick = function () {
+    var b = $('#trClr');
+    if (!b.dataset.sure) { b.dataset.sure = 1; b.lastChild.textContent = 'Tap again to clear all'; return; }
+    LS.set('shg:nm:trips', []); toast('Trip history cleared'); showTrips();
+  };
 }
 function currentLimit() {
   var N = S.nav; if (!N || !N.limits) return null;
@@ -2968,6 +3206,7 @@ function arrive() {
   dropFaster(N);
   speak(['m_arrived'], 'You have arrived' + (S.b && !S.b.dropped && !S.b.me ? ' at ' + S.b.name : ''), true);
   LS.set('shg:nm:trip', null);
+  logTrip(N, true);
   updateBottom(); setProgress(1, true); wake(false); stopSim();
   setTimeout(function () { if (S.nav === N) voKeep(false); }, 6000);   /* after the arrival words */
 }
@@ -3064,9 +3303,10 @@ function navMore() {
       '<button class="tg" type="button" id="tgNorth" style="width:100%;text-align:left"><span>North up<small>Map stays pointed north</small></span><i class="sw' + (N.northUp ? ' on' : '') + '"></i></button>' +
       '<button class="tg" type="button" id="tgBig" style="width:100%;text-align:left"><span>Large text<small>Bigger turn banner and buttons</small></span><i class="sw' + (S.big ? ' on' : '') + '"></i></button>' +
       '<button class="tg" type="button" id="tgFull" style="width:100%;text-align:left"><span>Full screen</span><i class="sw' + (document.fullscreenElement ? ' on' : '') + '"></i></button>' +
+      '<h3 style="margin-top:20px">Battery saver</h3>' + saverHtml() +
       '<div class="acts" style="margin-top:16px"><button class="btn ghost" type="button" id="mSteps">' + IC.list + 'Steps</button><button class="btn ghost" type="button" id="mShare">' + IC.share + 'Share trip</button>' +
       '<button class="btn ghost" type="button" id="mEnd" style="color:#FF7A70">' + IC.x + 'End</button></div>');
-    bindVoice(render);
+    bindVoice(render); bindSaver(render);
     $$('#modalCard [data-along]').forEach(function (b) { b.onclick = function () { alongSearch(ALONG[+b.dataset.along]); }; });
     $$('#modalCard [data-av]').forEach(function (b) {
       b.onclick = function () { var k = b.dataset.av; S.avoid[k] = !S.avoid[k]; LS.set('shg:nm:avoid', S.avoid); render(); if (S.me && !N.preview) reroute(S.me, 'options'); };
@@ -3234,6 +3474,7 @@ function openLayers() {
     }).join('') + '</div>' +
     '<h3 style="margin-top:22px">Map details</h3>' +
     '<button class="tg" type="button" id="tg3d" style="width:100%;text-align:left"><span>3D buildings<small>Shown when the map is tilted</small></span><i class="sw' + (S.b3d ? ' on' : '') + '"></i></button>' +
+    '<h3 style="margin-top:22px">Battery saver</h3>' + saverHtml() +
     '<h3 style="margin-top:22px">Voice</h3>' + voiceHtml() +
     '<h3 style="margin-top:22px">Offline maps</h3>' +
     (S.own ? '<div class="note" style="margin-top:0">Save the map you see now (streets included) so it opens without signal.' +
@@ -3244,7 +3485,7 @@ function openLayers() {
     '<div class="row-s" style="margin-top:18px;text-align:center">Map data © OpenStreetMap contributors · Routing: SHARI NAV (Valhalla) / OSRM</div>');
   $$('#modalCard [data-style]').forEach(function (b) { b.onclick = function () { setStyle(b.dataset.style); openLayers(); }; });
   $('#tg3d').onclick = function () { S.b3d = !S.b3d; LS.set('shg:nm:3d', S.b3d); add3d(); if (S.map.getLayer('b3d') && S.map.getLayer('acc-fill')) S.map.moveLayer('b3d', 'acc-fill'); openLayers(); };
-  bindVoice(openLayers);
+  bindVoice(openLayers); bindSaver(openLayers);
   if ($('#offArea')) $('#offArea').onclick = function () { saveAreaOffline(); };
   if ($('#offClear')) $('#offClear').onclick = function () { caches.delete(OFFLINE_CACHE).catch(function () {}); LS.set('shg:nm:off', null); toast('Offline map deleted'); openLayers(); };
 }
@@ -3387,6 +3628,7 @@ async function boot() {
   });
   addEventListener('scroll', function () { if (scrollY || scrollX) scrollTo(0, 0); }, { passive: true });
   initMap();
+  startBattery();
   sheetTo('hidden', 'instant');
   /* the site's service worker (offline tiles, app shell). Its first install
      downloads the whole booking app, so a first visit on slow 3G gets the
