@@ -1,7 +1,7 @@
 # Staff Agreement · कर्मचारी सम्झौता
 
 > Text copy of `agreements/staff-agreement.html` (the published, signable page — that page is the source of truth;
-> regenerate this file from it after any change). S HARI GLOBAL PRIVATE LIMITED · **Version 1.0** · Effective **22 October 2026**.
+> regenerate this file from it after any change). S HARI GLOBAL PRIVATE LIMITED · **Version 1.1** · Effective **22 October 2026**.
 
 Digital signature: full name + mobile proven with a WhatsApp code + date/time + IP address + finger signature,
 stored in the `agreement_signatures` table (event `apply` on the online form, `approval` after the office approves).
@@ -117,6 +117,47 @@ stored in the `agreement_signatures` table (event `apply` on the online form, `a
 |---|---|
 | **14.1** For a staff member whose duty base is in Nepal, any dispute is heard by the court in Nepalgunj (Nepal). | **14.1** नेपालमा ड्युटी बेस भएका कर्मचारीको विवाद नेपालगञ्ज (नेपाल) को अदालतमा हेरिन्छ। |
 | **14.2** For a staff member whose duty base is in India, any dispute is heard by the court in Lucknow (India). | **14.2** भारतमा ड्युटी बेस भएका कर्मचारीको विवाद लखनऊ (भारत) को अदालतमा हेरिन्छ। |
+
+## 15. नियुक्ति र परीक्षणकाल · Appointment & probation
+
+| English | नेपाली |
+|---|---|
+| **15.1** The first 3 months are a probation period. During probation either side may end the job with 7 days’ notice. | **15.1** पहिलो ३ महिना परीक्षणकाल हो। परीक्षणकालमा दुवै पक्षले ७ दिनको सूचना दिएर काम अन्त्य गर्न सक्छन्। |
+| **15.2** The job, duty base, monthly salary and allowances are those written in the appointment letter or the Company pay register, which form part of this agreement. | **15.2** काम, ड्युटी बेस, मासिक तलब र भत्ता नियुक्ति पत्र वा कम्पनीको तलब रजिस्टरमा लेखिए अनुसार हुन्छ, र ती यो सम्झौताकै भाग हुन्। |
+| **15.3** The Company may change the route, bus, shift or duty base for work reasons, telling the staff member in writing (WhatsApp counts) in advance. | **15.3** कामको कारणले कम्पनीले रुट, बस, सिफ्ट वा ड्युटी बेस फेर्न सक्छ — अग्रिम लिखित (WhatsApp समेत) जानकारी दिएर। |
+
+## 16. हानि-नोक्सानीको जिम्मेवारी · Liability for loss
+
+| English | नेपाली |
+|---|---|
+| **16.1** A staff member is responsible for loss to the Company caused by their own deliberate act, gross carelessness, fraud or breach of these rules — for example a cash shortage, or damage from drunk or reckless driving. | **16.1** आफ्नै जानीजानी काम, ठूलो लापरबाही, ठगी वा यी नियम तोडेर कम्पनीलाई पुगेको हानिको जिम्मेवारी कर्मचारीकै हुन्छ — जस्तै नगद कम हुनु, वा मातेर वा लापरबाहीसँग चलाउँदा भएको क्षति। |
+| **16.2** Such a loss is recovered only after a written notice and a chance to explain, and only as far as the law of the country allows. | **16.2** यस्तो हानि लिखित सूचना र आफ्नो कुरा राख्ने मौका दिएपछि मात्र, र देशको कानुनले दिएसम्म मात्र असुल गरिन्छ। |
+| **16.3** Traffic fines caused by the staff member’s own fault are paid by the staff member. An accident that was not the staff member’s fault is not charged to them. | **16.3** कर्मचारीकै गल्तीले लागेको ट्राफिक जरिवाना कर्मचारीले तिर्छ। कर्मचारीको गल्ती नभएको दुर्घटनाको खर्च उसलाई लगाइँदैन। |
+
+## 17. कम्पनीको सुरक्षा · Protecting the Company
+
+| English | नेपाली |
+|---|---|
+| **17.1** Passenger details, fares, accounts, vendor rates, passwords and internal matters stay secret during the job and after leaving. | **17.1** यात्रुको विवरण, भाडा, हिसाब, सप्लायरको दर, पासवर्ड र भित्री कुरा काम गर्दा र छोडेपछि पनि गोप्य राख्नुपर्छ। |
+| **17.2** No posting of Company matters, passengers’ photos or internal disputes on social media without the office’s permission, and no false statements that harm the Company’s name. | **17.2** कार्यालयको अनुमतिबिना कम्पनीका कुरा, यात्रुका फोटो वा भित्री विवाद सामाजिक सञ्जालमा राख्न पाइँदैन, र कम्पनीको नाम बिगार्ने झुटो कुरा गर्न पाइँदैन। |
+| **17.3** Company data, passenger lists and contacts must never be used to take passengers, agents or staff to another business. | **17.3** कम्पनीको डाटा, यात्रु सूची र सम्पर्क अर्को व्यवसायमा यात्रु, एजेन्ट वा कर्मचारी तान्न कहिल्यै प्रयोग गर्न पाइँदैन। |
+
+## 18. अनुशासन र बर्खास्ती · Discipline & dismissal
+
+| English | नेपाली |
+|---|---|
+| **18.1** A broken rule normally leads, step by step, to a spoken warning, a written warning, suspension and then dismissal. Each step is recorded. | **18.1** नियम तोडेमा सामान्यतया क्रमैसँग — मौखिक चेतावनी, लिखित चेतावनी, निलम्बन, अनि बर्खास्ती हुन्छ। हरेक चरण अभिलेख गरिन्छ। |
+| **18.2** Theft, fraud, driving after drinking, violence or harassment, putting passengers in danger, or false documents may lead to dismissal without notice, after the staff member has been heard. | **18.2** चोरी, ठगी, रक्सी खाएर चलाउनु, हिंसा वा दुर्व्यवहार, यात्रुलाई खतरामा पार्नु, वा झुटो कागजात — कर्मचारीको कुरा सुनेपछि सूचनाबिना बर्खास्त गर्न सकिन्छ। |
+| **18.3** Pay earned up to the last working day is always paid, less only the deductions this agreement and the law allow. | **18.3** अन्तिम कामको दिनसम्मको कमाएको तलब सधैं दिइन्छ — यो सम्झौता र कानुनले दिएको कटौती मात्र घटाएर। |
+
+## 19. KYC, डाटा र डिजिटल अभिलेख · KYC, data & digital records
+
+| English | नेपाली |
+|---|---|
+| **19.1** The staff member agrees that the Company keeps their ID, photo, bank details, signature and thumbprint image securely, for the job, payroll and police or legal checks only. Only authorised office staff can see them. | **19.1** कर्मचारीको परिचयपत्र, फोटो, बैंक विवरण, सही र औंठाछापको फोटो कम्पनीले सुरक्षित राख्छ — काम, तलब र प्रहरी / कानुनी जाँचका लागि मात्र। अधिकृत कार्यालय कर्मचारीले मात्र हेर्न पाउँछन्। |
+| **19.2** These records are kept while the staff member works and afterwards for as long as the law requires; they are never sold or shared for advertising. | **19.2** यी अभिलेख काम गरुन्जेल र त्यसपछि कानुनले भनेजति समय राखिन्छ; कहिल्यै बेचिँदैन वा विज्ञापनका लागि दिइँदैन। |
+| **19.3** Both sides accept the online signature, the WhatsApp-proven mobile number, the time stamps and the agreement number with its verification QR as valid proof of this agreement. | **19.3** अनलाइन सही, WhatsApp ले प्रमाणित मोबाइल नम्बर, समय-अभिलेख र प्रमाणीकरण QR सहितको सम्झौता नम्बरलाई दुवै पक्षले यो सम्झौताको मान्य प्रमाण मान्छन्। |
+| **19.4** If any rule conflicts with the labour law of the country of the duty base, the law prevails and the other rules stay valid. | **19.4** कुनै नियम ड्युटी बेस भएको देशको श्रम कानुनसँग बाझिएमा कानुन नै मान्य हुन्छ, बाँकी नियम कायमै रहन्छन्। |
 
 ## Signature · सही
 

@@ -73,7 +73,7 @@ final class StaffApps
     ];
     public const GENDERS = ['male', 'female', 'other'];
 
-    public const AGREEMENT_VERSION = '1.0';
+    public const AGREEMENT_VERSION = '1.1';
     public const PUBLIC_FIELDS     = ['full_name', 'photo_path', 'phone', 'district', 'role_applied'];
 
     public const PHOTO_MAX = 2 * 1024 * 1024;   // the owner's limits; the page shrinks photos far below them
@@ -373,7 +373,7 @@ final class StaffApps
         }
 
         $refs = [];
-        foreach ([1, 2] as $i) {
+        foreach ([1, 2, 3, 4] as $i) {   // 3 + 4: the witnesses (23 Oct 2026)
             $rn = self::oneLine($in['ref' . $i . '_name'] ?? '', 80);
             $rp = normalisePhone((string) ($in['ref' . $i . '_phone'] ?? ''));
             $rr = self::oneLine($in['ref' . $i . '_relation'] ?? '', 40);

@@ -49,6 +49,7 @@ textarea{min-height:76px;resize:vertical}
 input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0 3px rgba(47,107,255,.18)}
 [aria-invalid=true]{border-color:var(--bad)!important;background:rgba(198,40,40,.06)!important}
 .row{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px}
+.row.np{grid-template-columns:minmax(0,1fr) 128px}
 .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:50px;padding:0 16px;border:0;border-radius:14px;font:inherit;font-size:15.5px;font-weight:800;cursor:pointer;text-decoration:none;color:#fff;background:linear-gradient(120deg,var(--sky),var(--navy));box-shadow:0 8px 18px -10px rgba(10,42,143,.8)}
 .btn.ghost{background:transparent;color:var(--sky);border:1.5px dashed var(--sky);box-shadow:none}
 .btn.small{min-height:40px;font-size:13.5px;width:auto}
@@ -159,8 +160,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
       <label class="f"><span>लिङ्ग · Gender</span><select id="s_gender"><option value="">—</option><option value="male">पुरुष · Male</option><option value="female">महिला · Female</option><option value="other">अन्य · Other</option></select></label>
       <label class="f"><span>इमेल · E-mail</span><input type="email" id="s_email" maxlength="160" autocomplete="email" placeholder="जस्तै: ram@gmail.com"></label>
       <label class="f"><span>देश · Country</span><select id="s_country"><option value="NP">🇳🇵 नेपाल · Nepal</option><option value="IN">🇮🇳 भारत · India</option></select></label>
-      <label class="f"><span>चिनारी (नाम · फोन) · Reference</span><div class="row"><input type="text" id="s_ref1n" maxlength="80" placeholder="नाम · Name"><input type="tel" id="s_ref1p" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Reference phone"></div></label>
-      <label class="f"><span>आपतकालीन सम्पर्क (नाम · फोन) · Emergency contact</span><div class="row"><input type="text" id="s_emn" maxlength="80" placeholder="नाम · Name"><input type="tel" id="s_emp" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Emergency phone"></div></label>
+      <label class="f"><span>चिनारी (नाम · फोन) · Reference</span><div class="row np"><input type="text" id="s_ref1n" maxlength="80" placeholder="नाम · Name"><input type="tel" id="s_ref1p" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Reference phone"></div></label>
+      <label class="f"><span>आपतकालीन सम्पर्क (नाम · फोन) · Emergency contact</span><div class="row np"><input type="text" id="s_emn" maxlength="80" placeholder="नाम · Name"><input type="tel" id="s_emp" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Emergency phone"></div></label>
     </div>
     <div id="orgBox" hidden>
       <label class="f"><span>कम्पनीको किसिम · Company type</span><select id="p_type"><option value="0">Pvt. Ltd. (प्रा. लि.)</option><option value="1">Partnership firm (साझेदारी फर्म)</option><option value="2">Proprietorship (एकल स्वामित्व)</option><option value="3">Other (अन्य)</option></select></label>
@@ -242,6 +243,17 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     <label class="f"><span>खाता नम्बर · Account number</span><input type="text" id="b_acc" maxlength="40" inputmode="numeric" autocomplete="off" placeholder="जस्तै: 01234567890123"></label>
     <label class="f"><span>IFSC / SWIFT (भारत / India)</span><input type="text" id="b_ifsc" maxlength="20" autocomplete="off" style="text-transform:uppercase"></label>
     <label class="f" id="upiLbl"><span>UPI / eSewa / Khalti</span><input type="text" id="b_upi" maxlength="80" autocomplete="off"></label>
+  </section>
+
+  <!-- 23 Oct 2026 (owner: "witness and guarantor details", optional): one guarantor and two witnesses.
+       They are printed on the A4 agreement's witness boxes; the people still sign the paper copy. -->
+  <section class="card">
+    <h2><i>👥</i>जमानीकर्ता र साक्षी · Guarantor &amp; witnesses <small style="font-weight:600">(ऐच्छिक · optional)</small></h2>
+    <p class="hint">थाहा भए मात्र भर्नुहोस् — पछि कार्यालयमा पनि दिन सकिन्छ। · Fill only if you know them now.</p>
+    <label class="f"><span>जमानीकर्ता (नाम · मोबाइल) · Guarantor (name · mobile)</span><div class="row np"><input type="text" id="g_name" maxlength="80" autocomplete="off" placeholder="नाम · Name"><input type="tel" id="g_phone" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Guarantor mobile"></div></label>
+    <label class="f" id="gAddrLbl"><span>जमानीकर्ताको ठेगाना · Guarantor’s address</span><input type="text" id="g_addr" maxlength="160" autocomplete="off" placeholder="टोल, नगर, जिल्ला"></label>
+    <label class="f"><span>साक्षी १ (नाम · मोबाइल) · Witness 1</span><div class="row np"><input type="text" id="w1_name" maxlength="80" autocomplete="off" placeholder="नाम · Name"><input type="tel" id="w1_phone" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Witness 1 mobile"></div></label>
+    <label class="f"><span>साक्षी २ (नाम · मोबाइल) · Witness 2</span><div class="row np"><input type="text" id="w2_name" maxlength="80" autocomplete="off" placeholder="नाम · Name"><input type="tel" id="w2_phone" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Witness 2 mobile"></div></label>
   </section>
 
   <section class="card">
@@ -391,6 +403,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     if ($('p_idtype').selectedOptions[0] && $('p_idtype').selectedOptions[0].disabled) $('p_idtype').value = '1';
     if (ID_RULES) $('idHint').textContent = rule().hint;   // undefined while the page is still starting (set below)
     if (terms) terms.setKind(staff ? 'staff' : org ? 'partner' : 'agent');
+    $('gAddrLbl').hidden = staff;
     $('nameLbl').innerHTML = org ? 'कम्पनीको नाम · Company name <em>*</em>' : 'पूरा नाम · Full name <em>*</em>';
     $('p_name').placeholder = org ? 'जस्तै: Sita Ram Travels Pvt. Ltd.' : 'जस्तै: Ram Bahadur Thapa';
     $('nameHint').textContent = org ? 'दर्ता प्रमाणपत्रमा जस्तो · as registered' : 'डकुमेन्टमा जस्तो लेखिएको छ, ठ्याक्कै त्यस्तै हिज्जे · exactly as on your ID';
@@ -621,6 +634,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
       if (!$('p_area').value.trim()) return need('p_area', 'काम गर्ने ठाउँ लेख्नुहोस्।');
       if (!$('p_addr').value.trim()) return need('p_addr', 'ठेगाना लेख्नुहोस्।');
     }
+    var people = [['g_name', 'g_phone', 'जमानीकर्ता · guarantor'], ['w1_name', 'w1_phone', 'साक्षी १ · witness 1'], ['w2_name', 'w2_phone', 'साक्षी २ · witness 2']];
+    for (var pi = 0; pi < people.length; pi++) {
+      var pn = $(people[pi][0]).value.trim(), pp = $(people[pi][1]).value.replace(/\D/g, '').replace(/^0+/, '');
+      if (!pn && !pp) continue;
+      if (pn.length < 2) return need(people[pi][0], people[pi][2] + ' को नाम लेख्नुहोस् · Enter the name.');
+      if (pp.length !== 10) return need(people[pi][1], people[pi][2] + ' को १० अङ्कको मोबाइल लेख्नुहोस् · Enter a 10-digit mobile.');
+    }
     if (!$('p_idno').value.trim()) return need('p_idno', 'डकुमेन्ट नम्बर लेख्नुहोस्।');
     if (!idFormatOk()) return need('p_idno', 'डकुमेन्ट नम्बर मिलेन — ' + rule().hint);
     if (!state.doc) return need('docIn', 'डकुमेन्टको फोटो खिच्नुहोस्।');
@@ -657,7 +677,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   }
   var STAFF_FIELD = { full_name: 'p_name', phone: 'p_phone', role: 's_role', id_type: 'p_idtype', id_number: 'p_idno', photo: 'selfIn', id_front: 'docIn',
     signature: 'sig', license: 'licIn', license_number: 's_lic', license_category: 's_licCat', license_expiry: 's_licExp', otp: 'waV', dob: 's_dob',
-    email: 's_email', emergency_phone: 's_emp', ref1_phone: 's_ref1p', ref1_name: 's_ref1n', bank_account: 'b_acc', bank_ifsc: 'b_ifsc', agree: 'agreeTerms', marksheet: 'eduIn' };
+    email: 's_email', emergency_phone: 's_emp', ref1_phone: 's_ref1p', ref1_name: 's_ref1n', ref2_name: 'g_name', ref2_phone: 'g_phone', ref3_name: 'w1_name', ref3_phone: 'w1_phone', ref4_name: 'w2_name', ref4_phone: 'w2_phone', bank_account: 'b_acc', bank_ifsc: 'b_ifsc', agree: 'agreeTerms', marksheet: 'eduIn' };
   function sendStaff(btn, label) {
     var fd = new FormData(), v = function (id) { return $(id).value.trim(); }, dig = function (id) { return v(id).replace(/\D/g, '').replace(/^0+/, ''); };
     fd.set('full_name', v('p_name')); fd.set('phone', dig('p_phone')); fd.set('cc', $('cc').value);
@@ -668,6 +688,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     if ($('s_role').value === 'driver') { fd.set('license_number', v('s_lic')); fd.set('license_category', v('s_licCat')); fd.set('license_expiry', $('s_licExp').value); }
     if (v('s_ref1n') || v('s_ref1p')) { fd.set('ref1_name', v('s_ref1n')); fd.set('ref1_phone', dig('s_ref1p')); }
     fd.set('emergency_name', v('s_emn')); fd.set('emergency_phone', dig('s_emp'));
+    [['g_name', 'g_phone', 2, 'guarantor'], ['w1_name', 'w1_phone', 3, 'witness'], ['w2_name', 'w2_phone', 4, 'witness']].forEach(function (x) {
+      if (v(x[0]) || v(x[1])) { fd.set('ref' + x[2] + '_name', v(x[0])); fd.set('ref' + x[2] + '_phone', dig(x[1])); fd.set('ref' + x[2] + '_relation', x[3]); }
+    });
     fd.set('bank_holder', v('b_name')); fd.set('bank_name', v('b_bank')); fd.set('bank_account', v('b_acc')); fd.set('bank_ifsc', v('b_ifsc').toUpperCase().replace(/\s+/g, ''));
     fd.set('agree', '1'); if ($('public_ok').checked) fd.set('public_ok', '1'); fd.set('website', $('website').value);
     if (state.webauthn) fd.set('webauthn', state.webauthn);
@@ -713,6 +736,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
       if (state.tax_cert) body.tax_cert = state.tax_cert;
     }
     ['cv_qual', 'cv_exp', 'cv_prev'].forEach(function (k) { var v = $(k).value.trim(); if (v) body.fields[k] = v; });
+    var join = function (a) { return a.filter(function (x) { return x; }).join(' · '); }, cc = '+' + $('cc').value + ' ';
+    var gq = $('cc').value === '91' ? 'g3' : 'g1', gp = $('g_phone').value.replace(/\D/g, '').replace(/^0+/, '');
+    if ($('g_name').value.trim()) { body.fields[gq + '_name'] = $('g_name').value.trim(); body.fields[gq + '_addr'] = join([$('g_addr').value.trim(), gp ? cc + gp : '']); }
+    ['w1', 'w2'].forEach(function (w) { var n = $(w + '_name').value.trim(), wp = $(w + '_phone').value.replace(/\D/g, '').replace(/^0+/, ''); if (n) { body.fields[w + '_name'] = n; if (wp) body.fields[w + '_addr'] = cc + wp; } });
     if (thumb && thumb.value()) body.thumb = thumb.value();
     if (state.kind !== 'org' && state.edu_cert) body.edu_cert = state.edu_cert;
     if (state.webauthn) body.webauthn = state.webauthn;

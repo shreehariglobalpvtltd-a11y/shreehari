@@ -94,6 +94,7 @@ $thumb = '';          // <img src> of the camera thumbprint
 $sigImg = '';         // <img src> of the phone signature, for the agreement's signature box
 $passkey = false;     // a phone fingerprint / Face ID lock was registered
 $recLang = '';        // the language the applicant used
+$wit = [['', ''], ['', '']];   // the two witnesses' name + address, when the form gave them (23 Oct 2026)
 
 if ($blank === '') {
     if ($type === 'agent') {
@@ -113,6 +114,7 @@ if ($blank === '') {
             'Agreement terms' => ['a_no', 'a_date', 'a_place', 'a_start', 'a_end', 'co_sig', 'co_desig', 'org_rate', 'org_pct', 'org_target', 'org_fixed', 'org_day', 'ind_target', 'ind_fixed', 'ind_pct', 'c73'],
             'Bank / payment'  => ['b_name', 'b_bank', 'b_acc', 'b_ifsc', 'b_upi'],
             'Witnesses'       => ['w1_name', 'w1_addr', 'w2_name', 'w2_addr'],
+            'Guarantors'      => ['g1_name', 'g1_id', 'g1_addr', 'g2_name', 'g2_id', 'g2_addr', 'g3_name', 'g3_id', 'g3_addr', 'g4_name', 'g4_id', 'g4_addr'],
         ];
         $base = [
             ['Name', (string) $rec['name'], false], ['Mobile', (string) $rec['phone'], false], ['E-mail', (string) ($rec['email'] ?? ''), false],
@@ -200,6 +202,7 @@ if ($blank === '') {
         }
         $recLang = (string) ($rec['lang'] ?? '');
         $fv = static fn(string $n): string => trim((string) ($f[$n] ?? ''));
+        $wit = [[$fv('w1_name'), $canKyc ? $fv('w1_addr') : ''], [$fv('w2_name'), $canKyc ? $fv('w2_addr') : '']];
         $party = $isOrg ? [
             ['कम्पनीको नाम · Company', (string) $rec['name']],
             ['दर्ता नं. · PAN / VAT · Registration · tax no.', trim($fv('p_reg') . ($fv('p_tax') !== '' ? ' · ' . $fv('p_tax') : ''))],
@@ -254,9 +257,13 @@ if ($blank === '') {
             ['Previous employer', trim((string) ($rec['prev_employer'] ?? '') . ((string) ($rec['prev_role'] ?? '') !== '' ? ' · ' . $rec['prev_role'] : '')), false],
         ];
         $refRows = [];
-        foreach (is_array($refs) ? array_slice($refs, 0, 3) : [] as $i => $r) {
+        $wi = 0;
+        foreach (is_array($refs) ? array_slice($refs, 0, 4) : [] as $i => $r) {
+            if (is_array($r) && (string) ($r['relation'] ?? '') === 'witness' && $wi < 2) {
+                $wit[$wi++] = [(string) ($r['name'] ?? ''), $canKyc ? (string) ($r['phone'] ?? '') : ''];
+            }
             if (is_array($r) && trim(implode('', array_map('strval', $r))) !== '') {
-                $refRows[] = ['Reference ' . ($i + 1), implode(' · ', array_filter(array_map('strval', [$r['name'] ?? '', $r['phone'] ?? '', $r['relation'] ?? ($r['rel'] ?? '')]))), false];
+                $refRows[] = [['guarantor' => 'Guarantor', 'witness' => 'Witness'][(string) ($r['relation'] ?? '')] ?? 'Reference ' . ($i + 1), implode(' · ', array_filter(array_map('strval', [$r['name'] ?? '', $r['phone'] ?? '', $r['relation'] ?? ($r['rel'] ?? '')]))), false];
             }
         }
         $refRows[] = ['Emergency contact', implode(' · ', array_filter([(string) ($rec['emergency_contact_name'] ?? ''), (string) ($rec['emergency_contact_phone'] ?? ''), (string) ($rec['emergency_relation'] ?? '')])), false];
@@ -371,9 +378,23 @@ $kindBadge = ['staff' => 'कर्मचारी · STAFF', 'agent' => 'एज
 $kindShort = ['staff' => 'कर्मचारी · STAFF', 'agent' => 'एजेन्ट · AGENT', 'partner' => 'साझेदार · PARTNER'][$kind] ?? '';   // the letterhead's corner
 $shortUrl  = static fn(string $p): string => (string) preg_replace('~^https?://(www\.)?~i', '', appUrl($p));
 $qrImg = '';
+/* 23 Oct 2026 (owner: "unique agreement ID and verification QR"): a filled agreement's QR opens
+   verify-agreement.php, which shows whether THIS agreement is in force right now; a blank form's QR
+   still opens the online form. */
+$verifyUrl = '';
+$standing  = null;
+if ($blank === '' && $ref !== '') {
+    require_once INCLUDE_PATH . '/agreementverify.php';
+    $verifyUrl = AgreementVerify::url($ref);
+    try {
+        $standing = AgreementVerify::standing($ref);
+    } catch (Throwable $e) {
+        $standing = null;
+    }
+}
 if ($agrDoc !== null) {
     try {
-        $qrImg = QrCode::dataUri(appUrl($blank !== '' ? $agrDoc[2] : $agrDoc[1]), 4, 2);
+        $qrImg = QrCode::dataUri($verifyUrl !== '' ? $verifyUrl : appUrl($blank !== '' ? $agrDoc[2] : $agrDoc[1]), 4, 2);
     } catch (Throwable $e) {
         $qrImg = '';
     }
@@ -389,7 +410,7 @@ if ($party === []) {
 /* the same page in another language: the query this page was opened with (public: kind or mine only) */
 $q = $public ? ($mine ? ['mine' => 1] : ['kind' => $kind]) : ($blank !== '' ? ['blank' => $blank] : ['type' => $type, 'id' => $id]);
 $langHref = static fn(string $l): string => '?' . http_build_query($q + ['lang' => $l]);
-$footRef = ($ref !== '' ? 'Ref <b>' . $h($ref) . '</b>' : 'फारम नं. · Form no. ________') . ($seal !== '' ? ' · Seal <b>' . $h($seal) . '</b>' : '');
+$footRef = ($ref !== '' ? 'Agreement No. <b>' . $h($ref) . '</b>' : 'फारम नं. · Form no. ________') . ($seal !== '' ? ' · Seal <b>' . $h($seal) . '</b>' : '');
 
 $autoPrint = isset($_GET['print']);
 header('Content-Type: text/html; charset=utf-8');
@@ -474,6 +495,10 @@ td.v.m{color:#8A96AD;font-weight:500}
 .agr .u{font-family:Consolas,monospace;color:#0F1B33;word-break:break-all}
 .agr img{width:24mm;height:24mm;image-rendering:pixelated;display:block}
 .agr .qt{font-size:9.5px;text-align:center;color:#3A4A66}
+.vst{display:inline-block;margin-top:6px;padding:5px 12px;border-radius:6px;font-size:11.5px;font-weight:700;border:1.5px solid}
+.vst.ok{color:#0B6B47;border-color:#0B6B47;background:#E9F7F1}
+.vst.pend{color:#8A5200;border-color:#C27A12;background:#FFF5E6}
+.vst.bad{color:#A3231A;border-color:#A3231A;background:#FDECEA}
 .parties td.l{width:34%}
 .parties td.v{height:7.5mm}
 .sec{margin:8px 0 3px;font-size:12px;font-weight:800;color:var(--k);border-bottom:1px solid #D5DCE8;padding-bottom:2px}
@@ -583,10 +608,20 @@ td.v.m{color:#8A96AD;font-weight:500}
     <div class="big">सम्झौता-पत्र · AGREEMENT</div>
     <div class="ti"><?= $h($agrDoc[0]) ?></div>
     <div class="sub">यो सम्झौता <?= $h($co['legal']) ?> (पहिलो पक्ष) र तल लेखिएको <?= $h($agrDoc[3]) ?> (दोस्रो पक्ष) बीच भएको हो। · This agreement is between the Company (first party) and the <?= $h($kind === 'partner' ? 'partner company' : ($kind === 'staff' ? 'staff member' : 'agent')) ?> below (second party).</div>
+    <?php if ($standing !== null):
+        $vs = [
+            'in_force'  => ['ok', '✔ स्वीकृत · VERIFIED — approved by the office' . ($standing['approved'] !== '' ? ' ' . $fmtD($standing['approved']) : '')],
+            'received'  => ['pend', '⏳ कार्यालयको स्वीकृति बाँकी · PENDING office approval — not in force yet'],
+            'suspended' => ['bad', '⛔ निलम्बित · SUSPENDED'],
+            'ended'     => ['bad', '⛔ समाप्त · ENDED'],
+            'refused'   => ['bad', '⛔ स्वीकार भएन · NOT ACCEPTED'],
+        ][$standing['state']] ?? null; ?>
+    <div class="vst <?= $vs !== null ? $vs[0] : 'pend' ?>">सम्झौता नं. · Agreement No. <b><?= $h($ref) ?></b><?= $vs !== null ? ' · ' . $h($vs[1]) : '' ?></div>
+    <?php endif; ?>
     <div class="agr" style="text-align:left">
       <div style="flex:1;min-width:0"><b>अनलाइन पढ्नुहोस् र सही गर्नुहोस् · Read and sign online:</b><br><span class="u"><?= $h($shortUrl($agrDoc[1])) ?></span><br>
-        <?php if ($blank !== ''): ?>यो फारम मोबाइलमै भर्न सकिन्छ · Fill this form online:<br><span class="u"><?= $h($shortUrl($agrDoc[2])) ?></span><?php else: ?>कागजमा सही गर्ने भए हरेक पानामा छोटो सही, अन्तिममा पूरा सही र औंठाछाप · On paper: initials on every page, full signature and thumbprint at the end.<?php endif; ?></div>
-      <?php if ($qrImg !== ''): ?><div><img src="<?= $h($qrImg) ?>" alt="QR"><div class="qt"><?= $blank !== '' ? 'स्क्यान: अनलाइन फारम' : 'स्क्यान: सम्झौता' ?></div></div><?php endif; ?>
+        <?php if ($blank !== ''): ?>यो फारम मोबाइलमै भर्न सकिन्छ · Fill this form online:<br><span class="u"><?= $h($shortUrl($agrDoc[2])) ?></span><?php else: ?><?php if ($verifyUrl !== ''): ?>सक्कल हो कि होइन QR स्क्यान गरी जाँच्नुहोस् · Scan the QR to check this agreement is genuine and in force.<br><?php endif; ?>कागजमा सही गर्ने भए हरेक पानामा छोटो सही, अन्तिममा पूरा सही र औंठाछाप · On paper: initials on every page, full signature and thumbprint at the end.<?php endif; ?></div>
+      <?php if ($qrImg !== ''): ?><div><img src="<?= $h($qrImg) ?>" alt="QR"><div class="qt"><?= $blank !== '' ? 'स्क्यान: अनलाइन फारम' : ($verifyUrl !== '' ? 'स्क्यान: प्रमाणीकरण · Verify' : 'स्क्यान: सम्झौता') ?></div></div><?php endif; ?>
     </div>
   </div>
 
@@ -625,10 +660,10 @@ td.v.m{color:#8A96AD;font-weight:500}
     </div>
   </div>
   <div class="blk sgrid" style="margin-top:8px">
-    <div class="sbox"><b>साक्षी १ · Witness 1</b>
-      <div class="ln"><span>नाम · Name</span><i></i></div><div class="ln"><span>ठेगाना · Address</span><i></i></div><div class="ln"><span>सही · Signature</span><i></i></div></div>
-    <div class="sbox"><b>साक्षी २ · Witness 2</b>
-      <div class="ln"><span>नाम · Name</span><i></i></div><div class="ln"><span>ठेगाना · Address</span><i></i></div><div class="ln"><span>सही · Signature</span><i></i></div></div>
+    <?php foreach ([1 => 'साक्षी १ · Witness 1', 2 => 'साक्षी २ · Witness 2'] as $wn => $wl): ?>
+    <div class="sbox"><b><?= $h($wl) ?></b>
+      <div class="ln"><span>नाम · Name</span><i><?= $h($wit[$wn - 1][0]) ?></i></div><div class="ln"><span>ठेगाना / फोन · Address / phone</span><i><?= $h($wit[$wn - 1][1]) ?></i></div><div class="ln"><span>सही · Signature</span><i></i></div></div>
+    <?php endforeach; ?>
   </div>
   <?php endif; ?>
 </div>
