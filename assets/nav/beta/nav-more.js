@@ -356,10 +356,15 @@ function nearby(a) {
   if (a.f) {
     var d = 0.25;
     return getJ('/api/nav-features.php?kinds=' + a.f + '&bbox=' + [h[0] - d, h[1] - d, h[0] + d, h[1] + d].map(function (v) { return v.toFixed(4); }).join(','))
-      .then(function (j) { return (j.features || []).map(function (f) { return { name: f.n || L(a.l), lat: f.lat, lng: f.lng, x: f.x || '', d: X.hav(h, [f.lng, f.lat]) }; }).sort(function (x, y) { return x.d - y.d; }); });
+      .then(function (j) { return oneSite((j.features || []).map(function (f) { return { name: f.n || L(a.l), lat: f.lat, lng: f.lng, x: f.x || '', d: X.hav(h, [f.lng, f.lat]) }; })).sort(function (x, y) { return x.d - y.d; }); });
   }
   return getJ('/api/nav-search.php?limit=12&q=' + encodeURIComponent(a.q) + '&lat=' + h[1].toFixed(4) + '&lng=' + h[0].toFixed(4), null, 9000)
     .then(function (j) { return vegSort(a, ((j && j.results) || []).map(function (x) { return { name: x.shortName, sub: x.displayName || '', lat: +x.lat, lng: +x.lng, d: X.hav(h, [+x.lng, +x.lat]) }; }).sort(function (x, y) { return x.d - y.d; })); });
+}
+/* OSM often maps each charger of one site as its own point: one row per site (~100 m) */
+function oneSite(items) {
+  var seen = {};
+  return items.filter(function (x) { var k = x.name + '|' + x.lat.toFixed(3) + '|' + x.lng.toFixed(3); if (seen[k]) return false; seen[k] = 1; return true; });
 }
 function vegSort(a, items) {
   if (!a.veg) return items;
@@ -380,8 +385,8 @@ function alongRoute(a, cr) {
     LO = Math.min(LO, lo + 2.4); LA = Math.min(LA, la + 2.4);
     return getJ('/api/nav-features.php?kinds=' + a.f + '&bbox=' + [lo - 0.02, la - 0.02, LO + 0.02, LA + 0.02].map(function (v) { return v.toFixed(4); }).join(','))
       .then(function (j) {
-        return (j.features || []).map(function (f) { var q = ahead(f); return q ? { name: f.n || L(a.l), lat: f.lat, lng: f.lng, x: f.x || '', ahead: q.ahead, off: q.off } : null; })
-          .filter(Boolean).sort(function (x, y) { return x.ahead - y.ahead; });
+        return oneSite((j.features || []).map(function (f) { var q = ahead(f); return q ? { name: f.n || L(a.l), lat: f.lat, lng: f.lng, x: f.x || '', ahead: q.ahead, off: q.off } : null; })
+          .filter(Boolean)).sort(function (x, y) { return x.ahead - y.ahead; });
       });
   }
   var marks = [1500, 8000, 20000, 40000, 65000].filter(function (m) { return m < max + 1500; }).map(function (m) { return Math.min(a0 + m, Lr.len); });
@@ -441,7 +446,8 @@ function alTick(N) {
     if (f.k === 'speed_camera' && ah <= 450 && ah >= 80) { AL.said[f.id] = 1; say('📷', t('cam', { s: f.ms ? t('camLim', { v: f.ms }) : '' })); }
     else if (f.k === 'school' && ah <= 300 && ah >= 60) {
       AL.said[f.id] = 1;
-      if (hr >= 7 && hr < 18 && kmh > 20 && a - AL.lastSchool > 1500) { AL.lastSchool = a; say('🏫', t('school')); }
+      /* school hours, and only when moving fast enough for a warning to matter: town traffic is slow anyway */
+      if (hr >= 7 && hr < 18 && kmh > 30 && a - AL.lastSchool > 1500) { AL.lastSchool = a; say('🏫', t('school')); }
     }
   }
 }

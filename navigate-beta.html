@@ -2346,7 +2346,7 @@ function setModeTime(m, dur, dist) {
   var el = $('#mt-' + m), dl = $('#md-' + m); if (!el) return;
   el.classList.toggle('wait', dur === 'wait');
   /* five chips on a 360 px phone: "5h 46m", not "5 hr 46 min" (the full text stays in the label) */
-  el.textContent = dur === 'wait' ? '' : dur == null ? '—' : fmtDur(dur).replace(/ hr/g, 'h').replace(/ min/g, 'm').replace(/ day/g, 'd').replace(/(\d) /g, '$1');
+  el.textContent = dur === 'wait' ? '' : dur == null ? '—' : fmtDur(dur).replace(/ hrs?/g, 'h').replace(/ mins?/g, 'm').replace(/ days?/g, 'd').replace(/(\d) /g, '$1');
   if (dl) dl.textContent = dur !== 'wait' && dur != null && dist > 0 ? fmtDist(dist) : '';
   var b = el.closest('.mode');
   if (b) b.setAttribute('aria-label', MODES[m].name + (dur !== 'wait' && dur != null ? ', ' + fmtDur(dur) + (dist > 0 ? ', ' + fmtDist(dist) : '') : ''));
@@ -7209,6 +7209,6 @@ boot();
 </script>
 <script src="/assets/nav/beta/nav-guide.js?v=20261022g" defer></script>
 <script src="/assets/nav/nav-live.js?v=20261022d" defer></script>
-<script src="/assets/nav/beta/nav-more.js?v=20261022a" defer></script>
+<script src="/assets/nav/beta/nav-more.js?v=20261022b" defer></script>
 </body>
 </html>
