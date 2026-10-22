@@ -177,7 +177,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   <!-- 1 Basics -->
   <section class="card step" data-step="basics" data-title="आधारभूत · Basics">
     <h2><i>1</i>👤 तपाईंको विवरण · About you</h2>
-    <label class="f"><span>पूरा नाम · Full name <em>*</em></span><input type="text" name="full_name" id="full_name" autocomplete="name" maxlength="120" required>
+    <p class="hint">❓ हरेक बाकसमा "जस्तै:" उदाहरण छ — त्यस्तै गरी आफ्नो विवरण भर्नुहोस्। अड्किए कार्यालयमा फोन गर्नुहोस्। · Each box shows an example.</p>
+    <label class="f"><span>पूरा नाम · Full name <em>*</em></span><input type="text" name="full_name" id="full_name" autocomplete="name" maxlength="120" required placeholder="जस्तै: Ram Bahadur Thapa">
       <small>परिचयपत्रमा जस्तो लेखिएको छ, ठ्याक्कै त्यस्तै · exactly as on your ID</small></label>
     <label class="f"><span>मोबाइल (WhatsApp) · Mobile <em>*</em></span>
       <div class="row"><select name="cc" id="cc" aria-label="Country code"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>
@@ -287,7 +288,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     <h2><i>6</i>🧰 अनुभव · Experience</h2>
     <label class="f"><span>यो काममा कति वर्षको अनुभव? · Years of experience</span><input type="number" name="experience_years" id="experience_years" min="0" max="50" inputmode="numeric" value="0"></label>
     <div class="two">
-      <label class="f"><span>पहिले कहाँ काम गर्नुभयो? · Previous employer</span><input type="text" name="prev_employer" id="prev_employer" maxlength="120"></label>
+      <label class="f"><span>पहिले कहाँ काम गर्नुभयो? · Previous employer</span><input type="text" name="prev_employer" id="prev_employer" maxlength="120" placeholder="जस्तै: Bheri Yatayat, Nepalgunj"></label>
       <label class="f"><span>के काम? · Previous job</span><input type="text" name="prev_role" id="prev_role" maxlength="80"></label>
     </div>
     <div class="shot">
@@ -302,19 +303,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     <p class="hint">तपाईंलाई चिन्ने मान्छे (आफन्त बाहेक भए राम्रो) — कार्यालयले फोन गर्न सक्छ।</p>
     <h3>चिनारी १ · Reference 1 <em style="color:var(--bad);font-style:normal">*</em></h3>
     <div class="two">
-      <label class="f"><span>नाम · Name</span><input type="text" name="ref1_name" id="ref1_name" maxlength="80"></label>
+      <label class="f"><span>नाम · Name</span><input type="text" name="ref1_name" id="ref1_name" maxlength="80" placeholder="जस्तै: Hari Prasad Sharma"></label>
       <label class="f"><span>फोन · Phone</span><input type="tel" name="ref1_phone" id="ref1_phone" inputmode="numeric" maxlength="14"></label>
     </div>
     <label class="f"><span>नाता · Relation</span><input type="text" name="ref1_relation" id="ref1_relation" maxlength="40" placeholder="जस्तै: पहिलेको मालिक, छिमेकी"></label>
     <h3>चिनारी २ · Reference 2 <small style="color:var(--mut);font-weight:700">(ऐच्छिक · optional)</small></h3>
     <div class="two">
-      <label class="f"><span>नाम · Name</span><input type="text" name="ref2_name" id="ref2_name" maxlength="80"></label>
+      <label class="f"><span>नाम · Name</span><input type="text" name="ref2_name" id="ref2_name" maxlength="80" placeholder="जस्तै: Gopal Thapa"></label>
       <label class="f"><span>फोन · Phone</span><input type="tel" name="ref2_phone" id="ref2_phone" inputmode="numeric" maxlength="14"></label>
     </div>
     <label class="f"><span>नाता · Relation</span><input type="text" name="ref2_relation" id="ref2_relation" maxlength="40"></label>
     <h3>🚨 आपतकालीन सम्पर्क · Emergency contact <em style="color:var(--bad);font-style:normal">*</em></h3>
     <div class="two">
-      <label class="f"><span>नाम · Name</span><input type="text" name="emergency_name" id="emergency_name" maxlength="80"></label>
+      <label class="f"><span>नाम · Name</span><input type="text" name="emergency_name" id="emergency_name" maxlength="80" placeholder="जस्तै: Sita Kumari Thapa"></label>
       <label class="f"><span>फोन · Phone</span><input type="tel" name="emergency_phone" id="emergency_phone" inputmode="numeric" maxlength="14"></label>
     </div>
     <label class="f"><span>नाता · Relation</span><input type="text" name="emergency_relation" id="emergency_relation" maxlength="40" placeholder="जस्तै: बुबा, श्रीमती, दाइ"></label>
@@ -324,12 +325,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   <section class="card step" data-step="bank" data-title="बैंक · Bank" hidden>
     <h2><i>8</i>🏦 बैंक खाता · Bank account (salary)</h2>
     <p class="hint">तलब बैंक/UPI मा मात्र जान्छ। कार्यालयले मात्र देख्छ — वेबसाइटमा कहिल्यै देखिँदैन। अहिले थाहा छैन भने खाली छोड्नुहोस्, काम सुरु गर्दा दिन सकिन्छ।</p>
-    <label class="f"><span>खातावालाको नाम · Account holder</span><input type="text" name="bank_holder" id="bank_holder" maxlength="80" autocomplete="off"></label>
+    <label class="f"><span>खातावालाको नाम · Account holder</span><input type="text" name="bank_holder" id="bank_holder" maxlength="80" autocomplete="off" placeholder="जस्तै: Ram Bahadur Thapa"></label>
     <div class="two">
       <label class="f"><span>बैंक · Bank</span><input type="text" name="bank_name" id="bank_name" maxlength="80" autocomplete="off" placeholder="जस्तै: Nabil Bank"></label>
       <label class="f"><span>शाखा · Branch</span><input type="text" name="bank_branch" id="bank_branch" maxlength="80" autocomplete="off" placeholder="जस्तै: Nepalgunj"></label>
     </div>
-    <label class="f"><span>खाता नम्बर · Account number</span><input type="text" name="bank_account" id="bank_account" maxlength="30" inputmode="numeric" autocomplete="off"></label>
+    <label class="f"><span>खाता नम्बर · Account number</span><input type="text" name="bank_account" id="bank_account" maxlength="30" inputmode="numeric" autocomplete="off" placeholder="जस्तै: 01234567890123"></label>
     <label class="f"><span>IFSC (India) / SWIFT</span><input type="text" name="bank_ifsc" id="bank_ifsc" maxlength="11" autocomplete="off" style="text-transform:uppercase"></label>
   </section>
 
@@ -365,7 +366,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   </section>
 
   <p class="msg bad" id="msg" hidden role="alert"></p>
-  <p class="foot">🔒 परिचयपत्र, बैंक र सही S Hari Global कार्यालयले मात्र हेर्छ। · <a href="/agreements/staff-agreement.html">कर्मचारी सम्झौता · Staff agreement</a> · <a href="/">होम · Home</a></p>
+  <p class="foot"><a href="/agreements/form.php?kind=staff" target="_blank" rel="noopener">📄 हातले भर्ने फारम (A4) · Printable form</a><br>🔒 परिचयपत्र, बैंक र सही S Hari Global कार्यालयले मात्र हेर्छ। · <a href="/agreements/staff-agreement.html">कर्मचारी सम्झौता · Staff agreement</a> · <a href="/">होम · Home</a></p>
   <div class="nav"><div class="nav-in">
     <button type="button" class="btn back" id="back" hidden>← पछाडि</button>
     <button type="submit" class="btn next" id="next">अगाडि · Next →</button>
@@ -377,6 +378,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   <h2>आवेदन पुग्यो! · Application received</h2>
   <div class="ref" id="ref"></div>
   <p id="doneMsg" style="margin:0 0 14px"></p>
+  <a class="btn" href="/agreements/form.php?mine=1" target="_blank" rel="noopener">📄 भरेको फारम डाउनलोड (PDF / JPG) · Your filled form</a>
   <a class="btn wa" id="doneWa" href="#" target="_blank" rel="noopener" hidden>💬 कार्यालयलाई WhatsApp गर्नुहोस् · WhatsApp the office</a>
   <a class="btn" href="/agreements/staff-agreement.html">📜 कर्मचारी सम्झौता · Staff agreement</a>
   <a class="btn ghost" href="/">🏠 होम पेज · Home</a>

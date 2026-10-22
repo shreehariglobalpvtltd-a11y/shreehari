@@ -196,6 +196,8 @@ try {
     }
 
     $made = AgentApplications::create($clean, $ip);
+    // 22 Oct 2026: this browser may open its own filled A4 form at /agreements/form.php?mine=1
+    $_SESSION['a4_mine'] = ['type' => 'agent', 'id' => (int) $made['id'], 't' => time()];
 
     // 22 Oct 2026: the simple form's "hi VERIFY …" WhatsApp check proved this
     // number in this session -> the office sees "WhatsApp verified". Never a gate:

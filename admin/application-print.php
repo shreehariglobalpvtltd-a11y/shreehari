@@ -30,16 +30,51 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 
+/* 22 Oct 2026 (owner: "print garera ni bharna milos, online ni bharna milos ...
+   bhareko form chha bhane tyo bhareko form rakhdeu"): agreements/form.php
+   includes this page in PUBLIC mode (SHG_A4_PUBLIC) for two things only —
+   ?kind=staff|agent|partner = the blank form for anyone to print and fill by
+   hand, and ?mine=1 = the person's OWN application they just sent from this
+   browser (api/staff-apply.php / api/agreement-apply.php leave
+   $_SESSION['a4_mine'] after a successful send, good for 6 hours). Nothing
+   about anyone else is reachable that way, and nothing travels in the URL. */
+$public = defined('SHG_A4_PUBLIC');
+$mine   = false;
+if ($public) {
+    $kindQ = (string) ($_GET['kind'] ?? '');
+    $own   = is_array($_SESSION['a4_mine'] ?? null) ? $_SESSION['a4_mine'] : null;
+    if (!empty($_GET['mine']) && $own !== null && (int) ($own['t'] ?? 0) > time() - 6 * 3600 && (int) ($own['id'] ?? 0) > 0) {
+        $mine = true;
+        $_GET['type'] = (string) ($own['type'] ?? '') === 'staff' ? 'staff' : 'agent';
+        $_GET['id']   = (string) (int) $own['id'];
+        unset($_GET['blank']);
+    } else {
+        $_GET['blank'] = in_array($kindQ, ['agent', 'partner', 'staff'], true) ? $kindQ : 'staff';
+    }
+}
+
 $blank = (string) ($_GET['blank'] ?? '');
 $blank = in_array($blank, ['agent', 'partner', 'staff'], true) ? $blank : '';
 $type  = $blank !== '' ? ($blank === 'staff' ? 'staff' : 'agent') : ((string) ($_GET['type'] ?? '') === 'staff' ? 'staff' : 'agent');
-$admin = admin_boot($type === 'staff' ? 'drivers.view' : 'customers.view');
+$admin = $public ? [] : admin_boot($type === 'staff' ? 'drivers.view' : 'customers.view');
 
 $role   = (string) ($admin['role'] ?? '');
-$canKyc = Auth::isSuperadmin() || $role === 'manager';
+$canKyc = $mine || (!$public && (Auth::isSuperadmin() || $role === 'manager'));   // the applicant sees their own details in full
 $selfId = (int) ($admin['id'] ?? 0);
 $h      = static fn($v): string => Security::e((string) ($v ?? ''));
 $id     = (int) ($_GET['id'] ?? 0);
+/* a staff file for this page: the office gets the 15-minute signed link; the
+   applicant's own copy embeds the bytes (no admin session to sign for) */
+$staffImg = static function (array $rec, string $slot, bool $thumb = false) use ($mine, $selfId): string {
+    if (!$mine) {
+        return StaffApps::fileUrl((int) $rec['id'], $slot, $selfId, $thumb);
+    }
+    $col = StaffApps::slotColumn($slot);
+    $abs = $col !== null && (string) ($rec[$col] ?? '') !== '' ? StaffApps::absPath((string) $rec[$col]) : null;
+    $bin = $abs !== null ? (string) @file_get_contents($abs) : '';
+    $mt  = $bin !== '' ? (string) ((new finfo(FILEINFO_MIME_TYPE))->buffer($bin) ?: '') : '';
+    return in_array($mt, ['image/jpeg', 'image/png'], true) ? 'data:' . $mt . ';base64,' . base64_encode($bin) : '';
+};
 $co     = Settings::companyFor(null, 'IN');
 $logo   = Brand::markUrl(120);
 $isImg  = static fn($v): bool => is_string($v) && preg_match('~^data:image/(png|jpe?g|webp);base64,~', $v) === 1;
@@ -203,7 +238,7 @@ if ($blank === '') {
             }
         }
         if ($canKyc && (string) ($rec['photo_path'] ?? '') !== '') {
-            $photo = StaffApps::fileUrl((int) $rec['id'], 'photo', $selfId);
+            $photo = $staffImg($rec, 'photo');
         }
         $status = [
             ['Application', StaffApps::STATUS_LABELS[(string) $rec['status']] ?? (string) $rec['status'], (string) $rec['status'] === 'approved'],
@@ -215,11 +250,11 @@ if ($blank === '') {
             foreach (['id_front', 'id_back', 'license'] as $slot) {
                 $col = StaffApps::slotColumn($slot);
                 if ($col !== null && preg_match('~\.(jpe?g|png)$~', (string) ($rec[$col] ?? '')) === 1) {
-                    $signs[] = [StaffApps::FILE_LABELS[$slot], StaffApps::fileUrl((int) $rec['id'], $slot, $selfId, true), 'as sent with the form'];
+                    $signs[] = [StaffApps::FILE_LABELS[$slot], $staffImg($rec, $slot, true), 'as sent with the form'];
                 }
             }
             if ((string) ($rec['signature_path'] ?? '') !== '') {
-                $signs[] = ['Signature on the form', StaffApps::fileUrl((int) $rec['id'], 'signature', $selfId), 'drawn on the phone · ' . $fmtDT($rec['created_at'] ?? null)];
+                $signs[] = ['Signature on the form', $staffImg($rec, 'signature'), 'drawn on the phone · ' . $fmtDT($rec['created_at'] ?? null)];
             }
         }
         foreach (StaffApps::signs((int) $rec['id']) as $sg) {
@@ -231,34 +266,35 @@ if ($blank === '') {
     $seal = strtoupper(substr(hash_hmac('sha256', $sealSrc, APP_KEY . '|application-print'), 0, 16));
     $seal = implode('-', str_split($seal, 4));
     Logger::audit('application.print', $type === 'staff' ? 'staff_application' : 'agent_application', $ref, null, null,
-        'A4 application printed by admin #' . $selfId . ($canKyc ? ' (full KYC)' : ' (masked)'));
+        $mine ? 'A4 copy opened by the applicant (own browser session, right after sending)'
+              : 'A4 application printed by admin #' . $selfId . ($canKyc ? ' (full KYC)' : ' (masked)'));
 } else {
     $kind = $blank;
     $blankRows = static fn(array $labels): array => array_map(static fn($l) => [$l, '', false], $labels);
     if ($blank === 'staff') {
         $sections = [
-            'Applicant' => $blankRows(['Full name', 'Job applied for (driver / conductor / helper / office / accountant / mechanic / other)', 'Mobile', 'WhatsApp', 'E-mail', 'Date of birth', 'Gender']),
-            'Address' => $blankRows(['Permanent address', 'Current address', 'District · province · country']),
-            'Identity' => $blankRows(['ID type and number', 'Driving licence no. · category · valid to (drivers)']),
-            'Education & experience' => $blankRows(['Qualification', 'Experience (years) · previous employer']),
-            'References' => $blankRows(['Reference 1 (name · phone)', 'Reference 2 (name · phone)', 'Emergency contact (name · phone · relation)']),
-            'Bank' => $blankRows(['Account holder · bank · branch', 'Account number · IFSC / SWIFT']),
+            'आवेदक · Applicant' => $blankRows(['पूरा नाम · Full name', 'कुन काम · Job (चालक / कन्डक्टर / हेल्पर / अफिस / लेखापाल / मेकानिक / अन्य)', 'मोबाइल · Mobile', 'WhatsApp', 'इमेल · E-mail', 'जन्म मिति (ईस्वी) · Date of birth (AD)', 'लिङ्ग · Gender']),
+            'ठेगाना · Address' => $blankRows(['स्थायी ठेगाना · Permanent address', 'हालको ठेगाना · Current address', 'जिल्ला · प्रदेश · देश · District · province · country']),
+            'परिचयपत्र · Identity' => $blankRows(['परिचयपत्र र नम्बर · ID type and number', 'लाइसेन्स नं. · वर्ग · म्याद (चालक) · Driving licence no. · category · valid to']),
+            'शिक्षा र अनुभव · Education & experience' => $blankRows(['शिक्षा · Qualification', 'अनुभव (वर्ष) · पहिलेको काम · Experience · previous employer']),
+            'चिनारी · References' => $blankRows(['चिनारी १ (नाम · फोन) · Reference 1', 'चिनारी २ (नाम · फोन) · Reference 2', 'आपतकालीन सम्पर्क (नाम · फोन · नाता) · Emergency contact']),
+            'बैंक · Bank' => $blankRows(['खातावाला · बैंक · शाखा · Account holder · bank · branch', 'खाता नम्बर · IFSC / SWIFT · Account number']),
         ];
     } elseif ($blank === 'partner') {
         $sections = [
-            'Company' => $blankRows(['Company name', 'Company type (Pvt. Ltd. / firm / other)', 'Registration no. (with certificate copy)', 'PAN / VAT / GST no. (with certificate copy)', 'Registered office address', 'Company phone · e-mail']),
-            'Authorised representative' => $blankRows(['Name', 'Designation', 'Mobile', 'ID type and number (copy attached)']),
-            'Work' => $blankRows(['Work area / office', 'Education & experience of the company']),
-            'Bank / payment' => $blankRows(['Account name', 'Bank · branch', 'Account number · IFSC', 'UPI']),
-            'Witnesses' => $blankRows(['Witness 1 (name · address)', 'Witness 2 (name · address)']),
+            'कम्पनी · Company' => $blankRows(['कम्पनीको नाम · Company name', 'प्रकार (प्रा. लि. / फर्म / अन्य) · Company type', 'दर्ता नं. (प्रमाणपत्र सहित) · Registration no.', 'PAN / VAT / GST नं. (प्रमाणपत्र सहित)', 'रजिस्टर्ड कार्यालय ठेगाना · Registered office', 'कम्पनीको फोन · इमेल · Company phone · e-mail']),
+            'अधिकृत प्रतिनिधि · Authorised representative' => $blankRows(['नाम · Name', 'पद · Designation', 'मोबाइल · Mobile', 'परिचयपत्र र नम्बर (प्रतिलिपि सहित) · ID type and number']),
+            'काम · Work' => $blankRows(['काम गर्ने ठाउँ / कार्यालय · Work area / office', 'कम्पनीको अनुभव · Company experience']),
+            'बैंक / भुक्तानी · Bank / payment' => $blankRows(['खातावालाको नाम · Account name', 'बैंक · शाखा · Bank · branch', 'खाता नम्बर · IFSC · Account number', 'UPI / eSewa / Khalti']),
+            'साक्षी · Witnesses' => $blankRows(['साक्षी १ (नाम · ठेगाना) · Witness 1', 'साक्षी २ (नाम · ठेगाना) · Witness 2']),
         ];
     } else {
         $sections = [
-            'Applicant' => $blankRows(['Full name', 'Mobile', 'E-mail', 'Date of birth', 'Occupation', 'Work area', 'Home address']),
-            'Identity' => $blankRows(['ID type and number (copy attached)', 'PAN']),
-            'Education & experience' => $blankRows(['Education', 'Experience']),
-            'Bank / payment' => $blankRows(['Account name', 'Bank · branch', 'Account number · IFSC', 'UPI']),
-            'Witnesses' => $blankRows(['Witness 1 (name · address)', 'Witness 2 (name · address)']),
+            'आवेदक · Applicant' => $blankRows(['पूरा नाम · Full name', 'मोबाइल · Mobile', 'इमेल · E-mail', 'जन्म मिति · Date of birth', 'पेशा · Occupation', 'काम गर्ने ठाउँ · Work area', 'घरको ठेगाना · Home address']),
+            'परिचयपत्र · Identity' => $blankRows(['परिचयपत्र र नम्बर (प्रतिलिपि सहित) · ID type and number', 'PAN']),
+            'शिक्षा र अनुभव · Education & experience' => $blankRows(['शिक्षा · Education', 'अनुभव · Experience']),
+            'बैंक / भुक्तानी · Bank / payment' => $blankRows(['खातावालाको नाम · Account name', 'बैंक · शाखा · Bank · branch', 'खाता नम्बर · IFSC · Account number', 'UPI / eSewa / Khalti']),
+            'साक्षी · Witnesses' => $blankRows(['साक्षी १ (नाम · ठेगाना) · Witness 1', 'साक्षी २ (नाम · ठेगाना) · Witness 2']),
         ];
     }
     $seal = '';
@@ -339,10 +375,17 @@ td.v.m{color:#8A96AD;font-weight:500}
 </head>
 <body>
 <div class="bar">
-  <button class="pri" type="button" id="doPrint">🖨 Print / Save as PDF (A4)</button>
-  <?php if ($blank === ''): ?><a href="<?= $type === 'staff' ? 'staff-applications.php?id=' . (int) $id . '#detail' : 'agreements.php?tab=apps&amp;id=' . (int) $id . '#detail' ?>">← Back to the application</a><?php endif; ?>
-  <a href="?blank=<?= $h($kind === 'partner' ? 'partner' : ($kind === 'staff' ? 'staff' : 'agent')) ?>">Blank form</a>
-  <small>In the print dialog choose “Save as PDF”, paper A4, margins Default.<?= $blank === '' && !$canKyc ? ' Photo, ID, signatures and bank details print only for a manager.' : '' ?></small>
+  <button class="pri" type="button" id="doPrint">🖨 छाप्नुहोस् · Print</button>
+  <button class="pri" type="button" id="doPdf">📄 PDF</button>
+  <button class="pri" type="button" id="doJpg">🖼 JPG</button>
+  <?php if ($public): ?>
+    <?php foreach (['staff' => 'कर्मचारी · Staff', 'agent' => 'एजेन्ट · Agent', 'partner' => 'साझेदार · Partner'] as $kk => $kl): ?><a href="?kind=<?= $h($kk) ?>"<?= !$mine && $kind === $kk ? ' style="outline:2px solid #F07A2E"' : '' ?>><?= $h($kl) ?></a><?php endforeach; ?>
+    <a href="/agreements/">← <?= $h('फर्कनुहोस् · Back') ?></a>
+  <?php else: ?>
+    <?php if ($blank === ''): ?><a href="<?= $type === 'staff' ? 'staff-applications.php?id=' . (int) $id . '#detail' : 'agreements.php?tab=apps&amp;id=' . (int) $id . '#detail' ?>">← Back to the application</a><?php endif; ?>
+    <a href="?blank=<?= $h($kind === 'partner' ? 'partner' : ($kind === 'staff' ? 'staff' : 'agent')) ?>">Blank form</a>
+  <?php endif; ?>
+  <small id="exMsg"><?= $mine ? 'तपाईंले भर्नुभएको फारम — PDF वा JPG मा राख्नुहोस्। · Your filled form.' : ($blank !== '' ? 'छापेर हातले भर्नुहोस्, वा अनलाइन भर्नुहोस्: ' . ($kind === 'staff' ? '/agreements/staff.html' : '/agreements/apply.html' . ($kind === 'partner' ? '?kind=partner' : '')) . ' · Print and fill by hand, or apply online.' : 'In the print dialog choose “Save as PDF”, paper A4, margins Default.' . (!$canKyc ? ' Photo, ID, signatures and bank details print only for a manager.' : '')) ?></small>
 </div>
 <div class="sheet">
   <div class="wm"><?= $h($co['name']) ?></div>
@@ -362,7 +405,7 @@ td.v.m{color:#8A96AD;font-weight:500}
       <div class="meta">
         <?php if ($ref !== ''): ?><span>Ref <b><?= $h($ref) ?></b></span><?php endif; ?>
         <span>Printed <b><?= $h(date('d M Y, H:i')) ?></b></span>
-        <?php if ($blank === ''): ?><span>By <b><?= $h(($admin['full_name'] ?? '') ?: ($admin['username'] ?? '')) ?></b></span><?php else: ?><span>Form no. <b>_____________</b></span><?php endif; ?>
+        <?php if ($mine): ?><span>Sent online by <b>the applicant</b></span><?php elseif ($blank === ''): ?><span>By <b><?= $h(($admin['full_name'] ?? '') ?: ($admin['username'] ?? '')) ?></b></span><?php else: ?><span>Form no. <b>_____________</b></span><?php endif; ?>
       </div>
     </div>
     <div class="pics">
@@ -402,6 +445,65 @@ td.v.m{color:#8A96AD;font-weight:500}
 </div>
 <script>
 document.getElementById('doPrint').addEventListener('click', function () { window.print(); });
+/* 22 Oct 2026 (owner: "PDF ya JPG format ma letter head jasto A4"): the sheet
+   exactly as shown, rendered by html2canvas (cdnjs, jsdelivr fallback — the
+   same loader pattern as assets/js/11-pdf-ticket.js) and saved as one JPG or
+   as an A4 PDF cut into pages. The libraries load only on the first tap. */
+(function () {
+  var msg = document.getElementById('exMsg'), sheet = document.querySelector('.sheet');
+  var name = <?= json_encode(($ref !== '' ? $ref : 'blank-' . $kind) . '-' . date('Ymd'), JSON_UNESCAPED_SLASHES) ?>;
+  function load(urls) {
+    return new Promise(function (ok, bad) {
+      var i = 0;
+      (function next() {
+        if (i >= urls.length) { bad(new Error('load')); return; }
+        var s = document.createElement('script'); s.src = urls[i++]; s.onload = ok; s.onerror = next; document.head.appendChild(s);
+      })();
+    });
+  }
+  function libs() {
+    var a = window.html2canvas ? Promise.resolve() : load(['https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js']);
+    var b = (window.jspdf && window.jspdf.jsPDF) ? Promise.resolve() : load(['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js']);
+    return Promise.all([a, b]);
+  }
+  function shot() {
+    var imgs = Array.prototype.slice.call(sheet.querySelectorAll('img'));
+    var ready = Promise.all(imgs.map(function (im) { return im.complete ? 0 : new Promise(function (r) { im.onload = im.onerror = r; }); }));
+    var fonts = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+    return Promise.all([ready, fonts]).then(function () {
+      // the A4 layout even on a phone: render as a wide window, at twice the pixels
+      return window.html2canvas(sheet, { scale: 2, backgroundColor: '#ffffff', useCORS: true, windowWidth: 1000, logging: false,
+        onclone: function (doc) { var s = doc.querySelector('.sheet'); s.style.width = '210mm'; s.style.margin = '0'; s.style.boxShadow = 'none'; } });
+    });
+  }
+  function save(blob, file) {
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file;
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  }
+  function run(kind, btn) {
+    var label = btn.textContent; btn.disabled = true; btn.textContent = '⏳ …';
+    libs().then(shot).then(function (cv) {
+      if (kind === 'jpg') {
+        return new Promise(function (r) { cv.toBlob(function (b) { save(b, name + '.jpg'); r(); }, 'image/jpeg', 0.92); });
+      }
+      var pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      var pageH = Math.floor(cv.width * 297 / 210), y = 0, first = true;
+      while (y < cv.height) {
+        var h = Math.min(pageH, cv.height - y), part = document.createElement('canvas');
+        part.width = cv.width; part.height = h;
+        var c = part.getContext('2d'); c.fillStyle = '#fff'; c.fillRect(0, 0, part.width, h); c.drawImage(cv, 0, y, cv.width, h, 0, 0, cv.width, h);
+        if (!first) pdf.addPage();
+        pdf.addImage(part.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, h * 210 / cv.width);
+        first = false; y += pageH;
+      }
+      save(pdf.output('blob'), name + '.pdf');
+    }).catch(function () {
+      if (msg) msg.textContent = 'अहिले बन्न सकेन — "छाप्नुहोस्" थिचेर "Save as PDF" रोज्नुहोस्। · Could not build it now: use Print → Save as PDF.';
+    }).then(function () { btn.disabled = false; btn.textContent = label; });
+  }
+  document.getElementById('doPdf').addEventListener('click', function () { run('pdf', this); });
+  document.getElementById('doJpg').addEventListener('click', function () { run('jpg', this); });
+})();
 <?php if ($autoPrint): ?>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 300); });<?php endif; ?>
 </script>
 </body>

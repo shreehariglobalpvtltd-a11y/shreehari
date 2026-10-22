@@ -288,6 +288,8 @@ try {
 
     try {
         $made = StaffApps::create($c, $files, $ip, $ua);
+        // 22 Oct 2026: this browser may open its own filled A4 form at /agreements/form.php?mine=1
+        $_SESSION['a4_mine'] = ['type' => 'staff', 'id' => (int) $made['id'], 't' => time()];
     } catch (StaffAppError $e) {
         Response::error($e->getMessage(), 409);
     }
