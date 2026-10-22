@@ -25,7 +25,7 @@
 'use strict';
 
 var X = null;                       /* the bridge, set in start() */
-var GV = '20261022b';
+var GV = '20261022c';
 
 /* ---------------------------------------------------------------------
    DATA
@@ -416,10 +416,10 @@ function css() {
     '.sg-logo svg{width:20px;height:20px}',
     '.sg-ttl{flex:1;min-width:0;line-height:1.2}.sg-ttl b{font:600 16px/1.2 Poppins,Inter,system-ui,sans-serif;color:var(--text,#EEF2FA);display:block}',
     '.sg-ttl small{font-size:12px;color:var(--text3,#6F7D99)}',
-    '.sg-ib{width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.06);color:var(--text2,#A8B4CC);display:grid;place-items:center;cursor:pointer;flex:none}',
+    '.sg-ib{width:44px;height:44px;border-radius:50%;border:none;background:rgba(255,255,255,.06);color:var(--text2,#A8B4CC);display:grid;place-items:center;cursor:pointer;flex:none}',
     '.sg-ib svg{width:20px;height:20px}.sg-ib.on{color:var(--gold,#D4A843);background:rgba(212,168,67,.14)}',
     '.sg-tabs{display:flex;gap:6px;padding:0 12px 8px;border-bottom:1px solid rgba(255,255,255,.06)}',
-    '.sg-tab{flex:1;height:38px;border-radius:12px;border:1px solid transparent;background:transparent;color:var(--text2,#A8B4CC);font:500 13px Inter,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}',
+    '.sg-tab{flex:1;height:44px;border-radius:12px;border:1px solid transparent;background:transparent;color:var(--text2,#A8B4CC);font:500 13px Inter,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}',
     '.sg-tab svg{width:17px;height:17px}.sg-tab.on{background:rgba(212,168,67,.13);color:var(--gold,#D4A843);border-color:rgba(212,168,67,.28)}',
     '.sg-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;padding:12px 12px 6px;display:flex;flex-direction:column;gap:10px}',
     '.sg-body>*{flex-shrink:0}',   /* an overflow:hidden card would otherwise shrink to a sliver in a long list */
@@ -477,7 +477,10 @@ function css() {
     '  display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:16px;background:rgba(14,24,44,.92);border:1px solid rgba(212,168,67,.35);',
     '  color:var(--text,#EEF2FA);font:500 13.5px Inter,system-ui,sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.4);pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '.sg-lm svg{width:16px;height:16px;color:var(--gold,#D4A843);flex:none}',
-    '.sg-empty{color:var(--text3,#6F7D99);font-size:13.5px;text-align:center;padding:18px 8px}'
+    '.sg-empty{color:var(--text3,#6F7D99);font-size:13.5px;text-align:center;padding:18px 8px}',
+    /* the small pills keep their look but take a 44 px tall tap */
+    '.sg-q,.sg-a,.sg-seg button{position:relative}',
+    '.sg-q::after,.sg-a::after,.sg-seg button::after{content:"";position:absolute;left:0;right:0;top:-6px;bottom:-6px}'
   ].join('\n');
   document.head.appendChild(st);
 }
