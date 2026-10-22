@@ -1,0 +1,25 @@
+# SHARI NAV live hub (Phase 2, 22 Oct 2026) - live/shg-live.php
+# Install:  cp deploy/shg-live/shg-live.service /etc/systemd/system/
+#           install -d -o www-data -g www-data -m 700 /var/lib/shg-live
+#           (umask 077; openssl rand -hex 32 > /var/lib/shg-live/key); chown www-data:www-data /var/lib/shg-live/key
+#           systemctl daemon-reload && systemctl enable --now shg-live
+[Unit]
+Description=SHARI NAV live hub (WebSocket fan-out for navigate.html)
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+ExecStart=/usr/bin/php /var/www/shreehariglobal.in/public_html/live/shg-live.php
+Restart=always
+RestartSec=3
+RuntimeDirectory=shg-live
+RuntimeDirectoryMode=0755
+LimitNOFILE=4096
+MemoryMax=256M
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

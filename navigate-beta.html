@@ -7173,6 +7173,8 @@ window.SHGNAV_X = {
   voUnlock: voUnlock, startGeo: startGeo, distLabel: distLabel, fmtDist: fmtDist,
   aiOpen: typeof aiOpen === 'function' ? function () { aiOpen({}); } : null,
   aiAsk: typeof aiAsk === 'function' ? function (q) { return aiAsk(q); } : null,
+  hook: typeof hook === 'function' ? hook : null,
+  closeModal: typeof closeModal === 'function' ? closeModal : null,
   openPlace: function (p) {
     S.to = Object.assign({}, p); addRecent(S.to);
     if (S.level === 'place') { renderPlace(); setTo(S.to, true); } else push('place');   /* show() skips an unchanged level */
@@ -7190,5 +7192,6 @@ boot();
 })();
 </script>
 <script src="/assets/nav/nav-guide.js?v=20261022e" defer></script>
+<script src="/assets/nav/nav-live.js?v=20261022a" defer></script>
 </body>
 </html>
