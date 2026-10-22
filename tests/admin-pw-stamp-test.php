@@ -19,7 +19,22 @@
  *   G. the 2FA door still works and its session carries the stamp;
  *   H. finishAdminSession is still the ONE place a session is written;
  *   I. (HTTP, when SHG_TEST_BASE is set) the real change-password.php, a
- *      voluntary and a forced change, two browsers each, 31 s apart.
+ *      voluntary and a forced change, two browsers each, 31 s apart — and
+ *      (re-attack) the account's WhatsApp sign-ins end at the change.
+ *  Re-attack (22 Oct 2026, same day):
+ *   J. the stamp is the password the door CHECKED: a reset landing between
+ *      the check and the session (a test trigger plays the office) no longer
+ *      hands the old password's sign-in the new stamp — office, team and
+ *      agent doors; such a session ends on its very next request;
+ *   K. 2FA: a reset between the password step and the code refuses the code;
+ *   L. WhatsApp staff sign-ins (wa_logins) end on every password change —
+ *      office credentials, team change, team reset — and a WhatsApp sign-in
+ *      still in flight with the old password (or its pending code) opens
+ *      nothing;
+ *   M. Auth::passwordChanged on this browser: new stamp + new session id,
+ *      but a session that was already out of date does not adopt the new
+ *      password;
+ *   N. every place that writes admins.password_hash calls passwordChanged.
  *
  *   php -c .claude/php-dev.ini tests/admin-pw-stamp-test.php
  *   SHG_TEST_BASE=http://localhost:8893 php -c .claude/php-dev.ini tests/admin-pw-stamp-test.php
@@ -34,6 +49,7 @@ if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
 define('SHG_APP', true);
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/teamportal.php';
+require_once INCLUDE_PATH . '/walogin.php';
 // the sign-in paths regenerate the session id, which needs headers unsent: hold the output
 ob_start();
 if (session_status() !== PHP_SESSION_ACTIVE) {
@@ -62,6 +78,75 @@ const U_H1   = PFX . 'http1';
 const U_H2   = PFX . 'http2';
 const AG_10  = '9800077791';
 const AG_INT = '977' . AG_10;
+// re-attack (J-M)
+const U_RACE_O = PFX . 'race-office';
+const U_RACE_T = PFX . 'race-team';
+const U_RACE_A = PFX . 'race-agent';
+const U_WA     = PFX . 'wa';
+const RT_10    = '9800077792';        // the team-door race agent's mobile (Nepal)
+const WA_10    = '9800077793';        // the WhatsApp agent's registered mobile (Nepal)
+const WA_INT   = '977' . WA_10;
+const WA_H1    = '+919100097011';     // handsets nobody has on file
+const WA_H2    = '+919100097012';
+const WA_H3    = '+919100097013';
+const WA_HTTP1 = '+919100097021';     // rows planted for the HTTP part
+const WA_HTTP2 = '+919100097022';
+const TRIGGERS = ['zzt_pwstamp_race', 'zzt_pwstamp_wa'];
+
+/* In memory only (no settings row is written): the WhatsApp door on, no
+   second factor for an agent, and no network driver. */
+function waOn(): void
+{
+    Settings::flush();
+    Settings::getBool('wa_login_on');
+    $rp = new ReflectionProperty(Settings::class, 'cache');
+    $c  = $rp->getValue();
+    foreach (['wa_login_on' => ['1', 'bool'], 'wa_login_otp' => ['0', 'bool'], 'wa_login_ttl_hours' => ['12', 'int'],
+              'whatsapp_driver' => ['click_to_chat', 'string']] as $k => [$v, $t]) {
+        $c[$k] = ['value' => $v, 'type' => $t, 'public' => false];
+    }
+    $rp->setValue(null, $c);
+}
+
+/** Is this handset signed in over WhatsApp as $id right now? */
+function waLive(string $handset, int $id): bool
+{
+    waOn();
+    return (int) (WaLogin::session($handset)['admin']['id'] ?? 0) === $id;
+}
+
+/** A WhatsApp "login <username> <password>"; true when it opened a session. */
+function waLogin(string $handset, string $user, string $pw): bool
+{
+    waOn();
+    Database::run("DELETE FROM rate_limits WHERE bucket LIKE 'wa_login%'");
+    $r = WaLogin::handle($handset, 'login ' . $user . ' ' . $pw);
+    return $r !== null && str_starts_with((string) $r['text'], '✅');
+}
+
+/** A test-only trigger (DDL does not go through prepared statements); false = the database refused it. */
+function trigger(string $sql): bool
+{
+    try {
+        Database::pdo()->exec($sql);
+        return true;
+    } catch (Throwable $e) {
+        echo "  SKIP  could not create a test trigger: " . $e->getMessage() . "\n";
+        return false;
+    }
+}
+
+function dropTriggers(): void
+{
+    foreach (TRIGGERS as $t) {
+        try { Database::pdo()->exec('DROP TRIGGER IF EXISTS ' . $t); } catch (Throwable $e) {}
+    }
+}
+
+function hashOf(int $id): string
+{
+    return (string) Database::scalar('SELECT password_hash FROM admins WHERE id = :i', ['i' => $id], '');
+}
 
 function fresh(): void
 {
@@ -108,13 +193,23 @@ function setPw(int $id, string $pw): void
 
 function cleanup(): void
 {
+    dropTriggers();
     $ids = array_map('intval', array_column(Database::fetchAll('SELECT id FROM admins WHERE username LIKE :p', ['p' => PFX . '%']), 'id'));
     foreach ($ids as $id) {
         try { Auth::setAdmin2fa($id, false, 0); } catch (Throwable $e) {}
         Database::run("DELETE FROM audit_logs WHERE entity_type = 'admin' AND entity_id = :e", ['e' => (string) $id]);
         Database::run('DELETE FROM admin_devices WHERE admin_id = :a', ['a' => $id]);
         Database::run("DELETE FROM otp_codes WHERE identifier = :i", ['i' => 'admin:' . $id]);
+        Database::run('DELETE FROM wa_logins WHERE admin_id = :a', ['a' => $id]);
+        Database::run("DELETE FROM rate_limits WHERE bucket = 'wa_login_acct' AND identifier = :i", ['i' => (string) $id]);
     }
+    foreach ([WA_H1, WA_H2, WA_H3, WA_HTTP1, WA_HTTP2] as $h) {
+        $k = WaLogin::key($h);
+        Database::run('DELETE FROM wa_logins WHERE phone = :p', ['p' => $k]);
+        Database::run("DELETE FROM kv_store WHERE kscope IN ('wa_login_pending','wa_agent','wa_stage','wa_turn','wa_bulk') AND kkey IN (:k, :d)", ['k' => $k, 'd' => normalisePhone($h)]);
+        Database::run("DELETE FROM rate_limits WHERE bucket LIKE 'wa_login%' AND identifier = :k", ['k' => $k]);
+    }
+    Database::run("DELETE FROM otp_codes WHERE identifier IN (:a, :b)", ['a' => 'walogin:' . WA_10, 'b' => 'team:' . WA_INT]);
     Database::run("DELETE FROM audit_logs WHERE entity_type = 'admin' AND entity_id LIKE :p", ['p' => PFX . '%']);
     Database::run('DELETE FROM admin_login_events WHERE username LIKE :p', ['p' => PFX . '%']);
     Database::run("DELETE FROM otp_codes WHERE identifier = :i", ['i' => 'team:' . AG_INT]);
@@ -263,17 +358,206 @@ try {
     }
     check('only includes/auth.php writes a whole office session', $writers === ['includes/auth.php'], implode(', ', $writers));
     $auth = (string) file_get_contents(INCLUDE_PATH . '/auth.php');
-    check('finishAdminSession puts the stamp in it', (bool) preg_match("/'pw'\s*=>\s*self::adminPwStamp/", $auth));
-    check('change-password.php keeps the changer signed in', str_contains((string) file_get_contents(dirname(__DIR__) . '/admin/change-password.php'), 'Auth::refreshOwnPwStamp('));
-    check('TeamPortal::changePassword keeps the changer signed in', str_contains((string) file_get_contents(INCLUDE_PATH . '/teamportal.php'), 'Auth::refreshOwnPwStamp('));
+    // re-attack: the stamp is the one the door hands over ($pwStamp), the row is read only to compare
+    check('finishAdminSession puts the stamp in it', (bool) preg_match("/'pw'\s*=>\s*\\\$stamp,/", $auth) && str_contains($auth, '$stamp   = $pwStamp ?? $current;'));
+    check('change-password.php keeps the changer signed in', str_contains((string) file_get_contents(dirname(__DIR__) . '/admin/change-password.php'), 'Auth::passwordChanged('));
+    check('TeamPortal::changePassword keeps the changer signed in', str_contains((string) file_get_contents(INCLUDE_PATH . '/teamportal.php'), 'Auth::passwordChanged((int) $me[\'admin\'][\'id\']'));
+
+    echo "\n== J. the stamp is the password the door CHECKED (a reset in the same instant) ==\n";
+    /* A test trigger plays the office: it swaps the password the moment the
+       door writes last_login_at — after the password was checked, before the
+       session is written. That is the window a real reset can land in (about
+       50 ms of bcrypt on the live box). Before the fix the session took the
+       NEW password's stamp there and was never signed out. */
+    $oldHash = Security::hashPassword('Race#old2026');
+    $newHash = Security::hashPassword('Race#new2026');
+    $idRO = $mk(U_RACE_O, 'unused-pw', 'manager');
+    $idRT = $mk(U_RACE_T, 'unused-pw', 'agent', '+977 ' . RT_10);
+    $idRA = $mk(U_RACE_A, 'unused-pw', 'agent');
+    Database::run('UPDATE admins SET password_hash = :h WHERE username LIKE :p', ['h' => $oldHash, 'p' => PFX . 'race-%']);
+    if (trigger("CREATE TRIGGER zzt_pwstamp_race BEFORE UPDATE ON admins FOR EACH ROW SET NEW.password_hash = "
+        . "IF(OLD.username LIKE 'zzt-pwstamp-race-%' AND OLD.password_hash = '$oldHash' AND NOT (NEW.last_login_at <=> OLD.last_login_at), '$newHash', NEW.password_hash)")) {
+        $doors = [
+            'office login (Auth::adminLogin)'       => [$idRO, static fn(): array => Auth::adminLogin(U_RACE_O, 'Race#old2026')],
+            'team door (TeamPortal::login)'         => [$idRT, static fn(): array => TeamPortal::ready() ? TeamPortal::login(RT_10, 'Race#old2026', '977') : ['ok' => false, 'error' => 'team tables missing']],
+            'agent door (Auth::agentPasswordLogin)' => [$idRA, static fn(): array => Auth::agentPasswordLogin(U_RACE_A . '@test.local', U_RACE_A, 'Race#old2026')],
+        ];
+        foreach ($doors as $label => [$rid, $door]) {
+            fresh();
+            $r = $door();
+            $s = $_SESSION[ADMIN_SESSION_KEY] ?? [];
+            check("$label: the old password was right when checked, and the reset landed", !empty($r['ok']) && (int) ($s['id'] ?? 0) === $rid && hashOf($rid) === $newHash, json_encode($r));
+            check('  the session carries the stamp of the password it CHECKED, not the new one', ($s['pw'] ?? '') === Auth::pwStamp($oldHash) && ($s['pw'] ?? '') !== stampNow($rid));
+            check('  and is signed out on its very next request (no 30 s grace)', Auth::admin() === null && !isset($_SESSION[ADMIN_SESSION_KEY]));
+            check('  audited "password changed"', revokedFor($rid, 'password changed') === 1);
+            fresh();
+            $again = $door();
+            check('  the old password no longer signs in at all', empty($again['ok']) && !isset($_SESSION[ADMIN_SESSION_KEY]), json_encode($again));
+        }
+        dropTriggers();
+        $ok = signIn(U_RACE_O, 'Race#new2026');
+        check('a sign-in with nothing in between is checked on the normal 30 s clock', ($ok['checked_at'] ?? 0) >= time() - 2 && Auth::admin() !== null);
+    }
+    dropTriggers();
+
+    echo "\n== K. 2FA: a reset between the password and the code ==\n";
+    fresh();
+    Auth::setAdmin2fa($idA, true, $idA);
+    Settings::flush();
+    // what adminLogin() leaves at step 1 — built by hand, because the real step 1 sends the code on WhatsApp
+    $_SESSION['admin_2fa_pending'] = ['id' => $idA, 'ip' => '', 'at' => time(), 'pw' => Auth::pwStamp(hashOf($idA))];
+    setPw($idA, 'Mgr#pass2031');                 // the office resets the password during the 10 minutes
+    $iss = Auth::issueOtp('admin:' . $idA, 'login', 'whatsapp');   // minted, never sent
+    $v = Auth::adminLogin2faVerify((string) ($iss['code'] ?? ''));
+    check('the right code is refused once the password changed', empty($v['ok']) && str_contains((string) ($v['error'] ?? ''), 'password was changed'), json_encode($v));
+    check('  no session was opened, and the pending step is gone', !isset($_SESSION[ADMIN_SESSION_KEY]) && empty($_SESSION['admin_2fa_pending']));
+    check('  audited admin.2fa.stale_password', Database::exists(
+        "SELECT 1 FROM audit_logs WHERE action = 'admin.2fa.stale_password' AND entity_id = :e", ['e' => (string) $idA]));
+    fresh();
+    $_SESSION['admin_2fa_pending'] = ['id' => $idA, 'ip' => '', 'at' => time(), 'pw' => Auth::pwStamp(hashOf($idA))];
+    $iss = Auth::issueOtp('admin:' . $idA, 'login', 'whatsapp');
+    $v = Auth::adminLogin2faVerify((string) ($iss['code'] ?? ''));
+    check('with the password unchanged the code signs in, stamped with that password',
+        !empty($v['ok']) && ($_SESSION[ADMIN_SESSION_KEY]['pw'] ?? '') === stampNow($idA) && resume($_SESSION[ADMIN_SESSION_KEY]) !== null, json_encode($v));
+    $p0 = strpos($auth, "\$_SESSION['admin_2fa_pending'] = [");
+    $p1 = $p0 === false ? false : strpos($auth, '];', $p0);
+    check('adminLogin() writes the checked password\'s stamp into the pending step', $p0 !== false && $p1 !== false
+        && str_contains(substr($auth, $p0, $p1 - $p0), "'pw' => self::pwStamp((string) \$admin['password_hash'])"));
+    Auth::setAdmin2fa($idA, false, $idA);
+    Settings::flush();
+
+    echo "\n== L. WhatsApp staff sign-ins end when the password changes ==\n";
+    $idWa = $mk(U_WA, 'Wa#stamp2026', 'agent', '+977 ' . WA_10);
+    fresh();
+    check('an agent signs in over WhatsApp from a handset not on file', waLogin(WA_H1, U_WA, 'Wa#stamp2026') && waLive(WA_H1, $idWa));
+    Auth::setStaffCredentials($idWa, ['password' => 'Wa#stamp2027'], $idBoss);
+    check('an office reset (Staff / agent credentials) ends it at once', !waLive(WA_H1, $idWa));
+    check('  the row remembers who reset it', (int) Database::scalar(
+        'SELECT revoked_by FROM wa_logins WHERE phone = :p AND admin_id = :a ORDER BY id DESC LIMIT 1', ['p' => WaLogin::key(WA_H1), 'a' => $idWa], 0) === $idBoss);
+    check('  the old password cannot open a new one', !waLogin(WA_H1, U_WA, 'Wa#stamp2026') && !waLive(WA_H1, $idWa));
+    if (TeamPortal::ready()) {
+        check('signed in again with the new password', waLogin(WA_H1, U_WA, 'Wa#stamp2027') && waLive(WA_H1, $idWa));
+        fresh();
+        $r = TeamPortal::login(WA_10, 'Wa#stamp2027', '977');
+        $me = TeamPortal::current();
+        $okChange = true;
+        try {
+            TeamPortal::changePassword((array) $me, 'Wa#stamp2027', 'Wa#stamp2028', 'Wa#stamp2028');
+        } catch (Throwable $e) {
+            $okChange = false;
+        }
+        check('the agent changes the password at /team/', !empty($r['ok']) && $okChange, json_encode($r));
+        check('  that ends the WhatsApp sign-in', !waLive(WA_H1, $idWa));
+        check('  while the browser that changed it stays signed in', resume($_SESSION[ADMIN_SESSION_KEY] ?? []) !== null);
+        check('signed in again over WhatsApp', waLogin(WA_H1, U_WA, 'Wa#stamp2028') && waLive(WA_H1, $idWa));
+        fresh();
+        $c = (string) (Auth::issueOtp('team:' . WA_INT, 'reset', 'whatsapp')['code'] ?? '');   // minted, never sent
+        $r = TeamPortal::resetPassword(WA_10, $c, 'Wa#stamp2029', 'Wa#stamp2029');
+        check('a team-portal reset with a WhatsApp code', !empty($r['ok']), json_encode($r));
+        check('  ends the WhatsApp sign-in too', !waLive(WA_H1, $idWa));
+    } else {
+        check('team portal tables present (run database/upgrade-2026-10-22-team-login.sql)', false);
+        setPw($idWa, 'Wa#stamp2029');
+    }
+
+    /* In flight: the password is checked, then the office resets it before
+       the row is written — a trigger on wa_logins plays the office. */
+    $cur = hashOf($idWa);
+    $waNew = Security::hashPassword('Wa#stamp2030');
+    if (trigger("CREATE TRIGGER zzt_pwstamp_wa AFTER INSERT ON wa_logins FOR EACH ROW UPDATE admins SET password_hash = '$waNew' "
+        . "WHERE id = NEW.admin_id AND username = '" . U_WA . "' AND password_hash = '$cur'")) {
+        check('a WhatsApp sign-in whose password is reset mid-way opens nothing', !waLogin(WA_H2, U_WA, 'Wa#stamp2029') && hashOf($idWa) === $waNew);
+        check('  no live row is left for that handset', (int) Database::scalar(
+            'SELECT COUNT(*) FROM wa_logins WHERE phone = :p AND revoked_at IS NULL', ['p' => WaLogin::key(WA_H2)], 0) === 0 && !waLive(WA_H2, $idWa));
+        dropTriggers();
+    }
+    dropTriggers();
+    setPw($idWa, 'Wa#stamp2031');
+
+    /* The code step: a pending sign-in made with the old password (what
+       login() leaves when a code goes to the registered mobile — planted by
+       hand, since the real one sends it on WhatsApp). */
+    $plant = static function (?string $pw) use ($idWa): void {
+        $k = WaLogin::key(WA_H3);
+        Database::run("DELETE FROM kv_store WHERE kscope = 'wa_login_pending' AND kkey = :k", ['k' => $k]);
+        Database::insert('kv_store', ['kscope' => 'wa_login_pending', 'kkey' => $k, 'updated_by' => 'walogin',
+            'kvalue' => (string) json_encode(['adminId' => $idWa, 'registered' => WA_10, 'at' => time()] + ($pw !== null ? ['pw' => $pw] : []))]);
+        Database::insert('otp_codes', ['identifier' => 'walogin:' . WA_10, 'channel' => 'whatsapp', 'purpose' => 'login',
+            'code_hash' => password_hash('246810', PASSWORD_BCRYPT), 'expires_at' => date('Y-m-d H:i:s', time() + 300), 'ip_address' => '127.0.0.1']);
+    };
+    $otpIn = static function (): bool {
+        waOn();
+        $r = WaLogin::handle(WA_H3, 'otp 246810');
+        return $r !== null && str_starts_with((string) $r['text'], '✅');
+    };
+    $plant(Auth::pwStamp(hashOf($idWa)));
+    check('control: a pending code with the password still on file signs in', $otpIn() && waLive(WA_H3, $idWa));
+    WaLogin::revokePhone(WA_H3, null);
+    $plant(Auth::pwStamp(hashOf($idWa)));
+    setPw($idWa, 'Wa#stamp2032');
+    check('a pending code whose password was changed meanwhile opens nothing', !$otpIn() && !waLive(WA_H3, $idWa));
+    $plant(null);
+    check('a pending code from before this fix (no password stamp) opens nothing', !$otpIn() && !waLive(WA_H3, $idWa));
+
+    echo "\n== M. Auth::passwordChanged on this browser ==\n";
+    $m = signIn(U_BOSS, 'Boss#pass2027');
+    $sid = session_id();
+    $was = hashOf($idBoss);
+    setPw($idBoss, 'Boss#pass2028');
+    Auth::passwordChanged($idBoss, $idBoss, $was);
+    $m = $_SESSION[ADMIN_SESSION_KEY] ?? [];
+    check('own change: this session takes the new stamp', ($m['pw'] ?? '') === stampNow($idBoss));
+    check('  and a new session id (a copied cookie stays behind)', $sid !== '' && session_id() !== '' && session_id() !== $sid, $sid . ' -> ' . session_id());
+    check('  and survives its re-check', resume($m) !== null);
+    $stale = $_SESSION[ADMIN_SESSION_KEY];
+    setPw($idBoss, 'Boss#pass2029');             // changed somewhere else; this session has not re-checked yet …
+    $mid = hashOf($idBoss);
+    setPw($idBoss, 'Boss#pass2030');             // … and inside its 30 s it resets its OWN password again (Staff)
+    resume($stale, 0);
+    Auth::passwordChanged($idBoss, $idBoss, $mid);
+    check('a session already out of date does NOT adopt the new password', ($_SESSION[ADMIN_SESSION_KEY]['pw'] ?? '') === $stale['pw']);
+    check('  and ends on its re-check like the others', resume($_SESSION[ADMIN_SESSION_KEY] ?? $stale) === null);
+
+    echo "\n== N. every password write calls Auth::passwordChanged ==\n";
+    $gaps = [];
+    $root = str_replace('\\', '/', dirname(__DIR__));
+    foreach ($it as $f) {
+        $p = str_replace('\\', '/', (string) $f);
+        if (!str_ends_with($p, '.php')) {
+            continue;
+        }
+        $src = (string) file_get_contents($p);
+        $writes = preg_match_all("/Database::update\(\s*'admins'\s*,\s*\[[^\]]*'password_hash'/s", $src);
+        $calls  = substr_count($src, 'passwordChanged(') - substr_count($src, 'function passwordChanged(');
+        if ($writes > $calls) {
+            $gaps[] = substr($p, strlen($root) + 1) . " ($writes writes, $calls calls)";
+        }
+    }
+    check('no file writes admins.password_hash without calling passwordChanged', $gaps === [], implode('; ', $gaps));
+    check('Auth::setStaffCredentials calls it with the old hash', str_contains($auth, "self::passwordChanged(\$adminId, \$by, (string) \$row['password_hash'])"));
+    check('Staff → reset password calls it', str_contains((string) file_get_contents(dirname(__DIR__) . '/admin/staff.php'), 'Auth::passwordChanged($id, (int) $admin[\'id\'], (string) $target[\'password_hash\'])'));
+    $tp = (string) file_get_contents(INCLUDE_PATH . '/teamportal.php');
+    check('the team reset hands the NEW hash to the session it opens', str_contains($tp, "'password_hash' => \$hash] + \$open"));
+    check('a staff-portal session is stamped with the hash its door checked (not re-read)', !preg_match('/function openStaffSession\([^)]*\)[^{]*\{[^}]*SELECT password_hash/s', $tp)
+        && str_contains($tp, "self::openStaffSession((int) \$s['id'], (string) \$s['password_hash'])"));
+    $wl = (string) file_get_contents(INCLUDE_PATH . '/walogin.php');
+    check('WaLogin::open re-reads the password AFTER writing the row', ($ins = strpos($wl, "Database::insert('wa_logins'")) !== false
+        && ($re = strpos($wl, 'SELECT password_hash FROM admins WHERE id = :id', $ins)) !== false && $re - $ins < 600);
 
     echo "\n== I. over HTTP: the real change-password.php, two browsers each ==\n";
     $base = rtrim((string) getenv('SHG_TEST_BASE'), '/');
     if ($base === '' || !function_exists('curl_init')) {
         echo "  SKIP  set SHG_TEST_BASE (and load curl) to run the HTTP part\n";
     } else {
-        $mk(U_H1, 'Http#pass2026', 'manager');
-        $mk(U_H2, 'Temp#pass2026', 'support', null, 1);
+        $idH1 = $mk(U_H1, 'Http#pass2026', 'manager');
+        $idH2 = $mk(U_H2, 'Temp#pass2026', 'support', null, 1);
+        // re-attack: a live WhatsApp sign-in for each (planted rows: an office role needs a code to open one for real)
+        $waRow = static fn(string $h, int $id): int => (int) Database::insert('wa_logins', ['phone' => WaLogin::key($h), 'admin_id' => $id,
+            'method' => 'password+otp', 'created_at' => date('Y-m-d H:i:s'), 'expires_at' => date('Y-m-d H:i:s', time() + 3600), 'last_seen_at' => date('Y-m-d H:i:s')]);
+        $waH1 = $waRow(WA_HTTP1, $idH1);
+        $waH2 = $waRow(WA_HTTP2, $idH2);
+        $waOpen = static fn(int $row): bool => Database::scalar('SELECT revoked_at FROM wa_logins WHERE id = :i', ['i' => $row], 'gone') === null;
+        check('each account also has a live WhatsApp sign-in', $waOpen($waH1) && $waOpen($waH2));
         $jars = [];
         $http = static function (string $jar, string $path, ?array $form = null) use ($base, &$jars): array {
             $jars[$jar] ??= sys_get_temp_dir() . '/shg_pwstamp_' . getmypid() . '_' . $jar . '.txt';
@@ -310,6 +594,7 @@ try {
         $r = $http('d', '/admin/change-password.php', [CSRF_TOKEN_NAME => $csrf($f['body']),
             'current_password' => 'Temp#pass2026', 'new_password' => 'Real#pass2026', 'confirm_password' => 'Real#pass2026']);
         check('browser D makes the forced change', stripos($r['body'], 'has been changed') !== false);
+        check('both changes ended the account\'s WhatsApp sign-in at once (no 30 s wait)', !$waOpen($waH1) && !$waOpen($waH2));
         echo "  …   waiting 31 s for the re-check window\n";
         sleep(31);
         $ra = $http('a', '/admin/index.php');

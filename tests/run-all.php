@@ -218,7 +218,7 @@ const CORE_SUITES = [
     // 24 Sep 2026, registered with the per-request session check it guards.
     'admin-session-revalidate-test.php' => 'a deactivated or demoted staff member loses it on the next request, not the next login',
     // 22 Oct 2026 (review #11, office part), registered with the password stamp it guards.
-    'admin-pw-stamp-test.php'      => 'a changed or reset password ends the account\'s other office sessions within 30 s; the changer stays in',
+    'admin-pw-stamp-test.php'      => 'a changed or reset password ends the account\'s other office sessions within 30 s and its WhatsApp sign-ins at once; the stamp is the password the door checked; the changer stays in',
     'money-guards-test.php'        => 'paper-ticket cap, agent-only commission, no proof downgrade, coupon redemption, second void, hold cap',
     'seat-events-test.php'         => 'live seat events: the version moves only when seats move; unchanged answers; the stream',
     'whereis-test.php'             => '"Where is my bus?": honest status, three doors, the keyed page, its JSON, trackUrl in the app payload',
@@ -239,7 +239,7 @@ const CORE_SUITES = [
     // 27 Sep 2026 agreements, restored 2 Oct 2026 with the editable points.
     'agreement-points-test.php'   => 'agreement points: 8 pages parse, blanks kept, save / reset / hide / add, the API',
     'agreement-pages-test.php'    => '/agreements/ pages: noindex, own scripts only, apply + directory contract, build.js match',
-    'agreement-pdf-test.php'      => 'Hindi agreement PDF: validation, shaped Devanagari, 06A = agreement 14A, three pages (needs HarfBuzz, as devshape)',
+    'agreement-pdf-test.php'      => 'Hindi agreement PDF: validation, shaped Devanagari, 06A = agreement 14A, three pages, fits the 128M memory_limit (needs HarfBuzz, as devshape)',
     // 27 Sep 2026 office report, restored 2 Oct 2026.
     'office-report-test.php'      => 'the office WhatsApp report: slots, grace, once per slot, numbers, Nepali text',
     // 9 Oct 2026 showcase upgrade, registered with the packages they guard.

@@ -267,7 +267,9 @@ final class WaLogin
                 null,
                 resolvePhoneCountry('', (string) ($admin['phone'] ?? '')) ?: null
             );
-            self::pendingSet($key, ['adminId' => $adminId, 'registered' => $registered, 'at' => time()]);
+            // 22 Oct 2026 (review #11 re-attack): 'pw' = the password checked here; open() refuses if it is no longer the one on file
+            self::pendingSet($key, ['adminId' => $adminId, 'registered' => $registered, 'at' => time(),
+                'pw' => Auth::pwStamp((string) $admin['password_hash'])]);
             Logger::audit('staff.login_whatsapp_otp', 'admin', (string) $adminId, null, ['from' => $key],
                 'WhatsApp login: password accepted, one-time code sent to the registered mobile');
 
@@ -277,7 +279,7 @@ final class WaLogin
 
         // No code was sent on this path (own registered number, or the switch
         // is off), so the record must not claim one was.
-        $opened = self::open($key, $phone, $admin, 'password');
+        $opened = self::open($key, $phone, $admin, 'password', Auth::pwStamp((string) $admin['password_hash']));
         $opened['text'] .= $deleteNote;
 
         return $opened;
@@ -304,11 +306,21 @@ final class WaLogin
             return self::out('❌ यो खाता अहिले सक्रिय छैन। अफिसलाई सम्पर्क गर्नुहोस्।');
         }
 
-        return self::open($key, $phone, $admin, 'password+otp');
+        return self::open($key, $phone, $admin, 'password+otp', (string) ($pending['pw'] ?? ''));
     }
 
-    /** Open the session and say hello. */
-    private static function open(string $key, string $phone, array $admin, string $method): array
+    /**
+     * Open the session and say hello.
+     *
+     * @param string $pwStamp 22 Oct 2026 (review #11 re-attack): Auth::pwStamp()
+     *        of the password hash login() checked. A changed password ends
+     *        every WhatsApp sign-in of the account (Auth::passwordChanged ->
+     *        revokeAdmin), and this makes sure a sign-in still in flight with
+     *        the OLD password cannot slip in after that: the row is written
+     *        first, then the password on file is read again — a change before
+     *        the read is seen here, one after the write is revoked there.
+     */
+    private static function open(string $key, string $phone, array $admin, string $method, string $pwStamp): array
     {
         $adminId = (int) $admin['id'];
         $hours   = max(1, min(24 * 30, Settings::getInt('wa_login_ttl_hours', 12)));
@@ -317,7 +329,7 @@ final class WaLogin
 
         // One live session per number: the new one replaces the old.
         self::revokePhone($key, null);
-        Database::insert('wa_logins', [
+        $rowId = (int) Database::insert('wa_logins', [
             'phone'      => $key,
             'admin_id'   => $adminId,
             'method'     => $method,
@@ -325,6 +337,13 @@ final class WaLogin
             'expires_at' => $until,
             'last_seen_at' => $now,
         ]);
+        $onFile = Auth::pwStamp((string) Database::scalar('SELECT password_hash FROM admins WHERE id = :id', ['id' => $adminId], ''));
+        if ($pwStamp === '' || !hash_equals($onFile, $pwStamp)) {
+            self::revoke($rowId, null);
+            LoginLog::record((string) $admin['username'], 'bad_password', $adminId);
+            Logger::warning('WhatsApp login refused: the password changed while signing in', ['admin' => $adminId, 'phone' => $key], 'whatsapp');
+            return self::out('❌ लगइन मिलेन — कोड/युजरनेम वा पासवर्ड गलत छ। फेरि प्रयास गर्नुहोस्, वा अफिसलाई सम्पर्क गर्नुहोस्।');
+        }
         Database::update('admins', ['last_login_at' => $now], 'id = :id', ['id' => $adminId]);
         // A good sign-in is not a guess: both budgets start afresh.
         try {

@@ -399,8 +399,14 @@ final class Auth
 
                     // Hold at the pending step. NOTHING that opens a session has
                     // run yet — failed_logins is only cleared on real success.
+                    // 22 Oct 2026 (review #11 re-attack): 'pw' = the stamp of the
+                    // password checked HERE. The code step opens the session only
+                    // while that password is still the one on file, and stamps
+                    // the session with it — a reset during the 10 minutes used to
+                    // hand the old password's sign-in the NEW password's stamp.
                     $_SESSION['admin_2fa_pending'] = [
                         'id' => (int) $admin['id'], 'ip' => $ip, 'at' => time(),
+                        'pw' => self::pwStamp((string) $admin['password_hash']),
                     ];
                     Logger::audit('admin.2fa.sent', 'admin', (string) $admin['id'], null, null,
                         'Second-factor code issued at login');
@@ -415,7 +421,8 @@ final class Auth
             }
         }
 
-        self::finishAdminSession($admin, $ip);
+        // 22 Oct 2026 (review #11 re-attack): stamped with the password checked above, never re-read.
+        self::finishAdminSession($admin, $ip, false, self::pwStamp((string) $admin['password_hash']));
 
         return ['ok' => true];
     }
@@ -453,7 +460,7 @@ final class Auth
         // Re-load the account fresh — never trust anything but the id from the
         // pending marker, and re-assert it is still active.
         $admin = Database::fetch(
-            'SELECT id, username, full_name, role, permissions, is_active, must_change_pw
+            'SELECT id, username, full_name, role, permissions, is_active, must_change_pw, password_hash
                FROM admins WHERE id = :id AND is_active = 1 LIMIT 1',
             ['id' => $adminId]
         );
@@ -462,7 +469,18 @@ final class Auth
             return ['ok' => false, 'error' => 'That account is no longer available.'];
         }
 
-        self::finishAdminSession($admin, $ip, false);
+        /* 22 Oct 2026 (review #11 re-attack): the password typed at step 1
+           must still be the one on file. A marker written before this change
+           carries no 'pw' and goes on as it did (it expires in 10 minutes). */
+        $now = self::pwStamp((string) $admin['password_hash']);
+        $pw  = isset($pending['pw']) ? (string) $pending['pw'] : $now;
+        if (!hash_equals($now, $pw)) {
+            Logger::audit('admin.2fa.stale_password', 'admin', (string) $adminId, null, null,
+                'Second-factor code refused: the password was changed after step 1');
+            return ['ok' => false, 'error' => 'This account\'s password was changed — please sign in again with the new password.'];
+        }
+
+        self::finishAdminSession($admin, $ip, false, $pw);
         return ['ok' => true];
     }
 
@@ -556,8 +574,13 @@ final class Auth
      *                     so the forced password-change gate (which demands
      *                     the CURRENT password) would deadlock them — the
      *                     flag is carried in the session and the gate skipped.
+     * @param string|null $pwStamp 22 Oct 2026 (review #11 re-attack): the
+     *                     pwStamp() of the password hash the door CHECKED (or,
+     *                     for a reset, just wrote). Null only for a door that
+     *                     checks no password (agent code + mobile OTP): that
+     *                     session takes the stamp of the row as it is now.
      */
-    private static function finishAdminSession(array $admin, string $ip, bool $viaOtp = false): void
+    private static function finishAdminSession(array $admin, string $ip, bool $viaOtp = false, ?string $pwStamp = null): void
     {
         // Success — clear counters and start a fresh session id.
         Database::update('admins', [
@@ -568,6 +591,16 @@ final class Auth
         ], 'id = :id', ['id' => $admin['id']]);
 
         session_regenerate_id(true);
+
+        /* The session carries the password the door checked, never the row
+           re-read afterwards: a reset landing between the check and this
+           read used to give a sign-in with the OLD password the NEW stamp,
+           and admin() then never signed it out. The row is still read, as
+           late as possible: if it has already moved on, the first re-check
+           runs on the very next request (checked_at 0) instead of 30 s
+           later; a reset after this read is caught by that 30 s re-check. */
+        $current = self::adminPwStamp((int) $admin['id']);
+        $stamp   = $pwStamp ?? $current;
 
         $_SESSION[ADMIN_SESSION_KEY] = [
             'id'             => (int) $admin['id'],
@@ -598,12 +631,10 @@ final class Auth
             // Stamped only by a real sign-in: admin() re-reads the admins row
             // against this clock, so a session built by hand in a test (no
             // stamp) is left exactly as the test wrote it.
-            'checked_at'     => time(),
+            'checked_at'     => hash_equals($current, $stamp) ? time() : 0,
             // 22 Oct 2026 (review #11, office part): the password this session
-            // was opened with. Read from the row, not from $admin: the 2FA and
-            // agent-OTP doors load the row without the hash, and a team-portal
-            // reset hands over the row as it was BEFORE the new password.
-            'pw'             => self::adminPwStamp((int) $admin['id']),
+            // was opened with (re-attack: the one the door checked, $pwStamp).
+            'pw'             => $stamp,
         ];
 
         // Record the attempt and note whether this browser is new for this
@@ -629,9 +660,10 @@ final class Auth
      * it was opened with ('pw'); admin() compares it with the admins row on
      * its 30-second re-check, so a changed or reset password ends every OTHER
      * session of that account. Keyed with APP_KEY, so the session file holds
-     * nothing that helps anyone with the hash itself.
+     * nothing that helps anyone with the hash itself. Public since the
+     * re-attack: WaLogin keeps the same stamp for its WhatsApp sign-ins.
      */
-    private static function pwStamp(string $hash): string
+    public static function pwStamp(string $hash): string
     {
         return substr(hash('sha256', APP_KEY . '|' . $hash), 0, 16);
     }
@@ -657,6 +689,43 @@ final class Auth
             return;
         }
         $_SESSION[ADMIN_SESSION_KEY]['pw'] = self::adminPwStamp($adminId);
+    }
+
+    /**
+     * 22 Oct 2026 (review #11 re-attack): call right after a new
+     * admins.password_hash is written for an existing account — from EVERY
+     * place that writes one (change-password.php, Staff, the credentials
+     * panel, the team portal). It does three things:
+     *   - the account's WhatsApp staff sign-ins (wa_logins) end now. They
+     *     never pass through admin(), so the stamp could not reach them, and
+     *     a WhatsApp login opened with the old password ran on for its 12 h;
+     *   - this browser, when it is signed in as that account, takes the new
+     *     stamp and a new session id (so a copied cookie of it ends too) —
+     *     but only when it was opened with the password just replaced
+     *     ($oldHash): a session that was already out of date does not get
+     *     to adopt the new password, it ends on its re-check like the rest;
+     *   - every other office session of the account ends on its next
+     *     re-check (admin(), within 30 s).
+     */
+    public static function passwordChanged(int $adminId, int $by = 0, ?string $oldHash = null): void
+    {
+        if ($adminId <= 0) {
+            return;
+        }
+        require_once __DIR__ . '/walogin.php';
+        WaLogin::revokeAdmin($adminId, $by > 0 ? $by : null);
+
+        if ((int) ($_SESSION[ADMIN_SESSION_KEY]['id'] ?? 0) !== $adminId) {
+            return;
+        }
+        $had = (string) ($_SESSION[ADMIN_SESSION_KEY]['pw'] ?? '');
+        if ($oldHash !== null && $had !== '' && !hash_equals(self::pwStamp($oldHash), $had)) {
+            return;
+        }
+        self::refreshOwnPwStamp($adminId);
+        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+            session_regenerate_id(true);
+        }
     }
 
     /**
@@ -860,7 +929,7 @@ final class Auth
         // Password-authenticated (viaOtp = false): a temporary password
         // handed out by the office with "must change" ticked is still
         // funnelled to change-password.php exactly like other staff.
-        self::finishAdminSession($admin, $ip, false);
+        self::finishAdminSession($admin, $ip, false, self::pwStamp((string) $admin['password_hash']));
         Logger::audit('agent.login', 'admin', (string) $admin['id'], null, null, 'Agent signed in with email + username + password');
 
         return ['ok' => true];
@@ -907,13 +976,19 @@ final class Auth
      * Open the staff session for one of teamAccounts()' rows after the
      * team door checked the password ($viaOtp false) or the person proved
      * the mobile with a WhatsApp code and set a new password ($viaOtp true).
+     * 22 Oct 2026 (review #11 re-attack): $admin['password_hash'] must be the
+     * hash the door checked, or the one the reset just wrote — the session
+     * is stamped with it.
      */
     public static function teamOpenSession(array $admin, bool $viaOtp): void
     {
         if (!in_array((string) ($admin['role'] ?? ''), self::TEAM_ROLES, true) || (int) ($admin['is_active'] ?? 0) !== 1) {
             throw new RuntimeException('This account cannot use the team portal.');
         }
-        self::finishAdminSession($admin, Security::clientIp(), $viaOtp);
+        if ((string) ($admin['password_hash'] ?? '') === '') {
+            throw new RuntimeException('The team portal opens a session only for the password it checked.');
+        }
+        self::finishAdminSession($admin, Security::clientIp(), $viaOtp, self::pwStamp((string) $admin['password_hash']));
         Logger::audit('team.login', 'admin', (string) $admin['id'], null, null,
             'Team portal: mobile + ' . ($viaOtp ? 'new password after a WhatsApp code' : 'password'));
     }
@@ -935,7 +1010,7 @@ final class Auth
     public static function setStaffCredentials(int $adminId, array $in, int $by = 0): array
     {
         $row = Database::fetch(
-            'SELECT id, username, email, role, must_change_pw FROM admins WHERE id = :id LIMIT 1',
+            'SELECT id, username, email, role, must_change_pw, password_hash FROM admins WHERE id = :id LIMIT 1',
             ['id' => $adminId]
         );
         if ($row === null) {
@@ -1009,9 +1084,10 @@ final class Auth
         // 22 Oct 2026 (review #11, office part): a NEW PASSWORD is different —
         // every open session of the account ends within 30 s (Auth::admin()
         // compares the password stamp), except the editor's own when they
-        // changed their own password here.
+        // changed their own password here. Re-attack: and its WhatsApp
+        // sign-ins end at once (passwordChanged).
         if (in_array('password', $changed, true)) {
-            self::refreshOwnPwStamp($adminId);
+            self::passwordChanged($adminId, $by, (string) $row['password_hash']);
         }
         Logger::audit(
             (string) $row['role'] === 'agent' ? 'agent.credentials' : 'staff.credentials',

@@ -335,7 +335,7 @@ final class TeamPortal
                 continue;
             }
             if (Security::verifyPassword($password, (string) $s['password_hash'])) {
-                self::openStaffSession((int) $s['id']);
+                self::openStaffSession((int) $s['id'], (string) $s['password_hash']);
                 return ['ok' => true, 'kind' => 'staff'];
             }
         }
@@ -554,6 +554,7 @@ final class TeamPortal
         foreach ($t['admins'] ?? [] as $a) {
             Database::update('admins', ['password_hash' => $hash, 'failed_logins' => 0, 'locked_until' => null, 'must_change_pw' => 0],
                 'id = :id', ['id' => (int) $a['id']]);
+            Auth::passwordChanged((int) $a['id'], 0, (string) $a['password_hash']);   // 22 Oct 2026 (re-attack): its WhatsApp sign-ins end too
             Logger::audit('team.password_reset', 'admin', (string) $a['id'], null, null, 'New password set at /team/ after a WhatsApp ' . $how . ' to ' . maskPhone($proven));
             $n++;
             $open ??= $a;   // the first account by id: the same one every time
@@ -575,19 +576,23 @@ final class TeamPortal
         /* 22 Oct 2026 (review #11, office part): an agent / counter session
            already open on another device ends within 30 s of this reset —
            every office session carries a password stamp that Auth::admin()
-           compares with the row. The session opened below reads the NEW hash
-           (Auth::finishAdminSession), so it carries on. Staff-portal sessions
-           end the same way (openStaffSession / current()). */
+           compares with the row. The session opened below is stamped with
+           the NEW hash, so it carries on. Staff-portal sessions end the same
+           way (openStaffSession / current()).
+           Re-attack: the new hash is handed over, never re-read — $open is
+           the row as it was BEFORE the reset, and re-reading the row let a
+           second reset in between stamp this session with a password it
+           never set. */
         if ($twofa) {
             // 22 Oct 2026 (review, #3): a 2FA account gets no session from a phone reset — the office login still asks the 2FA step
             return ['ok' => true, 'kind' => 'none', 'twofa' => true, 'count' => $n];
         }
         if ($open !== null) {
-            Auth::teamOpenSession(['must_change_pw' => 0] + $open, true);   // (review #8) "+" keeps the LEFT key: the new value first
+            Auth::teamOpenSession(['must_change_pw' => 0, 'password_hash' => $hash] + $open, true);   // (review #8) "+" keeps the LEFT key: the new values first
             self::closeStaffSession();
             return ['ok' => true, 'kind' => 'admin', 'count' => $n];
         }
-        self::openStaffSession($staffId);
+        self::openStaffSession($staffId, $hash);
         return ['ok' => true, 'kind' => 'staff', 'count' => $n];
     }
 
@@ -615,7 +620,8 @@ final class TeamPortal
             Database::update('admins', ['password_hash' => $hash, 'must_change_pw' => 0], 'id = :id', ['id' => (int) $me['admin']['id']]);
             Logger::audit('team.password_change', 'admin', (string) $me['admin']['id'], null, null, 'Password changed at /team/');
             // 22 Oct 2026 (review #11, office part): this office session carries on; the account's other ones end within 30 s
-            Auth::refreshOwnPwStamp((int) $me['admin']['id']);
+            // (re-attack: its WhatsApp sign-ins end now, and this browser gets a new session id)
+            Auth::passwordChanged((int) $me['admin']['id'], 0, $cur);
         }
         if ($me['staff'] !== null && (string) $me['staff']['status'] === 'approved') {
             Database::update('staff_applications', ['password_hash' => $hash], 'id = :id', ['id' => (int) $me['staff']['id']]);
@@ -623,6 +629,10 @@ final class TeamPortal
             // 22 Oct 2026 (review, #11): other staff-portal sessions end on their next page; this one carries on
             if (isset($_SESSION[self::SESSION]['staff_id']) && (int) $_SESSION[self::SESSION]['staff_id'] === (int) $me['staff']['id']) {
                 $_SESSION[self::SESSION]['pw'] = self::pwStamp($hash);
+                // 22 Oct 2026 (re-attack): a new session id too, so a copied cookie of this browser ends with the old password
+                if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+                    session_regenerate_id(true);
+                }
             }
         }
     }
@@ -641,10 +651,10 @@ final class TeamPortal
         return substr(hash('sha256', 'shg-team|' . $hash), 0, 24);
     }
 
-    private static function openStaffSession(int $staffId): void
+    /** 22 Oct 2026 (re-attack): $hash = the password hash the door checked (or the reset wrote), never the row re-read afterwards. */
+    private static function openStaffSession(int $staffId, string $hash): void
     {
         session_regenerate_id(true);
-        $hash = (string) Database::scalar('SELECT password_hash FROM staff_applications WHERE id = :i', ['i' => $staffId], '');
         $_SESSION[self::SESSION] = ['staff_id' => $staffId, 'at' => time(), 'seen' => time(), 'pw' => self::pwStamp($hash)];
         Database::update('staff_applications', ['failed_logins' => 0, 'locked_until' => null, 'last_login_at' => date('Y-m-d H:i:s')],
             'id = :id', ['id' => $staffId]);

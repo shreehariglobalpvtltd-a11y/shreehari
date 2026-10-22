@@ -164,7 +164,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         } elseif ($act === 'resetpw') {
             $id     = (int) ($_POST['id'] ?? 0);
             $pw     = (string) ($_POST['password'] ?? '');
-            $target = Database::fetch('SELECT id, username, role FROM admins WHERE id = :id', ['id' => $id]);
+            $target = Database::fetch('SELECT id, username, role, password_hash FROM admins WHERE id = :id', ['id' => $id]);
 
             if ($target === null) {
                 $flash = ['bad', 'Staff account not found.'];
@@ -184,7 +184,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'must_change_pw' => $mustChange,
                 ], 'id = :id', ['id' => $id]);
                 // 22 Oct 2026 (review #11, office part): their open sessions end within 30 s; resetting your OWN keeps this one
-                Auth::refreshOwnPwStamp($id);
+                // (re-attack: and their WhatsApp sign-ins end now)
+                Auth::passwordChanged($id, (int) $admin['id'], (string) $target['password_hash']);
                 Logger::audit('staff.resetpw', 'admin', (string) $target['username'], null, null, 'password reset by super-admin');
                 $flash = ['ok', 'Password reset for "' . $target['username'] . '".'
                     . ($mustChange === 1 ? ' They must change it on next login.' : '')];

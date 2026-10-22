@@ -189,12 +189,23 @@ final class AgreementPdf
     private function wrap(string $text, float $width = 510, float $size = 11): array
     {
         $words = preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
-        // Prime all candidates in one child process on PHP-FPM; shaping a line at a time is costly.
+        /* Prime the candidates in batches (one child process each on PHP-FPM); shaping a line at a time is costly.
+           22 Oct 2026 (memory): only the runs the line breaker below can measure. Priming EVERY word span of a
+           paragraph (n(n+1)/2 runs, all kept in DevShape's memory for the request) took one generation from
+           126 MB to 150 MB once 06A was added: past PHP's 128M memory_limit, a fatal the page cannot catch.
+           Now the words first, then from each word only the spans whose width (words + spaces) fits the line
+           with 10% to spare, plus the one word that overflows it. A span this misses is still shaped on
+           demand (DevShape::shape), so the lines come out exactly as before. */
+        DevShape::prime($words);
+        $space = $this->pdf->textWidthCID(' ', $size);
+        $widths = array_map(fn(string $word): float => $this->pdf->textWidthCID($word, $size), $words);
         $candidates = [];
-        for ($i = 0; $i < count($words); $i++) {
-            $line = '';
-            for ($j = $i; $j < count($words); $j++) {
-                $line .= ($line === '' ? '' : ' ') . $words[$j];
+        for ($i = 0, $n = count($words); $i < $n; $i++) {
+            $line = $words[$i];
+            $est = $widths[$i];
+            for ($j = $i + 1; $j < $n && $est <= $width * 1.1; $j++) {
+                $line .= ' ' . $words[$j];
+                $est += $space + $widths[$j];
                 $candidates[] = $line;
             }
         }
@@ -208,6 +219,8 @@ final class AgreementPdf
             else { $line = $next; }
         }
         if ($line !== '') { $lines[] = $line; }
+        // 22 Oct 2026 (memory): keep only the lines that will be drawn; the trial runs are done with.
+        DevShape::forget(array_diff(array_merge($words, $candidates), $lines));
         return $lines;
     }
     /** One line only: a long name under a signature line is cut at a word with "...". */

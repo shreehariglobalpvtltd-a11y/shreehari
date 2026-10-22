@@ -2,6 +2,9 @@
 declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 define('SHG_APP', true);
+// 22 Oct 2026 (memory): the live PHP-FPM limit, whatever this CLI was started with (-d memory_limit=1G hid
+// that 06A took one generation to 150 MB). A fatal here is a failure, exactly as it is on the admin page.
+ini_set('memory_limit', '128M');
 require_once __DIR__ . '/../includes/agreementpdf.php';
 $sample = ['agent_name' => 'श्री कृष्ण शर्मा', 'agreement_no' => 'SHG-2026-001', 'address' => 'नेपालगंज, नेपाल',
     'date' => '2026-09-27', 'currency' => 'INR', 'commission_type' => 'fixed', 'commission_rate' => '50',
@@ -46,5 +49,12 @@ $large['fares'] = array_fill(0, 6, ['route' => str_repeat('नेपालगं
 $large['commission_type'] = 'percent'; $large['commission_rate'] = '12.5';
 $more = AgreementPdf::generate($large);
 check(preg_match_all('~/Type /Page\b~', $more) >= 3, 'long inputs paginate');
+// 22 Oct 2026 (memory): wrap() used to keep every word span of every paragraph shaped in memory
+// (126 MB for the sample before 06A, 150 MB after: a fatal under 128M). Now only the spans that can
+// fit a line are shaped and the trial runs are dropped after each paragraph (about 28 MB).
+$peak = memory_get_peak_usage(true) / 1048576;
+check($peak < 64, sprintf('two generations stay far under the 128M limit (peak %.0f MB)', $peak));
+$kept = count((new ReflectionProperty('DevShape', 'mem'))->getValue());
+check($kept < 400, "the line breaker's trial runs are not kept in memory ($kept runs left)");
 if (isset($argv[1])) { file_put_contents($argv[1], $pdf); file_put_contents(dirname($argv[1]) . '/agreement-long.pdf', $more); }
 echo "$checks checks passed. No database or configuration loaded.\n";

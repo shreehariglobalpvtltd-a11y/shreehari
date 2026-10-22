@@ -171,6 +171,22 @@ C;
         }
     }
 
+    /**
+     * 22 Oct 2026 (memory): drop runs from this request's memory once the
+     * caller is done with them (the disk cache still has them, and shape()
+     * shapes a forgotten run again if it is asked for). A document that
+     * measures many trial lines (AgreementPdf's line breaker) would
+     * otherwise hold every one of them until the request ends.
+     *
+     * @param list<string> $texts
+     */
+    public static function forget(array $texts): void
+    {
+        foreach ($texts as $t) {
+            unset(self::$mem[(string) $t]);
+        }
+    }
+
     /* -----------------------------------------------------------------
      *  GD drawing
      * ----------------------------------------------------------------- */
