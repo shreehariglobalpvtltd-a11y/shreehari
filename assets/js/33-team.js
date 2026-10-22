@@ -81,10 +81,10 @@
       av.appendChild(im);
     }
     li.appendChild(av);
+    /* 22 Oct 2026 (owner: "name, photo, number matra dekhsune"): the job is
+       the tab and the office is the group heading - the card itself carries
+       nothing else */
     li.appendChild(el('b', 'tm-name', it.name || 'S Hari Global'));
-    if (it.role) li.appendChild(el('span', 'tm-role', (it.roleNe || '') + (it.roleEn ? ' · ' + it.roleEn : '')));
-    if (it.loc) li.appendChild(el('small', 'tm-loc', '🏢 ' + it.loc));
-    if (it.district) li.appendChild(el('small', 'tm-dist', '📍 ' + it.district));
     if (it.tel && /^\+\d{11,13}$/.test(it.tel)) {
       var acts = el('div', 'tm-acts');
       var a = el('a', 'tm-call', it.phone);   // the 📞 is a ::before, dropped on narrow phones so the number fits
@@ -173,7 +173,6 @@
       var org = location.origin + '/#org', graph = data.items.filter(function (x) { return x.name; }).slice(0, 60).map(function (x) {
         var p = { '@type': 'Person', name: x.name, worksFor: { '@id': org } };
         if (x.roleEn) p.jobTitle = x.roleEn;
-        if (x.loc || x.district) p.workLocation = { '@type': 'Place', name: x.loc || x.district };
         if (x.tel) p.telephone = x.tel;
         return p;
       });

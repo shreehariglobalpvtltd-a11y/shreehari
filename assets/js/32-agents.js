@@ -55,12 +55,6 @@
     acts.appendChild(call);
     return acts;
   }
-  function badges(a, cls) {
-    var b = el('div', cls);
-    if (a.verified) b.appendChild(el('i', '', '✓ KYC'));
-    if (a.signed) b.appendChild(el('i', '', '✓ सम्झौता'));
-    return b.childNodes.length ? b : null;
-  }
 
   function agentCard(a) {
     var li = el('li', 'ag-card');
@@ -69,12 +63,10 @@
     if (a.photo && /^\/api\/agent-photo\.php\?k=[a-f0-9]+$/.test(a.photo)) av.appendChild(img(a.photo, 52));
     li.appendChild(av);
     var who = el('div', 'ag-who');
+    /* 22 Oct 2026 (owner: "name, photo, number matra dekhsune"): no area,
+       address or badges on the public card - those stay with the office */
     who.appendChild(el('b', '', a.name));
-    who.appendChild(el('small', '', '👤 ' + (a.area || 'S Hari Global')));
-    if (a.addr) who.appendChild(el('small', 'ag-addr', '📍 ' + a.addr));
     who.appendChild(el('small', 'ag-ph', String(a.phone || '')));
-    var b = badges(a, 'ag-badges');
-    if (b) who.appendChild(b);
     li.appendChild(who);
     var acts = actions(a, 'ag');
     if (acts) li.appendChild(acts);
@@ -89,11 +81,8 @@
     if (src) lg.appendChild(img(src, 64));
     li.appendChild(lg);
     var who = el('div', 'pt-who');
-    who.appendChild(el('b', '', a.name));
-    if (a.area || a.addr) who.appendChild(el('small', '', '📍 ' + [a.area, a.addr].filter(Boolean).join(' · ')));
+    who.appendChild(el('b', '', a.name));        /* 22 Oct 2026: logo, name, number only */
     who.appendChild(el('small', 'pt-ph', String(a.phone || '')));
-    var b = badges(a, 'pt-badges');
-    if (b) who.appendChild(b);
     li.appendChild(who);
     var acts = actions(a, 'pt');
     if (acts) li.appendChild(acts);

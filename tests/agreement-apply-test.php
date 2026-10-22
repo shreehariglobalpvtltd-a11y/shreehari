@@ -354,8 +354,8 @@ try {
         'HTTP ' . $r['code']);
     aa_reset_limits();
 
-    $big = aa_post($jar, $tok, ['type' => 'ind', 'lang' => 'en', 'fields' => $indFields, 'photo' => 'data:image/jpeg;base64,' . str_repeat('A', 2_100_000)]);
-    aa_check('a body over 2 MB = 413', $big['code'] === 413, 'HTTP ' . $big['code']);
+    $big = aa_post($jar, $tok, ['type' => 'ind', 'lang' => 'en', 'fields' => $indFields, 'photo' => 'data:image/jpeg;base64,' . str_repeat('A', 3_600_000)]);
+    aa_check('a body over 3.5 MB = 413 (22 Oct 2026: room for a partner\'s two certificates)', $big['code'] === 413, 'HTTP ' . $big['code']);
     aa_reset_limits();
 
     echo "\n=== 5. the public list ===\n";

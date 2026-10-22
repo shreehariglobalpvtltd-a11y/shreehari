@@ -41,7 +41,7 @@ require_once __DIR__ . '/_init.php';
 require_once INCLUDE_PATH . '/agentapplications.php';
 require_once INCLUDE_PATH . '/docverify.php';
 
-const AGR_BODY_MAX = 2_000_000;   // 18 Oct 2026: photo + document + signature (the page shrinks each first)
+const AGR_BODY_MAX = 3_500_000;   // 18 Oct 2026: photo + document + signature (the page shrinks each first); 22 Oct 2026: + a partner's two company certificates
 
 /**
  * The one answer shape for a stored form, an exact resend and the honeypot.
@@ -128,6 +128,8 @@ try {
         'geo'       => Response::field('geo', null),
         'public_ok' => Response::field('public_ok', false),
         'logo'      => Response::field('logo', null),   // 22 Oct 2026: a partner company's logo
+        'reg_cert'  => Response::field('reg_cert', null),   // 22 Oct 2026: company registration certificate
+        'tax_cert'  => Response::field('tax_cert', null),   // 22 Oct 2026: PAN / VAT / GST certificate
     ]);
     if (!$check['ok']) {
         Response::invalid($check['errors'], AgentApplications::message('invalid', $lang));

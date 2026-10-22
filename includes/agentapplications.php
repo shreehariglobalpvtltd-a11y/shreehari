@@ -231,6 +231,7 @@ final class AgentApplications
     private static ?bool $verifyOk  = null;
     private static ?bool $webOk     = null;
     private static ?bool $logoOk    = null;
+    private static ?bool $certOk    = null;
 
     /* =================================================================
      *  Schema presence — a page must never 500 because the migration has
@@ -355,6 +356,23 @@ final class AgentApplications
             }
         }
         return self::$webOk;
+    }
+
+    /** A partner company's registration + PAN/VAT certificates (upgrade-2026-10-22-partner-kyc.sql, 22 Oct 2026). */
+    public static function certReady(): bool
+    {
+        if (self::$certOk === null) {
+            try {
+                self::$certOk = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'agent_applications' AND COLUMN_NAME IN ('reg_cert', 'tax_cert')",
+                    [], 0
+                ) === 2;
+            } catch (Throwable $e) {
+                self::$certOk = false;
+            }
+        }
+        return self::$certOk;
     }
 
     /** A partner company's logo (upgrade-2026-10-22-team-portal.sql, 22 Oct 2026). */
@@ -774,6 +792,10 @@ final class AgentApplications
             'geo'        => self::cleanGeo($in['geo'] ?? null),
             // 22 Oct 2026: a Pvt. Ltd. partner's logo from the quick form (partners only)
             'logo'       => $type === 'org' ? self::cleanPhoto($in['logo'] ?? null)['photo'] : null,
+            // 22 Oct 2026 (owner: company KYC of its own): the company's registration and PAN / VAT
+            // certificates, photos checked by their bytes and size like the ID; office eyes only
+            'reg_cert'   => $type === 'org' ? self::cleanPhoto($in['reg_cert'] ?? null)['photo'] : null,
+            'tax_cert'   => $type === 'org' ? self::cleanPhoto($in['tax_cert'] ?? null)['photo'] : null,
         ];
 
         return ['ok' => $errors === [], 'errors' => $errors, 'clean' => $clean];
@@ -802,7 +824,7 @@ final class AgentApplications
         ];
         // The simple form's extras join the fingerprint only when sent, so a
         // form without them hashes exactly as before.
-        foreach (['doc', 'signature', 'geo', 'logo'] as $k) {
+        foreach (['doc', 'signature', 'geo', 'logo', 'reg_cert', 'tax_cert'] as $k) {
             if (is_string($clean[$k] ?? null) && $clean[$k] !== '') {
                 $parts[] = $k . ':' . hash('sha256', (string) $clean[$k]);
             }
@@ -891,6 +913,13 @@ final class AgentApplications
         }
         if (is_string($clean['logo'] ?? null) && (string) $clean['type'] === 'org' && self::logoReady()) {
             $extra['logo'] = $clean['logo'];
+        }
+        if ((string) $clean['type'] === 'org' && self::certReady()) {
+            foreach (['reg_cert', 'tax_cert'] as $k) {
+                if (is_string($clean[$k] ?? null)) {
+                    $extra[$k] = $clean[$k];
+                }
+            }
         }
 
         $id = Database::insert('agent_applications', $extra + [

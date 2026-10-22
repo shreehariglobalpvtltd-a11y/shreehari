@@ -293,7 +293,8 @@ if (!$ready) {
   <div class="stf-dh">
     <?php if ($canKyc && !empty($open['photo_path'])): ?><img class="stf-av" src="<?= $h(StaffApps::fileUrl($oid, 'photo', $selfId, true)) ?>" alt=""><?php else: ?><span class="stf-av"><?= $h($initials((string) $open['full_name'])) ?></span><?php endif; ?>
     <div style="min-width:0"><h2 id="stfTitle"><?= $h($open['full_name']) ?></h2>
-      <div class="muted text-xs"><span class="mono"><?= $h($open['ref']) ?></span> · <?= $h(StaffApps::roleLabel((string) $open['role_applied'])) ?> · <?= $statusPill($st) ?> <?= $docPill((string) $open['doc_verify_status']) ?></div></div>
+      <div class="muted text-xs"><span class="mono"><?= $h($open['ref']) ?></span> · <?= $h(StaffApps::roleLabel((string) $open['role_applied'])) ?> · <?= $statusPill($st) ?> <?= $docPill((string) $open['doc_verify_status']) ?>
+        · <a href="application-print.php?type=staff&amp;id=<?= $oid ?>" target="_blank" rel="noopener" title="The application as an A4 form with photo, company letterhead and seal — Print or Save as PDF">🖨 A4 / PDF</a></div></div>
     <a class="stf-x" href="<?= $h($keep()) ?>#row<?= $oid ?>" aria-label="Close">✕</a>
   </div>
   <div class="stf-db">

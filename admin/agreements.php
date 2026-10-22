@@ -376,7 +376,7 @@ if (!$ready) {
     }
 ?>
 <div class="panel" id="detail">
-  <h2><svg class="a-ic"><use href="#a-id-card"/></svg><span class="mono"><?= $h($open['ref']) ?></span> · <?= $h($open['name']) ?> <span style="margin-left:auto"><?= $statusPill((string) $open['status']) ?></span></h2>
+  <h2><svg class="a-ic"><use href="#a-id-card"/></svg><span class="mono"><?= $h($open['ref']) ?></span> · <?= $h($open['name']) ?> <span style="margin-left:auto;display:inline-flex;gap:8px;align-items:center"><a class="btn sm ghost" href="application-print.php?type=agent&amp;id=<?= (int) $open['id'] ?>" target="_blank" rel="noopener" title="The application as an A4 form with photo, company letterhead and seal — Print or Save as PDF (22 Oct 2026)">🖨 A4 / PDF</a><?= $statusPill((string) $open['status']) ?></span></h2>
   <div class="panel-body" style="padding:16px 18px">
     <div class="agr-head">
       <?php if (!empty($open['photo']) && str_starts_with((string) $open['photo'], 'data:image/')): ?>
@@ -405,7 +405,7 @@ if (!$ready) {
         <?php if (!empty($open['geo']) && preg_match('/^(-?[\d.]+),(-?[\d.]+)(?:,(\d+))?$/', (string) $open['geo'], $gm) === 1): ?>
         <dt>Location</dt><dd><a href="https://www.google.com/maps?q=<?= $h($gm[1] . ',' . $gm[2]) ?>" target="_blank" rel="noopener">📍 <?= $h($gm[1] . ', ' . $gm[2]) ?></a><?= isset($gm[3]) && $gm[3] !== '' ? ' <span class="muted text-xs">(± ' . $h($gm[3]) . ' m, from the phone)</span>' : '' ?></dd>
         <?php endif; ?>
-        <?php foreach (['doc_photo' => 'ID document', 'signature' => 'Signature'] as $imgKey => $imgLabel): ?>
+        <?php foreach (['doc_photo' => 'ID document', 'signature' => 'Signature', 'reg_cert' => '🏢 Company registration certificate', 'tax_cert' => '🏢 PAN / VAT / GST certificate'] as $imgKey => $imgLabel): /* 22 Oct 2026: a partner's company papers */ ?>
           <?php if (!empty($open[$imgKey]) && str_starts_with((string) $open[$imgKey], 'data:image/')): ?>
           <dt><?= $h($imgLabel) ?></dt><dd>
             <?php if ($canKyc): ?>
@@ -416,6 +416,9 @@ if (!$ready) {
           </dd>
           <?php endif; ?>
         <?php endforeach; ?>
+        <?php if ($isOrg && AgentApplications::certReady() && empty($open['reg_cert'])): ?>
+        <dt>Company papers</dt><dd><span style="color:var(--bad,#c62828);font-weight:700">⚠️ No registration certificate sent</span> <span class="muted text-xs">— ask for a copy (and the PAN / VAT certificate) before KYC = Verified</span></dd>
+        <?php endif; ?>
         <?php if (!empty($open['doc_verify'])): $dvPass = str_starts_with((string) $open['doc_verify'], 'PASS'); ?>
         <dt>Document check</dt><dd><span style="font-weight:700;color:<?= $dvPass ? 'var(--ok,#0f9d6b)' : 'var(--bad,#c62828)' ?>"><?= $dvPass ? '✅ Name + number match the card' : '⚠️ Not matched' ?></span> <span class="muted text-xs"><?= $h((string) $open['doc_verify']) ?></span></dd>
         <?php elseif (!empty($open['doc_photo'])): ?>

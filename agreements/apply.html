@@ -143,6 +143,17 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
         <div><div class="pick"><span class="btn">🖼️ कम्पनीको लोगो · Company logo</span><input type="file" id="logoIn" accept="image/*" aria-label="Choose the company logo"></div>
         <p class="hint" style="margin:6px 0 0">वेबसाइटको साझेदार कार्ड र परिचयपत्रमा देखिन्छ (ऐच्छिक)।</p><div class="ok" id="logoOk"></div></div>
       </div>
+      <!-- 22 Oct 2026 (owner: company KYC of its own): the company's own papers, office only -->
+      <div class="shot" style="margin-top:12px">
+        <div class="prev doc" id="regPrev">📄</div>
+        <div><div class="pick"><span class="btn">📷 दर्ता प्रमाणपत्र · Registration certificate <em>*</em></span><input type="file" id="regIn" accept="image/*" capture="environment" aria-label="Photo of the company registration certificate"></div>
+        <p class="hint" style="margin:6px 0 0">कम्पनी / फर्म दर्ताको प्रमाणपत्रको स्पष्ट फोटो। अफिसले मात्र हेर्छ, वेबसाइटमा कहिल्यै देखिँदैन।</p><div class="ok" id="regOk"></div></div>
+      </div>
+      <div class="shot" style="margin-top:12px">
+        <div class="prev doc" id="taxPrev">📄</div>
+        <div><div class="pick"><span class="btn">📷 PAN / VAT / GST प्रमाणपत्र · certificate</span><input type="file" id="taxIn" accept="image/*" capture="environment" aria-label="Photo of the PAN / VAT / GST certificate"></div>
+        <p class="hint" style="margin:6px 0 0">भए राख्नुहोस् · if the company has one. अफिसले मात्र हेर्छ।</p><div class="ok" id="taxOk"></div></div>
+      </div>
     </div>
     <label class="f"><span>मोबाइल · Mobile (WhatsApp) <em>*</em></span>
       <div class="row"><select id="cc" aria-label="Country code"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>
@@ -243,7 +254,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var state = { photo: null, doc: null, geo: null, csrf: null, verified: null, checking: null, seenName: '', wa: 'none', kind: 'ind', logo: null };
+  var state = { photo: null, doc: null, geo: null, csrf: null, verified: null, checking: null, seenName: '', wa: 'none', kind: 'ind', logo: null, reg_cert: null, tax_cert: null };
   /* 22 Oct 2026: a partner company's ID / photo / signature are its representative's */
   function nameId() { return state.kind === 'org' ? 'p_rep' : 'p_name'; }
 
@@ -303,6 +314,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   hookShot('docIn', 'docPrev', 'docOk', 'doc', 1400, 420000);
   hookShot('selfIn', 'selfPrev', 'selfOk', 'photo', 900, 260000);
   hookShot('logoIn', 'logoPrev', 'logoOk', 'logo', 600, 150000);
+  hookShot('regIn', 'regPrev', 'regOk', 'reg_cert', 1600, 320000);
+  hookShot('taxIn', 'taxPrev', 'taxOk', 'tax_cert', 1600, 320000);
 
   /* ---- 22 Oct 2026: individual agent or Pvt. Ltd. partner company ---- */
   function setKind(k) {
@@ -488,6 +501,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     document.querySelectorAll('[aria-invalid]').forEach(function (el) { el.removeAttribute('aria-invalid'); });
     if ($('p_name').value.trim().length < 2) return need('p_name', state.kind === 'org' ? 'कम्पनीको नाम लेख्नुहोस्।' : 'कृपया पूरा नाम लेख्नुहोस्।');
     if (state.kind === 'org' && $('p_rep').value.trim().length < 2) return need('p_rep', 'प्रतिनिधि / सञ्चालकको नाम लेख्नुहोस्।');
+    if (state.kind === 'org' && !state.reg_cert) return need('regIn', 'कम्पनी दर्ता प्रमाणपत्रको फोटो खिच्नुहोस् · photo of the registration certificate.');
     var ph = $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
     if (ph.length !== 10) return need('p_phone', 'कृपया १० अङ्कको मोबाइल नम्बर लेख्नुहोस्।');
     if (!$('p_area').value.trim()) return need('p_area', 'काम गर्ने ठाउँ लेख्नुहोस्।');
@@ -531,6 +545,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
       body.fields.p_rep_phone = phone;
       body.fields.p_occ = 'Online partner form (logo + representative photo + signature)';
       if (state.logo) body.logo = state.logo;
+      if (state.reg_cert) body.reg_cert = state.reg_cert;
+      if (state.tax_cert) body.tax_cert = state.tax_cert;
     }
     ['cv_qual', 'cv_exp', 'cv_prev'].forEach(function (k) { var v = $(k).value.trim(); if (v) body.fields[k] = v; });
     ['b_name', 'b_bank', 'b_acc', 'b_ifsc', 'b_upi'].forEach(function (k) {
