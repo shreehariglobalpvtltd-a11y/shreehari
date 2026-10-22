@@ -352,13 +352,16 @@ final class TeamPortal
             return ['ok' => false, 'error' => 'धेरै पटक भयो — केही बेरपछि फेरि · Too many tries, please wait a while and try again.'];
         }
         $out = ['ok' => true];
+        $t0 = microtime(true);
         $targets = self::resetTargets($phone10);
         if ($targets === []) {
             Logger::info('Team portal: reset asked for a number with no account that can reset (or no country on it)', ['phone' => maskPhone($phone10)], 'otp');
+            self::evenTime($t0, true);
             return $out;
         }
         if (self::resetLocked($phone10)) {
             Logger::warning('Team portal: reset code NOT sent, the number is locked after wrong codes', ['phone' => maskPhone($phone10)], 'otp');
+            self::evenTime($t0, true);
             return $out;
         }
         $capH = max(1, Settings::getInt('otp_global_hourly_cap', 150));
@@ -379,7 +382,26 @@ final class TeamPortal
                 $out['debugCode'] = (string) $res['code'];   // a dev box only — never in production
             }
         }
+        self::evenTime($t0, false);
         return $out;
+    }
+
+    /**
+     * 22 Oct 2026 (re-attack): every answer of the forgot step takes about as long,
+     * so timing does not tell whether a number is on the team. An unknown number
+     * pays the same bcrypt a real code costs; then all paths wait until at least
+     * ~0.9-1.2 s (a real WhatsApp send usually fits inside that).
+     */
+    private static function evenTime(float $t0, bool $burnHash): void
+    {
+        if ($burnHash) {
+            password_hash(bin2hex(random_bytes(4)), PASSWORD_BCRYPT);
+        }
+        $target = 0.9 + random_int(0, 300) / 1000;
+        $left = $target - (microtime(true) - $t0);
+        if ($left > 0) {
+            usleep((int) ($left * 1_000_000));
+        }
     }
 
     /** The reset code to one full number. True only when WhatsApp took it (a wa.me fallback is not a delivery). */

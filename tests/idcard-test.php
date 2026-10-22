@@ -126,8 +126,11 @@ try {
     $bomb = bombPng(20000, 20000);
     $bombUri = 'data:image/png;base64,' . base64_encode($bomb);
     check('the bomb is a small file (' . strlen($bomb) . ' bytes) declaring 20000 x 20000', strlen($bomb) < 60000 && getimagesizefromstring($bomb)[0] === 20000);
-    check('imageFits: 6000 x 2666 yes; 6001 px a side, 4001 x 4001 (16 MP+) and rubbish no', AgentApplications::imageFits(bombPng(6000, 2666))
-        && !AgentApplications::imageFits(bombPng(6001, 10)) && !AgentApplications::imageFits(bombPng(4001, 4001)) && !AgentApplications::imageFits('not an image'));
+    // 22 Oct 2026 (re-attack): the rule now also counts decode memory (~8 bytes a PNG pixel),
+    // so under a 128M limit a 16 MP PNG no longer fits even though its pixel count does.
+    check('imageFits: 2000 x 2000 yes; 6001 px a side, 4001 x 4001 (16 MP+), 6000 x 2666 PNG (memory) and rubbish no', AgentApplications::imageFits(bombPng(2000, 2000))
+        && !AgentApplications::imageFits(bombPng(6001, 10)) && !AgentApplications::imageFits(bombPng(4001, 4001)) && !AgentApplications::imageFits('not an image')
+        && (ini_get('memory_limit') === '-1' || !AgentApplications::imageFits(bombPng(6000, 2666))));
     $c = AgentApplications::cleanPhoto($bombUri);
     check('cleanPhoto refuses it (photo, ID photo, partner logo, office card edit)', $c['photo'] === null && $c['note'] === 'too_big');
     check('cleanSignature refuses it (apply form, portal sign box)', AgentApplications::cleanSignature($bombUri) === null);

@@ -620,7 +620,31 @@ final class AgentApplications
         }
         $w = (int) ($img[0] ?? 0);
         $h = (int) ($img[1] ?? 0);
-        return $w > 0 && $h > 0 && $w <= $maxSide && $h <= $maxSide && $w * $h <= $maxPixels;
+        if (!($w > 0 && $h > 0 && $w <= $maxSide && $h <= $maxSide && $w * $h <= $maxPixels)) {
+            return false;
+        }
+        /* 22 Oct 2026 (re-attack): pixels are not memory. GD opens a truecolour PNG at
+           ~8 bytes a pixel (image + decoded buffer), a JPEG at ~5, so a 62 KB 16 MP RGBA
+           PNG needed the whole 128M. The image must fit in what this request still has. */
+        $limit = self::memoryLimitBytes();
+        if ($limit > 0) {
+            $perPixel = (($img['mime'] ?? '') === 'image/png' || (int) ($img[2] ?? 0) === IMAGETYPE_PNG) ? 8 : 5;
+            if ($w * $h * $perPixel + 24 * 1024 * 1024 > $limit - memory_get_usage(true)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** PHP's memory_limit in bytes; 0 = unlimited. */
+    private static function memoryLimitBytes(): int
+    {
+        $v = trim((string) ini_get('memory_limit'));
+        if ($v === '' || $v === '-1') {
+            return 0;
+        }
+        $n = (int) $v;
+        return match (strtolower(substr($v, -1))) { 'g' => $n << 30, 'm' => $n << 20, 'k' => $n << 10, default => $n };
     }
 
     /** Field error text in the applicant's language, in the words people use. */
