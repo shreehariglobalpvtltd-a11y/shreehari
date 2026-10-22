@@ -25,7 +25,7 @@
 'use strict';
 
 var X = null;                       /* the bridge, set in start() */
-var GV = '20261022h';
+var GV = '20261022i';
 
 /* ---------------------------------------------------------------------
    DATA
@@ -196,6 +196,8 @@ var TX = {
   syncB: { ne: 'फोन–कम्प्युटर sync', hi: 'फ़ोन–कंप्यूटर sync', en: 'Sync devices' },
   myBusB: { ne: 'मेरो बस (PNR)', hi: 'मेरी बस (PNR)', en: 'My bus (PNR)' },
   allVisits: { ne: 'सबै भ्रमण', hi: 'सभी विज़िट', en: 'All visits' },
+  planB: { ne: 'यात्रा योजना', hi: 'यात्रा योजना', en: 'Plan a yatra' },
+  festB: { ne: 'पर्व-भीड क्यालेन्डर', hi: 'त्योहार-भीड़ कैलेंडर', en: 'Festival crowds' },
   parkT: { ne: 'पार्किङ', hi: 'पार्किंग', en: 'Parking' },
   chipAsk: { ne: 'AI सोध्नुस्', hi: 'AI से पूछें', en: 'Ask AI' },
   chipTirtha: { ne: 'तीर्थ', hi: 'तीर्थ', en: 'Tirtha' },
@@ -707,6 +709,11 @@ function bodyClick(e) {
   }
   if (b.dataset.park === 'ai') { askAI(); return; }
   if (b.dataset.park === 'visits' && window.SHGNAV_MORE) { closeG(); afterClose(function () { window.SHGNAV_MORE.openVisits(); }); return; }
+  if ((b.dataset.park === 'plan' || b.dataset.park === 'fest') && window.SHGNAV_YATRA) {
+    var YA = window.SHGNAV_YATRA, wh = b.dataset.park;
+    closeG(); afterClose(function () { if (wh === 'plan') YA.openPlanner(); else YA.openFest(); });
+    return;
+  }
   if ((b.dataset.park === 'sync' || b.dataset.park === 'mybus') && window.SHGNAV_LIVE) {
     var LV = window.SHGNAV_LIVE, which = b.dataset.park;
     closeG(); afterClose(function () { if (which === 'sync') LV.openSync(); else LV.openMyBus(); });
@@ -864,7 +871,9 @@ function dhamCard(d, inChat) {
 }
 function renderTirtha() {
   var b = $('#sgBody'); if (!b) return;
-  var seg = '<div class="sg-seg">' + [['all', t('allC')], ['np', t('np')], ['in', t('inn')], ['near', t('nearT')]].map(function (x) {
+  var seg = (window.SHGNAV_YATRA ? '<div class="sg-acts" style="margin:0 0 4px"><button class="sg-a gold" type="button" data-park="plan">🗺️ ' + esc(t('planB')) + '</button>' +
+      '<button class="sg-a" type="button" data-park="fest">📅 ' + esc(t('festB')) + '</button></div>' : '') +
+    '<div class="sg-seg">' + [['all', t('allC')], ['np', t('np')], ['in', t('inn')], ['near', t('nearT')]].map(function (x) {
     return '<button type="button" data-tf="' + x[0] + '" class="' + (G.tf === x[0] ? 'on' : '') + '">' + esc(x[1]) + '</button>';
   }).join('') + '</div>';
   if (G.tf === 'near') {
@@ -1114,6 +1123,7 @@ function start() {
   if (X || !window.SHGNAV_X) return;
   X = window.SHGNAV_X;
   build();
+  window.SHGNAV_GUIDE = { dhams: DHAMS, inNepal: inNepal };       /* Phase 5: the yatra planner and festival calendar read the dhams */
   setInterval(function () { try { tick(); } catch (e) { if (window.console) console.warn('nav-guide', e); } }, 1000);
   /* deep link: navigate.html?guide=1 | ?guide=tirtha | border | sos */
   var g = new URLSearchParams(location.search).get('guide');

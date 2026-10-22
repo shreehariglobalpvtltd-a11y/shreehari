@@ -262,7 +262,7 @@ function dirSheet(r) {
     };
   });
   if (WX.r !== r) rainOnRoute(r);
-  if (S.mode === 'bus' && r.src === 'own' && r.dist < 400000 && RC.r !== r) roadCheck(r);   /* a coach always gets the check */
+  if (S.mode === 'bus' && r.src === 'own' && r.dist < 400000 && RC.r !== r && !window.SHGNAV_LOWDATA) roadCheck(r);   /* a coach always gets the check (not on 2G) */
 }
 function rcHtml(rc) {
   if (!rc.narrow.km && !rc.rough.km) return '<div class="nm-row"><span>✅</span><span>' + esc(t('roadOk')) + '</span></div>';
@@ -292,6 +292,7 @@ function areaName(p) {
 /* the hour you will be at each point: MET Norway (free incl. commercial use) through our cached proxy */
 function rainOnRoute(r) {
   WX = { r: r, v: null };
+  if (window.SHGNAV_LOWDATA) return;                  /* low-data mode (nav-yatra.js): no extra lookups */
   if (!r.L && X.prepRoute) X.prepRoute(r);
   var Lr = r.L; if (!Lr || r.dist < 15000) return;
   var start = WHEN.type === 'depart' && WHEN.t ? WHEN.t : WHEN.type === 'arrive' && WHEN.t ? WHEN.t - r.dur * 1000 : Date.now();
@@ -545,7 +546,7 @@ function exploreHtml(d) {
   var h = '';
   if (d.ours && d.ours.length) {
     h += '<div class="nm-h">' + esc(t('ourGuide')) + '</div><div class="nm-list">' + d.ours.map(function (o, i) {
-      return '<button class="nm-card" type="button" data-xo="' + i + '">' + (o.img ? '<img src="' + esc(o.img) + '" alt="" loading="lazy">' : '') +
+      return '<button class="nm-card" type="button" data-xo="' + i + '">' + (o.img && !window.SHGNAV_LOWDATA ? '<img src="' + esc(o.img) + '" alt="" loading="lazy">' : '') +
         '<span><b>' + esc(L(o.name)) + (o.unesco ? ' · UNESCO' : '') + '</b><small style="color:var(--text3,#6F7D99)">' + esc(X.fmtDist(o.km * 1000)) + (L(o.season) ? ' · ' + esc(t('season')) + ': ' + esc(L(o.season)) : '') + '</small>' +
         '<p>' + esc(L(o.blurb)) + '</p></span></button>';
     }).join('') + '</div>';
@@ -727,6 +728,7 @@ function jvTick(N) {
 var STEEP = { r: null, v: null, said: {} };
 function steepCheck(r) {
   STEEP = { r: r, v: 'busy', said: {} };
+  if (window.SHGNAV_LOWDATA) { STEEP.v = null; return; }
   if (!r.L && X.prepRoute) X.prepRoute(r);
   var Lr = r.L; if (!Lr || Lr.len < 300) { STEEP.v = null; return; }
   var n = Math.max(20, Math.min(200, Math.round(Lr.len / 50))), pts = [], al = [];
