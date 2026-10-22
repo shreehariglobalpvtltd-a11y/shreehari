@@ -185,7 +185,10 @@ check('index: the list stays hidden until it loads', str_contains($idx, '<sectio
 check('index: a failed fetch hides the list', str_contains($idx, "catch(function () { sec.hidden = true; })"));
 check('index: API text is written as text, never HTML', !str_contains($idx, 'innerHTML') && str_contains($idx, 'e.textContent = text'));
 check('index: only masked-free numbers become tel: links', str_contains($idx, "ph.indexOf('\\u2022') < 0"));
-check('index: no outside script', !preg_match('~<script\b[^>]*\bsrc=~i', $idx));
+// 22 Oct 2026: the one script the landing page may load is our own /assets/js/wa-direct.js
+// (owner: every WhatsApp button opens WhatsApp in one tap).
+preg_match_all('~<script\b[^>]*\bsrc="([^"]*)"~i', $idx, $idxSrc);
+check('index: no outside script', array_filter($idxSrc[1], static fn(string $u): bool => !str_starts_with($u, '/assets/js/wa-direct.js')) === []);
 
 echo "\n  {$PASS} passed, {$FAIL} failed\n\n";
 exit($FAIL === 0 ? 0 : 1);
