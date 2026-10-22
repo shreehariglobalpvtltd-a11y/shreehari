@@ -484,7 +484,7 @@ function followNotify() {
 /* the rider's side: arrived while sharing - one tap to tell the people waiting */
 function arrivedSheet(dest) {
   var msg = t('arrivedMsg', { d: dest || '' });
-  var el = sheet('<h3>✓ ' + esc(t('arrivedT', { d: dest || '' })) + '</h3><p>' + esc(t('arrivedP')) + '</p>' +
+  var el = sheet('<h3>' + esc(t('arrivedT', { d: dest || '' })) + '</h3><p>' + esc(t('arrivedP')) + '</p>' +
     '<div class="nl-acts"><a class="nl-b wa" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(msg) + '">' + esc(t('wa')) + '</a>' +
     (navigator.share ? '<button class="nl-b" type="button" data-s>' + esc(t('more')) + '</button>' : '') + '</div>');
   var b = el.querySelector('[data-s]'); if (b) b.onclick = function () { navigator.share({ title: 'SHARI NAV', text: msg }).catch(function () {}); };

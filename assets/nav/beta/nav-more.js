@@ -712,7 +712,7 @@ function jvTick(N) {
       show = complex && d > 25 && d <= 300;
     }
   }
-  if (!show) { if (JV.el && !JV.el.hidden) { JV.el.hidden = true; document.body.classList.remove('nm-jv'); } return; }
+  if (!show) { if (JV.el && !JV.el.hidden) { JV.el.hidden = true; document.body.classList.remove('nm-jv-on'); } return; }
   if (!JV.el) { JV.el = document.createElement('div'); JV.el.className = 'nm-jv'; JV.el.setAttribute('role', 'img'); document.body.appendChild(JV.el); }
   var top = $('#navTop'); if (top) JV.el.style.top = Math.round(top.getBoundingClientRect().bottom + 8) + 'px';
   var lanes = st.lanes || [];
@@ -720,7 +720,7 @@ function jvTick(N) {
   JV.el.innerHTML = (lanes.length ? '<div class="nm-lanes">' + lanes.map(function (l) { return laneSvg(l, l.valid !== false); }).join('') + '</div>' : '') +
     '<div class="nm-sign"><b>' + esc(X.fmtDist(Math.max(0, d))) + '</b>' + (sign ? '<span>' + esc(sign) + '</span>' : '') + '</div>';
   JV.el.setAttribute('aria-label', (sign || '') + ' ' + X.fmtDist(d));
-  JV.el.hidden = false; document.body.classList.add('nm-jv');
+  JV.el.hidden = false; document.body.classList.add('nm-jv-on');
 }
 
 /* ---------- Steep climbs for walking / cycling (our SRTM heights) ---------- */
@@ -793,7 +793,7 @@ var GLASS = [
   '.nm-lane.on{background:rgba(255,255,255,.2);color:#fff}.nm-lane svg{width:32px;height:32px}',
   '.nm-sign{display:flex;gap:10px;align-items:baseline;font:600 15px Inter,system-ui,sans-serif}.nm-sign b{font:700 22px Poppins,Inter,sans-serif}',
   '.nm-sign span{background:#1A5FB4;border:2px solid #fff;border-radius:6px;padding:1px 8px;font-size:14px}',
-  'body.nm-jv .sg-lm{display:none!important}'
+  'body.nm-jv-on .sg-lm{display:none!important}'
 ].join('\n');
 
 /* ---------------------------------------------------------------------
