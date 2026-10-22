@@ -13,7 +13,7 @@
  *                        NavLive::publish(), key in /var/lib/shg-live/key
  *
  *  Every datagram {ch, d, t} goes, as one text frame, to the sockets that
- *  listen on ch. The last frame of each channel is kept 2 minutes so a
+ *  listen on ch. The last frame of bus and share:* is kept 2 minutes so a
  *  phone that joins late sees the bus / the shared trip at once.
  *  Channels: share:<32 hex>, bus, rep.
  *
@@ -255,7 +255,12 @@ function publish(string $raw, string $key): void
         return;
     }
     $f = frame($json);
-    $LAST[$ch] = [$f, time()];
+    /* bus and share:* carry a whole state - a late joiner gets the last one.
+       rep carries single changes: replaying one could bring back a report
+       that was deleted since, so a page loads that list from the API. */
+    if ($ch !== 'rep') {
+        $LAST[$ch] = [$f, time()];
+    }
     foreach (array_keys($SUB[$ch] ?? []) as $id) {
         send($id, $f);
     }
