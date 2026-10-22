@@ -217,6 +217,8 @@ const CORE_SUITES = [
     'wa-ops-manager-test.php'     => 'human handoff (SUP-…), step-up gate on money tools, catalogue by switch, attachments, consent',
     // 24 Sep 2026, registered with the per-request session check it guards.
     'admin-session-revalidate-test.php' => 'a deactivated or demoted staff member loses it on the next request, not the next login',
+    // 22 Oct 2026 (review #11, office part), registered with the password stamp it guards.
+    'admin-pw-stamp-test.php'      => 'a changed or reset password ends the account\'s other office sessions within 30 s; the changer stays in',
     'money-guards-test.php'        => 'paper-ticket cap, agent-only commission, no proof downgrade, coupon redemption, second void, hold cap',
     'seat-events-test.php'         => 'live seat events: the version moves only when seats move; unchanged answers; the stream',
     'whereis-test.php'             => '"Where is my bus?": honest status, three doors, the keyed page, its JSON, trackUrl in the app payload',

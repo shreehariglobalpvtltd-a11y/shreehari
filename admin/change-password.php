@@ -89,6 +89,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
         // bouncing them back here on the next click.
         $_SESSION[ADMIN_SESSION_KEY]['must_change_pw'] = false;
 
+        // 22 Oct 2026 (review #11, office part): this session takes the new
+        // password stamp and stays signed in; every OTHER session of the
+        // account (another phone, a forgotten office PC) ends within 30 s.
+        Auth::refreshOwnPwStamp((int) $row['id']);
+
         // A password change is a session-fixation boundary.
         session_regenerate_id(true);
 

@@ -572,14 +572,12 @@ final class TeamPortal
         if ($n === 0) {
             return ['ok' => false, 'error' => 'यो खाता बन्द छ — कार्यालयमा सम्पर्क गर्नुहोस् · This account is switched off. Please call the office.'];
         }
-        /* TODO (22 Oct 2026 review, #11): an agent / counter session already
-           open on another device stays open after this reset. Staff-portal
-           sessions end (openStaffSession / current() carry a password stamp),
-           but the office session (Auth::finishAdminSession / Auth::admin(),
-           includes/auth.php) has no stamp to compare — adding one changes
-           every office sign-in and admin/change-password.php too, so it is
-           left for a separate change. The office can end one now by switching
-           the account off and on (Auth::admin() re-reads is_active every 30 s). */
+        /* 22 Oct 2026 (review #11, office part): an agent / counter session
+           already open on another device ends within 30 s of this reset —
+           every office session carries a password stamp that Auth::admin()
+           compares with the row. The session opened below reads the NEW hash
+           (Auth::finishAdminSession), so it carries on. Staff-portal sessions
+           end the same way (openStaffSession / current()). */
         if ($twofa) {
             // 22 Oct 2026 (review, #3): a 2FA account gets no session from a phone reset — the office login still asks the 2FA step
             return ['ok' => true, 'kind' => 'none', 'twofa' => true, 'count' => $n];
@@ -616,6 +614,8 @@ final class TeamPortal
         if ($me['via'] === 'admin') {
             Database::update('admins', ['password_hash' => $hash, 'must_change_pw' => 0], 'id = :id', ['id' => (int) $me['admin']['id']]);
             Logger::audit('team.password_change', 'admin', (string) $me['admin']['id'], null, null, 'Password changed at /team/');
+            // 22 Oct 2026 (review #11, office part): this office session carries on; the account's other ones end within 30 s
+            Auth::refreshOwnPwStamp((int) $me['admin']['id']);
         }
         if ($me['staff'] !== null && (string) $me['staff']['status'] === 'approved') {
             Database::update('staff_applications', ['password_hash' => $hash], 'id = :id', ['id' => (int) $me['staff']['id']]);

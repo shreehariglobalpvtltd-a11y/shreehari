@@ -599,6 +599,11 @@ final class Auth
             // against this clock, so a session built by hand in a test (no
             // stamp) is left exactly as the test wrote it.
             'checked_at'     => time(),
+            // 22 Oct 2026 (review #11, office part): the password this session
+            // was opened with. Read from the row, not from $admin: the 2FA and
+            // agent-OTP doors load the row without the hash, and a team-portal
+            // reset hands over the row as it was BEFORE the new password.
+            'pw'             => self::adminPwStamp((int) $admin['id']),
         ];
 
         // Record the attempt and note whether this browser is new for this
@@ -616,6 +621,42 @@ final class Auth
                 ['device' => LoginLog::deviceLabel((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''))],
                 'First sign-in from this device');
         }
+    }
+
+    /**
+     * 22 Oct 2026 (review #11, office part): a short stamp of an account's
+     * password hash. Every office session carries the stamp of the password
+     * it was opened with ('pw'); admin() compares it with the admins row on
+     * its 30-second re-check, so a changed or reset password ends every OTHER
+     * session of that account. Keyed with APP_KEY, so the session file holds
+     * nothing that helps anyone with the hash itself.
+     */
+    private static function pwStamp(string $hash): string
+    {
+        return substr(hash('sha256', APP_KEY . '|' . $hash), 0, 16);
+    }
+
+    /** The stamp of the password on file for this account right now. */
+    private static function adminPwStamp(int $adminId): string
+    {
+        return self::pwStamp((string) Database::scalar(
+            'SELECT password_hash FROM admins WHERE id = :id', ['id' => $adminId], ''));
+    }
+
+    /**
+     * 22 Oct 2026 (review #11, office part): the person signed in here just
+     * changed their OWN password — give THIS session the new stamp so they
+     * carry on; every other session of the account ends on its next re-check
+     * (within 30 s). Call it after the new hash is written. Does nothing when
+     * this browser is not signed in as that account (the office resetting
+     * somebody else), so callers need not check.
+     */
+    public static function refreshOwnPwStamp(int $adminId): void
+    {
+        if ($adminId <= 0 || (int) ($_SESSION[ADMIN_SESSION_KEY]['id'] ?? 0) !== $adminId) {
+            return;
+        }
+        $_SESSION[ADMIN_SESSION_KEY]['pw'] = self::adminPwStamp($adminId);
     }
 
     /**
@@ -965,6 +1006,13 @@ final class Auth
         // The agent's own open session (if any) keeps working — the id is the
         // key — but a renamed username must show the new name next time the
         // session array is rebuilt; sessions are rebuilt on every login.
+        // 22 Oct 2026 (review #11, office part): a NEW PASSWORD is different —
+        // every open session of the account ends within 30 s (Auth::admin()
+        // compares the password stamp), except the editor's own when they
+        // changed their own password here.
+        if (in_array('password', $changed, true)) {
+            self::refreshOwnPwStamp($adminId);
+        }
         Logger::audit(
             (string) $row['role'] === 'agent' ? 'agent.credentials' : 'staff.credentials',
             'admin',
@@ -1024,11 +1072,19 @@ final class Auth
            role or permission set takes effect within half a minute. The
            check is skipped when the database is unreachable (the page fails
            for a better reason anyway) and for sessions that carry no
-           checked_at stamp — those are built by hand in tests. */
+           checked_at stamp — those are built by hand in tests.
+
+           22 Oct 2026 (review #11, office part): the password too. A session
+           whose 'pw' stamp no longer matches the row is signed out like a
+           deactivated one, so a changed password (change-password.php, the
+           team portal, an office reset) ends the account's OTHER sessions
+           within 30 s; the person who changed it keeps theirs
+           (refreshOwnPwStamp). A session opened before the stamp existed has
+           no 'pw' and is NOT signed out — it takes the current stamp here. */
         if (isset($admin['checked_at']) && (time() - (int) $admin['checked_at']) > 30) {
             try {
                 $row = Database::fetch(
-                    'SELECT is_active, role, permissions, must_change_pw, locked_until
+                    'SELECT is_active, role, permissions, must_change_pw, locked_until, password_hash
                        FROM admins WHERE id = :id',
                     ['id' => (int) $admin['id']]
                 );
@@ -1039,9 +1095,12 @@ final class Auth
             if ($row !== false) {
                 $locked = $row !== null && !empty($row['locked_until'])
                     && strtotime((string) $row['locked_until']) > time();
-                if ($row === null || (int) $row['is_active'] !== 1 || $locked) {
+                $stamp     = $row !== null ? self::pwStamp((string) ($row['password_hash'] ?? '')) : '';
+                $pwChanged = $row !== null && isset($admin['pw']) && !hash_equals($stamp, (string) $admin['pw']);
+                if ($row === null || (int) $row['is_active'] !== 1 || $locked || $pwChanged) {
                     Logger::audit('admin.session_revoked', 'admin', (string) $admin['id'], null, null,
-                        $row === null ? 'account deleted' : ($locked ? 'account locked' : 'account deactivated'));
+                        $row === null ? 'account deleted' : ($locked ? 'account locked'
+                            : ((int) $row['is_active'] !== 1 ? 'account deactivated' : 'password changed')));
                     // Not adminLogout(): that writes a 'logout' login-log row
                     // in the person's name and regenerates the session id,
                     // which has no session to regenerate under the CLI.
@@ -1056,6 +1115,7 @@ final class Auth
                 $_SESSION[ADMIN_SESSION_KEY]['permissions']    = jsonColumn($row['permissions']);
                 $_SESSION[ADMIN_SESSION_KEY]['must_change_pw'] = (int) $row['must_change_pw'] === 1;
                 $_SESSION[ADMIN_SESSION_KEY]['checked_at']     = time();
+                $_SESSION[ADMIN_SESSION_KEY]['pw']             = $stamp;   // same value, or the first stamp of an older session
                 $admin = $_SESSION[ADMIN_SESSION_KEY];
             }
         }

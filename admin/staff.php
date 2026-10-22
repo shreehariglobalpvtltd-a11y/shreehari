@@ -183,6 +183,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'password_hash'  => password_hash($pw, PASSWORD_DEFAULT),
                     'must_change_pw' => $mustChange,
                 ], 'id = :id', ['id' => $id]);
+                // 22 Oct 2026 (review #11, office part): their open sessions end within 30 s; resetting your OWN keeps this one
+                Auth::refreshOwnPwStamp($id);
                 Logger::audit('staff.resetpw', 'admin', (string) $target['username'], null, null, 'password reset by super-admin');
                 $flash = ['ok', 'Password reset for "' . $target['username'] . '".'
                     . ($mustChange === 1 ? ' They must change it on next login.' : '')];
