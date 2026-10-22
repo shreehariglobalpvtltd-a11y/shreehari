@@ -87,6 +87,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
                 // 22 Oct 2026: team portal - a ticket-selling account for this person ('' = unlink)
                 TeamPortal::linkAccount($id, (string) ($_POST['account'] ?? ''), $selfId);
                 Response::redirect('admin/' . $keep(['id' => $id, 'done' => 'link']) . '#login');
+            } elseif ($act === 'edit' && $canKyc) {
+                // 22 Oct 2026 (owner: everything from one record): details, mobile, address, bank
+                $in = array_intersect_key($_POST, TeamPortal::STAFF_EDIT + ['phone' => 1, 'phone_country' => 1]);
+                $ch = TeamPortal::officeEditStaff($id, array_map('strval', $in), $selfId);
+                Response::redirect('admin/' . $keep(['id' => $id, 'done' => $ch === [] ? 'nochange' : 'edit']) . '#office');
+            } elseif ($act === 'kyc' && $canKyc) {
+                TeamPortal::officeKyc($id, (string) ($_POST['kyc_status'] ?? ''), $selfId);
+                Response::redirect('admin/' . $keep(['id' => $id, 'done' => 'kyc']) . '#office');
+            } elseif ($act === 'pwset') {
+                TeamPortal::officeSetStaffPassword($id, (string) ($_POST['new_password'] ?? ''), $selfId);
+                Response::redirect('admin/' . $keep(['id' => $id, 'done' => 'pwset']) . '#login');
             } elseif ($act === 'pwclear') {
                 TeamPortal::clearPassword($id, $selfId);
                 Response::redirect('admin/' . $keep(['id' => $id, 'done' => 'pwclear']) . '#login');
@@ -111,6 +122,8 @@ if ($flash === null && isset($_GET['done'])) {
         'info'    => '📨 Request sent.' . $wa, 'review' => 'Marked under review.', 'exit' => 'Marked as exited — off the website.',
         'reopen'  => 'Reopened as pending.', 'web' => 'Website card saved.', 'note' => 'Note saved.',
         'link'    => 'Ticket-selling account saved.', 'pwclear' => 'Portal password cleared — they make a new one at /team/ with a WhatsApp code.',
+        'edit'    => 'Details saved.', 'nochange' => 'Nothing was changed.', 'kyc' => 'KYC saved.',
+        'pwset'   => 'Portal password set — tell them in person or by phone; they sign in at /team/ with their mobile.',
         'recheck' => 'Documents read again: ' . Security::clean((string) ($_GET['dv'] ?? ''), 12) . '.',
         default   => 'Saved.',
     }];
@@ -372,8 +385,46 @@ if (!$ready) {
     <form method="post" action="<?= $h($keep(['id' => $oid])) ?>" style="margin-top:6px" onsubmit="return confirm('Clear the portal password? They make a new one at /team/ with a WhatsApp code.')"><?= $csrfField ?><input type="hidden" name="action" value="pwclear"><input type="hidden" name="id" value="<?= $oid ?>">
       <button class="btn ghost sm" type="submit">Clear portal password</button></form>
     <?php endif; ?>
+    <?php if ($st === 'approved'): /* 22 Oct 2026 (owner): the office can set the password too */ ?>
+    <form class="stf-pane" method="post" action="<?= $h($keep(['id' => $oid])) ?>" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px" autocomplete="off"><?= $csrfField ?><input type="hidden" name="action" value="pwset"><input type="hidden" name="id" value="<?= $oid ?>">
+      <label class="stf-web">🔑 Set portal password <input name="new_password" type="text" minlength="<?= TeamPortal::PW_MIN ?>" maxlength="72" autocomplete="new-password" placeholder="<?= TeamPortal::PW_MIN ?>+ letters / numbers" style="width:200px;min-height:40px"></label>
+      <button class="btn sm" type="submit">Set</button>
+      <span class="muted text-xs" style="flex:1 1 100%">For someone without WhatsApp. Tell them in person or by phone — never on WhatsApp. They can change it at /team/.</span>
+    </form>
+    <?php endif; ?>
     <?php endif; ?>
     <details class="stf-pane" style="margin-top:8px"><summary><b>CV</b> — education &amp; experience</summary><div class="stf-cv"><?= TeamPortal::cvHtml(TeamPortal::cv($open, 'staff'), false) ?></div></details>
+    <?php endif; ?>
+
+    <?php if ($canKyc): /* 22 Oct 2026 (owner: "KYC password email id sabai form bata manage"): edit + KYC on the one record */ ?>
+    <div class="stf-sec" id="office">Office · details &amp; KYC</div>
+    <?php if (TeamPortal::kycReady()): $kycNow = (string) ($open['kyc_status'] ?? 'submitted'); ?>
+    <form class="stf-pane" method="post" action="<?= $h($keep(['id' => $oid])) ?>" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><?= $csrfField ?><input type="hidden" name="action" value="kyc"><input type="hidden" name="id" value="<?= $oid ?>">
+      <label class="stf-web">🪪 KYC <select name="kyc_status" style="min-height:40px"><?php foreach (TeamPortal::KYC as $k => $l): ?><option value="<?= $h($k) ?>"<?= $k === $kycNow ? ' selected' : '' ?>><?= $h($l) ?></option><?php endforeach; ?></select></label>
+      <button class="btn sm" type="submit">Save KYC</button>
+      <span class="muted text-xs" style="flex:1 1 100%"><?= !empty($open['kyc_verified_at']) ? $h('Last decided ' . date('d M Y H:i', strtotime((string) $open['kyc_verified_at']) ?: time())) . ' · ' : '' ?>Verified = you saw the original ID. The automatic document check above stays a score.</span>
+    </form>
+    <?php endif; ?>
+    <details class="stf-pane" style="margin-top:8px"<?= isset($_GET['done']) && in_array((string) $_GET['done'], ['edit', 'nochange'], true) ? ' open' : '' ?>><summary><b>✏️ Edit details</b> — name, mobile, email, address, emergency contact, bank</summary>
+      <form method="post" action="<?= $h($keep(['id' => $oid])) ?>" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:8px 12px;margin-top:10px" autocomplete="off"><?= $csrfField ?><input type="hidden" name="action" value="edit"><input type="hidden" name="id" value="<?= $oid ?>">
+        <?php
+        $edit = [
+            'full_name' => 'Full name', 'phone' => 'Mobile (10 digits)', 'whatsapp' => 'WhatsApp (if different)', 'email' => 'Email',
+            'address_perm' => 'Permanent address', 'address_current' => 'Current address', 'district' => 'District', 'province' => 'Province / state',
+            'emergency_contact_name' => 'Emergency contact', 'emergency_contact_phone' => 'Emergency mobile', 'emergency_relation' => 'Relation',
+            'bank_holder' => 'Account holder', 'bank_name' => 'Bank', 'bank_branch' => 'Branch', 'bank_account' => 'Account number', 'bank_ifsc_or_swift' => 'IFSC / SWIFT',
+        ];
+        foreach ($edit as $k => $lbl): ?>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:12.5px;font-weight:700"><?= $h($lbl) ?>
+          <input class="inp" name="<?= $h($k) ?>" maxlength="<?= (int) (TeamPortal::STAFF_EDIT[$k] ?? 16) ?>" value="<?= $h($open[$k] ?? '') ?>"<?= in_array($k, ['phone', 'whatsapp', 'emergency_contact_phone', 'bank_account'], true) ? ' inputmode="numeric"' : '' ?><?= $k === 'email' ? ' type="email"' : '' ?>></label>
+        <?php if ($k === 'phone'): ?>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:12.5px;font-weight:700">Mobile country
+          <select class="inp" name="phone_country"><option value="IN"<?= (string) $open['phone_country'] === 'IN' ? ' selected' : '' ?>>🇮🇳 India +91</option><option value="NP"<?= (string) $open['phone_country'] === 'NP' ? ' selected' : '' ?>>🇳🇵 Nepal +977</option></select></label>
+        <?php endif; endforeach; ?>
+        <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn sm" type="submit">Save details</button>
+          <span class="muted text-xs">A new mobile is marked "not proven" until they confirm it; the team-portal login follows the new number.</span></div>
+      </form>
+    </details>
     <?php endif; ?>
 
     <?php if ($st === 'approved'): ?>

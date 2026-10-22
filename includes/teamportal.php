@@ -1002,6 +1002,144 @@ final class TeamPortal
         return $acc;
     }
 
+    /* -----------------------------------------------------------------
+     *  22 Oct 2026 (owner: "KYC password email id haru sabai form bata
+     *  manage garna milne"): the office manages a staff member from the
+     *  one application record - details, KYC, the portal password.
+     * ----------------------------------------------------------------- */
+
+    /** Fields the office may correct on a staff application => max length. */
+    public const STAFF_EDIT = [
+        'full_name' => 120, 'email' => 160, 'whatsapp' => 15, 'address_perm' => 300, 'address_current' => 300,
+        'district' => 80, 'province' => 80, 'emergency_contact_name' => 80, 'emergency_contact_phone' => 15,
+        'emergency_relation' => 40, 'bank_name' => 80, 'bank_account' => 40, 'bank_holder' => 80, 'bank_branch' => 80,
+        'bank_ifsc_or_swift' => 20,
+    ];
+    public const KYC = ['none' => 'Not given', 'submitted' => 'Submitted - to check', 'verified' => '✅ Verified (originals seen)', 'rejected' => '❌ Rejected'];
+
+    /** upgrade-2026-10-22-office-manage.sql is there. */
+    public static function kycReady(): bool
+    {
+        static $ok = null;
+        if ($ok === null) {
+            try {
+                $ok = StaffApps::available() && (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'staff_applications' AND COLUMN_NAME IN ('kyc_status','kyc_verified_by','kyc_verified_at')",
+                    [], 0) === 3;
+            } catch (Throwable $e) {
+                $ok = false;
+            }
+        }
+        return $ok;
+    }
+
+    /**
+     * The office corrects a staff application: the mobile (+ its country)
+     * and the STAFF_EDIT fields. Only the names of what changed go to the
+     * audit trail - never a bank or ID number.
+     *
+     * @return list<string> the fields that changed
+     */
+    public static function officeEditStaff(int $id, array $in, int $by): array
+    {
+        $r = StaffApps::find($id);
+        if ($r === null) {
+            throw new TeamPortalError('That application is not there.');
+        }
+        $set = [];
+        foreach (self::STAFF_EDIT as $k => $max) {
+            if (!array_key_exists($k, $in)) {
+                continue;
+            }
+            $v = in_array($k, ['whatsapp', 'emergency_contact_phone'], true)
+                ? substr(preg_replace('/\D/', '', (string) $in[$k]) ?? '', 0, $max)   // digits first, then the length
+                : StaffApps::oneLine(Security::clean(strip_tags((string) $in[$k]), $max), $max);
+            if ($k === 'email' && $v !== '') {
+                $e = Security::email($v);
+                if ($e === '') {
+                    throw new TeamPortalError('Enter a valid email address (or leave it empty).');
+                }
+                $v = strtolower($e);
+            }
+            if ($k === 'bank_ifsc_or_swift') {
+                $v = strtoupper(str_replace(' ', '', $v));
+            }
+            if ($k === 'full_name' && mb_strlen($v) < 2) {
+                throw new TeamPortalError('The name cannot be empty.');
+            }
+            if ($v !== (string) ($r[$k] ?? '')) {
+                $set[$k] = $v !== '' ? $v : null;
+            }
+        }
+        if (isset($in['phone']) && trim((string) $in['phone']) !== '') {
+            $p = self::phone10((string) $in['phone']);
+            if ($p === '') {
+                throw new TeamPortalError('Enter a 10-digit mobile number.');
+            }
+            if ($p !== (string) $r['phone']) {
+                if (Database::exists('SELECT 1 FROM staff_applications WHERE phone = :p AND id <> :i', ['p' => $p, 'i' => $id])) {
+                    throw new TeamPortalError('Another staff application already has that mobile.');
+                }
+                $set['phone'] = $p;
+                $set['phone_verified'] = 0;   // a new number has not been proven yet
+            }
+        }
+        if (isset($in['phone_country']) && in_array((string) $in['phone_country'], ['IN', 'NP'], true) && (string) $in['phone_country'] !== (string) $r['phone_country']) {
+            $set['phone_country'] = (string) $in['phone_country'];
+        }
+        if ($set === []) {
+            return [];
+        }
+        Database::update('staff_applications', $set, 'id = :id', ['id' => $id]);
+        $changed = array_keys($set);
+        Logger::audit('staff_app.edit', 'staff_application', (string) $r['ref'], null, ['changed' => implode(', ', $changed)], 'Details corrected by admin #' . $by);
+        return $changed;
+    }
+
+    /** The office's KYC decision on a staff member (verified = the originals were seen). */
+    public static function officeKyc(int $id, string $status, int $by): void
+    {
+        $r = StaffApps::find($id);
+        if ($r === null || !self::kycReady()) {
+            throw new TeamPortalError('That application is not there.');
+        }
+        if (!isset(self::KYC[$status])) {
+            throw new TeamPortalError('Pick a KYC status.');
+        }
+        Database::update('staff_applications', [
+            'kyc_status'      => $status,
+            'kyc_verified_by' => $status === 'verified' || $status === 'rejected' ? ($by > 0 ? $by : null) : null,
+            'kyc_verified_at' => $status === 'verified' || $status === 'rejected' ? date('Y-m-d H:i:s') : null,
+        ], 'id = :id', ['id' => $id]);
+        Logger::audit('staff_app.kyc', 'staff_application', (string) $r['ref'], ['kyc_status' => $r['kyc_status'] ?? null], ['kyc_status' => $status], 'KYC set by admin #' . $by);
+    }
+
+    /**
+     * The office sets a staff member's portal password (they asked at the
+     * counter, or have no WhatsApp). Their open portal sessions end (the
+     * password stamp changes); tell them the password in person or by phone.
+     */
+    public static function officeSetStaffPassword(int $id, string $pw, int $by): void
+    {
+        $r = StaffApps::find($id);
+        if ($r === null || !self::ready()) {
+            throw new TeamPortalError('That application is not there.');
+        }
+        if ((string) $r['status'] !== 'approved') {
+            throw new TeamPortalError('Only an approved staff member signs in to the team portal.');
+        }
+        if (mb_strlen($pw) < self::PW_MIN) {
+            throw new TeamPortalError('The password must be at least ' . self::PW_MIN . ' characters.');
+        }
+        if (preg_match('/^\d+$/', $pw) === 1 && str_contains((string) $r['phone'], $pw)) {
+            throw new TeamPortalError('Do not use the mobile number as the password.');
+        }
+        Database::update('staff_applications', ['password_hash' => Security::hashPassword($pw), 'failed_logins' => 0, 'locked_until' => null],
+            'id = :id', ['id' => $id]);
+        Logger::audit('staff_app.password_set', 'staff_application', (string) $r['ref'], null, null, 'Team portal password set by admin #' . $by);
+    }
+
     /** The office clears a staff member's portal password: they make a new one with a WhatsApp code. */
     public static function clearPassword(int $staffId, int $by): void
     {

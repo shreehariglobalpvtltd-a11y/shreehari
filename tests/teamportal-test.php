@@ -243,6 +243,50 @@ try {
     check('Nepal picked: "hi VERIFY" is bound to the Nepal number on file', (string) ($_SESSION['team_reset']['wa']['intl'] ?? '') === '9779800077706');
     Database::run("DELETE FROM otp_codes WHERE identifier LIKE 'team:%9800077706'");
     Database::run("DELETE FROM wa_verify WHERE phone = '9800077706'");
+
+    // ---- the office manages a staff member from the one record ----
+    fresh();
+    Database::run("UPDATE staff_applications SET status = 'approved', phone = :p WHERE id = :i", ['p' => $S, 'i' => $sid]);
+    $ch = TeamPortal::officeEditStaff($sid, ['full_name' => 'TP Edited <b>Driver</b>', 'email' => 'TP.Edit@Example.com', 'address_current' => "Line 1\nLine 2",
+        'bank_ifsc_or_swift' => 'sbin 0001', 'emergency_contact_phone' => '+977 98-000-11111', 'phone_country' => 'NP'], 1);
+    $row = StaffApps::find($sid);
+    check('office edit: name / email / address / IFSC cleaned and saved', $row['full_name'] === 'TP Edited Driver' && $row['email'] === 'tp.edit@example.com'
+        && !str_contains((string) $row['address_current'], "\n") && $row['bank_ifsc_or_swift'] === 'SBIN0001' && $row['emergency_contact_phone'] === '9779800011111' && in_array('full_name', $ch, true));
+    check('office edit: nothing changed = empty list', TeamPortal::officeEditStaff($sid, ['full_name' => 'TP Edited Driver'], 1) === []);
+    $e = '';
+    try { TeamPortal::officeEditStaff($sid, ['email' => 'not-an-email'], 1); } catch (TeamPortalError $x) { $e = $x->getMessage(); }
+    check('office edit: a bad email is refused', $e !== '');
+    $other = (int) Database::insert('staff_applications', ['full_name' => 'TP Other', 'phone' => '9800077708', 'phone_country' => 'NP',
+        'role_applied' => 'helper', 'id_type' => 'citizenship', 'id_number' => 'TP-9', 'status' => 'pending']);
+    $e = '';
+    try { TeamPortal::officeEditStaff($sid, ['phone' => '9800077708'], 1); } catch (TeamPortalError $x) { $e = $x->getMessage(); }
+    check('office edit: a mobile another application has is refused', $e !== '');
+    Database::run('DELETE FROM staff_applications WHERE id = :i', ['i' => $other]);
+    TeamPortal::officeEditStaff($sid, ['phone' => '+977 9800077709'], 1);
+    $row = StaffApps::find($sid);
+    check('office edit: a new mobile is saved and marked not proven', $row['phone'] === '9800077709' && (int) $row['phone_verified'] === 0);
+    TeamPortal::officeEditStaff($sid, ['phone' => $S], 1);
+    if (TeamPortal::kycReady()) {
+        TeamPortal::officeKyc($sid, 'verified', 7);
+        $row = StaffApps::find($sid);
+        check('office KYC: verified with who and when', $row['kyc_status'] === 'verified' && (int) $row['kyc_verified_by'] === 7 && !empty($row['kyc_verified_at']));
+        TeamPortal::officeKyc($sid, 'submitted', 7);
+        check('office KYC: back to submitted clears who / when', StaffApps::find($sid)['kyc_verified_at'] === null);
+        $e = '';
+        try { TeamPortal::officeKyc($sid, 'bogus', 7); } catch (TeamPortalError $x) { $e = $x->getMessage(); }
+        check('office KYC: an unknown status is refused', $e !== '');
+    }
+    TeamPortal::officeSetStaffPassword($sid, 'Office#pass26', 1);
+    fresh();
+    check('office password: the staff member signs in with it', TeamPortal::login($S, 'Office#pass26')['ok'] === true);
+    $e = '';
+    try { TeamPortal::officeSetStaffPassword($sid, 'short', 1); } catch (TeamPortalError $x) { $e = $x->getMessage(); }
+    check('office password: too short is refused', $e !== '');
+    Database::run("UPDATE staff_applications SET status = 'suspended' WHERE id = :i", ['i' => $sid]);
+    $e = '';
+    try { TeamPortal::officeSetStaffPassword($sid, 'Office#pass27', 1); } catch (TeamPortalError $x) { $e = $x->getMessage(); }
+    check('office password: not for a suspended person', $e !== '');
+    Database::run("UPDATE staff_applications SET status = 'approved' WHERE id = :i", ['i' => $sid]);
     if ($old2fa !== null) {
         Settings::set('admin_2fa_ids', $old2fa);
     }

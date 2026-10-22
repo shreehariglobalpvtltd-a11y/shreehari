@@ -74,6 +74,19 @@ $logoDecide = static function (array $app, string $why) use ($selfId, $logoDrop)
 };
 
 /* ---------- actions (POST + CSRF + super-admin / manager) ---------- */
+/* 22 Oct 2026 (team portal): an approved agent / partner gets a login - username = the mobile;
+   they make the password at /team/ with a WhatsApp code, or the office sets one under "Login account". */
+$agrMakeLogin = static function (array $app) use ($selfId): int {
+    require_once INCLUDE_PATH . '/agentwallet.php';
+    try {
+        $newId = AgentWallet::createAgent((string) $app['name'], (string) (($app['phone_raw'] ?? '') ?: $app['phone']),
+            (string) $app['type'] === 'org' ? 'org' : 'person', (string) ($app['area'] ?? ''), (string) ($app['email'] ?? '') ?: null, $selfId);
+    } catch (RuntimeException $re) {
+        throw new AgreementError($re->getMessage());
+    }
+    AgentApplications::update((int) $app['id'], ['admin_id' => $newId], $selfId);
+    return $newId;
+};
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $act = (string) ($_POST['action'] ?? '');
     if (!Security::verifyCsrf()) {
@@ -162,7 +175,30 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
                 AgentApplications::update($id, ['status' => 'approved'], $selfId);
                 AgentApplications::saveCard($id, ['web_live' => 1], $selfId, false);
+                // 22 Oct 2026 (owner: approve = team account too): a login when there is none and a mobile is on file
+                $now = AgentApplications::find($id);
+                if ($canEdit && isset($_POST['mklogin']) && $now !== null && empty($now['admin_id']) && (string) $now['phone'] !== '') {
+                    $agrMakeLogin($now);
+                }
                 Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=1#web');
+            } elseif ($act === 'creds' && $canEdit) {
+                // 22 Oct 2026 (owner: "password email id haru sabai form bata manage"): the linked login, from the record
+                $id  = (int) ($_POST['id'] ?? 0);
+                $app = AgentApplications::find($id);
+                if ($app === null || empty($app['admin_id'])) {
+                    throw new AgreementError('This application has no login yet.');
+                }
+                try {
+                    $res = Auth::setStaffCredentials((int) $app['admin_id'], [
+                        'username'    => (string) ($_POST['username'] ?? ''),
+                        'email'       => (string) ($_POST['login_email'] ?? ''),
+                        'password'    => (string) ($_POST['new_password'] ?? ''),
+                        'must_change' => isset($_POST['must_change']),
+                    ], $selfId);
+                } catch (RuntimeException $re) {
+                    throw new AgreementError($re->getMessage());
+                }
+                Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=' . ($res['changed'] === [] ? '0' : '1') . '#login');
             } elseif ($act === 'import') {
                 // 19 Oct 2026 (owner): "sabai agent eutai hun" - every agent account gets its card here.
                 // The company's own login (username "shari") is brought in but not put on the website.
@@ -180,14 +216,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 if ($app === null || (string) $app['status'] !== 'approved' || !empty($app['admin_id'])) {
                     throw new AgreementError('Only an approved application without an account can get a login.');
                 }
-                require_once INCLUDE_PATH . '/agentwallet.php';
-                try {
-                    $newId = AgentWallet::createAgent((string) $app['name'], (string) (($app['phone_raw'] ?? '') ?: $app['phone']),
-                        (string) $app['type'] === 'org' ? 'org' : 'person', (string) ($app['area'] ?? ''), (string) ($app['email'] ?? '') ?: null, $selfId);
-                } catch (RuntimeException $re) {
-                    throw new AgreementError($re->getMessage());
-                }
-                AgentApplications::update($id, ['admin_id' => $newId], $selfId);
+                $agrMakeLogin($app);
                 Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=1#detail');
             } elseif ($act === 'agent') {
                 $aid = (int) ($_POST['admin_id'] ?? 0);
@@ -513,6 +542,30 @@ if (!$ready) {
   </div>
 </div>
 
+<?php /* 22 Oct 2026 (owner: "KYC password email id haru sabai form bata manage"): the linked login, from the record */
+  $acct = $canEdit && !empty($open['admin_id'])
+      ? Database::fetch('SELECT id, username, email, role, is_active, must_change_pw, last_login_at, phone FROM admins WHERE id = :i', ['i' => (int) $open['admin_id']])
+      : null;
+  if ($acct !== null): ?>
+<div class="panel" id="login">
+  <h2><svg class="a-ic"><use href="#a-users"/></svg>Login account
+    <span style="margin-left:auto"><?= (int) $acct['is_active'] === 1 ? '<span class="pill st-ok">🟢 Active</span>' : '<span class="pill st-muted">⚪ Switched off</span>' ?></span></h2>
+  <div class="panel-body" style="padding:16px 18px">
+    <p class="muted text-xs" style="margin:0 0 10px">Sells tickets at <b>/admin/agent.php</b> and signs in at <b>/team/</b> with mobile <?= $h($acct['phone']) ?> + password<?= !empty($acct['last_login_at']) ? ' · last sign-in ' . $h(date('d M Y H:i', strtotime((string) $acct['last_login_at']) ?: time())) : ' · never signed in yet' ?><?= (int) $acct['must_change_pw'] === 1 ? ' · must change the password at the next sign-in' : '' ?>. <a href="agent-360.php?agent=<?= (int) $acct['id'] ?>">Agent 360 →</a></p>
+    <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" autocomplete="off">
+      <?= $csrfField ?><input type="hidden" name="action" value="creds"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
+      <div class="form-grid">
+        <div class="field"><label for="lUser">Username</label><input id="lUser" name="username" class="inp mono" maxlength="60" value="<?= $h($acct['username']) ?>" autocapitalize="none"></div>
+        <div class="field"><label for="lMail">Login email</label><input id="lMail" name="login_email" class="inp" type="email" maxlength="191" value="<?= $h($acct['email'] ?? '') ?>"></div>
+        <div class="field"><label for="lPw">New password</label><input id="lPw" name="new_password" class="inp" type="text" minlength="8" maxlength="72" autocomplete="new-password" placeholder="leave empty = keep"><span class="help">8+ characters. Tell them in person or by phone — or they set their own at /team/ with a WhatsApp code.</span></div>
+        <div class="field" style="display:flex;align-items:flex-end"><label class="agr-check"><input type="checkbox" name="must_change" value="1"<?= (int) $acct['must_change_pw'] === 1 ? ' checked' : '' ?>> Must change it at the next sign-in</label></div>
+      </div>
+      <div class="form-actions" style="margin-top:12px"><button class="btn" type="submit"><svg class="a-ic"><use href="#a-check"/></svg>Save login</button></div>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
+
 <?php /* 19 Oct 2026 (owner): the website card - name, photo, address, number, WhatsApp - and the KYC / bank edit */
   $isLive = AgentApplications::isLive($open);
   $waText = rawurlencode('Namaste ' . $open['name'] . ' ji, S Hari Global office bata. Tapaiko agent form (' . $open['ref'] . ') ko barema: ');
@@ -541,6 +594,9 @@ if (!$ready) {
       <div class="agr-logo-pick" role="radiogroup" aria-label="Company logo" style="margin-bottom:8px"><img class="agr-logo-sm" src="<?= $h($openLogo) ?>" alt="Company logo of <?= $h($open['name']) ?>">
         <label class="agr-check"><input type="radio" name="logo_ok" value="1"> ✅ Show this logo on the website</label>
         <label class="agr-check"><input type="radio" name="logo_ok" value="0"> 🗑 Remove it</label></div>
+      <?php endif; ?>
+      <?php if (empty($open['admin_id']) && (string) $open['phone'] !== ''): ?>
+      <label class="agr-check" style="display:block;margin-bottom:8px"><input type="checkbox" name="mklogin" value="1" checked> 🔐 Also create the login (sell tickets + team portal; username = mobile)</label>
       <?php endif; ?>
       <button class="btn" type="submit" style="background:#0f9d6b;border-color:#0f9d6b">✅ Approve &amp; put live on website</button>
     </form>
