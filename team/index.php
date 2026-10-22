@@ -41,7 +41,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         try {
             if ($act === 'login') {
                 $p = TeamPortal::phone10((string) ($_POST['mobile'] ?? ''));
-                $r = TeamPortal::login($p, (string) ($_POST['password'] ?? ''));
+                $r = TeamPortal::login($p, (string) ($_POST['password'] ?? ''), TeamPortal::cc($_POST['cc'] ?? '91'));
                 if ($r['ok']) {
                     TeamUi::go('/team/');
                 }
@@ -53,12 +53,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $v = 'forgot';
                 } else {
                     // 22 Oct 2026 (review): the same next page for every number (sent or not, registered or not)
-                    $r = TeamPortal::sendResetCode($p);
+                    $cc = TeamPortal::cc($_POST['cc'] ?? '91');
+                    $r = TeamPortal::sendResetCode($p, $cc);
                     if (!$r['ok']) {
                         $err = (string) $r['error'];
                         $v = 'forgot';
                     } else {
-                        $_SESSION['team_reset'] = ['phone' => $p, 't' => time()]
+                        $_SESSION['team_reset'] = ['phone' => $p, 'cc' => $cc, 't' => time()]
                             + (isset($r['debugCode']) ? ['debug' => $r['debugCode']] : []);
                         TeamUi::go('/team/?v=reset');
                     }
@@ -68,7 +69,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 if ($p === '') {
                     TeamUi::go('/team/?v=forgot');
                 }
-                TeamPortal::startVerify($p);   // keeps the token + the account's number in $_SESSION['team_reset']['wa']
+                TeamPortal::startVerify($p, TeamPortal::cc($_SESSION['team_reset']['cc'] ?? '91'));   // keeps the token + the account's number in $_SESSION['team_reset']['wa']
                 TeamUi::go('/team/?v=reset#wa');
             } elseif ($act === 'reset') {
                 $p = (string) ($_SESSION['team_reset']['phone'] ?? '');
@@ -183,8 +184,17 @@ TeamUi::flash();
 if ($err !== null) {
     echo '<div class="tp-msg bad" role="alert">' . $h($err) . '</div>';
 }
-// 22 Oct 2026 (review): only the digits the person typed — no country, which would say the number is ours
-$masked = $reset !== null && !empty($reset['phone']) ? substr((string) $reset['phone'], 0, 2) . '•••••' . substr((string) $reset['phone'], -3) : '';
+// 22 Oct 2026 (review): only what the person typed (the country they picked + the digits) — nothing from our records
+$masked = $reset !== null && !empty($reset['phone']) ? '+' . TeamPortal::cc($reset['cc'] ?? '91') . ' ' . substr((string) $reset['phone'], 0, 2) . '•••••' . substr((string) $reset['phone'], -3) : '';
+/* the country picker (owner: India first, Nepal as an option) */
+$ccPick = static function (string $sel) use ($h): string {
+    $o = '';
+    foreach (TeamPortal::COUNTRIES as $k => $lbl) {
+        $o .= '<option value="' . $h($k) . '"' . ($k === $sel ? ' selected' : '') . '>' . $h($lbl) . '</option>';
+    }
+    return '<select class="i" name="cc" aria-label="Country · देश" style="width:auto;min-width:104px">' . $o . '</select>';
+};
+$ccNow = TeamPortal::cc($_POST['cc'] ?? ($reset['cc'] ?? '91'));
 
 if ($v === 'forgot'): ?>
 <div class="tp-card">
@@ -193,7 +203,8 @@ if ($v === 'forgot'): ?>
   <form method="post" action="/team/?v=forgot">
     <?= $csrf ?><input type="hidden" name="action" value="forgot_send">
     <label class="f" for="m">मोबाइल नम्बर · Mobile number</label>
-    <input class="i" id="m" name="mobile" type="tel" inputmode="numeric" autocomplete="tel" required maxlength="16" placeholder="98XXXXXXXX" value="<?= $h($reset['phone'] ?? '') ?>">
+    <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px"><?= $ccPick($ccNow) ?>
+    <input class="i" id="m" name="mobile" type="tel" inputmode="numeric" autocomplete="tel" required maxlength="16" placeholder="98XXXXXXXX" value="<?= $h($reset['phone'] ?? '') ?>"></div>
     <button class="b wa" type="submit">📲 WhatsApp मा कोड पठाउनुहोस् · Send code</button>
   </form>
   <p class="tp-links"><a href="/team/">← Sign in · लगइन</a></p>
@@ -203,6 +214,7 @@ if ($v === 'forgot'): ?>
   <h1>नयाँ पासवर्ड · New password</h1>
   <div class="tp-msg info"><?= $h($masked) ?> हाम्रो टोलीमा दर्ता भएको नम्बर हो भने त्यसको WhatsApp मा ६ अङ्कको कोड पठाइन्छ। एक मिनेटमा आएन भने तलको "hi VERIFY" प्रयोग गर्नुहोस्। · If this number is registered with us, a 6-digit code is on its way on WhatsApp. No code within a minute? Use "hi VERIFY" below.</div>
   <div class="tp-msg bad" role="note">🔒 यो कोड पासवर्ड बदल्नको लागि हो — अरूले मागे नपठाउनुहोस्। · This code is for a PASSWORD RESET — never give it or send it to anyone who asks.</div>
+  <p class="tp-sub" style="margin:0 0 6px">कोड र "hi VERIFY" दुवैले भएन भने देश (+91 / +977) मिलाएर फेरि हेर्नुहोस्, नत्र कार्यालयमा फोन गर्नुहोस् — कार्यालयले तपाईंको नम्बरको देश मिलाइदिन्छ। · Neither works? Check the country (+91 / +977) and try again, or call the office to set your number's country.</p>
   <?php if (!empty($reset['debug'])): ?><div class="tp-msg info">DEV code: <?= $h($reset['debug']) ?></div><?php endif; ?>
   <div id="waOk" class="tp-msg ok" hidden>✅ नम्बर प्रमाणित भयो — कोड चाहिँदैन, नयाँ पासवर्ड राख्नुहोस् · Number proven, set your password.</div>
   <form method="post" action="/team/?v=reset" autocomplete="on">
@@ -265,7 +277,8 @@ if ($v === 'forgot'): ?>
   <form method="post" action="/team/" autocomplete="on">
     <?= $csrf ?><input type="hidden" name="action" value="login">
     <label class="f" for="m">मोबाइल नम्बर · Mobile number</label>
-    <input class="i" id="m" name="mobile" type="tel" inputmode="numeric" autocomplete="username" required maxlength="16" placeholder="98XXXXXXXX" value="<?= $h($_POST['mobile'] ?? '') ?>">
+    <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px"><?= $ccPick($ccNow) ?>
+    <input class="i" id="m" name="mobile" type="tel" inputmode="numeric" autocomplete="username" required maxlength="16" placeholder="98XXXXXXXX" value="<?= $h($_POST['mobile'] ?? '') ?>"></div>
     <label class="f" for="pw">पासवर्ड · Password</label>
     <input class="i" id="pw" name="password" type="password" required autocomplete="current-password">
     <button class="b" type="submit">भित्र जानुहोस् · Sign in</button>

@@ -91,6 +91,36 @@ final class TeamPortal
         return strlen($p) === 10 && ctype_digit($p) && !isPlaceholderPhone($p) ? $p : '';
     }
 
+    /**
+     * 22 Oct 2026 (owner: "badi jaso indian number hola, default nai tei rakha,
+     * nepali ni option"): the country picker on /team/ - India first. It only
+     * NARROWS the accounts to the ones whose number on file is in that
+     * country; a code or "hi VERIFY" still goes to the number on file, never
+     * to the picked country (the same 10 digits in the other country are a
+     * stranger). A number with no country on file stays as it was.
+     */
+    public const COUNTRIES = ['91' => '🇮🇳 +91', '977' => '🇳🇵 +977'];
+
+    public static function cc(mixed $raw): string
+    {
+        return (string) $raw === '977' ? '977' : '91';
+    }
+
+    /** resetTargets() groups in the picked country only ('' = all). */
+    private static function byCountry(array $targets, string $cc, string $phone10): array
+    {
+        if ($cc === '') {
+            return $targets;
+        }
+        return array_values(array_filter($targets, static fn(array $t): bool => $t['intl'] === $cc . $phone10));
+    }
+
+    /** An account / staff row whose number on file is in another country than the one picked. */
+    private static function otherCountry(string $intl, string $cc, string $phone10): bool
+    {
+        return $cc !== '' && $intl !== '' && $intl !== $cc . $phone10;
+    }
+
     /* =================================================================
      *  Who has that number
      * ================================================================= */
@@ -259,7 +289,7 @@ final class TeamPortal
      * @return array{ok: bool, kind?: string, error?: string, first?: bool}
      *         kind: 'admin' (staff session opened) | 'staff' (portal session)
      */
-    public static function login(string $phone10, string $password): array
+    public static function login(string $phone10, string $password, string $cc = ''): array
     {
         // 22 Oct 2026 (review): one answer for "no such number", "no password yet" and "wrong password" (no list of who is in the team)
         $generic = ['ok' => false, 'error' => 'मोबाइल नम्बर वा पासवर्ड मिलेन — पहिलो पटक हो भने "पासवर्ड बनाउनुहोस् / बिर्सनुभयो?" थिच्नुहोस् · Mobile or password did not match. First time here? Tap "Set / forgot password".'];
@@ -274,6 +304,11 @@ final class TeamPortal
         $acc = self::accounts($phone10);
         // 22 Oct 2026 (review, #2): a selling account whose staff card is suspended / exited is not opened here either
         $acc['admins'] = array_values(array_filter($acc['admins'], static fn(array $a): bool => self::adminUsable($a, $phone10)));
+        // the country picker: leave out accounts whose number on file is in the other country
+        if ($cc !== '') {
+            $acc['admins'] = array_values(array_filter($acc['admins'], static fn(array $a): bool => !self::otherCountry(self::adminIntl($phone10, $a), $cc, $phone10)));
+            $acc['staff'] = array_values(array_filter($acc['staff'], static fn(array $s): bool => !self::otherCountry(self::staffIntl($phone10, $s), $cc, $phone10)));
+        }
         $now = time();
 
         foreach ($acc['admins'] as $a) {
@@ -346,14 +381,14 @@ final class TeamPortal
      *
      * @return array{ok: bool, error?: string, debugCode?: string}
      */
-    public static function sendResetCode(string $phone10): array
+    public static function sendResetCode(string $phone10, string $cc = ''): array
     {
         if (!Security::rateLimit('team_reset_ip', Security::clientIp(), 8, 600) || !Security::rateLimit('team_reset_phone', $phone10, 5, 3600)) {
             return ['ok' => false, 'error' => 'धेरै पटक भयो — केही बेरपछि फेरि · Too many tries, please wait a while and try again.'];
         }
         $out = ['ok' => true];
         $t0 = microtime(true);
-        $targets = self::resetTargets($phone10);
+        $targets = self::byCountry(self::resetTargets($phone10), $cc, $phone10);
         if ($targets === []) {
             Logger::info('Team portal: reset asked for a number with no account that can reset (or no country on it)', ['phone' => maskPhone($phone10)], 'otp');
             self::evenTime($t0, true);
@@ -450,13 +485,13 @@ final class TeamPortal
      * people in two countries share the digits) the token is bound to no
      * number, so nobody can prove it.
      */
-    public static function startVerify(string $phone10): array
+    public static function startVerify(string $phone10, string $cc = ''): array
     {
         $ip = Security::clientIp();
         if (!Security::rateLimit('wa_verify_ip', $ip, 8, 600) || !Security::rateLimit('wa_verify_phone', $phone10, 4, 600)) {
             throw new TeamPortalError('धेरै पटक भयो — १० मिनेटपछि फेरि · Too many tries, wait 10 minutes.');
         }
-        $targets = self::resetTargets($phone10);
+        $targets = self::byCountry(self::resetTargets($phone10), $cc, $phone10);
         $intl = count($targets) === 1 ? $targets[0]['intl'] : '';
         $s = WaVerify::start('reset', $phone10, '', $ip, $intl);
         $_SESSION['team_reset']['wa'] = ['token' => $s['token'], 'url' => $s['url'], 'text' => $s['text'], 'intl' => $intl];

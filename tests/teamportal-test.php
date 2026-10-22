@@ -55,7 +55,7 @@ $S = '9800077701'; $A = '9800077702'; $B = '9800077703';
 $sid = 0; $ids = [];
 try {
     Database::run("DELETE FROM staff_applications WHERE phone IN ('$S','$A')");
-    Database::run("DELETE FROM admins WHERE username IN ('tp-agent','tp-boss','tp-2fa','tp-intl')");
+    Database::run("DELETE FROM admins WHERE username IN ('tp-agent','tp-boss','tp-2fa','tp-intl','tp-pick')");
     fresh();
 
     check('phone10 reads +977 / +91 / spaces', TeamPortal::phone10('+977 980-007-7701') === $S && TeamPortal::phone10('91 98000 77701') === $S && TeamPortal::phone10('123') === '');
@@ -211,6 +211,38 @@ try {
     check('the card\'s "+977" wins over an imported "91" (code and hi VERIFY go to Nepal)', (string) Database::scalar('SELECT intl FROM wa_verify WHERE token = :t', ['t' => $v2['token']]) === '9779800077705');
     Database::run('DELETE FROM agent_applications WHERE id = :i', ['i' => $cardId]);
     Database::run("DELETE FROM wa_verify WHERE phone = '9800077705'");
+
+    // ---- the country picker (owner: +91 first, +977 option) narrows, never redirects ----
+    fresh();
+    check('the picker defaults to India', TeamPortal::cc('') === '91' && TeamPortal::cc('977') === '977' && TeamPortal::cc('1') === '91');
+    $ids[] = $pa = (int) Database::insert('admins', ['username' => 'tp-pick', 'password_hash' => Security::hashPassword('Pick#pass2026'),
+        'full_name' => 'TP Pick', 'phone' => '+977 9800077706', 'role' => 'agent', 'is_active' => 1, 'must_change_pw' => 0]);
+    $r = TeamPortal::login('9800077706', 'Pick#pass2026', '91');
+    check('a Nepal account is not opened when India is picked', !$r['ok'] && empty($_SESSION[ADMIN_SESSION_KEY]));
+    fresh();
+    $r = TeamPortal::login('9800077706', 'Pick#pass2026', '977');
+    check('… and is opened when Nepal is picked', $r['ok'] && (int) ($_SESSION[ADMIN_SESSION_KEY]['id'] ?? 0) === $pa);
+    fresh();
+    $r = TeamPortal::login('9800077706', 'Pick#pass2026');
+    check('no picker (old forms, API) behaves as before', $r['ok']);
+    fresh();
+    Database::run("DELETE FROM otp_codes WHERE identifier LIKE 'team:%9800077706'");
+    TeamPortal::sendResetCode('9800077706', '91');
+    check('India picked: no code is made for the Nepal number (and none for the Indian mirror)',
+        (int) Database::scalar("SELECT COUNT(*) FROM otp_codes WHERE identifier LIKE 'team:%9800077706'", [], 0) === 0);
+    fresh();
+    TeamPortal::sendResetCode('9800077706', '977');
+    check('Nepal picked: the code is made for the Nepal number on file only',
+        (int) Database::scalar("SELECT COUNT(*) FROM otp_codes WHERE identifier = 'team:9779800077706'", [], 0) === 1
+        && (int) Database::scalar("SELECT COUNT(*) FROM otp_codes WHERE identifier = 'team:919800077706'", [], 0) === 0);
+    fresh();
+    TeamPortal::startVerify('9800077706', '91');
+    check('India picked: "hi VERIFY" is bound to no number (nobody can prove it)', (string) ($_SESSION['team_reset']['wa']['intl'] ?? 'x') === '');
+    fresh();
+    TeamPortal::startVerify('9800077706', '977');
+    check('Nepal picked: "hi VERIFY" is bound to the Nepal number on file', (string) ($_SESSION['team_reset']['wa']['intl'] ?? '') === '9779800077706');
+    Database::run("DELETE FROM otp_codes WHERE identifier LIKE 'team:%9800077706'");
+    Database::run("DELETE FROM wa_verify WHERE phone = '9800077706'");
     if ($old2fa !== null) {
         Settings::set('admin_2fa_ids', $old2fa);
     }
