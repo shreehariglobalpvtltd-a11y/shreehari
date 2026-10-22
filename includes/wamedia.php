@@ -48,7 +48,11 @@ final class WaMedia
 
     private const SUBDIR = 'wa-inbound';
 
-    private const GEMINI_LADDER = ['gemini-3.5-flash', 'gemini-2.5-flash'];
+    /* 22 Oct 2026: gemini-2.5-flash answers 404 (retired for this key) and 3.5-flash
+       is sometimes 503 "high demand" - the same ladder as includes/docverify.php (the
+       voice reader, includes/wavoice.php, runs these three then 3.8-flash). The site's
+       gemini_model, when set, is still tried first (see transcribe()). */
+    private const GEMINI_LADDER = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.7-flash'];
 
     private function __construct() {}
 

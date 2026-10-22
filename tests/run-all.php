@@ -239,7 +239,7 @@ const CORE_SUITES = [
     // 27 Sep 2026 agreements, restored 2 Oct 2026 with the editable points.
     'agreement-points-test.php'   => 'agreement points: 8 pages parse, blanks kept, save / reset / hide / add, the API',
     'agreement-pages-test.php'    => '/agreements/ pages: noindex, own scripts only, apply + directory contract, build.js match',
-    'agreement-pdf-test.php'      => 'Hindi agreement PDF: validation, shaped Devanagari, two pages (needs HarfBuzz, as devshape)',
+    'agreement-pdf-test.php'      => 'Hindi agreement PDF: validation, shaped Devanagari, 06A = agreement 14A, three pages (needs HarfBuzz, as devshape)',
     // 27 Sep 2026 office report, restored 2 Oct 2026.
     'office-report-test.php'      => 'the office WhatsApp report: slots, grace, once per slot, numbers, Nepali text',
     // 9 Oct 2026 showcase upgrade, registered with the packages they guard.
