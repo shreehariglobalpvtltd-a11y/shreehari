@@ -12,6 +12,11 @@
  * wa-verify migrations. No WhatsApp is sent (TeamPortal::$deliverHook takes
  * the codes). Every row it writes is removed at the end. Exit 1 on any
  * failure.
+ *
+ * Also (cards fixer): #15 a selling account's staff card comes by the
+ * office's link or the FULL number, never the last 10 digits; #17 an
+ * agreement is signed once per term and an office 'expired' is never
+ * turned back.
  */
 declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
@@ -84,7 +89,7 @@ for ($i = 1; $i <= 9; $i++) {
 }
 $IN = '9000066601';   // a bare number outside Nepal's mobile ranges
 $UNKNOWN = '9800066698';
-$sids = []; $ids = [];
+$sids = []; $ids = []; $apps = [];
 try {
     Database::run("DELETE FROM staff_applications WHERE phone LIKE '98000666%' OR phone = '$IN'");
     Database::run("DELETE FROM admins WHERE username LIKE 'zzsec-%'");
@@ -322,10 +327,122 @@ try {
     fresh();
     TeamPortal::sendResetCode($IN);
     check('a bare number outside 96/97/98 can only be Indian', array_column($SENT, 0) === ['91' . $IN], json_encode($SENT));
+
+    /* ---------- #15: a selling account's staff card — the office's link or the FULL number ---------- */
+    fresh();
+    $ids[] = $i7 = adminRow('zzsec-card-in', '+91 ' . $P[7], 'agent', 'CardIn#2026');
+    $sids[] = $n7 = staffRow($P[7], 'NP', 'approved', 'ZZ Sec Nepal Card', null, 'CardNp#2026');
+    TeamPortal::login($P[7], 'CardIn#2026');
+    $me = TeamPortal::current();
+    check('an Indian agent does not get the Nepali staff card on the same 10 digits', $me !== null && $me['via'] === 'admin'
+        && $me['staff'] === null && TeamPortal::cardRefs($me) === [] && TeamPortal::agreementsFor($me) === [],
+        json_encode([$me['staff']['id'] ?? null, TeamPortal::cardRefs((array) $me + ['staff' => null, 'agent' => null])]));
+    TeamPortal::changePassword($me, 'CardIn#2026', 'CardIn#2027', 'CardIn#2027');
+    check('… so a password change there leaves the staff member\'s password alone', pwIs('staff_applications', $n7, 'CardNp#2026') && pwIs('admins', $i7, 'CardIn#2027'));
+    Database::run("UPDATE staff_applications SET phone_country = 'IN' WHERE id = :i", ['i' => $n7]);
+    $me = TeamPortal::current();
+    check('the same FULL number (+91 on both) still brings the card along', $me['staff'] !== null && (int) $me['staff']['id'] === $n7
+        && TeamPortal::cardRefs($me) === [StaffApps::refFor($n7)]);
+    Database::run("UPDATE staff_applications SET phone_country = 'NP', admin_id = :a WHERE id = :i", ['a' => $i7, 'i' => $n7]);
+    $me = TeamPortal::current();
+    check('the office\'s link (linkAccount) decides over the country', $me['staff'] !== null && (int) $me['staff']['id'] === $n7);
+    Database::run("UPDATE staff_applications SET phone_country = 'IN', admin_id = :a WHERE id = :i", ['a' => $c3, 'i' => $n7]);
+    $me = TeamPortal::current();
+    check('a card the office linked to ANOTHER account is never taken by the number', $me['staff'] === null);
+    Database::run("UPDATE staff_applications SET admin_id = NULL, status = 'exited' WHERE id = :i", ['i' => $n7]);
+    $me = TeamPortal::current();
+    check('a card that has left (exited) comes only by the link (a reused number gets nothing)', $me['staff'] === null);
+    Database::run('UPDATE staff_applications SET admin_id = :a WHERE id = :i', ['a' => $i7, 'i' => $n7]);
+    $me = TeamPortal::current();
+    check('… linked, the person still sees it (marked not valid)', $me['staff'] !== null && TeamPortal::cardRefs($me) === [StaffApps::refFor($n7)]);
+    fresh();
+    $ids[] = $b8 = adminRow('zzsec-card-bare', $P[8], 'counter', 'CardBare#2026');
+    $sids[] = $n8 = staffRow($P[8], 'NP', 'approved', 'ZZ Sec Bare Card');
+    TeamPortal::login($P[8], 'CardBare#2026');
+    $me = TeamPortal::current();
+    check('a bare 98… account (country unknown) gets no card by the number', $me !== null && $me['staff'] === null);
+    TeamPortal::linkAccount($n8, 'zzsec-card-bare', 0);
+    $me = TeamPortal::current();
+    check('… until the office links it', $me['staff'] !== null && (int) $me['staff']['id'] === $n8);
+
+    /* ---------- #17: an agreement is signed once per term ---------- */
+    fresh();
+    $im = imagecreatetruecolor(400, 140); imagefill($im, 0, 0, imagecolorallocate($im, 255, 255, 255));
+    imagesetthickness($im, 4); for ($i = 0; $i < 20; $i++) { imageline($im, 10 + $i * 18, 30 + ($i % 2) * 80, 28 + $i * 18, 110 - ($i % 2) * 80, 0); }
+    ob_start(); imagepng($im); $sigUri = 'data:image/png;base64,' . base64_encode((string) ob_get_clean());
+    $signs = static fn(string $t, int $id): int => (int) Database::scalar('SELECT COUNT(*) FROM agreement_signatures WHERE party_type = :t AND party_id = :i', ['t' => $t, 'i' => $id], 0);
+    $appRow = static fn(int $id): array => (array) Database::fetch('SELECT agreement_status, agreement_signed_at, agreement_end, reviewed_by FROM agent_applications WHERE id = :i', ['i' => $id]);
+    $tryErr = static function (array $me, string $doc) use ($sigUri): string {
+        try { TeamPortal::sign($me, $doc, $sigUri, true); } catch (TeamPortalError $x) { return $x->getMessage(); }
+        return '';
+    };
+    $ids[] = $p9 = adminRow('zzsec-partner', '+977 ' . $P[9], 'agent', 'Partner#2026');
+    $apps[] = $g9 = (int) Database::insert('agent_applications', ['type' => 'org', 'lang' => 'ne', 'name' => 'ZZ Sec Partner Pvt. Ltd.', 'phone' => $P[9],
+        'phone_raw' => '+977 ' . $P[9], 'fields_json' => '{}', 'status' => 'approved', 'kyc_status' => 'verified', 'admin_id' => $p9,
+        'agreement_status' => 'expired', 'agreement_signed_at' => '2024-01-10', 'agreement_end' => '2024-12-10']);
+    Database::run('UPDATE agent_applications SET ref = :r WHERE id = :i', ['r' => AgentApplications::refFor($g9), 'i' => $g9]);
+    TeamPortal::login($P[9], 'Partner#2026');
+    $me = TeamPortal::current();
+    $ag = TeamPortal::agreementsFor($me)[0] ?? [];
+    check('an expired partner sees the sign form (no signature this term)', ($ag['doc'] ?? '') === 'partner' && TeamPortal::termSign($ag) === null);
+    $d = TeamPortal::sign($me, 'partner', $sigUri, true);
+    $a = $appRow($g9);
+    check('signing keeps the signature but never turns the office\'s "expired" back', !empty($d['renew']) && $signs('agent', $g9) === 1
+        && $a['agreement_status'] === 'expired' && $a['agreement_signed_at'] === '2024-01-10' && $a['agreement_end'] === '2024-12-10', json_encode($a));
+    $e = $tryErr($me, 'partner');
+    check('a replayed POST is refused — no second row', str_contains($e, 'already signed') && $signs('agent', $g9) === 1 && TeamPortal::termSign($ag) !== null);
+    // the office asks for a new signature ('sent'), after the old one
+    Database::run('UPDATE agreement_signatures SET signed_at = signed_at - INTERVAL 1 HOUR WHERE party_type = :t AND party_id = :i', ['t' => 'agent', 'i' => $g9]);
+    AgentApplications::update($g9, ['agreement_status' => 'sent'], 0);
+    check('the office sending it again opens one new signature', TeamPortal::termSign($ag) === null);
+    $d = TeamPortal::sign($me, 'partner', $sigUri, true);
+    $a = $appRow($g9);
+    check('… which starts the term (signed today, 11 months)', empty($d['renew']) && $a['agreement_status'] === 'signed' && $a['agreement_signed_at'] === date('Y-m-d')
+        && $a['agreement_end'] === AgentApplications::agreementEnd(date('Y-m-d')) && $signs('agent', $g9) === 2, json_encode($a));
+    $e = $tryErr($me, 'partner');
+    check('… and a replay neither adds a row nor moves the term', str_contains($e, 'already signed') && $signs('agent', $g9) === 2 && $appRow($g9) === $a);
+    Database::run("UPDATE agreement_signatures SET signed_at = '2026-01-05 10:00:00' WHERE party_type = :t AND party_id = :i", ['t' => 'agent', 'i' => $g9]);
+    AgentApplications::update($g9, ['agreement_status' => 'signed', 'agreement_signed_at' => '2026-02-01'], 0);   // the office renewed on paper
+    $a = $appRow($g9);
+    TeamPortal::sign($me, 'partner', $sigUri, true);
+    check('a term the office set (paper): one portal signature, the term is not pushed forward', $signs('agent', $g9) === 3 && $appRow($g9) === $a
+        && $a['agreement_signed_at'] === '2026-02-01' && str_contains($tryErr($me, 'partner'), 'already signed'));
+    Database::run("DELETE FROM rate_limits WHERE bucket = 'team_sign'");
+    Database::run("UPDATE agreement_signatures SET signed_at = '2026-01-05 10:00:00' WHERE party_type = :t AND party_id = :i", ['t' => 'agent', 'i' => $g9]);
+    AgentApplications::update($g9, ['agreement_status' => 'signed', 'agreement_signed_at' => date('Y-m-d', strtotime('+1 day'))], 0);
+    TeamPortal::sign($me, 'partner', $sigUri, true);
+    check('a term the office dated tomorrow still takes ONE signature today', $signs('agent', $g9) === 4 && str_contains($tryErr($me, 'partner'), 'already signed')
+        && $signs('agent', $g9) === 4);
+    Database::run("DELETE FROM rate_limits WHERE bucket = 'team_sign'");
+    for ($i = 0; $i < TeamPortal::SIGN_TRIES; $i++) {
+        $tryErr($me, 'partner');
+    }
+    check('at most ' . TeamPortal::SIGN_TRIES . ' sign tries an hour per person', str_contains($tryErr($me, 'partner'), 'Too many'));
+    // staff: one per agreement version, no file for a refused try
+    fresh();
+    TeamPortal::login($P[1], 'Owner#pass2026');
+    $me = TeamPortal::current();
+    $files = static fn(int $id): int => count(glob(UPLOAD_PATH . '/staff/' . $id . '/*') ?: []);
+    TeamPortal::sign($me, 'staff', $sigUri, true);
+    $e = $tryErr($me, 'staff');
+    check('staff: one signature per version; a replay writes no second row or file', str_contains($e, 'already signed') && $signs('staff', $s1) === 1 && $files($s1) === 1);
+    check('the page shows "signed" by the same rule', TeamPortal::termSign(TeamPortal::agreementsFor($me)[0]) !== null);
 } catch (Throwable $e) {
     check('no exception', false, $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine());
 } finally {
     TeamPortal::$deliverHook = null;
+    foreach ($apps as $i) {
+        Database::run("DELETE FROM agreement_signatures WHERE party_type = 'agent' AND party_id = :i", ['i' => $i]);
+        Database::run('DELETE FROM agent_applications WHERE id = :i', ['i' => $i]);
+    }
+    foreach ($sids as $i) {
+        Database::run("DELETE FROM agreement_signatures WHERE party_type = 'staff' AND party_id = :i", ['i' => $i]);
+        $dir = UPLOAD_PATH . '/staff/' . $i;
+        if (is_dir($dir)) {
+            array_map('unlink', glob($dir . '/*') ?: []);
+            @rmdir($dir);
+        }
+    }
     foreach ($ids as $i) {
         Auth::setAdmin2fa($i, false, 0);
         Database::run('DELETE FROM admin_profiles WHERE admin_id = :i', ['i' => $i]);

@@ -32,6 +32,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/docverify.php';
+require_once __DIR__ . '/agentapplications.php';   // 22 Oct 2026 (review, #13): AgentApplications::imageFits(), one pixel rule for every form
 
 /** Our own refusals — the text is safe to show. A PDOException never is. */
 final class StaffAppError extends RuntimeException {}
@@ -480,11 +481,28 @@ final class StaffApps
         if ($err !== UPLOAD_ERR_OK || $tmp === '' || !is_uploaded_file($tmp)) {
             return ['error' => 'फाइल आइपुगेन — फेरि छान्नुहोस् · The file did not arrive, please choose it again.'];
         }
-        $max = match ($kind) { 'photo' => self::PHOTO_MAX, 'png' => self::SIG_MAX, 'face' => self::FACE_MAX, default => self::DOC_MAX };
-        if ((int) ($file['size'] ?? 0) > $max || (int) filesize($tmp) > $max) {
+        if ((int) ($file['size'] ?? 0) > self::uploadMax($kind) || (int) filesize($tmp) > self::uploadMax($kind)) {
             return ['error' => 'फाइल धेरै ठूलो भयो · That file is too large.'];
         }
-        $bytes = (string) file_get_contents($tmp);
+        return self::checkBytes((string) file_get_contents($tmp), $kind);
+    }
+
+    private static function uploadMax(string $kind): int
+    {
+        return match ($kind) { 'photo' => self::PHOTO_MAX, 'png' => self::SIG_MAX, 'face' => self::FACE_MAX, default => self::DOC_MAX };
+    }
+
+    /**
+     * The second half of readUpload(): the bytes themselves checked for $kind
+     * (tests call it directly — is_uploaded_file() is false on the CLI).
+     *
+     * @return array{bytes: string, mime: string}|array{error: string}
+     */
+    public static function checkBytes(string $bytes, string $kind): array
+    {
+        if (strlen($bytes) > self::uploadMax($kind)) {
+            return ['error' => 'फाइल धेरै ठूलो भयो · That file is too large.'];
+        }
         $mime  = (new finfo(FILEINFO_MIME_TYPE))->buffer($bytes) ?: '';
         $allowed = match ($kind) {
             'photo' => ['image/jpeg', 'image/png'],
@@ -495,8 +513,14 @@ final class StaffApps
         if (!in_array($mime, $allowed, true)) {
             return ['error' => $kind === 'doc' ? 'JPG, PNG वा PDF मात्र · JPG, PNG or PDF only.' : 'फोटो (JPG / PNG) मात्र · A photo (JPG / PNG) only.'];
         }
-        if ($mime !== 'application/pdf' && !is_array(@getimagesizefromstring($bytes))) {
+        $info = $mime !== 'application/pdf' ? @getimagesizefromstring($bytes) : false;
+        if ($mime !== 'application/pdf' && !is_array($info)) {
             return ['error' => 'फोटो खुलेन — फेरि खिच्नुहोस् · That photo could not be opened.'];
+        }
+        // 22 Oct 2026 (review, #13): a few KB of PNG can declare 20000 x 20000 px (the ID card, the thumb and the
+        // check would need GBs to open it). The form shrinks every photo to 900-1400 px, so only a forged upload gets here.
+        if ($mime !== 'application/pdf' && !AgentApplications::imageFits($info)) {
+            return ['error' => 'फोटो धेरै ठूलो (पिक्सेल) — फेरि खिच्नुहोस् · That photo is too large (too many pixels), please take it again.'];
         }
         if ($mime === 'application/pdf' && !str_starts_with($bytes, '%PDF-')) {
             return ['error' => 'PDF खुलेन · That PDF could not be opened.'];
@@ -610,6 +634,10 @@ final class StaffApps
         if ($ext === null || $id <= 0) {
             throw new StaffAppError('That file type is not accepted.');
         }
+        // 22 Oct 2026 (review, #13): every stored image (the form, the sign box, the portal) can end up on the ID card
+        if ($mime !== 'application/pdf' && !AgentApplications::imageFits($bytes)) {
+            throw new StaffAppError('फोटो धेरै ठूलो (पिक्सेल) · That image is too large (too many pixels).');
+        }
         $dir = UPLOAD_PATH . '/staff/' . $id;
         if (!is_dir($dir) && !@mkdir($dir, 0750, true) && !is_dir($dir)) {
             throw new RuntimeException('Could not create the staff upload folder.');
@@ -634,7 +662,11 @@ final class StaffApps
         if (!function_exists('imagecreatefromstring')) {
             return;
         }
-        $src = @imagecreatefromstring((string) file_get_contents($abs));
+        $bytes = (string) file_get_contents($abs);
+        if (!AgentApplications::imageFits($bytes)) {
+            return;   // 22 Oct 2026 (review, #13): never open an image whose header asks for GBs (no thumb = initials)
+        }
+        $src = @imagecreatefromstring($bytes);
         if ($src === false) {
             return;
         }

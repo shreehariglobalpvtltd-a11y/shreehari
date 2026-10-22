@@ -111,6 +111,9 @@ final class AgentApplications
     public const PHOTO_MAX_BYTES = 614400;   // 600 KB decoded
     public const PHOTO_MIME      = ['image/jpeg', 'image/png', 'image/webp'];
     public const SIG_MAX_BYTES   = 153600;   // 150 KB decoded - a finger signature PNG is ~10-40 KB
+    // 22 Oct 2026 (review, #13/#19): the most pixels an image may DECLARE before anything opens it
+    public const IMG_MAX_SIDE    = 6000;     // px, either side (the forms send 600-1400 px)
+    public const IMG_MAX_PIXELS  = 16000000; // 16 megapixels in all
     public const TERM_MONTHS     = 11;       // the contract's term
     public const DEDUPE_HOURS    = 24;
 
@@ -587,8 +590,37 @@ final class AgentApplications
         if (!in_array($mime, self::PHOTO_MIME, true)) {
             return ['photo' => null, 'note' => 'not_image'];
         }
+        // 22 Oct 2026 (review, #13/#19): a 48 KB PNG can declare 20000 x 20000 px; the ID card / verify page would
+        // need ~1.6 GB to open it. The form shrinks every photo, logo and signature far below this on the phone.
+        if (!self::imageFits($info)) {
+            return ['photo' => null, 'note' => 'too_big'];
+        }
         // Re-encoded from the checked bytes with the type the bytes really are.
         return ['photo' => 'data:' . $mime . ';base64,' . base64_encode($bin), 'note' => ''];
+    }
+
+    /**
+     * 22 Oct 2026 (review, #13/#19): may these image bytes be opened with GD?
+     * Only when the header declares at most $maxSide px a side and $maxPixels
+     * in all. getimagesizefromstring() reads the header and decodes nothing;
+     * imagecreatefromstring() allocates width x height x 4 bytes, and the
+     * live server's system libgd does that outside PHP's memory_limit — a
+     * small PNG of 46000 x 46000 px asks for ~8 GB. Call this BEFORE every
+     * imagecreatefromstring() of bytes that came from outside.
+     *
+     * @param array<int|string, mixed>|string|false $img getimagesizefromstring() info, or the raw bytes
+     */
+    public static function imageFits(array|string|false $img, int $maxSide = self::IMG_MAX_SIDE, int $maxPixels = self::IMG_MAX_PIXELS): bool
+    {
+        if (is_string($img)) {
+            $img = $img !== '' ? @getimagesizefromstring($img) : false;
+        }
+        if (!is_array($img)) {
+            return false;
+        }
+        $w = (int) ($img[0] ?? 0);
+        $h = (int) ($img[1] ?? 0);
+        return $w > 0 && $h > 0 && $w <= $maxSide && $h <= $maxSide && $w * $h <= $maxPixels;
     }
 
     /** Field error text in the applicant's language, in the words people use. */
@@ -1164,6 +1196,11 @@ final class AgentApplications
         $info = @getimagesizefromstring($bin);
         if (!is_array($info) || !in_array((string) ($info['mime'] ?? ''), self::PHOTO_MIME, true)) {
             throw new AgreementError('That file is not a photo (JPG, PNG or WEBP).');
+        }
+        // 22 Oct 2026 (review, #19): the office's own uploads are shrunk here, so a camera's full photo is fine,
+        // but never an image whose header asks GD for gigabytes (12000 px a side / 50 megapixels at most)
+        if (!self::imageFits($info, 12000, 50000000)) {
+            throw new AgreementError('That photo is too large (over 50 megapixels) — please choose a smaller one.');
         }
         if (!function_exists('imagecreatefromstring')) {
             $c = self::cleanPhoto('data:' . $info['mime'] . ';base64,' . base64_encode($bin));

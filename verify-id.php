@@ -130,6 +130,8 @@ p.n{color:var(--muted);font-size:13.5px;line-height:1.5;margin:10px 0 0}
     <div class="st warn"><i>⏳</i><div>Too many checks<small>धेरै पटक जाँच भयो — एक मिनेट पर्खनुहोस्।</small></div></div>
   <?php else: ?>
     <div class="st warn"><i>🪪</i><div>Scan the QR on the ID card<small>परिचयपत्रको QR स्क्यान गर्नुहोस्।</small></div></div>
+    <?php /* 22 Oct 2026 (review, #14): this page has no box for a card number — the card's back says the same */ ?>
+    <p class="n">The QR on a real card opens only <b><?= $h(preg_replace('~^https?://~', '', appUrl('verify-id.php'))) ?></b>. No QR reader? Call the office below with the card number from the back of the card.<br>असली कार्डको QR ले यही ठेगाना मात्र खोल्छ। QR नचले कार्डको पछाडिको नम्बर सहित तलको नम्बरमा फोन गर्नुहोस्।</p>
   <?php endif; ?>
     <div class="acts">
       <?php if ($tel !== ''): ?><a class="call" href="tel:<?= $h($tel) ?>">📞 <?= $h($co['phone']) ?></a><?php endif; ?>

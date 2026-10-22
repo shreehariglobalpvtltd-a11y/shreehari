@@ -133,7 +133,7 @@ final class IdCard
     /** A small JPEG data: URI of a photo (the verify page shows it inline), or null. */
     public static function thumb(?string $bytes, int $max = 240): ?string
     {
-        if ($bytes === null || $bytes === '' || ($src = @imagecreatefromstring($bytes)) === false) {
+        if (($src = self::open($bytes)) === null) {
             return null;
         }
         $w = imagesx($src);
@@ -147,6 +147,29 @@ final class IdCard
         imagedestroy($src);
         imagedestroy($dst);
         return 'data:image/jpeg;base64,' . base64_encode((string) ob_get_clean());
+    }
+
+    /**
+     * 22 Oct 2026 (review, #13): the one place a card opens a photo, logo or
+     * signature. Only a JPEG / PNG / WEBP whose header declares at most
+     * AgentApplications::IMG_MAX_SIDE px a side and IMG_MAX_PIXELS in all —
+     * a 48 KB PNG of 20000 x 20000 px used to end verify-id.php, the office's
+     * print page and /team/card.php with "memory exhausted" (on the live
+     * libgd: GBs of RAM per scan). Anything else is null: the card shows the
+     * initials / no signature instead, never an error.
+     */
+    private static function open(?string $bytes): ?\GdImage
+    {
+        if ($bytes === null || $bytes === '' || !function_exists('imagecreatefromstring')) {
+            return null;
+        }
+        $info = @getimagesizefromstring($bytes);
+        if (!is_array($info) || !in_array((string) ($info['mime'] ?? ''), AgentApplications::PHOTO_MIME, true)
+            || !AgentApplications::imageFits($info)) {
+            return null;
+        }
+        $src = @imagecreatefromstring($bytes);
+        return $src instanceof \GdImage ? $src : null;
     }
 
     private static function fromDataUri(string $uri): ?string
@@ -358,11 +381,21 @@ final class IdCard
         self::tC($im, 12.5, 0, $W, $y + 2, $muted, 'CIN ' . $co['cin'] . '   ·   ' . $co['email']);
 
         // ---- how to check this card ----
-        $vy = $H - 70 - 24 - 96;
-        self::roundRect($im, 34, $vy, $W - 34, $vy + 96, 18, self::c($im, [238, 244, 252]));
-        self::tC($im, 14, 0, $W, $vy + 14, self::c($im, self::ROYAL), 'Card No. ' . $p['ref'] . '   ·   Issued ' . self::date((string) $p['issued']), true);
-        self::tC($im, 12.5, 0, $W, $vy + 44, $muted, 'Check it: scan the QR on the front, or open');
-        self::tC($im, 12.5, 0, $W, $vy + 66, $ink, preg_replace('~^https?://~', '', appUrl('verify-id.php')), true);
+        // 22 Oct 2026 (review, #14): verify-id.php has no box to type a card number into, so the card no longer
+        // says "or open verify-id.php". It says which address the QR must open (a QR to a look-alike site is
+        // caught by reading it) and that the office checks a card number by phone (admin/id-card.php?ref=).
+        $vy = $H - 70 - 20 - 164;
+        $box = $W - 34 * 2 - 36;
+        self::roundRect($im, 34, $vy, $W - 34, $vy + 164, 18, self::c($im, [238, 244, 252]));
+        self::tC($im, 14, 0, $W, $vy + 12, self::c($im, self::ROYAL), 'Card No. ' . $p['ref'] . '   ·   Issued ' . self::date((string) $p['issued']), true);
+        self::tC($im, 12.5, 0, $W, $vy + 42, $muted, self::fit('Check it: scan the QR on the front. It must open only', 12.5, $box));
+        self::tC($im, 13, 0, $W, $vy + 64, $ink, self::fit((string) preg_replace('~^https?://~', '', appUrl('verify-id.php')), 13, $box), true);
+        self::tC($im, 12.5, 0, $W, $vy + 91, $muted, self::fit('No QR reader? Call the office on ' . $co['phone'] . ' with the card No.', 12.5, $box));
+        $ny = $vy + 117;
+        foreach (self::wrap('QR ले यही ठेगाना मात्र खोल्नुपर्छ, अरू खुले नक्कली हो। QR नचले कार्ड नं. सहित कार्यालयमा फोन गर्नुहोस्।', 12, $box, 2) as $l) {
+            self::tC($im, 12, 0, $W, $ny, $muted, $l);
+            $ny += 22;
+        }
 
         self::gradient($im, 0, $H - 70, $W, $H, self::ROYAL2, self::ROYAL);
         self::tC($im, 13, 0, $W, $H - 60, self::c($im, [255, 215, 160]), 'Helpline · हेल्पलाइन', true);
@@ -388,8 +421,8 @@ final class IdCard
     /** Draw image bytes into a box: cover (photo) or contain (logo, signature). */
     private static function picture(\GdImage $im, string $bytes, int $x, int $y, int $w, int $h, bool $contain): bool
     {
-        $src = @imagecreatefromstring($bytes);
-        if ($src === false) {
+        $src = self::open($bytes);
+        if ($src === null) {
             return false;
         }
         $sw = imagesx($src);

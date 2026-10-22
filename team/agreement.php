@@ -9,6 +9,9 @@
  *                    "I have read and accept", a finger signature, Sign
  *   POST             sign (CSRF) -> agreement_signatures (event portal);
  *                    an agent / partner card turns "signed" for the office
+ *                    (22 Oct 2026 review, #17: once per term, TeamPortal::
+ *                    termSign; an expired agreement stays expired for the
+ *                    office to renew)
  *   ?print=<doc>     the signed copy: parties, version, date, IP, mobile
  *                    proof, both signatures, link to the full text
  */
@@ -34,7 +37,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } else {
         try {
             $done = TeamPortal::sign($me, (string) ($_POST['doc'] ?? ''), (string) ($_POST['signature'] ?? ''), isset($_POST['agree']));
-            TeamUi::setFlash('ok', '✅ सम्झौतामा सही भयो · Agreement signed (' . $done['title'] . ', v' . $done['version'] . ').');
+            TeamUi::setFlash('ok', '✅ सम्झौतामा सही भयो · Agreement signed (' . $done['title'] . ', v' . $done['version'] . ').'
+                // 22 Oct 2026 (review, #17): an expired agreement is renewed by the office, never by the portal alone
+                . (!empty($done['renew']) ? ' सम्झौताको अवधि सकिएको थियो — कार्यालयले नवीकरण गर्नेछ · Your agreement had expired: the office renews it.' : ''));
             TeamUi::go('/team/agreement.php');
         } catch (TeamPortalError $e) {
             $err = $e->getMessage();
@@ -109,7 +114,7 @@ if ($ags === []): ?>
 <div class="tp-card"><h1>📝 मेरो सम्झौता</h1><p class="tp-sub">कार्यालयले स्वीकृत गरेपछि यहाँ सम्झौता सही गर्न मिल्छ। · Once the office approves you, you sign your agreement here.</p></div>
 <?php endif;
 foreach ($ags as $ag):
-    $sign = TeamPortal::lastSign($ag);
+    $sign = TeamPortal::termSign($ag);   // 22 Oct 2026 (review, #17): the same once-per-term rule sign() keeps
     ?>
 <div class="tp-card">
   <h1>📝 <?= $h($ag['title']) ?></h1>

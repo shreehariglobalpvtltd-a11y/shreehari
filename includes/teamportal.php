@@ -57,6 +57,7 @@ final class TeamPortal
     public const IDLE_SEC = 2700;      // 45 minutes, like the office session
     public const PW_MIN   = 8;
     public const RESET_FAILS = 10;     // 22 Oct 2026 (review): wrong reset codes per number in a day, then 24 h without the code way
+    public const SIGN_TRIES  = 6;      // 22 Oct 2026 (review, #17): agreement sign tries per person per hour
 
     private static ?bool $ready = null;
 
@@ -613,7 +614,8 @@ final class TeamPortal
 
     /**
      * The person signed in at /team/ (or already signed in to the office),
-     * with their cards found by account link and by mobile.
+     * with their cards found by account link and by FULL mobile
+     * (staffOfAccount, 22 Oct 2026 review #15).
      *
      * @return array{via: string, admin: ?array, staff: ?array, agent: ?array, phone10: string, name: string}|null
      */
@@ -626,11 +628,7 @@ final class TeamPortal
             $row = Database::fetch('SELECT id, phone, full_name, role FROM admins WHERE id = :i', ['i' => (int) $admin['id']]);
             $phone10 = self::phone10((string) ($row['phone'] ?? ''));
             if (self::ready()) {
-                $sid = (int) Database::scalar(
-                    "SELECT id FROM staff_applications WHERE status IN ('approved','suspended','exited')
-                        AND (admin_id = :a OR (:p1 <> '' AND phone = :p2)) ORDER BY (admin_id = :a2) DESC, id DESC LIMIT 1",
-                    ['a' => (int) $admin['id'], 'a2' => (int) $admin['id'], 'p1' => $phone10, 'p2' => $phone10], 0);
-                $staff = $sid > 0 ? StaffApps::find($sid) : null;
+                $staff = self::staffOfAccount((int) $admin['id'], (string) ($row['phone'] ?? ''), $phone10);
             }
             if (AgentApplications::available()) {
                 $aid = (int) Database::scalar(
@@ -658,6 +656,40 @@ final class TeamPortal
         $_SESSION[self::SESSION]['seen'] = time();
         return ['via' => 'staff', 'admin' => null, 'staff' => $staff, 'agent' => null, 'phone10' => (string) $staff['phone'],
                 'name' => (string) $staff['full_name']];
+    }
+
+    /**
+     * 22 Oct 2026 (review, #15): the staff card that belongs to a selling
+     * account — its card, CV and agreement in the portal, and the card the
+     * password changes with. It used to be "the same last 10 digits", but a
+     * bare 98XXXXXXXX is a real mobile in India AND Nepal, so an Indian agent
+     * got a Nepali staff member's ID card (photo, signature), CV and
+     * agreement. Now:
+     *   1. the card the office linked to this account (linkAccount, admin_id);
+     *   2. else an approved / suspended card on the account's FULL number —
+     *      the country from what the office typed (adminIntl), equal to the
+     *      card's own country picker — that is linked to no other account.
+     * A number with no known country gets no card by phone (the office links
+     * it), and a card that has left (exited) only comes by the link.
+     */
+    private static function staffOfAccount(int $adminId, string $phoneRaw, string $phone10): ?array
+    {
+        $sid = (int) Database::scalar(
+            "SELECT id FROM staff_applications WHERE admin_id = :a AND status IN ('approved','suspended','exited') ORDER BY id DESC LIMIT 1",
+            ['a' => $adminId], 0);
+        if ($sid === 0 && $phone10 !== '') {
+            $intl = self::adminIntl($phone10, ['id' => $adminId, 'phone' => $phoneRaw]);
+            foreach ($intl === '' ? [] : Database::fetchAll(
+                "SELECT id, phone, phone_country FROM staff_applications
+                  WHERE phone = :p AND admin_id IS NULL AND status IN ('approved','suspended') ORDER BY id DESC",
+                ['p' => $phone10]) as $r) {
+                if (self::staffIntl($phone10, $r) === $intl) {
+                    $sid = (int) $r['id'];
+                    break;
+                }
+            }
+        }
+        return $sid > 0 ? StaffApps::find($sid) : null;
     }
 
     /** Where "Sell tickets" goes for a signed-in account, or null (no selling role). */
@@ -749,7 +781,47 @@ final class TeamPortal
         );
     }
 
-    /** Sign one agreement with a finger signature (data: URI). */
+    /**
+     * 22 Oct 2026 (review, #17): the signature that already covers this
+     * agreement now, or null when the person may sign it. ONE signature per
+     * term (the page shows the form only when this is null, and sign()
+     * refuses otherwise — a replayed POST used to add a row, and for staff a
+     * file, every time):
+     *   - staff: one per agreement version (the form's own signature counts);
+     *   - agent / partner: one of this version in the office's current term —
+     *     since agreement_signed_at of a 'signed' / 'expired' agreement, or
+     *     since the office last changed a 'sent' one (it asked for a new
+     *     signature); 'none' = one per version, as before.
+     */
+    public static function termSign(array $ag): ?array
+    {
+        $last = self::lastSign($ag);
+        if ($last === null || $ag['party'] !== 'agent') {
+            return $last;
+        }
+        $app = AgentApplications::find((int) $ag['id']);
+        $st = (string) ($app['agreement_status'] ?? 'none');
+        $start = match ($st) {
+            'signed', 'expired' => (string) ($app['agreement_signed_at'] ?? ''),   // 'Y-m-d': a signature that day or later counts
+            'sent'              => (string) ($app['reviewed_at'] ?? ''),
+            default             => '',
+        };
+        if ($start > date('Y-m-d H:i:s')) {
+            $start = date('Y-m-d');   // a term the office dated tomorrow starts today (else every signature today is "before" it)
+        }
+        return $start !== '' && (string) $last['signed_at'] < $start ? null : $last;
+    }
+
+    /**
+     * Sign one agreement with a finger signature (data: URI).
+     *
+     * 22 Oct 2026 (review, #17): once per term (termSign), at most
+     * SIGN_TRIES tries an hour per person, one at a time (a named lock), and
+     * the office's agreement state only moves from 'none' / 'sent' to
+     * 'signed'. A 'signed' term is never pushed forward and an 'expired' one
+     * is never turned back — the signature is kept for the office, which
+     * renews. 'renew' in the answer = the office still has to act.
+     */
     public static function sign(array $me, string $doc, mixed $sig, bool $agree): array
     {
         if (!$agree) {
@@ -764,35 +836,57 @@ final class TeamPortal
         if ($ag === null) {
             throw new TeamPortalError('This agreement is not yours to sign.');
         }
-        $clean = AgentApplications::cleanSignature($sig);
-        if ($clean === null || strlen($clean) < 600) {
-            throw new TeamPortalError('बाकसभित्र औंलाले सही गर्नुहोस् · Please sign inside the box.');
+        $who = $ag['party'] . ':' . $ag['id'];
+        if (!Security::rateLimit('team_sign', $who, self::SIGN_TRIES, 3600)) {
+            throw new TeamPortalError('धेरै पटक भयो — एक घण्टापछि फेरि · Too many tries, please wait an hour.');
         }
-        $ip = Security::clientIp();
-        $ua = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
-        $path = null;
-        if ($ag['doc'] === 'staff') {
-            $bytes = (string) base64_decode(substr($clean, (int) strpos($clean, ',') + 1), true);
-            $mime = str_starts_with($clean, 'data:image/png') ? 'image/png' : 'image/jpeg';
-            $path = StaffApps::saveFile($ag['id'], 'signature', $bytes, $mime);
+        $lock = 'shg_team_sign_' . $ag['party'] . '_' . (int) $ag['id'];
+        if ((int) Database::scalar('SELECT GET_LOCK(:k, 5)', ['k' => $lock], 0) !== 1) {
+            throw new TeamPortalError('सही सेभ हुँदैछ — केही बेरपछि पेज खोल्नुहोस् · Your signature is being saved, please open the page again in a moment.');
         }
-        $row = [
-            'doc' => $ag['doc'], 'version' => $ag['version'], 'event' => 'portal', 'party_type' => $ag['party'], 'party_id' => $ag['id'],
-            'full_name' => mb_substr($ag['name'], 0, 120), 'phone' => $ag['phone'], 'phone_verified' => $ag['verified'] ? 1 : 0,
-            'signature_path' => $path, 'ip_address' => mb_substr($ip, 0, 45), 'user_agent' => mb_substr($ua, 0, 255),
-        ];
-        if (self::signReady()) {
-            $row['party_ref'] = $ag['ref'];
-            $row['signature_data'] = $ag['doc'] === 'staff' ? null : $clean;
-        }
-        $sid = (int) Database::insert('agreement_signatures', $row);
-        if ($ag['party'] === 'agent') {
-            // the office's agreement state follows (signed today, end date from the agreement rules)
-            AgentApplications::update($ag['id'], ['agreement_status' => 'signed', 'agreement_signed_at' => date('Y-m-d')], (int) ($me['admin']['id'] ?? 0));
+        try {
+            if (self::termSign($ag) !== null) {
+                throw new TeamPortalError('यो सम्झौतामा सही भइसक्यो · This agreement is already signed for this term.');
+            }
+            $clean = AgentApplications::cleanSignature($sig);
+            if ($clean === null || strlen($clean) < 600) {
+                throw new TeamPortalError('बाकसभित्र औंलाले सही गर्नुहोस् · Please sign inside the box.');
+            }
+            $ip = Security::clientIp();
+            $ua = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
+            $path = null;
+            if ($ag['doc'] === 'staff') {
+                $bytes = (string) base64_decode(substr($clean, (int) strpos($clean, ',') + 1), true);
+                $mime = str_starts_with($clean, 'data:image/png') ? 'image/png' : 'image/jpeg';
+                $path = StaffApps::saveFile($ag['id'], 'signature', $bytes, $mime);
+            }
+            $row = [
+                'doc' => $ag['doc'], 'version' => $ag['version'], 'event' => 'portal', 'party_type' => $ag['party'], 'party_id' => $ag['id'],
+                'full_name' => mb_substr($ag['name'], 0, 120), 'phone' => $ag['phone'], 'phone_verified' => $ag['verified'] ? 1 : 0,
+                'signature_path' => $path, 'ip_address' => mb_substr($ip, 0, 45), 'user_agent' => mb_substr($ua, 0, 255),
+            ];
+            if (self::signReady()) {
+                $row['party_ref'] = $ag['ref'];
+                $row['signature_data'] = $ag['doc'] === 'staff' ? null : $clean;
+            }
+            $sid = (int) Database::insert('agreement_signatures', $row);
+            $renew = false;
+            if ($ag['party'] === 'agent') {
+                $st = (string) (AgentApplications::find((int) $ag['id'])['agreement_status'] ?? 'none');
+                if (in_array($st, ['none', 'sent'], true)) {
+                    // the office's agreement state follows (signed today, end date from the agreement rules)
+                    AgentApplications::update($ag['id'], ['agreement_status' => 'signed', 'agreement_signed_at' => date('Y-m-d')], (int) ($me['admin']['id'] ?? 0));
+                } else {
+                    $renew = $st === 'expired';   // 'signed': the term stays as the office set it; 'expired': the office renews
+                }
+            }
+        } finally {
+            Database::scalar('SELECT RELEASE_LOCK(:k)', ['k' => $lock], 0);
         }
         Logger::audit('team.agreement_signed', $ag['party'] === 'agent' ? 'agent_application' : 'staff_application', $ag['ref'], null,
-            ['doc' => $ag['doc'], 'version' => $ag['version'], 'sign_id' => $sid], 'Agreement signed in the team portal');
-        return $ag + ['sign_id' => $sid];
+            ['doc' => $ag['doc'], 'version' => $ag['version'], 'sign_id' => $sid] + ($renew ? ['office' => 'expired, to renew'] : []),
+            'Agreement signed in the team portal');
+        return $ag + ['sign_id' => $sid, 'renew' => $renew];
     }
 
     /** The signature image of a signature row, as a data: URI, or null. */
