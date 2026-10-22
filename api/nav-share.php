@@ -57,7 +57,7 @@ try {
             Response::invalid(['dest' => 'Pick a destination in India or Nepal.']);
         }
         $mode = (string) Response::field('mode', 'car');
-        $mode = in_array($mode, ['car', 'bus', 'bike', 'walk', 'scooter'], true) ? $mode : 'car';
+        $mode = in_array($mode, ['car', 'moto', 'bus', 'bike', 'walk', 'scooter'], true) ? $mode : 'car';
         $token = bin2hex(random_bytes(16));
         $secret = bin2hex(random_bytes(16));
         $now = time();
