@@ -7196,6 +7196,15 @@ window.SHGNAV_X = {
   homeChips: typeof homeChips === 'function' ? homeChips : null,
   at: at, nearest: nearest, prepRoute: prepRoute,
   recompute: function () { if (S.level === 'dir') { S.cur = null; computeRoutes(); } },
+  selectAlt: selectAlt,
+  /* Phase 5: a day of a pilgrimage plan - up to 3 stops on the way, then the night's place */
+  goStops: function (stops, dest, opt) {
+    opt = opt || {}; voUnlock(); startGeo();
+    if (opt.mode && MODES[opt.mode]) S.mode = opt.mode;
+    S.to = Object.assign({}, dest); S.from = { me: true, name: 'Your location' };
+    S.stops = (stops || []).slice(0, 3).map(function (p) { return Object.assign({}, p); }); S.cur = null; addRecent(S.to);
+    if (S.level === 'dir') { renderFields(); paintModes(); computeRoutes(); } else push('dir');
+  },
   openPlace: function (p) {
     S.to = Object.assign({}, p); addRecent(S.to);
     if (S.level === 'place') { renderPlace(); setTo(S.to, true); } else push('place');   /* show() skips an unchanged level */
@@ -7212,8 +7221,9 @@ try { document.dispatchEvent(new CustomEvent('shgnav:ready')); } catch (e) {}
 boot();
 })();
 </script>
-<script src="/assets/nav/nav-guide.js?v=20261022h" defer></script>
+<script src="/assets/nav/beta/nav-guide.js?v=20261022i" defer></script>
 <script src="/assets/nav/nav-live.js?v=20261022f" defer></script>
-<script src="/assets/nav/nav-more.js?v=20261022d" defer></script>
+<script src="/assets/nav/beta/nav-more.js?v=20261022e" defer></script>
+<script src="/assets/nav/beta/nav-yatra.js?v=20261022a" defer></script>
 </body>
 </html>
