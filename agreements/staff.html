@@ -353,8 +353,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 
     <h3>📱 मोबाइल प्रमाणित · Verify mobile <em style="color:var(--bad);font-style:normal">*</em></h3>
     <div class="otp" id="otp">
-      <p style="margin:0;font-size:13.5px" id="otpTxt">कोड <b id="otpNum">—</b> मा WhatsApp बाट पठाइन्छ।</p>
-      <button type="button" class="btn" id="otpSend" style="margin-top:8px">📲 WhatsApp कोड पठाउनुहोस् · Send code</button>
+      <p style="margin:0 0 8px;font-size:13.5px">नम्बर <b id="otpNum">—</b> आफ्नै हो भनी प्रमाणित गर्नुहोस्:</p>
+      <div id="waV"></div>
+      <p style="margin:12px 0 0;font-size:13.5px" id="otpTxt">वा कोड मगाउनुहोस् · or get a code:</p>
+      <button type="button" class="btn ghost" id="otpSend" style="margin-top:8px">📲 कोड पठाउनुहोस् · Send code</button>
       <div class="otp-row" id="otpRow" hidden><input type="text" id="otpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="••••••" aria-label="Code"><button type="button" class="btn small" id="otpVerify">✓ प्रमाणित</button></div>
       <div class="otp-skip" id="otpSkip" hidden>कोड आएन? <button type="button" id="otpSkipBtn">कोड बिना पठाउनुहोस् — कार्यालयले फोन गरेर पुष्टि गर्छ · Send without the code</button></div>
     </div>
@@ -381,6 +383,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 </section>
 </main>
 
+<script src="/assets/js/wa-verify.js?v=20261022a"></script>
 <script>
 (function () {
   'use strict';
@@ -631,7 +634,22 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 
   /* ---------- WhatsApp code ---------- */
   function fullPhone() { return '+' + $('cc').value + ' ' + digits(val('phone')); }
-  function otpReset() { st.otp = 'none'; st.otpPhone = ''; $('otp').className = 'otp'; $('otpRow').hidden = true; $('otpSkip').hidden = true; $('otpSend').hidden = false; $('otpSend').disabled = false; clearTimeout(st.skipT); }
+  function otpReset() {
+    st.otp = 'none'; st.otpPhone = ''; $('otp').className = 'otp'; $('otpRow').hidden = true; $('otpSkip').hidden = true; $('otpSend').hidden = false; $('otpSend').disabled = false; clearTimeout(st.skipT);
+    $('otpTxt').textContent = 'वा कोड मगाउनुहोस् · or get a code:'; $('waV').hidden = false;
+    if (wav) wav.reset();
+  }
+  /* 22 Oct 2026: "hi" on WhatsApp proves the number with no code to type (wa-verify.js) */
+  var wav = window.ShgWaVerify ? window.ShgWaVerify.mount($('waV'), {
+    purpose: 'staff',
+    phone: function () { var d = digits(val('phone')); return d.length === 10 ? { phone: d, cc: $('cc').value } : null; },
+    token: function () { return token(); },
+    onDone: function (how) {
+      st.otp = how; st.otpPhone = fullPhone(); clearTimeout(st.skipT);
+      $('otp').className = 'otp done'; $('otp').removeAttribute('aria-invalid');
+      $('otpSend').hidden = true; $('otpRow').hidden = true; $('otpSkip').hidden = true; $('otpTxt').textContent = '';
+    }
+  }) : null;
   ['phone', 'cc'].forEach(function (id) { $(id).addEventListener('change', function () { if (st.otpPhone && st.otpPhone !== fullPhone()) otpReset(); }); });
   function post(body) {
     return token().then(function (t) {
@@ -647,7 +665,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
       if (!d || !d.ok) { if (d && d.code === 419) st.csrf = null; say((d && d.error) || 'कोड पठाउन सकिएन।'); return; }
       st.otpPhone = fullPhone();
       if (!d.sent) {
-        st.otp = 'skip'; $('otp').className = 'otp done'; btn.hidden = true;
+        st.otp = 'skip'; $('waV').hidden = true; $('otp').className = 'otp done'; btn.hidden = true;
         $('otpTxt').textContent = '⚠️ WhatsApp ले अहिले कोड पठाउन सकेन — फारम पठाउन सकिन्छ, कार्यालयले फोन गरेर नम्बर पुष्टि गर्छ। · WhatsApp could not deliver the code; you can still send the form.';
         return;
       }
@@ -664,7 +682,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     post({ action: 'verify', phone: digits(val('phone')), cc: $('cc').value, code: code }).then(function (d) {
       btn.disabled = false;
       if (d && d.ok) {
-        st.otp = 'verified'; $('otp').className = 'otp done'; $('otpRow').hidden = true; $('otpSkip').hidden = true; $('otpSend').hidden = true;
+        st.otp = 'verified'; $('waV').hidden = true; $('otp').className = 'otp done'; $('otpRow').hidden = true; $('otpSkip').hidden = true; $('otpSend').hidden = true;
         $('otpTxt').textContent = '✅ ' + st.otpPhone + ' प्रमाणित भयो · verified'; $('otp').removeAttribute('aria-invalid'); vib([10, 40, 10]);
       } else { $('otpCode').setAttribute('aria-invalid', 'true'); say((d && d.error) || 'कोड मिलेन · wrong code'); }
     }).catch(function () { btn.disabled = false; say('इन्टरनेट जाँच गर्नुहोस्।'); });

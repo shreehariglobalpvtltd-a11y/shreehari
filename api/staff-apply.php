@@ -40,6 +40,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 require_once INCLUDE_PATH . '/staffapplications.php';
+require_once INCLUDE_PATH . '/waverify.php';
 
 const STAFF_OTP_OK_SEC   = 3600;   // a proven number stays proven this long in the session
 const STAFF_OTP_SKIP_SEC = 120;    // a code that has not arrived after this long may be skipped
@@ -57,8 +58,13 @@ function staff_phone(): array
 function staff_phone_state(string $phone): string
 {
     $ok = (int) ($_SESSION['staff_otp_ok'][$phone] ?? 0);
-    if ($ok > time() - STAFF_OTP_OK_SEC) {
-        return 'verified';
+    if ($ok > time() - STAFF_OTP_OK_SEC || WaVerify::sessionVerified($phone)) {
+        return 'verified';   // the code, or "hi VERIFY …" sent from this very number (22 Oct 2026)
+    }
+    // the WhatsApp "hi" button was pressed two minutes ago and nothing came back: same fallback as a late code
+    $waTried = (int) ($_SESSION['wa_tried'][$phone] ?? 0);
+    if ($waTried > 0 && $waTried < time() - STAFF_OTP_SKIP_SEC) {
+        return 'skip';
     }
     $try = $_SESSION['staff_otp_try'][$phone] ?? null;
     if (is_array($try) && (empty($try['sent']) || (int) $try['t'] < time() - STAFF_OTP_SKIP_SEC)) {

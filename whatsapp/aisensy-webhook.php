@@ -232,11 +232,25 @@ try {
     if (!Security::rateLimit('wa_bot', normalisePhone($from), 20, 60)) {
         exit;
     }
-    if (!Settings::getBool('whatsapp_bot_enabled', true) || !Settings::getBool('aisensy_bot_enabled', true)) {
+
+    require_once INCLUDE_PATH . '/notify.php';
+
+    /* 22 Oct 2026: "hi VERIFY K7Q2M9" from the staff / agent form proves the
+       sender's number (includes/waverify.php) - answered before the bot. */
+    require_once INCLUDE_PATH . '/waverify.php';
+    $verifyReply = WaVerify::inbound($from, (string) $ev['text']);
+    if ($verifyReply !== null) {
+        $r = AiSensyAPI::sendText($from, $verifyReply);
+        Notify::logOutbound($from, $verifyReply, $r['success'] ? 'sent' : 'failed', [
+            'provider' => 'aisensy', 'sid' => $r['message_id'], 'purpose' => 'wa_verify',
+            'error'    => $r['success'] ? null : mb_substr((string) $r['error'], 0, 250),
+        ]);
         exit;
     }
 
-    require_once INCLUDE_PATH . '/notify.php';
+    if (!Settings::getBool('whatsapp_bot_enabled', true) || !Settings::getBool('aisensy_bot_enabled', true)) {
+        exit;
+    }
 
     /* 4 Oct 2026 - the "hi" ticket (includes/waqueue.php): this number just
        wrote to us, so its free 24 h window is open. Every ticket waiting for

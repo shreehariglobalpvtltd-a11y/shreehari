@@ -191,6 +191,20 @@ try {
 
     $made = AgentApplications::create($clean, $ip);
 
+    // 22 Oct 2026: the simple form's "hi VERIFY …" WhatsApp check proved this
+    // number in this session -> the office sees "WhatsApp verified". Never a gate:
+    // the long agreement pages post here too and have no such button.
+    $waVerified = false;
+    try {
+        require_once INCLUDE_PATH . '/waverify.php';
+        $waVerified = WaVerify::ready() && WaVerify::sessionVerified((string) $clean['phone']);
+        if ($waVerified && !$made['duplicate']) {
+            Database::update('agent_applications', ['phone_verified' => 1], 'id = :id', ['id' => (int) $made['id']]);
+        }
+    } catch (Throwable $e) {
+        Logger::warning('Agreement apply: phone_verified not saved: ' . $e->getMessage());
+    }
+
     if (!$made['duplicate']) {
         // One line to the office — at most 10 an hour, then only the log.
         // Name and area are one line already (cleanFields); cut short here
@@ -202,7 +216,7 @@ try {
                     'Ref'       => $made['ref'],
                     'Type'      => AgentApplications::typeLabel((string) $clean['type']),
                     'Name'      => $short((string) $clean['name']),
-                    'Phone'     => (string) $clean['phone'],
+                    'Phone'     => (string) $clean['phone'] . ($waVerified ? ' ✓ WhatsApp' : ''),
                     'Area'      => $short((string) $clean['area']),
                     'Repeat of' => (string) ($made['repeat_of'] ?? ''),
                 ]);

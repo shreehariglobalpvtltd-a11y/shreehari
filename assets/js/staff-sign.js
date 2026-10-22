@@ -22,7 +22,9 @@
     '<label class="f"><span>पूरा नाम (आवेदनमा जस्तै) · Full name <em>*</em></span><input type="text" id="sgName" autocomplete="name" maxlength="120"></label>' +
     '<label class="f"><span>मोबाइल · Mobile <em>*</em></span><div class="row2"><select id="sgCc" aria-label="Country code"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>' +
     '<input type="tel" id="sgPhone" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" autocomplete="tel-national"></div></label>' +
-    '<button type="button" class="btn ghost" id="sgSend">📲 WhatsApp कोड पठाउनुहोस् · Send code</button>' +
+    '<div id="sgWa"></div>' +
+    '<p class="hint" style="margin:12px 0 6px">वा कोड मगाउनुहोस् · or get a code:</p>' +
+    '<button type="button" class="btn ghost" id="sgSend">📲 कोड पठाउनुहोस् · Send code</button>' +
     '<div class="row2" id="sgCodeRow" hidden style="margin-top:8px;grid-template-columns:minmax(0,1fr) auto"><input type="text" id="sgCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="••••••" aria-label="Code" style="letter-spacing:.3em;text-align:center;font-weight:800"><button type="button" class="btn small" id="sgVerify">✓ प्रमाणित</button></div>' +
     '<p class="ok" id="sgOtpOk" style="margin:8px 0 0"></p>' +
     '<p class="hint" id="sgSkip" hidden style="margin:6px 0 0">कोड आएन? <button type="button" class="btn ghost small" id="sgSkipBtn">कोड बिना सही गर्नुहोस्</button></p>' +
@@ -49,6 +51,14 @@
   }
   token().catch(function () {});
 
+  /* 22 Oct 2026: "hi" on WhatsApp proves the number with no code to type (wa-verify.js) */
+  var wav = window.ShgWaVerify ? window.ShgWaVerify.mount($('sgWa'), {
+    purpose: 'sign',
+    phone: function () { var d = digits($('sgPhone').value); return d.length === 10 ? { phone: d, cc: $('sgCc').value } : null; },
+    token: function () { return token(); },
+    onDone: function (how) { st.otp = how; $('sgSend').hidden = true; $('sgCodeRow').hidden = true; $('sgSkip').hidden = true; $('sgOtpOk').textContent = ''; }
+  }) : null;
+
   /* ---- WhatsApp code ---- */
   $('sgSend').addEventListener('click', function () {
     var b = this, ph = digits($('sgPhone').value); say('');
@@ -67,12 +77,12 @@
     var b = this; b.disabled = true;
     post({ action: 'verify', phone: digits($('sgPhone').value), cc: $('sgCc').value, code: digits($('sgCode').value) }).then(function (d) {
       b.disabled = false;
-      if (d && d.ok) { st.otp = 'verified'; $('sgCodeRow').hidden = true; $('sgSkip').hidden = true; $('sgSend').hidden = true; $('sgOtpOk').textContent = '✅ मोबाइल प्रमाणित भयो · verified'; return; }
+      if (d && d.ok) { st.otp = 'verified'; $('sgWa').hidden = true; $('sgCodeRow').hidden = true; $('sgSkip').hidden = true; $('sgSend').hidden = true; $('sgOtpOk').textContent = '✅ मोबाइल प्रमाणित भयो · verified'; return; }
       $('sgCode').setAttribute('aria-invalid', 'true'); say((d && d.error) || 'कोड मिलेन।');
     }).catch(function () { b.disabled = false; say('इन्टरनेट जाँच गर्नुहोस्।'); });
   });
   $('sgSkipBtn').addEventListener('click', function () { st.otp = 'skip'; $('sgSkip').hidden = true; $('sgCodeRow').hidden = true; $('sgOtpOk').textContent = 'ठीक छ — कार्यालयले फोन गरेर पुष्टि गर्छ।'; });
-  ['sgPhone', 'sgCc'].forEach(function (id) { $(id).addEventListener('change', function () { if (st.otp !== 'none') { st.otp = 'none'; $('sgSend').hidden = false; $('sgOtpOk').textContent = ''; } }); });
+  ['sgPhone', 'sgCc'].forEach(function (id) { $(id).addEventListener('change', function () { if (st.otp !== 'none') { st.otp = 'none'; $('sgSend').hidden = false; $('sgOtpOk').textContent = ''; if (wav) wav.reset(); } }); });
 
   /* ---- finger signature ---- */
   var cv = $('sgC'), wrap = $('sgW'), ctx = cv.getContext('2d'), drawing = false, last = null;

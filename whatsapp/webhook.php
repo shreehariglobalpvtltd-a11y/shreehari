@@ -371,6 +371,25 @@ function wh_process_inbound(array $msg): void
     if (!Security::rateLimit('wa_bot', normalisePhone($from), 20, 60)) {
         return;
     }
+
+    /* 22 Oct 2026: "hi VERIFY K7Q2M9" sent from the staff / agent form
+       (includes/waverify.php) proves this sender's number. Answered here,
+       before the bot and even with the bot off; any other text returns null
+       and carries on exactly as before. */
+    try {
+        require_once INCLUDE_PATH . '/waverify.php';
+        $verifyReply = WaVerify::inbound($from, $text);
+        if ($verifyReply !== null) {
+            $r = sendWhatsAppText($from, $verifyReply);
+            Notify::logOutbound($from, $verifyReply, $r['success'] ? 'sent' : 'failed', [
+                'provider' => 'cloud_api', 'sid' => $r['message_id'] ?? '', 'purpose' => 'wa_verify', 'error' => $r['success'] ? null : ($r['error'] ?? ''),
+            ]);
+            return;
+        }
+    } catch (Throwable $e) {
+        Logger::exception($e, 'whatsapp');
+    }
+
     if (!Settings::getBool('whatsapp_bot_enabled', true)) {
         return;
     }

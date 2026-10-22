@@ -180,6 +180,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     <div class="sig-bar"><span class="ok" id="sigOk"></span><button type="button" class="btn ghost small" id="sigClear">↺ मेटाउनुहोस् · Clear</button></div>
   </section>
 
+  <section class="card" id="waCard">
+    <h2><i>6</i>📱 मोबाइल प्रमाणित · Verify mobile</h2>
+    <p class="hint">माथि लेखेको नम्बर तपाईंकै हो भनी WhatsApp बाट एक ट्यापमा प्रमाणित गर्नुहोस्।</p>
+    <div id="waV"></div>
+  </section>
+
   <section class="card">
     <label class="chk"><input type="checkbox" id="agree"><span>मैले दिएको विवरण साँचो हो। कार्यालयले मलाई फोन / WhatsApp गर्न सक्छ। <em style="color:var(--bad);font-style:normal">*</em></span></label>
     <label class="chk"><input type="checkbox" id="public_ok"><span>स्वीकृत भएपछि मेरो नाम, फोटो, काम गर्ने ठाउँ र पूरा फोन नम्बर (WhatsApp) वेबसाइटको एजेन्ट सूचीमा देखाउन सकिन्छ। (नत्र फोटो र नम्बर लुकाइन्छ)</span></label>
@@ -199,11 +205,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 </section>
 </main>
 
+<script src="/assets/js/wa-verify.js?v=20261022a"></script>
 <script>
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var state = { photo: null, doc: null, geo: null, csrf: null, verified: null, checking: null, seenName: '' };
+  var state = { photo: null, doc: null, geo: null, csrf: null, verified: null, checking: null, seenName: '', wa: 'none' };
 
   /* ---- CSRF + session cookie for the API ---- */
   function token() {
@@ -213,6 +220,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
       .then(function (d) { state.csrf = d && d.csrf; return state.csrf; });
   }
   token().catch(function () {});
+
+  /* ---- 22 Oct 2026: the mobile proven by sending "hi" on WhatsApp (wa-verify.js) ---- */
+  var wav = window.ShgWaVerify ? window.ShgWaVerify.mount($('waV'), {
+    purpose: 'agent',
+    phone: function () { var d = $('p_phone').value.replace(/\D/g, '').replace(/^0+/, ''); return d.length === 10 ? { phone: d, cc: $('cc').value } : null; },
+    token: function () { return token(); },
+    onDone: function (how) { state.wa = how; $('waV').removeAttribute('aria-invalid'); }
+  }) : null;
+  ['p_phone', 'cc'].forEach(function (id) { $(id).addEventListener('change', function () { if (wav && state.wa !== 'none') { state.wa = 'none'; wav.reset(); } }); });
 
   /* ---- a camera / gallery photo, shrunk on the phone to send fast ---- */
   function shrink(file, maxSide, maxBytes) {
@@ -423,6 +439,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     if (!state.doc) return need('docIn', 'डकुमेन्टको फोटो खिच्नुहोस्।');
     if (!state.photo) return need('selfIn', 'आफ्नो फोटो खिच्नुहोस्।');
     if (inked <= 40) return need('sig', 'तलको बाकसमा औंलाले सही गर्नुहोस्।');
+    if (wav && state.wa === 'none') return need('waV', 'मोबाइल नम्बर WhatsApp बाट प्रमाणित गर्नुहोस् — हरियो बटन थिच्नुहोस्।');
     if (!$('agree').checked) return need('agree', 'विवरण साँचो हो भनी ✓ लगाउनुहोस्।');
     return true;
   }
