@@ -25,7 +25,7 @@
 'use strict';
 
 var X = null;                       /* the bridge, set in start() */
-var GV = '20261022f';
+var GV = '20261022g';
 
 /* ---------------------------------------------------------------------
    DATA
@@ -1061,7 +1061,7 @@ function tick() {
       v.unshift({ name: S.to.name, lat: S.to.lat, lng: S.to.lng, kind: S.to.kind || '', t: Date.now() });
       LSg.set('shg:ng:visits', v.slice(0, 100));
     }
-    if (S.mode === 'car' || S.mode === 'bike') setTimeout(function () { savePark(false); }, 1500);
+    if (S.mode === 'car' || S.mode === 'moto' || S.mode === 'bike') setTimeout(function () { savePark(false); }, 1500);
   }
   /* crossed into the other country (by GPS, every 15 s) */
   if (S.me && Date.now() - W.cAt > 15000) {

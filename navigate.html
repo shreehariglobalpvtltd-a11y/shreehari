@@ -222,7 +222,7 @@ body[data-lvl=nav] .ctrls{bottom:calc(var(--sb) + 112px)}
 .field:active{border-color:var(--gold)}
 #swap{transition:transform .35s var(--spring)}
 #swap.spin{transform:rotate(180deg)}
-.modes{position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:8px 2px 0;padding:4px;border-radius:12px;background:rgba(0,0,0,.18)}
+.modes{position:relative;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin:8px 2px 0;padding:4px;border-radius:12px;background:rgba(0,0,0,.18)}
 .ink{position:absolute;top:4px;bottom:4px;left:4px;border-radius:9px;background:rgba(255,255,255,.07);background:color-mix(in srgb,var(--mode) 18%,transparent);
   border:1.5px solid var(--mode);transition:transform .38s var(--spring),width .38s var(--spring),border-color .25s,background .25s;pointer-events:none}
 .mode{position:relative;z-index:1;height:58px;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
@@ -922,11 +922,14 @@ var OFFLINE_CACHE = 'navoffline-v1', VOICE_CACHE = 'navvoice-v1';
 var VOICE_VER = '20261021a';                       /* assets/navvoice/<pack>/*.mp3 + phrases.json */
 var MODES = {
   car:  { name: 'Car',  costing: 'auto',       osrm: 'car',  color: '#4A9EFF', casing: '#16427A', verb: 'drive' },
+  /* 22 Oct 2026 (Phase 3): two-wheeler, like Google India - Valhalla motorcycle costing keeps
+     off roads tagged motorcycle=no (the expressways); toll-free in India */
+  moto: { name: 'Scooty', costing: 'motorcycle', osrm: 'car', color: '#BF5AF2', casing: '#4E1F6B', verb: 'ride' },
   bus:  { name: 'Bus',  costing: 'bus',        osrm: 'car',  color: '#D4A843', casing: '#6E5418', verb: 'go by bus', mult: 1.3 },
   bike: { name: 'Bike', costing: 'bicycle',    osrm: 'bike', color: '#34C759', casing: '#145C29', verb: 'cycle' },
   walk: { name: 'Walk', costing: 'pedestrian', osrm: 'foot', color: '#FF9F0A', casing: '#7A4A00', verb: 'walk' }
 };
-var ORDER = ['car', 'bus', 'bike', 'walk'];
+var ORDER = ['car', 'moto', 'bus', 'bike', 'walk'];
 var DONE_COLOR = '#7D879A';
 var CATS = [
   { q: 'petrol', l: 'Petrol', e: '⛽' }, { q: 'restaurant', l: 'Food', e: '🍽️' },
@@ -1039,6 +1042,7 @@ function fire(name, a, b, c) {
    ICONS
 ===================================================================== */
 var MODE_IC = {
+  moto: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="16.5" r="3"/><circle cx="18.5" cy="16.5" r="3"/><path d="M8.5 16.5h6l2.2-6.2h2.3"/><path d="M14.5 16.5L11 10.5H7.5"/><path d="M16.7 10.3L15.4 6.5h-2.2"/></svg>',
   car: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M5 11.5l1.6-4.6A2 2 0 0 1 8.5 5.5h7a2 2 0 0 1 1.9 1.4l1.6 4.6v5.5a1 1 0 0 1-1 1h-1.2a1 1 0 0 1-1-1V16H7.2v1a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z"/><path d="M5 11.5h14"/><circle cx="8.2" cy="13.8" r="1" fill="currentColor"/><circle cx="15.8" cy="13.8" r="1" fill="currentColor"/></svg>',
   bus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="3" width="15" height="14.5" rx="2.5"/><path d="M4.5 10.5h15M8 17.5V20M16 17.5V20M9.5 6h5"/><circle cx="8" cy="14" r=".9" fill="currentColor"/><circle cx="16" cy="14" r=".9" fill="currentColor"/></svg>',
   bike: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="16" r="3.5"/><circle cx="18.5" cy="16" r="3.5"/><path d="M5.5 16L9 9h6.5l3 7M9 9l3.2 7 3.3-7M7.5 6.5h3M14 5.5h2.2l.8 3.5"/></svg>',
@@ -2125,11 +2129,13 @@ function costingOpts(mode) {
     if (S.avoid.tolls) o.use_tolls = 0;
     if (S.avoid.highways) o.use_highways = 0;
   }
+  if (mode === 'moto' && S.avoid.highways) o.use_highways = 0;      /* two-wheelers pay no toll in India */
   if (S.avoid.ferries) o.use_ferry = 0;
   if (!Object.keys(o).length) return null;
   var r = {}; r[c] = o; return r;
 }
 function osrmExclude(mode) {
+  if (mode === 'moto') return [S.avoid.highways && 'motorway', S.avoid.ferries && 'ferry'].filter(Boolean).join(',');
   if (mode !== 'car' && mode !== 'bus') return '';
   return [S.avoid.tolls && 'toll', S.avoid.highways && 'motorway', S.avoid.ferries && 'ferry'].filter(Boolean).join(',');
 }
@@ -2195,10 +2201,14 @@ function normalize(j, src, mode) {
   var mult = MODES[mode].mult || 1;          /* a coach: road time x1.3 (the engines' bus costing drives at car speed) */
   return j.routes.map(function (r) {
     var steps = [], tolls = false, motor = false, ferry = false, legs = r.legs || [];
+    var tollM = 0, tollN = 0, onToll = false;              /* 22 Oct 2026: tolled metres + how many times the route gets on a tolled road */
     legs.forEach(function (leg, li) {
       (leg.steps || []).forEach(function (st) {
         var m = st.maneuver || {}, it = st.intersections || [];
         it.forEach(function (x) { (x.classes || []).forEach(function (c) { if (c === 'toll') tolls = true; if (c === 'motorway') motor = true; if (c === 'ferry') ferry = true; }); });
+        var tl = !!(it[0] && (it[0].classes || []).indexOf('toll') >= 0);
+        if (tl) { tollM += st.distance || 0; if (!onToll) tollN++; }
+        onToll = tl;
         if (st.mode === 'ferry') ferry = true;
         var s = { type: m.type || 'turn', mod: m.modifier || '', exit: m.exit, loc: m.location, bAfter: m.bearing_after,
                   name: st.name || '', ref: st.ref || '', dest: st.destinations || '', rot: st.rotary_name || '',
@@ -2212,7 +2222,8 @@ function normalize(j, src, mode) {
         steps.push(s);
       });
     });
-    return { coords: r.geometry.coordinates, dist: r.distance, dur: r.duration * mult, steps: steps, src: src, tolls: tolls, motor: motor, ferry: ferry };
+    return { coords: r.geometry.coordinates, dist: r.distance, dur: r.duration * mult, steps: steps, src: src, tolls: tolls, motor: motor, ferry: ferry,
+             tollKm: Math.round(tollM / 100) / 10, tollN: tollN };
   });
 }
 var ORD = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'];
@@ -2325,7 +2336,7 @@ function paintModes() {
   ink.style.transform = 'translateX(' + (on.offsetLeft - 4) + 'px)';
   document.documentElement.style.setProperty('--mode', MODES[S.mode].color);
   $$('#dirOpts [data-avoid]').forEach(function (b) {
-    var k = b.dataset.avoid, rel = k === 'ferries' || S.mode === 'car' || S.mode === 'bus';
+    var k = b.dataset.avoid, rel = k === 'ferries' || S.mode === 'car' || S.mode === 'bus' || (k === 'highways' && S.mode === 'moto');
     b.hidden = !rel; b.classList.toggle('on', !!S.avoid[k]);
   });
 }
@@ -2333,7 +2344,8 @@ function paintModes() {
 function setModeTime(m, dur, dist) {
   var el = $('#mt-' + m), dl = $('#md-' + m); if (!el) return;
   el.classList.toggle('wait', dur === 'wait');
-  el.textContent = dur === 'wait' ? '' : dur == null ? '—' : fmtDur(dur);
+  /* five chips on a 360 px phone: "5h 46m", not "5 hr 46 min" (the full text stays in the label) */
+  el.textContent = dur === 'wait' ? '' : dur == null ? '—' : fmtDur(dur).replace(/ hrs?/g, 'h').replace(/ mins?/g, 'm').replace(/ days?/g, 'd').replace(/(\d) /g, '$1');
   if (dl) dl.textContent = dur !== 'wait' && dur != null && dist > 0 ? fmtDist(dist) : '';
   var b = el.closest('.mode');
   if (b) b.setAttribute('aria-label', MODES[m].name + (dur !== 'wait' && dur != null ? ', ' + fmtDur(dur) + (dist > 0 ? ', ' + fmtDist(dist) : '') : ''));
@@ -2524,8 +2536,8 @@ function renderDirSheet() {
   var shortest = rs.length > 1 && rs.every(function (x) { return r.dist <= x.dist + 1; });
   var label = rs.length > 1 ? (fastest ? 'Fastest route' : shortest ? 'Shortest route' : 'Alternative route') : 'Best route';
   var badges = '<span class="badge ' + (fastest ? 'g' : 'y') + '">' + label + '</span>';
-  if (r.tolls) badges += '<span class="badge y">Has tolls</span>';
-  if (r.motor && (S.mode === 'car' || S.mode === 'bus')) badges += '<span class="badge b">Expressway</span>';
+  if (r.tolls && S.mode !== 'moto') badges += '<span class="badge y">Has tolls</span>';    /* two-wheelers pay no toll */
+  if (r.motor && (S.mode === 'car' || S.mode === 'bus' || S.mode === 'moto')) badges += '<span class="badge b">Expressway</span>';
   if (r.ferry) badges += '<span class="badge r">Ferry</span>';
   if (avoidKey()) badges += '<span class="badge">Avoiding ' + [S.avoid.tolls && 'tolls', S.avoid.highways && 'highways', S.avoid.ferries && 'ferries'].filter(Boolean).join(', ') + '</span>';
   if (r.src === 'osrm') badges += '<span class="badge">Backup route engine</span>';
@@ -3505,7 +3517,7 @@ function currentLimit() {
   return null;
 }
 function limitsTick() {
-  var N = S.nav; if (!N || (S.mode !== 'car' && S.mode !== 'bus')) return;
+  var N = S.nav; if (!N || (S.mode !== 'car' && S.mode !== 'bus' && S.mode !== 'moto')) return;
   var lim = currentLimit(), el = $('#limit');
   if (lim) { if (el.textContent !== String(lim)) el.textContent = lim; el.hidden = false; } else el.hidden = true;
   if (N.limBusy || N.along < N.limNext) return;
@@ -6115,7 +6127,7 @@ var BD_S = {
 /* the stand-in when KB.nepal is missing: north of this line (and above 26.3 N) counts as Nepal */
 var BD_LINE = [[80.1, 28.9], [88.2, 26.4]];
 var BD_FAR = 5000, BD_NEAR = 800, BD_GATE_R = 25000;
-var BD_RATE = { car: 8, bus: 1.7, walkKcal: 35 };          /* ₹/km fuel, ₹/km public bus, kcal/km walking (core: 70 kg x 0.5) */
+var BD_RATE = { car: 8, moto: 2.5, bus: 1.7, walkKcal: 35 };   /* ₹/km fuel (car, two-wheeler ~45 km/l), ₹/km public bus, kcal/km walking (core: 70 kg x 0.5) */
 var bdRing = null, bdRingSrc = null, bdBox = null, bdApprox = false;
 var bdPin = null;                                           /* the one 🛂 marker: { key, m, el, c } (A17) */
 
@@ -6265,11 +6277,13 @@ function costFor(mode, r) {
     if (sf) { o.inr = sf.fare; o.shg = true; o.to = sf.to || ''; o.approx = false; }
     else o.inr = km * BD_RATE.bus;
   } else if (mode === 'car') o.inr = km * BD_RATE.car;
+  else if (mode === 'moto') o.inr = km * BD_RATE.moto;
   else if (mode === 'walk') o.kcal = Math.round(km * BD_RATE.walkKcal);
   o.npr = o.inr * fx;
   ['ne', 'hi', 'en'].forEach(function (lg) {
     var s;
     if (mode === 'car') s = '⛽ ≈ ' + bdPair(o.inr, o.npr, npFirst) + ' · ' + bdLang(BD_S.fuelOnly, lg) + (o.tolls ? ' ' + bdLang(BD_S.tolls, lg) : '');
+    else if (mode === 'moto') s = '🛵 ⛽ ≈ ' + bdPair(o.inr, o.npr, npFirst) + ' · ' + bdLang(BD_S.fuelOnly, lg);
     else if (mode === 'bus' && o.shg) s = '🚌 ' + bdPair(o.inr, o.npr, npFirst) + ' · ' + bdLang(BD_S.shgSeat, lg) + (o.to ? ' ' + bdFill(bdLang(BD_S.seatTo, lg), { to: o.to }) : '');
     else if (mode === 'bus') s = '🚌 ≈ ' + bdPair(o.inr, o.npr, npFirst) + ' · ' + bdLang(BD_S.pubBus, lg) + ', ' + bdLang(BD_S.approx, lg);
     else if (mode === 'bike') s = bdLang(BD_S.bike, lg);
@@ -7175,6 +7189,7 @@ window.SHGNAV_X = {
   hook: typeof hook === 'function' ? hook : null,
   closeModal: typeof closeModal === 'function' ? closeModal : null,
   homeChips: typeof homeChips === 'function' ? homeChips : null,
+  at: at, nearest: nearest, prepRoute: prepRoute,
   openPlace: function (p) {
     S.to = Object.assign({}, p); addRecent(S.to);
     if (S.level === 'place') { renderPlace(); setTo(S.to, true); } else push('place');   /* show() skips an unchanged level */
@@ -7191,7 +7206,8 @@ try { document.dispatchEvent(new CustomEvent('shgnav:ready')); } catch (e) {}
 boot();
 })();
 </script>
-<script src="/assets/nav/nav-guide.js?v=20261022f" defer></script>
+<script src="/assets/nav/nav-guide.js?v=20261022g" defer></script>
 <script src="/assets/nav/nav-live.js?v=20261022d" defer></script>
+<script src="/assets/nav/nav-more.js?v=20261022b" defer></script>
 </body>
 </html>
