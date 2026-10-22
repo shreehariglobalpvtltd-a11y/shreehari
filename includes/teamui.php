@@ -93,6 +93,7 @@ h3{font-size:15px;margin:14px 0 6px;color:var(--royal2)}
         ?>
 </main>
 <p class="tp-foot">समस्या भए · Need help? <a href="tel:<?= Security::e(preg_replace('/[^\d+]/', '', (string) $co['phone']) ?? '') ?>"><?= Security::e($co['phone']) ?></a> · <a href="/">shreehariglobal.in</a></p>
+<script defer src="/assets/js/wa-direct.js?v=20261022a"></script><!-- every wa.me link opens WhatsApp in one tap -->
 </body>
 </html>
 <?php

@@ -138,5 +138,6 @@ p.n{color:var(--muted);font-size:13.5px;line-height:1.5;margin:10px 0 0}
   </div>
   <p class="ft"><?= $h($co['legal']) ?> · <a href="/" style="color:inherit"><?= $h(preg_replace('~^(https?://)?(www\.)?~', '', (string) $co['web'])) ?></a></p>
 </main>
+<script defer src="/assets/js/wa-direct.js?v=20261022a"></script><!-- "WhatsApp office" opens WhatsApp in one tap -->
 </body>
 </html>
