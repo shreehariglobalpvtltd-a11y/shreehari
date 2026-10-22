@@ -320,6 +320,14 @@ header('X-Robots-Tag: noindex, nofollow');
 <title><?= $h(($ref !== '' ? $ref . ' · ' : '') . $title) ?> — <?= $h($co['name']) ?></title>
 <style>
 @page{size:A4;margin:11mm 11mm 13mm}
+/* 22 Oct 2026 (owner: "3 prakar ko form differentiate garera"): one colour per kind - staff green, agent blue, partner orange */
+body{--k:#1F3C88}body.k-staff{--k:#11703F}body.k-partner{--k:#C25E00}
+.kbadge{display:inline-block;margin:0 0 6px;padding:3px 10px;border-radius:999px;background:var(--k);color:#fff;font-size:11.5px;font-weight:800;letter-spacing:.3px}
+.agr{display:flex;gap:12px;align-items:center;border:1.5px solid var(--k);border-radius:8px;padding:8px 10px;break-inside:avoid;font-size:11.5px;color:#3A4A66}
+.agr b{color:#0F1B33;font-size:12.5px}
+.agr .u{font-family:Consolas,monospace;color:#0F1B33;word-break:break-all}
+.agr img{width:26mm;height:26mm;image-rendering:pixelated;display:block}
+.agr .qt{font-size:10px;text-align:center;color:#3A4A66}
 *{box-sizing:border-box}
 html,body{margin:0;background:#E9EDF3;color:#0F1B33;font:12.5px/1.45 "Segoe UI",Roboto,Arial,"Noto Sans Devanagari",sans-serif}
 [hidden]{display:none!important}
@@ -328,13 +336,13 @@ html,body{margin:0;background:#E9EDF3;color:#0F1B33;font:12.5px/1.45 "Segoe UI",
 .bar button.pri{background:#F07A2E;color:#fff}
 .bar small{opacity:.75;flex-basis:100%;text-align:center}
 .sheet{width:210mm;min-height:297mm;margin:14px auto;background:#fff;padding:11mm 11mm 13mm;box-shadow:0 6px 30px rgba(15,27,51,.18);position:relative}
-.lh{display:flex;align-items:center;gap:14px;border-bottom:3px solid #1F3C88;padding-bottom:8px}
+.lh{display:flex;align-items:center;gap:14px;border-bottom:3px solid var(--k);padding-bottom:8px}
 .lh img{height:62px;width:auto}
 .lh .co{flex:1;min-width:0}
 .lh .co b{display:block;font-size:19px;letter-spacing:.3px;color:#1F3C88}
 .lh .co span{display:block;font-size:11px;color:#3A4A66}
 .lh .ids{text-align:right;font-size:10.5px;color:#3A4A66;white-space:nowrap}
-.stripe{height:4px;background:linear-gradient(90deg,#1F3C88 0 60%,#F07A2E 60%)}
+.stripe{height:4px;background:linear-gradient(90deg,var(--k) 0 60%,#F07A2E 60%)}
 .head{display:flex;gap:14px;margin-top:12px;align-items:flex-start}
 .head .t{flex:1}
 .head h1{margin:0;font-size:20px;color:#0F1B33}
@@ -342,7 +350,7 @@ html,body{margin:0;background:#E9EDF3;color:#0F1B33;font:12.5px/1.45 "Segoe UI",
 .meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:#3A4A66}
 .meta b{color:#0F1B33}
 .pics{display:flex;gap:8px}
-.pic{width:32mm;height:40mm;border:1.5px solid #1F3C88;border-radius:6px;display:grid;place-items:center;overflow:hidden;background:#F6F8FC;font-size:10px;color:#6B7A99;text-align:center;padding:4px}
+.pic{width:32mm;height:40mm;border:1.5px solid var(--k);border-radius:6px;display:grid;place-items:center;overflow:hidden;background:#F6F8FC;font-size:10px;color:#6B7A99;text-align:center;padding:4px}
 .pic img{width:100%;height:100%;object-fit:cover}
 .pic.logo img{object-fit:contain}
 .st{display:grid;grid-template-columns:repeat(auto-fit,minmax(36mm,1fr));gap:6px;margin:12px 0 4px}
@@ -350,7 +358,7 @@ html,body{margin:0;background:#E9EDF3;color:#0F1B33;font:12.5px/1.45 "Segoe UI",
 .st div b{display:block;font-size:12px;color:#0F1B33}
 .st div.ok{border-color:#1E9E5A;background:#EEF9F2}
 .st div.ok b::before{content:"✔ ";color:#1E9E5A}
-h3{margin:12px 0 4px;font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:#1F3C88;border-bottom:1px solid #D5DCE8;padding-bottom:3px;break-after:avoid}
+h3{margin:12px 0 4px;font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--k);border-bottom:1px solid #D5DCE8;padding-bottom:3px;break-after:avoid}
 table{width:100%;border-collapse:collapse}
 td{padding:4px 6px;vertical-align:top;border-bottom:1px dotted #D5DCE8}
 td.l{width:38%;color:#3A4A66;font-size:11.5px}
@@ -366,14 +374,14 @@ td.v.m{color:#8A96AD;font-weight:500}
 .decl{margin-top:10px;font-size:11px;color:#3A4A66;border:1px solid #D5DCE8;border-radius:7px;padding:7px 9px;break-inside:avoid}
 .office{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;break-inside:avoid}
 .office div{border:1px solid #9AA6BD;border-radius:7px;height:22mm;padding:5px 7px;font-size:10.5px;color:#3A4A66}
-.seal{display:flex;justify-content:space-between;gap:10px;margin-top:10px;font-size:10.5px;color:#3A4A66;border-top:2px solid #1F3C88;padding-top:5px}
+.seal{display:flex;justify-content:space-between;gap:10px;margin-top:10px;font-size:10.5px;color:#3A4A66;border-top:2px solid var(--k);padding-top:5px}
 .seal b{font-family:Consolas,monospace;color:#0F1B33;letter-spacing:.5px}
 .wm{position:absolute;inset:auto 0 40% 0;text-align:center;font-size:64px;font-weight:800;color:rgba(31,60,136,.05);transform:rotate(-18deg);pointer-events:none}
 @media print{html,body{background:#fff}.bar{display:none}.sheet{margin:0;width:auto;min-height:0;box-shadow:none;padding:0}}
 @media (max-width:820px){.sheet{width:auto;margin:8px;padding:14px}.head{flex-direction:column-reverse}.lh{flex-wrap:wrap}.lh .ids{text-align:left}}
 </style>
 </head>
-<body>
+<body class="k-<?= $h($kind) ?>">
 <div class="bar">
   <button class="pri" type="button" id="doPrint">🖨 छाप्नुहोस् · Print</button>
   <button class="pri" type="button" id="doPdf">📄 PDF</button>
@@ -400,6 +408,7 @@ td.v.m{color:#8A96AD;font-weight:500}
 
   <div class="head">
     <div class="t">
+      <span class="kbadge"><?= $h(['staff' => 'कर्मचारी · STAFF', 'agent' => 'एजेन्ट · AGENT', 'partner' => 'साझेदार कम्पनी · PARTNER (PVT. LTD.)'][$kind] ?? '') ?></span>
       <h1><?= $h($title) ?></h1>
       <h2><?= $h($titleNe) ?></h2>
       <div class="meta">
@@ -431,6 +440,26 @@ td.v.m{color:#8A96AD;font-weight:500}
   <div class="sg"><?php foreach ($signs as [$l, $img, $d]): ?><figure><?php if ($img !== ''): ?><img src="<?= $h($img) ?>" alt="<?= $h($l) ?>"><?php endif; ?><figcaption><b><?= $h($l) ?></b><?= $h($d) ?></figcaption></figure><?php endforeach; ?></div>
   <?php else: ?>
   <div class="sg"><figure style="height:26mm"><figcaption><b>Applicant’s signature</b></figcaption></figure><figure style="height:26mm"><figcaption><b><?= $kind === 'partner' ? 'Company seal + representative' : 'Thumb impression' ?></b></figcaption></figure></div>
+  <?php endif; ?>
+
+  <?php /* 22 Oct 2026 (owner: "chhuta chhuttai agreement, digital focus tara print garera ni"): each kind's own
+     agreement, where to read and sign it online, and a QR - on a blank form to the ONLINE form (fill it on the
+     phone instead), on a filled one to the agreement. */
+  $agrDoc = ['staff'   => ['कर्मचारी सम्झौता · Staff agreement', 'agreements/staff-agreement.html', 'agreements/staff.html'],
+             'agent'   => ['एजेन्ट सम्झौता · Agent agreement', 'agreements/agent-agreement-ne.html', 'agreements/apply.html'],
+             'partner' => ['साझेदार कम्पनी सम्झौता · Partner (Pvt. Ltd.) agreement', 'agreements/partner-agreement-ne.html', 'agreements/apply.html?kind=partner']][$kind] ?? null;
+  if ($agrDoc !== null):
+      $qrTo  = appUrl($blank !== '' ? $agrDoc[2] : $agrDoc[1]);
+      $qrImg = '';
+      $shortUrl = static fn(string $p): string => (string) preg_replace('~^https?://(www\.)?~i', '', appUrl($p));
+      try { $qrImg = QrCode::dataUri($qrTo, 4, 2); } catch (Throwable $e) { $qrImg = ''; } ?>
+  <h3>सम्झौता · Agreement</h3>
+  <div class="agr">
+    <div style="flex:1;min-width:0"><b><?= $h($agrDoc[0]) ?></b><br>
+      पढ्नुहोस् र अनलाइन सही गर्नुहोस् · Read and sign online:<br><span class="u"><?= $h($shortUrl($agrDoc[1])) ?></span><br>
+      <?php if ($blank !== ''): ?>यो फारम मोबाइलमै भर्न सकिन्छ · Fill this form online:<br><span class="u"><?= $h($shortUrl($agrDoc[2])) ?></span><?php else: ?>कागजमा सही गर्ने भए हरेक पानामा छोटो सही, अन्तिममा पूरा सही र औंठाछाप · On paper: initials on every page, full signature and thumbprint at the end.<?php endif; ?></div>
+    <?php if ($qrImg !== ''): ?><div><img src="<?= $h($qrImg) ?>" alt="QR"><div class="qt"><?= $blank !== '' ? 'स्क्यान: अनलाइन फारम' : 'स्क्यान: सम्झौता' ?></div></div><?php endif; ?>
+  </div>
   <?php endif; ?>
 
   <div class="decl">I declare that the details above are true and the documents are mine<?= $kind === 'partner' ? ' / my company’s, and that I am authorised to sign for the company' : '' ?>. I agree to the <?= $h($kind === 'staff' ? 'staff' : ($kind === 'partner' ? 'partner' : 'agent')) ?> agreement of <?= $h($co['legal']) ?>.<br>

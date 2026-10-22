@@ -88,6 +88,21 @@ footer{padding:0 16px 30px;text-align:center;color:var(--muted);font-size:13px}
   .go{grid-template-columns:minmax(0,1fr)}
   .seg button{padding:8px 10px;font-size:13.5px}
 }
+.kinds{margin:16px 0 18px}
+.kinds-h{margin:0 0 4px;font:700 20px/1.3 var(--brand);color:var(--navy)}
+.kinds-sub{margin:0 0 12px;color:var(--muted);font-size:14px}
+.kinds-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.kind-card{--k:#0054A8;display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:18px;background:var(--card);border:1px solid var(--line);border-top:6px solid var(--k);box-shadow:0 10px 24px -18px rgba(10,42,143,.6)}
+.k-staff{--k:#11703F}.k-agent{--k:#0054A8}.k-partner{--k:#C25E00}
+.k-top{display:flex;gap:10px;align-items:center;min-width:0}
+.k-ic{flex:0 0 46px;width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:24px;background:#f2f5fb;border:1px solid var(--line)}
+.k-top b{display:block;font-size:17px;line-height:1.25;color:var(--k)}
+.k-top small{display:block;font-size:12.5px;line-height:1.35;color:var(--muted)}
+.k-main{display:flex;align-items:center;justify-content:center;min-height:50px;padding:0 10px;border-radius:12px;background:var(--k);color:#fff!important;font-weight:800;text-decoration:none;text-align:center}
+.k-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.k-row a{display:flex;align-items:center;justify-content:center;text-align:center;min-height:46px;padding:6px;border-radius:10px;border:1.5px solid var(--k);color:var(--k);font-size:13px;font-weight:700;text-decoration:none;line-height:1.25;background:#fff}
+.k-note{margin:0;font-size:12px;color:var(--muted)}
+@media (max-width:760px){.kinds-grid{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
 <body>
@@ -99,10 +114,33 @@ footer{padding:0 16px 30px;text-align:center;color:var(--muted);font-size:13px}
 </header>
 <section class="hero"><div class="wrap"><h1><span data-l="ne" lang="ne">सम्झौता पत्र</span><span data-l="hi" lang="hi">अनुबंध पत्र</span><span data-l="en" lang="en">Agreements</span><span data-l="gu" lang="gu">કરાર પત્ર</span></h1><p><span data-l="ne" lang="ne">फारम फोनमै भर्नुहोस् र अनलाइन पठाउनुहोस्, वा PDF डाउनलोड गरी प्रिन्ट गरेर हातैले हस्ताक्षर गर्नुहोस्।</span><span data-l="hi" lang="hi">फ़ॉर्म फ़ोन पर ही भरें और ऑनलाइन भेजें, या PDF डाउनलोड करके प्रिंट करें और हाथ से हस्ताक्षर करें।</span><span data-l="en" lang="en">Fill in the form on your phone and send it online, or download the PDF, print it and sign by hand.</span><span data-l="gu" lang="gu">ફોર્મ ફોનમાં જ ભરો અને ઓનલાઇન મોકલો, અથવા PDF ડાઉનલોડ કરીને પ્રિન્ટ કરો અને હાથથી સહી કરો.</span></p></div></section>
 <main class="wrap">
-<!-- 18 Oct 2026 (owner): the simple online form - photo, document, location and finger signature from the phone -->
-<a href="/agreements/apply.html" style="display:flex;align-items:center;gap:12px;margin:16px 0;padding:16px 18px;border-radius:18px;text-decoration:none;color:#fff;background:radial-gradient(120% 90% at 100% 0%,rgba(255,138,43,.35),rgba(255,138,43,0) 55%),linear-gradient(140deg,#0a2a8f,#1f4fe0 60%,#2f6bff);box-shadow:0 14px 30px -18px rgba(10,42,143,.9)"><span style="font-size:34px;line-height:1">✍️</span><span style="flex:1"><b style="display:block;font-size:17px">एजेन्ट बन्न सजिलो अनलाइन फारम · Quick online agent form</b><small style="display:block;font-size:13px;color:#dfe8ff">नाम, मोबाइल, लोकेसन, डकुमेन्ट, फोटो र औंलाले सही — ५ मिनेटमा फोनबाटै</small></span><span style="font-weight:900;font-size:20px">→</span></a>
-<!-- 22 Oct 2026 (team portal): the Pvt. Ltd. partner paper form, as the same quick online form, and the portal door -->
-<a href="/agreements/apply.html?kind=partner" style="display:flex;align-items:center;gap:12px;margin:0 0 12px;padding:14px 18px;border-radius:18px;text-decoration:none;color:#16233c;background:#fff;border:1.5px solid #d9e7fa;box-shadow:0 10px 24px -18px rgba(10,42,143,.7)"><span style="font-size:30px;line-height:1">🏢</span><span style="flex:1"><b style="display:block;font-size:16px">प्रा. लि. साझेदार अनलाइन फारम · Quick Pvt. Ltd. partner form</b><small style="display:block;font-size:13px;color:#5c6b85">कम्पनी, दर्ता नं., लोगो, प्रतिनिधिको डकुमेन्ट, फोटो र सही</small></span><span style="font-weight:900;font-size:20px">→</span></a>
+<!-- 22 Oct 2026 (owner: "3 prakar ko form ... differentiate garera chhuta chhuttai agreement, digital focus tara
+     print garera ni bharna milne"): one door per kind - apply online first, the A4 paper form, its own agreement.
+     Replaces the two quick-form links (agent 18 Oct, partner 22 Oct) that sat here. -->
+<section class="kinds" id="forms" aria-labelledby="formsTitle">
+  <h2 class="kinds-h" id="formsTitle">तीन प्रकारका फारम · Three kinds of application</h2>
+  <p class="kinds-sub">पहिले अनलाइन भर्नुहोस् — छिटो, फोटो र WhatsApp प्रमाणसहित। इन्टरनेट नभए A4 फारम छापेर हातले भर्नुहोस् र कार्यालयमा बुझाउनुहोस्। · Apply online first; or print the A4 form and fill it by hand.</p>
+  <div class="kinds-grid">
+    <article class="kind-card k-staff">
+      <div class="k-top"><span class="k-ic" aria-hidden="true">🧑‍✈️</span><div><b>कर्मचारी · Staff</b><small>चालक, कन्डक्टर, हेल्पर, अफिस, लेखापाल, मेकानिक, सफाइ, सुरक्षा</small></div></div>
+      <a class="k-main" href="/agreements/staff.html">✍️ अनलाइन भर्नुहोस् · Apply online</a>
+      <div class="k-row"><a href="/agreements/form.php?kind=staff">📄 A4 फारम<br>Print · PDF · JPG</a><a href="/agreements/staff-agreement.html">📜 कर्मचारी सम्झौता<br>Staff agreement</a></div>
+      <p class="k-note">सम्झौता अनलाइन सही गर्न मिल्छ, छापेर पनि।</p>
+    </article>
+    <article class="kind-card k-agent">
+      <div class="k-top"><span class="k-ic" aria-hidden="true">🤝</span><div><b>एजेन्ट · Agent</b><small>व्यक्ति — टिकट बेच्ने, यात्रु ल्याउने, कमिसनमा</small></div></div>
+      <a class="k-main" href="/agreements/apply.html">✍️ अनलाइन भर्नुहोस् · Apply online</a>
+      <div class="k-row"><a href="/agreements/form.php?kind=agent">📄 A4 फारम<br>Print · PDF · JPG</a><a href="/agreements/agent-agreement-ne.html">📜 एजेन्ट सम्झौता<br>Agent agreement</a></div>
+      <p class="k-note">स्वीकृत भएपछि टिम पोर्टलबाट अनलाइन सही।</p>
+    </article>
+    <article class="kind-card k-partner">
+      <div class="k-top"><span class="k-ic" aria-hidden="true">🏢</span><div><b>साझेदार कम्पनी · Partner</b><small>प्रा. लि. / दर्ता भएको फर्म — दर्ता र PAN/VAT प्रमाणपत्रसहित</small></div></div>
+      <a class="k-main" href="/agreements/apply.html?kind=partner">✍️ अनलाइन भर्नुहोस् · Apply online</a>
+      <div class="k-row"><a href="/agreements/form.php?kind=partner">📄 A4 फारम<br>Print · PDF · JPG</a><a href="/agreements/partner-agreement-ne.html">📜 साझेदार सम्झौता<br>Partner agreement</a></div>
+      <p class="k-note">दुई जना साक्षीसहित सही गर्नुपर्छ।</p>
+    </article>
+  </div>
+</section>
 <a href="/team/" style="display:flex;align-items:center;gap:12px;margin:0 0 16px;padding:12px 18px;border-radius:18px;text-decoration:none;color:#0a2a8f;background:#eef4fc;border:1px solid #d9e7fa"><span style="font-size:24px;line-height:1">🔐</span><span style="flex:1"><b style="display:block;font-size:15px">टिम पोर्टल · Team portal</b><small style="display:block;font-size:12.5px;color:#5c6b85">स्वीकृत भएपछि: परिचयपत्र, CV, सम्झौतामा अनलाइन सही, टिकट बिक्री</small></span><span style="font-weight:900">→</span></a>
   <div class="types">
   <section class="card type" id="partner">
