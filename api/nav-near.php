@@ -31,7 +31,7 @@ if (!Security::rateLimit('nav_near', Security::clientIp(), 120, 60)) {
 }
 
 $q    = trim(mb_substr((string) ($_GET['q'] ?? ''), 0, 160));
-$lang = in_array($_GET['lang'] ?? '', ['ne', 'hi', 'en'], true) ? (string) $_GET['lang'] : 'en';
+$lang = in_array($_GET['lang'] ?? '', ['ne', 'hi', 'en', 'gu'], true) ? (string) $_GET['lang'] : 'en';
 $lat  = isset($_GET['lat']) && is_numeric($_GET['lat']) ? (float) $_GET['lat'] : null;
 $lng  = isset($_GET['lng']) && is_numeric($_GET['lng']) ? (float) $_GET['lng'] : null;
 if ($lat !== null && ($lat < 5 || $lat > 40 || $lng === null || $lng < 60 || $lng > 100)) {

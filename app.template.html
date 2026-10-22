@@ -446,20 +446,11 @@ s.addEventListener('click',function(e){e.preventDefault();
     <nav class="nav-links" aria-label="Main">
       <a class="nav-link" href="#/" data-scroll="top"><svg class="ic"><use href="#i-home"/></svg> Home</a>
       <a class="nav-link" href="#/" data-scroll="search-anchor"><svg class="ic"><use href="#i-ticket"/></svg> Book</a>
-      <div class="nav-drop">
-        <a class="nav-link nav-drop-btn"><svg class="ic"><use href="#i-map"/></svg> Maps ▾</a>
-        <div class="nav-drop-list">
-          <!-- ONE map entry. "Navigator", "Live Map", the 3D drive and the
-               analog map were four names for the same screen — the router
-               has redirected them all to #/nav for a while, so offering them
-               separately only ever produced four menu items that opened the
-               same page. -->
-          <!-- 22 Oct 2026: ONE map - SHARI NAV, the AI map (AI guide, live coaches,
-               temples, border help, voice) on /navigate.html; the old #/nav map is gone -->
-          <a href="/navigate.html"><svg class="ic"><use href="#i-map"/></svg> SHARI NAV · AI Map &amp; Live Bus</a>
-          <a href="#/" data-scroll="company"><svg class="ic"><use href="#i-building"/></svg> About Us</a>
-        </div>
-      </div>
+      <!-- 22 Oct 2026 (owner: "S Hari Map click garexi About ra SHARI NAV aunx -
+           direct open hune banaideu"): one tap opens the AI map; the old
+           "Maps ▾" list (SHARI NAV + About Us) is gone. About stays in the
+           phone menu and the footer. -->
+      <a class="nav-link nav-map" href="/navigate.html"><svg class="ic"><use href="#i-map"/></svg> S Hari Map</a>
       <a class="nav-link" href="#/my"><svg class="ic"><use href="#i-list"/></svg> My Bookings</a>
       <a class="nav-link" href="#/" data-scroll="timetable"><svg class="ic"><use href="#i-clock"/></svg> Timetable</a>
       <a class="nav-link" href="#/" data-scroll="contact"><svg class="ic"><use href="#i-phone"/></svg> Contact</a>
@@ -477,10 +468,10 @@ s.addEventListener('click',function(e){e.preventDefault();
 <div class="mobile-menu" id="mobileMenu">
   <a href="#/" data-scroll="top"><svg class="ic"><use href="#i-home"/></svg> Home</a>
   <a href="#/" data-scroll="search-anchor"><svg class="ic"><use href="#i-ticket"/></svg> Book Tickets</a>
+  <a href="/navigate.html" class="mm-hot"><svg class="ic"><use href="#i-map"/></svg> S Hari Map · SHARI NAV AI &amp; Live Bus</a>
   <a href="#/" data-scroll="quick-ticket" class="mm-hot"><svg class="ic ic-s"><use href="#s-mobile-booking"/></svg> QuickBot Ticket · 10-Second Booking</a>
   <a href="#/" data-scroll="company"><svg class="ic"><use href="#i-building"/></svg> About Us</a>
   <a href="#/my" data-track-bus><svg class="ic"><use href="#i-radar"/></svg> <span data-i18n="mmTrack">Track my bus</span></a>
-  <a href="/navigate.html" class="mm-hot"><svg class="ic"><use href="#i-map"/></svg> SHARI NAV · AI Map &amp; Live Bus</a>
   <a href="#/my"><svg class="ic"><use href="#i-list"/></svg> My Bookings</a>
   <a href="#/" data-scroll="timetable"><svg class="ic"><use href="#i-clock"/></svg> समय तालिका · Timetable</a>
   <a href="/business"><svg class="ic"><use href="#i-building"/></svg> <span data-i18n="mmBusiness">Business services · व्यापार सेवा</span></a>
@@ -3256,13 +3247,16 @@ s.addEventListener('click',function(e){e.preventDefault();
 <!-- ============ [HTML] MOBILE: sticky Book Now + bottom nav ============ -->
 <!-- 8 Oct 2026: five tabs, the owner's order HOME | BOOK | TRACK | TICKETS | HELP.
      BOOK is the primary action (a filled key); TRACK runs openTrackMyBus() -
-     never the anonymous map as "my bus"; HELP opens the contact section. -->
+     never the anonymous map as "my bus"; HELP opens the contact section.
+     22 Oct 2026 (owner: "app ma ni ticket paxi priority map lai deu"):
+     HOME | BOOK | TICKETS | MAP | TRACK. MAP opens the AI map (/navigate.html);
+     help stays one tap away on the WhatsApp button and in the menu. -->
 <nav class="bottom-nav bn5" aria-label="Mobile navigation">
   <button type="button" class="bn-item on" data-bn="home" aria-current="page"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-home"/></svg></span><span class="bl" data-i18n="bnHome">Home</span></button>
   <button type="button" class="bn-item bn-primary" data-bn="book"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-bus"/></svg></span><span class="bl" data-i18n="bnBook">Book</span></button>
-  <button type="button" class="bn-item" data-bn="track"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-radar"/></svg></span><span class="bl" data-i18n="bnTrack">Track</span></button>
   <button type="button" class="bn-item" data-bn="trips"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-ticket"/></svg></span><span class="bl" data-i18n="bnTickets">My Tickets</span></button>
-  <button type="button" class="bn-item" data-bn="help"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-headset"/></svg></span><span class="bl" data-i18n="bnHelp">Help</span></button>
+  <button type="button" class="bn-item" data-bn="nav"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-map"/></svg></span><span class="bl" data-i18n="bnMaps">Maps</span></button>
+  <button type="button" class="bn-item" data-bn="track"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-radar"/></svg></span><span class="bl" data-i18n="bnTrack">Track</span></button>
 </nav>
 
 <!-- ============ [HTML] WHATSAPP QUICK-HELP FAB — floats bottom-right, always

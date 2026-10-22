@@ -105,7 +105,9 @@ check('remembered search (shg:lastSearch) saved on search, applied without a dee
 echo "-- 3. Bottom bar --\n";
 $bn = preg_match('~<nav class="bottom-nav[^"]*"[^>]*>(.*?)</nav>~s', $tpl, $bm) ? $bm[1] : '';
 preg_match_all('~data-bn="([a-z]+)"~', $bn, $bk);
-check('five tabs in the owner\'s order HOME | BOOK | TRACK | TICKETS | HELP', $bk[1] === ['home', 'book', 'track', 'trips', 'help'], implode(',', $bk[1]));
+// 22 Oct 2026, owner: "ticket paxi priority map lai deu"
+check('five tabs in the owner\'s order HOME | BOOK | TICKETS | MAP | TRACK', $bk[1] === ['home', 'book', 'trips', 'nav', 'track'], implode(',', $bk[1]));
+check('the Map tab opens the AI map page', str_contains($router, "if (k === 'nav') { location.href = '/navigate.html'; return; }"));
 check('every tab has an icon and a label', substr_count($bn, '<svg class="ic ic-lg"') === 5 && substr_count($bn, 'class="bl" data-i18n=') === 5);
 check('bnTrack in en / hi / ne', $val('en', 'bnTrack') === 'Track' && $val('ne', 'bnTrack') !== '' && $val('hi', 'bnTrack') !== '');
 $sht = fnBody($router, 'scrollHomeTarget');

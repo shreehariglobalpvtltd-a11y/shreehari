@@ -181,6 +181,112 @@ final class NavCats
         'drivingschool' => ['🚗', ['ड्राइभिङ स्कुल', 'ड्राइविंग स्कूल', 'driving schools'], ['amenity:driving_school'], ['driving school', 'driving licence', 'driving license']],
     ];
 
+    /**
+     * Gujarati words (Gujarati script + Roman), 22 Oct 2026 (owner: the guide
+     * must understand Hindi, Gujarati, English and Nepali). Merged into CATS
+     * words by parse().
+     *
+     * @var array<string, list<string>>
+     */
+    public const GU = [
+        'food' => ['જમવાનું', 'જમવા', 'ખાવાનું', 'ખાવા', 'ભોજન', 'રેસ્ટોરન્ટ', 'રેસ્ટોરાં', 'રેસ્ટોરેન્ટ', 'ઢાબા', 'થાળી', 'નાસ્તો', 'jamvanu', 'jamva', 'khavanu', 'khava', 'naasto', 'nasto'],
+        'fastfood' => ['પિઝા', 'બર્ગર', 'સમોસા', 'ચાટ'],
+        'cafe' => ['ચા', 'કોફી', 'કાફે', 'cha'],
+        'bakery' => ['બેકરી', 'મીઠાઈ', 'કેક'],
+        'icecream' => ['આઈસ્ક્રીમ', 'આઇસક્રીમ'],
+        'salon' => ['સલૂન', 'સલુન', 'વાળંદ', 'પાર્લર'],
+        'gym' => ['જીમ', 'વ્યાયામશાળા'],
+        'hospital' => ['હોસ્પિટલ', 'દવાખાનું', 'દવાખાનુ', 'ઇસ્પિતાલ', 'davakhanu', 'davakhana'],
+        'clinic' => ['ક્લિનિક', 'ડૉક્ટર', 'ડોક્ટર', 'દાક્તર'],
+        'dentist' => ['દાંતના', 'ડેન્ટિસ્ટ'],
+        'pharmacy' => ['મેડિકલ', 'દવા', 'દવાની', 'ફાર્મસી', 'dava', 'davani'],
+        'atm' => ['એટીએમ'],
+        'bank' => ['બેંક', 'બેન્ક'],
+        'fuel' => ['પેટ્રોલ', 'ડીઝલ', 'પંપ', 'સીએનજી'],
+        'hotel' => ['હોટલ', 'હોટેલ', 'લોજ', 'ધર્મશાળા', 'રૂમ', 'ગેસ્ટ', 'dharamshala', 'dharmshala'],
+        'temple' => ['મંદિર', 'દેરાસર', 'ગુરુદ્વારા', 'મસ્જિદ', 'derasar'],
+        'police' => ['પોલીસ', 'પોલીસ સ્ટેશન', 'થાણું', 'chowki', 'ચોકી'],
+        'park' => ['બગીચો', 'ઉદ્યાન', 'પાર્ક', 'bagicho'],
+        'mall' => ['મોલ'],
+        'grocery' => ['કરિયાણું', 'કરિયાણા', 'કિરાણા', 'kariyana', 'kariyanu'],
+        'vegetables' => ['શાકભાજી', 'શાક', 'shakbhaji'],
+        'market' => ['બજાર', 'માર્કેટ'],
+        'mobile' => ['મોબાઇલ', 'મોબાઈલ'],
+        'garage' => ['ગેરેજ', 'પંચર', 'puncture'],
+        'parking' => ['પાર્કિંગ'],
+        'toilet' => ['શૌચાલય', 'ટોયલેટ', 'બાથરૂમ', 'સંડાસ', 'sandas'],
+        'water' => ['પાણી', 'પીવાનું પાણી'],
+        'busstand' => ['બસ સ્ટેન્ડ', 'બસ સ્ટેશન', 'બસ ડેપો', 'એસટી', 'st stand', 'st depot', 'bus depot'],
+        'railway' => ['રેલવે સ્ટેશન', 'રેલ્વે સ્ટેશન', 'સ્ટેશન'],
+        'taxi' => ['રિક્ષા', 'ટેક્સી', 'rickshaw', 'riksha'],
+        'school' => ['શાળા', 'નિશાળ', 'સ્કૂલ'],
+        'college' => ['કોલેજ'],
+        'cinema' => ['સિનેમા', 'થિયેટર'],
+        'clothes' => ['કપડાં', 'કપડા'],
+        'post' => ['પોસ્ટ ઓફિસ', 'ટપાલ'],
+    ];
+
+    /** Gujarati labels (others fall back to the Hindi one) */
+    private const GU_LABEL = [
+        'food' => 'જમવાનું / રેસ્ટોરન્ટ', 'cafe' => 'ચા / કાફે', 'hospital' => 'હોસ્પિટલ', 'clinic' => 'ક્લિનિક / ડૉક્ટર', 'pharmacy' => 'મેડિકલ સ્ટોર',
+        'atm' => 'એટીએમ', 'bank' => 'બેંક', 'fuel' => 'પેટ્રોલ પંપ', 'hotel' => 'હોટલ', 'temple' => 'મંદિર', 'police' => 'પોલીસ',
+        'park' => 'બગીચા', 'toilet' => 'શૌચાલય', 'busstand' => 'બસ સ્ટેન્ડ', 'railway' => 'રેલવે સ્ટેશન', 'salon' => 'સલૂન', 'grocery' => 'કરિયાણું',
+    ];
+
+    /**
+     * Nepal districts people name instead of their headquarters town
+     * ("Surkhet" = Birendranagar): word => [town, lat, lng]. 22 Oct 2026,
+     * owner: "surkhet bulbule samne ko location navigate gardeu".
+     * Coordinates are the towns' own nav_places points.
+     *
+     * @var array<string, array{0:string, 1:float, 2:float}>
+     */
+    public const DISTRICTS = [
+        'surkhet' => ['Birendranagar', 28.5954, 81.6285], 'सुर्खेत' => ['Birendranagar', 28.5954, 81.6285],
+        'banke' => ['Nepalgunj', 28.0570, 81.6170], 'बाँके' => ['Nepalgunj', 28.0570, 81.6170], 'बांके' => ['Nepalgunj', 28.0570, 81.6170],
+        'kailali' => ['Dhangadhi', 28.6990, 80.5710], 'कैलाली' => ['Dhangadhi', 28.6990, 80.5710],
+        'kanchanpur' => ['Bhimdatta', 28.9700, 80.1800], 'कञ्चनपुर' => ['Bhimdatta', 28.9700, 80.1800], 'कंचनपुर' => ['Bhimdatta', 28.9700, 80.1800],
+        'mahendranagar' => ['Bhimdatta', 28.9700, 80.1800], 'महेन्द्रनगर' => ['Bhimdatta', 28.9700, 80.1800],
+        'dang' => ['Ghorahi', 28.0400, 82.4900], 'दाङ' => ['Ghorahi', 28.0400, 82.4900], 'दांग' => ['Ghorahi', 28.0400, 82.4900],
+        'bardiya' => ['Gulariya', 28.2050, 81.3450], 'bardia' => ['Gulariya', 28.2050, 81.3450], 'बर्दिया' => ['Gulariya', 28.2050, 81.3450],
+        'rupandehi' => ['Butwal', 27.7000, 83.4650], 'रुपन्देही' => ['Butwal', 27.7000, 83.4650],
+        'bhairahawa' => ['Siddharthanagar', 27.5060, 83.4520], 'भैरहवा' => ['Siddharthanagar', 27.5060, 83.4520],
+        'chitwan' => ['Bharatpur', 27.6830, 84.4330], 'चितवन' => ['Bharatpur', 27.6830, 84.4330],
+        'narayangarh' => ['Bharatpur', 27.6830, 84.4330], 'नारायणगढ' => ['Bharatpur', 27.6830, 84.4330],
+        'kaski' => ['Pokhara', 28.2100, 83.9870], 'कास्की' => ['Pokhara', 28.2100, 83.9870],
+        'morang' => ['Biratnagar', 26.4570, 87.2800], 'मोरङ' => ['Biratnagar', 26.4570, 87.2800],
+        'sunsari' => ['Itahari', 26.6630, 87.2740], 'सुनसरी' => ['Itahari', 26.6630, 87.2740],
+        'parsa' => ['Birgunj', 27.0120, 84.8770], 'पर्सा' => ['Birgunj', 27.0120, 84.8770],
+        'dhanusha' => ['Janakpur', 26.7290, 85.9250], 'dhanusa' => ['Janakpur', 26.7290, 85.9250], 'धनुषा' => ['Janakpur', 26.7290, 85.9250],
+        'jhapa' => ['Bhadrapur', 26.5500, 88.0900], 'झापा' => ['Bhadrapur', 26.5500, 88.0900],
+        'palpa' => ['Tansen', 27.8700, 83.5500], 'पाल्पा' => ['Tansen', 27.8700, 83.5500],
+        'doti' => ['Dipayal', 29.2600, 80.9400], 'डोटी' => ['Dipayal', 29.2600, 80.9400],
+        'dailekh' => ['Dailekh', 28.8400, 81.7100], 'दैलेख' => ['Dailekh', 28.8400, 81.7100],
+        'makwanpur' => ['Hetauda', 27.4280, 85.0320], 'मकवानपुर' => ['Hetauda', 27.4280, 85.0320],
+        'dadeldhura' => ['Dadeldhura', 29.3000, 80.5900], 'डडेलधुरा' => ['Dadeldhura', 29.3000, 80.5900],
+    ];
+
+    /** The headquarters town of a district word, or null. @return array{name:string, lat:float, lng:float}|null */
+    public static function district(string $word): ?array
+    {
+        $d = self::DISTRICTS[self::norm($word)] ?? null;
+        return $d === null ? null : ['name' => $d[0], 'lat' => $d[1], 'lng' => $d[2]];
+    }
+
+    /** A Gujarati word without its case ending ("હોસ્પિટલમાં" -> "હોસ્પિટલ"). */
+    private static function guStem(string $t): string
+    {
+        if (preg_match('/^[\x{0A80}-\x{0AFF}]+$/u', $t) !== 1) {
+            return $t;
+        }
+        foreach (['માંથી', 'માં', 'નું', 'ની', 'નો', 'ના', 'ને', 'થી', 'પર', 'એ'] as $s) {
+            if (mb_strlen($t) > mb_strlen($s) + 1 && str_ends_with($t, $s)) {
+                return mb_substr($t, 0, mb_strlen($t) - mb_strlen($s));
+            }
+        }
+        return $t;
+    }
+
     /** words that only shape the question ("suggest me … near me please") */
     private const FILLER = [
         'near', 'nearby', 'nearest', 'closest', 'close', 'around', 'nerar', 'neer', 'nera', 'my', 'mine', 'i', 'am', 'here', 'suggest', 'show', 'find', 'search', 'where', 'which',
@@ -193,11 +299,19 @@ final class NavCats
         'नजिक', 'नजिकको', 'नजिकै', 'नज़दीक', 'नजदीक', 'नज़दीकी', 'पास', 'आसपास', 'यहाँ', 'यहां', 'मेरो', 'मेरे', 'मेरा', 'हाम्रो', 'को', 'का', 'की', 'के', 'मा', 'में',
         'कहाँ', 'कहां', 'कता', 'कुन', 'कौन', 'छ', 'हो', 'है', 'हैं', 'वाला', 'वाली', 'राम्रो', 'अच्छा', 'सस्तो', 'बताउ', 'बताऊ', 'बताओ', 'बताइदेउ', 'देखाउ', 'दिखाओ',
         'खोज', 'चाहियो', 'चाहिए', 'पसल', 'दुकान', 'कुनै', 'कोई', 'एक', 'नि', 'न', 'त', 'पनि', 'भी',
+        'મને', 'મારે', 'મારી', 'મારું', 'અમને', 'નજીક', 'નજીકનું', 'નજીકની', 'નજીકમાં', 'પાસે', 'આસપાસ', 'અહીં', 'ક્યાં', 'કયું', 'કઈ', 'છે', 'બતાવો', 'બતાવ',
+        'શોધો', 'સારું', 'સારી', 'સારો', 'કોઈ', 'એક', 'જોઈએ', 'જોઇએ', 'દુકાન', 'પણ', 'તો',
+        'malai', 'malaai', 'hamlai', 'mujhe', 'muje', 'humein', 'gara', 'garnu', 'garnus', 'gardeu', 'gardinu', 'gardinus', 'garideu', 'deu', 'dinu', 'dinus',
+        'lai', 'jau', 'jaau', 'jao', 'chalo', 'lijau', 'lejau', 'laijau', 'navigate', 'take', 'drive', 'pugau', 'pugaideu', 'लैजाउ', 'लगिदेउ', 'जाउ', 'લઈ', 'લઇ', 'જાઓ', 'જાવ',
+        'karo', 'kijiye', 'do', 'dijiye', 'sujhao', 'suggestion', 'suggestions', 'recommend', 'recommendation',
+        'मलाई', 'हामीलाई', 'मुझे', 'हमें', 'गर', 'गर्नु', 'गर्नुस्', 'गरिदेउ', 'गर्दिनुस्', 'देउ', 'दिनुस्', 'करो', 'कीजिए', 'दो', 'दीजिए', 'सुझाव',
+        'mane', 'mare', 'mari', 'amne', 'paase', 'aaspaas', 'kyan', 'kya', 'che', 'chhe', 'batavo', 'batav', 'shodho', 'saru', 'sari', 'saro', 'joie', 'joiye', 'dukan',
     ];
 
     /** words that say "around me" when no kind of place was named ("dominos near me") */
     private const NEAR_WORDS = ['near', 'nearby', 'nearest', 'closest', 'around', 'nerar', 'neer', 'nera', 'paas', 'najik', 'najikai', 'nazdik', 'najdik', 'aaspas',
-        'नजिक', 'नजिकको', 'नजिकै', 'नज़दीक', 'नजदीक', 'नज़दीकी', 'पास', 'आसपास'];
+        'नजिक', 'नजिकको', 'नजिकै', 'नज़दीक', 'नजदीक', 'नज़दीकी', 'पास', 'आसपास',
+        'નજીક', 'નજીકનું', 'નજીકની', 'નજીકમાં', 'પાસે', 'આસપાસ', 'paase', 'aaspaas'];
 
     /** Lower-case, nukta dropped, chandrabindu = anusvara, punctuation = space. */
     public static function norm(string $s): string
@@ -223,7 +337,7 @@ final class NavCats
         $bestLen = 0;
         $used = [];
         foreach (self::CATS as $id => $c) {
-            foreach ($c[3] as $w) {
+            foreach (array_merge($c[3], self::GU[$id] ?? []) as $w) {
                 $w = self::norm($w);
                 if ($w === '') {
                     continue;
@@ -235,7 +349,7 @@ final class NavCats
                     }
                 } else {
                     foreach ($toks as $t) {
-                        if ($t === $w || (mb_strlen($w) >= 4 && preg_match('/^[a-z]+$/', $w) === 1 && str_starts_with($t, $w) && strlen($t) - strlen($w) <= 2)) {
+                        if ($t === $w || self::guStem($t) === $w || (mb_strlen($w) >= 4 && preg_match('/^[a-z]+$/', $w) === 1 && str_starts_with($t, $w) && strlen($t) - strlen($w) <= 2)) {
                             $hit = [$t];
                             break;
                         }
@@ -275,6 +389,9 @@ final class NavCats
     public static function label(string $id, string $lang = 'en'): string
     {
         $l = self::CATS[$id][1] ?? ['', '', $id];
+        if ($lang === 'gu') {
+            return self::GU_LABEL[$id] ?? $l[1];
+        }
         return $lang === 'ne' ? $l[0] : ($lang === 'hi' ? $l[1] : $l[2]);
     }
 
@@ -300,6 +417,9 @@ final class NavCats
                 $t = implode(' ', $tw);
                 if (mb_strlen($t) < 3) {
                     continue;
+                }
+                if ($k === 1 && ($d = self::district($t)) !== null) {
+                    return ['name' => $d['name'], 'lat' => $d['lat'], 'lng' => $d['lng'], 'words' => $tw];
                 }
                 $row = Database::fetch(
                     "SELECT name, name_en, lat, lng, kind FROM (

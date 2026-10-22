@@ -201,7 +201,8 @@ try {
         for ($k = min(3, count($words) - 1); $k >= 1 && $fixed === []; $k--) {
             foreach ([[array_slice($words, 0, $k), array_slice($words, $k)], [array_slice($words, -$k), array_slice($words, 0, -$k)]] as [$tw, $rest]) {
                 $t = implode(' ', $tw);
-                $town = Database::fetch(
+                $dist = $k === 1 ? NavCats::district($t) : null;   // "bulbule surkhet": Surkhet = Birendranagar (22 Oct 2026)
+                $town = $dist !== null ? ['lat' => $dist['lat'], 'lng' => $dist['lng'], 'kind' => 'place:city'] : Database::fetch(
                     "SELECT lat, lng, kind FROM (
                         (SELECT lat + 0 AS lat, lng + 0 AS lng, kind FROM nav_places WHERE name = :a AND kind IN ('place:city','place:town','place:suburb','place:village') LIMIT 30)
                         UNION ALL
@@ -221,6 +222,9 @@ try {
                     foreach ($hits as &$h) {                       // the town's own "Surat Railway Station" before a suburb halt
                         $nm = mb_strtolower((string) $h['name'] . ' ' . (string) ($h['name_en'] ?? ''));
                         $h['_t'] = str_contains($nm, $t) ? -2 : -1;
+                        if (preg_match('/^(leisure:(park|garden|nature_reserve)|natural:|water|tourism:(attraction|viewpoint|museum|zoo|theme_park)|historic:|amenity:place_of_worship)/', (string) $h['kind']) === 1) {
+                            $h['_t'] = -3;                          // a landmark ("Bulbule Tal Park") before the shop / FM named after it
+                        }
                     }
                     unset($h);
                     $fixed = $hits;
