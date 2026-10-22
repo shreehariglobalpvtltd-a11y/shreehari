@@ -2056,12 +2056,23 @@ function bindSearch() {
 function voiceSearch() {
   if (!SR) return;
   var rec = new SR(), inp = $('#sInput');
-  rec.lang = S.lang === 'hi' ? 'hi-IN' : 'en-IN'; rec.interimResults = true; rec.maxAlternatives = 1;
+  rec.lang = typeof aiSt !== 'undefined' && aiSt.gu ? 'gu-IN' : S.lang === 'hi' ? 'hi-IN' : 'en-IN'; rec.interimResults = true; rec.maxAlternatives = 1;
   $('#sMic').style.color = 'var(--bad)'; inp.placeholder = 'Listening…';
   rec.onresult = function (e) {
     var t = Array.prototype.map.call(e.results, function (r) { return r[0].transcript; }).join('');
     inp.value = t; $('#sClear').hidden = !t;
-    if (e.results[e.results.length - 1].isFinal) doSearch(t);
+    if (!e.results[e.results.length - 1].isFinal) return;
+    /* 22 Oct 2026 (owner: "voice bata pani sidhai agent jasto"): a spoken command
+       from the home mic ("surkhet bulbule lai jau", "najikko petrol pump") goes to
+       the AI guide, which says it back and opens the route by itself */
+    var I = S.sTarget === 'home' && typeof aiIntent === 'function' ? aiIntent(t) : null;
+    if (I && (I.go || I.intent === 'cat' || I.intent === 'emergency' || I.intent === 'track')) {
+      try { rec.abort(); } catch (x) {}
+      history.back();
+      setTimeout(function () { aiAsk(t); }, 250);
+      return;
+    }
+    doSearch(t);
   };
   rec.onerror = function (e) { if (e.error === 'not-allowed') toast('Allow the microphone to search by voice'); };
   rec.onend = function () { $('#sMic').style.color = ''; inp.placeholder = 'Search a place, address or bus stop'; };
