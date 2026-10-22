@@ -99,6 +99,7 @@ var TX = {
   pnrStop: { ne: 'तपाईंको स्टप {s} सम्म', hi: 'आपके स्टॉप {s} तक', en: 'to your stop {s}' },
   pnrLast: { ne: 'अन्तिम थाहा भएको ठाउँ · {n} अघि', hi: 'आख़िरी पता जगह · {n} पहले', en: 'last known place · {n} ago' },
   pnrOff: { ne: 'बन्द गर्नुस्', hi: 'बंद करें', en: 'Stop' },
+  pnrYour: { ne: 'तपाईंको स्टप', hi: 'आपका स्टॉप', en: 'Your stop' },
   trackPage: { ne: 'पूरा ट्र्याक', hi: 'पूरा ट्रैक', en: 'Full tracking' }
 };
 /* the owner's list; minutes each lives = NavLive::KINDS on the server */
@@ -749,7 +750,8 @@ function openMyBus() {
 }
 function myBusHtml(d) {
   var line = d.live && d.etaMin != null ? '🟢 ' + t('pnrLive') + ' · ' + t('pnrStop', { s: d.stop || '' }) + ' ' + d.etaMin + ' ' + t('min') + (d.km != null ? ' · ' + d.km + ' km' : '')
-           : d.lastKnown && d.fixAge != null ? t('pnrLast', { n: ago(Date.now() - d.fixAge * 1000) }) : '';
+           : d.lastKnown && d.fixAge != null ? t('pnrLast', { n: ago(Date.now() - d.fixAge * 1000) })
+           : d.stop ? t('pnrYour') + ': ' + d.stop + (d.stopTime ? ' · ' + d.stopTime : '') : '';
   return '<p style="color:var(--text,#EEF2FA);font-size:15px;margin-bottom:2px">' + esc(d.pnr || MB.pnr) + (d.label ? ' · ' + esc(d.label) : '') + '</p>' + (line ? '<p>' + esc(line) + '</p>' : '');
 }
 function myBus(pnr, k) {
