@@ -28,7 +28,7 @@ final class WaVerify
     private const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O, 1/I
     public const TTL_SEC   = 1800;
     public const PROVEN_SEC = 3600;
-    public const PURPOSES  = ['staff', 'agent', 'sign'];
+    public const PURPOSES  = ['staff', 'agent', 'sign', 'reset'];   // reset: team portal password (22 Oct 2026)
 
     private static ?bool $ready = null;
 
@@ -150,6 +150,10 @@ final class WaVerify
             return "✅ यो नम्बर पहिले नै प्रमाणित भइसक्यो। फारममा फर्कनुहोस्।\nAlready verified - please go back to the form.";
         }
         $same = $from === (string) $r['intl'] || (strlen($from) >= 12 && substr($from, -10) === (string) $r['phone']);
+        if ((string) $r['purpose'] === 'reset') {
+            // a team-portal password opens an account: the full number with its country must match
+            $same = $from === (string) $r['intl'];
+        }
         if (!$same) {
             Database::update('wa_verify', ['mismatch_from' => mb_substr($from, 0, 20)], 'id = :id', ['id' => (int) $r['id']]);
             Logger::info('WhatsApp verify: sent from a different number', ['token' => $token, 'from' => maskPhone($from)], 'whatsapp');
@@ -157,6 +161,9 @@ final class WaVerify
         }
         Database::update('wa_verify', ['verified_at' => date('Y-m-d H:i:s'), 'verified_from' => mb_substr($from, 0, 20)], 'id = :id', ['id' => (int) $r['id']]);
         Logger::info('WhatsApp verify: number proven', ['token' => $token, 'purpose' => (string) $r['purpose'], 'from' => maskPhone($from)], 'whatsapp');
+        if ((string) $r['purpose'] === 'reset') {
+            return "✅ नमस्ते! तपाईंको नम्बर प्रमाणित भयो।\nअब " . $co . " टिम पोर्टलको पेजमा फर्केर नयाँ पासवर्ड राख्नुहोस्।\nYour number is verified - go back to the team portal and set your new password.";
+        }
         return "✅ नमस्ते! तपाईंको नम्बर " . $co . " मा प्रमाणित भयो।\nअब फारम भएको पेजमा फर्कनुहोस् — आफैं हरियो देखिन्छ।\nYour number is verified - go back to the form.";
     }
 }

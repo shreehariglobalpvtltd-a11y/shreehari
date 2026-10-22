@@ -825,6 +825,58 @@ final class Auth
         return ['ok' => true];
     }
 
+    /* =================================================================
+     *  Team portal door (22 Oct 2026, owner: one login for partners, agents
+     *  and staff, tied to the mobile they registered with — "Password +
+     *  forgot via WhatsApp"). includes/teamportal.php drives it; these two
+     *  keep the session bootstrap in one place, so LoginLog, audit, device
+     *  tracking and the must-change rule stay exactly as for every door.
+     * ================================================================= */
+
+    /** Account roles that may sign in at /team/ with mobile + password. */
+    public const TEAM_ROLES = ['agent', 'counter'];
+
+    /**
+     * Agent / counter accounts whose registered mobile is this 10-digit
+     * number (admins.phone is stored as typed, so compared normalised).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function teamAccounts(string $phone10): array
+    {
+        if (strlen($phone10) !== 10) {
+            return [];
+        }
+        $out = [];
+        foreach (Database::fetchAll(
+            "SELECT id, username, email, password_hash, full_name, phone, role, permissions,
+                    is_active, locked_until, failed_logins, must_change_pw
+               FROM admins
+              WHERE role IN ('" . implode("','", self::TEAM_ROLES) . "') AND phone IS NOT NULL AND phone <> ''
+              ORDER BY id ASC"
+        ) as $a) {
+            if (normalisePhone((string) $a['phone']) === $phone10) {
+                $out[] = $a;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Open the staff session for one of teamAccounts()' rows after the
+     * team door checked the password ($viaOtp false) or the person proved
+     * the mobile with a WhatsApp code and set a new password ($viaOtp true).
+     */
+    public static function teamOpenSession(array $admin, bool $viaOtp): void
+    {
+        if (!in_array((string) ($admin['role'] ?? ''), self::TEAM_ROLES, true) || (int) ($admin['is_active'] ?? 0) !== 1) {
+            throw new RuntimeException('This account cannot use the team portal.');
+        }
+        self::finishAdminSession($admin, Security::clientIp(), $viaOtp);
+        Logger::audit('team.login', 'admin', (string) $admin['id'], null, null,
+            'Team portal: mobile + ' . ($viaOtp ? 'new password after a WhatsApp code' : 'password'));
+    }
+
     /**
      * Office control of a staff member's login credentials (4 Sep 2026):
      * username, email and/or a new password, with an optional "must change

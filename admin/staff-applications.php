@@ -29,6 +29,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/staffapplications.php';
+require_once INCLUDE_PATH . '/teamportal.php';
 $admin = admin_boot('drivers.view');
 
 $role      = (string) ($admin['role'] ?? '');
@@ -82,10 +83,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
             } elseif ($act === 'note') {
                 StaffApps::setNote($id, (string) ($_POST['office_note'] ?? ''));
                 Response::redirect('admin/' . $keep(['id' => $id, 'done' => 'note']) . '#note');
+            } elseif ($act === 'link') {
+                // 22 Oct 2026: team portal - a ticket-selling account for this person ('' = unlink)
+                TeamPortal::linkAccount($id, (string) ($_POST['account'] ?? ''), $selfId);
+                Response::redirect('admin/' . $keep(['id' => $id, 'done' => 'link']) . '#login');
+            } elseif ($act === 'pwclear') {
+                TeamPortal::clearPassword($id, $selfId);
+                Response::redirect('admin/' . $keep(['id' => $id, 'done' => 'pwclear']) . '#login');
             } else {
                 $flash = ['bad', 'Unknown action.'];
             }
-        } catch (StaffAppError $ex) {
+        } catch (StaffAppError | TeamPortalError $ex) {
             $flash = ['bad', $ex->getMessage()];
         } catch (Throwable $ex) {
             Logger::exception($ex);
@@ -102,6 +110,7 @@ if ($flash === null && isset($_GET['done'])) {
         'approve' => '✅ Approved.' . $wa, 'reject' => 'Rejected.' . $wa, 'suspend' => 'Suspended.' . $wa,
         'info'    => '📨 Request sent.' . $wa, 'review' => 'Marked under review.', 'exit' => 'Marked as exited — off the website.',
         'reopen'  => 'Reopened as pending.', 'web' => 'Website card saved.', 'note' => 'Note saved.',
+        'link'    => 'Ticket-selling account saved.', 'pwclear' => 'Portal password cleared — they make a new one at /team/ with a WhatsApp code.',
         'recheck' => 'Documents read again: ' . Security::clean((string) ($_GET['dv'] ?? ''), 12) . '.',
         default   => 'Saved.',
     }];
@@ -347,6 +356,23 @@ if (!$ready) {
     <div class="stf-sec" id="idcard">ID card</div>
     <p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><a class="btn sm" href="id-card.php?ref=<?= $h($open['ref']) ?>">🪪 Print ID card</a>
       <span class="muted text-xs">Photo, name, job, <?= $h($open['ref']) ?>, office and a QR the public can scan<?= $st !== 'approved' ? ' — the QR now says “not valid”' : '' ?>.</span></p>
+    <?php endif; ?>
+
+    <?php if (TeamPortal::ready() && in_array($st, ['approved', 'suspended'], true)): /* 22 Oct 2026: team portal login + CV */ ?>
+    <div class="stf-sec" id="login">Team portal · login &amp; CV</div>
+    <p class="muted text-xs" style="margin:0 0 8px"><?= $h(TeamPortal::loginLine($open)) ?> · signs in at <b>/team/</b> with mobile <?= $h($open['phone']) ?> + password.</p>
+    <?php if ($canDecide): ?>
+    <form class="stf-pane" method="post" action="<?= $h($keep(['id' => $oid])) ?>" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><?= $csrfField ?><input type="hidden" name="action" value="link"><input type="hidden" name="id" value="<?= $oid ?>">
+      <label class="stf-web">🎫 Sells tickets as <input name="account" maxlength="60" placeholder="agent / counter username or mobile" value="<?= $h(!empty($open['admin_id']) ? (string) Database::scalar('SELECT username FROM admins WHERE id = :i', ['i' => (int) $open['admin_id']], '') : '') ?>" style="width:230px;min-height:40px"></label>
+      <button class="btn sm" type="submit">Save</button>
+      <span class="muted text-xs" style="flex:1 1 100%">Empty = no selling. A linked account and this staff card open together at /team/ (one mobile, one password).</span>
+    </form>
+    <?php if (!empty($open['password_hash'])): ?>
+    <form method="post" action="<?= $h($keep(['id' => $oid])) ?>" style="margin-top:6px" onsubmit="return confirm('Clear the portal password? They make a new one at /team/ with a WhatsApp code.')"><?= $csrfField ?><input type="hidden" name="action" value="pwclear"><input type="hidden" name="id" value="<?= $oid ?>">
+      <button class="btn ghost sm" type="submit">Clear portal password</button></form>
+    <?php endif; ?>
+    <?php endif; ?>
+    <details class="stf-pane" style="margin-top:8px"><summary><b>CV</b> — education &amp; experience</summary><div class="stf-cv"><?= TeamPortal::cvHtml(TeamPortal::cv($open, 'staff'), false) ?></div></details>
     <?php endif; ?>
 
     <?php if ($st === 'approved'): ?>

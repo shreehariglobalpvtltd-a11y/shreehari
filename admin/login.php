@@ -355,7 +355,8 @@ button:not(.alt):active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgb
     <input id="ap" name="password" type="password" required autocomplete="current-password">
     <button type="submit">Sign in to Agent Portal</button>
     <div class="who" style="margin:12px 0 0">
-      Forgot your details? The office can view or reset your email, username and password.<br>
+      Forgot your password? <a href="/team/?v=forgot"><b>Reset it with a WhatsApp code</b></a> · पासवर्ड बिर्सनुभयो?<br>
+      <b>Team portal:</b> <a href="/team/">mobile + password</a> (agents, partners, staff).<br>
       <b>No email yet?</b> <a href="?portal=agent&amp;auth=otp<?= $next !== '' ? '&amp;next=' . urlencode($next) : '' ?>">Sign in with your SHG code + WhatsApp code</a>.
     </div>
   <?php elseif ($agentFlow): ?>
@@ -391,6 +392,9 @@ button:not(.alt):active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgb
     <?php endif; ?>
   </div>
   <div class="foot" style="justify-content:center;margin-top:10px;font-size:13px">
+    <span><a href="/team/?v=forgot">🔑 पासवर्ड बिर्सनुभयो? · Forgot password</a> &nbsp;·&nbsp; <a href="/team/">Team portal</a></span>
+  </div>
+  <div class="foot" style="justify-content:center;margin-top:6px;font-size:13px">
     <span>Help / locked out? &nbsp;<b>📞 <a href="tel:+<?= Security::e(preg_replace('/\D/', '', $helpTel) ?? '') ?>" style="white-space:nowrap"><?= Security::e($helpPhone) ?></a></b> — Head Office</span>
   </div>
 </form>

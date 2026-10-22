@@ -122,6 +122,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             } elseif ($act === 'delete') {
                 $ref = AgentApplications::remove((int) ($_POST['id'] ?? 0), $selfId);
                 Response::redirect('admin/agreements.php?tab=apps&deleted=' . rawurlencode($ref));
+            } elseif ($act === 'mklogin' && $canEdit) {
+                // 22 Oct 2026 (team portal): an approved agent / partner with no account gets one -
+                // username = mobile; they make the password at /team/ with a WhatsApp code.
+                $id  = (int) ($_POST['id'] ?? 0);
+                $app = AgentApplications::find($id);
+                if ($app === null || (string) $app['status'] !== 'approved' || !empty($app['admin_id'])) {
+                    throw new AgreementError('Only an approved application without an account can get a login.');
+                }
+                require_once INCLUDE_PATH . '/agentwallet.php';
+                try {
+                    $newId = AgentWallet::createAgent((string) $app['name'], (string) (($app['phone_raw'] ?? '') ?: $app['phone']),
+                        (string) $app['type'] === 'org' ? 'org' : 'person', (string) ($app['area'] ?? ''), (string) ($app['email'] ?? '') ?: null, $selfId);
+                } catch (RuntimeException $re) {
+                    throw new AgreementError($re->getMessage());
+                }
+                AgentApplications::update($id, ['admin_id' => $newId], $selfId);
+                Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=1#detail');
             } elseif ($act === 'agent') {
                 $aid = (int) ($_POST['admin_id'] ?? 0);
                 AgentApplications::setAgentProfile($aid, [
@@ -343,7 +360,13 @@ if (!$ready) {
         <dt>Public list</dt><dd><?= (int) $open['public_ok'] === 1 ? 'Agreed — the full phone may be shown once approved' : 'Not agreed — the phone is shown masked (98•••••123) once approved' ?></dd>
         <dt>KYC · agreement</dt><dd><?= $kycPill((string) $open['kyc_status']) ?> <?= $agrPill((string) $open['agreement_status'], $open['agreement_end'] ?? null) ?></dd>
         <?php if (!empty($open['agreement_signed_at'])): ?><dt>Signed · ends</dt><dd><?= $h($fmtDate($open['agreement_signed_at'])) ?> → <?= $h($fmtDate($open['agreement_end'])) ?></dd><?php endif; ?>
-        <dt>Agent account</dt><dd><?php if (!empty($open['admin_id'])): ?><a href="agent-360.php?agent=<?= (int) $open['admin_id'] ?>">Open Agent 360 (#<?= (int) $open['admin_id'] ?>)</a><?php else: ?><span class="muted">Not linked yet</span><?php endif; ?></dd>
+        <dt>Agent account</dt><dd><?php if (!empty($open['admin_id'])): ?><a href="agent-360.php?agent=<?= (int) $open['admin_id'] ?>">Open Agent 360 (#<?= (int) $open['admin_id'] ?>)</a> · <span class="muted">team portal: /team/ with mobile + password</span><?php else: ?><span class="muted">Not linked yet</span>
+          <?php if ($canEdit && (string) $open['status'] === 'approved' && (string) $open['phone'] !== ''): /* 22 Oct 2026: team portal */ ?>
+          <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" style="display:inline;margin-left:6px" onsubmit="return confirm('Create an agent login for <?= $h(addslashes((string) $open['name'])) ?>? Username = the mobile; they make the password at /team/ with a WhatsApp code.')"><?= $csrfField ?><input type="hidden" name="action" value="mklogin"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>"><button class="btn sm" type="submit">🔐 Create login (sell tickets)</button></form>
+          <?php endif; ?><?php endif; ?></dd>
+        <?php if (isset($open['cv_json'])): require_once INCLUDE_PATH . '/teamportal.php'; ?>
+        <dt><?= (string) $open['type'] === 'org' ? 'Company profile' : 'CV' ?></dt><dd><details><summary class="muted">from the team portal</summary><?= TeamPortal::cvHtml(TeamPortal::cv($open, 'agent'), (string) $open['type'] === 'org') ?></details></dd>
+        <?php endif; ?>
         <?php if (!empty($open['note'])): ?><dt>Office note</dt><dd><?= $h($open['note']) ?></dd><?php endif; ?>
         <?php if (!empty($open['reviewed_at'])): ?><dt>Last change</dt><dd class="muted"><?= $h(date('d M Y, H:i', (int) strtotime((string) $open['reviewed_at']))) ?></dd><?php endif; ?>
       </dl>
