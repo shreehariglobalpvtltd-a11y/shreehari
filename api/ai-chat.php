@@ -46,8 +46,13 @@ try {
        seats left, bus position, bus & crew, how to pay, refund rule, Nepal
        office, and the office's own summaries - read from the tables, no AI
        key needed. Only what it recognises; the assistant takes the rest. */
+    /* 22 Oct 2026 - the SHARI NAV guide (assets/nav/nav-guide.js) sends
+       src=nav for travel questions ("temples near me", "Janakpur kasari
+       pugne"). The local brain reads "map", "direction", "kasari pugne" as
+       the office address, so those go straight to the assistant. Its bus
+       questions come without src and still get the local answers. */
     $localMsg = trim((string) Response::field('message', ''));
-    if ($localMsg !== '' && !(bool) Response::field('reset', false)) {
+    if ($localMsg !== '' && !(bool) Response::field('reset', false) && (string) Response::field('src', '') !== 'nav') {
         try {
             require_once INCLUDE_PATH . '/walocal.php';
             $ctxL  = AiTools::whoIsWeb();

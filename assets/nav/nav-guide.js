@@ -25,7 +25,7 @@
 'use strict';
 
 var X = null;                       /* the bridge, set in start() */
-var GV = '20261021g';
+var GV = '20261022a';
 
 /* ---------------------------------------------------------------------
    DATA
@@ -130,6 +130,27 @@ var DHAMS = [
     city: { ne: 'कटरा, जम्मु', hi: 'कटरा, जम्मू', en: 'Katra, Jammu' }, d: { ne: 'माता वैष्णो देवी', hi: 'माता वैष्णो देवी', en: 'Mata Vaishno Devi' },
     tip: { ne: 'कटराबाट करिब १३ किमी पैदल; यात्रा दर्ता अनिवार्य।', hi: 'कटरा से लगभग 13 किमी पैदल; यात्रा पंजीकरण अनिवार्य।', en: '~13 km trek from Katra; yatra registration required.' } }
 ];
+
+/* Which dham a question names. Words that name many places ("मन्दिर", "devi",
+   "ram", "patan", "sun") never pick a dham; a city name ("Janakpur", "Varanasi")
+   picks its dham but the place search still runs, so "Janakpur कसरी जाने" shows
+   the city too. Latin words match from the start of a word ("ram" != "program"). */
+var DH_GENERIC = { mandir: 1, mandeer: 1, temple: 1, sun: 1, surya: 1, ram: 1, devi: 1, maya: 1, patan: 1, jagat: 1, amba: 1, ambe: 1,
+  'मन्दिर': 1, 'मंदिर': 1, 'सूर्य': 1, 'राम': 1, 'देवी': 1, 'पाटन': 1 };
+var DH_CITY = { varanasi: 1, banaras: 1, gorakhpur: 1, janakpur: 1, tulsipur: 1, dwarka: 1, ayodhya: 1,
+  'वाराणसी': 1, 'बनारस': 1, 'गोरखपुर': 1, 'जनकपुर': 1, 'तुलसीपुर': 1, 'द्वारका': 1, 'अयोध्या': 1 };
+function findDham(low) {
+  for (var i = 0; i < DHAMS.length; i++) {
+    var hit = false, cityOnly = true;
+    DHAMS[i].a.toLowerCase().split(' ').forEach(function (w) {
+      if (w.length < 3 || DH_GENERIC[w]) return;
+      var at = /^[a-z]/.test(w) ? new RegExp('(^|[^a-z])' + w).test(low) : low.indexOf(w) >= 0;
+      if (at) { hit = true; if (!DH_CITY[w]) cityOnly = false; }
+    });
+    if (hit) return { d: DHAMS[i], city: cityOnly };
+  }
+  return null;
+}
 
 /* India-Nepal border posts (the crossing itself, on the line) */
 var POSTS = [
@@ -326,13 +347,13 @@ function csrf(force) {
     .then(function (r) { return r.json(); })
     .then(function (j) { CSRF.tok = j && j.data && j.data.csrf; CSRF.at = Date.now(); return CSRF.tok; });
 }
-function aiAsk(message) {
+function aiAsk(message, nav) {
   function once(force) {
     return csrf(force).then(function (tok) {
       return X.fetchT('/api/ai-chat.php', {
         method: 'POST', credentials: 'same-origin', cache: 'no-store',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': tok || '' },
-        body: JSON.stringify({ message: message.slice(0, 1500), lang: lang() })
+        body: JSON.stringify(nav ? { message: message.slice(0, 1500), lang: lang(), src: 'nav' } : { message: message.slice(0, 1500), lang: lang() })
       }, 30000);
     });
   }
@@ -513,7 +534,7 @@ function build() {
   }
   /* Escape / Android back close the panel first */
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && G.open) { e.stopImmediatePropagation(); closeG(); } }, true);
-  addEventListener('popstate', function () { if (G.open && G.hist) { G.hist = false; closeG(true); } });
+  addEventListener('popstate', function () { G.backing = false; if (G.open && G.hist) { G.hist = false; closeG(true); } });
   G.speak = !!LSg.get('shg:ng:speak', false);
   labels();
 }
@@ -551,8 +572,16 @@ function closeG(fromPop) {
   G.open = false; stopMic(); clearPins();
   var w = $('#sgWrap'); w.classList.remove('on');
   setTimeout(function () { if (!G.open) w.hidden = true; }, 380);
-  if (!fromPop && G.hist) { G.hist = false; try { history.back(); } catch (e) {} }
+  if (!fromPop && G.hist) { G.hist = false; G.backing = true; try { history.back(); } catch (e) { G.backing = false; } }
   try { $('#sgInput').blur(); } catch (e) {}
+}
+/* run fn once the history entry the panel pushed is gone: a screen pushed
+   before that back() lands would be the entry it pops instead */
+function afterClose(fn) {
+  if (!G.backing) { setTimeout(fn, 0); return; }
+  var done = false;
+  function f() { if (done) return; done = true; removeEventListener('popstate', f); setTimeout(fn, 0); }
+  addEventListener('popstate', f); setTimeout(f, 500);
 }
 
 function render() {
@@ -630,7 +659,7 @@ function bodyClick(e) {
   if (b.dataset.pl) {
     var a = b.dataset.pl.split(':'), m = G.msgs[+a[0]] || (a[0] === 's' ? G.sosRes : a[0] === 'n' ? G.nearT : null);
     var p = m && m.items[+a[1]]; if (!p) return;
-    if (a[2] === 'open') { closeG(); setTimeout(function () { X.openPlace(p); }, 60); }
+    if (a[2] === 'open') { closeG(); afterClose(function () { X.openPlace(p); }); }
     else go(p, a[2] === 'go');
     return;
   }
@@ -650,7 +679,7 @@ function bodyClick(e) {
 }
 function go(p, start, mode) {
   closeG();
-  setTimeout(function () { X.go(p, { start: !!start, mode: mode }); }, 80);
+  afterClose(function () { X.go(p, { start: !!start, mode: mode }); });
 }
 
 /* the brain: our map first, the AI second */
@@ -676,14 +705,16 @@ function ask(text, byVoice) {
   var idx = /(पहिलो|पहला|first|^1\b|१)/i.test(text) ? 0 : /(दोस्रो|दूसरा|second|^2\b|२)/i.test(text) ? 1 : /(तेस्रो|तीसरा|third|^3\b|३)/i.test(text) ? 2 : -1;
   if (idx >= 0 && G.last[idx] && text.length < 40) return go(G.last[idx], /(सुरु|start|शुरू|चलाउ|चलो)/i.test(text));
 
-  /* 3) a named dham? */
-  var dh = DHAMS.find(function (d) { return d.a.split(' ').some(function (w) { return w.length > 2 && low.indexOf(w.toLowerCase()) >= 0; }); });
-  var job;
+  /* 3) a named dham? (a city name also runs the place search below) */
+  var fd = findDham(low), dh = fd && fd.d;
+  var job, dhFound = [];
   if (dh) {
     G.last = [{ name: L(dh.n), sub: L(dh.city), lat: dh.lat, lng: dh.lng, kind: 'temple' }];
     push({ k: 'dham', d: dh });
-    job = Promise.resolve([L(dh.n) + ' (' + L(dh.city) + (isFinite(distTo(dh)) ? ', ' + X.fmtDist(distTo(dh)) : '') + ')']);
-  } else {
+    dhFound = [L(dh.n) + ' (' + L(dh.city) + (isFinite(distTo(dh)) ? ', ' + X.fmtDist(distTo(dh)) : '') + ')'];
+    job = Promise.resolve(dhFound);
+  }
+  if (!dh || fd.city) {
     /* 4) a category ("petrol", "मन्दिर") near me */
     var cat = CATS.find(function (c) { return c.re.test(text); });
     var name = text.replace(STRIP, ' ').replace(/[?？।!.,]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -702,7 +733,8 @@ function ask(text, byVoice) {
         if (items.length) { G.last = items; push({ k: 'places', title: t('foundNamed'), items: items }); }
         return items.map(function (x) { return x.name + ' — ' + (x.sub || '') + (isFinite(distTo(x)) ? ' (' + X.fmtDist(distTo(x)) + ')' : ''); });
       }).catch(function () { return []; });
-    } else job = Promise.resolve([]);
+    } else if (!dh) job = Promise.resolve([]);
+    if (dh) job = job.then(function (f) { return f === dhFound ? f : dhFound.concat(f || []); }, function () { return dhFound; });
   }
 
   /* 6) the AI, told where the rider is and what the map found */
@@ -719,12 +751,14 @@ function ask(text, byVoice) {
       if (me) ctx.push('यात्रुको स्थान: ' + (area ? area + ', ' : '') + cName(countryAt(me)) + ' (' + me[1].toFixed(4) + ',' + me[0].toFixed(4) + ')');
       if (S.to && S.level !== 'home') ctx.push('गन्तव्य: ' + S.to.name);
       if (S.nav && !S.nav.preview && S.nav.route && S.nav.route.L) ctx.push('बाँकी दूरी: ' + X.fmtDist(Math.max(0, S.nav.route.L.len - S.nav.along)) + ', साधन: ' + S.mode);
-      if (found && found.length) ctx.push('नक्साले भेटेका ठाउँ: ' + found.slice(0, 5).join('; '));
-      msg = '[SHARI NAV नक्सा एपबाट सोधिएको। ' + ctx.join('. ') + '. उत्तर छोटो (४–६ वाक्य) र ' +
+      if (found && found.length) ctx.push('भेटिएका ठाउँ: ' + found.slice(0, 5).join('; '));
+      msg = '[SHARI NAV एपबाट सोधिएको यात्राको प्रश्न। ' + ctx.join('. ') + '. उत्तर छोटो (४–६ वाक्य) र ' +
         (lang() === 'hi' ? 'हिन्दीमा' : lang() === 'en' ? 'अंग्रेजीमा' : 'सरल नेपालीमा') +
         ' दिनुस्; बाटो बताउँदा दिशा र दूरी भन्नुस्; थाहा नभएको कुरा नबनाउनुस्।]\n' + text;
     }
-    return aiAsk(msg);
+    /* not a bus question: the server skips its bus/office quick answers (WaLocal),
+       which would read "map", "direction", "kasari pugne" as the office address */
+    return aiAsk(msg, !bus);
   }).then(function (d) {
     unTyping();
     push({ k: 'b', html: fmtAI(d.text), acts: d.actions || [] });
