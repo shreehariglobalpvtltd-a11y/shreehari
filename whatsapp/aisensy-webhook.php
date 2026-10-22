@@ -236,9 +236,19 @@ try {
     require_once INCLUDE_PATH . '/notify.php';
 
     /* 22 Oct 2026: "hi VERIFY K7Q2M9" from the staff / agent form proves the
-       sender's number (includes/waverify.php) - answered before the bot. */
+       sender's number (includes/waverify.php) - answered before the bot.
+       22 Oct 2026 (review): only on the ?token= door. The plain-URL door
+       only checks that SOME real message id from this number is in the body;
+       the text itself is the body's, so a forged "hi VERIFY" could prove a
+       number (and, through /team/, reset a password). There a VERIFY text is
+       logged and dropped - neither proven nor handed to the bot. The Meta
+       webhook (signed) is unchanged. */
     require_once INCLUDE_PATH . '/waverify.php';
-    $verifyReply = WaVerify::inbound($from, (string) $ev['text']);
+    if (!$trusted && WaVerify::isVerifyText((string) $ev['text'])) {
+        ais_wh_log('VERIFY ignored (no ?token=, the text cannot be trusted) from=' . $from, $raw);
+        exit;
+    }
+    $verifyReply = $trusted ? WaVerify::inbound($from, (string) $ev['text']) : null;
     if ($verifyReply !== null) {
         $r = AiSensyAPI::sendText($from, $verifyReply);
         Notify::logOutbound($from, $verifyReply, $r['success'] ? 'sent' : 'failed', [

@@ -24,6 +24,22 @@
  *
  * Never for super-admins and managers: they keep the office login + 2FA.
  * An account with 2FA switched on is sent to the office login as well.
+ *
+ * 22 Oct 2026 (review) — the reset is bound to the FULL number:
+ *   - every account has its own WhatsApp number, from what the office typed
+ *     with a country (adminIntl / staff phone_country), never guessed: a bare
+ *     98XXXXXXXX is a real number in India AND Nepal. Unknown = no code;
+ *   - the code is issued per full number ('team:<intl>') and a "hi VERIFY"
+ *     is a 'reset' token made here for that number (WaVerify::consumeReset),
+ *     never a form's proof; only the accounts on the proven full number
+ *     change;
+ *   - switched-off accounts, suspended / exited staff and the selling
+ *     account linked to them are left out; a 2FA account gets no session;
+ *   - "forgot" answers the same for every number (no list of who is in the
+ *     team), with budgets per IP and per number; 10 wrong codes in a day
+ *     lock the code way for 24 h;
+ *   - a new or changed password ends the other staff-portal sessions;
+ *     signing out forgets this browser's WhatsApp proofs.
  */
 
 declare(strict_types=1);
@@ -40,8 +56,12 @@ final class TeamPortal
     public const SESSION  = 'shg_team';
     public const IDLE_SEC = 2700;      // 45 minutes, like the office session
     public const PW_MIN   = 8;
+    public const RESET_FAILS = 10;     // 22 Oct 2026 (review): wrong reset codes per number in a day, then 24 h without the code way
 
     private static ?bool $ready = null;
+
+    /** Tests only: fn(string $intl, string $code): bool takes the reset code instead of WhatsApp. */
+    public static ?Closure $deliverHook = null;
 
     private function __construct() {}
 
@@ -93,29 +113,141 @@ final class TeamPortal
     /**
      * International digits for WhatsApp, never from what the visitor types
      * (a code sent to the same digits in the other country would reach a
-     * stranger): the staff row's country, else the country the office typed
-     * on the agent's website card (phone_raw, "+977 …"), else the account's.
+     * stranger). A staff card: its country picker (an ENUM, always set).
      */
-    private static function intl(string $phone10, array $acc): string
+    private static function staffIntl(string $phone10, array $s): string
     {
-        foreach ($acc['staff'] as $s) {
-            return (countryDialCode((string) $s['phone_country']) ?: '977') . $phone10;
-        }
-        foreach ($acc['admins'] as $a) {
-            // 22 Oct 2026: imported accounts carry "91" in front of Nepali numbers; the card is what the office corrects
-            $raw = AgentApplications::available() ? (string) Database::scalar(
-                "SELECT phone_raw FROM agent_applications WHERE admin_id = :a AND status = 'approved' AND phone = :p AND phone_raw IS NOT NULL ORDER BY id DESC LIMIT 1",
-                ['a' => (int) $a['id'], 'p' => $phone10], '') : '';
-            $cc = $raw !== '' ? countryDialCode(resolvePhoneCountry('', $raw)) : '';
-            if ($cc !== '') {
-                return $cc . $phone10;
+        $cc = countryDialCode((string) ($s['phone_country'] ?? ''));
+        return $cc !== '' ? $cc . $phone10 : '';
+    }
+
+    /**
+     * An agent / counter account's full WhatsApp number, only from what the
+     * office TYPED with a country (22 Oct 2026 review, #22: a bare number used
+     * to become +91, so a Nepali agent's code reached a stranger in India):
+     *   1. the approved website card's phone_raw ("+977 …"; the 19 Oct import
+     *      put "91" in front of Nepali numbers and the card is what the office
+     *      corrects);
+     *   2. the agent profile's country (admin_profiles.country_code 91 / 977);
+     *   3. the approved staff card linked to the account (its country picker);
+     *   4. a +91 / +977 typed in the account's own mobile;
+     *   5. a bare number outside Nepal's mobile ranges (96 / 97 / 98…) can
+     *      only be Indian.
+     * '' = unknown: no code and no "hi VERIFY" for it — the office adds the
+     * country to the number first.
+     */
+    private static function adminIntl(string $phone10, array $a): string
+    {
+        $id = (int) $a['id'];
+        $raw = AgentApplications::available() ? (string) Database::scalar(
+            "SELECT phone_raw FROM agent_applications WHERE admin_id = :a AND status = 'approved' AND phone = :p AND phone_raw IS NOT NULL ORDER BY id DESC LIMIT 1",
+            ['a' => $id, 'p' => $phone10], '') : '';
+        $cc = $raw !== '' ? countryDialCode(resolvePhoneCountry('', $raw)) : '';
+        if ($cc === '') {
+            try {
+                $pc = preg_replace('/\D/', '', (string) Database::scalar('SELECT country_code FROM admin_profiles WHERE admin_id = :a', ['a' => $id], '')) ?? '';
+                $cc = in_array($pc, ['91', '977'], true) ? $pc : '';
+            } catch (Throwable $e) {
+                $cc = '';   // an older database without the column
             }
         }
-        foreach ($acc['admins'] as $a) {
-            $cc = countryDialCode(resolvePhoneCountry('', (string) $a['phone']));
-            return ($cc !== '' ? $cc : '91') . $phone10;
+        if ($cc === '' && self::ready()) {
+            $cc = countryDialCode((string) Database::scalar(
+                "SELECT phone_country FROM staff_applications WHERE admin_id = :a AND phone = :p AND status = 'approved' ORDER BY id DESC LIMIT 1",
+                ['a' => $id, 'p' => $phone10], ''));
         }
-        return '91' . $phone10;
+        if ($cc === '') {
+            $cc = countryDialCode(resolvePhoneCountry('', (string) $a['phone']));
+        }
+        if ($cc === '' && preg_match('/^9[678]/', $phone10) !== 1) {
+            $cc = '91';
+        }
+        return $cc !== '' ? $cc . $phone10 : '';
+    }
+
+    /**
+     * 22 Oct 2026 (review, #2): a selling account whose staff card is
+     * suspended / exited / rejected is not for self-service — the card linked
+     * to the account (admin_id) decides; without a link, the newest staff card
+     * on the same FULL number does. A re-hired person's newer approved card
+     * clears it.
+     */
+    private static function staffBlocked(array $a, string $intl, string $phone10): bool
+    {
+        if (!self::ready()) {
+            return false;
+        }
+        $rows = Database::fetchAll(
+            "SELECT id, status, phone, phone_country, admin_id FROM staff_applications
+              WHERE (admin_id = :a OR phone = :p) AND status IN ('approved','rejected','suspended','exited') ORDER BY id DESC",
+            ['a' => (int) $a['id'], 'p' => $phone10]);
+        foreach ($rows as $r) {
+            if ((int) ($r['admin_id'] ?? 0) === (int) $a['id']) {
+                return (string) $r['status'] !== 'approved';
+            }
+        }
+        foreach ($rows as $r) {
+            if ($intl === '' || (string) $r['status'] === 'rejected' || self::staffIntl((string) $r['phone'], $r) !== $intl) {
+                continue;   // a refused application says nothing about an agent account
+            }
+            return (string) $r['status'] !== 'approved';
+        }
+        return false;
+    }
+
+    /** An agent / counter row that may use the team door at all (active, staff card not stopped). */
+    private static function adminUsable(array $a, string $phone10): bool
+    {
+        return (int) $a['is_active'] === 1 && !self::staffBlocked($a, self::adminIntl($phone10, $a), $phone10);
+    }
+
+    /**
+     * Where a reset may go: the accounts that can reset, grouped by their own
+     * full WhatsApp number (one group per person; two only when two people in
+     * two countries share the 10 digits). Accounts with no known country are
+     * left out.
+     *
+     * @return list<array{intl: string, admins: list<array<string, mixed>>, staff: list<array<string, mixed>>}>
+     */
+    private static function resetTargets(string $phone10): array
+    {
+        $acc = self::accounts($phone10);
+        $groups = [];
+        $add = static function (string $intl, string $kind, array $row) use (&$groups): void {
+            foreach ($groups as $i => $g) {
+                if ($g['intl'] === $intl) {
+                    $groups[$i][$kind][] = $row;
+                    return;
+                }
+            }
+            $groups[] = ['intl' => $intl, 'admins' => [], 'staff' => []];
+            $groups[count($groups) - 1][$kind][] = $row;
+        };
+        foreach ($acc['admins'] as $a) {
+            $intl = (int) $a['is_active'] === 1 ? self::adminIntl($phone10, $a) : '';
+            if ($intl === '' || self::staffBlocked($a, $intl, $phone10)) {
+                continue;
+            }
+            $add($intl, 'admins', $a);
+        }
+        foreach ($acc['staff'] as $s) {
+            $intl = (string) $s['status'] === 'approved' ? self::staffIntl($phone10, $s) : '';
+            if ($intl !== '') {
+                $add($intl, 'staff', $s);
+            }
+        }
+        return $groups;
+    }
+
+    /** The resetTargets() group of one full number, or null. */
+    private static function target(array $targets, string $intl): ?array
+    {
+        foreach ($targets as $t) {
+            if ($intl !== '' && $t['intl'] === $intl) {
+                return $t;
+            }
+        }
+        return null;
     }
 
     /* =================================================================
@@ -128,7 +260,8 @@ final class TeamPortal
      */
     public static function login(string $phone10, string $password): array
     {
-        $generic = ['ok' => false, 'error' => 'मोबाइल नम्बर वा पासवर्ड मिलेन · Mobile or password did not match.'];
+        // 22 Oct 2026 (review): one answer for "no such number", "no password yet" and "wrong password" (no list of who is in the team)
+        $generic = ['ok' => false, 'error' => 'मोबाइल नम्बर वा पासवर्ड मिलेन — पहिलो पटक हो भने "पासवर्ड बनाउनुहोस् / बिर्सनुभयो?" थिच्नुहोस् · Mobile or password did not match. First time here? Tap "Set / forgot password".'];
         if ($phone10 === '' || $password === '') {
             return ['ok' => false, 'error' => 'मोबाइल नम्बर र पासवर्ड लेख्नुहोस् · Enter your mobile and password.'];
         }
@@ -138,14 +271,14 @@ final class TeamPortal
             return ['ok' => false, 'error' => 'धेरै पटक गलत भयो — ' . LOGIN_LOCKOUT_MIN . ' मिनेटपछि फेरि प्रयास गर्नुहोस् · Too many tries, wait ' . LOGIN_LOCKOUT_MIN . ' minutes.'];
         }
         $acc = self::accounts($phone10);
+        // 22 Oct 2026 (review, #2): a selling account whose staff card is suspended / exited is not opened here either
+        $acc['admins'] = array_values(array_filter($acc['admins'], static fn(array $a): bool => self::adminUsable($a, $phone10)));
         $now = time();
-        $withPw = 0;
 
         foreach ($acc['admins'] as $a) {
-            if ((int) $a['is_active'] !== 1 || (string) $a['password_hash'] === '') {
+            if ((string) $a['password_hash'] === '') {
                 continue;
             }
-            $withPw++;
             if (!empty($a['locked_until']) && strtotime((string) $a['locked_until']) > $now) {
                 continue;
             }
@@ -162,7 +295,6 @@ final class TeamPortal
             if ((string) $s['status'] !== 'approved' || empty($s['password_hash'])) {
                 continue;
             }
-            $withPw++;
             if (!empty($s['locked_until']) && strtotime((string) $s['locked_until']) > $now) {
                 continue;
             }
@@ -174,7 +306,7 @@ final class TeamPortal
 
         // Nothing matched: count a failure on every account with a password on this number.
         foreach ($acc['admins'] as $a) {
-            if ((string) $a['password_hash'] === '' || (int) $a['is_active'] !== 1) {
+            if ((string) $a['password_hash'] === '') {
                 continue;
             }
             $f = (int) $a['failed_logins'] + 1;
@@ -195,10 +327,6 @@ final class TeamPortal
             password_verify($password, '$2y$11$usesomesillystringfoeu1f3.O0hOZ8W4l0sN2q7dPzYlXqR5Z8Vy');
         }
         Logger::warning('Team portal: sign-in failed', ['phone' => maskPhone($phone10), 'ip' => $ip, 'accounts' => count($acc['admins']) + count($acc['staff'])]);
-        // Registered, but no password yet: say how to make one (the number is public on the website anyway).
-        if ($withPw === 0 && ($acc['admins'] !== [] || $acc['staff'] !== [])) {
-            return ['ok' => false, 'first' => true, 'error' => 'यो नम्बरमा अझै पासवर्ड बनेको छैन — "पासवर्ड बनाउनुहोस् / बिर्सनुभयो?" थिच्नुहोस् · No password yet: tap "Forgot / set password".'];
-        }
         return $generic;
     }
 
@@ -207,96 +335,116 @@ final class TeamPortal
      * ================================================================= */
 
     /**
-     * Send the reset code by WhatsApp. "sent" is true only when WhatsApp
-     * delivered it (a wa.me fallback is not a delivery) — otherwise the page
-     * offers "hi VERIFY" from the person's own WhatsApp.
+     * Send the reset code by WhatsApp — one code per full number that has an
+     * account which can reset ('team:<intl>'), to that number only.
      *
-     * @return array{ok: bool, sent: bool, error?: string, intl: string, debugCode?: string}
+     * 22 Oct 2026 (review, #4/#20): the answer is the same for a team member,
+     * a switched-off account and a number we do not know — {ok: true}, or the
+     * "too many tries" budget (per IP and per number, checked BEFORE the
+     * number is looked up). Whether WhatsApp delivered is logged, never shown.
+     *
+     * @return array{ok: bool, error?: string, debugCode?: string}
      */
     public static function sendResetCode(string $phone10): array
     {
-        $acc = self::accounts($phone10);
-        if ($acc['admins'] === [] && array_filter($acc['staff'], static fn($s) => (string) $s['status'] === 'approved') === []) {
-            return ['ok' => false, 'sent' => false, 'intl' => '',
-                'error' => 'यो नम्बर हाम्रो टोलीमा दर्ता छैन · This number is not registered with us (agent, partner or staff). Please call the office.'];
+        if (!Security::rateLimit('team_reset_ip', Security::clientIp(), 8, 600) || !Security::rateLimit('team_reset_phone', $phone10, 5, 3600)) {
+            return ['ok' => false, 'error' => 'धेरै पटक भयो — केही बेरपछि फेरि · Too many tries, please wait a while and try again.'];
         }
-        if (self::blockedOnly($acc)) {
-            return ['ok' => false, 'sent' => false, 'intl' => '',
-                'error' => 'यो खाता बन्द छ — कार्यालयमा सम्पर्क गर्नुहोस् · This account is switched off. Please call the office.'];
+        $out = ['ok' => true];
+        $targets = self::resetTargets($phone10);
+        if ($targets === []) {
+            Logger::info('Team portal: reset asked for a number with no account that can reset (or no country on it)', ['phone' => maskPhone($phone10)], 'otp');
+            return $out;
         }
-        $intl = self::intl($phone10, $acc);
-        if (!Security::rateLimit('team_reset_ip', Security::clientIp(), 8, 600)) {
-            return ['ok' => false, 'sent' => false, 'intl' => $intl, 'error' => 'धेरै पटक भयो — १० मिनेटपछि फेरि · Too many tries, wait 10 minutes.'];
+        if (self::resetLocked($phone10)) {
+            Logger::warning('Team portal: reset code NOT sent, the number is locked after wrong codes', ['phone' => maskPhone($phone10)], 'otp');
+            return $out;
         }
         $capH = max(1, Settings::getInt('otp_global_hourly_cap', 150));
         $capD = max(1, Settings::getInt('otp_global_daily_cap', 800));
-        if (!Security::rateLimit('otp_send_global_h', 'global', $capH, 3600) || !Security::rateLimit('otp_send_global_d', 'global', $capD, 86400)) {
-            Logger::warning('Team portal: reset code NOT sent, global OTP ceiling reached', ['phone' => maskPhone($phone10)], 'otp');
-            return ['ok' => true, 'sent' => false, 'intl' => $intl];
+        foreach ($targets as $t) {
+            if (!Security::rateLimit('otp_send_global_h', 'global', $capH, 3600) || !Security::rateLimit('otp_send_global_d', 'global', $capD, 86400)) {
+                Logger::warning('Team portal: reset code NOT sent, global OTP ceiling reached', ['phone' => maskPhone($phone10)], 'otp');
+                break;
+            }
+            $res = Auth::issueOtp('team:' . $t['intl'], 'reset', 'whatsapp');
+            if (!$res['ok']) {
+                Logger::info('Team portal: reset code NOT issued: ' . (string) ($res['error'] ?? ''), ['phone' => maskPhone($t['intl'])], 'otp');
+                continue;
+            }
+            $sent = self::deliverCode($t['intl'], (string) $res['code']);
+            Logger::info('Team portal: reset code ' . ($sent ? 'sent' : 'NOT delivered'), ['phone' => maskPhone($t['intl'])], 'otp');
+            if (APP_DEBUG && !isset($out['debugCode'])) {
+                $out['debugCode'] = (string) $res['code'];   // a dev box only — never in production
+            }
         }
-        $res = Auth::issueOtp('team:' . $phone10, 'reset', 'whatsapp');
-        if (!$res['ok']) {
-            return ['ok' => false, 'sent' => false, 'intl' => $intl, 'error' => (string) ($res['error'] ?? 'Could not send a code right now.')];
+        return $out;
+    }
+
+    /** The reset code to one full number. True only when WhatsApp took it (a wa.me fallback is not a delivery). */
+    private static function deliverCode(string $intl, string $code): bool
+    {
+        if (self::$deliverHook !== null) {
+            return (bool) (self::$deliverHook)($intl, $code);
         }
-        $code = (string) $res['code'];
-        $sent = false;
         require_once __DIR__ . '/notify.php';
         try {
             if (!class_exists('AiSensyAPI') && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
                 require_once ROOT_PATH . '/whatsapp/aisensy.php';
             }
             if (class_exists('AiSensyAPI') && AiSensyAPI::enabled()) {
-                $r = AiSensyAPI::sendLoginOtp($intl, $code, '');
-                $sent = (bool) $r['success'];
-            } else {
-                $text = Settings::getString('company_name', APP_NAME) . ' टिम पोर्टल पासवर्ड कोड: ' . $code . ' (' . OTP_EXPIRY_MINUTES
-                      . ' मिनेट सम्म मान्य)। यो कोड कसैलाई नबताउनुहोस्।';
-                $sent = Notify::whatsapp($intl, $text, null, null, [], null, ['purpose' => 'otp']) === true;   // a wa.me link is not a delivery
+                return (bool) AiSensyAPI::sendLoginOtp($intl, $code, '')['success'];
             }
+            $text = Settings::getString('company_name', APP_NAME) . ' टिम पोर्टल — पासवर्ड बदल्ने कोड: ' . $code . ' (' . OTP_EXPIRY_MINUTES
+                  . ' मिनेट सम्म मान्य)। यो कोड पासवर्ड बदल्नको लागि हो — अरूले मागे नपठाउनुहोस्।';
+            return Notify::whatsapp($intl, $text, null, null, [], null, ['purpose' => 'otp']) === true;
         } catch (Throwable $e) {
-            $sent = false;
+            return false;
         }
-        Logger::info('Team portal: reset code ' . ($sent ? 'sent' : 'NOT delivered'), ['phone' => maskPhone($phone10)], 'otp');
-        $out = ['ok' => true, 'sent' => $sent, 'intl' => $intl];
-        if (APP_DEBUG) {
-            $out['debugCode'] = $code;   // a dev box only — never in production
-        }
-        return $out;
     }
 
-    /** Every account on the number is switched off / suspended. */
-    private static function blockedOnly(array $acc): bool
+    /** 22 Oct 2026 (review, #12): RESET_FAILS wrong codes in a day lock the code way for this number for 24 h. */
+    private static function resetLocked(string $phone10): bool
     {
-        foreach ($acc['admins'] as $a) {
-            if ((int) $a['is_active'] === 1) {
-                return false;
-            }
-        }
-        foreach ($acc['staff'] as $s) {
-            if ((string) $s['status'] === 'approved') {
-                return false;
-            }
-        }
-        return true;
+        $until = (string) Database::scalar("SELECT blocked_until FROM rate_limits WHERE bucket = 'team_reset_fail' AND identifier = :i", ['i' => $phone10], '');
+        return $until !== '' && strtotime($until) > time();
     }
 
-    /** "hi VERIFY …" for a reset: the token + the wa.me link (WaVerify, purpose 'reset'). */
-    public static function startVerify(string $phone10): array
+    private static function resetFailed(string $phone10): void
     {
-        $acc = self::accounts($phone10);
-        if ($acc['admins'] === [] && $acc['staff'] === []) {
-            throw new TeamPortalError('यो नम्बर हाम्रो टोलीमा दर्ता छैन · This number is not registered with us.');
+        if (!Security::rateLimit('team_reset_fail', $phone10, self::RESET_FAILS - 1, 86400, 86400)) {
+            Logger::warning('Team portal: reset by code locked for 24 h after repeated wrong codes', ['phone' => maskPhone($phone10), 'ip' => Security::clientIp()], 'otp');
+            Logger::audit('team.reset_locked', 'team_portal', maskPhone($phone10), null, null,
+                self::RESET_FAILS . ' wrong reset codes in a day: the code way is locked for 24 h (hi VERIFY and the office still work)');
         }
-        $intl = self::intl($phone10, $acc);
-        if (!Security::rateLimit('wa_verify_ip', Security::clientIp(), 8, 600) || !Security::rateLimit('wa_verify_phone', $phone10, 4, 600)) {
-            throw new TeamPortalError('धेरै पटक भयो — १० मिनेटपछि फेरि · Too many tries, wait 10 minutes.');
-        }
-        return WaVerify::start('reset', $phone10, str_starts_with($intl, '977') ? 'NP' : 'IN', Security::clientIp());
     }
 
     /**
-     * The proven mobile sets a new password on every account it has, then
-     * signs in. Proof = the WhatsApp code, or a "hi VERIFY" this session made.
+     * "hi VERIFY …" for a reset: the token + the wa.me link (WaVerify,
+     * purpose 'reset'), kept with the account's full number in
+     * $_SESSION['team_reset']['wa'] — the only place a reset token comes from.
+     * Same answer for every number: when no account here can reset (or two
+     * people in two countries share the digits) the token is bound to no
+     * number, so nobody can prove it.
+     */
+    public static function startVerify(string $phone10): array
+    {
+        $ip = Security::clientIp();
+        if (!Security::rateLimit('wa_verify_ip', $ip, 8, 600) || !Security::rateLimit('wa_verify_phone', $phone10, 4, 600)) {
+            throw new TeamPortalError('धेरै पटक भयो — १० मिनेटपछि फेरि · Too many tries, wait 10 minutes.');
+        }
+        $targets = self::resetTargets($phone10);
+        $intl = count($targets) === 1 ? $targets[0]['intl'] : '';
+        $s = WaVerify::start('reset', $phone10, '', $ip, $intl);
+        $_SESSION['team_reset']['wa'] = ['token' => $s['token'], 'url' => $s['url'], 'text' => $s['text'], 'intl' => $intl];
+        return $s;
+    }
+
+    /**
+     * The proven full number sets a new password on its accounts, then signs
+     * in. Proof = the WhatsApp code sent to that number, or the "hi VERIFY"
+     * token startVerify made in this session (WaVerify::consumeReset) — never
+     * a form's proof.
      *
      * @return array{ok: bool, kind?: string, error?: string, twofa?: bool, count?: int}
      */
@@ -311,49 +459,75 @@ final class TeamPortal
         if (preg_match('/^\d+$/', $pw) === 1 && str_contains($phone10, $pw)) {
             return ['ok' => false, 'error' => 'मोबाइल नम्बर पासवर्ड नबनाउनुहोस् · Do not use your mobile number as the password.'];
         }
-        $proven = WaVerify::sessionVerified($phone10);
-        if (!$proven) {
-            $v = Auth::verifyOtp('team:' . $phone10, $code, 'reset');
-            if (!$v['ok']) {
-                return ['ok' => false, 'error' => (string) ($v['error'] ?? 'That code did not match.')];
+        $targets = self::resetTargets($phone10);
+        $proven = '';
+        $how = '';
+        $wa = $_SESSION['team_reset']['wa'] ?? null;
+        if (is_array($wa) && (string) ($wa['intl'] ?? '') !== '' && self::target($targets, (string) $wa['intl']) !== null
+            && WaVerify::consumeReset((string) ($wa['token'] ?? ''), (string) $wa['intl'])) {
+            $proven = (string) $wa['intl'];
+            $how = '"hi VERIFY"';
+        }
+        if ($proven === '') {
+            if (trim($code) === '') {
+                return ['ok' => false, 'error' => 'WhatsApp मा आएको ६ अङ्कको कोड लेख्नुहोस् (वा तलको "hi VERIFY") · Enter the 6-digit code from WhatsApp, or use "hi VERIFY" below.'];
+            }
+            if (self::resetLocked($phone10)) {
+                return ['ok' => false, 'error' => 'धेरै पटक गलत कोड — २४ घण्टा कोडबाट पासवर्ड बदल्न मिल्दैन; तलको "hi VERIFY" वा कार्यालय · Too many wrong codes: the code way is locked for 24 hours. Use "hi VERIFY" below or call the office.'];
+            }
+            foreach ($targets as $t) {
+                if (Auth::verifyOtp('team:' . $t['intl'], $code, 'reset')['ok']) {
+                    $proven = $t['intl'];
+                    $how = 'code';
+                    break;
+                }
+            }
+            if ($proven === '') {
+                self::resetFailed($phone10);
+                // one answer whether or not the number has an account (no oracle in "no code" vs "wrong code")
+                return ['ok' => false, 'error' => 'कोड मिलेन वा पुरानो भयो — चाहिए नयाँ कोड माग्नुहोस् · That code did not match or has expired. Ask for a new one if needed.'];
             }
         }
-        $acc  = self::accounts($phone10);
+        $t = self::target($targets, $proven);
         $hash = Security::hashPassword($pw);
         $n = 0;
         $open = null;
-        foreach ($acc['admins'] as $a) {
-            if ((int) $a['is_active'] !== 1) {
-                continue;
-            }
+        $twofa = false;
+        foreach ($t['admins'] ?? [] as $a) {
             Database::update('admins', ['password_hash' => $hash, 'failed_logins' => 0, 'locked_until' => null, 'must_change_pw' => 0],
                 'id = :id', ['id' => (int) $a['id']]);
-            Logger::audit('team.password_reset', 'admin', (string) $a['id'], null, null, 'New password set at /team/ after a WhatsApp ' . ($proven ? '"hi VERIFY"' : 'code'));
+            Logger::audit('team.password_reset', 'admin', (string) $a['id'], null, null, 'New password set at /team/ after a WhatsApp ' . $how . ' to ' . maskPhone($proven));
             $n++;
-            if ($open === null) {
-                $open = $a;
-            }
+            $open ??= $a;   // the first account by id: the same one every time
+            $twofa = $twofa || Auth::admin2faEnabled((int) $a['id']);
         }
         $staffId = 0;
-        foreach ($acc['staff'] as $s) {
-            if ((string) $s['status'] !== 'approved') {
-                continue;
-            }
+        foreach ($t['staff'] ?? [] as $s) {
             Database::update('staff_applications', ['password_hash' => $hash, 'failed_logins' => 0, 'locked_until' => null],
                 'id = :id', ['id' => (int) $s['id']]);
-            Logger::audit('team.password_reset', 'staff_application', StaffApps::refFor((int) $s['id']), null, null, 'New password set at /team/');
+            Logger::audit('team.password_reset', 'staff_application', StaffApps::refFor((int) $s['id']), null, null, 'New password set at /team/ after a WhatsApp ' . $how);
             $n++;
             $staffId = $staffId ?: (int) $s['id'];
         }
-        unset($_SESSION['wa_verified'][$phone10]);
+        unset($_SESSION['team_reset']['wa']);
+        Database::run("DELETE FROM rate_limits WHERE bucket = 'team_reset_fail' AND identifier = :i", ['i' => $phone10]);
         if ($n === 0) {
             return ['ok' => false, 'error' => 'यो खाता बन्द छ — कार्यालयमा सम्पर्क गर्नुहोस् · This account is switched off. Please call the office.'];
         }
+        /* TODO (22 Oct 2026 review, #11): an agent / counter session already
+           open on another device stays open after this reset. Staff-portal
+           sessions end (openStaffSession / current() carry a password stamp),
+           but the office session (Auth::finishAdminSession / Auth::admin(),
+           includes/auth.php) has no stamp to compare — adding one changes
+           every office sign-in and admin/change-password.php too, so it is
+           left for a separate change. The office can end one now by switching
+           the account off and on (Auth::admin() re-reads is_active every 30 s). */
+        if ($twofa) {
+            // 22 Oct 2026 (review, #3): a 2FA account gets no session from a phone reset — the office login still asks the 2FA step
+            return ['ok' => true, 'kind' => 'none', 'twofa' => true, 'count' => $n];
+        }
         if ($open !== null) {
-            if (Auth::admin2faEnabled((int) $open['id'])) {
-                return ['ok' => true, 'kind' => 'none', 'twofa' => true, 'count' => $n];
-            }
-            Auth::teamOpenSession($open + ['must_change_pw' => 0], true);
+            Auth::teamOpenSession(['must_change_pw' => 0] + $open, true);   // (review #8) "+" keeps the LEFT key: the new value first
             self::closeStaffSession();
             return ['ok' => true, 'kind' => 'admin', 'count' => $n];
         }
@@ -388,6 +562,10 @@ final class TeamPortal
         if ($me['staff'] !== null && (string) $me['staff']['status'] === 'approved') {
             Database::update('staff_applications', ['password_hash' => $hash], 'id = :id', ['id' => (int) $me['staff']['id']]);
             Logger::audit('team.password_change', 'staff_application', (string) $me['staff']['ref'], null, null, 'Password changed at /team/');
+            // 22 Oct 2026 (review, #11): other staff-portal sessions end on their next page; this one carries on
+            if (isset($_SESSION[self::SESSION]['staff_id']) && (int) $_SESSION[self::SESSION]['staff_id'] === (int) $me['staff']['id']) {
+                $_SESSION[self::SESSION]['pw'] = self::pwStamp($hash);
+            }
         }
     }
 
@@ -395,10 +573,21 @@ final class TeamPortal
      *  Sessions
      * ================================================================= */
 
+    /**
+     * 22 Oct 2026 (review, #11): a short stamp of the password hash the
+     * session was opened with. current() compares it with the row, so a new
+     * or changed password ends every other staff-portal session.
+     */
+    private static function pwStamp(string $hash): string
+    {
+        return substr(hash('sha256', 'shg-team|' . $hash), 0, 24);
+    }
+
     private static function openStaffSession(int $staffId): void
     {
         session_regenerate_id(true);
-        $_SESSION[self::SESSION] = ['staff_id' => $staffId, 'at' => time(), 'seen' => time()];
+        $hash = (string) Database::scalar('SELECT password_hash FROM staff_applications WHERE id = :i', ['i' => $staffId], '');
+        $_SESSION[self::SESSION] = ['staff_id' => $staffId, 'at' => time(), 'seen' => time(), 'pw' => self::pwStamp($hash)];
         Database::update('staff_applications', ['failed_logins' => 0, 'locked_until' => null, 'last_login_at' => date('Y-m-d H:i:s')],
             'id = :id', ['id' => $staffId]);
         Logger::audit('team.login', 'staff_application', StaffApps::refFor($staffId), null, null, 'Team portal sign-in (staff)');
@@ -415,7 +604,11 @@ final class TeamPortal
             Auth::adminLogout();
         }
         self::closeStaffSession();
-        session_regenerate_id(true);
+        // 22 Oct 2026 (review, #5): this browser's WhatsApp proofs go too — the next person on a shared computer starts clean
+        unset($_SESSION['wa_verified'], $_SESSION['wa_tokens'], $_SESSION['wa_tried'], $_SESSION['team_reset'], $_SESSION['staff_otp_ok']);
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
     }
 
     /**
@@ -457,8 +650,9 @@ final class TeamPortal
             return null;
         }
         $staff = StaffApps::find((int) $t['staff_id']);
-        if ($staff === null || (string) $staff['status'] !== 'approved' || empty($staff['password_hash'])) {
-            self::closeStaffSession();   // suspended / left / password cleared by the office: out
+        if ($staff === null || (string) $staff['status'] !== 'approved' || empty($staff['password_hash'])
+            || !hash_equals((string) ($t['pw'] ?? ''), self::pwStamp((string) $staff['password_hash']))) {
+            self::closeStaffSession();   // suspended / left / password cleared by the office / a new password since: out
             return null;
         }
         $_SESSION[self::SESSION]['seen'] = time();

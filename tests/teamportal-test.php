@@ -42,11 +42,12 @@ function check(string $label, bool $ok, string $why = ''): void
 function fresh(): void
 {
     Database::run("DELETE FROM rate_limits WHERE bucket LIKE 'team_%' OR bucket LIKE 'otp_%' OR bucket LIKE 'wa_verify%'");
-    unset($_SESSION[ADMIN_SESSION_KEY], $_SESSION[TeamPortal::SESSION], $_SESSION['wa_verified'], $_SESSION['wa_tokens']);
+    unset($_SESSION[ADMIN_SESSION_KEY], $_SESSION[TeamPortal::SESSION], $_SESSION['wa_verified'], $_SESSION['wa_tokens'], $_SESSION['team_reset']);
 }
-function code(string $phone): string
+/** 22 Oct 2026 (review): a reset code belongs to the FULL number it was sent to ('team:<country><10 digits>'). */
+function code(string $intl): string
 {
-    $r = Auth::issueOtp('team:' . $phone, 'reset', 'whatsapp');
+    $r = Auth::issueOtp('team:' . $intl, 'reset', 'whatsapp');
     return (string) ($r['code'] ?? '');
 }
 
@@ -62,20 +63,21 @@ try {
     // ---- a staff member with no account ----
     $sid = (int) Database::insert('staff_applications', ['full_name' => 'TP Test Driver', 'phone' => $S, 'phone_country' => 'NP',
         'role_applied' => 'driver', 'id_type' => 'citizenship', 'id_number' => 'TP-1', 'status' => 'approved']);
+    // 22 Oct 2026 (review): "no password yet" is no longer told apart from "no such number" (it listed who is in the team)
     $r = TeamPortal::login($S, 'whatever123');
-    check('approved staff without a password is told to make one', !$r['ok'] && !empty($r['first']), json_encode($r, JSON_UNESCAPED_UNICODE));
-    $r = TeamPortal::login('9800077799', 'whatever123');
-    check('an unknown number gets the generic answer', !$r['ok'] && empty($r['first']));
+    $u = TeamPortal::login('9800077799', 'whatever123');
+    check('approved staff without a password gets the same answer as an unknown number', !$r['ok'] && !$u['ok'] && empty($r['first']) && $r === $u, json_encode($r, JSON_UNESCAPED_UNICODE));
+    check('… which says how to make a first password', str_contains((string) $r['error'], 'First time'));
 
     fresh();
     $r = TeamPortal::resetPassword($S, '000000', 'Secret#2026', 'Secret#2026');
     check('reset with a wrong code is refused', !$r['ok']);
-    $r = TeamPortal::resetPassword($S, code($S), 'short', 'short');
+    $r = TeamPortal::resetPassword($S, code('977' . $S), 'short', 'short');
     check('a short password is refused', !$r['ok']);
-    $r = TeamPortal::resetPassword($S, code($S), 'Secret#2026', 'Other#2026');
+    $r = TeamPortal::resetPassword($S, code('977' . $S), 'Secret#2026', 'Other#2026');
     check('two different passwords are refused', !$r['ok']);
     fresh();
-    $r = TeamPortal::resetPassword($S, code($S), 'Secret#2026', 'Secret#2026');
+    $r = TeamPortal::resetPassword($S, code('977' . $S), 'Secret#2026', 'Secret#2026');
     check('reset with the WhatsApp code sets the password and signs in (staff)', $r['ok'] && $r['kind'] === 'staff' && (int) ($_SESSION[TeamPortal::SESSION]['staff_id'] ?? 0) === $sid, json_encode($r));
     $me = TeamPortal::current();
     check('current() is that staff member', $me !== null && $me['via'] === 'staff' && (int) $me['staff']['id'] === $sid && TeamPortal::cardRefs($me) === [StaffApps::refFor($sid)]);
@@ -92,7 +94,7 @@ try {
     $r = TeamPortal::login($S, 'Secret#2026');
     check('five wrong passwords lock the staff login', !$r['ok'] && !empty(Database::scalar('SELECT locked_until FROM staff_applications WHERE id = :i', ['i' => $sid])));
     fresh();
-    $r = TeamPortal::resetPassword($S, code($S), 'Secret#2027', 'Secret#2027');
+    $r = TeamPortal::resetPassword($S, code('977' . $S), 'Secret#2027', 'Secret#2027');
     check('a WhatsApp reset unlocks it', $r['ok'] && (int) Database::scalar('SELECT failed_logins FROM staff_applications WHERE id = :i', ['i' => $sid]) === 0);
     Database::run("UPDATE staff_applications SET status = 'suspended' WHERE id = :i", ['i' => $sid]);
     check('a suspended staff member is signed out on the next page', TeamPortal::current() === null);
@@ -113,7 +115,7 @@ try {
     check('agent: mobile + existing password opens the staff session', $r['ok'] && $r['kind'] === 'admin' && (int) ($_SESSION[ADMIN_SESSION_KEY]['id'] ?? 0) === $aid);
     check('… and "sell tickets" is the agent panel', TeamPortal::sellUrl(Auth::admin()) === '/admin/agent.php');
     fresh();
-    $r = TeamPortal::resetPassword($A, code($A), 'New#pass2026', 'New#pass2026');
+    $r = TeamPortal::resetPassword($A, code('977' . $A), 'New#pass2026', 'New#pass2026');
     check('agent: a WhatsApp reset sets the new password and signs in', $r['ok'] && $r['kind'] === 'admin'
         && Security::verifyPassword('New#pass2026', (string) Database::scalar('SELECT password_hash FROM admins WHERE id = :i', ['i' => $aid])));
     check('… and clears "must change"', (int) Database::scalar('SELECT must_change_pw FROM admins WHERE id = :i', ['i' => $aid]) === 0);
@@ -121,7 +123,7 @@ try {
     // ---- one mobile, staff card + agent account ----
     Database::run('UPDATE staff_applications SET phone = :p WHERE id = :i', ['p' => $A, 'i' => $sid]);
     fresh();
-    $r = TeamPortal::resetPassword($A, code($A), 'Both#pass2026', 'Both#pass2026');
+    $r = TeamPortal::resetPassword($A, code('977' . $A), 'Both#pass2026', 'Both#pass2026');
     check('one reset sets the same password on the account and the staff card', $r['ok'] && $r['count'] === 2
         && Security::verifyPassword('Both#pass2026', (string) Database::scalar('SELECT password_hash FROM staff_applications WHERE id = :i', ['i' => $sid])));
     $me = TeamPortal::current();
@@ -142,9 +144,12 @@ try {
     Database::run('UPDATE staff_applications SET phone = :p WHERE id = :i', ['p' => $S, 'i' => $sid]);
     $v = TeamPortal::startVerify($S);
     $wrong = WaVerify::inbound('91' . $S, $v['text']);
-    check('a reset VERIFY from the same digits in another country is refused', str_contains((string) $wrong, 'another number'));
+    // 22 Oct 2026 (review): refused without naming the account's number (it would tell a stranger the country)
+    check('a reset VERIFY from the same digits in another country is refused', str_contains((string) $wrong, 'not for this WhatsApp number')
+        && !str_contains((string) $wrong, maskPhone('977' . $S)) && WaVerify::check($v['token'])['status'] === 'mismatch');
     WaVerify::inbound('977' . $S, $v['text']);
-    check('from the registered WhatsApp it proves the number', WaVerify::check($v['token'])['status'] === 'verified' && WaVerify::sessionVerified($S));
+    // 22 Oct 2026 (review): a reset proof only reports "verified" to the page - it is never a form's proof of the number
+    check('from the registered WhatsApp it proves the number (for the reset only)', WaVerify::check($v['token'])['status'] === 'verified' && !WaVerify::sessionVerified($S));
     $r = TeamPortal::resetPassword($S, '', 'Verify#2026', 'Verify#2026');
     check('…then a new password needs no code', $r['ok'] && $r['kind'] === 'staff');
 
@@ -214,7 +219,8 @@ try {
 } finally {
     if ($sid > 0) { Database::run('DELETE FROM staff_applications WHERE id = :i', ['i' => $sid]); }
     foreach ($ids as $i) { Database::run('DELETE FROM admins WHERE id = :i', ['i' => $i]); }
-    Database::run("DELETE FROM otp_codes WHERE identifier LIKE 'team:98000777%'");
+    Database::run("DELETE FROM otp_codes WHERE identifier LIKE 'team:%98000777%'");
+    Database::run("DELETE FROM wa_verify WHERE phone LIKE '98000777%'");
     fresh();
 }
 

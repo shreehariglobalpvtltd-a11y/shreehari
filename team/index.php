@@ -46,21 +46,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     TeamUi::go('/team/');
                 }
                 $err = (string) $r['error'];
-                if (!empty($r['first'])) {
-                    $_SESSION['team_reset'] = ['phone' => $p, 'sent' => null, 't' => time()];
-                }
             } elseif ($act === 'forgot_send') {
                 $p = TeamPortal::phone10((string) ($_POST['mobile'] ?? ''));
                 if ($p === '') {
                     $err = '१० अङ्कको मोबाइल नम्बर लेख्नुहोस् · Enter your 10-digit mobile number.';
                     $v = 'forgot';
                 } else {
+                    // 22 Oct 2026 (review): the same next page for every number (sent or not, registered or not)
                     $r = TeamPortal::sendResetCode($p);
                     if (!$r['ok']) {
                         $err = (string) $r['error'];
                         $v = 'forgot';
                     } else {
-                        $_SESSION['team_reset'] = ['phone' => $p, 'sent' => $r['sent'], 't' => time(), 'intl' => $r['intl']]
+                        $_SESSION['team_reset'] = ['phone' => $p, 't' => time()]
                             + (isset($r['debugCode']) ? ['debug' => $r['debugCode']] : []);
                         TeamUi::go('/team/?v=reset');
                     }
@@ -70,8 +68,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 if ($p === '') {
                     TeamUi::go('/team/?v=forgot');
                 }
-                $s = TeamPortal::startVerify($p);
-                $_SESSION['team_reset']['wa'] = ['token' => $s['token'], 'url' => $s['url'], 'text' => $s['text']];
+                TeamPortal::startVerify($p);   // keeps the token + the account's number in $_SESSION['team_reset']['wa']
                 TeamUi::go('/team/?v=reset#wa');
             } elseif ($act === 'reset') {
                 $p = (string) ($_SESSION['team_reset']['phone'] ?? '');
@@ -186,8 +183,8 @@ TeamUi::flash();
 if ($err !== null) {
     echo '<div class="tp-msg bad" role="alert">' . $h($err) . '</div>';
 }
-$cc = $reset !== null && strlen((string) ($reset['intl'] ?? '')) > 10 ? '+' . substr((string) $reset['intl'], 0, -10) . ' ' : '';
-$masked = $reset !== null ? $cc . substr((string) $reset['phone'], 0, 2) . '•••••' . substr((string) $reset['phone'], -3) : '';
+// 22 Oct 2026 (review): only the digits the person typed — no country, which would say the number is ours
+$masked = $reset !== null && !empty($reset['phone']) ? substr((string) $reset['phone'], 0, 2) . '•••••' . substr((string) $reset['phone'], -3) : '';
 
 if ($v === 'forgot'): ?>
 <div class="tp-card">
@@ -204,11 +201,8 @@ if ($v === 'forgot'): ?>
 <?php elseif ($v === 'reset'): ?>
 <div class="tp-card">
   <h1>नयाँ पासवर्ड · New password</h1>
-  <?php if ($reset['sent'] === true): ?>
-  <div class="tp-msg ok">✅ <?= $h($masked) ?> को WhatsApp मा कोड पठाइयो · Code sent on WhatsApp.</div>
-  <?php elseif ($reset['sent'] === false): ?>
-  <div class="tp-msg bad">WhatsApp ले कोड पठाउन सकेन · The code could not be sent — use "hi VERIFY" below.</div>
-  <?php endif; ?>
+  <div class="tp-msg info"><?= $h($masked) ?> हाम्रो टोलीमा दर्ता भएको नम्बर हो भने त्यसको WhatsApp मा ६ अङ्कको कोड पठाइन्छ। एक मिनेटमा आएन भने तलको "hi VERIFY" प्रयोग गर्नुहोस्। · If this number is registered with us, a 6-digit code is on its way on WhatsApp. No code within a minute? Use "hi VERIFY" below.</div>
+  <div class="tp-msg bad" role="note">🔒 यो कोड पासवर्ड बदल्नको लागि हो — अरूले मागे नपठाउनुहोस्। · This code is for a PASSWORD RESET — never give it or send it to anyone who asks.</div>
   <?php if (!empty($reset['debug'])): ?><div class="tp-msg info">DEV code: <?= $h($reset['debug']) ?></div><?php endif; ?>
   <div id="waOk" class="tp-msg ok" hidden>✅ नम्बर प्रमाणित भयो — कोड चाहिँदैन, नयाँ पासवर्ड राख्नुहोस् · Number proven, set your password.</div>
   <form method="post" action="/team/?v=reset" autocomplete="on">
@@ -229,10 +223,12 @@ if ($v === 'forgot'): ?>
   <h2>कोड आएन? · No code?</h2>
   <?php if (empty($reset['wa'])): ?>
   <p class="tp-sub">आफ्नै WhatsApp बाट हामीलाई एउटा सन्देश पठाउनुहोस् — नम्बर आफैं प्रमाणित हुन्छ। · Send one message from your own WhatsApp and your number is proven.</p>
+  <p class="tp-sub">यो सन्देश पासवर्ड बदल्नको लागि मात्र हो — अरू कसैले पठाउन भने नपठाउनुहोस्। अझै आएन भने कार्यालयलाई तपाईंको नम्बरमा +91 / +977 राख्न भन्नुहोस्। · It is only for a PASSWORD RESET — never send it because someone else asked. Still nothing? Ask the office to add +91 / +977 to your number.</p>
   <form method="post" action="/team/?v=reset"><?= $csrf ?><input type="hidden" name="action" value="verify_start">
     <button class="b gh" type="submit">💬 "hi VERIFY" तयार गर्नुहोस् · Prepare it</button></form>
   <?php else: ?>
   <p class="tp-sub">तलको बटन थिच्नुहोस्, WhatsApp मा <b class="mono"><?= $h($reset['wa']['text']) ?></b> लेखिएर आउँछ — <b>Send</b> थिच्नुहोस्, अनि यहाँ फर्कनुहोस्।</p>
+  <p class="tp-sub"><b>🔒 यो सन्देश तपाईंको पासवर्ड बदल्नको लागि हो — अरूले मागे नपठाउनुहोस्।</b> · This message resets YOUR password — never send it because someone else asked.</p>
   <a class="b wa" id="waGo" href="<?= $h($reset['wa']['url']) ?>" target="_blank" rel="noopener">WhatsApp खोल्नुहोस् · Open WhatsApp</a>
   <p class="tp-sub" id="waWait" style="margin-top:10px">⏳ पर्खँदै … · Waiting for your message …</p>
   <script>

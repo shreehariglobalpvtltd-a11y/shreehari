@@ -14,6 +14,11 @@
  *
  * Budgets: 8 starts per 10 minutes per IP, 4 per number per 10 minutes;
  * checks are cheap (the page asks every few seconds while waiting).
+ *
+ * 22 Oct 2026 (review): "start" takes staff | agent | sign only. A team
+ * portal password reset token is made by /team/ alone (TeamPortal::
+ * startVerify, bound to the account's own full number); /team/ may still
+ * "check" one it made — that only reports the status.
  */
 
 declare(strict_types=1);
@@ -33,6 +38,10 @@ try {
     $action = (string) Response::field('action', '');
 
     if ($action === 'start') {
+        $purpose = (string) Response::field('purpose', 'staff');
+        if (!in_array($purpose, WaVerify::FORM_PURPOSES, true)) {
+            Response::error('Unknown purpose.', 400);
+        }
         $cc = (string) Response::field('cc', '91');
         $country = $cc === '977' ? 'NP' : 'IN';
         $phone = normalisePhone((string) Response::field('phone', ''));
@@ -41,7 +50,7 @@ try {
         }
         Security::requireRateLimit('wa_verify_ip', $ip, 8, 600);
         Security::requireRateLimit('wa_verify_phone', $phone, 4, 600);
-        $s = WaVerify::start((string) Response::field('purpose', 'staff'), $phone, $country, $ip);
+        $s = WaVerify::start($purpose, $phone, $country, $ip);
         Response::json(['ok' => true] + $s);
     }
 
