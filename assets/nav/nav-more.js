@@ -62,6 +62,22 @@ var TX = {
   pipNo: { ne: 'यो ब्राउजरमा सानो झ्याल चल्दैन', hi: 'इस ब्राउज़र में छोटी विंडो नहीं चलती', en: 'Picture-in-picture is not available here' },
   pipHint: { ne: 'अब अर्को एप खोल्दा पनि मोड देखिइरहन्छ', hi: 'अब दूसरा ऐप खोलने पर भी मोड़ दिखता रहेगा', en: 'The next turn stays on screen over other apps' },
   failed: { ne: 'अहिले सकिएन', hi: 'अभी नहीं हो पाया', en: 'Could not do that now' },
+  usual: { ne: 'तपाईंको सामान्य बाटो{v} — प्रायः {u} लाग्छ, आज अनुमान {n}', hi: 'आपका आम रास्ता{v} — आमतौर पर {u}, आज अनुमान {n}', en: 'Your usual route{v} — usually {u}, today about {n}' },
+  usualVia: { ne: ' (via {r})', hi: ' (via {r})', en: ' (via {r})' },
+  slower: { ne: '{m} मिनेट ढिलो', hi: '{m} मिनट धीमा', en: '{m} min slower' },
+  faster: { ne: '{m} मिनेट छिटो', hi: '{m} मिनट तेज़', en: '{m} min faster' },
+  otherWay: { ne: 'आजको छिटो बाटो फरक छ (via {r})', hi: 'आज का तेज़ रास्ता अलग है (via {r})', en: 'Today\'s fastest way differs (via {r})' },
+  visitsT: { ne: 'मेरा भ्रमण', hi: 'मेरी विज़िट', en: 'My visits' },
+  visitsNote: { ne: 'तपाईं पुगेका ठाउँ — यो फोनमा मात्र (sync गरेमा तपाईंका आफ्नै device मा)', hi: 'आप जहाँ पहुँचे — केवल इस फ़ोन में (sync करने पर आपके अपने device में)', en: 'Places you arrived at — this phone only (your own devices if synced)' },
+  noVisits: { ne: 'अहिलेसम्म कुनै भ्रमण छैन', hi: 'अभी तक कोई विज़िट नहीं', en: 'No visits yet' },
+  delAll: { ne: 'सबै मेटाउनुस्', hi: 'सब मिटाएं', en: 'Delete all' },
+  delSure: { ne: 'फेरि थिच्नुस् — सबै मेटिन्छ', hi: 'फिर दबाएं — सब मिट जाएगा', en: 'Tap again — everything goes' },
+  today: { ne: 'आज', hi: 'आज', en: 'Today' }, yday: { ne: 'हिजो', hi: 'कल', en: 'Yesterday' },
+  askQ: { ne: 'AI लाई सोध्नुस्: “{q}”', hi: 'AI से पूछें: “{q}”', en: 'Ask AI: “{q}”' },
+  steep: { ne: 'ठाडो उकालो: ~{g}% ({m}) · {k} मा', hi: 'खड़ी चढ़ाई: ~{g}% ({m}) · {k} पर', en: 'Steep climb: ~{g}% ({m}) at {k}' },
+  steepSay: { ne: 'अगाडि ठाडो उकालो', hi: 'आगे खड़ी चढ़ाई', en: 'Steep climb ahead' },
+  flat: { ne: 'ठाडो उकालो छैन', hi: 'खड़ी चढ़ाई नहीं', en: 'No steep climbs' },
+  hike: { ne: '🥾 पैदल ट्रेल', hi: '🥾 पैदल ट्रेल', en: '🥾 Hiking trails' },
   close: { ne: 'बन्द', hi: 'बंद', en: 'Close' }
 };
 /* Ask Maps chips: what to look for, and where */
@@ -155,7 +171,7 @@ function css() {
     '.nm-card p{margin:2px 0 0;color:var(--text2,#A8B4CC);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
     '.nm-h{margin:10px 2px 6px;font:600 13px Inter,system-ui,sans-serif;color:var(--text2,#A8B4CC);letter-spacing:.02em}',
     '#nmExplore{margin-top:10px}'
-  ].join('\n');
+  ].join('\n') + '\n' + GLASS;
   document.head.appendChild(st);
 }
 function sheet(html) {
@@ -212,6 +228,7 @@ function dirSheet(r) {
   } else if (WHEN.type === 'depart' && WHEN.t) line = t('lDep', { d: dayClock(WHEN.t), a: dayClock(WHEN.t + dur) });
   else line = t('lNow', { a: dayClock(Date.now() + dur) });
   h += '<button class="nm-row" type="button" data-nm="when"><span>🕐</span><span><b>' + esc(line) + '</b><small>' + esc(t('when')) + '</small></span></button>';
+  h += usualRow(r);
   /* tolls */
   if (S.mode === 'moto' && r.tolls) h += '<div class="nm-row"><span>🛵</span><span>' + esc(t('tollMoto')) + '</span></div>';
   else if ((S.mode === 'car' || S.mode === 'bus') && r.tollKm > 0) {
@@ -230,6 +247,8 @@ function dirSheet(r) {
   var rw = WX.r === r ? WX.v : null;
   if (rw && rw.wet) h += '<div class="nm-row rain"><span>🌧️</span><span>' + esc(t('rain', { p: rw.wet.p || t('near'), t: clock(rw.wet.t) })) + (rw.wet.mm ? '<small>' + rw.wet.mm + ' mm</small>' : '') + '</span></div>';
   else if (rw && rw.n >= 2) h += '<div class="nm-row"><span>☀️</span><span>' + esc(t('dry')) + '</span></div>';
+  h += steepRow(r);
+  hikePaint();
   /* explore at the destination */
   if (S.to && !S.to.me) h += '<button class="nm-row" type="button" data-nm="explore"><span>🧭</span><span>' + esc(t('exploreAt', { p: S.to.name || '' })) + '</span></button>';
   b.innerHTML = h;
@@ -571,6 +590,212 @@ function placeCard(p) {
   }).catch(function () {});
 }
 
+/* =====================================================================
+   PHASE 4 (22 Oct 2026): Apple Maps iOS 26 ideas, rebuilt
+===================================================================== */
+
+/* ---------- Preferred routes: the trips this phone repeats ---------- */
+var LSx = {
+  get: function (k, d) { try { var v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+var TRIP = { N: null, a: null, t0: 0 };
+function tripStart(N) {
+  var S = X.S;
+  if (!N || N.preview || (N.sim && !QS.has('debug')) || !S.to || S.to.me) { TRIP.N = null; return; }
+  var a = S.me ? [S.me.lng, S.me.lat] : S.from && !S.from.me && S.from.lat != null ? [+S.from.lng, +S.from.lat] : N.route.coords[0];
+  TRIP = { N: N, a: a, t0: Date.now() };
+}
+function tripArrive(N) {
+  var S = X.S; if (!TRIP.N || TRIP.N !== N || !S.to) return;
+  var s = Math.round((Date.now() - TRIP.t0) / 1000);
+  if (s < 120) return;
+  var list = LSx.get('shg:nx:trips', []);
+  list.unshift({ t: TRIP.t0, a: [+TRIP.a[0].toFixed(5), +TRIP.a[1].toFixed(5)], b: [+(+S.to.lng).toFixed(5), +(+S.to.lat).toFixed(5)],
+                 bn: S.to.name || '', m: S.mode, s: s, via: N.route.via || '' });
+  LSx.set('shg:nx:trips', list.slice(0, 80));
+  TRIP.N = null;
+}
+/* trips to the same place (300 m) from the same start (800 m), at least three: a habit */
+function usualFor(a, b, mode) {
+  var list = LSx.get('shg:nx:trips', []).filter(function (x) {
+    return x.m === mode && X.hav(x.b, b) < 300 && (!a || X.hav(x.a, a) < 800);
+  });
+  if (list.length < 3) return null;
+  var secs = list.map(function (x) { return x.s; }).sort(function (p, q) { return p - q; });
+  var vias = {}; list.forEach(function (x) { if (x.via) vias[x.via] = (vias[x.via] || 0) + 1; });
+  var via = Object.keys(vias).sort(function (p, q) { return vias[q] - vias[p]; })[0] || '';
+  return { n: list.length, s: secs[Math.floor(secs.length / 2)], via: via, bn: list[0].bn, b: list[0].b, a: list[0].a };
+}
+function minsText(s) { var m = Math.round(s / 60); return m < 60 ? m + ' ' + (lang() === 'en' ? 'min' : lang() === 'hi' ? 'मिनट' : 'मिनेट') : Math.floor(m / 60) + 'h ' + (m % 60) + 'm'; }
+function usualRow(r) {
+  var S = X.S; if (!S.to || S.to.me) return '';
+  var a = S.from && !S.from.me && S.from.lat != null ? [+S.from.lng, +S.from.lat] : S.me ? [S.me.lng, S.me.lat] : null;
+  var u = usualFor(a, [+S.to.lng, +S.to.lat], S.mode); if (!u) return '';
+  var d = Math.round((r.dur - u.s) / 60);
+  var txt = t('usual', { v: u.via ? t('usualVia', { r: u.via }) : '', u: minsText(u.s), n: minsText(r.dur) });
+  var sub = Math.abs(d) >= 2 ? (d > 0 ? t('slower', { m: d }) : t('faster', { m: -d })) : '';
+  if (u.via && r.via && u.via !== r.via) sub = (sub ? sub + ' · ' : '') + t('otherWay', { r: r.via });
+  return '<div class="nm-row' + (d >= 5 ? ' warn' : '') + '"><span>🔁</span><span><b>' + esc(txt) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span></div>';
+}
+/* home: the habit that starts here, one tap away (like Apple's "usual" suggestion) */
+function usualChip() {
+  var old = $('#nmUsual'); if (old) old.remove();
+  var S = X.S, hw = $('#hwChips'); if (!hw || !S.me) return;
+  var me = [S.me.lng, S.me.lat], best = null, seen = {};
+  LSx.get('shg:nx:trips', []).forEach(function (x) {
+    var k = x.m + '|' + x.b[0].toFixed(3) + ',' + x.b[1].toFixed(3); if (seen[k]) return; seen[k] = 1;
+    if (X.hav(x.a, me) > 800 || X.hav(x.b, me) < 500) return;
+    var u = usualFor(me, x.b, x.m); if (u && (!best || u.n > best.n)) best = Object.assign({ m: x.m }, u);
+  });
+  if (!best) return;
+  var c = document.createElement('button'); c.type = 'button'; c.className = 'chip'; c.id = 'nmUsual';
+  c.textContent = '🔁 ' + (best.bn || '') + ' · ~' + minsText(best.s);
+  c.onclick = function (e) { e.stopPropagation(); X.go({ name: best.bn, lat: best.b[1], lng: best.b[0] }, { mode: best.m }); };
+  hw.parentNode.insertBefore(c, hw);
+}
+
+/* ---------- Visits screen (Apple "Visited places"), with delete-all ---------- */
+function openVisits() {
+  var v = LSx.get('shg:ng:visits', []), arm = false;
+  var day = function (ms) { var d = new Date(ms), n = new Date(); if (d.toDateString() === n.toDateString()) return t('today'); n.setDate(n.getDate() - 1); return d.toDateString() === n.toDateString() ? t('yday') : d.toLocaleDateString(); };
+  var render = function () {
+    v = LSx.get('shg:ng:visits', []);
+    var h = '<h3>📍 ' + esc(t('visitsT')) + ' (' + v.length + ')</h3><p style="margin:0 0 8px;color:var(--text3,#6F7D99);font-size:12.5px">' + esc(t('visitsNote')) + '</p>';
+    if (!v.length) h += '<div class="nm-li">' + esc(t('noVisits')) + '</div>';
+    var last = '';
+    v.forEach(function (x, i) {
+      var g = day(x.t); if (g !== last) { h += '<div class="nm-h">' + esc(g) + '</div>'; last = g; }
+      h += '<div style="display:flex;gap:6px;margin-bottom:6px"><button class="nm-li" type="button" data-vo="' + i + '" style="flex:1"><span class="e">📍</span><span><b>' + esc(x.name || '') + '</b><small>' + esc(clock(x.t)) + '</small></span></button>' +
+        '<button class="nm-x" type="button" data-vd="' + i + '" aria-label="Delete" style="position:static;flex:none">×</button></div>';
+    });
+    if (v.length) h += '<button class="nm-b" type="button" data-vall style="background:#B42318">' + esc(arm ? t('delSure') : t('delAll')) + '</button>';
+    var el = sheet(h);
+    el.querySelectorAll('[data-vo]').forEach(function (b) { b.onclick = function () { var x = v[+b.dataset.vo]; sheetClose(false, function () { X.openPlace({ name: x.name, lat: x.lat, lng: x.lng }); }); }; });
+    el.querySelectorAll('[data-vd]').forEach(function (b) { b.onclick = function () { v.splice(+b.dataset.vd, 1); LSx.set('shg:ng:visits', v); render(); }; });
+    var all = el.querySelector('[data-vall]');
+    if (all) all.onclick = function () { if (!arm) { arm = true; render(); return; } LSx.set('shg:ng:visits', []); arm = false; render(); };
+  };
+  render();
+}
+
+/* ---------- Natural-language search: a question goes to the AI guide ---------- */
+var QWORD = /\?|？|कसरी|कहाँ|किन|कति|कुन|के छ|सबैभन्दा|राम्रो|how |where |what |which |why |best |kasari|kaha |kati |कैसे|कहां|क्या|कौन|सबसे|अच्छा/i;
+function nlSearch() {
+  var inp = $('#sInput'), s = $('#search'), body = $('#sBody'); if (!inp || !s || !body) return;
+  var row = document.createElement('button'); row.type = 'button'; row.className = 'nm-row'; row.id = 'nmQ'; row.hidden = true;
+  row.style.cssText = 'margin:4px 12px 0;width:auto';
+  s.insertBefore(row, body);
+  var upd = function () {
+    var q = inp.value.trim(), show = !!(X.aiAsk && q.length >= 6 && QWORD.test(q + ' '));
+    row.hidden = !show;
+    if (show) row.innerHTML = '<span>🙏</span><span><b>' + esc(t('askQ', { q: q.slice(0, 60) })) + '</b></span>';
+  };
+  inp.addEventListener('input', upd);
+  row.onclick = function () { var q = inp.value.trim(); if (q && X.aiAsk) X.aiAsk(q); };
+}
+
+/* ---------- Junction view: the lanes, big, ~300 m before a complex exit ---------- */
+var JV = { el: null, k: -1 };
+var LANE_ROT = { 'sharp left': -135, 'left': -90, 'slight left': -45, 'straight': 0, 'none': 0, 'slight right': 45, 'right': 90, 'sharp right': 135, 'uturn': 180 };
+function laneSvg(lane, on) {
+  var ind = (lane.indications || ['straight'])[0] || 'straight', rot = LANE_ROT[ind] != null ? LANE_ROT[ind] : 0;
+  return '<span class="nm-lane' + (on ? ' on' : '') + '"><svg viewBox="0 0 24 24" style="transform:rotate(' + rot + 'deg)" aria-hidden="true"><path d="M12 21V5M5.5 11.5L12 5l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+}
+function jvTick(N) {
+  var show = false, st = null, d = 0;
+  if (N && !N.preview && !N.arrived && !N.offRoute && N.route && N.route.steps) {
+    st = N.route.steps[N.k + 1];
+    if (st && st.type !== 'arrive') {
+      d = (st.along || 0) - (N.along || 0);
+      var complex = (st.lanes && st.lanes.length >= 3) || /fork|ramp|exit/.test(st.type || '');
+      show = complex && d > 25 && d <= 300;
+    }
+  }
+  if (!show) { if (JV.el && !JV.el.hidden) { JV.el.hidden = true; document.body.classList.remove('nm-jv-on'); } return; }
+  if (!JV.el) { JV.el = document.createElement('div'); JV.el.className = 'nm-jv'; JV.el.setAttribute('role', 'img'); document.body.appendChild(JV.el); }
+  var top = $('#navTop'); if (top) JV.el.style.top = Math.round(top.getBoundingClientRect().bottom + 8) + 'px';
+  var lanes = st.lanes || [];
+  var sign = st.ref || st.dest || st.name || '';
+  JV.el.innerHTML = (lanes.length ? '<div class="nm-lanes">' + lanes.map(function (l) { return laneSvg(l, l.valid !== false); }).join('') + '</div>' : '') +
+    '<div class="nm-sign"><b>' + esc(X.fmtDist(Math.max(0, d))) + '</b>' + (sign ? '<span>' + esc(sign) + '</span>' : '') + '</div>';
+  JV.el.setAttribute('aria-label', (sign || '') + ' ' + X.fmtDist(d));
+  JV.el.hidden = false; document.body.classList.add('nm-jv-on');
+}
+
+/* ---------- Steep climbs for walking / cycling (our SRTM heights) ---------- */
+var STEEP = { r: null, v: null, said: {} };
+function steepCheck(r) {
+  STEEP = { r: r, v: 'busy', said: {} };
+  if (!r.L && X.prepRoute) X.prepRoute(r);
+  var Lr = r.L; if (!Lr || Lr.len < 300) { STEEP.v = null; return; }
+  var n = Math.max(20, Math.min(200, Math.round(Lr.len / 50))), pts = [], al = [];
+  for (var i = 0; i < n; i++) { var a = Lr.len * i / (n - 1), p = X.at(Lr, a).p; pts.push([+p[1].toFixed(5), +p[0].toFixed(5)]); al.push(a); }
+  getJ('/api/nav-elevation.php', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shape: pts }) }, 12000)
+    .then(function (j) {
+      var h = (j && (j.h || j)) || [];
+      if (STEEP.r !== r || !h.length) return;
+      var segs = [], win = Math.max(1, Math.round(100 / (Lr.len / (n - 1))));     /* grade over ~100 m */
+      for (var k = 0; k + win < h.length; k++) {
+        if (h[k] == null || h[k + win] == null) continue;
+        var g = (h[k + win] - h[k]) / Math.max(1, al[k + win] - al[k]) * 100;
+        if (g >= 8) segs.push({ a0: al[k], a1: al[k + win], g: g });
+      }
+      var merged = [];
+      segs.forEach(function (s) { var m = merged[merged.length - 1]; if (m && s.a0 <= m.a1 + 20) { m.a1 = s.a1; m.g = Math.max(m.g, s.g); } else merged.push({ a0: s.a0, a1: s.a1, g: s.g }); });
+      STEEP.v = merged; redraw();
+    }).catch(function () { if (STEEP.r === r) STEEP.v = null; });
+}
+function steepRow(r) {
+  var m = X.S.mode; if (m !== 'walk' && m !== 'bike') return '';
+  if (STEEP.r !== r) { steepCheck(r); return ''; }
+  var v = STEEP.v; if (!v || v === 'busy') return '';
+  if (!v.length) return '<div class="nm-row"><span>⛰️</span><span>' + esc(t('flat')) + '</span></div>';
+  var top = v.slice().sort(function (p, q) { return q.g - p.g; })[0];
+  return '<div class="nm-row warn"><span>⛰️</span><span><b>' + esc(t('steep', { g: Math.round(top.g), m: X.fmtDist(top.a1 - top.a0), k: X.fmtDist(top.a0) })) + '</b></span></div>';
+}
+function steepTick(N) {
+  if (!N || N.preview || STEEP.r !== N.route || !STEEP.v || STEEP.v === 'busy') return;
+  var a = N.along || 0;
+  STEEP.v.forEach(function (s, i) {
+    var ah = s.a0 - a;
+    if (!STEEP.said[i] && s.g >= 10 && ah > 20 && ah <= 150) { STEEP.said[i] = 1; say('⛰️', t('steepSay') + ' (~' + Math.round(s.g) + '%)'); }
+  });
+}
+
+/* ---------- Hiking trails toggle (walk mode) ---------- */
+function hikeChip() {
+  var opts = $('#dirOpts'); if (!opts || $('#nmHike')) return;
+  var b = document.createElement('button'); b.className = 'mini'; b.type = 'button'; b.id = 'nmHike';
+  b.onclick = function () {
+    X.S.hike = !X.S.hike; LSx.set('shg:nm:hike', X.S.hike);
+    b.classList.toggle('on', X.S.hike);
+    if (X.recompute) X.recompute();
+  };
+  opts.appendChild(b);
+}
+function hikePaint() {
+  var b = $('#nmHike'); if (!b) return;
+  b.textContent = t('hike'); b.hidden = X.S.mode !== 'walk'; b.classList.toggle('on', !!X.S.hike);
+}
+
+/* ---------- Liquid glass: one token set for every floating surface ---------- */
+var GLASS = [
+  ':root{--g-bg:rgba(17,29,51,.85);--g-blur:blur(20px) saturate(160%);--g-line:rgba(255,255,255,.10);--g-hi:inset 0 1px 0 rgba(255,255,255,.07)}',
+  '.glass,.modal-card,.sg-panel,.nl-sheet,.nm-sheet,.nl-fcard,.ai-card,.fab:not(.sg-fab):not(.nl-livepill),.chip:not(.on):not(.sg-chip){',
+  '  background-color:var(--g-bg);-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur);border-color:var(--g-line);box-shadow:var(--g-hi),0 10px 30px rgba(0,0,0,.32)}',
+  'body.saver .glass,body.saver .modal-card,body.saver .sg-panel,body.saver .nl-sheet,body.saver .nm-sheet,body.saver .nl-fcard,body.saver .fab,body.saver .chip{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background-color:var(--surface)}',
+  '@media (prefers-contrast:more){.modal-card,.sg-panel,.nl-sheet,.nm-sheet,.nl-fcard,.fab,.chip{-webkit-backdrop-filter:none;backdrop-filter:none;background-color:var(--surface)}}',
+  '@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root{--g-bg:rgba(17,29,51,.97)}}',
+  '.nm-jv{position:fixed;z-index:32;left:50%;transform:translateX(-50%);max-width:min(94vw,440px);padding:10px 12px;border-radius:18px;background:#0B4D2C;color:#fff;',
+  '  box-shadow:0 10px 30px rgba(0,0,0,.45);display:grid;gap:8px;justify-items:center;pointer-events:none}',
+  '.nm-lanes{display:flex;gap:6px}.nm-lane{width:46px;height:52px;border-radius:10px;display:grid;place-items:center;background:rgba(255,255,255,.08);color:rgba(255,255,255,.35)}',
+  '.nm-lane.on{background:rgba(255,255,255,.2);color:#fff}.nm-lane svg{width:32px;height:32px}',
+  '.nm-sign{display:flex;gap:10px;align-items:baseline;font:600 15px Inter,system-ui,sans-serif}.nm-sign b{font:700 22px Poppins,Inter,sans-serif}',
+  '.nm-sign span{background:#1A5FB4;border:2px solid #fff;border-radius:6px;padding:1px 8px;font-size:14px}',
+  'body.nm-jv-on .sg-lm{display:none!important}'
+].join('\n');
+
 /* ---------------------------------------------------------------------
    WIRING
 --------------------------------------------------------------------- */
@@ -580,13 +805,18 @@ function start() {
   var H = X.hook;
   css();
   askChips();
+  nlSearch();
+  hikeChip();
   H('dirSheet', function (r) { try { dirSheet(r); } catch (e) { if (QS.has('debug')) console.warn('nav-more', e); } });
   H('placeCard', function (p) { try { placeCard(p); } catch (e) {} });
-  H('navStart', function (N) { if (N && !N.preview) alStart(N); });
-  H('navFix', function (f, N) { alTick(N); });
-  H('navStop', function () { AL.N = null; pipStop(); });
-  H('arrive', function () { pipStop(); });
-  H('lang', function () { askLabels(); redraw(); });
+  H('navStart', function (N) { if (N && !N.preview) { alStart(N); tripStart(N); } });
+  H('navFix', function (f, N) { alTick(N); jvTick(N); steepTick(N); });
+  H('navStop', function () { AL.N = null; pipStop(); jvTick(null); });
+  H('arrive', function (N) { pipStop(); jvTick(null); tripArrive(N); });
+  H('show', function (lvl) { if (lvl === 'home') setTimeout(usualChip, 0); });
+  H('lang', function () { askLabels(); redraw(); hikePaint(); });
+  setTimeout(usualChip, 2500);                            /* once GPS has had a moment */
+  window.SHGNAV_MORE = { openVisits: openVisits };
   H('navMoreHtml', function (N) {
     if (!N || N.preview) return '';
     return '<button class="btn ghost" type="button" id="nmPipB" style="width:100%;height:52px;margin-top:8px">📺 ' + esc(t('pip')) + '</button>';

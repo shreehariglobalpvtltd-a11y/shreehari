@@ -49,6 +49,13 @@ var TX = {
   fWait: { ne: 'यात्रा खोज्दैछु…', hi: 'यात्रा खोज रहा हूँ…', en: 'Finding the trip…' },
   fCenter: { ne: 'केन्द्रमा', hi: 'बीच में', en: 'Re-center' },
   fOpen: { ne: 'SHARI NAV खोल्नुस्', hi: 'SHARI NAV खोलें', en: 'Open SHARI NAV' },
+  notifyMe: { ne: '🔔 पुग्दा सूचना पाउनुस्', hi: '🔔 पहुँचने पर सूचना पाएं', en: '🔔 Notify me on arrival' },
+  notifyOn: { ne: 'पुग्ने बित्तिकै यो फोनमा सूचना आउनेछ', hi: 'पहुँचते ही इस फ़ोन पर सूचना आएगी', en: 'This phone will be notified on arrival' },
+  notifyOff: { ne: '🔔 सूचना चालु', hi: '🔔 सूचना चालू', en: '🔔 Notification on' },
+  notifyNo: { ne: 'यो फोन / ब्राउजरमा सूचना मिलेन — अनुमति हेर्नुस्', hi: 'इस फ़ोन / ब्राउज़र पर सूचना नहीं मिली — अनुमति देखें', en: 'Notifications are not available here — check the permission' },
+  arrivedT: { ne: '{d} मा पुग्नुभयो ✓', hi: '{d} पहुँच गए ✓', en: 'Arrived at {d} ✓' },
+  arrivedP: { ne: 'लाइभ सेयर बन्द भयो। तपाईंलाई पर्खिरहेकालाई खबर पठाउनुस्:', hi: 'लाइव शेयर बंद हो गया। इंतज़ार करने वालों को खबर भेजें:', en: 'Live sharing has stopped. Tell the people waiting for you:' },
+  arrivedMsg: { ne: 'म {d} मा सुरक्षित पुगें ✓ (SHARI NAV)', hi: 'मैं {d} सुरक्षित पहुँच गया ✓ (SHARI NAV)', en: 'I reached {d} safely ✓ (SHARI NAV)' },
   sec: { ne: 'सेकेन्ड', hi: 'सेकंड', en: 's' }, min: { ne: 'मिनेट', hi: 'मिनट', en: 'min' },
   busL: { ne: 'S Hari बस (लाइभ)', hi: 'S Hari बस (लाइव)', en: 'S Hari coaches (live)' },
   repL: { ne: 'बाटोका रिपोर्ट', hi: 'रास्ते की रिपोर्ट', en: 'Road reports' },
@@ -384,6 +391,7 @@ function follow(token) {
   c.addEventListener('click', function (e) {
     var b = e.target.closest('[data-f]'); if (!b) return;
     if (b.dataset.f === 'center') { FW.hold = false; followCam(true); }
+    if (b.dataset.f === 'notify' && !FW.watching) followNotify();
   });
   api('/api/nav-share.php?token=' + token).then(followApply).catch(function () { followCard('gone'); });
   on('share:' + token, followApply);
@@ -448,7 +456,38 @@ function followCard(gone) {
     '<div class="nl-fsub">' + (st.left != null ? esc(X.fmtDist(st.left)) + ' ' + esc(t('fLeft')) + ' · ' : '') +
       esc(stale ? t('fWeak') : t('fAgo', { n: ago(st.updated) })) + '</div>' +
     '<div class="nl-acts"><button class="nl-b" type="button" data-f="center">' + esc(t('fCenter')) + '</button>' +
+      (pushOk() ? '<button class="nl-b' + (FW.watching ? '' : ' cta') + '" type="button" data-f="notify">' + esc(FW.watching ? t('notifyOff') : t('notifyMe')) + '</button>' : '') +
       '<a class="nl-b" href="/navigate.html">' + esc(t('fOpen')) + '</a></div>';
+}
+/* arrival notification (Phase 4): this phone subscribes to web push and the
+   server pushes once when the rider arrives (api/nav-share.php action=watch) */
+function pushOk() { return 'serviceWorker' in navigator && 'PushManager' in window && !!window.Notification; }
+function b64ToU8(s) {
+  s = s.replace(/-/g, '+').replace(/_/g, '/'); s += '==='.slice((s.length + 3) % 4);
+  var raw = atob(s), a = new Uint8Array(raw.length);
+  for (var i = 0; i < raw.length; i++) a[i] = raw.charCodeAt(i);
+  return a;
+}
+function followNotify() {
+  if (!pushOk()) { X.toast(t('notifyNo'), 4000); return; }
+  Notification.requestPermission().then(function (p) {
+    if (p !== 'granted') throw new Error('denied');
+    return Promise.all([api('/api/push.php?action=key'), navigator.serviceWorker.register('/sw.js').then(function () { return navigator.serviceWorker.ready; })]);
+  }).then(function (x) {
+    var key = x[0] && x[0].key, reg = x[1]; if (!key) throw new Error('no key');
+    return reg.pushManager.getSubscription().then(function (s) { return s || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) }); });
+  }).then(function (sub) {
+    return api('/api/nav-share.php', { action: 'watch', token: FW.token, sub: sub.toJSON(), lang: lang() });
+  }).then(function () { FW.watching = true; followCard(); X.toast(t('notifyOn'), 3500); })
+    .catch(function () { X.toast(t('notifyNo'), 4000); });
+}
+/* the rider's side: arrived while sharing - one tap to tell the people waiting */
+function arrivedSheet(dest) {
+  var msg = t('arrivedMsg', { d: dest || '' });
+  var el = sheet('<h3>' + esc(t('arrivedT', { d: dest || '' })) + '</h3><p>' + esc(t('arrivedP')) + '</p>' +
+    '<div class="nl-acts"><a class="nl-b wa" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(msg) + '">' + esc(t('wa')) + '</a>' +
+    (navigator.share ? '<button class="nl-b" type="button" data-s>' + esc(t('more')) + '</button>' : '') + '</div>');
+  var b = el.querySelector('[data-s]'); if (b) b.onclick = function () { navigator.share({ title: 'SHARI NAV', text: msg }).catch(function () {}); };
 }
 function moveMarker(mk, to) {
   if (slow()) { mk.setLngLat(to); return; }
@@ -812,7 +851,12 @@ function hooks() {
     repAhead(N);
   });
   H('arrive', function (N) {
-    if (SH && SHx.N === N) { var me = X.S.me; sharePos(N, me ? { lat: me.lat, lng: me.lng, speed: 0, heading: null } : { lat: SH.to.lat, lng: SH.to.lng }, true); SH = null; shareSave(); }
+    if (SH && SHx.N === N) {
+      var me = X.S.me, dest = SH.dest;
+      sharePos(N, me ? { lat: me.lat, lng: me.lng, speed: 0, heading: null } : { lat: SH.to.lat, lng: SH.to.lng }, true);
+      SH = null; shareSave();
+      setTimeout(function () { arrivedSheet(dest); }, 1500);       /* after the page's own arrival card */
+    }
   });
   H('navStart', function (N) { REP.said = {}; if (SH && SHx.N && SHx.N !== N) shareEnd('stop'); });
   H('navStop', function (N) { if (SH && SHx.N === N && !N.arrived) shareEnd('stop'); SHx.N = null; });

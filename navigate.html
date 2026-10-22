@@ -1132,7 +1132,8 @@ var S = {
   data: {}, markers: { to: null, from: null, pois: [], bubs: [] },
   sim: null, simX: QS.has('sim') ? clamp(Math.round(+QS.get('sim') || 1), 1, 8) : 0, wake: null,
   /* nv4: battery saver = auto | on | off (auto = on below 20 % while not charging) */
-  saverPref: LS.get('shg:nm:saver', 'auto'), saver: false, batt: null
+  saverPref: LS.get('shg:nm:saver', 'auto'), saver: false, batt: null,
+  hike: !!LS.get('shg:nm:hike', false)                  /* Phase 4: walking may take hiking trails */
 };
 if (QS.has('debug')) { window.SHGNAV = S; window.SHGHOOKS = HOOKS; }
 /* "Auto" map: Day map between sunrise and sunset where the rider is, Night map after dark
@@ -2122,7 +2123,7 @@ function bindHome() {
 /* =====================================================================
    ROUTING  (own Valhalla in OSRM shape -> public OSRM)
 ===================================================================== */
-function avoidKey() { return (S.avoid.tolls ? 't' : '') + (S.avoid.highways ? 'h' : '') + (S.avoid.ferries ? 'f' : ''); }
+function avoidKey() { return (S.avoid.tolls ? 't' : '') + (S.avoid.highways ? 'h' : '') + (S.avoid.ferries ? 'f' : '') + (S.hike ? 'k' : ''); }
 function costingOpts(mode) {
   var c = MODES[mode].costing, o = {};
   if (mode === 'car' || mode === 'bus') {
@@ -2131,6 +2132,9 @@ function costingOpts(mode) {
   }
   if (mode === 'moto' && S.avoid.highways) o.use_highways = 0;      /* two-wheelers pay no toll in India */
   if (S.avoid.ferries) o.use_ferry = 0;
+  /* 22 Oct 2026 (Phase 4): hiking trails for Muktinath / Kedarnath / Gosaikunda - the walk may
+     use paths up to sac_scale "demanding mountain hiking" (Valhalla max_hiking_difficulty 4) */
+  if (mode === 'walk' && S.hike) o.max_hiking_difficulty = 4;
   if (!Object.keys(o).length) return null;
   var r = {}; r[c] = o; return r;
 }
@@ -7190,6 +7194,7 @@ window.SHGNAV_X = {
   closeModal: typeof closeModal === 'function' ? closeModal : null,
   homeChips: typeof homeChips === 'function' ? homeChips : null,
   at: at, nearest: nearest, prepRoute: prepRoute,
+  recompute: function () { if (S.level === 'dir') { S.cur = null; computeRoutes(); } },
   openPlace: function (p) {
     S.to = Object.assign({}, p); addRecent(S.to);
     if (S.level === 'place') { renderPlace(); setTo(S.to, true); } else push('place');   /* show() skips an unchanged level */
@@ -7206,8 +7211,8 @@ try { document.dispatchEvent(new CustomEvent('shgnav:ready')); } catch (e) {}
 boot();
 })();
 </script>
-<script src="/assets/nav/nav-guide.js?v=20261022g" defer></script>
-<script src="/assets/nav/nav-live.js?v=20261022d" defer></script>
-<script src="/assets/nav/nav-more.js?v=20261022b" defer></script>
+<script src="/assets/nav/nav-guide.js?v=20261022h" defer></script>
+<script src="/assets/nav/nav-live.js?v=20261022f" defer></script>
+<script src="/assets/nav/nav-more.js?v=20261022d" defer></script>
 </body>
 </html>

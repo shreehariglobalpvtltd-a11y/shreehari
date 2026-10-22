@@ -25,7 +25,7 @@
 'use strict';
 
 var X = null;                       /* the bridge, set in start() */
-var GV = '20261022g';
+var GV = '20261022h';
 
 /* ---------------------------------------------------------------------
    DATA
@@ -195,6 +195,7 @@ var TX = {
   tMine: { ne: 'मेरो', hi: 'मेरा', en: 'Mine' },
   syncB: { ne: 'फोन–कम्प्युटर sync', hi: 'फ़ोन–कंप्यूटर sync', en: 'Sync devices' },
   myBusB: { ne: 'मेरो बस (PNR)', hi: 'मेरी बस (PNR)', en: 'My bus (PNR)' },
+  allVisits: { ne: 'सबै भ्रमण', hi: 'सभी विज़िट', en: 'All visits' },
   parkT: { ne: 'पार्किङ', hi: 'पार्किंग', en: 'Parking' },
   chipAsk: { ne: 'AI सोध्नुस्', hi: 'AI से पूछें', en: 'Ask AI' },
   chipTirtha: { ne: 'तीर्थ', hi: 'तीर्थ', en: 'Tirtha' },
@@ -705,6 +706,7 @@ function bodyClick(e) {
     savePark(false); renderMine(); return;
   }
   if (b.dataset.park === 'ai') { askAI(); return; }
+  if (b.dataset.park === 'visits' && window.SHGNAV_MORE) { closeG(); afterClose(function () { window.SHGNAV_MORE.openVisits(); }); return; }
   if ((b.dataset.park === 'sync' || b.dataset.park === 'mybus') && window.SHGNAV_LIVE) {
     var LV = window.SHGNAV_LIVE, which = b.dataset.park;
     closeG(); afterClose(function () { if (which === 'sync') LV.openSync(); else LV.openMyBus(); });
@@ -1023,7 +1025,8 @@ function renderMine() {
   var v = LSg.get('shg:ng:visits', []);
   G.visRes = { title: t('visitsT'), items: v.slice(0, 20).map(function (x) { return { name: x.name, sub: new Date(x.t).toLocaleDateString(), lat: x.lat, lng: x.lng, kind: x.kind || '' }; }) };
   h += '<div class="sg-h3">' + esc(t('qVisits')) + '</div>' + (v.length ? placesHtml(G.visRes, 'v') +
-    '<div class="sg-acts" style="margin:0"><button class="sg-a" type="button" data-vis="clear">' + GI.x + esc(t('clear')) + '</button></div>' : '<div class="sg-empty">' + esc(t('noVisits')) + '</div>');
+    '<div class="sg-acts" style="margin:0">' + (window.SHGNAV_MORE ? '<button class="sg-a gold" type="button" data-park="visits">' + GI.hist + esc(t('allVisits')) + '</button>' : '') +
+    '<button class="sg-a" type="button" data-vis="clear">' + GI.x + esc(t('clear')) + '</button></div>' : '<div class="sg-empty">' + esc(t('noVisits')) + '</div>');
   h += '<div class="sg-acts"><button class="sg-a gold" type="button" data-park="ai">' + GI.spark + esc(t('chipAsk')) + '</button></div>';
   b.innerHTML = h;
 }
