@@ -660,6 +660,10 @@ function admin_footer(): void
         echo '<script>' . admin_poll_js() . '</script>';
     }
 
+    // 22 Oct 2026: every wa.me button opens WhatsApp (Web) in one click, not
+    // WhatsApp's own "Continue to chat" page first (assets/js/wa-direct.js).
+    echo '<script defer src="/assets/js/wa-direct.js?v=20261022a"></script>';
+
     // Phase 3: global search autosuggest — only rendered when the search
     // form itself is on the page (bookings.view). Debounces per keystroke,
     // asks admin/api/search.php for the top 8 hits across bookings /
