@@ -81,9 +81,21 @@ body[data-lvl=nav] .maplibregl-ctrl-bottom-left,body[data-lvl=nav] .maplibregl-c
 .boot-logo{width:64px;height:64px;margin:0 auto 14px;border-radius:18px;display:grid;place-items:center;
   background:linear-gradient(145deg,#1B2A4D,#0F1A30);border:1px solid var(--line2);box-shadow:var(--sh2)}
 .boot-logo svg{width:34px;height:34px}
+/* 22 Oct 2026: the official logo on the splash (owner: "logo sahit ko nav system") */
+#boot{background:radial-gradient(120% 80% at 50% 30%,#16264a 0%,var(--bg) 62%)}
+.boot-logo.img{width:min(62vw,240px);height:auto;aspect-ratio:439/228;padding:14px 18px;border-radius:26px;
+  background:linear-gradient(160deg,#fff,#eef3fb);border:0;box-shadow:0 18px 50px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.08);
+  animation:bootIn .7s var(--spring) both}
+.boot-logo.img img{width:100%;height:auto;display:block}
 .boot-t{font:600 18px Poppins,sans-serif;letter-spacing:.3px}
 .boot-t b{color:var(--gold)}
+.boot-in .boot-t{font-size:22px;margin-top:6px;animation:bootIn .7s .12s var(--ease) both}
 .boot-s{color:var(--text3);font-size:13px;margin-top:4px}
+.boot-in .boot-s{animation:bootIn .7s .2s var(--ease) both}
+.boot-bar{width:140px;height:3px;margin:18px auto 0;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;position:relative}
+.boot-bar::after{content:"";position:absolute;inset:0;width:40%;border-radius:3px;background:linear-gradient(90deg,#1F6FD1,var(--cta),var(--gold));animation:barmove 1.1s ease-in-out infinite}
+@keyframes bootIn{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.boot-logo.img,.boot-in .boot-t,.boot-in .boot-s,.boot-bar::after{animation:none}}
 .boot-err{max-width:300px;margin:16px auto 0;color:var(--text2);font-size:14px}
 
 /* ---------- top (home) ---------- */
@@ -426,6 +438,11 @@ body:not([data-lvl=home]) #chips,body:not([data-lvl=home]) #nearChips{display:no
 .t-light{background:linear-gradient(135deg,#eef0f3 30%,#fff 31%,#fff 36%,#eef0f3 37%),#eef0f3}
 .t-auto{background:linear-gradient(135deg,#eef0f3 49.5%,#0B1426 50.5%)}
 .t-sat{background:radial-gradient(circle at 30% 40%,#4c6b3a,#24361f 60%,#1a2617)}
+.t-hyb{background:linear-gradient(118deg,transparent 46%,rgba(255,214,120,.95) 47%,rgba(255,214,120,.95) 50%,transparent 51%),linear-gradient(28deg,transparent 58%,rgba(255,255,255,.75) 59%,rgba(255,255,255,.75) 61%,transparent 62%),radial-gradient(circle at 30% 40%,#4c6b3a,#24361f 60%,#1a2617)}
+.types.five{grid-template-columns:repeat(5,minmax(0,1fr))}
+/* 22 Oct 2026: S Hari offices on the map (logo pin) */
+.ofc-pin{width:38px;height:38px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);background:#fff;border:2px solid var(--gold);box-shadow:0 6px 16px rgba(0,0,0,.45);display:grid;place-items:center;cursor:pointer}
+.ofc-pin img{width:30px;height:auto;transform:rotate(45deg)}
 .tg{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;border-bottom:1px solid var(--line)}
 .tg span small{display:block;color:var(--text3);font-size:12.5px}
 .sw{position:relative;width:48px;height:28px;border-radius:14px;background:#2B3A5C;flex:none;transition:background .25s}
@@ -776,9 +793,10 @@ body.big .sr-dt{white-space:normal}
 <!-- boot -->
 <div id="boot">
   <div class="boot-in">
-    <div class="boot-logo"><svg viewBox="0 0 24 24" fill="#D4A843"><path d="M12 2.5l7.5 18.2-7.5-4.3-7.5 4.3z"/></svg></div>
-    <div class="boot-t">SHARI <b>NAV</b></div>
-    <div class="boot-s">Shree Hari Global</div>
+    <div class="boot-logo img"><img src="/assets/img/logo-mark.webp" width="439" height="228" alt="S Hari Global" fetchpriority="high" onerror="this.onerror=null;this.src='/assets/img/logo-mark.png'"></div>
+    <div class="boot-t">SHARI <b>NAV</b> · AI Map</div>
+    <div class="boot-s">S Hari Global · India ⇄ Nepal · Live Bus</div>
+    <div class="boot-bar" aria-hidden="true"></div>
     <div class="boot-err" id="bootErr" hidden></div>
   </div>
 </div>
@@ -1119,7 +1137,7 @@ function tIcon(type, mod, faint) {
 ===================================================================== */
 var S = {
   /* stylePref = what the rider picked (auto | dark | light | sat); styleKey = the map shown now */
-  map: null, own: null, stylePref: LS.get('shg:nm:style', 'dark'), styleKey: 'dark', b3d: LS.get('shg:nm:3d', true),
+  map: null, own: null, stylePref: LS.get('shg:nm:style', 'dark'), styleKey: 'dark', b3d: LS.get('shg:nm:3d', true), terrain: !!LS.get('shg:nm:terrain', false),
   me: null, watchId: null, follow: 'none', devHead: null, fixWait: [],
   from: { me: true, name: 'Your location' }, to: null, a: null,
   mode: MODES[LS.get('shg:nm:mode', 'car')] ? LS.get('shg:nm:mode', 'car') : 'car',
@@ -1153,7 +1171,7 @@ function sunUp(lat, lng, t) {
   return (now >= rise && now <= set) || (now >= rise + 1 && now <= set + 1) || (now >= rise - 1 && now <= set - 1);
 }
 function effStyle(pref) {
-  if (pref !== 'auto') return pref === 'light' || pref === 'sat' ? pref : 'dark';
+  if (pref !== 'auto') return pref === 'light' || pref === 'sat' || pref === 'hyb' ? pref : 'dark';
   var c = S.me ? [S.me.lng, S.me.lat] : S.map ? S.map.getCenter().toArray() : [80.2, 24.8];
   return sunUp(c[1], c[0], Date.now()) ? 'light' : 'dark';
 }
@@ -1256,6 +1274,34 @@ function styleFor(key) {
         tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'] } },
       layers: [{ id: 'esri', type: 'raster', source: 'esri' }] };
   }
+  /* 22 Oct 2026 · Hybrid (Apple Maps "Satellite" with labels): the imagery
+     under our own roads, names and borders - the night style's lines and
+     labels only, roads thinned and lifted so they read on photos */
+  if (key === 'hyb') {
+    var sat = styleFor('sat');
+    if (!S.own) return sat;
+    var ov = JSON.parse(JSON.stringify(S.own.night)), keep = ['transportation', 'transportation_name', 'place', 'boundary', 'water_name'];
+    /* roads at about half width so the photo shows between them (a zoom curve
+       can only be scaled at its stops, never wrapped in a '*') */
+    var thin = function (w, k) {
+      if (typeof w === 'number') return w * k;
+      if (Array.isArray(w) && w[0] === 'interpolate') return w.map(function (v, i) { return i > 3 && i % 2 === 0 && typeof v === 'number' ? v * k : v; });
+      return w;
+    };
+    ov.sources.esri = sat.sources.esri;
+    ov.layers = [sat.layers[0]].concat(ov.layers.filter(function (l) { return keep.indexOf(l['source-layer']) >= 0; }).map(function (l) {
+      l.paint = l.paint || {};
+      if (l.type === 'line' && l['source-layer'] === 'transportation') {
+        if (/casing/.test(l.id)) { l.paint['line-color'] = 'rgba(0,0,0,.25)'; }
+        else { l.paint['line-color'] = /motorway/.test(l.id) ? 'rgba(255,200,90,.85)' : /major/.test(l.id) ? 'rgba(255,226,150,.7)' : 'rgba(255,255,255,.45)'; }
+        if (l.paint['line-width'] != null) l.paint['line-width'] = thin(l.paint['line-width'], /motorway/.test(l.id) ? 0.6 : 0.5);
+        if (/path|minor_dash|dashline/.test(l.id)) l.paint['line-opacity'] = 0.5;
+      }
+      if (l.type === 'symbol') { l.paint['text-color'] = '#FFFFFF'; l.paint['text-halo-color'] = 'rgba(0,0,0,.85)'; l.paint['text-halo-width'] = 1.6; }
+      return l;
+    }));
+    return ov;
+  }
   if (S.own) return JSON.parse(JSON.stringify(key === 'light' ? S.own.day : S.own.night));
   return key === 'light' ? CARTO.light : CARTO.dark;
 }
@@ -1297,7 +1343,7 @@ function addOverlays() {
 function add3d() {
   var m = S.map;
   if (m.getLayer('b3d')) m.removeLayer('b3d');
-  if (!S.b3d || S.styleKey === 'sat' || S.saver) return;
+  if (!S.b3d || S.styleKey === 'sat' || S.styleKey === 'hyb' || S.saver) return;
   var src = m.getSource('openmaptiles') ? 'openmaptiles' : (m.getSource('carto') ? 'carto' : null);
   if (!src) return;
   try {
@@ -1305,6 +1351,32 @@ function add3d() {
       paint: { 'fill-extrusion-color': S.styleKey === 'light' ? '#D9DDE6' : '#1A2A4C',
                'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, ['coalesce', ['get', 'render_height'], ['get', 'height'], 8]],
                'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': 0.85 } });
+  } catch (e) {}
+}
+/* 22 Oct 2026 · 3D terrain (hills and the Himalaya stand up when the map is
+   tilted, like Apple Maps): AWS open elevation tiles (terrarium) as a
+   raster-dem, a hillshade under the roads, map.setTerrain(). Off by
+   default and never on battery saver / low data - it is the heaviest layer. */
+var DEM_SRC = { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+  encoding: 'terrarium', tileSize: 256, maxzoom: 14, attribution: 'Terrain: Mapzen / AWS Open Data' };
+function addTerrain() {
+  var m = S.map; if (!m || typeof m.setTerrain !== 'function') return;
+  var on = !!S.terrain && !S.saver && !document.body.classList.contains('lowdata');
+  try {
+    if (!on) {
+      if (m.getTerrain && m.getTerrain()) m.setTerrain(null);
+      if (m.getLayer('hills')) m.removeLayer('hills');
+      return;
+    }
+    if (!m.getSource('dem')) m.addSource('dem', DEM_SRC);
+    if (!m.getSource('dem-hs')) m.addSource('dem-hs', DEM_SRC);
+    if (!m.getLayer('hills')) {
+      var first = (m.getStyle().layers || []).filter(function (l) { return l.type === 'line' || l.type === 'symbol'; })[0];
+      m.addLayer({ id: 'hills', type: 'hillshade', source: 'dem-hs',
+        paint: { 'hillshade-exaggeration': S.styleKey === 'light' ? 0.35 : 0.5, 'hillshade-shadow-color': S.styleKey === 'light' ? '#5A6478' : '#000814',
+                 'hillshade-highlight-color': S.styleKey === 'light' ? '#FFFFFF' : '#3A4E78' } }, first ? first.id : undefined);
+    }
+    m.setTerrain({ source: 'dem', exaggeration: 1.35 });
   } catch (e) {}
 }
 /* nv4 battery saver: no 3D buildings, no CSS animation, map drawn at 1x pixels,
@@ -1316,7 +1388,7 @@ function applySaver() {
   document.body.classList.toggle('saver', on);
   if (!S.map) return;
   try { if (S.map.setPixelRatio) S.map.setPixelRatio(on ? 1 : (window.devicePixelRatio || 1)); } catch (e) {}
-  add3d();
+  add3d(); addTerrain();
   if (on && S.saverPref === 'auto') toast('Battery low · battery saver on');
 }
 function startBattery() {
@@ -1376,7 +1448,7 @@ function initMap() {
   var styleTimer = setTimeout(function () {
     if (!styleOk && S.own && S.styleKey !== 'sat') { S.own = null; map.setStyle(styleFor(S.styleKey), { diff: false }); }
   }, 12000);
-  map.on('style.load', function () { styleOk = true; clearTimeout(styleTimer); addOverlays(); fire('styleLoad'); });
+  map.on('style.load', function () { styleOk = true; clearTimeout(styleTimer); addOverlays(); addTerrain(); fire('styleLoad'); });
   /* the UI opens as soon as the style is ready, not after every first tile
      ('load'): on border-town 3G that wait was the whole splash screen */
   map.once('style.load', function () { $('#boot').classList.add('gone'); setTimeout(function () { $('#boot').hidden = true; }, 600); afterLoad(); });
@@ -3638,7 +3710,7 @@ function navMore() {
   var N = S.nav; if (!N) return;
   function render() {
     if (S.nav !== N) { closeModal(); return; }
-    var map = [['auto', 'Auto'], ['dark', 'Night'], ['light', 'Day'], ['sat', 'Satellite']];
+    var map = [['auto', 'Auto'], ['dark', 'Night'], ['light', 'Day'], ['sat', 'Satellite'], ['hyb', 'Hybrid']];
     openModal('<h3>Drive options</h3>' + voiceHtml() +
       (N.preview ? '' : '<h3 style="margin-top:20px">Find on your route</h3><div class="chips" id="alongCats" style="margin:0;padding:2px 0 8px">' +
         ALONG.map(function (c, i) { return '<button class="chip" type="button" data-along="' + i + '"><span class="em">' + c.e + '</span>' + esc(c.l) + '</button>'; }).join('') +
@@ -3817,12 +3889,13 @@ function openModal(html) { $('#modalCard').innerHTML = '<div class="grab" style=
 function closeModal() { $('#modal').hidden = true; }
 function openLayers() {
   var off = LS.get('shg:nm:off', null);
-  openModal('<h3>Map type</h3><div class="types">' +
-    [['auto', 'Auto', 't-auto'], ['dark', 'Night', 't-dark'], ['light', 'Day', 't-light'], ['sat', 'Satellite', 't-sat']].map(function (t) {
+  openModal('<h3>Map type</h3><div class="types five">' +
+    [['auto', 'Auto', 't-auto'], ['dark', 'Night', 't-dark'], ['light', 'Day', 't-light'], ['sat', 'Satellite', 't-sat'], ['hyb', 'Hybrid', 't-hyb']].map(function (t) {
       return '<button class="type' + (S.stylePref === t[0] ? ' on' : '') + '" type="button" data-style="' + t[0] + '"><i class="' + t[2] + '"></i>' + t[1] + '</button>';
     }).join('') + '</div>' +
     '<h3 style="margin-top:22px">Map details</h3>' +
     '<button class="tg" type="button" id="tg3d" style="width:100%;text-align:left"><span>3D buildings<small>Shown when the map is tilted</small></span><i class="sw' + (S.b3d ? ' on' : '') + '"></i></button>' +
+    '<button class="tg" type="button" id="tgTerrain" style="width:100%;text-align:left"><span>3D terrain · पहाड<small>Hills and mountains rise when you tilt the map (two fingers up). Uses more data.</small></span><i class="sw' + (S.terrain ? ' on' : '') + '"></i></button>' +
     '<h3 style="margin-top:22px">Battery saver</h3>' + saverHtml() +
     '<h3 style="margin-top:22px">Voice</h3>' + voiceHtml() +
     '<h3 style="margin-top:22px">Offline maps</h3>' +
@@ -3835,6 +3908,11 @@ function openLayers() {
     '<div class="row-s" style="margin-top:18px;text-align:center">Map data © OpenStreetMap contributors · Routing: SHARI NAV (Valhalla) / OSRM</div>');
   $$('#modalCard [data-style]').forEach(function (b) { b.onclick = function () { setStyle(b.dataset.style); openLayers(); }; });
   $('#tg3d').onclick = function () { S.b3d = !S.b3d; LS.set('shg:nm:3d', S.b3d); add3d(); if (S.map.getLayer('b3d') && S.map.getLayer('acc-fill')) S.map.moveLayer('b3d', 'acc-fill'); openLayers(); };
+  $('#tgTerrain').onclick = function () {
+    S.terrain = !S.terrain; LS.set('shg:nm:terrain', S.terrain); addTerrain();
+    if (S.terrain && S.map && S.map.getPitch() < 30 && S.level !== 'nav') S.map.easeTo({ pitch: 60, duration: 900 });
+    openLayers();
+  };
   bindVoice(openLayers); bindSaver(openLayers);
   fire('layersBind', openLayers);
   if ($('#offArea')) $('#offArea').onclick = function () { saveAreaOffline(); };
@@ -4442,13 +4520,13 @@ function aiL3(ne, hi, en) { return { ne: ne, hi: hi || ne, en: en }; }
 /* own strings; the same key in KB.ui wins (KB is the single source when present) */
 var AI_S = {
   title: aiL3('S Hari AI गाइड', 0, 'S Hari AI Guide'),
-  placeholder: aiL3('मन्दिर, बोर्डर, खाना, बस… सोध्नुस्', 'मंदिर, बॉर्डर, खाना, बस… पूछें', 'Ask about temples, border, food, bus…'),
+  placeholder: aiL3('नजिकको सैलुन, खाना, मन्दिर, बोर्डर, बस… सोध्नुस्', 'पास का सैलून, खाना, मंदिर, बॉर्डर, बस… पूछें', 'Salon near me, food, temples, border, bus…'),
   hello: aiL3('नमस्ते 🙏 म S Hari AI गाइड। मन्दिर, बोर्डर, खाना, पेट्रोल, आपतकालीन नम्बर र S Hari बसबारे सोध्नुस्।',
     'नमस्ते 🙏 मैं S Hari AI गाइड हूँ। मंदिर, बॉर्डर, खाना, पेट्रोल, आपातकालीन नंबर और S Hari बस के बारे में पूछें।',
     'Namaste 🙏 I am the S Hari AI Guide. Ask me about temples, the border, food, fuel, emergency numbers and the S Hari bus.'),
-  helpText: aiL3('म यी गर्न सक्छु:\n🛕 नजिकको मन्दिर र दर्शन समय\n🛂 बोर्डर: कागजात, पैसा, समय\n🍽️ खाना, ⛽ पेट्रोल, 🏧 ATM नजिकै\n🚨 आपतकालीन नम्बर\n🚌 S Hari बस, भाडा, ट्र्याक',
-    'मैं ये कर सकता हूँ:\n🛕 नज़दीकी मंदिर और दर्शन समय\n🛂 बॉर्डर: दस्तावेज़, पैसा, समय\n🍽️ खाना, ⛽ पेट्रोल, 🏧 ATM पास में\n🚨 आपातकालीन नंबर\n🚌 S Hari बस, किराया, ट्रैक',
-    'I can help with:\n🛕 Nearest temple and darshan times\n🛂 Border: documents, money, hours\n🍽️ Food, ⛽ fuel, 🏧 ATM nearby\n🚨 Emergency numbers\n🚌 S Hari bus, fare, tracking'),
+  helpText: aiL3('म यी गर्न सक्छु:\n🛕 नजिकको मन्दिर र दर्शन समय\n🛂 बोर्डर: कागजात, पैसा, समय\n🍽️ खाना, ⛽ पेट्रोल, 🏧 ATM नजिकै\n💇 नजिकको जुनसुकै ठाउँ: सैलुन, जिम, क्याफे, मोबाइल पसल…\n🚨 आपतकालीन नम्बर\n🚌 S Hari बस, भाडा, ट्र्याक',
+    'मैं ये कर सकता हूँ:\n🛕 नज़दीकी मंदिर और दर्शन समय\n🛂 बॉर्डर: दस्तावेज़, पैसा, समय\n🍽️ खाना, ⛽ पेट्रोल, 🏧 ATM पास में\n💇 पास की कोई भी जगह: सैलून, जिम, कैफे, मोबाइल दुकान…\n🚨 आपातकालीन नंबर\n🚌 S Hari बस, किराया, ट्रैक',
+    'I can help with:\n🛕 Nearest temple and darshan times\n🛂 Border: documents, money, hours\n🍽️ Food, ⛽ fuel, 🏧 ATM nearby\n💇 Any place near you: salon, gym, café, mobile shop…\n🚨 Emergency numbers\n🚌 S Hari bus, fare, tracking'),
   thanksReply: aiL3('धन्यवाद! शुभ यात्रा 🙏', 0, 'You are welcome! Safe journey 🙏'),
   thinking: aiL3('सोच्दैछु…', 'सोच रहा हूँ…', 'Thinking…'),
   offline: aiL3('अफलाइन – गाइडबाट जवाफ', 'ऑफ़लाइन – गाइड से जवाब', 'Offline – answering from the guide'),
@@ -4655,7 +4733,9 @@ var AI_STOP = ('ma me mein ko ka ki ke ho hai he hain cha chha chan the a an to 
 var AI_SUF = ['सम्म', 'देखि', 'लाई', 'बाट', 'तिर', 'में', 'को', 'मा', 'ले', 'का', 'की', 'के', 'से', 'तक'];
 var AI_NUKTA = { 'क़': 'क', 'ख़': 'ख', 'ग़': 'ग', 'ज़': 'ज', 'ड़': 'ड', 'ढ़': 'ढ', 'फ़': 'फ', 'य़': 'य' };
 /* P14 language markers (whole tokens) */
-var AI_NE = ['छ', 'छन्', 'हो', 'कसरी', 'कति', 'हुन्छ', 'गर्नुस्', 'जाने', 'मेरो', 'तपाईं', 'चाहिन्छ', 'cha', 'chha', 'kasari', 'kati', 'huncha', 'garnu', 'garnus', 'garne', 'jane', 'tadha', 'najik', 'najikai', 'mero', 'kaha', 'pugcha', 'parcha', 'chahincha', 'ma'];
+var AI_NE = ['छ', 'छन्', 'हो', 'कसरी', 'कति', 'हुन्छ', 'गर्नुस्', 'जाने', 'मेरो', 'तपाईं', 'चाहिन्छ', 'cha', 'chha', 'kasari', 'kati', 'huncha', 'garnu', 'garnus', 'garne', 'jane', 'tadha', 'najik', 'najikai', 'mero', 'kaha', 'pugcha', 'parcha', 'chahincha', 'ma',
+  /* 22 Oct 2026: "नजिकको सैलुन" was answered in Hindi (ै in सैलुन) */
+  'नजिकको', 'नजिकै', 'नजिक', 'पसल', 'najikko', 'pasal', 'xa'];
 var AI_HI = ['है', 'हैं', 'कैसे', 'कितना', 'कहाँ', 'करो', 'जाना', 'मेरी', 'क्या', 'चाहिए', 'hai', 'hain', 'kaise', 'kitna', 'kitni', 'kitne', 'kahan', 'karo', 'karein', 'kare', 'kya', 'mein', 'nazdik', 'najdik', 'meri', 'mera', 'jaye', 'jayen', 'chahiye', 'batao', 'kab'];
 
 var aiSt = { built: false, open: false, drive: false, pass: false, seq: 0, log: [], loaded: false, facts: null, factsP: null,
@@ -5230,6 +5310,52 @@ function aiServer(I, L) {
 }
 function aiFallback(L) { return { text: aiT('noAnswer', L), actions: aiOfficeActs(L).slice(0, 2) }; }
 
+/* ---------- 22 Oct 2026 · any kind of place "near me" ----------
+   Owner: "suggest me restaurant near me, near hair salon jasta question easily
+   fetch garera dina paros, ekdam fast". /api/nav-near.php reads our own place
+   index (1.5 M places, one indexed query, a few ms): salon, gym, cafe, mobile
+   shop, dentist… in Nepali / Hindi / English, a town in the question
+   ("salon in pokhara") or a brand ("dominos near me"). The answer stays in
+   the chat: the nearest five with distance + time, Navigate, all on the map. */
+var AI_NEAR_API = '/api/nav-near.php';
+var AI_NS = {
+  head: aiL3('{e} {c} नजिकका **{w}** ({n}):', '{e} {c} पास के **{w}** ({n}):', '{e} {n} nearest **{w}** {c}:'),
+  inTown: aiL3('{t} मा', '{t} में', 'in {t}'),
+  nearYou: aiL3('तपाईंको', 'आपके', 'to you'),
+  none: aiL3('{e} {w} {km} km भित्र नक्सामा भेटिएन। नक्साको अर्को ठाउँमा खोज्नुस्।', '{e} {w} {km} km के अंदर नक्शे पर नहीं मिला। नक्शे की दूसरी जगह खोजें।', '{e} No {w} on the map within {km} km. Try another part of the map.'),
+  all: aiL3('सबै नक्सामा', 'सब नक्शे पर', 'All on map')
+};
+function aiNearAny(I, L, sure) {
+  if (navigator.onLine === false) return Promise.resolve(null);
+  var me = aiMe(), q = String(I.q || '').slice(0, 160);
+  var u = AI_NEAR_API + '?lang=' + L + '&q=' + encodeURIComponent(q) + (me ? '&lat=' + me[1].toFixed(4) + '&lng=' + me[0].toFixed(4) : '');
+  return fetchT(u, { credentials: 'same-origin' }, 7000)
+    .then(function (res) { return res.json(); })
+    .then(function (j) {
+      if (!j || !j.ok || (!sure && !j.ask) || (!j.cat && !(j.results && j.results.length))) return null;
+      var e = j.cat ? j.cat.e : '📍', w = j.cat ? j.cat.l : q;
+      if (!j.at) return aiNeedLoc(I, L);
+      var ref = [+j.at.lng, +j.at.lat], items = (j.results || []).map(function (x) {
+        return { name: x.name, sub: [x.local, x.what].filter(Boolean).join(' · '), lng: +x.lng, lat: +x.lat, kind: x.kind, e: e, m: +x.m };
+      });
+      if (!items.length) return { text: aiFill(aiPick(AI_NS.none, L), { e: e, w: w, km: Math.round(j.km || 0) }), actions: [] };
+      var where = j.at.src === 'town' ? aiFill(aiPick(AI_NS.inTown, L), { t: j.at.name }) : aiPick(AI_NS.nearYou, L);
+      var rows = items.slice(0, 5).map(function (p) {
+        var est = aiEst(S.mode, ref, [p.lng, p.lat]);
+        return { e: e, t: p.name, s: p.sub, d: fmtDist(p.m) + ' · ~' + aiDur(est.dur, L), act: aiDriving() ? 'ease' : 'place', p: p };
+      });
+      return { text: aiFill(aiPick(AI_NS.head, L), { e: e, c: where, w: w, n: Math.min(5, items.length) }), rows: rows,
+               actions: [aiNavAct(items[0], L), { l: AI_NS.all, act: 'places', p: { title: e + ' ' + w, items: items, ref: ref, e: e } }] };
+    })
+    .catch(function () { return null; });
+}
+/* the whole list on the map (the core's list screen, same as Nearby) */
+function aiShowPlaces(L0) {
+  if (!L0 || !L0.items || !L0.items.length) return;
+  S.list = { title: L0.title, items: L0.items.slice(), ref: L0.ref, e: L0.e };
+  if (S.level === 'list') renderList(); else push('list');
+}
+
 /* the answer engine: text -> Promise<{text, actions, rows?, lang, later?, run?}> */
 function aiAnswer(text) {
   var q = String(text == null ? '' : text).trim().slice(0, AI_MAX), I = aiIntent(q), L = I.lang;
@@ -5248,11 +5374,12 @@ function aiAnswer(text) {
       case 'route': return aiRouteAns(I, L);
       case 'bus': return aiBusAns(I, L);
       case 'templeNear': return aiTempleNear(I, L);
-      case 'cat': return aiCatAns(I, L);
+      /* while driving the along-route rows answer (P1: no list screen mid-drive) */
+      case 'cat': return aiDriving() ? aiCatAns(I, L) : aiNearAny(I, L, true).then(function (a) { return a || aiCatAns(I, L); });
       case 'greet': return { text: aiT('hello', L), actions: [] };
       case 'thanks': return { text: aiT('thanksReply', L), actions: [] };
       case 'help': return { text: aiT('helpText', L), actions: [] };
-      default: return aiServer(I, L);
+      default: return aiNearAny(I, L).then(function (a) { return a || aiServer(I, L); });
     }
   }).then(function (a) {
     a = a || aiFallback(L);
@@ -5528,6 +5655,10 @@ function aiAct(m, a) {
       aiCloseThen(function () { aiOpenPlace(a.p); });
       return;
     case 'ease': aiEase(a.p); return;
+    case 'places':
+      if (aiDriving() || S.level === 'nav') { if (a.p && a.p.items && a.p.items[0]) aiEase(a.p.items[0]); return; }
+      aiCloseThen(function () { aiShowPlaces(a.p); });
+      return;
     case 'list': {
       var c = aiCatOf(a.p); if (!c) return;
       if (aiDriving()) { aiReply(aiAlong(c, L), L); return; }
@@ -7116,8 +7247,28 @@ function loadScript(src) {
 }
 function webglOk() { try { var c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } }
 function bootFail(msg) { var e = $('#bootErr'); e.innerHTML = msg; e.hidden = false; }
+/* 22 Oct 2026 · S Hari offices (Admin -> Counters: public, with a map pin) as
+   logo pins - the old #/nav map showed the head office; now every office
+   the desk places on the map shows here. Tap = the place card (directions). */
+function loadOffices() {
+  fetchT('/api/nav-offices.php', { credentials: 'same-origin' }, 8000)
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      (j && j.offices || []).forEach(function (o) {
+        var nm = (S.lang === 'ne' && o.name_ne) || (S.lang === 'hi' && o.name_hi) || o.name;
+        var p = { name: 'S Hari Global · ' + nm, sub: [o.kind === 'head' ? 'Head office' : 'Office', o.address, o.hours, o.phone].filter(Boolean).join(' · '),
+                  lat: +o.lat, lng: +o.lng, kind: 'office', ours: true };
+        var el = document.createElement('div');
+        el.className = 'ofc-pin'; el.title = p.name;
+        el.innerHTML = '<img src="/assets/img/logo-mark-96h.webp" alt="" onerror="this.onerror=null;this.src=\'/assets/img/logo-mark-96h.png\'">';
+        el.addEventListener('click', function (e) { e.stopPropagation(); if (S.level === 'nav') return; openPlace(Object.assign({}, p), S.level === 'place'); });
+        new maplibregl.Marker({ element: wrapM(el), anchor: 'bottom' }).setLngLat([p.lng, p.lat]).addTo(S.map);
+      });
+    }).catch(function () {});
+}
 function afterLoad() {
   locUI(); compassUI(); fire('mapReady');
+  loadOffices();
   /* already allowed? show the blue dot at once, like Google Maps */
   if (navigator.permissions && navigator.permissions.query) {
     navigator.permissions.query({ name: 'geolocation' }).then(function (p) { if (p.state === 'granted') { if (!LS.get('shg:nm:view', null)) S.pendingLocate = true; startGeo(); } }).catch(function () {});
@@ -7221,7 +7372,7 @@ boot();
 })();
 </script>
 <script src="/assets/nav/nav-guide.js?v=20261022i" defer></script>
-<script src="/assets/nav/nav-live.js?v=20261022f" defer></script>
+<script src="/assets/nav/nav-live.js?v=20261022g" defer></script>
 <script src="/assets/nav/nav-more.js?v=20261022e" defer></script>
 <script src="/assets/nav/nav-yatra.js?v=20261022a" defer></script>
 </body>
