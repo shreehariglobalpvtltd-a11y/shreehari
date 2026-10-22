@@ -9,6 +9,8 @@
  *   POST {action:'pos', token, secret, lat, lng, kmh, hd, left, eta, arrived, route?}
  *        every ~3 s while navigating; publishes to channel share:<token>
  *   POST {action:'stop', token, secret}
+ *   POST {action:'watch', token, sub, lang}   (Phase 4) a follower's phone asks
+ *        for a push when the rider arrives - sub = PushSubscription JSON
  *   GET  ?token=<32 hex>  -> what the follow page shows (never the secret)
  *
  * No login and no CSRF: nothing here rides on a cookie. Only the phone that
@@ -22,6 +24,37 @@ require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/navlive.php';
 
 header('Cache-Control: no-store');
+
+/** The rider arrived: one push to every phone that asked (Phase 4), then forget them. */
+function navShareArrivalPush(array $row): void
+{
+    try {
+        $subs = Database::fetchAll(
+            'SELECT p.id, p.endpoint, p.p256dh, p.auth, p.lang FROM nav_share_watch w
+               JOIN push_subscriptions p ON p.id = w.sub_id AND p.is_active = 1
+              WHERE w.token = :t LIMIT 10', ['t' => $row['token']]);
+        if ($subs === []) {
+            return;
+        }
+        require_once INCLUDE_PATH . '/webpush.php';
+        $dest = (string) $row['dest_name'];
+        $at = date('H:i');
+        $text = [
+            'ne' => ['✓ ' . ($dest !== '' ? $dest . ' मा ' : '') . 'पुग्नुभयो', 'SHARI NAV · ' . $at . ' मा पुग्नुभयो'],
+            'hi' => ['✓ ' . ($dest !== '' ? $dest . ' ' : '') . 'पहुँच गए', 'SHARI NAV · ' . $at . ' पर पहुँचे'],
+            'en' => ['✓ Arrived' . ($dest !== '' ? ' at ' . $dest : ''), 'SHARI NAV · arrived ' . $at],
+        ];
+        foreach ($subs as $s) {
+            $l = $text[(string) $s['lang']] ?? $text['ne'];
+            WebPush::send(['endpoint' => (string) $s['endpoint'], 'p256dh' => (string) $s['p256dh'], 'auth' => (string) $s['auth']],
+                ['title' => $l[0], 'body' => $l[1], 'url' => '/navigate.html?follow=' . $row['token'], 'tag' => 'nav-' . substr((string) $row['token'], 0, 8),
+                 'lang' => (string) $s['lang']], 3600);
+        }
+        Database::run('DELETE FROM nav_share_watch WHERE token = :t', ['t' => $row['token']]);
+    } catch (Throwable $e) {
+        Logger::exception($e, 'nav');                       /* a failed push never fails the rider's request */
+    }
+}
 
 try {
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
@@ -77,6 +110,29 @@ try {
         ]);
     }
 
+    /* watch: anyone holding the follow link may ask to be told on arrival */
+    if ($action === 'watch') {
+        Security::requireRateLimit('nav_share_watch', Security::clientIp(), 20, 3600);
+        require_once INCLUDE_PATH . '/webpush.php';
+        $row = NavLive::share((string) Response::field('token', ''));
+        $sub = WebPush::normaliseSubscription(Response::field('sub', null));
+        if ($row === null || (string) $row['status'] !== 'live') {
+            Response::notFound('This trip is no longer shared.');
+        }
+        if ($sub === null || !WebPush::enabled()) {
+            Response::invalid(['sub' => 'Notifications are not available on this phone.']);
+        }
+        if ((int) Database::scalar('SELECT COUNT(*) FROM nav_share_watch WHERE token = :t', ['t' => $row['token']], 0) >= 10) {
+            Response::error('Too many people are already waiting for this trip.', 429);
+        }
+        $lang = (string) Response::field('lang', 'ne');
+        $id = WebPush::subscribe($sub, ['lang' => in_array($lang, ['ne', 'hi', 'en'], true) ? $lang : 'ne',
+                                        'ua' => (string) ($_SERVER['HTTP_USER_AGENT'] ?? '')]);
+        Database::query('INSERT IGNORE INTO nav_share_watch (token, sub_id, created_at) VALUES (:t, :s, :c)',
+            ['t' => $row['token'], 's' => $id, 'c' => date('Y-m-d H:i:s')]);
+        Response::success(['watching' => true]);
+    }
+
     /* pos / stop: the phone that started it, proved by the secret */
     $token = (string) Response::field('token', '');
     $row = NavLive::share($token);
@@ -122,6 +178,9 @@ try {
     $row = NavLive::share($token);
     $out = NavLive::shareOut($row, isset($set['route']));
     NavLive::publish('share:' . $token, $out);
+    if ($out['status'] === 'arrived') {
+        navShareArrivalPush($row);
+    }
     Response::success(['status' => $out['status']]);
 } catch (Throwable $e) {
     Response::serverError($e);
