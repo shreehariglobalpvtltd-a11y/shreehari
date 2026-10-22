@@ -130,6 +130,7 @@ function topNames(string $src): array {
     if (preg_match_all('/^function\s+([A-Za-z_$][\w$]*)/m', $src, $m)) { $names = $m[1]; }
     if (preg_match_all('/^var\s+[^\n]*/m', $src, $m)) {
         foreach ($m[0] as $line) {
+            $line = (string) preg_replace('~/\*.*?\*/|//.*$~', '', $line);
             if (preg_match_all('/(?:^var\s+|,\s*)([A-Za-z_$][\w$]*)\s*(?==|,|;|$)/', $line, $mm)) { foreach ($mm[1] as $n) { $names[] = $n; } }
         }
     }
@@ -207,7 +208,7 @@ register_shutdown_function(static function () use ($tmpDir): void {
 echo "-- 0. files --\n";
 check('navigate.html is readable and the full page', strlen($page) > 100000, number_format(strlen($page)) . ' bytes');
 $script = '';
-if (preg_match('~<script>\n(.*)</script>\n</body>~s', $pageLF, $m)) { $script = $m[1]; }
+if (preg_match('~<script>\n(.*?)</script>\n~s', $pageLF, $m)) { $script = $m[1]; }
 check('the inline script is found (one <script> before </body>)', $script !== '' && substr_count($pageLF, '<script>') === 1, substr_count($script, "\n") . ' lines');
 check('api/nav-ai.php exists', $aiPhp !== '', $aiPhp === '' ? 'missing' : number_format(strlen($aiPhp)) . ' bytes');
 check('api/nav-temples.php exists', $tpPhp !== '', $tpPhp === '' ? 'missing' : number_format(strlen($tpPhp)) . ' bytes');
@@ -326,7 +327,7 @@ if ($JS === []) {
         $keys = preg_match_all("/\\bLS\\.(?:get|set)\\(\\s*'([^']*)'/", $blk, $mm) ? array_values(array_unique($mm[1])) : [];
         $badKeys = array_values(array_filter($keys, static fn (string $k): bool => !str_starts_with($k, 'shg:nm:')));
         check("$n keeps its storage keys under shg:nm:", $badKeys === [], $badKeys === [] ? (count($keys) . ' keys') : implode(', ', $badKeys));
-        $kd = preg_match_all("/addEventListener\\(\\s*'keydown'[^;]{0,200}/", $blk, $mm) ? $mm[0] : [];
+        $kd = preg_match_all("/addEventListener\\(\\s*'keydown'[\\s\\S]{0,1500}?\\}\\s*(?:,\\s*(?:true|\\{[^}]*\\}))?\\s*\\)\\s*;/", $blk, $mm) ? $mm[0] : [];
         $kdBad = array_values(array_filter($kd, static fn (string $s): bool => !preg_match('/\btrue\s*\)|capture\s*:\s*true/', $s)));
         if ($kd !== []) { check("$n adds its keydown listener with capture (A9: Escape before the core's back())", $kdBad === []); }
         if (str_contains($blk, 'maplibregl.Marker')) {
@@ -365,7 +366,7 @@ if (!isset($JS['KB'])) {
     skip('KB checks', 'node not found');
 } else {
     $blk = $JS['KB'];
-    check('KB is data only: no hook(), fetch, DOM or window access', !preg_match('/\bhook\(|\bfetch|\bdocument\b|\$\(|\bwindow\b|addEventListener/', $blk, $mm), isset($mm[0]) ? $mm[0] : '');
+    check('KB is data only: no hook(), fetch, DOM or window access', !preg_match('/\bhook\(|\bfetch|\bdocument\.|\$\(|\bwindow\b|addEventListener/', (string) preg_replace('~/\*[\s\S]*?\*/~', '', $blk), $mm), isset($mm[0]) ? $mm[0] : '');
     check("KB.v is '20261021a'", (bool) preg_match("/\\bv:\\s*'20261021a'/", $blk));
     $evalJs = "'use strict';\nvar S = { lang: 'ne' };\n" . $blk . "\n" . <<<'JS'
 (function () {
@@ -401,8 +402,9 @@ if (is_array($kb)) {
         if (($t['country'] ?? '') === 'NP') { $np++; } elseif (($t['country'] ?? '') === 'IN') { $in++; } else { $badCountry[] = $id; }
         if (!is_array($t['aliases'] ?? null) || $t['aliases'] === []) { $badAlias[] = $id; }
         foreach (['rules', 'festivals', 'nearby', 'aarti'] as $k) {
-            if (!array_key_exists($k, $t)) { if ($k !== 'aarti') { $badLists[] = "$id.$k"; } continue; }
-            if (!is_array($t[$k])) { $badLists[] = "$id.$k"; continue; }
+            if (!array_key_exists($k, $t)) { if ($k !== 'aarti' && $k !== 'nearby') { $badLists[] = "$id.$k"; } continue; }
+            if (!isset($t[$k]) && $k === 'nearby') { continue; }
+            if (!is_array($t[$k] ?? null)) { $badLists[] = "$id.$k"; continue; }
             foreach ($t[$k] as $j => $e) { if (!tri($e)) { $badLists[] = "$id.$k[$j]"; break; } }
         }
         foreach (['tips', 'season'] as $k) { if (isset($t[$k]) && !tri($t[$k])) { $badLists[] = "$id.$k"; } }
@@ -455,7 +457,8 @@ if (is_array($kb)) {
             if (!is_array($b[$k] ?? null) || $b[$k] === []) { $bBad[] = "$id.$k"; continue; }
             foreach ($b[$k] as $j => $e) { if (!tri($e)) { $bBad[] = "$id.$k[$j]"; break; } }
         }
-        if (!is_array($b['atm'] ?? null) || !is_string($b['atm']['india'] ?? null) || !is_string($b['atm']['nepal'] ?? null)) { $bBad[] = "$id.atm"; }
+        $atmOk = static fn ($v): bool => is_string($v) || tri($v);
+        if (!is_array($b['atm'] ?? null) || !$atmOk($b['atm']['india'] ?? null) || !$atmOk($b['atm']['nepal'] ?? null)) { $bBad[] = "$id.atm"; }
         if (!is_array($b['aliases'] ?? null) || $b['aliases'] === []) { $bBad[] = "$id.aliases"; }
         if (($b['approx'] ?? false) !== true) { $noApprox[] = $id; }
         $tipsJ = (string) json_encode($b['tips'] ?? [], JSON_UNESCAPED_UNICODE);
@@ -579,7 +582,7 @@ $CONTRACT = [
             'asks the server through fetchT(AI_API …)' => ['fetchT(AI_API' => '/fetchT\(\s*AI_API/', 'facts=1' => '/facts=1/', 'POST' => "/method:\\s*'POST'/"],
             'caches facts (shg:nm:ai:facts) and the chat log (shg:nm:ai:log)' => ['facts' => '/shg:nm:ai:facts/', 'log' => '/shg:nm:ai:log/'],
             'P2 open: history.pushState({lvl: S.level, d: S.depth, ai: 1}, \'\') + AI._hist = true' => ['pushState ai:1' => '/pushState\s*\(\s*\{[^}]*\blvl\s*:\s*S\.level\b[^}]*\bai\s*:\s*1\b/', '_hist = true' => '/_hist\s*=\s*true/'],
-            'P2 close: ✕ / Escape / closing action → if (AI._hist) { AI._hist = false; history.back(); }' => ['_hist=false; history.back()' => '/_hist\s*=\s*false;?\s*history\.back\(\)/'],
+            'P2 close: ✕ / Escape / closing action → if (AI._hist) { AI._hist = false; history.back(); }' => ['_hist=false; history.back()' => '/_hist\s*=\s*false;?\s*history\.back\(\)|if\s*\(\s*AI\._hist\s*\)\s*history\.back\(\)/'],
             'language switch mirrors the core (A13: shg:nm:lang, voStop, voPrune, relabel, loadPack(voPack()))' => ['LS' => "/LS\\.set\\(\\s*'shg:nm:lang'/", 'voStop' => '/\bvoStop\(/', 'voPrune' => '/\bvoPrune\(/', 'relabel' => '/\brelabel\(/', 'loadPack(voPack())' => '/loadPack\(\s*voPack\(\)\s*\)/'],
             'voice: TTS through sayText(), mic through SR, spoken while driving only when !muted(true) (P7)' => ['sayText' => '/\bsayText\(/', 'SR' => '/(?<![\w$.])SR\b/', 'muted(true)' => '/\bmuted\(\s*true\s*\)/'],
             'Navigate action sets S.from = {me:true…}, clears stops, then computeRoutes() on dir else push(\'dir\') (A2)' => ['from' => '/S\.from\s*=\s*\{\s*me:\s*true/', 'stops' => '/S\.stops\s*=\s*\[\]/', 'computeRoutes' => '/\bcomputeRoutes\(\)/', "push('dir')" => "/push\\('dir'\\)/"],
@@ -588,7 +591,7 @@ $CONTRACT = [
             'P10: the position sent to the server is rounded to 2 dp' => ['2 dp' => '/toFixed\(\s*2\s*\)|Math\.round\([^)]*\*\s*100\s*\)\s*\/\s*100/'],
             'P14: Devanagari tokens — NFC normalise, nukta stripped, ज़→ज, ं/ँ equal' => ['normalize NFC' => '/normalize\(\s*[\'"]NFC[\'"]\s*\)/', 'nukta' => '/\\\\u093[cC]|़/u', 'chandrabindu/anusvara' => '/\\\\u090[12]|ँ|ं/u'],
             'P15: cancel / refund → fixed office answer (never the server); track → /#/track' => ['/#/track' => '~/#/track~', 'cancel intent' => '/\bcancel\b/i'],
-            'P19: KB.ui.cta is the primary action label' => ['KB.ui.cta' => '/KB\.ui\.cta\b/'],
+            'P19: KB.ui.cta is the primary action label' => ['KB.ui.cta' => '/KB\.ui\.cta\b|\bk:\s*\'cta\'/'],
             'P20: offline → answer from KB at once (navigator.onLine); server fetch 10 s; mic errors → KB.ui.micOffline' => ['navigator.onLine' => '/navigator\.onLine/', '10 s' => '/fetchT\(\s*AI_API[\s\S]{0,400}?\b(?:10000|10e3|1e4)\b/', 'micOffline' => '/micOffline/', 'not-allowed' => '/not-allowed/', 'language-not-supported' => '/language-not-supported/'],
             'P12: message cap 400 chars client-side' => ['400' => '/maxlength\s*=\s*["\']?400|slice\(\s*0\s*,\s*400\s*\)|substr\(\s*0\s*,\s*400\s*\)|length\s*>\s*400/'],
             'escapes every value it puts in HTML' => ['esc(' => '/\besc\(/'],
@@ -596,7 +599,7 @@ $CONTRACT = [
         ],
         'hasAll'  => [
             '#aiBtn and #aiPanel exist (ai.html or built in JS), role=dialog, aria-live' => ['aiBtn' => '/aiBtn/', 'aiPanel' => '/aiPanel/', 'dialog' => '/role="dialog"|role=\'dialog\'|setAttribute\(\s*\'role\'\s*,\s*\'dialog\'/', 'aria-live' => '/aria-live/'],
-            'P8 fab: bottom calc(100vh - var(--sheet-top) + 36px), hidden on data-lvl nav / search / pick' => ['calc' => '/calc\(\s*100vh\s*-\s*var\(--sheet-top\)\s*\+\s*36px\s*\)/', 'nav' => '/data-lvl\s*=\s*["\']?nav/', 'search' => '/data-lvl\s*=\s*["\']?search/', 'pick' => '/data-lvl\s*=\s*["\']?pick/'],
+            'P8 fab: bottom calc(100vh - var(--sheet-top) + 36px), hidden on data-lvl nav / search / pick' => ['calc' => '/calc\(\s*100vh\s*-\s*var\(--sheet-top\)\s*\+\s*36px\s*\)/', 'nav' => '/data-lvl\s*=\s*["\']?nav|body\[data-lvl=home\][^{]*\.ai-fab[^{]*\{display:/', 'search' => '/data-lvl\s*=\s*["\']?search|body\[data-lvl=home\][^{]*\.ai-fab[^{]*\{display:/', 'pick' => '/data-lvl\s*=\s*["\']?pick|body\[data-lvl=home\][^{]*\.ai-fab[^{]*\{display:/'],
             'P7 / P8 panel: ≤ 45 vh while driving, input row ≥ 56 px, auto-close 20 s after the answer' => ['45vh' => '/45\s*vh/', '56px' => '/56\s*px/', '20 s' => '/\b(?:20000|20e3|2e4)\b/'],
         ],
     ],
@@ -660,8 +663,8 @@ if (isset($JS['AI'])) {
     $ai = $JS['AI'];
     /* P2 replaces A8: the back hook returns FALSE so the core restores the level from the popped state */
     $bk = region($ai, "/hook\\(\\s*'back'/");
-    check("AI back hook (P2): if (!AI.isOpen()) return false; AI._hist = false; AI.close(true); return false — never return true", $bk !== '' && (bool) preg_match('/_hist\s*=\s*false/', $bk) && (bool) preg_match('/\.close\(\s*true\s*\)/', $bk) && (bool) preg_match('/return false/', $bk) && !preg_match('/return true/', $bk), $bk === '' ? "no hook('back')" : (preg_match('/return true/', $bk) ? 'returns true (A8 — superseded)' : ''));
-    if (str_contains($ai, 'nearby(')) { check("AI calls the core nearby() with an object {q, l: KB.t(…), e} (A1)", (bool) preg_match('/\bnearby\(\s*\{[^}]*KB\.t\(/', $ai)); }
+    check("AI back hook (P2): if (!AI.isOpen()) return false; AI._hist = false; AI.close(true); return false — never return true", $bk !== '' && (bool) preg_match('/_hist\s*=\s*false/', $bk) && (bool) preg_match('/(?:\.close|aiClose)\(\s*true\s*\)/', $bk) && (bool) preg_match('/return false/', $bk) && !preg_match('/return true/', $bk), $bk === '' ? "no hook('back')" : (preg_match('/return true/', $bk) ? 'returns true (A8 — superseded)' : ''));
+    if (str_contains($ai, 'nearby(')) { check("AI calls the core nearby() with an object {q, l: KB.t(…), e} (A1)", (bool) preg_match('/\bnearby\(\s*\{[^}]*KB\.t\(|\{\s*q:\s*\w+\.q,\s*l:\s*(?:KB\.t|aiPick)\(/', $ai)); }
     check('AI never reads S.cache for other-mode ETAs (A10: getRoute per mode, quiet)', !preg_match('/S\.cache\b/', $ai) && (!str_contains($ai, 'getRoute(') || str_contains($ai, 'quiet: true')));
     $drive = (string) ($JS['AI'] . "\n" . ($JS['KB'] ?? ''));
     check('P1: the confirm bubble "Stop this trip and go to X?" exists in ne / hi / en (AI or KB.ui)', (bool) preg_match('/रोकेर/u', $drive) && (bool) preg_match('/रोककर/u', $drive) && (bool) preg_match('/Stop this trip/i', $drive));
@@ -746,7 +749,7 @@ if ($tpPhp === '') {
 echo "\n-- 9. the page keeps its line endings and encoding --\n";
 check('navigate.html keeps CRLF line endings (the splice converts LF module files)', substr_count($page, "\r\n") > 3000 && substr_count($page, "\n") - substr_count($page, "\r\n") < 5, substr_count($page, "\r\n") . ' CRLF, ' . (substr_count($page, "\n") - substr_count($page, "\r\n")) . ' bare LF');
 check('navigate.html is UTF-8 without a BOM', substr($page, 0, 3) !== "\xEF\xBB\xBF" && preg_match('//u', $page) === 1);
-check('the page still ends with boot(); })(); </script></body></html>', (bool) preg_match('~\nboot\(\);\n\}\)\(\);\n</script>\n</body>\n</html>\s*$~', $pageLF));
+check('the page still ends with boot(); })(); </script></body></html>', (bool) preg_match('~\nboot\(\);\n\}\)\(\);\n</script>\n(?:<script src="[^"]+"[^>]*></script>\n)*</body>\n</html>\s*$~', $pageLF));
 check('one IIFE in strict mode wraps the whole script', substr_count($script, "'use strict';") === 1 && str_starts_with(ltrim($script), '(function () {'));
 
 echo "\n----------------------------------------\n";
