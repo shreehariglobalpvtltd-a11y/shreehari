@@ -112,6 +112,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 .kribbon.org{background:#C25E00}
 .kribbon.staff{background:#11703F}
 .kribbon a{color:#fff;font-weight:700;text-decoration:underline;text-underline-offset:3px;min-height:32px;display:inline-flex;align-items:center}
+.flang{display:flex;justify-content:center;gap:6px;flex-wrap:wrap;padding:8px 12px;background:#081c5e}
+.flang button{min-height:36px;padding:0 14px;border-radius:999px;border:1.5px solid rgba(255,255,255,.35);background:transparent;color:#fff;font:inherit;font-size:13.5px;font-weight:800;cursor:pointer}
+.flang button[aria-pressed="true"]{background:#fff;color:#0a2a8f;border-color:#fff}
 </style>
 </head>
 <body>
@@ -125,6 +128,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 </header>
 <!-- 22 Oct 2026 (owner: "3 prakar ko form differentiate garera"): which form this is, in its own colour,
      with its A4 paper form and its own agreement - the same colours as the /agreements/#forms cards -->
+<!-- 23 Oct 2026 (owner: "Nepali, Hindi, English and Gujarati"): the form's words in Hindi / Gujarati (form-i18n.js); English stays beside -->
+<div class="flang" role="group" aria-label="Language · भाषा"><button type="button" data-flang="ne" aria-pressed="true">नेपाली</button><button type="button" data-flang="hi" aria-pressed="false">हिन्दी</button><button type="button" data-flang="gu" aria-pressed="false">ગુજરાતી</button></div>
 <div class="kribbon" id="kRib"><span id="kRibT">🤝 एजेन्ट फारम · AGENT</span><a id="kRibF" href="/agreements/form.php?kind=agent">📄 A4 फारम</a><a id="kRibA" href="/agreements/agent-agreement-ne.html">📜 एजेन्ट सम्झौता</a><a href="/agreements/#forms">↔ अर्को फारम</a></div>
 
 <main>
@@ -312,7 +317,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 
 <script src="/assets/js/wa-direct.js?v=20261022a"></script>
 <script src="/assets/js/wa-verify.js?v=20261022b"></script>
-<script src="/assets/js/bio-kit.js?v=20261022b"></script>
+<script src="/assets/js/bio-kit.js?v=20261023a"></script>
+<script src="/assets/js/form-i18n.js?v=20261023a"></script>
 <script>
 (function () {
   'use strict';
@@ -392,7 +398,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     $('eduShot').hidden = org;
     $('geoCard').hidden = staff;
     $('upiLbl').hidden = staff;
-    $('bankHint').textContent = $('bankHint').textContent.replace(/^(कमिसन|तलब) /, staff ? 'तलब ' : 'कमिसन ');
+    $('bankHint').textContent = (staff ? 'तलब' : 'कमिसन') + ' यही खातामा पठाइन्छ। कार्यालयले मात्र देख्छ — वेबसाइटमा कहिल्यै देखिँदैन। अहिले थाहा छैन भने पछि कार्यालयमा दिन सकिन्छ।';   // whole line: form-i18n.js translates it
     $('areaLbl').innerHTML = staff ? 'जिल्ला / शहर · District / city' : 'काम गर्ने ठाउँ / शहर · Work area / city <em>*</em>';
     $('addrLbl').innerHTML = staff ? 'स्थायी ठेगाना · Permanent address' : 'ठेगाना · Address <em>*</em>';
     // the ID choices: voter ID / other are agent-only, a driving licence / PAN staff-only
@@ -453,6 +459,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   /* ---- 22 Oct 2026: thumbprint by camera + the phone's fingerprint / Face ID lock (both optional) ---- */
   var thumb = window.ShgThumb ? window.ShgThumb.mount($('thumbBox')) : null;
   terms = window.ShgTerms ? window.ShgTerms.mount($('termsBox'), state.kind === 'org' ? 'partner' : state.kind === 'staff' ? 'staff' : 'agent') : null;
+  if (window.ShgFormLang) window.ShgFormLang.onChange(function (l) { if (terms && terms.setLang) terms.setLang(l); });
   state.webauthn = '';
   if (window.ShgPasskey) window.ShgPasskey.supported().then(function (ok) { $('pkBox').hidden = !ok; });
   $('pkBtn').addEventListener('click', function () {
@@ -722,7 +729,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   function send(btn, label) {
     var phone = '+' + $('cc').value + $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
     var body = {
-      type: state.kind, lang: 'ne', website: $('website').value, public_ok: $('public_ok').checked,
+      type: state.kind, lang: window.ShgFormLang ? window.ShgFormLang.get() : 'ne', website: $('website').value, public_ok: $('public_ok').checked,
       photo: state.photo, doc: state.doc, signature: signaturePng(), geo: state.geo,
       fields: { p_name: $('p_name').value.trim(), p_phone: phone, p_area: $('p_area').value.trim(), p_addr: $('p_addr').value.trim(),
                 p_idtype: $('p_idtype').value, p_idno: $('p_idno').value.trim(), p_occ: 'Online form (photo + signature)' }

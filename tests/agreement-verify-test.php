@@ -115,6 +115,25 @@ try {
     check('every new rule has its Nepali text', count($ne) === count($secs) && !str_contains(strtolower((string) json_encode(array_slice($ne, -5), JSON_UNESCAPED_UNICODE)), 'probation'));
     check('version constant is 1.1', StaffApps::AGREEMENT_VERSION === '1.1');
 
+    // ---- staff agreement in Hindi + Gujarati (23 Oct 2026) ----
+    check('staff agreement languages: ne, hi, en, gu', AgreementPrint::LANGS['staff'] === ['ne', 'hi', 'en', 'gu']);
+    $en = array_merge(...array_map(static fn($x) => $x['points'], $secs));
+    foreach (['hi' => '/[\x{0900}-\x{097F}]/u', 'gu' => '/[\x{0A80}-\x{0AFF}]/u'] as $l => $script) {
+        $tx  = AgreementPrint::sections('staff', $l);
+        $pts = array_merge(...array_map(static fn($x) => $x['points'], $tx));
+        $untranslated = array_filter($pts, static fn($pt) => preg_match($script, $pt['html']) !== 1);
+        check("staff $l: same rules and numbers as English", count($tx) === count($secs) && array_column($pts, 'num') === array_column($en, 'num'));
+        check("staff $l: every clause and title translated", $untranslated === [] && array_filter($tx, static fn($x) => preg_match($script, $x['title']) !== 1) === [],
+            implode(',', array_column($untranslated, 'num')));
+    }
+    $i18n  = require INCLUDE_PATH . '/staffagreement-i18n.php';
+    $sizes = static fn(array $l): array => array_map(static fn($x) => count($x[1]), $l);
+    check('hi and gu files have the same clause counts', $sizes($i18n['hi']) === $sizes($i18n['gu']));
+    $fi = (string) file_get_contents(dirname(__DIR__) . '/assets/js/form-i18n.js');
+    check('apply form loads form-i18n.js and has the language bar', str_contains((string) file_get_contents(dirname(__DIR__) . '/agreements/apply.html'), 'form-i18n.js?v=')
+        && str_contains((string) file_get_contents(dirname(__DIR__) . '/agreements/apply.html'), 'data-flang="gu"'));
+    check('form dictionary covers the new guarantor / witness card', str_contains($fi, "'जमानीकर्ता र साक्षी'") && str_contains($fi, "'साक्षी'"));
+
     // ---- the public page (HTTP, optional) ----
     [$code, $body] = $http('/verify-agreement.php');
     if ($code === 0) {

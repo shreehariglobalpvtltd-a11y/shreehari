@@ -42,7 +42,8 @@ try {
         'lang'     => $lang,
         'langs'    => AgreementPrint::LANGS[$kind],
         'title'    => $titles[$kind],
-        'url'      => $kind === 'staff' ? '/agreements/staff-agreement.html' : '/agreements/' . $kind . '-agreement-' . $lang . '.html',
+        // the staff page itself is Nepali + English; Hindi / Gujarati open the A4 agreement in that language (23 Oct 2026)
+        'url'      => $kind === 'staff' ? (in_array($lang, ['hi', 'gu'], true) ? '/agreements/form.php?kind=staff&lang=' . $lang : '/agreements/staff-agreement.html') : '/agreements/' . $kind . '-agreement-' . $lang . '.html',
         'sections' => AgreementPrint::sections($kind, $lang),
     ]);
 } catch (Throwable $e) {

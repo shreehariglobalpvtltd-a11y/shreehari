@@ -30,7 +30,7 @@ final class AgreementPrint
 {
     /** The languages each agreement exists in (the first is the default). */
     public const LANGS = [
-        'staff'   => ['ne', 'en'],
+        'staff'   => ['ne', 'hi', 'en', 'gu'],   // hi / gu: includes/staffagreement-i18n.php (23 Oct 2026)
         'agent'   => ['ne', 'hi', 'en', 'gu'],
         'partner' => ['ne', 'hi', 'en', 'gu'],
     ];
@@ -123,6 +123,12 @@ final class AgreementPrint
             return [];
         }
         preg_match_all('~<section class="card" id="c(\d+)"[^>]*>(.*?)</section>~su', $html, $secs, PREG_SET_ORDER);
+        $tr = [];   // Hindi / Gujarati: the page's English structure, the words from the translation file
+        if ($lang === 'hi' || $lang === 'gu') {
+            $all = require __DIR__ . '/staffagreement-i18n.php';
+            $tr  = is_array($all[$lang] ?? null) ? $all[$lang] : [];
+            $lang = 'en';
+        }
         $out = [];
         foreach ($secs as $sec) {
             $no = '';
@@ -140,6 +146,15 @@ final class AgreementPrint
                 $num = preg_match('~^\s*<b class="n">([^<]*)</b>~u', $inner, $nm) ? trim($nm[1]) : '';
                 $inner = (string) preg_replace('~^\s*<b class="n">[^<]*</b>~u', '', $inner);
                 $points[] = ['num' => $num, 'html' => self::fromHtml($inner)];
+            }
+            $t = $tr[(int) $sec[1]] ?? null;
+            if (is_array($t)) {
+                $title = (string) $t[0] !== '' ? (string) $t[0] : $title;
+                foreach ($points as $i => $pt) {
+                    if (is_string($t[1][$i] ?? null)) {
+                        $points[$i]['html'] = htmlspecialchars($t[1][$i], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    }
+                }
             }
             if ($points !== []) {
                 $out[] = ['no' => $no, 'title' => $title, 'points' => $points];
