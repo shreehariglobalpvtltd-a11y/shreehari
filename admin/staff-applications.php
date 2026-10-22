@@ -73,7 +73,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
                 Response::redirect('admin/' . $keep(['id' => $id, 'done' => $do, 'wa' => $r['wa'] ? 1 : 0]) . '#detail');
             } elseif ($act === 'web') {
                 $order = isset($_POST['display_order']) && is_numeric($_POST['display_order']) ? (int) $_POST['display_order'] : null;
-                StaffApps::setWebsite($id, isset($_POST['show']), $order, $selfId);
+                StaffApps::setWebsite($id, isset($_POST['show']), $order, $selfId,
+                    isset($_POST['base_location']) ? (string) $_POST['base_location'] : null);
                 Response::redirect('admin/' . $keep(['id' => (int) ($_POST['back'] ?? 0) ?: null, 'done' => 'web']) . (!empty($_POST['back']) ? '#web' : '#row' . $id));
             } elseif ($act === 'recheck') {
                 $st = StaffApps::recheck($id);
@@ -233,7 +234,7 @@ if (!$ready) {
           <div><b><?= $h($a['full_name']) ?></b><div class="muted text-xs mono"><?= $h($a['ref']) ?></div></div></div></td>
         <td class="mono" style="white-space:nowrap">+<?= $h(countryDialCode((string) $a['phone_country'])) ?> <?= $h($a['phone']) ?><?= (int) $a['phone_verified'] === 1 ? ' <span class="stf-ok" title="Proven with the WhatsApp code">✓</span>' : ' <span class="muted text-xs" title="WhatsApp code not entered">?</span>' ?></td>
         <td style="white-space:nowrap"><?= $h(StaffApps::roleLabel((string) $a['role_applied'])) ?></td>
-        <td><?= $h($a['district'] ?: '—') ?></td>
+        <td><?= $h($a['district'] ?: '—') ?><?php if (!empty($a['base_location'])): ?><div class="muted text-xs" title="Works at">🏢 <?= $h($a['base_location']) ?></div><?php endif; ?></td>
         <td><?= $docPill((string) $a['doc_verify_status']) ?></td>
         <td><?= $statusPill((string) $a['status']) ?></td>
         <td style="white-space:nowrap"><?= $h($fmtDate((string) $a['created_at'])) ?></td>
@@ -348,8 +349,12 @@ if (!$ready) {
     <form class="stf-pane" method="post" action="<?= $h($keep()) ?>" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center"><?= $csrfField ?><input type="hidden" name="action" value="web"><input type="hidden" name="id" value="<?= $oid ?>"><input type="hidden" name="back" value="<?= $oid ?>">
       <label class="stf-web"><input type="checkbox" name="show" value="1"<?= (int) $open['show_on_website'] === 1 ? ' checked' : '' ?>> 🟢 Show in “Our team” on the website</label>
       <label class="stf-web">Order <input type="number" name="display_order" value="<?= (int) $open['display_order'] ?>" style="width:80px;min-height:40px" aria-label="Order (lower first)"></label>
+      <?php if (StaffApps::locationReady()): ?>
+      <label class="stf-web">🏢 Works at <input name="base_location" list="stfLocs" maxlength="60" value="<?= $h($open['base_location'] ?? '') ?>" placeholder="Nepalgunj / Surat …" style="width:170px;min-height:40px" aria-label="Work location"></label>
+      <datalist id="stfLocs"><?php foreach (StaffApps::locations() as $lc): ?><option value="<?= $h($lc) ?>"><?php endforeach; ?></datalist>
+      <?php endif; ?>
       <button class="btn sm" type="submit">Save</button>
-      <span class="muted text-xs" style="flex:1 1 100%">Shows: <?= $h(implode(', ', StaffApps::publicFields())) ?> (Settings → staff_public_fields). Lower order first.</span>
+      <span class="muted text-xs" style="flex:1 1 100%">Shows: <?= $h(implode(', ', StaffApps::publicFields())) ?> (Settings → staff_public_fields) + the work location, which groups “Our team” on the home page. Lower order first.</span>
     </form>
     <?php else: ?><p><?= (int) $open['show_on_website'] === 1 ? '🟢 On the website' : 'Not on the website' ?></p><?php endif; ?>
     <?php endif; ?>

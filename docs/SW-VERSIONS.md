@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v245** — Staff applications: Our team on the home page (33-team.js), staff form + agreement pages
 - **shg-v244** — SHARI NAV drive like Google Maps: staged voice by distance, Then chip, screen on, avoid tolls/highways/ferries, speed-limit sign
 - **shg-v243** — Polish layer (polish.css): Hyper-Bus wheels spin clearer, route-band coach, phone feats fade, consistent .btn press, ticket PNR sweep
 - **shg-v228** — UI polish: brand blue/orange SmartBook, one-confirm customer Cash, one-click desk Cash, livelier coach scene

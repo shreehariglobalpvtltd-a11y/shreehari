@@ -380,10 +380,13 @@ try {
         && ($names['AgrTest Person']['kind'] ?? '') === 'agent' && ($names['AgrTest Person']['verified'] ?? false) === true);
     $badKey = false;
     foreach ($d['json']['items'] ?? [] as $it) {
-        if (array_keys($it) !== ['name', 'kind', 'area', 'phone', 'verified', 'signed']) { $badKey = true; }
+        // 19 Oct 2026: + public address, photo URL, WhatsApp; 22 Oct 2026: + a partner's logo URL
+        if (array_keys($it) !== ['name', 'kind', 'area', 'phone', 'verified', 'signed', 'addr', 'photo', 'logo', 'wa']) { $badKey = true; }
+        if (($it['photo'] !== '' && !preg_match('~^/api/agent-photo\.php\?k=[a-f0-9]{20}$~', $it['photo']))
+            || ($it['logo'] !== '' && !preg_match('~^/api/agent-photo\.php\?k=[a-f0-9]{20}&v=logo$~', $it['logo']))) { $badKey = true; }
     }
-    aa_check('every item has exactly name / kind / area / phone / verified / signed', !$badKey);
-    aa_check('no email, fields, photo, id, address or ID number anywhere', !preg_match('/"(email|fields|fields_json|photo|id|ref|status|note)"\s*:/', $d['body'])
+    aa_check('every item has exactly name / kind / area / phone / verified / signed / addr / photo / logo / wa', !$badKey);
+    aa_check('no email, fields, id, address or ID number anywhere', !preg_match('/"(email|fields|fields_json|id|ref|status|note)"\s*:/', $d['body'])
         && !str_contains($d['body'], 'agrtest@example.com') && !str_contains($d['body'], 'CIT-AGRTEST') && !str_contains($d['body'], 'base64')
         && !str_contains($d['body'], 'Test Tole') && !str_contains($d['body'], '000111222333'));
     $p = aa_req('POST', '/api/agent-directory.php', aa_jar('dir3'), ['json' => []]);

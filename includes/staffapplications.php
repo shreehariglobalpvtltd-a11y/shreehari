@@ -114,6 +114,10 @@ final class StaffApps
     ];
 
     private static ?bool $ready = null;
+    private static ?bool $locReady = null;
+
+    /** 22 Oct 2026: work locations offered first when the office sets one ("Our team" is grouped by it). */
+    public const LOCATIONS = ['Nepalgunj', 'Surat'];
 
     private function __construct() {}
 
@@ -136,6 +140,38 @@ final class StaffApps
             self::$ready = false;
         }
         return self::$ready;
+    }
+
+    /** base_location (upgrade-2026-10-22-team-portal.sql) is there. */
+    public static function locationReady(): bool
+    {
+        if (self::$locReady === null) {
+            try {
+                self::$locReady = self::available() && (bool) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'staff_applications' AND COLUMN_NAME = 'base_location'",
+                    [], 0
+                );
+            } catch (Throwable $e) {
+                self::$locReady = false;
+            }
+        }
+        return self::$locReady;
+    }
+
+    /** @return list<string> the work locations in use, plus the usual ones */
+    public static function locations(): array
+    {
+        $out = self::LOCATIONS;
+        if (self::locationReady()) {
+            foreach (Database::fetchAll(
+                "SELECT DISTINCT base_location FROM staff_applications WHERE base_location IS NOT NULL AND base_location <> '' ORDER BY base_location LIMIT 100") as $r) {
+                if (!in_array((string) $r['base_location'], $out, true)) {
+                    $out[] = (string) $r['base_location'];
+                }
+            }
+        }
+        return $out;
     }
 
     public static function refFor(int $id): string
@@ -798,8 +834,9 @@ final class StaffApps
             }
             $where[] = '(' . implode(' OR ', $or) . ')';
         }
+        $loc = self::locationReady() ? 'base_location' : 'NULL AS base_location';
         $rows = Database::fetchAll(
-            "SELECT id, full_name, phone, phone_country, phone_verified, district, role_applied, status, doc_verify_status,
+            "SELECT id, full_name, phone, phone_country, phone_verified, district, $loc, role_applied, status, doc_verify_status,
                     photo_path, show_on_website, display_order, created_at, approved_at
                FROM staff_applications
               WHERE " . implode(' AND ', $where) . "
@@ -917,8 +954,8 @@ final class StaffApps
         return ['status' => (string) ($set['status'] ?? $old), 'wa' => $wa === true, 'waLink' => is_string($wa) ? $wa : null];
     }
 
-    /** Website card: on / off and the order (lower first). */
-    public static function setWebsite(int $id, bool $on, ?int $order, int $by): void
+    /** Website card: on / off, the order (lower first) and the work location (null = leave it). */
+    public static function setWebsite(int $id, bool $on, ?int $order, int $by, ?string $loc = null): void
     {
         $r = self::find($id);
         if ($r === null) {
@@ -927,6 +964,12 @@ final class StaffApps
         $set = ['show_on_website' => $on ? 1 : 0];
         if ($order !== null) {
             $set['display_order'] = max(-9999, min(9999, $order));
+        }
+        if ($loc !== null && self::locationReady()) {
+            $loc = self::oneLine($loc, 60);
+            if ($loc !== (string) ($r['base_location'] ?? '')) {
+                $set['base_location'] = $loc !== '' ? $loc : null;
+            }
         }
         if ($on && empty($r['web_key'])) {
             $set['web_key'] = bin2hex(random_bytes(10));
@@ -1025,8 +1068,11 @@ final class StaffApps
             return [];
         }
         $pub  = array_flip(self::publicFields());
+        // 22 Oct 2026: the work location groups the cards. It is the company's
+        // branch, never the person's home, so it is not one of the public fields.
+        $loc  = self::locationReady() ? 'base_location' : 'NULL AS base_location';
         $rows = Database::fetchAll(
-            "SELECT id, full_name, phone, phone_country, district, role_applied, photo_path, web_key
+            "SELECT id, full_name, phone, phone_country, district, $loc, role_applied, photo_path, web_key
                FROM staff_applications
               WHERE status = 'approved' AND show_on_website = 1
               ORDER BY display_order ASC, approved_at ASC, id ASC
@@ -1041,9 +1087,11 @@ final class StaffApps
                 'roleEn'=> isset($pub['role_applied']) ? self::roleLabel($role) : '',
                 'roleNe'=> isset($pub['role_applied']) ? self::roleLabel($role, true) : '',
                 'district' => isset($pub['district']) ? (string) ($r['district'] ?? '') : '',
+                'loc'   => (string) ($r['base_location'] ?? ''),
                 'photo' => '',
                 'phone' => '',
                 'tel'   => '',
+                'wa'    => '',
             ];
             if (isset($pub['photo_path']) && !empty($r['photo_path']) && preg_match('/^[a-f0-9]{20}$/', (string) $r['web_key']) === 1) {
                 $it['photo'] = '/api/staff-photo.php?k=' . $r['web_key'];
@@ -1052,6 +1100,7 @@ final class StaffApps
                 $cc = countryDialCode((string) $r['phone_country']) ?: '977';
                 $it['phone'] = '+' . $cc . ' ' . $r['phone'];
                 $it['tel']   = '+' . $cc . $r['phone'];
+                $it['wa']    = $cc . $r['phone'];
             }
             $out[] = $it;
         }

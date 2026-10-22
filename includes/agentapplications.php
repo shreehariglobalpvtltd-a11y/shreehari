@@ -215,6 +215,7 @@ final class AgentApplications
     private static ?bool $extraOk   = null;
     private static ?bool $verifyOk  = null;
     private static ?bool $webOk     = null;
+    private static ?bool $logoOk    = null;
 
     /* =================================================================
      *  Schema presence — a page must never 500 because the migration has
@@ -339,6 +340,23 @@ final class AgentApplications
             }
         }
         return self::$webOk;
+    }
+
+    /** A partner company's logo (upgrade-2026-10-22-team-portal.sql, 22 Oct 2026). */
+    public static function logoReady(): bool
+    {
+        if (self::$logoOk === null) {
+            try {
+                self::$logoOk = self::webColumnsAvailable() && (bool) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'agent_applications' AND COLUMN_NAME = 'logo'",
+                    [], 0
+                );
+            } catch (Throwable $e) {
+                self::$logoOk = false;
+            }
+        }
+        return self::$logoOk;
     }
 
     /**
@@ -1226,6 +1244,14 @@ final class AgentApplications
             }
             $set['photo'] = $c['photo'];
         }
+        // 22 Oct 2026: a partner company's logo - public by nature, so no "show" switch.
+        if (is_string($in['logo'] ?? null) && $in['logo'] !== '' && self::logoReady()) {
+            $c = self::cleanPhoto($in['logo']);
+            if ($c['photo'] === null) {
+                throw new AgreementError('That logo could not be used — please choose another.');
+            }
+            $set['logo'] = $c['photo'];
+        }
         if (self::webColumnsAvailable()) {
             if (array_key_exists('web_addr', $in)) {
                 $v = self::oneLine(Security::clean((string) $in['web_addr'], 200));
@@ -1497,17 +1523,27 @@ final class AgentApplications
      *
      * @return array{0: string, 1: string}|null
      */
-    public static function publicPhoto(string $key): ?array
+    public static function publicPhoto(string $key, string $which = 'photo'): ?array
     {
         if (preg_match('/^[a-f0-9]{20}$/', $key) !== 1 || !self::available() || !self::webColumnsAvailable()) {
             return null;
         }
-        $photo = Database::scalar(
-            "SELECT photo FROM agent_applications
-              WHERE web_key = :k AND status = 'approved' AND web_live = 1 AND web_photo = 1 AND photo IS NOT NULL
-              LIMIT 1",
-            ['k' => $key], null
-        );
+        if ($which === 'logo') {
+            // 22 Oct 2026: a live partner company's logo
+            $photo = self::logoReady() ? Database::scalar(
+                "SELECT logo FROM agent_applications
+                  WHERE web_key = :k AND type = 'org' AND status = 'approved' AND web_live = 1 AND logo IS NOT NULL
+                  LIMIT 1",
+                ['k' => $key], null
+            ) : null;
+        } else {
+            $photo = Database::scalar(
+                "SELECT photo FROM agent_applications
+                  WHERE web_key = :k AND status = 'approved' AND web_live = 1 AND web_photo = 1 AND photo IS NOT NULL
+                  LIMIT 1",
+                ['k' => $key], null
+            );
+        }
         if (!is_string($photo) || preg_match('~^data:(image/(?:jpeg|png|webp));base64,(.+)$~s', $photo, $m) !== 1) {
             return null;
         }
@@ -1658,6 +1694,11 @@ final class AgentApplications
         $photoUrl = static fn(array $r): string =>
             $web && (int) ($r['web_photo'] ?? 0) === 1 && (int) ($r['has_photo'] ?? 0) === 1 && !empty($r['web_key'])
                 ? '/api/agent-photo.php?k=' . rawurlencode((string) $r['web_key']) : '';
+        // 22 Oct 2026: a partner company's logo (no consent switch - it is the company's public mark)
+        $logo = self::logoReady();
+        $logoUrl = static fn(array $r): string =>
+            $logo && (string) $r['type'] === 'org' && (int) ($r['has_logo'] ?? 0) === 1 && !empty($r['web_key'])
+                ? '/api/agent-photo.php?k=' . rawurlencode((string) $r['web_key']) . '&v=logo' : '';
 
         // 19 Oct 2026: one list. Every approved application is a card - also
         // one linked to an agent account (the office edits name, number,
@@ -1666,6 +1707,7 @@ final class AgentApplications
         $linkedCard = [];
         if (self::available()) {
             $webSel = $web ? 'x.web_live, x.web_photo, x.web_addr, x.web_key' : '1 AS web_live, 0 AS web_photo, NULL AS web_addr, NULL AS web_key';
+            $webSel .= $logo ? ', (x.logo IS NOT NULL) AS has_logo' : ', 0 AS has_logo';
             $apps = Database::fetchAll(
                 "SELECT x.type, x.name, x.phone, x.phone_raw, x.area, x.public_ok, x.kyc_status, x.agreement_status, x.agreement_end, x.admin_id,
                         (x.photo IS NOT NULL) AS has_photo, ad.is_active AS acc_active, $webSel
@@ -1702,6 +1744,7 @@ final class AgentApplications
                     'signed'   => $isSigned((string) $r['agreement_status'], $r['agreement_end'] !== null ? (string) $r['agreement_end'] : null),
                     'addr'     => trim((string) ($r['web_addr'] ?? '')),
                     'photo'    => $photoUrl($r),
+                    'logo'     => $logoUrl($r),
                     'wa'       => $full ? $intl($phone, (string) ($r['phone_raw'] ?? '')) : '',
                 ];
             }
@@ -1744,6 +1787,7 @@ final class AgentApplications
                 'signed'   => $isSigned((string) ($r['agreement_status'] ?? 'none'), $r['agreement_end'] !== null ? (string) $r['agreement_end'] : null),
                 'addr'     => '',
                 'photo'    => '',
+                'logo'     => '',
                 'wa'       => $full ? $intl($phone, '') : '',
             ];
         }

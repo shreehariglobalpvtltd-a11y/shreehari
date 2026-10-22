@@ -43,6 +43,8 @@ try {
             // (only when the full phone may be shown).
             'addr'     => (string) ($r['addr'] ?? ''),
             'photo'    => (string) ($r['photo'] ?? ''),
+            // 22 Oct 2026: a partner company's logo (partners only)
+            'logo'     => (string) ($r['logo'] ?? ''),
             'wa'       => (string) ($r['wa'] ?? ''),
         ];
     }

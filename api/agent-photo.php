@@ -18,7 +18,8 @@ try {
         Response::error('This endpoint only answers GET.', 405);
     }
     Security::requireRateLimit('agent_photo', Security::clientIp(), 300, 60);
-    $img = AgentApplications::publicPhoto((string) ($_GET['k'] ?? ''));
+    // ?v=logo (22 Oct 2026): a live partner company's logo instead of the photo
+    $img = AgentApplications::publicPhoto((string) ($_GET['k'] ?? ''), (string) ($_GET['v'] ?? '') === 'logo' ? 'logo' : 'photo');
     if ($img === null) {
         http_response_code(404);
         header('Content-Type: text/plain; charset=utf-8');

@@ -91,11 +91,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 if ($up !== null) {
                     $in['photo'] = $up;
                 }
+                // 22 Oct 2026: a partner company's logo (home page partner cards)
+                $logo = AgentApplications::photoFromUpload(isset($_FILES['logo']) && is_array($_FILES['logo']) ? $_FILES['logo'] : null);
                 if ($act === 'add') {
                     $in['type']       = (string) ($_POST['type'] ?? 'ind');
                     $in['kyc_status'] = (string) ($_POST['kyc_status'] ?? 'none');
                     $made = AgentApplications::adminCreate($in, $selfId, $canKyc);
+                    if ($logo !== null) {
+                        AgentApplications::saveCard((int) $made['id'], ['logo' => $logo], $selfId, false);
+                    }
                     Response::redirect('admin/agreements.php?tab=apps&id=' . $made['id'] . '&saved=1#detail');
+                }
+                if ($logo !== null) {
+                    $in['logo'] = $logo;
                 }
                 $id = (int) ($_POST['id'] ?? 0);
                 $changed = AgentApplications::saveCard($id, $in, $selfId, $canKyc);
@@ -436,6 +444,9 @@ if (!$ready) {
         <div class="field"><label for="cAddr">Shop / office address (public)</label><input id="cAddr" name="web_addr" class="inp" maxlength="200" value="<?= $h($open['web_addr'] ?? '') ?>" placeholder="e.g. Bus Park Road, Nepalgunj-4"><span class="help">Shown on the website. Not the home address from KYC.</span></div>
         <div class="field"><label for="cEmail">Email</label><input id="cEmail" name="email" class="inp" type="email" maxlength="160" value="<?= $h($open['email'] ?? '') ?>"></div>
         <div class="field"><label for="cPhoto">New photo</label><input id="cPhoto" name="photo" class="inp" type="file" accept="image/*"><span class="help">Optional — replaces the photo. Shrunk to 640 px.</span></div>
+        <?php if ((string) $open['type'] === 'org' && AgentApplications::logoReady()): ?>
+        <div class="field"><label for="cLogo">Company logo <?= !empty($open['logo']) ? '<img src="' . $h($open['logo']) . '" alt="" style="height:28px;vertical-align:middle;margin-left:6px;border-radius:6px;background:#fff">' : '' ?></label><input id="cLogo" name="logo" class="inp" type="file" accept="image/*"><span class="help">Pvt. Ltd. partner — the logo on the home page's partner card and the ID card.</span></div>
+        <?php endif; ?>
         <div class="field" style="grid-column:1/-1;display:flex;gap:4px 18px;flex-wrap:wrap">
           <label class="agr-check"><input type="checkbox" name="web_live" value="1"<?= (int) ($open['web_live'] ?? 1) === 1 ? ' checked' : '' ?>> 🟢 Live on website</label>
           <label class="agr-check"><input type="checkbox" name="web_photo" value="1"<?= (int) ($open['web_photo'] ?? 0) === 1 ? ' checked' : '' ?>> 📷 Show photo</label>
@@ -492,6 +503,7 @@ if ($canEdit && $ready && $noCard > 0): /* 19 Oct 2026: one agent list - bring t
       <div class="field"><label for="nArea">Area / city</label><input id="nArea" name="area" class="inp" maxlength="160" placeholder="e.g. Nepalgunj"></div>
       <div class="field"><label for="nAddr">Shop / office address (public)</label><input id="nAddr" name="web_addr" class="inp" maxlength="200"></div>
       <div class="field"><label for="nPhoto">Photo</label><input id="nPhoto" name="photo" class="inp" type="file" accept="image/*"></div>
+      <?php if (AgentApplications::logoReady()): ?><div class="field"><label for="nLogo">Company logo (partners)</label><input id="nLogo" name="logo" class="inp" type="file" accept="image/*"><span class="help">Only for an organization partner — shown on the home page's partner card.</span></div><?php endif; ?>
       <?php if ($canKyc): ?>
       <div class="field" style="grid-column:1/-1"><label for="nPAddr">Permanent address (KYC)</label><input id="nPAddr" name="p_addr" class="inp" maxlength="300"></div>
       <div class="field"><label for="nIdt">ID type</label><select id="nIdt" name="p_idtype" class="inp"><option value="">—</option><?php foreach (AgentApplications::ID_TYPES as $i => $l): ?><option value="<?= $i ?>"><?= $h($l) ?></option><?php endforeach; ?></select></div>
