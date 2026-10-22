@@ -25,7 +25,7 @@
 'use strict';
 
 var X = null;                       /* the bridge, set in start() */
-var GV = '20261022c';
+var GV = '20261022d';
 
 /* ---------------------------------------------------------------------
    DATA
@@ -192,6 +192,8 @@ var TX = {
   tTirtha: { ne: 'तीर्थ', hi: 'तीर्थ', en: 'Tirtha' },
   tBorder: { ne: 'बोर्डर', hi: 'बॉर्डर', en: 'Border' },
   tSos: { ne: 'SOS', hi: 'SOS', en: 'SOS' },
+  tMine: { ne: 'मेरो', hi: 'मेरा', en: 'Mine' },
+  parkT: { ne: 'पार्किङ', hi: 'पार्किंग', en: 'Parking' },
   chipAsk: { ne: 'AI सोध्नुस्', hi: 'AI से पूछें', en: 'Ask AI' },
   chipTirtha: { ne: 'तीर्थ', hi: 'तीर्थ', en: 'Tirtha' },
   hello: { ne: 'नमस्ते 🙏 म SHARI गाइड। मन्दिर, बाटो, खाना, पेट्रोल, बोर्डर — जे पनि सोध्नुस्। बोलेर पनि सोध्न सकिन्छ।',
@@ -336,6 +338,13 @@ function speakable(s) {
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 320);
 }
 function online() { return navigator.onLine !== false; }
+/* the page has its own AI chat (navigate.html AI module, 22 Oct 2026): every
+   question goes there, and this panel keeps Tirtha / Border / SOS / Mine */
+function hasAI() { return !!(X && X.aiOpen && X.aiAsk); }
+function askAI(q) {
+  function run() { if (q) X.aiAsk(q); else X.aiOpen(); }
+  if (G.open) { closeG(); afterClose(run); } else run();
+}
 
 /* ---------------------------------------------------------------------
    SERVER: CSRF + AI + place search (all same-origin)
@@ -494,7 +503,7 @@ function build() {
     fab.type = 'button'; fab.id = 'sgFab'; fab.className = 'fab sg-fab';
     fab.setAttribute('aria-label', 'SHARI Guide — AI');
     fab.innerHTML = GI.spark + '<i class="sg-dot"></i>';
-    fab.onclick = function () { openG(G.borderNew ? 'border' : 'ask'); };
+    fab.onclick = function () { openG(G.borderNew ? 'border' : hasAI() ? 'tirtha' : 'ask'); };
     ctr.insertBefore(fab, ctr.firstChild);
   }
   /* two chips on the home row: Ask AI, Tirtha */
@@ -554,13 +563,15 @@ function labels() {
   $('#sgMic').innerHTML = GI.mic; $('#sgMic').setAttribute('aria-label', 'Voice');
   $('#sgSend').innerHTML = GI.send; $('#sgSend').setAttribute('aria-label', 'Send');
   $('#sgInput').placeholder = t('ph');
-  var tabs = [['ask', GI.chat, t('tAsk')], ['tirtha', GI.temple, t('tTirtha')], ['border', GI.flag, t('tBorder')], ['sos', GI.shield, t('tSos')]];
+  var tabs = hasAI() ? [['tirtha', GI.temple, t('tTirtha')], ['border', GI.flag, t('tBorder')], ['sos', GI.shield, t('tSos')], ['mine', GI.park, t('tMine')]]
+                     : [['ask', GI.chat, t('tAsk')], ['tirtha', GI.temple, t('tTirtha')], ['border', GI.flag, t('tBorder')], ['sos', GI.shield, t('tSos')]];
   $('#sgTabs').innerHTML = tabs.map(function (x) {
     return '<button class="sg-tab' + (G.tab === x[0] ? ' on' : '') + '" type="button" role="tab" aria-selected="' + (G.tab === x[0]) + '" data-t="' + x[0] + '">' + x[1] + '<span>' + esc(x[2]) + '</span></button>';
   }).join('');
 }
 
 function openG(tab) {
+  if (hasAI() && (tab || G.tab) === 'ask') { if (tab === 'ask') { askAI(); return; } G.tab = 'tirtha'; }
   if (tab) G.tab = tab;
   var w = $('#sgWrap'); if (!w) return;
   if (!G.open) {
@@ -591,12 +602,13 @@ function afterClose(fn) {
 function render() {
   labels();
   var b = $('#sgBody'), q = $('#sgQuick'), f = $('#sgForm');
-  var chat = G.tab === 'ask';
+  var chat = G.tab === 'ask' && !hasAI();
   q.hidden = !chat; f.hidden = !chat;
   if (G.tab !== 'tirtha') clearPins();
   if (chat) { renderChat(); quickChips(); }
   else if (G.tab === 'tirtha') renderTirtha();
   else if (G.tab === 'border') renderBorder();
+  else if (G.tab === 'mine') renderMine();
   else renderSos();
   if (!chat) b.scrollTop = 0;
 }
@@ -665,7 +677,7 @@ function bodyClick(e) {
   var b = e.target.closest('[data-pl],[data-dh],[data-tf],[data-dhq],[data-post],[data-sosq],[data-vis],[data-park]');
   if (!b) return;
   if (b.dataset.pl) {
-    var a = b.dataset.pl.split(':'), m = G.msgs[+a[0]] || (a[0] === 's' ? G.sosRes : a[0] === 'n' ? G.nearT : null);
+    var a = b.dataset.pl.split(':'), m = G.msgs[+a[0]] || (a[0] === 's' ? G.sosRes : a[0] === 'n' ? G.nearT : a[0] === 'v' ? G.visRes : null);
     var p = m && m.items[+a[1]]; if (!p) return;
     if (a[2] === 'open') { closeG(); afterClose(function () { X.openPlace(p); }); }
     else go(p, a[2] === 'go');
@@ -675,14 +687,19 @@ function bodyClick(e) {
     var parts = b.dataset.dh.split(':'), d = DHAMS.find(function (x) { return x.id === parts[0]; }); if (!d) return;
     var p2 = { name: L(d.n), sub: L(d.city), lat: d.lat, lng: d.lng, kind: 'temple' };
     if (parts[1] === 'go' || parts[1] === 'dir') go(p2, parts[1] === 'go');
-    else if (parts[1] === 'ask') { G.tab = 'ask'; render(); ask(t('askDham', { n: L(d.n) }), false); }
+    else if (parts[1] === 'ask') {
+      if (hasAI()) askAI(t('askDham', { n: L(d.n) }));
+      else { G.tab = 'ask'; render(); ask(t('askDham', { n: L(d.n) }), false); }
+    }
     else if (parts[1] === 'open') { G.openDham = G.openDham === d.id ? null : d.id; renderTirtha(); }
     return;
   }
   if (b.dataset.tf) { G.tf = b.dataset.tf; if (G.tf === 'near') nearTemples(); else renderTirtha(); return; }
   if (b.dataset.post) { var po = POSTS.find(function (x) { return x.id === b.dataset.post; }); if (po) go({ name: L(po.n), sub: t('bTitle'), lat: po.lat, lng: po.lng }, false); return; }
   if (b.dataset.sosq) { sosNear(b.dataset.sosq); return; }
-  if (b.dataset.vis === 'clear') { LSg.set('shg:ng:visits', []); showVisits(true); return; }
+  if (b.dataset.vis === 'clear') { LSg.set('shg:ng:visits', []); if (G.tab === 'mine') renderMine(); else showVisits(true); return; }
+  if (b.dataset.park === 'save') { savePark(false); renderMine(); return; }
+  if (b.dataset.park === 'ai') { askAI(); return; }
   if (b.dataset.park === 'walk') { var pk = LSg.get('shg:ng:park', null); if (pk) go({ name: t('myCar'), sub: new Date(pk.t).toLocaleString(), lat: pk.lat, lng: pk.lng }, false, 'walk'); return; }
 }
 function go(p, start, mode) {
@@ -896,7 +913,7 @@ function analyseRoute() {
     prev = nowIn;
   }
   if (B.cross && S.level === 'dir') {
-    X.toast(t('bRouteToast'), 4200);
+    if (!hasAI()) X.toast(t('bRouteToast'), 4200);     /* the page's border module shows its own card */
     G.borderNew = true; var f = $('#sgFab'); if (f) f.classList.add('alert');
   }
 }
@@ -982,6 +999,22 @@ function showCar() {
   push({ k: 'b', html: '<b>' + esc(t('myCar')) + '</b> · ' + esc(new Date(pk.t).toLocaleString()) + (isFinite(d) ? ' · ' + esc(X.fmtDist(d)) : '') +
     '<div class="sg-acts"><button class="sg-a cta" type="button" data-park="walk">' + GI.go + esc(t('walkThere')) + '</button></div>' });
 }
+/* "Mine" tab (pages with their own AI chat): parking + visits, which live in the chat otherwise */
+function renderMine() {
+  var b = $('#sgBody'); if (!b) return;
+  var pk = LSg.get('shg:ng:park', null), d = pk ? distTo(pk) : Infinity;
+  var h = '<div class="sg-h3">' + esc(t('parkT')) + '</div><div class="sg-card"><div class="sg-row" style="cursor:default"><span class="sg-ric">' + GI.park + '</span>' +
+    '<span class="sg-rt"><b>' + esc(pk ? t('myCar') : t('noPark')) + '</b>' + (pk ? '<small>' + esc(new Date(pk.t).toLocaleString()) + '</small>' : '') + '</span>' +
+    '<span class="sg-rd">' + dLabel(d) + '</span></div><div class="sg-rb" style="padding-left:12px">' +
+    (pk ? '<button class="sg-a cta" type="button" data-park="walk">' + GI.go + esc(t('walkThere')) + '</button>' : '') +
+    '<button class="sg-a" type="button" data-park="save">' + GI.park + esc(t('qPark')) + '</button></div></div>';
+  var v = LSg.get('shg:ng:visits', []);
+  G.visRes = { title: t('visitsT'), items: v.slice(0, 20).map(function (x) { return { name: x.name, sub: new Date(x.t).toLocaleDateString(), lat: x.lat, lng: x.lng, kind: x.kind || '' }; }) };
+  h += '<div class="sg-h3">' + esc(t('qVisits')) + '</div>' + (v.length ? placesHtml(G.visRes, 'v') +
+    '<div class="sg-acts" style="margin:0"><button class="sg-a" type="button" data-vis="clear">' + GI.x + esc(t('clear')) + '</button></div>' : '<div class="sg-empty">' + esc(t('noVisits')) + '</div>');
+  h += '<div class="sg-acts"><button class="sg-a gold" type="button" data-park="ai">' + GI.spark + esc(t('chipAsk')) + '</button></div>';
+  b.innerHTML = h;
+}
 function showVisits(cleared) {
   var v = LSg.get('shg:ng:visits', []);
   if (cleared) G.msgs = G.msgs.filter(function (m) { return !m.visits; });
@@ -1001,8 +1034,8 @@ function tick() {
   if (W.lang !== S.lang) { W.lang = S.lang; labels(); if (G.open) render(); }
   analyseRoute();
   var N = S.nav;
-  /* border ahead (once per route) */
-  if (N && !N.preview && B.cross && B.cur === S.cur) {
+  /* border ahead (once per route) - on a page with its own border module, that one speaks */
+  if (N && !N.preview && B.cross && B.cur === S.cur && !hasAI()) {
     var ahead = B.cross.along - (N.along || 0);
     if (ahead > 0 && ahead < 5000 && !B.warned[B.cross.along]) { B.warned[B.cross.along] = 1; X.toast(t('bAhead'), 6000); talkForce(t('bAhead')); }
   }
@@ -1022,7 +1055,7 @@ function tick() {
   if (S.me && Date.now() - W.cAt > 15000) {
     W.cAt = Date.now();
     var c = countryAt([S.me.lng, S.me.lat]);
-    if (W.country && c !== W.country) { var wm = TX.welcome[lang()][c]; X.toast(wm, 6000); talkForce(wm); }
+    if (W.country && c !== W.country && !hasAI()) { var wm = TX.welcome[lang()][c]; X.toast(wm, 6000); talkForce(wm); }
     W.country = c;
   }
 }
@@ -1069,7 +1102,7 @@ function start() {
   setInterval(function () { try { tick(); } catch (e) { if (window.console) console.warn('nav-guide', e); } }, 1000);
   /* deep link: navigate.html?guide=1 | ?guide=tirtha | border | sos */
   var g = new URLSearchParams(location.search).get('guide');
-  if (g) setTimeout(function () { openG(['ask', 'tirtha', 'border', 'sos'].indexOf(g) >= 0 ? g : 'ask'); }, 900);
+  if (g) setTimeout(function () { openG(['ask', 'tirtha', 'border', 'sos', 'mine'].indexOf(g) >= 0 ? g : 'ask'); }, 900);
   if (new URLSearchParams(location.search).has('debug')) window.SHGGUIDE = { G: G, B: B, inNepal: inNepal, ask: ask, openG: openG };
 }
 if (window.SHGNAV_X) start(); else document.addEventListener('shgnav:ready', start, { once: true });
