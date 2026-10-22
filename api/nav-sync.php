@@ -14,18 +14,18 @@
  * Who: a customer whose number THIS session proved with the WhatsApp code
  * (CustomerProfile::verifiedUserId - name + mobile alone is never proof), or
  * a signed-in staff member. Anyone else gets {signedIn:false}.
- * Limits: 400 items, 256 KB, keys like home, park, place:<lat>,<lng>.
+ * Limits: 400 items, 256 KB, keys like home, park, place:<lat>,<lng>. Merge rules: NavLive::syncMerge.
  */
 declare(strict_types=1);
 define('SHG_APP', true);
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/customerprofile.php';
+require_once INCLUDE_PATH . '/navlive.php';
 
 header('Cache-Control: no-store');
 
-const NAV_SYNC_MAX_ITEMS = 400;
+const NAV_SYNC_MAX_ITEMS = NavLive::SYNC_MAX_ITEMS;
 const NAV_SYNC_MAX_BYTES = 262144;
-const NAV_SYNC_TOMB_DAYS = 90;
 
 /** @return array{key:string, name:string, phone:string}|null */
 function nav_sync_who(): ?array
@@ -72,33 +72,10 @@ try {
         Response::invalid(['items' => 'Too many items.']);
     }
     $nowMs = (int) round(microtime(true) * 1000);
-    $clean = [];
-    foreach ($in as $k => $it) {
-        $k = (string) $k;
-        if (preg_match('/^[a-z]{2,8}(:[A-Za-z0-9.,:_-]{1,80})?$/', $k) !== 1 || !is_array($it) || !is_numeric($it['t'] ?? null)) {
-            continue;
-        }
-        $t = (float) $it['t'];
-        if ($t < $nowMs - 5 * 365 * 86400000.0 || $t > $nowMs + 86400000.0) {
-            continue;                                      /* a phone with a wild clock */
-        }
-        $clean[$k] = !empty($it['del']) ? ['t' => $t, 'del' => true] : ['t' => $t, 'v' => $it['v'] ?? null];
-    }
 
-    $items = Database::transaction(static function () use ($who, $clean, $nowMs): array {
+    $items = Database::transaction(static function () use ($who, $in, $nowMs): array {
         $rows = Database::fetchForUpdate('SELECT data FROM nav_sync WHERE user_key = :k', ['k' => $who['key']]);
-        $items = nav_sync_items($rows[0] ?? null);
-        foreach ($clean as $k => $it) {
-            if (!isset($items[$k]) || $it['t'] > (float) ($items[$k]['t'] ?? 0)) {
-                $items[$k] = $it;
-            }
-        }
-        $old = $nowMs - NAV_SYNC_TOMB_DAYS * 86400000.0;
-        foreach ($items as $k => $it) {
-            if (!empty($it['del']) && (float) $it['t'] < $old) {
-                unset($items[$k]);
-            }
-        }
+        $items = NavLive::syncMerge(nav_sync_items($rows[0] ?? null), $in, $nowMs);
         $json = json_encode(['items' => (object) $items], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if (!is_string($json) || strlen($json) > NAV_SYNC_MAX_BYTES || count($items) > NAV_SYNC_MAX_ITEMS) {
             throw new RuntimeException('Too much to keep - remove some saved places or trips.');

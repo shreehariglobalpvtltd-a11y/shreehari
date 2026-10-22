@@ -250,6 +250,62 @@ final class NavLive
     }
 
     /* ---------------------------------------------------------------
+     *  Device sync (api/nav-sync.php)
+     * ------------------------------------------------------------- */
+
+    public const SYNC_MAX_ITEMS = 400;
+    public const SYNC_LIST_KEEP = 100;      /* trip:* and visit:* are append-only lists */
+    public const SYNC_TOMB_DAYS = 30;
+
+    /**
+     * Merge what a device sent into the stored items: per key the newer t
+     * wins; tombstones go after 30 days; a clear:<list> drops that list's
+     * older entries; each list keeps its newest 100. Pure, so it is tested.
+     *
+     * @param array<string, array<string,mixed>> $items stored
+     * @param array<string, mixed>               $in    sent by the device
+     * @return array<string, array<string,mixed>>
+     */
+    public static function syncMerge(array $items, array $in, int $nowMs): array
+    {
+        foreach ($in as $k => $it) {
+            $k = (string) $k;
+            if (preg_match('/^[a-z]{2,8}(:[A-Za-z0-9.,:_-]{1,80})?$/', $k) !== 1 || !is_array($it) || !is_numeric($it['t'] ?? null)) {
+                continue;
+            }
+            $t = (float) $it['t'];
+            if ($t < $nowMs - 5 * 365 * 86400000.0 || $t > $nowMs + 86400000.0) {
+                continue;                                    /* a phone with a wild clock */
+            }
+            if (!isset($items[$k]) || $t > (float) ($items[$k]['t'] ?? 0)) {
+                $items[$k] = !empty($it['del']) ? ['t' => $t, 'del' => true] : ['t' => $t, 'v' => $it['v'] ?? null];
+            }
+        }
+        $old = $nowMs - self::SYNC_TOMB_DAYS * 86400000.0;
+        $lists = [];
+        foreach ($items as $k => $it) {
+            $pre = strstr($k, ':', true);
+            if (!empty($it['del']) && (float) $it['t'] < $old) {
+                unset($items[$k]);
+            } elseif ($pre === 'trip' || $pre === 'visit') {
+                $clear = $items['clear:' . $pre]['t'] ?? null;
+                if ($clear !== null && (float) $it['t'] <= (float) $clear) {
+                    unset($items[$k]);
+                } else {
+                    $lists[$pre][$k] = (float) $it['t'];
+                }
+            }
+        }
+        foreach ($lists as $keys) {
+            arsort($keys);
+            foreach (array_slice(array_keys($keys), self::SYNC_LIST_KEEP) as $k) {
+                unset($items[$k]);
+            }
+        }
+        return $items;
+    }
+
+    /* ---------------------------------------------------------------
      *  Housekeeping (cron/nav-live.php, hourly)
      * ------------------------------------------------------------- */
 
