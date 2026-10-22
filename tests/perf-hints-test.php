@@ -310,7 +310,7 @@ $tick = [
     '05-router.js hold pills'                  => ['assets/js/05-router.js', 'holdInt = setInterval(function () { if (!document.hidden) updateHoldPills(); }, 1000);'],
     '08-signin.js OTP resend countdown'        => ['assets/js/08-signin.js', "if (document.hidden) return;\n    const left = Math.ceil((until - Date.now()) / 1000);"],
     '13-admin-routes.js live clock'            => ['assets/js/13-admin-routes.js', 'setInterval(function () { if (!document.hidden && el.isConnected'],
-    '15-nav.js "updated N s ago"'              => ['assets/js/15-nav.js', "function snTrackTick(){\n    if(document.hidden) return;"],
+    '10-track.js home live coaches'            => ['assets/js/10-track.js', "function load() {\n    if (document.hidden || !seen) return;"],
     '16-lazy.js pickup countdown'              => ['assets/js/16-lazy.js', 'TC.countdownT = setInterval(function () { if (!document.hidden) tick(); }, 1000);'],
     '16-lazy.js where-is poll'                 => ['assets/js/16-lazy.js', 'TC.manualT = setInterval(function () { if (!document.hidden) pull(); }, 45000);'],
     '22-routeline.js next-departure countdown' => ['assets/js/22-routeline.js', "ticking = setInterval(function () {\n      if (D.hidden) return;"],

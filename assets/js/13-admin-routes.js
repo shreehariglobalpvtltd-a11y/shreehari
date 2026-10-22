@@ -2251,40 +2251,8 @@ var SN_STOPS=[
   {n:'Bahraich',lat:27.5745,lng:81.5959},{n:'Rupaidiha',lat:28.06,lng:81.616,f:'🛃'},
   {n:'Nepalgunj',lat:28.05,lng:81.6167,f:'🇳🇵'}
 ];
-var SN_HOME={lat:28.6132,lng:81.6087,label:'Sigane ko ghar'};
-
-/* Lazy loader for the navigator bundle. renderNav / cleanupNav below are
-   stubs that 15-nav.js REPLACES (same global function names) once loaded. */
-var SN_NAV_P=null, SN_NAV_LOADED=false;
-function snNavLoad(){
-  if(SN_NAV_P) return SN_NAV_P;
-  var ver=''; try{ var sc=document.querySelector('script[src*="13-admin-routes.js"]'); var m=sc&&sc.getAttribute('src').match(/[?&]v=([^&]+)/); ver=m?m[1]:''; }catch(e){}
-  /* 10 Oct 2026 (navpro): the pro bundle (26-navpro.js - cockpit view, flight,
-     device tier, TV + keyboard, honest live status) is chained right after
-     15-nav.js with the same ?v= stamp, and renderNav waits for both. A failed
-     pro load is not fatal: every hook in 15-nav.js is guarded with typeof. */
-  function snScript(name){
-    return new Promise(function(res,rej){
-      var s=document.createElement('script'); s.src='/assets/js/'+name+(ver?'?v='+encodeURIComponent(ver):''); s.async=true;
-      s.onload=function(){ res(); };
-      s.onerror=function(){ rej(new Error(name+' failed to load')); };
-      document.head.appendChild(s);
-    });
-  }
-  SN_NAV_P=snScript('15-nav.js')
-    .then(function(){ SN_NAV_LOADED=true; return snScript('26-navpro.js').catch(function(){}); })
-    .catch(function(e){ SN_NAV_P=null; throw e; });
-  return SN_NAV_P;
-}
-function renderNav(){
-  var stub=renderNav, loader=$('#snLoad'); if(loader) loader.style.display='flex';
-  if(typeof snLoadMapInit==='function') snLoadMapInit();
-  snNavLoad().then(function(){
-    if(typeof window.renderNav==='function' && window.renderNav!==stub) window.renderNav();
-    else { if(loader) loader.style.display='none'; toast('Map could not start'); }
-  }).catch(function(){ if(loader) loader.style.display='none'; toast('Map failed to load - check your connection'); });
-}
-function cleanupNav(){ /* nothing to clean until the nav bundle has loaded; 15-nav.js replaces this */ }
+/* 22 Oct 2026: the old navigator (15-nav.js / 26-navpro.js, loaded here on the
+   first #/nav) is gone - #/nav opens SHARI NAV, /navigate.html (05-router.js). */
 
 
 

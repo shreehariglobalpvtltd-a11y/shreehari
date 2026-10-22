@@ -186,6 +186,10 @@ admin_header('Drivers & Crew', 'drivers');
   <div class="flash <?= Security::e($flash[0]) ?>"><?= Security::e($flash[1]) ?></div>
 <?php endif; ?>
 
+<?php if (Auth::can('buses.view')): ?>
+  <p class="muted" style="margin:0 0 12px;font-size:13px">📡 No driver sign-in needed: a phone app or a GPS box can track a bus by its number - <a href="<?= $base ?>/admin/gps-trackers.php">GPS trackers</a>.</p>
+<?php endif; ?>
+
 <div class="drv-cards">
   <div class="card"><div class="k">Active</div><div class="v"><?= $totalActive ?></div></div>
   <div class="card"><div class="k">Inactive</div><div class="v"><?= $totalInactive ?></div></div>

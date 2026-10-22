@@ -69,7 +69,6 @@ function shgFocusView(name) {
 }
 function showView(name) {
   if (name !== 'track' && typeof cleanupTracker === 'function') cleanupTracker();
-  if (name !== 'nav' && typeof cleanupNav === 'function') cleanupNav();
   if (name !== 'trip' && typeof cleanupTrip === 'function') cleanupTrip();
   $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
   shgViewName = name;
@@ -149,8 +148,12 @@ function router() {
     syncBookings().then((changed) => { if (changed && location.hash === h) renderMyBookings(); });
   }
   else if (h === '#/admin')    { window.open('/admin/', '_blank'); location.hash = '#/'; return; }
-  else if (h === '#/nav')    { showView('nav'); renderNav(); }
-  else if (h === '#/track' || h.indexOf('#/track/') === 0 || h === '#/nav3d' || h === '#/analog') { location.hash = '#/nav'; return; }
+  /* 22 Oct 2026 (owner: "AI wala map matra rakhideu, purano map delete"): the
+     old in-app navigator is gone - every map link opens SHARI NAV, the AI map
+     (/navigate.html: live coaches, route, temples, search, voice). #/track
+     is the rider's OWN coach: the keyed tracker, else the PNR box. */
+  else if (h === '#/nav' || h === '#/nav3d' || h === '#/analog') { location.replace('/navigate.html'); return; }
+  else if (h === '#/track' || h.indexOf('#/track/') === 0) { openTrackMyBus(); return; }
   else if (h === '#/terms')    { showView('terms'); renderTerms(); }
   else if (h === '#/shg-ctrl') { window.open('/admin/', '_blank'); location.hash = '#/'; return; }
   else                         { showView('home'); try { renderNextTrip(); } catch (e) {} }
@@ -300,7 +303,7 @@ document.addEventListener('click', (e) => {
   e.preventDefault();
   const k = b.getAttribute('data-bn');
   if (k === 'trips') { location.hash = '#/my'; return; }
-  if (k === 'nav') { location.hash = '#/nav'; return; }
+  if (k === 'nav') { location.href = '/navigate.html'; return; }
   if (k === 'track') {
     /* the keyed tracker, else My Tickets with the PNR box (lit from the URL) */
     openTrackMyBus();
@@ -1635,7 +1638,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261022v" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261022w" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

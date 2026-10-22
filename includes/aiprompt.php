@@ -139,7 +139,7 @@ function ai_system_prompt(): string
         . "Boarding: reach the pickup 60 minutes early; booking for a pickup closes {$cutoff} minutes before its time.\n"
         . "Border: {$border}, about 20–40 minutes, the bus waits for everyone. Photo ID is checked: passport or voter ID for Indian citizens, citizenship certificate or passport for Nepali citizens. No visa for either. Indian ₹200 and ₹500 notes are not accepted in Nepal.\n"
         . "Luggage: 1 suitcase (20 kg) + 1 cabin bag per passenger free; extra is charged.\n"
-        . "In the app: book at #/ · tickets, status and each ticket's own \"Where is my bus\" at #/my (seeing all bookings on a number or cancelling needs the code sent on WhatsApp: Sign in → Verify on WhatsApp). #/nav is only a road map — it does not show the passenger's bus.\n"
+        . "In the app: book at #/ · tickets, status and each ticket's own \"Where is my bus\" at #/my (seeing all bookings on a number or cancelling needs the code sent on WhatsApp: Sign in → Verify on WhatsApp). /navigate.html (SHARI NAV) is the road map — it does not show the passenger's own booking.\n"
         . "Office: {$phone} (calls and WhatsApp), {$email}.\n\n"
         . "STYLE:\n"
         . "- Reply in the user's language: Nepali, Hindi, Gujarati or English. Use Devanagari or Gujarati script when they write in it, romanised Hindi or Nepali when they write that way.\n"

@@ -266,6 +266,12 @@ function css() {
     '.nl-livepill{background:#E5352B!important;color:#fff!important;border:none!important;font:700 11px Inter,system-ui,sans-serif!important;letter-spacing:.06em}',
     '.nl-bus{cursor:pointer}.nl-bi{display:flex;align-items:center;gap:6px;padding:3px 9px 3px 3px;border-radius:22px;background:rgba(14,24,44,.92);border:2px solid #D4A843;box-shadow:0 4px 12px rgba(0,0,0,.45);color:#EEF2FA;font:600 11.5px Inter,system-ui,sans-serif;white-space:nowrap}',
     '.nl-bi img{width:34px;height:34px;border-radius:50%;object-fit:cover;background:#fff}',
+    /* 22 Oct 2026: the number plate on the coach + a live pulse ("gaadi number wise") */
+    '.nl-bi{position:relative}.nl-bi b{display:block;font:700 10.5px Inter,system-ui,sans-serif;letter-spacing:.04em;color:#FFD66B;line-height:1.1}.nl-bi em{font-style:normal;display:block;line-height:1.15}',
+    '.nl-bi::before{content:"";position:absolute;left:3px;top:3px;width:34px;height:34px;border-radius:50%;background:rgba(52,199,89,.5);animation:nlPulse 2s ease-out infinite;pointer-events:none;z-index:-1}',
+    '@keyframes nlPulse{0%{transform:scale(1);opacity:.85}100%{transform:scale(1.9);opacity:0}}',
+    '@media (prefers-reduced-motion:reduce){.nl-bi::before{animation:none}}body.saver .nl-bi::before,body.lowdata .nl-bi::before{animation:none}',
+    '.nl-plate{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:5px;background:#FFD66B;color:#1a1a1a;font:700 12px Inter,system-ui,sans-serif;letter-spacing:.05em;vertical-align:middle}',
     '.nl-bi.nl-mine{border-color:#E8652E;background:#E8652E;box-shadow:0 0 0 6px rgba(232,101,46,.28),0 4px 12px rgba(0,0,0,.45)}',
     '.nl-rep{cursor:pointer}.nl-ri{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:19px;background:#fff;border:2px solid #E8652E;box-shadow:0 3px 10px rgba(0,0,0,.4)}',
     '.nl-puck{width:26px;height:26px;border-radius:50%;background:#2F80ED;border:3px solid #fff;box-shadow:0 0 0 8px rgba(47,128,237,.25),0 3px 10px rgba(0,0,0,.4);position:relative}',
@@ -514,8 +520,9 @@ function busApply(snap) {
   var seen = {};
   (snap && snap.buses || []).forEach(function (b) {
     seen[b.id] = true; BUS.by[b.id] = b;
-    if (BUS.m[b.id]) { moveMarker(BUS.m[b.id], [b.lng, b.lat]); BUS.m[b.id].getElement().querySelector('span').textContent = '→ ' + b.to; return; }
-    var el = wrapM('<img src="/assets/img/bus-shg-sm.webp" alt="S Hari Global" loading="lazy"><span>→ ' + esc(b.to) + '</span>', 'nl-bi');
+    var lbl = (b.bus ? '<b>' + esc(b.bus) + '</b>' : '') + '<em>→ ' + esc(b.to) + '</em>';
+    if (BUS.m[b.id]) { moveMarker(BUS.m[b.id], [b.lng, b.lat]); BUS.m[b.id].getElement().querySelector('span').innerHTML = lbl; return; }
+    var el = wrapM('<img src="/assets/img/bus-shg-sm.webp" alt="S Hari Global" loading="lazy"><span>' + lbl + '</span>', 'nl-bi');
     el.className = 'nl-bus';
     el.addEventListener('click', function (e) { e.stopPropagation(); busSheet(b.id); });
     BUS.m[b.id] = new maplibregl.Marker({ element: el, anchor: 'left' }).setLngLat([b.lng, b.lat]).addTo(m);
@@ -524,7 +531,9 @@ function busApply(snap) {
 }
 function busSheet(id) {
   var b = BUS.by[id]; if (!b) return;
-  sheet('<h3><img src="/assets/img/bus-shg-sm.webp" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;background:#fff">S Hari Global</h3>' +
+  sheet('<h3><img src="/assets/img/bus-shg-sm.webp" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;background:#fff">S Hari Global' +
+    (b.bus ? '<span class="nl-plate">' + esc(b.bus) + '</span>' : '') + '</h3>' +
+    (b.busName ? '<p style="font-size:12.5px;margin:-4px 0 6px">' + esc(b.busName) + '</p>' : '') +
     '<p style="color:var(--text,#EEF2FA);font-size:15px;margin-bottom:2px">' + esc(b.from) + ' → ' + esc(b.to) + ' · ' + esc(b.dep) + '</p>' +
     (b.next ? '<p>' + esc(t('busNext')) + ': <b style="color:var(--gold,#D4A843)">' + esc(b.next.name) + '</b> · ' + esc(String(b.next.eta)) + ' ' + esc(t('min')) + ' · ' + esc(String(b.next.km)) + ' km</p>' : '') +
     (b.age != null ? '<p style="font-size:12.5px">' + esc(t('busAge', { n: ago(Date.now() - b.age * 1000) })) + (b.kmh != null ? ' · ' + b.kmh + ' km/h' : '') + '</p>' : '') +

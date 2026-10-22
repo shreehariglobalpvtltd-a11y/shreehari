@@ -175,6 +175,60 @@ final class LiveTrips
         return $row;
     }
 
+    /**
+     * A GPS tracker of the BUS (includes/gpstrackers.php, 22 Oct 2026) feeds
+     * the trip of the departure that bus runs: the same row as start(), but
+     * nobody signed in - driver_id / device_id stay NULL. A driver phone that
+     * already runs the trip keeps it (its device_id is never touched), and a
+     * trip the driver ENDED stays ended (the caller sees the status and feeds
+     * nothing). Older trips of the same bus that only a tracker fed are over
+     * once the bus is on its next departure.
+     *
+     * @return array<string,mixed> the live_trips row
+     */
+    public static function startForBus(int $scheduleId, int $busId, ?int $now = null): array
+    {
+        $now = $now ?? time();
+        $ref = self::tripRef($scheduleId);
+        $row = Database::fetch('SELECT * FROM live_trips WHERE trip_ref = :ref', ['ref' => $ref]);
+        if ($row !== null && (string) $row['status'] !== 'pending') {
+            if ($row['bus_id'] === null) {
+                Database::update('live_trips', ['bus_id' => $busId], 'id = :id', ['id' => (int) $row['id']]);
+                $row['bus_id'] = $busId;
+            }
+            return $row;   // the usual case: every fix after the first one
+        }
+        $ok = null;
+        foreach (self::choosable($now) as $c) {
+            if ($c['scheduleId'] === $scheduleId) { $ok = $c; break; }
+        }
+        if ($ok === null) {
+            throw new RuntimeException('This departure cannot be started now.');
+        }
+        $nowSql = date('Y-m-d H:i:s', $now);
+        $depSql = date('Y-m-d H:i:s', $ok['depTs']);
+        Database::query(
+            "INSERT INTO live_trips (trip_ref, schedule_id, route_id, bus_id, departure_at, started_at, status)
+                  VALUES (:ref, :s, :r, :b, :dep, :st, 'running')
+             ON DUPLICATE KEY UPDATE status = IF(status = 'pending', 'running', status),
+                  bus_id = COALESCE(bus_id, VALUES(bus_id)), started_at = COALESCE(started_at, VALUES(started_at))",
+            ['ref' => $ref, 's' => $scheduleId, 'r' => $ok['routeId'], 'b' => $busId, 'dep' => $depSql, 'st' => $nowSql]
+        );
+        Database::query(
+            "UPDATE live_trips SET status = 'completed', ended_at = :e
+              WHERE bus_id = :b AND status IN ('running','paused') AND device_id IS NULL
+                AND trip_ref <> :ref AND departure_at < :dep",
+            ['e' => $nowSql, 'b' => $busId, 'ref' => $ref, 'dep' => $depSql]
+        );
+        $row = Database::fetch('SELECT * FROM live_trips WHERE trip_ref = :ref', ['ref' => $ref]);
+        if ($row === null) {
+            throw new RuntimeException('Could not start the trip.');
+        }
+        Logger::audit('trip.live_start', 'schedule', (string) $scheduleId, null,
+            ['trip' => (int) $row['id'], 'bus' => $busId], 'gps tracker');
+        return $row;
+    }
+
     public static function end(int $tripId, ?int $now = null): void
     {
         Database::update('live_trips', ['status' => 'completed', 'ended_at' => date('Y-m-d H:i:s', $now ?? time())],
@@ -192,11 +246,16 @@ final class LiveTrips
      * usable one. Invalid points are acknowledged too, so the phone drops
      * them instead of re-sending them for ever.
      *
+     * A GPS tracker (includes/gpstrackers.php) passes $keepSeq = true: its seq
+     * is the fix's unix second, and writing that into last_seq would make a
+     * driver phone on the same trip jump its own counter to it (the app bumps
+     * to lastSeq) and drop its unsent queue on the next ack.
+     *
      * @param array<string,mixed> $trip  live_trips row
      * @param list<mixed> $points  [{seq, t (ms), lat, lng, kmh?, brg?, acc?}]
      * @return array{ack: int, stored: int, moved: bool}
      */
-    public static function ingest(array $trip, array $points, ?int $now = null): array
+    public static function ingest(array $trip, array $points, ?int $now = null, bool $keepSeq = false): array
     {
         $now     = $now ?? time();
         $tripId  = (int) $trip['id'];
@@ -260,7 +319,7 @@ final class LiveTrips
             $best = $pt; $latestTs = $pt['ts']; $latestLat = $pt['lat']; $latestLng = $pt['lng'];
         }
 
-        $upd = ['last_seq' => $ack];
+        $upd = $keepSeq ? [] : ['last_seq' => $ack];
         if ($best !== null) {
             $upd += [
                 'last_lat'     => $best['lat'],
@@ -271,7 +330,9 @@ final class LiveTrips
                 'last_ping_at' => date('Y-m-d H:i:s', $best['ts']),
             ];
         }
-        Database::update('live_trips', $upd, 'id = :id', ['id' => $tripId]);
+        if ($upd !== []) {
+            Database::update('live_trips', $upd, 'id = :id', ['id' => $tripId]);
+        }
         return ['ack' => $ack, 'stored' => $stored, 'moved' => $best !== null];
     }
 

@@ -224,21 +224,50 @@ final class NavLive
             }
         }
         $out = [];
-        foreach (EtaAlerts::candidates($now) as $c) {
+        $routeEnds = [];
+        $cands = EtaAlerts::candidates($now);
+        /* the coach's number plate (22 Oct 2026, owner: "gaadi number wise") */
+        $plates = [];
+        if ($cands !== []) {
+            try {
+                $ids = array_map(static fn (array $c): int => (int) $c['id'], $cands);
+                foreach (Database::fetchAll(
+                    'SELECT s.id, b.bus_number, b.bus_name FROM schedules s JOIN buses b ON b.id = s.bus_id WHERE s.id IN (' . implode(',', $ids) . ')'
+                ) as $r) {
+                    $plates[(int) $r['id']] = [(string) $r['bus_number'], (string) $r['bus_name']];
+                }
+            } catch (Throwable $e) {
+                $plates = [];
+            }
+        }
+        foreach ($cands as $c) {
             [$fix, , $age] = EtaAlerts::fixForTrip((int) $c['id'], (int) $c['route_id'], $now);
             if ($fix === null) {
                 continue;
             }
             $etas = EtaAlerts::stopEtas((int) $c['route_id'], $fix, $now);
             $next = $etas !== [] ? reset($etas) : null;
+            /* how far along from -> to (0-100), from the route's own first and
+               last surveyed stop: the home card's moving coach. Null = unknown. */
+            $pct = null;
+            $ends = $routeEnds[(int) $c['route_id']] ??= self::routeEnds((int) $c['route_id']);
+            if ($ends !== null) {
+                $a = EtaAlerts::haversineKm($ends[0], $ends[1], (float) $fix['lat'], (float) $fix['lng']);
+                $b = EtaAlerts::haversineKm((float) $fix['lat'], (float) $fix['lng'], $ends[2], $ends[3]);
+                $pct = $a + $b > 1 ? (int) round($a / ($a + $b) * 100) : null;
+            }
             $out[] = [
                 'id'    => (int) $c['id'],
                 'from'  => (string) $c['from_city'],
                 'to'    => (string) $c['to_city'],
                 'dep'   => substr((string) $c['dep_time'], 0, 5),
+                'bus'   => $plates[(int) $c['id']][0] ?? '',
+                'busName' => $plates[(int) $c['id']][1] ?? '',
                 'lat'   => round((float) $fix['lat'], 5),
                 'lng'   => round((float) $fix['lng'], 5),
                 'kmh'   => $fix['kmh'] === null ? null : (int) round((float) $fix['kmh']),
+                'brg'   => isset($fix['brg']) && $fix['brg'] !== null ? (int) $fix['brg'] : null,
+                'pct'   => $pct,
                 'age'   => $age === null ? null : (int) $age,
                 'next'  => $next,
             ];
@@ -247,6 +276,31 @@ final class NavLive
         @file_put_contents($file . '.tmp', json_encode($snap, JSON_UNESCAPED_UNICODE));
         @rename($file . '.tmp', $file);
         return $snap;
+    }
+
+    /**
+     * [lat, lng] of a route's first and last surveyed boarding stop, or null.
+     *
+     * @return array{0:float,1:float,2:float,3:float}|null
+     */
+    private static function routeEnds(int $routeId): ?array
+    {
+        try {
+            $rows = Database::fetchAll(
+                'SELECT latitude, longitude FROM route_stops
+                  WHERE route_id = :r AND is_active = 1 AND latitude IS NOT NULL AND longitude IS NOT NULL
+                  ORDER BY sort_order, id',
+                ['r' => $routeId]
+            );
+        } catch (Throwable $e) {
+            return null;
+        }
+        if (count($rows) < 2) {
+            return null;
+        }
+        $f = $rows[0];
+        $l = $rows[count($rows) - 1];
+        return [(float) $f['latitude'], (float) $f['longitude'], (float) $l['latitude'], (float) $l['longitude']];
     }
 
     /* ---------------------------------------------------------------

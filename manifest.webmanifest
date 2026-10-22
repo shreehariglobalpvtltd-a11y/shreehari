@@ -19,25 +19,25 @@
   ],
   "icons": [
     {
-      "src": "/assets/img/icon-192.png?v=20261022v",
+      "src": "/assets/img/icon-192.png?v=20261022w",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "/assets/img/icon-512.png?v=20261022v",
+      "src": "/assets/img/icon-512.png?v=20261022w",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any"
     },
     {
-      "src": "/assets/img/icon-maskable-512.png?v=20261022v",
+      "src": "/assets/img/icon-maskable-512.png?v=20261022w",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "maskable"
     },
     {
-      "src": "/assets/img/badge-96.png?v=20261022v",
+      "src": "/assets/img/badge-96.png?v=20261022w",
       "type": "image/png",
       "sizes": "96x96",
       "purpose": "monochrome"
@@ -56,10 +56,10 @@
       "url": "/#/my"
     },
     {
-      "name": "S Hari Map",
-      "short_name": "S Hari Map",
-      "url": "/#/nav",
-      "description": "India-Nepal map navigator and live bus tracking"
+      "name": "SHARI NAV · AI Map",
+      "short_name": "AI Map",
+      "url": "/navigate.html",
+      "description": "SHARI NAV: India-Nepal AI map, navigation and live S Hari coaches"
     }
   ]
 }

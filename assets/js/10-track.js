@@ -311,14 +311,6 @@ function rovAttachTilt(box) {
     if (card) card.style.transform = '';
   });
 }
-/* Navigator loader (17 Sep 2026): while MapLibre boots, the same route card
-   draws itself inside #snLoad instead of a bare spinner. Idempotent. */
-function snLoadMapInit() {
-  try {
-    var m = document.getElementById('snLoadMap');
-    if (m && !m.firstChild) m.innerHTML = routeOverviewSVG({ from: 'Surat', to: 'Rupaidiha', compact: true });
-  } catch (e) {}
-}
 /* ================================================================
    [JS] 10f. DISTANCE TO BOARDING POINT — the PASSENGER's own phone
    location vs the fixed boarding-point coordinates (NOT bus GPS —
@@ -455,11 +447,10 @@ document.addEventListener('click', (e) => {
    📍 OPEN A PLACE IN OUR OWN MAP (20 Sep 2026)
    Owner: "yo location pin point banayera afno map ma direct open hune, ya
    Google Map bata ni open hune ... click garexi open hos". Any element with
-   data-navto="lat,lng" opens #/nav with that point pinned and set as the
-   destination; the marker's popup there already carries Call, WhatsApp and
-   the Google Maps link, so both halves of the ask are one tap apart.
-   The coordinates live in the markup, next to the office they belong to —
-   an office whose pin nobody has surveyed simply has no 📍 to tap.
+   data-navto="lat,lng" opens SHARI NAV (/navigate.html, 22 Oct 2026 - the
+   old #/nav map is gone) with that point as the place card: Directions,
+   Save, Share. The coordinates live in the markup, next to the office they
+   belong to — an office whose pin nobody has surveyed has no 📍 to tap.
 ================================================================ */
 document.addEventListener('click', function (e) {
   var b = e.target.closest && e.target.closest('[data-navto]');
@@ -469,11 +460,62 @@ document.addEventListener('click', function (e) {
   if (!isFinite(lat) || !isFinite(lng)) return;
   e.preventDefault();
   var label = b.getAttribute('data-navto-label') || 'S Hari Global';
-  if (typeof window.snGoToPlace === 'function') {
-    location.hash = '#/nav';
-    setTimeout(function () { window.snGoToPlace(lat, lng, label); }, 60);
-  } else {
-    window.SHG_NAVTO = { lat: lat, lng: lng, label: label };
-    location.hash = '#/nav';
-  }
+  location.href = '/navigate.html?to=' + lat.toFixed(6) + ',' + lng.toFixed(6) + '&name=' + encodeURIComponent(label);
 });
+/* ================================================================
+   🚌 COACHES ON THE ROAD NOW — home card (22 Oct 2026)
+   Owner: "website ma animation jasto live chalirakhne, mobile ya GPS
+   device trace garera gaadi number wise". /api/nav-buses.php = every coach
+   with a fresh, accurate fix (driver app or GPS tracker, LiveTrips), with
+   its number plate. Each one glides along its own bar (from -> to), the
+   newest position every 20 s, only while the card is on screen and the tab
+   is visible. No fix = no coach drawn: one honest line instead.
+================================================================ */
+(function homeLiveBuses() {
+  var box = document.getElementById('homeLive');
+  if (!box || typeof fetch !== 'function') return;
+  var timer = 0, seen = false, last = null;
+  function ago(s) {
+    if (s == null) return '';
+    return s < 90 ? 'just now · भर्खरै' : Math.round(s / 60) + ' min ago · ' + Math.round(s / 60) + ' मिनेट अघि';
+  }
+  /* how far along from -> to (the server's pct, from the route's first and
+     last stop); unknown = mid-bar, the line under it still says "on the road" */
+  function pct(b) {
+    var p = b.pct != null && isFinite(+b.pct) ? +b.pct : 50;
+    return Math.max(4, Math.min(96, p));
+  }
+  function render(j) {
+    var list = (j && j.buses) || [];
+    box.hidden = false;
+    if (!list.length) {
+      box.innerHTML = '<div class="slb-none"><i class="slb-dot off"></i>Live tracking shows here when a coach is on the road · बस सडकमा हुँदा यहाँ live देखिन्छ</div>';
+      return;
+    }
+    box.innerHTML = '<div class="slb-h"><i class="slb-dot"></i>LIVE · ' + list.length + (list.length === 1 ? ' coach on the road' : ' coaches on the road') + '</div>' +
+      list.slice(0, 4).map(function (b) {
+        var go = '/navigate.html?to=' + (+b.lat).toFixed(5) + ',' + (+b.lng).toFixed(5) + '&name=' + encodeURIComponent((b.bus || 'S Hari Global') + ' → ' + b.to);
+        return '<a class="slb-row" href="' + esc(go) + '">' +
+          '<span class="slb-top">' + (b.bus ? '<b class="slb-plate">' + esc(b.bus) + '</b>' : '') +
+          '<span class="slb-way">' + esc(b.from) + ' → ' + esc(b.to) + ' · ' + esc(b.dep) + '</span></span>' +
+          '<span class="slb-track"><i class="slb-fill" style="width:' + pct(b) + '%"></i><span class="slb-bus" style="left:' + pct(b) + '%">🚌</span></span>' +
+          '<span class="slb-meta">' + (b.next ? 'Next · अर्को: <b>' + esc(b.next.name) + '</b> · ' + esc(String(b.next.eta)) + ' min · ' + esc(String(b.next.km)) + ' km' : 'On the road · सडकमा') +
+          (b.kmh != null ? ' · ' + esc(String(b.kmh)) + ' km/h' : '') + ' · ' + esc(ago(b.age)) + '</span></a>';
+      }).join('');
+  }
+  function load() {
+    if (document.hidden || !seen) return;
+    fetch('/api/nav-buses.php', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { j = j && j.data ? j.data : j; if (j) { last = j; render(j); } })
+      .catch(function () { if (!last) box.hidden = true; });
+  }
+  function tick() { clearInterval(timer); timer = setInterval(load, 20000); load(); }
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (es) {
+      seen = es.some(function (e) { return e.isIntersecting; });
+      if (seen) tick(); else clearInterval(timer);
+    }, { rootMargin: '200px' }).observe(box.parentNode);     /* the card itself starts hidden: watch its parent */
+  } else { seen = true; tick(); }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && seen) tick(); });
+})();

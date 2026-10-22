@@ -462,7 +462,7 @@ final class WaFaq
         return '🌐 https://' . $web . "\n"
              . self::t($lang, 'टिकट बुक: ', 'टिकट बुक: ', 'Book: ') . 'https://' . $web . '/#/'
              . self::t($lang, ' · मेरो टिकट: ', ' · मेरा टिकट: ', ' · My ticket: ') . 'https://' . $web . '/#/my'
-             . self::t($lang, ' · बस कहाँ: ', ' · बस कहाँ: ', ' · Live bus: ') . 'https://' . $web . "/#/nav\n"
+             . self::t($lang, ' · बस कहाँ: ', ' · बस कहाँ: ', ' · Live bus: ') . 'https://' . $web . "/navigate.html\n"
              . self::t($lang, 'मोबाइल नम्बर र OTP मात्र — account चाहिँदैन।', 'मोबाइल नंबर और OTP ही — account नहीं चाहिए।',
                 'Just your mobile number and an OTP — no account needed.');
     }

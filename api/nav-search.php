@@ -15,6 +15,7 @@ declare(strict_types=1);
 
 define('SHG_APP', true);
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
+require_once dirname(__DIR__) . '/includes/navcats.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: public, max-age=300');
@@ -184,6 +185,16 @@ try {
         unset($r);
         return $rows;
     };
+    /* any other kind of place (includes/navcats.php: salon, gym, cafe, mobile
+       shop ... in English, Hindi and Nepali), nearest first, as $fixed rows */
+    $navCatRows = static function (string $cat, float $cLat, float $cLng): array {
+        $rows = [];
+        foreach (NavCats::search($cat, [], $cLat, $cLng, 12)['rows'] as $r) {
+            $rows[] = ['name' => $r['local'] !== '' ? $r['local'] : $r['name'], 'name_en' => $r['name'], 'kind' => $r['kind'],
+                       'lat' => $r['lat'], 'lng' => $r['lng'], '_d' => ($r['m'] / 111000) ** 2, '_t' => -1];
+        }
+        return $rows;
+    };
     $words = array_values(array_filter(preg_split('/[\s,]+/u', mb_strtolower($q)) ?: []));
     $fixed = [];
     if (count($words) >= 2) {
@@ -202,7 +213,10 @@ try {
                     continue;
                 }
                 $half = in_array($town['kind'], ['place:city', 'place:town'], true) ? 0.2 : 0.08;
-                $hits = $boxSearch((float) $town['lat'], (float) $town['lng'], $half, $rest);
+                $pc = NavCats::parse(implode(' ', $rest));            // "hair salon pokhara" (22 Oct 2026)
+                $hits = $pc['cat'] !== null && $pc['rest'] === []
+                    ? $navCatRows($pc['cat'], (float) $town['lat'], (float) $town['lng'])
+                    : $boxSearch((float) $town['lat'], (float) $town['lng'], $half, $rest);
                 if ($hits !== []) {
                     foreach ($hits as &$h) {                       // the town's own "Surat Railway Station" before a suburb halt
                         $nm = mb_strtolower((string) $h['name'] . ' ' . (string) ($h['name_en'] ?? ''));
@@ -214,6 +228,10 @@ try {
                 }
             }
         }
+    }
+    if ($fixed === [] && $near && ($pc = NavCats::parse($q))['cat'] !== null && $pc['rest'] === []
+        && array_filter($words, static fn ($w) => $kindsFor($w) !== []) === []) {
+        $fixed = $navCatRows($pc['cat'], (float) $lat, (float) $lng);    // "salon", "gym", "cafe" near the rider
     }
     if ($fixed === [] && $near && array_filter($words, static fn ($w) => $kindsFor($w) !== []) !== []) {
         $fixed = $boxSearch((float) $lat, (float) $lng, 0.15, $words);     // "petrol", "atm", "bus stand" near me

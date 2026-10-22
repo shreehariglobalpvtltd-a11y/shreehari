@@ -54,7 +54,7 @@ $read  = static fn (string $f): string => (string) file_get_contents($root . '/'
 $cfg   = $read('assets/js/02-config.js');
 $acc   = $read('assets/js/03-accounts.js');
 $i18n  = $read('assets/js/04-i18n.js');
-$nav   = $read('assets/js/15-nav.js');
+$nav   = is_file($root . '/assets/js/15-nav.js') ? $read('assets/js/15-nav.js') : '';   // removed 22 Oct 2026
 $prem  = $read('assets/js/19-premium.js');
 $tpl   = $read('app.template.html');
 $ds    = $read('assets/css/ds.css');
@@ -106,6 +106,10 @@ foreach ($vg as $k) foreach (['en', 'hi', 'ne'] as $l) { $v = $val($l, $k); if (
 check('no vg line carries a placeholder, a number or a PNR', $leak === [], implode(' ', $leak));
 check('Hindi is Hindi and Nepali is Nepali (vg_home differs)', $val('hi', 'vg_home') !== '' && $val('hi', 'vg_home') !== $val('ne', 'vg_home'));
 
+/* 22 Oct 2026: sections 3 + 4 checked the old in-app navigator (#view-nav,
+   15-nav.js). It is gone - #/nav opens SHARI NAV (/navigate.html, own suite
+   tests/nav-ai1-test.php) - so they run only while that file still exists. */
+if (is_file($root . '/assets/js/15-nav.js')) {
 echo "\n-- 3. the navigator's own voice (D7-09) + GPS on open (D7-07) --\n";
 check('voice language starts from the app language, a chip pick is remembered', str_contains($nav, "var SN_VLANG_KEY='shg:navVoiceLang', SN_VON_KEY='shg:navVoice';") && str_contains($nav, "l=(typeof LANG==='string'&&/^(en|hi|ne)$/.test(LANG))?LANG:'en';") && str_contains($nav, 'localStorage.setItem(SN_VLANG_KEY,SN.voiceLang)'));
 check('the 🔊 switch is remembered and painted from it', str_contains($nav, "localStorage.setItem(SN_VON_KEY,SN.voiceOn?'1':'0')") && str_contains($nav, "SN.voiceOn=on!=='0';"));
@@ -137,6 +141,9 @@ $miss = [];
 foreach ($keys as $k) { if (in_array($k, $ids, true)) continue; foreach ($has($k) as $l) $miss[] = "$l:$k"; }
 check('every sn* key used exists in en / hi / ne (' . count($keys) . ' keys)', $miss === [], implode(' ', array_slice($miss, 0, 12)));
 check('"S Hari Nav" stays a Roman name in Nepali', str_contains($val('ne', 'snReady'), 'S Hari Nav'));
+} else {
+    echo "\n-- 3 + 4. old navigator removed (22 Oct 2026): skipped --\n";
+}
 
 echo "\n-- 5. theme follows the system live (Phase 12) --\n";
 check('a matchMedia change listener (with the addListener fallback)', str_contains($acc, "mq.addEventListener('change', onChange);") && str_contains($acc, 'mq.addListener(onChange);'));

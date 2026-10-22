@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v248';   // Team portal: agreements signed online in the portal, Pvt. Ltd. partner quick form (logo + representative)
+var VERSION = 'shg-v249';   // One map: the old #/nav navigator removed (SHARI NAV AI map only), home "coaches on the road" card by number plate
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,7 +43,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261022v';
+var ASSET_VER = '20261022w';
 var PRECACHE = [
   /* 16 Oct 2026 (owner, the logo): the full lockup WITH the ™ sign is now
      logo-tm.png (tools/make-logo-tm.php cuts it from logo.png). Neither is
@@ -105,12 +105,8 @@ var PRECACHE = [
   '/assets/js/11-pdf-ticket.js?v=' + ASSET_VER,
 
   '/assets/js/13-admin-routes.js?v=' + ASSET_VER,
-  /* 5 Sep 2026: the navigator is loaded on demand (#/nav) but pre-cached
-     here so the offline navigator still opens with no network. */
-  '/assets/js/15-nav.js?v=' + ASSET_VER,
-  /* 10 Oct 2026: S Hari Nav pro (cockpit view, flight, device tier, TV +
-     keyboard) - chained right after 15-nav.js by snNavLoad(). */
-  '/assets/js/26-navpro.js?v=' + ASSET_VER,
+  /* 22 Oct 2026: the old in-app navigator (15-nav.js, 26-navpro.js) is gone -
+     every map link opens SHARI NAV, /navigate.html (its own offline caches). */
   /* 11 Sep 2026: trip companion + assistant + maps chunk, loaded on idle. */
   '/assets/js/16-lazy.js?v=' + ASSET_VER,
   /* 13 Sep 2026: PWA layer (install sheet, push, border card, split-pay,

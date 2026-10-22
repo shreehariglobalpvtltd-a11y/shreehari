@@ -118,6 +118,25 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
       @keyframes shgBus{0%{left:7.14%}100%{left:92.86%}}
       .shg-bus-i{display:block;font-size:24px;filter:drop-shadow(0 4px 6px rgba(0,0,0,.4));animation:shgBob .9s ease-in-out infinite}
       @keyframes shgBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+      /* 22 Oct 2026: coaches on the road now, by number plate (10-track.js homeLiveBuses) */
+      .shg-livebus{margin-top:16px;display:grid;gap:10px}
+      .slb-h,.slb-none{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:.06em;color:#BFE8C9}
+      .slb-none{font-weight:600;letter-spacing:0;color:#9FBBE6;font-size:12.5px}
+      .slb-dot{position:relative;width:9px;height:9px;border-radius:50%;background:#34C759;flex:none}
+      .slb-dot::after{content:'';position:absolute;inset:0;border-radius:50%;background:rgba(52,199,89,.55);animation:slbPulse 1.6s ease-out infinite}
+      .slb-dot.off{background:#5f7aa3}.slb-dot.off::after{display:none}
+      @keyframes slbPulse{0%{transform:scale(1);opacity:.9}100%{transform:scale(3.2);opacity:0}}
+      .slb-row{display:grid;gap:8px;padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#EAF2FF;text-decoration:none;transition:background .2s,border-color .2s}
+      .slb-row:hover{background:rgba(255,255,255,.1);border-color:rgba(255,214,107,.5)}
+      .slb-top{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
+      .slb-plate{padding:2px 8px;border-radius:6px;background:#FFD66B;color:#1a1a1a;font-size:12.5px;font-weight:800;letter-spacing:.05em;font-variant-numeric:tabular-nums}
+      .slb-way{font-weight:700;font-size:14px;min-width:0}
+      .slb-track{position:relative;height:6px;border-radius:6px;background:rgba(255,255,255,.12);margin:10px 12px 4px}
+      .slb-fill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:linear-gradient(90deg,var(--shg-orange),#FFD66B);transition:width 1.2s ease}
+      .slb-bus{position:absolute;top:50%;transform:translate(-50%,-58%);font-size:20px;line-height:1;transition:left 1.2s ease;filter:drop-shadow(0 3px 5px rgba(0,0,0,.4));animation:shgBob .9s ease-in-out infinite}
+      .slb-meta{font-size:12px;color:#A9C3EA}
+      .slb-meta b{color:#fff}
+      @media (prefers-reduced-motion:reduce){.slb-dot::after,.slb-bus{animation:none}.slb-fill,.slb-bus{transition:none}}
       .shg-ctas{display:flex;flex-wrap:wrap;gap:12px;margin-top:20px}
       .shg-hero .btn{font-weight:800}
       .shg-book{box-shadow:0 8px 22px rgba(240,124,31,.35)}
