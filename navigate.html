@@ -6725,7 +6725,10 @@ function srStops() {
   list.forEach(function (st) {
     if (!st.isBorder) return;
     var g = srGate(st); if (!g) return;
-    if (hav([st.lng, st.lat], g.pt) > SR_SNAP) { st.orig = { lat: st.lat, lng: st.lng }; st.lat = g.pt[1]; st.lng = g.pt[0]; st.snapped = true; }
+    /* 22 Oct 2026: the office pin now sits on the India side (Indian Oil pump, ~3 km from the gate) -
+       snap only a pin that lies inside Nepal, or one far from any gate */
+    var wrongSide = typeof BORDER !== 'undefined' && BORDER.inNepal ? BORDER.inNepal(st.lng, st.lat) : hav([st.lng, st.lat], g.pt) > SR_SNAP;
+    if (wrongSide || hav([st.lng, st.lat], g.pt) > 8000) { st.orig = { lat: st.lat, lng: st.lng }; st.lat = g.pt[1]; st.lng = g.pt[0]; st.snapped = true; }
     st.border = g.b || null;
   });
   srStopsMemo = { src: srTT, list: list };
