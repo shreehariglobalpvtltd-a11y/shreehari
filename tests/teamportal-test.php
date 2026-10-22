@@ -183,6 +183,15 @@ try {
         && TeamPortal::signImage($row) !== null && (!TeamPortal::signReady() || (string) $row['party_ref'] === StaffApps::refFor($sid)));
     Database::run('DELETE FROM agreement_signatures WHERE party_type = :t AND party_id = :i', ['t' => 'staff', 'i' => $sid]);
     if (!empty($row['signature_path']) && ($abs = StaffApps::absPath((string) $row['signature_path'])) !== null) { @unlink($abs); }
+
+    // ---- the quick form's education + experience start an agent / partner CV ----
+    $clean = AgentApplications::cleanFields(['p_name' => 'X', 'cv_qual' => 'bachelor', 'cv_exp' => '4', 'cv_prev' => 'Ticket counter', 'zz_unknown' => 'dropped']);
+    check('the quick form keeps cv_qual / cv_exp / cv_prev, drops unknown names', ($clean['cv_qual'] ?? '') === 'bachelor' && ($clean['cv_prev'] ?? '') === 'Ticket counter' && !isset($clean['zz_unknown']));
+    $cvA = TeamPortal::cv(['fields_json' => json_encode($clean), 'cv_json' => null], 'agent');
+    check('an agent CV starts from the form (education + experience)', ($cvA['edu'][0]['level'] ?? '') === 'bachelor' && ($cvA['exp'][0]['org'] ?? '') === 'Ticket counter' && ($cvA['exp'][0]['years'] ?? '') === '4');
+    check('the office reads the level as words', AgentApplications::displayValue('cv_qual', 'bachelor') === 'Bachelor · स्नातक');
+    $cvB = TeamPortal::cv(['fields_json' => json_encode($clean), 'cv_json' => json_encode(['edu' => [['level' => 'master', 'school' => 'TU', 'year' => '2020']]])], 'agent');
+    check('a CV saved in the portal wins over the form', ($cvB['edu'][0]['level'] ?? '') === 'master' && count($cvB['edu']) === 1);
     if ($old2fa !== null) {
         Settings::set('admin_2fa_ids', $old2fa);
     }

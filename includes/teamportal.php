@@ -668,10 +668,7 @@ final class TeamPortal
      *  company profile)
      * ================================================================= */
 
-    public const EDU_LEVELS = [
-        'below_see' => 'SEE भन्दा कम · Below SEE / 10th', 'see' => 'SEE / SLC / 10th', 'plus2' => '+2 / 12th / PUC',
-        'diploma' => 'Diploma / ITI', 'bachelor' => 'Bachelor · स्नातक', 'master' => 'Master · स्नातकोत्तर', 'other' => 'Other · अन्य',
-    ];
+    public const EDU_LEVELS = AgentApplications::CV_QUALS;
     public const ORG_FIELDS = [
         'reg_no' => 'Company registration No. · दर्ता नं.', 'pan' => 'PAN / VAT / GST', 'est' => 'Established (year) · स्थापना वर्ष',
         'director' => 'Director / owner · सञ्चालक', 'staff' => 'Staff count · कर्मचारी संख्या', 'branches' => 'Offices / branches · शाखा',
@@ -689,6 +686,14 @@ final class TeamPortal
         }
         if ($table === 'staff' && $row !== null && $cv['exp'] === [] && (!empty($row['prev_employer']) || (int) ($row['experience_years'] ?? 0) > 0)) {
             $cv['exp'][] = ['org' => (string) ($row['prev_employer'] ?? ''), 'role' => (string) ($row['prev_role'] ?? ''), 'years' => (string) (int) ($row['experience_years'] ?? 0)];
+        }
+        // an agent / partner: what the quick form asked (cv_qual, cv_exp, cv_prev)
+        $f = $table === 'agent' && $row !== null ? (is_array($row['fields'] ?? null) ? $row['fields'] : (json_decode((string) ($row['fields_json'] ?? ''), true) ?: [])) : [];
+        if ($cv['edu'] === [] && isset($f['cv_qual'], self::EDU_LEVELS[(string) $f['cv_qual']])) {
+            $cv['edu'][] = ['level' => (string) $f['cv_qual'], 'school' => '', 'year' => ''];
+        }
+        if ($cv['exp'] === [] && (($f['cv_prev'] ?? '') !== '' || ($f['cv_exp'] ?? '') !== '')) {
+            $cv['exp'][] = ['org' => (string) ($f['cv_prev'] ?? ''), 'role' => '', 'years' => preg_replace('/[^\d.]/', '', (string) ($f['cv_exp'] ?? '')) ?? ''];
         }
         return $cv;
     }

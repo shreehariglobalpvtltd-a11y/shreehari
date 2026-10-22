@@ -75,6 +75,8 @@ final class AgentApplications
         'w1_name', 'w1_addr', 'w2_name', 'w2_addr',
         'g1_name', 'g1_id', 'g1_addr', 'g2_name', 'g2_id', 'g2_addr',
         'g3_name', 'g3_id', 'g3_addr', 'g4_name', 'g4_id', 'g4_addr',
+        // 22 Oct 2026 (team portal): education + experience on the quick form (agents and partners)
+        'cv_qual', 'cv_exp', 'cv_prev',
     ];
 
     /** Required on top of p_name / p_phone / p_area, per type. */
@@ -152,6 +154,13 @@ final class AgentApplications
         'g2_name' => 'Nepal guarantor 2', 'g2_id' => 'Nepal guarantor 2 ID no.', 'g2_addr' => 'Nepal guarantor 2 address / mobile',
         'g3_name' => 'India guarantor 1', 'g3_id' => 'India guarantor 1 ID no.', 'g3_addr' => 'India guarantor 1 address / mobile',
         'g4_name' => 'India guarantor 2', 'g4_id' => 'India guarantor 2 ID no.', 'g4_addr' => 'India guarantor 2 address / mobile',
+        'cv_qual' => 'Highest education', 'cv_exp' => 'Experience / years in business', 'cv_prev' => 'Previous work / other services',
+    ];
+
+    /** Education levels: the quick form's cv_qual and the team portal CV (TeamPortal::EDU_LEVELS). */
+    public const CV_QUALS = [
+        'below_see' => 'SEE भन्दा कम · Below SEE / 10th', 'see' => 'SEE / SLC / 10th', 'plus2' => '+2 / 12th / PUC',
+        'diploma' => 'Diploma / ITI', 'bachelor' => 'Bachelor · स्नातक', 'master' => 'Master · स्नातकोत्तर', 'other' => 'Other · अन्य',
     ];
 
     /**
@@ -171,6 +180,9 @@ final class AgentApplications
         }
         if ($name === 'p_idtype' && ctype_digit($value)) {
             return self::ID_TYPES[(int) $value] ?? $value;
+        }
+        if ($name === 'cv_qual') {
+            return self::CV_QUALS[$value] ?? $value;
         }
         if ($name === 'c73') {
             return match (strtolower($value)) {
