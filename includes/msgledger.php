@@ -169,7 +169,8 @@ final class MsgLedger
     /** Hide one-time codes and link tokens, the same way Notify does. */
     private static function mask(string $body): string
     {
-        $body = preg_replace('/(code\D{0,12}?)(\d{4,8})/iu', '$1••••', $body) ?? $body;
+        // 22 Oct 2026: the Nepali half too ("तपाईंको लगइन कोड 962250" was kept whole in the ledger)
+        $body = preg_replace('/((?:code|कोड)\D{0,12}?)(\d{4,8})/iu', '$1••••', $body) ?? $body;
         $body = preg_replace('~([?&]t=)[A-Za-z0-9]{16,}~', '$1[hidden]', $body) ?? $body;
         /* 15 Oct 2026 (2F-logs): the ticket download key (&k=…) and the short
            ticket code (view.php?code=…) open a passenger's ticket - a log
