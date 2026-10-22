@@ -343,6 +343,12 @@ if (!$ready) {
     </div>
     <?php endif; ?>
 
+    <?php if ($canKyc && in_array($st, ['approved', 'suspended', 'exited'], true)): /* 22 Oct 2026: team portal ID card */ ?>
+    <div class="stf-sec" id="idcard">ID card</div>
+    <p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><a class="btn sm" href="id-card.php?ref=<?= $h($open['ref']) ?>">🪪 Print ID card</a>
+      <span class="muted text-xs">Photo, name, job, <?= $h($open['ref']) ?>, office and a QR the public can scan<?= $st !== 'approved' ? ' — the QR now says “not valid”' : '' ?>.</span></p>
+    <?php endif; ?>
+
     <?php if ($st === 'approved'): ?>
     <div class="stf-sec" id="web">Website card</div>
     <?php if ($canDecide): ?>

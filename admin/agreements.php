@@ -425,6 +425,9 @@ if (!$ready) {
     </div>
     <p class="muted text-xs" style="margin:8px 0 0"><?php if ($isLive): ?>This is how the card looks on the home page (“Our agents”) and on /agreements/.<?php elseif ((string) $open['status'] !== 'approved'): ?>Goes on the website once the status is <b>Approved</b> and “Live on website” is ticked.<?php else: ?>Approved, but “Live on website” is off — hidden from the public list.<?php endif; ?>
       <?php foreach ($waLinks as [$waUrl, $waLabel]): ?> · <a href="<?= $h($waUrl . '?text=' . $waText) ?>" target="_blank" rel="noopener">💬 <?= $h($waLabel) ?> message</a><?php endforeach; ?></p>
+    <?php if ($canEdit && (string) $open['status'] === 'approved' && !empty($open['ref'])): /* 22 Oct 2026: team portal ID card */ ?>
+    <p style="margin:10px 0 0"><a class="btn sm" href="id-card.php?ref=<?= $h($open['ref']) ?>">🪪 Print <?= (string) $open['type'] === 'org' ? 'partner' : 'agent' ?> ID card</a></p>
+    <?php endif; ?>
 
     <?php if ($canEdit): ?>
     <?php if (!$isLive): ?>
