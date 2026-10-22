@@ -2066,10 +2066,12 @@ function voiceSearch() {
        from the home mic ("surkhet bulbule lai jau", "najikko petrol pump") goes to
        the AI guide, which says it back and opens the route by itself */
     var I = S.sTarget === 'home' && typeof aiIntent === 'function' ? aiIntent(t) : null;
-    if (I && (I.go || I.intent === 'cat' || I.intent === 'emergency' || I.intent === 'track')) {
+    /* 23 Oct 2026: a whole sentence ("bhok lagyo kata jaam", "mood off xa") or a map
+       command ("satellite map", "म कहाँ छु") is for the guide too; a place name stays a search */
+    if (I && (I.go || ['cat', 'emergency', 'track', 'cmd', 'temple', 'templeNear', 'border', 'bus', 'weather', 'currency', 'help'].indexOf(I.intent) >= 0 || I.toks.length >= 4)) {
       try { rec.abort(); } catch (x) {}
       history.back();
-      setTimeout(function () { aiAsk(t); }, 250);
+      setTimeout(function () { aiAsk(t, { voice: true }); }, 250);
       return;
     }
     doSearch(t);
@@ -4489,7 +4491,7 @@ var KB = (function () {
       title: L('S Hari AI गाइड', 0, 'S Hari AI Guide'),
       placeholder: L('मन्दिर, बोर्डर, खाना, बस… सोध्नुस्', 'मंदिर, बॉर्डर, खाना, बस… पूछें', 'Ask about temples, border, food, bus…'),
       hello: L('नमस्ते 🙏 म S Hari AI गाइड। मन्दिर, बोर्डर, खाना, पेट्रोल, आपतकालीन नम्बर र S Hari Global बसबारे सोध्नुस्।', 'नमस्ते 🙏 मैं S Hari AI गाइड हूँ। मंदिर, बॉर्डर, खाना, पेट्रोल, आपातकालीन नंबर और S Hari Global बस के बारे में पूछें।', 'Namaste 🙏 I am the S Hari AI Guide. Ask me about temples, the border, food, fuel, emergency numbers and the S Hari Global bus.'),
-      helpText: L('म यी गर्न सक्छु:\n🛕 नजिकको मन्दिर र दर्शन समय\n🛂 बोर्डर: कागजात, पैसा, समय\n🍽️ खाना, ⛽ पेट्रोल, 🏧 ATM नजिकै\n🚨 आपतकालीन नम्बर\n🚌 S Hari Global बस, भाडा, ट्र्याक', 'मैं ये कर सकता हूँ:\n🛕 नज़दीकी मंदिर और दर्शन समय\n🛂 बॉर्डर: दस्तावेज़, पैसा, समय\n🍽️ खाना, ⛽ पेट्रोल, 🏧 ATM पास में\n🚨 आपातकालीन नंबर\n🚌 S Hari Global बस, किराया, ट्रैक', 'I can help with:\n🛕 Nearest temple and darshan times\n🛂 Border: documents, money, hours\n🍽️ Food, ⛽ fuel, 🏧 ATM nearby\n🚨 Emergency numbers\n🚌 S Hari Global bus, fare, tracking'),
+      helpText: L('म यी गर्न सक्छु:\n😋 "भोक लाग्यो" → नजिकको खाना · 🌿 "मुड अफ छ" → घुम्ने ठाउँ, पार्क · 🛏️ "थाकेँ" → होटल\n🏨 होटल, 🛕 मन्दिर, 🌳 पार्क, ⛽ पेट्रोल, 🏧 ATM — नजिकका नाम, दूरी, नक्सामा\n🧭 "पोखरा लैजाउ" → सिधै बाटो\n💬 जुनसुकै प्रश्न सोध्नुस् — थाहा नभए "थाहा छैन" भन्छु\n🎙️ बोलेर: "स्याटेलाइट नक्सा", "zoom in", "म कहाँ छु", "आवाज बन्द", "यात्रा रोक", "पढेर सुनाउ"\n🛂 बोर्डर · 🚨 आपतकालीन नम्बर · 🚌 S Hari Global बस, भाडा, ट्र्याक', 'मैं ये कर सकता हूँ:\n😋 "भूख लगी है" → पास का खाना · 🌿 "मूड ऑफ़ है" → घूमने की जगह, पार्क · 🛏️ "थक गया" → होटल\n🏨 होटल, 🛕 मंदिर, 🌳 पार्क, ⛽ पेट्रोल, 🏧 ATM — पास के नाम, दूरी, नक्शे पर\n🧭 "पोखरा ले चलो" → सीधा रास्ता\n💬 कोई भी सवाल पूछें — पता न हो तो "पता नहीं" कहूँगा\n🎙️ बोलकर: "सैटेलाइट नक्शा", "zoom in", "मैं कहाँ हूँ", "आवाज़ बंद", "यात्रा रोको", "पढ़कर सुनाओ"\n🛂 बॉर्डर · 🚨 आपातकालीन नंबर · 🚌 S Hari Global बस, किराया, ट्रैक', 'I can help with:\n😋 "I am hungry" → food nearby · 🌿 "mood off" → places to go out, parks · 🛏️ "tired" → hotels\n🏨 Hotels, 🛕 temples, 🌳 parks, ⛽ fuel, 🏧 ATMs — real names, distance, on the map\n🧭 "Take me to Pokhara" → the route at once\n💬 Ask me anything — if I do not know, I will say so\n🎙️ By voice: "satellite map", "zoom in", "where am I", "mute", "stop navigation", "read aloud"\n🛂 Border · 🚨 Emergency numbers · 🚌 S Hari Global bus, fare, tracking'),
       thanksReply: L('धन्यवाद! शुभ यात्रा 🙏', 0, 'You are welcome! Safe journey 🙏'),
       thinking: L('सोच्दैछु…', 'सोच रहा हूँ…', 'Thinking…'),
       offline: L('अफलाइन – गाइडबाट जवाफ', 'ऑफ़लाइन – गाइड से जवाब', 'Offline – answering from the guide'),
@@ -4601,8 +4603,8 @@ var KB = (function () {
 var AI_LOG_K = 'shg:nm:ai:log', AI_FACTS_K = 'shg:nm:ai:facts', AI_TTS_K = 'shg:nm:ai:tts';
 var AI_MAX = 400, AI_KEEP = 30, AI_ROAD = 1.25, AI_DAY = 86400000;
 /* rough door-to-door km/h for an estimate before the router answers */
-var AI_SPEED = { car: 48, bus: 38, bike: 14, walk: 4.5 };
-var AI_MODE_E = { car: '🚗', bus: '🚌', bike: '🚲', walk: '🚶' };
+var AI_SPEED = { car: 48, moto: 40, bus: 38, bike: 14, walk: 4.5 };
+var AI_MODE_E = { car: '🚗', moto: '🛵', bus: '🚌', bike: '🚲', walk: '🚶' };
 
 function aiL3(ne, hi, en) { return { ne: ne, hi: hi || ne, en: en }; }
 /* own strings; the same key in KB.ui wins (KB is the single source when present) */
@@ -4700,7 +4702,7 @@ var AI_S = {
   website: aiL3('Website', 0, 'Website'),
   langName: { ne: 'नेपाली', hi: 'हिन्दी', en: 'English' },
   byMode: {
-    car: aiL3('गाडीमा', 'गाड़ी से', 'by car'), bus: aiL3('बसमा', 'बस से', 'by bus'),
+    car: aiL3('गाडीमा', 'गाड़ी से', 'by car'), moto: aiL3('स्कुटीमा', 'स्कूटी से', 'by scooty'), bus: aiL3('बसमा', 'बस से', 'by bus'),
     bike: aiL3('साइकलमा', 'साइकिल से', 'by bicycle'), walk: aiL3('पैदल', 0, 'on foot')
   },
   unit: { min: aiL3('मिनेट', 'मिनट', 'min'), hr: aiL3('घण्टा', 'घंटे', 'hr'), day: aiL3('दिन', 0, 'day') },
@@ -4985,6 +4987,8 @@ function aiBestEnt(list, toks, used) {
   });
   return best;
 }
+var AI_EN = ['what', 'whats', 'how', 'where', 'when', 'why', 'who', 'which', 'is', 'are', 'was', 'the', 'can', 'could', 'should', 'would', 'i', 'im', 'you', 'me', 'my',
+  'please', 'tell', 'am', 'do', 'does', 'there', 'any', 'best', 'good', 'of', 'to', 'for', 'and', 'a', 'an', 'it', 'this', 'that', 'want', 'need', 'go', 'eat', 'feel'];
 function aiLang(toks, raw) {
   if (/[\u0A80-\u0AFF]/.test(raw)) return 'gu';
   var ne = 0, hi = 0, gu = 0, nm = AI_NE.map(aiNorm), hm = AI_HI.map(aiNorm), gm = AI_GU.map(aiNorm);
@@ -4992,6 +4996,8 @@ function aiLang(toks, raw) {
   if (gu > ne && gu > hi) return 'gu';
   if (ne > hi) return 'ne';
   if (hi > ne) return 'hi';
+  /* 23 Oct 2026: a plain English sentence ("what is the capital of japan") is answered in English */
+  if (!/[^\x00-\x7F₹]/.test(raw) && toks.filter(function (t) { return AI_EN.indexOf(t) >= 0; }).length >= 2) return 'en';
   if (/[ऀ-ॿ]/.test(raw)) {
     if (/ै|है/.test(raw)) return 'hi';                     /* ै / है heavy */
     return S.lang === 'en' ? 'ne' : S.lang;
@@ -5038,6 +5044,8 @@ function aiIntent(text) {
   function out(intent) { return { intent: intent, lang: aiLang(toks, raw), toks: toks, sc: sc, f: f, cat: cat, temple: tem && tem.x, border: bor && bor.x, gaz: gaz && gaz.x, free: free,
     go: go, pq: pq, rel: (hits.rel || [])[0] || '' }; }
   if (!toks.length) return out('help');
+  /* 23 Oct 2026: a short map command ("satellite map", "zoom in", "म कहाँ छु", "awaj band") */
+  if (toks.length <= 6 && !cat && typeof aiCmdOf === 'function') { var cm = aiCmdOf(raw); if (cm) { var oc = out('cmd'); oc.cmd = cm; return oc; } }
   if (sc.cancel > 0) return out('cancel');
   if (sc.track > 0) return out('track');
   /* "nearest petrol pump lai jau" (a kind and nothing else) = the nearest one, by the kind's own answer */
@@ -5189,7 +5197,30 @@ function aiGeoAny(q) {
   });
 }
 /* the place a route / weather question is about: temple, town, border, then the index */
+/* 23 Oct 2026 · "ani tyo kati tadha xa?" / "take me there": the place of the last answer */
+var AI_PRON_REF = ['tyo', 'teslai', 'tyaha', 'tyaa', 'uta', 'waha', 'wahan', 'vaha', 'wo', 'woh', 'vo', 'us', 'that', 'it', 'there', 'त्यो', 'त्यहाँ', 'त्यहां', 'उता', 'वो', 'वह', 'वहाँ', 'वहां', 'उस', 'उसको', 'તે', 'ત્યાં'];
+var AI_PRON_FILL = ['ani', 'ra', 'and', 'then', 'xa', 'cha', 'chha', 'hai', 'he', 'ko', 'lai', 'ma', 'is', 'how', 'far', 'kati', 'kitna', 'kitni', 'tadha', 'tada', 'dur', 'door',
+  'pani', 'bhi', 'me', 'to', 'take', 'go', 'अनि', 'र', 'छ', 'है', 'कति', 'कितना', 'टाढा', 'दूर', 'पनि', 'भी', 'को', 'लाई', 'ने', 'છે', 'કેટલું', 'દૂર'];
+function aiLastPlace() {
+  for (var i = aiSt.log.length - 3; i >= 0 && i >= aiSt.log.length - 12; i--) {
+    var m = aiSt.log[i];
+    if (!m || m.r !== 'bot') continue;
+    var a = (m.a || []).filter(function (x) { return x && (x.act === 'nav' || x.act === 'place') && x.p && isFinite(x.p.lat); })[0];
+    if (a) return a.p;
+    if (m.rows && m.rows[0] && m.rows[0].p && isFinite(m.rows[0].p.lat)) return m.rows[0].p;
+  }
+  return null;
+}
+function aiRefOnly(I) {
+  var ws = aiToks(I.go ? (I.pq || I.free) : I.free), ref = false;
+  for (var i = 0; i < ws.length; i++) {
+    if (AI_PRON_REF.indexOf(ws[i]) >= 0) ref = true;
+    else if (AI_PRON_FILL.indexOf(ws[i]) < 0) return false;
+  }
+  return ref || I.toks.some(function (t) { return AI_PRON_REF.indexOf(t) >= 0; });   /* "tyo" itself may be a stop word, gone from free */
+}
 function aiPlaceOf(I) {
+  if (aiRefOnly(I)) { var lp = aiLastPlace(); if (lp) return Promise.resolve(lp); }
   if (I.go && I.pq && !I.temple) {
     return aiGeoAny(I.pq).then(function (p) {
       if (p) return p;
@@ -5515,7 +5546,8 @@ function aiServer(I, L) {
     me: needMe && me ? { lat: Math.round(me[1] * 100) / 100, lng: Math.round(me[0] * 100) / 100 } : null,
     to: needRt && to && !to.me ? { name: String(to.name || '').slice(0, 80), lat: Math.round(to.lat * 1000) / 1000, lng: Math.round(to.lng * 1000) / 1000 } : null,
     route: needRt && r ? { mode: S.mode, distKm: Math.round(r.dist / 100) / 10, durMin: Math.round(r.dur / 60) } : null,
-    country: me ? aiCountry(me) : ''
+    country: me ? aiCountry(me) : '',
+    hist: aiHist()
   };
   return fetchT(AI_API, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 10000)
     .then(function (res) { return res.json().catch(function () { return null; }); })
@@ -5529,6 +5561,117 @@ function aiServer(I, L) {
     .catch(function () { return off; });
 }
 function aiFallback(L) { return { text: aiT('noAnswer', L), actions: aiOfficeActs(L).slice(0, 2) }; }
+/* 23 Oct 2026 · the last turns before this question (the current one and its
+   "thinking" bubble are the last two in the log), so a follow-up like
+   "ani tyo kati tadha xa?" can be answered; no rows, no actions, 300 chars each */
+function aiHist() {
+  var out = [], log = aiSt.log.slice(0, -2);
+  for (var i = log.length - 1; i >= 0 && out.length < 6; i--) {
+    var m = log[i];
+    if (!m || m.think || !m.t || (m.r !== 'user' && m.r !== 'bot')) continue;
+    out.unshift({ r: m.r, t: aiPlain(m.t).slice(0, 300) });
+  }
+  while (out.length && out[0].r !== 'user') out.shift();
+  return out;
+}
+
+/* ---------- 23 Oct 2026 · the map by voice (owner: "sapai features voice command bata garna milne") ----------
+   A short message (≤ 6 words, no kind of place in it) that is one of these is a
+   command, not a question: it is done at once and said back. Regexes run on
+   aiNorm(text); unmute before mute, where-am-i before the rest. */
+var AI_CMDS = [
+  { k: 'unmute', re: /unmute|voice on|sound on|awa?a?j (khol|chalu|on)|aawaj (khol|chalu)|आवाज (खोल|चालु|चालू)|आवाज़ (खोल|चालू)|અવાજ ચાલુ/ },
+  { k: 'mute', re: /\bmute\b|voice off|sound off|awa?a?j band|aawaj band|आवाज (बन्द|बंद)|आवाज़ बंद|અવાજ બંધ/ },
+  { k: 'readOff', re: /sunauna band|bolna band|stop (talking|speaking|reading)|^chup$|^चुप$|बोल्न बन्द|बोलना बंद|બોલવાનું બંધ/ },
+  { k: 'readOn', re: /pa?dh?era sunau|pader sunau|padhera sunau|bolera sunau|padh ?kar sunao|bol ?kar sunao|read (it |that )?(out|aloud)|speak (it|the answer)|jawa?f sunau|पढेर सुनाउ|बोलेर सुनाउ|पढ़कर सुनाओ|पढकर सुनाओ|बोलकर सुनाओ|जवाफ सुनाउ|વાંચી સંભળાવો|બોલીને સંભળાવો/ },
+  { k: 'where', re: /where am i|my (current )?location|mero (location|lokesan|thau)|ma kaha (chu|xu|chhu)|main kaha?n? (hu|hun|hoon)|म कहाँ छु|म कहां छु|मेरो (लोकेसन|ठाउं)|मैं कहाँ हूँ|मैं कहां हूं|मेरी लोकेशन|હું ક્યાં છું|મારું લોકેશન/ },
+  { k: 'zoomIn', re: /zoom ?in|zoom (badha|gara|karo)|ज़ूम इन|जूम इन|ઝૂમ ઇન/ },
+  { k: 'zoomOut', re: /zoom ?out|ज़ूम आउट|जूम आउट|ઝૂમ આઉટ/ },
+  { k: 'sat', re: /satell?ite|सेटेलाइट|सैटेलाइट|स्याटेलाइट|સેટેલાઇટ/ },
+  { k: 'hyb', re: /hybrid|हाइब्रिड|હાઇબ્રિડ/ },
+  { k: 'dark', re: /night (mode|map)|dark (mode|map)|रात(को)? (मोड|नक्सा)|डार्क मोड|નાઇટ મોડ/ },
+  { k: 'light', re: /day (mode|map)|light (mode|map)|white map|normal map|दिन(को)? (मोड|नक्सा)|लाइट मोड|ડે મોડ/ },
+  { k: 'terrain', re: /3 ?d (map|terrain|mode)|terrain|थ्रीडी|3डी/ },
+  { k: 'stopNav', re: /stop (the )?(navigation|trip|route)|end (the )?(navigation|trip)|navigation (band|bandh|stop|roka|rok|banda)|yatra (roka|band|rok)|यात्रा (रोक|बन्द|बंद)|नेभिगेसन (बन्द|रोक)|नेविगेशन (बंद|रोको)|યાત્રા બંધ/ },
+  { k: 'startNav', re: /start (the )?(navigation|trip)|navigation (suru|start|chalu)|^(start|chalau|suru gara|let s go|lets go)$|यात्रा सुरु|नेभिगेसन सुरु|नेविगेशन शुरू|યાત્રા શરૂ/ }
+];
+var AI_CMD_S = {
+  done: aiL3('✅ भयो।', '✅ हो गया।', '✅ Done.'),
+  unmute: aiL3('🔊 आवाज चालु भयो।', '🔊 आवाज़ चालू हो गई।', '🔊 Voice is on.'),
+  mute: aiL3('🔇 आवाज बन्द भयो।', '🔇 आवाज़ बंद हो गई।', '🔇 Voice is muted.'),
+  readOn: aiL3('🔊 अब म हरेक जवाफ बोलेर सुनाउँछु।', '🔊 अब मैं हर जवाब बोलकर सुनाऊँगा।', '🔊 I will now read every answer aloud.'),
+  readOff: aiL3('🔈 ठीक छ, अब जवाफ बोल्दिनँ।', '🔈 ठीक है, अब जवाब नहीं बोलूँगा।', '🔈 OK, I will stop reading answers aloud.'),
+  whereAt: aiL3('📍 तपाईं अहिले **{x}** नजिक हुनुहुन्छ।', '📍 आप अभी **{x}** के पास हैं।', '📍 You are near **{x}** right now.'),
+  whereNo: aiL3('📍 तपाईंको location नक्सामा देखाएँ।', '📍 आपकी location नक्शे पर दिखा दी।', '📍 Your location is on the map.'),
+  zoomIn: aiL3('🔍 नक्सा नजिक गरेँ।', '🔍 नक्शा पास किया।', '🔍 Zoomed in.'),
+  zoomOut: aiL3('🔎 नक्सा टाढा गरेँ।', '🔎 नक्शा दूर किया।', '🔎 Zoomed out.'),
+  sat: aiL3('🛰️ स्याटेलाइट नक्सा खोलेँ।', '🛰️ सैटेलाइट नक्शा खोला।', '🛰️ Satellite map on.'),
+  hyb: aiL3('🛰️ हाइब्रिड नक्सा (स्याटेलाइट + सडकका नाम) खोलेँ।', '🛰️ हाइब्रिड नक्शा (सैटेलाइट + सड़कों के नाम) खोला।', '🛰️ Hybrid map (satellite + road names) on.'),
+  dark: aiL3('🌙 रातको नक्सा खोलेँ।', '🌙 रात वाला नक्शा खोला।', '🌙 Night map on.'),
+  light: aiL3('☀️ दिनको सेतो नक्सा खोलेँ।', '☀️ दिन वाला सफ़ेद नक्शा खोला।', '☀️ Day map on.'),
+  terrainOn: aiL3('⛰️ 3D पहाड देखाएँ — दुई औंलाले नक्सा ढल्काउनुस्।', '⛰️ 3D पहाड़ दिखाए — दो उंगलियों से नक्शा झुकाएँ।', '⛰️ 3D terrain on — tilt the map with two fingers.'),
+  terrainOff: aiL3('⛰️ 3D पहाड बन्द गरेँ।', '⛰️ 3D पहाड़ बंद किए।', '⛰️ 3D terrain off.'),
+  stopNav: aiL3('🛑 यात्रा रोकेँ।', '🛑 यात्रा रोक दी।', '🛑 Navigation stopped.'),
+  noTrip: aiL3('अहिले कुनै यात्रा चलिरहेको छैन।', 'अभी कोई यात्रा नहीं चल रही।', 'No trip is running right now.'),
+  startNav: aiL3('▶️ यात्रा सुरु गरेँ। शुभ यात्रा 🙏', '▶️ यात्रा शुरू की। शुभ यात्रा 🙏', '▶️ Navigation started. Safe journey 🙏'),
+  noRoute: aiL3('पहिले कहाँ जाने भन्नुस् — जस्तै "पोखरा लैजाउ"।', 'पहले बताइए कहाँ जाना है — जैसे "पोखरा ले चलो"।', 'First tell me where to go — like "take me to Pokhara".')
+};
+/* the command in this message, or null */
+function aiCmdOf(raw) {
+  var n = aiNorm(raw).replace(/[.,!?।॥"'“”‘’]+/g, ' ').replace(/\s+/g, ' ').trim();
+  for (var i = 0; i < AI_CMDS.length; i++) if (AI_CMDS[i].re.test(n)) return AI_CMDS[i].k;
+  return null;
+}
+/* do it now; the panel closes after the answer (a.run) when the map should be seen */
+function aiCmdRun(k, L) {
+  var say = function (key, run) { return { text: aiPick(AI_CMD_S[key], L), actions: [], run: run }; };
+  var see = function () {};
+  var map = S.map;
+  try {
+    switch (k) {
+      case 'unmute': S.sound = 'on'; LS.set('shg:nm:sound', 'on'); try { voUnlock(); } catch (e) {} navBotUI(); return say('unmute');
+      case 'mute': S.sound = 'off'; LS.set('shg:nm:sound', 'off'); try { voStop(); } catch (e) {} navBotUI(); return say('mute');
+      case 'readOn': {
+        aiSt.tts = true; LS.set(AI_TTS_K, true); aiLabels();
+        var last = null;
+        for (var i = aiSt.log.length - 3; i >= 0; i--) { var m = aiSt.log[i]; if (m && m.r === 'bot' && !m.think && m.t) { last = m; break; } }
+        var a = say('readOn');
+        if (last) a.say = aiPick(AI_CMD_S.readOn, L) + ' ' + (last.say || last.t);
+        return a;
+      }
+      case 'readOff': aiSt.tts = false; LS.set(AI_TTS_K, false); try { voStop(); } catch (e) {} aiLabels(); return say('readOff');
+      case 'where': {
+        var me = aiMe();
+        if (!me) return aiNeedLoc({ q: 'where am i' }, L);
+        if (map && !aiDriving()) { S.follow = 'follow'; map.flyTo({ center: me, zoom: Math.max(map.getZoom(), 15.5), duration: 900, essential: true }); try { locUI(); } catch (e) {} }
+        if (navigator.onLine === false) return say('whereNo', see);
+        return fetchT(SEARCH_API + '?rev=' + me[1].toFixed(6) + ',' + me[0].toFixed(6), { credentials: 'same-origin' }, 6000)
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var nm = j && j.name ? String(j.name) : '';
+            if (!nm) return say('whereNo', see);
+            return { text: aiFill(aiPick(AI_CMD_S.whereAt, L), { x: nm }), actions: [], run: see };
+          })
+          .catch(function () { return say('whereNo', see); });
+      }
+      case 'zoomIn': if (map) map.zoomIn({ duration: 300 }); return say('zoomIn', see);
+      case 'zoomOut': if (map) map.zoomOut({ duration: 300 }); return say('zoomOut', see);
+      case 'sat': case 'hyb': case 'dark': case 'light': setStyle(k); return say(k, see);
+      case 'terrain':
+        S.terrain = !S.terrain; LS.set('shg:nm:terrain', S.terrain); addTerrain();
+        if (S.terrain && map && map.getPitch() < 30 && !aiDriving()) map.easeTo({ pitch: 60, duration: 900 });
+        return say(S.terrain ? 'terrainOn' : 'terrainOff', see);
+      case 'stopNav':
+        if (!S.nav) return say('noTrip');
+        return { text: aiPick(AI_CMD_S.stopNav, L), actions: [], stop: true };
+      case 'startNav':
+        if (S.nav && !S.nav.preview) return say('done');
+        if (S.level === 'dir' && S.cur && S.cur.routes && S.cur.routes[S.sel]) return say('startNav', function () { startNav(false); });
+        return say('noRoute');
+    }
+  } catch (e) {}
+  return say('done');
+}
 
 /* ---------- 22 Oct 2026 · any kind of place "near me" ----------
    Owner: "suggest me restaurant near me, near hair salon jasta question easily
@@ -5544,6 +5687,19 @@ var AI_NS = {
   nearYou: aiL3('तपाईंको', 'आपके', 'to you'),
   none: aiL3('{e} {w} {km} km भित्र नक्सामा भेटिएन। नक्साको अर्को ठाउँमा खोज्नुस्।', '{e} {w} {km} km के अंदर नक्शे पर नहीं मिला। नक्शे की दूसरी जगह खोजें।', '{e} No {w} on the map within {km} km. Try another part of the map.'),
   all: aiL3('सबै नक्सामा', 'सब नक्शे पर', 'All on map')
+};
+/* 23 Oct 2026 · the rider's feeling (NavCats::MOODS on the server): one kind
+   line before the places — "bhok lagyo" is answered as a person would */
+var AI_MOOD = {
+  hungry: { ne: '😋 भोक लाग्यो? नजिकै यहाँ खान सकिन्छ —', hi: '😋 भूख लगी है? पास में यहाँ खा सकते हैं —', en: '😋 Hungry? You can eat close by here —', gu: '😋 ભૂખ લાગી છે? નજીકમાં અહીં જમી શકાય —' },
+  thirsty: { ne: '🥤 तिर्खा लाग्यो? नजिकै चिया, जुस, पानी —', hi: '🥤 प्यास लगी है? पास में चाय, जूस, पानी —', en: '🥤 Thirsty? Tea, juice and drinks close by —', gu: '🥤 તરસ લાગી છે? નજીકમાં ચા, જ્યૂસ —' },
+  tired: { ne: '🛏️ थाक्नुभयो? आराम गर्न नजिकका होटल / लज —', hi: '🛏️ थक गए? आराम के लिए पास के होटल / लॉज —', en: '🛏️ Tired? Places to rest close by —', gu: '🛏️ થાકી ગયા? આરામ માટે નજીકની હોટલ —' },
+  mood: { ne: '🌿 मुड हल्का पार्न नजिकै यी ठाउँ घुम्न सकिन्छ —', hi: '🌿 मूड ठीक करने के लिए पास में ये जगहें घूम सकते हैं —', en: '🌿 To lift your mood, these places are close by —', gu: '🌿 મૂડ સારો કરવા નજીકમાં આ જગ્યાઓ ફરી શકાય —' },
+  date: { ne: '💞 साथमा घुम्न राम्रा नजिकका ठाउँ —', hi: '💞 साथ घूमने के लिए पास की अच्छी जगहें —', en: '💞 Nice places close by to go together —', gu: '💞 સાથે ફરવા નજીકની સારી જગ્યાઓ —' },
+  kids: { ne: '🧒 केटाकेटीसँग जान नजिकका पार्क —', hi: '🧒 बच्चों के साथ जाने के लिए पास के पार्क —', en: '🧒 Parks close by for the children —', gu: '🧒 બાળકો સાથે જવા નજીકના બગીચા —' },
+  peace: { ne: '🙏 मनको शान्ति र दर्शनका लागि नजिकका मन्दिर —', hi: '🙏 मन की शांति और दर्शन के लिए पास के मंदिर —', en: '🙏 For peace and darshan, temples close by —', gu: '🙏 શાંતિ અને દર્શન માટે નજીકના મંદિર —' },
+  sick: { ne: '🩺 सन्चो नभएको हो? नजिकका क्लिनिक / डाक्टर — धेरै गाह्रो भए भारत 108 / नेपाल 102 मा फोन गर्नुस्।', hi: '🩺 तबीयत ठीक नहीं? पास के क्लिनिक / डॉक्टर — ज़्यादा तकलीफ़ हो तो भारत 108 / नेपाल 102 पर कॉल करें।', en: '🩺 Not feeling well? Clinics and doctors close by — if it is serious call 108 (India) / 102 (Nepal).', gu: '🩺 તબિયત સારી નથી? નજીકના ક્લિનિક — વધુ તકલીફ હોય તો 108 પર ફોન કરો.' },
+  cash: { ne: '💵 पैसा चाहियो? नजिकका ATM —', hi: '💵 पैसे चाहिए? पास के ATM —', en: '💵 Need cash? ATMs close by —', gu: '💵 પૈસા જોઈએ છે? નજીકના ATM —' }
 };
 /* 22 Oct 2026 · Gujarati replies (strings without one fall back to Hindi) and the command lines */
 var AI_CMD = {
@@ -5578,7 +5734,7 @@ function aiRelKey(w) {
   };
   Object.keys(G).forEach(function (k) { if (AI_S[k] && typeof AI_S[k] === 'object') AI_S[k].gu = G[k]; });
   AI_S.langName.gu = 'ગુજરાતી';
-  var M = { car: 'ગાડીથી', bus: 'બસથી', bike: 'સાઇકલથી', walk: 'ચાલીને' };
+  var M = { car: 'ગાડીથી', moto: 'સ્કૂટીથી', bus: 'બસથી', bike: 'સાઇકલથી', walk: 'ચાલીને' };
   Object.keys(M).forEach(function (k) { if (AI_S.byMode[k]) AI_S.byMode[k].gu = M[k]; });
   AI_S.unit.min.gu = 'મિનિટ'; AI_S.unit.hr.gu = 'કલાક'; AI_S.unit.day.gu = 'દિવસ';
   AI_NS.head.gu = '{e} {c} નજીકના **{w}** ({n}):'; AI_NS.inTown.gu = '{t} માં'; AI_NS.nearYou.gu = 'તમારી';
@@ -5597,13 +5753,17 @@ function aiNearAny(I, L, sure) {
       var ref = [+j.at.lng, +j.at.lat], items = (j.results || []).map(function (x) {
         return { name: x.name, sub: [x.local, x.what].filter(Boolean).join(' · '), lng: +x.lng, lat: +x.lat, kind: x.kind, e: e, m: +x.m };
       });
-      if (!items.length) return { text: aiFill(aiPick(AI_NS.none, L), { e: e, w: w, km: Math.round(j.km || 0) }), actions: [] };
+      var mood = j.mood && AI_MOOD[j.mood] ? aiPick(AI_MOOD[j.mood], L) + '\n' : '';
+      if (!items.length) return { text: mood + aiFill(aiPick(AI_NS.none, L), { e: e, w: w, km: Math.round(j.km || 0) }), actions: [] };
       var where = j.at.src === 'town' ? aiFill(aiPick(AI_NS.inTown, L), { t: j.at.name }) : aiPick(AI_NS.nearYou, L);
       var rows = items.slice(0, 5).map(function (p) {
         var est = aiEst(S.mode, ref, [p.lng, p.lat]);
         return { e: e, t: p.name, s: p.sub, d: fmtDist(p.m) + ' · ~' + aiDur(est.dur, L), act: aiDriving() ? 'ease' : 'place', p: p };
       });
-      return { text: aiFill(aiPick(AI_NS.head, L), { e: e, c: where, w: w, n: Math.min(5, items.length) }), rows: rows,
+      var head = aiFill(aiPick(AI_NS.head, L), { e: e, c: where, w: w, n: Math.min(5, items.length) });
+      /* spoken: the feeling line, the head and the nearest three by name + distance (the rows are not in the text) */
+      var say = mood + head + ' ' + rows.slice(0, 3).map(function (r, i) { return (i + 1) + '. ' + r.t + ', ' + fmtDist(r.p.m); }).join('. ');
+      return { text: mood + head, say: say, rows: rows,
                actions: [aiNavAct(items[0], L), { l: AI_NS.all, act: 'places', p: { title: e + ' ' + w, items: items, ref: ref, e: e } }] };
     })
     .catch(function () { return null; });
@@ -5621,6 +5781,7 @@ function aiAnswer(text) {
   I.q = q;
   return Promise.resolve().then(function () {
     switch (I.intent) {
+      case 'cmd': return aiCmdRun(I.cmd, L);
       case 'cancel': return { text: '🎫 ' + aiT('cancelAns', L), actions: aiOfficeActs(L) };
       case 'track': return { text: aiPick(AI_S.trackAns, L), actions: [{ l: AI_S.track, k: 'track', act: 'url', p: '/#/track' }].concat(aiOfficeActs(L, true).slice(0, 1)) };
       case 'halt': return aiHaltAns(I, L);
@@ -5832,7 +5993,8 @@ function aiCloseThen(fn) {
 function aiClose(fromBack) { if (fromBack) aiHide(); else aiDismiss(); }
 
 /* ---------- asking ---------- */
-function aiAsk(text) {
+function aiAsk(text, o) {
+  o = o || {};
   var q = String(text == null ? '' : text).replace(/\s+/g, ' ').trim().slice(0, AI_MAX);
   if (!q) return Promise.resolve(null);
   if (!aiSt.open) aiOpen({ drive: aiDriving() && aiSt.drive });
@@ -5843,19 +6005,27 @@ function aiAsk(text) {
   var inp = $('#aiInput'); if (inp) inp.value = '';
   return aiAnswer(q).then(function (a) {
     th.think = false; th.t = a.text; th.a = a.actions || []; th.rows = a.rows || []; th.lang = a.lang; th.off = !!a.off || navigator.onLine === false;
+    th.say = a.say || '';
     aiRedraw(th); aiScroll(); aiSave();
-    aiSpeak(a.text, a.lang);
+    /* 23 Oct 2026: asked by voice = answered by voice, places included (a.say); "padhera sunau" turns it on for typing too */
+    aiSpeak(a.say || a.text, a.lang, !!o.voice || a.intent === 'cmd');
     if (a.later) a.later.then(function (u) { if (u && u.text) { th.t = u.text; aiRedraw(th); aiSave(); } }).catch(function () {});
+    if (a.stop) { setTimeout(function () { aiCloseThen(function () { if (S.nav) back(); }); }, 700); return a; }
     if (a.run && !aiDriving()) setTimeout(function () { if (aiSt.open) aiCloseThen(a.run); }, 900);
+    /* asked by voice: what was asked for is marked on the map at once (the list screen pins every place) */
+    else if (o.voice && !aiDriving() && S.level !== 'nav') {
+      var pl = (a.actions || []).filter(function (x) { return x && x.act === 'places' && x.p && x.p.items && x.p.items.length; })[0];
+      if (pl) setTimeout(function () { if (aiSt.open) aiCloseThen(function () { aiShowPlaces(pl.p); }); }, 1600);
+    }
     if (aiSt.drive) { clearTimeout(aiSt.closeT); aiSt.closeT = setTimeout(aiDismiss, 20000); }
     return a;
   });
 }
-function aiSpeak(text, L) {
+function aiSpeak(text, L, voice) {
   var plain = aiPlain(text); if (!plain) return;
   try {
     if (aiSt.drive && aiDriving()) { if (!muted(true)) { voStop(); sayText(plain.slice(0, 260), L); } return; }
-    if (aiSt.tts && !aiDriving()) { voStop(); sayText(plain.slice(0, 400), L); }
+    if ((aiSt.tts || voice) && !aiDriving()) { voStop(); sayText(plain.slice(0, 400), L); }
   } catch (e) {}
 }
 
@@ -5973,7 +6143,7 @@ function aiMic(retry) {
   rec.onresult = function (e) {
     got = Array.prototype.map.call(e.results, function (r) { return r[0].transcript; }).join('');
     if (inp) inp.value = got;
-    if (e.results[e.results.length - 1].isFinal) { var t = got; got = ''; aiMicStop(); aiAsk(t); }
+    if (e.results[e.results.length - 1].isFinal) { var t = got; got = ''; aiMicStop(); aiAsk(t, { voice: true }); }
   };
   rec.onerror = function (e) {
     var er = e && e.error;

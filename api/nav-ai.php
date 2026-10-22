@@ -67,6 +67,7 @@ require_once INCLUDE_PATH . '/aitools.php';
 require_once INCLUDE_PATH . '/aiagent.php';
 require_once INCLUDE_PATH . '/walocal.php';
 require_once INCLUDE_PATH . '/sitefacts.php';
+require_once INCLUDE_PATH . '/aibrain.php';                // the travel guide for everything that is not the bus (23 Oct 2026)
 
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -181,9 +182,30 @@ try {
 if (!AiAgent::webEnabled()) {
     $fail(503, 'off');
 }
+
+/* 8. 23 Oct 2026 (owner: "har ek prasna ko ans din sakne, gpt gemini jasto,
+      tha xaina vane tha xaina vanos"): a question that is not about the S Hari
+      bus goes to the one AI (AiBrain: Gemini / GPT / Claude) as a travel guide
+      that may answer anything - with the rule that it says "I don't know"
+      instead of guessing, and never invents a phone number, address, price or
+      timing. The booking agent below keeps the bus questions (its tools read
+      the real seats and fares). Its own per-rider cap, as the agent has one. */
+if (!navai_busQuestion($q['message']) && AiBrain::configured()
+    && Security::rateLimit('nav_guide', (string) $ctx['stageKey'], 60, 3600)) {
+    $g = null;
+    try {
+        $g = AiBrain::text(navai_guideSystem($q['lang']), navai_turns($q), 700, 'nav-guide');
+    } catch (Throwable $e) {
+        Logger::exception($e, 'ai');
+    }
+    if ($g !== null && trim((string) $g['text']) !== '') {
+        $send(['ok' => true, 'text' => navai_clean((string) $g['text']), 'source' => 'guide', 'actions' => []]);
+    }
+}
+
 $answer = null;
 try {
-    $answer = AiAgent::handleWeb($ctx, navai_prompt($q), $q['lang']);
+    $answer = AiAgent::handleWeb($ctx, navai_prompt($q), $q['lang'] === 'gu' ? 'hi' : $q['lang']);
 } catch (Throwable $e) {
     Logger::exception($e, 'ai');
 }
@@ -262,7 +284,20 @@ function navai_parse(mixed $in): ?array
     }
 
     $lang = $in['lang'] ?? '';
-    $lang = is_string($lang) && in_array($lang, ['ne', 'hi', 'en'], true) ? $lang : 'ne';
+    $lang = is_string($lang) && in_array($lang, ['ne', 'hi', 'en', 'gu'], true) ? $lang : 'ne';
+
+    // the last few turns, so "ani tyo kati tadha xa?" knows what "tyo" is (23 Oct 2026)
+    $hist = [];
+    foreach (is_array($in['hist'] ?? null) ? array_slice($in['hist'], -6) : [] as $h) {
+        if (!is_array($h) || !is_string($h['t'] ?? null)) {
+            continue;
+        }
+        $t = trim((string) (preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $h['t']) ?? ''));
+        $t = preg_replace('/^(.{300}).+$/su', '$1', $t) ?? '';
+        if ($t !== '') {
+            $hist[] = ['r' => ($h['r'] ?? '') === 'bot' ? 'bot' : 'user', 't' => $t];
+        }
+    }
 
     $country = $in['country'] ?? '';
     $country = is_string($country) && in_array($country, ['IN', 'NP'], true) ? $country : '';
@@ -291,7 +326,59 @@ function navai_parse(mixed $in): ?array
         'to'      => $to,
         'route'   => $route,
         'country' => $country,
+        'hist'    => $hist,
     ];
+}
+
+/**
+ * Is this about the S Hari bus itself (seats, fares, timings, tickets,
+ * refunds)? Those stay with the booking agent, whose tools read the real
+ * tables; everything else may go to the travel guide.
+ */
+function navai_busQuestion(string $msg): bool
+{
+    $m = mb_strtolower($msg, 'UTF-8');
+    return preg_match('/\b(bus|buses|coach|ticket|tickets|tikat|tiket|seat|seats|booking|booked|fare|fares|bhada|bhaada|kiraya|kiraaya|pnr|refund|cancel|'
+        . 'departure|depart|boarding|pickup|pick up|chalani|s ?hari|shree ?hari|shri ?hari|rupaidiha|rupaidia|sleeper|berth|agent|office)\b|shg-?\d'
+        . '|बस|टिकट|टिकेट|सिट|सीट|बुक|भाडा|किराया|रुपैडिहा|रूपैडिहा|रुपईडीहा|फिर्ता|रद्द|स्लिपर|બસ|ટિકિટ|સીટ|ભાડું|બુક/u', $m) === 1;
+}
+
+/** The one AI as SHARI NAV's travel guide: answer anything, honestly, briefly. */
+function navai_guideSystem(string $lang): string
+{
+    $langName = ['ne' => 'Nepali (Devanagari script)', 'hi' => 'Hindi (Devanagari script)', 'en' => 'English', 'gu' => 'Gujarati (Gujarati script)'][$lang] ?? 'Nepali (Devanagari script)';
+    return implode("\n", [
+        'You are "S Hari AI", the smart assistant inside SHARI NAV, the map and navigation app of S Hari Global Pvt Ltd (a bus company running between Gujarat, India and the Nepal border at Rupaidiha / Nepalgunj).',
+        'You can answer ANY question a traveller asks - travel, places, culture, festivals, food, history, geography, language and translation, simple maths, money, health basics, phones, general knowledge - like a smart, friendly assistant.',
+        'Reply in ' . $langName . ', even when the question is written in Roman letters or mixed Nepali / Hindi / English. Use simple everyday words.',
+        'Keep it short for a phone screen: 2 to 6 short lines. A list of 3 to 5 items with one line each when the question asks for suggestions. Plain text; **bold** is allowed; no headings, no tables, no links.',
+        'HONESTY RULES (most important):',
+        '- If you are not sure, say so plainly ("मलाई यसको पक्का जानकारी छैन" in Nepali, "मुझे इसकी पक्की जानकारी नहीं है" in Hindi, "I am not sure about this" in English) and say where to check. Never guess and never make things up.',
+        '- Never invent phone numbers, addresses, prices, opening hours, ratings, timetables or names of particular shops, hotels or restaurants. For real places near the rider, tell them to ask like "najik ko hotel" / "nearby restaurant" - the map then lists real places with distance.',
+        '- You cannot see live data (today\'s news, traffic now, live prices, exchange rates today, results, who is open now). Say so when asked, give what is generally true, and mark it as approximate.',
+        '- Famous, well-known places (big temples, cities, national parks, lakes, landmarks) you may describe and suggest by name, with "approx." on any distance or time.',
+        '- S Hari bus fares, seats, timings, tickets, refunds: do not answer from memory - tell them to ask about the bus here or contact the S Hari office. Cancellations and refunds are done by the office by hand.',
+        '- Health: give safe general advice only and say to see a doctor; in an emergency India 112 / ambulance 108, Nepal police 100 / ambulance 102.',
+        '- Never ask for passwords, OTPs or card numbers. Refuse anything harmful or illegal politely.',
+        'The first user line may begin with the rider\'s situation in square brackets (position rounded to ~1 km, country, destination, route): use it only when it helps the answer.',
+    ]);
+}
+
+/**
+ * The guide's conversation: the last turns as they were, then this
+ * question with the rider's situation in front of it (navai_prompt).
+ *
+ * @param array{message:string, lang:string, me:?array, to:?array, route:?array, country:string, hist:list<array{r:string,t:string}>} $q
+ * @return list<array{role:string, content:string}>
+ */
+function navai_turns(array $q): array
+{
+    $out = [];
+    foreach ($q['hist'] ?? [] as $h) {
+        $out[] = ['role' => $h['r'] === 'bot' ? 'assistant' : 'user', 'content' => $h['t']];
+    }
+    $out[] = ['role' => 'user', 'content' => navai_prompt($q)];
+    return $out;
 }
 
 /**
@@ -350,7 +437,7 @@ function navai_prompt(array $q): string
     if ($q['route'] !== null) {
         $parts[] = 'route: ' . $q['route']['mode'] . ', ' . number_format($q['route']['distKm'], 1, '.', '') . ' km, ' . $q['route']['durMin'] . ' min';
     }
-    $langName = ['ne' => 'Nepali', 'hi' => 'Hindi', 'en' => 'English'][$q['lang']] ?? 'Nepali';
+    $langName = ['ne' => 'Nepali', 'hi' => 'Hindi', 'en' => 'English', 'gu' => 'Gujarati'][$q['lang']] ?? 'Nepali';
     return '[SHARI NAV navigation app] ' . implode(', ', $parts)
         . '. Answer briefly for a traveller on the road, in ' . $langName . '. Question: ' . $q['message'];
 }

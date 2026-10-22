@@ -70,7 +70,37 @@ $check('restaurant surat', 'food', ['surat']);
 $check('dominos near me', null, ['dominos'], true);
 $check('pizza near me', 'fastfood', [], true);
 $check('reliance trends near me', null, ['reliance', 'trends'], true);
+// 23 Oct 2026: the owner's feelings, as he says them (MOODS) - a mood is "near me" by itself
+$mood = static function (string $q, string $cat, string $want) use (&$fail, &$n, $check): void {
+    $check($q, $cat, [], true);
+    $n++;
+    if (NavCats::parse($q)['mood'] !== $want) {
+        $fail++;
+        echo "FAIL  \"$q\" mood=" . var_export(NavCats::parse($q)['mood'], true) . " (want $want)\n";
+    }
+};
+$mood('malai bhok lagyo kata jaam', 'food', 'hungry');
+$mood('bhok lagyo', 'food', 'hungry');
+$mood('मलाई भोक लाग्यो', 'food', 'hungry');
+$mood('ભૂખ લાગી છે', 'food', 'hungry');
+$mood('where can i eat', 'food', 'hungry');
+$mood('bhok lagyo momo kaha paincha', 'fastfood', 'hungry');      // a kind named wins over the mood's own
+$mood('mood off xa najik ghumne thau', 'outing', 'mood');
+$mood('मुड अफ छ घुम्ने ठाउँ', 'outing', 'mood');
+$mood('i am bored', 'outing', 'mood');
+$mood('i am tired where to sleep', 'hotel', 'tired');           // "tired" is not "tire" (garage)
+$mood('mujhe neend aa rahi hai hotel', 'hotel', 'tired');
+$mood('kaha basne', 'hotel', 'tired');
+$mood('pyas lagyo', 'cafe', 'thirsty');
+$mood('tauko dukhyo', 'clinic', 'sick');
+$mood('paisa sakiyo', 'atm', 'cash');
+$mood('romantic place for date', 'outing', 'date');
+$check('mlai hotel suggest garnus', 'hotel', []);
+$check('shopping garna man lagyo', 'mall', []);
+$check('restro near me', 'food', [], true);
+$check('restroom near me', 'toilet', [], true);
 // not a place question
+$check('what is the capital of japan', null, null, false);
 $check('when is the next bus to surat', null, null, false);
 $check('what is the fare', null, null, false);
 $check('namaste', null, null, false);

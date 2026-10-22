@@ -8,7 +8,9 @@
  *   ?q=hair salon in pokhara               (a town in the question wins)
  *   ?q=dominos near me&lat=…&lng=…         (no kind named: the NAME is searched)
  *
- * -> {ok:true, cat:{id,e,l}|null, ask:bool, at:{lat,lng,src:'me'|'town',name?}|null,
+ *   ?q=bhok lagyo / mood off xa / tired  (a feeling: NavCats::MOODS -> food / outing / hotel, mood set)
+ *
+ * -> {ok:true, cat:{id,e,l}|null, mood:string|null, ask:bool, at:{lat,lng,src:'me'|'town',name?}|null,
  *     km, results:[{name, local, kind, what, lat, lng, m}]}
  *    ask false = not surely a "near me" question ("office phone number"
  *    names a kind of shop but asks something else): the guide asks the
@@ -38,10 +40,11 @@ if ($lat !== null && ($lat < 5 || $lat > 40 || $lng === null || $lng < 60 || $ln
     $lat = $lng = null;                                   // outside India + Nepal: no "near me"
 }
 
-$out = ['ok' => true, 'cat' => null, 'ask' => false, 'at' => null, 'km' => 0, 'results' => []];
+$out = ['ok' => true, 'cat' => null, 'mood' => null, 'ask' => false, 'at' => null, 'km' => 0, 'results' => []];
 try {
     $p = NavCats::parse($q);
     $cat = $p['cat'];
+    $out['mood'] = $p['mood'];                            // 23 Oct 2026: hungry / tired / mood off ... the guide answers the feeling too
     if ($cat !== null) {
         $c = NavCats::CATS[$cat];
         $out['cat'] = ['id' => $cat, 'e' => $c[0], 'l' => NavCats::label($cat, $lang)];

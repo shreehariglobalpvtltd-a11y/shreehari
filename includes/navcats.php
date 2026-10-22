@@ -47,7 +47,7 @@ final class NavCats
      */
     public const CATS = [
         'food' => ['🍽️', ['खाना / रेस्टुरेन्ट', 'खाना / रेस्टोरेंट', 'restaurants'], ['amenity:restaurant', 'amenity:food_court'],
-            ['restaurant', 'restaurent', 'resturant', 'resturent', 'restorant', 'restorent', 'ressurtent', 'restaurnt', 'restuarant', 'restraunt',
+            ['restaurant', 'restro', 'restaurent', 'resturant', 'resturent', 'restorant', 'restorent', 'ressurtent', 'restaurnt', 'restuarant', 'restraunt',
              'food', 'khana', 'khaana', 'khane', 'bhojan', 'dhaba', 'thali', 'lunch', 'dinner', 'breakfast', 'nasta', 'nashta', 'biryani', 'veg',
              'खाना', 'भोजन', 'ढाबा', 'थाली', 'रेस्टुरेन्ट', 'रेस्टुरेंट', 'रेस्टोरेंट', 'रेस्टोरेन्ट', 'रेष्टुरेन्ट', 'नास्ता', 'नाश्ता', 'खाजा', 'khaja', 'food court']],
         'fastfood' => ['🍔', ['फास्ट फुड', 'फास्ट फूड', 'fast food'], ['amenity:fast_food'],
@@ -161,8 +161,14 @@ final class NavCats
         'sights' => ['📸', ['घुम्ने ठाउँ', 'घूमने की जगह', 'places to visit'],
             ['tourism:attraction', 'tourism:viewpoint', 'tourism:museum', 'historic:fort', 'historic:castle', 'historic:monument', 'tourism:zoo',
              'tourism:theme_park', 'leisure:water_park', 'tourism:aquarium', 'tourism:gallery', 'historic:archaeological_site'],
-            ['tourist', 'tourist place', 'places to visit', 'sightseeing', 'attraction', 'viewpoint', 'museum', 'fort', 'zoo', 'water park', 'ghumne', 'ghumna', 'ghumne thau',
-             'घुम्ने', 'घूमने', 'संग्रहालय', 'किल्ला', 'किला', 'चिडियाखाना', 'चिड़ियाघर']],
+            ['tourist', 'tourist place', 'places to visit', 'sightseeing', 'attraction', 'viewpoint', 'museum', 'fort', 'zoo', 'water park',
+             'संग्रहालय', 'किल्ला', 'किला', 'चिडियाखाना', 'चिड़ियाघर']],
+        // 23 Oct 2026: "mood off xa, najik ghumne thau" - somewhere to go out: parks, views, lakes, sights together
+        'outing' => ['🌄', ['घुम्ने / रमाइलो ठाउँ', 'घूमने / मन बहलाने की जगह', 'places to go out'],
+            ['leisure:park', 'leisure:garden', 'tourism:viewpoint', 'tourism:attraction', 'tourism:zoo', 'tourism:theme_park', 'leisure:water_park',
+             'leisure:nature_reserve', 'tourism:picnic_site', 'natural:beach', 'waterway:waterfall'],
+            ['ghumne', 'ghumna', 'ghumne thau', 'ghumna jane', 'ghoomne', 'ghumne jagah', 'outing', 'picnic', 'hangout', 'hang out', 'chill', 'fresh hune',
+             'घुम्ने', 'घुम्न', 'घूमने', 'घुमघाम', 'पिकनिक', 'रमाइलो']],
         'laundry' => ['🧺', ['लुगा धुने', 'लॉन्ड्री / ड्राई क्लीन', 'laundries'], ['shop:laundry', 'shop:dry_cleaning'],
             ['laundry', 'dry clean', 'dry cleaning', 'dhobi', 'iron', 'धोबी', 'लन्ड्री', 'लॉन्ड्री']],
         'florist' => ['💐', ['फूल पसल', 'फूल की दुकान', 'florists'], ['shop:florist', 'shop:garden_centre'], ['florist', 'flower', 'flowers', 'phool', 'nursery', 'फूल']],
@@ -224,6 +230,43 @@ final class NavCats
         'cinema' => ['સિનેમા', 'થિયેટર'],
         'clothes' => ['કપડાં', 'કપડા'],
         'post' => ['પોસ્ટ ઓફિસ', 'ટપાલ'],
+        'outing' => ['ફરવા', 'ફરવાની', 'ફરવાનું', 'ફરવા જવું', 'farva', 'pharva', 'ફરવાલાયક'],
+    ];
+
+    /**
+     * How the rider FEELS -> the kind of place that helps (23 Oct 2026, owner:
+     * "bhok lagyo kata jaam -> restaurant, mood off xa -> ghumne thau, park").
+     * mood id => [category, words]. Words match like CATS words (a phrase
+     * with a space, or one whole token). A kind of place the rider named
+     * ("bhok lagyo, momo kaha paincha") wins over the mood's own kind; the
+     * mood still colours the reply. A mood is a "near me" question by itself.
+     *
+     * @var array<string, array{0:string, 1:list<string>}>
+     */
+    public const MOODS = [
+        'hungry' => ['food', ['bhok', 'bhokh', 'bhoke', 'bhook', 'bhuk', 'bhukh', 'bhookh', 'hungry', 'starving', 'eat', 'khau', 'khaun', 'khaau', 'khaam', 'khaane',
+            'pet bhok', 'bhok lagyo', 'bhuk lagi', 'bhookh lagi', 'kuch khana', 'kehi khana', 'bhukh lagi che', 'bhukh lagi chhe',
+            'भोक', 'भोकायो', 'भूख', 'भुख', 'खाऔं', 'खाउँ', 'ભૂખ', 'ભૂખ લાગી', 'જમવું']],
+        'thirsty' => ['cafe', ['pyas', 'pyaas', 'tirkha', 'tirka', 'thirsty', 'thirst', 'juice', 'cold drink', 'lassi', 'प्यास', 'तिर्खा', 'तिर्खायो', 'जुस', 'લસ્સી', 'તરસ']],
+        'tired' => ['hotel', ['tired', 'sleepy', 'sleep', 'thakai', 'thakeko', 'thakyo', 'thak gaya', 'thaka', 'nidra', 'nind', 'neend', 'sutna', 'sutne', 'sutnu',
+            'aaram', 'aram', 'rest', 'raat basne', 'rat basne', 'basne thau', 'basna', 'basne', 'night stay', 'overnight',
+            'थकान', 'थाकेको', 'थाक्यो', 'थक', 'निद्रा', 'निन्द्रा', 'नींद', 'सुत्ने', 'सुत्न', 'सोना', 'आराम', 'बस्ने', 'ઊંઘ', 'થાક', 'આરામ', 'રાત રોકાવું']],
+        'mood' => ['outing', ['mood off', 'mood kharab', 'mood thik chaina', 'mood chaina', 'man kharab', 'man lagena', 'man ramaena', 'bored', 'boring', 'bore', 'sad',
+            'upset', 'udas', 'udaas', 'dukhi', 'stress', 'stressed', 'tension', 'tense', 'depressed', 'lonely', 'akela', 'eklai', 'relax', 'relaxing', 'fresh', 'refresh',
+            'timepass', 'time pass', 'ramailo garna', 'enjoy', 'masti', 'ghumfir', 'ghum phir',
+            'मुड अफ', 'मुड खराब', 'मन खराब', 'उदास', 'दुखी', 'बोर', 'तनाव', 'टेन्सन', 'टेंशन', 'एक्लै', 'अकेला', 'मज़ा', 'मजा',
+            'મૂડ', 'કંટાળો', 'ઉદાસ', 'ટેન્શન']],
+        'date' => ['outing', ['romantic', 'couple', 'date jane', 'date ma', 'date par', 'date pe', 'girlfriend', 'boyfriend', 'gf', 'bf', 'wife sanga', 'family sanga',
+            'family ke sath', 'family outing', 'रोमान्टिक', 'प्रेमी']],
+        'kids' => ['park', ['kids', 'kid', 'children', 'child', 'bachha', 'bachcha', 'baccha', 'bachche', 'baccha haru', 'nani', 'chora chori', 'bacchon', 'खेल्ने',
+            'बच्चा', 'बच्चे', 'केटाकेटी', 'नानी', 'બાળકો', 'છોકરાં']],
+        'peace' => ['temple', ['peace', 'shanti', 'shaanti', 'pray', 'prayer', 'prarthana', 'puja', 'pooja', 'bhagwan', 'bhagawan', 'god', 'dharmik', 'darshan garne',
+            'शान्ति', 'शांति', 'पूजा', 'प्रार्थना', 'भगवान', 'धार्मिक', 'ભગવાન', 'દર્શન', 'પૂજા', 'શાંતિ']],
+        'sick' => ['clinic', ['sick', 'ill', 'unwell', 'fever', 'bimar', 'biramee', 'birami', 'bimari', 'jwaro', 'jaro', 'bukhar', 'headache', 'tauko dukhyo', 'pet dukhyo',
+            'sir dard', 'pet dard', 'vomit', 'ulti', 'injury', 'chot', 'ghau', 'बिरामी', 'बीमार', 'ज्वरो', 'बुखार', 'टाउको दुख्यो', 'पेट दुख्यो', 'सिर दर्द', 'पेट दर्द',
+            'उल्टी', 'चोट', 'घाउ', 'બીમાર', 'તાવ', 'માથું દુખે']],
+        'cash' => ['atm', ['paisa sakiyo', 'paisa chaiyo', 'paisa chahiyo', 'paisa nikalna', 'paise chahiye', 'paise nikalne', 'cash chahiyo', 'need cash', 'need money',
+            'withdraw', 'पैसा सकियो', 'पैसा चाहियो', 'पैसे चाहिए', 'પૈસા જોઈએ']],
     ];
 
     /** Gujarati labels (others fall back to the Hindi one) */
@@ -231,6 +274,7 @@ final class NavCats
         'food' => 'જમવાનું / રેસ્ટોરન્ટ', 'cafe' => 'ચા / કાફે', 'hospital' => 'હોસ્પિટલ', 'clinic' => 'ક્લિનિક / ડૉક્ટર', 'pharmacy' => 'મેડિકલ સ્ટોર',
         'atm' => 'એટીએમ', 'bank' => 'બેંક', 'fuel' => 'પેટ્રોલ પંપ', 'hotel' => 'હોટલ', 'temple' => 'મંદિર', 'police' => 'પોલીસ',
         'park' => 'બગીચા', 'toilet' => 'શૌચાલય', 'busstand' => 'બસ સ્ટેન્ડ', 'railway' => 'રેલવે સ્ટેશન', 'salon' => 'સલૂન', 'grocery' => 'કરિયાણું',
+        'outing' => 'ફરવાલાયક જગ્યા',
     ];
 
     /**
@@ -306,6 +350,11 @@ final class NavCats
         'karo', 'kijiye', 'do', 'dijiye', 'sujhao', 'suggestion', 'suggestions', 'recommend', 'recommendation',
         'मलाई', 'हामीलाई', 'मुझे', 'हमें', 'गर', 'गर्नु', 'गर्नुस्', 'गरिदेउ', 'गर्दिनुस्', 'देउ', 'दिनुस्', 'करो', 'कीजिए', 'दो', 'दीजिए', 'सुझाव',
         'mane', 'mare', 'mari', 'amne', 'paase', 'aaspaas', 'kyan', 'kya', 'che', 'chhe', 'batavo', 'batav', 'shodho', 'saru', 'sari', 'saro', 'joie', 'joiye', 'dukan',
+        // 23 Oct 2026: the rest of how people really talk ("mlai hotel suggest garnus", "bhok lagyo kata jaam")
+        'mlai', 'mlae', 'malae', 'haru', 'harru', 'lagyo', 'lageko', 'lagi', 'lagi', 'lagra', 'jaam', 'jaun', 'jaaun', 'jaun', 'jane', 'jaane', 'thau', 'thaun', 'thaau',
+        'jagah', 'jagha', 'jaga', 'garna', 'garne', 'man', 'ekdam', 'dherai', 'kunai', 'ani', 'sanga', 'hola', 'hunxa', 'huncha', 'hunchha', 'paincha', 'painxa', 'milxa',
+        'milcha', 'xan', 'chan', 'chhan', 'bhayo', 'vayo', 'bhaira', 'vaira', 'sabai', 'sab', 'kuch', 'kuchh', 'thoda', 'ali', 'feri', 'aaja', 'aja', 'aile', 'ahile',
+        'हरु', 'हरू', 'लाग्यो', 'लागेको', 'ठाउँ', 'ठाउं', 'जगह', 'जाम', 'जाऔं', 'जाने', 'गर्न', 'गर्ने', 'मन', 'छन्', 'छन', 'पाइन्छ', 'मिल्छ', 'भयो', 'सबै', 'कुछ', 'अहिले', 'आज',
     ];
 
     /** words that say "around me" when no kind of place was named ("dominos near me") */
@@ -325,14 +374,37 @@ final class NavCats
     /**
      * Which kind of place does this question ask for?
      *
-     * @return array{cat: ?string, rest: list<string>, near: bool}
+     * @return array{cat: ?string, rest: list<string>, near: bool, mood: ?string}
      *         rest = the words left once the kind and the filler are gone
-     *         (a town name, or a brand like "dominos")
+     *         (a town name, or a brand like "dominos"); mood = a MOODS id
      */
     public static function parse(string $text): array
     {
         $norm = self::norm($text);
         $toks = $norm === '' ? [] : explode(' ', $norm);
+        // the feeling first, by whole words only: "tired" must never reach the
+        // CATS prefix rule (it starts with "tire" = garage)
+        $mood = null;
+        $moodLen = 0;
+        $moodUsed = [];
+        foreach (self::MOODS as $id => [, $words]) {
+            foreach ($words as $w) {
+                $w = self::norm($w);
+                $hit = [];
+                if (str_contains($w, ' ')) {
+                    if (str_contains(' ' . $norm . ' ', ' ' . $w . ' ')) {
+                        $hit = explode(' ', $w);
+                    }
+                } elseif ($w !== '' && in_array($w, $toks, true)) {
+                    $hit = [$w];
+                }
+                if ($hit !== [] && mb_strlen($w) > $moodLen) {
+                    $mood = $id;
+                    $moodLen = mb_strlen($w);
+                    $moodUsed = $hit;
+                }
+            }
+        }
         $best = null;
         $bestLen = 0;
         $used = [];
@@ -349,6 +421,9 @@ final class NavCats
                     }
                 } else {
                     foreach ($toks as $t) {
+                        if (in_array($t, $moodUsed, true) && $t !== $w) {
+                            continue;                   // a mood word is not the start of a kind ("tired" / "tire")
+                        }
                         if ($t === $w || self::guStem($t) === $w || (mb_strlen($w) >= 4 && preg_match('/^[a-z]+$/', $w) === 1 && str_starts_with($t, $w) && strlen($t) - strlen($w) <= 2)) {
                             $hit = [$t];
                             break;
@@ -370,6 +445,10 @@ final class NavCats
             }
         }
         $near = $near || str_contains(' ' . $norm . ' ', ' near me ');
+        if ($mood !== null) {
+            $best ??= self::MOODS[$mood][0];            // a kind the rider named wins; the mood still shapes the reply
+            $near = true;                               // "bhok lagyo" means here and now
+        }
         $rest = [];
         foreach ($toks as $t) {
             $i = array_search($t, $used, true);
@@ -377,12 +456,35 @@ final class NavCats
                 unset($used[$i]);                       // each matched word once ("bus bus stand")
                 continue;
             }
+            if ($mood !== null && self::moodWord($t)) {
+                continue;                               // "tired … sleep": every feeling word goes, not just the winner (a village may be called "Date")
+            }
             if (in_array($t, self::FILLER, true) || mb_strlen($t) < 2) {
                 continue;
             }
             $rest[] = $t;
         }
-        return ['cat' => $best, 'rest' => $rest, 'near' => $near];
+        return ['cat' => $best, 'rest' => $rest, 'near' => $near, 'mood' => $mood];
+    }
+
+    /** Is this one token a word of any mood (or of a mood phrase)? */
+    private static function moodWord(string $t): bool
+    {
+        static $set = null;
+        if ($set === null) {
+            $set = [];
+            foreach (self::MOODS as [, $words]) {
+                foreach ($words as $w) {
+                    foreach (explode(' ', self::norm($w)) as $x) {
+                        $set[$x] = true;
+                    }
+                }
+            }
+            foreach (['date', 'aa', 'rahi', 'raha', 'rahe', 'rahyo', 'liye', 'liya', 'off', 'xu', 'chu', 'chhu', 'hu', 'hun', 'hoon', 'gaya', 'gayi', 'lagi', 'ho', 'gayo'] as $x) {
+                $set[$x] = true;                        // the rest of a feeling sentence ("neend aa rahi hai", "mood off xu")
+            }
+        }
+        return isset($set[$t]);
     }
 
     /** The label of a category in ne / hi / en. */
