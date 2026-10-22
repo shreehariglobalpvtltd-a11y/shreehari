@@ -46,7 +46,10 @@ if (!defined('SHG_APP')) {
 
 final class DocVerify
 {
-    private const GEMINI_LADDER = ['gemini-3.5-flash', 'gemini-2.5-flash'];
+    /* 22 Oct 2026: gemini-2.5-flash answers 404 (retired for this key) and 3.5-flash
+       is sometimes 503 "high demand" - the same ladder as the voice reader
+       (includes/wavoice.php), all four probed 200 on the live key that day. */
+    private const GEMINI_LADDER = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.7-flash'];
     private const TIMEOUT_SEC   = 25;
     private const OCR_SEC       = 25;
     public const  SESSION_MIN   = 45;   // a pass stays good this long in the session
