@@ -232,6 +232,7 @@ final class AgentApplications
     private static ?bool $webOk     = null;
     private static ?bool $logoOk    = null;
     private static ?bool $certOk    = null;
+    private static ?bool $thumbOk   = null;
 
     /* =================================================================
      *  Schema presence — a page must never 500 because the migration has
@@ -376,6 +377,24 @@ final class AgentApplications
     }
 
     /** A partner company's logo (upgrade-2026-10-22-team-portal.sql, 22 Oct 2026). */
+    /** The thumbprint, passkey and marksheet columns (22 Oct 2026, upgrade-2026-10-22-thumbprint.sql). */
+    public static function thumbReady(): bool
+    {
+        if (self::$thumbOk === null) {
+            try {
+                self::$thumbOk = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'agent_applications'
+                        AND COLUMN_NAME IN ('thumb','webauthn_cred','edu_cert')",
+                    [], 0
+                ) === 3;
+            } catch (Throwable $e) {
+                self::$thumbOk = false;
+            }
+        }
+        return self::$thumbOk;
+    }
+
     public static function logoReady(): bool
     {
         if (self::$logoOk === null) {
@@ -427,7 +446,7 @@ final class AgentApplications
     /** Tests and long-running scripts: forget the schema answers. */
     public static function resetCache(): void
     {
-        self::$tableOk = self::$profileOk = self::$kycOk = self::$extraOk = self::$verifyOk = self::$webOk = null;
+        self::$tableOk = self::$profileOk = self::$kycOk = self::$extraOk = self::$verifyOk = self::$webOk = self::$thumbOk = null;
     }
 
     /* =================================================================
@@ -789,6 +808,11 @@ final class AgentApplications
             'photo_note' => $photo['note'],
             'doc'        => $doc['photo'],
             'signature'  => self::cleanSignature($in['signature'] ?? null),
+            // 22 Oct 2026 (owner: "fingerprint scan garera camera bata"): the thumbprint, photographed and turned
+            // into an ink-style PNG on the phone - the same size rule as the signature; optional
+            'thumb'      => self::cleanSignature($in['thumb'] ?? null),
+            // 22 Oct 2026 ("document, marksheet upload garne"): an individual agent's latest marksheet, optional
+            'edu_cert'   => $type !== 'org' ? self::cleanPhoto($in['edu_cert'] ?? null)['photo'] : null,
             'geo'        => self::cleanGeo($in['geo'] ?? null),
             // 22 Oct 2026: a Pvt. Ltd. partner's logo from the quick form (partners only)
             'logo'       => $type === 'org' ? self::cleanPhoto($in['logo'] ?? null)['photo'] : null,
@@ -824,7 +848,7 @@ final class AgentApplications
         ];
         // The simple form's extras join the fingerprint only when sent, so a
         // form without them hashes exactly as before.
-        foreach (['doc', 'signature', 'geo', 'logo', 'reg_cert', 'tax_cert'] as $k) {
+        foreach (['doc', 'signature', 'geo', 'logo', 'reg_cert', 'tax_cert', 'thumb', 'edu_cert'] as $k) {
             if (is_string($clean[$k] ?? null) && $clean[$k] !== '') {
                 $parts[] = $k . ':' . hash('sha256', (string) $clean[$k]);
             }
@@ -913,6 +937,18 @@ final class AgentApplications
         }
         if (is_string($clean['logo'] ?? null) && (string) $clean['type'] === 'org' && self::logoReady()) {
             $extra['logo'] = $clean['logo'];
+        }
+        // 22 Oct 2026: the camera thumbprint and the phone passkey (upgrade-2026-10-22-thumbprint.sql)
+        if (self::thumbReady()) {
+            if (is_string($clean['thumb'] ?? null)) {
+                $extra['thumb'] = $clean['thumb'];
+            }
+            if (is_string($clean['webauthn_cred'] ?? null) && $clean['webauthn_cred'] !== '') {
+                $extra['webauthn_cred'] = $clean['webauthn_cred'];
+            }
+            if (is_string($clean['edu_cert'] ?? null)) {
+                $extra['edu_cert'] = $clean['edu_cert'];
+            }
         }
         if ((string) $clean['type'] === 'org' && self::certReady()) {
             foreach (['reg_cert', 'tax_cert'] as $k) {

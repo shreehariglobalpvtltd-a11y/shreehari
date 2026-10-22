@@ -87,6 +87,14 @@ try {
 
     if ($method === 'GET') {
         Security::requireRateLimit('agr_token', Security::clientIp(), 60, 300);
+        // 22 Oct 2026 (owner: "fingerprint / face id"): ?challenge=1 = a WebAuthn challenge for the
+        // optional phone lock (fingerprint / face unlock). Only the public credential is ever kept.
+        if (!empty($_GET['challenge'])) {
+            $ch = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+            $_SESSION['agr_webauthn'] = ['c' => $ch, 't' => time()];
+            Response::json(['ok' => true, 'challenge' => $ch, 'rpId' => (string) parse_url(APP_URL, PHP_URL_HOST),
+                            'rpName' => Settings::getString('company_name', 'S Hari Global')]);
+        }
         Response::json(['ok' => true, 'csrf' => Security::csrfToken()]);
     }
     if ($method !== 'POST') {
@@ -130,12 +138,27 @@ try {
         'logo'      => Response::field('logo', null),   // 22 Oct 2026: a partner company's logo
         'reg_cert'  => Response::field('reg_cert', null),   // 22 Oct 2026: company registration certificate
         'tax_cert'  => Response::field('tax_cert', null),   // 22 Oct 2026: PAN / VAT / GST certificate
+        'thumb'     => Response::field('thumb', null),      // 22 Oct 2026: thumbprint by the phone camera
+        'edu_cert'  => Response::field('edu_cert', null),   // 22 Oct 2026: marksheet / certificate (agents)
     ]);
     if (!$check['ok']) {
         Response::invalid($check['errors'], AgentApplications::message('invalid', $lang));
     }
     $clean = $check['clean'];
     $photo = ['photo' => $clean['photo'], 'note' => (string) $clean['photo_note']];
+
+    // 22 Oct 2026: the optional phone lock, checked against this session's challenge (10 minutes)
+    $chal = $_SESSION['agr_webauthn'] ?? null;
+    if (is_array($chal) && (int) ($chal['t'] ?? 0) > time() - 600) {
+        require_once INCLUDE_PATH . '/staffapplications.php';
+        $u = parse_url(APP_URL);
+        $cred = StaffApps::webauthnCred(Response::field('webauthn', null), (string) $chal['c'],
+            ($u['scheme'] ?? 'https') . '://' . ($u['host'] ?? '') . (isset($u['port']) ? ':' . $u['port'] : ''));
+        if ($cred !== null) {
+            $clean['webauthn_cred'] = $cred;
+            unset($_SESSION['agr_webauthn']);
+        }
+    }
 
     // Honeypot: a person never sees this box, so anything in it is a bot.
     $hp = Response::field('website', '');

@@ -59,12 +59,6 @@ main.wrap{padding-bottom:32px}
 .dir h2 .count:not(:empty){font:600 13px/1 var(--sans);background:#eef2f8;color:var(--navy);border-radius:999px;padding:5px 9px}
 .search{margin:0 0 10px}
 .search input{width:100%;height:44px;padding:0 12px;border:1px solid #c9d2e1;border-radius:10px;font:16px var(--sans)}
-#dirList{list-style:none;margin:0;padding:0}
-#dirList li{display:grid;gap:2px;padding:11px 0;border-top:1px solid var(--line)}
-#dirList li:first-child{border-top:0}
-#dirList li.has-dp{grid-template-columns:44px 1fr;column-gap:12px}
-#dirList li.has-dp>:not(.dp){grid-column:2}
-#dirList .dp{grid-row:1/span 3;width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid var(--line)}
 .meta .wa{color:#128c3e;font-weight:700}
 .who{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
 .who b{font-size:16px}
@@ -103,6 +97,24 @@ footer{padding:0 16px 30px;text-align:center;color:var(--muted);font-size:13px}
 .k-row a{display:flex;align-items:center;justify-content:center;text-align:center;min-height:46px;padding:6px;border-radius:10px;border:1.5px solid var(--k);color:var(--k);font-size:13px;font-weight:700;text-decoration:none;line-height:1.25;background:#fff}
 .k-note{margin:0;font-size:12px;color:var(--muted)}
 @media (max-width:760px){.kinds-grid{grid-template-columns:minmax(0,1fr)}}
+.applynow{margin:0 0 14px;border-radius:18px;background:linear-gradient(140deg,#071a5e,#0a2a8f 55%,#1f4fe0);color:#fff;box-shadow:0 14px 30px -18px rgba(10,42,143,.9)}
+.applynow summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;min-height:58px;padding:0 18px;border-radius:18px;font:800 18px/1.2 var(--brand);background:linear-gradient(135deg,#ff8a2b,#f07a1e 60%,#d4570c);color:#fff;text-align:center}
+.applynow summary::-webkit-details-marker{display:none}
+.applynow summary::after{content:"▾";font-size:16px;transition:transform .2s}
+.applynow[open] summary{border-radius:18px 18px 0 0}
+.applynow[open] summary::after{transform:rotate(180deg)}
+.applynow .an-q{margin:12px 16px 8px;font-weight:700;font-size:14px}
+.an-pick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:0 14px 14px}
+.an-pick a{--k:#0054A8;display:flex;flex-direction:column;gap:3px;min-height:96px;padding:12px;border-radius:14px;background:#fff;color:#16233c;text-decoration:none;border-top:5px solid var(--k)}
+.an-pick a.k-staff{--k:#11703F}.an-pick a.k-partner{--k:#C25E00}
+.an-pick a span{font-size:26px;line-height:1}
+.an-pick a b{color:var(--k);font-size:15.5px}
+.an-pick a small{font-size:12px;color:var(--muted)}
+.k-need{margin:0;padding:0 0 0 2px;list-style:none;display:flex;flex-wrap:wrap;gap:5px}
+.k-need li{font-size:12px;padding:3px 8px;border-radius:999px;background:#f2f5fb;border:1px solid var(--line)}
+.k-langs{margin:0;font-size:12.5px;color:var(--muted)}
+.k-langs a{color:var(--k);font-weight:700}
+@media (max-width:760px){.an-pick{grid-template-columns:minmax(0,1fr)}.an-pick a{min-height:0;flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px 10px}.an-pick a small{flex-basis:100%}}
 </style>
 </head>
 <body>
@@ -114,143 +126,65 @@ footer{padding:0 16px 30px;text-align:center;color:var(--muted);font-size:13px}
 </header>
 <section class="hero"><div class="wrap"><h1><span data-l="ne" lang="ne">सम्झौता पत्र</span><span data-l="hi" lang="hi">अनुबंध पत्र</span><span data-l="en" lang="en">Agreements</span><span data-l="gu" lang="gu">કરાર પત્ર</span></h1><p><span data-l="ne" lang="ne">फारम फोनमै भर्नुहोस् र अनलाइन पठाउनुहोस्, वा PDF डाउनलोड गरी प्रिन्ट गरेर हातैले हस्ताक्षर गर्नुहोस्।</span><span data-l="hi" lang="hi">फ़ॉर्म फ़ोन पर ही भरें और ऑनलाइन भेजें, या PDF डाउनलोड करके प्रिंट करें और हाथ से हस्ताक्षर करें।</span><span data-l="en" lang="en">Fill in the form on your phone and send it online, or download the PDF, print it and sign by hand.</span><span data-l="gu" lang="gu">ફોર્મ ફોનમાં જ ભરો અને ઓનલાઇન મોકલો, અથવા PDF ડાઉનલોડ કરીને પ્રિન્ટ કરો અને હાથથી સહી કરો.</span></p></div></section>
 <main class="wrap">
-<!-- 22 Oct 2026 (owner: "3 prakar ko form ... differentiate garera chhuta chhuttai agreement, digital focus tara
-     print garera ni bharna milne"): one door per kind - apply online first, the A4 paper form, its own agreement.
-     Replaces the two quick-form links (agent 18 Oct, partner 22 Oct) that sat here. -->
+<!-- 22 Oct 2026 (owner: "euta matra apply now ... aru agreement haru agent haru chaina sabai hatadeu, only yei
+     wala system"): this page is now the three forms only - ONE "Apply now" that asks who is applying, then the
+     three kinds side by side, each with its A4 paper form and its own agreement. The old agreement cards, the
+     "what you need" card and the agent list are gone (the home page shows the people). -->
 <section class="kinds" id="forms" aria-labelledby="formsTitle">
-  <h2 class="kinds-h" id="formsTitle">तीन प्रकारका फारम · Three kinds of application</h2>
-  <p class="kinds-sub">पहिले अनलाइन भर्नुहोस् — छिटो, फोटो र WhatsApp प्रमाणसहित। इन्टरनेट नभए A4 फारम छापेर हातले भर्नुहोस् र कार्यालयमा बुझाउनुहोस्। · Apply online first; or print the A4 form and fill it by hand.</p>
+  <h2 class="kinds-h" id="formsTitle">आवेदन र सम्झौता · Apply &amp; agreements</h2>
+  <p class="kinds-sub">सबै फोनबाटै: विवरण, डकुमेन्ट र मार्कसिटको फोटो, अनुहार (Face ID), औंठाछाप र सही — अनि सम्झौताका सबै सर्त पढेर पठाउनुहोस्। · All on your phone: details, documents, face, thumbprint, signature and every term of the agreement.</p>
+  <details class="applynow" id="applyNow">
+    <summary>✍️ अहिले आवेदन दिनुहोस् · Apply now</summary>
+    <p class="an-q">तपाईं को हुनुहुन्छ? · Who is applying?</p>
+    <div class="an-pick">
+      <a class="k-staff" href="/agreements/apply.html?kind=staff"><span aria-hidden="true">🧑‍✈️</span><b>कर्मचारी · Staff</b><small>चालक, कन्डक्टर, हेल्पर, अफिस, लेखापाल, मेकानिक…</small></a>
+      <a class="k-agent" href="/agreements/apply.html"><span aria-hidden="true">🤝</span><b>एजेन्ट · Agent</b><small>व्यक्ति — टिकट बेच्ने, यात्रु ल्याउने</small></a>
+      <a class="k-partner" href="/agreements/apply.html?kind=partner"><span aria-hidden="true">🏢</span><b>साझेदार कम्पनी · Partner</b><small>प्रा. लि. / दर्ता भएको फर्म</small></a>
+    </div>
+  </details>
   <div class="kinds-grid">
     <article class="kind-card k-staff">
       <div class="k-top"><span class="k-ic" aria-hidden="true">🧑‍✈️</span><div><b>कर्मचारी · Staff</b><small>चालक, कन्डक्टर, हेल्पर, अफिस, लेखापाल, मेकानिक, सफाइ, सुरक्षा</small></div></div>
-      <a class="k-main" href="/agreements/staff.html">✍️ अनलाइन भर्नुहोस् · Apply online</a>
-      <div class="k-row"><a href="/agreements/form.php?kind=staff">📄 A4 फारम<br>Print · PDF · JPG</a><a href="/agreements/staff-agreement.html">📜 कर्मचारी सम्झौता<br>Staff agreement</a></div>
-      <p class="k-note">सम्झौता अनलाइन सही गर्न मिल्छ, छापेर पनि।</p>
+      <ul class="k-need"><li>🤳 फोटो र परिचयपत्र</li><li>🚌 लाइसेन्स (चालक)</li><li>🎓 मार्कसिट / प्रमाणपत्र</li><li>📄 अनुभव पत्र, २ चिनारी</li><li>👍 औंठाछाप, ✍️ सही</li></ul>
+      <div class="k-row"><a href="/agreements/form.php?kind=staff">📄 A4 फारम<br>Print · PDF · PNG</a><a href="/agreements/staff-agreement.html">📜 कर्मचारी सम्झौता<br>Staff agreement</a></div>
     </article>
     <article class="kind-card k-agent">
       <div class="k-top"><span class="k-ic" aria-hidden="true">🤝</span><div><b>एजेन्ट · Agent</b><small>व्यक्ति — टिकट बेच्ने, यात्रु ल्याउने, कमिसनमा</small></div></div>
-      <a class="k-main" href="/agreements/apply.html">✍️ अनलाइन भर्नुहोस् · Apply online</a>
-      <div class="k-row"><a href="/agreements/form.php?kind=agent">📄 A4 फारम<br>Print · PDF · JPG</a><a href="/agreements/agent-agreement-ne.html">📜 एजेन्ट सम्झौता<br>Agent agreement</a></div>
-      <p class="k-note">स्वीकृत भएपछि टिम पोर्टलबाट अनलाइन सही।</p>
+      <ul class="k-need"><li>🤳 फोटो र परिचयपत्र</li><li>🎓 मार्कसिट (ऐच्छिक)</li><li>🏦 बैंक / UPI</li><li>📱 WhatsApp नम्बर</li><li>👍 औंठाछाप, ✍️ सही</li></ul>
+      <div class="k-row"><a href="/agreements/form.php?kind=agent">📄 A4 फारम<br>Print · PDF · PNG</a><a href="agent-agreement-ne.html" hreflang="ne">📜 एजेन्ट सम्झौता<br>Agent agreement</a></div>
+      <p class="k-langs">सम्झौता: <a href="agent-agreement-ne.html" hreflang="ne">नेपाली</a> · <a href="agent-agreement-hi.html" hreflang="hi">हिन्दी</a> · <a href="agent-agreement-en.html" hreflang="en">English</a> · <a href="agent-agreement-gu.html" hreflang="gu">ગુજરાતી</a></p>
     </article>
     <article class="kind-card k-partner">
-      <div class="k-top"><span class="k-ic" aria-hidden="true">🏢</span><div><b>साझेदार कम्पनी · Partner</b><small>प्रा. लि. / दर्ता भएको फर्म — दर्ता र PAN/VAT प्रमाणपत्रसहित</small></div></div>
-      <a class="k-main" href="/agreements/apply.html?kind=partner">✍️ अनलाइन भर्नुहोस् · Apply online</a>
-      <div class="k-row"><a href="/agreements/form.php?kind=partner">📄 A4 फारम<br>Print · PDF · JPG</a><a href="/agreements/partner-agreement-ne.html">📜 साझेदार सम्झौता<br>Partner agreement</a></div>
-      <p class="k-note">दुई जना साक्षीसहित सही गर्नुपर्छ।</p>
+      <div class="k-top"><span class="k-ic" aria-hidden="true">🏢</span><div><b>साझेदार कम्पनी · Partner</b><small>प्रा. लि. / दर्ता भएको फर्म</small></div></div>
+      <ul class="k-need"><li>📄 दर्ता प्रमाणपत्र</li><li>🧾 PAN / VAT प्रमाणपत्र</li><li>🪪 प्रतिनिधिको परिचयपत्र र फोटो</li><li>🏷 कम्पनीको लोगो, बैंक</li><li>👥 दुई जना साक्षी</li></ul>
+      <div class="k-row"><a href="/agreements/form.php?kind=partner">📄 A4 फारम<br>Print · PDF · PNG</a><a href="partner-agreement-ne.html" hreflang="ne">📜 साझेदार सम्झौता<br>Partner agreement</a></div>
+      <p class="k-langs">सम्झौता: <a href="partner-agreement-ne.html" hreflang="ne">नेपाली</a> · <a href="partner-agreement-hi.html" hreflang="hi">हिन्दी</a> · <a href="partner-agreement-en.html" hreflang="en">English</a> · <a href="partner-agreement-gu.html" hreflang="gu">ગુજરાતી</a></p>
     </article>
   </div>
 </section>
 <a href="/team/" style="display:flex;align-items:center;gap:12px;margin:0 0 16px;padding:12px 18px;border-radius:18px;text-decoration:none;color:#0a2a8f;background:#eef4fc;border:1px solid #d9e7fa"><span style="font-size:24px;line-height:1">🔐</span><span style="flex:1"><b style="display:block;font-size:15px">टिम पोर्टल · Team portal</b><small style="display:block;font-size:12.5px;color:#5c6b85">स्वीकृत भएपछि: परिचयपत्र, CV, सम्झौतामा अनलाइन सही, टिकट बिक्री</small></span><span style="font-weight:900">→</span></a>
-  <div class="types">
-  <section class="card type" id="partner">
-    <div class="kicker"><span data-l="ne" lang="ne">साझेदार संस्था</span><span data-l="hi" lang="hi">पार्टनर संस्था</span><span data-l="en" lang="en">Partner organization</span><span data-l="gu" lang="gu">ભાગીદાર સંસ્થા</span></div>
-    <h2><span data-l="ne" lang="ne">संस्था / प्रा. लि. साझेदार सम्झौता पत्र</span><span data-l="hi" lang="hi">संस्था / प्रा. लि. पार्टनर अनुबंध पत्र</span><span data-l="en" lang="en">ORGANIZATION / PVT. LTD. PARTNER AGREEMENT</span><span data-l="gu" lang="gu">સંસ્થા / પ્રા. લિ. ભાગીદાર કરાર પત્ર</span></h2>
-    <ul class="desc"><li lang="ne">यात्रु ल्याएर टिकट बुकिङ गर्ने संस्था, फर्म वा प्रा. लि. कम्पनीका लागि।</li><li lang="hi">यात्री लाकर टिकट बुकिंग करने वाली संस्था, फ़र्म या प्रा. लि. कंपनी के लिए।</li><li lang="en">For an organization, firm or private limited company that brings passengers and books tickets.</li><li lang="gu">મુસાફરો લાવીને ટિકિટ બુક કરતી સંસ્થા, પેઢી અથવા પ્રા. લિ. કંપની માટે.</li></ul>
-    <div class="go" role="group"><a class="btn" href="partner-agreement-ne.html" hreflang="ne"><b lang="ne">नेपाली</b><small><span data-l="ne" lang="ne">फारम खोल्नुहोस्</span><span data-l="hi" lang="hi">फ़ॉर्म खोलें</span><span data-l="en" lang="en">Open the form</span><span data-l="gu" lang="gu">ફોર્મ ખોલો</span></small></a><a class="btn" href="partner-agreement-hi.html" hreflang="hi"><b lang="hi">हिन्दी</b><small><span data-l="ne" lang="ne">फारम खोल्नुहोस्</span><span data-l="hi" lang="hi">फ़ॉर्म खोलें</span><span data-l="en" lang="en">Open the form</span><span data-l="gu" lang="gu">ફોર્મ ખોલો</span></small></a><a class="btn" href="partner-agreement-en.html" hreflang="en"><b lang="en">English</b><small><span data-l="ne" lang="ne">फारम खोल्नुहोस्</span><span data-l="hi" lang="hi">फ़ॉर्म खोलें</span><span data-l="en" lang="en">Open the form</span><span data-l="gu" lang="gu">ફોર્મ ખોલો</span></small></a><a class="btn" href="partner-agreement-gu.html" hreflang="gu"><b lang="gu">ગુજરાતી</b><small><span data-l="ne" lang="ne">फारम खोल्नुहोस्</span><span data-l="hi" lang="hi">फ़ॉर्म खोलें</span><span data-l="en" lang="en">Open the form</span><span data-l="gu" lang="gu">ફોર્મ ખોલો</span></small></a></div>
-  </section>
-  <section class="card type" id="agent">
-    <div class="kicker"><span data-l="ne" lang="ne">व्यक्तिगत एजेन्ट</span><span data-l="hi" lang="hi">व्यक्तिगत एजेंट</span><span data-l="en" lang="en">Individual agent</span><span data-l="gu" lang="gu">વ્યક્તિગત એજન્ટ</span></div>
-    <h2><span data-l="ne" lang="ne">व्यक्तिगत एजेन्ट / कनेक्टर सम्झौता पत्र</span><span data-l="hi" lang="hi">व्यक्तिगत एजेंट / कनेक्टर अनुबंध पत्र</span><span data-l="en" lang="en">INDIVIDUAL AGENT / CONNECTOR AGREEMENT</span><span data-l="gu" lang="gu">વ્યક્તિગત એજન્ટ / કનેક્ટર કરાર પત્ર</span></h2>
-    <ul class="desc"><li lang="ne">यात्रु ल्याएर टिकट बुकिङ गर्ने एक जना व्यक्ति (एजेन्ट / कनेक्टर) का लागि।</li><li lang="hi">यात्री लाकर टिकट बुकिंग करने वाले एक व्यक्ति (एजेंट / कनेक्टर) के लिए।</li><li lang="en">For one person (agent / connector) who brings passengers and books tickets.</li><li lang="gu">મુસાફરો લાવીને ટિકિટ બુક કરતી એક વ્યક્તિ (એજન્ટ / કનેક્ટર) માટે.</li></ul>
-    <div class="go" role="group"><a class="btn" href="agent-agreement-ne.html" hreflang="ne"><b lang="ne">नेपाली</b><small><span data-l="ne" lang="ne">फारम खोल्नुहोस्</span><span data-l="hi" lang="hi">फ़ॉर्म खोलें</span><span data-l="en" lang="en">Open the form</span><span data-l="gu" lang="gu">ફોર્મ ખોલો</span></small></a><a class="btn" href="agent-agreement-hi.html" hreflang="hi"><b lang="hi">हिन्दी</b><small><span data-l="ne" lang="ne">फारम खोल्नुहोस्</span><span data-l="hi" lang="hi">फ़ॉर्म खोलें</span><span data-l="en" lang="en">Open the form</span><span data-l="gu" lang="gu">ફોર્મ ખોલો</span></small></a><a class="btn" href="agent-agreement-en.html" hreflang="en"><b lang="en">English</b><small><span data-l="ne" lang="ne">फारम खोल्नुहोस्</span><span data-l="hi" lang="hi">फ़ॉर्म खोलें</span><span data-l="en" lang="en">Open the form</span><span data-l="gu" lang="gu">ફોર્મ ખોલો</span></small></a><a class="btn" href="agent-agreement-gu.html" hreflang="gu"><b lang="gu">ગુજરાતી</b><small><span data-l="ne" lang="ne">फारम खोल्नुहोस्</span><span data-l="hi" lang="hi">फ़ॉर्म खोलें</span><span data-l="en" lang="en">Open the form</span><span data-l="gu" lang="gu">ફોર્મ ખોલો</span></small></a></div>
-  </section>
-  </div>
-
-  <section class="card need">
-    <h2><span data-l="ne" lang="ne">यस सम्झौताका लागि चाहिने कुरा</span><span data-l="hi" lang="hi">इस अनुबंध के लिए क्या-क्या चाहिए</span><span data-l="en" lang="en">What you need for this agreement</span><span data-l="gu" lang="gu">આ કરાર માટે શું જોઈએ</span></h2>
-    <p class="muted"><span data-l="ne" lang="ne">फारम भर्नु र हस्ताक्षर गर्नुअघि यी कुरा तयार राख्नुहोस्।</span><span data-l="hi" lang="hi">फ़ॉर्म भरने और हस्ताक्षर करने से पहले ये चीज़ें तैयार रखें।</span><span data-l="en" lang="en">Keep these ready before you fill in and sign the form.</span><span data-l="gu" lang="gu">ફોર્મ ભરતાં અને સહી કરતાં પહેલાં આ વસ્તુઓ તૈયાર રાખો.</span></p>
-    <div class="cols">
-      <div><h3><span data-l="ne" lang="ne">साझेदार संस्था</span><span data-l="hi" lang="hi">पार्टनर संस्था</span><span data-l="en" lang="en">Partner organization</span><span data-l="gu" lang="gu">ભાગીદાર સંસ્થા</span></h3><ul data-l="ne" lang="ne"><li>तपाईंको कम्पनी वा फर्मको दर्ता प्रमाणपत्र</li><li>PAN / VAT / GST प्रमाणपत्र</li><li>सञ्चालक वा हस्ताक्षर गर्ने व्यक्तिको परिचयपत्र: आधार कार्ड, नागरिकता, राहदानी (पासपोर्ट) वा मतदाता परिचयपत्र</li><li>त्यो व्यक्तिलाई हस्ताक्षर गर्ने अनुमति: सञ्चालक समितिको निर्णय (प्रा. लि. कम्पनीका लागि) वा साझेदारहरूको पत्र (साझेदारी फर्मका लागि)</li><li>कार्यालय वा काउन्टरको ठेगानाको प्रमाण; काम गर्ने सेवा क्षेत्र र रुट</li><li>भुक्तानीका लागि बैंक वा UPI विवरण; हस्ताक्षर गर्ने व्यक्तिको 2 वटा फोटो</li><li>नाम र ठेगानासहित दुई जना साक्षी</li><li>नेपालबाट एक वा दुई जना र भारतबाट एक वा दुई जना जमानीकर्ता: उनीहरूको परिचयपत्रको प्रतिलिपि, फोटो, मोबाइल नम्बर र ठेगानाको प्रमाण</li><li>हरेक पानामा दुवै पक्षको छोटो हस्ताक्षर; अन्तिम पानामा पूरा हस्ताक्षर, औंठाछाप र संस्थाको छाप (भए)</li></ul><ul data-l="hi" lang="hi"><li>आपकी कंपनी या फ़र्म का रजिस्ट्रेशन सर्टिफ़िकेट</li><li>PAN / VAT / GST सर्टिफ़िकेट</li><li>डायरेक्टर या हस्ताक्षर करने वाले व्यक्ति का पहचान पत्र: आधार कार्ड, नागरिकता प्रमाणपत्र, पासपोर्ट या वोटर ID</li><li>उस व्यक्ति को हस्ताक्षर करने की इजाज़त: बोर्ड का फ़ैसला (प्रा. लि. कंपनी के लिए) या पार्टनरों का पत्र (पार्टनरशिप फ़र्म के लिए)</li><li>ऑफ़िस या काउंटर के पते का सबूत; सेवा क्षेत्र और रूट (जहाँ काम करेंगे)</li><li>पेमेंट के लिए बैंक या UPI की जानकारी; हस्ताक्षर करने वाले की 2 फ़ोटो</li><li>नाम और पते के साथ दो गवाह</li><li>नेपाल से एक या दो और भारत से एक या दो ज़मानतदार: उनके पहचान पत्र की कॉपी, फ़ोटो, मोबाइल नंबर और पते का सबूत</li><li>हर पेज पर दोनों पक्षों के छोटे हस्ताक्षर; आखिरी पेज पर पूरे हस्ताक्षर, अंगूठे के निशान और संस्था की मुहर (अगर हो)</li></ul><ul data-l="en" lang="en"><li>Registration certificate of your company or firm</li><li>PAN / VAT / GST certificate</li><li>ID of the director or the person who signs: Aadhaar card, citizenship certificate, passport or voter ID</li><li>Permission for this person to sign: a board resolution (for a Pvt. Ltd. company) or a letter from the partners (for a partnership firm)</li><li>Proof of the office or counter address, and the service area and route where you will work</li><li>Bank or UPI details for your payment, and 2 photos of the person who signs</li><li>Two witnesses, with their names and addresses</li><li>One or two guarantors in Nepal and one or two in India, with a copy of their ID, a photo, mobile number and address proof</li><li>Initials of both sides on every page; full signatures, thumbprints and the organization’s seal (if it has one) on the last page</li></ul><ul data-l="gu" lang="gu"><li>તમારી કંપની અથવા પેઢીનું નોંધણી પ્રમાણપત્ર</li><li>PAN / VAT / GST પ્રમાણપત્ર</li><li>ડાયરેક્ટર અથવા સહી કરનાર વ્યક્તિનું ઓળખપત્ર: આધાર કાર્ડ, નાગરિકતા પ્રમાણપત્ર, પાસપોર્ટ અથવા મતદાર ઓળખપત્ર</li><li>આ વ્યક્તિને સહી કરવાની મંજૂરી: બોર્ડનો ઠરાવ (પ્રા. લિ. કંપની માટે) અથવા ભાગીદારોનો પત્ર (ભાગીદારી પેઢી માટે)</li><li>ઓફિસ અથવા કાઉન્ટરના સરનામાનો પુરાવો; કામ કરવાનો સેવા વિસ્તાર અને રૂટ</li><li>ચુકવણી માટે બેંક અથવા UPI વિગતો; સહી કરનાર વ્યક્તિના 2 ફોટા</li><li>નામ અને સરનામા સાથે બે સાક્ષી</li><li>નેપાળમાંથી એક કે બે અને ભારતમાંથી એક કે બે જામીનદાર: તેમના ઓળખપત્રની નકલ, ફોટો, મોબાઇલ નંબર અને સરનામાનો પુરાવો</li><li>દરેક પાના પર બંને પક્ષોની ટૂંકી સહી; છેલ્લા પાના પર પૂરી સહી, અંગૂઠાનાં નિશાન અને સંસ્થાનો સિક્કો (હોય તો)</li></ul></div>
-      <div><h3><span data-l="ne" lang="ne">व्यक्तिगत एजेन्ट</span><span data-l="hi" lang="hi">व्यक्तिगत एजेंट</span><span data-l="en" lang="en">Individual agent</span><span data-l="gu" lang="gu">વ્યક્તિગત એજન્ટ</span></h3><ul data-l="ne" lang="ne"><li>परिचयपत्र: आधार कार्ड, नागरिकता, राहदानी (पासपोर्ट) वा मतदाता परिचयपत्र</li><li>PAN कार्ड (भए)</li><li>स्थायी ठेगानाको प्रमाण (र हालको ठेगाना, फरक भए)</li><li>मोबाइल नम्बर (WhatsApp भएको नम्बर भए राम्रो)</li><li>सेवा क्षेत्र र रुट: तपाईं काम गर्ने ठाउँ</li><li>भुक्तानीका लागि बैंक वा UPI विवरण; भर्खरको 2 वटा फोटो</li><li>नाम र ठेगानासहित दुई जना साक्षी</li><li>नेपालबाट एक वा दुई जना र भारतबाट एक वा दुई जना जमानीकर्ता: उनीहरूको परिचयपत्रको प्रतिलिपि, फोटो, मोबाइल नम्बर र ठेगानाको प्रमाण</li><li>हरेक पानामा दुवै पक्षको छोटो हस्ताक्षर; अन्तिम पानामा पूरा हस्ताक्षर र औंठाछाप</li></ul><ul data-l="hi" lang="hi"><li>पहचान पत्र: आधार कार्ड, नागरिकता प्रमाणपत्र, पासपोर्ट या वोटर ID</li><li>PAN कार्ड (अगर हो)</li><li>स्थायी पते का सबूत (और अभी का पता, अगर अलग हो)</li><li>मोबाइल नंबर (WhatsApp वाला हो तो बेहतर)</li><li>सेवा क्षेत्र और रूट: जहाँ आप काम करेंगे</li><li>पेमेंट के लिए बैंक या UPI की जानकारी; हाल की 2 फ़ोटो</li><li>नाम और पते के साथ दो गवाह</li><li>नेपाल से एक या दो और भारत से एक या दो ज़मानतदार: उनके पहचान पत्र की कॉपी, फ़ोटो, मोबाइल नंबर और पते का सबूत</li><li>हर पेज पर दोनों पक्षों के छोटे हस्ताक्षर; आखिरी पेज पर पूरे हस्ताक्षर और अंगूठे के निशान</li></ul><ul data-l="en" lang="en"><li>ID: Aadhaar card, citizenship certificate, passport or voter ID</li><li>PAN card (if you have one)</li><li>Proof of your permanent address (and current address, if different)</li><li>Mobile number (one with WhatsApp, if you have it)</li><li>Service area and route: where you will work</li><li>Bank or UPI details for your payment, and 2 recent photos</li><li>Two witnesses, with their names and addresses</li><li>One or two guarantors in Nepal and one or two in India, with a copy of their ID, a photo, mobile number and address proof</li><li>Initials of both sides on every page; full signatures and thumbprints on the last page</li></ul><ul data-l="gu" lang="gu"><li>ઓળખપત્ર: આધાર કાર્ડ, નાગરિકતા પ્રમાણપત્ર, પાસપોર્ટ અથવા મતદાર ઓળખપત્ર</li><li>PAN કાર્ડ (હોય તો)</li><li>કાયમી સરનામાનો પુરાવો (અને હાલનું સરનામું, અલગ હોય તો)</li><li>મોબાઇલ નંબર (WhatsApp વાળો હોય તો સારું)</li><li>સેવા વિસ્તાર અને રૂટ: જ્યાં તમે કામ કરશો</li><li>ચુકવણી માટે બેંક અથવા UPI વિગતો; તાજેતરના 2 ફોટા</li><li>નામ અને સરનામા સાથે બે સાક્ષી</li><li>નેપાળમાંથી એક કે બે અને ભારતમાંથી એક કે બે જામીનદાર: તેમના ઓળખપત્રની નકલ, ફોટો, મોબાઇલ નંબર અને સરનામાનો પુરાવો</li><li>દરેક પાના પર બંને પક્ષોની ટૂંકી સહી; છેલ્લા પાના પર પૂરી સહી અને અંગૂઠાનાં નિશાન</li></ul></div>
-    </div>
-  </section>
-  <!-- 22 Oct 2026: staff (drivers, conductors, office...) apply online and read their own agreement -->
-  <section class="card" id="staff">
-    <div class="kicker"><span data-l="ne" lang="ne">कर्मचारी</span><span data-l="hi" lang="hi">स्टाफ़</span><span data-l="en" lang="en">Staff</span><span data-l="gu" lang="gu">સ્ટાફ</span></div>
-    <h2><span data-l="ne" lang="ne">काम गर्न चाहनुहुन्छ? · ड्राइभर, कन्डक्टर, अफिस…</span><span data-l="hi" lang="hi">काम करना चाहते हैं? · ड्राइवर, कंडक्टर, ऑफ़िस…</span><span data-l="en" lang="en">Work with us (drivers, conductors, office…)</span><span data-l="gu" lang="gu">કામ કરવું છે? · ડ્રાઇવર, કંડક્ટર, ઑફિસ…</span></h2>
-    <ul class="desc"><li><span data-l="ne" lang="ne">ड्राइभर, कन्डक्टर, हेल्पर, अफिस, लेखापाल, मेकानिक, सफाइ र सुरक्षा — फोनबाटै अनलाइन फारम।</span><span data-l="hi" lang="hi">ड्राइवर, कंडक्टर, हेल्पर, ऑफ़िस, अकाउंटेंट, मैकेनिक, सफ़ाई और सुरक्षा — फ़ोन से ही ऑनलाइन फ़ॉर्म।</span><span data-l="en" lang="en">Drivers, conductors, helpers, office, accountants, mechanics, cleaners and security — one online form from your phone.</span><span data-l="gu" lang="gu">ડ્રાઇવર, કંડક્ટર, હેલ્પર, ઑફિસ, એકાઉન્ટન્ટ, મિકેનિક, સફાઈ અને સુરક્ષા — ફોન પરથી જ ઑનલાઇન ફોર્મ.</span></li></ul>
-    <div class="go" role="group"><a class="btn" href="/agreements/staff.html"><b><span data-l="ne" lang="ne">फारम भर्नुहोस्</span><span data-l="hi" lang="hi">फ़ॉर्म भरें</span><span data-l="en" lang="en">Apply online</span><span data-l="gu" lang="gu">ફોર્મ ભરો</span></b><small><span data-l="ne" lang="ne">कर्मचारी आवेदन</span><span data-l="hi" lang="hi">स्टाफ़ आवेदन</span><span data-l="en" lang="en">Staff application</span><span data-l="gu" lang="gu">સ્ટાફ અરજી</span></small></a><a class="btn" href="/agreements/staff-agreement.html"><b><span data-l="ne" lang="ne">सम्झौता पढ्नुहोस्</span><span data-l="hi" lang="hi">अनुबंध पढ़ें</span><span data-l="en" lang="en">Read the agreement</span><span data-l="gu" lang="gu">કરાર વાંચો</span></b><small><span data-l="ne" lang="ne">कर्मचारी सम्झौता</span><span data-l="hi" lang="hi">स्टाफ़ अनुबंध</span><span data-l="en" lang="en">Staff agreement</span><span data-l="gu" lang="gu">સ્ટાફ કરાર</span></small></a></div>
-  </section>
-  <section class="card dir" id="dir" hidden>
-    <h2><span data-l="ne" lang="ne">हाम्रा दर्ता भएका एजेन्ट र साझेदार</span><span data-l="hi" lang="hi">हमारे रजिस्टर्ड एजेंट और पार्टनर</span><span data-l="en" lang="en">Our registered agents and partners</span><span data-l="gu" lang="gu">અમારા નોંધાયેલા એજન્ટ અને ભાગીદારો</span><span class="count" id="dirCount"></span></h2>
-    <p class="muted"><span data-l="ne" lang="ne">नाम, क्षेत्र, फोन नम्बर र KYC / सम्झौताको अवस्था मात्र देखाइन्छ। व्यक्तिले अनुमति नदिएसम्म फोन नम्बरको केही भाग लुकाइन्छ।</span><span data-l="hi" lang="hi">यहाँ सिर्फ़ नाम, क्षेत्र, फ़ोन नंबर और KYC / अनुबंध की स्थिति दिखाए जाते हैं। जब तक व्यक्ति ने इजाज़त न दी हो, फ़ोन नंबर का कुछ हिस्सा छिपा रहता है।</span><span data-l="en" lang="en">Only name, area, phone number and KYC / agreement status are shown. Phone numbers are partly hidden unless the person agreed to show them.</span><span data-l="gu" lang="gu">ફક્ત નામ, વિસ્તાર, ફોન નંબર અને KYC / કરારની સ્થિતિ બતાવવામાં આવે છે. વ્યક્તિએ મંજૂરી ન આપી હોય ત્યાં સુધી ફોન નંબરનો થોડો ભાગ છુપાવેલો રહે છે.</span></p>
-    <div class="search" hidden><input type="search" id="dirQ" autocomplete="off"></div>
-    <ul id="dirList"></ul>
-    <p class="muted" id="dirEmpty" hidden><span data-l="ne" lang="ne">अहिलेसम्म देखाउने नाम छैन।</span><span data-l="hi" lang="hi">अभी दिखाने के लिए कोई नाम नहीं है।</span><span data-l="en" lang="en">No names to show yet.</span><span data-l="gu" lang="gu">હજી બતાવવા માટે કોઈ નામ નથી.</span></p>
-  </section>
 </main>
 <footer>S HARI GLOBAL PRIVATE LIMITED · CIN U52291GJ2026PTC174029 · www.shreehariglobal.in · 9104801507</footer>
 <script>
-(function agreementIndex(CFG) {
-  var root = document.documentElement, cur = 'ne', items = null;
+/* 22 Oct 2026 (owner: "aru agreement haru agent haru chaina sabai hatadeu"): the page is the three forms
+   only now - the language switch is all this script still does (the agents are shown on the home page). */
+(function agreementIndex() {
+  var root = document.documentElement;
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function each(sel, fn) { [].forEach.call(document.querySelectorAll(sel), fn); }
-  var sec = document.getElementById('dir'), list = document.getElementById('dirList'), empty = document.getElementById('dirEmpty');
-  var count = document.getElementById('dirCount'), q = document.getElementById('dirQ');
-  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-  function render() {
-    var S = CFG.s[cur];
-    q.placeholder = S.search; q.setAttribute('aria-label', S.search);
-    if (!items) return;
-    var term = (q.value || '').trim().toLowerCase();
-    list.textContent = '';
-    var shown = items.filter(function (it) {
-      return !term || (String(it.name || '') + ' ' + String(it.area || '')).toLowerCase().indexOf(term) >= 0;
-    });
-    shown.forEach(function (it) {
-      var li = el('li'), top = el('div', 'who');
-      if (it.photo) { var im = el('img', 'dp'); im.src = it.photo; im.alt = ''; im.loading = 'lazy'; im.width = 44; im.height = 44; li.appendChild(im); li.className = 'has-dp'; }
-      top.appendChild(el('b', null, String(it.name || '')));
-      top.appendChild(el('span', 'kind', it.kind === 'partner' ? S.partner : S.agent));
-      li.appendChild(top);
-      var meta = el('div', 'meta');
-      if (it.area) meta.appendChild(el('span', 'area', String(it.area)));
-      var ph = String(it.phone || '');
-      if (ph) {
-        var digits = ph.replace(/[^\d+]/g, '');
-        if (/^\+?\d{10,15}$/.test(digits) && ph.indexOf('\u2022') < 0) {
-          var a = el('a', 'ph', ph); a.href = 'tel:' + digits; meta.appendChild(a);
-        } else meta.appendChild(el('span', 'ph', ph));
-      }
-      if (it.addr) meta.appendChild(el('span', 'addr', '📍 ' + String(it.addr)));
-      if (it.wa && /^\d{10,15}$/.test(String(it.wa))) {
-        var w = el('a', 'wa', 'WhatsApp'); w.href = 'https://wa.me/' + it.wa; w.target = '_blank'; w.rel = 'noopener'; meta.appendChild(w);
-      }
-      li.appendChild(meta);
-      if (it.verified || it.signed) {
-        var bd = el('div', 'badges');
-        if (it.verified) bd.appendChild(el('span', 'bd v', S.verified));
-        if (it.signed) bd.appendChild(el('span', 'bd s', S.signed));
-        li.appendChild(bd);
-      }
-      list.appendChild(li);
-    });
-    count.textContent = items.length ? String(items.length) : '';
-    empty.hidden = shown.length > 0;
-    q.parentNode.hidden = items.length < 8;
-  }
   function setLang(l) {
-    if (!CFG.s[l]) l = 'ne';
-    cur = l; root.setAttribute('data-ui', l); root.lang = l;
+    if (['ne', 'hi', 'en', 'gu'].indexOf(l) < 0) l = 'ne';
+    root.setAttribute('data-ui', l); root.lang = l;
     each('[data-setlang]', function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-setlang') === l ? 'true' : 'false'); });
     lsSet('shg-agreements-lang', l);
-    render();
   }
   each('[data-setlang]', function (b) { b.addEventListener('click', function () { setLang(b.getAttribute('data-setlang')); }); });
-  q.addEventListener('input', render);
   var m = /[?&]lang=(ne|hi|en|gu)\b/.exec(location.search);
   setLang(m ? m[1] : (lsGet('shg-agreements-lang') || 'ne'));
-  if (location.protocol === 'file:' || !window.fetch) return;
-  fetch(CFG.api, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-    .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
-    .then(function (j) {
-      if (!j || !j.ok || !Array.isArray(j.items)) throw new Error('bad');
-      items = j.items; sec.hidden = false; render();
-    })
-    .catch(function () { sec.hidden = true; });
-})({"api":"/api/agent-directory.php","s":{"ne":{"verified":"KYC जाँच भएको","signed":"सम्झौतामा हस्ताक्षर भएको","search":"नाम वा क्षेत्र खोज्नुहोस्","agent":"एजेन्ट","partner":"साझेदार"},"hi":{"verified":"KYC जाँच पूरी","signed":"अनुबंध पर हस्ताक्षर हुए","search":"नाम या क्षेत्र खोजें","agent":"एजेंट","partner":"पार्टनर"},"en":{"verified":"KYC verified","signed":"Agreement signed","search":"Search a name or area","agent":"Agent","partner":"Partner"},"gu":{"verified":"KYC તપાસ થઈ","signed":"કરાર પર સહી થઈ","search":"નામ અથવા વિસ્તાર શોધો","agent":"એજન્ટ","partner":"ભાગીદાર"}}});
+  // /agreements/#apply (the home page's "Apply now") opens the who-is-applying choice straight away
+  if (location.hash === '#apply') { var d = document.getElementById('applyNow'); if (d) { d.open = true; d.scrollIntoView(); } }
+})();
 </script>
 <script src="/assets/js/wa-direct.js?v=20261022a"></script>
 </body>

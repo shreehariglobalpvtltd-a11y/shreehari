@@ -180,11 +180,13 @@ foreach (PAGES as $base) {
 foreach (['/agent-agreement/', '/agent-panel.html', '/desk'] as $href) {
     check("index: no longer links {$href}", !str_contains($idx, "href=\"{$href}\""));
 }
-check('index: reads /api/agent-directory.php', str_contains($idx, '"api":"/api/agent-directory.php"'));
-check('index: the list stays hidden until it loads', str_contains($idx, '<section class="card dir" id="dir" hidden>'));
-check('index: a failed fetch hides the list', str_contains($idx, "catch(function () { sec.hidden = true; })"));
-check('index: API text is written as text, never HTML', !str_contains($idx, 'innerHTML') && str_contains($idx, 'e.textContent = text'));
-check('index: only masked-free numbers become tel: links', str_contains($idx, "ph.indexOf('\\u2022') < 0"));
+// 22 Oct 2026 (owner: "aru agreement haru agent haru chaina sabai hatadeu"): the agent list left this page
+// (the home page shows the people); one "Apply now" asks who is applying, then the three forms.
+check('index: no agent list any more', !str_contains($idx, 'id="dirList"') && !str_contains($idx, '/api/agent-directory.php'));
+check('index: one Apply now with the three forms', substr_count($idx, '<details class="applynow"') === 1
+    && str_contains($idx, 'href="/agreements/apply.html?kind=staff"') && str_contains($idx, 'href="/agreements/apply.html"') && str_contains($idx, 'href="/agreements/apply.html?kind=partner"'));
+check('index: every kind has its A4 form', str_contains($idx, 'form.php?kind=staff') && str_contains($idx, 'form.php?kind=agent') && str_contains($idx, 'form.php?kind=partner'));
+check('index: no innerHTML', !str_contains($idx, 'innerHTML'));
 // 22 Oct 2026: the one script the landing page may load is our own /assets/js/wa-direct.js
 // (owner: every WhatsApp button opens WhatsApp in one tap).
 preg_match_all('~<script\b[^>]*\bsrc="([^"]*)"~i', $idx, $idxSrc);

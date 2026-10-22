@@ -357,7 +357,8 @@ if ($probe['code'] !== 200) {
     finish();
 }
 $noise = '/(Warning|Fatal error|Parse error|Notice|Deprecated|Uncaught)\b/';
-foreach (['/admin/login.php' => 'admin login', '/help.php' => 'help', '/travel-info' => 'travel info', '/agent-signup.php' => 'agent signup'] as $path => $lbl) {
+// 22 Oct 2026: /agent-signup.php only forwards to the one online form now (owner: "only yei wala agent system")
+foreach (['/admin/login.php' => 'admin login', '/help.php' => 'help', '/travel-info' => 'travel info'] as $path => $lbl) {
     $p = $get($path);
     $emblem = preg_match('#src="/assets/img/(?:logo-nav|logo-mark)\.png\?m=\d+"#', $p['body']) === 1;
     check("$lbl: 200, emblem logo, favicon links, no PHP noise", $p['code'] === 200 && $emblem && str_contains($p['body'], 'apple-touch-icon') && !preg_match($noise, $p['body']), 'HTTP ' . $p['code']);

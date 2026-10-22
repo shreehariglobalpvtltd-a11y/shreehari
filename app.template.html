@@ -512,7 +512,6 @@ s.addEventListener('click',function(e){e.preventDefault();
   <a href="#/my"><svg class="ic"><use href="#i-list"/></svg> My Bookings</a>
   <a href="#/" data-scroll="timetable"><svg class="ic"><use href="#i-clock"/></svg> समय तालिका · Timetable</a>
   <a href="/business"><svg class="ic"><use href="#i-building"/></svg> <span data-i18n="mmBusiness">Business services · व्यापार सेवा</span></a>
-  <a href="/agent-signup.php"><svg class="ic"><use href="#i-users"/></svg> एजेन्ट बन्नुहोस् · Become an Agent</a>
   <a href="/agreements/#forms"><svg class="ic"><use href="#i-doc"/></svg> आवेदन फारम र सम्झौता · Forms: Staff · Agent · Partner</a>
   <a href="/admin/login.php" rel="nofollow"><svg class="ic"><use href="#i-lock"/></svg> एजेन्ट / स्टाफ लगइन · Agent / Staff sign-in</a>
   <a href="#/" data-scroll="contact"><svg class="ic"><use href="#i-phone"/></svg> Contact</a>
@@ -1246,7 +1245,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <nav class="tm-tabs" id="tmTabs" role="tablist" aria-label="Team by job" hidden></nav>
       <ul class="tm-list" id="tmList" hidden></ul>
       <button type="button" class="tm-more" id="tmMore" hidden></button>
-      <a class="tm-go" href="/agreements/staff.html">🧑‍✈️ हामीसँग काम गर्नुहोस् · Work with us →</a>
+      <a class="tm-go" href="/agreements/apply.html?kind=staff">🧑‍✈️ हामीसँग काम गर्नुहोस् · Work with us →</a>
       <a class="tp-door" href="/team/">🔐 स्टाफ लगइन — परिचयपत्र, CV · Staff login</a>
     </div>
   </section>
@@ -1447,6 +1446,81 @@ s.addEventListener('click',function(e){e.preventDefault();
         <a class="sc-btn sc-btn-wa" href="https://wa.me/{{f:ceo.wa}}" data-fact-wa="ceo.wa" target="_blank" rel="noopener noreferrer"><svg class="ic" aria-hidden="true"><use href="#i-wa"/></svg><span>WhatsApp</span></a>
       </div>
     </div>
+  </section>
+
+  <!-- ============ 3 AGREEMENTS (22 Oct 2026, owner: "3 ta agreement system lai live home page CEO ko pachhi
+       rakhdinu ... dekhine name ra photo live ma dekhine banaideu ... only yei wala system") ============
+       The one door to the three forms - staff, agent, Pvt. Ltd. partner - right after the CEO card (order 6 like
+       #homeCeo; the DOM keeps it after). Each card shows the people already on that agreement, names and photos
+       from the same public lists the Partner / Agent / Team sections read (/api/agent-directory.php,
+       /api/staff-list.php: only what each person agreed to show). Its few rules live here, not in a stylesheet,
+       so the app-shell asset stamp does not move. -->
+  <section class="container" id="homeForms" aria-labelledby="homeFormsTitle">
+    <style>
+      #view-home > #homeForms{order:6 !important}
+      #homeForms .hf-box{border-radius:22px;padding:18px 14px;background:var(--surface,#fff);border:1px solid var(--line,#e4e9f1);box-shadow:var(--shadow-2,0 10px 30px -18px rgba(10,42,143,.5))}
+      #homeForms .hf-eyebrow{display:inline-flex;gap:6px;align-items:center;margin:0 0 6px;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.03em;color:#fff;background:linear-gradient(135deg,#0a2a8f,#1f4fe0)}
+      #homeForms h2{margin:0 0 4px;font-size:clamp(20px,4.6vw,26px);line-height:1.25;color:var(--fg,#0d1b3e)}
+      #homeForms .hf-sub{margin:0 0 12px;color:var(--muted,#5b6b8c);font-size:14px;line-height:1.5}
+      #homeForms .hf-go{display:flex;align-items:center;justify-content:center;gap:8px;min-height:54px;padding:0 16px;border-radius:16px;font-weight:800;font-size:17px;color:#fff;text-decoration:none;text-align:center;background:linear-gradient(135deg,#ff8a2b,#f07a1e 60%,#d4570c);box-shadow:0 12px 24px -14px rgba(212,87,12,.9);margin:0 0 12px}
+      #homeForms .hf-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+      #homeForms .hf-card{--k:#0054A8;display:flex;flex-direction:column;gap:7px;padding:12px;border-radius:16px;background:var(--surface,#fff);border:1px solid var(--line,#e4e9f1);border-top:5px solid var(--k);min-width:0}
+      #homeForms .hf-staff{--k:#11703F}#homeForms .hf-partner{--k:#C25E00}
+      #homeForms .hf-card b.t{color:var(--k);font-size:16px}
+      #homeForms .hf-card small{color:var(--muted,#5b6b8c);font-size:12.5px}
+      #homeForms .hf-faces{display:flex;align-items:center;min-height:40px;padding-left:8px}
+      #homeForms .hf-faces i{width:38px;height:38px;flex:0 0 38px;border-radius:50%;margin-left:-8px;border:2px solid #fff;background:#e8eefb center/cover no-repeat;display:grid;place-items:center;font-style:normal;font-size:14px;font-weight:800;color:var(--k);box-shadow:0 2px 6px rgba(0,0,0,.14)}
+      #homeForms .hf-names{font-size:12.5px;line-height:1.45;min-height:1.45em;color:var(--fg,#0d1b3e)}
+      #homeForms .hf-links{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
+      #homeForms .hf-links a{flex:1 1 auto;display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 10px;border-radius:12px;border:1.5px solid var(--k);color:var(--k);font-size:13px;font-weight:800;text-decoration:none;text-align:center}
+      @media (max-width:760px){#homeForms .hf-grid{grid-template-columns:minmax(0,1fr)}}
+    </style>
+    <div class="hf-box">
+      <p class="hf-eyebrow">📝 ३ सम्झौता · 3 AGREEMENTS</p>
+      <h2 id="homeFormsTitle">हामीसँग जोडिनुहोस् · Join S Hari Global</h2>
+      <p class="hf-sub">कर्मचारी, एजेन्ट वा साझेदार कम्पनी — फोनबाटै फारम, डकुमेन्ट, अनुहार, औंठाछाप र सही, सम्झौताका सबै सर्त फारमभित्रै। · Staff, agent or partner company: one form on your phone, every term inside it.</p>
+      <a class="hf-go" href="/agreements/#apply">✍️ अहिले आवेदन दिनुहोस् · Apply now</a>
+      <div class="hf-grid">
+        <article class="hf-card hf-staff" data-hf="staff"><b class="t">🧑‍✈️ कर्मचारी · Staff</b><small>चालक, कन्डक्टर, हेल्पर, अफिस, मेकानिक…</small><div class="hf-faces" aria-hidden="true"></div><div class="hf-names"></div><div class="hf-links"><a href="/agreements/staff-agreement.html">📜 सम्झौता</a><a href="/agreements/form.php?kind=staff">📄 A4 फारम</a></div></article>
+        <article class="hf-card hf-agent" data-hf="agent"><b class="t">🤝 एजेन्ट · Agent</b><small>व्यक्ति — टिकट बेच्ने, कमिसनमा</small><div class="hf-faces" aria-hidden="true"></div><div class="hf-names"></div><div class="hf-links"><a href="/agreements/agent-agreement-ne.html">📜 सम्झौता</a><a href="/agreements/form.php?kind=agent">📄 A4 फारम</a></div></article>
+        <article class="hf-card hf-partner" data-hf="partner"><b class="t">🏢 साझेदार कम्पनी · Partner</b><small>प्रा. लि. / दर्ता भएको फर्म</small><div class="hf-faces" aria-hidden="true"></div><div class="hf-names"></div><div class="hf-links"><a href="/agreements/partner-agreement-ne.html">📜 सम्झौता</a><a href="/agreements/form.php?kind=partner">📄 A4 फारम</a></div></article>
+      </div>
+    </div>
+    <script>
+    (function () {
+      var box = document.getElementById('homeForms');
+      if (!box || !window.fetch) return;
+      function fill(kind, people) {
+        var card = box.querySelector('[data-hf="' + kind + '"]');
+        if (!card) return;
+        var faces = card.querySelector('.hf-faces'), names = card.querySelector('.hf-names'), n = people.length;
+        people.sort(function (a, b) { return (b.pic ? 1 : 0) - (a.pic ? 1 : 0); });
+        faces.textContent = '';
+        people.slice(0, 6).forEach(function (p) {
+          var i = document.createElement('i');
+          if (/^(\/|https:\/\/)[^"'()\\\s]+$/.test(p.pic)) i.style.backgroundImage = 'url("' + p.pic + '")';
+          else i.textContent = (p.name.trim().charAt(0) || '•').toUpperCase();
+          faces.appendChild(i);
+        });
+        if (n > 6) { var more = document.createElement('i'); more.textContent = '+' + (n - 6); faces.appendChild(more); }
+        names.textContent = n ? people.slice(0, 3).map(function (p) { return p.name; }).join(', ') + (n > 3 ? ' र अरू ' + (n - 3) : '') + ' · ' + n + ' जना'
+                              : 'पहिलो बन्नुहोस् · Be the first';
+      }
+      function get(url) { return fetch(url, { headers: { Accept: 'application/json' } }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); }
+      get('/api/agent-directory.php').then(function (j) {
+        var items = j && Array.isArray(j.items) ? j.items : [];
+        ['agent', 'partner'].forEach(function (k) {
+          fill(k, items.filter(function (it) { return it && it.kind === k && it.name; })
+                       .map(function (it) { return { name: String(it.name), pic: String((k === 'partner' && it.logo) || it.photo || '') }; }));
+        });
+      });
+      get('/api/staff-list.php').then(function (j) {
+        var items = j && Array.isArray(j.items) ? j.items : [];
+        fill('staff', items.filter(function (it) { return it && (it.name || it.full_name); })
+                           .map(function (it) { return { name: String(it.name || it.full_name), pic: String(it.photo || it.photo_url || '') }; }));
+      });
+    })();
+    </script>
   </section>
 
   <!-- ============ HOMEPAGE ANIMATIONS (4 Oct 2026) ============
@@ -2208,53 +2282,9 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
   </div>
 
-  <!-- ============ [HTML] BECOME AN AGENT ============
-       Now a proper self-service signup at /agent-signup.php.
-       This section links there directly. -->
-  <div class="section" id="agent-apply">
-    <div class="container">
-      <div class="sec-head reveal">
-        <span class="kicker">Work with us</span>
-        <h2 class="h2">🤝 Become an S Hari Global Agent</h2>
-        <p style="color:var(--muted);max-width:640px;margin:8px auto 0">
-          टिकट बेचेर कमाउनुहोस् — हरेक यात्रुमा {{f:agent.direct}} कमिसन। एक मिनेटमा दर्ता गर्नुहोस्।<br>
-          Sell tickets and earn {{f:agent.direct}} commission per passenger. Register in one minute.
-        </p>
-      </div>
-
-      <div class="reveal" style="max-width:620px;margin:0 auto">
-        <div class="c-card" style="padding:28px 24px;text-align:center">
-          <!-- Benefits -->
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;text-align:left">
-            <div style="background:var(--bg);border-radius:10px;padding:12px 14px">
-              <div style="font-size:22px;margin-bottom:4px">💰</div>
-              <div style="font-size:13px;font-weight:700;color:var(--fg)">{{f:agent.direct}} / passenger</div>
-              <div style="font-size:12px;color:var(--muted)">Direct booking commission</div>
-            </div>
-            <div style="background:var(--bg);border-radius:10px;padding:12px 14px">
-              <div style="font-size:22px;margin-bottom:4px">🎟️</div>
-              <div style="font-size:13px;font-weight:700;color:var(--fg)">Your Agent Code</div>
-              <div style="font-size:12px;color:var(--muted)">SHG-XXX printed on every ticket</div>
-            </div>
-            <div style="background:var(--bg);border-radius:10px;padding:12px 14px">
-              <div style="font-size:22px;margin-bottom:4px">📊</div>
-              <div style="font-size:13px;font-weight:700;color:var(--fg)">Live Dashboard</div>
-              <div style="font-size:12px;color:var(--muted)">Track sales & withdraw anytime</div>
-            </div>
-          </div>
-          <a href="/agent-signup.php"
-             class="btn btn-orange"
-             style="display:inline-flex;align-items:center;gap:8px;font-size:16px;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:800">
-            🚀 Register as Agent · एजेंट बन्नुहोस्
-          </a>
-          <!-- The public "Sign in →" link was a direct admin door on customer
-               chrome; removed 2026-08-29 per master-prompt §2. Registered
-               agents bookmark /admin/ instead. -->
-
-        </div>
-      </div>
-    </div>
-  </div>
+  <!-- 22 Oct 2026 (owner: "aru agreement haru agent haru chaina sabai hatadeu, only yei wala agent system"):
+       the old "Become an S Hari Global Agent" section (it led to /agent-signup.php) is gone - the one door is
+       #homeForms after the CEO card; /agent-signup.php itself now opens the new form. -->
 
   <div class="section alt" id="contact">
     <div class="container">

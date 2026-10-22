@@ -96,10 +96,12 @@ final class StaffApps
         'exp_cert'  => ['experience_cert_path', 'doc'],
         'license'   => ['license_photo_path', 'doc'],
         'signature' => ['signature_path', 'png'],
+        'thumb'     => ['thumb_path', 'png'],   // 22 Oct 2026: thumbprint by the phone camera (upgrade-2026-10-22-thumbprint.sql), optional
     ];
     public const FILE_LABELS = [
         'photo' => 'Photo', 'id_front' => 'ID front', 'id_back' => 'ID back', 'qual_cert' => 'Certificate',
         'marksheet' => 'Marksheet', 'exp_cert' => 'Experience letter', 'license' => 'Driving licence', 'signature' => 'Signature',
+        'thumb' => 'Thumbprint',
     ];
     private const MIME_EXT = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'application/pdf' => 'pdf'];
 
@@ -309,10 +311,11 @@ final class StaffApps
         }
         $c['email'] = $c['email'] !== '' ? $c['email'] : null;
 
+        // 22 Oct 2026 (owner: "main main kura thik chha, baki form optional gardinus"): the one form for all
+        // three kinds asks only the main things - name, mobile, job, ID, photo, signature, the agreement (and
+        // the licence for a driver). Everything else is optional, and checked only when it is filled in.
         $c['dob'] = self::dateOrNull($in['dob'] ?? '');
-        if ($c['dob'] === null) {
-            $e['dob'] = 'जन्म मिति (ईस्वी) छान्नुहोस् · Choose your date of birth (AD).';
-        } else {
+        if ($c['dob'] !== null) {
             $age = (int) (new DateTimeImmutable($c['dob']))->diff(new DateTimeImmutable('today'))->y;
             if ($c['dob'] > date('Y-m-d') || $age < self::MIN_AGE) {
                 $e['dob'] = 'कम्तीमा १८ वर्ष पुगेको हुनुपर्छ · You must be at least 18 years old.';
@@ -321,21 +324,14 @@ final class StaffApps
             }
         }
         $c['gender'] = in_array($in['gender'] ?? '', self::GENDERS, true) ? (string) $in['gender'] : null;
-        if ($c['gender'] === null) {
-            $e['gender'] = 'लिङ्ग छान्नुहोस् · Choose one.';
-        }
 
         $c['address_perm']    = self::oneLine($in['address_perm'] ?? '', 300);
         $c['address_current'] = self::oneLine($in['address_current'] ?? '', 300);
         $c['district']        = self::oneLine($in['district'] ?? '', 80);
         $c['province']        = self::oneLine($in['province'] ?? '', 80);
         $c['country']         = ($in['country'] ?? '') === 'IN' ? 'IN' : 'NP';
-        if (mb_strlen($c['address_perm']) < 3) {
-            $e['address_perm'] = 'स्थायी ठेगाना लेख्नुहोस् · Enter your permanent address.';
-        }
-        if (mb_strlen($c['district']) < 2) {
-            $e['district'] = 'जिल्ला लेख्नुहोस् · Enter your district.';
-        }
+        $c['address_perm']    = $c['address_perm'] !== '' ? $c['address_perm'] : null;
+        $c['district']        = $c['district'] !== '' ? $c['district'] : null;
         $c['address_current'] = $c['address_current'] !== '' ? $c['address_current'] : null;
         $c['province']        = $c['province'] !== '' ? $c['province'] : null;
 
@@ -353,9 +349,6 @@ final class StaffApps
         }
 
         $c['qualification'] = in_array($in['qualification'] ?? '', self::QUALS, true) ? (string) $in['qualification'] : null;
-        if ($c['qualification'] === null) {
-            $e['qualification'] = 'शिक्षा छान्नुहोस् · Choose your education.';
-        }
         $years = is_numeric($in['experience_years'] ?? null) ? (int) $in['experience_years'] : 0;
         $c['experience_years'] = max(0, min(50, $years));
         $c['prev_employer']    = self::oneLine($in['prev_employer'] ?? '', 120) ?: null;
@@ -395,20 +388,16 @@ final class StaffApps
             }
             $refs[] = ['name' => $rn, 'phone' => $rp, 'relation' => $rr];
         }
-        if ($refs === [] && !isset($e['ref1_name'])) {
-            $e['ref1_name'] = 'कम्तीमा एक जना चिनारी (नाम र फोन) चाहिन्छ · At least one reference is needed.';
-        }
         $c['references_json'] = $refs !== [] ? json_encode($refs, JSON_UNESCAPED_UNICODE) : null;
 
         $c['emergency_contact_name']  = self::oneLine($in['emergency_name'] ?? '', 80);
         $c['emergency_contact_phone'] = normalisePhone((string) ($in['emergency_phone'] ?? ''));
         $c['emergency_relation']      = self::oneLine($in['emergency_relation'] ?? '', 40) ?: null;
-        if (mb_strlen($c['emergency_contact_name']) < 2) {
-            $e['emergency_name'] = 'आपतकालीन सम्पर्क व्यक्तिको नाम लेख्नुहोस् · Enter an emergency contact.';
-        }
-        if (!self::phoneOk($c['emergency_contact_phone'])) {
+        if ($c['emergency_contact_phone'] !== '' && !self::phoneOk($c['emergency_contact_phone'])) {
             $e['emergency_phone'] = 'आपतकालीन सम्पर्कको १० अङ्कको फोन लेख्नुहोस् · Enter the emergency contact\'s phone.';
         }
+        $c['emergency_contact_name']  = $c['emergency_contact_name'] !== '' ? $c['emergency_contact_name'] : null;
+        $c['emergency_contact_phone'] = $c['emergency_contact_phone'] !== '' ? $c['emergency_contact_phone'] : null;
 
         // Bank: optional on the form (the office can take it at joining).
         $c['bank_holder']        = self::oneLine($in['bank_holder'] ?? '', 80) ?: null;
@@ -444,14 +433,8 @@ final class StaffApps
         }
         $need = ['photo' => 'आफ्नो फोटो खिच्नुहोस् · Take your photo.', 'id_front' => 'परिचयपत्रको अगाडिको फोटो चाहिन्छ · Photo of the front of your ID.',
                  'signature' => 'औंलाले सही गर्नुहोस् · Please sign with your finger.'];
-        if (in_array($c['id_type'], self::ID_TWO_SIDED, true)) {
-            $need['id_back'] = 'परिचयपत्रको पछाडिको फोटो चाहिन्छ · Photo of the back of your ID.';
-        }
         if ($c['role_applied'] === 'driver') {
             $need['license'] = 'सवारी चालक अनुमतिपत्रको फोटो चाहिन्छ · Photo of your driving licence.';
-        }
-        if ($c['role_applied'] === 'accountant') {
-            $need['qual_cert'] = 'शैक्षिक प्रमाणपत्र चाहिन्छ · Your education certificate is needed for accounts.';
         }
         foreach ($need as $slot => $msg) {
             if (!isset($got[$slot]) && !isset($e[$slot])) {

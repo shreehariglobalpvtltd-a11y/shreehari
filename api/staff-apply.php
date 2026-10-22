@@ -267,14 +267,19 @@ try {
             $files['face'] = $face;
             $c['biometric_face_hash'] = hash('sha256', $face['bytes']);
         }
-        $chal = $_SESSION['staff_webauthn'] ?? null;
-        if (is_array($chal) && (int) $chal['t'] > time() - 600) {
+    }
+    // 22 Oct 2026 (owner: "fingerprint / face id ni"): the phone's fingerprint / Face ID lock from the one form
+    // (/agreements/apply.html, challenge from /api/agreement-apply.php?challenge=1) or the old staff page -
+    // only the public credential is kept, so it no longer waits for the phase-2 switch.
+    foreach (['staff_webauthn', 'agr_webauthn'] as $chKey) {
+        $chal = $_SESSION[$chKey] ?? null;
+        if (!isset($c['biometric_webauthn_cred']) && is_array($chal) && (int) ($chal['t'] ?? 0) > time() - 600) {
             $cred = StaffApps::webauthnCred($_POST['webauthn'] ?? null, (string) $chal['c'], staff_origin());
             if ($cred !== null) {
                 $c['biometric_webauthn_cred'] = $cred;
+                unset($_SESSION[$chKey]);
             }
         }
-        unset($_SESSION['staff_webauthn']);
     }
 
     $busy = 'धेरै आवेदन आयो — केही बेरपछि फेरि पठाउनुहोस् वा फोन गर्नुहोस्: ' . Settings::officePhone();

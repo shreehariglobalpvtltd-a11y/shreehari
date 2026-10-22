@@ -9,8 +9,15 @@
  * agent code and login instructions.
  *
  * No session, no auth — this page is intentionally public.
+ *
+ * 22 Oct 2026 (owner: "aru agreement haru agent haru chaina sabai hatadeu, only yei wala agent system live"):
+ * agents apply on the one online form now (/agreements/apply.html, with the agreement, KYC, photo, thumbprint
+ * and signature), so this old door only forwards there. The code below stays for the record; a 302 (not 301)
+ * so the old page can come back without browsers remembering the move.
  */
 declare(strict_types=1);
+header('Location: /agreements/apply.html', true, 302);
+exit;
 define('SHG_APP', true);
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/agentwallet.php';   // AgentWallet::normaliseKind / cleanPhone / kindLabel

@@ -89,6 +89,11 @@ $signs = [];          // [[label, img src|'', detail], ...]
 $status = [];         // [label, value, ok?]
 $kind = '';
 $ref = '';
+$party = [];          // the agreement's second party: [[label, value], ...] (22 Oct 2026)
+$thumb = '';          // <img src> of the camera thumbprint
+$sigImg = '';         // <img src> of the phone signature, for the agreement's signature box
+$passkey = false;     // a phone fingerprint / Face ID lock was registered
+$recLang = '';        // the language the applicant used
 
 if ($blank === '') {
     if ($type === 'agent') {
@@ -179,7 +184,35 @@ if ($blank === '') {
         }
         if ($canKyc && $isImg($rec['signature'] ?? null)) {
             $signs[] = ['Signature on the form', (string) $rec['signature'], 'drawn on the phone · ' . $fmtDT($rec['created_at'] ?? null)];
+            $sigImg  = (string) $rec['signature'];
         }
+        if ($canKyc && !$isOrg && $isImg($rec['edu_cert'] ?? null)) {
+            $signs[] = ['Marksheet / certificate', (string) $rec['edu_cert'], 'as sent with the form'];
+        }
+        // 22 Oct 2026: the camera thumbprint and the phone's fingerprint / Face ID lock
+        if ($canKyc && $isImg($rec['thumb'] ?? null)) {
+            $thumb   = (string) $rec['thumb'];
+            $signs[] = ['Thumbprint (camera)', $thumb, 'right thumb, photographed on the phone'];
+        }
+        $passkey = (string) ($rec['webauthn_cred'] ?? '') !== '';
+        if (array_key_exists('webauthn_cred', $rec)) {
+            $status[] = ['Fingerprint / Face ID', $passkey ? 'Phone lock registered' : 'Not added', $passkey];
+        }
+        $recLang = (string) ($rec['lang'] ?? '');
+        $fv = static fn(string $n): string => trim((string) ($f[$n] ?? ''));
+        $party = $isOrg ? [
+            ['कम्पनीको नाम · Company', (string) $rec['name']],
+            ['दर्ता नं. · PAN / VAT · Registration · tax no.', trim($fv('p_reg') . ($fv('p_tax') !== '' ? ' · ' . $fv('p_tax') : ''))],
+            ['रजिस्टर्ड ठेगाना · Registered office', $canKyc ? ($fv('p_addr') !== '' ? $fv('p_addr') : (string) ($rec['area'] ?? '')) : (string) ($rec['area'] ?? '')],
+            ['अधिकृत प्रतिनिधि (नाम · पद) · Representative', trim($fv('p_rep') . ($fv('p_rep_desig') !== '' ? ' · ' . $fv('p_rep_desig') : ''))],
+            ['मोबाइल · Mobile', (string) $rec['phone']],
+        ] : [
+            ['पूरा नाम · Full name', (string) $rec['name']],
+            ['मोबाइल · Mobile', (string) $rec['phone']],
+            ['ठेगाना · Address', $canKyc ? ($fv('p_addr') !== '' ? $fv('p_addr') : (string) ($rec['area'] ?? '')) : (string) ($rec['area'] ?? '')],
+            ['परिचयपत्र र नम्बर · ID and number', $fv('p_idtype') === '' ? '' : AgentApplications::officeValue('p_idtype', $fv('p_idtype'), (string) $rec['type'], $canKyc)
+                . ($fv('p_idno') !== '' ? ' · ' . AgentApplications::officeValue('p_idno', $fv('p_idno'), (string) $rec['type'], $canKyc) : '')],
+        ];
         foreach (Database::fetchAll("SELECT * FROM agreement_signatures WHERE party_type = 'agent' AND party_id = :i ORDER BY id DESC LIMIT 4", ['i' => (int) $rec['id']]) as $sg) {
             $img = $canKyc ? (TeamPortal::signImage($sg) ?? '') : '';
             $signs[] = [ucfirst((string) $sg['doc']) . ' agreement v' . (string) $sg['version'], $img,
@@ -198,9 +231,10 @@ if ($blank === '') {
         $mask = static fn(string $v): string => $v === '' ? '' : (mb_strlen($v) >= 8 ? '••••' . mb_substr($v, -4) : '••••');
         $kyc  = static fn(string $v, bool $tail = true): string => $v === '' || $canKyc ? $v : ($tail ? $mask($v) : 'hidden');
         $refs = json_decode((string) ($rec['references_json'] ?? ''), true);
+        $cc   = ['IN' => '+91 ', 'NP' => '+977 '][(string) ($rec['phone_country'] ?? '')] ?? '';   // the column keeps the country, not the code
         $sections['Applicant'] = [
             ['Name', (string) $rec['full_name'], false], ['Job applied for', StaffApps::roleLabel((string) $rec['role_applied']), false],
-            ['Mobile', trim(((string) ($rec['phone_country'] ?? '') !== '' ? '+' . $rec['phone_country'] . ' ' : '') . (string) $rec['phone']), false],
+            ['Mobile', $cc . (string) $rec['phone'], false],
             ['WhatsApp', (string) ($rec['whatsapp'] ?? ''), false], ['E-mail', (string) ($rec['email'] ?? ''), false],
             ['Date of birth', $canKyc ? $fmtD($rec['dob'] ?? null) : 'hidden', !$canKyc], ['Gender', ucfirst((string) ($rec['gender'] ?? '')), false],
             ['Office', (string) ($rec['base_location'] ?? ''), false], ['Applied on', $fmtDT($rec['created_at'] ?? null), false],
@@ -254,9 +288,24 @@ if ($blank === '') {
                 }
             }
             if ((string) ($rec['signature_path'] ?? '') !== '') {
-                $signs[] = ['Signature on the form', $staffImg($rec, 'signature'), 'drawn on the phone · ' . $fmtDT($rec['created_at'] ?? null)];
+                $sigImg  = $staffImg($rec, 'signature');
+                $signs[] = ['Signature on the form', $sigImg, 'drawn on the phone · ' . $fmtDT($rec['created_at'] ?? null)];
+            }
+            // 22 Oct 2026: the camera thumbprint
+            if ((string) ($rec['thumb_path'] ?? '') !== '') {
+                $thumb   = $staffImg($rec, 'thumb');
+                $signs[] = ['Thumbprint (camera)', $thumb, 'right thumb, photographed on the phone'];
             }
         }
+        $passkey = (string) ($rec['biometric_webauthn_cred'] ?? '') !== '';
+        $status[] = ['Fingerprint / Face ID', $passkey ? 'Phone lock registered' : 'Not added', $passkey];
+        $party = [
+            ['पूरा नाम · Full name', (string) $rec['full_name']],
+            ['मोबाइल · Mobile', $cc . (string) $rec['phone']],
+            ['ठेगाना · Address', $kyc((string) ($rec['address_perm'] ?? ''), false)],
+            ['परिचयपत्र र नम्बर · ID and number', trim((StaffApps::ID_LABELS[(string) ($rec['id_type'] ?? '')] ?? (string) ($rec['id_type'] ?? '')) . ' · ' . $kyc((string) ($rec['id_number'] ?? '')), ' ·')],
+            ['पद · कार्यालय · Job · duty base', trim(StaffApps::roleLabel((string) $rec['role_applied']) . ((string) ($rec['base_location'] ?? '') !== '' ? ' · ' . $rec['base_location'] : ''))],
+        ];
         foreach (StaffApps::signs((int) $rec['id']) as $sg) {
             $signs[] = ['Staff agreement v' . (string) $sg['version'] . ' (' . (string) $sg['event'] . ')', '',
                 'SIG-' . str_pad((string) (int) $sg['id'], 6, '0', STR_PAD_LEFT) . ' · ' . $fmtDT($sg['signed_at'] ?? null) . ((int) $sg['phone_verified'] === 1 ? ' · phone proven' : '') . ($canKyc ? ' · IP ' . (string) ($sg['ip_address'] ?? '') : '')];
@@ -307,43 +356,84 @@ $needs = [
     'partner' => ['Company registration certificate', 'PAN / VAT / GST certificate', 'Board resolution or letter naming the representative', 'Representative’s ID + photo', 'Company logo', 'Company bank account', 'Signed partner agreement (two witnesses)'],
     'staff'   => ['Passport-size photo', 'ID (both sides)', 'Driving licence (drivers)', 'Education certificate / marksheet', 'Experience letter', 'Two references + emergency contact', 'Bank details', 'Signed staff agreement'],
 ][$kind] ?? [];
+/* 22 Oct 2026 (owner: "2 3 page kati huncha agreement fill garna milos, tesko tala sabai niyam sart haru ni
+   3 otai lekhdinu"): after the form, that kind's agreement in full - parties, every term, signatures and thumb
+   boxes - in the language asked for (?lang=), read from the deployed agreement page (AgreementPrint). */
+require_once INCLUDE_PATH . '/agreementprint.php';
+$agrLang = AgreementPrint::lang($kind, (string) ($_GET['lang'] ?? ($recLang !== '' ? $recLang : 'ne')));
+$agrSecs = AgreementPrint::sections($kind, $agrLang);
+$agrDoc  = [
+    'staff'   => ['कर्मचारी सम्झौता · Staff agreement', 'agreements/staff-agreement.html', 'agreements/apply.html?kind=staff', 'कर्मचारी · Staff member'],
+    'agent'   => ['एजेन्ट सम्झौता · Agent agreement', 'agreements/agent-agreement-' . $agrLang . '.html', 'agreements/apply.html', 'एजेन्ट · Agent'],
+    'partner' => ['साझेदार कम्पनी सम्झौता · Partner (Pvt. Ltd.) agreement', 'agreements/partner-agreement-' . $agrLang . '.html', 'agreements/apply.html?kind=partner', 'साझेदार कम्पनी · Partner company'],
+][$kind] ?? null;
+$kindBadge = ['staff' => 'कर्मचारी · STAFF', 'agent' => 'एजेन्ट · AGENT', 'partner' => 'साझेदार कम्पनी · PARTNER (PVT. LTD.)'][$kind] ?? '';
+$kindShort = ['staff' => 'कर्मचारी · STAFF', 'agent' => 'एजेन्ट · AGENT', 'partner' => 'साझेदार · PARTNER'][$kind] ?? '';   // the letterhead's corner
+$shortUrl  = static fn(string $p): string => (string) preg_replace('~^https?://(www\.)?~i', '', appUrl($p));
+$qrImg = '';
+if ($agrDoc !== null) {
+    try {
+        $qrImg = QrCode::dataUri(appUrl($blank !== '' ? $agrDoc[2] : $agrDoc[1]), 4, 2);
+    } catch (Throwable $e) {
+        $qrImg = '';
+    }
+}
+if ($party === []) {
+    $party = $kind === 'partner'
+        ? [['कम्पनीको नाम · Company', ''], ['दर्ता नं. · PAN / VAT · Registration · tax no.', ''], ['रजिस्टर्ड ठेगाना · Registered office', ''], ['अधिकृत प्रतिनिधि (नाम · पद) · Representative', ''], ['मोबाइल · Mobile', '']]
+        : [['पूरा नाम · Full name', ''], ['मोबाइल · Mobile', ''], ['ठेगाना · Address', ''], ['परिचयपत्र र नम्बर · ID and number', '']];
+    if ($kind === 'staff') {
+        $party[] = ['पद · कार्यालय · Job · duty base', ''];
+    }
+}
+/* the same page in another language: the query this page was opened with (public: kind or mine only) */
+$q = $public ? ($mine ? ['mine' => 1] : ['kind' => $kind]) : ($blank !== '' ? ['blank' => $blank] : ['type' => $type, 'id' => $id]);
+$langHref = static fn(string $l): string => '?' . http_build_query($q + ['lang' => $l]);
+$footRef = ($ref !== '' ? 'Ref <b>' . $h($ref) . '</b>' : 'फारम नं. · Form no. ________') . ($seal !== '' ? ' · Seal <b>' . $h($seal) . '</b>' : '');
+
 $autoPrint = isset($_GET['print']);
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store, private');
 header('X-Robots-Tag: noindex, nofollow');
 ?><!doctype html>
-<html lang="en">
+<html lang="<?= $h($agrLang) ?>">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <title><?= $h(($ref !== '' ? $ref . ' · ' : '') . $title) ?> — <?= $h($co['name']) ?></title>
 <style>
-@page{size:A4;margin:11mm 11mm 13mm}
-/* 22 Oct 2026 (owner: "3 prakar ko form differentiate garera"): one colour per kind - staff green, agent blue, partner orange */
-body{--k:#1F3C88}body.k-staff{--k:#11703F}body.k-partner{--k:#C25E00}
-.kbadge{display:inline-block;margin:0 0 6px;padding:3px 10px;border-radius:999px;background:var(--k);color:#fff;font-size:11.5px;font-weight:800;letter-spacing:.3px}
-.agr{display:flex;gap:12px;align-items:center;border:1.5px solid var(--k);border-radius:8px;padding:8px 10px;break-inside:avoid;font-size:11.5px;color:#3A4A66}
-.agr b{color:#0F1B33;font-size:12.5px}
-.agr .u{font-family:Consolas,monospace;color:#0F1B33;word-break:break-all}
-.agr img{width:26mm;height:26mm;image-rendering:pixelated;display:block}
-.agr .qt{font-size:10px;text-align:center;color:#3A4A66}
+/* 22 Oct 2026: real A4 sheets (210 x 297 mm), each with the letterhead and a page footer, filled by the script
+   below - the same sheets print, save as PDF and come out as one PNG / JPG per page. */
+@page{size:A4;margin:0}
 *{box-sizing:border-box}
-html,body{margin:0;background:#E9EDF3;color:#0F1B33;font:12.5px/1.45 "Segoe UI",Roboto,Arial,"Noto Sans Devanagari",sans-serif}
+html,body{margin:0;background:#E9EDF3;color:#0F1B33;font:12px/1.42 "Segoe UI",Roboto,Arial,"Noto Sans Devanagari",sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 [hidden]{display:none!important}
+/* one colour per kind - staff green, agent blue, partner orange (22 Oct 2026, "3 prakar ko form differentiate garera") */
+body{--k:#1F3C88}body.k-staff{--k:#11703F}body.k-partner{--k:#C25E00}
 .bar{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;padding:10px;background:#0F1B33;color:#fff}
-.bar button,.bar a{font:600 13px inherit;font-family:inherit;padding:9px 16px;border-radius:9px;border:0;cursor:pointer;text-decoration:none;color:#0F1B33;background:#fff}
+.bar button,.bar a{font:600 13px inherit;font-family:inherit;padding:9px 14px;border-radius:9px;border:0;cursor:pointer;text-decoration:none;color:#0F1B33;background:#fff}
 .bar button.pri{background:#F07A2E;color:#fff}
-.bar small{opacity:.75;flex-basis:100%;text-align:center}
-.sheet{width:210mm;min-height:297mm;margin:14px auto;background:#fff;padding:11mm 11mm 13mm;box-shadow:0 6px 30px rgba(15,27,51,.18);position:relative}
-.lh{display:flex;align-items:center;gap:14px;border-bottom:3px solid var(--k);padding-bottom:8px}
-.lh img{height:62px;width:auto}
+.bar a.on{outline:3px solid #F07A2E}
+.bar .lg{display:inline-flex;gap:5px;align-items:center;flex-wrap:wrap;justify-content:center;font-size:12px}
+.bar .lg a{padding:6px 10px;font-size:12px}
+.bar small{opacity:.8;flex-basis:100%;text-align:center}
+#pages{padding:4px 0 24px}
+.sheet{width:210mm;height:297mm;margin:12px auto;background:#fff;box-shadow:0 6px 30px rgba(15,27,51,.18);position:relative;overflow:hidden;display:flex;flex-direction:column;padding:9mm 11mm 7mm}
+.sheet .body{flex:1 1 auto;min-height:0;overflow:hidden;position:relative;z-index:1;padding-top:3mm}
+.pf{display:flex;justify-content:space-between;gap:8px;border-top:2px solid var(--k);padding-top:4px;margin-top:3px;font-size:9.5px;color:#3A4A66;position:relative;z-index:1}
+.pf b{font-family:Consolas,monospace;color:#0F1B33;letter-spacing:.3px}
+.lh{display:flex;align-items:center;gap:14px;border-bottom:3px solid var(--k);padding-bottom:7px;position:relative;z-index:1}
+.lh img{height:58px;width:auto}
 .lh .co{flex:1;min-width:0}
-.lh .co b{display:block;font-size:19px;letter-spacing:.3px;color:#1F3C88}
-.lh .co span{display:block;font-size:11px;color:#3A4A66}
-.lh .ids{text-align:right;font-size:10.5px;color:#3A4A66;white-space:nowrap}
-.stripe{height:4px;background:linear-gradient(90deg,var(--k) 0 60%,#F07A2E 60%)}
-.head{display:flex;gap:14px;margin-top:12px;align-items:flex-start}
+.lh .co b{display:block;font-size:18px;letter-spacing:.3px;color:var(--k)}
+.lh .co span{display:block;font-size:10.5px;color:#3A4A66}
+.lh .ids{text-align:right;font-size:10px;color:#3A4A66;white-space:nowrap}
+.kbadge{display:inline-block;margin:0 0 4px;padding:3px 10px;border-radius:999px;background:var(--k);color:#fff;font-size:11px;font-weight:800;letter-spacing:.3px}
+.stripe{height:4px;background:linear-gradient(90deg,var(--k) 0 60%,#F07A2E 60%);position:relative;z-index:1}
+.wm{position:absolute;inset:auto 0 40% 0;text-align:center;font-size:64px;font-weight:800;color:rgba(31,60,136,.05);transform:rotate(-18deg);pointer-events:none;z-index:0}
+#flow{width:188mm;margin:12px auto;background:#fff;padding:4mm}
+.head{display:flex;gap:14px;align-items:flex-start}
 .head .t{flex:1}
 .head h1{margin:0;font-size:20px;color:#0F1B33}
 .head h2{margin:2px 0 6px;font-size:14px;font-weight:600;color:#3A4A66}
@@ -353,62 +443,102 @@ html,body{margin:0;background:#E9EDF3;color:#0F1B33;font:12.5px/1.45 "Segoe UI",
 .pic{width:32mm;height:40mm;border:1.5px solid var(--k);border-radius:6px;display:grid;place-items:center;overflow:hidden;background:#F6F8FC;font-size:10px;color:#6B7A99;text-align:center;padding:4px}
 .pic img{width:100%;height:100%;object-fit:cover}
 .pic.logo img{object-fit:contain}
-.st{display:grid;grid-template-columns:repeat(auto-fit,minmax(36mm,1fr));gap:6px;margin:12px 0 4px}
+.st{display:grid;grid-template-columns:repeat(auto-fit,minmax(36mm,1fr));gap:6px;margin:10px 0 2px}
 .st div{border:1px solid #D5DCE8;border-radius:7px;padding:5px 8px;font-size:10.5px;color:#3A4A66}
 .st div b{display:block;font-size:12px;color:#0F1B33}
 .st div.ok{border-color:#1E9E5A;background:#EEF9F2}
 .st div.ok b::before{content:"✔ ";color:#1E9E5A}
-h3{margin:12px 0 4px;font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--k);border-bottom:1px solid #D5DCE8;padding-bottom:3px;break-after:avoid}
+h3{margin:10px 0 4px;font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--k);border-bottom:1px solid #D5DCE8;padding-bottom:3px}
 table{width:100%;border-collapse:collapse}
 td{padding:4px 6px;vertical-align:top;border-bottom:1px dotted #D5DCE8}
 td.l{width:38%;color:#3A4A66;font-size:11.5px}
 td.v{font-weight:600;white-space:pre-wrap;word-break:break-word}
 td.v.m{color:#8A96AD;font-weight:500}
-.blank td.v{height:9mm;border-bottom:1px solid #9AA6BD}
+.blank td.v{height:8.5mm;border-bottom:1px solid #9AA6BD}
 .sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(55mm,1fr));gap:8px;margin-top:4px}
-.sg figure{margin:0;border:1px solid #D5DCE8;border-radius:7px;padding:6px;break-inside:avoid}
+.sg figure{margin:0;border:1px solid #D5DCE8;border-radius:7px;padding:6px}
 .sg img{display:block;max-width:100%;max-height:30mm;margin:0 auto 4px;background:#fff}
 .sg figcaption{font-size:10.5px;color:#3A4A66}
 .sg figcaption b{display:block;color:#0F1B33;font-size:11.5px}
 .needs{columns:2;margin:4px 0 0;padding-left:16px;font-size:11.5px}
-.decl{margin-top:10px;font-size:11px;color:#3A4A66;border:1px solid #D5DCE8;border-radius:7px;padding:7px 9px;break-inside:avoid}
-.office{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;break-inside:avoid}
-.office div{border:1px solid #9AA6BD;border-radius:7px;height:22mm;padding:5px 7px;font-size:10.5px;color:#3A4A66}
-.seal{display:flex;justify-content:space-between;gap:10px;margin-top:10px;font-size:10.5px;color:#3A4A66;border-top:2px solid var(--k);padding-top:5px}
-.seal b{font-family:Consolas,monospace;color:#0F1B33;letter-spacing:.5px}
-.wm{position:absolute;inset:auto 0 40% 0;text-align:center;font-size:64px;font-weight:800;color:rgba(31,60,136,.05);transform:rotate(-18deg);pointer-events:none}
-@media print{html,body{background:#fff}.bar{display:none}.sheet{margin:0;width:auto;min-height:0;box-shadow:none;padding:0}}
-@media (max-width:820px){.sheet{width:auto;margin:8px;padding:14px}.head{flex-direction:column-reverse}.lh{flex-wrap:wrap}.lh .ids{text-align:left}}
+.decl{margin-top:10px;font-size:11px;color:#3A4A66;border:1px solid #D5DCE8;border-radius:7px;padding:7px 9px}
+.office{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+.office div{border:1px solid #9AA6BD;border-radius:7px;height:20mm;padding:5px 7px;font-size:10.5px;color:#3A4A66}
+/* the agreement */
+.agh{text-align:center;margin:0 0 6px}
+.agh .big{margin:2px 0 0;font-size:21px;font-weight:800;letter-spacing:1px;color:var(--k)}
+.agh .ti{font-size:14px;font-weight:700}
+.agh .sub{font-size:11px;color:#3A4A66}
+.agr{display:flex;gap:12px;align-items:center;border:1.5px solid var(--k);border-radius:8px;padding:7px 10px;font-size:11px;color:#3A4A66;margin-top:6px}
+.agr b{color:#0F1B33;font-size:12px}
+.agr .u{font-family:Consolas,monospace;color:#0F1B33;word-break:break-all}
+.agr img{width:24mm;height:24mm;image-rendering:pixelated;display:block}
+.agr .qt{font-size:9.5px;text-align:center;color:#3A4A66}
+.parties td.l{width:34%}
+.parties td.v{height:7.5mm}
+.sec{margin:8px 0 3px;font-size:12px;font-weight:800;color:var(--k);border-bottom:1px solid #D5DCE8;padding-bottom:2px}
+.pt{margin:0 0 3px;font-size:10.8px;line-height:1.5;text-align:justify}
+.pt b.n{display:inline-block;min-width:26px;color:var(--k)}
+.fill{display:inline-block;min-width:24mm;border-bottom:1px solid #5d6b86;height:1.05em;vertical-align:-3px}
+.accept{margin:8px 0 6px;padding:7px 9px;border:1.5px solid var(--k);border-radius:7px;font-size:11px;background:#FAFBFE}
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sbox{border:1px solid #9AA6BD;border-radius:7px;padding:6px 8px;font-size:10.5px;color:#3A4A66}
+.sbox b{display:block;color:#0F1B33;font-size:11.5px;margin-bottom:2px}
+.sbox .ln{display:flex;gap:6px;align-items:flex-end;margin:3px 0}
+.sbox .ln span{white-space:nowrap}
+.sbox .ln i{flex:1;border-bottom:1px solid #5d6b86;height:7mm;font-style:normal;font-weight:700;color:#0F1B33;display:flex;align-items:flex-end;padding:0 4px 1px}
+.sbox img.sig{display:block;max-height:15mm;max-width:100%;margin:2px 0 0}
+.thumbs{display:flex;gap:8px;margin-top:4px}
+.thumbs div{flex:1;text-align:center;font-size:9.5px}
+.thumbs .tb{height:25mm;border:1px dashed #9AA6BD;border-radius:50% / 45%;display:grid;place-items:center;overflow:hidden;background:#fff;margin:0 auto 2px;width:20mm}
+.thumbs .tb img{height:100%;width:100%;object-fit:cover}
+.bio{margin-top:4px;font-size:10px;color:#1E9E5A;font-weight:700}
+@media print{html,body{background:#fff}.bar,#flow{display:none!important}#pages{zoom:1!important;padding:0}.sheet{margin:0;box-shadow:none;break-after:page;page-break-after:always}.sheet:last-child{break-after:auto;page-break-after:auto}}
 </style>
 </head>
 <body class="k-<?= $h($kind) ?>">
 <div class="bar">
   <button class="pri" type="button" id="doPrint">🖨 छाप्नुहोस् · Print</button>
   <button class="pri" type="button" id="doPdf">📄 PDF</button>
-  <button class="pri" type="button" id="doJpg">🖼 JPG</button>
+  <button class="pri" type="button" id="doPng">🖼 PNG</button>
+  <button class="pri" type="button" id="doJpg">JPG</button>
   <?php if ($public): ?>
-    <?php foreach (['staff' => 'कर्मचारी · Staff', 'agent' => 'एजेन्ट · Agent', 'partner' => 'साझेदार · Partner'] as $kk => $kl): ?><a href="?kind=<?= $h($kk) ?>"<?= !$mine && $kind === $kk ? ' style="outline:2px solid #F07A2E"' : '' ?>><?= $h($kl) ?></a><?php endforeach; ?>
-    <a href="/agreements/">← <?= $h('फर्कनुहोस् · Back') ?></a>
+    <?php foreach (['staff' => 'कर्मचारी · Staff', 'agent' => 'एजेन्ट · Agent', 'partner' => 'साझेदार · Partner'] as $kk => $kl): ?><a href="?kind=<?= $h($kk) ?>"<?= !$mine && $kind === $kk ? ' class="on"' : '' ?>><?= $h($kl) ?></a><?php endforeach; ?>
+    <a href="/agreements/#forms">← <?= $h('फर्कनुहोस् · Back') ?></a>
   <?php else: ?>
     <?php if ($blank === ''): ?><a href="<?= $type === 'staff' ? 'staff-applications.php?id=' . (int) $id . '#detail' : 'agreements.php?tab=apps&amp;id=' . (int) $id . '#detail' ?>">← Back to the application</a><?php endif; ?>
     <a href="?blank=<?= $h($kind === 'partner' ? 'partner' : ($kind === 'staff' ? 'staff' : 'agent')) ?>">Blank form</a>
   <?php endif; ?>
-  <small id="exMsg"><?= $mine ? 'तपाईंले भर्नुभएको फारम — PDF वा JPG मा राख्नुहोस्। · Your filled form.' : ($blank !== '' ? 'छापेर हातले भर्नुहोस्, वा अनलाइन भर्नुहोस्: ' . ($kind === 'staff' ? '/agreements/staff.html' : '/agreements/apply.html' . ($kind === 'partner' ? '?kind=partner' : '')) . ' · Print and fill by hand, or apply online.' : 'In the print dialog choose “Save as PDF”, paper A4, margins Default.' . (!$canKyc ? ' Photo, ID, signatures and bank details print only for a manager.' : '')) ?></small>
+  <?php if (count(AgreementPrint::LANGS[$kind] ?? []) > 1): ?>
+  <span class="lg">सम्झौताको भाषा · Agreement in:
+    <?php foreach (AgreementPrint::LANGS[$kind] as $l): ?><a href="<?= $h($langHref($l)) ?>"<?= $l === $agrLang ? ' class="on"' : '' ?>><?= $h(AgreementPrint::LANG_LABELS[$l]) ?></a><?php endforeach; ?>
+  </span>
+  <?php endif; ?>
+  <small id="exMsg"><?= $mine ? 'तपाईंले भर्नुभएको फारम र सम्झौता — PNG, PDF वा छापेर राख्नुहोस्। · Your filled form and agreement.' : ($blank !== '' ? 'छापेर हातले भर्नुहोस्, वा अनलाइन भर्नुहोस्: ' . $h($shortUrl((string) ($agrDoc[2] ?? ''))) . ' · Print and fill by hand, or apply online.' : 'In the print dialog choose “Save as PDF”, paper A4, margins None.' . (!$canKyc ? ' Photo, ID, signatures and bank details print only for a manager.' : '')) ?></small>
 </div>
-<div class="sheet">
-  <div class="wm"><?= $h($co['name']) ?></div>
-  <div class="lh">
-    <img src="<?= $h($logo) ?>" alt="<?= $h($co['name']) ?> logo">
-    <div class="co"><b><?= $h(mb_strtoupper((string) $co['legal'])) ?></b>
-      <span><?= $h($co['address']) ?></span>
-      <span>📞 <?= $h($co['phone']) ?> · ✉ <?= $h($co['email']) ?> · 🌐 <?= $h($co['web']) ?></span></div>
-    <div class="ids"><?php if ((string) ($co['cin'] ?? '') !== ''): ?>CIN <?= $h($co['cin']) ?><br><?php endif; ?><?php if ((string) ($co['gstin'] ?? '') !== ''): ?>GSTIN <?= $h($co['gstin']) ?><br><?php endif; ?>India ⇄ Nepal bus service</div>
-  </div>
-  <div class="stripe"></div>
 
-  <div class="head">
+<div id="pages" aria-label="A4 pages"></div>
+
+<template id="chrome">
+  <div class="sheet">
+    <div class="wm"><?= $h($co['name']) ?></div>
+    <div class="lh">
+      <img src="<?= $h($logo) ?>" alt="<?= $h($co['name']) ?> logo">
+      <div class="co"><b><?= $h(mb_strtoupper((string) $co['legal'])) ?></b>
+        <span><?= $h($co['address']) ?></span>
+        <span>📞 <?= $h($co['phone']) ?> · ✉ <?= $h($co['email']) ?> · 🌐 <?= $h($co['web']) ?></span></div>
+      <div class="ids"><span class="kbadge"><?= $h($kindShort) ?></span><br><?php if ((string) ($co['cin'] ?? '') !== ''): ?>CIN <?= $h($co['cin']) ?><br><?php endif; ?><?php if ((string) ($co['gstin'] ?? '') !== ''): ?>GSTIN <?= $h($co['gstin']) ?><br><?php endif; ?>India ⇄ Nepal bus service</div>
+    </div>
+    <div class="stripe"></div>
+    <div class="body"></div>
+    <div class="pf"><span><?= $footRef ?></span><span><?= $h($co['web']) ?></span><span class="pno"></span></div>
+  </div>
+</template>
+
+<div id="flow">
+  <div class="blk head">
     <div class="t">
-      <span class="kbadge"><?= $h(['staff' => 'कर्मचारी · STAFF', 'agent' => 'एजेन्ट · AGENT', 'partner' => 'साझेदार कम्पनी · PARTNER (PVT. LTD.)'][$kind] ?? '') ?></span>
+      <span class="kbadge"><?= $h($kindBadge) ?></span>
       <h1><?= $h($title) ?></h1>
       <h2><?= $h($titleNe) ?></h2>
       <div class="meta">
@@ -424,63 +554,126 @@ td.v.m{color:#8A96AD;font-weight:500}
   </div>
 
   <?php if ($status !== []): ?>
-  <div class="st"><?php foreach ($status as [$l, $v, $ok]): ?><div class="<?= $ok ? 'ok' : '' ?>"><?= $h($l) ?><b><?= $h($v) ?></b></div><?php endforeach; ?></div>
+  <div class="blk st"><?php foreach ($status as [$l, $v, $ok]): ?><div class="<?= $ok ? 'ok' : '' ?>"><?= $h($l) ?><b><?= $h($v) ?></b></div><?php endforeach; ?></div>
   <?php endif; ?>
 
   <?php foreach ($sections as $sec => $rows): ?>
-  <h3><?= $h($sec) ?></h3>
-  <table class="<?= $blank !== '' ? 'blank' : '' ?>"><?php foreach ($rows as [$l, $v, $m]): ?><tr><td class="l"><?= $h($l) ?></td><td class="v<?= $m ? ' m' : '' ?>"><?= $h($v) ?></td></tr><?php endforeach; ?></table>
+  <div class="blk"><h3><?= $h($sec) ?></h3>
+  <table class="<?= $blank !== '' ? 'blank' : '' ?>"><?php foreach ($rows as [$l, $v, $m]): ?><tr><td class="l"><?= $h($l) ?></td><td class="v<?= $m ? ' m' : '' ?>"><?= $h($v) ?></td></tr><?php endforeach; ?></table></div>
   <?php endforeach; ?>
 
-  <h3>KYC checklist <?= $kind === 'partner' ? '(company)' : '' ?></h3>
-  <ul class="needs"><?php foreach ($needs as $n): ?><li><?= $h($n) ?></li><?php endforeach; ?></ul>
+  <div class="blk"><h3>KYC checklist <?= $kind === 'partner' ? '(company)' : '' ?></h3>
+  <ul class="needs"><?php foreach ($needs as $n): ?><li><?= $h($n) ?></li><?php endforeach; ?></ul></div>
 
-  <h3>Signatures &amp; documents</h3>
+  <div class="blk"><h3>Signatures &amp; documents</h3>
   <?php if ($signs !== []): ?>
   <div class="sg"><?php foreach ($signs as [$l, $img, $d]): ?><figure><?php if ($img !== ''): ?><img src="<?= $h($img) ?>" alt="<?= $h($l) ?>"><?php endif; ?><figcaption><b><?= $h($l) ?></b><?= $h($d) ?></figcaption></figure><?php endforeach; ?></div>
   <?php else: ?>
-  <div class="sg"><figure style="height:26mm"><figcaption><b>Applicant’s signature</b></figcaption></figure><figure style="height:26mm"><figcaption><b><?= $kind === 'partner' ? 'Company seal + representative' : 'Thumb impression' ?></b></figcaption></figure></div>
-  <?php endif; ?>
+  <div class="sg"><figure style="height:24mm"><figcaption><b>Applicant’s signature</b></figcaption></figure><figure style="height:24mm"><figcaption><b><?= $kind === 'partner' ? 'Company seal + representative' : 'Thumb impression' ?></b></figcaption></figure></div>
+  <?php endif; ?></div>
 
-  <?php /* 22 Oct 2026 (owner: "chhuta chhuttai agreement, digital focus tara print garera ni"): each kind's own
-     agreement, where to read and sign it online, and a QR - on a blank form to the ONLINE form (fill it on the
-     phone instead), on a filled one to the agreement. */
-  $agrDoc = ['staff'   => ['कर्मचारी सम्झौता · Staff agreement', 'agreements/staff-agreement.html', 'agreements/staff.html'],
-             'agent'   => ['एजेन्ट सम्झौता · Agent agreement', 'agreements/agent-agreement-ne.html', 'agreements/apply.html'],
-             'partner' => ['साझेदार कम्पनी सम्झौता · Partner (Pvt. Ltd.) agreement', 'agreements/partner-agreement-ne.html', 'agreements/apply.html?kind=partner']][$kind] ?? null;
-  if ($agrDoc !== null):
-      $qrTo  = appUrl($blank !== '' ? $agrDoc[2] : $agrDoc[1]);
-      $qrImg = '';
-      $shortUrl = static fn(string $p): string => (string) preg_replace('~^https?://(www\.)?~i', '', appUrl($p));
-      try { $qrImg = QrCode::dataUri($qrTo, 4, 2); } catch (Throwable $e) { $qrImg = ''; } ?>
-  <h3>सम्झौता · Agreement</h3>
-  <div class="agr">
-    <div style="flex:1;min-width:0"><b><?= $h($agrDoc[0]) ?></b><br>
-      पढ्नुहोस् र अनलाइन सही गर्नुहोस् · Read and sign online:<br><span class="u"><?= $h($shortUrl($agrDoc[1])) ?></span><br>
-      <?php if ($blank !== ''): ?>यो फारम मोबाइलमै भर्न सकिन्छ · Fill this form online:<br><span class="u"><?= $h($shortUrl($agrDoc[2])) ?></span><?php else: ?>कागजमा सही गर्ने भए हरेक पानामा छोटो सही, अन्तिममा पूरा सही र औंठाछाप · On paper: initials on every page, full signature and thumbprint at the end.<?php endif; ?></div>
-    <?php if ($qrImg !== ''): ?><div><img src="<?= $h($qrImg) ?>" alt="QR"><div class="qt"><?= $blank !== '' ? 'स्क्यान: अनलाइन फारम' : 'स्क्यान: सम्झौता' ?></div></div><?php endif; ?>
-  </div>
-  <?php endif; ?>
-
-  <div class="decl">I declare that the details above are true and the documents are mine<?= $kind === 'partner' ? ' / my company’s, and that I am authorised to sign for the company' : '' ?>. I agree to the <?= $h($kind === 'staff' ? 'staff' : ($kind === 'partner' ? 'partner' : 'agent')) ?> agreement of <?= $h($co['legal']) ?>.<br>
+  <div class="blk decl">I declare that the details above are true and the documents are mine<?= $kind === 'partner' ? ' / my company’s, and that I am authorised to sign for the company' : '' ?>. I agree to the <?= $h($kind === 'staff' ? 'staff' : ($kind === 'partner' ? 'partner' : 'agent')) ?> agreement of <?= $h($co['legal']) ?>.<br>
   म माथिका विवरण साँचो हुन् र कागजात मेरै<?= $kind === 'partner' ? ' / कम्पनीकै' : '' ?> हुन् भनी घोषणा गर्छु।</div>
 
-  <div class="office"><div>Office use — checked by (name)</div><div>Original ID seen ☐ · KYC verified ☐ · Approved ☐</div><div>Signature, date &amp; stamp</div></div>
+  <div class="blk office"><div>Office use — checked by (name)</div><div>Original ID seen ☐ · KYC verified ☐ · Approved ☐</div><div>Signature, date &amp; stamp</div></div>
 
-  <div class="seal">
-    <span><?= $seal !== '' ? 'Document seal <b>' . $h($seal) . '</b> — matches this record only; re-open the application to check.' : 'Blank form — attach copies of every document in the checklist.' ?></span>
-    <span><?= $h($co['web']) ?></span>
+  <?php if ($agrDoc !== null): ?>
+  <div class="pgbreak"></div>
+  <div class="blk agh">
+    <div class="big">सम्झौता-पत्र · AGREEMENT</div>
+    <div class="ti"><?= $h($agrDoc[0]) ?></div>
+    <div class="sub">यो सम्झौता <?= $h($co['legal']) ?> (पहिलो पक्ष) र तल लेखिएको <?= $h($agrDoc[3]) ?> (दोस्रो पक्ष) बीच भएको हो। · This agreement is between the Company (first party) and the <?= $h($kind === 'partner' ? 'partner company' : ($kind === 'staff' ? 'staff member' : 'agent')) ?> below (second party).</div>
+    <div class="agr" style="text-align:left">
+      <div style="flex:1;min-width:0"><b>अनलाइन पढ्नुहोस् र सही गर्नुहोस् · Read and sign online:</b><br><span class="u"><?= $h($shortUrl($agrDoc[1])) ?></span><br>
+        <?php if ($blank !== ''): ?>यो फारम मोबाइलमै भर्न सकिन्छ · Fill this form online:<br><span class="u"><?= $h($shortUrl($agrDoc[2])) ?></span><?php else: ?>कागजमा सही गर्ने भए हरेक पानामा छोटो सही, अन्तिममा पूरा सही र औंठाछाप · On paper: initials on every page, full signature and thumbprint at the end.<?php endif; ?></div>
+      <?php if ($qrImg !== ''): ?><div><img src="<?= $h($qrImg) ?>" alt="QR"><div class="qt"><?= $blank !== '' ? 'स्क्यान: अनलाइन फारम' : 'स्क्यान: सम्झौता' ?></div></div><?php endif; ?>
+    </div>
   </div>
+
+  <div class="blk"><h3>पक्षहरू · The parties</h3>
+  <table class="parties">
+    <tr><td class="l">पहिलो पक्ष — कम्पनी · First party — the Company</td><td class="v"><?= $h($co['legal']) ?><br><span style="font-weight:500"><?= $h($co['address']) ?><?= (string) ($co['cin'] ?? '') !== '' ? ' · CIN ' . $h($co['cin']) : '' ?></span></td></tr>
+    <tr><td class="l" colspan="2" style="font-weight:700;color:var(--k)">दोस्रो पक्ष — <?= $h($agrDoc[3]) ?> · Second party</td></tr>
+    <?php foreach ($party as [$l, $v]): ?><tr><td class="l"><?= $h($l) ?></td><td class="v"><?= $h($v) ?></td></tr><?php endforeach; ?>
+    <tr><td class="l">मिति · स्थान · Date · place</td><td class="v"><?= $mine || $blank === '' ? $h('Applied online ' . $fmtD($rec['created_at'] ?? null)) : '' ?></td></tr>
+  </table></div>
+
+  <?php foreach ($agrSecs as $sx): $first = true; ?>
+    <?php foreach ($sx['points'] as $pt): ?>
+  <div class="blk"><?php if ($first): $first = false; ?><div class="sec"><?= $h(trim(($sx['no'] !== '' ? $sx['no'] . '. ' : '') . $sx['title'])) ?></div><?php endif; ?><p class="pt"><?php if ($pt['num'] !== ''): ?><b class="n"><?= $h($pt['num']) ?></b> <?php endif; ?><?= $pt['html'] ?></p></div>
+    <?php endforeach; ?>
+  <?php endforeach; ?>
+  <?php if ($agrSecs === []): ?><div class="blk pt">सम्झौता यहाँ खुलेन — पूरा सम्झौता <?= $h($shortUrl($agrDoc[1])) ?> मा पढ्नुहोस्। · Read the full agreement online.</div><?php endif; ?>
+
+  <div class="blk accept">मैले/हामीले माथिका सबै नियम र सर्त पढें (वा पढेर सुनाइयो), बुझें र आफ्नै खुसीले स्वीकार गर्छु। · I/We have read (or had read to me), understood and freely accept every term above.</div>
+
+  <div class="blk sgrid">
+    <div class="sbox"><b>पहिलो पक्ष — कम्पनीको तर्फबाट · For the Company</b>
+      <div class="ln"><span>सही · Signature</span><i></i></div>
+      <div class="ln"><span>नाम · पद · Name · designation</span><i></i></div>
+      <div class="ln"><span>मिति · Date</span><i></i></div>
+      <div class="thumbs"><div><div class="tb" style="border-radius:8px;width:30mm">&nbsp;</div>कम्पनीको छाप · Company stamp</div></div>
+    </div>
+    <div class="sbox"><b>दोस्रो पक्ष — <?= $h($agrDoc[3]) ?> · Second party</b>
+      <?php if ($sigImg !== ''): ?><img class="sig" src="<?= $h($sigImg) ?>" alt="Signature"><div style="font-size:9.5px">अनलाइन सही · signed on the phone</div><?php else: ?><div class="ln"><span>सही · Signature</span><i></i></div><?php endif; ?>
+      <div class="ln"><span>नाम · Name</span><i><?= $h((string) ($party[0][1] ?? '')) ?></i></div>
+      <div class="thumbs">
+        <div><div class="tb"><?= $thumb !== '' ? '<img src="' . $h($thumb) . '" alt="Right thumb">' : '&nbsp;' ?></div>दायाँ औंठा · Right thumb</div>
+        <div><div class="tb">&nbsp;</div>बायाँ औंठा · Left thumb</div>
+      </div>
+      <?php if ($passkey): ?><div class="bio">✔ फोनको फिंगरप्रिन्ट / Face ID लक दर्ता · Phone fingerprint / Face ID lock registered</div><?php endif; ?>
+    </div>
+  </div>
+  <div class="blk sgrid" style="margin-top:8px">
+    <div class="sbox"><b>साक्षी १ · Witness 1</b>
+      <div class="ln"><span>नाम · Name</span><i></i></div><div class="ln"><span>ठेगाना · Address</span><i></i></div><div class="ln"><span>सही · Signature</span><i></i></div></div>
+    <div class="sbox"><b>साक्षी २ · Witness 2</b>
+      <div class="ln"><span>नाम · Name</span><i></i></div><div class="ln"><span>ठेगाना · Address</span><i></i></div><div class="ln"><span>सही · Signature</span><i></i></div></div>
+  </div>
+  <?php endif; ?>
 </div>
+
 <script>
-document.getElementById('doPrint').addEventListener('click', function () { window.print(); });
-/* 22 Oct 2026 (owner: "PDF ya JPG format ma letter head jasto A4"): the sheet
-   exactly as shown, rendered by html2canvas (cdnjs, jsdelivr fallback — the
-   same loader pattern as assets/js/11-pdf-ticket.js) and saved as one JPG or
-   as an A4 PDF cut into pages. The libraries load only on the first tap. */
+/* 22 Oct 2026: the blocks above are poured into A4 sheets (#chrome: letterhead + page footer); a block that
+   does not fit starts the next sheet. On a phone the sheets are only shown smaller (zoom), never reflowed, so
+   the PNG / PDF / print are the same pages everywhere. */
 (function () {
-  var msg = document.getElementById('exMsg'), sheet = document.querySelector('.sheet');
+  var flow = document.getElementById('flow'), pages = document.getElementById('pages'), tpl = document.getElementById('chrome');
+  var msg = document.getElementById('exMsg'), busy = false;
   var name = <?= json_encode(($ref !== '' ? $ref : 'blank-' . $kind) . '-' . date('Ymd'), JSON_UNESCAPED_SLASHES) ?>;
+
+  function sheetBody() {
+    var s = tpl.content.firstElementChild.cloneNode(true);
+    pages.appendChild(s);
+    return s.querySelector('.body');
+  }
+  function paginate() {
+    var body = sheetBody();
+    Array.prototype.slice.call(flow.children).forEach(function (b) {
+      if (b.classList.contains('pgbreak')) { if (body.children.length) body = sheetBody(); return; }
+      body.appendChild(b);
+      if (body.scrollHeight > body.clientHeight + 1 && body.children.length > 1) { body = sheetBody(); body.appendChild(b); }
+    });
+    flow.parentNode.removeChild(flow);
+    var all = pages.querySelectorAll('.sheet');
+    for (var i = 0; i < all.length; i++) all[i].querySelector('.pno').textContent = 'पाना ' + (i + 1) + ' / ' + all.length + ' · Page';
+    fit();
+    window.addEventListener('resize', fit);
+  }
+  function fit() {
+    if (busy) return;
+    var s = pages.querySelector('.sheet'); if (!s) return;
+    var z = Math.min(1, (document.documentElement.clientWidth - 10) / s.offsetWidth);
+    pages.style.zoom = z < 0.999 ? String(z) : '';
+  }
+  var fonts = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+  var loaded = new Promise(function (r) { if (document.readyState === 'complete') r(); else window.addEventListener('load', r); });
+  var ready = Promise.all([fonts, loaded]).then(paginate);
+
+  document.getElementById('doPrint').addEventListener('click', function () { ready.then(function () { window.print(); }); });
+
+  /* PDF / PNG / JPG: each sheet exactly as shown, by html2canvas (cdnjs, jsdelivr fallback); the libraries
+     load only on the first tap. PNG and JPG save one file per page. */
   function load(urls) {
     return new Promise(function (ok, bad) {
       var i = 0;
@@ -490,50 +683,60 @@ document.getElementById('doPrint').addEventListener('click', function () { windo
       })();
     });
   }
-  function libs() {
+  function libs(pdf) {
     var a = window.html2canvas ? Promise.resolve() : load(['https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js']);
-    var b = (window.jspdf && window.jspdf.jsPDF) ? Promise.resolve() : load(['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js']);
+    var b = !pdf || (window.jspdf && window.jspdf.jsPDF) ? Promise.resolve() : load(['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js']);
     return Promise.all([a, b]);
-  }
-  function shot() {
-    var imgs = Array.prototype.slice.call(sheet.querySelectorAll('img'));
-    var ready = Promise.all(imgs.map(function (im) { return im.complete ? 0 : new Promise(function (r) { im.onload = im.onerror = r; }); }));
-    var fonts = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
-    return Promise.all([ready, fonts]).then(function () {
-      // the A4 layout even on a phone: render as a wide window, at twice the pixels
-      return window.html2canvas(sheet, { scale: 2, backgroundColor: '#ffffff', useCORS: true, windowWidth: 1000, logging: false,
-        onclone: function (doc) { var s = doc.querySelector('.sheet'); s.style.width = '210mm'; s.style.margin = '0'; s.style.boxShadow = 'none'; } });
-    });
   }
   function save(blob, file) {
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file;
     document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function run(kind, btn) {
-    var label = btn.textContent; btn.disabled = true; btn.textContent = '⏳ …';
-    libs().then(shot).then(function (cv) {
-      if (kind === 'jpg') {
-        return new Promise(function (r) { cv.toBlob(function (b) { save(b, name + '.jpg'); r(); }, 'image/jpeg', 0.92); });
-      }
-      var pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-      var pageH = Math.floor(cv.width * 297 / 210), y = 0, first = true;
-      while (y < cv.height) {
-        var h = Math.min(pageH, cv.height - y), part = document.createElement('canvas');
-        part.width = cv.width; part.height = h;
-        var c = part.getContext('2d'); c.fillStyle = '#fff'; c.fillRect(0, 0, part.width, h); c.drawImage(cv, 0, y, cv.width, h, 0, 0, cv.width, h);
-        if (!first) pdf.addPage();
-        pdf.addImage(part.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, h * 210 / cv.width);
-        first = false; y += pageH;
-      }
-      save(pdf.output('blob'), name + '.pdf');
+    if (busy) return;
+    busy = true;
+    var label = btn.textContent, sy = window.scrollY, z = pages.style.zoom;
+    btn.disabled = true; btn.textContent = '⏳ …';
+    var all = [], pdf = null, scale = kind === 'png' ? 2.5 : 2;
+    ready.then(function () { return libs(kind === 'pdf'); }).then(function () {
+      pages.style.zoom = ''; window.scrollTo(0, 0);
+      all = Array.prototype.slice.call(pages.querySelectorAll('.sheet'));
+      if (kind === 'pdf') pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      var chain = Promise.resolve();
+      all.forEach(function (sh, i) {
+        chain = chain.then(function () {
+          if (msg) msg.textContent = '⏳ पाना ' + (i + 1) + ' / ' + all.length + ' · page';
+          return window.html2canvas(sh, { scale: scale, backgroundColor: '#ffffff', useCORS: true, logging: false });
+        }).then(function (cv) {
+          if (kind === 'pdf') {
+            if (i > 0) pdf.addPage();
+            pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+            return null;
+          }
+          return new Promise(function (r) {
+            cv.toBlob(function (b) { save(b, name + (all.length > 1 ? '-p' + (i + 1) : '') + (kind === 'png' ? '.png' : '.jpg')); r(); },
+              kind === 'png' ? 'image/png' : 'image/jpeg', 0.92);
+          }).then(function () { return wait(700); });
+        });
+      });
+      return chain;
+    }).then(function () {
+      if (pdf) save(pdf.output('blob'), name + '.pdf');
+      if (msg) msg.textContent = '✓ ' + (kind === 'pdf' ? 'PDF' : all.length + ' ' + kind.toUpperCase()) + ' — डाउनलोडमा हेर्नुहोस् · saved to Downloads';
     }).catch(function () {
       if (msg) msg.textContent = 'अहिले बन्न सकेन — "छाप्नुहोस्" थिचेर "Save as PDF" रोज्नुहोस्। · Could not build it now: use Print → Save as PDF.';
-    }).then(function () { btn.disabled = false; btn.textContent = label; });
+    }).then(function () {
+      pages.style.zoom = z; window.scrollTo(0, sy);
+      busy = false; btn.disabled = false; btn.textContent = label; fit();
+    });
   }
   document.getElementById('doPdf').addEventListener('click', function () { run('pdf', this); });
+  document.getElementById('doPng').addEventListener('click', function () { run('png', this); });
   document.getElementById('doJpg').addEventListener('click', function () { run('jpg', this); });
+<?php if ($autoPrint): ?>  ready.then(function () { setTimeout(function () { window.print(); }, 300); });
+<?php endif; ?>
 })();
-<?php if ($autoPrint): ?>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 300); });<?php endif; ?>
 </script>
 </body>
 </html>

@@ -449,7 +449,7 @@ if (!$ready) {
       <?= $docCard('id_back', 'ID back') ?>
       <?= $docCard('photo', 'Selfie (compare the face)') ?>
       <?php if ((string) $open['role_applied'] === 'driver' || !empty($open['license_photo_path'])): ?><?= $docCard('license', 'Driving licence') ?><?php endif; ?>
-      <?php foreach (['qual_cert' => 'Certificate', 'marksheet' => 'Marksheet', 'exp_cert' => 'Experience letter', 'signature' => 'Signature'] as $slot => $lbl): ?>
+      <?php foreach (['qual_cert' => 'Certificate', 'marksheet' => 'Marksheet', 'exp_cert' => 'Experience letter', 'signature' => 'Signature', 'thumb' => 'Thumbprint (camera)'] as $slot => $lbl): ?>
         <?php if (!empty($open[StaffApps::slotColumn($slot)])): ?><?= $docCard($slot, $lbl) ?><?php endif; ?>
       <?php endforeach; ?>
     </div>

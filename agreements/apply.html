@@ -100,7 +100,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 .dv-use .btn{width:100%;white-space:normal;text-align:left}
 @media (prefers-reduced-motion:reduce){.dv-rows li.w b{animation:none}}
 /* 22 Oct 2026: agent / Pvt. Ltd. partner switch */
-.kind{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 6px}
+.kind{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 6px}
+@media (max-width:420px){.kind{grid-template-columns:minmax(0,1fr)}.kind label{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:2px 8px}}
 .kind label{display:flex;flex-direction:column;gap:2px;padding:12px;border-radius:14px;border:1.5px solid var(--line);font-weight:800;font-size:14px;cursor:pointer}
 .kind label small{font-weight:600;font-size:12px;opacity:.75}
 .kind input{position:absolute;opacity:0;pointer-events:none}
@@ -108,6 +109,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 #logoPrev{background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#fff}
 .kribbon{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;justify-content:center;padding:9px 14px 47px;background:#0054A8;color:#fff;font-weight:800;font-size:13.5px;text-align:center}
 .kribbon.org{background:#C25E00}
+.kribbon.staff{background:#11703F}
 .kribbon a{color:#fff;font-weight:700;text-decoration:underline;text-underline-offset:3px;min-height:32px;display:inline-flex;align-items:center}
 </style>
 </head>
@@ -131,12 +133,35 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     <!-- 22 Oct 2026 (owner, team portal): the Pvt. Ltd. partner's paper form, online - the same
          quick form with a company block, the logo, and the representative's ID / photo / signature.
          Sent as type "org" (the long partner agreement page's online send uses the same API). -->
+    <!-- 22 Oct 2026 (owner: "digital form yestai same 3 ta ko banaidinu, aru sab delete"): staff apply on this
+         same form too (sent to /api/staff-apply.php); /agreements/staff.html now opens here with ?kind=staff -->
     <div class="kind" role="radiogroup" aria-label="Who is applying">
+      <label><input type="radio" name="kind" value="staff"> 🧑‍✈️ कर्मचारी<small>Staff — driver, conductor, office…</small></label>
       <label><input type="radio" name="kind" value="ind" checked> 👤 एजेन्ट (व्यक्ति)<small>Individual agent</small></label>
       <label><input type="radio" name="kind" value="org"> 🏢 प्रा. लि. साझेदार<small>Pvt. Ltd. partner company</small></label>
     </div>
     <label class="f"><span id="nameLbl">पूरा नाम · Full name <em>*</em></span><input type="text" id="p_name" autocomplete="name" maxlength="160" required placeholder="जस्तै: Ram Bahadur Thapa">
       <small class="hint" id="nameHint" style="display:block;margin:4px 0 0">डकुमेन्टमा जस्तो लेखिएको छ, ठ्याक्कै त्यस्तै हिज्जे · exactly as on your ID</small></label>
+    <div id="staffBox" hidden>
+      <label class="f"><span>कुन काम? · Job <em>*</em></span><select id="s_role"><option value="">— छान्नुहोस् · choose —</option><option value="driver">🚌 चालक · Driver</option><option value="conductor">🎫 कन्डक्टर / सह-चालक · Conductor</option><option value="helper">🧳 हेल्पर · Helper</option><option value="office">🏢 अफिस / काउन्टर · Office</option><option value="accountant">📊 लेखापाल · Accountant</option><option value="mechanic">🔧 मेकानिक · Mechanic</option><option value="cleaner">🧹 सफाइ · Cleaner</option><option value="security">🛡️ सुरक्षा · Security</option><option value="other">अन्य · Other</option></select></label>
+      <div id="drvBox" hidden>
+        <label class="f"><span>लाइसेन्स नम्बर · Driving licence no. <em>*</em></span><input type="text" id="s_lic" maxlength="40" autocomplete="off" placeholder="जस्तै: 01-06-00123456"></label>
+        <label class="f"><span>लाइसेन्सको वर्ग · Category <em>*</em></span><input type="text" id="s_licCat" maxlength="40" autocomplete="off" placeholder="जस्तै: B, C, D"></label>
+        <label class="f"><span>म्याद सकिने मिति · Valid until <em>*</em></span><input type="date" id="s_licExp"></label>
+        <div class="shot" style="margin-top:8px">
+          <div class="prev doc" id="licPrev">🚌</div>
+          <div><div class="pick"><span class="btn">📷 लाइसेन्सको फोटो · Licence photo <em>*</em></span><input type="file" id="licIn" accept="image/*" capture="environment" aria-label="Photo of the driving licence"></div>
+          <p class="hint" style="margin:6px 0 0">अगाडिको भाग, सबै अक्षर देखिने गरी।</p><div class="ok" id="licOk"></div></div>
+        </div>
+      </div>
+      <p class="hint" style="margin:14px 0 0;font-weight:800">🧾 थप विवरण (ऐच्छिक) · More details (optional)</p>
+      <label class="f"><span>जन्म मिति (ईस्वी) · Date of birth (AD)</span><input type="date" id="s_dob"></label>
+      <label class="f"><span>लिङ्ग · Gender</span><select id="s_gender"><option value="">—</option><option value="male">पुरुष · Male</option><option value="female">महिला · Female</option><option value="other">अन्य · Other</option></select></label>
+      <label class="f"><span>इमेल · E-mail</span><input type="email" id="s_email" maxlength="160" autocomplete="email" placeholder="जस्तै: ram@gmail.com"></label>
+      <label class="f"><span>देश · Country</span><select id="s_country"><option value="NP">🇳🇵 नेपाल · Nepal</option><option value="IN">🇮🇳 भारत · India</option></select></label>
+      <label class="f"><span>चिनारी (नाम · फोन) · Reference</span><div class="row"><input type="text" id="s_ref1n" maxlength="80" placeholder="नाम · Name"><input type="tel" id="s_ref1p" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Reference phone"></div></label>
+      <label class="f"><span>आपतकालीन सम्पर्क (नाम · फोन) · Emergency contact</span><div class="row"><input type="text" id="s_emn" maxlength="80" placeholder="नाम · Name"><input type="tel" id="s_emp" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Emergency phone"></div></label>
+    </div>
     <div id="orgBox" hidden>
       <label class="f"><span>कम्पनीको किसिम · Company type</span><select id="p_type"><option value="0">Pvt. Ltd. (प्रा. लि.)</option><option value="1">Partnership firm (साझेदारी फर्म)</option><option value="2">Proprietorship (एकल स्वामित्व)</option><option value="3">Other (अन्य)</option></select></label>
       <label class="f"><span>दर्ता नम्बर · Registration No.</span><input type="text" id="p_reg" maxlength="60" autocomplete="off" placeholder="Company / firm registration number"></label>
@@ -164,8 +189,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     <label class="f"><span>मोबाइल · Mobile (WhatsApp) <em>*</em></span>
       <div class="row"><select id="cc" aria-label="Country code"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>
       <input type="tel" id="p_phone" inputmode="numeric" autocomplete="tel-national" maxlength="14" placeholder="98XXXXXXXX" required></div></label>
-    <label class="f"><span>काम गर्ने ठाउँ / शहर · Work area / city <em>*</em></span><input type="text" id="p_area" maxlength="160" placeholder="जस्तै: Surat, Nepalgunj" required></label>
-    <label class="f"><span>ठेगाना · Address <em>*</em></span><textarea id="p_addr" maxlength="300" placeholder="टोल, नगर, जिल्ला" required></textarea></label>
+    <label class="f"><span id="areaLbl">काम गर्ने ठाउँ / शहर · Work area / city <em>*</em></span><input type="text" id="p_area" maxlength="160" placeholder="जस्तै: Surat, Nepalgunj" required></label>
+    <label class="f"><span id="addrLbl">ठेगाना · Address <em>*</em></span><textarea id="p_addr" maxlength="300" placeholder="टोल, नगर, जिल्ला" required></textarea></label>
     <!-- 22 Oct 2026 (team portal): the start of the CV - the rest is filled in the team portal after approval -->
     <p class="hint" style="margin:14px 0 0;font-weight:800">📚 शिक्षा र अनुभव (ऐच्छिक) · Education &amp; experience (optional)</p>
     <label class="f"><span id="cvQualLbl">सबैभन्दा माथिल्लो शिक्षा · Highest education</span><select id="cv_qual"><option value="">—</option><option value="below_see">SEE भन्दा कम · Below SEE / 10th</option><option value="see">SEE / SLC / 10th</option><option value="plus2">+2 / 12th / PUC</option><option value="diploma">Diploma / ITI</option><option value="bachelor">Bachelor · स्नातक</option><option value="master">Master · स्नातकोत्तर</option><option value="other">Other · अन्य</option></select></label>
@@ -173,7 +198,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     <label class="f"><span id="cvPrevLbl">पहिलेको काम / कम्पनी · Previous work</span><input type="text" id="cv_prev" maxlength="160" placeholder="जस्तै: टिकट काउन्टर, ट्राभल एजेन्सी"></label>
   </section>
 
-  <section class="card">
+  <section class="card" id="geoCard">
     <h2><i>2</i>📍 लोकेसन · Location</h2>
     <p class="hint">एक ट्याप — फोनले तपाईं अहिले भएको ठाउँ पठाउँछ (कार्यालयले मात्र देख्छ)।</p>
     <button type="button" class="btn ghost" id="geoBtn">📍 मेरो लोकेसन लिनुहोस् · Use my location</button>
@@ -183,7 +208,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   <section class="card">
     <h2><i>3</i>🪪 डकुमेन्ट · ID document</h2>
     <label class="f"><span>डकुमेन्टको प्रकार · Type</span>
-      <select id="p_idtype"><option value="1">नागरिकता · Citizenship</option><option value="0">आधार · Aadhaar</option><option value="2">पासपोर्ट · Passport</option><option value="3">मतदाता परिचयपत्र · Voter ID</option><option value="4">अन्य · Other</option></select></label>
+      <select id="p_idtype"><option value="1">नागरिकता · Citizenship</option><option value="0">आधार · Aadhaar</option><option value="2">पासपोर्ट · Passport</option><option value="3">मतदाता परिचयपत्र · Voter ID</option><option value="4">अन्य · Other</option><option value="5" hidden>ड्राइभिङ लाइसेन्स · Driving licence</option><option value="6" hidden>PAN</option></select></label>
     <label class="f"><span>डकुमेन्ट नम्बर · ID number <em>*</em></span><input type="text" id="p_idno" maxlength="40" autocomplete="off" required placeholder="जस्तै: 52-01-75-12345">
       <small class="hint" id="idHint" style="display:block;margin:4px 0 0">कार्डमा भएको नम्बर ठ्याक्कै · exactly as printed</small></label>
     <div class="shot">
@@ -201,16 +226,22 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
       <div class="dv-use" id="dvUse" hidden><button type="button" class="btn ghost small" id="dvUseBtn"></button></div>
       <button type="button" class="btn ghost" id="dvBtn">🔍 डकुमेन्ट जाँच गर्नुहोस् · Check document</button>
     </div>
+    <!-- 22 Oct 2026 (owner: "document, marksheet upload garne"): the latest marksheet / certificate, optional -->
+    <div class="shot" id="eduShot" style="margin-top:14px">
+      <div class="prev doc" id="eduPrev">🎓</div>
+      <div><div class="pick"><span class="btn ghost">📷 मार्कसिट / शैक्षिक प्रमाणपत्र (ऐच्छिक)</span><input type="file" id="eduIn" accept="image/*" capture="environment" aria-label="Photo of the marksheet or certificate"></div>
+      <p class="hint" style="margin:6px 0 0">पछिल्लो मार्कसिट वा प्रमाणपत्र। अफिसले मात्र हेर्छ। · Latest marksheet / certificate - office only.</p><div class="ok" id="eduOk"></div></div>
+    </div>
   </section>
 
   <section class="card">
     <h2><i>₹</i>🏦 बैंक खाता · Bank account (KYC)</h2>
-    <p class="hint">कमिसन यही खातामा पठाइन्छ। कार्यालयले मात्र देख्छ — वेबसाइटमा कहिल्यै देखिँदैन। अहिले थाहा छैन भने पछि कार्यालयमा दिन सकिन्छ।</p>
+    <p class="hint" id="bankHint">कमिसन यही खातामा पठाइन्छ। कार्यालयले मात्र देख्छ — वेबसाइटमा कहिल्यै देखिँदैन। अहिले थाहा छैन भने पछि कार्यालयमा दिन सकिन्छ।</p>
     <label class="f"><span>खातावालाको नाम · Account holder</span><input type="text" id="b_name" maxlength="80" autocomplete="off" placeholder="जस्तै: Ram Bahadur Thapa"></label>
     <label class="f"><span>बैंक र शाखा · Bank &amp; branch</span><input type="text" id="b_bank" maxlength="80" autocomplete="off" placeholder="जस्तै: Nabil Bank, Nepalgunj"></label>
     <label class="f"><span>खाता नम्बर · Account number</span><input type="text" id="b_acc" maxlength="40" inputmode="numeric" autocomplete="off" placeholder="जस्तै: 01234567890123"></label>
     <label class="f"><span>IFSC / SWIFT (भारत / India)</span><input type="text" id="b_ifsc" maxlength="20" autocomplete="off" style="text-transform:uppercase"></label>
-    <label class="f"><span>UPI / eSewa / Khalti</span><input type="text" id="b_upi" maxlength="80" autocomplete="off"></label>
+    <label class="f" id="upiLbl"><span>UPI / eSewa / Khalti</span><input type="text" id="b_upi" maxlength="80" autocomplete="off"></label>
   </section>
 
   <section class="card">
@@ -227,6 +258,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     <p class="hint">औंलाले तलको बाकसभित्र आफ्नो सही गर्नुहोस्।</p>
     <div class="sigw" id="sigw"><canvas id="sig" aria-label="Sign here with your finger"></canvas><div class="line"></div><div class="ph">✍️ यहाँ सही गर्नुहोस् · Sign here</div></div>
     <div class="sig-bar"><span class="ok" id="sigOk"></span><button type="button" class="btn ghost small" id="sigClear">↺ मेटाउनुहोस् · Clear</button></div>
+    <!-- 22 Oct 2026 (owner: "face id ni lagau, fingerprint ni ... natra camera bata"): the right thumb by the
+         camera as an ink print, and the phone's own fingerprint / Face ID lock where the phone has one (bio-kit.js) -->
+    <p class="hint" style="margin:16px 0 6px"><b>👍 औंठाछाप · Thumbprint</b> (सिफारिस · recommended)</p>
+    <div id="thumbBox"></div>
+    <div id="pkBox" hidden style="margin-top:14px;padding:12px;border:1.5px dashed var(--line);border-radius:14px">
+      <b>🔐 फिंगरप्रिन्ट / Face ID (ऐच्छिक) · Fingerprint / Face ID (optional)</b>
+      <p class="hint" style="margin:4px 0 8px">फोनको आफ्नै औंठाछाप वा अनुहार लकले यो आवेदन तपाईंकै हो भनी पुष्टि हुन्छ। औंठाछाप फोनभित्रै रहन्छ — हामीकहाँ आउँदैन। · Your fingerprint never leaves your phone.</p>
+      <button type="button" class="btn ghost small" id="pkBtn">👆 फिंगरप्रिन्ट / Face ID थप्नुहोस् · Add</button> <span class="ok" id="pkOk"></span>
+    </div>
   </section>
 
   <section class="card" id="waCard">
@@ -236,12 +276,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   </section>
 
   <section class="card">
+    <!-- 22 Oct 2026 (owner: "agreement garne bela sart haru k k chha sabai lekhidinus"): every term, read here -->
+    <div id="termsBox"></div>
+    <label class="chk"><input type="checkbox" id="agreeTerms"><span>मैले सम्झौताका सबै सर्त पढें (वा पढेर सुनाइयो) र स्वीकार गर्छु। · I have read and accept every term. <em style="color:var(--bad);font-style:normal">*</em></span></label>
     <label class="chk"><input type="checkbox" id="agree"><span>मैले दिएको विवरण साँचो हो। कार्यालयले मलाई फोन / WhatsApp गर्न सक्छ। <em style="color:var(--bad);font-style:normal">*</em></span></label>
     <label class="chk"><input type="checkbox" id="public_ok"><span>स्वीकृत भएपछि मेरो नाम, फोटो, काम गर्ने ठाउँ र पूरा फोन नम्बर (WhatsApp) वेबसाइटको एजेन्ट सूचीमा देखाउन सकिन्छ। (नत्र फोटो र नम्बर लुकाइन्छ)</span></label>
     <div class="hp" aria-hidden="true"><label>Website <input type="text" id="website" tabindex="-1" autocomplete="off"></label></div>
     <p class="msg bad" id="msg" hidden role="alert"></p>
   </section>
-  <p class="foot">📄 हातले भर्ने फारम (A4): <a href="/agreements/form.php?kind=agent" target="_blank" rel="noopener">एजेन्ट · Agent</a> · <a href="/agreements/form.php?kind=partner" target="_blank" rel="noopener">साझेदार · Partner</a><br>🔒 डकुमेन्ट, बैंक खाता र सही S Hari Global कार्यालयले मात्र हेर्छ — सार्वजनिक हुँदैन। फोटो तपाईंले माथि अनुमति दिएमा मात्र वेबसाइटमा देखिन्छ।<br><a href="/agreements/">पूरा सम्झौता पढ्नुहोस् · Read the full agreement</a> · <a href="/">होम · Home</a></p>
+  <p class="foot">📄 हातले भर्ने फारम (A4): <a href="/agreements/form.php?kind=staff" target="_blank" rel="noopener">कर्मचारी · Staff</a> · <a href="/agreements/form.php?kind=agent" target="_blank" rel="noopener">एजेन्ट · Agent</a> · <a href="/agreements/form.php?kind=partner" target="_blank" rel="noopener">साझेदार · Partner</a><br>🔒 डकुमेन्ट, बैंक खाता र सही S Hari Global कार्यालयले मात्र हेर्छ — सार्वजनिक हुँदैन। फोटो तपाईंले माथि अनुमति दिएमा मात्र वेबसाइटमा देखिन्छ।<br><a href="/agreements/">पूरा सम्झौता पढ्नुहोस् · Read the full agreement</a> · <a href="/">होम · Home</a></p>
   <div class="go"><button type="submit" class="btn" id="send">📨 फारम पठाउनुहोस् · Send application</button></div>
 </form>
 
@@ -250,18 +293,20 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   <h2>फारम पुग्यो! · Application received</h2>
   <div class="ref" id="ref"></div>
   <p id="doneMsg" style="margin:0 0 14px"></p>
-  <a class="btn" href="/agreements/form.php?mine=1" target="_blank" rel="noopener" style="margin-bottom:8px">📄 भरेको फारम डाउनलोड (PDF / JPG) · Your filled form</a>
+  <a class="btn" href="/agreements/form.php?mine=1" target="_blank" rel="noopener" style="margin-bottom:8px">📄 मेरो फारम + सम्झौता — PNG / PDF · Your filled form &amp; agreement</a>
   <a class="btn" href="/">🏠 होम पेज · Home</a>
 </section>
 </main>
 
 <script src="/assets/js/wa-direct.js?v=20261022a"></script>
 <script src="/assets/js/wa-verify.js?v=20261022b"></script>
+<script src="/assets/js/bio-kit.js?v=20261022b"></script>
 <script>
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var state = { photo: null, doc: null, geo: null, csrf: null, verified: null, checking: null, seenName: '', wa: 'none', kind: 'ind', logo: null, reg_cert: null, tax_cert: null };
+  var state = { photo: null, doc: null, geo: null, csrf: null, verified: null, checking: null, seenName: '', wa: 'none', kind: 'ind', logo: null, reg_cert: null, tax_cert: null, edu_cert: null };
+  var terms = null;   // ShgTerms box (bio-kit.js), mounted below
   /* 22 Oct 2026: a partner company's ID / photo / signature are its representative's */
   function nameId() { return state.kind === 'org' ? 'p_rep' : 'p_name'; }
 
@@ -323,29 +368,47 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   hookShot('logoIn', 'logoPrev', 'logoOk', 'logo', 600, 150000);
   hookShot('regIn', 'regPrev', 'regOk', 'reg_cert', 1600, 320000);
   hookShot('taxIn', 'taxPrev', 'taxOk', 'tax_cert', 1600, 320000);
+  hookShot('eduIn', 'eduPrev', 'eduOk', 'edu_cert', 1600, 320000);
+  hookShot('licIn', 'licPrev', 'licOk', 'lic', 1400, 420000);
 
   /* ---- 22 Oct 2026: individual agent or Pvt. Ltd. partner company ---- */
   function setKind(k) {
-    state.kind = k === 'org' ? 'org' : 'ind';
-    var org = state.kind === 'org';
+    state.kind = k === 'org' ? 'org' : k === 'staff' ? 'staff' : 'ind';
+    var org = state.kind === 'org', staff = state.kind === 'staff';
     $('orgBox').hidden = !org;
+    $('staffBox').hidden = !staff;
+    $('eduShot').hidden = org;
+    $('geoCard').hidden = staff;
+    $('upiLbl').hidden = staff;
+    $('bankHint').textContent = $('bankHint').textContent.replace(/^(कमिसन|तलब) /, staff ? 'तलब ' : 'कमिसन ');
+    $('areaLbl').innerHTML = staff ? 'जिल्ला / शहर · District / city' : 'काम गर्ने ठाउँ / शहर · Work area / city <em>*</em>';
+    $('addrLbl').innerHTML = staff ? 'स्थायी ठेगाना · Permanent address' : 'ठेगाना · Address <em>*</em>';
+    // the ID choices: voter ID / other are agent-only, a driving licence / PAN staff-only
+    [].forEach.call($('p_idtype').options, function (o) {
+      var off = staff ? (o.value === '3' || o.value === '4') : (o.value === '5' || o.value === '6');
+      o.hidden = off; o.disabled = off;
+    });
+    if ($('p_idtype').selectedOptions[0] && $('p_idtype').selectedOptions[0].disabled) $('p_idtype').value = '1';
+    if (ID_RULES) $('idHint').textContent = rule().hint;   // undefined while the page is still starting (set below)
+    if (terms) terms.setKind(staff ? 'staff' : org ? 'partner' : 'agent');
     $('nameLbl').innerHTML = org ? 'कम्पनीको नाम · Company name <em>*</em>' : 'पूरा नाम · Full name <em>*</em>';
     $('p_name').placeholder = org ? 'जस्तै: Sita Ram Travels Pvt. Ltd.' : 'जस्तै: Ram Bahadur Thapa';
     $('nameHint').textContent = org ? 'दर्ता प्रमाणपत्रमा जस्तो · as registered' : 'डकुमेन्टमा जस्तो लेखिएको छ, ठ्याक्कै त्यस्तै हिज्जे · exactly as on your ID';
     $('p_name').setAttribute('autocomplete', org ? 'organization' : 'name');
     var h = document.querySelector('header h1');
-    if (h) h.innerHTML = org ? '🏢 साझेदार बन्नुहोस्<br><span style="font-size:.62em;font-weight:800;color:#ffd9a8">Become an S Hari Global Pvt. Ltd. partner</span>'
+    if (h) h.innerHTML = staff ? '🧑‍✈️ काम गर्न आउनुहोस्<br><span style="font-size:.62em;font-weight:800;color:#ffd9a8">Work with S Hari Global</span>'
+                       : org ? '🏢 साझेदार बन्नुहोस्<br><span style="font-size:.62em;font-weight:800;color:#ffd9a8">Become an S Hari Global Pvt. Ltd. partner</span>'
                              : '🤝 एजेन्ट बन्नुहोस्<br><span style="font-size:.62em;font-weight:800;color:#ffd9a8">Become an S Hari Global agent</span>';
-    var rib = $('kRib');
+    var rib = $('kRib'), kk = staff ? 'staff' : org ? 'partner' : 'agent';
     if (rib) {
-      rib.className = 'kribbon' + (org ? ' org' : '');
-      $('kRibT').textContent = org ? '🏢 साझेदार कम्पनी फारम · PARTNER (PVT. LTD.)' : '🤝 एजेन्ट फारम · AGENT';
-      $('kRibF').href = '/agreements/form.php?kind=' + (org ? 'partner' : 'agent');
-      $('kRibA').href = org ? '/agreements/partner-agreement-ne.html' : '/agreements/agent-agreement-ne.html';
-      $('kRibA').textContent = org ? '📜 साझेदार सम्झौता' : '📜 एजेन्ट सम्झौता';
+      rib.className = 'kribbon' + (org ? ' org' : staff ? ' staff' : '');
+      $('kRibT').textContent = { staff: '🧑‍✈️ कर्मचारी फारम · STAFF', partner: '🏢 साझेदार कम्पनी फारम · PARTNER (PVT. LTD.)', agent: '🤝 एजेन्ट फारम · AGENT' }[kk];
+      $('kRibF').href = '/agreements/form.php?kind=' + kk;
+      $('kRibA').href = staff ? '/agreements/staff-agreement.html' : '/agreements/' + kk + '-agreement-ne.html';
+      $('kRibA').textContent = { staff: '📜 कर्मचारी सम्झौता', partner: '📜 साझेदार सम्झौता', agent: '📜 एजेन्ट सम्झौता' }[kk];
     }
     document.querySelectorAll('input[name="kind"]').forEach(function (r) { r.checked = r.value === state.kind; });
-    document.title = org ? 'साझेदार बन्नुहोस् · Become a partner — S Hari Global' : 'एजेन्ट बन्नुहोस् · Become an agent — S Hari Global';
+    document.title = staff ? 'काम गर्न आउनुहोस् · Work with us — S Hari Global' : org ? 'साझेदार बन्नुहोस् · Become a partner — S Hari Global' : 'एजेन्ट बन्नुहोस् · Become an agent — S Hari Global';
     $('cvQualLbl').textContent = org ? 'सञ्चालकको शिक्षा · Director\'s education' : 'सबैभन्दा माथिल्लो शिक्षा · Highest education';
     $('cvExpLbl').textContent = org ? 'व्यवसायमा कति वर्ष · Years in business' : 'अनुभव (वर्ष) · Experience (years)';
     $('cvPrevLbl').textContent = org ? 'अन्य सेवा / अनुभव · Other services / experience' : 'पहिलेको काम / कम्पनी · Previous work';
@@ -353,6 +416,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   }
   document.querySelectorAll('input[name="kind"]').forEach(function (r) { r.addEventListener('change', function () { if (this.checked) setKind(this.value); }); });
   if (/[?&]kind=(partner|org)\b/.test(location.search)) setKind('org');
+  else if (/[?&]kind=staff\b/.test(location.search)) setKind('staff');
+  $('s_role').addEventListener('change', function () { $('drvBox').hidden = this.value !== 'driver'; });
 
   /* ---- location ---- */
   $('geoBtn').addEventListener('click', function () {
@@ -370,6 +435,24 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     }, function () {
       out.textContent = 'लोकेसन दिन अनुमति चाहिन्छ (Allow)। नदिए पनि ठेगानाले काम चल्छ।';
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+  });
+
+  /* ---- 22 Oct 2026: thumbprint by camera + the phone's fingerprint / Face ID lock (both optional) ---- */
+  var thumb = window.ShgThumb ? window.ShgThumb.mount($('thumbBox')) : null;
+  terms = window.ShgTerms ? window.ShgTerms.mount($('termsBox'), state.kind === 'org' ? 'partner' : state.kind === 'staff' ? 'staff' : 'agent') : null;
+  state.webauthn = '';
+  if (window.ShgPasskey) window.ShgPasskey.supported().then(function (ok) { $('pkBox').hidden = !ok; });
+  $('pkBtn').addEventListener('click', function () {
+    var b = this; b.disabled = true; $('pkOk').textContent = '⏳';
+    fetch('/api/agreement-apply.php?challenge=1', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) throw new Error('off');
+        var ph = '+' + $('cc').value + $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
+        return window.ShgPasskey.create(d, ph, $('p_name').value.trim() || 'S Hari applicant');
+      })
+      .then(function (j) { state.webauthn = j; $('pkOk').textContent = '✓ थपियो · added'; })
+      .catch(function () { $('pkOk').textContent = 'भएन — ऐच्छिक हो, छोड्न सकिन्छ · skipped (optional)'; b.disabled = false; });
   });
 
   /* ---- finger signature ---- */
@@ -421,8 +504,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     '1': { re: /^\d{5,20}$/, hint: 'नागरिकता: कार्डमा भएको नम्बर (अङ्क, - / चलन्छ)' },
     '2': { re: /^[A-Z0-9]{6,9}$/, hint: 'पासपोर्ट: ६–९ अक्षर/अङ्क' },
     '3': { re: /^[A-Z0-9]{6,12}$/, hint: 'मतदाता परिचयपत्र: ६–१२ अक्षर/अङ्क' },
-    '4': { re: /^[A-Z0-9]{4,30}$/, hint: 'कार्डमा भएको नम्बर ठ्याक्कै · exactly as printed' }
+    '4': { re: /^[A-Z0-9]{4,30}$/, hint: 'कार्डमा भएको नम्बर ठ्याक्कै · exactly as printed' },
+    '5': { re: /^[A-Z0-9]{5,20}$/, hint: 'लाइसेन्समा भएको नम्बर ठ्याक्कै · exactly as printed' },
+    '6': { re: /^[A-Z0-9]{9,10}$/, hint: 'PAN: ९–१० अक्षर/अङ्क' }
   };
+  /* 22 Oct 2026: the staff API's ID names for the same select */
+  var STAFF_ID = { '0': 'aadhaar', '1': 'citizenship', '2': 'passport', '5': 'driving_license', '6': 'pan' };
   function rule() { return ID_RULES[$('p_idtype').value] || ID_RULES['4']; }
   function devDigits(s) { return s.replace(/[०-९]/g, function (d) { return String(d.charCodeAt(0) - 0x0966); }); }
   function idNorm() { return devDigits($('p_idno').value).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
@@ -520,8 +607,20 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     if (state.kind === 'org' && !state.reg_cert) return need('regIn', 'कम्पनी दर्ता प्रमाणपत्रको फोटो खिच्नुहोस् · photo of the registration certificate.');
     var ph = $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
     if (ph.length !== 10) return need('p_phone', 'कृपया १० अङ्कको मोबाइल नम्बर लेख्नुहोस्।');
-    if (!$('p_area').value.trim()) return need('p_area', 'काम गर्ने ठाउँ लेख्नुहोस्।');
-    if (!$('p_addr').value.trim()) return need('p_addr', 'ठेगाना लेख्नुहोस्।');
+    if (state.kind === 'staff') {
+      var role = $('s_role').value;
+      if (!role) return need('s_role', 'कुन काम? छान्नुहोस् · Choose the job.');
+      if (role === 'driver') {
+        if ($('s_lic').value.trim().length < 5) return need('s_lic', 'लाइसेन्स नम्बर लेख्नुहोस् · Enter the licence number.');
+        if (!$('s_licCat').value.trim()) return need('s_licCat', 'लाइसेन्सको वर्ग लेख्नुहोस् · Enter the licence category.');
+        if (!$('s_licExp').value) return need('s_licExp', 'लाइसेन्सको म्याद सकिने मिति छान्नुहोस् · Choose the expiry date.');
+        if ($('s_licExp').value < new Date().toISOString().slice(0, 10)) return need('s_licExp', 'लाइसेन्सको म्याद सकिएको छ · The licence has expired.');
+        if (!state.lic) return need('licIn', 'लाइसेन्सको फोटो खिच्नुहोस् · Photo of the licence.');
+      }
+    } else {
+      if (!$('p_area').value.trim()) return need('p_area', 'काम गर्ने ठाउँ लेख्नुहोस्।');
+      if (!$('p_addr').value.trim()) return need('p_addr', 'ठेगाना लेख्नुहोस्।');
+    }
     if (!$('p_idno').value.trim()) return need('p_idno', 'डकुमेन्ट नम्बर लेख्नुहोस्।');
     if (!idFormatOk()) return need('p_idno', 'डकुमेन्ट नम्बर मिलेन — ' + rule().hint);
     if (!state.doc) return need('docIn', 'डकुमेन्टको फोटो खिच्नुहोस्।');
@@ -529,6 +628,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     if (inked <= 40) return need('sig', 'तलको बाकसमा औंलाले सही गर्नुहोस्।');
     if (wav && state.wa === 'none') return need('waV', 'मोबाइल नम्बर WhatsApp बाट प्रमाणित गर्नुहोस् — हरियो बटन थिच्नुहोस्।');
     if (!$('agree').checked) return need('agree', 'विवरण साँचो हो भनी ✓ लगाउनुहोस्।');
+    if (!$('agreeTerms').checked) { if (terms) terms.open(); return need('agreeTerms', 'सम्झौताका सर्त पढेर ✓ लगाउनुहोस् · Read the terms and tick the box.'); }
     return true;
   }
   $('ap').addEventListener('submit', function (e) {
@@ -536,6 +636,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     say('');
     if (!check()) return;
     var btn = $('send'); if (btn.disabled) return;
+    if (state.kind === 'staff') { var lb = btn.textContent; btn.disabled = true; btn.textContent = '⏳ पठाउँदै… · Sending…'; sendStaff(btn, lb); return; }
     btn.disabled = true; var label = btn.textContent; btn.textContent = '🔍 डकुमेन्ट जाँच… · Checking ID…';
     dvCheck().then(function (ok) {
       if (!ok) {
@@ -548,6 +649,53 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
       send(btn, label);
     });
   });
+  /* ---- 22 Oct 2026: a staff application from this form -> /api/staff-apply.php (multipart, its own field names) ---- */
+  function toBlob(uri) {
+    var parts = uri.split(','), mime = (parts[0].match(/data:([^;]+)/) || [])[1] || 'image/jpeg', bin = atob(parts[1]), u = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return new Blob([u], { type: mime });
+  }
+  var STAFF_FIELD = { full_name: 'p_name', phone: 'p_phone', role: 's_role', id_type: 'p_idtype', id_number: 'p_idno', photo: 'selfIn', id_front: 'docIn',
+    signature: 'sig', license: 'licIn', license_number: 's_lic', license_category: 's_licCat', license_expiry: 's_licExp', otp: 'waV', dob: 's_dob',
+    email: 's_email', emergency_phone: 's_emp', ref1_phone: 's_ref1p', ref1_name: 's_ref1n', bank_account: 'b_acc', bank_ifsc: 'b_ifsc', agree: 'agreeTerms', marksheet: 'eduIn' };
+  function sendStaff(btn, label) {
+    var fd = new FormData(), v = function (id) { return $(id).value.trim(); }, dig = function (id) { return v(id).replace(/\D/g, '').replace(/^0+/, ''); };
+    fd.set('full_name', v('p_name')); fd.set('phone', dig('p_phone')); fd.set('cc', $('cc').value);
+    fd.set('role', $('s_role').value); fd.set('id_type', STAFF_ID[$('p_idtype').value] || ''); fd.set('id_number', v('p_idno'));
+    fd.set('district', v('p_area')); fd.set('address_perm', v('p_addr')); fd.set('country', $('s_country').value);
+    fd.set('dob', $('s_dob').value); fd.set('gender', $('s_gender').value); fd.set('email', v('s_email'));
+    fd.set('qualification', $('cv_qual').value); fd.set('experience_years', v('cv_exp').replace(/[^\d]/g, '')); fd.set('prev_employer', v('cv_prev'));
+    if ($('s_role').value === 'driver') { fd.set('license_number', v('s_lic')); fd.set('license_category', v('s_licCat')); fd.set('license_expiry', $('s_licExp').value); }
+    if (v('s_ref1n') || v('s_ref1p')) { fd.set('ref1_name', v('s_ref1n')); fd.set('ref1_phone', dig('s_ref1p')); }
+    fd.set('emergency_name', v('s_emn')); fd.set('emergency_phone', dig('s_emp'));
+    fd.set('bank_holder', v('b_name')); fd.set('bank_name', v('b_bank')); fd.set('bank_account', v('b_acc')); fd.set('bank_ifsc', v('b_ifsc').toUpperCase().replace(/\s+/g, ''));
+    fd.set('agree', '1'); if ($('public_ok').checked) fd.set('public_ok', '1'); fd.set('website', $('website').value);
+    if (state.webauthn) fd.set('webauthn', state.webauthn);
+    fd.append('photo', toBlob(state.photo), 'photo.jpg');
+    fd.append('id_front', toBlob(state.doc), 'id_front.jpg');
+    if ($('s_role').value === 'driver' && state.lic) fd.append('license', toBlob(state.lic), 'license.jpg');
+    if (state.edu_cert) fd.append('marksheet', toBlob(state.edu_cert), 'marksheet.jpg');
+    var sg = signaturePng(); if (sg) fd.append('signature', toBlob(sg), 'signature.png');
+    if (thumb && thumb.value()) fd.append('thumb', toBlob(thumb.value()), 'thumb.png');
+    token().then(function (t) {
+      return fetch('/api/staff-apply.php', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': t || '' }, body: fd });
+    }).then(function (r) { return r.json().catch(function () { return { ok: false, error: r.status === 413 ? 'फोटोहरू धेरै ठूला भए · too large' : 'HTTP ' + r.status }; }); })
+      .then(function (d) {
+        if (d && d.ok) {
+          $('ap').hidden = true; $('done').hidden = false;
+          $('ref').textContent = d.ref || '';
+          $('doneMsg').textContent = d.message || 'कार्यालयले छिट्टै फोन गर्नेछ।';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          try { if (navigator.vibrate) navigator.vibrate([12, 30, 12, 30, 40]); } catch (e) {}
+          return;
+        }
+        if (d && d.code === 419) state.csrf = null;
+        if (d && d.fields) { Object.keys(d.fields).forEach(function (k) { var id = STAFF_FIELD[k]; if (id && $(id)) $(id).setAttribute('aria-invalid', 'true'); }); var first = STAFF_FIELD[Object.keys(d.fields)[0]]; if (first && $(first)) $(first).scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+        say((d && (d.error || d.message)) || 'पठाउन सकिएन — फेरि प्रयास गर्नुहोस्।');
+      })
+      .catch(function () { say('इन्टरनेट जाँच गरेर फेरि पठाउनुहोस्।'); })
+      .then(function () { btn.disabled = false; btn.textContent = label; });
+  }
   function send(btn, label) {
     var phone = '+' + $('cc').value + $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
     var body = {
@@ -565,6 +713,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
       if (state.tax_cert) body.tax_cert = state.tax_cert;
     }
     ['cv_qual', 'cv_exp', 'cv_prev'].forEach(function (k) { var v = $(k).value.trim(); if (v) body.fields[k] = v; });
+    if (thumb && thumb.value()) body.thumb = thumb.value();
+    if (state.kind !== 'org' && state.edu_cert) body.edu_cert = state.edu_cert;
+    if (state.webauthn) body.webauthn = state.webauthn;
     ['b_name', 'b_bank', 'b_acc', 'b_ifsc', 'b_upi'].forEach(function (k) {
       var v = $(k).value.trim();
       if (v) body.fields[k] = k === 'b_ifsc' ? v.toUpperCase().replace(/\s+/g, '') : v;
