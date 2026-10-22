@@ -25,7 +25,7 @@
 'use strict';
 
 var X = null;                       /* the bridge, set in start() */
-var GV = '20261022d';
+var GV = '20261022e';
 
 /* ---------------------------------------------------------------------
    DATA
@@ -698,7 +698,10 @@ function bodyClick(e) {
   if (b.dataset.post) { var po = POSTS.find(function (x) { return x.id === b.dataset.post; }); if (po) go({ name: L(po.n), sub: t('bTitle'), lat: po.lat, lng: po.lng }, false); return; }
   if (b.dataset.sosq) { sosNear(b.dataset.sosq); return; }
   if (b.dataset.vis === 'clear') { LSg.set('shg:ng:visits', []); if (G.tab === 'mine') renderMine(); else showVisits(true); return; }
-  if (b.dataset.park === 'save') { savePark(false); renderMine(); return; }
+  if (b.dataset.park === 'save') {
+    if (!X.S.me) { X.toast(t('noLoc'), 3500); X.startGeo(); return; }
+    savePark(false); renderMine(); return;
+  }
   if (b.dataset.park === 'ai') { askAI(); return; }
   if (b.dataset.park === 'walk') { var pk = LSg.get('shg:ng:park', null); if (pk) go({ name: t('myCar'), sub: new Date(pk.t).toLocaleString(), lat: pk.lat, lng: pk.lng }, false, 'walk'); return; }
 }

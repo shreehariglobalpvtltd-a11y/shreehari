@@ -7165,8 +7165,29 @@ async function boot() {
     if (!slow) setTimeout(function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); }, navigator.serviceWorker.controller ? 0 : 20000);
   }
 }
+/* 22 Oct 2026 · bridge for add-on modules (assets/nav/*.js). aiOpen/aiAsk = the
+   AI module above: when present, the add-ons send every chat question to it. */
+window.SHGNAV_X = {
+  S: S, MODES: MODES, IC: IC, esc: esc, hav: hav, fetchT: fetchT, toast: toast, vib: vib, sayText: sayText,
+  voUnlock: voUnlock, startGeo: startGeo, distLabel: distLabel, fmtDist: fmtDist,
+  aiOpen: typeof aiOpen === 'function' ? function () { aiOpen({}); } : null,
+  aiAsk: typeof aiAsk === 'function' ? function (q) { return aiAsk(q); } : null,
+  openPlace: function (p) {
+    S.to = Object.assign({}, p); addRecent(S.to);
+    if (S.level === 'place') { renderPlace(); setTo(S.to, true); } else push('place');   /* show() skips an unchanged level */
+  },
+  go: function (p, opt) {
+    opt = opt || {}; voUnlock(); startGeo();
+    if (opt.mode && MODES[opt.mode]) S.mode = opt.mode;
+    S.to = Object.assign({}, p); S.from = { me: true, name: 'Your location' }; S.stops = []; S.cur = null;
+    S.autoStart = !!opt.start; addRecent(S.to);
+    if (S.level === 'dir') { renderFields(); paintModes(); computeRoutes(); } else push('dir');
+  }
+};
+try { document.dispatchEvent(new CustomEvent('shgnav:ready')); } catch (e) {}
 boot();
 })();
 </script>
+<script src="/assets/nav/nav-guide.js?v=20261022e" defer></script>
 </body>
 </html>
