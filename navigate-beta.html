@@ -2345,7 +2345,8 @@ function paintModes() {
 function setModeTime(m, dur, dist) {
   var el = $('#mt-' + m), dl = $('#md-' + m); if (!el) return;
   el.classList.toggle('wait', dur === 'wait');
-  el.textContent = dur === 'wait' ? '' : dur == null ? '—' : fmtDur(dur);
+  /* five chips on a 360 px phone: "5h 46m", not "5 hr 46 min" (the full text stays in the label) */
+  el.textContent = dur === 'wait' ? '' : dur == null ? '—' : fmtDur(dur).replace(/ hr/g, 'h').replace(/ min/g, 'm').replace(/ day/g, 'd').replace(/(\d) /g, '$1');
   if (dl) dl.textContent = dur !== 'wait' && dur != null && dist > 0 ? fmtDist(dist) : '';
   var b = el.closest('.mode');
   if (b) b.setAttribute('aria-label', MODES[m].name + (dur !== 'wait' && dur != null ? ', ' + fmtDur(dur) + (dist > 0 ? ', ' + fmtDist(dist) : '') : ''));
@@ -2536,7 +2537,7 @@ function renderDirSheet() {
   var shortest = rs.length > 1 && rs.every(function (x) { return r.dist <= x.dist + 1; });
   var label = rs.length > 1 ? (fastest ? 'Fastest route' : shortest ? 'Shortest route' : 'Alternative route') : 'Best route';
   var badges = '<span class="badge ' + (fastest ? 'g' : 'y') + '">' + label + '</span>';
-  if (r.tolls) badges += '<span class="badge y">Has tolls</span>';
+  if (r.tolls && S.mode !== 'moto') badges += '<span class="badge y">Has tolls</span>';    /* two-wheelers pay no toll */
   if (r.motor && (S.mode === 'car' || S.mode === 'bus' || S.mode === 'moto')) badges += '<span class="badge b">Expressway</span>';
   if (r.ferry) badges += '<span class="badge r">Ferry</span>';
   if (avoidKey()) badges += '<span class="badge">Avoiding ' + [S.avoid.tolls && 'tolls', S.avoid.highways && 'highways', S.avoid.ferries && 'ferries'].filter(Boolean).join(', ') + '</span>';

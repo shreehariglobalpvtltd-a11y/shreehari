@@ -7,9 +7,9 @@
  * is the route itself, not a guess. Answers what a car / coach / scooter
  * driver wants to know before leaving:
  *   toll  {km}                      tolled road
- *   narrow{km, at:[{lat,lng,name}]} roads tagged under 4 m wide, or a
- *                                   single-lane road (for a coach, also
- *                                   service / track roads)
+ *   narrow{km, at:[{lat,lng,name}]} roads tagged under 4 m wide, tracks,
+ *                                   alleys, driveways (for a coach, also
+ *                                   service roads)
  *   rough {km}                      unpaved / poor surface
  * Routes up to 400 km (8000 points). Our engine only - no public fallback.
  */
@@ -31,7 +31,7 @@ try {
     $body = (string) json_encode([
         'encoded_polyline' => $shape, 'shape_match' => 'edge_walk', 'costing' => $costing,
         'filters' => ['attributes' => ['edge.length', 'edge.names', 'edge.road_class', 'edge.use', 'edge.toll', 'edge.unpaved',
-                                       'edge.surface', 'edge.width', 'edge.lane_count', 'edge.begin_shape_index', 'shape'],
+                                       'edge.surface', 'edge.width', 'edge.begin_shape_index', 'shape'],
                       'action' => 'include'],
     ]);
     $base = rtrim(Settings::getString('nav_engine_url', 'http://127.0.0.1:8002'), '/');
@@ -69,8 +69,11 @@ try {
         $w = (float) ($e['width'] ?? 0);
         $rc = (string) ($e['road_class'] ?? '');
         $use = (string) ($e['use'] ?? '');
-        $isNarrow = ($w > 0 && $w < 4.0) || (int) ($e['lane_count'] ?? 0) === 1
-            || ($coach && (in_array($use, ['track', 'driveway', 'alley'], true) || $rc === 'service_other'));
+        /* no lane_count: Valhalla says 1 for every road whose lanes OSM never tagged, which
+           made half of New Delhi "narrow". Only a tagged width, or a road that is a track /
+           alley / driveway (and for a coach also a service road), counts. */
+        $isNarrow = ($w > 0 && $w < 4.0) || in_array($use, ['track', 'driveway', 'alley'], true)
+            || ($coach && $rc === 'service_other');
         if ($isNarrow && $km > 0.05) {
             $narrow += $km;
             $si = (int) ($e['begin_shape_index'] ?? -1);
