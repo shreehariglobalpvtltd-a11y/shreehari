@@ -25,7 +25,7 @@
 'use strict';
 
 var X = null;                       /* the bridge, set in start() */
-var GV = '20261022a';
+var GV = '20261022b';
 
 /* ---------------------------------------------------------------------
    DATA
@@ -422,6 +422,7 @@ function css() {
     '.sg-tab{flex:1;height:38px;border-radius:12px;border:1px solid transparent;background:transparent;color:var(--text2,#A8B4CC);font:500 13px Inter,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}',
     '.sg-tab svg{width:17px;height:17px}.sg-tab.on{background:rgba(212,168,67,.13);color:var(--gold,#D4A843);border-color:rgba(212,168,67,.28)}',
     '.sg-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;padding:12px 12px 6px;display:flex;flex-direction:column;gap:10px}',
+    '.sg-body>*{flex-shrink:0}',   /* an overflow:hidden card would otherwise shrink to a sliver in a long list */
     '.sg-m{max-width:88%;padding:10px 13px;border-radius:16px;font-size:14.5px;line-height:1.5;white-space:normal;overflow-wrap:anywhere}',
     '.sg-m.u{align-self:flex-end;background:var(--cta,#E8652E);color:#fff;border-bottom-right-radius:5px}',
     '.sg-m.b{align-self:flex-start;background:rgba(255,255,255,.06);color:var(--text,#EEF2FA);border-bottom-left-radius:5px}',
@@ -625,6 +626,10 @@ function push(m) { G.msgs.push(m); if (G.msgs.length > 60) G.msgs.splice(0, G.ms
 function fmtAI(s) {
   s = String(s || '').replace(/\s*👉\s*#\/?\s*$/u, '').trim();
   var h = esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+  /* the assistant points at the booking app as "👉 Book #/": a link to the main site */
+  h = h.replace(/👉\s*([^<#]*?)\s*(#\/[\w\/-]*)/gu, function (_, lb, hs) {
+    return '<a class="sg-a gold" href="/' + hs + '" target="_blank" rel="noopener">' + (lb || 'S Hari Global') + '</a>';
+  });
   return h.replace(/(https?:\/\/[^\s<]+)/g, '<a class="sg-a" style="height:auto;padding:0;border:none;color:var(--gold)" href="$1" target="_blank" rel="noopener">$1</a>');
 }
 function renderChat() {
