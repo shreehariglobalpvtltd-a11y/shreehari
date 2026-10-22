@@ -36,7 +36,8 @@ foreach (array_keys(AgreementText::DOCS) as $d) {
         $pts  = AgreementText::points($d, $l);
         $bad  = array_filter($pts, static fn(array $p): bool => AgreementText::validate($p['text'], $p['keys']) !== null);
         $html = (string) @file_get_contents(AgreementText::file($d, $l));
-        check("$d-$l: 15 sections (v2.2), 50+ points, each point valid as built", count($secs) === 15 && count($pts) >= 50 && $bad === [],
+        $secWant = $d === 'agent' ? 16 : 15;   // 22 Oct 2026: agent v2.3 adds section 14A "Staff and conduct"
+        check("$d-$l: $secWant sections, 50+ points, each point valid as built", count($secs) === $secWant && count($pts) >= 50 && $bad === [],
             count($secs) . ' sections · ' . count($pts) . ' points');
         check("$d-$l: the page loads the corrections script", str_contains($html, '/assets/js/agreement-live.js'));
     }

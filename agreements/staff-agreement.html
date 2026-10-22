@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="ne">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a2a8f">
+<meta name="robots" content="index,follow">
+<title>कर्मचारी सम्झौता · Staff Agreement — S Hari Global</title>
+<meta name="description" content="S Hari Global कर्मचारी सम्झौता (Version 1.0): ड्राइभर, कन्डक्टर, हेल्पर, अफिस, लेखापाल, मेकानिक, सफाइ र सुरक्षा कर्मचारीका १४ नियम — अंग्रेजी र नेपालीमा, अनलाइन सहीसहित।">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png">
+<!--
+  22 Oct 2026: the staff agreement every staff member accepts when applying
+  online (/agreements/staff.html) and again when the office approves them.
+  English and Nepali side by side, one row per sub-clause. The sign box at the
+  bottom (#signMount) is filled by /assets/js/staff-sign.js: full name, mobile
+  verified by a WhatsApp code, finger signature; the server adds the time and
+  IP. Version and effective date are part of what is signed - change either
+  only together with the version the API records.
+-->
+<style>
+:root{--navy:#0a2a8f;--blue:#1f4fe0;--sky:#2f6bff;--org:#f07a1e;--org-d:#d4570c;--gold:#ffc23d;--ink:#0d1b3e;--mut:#5b6b8c;--line:#d8e1f3;--bg:#eef3fc;--card:#fff;--ok:#0f9d6b;--bad:#c62828;
+  --font:"Noto Sans Devanagari","Noto Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media (prefers-color-scheme:dark){:root{--ink:#eef3ff;--mut:#a9b8da;--line:#2a3a63;--bg:#071028;--card:#0f1b3d}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}   /* the sign box hides .btn / .row2 rows that set their own display */
+html,body{margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--font);color:var(--ink);background:var(--bg);line-height:1.5;-webkit-text-size-adjust:100%;overflow-wrap:break-word}
+a{color:var(--sky)}
+.top{position:relative;overflow:hidden;color:#fff;padding:18px 16px 54px;
+  background:radial-gradient(120% 90% at 100% 0%,rgba(255,138,43,.35),rgba(255,138,43,0) 55%),linear-gradient(140deg,#071a5e,var(--navy) 40%,var(--blue) 80%,var(--sky))}
+.top-in{max-width:920px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:#fff;margin-bottom:14px}
+.brand img{width:52px;height:auto;filter:drop-shadow(0 2px 6px rgba(0,0,0,.35))}
+.brand b{display:block;font-size:15px;letter-spacing:.04em}
+.brand small{display:block;font-size:11px;color:var(--gold);letter-spacing:.12em;font-weight:700}
+h1{margin:0 0 6px;font-size:clamp(24px,6.4vw,34px);line-height:1.15;font-weight:900}
+h1 .en{display:block;font-size:.62em;font-weight:800;color:#ffd9a8}
+.lead{margin:0;font-size:14px;color:#dfe8ff}
+.meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.meta span{font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25)}
+main{max-width:920px;margin:-38px auto 0;padding:0 12px 48px;position:relative}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:16px;margin-bottom:12px;box-shadow:0 12px 30px -20px rgba(10,42,143,.45)}
+.card h2{margin:0 0 10px;font-size:17px;display:flex;align-items:center;gap:8px;line-height:1.3}
+.card h2 i{font-style:normal;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:14px;color:#fff;background:linear-gradient(140deg,var(--sky),var(--navy));flex:0 0 30px}
+.card h2 small{font-weight:700;color:var(--mut);font-size:.82em}
+.hint{margin:-4px 0 10px;font-size:12.5px;color:var(--mut)}
+
+/* jump list */
+.toc{display:flex;gap:6px;flex-wrap:wrap;margin:0;padding:0;list-style:none}
+.toc a{display:inline-flex;align-items:center;min-height:36px;padding:0 10px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--ink);text-decoration:none;font-size:12.5px;font-weight:700}
+.toc a b{color:var(--org);margin-right:5px}
+
+/* one row per sub-clause: English | Nepali (stacked on phones) */
+.rows{margin:0}
+.colhead{display:none}
+.row{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;padding:10px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0;padding-top:2px}
+.row > div{min-width:0;font-size:14.5px}
+.row [lang=en]{color:var(--ink)}
+.row [lang=ne]{padding-left:10px;border-left:3px solid var(--org);font-size:15px}
+.row .n{display:inline-block;min-width:2.2em;margin-right:4px;font-weight:900;color:var(--navy);font-variant-numeric:tabular-nums}
+@media (prefers-color-scheme:dark){.row .n{color:#9db8ff}}
+@media (min-width:720px){
+  .colhead{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;margin:0 0 4px;font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+  .row{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+  .row [lang=ne]{padding-left:14px}
+}
+section[id^=c]{scroll-margin-top:12px}
+
+/* digital signature card + the mount the sign script fills */
+.sigcard > .card.sign{border:0;box-shadow:none;padding:0;margin:14px 0 0;background:transparent}
+.rec{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:8px;margin:0 0 4px;padding:0;list-style:none}
+.rec li{padding:10px;border-radius:14px;background:var(--bg);border:1px solid var(--line);font-size:13px;font-weight:700;line-height:1.35}
+.rec li span{display:block;font-weight:600;color:var(--mut);font-size:12px}
+label.f{display:block;margin:0 0 10px}
+label.f > span{display:block;font-size:13px;font-weight:700;margin-bottom:4px}
+label.f > span em{color:var(--bad);font-style:normal}
+.sign input[type=text],.sign input[type=tel],.sign input[type=number],.sign select,.sign textarea{width:100%;min-height:48px;padding:10px 12px;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:12px;outline:none}
+.sign input:focus,.sign select:focus{border-color:var(--sky);box-shadow:0 0 0 3px rgba(47,107,255,.18)}
+[aria-invalid=true]{border-color:var(--bad)!important;background:rgba(198,40,40,.06)!important}
+.row2{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:50px;padding:0 16px;border:0;border-radius:14px;font:inherit;font-size:15.5px;font-weight:800;cursor:pointer;text-decoration:none;color:#fff;background:linear-gradient(120deg,var(--sky),var(--navy));box-shadow:0 8px 18px -10px rgba(10,42,143,.8)}
+.btn.ghost{background:transparent;color:var(--sky);border:1.5px dashed var(--sky);box-shadow:none}
+.btn.small{min-height:44px;font-size:13.5px;width:auto}
+.btn.go{min-height:56px;font-size:17px;background:linear-gradient(120deg,#ffa24d,var(--org) 50%,var(--org-d));box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 4px 0 #9c3f06,0 12px 22px -10px rgba(212,87,12,.9)}
+.btn[disabled]{opacity:.7;cursor:default}
+.btn:active{transform:translateY(1px)}
+.ok{color:var(--ok);font-weight:800;font-size:13px}
+.msg{margin:10px 0 0;padding:10px 12px;border-radius:12px;font-size:14px;font-weight:700}
+.msg.bad{background:rgba(198,40,40,.1);color:var(--bad)}
+.msg.good{background:rgba(15,157,107,.1);color:var(--ok)}
+.msg[hidden]{display:none}
+.chk{display:flex;gap:10px;align-items:flex-start;margin:8px 0;font-size:13.5px}
+.chk input{width:22px;height:22px;flex:0 0 22px;margin:1px 0 0;accent-color:var(--sky)}
+.sigw{position:relative;border:1.5px solid var(--line);border-radius:16px;background:#fff;overflow:hidden;touch-action:none}
+.sigw canvas{display:block;width:100%;height:190px;touch-action:none;cursor:crosshair}
+.sigw .line{position:absolute;left:16px;right:16px;bottom:44px;border-bottom:1.5px dashed #c5d0e6;pointer-events:none}
+.sigw .ph{position:absolute;left:0;right:0;top:40%;text-align:center;color:#9aa8c4;font-size:15px;pointer-events:none}
+.sigw.drawn .ph{display:none}
+.sig-bar{display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px}
+
+.foot{text-align:center;font-size:12.5px;color:var(--mut);margin-top:6px;line-height:1.7}
+.foot a{display:inline-flex;align-items:center;min-height:44px;padding:0 6px}
+.print-only{display:none}
+
+@page{size:A4;margin:14mm 13mm 16mm;
+  @bottom-center{content:"SHG-STAFF-AGR v1.0";font:400 7.6pt "Noto Sans",Arial,sans-serif;color:#666}
+  @bottom-right{content:"Page " counter(page) " / " counter(pages);font:400 7.8pt "Noto Sans",Arial,sans-serif;color:#333}}
+@media print{
+  :root{--ink:#111;--mut:#444;--line:#bbb;--bg:#fff;--card:#fff}
+  body{background:#fff;font-size:10.5pt}
+  .top{background:none!important;color:#111;padding:0 0 6mm;border-bottom:2px solid #0a2a8f}
+  .top .brand{color:#0a2a8f}
+  .brand img{filter:none}
+  .brand small,h1 .en,.lead{color:#333}
+  .meta span{background:none;border-color:#999}
+  main{margin:4mm 0 0;max-width:none;padding:0}
+  .card{box-shadow:none;border-radius:6px;padding:8px 10px;break-inside:avoid-page}
+  .toc-card,.sigcard,.sign,#signBox,.foot{display:none!important}
+  .colhead{display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:8pt}
+  .row{grid-template-columns:1fr 1fr;gap:14px;padding:5px 0;break-inside:avoid}
+  .row > div{font-size:9.6pt}
+  .row [lang=ne]{font-size:10pt;border-left-color:#999}
+  .print-only{display:block}
+  .pbox{display:grid;grid-template-columns:1fr 1fr;gap:10mm;margin-top:4mm}
+  .pbox .sl{border-bottom:1px solid #333;height:11mm;margin-top:3mm}
+  .pbox small{display:block;font-size:8pt;color:#333}
+  .thumb{width:24mm;height:28mm;border:1px dashed #555;margin-top:3mm;font-size:7pt;color:#555;display:flex;align-items:flex-end;justify-content:center;padding-bottom:1mm}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="/"><img src="/assets/img/logo-mark.webp" width="439" height="228" alt=""><span><b>S HARI GLOBAL™</b><small>PRIVATE LIMITED</small></span></a>
+    <h1>📜 कर्मचारी सम्झौता<span class="en">Staff Agreement</span></h1>
+    <p class="lead">ड्राइभर, कन्डक्टर, हेल्पर, अफिस, लेखापाल, मेकानिक, सफाइ र सुरक्षा कर्मचारी — सबैलाई लागू · Applies to drivers, conductors, helpers, office staff, accountants, mechanics, cleaners and security.</p>
+    <div class="meta"><span>S HARI GLOBAL PRIVATE LIMITED</span><span>संस्करण · Version 1.0</span><span>लागू मिति · Effective 22 October 2026</span></div>
+  </div>
+</header>
+
+<main>
+  <section class="card toc-card" aria-labelledby="tocTitle">
+    <h2 id="tocTitle">📑 नियमहरू · The 14 rules</h2>
+    <ul class="toc">
+      <li><a href="#c1"><b>1</b>समय · Time</a></li>
+      <li><a href="#c2"><b>2</b>पोसाक · Uniform</a></li>
+      <li><a href="#c3"><b>3</b>नशा · Alcohol</a></li>
+      <li><a href="#c4"><b>4</b>नगद · Cash</a></li>
+      <li><a href="#c5"><b>5</b>फोन · Phone</a></li>
+      <li><a href="#c6"><b>6</b>व्यवहार · Behaviour</a></li>
+      <li><a href="#c7"><b>7</b>सुरक्षा · Safety</a></li>
+      <li><a href="#c8"><b>8</b>गोपनीयता · Privacy</a></li>
+      <li><a href="#c9"><b>9</b>बिदा · Leave</a></li>
+      <li><a href="#c10"><b>10</b>तलब · Salary</a></li>
+      <li><a href="#c11"><b>11</b>सामान · Equipment</a></li>
+      <li><a href="#c12"><b>12</b>काम छोड्दा · Exit</a></li>
+      <li><a href="#c13"><b>13</b>गुनासो · Grievance</a></li>
+      <li><a href="#c14"><b>14</b>कानुन · Law</a></li>
+    </ul>
+  </section>
+
+  <section class="card" id="c0" aria-labelledby="c0t">
+    <h2 id="c0t"><i>✦</i>यो सम्झौता · This agreement</h2>
+    <div class="colhead" aria-hidden="true"><span>English</span><span>नेपाली</span></div>
+    <div class="rows">
+      <div class="row"><div lang="en">This agreement is between S HARI GLOBAL PRIVATE LIMITED (“the Company”) and the person who signs below (“the Staff member”). It applies to drivers, conductors, helpers, office staff, accountants, mechanics, cleaners and security staff.</div><div lang="ne">यो सम्झौता S HARI GLOBAL PRIVATE LIMITED (“कम्पनी”) र तल सही गर्ने व्यक्ति (“कर्मचारी”) बीच हो। यो ड्राइभर, कन्डक्टर, हेल्पर, अफिस स्टाफ, लेखापाल, मेकानिक, सफाइ कर्मचारी र सुरक्षा गार्ड — सबैलाई लागू हुन्छ।</div></div>
+      <div class="row"><div lang="en">The Staff member accepts these rules twice: when applying online, and again when the Company approves the application. The rules apply from the first day of duty.</div><div lang="ne">कर्मचारीले यी नियम दुई पटक स्वीकार गर्छ: अनलाइन फारम भर्दा, र कम्पनीले फारम स्वीकृत गरेपछि फेरि। काम सुरु भएको पहिलो दिनदेखि नै यी नियम लागू हुन्छन्।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c1" aria-labelledby="c1t">
+    <h2 id="c1t"><i>1</i>समयपालना <small>· Punctuality</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">1.1</b>Report for duty at least 30 minutes before the scheduled time (bus departure, shift or office opening).</div><div lang="ne"><b class="n">1.1</b>तोकिएको समय (बस छुट्ने, सिफ्ट वा अफिस खुल्ने) भन्दा कम्तीमा ३० मिनेट अगाडि काममा हाजिर हुनुपर्छ।</div></div>
+      <div class="row"><div lang="en"><b class="n">1.2</b>A no-show means ₹500 is cut from pay and a written warning is given.</div><div lang="ne"><b class="n">1.2</b>काममा नआएमा (नो-शो) तलबबाट ₹५०० काटिन्छ र लिखित चेतावनी दिइन्छ।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c2" aria-labelledby="c2t">
+    <h2 id="c2t"><i>2</i>पोसाक र सरसफाइ <small>· Uniform &amp; grooming</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">2.1</b>On duty, wear the company shirt and keep the company ID card visible at all times.</div><div lang="ne"><b class="n">2.1</b>ड्युटीमा कम्पनीको सर्ट लगाउनुपर्छ र कम्पनीको परिचयपत्र (ID कार्ड) सधैं देखिने गरी लगाउनुपर्छ।</div></div>
+      <div class="row"><div lang="en"><b class="n">2.2</b>Wear closed shoes. Slippers are not allowed on duty.</div><div lang="ne"><b class="n">2.2</b>बन्द जुत्ता लगाउनुपर्छ। ड्युटीमा चप्पल लगाउन पाइँदैन।</div></div>
+      <div class="row"><div lang="en"><b class="n">2.3</b>Come clean and tidy: shaved, or with beard and hair neatly trimmed.</div><div lang="ne"><b class="n">2.3</b>सफा-सुग्घर भएर आउनुपर्छ: दाह्री काटेको, वा दाह्री र कपाल मिलाएर काटेको।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c3" aria-labelledby="c3t">
+    <h2 id="c3t"><i>3</i>रक्सी, सुर्ती र लागूऔषध <small>· Alcohol, tobacco &amp; drugs</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">3.1</b>Zero tolerance: no alcohol, tobacco (including gutkha, khaini and cigarettes) or drugs while on duty, and no coming to duty under their influence.</div><div lang="ne"><b class="n">3.1</b>पूरै निषेध: ड्युटीमा रक्सी, सुर्ती (गुट्खा, खैनी, चुरोट समेत) वा लागूऔषध खान पाइँदैन, र नशामा काममा आउन पनि पाइँदैन।</div></div>
+      <div class="row"><div lang="en"><b class="n">3.2</b>Breaking this rule means immediate dismissal. Where the law requires it, the Company also reports the matter to the police.</div><div lang="ne"><b class="n">3.2</b>यो नियम तोडेमा तुरुन्तै कामबाट निकालिन्छ। कानुनले भनेको अवस्थामा कम्पनीले प्रहरीलाई पनि खबर गर्छ।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c4" aria-labelledby="c4t">
+    <h2 id="c4t"><i>4</i>निजी नगद लिन पाइँदैन <small>· No private cash</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">4.1</b>All fares, parcel charges and agent commissions must pass through the Company app. Nothing is collected or paid outside it.</div><div lang="ne"><b class="n">4.1</b>सबै भाडा, पार्सलको शुल्क र एजेन्ट कमिसन कम्पनीको एपबाट मात्र हुनुपर्छ। एपबाहिर केही पनि उठाउन वा तिर्न पाइँदैन।</div></div>
+      <div class="row"><div lang="en"><b class="n">4.2</b>Any cash taken off the books (not entered in the app) means immediate dismissal, and the full amount is recovered.</div><div lang="ne"><b class="n">4.2</b>एपमा नचढाई बाहिरबाटै लिएको कुनै पनि नगद पाइएमा तुरुन्तै कामबाट निकालिन्छ, र पूरा रकम असुल गरिन्छ।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c5" aria-labelledby="c5t">
+    <h2 id="c5t"><i>5</i>फोन प्रयोग <small>· Phone discipline</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">5.1</b>Driver: never hold a phone while the bus is moving. If a call is needed, use the speaker (hands-free) only.</div><div lang="ne"><b class="n">5.1</b>ड्राइभर: बस चलिरहेको बेला हातमा फोन समात्नै पाइँदैन। कल गर्नैपरे स्पिकर (ह्यान्ड्स-फ्री) मा मात्र।</div></div>
+      <div class="row"><div lang="en"><b class="n">5.2</b>Conductor: no personal calls while passengers are boarding.</div><div lang="ne"><b class="n">5.2</b>कन्डक्टर: यात्रु चढ्दै गर्दा व्यक्तिगत फोन गर्न वा उठाउन पाइँदैन।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c6" aria-labelledby="c6t">
+    <h2 id="c6t"><i>6</i>यात्रुसँगको व्यवहार <small>· Customer behaviour</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">6.1</b>Greet every passenger first with “Namaste”. Speak politely and never shout at a passenger.</div><div lang="ne"><b class="n">6.1</b>हरेक यात्रुलाई पहिला “नमस्ते” भन्नुपर्छ। नम्र भएर बोल्नुपर्छ; यात्रुलाई कहिल्यै कराएर बोल्न पाइँदैन।</div></div>
+      <div class="row"><div lang="en"><b class="n">6.2</b>No slurs or insults about anyone’s caste, gender or region — ever.</div><div lang="ne"><b class="n">6.2</b>कसैको जात, लिङ्ग वा ठाउँलाई लिएर गाली गर्ने वा होच्याउने कुरा कहिल्यै गर्न पाइँदैन।</div></div>
+      <div class="row"><div lang="en"><b class="n">6.3</b>Help elderly passengers and women with their luggage.</div><div lang="ne"><b class="n">6.3</b>बुढापाका र महिला यात्रुलाई सामान चढाउन-झार्न सघाउनुपर्छ।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c7" aria-labelledby="c7t">
+    <h2 id="c7t"><i>7</i>सुरक्षा <small>· Safety</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">7.1</b>Before every trip, complete the pre-trip checklist in the app — brakes, tyres, lights, horn, fire extinguisher and first-aid box — and sign it there.</div><div lang="ne"><b class="n">7.1</b>हरेक यात्राअघि एपमा यात्रा-पूर्व जाँचसूची भर्नुपर्छ — ब्रेक, टायर, बत्ती, हर्न, आगो निभाउने सिलिन्डर र प्राथमिक उपचार बाकस — र त्यहीँ सही गर्नुपर्छ।</div></div>
+      <div class="row"><div lang="en"><b class="n">7.2</b>A driver may drive for at most 4 hours without stopping, and must then take a break of at least 20 minutes.</div><div lang="ne"><b class="n">7.2</b>ड्राइभरले लगातार बढीमा ४ घण्टा मात्र चलाउन पाउँछ; त्यसपछि कम्तीमा २० मिनेट अनिवार्य आराम गर्नुपर्छ।</div></div>
+      <div class="row"><div lang="en"><b class="n">7.3</b>Respect every speed limit on the road.</div><div lang="ne"><b class="n">7.3</b>सडकमा तोकिएको गति सीमा (स्पिड लिमिट) सधैं पालना गर्नुपर्छ।</div></div>
+      <div class="row"><div lang="en"><b class="n">7.4</b>Seat-belt and helmet rules apply to staff too, just as to everyone else.</div><div lang="ne"><b class="n">7.4</b>सिट-बेल्ट र हेलमेटको नियम अरू सबैलाई जस्तै कर्मचारीलाई पनि लागू हुन्छ।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c8" aria-labelledby="c8t">
+    <h2 id="c8t"><i>8</i>डाटा र गोपनीयता <small>· Data &amp; privacy</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">8.1</b>Never share a passenger’s phone number or booking details with anyone.</div><div lang="ne"><b class="n">8.1</b>यात्रुको फोन नम्बर वा बुकिङ विवरण कसैलाई पनि दिन पाइँदैन।</div></div>
+      <div class="row"><div lang="en"><b class="n">8.2</b>Never share the Company’s plans with anyone outside the Company.</div><div lang="ne"><b class="n">8.2</b>कम्पनीका योजना कम्पनीबाहिर कसैलाई भन्न पाइँदैन।</div></div>
+      <div class="row"><div lang="en"><b class="n">8.3</b>Do not post about Company matters on social media (Facebook, TikTok, WhatsApp groups and so on) without the office’s approval.</div><div lang="ne"><b class="n">8.3</b>अफिसको स्वीकृति बिना कम्पनीसम्बन्धी कुनै कुरा सामाजिक सञ्जाल (फेसबुक, टिकटक, WhatsApp ग्रुप आदि) मा पोस्ट गर्न पाइँदैन।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c9" aria-labelledby="c9t">
+    <h2 id="c9t"><i>9</i>हाजिरी र बिदा <small>· Attendance &amp; leave</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">9.1</b>Work follows the monthly roster the office publishes.</div><div lang="ne"><b class="n">9.1</b>अफिसले निकालेको मासिक रोस्टर (ड्युटी तालिका) अनुसार काम गर्नुपर्छ।</div></div>
+      <div class="row"><div lang="en"><b class="n">9.2</b>Ask for leave at least 48 hours in advance. Only medical leave may be asked for at short notice.</div><div lang="ne"><b class="n">9.2</b>बिदा चाहिए कम्तीमा ४८ घण्टा अगाडि माग्नुपर्छ। बिरामी (मेडिकल) बिदा मात्र तुरुन्तै माग्न सकिन्छ।</div></div>
+      <div class="row"><div lang="en"><b class="n">9.3</b>Three unplanned absences mean a pay cut and a review of the Staff member’s work.</div><div lang="ne"><b class="n">9.3</b>पहिल्यै खबर नगरी तीन पटक अनुपस्थित भएमा तलब कटौती हुन्छ र कामको समीक्षा गरिन्छ।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c10" aria-labelledby="c10t">
+    <h2 id="c10t"><i>10</i>तलब र हिसाब <small>· Salary &amp; dues</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">10.1</b>Salary is paid only by bank transfer or UPI, on the 7th of every month.</div><div lang="ne"><b class="n">10.1</b>तलब हरेक अंग्रेजी महिनाको ७ तारिखमा बैंक वा UPI बाट मात्र दिइन्छ।</div></div>
+      <div class="row"><div lang="en"><b class="n">10.2</b>Any advance is written in the staff ledger and adjusted automatically against the following salary.</div><div lang="ne"><b class="n">10.2</b>लिएको पेस्की (एडभान्स) कर्मचारी खातामा लेखिन्छ, र पछिको तलबबाट आफैं मिलाइन्छ।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c11" aria-labelledby="c11t">
+    <h2 id="c11t"><i>11</i>सामान र उपकरण <small>· Equipment</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">11.1</b>Tools, uniform, phone and ID card given by the Company remain Company property.</div><div lang="ne"><b class="n">11.1</b>कम्पनीले दिएको औजार, युनिफर्म, फोन र परिचयपत्र कम्पनीकै सम्पत्ति हो।</div></div>
+      <div class="row"><div lang="en"><b class="n">11.2</b>If any of these is lost, its cost is deducted from pay.</div><div lang="ne"><b class="n">11.2</b>यीमध्ये कुनै हराएमा त्यसको मूल्य तलबबाट काटिन्छ।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c12" aria-labelledby="c12t">
+    <h2 id="c12t"><i>12</i>काम छोड्दा <small>· Exit</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">12.1</b>Either side must give 30 days’ notice to end the job.</div><div lang="ne"><b class="n">12.1</b>काम छोड्न वा छुटाउन दुवै पक्षले ३० दिन अगाडि सूचना दिनुपर्छ।</div></div>
+      <div class="row"><div lang="en"><b class="n">12.2</b>The final settlement is paid only after the bus, tools and every Company item are returned and the no-dues clearance is signed.</div><div lang="ne"><b class="n">12.2</b>बस, औजार र कम्पनीका सबै सामान फिर्ता गरी “कुनै बाँकी छैन” (नो-ड्युज) प्रमाणमा सही भएपछि मात्र अन्तिम हिसाब दिइन्छ।</div></div>
+      <div class="row"><div lang="en"><b class="n">12.3</b>After leaving, a former staff member must never speak or act for the Company.</div><div lang="ne"><b class="n">12.3</b>काम छोडेपछि पूर्व कर्मचारीले कम्पनीको तर्फबाट कहिल्यै बोल्न वा काम गर्न पाउँदैन।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c13" aria-labelledby="c13t">
+    <h2 id="c13t"><i>13</i>गुनासो <small>· Grievance</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">13.1</b>A staff member with any complaint may WhatsApp the owner directly.</div><div lang="ne"><b class="n">13.1</b>कुनै पनि गुनासो भए कर्मचारीले सिधै मालिकलाई WhatsApp गर्न सक्छ।</div></div>
+      <div class="row"><div lang="en"><b class="n">13.2</b>No one may punish or take revenge on a staff member for raising a complaint.</div><div lang="ne"><b class="n">13.2</b>गुनासो गरेकै कारण कसैले पनि कर्मचारीलाई सजाय दिन वा बदला लिन पाउँदैन।</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="c14" aria-labelledby="c14t">
+    <h2 id="c14t"><i>14</i>कानुन र अदालत <small>· Governing law</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en"><b class="n">14.1</b>For a staff member whose duty base is in Nepal, any dispute is heard by the court in Nepalgunj (Nepal).</div><div lang="ne"><b class="n">14.1</b>नेपालमा ड्युटी बेस भएका कर्मचारीको विवाद नेपालगञ्ज (नेपाल) को अदालतमा हेरिन्छ।</div></div>
+      <div class="row"><div lang="en"><b class="n">14.2</b>For a staff member whose duty base is in India, any dispute is heard by the court in Lucknow (India).</div><div lang="ne"><b class="n">14.2</b>भारतमा ड्युटी बेस भएका कर्मचारीको विवाद लखनऊ (भारत) को अदालतमा हेरिन्छ।</div></div>
+    </div>
+  </section>
+
+  <div class="card sigcard">
+    <h2><i>✍️</i>डिजिटल सही <small>· Digital signature</small></h2>
+    <div class="rows">
+      <div class="row"><div lang="en">I have read every rule above (or had it read to me) in a language I understand, and I accept them of my own free will.</div><div lang="ne">माथिका सबै नियम मैले आफूले बुझ्ने भाषामा पढें (वा मलाई पढेर सुनाइयो), र आफ्नै इच्छाले स्वीकार गर्छु।</div></div>
+      <div class="row"><div lang="en">When you sign online, the Company records the items below as proof that you accepted Version 1.0 of this agreement.</div><div lang="ne">अनलाइन सही गर्दा कम्पनीले तलका कुरा राख्छ — तपाईंले यो सम्झौता (संस्करण १.०) स्वीकार गर्नुभएको प्रमाणका लागि।</div></div>
+    </div>
+    <ul class="rec">
+      <li>👤 पूरा नाम<span>Full name</span></li>
+      <li>📱 मोबाइल (WhatsApp कोडले प्रमाणित)<span>Mobile, verified by WhatsApp code</span></li>
+      <li>🕒 मिति र समय<span>Date and time</span></li>
+      <li>🌐 IP ठेगाना<span>IP address</span></li>
+      <li>✍️ औंलाको सही<span>Finger signature</span></li>
+    </ul>
+    <section class="card sign" id="signBox" aria-labelledby="signTitle"><h2 id="signTitle">✍️ Sign this agreement · यो सम्झौतामा सही गर्नुहोस्</h2><div id="signMount"><p class="hint">Loading… · लोड हुँदैछ…</p></div></section>
+  </div>
+
+  <section class="card print-only" aria-hidden="true">
+    <h2>Signatures · सही</h2>
+    <div class="pbox">
+      <div>
+        <b>Staff member · कर्मचारी</b>
+        <div class="sl"></div><small>Name · नाम</small>
+        <div class="sl"></div><small>Mobile · मोबाइल</small>
+        <div class="sl"></div><small>Signature · सही</small>
+        <div class="sl"></div><small>Date · मिति</small>
+        <div class="thumb">Thumb · औंठाछाप</div>
+      </div>
+      <div>
+        <b>For S HARI GLOBAL PRIVATE LIMITED</b>
+        <div class="sl"></div><small>Name · नाम</small>
+        <div class="sl"></div><small>Designation · पद</small>
+        <div class="sl"></div><small>Signature · सही</small>
+        <div class="sl"></div><small>Date · मिति</small>
+        <div class="thumb">Seal · छाप</div>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot"><a href="/agreements/staff.html">📝 अनलाइन फारम · Apply online</a> · <a href="/agreements/">सबै सम्झौता · All agreements</a> · <a href="/">🏠 होम · Home</a><br>S HARI GLOBAL PRIVATE LIMITED · www.shreehariglobal.in · SHG-STAFF-AGR v1.0</p>
+</main>
+<script defer src="/assets/js/staff-sign.js?v=20261022a"></script>
+</body>
+</html>
