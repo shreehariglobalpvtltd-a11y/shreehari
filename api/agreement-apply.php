@@ -127,6 +127,7 @@ try {
         'signature' => Response::field('signature', null),
         'geo'       => Response::field('geo', null),
         'public_ok' => Response::field('public_ok', false),
+        'logo'      => Response::field('logo', null),   // 22 Oct 2026: a partner company's logo
     ]);
     if (!$check['ok']) {
         Response::invalid($check['errors'], AgentApplications::message('invalid', $lang));
@@ -151,10 +152,13 @@ try {
         if ($clean['doc'] === null) {
             Response::invalid(['docIn' => 'photo'], 'डकुमेन्टको फोटो खुलेन — फेरि खिच्नुहोस्।');
         }
-        $vkey = DocVerify::key((string) $clean['doc'], (string) $clean['name'], $idno);
+        // 22 Oct 2026: a partner company's ID photo is its representative's, so it carries p_rep's name
+        $docName = (string) $clean['type'] === 'org' && trim((string) ($clean['fields']['p_rep'] ?? '')) !== ''
+            ? (string) $clean['fields']['p_rep'] : (string) $clean['name'];
+        $vkey = DocVerify::key((string) $clean['doc'], $docName, $idno);
         $vr   = DocVerify::recall($vkey);
         if ($vr === null) {
-            $vr = DocVerify::check((string) $clean['doc'], (string) $clean['name'], $idno, (string) ($clean['fields']['p_idtype'] ?? ''));
+            $vr = DocVerify::check((string) $clean['doc'], $docName, $idno, (string) ($clean['fields']['p_idtype'] ?? ''));
             if ($vr['status'] !== 'unavailable') {
                 DocVerify::remember($vkey, $vr);
             }
@@ -162,7 +166,7 @@ try {
         if ($vr['status'] !== 'pass') {
             Logger::info('Agreement apply: document did not match', ['problems' => $vr['problems'], 'ip' => $ip]);
             $bad = [];
-            if (in_array('name', $vr['problems'], true))   { $bad['p_name'] = 'name'; }
+            if (in_array('name', $vr['problems'], true))   { $bad[$docName === (string) $clean['name'] ? 'p_name' : 'p_rep'] = 'name'; }
             if (in_array('number', $vr['problems'], true)) { $bad['p_idno'] = 'number'; }
             if ($bad === [])                               { $bad['docIn'] = 'doc'; }
             Response::invalid($bad, DocVerify::message($vr));

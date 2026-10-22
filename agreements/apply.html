@@ -99,6 +99,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 .dv-use[hidden]{display:none}
 .dv-use .btn{width:100%;white-space:normal;text-align:left}
 @media (prefers-reduced-motion:reduce){.dv-rows li.w b{animation:none}}
+/* 22 Oct 2026: agent / Pvt. Ltd. partner switch */
+.kind{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 6px}
+.kind label{display:flex;flex-direction:column;gap:2px;padding:12px;border-radius:14px;border:1.5px solid var(--line);font-weight:800;font-size:14px;cursor:pointer}
+.kind label small{font-weight:600;font-size:12px;opacity:.75}
+.kind input{position:absolute;opacity:0;pointer-events:none}
+.kind label:has(input:checked){border-color:#f07a1e;background:rgba(240,122,30,.1)}
+#logoPrev{background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#fff}
 </style>
 </head>
 <body>
@@ -115,8 +122,28 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 <form id="ap" novalidate>
   <section class="card">
     <h2><i>1</i>👤 तपाईंको विवरण · Your details</h2>
-    <label class="f"><span>पूरा नाम · Full name <em>*</em></span><input type="text" id="p_name" autocomplete="name" maxlength="160" required>
-      <small class="hint" style="display:block;margin:4px 0 0">डकुमेन्टमा जस्तो लेखिएको छ, ठ्याक्कै त्यस्तै हिज्जे · exactly as on your ID</small></label>
+    <!-- 22 Oct 2026 (owner, team portal): the Pvt. Ltd. partner's paper form, online - the same
+         quick form with a company block, the logo, and the representative's ID / photo / signature.
+         Sent as type "org" (the long partner agreement page's online send uses the same API). -->
+    <div class="kind" role="radiogroup" aria-label="Who is applying">
+      <label><input type="radio" name="kind" value="ind" checked> 👤 एजेन्ट (व्यक्ति)<small>Individual agent</small></label>
+      <label><input type="radio" name="kind" value="org"> 🏢 प्रा. लि. साझेदार<small>Pvt. Ltd. partner company</small></label>
+    </div>
+    <label class="f"><span id="nameLbl">पूरा नाम · Full name <em>*</em></span><input type="text" id="p_name" autocomplete="name" maxlength="160" required>
+      <small class="hint" id="nameHint" style="display:block;margin:4px 0 0">डकुमेन्टमा जस्तो लेखिएको छ, ठ्याक्कै त्यस्तै हिज्जे · exactly as on your ID</small></label>
+    <div id="orgBox" hidden>
+      <label class="f"><span>कम्पनीको किसिम · Company type</span><select id="p_type"><option>Private Limited (प्रा. लि.)</option><option>Public Limited</option><option>Partnership firm</option><option>Proprietorship</option><option>Travel agency</option><option>Other</option></select></label>
+      <label class="f"><span>दर्ता नम्बर · Registration No.</span><input type="text" id="p_reg" maxlength="60" autocomplete="off" placeholder="Company / firm registration number"></label>
+      <label class="f"><span>PAN / VAT / GST</span><input type="text" id="p_tax" maxlength="40" autocomplete="off"></label>
+      <label class="f"><span>प्रतिनिधि / सञ्चालकको नाम · Representative (as on their ID) <em>*</em></span><input type="text" id="p_rep" maxlength="120" autocomplete="name">
+        <small class="hint" style="display:block;margin:4px 0 0">तलको डकुमेन्ट, फोटो र सही यिनै व्यक्तिको · the ID, photo and signature below are theirs</small></label>
+      <label class="f"><span>पद · Designation</span><input type="text" id="p_rep_desig" maxlength="60" placeholder="Director / Managing Director / Owner"></label>
+      <div class="shot" style="margin-top:12px">
+        <div class="prev" id="logoPrev">🏢</div>
+        <div><div class="pick"><span class="btn">🖼️ कम्पनीको लोगो · Company logo</span><input type="file" id="logoIn" accept="image/*" aria-label="Choose the company logo"></div>
+        <p class="hint" style="margin:6px 0 0">वेबसाइटको साझेदार कार्ड र परिचयपत्रमा देखिन्छ (ऐच्छिक)।</p><div class="ok" id="logoOk"></div></div>
+      </div>
+    </div>
     <label class="f"><span>मोबाइल · Mobile (WhatsApp) <em>*</em></span>
       <div class="row"><select id="cc" aria-label="Country code"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>
       <input type="tel" id="p_phone" inputmode="numeric" autocomplete="tel-national" maxlength="14" placeholder="98XXXXXXXX" required></div></label>
@@ -211,7 +238,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var state = { photo: null, doc: null, geo: null, csrf: null, verified: null, checking: null, seenName: '', wa: 'none' };
+  var state = { photo: null, doc: null, geo: null, csrf: null, verified: null, checking: null, seenName: '', wa: 'none', kind: 'ind', logo: null };
+  /* 22 Oct 2026: a partner company's ID / photo / signature are its representative's */
+  function nameId() { return state.kind === 'org' ? 'p_rep' : 'p_name'; }
 
   /* ---- CSRF + session cookie for the API ---- */
   function token() {
@@ -268,6 +297,25 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   }
   hookShot('docIn', 'docPrev', 'docOk', 'doc', 1400, 420000);
   hookShot('selfIn', 'selfPrev', 'selfOk', 'photo', 900, 260000);
+  hookShot('logoIn', 'logoPrev', 'logoOk', 'logo', 600, 150000);
+
+  /* ---- 22 Oct 2026: individual agent or Pvt. Ltd. partner company ---- */
+  function setKind(k) {
+    state.kind = k === 'org' ? 'org' : 'ind';
+    var org = state.kind === 'org';
+    $('orgBox').hidden = !org;
+    $('nameLbl').innerHTML = org ? 'कम्पनीको नाम · Company name <em>*</em>' : 'पूरा नाम · Full name <em>*</em>';
+    $('nameHint').textContent = org ? 'दर्ता प्रमाणपत्रमा जस्तो · as registered' : 'डकुमेन्टमा जस्तो लेखिएको छ, ठ्याक्कै त्यस्तै हिज्जे · exactly as on your ID';
+    $('p_name').setAttribute('autocomplete', org ? 'organization' : 'name');
+    var h = document.querySelector('header h1');
+    if (h) h.innerHTML = org ? '🏢 साझेदार बन्नुहोस्<br><span style="font-size:.62em;font-weight:800;color:#ffd9a8">Become an S Hari Global Pvt. Ltd. partner</span>'
+                             : '🤝 एजेन्ट बन्नुहोस्<br><span style="font-size:.62em;font-weight:800;color:#ffd9a8">Become an S Hari Global agent</span>';
+    document.querySelectorAll('input[name="kind"]').forEach(function (r) { r.checked = r.value === state.kind; });
+    document.title = org ? 'साझेदार बन्नुहोस् · Become a partner — S Hari Global' : 'एजेन्ट बन्नुहोस् · Become an agent — S Hari Global';
+    if (typeof dvReset === 'function') dvReset();
+  }
+  document.querySelectorAll('input[name="kind"]').forEach(function (r) { r.addEventListener('change', function () { if (this.checked) setKind(this.value); }); });
+  if (/[?&]kind=(partner|org)\b/.test(location.search)) setKind('org');
 
   /* ---- location ---- */
   $('geoBtn').addEventListener('click', function () {
@@ -360,19 +408,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   function dvAuto() {
     clearTimeout(dvTimer);
     dvTimer = setTimeout(function () {
-      if (state.doc && $('p_name').value.trim().length >= 2 && idFormatOk()) dvCheck();
+      if (state.doc && $(nameId()).value.trim().length >= 2 && idFormatOk()) dvCheck();
     }, 900);
   }
-  ['p_name', 'p_idno'].forEach(function (id) {
+  ['p_name', 'p_rep', 'p_idno'].forEach(function (id) {
     $(id).addEventListener('input', function () { if (state.verified !== null) dvReset(); dvAuto(); });
   });
   function dvCheck() {
     if (state.verified === true) return Promise.resolve(true);
     if (state.checking) return state.checking;
     if (!state.doc) { need('docIn', 'डकुमेन्टको फोटो खिच्नुहोस्।'); return Promise.resolve(false); }
-    if ($('p_name').value.trim().length < 2) { need('p_name', 'कृपया पूरा नाम लेख्नुहोस्।'); return Promise.resolve(false); }
+    if ($(nameId()).value.trim().length < 2) { need(nameId(), 'कृपया पूरा नाम लेख्नुहोस्।'); return Promise.resolve(false); }
     if (!idFormatOk()) { need('p_idno', 'डकुमेन्ट नम्बर मिलेन — ' + rule().hint); return Promise.resolve(false); }
-    var sentName = $('p_name').value.trim(), sentNo = $('p_idno').value.trim(), sentDoc = state.doc, sentType = $('p_idtype').value;
+    var sentName = $(nameId()).value.trim(), sentNo = $('p_idno').value.trim(), sentDoc = state.doc, sentType = $('p_idtype').value;
     $('dv').className = 'dv'; $('dvUse').hidden = true; rows('w');
     $('dvMsg').textContent = '⏳ AI ले डकुमेन्ट पढ्दैछ… (१०–२० सेकेन्ड)';
     $('dvBtn').disabled = true;
@@ -383,7 +431,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     }).then(function (r) { return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; }); })
       .then(function (d) {
         // something was changed while the card was being read: that answer is stale
-        if (sentName !== $('p_name').value.trim() || sentNo !== $('p_idno').value.trim() || sentDoc !== state.doc || sentType !== $('p_idtype').value) { dvReset(); return false; }
+        if (sentName !== $(nameId()).value.trim() || sentNo !== $('p_idno').value.trim() || sentDoc !== state.doc || sentType !== $('p_idtype').value) { dvReset(); return false; }
         if (!d || !d.ok) {
           if (d && d.code === 419) state.csrf = null;
           rows(null);
@@ -396,7 +444,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
         $('dvMsg').textContent = d.message || '';
         if (d.status === 'pass') {
           state.verified = true; $('dv').className = 'dv pass';
-          $('p_name').removeAttribute('aria-invalid'); $('p_idno').removeAttribute('aria-invalid');
+          $(nameId()).removeAttribute('aria-invalid'); $('p_idno').removeAttribute('aria-invalid');
           try { if (navigator.vibrate) navigator.vibrate([10, 40, 10]); } catch (e) {}
           return true;
         }
@@ -408,7 +456,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
             $('dvUse').hidden = false;
           }
           if (d.number_ok === false) $('p_idno').setAttribute('aria-invalid', 'true');
-          if (d.name_ok === false) $('p_name').setAttribute('aria-invalid', 'true');
+          if (d.name_ok === false) $(nameId()).setAttribute('aria-invalid', 'true');
           try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {}
         }
         return false;
@@ -420,8 +468,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   $('dvBtn').addEventListener('click', function () { dvCheck(); });
   $('dvUseBtn').addEventListener('click', function () {
     if (!state.seenName) return;
-    $('p_name').value = state.seenName.replace(/([A-Za-z])([A-Za-z]*)/g, function (m, a, b) { return a.toUpperCase() + b.toLowerCase(); });
-    $('p_name').removeAttribute('aria-invalid');
+    $(nameId()).value = state.seenName.replace(/([A-Za-z])([A-Za-z]*)/g, function (m, a, b) { return a.toUpperCase() + b.toLowerCase(); });
+    $(nameId()).removeAttribute('aria-invalid');
     dvReset(); dvCheck();
   });
 
@@ -430,7 +478,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   function need(id, text) { var el = $(id); if (el) { el.setAttribute('aria-invalid', 'true'); el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } var m = $('msg'); m.textContent = text; m.hidden = false; return false; }
   function check() {
     document.querySelectorAll('[aria-invalid]').forEach(function (el) { el.removeAttribute('aria-invalid'); });
-    if ($('p_name').value.trim().length < 2) return need('p_name', 'कृपया पूरा नाम लेख्नुहोस्।');
+    if ($('p_name').value.trim().length < 2) return need('p_name', state.kind === 'org' ? 'कम्पनीको नाम लेख्नुहोस्।' : 'कृपया पूरा नाम लेख्नुहोस्।');
+    if (state.kind === 'org' && $('p_rep').value.trim().length < 2) return need('p_rep', 'प्रतिनिधि / सञ्चालकको नाम लेख्नुहोस्।');
     var ph = $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
     if (ph.length !== 10) return need('p_phone', 'कृपया १० अङ्कको मोबाइल नम्बर लेख्नुहोस्।');
     if (!$('p_area').value.trim()) return need('p_area', 'काम गर्ने ठाउँ लेख्नुहोस्।');
@@ -464,11 +513,17 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   function send(btn, label) {
     var phone = '+' + $('cc').value + $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
     var body = {
-      type: 'ind', lang: 'ne', website: $('website').value, public_ok: $('public_ok').checked,
+      type: state.kind, lang: 'ne', website: $('website').value, public_ok: $('public_ok').checked,
       photo: state.photo, doc: state.doc, signature: signaturePng(), geo: state.geo,
       fields: { p_name: $('p_name').value.trim(), p_phone: phone, p_area: $('p_area').value.trim(), p_addr: $('p_addr').value.trim(),
                 p_idtype: $('p_idtype').value, p_idno: $('p_idno').value.trim(), p_occ: 'Online form (photo + signature)' }
     };
+    if (state.kind === 'org') {
+      ['p_type', 'p_reg', 'p_tax', 'p_rep', 'p_rep_desig'].forEach(function (k) { var v = $(k).value.trim(); if (v) body.fields[k] = v; });
+      body.fields.p_rep_phone = phone;
+      body.fields.p_occ = 'Online partner form (logo + representative photo + signature)';
+      if (state.logo) body.logo = state.logo;
+    }
     ['b_name', 'b_bank', 'b_acc', 'b_ifsc', 'b_upi'].forEach(function (k) {
       var v = $(k).value.trim();
       if (v) body.fields[k] = k === 'b_ifsc' ? v.toUpperCase().replace(/\s+/g, '') : v;

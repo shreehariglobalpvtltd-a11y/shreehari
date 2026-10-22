@@ -158,6 +158,31 @@ try {
     $back = TeamPortal::cv(StaffApps::find($sid), 'staff');
     check('CV saves and reads back', $back['edu'][0]['school'] === 'Mahendra Campus');
     check('CV HTML escapes', !str_contains(TeamPortal::cvHtml(['edu' => [], 'exp' => [], 'langs' => '<script>', 'skills' => '', 'about' => '', 'org' => []], false), '<script>'));
+
+    // ---- agreements signed in the portal ----
+    $im = imagecreatetruecolor(400, 140); imagefill($im, 0, 0, imagecolorallocate($im, 255, 255, 255));
+    imagesetthickness($im, 4); for ($i = 0; $i < 20; $i++) { imageline($im, 10 + $i * 18, 30 + ($i % 2) * 80, 28 + $i * 18, 110 - ($i % 2) * 80, 0); }
+    ob_start(); imagepng($im); $sigUri = 'data:image/png;base64,' . base64_encode((string) ob_get_clean());
+    fresh();
+    TeamPortal::login($S, 'Verify#2026');
+    $me = TeamPortal::current();
+    $ags = TeamPortal::agreementsFor($me);
+    check('an approved staff member signs the staff agreement', count($ags) === 1 && $ags[0]['doc'] === 'staff' && $ags[0]['version'] === StaffApps::AGREEMENT_VERSION);
+    $e = '';
+    try { TeamPortal::sign($me, 'staff', $sigUri, false); } catch (TeamPortalError $x) { $e = $x->getMessage(); }
+    check('signing without "I accept" is refused', $e !== '');
+    $e = '';
+    try { TeamPortal::sign($me, 'staff', 'data:image/png;base64,iVBORw0KGgo=', true); } catch (TeamPortalError $x) { $e = $x->getMessage(); }
+    check('an empty signature is refused', $e !== '');
+    $e = '';
+    try { TeamPortal::sign($me, 'partner', $sigUri, true); } catch (TeamPortalError $x) { $e = $x->getMessage(); }
+    check('someone else\'s agreement cannot be signed', $e !== '');
+    $done = TeamPortal::sign($me, 'staff', $sigUri, true);
+    $row = TeamPortal::lastSign($ags[0]);
+    check('the signature is recorded (portal event, file for staff)', $row !== null && (string) $row['event'] === 'portal' && !empty($row['signature_path'])
+        && TeamPortal::signImage($row) !== null && (!TeamPortal::signReady() || (string) $row['party_ref'] === StaffApps::refFor($sid)));
+    Database::run('DELETE FROM agreement_signatures WHERE party_type = :t AND party_id = :i', ['t' => 'staff', 'i' => $sid]);
+    if (!empty($row['signature_path']) && ($abs = StaffApps::absPath((string) $row['signature_path'])) !== null) { @unlink($abs); }
     if ($old2fa !== null) {
         Settings::set('admin_2fa_ids', $old2fa);
     }

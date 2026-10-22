@@ -125,12 +125,7 @@ if ($me !== null && $v !== 'reset') {
         require_once INCLUDE_PATH . '/idcard.php';
         $pic = IdCard::thumb((string) file_get_contents($abs), 160);
     }
-    $agrUrl = match ($kind) {
-        'partner' => '/agreements/partner-agreement-ne.html',
-        'agent'   => '/agreements/agent-agreement-ne.html',
-        'staff'   => '/agreements/staff-agreement.html',
-        default   => null,
-    };
+    $agrUrl = TeamPortal::agreementsFor($me) !== [] ? '/team/agreement.php' : null;
     TeamUi::head('Home', 'home');
     TeamUi::flash();
     if ($err !== null) {

@@ -704,6 +704,8 @@ final class AgentApplications
             'doc'        => $doc['photo'],
             'signature'  => self::cleanSignature($in['signature'] ?? null),
             'geo'        => self::cleanGeo($in['geo'] ?? null),
+            // 22 Oct 2026: a Pvt. Ltd. partner's logo from the quick form (partners only)
+            'logo'       => $type === 'org' ? self::cleanPhoto($in['logo'] ?? null)['photo'] : null,
         ];
 
         return ['ok' => $errors === [], 'errors' => $errors, 'clean' => $clean];
@@ -732,7 +734,7 @@ final class AgentApplications
         ];
         // The simple form's extras join the fingerprint only when sent, so a
         // form without them hashes exactly as before.
-        foreach (['doc', 'signature', 'geo'] as $k) {
+        foreach (['doc', 'signature', 'geo', 'logo'] as $k) {
             if (is_string($clean[$k] ?? null) && $clean[$k] !== '') {
                 $parts[] = $k . ':' . hash('sha256', (string) $clean[$k]);
             }
@@ -818,6 +820,9 @@ final class AgentApplications
         if (self::webColumnsAvailable()) {
             $extra['web_photo'] = (int) $clean['public_ok'] === 1 && is_string($clean['photo'] ?? null) ? 1 : 0;
             $extra['web_key']   = self::newWebKey();
+        }
+        if (is_string($clean['logo'] ?? null) && (string) $clean['type'] === 'org' && self::logoReady()) {
+            $extra['logo'] = $clean['logo'];
         }
 
         $id = Database::insert('agent_applications', $extra + [

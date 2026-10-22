@@ -364,8 +364,11 @@ if (!$ready) {
           <?php if ($canEdit && (string) $open['status'] === 'approved' && (string) $open['phone'] !== ''): /* 22 Oct 2026: team portal */ ?>
           <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" style="display:inline;margin-left:6px" onsubmit="return confirm('Create an agent login for <?= $h(addslashes((string) $open['name'])) ?>? Username = the mobile; they make the password at /team/ with a WhatsApp code.')"><?= $csrfField ?><input type="hidden" name="action" value="mklogin"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>"><button class="btn sm" type="submit">🔐 Create login (sell tickets)</button></form>
           <?php endif; ?><?php endif; ?></dd>
-        <?php if (isset($open['cv_json'])): require_once INCLUDE_PATH . '/teamportal.php'; ?>
+        <?php if (array_key_exists('cv_json', $open)): require_once INCLUDE_PATH . '/teamportal.php'; ?>
         <dt><?= (string) $open['type'] === 'org' ? 'Company profile' : 'CV' ?></dt><dd><details><summary class="muted">from the team portal</summary><?= TeamPortal::cvHtml(TeamPortal::cv($open, 'agent'), (string) $open['type'] === 'org') ?></details></dd>
+        <?php foreach (Database::fetchAll("SELECT * FROM agreement_signatures WHERE party_type = 'agent' AND party_id = :i ORDER BY id DESC LIMIT 3", ['i' => (int) $open['id']]) as $sg): $sgImg = TeamPortal::signImage($sg); ?>
+        <dt>Signed online</dt><dd>✅ <?= $h(ucfirst((string) $sg['doc'])) ?> agreement v<?= $h($sg['version']) ?> · <?= $h(date('d M Y H:i', strtotime((string) $sg['signed_at']) ?: time())) ?> · SIG-<?= str_pad((string) (int) $sg['id'], 6, '0', STR_PAD_LEFT) ?> · <span class="mono muted"><?= $h($sg['ip_address'] ?? '') ?></span><?php if ($sgImg !== null): ?><br><img src="<?= $h($sgImg) ?>" alt="Signature" style="height:48px;background:#fff;border-radius:6px;margin-top:4px"><?php endif; ?></dd>
+        <?php endforeach; ?>
         <?php endif; ?>
         <?php if (!empty($open['note'])): ?><dt>Office note</dt><dd><?= $h($open['note']) ?></dd><?php endif; ?>
         <?php if (!empty($open['reviewed_at'])): ?><dt>Last change</dt><dd class="muted"><?= $h(date('d M Y, H:i', (int) strtotime((string) $open['reviewed_at']))) ?></dd><?php endif; ?>

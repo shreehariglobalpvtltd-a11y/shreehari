@@ -476,6 +476,131 @@ final class TeamPortal
     }
 
     /* =================================================================
+     *  Agreements, signed in the portal (22 Oct 2026: "agreements fully
+     *  digital"). The text is the same page the office prints (built from
+     *  the owner's paper forms); signing records who, which version, when,
+     *  from where, with the signature, in agreement_signatures.
+     * ================================================================= */
+
+    public const AGREEMENTS = [
+        'staff'   => ['title' => 'Staff agreement · कर्मचारी सम्झौता', 'version' => StaffApps::AGREEMENT_VERSION, 'url' => '/agreements/staff-agreement.html'],
+        'agent'   => ['title' => 'Individual agent / connector agreement · एजेन्ट सम्झौता', 'version' => '2.3', 'url' => '/agreements/agent-agreement-%s.html'],
+        'partner' => ['title' => 'Organization / Pvt. Ltd. partner agreement · साझेदार सम्झौता', 'version' => '2.2', 'url' => '/agreements/partner-agreement-%s.html'],
+    ];
+
+    /** agreement_signatures.party_ref / signature_data are there. */
+    public static function signReady(): bool
+    {
+        static $ok = null;
+        if ($ok === null) {
+            try {
+                $ok = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'agreement_signatures' AND COLUMN_NAME IN ('party_ref','signature_data')",
+                    [], 0
+                ) === 2;
+            } catch (Throwable $e) {
+                $ok = false;
+            }
+        }
+        return $ok;
+    }
+
+    /**
+     * The agreements this person signs: staff and / or agent / partner.
+     *
+     * @return list<array<string, mixed>>  doc, party, id, ref, name, phone, verified, url, version, title, lang
+     */
+    public static function agreementsFor(array $me): array
+    {
+        $out = [];
+        if ($me['staff'] !== null && (string) $me['staff']['status'] === 'approved') {
+            $s = $me['staff'];
+            $out[] = ['doc' => 'staff', 'party' => 'staff', 'id' => (int) $s['id'], 'ref' => (string) $s['ref'], 'name' => (string) $s['full_name'],
+                      'phone' => (string) $s['phone'], 'verified' => (int) $s['phone_verified'], 'lang' => 'ne'] + self::AGREEMENTS['staff'];
+        }
+        if ($me['agent'] !== null) {
+            $a = $me['agent'];
+            $doc = (string) $a['type'] === 'org' ? 'partner' : 'agent';
+            $lang = in_array((string) $a['lang'], ['ne', 'hi', 'en', 'gu'], true) ? (string) $a['lang'] : 'ne';
+            $d = self::AGREEMENTS[$doc];
+            $out[] = ['doc' => $doc, 'party' => 'agent', 'id' => (int) $a['id'], 'ref' => (string) $a['ref'], 'name' => (string) $a['name'],
+                      'phone' => (string) $a['phone'], 'verified' => (int) ($a['phone_verified'] ?? 0), 'lang' => $lang,
+                      'url' => sprintf($d['url'], $lang), 'version' => $d['version'], 'title' => $d['title']];
+        }
+        return $out;
+    }
+
+    /** The newest signature of this version for this party, or null. */
+    public static function lastSign(array $ag): ?array
+    {
+        return Database::fetch(
+            "SELECT * FROM agreement_signatures WHERE doc = :d AND party_type = :t AND party_id = :i AND version = :v ORDER BY id DESC LIMIT 1",
+            ['d' => $ag['doc'], 't' => $ag['party'], 'i' => $ag['id'], 'v' => $ag['version']]
+        );
+    }
+
+    /** Sign one agreement with a finger signature (data: URI). */
+    public static function sign(array $me, string $doc, mixed $sig, bool $agree): array
+    {
+        if (!$agree) {
+            throw new TeamPortalError('"मैले पढें र मान्छु" मा ✓ लगाउनुहोस् · Tick "I have read and accept".');
+        }
+        $ag = null;
+        foreach (self::agreementsFor($me) as $a) {
+            if ($a['doc'] === $doc) {
+                $ag = $a;
+            }
+        }
+        if ($ag === null) {
+            throw new TeamPortalError('This agreement is not yours to sign.');
+        }
+        $clean = AgentApplications::cleanSignature($sig);
+        if ($clean === null || strlen($clean) < 600) {
+            throw new TeamPortalError('बाकसभित्र औंलाले सही गर्नुहोस् · Please sign inside the box.');
+        }
+        $ip = Security::clientIp();
+        $ua = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
+        $path = null;
+        if ($ag['doc'] === 'staff') {
+            $bytes = (string) base64_decode(substr($clean, (int) strpos($clean, ',') + 1), true);
+            $mime = str_starts_with($clean, 'data:image/png') ? 'image/png' : 'image/jpeg';
+            $path = StaffApps::saveFile($ag['id'], 'signature', $bytes, $mime);
+        }
+        $row = [
+            'doc' => $ag['doc'], 'version' => $ag['version'], 'event' => 'portal', 'party_type' => $ag['party'], 'party_id' => $ag['id'],
+            'full_name' => mb_substr($ag['name'], 0, 120), 'phone' => $ag['phone'], 'phone_verified' => $ag['verified'] ? 1 : 0,
+            'signature_path' => $path, 'ip_address' => mb_substr($ip, 0, 45), 'user_agent' => mb_substr($ua, 0, 255),
+        ];
+        if (self::signReady()) {
+            $row['party_ref'] = $ag['ref'];
+            $row['signature_data'] = $ag['doc'] === 'staff' ? null : $clean;
+        }
+        $sid = (int) Database::insert('agreement_signatures', $row);
+        if ($ag['party'] === 'agent') {
+            // the office's agreement state follows (signed today, end date from the agreement rules)
+            AgentApplications::update($ag['id'], ['agreement_status' => 'signed', 'agreement_signed_at' => date('Y-m-d')], (int) ($me['admin']['id'] ?? 0));
+        }
+        Logger::audit('team.agreement_signed', $ag['party'] === 'agent' ? 'agent_application' : 'staff_application', $ag['ref'], null,
+            ['doc' => $ag['doc'], 'version' => $ag['version'], 'sign_id' => $sid], 'Agreement signed in the team portal');
+        return $ag + ['sign_id' => $sid];
+    }
+
+    /** The signature image of a signature row, as a data: URI, or null. */
+    public static function signImage(array $sign): ?string
+    {
+        if (!empty($sign['signature_data'])) {
+            return (string) $sign['signature_data'];
+        }
+        if (!empty($sign['signature_path']) && ($abs = StaffApps::absPath((string) $sign['signature_path'])) !== null) {
+            $b = (string) file_get_contents($abs);
+            $mime = str_starts_with($b, "\x89PNG") ? 'image/png' : 'image/jpeg';
+            return 'data:' . $mime . ';base64,' . base64_encode($b);
+        }
+        return null;
+    }
+
+    /* =================================================================
      *  The office's side (Admin -> Staff applications / Agreements)
      * ================================================================= */
 
