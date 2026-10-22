@@ -20,7 +20,7 @@
   mount.innerHTML =
     (refQ ? '<p class="hint">आवेदन · Application <b>' + refQ.toUpperCase() + '</b></p>' : '') +
     '<label class="f"><span>पूरा नाम (आवेदनमा जस्तै) · Full name <em>*</em></span><input type="text" id="sgName" autocomplete="name" maxlength="120"></label>' +
-    '<label class="f"><span>मोबाइल · Mobile <em>*</em></span><div class="row2"><select id="sgCc" aria-label="Country code"><option value="977">🇳🇵 +977</option><option value="91">🇮🇳 +91</option></select>' +
+    '<label class="f"><span>मोबाइल · Mobile <em>*</em></span><div class="row2"><select id="sgCc" aria-label="Country code"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>' +
     '<input type="tel" id="sgPhone" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" autocomplete="tel-national"></div></label>' +
     '<button type="button" class="btn ghost" id="sgSend">📲 WhatsApp कोड पठाउनुहोस् · Send code</button>' +
     '<div class="row2" id="sgCodeRow" hidden style="margin-top:8px;grid-template-columns:minmax(0,1fr) auto"><input type="text" id="sgCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="••••••" aria-label="Code" style="letter-spacing:.3em;text-align:center;font-weight:800"><button type="button" class="btn small" id="sgVerify">✓ प्रमाणित</button></div>' +

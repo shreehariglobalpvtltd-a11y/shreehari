@@ -47,9 +47,10 @@ const STAFF_OTP_SKIP_SEC = 120;    // a code that has not arrived after this lon
 /** "+977" picker + typed number -> [10 digits, 'NP'|'IN']. */
 function staff_phone(): array
 {
-    $cc = (string) Response::field('cc', '977');
+    // 22 Oct 2026 (owner): most staff use Indian numbers, so +91 is the default
+    $cc = (string) Response::field('cc', '91');
     $digits = normalisePhone((string) Response::field('phone', ''));
-    return [$digits, $cc === '91' ? 'IN' : 'NP'];
+    return [$digits, $cc === '977' ? 'NP' : 'IN'];
 }
 
 /** Did this session prove the number, or may it go on without (code undeliverable / late)? */
