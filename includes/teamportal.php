@@ -90,11 +90,26 @@ final class TeamPortal
         return ['admins' => Auth::teamAccounts($phone10), 'staff' => $staff];
     }
 
-    /** International digits for WhatsApp: the staff row's country, else what the account typed. */
+    /**
+     * International digits for WhatsApp, never from what the visitor types
+     * (a code sent to the same digits in the other country would reach a
+     * stranger): the staff row's country, else the country the office typed
+     * on the agent's website card (phone_raw, "+977 …"), else the account's.
+     */
     private static function intl(string $phone10, array $acc): string
     {
         foreach ($acc['staff'] as $s) {
             return (countryDialCode((string) $s['phone_country']) ?: '977') . $phone10;
+        }
+        foreach ($acc['admins'] as $a) {
+            // 22 Oct 2026: imported accounts carry "91" in front of Nepali numbers; the card is what the office corrects
+            $raw = AgentApplications::available() ? (string) Database::scalar(
+                "SELECT phone_raw FROM agent_applications WHERE admin_id = :a AND status = 'approved' AND phone = :p AND phone_raw IS NOT NULL ORDER BY id DESC LIMIT 1",
+                ['a' => (int) $a['id'], 'p' => $phone10], '') : '';
+            $cc = $raw !== '' ? countryDialCode(resolvePhoneCountry('', $raw)) : '';
+            if ($cc !== '') {
+                return $cc . $phone10;
+            }
         }
         foreach ($acc['admins'] as $a) {
             $cc = countryDialCode(resolvePhoneCountry('', (string) $a['phone']));

@@ -54,7 +54,7 @@ $S = '9800077701'; $A = '9800077702'; $B = '9800077703';
 $sid = 0; $ids = [];
 try {
     Database::run("DELETE FROM staff_applications WHERE phone IN ('$S','$A')");
-    Database::run("DELETE FROM admins WHERE username IN ('tp-agent','tp-boss','tp-2fa')");
+    Database::run("DELETE FROM admins WHERE username IN ('tp-agent','tp-boss','tp-2fa','tp-intl')");
     fresh();
 
     check('phone10 reads +977 / +91 / spaces', TeamPortal::phone10('+977 980-007-7701') === $S && TeamPortal::phone10('91 98000 77701') === $S && TeamPortal::phone10('123') === '');
@@ -192,6 +192,20 @@ try {
     check('the office reads the level as words', AgentApplications::displayValue('cv_qual', 'bachelor') === 'Bachelor · स्नातक');
     $cvB = TeamPortal::cv(['fields_json' => json_encode($clean), 'cv_json' => json_encode(['edu' => [['level' => 'master', 'school' => 'TU', 'year' => '2020']]])], 'agent');
     check('a CV saved in the portal wins over the form', ($cvB['edu'][0]['level'] ?? '') === 'master' && count($cvB['edu']) === 1);
+
+    // ---- the WhatsApp country comes from the office's card, not "91" an import put in front ----
+    fresh();
+    $ids[] = $ia = (int) Database::insert('admins', ['username' => 'tp-intl', 'password_hash' => Security::hashPassword('Intl#pass2026'),
+        'full_name' => 'TP Intl', 'phone' => '919800077705', 'role' => 'agent', 'is_active' => 1, 'must_change_pw' => 0]);
+    $v1 = TeamPortal::startVerify('9800077705');
+    check('without a card, the account\'s own country is used', (string) Database::scalar('SELECT intl FROM wa_verify WHERE token = :t', ['t' => $v1['token']]) === '919800077705');
+    $cardId = (int) Database::insert('agent_applications', ['type' => 'ind', 'lang' => 'ne', 'name' => 'TP Intl', 'phone' => '9800077705',
+        'phone_raw' => '+977 9800077705', 'fields_json' => '{}', 'status' => 'approved', 'kyc_status' => 'none', 'admin_id' => $ia]);
+    Database::run("DELETE FROM rate_limits WHERE bucket LIKE 'wa_verify%'");
+    $v2 = TeamPortal::startVerify('9800077705');
+    check('the card\'s "+977" wins over an imported "91" (code and hi VERIFY go to Nepal)', (string) Database::scalar('SELECT intl FROM wa_verify WHERE token = :t', ['t' => $v2['token']]) === '9779800077705');
+    Database::run('DELETE FROM agent_applications WHERE id = :i', ['i' => $cardId]);
+    Database::run("DELETE FROM wa_verify WHERE phone = '9800077705'");
     if ($old2fa !== null) {
         Settings::set('admin_2fa_ids', $old2fa);
     }
