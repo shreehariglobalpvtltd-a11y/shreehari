@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v250';   // One map: the old #/nav navigator removed (SHARI NAV AI map only), home "coaches on the road" card by number plate
+var VERSION = 'shg-v251';   // S Hari Map one tap + Map tab, white map, AI Gujarati + place commands; team cards name/photo/number
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,7 +43,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261022x';
+var ASSET_VER = '20261022y';
 var PRECACHE = [
   /* 16 Oct 2026 (owner, the logo): the full lockup WITH the ™ sign is now
      logo-tm.png (tools/make-logo-tm.php cuts it from logo.png). Neither is
