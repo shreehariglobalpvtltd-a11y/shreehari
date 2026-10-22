@@ -64,8 +64,13 @@ while (($line = fgets($fh)) !== false) {
     if ($g['type'] === 'Point') {
         [$lng, $lat] = $g['coordinates'];
     } else {
-        $ring = $g['type'] === 'Polygon' ? ($g['coordinates'][0] ?? []) : ($g['coordinates'][0][0] ?? []);
-        if ($ring === []) {
+        $ring = match ($g['type']) {
+            'LineString'   => $g['coordinates'],              /* a closed way osmium did not see as an area */
+            'Polygon'      => $g['coordinates'][0] ?? [],
+            'MultiPolygon' => $g['coordinates'][0][0] ?? [],
+            default        => [],
+        };
+        if (!is_array($ring) || $ring === [] || !is_array($ring[0] ?? null)) {
             continue;
         }
         $lng = array_sum(array_column($ring, 0)) / count($ring);
