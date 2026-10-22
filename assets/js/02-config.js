@@ -797,7 +797,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20261022w';
+  el.src = '/assets/js/terms-data.js?v=20261022x';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;

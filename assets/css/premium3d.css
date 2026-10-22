@@ -47,11 +47,11 @@ html #view-home > #hero3d{order:-2 !important}   /* SmartBook is -1 (smartbook.c
 .p3-scene{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 .p3-scene > span{position:absolute;display:block}
 .p3-india{left:0;top:0;bottom:0;width:50%;opacity:.55;
-  background:url(/assets/img/hd/gujarat-city-m.webp?v=20261022w) center 40%/cover no-repeat;
+  background:url(/assets/img/hd/gujarat-city-m.webp?v=20261022x) center 40%/cover no-repeat;
   -webkit-mask-image:linear-gradient(90deg,#000 15%,transparent 100%);mask-image:linear-gradient(90deg,#000 15%,transparent 100%);
   transform:translate3d(calc(var(--p3x) * -8px),calc(var(--p3y) * -5px),0) scale(1.06)}
 .p3-nepal{right:0;top:0;bottom:0;width:56%;opacity:.6;
-  background:url(/assets/img/hd/nepal-heritage-m.webp?v=20261022w) center 35%/cover no-repeat;
+  background:url(/assets/img/hd/nepal-heritage-m.webp?v=20261022x) center 35%/cover no-repeat;
   -webkit-mask-image:linear-gradient(270deg,#000 22%,transparent 100%);mask-image:linear-gradient(270deg,#000 22%,transparent 100%);
   transform:translate3d(calc(var(--p3x) * -12px),calc(var(--p3y) * -6px),0) scale(1.06)}
 .p3-tint{inset:0;background:linear-gradient(180deg,rgba(6,26,74,.18) 0%,rgba(6,26,74,.5) 55%,rgba(6,26,74,.92) 100%)}
@@ -129,7 +129,7 @@ html #view-home > #hero3d{order:-2 !important}   /* SmartBook is -1 (smartbook.c
   transform-origin:left center;transform:scaleX(0);animation:p3Fill 7s linear infinite}
 @keyframes p3Fill{0%{transform:scaleX(0)}92%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:0}}
 .p3-mover{position:absolute;left:0;top:50%;width:100%;height:30px;margin-top:-15px;
-  background:url(/assets/img/anim/shg-route-bus-marker.webp?v=20261022w) 0 50%/60px 30px no-repeat;
+  background:url(/assets/img/anim/shg-route-bus-marker.webp?v=20261022x) 0 50%/60px 30px no-repeat;
   filter:drop-shadow(0 6px 8px rgba(0,0,0,.55));transform:translateX(-60px);animation:p3Drive 7s linear infinite}
 @keyframes p3Drive{0%{transform:translateX(-60px)}92%{transform:translateX(100%);opacity:1}100%{transform:translateX(100%);opacity:0}}
 
@@ -149,8 +149,8 @@ html #view-home > #hero3d{order:-2 !important}   /* SmartBook is -1 (smartbook.c
   .p3-fi{width:40px;height:40px;font-size:17px} .p3-fi .ic{width:19px;height:19px}
   .p3-bus{max-width:100%;filter:drop-shadow(0 16px 14px rgba(0,0,0,.5)) drop-shadow(0 0 20px rgba(47,107,255,.28))}
   .p3-tag,.p3-route{display:none}
-  .p3-india{background-image:url(/assets/img/hd/gujarat-city-t.webp?v=20261022w)}
-  .p3-nepal{background-image:url(/assets/img/hd/nepal-heritage-t.webp?v=20261022w)}
+  .p3-india{background-image:url(/assets/img/hd/gujarat-city-t.webp?v=20261022x)}
+  .p3-nepal{background-image:url(/assets/img/hd/nepal-heritage-t.webp?v=20261022x)}
   .p3-glow,.p3-orb{filter:blur(8px)}
 }
 @media (max-width:420px){ .p3-sub{display:none} .p3-in{padding-top:12px} }
@@ -276,7 +276,7 @@ html[data-tier="low"] .p3-tag{-webkit-backdrop-filter:none;backdrop-filter:none}
     background:linear-gradient(100deg,transparent 35%,rgba(255,255,255,.18) 50%,transparent 65%);transform:translateX(-100%);animation:sbSweep 6s ease-in-out infinite}
   #smartBook .sb-route > i{animation:p3Dot 2.4s var(--p3-ease) infinite}
   #smartBook .sb-route > i:last-child{animation-delay:-1.2s}
-  #smartBook .sb-route-bus{background-image:url(/assets/img/anim/shg-route-bus-marker.webp?v=20261022w);background-size:44px 22px;filter:drop-shadow(0 4px 5px rgba(0,0,0,.35))}
+  #smartBook .sb-route-bus{background-image:url(/assets/img/anim/shg-route-bus-marker.webp?v=20261022x);background-size:44px 22px;filter:drop-shadow(0 4px 5px rgba(0,0,0,.35))}
   #smartBook .sb-dl div{padding:8px 0}
   #smartBook .sb-dl dd{font-weight:700}
   #smartBook .sb-total{padding:12px 0 6px}
