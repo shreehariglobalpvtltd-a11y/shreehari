@@ -25,7 +25,7 @@
 'use strict';
 
 var X = null;                       /* the bridge, set in start() */
-var GV = '20261022e';
+var GV = '20261022f';
 
 /* ---------------------------------------------------------------------
    DATA
@@ -193,6 +193,8 @@ var TX = {
   tBorder: { ne: 'बोर्डर', hi: 'बॉर्डर', en: 'Border' },
   tSos: { ne: 'SOS', hi: 'SOS', en: 'SOS' },
   tMine: { ne: 'मेरो', hi: 'मेरा', en: 'Mine' },
+  syncB: { ne: 'फोन–कम्प्युटर sync', hi: 'फ़ोन–कंप्यूटर sync', en: 'Sync devices' },
+  myBusB: { ne: 'मेरो बस (PNR)', hi: 'मेरी बस (PNR)', en: 'My bus (PNR)' },
   parkT: { ne: 'पार्किङ', hi: 'पार्किंग', en: 'Parking' },
   chipAsk: { ne: 'AI सोध्नुस्', hi: 'AI से पूछें', en: 'Ask AI' },
   chipTirtha: { ne: 'तीर्थ', hi: 'तीर्थ', en: 'Tirtha' },
@@ -703,6 +705,11 @@ function bodyClick(e) {
     savePark(false); renderMine(); return;
   }
   if (b.dataset.park === 'ai') { askAI(); return; }
+  if ((b.dataset.park === 'sync' || b.dataset.park === 'mybus') && window.SHGNAV_LIVE) {
+    var LV = window.SHGNAV_LIVE, which = b.dataset.park;
+    closeG(); afterClose(function () { if (which === 'sync') LV.openSync(); else LV.openMyBus(); });
+    return;
+  }
   if (b.dataset.park === 'walk') { var pk = LSg.get('shg:ng:park', null); if (pk) go({ name: t('myCar'), sub: new Date(pk.t).toLocaleString(), lat: pk.lat, lng: pk.lng }, false, 'walk'); return; }
 }
 function go(p, start, mode) {
@@ -1006,7 +1013,9 @@ function showCar() {
 function renderMine() {
   var b = $('#sgBody'); if (!b) return;
   var pk = LSg.get('shg:ng:park', null), d = pk ? distTo(pk) : Infinity;
-  var h = '<div class="sg-h3">' + esc(t('parkT')) + '</div><div class="sg-card"><div class="sg-row" style="cursor:default"><span class="sg-ric">' + GI.park + '</span>' +
+  var h = (window.SHGNAV_LIVE ? '<div class="sg-acts" style="margin:0 0 4px"><button class="sg-a gold" type="button" data-park="sync">☁️ ' + esc(t('syncB')) + '</button>' +
+      '<button class="sg-a" type="button" data-park="mybus">🚌 ' + esc(t('myBusB')) + '</button></div>' : '') +
+    '<div class="sg-h3">' + esc(t('parkT')) + '</div><div class="sg-card"><div class="sg-row" style="cursor:default"><span class="sg-ric">' + GI.park + '</span>' +
     '<span class="sg-rt"><b>' + esc(pk ? t('myCar') : t('noPark')) + '</b>' + (pk ? '<small>' + esc(new Date(pk.t).toLocaleString()) + '</small>' : '') + '</span>' +
     '<span class="sg-rd">' + dLabel(d) + '</span></div><div class="sg-rb" style="padding-left:12px">' +
     (pk ? '<button class="sg-a cta" type="button" data-park="walk">' + GI.go + esc(t('walkThere')) + '</button>' : '') +

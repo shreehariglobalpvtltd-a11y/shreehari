@@ -72,7 +72,35 @@ var TX = {
   listen: { ne: 'सुन्दैछु…', hi: 'सुन रहा हूँ…', en: 'Listening…' },
   ahead: { ne: 'सावधान! करिब {d} अगाडि {k} रिपोर्ट गरिएको छ', hi: 'सावधान! लगभग {d} आगे {k} की रिपोर्ट है', en: 'Caution: {k} reported about {d} ahead' },
   km1: { ne: 'एक किलोमिटर', hi: 'एक किलोमीटर', en: '1 km' }, mtr: { ne: 'मिटर', hi: 'मीटर', en: 'm' },
-  close: { ne: 'बन्द', hi: 'बंद', en: 'Close' }
+  close: { ne: 'बन्द', hi: 'बंद', en: 'Close' },
+  syncT: { ne: 'फोन र कम्प्युटरमा sync', hi: 'फ़ोन और कंप्यूटर में sync', en: 'Sync phone and computer' },
+  syncWhat: { ne: 'Saved ठाउँ, घर / काम, यात्रा, पार्किङ र भ्रमण — तपाईंका सबै फोन र कम्प्युटरमा एउटै।', hi: 'Saved जगहें, घर / काम, यात्राएं, पार्किंग और विज़िट — आपके सभी फ़ोन और कंप्यूटर में एक जैसे।', en: 'Saved places, home / work, trips, parking and visits — the same on all your phones and computers.' },
+  syncLogin: { ne: 'WhatsApp मा आउने OTP बाट login गर्नुस्', hi: 'WhatsApp पर आने वाले OTP से login करें', en: 'Log in with the OTP sent on WhatsApp' },
+  syncOn: { ne: 'Sync चालु', hi: 'Sync चालू', en: 'Sync is on' },
+  syncLast: { ne: 'अन्तिम sync {n}', hi: 'आख़िरी sync {n}', en: 'last synced {n}' },
+  syncNow: { ne: 'अहिले sync गर्नुस्', hi: 'अभी sync करें', en: 'Sync now' },
+  synced: { ne: 'Sync भयो ✓', hi: 'Sync हो गया ✓', en: 'Synced ✓' },
+  syncNever: { ne: 'अहिलेसम्म भएको छैन', hi: 'अभी तक नहीं', en: 'not yet' },
+  phone: { ne: 'मोबाइल नम्बर', hi: 'मोबाइल नंबर', en: 'Mobile number' },
+  sendOtp: { ne: 'WhatsApp मा OTP पठाउनुस्', hi: 'WhatsApp पर OTP भेजें', en: 'Send OTP on WhatsApp' },
+  otpSent: { ne: '{p} मा WhatsApp code पठाइयो', hi: '{p} पर WhatsApp code भेजा गया', en: 'WhatsApp code sent to {p}' },
+  otpCode: { ne: 'Code', hi: 'Code', en: 'Code' },
+  verify: { ne: 'Login गर्नुस्', hi: 'Login करें', en: 'Log in' },
+  otpFail: { ne: 'अहिले code पठाउन सकिएन — केही बेरपछि प्रयास गर्नुस्', hi: 'अभी code नहीं भेज पाए — थोड़ी देर बाद कोशिश करें', en: 'Could not send the code now — try again shortly' },
+  badPhone: { ne: '१० अङ्कको मोबाइल नम्बर लेख्नुस्', hi: '10 अंकों का मोबाइल नंबर लिखें', en: 'Enter a 10-digit mobile number' },
+  inIndia: { ne: 'भारत +91', hi: 'भारत +91', en: 'India +91' }, inNepal: { ne: 'नेपाल +977', hi: 'नेपाल +977', en: 'Nepal +977' },
+  myBusT: { ne: 'मेरो बस', hi: 'मेरी बस', en: 'My bus' },
+  pnrPh: { ne: 'PNR (जस्तै SHG-2026-123)', hi: 'PNR (जैसे SHG-2026-123)', en: 'PNR (e.g. SHG-2026-123)' },
+  pnrGo: { ne: 'बस देखाउनुस्', hi: 'बस दिखाएं', en: 'Show my bus' },
+  pnrNo: { ne: 'यो PNR भेटिएन वा तपाईंको login सँग जोडिएको छैन। Ticket बुक गरेको नम्बरबाट OTP login गर्नुस् वा WhatsApp को track link खोल्नुस्।',
+           hi: 'यह PNR नहीं मिला या आपके login से जुड़ा नहीं है। Ticket वाले नंबर से OTP login करें या WhatsApp का track link खोलें।',
+           en: 'This PNR was not found or is not linked to your login. Log in with the number that booked it, or open the track link from WhatsApp.' },
+  pnrLive: { ne: 'लाइभ', hi: 'लाइव', en: 'Live' },
+  pnrStop: { ne: 'तपाईंको स्टप {s} सम्म', hi: 'आपके स्टॉप {s} तक', en: 'to your stop {s}' },
+  pnrLast: { ne: 'अन्तिम थाहा भएको ठाउँ · {n} अघि', hi: 'आख़िरी पता जगह · {n} पहले', en: 'last known place · {n} ago' },
+  pnrOff: { ne: 'बन्द गर्नुस्', hi: 'बंद करें', en: 'Stop' },
+  pnrYour: { ne: 'तपाईंको स्टप', hi: 'आपका स्टॉप', en: 'Your stop' },
+  trackPage: { ne: 'पूरा ट्र्याक', hi: 'पूरा ट्रैक', en: 'Full tracking' }
 };
 /* the owner's list; minutes each lives = NavLive::KINDS on the server */
 var KINDS = [
@@ -231,6 +259,7 @@ function css() {
     '.nl-livepill{background:#E5352B!important;color:#fff!important;border:none!important;font:700 11px Inter,system-ui,sans-serif!important;letter-spacing:.06em}',
     '.nl-bus{cursor:pointer}.nl-bi{display:flex;align-items:center;gap:6px;padding:3px 9px 3px 3px;border-radius:22px;background:rgba(14,24,44,.92);border:2px solid #D4A843;box-shadow:0 4px 12px rgba(0,0,0,.45);color:#EEF2FA;font:600 11.5px Inter,system-ui,sans-serif;white-space:nowrap}',
     '.nl-bi img{width:34px;height:34px;border-radius:50%;object-fit:cover;background:#fff}',
+    '.nl-bi.nl-mine{border-color:#E8652E;background:#E8652E;box-shadow:0 0 0 6px rgba(232,101,46,.28),0 4px 12px rgba(0,0,0,.45)}',
     '.nl-rep{cursor:pointer}.nl-ri{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:19px;background:#fff;border:2px solid #E8652E;box-shadow:0 3px 10px rgba(0,0,0,.4)}',
     '.nl-puck{width:26px;height:26px;border-radius:50%;background:#2F80ED;border:3px solid #fff;box-shadow:0 0 0 8px rgba(47,128,237,.25),0 3px 10px rgba(0,0,0,.4);position:relative}',
     '.nl-puck i{position:absolute;left:50%;top:-11px;margin-left:-6px;border:6px solid transparent;border-bottom:9px solid #2F80ED;transform-origin:6px 24px}',
@@ -571,6 +600,199 @@ function repSay(r, ah) {
 }
 
 /* ---------------------------------------------------------------------
+   D · DEVICE SYNC  (saved places, home / work, trips, parking, visits)
+   Items are diffed against what was last synced (shg:nl:syncSnap): a
+   change or a removal goes up with t = now, the merged document comes
+   back and is written to this phone. A failed push stays a difference, so
+   the next run (2 min, back online, after login) sends it - that is the
+   offline queue. Trips and visits are append-only: a full "clear" goes
+   up as clear:<list>, an old entry trimmed off the end is not a delete.
+--------------------------------------------------------------------- */
+var SY = { st: null, busy: false, at: LSg.get('shg:nl:syncAt', 0) };
+var CS = { tok: null, at: 0 };
+function csrf(force) {
+  if (!force && CS.tok && Date.now() - CS.at < 10 * 60e3) return Promise.resolve(CS.tok);
+  return api('/api/csrf.php').then(function (d) { CS.tok = d.csrf; CS.at = Date.now(); return CS.tok; });
+}
+function postC(url, body) {
+  function once(force) {
+    return csrf(force).then(function (tok) {
+      return X.fetchT(url, { method: 'POST', credentials: 'same-origin', cache: 'no-store', body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': tok || '', 'X-SHG-Dev': dev() } }, 15000);
+    });
+  }
+  return once(false).then(function (r) { return r.status === 419 || r.status === 403 ? once(true) : r; }).then(function (r) {
+    return r.json().catch(function () { return null; }).then(function (j) {
+      if (!j || !j.ok) { var e = new Error((j && (j.message || j.error)) || 'http ' + r.status); e.status = r.status; throw e; }
+      return j.data;
+    });
+  });
+}
+function hashS(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+var LISTS = { trip: 'shg:nm:trips', visit: 'shg:ng:visits' };
+function localItems() {
+  var out = {};
+  ['home', 'work'].forEach(function (k) { var v = LSg.get('shg:nm:' + k, null); if (v && v.lat != null) out[k] = v; });
+  var pk = LSg.get('shg:ng:park', null); if (pk && pk.lat != null) out.park = pk;
+  (LSg.get('shg:nm:saved', []) || []).forEach(function (p) { if (p && p.lat != null) out['place:' + (+p.lat).toFixed(5) + ',' + (+p.lng).toFixed(5)] = p; });
+  Object.keys(LISTS).forEach(function (k) { (LSg.get(LISTS[k], []) || []).forEach(function (x) { if (x && x.t) out[k + ':' + x.t] = x; }); });
+  return out;
+}
+function applyItems(items) {
+  ['home', 'work'].forEach(function (k) { var it = items[k]; if (it) LSg.set('shg:nm:' + k, it.del ? null : it.v); });
+  if (items.park) LSg.set('shg:ng:park', items.park.del ? null : items.park.v);
+  var places = [], lists = { trip: [], visit: [] };
+  Object.keys(items).forEach(function (k) {
+    var it = items[k], pre = k.split(':')[0];
+    if (it.del || it.v == null) return;
+    if (pre === 'place') places.push(it);
+    else if (lists[pre]) { var cl = items['clear:' + pre]; if (!cl || it.t > cl.t) lists[pre].push(it.v); }
+  });
+  places.sort(function (a, b) { return b.t - a.t; });
+  LSg.set('shg:nm:saved', places.slice(0, 50).map(function (it) { return it.v; }));
+  Object.keys(lists).forEach(function (pre) {
+    LSg.set(LISTS[pre], lists[pre].sort(function (a, b) { return b.t - a.t; }).slice(0, 100));
+  });
+  var snap = {}, loc = localItems();
+  Object.keys(loc).forEach(function (k) { snap[k] = hashS(JSON.stringify(loc[k])); });
+  LSg.set('shg:nl:syncSnap', snap);
+  if (X.homeChips && X.S.level === 'home') { try { X.homeChips(); } catch (e) {} }
+}
+function syncRun() {
+  if (!SY.st || !SY.st.signedIn || SY.busy || navigator.onLine === false) return Promise.resolve(false);
+  var loc = localItems(), snap = LSg.get('shg:nl:syncSnap', {}), now = Date.now(), up = {};
+  Object.keys(loc).forEach(function (k) { if (snap[k] !== hashS(JSON.stringify(loc[k]))) up[k] = { t: now, v: loc[k] }; });
+  Object.keys(snap).forEach(function (k) {
+    if (k in loc) return;
+    var pre = k.split(':')[0];
+    if (LISTS[pre]) { if (!(LSg.get(LISTS[pre], []) || []).length) up['clear:' + pre] = { t: now, v: 1 }; }
+    else up[k] = { t: now, del: true };
+  });
+  SY.busy = true;
+  return postC('/api/nav-sync.php', { items: up }).then(function (d) {
+    if (d && d.signedIn === false) { SY.st = { signedIn: false }; return false; }
+    applyItems(d.items || {});
+    SY.at = Date.now(); LSg.set('shg:nl:syncAt', SY.at);
+    return true;
+  }).catch(function () { return false; }).then(function (ok) { SY.busy = false; return ok; });
+}
+function syncStatus() {
+  return api('/api/nav-sync.php').then(function (d) { SY.st = d; return d; }).catch(function () { return SY.st; });
+}
+function openSync() {
+  var st = SY.st;
+  if (!st) { syncStatus().then(function () { openSync(); }); return; }
+  if (st.signedIn) {
+    var el = sheet('<h3>☁️ ' + esc(t('syncOn')) + '</h3><p style="color:var(--text,#EEF2FA)">' + esc(st.name || '') + (st.phone ? ' · ' + esc(st.phone) : '') + '</p>' +
+      '<p>' + esc(t('syncWhat')) + '</p><p style="font-size:12.5px">' + esc(t('syncLast', { n: SY.at ? ago(SY.at) + ' ' + (lang() === 'en' ? 'ago' : lang() === 'hi' ? 'पहले' : 'अघि') : t('syncNever') })) + '</p>' +
+      '<div class="nl-acts"><button class="nl-b cta" type="button" data-y>' + esc(t('syncNow')) + '</button></div>');
+    el.querySelector('[data-y]').onclick = function () {
+      syncRun().then(function (ok) { X.toast(ok ? t('synced') : t('failed')); if (ok && SHT.open) openSync(); });
+    };
+    return;
+  }
+  var cc = LSg.get('shg:nl:cc', X.S.lang === 'ne' ? 'NP' : 'IN');
+  var el2 = sheet('<h3>☁️ ' + esc(t('syncT')) + '</h3><p>' + esc(t('syncWhat')) + '</p><p style="color:var(--text,#EEF2FA)">' + esc(t('syncLogin')) + '</p>' +
+    '<div class="nl-acts" style="margin-top:0"><button class="nl-b' + (cc === 'IN' ? ' cta' : '') + '" type="button" data-cc="IN">' + esc(t('inIndia')) + '</button>' +
+    '<button class="nl-b' + (cc === 'NP' ? ' cta' : '') + '" type="button" data-cc="NP">' + esc(t('inNepal')) + '</button></div>' +
+    '<input class="nl-url" id="nlPhone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="10" placeholder="' + esc(t('phone')) + '" style="margin-top:10px;font-size:16px">' +
+    '<div class="nl-acts"><button class="nl-b wa" type="button" data-send>' + esc(t('sendOtp')) + '</button></div>' +
+    '<div id="nlOtp" hidden><p id="nlOtpMsg"></p><input class="nl-url" id="nlCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="' + esc(t('otpCode')) + '" style="font-size:18px;letter-spacing:.3em">' +
+    '<div class="nl-acts"><button class="nl-b cta" type="button" data-verify>' + esc(t('verify')) + '</button></div></div>');
+  el2.querySelectorAll('[data-cc]').forEach(function (b) {
+    b.onclick = function () { cc = b.dataset.cc; LSg.set('shg:nl:cc', cc); el2.querySelectorAll('[data-cc]').forEach(function (x) { x.classList.toggle('cta', x === b); }); };
+  });
+  var phone = '';
+  el2.querySelector('[data-send]').onclick = function () {
+    var btn = this; phone = ($('#nlPhone').value || '').replace(/\D/g, '');
+    if (!/^\d{10}$/.test(phone)) { X.toast(t('badPhone')); return; }
+    btn.disabled = true;
+    postC('/api/otp.php', { action: 'request', phone: phone, purpose: 'login', country: cc }).then(function (d) {
+      if (d && d.sent === false) throw new Error('not sent');
+      $('#nlOtp').hidden = false; $('#nlOtpMsg').textContent = t('otpSent', { p: (cc === 'NP' ? '+977 ' : '+91 ') + phone });
+      try { $('#nlCode').focus(); } catch (e) {}
+      setTimeout(function () { btn.disabled = false; }, 30000);
+    }).catch(function (e) { btn.disabled = false; X.toast(e && e.message && !/^http|not sent/.test(e.message) ? e.message : t('otpFail'), 4000); });
+  };
+  el2.querySelector('[data-verify]').onclick = function () {
+    var btn = this, code = ($('#nlCode').value || '').replace(/\D/g, '');
+    if (code.length < 4) return;
+    btn.disabled = true;
+    postC('/api/otp.php', { action: 'verify', phone: phone, code: code, purpose: 'login', country: cc }).then(function () {
+      CS.tok = null;                                   /* a fresh session: a fresh token */
+      return syncStatus();
+    }).then(function () {
+      return syncRun();
+    }).then(function (ok) {
+      X.toast(ok ? t('synced') : t('failed')); openSync();
+      if (MB.want) { var w = MB.want; MB.want = null; myBus(w.pnr, w.k); }
+    }).catch(function (e) { btn.disabled = false; X.toast((e && e.message && !/^http/.test(e.message)) ? e.message : t('failed'), 4000); });
+  };
+}
+
+/* ---------------------------------------------------------------------
+   E · MY BUS (PNR) - the same door as track.php (WhereIs::authorised):
+   the track link's key, or a login that owns the booking
+--------------------------------------------------------------------- */
+var MB = { pnr: '', k: '', timer: 0, m: null, st: null, want: null };
+function openMyBus() {
+  var saved = LSg.get('shg:nl:mybus', null), st = MB.st;
+  var el = sheet('<h3><img src="/assets/img/bus-shg-sm.webp" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;background:#fff">' + esc(t('myBusT')) + '</h3>' +
+    (st ? myBusHtml(st) : '') +
+    '<input class="nl-url" id="nlPnr" type="text" autocapitalize="characters" spellcheck="false" maxlength="40" placeholder="' + esc(t('pnrPh')) + '" value="' + esc(MB.pnr || (saved && saved.pnr) || '') + '" style="margin-top:8px;font-size:16px">' +
+    '<div class="nl-acts"><button class="nl-b cta" type="button" data-go>' + esc(t('pnrGo')) + '</button>' +
+    (MB.pnr ? '<a class="nl-b" href="/track.php?pnr=' + encodeURIComponent(MB.pnr) + (MB.k ? '&k=' + encodeURIComponent(MB.k) : '') + '">' + esc(t('trackPage')) + '</a><button class="nl-b red" type="button" data-off>' + esc(t('pnrOff')) + '</button>' : '') + '</div>');
+  el.querySelector('[data-go]').onclick = function () {
+    var p = ($('#nlPnr').value || '').trim().toUpperCase();
+    if (p) myBus(p, p === MB.pnr ? MB.k : (saved && saved.pnr === p ? saved.k : ''));
+  };
+  var off2 = el.querySelector('[data-off]'); if (off2) off2.onclick = function () { myBusOff(); sheetClose(); };
+}
+function myBusHtml(d) {
+  var line = d.live && d.etaMin != null ? '🟢 ' + t('pnrLive') + ' · ' + t('pnrStop', { s: d.stop || '' }) + ' ' + d.etaMin + ' ' + t('min') + (d.km != null ? ' · ' + d.km + ' km' : '')
+           : d.lastKnown && d.fixAge != null ? t('pnrLast', { n: ago(Date.now() - d.fixAge * 1000) })
+           : d.stop ? t('pnrYour') + ': ' + d.stop + (d.stopTime ? ' · ' + d.stopTime : '') : '';
+  return '<p style="color:var(--text,#EEF2FA);font-size:15px;margin-bottom:2px">' + esc(d.pnr || MB.pnr) + (d.label ? ' · ' + esc(d.label) : '') + '</p>' + (line ? '<p>' + esc(line) + '</p>' : '');
+}
+function myBus(pnr, k) {
+  MB.pnr = pnr; MB.k = k || ''; LSg.set('shg:nl:mybus', { pnr: MB.pnr, k: MB.k });
+  clearInterval(MB.timer);
+  myBusTick(true);
+  MB.timer = setInterval(function () { myBusTick(false); }, 20000);
+}
+function myBusOff() {
+  clearInterval(MB.timer); MB.timer = 0; MB.pnr = ''; MB.k = ''; MB.st = null; LSg.set('shg:nl:mybus', null);
+  if (MB.m) { MB.m.remove(); MB.m = null; }
+}
+function myBusTick(first) {
+  if (!MB.pnr) return;
+  X.fetchT('/api/whereis.php?pnr=' + encodeURIComponent(MB.pnr) + '&k=' + encodeURIComponent(MB.k), { credentials: 'same-origin', cache: 'no-store' }, 12000)
+    .then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
+    .then(function (x) {
+      if (!x.j || !x.j.ok) {
+        if (first) {
+          var keep = { pnr: MB.pnr, k: MB.k };
+          myBusOff();
+          var el = sheet('<h3>' + esc(t('myBusT')) + '</h3><p>' + esc(t('pnrNo')) + '</p><div class="nl-acts"><button class="nl-b wa" type="button" data-l>' + esc(t('syncLogin')) + '</button></div>');
+          el.querySelector('[data-l]').onclick = function () { MB.want = keep; SY.st = { signedIn: false }; openSync(); };
+        } else if (x.s === 404) myBusOff();                /* no longer this phone's to see: stop asking */
+        return;
+      }
+      var d = MB.st = x.j.data, m = X.S.map;
+      if (m && window.maplibregl && d.lat != null && d.lng != null) {
+        if (!MB.m) {
+          var el2 = wrapM('<img src="/assets/img/bus-shg-sm.webp" alt="S Hari Global"><span>' + esc(t('myBusT')) + '</span>', 'nl-bi nl-mine');
+          el2.className = 'nl-bus';
+          el2.addEventListener('click', function (e) { e.stopPropagation(); openMyBus(); });
+          MB.m = new maplibregl.Marker({ element: el2, anchor: 'left' }).setLngLat([d.lng, d.lat]).addTo(m);
+        } else moveMarker(MB.m, [d.lng, d.lat]);
+        if (first) m.flyTo({ center: [d.lng, d.lat], zoom: Math.max(m.getZoom(), 11), duration: slow() ? 0 : 1200 });
+      }
+      if (first || (SHT.open && $('#nlPnr'))) openMyBus();
+    }).catch(function () { if (first) X.toast(t('failed')); });
+}
+
+/* ---------------------------------------------------------------------
    PAGE WIRING
 --------------------------------------------------------------------- */
 function toggle(k) {
@@ -605,9 +827,16 @@ function hooks() {
     if (a) a.onclick = function () { if (X.closeModal) X.closeModal(); if (SH) shareSheet(); else shareStart(); };
     if (b) b.onclick = function () { if (X.closeModal) X.closeModal(); repPick(); };
   });
-  H('layersHtml', function () { return '<h3 style="margin-top:20px">' + esc(t('liveH')) + '</h3>' + tg('bus', BUS.on, t('busL')) + tg('rep', REP.on, t('repL')); });
+  H('layersHtml', function () {
+    return '<h3 style="margin-top:20px">' + esc(t('liveH')) + '</h3>' + tg('bus', BUS.on, t('busL')) + tg('rep', REP.on, t('repL')) +
+      '<button class="tg" type="button" data-nlo="bus" style="width:100%;text-align:left"><span>🚌 ' + esc(t('myBusT')) + ' (PNR)</span></button>' +
+      '<button class="tg" type="button" data-nlo="sync" style="width:100%;text-align:left"><span>☁️ ' + esc(t('syncT')) + '</span></button>';
+  });
   H('layersBind', function (rerender) {
     document.querySelectorAll('#modalCard [data-nl]').forEach(function (b) { b.onclick = function () { toggle(b.dataset.nl); if (rerender) rerender(); }; });
+    document.querySelectorAll('#modalCard [data-nlo]').forEach(function (b) {
+      b.onclick = function () { if (X.closeModal) X.closeModal(); if (b.dataset.nlo === 'bus') openMyBus(); else openSync(); };
+    });
   });
   H('styleLoad', function () { if (FW) setTimeout(followLayers, 0); });
 }
@@ -640,7 +869,18 @@ function start() {
     if (ft && /^[a-f0-9]{32}$/.test(ft)) follow(ft);
     busStart();
     if (REP.on && !FW) { on('rep', repLive); repLoad(); }
+    /* my bus: a track link (?pnr=&k=) opens it; a PNR asked for before keeps showing quietly */
+    var qp = QS.get('pnr'), mb = LSg.get('shg:nl:mybus', null);
+    if (qp && !FW) myBus(qp.trim().toUpperCase(), QS.get('k') || '');
+    else if (mb && mb.pnr && !FW) { MB.pnr = mb.pnr; MB.k = mb.k || ''; myBusTick(false); MB.timer = setInterval(function () { myBusTick(false); }, 20000); }
   };
+  if (!ft) {                                           /* a follow page is someone else's trip: no sync there */
+    syncStatus().then(function (st) { if (st && st.signedIn) syncRun(); });
+    setInterval(syncRun, 120000);
+    addEventListener('online', function () { syncRun(); });
+    document.addEventListener('visibilitychange', function () { if (document.hidden) syncRun(); });
+  }
+  window.SHGNAV_LIVE = { openSync: openSync, openMyBus: openMyBus };
   (function waitMap(n) { if (X.S.map || n > 60) ready(); else setTimeout(function () { waitMap(n + 1); }, 300); })(0);   /* DOM markers need the map, not its style */
   /* reports follow the rider: a new list after 10 km or 5 minutes */
   setInterval(function () {
@@ -648,7 +888,8 @@ function start() {
     var h = here();
     if (h && (!REP.at || X.hav(h, REP.at) > 10000 || Date.now() - REP.atT > 300000)) repLoad();
   }, 30000);
-  if (QS.has('debug')) window.SHGLIVE = { LC: LC, SH: function () { return SH; }, BUS: BUS, REP: REP, FW: function () { return FW; }, repAdd: repAdd, shareStart: shareStart, enc: enc, dec: dec };
+  if (QS.has('debug')) window.SHGLIVE = { LC: LC, SH: function () { return SH; }, BUS: BUS, REP: REP, FW: function () { return FW; }, repAdd: repAdd, shareStart: shareStart, enc: enc, dec: dec,
+    SY: SY, MB: MB, syncRun: syncRun, localItems: localItems, myBus: myBus };
 }
 if (window.SHGNAV_X) start(); else document.addEventListener('shgnav:ready', start, { once: true });
 })();
