@@ -472,7 +472,7 @@ document.addEventListener('click', function (e) {
    is visible. No fix = no coach drawn: one honest line instead.
 ================================================================ */
 (function homeLiveBuses() {
-  var box = document.getElementById('homeLive');
+  var box = document.getElementById('shgLiveBuses');   /* NOT #homeLive: that is the live-tracking section (hd.css) */
   if (!box || typeof fetch !== 'function') return;
   var timer = 0, seen = false, last = null;
   function ago(s) {
