@@ -26,6 +26,15 @@
  * Any change needs POST + CSRF + a super-admin or a manager. The photo is
  * printed as a data: URI into this page only — it is never a file on an
  * open URL.
+ *
+ * 22 Oct 2026 (review, #18): a Pvt. Ltd. partner's company logo from the
+ * public form is shown in the application like the photo (to a manager
+ * only), and the card preview shows it the way the home page does. A logo
+ * has no "show" switch of its own — an approved, live partner's logo is
+ * public at once — so approving a partner with a logo (Save with status
+ * Approved, or "Approve & put live") is refused until the office picks
+ * "Show this logo" or "Remove it" next to the picture. The Website card
+ * can remove it later ("Remove the logo").
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
@@ -40,6 +49,29 @@ $h       = static fn($v): string => Security::e((string) ($v ?? ''));
 $tab     = (string) ($_GET['tab'] ?? 'apps') === 'agents' ? 'agents' : 'apps';
 $flash   = null;
 $ready   = AgentApplications::available();
+
+// 22 Oct 2026 (review, #18): a partner's logo goes public with the approval (agent-photo.php serves it for every
+// approved, live partner; there is no "show logo" column), so the office decides on it next to the picture first.
+$logoOf = static fn(?array $a): string => $a !== null && (string) ($a['type'] ?? '') === 'org' && is_string($a['logo'] ?? null)
+    && str_starts_with((string) $a['logo'], 'data:image/') && AgentApplications::logoReady() ? (string) $a['logo'] : '';
+$logoDrop = static function (array $app, string $why) use ($selfId): void {
+    Database::update('agent_applications', ['logo' => null, 'reviewed_by' => $selfId > 0 ? $selfId : null, 'reviewed_at' => date('Y-m-d H:i:s')],
+        'id = :id', ['id' => (int) $app['id']]);
+    Logger::audit('agreement_app.logo', 'agent_application', (string) ($app['ref'] ?: AgentApplications::refFor((int) $app['id'])),
+        ['logo' => 'sent'], ['logo' => 'removed'], $why . ' — agreements dashboard (by admin #' . $selfId . ')');
+};
+$logoDecide = static function (array $app, string $why) use ($selfId, $logoDrop): void {
+    $choice = (string) ($_POST['logo_ok'] ?? '');
+    if ($choice !== '1' && $choice !== '0') {
+        throw new AgreementError('This partner sent a company logo, and approving puts it on the website. Look at the logo, choose “Show this logo on the website” or “Remove it”, then approve again. Nothing was changed.');
+    }
+    if ($choice === '0') {
+        $logoDrop($app, $why);
+        return;
+    }
+    Logger::audit('agreement_app.logo', 'agent_application', (string) ($app['ref'] ?: AgentApplications::refFor((int) $app['id'])),
+        null, ['logo' => 'shown'], $why . ' — agreements dashboard (by admin #' . $selfId . ')');
+};
 
 /* ---------- actions (POST + CSRF + super-admin / manager) ---------- */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -65,6 +97,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
                 if (array_key_exists('admin_id', $_POST)) {
                     $in['admin_id'] = (int) $_POST['admin_id'];
+                }
+                // 22 Oct 2026 (review, #18): approving a partner publishes its logo - only once the office chose.
+                $was = AgentApplications::find($id);
+                if ($was !== null && $in['status'] === 'approved' && (string) $was['status'] !== 'approved' && $logoOf($was) !== '') {
+                    $logoDecide($was, 'approved');
                 }
                 $changed = AgentApplications::update($id, $in, $selfId);
                 Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=' . ($changed === [] ? '0' : '1') . '#detail');
@@ -107,9 +144,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
                 $id = (int) ($_POST['id'] ?? 0);
                 $changed = AgentApplications::saveCard($id, $in, $selfId, $canKyc);
+                // 22 Oct 2026 (review, #18): the office can take a partner's logo off (a new file replaces it instead).
+                if ($logo === null && isset($_POST['logo_remove'])) {
+                    $cur = AgentApplications::find($id);
+                    if ($cur !== null && $logoOf($cur) !== '') {
+                        $logoDrop($cur, 'website card');
+                        $changed[] = 'logo';
+                    }
+                }
                 Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=' . ($changed === [] ? '0' : '1') . '#web');
             } elseif ($act === 'golive') {
                 $id = (int) ($_POST['id'] ?? 0);
+                // 22 Oct 2026 (review, #18): the button puts a partner's logo live too - the office chooses first.
+                $was = AgentApplications::find($id);
+                if ($was !== null && !AgentApplications::isLive($was) && $logoOf($was) !== '') {
+                    $logoDecide($was, (string) $was['status'] === 'approved' ? 'put live' : 'approved & put live');
+                }
                 AgentApplications::update($id, ['status' => 'approved'], $selfId);
                 AgentApplications::saveCard($id, ['web_live' => 1], $selfId, false);
                 Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=1#web');
@@ -270,7 +320,13 @@ if (!$ready) {
 .agr-card-prev{display:flex;gap:12px;align-items:center;max-width:420px;padding:10px 12px;border-radius:16px;color:#fff;background:linear-gradient(140deg,#0a2a8f,#1f4fe0 60%,#2f6bff)}
 .agr-card-prev img,.agr-card-prev .agr-ini{flex:0 0 52px;width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid #fff;background:#fff;display:grid;place-items:center;font-weight:900;color:#0a2a8f}
 .agr-card-prev .muted{color:#dbe5ff}
-@media(max-width:560px){.agr-photo,.agr-nophoto{width:108px;height:134px}.kv-list{grid-template-columns:1fr}.kv-list dt{margin-top:6px}.agr-mini{min-height:44px}}
+.agr-card-prev img.agr-card-logo{object-fit:contain;padding:3px}
+/* 22 Oct 2026 (review, #18): the partner's logo, reviewed like the photo */
+.agr-logo-box{margin:0;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--mut)}
+.agr-logo{width:164px;height:164px;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:#fff;padding:6px}
+.agr-logo-pick{display:flex;gap:6px 18px;align-items:center;flex-wrap:wrap}
+.agr-logo-sm{width:64px;height:64px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#fff;padding:3px}
+@media(max-width:560px){.agr-photo,.agr-nophoto{width:108px;height:134px}.agr-logo{width:134px;height:134px}.kv-list{grid-template-columns:1fr}.kv-list dt{margin-top:6px}.agr-mini{min-height:44px}}
 </style>
 
 <?php $n = static fn(int $c, string $one, string $many): string => $c . ' ' . ($c === 1 ? $one : $many); ?>
@@ -292,6 +348,8 @@ if (!$ready) {
 <?php if ($open !== null):
     $f = is_array($open['fields'] ?? null) ? $open['fields'] : [];
     $isOrg = (string) $open['type'] === 'org';
+    $openLogo = $logoOf($open);   // 22 Oct 2026 (review, #18)
+    $openApproved = (string) $open['status'] === 'approved';
     $phoneDigits = preg_replace('/\D/', '', (string) $open['phone']) ?? '';
     // India and Nepal mobiles are both 10 digits, so the country comes from
     // what the person typed (+91 / +977). Not typed = offer both.
@@ -330,6 +388,13 @@ if (!$ready) {
       <?php else: ?>
         <div class="agr-nophoto">No photo sent — take one at the office</div>
       <?php endif; ?>
+      <?php if ($openLogo !== ''): /* 22 Oct 2026 (review, #18): the partner's logo, like the photo */ ?>
+        <?php if ($canKyc): ?>
+        <figure class="agr-logo-box"><img class="agr-logo" src="<?= $h($openLogo) ?>" alt="Company logo of <?= $h($open['name']) ?>"><figcaption>🏢 Company logo</figcaption></figure>
+        <?php else: ?>
+        <div class="agr-nophoto">Company logo sent — shown to a manager only</div>
+        <?php endif; ?>
+      <?php endif; ?>
       <dl class="kv-list">
         <dt>Kind</dt><dd><?= $isOrg ? '🏢 Organization partner' : '👤 Individual agent' ?></dd>
         <dt>Mobile</dt><dd class="mono"><a href="tel:<?= $h($telHref) ?>"><?= $h($open['phone']) ?></a><?php foreach ($waLinks as [$waUrl, $waLabel]): ?> · <a href="<?= $h($waUrl) ?>" target="_blank" rel="noopener"><?= $h($waLabel) ?></a><?php endforeach; ?><?php if (!empty($open['phone_raw']) && preg_replace('/\D/', '', (string) $open['phone_raw']) !== $phoneDigits): ?> <span class="muted text-xs">(typed: <?= $h($open['phone_raw']) ?>)</span><?php endif; ?><?= (int) ($open['phone_verified'] ?? 0) === 1 ? ' <span style="color:var(--ok,#0f9d6b);font-weight:800" title="The applicant sent hi VERIFY from this number on WhatsApp (22 Oct 2026)">✓ WhatsApp verified</span>' : '' ?></dd>
@@ -358,6 +423,9 @@ if (!$ready) {
         <?php endif; ?>
         <dt>Sent on</dt><dd><?= $h(date('d M Y, H:i', (int) strtotime((string) $open['created_at']))) ?> · form in <?= $h(['ne' => 'Nepali', 'hi' => 'Hindi', 'en' => 'English'][(string) $open['lang']] ?? $open['lang']) ?></dd>
         <dt>Public list</dt><dd><?= (int) $open['public_ok'] === 1 ? 'Agreed — the full phone may be shown once approved' : 'Not agreed — the phone is shown masked (98•••••123) once approved' ?></dd>
+        <?php if ($openLogo !== ''): /* 22 Oct 2026 (review, #18) */ ?>
+        <dt>Company logo</dt><dd><?php if (!$openApproved): ?><b>Goes on the website when approved</b> — on the home page's “Partner companies” card and on the ID card. Approving asks you to choose “Show this logo” or “Remove it” (below).<?php elseif (AgentApplications::isLive($open)): ?><b>On the website now</b> — the home page's “Partner companies” card and the ID card. To take it off, tick “Remove the logo” under Website card.<?php else: ?>Approved, but “Live on website” is off — shown again once it is on. To keep it off for good, tick “Remove the logo” under Website card.<?php endif; ?></dd>
+        <?php endif; ?>
         <dt>KYC · agreement</dt><dd><?= $kycPill((string) $open['kyc_status']) ?> <?= $agrPill((string) $open['agreement_status'], $open['agreement_end'] ?? null) ?></dd>
         <?php if (!empty($open['agreement_signed_at'])): ?><dt>Signed · ends</dt><dd><?= $h($fmtDate($open['agreement_signed_at'])) ?> → <?= $h($fmtDate($open['agreement_end'])) ?></dd><?php endif; ?>
         <dt>Agent account</dt><dd><?php if (!empty($open['admin_id'])): ?><a href="agent-360.php?agent=<?= (int) $open['admin_id'] ?>">Open Agent 360 (#<?= (int) $open['admin_id'] ?>)</a> · <span class="muted">team portal: /team/ with mobile + password</span><?php else: ?><span class="muted">Not linked yet</span>
@@ -422,6 +490,13 @@ if (!$ready) {
             <span class="help">Make the account on <a href="staff.php#addStaff">Staff &amp; Agents</a> first, then pick it here. The person's public-list choices carry over only to an account with the same mobile (← same phone).</span></div>
           <div class="field" style="grid-column:1/-1"><label for="agrNote">Office note</label>
             <input id="agrNote" name="note" class="inp" maxlength="255" value="<?= $h($open['note'] ?? '') ?>" placeholder="e.g. called on 28 Sep, coming Monday with the original citizenship"></div>
+          <?php if ($openLogo !== '' && !$openApproved): /* 22 Oct 2026 (review, #18): nothing is chosen for the office */ ?>
+          <div class="field" style="grid-column:1/-1" role="radiogroup" aria-labelledby="agrLogoLbl"><label id="agrLogoLbl">Company logo — choose before you approve</label>
+            <div class="agr-logo-pick"><img class="agr-logo-sm" src="<?= $h($openLogo) ?>" alt="Company logo of <?= $h($open['name']) ?>">
+              <label class="agr-check"><input type="radio" name="logo_ok" value="1"> ✅ Show this logo on the website</label>
+              <label class="agr-check"><input type="radio" name="logo_ok" value="0"> 🗑 Remove it</label></div>
+            <span class="help">Approved = this logo goes on the home page's partner card and the ID card. Removed = the card shows the photo or the first letter. Needed only when the status is set to Approved.</span></div>
+          <?php endif; ?>
         </div>
         <div class="form-actions" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn" type="submit"><svg class="a-ic"><use href="#a-check"/></svg>Save</button>
@@ -444,12 +519,12 @@ if (!$ready) {
     <span style="margin-left:auto"><?= $isLive ? '<span class="pill st-ok">🟢 LIVE on website</span>' : '<span class="pill st-muted">⚪ Not on website</span>' ?></span></h2>
   <div class="panel-body" style="padding:16px 18px">
     <div class="agr-card-prev">
-      <?php if (!empty($open['photo']) && (int) ($open['web_photo'] ?? 0) === 1): ?><img src="<?= $h($open['photo']) ?>" alt=""><?php else: ?><span class="agr-ini"><?= $h(mb_strtoupper(mb_substr(trim((string) $open['name']), 0, 1, 'UTF-8'), 'UTF-8')) ?></span><?php endif; ?>
+      <?php if ($openLogo !== ''): /* 22 Oct 2026 (review, #18): a partner card shows the logo first, as on the home page */ ?><?= $canKyc ? '<img class="agr-card-logo" src="' . $h($openLogo) . '" alt="">' : '<span class="agr-ini" title="Company logo — shown to a manager only">🏢</span>' ?><?php elseif (!empty($open['photo']) && (int) ($open['web_photo'] ?? 0) === 1): ?><img src="<?= $h($open['photo']) ?>" alt=""><?php else: ?><span class="agr-ini"><?= $h(mb_strtoupper(mb_substr(trim((string) $open['name']), 0, 1, 'UTF-8'), 'UTF-8')) ?></span><?php endif; ?>
       <div style="min-width:0;flex:1"><b><?= $h($open['name']) ?></b>
         <div class="muted text-xs"><?= $h(trim(($open['area'] ?? '') . (!empty($open['web_addr']) ? ' · ' . $open['web_addr'] : ''), ' ·') ?: '—') ?></div>
         <div class="muted text-xs mono"><?= (int) $open['public_ok'] === 1 ? $h($open['phone']) . ' · WhatsApp + call buttons' : $h(AgentApplications::maskPhone((string) $open['phone'])) . ' · number hidden' ?></div></div>
     </div>
-    <p class="muted text-xs" style="margin:8px 0 0"><?php if ($isLive): ?>This is how the card looks on the home page (“Our agents”) and on /agreements/.<?php elseif ((string) $open['status'] !== 'approved'): ?>Goes on the website once the status is <b>Approved</b> and “Live on website” is ticked.<?php else: ?>Approved, but “Live on website” is off — hidden from the public list.<?php endif; ?>
+    <p class="muted text-xs" style="margin:8px 0 0"><?php if ($isLive): ?>This is how the card looks on the home page (<?= $isOrg ? '“Partner companies”' : '“Our agents”' ?>) and on /agreements/.<?php elseif ((string) $open['status'] !== 'approved'): ?>Goes on the website once the status is <b>Approved</b> and “Live on website” is ticked.<?= $openLogo !== '' ? ' The logo goes with it only if you choose “Show this logo” when you approve.' : '' ?><?php else: ?>Approved, but “Live on website” is off — hidden from the public list.<?php endif; ?>
       <?php foreach ($waLinks as [$waUrl, $waLabel]): ?> · <a href="<?= $h($waUrl . '?text=' . $waText) ?>" target="_blank" rel="noopener">💬 <?= $h($waLabel) ?> message</a><?php endforeach; ?></p>
     <?php if ($canEdit && (string) $open['status'] === 'approved' && !empty($open['ref'])): /* 22 Oct 2026: team portal ID card */ ?>
     <p style="margin:10px 0 0"><a class="btn sm" href="id-card.php?ref=<?= $h($open['ref']) ?>">🪪 Print <?= (string) $open['type'] === 'org' ? 'partner' : 'agent' ?> ID card</a></p>
@@ -459,6 +534,11 @@ if (!$ready) {
     <?php if (!$isLive): ?>
     <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" style="margin:12px 0 0">
       <?= $csrfField ?><input type="hidden" name="action" value="golive"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
+      <?php if ($openLogo !== ''): /* 22 Oct 2026 (review, #18): the logo goes live with the card - nothing is chosen for the office */ ?>
+      <div class="agr-logo-pick" role="radiogroup" aria-label="Company logo" style="margin-bottom:8px"><img class="agr-logo-sm" src="<?= $h($openLogo) ?>" alt="Company logo of <?= $h($open['name']) ?>">
+        <label class="agr-check"><input type="radio" name="logo_ok" value="1"> ✅ Show this logo on the website</label>
+        <label class="agr-check"><input type="radio" name="logo_ok" value="0"> 🗑 Remove it</label></div>
+      <?php endif; ?>
       <button class="btn" type="submit" style="background:#0f9d6b;border-color:#0f9d6b">✅ Approve &amp; put live on website</button>
     </form>
     <?php endif; ?>
@@ -474,7 +554,11 @@ if (!$ready) {
         <div class="field"><label for="cEmail">Email</label><input id="cEmail" name="email" class="inp" type="email" maxlength="160" value="<?= $h($open['email'] ?? '') ?>"></div>
         <div class="field"><label for="cPhoto">New photo</label><input id="cPhoto" name="photo" class="inp" type="file" accept="image/*"><span class="help">Optional — replaces the photo. Shrunk to 640 px.</span></div>
         <?php if ((string) $open['type'] === 'org' && AgentApplications::logoReady()): ?>
-        <div class="field"><label for="cLogo">Company logo <?= !empty($open['logo']) ? '<img src="' . $h($open['logo']) . '" alt="" style="height:28px;vertical-align:middle;margin-left:6px;border-radius:6px;background:#fff">' : '' ?></label><input id="cLogo" name="logo" class="inp" type="file" accept="image/*"><span class="help">Pvt. Ltd. partner — the logo on the home page's partner card and the ID card.</span></div>
+        <div class="field"><label for="cLogo"><?= $openLogo !== '' ? 'New company logo' : 'Company logo' ?></label>
+          <?php if ($openLogo !== ''): /* 22 Oct 2026 (review, #18): the logo now, and a way to take it off */ ?>
+          <div class="agr-logo-pick" style="margin-bottom:6px"><img class="agr-logo-sm" src="<?= $h($openLogo) ?>" alt="Company logo now"><label class="agr-check"><input type="checkbox" name="logo_remove" value="1"> 🗑 Remove the logo</label></div>
+          <?php endif; ?>
+          <input id="cLogo" name="logo" class="inp" type="file" accept="image/*"><span class="help">Pvt. Ltd. partner — on the home page's partner card and the ID card while this card is live. A new file replaces it; “Remove the logo” takes it off (the card then shows the photo or the first letter).</span></div>
         <?php endif; ?>
         <div class="field" style="grid-column:1/-1;display:flex;gap:4px 18px;flex-wrap:wrap">
           <label class="agr-check"><input type="checkbox" name="web_live" value="1"<?= (int) ($open['web_live'] ?? 1) === 1 ? ' checked' : '' ?>> 🟢 Live on website</label>
