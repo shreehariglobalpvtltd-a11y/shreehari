@@ -291,7 +291,9 @@ function shareStart() {
     action: 'start', dest: { name: S.to.name || '', lat: S.to.lat, lng: S.to.lng }, mode: S.mode,
     route: enc(N.route.coords), left: leftM(N), eta: etaMs(N)
   }).then(function (d) {
-    SH = { token: d.token, secret: d.secret, url: d.url, exp: d.expires, to: { lat: S.to.lat, lng: S.to.lng }, dest: S.to.name || '' };
+    /* the follow link opens the page that shared it (the beta shares beta links) */
+    var url = /^\/navigate(-beta)?\.html$/.test(location.pathname) ? location.origin + location.pathname + '?follow=' + d.token : d.url;
+    SH = { token: d.token, secret: d.secret, url: url, exp: d.expires, to: { lat: S.to.lat, lng: S.to.lng }, dest: S.to.name || '' };
     SHx.N = N; SHx.route = N.route; SHx.last = 0;
     shareSave(); X.vib(20);
     sharePos(N, S.me ? { lat: S.me.lat, lng: S.me.lng, speed: S.me.speed, heading: S.me.heading } : null, false);
@@ -346,6 +348,7 @@ var FW = null;
 function follow(token) {
   FW = { token: token, st: null, route: null, puck: null, dest: null, fit: false, hold: false, anim: null };
   document.body.classList.add('nl-follow');
+  ['#nlRep', '#nlLive'].forEach(function (s) { var b = $(s); if (b) b.style.display = 'none'; });   /* a viewer, not a driver */
   var c = document.createElement('div'); c.className = 'nl-fcard'; c.id = 'nlFcard';
   c.innerHTML = '<div class="nl-fh"><span class="nl-dot"></span><b>LIVE</b><span>' + esc(t('fWait')) + '</span></div>';
   document.body.appendChild(c);
