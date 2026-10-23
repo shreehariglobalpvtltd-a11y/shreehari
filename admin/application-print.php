@@ -434,6 +434,14 @@ if ($party === []) {
 }
 /* the same page in another language: the query this page was opened with (public: kind or mine only) */
 $q = $public ? ($mine ? ['mine' => 1] : ['kind' => $kind]) : ($blank !== '' ? ['blank' => $blank] : ['type' => $type, 'id' => $id]);
+/* 23 Oct 2026 (owner: "PDF B&W print ready, same details, format farak bhaye hunchha"): ?bw=1 = the same
+   sheets in black and white for an ordinary printer - grey photos, black rules, no ink-heavy fills. The
+   PDF / PNG / JPG export greys its own pictures too (html2canvas ignores the CSS filter). */
+$bw = !empty($_GET['bw']);
+$bwHref = '?' . http_build_query($q + (isset($_GET['lang']) ? ['lang' => (string) $_GET['lang']] : []) + ($bw ? [] : ['bw' => 1]));
+if ($bw) {
+    $q['bw'] = 1;
+}
 $langHref = static fn(string $l): string => '?' . http_build_query($q + ['lang' => $l]);
 $footRef = ($ref !== '' ? 'Agreement No. <b>' . $h($ref) . '</b>' : 'फारम नं. · Form no. ________') . ($seal !== '' ? ' · Seal <b>' . $h($seal) . '</b>' : '');
 
@@ -548,17 +556,29 @@ td.v.m{color:#8A96AD;font-weight:500}
 .thumbs .tb{height:22mm;border:1px dashed #9AA6BD;border-radius:50% / 45%;display:grid;place-items:center;overflow:hidden;background:#fff;margin:0 auto 2px;width:20mm}
 .thumbs .tb img{height:100%;width:100%;object-fit:cover}
 .bio{margin-top:4px;font-size:10px;color:#1E9E5A;font-weight:700}
+/* black and white, print ready */
+body.bw{--k:#111}
+body.bw .sheet{filter:grayscale(1)}
+body.bw .stripe{height:2px;background:#111}
+body.bw .kbadge{background:#fff;color:#111;border:1.5px solid #111}
+body.bw .wm{color:rgba(0,0,0,.045)}
+body.bw .st div.ok{background:#fff;border-color:#111}
+body.bw .st div.ok b::before,body.bw .bio{color:#111}
+body.bw .vst{color:#111!important;border-color:#111!important;background:#fff!important}
+body.bw .pic,body.bw .accept{background:#fff}
+body.bw .lh .co span,body.bw .pf,body.bw td.l,body.bw .sbox,body.bw .sg figcaption,body.bw .decl,body.bw .office div,body.bw .agh .sub{color:#222}
 @media print{html,body{background:#fff}.bar,#flow{display:none!important}#pages{zoom:1!important;padding:0}.sheet{margin:0;box-shadow:none;break-after:page;page-break-after:always}.sheet:last-child{break-after:auto;page-break-after:auto}}
 </style>
 </head>
-<body class="k-<?= $h($kind) ?>">
+<body class="k-<?= $h($kind) ?><?= $bw ? ' bw' : '' ?>">
 <div class="bar">
+  <a href="<?= $h($bwHref) ?>"<?= $bw ? ' class="on"' : '' ?>><?= $bw ? '🎨 रङ्गीन · Colour' : '⚫ कालो-सेतो · Black &amp; white' ?></a>
   <button class="pri" type="button" id="doPrint">🖨 छाप्नुहोस् · Print</button>
   <button class="pri" type="button" id="doPdf">📄 PDF</button>
   <button class="pri" type="button" id="doPng">🖼 PNG</button>
   <button class="pri" type="button" id="doJpg">JPG</button>
   <?php if ($public): ?>
-    <?php foreach (['staff' => 'कर्मचारी · Staff', 'agent' => 'एजेन्ट · Agent', 'partner' => 'साझेदार · Partner'] as $kk => $kl): ?><a href="?kind=<?= $h($kk) ?>"<?= !$mine && $kind === $kk ? ' class="on"' : '' ?>><?= $h($kl) ?></a><?php endforeach; ?>
+    <?php foreach (['staff' => 'कर्मचारी · Staff', 'agent' => 'एजेन्ट · Agent', 'partner' => 'साझेदार · Partner'] as $kk => $kl): ?><a href="?kind=<?= $h($kk) ?><?= $bw ? '&amp;bw=1' : '' ?>"<?= !$mine && $kind === $kk ? ' class="on"' : '' ?>><?= $h($kl) ?></a><?php endforeach; ?>
     <a href="/agreements/#forms">← <?= $h('फर्कनुहोस् · Back') ?></a>
   <?php else: ?>
     <?php if ($blank === ''): ?><a href="<?= $type === 'staff' ? 'staff-applications.php?id=' . (int) $id . '#detail' : 'agreements.php?tab=apps&amp;id=' . (int) $id . '#detail' ?>">← Back to the application</a><?php endif; ?>
@@ -707,7 +727,7 @@ td.v.m{color:#8A96AD;font-weight:500}
 (function () {
   var flow = document.getElementById('flow'), pages = document.getElementById('pages'), tpl = document.getElementById('chrome');
   var msg = document.getElementById('exMsg'), busy = false;
-  var name = <?= json_encode(($ref !== '' ? $ref : 'blank-' . $kind) . '-' . date('Ymd'), JSON_UNESCAPED_SLASHES) ?>;
+  var name = <?= json_encode(($ref !== '' ? $ref : 'blank-' . $kind) . '-' . date('Ymd') . ($bw ? '-bw' : ''), JSON_UNESCAPED_SLASHES) ?>;
 
   function sheetBody() {
     var s = tpl.content.firstElementChild.cloneNode(true);
@@ -769,6 +789,15 @@ td.v.m{color:#8A96AD;font-weight:500}
     document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   }
   function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  /* B&W: html2canvas does not apply the CSS filter, so the drawn page is greyed here (luma) */
+  var BW = document.body.classList.contains('bw');
+  function grey(cv) {
+    try {
+      var x = cv.getContext('2d'), im = x.getImageData(0, 0, cv.width, cv.height), d = im.data;
+      for (var i = 0; i < d.length; i += 4) { var g = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; d[i] = d[i + 1] = d[i + 2] = g; }
+      x.putImageData(im, 0, 0);
+    } catch (e) {}   // a tainted canvas keeps its colours rather than failing the PDF
+  }
   function run(kind, btn) {
     if (busy) return;
     busy = true;
@@ -794,6 +823,7 @@ td.v.m{color:#8A96AD;font-weight:500}
               });
             } });
         }).then(function (cv) {
+          if (BW) grey(cv);
           if (kind === 'pdf') {
             if (i > 0) pdf.addPage();
             pdf.addImage(cv.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, 210, 297);   // ~0.4 MB a page: easy to send on WhatsApp

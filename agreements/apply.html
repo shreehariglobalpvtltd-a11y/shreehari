@@ -162,7 +162,7 @@ details.more[open]{padding-bottom:10px}
      made for the applicant automatically after sending. -->
 <!-- 23 Oct 2026 (owner: "Nepali, Hindi, English and Gujarati"): the form's words in Hindi / Gujarati (form-i18n.js); English stays beside -->
 <div class="flang" role="group" aria-label="Language · भाषा"><button type="button" data-flang="ne" aria-pressed="true">नेपाली</button><button type="button" data-flang="hi" aria-pressed="false">हिन्दी</button><button type="button" data-flang="gu" aria-pressed="false">ગુજરાતી</button><button type="button" data-flang="en" aria-pressed="false">English</button></div>
-<div class="kribbon" id="kRib"><span id="kRibT">🤝 एजेन्ट फारम · AGENT</span><a id="kRibA" href="/agreements/agent-agreement-ne.html">📜 एजेन्ट सम्झौता</a><a href="/agreements/">↔ अर्को भूमिका · Other role</a></div>
+<div class="kribbon" id="kRib"><span id="kRibT">🤝 एजेन्ट फारम · AGENT</span><a id="kRibA" href="/agreements/agent-agreement-ne.html">📜 एजेन्ट सम्झौता</a><a id="kPdf" href="/agreements/form.php?kind=agent&amp;auto=pdf" target="_blank" rel="noopener">📄 खाली फारम PDF · Blank PDF</a><a id="kPdfBw" href="/agreements/form.php?kind=agent&amp;bw=1&amp;auto=pdf" target="_blank" rel="noopener">⚫ B&amp;W PDF</a><a href="/agreements/">↔ अर्को भूमिका · Other role</a></div>
 
 <main>
 <form id="ap" novalidate>
@@ -346,6 +346,7 @@ details.more[open]{padding-bottom:10px}
   <div class="ref" id="ref"></div>
   <p id="doneMsg" style="margin:0 0 14px"></p>
   <a class="btn" href="/agreements/form.php?mine=1&amp;auto=pdf" target="_blank" rel="noopener" style="margin-bottom:4px">📄 मेरो फारम + सम्झौता PDF · Download my form &amp; agreement</a>
+  <a class="btn ghost" href="/agreements/form.php?mine=1&amp;bw=1&amp;auto=pdf" target="_blank" rel="noopener" style="margin-bottom:4px">⚫ कालो-सेतो PDF (प्रिन्टका लागि) · Black &amp; white PDF for printing</a>
   <p class="hint" style="margin:0 0 12px;text-align:center">A4 PDF आफैं बन्छ र डाउनलोड हुन्छ — भरिएको विवरण, फोटो, सही र सम्झौताका सबै सर्तसहित। · Built and downloaded for you.</p>
   <div style="margin:10px 0 12px;padding:12px;border-radius:14px;background:var(--bg);border:1.5px solid var(--line);text-align:left;font-size:13.5px;line-height:1.55">
     <b>अब के हुन्छ? · What happens next</b><br>
@@ -486,6 +487,9 @@ details.more[open]{padding-bottom:10px}
       $('kRibT').textContent = { staff: '🧑‍✈️ कर्मचारी फारम · STAFF', partner: '🏢 साझेदार कम्पनी फारम · PARTNER (PVT. LTD.)', agent: '🤝 एजेन्ट फारम · AGENT' }[kk];
       $('kRibA').href = staff ? '/agreements/staff-agreement.html' : '/agreements/' + kk + '-agreement-ne.html';
       $('kRibA').textContent = { staff: '📜 कर्मचारी सम्झौता', partner: '📜 साझेदार सम्झौता', agent: '📜 एजेन्ट सम्झौता' }[kk];
+      // 23 Oct 2026 (owner: "khali ya bhari PDF, B&W print ready"): this kind's blank A4 form + agreement as PDF
+      $('kPdf').href = '/agreements/form.php?kind=' + kk + '&auto=pdf';
+      $('kPdfBw').href = '/agreements/form.php?kind=' + kk + '&bw=1&auto=pdf';
     }
     document.querySelectorAll('input[name="kind"]').forEach(function (r) { r.checked = r.value === state.kind; });
     document.title = staff ? 'काम गर्न आउनुहोस् · Work with us — S Hari Global' : org ? 'साझेदार बन्नुहोस् · Become a partner — S Hari Global' : 'एजेन्ट बन्नुहोस् · Become an agent — S Hari Global';
