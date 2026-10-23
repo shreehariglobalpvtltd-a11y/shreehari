@@ -14,8 +14,9 @@
 (function () {
   'use strict';
   var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  var NEXT = (document.currentScript && document.currentScript.getAttribute('data-next')) || '/team/';   // 23 Oct 2026: /admin/login.php too
   var msg = document.getElementById('pkMsg');
-  function say(t, bad) { if (msg) { msg.textContent = t; msg.className = 'tp-msg ' + (bad ? 'bad' : 'info'); msg.hidden = !t; } }
+  function say(t, bad) { if (msg) { msg.textContent = t; msg.className = (msg.getAttribute('data-cls') || 'tp-msg') + ' ' + (bad ? 'bad' : 'info'); msg.hidden = !t; } }
   function b2u(buf) { var s = '', b = new Uint8Array(buf); for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
   function u2b(str) { var s = atob(String(str).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((str.length + 3) % 4)); var b = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return b.buffer; }
   function api(method, op, body) {
@@ -41,7 +42,7 @@
       if (!c) throw new Error('cancelled');
       var r = c.response;
       return api('POST', 'login', { cred: { id: c.id, clientDataJSON: b2u(r.clientDataJSON), authenticatorData: b2u(r.authenticatorData), signature: b2u(r.signature) } });
-    }).then(function (j) { say('✅ भित्र आउनुभयो · Signed in'); location.href = j.next || '/team/'; })
+    }).then(function (j) { say('✅ भित्र आउनुभयो · Signed in'); location.href = j.next || NEXT; })
       .catch(function (e) { btn.disabled = false; say(String(e && e.message || e).indexOf('cancel') >= 0 || (e && e.name === 'NotAllowedError') ? 'रद्द भयो — पासवर्डले पनि भित्र जान सकिन्छ · Cancelled. You can sign in with your password.' : (e.message || 'Could not sign in'), true); });
   }
   function add(btn) {

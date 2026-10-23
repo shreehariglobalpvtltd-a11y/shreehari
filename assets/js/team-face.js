@@ -12,9 +12,22 @@
    ===================================================================== */
 (function () {
   'use strict';
-  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || ((document.querySelector('input[name="csrf_token"],input[name="_csrf"],input[name="csrf"]') || {}).value) || '';
+  // 23 Oct 2026: the same doors on /admin/login.php (office, counter, scanner) - where to go once the session is open
+  var NEXT = (document.currentScript && document.currentScript.getAttribute('data-next')) || '/team/';
   var $ = function (id) { return document.getElementById(id); };
-  function say(t, bad) { var m = $('faceMsg'); if (!m) return; m.hidden = !t; m.textContent = t; m.className = 'tp-msg ' + (bad ? 'bad' : 'info'); }
+  if (!document.getElementById('tfCss')) {
+    var st = document.createElement('style'); st.id = 'tfCss';
+    st.textContent = '.tf-ov{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;background:radial-gradient(120% 80% at 50% 30%,#10265e,#050c22)}.tf-ov[hidden]{display:none}'
+      + '.tf-cam{position:relative;width:min(78vw,340px);aspect-ratio:3/4;border-radius:28px;overflow:hidden;box-shadow:0 0 0 4px #fff,0 0 0 8px #1f4fe0,0 0 40px 10px rgba(92,240,255,.35)}.tf-cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);background:#000}'
+      + '.tf-oval{position:absolute;inset:12% 16% 16%;border:3px dashed rgba(255,255,255,.85);border-radius:50% 50% 46% 46%;box-shadow:0 0 0 999px rgba(5,12,34,.35)}'
+      + '.tf-scan{position:absolute;left:8%;right:8%;top:10%;height:3px;background:linear-gradient(90deg,transparent,#5cf0ff,transparent);box-shadow:0 0 14px #5cf0ff;animation:tfScan 2.2s ease-in-out infinite}@keyframes tfScan{0%,100%{top:12%}50%{top:84%}}'
+      + '.tf-step{margin:0;color:#fff;font-size:19px;font-weight:900;text-align:center;min-height:2.6em}.tf-dots{display:flex;gap:8px}.tf-dots i{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.3)}.tf-dots i.on{background:#5cf0ff;box-shadow:0 0 10px #5cf0ff}'
+      + '.tf-ov .tf-stop{color:#fff;background:transparent;border:1.5px solid rgba(255,255,255,.5);width:auto;min-height:44px;padding:0 18px;border-radius:12px;font:inherit;font-weight:800;cursor:pointer;margin:0}'
+      + '@media (prefers-reduced-motion:reduce){.tf-scan{animation:none}}';
+    document.head.appendChild(st);
+  }
+  function say(t, bad) { var m = $('faceMsg'); if (!m) return; m.hidden = !t; m.textContent = t; m.className = (m.getAttribute('data-cls') || 'tp-msg') + ' ' + (bad ? 'bad' : 'info'); }
   function phone() {
     var m = $('m'), cc = document.querySelector('select[name="cc"]');
     var d = m ? m.value.replace(/\D/g, '').replace(/^0+/, '') : '';
@@ -27,7 +40,7 @@
   function opened(d) {
     say('✅ चिनियो — भित्र जाँदै… · Recognised, opening…');
     try { if (navigator.vibrate) navigator.vibrate([10, 40, 10]); } catch (e) {}
-    setTimeout(function () { location.href = '/team/'; }, 400);
+    setTimeout(function () { location.href = NEXT; }, 400);
   }
 
   /* ---- camera ---- */
@@ -38,7 +51,7 @@
     ov = document.createElement('div');
     ov.className = 'tf-ov';
     ov.innerHTML = '<div class="tf-cam"><video playsinline autoplay muted></video><div class="tf-oval"></div><div class="tf-scan"></div></div>' +
-      '<p class="tf-step"></p><div class="tf-dots"><i></i><i></i><i></i></div><button type="button" class="b gh tf-stop">✕ बन्द · Close</button>';
+      '<p class="tf-step"></p><div class="tf-dots"><i></i><i></i><i></i></div><button type="button" class="alt tf-stop">✕ बन्द · Close</button>';
     document.body.appendChild(ov);
     ov.querySelector('.tf-stop').addEventListener('click', function () { stop(); say('बन्द गरियो — फेरि गर्न सकिन्छ · Closed, you can try again.'); });
     return ov;
@@ -94,6 +107,8 @@
     }).catch(function () { if (b) b.disabled = false; say('इन्टरनेट जाँच गरेर फेरि प्रयास गर्नुहोस् · Check the internet and try again.', true); });
   }
 
+  // Enter in a door box never submits the page's password form
+  ['m', 'fDob', 'fId'].forEach(function (id) { var el = $(id); if (el) el.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); if (id === 'fId' || id === 'fDob') factsLogin(); else { var f = $('fId'); if (f && !$('factsBox').hidden) f.focus(); } } }); });
   document.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('[data-face]');
     if (!b) return;

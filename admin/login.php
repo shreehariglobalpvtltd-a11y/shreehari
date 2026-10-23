@@ -15,6 +15,7 @@ declare(strict_types=1);
 
 define('SHG_APP', true);
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
+require_once INCLUDE_PATH . '/passkeys.php';
 require_once INCLUDE_PATH . '/brand.php';   // the emblem (no baked name, no white tile) — 9 Oct 2026
 
 $base = rtrim(APP_URL, '/');
@@ -204,6 +205,7 @@ $heading = $skin['title'] !== '' ? $skin['title'] : Security::e($company);
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= $skin['title'] !== '' ? Security::e($skin['title']) : 'Sign in' ?> · <?= Security::e($company) ?></title>
 <meta name="robots" content="noindex,nofollow">
+<meta name="csrf-token" content="<?= $csrf ?>">
 <?= Brand::iconLinks() ?>
 <style>
 *{box-sizing:border-box}
@@ -287,11 +289,65 @@ button:not(.alt):active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgb
    sits straight on the card with a soft blue glow, exactly like the app bar */
 :root[data-theme="dark"] .logo img{background:none;border-radius:0;padding:0;box-shadow:none;filter:drop-shadow(0 0 16px rgba(120,170,255,.30)) drop-shadow(0 6px 10px rgba(0,0,0,.55))}
 @media (prefers-reduced-motion:reduce){button:not(.alt):active,.ch:active{transform:none}}
+/* 23 Oct 2026: the no-password doors (see $doors) */
+.doors{margin:4px 0 0}
+.doors label{margin-top:10px}
+.cc-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px}
+.cc-row select{min-height:48px;border:1.5px solid #7D8AA0;border-radius:10px;padding:0 8px;font-size:15px;background:#F6F8FC}
+button.alt.door{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;min-height:50px;padding:0 14px;border-radius:12px;font-size:14.5px;font-weight:800;color:#fff;border:0;box-shadow:0 4px 0 rgba(0,0,0,.25)}
+button.alt.door:active{transform:translateY(2px);box-shadow:0 2px 0 rgba(0,0,0,.25)}
+button.alt.d-pk{background:linear-gradient(120deg,#ffa24d,#f07a1e 55%,#d4570c)}
+button.alt.d-face{background:linear-gradient(120deg,#e8457c,#7b5cff 60%,#2f6bff)}
+button.alt.d-facts{background:#fff;color:#0054A8;border:1.5px dashed #0054A8;box-shadow:none}
+button.alt.d-go{background:linear-gradient(180deg,#1F6CC8,#0054A8 58%,#004B98)}
+#factsBox{margin-top:10px;padding:10px 12px;border:1.5px solid #D5DCE8;border-radius:12px}
+#factsBox[hidden]{display:none}
+.note{font-size:12px;color:#6b7688;margin:10px 0 0;line-height:1.4}
+.note.bad{background:#f7dcdc;color:#8a1f1f;padding:10px 12px;border-radius:9px;font-weight:600}
+.note.info{background:#def4e4;color:#14602e;padding:10px 12px;border-radius:9px;font-weight:600}
+details.pwd{margin-top:14px;border:1.5px dashed #D5DCE8;border-radius:12px;padding:0 12px}
+details.pwd>summary{cursor:pointer;list-style:none;padding:12px 0;font-weight:800;font-size:14px;color:#0054A8}
+details.pwd>summary::-webkit-details-marker{display:none}
+details.pwd[open]{padding-bottom:12px}
+details.pwd label:first-of-type{margin-top:4px}
+:root[data-theme="dark"] .cc-row select,:root[data-theme="dark"] #factsBox{background:#080C13;color:#EEF4FF;border-color:#607697}
+:root[data-theme="dark"] button.alt.d-facts{background:#15243E;color:#9ABFFF;border-color:#9ABFFF}
+:root[data-theme="dark"] .note{color:#ACBBD0}
+:root[data-theme="dark"] details.pwd{border-color:#3A5178}
+:root[data-theme="dark"] details.pwd>summary{color:#9ABFFF}
 @media print{.box{box-shadow:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('shg_admin_theme');if(t==='dark'||t==='amoled'){document.documentElement.setAttribute('data-theme','dark');if(t==='amoled')document.documentElement.setAttribute('data-display','amoled');}}catch(e){}})();</script>
 </head>
+<?php
+/* 23 Oct 2026 (owner: "admin, staff, counter mode - sabai login portal ma yei lock system; password last"):
+   the same doors as /team/ - mobile, then the phone's lock (passkey), the camera (the face on the
+   person's own record), birth date + ID number - and the username + password folded at the bottom.
+   The doors call /api/team-passkey.php and /api/team-face-login.php; a success reloads this page,
+   which sends the signed-in account to its own destination (login_destination). */
+$doors = static function (string $title) use ($next): string {
+    $h = static fn(string $s): string => Security::e($s);
+    $me = '/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '');
+    $o  = '<div class="doors">';
+    $o .= '<label for="m">मोबाइल नम्बर · Registered mobile</label>';
+    $o .= '<div class="cc-row"><select name="cc" aria-label="Country"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>';
+    $o .= '<input id="m" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="14" placeholder="98XXXXXXXX"></div>';
+    $o .= '<div id="pkMsg" class="ok" data-cls="note" hidden></div><div id="faceMsg" class="ok" data-cls="note" hidden></div>';
+    if (Passkeys::ready()) {
+        $o .= '<button type="button" class="alt door d-pk" data-pk="login">👆 Face ID / फिंगरप्रिन्ट (फोनको लक) · Phone lock</button>';
+    }
+    $o .= '<button type="button" class="alt door d-face" data-face="login">📷 अनुहारले भित्र · Face login (camera)</button>';
+    $o .= '<button type="button" class="alt door d-facts" data-face="show-facts">🎂 जन्म मिति + ID नम्बर · Birth date + ID number</button>';
+    $o .= '<div id="factsBox" hidden><label for="fDob">जन्म मिति (ईस्वी) · Date of birth (AD)</label><input id="fDob" type="date" max="2015-12-31" autocomplete="bday">';
+    $o .= '<label for="fId">नागरिकता / आधार / ID नम्बर · ID number</label><input id="fId" type="text" maxlength="40" autocomplete="off" placeholder="e.g. 52-01-75-12345">';
+    $o .= '<button type="button" class="alt door d-go" data-face="facts">भित्र जानुहोस् · Sign in</button></div>';
+    $o .= '<p class="note">🔒 अनुहार फारमको फोटोसँग मात्र मिलाइन्छ, कतै राखिँदैन। · Your face is only compared with the photo on your record, never stored.</p>';
+    $o .= '</div>';
+    $o .= '<details class="pwd"' . ($GLOBALS['error'] !== '' || $GLOBALS['authPw'] ? ' open' : '') . '><summary>🔑 ' . $h($title) . '</summary>';
+    return $o;
+};
+?>
 <body>
 <form class="box" method="post" autocomplete="off">
   <div class="logo"><img src="<?= Security::e(Brand::markUrl(68)) ?>" alt="<?= Security::e($company) ?>" width="131" height="68"></div>
@@ -345,6 +401,7 @@ button:not(.alt):active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgb
     <!-- Agent portal · default door (4 Sep 2026): email + username + password.
          Self-contained — no OTP, no WhatsApp. All three must match. -->
     <input type="hidden" name="mode" value="agent_pw">
+    <?= $doors('Email + username + password') ?>
     <label for="ae">Email</label>
     <input id="ae" name="email" type="email" required autofocus autocapitalize="none" autocorrect="off"
            autocomplete="email" inputmode="email" placeholder="you@example.com" value="<?= Security::e($agentEmail) ?>">
@@ -354,6 +411,7 @@ button:not(.alt):active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgb
     <label for="ap">Password</label>
     <input id="ap" name="password" type="password" required autocomplete="current-password">
     <button type="submit">Sign in to Agent Portal</button>
+    </details>
     <div class="who" style="margin:12px 0 0">
       Forgot your password? <a href="/team/?v=forgot"><b>Reset it with a WhatsApp code</b></a> · पासवर्ड बिर्सनुभयो?<br>
       <b>Team portal:</b> <a href="/team/">mobile + password</a> (agents, partners, staff).<br>
@@ -371,13 +429,15 @@ button:not(.alt):active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgb
            placeholder="10-digit mobile" value="<?= Security::e($agentMobile) ?>">
     <button type="submit">Send WhatsApp code</button>
   <?php else: ?>
+    <?= $doors('Username + password') ?>
     <label for="u">Username</label>
-    <input id="u" name="username" required autofocus autocapitalize="none" autocorrect="off"
+    <input id="u" name="username" autocapitalize="none" autocorrect="off"
            value="<?= Security::e($_POST['username'] ?? '') ?>">
     <label for="p">Password</label>
-    <input id="p" name="password" type="password" required>
+    <input id="p" name="password" type="password">
     <?php if ($authPw): ?><input type="hidden" name="auth" value="pw"><?php endif; ?>
     <button type="submit">Sign in<?= $skin['title'] !== '' ? ' to ' . Security::e($skin['title']) : '' ?></button>
+    </details>
   <?php endif; ?>
 
   <div class="foot">
@@ -398,4 +458,8 @@ button:not(.alt):active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgb
     <span>Help / locked out? &nbsp;<b>📞 <a href="tel:+<?= Security::e(preg_replace('/\D/', '', $helpTel) ?? '') ?>" style="white-space:nowrap"><?= Security::e($helpPhone) ?></a></b> — Head Office</span>
   </div>
 </form>
+<?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261023h" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<script src="/assets/js/team-face.js?v=20261023h" data-next="<?= $meUrl ?>"></script>
+<?php endif; ?>
 </body></html>

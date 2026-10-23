@@ -973,6 +973,59 @@ final class Auth
     }
 
     /**
+     * 23 Oct 2026 (owner: "admin, staff, counter - sabai login portal ma yei lock system"): EVERY
+     * active account whose registered mobile is this number, any role - the biometric doors
+     * (passkey, camera face, birth date + ID) open the office too.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function adminsByPhone(string $phone10): array
+    {
+        if (strlen($phone10) !== 10) {
+            return [];
+        }
+        $out = [];
+        foreach (Database::fetchAll(
+            "SELECT id, username, email, password_hash, full_name, phone, role, permissions,
+                    is_active, locked_until, failed_logins, must_change_pw
+               FROM admins
+              WHERE is_active = 1 AND phone IS NOT NULL AND phone <> ''
+              ORDER BY id ASC"
+        ) as $a) {
+            if (normalisePhone((string) $a['phone']) === $phone10) {
+                $out[] = $a;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Open the session for an account a door proved WITHOUT a password - a passkey the device
+     * signed, the face on the record, or the birth date + ID number. Any role. The account must
+     * be active, not locked, with a password on file (the session is stamped with it, so a
+     * reset by the office still signs this session out). 2FA accounts keep their code door.
+     *
+     * @throws RuntimeException with a user-safe message
+     */
+    public static function openAdminWithoutPassword(array $admin, string $how): void
+    {
+        if ((int) ($admin['is_active'] ?? 0) !== 1) {
+            throw new RuntimeException('This account is switched off.');
+        }
+        if ((string) ($admin['password_hash'] ?? '') === '') {
+            throw new RuntimeException('This account has no password yet - ask the office to set one.');
+        }
+        if (!empty($admin['locked_until']) && strtotime((string) $admin['locked_until']) > time()) {
+            throw new RuntimeException('This account is locked for a few minutes.');
+        }
+        if (self::admin2faEnabled((int) $admin['id'])) {
+            throw new RuntimeException('This account uses 2FA - sign in with the username, password and code.');
+        }
+        self::finishAdminSession($admin, Security::clientIp(), false, self::pwStamp((string) $admin['password_hash']));
+        Logger::audit('admin.login.' . $how, 'admin', (string) $admin['id'], null, null, 'Signed in without a password: ' . $how);
+    }
+
+    /**
      * Open the staff session for one of teamAccounts()' rows after the
      * team door checked the password ($viaOtp false) or the person proved
      * the mobile with a WhatsApp code and set a new password ($viaOtp true).

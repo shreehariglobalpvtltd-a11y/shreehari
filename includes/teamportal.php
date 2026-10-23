@@ -714,6 +714,8 @@ final class TeamPortal
     private static function candidates(string $phone10, string $cc): array
     {
         $acc = self::accounts($phone10);
+        // 23 Oct 2026 (owner): every role - the office, counters and scanners use these doors too
+        $acc['admins'] = Auth::adminsByPhone($phone10);
         $acc['admins'] = array_values(array_filter($acc['admins'], static fn(array $a): bool => self::adminUsable($a, $phone10)));
         if ($cc !== '') {
             $acc['admins'] = array_values(array_filter($acc['admins'], static fn(array $a): bool => !self::otherCountry(self::adminIntl($phone10, $a), $cc, $phone10)));
@@ -767,10 +769,10 @@ final class TeamPortal
     {
         if ($c['kind'] === 'admin') {
             if (Auth::admin2faEnabled((int) $c['row']['id'])) {
-                return ['ok' => false, 'error' => 'यो खातामा 2FA छ — कार्यालयको लगइनबाट जानुहोस् · This account uses 2FA: please sign in at the office login.'];
+                return ['ok' => false, 'error' => 'यो खातामा 2FA छ — username, पासवर्ड र कोडले भित्र जानुहोस् · This account uses 2FA: sign in with the username, password and code.'];
             }
             try {
-                Auth::teamOpenSession($c['row'], false);
+                Auth::openAdminWithoutPassword($c['row'], $how);
             } catch (RuntimeException $e) {
                 return ['ok' => false, 'error' => 'यो खाता अहिले खुल्दैन — कार्यालयमा सोध्नुहोस् · This account cannot sign in now.'];
             }
@@ -870,12 +872,12 @@ final class TeamPortal
                 return $no;
             }
             if (Auth::admin2faEnabled($id)) {
-                return ['ok' => false, 'error' => 'यो खातामा 2FA छ — कार्यालयको लगइनबाट जानुहोस् · This account uses 2FA: please sign in at the office login.'];
+                return ['ok' => false, 'error' => 'यो खातामा 2FA छ — username, पासवर्ड र कोडले भित्र जानुहोस् · This account uses 2FA: sign in with the username, password and code.'];
             }
             try {
-                Auth::teamOpenSession($a, false);
+                Auth::openAdminWithoutPassword($a, 'passkey');   // 23 Oct 2026: any role (the office door uses passkeys too)
             } catch (RuntimeException $e) {
-                return $no;   // not a team role any more, or switched off
+                return $no;   // switched off, locked, no password
             }
             self::closeStaffSession();
             Logger::audit('team.login.passkey', 'admin', (string) $id, null, null, 'Team portal: passkey (Face ID / fingerprint)');
