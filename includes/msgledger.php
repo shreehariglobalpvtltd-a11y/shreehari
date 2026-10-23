@@ -171,6 +171,8 @@ final class MsgLedger
     {
         // 22 Oct 2026: the Nepali half too ("तपाईंको लगइन कोड 962250" was kept whole in the ledger)
         $body = preg_replace('/((?:code|कोड)\D{0,12}?)(\d{4,8})/iu', '$1••••', $body) ?? $body;
+        // 23 Oct 2026: the one-time password of an approval (Notify::agentCredentials) never sits in a log
+        $body = preg_replace('/((?:password|पासवर्ड)\s*[:：]\s*)\S+/iu', '$1[hidden]', $body) ?? $body;
         $body = preg_replace('~([?&]t=)[A-Za-z0-9]{16,}~', '$1[hidden]', $body) ?? $body;
         /* 15 Oct 2026 (2F-logs): the ticket download key (&k=…) and the short
            ticket code (view.php?code=…) open a passenger's ticket - a log

@@ -610,7 +610,8 @@ final class Notify
         // click-to-chat link so staff can still send the message with one tap
         // from the admin logs/tools.
         $link = whatsappLink($number, $message);
-        Logger::info('WhatsApp click-to-chat queued', ['to' => $number, 'link' => $link], 'whatsapp');
+        Logger::info('WhatsApp click-to-chat queued', ['to' => $number,
+            'link' => (($meta['purpose'] ?? '') === 'team_credentials' ? '[hidden: carries a one-time password]' : $link)], 'whatsapp');
         self::$journal[] = ['to' => $number, 'ok' => false, 'link' => $link, 'driver' => $driver, 'reason' => $paused ? 'paused' : 'fallback'];
         // The customer has NOT been reached — only staff got a tappable link.
         // Persisting it is what makes the miss recoverable: admin/messages-log
