@@ -698,6 +698,162 @@ final class TeamPortal
         return null;
     }
 
+    /* =================================================================
+     *  23 Oct 2026: the door without a password (api/team-face-login.php)
+     *  Order on the page: passkey -> camera face -> birth date + ID -> password.
+     * ================================================================= */
+
+    public const FACE_MIN_SCORE = 70;
+
+    /**
+     * Every account on this number (in this country) that the portal may open, with what its own
+     * record knows: the portrait photo, the date of birth, the ID number.
+     *
+     * @return list<array{kind: string, row: array, photo: ?string, dob: string, idno: string, label: string}>
+     */
+    private static function candidates(string $phone10, string $cc): array
+    {
+        $acc = self::accounts($phone10);
+        $acc['admins'] = array_values(array_filter($acc['admins'], static fn(array $a): bool => self::adminUsable($a, $phone10)));
+        if ($cc !== '') {
+            $acc['admins'] = array_values(array_filter($acc['admins'], static fn(array $a): bool => !self::otherCountry(self::adminIntl($phone10, $a), $cc, $phone10)));
+            $acc['staff']  = array_values(array_filter($acc['staff'], static fn(array $s): bool => !self::otherCountry(self::staffIntl($phone10, $s), $cc, $phone10)));
+        }
+        $out = [];
+        $now = time();
+        foreach ($acc['admins'] as $a) {
+            if ((string) $a['password_hash'] === '' || (!empty($a['locked_until']) && strtotime((string) $a['locked_until']) > $now)) {
+                continue;
+            }
+            $photo = null; $dob = ''; $idno = '';
+            if (AgentApplications::available()) {
+                $aid = (int) Database::scalar("SELECT id FROM agent_applications WHERE status = 'approved' AND admin_id = :a ORDER BY id DESC LIMIT 1", ['a' => (int) $a['id']], 0);
+                $ag  = $aid > 0 ? AgentApplications::find($aid) : null;
+                if ($ag !== null) {
+                    $photo = is_string($ag['photo'] ?? null) && str_starts_with((string) $ag['photo'], 'data:image/') ? (string) $ag['photo'] : null;
+                    $dob   = (string) ($ag['fields']['p_dob'] ?? '');
+                    $idno  = (string) ($ag['fields']['p_idno'] ?? '');
+                }
+            }
+            if ($photo === null && self::ready()) {
+                $st = self::staffOfAccount((int) $a['id'], (string) ($a['phone'] ?? ''), $phone10);
+                if ($st !== null && !empty($st['photo_path']) && ($abs = StaffApps::absPath((string) $st['photo_path'])) !== null) {
+                    $photo = 'data:image/jpeg;base64,' . base64_encode((string) file_get_contents($abs));
+                    $dob  = $dob !== '' ? $dob : (string) ($st['dob'] ?? '');
+                    $idno = $idno !== '' ? $idno : (string) ($st['id_number'] ?? '');
+                }
+            }
+            $out[] = ['kind' => 'admin', 'row' => $a, 'photo' => $photo, 'dob' => $dob, 'idno' => $idno, 'label' => (string) $a['username']];
+        }
+        foreach ($acc['staff'] as $s) {
+            if ((string) $s['status'] !== 'approved' || empty($s['password_hash']) || (!empty($s['locked_until']) && strtotime((string) $s['locked_until']) > $now)) {
+                continue;
+            }
+            $full = StaffApps::find((int) $s['id']);
+            if ($full === null) {
+                continue;
+            }
+            $photo = null;
+            if (!empty($full['photo_path']) && ($abs = StaffApps::absPath((string) $full['photo_path'])) !== null) {
+                $photo = 'data:image/jpeg;base64,' . base64_encode((string) file_get_contents($abs));
+            }
+            $out[] = ['kind' => 'staff', 'row' => $full, 'photo' => $photo, 'dob' => (string) ($full['dob'] ?? ''), 'idno' => (string) ($full['id_number'] ?? ''), 'label' => StaffApps::refFor((int) $s['id'])];
+        }
+        return $out;
+    }
+
+    /** Open the session for a candidate the face / the facts proved. */
+    private static function openCandidate(array $c, string $how): array
+    {
+        if ($c['kind'] === 'admin') {
+            if (Auth::admin2faEnabled((int) $c['row']['id'])) {
+                return ['ok' => false, 'error' => 'यो खातामा 2FA छ — कार्यालयको लगइनबाट जानुहोस् · This account uses 2FA: please sign in at the office login.'];
+            }
+            try {
+                Auth::teamOpenSession($c['row'], false);
+            } catch (RuntimeException $e) {
+                return ['ok' => false, 'error' => 'यो खाता अहिले खुल्दैन — कार्यालयमा सोध्नुहोस् · This account cannot sign in now.'];
+            }
+            self::closeStaffSession();
+            Logger::audit('team.login.' . $how, 'admin', (string) $c['row']['id'], null, null, 'Team portal: ' . $how);
+            return ['ok' => true, 'kind' => 'admin'];
+        }
+        self::openStaffSession((int) $c['row']['id'], (string) $c['row']['password_hash']);
+        Logger::audit('team.login.' . $how, 'staff_application', $c['label'], null, null, 'Team portal: ' . $how);
+        return ['ok' => true, 'kind' => 'staff'];
+    }
+
+    /**
+     * The camera: three live frames against the photo on the person's record. One answer for "no
+     * such number", "no photo on file" and "another face" (nothing about who is in the team).
+     *
+     * @param list<array{bytes: string, mime: string}> $frames
+     * @return array{ok: bool, kind?: string, error?: string}
+     */
+    public static function faceLogin(string $phone10, string $cc, array $frames): array
+    {
+        require_once __DIR__ . '/facecheck.php';
+        $no = ['ok' => false, 'error' => 'अनुहार मिलेन — उज्यालोमा फेरि गर्नुहोस्, वा जन्म मिति + ID नम्बर / पासवर्ड प्रयोग गर्नुहोस् · Face not recognised: try again in good light, or use birth date + ID / the password.'];
+        $cands = array_values(array_filter(self::candidates($phone10, $cc), static fn(array $c): bool => $c['photo'] !== null));
+        if ($cands === []) {
+            Logger::warning('Team portal: face login with no photo on file', ['phone' => maskPhone($phone10)]);
+            return $no;
+        }
+        $best = null;
+        foreach (array_slice($cands, 0, 2) as $c) {   // at most two AI calls per try
+            $ref = FaceCheck::decode($c['photo'], 900_000);
+            if ($ref === null) {
+                continue;
+            }
+            $r = FaceCheck::check($frames, $ref, 'photo');
+            if ($r['status'] === 'unavailable') {
+                return ['ok' => false, 'error' => 'अहिले अनुहार जाँच हुन सकेन — जन्म मिति + ID नम्बर वा पासवर्ड प्रयोग गर्नुहोस् · Face check is not available right now; use birth date + ID or the password.'];
+            }
+            Logger::info('Team portal: face login', ['live' => $r['live'], 'match' => $r['match'], 'score' => $r['score'], 'phone' => maskPhone($phone10)], 'kyc');
+            if ($r['live'] === true && $r['match'] === 'yes' && $r['score'] >= self::FACE_MIN_SCORE) {
+                $best = $c;
+                break;
+            }
+        }
+        if ($best === null) {
+            return $no;
+        }
+        return self::openCandidate($best, 'face');
+    }
+
+    /**
+     * Birth date + ID number, the last door before the password. The ID number must match the
+     * record (digits / letters only, Devanagari digits read as 0-9); the birth date must match
+     * whenever the record has one. One answer for every kind of miss.
+     *
+     * @return array{ok: bool, kind?: string, error?: string}
+     */
+    public static function factsLogin(string $phone10, string $cc, string $dob, string $idno): array
+    {
+        require_once __DIR__ . '/docverify.php';
+        $no   = ['ok' => false, 'error' => 'मोबाइल, जन्म मिति वा ID नम्बर मिलेन · Mobile, birth date or ID number did not match.'];
+        $want = DocVerify::fold(DocVerify::normNumber($idno));
+        $dob  = trim($dob);
+        if (strlen($want) < 5) {
+            return ['ok' => false, 'error' => 'ID / नागरिकता / आधार नम्बर पूरै लेख्नुहोस् · Enter the whole ID number.'];
+        }
+        foreach (self::candidates($phone10, $cc) as $c) {
+            $have = DocVerify::fold(DocVerify::normNumber($c['idno']));
+            if ($have === '' || !hash_equals($have, $want)) {
+                continue;
+            }
+            $recDob = substr((string) $c['dob'], 0, 10);
+            if ($recDob !== '' && $recDob !== '0000-00-00') {
+                if ($dob === '' || !hash_equals($recDob, $dob)) {
+                    continue;
+                }
+            }
+            return self::openCandidate($c, 'facts');
+        }
+        Logger::warning('Team portal: facts login failed', ['phone' => maskPhone($phone10)]);
+        return $no;
+    }
+
     /** Open the session for a verified passkey row (Passkeys::assert). */
     public static function passkeyLogin(array $row): array
     {

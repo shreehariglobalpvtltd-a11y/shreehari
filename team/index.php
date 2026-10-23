@@ -303,26 +303,66 @@ if ($v === 'forgot'): ?>
 <div class="tp-card">
   <h1>🔐 टिम लगइन · Team sign in</h1>
   <p class="tp-sub">प्रा. लि. साझेदार, एजेन्ट र S Hari कर्मचारी — दर्ता गरेको मोबाइल र पासवर्ड। · Partners, agents and staff: your registered mobile and password.</p>
-  <form method="post" action="/team/" autocomplete="on">
+  <!-- 23 Oct 2026 (owner: "face id / fingerprint nai password; camera selfie; DOB + document number; password last"):
+       one mobile box, then the doors in order - the phone's own lock (passkey), the camera (the face on the
+       record, api/team-face-login.php), birth date + ID number, and the password folded at the bottom. -->
+  <style>
+  .tf-ov{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;background:radial-gradient(120% 80% at 50% 30%,#10265e,#050c22)}
+  .tf-ov[hidden]{display:none}
+  .tf-cam{position:relative;width:min(78vw,340px);aspect-ratio:3/4;border-radius:28px;overflow:hidden;box-shadow:0 0 0 4px #fff,0 0 0 8px #1f4fe0,0 0 40px 10px rgba(92,240,255,.35)}
+  .tf-cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);background:#000}
+  .tf-oval{position:absolute;inset:12% 16% 16%;border:3px dashed rgba(255,255,255,.85);border-radius:50% 50% 46% 46%;box-shadow:0 0 0 999px rgba(5,12,34,.35)}
+  .tf-scan{position:absolute;left:8%;right:8%;top:10%;height:3px;background:linear-gradient(90deg,transparent,#5cf0ff,transparent);box-shadow:0 0 14px #5cf0ff;animation:tfScan 2.2s ease-in-out infinite}
+  @keyframes tfScan{0%,100%{top:12%}50%{top:84%}}
+  .tf-step{margin:0;color:#fff;font-size:19px;font-weight:900;text-align:center;min-height:2.6em}
+  .tf-dots{display:flex;gap:8px}.tf-dots i{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.3)}.tf-dots i.on{background:#5cf0ff;box-shadow:0 0 10px #5cf0ff}
+  .tf-ov .b{color:#fff;border-color:rgba(255,255,255,.5);width:auto;padding:0 18px}
+  .tf-doors{display:grid;gap:8px;margin:12px 0 4px}
+  .tf-doors .b{margin:0}
+  .b.face{background:linear-gradient(120deg,#e8457c,#7b5cff 60%,#2f6bff);color:#fff}
+  .tf-or{text-align:center;font-size:12px;opacity:.7;margin:4px 0}
+  details.tf-pw{border:1.5px dashed #c5d0e6;border-radius:14px;padding:0 12px;margin-top:10px}
+  details.tf-pw>summary{cursor:pointer;list-style:none;padding:12px 0;font-weight:800;font-size:14px}
+  details.tf-pw>summary::-webkit-details-marker{display:none}
+  details.tf-pw[open]{padding-bottom:10px}
+  #factsBox[hidden]{display:none}
+  @media (prefers-reduced-motion:reduce){.tf-scan{animation:none}}
+  </style>
+  <form method="post" action="/team/" autocomplete="on" id="loginForm">
     <?= $csrf ?><input type="hidden" name="action" value="login">
     <label class="f" for="m">मोबाइल नम्बर · Mobile number</label>
     <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px"><?= $ccPick($ccNow) ?>
     <input class="i" id="m" name="mobile" type="tel" inputmode="numeric" autocomplete="username" required maxlength="16" placeholder="98XXXXXXXX" value="<?= $h($_POST['mobile'] ?? '') ?>"></div>
+    <div id="pkMsg" class="tp-msg info" hidden></div>
+    <div id="faceMsg" class="tp-msg info" hidden></div>
+    <div class="tf-doors">
+      <?php if (Passkeys::ready()): ?><button class="b or" type="button" data-pk="login">👆 Face ID / फिंगरप्रिन्ट (फोनको लक) · Phone lock</button><?php endif; ?>
+      <button class="b face" type="button" data-face="login">📷 अनुहारले भित्र जानुहोस् · Face login (camera)</button>
+      <button class="b gh" type="button" data-face="show-facts">🎂 जन्म मिति + ID नम्बर · Birth date + ID number</button>
+    </div>
+    <div id="factsBox" hidden style="padding:10px 12px;border:1.5px solid #c5d0e6;border-radius:14px;margin:0 0 6px">
+      <label class="f" for="fDob">जन्म मिति (ईस्वी) · Date of birth (AD)</label>
+      <input class="i" id="fDob" type="date" max="2015-12-31" autocomplete="bday">
+      <label class="f" for="fId">नागरिकता / आधार / ID नम्बर · ID number</label>
+      <input class="i" id="fId" type="text" maxlength="40" autocomplete="off" placeholder="जस्तै: 52-01-75-12345">
+      <button class="b" type="button" data-face="facts">भित्र जानुहोस् · Sign in</button>
+      <p class="tp-sub" style="margin:6px 0 0">फारममा दिएको जन्म मिति र ID नम्बर — कार्यालयको रेकर्डसँग मिल्नुपर्छ। · The birth date and ID number you gave on your form.</p>
+    </div>
+    <details class="tf-pw"><summary>🔑 पासवर्डले · With the password</summary>
     <label class="f" for="pw">पासवर्ड · Password</label>
-    <input class="i" id="pw" name="password" type="password" required autocomplete="current-password">
+    <input class="i" id="pw" name="password" type="password" autocomplete="current-password">
     <button class="b" type="submit">भित्र जानुहोस् · Sign in</button>
+    <a class="b gh" href="/team/?v=forgot" style="margin-top:8px">पासवर्ड बनाउनुहोस् / बिर्सनुभयो? · Set / forgot password</a>
+    </details>
   </form>
-  <?php if (Passkeys::ready()): ?>
-  <div id="pkMsg" class="tp-msg info" hidden style="margin-top:12px"></div>
-  <button class="b or" type="button" data-pk="login">👆 Face ID / फिंगरप्रिन्टले भित्र जानुहोस्</button>
-  <?php endif; ?>
-  <a class="b gh" href="/team/?v=forgot">🔑 पासवर्ड बनाउनुहोस् / बिर्सनुभयो? · Set / forgot password</a>
+  <p class="tp-sub" style="margin-top:10px">🔒 अनुहार फारममा दिएको फोटोसँग मात्र मिलाइन्छ, कतै राखिँदैन। फोनको फिंगरप्रिन्ट / Face ID फोनभित्रै रहन्छ। · Your face is only compared with the photo on your own record and never stored; the phone's fingerprint / Face ID never leaves the phone.</p>
   <p class="tp-links">
     <a href="/agreements/apply.html">🤝 एजेन्ट बन्नुहोस्</a>
     <a href="/agreements/apply.html?kind=staff">🧑‍✈️ स्टाफ बन्नुहोस्</a>
     <a href="/agreements/apply.html?kind=partner">🏢 साझेदार बन्नुहोस्</a>
   </p>
   <?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261023e"></script><?php endif; ?>
+  <script src="/assets/js/team-face.js?v=20261023g"></script>
   <p class="tp-links" style="font-weight:400"><a href="/admin/login.php?portal=admin">Office login (admin)</a></p>
 </div>
 <?php endif;
