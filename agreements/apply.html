@@ -162,7 +162,7 @@ details.more[open]{padding-bottom:10px}
      made for the applicant automatically after sending. -->
 <!-- 23 Oct 2026 (owner: "Nepali, Hindi, English and Gujarati"): the form's words in Hindi / Gujarati (form-i18n.js); English stays beside -->
 <div class="flang" role="group" aria-label="Language · भाषा"><button type="button" data-flang="ne" aria-pressed="true">नेपाली</button><button type="button" data-flang="hi" aria-pressed="false">हिन्दी</button><button type="button" data-flang="gu" aria-pressed="false">ગુજરાતી</button><button type="button" data-flang="en" aria-pressed="false">English</button></div>
-<div class="kribbon" id="kRib"><span id="kRibT">🤝 एजेन्ट फारम · AGENT</span><a id="kRibA" href="/agreements/agent-agreement-ne.html">📜 एजेन्ट सम्झौता</a><a id="kPdf" href="/agreements/form.php?kind=agent&amp;auto=pdf" target="_blank" rel="noopener">📄 खाली फारम PDF · Blank PDF</a><a id="kPdfBw" href="/agreements/form.php?kind=agent&amp;bw=1&amp;auto=pdf" target="_blank" rel="noopener">⚫ B&amp;W PDF</a><a href="/agreements/">↔ अर्को भूमिका · Other role</a></div>
+<div class="kribbon" id="kRib"><span id="kRibT">🤝 एजेन्ट फारम · AGENT</span><a id="kPdf" href="/agreements/form.php?kind=agent&amp;auto=pdf" target="_blank" rel="noopener">📄 खाली फारम PDF · Blank PDF</a><a id="kPdfBw" href="/agreements/form.php?kind=agent&amp;bw=1&amp;auto=pdf" target="_blank" rel="noopener">⚫ B&amp;W PDF</a><a href="/team/">🔑 मेरो फारम, ID र पासवर्ड · My form, ID &amp; password</a></div>
 
 <main>
 <form id="ap" novalidate>
@@ -354,7 +354,7 @@ details.more[open]{padding-bottom:10px}
     2️⃣ <a href="/team/">/team/</a> मा मोबाइल नम्बरले पासवर्ड बनाउनुहोस् — वा Face ID / फिंगरप्रिन्ट।<br>
     3️⃣ डिजिटल ID कार्ड, भिजिटिङ कार्ड, QR जाँच र PDF त्यहीँ।
   </div>
-  <a class="btn ghost" href="/team/?v=forgot" style="margin-bottom:8px">🔐 टिम लगइन · Team login (after approval)</a>
+  <a class="btn ghost" href="/team/?v=forgot" style="margin-bottom:8px">🔑 मेरो ID र पासवर्ड · My ID &amp; password (after approval) — पासवर्ड बिर्सनुभयो? यहीँ</a>
   <a class="btn" href="/">🏠 होम पेज · Home</a>
 </section>
 </main>
@@ -485,8 +485,6 @@ details.more[open]{padding-bottom:10px}
     if (rib) {
       rib.className = 'kribbon' + (org ? ' org' : staff ? ' staff' : '');
       $('kRibT').textContent = { staff: '🧑‍✈️ कर्मचारी फारम · STAFF', partner: '🏢 साझेदार कम्पनी फारम · PARTNER (PVT. LTD.)', agent: '🤝 एजेन्ट फारम · AGENT' }[kk];
-      $('kRibA').href = staff ? '/agreements/staff-agreement.html' : '/agreements/' + kk + '-agreement-ne.html';
-      $('kRibA').textContent = { staff: '📜 कर्मचारी सम्झौता', partner: '📜 साझेदार सम्झौता', agent: '📜 एजेन्ट सम्झौता' }[kk];
       // 23 Oct 2026 (owner: "khali ya bhari PDF, B&W print ready"): this kind's blank A4 form + agreement as PDF
       $('kPdf').href = '/agreements/form.php?kind=' + kk + '&auto=pdf';
       $('kPdfBw').href = '/agreements/form.php?kind=' + kk + '&bw=1&auto=pdf';

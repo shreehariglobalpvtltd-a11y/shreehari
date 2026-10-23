@@ -87,6 +87,27 @@ $agrMakeLogin = static function (array $app) use ($selfId): int {
     AgentApplications::update((int) $app['id'], ['admin_id' => $newId], $selfId);
     return $newId;
 };
+/* 23 Oct 2026 (owner: "form patthaune -> pending -> admin accept -> ID card, agent code, password ni diun milos"):
+   approving makes everything in one step - the login (username = mobile) with its agent code and welcome
+   WhatsApp, and the password when the office typed one (they change it at the first sign-in). With no
+   password typed, the person makes their own at /team/ with a WhatsApp code - the same "forgot" door. */
+$agrApproveAll = static function (int $id, string $pw) use ($agrMakeLogin, $selfId): void {
+    $now = AgentApplications::find($id);
+    if ($now === null || (string) $now['status'] !== 'approved') {
+        return;
+    }
+    if (empty($now['admin_id']) && (string) $now['phone'] !== '') {
+        $agrMakeLogin($now);
+        $now = AgentApplications::find($id);
+    }
+    if ($pw !== '' && $now !== null && !empty($now['admin_id'])) {
+        try {
+            Auth::setStaffCredentials((int) $now['admin_id'], ['password' => $pw, 'must_change' => true], $selfId);
+        } catch (RuntimeException $re) {
+            throw new AgreementError($re->getMessage());
+        }
+    }
+};
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $act = (string) ($_POST['action'] ?? '');
     if (!Security::verifyCsrf()) {
@@ -117,6 +138,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $logoDecide($was, 'approved');
                 }
                 $changed = AgentApplications::update($id, $in, $selfId);
+                if ($in['status'] === 'approved' && empty($in['admin_id'])) {
+                    $agrApproveAll($id, trim((string) ($_POST['new_password'] ?? '')));
+                }
                 Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=' . ($changed === [] ? '0' : '1') . '#detail');
             } elseif ($act === 'card' || $act === 'add') {
                 // 19 Oct 2026: the website card + KYC / bank edit, and the office's own "add agent".
@@ -176,9 +200,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 AgentApplications::update($id, ['status' => 'approved'], $selfId);
                 AgentApplications::saveCard($id, ['web_live' => 1], $selfId, false);
                 // 22 Oct 2026 (owner: approve = team account too): a login when there is none and a mobile is on file
-                $now = AgentApplications::find($id);
-                if ($canEdit && isset($_POST['mklogin']) && $now !== null && empty($now['admin_id']) && (string) $now['phone'] !== '') {
-                    $agrMakeLogin($now);
+                if ($canEdit && isset($_POST['mklogin'])) {
+                    $agrApproveAll($id, trim((string) ($_POST['new_password'] ?? '')));
                 }
                 Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=1#web');
             } elseif ($act === 'creds' && $canEdit) {
@@ -460,7 +483,7 @@ if (!$ready) {
         <?php endif; ?>
         <dt>KYC · agreement</dt><dd><?= $kycPill((string) $open['kyc_status']) ?> <?= $agrPill((string) $open['agreement_status'], $open['agreement_end'] ?? null) ?></dd>
         <?php if (!empty($open['agreement_signed_at'])): ?><dt>Signed · ends</dt><dd><?= $h($fmtDate($open['agreement_signed_at'])) ?> → <?= $h($fmtDate($open['agreement_end'])) ?></dd><?php endif; ?>
-        <dt>Agent account</dt><dd><?php if (!empty($open['admin_id'])): ?><a href="agent-360.php?agent=<?= (int) $open['admin_id'] ?>">Open Agent 360 (#<?= (int) $open['admin_id'] ?>)</a> · <span class="muted">team portal: /team/ with mobile + password</span><?php else: ?><span class="muted">Not linked yet</span>
+        <dt>Agent account</dt><dd><?php if (!empty($open['admin_id'])): require_once INCLUDE_PATH . '/agentwallet.php'; $acLbl = AgentWallet::agentCodeLabel((int) $open['admin_id']); ?><?php if ($acLbl !== ''): ?><b class="mono">🏷 <?= $h($acLbl) ?></b> · <?php endif; ?><?php if ((string) $open['status'] === 'approved' && !empty($open['ref'])): ?><a href="id-card.php?ref=<?= $h($open['ref']) ?>">🪪 ID card</a> · <?php endif; ?><a href="agent-360.php?agent=<?= (int) $open['admin_id'] ?>">Open Agent 360 (#<?= (int) $open['admin_id'] ?>)</a> · <span class="muted">team portal: /team/ with mobile + password</span><?php else: ?><span class="muted">Not linked yet</span>
           <?php if ($canEdit && (string) $open['status'] === 'approved' && (string) $open['phone'] !== ''): /* 22 Oct 2026: team portal */ ?>
           <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" style="display:inline;margin-left:6px" onsubmit="return confirm('Create an agent login for <?= $h(addslashes((string) $open['name'])) ?>? Username = the mobile; they make the password at /team/ with a WhatsApp code.')"><?= $csrfField ?><input type="hidden" name="action" value="mklogin"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>"><button class="btn sm" type="submit">🔐 Create login (sell tickets)</button></form>
           <?php endif; ?><?php endif; ?></dd>
@@ -519,7 +542,12 @@ if (!$ready) {
                 <option value="<?= (int) $ag['id'] ?>"<?= (int) ($open['admin_id'] ?? 0) === (int) $ag['id'] ? ' selected' : '' ?>><?= $h(($ag['full_name'] ?: $ag['username']) . ' · ' . ($ag['phone_any'] ?: 'no phone') . ((int) $ag['is_active'] === 1 ? '' : ' (inactive)') . ($sameAgent === (int) $ag['id'] ? ' ← same phone' : '')) ?></option>
               <?php endforeach; ?>
             </select>
-            <span class="help">Make the account on <a href="staff.php#addStaff">Staff &amp; Agents</a> first, then pick it here. The person's public-list choices carry over only to an account with the same mobile (← same phone).</span></div>
+            <span class="help">Leave “not linked”: setting the status to <b>Approved</b> makes the login + agent code by itself (username = mobile). Pick an account only to join an existing one.</span></div>
+          <?php if (empty($open['admin_id'])): ?>
+          <div class="field"><label for="agrPw">Password on approve (optional)</label>
+            <input id="agrPw" name="new_password" class="inp" type="text" minlength="8" maxlength="72" autocomplete="new-password" placeholder="leave empty = they make it">
+            <span class="help">Used only when the status becomes Approved. Changed at the first sign-in. Empty = they make their own at /team/ with a WhatsApp code (same as “forgot password”).</span></div>
+          <?php endif; ?>
           <div class="field" style="grid-column:1/-1"><label for="agrNote">Office note</label>
             <input id="agrNote" name="note" class="inp" maxlength="255" value="<?= $h($open['note'] ?? '') ?>" placeholder="e.g. called on 28 Sep, coming Monday with the original citizenship"></div>
           <?php if ($openLogo !== '' && !$openApproved): /* 22 Oct 2026 (review, #18): nothing is chosen for the office */ ?>
@@ -596,7 +624,11 @@ if (!$ready) {
         <label class="agr-check"><input type="radio" name="logo_ok" value="0"> 🗑 Remove it</label></div>
       <?php endif; ?>
       <?php if (empty($open['admin_id']) && (string) $open['phone'] !== ''): ?>
-      <label class="agr-check" style="display:block;margin-bottom:8px"><input type="checkbox" name="mklogin" value="1" checked> 🔐 Also create the login (sell tickets + team portal; username = mobile)</label>
+      <label class="agr-check" style="display:block;margin-bottom:8px"><input type="checkbox" name="mklogin" value="1" checked> 🔐 Also create the login + agent code (sell tickets + team portal; username = mobile)</label>
+      <?php endif; ?>
+      <?php if (empty($open['admin_id'])): ?>
+      <label style="display:block;margin-bottom:8px;max-width:360px"><span class="muted text-xs">Password (optional) — leave empty and they make their own at /team/ with a WhatsApp code</span>
+        <input name="new_password" class="inp" type="text" minlength="8" maxlength="72" autocomplete="new-password" placeholder="8+ characters, changed at first sign-in"></label>
       <?php endif; ?>
       <button class="btn" type="submit" style="background:#0f9d6b;border-color:#0f9d6b">✅ Approve &amp; put live on website</button>
     </form>

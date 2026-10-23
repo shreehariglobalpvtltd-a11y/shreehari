@@ -64,11 +64,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
         try {
             if ($act === 'decide') {
                 $do = (string) ($_POST['do'] ?? '');
+                $pwIn = trim((string) ($_POST['new_password'] ?? ''));
+                if ($do === 'approve' && $pwIn !== '' && mb_strlen($pwIn) < TeamPortal::PW_MIN) {
+                    throw new TeamPortalError('The password must be at least ' . TeamPortal::PW_MIN . ' characters - nothing was approved.');
+                }
                 $r  = StaffApps::decide($id, $do, $selfId, [
                     'reason'   => (string) ($_POST['reason'] ?? ''),
                     'template' => (string) ($_POST['template'] ?? ''),
                     'note'     => (string) ($_POST['note'] ?? ''),
                 ]);
+                /* 23 Oct 2026 (owner: "admin accept -> ID card, password ni diun milos; counter ni yei form bata"):
+                   approve can carry the portal password, and for an office / counter post a counter login on the
+                   same mobile. With no password typed they make it at /team/ with a WhatsApp code. */
+                if ($do === 'approve') {
+                    $pw = trim((string) ($_POST['new_password'] ?? ''));
+                    if ($pw !== '') {
+                        TeamPortal::officeSetStaffPassword($id, $pw, $selfId);
+                    }
+                    if (isset($_POST['counter_login'])) {
+                        TeamPortal::makeCounterLogin($id, $pw, $selfId);
+                    }
+                }
                 // Not delivered by the API: the office gets a tap-to-send link on the next page.
                 $_SESSION['staff_wa_link'] = $r['waLink'];
                 Response::redirect('admin/' . $keep(['id' => $id, 'done' => $do, 'wa' => $r['wa'] ? 1 : 0]) . '#detail');
@@ -327,7 +343,12 @@ if (!$ready) {
     <div class="stf-big">
       <?php if (in_array($st, ['pending', 'under_review', 'suspended', 'rejected'], true)): ?>
       <form method="post" action="<?= $h($keep(['id' => $oid])) ?>"><?= $csrfField ?><input type="hidden" name="action" value="decide"><input type="hidden" name="do" value="approve"><input type="hidden" name="id" value="<?= $oid ?>">
-        <button class="btn stf-go" type="submit">✅ Approve</button></form>
+        <label style="display:block;margin:0 0 8px;max-width:360px"><span class="muted" style="font-size:12px">Password (optional) — empty = they make it at /team/ with a WhatsApp code</span>
+          <input name="new_password" class="inp" type="text" minlength="8" maxlength="72" autocomplete="new-password" placeholder="8+ characters"></label>
+        <?php if ((string) ($open['role_applied'] ?? '') === 'office' && empty($open['admin_id'])): ?>
+        <label style="display:block;margin:0 0 8px"><input type="checkbox" name="counter_login" value="1" checked> 🖥 Also make a counter (desk) login on this mobile</label>
+        <?php endif; ?>
+        <button class="btn stf-go" type="submit">✅ Approve — ID card + login</button></form>
       <?php endif; ?>
       <details>
         <summary class="btn ghost">📨 Request more info</summary>

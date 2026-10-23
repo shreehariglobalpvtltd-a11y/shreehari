@@ -131,7 +131,7 @@ hx_check('#homeRoute carries the ROUTE mount [data-routeline="home"] once', subs
 hx_check('#homeRoute keeps the contract classes "container home-route"', (bool) preg_match('~<section class="[^"]*\bcontainer\b[^"]*\bhome-route\b[^"]*" id="homeRoute"~', $block));
 hx_check('route mount has a skeleton so nothing jumps', str_contains($block, 'data-hx-skel') && str_contains($css, '.hx-route-skel') && str_contains($css, 'min-height: 160px'));
 hx_check('Track my bus uses the router\'s [data-track-bus] handler', substr_count($block, 'data-track-bus') >= 2);
-foreach (['/india-nepal', '/travel-info', '/explore', '/tours', '/agreements/'] as $href) {
+foreach (['/india-nepal', '/travel-info', '/explore', '/tours', '/agreements/apply.html'] as $href) {
     hx_check("link to {$href}", str_contains($block, 'href="' . $href . '"'));
 }
 preg_match_all('~data-scroll="([^"]+)"~', $block, $ds);

@@ -511,7 +511,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <a href="#/my"><svg class="ic"><use href="#i-list"/></svg> My Bookings</a>
   <a href="#/" data-scroll="timetable"><svg class="ic"><use href="#i-clock"/></svg> समय तालिका · Timetable</a>
   <a href="/business"><svg class="ic"><use href="#i-building"/></svg> <span data-i18n="mmBusiness">Business services · व्यापार सेवा</span></a>
-  <a href="/agreements/#forms"><svg class="ic"><use href="#i-doc"/></svg> आवेदन फारम र सम्झौता · Forms: Staff · Agent · Partner</a>
+  <a href="/agreements/apply.html"><svg class="ic"><use href="#i-doc"/></svg> आवेदन फारम र सम्झौता · Forms: Staff · Agent · Partner</a>
   <a href="/admin/login.php" rel="nofollow"><svg class="ic"><use href="#i-lock"/></svg> एजेन्ट / स्टाफ लगइन · Agent / Staff sign-in</a>
   <a href="#/" data-scroll="contact"><svg class="ic"><use href="#i-phone"/></svg> Contact</a>
   <a href="/help.php" class="mm-hot"><svg class="ic ic-s"><use href="#s-support"/></svg> सहायता केन्द्र · Help Desk (नम्बर पाउनुहोस्)</a>
@@ -1309,7 +1309,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <li><a class="hx-tile hx-c3" href="#/my" data-track-bus><span class="hx-tile-ic" aria-hidden="true"><svg class="ic"><use href="#i-radar"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxHubTrack">Track bus</b><small data-i18n="hxHubTrackSub">From your ticket</small></span></a></li>
         <li><a class="hx-tile hx-c4" href="/tours" data-hx-href="/tours"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic"><use href="#i-luggage"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxHubTours">Tour packages</b><small data-i18n="hxHubToursSub">Enquire &amp; plan</small></span></a></li>
         <li><a class="hx-tile hx-c5" href="/explore" data-hx-href="/explore"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic"><use href="#i-compass"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxHubGuide">Travel guide · घुम्ने ठाउँ</b><small data-i18n="hxHubGuideSub">Places to visit</small></span></a></li>
-        <li><a class="hx-tile hx-c6" href="/agreements/"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic"><use href="#i-users"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxHubAgent">Agent / partner</b><small data-i18n="hxHubAgentSub">Sell tickets with us</small></span></a></li>
+        <li><a class="hx-tile hx-c6" href="/agreements/apply.html"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic"><use href="#i-users"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxHubAgent">Agent / partner</b><small data-i18n="hxHubAgentSub">Sell tickets with us</small></span></a></li>
       </ul>
       <div class="hx-sec-head">
         <h3 class="hx-h3" data-i18n="hxPlacesTitle">Places worth the trip</h3>
@@ -1509,7 +1509,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <p class="rl-sub">कम्पनीले KYC जाँचेर परिचयपत्र दिएका मान्छे मात्र — हरेक कार्डको QR ले आजको स्थिति देखाउँछ। तपाईं पनि जोडिनुहोस्: एउटै अनलाइन फारम, सम्झौता, ई-सही, स्वीकृति, डिजिटल ID र लगइन। · Only people the office verified; every card's QR shows today's standing.</p>
       <ol class="rl-steps" aria-label="What S Hari Global offers">
         <li><a href="#book"><i>🎫</i><b>Ticket Booking<small>टिकट बुकिङ · सिट रोज्नुहोस्, Cash / Online</small></b></a></li>
-        <li><a href="/agreements/"><i>📝</i><b>Digital Agreements &amp; IDs<small>डिजिटल सम्झौता · ई-सही · परिचयपत्र</small></b></a></li>
+        <li><a href="/agreements/apply.html"><i>📝</i><b>Digital Agreements &amp; IDs<small>डिजिटल सम्झौता · ई-सही · परिचयपत्र</small></b></a></li>
         <li><a href="/navigate.html"><i>🧭</i><b>Live Bus Navigation<small>SHARI NAV · लाइभ बस, नक्सा, आवाज</small></b></a></li>
       </ol>
       <!-- 23 Oct 2026 (owner: "3/3/3 + 1 CEO = 10 jana live"): the CEO card leads the three Top 3 rows. -->
@@ -1531,8 +1531,6 @@ s.addEventListener('click',function(e){e.preventDefault();
           <button type="button" class="rl-all" data-kind="agent" aria-expanded="false" hidden>सबै हेर्नुहोस् · See all</button>
           <button type="button" class="rl-more" data-kind="agent" hidden>थप · More</button>
           <a class="rl-apply" href="/agreements/apply.html">✍️ एजेन्ट बन्नुहोस् · Apply as agent</a>
-          <a class="rl-login" href="/team/">🔐 एजेन्ट लगइन · Agent login</a>
-          <a href="/agreements/#agent">📜 एजेन्ट सम्झौता · Agreement</a>
         </div>
       </article>
 
@@ -1544,8 +1542,6 @@ s.addEventListener('click',function(e){e.preventDefault();
           <button type="button" class="rl-all" data-kind="staff" aria-expanded="false" hidden>सबै हेर्नुहोस् · See all</button>
           <button type="button" class="rl-more" data-kind="staff" hidden>थप · More</button>
           <a class="rl-apply" href="/agreements/apply.html?kind=staff">🧑‍✈️ हामीसँग काम गर्नुहोस् · Apply for a job</a>
-          <a class="rl-login" href="/team/">🔐 स्टाफ लगइन · Staff login</a>
-          <a href="/agreements/#staff">📜 कर्मचारी सम्झौता · Agreement</a>
         </div>
       </article>
 
@@ -1557,8 +1553,6 @@ s.addEventListener('click',function(e){e.preventDefault();
           <button type="button" class="rl-all" data-kind="partner" aria-expanded="false" hidden>सबै हेर्नुहोस् · See all</button>
           <button type="button" class="rl-more" data-kind="partner" hidden>थप · More</button>
           <a class="rl-apply" href="/agreements/apply.html?kind=partner">🤝 साझेदार बन्नुहोस् · Become a partner</a>
-          <a class="rl-login" href="/team/">🔐 साझेदार लगइन · Partner login</a>
-          <a href="/agreements/#partner">📜 साझेदार सम्झौता · Agreement</a>
         </div>
       </article>
       <p class="rl-note">🔒 नम्बर, फोटो र WhatsApp — व्यक्तिले अनुमति दिएको मात्र देखिन्छ। परिचयपत्रको QR स्क्यान गरे "Genuine / Not valid" तुरुन्तै देखिन्छ। · Contact details appear only with the person's consent; scan any ID card's QR to check it.</p>
@@ -1874,7 +1868,7 @@ s.addEventListener('click',function(e){e.preventDefault();
        so it adds no CSS. Opens /agreements/: the Agent and the Partner (Pvt Ltd)
        agreement in Nepali / Hindi / English / Gujarati - read, fill, send. -->
   <div class="container home-more-bar" id="agrBar">
-    <a class="home-more-btn" id="agrApplyCta" href="/agreements/#forms" style="text-decoration:none">
+    <a class="home-more-btn" id="agrApplyCta" href="/agreements/apply.html" style="text-decoration:none">
       <span class="hm-ic" aria-hidden="true">📝</span>
       <span class="hm-tx"><b>आवेदन फारम — कर्मचारी · एजेन्ट · साझेदार कम्पनी</b><small>Staff · Agent · Partner — अनलाइन भर्नुहोस्, वा A4 फारम (Print · PDF · JPG) र आफ्नो सम्झौता।</small></span>
       <span class="hm-ch" aria-hidden="true">›</span>
@@ -3297,7 +3291,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <li><a href="#/my" data-track-bus data-i18n="mmTrack">Track my bus</a></li>
           <li><a href="/help.php" data-i18n="fHelpDesk">Help Desk</a></li>
           <li><a href="/admin/login.php" rel="nofollow" data-i18n="navStaff">Agent / Staff sign-in</a></li>
-          <li><a href="/agreements/" rel="nofollow" data-i18n="fAgreements">Agent agreements</a></li>
+          <li><a href="/agreements/apply.html" rel="nofollow" data-i18n="fAgreements">Agent agreements</a></li>
           <li><a href="#/" data-scroll="faq" data-i18n="navFaq">FAQ</a></li>
           <li><a href="#/" data-scroll="contact" data-i18n="navContact">Contact &amp; support</a></li>
           <li><a href="tel:+{{f:head.tel}}" data-fact-tel="head.tel"><span data-i18n="fCall">Call</span> <span data-fact="head.phone">{{f:head.phone}}</span></a></li>

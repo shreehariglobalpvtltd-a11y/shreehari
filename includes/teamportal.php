@@ -1198,6 +1198,62 @@ final class TeamPortal
         Logger::audit('staff_app.password_set', 'staff_application', (string) $r['ref'], null, null, 'Team portal password set by admin #' . $by);
     }
 
+    /**
+     * 23 Oct 2026 (owner: "counter ni yei form bata"): an approved office / counter staff member gets a
+     * counter (desk) login on the same mobile, linked to the application. An existing agent / counter
+     * account on that mobile is linked instead of a second one. $pw '' = an unusable password: they make
+     * theirs at /team/ with a WhatsApp code (the reset writes every account on the number).
+     *
+     * @return array{id:int, username:string, made:bool}
+     */
+    public static function makeCounterLogin(int $staffId, string $pw, int $by): array
+    {
+        $r = StaffApps::find($staffId);
+        if ($r === null || !self::ready()) {
+            throw new TeamPortalError('That application is not there.');
+        }
+        if ((string) $r['status'] !== 'approved') {
+            throw new TeamPortalError('Approve the application first.');
+        }
+        if (!empty($r['admin_id'])) {
+            $a = Database::fetch('SELECT id, username FROM admins WHERE id = :i', ['i' => (int) $r['admin_id']]);
+            if ($a !== null) {
+                return ['id' => (int) $a['id'], 'username' => (string) $a['username'], 'made' => false];
+            }
+        }
+        $p10 = self::phone10((string) $r['phone']);
+        if ($p10 === '') {
+            throw new TeamPortalError('This application has no 10-digit mobile for a login.');
+        }
+        $have = Auth::teamAccounts($p10)[0] ?? null;
+        if ($have !== null) {
+            self::linkAccount($staffId, (string) $have['username'], $by);
+            return ['id' => (int) $have['id'], 'username' => (string) $have['username'], 'made' => false];
+        }
+        if ($pw !== '' && mb_strlen($pw) < self::PW_MIN) {
+            throw new TeamPortalError('The password must be at least ' . self::PW_MIN . ' characters.');
+        }
+        $user = $p10;
+        for ($i = 2; Database::exists('SELECT 1 FROM admins WHERE username = :u LIMIT 1', ['u' => $user]); $i++) {
+            $user = $p10 . '-' . $i;
+        }
+        $cc  = (string) ($r['phone_country'] ?? '') === 'IN' ? '+91' : ((string) ($r['phone_country'] ?? '') === 'NP' ? '+977' : '');
+        $id  = (int) Database::insert('admins', [
+            'username'       => $user,
+            'password_hash'  => Security::hashPassword($pw !== '' ? $pw : bin2hex(random_bytes(24))),
+            'full_name'      => (string) $r['full_name'],
+            'email'          => null,
+            'phone'          => $cc . $p10,
+            'role'           => 'counter',
+            'is_active'      => 1,
+            'must_change_pw' => $pw !== '' ? 1 : 0,
+        ]);
+        Database::update('staff_applications', ['admin_id' => $id], 'id = :id', ['id' => $staffId]);
+        Logger::audit('staff.create', 'admin', $user, null, ['role' => 'counter', 'from' => (string) $r['ref']],
+            'counter login made on approving the staff application (by admin #' . $by . ')');
+        return ['id' => $id, 'username' => $user, 'made' => true];
+    }
+
     /** The office clears a staff member's portal password: they make a new one with a WhatsApp code. */
     public static function clearPassword(int $staffId, int $by): void
     {
