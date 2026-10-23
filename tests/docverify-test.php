@@ -34,6 +34,29 @@ dv_ok(!DocVerify::nameMatches('Sita Devi', 'Gita Kumari'), 'other person fails')
 dv_ok(!DocVerify::nameMatches('', 'Ram'), 'empty typed fails');
 dv_ok(DocVerify::nameMatches('Krishna Prasad Yadav', 'कृष्ण प्रसाद यादव'), 'conjuncts transliterate');
 
+// --- 23 Oct 2026: fieldsFromRead (the pre-fill) ---
+$fr = DocVerify::fieldsFromRead(['is_id_document' => true, 'document_type' => 'citizenship', 'holder_name_roman' => 'RAM BAHADUR THAPA',
+    'id_number' => '५२-०१-७५-१२३४५', 'dob_ad' => '1990-05-14', 'dob_bs' => '2047-01-31', 'gender' => 'Male',
+    'father_name_roman' => 'Hari Thapa', 'address_roman' => "Nepalgunj-5,\n Banke"]);
+dv_ok($fr['status'] === 'read', 'read: status');
+dv_ok($fr['fields']['name'] === 'Ram Bahadur Thapa', 'read: name title-cased');
+dv_ok($fr['fields']['idno'] === '52-01-75-12345', 'read: Devanagari digits -> 0-9');
+dv_ok($fr['fields']['idtype'] === '1', 'read: citizenship -> radio 1');
+dv_ok($fr['fields']['dob'] === '1990-05-14', 'read: AD date kept');
+dv_ok($fr['fields']['gender'] === 'male', 'read: gender lower-cased');
+dv_ok($fr['fields']['address'] === 'Nepalgunj-5, Banke', 'read: address one line');
+dv_ok($fr['fields']['father'] === 'Hari Thapa', 'read: father');
+$fr = DocVerify::fieldsFromRead(['is_id_document' => true, 'document_type' => 'aadhaar', 'holder_name_roman' => 'राम थापा',
+    'id_number' => 'none', 'dob_ad' => '2020-01-01', 'gender' => 'x', 'address_roman' => 'काठमाडौं']);
+dv_ok($fr['fields']['name'] === '', 'read: non-Roman name dropped');
+dv_ok($fr['fields']['idno'] === '', 'read: number without a digit dropped');
+dv_ok($fr['fields']['idtype'] === '0', 'read: aadhaar -> radio 0');
+dv_ok($fr['fields']['dob'] === '', 'read: a child\'s date dropped');
+dv_ok($fr['fields']['gender'] === '', 'read: unknown gender dropped');
+dv_ok($fr['fields']['address'] === '', 'read: Devanagari address dropped');
+dv_ok(DocVerify::fieldsFromRead(['is_id_document' => false])['status'] === 'notdoc', 'read: not a document');
+dv_ok(DocVerify::fieldsFromRead(['is_id_document' => true, 'dob_ad' => '1990-02-30'])['fields']['dob'] === '', 'read: impossible date dropped');
+
 // --- numbers ---
 $read = static fn(array $nums, string $name = 'Ram Bahadur Thapa', bool $doc = true) => [
     'is_id_document' => $doc, 'document_type' => 'citizenship', 'holder_name' => '', 'holder_name_roman' => $name, 'id_numbers' => $nums,

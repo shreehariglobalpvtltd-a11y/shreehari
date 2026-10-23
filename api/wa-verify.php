@@ -8,7 +8,7 @@
  *   /api/staff-apply.php or /api/agreement-apply.php), application/json:
  *
  *   {"action":"start","purpose":"staff"|"agent"|"sign","phone":"98…","cc":"91"|"977"}
- *     200 {"ok":true,"token":"K7Q2M9","url":"https://wa.me/…?text=hi%20VERIFY%20K7Q2M9","text":"hi VERIFY K7Q2M9"}
+ *     200 {"ok":true,"token":"K7Q2M9","url":"https://wa.me/…?text=hi%20VERIFY%20K7Q2M9","text":"hi VERIFY K7Q2M9","qr":"data:image/png;base64,…"}
  *   {"action":"check","token":"K7Q2M9"}
  *     200 {"ok":true,"status":"verified"|"waiting"|"mismatch"|"expired"|"unknown"}
  *
@@ -51,6 +51,13 @@ try {
         Security::requireRateLimit('wa_verify_ip', $ip, 8, 600);
         Security::requireRateLimit('wa_verify_phone', $phone, 4, 600);
         $s = WaVerify::start($purpose, $phone, $country, $ip);
+        // 23 Oct 2026: on a computer the page shows this QR - the phone scans it and WhatsApp opens with the text typed
+        try {
+            require_once INCLUDE_PATH . '/qr.php';
+            $s['qr'] = QrCode::dataUri('https://wa.me/' . $s['to'] . '?text=' . rawurlencode($s['text']), 5, 2);
+        } catch (Throwable $e) {
+            $s['qr'] = '';
+        }
         Response::json(['ok' => true] + $s);
     }
 
