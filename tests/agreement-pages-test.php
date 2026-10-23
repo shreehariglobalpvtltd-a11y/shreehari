@@ -150,11 +150,14 @@ foreach (PAGES as $type => $base) {
         check("{$name}: colour and black-and-white themes", str_contains($html, 'data-theme="colour"') && str_contains($html, 'data-theme="bw"') && str_contains($html, 'html.bw{'));
 
         // signature page
+        // 23 Oct 2026 (owner: "no guarantors or witnesses for Staff/Agent, and include them for Partners"):
+        // the partner page keeps both blocks; the agent page has neither (nor clauses 10.5 / 15.3)
+        $wg = str_contains($html, 'name="w1_name"') && str_contains($html, 'name="w2_addr"')
+            && str_contains($html, 'name="g1_name"') && str_contains($html, 'name="g4_addr"');
         check("{$name}: signature page complete",
-            str_contains($html, '<div class="sigwrap">') && substr_count($html, 'class="pb') >= 4
-            && str_contains($html, 'name="w1_name"') && str_contains($html, 'name="w2_addr"')
+            str_contains($html, '<div class="sigwrap">') && substr_count($html, 'class="pb') >= ($type === 'org' ? 4 : 2)
+            && ($type === 'org' ? $wg : !str_contains($html, 'name="w1_name"') && !str_contains($html, 'name="g1_name"') && !str_contains($html, '<span class="n">15.3</span>'))
             && str_contains($html, 'class="seal"') && str_contains($html, 'class="thumbs"')
-            && str_contains($html, 'name="g1_name"') && str_contains($html, 'name="g4_addr"')
             && !str_contains($html, 'DIRECTOR / CEO')
             && str_contains($html, 'www.shreehariglobal.in'));
         check("{$name}: a sent form cannot be sent twice; a timeout says so", str_contains($html, 'U.sentBtn; btn.disabled = true;') && str_contains($html, 'U.applyUnsure'));

@@ -1944,4 +1944,92 @@ final class AgentApplications
         });
         return $items;
     }
+
+    /**
+     * The home page's Top 3 (23 Oct 2026, owner: "Top 3 Agents and Top 3 Partners ... with rankings").
+     *
+     * Ranked by real work: passengers on confirmed / completed tickets sold from the card's own agent account
+     * in the last 90 days (bookings.sold_by_admin_id; a round trip counts once - outbound seats only). The
+     * company's own desk codes never compete. Only cards that are on the website (approved, web_live, an
+     * active linked account, the newest card of that account) take part; when fewer than $limit have sales,
+     * the rest of the places go to listed cards without a figure (signed / KYC-verified first) - a number is
+     * shown only when it is real. Photo, logo and phone follow exactly the directory() rules: the full
+     * number only with the person's consent (public_ok), the photo only with web_photo.
+     *
+     * @return list<array{name: string, role: string, area: string, photo: string, phone: string, tel: string, wa: string, metric: string}>
+     */
+    public static function top(string $kind, int $limit = 3): array
+    {
+        if (!self::available() || !self::webColumnsAvailable()) {
+            return [];
+        }
+        $type = $kind === 'partner' ? 'org' : 'ind';
+        $logo = self::logoReady();
+        $logoSel = $logo ? '(x.logo IS NOT NULL) AS has_logo' : '0 AS has_logo';
+        $rows = Database::fetchAll(
+            "SELECT x.id, x.type, x.name, x.phone, x.phone_raw, x.area, x.public_ok, x.kyc_status, x.agreement_status,
+                    x.agreement_end, x.admin_id, x.web_photo, x.web_addr, x.web_key, (x.photo IS NOT NULL) AS has_photo, $logoSel,
+                    COALESCE(s.pax, 0) AS pax
+               FROM agent_applications x
+               JOIN admins a ON a.id = x.admin_id AND a.role = 'agent' AND a.is_active = 1
+               LEFT JOIN (
+                    SELECT b.sold_by_admin_id AS admin_id, COUNT(bs.id) AS pax
+                      FROM bookings b
+                      JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
+                      JOIN booking_seats bs ON bs.leg_id = bl.id AND bs.released_at IS NULL
+                     WHERE b.sold_by_admin_id IS NOT NULL
+                       AND b.status IN ('confirmed', 'completed')
+                       AND b.created_at >= :since
+                     GROUP BY b.sold_by_admin_id
+               ) s ON s.admin_id = x.admin_id
+              WHERE x.status = 'approved' AND x.web_live = 1 AND x.type = :t
+                AND x.id = (SELECT MAX(y.id) FROM agent_applications y WHERE y.admin_id = x.admin_id AND y.status = 'approved')",
+            ['t' => $type, 'since' => date('Y-m-d 00:00:00', strtotime('-90 days'))]
+        );
+        require_once __DIR__ . '/agentwallet.php';
+        $today = date('Y-m-d');
+        $cands = [];
+        foreach ($rows as $r) {
+            $name  = trim((string) $r['name']);
+            $phone = (string) $r['phone'];
+            if ($name === '' || $phone === '') {
+                continue;
+            }
+            $label = AgentWallet::agentCodeLabel((int) $r['admin_id']);
+            if ($label !== '' && AgentWallet::isCompanyCode($label)) {
+                continue;   // the company's own desks are not "agents"
+            }
+            $signed = (string) $r['agreement_status'] === 'signed'
+                && ($r['agreement_end'] === null || (string) $r['agreement_end'] === '' || (string) $r['agreement_end'] >= $today);
+            $cands[] = ['r' => $r, 'pax' => (int) $r['pax'], 'trust' => ($signed ? 2 : 0) + ((string) $r['kyc_status'] === 'verified' ? 1 : 0)];
+        }
+        usort($cands, static fn(array $x, array $y): int =>
+            [$y['pax'], $y['trust'], (int) $x['r']['id']] <=> [$x['pax'], $x['trust'], (int) $y['r']['id']]);
+
+        $out = [];
+        foreach (array_slice($cands, 0, max(1, $limit)) as $c) {
+            $r = $c['r'];
+            $full  = (int) $r['public_ok'] === 1;
+            $phone = (string) $r['phone'];
+            $cc    = countryDialCode(resolvePhoneCountry('', (string) ($r['phone_raw'] ?? '')));
+            $intl  = strlen($phone) === 10 ? ($cc !== '' ? $cc : '91') . $phone : $phone;
+            $photo = (int) $r['web_photo'] === 1 && (int) $r['has_photo'] === 1 && !empty($r['web_key'])
+                ? '/api/agent-photo.php?k=' . rawurlencode((string) $r['web_key']) : '';
+            if ($type === 'org' && $logo && (int) $r['has_logo'] === 1 && !empty($r['web_key'])) {
+                $photo = '/api/agent-photo.php?k=' . rawurlencode((string) $r['web_key']) . '&v=logo';
+            }
+            $area = trim((string) ($r['area'] ?? '')) ?: trim((string) ($r['web_addr'] ?? ''));
+            $out[] = [
+                'name'   => trim((string) $r['name']),
+                'role'   => $type === 'org' ? 'साझेदार कम्पनी · Partner' : 'एजेन्ट · Agent',
+                'area'   => mb_substr($area, 0, 60, 'UTF-8'),
+                'photo'  => $photo,
+                'phone'  => $full ? '+' . (strlen($phone) === 10 ? substr($intl, 0, -10) . ' ' . $phone : $intl) : self::maskPhone($phone),
+                'tel'    => $full ? '+' . $intl : '',
+                'wa'     => $full ? $intl : '',
+                'metric' => $c['pax'] > 0 ? $c['pax'] . ' यात्रु · ९० दिन · ' . $c['pax'] . ' passengers / 90 days' : '',
+            ];
+        }
+        return $out;
+    }
 }

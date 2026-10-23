@@ -1134,6 +1134,63 @@ final class StaffApps
     }
 
     /**
+     * The home page's Top 3 staff (23 Oct 2026, owner: "Top 3 Staff ... with rankings"). Staff do not sell
+     * tickets, so the order is the office's own (display_order - the office pins people), then a person with a
+     * public photo, then the office's KYC check, then experience, then the longest serving. Only the public
+     * fields the office allows (staff_public_fields) leave this method - experience and KYC only decide the
+     * order and are never shown; the badge says "office verified" only when the office verified the KYC.
+     *
+     * @return list<array{name: string, role: string, area: string, photo: string, phone: string, tel: string, wa: string, metric: string}>
+     */
+    public static function top(int $limit = 3): array
+    {
+        if (!self::available()) {
+            return [];
+        }
+        $pub = array_flip(self::publicFields());
+        if (!isset($pub['full_name'])) {
+            return [];   // a Top 3 without names would say nothing
+        }
+        $loc = self::locationReady() ? 'base_location' : 'NULL AS base_location';
+        require_once __DIR__ . '/teamportal.php';
+        $kyc = TeamPortal::kycReady() ? 'kyc_status' : "'none' AS kyc_status";
+        $rows = Database::fetchAll(
+            "SELECT id, full_name, phone, phone_country, district, $loc, role_applied, photo_path, web_key,
+                    display_order, experience_years, approved_at, $kyc
+               FROM staff_applications
+              WHERE status = 'approved' AND show_on_website = 1
+              LIMIT 500"
+        );
+        $hasPic = static fn(array $r): int => isset($pub['photo_path']) && !empty($r['photo_path'])
+            && preg_match('/^[a-f0-9]{20}$/', (string) $r['web_key']) === 1 ? 1 : 0;
+        usort($rows, static fn(array $x, array $y): int =>
+            [(int) $x['display_order'], -$hasPic($x), (string) $x['kyc_status'] === 'verified' ? 0 : 1, -(int) $x['experience_years'], (string) $x['approved_at'], (int) $x['id']]
+            <=> [(int) $y['display_order'], -$hasPic($y), (string) $y['kyc_status'] === 'verified' ? 0 : 1, -(int) $y['experience_years'], (string) $y['approved_at'], (int) $y['id']]);
+        $out = [];
+        foreach (array_slice($rows, 0, max(1, $limit)) as $r) {
+            $role = (string) $r['role_applied'];
+            $it = [
+                'name'   => (string) $r['full_name'],
+                'role'   => isset($pub['role_applied']) ? self::roleLabel($role, true) . ' · ' . self::roleLabel($role) : '',
+                'area'   => trim((string) ($r['base_location'] ?? '')) ?: (isset($pub['district']) ? (string) ($r['district'] ?? '') : ''),
+                'photo'  => $hasPic($r) ? '/api/staff-photo.php?k=' . $r['web_key'] : '',
+                'phone'  => '',
+                'tel'    => '',
+                'wa'     => '',
+                'metric' => (string) $r['kyc_status'] === 'verified' ? '✔ कार्यालय प्रमाणित · Office verified' : '',
+            ];
+            if (isset($pub['phone']) && strlen((string) $r['phone']) === 10) {
+                $cc = countryDialCode((string) $r['phone_country']) ?: '977';
+                $it['phone'] = '+' . $cc . ' ' . $r['phone'];
+                $it['tel']   = '+' . $cc . $r['phone'];
+                $it['wa']    = $cc . $r['phone'];
+            }
+            $out[] = $it;
+        }
+        return $out;
+    }
+
+    /**
      * The 240 px thumbnail behind /api/staff-photo.php?k=… — only for an
      * approved, listed person while the photo is a public field.
      *

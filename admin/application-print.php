@@ -132,9 +132,12 @@ if ($blank === '') {
             $isOrg ? 'Company & representative' : 'Applicant' => ['p_name', 'p_type', 'p_reg', 'p_tax', 'p_rep', 'p_rep_desig', 'p_rep_phone', 'p_id', 'p_dob', 'p_occ', 'p_idtype', 'p_idno', 'p_pan', 'p_phone', 'p_email', 'p_area', 'p_addr', 'p_addr2', 'p_office'],
             'Agreement terms' => ['a_no', 'a_date', 'a_place', 'a_start', 'a_end', 'co_sig', 'co_desig', 'org_rate', 'org_pct', 'org_target', 'org_fixed', 'org_day', 'ind_target', 'ind_fixed', 'ind_pct', 'c73'],
             'Bank / payment'  => ['b_name', 'b_bank', 'b_acc', 'b_ifsc', 'b_upi'],
-            'Witnesses'       => ['w1_name', 'w1_addr', 'w2_name', 'w2_addr'],
-            'Guarantors'      => ['g1_name', 'g1_id', 'g1_addr', 'g2_name', 'g2_id', 'g2_addr', 'g3_name', 'g3_id', 'g3_addr', 'g4_name', 'g4_id', 'g4_addr'],
         ];
+        // 23 Oct 2026 (owner: "no guarantors or witnesses for Staff/Agent"): a partner company only
+        if ($isOrg) {
+            $groups['Witnesses']  = ['w1_name', 'w1_addr', 'w2_name', 'w2_addr'];
+            $groups['Guarantors'] = ['g1_name', 'g1_id', 'g1_addr', 'g2_name', 'g2_id', 'g2_addr', 'g3_name', 'g3_id', 'g3_addr', 'g4_name', 'g4_id', 'g4_addr'];
+        }
         $base = [
             ['Name', (string) $rec['name'], false], ['Mobile', (string) $rec['phone'], false], ['E-mail', (string) ($rec['email'] ?? ''), false],
             ['Work area', (string) ($rec['area'] ?? ''), false], ['Applied on', $fmtDT($rec['created_at'] ?? null), false],
@@ -279,11 +282,7 @@ if ($blank === '') {
             ['Previous employer', trim((string) ($rec['prev_employer'] ?? '') . ((string) ($rec['prev_role'] ?? '') !== '' ? ' · ' . $rec['prev_role'] : '')), false],
         ];
         $refRows = [];
-        $wi = 0;
         foreach (is_array($refs) ? array_slice($refs, 0, 4) : [] as $i => $r) {
-            if (is_array($r) && (string) ($r['relation'] ?? '') === 'witness' && $wi < 2) {
-                $wit[$wi++] = [(string) ($r['name'] ?? ''), $canKyc ? (string) ($r['phone'] ?? '') : ''];
-            }
             if (is_array($r) && trim(implode('', array_map('strval', $r))) !== '') {
                 $refRows[] = [['guarantor' => 'Guarantor', 'witness' => 'Witness'][(string) ($r['relation'] ?? '')] ?? 'Reference ' . ($i + 1), implode(' · ', array_filter(array_map('strval', [$r['name'] ?? '', $r['phone'] ?? '', $r['relation'] ?? ($r['rel'] ?? '')]))), false];
             }
@@ -377,7 +376,6 @@ if ($blank === '') {
             'परिचयपत्र · Identity' => $blankRows(['परिचयपत्र र नम्बर (प्रतिलिपि सहित) · ID type and number', 'PAN']),
             'शिक्षा र अनुभव · Education & experience' => $blankRows(['शिक्षा · Education', 'अनुभव · Experience']),
             'बैंक / भुक्तानी · Bank / payment' => $blankRows(['खातावालाको नाम · Account name', 'बैंक · शाखा · Bank · branch', 'खाता नम्बर · IFSC · Account number', 'UPI / eSewa / Khalti']),
-            'साक्षी · Witnesses' => $blankRows(['साक्षी १ (नाम · ठेगाना) · Witness 1', 'साक्षी २ (नाम · ठेगाना) · Witness 2']),
         ];
     }
     $seal = '';
@@ -440,6 +438,7 @@ $langHref = static fn(string $l): string => '?' . http_build_query($q + ['lang' 
 $footRef = ($ref !== '' ? 'Agreement No. <b>' . $h($ref) . '</b>' : 'फारम नं. · Form no. ________') . ($seal !== '' ? ' · Seal <b>' . $h($seal) . '</b>' : '');
 
 $autoPrint = isset($_GET['print']);
+$autoPdf   = (string) ($_GET['auto'] ?? '') === 'pdf';   // 23 Oct 2026: the "Download my form & agreement" button after sending
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store, private');
 header('X-Robots-Tag: noindex, nofollow');
@@ -467,8 +466,11 @@ body{--k:#1F3C88}body.k-staff{--k:#11703F}body.k-partner{--k:#C25E00}
 .bar .lg a{padding:6px 10px;font-size:12px}
 .bar small{opacity:.8;flex-basis:100%;text-align:center}
 #pages{padding:4px 0 24px}
-.sheet{width:210mm;height:297mm;margin:12px auto;background:#fff;box-shadow:0 6px 30px rgba(15,27,51,.18);position:relative;overflow:hidden;display:flex;flex-direction:column;padding:9mm 11mm 7mm}
-.sheet .body{flex:1 1 auto;min-height:0;overflow:hidden;position:relative;z-index:1;padding-top:3mm}
+.sheet{width:210mm;height:297mm;margin:12px auto;background:#fff;box-shadow:0 6px 30px rgba(15,27,51,.18);position:relative;overflow:hidden;display:flex;flex-direction:column;padding:8mm 10mm 6mm}
+.sheet .body{flex:1 1 auto;min-height:0;overflow:hidden;position:relative;z-index:1;padding-top:2.5mm}
+/* 23 Oct 2026 (owner: "professional 2-4 page A4 PDF"): page 2 onward carry a slim letterhead - logo, name, kind */
+.sheet.cont .lh{padding-bottom:4px;border-bottom-width:2px;gap:10px}.sheet.cont .lh img{height:28px}
+.sheet.cont .lh .co b{font-size:12.5px}.sheet.cont .lh .co span,.sheet.cont .lh .idx{display:none}.sheet.cont .stripe{height:3px}
 .pf{display:flex;justify-content:space-between;gap:8px;border-top:2px solid var(--k);padding-top:4px;margin-top:3px;font-size:9.5px;color:#3A4A66;position:relative;z-index:1}
 .pf b{font-family:Consolas,monospace;color:#0F1B33;letter-spacing:.3px}
 .lh{display:flex;align-items:center;gap:14px;border-bottom:3px solid var(--k);padding-bottom:7px;position:relative;z-index:1}
@@ -480,69 +482,70 @@ body{--k:#1F3C88}body.k-staff{--k:#11703F}body.k-partner{--k:#C25E00}
 .kbadge{display:inline-block;margin:0 0 4px;padding:3px 10px;border-radius:999px;background:var(--k);color:#fff;font-size:11px;font-weight:800;letter-spacing:.3px}
 .stripe{height:4px;background:linear-gradient(90deg,var(--k) 0 60%,#F07A2E 60%);position:relative;z-index:1}
 .wm{position:absolute;inset:auto 0 40% 0;text-align:center;font-size:64px;font-weight:800;color:rgba(31,60,136,.05);transform:rotate(-18deg);pointer-events:none;z-index:0}
-#flow{width:188mm;margin:12px auto;background:#fff;padding:4mm}
+#flow{width:190mm;margin:12px auto;background:#fff;padding:4mm}
 .head{display:flex;gap:14px;align-items:flex-start}
 .head .t{flex:1}
-.head h1{margin:0;font-size:20px;color:#0F1B33}
-.head h2{margin:2px 0 6px;font-size:14px;font-weight:600;color:#3A4A66}
+.head h1{margin:0;font-size:18px;color:#0F1B33}
+.head h2{margin:1px 0 4px;font-size:13px;font-weight:600;color:#3A4A66}
 .meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:#3A4A66}
 .meta b{color:#0F1B33}
 .pics{display:flex;gap:8px}
-.pic{width:32mm;height:40mm;border:1.5px solid var(--k);border-radius:6px;display:grid;place-items:center;overflow:hidden;background:#F6F8FC;font-size:10px;color:#6B7A99;text-align:center;padding:4px}
+.pic{width:28mm;height:35mm;border:1.5px solid var(--k);border-radius:6px;display:grid;place-items:center;overflow:hidden;background:#F6F8FC;font-size:10px;color:#6B7A99;text-align:center;padding:4px}
 .pic img{width:100%;height:100%;object-fit:cover}
 .pic.logo img{object-fit:contain}
-.st{display:grid;grid-template-columns:repeat(auto-fit,minmax(36mm,1fr));gap:6px;margin:10px 0 2px}
-.st div{border:1px solid #D5DCE8;border-radius:7px;padding:5px 8px;font-size:10.5px;color:#3A4A66}
-.st div b{display:block;font-size:12px;color:#0F1B33}
+.st{display:grid;grid-template-columns:repeat(auto-fit,minmax(34mm,1fr));gap:5px;margin:7px 0 2px}
+.st div{border:1px solid #D5DCE8;border-radius:7px;padding:4px 7px;font-size:10px;color:#3A4A66}
+.st div b{display:block;font-size:11px;color:#0F1B33}
 .st div.ok{border-color:#1E9E5A;background:#EEF9F2}
 .st div.ok b::before{content:"✔ ";color:#1E9E5A}
-h3{margin:10px 0 4px;font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--k);border-bottom:1px solid #D5DCE8;padding-bottom:3px}
+h3{margin:7px 0 3px;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--k);border-bottom:1px solid #D5DCE8;padding-bottom:2px}
 table{width:100%;border-collapse:collapse}
-td{padding:4px 6px;vertical-align:top;border-bottom:1px dotted #D5DCE8}
-td.l{width:38%;color:#3A4A66;font-size:11.5px}
+td{padding:2.5px 5px;vertical-align:top;border-bottom:1px dotted #D5DCE8;font-size:11px}
+td.l{width:36%;color:#3A4A66;font-size:10.5px}
 td.v{font-weight:600;white-space:pre-wrap;word-break:break-word}
 td.v.m{color:#8A96AD;font-weight:500}
-.blank td.v{height:8.5mm;border-bottom:1px solid #9AA6BD}
-.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(55mm,1fr));gap:8px;margin-top:4px}
-.sg figure{margin:0;border:1px solid #D5DCE8;border-radius:7px;padding:6px}
-.sg img{display:block;max-width:100%;max-height:30mm;margin:0 auto 4px;background:#fff}
-.sg figcaption{font-size:10.5px;color:#3A4A66}
-.sg figcaption b{display:block;color:#0F1B33;font-size:11.5px}
-.needs{columns:2;margin:4px 0 0;padding-left:16px;font-size:11.5px}
-.decl{margin-top:10px;font-size:11px;color:#3A4A66;border:1px solid #D5DCE8;border-radius:7px;padding:7px 9px}
-.office{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
-.office div{border:1px solid #9AA6BD;border-radius:7px;height:20mm;padding:5px 7px;font-size:10.5px;color:#3A4A66}
+.blank td.v{height:7mm;border-bottom:1px solid #9AA6BD}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(42mm,1fr));gap:6px;margin-top:3px}
+.sg figure{margin:0;border:1px solid #D5DCE8;border-radius:7px;padding:4px 5px}
+.sg img{display:block;max-width:100%;max-height:24mm;margin:0 auto 3px;background:#fff}
+.sg figcaption{font-size:9.5px;color:#3A4A66}
+.sg figcaption b{display:block;color:#0F1B33;font-size:10.5px}
+.needs{columns:3;margin:3px 0 0;padding-left:15px;font-size:10px}
+.decl{margin-top:7px;font-size:10.5px;color:#3A4A66;border:1px solid #D5DCE8;border-radius:7px;padding:5px 8px}
+.office{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:7px}
+.office div{border:1px solid #9AA6BD;border-radius:7px;height:15mm;padding:4px 6px;font-size:9.5px;color:#3A4A66}
 /* the agreement */
 .agh{text-align:center;margin:0 0 6px}
-.agh .big{margin:2px 0 0;font-size:21px;font-weight:800;letter-spacing:1px;color:var(--k)}
-.agh .ti{font-size:14px;font-weight:700}
-.agh .sub{font-size:11px;color:#3A4A66}
-.agr{display:flex;gap:12px;align-items:center;border:1.5px solid var(--k);border-radius:8px;padding:7px 10px;font-size:11px;color:#3A4A66;margin-top:6px}
+.agh .big{margin:0;font-size:18px;font-weight:800;letter-spacing:1px;color:var(--k)}
+.agsep{border-top:2px dashed #D5DCE8;margin:8px 0 6px}
+.agh .ti{font-size:13px;font-weight:700}
+.agh .sub{font-size:10.5px;color:#3A4A66}
+.agr{display:flex;gap:10px;align-items:center;border:1.5px solid var(--k);border-radius:8px;padding:5px 9px;font-size:10.5px;color:#3A4A66;margin-top:5px}
 .agr b{color:#0F1B33;font-size:12px}
 .agr .u{font-family:Consolas,monospace;color:#0F1B33;word-break:break-all}
-.agr img{width:24mm;height:24mm;image-rendering:pixelated;display:block}
+.agr img{width:20mm;height:20mm;image-rendering:pixelated;display:block}
 .agr .qt{font-size:9.5px;text-align:center;color:#3A4A66}
 .vst{display:inline-block;margin-top:6px;padding:5px 12px;border-radius:6px;font-size:11.5px;font-weight:700;border:1.5px solid}
 .vst.ok{color:#0B6B47;border-color:#0B6B47;background:#E9F7F1}
 .vst.pend{color:#8A5200;border-color:#C27A12;background:#FFF5E6}
 .vst.bad{color:#A3231A;border-color:#A3231A;background:#FDECEA}
 .parties td.l{width:34%}
-.parties td.v{height:7.5mm}
-.sec{margin:8px 0 3px;font-size:12px;font-weight:800;color:var(--k);border-bottom:1px solid #D5DCE8;padding-bottom:2px}
-.pt{margin:0 0 3px;font-size:10.8px;line-height:1.5;text-align:justify}
-.pt b.n{display:inline-block;min-width:26px;color:var(--k)}
+.parties td.v{height:6mm}
+.sec{margin:5px 0 2px;font-size:11px;font-weight:800;color:var(--k);border-bottom:1px solid #D5DCE8;padding-bottom:1px}
+.pt{margin:0 0 2px;font-size:10px;line-height:1.42;text-align:justify}
+.pt b.n{display:inline-block;min-width:24px;color:var(--k)}
 .fill{display:inline-block;min-width:24mm;border-bottom:1px solid #5d6b86;height:1.05em;vertical-align:-3px}
-.accept{margin:8px 0 6px;padding:7px 9px;border:1.5px solid var(--k);border-radius:7px;font-size:11px;background:#FAFBFE}
-.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.accept{margin:6px 0 5px;padding:5px 8px;border:1.5px solid var(--k);border-radius:7px;font-size:10.5px;background:#FAFBFE}
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .sbox{border:1px solid #9AA6BD;border-radius:7px;padding:6px 8px;font-size:10.5px;color:#3A4A66}
 .sbox b{display:block;color:#0F1B33;font-size:11.5px;margin-bottom:2px}
 .sbox .ln{display:flex;gap:6px;align-items:flex-end;margin:3px 0}
 .sbox .ln span{white-space:nowrap}
-.sbox .ln i{flex:1;border-bottom:1px solid #5d6b86;height:7mm;font-style:normal;font-weight:700;color:#0F1B33;display:flex;align-items:flex-end;padding:0 4px 1px}
+.sbox .ln i{flex:1;border-bottom:1px solid #5d6b86;height:6mm;font-style:normal;font-weight:700;color:#0F1B33;display:flex;align-items:flex-end;padding:0 4px 1px}
 .sbox img.sig{display:block;max-height:15mm;max-width:100%;margin:2px 0 0}
 .thumbs{display:flex;gap:8px;margin-top:4px}
 .thumbs div{flex:1;text-align:center;font-size:9.5px}
-.thumbs .tb{height:25mm;border:1px dashed #9AA6BD;border-radius:50% / 45%;display:grid;place-items:center;overflow:hidden;background:#fff;margin:0 auto 2px;width:20mm}
+.thumbs .tb{height:22mm;border:1px dashed #9AA6BD;border-radius:50% / 45%;display:grid;place-items:center;overflow:hidden;background:#fff;margin:0 auto 2px;width:20mm}
 .thumbs .tb img{height:100%;width:100%;object-fit:cover}
 .bio{margin-top:4px;font-size:10px;color:#1E9E5A;font-weight:700}
 @media print{html,body{background:#fff}.bar,#flow{display:none!important}#pages{zoom:1!important;padding:0}.sheet{margin:0;box-shadow:none;break-after:page;page-break-after:always}.sheet:last-child{break-after:auto;page-break-after:auto}}
@@ -579,7 +582,7 @@ td.v.m{color:#8A96AD;font-weight:500}
       <div class="co"><b><?= $h(mb_strtoupper((string) $co['legal'])) ?></b>
         <span><?= $h($co['address']) ?></span>
         <span>📞 <?= $h($co['phone']) ?> · ✉ <?= $h($co['email']) ?> · 🌐 <?= $h($co['web']) ?></span></div>
-      <div class="ids"><span class="kbadge"><?= $h($kindShort) ?></span><br><?php if ((string) ($co['cin'] ?? '') !== ''): ?>CIN <?= $h($co['cin']) ?><br><?php endif; ?><?php if ((string) ($co['gstin'] ?? '') !== ''): ?>GSTIN <?= $h($co['gstin']) ?><br><?php endif; ?>India ⇄ Nepal bus service</div>
+      <div class="ids"><span class="kbadge"><?= $h($kindShort) ?></span><span class="idx"><br><?php if ((string) ($co['cin'] ?? '') !== ''): ?>CIN <?= $h($co['cin']) ?><br><?php endif; ?><?php if ((string) ($co['gstin'] ?? '') !== ''): ?>GSTIN <?= $h($co['gstin']) ?><br><?php endif; ?>India ⇄ Nepal bus service</span></div>
     </div>
     <div class="stripe"></div>
     <div class="body"></div>
@@ -686,12 +689,14 @@ td.v.m{color:#8A96AD;font-weight:500}
       <?php if ($passkey): ?><div class="bio">✔ फोनको फिंगरप्रिन्ट / Face ID लक दर्ता · Phone fingerprint / Face ID lock registered</div><?php endif; ?>
     </div>
   </div>
+  <?php if ($kind === 'partner'): /* 23 Oct 2026 (owner): witnesses for a partner company only */ ?>
   <div class="blk sgrid" style="margin-top:8px">
     <?php foreach ([1 => 'साक्षी १ · Witness 1', 2 => 'साक्षी २ · Witness 2'] as $wn => $wl): ?>
     <div class="sbox"><b><?= $h($wl) ?></b>
       <div class="ln"><span>नाम · Name</span><i><?= $h($wit[$wn - 1][0]) ?></i></div><div class="ln"><span>ठेगाना / फोन · Address / phone</span><i><?= $h($wit[$wn - 1][1]) ?></i></div><div class="ln"><span>सही · Signature</span><i></i></div></div>
     <?php endforeach; ?>
   </div>
+  <?php endif; ?>
   <?php endif; ?>
 </div>
 
@@ -706,13 +711,22 @@ td.v.m{color:#8A96AD;font-weight:500}
 
   function sheetBody() {
     var s = tpl.content.firstElementChild.cloneNode(true);
+    if (pages.querySelector('.sheet')) s.classList.add('cont');   // a slim letterhead from page 2 (23 Oct 2026)
     pages.appendChild(s);
     return s.querySelector('.body');
   }
   function paginate() {
     var body = sheetBody();
     Array.prototype.slice.call(flow.children).forEach(function (b) {
-      if (b.classList.contains('pgbreak')) { if (body.children.length) body = sheetBody(); return; }
+      // the agreement opens on a fresh page only when this one is already over half full - so the whole
+      // document stays 2-4 pages (owner: "professional 2-4 page A4 PDF"); otherwise a dashed rule parts them
+      if (b.classList.contains('pgbreak')) {
+        var last = body.lastElementChild,   // scrollHeight is never less than the box, so measure the content itself
+            used = last ? last.getBoundingClientRect().bottom - body.getBoundingClientRect().top : 0;
+        if (body.children.length && used > body.clientHeight * 0.5) body = sheetBody();
+        else if (body.children.length) { var sep = document.createElement('div'); sep.className = 'agsep'; body.appendChild(sep); }
+        return;
+      }
       body.appendChild(b);
       if (body.scrollHeight > body.clientHeight + 1 && body.children.length > 1) { body = sheetBody(); body.appendChild(b); }
     });
@@ -782,7 +796,7 @@ td.v.m{color:#8A96AD;font-weight:500}
         }).then(function (cv) {
           if (kind === 'pdf') {
             if (i > 0) pdf.addPage();
-            pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+            pdf.addImage(cv.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, 210, 297);   // ~0.4 MB a page: easy to send on WhatsApp
             return null;
           }
           return new Promise(function (r) {
@@ -806,6 +820,7 @@ td.v.m{color:#8A96AD;font-weight:500}
   document.getElementById('doPng').addEventListener('click', function () { run('png', this); });
   document.getElementById('doJpg').addEventListener('click', function () { run('jpg', this); });
 <?php if ($autoPrint): ?>  ready.then(function () { setTimeout(function () { window.print(); }, 300); });
+<?php elseif ($autoPdf): ?>  ready.then(function () { setTimeout(function () { run('pdf', document.getElementById('doPdf')); }, 400); });
 <?php endif; ?>
 })();
 </script>

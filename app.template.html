@@ -1448,79 +1448,125 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
   </section>
 
-  <!-- ============ 3 AGREEMENTS (22 Oct 2026, owner: "3 ta agreement system lai live home page CEO ko pachhi
-       rakhdinu ... dekhine name ra photo live ma dekhine banaideu ... only yei wala system") ============
-       The one door to the three forms - staff, agent, Pvt. Ltd. partner - right after the CEO card (order 6 like
-       #homeCeo; the DOM keeps it after). Each card shows the people already on that agreement, names and photos
-       from the same public lists the Partner / Agent / Team sections read (/api/agent-directory.php,
-       /api/staff-list.php: only what each person agreed to show). Its few rules live here, not in a stylesheet,
-       so the app-shell asset stamp does not move. -->
+  <!-- ============ TOP 3 + THE ONE "APPLY NOW" (23 Oct 2026, owner: "preserve Ticket Booking and CEO sections,
+       then beautifully display Top 3 Staff, Top 3 Agents, and Top 3 Partners in spacious, premium, animated
+       profile cards with real photos, names, roles, approved contact details, and rankings") ============
+       Right after the CEO card (order 6 like #homeCeo; the DOM keeps it after). The people and their order come
+       from /api/top-people.php: only approved people the office shows on the website, only the contact each
+       one agreed to show, ranked by real work (tickets sold for agents / partners; for staff the office's own
+       order, then experience). Its rules live here, not in a stylesheet, so the app-shell stamp does not move. -->
   <section class="container" id="homeForms" aria-labelledby="homeFormsTitle">
     <style>
       #view-home > #homeForms{order:6 !important}
-      #homeForms .hf-box{border-radius:22px;padding:18px 14px;background:var(--surface,#fff);border:1px solid var(--line,#e4e9f1);box-shadow:var(--shadow-2,0 10px 30px -18px rgba(10,42,143,.5))}
-      #homeForms .hf-eyebrow{display:inline-flex;gap:6px;align-items:center;margin:0 0 6px;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.03em;color:#fff;background:linear-gradient(135deg,#0a2a8f,#1f4fe0)}
-      #homeForms h2{margin:0 0 4px;font-size:clamp(20px,4.6vw,26px);line-height:1.25;color:var(--fg,#0d1b3e)}
-      #homeForms .hf-sub{margin:0 0 12px;color:var(--muted,#5b6b8c);font-size:14px;line-height:1.5}
-      #homeForms .hf-go{display:flex;align-items:center;justify-content:center;gap:8px;min-height:54px;padding:0 16px;border-radius:16px;font-weight:800;font-size:17px;color:#fff;text-decoration:none;text-align:center;background:linear-gradient(135deg,#ff8a2b,#f07a1e 60%,#d4570c);box-shadow:0 12px 24px -14px rgba(212,87,12,.9);margin:0 0 12px}
-      #homeForms .hf-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-      #homeForms .hf-card{--k:#0054A8;display:flex;flex-direction:column;gap:7px;padding:12px;border-radius:16px;background:var(--surface,#fff);border:1px solid var(--line,#e4e9f1);border-top:5px solid var(--k);min-width:0}
-      #homeForms .hf-staff{--k:#11703F}#homeForms .hf-partner{--k:#C25E00}
-      #homeForms .hf-card b.t{color:var(--k);font-size:16px}
-      #homeForms .hf-card small{color:var(--muted,#5b6b8c);font-size:12.5px}
-      #homeForms .hf-faces{display:flex;align-items:center;min-height:40px;padding-left:8px}
-      #homeForms .hf-faces i{width:38px;height:38px;flex:0 0 38px;border-radius:50%;margin-left:-8px;border:2px solid #fff;background:#e8eefb center/cover no-repeat;display:grid;place-items:center;font-style:normal;font-size:14px;font-weight:800;color:var(--k);box-shadow:0 2px 6px rgba(0,0,0,.14)}
-      #homeForms .hf-names{font-size:12.5px;line-height:1.45;min-height:1.45em;color:var(--fg,#0d1b3e)}
-      #homeForms .hf-links{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
-      #homeForms .hf-links a{flex:1 1 auto;display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 10px;border-radius:12px;border:1.5px solid var(--k);color:var(--k);font-size:13px;font-weight:800;text-decoration:none;text-align:center}
-      @media (max-width:760px){#homeForms .hf-grid{grid-template-columns:minmax(0,1fr)}}
+      /* the full partner / agent / team lists come after the Top 3 (booking, CEO, Top 3, then everyone) - nothing removed */
+      #view-home > #homePartners,#view-home > #homeAgents,#view-home > #homeTeam{order:7 !important}
+      #homeForms .t3-box{border-radius:24px;padding:22px 16px 18px;background:radial-gradient(120% 70% at 100% 0%,rgba(240,122,30,.10),rgba(240,122,30,0) 60%),var(--surface,#fff);border:1px solid var(--line,#e4e9f1);box-shadow:var(--shadow-2,0 14px 34px -22px rgba(10,42,143,.55))}
+      #homeForms .t3-eyebrow{display:inline-flex;gap:6px;align-items:center;margin:0 0 6px;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.04em;color:#fff;background:linear-gradient(135deg,#0a2a8f,#1f4fe0)}
+      #homeForms h2{margin:0 0 4px;font-size:clamp(21px,4.8vw,28px);line-height:1.22;color:var(--fg,#0d1b3e)}
+      #homeForms .t3-sub{margin:0 0 14px;color:var(--muted,#5b6b8c);font-size:14px;line-height:1.55;max-width:62ch}
+      #homeForms .t3-go{display:flex;align-items:center;justify-content:center;gap:8px;min-height:56px;padding:0 18px;border-radius:16px;font-weight:800;font-size:17px;color:#fff;text-decoration:none;text-align:center;background:linear-gradient(135deg,#ff8a2b,#f07a1e 60%,#d4570c);box-shadow:0 14px 26px -16px rgba(212,87,12,.95);margin:0 0 20px;transition:transform .18s ease,box-shadow .18s ease}
+      #homeForms .t3-go:hover{transform:translateY(-2px);box-shadow:0 18px 30px -16px rgba(212,87,12,1)}
+      #homeForms .t3-grp{--k:#0054A8;margin:0 0 20px}
+      #homeForms .t3-grp.g-staff{--k:#11703F}#homeForms .t3-grp.g-partner{--k:#C25E00}
+      #homeForms .t3-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 0 10px}
+      #homeForms .t3-head h3{margin:0;font-size:18px;color:var(--k)}
+      #homeForms .t3-head a{font-size:13px;font-weight:800;color:var(--k);text-decoration:none;white-space:nowrap}
+      #homeForms .t3-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+      #homeForms .t3-card{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:20px 14px 16px;border-radius:20px;background:var(--surface,#fff);border:1px solid var(--line,#e4e9f1);box-shadow:0 12px 26px -20px rgba(13,27,62,.55);opacity:0;transform:translateY(16px);transition:opacity .5s ease,transform .5s ease,box-shadow .2s ease;min-width:0}
+      #homeForms .t3-card.in{opacity:1;transform:none}
+      #homeForms .t3-card:hover{box-shadow:0 20px 34px -20px rgba(13,27,62,.7)}
+      #homeForms .t3-rank{position:absolute;top:10px;left:10px;min-width:34px;height:34px;padding:0 8px;border-radius:999px;display:grid;place-items:center;font-weight:900;font-size:14px;color:#fff;background:var(--k)}
+      #homeForms .t3-card.r1 .t3-rank{background:linear-gradient(135deg,#f7c948,#e0a106);color:#3a2a00}
+      #homeForms .t3-card.r2 .t3-rank{background:linear-gradient(135deg,#dfe5ee,#a9b4c4);color:#1d2638}
+      #homeForms .t3-card.r3 .t3-rank{background:linear-gradient(135deg,#e7b48a,#b8743f);color:#2f1a08}
+      #homeForms .t3-ph{position:relative;width:96px;height:96px;border-radius:50%;padding:4px;background:conic-gradient(from 0deg,var(--k),#f07a1e,var(--k));margin:6px 0 4px}
+      #homeForms .t3-card.r1 .t3-ph{animation:t3spin 6s linear infinite}
+      #homeForms .t3-ph i{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;border:3px solid var(--surface,#fff);background:#e8eefb center/cover no-repeat;font-style:normal;font-size:30px;font-weight:800;color:var(--k)}
+      #homeForms .t3-card.r1 .t3-ph i{animation:t3spin 6s linear infinite reverse}
+      @keyframes t3spin{to{transform:rotate(360deg)}}
+      #homeForms .t3-name{margin:0;font-size:16px;font-weight:800;line-height:1.3;color:var(--fg,#0d1b3e);overflow-wrap:anywhere}
+      #homeForms .t3-role{margin:0;font-size:13px;color:var(--k);font-weight:700}
+      #homeForms .t3-area{margin:0;font-size:12.5px;color:var(--muted,#5b6b8c)}
+      #homeForms .t3-metric{margin:2px 0 0;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800;color:var(--k);background:color-mix(in srgb,var(--k) 10%,transparent)}
+      #homeForms .t3-acts{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center}
+      #homeForms .t3-acts a{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:42px;min-width:44px;padding:0 13px;border-radius:12px;font-size:13px;font-weight:800;text-decoration:none;border:1.5px solid var(--k);color:var(--k)}
+      #homeForms .t3-acts a.wa{background:#25d366;border-color:#25d366;color:#fff}
+      #homeForms .t3-empty{grid-column:1/-1;margin:0;padding:18px;border-radius:16px;border:1.5px dashed var(--line,#d8e1f3);text-align:center;color:var(--muted,#5b6b8c);font-size:14px}
+      #homeForms .t3-empty a{color:var(--k);font-weight:800}
+      #homeForms .t3-skel{height:250px;border-radius:20px;background:linear-gradient(90deg,rgba(127,140,170,.10),rgba(127,140,170,.20),rgba(127,140,170,.10));background-size:200% 100%;animation:t3sh 1.4s ease infinite}
+      @keyframes t3sh{to{background-position:-200% 0}}
+      @media (max-width:760px){
+        #homeForms .t3-row{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;padding:2px 2px 8px;margin:0 -2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+        #homeForms .t3-row::-webkit-scrollbar{display:none}
+        #homeForms .t3-card,#homeForms .t3-skel{flex:0 0 78%;scroll-snap-align:center}
+      }
+      @media (prefers-reduced-motion:reduce){#homeForms .t3-card{opacity:1;transform:none;transition:none}#homeForms .t3-card.r1 .t3-ph,#homeForms .t3-card.r1 .t3-ph i,#homeForms .t3-skel{animation:none}}
+      html[data-motion="reduced"] #homeForms .t3-card{opacity:1;transform:none;transition:none}
+      html[data-motion="reduced"] #homeForms .t3-card.r1 .t3-ph,html[data-motion="reduced"] #homeForms .t3-card.r1 .t3-ph i,html[data-motion="reduced"] #homeForms .t3-skel{animation:none}
     </style>
-    <div class="hf-box">
-      <p class="hf-eyebrow">📝 ३ सम्झौता · 3 AGREEMENTS</p>
-      <h2 id="homeFormsTitle">हामीसँग जोडिनुहोस् · Join S Hari Global</h2>
-      <p class="hf-sub">कर्मचारी, एजेन्ट वा साझेदार कम्पनी — फोनबाटै फारम, डकुमेन्ट, अनुहार, औंठाछाप र सही, सम्झौताका सबै सर्त फारमभित्रै। · Staff, agent or partner company: one form on your phone, every term inside it.</p>
-      <a class="hf-go" href="/agreements/#apply">✍️ अहिले आवेदन दिनुहोस् · Apply now</a>
-      <div class="hf-grid">
-        <article class="hf-card hf-staff" data-hf="staff"><b class="t">🧑‍✈️ कर्मचारी · Staff</b><small>चालक, कन्डक्टर, हेल्पर, अफिस, मेकानिक…</small><div class="hf-faces" aria-hidden="true"></div><div class="hf-names"></div><div class="hf-links"><a href="/agreements/staff-agreement.html">📜 सम्झौता</a><a href="/agreements/form.php?kind=staff">📄 A4 फारम</a></div></article>
-        <article class="hf-card hf-agent" data-hf="agent"><b class="t">🤝 एजेन्ट · Agent</b><small>व्यक्ति — टिकट बेच्ने, कमिसनमा</small><div class="hf-faces" aria-hidden="true"></div><div class="hf-names"></div><div class="hf-links"><a href="/agreements/agent-agreement-ne.html">📜 सम्झौता</a><a href="/agreements/form.php?kind=agent">📄 A4 फारम</a></div></article>
-        <article class="hf-card hf-partner" data-hf="partner"><b class="t">🏢 साझेदार कम्पनी · Partner</b><small>प्रा. लि. / दर्ता भएको फर्म</small><div class="hf-faces" aria-hidden="true"></div><div class="hf-names"></div><div class="hf-links"><a href="/agreements/partner-agreement-ne.html">📜 सम्झौता</a><a href="/agreements/form.php?kind=partner">📄 A4 फारम</a></div></article>
-      </div>
+    <div class="t3-box">
+      <p class="t3-eyebrow">🏆 TOP 3 · हाम्रा उत्कृष्ट</p>
+      <h2 id="homeFormsTitle">हाम्रा उत्कृष्ट कर्मचारी, एजेन्ट र साझेदार · Our top people</h2>
+      <p class="t3-sub">कम्पनीले परिचयपत्र जाँचेर स्वीकृत गरेका मान्छे — कामका आधारमा क्रमबद्ध। तपाईं पनि जोडिनुहोस्: एउटै अनलाइन फारम, सम्झौताका सबै सर्त भित्रै। · Approved and verified by the office, ranked by their work.</p>
+      <a class="t3-go" href="/agreements/#apply">✍️ अहिले आवेदन दिनुहोस् · Apply now</a>
+      <div class="t3-grp g-staff" data-t3="staff"><div class="t3-head"><h3>🧑‍✈️ Top 3 कर्मचारी · Staff</h3><a href="/agreements/staff-agreement.html">📜 सम्झौता ›</a></div><div class="t3-row"><div class="t3-skel"></div><div class="t3-skel"></div><div class="t3-skel"></div></div></div>
+      <div class="t3-grp g-agent" data-t3="agent"><div class="t3-head"><h3>🤝 Top 3 एजेन्ट · Agents</h3><a href="/agreements/agent-agreement-ne.html">📜 सम्झौता ›</a></div><div class="t3-row"><div class="t3-skel"></div><div class="t3-skel"></div><div class="t3-skel"></div></div></div>
+      <div class="t3-grp g-partner" data-t3="partner"><div class="t3-head"><h3>🏢 Top 3 साझेदार कम्पनी · Partners</h3><a href="/agreements/partner-agreement-ne.html">📜 सम्झौता ›</a></div><div class="t3-row"><div class="t3-skel"></div><div class="t3-skel"></div><div class="t3-skel"></div></div></div>
     </div>
     <script>
     (function () {
       var box = document.getElementById('homeForms');
       if (!box || !window.fetch) return;
-      function fill(kind, people) {
-        var card = box.querySelector('[data-hf="' + kind + '"]');
-        if (!card) return;
-        var faces = card.querySelector('.hf-faces'), names = card.querySelector('.hf-names'), n = people.length;
-        people.sort(function (a, b) { return (b.pic ? 1 : 0) - (a.pic ? 1 : 0); });
-        faces.textContent = '';
-        people.slice(0, 6).forEach(function (p) {
-          var i = document.createElement('i');
-          if (/^(\/|https:\/\/)[^"'()\\\s]+$/.test(p.pic)) i.style.backgroundImage = 'url("' + p.pic + '")';
-          else i.textContent = (p.name.trim().charAt(0) || '•').toUpperCase();
-          faces.appendChild(i);
-        });
-        if (n > 6) { var more = document.createElement('i'); more.textContent = '+' + (n - 6); faces.appendChild(more); }
-        names.textContent = n ? people.slice(0, 3).map(function (p) { return p.name; }).join(', ') + (n > 3 ? ' र अरू ' + (n - 3) : '') + ' · ' + n + ' जना'
-                              : 'पहिलो बन्नुहोस् · Be the first';
+      var APPLY = { staff: '/agreements/apply.html?kind=staff', agent: '/agreements/apply.html', partner: '/agreements/apply.html?kind=partner' };
+      var BE = { staff: 'पहिलो कर्मचारी बन्नुहोस्', agent: 'पहिलो एजेन्ट बन्नुहोस्', partner: 'पहिलो साझेदार कम्पनी बन्नुहोस्' };
+      function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+      var io = 'IntersectionObserver' in window ? new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+      }, { rootMargin: '0px 0px -8% 0px' }) : null;
+      function card(p, i, kind) {
+        var c = el('article', 't3-card r' + (i + 1));
+        c.appendChild(el('span', 't3-rank', '#' + (i + 1)));
+        var ph = el('div', 't3-ph'), im = el('i');
+        im.setAttribute('aria-hidden', 'true');
+        if (/^(\/|https:\/\/)[^"'()\\\s]+$/.test(String(p.photo || ''))) im.style.backgroundImage = 'url("' + p.photo + '")';
+        else im.textContent = (String(p.name || '').trim().charAt(0) || '•').toUpperCase();
+        ph.appendChild(im); c.appendChild(ph);
+        c.appendChild(el('h4', 't3-name', p.name || ''));
+        if (p.role) c.appendChild(el('p', 't3-role', p.role));
+        if (p.area) c.appendChild(el('p', 't3-area', '📍 ' + p.area));
+        if (p.metric) c.appendChild(el('p', 't3-metric', p.metric));
+        var acts = el('div', 't3-acts');
+        if (/^\+?\d{10,15}$/.test(String(p.tel || ''))) { var a = el('a', '', '📞 ' + (p.phone || p.tel)); a.href = 'tel:' + p.tel; acts.appendChild(a); }
+        if (/^\d{10,15}$/.test(String(p.wa || ''))) { var w = el('a', 'wa', 'WhatsApp'); w.href = 'https://wa.me/' + p.wa; w.target = '_blank'; w.rel = 'noopener'; acts.appendChild(w); }
+        if (acts.children.length) c.appendChild(acts);
+        return c;
       }
-      function get(url) { return fetch(url, { headers: { Accept: 'application/json' } }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); }
-      get('/api/agent-directory.php').then(function (j) {
-        if (!j || !Array.isArray(j.items)) return;   // a failed / busy answer leaves the card as it is (23 Oct 2026)
-        var items = j.items;
-        ['agent', 'partner'].forEach(function (k) {
-          fill(k, items.filter(function (it) { return it && it.kind === k && it.name; })
-                       .map(function (it) { return { name: String(it.name), pic: String((k === 'partner' && it.logo) || it.photo || '') }; }));
+      function fill(kind, people) {
+        var g = box.querySelector('[data-t3="' + kind + '"]');
+        if (!g) return;
+        var row = g.querySelector('.t3-row');
+        row.textContent = '';
+        if (!people.length) {
+          var e = el('p', 't3-empty', ''), l = el('a', '', BE[kind] + ' →');
+          l.href = APPLY[kind]; e.appendChild(l); row.appendChild(e);
+          return;
+        }
+        people.slice(0, 3).forEach(function (p, i) {
+          var c = card(p, i, kind);
+          row.appendChild(c);
+          if (io && document.documentElement.getAttribute('data-motion') !== 'reduced') { c.style.transitionDelay = (i * 90) + 'ms'; io.observe(c); } else c.classList.add('in');
         });
-      });
-      get('/api/staff-list.php').then(function (j) {
-        if (!j || !Array.isArray(j.items)) return;
-        // the office decides which fields are public (staff_public_fields): a member without a public name still counts
-        fill('staff', j.items.filter(function (it) { return it && (it.name || it.photo || it.roleNe || it.roleEn); })
-                             .map(function (it) { return { name: String(it.name || it.roleNe || it.roleEn || ''), pic: String(it.photo || '') }; }));
-      });
+      }
+      fetch('/api/top-people.php', { headers: { Accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (!j || !j.ok) throw new Error('bad');
+          ['staff', 'agent', 'partner'].forEach(function (k) { fill(k, Array.isArray(j[k]) ? j[k] : []); });
+        })
+        .catch(function () {
+          // no answer: the groups simply step aside; the Apply button stays
+          [].forEach.call(box.querySelectorAll('.t3-grp'), function (g) { g.hidden = true; });
+        });
     })();
     </script>
   </section>

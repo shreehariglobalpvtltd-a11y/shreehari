@@ -44,6 +44,11 @@ main{max-width:640px;margin:-38px auto 0;padding:0 12px 120px;position:relative}
 /* 23 Oct 2026: label.f / .shot set display, which beat the hidden attribute (the UPI box stayed on for staff,
    the marksheet box for a partner) */
 [hidden]{display:none!important}
+/* 23 Oct 2026 (owner: "one super form ... post wise k k chahincha tei anusar optimised"): what THIS job needs */
+.rolehint{margin:2px 0 12px;padding:10px 12px;border-radius:14px;border:1.5px solid rgba(17,112,63,.45);background:rgba(17,112,63,.08);font-size:13px;line-height:1.5}
+.rolehint b{display:block;margin:0 0 4px;font-size:13.5px}
+.rolehint ul{margin:0;padding-left:18px}
+label.f.rec>span::after{content:" · सिफारिस";font-size:11px;font-weight:800;color:#11703F}
 label.f{display:block;margin:0 0 10px}
 label.f > span{display:block;font-size:13px;font-weight:700;margin-bottom:4px}
 label.f > span em{color:var(--bad);font-style:normal}
@@ -130,10 +135,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   </div>
 </header>
 <!-- 22 Oct 2026 (owner: "3 prakar ko form differentiate garera"): which form this is, in its own colour,
-     with its A4 paper form and its own agreement - the same colours as the /agreements/#forms cards -->
+     and its own agreement - the same colours as the /agreements/#forms cards. 23 Oct 2026 (owner: "keep the
+     online form fully digital without separate A4 selection options"): no A4 link here - the filled A4 PDF is
+     made for the applicant automatically after sending. -->
 <!-- 23 Oct 2026 (owner: "Nepali, Hindi, English and Gujarati"): the form's words in Hindi / Gujarati (form-i18n.js); English stays beside -->
 <div class="flang" role="group" aria-label="Language · भाषा"><button type="button" data-flang="ne" aria-pressed="true">नेपाली</button><button type="button" data-flang="hi" aria-pressed="false">हिन्दी</button><button type="button" data-flang="gu" aria-pressed="false">ગુજરાતી</button></div>
-<div class="kribbon" id="kRib"><span id="kRibT">🤝 एजेन्ट फारम · AGENT</span><a id="kRibF" href="/agreements/form.php?kind=agent">📄 A4 फारम</a><a id="kRibA" href="/agreements/agent-agreement-ne.html">📜 एजेन्ट सम्झौता</a><a href="/agreements/#forms">↔ अर्को फारम</a></div>
+<div class="kribbon" id="kRib"><span id="kRibT">🤝 एजेन्ट फारम · AGENT</span><a id="kRibA" href="/agreements/agent-agreement-ne.html">📜 एजेन्ट सम्झौता</a><a href="/agreements/#forms">↔ अर्को फारम</a></div>
 
 <main>
 <form id="ap" novalidate>
@@ -153,6 +160,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
       <small class="hint" id="nameHint" style="display:block;margin:4px 0 0">डकुमेन्टमा जस्तो लेखिएको छ, ठ्याक्कै त्यस्तै हिज्जे · exactly as on your ID</small></label>
     <div id="staffBox" hidden>
       <label class="f"><span>कुन काम? · Job <em>*</em></span><select id="s_role"><option value="">— छान्नुहोस् · choose —</option><option value="driver">🚌 चालक · Driver</option><option value="conductor">🎫 कन्डक्टर / सह-चालक · Conductor</option><option value="helper">🧳 हेल्पर · Helper</option><option value="office">🏢 अफिस / काउन्टर · Office</option><option value="accountant">📊 लेखापाल · Accountant</option><option value="mechanic">🔧 मेकानिक · Mechanic</option><option value="cleaner">🧹 सफाइ · Cleaner</option><option value="security">🛡️ सुरक्षा · Security</option><option value="other">अन्य · Other</option></select></label>
+      <div class="rolehint" id="roleHint" hidden aria-live="polite"></div>
       <div id="drvBox" hidden>
         <label class="f"><span>लाइसेन्स नम्बर · Driving licence no. <em>*</em></span><input type="text" id="s_lic" maxlength="40" autocomplete="off" placeholder="जस्तै: 01-06-00123456"></label>
         <label class="f"><span>लाइसेन्सको वर्ग · Category <em>*</em></span><input type="text" id="s_licCat" maxlength="40" autocomplete="off" placeholder="जस्तै: B, C, D"></label>
@@ -254,8 +262,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   </section>
 
   <!-- 23 Oct 2026 (owner: "witness and guarantor details", optional): one guarantor and two witnesses.
-       They are printed on the A4 agreement's witness boxes; the people still sign the paper copy. -->
-  <section class="card">
+       They are printed on the A4 agreement's witness boxes; the people still sign the paper copy.
+       Later the same day (owner: "no guarantors or witnesses for Staff/Agent, and include them for Partners"):
+       a Pvt. Ltd. partner company only - its agreement asks for them (clauses 10.5, 10.6, 15.3). -->
+  <section class="card" id="guarCard" hidden>
     <h2><i>👥</i>जमानीकर्ता र साक्षी · Guarantor &amp; witnesses <small style="font-weight:600">(ऐच्छिक · optional)</small></h2>
     <p class="hint">थाहा भए मात्र भर्नुहोस् — पछि कार्यालयमा पनि दिन सकिन्छ। · Fill only if you know them now.</p>
     <label class="f"><span>जमानीकर्ता (नाम · मोबाइल) · Guarantor (name · mobile)</span><div class="row np"><input type="text" id="g_name" maxlength="80" autocomplete="off" placeholder="नाम · Name"><input type="tel" id="g_phone" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Guarantor mobile"></div></label>
@@ -304,7 +314,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     <div class="hp" aria-hidden="true"><label>Website <input type="text" id="website" tabindex="-1" autocomplete="off"></label></div>
     <p class="msg bad" id="msg" hidden role="alert"></p>
   </section>
-  <p class="foot">📄 हातले भर्ने फारम (A4): <a href="/agreements/form.php?kind=staff" target="_blank" rel="noopener">कर्मचारी · Staff</a> · <a href="/agreements/form.php?kind=agent" target="_blank" rel="noopener">एजेन्ट · Agent</a> · <a href="/agreements/form.php?kind=partner" target="_blank" rel="noopener">साझेदार · Partner</a><br>🔒 डकुमेन्ट, बैंक खाता र सही S Hari Global कार्यालयले मात्र हेर्छ — सार्वजनिक हुँदैन। फोटो तपाईंले माथि अनुमति दिएमा मात्र वेबसाइटमा देखिन्छ।<br><a href="/agreements/">पूरा सम्झौता पढ्नुहोस् · Read the full agreement</a> · <a href="/">होम · Home</a></p>
+  <p class="foot">🔒 डकुमेन्ट, बैंक खाता र सही S Hari Global कार्यालयले मात्र हेर्छ — सार्वजनिक हुँदैन। फोटो तपाईंले माथि अनुमति दिएमा मात्र वेबसाइटमा देखिन्छ।<br><a href="/agreements/">पूरा सम्झौता पढ्नुहोस् · Read the full agreement</a> · <a href="/">होम · Home</a></p>
   <div class="go"><button type="submit" class="btn" id="send">📨 फारम पठाउनुहोस् · Send application</button></div>
 </form>
 
@@ -313,7 +323,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   <h2>फारम पुग्यो! · Application received</h2>
   <div class="ref" id="ref"></div>
   <p id="doneMsg" style="margin:0 0 14px"></p>
-  <a class="btn" href="/agreements/form.php?mine=1" target="_blank" rel="noopener" style="margin-bottom:8px">📄 मेरो फारम + सम्झौता — PNG / PDF · Your filled form &amp; agreement</a>
+  <a class="btn" href="/agreements/form.php?mine=1&amp;auto=pdf" target="_blank" rel="noopener" style="margin-bottom:4px">📄 मेरो फारम + सम्झौता PDF · Download my form &amp; agreement</a>
+  <p class="hint" style="margin:0 0 12px;text-align:center">A4 PDF आफैं बन्छ र डाउनलोड हुन्छ — भरिएको विवरण, फोटो, सही र सम्झौताका सबै सर्तसहित। · Built and downloaded for you.</p>
   <a class="btn" href="/">🏠 होम पेज · Home</a>
 </section>
 </main>
@@ -431,7 +442,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     if ($('p_idtype').selectedOptions[0] && $('p_idtype').selectedOptions[0].disabled) $('p_idtype').value = '1';
     if (ID_RULES) $('idHint').textContent = rule().hint;   // undefined while the page is still starting (set below)
     if (terms) terms.setKind(staff ? 'staff' : org ? 'partner' : 'agent');
-    $('gAddrLbl').hidden = staff;
+    $('guarCard').hidden = !org;   // guarantor + witnesses: a partner company only (23 Oct 2026)
     $('nameLbl').innerHTML = org ? 'कम्पनीको नाम · Company name <em>*</em>' : 'पूरा नाम · Full name <em>*</em>';
     $('p_name').placeholder = org ? 'जस्तै: Sita Ram Travels Pvt. Ltd.' : 'जस्तै: Ram Bahadur Thapa';
     $('nameHint').textContent = org ? 'दर्ता प्रमाणपत्रमा जस्तो · as registered' : 'डकुमेन्टमा जस्तो लेखिएको छ, ठ्याक्कै त्यस्तै हिज्जे · exactly as on your ID';
@@ -444,7 +455,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     if (rib) {
       rib.className = 'kribbon' + (org ? ' org' : staff ? ' staff' : '');
       $('kRibT').textContent = { staff: '🧑‍✈️ कर्मचारी फारम · STAFF', partner: '🏢 साझेदार कम्पनी फारम · PARTNER (PVT. LTD.)', agent: '🤝 एजेन्ट फारम · AGENT' }[kk];
-      $('kRibF').href = '/agreements/form.php?kind=' + kk;
       $('kRibA').href = staff ? '/agreements/staff-agreement.html' : '/agreements/' + kk + '-agreement-ne.html';
       $('kRibA').textContent = { staff: '📜 कर्मचारी सम्झौता', partner: '📜 साझेदार सम्झौता', agent: '📜 एजेन्ट सम्झौता' }[kk];
     }
@@ -457,12 +467,38 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     $('dv').hidden = staff;   // the AI ID check guards the agent / partner send; for staff the office scores it (23 Oct 2026)
     $('send').disabled = staff && state.staffClosed;
     if (staff) checkStaffOpen();
+    if (ROLE_NEEDS) roleHint();   // the job's own checklist (ROLE_NEEDS is set further down; at start-up it comes after)
     else if (state.closedMsg && $('msg').textContent === state.closedMsg) say('');
   }
   document.querySelectorAll('input[name="kind"]').forEach(function (r) { r.addEventListener('change', function () { if (this.checked) setKind(this.value); }); });
   if (/[?&]kind=(partner|org)\b/.test(location.search)) setKind('org');
   else if (/[?&]kind=staff\b/.test(location.search)) setKind('staff');
-  $('s_role').addEventListener('change', function () { $('drvBox').hidden = this.value !== 'driver'; });
+  /* 23 Oct 2026 (owner: "post wise k k chahincha tei anusar optimised"): each job shows what it needs, and the
+     boxes that matter for it get a soft "recommended" mark - the main things stay the only required ones */
+  var ROLE_NEEDS = {
+    driver:     { need: ['सवारी चालक अनुमतिपत्र (लाइसेन्स) — नम्बर, वर्ग, म्याद र फोटो · Driving licence (required)', 'चलाएको अनुभव (वर्ष) · Driving experience', 'आपतकालीन सम्पर्क · Emergency contact'], rec: ['cv_exp', 's_emn'] },
+    conductor:  { need: ['यात्रु र टिकटको काम — फोन प्रयोग जान्ने · Passengers, tickets, a smartphone', 'अनुभव भए लेख्नुहोस् · Experience, if any', 'चिनारी · A reference'], rec: ['cv_exp', 's_ref1n'] },
+    helper:     { need: ['सामान र यात्रु सहयोग · Luggage and passenger help', 'चिनारी · A reference', 'आपतकालीन सम्पर्क · Emergency contact'], rec: ['s_ref1n', 's_emn'] },
+    office:     { need: ['इमेल · E-mail', 'शिक्षा र मार्कसिट · Education and marksheet', 'कम्प्युटर / टिकट प्रणालीको अनुभव · Computer / booking experience'], rec: ['s_email', 'cv_qual', 'cv_prev'] },
+    accountant: { need: ['शिक्षा र मार्कसिट / प्रमाणपत्र · Education with marksheet / certificate', 'हिसाबको अनुभव · Accounts experience', 'इमेल · E-mail'], rec: ['cv_qual', 'cv_exp', 's_email'] },
+    mechanic:   { need: ['मर्मतको अनुभव (वर्ष) · Repair experience (years)', 'पहिलेको ग्यारेज / कम्पनी · Previous garage / company'], rec: ['cv_exp', 'cv_prev'] },
+    cleaner:    { need: ['चिनारी · A reference', 'आपतकालीन सम्पर्क · Emergency contact'], rec: ['s_ref1n', 's_emn'] },
+    security:   { need: ['अनुभव (वर्ष) · Security experience', 'चिनारी · A reference', 'आपतकालीन सम्पर्क · Emergency contact'], rec: ['cv_exp', 's_ref1n', 's_emn'] },
+    other:      { need: ['आफ्नो सीप र अनुभव लेख्नुहोस् · Your skills and experience'], rec: ['cv_prev'] }
+  };
+  function roleHint() {
+    var r = state.kind === 'staff' ? $('s_role').value : '', n = ROLE_NEEDS[r], box = $('roleHint');
+    [].forEach.call(document.querySelectorAll('label.f.rec'), function (l) { l.classList.remove('rec'); });
+    $('drvBox').hidden = r !== 'driver';
+    if (!n) { box.hidden = true; return; }
+    box.textContent = '';
+    var b = document.createElement('b'); b.textContent = '📋 यो पदका लागि · For this job:'; box.appendChild(b);
+    var ul = document.createElement('ul');
+    n.need.forEach(function (t) { var li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
+    box.appendChild(ul); box.hidden = false;
+    n.rec.forEach(function (id) { var el = $(id), l = el && el.closest('label.f'); if (l) l.classList.add('rec'); });
+  }
+  $('s_role').addEventListener('change', roleHint);
 
   /* ---- location ---- */
   $('geoBtn').addEventListener('click', function () {
@@ -673,7 +709,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
       if (!$('p_area').value.trim()) return need('p_area', 'काम गर्ने ठाउँ लेख्नुहोस्।');
       if (!$('p_addr').value.trim()) return need('p_addr', 'ठेगाना लेख्नुहोस्।');
     }
-    var people = [['g_name', 'g_phone', 'जमानीकर्ता · guarantor'], ['w1_name', 'w1_phone', 'साक्षी १ · witness 1'], ['w2_name', 'w2_phone', 'साक्षी २ · witness 2']];
+    var people = state.kind === 'org' ? [['g_name', 'g_phone', 'जमानीकर्ता · guarantor'], ['w1_name', 'w1_phone', 'साक्षी १ · witness 1'], ['w2_name', 'w2_phone', 'साक्षी २ · witness 2']] : [];
     for (var pi = 0; pi < people.length; pi++) {
       var pn = $(people[pi][0]).value.trim(), pp = $(people[pi][1]).value.replace(/\D/g, '').replace(/^0+/, '');
       if (!pn && !pp) continue;
@@ -727,9 +763,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     if ($('s_role').value === 'driver') { fd.set('license_number', v('s_lic')); fd.set('license_category', v('s_licCat')); fd.set('license_expiry', $('s_licExp').value); }
     if (v('s_ref1n') || v('s_ref1p')) { fd.set('ref1_name', v('s_ref1n')); fd.set('ref1_phone', dig('s_ref1p')); }
     fd.set('emergency_name', v('s_emn')); fd.set('emergency_phone', dig('s_emp'));
-    [['g_name', 'g_phone', 2, 'guarantor'], ['w1_name', 'w1_phone', 3, 'witness'], ['w2_name', 'w2_phone', 4, 'witness']].forEach(function (x) {
-      if (v(x[0]) || v(x[1])) { fd.set('ref' + x[2] + '_name', v(x[0])); fd.set('ref' + x[2] + '_phone', dig(x[1])); fd.set('ref' + x[2] + '_relation', x[3]); }
-    });
     fd.set('bank_holder', v('b_name')); fd.set('bank_name', v('b_bank')); fd.set('bank_account', v('b_acc')); fd.set('bank_ifsc', v('b_ifsc').toUpperCase().replace(/\s+/g, ''));
     fd.set('agree', '1'); if ($('public_ok').checked) fd.set('public_ok', '1'); fd.set('website', $('website').value);
     if (state.webauthn) fd.set('webauthn', state.webauthn);
@@ -777,8 +810,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     ['cv_qual', 'cv_exp', 'cv_prev'].forEach(function (k) { var v = $(k).value.trim(); if (v) body.fields[k] = v; });
     var join = function (a) { return a.filter(function (x) { return x; }).join(' · '); }, cc = '+' + $('cc').value + ' ';
     var gq = $('cc').value === '91' ? 'g3' : 'g1', gp = $('g_phone').value.replace(/\D/g, '').replace(/^0+/, '');
-    if ($('g_name').value.trim()) { body.fields[gq + '_name'] = $('g_name').value.trim(); body.fields[gq + '_addr'] = join([$('g_addr').value.trim(), gp ? cc + gp : '']); }
-    ['w1', 'w2'].forEach(function (w) { var n = $(w + '_name').value.trim(), wp = $(w + '_phone').value.replace(/\D/g, '').replace(/^0+/, ''); if (n) { body.fields[w + '_name'] = n; if (wp) body.fields[w + '_addr'] = cc + wp; } });
+    if (state.kind === 'org') {   // guarantor + witnesses: a partner company only
+      if ($('g_name').value.trim()) { body.fields[gq + '_name'] = $('g_name').value.trim(); body.fields[gq + '_addr'] = join([$('g_addr').value.trim(), gp ? cc + gp : '']); }
+      ['w1', 'w2'].forEach(function (w) { var n = $(w + '_name').value.trim(), wp = $(w + '_phone').value.replace(/\D/g, '').replace(/^0+/, ''); if (n) { body.fields[w + '_name'] = n; if (wp) body.fields[w + '_addr'] = cc + wp; } });
+    }
     if (thumb && thumb.value()) body.thumb = thumb.value();
     if (state.kind !== 'org' && state.edu_cert) body.edu_cert = state.edu_cert;
     if (state.webauthn) body.webauthn = state.webauthn;
