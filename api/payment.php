@@ -33,6 +33,11 @@ try {
     $utr       = Security::clean($_POST['utr'] ?? Response::field('utr', ''), 60);
     $payerName = Security::clean($_POST['payerName'] ?? Response::field('payerName', ''), 120);
     $method    = Security::clean($_POST['method'] ?? Response::field('method', 'upi'), 20);
+    // 23 Oct 2026 review: "bank" + an ICICI- reference is what the gateway callback writes, and PaymentRisk
+    // trusts it (score -40, UTR checks skipped, "Bank-verified" badge). A passenger's own form never gets to say it.
+    if (strtolower($method) === 'bank') {
+        $method = 'upi';
+    }
 
     if (!Security::isValidPnr($pnr)) {
         Response::invalid(['pnr' => 'A valid booking reference is required.']);

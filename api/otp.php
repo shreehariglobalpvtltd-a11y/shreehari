@@ -200,7 +200,8 @@ try {
             if (Settings::getBool('sms_send_otp', true)) {
                 Notify::sms($phone, $otpText, $hint);
             }
-            $sent = Notify::whatsapp($phone, $otpText, null, $hint) !== false;
+            // === true: a wa.me click-to-chat link (no sender) is NOT a delivery - the passenger must see the skip box
+            $sent = Notify::whatsapp($phone, $otpText, null, $hint) === true;
         }
         if (!$sent) {
             Logger::warning('Login code not delivered', ['phone' => maskPhone($phone), 'error' => mb_substr($sendErr, 0, 160)], 'otp');

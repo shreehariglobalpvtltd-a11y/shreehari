@@ -1251,6 +1251,9 @@ if ($perfWin !== []):
       <?= $summary['reversed'] > 0 ? ' · reversed ' . Security::e(inr($summary['reversed'])) : '' ?>
       · paid <?= Security::e(inr($summary['paidOut'])) ?>
       <?= $advance['given'] > 0 ? ' · advance ' . Security::e(inr($advance['given'])) : '' ?>
+      <?php if ($isOwn && $balances['commission'] > 0): /* 23 Oct 2026: the ask sits on the number, not 10 panels down */ ?>
+      <br><a href="#payoutRequest" style="display:inline-block;margin-top:6px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.18);color:inherit;font-weight:800;text-decoration:none">💸 Request payout · भुक्तानी माग्नुहोस् →</a>
+      <?php endif; ?>
     </div>
   </div>
   <?php $overCash = (float) $profile['cash_limit'] > 0 && $balances['cash'] > (float) $profile['cash_limit']; ?>

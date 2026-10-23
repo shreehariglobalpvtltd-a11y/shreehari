@@ -167,11 +167,11 @@ try {
             }
             $signIn((string) $u['phone'], $countryOut((string) $u['country_code']) ?: $country, 'passkey');
         }
-        // the rest needs a signed-in, proven passenger
-        $me = Auth::user();
-        $uid = (int) ($me['id'] ?? 0);
+        // the rest needs a signed-in, PROVEN passenger (23 Oct 2026 review: a name + mobile "quick" session
+        // is not proof - it must never attach a passkey to someone else's number and then open their history)
+        $uid = CustomerProfile::verifiedUserId();
         if ($uid <= 0) {
-            Response::error('Sign in first.', 401);
+            Response::error('Prove the number first (WhatsApp or e-mail code), then add Face ID / fingerprint.', 401);
         }
         $row = Database::fetch('SELECT id, phone, full_name FROM users WHERE id = :i', ['i' => $uid]);
         if ($row === null) {

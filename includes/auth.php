@@ -1024,7 +1024,9 @@ final class Auth
         if (self::admin2faEnabled((int) $admin['id'])) {
             throw new RuntimeException('This account uses 2FA - sign in with the username, password and code.');
         }
-        self::finishAdminSession($admin, Security::clientIp(), false, self::pwStamp((string) $admin['password_hash']));
+        // via_otp = true: no password was typed, so a forced change (must_change_pw) asks for the new one only -
+        // change-password.php would otherwise demand a "current password" the person never received (23 Oct 2026).
+        self::finishAdminSession($admin, Security::clientIp(), true, self::pwStamp((string) $admin['password_hash']));
         Logger::audit('admin.login.' . $how, 'admin', (string) $admin['id'], null, null, 'Signed in without a password: ' . $how);
     }
 

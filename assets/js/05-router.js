@@ -210,10 +210,14 @@ document.addEventListener('click', (e) => {
    one-line hint. The keyed link is the private-access proof (COMMON rule 7). */
 function openTrackMyBus() {
   const today = (typeof todayISO === 'function') ? todayISO() : new Date().toISOString().slice(0, 10);
+  /* 23 Oct 2026: a trip runs 30-36 h, so on day 2 the ticket dated yesterday IS the bus to track -
+     keep bookings from the last two days (the tracker itself says "journey over" when it is). */
+  const since = (function () { const d = new Date(today + 'T12:00:00'); d.setDate(d.getDate() - 2); return d.toISOString().slice(0, 10); })();
   const list = (typeof DB !== 'undefined' && DB && Array.isArray(DB.bookings)) ? DB.bookings : [];
   const next = list
-    .filter(b => b && b.status === 'confirmed' && b.trackUrl && /[?&]k=/.test(String(b.trackUrl)) && String(b.date || '') >= today)
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)))[0];
+    .filter(b => b && b.status === 'confirmed' && b.trackUrl && /[?&]k=/.test(String(b.trackUrl)) && String(b.date || '') >= since)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    .sort((a, b) => (String(a.date) >= today ? 0 : 1) - (String(b.date) >= today ? 0 : 1) || String(a.date).localeCompare(String(b.date)))[0];
   if (next) {
     try { toast(tf('trkOpening', { pnr: next.id })); } catch (e) {}
     location.href = String(next.trackUrl);
@@ -311,7 +315,8 @@ document.addEventListener('click', (e) => {
   }
   /* Book / Help / Home scroll within home (updateBottomNav only runs on a
      hash change, so the tapped tab is lit here, D3-01). */
-  scrollHomeTarget(k === 'book' ? 'search-anchor' : (k === 'help' ? 'contact' : 'top'));
+  /* 23 Oct 2026: with SmartBook on, #search-anchor is hidden - the Book tab lands on the card itself */
+  scrollHomeTarget(k === 'book' ? (document.getElementById('smartBook') ? 'smartBook' : 'search-anchor') : (k === 'help' ? 'contact' : 'top'));
   setTimeout(() => shgLightTab(k), 90);
 });
 
@@ -1638,7 +1643,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261023i" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261023j" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

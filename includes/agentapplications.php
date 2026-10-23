@@ -994,13 +994,18 @@ final class AgentApplications
         if ($row === null || (string) $row['type'] !== (string) $clean['type'] || (string) $row['phone'] !== (string) $clean['phone']) {
             throw new RuntimeException('That application cannot be changed from here.');
         }
+        /* 23 Oct 2026 review: an edit used to overwrite the whole fields_json, wiping office-typed KYC, the
+           guarantor / witness boxes and the e-mail. The form's boxes win; everything else on record stays. */
+        $old = json_decode((string) ($row['fields_json'] ?? '{}'), true);
+        $old = is_array($old) ? $old : [];
+        $merged = array_filter((array) $clean['fields'], static fn ($x) => !(is_string($x) && trim($x) === '')) + $old;
         $set = [
             'lang'         => (string) $clean['lang'],
             'name'         => (string) $clean['name'],
             'phone_raw'    => (string) $clean['phone_raw'] !== '' ? (string) $clean['phone_raw'] : null,
-            'email'        => (string) $clean['email'] !== '' ? (string) $clean['email'] : null,
+            'email'        => (string) $clean['email'] !== '' ? (string) $clean['email'] : (($row['email'] ?? '') !== '' ? (string) $row['email'] : null),
             'area'         => (string) $clean['area'] !== '' ? (string) $clean['area'] : null,
-            'fields_json'  => json_encode($clean['fields'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}',
+            'fields_json'  => json_encode($merged, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}',
             'public_ok'    => (int) $clean['public_ok'],
             'payload_hash' => self::payloadHash($clean),
         ];
@@ -1022,7 +1027,13 @@ final class AgentApplications
             }
         }
         if (self::webColumnsAvailable()) {
-            $set['web_photo'] = (int) $clean['public_ok'] === 1 && (is_string($clean['photo'] ?? null) || (string) ($row['photo'] ?? '') !== '') ? 1 : 0;
+            // the office's "photo on the website" choice stays; it only drops when the listing is withdrawn or
+            // rises when a photo arrives for a listing the office already shows
+            if ((int) $clean['public_ok'] !== 1) {
+                $set['web_photo'] = 0;
+            } elseif (is_string($clean['photo'] ?? null) && (int) ($row['web_photo'] ?? 0) === 0 && (int) ($row['public_ok'] ?? 0) === 0) {
+                $set['web_photo'] = 1;
+            }
         }
         if (self::thumbReady()) {
             foreach (['thumb', 'edu_cert', 'webauthn_cred'] as $k) {

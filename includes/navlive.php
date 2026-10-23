@@ -226,6 +226,21 @@ final class NavLive
         $out = [];
         $routeEnds = [];
         $cands = EtaAlerts::candidates($now);
+        /* 23 Oct 2026: a coach the driver app is running with a fresh fix stays on the public map for its whole
+           30-36 h run - candidates() alone stops at departure + 16 h, so long-haul coaches vanished mid-trip. */
+        try {
+            require_once __DIR__ . '/livetrips.php';
+            $have = array_fill_keys(array_map(static fn (array $c): int => (int) $c['id'], $cands), true);
+            foreach (LiveTrips::runningWithFix($now) as $lt) {
+                if (!isset($have[(int) $lt['id']])) {
+                    unset($lt['fix']);
+                    $cands[] = $lt;
+                    $have[(int) $lt['id']] = true;
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::warning('NavLive: running trips not merged: ' . $e->getMessage(), [], 'nav');
+        }
         /* the coach's number plate (22 Oct 2026, owner: "gaadi number wise") */
         $plates = [];
         if ($cands !== []) {

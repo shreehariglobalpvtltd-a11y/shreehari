@@ -155,11 +155,15 @@ final class ApplyEdit
             $r = AgentApplications::find((int) $app['id']) ?? [];
             $f = json_decode((string) ($r['fields_json'] ?? '{}'), true);
             $f = is_array($f) ? $f : [];
-            foreach (['p_name', 'p_area', 'p_addr', 'p_idtype', 'p_idno', 'p_type', 'p_reg', 'p_tax', 'p_rep', 'p_rep_desig',
-                      'cv_qual', 'cv_exp', 'cv_prev', 'b_name', 'b_bank', 'b_acc', 'b_ifsc', 'b_upi'] as $k) {
-                if (isset($f[$k]) && is_scalar($f[$k])) {
-                    $v[$k] = (string) $f[$k];
+            /* every scalar the form stored (p_dob, p_pan, guarantor / witness boxes, e-mail…) - a box the form does
+               not know is simply not drawn, while one it knows is no longer wiped on an edit (23 Oct 2026 review) */
+            foreach ($f as $k => $val) {
+                if (is_string($k) && preg_match('/^[a-z][a-z0-9_]{0,40}$/', $k) === 1 && is_scalar($val) && !in_array($k, ['p_phone', 'p_cc'], true)) {
+                    $v[$k] = (string) $val;
                 }
+            }
+            if ((string) ($r['email'] ?? '') !== '' && !isset($v['p_email']) && !isset($v['s_email'])) {
+                $v['p_email'] = (string) $r['email'];
             }
             foreach (['photo' => 'photo', 'doc_photo' => 'doc', 'signature' => 'signature', 'thumb' => 'thumb', 'edu_cert' => 'edu_cert',
                       'logo' => 'logo', 'reg_cert' => 'reg_cert', 'tax_cert' => 'tax_cert'] as $col => $slot) {

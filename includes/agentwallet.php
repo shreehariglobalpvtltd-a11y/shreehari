@@ -2993,6 +2993,10 @@ final class AgentWallet
         if ($adminId <= 0) {
             throw new RuntimeException('Choose an agent first.');
         }
+        /* 23 Oct 2026 review: two taps / two tabs at once made two open requests (check-then-insert with no
+           lock). The agent's own admins row is the lock: one request at a time per agent. */
+        return Database::transaction(static function () use ($adminId, $amount, $note): int {
+        Database::fetchForUpdate('SELECT id FROM admins WHERE id = :i', ['i' => $adminId]);
         $due    = self::balances($adminId)['commission'];
         $amount = round($amount, 2);
         if ($amount <= 0) {
@@ -3044,6 +3048,7 @@ final class AgentWallet
         }
 
         return $id;
+        });
     }
 
     /**
@@ -3131,7 +3136,7 @@ final class AgentWallet
             'decided_at'   => date('Y-m-d H:i:s'),
             'decided_note' => $note !== '' ? $note : null,
             'ledger_id'    => $decision === 'paid' && $ledgerId !== null && $ledgerId > 0 ? $ledgerId : null,
-        ], 'id = :i', ['i' => $id]);
+        ], "id = :i AND status = 'open'", ['i' => $id]);   // two office tabs: the second decision changes nothing (23 Oct 2026)
 
         Logger::audit('agent.payout_request_' . $decision, 'admin', (string) $row['agent_admin_id'],
             ['status' => 'open', 'amount' => (float) $row['amount']],

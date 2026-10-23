@@ -132,6 +132,10 @@ final class IdCard
         $links = self::links((string) ($r['cv_json'] ?? ''));
         $issued = substr((string) ($r['reviewed_at'] ?: $r['created_at']), 0, 10);
         $end = trim((string) ($r['agreement_end'] ?? ''));
+        // 23 Oct 2026 review: a card past its "valid till" date is not valid, whatever the account says
+        if ($active && $end !== '' && $end !== '0000-00-00' && substr($end, 0, 10) < date('Y-m-d')) {
+            $active = false;
+        }
         return [
             'kind'       => $org ? 'partner' : 'agent',
             'expires'    => $end !== '' && $end !== '0000-00-00' ? substr($end, 0, 10) : self::plusMonths($issued, AgentApplications::TERM_MONTHS),
@@ -149,8 +153,8 @@ final class IdCard
             'sig'        => self::fromDataUri((string) ($r['signature'] ?? '')),
             'issued'     => substr((string) ($r['reviewed_at'] ?: $r['created_at']), 0, 10),
             'valid'      => $active,
-            'standing'   => $active ? ($org ? 'Active partner' : 'Active agent') : 'Account switched off',
-            'standingNe' => $active ? ($org ? 'सक्रिय साझेदार' : 'सक्रिय एजेन्ट') : 'खाता बन्द',
+            'standing'   => $active ? ($org ? 'Active partner' : 'Active agent') : ($end !== '' && $end !== '0000-00-00' && substr($end, 0, 10) < date('Y-m-d') ? 'Agreement ended' : 'Account switched off'),
+            'standingNe' => $active ? ($org ? 'सक्रिय साझेदार' : 'सक्रिय एजेन्ट') : ($end !== '' && $end !== '0000-00-00' && substr($end, 0, 10) < date('Y-m-d') ? 'सम्झौता सकियो' : 'खाता बन्द'),
             'contact'    => $org ? trim((string) ($f['p_rep'] ?? '')) : '',
         ];
     }

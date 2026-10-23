@@ -171,18 +171,13 @@ function openLoginModal(opts) {
   const savedPhone = (savedU && savedU.phone) || '';
   const savedAddr = (savedU && savedU.address) || '';
   _lgPhoto = null;
+  /* 23 Oct 2026 (owner: "customer login ekchoti, direct, dherai option le confuse nagarau"): ONE box (the
+     mobile) and ONE button (WhatsApp "hi" - needs no credit, no code to type). Name is optional; address,
+     photo, ID and e-mail moved to the profile. The other doors are one small row: a code (when the office has
+     WhatsApp credit), the e-mail code, the phone's own lock (only on a phone that added one), or just book. */
   openModal(`
     <h3 class="m-title">👤 ${t('lgTitle')}</h3>
     <p class="m-sub">${t('lgP')}</p>
-    <div class="lg-photo-row">
-      <label class="lg-photo" for="lgPhoto" title="${esc(t('lgPhoto'))}">
-        <span id="lgPhotoPrev">${savedU && savedU.photoUrl ? lgAvatarHTML(savedU, 72) : '<span class="lg-photo-plus">📷</span>'}</span>
-        <input id="lgPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="user" hidden>
-      </label>
-      <div class="lg-photo-txt"><b>${t('lgPhoto')}</b><small>${t('lgPhotoHint')}</small></div>
-    </div>
-    <div class="field"><label for="qlName">${t('lblName')}</label><input id="qlName" autocomplete="name" autocapitalize="words" maxlength="120" value="${esc(savedName)}"><div class="err">${t('errName')}</div></div>
-    <div class="field"><label for="lgAddr">${t('lgAddr')}</label><input id="lgAddr" autocomplete="street-address" maxlength="255" placeholder="${esc(t('lgAddrPh'))}" value="${esc(savedAddr)}"><div class="err">${t('lgAddrErr')}</div></div>
     <div class="field"><label for="otpPhone">${t('lblPhone')}</label>
       <div style="display:flex;gap:8px;align-items:stretch">
         <select id="otpCC" aria-label="Country code" style="flex:0 0 116px;padding:0 10px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:inherit;font:inherit;font-weight:600">
@@ -192,38 +187,28 @@ function openLoginModal(opts) {
         <input id="otpPhone" inputmode="numeric" maxlength="10" placeholder="98XXXXXXXX" autocomplete="tel-national" value="${esc(savedPhone)}" style="flex:1;min-width:0">
       </div>
       <div class="err">${t('errPhone')}</div></div>
-    ${lgExtraFieldsHTML(savedU, 'lg', false)}
-    <div class="m-actions"><button class="btn btn-orange" type="button" id="otpSendBtn" style="width:100%">🟢 ${t('lgSendOtp')}</button></div>
-    <div class="lg-doors" id="lgDoors" role="group" aria-label="Other ways to sign in">
-      <small class="lg-doors-or">${t('lgPkOr')}</small>
-      <button type="button" class="lg-door d-wa" id="lgWaDoor">💬 ${t('lgWaDoor')}</button>
-      <button type="button" class="lg-door d-em" id="lgEmDoor">📧 ${t('lgEmDoor')}</button>
-      <button type="button" class="lg-door d-pk" id="lgPkDoor" hidden>👆 ${t('lgPkDoor')}</button>
+    <div class="field"><label for="qlName">${t('lblName')} <small style="font-weight:500;opacity:.7">(optional · ऐच्छिक)</small></label><input id="qlName" autocomplete="name" autocapitalize="words" maxlength="120" value="${esc(savedName)}"><div class="err">${t('errName')}</div></div>
+    <div class="m-actions"><button class="btn btn-orange" type="button" id="lgWaDoor" style="width:100%;background:#1faa59 !important;background-image:none !important;color:#fff !important;box-shadow:0 4px 0 #127a3e !important;font-size:16px">💬 ${t('lgWaDoor')}</button></div>
+    <div class="lg-doors" id="lgDoors" role="group" aria-label="Other ways to sign in" style="display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:10px">
+      <small class="lg-doors-or" style="flex-basis:100%;text-align:center">${t('lgPkOr')}</small>
+      <button type="button" class="lg-link" id="otpSendBtn">📩 ${t('lgSendOtp')}</button>
+      <button type="button" class="lg-link" id="lgEmDoor">📧 ${t('lgEmDoor')}</button>
+      <button type="button" class="lg-link" id="lgPkDoor" hidden>👆 ${t('lgPkDoor')}</button>
     </div>
     <div class="lg-links lg-guest-row"><button type="button" class="lg-link" id="lgGuest">${t('lgGuest')}</button></div>
     <p class="lg-note">🔒 ${t('lgNote')}</p>`);
   /* A visible way on without an account (D4-15): booking never needs one. */
   const gl = $('#lgGuest'); if (gl) gl.onclick = () => closeModal();
-  lgBindExtras('lg');
   const savedCC = (savedU && savedU.country) || '';
   if (savedCC === 'NP' || savedCC === 'IN') { const ccEl = $('#otpCC'); if (ccEl) ccEl.value = savedCC === 'NP' ? '977' : '91'; }
-  (savedName ? (savedAddr ? $('#otpPhone') : $('#lgAddr')) : $('#qlName')).focus();
+  $('#otpPhone').focus();
   $('#otpSendBtn').onclick = sendOtp;
   /* 23 Oct 2026: WhatsApp "hi" (no credit needed), e-mail code, the phone's own lock */
   const wd = $('#lgWaDoor'); if (wd) wd.onclick = () => lgDoor('wa');
   const ed = $('#lgEmDoor'); if (ed) ed.onclick = () => lgDoor('email');
   lgPkShow();
-  $('#lgPhoto').addEventListener('change', function () {
-    const f = this.files && this.files[0];
-    if (!f) return;
-    if (!/^image\/(jpeg|png|webp)$/.test(f.type) || f.size > 6 * 1024 * 1024) { toast(t('lgPhotoBad')); this.value = ''; return; }
-    _lgPhoto = f;
-    const url = URL.createObjectURL(f);
-    $('#lgPhotoPrev').innerHTML = '<img class="lg-ava" src="' + url + '" alt="" style="width:72px;height:72px">';
-  });
-  $('#qlName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#lgAddr').focus(); } });
-  $('#lgAddr').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#otpPhone').focus(); } });
-  $('#otpPhone').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendOtp(); });
+  $('#qlName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); lgDoor('wa'); } });
+  $('#otpPhone').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); lgDoor('wa'); } });
 }
 
 /* After a sign-in: keep the account object in one shape everywhere. */
@@ -277,7 +262,7 @@ async function sendOtp() {
   const name = nameEl ? nameEl.value.trim() : '';
   const address = addrEl ? addrEl.value.trim() : '';
   let bad = null;
-  if (nameEl) { const ok = name.length >= 2; nameEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || nameEl; }
+  if (nameEl) { const ok = name === '' || name.length >= 2; nameEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || nameEl; }
   if (addrEl) { const ok = address.length >= 3; addrEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || addrEl; }
   /* The same mobile shape as the checkout (D4-15): India 6-9…, Nepal 9[6-9]… */
   const pOk = (typeof phoneShapeOk === 'function') ? phoneShapeOk(p, cc) : /^\d{10}$/.test(p);
@@ -313,7 +298,7 @@ function lgCollect() {
   const nameEl = $('#qlName'), addrEl = $('#lgAddr');
   const name = nameEl ? nameEl.value.trim() : '', address = addrEl ? addrEl.value.trim() : '';
   let bad = null;
-  if (nameEl) { const ok = name.length >= 2; nameEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || nameEl; }
+  if (nameEl) { const ok = name === '' || name.length >= 2; nameEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || nameEl; }
   if (addrEl) { const ok = address.length >= 3; addrEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || addrEl; }
   const pOk = (typeof phoneShapeOk === 'function') ? phoneShapeOk(p, cc) : /^\d{10}$/.test(p);
   f.classList.toggle('invalid', !pOk); if (!pOk) bad = bad || $('#otpPhone');
@@ -377,8 +362,11 @@ function lgWaStep(s, d) {
     setTimeout(tick, document.hidden ? 6000 : 3000);
   };
   setTimeout(tick, 2500);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && !stop) tick(); }, { once: false });
-  $('#lgBack').onclick = () => { stop = true; openLoginModal({ u: Object.assign({ name: s.name, address: s.address, phone: s.p, country: s.country }, s.extras) }); const c = $('#otpCC'); if (c) c.value = s.cc; };
+  /* one listener per sheet, removed when the sheet is done (review B9: each return from WhatsApp used to add
+     another 3 s loop until the 150-per-10-minutes limit answered 429) */
+  const onVis = () => { if (stop || !document.body.contains(go)) { document.removeEventListener('visibilitychange', onVis); return; } if (!document.hidden) tick(); };
+  document.addEventListener('visibilitychange', onVis);
+  $('#lgBack').onclick = () => { stop = true; document.removeEventListener('visibilitychange', onVis); openLoginModal({ u: Object.assign({ name: s.name, address: s.address, phone: s.p, country: s.country }, s.extras) }); const c = $('#otpCC'); if (c) c.value = s.cc; };
 }
 /* The phone's own lock (WebAuthn passkey): shown only where the browser has one. */
 function lgPkB2u(buf) { let o = '', b = new Uint8Array(buf); for (let i = 0; i < b.length; i++) o += String.fromCharCode(b[i]); return btoa(o).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
@@ -392,6 +380,9 @@ function lgPkAvail() {
 }
 function lgPkShow() {
   const b = $('#lgPkDoor'); if (!b) return;
+  /* only on a phone that added its lock here (shg:pk-added) - a door that cannot open is noise */
+  let added = false; try { added = !!localStorage.getItem('shg:pk-added'); } catch (e) {}
+  if (!added) return;
   lgPkAvail().then(ok => { if (ok && document.body.contains(b)) { b.hidden = false; b.onclick = lgPkLogin; } });
 }
 async function lgPkLogin() {
@@ -437,6 +428,7 @@ async function lgPkAdd(btn) {
     const r = c.response, tr = (r.getTransports ? r.getTransports() : []) || [];
     await shgApi.post('/customer-login.php', { action: 'pk-register', label: (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || 'This phone', cred: { id: c.id, clientDataJSON: lgPkB2u(r.clientDataJSON), attestationObject: lgPkB2u(r.attestationObject), transports: tr } });
     toast(t('lgPkAdded')); closeModal();
+    try { localStorage.setItem('shg:pk-added', (USER && USER.phone) || '1'); } catch (e) {}
     const h = location.hash || ''; if (h === '#/my' || h.indexOf('#/my?') === 0) renderMyBookings();
   } catch (e) {
     if (btn) btn.disabled = false;

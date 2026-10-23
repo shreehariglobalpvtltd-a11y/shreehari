@@ -1019,6 +1019,7 @@ final class Notify
               . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . "\n"
               . "तपाईंको टिकट (फोटो): " . $ticketUrl . "\n"
               . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
+              . "📍 बस कहाँ छ (लाइभ): " . Ticket::trackUrl($pnr) . "\n"
               . "राम्रो यात्रा होस्! 🙏";
         $mediaUrl = Settings::getBool('whatsapp_send_pdf', true) ? $ticketUrl : null;
         // Same template variables bookingConfirmed() sends: without them this
@@ -1184,6 +1185,7 @@ final class Notify
               . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . " (उही)\n"
               . "तपाईंको नयाँ टिकट (फोटो): " . $ticketUrl . "\n"
               . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
+              . "📍 बस कहाँ छ (लाइभ): " . Ticket::trackUrl($pnr) . "\n"
               . "नयाँ टिकट लिएर जानुहोला। राम्रो यात्रा होस्! 🙏";
         $mediaUrl = Settings::getBool('whatsapp_send_pdf', true) ? $ticketUrl : null;
         $res = self::whatsapp(

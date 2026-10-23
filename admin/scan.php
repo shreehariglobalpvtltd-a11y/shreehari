@@ -678,22 +678,37 @@ html[data-motion="reduced"] .sc-res{animation:none}
     var wrap = document.getElementById('cam'), video = document.getElementById('v');
     if (wrap.style.display === 'none') {
       try {
-        var stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        var stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } });
         video.srcObject = stream; await video.play(); wrap.style.display = '';
+        /* 23 Oct 2026: the browser's own decoder first (BarcodeDetector: Android Chrome, iOS 17+), jsQR as
+           the fallback - on a frame no wider than 640 px, at most ~8 a second, so a phone stays cool and the
+           page never hangs when the CDN library is late. After a hit the camera comes back by itself. */
+        var det = null;
+        try { if (window.BarcodeDetector) { det = new window.BarcodeDetector({ formats: ['qr_code'] }); } } catch (e) { det = null; }
         var canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
-        var tick = function () {
+        var busy = false, last = 0;
+        var found = function (data) {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          try { if (navigator.vibrate) navigator.vibrate(30); } catch (e) {}
+          try { sessionStorage.setItem('shgScanCam', '1'); } catch (e) {}
+          document.getElementById('qrData').value = data;
+          document.getElementById('qrForm').submit();
+        };
+        var tick = function (now) {
           if (wrap.style.display === 'none') { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
-          if (video.readyState === video.HAVE_ENOUGH_DATA && window.jsQR) {
-            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+          if (!busy && video.readyState === video.HAVE_ENOUGH_DATA && (now - last) > 120) {
+            last = now;
+            var scale = Math.min(1, 640 / (video.videoWidth || 640));
+            canvas.width = Math.round((video.videoWidth || 640) * scale); canvas.height = Math.round((video.videoHeight || 480) * scale);
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            var code = window.jsQR(img.data, img.width, img.height);
-            if (code && code.data) {
-              stream.getTracks().forEach(function (t) { t.stop(); });
-              try { if (navigator.vibrate) navigator.vibrate(30); } catch (e) {}
-              document.getElementById('qrData').value = code.data;
-              document.getElementById('qrForm').submit();
-              return;
+            if (det) {
+              busy = true;
+              det.detect(canvas).then(function (codes) { busy = false; if (codes && codes[0] && codes[0].rawValue) { found(codes[0].rawValue); } })
+                .catch(function () { busy = false; det = null; });
+            } else if (window.jsQR) {
+              var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              var code = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+              if (code && code.data) { found(code.data); return; }
             }
           }
           requestAnimationFrame(tick);
@@ -705,6 +720,13 @@ html[data-motion="reduced"] .sc-res{animation:none}
       if (video.srcObject) { video.srcObject.getTracks().forEach(function (t) { t.stop(); }); }
     }
   });
+  /* the camera comes back after a scan (the verdict page is a reload), with no extra tap */
+  try {
+    if (sessionStorage.getItem('shgScanCam') === '1') {
+      sessionStorage.removeItem('shgScanCam');
+      setTimeout(function () { var b = document.getElementById('camBtn'); if (b && document.getElementById('cam').style.display === 'none') { b.click(); } }, <?= $tone === 'green' ? 2700 : 600 ?>);
+    }
+  } catch (e) {}
 })();
 </script>
 <?php

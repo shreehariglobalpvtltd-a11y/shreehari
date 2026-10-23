@@ -46,13 +46,47 @@ final class Passkeys
 
     /* ---------------- relying party ---------------- */
 
+    /**
+     * The host the browser is on when it is NOT the APP_URL site (the .network staff door, a bare-domain
+     * visit): a passkey is bound to the page's own domain, so APP_URL's host would make every ceremony fail
+     * there (23 Oct 2026 review). On the main site APP_URL stays the id, so keys made before today keep working.
+     */
+    private static function requestHost(): string
+    {
+        $h = strtolower(trim((string) ($_SERVER['HTTP_HOST'] ?? '')));
+        $h = preg_replace('/:\d+$/', '', $h) ?? '';
+        if ($h === '' || preg_match('/^[a-z0-9.-]{1,120}$/', $h) !== 1) {
+            return '';
+        }
+        $app = strtolower((string) (parse_url(APP_URL, PHP_URL_HOST) ?: ''));
+        if ($h === $app || $app === '') {
+            return '';
+        }
+        // the same registrable domain as APP_URL (www. vs bare): keep APP_URL's id, it is a valid suffix of both
+        $reg = static fn (string $x): string => implode('.', array_slice(explode('.', $x), -2));
+        if ($reg($h) === $reg($app)) {
+            return '';
+        }
+        return $h;
+    }
+
     public static function rpId(): string
     {
+        $other = self::requestHost();
+        if ($other !== '') {
+            return $other;
+        }
         return (string) (parse_url(APP_URL, PHP_URL_HOST) ?: 'localhost');
     }
 
     public static function origin(): string
     {
+        $other = self::requestHost();
+        if ($other !== '') {
+            $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+            $port  = (int) ($_SERVER['SERVER_PORT'] ?? 0);
+            return ($https ? 'https' : 'http') . '://' . $other . (in_array($port, [0, 80, 443], true) ? '' : ':' . $port);
+        }
         $u = parse_url(APP_URL);
         return ($u['scheme'] ?? 'https') . '://' . ($u['host'] ?? '') . (isset($u['port']) ? ':' . $u['port'] : '');
     }

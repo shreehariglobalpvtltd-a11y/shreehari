@@ -620,8 +620,10 @@ function admin_mobile_nav(array $items, string $active = ''): string
     $tickets = $find('bookings.php');
     $new     = $find('smartbook.php');   // 15 Oct 2026: the one booking screen
     $desk    = !Auth::can('dashboard.view');
+    /* 23 Oct 2026 (owner: "agent haru lai scanner ni rakhdeu"): an agent's fourth slot is the boarding
+       scanner (the map stays one tap away on the agent desk); a counter keeps the map. */
     $fourth  = $desk
-        ? ($find('map.php') ?? $find('agent-sales.php'))
+        ? (((string) (Auth::admin()['role'] ?? '') === 'agent' ? $find('scan.php') : null) ?? $find('map.php') ?? $find('agent-sales.php'))
         : ($find('payments.php') ?? $find('agent-sales.php') ?? $find('manifest.php'));
     $slots   = [];
     $slot = static function (?array $it, string $label, string $icon, string $tone, string $active, bool $fab = false): string {
@@ -635,6 +637,7 @@ function admin_mobile_nav(array $items, string $active = ''): string
     };
     $fourthMeta = match ($fourth['href'] ?? '') {
         'map.php'      => ['Map', 'map-pin', 'map'],
+        'scan.php'     => ['Scan', 'scan', 'map'],
         'payments.php' => ['Payments', 'card', 'money'],
         'manifest.php' => ['Manifest', 'clipboard', 'money'],
         default        => ['Sales', 'chart-up', 'money'],
