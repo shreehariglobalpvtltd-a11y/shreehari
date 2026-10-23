@@ -229,7 +229,23 @@ try {
         Response::error('अहिले अनलाइन आवेदन बन्द छ — कार्यालयमा फोन गर्नुहोस्: ' . Settings::officePhone() . ' · Online applications are closed for now.', 403);
     }
 
-    $check = StaffApps::validate($_POST, $_FILES);
+    /* 23 Oct 2026 (owner: "form apply, edit"): the applicant correcting the form they sent - the number was proven
+       in this session (ApplyEdit, /api/my-application.php). The same row is saved over; pictures already sent stay. */
+    require_once INCLUDE_PATH . '/applyedit.php';
+    $edit = !empty($_POST['edit']) ? ApplyEdit::current('staff', normalisePhone((string) ($_POST['phone'] ?? ''))) : null;
+    if (!empty($_POST['edit']) && $edit === null) {
+        Response::error('सच्याउने समय सकियो — "पठाएको फारम सच्याउनुहोस्" फेरि खोल्नुहोस् · The edit has closed. Open your form again.', 409);
+    }
+    $have = [];
+    if ($edit !== null) {
+        $cur = StaffApps::find($edit['id']) ?? [];
+        foreach (StaffApps::FILES as $slot => [$col]) {
+            if ((string) ($cur[$col] ?? '') !== '') {
+                $have[] = $slot;
+            }
+        }
+    }
+    $check = StaffApps::validate($_POST, $_FILES, $have);
     if (!$check['ok']) {
         Response::invalid($check['errors'], 'रातो भएको ठाउँ ठीक गर्नुहोस् · Please fix the boxes marked in red.');
     }
@@ -250,7 +266,7 @@ try {
     $c['phone_verified'] = $state === 'verified' ? 1 : 0;
 
     // Documents: the answers this session already has (never waits here).
-    if (StaffApps::docVerifyOn()) {
+    if (StaffApps::docVerifyOn() && ($edit === null || isset($files['id_front']) || isset($files['license']))) {
         $uris = [];
         foreach (['id' => 'id_front', 'license' => 'license'] as $doc => $slot) {
             $uris[$doc] = isset($files[$slot]) ? StaffApps::dataUri($files[$slot]['bytes'], $files[$slot]['mime']) : null;
@@ -291,8 +307,24 @@ try {
         Response::error($busy, 429);
     }
 
+    if ($edit !== null) {
+        try {
+            $made = StaffApps::applicantEdit($edit['id'], $c, $files, $ip, $ua);
+        } catch (StaffAppError $e) {
+            Response::error($e->getMessage(), 409);
+        }
+        ApplyEdit::close();
+        require_once INCLUDE_PATH . '/facecheck.php';
+        FaceCheck::attach('staff_applications', (int) $made['id']);
+        $_SESSION['a4_mine'] = ['type' => 'staff', 'id' => (int) $made['id'], 't' => time()];
+        Response::json(['ok' => true, 'staff_id' => $made['id'], 'ref' => $made['ref'], 'status' => 'pending', 'edited' => true,
+                        'message' => 'तपाईंको आवेदन ' . $made['ref'] . ' सच्याइयो। कार्यालयले नयाँ विवरण हेर्नेछ। · Your application ' . $made['ref'] . ' was updated.']);
+    }
+
     try {
         $made = StaffApps::create($c, $files, $ip, $ua);
+        require_once INCLUDE_PATH . '/facecheck.php';
+        FaceCheck::attach('staff_applications', (int) $made['id']);   // 23 Oct 2026: the live selfie line, when one was made
         if (isset($usedChKey)) {
             unset($_SESSION[$usedChKey]);
         }

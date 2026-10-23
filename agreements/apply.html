@@ -88,6 +88,20 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 #selfPrev:not(.has)::before{content:"";position:absolute;inset:16px 26px 12px;border:2px dashed #9fb3da;border-radius:50% 50% 46% 46%;pointer-events:none}
 .shot .ok:not(:empty){display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:3px 10px;border-radius:999px;background:rgba(17,163,90,.12);font-weight:800}
 @media (prefers-reduced-motion:reduce){.prev.has::after{animation:none}.prev{transform:none}}
+.edit-on{margin:0 0 12px;padding:10px 14px;border-radius:14px;background:#fff6e8;border:1.5px solid #f0a040;font-weight:800;color:#7a3e00}
+.prev.was{box-shadow:0 0 0 2px #fff,0 0 0 4px #11a35a,0 14px 22px -12px rgba(10,42,143,.55)}
+.live{margin-top:12px;padding:12px;border-radius:16px;border:1.5px dashed #9fb3da;background:linear-gradient(135deg,rgba(31,79,224,.06),rgba(240,122,30,.06))}
+.live-res:not(:empty){margin-top:8px;padding:8px 12px;border-radius:12px;font-weight:800;font-size:14px;background:#fff;border:1.5px solid var(--line)}
+.live-res.ok{border-color:#11a35a;color:#0b6b47}.live-res.warn{border-color:#f0a040;color:#7a3e00}
+.live-ov{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;background:radial-gradient(120% 80% at 50% 30%,#10265e,#050c22)}
+.live-cam{position:relative;width:min(78vw,340px);aspect-ratio:3/4;border-radius:28px;overflow:hidden;box-shadow:0 0 0 4px #fff,0 0 0 8px #1f4fe0,0 0 40px 10px rgba(92,240,255,.35)}
+.live-cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);background:#000}
+.live-oval{position:absolute;inset:12% 16% 16%;border:3px dashed rgba(255,255,255,.85);border-radius:50% 50% 46% 46%;box-shadow:0 0 0 999px rgba(5,12,34,.35)}
+.live-scan{position:absolute;left:8%;right:8%;top:10%;height:3px;background:linear-gradient(90deg,transparent,#5cf0ff,transparent);box-shadow:0 0 14px #5cf0ff;animation:liveScan 2.2s ease-in-out infinite}
+@keyframes liveScan{0%,100%{top:12%}50%{top:84%}}
+.live-step{margin:0;color:#fff;font-size:20px;font-weight:900;text-align:center;min-height:2.6em}
+.live-dots{display:flex;gap:8px}.live-dots i{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.3)}.live-dots i.on{background:#5cf0ff;box-shadow:0 0 10px #5cf0ff}
+.live-ov .btn{color:#fff;border-color:rgba(255,255,255,.5)}
 /* optional questions stay folded: the form shows only what is needed (owner: "jati chahinchha teti matra") */
 details.more{margin:14px 0 0;border:1.5px dashed var(--line);border-radius:14px;padding:0 12px}
 details.more>summary{cursor:pointer;list-style:none;padding:12px 0;font-weight:800;font-size:14px;color:var(--blue,#1f4fe0)}
@@ -165,6 +179,16 @@ details.more[open]{padding-bottom:10px}
 <div class="kribbon" id="kRib"><span id="kRibT">🤝 एजेन्ट फारम · AGENT</span><a id="kPdf" href="/agreements/form.php?kind=agent&amp;auto=pdf" target="_blank" rel="noopener">📄 खाली फारम PDF · Blank PDF</a><a id="kPdfBw" href="/agreements/form.php?kind=agent&amp;bw=1&amp;auto=pdf" target="_blank" rel="noopener">⚫ B&amp;W PDF</a><a href="/team/">🔑 मेरो फारम, ID र पासवर्ड · My form, ID &amp; password</a></div>
 
 <main>
+<!-- 23 Oct 2026 (owner: "only digital form apply, edit"): correct the form you already sent - prove the number with
+     WhatsApp "hi", the form fills itself, and sending saves over the same application (api/my-application.php) -->
+<details class="card more" id="editBox" style="margin-bottom:12px"><summary>✏️ पठाइसकेको फारम सच्याउनुहोस् · Edit a form I already sent</summary>
+  <p class="hint" style="margin:0 0 8px">फारम पठाउँदा लेखेको मोबाइल लेख्नुहोस्, WhatsApp मा "hi" पठाउनुहोस् — फारम आफैं भरिएर खुल्छ। · The mobile you applied with, then one tap on WhatsApp.</p>
+  <div class="row"><select id="edCc" aria-label="Country code"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>
+  <input type="tel" id="edPhone" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Mobile you applied with"></div>
+  <div id="edV" style="margin-top:10px"></div>
+  <p class="msg bad" id="edMsg" hidden role="alert"></p>
+</details>
+<p class="edit-on" id="editOn" hidden></p>
 <form id="ap" novalidate>
   <section class="card">
     <h2><i>1</i>👤 तपाईंको विवरण · Your details</h2>
@@ -303,6 +327,19 @@ details.more[open]{padding-bottom:10px}
       <div><div class="pick"><span class="btn">🤳 फोटो खिच्नुहोस् · Take photo</span><input type="file" id="selfIn" accept="image/*" capture="user" aria-label="Take your photo"></div>
       <p class="hint" style="margin:6px 0 0">अनुहार स्पष्ट देखिने, चस्मा/टोपी बिना।</p><div class="ok" id="selfOk"></div></div>
     </div>
+    <!-- 23 Oct 2026 (owner: "selfie face id ni live system, KYC genuine"): a live check - look straight, turn left,
+         turn right - read by AI against the ID photo (api/face-check.php). A score for the office, never a gate. -->
+    <div class="live" id="liveBox">
+      <button type="button" class="btn ghost" id="liveBtn">🎥 लाइभ सेल्फी जाँच · Live selfie check</button>
+      <p class="hint" style="margin:6px 0 0">१० सेकेन्ड: सिधा हेर्ने, टाउको बायाँ, दायाँ घुमाउने। अनुहार ID सँग मिल्यो कि AI ले हेर्छ। (सिफारिस · recommended)</p>
+      <div class="live-res" id="liveRes" aria-live="polite"></div>
+    </div>
+    <div class="live-ov" id="liveOv" hidden role="dialog" aria-label="Live selfie">
+      <div class="live-cam"><video id="liveVid" playsinline muted autoplay></video><div class="live-oval"></div><div class="live-scan"></div></div>
+      <p class="live-step" id="liveStep"></p>
+      <div class="live-dots"><i></i><i></i><i></i></div>
+      <button type="button" class="btn ghost small" id="liveStop">✕ बन्द · Close</button>
+    </div>
   </section>
 
   <section class="card">
@@ -408,6 +445,93 @@ details.more[open]{padding-bottom:10px}
     onDone: function (how) { state.wa = how; $('waV').removeAttribute('aria-invalid'); }
   }) : null;
   ['p_phone', 'cc'].forEach(function (id) { $(id).addEventListener('change', function () { if (wav && state.wa !== 'none') { state.wa = 'none'; wav.reset(); } }); });
+
+  /* ---- 23 Oct 2026 (owner: "selfie face id ni live system"): live selfie, 3 frames -> api/face-check.php ---- */
+  (function () {
+    var stream = null, busy = false;
+    var STEPS = ['🙂 सिधा क्यामेरामा हेर्नुहोस् · Look straight', '👈 टाउको बिस्तारै बायाँ घुमाउनुहोस् · Turn your head left', '👉 अब दायाँ घुमाउनुहोस् · Now turn right'];
+    function stop() { if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; } $('liveOv').hidden = true; document.body.style.overflow = ''; busy = false; }
+    function grab(v, w) {
+      var c = document.createElement('canvas'), k = w / (v.videoWidth || w); c.width = w; c.height = Math.round((v.videoHeight || w) * k);
+      var x = c.getContext('2d'); x.translate(c.width, 0); x.scale(-1, 1); x.drawImage(v, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.8);
+    }
+    function res(t, ok) { var r = $('liveRes'); r.textContent = t; r.className = 'live-res' + (ok === true ? ' ok' : ok === false ? ' warn' : ''); }
+    function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    $('liveStop').addEventListener('click', function () { stop(); res('बन्द गरियो — फेरि गर्न सकिन्छ · Closed, you can try again.'); });
+    $('liveBtn').addEventListener('click', function () {
+      if (busy) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { res('यो फोनमा क्यामेरा खुलेन — माथिको फोटो मात्र राख्नुहोस् · Camera not available here.', false); return; }
+      busy = true; res('');
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 960 } }, audio: false }).then(function (s) {
+        stream = s; var v = $('liveVid'); v.srcObject = s; $('liveOv').hidden = false; document.body.style.overflow = 'hidden';
+        var dots = document.querySelectorAll('.live-dots i'), frames = [], big = null;
+        [].forEach.call(dots, function (d) { d.className = ''; });
+        var chain = wait(900);
+        STEPS.forEach(function (txt, i) {
+          chain = chain.then(function () { $('liveStep').textContent = txt; return wait(2200); })
+            .then(function () {
+              if (!stream) throw new Error('closed');
+              frames.push(grab(v, 360)); if (i === 0) big = grab(v, 900); dots[i].className = 'on';
+              try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
+            });
+        });
+        return chain.then(function () {
+          stop();
+          if (!state.photo && big) { state.photo = big; var p = $('selfPrev'); p.style.backgroundImage = 'url(' + big + ')'; p.classList.add('has'); $('selfOk').textContent = '✓ लाइभ फोटो · live photo'; }
+          res('⏳ AI ले अनुहार जाँच्दै… · Checking…');
+          return token().then(function (t) {
+            return fetch('/api/face-check.php', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' },
+              body: JSON.stringify({ frames: frames, doc: state.doc || null }) });
+          }).then(function (r) { return r.json(); }).then(function (d) {
+            if (!d || !d.ok) { res((d && (d.error || d.message)) || 'जाँच हुन सकेन — फारम पठाउन मिल्छ · Not checked, you can still send.', false); return; }
+            if (d.status === 'pass') res('✅ लाइभ अनुहार प्रमाणित' + (d.match === 'yes' ? ' — ID सँग मिल्यो' : '') + ' · Live face verified' + (d.match === 'yes' ? ', matches the ID' : ''), true);
+            else if (d.status === 'unavailable') res('ℹ️ अहिले AI जाँच हुन सकेन — कार्यालयले हेर्छ · AI check unavailable now; the office will look.', null);
+            else res('⚠️ ' + (d.live ? 'लाइभ ✓, तर ID को अनुहार स्पष्ट मिलेन' : 'लाइभ देखिएन — उज्यालोमा, टाउको घुमाएर फेरि गर्नुहोस्') + ' · ' + (d.summary || ''), false);
+          });
+        });
+      }).catch(function (e) {
+        stop();
+        res(e && e.message === 'closed' ? '' : 'क्यामेरा खुलेन — अनुमति दिनुहोस् वा माथिको फोटो मात्र राख्नुहोस् · Camera blocked: allow it, or keep the photo above.', false);
+      });
+    });
+  })();
+  /* ---- 23 Oct 2026 (owner: "form apply, edit"): open the form already sent, filled, to correct it ---- */
+  var SLOT_PREV = { photo: 'selfPrev', doc: 'docPrev', id_front: 'docPrev', edu_cert: 'eduPrev', marksheet: 'eduPrev', license: 'licPrev',
+                    logo: 'logoPrev', reg_cert: 'regPrev', tax_cert: 'taxPrev' };
+  function edSay(t) { var m = $('edMsg'); m.textContent = t || ''; m.hidden = !t; }
+  function edPhone() { var d = $('edPhone').value.replace(/\D/g, '').replace(/^0+/, ''); return d.length === 10 ? { phone: d, cc: $('edCc').value } : null; }
+  function edOpen() {
+    var p = edPhone(); if (!p) { edSay('१० अङ्कको मोबाइल लेख्नुहोस् · Enter the 10-digit mobile.'); return; }
+    edSay('⏳ फारम खोल्दै… · Opening your form…');
+    token().then(function (t) {
+      return fetch('/api/my-application.php', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' }, body: JSON.stringify({ action: 'open', phone: p.phone, cc: p.cc }) });
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.ok) { edSay((d && (d.error || d.message)) || 'खोल्न सकिएन · Could not open it.'); return; }
+      edSay('');
+      state.edit = { ref: d.ref, have: d.have || [] };
+      setKind(d.kind);
+      $('cc').value = p.cc; $('p_phone').value = p.phone; $('p_phone').readOnly = true; $('cc').disabled = true;
+      state.wa = 'verified';
+      Object.keys(d.values || {}).forEach(function (id) { var el = $(id); if (el && 'value' in el) { el.value = d.values[id]; el.dispatchEvent(new Event('change', { bubbles: true })); } });
+      $('public_ok').checked = !!d.public_ok;
+      (d.have || []).forEach(function (slot) {
+        var pv = SLOT_PREV[slot] && $(SLOT_PREV[slot]);
+        if (pv) { pv.classList.add('was'); var ok = pv.parentNode.querySelector('.ok'); if (ok && !ok.textContent) ok.textContent = '✓ पहिले पठाइएको — नयाँ खिचे मात्र बदलिन्छ · already sent'; }
+      });
+      if ((d.have || []).indexOf('signature') >= 0) $('sigOk').textContent = '✓ पहिलेकै सही रहन्छ — नयाँ गरे बदलिन्छ · your signature is kept';
+      $('editBox').open = false; $('editBox').hidden = true;
+      var on = $('editOn'); on.hidden = false; on.textContent = '✏️ ' + d.ref + ' सच्याउँदै — बदल्नुपर्ने कुरा मिलाएर तल "सच्याएर पठाउनुहोस्" थिच्नुहोस्। · Editing ' + d.ref + ': change what you need and save.';
+      SEND_LABEL = '💾 सच्याएर पठाउनुहोस् · Save changes'; $('send').textContent = SEND_LABEL;
+      on.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }).catch(function () { edSay('इन्टरनेट जाँच गरेर फेरि प्रयास गर्नुहोस् · Check the internet and try again.'); });
+  }
+  if (window.ShgWaVerify && $('edV')) {
+    window.ShgWaVerify.mount($('edV'), {
+      purpose: 'agent', phone: edPhone, token: function () { return token(); },
+      onDone: function (how) { if (how === 'verified') edOpen(); else edSay('सच्याउन WhatsApp प्रमाण चाहिन्छ · Editing needs the WhatsApp check.'); }
+    });
+  }
 
   /* ---- a camera / gallery photo, shrunk on the phone to send fast ---- */
   function shrink(file, maxSide, maxBytes) {
@@ -756,7 +880,7 @@ details.more[open]{padding-bottom:10px}
         if (!$('s_licCat').value.trim()) return need('s_licCat', 'लाइसेन्सको वर्ग लेख्नुहोस् · Enter the licence category.');
         if (!$('s_licExp').value) return need('s_licExp', 'लाइसेन्सको म्याद सकिने मिति छान्नुहोस् · Choose the expiry date.');
         if ($('s_licExp').value < new Date().toISOString().slice(0, 10)) return need('s_licExp', 'लाइसेन्सको म्याद सकिएको छ · The licence has expired.');
-        if (!state.lic) return need('licIn', 'लाइसेन्सको फोटो खिच्नुहोस् · Photo of the licence.');
+        if (!state.lic && !(state.edit && state.edit.have.indexOf('license') >= 0)) return need('licIn', 'लाइसेन्सको फोटो खिच्नुहोस् · Photo of the licence.');
       }
     } else {
       if (!$('p_area').value.trim()) return need('p_area', 'काम गर्ने ठाउँ लेख्नुहोस्।');
@@ -771,9 +895,10 @@ details.more[open]{padding-bottom:10px}
     }
     if (!$('p_idno').value.trim()) return need('p_idno', 'डकुमेन्ट नम्बर लेख्नुहोस्।');
     if (!idFormatOk()) return need('p_idno', 'डकुमेन्ट नम्बर मिलेन — ' + rule().hint);
-    if (!state.doc) return need('docIn', 'डकुमेन्टको फोटो खिच्नुहोस्।');
-    if (!state.photo) return need('selfIn', 'आफ्नो फोटो खिच्नुहोस्।');
-    if (inked <= 40) return need('sig', 'तलको बाकसमा औंलाले सही गर्नुहोस्।');
+    var had = function (slot) { return !!(state.edit && state.edit.have.indexOf(slot) >= 0); };
+    if (!state.doc && !had('doc') && !had('id_front')) return need('docIn', 'डकुमेन्टको फोटो खिच्नुहोस्।');
+    if (!state.photo && !had('photo')) return need('selfIn', 'आफ्नो फोटो खिच्नुहोस्।');
+    if (inked <= 40 && !had('signature')) return need('sig', 'तलको बाकसमा औंलाले सही गर्नुहोस्।');
     if (wav && state.wa === 'none') return need('waV', 'मोबाइल नम्बर WhatsApp बाट प्रमाणित गर्नुहोस् — हरियो बटन थिच्नुहोस्।');
     if (!$('agree').checked) return need('agree', 'विवरण साँचो हो भनी ✓ लगाउनुहोस्।');
     if (!$('agreeTerms').checked) { if (terms) terms.open(); return need('agreeTerms', 'सम्झौताका सर्त पढेर ✓ लगाउनुहोस् · Read the terms and tick the box.'); }
@@ -786,7 +911,7 @@ details.more[open]{padding-bottom:10px}
     var btn = $('send'); if (btn.disabled) return;
     if (state.kind === 'staff') { btn.disabled = true; btn.textContent = '⏳ पठाउँदै… · Sending…'; sendStaff(btn, SEND_LABEL); return; }
     btn.disabled = true; var label = SEND_LABEL; btn.textContent = '🔍 डकुमेन्ट जाँच… · Checking ID…';
-    dvCheck().then(function (ok) {
+    (state.edit && !state.doc ? Promise.resolve(true) : dvCheck()).then(function (ok) {
       if (!ok) {
         btn.disabled = false; btn.textContent = label;
         say('❌ डकुमेन्ट नमिलेसम्म फारम पठाइँदैन — माथि रातो भएको ठीक गर्नुहोस्।');
@@ -819,11 +944,12 @@ details.more[open]{padding-bottom:10px}
     fd.set('bank_holder', v('b_name')); fd.set('bank_name', v('b_bank')); fd.set('bank_account', v('b_acc')); fd.set('bank_ifsc', v('b_ifsc').toUpperCase().replace(/\s+/g, ''));
     fd.set('agree', '1'); if ($('public_ok').checked) fd.set('public_ok', '1'); fd.set('website', $('website').value);
     if (state.webauthn) fd.set('webauthn', state.webauthn);
-    fd.append('photo', toBlob(state.photo), 'photo.jpg');
-    fd.append('id_front', toBlob(state.doc), 'id_front.jpg');
+    if (state.edit) fd.set('edit', '1');
+    if (state.photo) fd.append('photo', toBlob(state.photo), 'photo.jpg');
+    if (state.doc) fd.append('id_front', toBlob(state.doc), 'id_front.jpg');
     if ($('s_role').value === 'driver' && state.lic) fd.append('license', toBlob(state.lic), 'license.jpg');
     if (state.edu_cert) fd.append('marksheet', toBlob(state.edu_cert), 'marksheet.jpg');
-    var sg = signaturePng(); if (sg) fd.append('signature', toBlob(sg), 'signature.png');
+    var sg = inked > 40 ? signaturePng() : null; if (sg) fd.append('signature', toBlob(sg), 'signature.png');
     if (thumb && thumb.value()) fd.append('thumb', toBlob(thumb.value()), 'thumb.png');
     token().then(function (t) {
       return fetch('/api/staff-apply.php', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': t || '' }, body: fd });
@@ -848,7 +974,7 @@ details.more[open]{padding-bottom:10px}
     var phone = '+' + $('cc').value + $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
     var body = {
       type: state.kind, lang: window.ShgFormLang ? window.ShgFormLang.get() : 'ne', website: $('website').value, public_ok: $('public_ok').checked,
-      photo: state.photo, doc: state.doc, signature: signaturePng(), geo: state.geo,
+      photo: state.photo, doc: state.doc, signature: inked > 40 ? signaturePng() : null, geo: state.geo, edit: !!state.edit,
       fields: { p_name: $('p_name').value.trim(), p_phone: phone, p_area: $('p_area').value.trim(), p_addr: $('p_addr').value.trim(),
                 p_idtype: $('p_idtype').value, p_idno: $('p_idno').value.trim(), p_occ: 'Online form (photo + signature)' }
     };

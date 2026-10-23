@@ -979,6 +979,77 @@ final class AgentApplications
         return ['id' => $id, 'ref' => $ref, 'duplicate' => false, 'repeat_of' => $dupOf > 0 ? self::refFor($dupOf) : null];
     }
 
+    /**
+     * 23 Oct 2026 (owner: "form apply, edit"): the applicant corrects the form they sent (ApplyEdit proved
+     * the number in this session). The same row is saved over - every typed field from this send, and a
+     * picture only when a new one was taken (the ones already sent stay). The kind and the number cannot
+     * change here; a new ID photo clears the earlier ID check.
+     *
+     * @param array<string, mixed> $clean validate()['clean']
+     * @return array{id: int, ref: string}
+     */
+    public static function applicantEdit(int $id, array $clean): array
+    {
+        $row = self::find($id);
+        if ($row === null || (string) $row['type'] !== (string) $clean['type'] || (string) $row['phone'] !== (string) $clean['phone']) {
+            throw new RuntimeException('That application cannot be changed from here.');
+        }
+        $set = [
+            'lang'         => (string) $clean['lang'],
+            'name'         => (string) $clean['name'],
+            'phone_raw'    => (string) $clean['phone_raw'] !== '' ? (string) $clean['phone_raw'] : null,
+            'email'        => (string) $clean['email'] !== '' ? (string) $clean['email'] : null,
+            'area'         => (string) $clean['area'] !== '' ? (string) $clean['area'] : null,
+            'fields_json'  => json_encode($clean['fields'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}',
+            'public_ok'    => (int) $clean['public_ok'],
+            'payload_hash' => self::payloadHash($clean),
+        ];
+        if (is_string($clean['photo'] ?? null)) {
+            $set['photo'] = $clean['photo'];
+        }
+        if (self::extraColumnsAvailable()) {
+            foreach (['doc' => 'doc_photo', 'signature' => 'signature', 'geo' => 'geo'] as $k => $col) {
+                if (is_string($clean[$k] ?? null)) {
+                    $set[$col] = $clean[$k];
+                }
+            }
+        }
+        if (self::verifyColumnAvailable()) {
+            if (is_string($clean['doc_verify'] ?? null) && $clean['doc_verify'] !== '') {
+                $set['doc_verify'] = mb_substr((string) $clean['doc_verify'], 0, 255, 'UTF-8');
+            } elseif (is_string($clean['doc'] ?? null)) {
+                $set['doc_verify'] = null;   // a new ID photo nobody has checked yet
+            }
+        }
+        if (self::webColumnsAvailable()) {
+            $set['web_photo'] = (int) $clean['public_ok'] === 1 && (is_string($clean['photo'] ?? null) || (string) ($row['photo'] ?? '') !== '') ? 1 : 0;
+        }
+        if (self::thumbReady()) {
+            foreach (['thumb', 'edu_cert', 'webauthn_cred'] as $k) {
+                if (is_string($clean[$k] ?? null) && $clean[$k] !== '') {
+                    $set[$k] = $clean[$k];
+                }
+            }
+        }
+        if ((string) $clean['type'] === 'org') {
+            if (is_string($clean['logo'] ?? null) && self::logoReady()) {
+                $set['logo'] = $clean['logo'];
+            }
+            if (self::certReady()) {
+                foreach (['reg_cert', 'tax_cert'] as $k) {
+                    if (is_string($clean[$k] ?? null)) {
+                        $set[$k] = $clean[$k];
+                    }
+                }
+            }
+        }
+        Database::update('agent_applications', $set, 'id = :id', ['id' => $id]);
+        $ref = (string) ($row['ref'] ?: self::refFor($id));
+        Logger::audit('agreement_app.applicant_edit', 'agent_application', $ref, null,
+            ['changed' => array_keys($set)], 'Applicant corrected their own form (WhatsApp-proven number)');
+        return ['id' => $id, 'ref' => $ref];
+    }
+
     /* =================================================================
      *  Office reads
      * ================================================================= */

@@ -198,6 +198,30 @@ try {
         $clean['doc_verify'] = DocVerify::summary($vr);
     }
 
+    /* 23 Oct 2026 (owner: "form apply, edit"): the applicant correcting the form they sent - the number was
+       proven in this session (ApplyEdit, /api/my-application.php). The same row is saved over, no second one. */
+    if (!empty(Response::field('edit', false))) {
+        require_once INCLUDE_PATH . '/applyedit.php';
+        $edit = ApplyEdit::current('agent', (string) $clean['phone']);
+        if ($edit === null) {
+            Response::error('सच्याउने समय सकियो — "पठाएको फारम सच्याउनुहोस्" फेरि खोल्नुहोस् · The edit has closed. Open your form again.', 409);
+        }
+        try {
+            $done = AgentApplications::applicantEdit($edit['id'], $clean);
+        } catch (RuntimeException $re) {
+            Response::error($re->getMessage(), 409);
+        }
+        if (isset($clean['webauthn_cred'])) {
+            unset($_SESSION['agr_webauthn']);
+        }
+        ApplyEdit::close();
+        require_once INCLUDE_PATH . '/facecheck.php';
+        FaceCheck::attach('agent_applications', (int) $done['id']);   // 23 Oct 2026: the live selfie line, when one was made
+        $_SESSION['a4_mine'] = ['type' => 'agent', 'id' => (int) $done['id'], 't' => time()];
+        Response::json(['ok' => true, 'ref' => $done['ref'], 'edited' => true, 'duplicate' => false, 'photo_saved' => $photo['photo'] !== null,
+                        'message' => 'तपाईंको फारम ' . $done['ref'] . ' सच्याइयो। कार्यालयले नयाँ विवरण हेर्नेछ। · Your form ' . $done['ref'] . ' was updated.']);
+    }
+
     // The same form again: its ref, and nothing is charged or stored.
     $retry = AgentApplications::findRetry($clean);
     if ($retry !== null) {
@@ -218,6 +242,10 @@ try {
     }
 
     $made = AgentApplications::create($clean, $ip);
+    if (!$made['duplicate']) {
+        require_once INCLUDE_PATH . '/facecheck.php';
+        FaceCheck::attach('agent_applications', (int) $made['id']);   // 23 Oct 2026: the live selfie line, when one was made
+    }
     if (isset($clean['webauthn_cred'])) {
         unset($_SESSION['agr_webauthn']);
     }

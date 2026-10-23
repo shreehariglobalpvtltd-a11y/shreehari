@@ -335,6 +335,7 @@ if (!$ready) {
         <?= (int) $open['phone_verified'] === 1 ? '<span class="stf-ok"> ✓ proven with the WhatsApp code</span>' : '<span class="muted text-xs"> — code not entered (WhatsApp did not deliver it); confirm by phone</span>' ?></dd>
       <?php if (!empty($open['whatsapp'])): ?><dt>WhatsApp</dt><dd class="mono"><?= $h($open['whatsapp']) ?></dd><?php endif; ?>
       <dt>Sent</dt><dd><?= $h(date('d M Y, H:i', (int) strtotime((string) $open['created_at']))) ?><?= !empty($open['info_requested_at']) ? ' · more info asked ' . $h($fmtDate((string) $open['info_requested_at'])) : '' ?></dd>
+      <?php if (!empty($open['face_check'])): /* 23 Oct 2026: live selfie KYC (includes/facecheck.php) - a score, never a gate */ ?><dt>🤳 Live selfie</dt><dd><?= str_contains((string) $open['face_check'], 'LIVE ✓') ? '✅ ' : '⚠️ ' ?><?= $h($open['face_check']) ?></dd><?php endif; ?>
       <?php if (!empty($open['rejected_reason'])): ?><dt>Reason given</dt><dd><?= $h($open['rejected_reason']) ?></dd><?php endif; ?>
     </dl>
 

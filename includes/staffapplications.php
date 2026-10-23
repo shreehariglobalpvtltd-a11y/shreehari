@@ -287,7 +287,7 @@ final class StaffApps
      * @param array<string, mixed> $files $_FILES
      * @return array{ok: bool, errors: array<string, string>, clean: array<string, mixed>, files: array<string, array{bytes: string, mime: string}>}
      */
-    public static function validate(array $in, array $files): array
+    public static function validate(array $in, array $files, array $have = []): array
     {
         $e = [];
         $c = [];
@@ -438,7 +438,8 @@ final class StaffApps
             $need['license'] = 'सवारी चालक अनुमतिपत्रको फोटो चाहिन्छ · Photo of your driving licence.';
         }
         foreach ($need as $slot => $msg) {
-            if (!isset($got[$slot]) && !isset($e[$slot])) {
+            // 23 Oct 2026: an applicant correcting their form keeps the pictures already sent ($have)
+            if (!isset($got[$slot]) && !isset($e[$slot]) && !in_array($slot, $have, true)) {
                 $e[$slot] = $msg;
             }
         }
@@ -617,6 +618,66 @@ final class StaffApps
             $saved['signature'] ?? null, $ip, $ua);
 
         return ['id' => $id, 'ref' => self::refFor($id), 'reapplied' => $old !== null];
+    }
+
+    /**
+     * 23 Oct 2026 (owner: "form apply, edit"): the applicant corrects the application they sent while the office
+     * has not decided it (ApplyEdit proved the number in this session). The same row is saved over; a picture is
+     * replaced only when a new one was sent. The number cannot change here. A new ID photo or a new photo clears
+     * the earlier document check; the status and the office's own notes stay.
+     *
+     * @param array<string, mixed> $c     validate()['clean'] (+ phone_verified)
+     * @param array<string, array{bytes: string, mime: string}> $files validate()['files']
+     * @return array{id: int, ref: string}
+     */
+    public static function applicantEdit(int $id, array $c, array $files, string $ip, string $ua): array
+    {
+        $old = self::find($id);
+        if ($old === null || (string) $old['phone'] !== (string) $c['phone'] || !in_array((string) $old['status'], ['pending', 'under_review'], true)) {
+            throw new StaffAppError('That application cannot be changed from here.');
+        }
+        $row = $c;
+        foreach (self::FILES as [$col]) {
+            unset($row[$col]);
+        }
+        unset($row['face'], $row['phone'], $row['phone_country']);
+        if (isset($files['id_front']) || isset($files['photo'])) {
+            $row['doc_verify_json'] = null;
+            $row['doc_verify_status'] = 'unchecked';
+        }
+        Database::update('staff_applications', $row, 'id = :id', ['id' => $id]);
+
+        $saved = [];
+        try {
+            foreach ($files as $slot => $f) {
+                $saved[$slot] = self::saveFile($id, $slot, $f['bytes'], $f['mime']);
+            }
+        } catch (Throwable $ex) {
+            foreach ($saved as $rel) {
+                self::unlinkRel($rel);
+            }
+            throw $ex;
+        }
+        $set = [];
+        foreach ($saved as $slot => $rel) {
+            if (isset(self::FILES[$slot])) {
+                $set[self::FILES[$slot][0]] = $rel;
+            }
+        }
+        if ($set !== []) {
+            Database::update('staff_applications', $set, 'id = :id', ['id' => $id]);
+            foreach ($set as $col => $rel) {
+                if (!empty($old[$col]) && (string) $old[$col] !== $rel) {
+                    self::unlinkRel((string) $old[$col]);
+                }
+            }
+        }
+        if (isset($saved['signature'])) {
+            self::recordSign('apply', $id, (string) $c['full_name'], (string) $c['phone'], (int) ($c['phone_verified'] ?? 0), $saved['signature'], $ip, $ua);
+        }
+        Logger::audit('staff_app.applicant_edit', 'staff_application', self::refFor($id), null,
+            ['files' => array_keys($saved)], 'Applicant corrected their own form (WhatsApp-proven number)');
+        return ['id' => $id, 'ref' => self::refFor($id)];
     }
 
     /** Write one file under uploads/staff/<id>/ with a random name; returns 'staff/<id>/<name>'. */
