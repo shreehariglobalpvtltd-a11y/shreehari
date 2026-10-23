@@ -453,7 +453,7 @@ final class AiAgent
         require_once INCLUDE_PATH . '/aiturn.php';
         self::$deadline = microtime(true) + self::TURN_BUDGET_SEC;
         try {
-            return AiTurn::run(
+            $answer = AiTurn::run(
                 static fn(string $system, array $messages, array $tools, bool $noTools = false) => self::ask($system, $messages, $tools, $ctx, $noTools),
                 static fn(string $name, array $args) => AiTools::run($name, $args, $ctx),
                 self::systemPrompt($ctx), $history, AiTools::catalogue($ctx),
@@ -462,9 +462,96 @@ final class AiAgent
                     : Settings::getInt('wa_agent_max_tools', 6),
                 self::$deadline
             );
+            if ($answer !== null && isset($answer['text'])) {
+                $answer['text'] = self::offerGuard((string) $answer['text'], (string) ($ctx['lang'] ?? ''));
+            }
+            return $answer;
         } finally {
             self::$deadline = null;
         }
+    }
+
+    /**
+     * 23 Oct 2026, owner: "S Hari AI le 20% off bhanchha - sarasar galat".
+     * The prompt already forbids an invented discount, but a model can still
+     * say one. This is the hard stop in code: a line that talks about a
+     * discount with a percentage that is not an offer running TODAY (Admin ->
+     * Offers) is replaced by the true line. Refund percentages ("90% फिर्ता")
+     * carry no discount word and pass untouched.
+     */
+    public static function offerGuard(string $text, string $lang = ''): string
+    {
+        if (!str_contains($text, '%') && !preg_match('/प्रतिशत|percent|pratishat|takka/iu', $text)) {
+            return $text;
+        }
+        if (!class_exists('Fare')) {
+            require_once INCLUDE_PATH . '/fare.php';
+        }
+        try {
+            $offers = Fare::runningOffers();
+        } catch (Throwable $e) {
+            $offers = [];
+        }
+        $allowed = [];
+        foreach ($offers as $o) {
+            if ($o['type'] === 'percent') {
+                $allowed[] = (float) $o['value'];
+            }
+        }
+        // छुट/छूट = discount, but छुट्छ / छुट्ने = "departs" (a halant or vowel sign follows).
+        $discountWord = '/\b(off|discount|offer|cashback|concession|saving|save|sale|chhut|chut|chhoot|chhoot|sahuliyat|chhut)\b|छ[ुू]ट(?![\x{093E}-\x{094D}])|अफर|ऑफर|सहुलियत|रियायत|बचत|डिस्काउन्ट|डिस्काउंट|ડિસ્કાઉન્ટ|છૂટ|ઓફર/iu';
+        $pct = '/(\d+(?:\.\d+)?)\s*(?:%|प्रतिशत|percent|pratishat|takka)/iu';
+
+        $wrong = false;
+        $lines = preg_split('/(\R)/u', $text, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$text];
+        foreach ($lines as $i => $line) {
+            if (!preg_match($discountWord, $line) || !preg_match_all($pct, $line, $m)) {
+                continue;
+            }
+            foreach ($m[1] as $n) {
+                $ok = false;
+                foreach ($allowed as $a) {
+                    if (abs($a - (float) $n) < 0.01) {
+                        $ok = true;
+                    }
+                }
+                if (!$ok) {
+                    $wrong = true;
+                    $lines[$i] = null;
+                    break;
+                }
+            }
+        }
+        if (!$wrong) {
+            return $text;
+        }
+
+        $dev = preg_match('/[\x{0900}-\x{097F}]/u', $text) === 1;
+        $hindi = $lang === 'hi' || ($dev && preg_match('/\b(है|हैं|नहीं|आप|मैं)\b/u', $text) === 1);
+        if ($offers !== []) {
+            $true = ($hindi ? 'अभी चल रहा ऑफर: ' : ($dev || $lang === 'ne' ? 'अहिले चलिरहेको अफर: ' : 'Offer running today: '))
+                  . implode('; ', array_map(static fn(array $o): string => Fare::offerLine($o), $offers));
+        } else {
+            $true = $hindi ? 'अभी कोई छूट/ऑफर नहीं चल रहा — किराया ऑनलाइन और काउंटर पर एक जैसा है।'
+                  : ($dev || $lang === 'ne' ? 'अहिले कुनै छुट/अफर चलिरहेको छैन — भाडा online र counter मा उस्तै छ।'
+                  : 'No discount or offer is running today — the fare is the same online and at the counter.');
+        }
+        $out = '';
+        $placed = false;
+        foreach ($lines as $line) {
+            if ($line === null) {
+                if (!$placed) {
+                    $out .= $true;
+                    $placed = true;
+                }
+                continue;
+            }
+            $out .= $line;
+        }
+        $out = preg_replace('/(\R){3,}/u', "\n\n", $out) ?? $out;
+        Logger::warning('AI reply carried an offer that is not running - corrected', ['allowed' => $allowed], 'ai');
+
+        return trim($out);
     }
     /**
      * One model call, whichever brain is configured.
