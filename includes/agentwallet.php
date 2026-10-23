@@ -1194,9 +1194,31 @@ final class AgentWallet
             Logger::error('Auto agent-code failed', ['e' => $e->getMessage()], 'automation');
         }
         // Welcome WhatsApp with the code + agent-portal link (agent_notify_enabled).
-        EventBus::emit('agent.registered', ['admin_id' => $newId, 'full_name' => $name, 'phone' => $phone]);
+        // 23 Oct 2026 (owner: "admin approve paxi ID password WhatsApp ma aaos"): the approve door sends
+        // ONE message with the username + password itself (Notify::agentCredentials), so it asks for no welcome here.
+        if (empty($opt['no_welcome'])) {
+            EventBus::emit('agent.registered', ['admin_id' => $newId, 'full_name' => $name, 'phone' => $phone]);
+        }
 
         return $newId;
+    }
+
+    /**
+     * A first password the office hands over on WhatsApp (23 Oct 2026). 8 characters from an alphabet
+     * without look-alikes (no 0/O, 1/l/I), always at least one letter and one digit, so it passes
+     * TeamPortal::PW_MIN and is typed right from a phone screen. Changed at the first sign-in (must_change_pw).
+     */
+    public static function tempPassword(): string
+    {
+        $letters = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz';
+        $digits  = '23456789';
+        $all     = $letters . $digits;
+        $out     = [$letters[random_int(0, strlen($letters) - 1)], $digits[random_int(0, strlen($digits) - 1)]];
+        while (count($out) < 8) {
+            $out[] = $all[random_int(0, strlen($all) - 1)];
+        }
+        shuffle($out);
+        return implode('', $out);
     }
 
 

@@ -76,17 +76,38 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
                 /* 23 Oct 2026 (owner: "admin accept -> ID card, password ni diun milos; counter ni yei form bata"):
                    approve can carry the portal password, and for an office / counter post a counter login on the
                    same mobile. With no password typed they make it at /team/ with a WhatsApp code. */
+                $credsLink = null;
                 if ($do === 'approve') {
                     $pw = trim((string) ($_POST['new_password'] ?? ''));
+                    /* 23 Oct 2026 (owner: "admin approve paxi ID password WhatsApp ma aaune"): no password typed =
+                       a one-time one is made here and sent on WhatsApp with the mobile (= username) and the /team/
+                       link. They change it at the first sign-in (TeamPortal::login forces it when must_change). */
+                    $made = false;
+                    if ($pw === '' && TeamPortal::ready()) {
+                        require_once INCLUDE_PATH . '/agentwallet.php';
+                        $pw   = AgentWallet::tempPassword();
+                        $made = true;
+                    }
                     if ($pw !== '') {
                         TeamPortal::officeSetStaffPassword($id, $pw, $selfId);
                     }
                     if (isset($_POST['counter_login'])) {
                         TeamPortal::makeCounterLogin($id, $pw, $selfId);
                     }
+                    if ($pw !== '') {
+                        $row  = StaffApps::find($id);
+                        $sent = $row === null ? false : Notify::agentCredentials(0, (string) $row['full_name'],
+                            '+' . TeamPortal::cc($row['phone_country'] ?? '91') . TeamPortal::phone10((string) $row['phone']),
+                            TeamPortal::phone10((string) $row['phone']), $pw, 'staff');
+                        if (is_string($sent)) {
+                            $credsLink = $sent;
+                        }
+                        Logger::audit('staff_app.credentials', 'staff_application', (string) ($row['ref'] ?? $id), null,
+                            ['delivered' => $sent === true ? 'whatsapp' : 'link', 'password' => $made ? 'made here' : 'typed'], 'Sign-in details sent by admin #' . $selfId);
+                    }
                 }
                 // Not delivered by the API: the office gets a tap-to-send link on the next page.
-                $_SESSION['staff_wa_link'] = $r['waLink'];
+                $_SESSION['staff_wa_link'] = $credsLink ?? $r['waLink'];
                 Response::redirect('admin/' . $keep(['id' => $id, 'done' => $do, 'wa' => $r['wa'] ? 1 : 0]) . '#detail');
             } elseif ($act === 'web') {
                 $order = isset($_POST['display_order']) && is_numeric($_POST['display_order']) ? (int) $_POST['display_order'] : null;

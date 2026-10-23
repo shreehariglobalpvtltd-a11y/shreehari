@@ -47,6 +47,21 @@ $boarded = null;            // markBoarded() result after a board POST
 $audit  = false;            // write a 'ticket.scan' row for this request?
 $me     = (string) (($admin['full_name'] ?? '') ?: ($admin['username'] ?? ('#' . (int) $admin['id'])));
 
+/* 23 Oct 2026 (owner: "agent haru lai scanner ni rakhdeu"): an agent may check and board a ticket they sold,
+   or ANY ticket whose signed QR they just scanned with the camera (remembered for 30 minutes) - never a
+   stranger's PNR typed by hand, so the scanner cannot be used to walk the passenger list. */
+$agentOnly = ($admin['role'] ?? '') === 'agent';
+$agentMay  = static function (string $p, ?array $bb) use ($agentOnly, $admin): bool {
+    if (!$agentOnly || $bb === null) {
+        return true;
+    }
+    if ((int) ($bb['sold_by_admin_id'] ?? 0) === (int) $admin['id']) {
+        return true;
+    }
+    $ok = $_SESSION['scan_qr_ok'][$p] ?? 0;
+    return is_int($ok) && $ok > time() - 1800;
+};
+
 /* ---- The live code a passenger's screen must show now (JSON, staff only) ---- */
 if (isset($_GET['live'])) {
     $lp = strtoupper(Security::clean((string) $_GET['live'], 40));
@@ -227,6 +242,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             if ($bb === null) {
                 throw new RuntimeException('Booking not found.');
             }
+            if (!$agentMay($pnr, $bb)) {
+                throw new RuntimeException('Scan the QR on this ticket first — an agent boards tickets they sold, or ones they scanned. / पहिला टिकटको QR स्क्यान गर्नुहोस्।');
+            }
             $chk = scan_check($bb, $tripId, $src === 'unsigned' ? 'unsigned' : null);
             if (!$chk['canBoard'] && $chk['outcome'] !== 'already') {
                 throw new RuntimeException((SCAN_WORDS[$chk['outcome']][0] ?? 'Cannot board') . ' — ' . (SCAN_WORDS[$chk['outcome']][1] ?? ''));
@@ -281,6 +299,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && isset($_POST['qr'])) {
         if ($verified !== null) {
             $pnr = $verified;
             $qrState = 'signed';
+            if ($agentOnly) {
+                $_SESSION['scan_qr_ok'] = array_slice(array_filter((array) ($_SESSION['scan_qr_ok'] ?? []), static fn ($t) => is_int($t) && $t > time() - 1800), -40, null, true);
+                $_SESSION['scan_qr_ok'][$pnr] = time();
+            }
         } elseif (str_starts_with($raw, 'SHG-TICKET|')) {
             // Right shape, wrong signature: altered, or from another system.
             $qrState = 'forged';
@@ -301,6 +323,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && isset($_POST['qr'])) {
 }
 
 $b = ($pnr !== '' && Security::isValidPnr($pnr) && $qrState !== 'forged') ? BookingService::detail($pnr) : null;
+if ($b !== null && $via !== 'qr' && !$agentMay($pnr, $b)) {
+    // An agent typed someone else's PNR: no verdict, no bell, no audit row for a lookup that never happened.
+    $b = null;
+    $pnr = '';
+    $audit = false;
+    $flash = $flash ?? ['warn', 'Agents check tickets they sold — for any other ticket, scan its QR with the camera. · आफूले बेचेको टिकट मात्र खोज्न मिल्छ; अरू टिकटको QR क्यामेराले स्क्यान गर्नुहोस्।'];
+}
 
 /* ---- The verdict -------------------------------------------------- */
 $chk = null;

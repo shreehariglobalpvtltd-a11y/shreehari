@@ -2846,6 +2846,42 @@ final class Notify
         self::whatsapp($phone, $text);
     }
 
+    /**
+     * 23 Oct 2026 (owner: "admin approve paxi ID password WhatsApp ma aaune"): the sign-in details after an
+     * approval - agent code, username (the mobile), the first password and the portal link - in ONE message.
+     * The password is a one-time one (must_change_pw): the person replaces it at the first sign-in.
+     *
+     * @return bool|string true when an API delivered it; a wa.me link (the office taps it) when no sender
+     *                     could - the caller shows that link, so the message still reaches the person.
+     */
+    public static function agentCredentials(int $adminId, string $name, string $phone, string $username, string $password, string $kind = 'agent'): bool|string
+    {
+        $phone = self::usablePhone($phone);
+        if ($phone === '' || $password === '' || $username === '') {
+            return false;
+        }
+        $code = '';
+        if ($adminId > 0) {   // staff (no selling account) have no agent code
+            try {
+                require_once __DIR__ . '/agentwallet.php';
+                $code = AgentWallet::agentCodeLabel($adminId);
+            } catch (Throwable $ignored) {
+            }
+        }
+        $company = Settings::getString('company_name', APP_NAME);
+        $who     = $kind === 'partner' ? 'Partner' : ($kind === 'staff' ? 'Staff' : 'Agent');
+        $text = "🙏 " . $company . " मा स्वागत छ" . ($name !== '' ? ", " . $name : '') . "!\n"
+              . "तपाईंको " . $who . " खाता स्वीकृत भयो · Your " . strtolower($who) . " account is approved ✅\n\n"
+              . ($code !== '' ? "🆔 " . $who . " code: " . $code . "\n" : '')
+              . "👤 Username: " . $username . "\n"
+              . "🔑 Password: " . $password . "\n"
+              . "🔗 Login: " . appUrl('team/') . "\n\n"
+              . "पहिलो लगइनमा नयाँ पासवर्ड राख्नुहोस्। Face ID / फिंगरप्रिन्ट पनि थप्न सकिन्छ।\n"
+              . "Change the password at your first sign-in. You can add Face ID / fingerprint there too.\n"
+              . "🔒 यो पासवर्ड कसैलाई नदिनुहोस् · Never share this password.";
+        return self::whatsapp($phone, $text, null, null, [], null, ['purpose' => 'team_credentials', 'admin_id' => $adminId]);
+    }
+
     /** Broadcast one message to every active agent (schedule changes etc.). */
     public static function agentScheduleAlert(string $message): int
     {

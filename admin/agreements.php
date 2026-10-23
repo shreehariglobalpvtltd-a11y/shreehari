@@ -76,28 +76,42 @@ $logoDecide = static function (array $app, string $why) use ($selfId, $logoDrop)
 /* ---------- actions (POST + CSRF + super-admin / manager) ---------- */
 /* 22 Oct 2026 (team portal): an approved agent / partner gets a login - username = the mobile;
    they make the password at /team/ with a WhatsApp code, or the office sets one under "Login account". */
-$agrMakeLogin = static function (array $app) use ($selfId): int {
+$agrMakeLogin = static function (array $app, string $pw = '') use ($selfId): int {
     require_once INCLUDE_PATH . '/agentwallet.php';
     try {
         $newId = AgentWallet::createAgent((string) $app['name'], (string) (($app['phone_raw'] ?? '') ?: $app['phone']),
-            (string) $app['type'] === 'org' ? 'org' : 'person', (string) ($app['area'] ?? ''), (string) ($app['email'] ?? '') ?: null, $selfId);
+            (string) $app['type'] === 'org' ? 'org' : 'person', (string) ($app['area'] ?? ''), (string) ($app['email'] ?? '') ?: null, $selfId,
+            $pw !== '' ? ['password' => $pw, 'no_welcome' => true] : []);
     } catch (RuntimeException $re) {
         throw new AgreementError($re->getMessage());
     }
     AgentApplications::update((int) $app['id'], ['admin_id' => $newId], $selfId);
     return $newId;
 };
-/* 23 Oct 2026 (owner: "form patthaune -> pending -> admin accept -> ID card, agent code, password ni diun milos"):
-   approving makes everything in one step - the login (username = mobile) with its agent code and welcome
-   WhatsApp, and the password when the office typed one (they change it at the first sign-in). With no
-   password typed, the person makes their own at /team/ with a WhatsApp code - the same "forgot" door. */
-$agrApproveAll = static function (int $id, string $pw) use ($agrMakeLogin, $selfId): void {
+/* 23 Oct 2026 (owner: "admin approve paxi ID password WhatsApp ma aaune"): the sign-in details go out by
+   themselves. $pw '' = a one-time password is made here; it reaches the person on WhatsApp with the agent
+   code and the /team/ link (Notify::agentCredentials), and they replace it at the first sign-in
+   (must_change_pw). When no sender can deliver, the office gets a tap-to-send WhatsApp button instead. */
+$agrSendCreds = static function (array $app, string $pw, int $adminId): void {
+    $kind = (string) $app['type'] === 'org' ? 'partner' : 'agent';
+    $sent = Notify::agentCredentials($adminId, (string) $app['name'], (string) (($app['phone_raw'] ?? '') ?: $app['phone']),
+        preg_replace('/\D+/', '', (string) $app['phone']) ?: (string) $app['phone'], $pw, $kind);
+    $_SESSION['agr_wa_sent'] = $sent === true;
+    $_SESSION['agr_wa_hand'] = is_string($sent) ? $sent : '';
+    Logger::audit('agreement_app.credentials', 'agent_application', (string) ($app['ref'] ?: AgentApplications::refFor((int) $app['id'])),
+        null, ['delivered' => $sent === true ? 'whatsapp' : 'link'], 'Sign-in details sent (by admin #' . (int) ($_SESSION[ADMIN_SESSION_KEY]['id'] ?? 0) . ')');
+};
+$agrApproveAll = static function (int $id, string $pw) use ($agrMakeLogin, $agrSendCreds, $selfId): void {
     $now = AgentApplications::find($id);
     if ($now === null || (string) $now['status'] !== 'approved') {
         return;
     }
     if (empty($now['admin_id']) && (string) $now['phone'] !== '') {
-        $agrMakeLogin($now);
+        require_once INCLUDE_PATH . '/agentwallet.php';
+        if ($pw === '') {
+            $pw = AgentWallet::tempPassword();
+        }
+        $agrMakeLogin($now, $pw);
         $now = AgentApplications::find($id);
     }
     if ($pw !== '' && $now !== null && !empty($now['admin_id'])) {
@@ -106,6 +120,7 @@ $agrApproveAll = static function (int $id, string $pw) use ($agrMakeLogin, $self
         } catch (RuntimeException $re) {
             throw new AgreementError($re->getMessage());
         }
+        $agrSendCreds($now, $pw, (int) $now['admin_id']);
     }
 };
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -222,6 +237,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     throw new AgreementError($re->getMessage());
                 }
                 Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=' . ($res['changed'] === [] ? '0' : '1') . '#login');
+            } elseif ($act === 'sendcreds' && $canEdit) {
+                // 23 Oct 2026: a fresh one-time password, sent on WhatsApp (forgot phone, never got the first one).
+                $id  = (int) ($_POST['id'] ?? 0);
+                $app = AgentApplications::find($id);
+                if ($app === null || empty($app['admin_id'])) {
+                    throw new AgreementError('This application has no login yet.');
+                }
+                require_once INCLUDE_PATH . '/agentwallet.php';
+                $pw = AgentWallet::tempPassword();
+                try {
+                    Auth::setStaffCredentials((int) $app['admin_id'], ['password' => $pw, 'must_change' => true], $selfId);
+                } catch (RuntimeException $re) {
+                    throw new AgreementError($re->getMessage());
+                }
+                $agrSendCreds($app, $pw, (int) $app['admin_id']);
+                Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=1#login');
             } elseif ($act === 'import') {
                 // 19 Oct 2026 (owner): "sabai agent eutai hun" - every agent account gets its card here.
                 // The company's own login (username "shari") is brought in but not put on the website.
@@ -264,8 +295,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
     }
 }
+/* 23 Oct 2026: did the sign-in details reach the person? (set by $agrSendCreds, read once) */
+$waHand = is_string($_SESSION['agr_wa_hand'] ?? null) && str_starts_with((string) $_SESSION['agr_wa_hand'], 'https://wa.me/') ? (string) $_SESSION['agr_wa_hand'] : null;
+$waSent = !empty($_SESSION['agr_wa_sent']);
+unset($_SESSION['agr_wa_hand'], $_SESSION['agr_wa_sent']);
 if ($flash === null && isset($_GET['saved'])) {
     $flash = (string) $_GET['saved'] === '1' ? ['ok', 'Saved.'] : ['ok', 'Nothing to change.'];
+    if ($waSent) {
+        $flash[1] .= ' ✅ Username, one-time password and agent code sent on WhatsApp — they change the password at the first sign-in.';
+    } elseif ($waHand !== null) {
+        $flash[1] .= ' WhatsApp could not send the sign-in details by itself — tap “Send on WhatsApp” below (the message is ready).';
+    }
 }
 if ($flash === null && isset($_GET['imported'])) {
     $flash = ['ok', (int) $_GET['imported'] . ' agent account(s) brought into this list. Open each one to add or correct the number, photo and address.'];
@@ -345,7 +385,9 @@ admin_page_head(
     . '<a class="btn sm" href="agreements.php?tab=apps&amp;add=1#add"><svg class="a-ic"><use href="#a-plus"/></svg>Add agent</a>'
 );
 if ($flash !== null) {
-    echo '<div class="flash ' . $flash[0] . '">' . $h($flash[1]) . '</div>';
+    echo '<div class="flash ' . $flash[0] . '">' . $h($flash[1])
+       . ($waHand !== null ? ' <a class="btn sm" style="margin-left:8px;background:#25D366;color:#fff" href="' . $h($waHand) . '" target="_blank" rel="noopener">📲 Send on WhatsApp</a>' : '')
+       . '</div>';
 }
 if (!$ready) {
     echo '<div class="flash bad">The applications table is not there yet. Run <code>database/upgrade-2026-09-27-agent-applications.sql</code> once.</div>';
@@ -546,8 +588,8 @@ if (!$ready) {
             <span class="help">Leave “not linked”: setting the status to <b>Approved</b> makes the login + agent code by itself (username = mobile). Pick an account only to join an existing one.</span></div>
           <?php if (empty($open['admin_id'])): ?>
           <div class="field"><label for="agrPw">Password on approve (optional)</label>
-            <input id="agrPw" name="new_password" class="inp" type="text" minlength="8" maxlength="72" autocomplete="new-password" placeholder="leave empty = they make it">
-            <span class="help">Used only when the status becomes Approved. Changed at the first sign-in. Empty = they make their own at /team/ with a WhatsApp code (same as “forgot password”).</span></div>
+            <input id="agrPw" name="new_password" class="inp" type="text" minlength="8" maxlength="72" autocomplete="new-password" placeholder="leave empty = made and sent by itself">
+            <span class="help">Used only when the status becomes Approved. Empty = a one-time password is made here and sent on WhatsApp with the username, agent code and the /team/ link; they change it at the first sign-in.</span></div>
           <?php endif; ?>
           <div class="field" style="grid-column:1/-1"><label for="agrNote">Office note</label>
             <input id="agrNote" name="note" class="inp" maxlength="255" value="<?= $h($open['note'] ?? '') ?>" placeholder="e.g. called on 28 Sep, coming Monday with the original citizenship"></div>
@@ -586,10 +628,15 @@ if (!$ready) {
       <div class="form-grid">
         <div class="field"><label for="lUser">Username</label><input id="lUser" name="username" class="inp mono" maxlength="60" value="<?= $h($acct['username']) ?>" autocapitalize="none"></div>
         <div class="field"><label for="lMail">Login email</label><input id="lMail" name="login_email" class="inp" type="email" maxlength="191" value="<?= $h($acct['email'] ?? '') ?>"></div>
-        <div class="field"><label for="lPw">New password</label><input id="lPw" name="new_password" class="inp" type="text" minlength="8" maxlength="72" autocomplete="new-password" placeholder="leave empty = keep"><span class="help">8+ characters. Tell them in person or by phone — or they set their own at /team/ with a WhatsApp code.</span></div>
+        <div class="field"><label for="lPw">New password</label><input id="lPw" name="new_password" class="inp" type="text" minlength="8" maxlength="72" autocomplete="new-password" placeholder="leave empty = keep"><span class="help">8+ characters. Tell them in person or by phone — or use “Send a new password on WhatsApp” below.</span></div>
         <div class="field" style="display:flex;align-items:flex-end"><label class="agr-check"><input type="checkbox" name="must_change" value="1"<?= (int) $acct['must_change_pw'] === 1 ? ' checked' : '' ?>> Must change it at the next sign-in</label></div>
       </div>
       <div class="form-actions" style="margin-top:12px"><button class="btn" type="submit"><svg class="a-ic"><use href="#a-check"/></svg>Save login</button></div>
+    </form>
+    <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" style="margin-top:10px" onsubmit="return confirm('Make a NEW one-time password and send it on WhatsApp to <?= $h($acct['phone']) ?>? The old password stops working.')">
+      <?= $csrfField ?><input type="hidden" name="action" value="sendcreds"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
+      <button class="btn sm" type="submit" style="background:#25D366;color:#fff">📲 Send a new password on WhatsApp</button>
+      <span class="help" style="margin-left:8px">Username, agent code, one-time password and the /team/ link in one message. 23 Oct 2026.</span>
     </form>
   </div>
 </div>

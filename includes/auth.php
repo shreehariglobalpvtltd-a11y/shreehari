@@ -154,6 +154,9 @@ final class Auth
             // stays behind bookings.cancel (manager / superadmin). See
             // Auth::mayCancelBooking() — the one place the rule is spelled out.
             'bookings.cancel_own',
+            // 23 Oct 2026 (owner: "agent haru lai scanner ni rakhdeu"): the boarding scanner. admin/scan.php
+            // lets an agent check a SIGNED QR, or a ticket they sold themselves - never a typed stranger's PNR.
+            'tickets.scan',
         ],
     ];
 

@@ -972,6 +972,19 @@ admin_page_head(
 if ($flash !== null) {
     echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>';
 }
+/* 23 Oct 2026 (owner: "agent haru commission dekhi sabai kura manage, scanner ni"): the four things an agent
+   does from a phone, one tap each, above the money. Scan needs tickets.scan (agents hold it since today). */
+if ($isOwn) {
+    $qa = '<div class="quick-actions" style="display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px">';
+    if (Auth::can('tickets.scan')) {
+        $qa .= '<a class="qa" href="' . $base . '/admin/scan.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-scan"/></svg></span>Scan ticket · स्क्यान</a>';
+    }
+    $qa .= '<a class="qa" href="' . $base . '/admin/agent-statement.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-chart"/></svg></span>Statement · हिसाब</a>'
+         . '<a class="qa" href="' . $base . '/admin/agent-passengers.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-users"/></svg></span>My passengers · यात्री</a>'
+         . '<a class="qa" href="' . $base . '/team/"><span class="qa-icon"><svg class="a-ic"><use href="#a-key"/></svg></span>My ID &amp; form · पोर्टल</a>'
+         . '</div>';
+    echo $qa;
+}
 // AI Watch (2 Oct 2026): the agent's own to-do - payments to collect, cash
 // to hand over, tomorrow's passengers, free berths to sell. Own view only.
 if ($isOwn) {
