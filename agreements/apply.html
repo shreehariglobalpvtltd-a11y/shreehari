@@ -41,6 +41,9 @@ main{max-width:640px;margin:-38px auto 0;padding:0 12px 120px;position:relative}
 .card h2{margin:0 0 10px;font-size:17px;display:flex;align-items:center;gap:8px}
 .card h2 i{font-style:normal;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:14px;color:#fff;background:linear-gradient(140deg,var(--sky),var(--navy));flex:0 0 30px}
 .hint{margin:-4px 0 10px;font-size:12.5px;color:var(--mut)}
+/* 23 Oct 2026: label.f / .shot set display, which beat the hidden attribute (the UPI box stayed on for staff,
+   the marksheet box for a partner) */
+[hidden]{display:none!important}
 label.f{display:block;margin:0 0 10px}
 label.f > span{display:block;font-size:13px;font-weight:700;margin-bottom:4px}
 label.f > span em{color:var(--bad);font-style:normal}
@@ -224,9 +227,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     </div>
     <div class="dv" id="dv" aria-live="polite">
       <ul class="dv-rows">
-        <li id="dvDoc"><b>1</b>सक्कली डकुमेन्ट · Real ID</li>
-        <li id="dvName"><b>2</b>नाम मिल्यो · Name matches</li>
-        <li id="dvNum"><b>3</b>नम्बर मिल्यो · Number matches</li>
+        <li id="dvDoc" data-n="1"><b>1</b>सक्कली डकुमेन्ट · Real ID</li>
+        <li id="dvName" data-n="2"><b>2</b>नाम मिल्यो · Name matches</li>
+        <li id="dvNum" data-n="3"><b>3</b>नम्बर मिल्यो · Number matches</li>
       </ul>
       <p class="dv-msg" id="dvMsg">🔍 नाम, नम्बर र डकुमेन्टको फोटो भएपछि AI ले आफैं जाँच गर्छ।</p>
       <div class="dv-use" id="dvUse" hidden><button type="button" class="btn ghost small" id="dvUseBtn"></button></div>
@@ -317,13 +320,32 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 
 <script src="/assets/js/wa-direct.js?v=20261022a"></script>
 <script src="/assets/js/wa-verify.js?v=20261022b"></script>
-<script src="/assets/js/bio-kit.js?v=20261023a"></script>
+<script src="/assets/js/bio-kit.js?v=20261023b"></script>
 <script src="/assets/js/form-i18n.js?v=20261023a"></script>
 <script>
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var state = { photo: null, doc: null, geo: null, csrf: null, verified: null, checking: null, seenName: '', wa: 'none', kind: 'ind', logo: null, reg_cert: null, tax_cert: null, edu_cert: null };
+  var state = { photo: null, doc: null, geo: null, csrf: null, verified: null, checking: null, seenName: '', wa: 'none', kind: 'ind', logo: null, reg_cert: null, tax_cert: null, edu_cert: null, staffClosed: false };
+  /* 23 Oct 2026 (review): the button always comes back to its Nepali source text - form-i18n.js translates that;
+     a label read while Hindi / Gujarati was showing would come back frozen in that language */
+  var SEND_LABEL = '📨 फारम पठाउनुहोस् · Send application';
+  /* 23 Oct 2026 (review): staff applications can be switched off in the office (staff_apply_on) - ask once, the
+     first time the staff kind is chosen, instead of refusing only after the whole form is filled */
+  var staffCfgAsked = false;
+  function checkStaffOpen() {
+    if (staffCfgAsked) return;
+    staffCfgAsked = true;
+    fetch('/api/staff-apply.php', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || d.open !== false) return;
+        state.staffClosed = true;
+        if (state.kind === 'staff') setKind('staff');
+        state.closedMsg = 'अहिले कर्मचारीको अनलाइन आवेदन बन्द छ — कार्यालयमा फोन गर्नुहोस्' + (d.officePhone ? ': ' + d.officePhone : '') + ' · Staff applications are closed for now.';
+        if (state.kind === 'staff') say(state.closedMsg);
+      }).catch(function () {});
+  }
   var terms = null;   // ShgTerms box (bio-kit.js), mounted below
   /* 22 Oct 2026: a partner company's ID / photo / signature are its representative's */
   function nameId() { return state.kind === 'org' ? 'p_rep' : 'p_name'; }
@@ -432,6 +454,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     $('cvExpLbl').textContent = org ? 'व्यवसायमा कति वर्ष · Years in business' : 'अनुभव (वर्ष) · Experience (years)';
     $('cvPrevLbl').textContent = org ? 'अन्य सेवा / अनुभव · Other services / experience' : 'पहिलेको काम / कम्पनी · Previous work';
     if (typeof dvReset === 'function') dvReset();
+    $('dv').hidden = staff;   // the AI ID check guards the agent / partner send; for staff the office scores it (23 Oct 2026)
+    $('send').disabled = staff && state.staffClosed;
+    if (staff) checkStaffOpen();
+    else if (state.closedMsg && $('msg').textContent === state.closedMsg) say('');
   }
   document.querySelectorAll('input[name="kind"]').forEach(function (r) { r.addEventListener('change', function () { if (this.checked) setKind(this.value); }); });
   if (/[?&]kind=(partner|org)\b/.test(location.search)) setKind('org');
@@ -525,15 +551,20 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     '2': { re: /^[A-Z0-9]{6,9}$/, hint: 'पासपोर्ट: ६–९ अक्षर/अङ्क' },
     '3': { re: /^[A-Z0-9]{6,12}$/, hint: 'मतदाता परिचयपत्र: ६–१२ अक्षर/अङ्क' },
     '4': { re: /^[A-Z0-9]{4,30}$/, hint: 'कार्डमा भएको नम्बर ठ्याक्कै · exactly as printed' },
-    '5': { re: /^[A-Z0-9]{5,20}$/, hint: 'लाइसेन्समा भएको नम्बर ठ्याक्कै · exactly as printed' },
-    '6': { re: /^[A-Z0-9]{9,10}$/, hint: 'PAN: ९–१० अक्षर/अङ्क' }
+    '5': { re: /^[A-Z0-9]{8,20}$/, hint: 'लाइसेन्स: ८–२० अक्षर/अङ्क, कम्तीमा ६ अङ्क · 8-20 letters/digits' },
+    '6': { re: /^(?:[A-Z]{5}\d{4}[A-Z]|\d{9})$/, hint: 'PAN: ABCDE1234F (भारत) वा ९ अङ्क (नेपाल)' }
   };
   /* 22 Oct 2026: the staff API's ID names for the same select */
   var STAFF_ID = { '0': 'aadhaar', '1': 'citizenship', '2': 'passport', '5': 'driving_license', '6': 'pan' };
   function rule() { return ID_RULES[$('p_idtype').value] || ID_RULES['4']; }
   function devDigits(s) { return s.replace(/[०-९]/g, function (d) { return String(d.charCodeAt(0) - 0x0966); }); }
   function idNorm() { return devDigits($('p_idno').value).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
-  function idFormatOk() { return rule().re.test(idNorm()); }
+  /* 23 Oct 2026 (review): the staff API's own rules for a driving licence and PAN (StaffApps::idNumberOk) */
+  var STAFF_ID_RE = { '5': /^(?=(?:\D*\d){6})[A-Z0-9]{8,20}$/, '6': /^(?:[A-Z]{5}\d{4}[A-Z]|\d{9})$/ };
+  function idFormatOk() {
+    var n = idNorm(), sr = state.kind === 'staff' && STAFF_ID_RE[$('p_idtype').value];
+    return rule().re.test(n) && (!sr || sr.test(n));
+  }
   $('idHint').textContent = rule().hint;
   $('p_idtype').addEventListener('change', function () { $('idHint').textContent = rule().hint; dvReset(); dvAuto(); });
   ['dvDoc', 'dvName', 'dvNum'].forEach(function (id, i) { $(id).setAttribute('data-n', String(i + 1)); });
@@ -551,6 +582,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
   var dvTimer = null;
   function dvAuto() {
     clearTimeout(dvTimer);
+    if (state.kind === 'staff') return;
     dvTimer = setTimeout(function () {
       if (state.doc && $(nameId()).value.trim().length >= 2 && idFormatOk()) dvCheck();
     }, 900);
@@ -559,7 +591,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     $(id).addEventListener('input', function () { if (state.verified !== null) dvReset(); dvAuto(); });
   });
   function dvCheck() {
-    if (state.verified === true) return Promise.resolve(true);
+    if (state.verified === true || state.kind === 'staff') return Promise.resolve(true);
     if (state.checking) return state.checking;
     if (!state.doc) { need('docIn', 'डकुमेन्टको फोटो खिच्नुहोस्।'); return Promise.resolve(false); }
     if ($(nameId()).value.trim().length < 2) { need(nameId(), 'कृपया पूरा नाम लेख्नुहोस्।'); return Promise.resolve(false); }
@@ -663,8 +695,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     say('');
     if (!check()) return;
     var btn = $('send'); if (btn.disabled) return;
-    if (state.kind === 'staff') { var lb = btn.textContent; btn.disabled = true; btn.textContent = '⏳ पठाउँदै… · Sending…'; sendStaff(btn, lb); return; }
-    btn.disabled = true; var label = btn.textContent; btn.textContent = '🔍 डकुमेन्ट जाँच… · Checking ID…';
+    if (state.kind === 'staff') { btn.disabled = true; btn.textContent = '⏳ पठाउँदै… · Sending…'; sendStaff(btn, SEND_LABEL); return; }
+    btn.disabled = true; var label = SEND_LABEL; btn.textContent = '🔍 डकुमेन्ट जाँच… · Checking ID…';
     dvCheck().then(function (ok) {
       if (!ok) {
         btn.disabled = false; btn.textContent = label;
@@ -691,7 +723,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
     fd.set('role', $('s_role').value); fd.set('id_type', STAFF_ID[$('p_idtype').value] || ''); fd.set('id_number', v('p_idno'));
     fd.set('district', v('p_area')); fd.set('address_perm', v('p_addr')); fd.set('country', $('s_country').value);
     fd.set('dob', $('s_dob').value); fd.set('gender', $('s_gender').value); fd.set('email', v('s_email'));
-    fd.set('qualification', $('cv_qual').value); fd.set('experience_years', v('cv_exp').replace(/[^\d]/g, '')); fd.set('prev_employer', v('cv_prev'));
+    fd.set('qualification', $('cv_qual').value); fd.set('experience_years', (function (x) { var n = parseFloat(String(x).replace(',', '.')); return isFinite(n) && n > 0 ? String(Math.floor(n)) : ''; })(v('cv_exp'))); fd.set('prev_employer', v('cv_prev'));
     if ($('s_role').value === 'driver') { fd.set('license_number', v('s_lic')); fd.set('license_category', v('s_licCat')); fd.set('license_expiry', $('s_licExp').value); }
     if (v('s_ref1n') || v('s_ref1p')) { fd.set('ref1_name', v('s_ref1n')); fd.set('ref1_phone', dig('s_ref1p')); }
     fd.set('emergency_name', v('s_emn')); fd.set('emergency_phone', dig('s_emp'));

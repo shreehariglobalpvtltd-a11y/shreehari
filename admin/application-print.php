@@ -40,14 +40,33 @@ require __DIR__ . '/_guard.php';
    about anyone else is reachable that way, and nothing travels in the URL. */
 $public = defined('SHG_A4_PUBLIC');
 $mine   = false;
+$mineSince = 0;   // when the applicant sent it: their copy lists only what was signed from then on
 if ($public) {
     $kindQ = (string) ($_GET['kind'] ?? '');
     $own   = is_array($_SESSION['a4_mine'] ?? null) ? $_SESSION['a4_mine'] : null;
-    if (!empty($_GET['mine']) && $own !== null && (int) ($own['t'] ?? 0) > time() - 6 * 3600 && (int) ($own['id'] ?? 0) > 0) {
+    // 23 Oct 2026 (review): 1 hour, not 6 - long enough to save the copy right after sending, short on a shared
+    // phone or office PC (signing out of /team/ or /admin/ also clears it)
+    if (!empty($_GET['mine']) && $own !== null && (int) ($own['t'] ?? 0) > time() - 3600 && (int) ($own['id'] ?? 0) > 0) {
         $mine = true;
+        $mineSince = (int) $own['t'];
         $_GET['type'] = (string) ($own['type'] ?? '') === 'staff' ? 'staff' : 'agent';
         $_GET['id']   = (string) (int) $own['id'];
         unset($_GET['blank']);
+    } elseif (!empty($_GET['mine'])) {
+        // 23 Oct 2026 (review): said plainly, instead of quietly opening a blank STAFF form for an agent or partner
+        http_response_code(410);
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-store, private');
+        header('X-Robots-Tag: noindex, nofollow');
+        echo '<!doctype html><html lang="ne"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            . '<meta name="robots" content="noindex,nofollow"><title>फारम · Form</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;'
+            . 'padding:16px;background:#eef3fc;color:#0d1b3e;font:16px/1.6 "Noto Sans","Noto Sans Devanagari",Arial,sans-serif;text-align:center}'
+            . 'a{display:inline-block;margin:6px;padding:10px 14px;border-radius:12px;background:#0a2a8f;color:#fff;font-weight:700;text-decoration:none}</style></head><body><div>'
+            . '<p>तपाईंले भरेको फारम यो ब्राउजरमा अब छैन (पठाएको १ घण्टासम्म मात्र राखिन्छ)। प्रतिलिपि चाहिए कार्यालयमा फोन गर्नुहोस्: '
+            . Security::e(Settings::officePhone()) . '<br>Your filled copy is no longer kept in this browser. Please ask the office for a copy.</p>'
+            . '<a href="/agreements/form.php?kind=staff">कर्मचारी · Staff</a><a href="/agreements/form.php?kind=agent">एजेन्ट · Agent</a>'
+            . '<a href="/agreements/form.php?kind=partner">साझेदार · Partner</a><a href="/agreements/">← सम्झौता · Agreements</a></div></body></html>';
+        exit;
     } else {
         $_GET['blank'] = in_array($kindQ, ['agent', 'partner', 'staff'], true) ? $kindQ : 'staff';
     }
@@ -139,7 +158,7 @@ if ($blank === '') {
             $line = static fn(array $parts): string => implode(' · ', array_filter(array_map(static fn($p) => trim(is_scalar($p) ? (string) $p : ''), $parts), static fn($p) => $p !== '' && $p !== '0'));
             $cvRows = [];
             foreach ((array) $cv['edu'] as $e) {
-                if (is_array($e) && ($t = $line([$e['level'] ?? '', $e['school'] ?? '', $e['year'] ?? ''])) !== '') {
+                if (is_array($e) && ($t = $line([AgentApplications::CV_QUALS[(string) ($e['level'] ?? '')] ?? ($e['level'] ?? ''), $e['school'] ?? '', $e['year'] ?? ''])) !== '') {
                     $cvRows[] = ['Education', $t, false];
                 }
             }
@@ -217,9 +236,12 @@ if ($blank === '') {
                 . ($fv('p_idno') !== '' ? ' · ' . AgentApplications::officeValue('p_idno', $fv('p_idno'), (string) $rec['type'], $canKyc) : '')],
         ];
         foreach (Database::fetchAll("SELECT * FROM agreement_signatures WHERE party_type = 'agent' AND party_id = :i ORDER BY id DESC LIMIT 4", ['i' => (int) $rec['id']]) as $sg) {
+            if ($mine && (int) strtotime((string) ($sg['signed_at'] ?? '')) < $mineSince - 900) {
+                continue;
+            }
             $img = $canKyc ? (TeamPortal::signImage($sg) ?? '') : '';
             $signs[] = [ucfirst((string) $sg['doc']) . ' agreement v' . (string) $sg['version'], $img,
-                'SIG-' . str_pad((string) (int) $sg['id'], 6, '0', STR_PAD_LEFT) . ' · ' . $fmtDT($sg['signed_at'] ?? null) . ($canKyc ? ' · IP ' . (string) ($sg['ip_address'] ?? '') : '')];
+                'SIG-' . str_pad((string) (int) $sg['id'], 6, '0', STR_PAD_LEFT) . ' · ' . $fmtDT($sg['signed_at'] ?? null) . ($canKyc && !$mine ? ' · IP ' . (string) ($sg['ip_address'] ?? '') : '')];
         }
         $sealSrc = 'agent|' . (int) $rec['id'] . '|' . (string) $rec['name'] . '|' . (string) $rec['phone'] . '|' . (string) ($rec['fields_json'] ?? '') . '|' . (string) $rec['status'] . '|' . (string) $rec['kyc_status'];
     } else {
@@ -314,8 +336,13 @@ if ($blank === '') {
             ['पद · कार्यालय · Job · duty base', trim(StaffApps::roleLabel((string) $rec['role_applied']) . ((string) ($rec['base_location'] ?? '') !== '' ? ' · ' . $rec['base_location'] : ''))],
         ];
         foreach (StaffApps::signs((int) $rec['id']) as $sg) {
+            // 23 Oct 2026 (review): a rejected applicant's number applied for again reuses the row - the new
+            // applicant's own copy never shows the earlier person's signatures, and no copy of theirs shows IPs
+            if ($mine && (int) strtotime((string) ($sg['signed_at'] ?? '')) < $mineSince - 900) {
+                continue;
+            }
             $signs[] = ['Staff agreement v' . (string) $sg['version'] . ' (' . (string) $sg['event'] . ')', '',
-                'SIG-' . str_pad((string) (int) $sg['id'], 6, '0', STR_PAD_LEFT) . ' · ' . $fmtDT($sg['signed_at'] ?? null) . ((int) $sg['phone_verified'] === 1 ? ' · phone proven' : '') . ($canKyc ? ' · IP ' . (string) ($sg['ip_address'] ?? '') : '')];
+                'SIG-' . str_pad((string) (int) $sg['id'], 6, '0', STR_PAD_LEFT) . ' · ' . $fmtDT($sg['signed_at'] ?? null) . ((int) $sg['phone_verified'] === 1 ? ' · phone proven' : '') . ($canKyc && !$mine ? ' · IP ' . (string) ($sg['ip_address'] ?? '') : '')];
         }
         $sealSrc = 'staff|' . (int) $rec['id'] . '|' . json_encode(array_diff_key($rec, array_flip(['updated_at', 'reminded_at', 'last_login_at', 'failed_logins', 'locked_until', 'password_hash'])));
     }
@@ -742,7 +769,16 @@ td.v.m{color:#8A96AD;font-weight:500}
       all.forEach(function (sh, i) {
         chain = chain.then(function () {
           if (msg) msg.textContent = '⏳ पाना ' + (i + 1) + ' / ' + all.length + ' · page';
-          return window.html2canvas(sh, { scale: scale, backgroundColor: '#ffffff', useCORS: true, logging: false });
+          return window.html2canvas(sh, { scale: scale, backgroundColor: '#ffffff', useCORS: true, logging: false,
+            // html2canvas ignores object-fit, which stretched the photo, logo and thumbprint: in the copy it draws,
+            // each becomes a background with cover / contain (the page and Print are untouched)
+            onclone: function (doc) {
+              Array.prototype.forEach.call(doc.querySelectorAll('.pic img, .thumbs .tb img'), function (im) {
+                var d = doc.createElement('div'), src = String(im.getAttribute('src') || '').replace(/["\\\n\r]/g, '');
+                d.style.cssText = 'width:100%;height:100%;background:#fff url("' + src + '") center/' + (im.closest('.logo') ? 'contain' : 'cover') + ' no-repeat';
+                im.parentNode.replaceChild(d, im);
+              });
+            } });
         }).then(function (cv) {
           if (kind === 'pdf') {
             if (i > 0) pdf.addPage();

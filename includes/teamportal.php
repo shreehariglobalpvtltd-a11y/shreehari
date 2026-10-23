@@ -673,7 +673,8 @@ final class TeamPortal
         }
         self::closeStaffSession();
         // 22 Oct 2026 (review, #5): this browser's WhatsApp proofs go too — the next person on a shared computer starts clean
-        unset($_SESSION['wa_verified'], $_SESSION['wa_tokens'], $_SESSION['wa_tried'], $_SESSION['team_reset'], $_SESSION['staff_otp_ok']);
+        unset($_SESSION['wa_verified'], $_SESSION['wa_tokens'], $_SESSION['wa_tried'], $_SESSION['team_reset'], $_SESSION['staff_otp_ok'],
+              $_SESSION['a4_mine'], $_SESSION['agr_webauthn']);   // 23 Oct 2026 (review): the last applicant's A4 copy + passkey challenge
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_regenerate_id(true);
         }

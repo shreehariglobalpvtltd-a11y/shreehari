@@ -61,9 +61,10 @@ final class StaffApps
     ];
     /** ID cards with a back side the office needs. */
     public const ID_TWO_SIDED = ['citizenship', 'aadhaar', 'driving_license'];
-    public const QUALS = ['below_see', 'see', 'plus2', 'bachelor', 'master', 'other'];
+    // 23 Oct 2026 (review): 'diploma' - the one form offers "Diploma / ITI" (upgrade-2026-10-23-staff-diploma.sql)
+    public const QUALS = ['below_see', 'see', 'plus2', 'diploma', 'bachelor', 'master', 'other'];
     public const QUAL_LABELS = [
-        'below_see' => 'Below SEE / 10th', 'see' => 'SEE / SLC / 10th', 'plus2' => '+2 / 12th',
+        'below_see' => 'Below SEE / 10th', 'see' => 'SEE / SLC / 10th', 'plus2' => '+2 / 12th', 'diploma' => 'Diploma / ITI',
         'bachelor'  => 'Bachelor', 'master' => 'Master', 'other' => 'Other',
     ];
     public const STATUSES = ['pending', 'under_review', 'approved', 'rejected', 'suspended', 'exited'];
@@ -556,11 +557,19 @@ final class StaffApps
         if ($old !== null) {
             // A rejected applicant applies again: the same row, as new.
             $id = (int) $old['id'];
+            // 23 Oct 2026 (review): nothing of the earlier applicant's checks carries over - the document check, the
+            // phone passkey / face frame and the office's KYC verdict start again (values sent now still win: $c is first)
             $row += [
                 'status' => 'pending', 'rejected_reason' => null, 'approved_by' => null, 'approved_at' => null,
                 'status_changed_by' => null, 'status_changed_at' => null, 'info_requested_at' => null, 'reminded_at' => null,
                 'office_note' => null,
+                'doc_verify_json' => null, 'doc_verify_status' => 'unchecked',
+                'biometric_face_hash' => null, 'biometric_webauthn_cred' => null,
             ];
+            require_once __DIR__ . '/teamportal.php';   // the KYC columns are the team portal's (upgrade-2026-10-22-office-manage.sql)
+            if (TeamPortal::kycReady()) {
+                $row += ['kyc_status' => 'submitted', 'kyc_verified_by' => null, 'kyc_verified_at' => null];
+            }
             foreach (self::FILES as [$col]) {
                 $row[$col] = null;
             }

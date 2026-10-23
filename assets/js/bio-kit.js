@@ -214,16 +214,18 @@
     var foot = el('div', { 'class': 'tk-f' });
     d.appendChild(sum); d.appendChild(langs); d.appendChild(body); d.appendChild(foot);
     box.appendChild(d);
-    var cur = { kind: kind, lang: 'ne', loaded: '' };
+    var cur = { kind: kind, lang: 'ne', loaded: '' }, seq = 0;
     var NAMES = { ne: 'नेपाली', hi: 'हिन्दी', en: 'English', gu: 'ગુજરાતી' };
     function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
     function load() {
       var key = cur.kind + '|' + cur.lang;
       if (cur.loaded === key) return;
       cur.loaded = key; body.textContent = '⏳ …';
+      var my = ++seq;   // 23 Oct 2026 (review): only the newest request may fill the box
       fetch('/api/agreement-terms.php?kind=' + encodeURIComponent(cur.kind) + '&lang=' + encodeURIComponent(cur.lang), { headers: { Accept: 'application/json' } })
         .then(function (r) { return r.json(); })
         .then(function (j) {
+          if (my !== seq) return;
           if (!j || !j.ok) throw new Error('bad');
           var n = 0, html = '<p style="margin-top:8px"><b>' + esc(j.title) + '</b></p>';
           (j.sections || []).forEach(function (s) {
@@ -241,7 +243,7 @@
           langs.hidden = (j.langs || []).length < 2;
           foot.innerHTML = '<a href="' + esc(j.url) + '" target="_blank" rel="noopener">पूरा सम्झौता छुट्टै पानामा खोल्नुहोस् · Open the full agreement ↗</a>';
         })
-        .catch(function () { cur.loaded = ''; body.textContent = 'खुलेन — फेरि थिच्नुहोस् · could not load, tap again'; });
+        .catch(function () { if (my !== seq) return; cur.loaded = ''; body.textContent = 'खुलेन — फेरि थिच्नुहोस् · could not load, tap again'; });
     }
     d.addEventListener('toggle', function () { if (d.open) load(); });
     return {

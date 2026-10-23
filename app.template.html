@@ -1508,16 +1508,18 @@ s.addEventListener('click',function(e){e.preventDefault();
       }
       function get(url) { return fetch(url, { headers: { Accept: 'application/json' } }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); }
       get('/api/agent-directory.php').then(function (j) {
-        var items = j && Array.isArray(j.items) ? j.items : [];
+        if (!j || !Array.isArray(j.items)) return;   // a failed / busy answer leaves the card as it is (23 Oct 2026)
+        var items = j.items;
         ['agent', 'partner'].forEach(function (k) {
           fill(k, items.filter(function (it) { return it && it.kind === k && it.name; })
                        .map(function (it) { return { name: String(it.name), pic: String((k === 'partner' && it.logo) || it.photo || '') }; }));
         });
       });
       get('/api/staff-list.php').then(function (j) {
-        var items = j && Array.isArray(j.items) ? j.items : [];
-        fill('staff', items.filter(function (it) { return it && (it.name || it.full_name); })
-                           .map(function (it) { return { name: String(it.name || it.full_name), pic: String(it.photo || it.photo_url || '') }; }));
+        if (!j || !Array.isArray(j.items)) return;
+        // the office decides which fields are public (staff_public_fields): a member without a public name still counts
+        fill('staff', j.items.filter(function (it) { return it && (it.name || it.photo || it.roleNe || it.roleEn); })
+                             .map(function (it) { return { name: String(it.name || it.roleNe || it.roleEn || ''), pic: String(it.photo || '') }; }));
       });
     })();
     </script>

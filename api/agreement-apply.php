@@ -149,14 +149,13 @@ try {
 
     // 22 Oct 2026: the optional phone lock, checked against this session's challenge (10 minutes)
     $chal = $_SESSION['agr_webauthn'] ?? null;
-    if (is_array($chal) && (int) ($chal['t'] ?? 0) > time() - 600) {
+    if (is_array($chal) && (int) ($chal['t'] ?? 0) > time() - 3600) {   // a whole form's time (23 Oct 2026, review)
         require_once INCLUDE_PATH . '/staffapplications.php';
         $u = parse_url(APP_URL);
         $cred = StaffApps::webauthnCred(Response::field('webauthn', null), (string) $chal['c'],
             ($u['scheme'] ?? 'https') . '://' . ($u['host'] ?? '') . (isset($u['port']) ? ':' . $u['port'] : ''));
         if ($cred !== null) {
-            $clean['webauthn_cred'] = $cred;
-            unset($_SESSION['agr_webauthn']);
+            $clean['webauthn_cred'] = $cred;   // the challenge is spent below, once the form is stored (a 422 / 429 resend keeps it)
         }
     }
 
@@ -219,6 +218,9 @@ try {
     }
 
     $made = AgentApplications::create($clean, $ip);
+    if (isset($clean['webauthn_cred'])) {
+        unset($_SESSION['agr_webauthn']);
+    }
     // 22 Oct 2026: this browser may open its own filled A4 form at /agreements/form.php?mine=1
     $_SESSION['a4_mine'] = ['type' => 'agent', 'id' => (int) $made['id'], 't' => time()];
 

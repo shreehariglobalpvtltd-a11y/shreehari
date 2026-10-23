@@ -273,11 +273,11 @@ try {
     // only the public credential is kept, so it no longer waits for the phase-2 switch.
     foreach (['staff_webauthn', 'agr_webauthn'] as $chKey) {
         $chal = $_SESSION[$chKey] ?? null;
-        if (!isset($c['biometric_webauthn_cred']) && is_array($chal) && (int) ($chal['t'] ?? 0) > time() - 600) {
+        if (!isset($c['biometric_webauthn_cred']) && is_array($chal) && (int) ($chal['t'] ?? 0) > time() - 3600) {
             $cred = StaffApps::webauthnCred($_POST['webauthn'] ?? null, (string) $chal['c'], staff_origin());
             if ($cred !== null) {
                 $c['biometric_webauthn_cred'] = $cred;
-                unset($_SESSION[$chKey]);
+                $usedChKey = $chKey;   // spent once the application is stored (23 Oct 2026, review)
             }
         }
     }
@@ -293,6 +293,9 @@ try {
 
     try {
         $made = StaffApps::create($c, $files, $ip, $ua);
+        if (isset($usedChKey)) {
+            unset($_SESSION[$usedChKey]);
+        }
         // 22 Oct 2026: this browser may open its own filled A4 form at /agreements/form.php?mine=1
         $_SESSION['a4_mine'] = ['type' => 'staff', 'id' => (int) $made['id'], 't' => time()];
     } catch (StaffAppError $e) {

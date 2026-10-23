@@ -123,6 +123,12 @@ final class AgreementVerify
         if ($state === 'in_force' && (string) ($r['agreement_status'] ?? '') === 'expired') {
             $state = 'ended';
         }
+        // 23 Oct 2026 (review): an end date that has passed ends it too - the rule AgentApplications::directory()
+        // uses (in force while end >= today), so the QR never says "in force" for a lapsed agreement
+        $end = (string) ($r['agreement_end'] ?? '');
+        if ($state === 'in_force' && $end !== '' && $end < date('Y-m-d')) {
+            $state = 'ended';
+        }
         $signed = (string) Database::scalar(
             "SELECT MIN(signed_at) FROM agreement_signatures WHERE party_type = 'agent' AND party_id = :i",
             ['i' => (int) $r['id']], ''

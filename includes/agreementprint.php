@@ -102,7 +102,7 @@ final class AgreementPrint
                 continue;
             }
             $out[$cur]['points'][] = ['num' => $num, 'html' => is_array($ch) && is_string($ch['text'] ?? null)
-                ? self::fromTemplate((string) $ch['text']) : self::fromHtml((string) ($hit[4] ?? ''))];
+                ? self::fromTemplate((string) $ch['text'], self::radioWords((string) ($hit[4] ?? ''))) : self::fromHtml((string) ($hit[4] ?? ''))];
         }
         foreach ((array) ($pay['added'] ?? []) as $a) {
             for ($i = 0, $n = count($out); $i < $n; $i++) {
@@ -180,11 +180,38 @@ final class AgreementPrint
         return trim(strtr($s, [self::FILL => '<span class="fill"></span>', self::BOX => '☐', self::BR => '<br>']));
     }
 
-    /** An office-edited point ({{blank}} text, typed in admin): escaped, blanks as lines / boxes. */
-    public static function fromTemplate(string $text): string
+    /**
+     * The words beside each radio choice of a point, keyed name=value - the same key AgreementText gives the
+     * blank ({{name=value}}), so an office-edited point still prints "☐ Applies ☐ Does not apply"
+     * (23 Oct 2026, review).
+     *
+     * @return array<string, string>
+     */
+    private static function radioWords(string $inner): array
+    {
+        $out = [];
+        preg_match_all('~<label\b[^>]*>(.*?)</label>~su', $inner, $lm);
+        foreach ($lm[0] as $i => $lab) {
+            if (preg_match('~<input\b[^>]*\bname="([^"]*)"[^>]*>~su', $lab, $in) && preg_match('~\btype="radio"~', $in[0])
+                && preg_match('~\bvalue="([^"]*)"~', $in[0], $v)) {
+                $out[$in[1] . '=' . $v[1]] = self::text((string) $lm[1][$i]);
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * An office-edited point ({{blank}} text, typed in admin): escaped, blanks as lines / boxes.
+     *
+     * @param array<string, string> $radioWords name=value => the words of that choice (radioWords())
+     */
+    public static function fromTemplate(string $text, array $radioWords = []): string
     {
         $e = htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $e = (string) preg_replace('~\{\{[^{}=]{1,80}=[^{}]{0,80}\}\}~u', '☐', $e);
+        $e = (string) preg_replace_callback('~\{\{([^{}=]{1,80}=[^{}]{0,80})\}\}~u', static function (array $m) use ($radioWords): string {
+            $w = $radioWords[html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8')] ?? '';
+            return '☐' . ($w !== '' ? ' ' . htmlspecialchars($w, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : '');
+        }, $e);
         $e = (string) preg_replace('~\{\{[^{}]{1,80}\}\}~u', '<span class="fill"></span>', $e);
         return nl2br($e, false);
     }
