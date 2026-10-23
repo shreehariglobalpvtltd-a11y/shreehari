@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v253** — AGENT | STAFF | PARTNER home section, digital ID + visiting cards, passkeys
 - **shg-v251** — S Hari Map one tap + Map tab, white map, AI Gujarati + place commands; team cards name/photo/number
 - **shg-v250** — One map: the old #/nav navigator removed (SHARI NAV AI map only), home "coaches on the road" card by number plate
 - **shg-v247** — Team portal login: /team/ mobile + password, forgot by WhatsApp code / hi VERIFY; Team login doors on the home sections

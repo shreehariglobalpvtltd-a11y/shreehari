@@ -251,7 +251,23 @@
   } catch (e) { RX = null; }   // a browser without look-behind keeps Nepali
 
   var lang = 'ne', fns = [], orig = new WeakMap(), out = new WeakMap(), busy = false;
+  /* 23 Oct 2026 (owner: "language 4 ota"): English = the page's own "नेपाली · English" pairs with the
+     Nepali half dropped. A text with no English half (or a lone Nepali word) stays as it is. */
+  var EN = { 'जस्तै': 'e.g.', 'छान्नुहोस्': 'choose', 'नाम': 'Name', 'फोन': 'Phone' };
+  function en(s) {
+    s = s.replace(/(^|[\s(—–-])(जस्तै|छान्नुहोस्)(?=[\s:—–)]|$)/g, function (m, a, w) { return a + EN[w]; });
+    if (!/[ऀ-ॿ]/.test(s) || s.indexOf(' · ') < 0) return s;
+    var parts = s.split(' · ');
+    var keep = parts.filter(function (p) { return !/[ऀ-ॿ]/.test(p); });
+    if (!keep.length || !keep.some(function (p) { return /[A-Za-z]/.test(p); })) return s;
+    var lead = (parts[0].match(/^[^ऀ-ॿA-Za-z0-9]*/) || [''])[0];
+    var r = keep.join(' · ');
+    if (/[ऀ-ॿ]/.test(parts[0]) && lead.trim() && r.indexOf(lead.trim()) < 0) r = lead + r.replace(/^\s+/, '');
+    else if (/[ऀ-ॿ]/.test(parts[0]) && /^\s/.test(parts[0]) && !/^\s/.test(r)) r = ' ' + r;
+    return r;
+  }
   function tr(s) {
+    if (lang === 'en') return /[ऀ-ॿ]/.test(s) ? en(s) : s;
     if (lang === 'ne' || !RX || !/[ऀ-ॿ]/.test(s)) return s;
     var i = IX[lang];
     s = s.replace(RX, function (m) { return D[m] ? D[m][i] : m; });
@@ -301,7 +317,7 @@
   }) : null;
 
   function set(l) {
-    l = l === 'hi' || l === 'gu' ? l : 'ne';
+    l = l === 'hi' || l === 'gu' || l === 'en' ? l : 'ne';
     if (l === lang) return;
     lang = l;
     busy = true;
@@ -321,9 +337,9 @@
     document.querySelectorAll('[data-flang]').forEach(function (b) {
       b.addEventListener('click', function () { set(b.getAttribute('data-flang')); });
     });
-    var want = (location.search.match(/[?&]lang=(hi|gu|ne)\b/) || [])[1];
+    var want = (location.search.match(/[?&]lang=(hi|gu|ne|en)\b/) || [])[1];
     if (!want) { try { want = localStorage.getItem('shg:formLang') || ''; } catch (e) { want = ''; } }
-    if (want === 'hi' || want === 'gu') set(want);
+    if (want === 'hi' || want === 'gu' || want === 'en') set(want);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();

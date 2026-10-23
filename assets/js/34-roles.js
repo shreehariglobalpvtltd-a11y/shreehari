@@ -20,7 +20,6 @@
   var top = null, dir = null, staff = null, shown = { agent: PAGE, staff: PAGE, partner: PAGE }, open = {};
 
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-  function initials(name) { var p = String(name || '').trim().split(/\s+/); return ((p[0] || '').charAt(0) + (p.length > 1 ? p[p.length - 1].charAt(0) : '')).toUpperCase() || '★'; }
   function okPhoto(src) { return /^\/api\/(agent|staff)-photo\.php\?k=[a-f0-9]+(&v=logo)?$/.test(String(src || '')); }
   function box(kind) { return document.querySelector('#homeRoles [data-role="' + kind + '"]'); }
   var io = 'IntersectionObserver' in window && document.documentElement.getAttribute('data-motion') !== 'reduced'
@@ -41,17 +40,30 @@
     if (/^\+?\d{10,15}$/.test(tel)) { var c = el('a', 'rl-call', '📞'); c.href = 'tel:' + tel; c.setAttribute('aria-label', 'Call ' + p.name); a.appendChild(c); }
     return a.children.length ? a : null;
   }
+  /* 23 Oct 2026 (owner: "photo xa vane photo, xaina vane name ra number matra"): no photo = no
+     avatar at all (no letter circle) - the card shows the name and the number the person made public. */
+  function photoOf(p, kind) { return kind === 'partner' && okPhoto(p.logo) ? p.logo : (okPhoto(p.photo) ? p.photo : ''); }
   function avatar(p, kind, big) {
-    var src = kind === 'partner' && okPhoto(p.logo) ? p.logo : (okPhoto(p.photo) ? p.photo : '');
-    var av = el('span', 'rl-av' + (src ? '' : ' txt') + (kind === 'partner' ? ' logo' : ''), src ? '' : initials(p.name));
-    if (src) { var im = el('img'); im.src = src; im.alt = ''; im.loading = 'lazy'; im.decoding = 'async'; im.width = im.height = big ? 96 : 56; im.onerror = function () { av.classList.add('txt'); av.textContent = initials(p.name); }; av.appendChild(im); }
+    var src = photoOf(p, kind);
+    if (!src) return null;
+    var av = el('span', 'rl-av' + (kind === 'partner' ? ' logo' : ''));
+    var im = el('img'); im.src = src; im.alt = ''; im.loading = 'lazy'; im.decoding = 'async'; im.width = im.height = big ? 96 : 56;
+    im.onerror = function () { var c = av.closest('.rl-top, .rl-item'); if (c) c.classList.add('nophoto'); av.remove(); };
+    av.appendChild(im);
     return av;
   }
+  function number(p) {
+    var tel = String(p.tel || '').replace(/[^\d+]/g, ''), wa = String(p.wa || '').replace(/\D/g, '');
+    if (!tel && wa.length >= 10) tel = '+' + wa;
+    return /^\+?\d{10,15}$/.test(tel) ? tel : '';
+  }
   function topCard(p, i, kind) {
-    var c = el('article', 'rl-top r' + (i + 1));
+    var av = avatar(p, kind, true), num = number(p);
+    var c = el('article', 'rl-top r' + (i + 1) + (av ? '' : ' nophoto'));
     c.appendChild(el('span', 'rl-rank', '#' + (i + 1)));
-    c.appendChild(avatar(p, kind, true));
+    if (av) c.appendChild(av);
     c.appendChild(el('h4', 'rl-name', p.name || ''));
+    if (num) c.appendChild(el('p', 'rl-num', '📞 ' + num));
     if (p.role) c.appendChild(el('p', 'rl-role', p.role));
     if (p.area) c.appendChild(el('p', 'rl-area', '📍 ' + p.area));
     c.appendChild(el('p', 'rl-ver', p.metric || '✔ कम्पनी प्रमाणित · ID verified'));
@@ -59,10 +71,12 @@
     return c;
   }
   function listCard(p, kind) {
-    var li = el('li', 'rl-item');
-    li.appendChild(avatar(p, kind, false));
+    var av = avatar(p, kind, false), num = number(p);
+    var li = el('li', 'rl-item' + (av ? '' : ' nophoto'));
+    if (av) li.appendChild(av);
     var who = el('div', 'rl-who');
     who.appendChild(el('b', '', p.name || ''));
+    if (num) who.appendChild(el('small', 'rl-num', '📞 ' + num));
     var sub = [];
     if (kind === 'staff') { if (p.role) sub.push((NE[p.role] || '') + (p.roleEn ? ' · ' + p.roleEn : '')); if (p.loc) sub.push(p.loc); }
     else if (p.area) sub.push(p.area);
