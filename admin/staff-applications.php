@@ -350,6 +350,7 @@ if (!$ready) {
   <div class="stf-db">
     <?php if ($flash !== null): ?><div class="flash <?= $h($flash[0]) ?>" style="margin:0 0 12px"><?= $h($flash[1]) ?>
       <?php if ($waLink !== null): ?> <a class="btn sm" href="<?= $h($waLink) ?>" target="_blank" rel="noopener">💬 Send on WhatsApp</a><?php endif; ?></div><?php endif; ?>
+    <?php require_once INCLUDE_PATH . '/agentapplications.php'; require_once INCLUDE_PATH . '/teamdupes.php'; echo TeamDupes::html('staff', $oid); /* 23 Oct 2026: same ID no. / mobile / name + DOB elsewhere */ ?>
     <dl class="kv-list">
       <dt>Mobile</dt><dd class="mono"><a href="tel:+<?= $h($cc . $open['phone']) ?>">+<?= $h($cc) ?> <?= $h($open['phone']) ?></a>
         · <a href="https://wa.me/<?= $h($cc . $open['phone']) ?>?text=<?= $h($waMsg) ?>" target="_blank" rel="noopener">💬 WhatsApp</a>

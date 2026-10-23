@@ -31,6 +31,18 @@ header('X-Robots-Tag: noindex');
 
 $h = static fn($v): string => Security::e((string) ($v ?? ''));
 $limited = !Security::rateLimit('idcard_verify', Security::clientIp(), 60, 60);
+// 23 Oct 2026 (registration system, point 8): no QR reader -> card number + last 4 digits of the mobile
+// (includes/idverify.php); a match opens the same signed page the QR opens
+$typed = null;
+if (!$limited && trim((string) ($_GET['ref'] ?? '')) !== '') {
+    require_once INCLUDE_PATH . '/idverify.php';
+    $typed = IdVerify::manual((string) $_GET['ref'], (string) ($_GET['tail'] ?? ''), Security::clientIp());
+    if ($typed['state'] === 'ok') {
+        header('Location: ' . IdCard::verifyUrl((string) $typed['ref']), true, 303);
+        exit;
+    }
+    $limited = $typed['state'] === 'wait';
+}
 $code = trim((string) ($_GET['c'] ?? ''));
 $ref  = $limited || $code === '' ? null : IdCard::parse($code);
 $p    = $ref !== null ? IdCard::person($ref) : null;
@@ -175,7 +187,13 @@ p.n{color:var(--muted);font-size:13.5px;line-height:1.5;margin:10px 0 0}
     <div class="st warn"><i>⏳</i><div>Too many checks<small>धेरै पटक जाँच भयो — एक मिनेट पर्खनुहोस्।</small></div></div>
   <?php else: ?>
     <div class="st warn"><i>🪪</i><div>Scan the QR on the ID card<small>परिचयपत्रको QR स्क्यान गर्नुहोस्।</small></div></div>
-    <p class="n">The QR on a real card opens only <b><?= $h(preg_replace('~^https?://~', '', appUrl('verify-id.php'))) ?></b>. No QR reader? Call the office below with the card number from the back of the card.<br>असली कार्डको QR ले यही ठेगाना मात्र खोल्छ। QR नचले कार्डको पछाडिको नम्बर सहित तलको नम्बरमा फोन गर्नुहोस्।</p>
+    <p class="n">The QR on a real card opens only <b><?= $h(preg_replace('~^https?://~', '', appUrl('verify-id.php'))) ?></b>. No QR reader? Type the card number and the last 4 digits of the person's mobile, or call the office below.<br>असली कार्डको QR ले यही ठेगाना मात्र खोल्छ। QR नचले कार्ड नम्बर र मोबाइलको अन्तिम ४ अङ्क लेख्नुहोस्।</p>
+    <?php if ($typed !== null && $typed['state'] !== 'ok'): ?><div class="st bad" style="margin-top:12px"><i>❌</i><div><?= $typed['state'] === 'bad' ? 'Card number like AGR-000035 + 4 digits' : 'Number and digits do not match' ?><small><?= $typed['state'] === 'bad' ? 'कार्ड नम्बर (जस्तै AGR-000035) र ४ अङ्क लेख्नुहोस्।' : 'कार्ड नम्बर र अङ्क मिलेन — कार्यालयमा सोध्नुहोस्।' ?></small></div></div><?php endif; ?>
+    <form class="man" method="get" action="/verify-id.php" style="display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:8px;margin-top:14px">
+      <input name="ref" required maxlength="16" autocomplete="off" autocapitalize="characters" placeholder="Card no. · AGR-000035" value="<?= $h($_GET['ref'] ?? '') ?>" aria-label="Card number" style="min-height:48px;border-radius:12px;border:1.5px solid var(--line);padding:0 12px;font-size:16px;background:var(--card);color:var(--ink)">
+      <input name="tail" required inputmode="numeric" pattern="\d{4}" maxlength="4" autocomplete="off" placeholder="Mobile last 4" aria-label="Last 4 digits of the mobile" style="min-height:48px;border-radius:12px;border:1.5px solid var(--line);padding:0 12px;font-size:16px;background:var(--card);color:var(--ink)">
+      <button type="submit" style="grid-column:1/-1;min-height:48px;border:0;border-radius:12px;background:var(--royal);color:#fff;font-weight:800;font-size:15px">🔎 Check · जाँच गर्नुहोस्</button>
+    </form>
   <?php endif; ?>
     <div class="acts">
       <?php if ($tel !== ''): ?><a class="call" href="tel:<?= $h($tel) ?>">📞 Office <?= $h($co['phone']) ?></a><?php endif; ?>

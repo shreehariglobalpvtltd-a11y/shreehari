@@ -435,6 +435,7 @@ if (!$ready) {
 <nav class="tabs" aria-label="Sections">
   <a href="agreements.php?tab=apps" class="<?= $tab === 'apps' ? 'on' : '' ?>">Applications (<?= (int) $counts['total'] ?>)</a>
   <a href="agreements.php?tab=agents" class="<?= $tab === 'agents' ? 'on' : '' ?>">Existing agents &amp; partners (<?= count($agents) ?>)</a>
+  <a href="team-invite.php">📨 Invite many · 🔁 Renewals</a><?php /* 23 Oct 2026: bulk WhatsApp invites + agreements ending in 30 days */ ?>
 </nav>
 
 <?php if ($tab === 'apps'): ?>
@@ -489,6 +490,7 @@ if (!$ready) {
         <div class="agr-nophoto">Company logo sent — shown to a manager only</div>
         <?php endif; ?>
       <?php endif; ?>
+      <?php require_once INCLUDE_PATH . '/staffapplications.php'; require_once INCLUDE_PATH . '/teamdupes.php'; echo TeamDupes::html('agent', (int) $open['id']); /* 23 Oct 2026: same ID no. / mobile / name + DOB elsewhere - a warning, the office decides */ ?>
       <dl class="kv-list">
         <dt>Kind</dt><dd><?= $isOrg ? '🏢 Organization partner' : '👤 Individual agent' ?></dd>
         <dt>Mobile</dt><dd class="mono"><a href="tel:<?= $h($telHref) ?>"><?= $h($open['phone']) ?></a><?php foreach ($waLinks as [$waUrl, $waLabel]): ?> · <a href="<?= $h($waUrl) ?>" target="_blank" rel="noopener"><?= $h($waLabel) ?></a><?php endforeach; ?><?php if (!empty($open['phone_raw']) && preg_replace('/\D/', '', (string) $open['phone_raw']) !== $phoneDigits): ?> <span class="muted text-xs">(typed: <?= $h($open['phone_raw']) ?>)</span><?php endif; ?><?= (int) ($open['phone_verified'] ?? 0) === 1 ? ' <span style="color:var(--ok,#0f9d6b);font-weight:800" title="The applicant sent hi VERIFY from this number on WhatsApp (22 Oct 2026)">✓ WhatsApp verified</span>' : '' ?></dd>

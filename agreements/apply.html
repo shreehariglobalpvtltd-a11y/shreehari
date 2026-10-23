@@ -1337,6 +1337,60 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     var cols = ['#2f6bff', '#f07a1e', '#11a35a', '#ffc23d', '#e8457c', '#7b5cff'];
     for (var i = 0; i < 26; i++) { var s = document.createElement('i'); s.className = 'cf'; s.style.left = (Math.random() * 100) + '%'; s.style.background = cols[i % cols.length]; s.style.animationDelay = (Math.random() * 1.2) + 's'; s.style.animationDuration = (2 + Math.random() * 1.5) + 's'; d.appendChild(s); }
   }).observe($('done'), { attributes: true, attributeFilter: ['hidden'] });
+
+  /* 23 Oct 2026 (registration system, points 1 + 17 + 18): the typed boxes are kept on THIS phone while the
+     person fills the form (a closed tab, a dead battery or no signal loses nothing), brought back next time
+     for 7 days, and wiped once the form is sent. Photos, the signature, bank details and the WhatsApp code
+     are never kept. An office invite link (?name=&phone=&cc=, admin/team-invite.php) fills the empty boxes. */
+  var DK = 'shg:applyDraft:v1', DAYS7 = 7 * 864e5,
+      SKIP = { website: 1, b_acc: 1, b_ifsc: 1, b_upi: 1, b_name: 1, b_bank: 1 };
+  var dBan = document.createElement('p');
+  dBan.id = 'draftBan'; dBan.setAttribute('role', 'status'); dBan.hidden = true;
+  dBan.style.cssText = 'margin:8px 0 0;padding:8px 12px;border-radius:12px;font-size:13px;font-weight:700;background:rgba(47,107,255,.1);color:#1f4fe0;border:1px solid rgba(47,107,255,.3)';
+  $('msg').parentNode.insertBefore(dBan, $('msg'));
+  var banner = function (t, warn) { dBan.textContent = t; dBan.hidden = !t; dBan.style.color = warn ? '#9a4a00' : '#1f4fe0'; dBan.style.background = warn ? 'rgba(240,122,30,.12)' : 'rgba(47,107,255,.1)'; };
+  var boxes = function () {
+    return Array.prototype.filter.call($('ap').querySelectorAll('input[id],select[id],textarea[id]'), function (e) {
+      var t = (e.type || '').toLowerCase();
+      return !SKIP[e.id] && t !== 'file' && t !== 'password' && t !== 'hidden' && t !== 'radio' && t !== 'checkbox' && !e.closest('#waV');
+    });
+  };
+  var dStore = { get: function () { try { var d = JSON.parse(localStorage.getItem(DK) || 'null'); return d && d.t && Date.now() - d.t < DAYS7 ? d : null; } catch (e) { return null; } },
+                 put: function (d) { try { localStorage.setItem(DK, JSON.stringify(d)); return true; } catch (e) { return false; } },
+                 drop: function () { try { localStorage.removeItem(DK); } catch (e) {} } };
+  // a select always has a value: "empty" = still on the option it loaded with
+  var dflt = function (e) { if (e.tagName !== 'SELECT') return ''; var o = Array.prototype.find.call(e.options, function (x) { return x.defaultSelected; }) || e.options[0]; return o ? o.value : ''; };
+  var fill = function (id, v) {
+    var e = $(id); if (!e || v == null || v === '' || String(e.value).trim() !== dflt(e)) return false;
+    if (e.tagName === 'SELECT' && !Array.prototype.some.call(e.options, function (o) { return o.value === v; })) return false;
+    e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true;
+  };
+  var qs = new URLSearchParams(location.search), restored = 0;
+  var draft = dStore.get();
+  if (draft && draft.f && !state.edit) {
+    if (draft.kind && draft.kind !== state.kind && !/[?&]kind=/.test(location.search)) setKind(draft.kind);
+    if (draft.f.cc) $('cc').value = draft.f.cc;
+    Object.keys(draft.f).forEach(function (id) { if (id !== 'cc' && fill(id, draft.f[id])) restored++; });
+  }
+  if (qs.get('cc') === '91' || qs.get('cc') === '977') $('cc').value = qs.get('cc');
+  fill('p_name', (qs.get('name') || '').slice(0, 160));
+  fill('p_phone', (qs.get('phone') || '').replace(/\D/g, '').slice(-10));
+  if (restored) banner('💾 अघिको फारम फर्काइयो · Your unsent form is back (photos and signature need to be added again).');
+  var dTimer = 0;
+  var dSave = function () {
+    clearTimeout(dTimer);
+    dTimer = setTimeout(function () {
+      if ($('ap').hidden) return;
+      var f = {}, n = 0;
+      boxes().forEach(function (e) { var v = String(e.value || '').trim(); if (v !== '' && v !== dflt(e)) { f[e.id] = v.slice(0, 400); n++; } });
+      if (n && dStore.put({ t: Date.now(), kind: state.kind, f: f }) && !navigator.onLine) banner('📴 इन्टरनेट छैन — फारम यही फोनमा सुरक्षित छ · Offline: the form is kept on this phone. Send it when the internet is back.', true);
+    }, 600);
+  };
+  ['input', 'change'].forEach(function (n) { $('ap').addEventListener(n, dSave); });
+  window.addEventListener('offline', function () { dSave(); banner('📴 इन्टरनेट छैन — फारम यही फोनमा सुरक्षित छ · Offline: the form is kept on this phone. Send it when the internet is back.', true); });
+  window.addEventListener('online', function () { banner('📶 इन्टरनेट फर्कियो — अब पठाउनुहोस् · Back online — you can send now.'); });
+  if (!navigator.onLine) banner('📴 इन्टरनेट छैन — भर्दै गर्नुहोस्, फारम यही फोनमा सुरक्षित रहन्छ · Offline: keep filling, the form stays on this phone.', true);
+  new MutationObserver(function () { if (!$('done').hidden) { dStore.drop(); banner(''); } }).observe($('done'), { attributes: true, attributeFilter: ['hidden'] });
 })();
 </script>
 </body>

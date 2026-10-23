@@ -191,7 +191,9 @@ try {
     check('… and the back still draws (638 x 1011)', $back !== '' && (getimagesizefromstring($back)[1] ?? 0) === IdCard::H);
     [$hc, $page] = $http('/verify-id.php');
     if ($hc !== 0) {
-        check('HTTP: the bare verify page says the same (address + call the office)', $hc === 200 && str_contains($page, 'No QR reader? Call the office')
+        // 23 Oct 2026: no QR reader -> card number + last 4 digits of the mobile (includes/idverify.php), or call the office
+        check('HTTP: the bare verify page says the same (address + typed check + call the office)', $hc === 200 && str_contains($page, 'No QR reader? Type the card number')
+            && str_contains($page, 'name="tail"') && str_contains($page, 'call the office below')
             && str_contains($page, '/verify-id.php</b>'), (string) $hc);
     }
 } catch (Throwable $e) {
