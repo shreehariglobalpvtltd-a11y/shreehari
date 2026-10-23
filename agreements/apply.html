@@ -159,6 +159,63 @@ details.more[open]{padding-bottom:10px}
 .flang{display:flex;justify-content:center;gap:6px;flex-wrap:wrap;padding:8px 12px;background:#081c5e}
 .flang button{min-height:36px;padding:0 14px;border-radius:999px;border:1.5px solid rgba(255,255,255,.35);background:transparent;color:#fff;font:inherit;font-size:13.5px;font-weight:800;cursor:pointer}
 .flang button[aria-pressed="true"]{background:#fff;color:#0a2a8f;border-color:#fff}
+/* 23 Oct 2026 (owner: "world top designer / Canva template jasto colourful, CV jasto digital hybrid form, sabai
+   kura show"): every card has its own colour, a live CV card builds itself at the top while the form is filled,
+   a sticky progress bar, and a "review everything" card before sending. */
+body{background:radial-gradient(90% 40% at 0% 0%,rgba(47,107,255,.10),transparent 70%),radial-gradient(70% 40% at 100% 30%,rgba(240,122,30,.10),transparent 70%),radial-gradient(80% 40% at 0% 80%,rgba(123,92,255,.08),transparent 70%),var(--bg);background-attachment:fixed}
+.card{position:relative;overflow:hidden;--a:#2f6bff;--a2:#7b5cff}
+.card::before{content:"";position:absolute;left:0;right:0;top:0;height:5px;background:linear-gradient(90deg,var(--a),var(--a2))}
+.card h2 i{background:linear-gradient(140deg,var(--a),var(--a2))}
+.card.c1{--a:#2f6bff;--a2:#7b5cff}.card.c2{--a:#0ea5a0;--a2:#2f6bff}.card.c3{--a:#7b5cff;--a2:#e8457c}.card.c4{--a:#f07a1e;--a2:#f5b400}
+.card.c5{--a:#e8457c;--a2:#f07a1e}.card.c6{--a:#11a35a;--a2:#0ea5a0}.card.c7{--a:#0ea5e9;--a2:#11a35a}.card.c8{--a:#d99a00;--a2:#f07a1e}
+.card.done::before,details.card::before{display:none}
+.prog{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:8px 14px;border-radius:0 0 16px 16px;box-shadow:0 10px 24px -16px rgba(10,42,143,.7);background:rgba(255,255,255,.92);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);font-size:12.5px;font-weight:800;color:#0d1b3e;cursor:pointer}
+@media (prefers-color-scheme:dark){.prog{background:rgba(7,16,40,.9);color:#eef3ff}}
+.prog .pb{flex:1;height:8px;border-radius:99px;background:#e3e9f6;overflow:hidden}
+.prog .pb i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,#2f6bff,#7b5cff,#f07a1e,#11a35a);transition:width .4s ease}
+.prog .pav{width:28px;height:28px;border-radius:50%;background:#dfe7f7 center/cover no-repeat;display:grid;place-items:center;font-size:11px;font-weight:900;color:#0a2a8f;flex:0 0 28px;box-shadow:0 0 0 2px #fff,0 0 0 3px #2f6bff}
+.prog .pav.has{font-size:0}
+.cvc{position:relative;overflow:hidden;margin:0 0 12px;padding:16px;border-radius:22px;color:#fff;
+  background:radial-gradient(90% 70% at 100% 0%,rgba(255,255,255,.22),transparent 60%),linear-gradient(135deg,#0a2a8f 0%,#1f4fe0 48%,#7b5cff 100%);box-shadow:0 18px 36px -20px rgba(10,42,143,.9)}
+.cvc.staff{background:radial-gradient(90% 70% at 100% 0%,rgba(255,255,255,.22),transparent 60%),linear-gradient(135deg,#065a35 0%,#0e7a4a 45%,#14b8a6 100%)}
+.cvc.org{background:radial-gradient(90% 70% at 100% 0%,rgba(255,255,255,.22),transparent 60%),linear-gradient(135deg,#8a3d00 0%,#c25e00 45%,#7b5cff 115%)}
+.cvc::after{content:"";position:absolute;width:180px;height:180px;right:-60px;bottom:-90px;border-radius:50%;border:26px solid rgba(255,255,255,.1);pointer-events:none}
+.cvc-top{display:flex;gap:14px;align-items:center;position:relative;z-index:1}
+.cvc-ph{width:84px;height:104px;border-radius:18px;flex:0 0 84px;background:rgba(255,255,255,.18) center/cover no-repeat;box-shadow:0 0 0 3px rgba(255,255,255,.55),0 10px 20px -8px rgba(0,0,0,.5);display:grid;place-items:center;font-size:30px;font-weight:900}
+.cvc-ph.has{font-size:0}
+.cvc-m{flex:1;min-width:0}
+.cvc-k{display:inline-block;padding:3px 10px;border-radius:99px;background:#fff;color:#0a2a8f;font-size:11px;font-weight:900;letter-spacing:.04em}
+.cvc.staff .cvc-k{color:#0e7a4a}.cvc.org .cvc-k{color:#c25e00}
+.cvc-m b{display:block;margin:6px 0 2px;font-size:20px;line-height:1.15;word-break:break-word}
+.cvc-m span{display:block;font-size:13px;opacity:.9}
+.cvc-ring{--p:0;width:58px;height:58px;flex:0 0 58px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#ffd166 calc(var(--p) * 1%),rgba(255,255,255,.22) 0)}
+.cvc-ring b{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:rgba(10,20,60,.55);font-size:13px}
+.cvc-rows{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px 10px;margin:14px 0 0;position:relative;z-index:1;font-size:12.5px}
+.cvc-rows span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 10px;border-radius:12px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.22)}
+.cvc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;position:relative;z-index:1}
+.cvc-chips span{padding:4px 10px;border-radius:99px;font-size:11.5px;font-weight:800;background:rgba(0,0,0,.18);border:1px dashed rgba(255,255,255,.45);opacity:.85}
+.cvc-chips span.on{background:#fff;color:#0b6b47;border:1px solid #fff;opacity:1}
+.cvc-chips span.on::before{content:"✓ "}
+.cvc-chips span.warn{background:#fff3e0;color:#7a3e00;border-color:#fff3e0;opacity:1}
+.cvc-foot{margin:10px 0 0;font-size:11.5px;opacity:.85;position:relative;z-index:1}
+.rev{display:grid;gap:6px}
+.rev h3{margin:10px 0 2px;font-size:13px;color:var(--a);text-transform:uppercase;letter-spacing:.05em}
+.rev button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:42% minmax(0,1fr);gap:8px;padding:8px 10px;border-radius:12px;background:var(--bg);border:1.5px solid var(--line);font-size:13px;cursor:pointer}
+.rev button span:last-child{font-weight:800;word-break:break-word}
+.rev button.miss{border-color:var(--bad);background:rgba(198,40,40,.06)}
+.rev button.miss span:last-child{color:var(--bad)}
+.rev .pics{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.rev .pics figure{margin:0;width:84px;text-align:center;font-size:11px;color:var(--mut)}
+.rev .pics figure div{width:84px;height:84px;border-radius:14px;background:#fff center/contain no-repeat;border:1.5px solid var(--line);margin-bottom:3px}
+.rev .pics figure.miss div{border:1.5px dashed var(--bad);display:grid;place-items:center;font-size:22px}
+.fp{display:flex;gap:14px;align-items:center}
+.fp-ico{width:78px;height:78px;flex:0 0 78px;border-radius:24px;display:grid;place-items:center;background:linear-gradient(140deg,#e8457c,#7b5cff);box-shadow:0 12px 22px -12px rgba(123,92,255,.9)}
+.fp-ico svg{width:46px;height:46px}
+.fp.ok .fp-ico{background:linear-gradient(140deg,#11a35a,#0ea5a0)}
+.fp .btn[disabled]{opacity:.5;cursor:default}
+.selfie-main{display:grid;gap:10px}
+.selfie-main .btn.big{min-height:58px;font-size:16.5px;background:linear-gradient(120deg,#e8457c,#7b5cff 60%,#2f6bff)}
+.kribbon a.pill{padding:0 10px;border-radius:99px;background:rgba(255,255,255,.16);text-decoration:none;border:1px solid rgba(255,255,255,.35)}
 </style>
 </head>
 <body>
@@ -176,9 +233,11 @@ details.more[open]{padding-bottom:10px}
      made for the applicant automatically after sending. -->
 <!-- 23 Oct 2026 (owner: "Nepali, Hindi, English and Gujarati"): the form's words in Hindi / Gujarati (form-i18n.js); English stays beside -->
 <div class="flang" role="group" aria-label="Language · भाषा"><button type="button" data-flang="ne" aria-pressed="true">नेपाली</button><button type="button" data-flang="hi" aria-pressed="false">हिन्दी</button><button type="button" data-flang="gu" aria-pressed="false">ગુજરાતી</button><button type="button" data-flang="en" aria-pressed="false">English</button></div>
-<div class="kribbon" id="kRib"><span id="kRibT">🤝 एजेन्ट फारम · AGENT</span><a id="kPdf" href="/agreements/form.php?kind=agent&amp;auto=pdf" target="_blank" rel="noopener">📄 खाली फारम PDF · Blank PDF</a><a id="kPdfBw" href="/agreements/form.php?kind=agent&amp;bw=1&amp;auto=pdf" target="_blank" rel="noopener">⚫ B&amp;W PDF</a><a href="/team/">🔑 मेरो फारम, ID र पासवर्ड · My form, ID &amp; password</a></div>
+<div class="kribbon" id="kRib"><span id="kRibT">🤝 एजेन्ट फारम · AGENT</span><a class="pill" id="kView" href="/agreements/form.php?kind=agent" target="_blank" rel="noopener">👁 A4 फारम हेर्नुहोस् · View A4</a><a class="pill" id="kPdf" href="/agreements/form.php?kind=agent&amp;auto=pdf" target="_blank" rel="noopener">📄 खाली फारम PDF · Blank PDF</a><a class="pill" id="kPdfBw" href="/agreements/form.php?kind=agent&amp;bw=1&amp;auto=pdf" target="_blank" rel="noopener">⚫ B&amp;W PDF</a><a class="pill" href="/team/">🔑 मेरो फारम, ID र पासवर्ड · My form, ID &amp; password</a></div>
 
 <main>
+<!-- 23 Oct 2026 (owner: "CV jasto ... sabai kura show"): how far the form is, always in sight; a tap opens the live CV -->
+<div class="prog" id="prog" role="button" tabindex="0" aria-label="Progress"><span class="pav" id="pAv">🙂</span><span class="pb"><i id="pFill"></i></span><span id="pTxt">0% · फारम</span></div>
 <!-- 23 Oct 2026 (owner: "only digital form apply, edit"): correct the form you already sent - prove the number with
      WhatsApp "hi", the form fills itself, and sending saves over the same application (api/my-application.php) -->
 <details class="card more" id="editBox" style="margin-bottom:12px"><summary>✏️ पठाइसकेको फारम सच्याउनुहोस् · Edit a form I already sent</summary>
@@ -189,8 +248,24 @@ details.more[open]{padding-bottom:10px}
   <p class="msg bad" id="edMsg" hidden role="alert"></p>
 </details>
 <p class="edit-on" id="editOn" hidden></p>
+<!-- 23 Oct 2026 (owner: "digital hybrid name details lekhne wala CV jesa form"): the live CV - it builds itself from
+     what is typed and taken below (nothing is sent until "Send"); the A4 form prints the same CV on page 1 -->
+<section class="cvc" id="cvCard" aria-live="polite">
+  <div class="cvc-top">
+    <div class="cvc-ph" id="cvPh">🙂</div>
+    <div class="cvc-m">
+      <span class="cvc-k" id="cvKind">🤝 एजेन्ट · AGENT</span>
+      <b id="cvName" data-noi18n>तपाईंको नाम · Your name</b>
+      <span id="cvRole">S Hari Global</span>
+    </div>
+    <div class="cvc-ring" id="cvRing"><b id="cvPct">0%</b></div>
+  </div>
+  <div class="cvc-rows" data-noi18n><span id="cvPhone">📱 —</span><span id="cvArea">📍 —</span><span id="cvId">🪪 —</span><span id="cvEdu">🎓 —</span></div>
+  <div class="cvc-chips"><span id="ckWa">WhatsApp</span><span id="ckId">ID AI</span><span id="ckSelfie">सेल्फी · Selfie</span><span id="ckSig">सही · Signature</span><span id="ckFp">फिंगरप्रिन्ट · Fingerprint</span></div>
+  <p class="cvc-foot">✨ यो तपाईंको डिजिटल CV हो — फारम भर्दै जाँदा आफैं बन्छ, पठाएपछि A4 PDF मा यस्तै छापिन्छ। · Your digital CV builds itself as you fill.</p>
+</section>
 <form id="ap" novalidate>
-  <section class="card">
+  <section class="card c1">
     <h2><i>1</i>👤 तपाईंको विवरण · Your details</h2>
     <!-- 22 Oct 2026 (owner, team portal): the Pvt. Ltd. partner's paper form, online - the same
          quick form with a company block, the logo, and the representative's ID / photo / signature.
@@ -261,14 +336,14 @@ details.more[open]{padding-bottom:10px}
     <label class="f"><span id="cvPrevLbl">पहिलेको काम / कम्पनी · Previous work</span><input type="text" id="cv_prev" maxlength="160" placeholder="जस्तै: टिकट काउन्टर, ट्राभल एजेन्सी"></label></details>
   </section>
 
-  <section class="card" id="geoCard">
+  <section class="card c2" id="geoCard">
     <h2><i>2</i>📍 लोकेसन · Location</h2>
     <p class="hint">एक ट्याप — फोनले तपाईं अहिले भएको ठाउँ पठाउँछ (कार्यालयले मात्र देख्छ)।</p>
     <button type="button" class="btn ghost" id="geoBtn">📍 मेरो लोकेसन लिनुहोस् · Use my location</button>
     <div class="geo-out" id="geoOut" aria-live="polite"></div>
   </section>
 
-  <section class="card">
+  <section class="card c3">
     <h2><i>3</i>🪪 डकुमेन्ट · ID document</h2>
     <label class="f"><span>डकुमेन्टको प्रकार · Type</span>
       <select id="p_idtype"><option value="1">नागरिकता · Citizenship</option><option value="0">आधार · Aadhaar</option><option value="2">पासपोर्ट · Passport</option><option value="3">मतदाता परिचयपत्र · Voter ID</option><option value="4">अन्य · Other</option><option value="5" hidden>ड्राइभिङ लाइसेन्स · Driving licence</option><option value="6" hidden>PAN</option></select></label>
@@ -297,7 +372,7 @@ details.more[open]{padding-bottom:10px}
     </div>
   </section>
 
-  <section class="card">
+  <section class="card c4">
     <h2><i>₹</i>🏦 बैंक खाता · Bank account (KYC)</h2>
     <p class="hint" id="bankHint">कमिसन यही खातामा पठाइन्छ। कार्यालयले मात्र देख्छ — वेबसाइटमा कहिल्यै देखिँदैन। अहिले थाहा छैन भने पछि कार्यालयमा दिन सकिन्छ।</p>
     <label class="f"><span>खातावालाको नाम · Account holder</span><input type="text" id="b_name" maxlength="80" autocomplete="off" placeholder="जस्तै: Ram Bahadur Thapa"></label>
@@ -311,7 +386,7 @@ details.more[open]{padding-bottom:10px}
        They are printed on the A4 agreement's witness boxes; the people still sign the paper copy.
        Later the same day (owner: "no guarantors or witnesses for Staff/Agent, and include them for Partners"):
        a Pvt. Ltd. partner company only - its agreement asks for them (clauses 10.5, 10.6, 15.3). -->
-  <section class="card" id="guarCard" hidden>
+  <section class="card c8" id="guarCard" hidden>
     <h2><i>👥</i>जमानीकर्ता र साक्षी · Guarantor &amp; witnesses <small style="font-weight:600">(ऐच्छिक · optional)</small></h2>
     <p class="hint">थाहा भए मात्र भर्नुहोस् — पछि कार्यालयमा पनि दिन सकिन्छ। · Fill only if you know them now.</p>
     <label class="f"><span>जमानीकर्ता (नाम · मोबाइल) · Guarantor (name · mobile)</span><div class="row np"><input type="text" id="g_name" maxlength="80" autocomplete="off" placeholder="नाम · Name"><input type="tel" id="g_phone" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Guarantor mobile"></div></label>
@@ -320,19 +395,21 @@ details.more[open]{padding-bottom:10px}
     <label class="f"><span>साक्षी २ (नाम · मोबाइल) · Witness 2</span><div class="row np"><input type="text" id="w2_name" maxlength="80" autocomplete="off" placeholder="नाम · Name"><input type="tel" id="w2_phone" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" aria-label="Witness 2 mobile"></div></label>
   </section>
 
-  <section class="card">
-    <h2><i>4</i>🤳 तपाईंको फोटो · Your photo</h2>
-    <div class="shot">
-      <div class="prev" id="selfPrev">🙂</div>
-      <div><div class="pick"><span class="btn">🤳 फोटो खिच्नुहोस् · Take photo</span><input type="file" id="selfIn" accept="image/*" capture="user" aria-label="Take your photo"></div>
-      <p class="hint" style="margin:6px 0 0">अनुहार स्पष्ट देखिने, चस्मा/टोपी बिना।</p><div class="ok" id="selfOk"></div></div>
-    </div>
+  <section class="card c5">
+    <h2><i>4</i>🤳 फोटो र सेल्फी प्रमाणीकरण · Photo &amp; selfie verification</h2>
     <!-- 23 Oct 2026 (owner: "selfie face id ni live system, KYC genuine"): a live check - look straight, turn left,
-         turn right - read by AI against the ID photo (api/face-check.php). A score for the office, never a gate. -->
-    <div class="live" id="liveBox">
-      <button type="button" class="btn ghost" id="liveBtn">🎥 लाइभ सेल्फी जाँच · Live selfie check</button>
-      <p class="hint" style="margin:6px 0 0">१० सेकेन्ड: सिधा हेर्ने, टाउको बायाँ, दायाँ घुमाउने। अनुहार ID सँग मिल्यो कि AI ले हेर्छ। (सिफारिस · recommended)</p>
+         turn right - read by AI against the ID photo (api/face-check.php). A score for the office, never a gate.
+         Later the same day (owner: "selfish verification system rakhdeu"): the live selfie is the main way to take
+         the photo now - its first frame becomes the photo; a plain photo stays as the other way. -->
+    <div class="live selfie-main" id="liveBox" style="margin-top:0">
+      <button type="button" class="btn big" id="liveBtn">🎥 लाइभ सेल्फी प्रमाणीकरण · Live selfie verification</button>
+      <p class="hint" style="margin:0">१० सेकेन्ड: सिधा हेर्ने, टाउको बायाँ, दायाँ घुमाउने — फोटो पनि यसैबाट बन्छ। अनुहार ID सँग मिल्यो कि AI ले हेर्छ। · Look straight, turn left, turn right: it also takes your photo.</p>
       <div class="live-res" id="liveRes" aria-live="polite"></div>
+    </div>
+    <div class="shot" style="margin-top:14px">
+      <div class="prev" id="selfPrev">🙂</div>
+      <div><div class="pick"><span class="btn ghost">📷 वा फोटो मात्र खिच्नुहोस् · Or take a photo only</span><input type="file" id="selfIn" accept="image/*" capture="user" aria-label="Take your photo"></div>
+      <p class="hint" style="margin:6px 0 0">अनुहार स्पष्ट देखिने, चस्मा/टोपी बिना।</p><div class="ok" id="selfOk"></div></div>
     </div>
     <div class="live-ov" id="liveOv" hidden role="dialog" aria-label="Live selfie">
       <div class="live-cam"><video id="liveVid" playsinline muted autoplay></video><div class="live-oval"></div><div class="live-scan"></div></div>
@@ -342,29 +419,44 @@ details.more[open]{padding-bottom:10px}
     </div>
   </section>
 
-  <section class="card">
+  <section class="card c3">
     <h2><i>5</i>✍️ डिजिटल सही · Signature</h2>
     <p class="hint">औंलाले तलको बाकसभित्र आफ्नो सही गर्नुहोस्।</p>
     <div class="sigw" id="sigw"><canvas id="sig" aria-label="Sign here with your finger"></canvas><div class="line"></div><div class="ph">✍️ यहाँ सही गर्नुहोस् · Sign here</div></div>
     <div class="sig-bar"><span class="ok" id="sigOk"></span><button type="button" class="btn ghost small" id="sigClear">↺ मेटाउनुहोस् · Clear</button></div>
-    <!-- 22 Oct 2026 (owner: "face id ni lagau, fingerprint ni ... natra camera bata"): the right thumb by the
-         camera as an ink print, and the phone's own fingerprint / Face ID lock where the phone has one (bio-kit.js) -->
-    <p class="hint" style="margin:16px 0 6px"><b>👍 औंठाछाप · Thumbprint</b> (सिफारिस · recommended)</p>
-    <div id="thumbBox"></div>
-    <div id="pkBox" hidden style="margin-top:14px;padding:12px;border:1.5px dashed var(--line);border-radius:14px">
-      <b>🔐 फिंगरप्रिन्ट / Face ID (ऐच्छिक) · Fingerprint / Face ID (optional)</b>
-      <p class="hint" style="margin:4px 0 8px">फोनको आफ्नै औंठाछाप वा अनुहार लकले यो आवेदन तपाईंकै हो भनी पुष्टि हुन्छ। औंठाछाप फोनभित्रै रहन्छ — हामीकहाँ आउँदैन। · Your fingerprint never leaves your phone.</p>
-      <button type="button" class="btn ghost small" id="pkBtn">👆 फिंगरप्रिन्ट / Face ID थप्नुहोस् · Add</button> <span class="ok" id="pkOk"></span>
+  </section>
+
+  <!-- 23 Oct 2026 (owner: "yo fingerprint icon remove gardeu, mobile fingerprint data line system banaideu"): the
+       camera thumbprint box is gone; the phone's OWN fingerprint sensor proves the application instead (WebAuthn,
+       bio-kit.js ShgPasskey). A browser never receives the fingerprint itself - the phone checks the finger and
+       signs; only that proof is sent. The paper copy keeps its two thumb boxes for ink. -->
+  <section class="card c5" id="fpCard">
+    <h2><i>6</i>👆 मोबाइल फिंगरप्रिन्ट · Phone fingerprint</h2>
+    <div class="fp" id="pkBox">
+      <div class="fp-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"><path d="M12 11c0 3.5-1 6.5-2.5 9"/><path d="M8.5 7.6A5 5 0 0 1 17 11c0 2.4-.3 4.7-1 6.8"/><path d="M6.3 9.5A6.9 6.9 0 0 0 6 11.6c0 2-.5 3.9-1.4 5.5"/><path d="M5 5.6A9 9 0 0 1 21 11c0 1.3-.1 2.6-.3 3.8"/><path d="M12 15c-.2 2-.8 4-1.7 5.8M15 14.5c-.2 2.6-.8 5-1.9 7"/></svg></div>
+      <div style="flex:1;min-width:0">
+        <p class="hint" style="margin:0 0 8px">फोनको आफ्नै फिंगरप्रिन्ट (वा Face ID / स्क्रिन लक) ले यो फारम तपाईंकै हो भनी प्रमाणित गर्छ। औंठाछाप फोनभित्रै रहन्छ — प्रमाण मात्र आउँछ। · Your phone checks your finger; only the proof is sent.</p>
+        <button type="button" class="btn small" id="pkBtn">👆 फिंगरप्रिन्टले प्रमाणित गर्नुहोस् · Verify with fingerprint</button>
+        <div class="ok" id="pkOk" style="margin-top:6px"></div>
+      </div>
     </div>
   </section>
 
-  <section class="card" id="waCard">
-    <h2><i>6</i>📱 मोबाइल प्रमाणित · Verify mobile</h2>
+  <section class="card c6" id="waCard">
+    <h2><i>7</i>📱 मोबाइल प्रमाणित · Verify mobile</h2>
     <p class="hint">माथि लेखेको नम्बर तपाईंकै हो भनी WhatsApp बाट एक ट्यापमा प्रमाणित गर्नुहोस्।</p>
     <div id="waV"></div>
   </section>
 
-  <section class="card">
+  <!-- 23 Oct 2026 (owner: "pura digital form ma sabai kura include garera show"): everything filled, at a glance;
+       a missing must-have is red and a tap goes to it -->
+  <section class="card c2" id="revCard">
+    <h2><i>8</i>📋 सबै विवरण एक नजरमा · Review everything</h2>
+    <p class="hint">पठाउनु अघि एक पटक हेर्नुहोस् — रातो भएको बाँकी छ, थिचेर भर्नुहोस्। · Red = still missing: tap it to fill.</p>
+    <div class="rev" id="revBody"></div>
+  </section>
+
+  <section class="card c7">
     <!-- 22 Oct 2026 (owner: "agreement garne bela sart haru k k chha sabai lekhidinus"): every term, read here -->
     <div id="termsBox"></div>
     <label class="chk"><input type="checkbox" id="agreeTerms"><span>मैले सम्झौताका सबै सर्त पढें (वा पढेर सुनाइयो) र स्वीकार गर्छु। · I have read and accept every term. <em style="color:var(--bad);font-style:normal">*</em></span></label>
@@ -389,7 +481,8 @@ details.more[open]{padding-bottom:10px}
     <b>अब के हुन्छ? · What happens next</b><br>
     1️⃣ कार्यालयले KYC जाँचेर स्वीकृत गर्छ र ID नं. दिन्छ (WhatsApp मा खबर आउँछ)।<br>
     2️⃣ <a href="/team/">/team/</a> मा मोबाइल नम्बरले पासवर्ड बनाउनुहोस् — वा Face ID / फिंगरप्रिन्ट।<br>
-    3️⃣ डिजिटल ID कार्ड, भिजिटिङ कार्ड, QR जाँच र PDF त्यहीँ।
+    3️⃣ डिजिटल ID कार्ड, भिजिटिङ कार्ड, QR जाँच र PDF त्यहीँ।<br>
+    4️⃣ फोटोसहितको यही A4 फारम + सम्झौता जहिले पनि <a href="/team/form.php">/team/ → मेरो फारम</a> मा। · Your A4 form with photo stays online in the team portal.
   </div>
   <a class="btn ghost" href="/team/?v=forgot" style="margin-bottom:8px">🔑 मेरो ID र पासवर्ड · My ID &amp; password (after approval) — पासवर्ड बिर्सनुभयो? यहीँ</a>
   <a class="btn" href="/">🏠 होम पेज · Home</a>
@@ -399,7 +492,7 @@ details.more[open]{padding-bottom:10px}
 <script src="/assets/js/wa-direct.js?v=20261022a"></script>
 <script src="/assets/js/wa-verify.js?v=20261022b"></script>
 <script src="/assets/js/bio-kit.js?v=20261023b"></script>
-<script src="/assets/js/form-i18n.js?v=20261023b"></script>
+<script src="/assets/js/form-i18n.js?v=20261023f"></script>
 <script>
 (function () {
   'use strict';
@@ -483,6 +576,7 @@ details.more[open]{padding-bottom:10px}
             return fetch('/api/face-check.php', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' },
               body: JSON.stringify({ frames: frames, doc: state.doc || null }) });
           }).then(function (r) { return r.json(); }).then(function (d) {
+            state.selfie = d && d.ok ? (d.status === 'pass' ? 'pass' : d.status === 'unavailable' ? 'done' : 'warn') : 'warn'; cvSoon();
             if (!d || !d.ok) { res((d && (d.error || d.message)) || 'जाँच हुन सकेन — फारम पठाउन मिल्छ · Not checked, you can still send.', false); return; }
             if (d.status === 'pass') res('✅ लाइभ अनुहार प्रमाणित' + (d.match === 'yes' ? ' — ID सँग मिल्यो' : '') + ' · Live face verified' + (d.match === 'yes' ? ', matches the ID' : ''), true);
             else if (d.status === 'unavailable') res('ℹ️ अहिले AI जाँच हुन सकेन — कार्यालयले हेर्छ · AI check unavailable now; the office will look.', null);
@@ -610,6 +704,7 @@ details.more[open]{padding-bottom:10px}
       rib.className = 'kribbon' + (org ? ' org' : staff ? ' staff' : '');
       $('kRibT').textContent = { staff: '🧑‍✈️ कर्मचारी फारम · STAFF', partner: '🏢 साझेदार कम्पनी फारम · PARTNER (PVT. LTD.)', agent: '🤝 एजेन्ट फारम · AGENT' }[kk];
       // 23 Oct 2026 (owner: "khali ya bhari PDF, B&W print ready"): this kind's blank A4 form + agreement as PDF
+      $('kView').href = '/agreements/form.php?kind=' + kk;
       $('kPdf').href = '/agreements/form.php?kind=' + kk + '&auto=pdf';
       $('kPdfBw').href = '/agreements/form.php?kind=' + kk + '&bw=1&auto=pdf';
     }
@@ -623,6 +718,7 @@ details.more[open]{padding-bottom:10px}
     $('send').disabled = staff && state.staffClosed;
     if (staff) checkStaffOpen();
     if (ROLE_NEEDS) roleHint();   // the job's own checklist (ROLE_NEEDS is set further down; at start-up it comes after)
+    if (typeof cvSoon === 'function') cvSoon();
     else if (state.closedMsg && $('msg').textContent === state.closedMsg) say('');
   }
   document.querySelectorAll('input[name="kind"]').forEach(function (r) { r.addEventListener('change', function () { if (this.checked) setKind(this.value); }); });
@@ -674,11 +770,16 @@ details.more[open]{padding-bottom:10px}
   });
 
   /* ---- 22 Oct 2026: thumbprint by camera + the phone's fingerprint / Face ID lock (both optional) ---- */
-  var thumb = window.ShgThumb ? window.ShgThumb.mount($('thumbBox')) : null;
+  var thumb = null;   // 23 Oct 2026 (owner): the camera thumbprint left the form - the phone's own fingerprint is below
   terms = window.ShgTerms ? window.ShgTerms.mount($('termsBox'), state.kind === 'org' ? 'partner' : state.kind === 'staff' ? 'staff' : 'agent') : null;
   if (window.ShgFormLang) window.ShgFormLang.onChange(function (l) { if (terms && terms.setLang) terms.setLang(l); });
   state.webauthn = '';
-  if (window.ShgPasskey) window.ShgPasskey.supported().then(function (ok) { $('pkBox').hidden = !ok; });
+  function pkOff() {
+    $('pkBtn').disabled = true;
+    $('pkOk').textContent = 'यो फोन / ब्राउजरमा फिंगरप्रिन्ट लक भेटिएन — यो चरण छोड्न मिल्छ · No fingerprint lock on this phone or browser: you can skip this.';
+    $('pkOk').style.color = 'var(--mut)';
+  }
+  if (window.ShgPasskey) window.ShgPasskey.supported().then(function (ok) { if (!ok) pkOff(); }); else pkOff();
   $('pkBtn').addEventListener('click', function () {
     var b = this; b.disabled = true; $('pkOk').textContent = '⏳';
     fetch('/api/agreement-apply.php?challenge=1', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
@@ -688,7 +789,7 @@ details.more[open]{padding-bottom:10px}
         var ph = '+' + $('cc').value + $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
         return window.ShgPasskey.create(d, ph, $('p_name').value.trim() || 'S Hari applicant');
       })
-      .then(function (j) { state.webauthn = j; $('pkOk').textContent = '✓ थपियो · added'; })
+      .then(function (j) { state.webauthn = j; $('pkOk').textContent = '✓ फिंगरप्रिन्टले प्रमाणित भयो · verified with your fingerprint'; $('pkBox').classList.add('ok'); cvSoon(); })
       .catch(function () { $('pkOk').textContent = 'भएन — ऐच्छिक हो, छोड्न सकिन्छ · skipped (optional)'; b.disabled = false; });
   });
 
@@ -1020,6 +1121,142 @@ details.more[open]{padding-bottom:10px}
       .catch(function () { say('इन्टरनेट जाँच गरेर फेरि पठाउनुहोस्।'); })
       .then(function () { btn.disabled = false; btn.textContent = label; });
   }
+  /* ---- 23 Oct 2026 (owner: "CV jasto digital hybrid form ... sabai kura include garera show"): the live CV card,
+     the progress bar and "review everything" - all read from this form; nothing here is sent ---- */
+  var cvT = null, sigSeen = -1, sigUri = '';
+  function cvSoon() { clearTimeout(cvT); cvT = setTimeout(cvUpdate, 120); }
+  function val(id) {
+    var el = $(id); if (!el) return '';
+    if (el.tagName === 'SELECT') { var o = el.selectedOptions && el.selectedOptions[0]; return el.value === '' || !o ? '' : o.textContent.trim(); }
+    return String(el.value || '').trim();
+  }
+  function digs(id) { return $(id).value.replace(/\D/g, '').replace(/^0+/, ''); }
+  function join() { return [].slice.call(arguments).filter(Boolean).join(' · '); }
+  function hadSlot(s) { return !!(state.edit && state.edit.have.indexOf(s) >= 0); }
+  function forKind(k) { return !k || k.split(' ').indexOf(state.kind) >= 0; }
+  var nonStaff = function () { return state.kind !== 'staff'; };
+  // [label, value, the box a tap goes to, required (bool | fn), kinds ('' = all)]
+  var REV = [
+    ['👤 विवरण · Details', [
+      [function () { return state.kind === 'org' ? 'कम्पनीको नाम · Company' : 'पूरा नाम · Full name'; }, function () { return val('p_name'); }, 'p_name', true],
+      ['प्रतिनिधि · Representative', function () { return join(val('p_rep'), val('p_rep_desig')); }, 'p_rep', true, 'org'],
+      ['कम्पनीको किसिम · Company type', function () { return val('p_type'); }, 'p_type', false, 'org'],
+      ['दर्ता · PAN / VAT', function () { return join(val('p_reg'), val('p_tax')); }, 'p_reg', false, 'org'],
+      ['कुन काम · Job', function () { return val('s_role'); }, 's_role', true, 'staff'],
+      ['लाइसेन्स · Licence', function () { return join(val('s_lic'), val('s_licCat'), val('s_licExp')); }, 's_lic', function () { return $('s_role').value === 'driver'; }, 'staff'],
+      ['मोबाइल · Mobile', function () { var d = digs('p_phone'); return d ? '+' + $('cc').value + ' ' + d : ''; }, 'p_phone', true],
+      ['जन्म मिति · लिङ्ग · Birth · gender', function () { return join(val('s_dob'), val('s_gender')); }, 's_dob', false, 'staff'],
+      ['इमेल · E-mail', function () { return val('s_email'); }, 's_email', false, 'staff'],
+      ['काम गर्ने ठाउँ · Area', function () { return val('p_area'); }, 'p_area', nonStaff],
+      ['ठेगाना · Address', function () { return val('p_addr'); }, 'p_addr', nonStaff]
+    ]],
+    ['🎓 परिचयपत्र र CV · ID & CV', [
+      ['परिचयपत्र · ID', function () { var n = val('p_idno'); return n ? val('p_idtype') + ' · ' + n : ''; }, 'p_idno', true],
+      ['शिक्षा · Education', function () { return val('cv_qual'); }, 'cv_qual', false],
+      ['अनुभव · Experience', function () { var x = val('cv_exp'); return x ? x + ' वर्ष · years' : ''; }, 'cv_exp', false],
+      ['पहिलेको काम · Previous work', function () { return val('cv_prev'); }, 'cv_prev', false],
+      ['लोकेसन · Location', function () { return state.geo ? '✓ ' + state.geo.split(',').slice(0, 2).join(', ') : ''; }, 'geoBtn', false, 'ind org']
+    ]],
+    ['🏦 बैंक र सम्पर्क · Bank & contacts', [
+      ['बैंक · Bank', function () { return join(val('b_name'), val('b_bank'), val('b_acc'), val('b_ifsc')); }, 'b_name', false],
+      ['UPI / eSewa / Khalti', function () { return val('b_upi'); }, 'b_upi', false, 'ind org'],
+      ['चिनारी · Reference', function () { return join(val('s_ref1n'), val('s_ref1p')); }, 's_ref1n', false, 'staff'],
+      ['आपतकालीन सम्पर्क · Emergency', function () { return join(val('s_emn'), val('s_emp')); }, 's_emn', false, 'staff'],
+      ['जमानीकर्ता · Guarantor', function () { return join(val('g_name'), val('g_phone')); }, 'g_name', false, 'org'],
+      ['साक्षी · Witnesses', function () { return join(val('w1_name'), val('w2_name')); }, 'w1_name', false, 'org']
+    ]],
+    ['✅ प्रमाणीकरण · Verification', [
+      ['WhatsApp प्रमाण · Mobile proof', function () { return state.wa !== 'none' ? '✓ प्रमाणित · verified' : ''; }, 'waV', true],
+      ['AI ID जाँच · ID check', function () { return state.verified === true ? '✓ मिल्यो · matched' : state.verified === false ? '✗ मिलेन · not matched' : ''; }, 'dvBtn', false, 'ind org'],
+      ['लाइभ सेल्फी · Live selfie', function () { return { pass: '✓ प्रमाणित · verified', done: '✓ गरियो · done', warn: '⚠️ फेरि गर्न सकिन्छ · try again' }[state.selfie] || ''; }, 'liveBtn', false],
+      ['फिंगरप्रिन्ट · Fingerprint', function () { return state.webauthn ? '✓ प्रमाणित · verified' : ''; }, 'pkBtn', false],
+      ['सर्त स्वीकार · Terms accepted', function () { return $('agreeTerms').checked && $('agree').checked ? '✓' : ''; }, 'agreeTerms', true]
+    ]]
+  ];
+  function pics() {
+    if (inked !== sigSeen) { sigSeen = inked; sigUri = inked > 40 ? cv.toDataURL('image/png') : ''; }
+    var drv = state.kind === 'staff' && $('s_role').value === 'driver';
+    // [label, picture, the box a tap goes to, required, kinds]
+    return [
+      ['फोटो · Photo', state.photo, 'liveBtn', !hadSlot('photo'), ''],
+      ['ID', state.doc, 'docIn', !hadSlot('doc') && !hadSlot('id_front'), ''],
+      ['सही · Signature', sigUri, 'sig', !hadSlot('signature'), ''],
+      ['लोगो · Logo', state.logo, 'logoIn', false, 'org'],
+      ['दर्ता · Registration', state.reg_cert, 'regIn', !hadSlot('reg_cert'), 'org'],
+      ['PAN / VAT', state.tax_cert, 'taxIn', false, 'org'],
+      ['लाइसेन्स · Licence', state.lic, 'licIn', drv && !hadSlot('license'), drv ? 'staff' : 'none'],
+      ['मार्कसिट · Marksheet', state.edu_cert, 'eduIn', false, 'ind staff']
+    ].filter(function (p) { return forKind(p[4]); });
+  }
+  function goTo(id) {
+    var el = $(id); if (!el) return;
+    var fold = el.closest('details'); if (fold) fold.open = true;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    try { el.focus({ preventScroll: true }); } catch (e) {}
+  }
+  function cvUpdate() {
+    var k = state.kind, total = 0, done = 0, box = $('revBody'), frag = document.createDocumentFragment();
+    REV.forEach(function (sec) {
+      var h = document.createElement('h3');
+      h.textContent = sec[0];
+      sec[1].filter(function (r) { return forKind(r[4]); }).forEach(function (r) {
+        var lab = typeof r[0] === 'function' ? r[0]() : r[0], v = r[1](), req = typeof r[3] === 'function' ? r[3]() : r[3];
+        if (req) { total++; if (v) done++; }
+        if (!v && !req) return;
+        if (!h.parentNode) frag.appendChild(h);   // a heading only over rows that show
+        var b = document.createElement('button'), a = document.createElement('span'), c = document.createElement('span');
+        b.type = 'button'; b.className = v ? '' : 'miss';
+        a.textContent = lab;
+        c.setAttribute('data-noi18n', ''); c.textContent = v || '— बाँकी · missing';
+        b.appendChild(a); b.appendChild(c);
+        b.addEventListener('click', function () { goTo(r[2]); });
+        frag.appendChild(b);
+      });
+    });
+    var pw = document.createElement('div'); pw.className = 'pics';
+    pics().forEach(function (p) {
+      if (p[3]) { total++; if (p[1]) done++; }
+      var f = document.createElement('figure'), d = document.createElement('div'), cap = document.createElement('figcaption');
+      if (p[1]) d.style.backgroundImage = 'url(' + p[1] + ')'; else { f.className = p[3] ? 'miss' : ''; d.textContent = p[3] ? '!' : '+'; }
+      cap.textContent = p[0]; f.appendChild(d); f.appendChild(cap);
+      f.addEventListener('click', function () { goTo(p[2]); });
+      pw.appendChild(f);
+    });
+    frag.appendChild(pw);
+    box.textContent = ''; box.appendChild(frag);
+
+    var pct = total ? Math.round(done * 100 / total) : 0, nm = val('p_name');
+    $('cvCard').className = 'cvc' + (k === 'staff' ? ' staff' : k === 'org' ? ' org' : '');
+    $('cvKind').textContent = { staff: '🧑‍✈️ कर्मचारी · STAFF', org: '🏢 साझेदार कम्पनी · PARTNER', ind: '🤝 एजेन्ट · AGENT' }[k];
+    $('cvName').textContent = nm || (k === 'org' ? 'कम्पनीको नाम · Company name' : 'तपाईंको नाम · Your name');
+    $('cvRole').textContent = k === 'staff' ? (val('s_role') || 'S Hari Global — कुन काम? · which job?')
+      : k === 'org' ? (join(val('p_rep'), val('p_rep_desig')) || 'Pvt. Ltd. साझेदार · partner') : 'S Hari Global एजेन्ट · Agent';
+    var pic = k === 'org' && state.logo ? state.logo : state.photo;
+    var ini = nm.split(/\s+/).filter(Boolean).slice(0, 2).map(function (w) { return w.charAt(0).toUpperCase(); }).join('') || '🙂';
+    [$('cvPh'), $('pAv')].forEach(function (e) { e.style.backgroundImage = pic ? 'url(' + pic + ')' : ''; e.classList.toggle('has', !!pic); e.textContent = pic ? '' : ini; });
+    var d10 = digs('p_phone'), idn = val('p_idno');
+    $('cvPhone').textContent = '📱 ' + (d10 ? '+' + $('cc').value + ' ' + d10 : '—');
+    $('cvArea').textContent = '📍 ' + (val('p_area') || '—');
+    $('cvId').textContent = '🪪 ' + (idn ? val('p_idtype') + ' ••' + idn.replace(/[^0-9A-Za-z]/g, '').slice(-4) : '—');
+    $('cvEdu').textContent = '🎓 ' + (val('cv_qual') || (val('cv_exp') ? val('cv_exp') + ' yrs' : '—'));
+    var chip = function (id, on, warn) { $(id).className = on ? 'on' : warn ? 'warn' : ''; };
+    chip('ckWa', state.wa !== 'none');
+    chip('ckId', state.verified === true, state.verified === false); $('ckId').hidden = k === 'staff';
+    chip('ckSelfie', state.selfie === 'pass' || state.selfie === 'done', state.selfie === 'warn');
+    chip('ckSig', inked > 40 || hadSlot('signature'));
+    chip('ckFp', !!state.webauthn);
+    $('cvRing').style.setProperty('--p', String(pct)); $('cvPct').textContent = pct + '%';
+    $('pFill').style.width = pct + '%';
+    $('pTxt').textContent = pct + '% · ' + (pct >= 100 ? 'पठाउन तयार · ready to send' : 'फारम · form');
+  }
+  $('prog').addEventListener('click', function () { $('cvCard').scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+  $('prog').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.click(); } });
+  ['input', 'change'].forEach(function (n) { $('ap').addEventListener(n, cvSoon); });
+  cv.addEventListener('pointerup', cvSoon);
+  $('sigClear').addEventListener('click', cvSoon);
+  // the WhatsApp proof, the ID check and the uploads finish on their own time
+  setInterval(function () { if (!document.hidden && !$('ap').hidden) cvUpdate(); }, 2000);
+  cvUpdate();
 })();
 </script>
 </body>

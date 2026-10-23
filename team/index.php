@@ -189,6 +189,7 @@ if ($me !== null && $v !== 'reset') {
     <div class="tp-grid">
       <?php if ($sell !== null): ?><a class="tp-tile hot" href="<?= $h($sell) ?>"><i>🎫</i><b>टिकट बेच्नुहोस्</b><small>Sell tickets · <?= match ((string) $me['admin']['role']) { 'agent' => 'agent panel', 'counter' => 'counter', default => 'SmartBook' } ?></small></a><?php endif; ?>
       <?php if ($cards !== []): ?><a class="tp-tile" href="/team/card.php"><i>🪪</i><b>मेरो डिजिटल ID</b><small>ID + visiting card · PNG / PDF</small></a><?php endif; ?>
+      <?php if ($staff !== null || $agent !== null): /* 23 Oct 2026: the own A4 form + agreement, with photo, any time */ ?><a class="tp-tile" href="/team/form.php<?= $staff !== null && $agent !== null ? '?as=agent' : '' ?>"><i>📑</i><b>मेरो फारम</b><small>A4 form + agreement · PDF</small></a><?php if ($staff !== null && $agent !== null): ?><a class="tp-tile" href="/team/form.php?as=staff"><i>📑</i><b>मेरो स्टाफ फारम</b><small>Staff form · PDF</small></a><?php endif; ?><?php endif; ?>
       <?php if ($staff !== null || $agent !== null): ?><a class="tp-tile" href="/team/cv.php"><i>📄</i><b>मेरो CV</b><small><?= $kind === 'partner' ? 'Company profile' : 'Education + experience' ?></small></a><?php endif; ?>
       <?php if ($agrUrl !== null && ($staff !== null || $agent !== null)): ?><a class="tp-tile" href="<?= $h($agrUrl) ?>"><i>📝</i><b>मेरो सम्झौता</b><small>My agreement</small></a><?php endif; ?>
       <a class="tp-tile" href="/team/?v=passkeys"><i>👆</i><b>Face ID / फिंगरप्रिन्ट</b><small>One-tap sign-in</small></a>
