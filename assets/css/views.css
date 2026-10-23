@@ -4286,6 +4286,17 @@ body.wa-open{overflow:hidden}
 .lg-link:disabled{color:var(--muted);cursor:default;font-weight:600}
 .lg-skip{margin-top:12px;padding:12px;border:1px dashed var(--line);border-radius:var(--r-sm);display:grid;gap:8px}
 .lg-skip[hidden],.who-more[hidden]{display:none}
+/* 23 Oct 2026: the three no-credit doors under "Send code" */
+.lg-doors{display:grid;gap:8px;margin-top:12px}
+.lg-doors-or{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--muted);text-align:center}
+.lg-doors-or::before,.lg-doors-or::after{content:'';flex:1;border-top:1px dashed var(--line)}
+.lg-door{display:flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 14px;border-radius:14px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:14px;font-weight:800;cursor:pointer}
+.lg-door:active{transform:translateY(1px)}
+.lg-door.d-wa{border-color:#1faa59;color:#0f7a3e}.lg-door.d-pk{border-color:#7b5cff;color:#5b3fd6}.lg-door[hidden]{display:none}
+.lg-wa-qr{margin:12px auto 0;padding:12px;width:max-content;max-width:100%;text-align:center;border-radius:16px;background:#fff;border:1.5px solid #cfe8d8;color:#0d1b3e}
+.lg-wa-qr img{display:block;margin:0 auto 6px;border-radius:10px;image-rendering:pixelated;box-shadow:0 0 0 3px #fff,0 0 0 5px #1faa59}
+.lg-wa-qr small{display:block;font-size:12.5px;font-weight:700;max-width:220px}
+.lg-wa-wait{margin:12px 0 0;font-size:13.5px;font-weight:700;text-align:center}
 .lg-skip small{color:var(--muted);font-size:12.5px;line-height:1.45}
 .lg-prof{margin-bottom:12px}
 .lg-prof-top{display:flex;align-items:center;gap:14px}

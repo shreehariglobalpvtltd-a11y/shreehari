@@ -36,7 +36,7 @@ final class WaVerify
     private const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O, 1/I
     public const TTL_SEC   = 1800;
     public const PROVEN_SEC = 3600;
-    public const PURPOSES  = ['staff', 'agent', 'sign', 'reset'];   // reset: team portal password (22 Oct 2026)
+    public const PURPOSES  = ['staff', 'agent', 'sign', 'reset', 'customer'];   // customer: api/customer-login.php (23 Oct 2026)   // reset: team portal password (22 Oct 2026)
     /** 22 Oct 2026 (review): what /api/wa-verify.php may start, and the only proofs that count for the forms. */
     public const FORM_PURPOSES = ['staff', 'agent', 'sign'];
 

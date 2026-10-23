@@ -459,7 +459,7 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261023h" data-next="<?= $meUrl ?>"></script><?php endif; ?>
-<script src="/assets/js/team-face.js?v=20261023h" data-next="<?= $meUrl ?>"></script>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261023i" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<script src="/assets/js/team-face.js?v=20261023i" data-next="<?= $meUrl ?>"></script>
 <?php endif; ?>
 </body></html>

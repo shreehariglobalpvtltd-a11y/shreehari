@@ -779,3 +779,40 @@ body.shg-ap-open { overflow: hidden; }
   .shg-ap .ap-opt[aria-checked="true"], .shg-ap .ap-sw[aria-checked="true"] .ap-dot { outline: 3px solid Highlight; }
 }
 @media print { .shg-ap, .shg-ap-scrim { display: none !important; } }
+
+/* =====================================================================
+   9. GLASS UI - 23 Oct 2026 (owner: "glass effect wallpaper, Android 17 ko
+   naya water-bubble theme, naya iOS theme jasto"). data-ui="glass": the
+   Pixel tokens, plus translucent surfaces over a slow-floating bubble
+   wallpaper. Everything is tokens + backdrop-filter; where a browser has no
+   backdrop-filter the surfaces are simply a little more opaque.
+   ===================================================================== */
+:root[data-ui="glass"]{--radius-xs:12px;--radius-sm:14px;--radius-md:18px;--radius-lg:26px;--radius-xl:30px;--md-r-card:26px;--md-r-sheet:30px;
+  --m-spring:var(--md-spring);--m-snap:var(--md-ease-standard);--m-exit:var(--md-ease-emph-accel);--m-quick:150ms;--m-base:240ms;--m-slow:380ms;
+  --glass-bg:rgba(255,255,255,.62);--glass-bg-2:rgba(255,255,255,.48);--glass-line:rgba(255,255,255,.75);--glass-ink:rgba(10,42,143,.18);
+  --dp-press:0px;--dp-press-sm:0px}
+:root[data-ui="glass"][data-theme="dark"]{--glass-bg:rgba(18,28,58,.52);--glass-bg-2:rgba(18,28,58,.40);--glass-line:rgba(255,255,255,.14);--glass-ink:rgba(0,0,0,.45)}
+:root[data-ui="glass"][data-display="amoled"]{--glass-bg:rgba(10,14,28,.62);--glass-bg-2:rgba(10,14,28,.48)}
+:root[data-ui="glass"] body{background-attachment:fixed}
+:root[data-ui="glass"] body::before{content:"";position:fixed;inset:-10%;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(28% 24% at 12% 18%,rgba(47,107,255,.34),transparent 70%),
+    radial-gradient(22% 20% at 82% 12%,rgba(240,122,30,.30),transparent 70%),
+    radial-gradient(26% 24% at 72% 70%,rgba(123,92,255,.28),transparent 70%),
+    radial-gradient(18% 16% at 22% 78%,rgba(17,163,90,.26),transparent 70%),
+    radial-gradient(14% 12% at 50% 45%,rgba(255,255,255,.35),transparent 70%);
+  filter:blur(28px) saturate(1.3);animation:glassFloat 26s ease-in-out infinite alternate}
+:root[data-ui="glass"][data-theme="dark"] body::before{opacity:.75}
+@keyframes glassFloat{0%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(3%,-2%,0) scale(1.06)}100%{transform:translate3d(-2%,3%,0) scale(1.02)}}
+:root[data-ui="glass"] .card,:root[data-ui="glass"] .c-card,:root[data-ui="glass"] .panel,:root[data-ui="glass"] .sb-card,:root[data-ui="glass"] .m-box,:root[data-ui="glass"] .modal-box,:root[data-ui="glass"] .sheet,:root[data-ui="glass"] .route-card,:root[data-ui="glass"] .trip-card,:root[data-ui="glass"] .tile,:root[data-ui="glass"] .lg-prof,:root[data-ui="glass"] .my-card,:root[data-ui="glass"] #homeRoles .rl-card,:root[data-ui="glass"] .hx-card,:root[data-ui="glass"] .mm{
+  background:var(--glass-bg)!important;-webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);
+  border:1px solid var(--glass-line);box-shadow:0 1px 0 rgba(255,255,255,.55) inset,0 14px 34px -18px var(--glass-ink)}
+:root[data-ui="glass"] header.nav,:root[data-ui="glass"] .bottom-nav,:root[data-ui="glass"] .tabbar{background:var(--glass-bg-2)!important;-webkit-backdrop-filter:blur(22px) saturate(1.6);backdrop-filter:blur(22px) saturate(1.6);border-bottom:1px solid var(--glass-line)}
+:root[data-ui="glass"] .bottom-nav{border-top:1px solid var(--glass-line);border-bottom:0}
+:root[data-ui="glass"] input,:root[data-ui="glass"] select,:root[data-ui="glass"] textarea{background:rgba(255,255,255,.55)}
+:root[data-ui="glass"][data-theme="dark"] input,:root[data-ui="glass"][data-theme="dark"] select,:root[data-ui="glass"][data-theme="dark"] textarea{background:rgba(8,12,24,.55)}
+:root[data-ui="glass"] .btn:not(.btn-ghost),:root[data-ui="glass"] button.b{box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 10px 22px -12px rgba(0,0,0,.5)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root[data-ui="glass"]{--glass-bg:rgba(255,255,255,.92);--glass-bg-2:rgba(255,255,255,.9)}:root[data-ui="glass"][data-theme="dark"]{--glass-bg:rgba(18,28,58,.94);--glass-bg-2:rgba(18,28,58,.92)}}
+:root[data-ui="glass"][data-motion="reduced"] body::before,@media (prefers-reduced-motion:reduce){:root[data-ui="glass"] body::before{animation:none}}
+.ap-prev.gl{background:linear-gradient(135deg,#9fd0ff,#e3c6ff 55%,#ffd0a6);border-radius:10px}
+.ap-prev.gl i{background:rgba(255,255,255,.6);backdrop-filter:blur(2px);border-radius:6px}

@@ -623,6 +623,7 @@ document.addEventListener('click', (e) => {
     style: ['शैली', 'Style', 'शैली'],
     pixel: ['Pixel', 'Pixel', 'Pixel'], pixelS: ['गोलो र नरम', 'Round & soft', 'गोल और नरम'],
     classic: ['क्लासिक 3D', 'Classic 3D', 'क्लासिक 3D'], classicS: ['उठेको गहिराइ', 'Raised depth', 'उभरी गहराई'],
+    glass: ['ग्लास', 'Glass', 'ग्लास'], glassS: ['पारदर्शी · बबल', 'Translucent · bubbles', 'पारदर्शी · बबल'],
     motion: ['चाल (एनिमेसन)', 'Motion', 'गति (एनिमेशन)'],
     full: ['पूरा', 'Full', 'पूरी'], fullS: ['स्प्रिङ जस्तो', 'Springy', 'स्प्रिंग जैसी'],
     reduced: ['कम', 'Reduced', 'कम'], reducedS: ['शान्त स्क्रिन', 'Calm screen', 'शांत स्क्रीन'],
@@ -649,7 +650,7 @@ document.addEventListener('click', (e) => {
     shgPaintChrome(currentTheme());
   }
   function applyUi(v, save) {
-    v = v === 'classic' ? 'classic' : 'pixel';
+    v = v === 'classic' ? 'classic' : v === 'glass' ? 'glass' : 'pixel';   /* 23 Oct 2026: glass */
     d.setAttribute('data-ui', v);
     if (save !== false) lsSet('shg:ui', v);
   }
@@ -669,7 +670,7 @@ document.addEventListener('click', (e) => {
       else if (!d.hasAttribute('data-palette')) { const op = String(owner('app_theme_palette', '')); if (SHG_PAL_IDS.indexOf(op) >= 0) d.setAttribute('data-palette', op); }
       shgPalGuard();   /* 10 Oct 2026 (review fix): never undo index.php's stale-stylesheet guard */
       const su = lsGet('shg:ui');
-      if (su === 'pixel' || su === 'classic') d.setAttribute('data-ui', su);
+      if (su === 'pixel' || su === 'classic' || su === 'glass') d.setAttribute('data-ui', su);
       else if (!d.hasAttribute('data-ui')) d.setAttribute('data-ui', String(owner('app_ui_style', 'pixel')) === 'classic' ? 'classic' : 'pixel');
       const sm = lsGet('shg:motion');
       if (sm === 'reduced') d.setAttribute('data-motion', 'reduced');
@@ -694,7 +695,7 @@ document.addEventListener('click', (e) => {
   function render() {
     const theme = readSavedTheme() || 'auto';
     const pal = d.getAttribute('data-palette') || '';
-    const ui = d.getAttribute('data-ui') === 'classic' ? 'classic' : 'pixel';
+    const uiA = d.getAttribute('data-ui'), ui = uiA === 'classic' ? 'classic' : uiA === 'glass' ? 'glass' : 'pixel';
     const mo = d.getAttribute('data-motion') === 'reduced' ? 'reduced' : 'full';
     const F = window.SHGFeel;
     const li = L[lang()];
@@ -727,6 +728,7 @@ document.addEventListener('click', (e) => {
     h += '<section class="ap-sec"><h3 id="apStyH">✨ ' + esc(tx('style')) + '</h3><div class="ap-seg" role="radiogroup" aria-labelledby="apStyH">'
       + opt('data-ap-ui="pixel"', '<span class="ap-prev px"><i></i><i></i></span>', tx('pixel'), tx('pixelS'), ui === 'pixel')
       + opt('data-ap-ui="classic"', '<span class="ap-prev cl"><i></i><i></i></span>', tx('classic'), tx('classicS'), ui === 'classic')
+      + opt('data-ap-ui="glass"', '<span class="ap-prev gl"><i></i><i></i></span>', tx('glass'), tx('glassS'), ui === 'glass')
       + '</div></section>';
     h += '<section class="ap-sec"><h3 id="apMoH">🌊 ' + esc(tx('motion')) + '</h3><div class="ap-seg" role="radiogroup" aria-labelledby="apMoH">'
       + opt('data-ap-motion="full"', '〰️', tx('full'), tx('fullS'), mo === 'full')

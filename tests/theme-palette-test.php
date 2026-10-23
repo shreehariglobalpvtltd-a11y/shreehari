@@ -349,7 +349,7 @@ check('SQL (10 Oct): deploy order + verify SELECT documented in the file', strip
 check('SQL (9 Oct) still inserts the blank default (the 10 Oct file only updates)', (bool) preg_match("~\\('app_theme_palette',\\s*'',\\s*'string',\\s*'app'~", $sql));
 check('Admin -> Settings: dropdowns for style + sound pack', strpos($adm, "'app_ui_style'         => ['pixel'") !== false && strpos($adm, "'app_sound_pack'       => ['pixel'") !== false);
 check('Admin -> Settings: help text for all four', substr_count($adm, "'app_theme_palette'") >= 2 && strpos($adm, "'app_motion_on'                       =>") !== false);
-check('index.php: owner default applied only where nothing is saved', strpos($index, 'window.SHG_PAL_TC') !== false && strpos($index, "if (u !== 'pixel' && u !== 'classic')") !== false && strpos($index, "if (mo !== 'full' && mo !== 'reduced'") !== false);
+check('index.php: owner default applied only where nothing is saved', strpos($index, 'window.SHG_PAL_TC') !== false && strpos($index, "if (u !== 'pixel' && u !== 'classic' && u !== 'glass')") !== false && strpos($index, "if (mo !== 'full' && mo !== 'reduced'") !== false);
 check('index.php: data-off head script untouched', strpos($index, "btn_wa_fab_on: 'wafab'") !== false);
 /* the local DB rows (skipped when no DB is reachable) */
 $dbNote = '';

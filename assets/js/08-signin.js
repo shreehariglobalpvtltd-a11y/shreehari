@@ -194,6 +194,12 @@ function openLoginModal(opts) {
       <div class="err">${t('errPhone')}</div></div>
     ${lgExtraFieldsHTML(savedU, 'lg', false)}
     <div class="m-actions"><button class="btn btn-orange" type="button" id="otpSendBtn" style="width:100%">🟢 ${t('lgSendOtp')}</button></div>
+    <div class="lg-doors" id="lgDoors" role="group" aria-label="Other ways to sign in">
+      <small class="lg-doors-or">${t('lgPkOr')}</small>
+      <button type="button" class="lg-door d-wa" id="lgWaDoor">💬 ${t('lgWaDoor')}</button>
+      <button type="button" class="lg-door d-em" id="lgEmDoor">📧 ${t('lgEmDoor')}</button>
+      <button type="button" class="lg-door d-pk" id="lgPkDoor" hidden>👆 ${t('lgPkDoor')}</button>
+    </div>
     <div class="lg-links lg-guest-row"><button type="button" class="lg-link" id="lgGuest">${t('lgGuest')}</button></div>
     <p class="lg-note">🔒 ${t('lgNote')}</p>`);
   /* A visible way on without an account (D4-15): booking never needs one. */
@@ -203,6 +209,10 @@ function openLoginModal(opts) {
   if (savedCC === 'NP' || savedCC === 'IN') { const ccEl = $('#otpCC'); if (ccEl) ccEl.value = savedCC === 'NP' ? '977' : '91'; }
   (savedName ? (savedAddr ? $('#otpPhone') : $('#lgAddr')) : $('#qlName')).focus();
   $('#otpSendBtn').onclick = sendOtp;
+  /* 23 Oct 2026: WhatsApp "hi" (no credit needed), e-mail code, the phone's own lock */
+  const wd = $('#lgWaDoor'); if (wd) wd.onclick = () => lgDoor('wa');
+  const ed = $('#lgEmDoor'); if (ed) ed.onclick = () => lgDoor('email');
+  lgPkShow();
   $('#lgPhoto').addEventListener('change', function () {
     const f = this.files && this.files[0];
     if (!f) return;
@@ -290,6 +300,152 @@ async function sendOtp() {
   lgOtpStep({ p: p, cc: cc, country: country, name: name, address: address, extras: extras }, result || {});
 }
 
+/* ---------------------------------------------------------------------
+   23 Oct 2026 (owner: "customer login: email ma OTP, natra WhatsApp ma hi,
+   natra phone ko fingerprint / face"): three doors beside the WhatsApp code,
+   none of them needs AiSensy credit. api/customer-login.php.
+   ------------------------------------------------------------------- */
+/* The boxes of step 1, checked the same way sendOtp does; null = a box is marked. */
+function lgCollect() {
+  const p = digits($('#otpPhone').value);
+  const cc = ($('#otpCC') && $('#otpCC').value) || '91';
+  const f = $('#otpPhone').closest('.field');
+  const nameEl = $('#qlName'), addrEl = $('#lgAddr');
+  const name = nameEl ? nameEl.value.trim() : '', address = addrEl ? addrEl.value.trim() : '';
+  let bad = null;
+  if (nameEl) { const ok = name.length >= 2; nameEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || nameEl; }
+  if (addrEl) { const ok = address.length >= 3; addrEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || addrEl; }
+  const pOk = (typeof phoneShapeOk === 'function') ? phoneShapeOk(p, cc) : /^\d{10}$/.test(p);
+  f.classList.toggle('invalid', !pOk); if (!pOk) bad = bad || $('#otpPhone');
+  if (bad) { bad.focus(); return null; }
+  const extras = lgReadExtras('lg');
+  if (!extras) return null;
+  return { p: p, cc: cc, country: cc === '977' ? 'NP' : 'IN', name: name, address: address, extras: extras };
+}
+async function lgDoor(kind) {
+  const s = lgCollect(); if (!s) return;
+  const btn = $(kind === 'wa' ? '#lgWaDoor' : '#lgEmDoor'); const label = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    if (kind === 'wa') {
+      const d = await shgApi.post('/customer-login.php', { action: 'wa-start', phone: s.p, cc: s.cc });
+      lgWaStep(s, d || {});
+    } else {
+      const d = await shgApi.post('/customer-login.php', { action: 'email-request', phone: s.p, cc: s.cc });
+      if (!d || d.sent !== true) {
+        toast(d && d.reason === 'no_email' ? t('lgEmNone') : (d && d.error) || t('lgEmFail'));
+        if (btn) { btn.disabled = false; btn.innerHTML = label; }
+        return;
+      }
+      lgOtpStep(Object.assign({ via: 'email' }, s), d);
+    }
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = label; }
+    toast((e && e.message) || t('errOtpSend'));
+  }
+}
+/* WhatsApp: one tap opens the app with "hi VERIFY …" typed to the company number; a computer shows the QR;
+   the sheet asks the server every 3 s and signs in the moment the message arrived from that number. */
+function lgWaStep(s, d) {
+  const pc = !(window.ShgWa && window.ShgWa.mobile);
+  openModal(`
+    <h3 class="m-title">💬 ${t('lgWaT')}</h3>
+    <p class="m-sub">${tf('lgWaP', { p: '+' + s.cc + ' ' + s.p })}</p>
+    <a class="btn btn-orange" id="lgWaGo" href="${esc(d.url || '#')}" ${pc ? 'target="_blank" rel="noopener"' : ''} style="width:100%;background:#1faa59;box-shadow:0 4px 0 #127a3e;display:flex;justify-content:center">💬 ${t('lgWaOpen')}</a>
+    ${pc && d.qr ? '<div class="lg-wa-qr"><img src="' + esc(d.qr) + '" width="168" height="168" alt="WhatsApp QR"><small>' + t('lgWaScan') + '</small></div>' : ''}
+    <p class="lg-wa-wait" id="lgWaWait">⏳ ${t('lgWaWait')}</p>
+    <div class="lg-links"><button type="button" class="lg-link" id="lgBack">✏️ ${t('lgChange')}</button></div>`);
+  const go = $('#lgWaGo');
+  if (go) go.addEventListener('click', (e) => { if (window.ShgWa && d.to && d.text) { e.preventDefault(); window.ShgWa.open(d.to, d.text, d.url); } });
+  let n = 0, stop = false;
+  const tick = async () => {
+    if (stop || !document.body.contains(go) || ++n > 400) return;
+    try {
+      const r = await shgApi.post('/customer-login.php', Object.assign({ action: 'wa-check', token: d.token, phone: s.p, cc: s.cc, name: s.name, address: s.address }, s.extras));
+      if (r && r.signedIn) {
+        stop = true;
+        let su = r.user || { phone: s.p };
+        if (_lgPhoto) { try { const fd = new FormData(); fd.append('action', 'photo'); fd.append('photo', _lgPhoto); const pr = await shgApi.postForm('/profile.php', fd); if (pr && pr.profile) su = Object.assign({}, su, pr.profile); } catch (e) {} _lgPhoto = null; }
+        lgSetUserFrom(su, s.p, Object.assign({ name: s.name, address: s.address }, s.extras));
+        lgAfterSignIn(); lgPkOffer();
+        return;
+      }
+      const w = $('#lgWaWait');
+      if (w && r && r.status === 'mismatch') w.textContent = '❌ ' + t('lgWaMis');
+      if (r && r.status === 'expired') { if (w) w.textContent = '⌛ ' + t('lgWaExp'); return; }
+    } catch (e) {}
+    setTimeout(tick, document.hidden ? 6000 : 3000);
+  };
+  setTimeout(tick, 2500);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !stop) tick(); }, { once: false });
+  $('#lgBack').onclick = () => { stop = true; openLoginModal({ u: Object.assign({ name: s.name, address: s.address, phone: s.p, country: s.country }, s.extras) }); const c = $('#otpCC'); if (c) c.value = s.cc; };
+}
+/* The phone's own lock (WebAuthn passkey): shown only where the browser has one. */
+function lgPkB2u(buf) { let o = '', b = new Uint8Array(buf); for (let i = 0; i < b.length; i++) o += String.fromCharCode(b[i]); return btoa(o).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function lgPkU2b(str) { const s = atob(String(str).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((str.length + 3) % 4)); const b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return b.buffer; }
+let _lgPkOk = null;
+function lgPkAvail() {
+  if (_lgPkOk) return _lgPkOk;
+  _lgPkOk = (window.PublicKeyCredential && navigator.credentials && window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable)
+    ? window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => false) : Promise.resolve(false);
+  return _lgPkOk;
+}
+function lgPkShow() {
+  const b = $('#lgPkDoor'); if (!b) return;
+  lgPkAvail().then(ok => { if (ok && document.body.contains(b)) { b.hidden = false; b.onclick = lgPkLogin; } });
+}
+async function lgPkLogin() {
+  const b = $('#lgPkDoor'); if (b) { b.disabled = true; }
+  try {
+    const o = await shgApi.post('/customer-login.php', { action: 'pk-login-options' });
+    const pk = o.publicKey; pk.challenge = lgPkU2b(pk.challenge);
+    const c = await navigator.credentials.get({ publicKey: pk });
+    if (!c) throw new Error('cancelled');
+    const r = c.response;
+    const v = await shgApi.post('/customer-login.php', { action: 'pk-login', cred: { id: c.id, clientDataJSON: lgPkB2u(r.clientDataJSON), authenticatorData: lgPkB2u(r.authenticatorData), signature: lgPkB2u(r.signature) } });
+    if (!v || !v.signedIn) throw new Error(t('lgPkFail'));
+    lgSetUserFrom(v.user, (v.user && v.user.phone) || '', null);
+    lgAfterSignIn();
+  } catch (e) {
+    if (b) b.disabled = false;
+    const cancelled = e && (e.name === 'NotAllowedError' || /cancel/i.test(String(e.message || '')));
+    if (!cancelled) toast((e && e.message) || t('lgPkFail'));
+  }
+}
+/* After a proven sign-in: once per device, offer to add the phone's lock. */
+function lgPkOffer() {
+  lgPkAvail().then(ok => {
+    if (!ok || !USER || !USER.verified) return;
+    try { if (localStorage.getItem('shg:pk-offered') === USER.phone) return; localStorage.setItem('shg:pk-offered', USER.phone); } catch (e) {}
+    setTimeout(() => { if (typeof openModal !== 'function') return;
+      openModal(`<h3 class="m-title">👆 ${t('lgPkAdd')}</h3><p class="m-sub">${t('lgPkAddP')}</p>
+        <div class="m-actions"><button class="btn btn-orange" type="button" id="lgPkAddGo" style="width:100%">👆 ${t('lgPkAdd')}</button></div>
+        <div class="lg-links lg-guest-row"><button type="button" class="lg-link" id="lgPkLater">${t('lgPkLater')}</button></div>`);
+      $('#lgPkAddGo').onclick = () => lgPkAdd($('#lgPkAddGo'));
+      $('#lgPkLater').onclick = () => closeModal();
+    }, 900);
+  });
+}
+async function lgPkAdd(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const o = await shgApi.post('/customer-login.php', { action: 'pk-reg-options' });
+    const pk = o.publicKey; pk.challenge = lgPkU2b(pk.challenge); pk.user.id = lgPkU2b(pk.user.id);
+    pk.excludeCredentials = (pk.excludeCredentials || []).map(c => Object.assign({}, c, { id: lgPkU2b(c.id) }));
+    const c = await navigator.credentials.create({ publicKey: pk });
+    if (!c) throw new Error('cancelled');
+    const r = c.response, tr = (r.getTransports ? r.getTransports() : []) || [];
+    await shgApi.post('/customer-login.php', { action: 'pk-register', label: (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || 'This phone', cred: { id: c.id, clientDataJSON: lgPkB2u(r.clientDataJSON), attestationObject: lgPkB2u(r.attestationObject), transports: tr } });
+    toast(t('lgPkAdded')); closeModal();
+    const h = location.hash || ''; if (h === '#/my' || h.indexOf('#/my?') === 0) renderMyBookings();
+  } catch (e) {
+    if (btn) btn.disabled = false;
+    const cancelled = e && (e.name === 'NotAllowedError' || /cancel/i.test(String(e.message || '')));
+    if (!cancelled) toast((e && e.message) || t('lgPkFail'));
+  }
+}
+document.addEventListener('click', (e) => { const b = e.target && e.target.closest && e.target.closest('#lgPkAddBtn'); if (b) lgPkAdd(b); });
+
 /* Step 2 → the code from WhatsApp. */
 function lgOtpStep(s, result) {
   const demoNote = result.debugCode ? tf('otpDemo', { c: result.debugCode }) : '';
@@ -299,8 +455,8 @@ function lgOtpStep(s, result) {
      skip while a delivered code was on its way. */
   const failed = result.sent === false;
   openModal(`
-    <h3 class="m-title">🔐 ${t('lgOtpTitle')}</h3>
-    <p class="m-sub">${failed ? t('lgOtpFail') : tf('lgOtpSent', { p: '+' + s.cc + ' ' + s.p })}</p>
+    <h3 class="m-title">🔐 ${s.via === 'email' ? t('lgEmT') : t('lgOtpTitle')}</h3>
+    <p class="m-sub">${s.via === 'email' ? tf('lgEmSent', { e: result.to || '' }) : failed ? t('lgOtpFail') : tf('lgOtpSent', { p: '+' + s.cc + ' ' + s.p })}</p>
     ${demoNote ? '<div class="verify-note" style="margin-bottom:14px">🧪 <span>' + demoNote + '</span></div>' : ''}
     <div class="field"><label for="otpCode">${t('lblOtpCode')}</label><input id="otpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="text-align:center;font-family:var(--f-code);font-size:22px;letter-spacing:.3em"><div class="err">${t('otpBad')}</div></div>
     <div class="m-actions"><button class="btn btn-orange" type="button" id="otpVerifyBtn" style="width:100%">${t('otpVerify')}</button></div>
@@ -333,7 +489,8 @@ function lgOtpStep(s, result) {
   rs.onclick = async () => {
     rs.disabled = true;
     try {
-      const r = await shgApi.post('/otp.php', { action: 'request', phone: s.p, name: s.name, purpose: 'login', country: s.country });
+      const r = s.via === 'email' ? await shgApi.post('/customer-login.php', { action: 'email-request', phone: s.p, cc: s.cc })
+        : await shgApi.post('/otp.php', { action: 'request', phone: s.p, name: s.name, purpose: 'login', country: s.country });
       until = Date.now() + Math.max(30, Number(r && r.resendIn) || 60) * 1000;
       toast(r && r.sent === false ? t('lgOtpFail') : t('lgResent'));
       if (r && r.sent === false && r.canSkip) { const sb = $('#lgSkipBox'); if (sb) sb.hidden = false; }
@@ -361,7 +518,9 @@ function lgOtpStep(s, result) {
     const vbtn = $('#otpVerifyBtn');
     if (vbtn) { vbtn.disabled = true; vbtn.textContent = '…'; }
     try {
-      const v = await shgApi.post('/otp.php', Object.assign({ action: 'verify', phone: s.p, code: c, purpose: 'login', country: s.country, name: s.name, address: s.address }, s.extras));
+      const v = s.via === 'email'
+        ? await shgApi.post('/customer-login.php', Object.assign({ action: 'email-verify', phone: s.p, cc: s.cc, code: c, name: s.name, address: s.address }, s.extras))
+        : await shgApi.post('/otp.php', Object.assign({ action: 'verify', phone: s.p, code: c, purpose: 'login', country: s.country, name: s.name, address: s.address }, s.extras));
       clearInterval(tick);
       let su = (v && v.user) || { phone: s.p };
       if (_lgPhoto) {
@@ -375,7 +534,7 @@ function lgOtpStep(s, result) {
         _lgPhoto = null;
       }
       lgSetUserFrom(su, s.p, Object.assign({ name: s.name, address: s.address }, s.extras));
-      lgAfterSignIn();
+      lgAfterSignIn(); lgPkOffer();
     } catch (e) {
       if (vbtn) { vbtn.disabled = false; vbtn.textContent = t('otpVerify'); }
       code.closest('.field').classList.add('invalid');
@@ -408,7 +567,7 @@ function profileCardHTML() {
     </div>
     <div class="lg-prof-actions">
       ${USER.otpVerified
-        ? '<button class="btn btn-ghost btn-sm" type="button" id="lgEditBtn">✏️ ' + t('lgEdit') + '</button>'
+        ? '<button class="btn btn-ghost btn-sm" type="button" id="lgEditBtn">✏️ ' + t('lgEdit') + '</button>' + (window.PublicKeyCredential ? '<button class="btn btn-ghost btn-sm" type="button" id="lgPkAddBtn">👆 ' + t('lgPkAdd') + '</button>' : '')
         : '<button class="btn btn-orange btn-sm" type="button" id="lgVerifyBtn">🟢 ' + t('lgVerifyNow') + '</button>'}
       <button class="btn btn-ghost btn-sm" type="button" id="myLogoutBtn">${t('myLogout')}</button>
     </div>

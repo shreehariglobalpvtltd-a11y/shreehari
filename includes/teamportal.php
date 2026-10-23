@@ -863,6 +863,9 @@ final class TeamPortal
         $id   = (int) $row['owner_id'];
         $phone10 = (string) $row['phone10'];
         $no = ['ok' => false, 'error' => 'यो खाता अहिले खुल्दैन — कार्यालयमा सोध्नुहोस् · This account cannot sign in now. Please ask the office.'];
+        if ($kind !== 'admin' && $kind !== 'staff') {
+            return $no;   // 23 Oct 2026: a passenger's passkey (owner_kind user) belongs to api/customer-login.php
+        }
         if ($kind === 'admin') {
             $a = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $id]);
             if ($a === null || (int) $a['is_active'] !== 1 || (string) $a['password_hash'] === '' || !self::adminUsable($a, $phone10)) {
