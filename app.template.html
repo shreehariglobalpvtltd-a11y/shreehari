@@ -1484,6 +1484,14 @@ s.addEventListener('click',function(e){e.preventDefault();
       #homeForms .t3-ph i{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;border:3px solid var(--surface,#fff);background:#e8eefb center/cover no-repeat;font-style:normal;font-size:30px;font-weight:800;color:var(--k)}
       #homeForms .t3-card.r1 .t3-ph i{animation:t3spin 6s linear infinite reverse}
       @keyframes t3spin{to{transform:rotate(360deg)}}
+      #homeForms .t3-card.nophoto{padding-top:46px;justify-content:center}
+      #homeForms .t3-card.nophoto .t3-name{font-size:18px}
+      #homeForms .t3-ceo{display:flex;align-items:center;gap:14px;margin:0 0 14px;padding:12px 16px 12px 12px;border-radius:20px;text-decoration:none;color:#fff;background:linear-gradient(135deg,#0a2a8f,#11703F 75%,#f07a1e 140%);box-shadow:0 14px 28px -18px rgba(10,42,143,.9)}
+      #homeForms .t3-ceo img{flex:0 0 76px;width:76px;height:76px;border-radius:50%;object-fit:cover;object-position:50% 18%;border:3px solid #fff;background:#fff}
+      #homeForms .t3-ceo span{display:flex;flex-direction:column;min-width:0}
+      #homeForms .t3-ceo small{font-size:12px;font-weight:800;letter-spacing:.03em;color:#ffd79a}
+      #homeForms .t3-ceo b{font-size:19px;line-height:1.25}
+      #homeForms .t3-ceo em{font-style:normal;font-size:12.5px;opacity:.9}
       #homeForms .t3-name{margin:0;font-size:16px;font-weight:800;line-height:1.3;color:var(--fg,#0d1b3e);overflow-wrap:anywhere}
       #homeForms .t3-role{margin:0;font-size:13px;color:var(--k);font-weight:700}
       #homeForms .t3-area{margin:0;font-size:12.5px;color:var(--muted,#5b6b8c)}
@@ -1509,9 +1517,9 @@ s.addEventListener('click',function(e){e.preventDefault();
       <h2 id="homeFormsTitle">हाम्रा उत्कृष्ट कर्मचारी, एजेन्ट र साझेदार · Our top people</h2>
       <p class="t3-sub">कम्पनीले परिचयपत्र जाँचेर स्वीकृत गरेका मान्छे — कामका आधारमा क्रमबद्ध। तपाईं पनि जोडिनुहोस्: एउटै अनलाइन फारम, सम्झौताका सबै सर्त भित्रै। · Approved and verified by the office, ranked by their work.</p>
       <a class="t3-go" href="/agreements/#apply">✍️ अहिले आवेदन दिनुहोस् · Apply now</a>
-      <div class="t3-grp g-staff" data-t3="staff"><div class="t3-head"><h3>🧑‍✈️ Top 3 कर्मचारी · Staff</h3><a href="/agreements/staff-agreement.html">📜 सम्झौता ›</a></div><div class="t3-row"><div class="t3-skel"></div><div class="t3-skel"></div><div class="t3-skel"></div></div></div>
+      <div class="t3-grp g-staff" data-t3="staff"><a class="t3-ceo" href="#homeCeo"><img src="/assets/img/ceo-sm.webp?v=20261022z" width="480" height="667" alt="" loading="lazy" decoding="async"><span><small>👑 प्रमुख कार्यकारी अधिकृत · CEO</small><b data-fact="ceo.name">{{f:ceo.name}}</b><em>संस्थापक तथा प्रमुख कार्यकारी · S Hari Global Pvt. Ltd.</em></span></a><div class="t3-head"><h3>🧑‍✈️ Top 3 कर्मचारी · Staff</h3><a href="/agreements/staff-agreement.html">📜 सम्झौता ›</a></div><div class="t3-row"><div class="t3-skel"></div><div class="t3-skel"></div><div class="t3-skel"></div></div></div>
       <div class="t3-grp g-agent" data-t3="agent"><div class="t3-head"><h3>🤝 Top 3 एजेन्ट · Agents</h3><a href="/agreements/agent-agreement-ne.html">📜 सम्झौता ›</a></div><div class="t3-row"><div class="t3-skel"></div><div class="t3-skel"></div><div class="t3-skel"></div></div></div>
-      <div class="t3-grp g-partner" data-t3="partner"><div class="t3-head"><h3>🏢 Top 3 साझेदार कम्पनी · Partners</h3><a href="/agreements/partner-agreement-ne.html">📜 सम्झौता ›</a></div><div class="t3-row"><div class="t3-skel"></div><div class="t3-skel"></div><div class="t3-skel"></div></div></div>
+      <div class="t3-grp g-partner" data-t3="partner"><div class="t3-head"><h3>🏢 Top 3 साझेदार कम्पनी · Pvt. Ltd.</h3><a href="/agreements/partner-agreement-ne.html">📜 सम्झौता ›</a></div><div class="t3-row"><div class="t3-skel"></div><div class="t3-skel"></div><div class="t3-skel"></div></div></div>
     </div>
     <script>
     (function () {
@@ -1526,11 +1534,13 @@ s.addEventListener('click',function(e){e.preventDefault();
       function card(p, i, kind) {
         var c = el('article', 't3-card r' + (i + 1));
         c.appendChild(el('span', 't3-rank', '#' + (i + 1)));
-        var ph = el('div', 't3-ph'), im = el('i');
-        im.setAttribute('aria-hidden', 'true');
-        if (/^(\/|https:\/\/)[^"'()\\\s]+$/.test(String(p.photo || ''))) im.style.backgroundImage = 'url("' + p.photo + '")';
-        else im.textContent = (String(p.name || '').trim().charAt(0) || '•').toUpperCase();
-        ph.appendChild(im); c.appendChild(ph);
+        // 23 Oct 2026 (owner: "photo vaye photo dekhos, natra name matra"): no photo = no letter circle, the name alone
+        if (/^(\/|https:\/\/)[^"'()\\\s]+$/.test(String(p.photo || ''))) {
+          var ph = el('div', 't3-ph'), im = el('i');
+          im.setAttribute('aria-hidden', 'true');
+          im.style.backgroundImage = 'url("' + p.photo + '")';
+          ph.appendChild(im); c.appendChild(ph);
+        } else c.classList.add('nophoto');
         c.appendChild(el('h4', 't3-name', p.name || ''));
         if (p.role) c.appendChild(el('p', 't3-role', p.role));
         if (p.area) c.appendChild(el('p', 't3-area', '📍 ' + p.area));
@@ -1565,7 +1575,8 @@ s.addEventListener('click',function(e){e.preventDefault();
         })
         .catch(function () {
           // no answer: the groups simply step aside; the Apply button stays
-          [].forEach.call(box.querySelectorAll('.t3-grp'), function (g) { g.hidden = true; });
+          [].forEach.call(box.querySelectorAll('.t3-grp'), function (g) { g.hidden = !g.querySelector('.t3-ceo'); });
+          [].forEach.call(box.querySelectorAll('.g-staff .t3-head,.g-staff .t3-row'), function (n) { n.hidden = true; });   // the CEO card stays
         });
     })();
     </script>

@@ -188,7 +188,8 @@ foreach (['/agent-agreement/', '/agent-panel.html', '/desk'] as $href) {
 check('index: no agent list any more', !str_contains($idx, 'id="dirList"') && !str_contains($idx, '/api/agent-directory.php'));
 check('index: one Apply now with the three forms', substr_count($idx, '<details class="applynow"') === 1
     && str_contains($idx, 'href="/agreements/apply.html?kind=staff"') && str_contains($idx, 'href="/agreements/apply.html"') && str_contains($idx, 'href="/agreements/apply.html?kind=partner"'));
-check('index: every kind has its A4 form', str_contains($idx, 'form.php?kind=staff') && str_contains($idx, 'form.php?kind=agent') && str_contains($idx, 'form.php?kind=partner'));
+// 23 Oct 2026 (owner: "3 ota chuta chutai ... combo eutai hybrid"): one form + agreement document per kind
+check('index: every kind has its one hybrid form + agreement', str_contains($idx, 'document.php?kind=staff') && str_contains($idx, 'document.php?kind=agent') && str_contains($idx, 'document.php?kind=partner') && !str_contains($idx, 'form.php?kind='));
 check('index: no innerHTML', !str_contains($idx, 'innerHTML'));
 // 22 Oct 2026: the one script the landing page may load is our own /assets/js/wa-direct.js
 // (owner: every WhatsApp button opens WhatsApp in one tap).
