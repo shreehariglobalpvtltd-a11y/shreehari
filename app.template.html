@@ -1901,7 +1901,14 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div class="co-card">
         <h3><span class="stepdot">2</span><span data-i18n="coPax">Passengers</span></h3>
         <p class="hint" data-i18n="coPaxHint">One name for the whole group. Other details are optional and can be added at boarding.</p>
+        <!-- Template strip: saved passenger groups auto-fill in one tap -->
+        <div id="tplStrip" class="tpl-strip hide"></div>
         <div id="paxRows"></div>
+        <!-- Save / manage templates -->
+        <div id="tplActions" class="tpl-actions hide">
+          <button type="button" class="btn btn-ghost btn-sm" id="tplSaveBtn">💾 Save as Template</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="tplShareBtn" style="display:none">📤 Share via WhatsApp</button>
+        </div>
       </div>
       <!-- Optional agent-code field (master-prompt §2/§3). Plain text input,
            not a dropdown. Blank = normal direct sale. A valid SHG-NNN

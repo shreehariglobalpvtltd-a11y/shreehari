@@ -92,6 +92,30 @@ final class WaBooking
             return null;
         }
 
+        // "form bhara" / "template" — if the customer has saved templates,
+        // send them a one-tap booking link instead of the Q&A flow.
+        if ($state === null && self::isFormRequest($text)) {
+            $tpl = self::bestTemplate($phoneDigits);
+            if ($tpl !== null) {
+                $token = bin2hex(random_bytes(16));
+                Database::insert('form_template_tokens', [
+                    'token'       => $token,
+                    'template_id' => (int) $tpl['id'],
+                    'expires_at'  => date('Y-m-d H:i:s', time() + 72 * 3600),
+                ]);
+                $base = Settings::get('site_url', 'https://www.shreehariglobal.in');
+                $link = $base . '/#/book?tpl=' . $token;
+                $pax  = json_decode($tpl['passengers'], true) ?: [];
+                $names = implode(', ', array_column($pax, 'name'));
+                $msg = "📋 *{$tpl['label']}*\n"
+                     . "Passengers: {$names}\n\n"
+                     . "👇 Tap to book with your saved details:\n{$link}\n\n"
+                     . "यो लिंकमा थिच्नुहोस् — नाम, उमेर सबै भरिसकेको छ।";
+                return self::out($msg);
+            }
+            // No saved template — fall through to the normal booking Q&A flow
+        }
+
         /* Computed BEFORE anything writes the conversation row, because
            greetedAlready() keys on exactly that row: once the state exists
            we are mid-conversation and the mantra must not repeat. */
@@ -975,8 +999,8 @@ Example: Ram Bahadur 35, Sita Gurung 30",
     {
         $t    = mb_strtolower(trim($text));
         $said = false;
-        foreach (['book', 'ticket', 'seat', 'टिकट', 'बुक', 'सिट', 'सीट', 'चाहियो', 'चाहिए', 'चाहिये',
-                  'जानु', 'जाना', 'ટિકિટ', 'બુક', 'સીટ'] as $w) {
+        foreach (['book', 'ticket', 'seat', 'form', 'template', 'टिकट', 'बुक', 'सिट', 'सीट', 'चाहियो', 'चाहिए', 'चाहिये',
+                  'जानु', 'जाना', 'ટિકિટ', 'બુક', 'સીટ', 'फर्म', 'फारम'] as $w) {
             if (str_contains($t, $w)) {
                 $said = true;
                 break;
@@ -1225,5 +1249,26 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         $parts = explode(' ', $full);
         $take  = array_slice($parts, 0, 2);
         return mb_substr(implode(' ', $take), 0, 40);
+    }
+
+    private static function isFormRequest(string $text): bool
+    {
+        $t = mb_strtolower(trim($text));
+        foreach (['form', 'template', 'फारम', 'फर्म', 'टेम्प्लेट', 'saved', 'भरिसकेको'] as $w) {
+            if (str_contains($t, $w)) return true;
+        }
+        return false;
+    }
+
+    private static function bestTemplate(string $phoneDigits): ?array
+    {
+        try {
+            return Database::fetch(
+                'SELECT * FROM customer_form_templates WHERE phone = :p ORDER BY use_count DESC, id DESC LIMIT 1',
+                ['p' => $phoneDigits]
+            );
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 }

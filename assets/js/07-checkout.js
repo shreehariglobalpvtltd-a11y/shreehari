@@ -778,6 +778,8 @@ function renderCheckout() {
      a fresh PaxMemory chip-pick or a Quick-Booking hand-off always wins.
      Prune first to avoid resurrecting anything older than 6h. */
   try { CheckoutDraft.prune(); if (!isCounterSale()) CheckoutDraft.restore(); } catch (e) {}   // a desk never inherits an abandoned customer's typing
+  /* Saved passenger templates — chip strip above passenger rows */
+  try { renderTemplateStrip(); } catch (e) {}
   /* Debounced auto-save on every input/change inside the checkout form,
      so a tab that dies mid-typing preserves what was already there. */
   try {
@@ -1353,6 +1355,8 @@ async function submitBooking() {
   /* Remember these travellers for next time — only now that the booking
      actually exists on the server, never from a half-filled form. */
   try { PaxMemory.remember(booking); } catch (e) {}
+  /* Auto-save a form template from this booking (non-blocking) */
+  try { if (!isCounterSale()) FormTemplates.autoCreate().catch(() => {}); } catch (e) {}
   /* Consumed — the draft is no longer needed and would otherwise linger
      until prune (6h) or a fresh checkout on the same route overwrites it. */
   try { CheckoutDraft.clear(); } catch (e) {}
@@ -1374,6 +1378,260 @@ async function submitBooking() {
   } catch (e) {}
   // Payment proof was already sent to the server above — no follow-up prompt needed.
   pvLoadEmailJS();
+}
+
+/* ================================================================
+   [JS] 9b. CUSTOMER FORM TEMPLATES — saved passenger groups that
+   auto-fill the checkout in one tap, shareable via WhatsApp link.
+================================================================ */
+const FormTemplates = {
+  _cache: null,
+
+  async list() {
+    if (this._cache) return this._cache;
+    try {
+      const r = await shgApi.post('/customer-template.php', { action: 'list' });
+      if (r.ok) { this._cache = r.data || []; return this._cache; }
+    } catch (e) {}
+    return [];
+  },
+
+  invalidate() { this._cache = null; },
+
+  async save(label, passengers) {
+    const user = (typeof USER !== 'undefined' && USER) ? USER : null;
+    if (!user) { toast('Sign in to save templates'); return null; }
+    const phone = $('#cPhone') ? digits($('#cPhone').value) : '';
+    const email = $('#cEmail') ? $('#cEmail').value : '';
+    const idT   = $('#idType') ? $('#idType').value : '';
+    const idN   = $('#idNum')  ? $('#idNum').value : '';
+    const cc    = $('#cCountry') ? $('#cCountry').value : '91';
+    const r = await shgApi.post('/customer-template.php', {
+      action: 'save', label,
+      contactName: passengers[0] ? passengers[0].name : '',
+      contactEmail: email, idType: idT, idNumber: idN, countryCode: cc,
+      passengers
+    });
+    if (r.ok) { this.invalidate(); toast(r.message || 'Template saved'); }
+    else toast(r.error || 'Could not save');
+    return r.ok ? r.data : null;
+  },
+
+  async deleteTemplate(id) {
+    const r = await shgApi.post('/customer-template.php', { action: 'delete', id });
+    if (r.ok) { this.invalidate(); toast('Template deleted'); }
+    return r.ok;
+  },
+
+  async getToken(id) {
+    const r = await shgApi.post('/customer-template.php', { action: 'token', id });
+    return r.ok ? r.data : null;
+  },
+
+  async autoCreate() {
+    const r = await shgApi.post('/customer-template.php', { action: 'auto' });
+    if (r.ok) { this.invalidate(); }
+    return r;
+  },
+
+  apply(tpl) {
+    const pax = tpl.passengers || [];
+    const rows = $$('#paxRows .pax-row');
+    if (!rows.length || !pax.length) return;
+
+    if (pax.length > 1 && rows.length > 1) {
+      Flow.paxIndividual = true;
+      const pr = $('#paxRows');
+      if (pr) pr.classList.add('pax-names-on');
+      const pnt = $('#paxNamesToggle');
+      if (pnt) { pnt.setAttribute('aria-pressed', 'true'); pnt.textContent = t('paxNamesOff'); }
+      const leadLbl = $('#paxRows .grp-lead .grp-fields label');
+      if (leadLbl) leadLbl.textContent = t('lblName');
+    }
+
+    pax.forEach((p, i) => {
+      const row = rows[i];
+      if (!row) return;
+      const nm = $('.pxName', row), ag = $('.pxAge', row), gn = $('.pxGender', row);
+      if (nm) { nm.value = p.name || ''; nm.dispatchEvent(new Event('input', { bubbles: true })); }
+      if (ag && p.age) { ag.value = String(p.age); ag.dispatchEvent(new Event('input', { bubbles: true })); }
+      if (gn && p.gender) { gn.value = p.gender; gn.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+
+    if (tpl.contactName && $('#cPhone') && !$('#cPhone').value && tpl.phone) {
+      $('#cPhone').value = tpl.phone;
+    }
+    if (tpl.contactEmail && $('#cEmail') && !$('#cEmail').value) {
+      $('#cEmail').value = tpl.contactEmail;
+    }
+    if (tpl.idType && $('#idType')) $('#idType').value = tpl.idType;
+    if (tpl.idNumber && $('#idNum')) $('#idNum').value = tpl.idNumber;
+    if (tpl.countryCode && $('#cCountry')) {
+      $('#cCountry').value = tpl.countryCode;
+      $('#cCountry').dataset.trusted = '1';
+    }
+
+    toast('✅ ' + (tpl.label || 'Template') + ' applied');
+    SFX.tap && SFX.tap();
+  }
+};
+
+async function renderTemplateStrip() {
+  const strip = $('#tplStrip');
+  const acts  = $('#tplActions');
+  if (!strip) return;
+
+  const user = (typeof USER !== 'undefined' && USER) ? USER : null;
+  if (!user || isCounterSale()) {
+    strip.classList.add('hide');
+    if (acts) acts.classList.add('hide');
+    return;
+  }
+
+  const templates = await FormTemplates.list();
+
+  // URL token prefill
+  const urlTpl = new URLSearchParams(location.hash.split('?')[1] || '').get('tpl');
+  if (urlTpl && !strip.dataset.tokenApplied) {
+    strip.dataset.tokenApplied = '1';
+    try {
+      const r = await shgApi.post('/customer-template.php', { action: 'apply', token: urlTpl });
+      if (r.ok && r.data) {
+        FormTemplates.apply(r.data);
+        toast('📋 Template loaded from link');
+      }
+    } catch (e) {}
+  }
+
+  if (templates.length === 0) {
+    strip.classList.add('hide');
+    // Auto-create from last booking
+    if (!strip.dataset.autoTried) {
+      strip.dataset.autoTried = '1';
+      const r = await FormTemplates.autoCreate();
+      if (r.ok && r.data) {
+        await renderTemplateStrip();
+        return;
+      }
+    }
+  } else {
+    strip.classList.remove('hide');
+    strip.innerHTML = templates.map(tpl =>
+      '<button type="button" class="tpl-chip" data-tpl-id="' + tpl.id + '">' +
+        '<span class="tpl-icon">👥</span>' +
+        '<span>' + esc(tpl.label) + '</span>' +
+        '<span class="tpl-count">' + tpl.paxCount + '</span>' +
+      '</button>'
+    ).join('') +
+    '<button type="button" class="tpl-chip" id="tplManageBtn" style="border-style:dashed;font-weight:500">' +
+      '<span class="tpl-icon">⚙️</span><span>Manage</span>' +
+    '</button>';
+
+    strip.querySelectorAll('.tpl-chip[data-tpl-id]').forEach(btn => {
+      btn.onclick = () => {
+        const id = parseInt(btn.dataset.tplId, 10);
+        const tpl = templates.find(t => t.id === id);
+        if (tpl) {
+          strip.querySelectorAll('.tpl-chip').forEach(c => c.classList.remove('active'));
+          btn.classList.add('active');
+          FormTemplates.apply(tpl);
+        }
+      };
+    });
+
+    const manageBtn = $('#tplManageBtn');
+    if (manageBtn) manageBtn.onclick = () => showTemplateManager(templates);
+  }
+
+  // Show save / share buttons
+  if (acts) {
+    acts.classList.remove('hide');
+    const saveBtn = $('#tplSaveBtn');
+    const shareBtn = $('#tplShareBtn');
+
+    if (saveBtn) saveBtn.onclick = async () => {
+      const paxRows = $$('#paxRows .pax-row');
+      const passengers = [];
+      paxRows.forEach(row => {
+        const nm = ($('.pxName', row) || {}).value || '';
+        if (!nm.trim()) return;
+        passengers.push({
+          name: nm.trim(),
+          age: parseInt(($('.pxAge', row) || {}).value, 10) || null,
+          gender: ($('.pxGender', row) || {}).value || null
+        });
+      });
+      if (passengers.length < 1) { toast('Enter at least one name first'); return; }
+      const label = passengers.length > 1
+        ? passengers[0].name + ' + ' + (passengers.length - 1)
+        : passengers[0].name;
+      const saved = await FormTemplates.save(label, passengers);
+      if (saved) {
+        await renderTemplateStrip();
+        if (shareBtn) shareBtn.style.display = '';
+      }
+    };
+
+    if (shareBtn && templates.length > 0) {
+      shareBtn.style.display = '';
+      shareBtn.onclick = async () => {
+        const lastTpl = templates[0];
+        const tok = await FormTemplates.getToken(lastTpl.id);
+        if (!tok) { toast('Could not generate link'); return; }
+        const text = '🎫 S Hari Global — Book with your saved details:\n' + tok.link;
+        if (navigator.share) {
+          try { await navigator.share({ title: 'S Hari Booking', text }); return; } catch (e) {}
+        }
+        const waUrl = 'https://wa.me/?text=' + encodeURIComponent(text);
+        window.open(waUrl, '_blank');
+      };
+    }
+  }
+}
+
+function showTemplateManager(templates) {
+  const html = '<div class="modal-backdrop" id="tplModal">' +
+    '<div class="modal-box" style="max-width:420px">' +
+      '<h3 style="margin:0 0 12px">📋 Saved Templates</h3>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto">' +
+        templates.map(tpl => {
+          const pax = (tpl.passengers || []).map(p => p.name).join(', ');
+          return '<div class="tpl-manage-row" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--blue-50);border-radius:12px;border:1px solid var(--blue-100)">' +
+            '<div style="flex:1;min-width:0">' +
+              '<b style="font-size:14px">' + esc(tpl.label) + '</b>' +
+              '<div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(pax) + '</div>' +
+              '<div style="font-size:11px;color:var(--muted)">Used ' + tpl.useCount + 'x</div>' +
+            '</div>' +
+            '<button type="button" class="btn btn-ghost btn-sm tpl-del-btn" data-id="' + tpl.id + '" style="color:var(--bad);flex-shrink:0">🗑️</button>' +
+          '</div>';
+        }).join('') +
+        (templates.length === 0 ? '<p style="color:var(--muted);text-align:center">No saved templates yet.</p>' : '') +
+      '</div>' +
+      '<button type="button" class="btn btn-ghost" id="tplModalClose" style="margin-top:12px;width:100%">Close</button>' +
+    '</div>' +
+  '</div>';
+
+  document.body.insertAdjacentHTML('beforeend', html);
+  const modal = $('#tplModal');
+  if (!modal) return;
+
+  modal.onclick = (e) => {
+    if (e.target === modal || e.target.id === 'tplModalClose') {
+      modal.remove();
+    }
+  };
+
+  modal.querySelectorAll('.tpl-del-btn').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const id = parseInt(btn.dataset.id, 10);
+      if (confirm('Delete this template?')) {
+        await FormTemplates.deleteTemplate(id);
+        modal.remove();
+        await renderTemplateStrip();
+      }
+    };
+  });
 }
 
 /* ================================================================
