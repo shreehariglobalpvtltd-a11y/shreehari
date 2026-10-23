@@ -131,82 +131,81 @@ html,body{margin:0;background:#F4F6FB}
   <!-- 8 Oct 2026 (D8-07 pass 1): the 10 KB nav/hero logo, preloaded at normal
        priority - it is not the LCP and must not compete with the CSS on 3G.
        logo.png (440px) stays for the footer, tickets and the PDF. -->
-  <link rel="preload" as="image" href="/assets/img/logo-nav.png?v=20261022z">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20261022z">
-  <link rel="stylesheet" href="/assets/css/views.css?v=20261022z">
+  <link rel="preload" as="image" href="/assets/img/logo-nav.png?v=20261023d">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20261023d">
+  <link rel="stylesheet" href="/assets/css/views.css?v=20261023d">
   <!-- The shell pass (24 Sep 2026): header + logo, motion, elevation and
        the sound/haptics switches. Loads LAST on purpose — every rule in it
        is meant to win on equal specificity without an !important war, and
        removing this one line reverts the whole pass. -->
-  <link rel="stylesheet" href="/assets/css/premium.css?v=20261022z">
+  <link rel="stylesheet" href="/assets/css/premium.css?v=20261023d">
   <!-- Oct 2026 redesign: the S Hari Global design system (tokens + shared sg-
        components, also used by the company app) and the customer-app layer
        that points every legacy token at it. Both load LAST. -->
-  <link rel="stylesheet" href="/assets/css/ds.css?v=20261022z">
-  <link rel="stylesheet" href="/assets/css/redesign.css?v=20261022z">
-  <link rel="stylesheet" href="/assets/css/anim.css?v=20261022z">
+  <link rel="stylesheet" href="/assets/css/ds.css?v=20261023d">
+  <link rel="stylesheet" href="/assets/css/redesign.css?v=20261023d">
+  <link rel="stylesheet" href="/assets/css/anim.css?v=20261023d">
   <!-- 9 Oct 2026: Pixel / Material-You palettes + UI style (themes.css), then the home
        showcase (showcase.css). Both BEFORE depth.css, which stays the last stylesheet. -->
-  <link rel="stylesheet" href="/assets/css/themes.css?v=20261022z">
-  <link rel="stylesheet" href="/assets/css/showcase.css?v=20261022z">
-  <link rel="stylesheet" href="/assets/css/homeinfo.css?v=20261022z">
-  <link rel="stylesheet" href="/assets/css/smartbook.css?v=20261022z">
+  <link rel="stylesheet" href="/assets/css/themes.css?v=20261023d">
+  <link rel="stylesheet" href="/assets/css/showcase.css?v=20261023d">
+  <link rel="stylesheet" href="/assets/css/homeinfo.css?v=20261023d">
+  <link rel="stylesheet" href="/assets/css/smartbook.css?v=20261023d">
   <!-- 10 Oct 2026: the owner's HD visual pack in the page (hero coach, illustrations,
        live-tracking section, sprite-icon sizes). Before depth.css, which stays last. -->
-  <link rel="stylesheet" href="/assets/css/hd.css?v=20261022z">
+  <link rel="stylesheet" href="/assets/css/hd.css?v=20261023d">
   <!-- 17 Oct 2026: the premium 3D layer (hero band + glass polish) - after smartbook/hd, before perf + depth -->
-  <link rel="stylesheet" href="/assets/css/premium3d.css?v=20261022z">
+  <link rel="stylesheet" href="/assets/css/premium3d.css?v=20261023d">
   <!-- 17 Oct 2026: the 12D Hyper-OS layer (night-highway band, ticket laser + 360, ripple, vault pill) - scoped, after premium3d -->
-  <link rel="stylesheet" href="/assets/css/hyperos.css?v=20261022z">
+  <link rel="stylesheet" href="/assets/css/hyperos.css?v=20261023d">
   <!-- 17 Oct 2026: liquid layer (spring motion, readable dark chips, ticket ribbon, phone book bar, WhatsApp card, colour drops) - after hyperos -->
-  <link rel="stylesheet" href="/assets/css/liquid.css?v=20261022z">
+  <link rel="stylesheet" href="/assets/css/liquid.css?v=20261023d">
   <!-- 10 Oct 2026: device / input hygiene - touch, hover guards, tap targets,
        compositor layers, dvh sheets, TV + device tiers (perf.css). Right
        BEFORE depth.css, which stays the last stylesheet. -->
-  <link rel="stylesheet" href="/assets/css/perf.css?v=20261022z">
+  <link rel="stylesheet" href="/assets/css/perf.css?v=20261023d">
   <!-- 4 Oct 2026: pop-out depth in every theme + the AMOLED display. Loads LAST. -->
-  <link rel="stylesheet" href="/assets/css/depth.css?v=20261022z">
+  <link rel="stylesheet" href="/assets/css/depth.css?v=20261023d">
   <!-- 18 Oct 2026: surgical polish top-up (route-band coach, phone feats fade,
        consistent .btn press, ticket PNR sweep, Hyper-Bus wheels). After depth.css. -->
-  <link rel="stylesheet" href="/assets/css/polish.css?v=20261022z">
+  <link rel="stylesheet" href="/assets/css/polish.css?v=20261023d">
 <!-- App bundle: `defer` keeps the same execution order and still runs after the
      document is parsed, but placing the tags in <head> lets the browser start
      fetching ~1 MB of JS with the FIRST bytes of HTML instead of after it has
      parsed ~190 KB of markup (perf pass, 11 Sep 2026). -->
-<script defer src="/assets/js/01-boot.js?v=20261022z"></script>
-<script defer src="/assets/js/02-config.js?v=20261022z"></script>
-<script defer src="/assets/js/03-accounts.js?v=20261022z"></script>
-<script defer src="/assets/js/04-i18n.js?v=20261022z"></script>
-<script defer src="/assets/js/05-router.js?v=20261022z"></script>
-<script defer src="/assets/js/06-results.js?v=20261022z"></script>
-<script defer src="/assets/js/07-checkout.js?v=20261022z"></script>
-<script defer src="/assets/js/14-counter.js?v=20261022z"></script>
-<script defer src="/assets/js/08-signin.js?v=20261022z"></script>
-<script defer src="/assets/js/10-track.js?v=20261022z"></script>
-<script defer src="/assets/js/11-pdf-ticket.js?v=20261022z"></script>
-<script defer src="/assets/js/13-admin-routes.js?v=20261022z"></script>
+<script defer src="/assets/js/01-boot.js?v=20261023d"></script>
+<script defer src="/assets/js/02-config.js?v=20261023d"></script>
+<script defer src="/assets/js/03-accounts.js?v=20261023d"></script>
+<script defer src="/assets/js/04-i18n.js?v=20261023d"></script>
+<script defer src="/assets/js/05-router.js?v=20261023d"></script>
+<script defer src="/assets/js/06-results.js?v=20261023d"></script>
+<script defer src="/assets/js/07-checkout.js?v=20261023d"></script>
+<script defer src="/assets/js/14-counter.js?v=20261023d"></script>
+<script defer src="/assets/js/08-signin.js?v=20261023d"></script>
+<script defer src="/assets/js/10-track.js?v=20261023d"></script>
+<script defer src="/assets/js/11-pdf-ticket.js?v=20261023d"></script>
+<script defer src="/assets/js/13-admin-routes.js?v=20261023d"></script>
 <!-- 13 Sep 2026: PWA layer — install sheet, Web Push, border prep card,
      split-pay, 7-day seat-fill chart. Last on purpose: it reads the globals
      the files above define and every hook it adds is optional. -->
-<script defer src="/assets/js/17-pwa.js?v=20261022z"></script>
-<script defer src="/assets/js/18-journey.js?v=20261022z"></script>
+<script defer src="/assets/js/17-pwa.js?v=20261023d"></script>
+<script defer src="/assets/js/18-journey.js?v=20261023d"></script>
 <!-- Premium feel (24 Sep 2026). MUST stay after 13-admin-routes.js: it
      takes over that file's SFX object in place, which means the binding has
      to exist by the time this runs. defer preserves document order. -->
-<script defer src="/assets/js/19-premium.js?v=20261022z"></script>
-<script defer src="/assets/js/20-anim.js?v=20261022z"></script>
-<script defer src="/assets/js/21-showcase.js?v=20261022z"></script>
-<script defer src="/assets/js/22-routeline.js?v=20261022z"></script>
-<script defer src="/assets/js/23-flags.js?v=20261022z"></script>
-<script defer src="/assets/js/24-homeinfo.js?v=20261022z"></script>
-<script defer src="/assets/js/27-smartbook.js?v=20261022z"></script>
-<script defer src="/assets/js/28-hero3d.js?v=20261022z"></script>
-<script defer src="/assets/js/29-scrollfx.js?v=20261022z"></script>
-<script defer src="/assets/js/30-hyperos.js?v=20261022z"></script>
-<script defer src="/assets/js/31-liquid.js?v=20261022z"></script>
-<script defer src="/assets/js/32-agents.js?v=20261022z"></script>
-<script defer src="/assets/js/33-team.js?v=20261022z"></script>
-<script defer src="/assets/js/wa-direct.js?v=20261022z"></script>
+<script defer src="/assets/js/19-premium.js?v=20261023d"></script>
+<script defer src="/assets/js/20-anim.js?v=20261023d"></script>
+<script defer src="/assets/js/21-showcase.js?v=20261023d"></script>
+<script defer src="/assets/js/22-routeline.js?v=20261023d"></script>
+<script defer src="/assets/js/23-flags.js?v=20261023d"></script>
+<script defer src="/assets/js/24-homeinfo.js?v=20261023d"></script>
+<script defer src="/assets/js/27-smartbook.js?v=20261023d"></script>
+<script defer src="/assets/js/28-hero3d.js?v=20261023d"></script>
+<script defer src="/assets/js/29-scrollfx.js?v=20261023d"></script>
+<script defer src="/assets/js/30-hyperos.js?v=20261023d"></script>
+<script defer src="/assets/js/31-liquid.js?v=20261023d"></script>
+<script defer src="/assets/js/34-roles.js?v=20261023d"></script>
+<script defer src="/assets/js/wa-direct.js?v=20261023d"></script>
 <meta property="og:title" content="Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper | S Hari Global">
 <meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal, Rajkot &amp; Ahmedabad (S Hari Parking, Nana Chiloda). Book online, on WhatsApp or by phone. Private &amp; sharing cabins.">
 <meta property="og:type" content="website">
@@ -237,20 +236,20 @@ html,body{margin:0;background:#F4F6FB}
      same font-display:swap, so the brand face still arrives late and the
      text is readable in Georgia from the first frame, exactly as before.
      Cinzel is SIL OFL 1.1, which allows hosting it ourselves. -->
-<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20261022z" crossorigin>
-<style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261022z) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261022z) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261022z) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261022z) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
+<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20261023d" crossorigin>
+<style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261023d) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261023d) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261023d) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261023d) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
 <title>Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper daily | {{f:brand.name}}</title>
 <meta name="description" content="सूरत से नेपाल बस · सुरत देखि नेपाल बस — daily AC sleeper from Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Rajkot & Ahmedabad to the Rupaidiha (Nepalgunj) border. Book online, on WhatsApp or by phone. Registered Indian company, Mehsana.">
 <!-- Real brand favicon, not the emoji placeholder. PNG first for the tab
      strip, the SVG kept as the scalable fallback. -->
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20261022z">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20261023d">
 <link rel="icon" type="image/svg+xml" href="/icon-shg.svg">
 <!-- PWA / offline navigator: installable app + service-worker cached maps -->
 <link rel="manifest" href="/manifest.webmanifest">
 <!-- iOS ignores SVG here and silently falls back to a screenshot of the
      page, which is why the home-screen icon looked like a web page.
      A 180px opaque PNG is the only thing Safari will use. -->
-<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20261022z">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20261023d">
 <link rel="mask-icon" href="/assets/img/mask-icon.svg" color="#1A3A6A">
 <meta name="msapplication-TileColor" content="#1A3A6A">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -279,7 +278,7 @@ html,body{margin:0;background:#F4F6FB}
      installed app (home-screen icon) opens on the logo for a moment - once per
      session, never on the website in a browser tab (no wait added to search /
      Google visits). Gone at window load, after 0.65 s at the least, 1.2 s at most. -->
-<div id="appSplash" aria-hidden="true" hidden><div class="as-in"><span class="as-logo"><img src="/assets/img/logo-mark.webp?v=20261022z" width="439" height="228" alt="" fetchpriority="high" decoding="async" data-logo-clone></span><b>S HARI GLOBAL<sup>™</sup></b><small>India ⇄ Nepal · AC Sleeper</small></div></div>
+<div id="appSplash" aria-hidden="true" hidden><div class="as-in"><span class="as-logo"><img src="/assets/img/logo-mark.webp?v=20261023d" width="439" height="228" alt="" fetchpriority="high" decoding="async" data-logo-clone></span><b>S HARI GLOBAL<sup>™</sup></b><small>India ⇄ Nepal · AC Sleeper</small></div></div>
 <style>
 #appSplash{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;background:radial-gradient(120% 90% at 50% 35%,#FFFFFF 0%,#EEF3FB 70%);transition:opacity .25s ease}
 #appSplash.as-out{opacity:0;pointer-events:none}
@@ -477,7 +476,7 @@ s.addEventListener('click',function(e){e.preventDefault();
          now the transparent emblem with no baked name; the company name is live
          text from the facts (brand.short), so a rename in Admin flows here too. -->
     <a class="brand" href="#/" data-scroll="top" aria-label="{{f:brand.name}} — Home">
-      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo-nav.png?v=20261022z" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
+      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo-nav.png?v=20261023d" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
       <span class="brand-word" aria-hidden="true"><span class="b-lock"><b data-fact="brand.short">S Hari Global</b><sup class="b-tm">™</sup></span><span class="b-legal" data-fact="brand.suffix">PRIVATE LIMITED</span><small>Gujarat ⇄ Rupaidiha</small></span>
     </a>
     <nav class="nav-links" aria-label="Main">
@@ -598,11 +597,11 @@ s.addEventListener('click',function(e){e.preventDefault();
         <span class="p3-tag" data-i18n="h3Tag">Not just a journey,<br>a bond…</span>
         <span class="p3-bus p3-coach">
           <picture>
-            <source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261022z" width="800" height="400">
-            <img class="p3-photo" id="h3Bus" src="/assets/img/hd/bus-cutout.webp?v=20261022z" width="1600" height="800" alt="S Hari Global AC sleeper coach - promotional render" decoding="async" fetchpriority="high">
+            <source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261023d" width="800" height="400">
+            <img class="p3-photo" id="h3Bus" src="/assets/img/hd/bus-cutout.webp?v=20261023d" width="1600" height="800" alt="S Hari Global AC sleeper coach - promotional render" decoding="async" fetchpriority="high">
           </picture>
-          <span class="hx-hub h1" aria-hidden="true"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261022z"><img src="/assets/img/hd/bus-cutout.webp?v=20261022z" width="1600" height="800" alt="" decoding="async"></picture></i></span>
-          <span class="hx-hub h2" aria-hidden="true"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261022z"><img src="/assets/img/hd/bus-cutout.webp?v=20261022z" width="1600" height="800" alt="" decoding="async"></picture></i></span>
+          <span class="hx-hub h1" aria-hidden="true"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261023d"><img src="/assets/img/hd/bus-cutout.webp?v=20261023d" width="1600" height="800" alt="" decoding="async"></picture></i></span>
+          <span class="hx-hub h2" aria-hidden="true"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261023d"><img src="/assets/img/hd/bus-cutout.webp?v=20261023d" width="1600" height="800" alt="" decoding="async"></picture></i></span>
         </span>
         <span class="p3-road" aria-hidden="true"></span><span class="p3-beam" aria-hidden="true"></span>
         <span class="p3-shadow" aria-hidden="true"></span>
@@ -764,7 +763,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="hh-card">
       <span class="sc-hh-sheen" aria-hidden="true"></span>
       <div class="hh-brand">
-        <span class="hh-logo-tile"><img class="hh-logo" src="/assets/img/logo-nav.png?v=20261022z" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
+        <span class="hh-logo-tile"><img class="hh-logo" src="/assets/img/logo-nav.png?v=20261023d" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
         <div class="hh-copy">
           <p class="sc-hh-eyebrow"><span class="flg" data-flag="IN" role="img" aria-label="India"></span><span class="b-stack"><span class="b-lock"><b data-fact="brand.short">{{f:brand.short}}</b><sup class="b-tm">™</sup></span><span class="b-legal" data-fact="brand.suffix">{{f:brand.suffix}}</span></span><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></p>
           <h1 class="hh-title" id="homeHeadline" data-i18n="hhTitle">INDIA ⇄ NEPAL PREMIUM AC SLEEPER BUS</h1>
@@ -801,7 +800,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="hx-deck shg-3coat-deck">
       <span class="hx-mist m1"></span><span class="hx-mist m2"></span>
       <div class="hx-top">
-        <div class="hx-live"><img class="hx-logo" src="/assets/img/logo-mark.webp?v=20261022z" width="439" height="228" alt="" loading="lazy" decoding="async"><span class="hx-dot"></span><span class="hx-corr">Gujarat ⇄ Rupaidiha (Nepal border) · daily AC sleeper</span></div>
+        <div class="hx-live"><img class="hx-logo" src="/assets/img/logo-mark.webp?v=20261023d" width="439" height="228" alt="" loading="lazy" decoding="async"><span class="hx-dot"></span><span class="hx-corr">Gujarat ⇄ Rupaidiha (Nepal border) · daily AC sleeper</span></div>
         <div class="hx-pills"><span class="hx-pill c">❄️ AC Sleeper Coach</span><span class="hx-pill g">🛡️ SHG Vault Verified</span></div>
       </div>
       <div class="hx-stage">
@@ -809,11 +808,11 @@ s.addEventListener('click',function(e){e.preventDefault();
           <div class="hx-photo">
             <span class="hx-beam"></span>
             <picture>
-              <source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261022z" width="800" height="400">
-              <img class="hx-bus" src="/assets/img/hd/bus-cutout.webp?v=20261022z" width="1600" height="800" alt="" loading="lazy" decoding="async">
+              <source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261023d" width="800" height="400">
+              <img class="hx-bus" src="/assets/img/hd/bus-cutout.webp?v=20261023d" width="1600" height="800" alt="" loading="lazy" decoding="async">
             </picture>
-            <span class="hx-hub h1"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261022z"><img src="/assets/img/hd/bus-cutout.webp?v=20261022z" width="1600" height="800" alt="" loading="lazy" decoding="async"></picture></i></span>
-            <span class="hx-hub h2"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261022z"><img src="/assets/img/hd/bus-cutout.webp?v=20261022z" width="1600" height="800" alt="" loading="lazy" decoding="async"></picture></i></span>
+            <span class="hx-hub h1"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261023d"><img src="/assets/img/hd/bus-cutout.webp?v=20261023d" width="1600" height="800" alt="" loading="lazy" decoding="async"></picture></i></span>
+            <span class="hx-hub h2"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261023d"><img src="/assets/img/hd/bus-cutout.webp?v=20261023d" width="1600" height="800" alt="" loading="lazy" decoding="async"></picture></i></span>
           </div>
         </div>
         <span class="hx-shadow"></span>
@@ -1015,8 +1014,8 @@ s.addEventListener('click',function(e){e.preventDefault();
       </div>
       <figure class="hero-art">
         <picture>
-          <source media="(max-width: 760px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261022z" width="800" height="400">
-          <img src="/assets/img/hd/bus-cutout.webp?v=20261022z" width="1600" height="800" alt="AC sleeper coach - promotional render, not a photo of the fleet" loading="lazy" decoding="async">
+          <source media="(max-width: 760px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261023d" width="800" height="400">
+          <img src="/assets/img/hd/bus-cutout.webp?v=20261023d" width="1600" height="800" alt="AC sleeper coach - promotional render, not a photo of the fleet" loading="lazy" decoding="async">
         </picture>
       </figure>
     </div>
@@ -1134,7 +1133,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <!-- 10 Oct 2026 (HD pack): the phone-and-ticket illustration on the right
            of the card from 761px; hidden on phones so the form stays first
            (hd.css .qt-art). Decorative - the card's own words say what it does. -->
-      <img class="qt-art" src="/assets/img/hd/quick-ticket-t.webp?v=20261022z" width="480" height="480" alt="" loading="lazy" decoding="async" aria-hidden="true">
+      <img class="qt-art" src="/assets/img/hd/quick-ticket-t.webp?v=20261023d" width="480" height="480" alt="" loading="lazy" decoding="async" aria-hidden="true">
     </section>
     <!-- Seat-map mode: the card folds into this one strip (tap = back to QuickBot)
          and the regular search card right below becomes the first thing on screen. -->
@@ -1150,7 +1149,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="container top-hero" id="topHero">
     <aside class="th-brand" aria-label="{{f:brand.name}}">
       <div class="th-top">
-        <picture><source type="image/webp" srcset="/assets/img/logo-mark-96h.webp?v=20261022z"><img class="th-logo" src="/assets/img/logo-mark-96h.png?v=20261022z" alt="" width="185" height="96" loading="lazy" decoding="async"></picture>
+        <picture><source type="image/webp" srcset="/assets/img/logo-mark-96h.webp?v=20261023d"><img class="th-logo" src="/assets/img/logo-mark-96h.png?v=20261023d" alt="" width="185" height="96" loading="lazy" decoding="async"></picture>
         <div class="th-name"><span class="b-lock"><b data-fact="brand.short">{{f:brand.short}}</b><sup class="b-tm">™</sup></span><span class="b-legal" data-fact="brand.suffix">{{f:brand.suffix}}</span><span class="sc-th-flags"><span class="flg" data-flag="IN" role="img" aria-label="India"></span> India ⇄ Nepal <span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></span></div>
       </div>
       <p class="th-tag">Gujarat ⇄ Rupaidiha<small>AC Sleeper Coach · India ⇄ Nepal · 24×7</small></p>
@@ -1173,12 +1172,12 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="sa-scene sa-journey" data-anim="journey">
           <div class="sa-art" role="img" aria-labelledby="animJourneyAria">
             <span class="sa-vh" id="animJourneyAria" data-i18n="animJAria">Animation: the S Hari Global AC sleeper coach driving along a highway</span>
-            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-highway-bg-mobile.webp?v=20261022z" width="800" height="450"><img class="sa-land" data-src="/assets/img/anim/shg-highway-bg.webp?v=20261022z" width="1600" height="900" alt="" loading="lazy" decoding="async"></picture>
-            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-distant-scenery-mobile.webp?v=20261022z" width="800" height="267"><img class="sa-scenery" data-src="/assets/img/anim/shg-distant-scenery.webp?v=20261022z" width="1440" height="480" alt="" loading="lazy" decoding="async"></picture>
+            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-highway-bg-mobile.webp?v=20261023d" width="800" height="450"><img class="sa-land" data-src="/assets/img/anim/shg-highway-bg.webp?v=20261023d" width="1600" height="900" alt="" loading="lazy" decoding="async"></picture>
+            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-distant-scenery-mobile.webp?v=20261023d" width="800" height="267"><img class="sa-scenery" data-src="/assets/img/anim/shg-distant-scenery.webp?v=20261023d" width="1440" height="480" alt="" loading="lazy" decoding="async"></picture>
             <div class="sa-road"></div>
-            <img class="sa-shadow" src="/assets/img/anim/shg-bus-shadow.svg?v=20261022z" width="960" height="110" alt="" loading="lazy" decoding="async">
+            <img class="sa-shadow" src="/assets/img/anim/shg-bus-shadow.svg?v=20261023d" width="960" height="110" alt="" loading="lazy" decoding="async">
             <div class="sa-bus">
-              <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-bus-main-mobile.webp?v=20261022z" width="800" height="400"><img data-src="/assets/img/anim/shg-bus-main.webp?v=20261022z" width="1440" height="720" alt="" loading="lazy" decoding="async"></picture>
+              <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-bus-main-mobile.webp?v=20261023d" width="800" height="400"><img data-src="/assets/img/anim/shg-bus-main.webp?v=20261023d" width="1440" height="720" alt="" loading="lazy" decoding="async"></picture>
               <span class="sa-rim sa-rim--a"></span><span class="sa-rim sa-rim--b"></span>
             </div>
           </div>
@@ -1196,59 +1195,6 @@ s.addEventListener('click',function(e){e.preventDefault();
        10 Oct 2026 (HD pack): a fifth section, #homeLive (order 10 in showcase.css), sits
        between the route and the India-Nepal band - live tracking today, fleet GPS + CCTV
        honestly marked "coming soon". -->
-  <!-- 22 Oct 2026 (owner, team portal): Pvt. Ltd. partner companies first - logo, name,
-       number, WhatsApp + call - filled by 32-agents.js from the same
-       /api/agent-directory.php (kind "partner"); the door is the online partner form. -->
-  <section class="container" id="homePartners" aria-labelledby="homePartnersTitle">
-    <div class="pt-box">
-      <p class="pt-eyebrow">🏢 PVT. LTD. PARTNERS</p>
-      <h2 id="homePartnersTitle">साझेदार कम्पनीहरू · Partner companies</h2>
-      <p class="pt-sub">हामीसँग सम्झौता गरेका प्रा. लि. कम्पनी र ट्राभल पार्टनरहरू — सिधै WhatsApp वा फोन गर्नुहोस्।</p>
-      <ul class="pt-list" id="ptList" hidden></ul>
-      <a class="pt-go" href="/agreements/apply.html?kind=partner">🤝 साझेदार बन्नुहोस् · Become a partner →</a>
-      <a class="tp-door" href="/team/">🔐 साझेदार / एजेन्ट / स्टाफ लगइन · Team login</a>
-    </div>
-  </section>
-
-  <!-- 18 Oct 2026 (owner): "live website ma agents dekhine design". Our agents,
-       filled by 32-agents.js from /api/agent-directory.php (approved, listed
-       agents only - name, area, masked phone unless they agreed, two badges),
-       and the door to the simple online form /agreements/apply.html. -->
-  <section class="container" id="homeAgents" aria-labelledby="homeAgentsTitle">
-    <div class="ag-box">
-      <p class="ag-eyebrow">🤝 S HARI GLOBAL AGENTS</p>
-      <h2 id="homeAgentsTitle">हाम्रा एजेन्टहरू · Our agents</h2>
-      <p class="ag-sub">तपाईंको नजिकको एजेन्टबाट टिकट लिनुहोस् — वा आफैं एजेन्ट बनेर कमिसन कमाउनुहोस्।</p>
-      <ul class="ag-list" id="agList" hidden></ul>
-      <button type="button" class="ag-more" id="agMore" hidden></button>
-      <ul class="ag-perks" id="agPerks">
-        <li>💰 हरेक टिकटमा कमिसन</li>
-        <li>📱 फोनबाटै टिकट बुकिङ</li>
-        <li>🪪 ५ मिनेटमा अनलाइन फारम</li>
-        <li>🤝 कार्यालयको पूरा साथ</li>
-      </ul>
-      <a class="ag-go" href="/agreements/apply.html">✍️ एजेन्ट बन्नुहोस् · Apply online →</a>
-      <a class="tp-door" href="/team/">🔐 एजेन्ट लगइन — टिकट बेच्नुहोस् · Agent login</a>
-    </div>
-  </section>
-
-  <!-- 22 Oct 2026 (owner): "Our team" below the agents - approved staff the office left
-       on the website, filled by 33-team.js from /api/staff-list.php (only the fields
-       Settings staff_public_fields allows: name, photo, job, district, phone), one tab
-       per job (#drivers, #conductors ...), and the door to /agreements/staff.html. -->
-  <section class="container" id="homeTeam" aria-labelledby="homeTeamTitle">
-    <div class="tm-box">
-      <p class="tm-eyebrow">🧑‍✈️ S HARI GLOBAL TEAM</p>
-      <h2 id="homeTeamTitle">हाम्रो टोली · Our team</h2>
-      <p class="tm-sub">बिचौलिया होइन, हाम्रो टोली — कम्पनीले परिचयपत्र जाँचेर राखेका चालक, कन्डक्टर र कर्मचारी, आफ्नो अफिस अनुसार।</p>
-      <nav class="tm-tabs tm-locs" id="tmLocs" role="tablist" aria-label="Team by office" hidden></nav>
-      <nav class="tm-tabs" id="tmTabs" role="tablist" aria-label="Team by job" hidden></nav>
-      <ul class="tm-list" id="tmList" hidden></ul>
-      <button type="button" class="tm-more" id="tmMore" hidden></button>
-      <a class="tm-go" href="/agreements/apply.html?kind=staff">🧑‍✈️ हामीसँग काम गर्नुहोस् · Work with us →</a>
-      <a class="tp-door" href="/team/">🔐 स्टाफ लगइन — परिचयपत्र, CV · Staff login</a>
-    </div>
-  </section>
 
   <section class="container hx hx-fares" id="homeFares" aria-labelledby="hxFaresTitle">
     <div class="hx-shell">
@@ -1312,7 +1258,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <!-- decorative (alt="", aria-hidden): the caption is for sighted visitors only;
              the 480 px export, shown at 220 px -->
         <figure class="hx-live-art" aria-hidden="true">
-          <img src="/assets/img/hd/track-journey-t.webp?v=20261022z" width="480" height="480" alt="" loading="lazy" decoding="async">
+          <img src="/assets/img/hd/track-journey-t.webp?v=20261023d" width="480" height="480" alt="" loading="lazy" decoding="async">
           <figcaption data-i18n="hxIllus">Illustration</figcaption>
         </figure>
       </div>
@@ -1326,10 +1272,10 @@ s.addEventListener('click',function(e){e.preventDefault();
            edge figure is cut off; the old nepal-band files stay for the documents. -->
       <div class="hx-band">
         <picture>
-          <source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261022z 800w, /assets/img/hd/nepal-heritage.webp?v=20261022z 1600w" sizes="(max-width: 760px) 100vw, 1080px">
-          <img class="hx-band-img" id="hxBandImg" src="/assets/img/hd/nepal-heritage-m.webp?v=20261022z" width="1600" height="800" loading="lazy" decoding="async" alt="Illustration of Nepal's heritage: a golden Buddha, Himalayan peaks, prayer flags and a stupa">
+          <source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261023d 800w, /assets/img/hd/nepal-heritage.webp?v=20261023d 1600w" sizes="(max-width: 760px) 100vw, 1080px">
+          <img class="hx-band-img" id="hxBandImg" src="/assets/img/hd/nepal-heritage-m.webp?v=20261023d" width="1600" height="800" loading="lazy" decoding="async" alt="Illustration of Nepal's heritage: a golden Buddha, Himalayan peaks, prayer flags and a stupa">
         </picture>
-        <div class="hx-flags" aria-hidden="true"><img class="hx-flag" src="/assets/img/flag-in.svg?v=20261022z" width="33" height="22" alt="" loading="lazy" decoding="async"><span class="hx-flags-x">⇄</span><img class="hx-flag hx-flag-np" src="/assets/img/flag-np.svg?v=20261022z" width="20" height="26" alt="" loading="lazy" decoding="async"></div>
+        <div class="hx-flags" aria-hidden="true"><img class="hx-flag" src="/assets/img/flag-in.svg?v=20261023d" width="33" height="22" alt="" loading="lazy" decoding="async"><span class="hx-flags-x">⇄</span><img class="hx-flag hx-flag-np" src="/assets/img/flag-np.svg?v=20261023d" width="20" height="26" alt="" loading="lazy" decoding="async"></div>
       </div>
       <div class="hx-pad">
         <div class="hx-head">
@@ -1373,9 +1319,9 @@ s.addEventListener('click',function(e){e.preventDefault();
            thumbnails, never the same image twice) over the old CSS art, which stays as
            the fallback behind it. They are inspired illustrations, said so on each card. -->
       <ul class="hx-cards" id="hxPlaces">
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-heritage"><img class="hx-card-img" src="/assets/img/hd/lumbini-t.webp?v=20261022z" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261022z" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatPilgrimage">Pilgrimage</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Lumbini</b><small data-i18n="hxPlLumbini">Birthplace of Gautam Buddha · UNESCO World Heritage Site</small></span></a></li>
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-nature"><img class="hx-card-img" src="/assets/img/hd/pokhara-t.webp?v=20261022z" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261022z" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatNature">Nature</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Pokhara</b><small data-i18n="hxPlPokhara">Lakes and Annapurna mountain views</small></span></a></li>
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-wild"><img class="hx-card-img" src="/assets/img/hd/bardiya-t.webp?v=20261022z" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261022z" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatWildlife">Wildlife</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Bardiya National Park</b><small data-i18n="hxPlBardiya">Wildlife and jungle, near Nepalgunj</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-heritage"><img class="hx-card-img" src="/assets/img/hd/lumbini-t.webp?v=20261023d" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261023d" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatPilgrimage">Pilgrimage</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Lumbini</b><small data-i18n="hxPlLumbini">Birthplace of Gautam Buddha · UNESCO World Heritage Site</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-nature"><img class="hx-card-img" src="/assets/img/hd/pokhara-t.webp?v=20261023d" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261023d" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatNature">Nature</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Pokhara</b><small data-i18n="hxPlPokhara">Lakes and Annapurna mountain views</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-wild"><img class="hx-card-img" src="/assets/img/hd/bardiya-t.webp?v=20261023d" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261023d" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatWildlife">Wildlife</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Bardiya National Park</b><small data-i18n="hxPlBardiya">Wildlife and jungle, near Nepalgunj</small></span></a></li>
       </ul>
       <div class="hx-pkgs" id="hxPkgs" hidden></div>
       <div class="hx-tours">
@@ -1422,7 +1368,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="sc-ceo sc-reveal">
       <div class="sc-ceo-band" aria-hidden="true"><i class="sc-band-in"></i><i class="sc-band-np"></i></div>
       <div class="sc-ceo-top">
-        <div class="sc-ceo-photo"><img src="/assets/img/ceo-sm.webp?v=20261022z" width="480" height="667" alt="{{f:ceo.name}}" loading="lazy" decoding="async"></div>
+        <div class="sc-ceo-photo"><img src="/assets/img/ceo-sm.webp?v=20261023d" width="480" height="667" alt="{{f:ceo.name}}" loading="lazy" decoding="async"></div>
         <div class="sc-ceo-id">
           <p class="sc-eyebrow"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg> <span data-i18n="ceoEyebrow">Meet our founder</span></p>
           <h2 class="sc-ceo-name" id="homeCeoName" data-fact="ceo.name">{{f:ceo.name}}</h2>
@@ -1448,138 +1394,160 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
   </section>
 
-  <!-- ============ TOP 3 + THE ONE "APPLY NOW" (23 Oct 2026, owner: "preserve Ticket Booking and CEO sections,
-       then beautifully display Top 3 Staff, Top 3 Agents, and Top 3 Partners in spacious, premium, animated
-       profile cards with real photos, names, roles, approved contact details, and rankings") ============
-       Right after the CEO card (order 6 like #homeCeo; the DOM keeps it after). The people and their order come
-       from /api/top-people.php: only approved people the office shows on the website, only the contact each
-       one agreed to show, ranked by real work (tickets sold for agents / partners; for staff the office's own
-       order, then experience). Its rules live here, not in a stylesheet, so the app-shell stamp does not move. -->
-  <section class="container" id="homeForms" aria-labelledby="homeFormsTitle">
+  <!-- ============ AGENT | STAFF | PVT. LTD. PARTNER (23 Oct 2026, owner: "replace the three old homepage
+       blocks (Partner Companies, Our Agents, Our Team) with exactly three modern integrated sections") ============
+       Right after the CEO card (order 6). One section, three role cards: the Top 3 of each role
+       (/api/top-people.php - approved people on the website, the contact each one agreed to show, ranked by
+       real work), "See all" opens the full public list (/api/agent-directory.php, /api/staff-list.php - the
+       same fields as the old sections), and every card has its Apply and Team-login doors. Above them the
+       three-step showcase: Ticket Booking -> Digital Agreements & IDs -> Live Bus Navigation. Filled by
+       34-roles.js. Its rules live here, not in a stylesheet, so the app-shell stamp does not move. -->
+  <section class="container" id="homeRoles" aria-labelledby="homeRolesTitle">
     <style>
-      #view-home > #homeForms{order:6 !important}
-      /* the full partner / agent / team lists come after the Top 3 (booking, CEO, Top 3, then everyone) - nothing removed */
-      #view-home > #homePartners,#view-home > #homeAgents,#view-home > #homeTeam{order:7 !important}
-      #homeForms .t3-box{border-radius:24px;padding:22px 16px 18px;background:radial-gradient(120% 70% at 100% 0%,rgba(240,122,30,.10),rgba(240,122,30,0) 60%),var(--surface,#fff);border:1px solid var(--line,#e4e9f1);box-shadow:var(--shadow-2,0 14px 34px -22px rgba(10,42,143,.55))}
-      #homeForms .t3-eyebrow{display:inline-flex;gap:6px;align-items:center;margin:0 0 6px;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.04em;color:#fff;background:linear-gradient(135deg,#0a2a8f,#1f4fe0)}
-      #homeForms h2{margin:0 0 4px;font-size:clamp(21px,4.8vw,28px);line-height:1.22;color:var(--fg,#0d1b3e)}
-      #homeForms .t3-sub{margin:0 0 14px;color:var(--muted,#5b6b8c);font-size:14px;line-height:1.55;max-width:62ch}
-      #homeForms .t3-go{display:flex;align-items:center;justify-content:center;gap:8px;min-height:56px;padding:0 18px;border-radius:16px;font-weight:800;font-size:17px;color:#fff;text-decoration:none;text-align:center;background:linear-gradient(135deg,#ff8a2b,#f07a1e 60%,#d4570c);box-shadow:0 14px 26px -16px rgba(212,87,12,.95);margin:0 0 20px;transition:transform .18s ease,box-shadow .18s ease}
-      #homeForms .t3-go:hover{transform:translateY(-2px);box-shadow:0 18px 30px -16px rgba(212,87,12,1)}
-      #homeForms .t3-grp{--k:#0054A8;margin:0 0 20px}
-      #homeForms .t3-grp.g-staff{--k:#11703F}#homeForms .t3-grp.g-partner{--k:#C25E00}
-      #homeForms .t3-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 0 10px}
-      #homeForms .t3-head h3{margin:0;font-size:18px;color:var(--k)}
-      #homeForms .t3-head a{font-size:13px;font-weight:800;color:var(--k);text-decoration:none;white-space:nowrap}
-      #homeForms .t3-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-      #homeForms .t3-card{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:20px 14px 16px;border-radius:20px;background:var(--surface,#fff);border:1px solid var(--line,#e4e9f1);box-shadow:0 12px 26px -20px rgba(13,27,62,.55);opacity:0;transform:translateY(16px);transition:opacity .5s ease,transform .5s ease,box-shadow .2s ease;min-width:0}
-      #homeForms .t3-card.in{opacity:1;transform:none}
-      #homeForms .t3-card:hover{box-shadow:0 20px 34px -20px rgba(13,27,62,.7)}
-      #homeForms .t3-rank{position:absolute;top:10px;left:10px;min-width:34px;height:34px;padding:0 8px;border-radius:999px;display:grid;place-items:center;font-weight:900;font-size:14px;color:#fff;background:var(--k)}
-      #homeForms .t3-card.r1 .t3-rank{background:linear-gradient(135deg,#f7c948,#e0a106);color:#3a2a00}
-      #homeForms .t3-card.r2 .t3-rank{background:linear-gradient(135deg,#dfe5ee,#a9b4c4);color:#1d2638}
-      #homeForms .t3-card.r3 .t3-rank{background:linear-gradient(135deg,#e7b48a,#b8743f);color:#2f1a08}
-      #homeForms .t3-ph{position:relative;width:96px;height:96px;border-radius:50%;padding:4px;background:conic-gradient(from 0deg,var(--k),#f07a1e,var(--k));margin:6px 0 4px}
-      #homeForms .t3-card.r1 .t3-ph{animation:t3spin 6s linear infinite}
-      #homeForms .t3-ph i{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;border:3px solid var(--surface,#fff);background:#e8eefb center/cover no-repeat;font-style:normal;font-size:30px;font-weight:800;color:var(--k)}
-      #homeForms .t3-card.r1 .t3-ph i{animation:t3spin 6s linear infinite reverse}
-      @keyframes t3spin{to{transform:rotate(360deg)}}
-      #homeForms .t3-card.nophoto{padding-top:46px;justify-content:center}
-      #homeForms .t3-card.nophoto .t3-name{font-size:18px}
-      #homeForms .t3-ceo{display:flex;align-items:center;gap:14px;margin:0 0 14px;padding:12px 16px 12px 12px;border-radius:20px;text-decoration:none;color:#fff;background:linear-gradient(135deg,#0a2a8f,#11703F 75%,#f07a1e 140%);box-shadow:0 14px 28px -18px rgba(10,42,143,.9)}
-      #homeForms .t3-ceo img{flex:0 0 76px;width:76px;height:76px;border-radius:50%;object-fit:cover;object-position:50% 18%;border:3px solid #fff;background:#fff}
-      #homeForms .t3-ceo span{display:flex;flex-direction:column;min-width:0}
-      #homeForms .t3-ceo small{font-size:12px;font-weight:800;letter-spacing:.03em;color:#ffd79a}
-      #homeForms .t3-ceo b{font-size:19px;line-height:1.25}
-      #homeForms .t3-ceo em{font-style:normal;font-size:12.5px;opacity:.9}
-      #homeForms .t3-name{margin:0;font-size:16px;font-weight:800;line-height:1.3;color:var(--fg,#0d1b3e);overflow-wrap:anywhere}
-      #homeForms .t3-role{margin:0;font-size:13px;color:var(--k);font-weight:700}
-      #homeForms .t3-area{margin:0;font-size:12.5px;color:var(--muted,#5b6b8c)}
-      #homeForms .t3-metric{margin:2px 0 0;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800;color:var(--k);background:color-mix(in srgb,var(--k) 10%,transparent)}
-      #homeForms .t3-acts{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center}
-      #homeForms .t3-acts a{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:42px;min-width:44px;padding:0 13px;border-radius:12px;font-size:13px;font-weight:800;text-decoration:none;border:1.5px solid var(--k);color:var(--k)}
-      #homeForms .t3-acts a.wa{background:#25d366;border-color:#25d366;color:#fff}
-      #homeForms .t3-empty{grid-column:1/-1;margin:0;padding:18px;border-radius:16px;border:1.5px dashed var(--line,#d8e1f3);text-align:center;color:var(--muted,#5b6b8c);font-size:14px}
-      #homeForms .t3-empty a{color:var(--k);font-weight:800}
-      #homeForms .t3-skel{height:250px;border-radius:20px;background:linear-gradient(90deg,rgba(127,140,170,.10),rgba(127,140,170,.20),rgba(127,140,170,.10));background-size:200% 100%;animation:t3sh 1.4s ease infinite}
-      @keyframes t3sh{to{background-position:-200% 0}}
+      #view-home > #homeRoles{order:6 !important}
+      #homeRoles [hidden]{display:none!important}
+      :root[data-theme="dark"] #homeRoles .rl-card,:root[data-theme="dark"] #homeRoles .rl-tab{--kt:#8ab8ff}
+      :root[data-theme="dark"] #homeRoles .rl-card.k-staff,:root[data-theme="dark"] #homeRoles .rl-tab.t-staff{--kt:#6fd9a0}
+      :root[data-theme="dark"] #homeRoles .rl-card.k-partner,:root[data-theme="dark"] #homeRoles .rl-tab.t-partner{--kt:#ffb05c}
+      :root[data-theme="dark"] #homeRoles .rl-ver{color:#6fd9a0;background:rgba(95,211,154,.14)}
+      :root[data-theme="dark"] #homeRoles .rl-item .rl-tick{color:#6fd9a0}
+      #homeRoles .rl-box{position:relative;overflow:hidden;border-radius:26px;padding:22px 16px 18px;background:radial-gradient(120% 70% at 100% 0%,rgba(240,122,30,.12),rgba(240,122,30,0) 60%),radial-gradient(90% 60% at 0% 100%,rgba(31,79,224,.10),rgba(31,79,224,0) 60%),var(--surface,#fff);border:1px solid var(--line,#e4e9f1);box-shadow:var(--shadow-2,0 14px 34px -22px rgba(10,42,143,.55))}
+      #homeRoles .rl-eyebrow{display:inline-flex;gap:6px;align-items:center;margin:0 0 6px;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.04em;color:#fff;background:linear-gradient(135deg,#0a2a8f,#1f4fe0)}
+      #homeRoles h2{margin:0 0 4px;font-size:clamp(21px,4.8vw,28px);line-height:1.22;color:var(--fg,#0d1b3e)}
+      #homeRoles .rl-sub{margin:0 0 14px;color:var(--muted,#5b6b8c);font-size:14px;line-height:1.55;max-width:64ch}
+      #homeRoles .rl-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 16px;padding:0;list-style:none}
+      #homeRoles .rl-steps li{position:relative}
+      #homeRoles .rl-steps a{display:flex;flex-direction:column;gap:2px;min-height:68px;padding:10px 12px;border-radius:16px;text-decoration:none;color:var(--fg,#0d1b3e);background:color-mix(in srgb,var(--surface,#fff) 70%,transparent);backdrop-filter:blur(8px);border:1px solid var(--line,#e4e9f1);box-shadow:0 8px 20px -16px rgba(13,27,62,.6);transition:transform .2s ease,box-shadow .2s ease}
+      #homeRoles .rl-steps a:hover{transform:translateY(-2px);box-shadow:0 14px 26px -16px rgba(13,27,62,.7)}
+      #homeRoles .rl-steps b{font-size:14px;line-height:1.25}
+      #homeRoles .rl-steps small{display:block;font-size:11.5px;font-weight:600;color:var(--muted,#5b6b8c)}
+      #homeRoles .rl-steps i{font-style:normal;font-size:20px;line-height:1}
+      #homeRoles .rl-steps li+li::before{content:"›";position:absolute;left:-9px;top:50%;transform:translateY(-50%);font-weight:900;color:#f07a1e;font-size:18px}
+      #homeRoles .rl-tabs{display:flex;gap:6px;margin:0 0 16px;padding:4px;border-radius:999px;background:color-mix(in srgb,#0a2a8f 8%,var(--surface,#fff));border:1px solid var(--line,#e4e9f1)}
+      #homeRoles .rl-tab{flex:1;display:flex;align-items:center;justify-content:center;min-height:42px;border-radius:999px;font-size:13px;font-weight:900;letter-spacing:.02em;text-decoration:none;color:var(--kt,var(--k));transition:background .2s ease,color .2s ease}
+      #homeRoles .rl-tab[aria-selected="true"]{background:var(--k);color:#fff;box-shadow:0 8px 18px -10px color-mix(in srgb,var(--k) 80%,transparent)}
+      #homeRoles .rl-tab.t-agent{--k:#0054A8}#homeRoles .rl-tab.t-staff{--k:#11703F}#homeRoles .rl-tab.t-partner{--k:#C25E00}
+      #homeRoles .rl-card{--k:#0054A8;position:relative;overflow:hidden;margin:0 0 16px;padding:16px 14px 14px;border-radius:22px;background:var(--surface,#fff);border:1px solid color-mix(in srgb,var(--k) 22%,var(--line,#e4e9f1));box-shadow:0 14px 30px -24px color-mix(in srgb,var(--k) 60%,transparent);scroll-margin-top:72px}
+      #homeRoles .rl-card::before{content:"";position:absolute;inset:0 0 auto 0;height:6px;background:linear-gradient(90deg,var(--k),#f07a1e)}
+      #homeRoles .rl-card.k-staff{--k:#11703F}#homeRoles .rl-card.k-partner{--k:#C25E00}
+      #homeRoles .rl-head{display:flex;align-items:center;gap:12px;margin:4px 0 12px}
+      #homeRoles .rl-ic{flex:0 0 48px;width:48px;height:48px;border-radius:16px;display:grid;place-items:center;font-size:24px;background:color-mix(in srgb,var(--k) 12%,var(--surface,#fff));border:1px solid color-mix(in srgb,var(--k) 25%,transparent)}
+      #homeRoles .rl-head h3{margin:0;font-size:18px;line-height:1.2;color:var(--kt,var(--k))}
+      #homeRoles .rl-head h3 small{display:block;font-size:12.5px;font-weight:600;color:var(--muted,#5b6b8c);margin-top:2px}
+      #homeRoles .rl-count{margin-left:auto;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:900;color:var(--kt,var(--k));background:color-mix(in srgb,var(--k) 10%,transparent);white-space:nowrap}
+      #homeRoles .rl-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+      #homeRoles .rl-top{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:5px;padding:18px 12px 14px;border-radius:20px;background:color-mix(in srgb,var(--k) 4%,var(--surface,#fff));border:1px solid var(--line,#e4e9f1);opacity:0;transform:translateY(16px);transition:opacity .5s ease,transform .5s ease,box-shadow .2s ease;min-width:0}
+      #homeRoles .rl-top.in{opacity:1;transform:none}
+      #homeRoles .rl-top:hover{box-shadow:0 18px 30px -20px rgba(13,27,62,.7)}
+      #homeRoles .rl-rank{position:absolute;top:10px;left:10px;min-width:32px;height:32px;padding:0 8px;border-radius:999px;display:grid;place-items:center;font-weight:900;font-size:13px;color:#fff;background:var(--k)}
+      #homeRoles .rl-top.r1 .rl-rank{background:linear-gradient(135deg,#f7c948,#e0a106);color:#3a2a00}
+      #homeRoles .rl-top.r2 .rl-rank{background:linear-gradient(135deg,#dfe5ee,#a9b4c4);color:#1d2638}
+      #homeRoles .rl-top.r3 .rl-rank{background:linear-gradient(135deg,#e7b48a,#b8743f);color:#2f1a08}
+      #homeRoles .rl-av{position:relative;display:grid;place-items:center;flex:0 0 auto;width:56px;height:56px;border-radius:50%;padding:3px;background:conic-gradient(from 0deg,var(--k),#f07a1e,var(--k));font-weight:900;color:var(--kt,var(--k));overflow:hidden}
+      #homeRoles .rl-av img{width:100%;height:100%;border-radius:50%;object-fit:cover;border:3px solid var(--surface,#fff);background:#fff;display:block}
+      #homeRoles .rl-av.logo img{object-fit:contain;padding:4px}
+      #homeRoles .rl-av.txt::after{content:"";position:absolute;inset:3px;border-radius:50%;background:color-mix(in srgb,var(--k) 10%,var(--surface,#fff));z-index:0}
+      #homeRoles .rl-av.txt{color:var(--kt,var(--k));font-size:18px}
+      #homeRoles .rl-av.txt > *{position:relative;z-index:1}
+      #homeRoles .rl-top .rl-av{width:96px;height:96px;padding:4px;font-size:30px;margin:4px 0 2px}
+      #homeRoles .rl-top.r1 .rl-av{animation:rlspin 6s linear infinite}
+      #homeRoles .rl-top.r1 .rl-av img{animation:rlspin 6s linear infinite reverse}
+      @keyframes rlspin{to{transform:rotate(360deg)}}
+      #homeRoles .rl-name{margin:0;font-size:16px;font-weight:800;line-height:1.3;color:var(--fg,#0d1b3e);overflow-wrap:anywhere}
+      #homeRoles .rl-role{margin:0;font-size:13px;color:var(--kt,var(--k));font-weight:700}
+      #homeRoles .rl-area{margin:0;font-size:12.5px;color:var(--muted,#5b6b8c)}
+      #homeRoles .rl-ver{margin:2px 0 0;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:800;color:#0f7a52;background:rgba(15,157,107,.12)}
+      #homeRoles .rl-acts{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center}
+      #homeRoles .rl-acts a{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:40px;min-width:44px;padding:0 13px;border-radius:12px;font-size:13px;font-weight:800;text-decoration:none;border:1.5px solid var(--kt,var(--k));color:var(--kt,var(--k))}
+      #homeRoles .rl-acts a.rl-wa{background:#25d366;border-color:#25d366;color:#fff}
+      #homeRoles .rl-empty{grid-column:1/-1;margin:0;padding:16px;border-radius:16px;border:1.5px dashed var(--line,#d8e1f3);text-align:center;color:var(--muted,#5b6b8c);font-size:14px}
+      #homeRoles .rl-empty a{color:var(--kt,var(--k));font-weight:800}
+      #homeRoles .rl-skel{height:230px;border-radius:20px;background:linear-gradient(90deg,rgba(127,140,170,.10),rgba(127,140,170,.20),rgba(127,140,170,.10));background-size:200% 100%;animation:rlsh 1.4s ease infinite}
+      @keyframes rlsh{to{background-position:-200% 0}}
+      #homeRoles .rl-list{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      #homeRoles .rl-item{display:flex;align-items:center;gap:10px;padding:10px;border-radius:16px;background:color-mix(in srgb,var(--k) 4%,var(--surface,#fff));border:1px solid var(--line,#e4e9f1);min-width:0}
+      #homeRoles .rl-item .rl-who{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+      #homeRoles .rl-item b{font-size:14px;line-height:1.25;overflow-wrap:anywhere}
+      #homeRoles .rl-item small{font-size:12px;color:var(--muted,#5b6b8c)}
+      #homeRoles .rl-item .rl-tick{color:#0f7a52;font-weight:800}
+      #homeRoles .rl-item .rl-acts{margin:0;flex:0 0 auto}
+      #homeRoles .rl-item .rl-acts a{min-height:36px;padding:0 10px;font-size:12.5px}
+      #homeRoles .rl-foot{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+      #homeRoles .rl-foot a,#homeRoles .rl-foot button{display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:0 12px;border-radius:14px;font:800 14px/1.2 inherit;font-family:inherit;text-decoration:none;cursor:pointer;text-align:center;border:1.5px solid var(--kt,var(--k));color:var(--kt,var(--k));background:var(--surface,#fff);transition:transform .18s ease,box-shadow .18s ease}
+      #homeRoles .rl-foot .rl-apply{grid-column:1/-1;min-height:54px;font-size:16px;color:#fff;border:0;background:linear-gradient(135deg,#ff8a2b,#f07a1e 60%,#d4570c);box-shadow:0 14px 26px -16px rgba(212,87,12,.95)}
+      #homeRoles .rl-foot .rl-apply:hover,#homeRoles .rl-foot .rl-login:hover{transform:translateY(-2px)}
+      #homeRoles .rl-foot .rl-login{background:var(--k);color:#fff}
+      #homeRoles .rl-more{grid-column:1/-1}
+      #homeRoles .rl-agr{display:block;margin:10px 0 0;text-align:center;font-size:13px;font-weight:700;color:var(--kt,var(--k));text-decoration:none}
+      #homeRoles .rl-note{margin:12px 0 0;font-size:12.5px;color:var(--muted,#5b6b8c);text-align:center;line-height:1.5}
       @media (max-width:760px){
-        #homeForms .t3-row{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;padding:2px 2px 8px;margin:0 -2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-        #homeForms .t3-row::-webkit-scrollbar{display:none}
-        #homeForms .t3-card,#homeForms .t3-skel{flex:0 0 78%;scroll-snap-align:center}
+        #homeRoles .rl-steps{grid-template-columns:1fr}#homeRoles .rl-steps li+li::before{content:"";left:50%;top:-9px;transform:none;width:0;height:0}
+        #homeRoles .rl-steps a{flex-direction:row;align-items:center;gap:10px;min-height:56px}#homeRoles .rl-steps b{flex:1}
+        #homeRoles .rl-row{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;padding:2px 2px 8px;margin:0 -2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+        #homeRoles .rl-row::-webkit-scrollbar{display:none}
+        #homeRoles .rl-top,#homeRoles .rl-skel{flex:0 0 76%;scroll-snap-align:center}
+        #homeRoles .rl-list{grid-template-columns:1fr}
+        #homeRoles .rl-tab{font-size:12px}
       }
-      @media (prefers-reduced-motion:reduce){#homeForms .t3-card{opacity:1;transform:none;transition:none}#homeForms .t3-card.r1 .t3-ph,#homeForms .t3-card.r1 .t3-ph i,#homeForms .t3-skel{animation:none}}
-      html[data-motion="reduced"] #homeForms .t3-card{opacity:1;transform:none;transition:none}
-      html[data-motion="reduced"] #homeForms .t3-card.r1 .t3-ph,html[data-motion="reduced"] #homeForms .t3-card.r1 .t3-ph i,html[data-motion="reduced"] #homeForms .t3-skel{animation:none}
+      @media (prefers-reduced-motion:reduce){#homeRoles .rl-top{opacity:1;transform:none;transition:none}#homeRoles .rl-top.r1 .rl-av,#homeRoles .rl-top.r1 .rl-av img,#homeRoles .rl-skel{animation:none}}
+      html[data-motion="reduced"] #homeRoles .rl-top{opacity:1;transform:none;transition:none}
+      html[data-motion="reduced"] #homeRoles .rl-top.r1 .rl-av,html[data-motion="reduced"] #homeRoles .rl-top.r1 .rl-av img,html[data-motion="reduced"] #homeRoles .rl-skel{animation:none}
     </style>
-    <div class="t3-box">
-      <p class="t3-eyebrow">🏆 TOP 3 · हाम्रा उत्कृष्ट</p>
-      <h2 id="homeFormsTitle">हाम्रा उत्कृष्ट कर्मचारी, एजेन्ट र साझेदार · Our top people</h2>
-      <p class="t3-sub">कम्पनीले परिचयपत्र जाँचेर स्वीकृत गरेका मान्छे — कामका आधारमा क्रमबद्ध। तपाईं पनि जोडिनुहोस्: एउटै अनलाइन फारम, सम्झौताका सबै सर्त भित्रै। · Approved and verified by the office, ranked by their work.</p>
-      <a class="t3-go" href="/agreements/#apply">✍️ अहिले आवेदन दिनुहोस् · Apply now</a>
-      <div class="t3-grp g-staff" data-t3="staff"><a class="t3-ceo" href="#homeCeo"><img src="/assets/img/ceo-sm.webp?v=20261022z" width="480" height="667" alt="" loading="lazy" decoding="async"><span><small>👑 प्रमुख कार्यकारी अधिकृत · CEO</small><b data-fact="ceo.name">{{f:ceo.name}}</b><em>संस्थापक तथा प्रमुख कार्यकारी · S Hari Global Pvt. Ltd.</em></span></a><div class="t3-head"><h3>🧑‍✈️ Top 3 कर्मचारी · Staff</h3><a href="/agreements/staff-agreement.html">📜 सम्झौता ›</a></div><div class="t3-row"><div class="t3-skel"></div><div class="t3-skel"></div><div class="t3-skel"></div></div></div>
-      <div class="t3-grp g-agent" data-t3="agent"><div class="t3-head"><h3>🤝 Top 3 एजेन्ट · Agents</h3><a href="/agreements/agent-agreement-ne.html">📜 सम्झौता ›</a></div><div class="t3-row"><div class="t3-skel"></div><div class="t3-skel"></div><div class="t3-skel"></div></div></div>
-      <div class="t3-grp g-partner" data-t3="partner"><div class="t3-head"><h3>🏢 Top 3 साझेदार कम्पनी · Pvt. Ltd.</h3><a href="/agreements/partner-agreement-ne.html">📜 सम्झौता ›</a></div><div class="t3-row"><div class="t3-skel"></div><div class="t3-skel"></div><div class="t3-skel"></div></div></div>
+    <div class="rl-box">
+      <p class="rl-eyebrow">🪪 DIGITAL IDENTITY · डिजिटल पहिचान</p>
+      <h2 id="homeRolesTitle">एजेन्ट · स्टाफ · प्रा. लि. साझेदार — हाम्रो प्रमाणित टोली</h2>
+      <p class="rl-sub">कम्पनीले KYC जाँचेर परिचयपत्र दिएका मान्छे मात्र — हरेक कार्डको QR ले आजको स्थिति देखाउँछ। तपाईं पनि जोडिनुहोस्: एउटै अनलाइन फारम, सम्झौता, ई-सही, स्वीकृति, डिजिटल ID र लगइन। · Only people the office verified; every card's QR shows today's standing.</p>
+      <ol class="rl-steps" aria-label="What S Hari Global offers">
+        <li><a href="#book"><i>🎫</i><b>Ticket Booking<small>टिकट बुकिङ · सिट रोज्नुहोस्, Cash / Online</small></b></a></li>
+        <li><a href="/agreements/"><i>📝</i><b>Digital Agreements &amp; IDs<small>डिजिटल सम्झौता · ई-सही · परिचयपत्र</small></b></a></li>
+        <li><a href="/navigate.html"><i>🧭</i><b>Live Bus Navigation<small>SHARI NAV · लाइभ बस, नक्सा, आवाज</small></b></a></li>
+      </ol>
+      <nav class="rl-tabs" role="tablist" aria-label="Role">
+        <a class="rl-tab t-agent" role="tab" href="#agents" data-kind="agent" aria-selected="true">🤝 AGENT</a>
+        <a class="rl-tab t-staff" role="tab" href="#team" data-kind="staff" aria-selected="false">🧑‍✈️ STAFF</a>
+        <a class="rl-tab t-partner" role="tab" href="#partners" data-kind="partner" aria-selected="false">🏢 PVT. LTD. PARTNER</a>
+      </nav>
+
+      <article class="rl-card k-agent" data-role="agent" id="agents">
+        <div class="rl-head"><span class="rl-ic" aria-hidden="true">🤝</span><h3>एजेन्ट · Agents<small>व्यक्ति — टिकट बेच्ने, यात्रु ल्याउने, कमिसनमा</small></h3><span class="rl-count" hidden></span></div>
+        <div class="rl-row"><div class="rl-skel"></div><div class="rl-skel"></div><div class="rl-skel"></div></div>
+        <ul class="rl-list" hidden></ul>
+        <div class="rl-foot">
+          <button type="button" class="rl-all" data-kind="agent" aria-expanded="false" hidden>सबै हेर्नुहोस् · See all</button>
+          <button type="button" class="rl-more" data-kind="agent" hidden>थप · More</button>
+          <a class="rl-apply" href="/agreements/apply.html">✍️ एजेन्ट बन्नुहोस् · Apply as agent</a>
+          <a class="rl-login" href="/team/">🔐 एजेन्ट लगइन · Agent login</a>
+          <a href="/agreements/#agent">📜 एजेन्ट सम्झौता · Agreement</a>
+        </div>
+      </article>
+
+      <article class="rl-card k-staff" data-role="staff" id="team">
+        <div class="rl-head"><span class="rl-ic" aria-hidden="true">🧑‍✈️</span><h3>स्टाफ · Staff<small>चालक, कन्डक्टर, हेल्पर, अफिस, लेखापाल, मेकानिक</small></h3><span class="rl-count" hidden></span></div>
+        <div class="rl-row"><div class="rl-skel"></div><div class="rl-skel"></div><div class="rl-skel"></div></div>
+        <ul class="rl-list" hidden></ul>
+        <div class="rl-foot">
+          <button type="button" class="rl-all" data-kind="staff" aria-expanded="false" hidden>सबै हेर्नुहोस् · See all</button>
+          <button type="button" class="rl-more" data-kind="staff" hidden>थप · More</button>
+          <a class="rl-apply" href="/agreements/apply.html?kind=staff">🧑‍✈️ हामीसँग काम गर्नुहोस् · Apply for a job</a>
+          <a class="rl-login" href="/team/">🔐 स्टाफ लगइन · Staff login</a>
+          <a href="/agreements/#staff">📜 कर्मचारी सम्झौता · Agreement</a>
+        </div>
+      </article>
+
+      <article class="rl-card k-partner" data-role="partner" id="partners">
+        <div class="rl-head"><span class="rl-ic" aria-hidden="true">🏢</span><h3>प्रा. लि. साझेदार · Pvt. Ltd. Partners<small>दर्ता भएका कम्पनी र ट्राभल पार्टनर</small></h3><span class="rl-count" hidden></span></div>
+        <div class="rl-row"><div class="rl-skel"></div><div class="rl-skel"></div><div class="rl-skel"></div></div>
+        <ul class="rl-list" hidden></ul>
+        <div class="rl-foot">
+          <button type="button" class="rl-all" data-kind="partner" aria-expanded="false" hidden>सबै हेर्नुहोस् · See all</button>
+          <button type="button" class="rl-more" data-kind="partner" hidden>थप · More</button>
+          <a class="rl-apply" href="/agreements/apply.html?kind=partner">🤝 साझेदार बन्नुहोस् · Become a partner</a>
+          <a class="rl-login" href="/team/">🔐 साझेदार लगइन · Partner login</a>
+          <a href="/agreements/#partner">📜 साझेदार सम्झौता · Agreement</a>
+        </div>
+      </article>
+      <p class="rl-note">🔒 नम्बर, फोटो र WhatsApp — व्यक्तिले अनुमति दिएको मात्र देखिन्छ। परिचयपत्रको QR स्क्यान गरे "Genuine / Not valid" तुरुन्तै देखिन्छ। · Contact details appear only with the person's consent; scan any ID card's QR to check it.</p>
     </div>
-    <script>
-    (function () {
-      var box = document.getElementById('homeForms');
-      if (!box || !window.fetch) return;
-      var APPLY = { staff: '/agreements/apply.html?kind=staff', agent: '/agreements/apply.html', partner: '/agreements/apply.html?kind=partner' };
-      var BE = { staff: 'पहिलो कर्मचारी बन्नुहोस्', agent: 'पहिलो एजेन्ट बन्नुहोस्', partner: 'पहिलो साझेदार कम्पनी बन्नुहोस्' };
-      function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-      var io = 'IntersectionObserver' in window ? new IntersectionObserver(function (es) {
-        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
-      }, { rootMargin: '0px 0px -8% 0px' }) : null;
-      function card(p, i, kind) {
-        var c = el('article', 't3-card r' + (i + 1));
-        c.appendChild(el('span', 't3-rank', '#' + (i + 1)));
-        // 23 Oct 2026 (owner: "photo vaye photo dekhos, natra name matra"): no photo = no letter circle, the name alone
-        if (/^(\/|https:\/\/)[^"'()\\\s]+$/.test(String(p.photo || ''))) {
-          var ph = el('div', 't3-ph'), im = el('i');
-          im.setAttribute('aria-hidden', 'true');
-          im.style.backgroundImage = 'url("' + p.photo + '")';
-          ph.appendChild(im); c.appendChild(ph);
-        } else c.classList.add('nophoto');
-        c.appendChild(el('h4', 't3-name', p.name || ''));
-        if (p.role) c.appendChild(el('p', 't3-role', p.role));
-        if (p.area) c.appendChild(el('p', 't3-area', '📍 ' + p.area));
-        if (p.metric) c.appendChild(el('p', 't3-metric', p.metric));
-        var acts = el('div', 't3-acts');
-        if (/^\+?\d{10,15}$/.test(String(p.tel || ''))) { var a = el('a', '', '📞 ' + (p.phone || p.tel)); a.href = 'tel:' + p.tel; acts.appendChild(a); }
-        if (/^\d{10,15}$/.test(String(p.wa || ''))) { var w = el('a', 'wa', 'WhatsApp'); w.href = 'https://wa.me/' + p.wa; w.target = '_blank'; w.rel = 'noopener'; acts.appendChild(w); }
-        if (acts.children.length) c.appendChild(acts);
-        return c;
-      }
-      function fill(kind, people) {
-        var g = box.querySelector('[data-t3="' + kind + '"]');
-        if (!g) return;
-        var row = g.querySelector('.t3-row');
-        row.textContent = '';
-        if (!people.length) {
-          var e = el('p', 't3-empty', ''), l = el('a', '', BE[kind] + ' →');
-          l.href = APPLY[kind]; e.appendChild(l); row.appendChild(e);
-          return;
-        }
-        people.slice(0, 3).forEach(function (p, i) {
-          var c = card(p, i, kind);
-          row.appendChild(c);
-          if (io && document.documentElement.getAttribute('data-motion') !== 'reduced') { c.style.transitionDelay = (i * 90) + 'ms'; io.observe(c); } else c.classList.add('in');
-        });
-      }
-      fetch('/api/top-people.php', { headers: { Accept: 'application/json' } })
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (j) {
-          if (!j || !j.ok) throw new Error('bad');
-          ['staff', 'agent', 'partner'].forEach(function (k) { fill(k, Array.isArray(j[k]) ? j[k] : []); });
-        })
-        .catch(function () {
-          // no answer: the groups simply step aside; the Apply button stays
-          [].forEach.call(box.querySelectorAll('.t3-grp'), function (g) { g.hidden = !g.querySelector('.t3-ceo'); });
-          [].forEach.call(box.querySelectorAll('.g-staff .t3-head,.g-staff .t3-row'), function (n) { n.hidden = true; });   // the CEO card stays
-        });
-    })();
-    </script>
   </section>
 
   <!-- ============ HOMEPAGE ANIMATIONS (4 Oct 2026) ============
@@ -1607,7 +1575,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="sa-art" role="img" aria-labelledby="animRouteAria">
           <span class="sa-vh" id="animRouteAria" data-i18n="animMAria">Illustrative map: a route line from Gujarat to Rupaidiha on the India–Nepal border</span>
           <svg class="sa-map-svg" viewBox="36 145 590 315" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
-            <image class="sa-map-bg" data-href="/assets/img/anim/shg-map-bg.svg?v=20261022z" x="0" y="0" width="960" height="720"/>
+            <image class="sa-map-bg" data-href="/assets/img/anim/shg-map-bg.svg?v=20261023d" x="0" y="0" width="960" height="720"/>
             <path class="sa-route-glow" d="M229.61,374.43 L238.71,350.55 L222.86,335.53 C277.86,260.53 377.99,238.12 457.99,228.12"/>
             <path class="sa-route-track" d="M229.61,374.43 L238.71,350.55 L222.86,335.53 C277.86,260.53 377.99,238.12 457.99,228.12"/>
             <g class="sa-route-segs"></g>
@@ -1618,7 +1586,7 @@ s.addEventListener('click',function(e){e.preventDefault();
             <text class="sa-lbl" x="208.86" y="321.53" text-anchor="end" data-i18n="animMAhd">Ahmedabad</text>
             <text class="sa-lbl" x="457.99" y="272" text-anchor="middle" data-i18n="animMRup">Rupaidiha</text>
             <g class="sa-pulse" transform="translate(457.99 228.12)"><circle r="19"/></g>
-            <g class="sa-map-bus" transform="translate(457.99 228.12)"><image data-href="/assets/img/anim/shg-route-bus-marker.webp?v=20261022z" x="-50" y="-37" width="100" height="50"/></g>
+            <g class="sa-map-bus" transform="translate(457.99 228.12)"><image data-href="/assets/img/anim/shg-route-bus-marker.webp?v=20261023d" x="-50" y="-37" width="100" height="50"/></g>
           </svg>
         </div>
         <button type="button" class="sa-pause" data-paused="false" data-i18n-title="animPause" title="Pause animation" aria-label="Pause animation"><svg class="sa-i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg><svg class="sa-i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
@@ -1639,7 +1607,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <span class="bh-txt"><b id="bookHelpTitle" data-i18n="bhTitle">टिकट कसरी काट्ने? — सजिलो गाइड</b><small data-i18n="bhSub">मोबाइलबाटै केही मिनेटमा आफ्नो टिकट आफैं काट्नुहोस् · यहाँ थिच्नुहोस्</small></span>
       <!-- 10 Oct 2026 (HD pack): the booking helper (support-guide, a fictional illustrated
            character, alpha) beside the guide's title; decorative, hidden under 480px. -->
-      <span class="bh-art" aria-hidden="true"><img src="/assets/img/hd/support-guide-s.webp?v=20261022z" width="128" height="192" alt="" loading="lazy" decoding="async"></span>
+      <span class="bh-art" aria-hidden="true"><img src="/assets/img/hd/support-guide-s.webp?v=20261023d" width="128" height="192" alt="" loading="lazy" decoding="async"></span>
       <span class="bh-go" aria-hidden="true"><svg class="ic"><use href="#i-plus"/></svg></span>
     </button>
     <div class="bh-panel" id="bookHelpPanel" hidden>
@@ -2418,11 +2386,11 @@ s.addEventListener('click',function(e){e.preventDefault();
         </div>
         <div class="vcard-grid">
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20261022z" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20261022z" srcset="/assets/img/card-en-sm.jpg?v=20261022z 720w, /assets/img/card-en.jpg?v=20261022z 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20261023d" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20261023d" srcset="/assets/img/card-en-sm.jpg?v=20261023d 720w, /assets/img/card-en.jpg?v=20261023d 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcEn">🇮🇳 English card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-en.jpg" download="S-Hari-Global-Card-EN.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="en">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20261022z" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20261022z" srcset="/assets/img/card-ne-sm.jpg?v=20261022z 720w, /assets/img/card-ne.jpg?v=20261022z 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20261023d" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20261023d" srcset="/assets/img/card-ne-sm.jpg?v=20261023d 720w, /assets/img/card-ne.jpg?v=20261023d 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcNe">🇳🇵 Nepali card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-ne.jpg" download="S-Hari-Global-Card-NE.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="ne">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
         </div>
@@ -3280,7 +3248,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div>
         <!-- 9 Oct 2026: the emblem only (no white plate, no baked name), the live
              company name between the two flags, and the new public pages. -->
-        <picture><source type="image/webp" srcset="/assets/img/logo-mark.webp?v=20261022z"><img id="logoFoot" src="/assets/img/logo-mark.png?v=20261022z" width="439" height="228" alt="" loading="lazy" decoding="async"></picture>
+        <picture><source type="image/webp" srcset="/assets/img/logo-mark.webp?v=20261023d"><img id="logoFoot" src="/assets/img/logo-mark.png?v=20261023d" width="439" height="228" alt="" loading="lazy" decoding="async"></picture>
         <p class="sc-f-name"><span class="flg" data-flag="IN" role="img" aria-label="India"></span><span class="b-lock"><b style="color:#fff" data-fact="brand.short">{{f:brand.short}}</b><sup class="b-tm">™</sup></span><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></p>
         <p class="sc-f-legal" data-fact="brand.suffix">{{f:brand.suffix}}</p>
         <p data-i18n="fTagline">India–Nepal bus service. Connecting Gujarat with the Rupaidiha border — partner office at Pushpalal Chowk, Nepalgunj — with safe coaches and easy ticket booking.</p>
@@ -3350,7 +3318,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
     <div class="f-dev">Developed by <strong>Dileep Sunar</strong> · <a href="https://wa.me/{{f:head.wa}}" data-fact-wa="head.wa" target="_blank" rel="noopener noreferrer">💬 WhatsApp <span data-fact="head.phone">{{f:head.phone}}</span></a> · <a href="https://www.facebook.com/dileep.soonaar/" target="_blank" rel="noopener noreferrer">Facebook</a></div>
     <div class="f-ceo reveal">
-      <img id="ceoPhoto" src="/assets/img/ceo-sm.webp?v=20261022z" alt="{{f:ceo.name}} — Founder &amp; CEO" width="44" height="44" loading="lazy" decoding="async" onerror="this.style.display='none'">
+      <img id="ceoPhoto" src="/assets/img/ceo-sm.webp?v=20261023d" alt="{{f:ceo.name}} — Founder &amp; CEO" width="44" height="44" loading="lazy" decoding="async" onerror="this.style.display='none'">
       <span>🕉️ <span id="ceoMantra"></span> — <strong id="ceoName"></strong>, Founder &amp; CEO
         <button id="mantraBtn" type="button" title="Play mantra chant · मन्त्र सुन्नुहोस्" aria-label="Play mantra chant">🔊</button>
       </span>

@@ -680,6 +680,63 @@ final class TeamPortal
         }
     }
 
+    /* =================================================================
+     *  Passkeys (23 Oct 2026): the phone's Face ID / fingerprint signs a
+     *  challenge (includes/passkeys.php); the same doors and blocks as the
+     *  password sign-in - a suspended card or a switched-off account stays out.
+     * ================================================================= */
+
+    /** Who the signed-in person is for a passkey row: ['admin'|'staff', id] or null. */
+    public static function passkeyOwner(array $me): ?array
+    {
+        if ($me['admin'] !== null) {
+            return ['admin', (int) $me['admin']['id']];
+        }
+        if ($me['staff'] !== null) {
+            return ['staff', (int) $me['staff']['id']];
+        }
+        return null;
+    }
+
+    /** Open the session for a verified passkey row (Passkeys::assert). */
+    public static function passkeyLogin(array $row): array
+    {
+        $kind = (string) $row['owner_kind'];
+        $id   = (int) $row['owner_id'];
+        $phone10 = (string) $row['phone10'];
+        $no = ['ok' => false, 'error' => 'यो खाता अहिले खुल्दैन — कार्यालयमा सोध्नुहोस् · This account cannot sign in now. Please ask the office.'];
+        if ($kind === 'admin') {
+            $a = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $id]);
+            if ($a === null || (int) $a['is_active'] !== 1 || (string) $a['password_hash'] === '' || !self::adminUsable($a, $phone10)) {
+                return $no;
+            }
+            if (!empty($a['locked_until']) && strtotime((string) $a['locked_until']) > time()) {
+                return $no;
+            }
+            if (Auth::admin2faEnabled($id)) {
+                return ['ok' => false, 'error' => 'यो खातामा 2FA छ — कार्यालयको लगइनबाट जानुहोस् · This account uses 2FA: please sign in at the office login.'];
+            }
+            try {
+                Auth::teamOpenSession($a, false);
+            } catch (RuntimeException $e) {
+                return $no;   // not a team role any more, or switched off
+            }
+            self::closeStaffSession();
+            Logger::audit('team.login.passkey', 'admin', (string) $id, null, null, 'Team portal: passkey (Face ID / fingerprint)');
+            return ['ok' => true, 'kind' => 'admin'];
+        }
+        $s = StaffApps::find($id);
+        if ($s === null || (string) $s['status'] !== 'approved' || empty($s['password_hash'])) {
+            return $no;
+        }
+        if (!empty($s['locked_until']) && strtotime((string) $s['locked_until']) > time()) {
+            return $no;
+        }
+        self::openStaffSession($id, (string) $s['password_hash']);
+        Logger::audit('team.login.passkey', 'staff_application', StaffApps::refFor($id), null, null, 'Team portal: passkey (Face ID / fingerprint)');
+        return ['ok' => true, 'kind' => 'staff'];
+    }
+
     /**
      * The person signed in at /team/ (or already signed in to the office),
      * with their cards found by account link and by FULL mobile
@@ -1189,7 +1246,7 @@ final class TeamPortal
     {
         $cv = json_decode((string) ($row['cv_json'] ?? ''), true);
         $cv = is_array($cv) ? $cv : [];
-        $cv += ['edu' => [], 'exp' => [], 'langs' => '', 'skills' => '', 'about' => '', 'org' => []];
+        $cv += ['edu' => [], 'exp' => [], 'langs' => '', 'skills' => '', 'about' => '', 'org' => [], 'links' => []];
         if ($table === 'staff' && $row !== null && $cv['edu'] === [] && !empty($row['qualification'])) {
             $cv['edu'][] = ['level' => (string) $row['qualification'], 'school' => '', 'year' => ''];
         }
@@ -1212,7 +1269,15 @@ final class TeamPortal
     {
         $line = static fn($v, int $n): string => StaffApps::oneLine(Security::clean(strip_tags((string) ($v ?? '')), $n), $n);
         $cv = ['edu' => [], 'exp' => [], 'langs' => $line($in['langs'] ?? '', 120), 'skills' => $line($in['skills'] ?? '', 200),
-               'about' => $line($in['about'] ?? '', 500), 'org' => []];
+               'about' => $line($in['about'] ?? '', 500), 'org' => [], 'links' => []];
+        // 23 Oct 2026 (digital identity): a Facebook link for the public card - a facebook.com URL only
+        $fb = trim((string) ($in['facebook'] ?? ''));
+        if ($fb !== '' && preg_match('~^(https?://)?((www|m)\.)?(facebook\.com|fb\.com|fb\.me)/~i', $fb) === 1) {
+            $fb = 'https://' . preg_replace('~^https?://~i', '', $fb);
+            if (preg_match('~^https://(www\.|m\.)?(facebook\.com|fb\.com|fb\.me)/[\w./?=&%-]{1,120}$~i', $fb) === 1) {
+                $cv['links']['facebook'] = $fb;
+            }
+        }
         $lv = (array) ($in['edu_level'] ?? []);
         foreach ($lv as $i => $l) {
             $l = (string) $l;
@@ -1292,6 +1357,9 @@ final class TeamPortal
             if ($cv[$k] !== '') {
                 $out .= '<h3>' . $h($lbl) . '</h3><p>' . $h($cv[$k]) . '</p>';
             }
+        }
+        if (!empty($cv['links']['facebook'])) {
+            $out .= '<h3>Links</h3><p><a href="' . $h($cv['links']['facebook']) . '" target="_blank" rel="noopener nofollow">' . $h($cv['links']['facebook']) . '</a></p>';
         }
         return $out !== '' ? $out : '<p class="muted">No CV yet · अझै CV भरिएको छैन।</p>';
     }

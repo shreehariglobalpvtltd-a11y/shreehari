@@ -1081,7 +1081,7 @@ final class ContentPages
             . '<section class="sec band rv" id="expanding"><span class="band-ic" aria-hidden="true">🚀</span><h2>' . $e($w['expH']) . '</h2>'
             . ($lang !== 'ne' ? '<p class="band-ne" lang="ne">' . PublicLayout::flag('NP', 16) . ' नयाँ कार्यालय छिट्टै</p>' : '')
             . '<p>' . $e(sprintf($w['expP'], $co['name'])) . '</p>' . ($soonChips !== '' ? '<div class="chips" style="margin-top:10px">' . $soonChips . '</div>' : '')
-            . '<div class="btns"><a class="btn fill" href="/agreements/">🤝 ' . $e($w['expPartner']) . '</a><a class="btn out" href="/agent-signup.php">🧑‍💼 ' . $e($w['expAgent']) . '</a></div></section>'
+            . '<div class="btns"><a class="btn fill" href="/agreements/">🤝 ' . $e($w['expPartner']) . '</a><a class="btn out" href="/agreements/apply.html">🧑‍💼 ' . $e($w['expAgent']) . '</a></div></section>'
             . '<section class="sec"><div class="btns"><a class="btn tonal" href="/#/">🎫 ' . $e($pw['book']) . '</a><a class="btn tonal" href="' . $e(PublicLayout::url('/india-nepal', $lang)) . '">🤝 ' . $e($pw['indiaNepal']) . '</a></div></section>';
 
         $crumbs = self::crumbs($lang, $w['offH1'], '/offices');

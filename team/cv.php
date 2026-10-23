@@ -133,6 +133,10 @@ while (count($exp) < 3) {
     <input class="i" id="skills" name="skills" maxlength="200" placeholder="<?= $t === 'staff' ? 'Heavy licence, Volvo AC, first aid …' : 'Ticketing, customer care, computer …' ?>" value="<?= $h($cv['skills']) ?>">
     <label class="f" for="about">आफ्नो बारेमा · About</label>
     <textarea class="i" id="about" name="about" maxlength="500"><?= $h($cv['about']) ?></textarea>
+    <h3>सार्वजनिक लिंक · Public links</h3>
+    <p class="tp-sub" style="margin:0 0 6px">तपाईंको डिजिटल कार्ड र QR जाँच पेजमा देखिन्छ — कार्यालयले तपाईंको सम्पर्क सार्वजनिक गरेको भए मात्र। · Shown on your digital card / verify page only when your contact is public.</p>
+    <label class="f" for="fb">Facebook प्रोफाइल / पेज</label>
+    <input class="i" id="fb" name="facebook" type="url" maxlength="160" placeholder="https://facebook.com/yourname" value="<?= $h($cv['links']['facebook'] ?? '') ?>">
     <button class="b" type="submit">💾 सेभ गर्नुहोस् · Save</button>
   </form>
   <a class="b gh" href="/team/cv.php?t=<?= $h($t) ?>&amp;print=1">🖨️ CV हेर्नुहोस् / प्रिन्ट · View / print</a>

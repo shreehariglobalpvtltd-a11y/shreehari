@@ -164,7 +164,7 @@ admin_header('Staff applications', 'staff-applications');
 admin_page_head(
     'Drivers, conductors, helpers and office staff who applied online — check the documents, decide, and choose who shows on the website.',
     ['Drivers & Crew' => '/admin/drivers.php', 'Staff applications' => ''],
-    '<a class="btn ghost sm" href="/agreements/staff.html" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-external"/></svg>Application form</a>'
+    '<a class="btn ghost sm" href="/agreements/apply.html?kind=staff" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-external"/></svg>Application form</a>'
     . '<a class="btn ghost sm" href="/agreements/staff-agreement.html" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-doc"/></svg>Staff agreement</a>'
     . '<a class="btn ghost sm" href="settings.php?q=staff_" ><svg class="a-ic"><use href="#a-cog"/></svg>Switches</a>'
 );

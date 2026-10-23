@@ -19,6 +19,7 @@ define('SHG_APP', true);
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/teamportal.php';
 require_once INCLUDE_PATH . '/teamui.php';
+require_once INCLUDE_PATH . '/passkeys.php';
 
 $h  = static fn($v): string => Security::e((string) ($v ?? ''));
 $v  = (string) ($_GET['v'] ?? '');
@@ -129,7 +130,33 @@ if ($me !== null && $v !== 'reset') {
     if ($err !== null) {
         echo '<div class="tp-msg bad">' . $h($err) . '</div>';
     }
-    if ($v === 'password'): ?>
+    if ($v === 'passkeys'):
+        $own  = TeamPortal::passkeyOwner($me);
+        $keys = $own !== null && Passkeys::ready() ? Passkeys::listFor($own[0], $own[1]) : []; ?>
+    <div class="tp-card">
+      <h1>👆 Face ID / फिंगरप्रिन्ट लगइन</h1>
+      <p class="tp-sub">फोनको आफ्नै लकले एक ट्यापमा भित्र जानुहोस् — पासवर्ड लेख्नु पर्दैन। औंठाछाप वा अनुहार फोनभित्रै रहन्छ, हामीकहाँ आउँदैन। · Sign in with your phone's own lock. Your fingerprint / face never leaves the phone — we keep only a public key.</p>
+      <div id="pkMsg" class="tp-msg info" hidden></div>
+      <?php if (!Passkeys::ready()): ?><div class="tp-msg bad">अहिले चलेको छैन · Not switched on yet.</div>
+      <?php else: ?>
+      <?php if ($keys !== []): ?>
+      <h3>थपिएका डिभाइस · Your devices</h3>
+      <?php foreach ($keys as $k): ?>
+      <div class="tp-row3" style="align-items:center;grid-template-columns:1fr auto">
+        <div><b><?= $h($k['label']) ?></b><br><small class="muted">थपिएको <?= $h(substr((string) $k['created_at'], 0, 10)) ?><?= !empty($k['last_used_at']) ? ' · अन्तिम प्रयोग ' . $h(substr((string) $k['last_used_at'], 0, 10)) : '' ?></small></div>
+        <button type="button" class="b gh" style="margin:0;min-height:40px;width:auto;padding:0 12px;font-size:13px" data-pk-remove="<?= (int) $k['id'] ?>">हटाउनुहोस्</button>
+      </div>
+      <?php endforeach; ?>
+      <?php endif; ?>
+      <label class="f" for="pkLabel">यो डिभाइसको नाम · Name this device</label>
+      <input class="i" id="pkLabel" data-pk-label maxlength="60" placeholder="जस्तै: मेरो Samsung फोन">
+      <button class="b or" type="button" data-pk="add">👆 यो डिभाइस थप्नुहोस् · Add Face ID / fingerprint</button>
+      <p class="tp-sub" id="pkNo" hidden style="margin-top:10px">यो ब्राउजरमा Face ID / फिंगरप्रिन्ट छैन — फोनको Chrome / Safari मा खोल्नुहोस्। · This browser has no Face ID / fingerprint; open /team/ in your phone's Chrome or Safari.</p>
+      <?php endif; ?>
+      <p class="tp-links"><a href="/team/">← Back</a></p>
+    </div>
+    <script src="/assets/js/team-passkey.js?v=20261023d"></script>
+    <?php elseif ($v === 'password'): ?>
     <div class="tp-card">
       <h1>🔑 पासवर्ड बदल्नुहोस् · Change password</h1>
       <form method="post" action="/team/?v=password" autocomplete="on">
@@ -161,9 +188,10 @@ if ($me !== null && $v !== 'reset') {
     </div>
     <div class="tp-grid">
       <?php if ($sell !== null): ?><a class="tp-tile hot" href="<?= $h($sell) ?>"><i>🎫</i><b>टिकट बेच्नुहोस्</b><small>Sell tickets · <?= match ((string) $me['admin']['role']) { 'agent' => 'agent panel', 'counter' => 'counter', default => 'SmartBook' } ?></small></a><?php endif; ?>
-      <?php if ($cards !== []): ?><a class="tp-tile" href="/team/card.php"><i>🪪</i><b>मेरो परिचयपत्र</b><small>My ID card · PNG / print</small></a><?php endif; ?>
+      <?php if ($cards !== []): ?><a class="tp-tile" href="/team/card.php"><i>🪪</i><b>मेरो डिजिटल ID</b><small>ID + visiting card · PNG / PDF</small></a><?php endif; ?>
       <?php if ($staff !== null || $agent !== null): ?><a class="tp-tile" href="/team/cv.php"><i>📄</i><b>मेरो CV</b><small><?= $kind === 'partner' ? 'Company profile' : 'Education + experience' ?></small></a><?php endif; ?>
       <?php if ($agrUrl !== null && ($staff !== null || $agent !== null)): ?><a class="tp-tile" href="<?= $h($agrUrl) ?>"><i>📝</i><b>मेरो सम्झौता</b><small>My agreement</small></a><?php endif; ?>
+      <a class="tp-tile" href="/team/?v=passkeys"><i>👆</i><b>Face ID / फिंगरप्रिन्ट</b><small>One-tap sign-in</small></a>
       <a class="tp-tile" href="/team/?v=password"><i>🔑</i><b>पासवर्ड</b><small>Change password</small></a>
       <form method="post" action="/team/" style="display:contents"><?= $csrf ?><input type="hidden" name="action" value="logout">
         <button class="tp-tile" type="submit" style="font:inherit;text-align:left;cursor:pointer"><i>🚪</i><b>बाहिर निस्कनुहोस्</b><small>Sign out</small></button></form>
@@ -283,12 +311,17 @@ if ($v === 'forgot'): ?>
     <input class="i" id="pw" name="password" type="password" required autocomplete="current-password">
     <button class="b" type="submit">भित्र जानुहोस् · Sign in</button>
   </form>
+  <?php if (Passkeys::ready()): ?>
+  <div id="pkMsg" class="tp-msg info" hidden style="margin-top:12px"></div>
+  <button class="b or" type="button" data-pk="login">👆 Face ID / फिंगरप्रिन्टले भित्र जानुहोस्</button>
+  <?php endif; ?>
   <a class="b gh" href="/team/?v=forgot">🔑 पासवर्ड बनाउनुहोस् / बिर्सनुभयो? · Set / forgot password</a>
   <p class="tp-links">
-    <a href="/agreements/apply.html">✍️ एजेन्ट बन्नुहोस्</a>
-    <a href="/agreements/partner-agreement-ne.html">🏢 साझेदार बन्नुहोस्</a>
-    <a href="/agreements/staff.html">🧑‍✈️ स्टाफ फारम</a>
+    <a href="/agreements/apply.html">🤝 एजेन्ट बन्नुहोस्</a>
+    <a href="/agreements/apply.html?kind=staff">🧑‍✈️ स्टाफ बन्नुहोस्</a>
+    <a href="/agreements/apply.html?kind=partner">🏢 साझेदार बन्नुहोस्</a>
   </p>
+  <?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261023d"></script><?php endif; ?>
   <p class="tp-links" style="font-weight:400"><a href="/admin/login.php?portal=admin">Office login (admin)</a></p>
 </div>
 <?php endif;

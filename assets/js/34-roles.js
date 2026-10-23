@@ -1,0 +1,157 @@
+/* =====================================================================
+   34-roles.js — AGENT | STAFF | PVT. LTD. PARTNER on the home page
+   (23 Oct 2026, owner: "replace Partner Companies / Our Agents / Our Team
+   with exactly three modern integrated sections").
+
+   One section, #homeRoles, three role cards. Each card shows the Top 3
+   (/api/top-people.php: approved people the office put on the website,
+   the contact each one agreed to show, ranked by real work) and opens the
+   full list on "See all" (/api/agent-directory.php for agents and partner
+   companies, /api/staff-list.php for staff - the same public fields as
+   before, nothing new leaves the server). Apply and Login doors per role.
+   Read-only, no booking path. Replaces 32-agents.js and 33-team.js.
+   ===================================================================== */
+(function () {
+  'use strict';
+  if (!document.getElementById('homeRoles')) return;
+  var PAGE = 12;
+  var APPLY = { agent: '/agreements/apply.html', staff: '/agreements/apply.html?kind=staff', partner: '/agreements/apply.html?kind=partner' };
+  var NE = { driver: 'चालक', conductor: 'कन्डक्टर', helper: 'हेल्पर', office: 'अफिस', accountant: 'लेखापाल', mechanic: 'मेकानिक', cleaner: 'सफाइ', security: 'सुरक्षा', other: 'अन्य' };
+  var top = null, dir = null, staff = null, shown = { agent: PAGE, staff: PAGE, partner: PAGE }, open = {};
+
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function initials(name) { var p = String(name || '').trim().split(/\s+/); return ((p[0] || '').charAt(0) + (p.length > 1 ? p[p.length - 1].charAt(0) : '')).toUpperCase() || '★'; }
+  function okPhoto(src) { return /^\/api\/(agent|staff)-photo\.php\?k=[a-f0-9]+(&v=logo)?$/.test(String(src || '')); }
+  function box(kind) { return document.querySelector('#homeRoles [data-role="' + kind + '"]'); }
+  var io = 'IntersectionObserver' in window && document.documentElement.getAttribute('data-motion') !== 'reduced'
+    ? new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }); }, { rootMargin: '0px 0px -6% 0px' }) : null;
+  function reveal(node, i) { if (io) { node.style.transitionDelay = (i * 70) + 'ms'; io.observe(node); } else node.classList.add('in'); }
+
+  /* WhatsApp with a professional line + call: only with a full public number */
+  function acts(p, kind) {
+    var a = el('div', 'rl-acts');
+    var wa = String(p.wa || '').replace(/\D/g, ''), tel = String(p.tel || '').replace(/[^\d+]/g, '');
+    if (!tel && wa.length >= 10) tel = '+' + wa;
+    if (wa.length >= 10) {
+      var w = el('a', 'rl-wa', 'WhatsApp');
+      w.href = 'https://wa.me/' + wa + '?text=' + encodeURIComponent('Namaste ' + (p.name || '') + ' ji, S Hari Global ko website bata. ' + (kind === 'staff' ? 'Bus ko barema sodhnu thiyo.' : 'Malai bus ticket chahiyo.'));
+      w.target = '_blank'; w.rel = 'noopener'; w.setAttribute('aria-label', 'WhatsApp ' + p.name);
+      a.appendChild(w);
+    }
+    if (/^\+?\d{10,15}$/.test(tel)) { var c = el('a', 'rl-call', '📞'); c.href = 'tel:' + tel; c.setAttribute('aria-label', 'Call ' + p.name); a.appendChild(c); }
+    return a.children.length ? a : null;
+  }
+  function avatar(p, kind, big) {
+    var src = kind === 'partner' && okPhoto(p.logo) ? p.logo : (okPhoto(p.photo) ? p.photo : '');
+    var av = el('span', 'rl-av' + (src ? '' : ' txt') + (kind === 'partner' ? ' logo' : ''), src ? '' : initials(p.name));
+    if (src) { var im = el('img'); im.src = src; im.alt = ''; im.loading = 'lazy'; im.decoding = 'async'; im.width = im.height = big ? 96 : 56; im.onerror = function () { av.classList.add('txt'); av.textContent = initials(p.name); }; av.appendChild(im); }
+    return av;
+  }
+  function topCard(p, i, kind) {
+    var c = el('article', 'rl-top r' + (i + 1));
+    c.appendChild(el('span', 'rl-rank', '#' + (i + 1)));
+    c.appendChild(avatar(p, kind, true));
+    c.appendChild(el('h4', 'rl-name', p.name || ''));
+    if (p.role) c.appendChild(el('p', 'rl-role', p.role));
+    if (p.area) c.appendChild(el('p', 'rl-area', '📍 ' + p.area));
+    c.appendChild(el('p', 'rl-ver', p.metric || '✔ कम्पनी प्रमाणित · ID verified'));
+    var a = acts(p, kind); if (a) c.appendChild(a);
+    return c;
+  }
+  function listCard(p, kind) {
+    var li = el('li', 'rl-item');
+    li.appendChild(avatar(p, kind, false));
+    var who = el('div', 'rl-who');
+    who.appendChild(el('b', '', p.name || ''));
+    var sub = [];
+    if (kind === 'staff') { if (p.role) sub.push((NE[p.role] || '') + (p.roleEn ? ' · ' + p.roleEn : '')); if (p.loc) sub.push(p.loc); }
+    else if (p.area) sub.push(p.area);
+    if (sub.length) who.appendChild(el('small', '', sub.join(' · ')));
+    var tick = el('small', 'rl-tick', kind === 'staff' ? '✔ ID verified' : (p.verified ? '✔ KYC verified' : '✔ Approved') + (p.signed ? ' · 📝 signed' : ''));
+    who.appendChild(tick);
+    li.appendChild(who);
+    var a = acts(p, kind); if (a) li.appendChild(a);
+    return li;
+  }
+
+  function fillTop(kind, people) {
+    var b = box(kind); if (!b) return;
+    var row = b.querySelector('.rl-row'); row.textContent = '';
+    if (!people.length) {
+      var e = el('p', 'rl-empty', ''), l = el('a', '', { agent: 'पहिलो एजेन्ट बन्नुहोस् →', staff: 'पहिलो कर्मचारी बन्नुहोस् →', partner: 'पहिलो साझेदार कम्पनी बन्नुहोस् →' }[kind]);
+      l.href = APPLY[kind]; e.appendChild(l); row.appendChild(e); return;
+    }
+    people.slice(0, 3).forEach(function (p, i) { var c = topCard(p, i, kind); row.appendChild(c); reveal(c, i); });
+  }
+  function fullList(kind) {
+    if (kind === 'staff') return staff ? staff.items : null;
+    if (!dir) return null;
+    return dir.filter(function (x) { return (x.kind === 'partner') === (kind === 'partner'); });
+  }
+  function paintList(kind) {
+    var b = box(kind); if (!b) return;
+    var ul = b.querySelector('.rl-list'), more = b.querySelector('.rl-more'), all = b.querySelector('.rl-all'), list = fullList(kind);
+    var n = list ? list.length : 0;
+    if (all) { all.hidden = !n; all.textContent = (open[kind] ? 'लुकाउनुहोस् · Hide' : 'सबै हेर्नुहोस् · See all') + ' (' + n + ')'; all.setAttribute('aria-expanded', open[kind] ? 'true' : 'false'); }
+    if (!open[kind] || !list) { ul.hidden = true; more.hidden = true; return; }
+    ul.textContent = '';
+    list.slice(0, shown[kind]).forEach(function (p) { ul.appendChild(listCard(p, kind)); });
+    ul.hidden = false;
+    more.hidden = n <= shown[kind];
+    more.textContent = 'थप · More (' + Math.max(0, n - shown[kind]) + ')';
+  }
+  function counts() {
+    ['agent', 'staff', 'partner'].forEach(function (k) {
+      var b = box(k), list = fullList(k); if (!b) return;
+      var c = b.querySelector('.rl-count'); if (c && list) { c.textContent = list.length ? list.length + (k === 'staff' ? ' जना' : '') : ''; c.hidden = !list.length; }
+      paintList(k);
+    });
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target && e.target.closest ? e.target.closest('#homeRoles .rl-all, #homeRoles .rl-more, #homeRoles .rl-tab') : null;
+    if (!t) return;
+    var kind = t.getAttribute('data-kind');
+    if (t.classList.contains('rl-tab')) {
+      e.preventDefault();
+      [].forEach.call(document.querySelectorAll('#homeRoles .rl-tab'), function (x) { x.setAttribute('aria-selected', x === t ? 'true' : 'false'); });
+      var b = box(kind); if (b) b.scrollIntoView({ behavior: document.documentElement.getAttribute('data-motion') === 'reduced' ? 'instant' : 'smooth', block: 'start' });
+      return;
+    }
+    if (t.classList.contains('rl-more')) { shown[kind] += PAGE; paintList(kind); return; }
+    open[kind] = !open[kind];
+    if (open[kind]) loadLists();
+    paintList(kind);
+  });
+
+  var tLoaded = false, lLoaded = false;
+  function get(url) { return fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } }).then(function (r) { return r.ok ? r.json() : null; }); }
+  function loadTop() {
+    if (tLoaded) return; tLoaded = true;
+    get('/api/top-people.php').then(function (j) {
+      if (!j || !j.ok) throw new Error('bad');
+      top = j;
+      ['agent', 'staff', 'partner'].forEach(function (k) { fillTop(k, Array.isArray(j[k]) ? j[k] : []); });
+    }).catch(function () {
+      [].forEach.call(document.querySelectorAll('#homeRoles .rl-row'), function (r) { r.textContent = ''; r.hidden = true; });
+    }).then(loadLists);
+  }
+  function loadLists() {
+    if (lLoaded) return; lLoaded = true;
+    get('/api/agent-directory.php').then(function (d) { dir = d && d.ok ? d.items : []; counts(); }).catch(function () { dir = []; counts(); });
+    get('/api/staff-list.php').then(function (d) { staff = d && d.ok ? { items: d.items || [], roles: d.roles || [] } : { items: [], roles: [] }; counts(); }).catch(function () { staff = { items: [], roles: [] }; counts(); });
+  }
+  /* a shared /#agents, /#team or /#partners link opens that card's full list */
+  var hash = String(location.hash || '').replace(/^#/, '');
+  var want = { agents: 'agent', team: 'staff', drivers: 'staff', conductors: 'staff', partners: 'partner' }[hash];
+  if (want) { open[want] = true; }
+  var root = document.getElementById('homeRoles');
+  if ('IntersectionObserver' in window && !want) {
+    var w = new IntersectionObserver(function (en) { if (en.some(function (x) { return x.isIntersecting; })) { w.disconnect(); loadTop(); } }, { rootMargin: '500px 0px' });
+    w.observe(root);
+    setTimeout(loadTop, 3000);
+  } else {
+    loadTop();
+    if (want) setTimeout(function () { var b = box(want); if (b) b.scrollIntoView({ block: 'start' }); }, 600);
+  }
+})();

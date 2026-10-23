@@ -125,45 +125,71 @@ footer{padding:0 16px 30px;text-align:center;color:var(--muted);font-size:13px}
     <div class="seg" role="group" aria-label="भाषा · Language"><button type="button" data-setlang="ne" lang="ne" aria-pressed="true">नेपाली</button><button type="button" data-setlang="hi" lang="hi" aria-pressed="false">हिन्दी</button><button type="button" data-setlang="en" lang="en" aria-pressed="false">English</button><button type="button" data-setlang="gu" lang="gu" aria-pressed="false">ગુજરાતી</button></div>
   </div>
 </header>
-<section class="hero"><div class="wrap"><h1><span data-l="ne" lang="ne">सम्झौता पत्र</span><span data-l="hi" lang="hi">अनुबंध पत्र</span><span data-l="en" lang="en">Agreements</span><span data-l="gu" lang="gu">કરાર પત્ર</span></h1><p><span data-l="ne" lang="ne">फारम फोनमै भर्नुहोस् र अनलाइन पठाउनुहोस्, वा PDF डाउनलोड गरी प्रिन्ट गरेर हातैले हस्ताक्षर गर्नुहोस्।</span><span data-l="hi" lang="hi">फ़ॉर्म फ़ोन पर ही भरें और ऑनलाइन भेजें, या PDF डाउनलोड करके प्रिंट करें और हाथ से हस्ताक्षर करें।</span><span data-l="en" lang="en">Fill in the form on your phone and send it online, or download the PDF, print it and sign by hand.</span><span data-l="gu" lang="gu">ફોર્મ ફોનમાં જ ભરો અને ઓનલાઇન મોકલો, અથવા PDF ડાઉનલોડ કરીને પ્રિન્ટ કરો અને હાથથી સહી કરો.</span></p></div></section>
+<section class="hero"><div class="wrap"><h1><span data-l="ne" lang="ne">सम्झौता पत्र</span><span data-l="hi" lang="hi">अनुबंध पत्र</span><span data-l="en" lang="en">Agreements</span><span data-l="gu" lang="gu">કરાર પત્ર</span></h1><p><span data-l="ne" lang="ne">एजेन्ट · स्टाफ · प्रा. लि. साझेदार — एउटै डिजिटल बाटो: अनलाइन आवेदन, KYC, ई-सही, कार्यालय जाँच, लगइन र डिजिटल परिचयपत्र।</span><span data-l="hi" lang="hi">फ़ॉर्म फ़ोन पर ही भरें और ऑनलाइन भेजें, या PDF डाउनलोड करके प्रिंट करें और हाथ से हस्ताक्षर करें।</span><span data-l="en" lang="en">Agent · Staff · Pvt. Ltd. Partner — one digital path: apply online, KYC, e-signature, office verification, login and your digital ID card.</span><span data-l="gu" lang="gu">ફોર્મ ફોનમાં જ ભરો અને ઓનલાઇન મોકલો, અથવા PDF ડાઉનલોડ કરીને પ્રિન્ટ કરો અને હાથથી સહી કરો.</span></p></div></section>
 <main class="wrap">
-<!-- 22 Oct 2026 (owner: "euta matra apply now ... aru agreement haru agent haru chaina sabai hatadeu, only yei
-     wala system"): this page is now the three forms only - ONE "Apply now" that asks who is applying, then the
-     three kinds side by side, each with its A4 paper form and its own agreement. The old agreement cards, the
-     "what you need" card and the agent list are gone (the home page shows the people). -->
+<!-- 23 Oct 2026 (owner: "THREE are the ONLY main agreement and digital identity systems"): this page is the
+     three role doors only - AGENT | STAFF | PVT. LTD. PARTNER. Each role has ONE system: Apply (the online
+     form, with the agreement's every term, KYC, e-signature) -> office verification -> approval -> unique ID ->
+     team login -> digital ID / visiting card -> PDF. The old hybrid "fill offline" document, the separate staff
+     page and the agent sign-up page redirect here; the agreement texts stay readable in four languages. -->
+<style>
+.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0 0 16px;padding:0;list-style:none;counter-reset:st}
+.flow li{position:relative;padding:10px 8px 8px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);font-size:12.5px;line-height:1.35;color:var(--muted)}
+.flow li b{display:block;font-size:13px;color:var(--ink)}
+.flow li::before{counter-increment:st;content:counter(st);position:absolute;top:-8px;left:-6px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:900;color:#fff;background:linear-gradient(135deg,#f07a1e,#d4570c)}
+@media (max-width:760px){.flow{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.k-login{border-style:solid}
+.k-id{display:flex;align-items:center;gap:8px;margin:0;font-size:12.5px;color:var(--muted)}
+.k-id b{color:var(--k)}
+</style>
 <section class="kinds" id="forms" aria-labelledby="formsTitle">
-  <h2 class="kinds-h" id="formsTitle">आवेदन र सम्झौता · Apply &amp; agreements</h2>
-  <p class="kinds-sub">सबै फोनबाटै: विवरण, डकुमेन्ट र मार्कसिटको फोटो, अनुहार (Face ID), औंठाछाप र सही — अनि सम्झौताका सबै सर्त पढेर पठाउनुहोस्। · All on your phone: details, documents, face, thumbprint, signature and every term of the agreement.</p>
+  <h2 class="kinds-h" id="formsTitle">आवेदन, सम्झौता र डिजिटल परिचयपत्र · Apply, agreement &amp; digital ID</h2>
+  <p class="kinds-sub">हरेक भूमिकाको एउटै डिजिटल बाटो — फोनबाटै: <b>आवेदन → फारम → KYC → सम्झौता → ई-सही → कार्यालय जाँच → स्वीकृति → ID नम्बर → लगइन → डिजिटल ID कार्ड → PDF</b>। नेपाली · हिन्दी · English · ગુજરાતી।</p>
+  <ol class="flow" aria-label="How it works">
+    <li><b>✍️ Apply online</b>विवरण, फोटो, KYC, सम्झौताका सबै सर्त, ई-सही</li>
+    <li><b>🔍 Office verifies</b>कार्यालयले KYC जाँचेर स्वीकृत गर्छ, ID नं. दिन्छ</li>
+    <li><b>🔐 Login</b>मोबाइल + पासवर्ड, वा Face ID / फिंगरप्रिन्ट</li>
+    <li><b>🪪 Digital ID</b>ID कार्ड, भिजिटिङ कार्ड, QR जाँच, PDF</li>
+  </ol>
   <details class="applynow" id="applyNow">
     <summary>✍️ अहिले आवेदन दिनुहोस् · Apply now</summary>
     <p class="an-q">तपाईं को हुनुहुन्छ? · Who is applying?</p>
     <div class="an-pick">
-      <a class="k-staff" href="/agreements/apply.html?kind=staff"><span aria-hidden="true">🧑‍✈️</span><b>कर्मचारी · Staff</b><small>चालक, कन्डक्टर, हेल्पर, अफिस, लेखापाल, मेकानिक…</small></a>
       <a class="k-agent" href="/agreements/apply.html"><span aria-hidden="true">🤝</span><b>एजेन्ट · Agent</b><small>व्यक्ति — टिकट बेच्ने, यात्रु ल्याउने</small></a>
-      <a class="k-partner" href="/agreements/apply.html?kind=partner"><span aria-hidden="true">🏢</span><b>साझेदार कम्पनी · Partner</b><small>प्रा. लि. / दर्ता भएको फर्म</small></a>
+      <a class="k-staff" href="/agreements/apply.html?kind=staff"><span aria-hidden="true">🧑‍✈️</span><b>स्टाफ · Staff</b><small>चालक, कन्डक्टर, हेल्पर, अफिस, लेखापाल, मेकानिक…</small></a>
+      <a class="k-partner" href="/agreements/apply.html?kind=partner"><span aria-hidden="true">🏢</span><b>प्रा. लि. साझेदार · Partner</b><small>प्रा. लि. / दर्ता भएको फर्म</small></a>
     </div>
   </details>
   <div class="kinds-grid">
-    <article class="kind-card k-staff">
-      <div class="k-top"><span class="k-ic" aria-hidden="true">🧑‍✈️</span><div><b>कर्मचारी · Staff</b><small>चालक, कन्डक्टर, हेल्पर, अफिस, लेखापाल, मेकानिक, सफाइ, सुरक्षा</small></div></div>
-      <ul class="k-need"><li>🤳 फोटो र परिचयपत्र</li><li>🚌 लाइसेन्स (चालक)</li><li>🎓 मार्कसिट / प्रमाणपत्र</li><li>📄 अनुभव पत्र, २ चिनारी</li><li>👍 औंठाछाप, ✍️ सही</li></ul>
-      <a class="k-main k-hy" href="/agreements/document.php?kind=staff">📋 कर्मचारी फारम + सम्झौता<br><small>एउटै डिजिटल कागज · भर्नुहोस् · PDF · प्रिन्ट</small></a>
-    </article>
-    <article class="kind-card k-agent">
+    <article class="kind-card k-agent" id="agent">
       <div class="k-top"><span class="k-ic" aria-hidden="true">🤝</span><div><b>एजेन्ट · Agent</b><small>व्यक्ति — टिकट बेच्ने, यात्रु ल्याउने, कमिसनमा</small></div></div>
-      <ul class="k-need"><li>🤳 फोटो र परिचयपत्र</li><li>🎓 मार्कसिट (ऐच्छिक)</li><li>🏦 बैंक / UPI</li><li>📱 WhatsApp नम्बर</li><li>👍 औंठाछाप, ✍️ सही</li></ul>
-      <a class="k-main k-hy" href="/agreements/document.php?kind=agent">📋 एजेन्ट फारम + सम्झौता<br><small>एउटै डिजिटल कागज · भर्नुहोस् · PDF · प्रिन्ट</small></a>
-      <p class="k-langs">सम्झौता: <a href="agent-agreement-ne.html" hreflang="ne">नेपाली</a> · <a href="agent-agreement-hi.html" hreflang="hi">हिन्दी</a> · <a href="agent-agreement-en.html" hreflang="en">English</a> · <a href="agent-agreement-gu.html" hreflang="gu">ગુજરાતી</a></p>
+      <ul class="k-need"><li>🤳 फोटो र परिचयपत्र</li><li>🏦 बैंक / UPI</li><li>📱 WhatsApp नम्बर</li><li>👍 औंठाछाप, ✍️ ई-सही</li></ul>
+      <a class="k-main" href="/agreements/apply.html">✍️ एजेन्ट आवेदन · Apply as agent</a>
+      <div class="k-row"><a class="k-login" href="/team/">🔐 Login</a><a href="/team/card.php">🪪 My digital ID</a></div>
+      <p class="k-id">ID: <b>AGR-000000</b> · सम्झौता v2.3 · 11 महिना</p>
+      <p class="k-langs">सम्झौता पढ्नुहोस्: <a href="agent-agreement-ne.html" hreflang="ne">नेपाली</a> · <a href="agent-agreement-hi.html" hreflang="hi">हिन्दी</a> · <a href="agent-agreement-en.html" hreflang="en">English</a> · <a href="agent-agreement-gu.html" hreflang="gu">ગુજરાતી</a></p>
     </article>
-    <article class="kind-card k-partner">
-      <div class="k-top"><span class="k-ic" aria-hidden="true">🏢</span><div><b>साझेदार कम्पनी · Partner</b><small>प्रा. लि. / दर्ता भएको फर्म</small></div></div>
-      <ul class="k-need"><li>📄 दर्ता प्रमाणपत्र</li><li>🧾 PAN / VAT प्रमाणपत्र</li><li>🪪 प्रतिनिधिको परिचयपत्र र फोटो</li><li>🏷 कम्पनीको लोगो, बैंक</li><li>👥 दुई जना साक्षी</li></ul>
-      <a class="k-main k-hy" href="/agreements/document.php?kind=partner">📋 प्रा. लि. साझेदार फारम + सम्झौता<br><small>एउटै डिजिटल कागज · भर्नुहोस् · PDF · प्रिन्ट</small></a>
-      <p class="k-langs">सम्झौता: <a href="partner-agreement-ne.html" hreflang="ne">नेपाली</a> · <a href="partner-agreement-hi.html" hreflang="hi">हिन्दी</a> · <a href="partner-agreement-en.html" hreflang="en">English</a> · <a href="partner-agreement-gu.html" hreflang="gu">ગુજરાતી</a></p>
+    <article class="kind-card k-staff" id="staff">
+      <div class="k-top"><span class="k-ic" aria-hidden="true">🧑‍✈️</span><div><b>स्टाफ · Staff</b><small>चालक, कन्डक्टर, हेल्पर, अफिस, लेखापाल, मेकानिक, सफाइ, सुरक्षा</small></div></div>
+      <ul class="k-need"><li>🤳 फोटो र परिचयपत्र</li><li>🚌 लाइसेन्स (चालक)</li><li>🎓 मार्कसिट / प्रमाणपत्र</li><li>👍 औंठाछाप, ✍️ ई-सही</li></ul>
+      <a class="k-main" href="/agreements/apply.html?kind=staff">🧑‍✈️ स्टाफ आवेदन · Apply for a job</a>
+      <div class="k-row"><a class="k-login" href="/team/">🔐 Login</a><a href="/team/card.php">🪪 My digital ID</a></div>
+      <p class="k-id">ID: <b>STF-000000</b> · कर्मचारी सम्झौता v1.1</p>
+      <p class="k-langs">सम्झौता पढ्नुहोस्: <a href="staff-agreement.html" hreflang="ne">नेपाली · English</a> · <a href="/agreements/form.php?kind=staff&amp;lang=hi" hreflang="hi">हिन्दी</a> · <a href="/agreements/form.php?kind=staff&amp;lang=gu" hreflang="gu">ગુજરાતી</a></p>
+    </article>
+    <article class="kind-card k-partner" id="partner">
+      <div class="k-top"><span class="k-ic" aria-hidden="true">🏢</span><div><b>प्रा. लि. साझेदार · Pvt. Ltd. Partner</b><small>प्रा. लि. / दर्ता भएको फर्म</small></div></div>
+      <ul class="k-need"><li>📄 दर्ता प्रमाणपत्र</li><li>🧾 PAN / VAT प्रमाणपत्र</li><li>🪪 प्रतिनिधिको परिचयपत्र र फोटो</li><li>🏷 लोगो, बैंक, साक्षी</li></ul>
+      <a class="k-main" href="/agreements/apply.html?kind=partner">🏢 साझेदार आवेदन · Apply as partner</a>
+      <div class="k-row"><a class="k-login" href="/team/">🔐 Login</a><a href="/team/card.php">🪪 My digital ID</a></div>
+      <p class="k-id">ID: <b>AGR-000000</b> · साझेदार सम्झौता v2.2 · 11 महिना</p>
+      <p class="k-langs">सम्झौता पढ्नुहोस्: <a href="partner-agreement-ne.html" hreflang="ne">नेपाली</a> · <a href="partner-agreement-hi.html" hreflang="hi">हिन्दी</a> · <a href="partner-agreement-en.html" hreflang="en">English</a> · <a href="partner-agreement-gu.html" hreflang="gu">ગુજરાતી</a></p>
     </article>
   </div>
 </section>
-<a href="/team/" style="display:flex;align-items:center;gap:12px;margin:0 0 16px;padding:12px 18px;border-radius:18px;text-decoration:none;color:#0a2a8f;background:#eef4fc;border:1px solid #d9e7fa"><span style="font-size:24px;line-height:1">🔐</span><span style="flex:1"><b style="display:block;font-size:15px">टिम पोर्टल · Team portal</b><small style="display:block;font-size:12.5px;color:#5c6b85">स्वीकृत भएपछि: परिचयपत्र, CV, सम्झौतामा अनलाइन सही, टिकट बिक्री</small></span><span style="font-weight:900">→</span></a>
+<a href="/team/" style="display:flex;align-items:center;gap:12px;margin:0 0 10px;padding:12px 18px;border-radius:18px;text-decoration:none;color:#0a2a8f;background:#eef4fc;border:1px solid #d9e7fa"><span style="font-size:24px;line-height:1">🔐</span><span style="flex:1"><b style="display:block;font-size:15px">टिम लगइन · Team login</b><small style="color:#5c6b85">स्वीकृत एजेन्ट, स्टाफ र साझेदार — डिजिटल ID, भिजिटिङ कार्ड, CV, सम्झौता, Face ID लगइन</small></span><span aria-hidden="true">›</span></a>
+<a href="/verify-id.php" style="display:flex;align-items:center;gap:12px;margin:0 0 16px;padding:12px 18px;border-radius:18px;text-decoration:none;color:#11703F;background:#edf8f1;border:1px solid #cfe9d8"><span style="font-size:24px;line-height:1">🔍</span><span style="flex:1"><b style="display:block;font-size:15px">परिचयपत्र जाँच · Verify an ID card</b><small style="color:#5c6b85">कार्डको QR स्क्यान गर्नुहोस् — Genuine / Not valid तुरुन्तै</small></span><span aria-hidden="true">›</span></a>
+<p style="margin:0 0 16px;font-size:12.5px;color:#5c6b85;text-align:center">📄 कागजमा भर्न: <a href="/agreements/form.php?kind=agent">एजेन्ट</a> · <a href="/agreements/form.php?kind=staff">स्टाफ</a> · <a href="/agreements/form.php?kind=partner">साझेदार</a> A4 फारम (print · PDF) — अनलाइन पठाएपछि तपाईंको भरिएको A4 प्रति आफैं बन्छ।</p>
 </main>
 <footer>S HARI GLOBAL PRIVATE LIMITED · CIN U52291GJ2026PTC174029 · www.shreehariglobal.in · 9104801507</footer>
 <script>

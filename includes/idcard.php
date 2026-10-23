@@ -80,8 +80,18 @@ final class IdCard
         $cc = countryDialCode((string) $r['phone_country']) ?: '977';
         $photo = !empty($r['photo_path']) && ($abs = StaffApps::absPath((string) $r['photo_path'])) !== null ? (string) file_get_contents($abs) : null;
         $sig   = !empty($r['signature_path']) && ($abs = StaffApps::absPath((string) $r['signature_path'])) !== null ? (string) file_get_contents($abs) : null;
+        // 23 Oct 2026 (digital identity): what the public card / verify page may show - only with the
+        // office's public fields and the person on the website; the links the person typed in their CV
+        $pub   = (int) ($r['show_on_website'] ?? 0) === 1 ? array_flip(StaffApps::publicFields()) : [];
+        $links = self::links((string) ($r['cv_json'] ?? ''));
+        $issued = substr((string) ($r['approved_at'] ?: $r['created_at']), 0, 10);
         return [
             'kind'       => 'staff',
+            'expires'    => self::plusMonths($issued, 12),
+            'public'     => isset($pub['phone']),
+            'waDigits'   => isset($pub['phone']) ? $cc . $r['phone'] : '',
+            'email'      => isset($pub['phone']) ? trim((string) ($r['email'] ?? '')) : '',
+            'facebook'   => isset($pub['phone']) ? $links['facebook'] : '',
             'ref'        => (string) $r['ref'],
             'name'       => (string) $r['full_name'],
             'roleEn'     => StaffApps::roleLabel((string) $r['role_applied']),
@@ -112,8 +122,23 @@ final class IdCard
         $f = is_array($r['fields'] ?? null) ? $r['fields'] : [];
         $pic = $org && !empty($r['logo']) ? (string) $r['logo'] : (string) ($r['photo'] ?? '');
         $raw = (string) (($r['phone_raw'] ?? '') ?: $r['phone']);
+        // 23 Oct 2026 (digital identity): contact on the public card only when the person agreed (public_ok)
+        // and the card is on the website (web_live); the full number with its country like the directory
+        $pub = (int) ($r['public_ok'] ?? 0) === 1 && (int) ($r['web_live'] ?? 1) === 1 && $active;
+        $digits = preg_replace('/\D/', '', (string) $r['phone']) ?? '';
+        if (strlen($digits) === 10) {
+            $digits = (countryDialCode(resolvePhoneCountry('', $raw)) ?: '91') . $digits;
+        }
+        $links = self::links((string) ($r['cv_json'] ?? ''));
+        $issued = substr((string) ($r['reviewed_at'] ?: $r['created_at']), 0, 10);
+        $end = trim((string) ($r['agreement_end'] ?? ''));
         return [
             'kind'       => $org ? 'partner' : 'agent',
+            'expires'    => $end !== '' && $end !== '0000-00-00' ? substr($end, 0, 10) : self::plusMonths($issued, AgentApplications::TERM_MONTHS),
+            'public'     => $pub,
+            'waDigits'   => $pub ? $digits : '',
+            'email'      => $pub ? trim((string) ($f['p_email'] ?? '')) : '',
+            'facebook'   => $pub ? $links['facebook'] : '',
             'ref'        => (string) ($r['ref'] ?: AgentApplications::refFor((int) $r['id'])),
             'name'       => (string) $r['name'],
             'roleEn'     => $org ? 'Pvt. Ltd. Partner' : 'Authorised Agent',
@@ -252,6 +277,13 @@ final class IdCard
         $kindNe = ['staff' => 'कर्मचारी परिचयपत्र', 'agent' => 'एजेन्ट परिचयपत्र', 'partner' => 'साझेदार परिचयपत्र'][$p['kind']] ?? 'परिचयपत्र';
         self::tC($im, 19, 0, $W, 196, $white, $kindEn, true);
         self::tC($im, 16, 0, $W, 232, self::c($im, [255, 215, 160]), $kindNe);
+        // 23 Oct 2026: the standing on the face of the card (the QR is the proof; this is the glance)
+        $pill = $p['valid'] ? 'VERIFIED' : 'NOT VALID';
+        $pw0 = self::w(11, $pill) + 30;
+        self::roundRect($im, $W - 26 - $pw0, 184, $W - 26, 212, 14, self::c($im, $p['valid'] ? [24, 201, 139] : [217, 48, 37]));
+        self::tC($im, 11, $W - 26 - $pw0, $W - 26, 191, $white, $pill, true);
+        // the orange corner ribbon - the brand's second colour on the face
+        imagefilledpolygon($im, [0, 176, 96, 176, 0, 272], self::c($im, self::ORANGE));
 
         // ---- photo (a partner: the logo, contained on white) ----
         $px = 184; $py = 276; $pw = 270; $ph = 300;
@@ -289,7 +321,7 @@ final class IdCard
             ['ID No.', (string) $p['ref']],
             [$p['kind'] === 'staff' ? 'Office' : 'Area', (string) ($p['place'] ?: '—')],
             ['Mobile', (string) $p['phone']],
-            ['Issued', self::date((string) $p['issued'])],
+            ['Valid till', self::date((string) ($p['expires'] ?? '')) . '   (issued ' . self::date((string) $p['issued']) . ')'],
         ];
         if ($p['contact'] !== '') {
             array_splice($rows, 1, 0, [['Contact', (string) $p['contact']]]);
@@ -401,6 +433,267 @@ final class IdCard
         self::tC($im, 13, 0, $W, $H - 60, self::c($im, [255, 215, 160]), 'Helpline · हेल्पलाइन', true);
         self::tC($im, 16, 0, $W, $H - 36, $white, (string) $co['phone'] . '   ·   WhatsApp ' . self::waShow((string) $co['whatsapp']), true);
         return $im;
+    }
+
+    /* =================================================================
+     *  23 Oct 2026 (digital identity): expiry, public links, the visiting
+     *  card and the print-ready PDF
+     * ================================================================= */
+
+    /** YYYY-MM-DD plus $months, '' when the date is unknown. */
+    public static function plusMonths(string $ymd, int $months): string
+    {
+        $t = strtotime($ymd);
+        return $t ? date('Y-m-d', strtotime('+' . $months . ' months', $t)) : '';
+    }
+
+    /** The links a person typed in their CV (team portal): facebook only for now. */
+    private static function links(string $cvJson): array
+    {
+        $cv = json_decode($cvJson, true);
+        $l = is_array($cv) && is_array($cv['links'] ?? null) ? $cv['links'] : [];
+        $fb = trim((string) ($l['facebook'] ?? ''));
+        return ['facebook' => preg_match('~^https://(www\.|m\.)?(facebook\.com|fb\.com|fb\.me)/[\w./?=&%-]{1,120}$~i', $fb) === 1 ? $fb : ''];
+    }
+
+    /** The WhatsApp link with a professional prefilled line, or '' when the number is not public. */
+    public static function waLink(array $p): string
+    {
+        $d = (string) ($p['waDigits'] ?? '');
+        if (strlen($d) < 11) {
+            return '';
+        }
+        $co = Settings::company();
+        $txt = 'Namaste ' . $p['name'] . ' ji, I found your ' . $co['name'] . ' ' . $p['roleEn'] . ' card (' . $p['ref'] . ') on '
+             . preg_replace('~^(https?://)?(www\.)?~', '', (string) $co['web']) . '. I would like to enquire about bus tickets.';
+        return 'https://wa.me/' . $d . '?text=' . rawurlencode($txt);
+    }
+
+    public const VW = 1050;   // 89 x 51 mm at 300 dpi
+    public const VH = 602;
+
+    /** PNG bytes of the visiting card: 'front' | 'back' | 'sheet' (both). */
+    public static function visitingPng(array $p, string $side = 'front'): string
+    {
+        if ($side === 'sheet') {
+            $gap = 40;
+            $im = imagecreatetruecolor(self::VW, self::VH * 2 + $gap);
+            imagefill($im, 0, 0, imagecolorallocate($im, 255, 255, 255));
+            $f = self::vFront($p);
+            $b = self::vBack($p);
+            imagecopy($im, $f, 0, 0, 0, 0, self::VW, self::VH);
+            imagecopy($im, $b, 0, self::VH + $gap, 0, 0, self::VW, self::VH);
+            imagedestroy($f);
+            imagedestroy($b);
+        } else {
+            $im = $side === 'back' ? self::vBack($p) : self::vFront($p);
+        }
+        ob_start();
+        imagepng($im, null, 6);
+        imagedestroy($im);
+        return (string) ob_get_clean();
+    }
+
+    private static function vFront(array $p): \GdImage
+    {
+        $W = self::VW;
+        $H = self::VH;
+        $im = imagecreatetruecolor($W, $H);
+        imagealphablending($im, true);
+        $white = self::c($im, [255, 255, 255]);
+        imagefill($im, 0, 0, $white);
+        $ink = self::c($im, self::INK);
+        $muted = self::c($im, self::MUTED);
+        $co = Settings::company();
+
+        // ---- left panel: royal gradient, a slanted edge, the brand ----
+        $pw = 400;
+        self::gradient($im, 0, 0, $pw + 60, $H, self::ROYAL, self::ROYAL2);
+        imagefilledpolygon($im, [$pw, 0, $pw + 60, 0, $pw + 60, $H, $pw - 40, $H], $white);
+        imagefilledpolygon($im, [$pw - 6, 0, $pw + 10, 0, $pw - 30, $H, $pw - 46, $H], self::c($im, self::ORANGE));
+        $soft = imagecolorallocatealpha($im, 255, 255, 255, 110);
+        imagefilledellipse($im, 60, 70, 260, 260, $soft);
+        imagefilledellipse($im, 330, $H - 40, 200, 200, $soft);
+        DocArt::mark($im, 46, 50, 150, 100, true);
+        $tx = 46;
+        $ty = 170;
+        self::t($im, 30, $tx, $ty, $white, 'S HARI GLOBAL', true);
+        self::t($im, 12, $tx + self::w(30, 'S HARI GLOBAL') + 4, $ty - 4, $white, '™', true);
+        self::t($im, 14, $tx + 1, $ty + 46, self::c($im, [255, 215, 160]), 'PRIVATE  LIMITED', true);
+        self::t($im, 13, $tx + 1, $ty + 76, $white, 'India – Nepal bus service');
+        self::t($im, 13, $tx + 1, $ty + 100, $white, 'भारत – नेपाल बस सेवा');
+        $y = $H - 150;
+        imageline($im, $tx, $y, $tx + 250, $y, self::c($im, [255, 215, 160]));
+        self::t($im, 13.5, $tx, $y + 14, $white, 'www.' . preg_replace('~^(https?://)?(www\.)?~', '', (string) $co['web']), true);
+        self::t($im, 12.5, $tx, $y + 42, $white, (string) $co['phone']);
+        $ay = $y + 70;
+        foreach (self::wrap((string) $co['address'], 10.5, 300, 2) as $l) {
+            self::t($im, 10.5, $tx, $ay, self::c($im, [220, 228, 250]), $l);
+            $ay += 18;
+        }
+
+        // ---- right: photo / logo, name, designation, details, QR ----
+        $rx = $pw + 100;
+        $px = $rx;
+        $py = 56;
+        $ps = 150;
+        imagefilledellipse($im, $px + intdiv($ps, 2), $py + intdiv($ps, 2), $ps + 14, $ps + 14, self::c($im, self::ORANGE));
+        imagefilledellipse($im, $px + intdiv($ps, 2), $py + intdiv($ps, 2), $ps + 4, $ps + 4, $white);
+        $drawn = $p['photo'] !== null && self::circle($im, (string) $p['photo'], $px, $py, $ps, $p['kind'] === 'partner');
+        if (!$drawn) {
+            imagefilledellipse($im, $px + intdiv($ps, 2), $py + intdiv($ps, 2), $ps, $ps, self::c($im, [238, 243, 252]));
+            self::tC($im, 46, $px, $px + $ps, $py + 44, self::c($im, self::ROYAL), self::initials((string) $p['name']), true);
+        }
+        $nx = $px + $ps + 26;
+        $nw = $W - 40 - $nx;
+        $names = self::wrap((string) $p['name'], 26, $nw, 2);
+        $ny = $py + (count($names) > 1 ? 4 : 22);
+        foreach ($names as $line) {
+            self::t($im, 26, $nx, $ny, $ink, $line, true);
+            $ny += 40;
+        }
+        $role = strtoupper((string) $p['roleEn']);
+        $rw = self::w(12.5, $role) + 30;
+        self::roundRect($im, $nx, $ny + 2, $nx + $rw, $ny + 32, 15, self::c($im, [255, 228, 199]));
+        self::t($im, 12.5, $nx + 15, $ny + 9, self::c($im, [154, 74, 0]), $role, true);
+        self::t($im, 12, $nx + $rw + 12, $ny + 9, $muted, (string) $p['roleNe']);
+        $ny += 44;
+        $pillW = 190;
+        if ($p['valid']) {
+            self::roundRect($im, $nx, $ny, $nx + $pillW, $ny + 26, 13, self::c($im, [24, 201, 139]));
+            self::tC($im, 11, $nx, $nx + $pillW, $ny + 6, $white, 'VERIFIED  ·  ' . $p['ref'], true);
+        } else {
+            self::roundRect($im, $nx, $ny, $nx + $pillW, $ny + 26, 13, self::c($im, [217, 48, 37]));
+            self::tC($im, 11, $nx, $nx + $pillW, $ny + 6, $white, 'NOT VALID', true);
+        }
+
+        $qr = 150;
+        $qx = $W - 40 - $qr;
+        $qy = $H - 40 - $qr;
+        $dy = max($py + $ps + 40, 270);
+        $rows = [];
+        if ($p['place'] !== '') {
+            $rows[] = [$p['kind'] === 'staff' ? 'Office' : 'Area', (string) $p['place']];
+        }
+        if ($p['contact'] !== '') {
+            $rows[] = ['Contact', (string) $p['contact']];
+        }
+        $rows[] = ['Mobile', (string) $p['phone'] . ((string) ($p['waDigits'] ?? '') !== '' ? '  ·  WhatsApp' : '')];
+        if ((string) ($p['email'] ?? '') !== '') {
+            $rows[] = ['E-mail', (string) $p['email']];
+        }
+        $rows[] = ['Valid till', self::date((string) ($p['expires'] ?? ''))];
+        $maxW = $qx - 24 - $rx;
+        foreach (array_slice($rows, 0, 5) as [$k, $v]) {
+            self::t($im, 11.5, $rx, $dy, $muted, $k);
+            self::t($im, 15, $rx + 92, $dy - 3, $ink, self::fit($v, 15, $maxW - 92), true);
+            $dy += 40;
+        }
+        GoldSheet::qr($im, self::verifyUrl((string) $p['ref']), $qx, $qy, $qr);
+        $side = GoldSheet::qrSide(self::verifyUrl((string) $p['ref']), $qr);
+        self::tC($im, 10.5, $qx, $qx + $side, $qy + $side + 2, $muted, 'Scan to verify');
+        imagefilledrectangle($im, $pw + 60, $H - 8, $W, $H, self::c($im, self::ORANGE));
+        return $im;
+    }
+
+    private static function vBack(array $p): \GdImage
+    {
+        $W = self::VW;
+        $H = self::VH;
+        $im = imagecreatetruecolor($W, $H);
+        imagealphablending($im, true);
+        $white = self::c($im, [255, 255, 255]);
+        self::gradient($im, 0, 0, $W, $H, self::ROYAL, self::ROYAL2);
+        $soft = imagecolorallocatealpha($im, 255, 255, 255, 112);
+        imagefilledellipse($im, $W - 120, 80, 420, 420, $soft);
+        imagefilledellipse($im, 90, $H - 60, 300, 300, $soft);
+        imagefilledpolygon($im, [0, $H - 70, $W, $H - 130, $W, $H, 0, $H], self::c($im, self::ORANGE));
+        $co = Settings::company();
+        DocArt::mark($im, intdiv($W, 2) - 110, 96, 220, 150, true);
+        self::tC($im, 38, 0, $W, 262, $white, 'S HARI GLOBAL', true);
+        self::tC($im, 15, 0, $W, 318, self::c($im, [255, 215, 160]), 'P R I V A T E   L I M I T E D', true);
+        self::tC($im, 15, 0, $W, 352, $white, 'एस हरि ग्लोबल प्राइभेट लिमिटेड');
+        self::tC($im, 13, 0, $W, 400, $white, 'Surat  ·  Rupaidiha  ·  Nepalgunj   —   daily AC sleeper coach');
+        self::tC($im, 14, 0, $W, $H - 44, $white, 'www.' . preg_replace('~^(https?://)?(www\.)?~', '', (string) $co['web']) . '   ·   ' . $co['phone'] . '   ·   ' . $co['email'], true);
+        self::t($im, 10, 30, $H - 112, self::c($im, [220, 228, 250]), $p['kind'] === 'partner' ? 'Authorised partner of ' . $co['legal'] : 'Card No. ' . $p['ref'] . '  ·  issued ' . self::date((string) $p['issued']));
+        return $im;
+    }
+
+    /** picture() inside a circle. */
+    private static function circle(\GdImage $im, string $bytes, int $x, int $y, int $d, bool $contain): bool
+    {
+        $bak = imagecreatetruecolor($d, $d);
+        imagecopy($bak, $im, 0, 0, $x, $y, $d, $d);
+        if (!self::picture($im, $bytes, $x, $y, $d, $d, $contain)) {
+            imagedestroy($bak);
+            return false;
+        }
+        $r = $d / 2;
+        for ($i = 0; $i < $d; $i++) {
+            for ($j = 0; $j < $d; $j++) {
+                $dx = $i + 0.5 - $r;
+                $dy = $j + 0.5 - $r;
+                if ($dx * $dx + $dy * $dy > $r * $r) {
+                    imagesetpixel($im, $x + $i, $y + $j, imagecolorat($bak, $i, $j));
+                }
+            }
+        }
+        imagedestroy($bak);
+        return true;
+    }
+
+    /**
+     * A print-ready A4 PDF: 'id' (the ID card), 'visiting' (the visiting card) or
+     * 'all' (both) — every side at true size with crop marks, then a larger preview.
+     */
+    public static function pdf(array $p, string $what = 'all'): string
+    {
+        require_once __DIR__ . '/pdf.php';
+        $pdf = new Pdf();
+        $mm = 72 / 25.4;
+        $co = Settings::company();
+        $first = true;
+        $page = function (string $title, array $sides, float $wmm, float $hmm) use ($pdf, $mm, $p, $co, &$first): void {
+            if (!$first) {
+                $pdf->newPage();
+            }
+            $first = false;
+            $pdf->rect(0, 0, $pdf->width(), 44, [10, 42, 143], true);
+            $pdf->text(36, 18, 'S HARI GLOBAL PRIVATE LIMITED', 12, 'F2', [255, 255, 255]);
+            // the standard PDF fonts are Latin only: a Devanagari name is left to the card images
+            $latin = trim((string) preg_replace('/[^\x20-\x7E]+/', '', (string) $p['name']));
+            $pdf->text(36, 32, $title . '  -  ' . ($latin !== '' ? $latin . '  -  ' : '') . $p['ref'], 9, 'F1', [255, 215, 160]);
+            $pdf->rect(0, 44, $pdf->width(), 4, [240, 122, 30], true);
+            $w = $wmm * $mm;
+            $h = $hmm * $mm;
+            $gap = 10 * $mm;
+            $x = ($pdf->width() - ($w * 2 + $gap)) / 2;
+            $y = 70;
+            foreach ($sides as $i => [$label, $png]) {
+                $cx = $x + $i * ($w + $gap);
+                foreach ([[$cx, $y], [$cx + $w, $y], [$cx, $y + $h], [$cx + $w, $y + $h]] as [$mx, $my]) {
+                    $pdf->line($mx - 14, $my, $mx - 4, $my, [120, 120, 120], 0.4);
+                    $pdf->line($mx + 4, $my, $mx + 14, $my, [120, 120, 120], 0.4);
+                    $pdf->line($mx, $my - 14, $mx, $my - 4, [120, 120, 120], 0.4);
+                    $pdf->line($mx, $my + 4, $mx, $my + 14, [120, 120, 120], 0.4);
+                }
+                $pdf->imageFromString($png, $cx, $y, $w, $h);
+                $pdf->textCenter($cx, $cx + $w, $y + $h + 16, $label . '  (' . $wmm . ' x ' . $hmm . ' mm)', 8, 'F1', [92, 107, 133]);
+            }
+            $py = $y + $h + 40;
+            $k = min(($pdf->width() - 72) / $w, ($pdf->height() - 60 - $py) / $h, 2.2);
+            $pdf->imageFromString($sides[0][1], ($pdf->width() - $w * $k) / 2, $py, $w * $k, $h * $k);
+            $pdf->textCenter(0, $pdf->width(), $pdf->height() - 30, 'Cut on the crop marks, or give this PDF to a card printer. The QR opens '
+                . preg_replace('~^https?://~', '', appUrl('verify-id.php')) . ' and shows the current standing.', 8, 'F1', [92, 107, 133]);
+            $pdf->textCenter(0, $pdf->width(), $pdf->height() - 18, $co['legal'] . '  -  ' . $co['web'] . '  -  ' . $co['phone'], 8, 'F1', [92, 107, 133]);
+        };
+        if ($what === 'id' || $what === 'all') {
+            $page('Identity card', [['Front', self::png($p, 'front')], ['Back', self::png($p, 'back')]], 54, 85.6);
+        }
+        if ($what === 'visiting' || $what === 'all') {
+            $page('Visiting card', [['Front', self::visitingPng($p, 'front')], ['Back', self::visitingPng($p, 'back')]], 89, 51);
+        }
+        return $pdf->output();
     }
 
     /* ---------- pieces ---------- */
