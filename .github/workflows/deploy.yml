@@ -21,12 +21,19 @@
 name: Deploy to VPS
 
 on:
+  # Auto-deploy: any push to the `live` branch deploys it to the VPS for
+  # real (dry_run forced off). The manual workflow_dispatch below stays for
+  # ad-hoc / dry-run deploys of any branch. Either path still backs up,
+  # lints, health-checks and rolls back on a non-200, so an auto-deploy is
+  # no less guarded than a manual one.
+  push:
+    branches: [live]
   workflow_dispatch:
     inputs:
       branch:
         description: 'Branch to deploy'
         required: true
-        default: 'claude/shreehari-global-upgrade-myl45u'
+        default: 'codex/ai-company-manager-20260921'
       dry_run:
         description: 'Dry run — show what would happen, no changes'
         type: boolean
