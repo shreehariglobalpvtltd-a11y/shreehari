@@ -200,6 +200,62 @@ $recent = Database::fetchAll(
       ORDER BY b.id DESC LIMIT 8"
 );
 
+/* --- "Action needed" alerts (compliance + refund backlog) ------------
+   Compact, additive and fully guarded: each query is wrapped so a missing
+   table/column can never 500 the dashboard, and each alert is gated on the
+   same permission as its full page so only authorised office staff see it.
+   Not date-dependent — these show regardless of the ?date snapshot. */
+$alerts = [];   // each: ['icon','tone','href','text']   tone: bad | warn
+// Gate on schedules.manage to match compliance.php's page gate (so the
+// "Open" link always lands on a page the viewer can open). Crew licences
+// ride along only under the inner drivers.view gate, as compliance.php does.
+// `> '1970-01-01'` excludes both NULL and any stored zero-date.
+if (Auth::can('schedules.manage')) {
+    $docExpired = 0; $docSoon = 0;
+    try {
+        $r = Database::fetch(
+            "SELECT SUM(x.d < CURDATE()) AS expired,
+                    SUM(x.d >= CURDATE() AND x.d <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)) AS soon
+               FROM (SELECT insurance_exp AS d FROM buses WHERE is_active=1 AND insurance_exp > '1970-01-01'
+                     UNION ALL SELECT permit_exp   FROM buses WHERE is_active=1 AND permit_exp   > '1970-01-01'
+                     UNION ALL SELECT fitness_exp  FROM buses WHERE is_active=1 AND fitness_exp  > '1970-01-01') x"
+        );
+        $docExpired += (int) ($r['expired'] ?? 0); $docSoon += (int) ($r['soon'] ?? 0);
+        if (Auth::can('drivers.view')) {
+            $r = Database::fetch(
+                "SELECT SUM(licence_exp < CURDATE()) AS expired,
+                        SUM(licence_exp >= CURDATE() AND licence_exp <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)) AS soon
+                   FROM drivers WHERE is_active=1 AND licence_exp > '1970-01-01'"
+            );
+            $docExpired += (int) ($r['expired'] ?? 0); $docSoon += (int) ($r['soon'] ?? 0);
+        }
+    } catch (Throwable $ex) { $docExpired = 0; $docSoon = 0; }
+    if ($docExpired > 0) {
+        $alerts[] = ['icon' => 'alert', 'tone' => 'bad', 'href' => $base . '/admin/compliance.php',
+                     'text' => $docExpired . ' document' . ($docExpired === 1 ? '' : 's') . ' EXPIRED'];
+    }
+    if ($docSoon > 0) {
+        $alerts[] = ['icon' => 'alert', 'tone' => 'warn', 'href' => $base . '/admin/compliance.php',
+                     'text' => $docSoon . ' document' . ($docSoon === 1 ? '' : 's') . ' expiring within 30 days'];
+    }
+}
+if (Auth::can('refunds.view')) {
+    $oldRef = 0; $oldRefVal = 0.0;
+    try {
+        $r = Database::fetch(
+            "SELECT COUNT(*) AS cnt, COALESCE(SUM(refund_amount),0) AS val
+               FROM bookings
+              WHERE refund_status='pending'
+                AND COALESCE(cancelled_at, created_at) < CURDATE() - INTERVAL 30 DAY"
+        );
+        $oldRef = (int) ($r['cnt'] ?? 0); $oldRefVal = (float) ($r['val'] ?? 0.0);
+    } catch (Throwable $ex) { $oldRef = 0; $oldRefVal = 0.0; }
+    if ($oldRef > 0) {
+        $alerts[] = ['icon' => 'refund', 'tone' => 'bad', 'href' => $base . '/admin/refund-aging.php',
+                     'text' => $oldRef . ' refund' . ($oldRef === 1 ? '' : 's') . ' waiting over 30 days (' . inr($oldRefVal) . ')'];
+    }
+}
+
 admin_header('Dashboard', 'index');
 
 $e = static fn($v): string => Security::e((string) $v);
@@ -225,6 +281,15 @@ admin_page_head(
 <?php if (!$isTodayView): ?>
   <div class="flash warn"><svg class="a-ic"><use href="#a-info"/></svg>You are viewing <b><?= $e(formatDate($today)) ?></b>. Live bus status and the payment badge only update on today's view.</div>
 <?php endif; ?>
+
+<?php /* Action needed — fleet/crew document expiry + aged refund backlog (each gated per item above). */ ?>
+<?php foreach ($alerts as $al): ?>
+  <div class="flash <?= $al['tone'] ?>">
+    <svg class="a-ic"><use href="#a-<?= $e($al['icon']) ?>"/></svg>
+    <?= $e($al['text']) ?> —
+    <a href="<?= $e($al['href']) ?>" style="color:inherit;text-decoration:underline;font-weight:700">Open</a>
+  </div>
+<?php endforeach; ?>
 
 <!-- QuickBot promo (the desk's fast lane) -->
 <a class="promo" href="/admin/quick-ticket.php">
