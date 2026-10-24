@@ -132,6 +132,7 @@ function admin_nav(): array
         ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'payments.view',  'section' => 'Reports'],
         ['href' => 'expenses.php',     'icon' => 'coins',       'label' => 'Trip Expenses',    'perm' => 'payments.view',  'section' => 'Reports'],
+        ['href' => 'profit.php',       'icon' => 'chart',       'label' => 'Profit & Loss',    'perm' => 'payments.view',  'section' => 'Reports'],
         ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'Message Log',      'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'wa-pending.php',   'icon' => 'msg',       'label' => 'Tickets to hand over','perm'=> 'bookings.view',  'section' => 'Payments'],
 
