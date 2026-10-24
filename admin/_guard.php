@@ -118,6 +118,7 @@ function admin_nav(): array
         ['href' => 'trips.php',        'icon' => 'clock',     'label' => 'Trips Board',      'perm' => 'schedules.view', 'section' => 'Buses'],
         ['href' => 'trip-dashboard.php','icon' => 'grid', 'label' => 'Date View',        'perm' => 'schedules.view', 'section' => 'Buses'],
         ['href' => 'drivers.php',      'icon' => 'user-solo', 'label' => 'Drivers & Crew',   'perm' => 'drivers.view',   'section' => 'Buses'],
+        ['href' => 'compliance.php',   'icon' => 'alert',     'label' => 'Documents & Expiry','perm' => 'schedules.manage','section' => 'Buses'],
 
         // Routes
         ['href' => 'routes.php',       'icon' => 'route',      'label' => 'Routes',           'perm' => 'routes.view',    'section' => 'Routes'],
