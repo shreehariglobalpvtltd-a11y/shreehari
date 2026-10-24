@@ -136,7 +136,7 @@ jobs:
 
           # Show current deployed commit
           if [ -d "$SITE/.git" ]; then
-            echo "--- Current: $(git -C '$SITE' -c safe.directory='$SITE' log -1 --format='%h %s' 2>/dev/null || echo unknown)"
+            echo "--- Current: $(git -C "$SITE" -c safe.directory="$SITE" log -1 --format='%h %s' 2>/dev/null || echo unknown)"
           fi
 
           # Clone branch
@@ -144,7 +144,7 @@ jobs:
           if [ "$DRY" != "true" ]; then
             rm -rf "$NEW_DIR"
             git clone --branch "$BRANCH" --depth 30 "$REPO" "$NEW_DIR"
-            echo "--- Cloned: $(git -C '$NEW_DIR' log -1 --format='%h %s')"
+            echo "--- Cloned: $(git -C "$NEW_DIR" log -1 --format='%h %s')"
           else
             echo "[DRY] Would clone $REPO branch $BRANCH to $NEW_DIR"
           fi
@@ -173,25 +173,40 @@ jobs:
             echo "[DRY] Would copy config.php and uploads/ tickets/ qr/ invoice/ backup/"
           fi
 
-          # Migrations
+          # Migrations — SAFE for a live DB.
+          # The live site has served for months, so its DB already reflects
+          # every historical migration. Re-running ~90 upgrade-*.sql blind on a
+          # live DB is unsafe, so on the FIRST deploy (no ledger yet) we
+          # BASELINE: record every existing migration as applied WITHOUT running
+          # it. Migrations added AFTER the baseline run normally on later
+          # deploys; one that errors is logged (not fatal) and left un-recorded
+          # so it retries next time.
           echo "--- Running migrations..."
           if [ "$DRY" != "true" ]; then
+            FRESH=0
+            mysql shari -e "SELECT 1 FROM schema_migrations LIMIT 1" >/dev/null 2>&1 || FRESH=1
+            mysql shari -e "CREATE TABLE IF NOT EXISTS schema_migrations (migration VARCHAR(255) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" 2>/dev/null || true
+            [ "$FRESH" = "1" ] && echo "    (first run: baselining existing migrations, not running them)"
             for f in "$NEW_DIR"/database/upgrade-*.sql; do
               [ -f "$f" ] || continue
-              base="$(basename $f)"
+              base="$(basename "$f")"
               exists=$(mysql shari -se "SELECT COUNT(*) FROM schema_migrations WHERE migration='$base' LIMIT 1" 2>/dev/null || echo 0)
-              if [ "${exists:-0}" -eq 0 ]; then
-                echo "    Applying $base..."
-                mysql shari < "$f"
+              if [ "${exists:-0}" -ne 0 ]; then
+                echo "    Skip $base (already applied)"
+              elif [ "$FRESH" = "1" ]; then
+                echo "    Baseline $base (recorded, not run)"
+                mysql shari -e "INSERT IGNORE INTO schema_migrations (migration) VALUES ('$base')" 2>/dev/null || true
+              elif mysql shari < "$f" 2>&1; then
+                echo "    Applied $base"
                 mysql shari -e "INSERT IGNORE INTO schema_migrations (migration) VALUES ('$base')" 2>/dev/null || true
               else
-                echo "    Skip $base (already applied)"
+                echo "    WARN: $base did not apply cleanly (may already be in the DB) — continuing"
               fi
             done
           else
-            for f in "$NEW_DIR"/database/upgrade-*.sql 2>/dev/null; do
-              [ -f "$f" ] && echo "[DRY] Would apply: $(basename $f)"
-            done || echo "[DRY] Would check and apply pending migrations"
+            for f in "$NEW_DIR"/database/upgrade-*.sql; do
+              [ -f "$f" ] && echo "[DRY] Would consider: $(basename "$f")"
+            done
           fi
 
           # Atomic swap
