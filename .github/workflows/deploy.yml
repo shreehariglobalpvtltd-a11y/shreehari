@@ -85,16 +85,21 @@ jobs:
           USER:   ${{ secrets.VPS_USER }}
           PORT:   ${{ secrets.VPS_PORT }}
           SITE:   ${{ secrets.VPS_PATH }}
-          BRANCH: ${{ inputs.branch }}
-          DRY:    ${{ inputs.dry_run }}
+          BRANCH: ${{ github.event_name == 'push' && github.ref_name || inputs.branch }}
+          DRY:    ${{ github.event_name == 'push' && 'false' || inputs.dry_run }}
         run: |
           set -o pipefail
-          ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes "$USER@$HOST" bash -s << 'REMOTE'
+          # Pass SITE/BRANCH/DRY as positional args: the heredoc is quoted
+          # ('REMOTE') so $SITE/$BRANCH/$DRY are NOT expanded locally and are
+          # absent on the remote shell — referencing them there under `set -u`
+          # aborts instantly. $1/$2/$3 carry them across; all other remote
+          # $vars stay literal, as the quoted heredoc intends.
+          ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes "$USER@$HOST" bash -s -- "$SITE" "$BRANCH" "$DRY" << 'REMOTE'
           set -euo pipefail
 
-          SITE="$SITE"
-          BRANCH="$BRANCH"
-          DRY="$DRY"
+          SITE="$1"
+          BRANCH="$2"
+          DRY="$3"
           REPO="https://github.com/shreehariglobalpvtltd-a11y/shreehari.git"
           SITE_PARENT="$(dirname "$SITE")"
           NEW_DIR="$SITE_PARENT/new_html_deploy"
