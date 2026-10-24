@@ -132,6 +132,7 @@ function admin_nav(): array
         // Reports
         ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'cancellations.php','icon' => 'refund', 'label' => 'Cancellations',    'perm' => 'dashboard.view', 'section' => 'Reports'],
+        ['href' => 'fill-rate.php',    'icon' => 'seat',   'label' => 'Fill Rate',        'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'payments.view',  'section' => 'Reports'],
         ['href' => 'expenses.php',     'icon' => 'coins',       'label' => 'Trip Expenses',    'perm' => 'payments.view',  'section' => 'Reports'],
