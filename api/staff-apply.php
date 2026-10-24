@@ -251,6 +251,13 @@ try {
     }
     $c     = $check['clean'];
     $files = $check['files'];
+    require_once INCLUDE_PATH . '/applicationimport.php';
+    $reviewed = filter_var($_POST['import_reviewed'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    if ($edit !== null && !isset($files['id_front']) && in_array('id_front', $have, true)) {
+        if (!$reviewed) { Response::invalid(['import_reviewed' => 'review'], 'मुख्य विवरण जाँचेर ✓ लगाउनुहोस् · Review your main details.'); }
+    } else {
+        ApplicationImport::requireId($files['id_front']['bytes'] ?? null, $reviewed);
+    }
 
     // Honeypot: a person never sees this box. The same kind of answer, nothing stored.
     if (trim((string) ($_POST['website'] ?? '')) !== '') {

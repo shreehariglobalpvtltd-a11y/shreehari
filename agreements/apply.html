@@ -459,7 +459,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     <a class="sa-btn ghost" href="/">🏠 होम · Home</a>
   </div>
 
-  <div id="saForm"><p class="hint" data-noi18n>नाम, मोबाइल नम्बर र परिचयपत्रको विवरण / फोटो राखेर पठाउन सकिन्छ। बाँकी विवरण, सेल्फी, सही, WhatsApp जाँच र नियम अहिले छोड्न मिल्छ। · Name, mobile and ID details/photo are enough. Other details can be added later.</p>
+  <div id="saForm"><p class="hint" data-noi18n>पहिले परिचयपत्र upload गरेर AI ले भरेको विवरण जाँच्नुहोस्। नाम, मोबाइल र ID मुख्य विवरण हुन्। बाँकी विवरण, सेल्फी, सही, WhatsApp जाँच र नियम अहिले छोड्न मिल्छ। · Name, mobile and ID details/photo are enough. Other details can be added later.</p>
   <!-- ===== PAGE 1 — Staff Application ===== -->
   <section class="sa-sheet" data-page="1">
     <div class="sa-lh">
@@ -798,7 +798,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   <div class="cvc-chips"><span id="ckWa">WhatsApp</span><span id="ckId">ID AI</span><span id="ckSelfie">सेल्फी · Selfie</span><span id="ckSig">सही · Signature</span><span id="ckFp">फिंगरप्रिन्ट · Fingerprint</span></div>
   <p class="cvc-foot">✨ यो तपाईंको डिजिटल CV हो — फारम भर्दै जाँदा आफैं बन्छ, पठाएपछि A4 PDF मा यस्तै छापिन्छ। · Your digital CV builds itself as you fill.</p>
 </section>
-<form id="ap" novalidate><p class="hint" data-noi18n>नाम, मोबाइल नम्बर र परिचयपत्रको विवरण / फोटो राखेर पठाउन सकिन्छ। बाँकी विवरण, सेल्फी, सही, WhatsApp जाँच र नियम अहिले छोड्न मिल्छ। · Name, mobile and ID details/photo are enough. Other details can be added later.</p>
+<form id="ap" novalidate><p class="hint" data-noi18n>पहिले परिचयपत्र upload गरेर AI ले भरेको विवरण जाँच्नुहोस्। नाम, मोबाइल र ID मुख्य विवरण हुन्। बाँकी विवरण, सेल्फी, सही, WhatsApp जाँच र नियम अहिले छोड्न मिल्छ। · Name, mobile and ID details/photo are enough. Other details can be added later.</p>
   <section class="card c1">
     <h2><i>1</i>👤 तपाईंको विवरण · Your details</h2>
     <!-- 22 Oct 2026 (owner, team portal): the Pvt. Ltd. partner's paper form, online - the same
@@ -1028,6 +1028,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 
 <script src="/assets/js/wa-direct.js?v=20261022a"></script>
 <script src="/assets/js/wa-verify.js?v=20261023j"></script>
+<script src="/assets/js/application-import.js?v=20261024ai1"></script>
 <script src="/assets/js/bio-kit.js?v=20261024opt"></script>
 <script src="/assets/js/form-i18n.js?v=20261023j"></script>
 <script>
@@ -1141,6 +1142,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
       if (!d || !d.ok) { edSay((d && (d.error || d.message)) || 'खोल्न सकिएन · Could not open it.'); return; }
       edSay('');
       state.edit = { ref: d.ref, have: d.have || [] };
+      if (window.ShgIntake && ((d.have || []).indexOf('doc') >= 0 || (d.have || []).indexOf('id_front') >= 0)) window.ShgIntake.restoreExisting();
       setKind(d.kind);
       $('cc').value = p.cc; $('p_phone').value = p.phone; $('p_phone').readOnly = true; $('cc').disabled = true;
       state.wa = 'verified';
@@ -1217,31 +1219,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     var b = $('autoBan'); b.className = 'autoban' + (kind === 'w' ? ' w' : ''); $('autoBanT').textContent = title; $('autoBanS').textContent = sub || ''; b.hidden = false;
   }
   function docRead(data) {
-    $('autoBan').hidden = true;
-    $('docOk').textContent = '🔍 AI ले पढ्दै… · reading…';
-    token().then(function (t) {
-      return fetch('/api/agreement-docread.php', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' }, body: JSON.stringify({ doc: data }) });
-    }).then(function (r) { return r.json().catch(function () { return null; }); }).then(function (d) {
-      if (state.doc !== data) return;
-      $('docOk').textContent = '✓ फोटो तयार · ready';
-      if (!d || !d.ok || d.status !== 'read') {
-        if (d && d.status === 'notdoc') autoBan('w', '🪪 यो सक्कली परिचयपत्र जस्तो देखिएन', 'कार्डको अगाडिको भाग उज्यालोमा फेरि खिच्नुहोस्। · This does not look like an ID card - take the photo again.');
-        if (d && d.code === 419) state.csrf = null;
-        dvAuto(); return;
-      }
-      var f = d.fields || {}, got = [], staff = state.kind === 'staff';
-      [[nameId(), f.name], ['p_idtype', f.idtype], ['p_idno', f.idno], [staff ? 's_dob' : 'p_dob', f.dob], [staff ? 's_gender' : '', f.gender], ['p_addr', f.address]]
-        .forEach(function (p) { if (p[0] && autoSet(p[0], p[1])) got.push(AUTO_LABEL[p[0]]); });
-      if (f.dob && staff) { var m = $('s_dob').closest('details'); if (m) m.open = true; }
-      if (got.length) {
-        autoBan('', '✨ ID बाट आफैं भरियो: ' + got.join(', '), 'पहेँलो बाकस जाँचेर सच्याउनुहोस् — गल्ती भए आफैं बदल्नुहोस्। · Auto-filled from your ID: check the yellow boxes and correct anything wrong.');
-        try { if (navigator.vibrate) navigator.vibrate([10, 30, 10]); } catch (e) {}
-        var first = $(got.indexOf('नाम') >= 0 ? nameId() : 'p_idno'); if (first && first.classList.contains('auto') && window.innerWidth < 700) first.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      } else {
-        autoBan('w', '🪪 पढियो — भरिसकेका बाकस जस्ताको तस्तै राखियो', 'Read: the boxes you already filled were left as they are.');
-      }
-      cvSoon(); dvAuto();
-    }).catch(function () { $('docOk').textContent = '✓ फोटो तयार · ready'; dvAuto(); });
+    if (window.ShgIntake) window.ShgIntake.readData(data, 'id').catch(function () {});
   }
   hookShot('docIn', 'docPrev', 'docOk', 'doc', 1400, 420000);
   hookShot('selfIn', 'selfPrev', 'selfOk', 'photo', 900, 260000);
@@ -1549,6 +1527,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   function say(t) { var m = $('msg'); m.textContent = t; m.hidden = !t; if (t) m.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
   function need(id, text) { var el = $(id); if (el) { var fold = el.closest('details'); if (fold) fold.open = true; el.setAttribute('aria-invalid', 'true'); el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } var m = $('msg'); m.textContent = text; m.hidden = false; return false; }
   function check() {
+    if (window.ShgIntake && !window.ShgIntake.requireReviewed()) return false;
     document.querySelectorAll('[aria-invalid]').forEach(function (el) { el.removeAttribute('aria-invalid'); });
     if ($('p_name').value.trim().length < 2) return need('p_name', state.kind === 'org' ? 'कम्पनीको नाम लेख्नुहोस्।' : 'कृपया पूरा नाम लेख्नुहोस्।');
     var ph = $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
@@ -1595,6 +1574,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     email: 's_email', emergency_phone: 's_emp', ref1_phone: 's_ref1p', ref1_name: 's_ref1n', ref2_name: 'g_name', ref2_phone: 'g_phone', ref3_name: 'w1_name', ref3_phone: 'w1_phone', ref4_name: 'w2_name', ref4_phone: 'w2_phone', bank_account: 'b_acc', bank_ifsc: 'b_ifsc', agree: 'agreeTerms', marksheet: 'eduIn' };
   function sendStaff(btn, label) {
     var fd = new FormData(), v = function (id) { return $(id).value.trim(); }, dig = function (id) { return v(id).replace(/\D/g, '').replace(/^0+/, ''); };
+    fd.set('import_reviewed', window.ShgIntake && window.ShgIntake.reviewed() ? '1' : '0');
     fd.set('full_name', v('p_name')); fd.set('phone', dig('p_phone')); fd.set('cc', $('cc').value);
     fd.set('role', $('s_role').value); fd.set('id_type', STAFF_ID[$('p_idtype').value] || ''); fd.set('id_number', v('p_idno'));
     fd.set('district', v('p_area')); fd.set('address_perm', v('p_addr')); fd.set('country', $('s_country').value);
@@ -1636,6 +1616,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     var phone = '+' + $('cc').value + $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
     var body = {
       type: state.kind, lang: window.ShgFormLang ? window.ShgFormLang.get() : 'ne', website: $('website').value, public_ok: $('public_ok').checked,
+      import_reviewed: !!(window.ShgIntake && window.ShgIntake.reviewed()),
       photo: state.photo, doc: state.doc, signature: inked > 40 ? signaturePng() : null, geo: state.geo, edit: !!state.edit,
       fields: { p_name: $('p_name').value.trim(), p_phone: phone, p_area: $('p_area').value.trim(), p_addr: $('p_addr').value.trim(),
                 p_idtype: $('p_idtype').value, p_idno: $('p_idno').value.trim(), p_dob: $('p_dob').value, p_occ: 'Online form (photo + signature)' }
@@ -1831,6 +1812,20 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     var cols = ['#2f6bff', '#f07a1e', '#11a35a', '#ffc23d', '#e8457c', '#7b5cff'];
     for (var i = 0; i < 26; i++) { var s = document.createElement('i'); s.className = 'cf'; s.style.left = (Math.random() * 100) + '%'; s.style.background = cols[i % cols.length]; s.style.animationDelay = (Math.random() * 1.2) + 's'; s.style.animationDuration = (2 + Math.random() * 1.5) + 's'; d.appendChild(s); }
   }).observe($('done'), { attributes: true, attributeFilter: ['hidden'] });
+
+
+  if (!document.documentElement.classList.contains('saMode') && window.ShgIntake) {
+    window.ShgIntake.mount({ host: 'ap', submit: 'send', kind: state.kind === 'org' ? 'partner' : 'agent', token: token,
+      onId: function (data) { state.doc = data; dvReset(); $('docPrev').style.backgroundImage = 'url(' + data + ')'; $('docPrev').classList.add('has'); $('docOk').textContent = '✓ परिचयपत्र राखियो · ID uploaded'; },
+      onFields: function (f, source) {
+        var map = { name: nameId(), idtype: 'p_idtype', idno: 'p_idno', dob: 'p_dob', address: 'p_addr', phone: 'p_phone', country_code: 'cc', work_area: 'p_area', district: 'p_area', company_name: 'p_name', registration_number: 'p_reg', tax_number: 'p_tax', qualification: 'cv_qual', experience_years: 'cv_exp', previous_employer: 'cv_prev', bank_holder: 'b_name', bank_name: 'b_bank', bank_account: 'b_acc', bank_ifsc: 'b_ifsc', reference1_name: 'g_name', reference1_phone: 'g_phone' };
+        if (state.kind !== 'org') delete map.company_name;
+        if (state.kind === 'staff') { Object.assign(map, { dob: 's_dob', role: 's_role', gender: 's_gender', email: 's_email', emergency_name: 's_emn', emergency_phone: 's_emp', reference1_name: 's_ref1n', reference1_phone: 's_ref1p' }); }
+        var n = 0; Object.keys(map).forEach(function (key) { if (window.ShgIntake.setField(map[key], f[key], source)) n++; }); cvSoon(); return n;
+      }
+    });
+    try { var legacy = JSON.parse(sessionStorage.getItem('shg:legacy-apply') || 'null'); if (legacy && legacy.fields) { Object.keys(legacy.fields).forEach(function (id) { if (/^p_[a-z0-9_]+$/.test(id)) window.ShgIntake.setField(id, legacy.fields[id], 'form'); }); sessionStorage.removeItem('shg:legacy-apply'); } } catch (e) {}
+  }
 
   /* 23 Oct 2026 (registration system, points 1 + 17 + 18): the typed boxes are kept on THIS phone while the
      person fills the form (a closed tab, a dead battery or no signal loses nothing), brought back next time
@@ -2065,6 +2060,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   function invalid(id) { var e = $(id); if (e) { e.setAttribute('aria-invalid', 'true'); } return e; }
   document.addEventListener('input', function (e) { if (e.target && e.target.id && e.target.id.indexOf('sa_') === 0) e.target.removeAttribute('aria-invalid'); }, true);
   function validate() {
+    if (window.ShgIntake && !window.ShgIntake.requireReviewed()) return false;
     var bad = [];
     if (!v('sa_name')) bad.push('sa_name');
     // Job may be chosen later; the office receives it as Other.
@@ -2083,6 +2079,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     if (!validate()) return;
     var btn = $('saSubmit'); btn.disabled = true; var lab = btn.innerHTML; btn.innerHTML = '<span class="ei">⏳</span>पठाउँदै…';
     var fd = new FormData();
+    fd.set('import_reviewed', window.ShgIntake && window.ShgIntake.reviewed() ? '1' : '0');
     fd.set('full_name', v('sa_name')); fd.set('phone', digits('sa_phone')); fd.set('cc', v('sa_cc'));
     fd.set('role', v('sa_role')); fd.set('id_type', STAFF_ID[v('sa_idtype')] != null ? STAFF_ID[v('sa_idtype')] : v('sa_idtype')); fd.set('id_number', v('sa_idno'));
     fd.set('district', v('sa_distprov') || v('sa_addrPerm')); fd.set('address_perm', v('sa_addrPerm')); fd.set('country', v('sa_country'));
@@ -2153,6 +2150,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     return libP;
   }
   function pdf() {
+    if (document.documentElement.classList.contains('intake-locked')) { window.open('/agreements/form.php?kind=staff', '_blank', 'noopener'); return Promise.resolve(); }
     var ruleBox = $('saRules'), wasOpen = ruleBox.open; ruleBox.open = true;
     var btn = $('saPdf'); btn.disabled = true; var lab = btn.innerHTML; btn.innerHTML = '<span class="ei">⏳</span>बन्दै…';
     return libs().then(function () {
@@ -2177,9 +2175,19 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
       .then(function () { ruleBox.open = wasOpen; btn.disabled = false; btn.innerHTML = lab; });
   }
 
+
+  if (window.ShgIntake) window.ShgIntake.mount({ host: 'saForm', submit: 'saSubmit', kind: 'staff', token: token, closed: function () { return !open; },
+    onId: function (data) { img.idFront = data; var drop = $('sa_idFrontDrop'); drop.style.backgroundImage = 'url(' + data + ')'; drop.classList.add('has'); sync(); saveSoon(); },
+    onFields: function (f, source) {
+      var types = { '0': 'aadhaar', '1': 'citizenship', '2': 'passport', '5': 'driving_license', '6': 'pan' };
+      var map = { name: 'sa_name', idtype: 'sa_idtype', idno: 'sa_idno', dob: 'sa_dob', gender: 'sa_gender', address: 'sa_addrPerm', current_address: 'sa_addrCur', phone: 'sa_phone', country_code: 'sa_cc', email: 'sa_email', role: 'sa_role', district: 'sa_distprov', qualification: 'sa_qual', experience_years: 'sa_exp', previous_employer: 'sa_prev', emergency_name: 'sa_emn', emergency_phone: 'sa_emp', reference1_name: 'sa_ref1n', reference1_phone: 'sa_ref1p', reference2_name: 'sa_ref2n', reference2_phone: 'sa_ref2p', bank_holder: 'sa_bhold', bank_name: 'sa_bbank', bank_account: 'sa_bacc', bank_ifsc: 'sa_bifsc', license_number: 'sa_lic', license_category: 'sa_licCat', license_expiry: 'sa_licExp' };
+      var n = 0; Object.keys(map).forEach(function (key) { var value = key === 'idtype' ? types[f.idtype] || '' : f[key]; if (window.ShgIntake.setField(map[key], value, source)) n++; }); sync(); saveSoon(); return n;
+    }
+  });
+
   /* ---- wire it all up ---- */
   hookDrop('sa_photoIn', 'photo', 900, 260, function () { badge('sa_vbSelfie', true); });
-  hookDrop('sa_idFront', 'idFront', 1500, 360, function () { badge('sa_vbId', true); });
+  hookDrop('sa_idFront', 'idFront', 1500, 360, function (data) { if (window.ShgIntake) window.ShgIntake.readData(data, 'id').catch(function () {}); });
   hookDrop('sa_idBack', 'idBack', 1500, 360);
   hookDrop('sa_licDoc', 'licDoc', 1400, 420);
   hookDrop('sa_mark', 'mark', 1600, 320);

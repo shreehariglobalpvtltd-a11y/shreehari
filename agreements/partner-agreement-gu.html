@@ -660,6 +660,8 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     }).then(function (res) { return res.s === 419 && !again ? submit(body, true) : res; });
   }
   btn.addEventListener('click', function () {
+    try { sessionStorage.setItem('shg:legacy-apply', JSON.stringify({ fields: collect() })); } catch (e) {}
+    location.href = '/agreements/apply.html?kind=' + (CFG.type === 'org' ? 'partner' : 'agent'); return;
     clearErrs();
     var f = collect(), first = null;
     CFG.req.forEach(function (n) {

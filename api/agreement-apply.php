@@ -146,6 +146,21 @@ try {
     }
     $clean = $check['clean'];
     $photo = ['photo' => $clean['photo'], 'note' => (string) $clean['photo_note']];
+    require_once INCLUDE_PATH . '/applicationimport.php';
+    $reviewed = filter_var(Response::field('import_reviewed', false), FILTER_VALIDATE_BOOLEAN);
+    $uploaded = ApplicationImport::decode($clean['doc'] ?? null);
+    $priorId = false;
+    if (!empty(Response::field('edit', false)) && $uploaded === null) {
+        require_once INCLUDE_PATH . '/applyedit.php';
+        $editing = ApplyEdit::current('agent', (string)$clean['phone']);
+        $prior = $editing !== null ? AgentApplications::find($editing['id']) : null;
+        $priorId = is_array($prior) && !empty($prior['doc_photo']);
+    }
+    if ($priorId) {
+        if (!$reviewed) { Response::invalid(['import_reviewed' => 'review'], 'मुख्य विवरण जाँचेर ✓ लगाउनुहोस् · Review your main details.'); }
+    } else {
+        ApplicationImport::requireId($uploaded['bytes'] ?? null, $reviewed);
+    }
 
     // 22 Oct 2026: the optional phone lock, checked against this session's challenge (10 minutes)
     $chal = $_SESSION['agr_webauthn'] ?? null;

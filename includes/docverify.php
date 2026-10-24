@@ -361,7 +361,7 @@ final class DocVerify
      * @param list<array{bytes: string, mime: string}> $images
      * @return array<string, mixed>|null
      */
-    public static function geminiJson(string $prompt, array $images, int $maxTokens = 600, string $who = 'DocVerify'): ?array
+    public static function geminiJson(string $prompt, array $images, int $maxTokens = 600, string $who = 'DocVerify', int $maxModels = 0): ?array
     {
         $key = trim(Settings::getString('gemini_api_key', ''));
         if ($key === '' || !function_exists('curl_init')) {
@@ -385,7 +385,9 @@ final class DocVerify
         if ($site !== '') {
             $ladder[] = $site;
         }
-        foreach (array_unique($ladder) as $model) {
+        $models = array_values(array_unique($ladder));
+        if ($maxModels > 0) { $models = array_slice($models, 0, $maxModels); }
+        foreach ($models as $model) {
             $ch = curl_init('https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => self::TIMEOUT_SEC,
@@ -409,7 +411,7 @@ final class DocVerify
             if (is_array($read)) {
                 return $read;
             }
-            Logger::warning($who . ': Gemini answer not JSON', ['model' => $model, 'out' => mb_substr($out, 0, 200)]);
+            Logger::warning($who . ': Gemini answer not JSON', ['model' => $model, 'output_length' => strlen($out)]);
         }
         return null;
     }
