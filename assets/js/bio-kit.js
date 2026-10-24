@@ -208,7 +208,7 @@
       '.tk .fill{display:inline-block;min-width:60px;border-bottom:1.5px solid #8a96ad;height:1em;vertical-align:-3px}' +
       '.tk .tk-f{padding:0 14px 12px;font-size:12.5px}.tk .tk-f a{color:#0a2a8f;font-weight:700}'));
     var d = el('details', { 'class': 'tk' });
-    var sum = el('summary', {}, '📜 <span>सम्झौताका सबै सर्तहरू — सही गर्नुअघि पढ्नुहोस् · Read every term before you sign</span>');
+    var sum = el('summary', {}, '📜 <span>सम्झौताका सर्तहरू (ऐच्छिक) · Read terms (optional)</span>');
     var langs = el('div', { 'class': 'tk-l', 'role': 'group', 'aria-label': 'Language', 'data-noi18n': '' });
     var body = el('div', { 'class': 'tk-b', 'data-noi18n': '' }, '⏳ …');   // already in its own language: form-i18n.js leaves it
     var foot = el('div', { 'class': 'tk-f' });
@@ -247,7 +247,7 @@
     }
     d.addEventListener('toggle', function () { if (d.open) load(); });
     return {
-      setKind: function (k) { if (k === cur.kind) return; cur.kind = k; cur.loaded = ''; sum.querySelector('span').textContent = 'सम्झौताका सबै सर्तहरू — सही गर्नुअघि पढ्नुहोस् · Read every term before you sign'; if (d.open) load(); },
+      setKind: function (k) { if (k === cur.kind) return; cur.kind = k; cur.loaded = ''; sum.querySelector('span').textContent = 'सम्झौताका सर्तहरू (ऐच्छिक) · Read terms (optional)'; if (d.open) load(); },
       open: function () { d.open = true; load(); },
       // 23 Oct 2026: the form's language picker (form-i18n.js) also picks the terms' language
       setLang: function (l) { if (!l || l === cur.lang) return; cur.lang = l; cur.loaded = ''; if (d.open) load(); }

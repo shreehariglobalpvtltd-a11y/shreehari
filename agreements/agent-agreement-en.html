@@ -350,7 +350,7 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     <label class="photo" id="photo"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="4" fill="currentColor"/><path d="M4 21c.6-4.4 3.9-7 8-7s7.4 2.6 8 7" fill="currentColor"/></svg><span>Photo (optional)</span><span class="no-print tap">Tap to add</span><img alt=""><input type="file" accept="image/*" id="photoIn" aria-label="Photo (optional)"><button type="button" class="rm no-print" id="photoRm">Remove</button></label>
   </div>
   <div class="grid more">
-    <div class="f" style="--p:12;--s:12"><label for="i_p_addr">Permanent address<b class="rq" aria-hidden="true">*</b></label><textarea id="i_p_addr" name="p_addr" rows="2" aria-required="true"></textarea></div>
+    <div class="f" style="--p:12;--s:12"><label for="i_p_addr">Permanent address</label><textarea id="i_p_addr" name="p_addr" rows="2"></textarea></div>
     <div class="f" style="--p:12;--s:12"><label for="i_p_addr2">Current address (if different)</label><input id="i_p_addr2" type="text" name="p_addr2"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_phone">Mobile number<b class="rq" aria-hidden="true">*</b></label><input id="i_p_phone" type="tel" name="p_phone" inputmode="tel" autocomplete="tel" aria-required="true"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_email">Email</label><input id="i_p_email" type="email" name="p_email" inputmode="email" autocomplete="email"></div>
@@ -358,7 +358,7 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     <div class="f" style="--p:4;--s:6"><label for="i_p_pan">PAN (if you have one)</label><input id="i_p_pan" type="text" name="p_pan"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_id">Agent code / login ID (if given)</label><input id="i_p_id" type="text" name="p_id"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_route">Route</label><input id="i_p_route" type="text" name="p_route"></div>
-    <div class="f" style="--p:12;--s:12"><label for="i_p_area">Service area (where you will work)<b class="rq" aria-hidden="true">*</b></label><input id="i_p_area" type="text" name="p_area" aria-required="true"></div>
+    <div class="f" style="--p:12;--s:12"><label for="i_p_area">Service area (where you will work)</label><input id="i_p_area" type="text" name="p_area"></div>
   </div>
 
   <h3 class="sub"><span class="k">A4</span>Period of the agreement</h3>
@@ -680,7 +680,7 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     clearErrs(); status('', ''); btn.textContent = label; btn.disabled = false;
     fields().forEach(mark); mirrors(); say(U.cleared);
   });
-})({"id":"ind-en","type":"ind","lang":"en","api":"/api/agreement-apply.php","req":["p_name","p_phone","p_area","p_idno","p_addr"],"ui":{"saved":"Saved on this phone","cleared":"Form cleared","confirmClear":"Clear everything on this form?","required":"Please fill this in","applying":"Sending…","applied":"Received. Your application number is {ref}. Please keep it. The office will call you.","applyFail":"Could not send. Please check the details and try again.","applyOffline":"To send this form online, open it at www.shreehariglobal.in.","applyUnsure":"No answer yet. The form may already have reached the office, so please do not send it again now. Call 9104801507 to check.","sentBtn":"Sent ✓"}});
+})({"id":"ind-en","type":"ind","lang":"en","api":"/api/agreement-apply.php","req":["p_name","p_phone","p_idno"],"ui":{"saved":"Saved on this phone","cleared":"Form cleared","confirmClear":"Clear everything on this form?","required":"Please fill this in","applying":"Sending…","applied":"Received. Your application number is {ref}. Please keep it. The office will call you.","applyFail":"Could not send. Please check the details and try again.","applyOffline":"To send this form online, open it at www.shreehariglobal.in.","applyUnsure":"No answer yet. The form may already have reached the office, so please do not send it again now. Call 9104801507 to check.","sentBtn":"Sent ✓"}});
 </script>
 <script src="/assets/js/agreement-live.js?v=20261010t" defer></script>
 </body>

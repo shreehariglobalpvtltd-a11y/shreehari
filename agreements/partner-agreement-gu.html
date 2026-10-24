@@ -354,13 +354,13 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     <div class="f" style="--p:12;--s:12"><label for="i_p_office">ઓફિસ / કાઉન્ટરનું સરનામું</label><input id="i_p_office" type="text" name="p_office"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_phone">મોબાઇલ નંબર<b class="rq" aria-hidden="true">*</b></label><input id="i_p_phone" type="tel" name="p_phone" inputmode="tel" autocomplete="tel" aria-required="true"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_email">ઈમેલ</label><input id="i_p_email" type="email" name="p_email" inputmode="email" autocomplete="email"></div>
-    <div class="f" style="--p:4;--s:6"><label for="i_p_rep">સંસ્થા તરફથી સહી કરનાર વ્યક્તિ<b class="rq" aria-hidden="true">*</b></label><input id="i_p_rep" type="text" name="p_rep" autocomplete="name" aria-required="true"></div>
+    <div class="f" style="--p:4;--s:6"><label for="i_p_rep">સંસ્થા તરફથી સહી કરનાર વ્યક્તિ</label><input id="i_p_rep" type="text" name="p_rep" autocomplete="name"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_rep_desig">હોદ્દો</label><input id="i_p_rep_desig" type="text" name="p_rep_desig"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_rep_phone">સહી કરનાર વ્યક્તિનો મોબાઇલ નંબર</label><input id="i_p_rep_phone" type="tel" name="p_rep_phone" inputmode="tel"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_id">ભાગીદાર કોડ / લોગિન ID (આપ્યો હોય તો)</label><input id="i_p_id" type="text" name="p_id"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_dir_id">ડાયરેક્ટરનો નાગરિકતા / આધાર / પાસપોર્ટ નં.</label><input id="i_p_dir_id" type="text" name="p_dir_id"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_route">રૂટ</label><input id="i_p_route" type="text" name="p_route"></div>
-    <div class="f" style="--p:12;--s:12"><label for="i_p_area">સેવા વિસ્તાર (જ્યાં કામ કરશો)<b class="rq" aria-hidden="true">*</b></label><input id="i_p_area" type="text" name="p_area" aria-required="true"></div>
+    <div class="f" style="--p:12;--s:12"><label for="i_p_area">સેવા વિસ્તાર (જ્યાં કામ કરશો)</label><input id="i_p_area" type="text" name="p_area"></div>
   </div>
 
   <h3 class="sub"><span class="k">A4</span>કરારની મુદત</h3>
@@ -697,7 +697,7 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     clearErrs(); status('', ''); btn.textContent = label; btn.disabled = false;
     fields().forEach(mark); mirrors(); say(U.cleared);
   });
-})({"id":"org-gu","type":"org","lang":"gu","api":"/api/agreement-apply.php","req":["p_name","p_phone","p_area","p_rep"],"ui":{"saved":"આ ફોનમાં સેવ થયું","cleared":"ફોર્મ ખાલી થયું","confirmClear":"આ ફોર્મની બધી વિગતો ભૂંસી નાખવી છે?","required":"કૃપા કરીને આ ભરો","applying":"મોકલી રહ્યા છીએ…","applied":"અરજી મળી ગઈ. તમારો અરજી નંબર {ref} છે. આ નંબર સાચવી રાખો. ઓફિસમાંથી તમને ફોન આવશે.","applyFail":"મોકલી શકાયું નહીં. વિગતો તપાસીને ફરી પ્રયાસ કરો.","applyOffline":"ઓનલાઇન મોકલવા માટે આ ફોર્મ www.shreehariglobal.in પર ખોલો.","applyUnsure":"હજી જવાબ આવ્યો નથી. ફોર્મ કદાચ ઓફિસ સુધી પહોંચી ગયું હોય, એટલે હમણાં ફરી ન મોકલશો. તપાસવા માટે 9104801507 પર ફોન કરો.","sentBtn":"મોકલાઈ ગઈ ✓"}});
+})({"id":"org-gu","type":"org","lang":"gu","api":"/api/agreement-apply.php","req":["p_name","p_phone"],"ui":{"saved":"આ ફોનમાં સેવ થયું","cleared":"ફોર્મ ખાલી થયું","confirmClear":"આ ફોર્મની બધી વિગતો ભૂંસી નાખવી છે?","required":"કૃપા કરીને આ ભરો","applying":"મોકલી રહ્યા છીએ…","applied":"અરજી મળી ગઈ. તમારો અરજી નંબર {ref} છે. આ નંબર સાચવી રાખો. ઓફિસમાંથી તમને ફોન આવશે.","applyFail":"મોકલી શકાયું નહીં. વિગતો તપાસીને ફરી પ્રયાસ કરો.","applyOffline":"ઓનલાઇન મોકલવા માટે આ ફોર્મ www.shreehariglobal.in પર ખોલો.","applyUnsure":"હજી જવાબ આવ્યો નથી. ફોર્મ કદાચ ઓફિસ સુધી પહોંચી ગયું હોય, એટલે હમણાં ફરી ન મોકલશો. તપાસવા માટે 9104801507 પર ફોન કરો.","sentBtn":"મોકલાઈ ગઈ ✓"}});
 </script>
 <script src="/assets/js/agreement-live.js?v=20261010t" defer></script>
 </body>

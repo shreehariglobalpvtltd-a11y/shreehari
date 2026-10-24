@@ -336,7 +336,7 @@ final class StaffApps
         $c['address_current'] = $c['address_current'] !== '' ? $c['address_current'] : null;
         $c['province']        = $c['province'] !== '' ? $c['province'] : null;
 
-        $c['role_applied'] = in_array($in['role'] ?? '', self::ROLES, true) ? (string) $in['role'] : '';
+        $c['role_applied'] = empty($in['role']) ? 'other' : (in_array($in['role'], self::ROLES, true) ? (string) $in['role'] : '');
         if ($c['role_applied'] === '') {
             $e['role'] = 'कुन काम? छान्नुहोस् · Choose the job you are applying for.';
         }
@@ -359,18 +359,12 @@ final class StaffApps
         $c['license_number']   = self::oneLine($in['license_number'] ?? '', 40) ?: null;
         $c['license_category'] = self::oneLine($in['license_category'] ?? '', 40) ?: null;
         $c['license_expiry']   = self::dateOrNull($in['license_expiry'] ?? '');
-        if ($c['role_applied'] === 'driver') {
-            if ($c['license_number'] === null || !self::idNumberOk('driving_license', $c['license_number'])) {
-                $e['license_number'] = 'लाइसेन्स नम्बर लेख्नुहोस् · Enter your driving licence number.';
-            }
-            if ($c['license_category'] === null) {
-                $e['license_category'] = 'लाइसेन्सको वर्ग (जस्तै B, C, D, E) लेख्नुहोस् · Enter the licence category.';
-            }
-            if ($c['license_expiry'] === null) {
-                $e['license_expiry'] = 'लाइसेन्सको म्याद सकिने मिति छान्नुहोस् · Choose the licence expiry date.';
-            } elseif ($c['license_expiry'] < date('Y-m-d')) {
-                $e['license_expiry'] = 'लाइसेन्सको म्याद सकिएको छ — नवीकरण गरेर फेरि आउनुहोस् · Your licence has expired.';
-            }
+        // Licence details may be supplied later; validate values only when present.
+        if ($c['license_number'] !== null && !self::idNumberOk('driving_license', $c['license_number'])) {
+            $e['license_number'] = 'लाइसेन्स नम्बर जाँच गर्नुहोस् · Check the licence number.';
+        }
+        if ($c['license_expiry'] !== null && $c['license_expiry'] < date('Y-m-d')) {
+            $e['license_expiry'] = 'लाइसेन्सको म्याद सकिएको छ · The licence has expired.';
         }
 
         $refs = [];
@@ -413,10 +407,8 @@ final class StaffApps
             $e['bank_ifsc'] = 'IFSC (११ अक्षर) वा SWIFT (८/११ अक्षर) मिलेन · IFSC or SWIFT code does not look right.';
         }
 
-        if (empty($in['agree'])) {
-            $e['agree'] = 'कर्मचारी सम्झौता पढेर ✓ लगाउनुहोस् · Please accept the staff agreement.';
-        }
-        $c['agreement_version'] = self::AGREEMENT_VERSION;
+        // Skipping the rules submits an application, without recording acceptance.
+        $c['agreement_version'] = !empty($in['agree']) ? self::AGREEMENT_VERSION : null;
         $c['show_on_website']   = empty($in['public_ok']) ? 0 : 1;
 
         // Files
@@ -432,11 +424,7 @@ final class StaffApps
             }
             $got[$slot] = $f;
         }
-        $need = ['photo' => 'आफ्नो फोटो खिच्नुहोस् · Take your photo.', 'id_front' => 'परिचयपत्रको अगाडिको फोटो चाहिन्छ · Photo of the front of your ID.',
-                 'signature' => 'औंलाले सही गर्नुहोस् · Please sign with your finger.'];
-        if ($c['role_applied'] === 'driver') {
-            $need['license'] = 'सवारी चालक अनुमतिपत्रको फोटो चाहिन्छ · Photo of your driving licence.';
-        }
+        $need = ['id_front' => 'परिचयपत्रको फोटो चाहिन्छ · Photo of your ID.'];
         foreach ($need as $slot => $msg) {
             // 23 Oct 2026: an applicant correcting their form keeps the pictures already sent ($have)
             if (!isset($got[$slot]) && !isset($e[$slot]) && !in_array($slot, $have, true)) {
@@ -614,8 +602,10 @@ final class StaffApps
             }
         }
 
-        self::recordSign('apply', $id, (string) $c['full_name'], (string) $c['phone'], (int) ($c['phone_verified'] ?? 0),
-            $saved['signature'] ?? null, $ip, $ua);
+        if (!empty($c['agreement_version'])) {
+            self::recordSign('apply', $id, (string) $c['full_name'], (string) $c['phone'], (int) ($c['phone_verified'] ?? 0),
+                $saved['signature'] ?? null, $ip, $ua);
+        }
 
         return ['id' => $id, 'ref' => self::refFor($id), 'reapplied' => $old !== null];
     }
@@ -641,6 +631,7 @@ final class StaffApps
             unset($row[$col]);
         }
         unset($row['face'], $row['phone'], $row['phone_country']);
+        if (empty($c['agreement_version'])) { unset($row['agreement_version']); }
         if (isset($files['id_front']) || isset($files['photo'])) {
             $row['doc_verify_json'] = null;
             $row['doc_verify_status'] = 'unchecked';
@@ -672,7 +663,7 @@ final class StaffApps
                 }
             }
         }
-        if (isset($saved['signature'])) {
+        if (!empty($c['agreement_version']) && isset($saved['signature'])) {
             self::recordSign('apply', $id, (string) $c['full_name'], (string) $c['phone'], (int) ($c['phone_verified'] ?? 0), $saved['signature'], $ip, $ua);
         }
         Logger::audit('staff_app.applicant_edit', 'staff_application', self::refFor($id), null,

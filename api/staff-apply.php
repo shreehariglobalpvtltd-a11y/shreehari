@@ -260,9 +260,7 @@ try {
     }
 
     $state = staff_phone_state((string) $c['phone']);
-    if ($state === 'none') {
-        Response::invalid(['otp' => 'required'], 'मोबाइल नम्बर WhatsApp कोडले प्रमाणित गर्नुहोस् · Please verify your mobile with the WhatsApp code.');
-    }
+    // Applications may be submitted before WhatsApp verification; retain the true proof status.
     $c['phone_verified'] = $state === 'verified' ? 1 : 0;
 
     // Documents: the answers this session already has (never waits here).

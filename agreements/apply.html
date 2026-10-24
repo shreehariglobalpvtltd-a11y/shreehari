@@ -459,7 +459,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     <a class="sa-btn ghost" href="/">🏠 होम · Home</a>
   </div>
 
-  <div id="saForm">
+  <div id="saForm"><p class="hint" data-noi18n>नाम, मोबाइल नम्बर र परिचयपत्रको विवरण / फोटो राखेर पठाउन सकिन्छ। बाँकी विवरण, सेल्फी, सही, WhatsApp जाँच र नियम अहिले छोड्न मिल्छ। · Name, mobile and ID details/photo are enough. Other details can be added later.</p>
   <!-- ===== PAGE 1 — Staff Application ===== -->
   <section class="sa-sheet" data-page="1">
     <div class="sa-lh">
@@ -487,7 +487,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
       <div class="sa-sec g"><i>👤</i>आवेदक · Applicant</div>
       <div class="sa-grid">
         <div class="sa-f span2"><label>पूरा नाम <span class="en">· Full name</span> <em>*</em></label><input type="text" id="sa_name" maxlength="160" placeholder="उदा. राम बहादुर थापा · e.g. Ram Bahadur Thapa"></div>
-        <div class="sa-f"><label>कुन काम <span class="en">· Job role</span> <em>*</em></label>
+        <div class="sa-f"><label>कुन काम <span class="en">· Job role</span> · Optional</label>
           <select id="sa_role"><option value="">— छान्नुहोस् · choose —</option><option value="driver">🚌 चालक · Driver</option><option value="conductor">🎫 कन्डक्टर · Conductor</option><option value="helper">🧳 हेल्पर · Helper</option><option value="office">🏢 अफिस · Office</option><option value="accountant">📊 लेखापाल · Accountant</option><option value="mechanic">🔧 मेकानिक · Mechanic</option><option value="cleaner">🧹 सफाइ · Cleaner</option><option value="security">🛡️ सुरक्षा · Security</option><option value="other">अन्य · Other</option></select></div>
         <div class="sa-f"><label>जन्म मिति (ईस्वी) <span class="en">· Date of birth (AD)</span></label><input type="date" id="sa_dob"></div>
         <div class="sa-f"><label>लिङ्ग <span class="en">· Gender</span></label><select id="sa_gender"><option value="">—</option><option value="male">पुरुष · Male</option><option value="female">महिला · Female</option><option value="other">अन्य · Other</option></select></div>
@@ -498,7 +498,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 
       <div id="sa_drvBox" hidden>
         <div class="sa-grid three">
-          <div class="sa-f"><label>लाइसेन्स नं. <span class="en">· Licence no.</span> <em>*</em></label><input type="text" id="sa_lic" maxlength="40" placeholder="उदा. 01-06-00123456"></div>
+          <div class="sa-f"><label>लाइसेन्स नं. <span class="en">· Licence no.</span> · Optional</label><input type="text" id="sa_lic" maxlength="40" placeholder="उदा. 01-06-00123456"></div>
           <div class="sa-f"><label>वर्ग <span class="en">· Category</span></label><input type="text" id="sa_licCat" maxlength="30" placeholder="उदा. B, C, D"></div>
           <div class="sa-f"><label>म्याद <span class="en">· Valid until</span></label><input type="date" id="sa_licExp"></div>
         </div>
@@ -506,7 +506,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 
       <div class="sa-sec"><i>🏠</i>ठेगाना · Address</div>
       <div class="sa-grid">
-        <div class="sa-f span2"><label>स्थायी ठेगाना <span class="en">· Permanent address</span> <em>*</em></label><textarea id="sa_addrPerm" maxlength="300" placeholder="टोल, नगरपालिका–वडा, जिल्ला · ward, municipality, district"></textarea></div>
+        <div class="sa-f span2"><label>स्थायी ठेगाना <span class="en">· Permanent address</span> · Optional</label><textarea id="sa_addrPerm" maxlength="300" placeholder="टोल, नगरपालिका–वडा, जिल्ला · ward, municipality, district"></textarea></div>
         <div class="sa-f span2"><label>हालको ठेगाना <span class="en">· Current address</span></label><textarea id="sa_addrCur" maxlength="300" placeholder="अहिले बस्ने ठाउँ · where you live now (if different)"></textarea></div>
         <div class="sa-f"><label>जिल्ला · प्रदेश <span class="en">· District · Province</span></label><input type="text" id="sa_distprov" maxlength="120" placeholder="उदा. बाँके · लुम्बिनी"></div>
         <div class="sa-f"><label>देश <span class="en">· Country</span></label><select id="sa_country"><option value="NP">🇳🇵 नेपाल · Nepal</option><option value="IN">🇮🇳 भारत · India</option></select></div>
@@ -617,6 +617,8 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     <div class="sa-pf"><span>S HARI GLOBAL PVT. LTD. · KYC</span><span class="seal">गोप्य · Office only</span><span>shreehariglobal.in · पाना 2/4</span></div>
   </section>
 
+  <button type="button" id="saSkipRules" class="btn ghost">अहिले नियम छोड्नुहोस् · Skip rules for now</button>
+  <details class="sa-rules" id="saRules"><summary style="padding:18px;font-weight:800;cursor:pointer">📜 नियम पढ्नुहोस् (ऐच्छिक) · Read rules (optional)</summary>
   <!-- ===== PAGE 3 — Agreement: parties + clauses 1-10 ===== -->
   <section class="sa-sheet" data-page="3">
     <div class="sa-lh">
@@ -728,7 +730,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 
       <div class="sa-accept">
         <b>स्वीकृति · Acceptance</b> — मैले/हामीले माथिका सबै नियम र सर्त आफूले बुझ्ने भाषामा पढें र आफ्नै इच्छाले स्वीकार गर्छु। · I have read every rule above in a language I understand and accept them of my own free will.
-        <label class="sa-chk" style="margin-top:8px"><input type="checkbox" id="sa_accept"> म माथिका १९ नियम र कर्मचारी सम्झौता (v1.1) स्वीकार गर्छु · I accept the 19 rules &amp; staff agreement <em style="color:#e8457c">*</em></label>
+        <label class="sa-chk" style="margin-top:8px"><input type="checkbox" id="sa_accept"> म माथिका १९ नियम र कर्मचारी सम्झौता (v1.1) स्वीकार गर्छु · I accept the 19 rules &amp; staff agreement · Optional</label>
       </div>
       <div class="sa-signrow">
         <div class="sa-signbox"><h4>प्रथम पक्ष · For the Company</h4><div class="sl"></div><small>सही · Signature</small><div class="sl"></div><small>नाम / पद · Name / Designation</small><div class="sl"></div><small>मिति · Date</small><div class="stamp">कम्पनी छाप<br>Company<br>Stamp</div></div>
@@ -738,6 +740,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     <div class="sa-pf"><span>कर्मचारी सम्झौता v1.1</span><span class="seal" id="sa_sealTxt">SHG-STAFF-AGR</span><span>shreehariglobal.in · पाना 4/4</span></div>
   </section>
 
+  </details><p class="hint">नियम अहिले नपढे पनि Submit गर्न मिल्छ। · You may submit now and read the rules later.</p>
   <input type="text" id="sa_website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
   </div><!-- /#saForm -->
 
@@ -795,7 +798,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   <div class="cvc-chips"><span id="ckWa">WhatsApp</span><span id="ckId">ID AI</span><span id="ckSelfie">सेल्फी · Selfie</span><span id="ckSig">सही · Signature</span><span id="ckFp">फिंगरप्रिन्ट · Fingerprint</span></div>
   <p class="cvc-foot">✨ यो तपाईंको डिजिटल CV हो — फारम भर्दै जाँदा आफैं बन्छ, पठाएपछि A4 PDF मा यस्तै छापिन्छ। · Your digital CV builds itself as you fill.</p>
 </section>
-<form id="ap" novalidate>
+<form id="ap" novalidate><p class="hint" data-noi18n>नाम, मोबाइल नम्बर र परिचयपत्रको विवरण / फोटो राखेर पठाउन सकिन्छ। बाँकी विवरण, सेल्फी, सही, WhatsApp जाँच र नियम अहिले छोड्न मिल्छ। · Name, mobile and ID details/photo are enough. Other details can be added later.</p>
   <section class="card c1">
     <h2><i>1</i>👤 तपाईंको विवरण · Your details</h2>
     <!-- 22 Oct 2026 (owner, team portal): the Pvt. Ltd. partner's paper form, online - the same
@@ -811,15 +814,15 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     <label class="f"><span id="nameLbl">पूरा नाम · Full name <em>*</em></span><input type="text" id="p_name" autocomplete="name" maxlength="160" required placeholder="जस्तै: Ram Bahadur Thapa">
       <small class="hint" id="nameHint" style="display:block;margin:4px 0 0">डकुमेन्टमा जस्तो लेखिएको छ, ठ्याक्कै त्यस्तै हिज्जे · exactly as on your ID</small></label>
     <div id="staffBox" hidden>
-      <label class="f"><span>कुन काम? · Job <em>*</em></span><select id="s_role"><option value="">— छान्नुहोस् · choose —</option><option value="driver">🚌 चालक · Driver</option><option value="conductor">🎫 कन्डक्टर / सह-चालक · Conductor</option><option value="helper">🧳 हेल्पर · Helper</option><option value="office">🏢 अफिस / काउन्टर · Office</option><option value="accountant">📊 लेखापाल · Accountant</option><option value="mechanic">🔧 मेकानिक · Mechanic</option><option value="cleaner">🧹 सफाइ · Cleaner</option><option value="security">🛡️ सुरक्षा · Security</option><option value="other">अन्य · Other</option></select></label>
+      <label class="f"><span>कुन काम? · Job · Optional</span><select id="s_role"><option value="">— छान्नुहोस् · choose —</option><option value="driver">🚌 चालक · Driver</option><option value="conductor">🎫 कन्डक्टर / सह-चालक · Conductor</option><option value="helper">🧳 हेल्पर · Helper</option><option value="office">🏢 अफिस / काउन्टर · Office</option><option value="accountant">📊 लेखापाल · Accountant</option><option value="mechanic">🔧 मेकानिक · Mechanic</option><option value="cleaner">🧹 सफाइ · Cleaner</option><option value="security">🛡️ सुरक्षा · Security</option><option value="other">अन्य · Other</option></select></label>
       <div class="rolehint" id="roleHint" hidden aria-live="polite"></div>
       <div id="drvBox" hidden>
-        <label class="f"><span>लाइसेन्स नम्बर · Driving licence no. <em>*</em></span><input type="text" id="s_lic" maxlength="40" autocomplete="off" placeholder="जस्तै: 01-06-00123456"></label>
-        <label class="f"><span>लाइसेन्सको वर्ग · Category <em>*</em></span><input type="text" id="s_licCat" maxlength="40" autocomplete="off" placeholder="जस्तै: B, C, D"></label>
-        <label class="f"><span>म्याद सकिने मिति · Valid until <em>*</em></span><input type="date" id="s_licExp"></label>
+        <label class="f"><span>लाइसेन्स नम्बर · Driving licence no. · Optional</span><input type="text" id="s_lic" maxlength="40" autocomplete="off" placeholder="जस्तै: 01-06-00123456"></label>
+        <label class="f"><span>लाइसेन्सको वर्ग · Category · Optional</span><input type="text" id="s_licCat" maxlength="40" autocomplete="off" placeholder="जस्तै: B, C, D"></label>
+        <label class="f"><span>म्याद सकिने मिति · Valid until · Optional</span><input type="date" id="s_licExp"></label>
         <div class="shot" style="margin-top:8px">
           <div class="prev doc" id="licPrev">🚌</div>
-          <div><div class="pick"><span class="btn">📷 लाइसेन्सको फोटो · Licence photo <em>*</em></span><input type="file" id="licIn" accept="image/*" capture="environment" aria-label="Photo of the driving licence"></div>
+          <div><div class="pick"><span class="btn">📷 लाइसेन्सको फोटो · Licence photo · Optional</span><input type="file" id="licIn" accept="image/*" capture="environment" aria-label="Photo of the driving licence"></div>
           <p class="hint" style="margin:6px 0 0">अगाडिको भाग, सबै अक्षर देखिने गरी।</p><div class="ok" id="licOk"></div></div>
         </div>
       </div>
@@ -858,8 +861,8 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     <label class="f"><span>मोबाइल · Mobile (WhatsApp) <em>*</em></span>
       <div class="row"><select id="cc" aria-label="Country code"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>
       <input type="tel" id="p_phone" inputmode="numeric" autocomplete="tel-national" maxlength="14" placeholder="98XXXXXXXX" required></div></label>
-    <label class="f"><span id="areaLbl">काम गर्ने ठाउँ / शहर · Work area / city <em>*</em></span><input type="text" id="p_area" maxlength="160" placeholder="जस्तै: Surat, Nepalgunj" required></label>
-    <label class="f"><span id="addrLbl">ठेगाना · Address <em>*</em></span><textarea id="p_addr" maxlength="300" placeholder="टोल, नगर, जिल्ला" required></textarea></label>
+    <label class="f"><span id="areaLbl">काम गर्ने ठाउँ / शहर · Work area / city · Optional</span><input type="text" id="p_area" maxlength="160" placeholder="जस्तै: Surat, Nepalgunj"></label>
+    <label class="f"><span id="addrLbl">ठेगाना · Address · Optional</span><textarea id="p_addr" maxlength="300" placeholder="टोल, नगर, जिल्ला"></textarea></label>
     <!-- 22 Oct 2026 (team portal): the start of the CV - the rest is filled in the team portal after approval -->
     <details class="more"><summary>📚 शिक्षा र अनुभव (ऐच्छिक) · Education &amp; experience (optional)</summary>
     <label class="f"><span id="cvQualLbl">सबैभन्दा माथिल्लो शिक्षा · Highest education</span><select id="cv_qual"><option value="">—</option><option value="below_see">SEE भन्दा कम · Below SEE / 10th</option><option value="see">SEE / SLC / 10th</option><option value="plus2">+2 / 12th / PUC</option><option value="diploma">Diploma / ITI</option><option value="bachelor">Bachelor · स्नातक</option><option value="master">Master · स्नातकोत्तर</option><option value="other">Other · अन्य</option></select></label>
@@ -992,8 +995,8 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 
   <section class="card c7">
     <!-- 22 Oct 2026 (owner: "agreement garne bela sart haru k k chha sabai lekhidinus"): every term, read here -->
-    <div id="termsBox"></div>
-    <label class="chk"><input type="checkbox" id="agreeTerms"><span>मैले सम्झौताका सबै सर्त पढें (वा पढेर सुनाइयो) र स्वीकार गर्छु। · I have read and accept every term. <em style="color:var(--bad);font-style:normal">*</em></span></label>
+    <div id="termsBox"></div><button type="button" id="skipTerms">अहिले छोड्नुहोस् · Skip rules for now</button>
+    <label class="chk"><input type="checkbox" id="agreeTerms"><span>मैले सम्झौताका सबै सर्त पढें (वा पढेर सुनाइयो) र स्वीकार गर्छु। · I have read and accept every term. · Optional</span></label>
     <label class="chk"><input type="checkbox" id="agree"><span>मैले दिएको विवरण साँचो हो। कार्यालयले मलाई फोन / WhatsApp गर्न सक्छ। <em style="color:var(--bad);font-style:normal">*</em></span></label>
     <label class="chk"><input type="checkbox" id="public_ok"><span>स्वीकृत भएपछि मेरो नाम, फोटो, काम गर्ने ठाउँ र पूरा फोन नम्बर (WhatsApp) वेबसाइटको एजेन्ट सूचीमा देखाउन सकिन्छ। (नत्र फोटो र नम्बर लुकाइन्छ)</span></label>
     <div class="hp" aria-hidden="true"><label>Website <input type="text" id="website" tabindex="-1" autocomplete="off"></label></div>
@@ -1025,7 +1028,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 
 <script src="/assets/js/wa-direct.js?v=20261022a"></script>
 <script src="/assets/js/wa-verify.js?v=20261023j"></script>
-<script src="/assets/js/bio-kit.js?v=20261023b"></script>
+<script src="/assets/js/bio-kit.js?v=20261024opt"></script>
 <script src="/assets/js/form-i18n.js?v=20261023j"></script>
 <script>
 (function () {
@@ -1258,8 +1261,8 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     $('geoCard').hidden = staff;
     $('upiLbl').hidden = staff;
     $('bankHint').textContent = (staff ? 'तलब' : 'कमिसन') + ' यही खातामा पठाइन्छ। कार्यालयले मात्र देख्छ — वेबसाइटमा कहिल्यै देखिँदैन। अहिले थाहा छैन भने पछि कार्यालयमा दिन सकिन्छ।';   // whole line: form-i18n.js translates it
-    $('areaLbl').innerHTML = staff ? 'जिल्ला / शहर · District / city' : 'काम गर्ने ठाउँ / शहर · Work area / city <em>*</em>';
-    $('addrLbl').innerHTML = staff ? 'स्थायी ठेगाना · Permanent address' : 'ठेगाना · Address <em>*</em>';
+    $('areaLbl').innerHTML = staff ? 'जिल्ला / शहर · District / city' : 'काम गर्ने ठाउँ / शहर · Work area / city · Optional';
+    $('addrLbl').innerHTML = staff ? 'स्थायी ठेगाना · Permanent address' : 'ठेगाना · Address · Optional';
     // the ID choices: voter ID / other are agent-only, a driving licence / PAN staff-only
     [].forEach.call($('p_idtype').options, function (o) {
       var off = staff ? (o.value === '3' || o.value === '4') : (o.value === '5' || o.value === '6');
@@ -1305,7 +1308,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   /* 23 Oct 2026 (owner: "post wise k k chahincha tei anusar optimised"): each job shows what it needs, and the
      boxes that matter for it get a soft "recommended" mark - the main things stay the only required ones */
   var ROLE_NEEDS = {
-    driver:     { need: ['सवारी चालक अनुमतिपत्र (लाइसेन्स) — नम्बर, वर्ग, म्याद र फोटो · Driving licence (required)', 'चलाएको अनुभव (वर्ष) · Driving experience', 'आपतकालीन सम्पर्क · Emergency contact'], rec: ['cv_exp', 's_emn'] },
+    driver:     { need: ['सवारी चालक अनुमतिपत्र (लाइसेन्स) — नम्बर, वर्ग, म्याद र फोटो · Driving licence (optional at application)', 'चलाएको अनुभव (वर्ष) · Driving experience', 'आपतकालीन सम्पर्क · Emergency contact'], rec: ['cv_exp', 's_emn'] },
     conductor:  { need: ['यात्रु र टिकटको काम — फोन प्रयोग जान्ने · Passengers, tickets, a smartphone', 'अनुभव भए लेख्नुहोस् · Experience, if any', 'चिनारी · A reference'], rec: ['cv_exp', 's_ref1n'] },
     helper:     { need: ['सामान र यात्रु सहयोग · Luggage and passenger help', 'चिनारी · A reference', 'आपतकालीन सम्पर्क · Emergency contact'], rec: ['s_ref1n', 's_emn'] },
     office:     { need: ['इमेल · E-mail', 'शिक्षा र मार्कसिट · Education and marksheet', 'कम्प्युटर / टिकट प्रणालीको अनुभव · Computer / booking experience'], rec: ['s_email', 'cv_qual', 'cv_prev'] },
@@ -1349,6 +1352,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 
   /* ---- 22 Oct 2026: thumbprint by camera + the phone's fingerprint / Face ID lock (both optional) ---- */
   var thumb = null;   // 23 Oct 2026 (owner): the camera thumbprint left the form - the phone's own fingerprint is below
+  $('skipTerms').addEventListener('click', function () { $('agreeTerms').checked = false; var d = $('termsBox').querySelector('details'); if (d) d.open = false; $('send').scrollIntoView({ block: 'center', behavior: 'smooth' }); });
   terms = window.ShgTerms ? window.ShgTerms.mount($('termsBox'), state.kind === 'org' ? 'partner' : state.kind === 'staff' ? 'staff' : 'agent') : null;
   if (window.ShgFormLang) window.ShgFormLang.onChange(function (l) { if (terms && terms.setLang) terms.setLang(l); });
   state.webauthn = '';
@@ -1547,24 +1551,8 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   function check() {
     document.querySelectorAll('[aria-invalid]').forEach(function (el) { el.removeAttribute('aria-invalid'); });
     if ($('p_name').value.trim().length < 2) return need('p_name', state.kind === 'org' ? 'कम्पनीको नाम लेख्नुहोस्।' : 'कृपया पूरा नाम लेख्नुहोस्।');
-    if (state.kind === 'org' && $('p_rep').value.trim().length < 2) return need('p_rep', 'प्रतिनिधि / सञ्चालकको नाम लेख्नुहोस्।');
-    if (state.kind === 'org' && !state.reg_cert) return need('regIn', 'कम्पनी दर्ता प्रमाणपत्रको फोटो खिच्नुहोस् · photo of the registration certificate.');
     var ph = $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
     if (ph.length !== 10) return need('p_phone', 'कृपया १० अङ्कको मोबाइल नम्बर लेख्नुहोस्।');
-    if (state.kind === 'staff') {
-      var role = $('s_role').value;
-      if (!role) return need('s_role', 'कुन काम? छान्नुहोस् · Choose the job.');
-      if (role === 'driver') {
-        if ($('s_lic').value.trim().length < 5) return need('s_lic', 'लाइसेन्स नम्बर लेख्नुहोस् · Enter the licence number.');
-        if (!$('s_licCat').value.trim()) return need('s_licCat', 'लाइसेन्सको वर्ग लेख्नुहोस् · Enter the licence category.');
-        if (!$('s_licExp').value) return need('s_licExp', 'लाइसेन्सको म्याद सकिने मिति छान्नुहोस् · Choose the expiry date.');
-        if ($('s_licExp').value < new Date().toISOString().slice(0, 10)) return need('s_licExp', 'लाइसेन्सको म्याद सकिएको छ · The licence has expired.');
-        if (!state.lic && !(state.edit && state.edit.have.indexOf('license') >= 0)) return need('licIn', 'लाइसेन्सको फोटो खिच्नुहोस् · Photo of the licence.');
-      }
-    } else {
-      if (!$('p_area').value.trim()) return need('p_area', 'काम गर्ने ठाउँ लेख्नुहोस्।');
-      if (!$('p_addr').value.trim()) return need('p_addr', 'ठेगाना लेख्नुहोस्।');
-    }
     var people = state.kind === 'org' ? [['g_name', 'g_phone', 'जमानीकर्ता · guarantor'], ['w1_name', 'w1_phone', 'साक्षी १ · witness 1'], ['w2_name', 'w2_phone', 'साक्षी २ · witness 2']] : [];
     for (var pi = 0; pi < people.length; pi++) {
       var pn = $(people[pi][0]).value.trim(), pp = $(people[pi][1]).value.replace(/\D/g, '').replace(/^0+/, '');
@@ -1576,11 +1564,6 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     if (!idFormatOk()) return need('p_idno', 'डकुमेन्ट नम्बर मिलेन — ' + rule().hint);
     var had = function (slot) { return !!(state.edit && state.edit.have.indexOf(slot) >= 0); };
     if (!state.doc && !had('doc') && !had('id_front')) return need('docIn', 'डकुमेन्टको फोटो खिच्नुहोस्।');
-    if (!state.photo && !had('photo')) return need('selfIn', 'आफ्नो फोटो खिच्नुहोस्।');
-    if (inked <= 40 && !had('signature')) return need('sig', 'तलको बाकसमा औंलाले सही गर्नुहोस्।');
-    if (wav && state.wa === 'none') return need('waV', 'मोबाइल नम्बर WhatsApp बाट प्रमाणित गर्नुहोस् — हरियो बटन थिच्नुहोस्।');
-    if (!$('agree').checked) return need('agree', 'विवरण साँचो हो भनी ✓ लगाउनुहोस्।');
-    if (!$('agreeTerms').checked) { if (terms) terms.open(); return need('agreeTerms', 'सम्झौताका सर्त पढेर ✓ लगाउनुहोस् · Read the terms and tick the box.'); }
     return true;
   }
   $('ap').addEventListener('submit', function (e) {
@@ -1621,7 +1604,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     if (v('s_ref1n') || v('s_ref1p')) { fd.set('ref1_name', v('s_ref1n')); fd.set('ref1_phone', dig('s_ref1p')); }
     fd.set('emergency_name', v('s_emn')); fd.set('emergency_phone', dig('s_emp'));
     fd.set('bank_holder', v('b_name')); fd.set('bank_name', v('b_bank')); fd.set('bank_account', v('b_acc')); fd.set('bank_ifsc', v('b_ifsc').toUpperCase().replace(/\s+/g, ''));
-    fd.set('agree', '1'); if ($('public_ok').checked) fd.set('public_ok', '1'); fd.set('website', $('website').value);
+    fd.set('agree', $('agreeTerms').checked ? '1' : '0'); if ($('public_ok').checked) fd.set('public_ok', '1'); fd.set('website', $('website').value);
     if (state.webauthn) fd.set('webauthn', state.webauthn);
     if (state.edit) fd.set('edit', '1');
     if (state.photo) fd.append('photo', toBlob(state.photo), 'photo.jpg');
@@ -1717,17 +1700,17 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   var REV = [
     ['👤 विवरण · Details', [
       [function () { return state.kind === 'org' ? 'कम्पनीको नाम · Company' : 'पूरा नाम · Full name'; }, function () { return val('p_name'); }, 'p_name', true],
-      ['प्रतिनिधि · Representative', function () { return join(val('p_rep'), val('p_rep_desig')); }, 'p_rep', true, 'org'],
+      ['प्रतिनिधि · Representative', function () { return join(val('p_rep'), val('p_rep_desig')); }, 'p_rep', false, 'org'],
       ['कम्पनीको किसिम · Company type', function () { return val('p_type'); }, 'p_type', false, 'org'],
       ['दर्ता · PAN / VAT', function () { return join(val('p_reg'), val('p_tax')); }, 'p_reg', false, 'org'],
-      ['कुन काम · Job', function () { return val('s_role'); }, 's_role', true, 'staff'],
-      ['लाइसेन्स · Licence', function () { return join(val('s_lic'), val('s_licCat'), val('s_licExp')); }, 's_lic', function () { return $('s_role').value === 'driver'; }, 'staff'],
+      ['कुन काम · Job', function () { return val('s_role'); }, 's_role', false, 'staff'],
+      ['लाइसेन्स · Licence', function () { return join(val('s_lic'), val('s_licCat'), val('s_licExp')); }, 's_lic', false, 'staff'],
       ['मोबाइल · Mobile', function () { var d = digs('p_phone'); return d ? '+' + $('cc').value + ' ' + d : ''; }, 'p_phone', true],
       ['जन्म मिति · लिङ्ग · Birth · gender', function () { return join(val('s_dob'), val('s_gender')); }, 's_dob', false, 'staff'],
       ['जन्म मिति · Date of birth', function () { return val('p_dob'); }, 'p_dob', false, 'ind org'],
       ['इमेल · E-mail', function () { return val('s_email'); }, 's_email', false, 'staff'],
-      ['काम गर्ने ठाउँ · Area', function () { return val('p_area'); }, 'p_area', nonStaff],
-      ['ठेगाना · Address', function () { return val('p_addr'); }, 'p_addr', nonStaff]
+      ['काम गर्ने ठाउँ · Area', function () { return val('p_area'); }, 'p_area', false],
+      ['ठेगाना · Address', function () { return val('p_addr'); }, 'p_addr', false]
     ]],
     ['🎓 परिचयपत्र र CV · ID & CV', [
       ['परिचयपत्र · ID', function () { var n = val('p_idno'); return n ? val('p_idtype') + ' · ' + n : ''; }, 'p_idno', true],
@@ -1745,11 +1728,11 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
       ['साक्षी · Witnesses', function () { return join(val('w1_name'), val('w2_name')); }, 'w1_name', false, 'org']
     ]],
     ['✅ प्रमाणीकरण · Verification', [
-      ['WhatsApp प्रमाण · Mobile proof', function () { return state.wa !== 'none' ? '✓ प्रमाणित · verified' : ''; }, 'waV', true],
+      ['WhatsApp प्रमाण · Mobile proof', function () { return state.wa !== 'none' ? '✓ प्रमाणित · verified' : ''; }, 'waV', false],
       ['AI ID जाँच · ID check', function () { return state.verified === true ? '✓ मिल्यो · matched' : state.verified === false ? '✗ मिलेन · not matched' : ''; }, 'dvBtn', false, 'ind org'],
       ['लाइभ सेल्फी · Live selfie', function () { return { pass: '✓ प्रमाणित · verified', done: '✓ गरियो · done', warn: '⚠️ फेरि गर्न सकिन्छ · try again' }[state.selfie] || ''; }, 'liveBtn', false],
       ['फिंगरप्रिन्ट · Fingerprint', function () { return state.webauthn ? '✓ प्रमाणित · verified' : ''; }, 'pkBtn', false],
-      ['सर्त स्वीकार · Terms accepted', function () { return $('agreeTerms').checked && $('agree').checked ? '✓' : ''; }, 'agreeTerms', true]
+      ['सर्त स्वीकार · Terms accepted', function () { return $('agreeTerms').checked && $('agree').checked ? '✓' : ''; }, 'agreeTerms', false]
     ]]
   ];
   function pics() {
@@ -1757,13 +1740,13 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     var drv = state.kind === 'staff' && $('s_role').value === 'driver';
     // [label, picture, the box a tap goes to, required, kinds]
     return [
-      ['फोटो · Photo', state.photo, 'liveBtn', !hadSlot('photo'), ''],
+      ['फोटो · Photo', state.photo, 'liveBtn', false, ''],
       ['ID', state.doc, 'docIn', !hadSlot('doc') && !hadSlot('id_front'), ''],
-      ['सही · Signature', sigUri, 'sig', !hadSlot('signature'), ''],
+      ['सही · Signature', sigUri, 'sig', false, ''],
       ['लोगो · Logo', state.logo, 'logoIn', false, 'org'],
-      ['दर्ता · Registration', state.reg_cert, 'regIn', !hadSlot('reg_cert'), 'org'],
+      ['दर्ता · Registration', state.reg_cert, 'regIn', false, 'org'],
       ['PAN / VAT', state.tax_cert, 'taxIn', false, 'org'],
-      ['लाइसेन्स · Licence', state.lic, 'licIn', drv && !hadSlot('license'), drv ? 'staff' : 'none'],
+      ['लाइसेन्स · Licence', state.lic, 'licIn', false, drv ? 'staff' : 'none'],
       ['मार्कसिट · Marksheet', state.edu_cert, 'eduIn', false, 'ind staff']
     ].filter(function (p) { return forKind(p[4]); });
   }
@@ -2084,14 +2067,12 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   function validate() {
     var bad = [];
     if (!v('sa_name')) bad.push('sa_name');
-    if (!v('sa_role')) bad.push('sa_role');
+    // Job may be chosen later; the office receives it as Other.
     if (digits('sa_phone').length !== 10) bad.push('sa_phone');
     if (!v('sa_idtype')) bad.push('sa_idtype');
     if (!v('sa_idno')) bad.push('sa_idno');
-    if (!$('sa_accept').checked) bad.push('sa_accept');
-    if (v('sa_role') === 'driver' && !v('sa_lic')) bad.push('sa_lic');
     bad.forEach(invalid);
-    if (!img.photo) { toast('पासपोर्ट फोटो / सेल्फी राख्नुहोस् · add your photo', 'bad'); var d = $('sa_photoDrop'); if (d) d.scrollIntoView({ block: 'center', behavior: 'smooth' }); return false; }
+    if (!img.idFront) { toast('परिचयपत्रको फोटो राख्नुहोस् · add your ID document', 'bad'); var d = $('sa_idFront'); if (d) d.scrollIntoView({ block: 'center', behavior: 'smooth' }); return false; }
     if (bad.length) { var f = $(bad[0]); if (f) f.scrollIntoView({ block: 'center', behavior: 'smooth' }); toast('रातो खाली ठाउँ भर्नुहोस् · fill the fields in red', 'bad'); return false; }
     return true;
   }
@@ -2100,7 +2081,6 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   function submit() {
     if (!open) { toast('अहिले आवेदन बन्द छ · applications closed', 'bad'); return; }
     if (!validate()) return;
-    if (waOk === 'none') { toast('पहिले WhatsApp नम्बर प्रमाणित गर्नुहोस् · verify your WhatsApp number first', 'bad'); $('sa_waV').scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
     var btn = $('saSubmit'); btn.disabled = true; var lab = btn.innerHTML; btn.innerHTML = '<span class="ei">⏳</span>पठाउँदै…';
     var fd = new FormData();
     fd.set('full_name', v('sa_name')); fd.set('phone', digits('sa_phone')); fd.set('cc', v('sa_cc'));
@@ -2113,7 +2093,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     if (v('sa_ref2n') || v('sa_ref2p')) { fd.set('ref2_name', v('sa_ref2n')); fd.set('ref2_phone', digits('sa_ref2p')); }
     fd.set('emergency_name', v('sa_emn')); fd.set('emergency_phone', digits('sa_emp'));
     fd.set('bank_holder', v('sa_bhold')); fd.set('bank_name', v('sa_bbank')); fd.set('bank_account', v('sa_bacc')); fd.set('bank_ifsc', v('sa_bifsc').toUpperCase().replace(/\s+/g, ''));
-    fd.set('agree', '1'); fd.set('website', v('sa_website'));
+    fd.set('agree', $('sa_accept').checked ? '1' : '0'); fd.set('website', v('sa_website'));
     if (webauthn) fd.set('webauthn', webauthn);
     if (img.photo) fd.append('photo', toBlob(img.photo), 'photo.jpg');
     if (img.idFront) fd.append('id_front', toBlob(img.idFront), 'id_front.jpg');
@@ -2173,6 +2153,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     return libP;
   }
   function pdf() {
+    var ruleBox = $('saRules'), wasOpen = ruleBox.open; ruleBox.open = true;
     var btn = $('saPdf'); btn.disabled = true; var lab = btn.innerHTML; btn.innerHTML = '<span class="ei">⏳</span>बन्दै…';
     return libs().then(function () {
       var sa = $('sa'); sa.classList.add('exporting');
@@ -2193,7 +2174,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
         toast('PDF डाउनलोड भयो · PDF downloaded', 'good');
       });
     }).catch(function () { $('sa').classList.remove('exporting'); toast('PDF बनाउन सकिएन — इन्टरनेट जाँच गर्नुहोस् · could not build PDF', 'bad'); })
-      .then(function () { btn.disabled = false; btn.innerHTML = lab; });
+      .then(function () { ruleBox.open = wasOpen; btn.disabled = false; btn.innerHTML = lab; });
   }
 
   /* ---- wire it all up ---- */
@@ -2210,6 +2191,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   document.getElementById('sa').addEventListener('change', function () { sync(); saveSoon(); });
   ['sa_phone', 'sa_cc'].forEach(function (id) { $(id).addEventListener('change', function () { if (waOk !== 'none') { waOk = 'none'; sync(); } }); });
   $('saSave').addEventListener('click', function () { saveLocal(function (r) { toast(r === 'text' ? 'विवरण सेभ भयो (फोटो ठूला भए — PDF राख्नुहोस्) · saved' : r ? '💾 यस डिभाइसमा सेभ भयो · saved on this device' : 'सेभ भएन · could not save', r ? 'good' : 'bad'); }); downloadJson(); });
+  $('saSkipRules').addEventListener('click', function () { $('sa_accept').checked = false; $('saRules').open = false; sync(); $('saSubmit').focus(); });
   $('saSubmit').addEventListener('click', submit);
   $('saWa').addEventListener('click', whatsapp);
   $('saPdf').addEventListener('click', function () { pdf(); });

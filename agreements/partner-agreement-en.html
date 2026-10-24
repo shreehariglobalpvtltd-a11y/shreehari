@@ -354,13 +354,13 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     <div class="f" style="--p:12;--s:12"><label for="i_p_office">Office / counter address</label><input id="i_p_office" type="text" name="p_office"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_phone">Mobile number<b class="rq" aria-hidden="true">*</b></label><input id="i_p_phone" type="tel" name="p_phone" inputmode="tel" autocomplete="tel" aria-required="true"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_email">Email</label><input id="i_p_email" type="email" name="p_email" inputmode="email" autocomplete="email"></div>
-    <div class="f" style="--p:4;--s:6"><label for="i_p_rep">Person signing for the organization<b class="rq" aria-hidden="true">*</b></label><input id="i_p_rep" type="text" name="p_rep" autocomplete="name" aria-required="true"></div>
+    <div class="f" style="--p:4;--s:6"><label for="i_p_rep">Person signing for the organization</label><input id="i_p_rep" type="text" name="p_rep" autocomplete="name"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_rep_desig">Designation</label><input id="i_p_rep_desig" type="text" name="p_rep_desig"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_rep_phone">Mobile number of the person signing</label><input id="i_p_rep_phone" type="tel" name="p_rep_phone" inputmode="tel"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_id">Partner code / login ID (if given)</label><input id="i_p_id" type="text" name="p_id"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_dir_id">Director’s citizenship / Aadhaar / passport no.</label><input id="i_p_dir_id" type="text" name="p_dir_id"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_route">Route</label><input id="i_p_route" type="text" name="p_route"></div>
-    <div class="f" style="--p:12;--s:12"><label for="i_p_area">Service area (where you will work)<b class="rq" aria-hidden="true">*</b></label><input id="i_p_area" type="text" name="p_area" aria-required="true"></div>
+    <div class="f" style="--p:12;--s:12"><label for="i_p_area">Service area (where you will work)</label><input id="i_p_area" type="text" name="p_area"></div>
   </div>
 
   <h3 class="sub"><span class="k">A4</span>Period of the agreement</h3>
@@ -697,7 +697,7 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     clearErrs(); status('', ''); btn.textContent = label; btn.disabled = false;
     fields().forEach(mark); mirrors(); say(U.cleared);
   });
-})({"id":"org-en","type":"org","lang":"en","api":"/api/agreement-apply.php","req":["p_name","p_phone","p_area","p_rep"],"ui":{"saved":"Saved on this phone","cleared":"Form cleared","confirmClear":"Clear everything on this form?","required":"Please fill this in","applying":"Sending…","applied":"Received. Your application number is {ref}. Please keep it. The office will call you.","applyFail":"Could not send. Please check the details and try again.","applyOffline":"To send this form online, open it at www.shreehariglobal.in.","applyUnsure":"No answer yet. The form may already have reached the office, so please do not send it again now. Call 9104801507 to check.","sentBtn":"Sent ✓"}});
+})({"id":"org-en","type":"org","lang":"en","api":"/api/agreement-apply.php","req":["p_name","p_phone"],"ui":{"saved":"Saved on this phone","cleared":"Form cleared","confirmClear":"Clear everything on this form?","required":"Please fill this in","applying":"Sending…","applied":"Received. Your application number is {ref}. Please keep it. The office will call you.","applyFail":"Could not send. Please check the details and try again.","applyOffline":"To send this form online, open it at www.shreehariglobal.in.","applyUnsure":"No answer yet. The form may already have reached the office, so please do not send it again now. Call 9104801507 to check.","sentBtn":"Sent ✓"}});
 </script>
 <script src="/assets/js/agreement-live.js?v=20261010t" defer></script>
 </body>

@@ -354,13 +354,13 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     <div class="f" style="--p:12;--s:12"><label for="i_p_office">ऑफ़िस / काउंटर का पता</label><input id="i_p_office" type="text" name="p_office"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_phone">मोबाइल नंबर<b class="rq" aria-hidden="true">*</b></label><input id="i_p_phone" type="tel" name="p_phone" inputmode="tel" autocomplete="tel" aria-required="true"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_email">ईमेल</label><input id="i_p_email" type="email" name="p_email" inputmode="email" autocomplete="email"></div>
-    <div class="f" style="--p:4;--s:6"><label for="i_p_rep">संस्था की ओर से हस्ताक्षर करने वाला व्यक्ति<b class="rq" aria-hidden="true">*</b></label><input id="i_p_rep" type="text" name="p_rep" autocomplete="name" aria-required="true"></div>
+    <div class="f" style="--p:4;--s:6"><label for="i_p_rep">संस्था की ओर से हस्ताक्षर करने वाला व्यक्ति</label><input id="i_p_rep" type="text" name="p_rep" autocomplete="name"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_rep_desig">पद</label><input id="i_p_rep_desig" type="text" name="p_rep_desig"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_rep_phone">हस्ताक्षर करने वाले का मोबाइल नंबर</label><input id="i_p_rep_phone" type="tel" name="p_rep_phone" inputmode="tel"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_id">पार्टनर कोड / लॉगिन ID (अगर मिली हो)</label><input id="i_p_id" type="text" name="p_id"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_dir_id">डायरेक्टर का नागरिकता / आधार / पासपोर्ट नं.</label><input id="i_p_dir_id" type="text" name="p_dir_id"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_route">रूट</label><input id="i_p_route" type="text" name="p_route"></div>
-    <div class="f" style="--p:12;--s:12"><label for="i_p_area">सेवा क्षेत्र (जहाँ काम करेंगे)<b class="rq" aria-hidden="true">*</b></label><input id="i_p_area" type="text" name="p_area" aria-required="true"></div>
+    <div class="f" style="--p:12;--s:12"><label for="i_p_area">सेवा क्षेत्र (जहाँ काम करेंगे)</label><input id="i_p_area" type="text" name="p_area"></div>
   </div>
 
   <h3 class="sub"><span class="k">A4</span>अनुबंध की अवधि</h3>
@@ -697,7 +697,7 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     clearErrs(); status('', ''); btn.textContent = label; btn.disabled = false;
     fields().forEach(mark); mirrors(); say(U.cleared);
   });
-})({"id":"org-hi","type":"org","lang":"hi","api":"/api/agreement-apply.php","req":["p_name","p_phone","p_area","p_rep"],"ui":{"saved":"इस फ़ोन में सेव हो गया","cleared":"फ़ॉर्म खाली हो गया","confirmClear":"इस फ़ॉर्म की सारी जानकारी मिटा दें?","required":"कृपया यह भरें","applying":"भेजा जा रहा है…","applied":"आवेदन मिल गया। आपका आवेदन नंबर {ref} है। यह नंबर संभालकर रखें। ऑफ़िस से आपको फ़ोन आएगा।","applyFail":"भेजा नहीं जा सका। जानकारी जाँचकर फिर से कोशिश करें।","applyOffline":"ऑनलाइन भेजने के लिए यह फ़ॉर्म www.shreehariglobal.in पर खोलें।","applyUnsure":"अभी तक जवाब नहीं आया। फ़ॉर्म शायद ऑफ़िस पहुँच चुका है, इसलिए अभी दोबारा न भेजें। जाँचने के लिए 9104801507 पर फ़ोन करें।","sentBtn":"भेज दिया ✓"}});
+})({"id":"org-hi","type":"org","lang":"hi","api":"/api/agreement-apply.php","req":["p_name","p_phone"],"ui":{"saved":"इस फ़ोन में सेव हो गया","cleared":"फ़ॉर्म खाली हो गया","confirmClear":"इस फ़ॉर्म की सारी जानकारी मिटा दें?","required":"कृपया यह भरें","applying":"भेजा जा रहा है…","applied":"आवेदन मिल गया। आपका आवेदन नंबर {ref} है। यह नंबर संभालकर रखें। ऑफ़िस से आपको फ़ोन आएगा।","applyFail":"भेजा नहीं जा सका। जानकारी जाँचकर फिर से कोशिश करें।","applyOffline":"ऑनलाइन भेजने के लिए यह फ़ॉर्म www.shreehariglobal.in पर खोलें।","applyUnsure":"अभी तक जवाब नहीं आया। फ़ॉर्म शायद ऑफ़िस पहुँच चुका है, इसलिए अभी दोबारा न भेजें। जाँचने के लिए 9104801507 पर फ़ोन करें।","sentBtn":"भेज दिया ✓"}});
 </script>
 <script src="/assets/js/agreement-live.js?v=20261010t" defer></script>
 </body>

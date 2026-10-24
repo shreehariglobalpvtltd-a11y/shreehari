@@ -81,9 +81,8 @@ final class AgentApplications
 
     /** Required on top of p_name / p_phone / p_area, per type. */
     public const REQUIRED = [
-        'org' => ['p_name', 'p_phone', 'p_area', 'p_rep'],
-        // Permanent address is starred in the owner's agent agreement (22222.docx).
-        'ind' => ['p_name', 'p_phone', 'p_area', 'p_idno', 'p_addr'],
+        'org' => ['p_name', 'p_phone'],
+        'ind' => ['p_name', 'p_phone', 'p_idno'],
     ];
 
     /**
