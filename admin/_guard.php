@@ -126,6 +126,7 @@ function admin_nav(): array
         // Payments — money in, money back.
         ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments',  'perm' => 'payments.view',  'section' => 'Payments'],
         ['href' => 'refunds.php',      'icon' => 'refund',    'label' => 'Refunds',          'perm' => 'refunds.view',   'section' => 'Payments'],
+        ['href' => 'refund-aging.php', 'icon' => 'refund',    'label' => 'Refund Aging',     'perm' => 'refunds.view',   'section' => 'Payments'],
         ['href' => 'offers.php',       'icon' => 'star',      'label' => 'Offers & Discounts','perm' => 'payments.view',  'section' => 'Payments'],
 
         // Reports
