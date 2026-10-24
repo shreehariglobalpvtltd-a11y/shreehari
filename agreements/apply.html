@@ -2121,6 +2121,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 
   /* ---- WhatsApp submit: a formatted summary to the office number ---- */
   function whatsapp() {
+    if (window.ShgIntake && !window.ShgIntake.requireReviewed()) return;
     var L = [];
     L.push('📄 *कर्मचारी आवेदन · Staff application*');
     L.push('नाम · Name: ' + (v('sa_name') || '—'));
