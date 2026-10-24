@@ -481,7 +481,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     <div class="sa-body">
       <div class="sa-photo">
         <label class="sa-drop" id="sa_photoDrop"><input type="file" id="sa_photoIn" accept="image/*" capture="user" aria-label="Passport photo / selfie"><span class="ic">🤳</span><span class="lb">पासपोर्ट साइजको फोटो टाँस्नुहोस् · Paste / take photo</span></label>
-        <div class="sa-cap">फोटो · Photo <em style="color:#e8457c">*</em></div>
+        <div class="sa-cap">फोटो · Photo · Optional</div>
       </div>
 
       <div class="sa-sec g"><i>👤</i>आवेदक · Applicant</div>
@@ -838,7 +838,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
       <label class="f"><span>कम्पनीको किसिम · Company type</span><select id="p_type"><option value="0">Pvt. Ltd. (प्रा. लि.)</option><option value="1">Partnership firm (साझेदारी फर्म)</option><option value="2">Proprietorship (एकल स्वामित्व)</option><option value="3">Other (अन्य)</option></select></label>
       <label class="f"><span>दर्ता नम्बर · Registration No.</span><input type="text" id="p_reg" maxlength="60" autocomplete="off" placeholder="Company / firm registration number"></label>
       <label class="f"><span>PAN / VAT / GST</span><input type="text" id="p_tax" maxlength="40" autocomplete="off"></label>
-      <label class="f"><span>प्रतिनिधि / सञ्चालकको नाम · Representative (as on their ID) <em>*</em></span><input type="text" id="p_rep" maxlength="120" autocomplete="name">
+      <label class="f"><span>प्रतिनिधि / सञ्चालकको नाम · Representative (as on their ID) · Optional</span><input type="text" id="p_rep" maxlength="120" autocomplete="name">
         <small class="hint" style="display:block;margin:4px 0 0">तलको डकुमेन्ट, फोटो र सही यिनै व्यक्तिको · the ID, photo and signature below are theirs</small></label>
       <label class="f"><span>पद · Designation</span><input type="text" id="p_rep_desig" maxlength="60" placeholder="Director / Managing Director / Owner"></label>
       <div class="shot" style="margin-top:12px">
@@ -849,7 +849,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
       <!-- 22 Oct 2026 (owner: company KYC of its own): the company's own papers, office only -->
       <div class="shot" style="margin-top:12px">
         <div class="prev doc" id="regPrev">📄</div>
-        <div><div class="pick"><span class="btn">📷 दर्ता प्रमाणपत्र · Registration certificate <em>*</em></span><input type="file" id="regIn" accept="image/*" capture="environment" aria-label="Photo of the company registration certificate"></div>
+        <div><div class="pick"><span class="btn">📷 दर्ता प्रमाणपत्र · Registration certificate · Optional</span><input type="file" id="regIn" accept="image/*" capture="environment" aria-label="Photo of the company registration certificate"></div>
         <p class="hint" style="margin:6px 0 0">कम्पनी / फर्म दर्ताको प्रमाणपत्रको स्पष्ट फोटो। अफिसले मात्र हेर्छ, वेबसाइटमा कहिल्यै देखिँदैन।</p><div class="ok" id="regOk"></div></div>
       </div>
       <div class="shot" style="margin-top:12px">
