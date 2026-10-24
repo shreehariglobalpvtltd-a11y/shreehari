@@ -119,6 +119,7 @@ final class StaffApps
 
     private static ?bool $ready = null;
     private static ?bool $locReady = null;
+    private static ?bool $scanReady = null;
 
     /** 22 Oct 2026: work locations offered first when the office sets one ("Our team" is grouped by it). */
     public const LOCATIONS = ['Nepalgunj', 'Surat'];
@@ -161,6 +162,24 @@ final class StaffApps
             }
         }
         return self::$locReady;
+    }
+
+    /** The scanned filled-form columns (24 Oct 2026, upgrade-2026-10-24-scan-autofill.sql). */
+    public static function scanReady(): bool
+    {
+        if (self::$scanReady === null) {
+            try {
+                self::$scanReady = self::available() && (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'staff_applications'
+                        AND COLUMN_NAME IN ('scan_doc', 'scan_ocr', 'scan_ocr_status', 'scanned_at')",
+                    [], 0
+                ) === 4;
+            } catch (Throwable $e) {
+                self::$scanReady = false;
+            }
+        }
+        return self::$scanReady;
     }
 
     /** @return list<string> the work locations in use, plus the usual ones */

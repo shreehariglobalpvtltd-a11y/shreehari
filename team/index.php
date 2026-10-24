@@ -322,6 +322,14 @@ if ($v === 'forgot'): ?>
   .tf-doors{display:grid;gap:8px;margin:12px 0 4px}
   .tf-doors .b{margin:0}
   .b.face{background:linear-gradient(120deg,#e8457c,#7b5cff 60%,#2f6bff);color:#fff}
+  /* 24 Oct 2026 (owner: fingerprint is the MAIN sign-in, password last): the phone-lock hero door */
+  .tf-pk-hero{display:flex;align-items:center;gap:12px;width:100%;margin:6px 0 2px;padding:15px 16px;border:0;border-radius:15px;color:#fff;text-align:left;cursor:pointer;min-height:62px;background:linear-gradient(120deg,#ffa24d,#f07a1e 55%,#d4570c);box-shadow:0 7px 18px -5px rgba(210,87,12,.55);transition:transform .14s;touch-action:manipulation}
+  .tf-pk-hero:active{transform:translateY(2px)}
+  .tf-pk-hero .pk-ic{font-size:28px;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.3))}
+  .tf-pk-hero .pk-tx{min-width:0}
+  .tf-pk-hero b{display:block;font-size:15.5px;font-weight:900;line-height:1.15}
+  .tf-pk-hero small{display:block;font-size:11px;font-weight:700;opacity:.93;margin-top:2px}
+  @media (prefers-reduced-motion:reduce){.tf-pk-hero{transition:none}.tf-pk-hero:active{transform:none}}
   .tf-or{text-align:center;font-size:12px;opacity:.7;margin:4px 0}
   details.tf-pw{border:1.5px dashed #c5d0e6;border-radius:14px;padding:0 12px;margin-top:10px}
   details.tf-pw>summary{cursor:pointer;list-style:none;padding:12px 0;font-weight:800;font-size:14px}
@@ -332,13 +340,18 @@ if ($v === 'forgot'): ?>
   </style>
   <form method="post" action="/team/" autocomplete="on" id="loginForm">
     <?= $csrf ?><input type="hidden" name="action" value="login">
+    <div id="pkMsg" class="tp-msg info" hidden></div>
+    <div id="faceMsg" class="tp-msg info" hidden></div>
+    <?php if (Passkeys::ready()): ?>
+    <!-- 24 Oct 2026 (owner: fingerprint is the MAIN way; password last): the phone-lock door leads, one tap, no mobile needed (discoverable passkey). -->
+    <button type="button" class="tf-pk-hero" data-pk="login" autofocus><span class="pk-ic" aria-hidden="true">👆</span><span class="pk-tx"><b>फिंगरप्रिन्ट / Face ID ले भित्र</b><small>एक ट्याप — पासवर्ड चाहिँदैन · One tap, no password</small></span></button>
+    <p class="tp-sub" id="pkNo" hidden style="margin:2px 0 0">👆 यो डिभाइसमा फिंगरप्रिन्ट / Face ID छैन — तलको कुनै तरिका प्रयोग गर्नुहोस्। · No phone lock on this device — use another way below.</p>
+    <div class="tf-or">— अन्य तरिका · or other ways —</div>
+    <?php endif; ?>
     <label class="f" for="m">मोबाइल नम्बर · Mobile number</label>
     <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px"><?= $ccPick($ccNow) ?>
     <input class="i" id="m" name="mobile" type="tel" inputmode="numeric" autocomplete="username" required maxlength="16" placeholder="98XXXXXXXX" value="<?= $h($_POST['mobile'] ?? '') ?>"></div>
-    <div id="pkMsg" class="tp-msg info" hidden></div>
-    <div id="faceMsg" class="tp-msg info" hidden></div>
     <div class="tf-doors">
-      <?php if (Passkeys::ready()): ?><button class="b or" type="button" data-pk="login">👆 Face ID / फिंगरप्रिन्ट (फोनको लक) · Phone lock</button><?php endif; ?>
       <button class="b face" type="button" data-face="login">📷 अनुहारले भित्र जानुहोस् · Face login (camera)</button>
       <button class="b gh" type="button" data-face="show-facts">🎂 जन्म मिति + ID नम्बर · Birth date + ID number</button>
     </div>

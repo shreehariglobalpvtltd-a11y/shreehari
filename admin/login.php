@@ -315,6 +315,18 @@ details.pwd label:first-of-type{margin-top:4px}
 :root[data-theme="dark"] .note{color:#ACBBD0}
 :root[data-theme="dark"] details.pwd{border-color:#3A5178}
 :root[data-theme="dark"] details.pwd>summary{color:#9ABFFF}
+/* 24 Oct 2026 (owner: fingerprint is the MAIN sign-in): the phone-lock hero door, big and first */
+.pk-hero{display:flex;align-items:center;gap:13px;width:100%;margin:2px 0 4px;padding:16px 18px;border:0;border-radius:16px;color:#fff;text-align:left;cursor:pointer;min-height:66px;
+  background:linear-gradient(120deg,#ffa24d,#f07a1e 55%,#d4570c) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 0 #b3540a,0 8px 0 #93430a,0 14px 22px -6px rgba(210,87,12,.5);
+  transition:transform .14s ease-out,box-shadow .14s ease-out;touch-action:manipulation}
+.pk-hero:hover{filter:brightness(1.04)}
+.pk-hero:active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgba(0,0,0,.28),0 1px 0 #b3540a}
+.pk-hero .pk-ic{font-size:30px;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.3))}
+.pk-hero .pk-tx{min-width:0}
+.pk-hero b{display:block;font-size:16px;font-weight:900;line-height:1.15}
+.pk-hero small{display:block;font-size:11.5px;font-weight:700;opacity:.93;margin-top:3px}
+@media (prefers-reduced-motion:reduce){.pk-hero:active{transform:none}}
 @media print{.box{box-shadow:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}
 </style>
@@ -328,15 +340,23 @@ details.pwd label:first-of-type{margin-top:4px}
    which sends the signed-in account to its own destination (login_destination). */
 $doors = static function (string $title) use ($next): string {
     $h = static fn(string $s): string => Security::e($s);
-    $me = '/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '');
     $o  = '<div class="doors">';
+    $o .= '<div id="pkMsg" class="ok" data-cls="note" hidden></div><div id="faceMsg" class="ok" data-cls="note" hidden></div>';
+    /* 24 Oct 2026 (owner: "focus on fingerprint - make it the MAIN way; password last option"):
+       the phone-lock door LEADS, big and first. It is one tap and needs no mobile number
+       (the passkey is discoverable). The mobile + face + birth-date doors, then the folded
+       password, follow as the other ways. */
+    if (Passkeys::ready()) {
+        $o .= '<button type="button" class="pk-hero" data-pk="login" autofocus>'
+            . '<span class="pk-ic" aria-hidden="true">👆</span>'
+            . '<span class="pk-tx"><b>फिंगरप्रिन्ट / Face ID ले भित्र</b><small>एक ट्याप — पासवर्ड चाहिँदैन · One tap, no password</small></span>'
+            . '</button>';
+        $o .= '<p id="pkNo" class="note" hidden>👆 यो डिभाइसमा फिंगरप्रिन्ट / Face ID सेट छैन — तलको कुनै तरिकाले भित्र जानुहोस्। · No phone lock on this device — use another way below.</p>';
+        $o .= '<div class="or">अन्य तरिका · or other ways</div>';
+    }
     $o .= '<label for="m">मोबाइल नम्बर · Registered mobile</label>';
     $o .= '<div class="cc-row"><select name="cc" aria-label="Country"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>';
     $o .= '<input id="m" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="14" placeholder="98XXXXXXXX"></div>';
-    $o .= '<div id="pkMsg" class="ok" data-cls="note" hidden></div><div id="faceMsg" class="ok" data-cls="note" hidden></div>';
-    if (Passkeys::ready()) {
-        $o .= '<button type="button" class="alt door d-pk" data-pk="login">👆 Face ID / फिंगरप्रिन्ट (फोनको लक) · Phone lock</button>';
-    }
     $o .= '<button type="button" class="alt door d-face" data-face="login">📷 अनुहारले भित्र · Face login (camera)</button>';
     $o .= '<button type="button" class="alt door d-facts" data-face="show-facts">🎂 जन्म मिति + ID नम्बर · Birth date + ID number</button>';
     $o .= '<div id="factsBox" hidden><label for="fDob">जन्म मिति (ईस्वी) · Date of birth (AD)</label><input id="fDob" type="date" max="2015-12-31" autocomplete="bday">';
@@ -403,7 +423,7 @@ $doors = static function (string $title) use ($next): string {
     <input type="hidden" name="mode" value="agent_pw">
     <?= $doors('Email + username + password') ?>
     <label for="ae">Email</label>
-    <input id="ae" name="email" type="email" required autofocus autocapitalize="none" autocorrect="off"
+    <input id="ae" name="email" type="email" required autocapitalize="none" autocorrect="off"
            autocomplete="email" inputmode="email" placeholder="you@example.com" value="<?= Security::e($agentEmail) ?>">
     <label for="au">Username</label>
     <input id="au" name="username" required autocapitalize="none" autocorrect="off"

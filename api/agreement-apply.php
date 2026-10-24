@@ -126,6 +126,20 @@ try {
         Response::error('Applications are not open yet. Please call the office: ' . Settings::officePhone(), 503);
     }
 
+    // 24 Oct 2026: a scanned, hand-filled copy of this form read earlier by
+    // /api/agreement-scan.php waits in the session (45 min); it is attached to
+    // THIS application only when it was scanned for this same kind.
+    $scanIn = [];
+    $sc = $_SESSION['agr_scan'] ?? null;
+    if (is_array($sc) && (int) ($sc['t'] ?? 0) > time() - 45 * 60
+        && (string) ($sc['kind'] ?? '') === (string) AgentApplications::normaliseType(Response::field('type', ''))) {
+        $scanIn = [
+            'scan'        => is_array($sc['pages'] ?? null) ? $sc['pages'] : [],
+            'scan_ocr'    => is_array($sc['ocr'] ?? null) ? (string) json_encode($sc['ocr'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '',
+            'scan_status' => (string) ($sc['status'] ?? ''),
+        ];
+    }
+
     $check = AgentApplications::validate([
         'type'      => Response::field('type', ''),
         'lang'      => $lang,
@@ -140,6 +154,9 @@ try {
         'tax_cert'  => Response::field('tax_cert', null),   // 22 Oct 2026: PAN / VAT / GST certificate
         'thumb'     => Response::field('thumb', null),      // 22 Oct 2026: thumbprint by the phone camera
         'edu_cert'  => Response::field('edu_cert', null),   // 22 Oct 2026: marksheet / certificate (agents)
+        'scan'        => $scanIn['scan'] ?? null,           // 24 Oct 2026: scanned filled form (from the session)
+        'scan_ocr'    => $scanIn['scan_ocr'] ?? '',
+        'scan_status' => $scanIn['scan_status'] ?? '',
     ]);
     if (!$check['ok']) {
         Response::invalid($check['errors'], AgentApplications::message('invalid', $lang));
@@ -217,6 +234,7 @@ try {
         ApplyEdit::close();
         require_once INCLUDE_PATH . '/facecheck.php';
         FaceCheck::attach('agent_applications', (int) $done['id']);   // 23 Oct 2026: the live selfie line, when one was made
+        unset($_SESSION['agr_scan']);   // 24 Oct 2026: the scan was attached (or did not match); do not carry it on
         $_SESSION['a4_mine'] = ['type' => 'agent', 'id' => (int) $done['id'], 't' => time()];
         Response::json(['ok' => true, 'ref' => $done['ref'], 'edited' => true, 'duplicate' => false, 'photo_saved' => $photo['photo'] !== null,
                         'message' => 'तपाईंको फारम ' . $done['ref'] . ' सच्याइयो। कार्यालयले नयाँ विवरण हेर्नेछ। · Your form ' . $done['ref'] . ' was updated.']);
@@ -245,6 +263,7 @@ try {
     if (!$made['duplicate']) {
         require_once INCLUDE_PATH . '/facecheck.php';
         FaceCheck::attach('agent_applications', (int) $made['id']);   // 23 Oct 2026: the live selfie line, when one was made
+        unset($_SESSION['agr_scan']);   // 24 Oct 2026: the scanned form was attached to this new application
     }
     if (isset($clean['webauthn_cred'])) {
         unset($_SESSION['agr_webauthn']);

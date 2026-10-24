@@ -267,6 +267,19 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   <div id="edV" style="margin-top:10px"></div>
   <p class="msg bad" id="edMsg" hidden role="alert"></p>
 </details>
+<!-- 24 Oct 2026 (owner: "khaali form print garera haat le bharera scan garepachhi OCR garera form automatic
+     feel hune ra attach hune"): already filled the printed A4 by hand? Add a photo / scan of the pages - the
+     same AI that reads the ID (api/agreement-scan.php) reads the whole filled form and fills the boxes below;
+     the scan is attached to the application on Send. Individual agent / partner for now. -->
+<details class="card more" id="scanBox" style="margin-bottom:12px">
+  <summary>📄➜✨ भरेको कागजी फारम स्क्यान गर्नुहोस् · Scan a filled paper form</summary>
+  <p class="hint" style="margin:0 0 8px">खाली फारम (माथि <b>“खाली फारम PDF”</b>) प्रिन्ट गरेर हातले भर्नुभएको छ भने — त्यसको फोटो वा स्क्यान हाल्नुहोस्। AI ले पढेर तलका बाकस आफैं भर्छ, तपाईं जाँचेर सच्याउनुहोस्; पठाउँदा स्क्यान पनि संलग्न हुन्छ। · Printed the blank form and filled it by hand? Add a photo/scan of the pages — the AI reads them and fills the boxes below for you to check, and the scan is attached when you Send.</p>
+  <div class="shot">
+    <div class="prev doc" id="scanPrev">📄</div>
+    <div><div class="pick"><span class="btn">📷 भरेको फारमको फोटो / स्क्यान · Photo / scan of the filled form</span><input type="file" id="scanIn" accept="image/*" capture="environment" multiple aria-label="Photo or scan of the filled form pages"></div>
+    <p class="hint" style="margin:6px 0 0">सबै पेज, उज्यालोमा, सिधा। धेरै पेज एकैपटक छान्न सकिन्छ (बढीमा ४)। · All pages, in good light. You can pick several at once (up to 4).</p><div class="ok" id="scanOk"></div></div>
+  </div>
+</details>
 <p class="edit-on" id="editOn" hidden></p>
 <!-- 23 Oct 2026 (owner: "digital hybrid name details lekhne wala CV jesa form"): the live CV - it builds itself from
      what is typed and taken below (nothing is sent until "Send"); the A4 form prints the same CV on page 1 -->
@@ -736,6 +749,52 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   hookShot('taxIn', 'taxPrev', 'taxOk', 'tax_cert', 1600, 320000);
   hookShot('eduIn', 'eduPrev', 'eduOk', 'edu_cert', 1600, 320000);
   hookShot('licIn', 'licPrev', 'licOk', 'lic', 1400, 420000);
+
+  /* ---- 24 Oct 2026 (owner: print blank, fill by hand, scan back, the AI fills the form): read the WHOLE
+     filled paper form (api/agreement-scan.php, same Gemini as the ID reader) and pre-fill the empty boxes;
+     the scanned pages are attached to the application (kept in the session, attached on Send). ind / org. ---- */
+  (function () {
+    var inp = $('scanIn');
+    if (!inp) return;
+    // the scan card serves all three kinds (ind / org / staff)
+    inp.addEventListener('change', function () {
+      var files = [].slice.call(this.files || []).slice(0, 4);
+      if (!files.length) return;
+      $('autoBan').hidden = true;
+      $('scanOk').textContent = '⏳ तयार पार्दै · preparing…';
+      Promise.all(files.map(function (f) { return shrink(f, 1500, 520000); })).then(function (pages) {
+        var pv = $('scanPrev'); pv.style.backgroundImage = 'url(' + pages[0] + ')'; pv.classList.add('has');
+        $('scanOk').textContent = '🔍 AI ले फारम पढ्दै… · reading the form…';
+        return token().then(function (t) {
+          return fetch('/api/agreement-scan.php', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' },
+            body: JSON.stringify({ pages: pages, kind: state.kind })
+          });
+        });
+      }).then(function (r) { return r.json().catch(function () { return null; }); }).then(function (d) {
+        if (!d || !d.ok) { $('scanOk').textContent = '✗ पढ्न सकिएन — फेरि प्रयास गर्नुहोस्'; if (d && d.code === 419) state.csrf = null; return; }
+        if (d.status === 'unavailable') { $('scanOk').textContent = '📄 पेज राखियो — तल बाकस आफैं भर्नुहोस् (AI स्क्यान अहिले उपलब्ध छैन)'; return; }
+        if (d.status === 'notform') {
+          $('scanOk').textContent = '✓ पेज राखियो';
+          autoBan('w', '📄 यो भरेको S Hari Global फारम जस्तो देखिएन', 'सबै पेज सिधा, उज्यालोमा फेरि स्क्यान गर्नुहोस्, वा तल आफैं भर्नुहोस्। · This did not look like a filled form — scan again, or fill the boxes below.');
+          return;
+        }
+        var f = d.fields || {}, got = 0;
+        Object.keys(f).forEach(function (k) {
+          if (autoSet(k, f[k])) { got++; var el = $(k), dt = el && el.closest ? el.closest('details') : null; if (dt && !dt.open) dt.open = true; }
+        });
+        $('scanOk').textContent = '✓ ' + (d.pages || files.length) + ' पेज पढियो · ' + got + ' बाकस भरियो';
+        if (got) {
+          autoBan('', '✨ भरेको फारमबाट ' + got + ' बाकस आफैं भरियो', 'पहेँलो बाकस जाँचेर सच्याउनुहोस् — गल्ती भए आफैं बदल्नुहोस्। पठाउँदा स्क्यान पनि संलग्न हुन्छ। · Auto-filled from your scan: check the yellow boxes. The scan is attached when you Send.');
+          try { if (navigator.vibrate) navigator.vibrate([10, 30, 10]); } catch (e) {}
+        } else {
+          autoBan('w', '📄 पेज पढियो — भरिसकेका बाकस जस्ताको तस्तै राखियो', 'Read: the boxes you already filled were left as they are.');
+        }
+        if (typeof cvSoon === 'function') cvSoon();
+      }).catch(function () { $('scanOk').textContent = '✗ इन्टरनेट जाँच गरेर फेरि · check the internet and try again'; });
+    });
+  })();
 
   /* ---- 22 Oct 2026: individual agent or Pvt. Ltd. partner company ---- */
   function setKind(k) {
