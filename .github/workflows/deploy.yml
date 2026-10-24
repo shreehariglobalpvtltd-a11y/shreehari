@@ -74,7 +74,17 @@ jobs:
           PORT: ${{ secrets.VPS_PORT }}
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          # VPS_SSH_KEY may be the raw PEM/OpenSSH private key OR a base64 blob
+          # of it. base64 is a single line, so it survives copy/paste through a
+          # web terminal without the newline mangling that makes OpenSSH report
+          # "error in libcrypto". Try base64 first; fall back to raw text.
+          if printf '%s' "$KEY" | tr -d '[:space:]' | base64 -d 2>/dev/null | grep -q 'PRIVATE KEY'; then
+            printf '%s' "$KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/id_deploy
+            echo "Key decoded from base64."
+          else
+            printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+            echo "Key used as raw text."
+          fi
           chmod 600 ~/.ssh/id_deploy
           ssh-keyscan -p "${PORT:-22}" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
           echo "Host key recorded."
