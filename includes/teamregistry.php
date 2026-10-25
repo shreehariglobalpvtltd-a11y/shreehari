@@ -10,7 +10,8 @@ final class TeamRegistry
     }
     public static function actor(): array {
         $a = Auth::admin();
-        if (!$a || !TeamManager::allowed($a) || !Auth::can('staff.manage')) { throw new RuntimeException('Team management permission required.'); }
+        if (!$a) { Response::error('Sign in required.',401); }
+        if (!TeamManager::allowed($a) || !Auth::can('staff.manage')) { Response::error('Team management permission required.',403); }
         return $a;
     }
     public static function key(string $ref): string {
