@@ -172,9 +172,12 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
               <td><b class="mono" style="color:#0a2a8f"><?= Security::e($m['code']) ?></b><br><small style="color:#64748b"><?= Security::e($m['ref']) ?></small></td>
               <td><b><?= Security::e($m['name']) ?></b><br><span style="font-size:12px;color:#64748b"><?= Security::e($m['role_lbl']) ?></span></td>
               <td>
-                <a href="https://wa.me/<?= Security::e(CardDelivery::recipient($m['ref'])) ?>" target="_blank" style="text-decoration:none">
-                  💬 <?= Security::e($m['phone']) ?> <?= $m['verified'] ? '✓ Verified' : 'Unverified' ?>
-                </a>
+                <?php $recipient = CardDelivery::recipient($m['ref']); ?>
+                <?php if ($recipient !== ''): ?>
+                  <a href="https://wa.me/<?= Security::e($recipient) ?>" target="_blank" rel="noopener" style="text-decoration:none">💬 <?= Security::e($m['phone']) ?> ✓ Verified</a>
+                <?php else: ?>
+                  <span><?= Security::e($m['phone']) ?> · Verification required</span>
+                <?php endif; ?>
               </td>
               <td><b>INR <?= number_format((float)$m['balance'], 2) ?></b><br><small>Reserved: <?= number_format((float)$m['pending'],2) ?></small></td>
               <td><span class="pill pill-<?= $m['status'] === 'approved' ? 'active' : 'suspended' ?>"><?= Security::e(ucfirst($m['status'])) ?> · <?= Security::e((string)(TeamManager::find($m['key'])['kyc_status']??'')) ?></span></td>
