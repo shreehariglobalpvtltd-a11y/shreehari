@@ -30,6 +30,7 @@ $check(TeamRegistry::approve($key,(int)$owner)===$ref&&(int)Database::scalar("SE
 $p=IdCard::person($ref);$check($p['memberCode']==='A-999991'&&$p['route']==='Synthetic route','cards use current display code and route');
 $check(str_starts_with(IdCard::waLink($p),'https://wa.me/919876543210?text='),'personal QR opens exact Indian recipient');
 $np=$p;$np['waDigits']='9779812345678';$check(str_starts_with(IdCard::waLink($np),'https://wa.me/9779812345678?text='),'personal QR supports Nepal country code');
+Database::update('agent_applications',['phone_raw'=>null],'id=:i',['i'=>$id]);$check(IdCard::person($ref)['waDigits']==='','personal QR rejects a legacy number with no explicit country code');Database::update('agent_applications',['phone_raw'=>'+919876543210'],'id=:i',['i'=>$id]);
 $check(IdCard::waQrUrl($p)==='https://wa.me/919876543210','printed WhatsApp QR uses exact validated personal URL');$private=$p;$private['waDigits']='';$check(IdCard::waQrUrl($private)==='','printed QR never guesses a country or bypasses contact privacy');
 $bad=$p;$bad['waDigits']='9876543210';$check(IdCard::waLink($bad)==='','local/ambiguous WhatsApp destination refused');
 Database::update('agent_applications',['kyc_status'=>'submitted'],'id=:i',['i'=>$id]);$check(!IdCard::person($ref)['valid'],'legacy approved status cannot make unreviewed identity valid');Database::update('agent_applications',['kyc_status'=>'verified'],'id=:i',['i'=>$id]);

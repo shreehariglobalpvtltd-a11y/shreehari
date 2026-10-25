@@ -62,7 +62,7 @@ final class IdCard
         $p['studio']=json_decode((string)($m['template_json']??''),true)?:null;
         if (!$p['public']) { $p['waDigits']=''; }
         $r=str_starts_with($key,'staff:')?StaffApps::find((int)substr($key,6)):AgentApplications::find((int)substr($key,6));
-        if (empty($r['phone_verified'])) { $p['waDigits']=''; }
+        $p['waDigits']=$p['public']?TeamRegistry::verifiedIntl($p['ref']):'';
         $p['kycVerified']=($r['kyc_status']??'')==='verified';
         if (!$p['kycVerified']) { $p['valid']=false; $p['standing']='KYC review pending'; $p['standingNe']='KYC जाँच बाँकी'; $p['waDigits']=''; }
         if (!empty($p['expires']) && $p['expires']<date('Y-m-d')) { $p['valid']=false; $p['standing']='Expired'; $p['waDigits']=''; }

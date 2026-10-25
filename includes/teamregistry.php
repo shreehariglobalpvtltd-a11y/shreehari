@@ -78,6 +78,14 @@ final class TeamRegistry
         Database::update('team_identity',$set,'id=:i',['i'=>$m['id']]);
         Logger::audit('team.profile','team',(string)$m['id'],array_intersect_key($m,$set),$set,'Applicant consent / assignment saved by #'.$by);
     }
+    public static function verifiedIntl(string $ref): string {
+        $key=self::key($ref); [$kind,$id]=explode(':',$key);
+        $a=$kind==='staff'?StaffApps::find((int)$id):AgentApplications::find((int)$id);
+        if (!$a || empty($a['phone_verified'])) { return ''; }
+        $raw=$kind==='staff'?'+'.countryDialCode((string)$a['phone_country']).$a['phone']:(string)($a['phone_raw']?:$a['phone']);
+        $d=preg_replace('/\D/','',$raw)??'';
+        return preg_match('/^(91[6-9][0-9]{9}|9779[78][0-9]{8})$/',$d) ? $d : '';
+        }
     public static function privateDir(): string {
         $dir=defined('TEAM_PRIVATE_PATH')?TEAM_PRIVATE_PATH:dirname(ROOT_PATH).'/private-team';
         if (!is_dir($dir) && !mkdir($dir,0750,true)) { throw new RuntimeException('Private storage unavailable.'); }

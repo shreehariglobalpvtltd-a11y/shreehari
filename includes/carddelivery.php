@@ -9,14 +9,7 @@ final class CardDelivery {
         $b=appUrl('admin/id-card.php').'?ref='.rawurlencode($ref);
         return ['id_card_front'=>$b.'&png=front','id_card_back'=>$b.'&png=back','visiting_front'=>$b.'&v=front','visiting_back'=>$b.'&v=back','pdf'=>$b.'&pdf=all','verify'=>IdCard::verifyUrl($ref)];
     }
-    public static function recipient(string $ref): string {
-        $key=TeamRegistry::key($ref); [$kind,$id]=explode(':',$key);
-        $a=$kind==='staff'?StaffApps::find((int)$id):AgentApplications::find((int)$id);
-        if (!$a || empty($a['phone_verified'])) { return ''; }
-        $raw=$kind==='staff'?'+'.countryDialCode((string)$a['phone_country']).$a['phone']:(string)($a['phone_raw']?:$a['phone']);
-        $d=preg_replace('/\D/','',$raw)??'';
-        return preg_match('/^(91[6-9][0-9]{9}|9779[78][0-9]{8})$/',$d) ? $d : '';
-    }
+    public static function recipient(string $ref): string { return TeamRegistry::verifiedIntl($ref); }
     public static function getDelivery(string $ref): ?array {
         if (!TeamRegistry::ready()) { return null; }
         $r=Database::fetch('SELECT * FROM team_card_jobs WHERE ref=:r ORDER BY id DESC LIMIT 1',['r'=>$ref]);
