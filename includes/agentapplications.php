@@ -1520,14 +1520,23 @@ final class AgentApplications
                     $fieldsChanged[] = $k;
                 }
             }
-            if (isset($set['name'])) {
-                $f['p_name'] = $set['name'];
+            // The printable application and the editable card describe the same person.
+            // Keep their duplicated contact fields in step without replacing other KYC fields.
+            foreach (['name' => 'p_name', 'phone' => 'p_phone', 'area' => 'p_area', 'email' => 'p_email'] as $source => $field) {
+                if (!array_key_exists($source, $in)) { continue; }
+                $value = $source === 'phone'
+                    ? (string) (($set['phone_raw'] ?? $app['phone_raw'] ?? '') ?: ($set['phone'] ?? $app['phone']))
+                    : (string) ($set[$source] ?? (array_key_exists($source, $set) ? '' : ($app[$source] ?? '')));
+                if ($value !== (string) ($f[$field] ?? '')) {
+                    if ($value === '') { unset($f[$field]); } else { $f[$field] = $value; }
+                    $fieldsChanged[] = $field;
+                }
             }
-            if ($fieldsChanged !== [] || isset($set['name'])) {
+            if ($fieldsChanged !== []) {
                 $set['fields_json'] = json_encode($f, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
             }
             // Bank details typed in = KYC handed over; the office still marks it verified by hand.
-            if ($fieldsChanged !== [] && (string) $app['kyc_status'] === 'none') {
+            if (array_intersect($fieldsChanged, self::OFFICE_KYC_FIELDS) !== [] && (string) $app['kyc_status'] === 'none') {
                 $set['kyc_status'] = 'submitted';
             }
         }

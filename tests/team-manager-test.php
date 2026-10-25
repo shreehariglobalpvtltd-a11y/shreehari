@@ -21,6 +21,9 @@ try {
     $_SESSION[ADMIN_SESSION_KEY] = $actor;
     $app = AgentApplications::adminCreate(['name'=>'Test agent','phone'=>'+919876543120','web_live'=>1], $actorId, true);
     AgentApplications::update($app['id'], ['admin_id'=>$aid], $actorId);
+    AgentApplications::saveCard($app['id'], ['area'=>'Surat, Ahmedabad','email'=>'agent@example.test','p_idno'=>'SYNTHETIC-ID'], $actorId, true);
+    $saved = AgentApplications::find($app['id']);
+    $check($saved['fields']['p_area'] === $saved['area'] && $saved['fields']['p_email'] === $saved['email'] && $saved['fields']['p_idno'] === 'SYNTHETIC-ID', 'edited contact fields sync to printed application and preserve KYC');
     $key = 'agent:' . $app['id'];
     $check(TeamManager::find($key)['live'], 'approved application listed live');
     try { TeamManager::archive($key, false, ['id'=>999,'role'=>'support']); $check(false, 'support denied'); }

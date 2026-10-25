@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v257-team20261025-1';   // Unified agent staff KYC, recoverable archive and per-ticket commission
+var VERSION = 'shg-v257-team20261025-2';   // Keep edited KYC contact fields and printed applications consistent
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
