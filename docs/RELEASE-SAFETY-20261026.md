@@ -65,7 +65,12 @@ git diff --check
 webroots and run a path-substituted copy of the actual deployer. VPS commands
 (`mysqldump`, `systemctl`, `chown`, `curl`) are stubs. This verifies guard behavior,
 not real backup/reload/HTTP correctness. CI registration was added to the existing
-`Application checks` workflow; hosted execution is not yet verified.
+`Application checks` workflow. Hosted run `40231475509` on implementation commit
+`3809487` also passed PHP syntax, the 19 release tests, JS syntax and manifest
+JSON. It failed at existing asset-version drift/format assertions; see
+`PLATFORM-STATE.md`. The database battery completed with 157 suites passed, 16 failed and 1 missing.
+These results require separate baseline triage; the related runtime/test files
+were not modified here. The complete workflow failed and release is blocked.
 
 Before production approval, run the normal PHP/DB battery, test on staging with
 the actual service binaries, verify root-owned lock permissions and that every

@@ -154,13 +154,46 @@ files; simulated dump/reload/ownership/HTTP services), Bash syntax, 21 existing
 offline-ticket checks, lazy-load recovery, translation-key parity (1,484 keys
 each in EN/HI/NE) and Git whitespace checks.
 
-Not run: PHP lint/unit/integration/database suites (PHP/MySQL unavailable),
-GitHub-hosted checks, authenticated workflows, staging, real Android / weak
-network testing, actual VPS deploy and live backup/reload/health behavior.
+Hosted follow-up on implementation commit `380948782f0261b478230538d2d5194ad27072cf`:
+[Application checks run](https://github.com/shreehariglobalpvtltd-a11y/shreehari/actions/runs/40231475509)
+passed whole-tree PHP syntax, the new 19 release tests, JavaScript syntax and
+manifest JSON. The checks job then failed at asset-version discipline: 7 checks
+passed, 2 failed. `manifest.webmanifest` and `premium3d.css` carry `20261022z`
+while SW ASSET_VER is `20261023j`; the version-format assertion also rejects
+`shg-v257-team20261025-2`. These files/tests are unchanged from the inspected
+baseline. They are real release blockers; do not suppress the assertions to
+claim a green build. Later steps in that failed job were skipped.
+
+The separate MariaDB battery completed on fresh `shari_test`: **157 suites
+passed, 16 failed, 1 missing** (208.5 seconds). `nav-pro-test.php` is referenced
+but missing. Failing suites: asset-version, seatmap-premium, home-premium,
+agent-advance, agents-upgrade, wa-manager-tools, depth-display, perf-hints,
+whereis, agreement-pages, theme-palette, smartbook-engine, smartbook-facts,
+counter-mode-http, pwa-http and agreement-apply. The runtime/test files behind
+these failures are unchanged by this PR. This is failure evidence, not proof
+that every failing assertion is a production defect; fixture/policy drift and
+actual bugs must be separated before fixing. Local PHP/MySQL remain unavailable.
+
+Priority failure groups:
+
+| Area | Hosted evidence | Required follow-up |
+| --- | --- | --- |
+| Cash booking | SmartBook assertions report missing required verification fields still book; another path hits the per-mobile COD limit | Reproduce individually with isolated settings/data; establish current approved policy; preserve server-side validation |
+| Finance / agent | Payout reference/recipient guards disagree with older expectations; agent quick-add/register assertions fail | Keep deterministic guards; inspect fixtures, permissions and current unified UI before changing behavior |
+| Agreements | Required field expectations differ between legacy HTML/API; two application assertions fail | Trace active form callers and owner-approved requirements; reconcile current live application drift |
+| Navigation | `whereis` test encounters a 2099 timestamp error; `nav-pro-test.php` missing | Separate test-date/schema issue from live GPS behavior; restore/register appropriate coverage |
+| Cache / layout | Version drift/format, CSS ordering, route/markup/performance assertions fail | Repair cache stamps with the existing workflow; distinguish outdated UI tests from regressions |
+
+Hosted PHP syntax and release-safety tests succeeded, but **the complete CI
+workflow failed**. Authenticated production workflows, staging, real Android /
+weak networks, VPS backup/reload and live deploy behavior remain unverified.
 No production release occurred. Approval is not a substitute for these checks.
 
 Next session: fetch all upstream changes, reconcile public application drift and
-obtain a current authenticated release inventory; run this PR's CI and staging
-test plan, then validate/register critical team/ledger tests on `shari_test`.
+obtain a current authenticated release inventory; inspect the complete booking
+battery failures individually, prioritizing cash/finance, and repair baseline
+cache/version discipline with the existing asset-bump workflow plus regression
+evidence. Then complete staging and
+validate/register critical team/ledger tests on `shari_test`.
 Before every release, produce the exact target/base IDs, test evidence, changed
 files, migration assessment, release notes and rollback plan for owner review.
