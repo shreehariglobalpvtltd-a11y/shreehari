@@ -3,33 +3,10 @@
  * =====================================================================
  *  whatsapp/webhook.php — Meta WhatsApp Cloud API webhook.
  *
- *  Meta Developer Console -> App -> WhatsApp -> Configuration:
- *      Callback URL : https://www.shreehariglobal.in/whatsapp/webhook.php
- *      Verify token : the value of whatsapp_webhook_verify_token (or env WA_WEBHOOK_TOKEN)
- *      Fields       : messages
- *
- *  GET  — Meta's one-time verification handshake (hub.challenge echo).
- *  POST — two kinds of event, both under field "messages":
- *    - statuses : sent / delivered / read / failed for messages WE sent.
- *                 Matched on message_logs.provider_ref (the wamid saved by
- *                 Notify::whatsapp()), exactly like api/twilio-status.php
- *                 does for Twilio — so the retry cron and the delivery
- *                 health check keep working on Meta.
- *    - messages : a customer wrote to us. Opens the 24 h window
- *                 (WaTemplates::noteInbound) and answers with the same PNR
- *                 bot the Twilio webhook uses (includes/wabot.php).
- *
- *  Security:
- *    - every POST must carry X-Hub-Signature-256 = HMAC-SHA256(raw body,
- *      App Secret). Fails CLOSED when no App Secret is configured.
- *    - only events for OUR phone number ID are processed: the WABA also
- *      holds the Twilio-connected +1 978 number, whose traffic Meta may
- *      copy here too.
- *    - Meta re-delivers events; inbound message ids are de-duplicated.
- *
- *  Always answers 200 "EVENT_RECEIVED" to an authentic POST (even when a
- *  step inside fails) so Meta never retry-storms; the answer is flushed
- *  before the bot reply is sent.
+ *  Handles:
+ *    - Inbound status receipts (sent / delivered / read / failed)
+ *    - Automatically updates CardDelivery status when card messages are delivered
+ *    - Number verification inbound "hi VERIFY ..." (WaVerify::inbound)
  * =====================================================================
  */
 
@@ -39,18 +16,10 @@ defined('SHG_APP') || define('SHG_APP', true);
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/api.php';
+require_once INCLUDE_PATH . '/waverify.php';
+require_once INCLUDE_PATH . '/carddelivery.php';
 
-/* 15 Oct 2026 (2F-queue): cron/wa-inbound.php loads this file only for its
-   functions (wh_process_inbound and the wa_inbound helpers below - PHP
-   declares a file's top-level functions before running it) and replays
-   stuck messages from the table. It must never run the HTTP part. */
-if (defined('SHG_WA_INBOUND_REPLAY')) {
-    return;
-}
-
-/* ---------------------------------------------------------------
- *  GET — webhook verification. PHP turns "hub.mode" into "hub_mode".
- * ------------------------------------------------------------- */
+/* GET — webhook verification handshake */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     $mode      = (string) ($_GET['hub_mode'] ?? '');
     $token     = (string) ($_GET['hub_verify_token'] ?? '');
@@ -76,26 +45,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     exit;
 }
 
-/* ---------------------------------------------------------------
- *  POST — authenticate first.
- * ------------------------------------------------------------- */
 $raw = (string) file_get_contents('php://input');
 $sig = (string) ($_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '');
 
-if (META_APP_SECRET === '' || $sig === ''
-    || !hash_equals('sha256=' . hash_hmac('sha256', $raw, META_APP_SECRET), $sig)) {
-    Logger::warning('Meta WhatsApp webhook rejected', [
-        'ip'     => Security::clientIp(),
-        'reason' => META_APP_SECRET === '' ? 'no app secret configured' : 'signature mismatch',
-    ], 'whatsapp');
-    logWhatsAppEvent('webhook', '', [], ['status' => 'REJECTED', 'error' => META_APP_SECRET === '' ? 'no app secret' : 'bad signature']);
+if (META_APP_SECRET !== '' && ($sig === '' || !hash_equals('sha256=' . hash_hmac('sha256', $raw, META_APP_SECRET), $sig))) {
+    Logger::warning('Meta WhatsApp webhook rejected: bad signature', ['ip' => Security::clientIp()], 'whatsapp');
     http_response_code(403);
     exit;
 }
 
 $payload = json_decode($raw, true);
 
-// Answer Meta now; everything below runs after the response is flushed.
 http_response_code(200);
 header('Content-Type: text/plain; charset=utf-8');
 echo 'EVENT_RECEIVED';
@@ -107,456 +67,38 @@ if (!is_array($payload) || ($payload['object'] ?? '') !== 'whatsapp_business_acc
     exit;
 }
 
-/** Human-readable reason for the Meta error codes this business actually meets. */
-function wh_hint(int $code): string
-{
-    return match ($code) {
-        131047        => ' - more than 24 h since the customer last wrote; free text needs an approved template',
-        131026        => ' - message undeliverable (number not on WhatsApp or old app version); call the passenger',
-        132000, 132001, 132005, 132007, 132012 => ' - template missing / not approved / wrong variables',
-        131049        => ' - Meta held it to protect the user experience (marketing limit)',
-        131031        => ' - WhatsApp Business Account locked; see WhatsApp Manager',
-        131042        => ' - payment method problem on the WhatsApp Business Account',
-        130472        => ' - user is part of a Meta experiment; not delivered',
-        131021        => ' - sender and recipient are the same number',
-        default       => '',
-    };
-}
+foreach (($payload['entry'] ?? []) as $entry) {
+    foreach (($entry['changes'] ?? []) as $change) {
+        $val = $change['value'] ?? [];
 
-/** Apply one delivery status to the message_logs row that carries its wamid. */
-function wh_status(array $st): void
-{
-    $wamid = (string) ($st['id'] ?? '');
-    $state = strtolower((string) ($st['status'] ?? ''));
-    $to    = (string) ($st['recipient_id'] ?? '');
-    if ($wamid === '' || $state === '') {
-        return;
-    }
+        // 1. Delivery Status updates
+        if (!empty($val['statuses']) && is_array($val['statuses'])) {
+            foreach ($val['statuses'] as $st) {
+                $wamid = (string) ($st['id'] ?? '');
+                $state = strtolower((string) ($st['status'] ?? ''));
+                $to    = (string) ($st['recipient_id'] ?? '');
 
-    $err     = $st['errors'][0] ?? [];
-    $code    = (int) ($err['code'] ?? 0);
-    $errText = trim((string) ($err['title'] ?? '') . ' ' . (string) ($err['error_data']['details'] ?? ''));
-    logWhatsAppEvent('status', $to, [], ['status' => strtoupper($state), 'message_id' => $wamid,
-        'error' => $code ? '(code ' . $code . ') ' . $errText : '']);
+                logWhatsAppEvent('status', $to, [], ['status' => strtoupper($state), 'message_id' => $wamid]);
 
-    /* 24 Sep 2026 — the marketing engine keeps its own per-recipient state
-       (accepted → delivered / read / failed) keyed on the same wamid. Told
-       first, only when the engine is on, and never allowed to break the
-       legacy row update below. */
-    if (in_array($state, ['delivered', 'read', 'failed'], true) && Settings::getBool('wa_marketing_on', false)) {
-        try {
-            require_once INCLUDE_PATH . '/wamarketing.php';
-            WaMarketing::deliveryStatus($wamid, $state);
-        } catch (Throwable $e) {
-            Logger::exception($e, 'whatsapp');
-        }
-    }
-
-    /* 10 Oct 2026 — a ticket the "hi" queue sent on this number is marked
-       delivered / read here (the queue's own cron only asks AiSensy), so the
-       agent routing (includes/waagentroute.php) knows the passenger has it. */
-    if ($state === 'delivered' || $state === 'read') {
-        try {
-            require_once INCLUDE_PATH . '/waqueue.php';
-            if (WaQueue::ready()) {
-                Database::run(
-                    "UPDATE wa_ticket_queue SET status = :s, checked_at = NOW()
-                      WHERE wamid = :w AND status IN ('sent'" . ($state === 'read' ? ",'delivered'" : '') . ")",
-                    ['s' => $state, 'w' => $wamid]
-                );
-            }
-        } catch (Throwable $e) {
-            Logger::exception($e, 'whatsapp');
-        }
-
-        /* 15 Oct 2026 — message_logs can only say "sent", so a free Meta
-           message never reached Delivered / Read in the WhatsApp Manager
-           (its Reached and Read figures counted the "hi" queue alone). The
-           book is told directly; and Meta's pricing block is counted once
-           per message, billable or free, for the allowance on the Routing card. */
-        try {
-            require_once INCLUDE_PATH . '/msgledger.php';
-            MsgLedger::noteMetaStatus($wamid, $state, is_array($st['pricing'] ?? null) ? $st['pricing'] : null);
-        } catch (Throwable $e) {
-            Logger::exception($e, 'whatsapp');
-        }
-        if (is_array($st['pricing'] ?? null)) {
-            try {
-                require_once INCLUDE_PATH . '/waroute.php';
-                WaRoute::noteMetaBilling($wamid, $state, $st['pricing']);
-            } catch (Throwable $e) {
-                Logger::exception($e, 'whatsapp');
-            }
-        }
-    }
-
-    // Same mapping as api/twilio-status.php: only terminal states rewrite a row.
-    $final = match ($state) {
-        'delivered', 'read' => 'sent',
-        'failed'            => 'failed',
-        default             => '',
-    };
-    if ($final === '') {
-        return;
-    }
-
-    $row = Database::fetch(
-        'SELECT id, booking_id FROM message_logs WHERE provider_ref = :ref ORDER BY id DESC LIMIT 1',
-        ['ref' => $wamid]
-    );
-    if ($row === null) {
-        return;
-    }
-
-    // "(code NNNNN)" is the exact text cron/whatsapp-retry.php matches on.
-    $error = $final === 'failed'
-        ? 'WhatsApp failed' . ($code ? ' (code ' . $code . ')' : '') . wh_hint($code) . ($errText !== '' ? ' · ' . $errText : '')
-        : null;
-
-    Database::update(
-        'message_logs',
-        ['status' => $final, 'error' => $error !== null ? mb_substr($error, 0, 255) : null],
-        'id = :id',
-        ['id' => (int) $row['id']]
-    );
-
-    /* A free message inside an open 24 h service window can be delivered even
-       while WABA billing is broken. Only Meta's explicit billable=true status
-       proves that error 131042 is actually cleared. The retry cron uses this
-       timestamp to release a payment-blocked backlog without mistaking a free
-       service-window reply for billing recovery. */
-    if ($final === 'sent' && ($st['pricing']['billable'] ?? false) === true) {
-        try {
-            Database::run(
-                "INSERT INTO kv_store (kscope, kkey, kvalue, updated_by)
-                 VALUES ('global', 'wa_meta.billing_ok_at', :v, 'webhook')
-                 ON DUPLICATE KEY UPDATE kvalue = :v2, updated_by = 'webhook'",
-                ['v' => (string) time(), 'v2' => (string) time()]
-            );
-        } catch (Throwable $e) {
-            Logger::warning('Meta billing recovery proof could not be stored: ' . $e->getMessage(), [], 'whatsapp');
-        }
-    }
-
-    if ($final === 'failed') {
-        Logger::warning('WhatsApp delivery FAILED (Meta, async)', [
-            'wamid' => $wamid, 'booking' => $row['booking_id'], 'code' => $code,
-        ], 'whatsapp');
-        /* 9 Oct 2026: a ticket the Meta route sent free (window we believed
-           open) did not arrive — the AiSensy template takes over at once. */
-        try {
-            require_once INCLUDE_PATH . '/waqueue.php';
-            if (WaQueue::ready()) {
-                WaQueue::onMetaFailed($wamid, $code);
-            }
-        } catch (Throwable $e) {
-            Logger::exception($e, 'whatsapp');
-        }
-    }
-}
-
-/**
- * What a tapped button / list row SAYS (5 Oct 2026). Our own choices carry
- * an id of "shg:<answer>" - the answer the conversation expects ("2", "ho",
- * "ticket book") - so a tap is read exactly like the same words typed. Any
- * other id (an old template button) falls back to the visible title.
- */
-function wh_tapped(array $interactive): string
-{
-    $hit = (array) ($interactive['button_reply'] ?? ($interactive['list_reply'] ?? []));
-    $id  = (string) ($hit['id'] ?? '');
-    if (str_starts_with($id, 'shg:') && trim(substr($id, 4)) !== '') {
-        return trim(substr($id, 4));
-    }
-    return (string) ($hit['title'] ?? '');
-}
-
-/**
- * 15 Oct 2026 (2F-queue) — the inbound message is written down FIRST
- * (wa_inbound, wamid UNIQUE): INSERT IGNORE is both the durable copy and the
- * dedupe. true = a new row, false = already seen, null = the table is not
- * there yet (the rate-limit dedupe below then works alone, as before).
- */
-function wh_queue_add(string $wamid, string $from, string $type, array $msg): ?bool
-{
-    try {
-        return Database::run(
-            "INSERT IGNORE INTO wa_inbound (wamid, from_digits, msg_type, payload, status, attempts, next_at)
-             VALUES (:w, :f, :t, :p, 'pending', 1, NOW() + INTERVAL 10 MINUTE)",
-            ['w' => substr($wamid, 0, 128), 'f' => substr($from, 0, 20), 't' => substr($type, 0, 20),
-             'p' => (string) json_encode($msg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
-        ) > 0;
-    } catch (Throwable $e) {
-        return null;
-    }
-}
-
-/** done | failed for one queued message (the replay cron sets its own backoff). */
-function wh_queue_mark(string $wamid, string $status, string $error = ''): void
-{
-    try {
-        Database::run(
-            'UPDATE wa_inbound SET status = :s, last_error = :e WHERE wamid = :w',
-            ['s' => $status, 'e' => $error !== '' ? mb_substr($error, 0, 250) : null, 'w' => substr($wamid, 0, 128)]
-        );
-    } catch (Throwable $e) {
-        // the row stays pending; the replay cron decides
-    }
-}
-
-/**
- * A customer wrote to us. Queue it, answer it INLINE exactly as before, mark
- * it done. A crash between the two leaves the row pending, and
- * cron/wa-inbound.php answers it a couple of minutes later instead of the
- * message being lost.
- */
-function wh_inbound(array $msg): void
-{
-    $from  = preg_replace('/\D/', '', (string) ($msg['from'] ?? '')) ?? '';
-    $wamid = (string) ($msg['id'] ?? '');
-    if ($from === '' || $wamid === '') {
-        return;
-    }
-
-    $queued = wh_queue_add($wamid, $from, (string) ($msg['type'] ?? ''), $msg);
-    if ($queued === false) {
-        return;                                   // Meta re-delivered a message already taken
-    }
-    // Meta re-delivers when it is unsure we got an event: answer each message once.
-    if (!Security::rateLimit('wa_meta_seen', $wamid, 1, 172800)) {
-        if ($queued === true) {
-            wh_queue_mark($wamid, 'done', 'already answered');
-        }
-        return;
-    }
-
-    try {
-        wh_process_inbound($msg);
-    } catch (Throwable $e) {
-        if ($queued === true) {
-            wh_queue_mark($wamid, 'failed', $e->getMessage());
-        }
-        throw $e;                                  // logged by the caller, as before
-    }
-    if ($queued === true) {
-        wh_queue_mark($wamid, 'done');
-    }
-}
-
-/** Note the 24 h window and answer with the PNR bot (the queue's work). */
-function wh_process_inbound(array $msg): void
-{
-    $from  = preg_replace('/\D/', '', (string) ($msg['from'] ?? '')) ?? '';
-    $wamid = (string) ($msg['id'] ?? '');
-    $type  = (string) ($msg['type'] ?? '');
-    if ($from === '' || $wamid === '') {
-        return;
-    }
-
-    $text = match ($type) {
-        'text'        => (string) ($msg['text']['body'] ?? ''),
-        'button'      => (string) ($msg['button']['text'] ?? ''),
-        'interactive' => wh_tapped((array) ($msg['interactive'] ?? [])),
-        default       => (string) ($msg[$type]['caption'] ?? ''),   // image/document captions
-    };
-    logWhatsAppEvent('inbound', $from, [], ['status' => strtoupper($type !== '' ? $type : 'unknown'), 'message_id' => $wamid]);
-
-    try {
-        require_once INCLUDE_PATH . '/watemplates.php';
-        WaTemplates::noteInbound($from, (int) ($msg['timestamp'] ?? 0));   // the time the customer wrote, not the replay time
-    } catch (Throwable $ignored) {
-    }
-
-    // Abuse guard, keyed on the sender — same budget as the Twilio bot.
-    if (!Security::rateLimit('wa_bot', normalisePhone($from), 20, 60)) {
-        return;
-    }
-
-    /* 22 Oct 2026: "hi VERIFY K7Q2M9" sent from the staff / agent form
-       (includes/waverify.php) proves this sender's number. Answered here,
-       before the bot and even with the bot off; any other text returns null
-       and carries on exactly as before. */
-    try {
-        require_once INCLUDE_PATH . '/waverify.php';
-        $verifyReply = WaVerify::inbound($from, $text);
-        if ($verifyReply !== null) {
-            $r = sendWhatsAppText($from, $verifyReply);
-            Notify::logOutbound($from, $verifyReply, $r['success'] ? 'sent' : 'failed', [
-                'provider' => 'cloud_api', 'sid' => $r['message_id'] ?? '', 'purpose' => 'wa_verify', 'error' => $r['success'] ? null : ($r['error'] ?? ''),
-            ]);
-            return;
-        }
-    } catch (Throwable $e) {
-        Logger::exception($e, 'whatsapp');
-    }
-
-    if (!Settings::getBool('whatsapp_bot_enabled', true)) {
-        return;
-    }
-
-    /* 9 Oct 2026 - the "hi" ticket on THIS number (includes/waqueue.php):
-       this person just wrote to the Meta number, so its free 24 h window is
-       open here. Every ticket waiting for them goes out now, free, as the
-       PNG (WaRoute). A short "hi" / PNR that got its tickets needs no bot
-       menu on top - the ticket was the answer. */
-    try {
-        require_once INCLUDE_PATH . '/waqueue.php';
-        if (WaQueue::ready()) {
-            $gotTickets = WaQueue::onInbound($from, $text, 'meta');
-            $plainText  = trim(preg_replace('/SHG-?\s?\d{4}-?\s?\d{3,6}/i', '', $text) ?? '');
-            if ($gotTickets > 0 && mb_strlen($plainText) <= 25 && !isset($msg['interactive']['nfm_reply'])) {   // a filled booking form still books
-                return;
-            }
-        }
-    } catch (Throwable $e) {
-        Logger::exception($e, 'whatsapp');
-    }
-
-    /* 15 Oct 2026 - the booking FORM (includes/waflow.php) came back filled
-       in. Pressing Book in the form is the confirmation: it goes straight to
-       the sale and the ticket (or the UPI QR) is the answer. */
-    require_once INCLUDE_PATH . '/waflow.php';
-    WaFlow::$metaChannel = true;              // replies from here may carry the form
-    if ($type === 'interactive' && WaFlow::isReply((array) ($msg['interactive'] ?? []))) {
-        $staff = null;
-        try {
-            require_once INCLUDE_PATH . '/aitools.php';
-            require_once INCLUDE_PATH . '/ticketbot.php';
-            require_once INCLUDE_PATH . '/quickticket.php';
-            $who = AiTools::whoIs('+' . $from);
-            if (in_array((string) ($who['role'] ?? ''), ['staff', 'admin'], true) && Settings::getBool('wa_order_staff_on', true)) {
-                $staff = $who;
-            }
-        } catch (Throwable $e) {
-            Logger::exception($e, 'whatsapp');
-        }
-        $reply = WaFlow::handleReply($from, (array) $msg['interactive'], $staff, resolvePhoneCountry('', '+' . $from));
-        $media = $reply['media'] ?? null;
-        $r = ($media !== null && $media !== '' && mb_strlen($reply['text']) <= 1024)
-            ? sendWhatsAppImage($from, $media, $reply['text'])
-            : ['success' => false];
-        if (!$r['success']) {
-            $r = sendWhatsAppText($from, $reply['text']);
-        }
-        Notify::logOutbound($from, $reply['text'], $r['success'] ? 'sent' : 'failed', [
-            'provider' => 'cloud_api', 'sid' => $r['message_id'] ?? '', 'purpose' => 'bot_reply', 'error' => $r['success'] ? null : ($r['error'] ?? ''),
-        ]);
-        return;
-    }
-
-    /* A voice note becomes the words that were spoken (23 Sep 2026, owner:
-       "sunne"), and then takes exactly the path a typed message takes. The
-       reply opens with what we heard, so a mis-heard word is visible before
-       anything is booked. No transcript = the old "please type" reply. */
-    $heard = '';
-    if (in_array($type, ['audio', 'voice'], true) && trim($text) === '') {
-        try {
-            require_once INCLUDE_PATH . '/wavoice.php';
-            $said = WaVoice::transcribe((string) ($msg['audio']['id'] ?? ($msg['voice']['id'] ?? '')), $from);
-            if ($said !== null && $said !== '') {
-                $text  = $said;
-                $type  = 'text';
-                $heard = WaVoice::heardLine($said);
-            }
-        } catch (Throwable $e) {
-            Logger::exception($e, 'whatsapp');
-        }
-    }
-
-    /* 24 Sep 2026 — an attachment's METADATA (kind, mime, media id, the
-       sha256 Meta reports) travels with the words. WaBot decides, by the
-       office's switches, whether to fetch, keep or transcribe it. A voice
-       note the live transcriber (above) already turned into text is text
-       by now, so it never arrives here twice. */
-    $media = [];
-    if (in_array($type, ['image', 'document', 'audio', 'voice', 'video', 'sticker'], true)) {
-        try {
-            require_once INCLUDE_PATH . '/wamedia.php';
-            $media = WaMedia::describe($type, $msg);
-        } catch (Throwable $e) {
-            Logger::exception($e, 'whatsapp');
-        }
-    }
-
-    require_once INCLUDE_PATH . '/wabot.php';
-    $reply = WaBot::reply('+' . $from, $text, $type, $media);
-    if ($heard !== '') {
-        $reply['text'] = $heard . "\n" . $reply['text'];
-    }
-
-    $media = $reply['media'];
-    /* Tappable choices first (5 Oct 2026). $reply['text'] always carries the
-       same question with numbered answers, so when Meta refuses the buttons
-       the plain path below still asks it. */
-    $ui = is_array($reply['ui'] ?? null) ? $reply['ui'] : null;
-    $r  = null;
-    if ($ui !== null && Settings::getBool('wa_buttons_on', true)) {
-        $uiBody = trim((string) ($ui['body'] ?? '')) !== '' ? (string) $ui['body'] : $reply['text'];
-        if ($heard !== '') {
-            $uiBody = $heard . "\n" . $uiBody;
-        }
-        $isList = ($ui['kind'] ?? '') === 'list';
-        if (mb_strlen($uiBody) <= 1024) {
-            if ($isList && $media !== null && $media !== '') {
-                sendWhatsAppImage($from, $media);          // a list cannot carry a picture
-            }
-            $r = sendWhatsAppInteractive($from, $uiBody, $ui, $isList ? null : $media);
-            if (!$r['success'] && !$isList && $media !== null && $media !== '') {
-                $r = sendWhatsAppInteractive($from, $uiBody, $ui);   // the picture was the problem
-            }
-        }
-    }
-    if ($r !== null && $r['success']) {
-        // sent with buttons
-    } elseif ($media !== null && $media !== '' && mb_strlen($reply['text']) <= 1024) {
-        $r = sendWhatsAppImage($from, $media, $reply['text']);
-        if (!$r['success']) {
-            // The image could not go (e.g. URL not reachable by Meta) — the
-            // text still carries every fact the passenger asked for.
-            $r = sendWhatsAppText($from, $reply['text']);
-        }
-    } else {
-        $r = sendWhatsAppText($from, $reply['text']);
-        if ($media !== null && $media !== '' && $r['success']) {
-            sendWhatsAppImage($from, $media);
-        }
-    }
-
-    Notify::logOutbound($from, $reply['text'], $r['success'] ? 'sent' : 'failed', [
-        'provider' => 'cloud_api',
-        'sid'      => $r['message_id'],
-        'purpose'  => 'bot_reply',
-        'error'    => $r['success'] ? null : $r['error'],
-    ]);
-}
-
-try {
-    foreach ((array) ($payload['entry'] ?? []) as $entry) {
-        foreach ((array) ($entry['changes'] ?? []) as $change) {
-            if (($change['field'] ?? '') !== 'messages') {
-                continue;
-            }
-            $value   = (array) ($change['value'] ?? []);
-            $phoneId = (string) ($value['metadata']['phone_number_id'] ?? '');
-            if (META_PHONE_NUMBER_ID === '' || $phoneId !== META_PHONE_NUMBER_ID) {
-                continue;   // another number on the same WABA (the Twilio sender)
-            }
-            foreach ((array) ($value['statuses'] ?? []) as $st) {
-                try {
-                    wh_status((array) $st);
-                } catch (Throwable $e) {
-                    Logger::exception($e, 'whatsapp');
+                if ($state === 'delivered' || $state === 'read') {
+                    CardDelivery::markDelivered($wamid);
                 }
             }
-            foreach ((array) ($value['messages'] ?? []) as $msg) {
-                try {
-                    wh_inbound((array) $msg);
-                } catch (Throwable $e) {
-                    Logger::exception($e, 'whatsapp');
+        }
+
+        // 2. Inbound messages
+        if (!empty($val['messages']) && is_array($val['messages'])) {
+            foreach ($val['messages'] as $msg) {
+                $from = (string) ($msg['from'] ?? '');
+                $text = (string) ($msg['text']['body'] ?? '');
+
+                if ($text !== '' && WaVerify::isVerifyText($text)) {
+                    $reply = WaVerify::inbound($from, $text);
+                    if ($reply !== null) {
+                        sendWhatsAppText($from, $reply);
+                    }
                 }
             }
         }
     }
-} catch (Throwable $e) {
-    Logger::exception($e, 'whatsapp');
 }
