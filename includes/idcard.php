@@ -77,6 +77,7 @@ final class IdCard
             return null;
         }
         $st = (string) $r['status'];
+        if (isset(Settings::getArray('team_manager_archive', [])['staff:' . $id])) { $st = 'exited'; }
         $cc = countryDialCode((string) $r['phone_country']) ?: '977';
         $photo = !empty($r['photo_path']) && ($abs = StaffApps::absPath((string) $r['photo_path'])) !== null ? (string) file_get_contents($abs) : null;
         $sig   = !empty($r['signature_path']) && ($abs = StaffApps::absPath((string) $r['signature_path'])) !== null ? (string) file_get_contents($abs) : null;
@@ -116,9 +117,11 @@ final class IdCard
         }
         $org = (string) $r['type'] === 'org';
         $active = true;
+        $archived = isset(Settings::getArray('team_manager_archive', [])['agent:' . $id]);
         if (!empty($r['admin_id'])) {
             $active = (int) Database::scalar('SELECT is_active FROM admins WHERE id = :i', ['i' => (int) $r['admin_id']], 0) === 1;
         }
+        if ($archived) { $active = false; }
         $f = is_array($r['fields'] ?? null) ? $r['fields'] : [];
         $pic = $org && !empty($r['logo']) ? (string) $r['logo'] : (string) ($r['photo'] ?? '');
         $raw = (string) (($r['phone_raw'] ?? '') ?: $r['phone']);

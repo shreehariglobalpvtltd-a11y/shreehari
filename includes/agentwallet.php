@@ -715,7 +715,7 @@ final class AgentWallet
         foreach ($raw as $k => $v) {
             if (!is_array($v)) { continue; }
             $mode = strtolower(trim((string) ($v['mode'] ?? '')));
-            if (!in_array($mode, ['flat', 'percent'], true)) { continue; }
+            if (!in_array($mode, ['flat', 'booking', 'percent'], true)) { continue; }
             $flat = isset($v['flat']) && is_numeric($v['flat']) ? round((float) $v['flat'], 2) : null;
             if ($flat !== null && ($flat < 0 || $flat > 10000)) { $flat = null; }
             $out[(string) (int) $k] = ['mode' => $mode, 'flat' => $flat];
@@ -747,7 +747,7 @@ final class AgentWallet
         }
 
         $mode = $mode === null ? null : strtolower(trim($mode));
-        if ($mode !== null && !in_array($mode, ['flat', 'percent'], true)) {
+        if ($mode !== null && !in_array($mode, ['flat', 'booking', 'percent'], true)) {
             throw new RuntimeException('Unknown commission override mode.');
         }
         if ($flat !== null) {
@@ -756,7 +756,7 @@ final class AgentWallet
                 throw new RuntimeException('The flat override must be between ₹0 and ₹10,000 per passenger.');
             }
         }
-        if ($mode === 'flat' && $flat === null) {
+        if (in_array($mode, ['flat', 'booking'], true) && $flat === null) {
             throw new RuntimeException('Enter the flat ₹ amount per passenger for the override.');
         }
 
@@ -768,7 +768,7 @@ final class AgentWallet
         } else {
             $map[(string) $adminId] = [
                 'mode' => $mode,
-                'flat' => $mode === 'flat' ? $flat : null,
+                'flat' => in_array($mode, ['flat', 'booking'], true) ? $flat : null,
             ];
         }
 
@@ -812,6 +812,9 @@ final class AgentWallet
         // flat ₹ per passenger, or forced onto the percent engine (which in
         // turn honours their commission_percent when one is set).
         $ov = self::commissionOverrideFor($adminId);
+        if ($ov['mode'] === 'booking') {
+            return round((float) $ov['flat'], 2);
+        }
         if ($ov['mode'] === 'flat') {
             return round(($ov['flat'] ?? self::flatRateFor($adminId)) * max(1, $seats), 2);
         }
@@ -834,6 +837,9 @@ final class AgentWallet
         // Says what was ACTUALLY paid — an override note must not read like
         // the company tier, or the office can never explain a payout.
         $ov = self::commissionOverrideFor($adminId);
+        if ($ov['mode'] === 'booking') {
+            return '1 ticket x ' . inr((float) $ov['flat']) . ' (agent override)';
+        }
         if ($ov['mode'] === 'flat') {
             return max(1, $seats) . ' x ' . inr($ov['flat'] ?? self::flatRateFor($adminId)) . ' (agent override)';
         }

@@ -735,7 +735,10 @@ $waDigits = a360_wa_digits($agent, $profile);
 
 /* What this agent is ACTUALLY paid right now — override, tier or percent
    (same derivation as admin/agent.php). */
-if ($override['mode'] === 'flat') {
+if ($override['mode'] === 'booking') {
+    $payLabel = inr((float) $override['flat']) . ' / ticket';
+    $paySub = 'one PNR, any passenger count';
+} elseif ($override['mode'] === 'flat') {
     $payLabel = inr((float) $override['flat']) . ' / pax';
     $paySub   = 'agent override — flat per passenger';
 } elseif ($override['mode'] === 'percent') {

@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v256-gps20261025-6';   // Admin GPS center, three-bus simulation and fast shared GPS updates
+var VERSION = 'shg-v257-team20261025-1';   // Unified agent staff KYC, recoverable archive and per-ticket commission
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */

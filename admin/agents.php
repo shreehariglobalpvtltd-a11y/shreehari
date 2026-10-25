@@ -280,7 +280,11 @@ foreach ($rows as &$r) {
     $r['wa']      = (string) ($r['whatsapp'] ?: $r['phone'] ?: $r['display_phone'] ?: '');
     // What this agent is actually paid per passenger (override > tier > percent engine).
     $ov = AgentWallet::commissionOverrideFor($id);
-    if (($ov['mode'] ?? null) === 'flat') {
+    if (($ov['mode'] ?? null) === 'booking') {
+        $r['rate'] = '₹' . number_format((float) ($ov['flat'] ?? 0)) . '/ticket';
+        $r['rate_note'] = 'one PNR, any passenger count';
+        $r['rate_sort'] = (float) ($ov['flat'] ?? 0);
+    } elseif (($ov['mode'] ?? null) === 'flat') {
         $r['rate'] = '₹' . number_format((float) ($ov['flat'] ?? 0)) . '/pax';
         $r['rate_note'] = 'agent override';
         $r['rate_sort'] = (float) ($ov['flat'] ?? 0);

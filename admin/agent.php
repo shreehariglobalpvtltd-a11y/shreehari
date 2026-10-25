@@ -246,7 +246,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     AgentWallet::setCommissionOverride(
                         $targetId,
                         $ovMode === '' ? null : $ovMode,
-                        ($ovMode === 'flat' && $ovFlat !== '') ? (float) $ovFlat : null,
+                        (in_array($ovMode, ['flat', 'booking'], true) && $ovFlat !== '') ? (float) $ovFlat : null,
                         $selfId
                     );
                 }
@@ -690,7 +690,10 @@ $sparkMax = max(1, max(array_column($spark, 'val')));
 
 /* What this agent is ACTUALLY paid right now — override, tier or percent. */
 $override = AgentWallet::commissionOverrideFor($viewId);
-if ($override['mode'] === 'flat') {
+if ($override['mode'] === 'booking') {
+    $payLabel = inr((float) $override['flat']) . ' / ticket';
+    $paySub = 'one PNR, any passenger count';
+} elseif ($override['mode'] === 'flat') {
     $payLabel = inr((float) $override['flat']) . ' / pax';
     $paySub   = 'agent override — flat per passenger';
 } elseif ($override['mode'] === 'percent') {
@@ -1843,19 +1846,22 @@ $tripCard = static function (array $t) use ($today, $base): void {
         <label style="font-size:12px;color:var(--mut)">Commission override <span class="muted">(this agent only)</span>
           <div style="display:flex;gap:8px;margin-top:4px">
             <select name="commission_override_mode"
-                    onchange="var f=document.getElementById('ovFlat');if(f){f.style.display=this.value==='flat'?'':'none'}"
+                    onchange="var f=document.getElementById('ovFlat');if(f){f.style.display=['flat','booking'].includes(this.value)?'':'none'}"
                     style="flex:1;min-width:0;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)">
               <option value=""        <?= $override['mode'] === null      ? 'selected' : '' ?>>Company tier default</option>
               <option value="flat"    <?= $override['mode'] === 'flat'    ? 'selected' : '' ?>>Flat ₹ per passenger</option>
+              <option value="booking" <?= $override['mode'] === 'booking' ? 'selected' : '' ?>>Flat ₹ per ticket / PNR</option>
               <option value="percent" <?= $override['mode'] === 'percent' ? 'selected' : '' ?>>% of fare</option>
             </select>
             <input type="number" id="ovFlat" name="commission_override_flat" min="0" max="10000" step="1"
                    value="<?= $override['flat'] !== null ? Security::e(number_format((float) $override['flat'], 2, '.', '')) : '' ?>"
-                   placeholder="₹ / pax"
-                   style="width:100px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)<?= $override['mode'] === 'flat' ? '' : ';display:none' ?>">
+                   placeholder="₹ per unit"
+                   style="width:100px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)<?= in_array($override['mode'], ['flat','booking'], true) ? '' : ';display:none' ?>">
           </div>
           <span class="muted" style="font-size:11px">
-            <?php if ($override['mode'] === 'flat'): ?>
+            <?php if ($override['mode'] === 'booking'): ?>
+              Active — <?= Security::e(inr((float) $override['flat'])) ?> per ticket / PNR, regardless of passenger count.
+            <?php elseif ($override['mode'] === 'flat'): ?>
               Active — this agent is paid <b><?= Security::e(inr((float) $override['flat'])) ?> per passenger</b>, ignoring the tier.
             <?php elseif ($override['mode'] === 'percent'): ?>
               Active — this agent is paid <b>% of fare</b> (the Commission % below), even while the tier pays everyone else.

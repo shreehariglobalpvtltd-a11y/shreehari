@@ -262,6 +262,9 @@ final class AgentReport
         $pct  = AgentWallet::commissionPercentFor($agentId);
         $pctL = rtrim(rtrim(number_format($pct, 2), '0'), '.') . '%';
 
+        if ($ov['mode'] === 'booking') {
+            return ['mode' => 'booking', 'flat' => (float) $ov['flat'], 'label' => inr((float) $ov['flat']) . ' / ticket', 'sub' => 'one PNR, any passenger count', 'tier' => $tier];
+        }
         if ($ov['mode'] === 'flat') {
             return ['mode' => 'flat', 'flat' => (float) $ov['flat'], 'label' => inr((float) $ov['flat']) . ' / pax', 'sub' => 'this agent only', 'tier' => $tier];
         }
