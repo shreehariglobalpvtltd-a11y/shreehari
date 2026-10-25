@@ -85,7 +85,7 @@ final class TeamRegistry
     public static function stash(string $bytes): string {
         require_once __DIR__.'/companydocs.php'; $key=bin2hex(random_bytes(24));
         if (file_put_contents(self::privateDir().'/'.$key,CompanyDocs::seal($bytes),LOCK_EX)===false) { throw new RuntimeException('Private upload could not be saved.'); }
-        chmod(self::privateDir().'/'.$key,0640); return $key;
+        chmod(self::privateDir().'/'.$key,0640); Logger::adopt(self::privateDir().'/'.$key); return $key;
     }
     public static function open(string $key): string {
         require_once __DIR__.'/companydocs.php';

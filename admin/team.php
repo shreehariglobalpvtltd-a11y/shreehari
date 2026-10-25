@@ -16,7 +16,11 @@ if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'){
   if(!Security::verifyCsrf()){throw new RuntimeException('Page expired. Reload before submitting.');}
   if(!TeamRegistry::ready()){throw new RuntimeException('Unified team database upgrade required.');}
   $action=(string)($_POST['action']??'');$id=(int)($_POST['app_id']??0);$kind=($_POST['app_type']??'')==='staff'?'staff':'agent';
-  if($action==='approve_application'){
+  if($action==='card_retry'){ $res=CardDelivery::send((string)($_POST['ref']??''),true);$flash=[$res['ok']?'ok':'bad',$res['detail']];
+  }elseif($action==='card_config'){
+   $template=trim((string)($_POST['template']??''));$lang=trim((string)($_POST['template_lang']??'en'));if(($template!==''&&!preg_match('/^[a-z0-9_]{1,128}$/',$template))||!preg_match('/^[a-z]{2,3}(?:_[A-Z]{2})?$/',$lang)){throw new RuntimeException('Use the approved Meta template name and language code.');}
+   Settings::set('team_card_template',$template,'string','team',false);Settings::set('team_card_template_lang',$lang,'string','team',false);Logger::audit('team.card_template','team','configuration',null,['template'=>$template,'lang'=>$lang],'Document-header template selection');$flash=['ok','Template selection saved. Meta approval is required; rejected sends remain failed.'];
+  }elseif($action==='approve_application'){
    $ref=TeamRegistry::approve($kind.':'.$id,$adminId);$send=CardDelivery::send($ref);
    $flash=['ok','Application approved. '.$send['detail'].' Activate securely at /team/ using verified WhatsApp recovery; existing passwords are preserved.'];
   }elseif($action==='reject_application'){

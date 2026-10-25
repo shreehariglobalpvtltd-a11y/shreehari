@@ -1046,6 +1046,7 @@ final class TeamPortal
         }
         if (isset($in['phone_country']) && in_array((string) $in['phone_country'], ['IN', 'NP'], true) && (string) $in['phone_country'] !== (string) $r['phone_country']) {
             $set['phone_country'] = (string) $in['phone_country'];
+            $set['phone_verified']=0;
         }
         if ($set === []) {
             return [];

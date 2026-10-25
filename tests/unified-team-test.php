@@ -35,6 +35,8 @@ $check(IdCard::parse(IdCard::code($ref))===$ref&&!str_contains(IdCard::verifyUrl
 $check(IdCard::parse($ref.'.000000000000')===null,'tampered official QR refused');
 foreach(['royal','minimal','orange']as$name){foreach(['portrait','landscape']as$ori){$cfg=CardDesign::preset($name);$cfg['orient_id']=$ori;foreach(['front','back']as$side){$png=IdCard::designPng($p,'id',$side,$cfg);$sz=getimagesizefromstring($png);$check($sz&&($ori==='portrait'?$sz[0]===638&&$sz[1]===1011:$sz[0]===1011&&$sz[1]===638),$name.' '.$ori.' '.$side.' dimensions');} $p['studio']=$cfg;$pdf=IdCard::pdf($p,'all');$check(str_starts_with($pdf,'%PDF-')&&strlen($pdf)>10000,$name.' '.$ori.' PDF contains both cards');}}
 $p['studio']=null;
+require_once INCLUDE_PATH.'/agreementprint.php';foreach(['agent','staff','partner']as$kind){$signed=$p;$signed['kind']=$kind;$pdf=AgreementPrint::digitalPdf($signed,'en');preg_match_all('~/Type /Page\b~',$pdf,$pages);$check(count($pages[0])>=2&&count($pages[0])<=4,'current '.$kind.' agreement exports 2–4 A4 pages without dropping terms');}
+
 $bw=CardDesign::preset('minimal');$bw['bw']=true;$png=IdCard::designPng($p,'visiting','back',$bw);$check(getimagesizefromstring($png)[0]===1050,'visiting export 300-DPI pixel dimensions');
 $check(CardDelivery::recipient($ref)==='919876543210','delivery recipient requires verified international number');
 $res=CardDelivery::send($ref);$check($res['ok']&&$res['status']==='queued','complete PDF generated before delivery queue');$job=CardDelivery::getDelivery($ref);$files[]=$job['file_key'];

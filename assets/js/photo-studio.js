@@ -299,6 +299,7 @@
         badge.className = 'ps-quality ok';
         txt.textContent = '✅ Resolution is sufficient. Review face sharpness and lighting manually.';
       }
+      if(caution){badge.className='ps-quality warn';txt.textContent=caution+' Review the real face, focus and lighting before saving.';}
     },
 
     cleanBackground: function () { alert('Automatic background removal is not configured. Crop and rotate preserve the original face.'); },
