@@ -49,7 +49,7 @@ final class GpsLoggerProfile
         $expires = (int) ($q['e'] ?? 0);
         $sig = is_string($q['sig'] ?? null) ? $q['sig'] : '';
         if (!self::valid($id, $expires, $sig)) { return null; }
-        return Database::fetch("SELECT g.id,g.device_uid,b.bus_number FROM gps_trackers g JOIN buses b ON b.id=g.bus_id
+        return Database::fetch("SELECT g.id,g.bus_id,g.device_uid,b.bus_number FROM gps_trackers g JOIN buses b ON b.id=g.bus_id
             WHERE g.id=:id AND g.kind='phone' AND g.is_active=1 AND g.revoked_at IS NULL AND b.is_active=1", ['id' => $id]);
     }
 }

@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v256-gps20261025-3** — GPSLogger import profiles and metre-per-second speed support
 - **shg-v256-gps20261025-2** — Private GPS fix quality diagnostics
 - **shg-v256-gps20261025-1** — Bus-wise live GPS controls and admin device health
 - **shg-v256** — core: one-door customer login, 3 core tiles, agent scanner + credentials on WhatsApp
