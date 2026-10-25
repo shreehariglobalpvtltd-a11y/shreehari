@@ -338,7 +338,6 @@ final class StaffApps
         $c['province']        = $c['province'] !== '' ? $c['province'] : null;
 
         $c['role_applied'] = empty($in['role']) ? 'other' : (in_array($in['role'], self::roles(), true) ? (string) $in['role'] : '');
-        foreach ((array)(Settings::getArray('team_staff_positions',[])[$c['role_applied']]['required']??[]) as $required) { if (trim((string)($in[$required]??''))==='') { $e[$required]='Required for this position.'; } }
         if ($c['role_applied'] === '') {
             $e['role'] = 'कुन काम? छान्नुहोस् · Choose the job you are applying for.';
         }
@@ -434,6 +433,7 @@ final class StaffApps
             }
         }
 
+        foreach ((array)(Settings::getArray('team_staff_positions',[])[$c['role_applied']]['required']??[]) as $required) { if (!isset($c[$required]) || trim((string)$c[$required])==='') { $e[$required]='Required for this position.'; } }
         return ['ok' => $e === [], 'errors' => $e, 'clean' => $c, 'files' => $got];
     }
 

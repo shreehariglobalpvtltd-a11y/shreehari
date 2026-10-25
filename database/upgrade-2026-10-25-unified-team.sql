@@ -103,3 +103,10 @@ CREATE TABLE IF NOT EXISTS team_ledger_journal (
 
 ALTER TABLE team_card_jobs ADD COLUMN IF NOT EXISTS sent_at DATETIME NULL;
 ALTER TABLE team_card_jobs ADD COLUMN IF NOT EXISTS delivered_at DATETIME NULL;
+
+-- Keep the three agreement types; position names are configurable staff data.
+SET @role_column_type = (SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='staff_applications' AND COLUMN_NAME='role_applied');
+SET @role_upgrade = IF(@role_column_type='enum','ALTER TABLE staff_applications MODIFY COLUMN role_applied VARCHAR(40) NOT NULL','SELECT 1');
+PREPARE role_stmt FROM @role_upgrade;
+EXECUTE role_stmt;
+DEALLOCATE PREPARE role_stmt;

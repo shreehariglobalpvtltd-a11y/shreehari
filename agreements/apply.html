@@ -2081,7 +2081,6 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     if (!validate()) return;
     var btn = $('saSubmit'); btn.disabled = true; var lab = btn.innerHTML; btn.innerHTML = '<span class="ei">⏳</span>पठाउँदै…';
     var fd = new FormData();
-    document.querySelectorAll('[data-position-extra]').forEach(function(e){fd.append(e.dataset.positionExtra,e.value);});
     fd.set('import_reviewed', window.ShgIntake && window.ShgIntake.reviewed() ? '1' : '0');
     fd.set('full_name', v('sa_name')); fd.set('phone', digits('sa_phone')); fd.set('cc', v('sa_cc'));
     fd.set('role', v('sa_role')); fd.set('id_type', STAFF_ID[v('sa_idtype')] != null ? STAFF_ID[v('sa_idtype')] : v('sa_idtype')); fd.set('id_number', v('sa_idno'));
@@ -2094,6 +2093,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     fd.set('emergency_name', v('sa_emn')); fd.set('emergency_phone', digits('sa_emp'));
     fd.set('bank_holder', v('sa_bhold')); fd.set('bank_name', v('sa_bbank')); fd.set('bank_account', v('sa_bacc')); fd.set('bank_ifsc', v('sa_bifsc').toUpperCase().replace(/\s+/g, ''));
     fd.set('agree', $('sa_accept').checked ? '1' : '0'); fd.set('website', v('sa_website'));
+    document.querySelectorAll('#saForm [data-position-extra]').forEach(function(e){fd.set(e.dataset.positionExtra==='emergency_contact_name'?'emergency_name':e.dataset.positionExtra,e.value);});
     if (webauthn) fd.set('webauthn', webauthn);
     if (img.photo) fd.append('photo', toBlob(img.photo), 'photo.jpg');
     if (img.idFront) fd.append('id_front', toBlob(img.idFront), 'id_front.jpg');
@@ -2223,5 +2223,5 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 .sa.sa-en .sa-f>label .en{color:#0a2a8f}
 .sa.sa-en .sa-cl .pt .ne{opacity:.72}
 </style>
-<script src="/assets/js/photo-studio.js?v=20261025c"></script><script src="/assets/js/team-positions.js?v=20261025b"></script></body>
+<script src="/assets/js/photo-studio.js?v=20261025c"></script><script src="/assets/js/team-positions.js?v=20261025c"></script></body>
 </html>
