@@ -3,3 +3,7 @@ CREATE TRIGGER IF NOT EXISTS team_ledger_update AFTER UPDATE ON agent_ledger FOR
 CREATE TRIGGER IF NOT EXISTS team_ledger_delete AFTER DELETE ON agent_ledger FOR EACH ROW INSERT INTO team_ledger_journal(ledger_id,event_type,old_row) VALUES(OLD.id,'delete',JSON_OBJECT('agent',OLD.agent_admin_id,'booking',OLD.booking_id,'type',OLD.entry_type,'account',OLD.account,'amount',OLD.amount,'ref',OLD.ref,'note',OLD.note));
 
 INSERT INTO team_ledger_journal(ledger_id,event_type,new_row) SELECT l.id,'baseline',JSON_OBJECT('agent',l.agent_admin_id,'booking',l.booking_id,'type',l.entry_type,'account',l.account,'amount',l.amount,'ref',l.ref,'note',l.note) FROM agent_ledger l WHERE NOT EXISTS(SELECT 1 FROM team_ledger_journal j WHERE j.ledger_id=l.id);
+
+-- Corrections are new ledger events; recorded history cannot be rewritten.
+CREATE TRIGGER IF NOT EXISTS team_journal_no_update BEFORE UPDATE ON team_ledger_journal FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Ledger audit history is immutable';
+CREATE TRIGGER IF NOT EXISTS team_journal_no_delete BEFORE DELETE ON team_ledger_journal FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Ledger audit history is immutable';
