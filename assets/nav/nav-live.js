@@ -247,6 +247,8 @@ function css() {
   var st = document.createElement('style');
   st.id = 'nlCss';
   st.textContent = [
+    '.nl-fleet-button{width:auto!important;min-width:64px!important;height:40px!important;padding:0 12px!important;font-size:12px!important;font-weight:700!important;color:#14783c!important}',
+    '.nl-fleet-row{display:flex!important;flex-direction:column;align-items:flex-start;width:100%;text-align:left;gap:4px;margin:8px 0;padding:12px!important;border:1px solid var(--line,rgba(128,128,128,.25));border-radius:12px}.nl-fleet-row small{opacity:.8}',
     '.nl-wrap{position:fixed;inset:0;z-index:62;pointer-events:none}',
     '.nl-scrim{position:absolute;inset:0;background:rgba(3,7,16,.4);pointer-events:auto}',
     '.nl-sheet{position:absolute;left:calc(var(--sl,0px) + 8px);right:calc(var(--sr,0px) + 8px);bottom:calc(var(--sb,0px) + 8px);max-width:520px;margin:0 auto;max-height:80vh;overflow-y:auto;overscroll-behavior:contain;',
@@ -495,49 +497,135 @@ function arrivedSheet(dest) {
     (navigator.share ? '<button class="nl-b" type="button" data-s>' + esc(t('more')) + '</button>' : '') + '</div>');
   var b = el.querySelector('[data-s]'); if (b) b.onclick = function () { navigator.share({ title: 'SHARI NAV', text: msg }).catch(function () {}); };
 }
-function moveMarker(mk, to) {
-  if (slow()) { mk.setLngLat(to); return; }
+function moveMarker(mk, to, instant) {
+  if (mk._shgAnim) cancelAnimationFrame(mk._shgAnim);
+  mk._shgAnim = null;
+  if (instant || document.hidden || slow()) { mk.setLngLat(to); return; }
   var from = mk.getLngLat(), t0 = performance.now(), dur = 1200;
   (function step(n) {
     var k = Math.min(1, (n - t0) / dur);
     mk.setLngLat([from.lng + (to[0] - from.lng) * k, from.lat + (to[1] - from.lat) * k]);
-    if (k < 1) requestAnimationFrame(step);
+    if (k < 1) mk._shgAnim = requestAnimationFrame(step); else mk._shgAnim = null;
   })(t0);
 }
 
 /* ---------------------------------------------------------------------
    B · S HARI COACHES ON THE ROAD
 --------------------------------------------------------------------- */
-var BUS = { on: LSg.get('shg:nl:bus', true) !== false, m: {}, by: {} };
-function busStart() {
-  if (!BUS.on || FW) return;
-  api('/api/nav-buses.php').then(busApply).catch(function () {});
-  on('bus', busApply);
+/* Bus overlay controls · GPSLIVE-20261025 */
+var BUS = { on: LSg.get('shg:nl:bus', true) !== false, animate: LSg.get('shg:nl:motion', true) !== false,
+  m: {}, by: {}, fleet: [], stamp: 0, received: 0, busy: false, errors: 0, retryAt: 0, detail: null };
+function fleetText(k) {
+  var lang = X.S.lang || document.documentElement.lang || 'en';
+  var texts = {
+    title: ['Live buses', 'लाइभ बसहरू', 'लाइव बसें'], show: ['Show buses on map', 'नक्सामा बस देखाउने', 'मानचित्र पर बस दिखाएं'],
+    motion: ['Smooth bus animation', 'बसको सहज एनिमेसन', 'बस का सहज एनिमेशन'],
+    empty: ['No live position yet. The map will update when a bus sends GPS.', 'अहिले लाइभ स्थान छैन। बसबाट GPS आएपछि नक्सा अपडेट हुन्छ।', 'अभी लाइव स्थान नहीं है। बस का GPS आने पर मानचित्र अपडेट होगा।'],
+    waiting: ['Waiting for first GPS report', 'पहिलो GPS रिपोर्ट पर्खिँदै', 'पहली GPS रिपोर्ट का इंतज़ार'],
+    offline: ['Device offline', 'डिभाइस अफलाइन', 'डिवाइस ऑफलाइन'], stale: ['Last fix is old', 'पुरानो GPS स्थान', 'पुराना GPS स्थान'],
+    no_fix: ['Connected, waiting for GPS fix', 'जोडिएको छ, GPS स्थान पर्खिँदै', 'कनेक्टेड, GPS स्थान का इंतज़ार'],
+    disabled: ['Tracker switched off', 'ट्र्याकर बन्द छ', 'ट्रैकर बंद है'],
+    ready: ['GPS connected · no public trip live', 'GPS जोडिएको छ · अहिले लाइभ यात्रा छैन', 'GPS कनेक्टेड · अभी लाइव यात्रा नहीं'],
+    refresh: ['Refresh', 'अपडेट', 'अपडेट'], error: ['Connection lost · retrying', 'सम्पर्क छुट्यो · फेरि जोड्दै', 'कनेक्शन टूटा · दोबारा जोड़ रहे हैं'],
+    unknown: ['Speed unavailable', 'गति उपलब्ध छैन', 'गति उपलब्ध नहीं']
+  };
+  var v = texts[k] || texts.waiting; return v[lang === 'ne' ? 1 : lang === 'hi' ? 2 : 0];
 }
-function busStop() { off('bus'); Object.keys(BUS.m).forEach(function (id) { BUS.m[id].remove(); }); BUS.m = {}; BUS.by = {}; }
+function busAge(b) { return Math.max(0, b._age + (performance.now() - BUS.received) / 1000); }
+function busFresh(b) { return Number.isFinite(b._age) && busAge(b) <= 120; }
+function busTelemetry(b) {
+  return (b.kmh == null ? fleetText('unknown') : Math.round(b.kmh) + ' km/h') +
+    ' · ' + Math.floor(busAge(b)) + ' s' + (b.acc != null ? ' · ±' + Math.round(b.acc) + ' m' : '');
+}
+function busRefresh(force) {
+  if (BUS.busy || document.hidden || (!force && performance.now() < BUS.retryAt)) return;
+  BUS.busy = true;
+  return api('/api/nav-buses.php').then(function (d) { BUS.errors = 0; busApply(d); })
+    .catch(function () { BUS.errors++; BUS.retryAt = performance.now() + Math.min(60000, 15000 * Math.pow(2, BUS.errors - 1)); busRows(); })
+    .then(function () { BUS.busy = false; });
+}
+function busStart() {
+  if (!BUS.on || FW || document.hidden) return;
+  BUS.stamp = 0; busRefresh(true); on('bus', busApply);
+}
+function removeBus(id) {
+  var mk = BUS.m[id]; if (mk) { if (mk._shgAnim) cancelAnimationFrame(mk._shgAnim); mk.remove(); }
+  delete BUS.m[id]; delete BUS.by[id];
+}
+function busStop() { off('bus'); Object.keys(BUS.m).forEach(function (id) { var m = BUS.m[id]; if (m._shgAnim) cancelAnimationFrame(m._shgAnim); m.remove(); delete BUS.m[id]; }); busRows(); }
 function busApply(snap) {
-  var m = X.S.map; if (!m || !window.maplibregl || !BUS.on) return;
-  var seen = {};
-  (snap && snap.buses || []).forEach(function (b) {
-    seen[b.id] = true; BUS.by[b.id] = b;
-    var lbl = (b.bus ? '<b>' + esc(b.bus) + '</b>' : '') + '<em>→ ' + esc(b.to) + '</em>';
-    if (BUS.m[b.id]) { moveMarker(BUS.m[b.id], [b.lng, b.lat]); BUS.m[b.id].getElement().querySelector('span').innerHTML = lbl; return; }
+  if (!snap || !Number.isFinite(snap.t)) return;
+  if (snap.t <= BUS.stamp) { BUS.errors = 0; busRows(); return; }
+  var m = X.S.map, seen = {};
+  BUS.stamp = snap.t; BUS.received = performance.now(); BUS.fleet = snap.fleet || []; BUS.errors = 0;
+  (snap.buses || []).forEach(function (b) {
+    b._age = Number.isFinite(b.fixAt) ? (snap.t - b.fixAt) / 1000 : b.age;
+    if (!Number.isFinite(b.lat) || !Number.isFinite(b.lng) || !busFresh(b)) return;
+    seen[b.id] = true;
+    var prev = BUS.by[b.id]; BUS.by[b.id] = b;
+    if (!m || !window.maplibregl || !BUS.on || document.hidden) return;
+    var lbl = (b.bus ? '<b>' + esc(b.bus) + '</b>' : '') + '<em>' + (b.kmh == null ? '→ ' + esc(b.to) : Math.round(b.kmh) + ' km/h') + '</em>';
+    if (BUS.m[b.id]) {
+      if (!prev || prev.fixAt !== b.fixAt || prev.lat !== b.lat || prev.lng !== b.lng) {
+        moveMarker(BUS.m[b.id], [b.lng, b.lat], !BUS.animate);
+      }
+      BUS.m[b.id].getElement().querySelector('span').innerHTML = lbl; return;
+    }
     var el = wrapM('<img src="/assets/img/bus-shg-sm.webp" alt="S Hari Global" loading="lazy"><span>' + lbl + '</span>', 'nl-bi');
-    el.className = 'nl-bus';
+    el.className = 'nl-bus'; el.tabIndex = 0; el.setAttribute('role', 'button'); el.setAttribute('aria-label', b.bus + ' · ' + b.to);
     el.addEventListener('click', function (e) { e.stopPropagation(); busSheet(b.id); });
+    el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); busSheet(b.id); } });
     BUS.m[b.id] = new maplibregl.Marker({ element: el, anchor: 'left' }).setLngLat([b.lng, b.lat]).addTo(m);
   });
-  Object.keys(BUS.m).forEach(function (id) { if (!seen[id]) { BUS.m[id].remove(); delete BUS.m[id]; delete BUS.by[id]; } });
+  Object.keys(BUS.by).forEach(function (id) { if (!seen[id]) removeBus(id); });
+  busRows();
+}
+function busRows() {
+  var rows = $('#nlFleetRows'), items = Object.keys(BUS.by).map(function (id) { return BUS.by[id]; }).filter(busFresh);
+  var liveButton = $('#nlFleetButton');
+  if (liveButton) { liveButton.textContent = '🚌 Live' + (items.length ? ' ' + items.length : ''); liveButton.setAttribute('aria-label', fleetText('title') + ': ' + items.length); }
+  var telemetry = $('#nlBusTelemetry'), detail = BUS.by[BUS.detail];
+  if (telemetry) telemetry.textContent = detail && busFresh(detail) ? busTelemetry(detail) : fleetText('stale');
+  if (!rows) return;
+  var plates = {};
+  rows.innerHTML = (BUS.errors ? '<p role="status">' + esc(fleetText('error')) + '</p>' : '') + items.map(function (b) {
+    plates[b.bus] = true;
+    return '<button class="nl-b nl-fleet-row" type="button" data-fleet-bus="' + Number(b.id) + '"><b>🟢 ' + esc(b.bus || b.busName || 'S Hari') + '</b><span>' + esc(b.from) + ' → ' + esc(b.to) + '</span><small>' + esc(busTelemetry(b)) + '</small></button>';
+  }).join('') + BUS.fleet.filter(function (f) { return !plates[f.bus]; }).map(function (f) {
+    return '<div class="nl-fleet-row"><b>⚪ ' + esc(f.bus) + '</b><small>' + esc(fleetText(f.state === 'live' ? 'stale' : f.state)) + '</small></div>';
+  }).join('') + (!items.length ? '<p>' + esc(fleetText('empty')) + '</p>' : '');
+  rows.querySelectorAll('[data-fleet-bus]').forEach(function (el) {
+    el.onclick = function () {
+      var b = BUS.by[el.dataset.fleetBus]; if (!b || !busFresh(b)) return;
+      // Deliberate bus selection centers once; incoming fixes never interrupt navigation.
+      if (X.S.map && !X.S.nav) X.S.map.easeTo({ center: [b.lng, b.lat], zoom: Math.max(X.S.map.getZoom(), 12), duration: slow() ? 0 : 800 });
+      busSheet(b.id);
+    };
+  });
+}
+function openFleet() {
+  BUS.detail = null;
+  var el = sheet('<h3>🚌 ' + esc(fleetText('title')) + '</h3>' +
+    '<label style="display:block;padding:8px 0"><input id="nlFleetOn" type="checkbox" ' + (BUS.on ? 'checked' : '') + '> ' + esc(fleetText('show')) + '</label>' +
+    '<label style="display:block;padding:8px 0"><input id="nlFleetMotion" type="checkbox" ' + (BUS.animate ? 'checked' : '') + '> ' + esc(fleetText('motion')) + '</label>' +
+    '<div id="nlFleetRows" aria-live="polite"></div><button class="nl-b" type="button" id="nlFleetRefresh">' + esc(fleetText('refresh')) + '</button>');
+  el.querySelector('#nlFleetOn').onchange = function () { toggle('bus'); };
+  el.querySelector('#nlFleetMotion').onchange = function (e) {
+    BUS.animate = e.target.checked; LSg.set('shg:nl:motion', BUS.animate);
+    if (!BUS.animate) Object.keys(BUS.m).forEach(function (id) { moveMarker(BUS.m[id], [BUS.by[id].lng, BUS.by[id].lat], true); });
+  };
+  el.querySelector('#nlFleetRefresh').onclick = function () { busRefresh(true); };
+  busRows(); busRefresh(true);
 }
 function busSheet(id) {
-  var b = BUS.by[id]; if (!b) return;
-  sheet('<h3><img src="/assets/img/bus-shg-sm.webp" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;background:#fff">S Hari Global' +
-    (b.bus ? '<span class="nl-plate">' + esc(b.bus) + '</span>' : '') + '</h3>' +
-    (b.busName ? '<p style="font-size:12.5px;margin:-4px 0 6px">' + esc(b.busName) + '</p>' : '') +
-    '<p style="color:var(--text,#EEF2FA);font-size:15px;margin-bottom:2px">' + esc(b.from) + ' → ' + esc(b.to) + ' · ' + esc(b.dep) + '</p>' +
-    (b.next ? '<p>' + esc(t('busNext')) + ': <b style="color:var(--gold,#D4A843)">' + esc(b.next.name) + '</b> · ' + esc(String(b.next.eta)) + ' ' + esc(t('min')) + ' · ' + esc(String(b.next.km)) + ' km</p>' : '') +
-    (b.age != null ? '<p style="font-size:12.5px">' + esc(t('busAge', { n: ago(Date.now() - b.age * 1000) })) + (b.kmh != null ? ' · ' + b.kmh + ' km/h' : '') + '</p>' : '') +
-    '<div class="nl-acts"><a class="nl-b cta" href="/">' + esc(t('busBook')) + '</a><a class="nl-b" href="/#/track">' + esc(t('busTrack')) + '</a></div>');
+  var b = BUS.by[id]; if (!b || !busFresh(b)) return;
+  BUS.detail = id;
+  sheet('<h3>S Hari Global <span class="nl-plate">' + esc(b.bus || '') + '</span></h3>' +
+    '<p>' + esc(b.from) + ' → ' + esc(b.to) + ' · ' + esc(b.dep) + '</p>' +
+    '<p id="nlBusTelemetry" role="status">' + esc(busTelemetry(b)) + '</p>' +
+    (b.next ? '<p>' + esc(t('busNext')) + ': <b>' + esc(b.next.name) + '</b> · ' + esc(String(b.next.eta)) + ' ' + esc(t('min')) + '</p>' : '') +
+    '<div class="nl-acts"><button type="button" class="nl-b" id="nlFleetBack">🚌 ' + esc(fleetText('title')) + '</button><a class="nl-b" href="/#/track">' + esc(t('busTrack')) + '</a></div>');
+  $('#nlFleetBack').onclick = openFleet;
 }
 
 /* ---------------------------------------------------------------------
@@ -910,6 +998,9 @@ function build() {
     ctr.insertBefore(lp, rb);
     if (FW) rb.hidden = true;
   }
+  if (ctr) {
+    var fleetButton = document.createElement('button'); fleetButton.type = 'button'; fleetButton.id = 'nlFleetButton'; fleetButton.className = 'fab nl-fleet-button'; fleetButton.textContent = '🚌 Live'; fleetButton.onclick = openFleet; ctr.insertBefore(fleetButton, ctr.firstChild);
+  }
   pill();
 }
 function start() {
@@ -933,7 +1024,19 @@ function start() {
     addEventListener('online', function () { syncRun(); });
     document.addEventListener('visibilitychange', function () { if (document.hidden) syncRun(); });
   }
-  window.SHGNAV_LIVE = { openSync: openSync, openMyBus: openMyBus };
+  window.SHGNAV_LIVE = { openSync: openSync, openMyBus: openMyBus, openFleet: openFleet };
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { off('bus'); Object.keys(BUS.m).forEach(function (id) { if (BUS.m[id]._shgAnim) cancelAnimationFrame(BUS.m[id]._shgAnim); }); }
+    else { busRows(); if (BUS.on) busStart(); }
+  });
+  addEventListener('online', function () { BUS.retryAt = 0; if (BUS.on) busStart(); });
+  setInterval(function () {
+    if (document.hidden || FW) return;
+    Object.keys(BUS.by).forEach(function (id) { if (!busFresh(BUS.by[id])) removeBus(id); });
+    busRows();
+    // Repair a silent WebSocket without redundant polling while push is healthy.
+    if (BUS.on && performance.now() - BUS.received > 20000) busRefresh(false);
+  }, 5000);
   (function waitMap(n) { if (X.S.map || n > 60) ready(); else setTimeout(function () { waitMap(n + 1); }, 300); })(0);   /* DOM markers need the map, not its style */
   /* reports follow the rider: a new list after 10 km or 5 minutes */
   setInterval(function () {

@@ -160,6 +160,14 @@ admin_header('GPS trackers (vehicle number)', 'gps-trackers');
   </div>
 <?php admin_footer(); exit; endif; ?>
 
+<!-- GPSLIVE-20261025 -->
+<div class="panel">
+  <h2>🛰️ Bus GPS connection</h2>
+  <p>Configure each bus once below. A saved key alone does not connect a device: it must send reports to the server URL.</p>
+  <p>एक पटक बसमा device जोड्नुहोस्। Key राख्दैमा GPS live हुँदैन; device/server बाट location आउनुपर्छ।</p>
+  <a class="btn" href="/admin/map.php">Open fleet GPS map · location + speed + connection status</a>
+  <a class="btn ghost" href="/navigate.html" target="_blank" rel="noopener">Open S Hari live map</a>
+</div>
 <div class="gt-cards">
   <div class="card"><div class="k">Trackers on</div><div class="v"><?= $nTrackers ?></div></div>
   <div class="card"><div class="k">Sending now</div><div class="v"><?= $nLive ?></div></div>
@@ -256,10 +264,10 @@ admin_header('GPS trackers (vehicle number)', 'gps-trackers');
         <td><span class="gt-uid"><?= Security::e((string) $t['device_uid']) ?></span><button class="btn ghost gt-copy" type="button" data-copy="<?= Security::e((string) $t['device_uid']) ?>">Copy</button>
           <?php if (GpsTrackers::needsKey((string) $t['device_uid'])): ?><div class="muted" style="font-size:11px">needs the forward key</div><?php endif; ?>
         </td>
-        <td class="<?= $cls ?>"><?= $seen === null ? 'never' : Security::e(timeAgo((string) $t['last_seen'])) ?></td>
+        <td class="<?= $cls ?>"><?= $seen === null ? 'Waiting for first GPS report' : Security::e(timeAgo((string) $t['last_seen'])) ?></td>
         <td><?php if ($t['last_lat'] !== null && $t['last_lng'] !== null):
             $ll = rtrim(rtrim(number_format((float) $t['last_lat'], 6, '.', ''), '0'), '.') . ',' . rtrim(rtrim(number_format((float) $t['last_lng'], 6, '.', ''), '0'), '.');
-            $map = GpsTrackers::PUBLIC_URL . '/navigate.html?to=' . $ll . '&name=' . rawurlencode((string) $b['bus_number']); ?>
+            $map = '/admin/map.php'; ?>
             <a href="<?= Security::e($map) ?>" target="_blank" rel="noopener">📍 <?= Security::e($ll) ?></a>
             <div class="muted" style="font-size:11px"><?= $t['last_speed'] !== null ? (int) round((float) $t['last_speed']) . ' km/h · ' : '' ?><?= $t['last_fix_at'] !== null ? Security::e(timeAgo((string) $t['last_fix_at'])) : '' ?></div>
           <?php else: ?><span class="muted">—</span><?php endif; ?></td>
@@ -355,6 +363,8 @@ admin_header('GPS trackers (vehicle number)', 'gps-trackers');
     return s;
   }
   if (btn && uid) btn.addEventListener('click', function () { uid.value = code(); if (kind) kind.value = 'phone'; });
+  var chosenBus = new URLSearchParams(location.search).get('bus'), busSelect = document.querySelector('#add select[name="bus_id"]');
+  if (chosenBus && busSelect) busSelect.value = chosenBus;
   if (kind && uid) kind.addEventListener('change', function () {
     uid.placeholder = kind.value === 'hardware' ? 'IMEI, e.g. 358240051111110' : 'empty = a new SHG code';
     if (btn) btn.style.display = kind.value === 'hardware' ? 'none' : '';

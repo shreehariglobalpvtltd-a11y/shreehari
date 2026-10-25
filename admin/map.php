@@ -203,8 +203,11 @@ admin_header('Live Map', 'map');
 @media(max-width:1020px){.lm-wrap{grid-template-columns:1fr}#lmMap{height:58vh;min-height:360px}.lm-side{max-height:none}}
 </style>
 
+<!-- GPSLIVE-20261025 -->
 <div class="lm-top">
-  <span class="muted" style="font-size:12.5px">Routes and stops from the database · live bus from the driver's phone (navigator → "I'm the driver") · refreshes every 15 s</span>
+  <a class="btn ghost" href="<?= $base ?>/admin/gps-trackers.php">🛰️ Configure bus GPS</a>
+  <a class="btn ghost" href="/navigate.html" target="_blank" rel="noopener">🚌 S Hari Live Map</a>
+  <span class="muted" style="font-size:12.5px">GPS devices + driver phones · live speed and last update · refreshes every 10 s</span>
   <span class="spacer"></span>
   <button class="btn ghost" type="button" id="lmFollow">🎯 Follow bus</button>
   <button class="btn ghost" type="button" id="lmFit">🗺️ Fit routes</button>
@@ -216,6 +219,11 @@ admin_header('Live Map', 'map');
     <div class="lm-legend"><span><i style="background:#2E5FA8"></i> <?= Security::e($routes[0]['from_city'] ?? 'Outbound') ?> → <?= Security::e($routes[0]['to_city'] ?? '') ?></span><span><i style="background:#0a6b3b"></i> return</span><span>● stop · 🚌 live bus · 🏢 head office (Mehsana)</span></div>
   </div>
   <aside class="lm-side">
+    <div class="lm-card"><h3>🛰️ Bus GPS devices <small id="gpsFleetAge">Checking…</small></h3>
+      <div id="gpsFleetStatus" aria-live="polite">Connecting to GPS devices…</div>
+      <button class="btn ghost" type="button" id="gpsFleetRefresh" style="margin:10px">Refresh status</button>
+      <p class="muted" style="padding:0 14px;font-size:12px">Device positions include parked buses. Grey markers are last known positions. Public map positions require an active trip.</p>
+    </div>
     <div class="lm-card"><h3>🛰️ Buses on the road · driver app <small id="lmFleetAge">…</small></h3>
       <div id="lmFleet"><div class="muted" style="padding:10px 14px">No driver has started a trip in the driver app. Give a driver a PIN in <a href="<?= $base ?>/admin/drivers.php">Drivers</a>, then they open <b><?= Security::e(appUrl('driver/')) ?></b> on their phone and tap START TRIP.</div></div>
     </div>
@@ -356,6 +364,7 @@ window.ADMAP = {
     }
   }
   function poll(){
+    if (document.hidden) return;
     fetch(A.base + '/api/kv.php?action=get&key=livebus', { credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(d){
       var v = (d && d.data && d.data.value !== undefined) ? d.data.value : (d && d.value !== undefined ? d.value : (d && d.data));
       if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = null; } }
@@ -376,7 +385,8 @@ window.ADMAP = {
   function showFleet(list){
     var box = document.getElementById('lmFleet'), seen = {};
     document.getElementById('lmFleetAge').textContent = list.length ? list.length + ' running' : 'none';
-    if (!list.length) return;
+    window.SHG_GPS_RUNNING_PLATES = {};
+    list.forEach(function (t) { if (t.live) window.SHG_GPS_RUNNING_PLATES[t.bus] = true; });
     box.innerHTML = list.map(function(t){
       return '<div class="lm-trip" data-trip="' + t.tripId + '"><div class="t1"><span>' + (t.live ? '🟢' : '⚪') + '</span><span>' + esc(t.route) + '</span>'
         + '<span class="pill" style="margin-left:auto">' + esc(t.bus || t.routeCode) + '</span></div>'
@@ -401,9 +411,10 @@ window.ADMAP = {
       f.to = { lng: t.lng, lat: t.lat };
       if (!f.anim) f.anim = requestAnimationFrame(function(){ glide(f); });
     });
-    Object.keys(fleet).forEach(function(id){ if (!seen[id]) { fleet[id].marker.remove(); delete fleet[id]; } });
+    Object.keys(fleet).forEach(function(id){ if (!seen[id]) { if (fleet[id].anim) cancelAnimationFrame(fleet[id].anim); fleet[id].marker.remove(); delete fleet[id]; } });
   }
   function pollFleet(){
+    if (document.hidden) return;
     fetch(A.fleetUrl, { credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(d){
       if (d && d.ok && d.data) showFleet(d.data.trips || []);
     }).catch(function(){});
@@ -422,6 +433,7 @@ window.ADMAP = {
     map.on('load', function(){
       var l = document.getElementById('lmLoad'); if (l) l.remove();
       draw();
+      window.SHG_GPS_MAP = map; document.dispatchEvent(new Event('shg:admin-map-ready'));
       var b = bounds(); if (b) map.fitBounds(b, { padding: 48, duration: 0 });
       poll(); setInterval(poll, 15000);
       pollFleet();   // draw the markers now the map is ready
@@ -429,4 +441,5 @@ window.ADMAP = {
   }).catch(function(){ document.getElementById('lmLoad').textContent = 'Map library could not be loaded — check the connection.'; });
 })();
 </script>
+<script src="/assets/nav/gps-admin.js?v=20261025gps1" defer></script>
 <?php admin_footer(); ?>

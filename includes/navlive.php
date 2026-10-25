@@ -216,7 +216,7 @@ final class NavLive
     public static function buses(?int $now = null): array
     {
         $now = $now ?? time();
-        $file = sys_get_temp_dir() . '/shg-navlive-bus.json';
+        $file = sys_get_temp_dir() . '/shg-navlive-bus-v2.json';
         if (is_file($file) && $now - (int) filemtime($file) < self::BUS_CACHE) {
             $c = json_decode((string) @file_get_contents($file), true);
             if (is_array($c)) {
@@ -278,16 +278,31 @@ final class NavLive
                 'dep'   => substr((string) $c['dep_time'], 0, 5),
                 'bus'   => $plates[(int) $c['id']][0] ?? '',
                 'busName' => $plates[(int) $c['id']][1] ?? '',
-                'lat'   => round((float) $fix['lat'], 5),
-                'lng'   => round((float) $fix['lng'], 5),
+                'lat'   => round((float) $fix['lat'], 7),
+                'lng'   => round((float) $fix['lng'], 7),
                 'kmh'   => $fix['kmh'] === null ? null : (int) round((float) $fix['kmh']),
                 'brg'   => isset($fix['brg']) && $fix['brg'] !== null ? (int) $fix['brg'] : null,
                 'pct'   => $pct,
                 'age'   => $age === null ? null : (int) $age,
+                'fixAt' => $age === null ? null : ($now - (int) $age) * 1000,
+                'acc' => isset($fix['acc']) ? (float) $fix['acc'] : null,
                 'next'  => $next,
             ];
         }
-        $snap = ['t' => $now * 1000, 'buses' => $out];
+        // Public status carries plates only. Parked-device coordinates stay in the admin API.
+        $fleet = [];
+        try {
+            require_once __DIR__ . '/gpsfleet.php';
+            $live = array_fill_keys(array_column($out, 'bus'), true);
+            foreach (GpsFleet::snapshot($now)['devices'] as $device) {
+                $plate = $device['bus'];
+                $status = isset($live[$plate]) ? 'live' : ($device['state'] === 'live' ? 'ready' : $device['state']);
+                $fleet[$plate] = ['bus' => $plate, 'state' => $status];
+            }
+        } catch (Throwable $e) {
+            Logger::warning('NavLive: GPS health unavailable', [], 'nav');
+        }
+        $snap = ['t' => $now * 1000, 'buses' => $out, 'fleet' => array_values($fleet)];
         @file_put_contents($file . '.tmp', json_encode($snap, JSON_UNESCAPED_UNICODE));
         @rename($file . '.tmp', $file);
         return $snap;

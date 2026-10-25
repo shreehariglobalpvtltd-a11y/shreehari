@@ -211,7 +211,7 @@ final class GpsTrackers
             // a Traccar server with forward.type json
             $p = $q['position'];
             $speed = $nonNeg($num($p['speed'] ?? null));
-            $valid = !array_key_exists('valid', $p) || ($p['valid'] !== false && $p['valid'] !== 'false' && $p['valid'] !== 0);
+            $valid = !array_key_exists('valid', $p) || ($p['valid'] !== false && $p['valid'] !== 'false' && $p['valid'] !== 0 && $p['valid'] !== '0');
             $raw[] = [$p['latitude'] ?? null, $p['longitude'] ?? null, $p['fixTime'] ?? $p['deviceTime'] ?? null,
                       $speed !== null ? $speed * self::KNOT_KMH : null, $nonNeg($num($p['course'] ?? null)),
                       $nonNeg($num($p['accuracy'] ?? null)), $valid];
@@ -475,18 +475,21 @@ final class GpsTrackers
         $newest = null;
         foreach ($points as $pt) {
             $c = LiveTrips::cleanPoint($pt, $now);
-            if ($c !== null && $c['ts'] >= $lastTs && ($newest === null || $c['ts'] >= $newest['ts'])) {
+            if ($c !== null && ($c['acc'] === null || $c['acc'] <= LiveTrips::MOVE_MAX_ACC_M) && $c['ts'] > $lastTs && ($newest === null || $c['ts'] >= $newest['ts'])) {
                 $newest = $c;
             }
-        }
-        if ($newest !== null) {
-            $upd += ['last_fix_at' => date('Y-m-d H:i:s', $newest['ts']), 'last_lat' => $newest['lat'],
-                     'last_lng' => $newest['lng'], 'last_speed' => $newest['kmh']];
         }
         if ($p['batt'] !== null) {
             $upd['last_batt'] = $p['batt'];
         }
         Database::update('gps_trackers', $upd, 'id = :id', ['id' => (int) $t['id']]);
+        // Delayed concurrent requests must never overwrite a newer GPS fix.
+        if ($newest !== null) {
+            Database::query('UPDATE gps_trackers SET last_fix_at=:fix, last_lat=:lat, last_lng=:lng, last_speed=:speed
+                WHERE id=:id AND (last_fix_at IS NULL OR last_fix_at < :older)',
+                ['fix' => date('Y-m-d H:i:s', $newest['ts']), 'lat' => $newest['lat'], 'lng' => $newest['lng'],
+                 'speed' => $newest['kmh'], 'id' => (int) $t['id'], 'older' => date('Y-m-d H:i:s', $newest['ts'])]);
+        }
 
         if ($points === [] || !LiveTrips::available()) {
             return $res(200);

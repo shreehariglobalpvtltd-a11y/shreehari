@@ -414,6 +414,8 @@ final class LiveTrips
             'lat' => (float) $row['last_lat'],
             'lng' => (float) $row['last_lng'],
             'kmh' => $row['last_speed'] !== null ? (float) $row['last_speed'] : null,
+            'acc' => $row['last_acc_m'] !== null ? (float) $row['last_acc_m'] : null,
+            'brg' => $row['last_bearing'] !== null ? (int) $row['last_bearing'] : null,
         ], '', max(0, $age), true];
     }
 
