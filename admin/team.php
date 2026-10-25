@@ -73,9 +73,9 @@ foreach($rows as $r){
  if($r['kind']==='account'||(!TeamRegistry::digital($r)&&!$archiveView)||$r['archived']!==$archiveView){continue;}
  $isStaff=$r['kind']==='staff';$a=$isStaff?StaffApps::find((int)$r['id']):AgentApplications::find((int)$r['id']);
  $m=TeamRegistry::meta($r['key']);$category=$isStaff?(($a['role_applied']??'')==='driver'?'driver':'staff'):($a['type']==='org'?'partner':'agent');
- if(!in_array($a['status'],['approved','suspended'],true)){
+ if(!in_array($a['status'],['approved','suspended'],true)||($a['kyc_status']??'')!=='verified'){
   if(!in_array($a['status'],['rejected','exited'],true)){$pendingQueue[]=['type'=>$r['kind'],'id'=>$r['id'],'ref'=>$r['ref'],'name'=>$r['name'],'role'=>$r['label'],'phone'=>$r['phone_raw'],'phone_verified'=>!empty($a['phone_verified']),'district'=>$r['area'],'id_type'=>$isStaff?($a['id_type']??''):($a['fields']['p_idtype']??''),'id_no'=>'Private document · open KYC review','created'=>$a['created_at'],'file_url'=>'','photo_url'=>'','key'=>$r['key']];}
-  continue;
+  if(!in_array($a['status'],['approved','suspended'],true)){continue;}
  }
  if(($searchRole!=='all'&&$category!==$searchRole)||($query!==''&&stripos(implode(' ',[$r['name'],$r['phone'],$r['ref'],$m['code']??'',$m['route']??'']),$query)===false)){continue;}
  $aid=(int)($r['admin_id']??0);$balance=$aid?TeamFinance::available($aid):['available'=>0,'pending'=>0];
@@ -177,7 +177,7 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
                 </a>
               </td>
               <td><b>INR <?= number_format((float)$m['balance'], 2) ?></b><br><small>Reserved: <?= number_format((float)$m['pending'],2) ?></small></td>
-              <td><span class="pill pill-<?= $m['status'] === 'approved' ? 'active' : 'suspended' ?>"><?= Security::e(ucfirst($m['status'])) ?></span></td>
+              <td><span class="pill pill-<?= $m['status'] === 'approved' ? 'active' : 'suspended' ?>"><?= Security::e(ucfirst($m['status'])) ?> · <?= Security::e((string)(TeamManager::find($m['key'])['kyc_status']??'')) ?></span></td>
               <td>
                 <div class="action-grid">
                   <a href="id-card.php?ref=<?= urlencode($m['ref']) ?>" class="btn-sm btn-outline">🪪 Cards</a>

@@ -106,7 +106,7 @@ try {
     $log = [];
 }
 $verify = IdCard::verifyUrl($p['ref']);
-$waPersonal = IdCard::waLink($p);
+$waPersonal = IdCard::waQrUrl($p);
 ?><!doctype html>
 <html lang="ne">
 <head>
@@ -217,6 +217,10 @@ th{color:var(--mut);font-weight:700;font-size:12px}
         <span class="delivery-pill <?= $h($delivery['status']) ?>">
           <?= match($delivery['status']) {
             'delivered' => '✅ Delivered (Webhook confirmed)',
+            'read' => '✅ Read (Webhook confirmed)',
+            'processing' => '⏳ Sending — no delivery confirmation',
+            'unknown' => '⚠️ Outcome unknown — review provider before resend',
+            'legacy' => 'Previous attempt — needs receipt review',
             'sent'      => '🚀 Sent via Cloud API (Pending receipt)',
             'failed'    => '❌ Send Failed',
             default     => '⏳ Queued'

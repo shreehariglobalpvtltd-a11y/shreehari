@@ -100,3 +100,6 @@ CREATE TABLE IF NOT EXISTS team_ledger_journal (
  recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
  KEY ix_ledger(ledger_id,id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE team_card_jobs ADD COLUMN IF NOT EXISTS sent_at DATETIME NULL;
+ALTER TABLE team_card_jobs ADD COLUMN IF NOT EXISTS delivered_at DATETIME NULL;

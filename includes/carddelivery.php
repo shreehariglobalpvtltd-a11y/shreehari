@@ -20,7 +20,7 @@ final class CardDelivery {
     public static function getDelivery(string $ref): ?array {
         if (!TeamRegistry::ready()) { return null; }
         $r=Database::fetch('SELECT * FROM team_card_jobs WHERE ref=:r ORDER BY id DESC LIMIT 1',['r'=>$ref]);
-        if (!$r) { return null; }
+        if (!$r) { $raw=Database::scalar("SELECT kvalue FROM kv_store WHERE kscope='global' AND kkey=:k",['k'=>'card_delivery:'.$ref],null);$legacy=is_string($raw)?json_decode($raw,true):null;return is_array($legacy)?array_replace($legacy,['id'=>0,'state'=>'legacy','status'=>'legacy','version_hash'=>'','error_message'=>'Legacy attempt retained. Review provider receipts before explicit resend.']):null; }
         $p=IdCard::person($ref);
         return $r+['status'=>$r['state'],'phone'=>$r['recipient'],'name'=>$p['name']??'','provider'=>'cloud_api','provider_msg_id'=>$r['provider_ref'],'error_message'=>$r['error'],'retry_count'=>(int)Database::scalar('SELECT COUNT(*) FROM team_card_jobs WHERE ref=:r',['r'=>$ref],0)-1,'sent_at'=>in_array($r['state'],['sent','delivered','read'])?$r['updated_at']:null,'delivered_at'=>in_array($r['state'],['delivered','read'])?$r['updated_at']:null];
     }
@@ -37,6 +37,7 @@ final class CardDelivery {
             return Database::transaction(static function()use($ref,$to,$hash,$pdf,$force,$m):array {
                 Database::fetch('SELECT id FROM team_identity WHERE id=:i FOR UPDATE',['i'=>$m['id']]);
                 $last=self::getDelivery($ref);
+                if($last&&$last['state']==='legacy'&&!$force){return ['ok'=>false,'status'=>'legacy','detail'=>'Legacy attempt retained. Review it before explicit resend.','manual'=>self::manualFallback($ref)];}
                 if ($last && $last['version_hash']===$hash && (!$force || in_array($last['state'],['queued','processing'],true))) {
                     return ['ok'=>true,'status'=>$last['state'],'detail'=>'Existing card job: '.$last['state'].'. Delivery requires a webhook receipt.','manual'=>self::manualFallback($ref)];
                 }
@@ -82,7 +83,7 @@ final class CardDelivery {
                 $attempted=true;
                 $res=waGraphPost($r['recipient'],$payload,'team_cards',null,null,1);
                 $state=!empty($res['success'])&&!empty($res['message_id'])?'sent':(((int)$res['http']===0 || (int)$res['http']>=500)?'unknown':'failed');
-                Database::update('team_card_jobs',['state'=>$state,'provider_ref'=>$res['message_id']?:null,'error'=>$state==='sent'?null:mb_substr((string)($res['error']?:'No message ID returned; check provider before resend.'),0,255)],'id=:i',['i'=>$r['id']]);
+                Database::update('team_card_jobs',['state'=>$state,'provider_ref'=>$res['message_id']?:null,'sent_at'=>$state==='sent'?date('Y-m-d H:i:s'):null,'error'=>$state==='sent'?null:mb_substr((string)($res['error']?:'No message ID returned; check provider before resend.'),0,255)],'id=:i',['i'=>$r['id']]);
                 if ($state==='sent') {
                     $ev=Database::fetch('SELECT * FROM team_card_events WHERE provider_ref=:w',['w'=>$res['message_id']]);
                     if ($ev) { self::status($res['message_id'],$ev['state'],$ev['error'],(int)$ev['event_at']); }
@@ -99,6 +100,7 @@ final class CardDelivery {
             $rank=['sent'=>1,'failed'=>2,'delivered'=>3,'read'=>4];
             $chosen=$rank[$state]>=$rank[$old['state']]?$state:$old['state'];
             Database::update('team_card_events',['state'=>$chosen,'error'=>$chosen==='failed'?mb_substr($error,0,255):'','event_at'=>max($at,(int)$old['event_at'])],'provider_ref=:w',['w'=>$wamid]);
+            if(in_array($chosen,['delivered','read'],true)){Database::run('UPDATE team_card_jobs SET delivered_at=COALESCE(delivered_at,FROM_UNIXTIME(:t)) WHERE provider_ref=:w',['t'=>$at>0?$at:time(),'w'=>$wamid]);}
             Database::run("UPDATE team_card_jobs SET state=:s,error=:e WHERE provider_ref=:w",['s'=>$chosen,'e'=>$chosen==='failed'?mb_substr($error,0,255):null,'w'=>$wamid]);
         });
     }
