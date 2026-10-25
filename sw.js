@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v256-gps20261025-1';   // Bus-wise live GPS controls and admin device health
+var VERSION = 'shg-v256-gps20261025-2';   // Private GPS fix quality diagnostics
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */

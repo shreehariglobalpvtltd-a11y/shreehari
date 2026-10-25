@@ -441,5 +441,5 @@ window.ADMAP = {
   }).catch(function(){ document.getElementById('lmLoad').textContent = 'Map library could not be loaded — check the connection.'; });
 })();
 </script>
-<script src="/assets/nav/gps-admin.js?v=20261025gps1" defer></script>
+<script src="/assets/nav/gps-admin.js?v=20261025gps2" defer></script>
 <?php admin_footer(); ?>

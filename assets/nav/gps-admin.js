@@ -44,6 +44,7 @@ function focus(id) {
 function render() {
   root.innerHTML = rows.length ? rows.map(function (r) {
     return '<div class="lm-trip"><div class="t1"><b>' + (r.state === 'live' ? '🟢 ' : '⚪ ') + esc(r.bus) + '</b><span>' + esc(labels[r.state] || r.state) + '</span></div>' +
+      (r.diagnostic ? '<p style="margin:6px 0;font-size:12px">GPS: ' + esc(({poor_accuracy:'Accuracy too weak for live tracking',old_fix:'Phone is sending an old GPS fix',stale_report:'Delayed GPS report',no_fix:'No valid GPS fix in report',invalid_fix:'Invalid GPS fix',accepted:'Fresh GPS fix accepted'})[r.diagnostic.reason] || r.diagnostic.reason) + (r.diagnostic.accuracyM != null ? ' · ±' + Math.round(r.diagnostic.accuracyM) + ' m' : '') + '</p>' : '') +
       '<div class="meta"><span>' + esc(r.label) + '</span><span>Received: ' + esc(age(r.seenAt)) + '</span><span>Fix: ' + esc(age(r.fixAt)) + '</span>' +
       (r.kmh != null ? '<span>' + r.kmh + ' km/h</span>' : '') + (r.battery != null ? '<span>Battery ' + r.battery + '%</span>' : '') + '</div>' +
       '<div class="acts">' + (r.lat != null ? '<button class="btn ghost" type="button" data-gps-focus="' + r.id + '">📍 ' + (r.state === 'live' ? 'Locate bus' : 'Last known position') + '</button>' : '') +

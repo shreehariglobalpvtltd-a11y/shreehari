@@ -278,6 +278,31 @@ final class GpsTrackers
         return array_values($out);
     }
 
+    /** Payload-free health metadata: never coordinates, device ids or keys. */
+    public static function fixHealth(array $points, int $lastTs, int $now): array
+    {
+        $latest = null;
+        foreach ($points as $pt) {
+            if ($latest === null || $pt['t'] > $latest['t']) { $latest = $pt; }
+        }
+        $out = ['receivedAt' => $now * 1000, 'reportedAt' => null, 'accuracyM' => null, 'reason' => 'no_fix'];
+        if ($latest === null) { return $out; }
+        $out['reportedAt'] = $latest['t'];
+        $out['accuracyM'] = $latest['acc'] ?? null;
+        $clean = LiveTrips::cleanPoint($latest, $now);
+        $out['reason'] = $clean === null ? 'invalid_fix'
+            : (($clean['acc'] !== null && $clean['acc'] > LiveTrips::MOVE_MAX_ACC_M) ? 'poor_accuracy'
+            : ($clean['ts'] <= $lastTs ? 'old_fix' : ($now - $clean['ts'] > 120 ? 'stale_report' : 'accepted')));
+        return $out;
+    }
+
+    public static function health(int $trackerId): ?array
+    {
+        $p = sys_get_temp_dir() . '/shg-gps-health-' . $trackerId . '.json';
+        $v = is_file($p) ? json_decode((string) @file_get_contents($p), true) : null;
+        return is_array($v) ? $v : null;
+    }
+
     /* =================================================================
      *  The forward key (hardware through a Traccar server)
      * ================================================================= */
@@ -479,6 +504,10 @@ final class GpsTrackers
                 $newest = $c;
             }
         }
+        // Keep only the last report's quality metadata for the private admin status.
+        $healthPath = sys_get_temp_dir() . '/shg-gps-health-' . (int) $t['id'] . '.json';
+        @file_put_contents($healthPath, json_encode(self::fixHealth($points, $lastTs, $now)), LOCK_EX);
+        @chmod($healthPath, 0600);
         if ($p['batt'] !== null) {
             $upd['last_batt'] = $p['batt'];
         }

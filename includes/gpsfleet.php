@@ -28,6 +28,7 @@ final class GpsFleet
             FROM gps_trackers g JOIN buses b ON b.id=g.bus_id WHERE b.is_active=1 ORDER BY b.bus_number,g.id') as $r) {
             $state = self::state($r, $now, $enabled);
             $out[] = ['id' => (int) $r['id'], 'busId' => (int) $r['bus_id'], 'bus' => $r['bus_number'],
+                'diagnostic' => GpsTrackers::health((int) $r['id']),
                 'name' => $r['bus_name'], 'label' => $r['label'], 'kind' => $r['kind'], 'state' => $state,
                 'seenAt' => $r['last_seen'] ? strtotime($r['last_seen']) * 1000 : null,
                 'fixAt' => $r['last_fix_at'] ? strtotime($r['last_fix_at']) * 1000 : null,

@@ -25,3 +25,10 @@ foreach ($cases as [$name,$changes,$enabled,$expected]) {
 $p=GpsTrackers::parseOsmAnd(['device'=>['uniqueId'=>'QA-BUS-TEST'],'position'=>['latitude'=>23,'longitude'=>72,'valid'=>'0']]);
 if ($p['fixes']!==[]) { throw new RuntimeException('string zero is not a valid fix'); }
 echo "11 GPS health/invalid-fix checks passed\n";
+$p=['t'=>$now*1000,'lat'=>23.1,'lng'=>72.6,'acc'=>8];
+foreach ([['accepted',$p,$now-1],['poor_accuracy',array_replace($p,['acc'=>1200]),$now-1],['old_fix',$p,$now],['stale_report',array_replace($p,['t'=>($now-300)*1000]),$now-400],['invalid_fix',array_replace($p,['lat'=>0]),0]] as [$expected,$point,$last]) {
+ $got=GpsTrackers::fixHealth([$point],$last,$now);
+ if($got['reason']!==$expected){throw new RuntimeException('health '.$expected.': '.$got['reason']);}
+ foreach(['lat','lng','device_uid','key'] as $secret){if(array_key_exists($secret,$got)){throw new RuntimeException('Health metadata leaked '.$secret);}}
+}
+echo "5 payload-free GPS quality checks passed\n";
