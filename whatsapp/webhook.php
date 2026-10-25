@@ -133,6 +133,8 @@ function wh_status(array $st): void
         return;
     }
 
+    try { require_once INCLUDE_PATH . '/carddelivery.php'; CardDelivery::status($wamid, $state, (string)($st['errors'][0]['title'] ?? ''), (int)($st['timestamp'] ?? 0)); } catch (Throwable $e) { Logger::exception($e, 'whatsapp'); }
+
     $err     = $st['errors'][0] ?? [];
     $code    = (int) ($err['code'] ?? 0);
     $errText = trim((string) ($err['title'] ?? '') . ' ' . (string) ($err['error_data']['details'] ?? ''));

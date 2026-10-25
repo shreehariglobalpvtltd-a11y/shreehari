@@ -42,7 +42,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         try {
             if ($act === 'login') {
                 $p = TeamPortal::phone10((string) ($_POST['mobile'] ?? ''));
-                $r = TeamPortal::login($p, (string) ($_POST['password'] ?? ''), TeamPortal::cc($_POST['cc'] ?? '91'));
+                $ccIn=TeamPortal::cc($_POST['cc']??'91');
+                $codeIn=strtoupper(trim((string)($_POST['mobile']??'')));
+                if(preg_match('/^[AS]-[1-9][0-9]*$/',$codeIn)){
+                    require_once INCLUDE_PATH.'/teamregistry.php'; $ref=TeamRegistry::refForCode($codeIn);
+                    if($ref){$key=TeamRegistry::key($ref);[$k,$i]=explode(':',$key);$who=$k==='staff'?StaffApps::find((int)$i):AgentApplications::find((int)$i);$raw=$k==='staff'?'+'.countryDialCode($who['phone_country']).$who['phone']:(string)($who['phone_raw']?:$who['phone']);$digits=preg_replace('/\D/','',$raw);$p=substr($digits,-10);$ccIn=str_starts_with($digits,'977')?'977':'91';}
+                }
+
+                $r = TeamPortal::login($p, (string) ($_POST['password'] ?? ''), $ccIn);
                 if ($r['ok']) {
                     TeamUi::go('/team/');
                 }
@@ -50,7 +57,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             } elseif ($act === 'forgot_send') {
                 $p = TeamPortal::phone10((string) ($_POST['mobile'] ?? ''));
                 if ($p === '') {
-                    $err = '१० अङ्कको मोबाइल नम्बर लेख्नुहोस् · Enter your 10-digit mobile number.';
+                    $err = '१० अङ्कको मोबाइल नम्बर लेख्नुहोस् · Enter your Mobile / A-1 or S-1 code number.';
                     $v = 'forgot';
                 } else {
                     // 22 Oct 2026 (review): the same next page for every number (sent or not, registered or not)
@@ -126,6 +133,10 @@ if ($me !== null && $v !== 'reset') {
     }
     $agrUrl = TeamPortal::agreementsFor($me) !== [] ? '/team/agreement.php' : null;
     TeamUi::head('Home', 'home');
+    require_once INCLUDE_PATH.'/teamregistry.php';
+    $target=!empty($me['staff'])?(($me['staff']['role_applied']??'')==='driver'?'driver':'office'):((($me['agent']['type']??'')==='org')?'partner':'agent');
+    foreach(TeamRegistry::notices($target) as $notice){echo '<div class="tp-card"><b>'.$h($notice['title']).'</b><p>'.nl2br($h($notice['body'])).'</p></div>';}
+
     TeamUi::flash();
     if ($err !== null) {
         echo '<div class="tp-msg bad">' . $h($err) . '</div>';
@@ -334,7 +345,7 @@ if ($v === 'forgot'): ?>
     <?= $csrf ?><input type="hidden" name="action" value="login">
     <label class="f" for="m">मोबाइल नम्बर · Mobile number</label>
     <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px"><?= $ccPick($ccNow) ?>
-    <input class="i" id="m" name="mobile" type="tel" inputmode="numeric" autocomplete="username" required maxlength="16" placeholder="98XXXXXXXX" value="<?= $h($_POST['mobile'] ?? '') ?>"></div>
+    <input class="i" id="m" name="mobile" type="text" autocomplete="username" required maxlength="16" placeholder="Mobile or A-1 / S-1" value="<?= $h($_POST['mobile'] ?? '') ?>"></div>
     <div id="pkMsg" class="tp-msg info" hidden></div>
     <div id="faceMsg" class="tp-msg info" hidden></div>
     <div class="tf-doors">

@@ -1,0 +1,4 @@
+<?php
+declare(strict_types=1);require __DIR__.'/_init.php';require_once INCLUDE_PATH.'/teamregistry.php';require_once INCLUDE_PATH.'/idcard.php';require_once INCLUDE_PATH.'/carddesign.php';
+try{if(($_SERVER['REQUEST_METHOD']??'')!=='POST'){Response::error('POST required.',405);}Security::requireCsrf();TeamRegistry::actor();Response::$maxInputBytes=50000;$p=IdCard::person((string)Response::field('ref',''));if(!$p){Response::error('Approved card not found.',404);}$cfg=Response::field('config',[]);if(!is_array($cfg)){Response::error('Invalid design.',422);}$png=IdCard::designPng($p,(string)Response::field('doc','id'),(string)Response::field('side','front'),$cfg);header('Content-Type: image/png');header('Cache-Control: private,no-store');echo $png;
+}catch(Throwable $e){Response::serverError($e);}

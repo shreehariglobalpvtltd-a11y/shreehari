@@ -267,7 +267,7 @@ if (!$ready) {
   </select>
   <select name="role" aria-label="Job">
     <option value="">All jobs</option>
-    <?php foreach (StaffApps::ROLES as $r): ?><option value="<?= $h($r) ?>"<?= $fRole === $r ? ' selected' : '' ?>><?= $h(StaffApps::roleLabel($r)) ?></option><?php endforeach; ?>
+    <?php foreach (StaffApps::roles() as $r): ?><option value="<?= $h($r) ?>"<?= $fRole === $r ? ' selected' : '' ?>><?= $h(StaffApps::roleLabel($r)) ?></option><?php endforeach; ?>
   </select>
   <select name="district" aria-label="District">
     <option value="">All districts</option>

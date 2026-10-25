@@ -31,6 +31,7 @@ try {
     }
     Response::$maxInputBytes = 1_500_000;
 
+    if (Response::field('consent',false) !== true) { Response::error('Consent is required before selfie review.',422); }
     $frames = [];
     foreach ((array) Response::field('frames', []) as $f) {
         $d = FaceCheck::decode($f, 300_000);

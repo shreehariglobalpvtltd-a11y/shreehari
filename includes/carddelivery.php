@@ -1,367 +1,113 @@
 <?php
-/**
- * includes/carddelivery.php — Automated WhatsApp ID & Visiting Card Delivery & State Tracking.
- *
- * Implements:
- *  - Automatic WhatsApp Cloud API card delivery upon admin approval
- *  - Delivery tracking lifecycle: queued -> sent -> delivered (webhook confirmed) -> failed
- *  - Duplicate send prevention (idempotency by card ref)
- *  - Admin Retry / Resend capabilities
- *  - Manual WhatsApp Fallback (Web Share API with file attachment + prefilled wa.me text + download fallback)
- */
-
 declare(strict_types=1);
-
-if (!defined('SHG_APP')) {
-    http_response_code(403);
-    exit('Forbidden');
-}
-
-require_once __DIR__ . '/idcard.php';
-require_once __DIR__ . '/notify.php';
-
-final class CardDelivery
-{
-    public const STATUS_QUEUED    = 'queued';
-    public const STATUS_SENT      = 'sent';
-    public const STATUS_DELIVERED = 'delivered';
-    public const STATUS_FAILED    = 'failed';
-
-    private function __construct() {}
-
-    /**
-     * Get or create delivery record key for a person reference.
-     */
-    private static function kvKey(string $ref): string
-    {
-        return 'card_delivery:' . strtoupper(trim($ref));
+if (!defined('SHG_APP')) { http_response_code(403); exit; }
+require_once __DIR__.'/idcard.php';
+require_once __DIR__.'/teamregistry.php';
+final class CardDelivery {
+    public const STATUS_QUEUED='queued', STATUS_SENT='sent', STATUS_DELIVERED='delivered', STATUS_FAILED='failed';
+    public static function cardUrls(string $ref): array {
+        $b=appUrl('admin/id-card.php').'?ref='.rawurlencode($ref);
+        return ['id_card_front'=>$b.'&png=front','id_card_back'=>$b.'&png=back','visiting_front'=>$b.'&v=front','visiting_back'=>$b.'&v=back','pdf'=>$b.'&pdf=all','verify'=>IdCard::verifyUrl($ref)];
     }
-
-    /**
-     * Retrieve the card delivery status record for a given card reference.
-     *
-     * @return array{
-     *   ref: string,
-     *   status: string,
-     *   phone: string,
-     *   name: string,
-     *   provider: string,
-     *   provider_msg_id: ?string,
-     *   id_card_url: string,
-     *   visiting_card_url: string,
-     *   pdf_url: string,
-     *   error_message: ?string,
-     *   created_at: string,
-     *   sent_at: ?string,
-     *   delivered_at: ?string,
-     *   failed_at: ?string,
-     *   retry_count: int
-     * }|null
-     */
-    public static function getDelivery(string $ref): ?array
-    {
-        $ref = strtoupper(trim($ref));
-        if ($ref === '') {
-            return null;
-        }
-
+    public static function recipient(string $ref): string {
+        $key=TeamRegistry::key($ref); [$kind,$id]=explode(':',$key);
+        $a=$kind==='staff'?StaffApps::find((int)$id):AgentApplications::find((int)$id);
+        if (!$a || empty($a['phone_verified'])) { return ''; }
+        $raw=$kind==='staff'?'+'.countryDialCode((string)$a['phone_country']).$a['phone']:(string)($a['phone_raw']?:$a['phone']);
+        $d=preg_replace('/\D/','',$raw)??'';
+        return preg_match('/^(91[6-9][0-9]{9}|9779[78][0-9]{8})$/',$d) ? $d : '';
+    }
+    public static function getDelivery(string $ref): ?array {
+        if (!TeamRegistry::ready()) { return null; }
+        $r=Database::fetch('SELECT * FROM team_card_jobs WHERE ref=:r ORDER BY id DESC LIMIT 1',['r'=>$ref]);
+        if (!$r) { return null; }
+        $p=IdCard::person($ref);
+        return $r+['status'=>$r['state'],'phone'=>$r['recipient'],'name'=>$p['name']??'','provider'=>'cloud_api','provider_msg_id'=>$r['provider_ref'],'error_message'=>$r['error'],'retry_count'=>(int)Database::scalar('SELECT COUNT(*) FROM team_card_jobs WHERE ref=:r',['r'=>$ref],0)-1,'sent_at'=>in_array($r['state'],['sent','delivered','read'])?$r['updated_at']:null,'delivered_at'=>in_array($r['state'],['delivered','read'])?$r['updated_at']:null];
+    }
+    public static function send(string $ref,bool $force=false): array {
+        $ref=strtoupper(trim($ref));
         try {
-            $raw = Database::scalar(
-                "SELECT kvalue FROM kv_store WHERE kscope = 'global' AND kkey = :k LIMIT 1",
-                ['k' => self::kvKey($ref)]
-            );
-            if (is_string($raw) && $raw !== '') {
-                $decoded = json_decode($raw, true);
-                if (is_array($decoded)) {
-                    return $decoded;
+            $p=IdCard::person($ref); if (!$p || !$p['valid'] || !$p['photo']) { throw new RuntimeException('An active approved card and approved photo are required.'); }
+            $key=TeamRegistry::key($ref); $m=TeamRegistry::meta($key); $to=self::recipient($ref);
+            if (!$to || empty($m['delivery_consent'])) { throw new RuntimeException('Record WhatsApp card-delivery consent and verify the exact registered number first.'); }
+            // Create the complete ID and visiting PDF BEFORE enqueueing a send; never give Meta an admin-only URL.
+            $pdf=IdCard::pdf($p,'all');
+            if (!str_starts_with($pdf,'%PDF-')) { throw new RuntimeException('Card PDF generation failed.'); }
+            $hash=hash('sha256',serialize($p).($m['template_json']??''));
+            return Database::transaction(static function()use($ref,$to,$hash,$pdf,$force,$m):array {
+                Database::fetch('SELECT id FROM team_identity WHERE id=:i FOR UPDATE',['i'=>$m['id']]);
+                $last=self::getDelivery($ref);
+                if ($last && $last['version_hash']===$hash && (!$force || in_array($last['state'],['queued','processing'],true))) {
+                    return ['ok'=>true,'status'=>$last['state'],'detail'=>'Existing card job: '.$last['state'].'. Delivery requires a webhook receipt.','manual'=>self::manualFallback($ref)];
                 }
-            }
-        } catch (Throwable $e) {
-            Logger::warning('CardDelivery::getDelivery failed: ' . $e->getMessage(), ['ref' => $ref], 'whatsapp');
-        }
-
-        return null;
+                if ($force && $last && strtotime($last['created_at'])>time()-60) { throw new RuntimeException('Wait one minute before another resend.'); }
+                $dedupe=hash('sha256',$ref.'|'.$to.'|'.$hash.($force?'|resend|'.($last['id']??0):''));
+                $file=TeamRegistry::stash($pdf);
+                Database::run("INSERT IGNORE INTO team_card_jobs(ref,recipient,version_hash,dedupe,file_key,parent_id) VALUES(:r,:t,:h,:d,:f,:p)",['r'=>$ref,'t'=>$to,'h'=>$hash,'d'=>$dedupe,'f'=>$file,'p'=>$force?($last['id']??null):null]);
+                Logger::audit('card.queued','team',$ref,null,['recipient'=>maskPhone($to),'hash'=>$hash],'ID and visiting PDF generated; queued for official Cloud API');
+                return ['ok'=>true,'status'=>'queued','detail'=>'ID and visiting cards generated and queued. No delivery confirmation yet.','manual'=>self::manualFallback($ref)];
+            });
+        } catch(Throwable $e) { return ['ok'=>false,'status'=>'failed','detail'=>$e->getMessage(),'manual'=>self::manualFallback($ref)]; }
     }
-
-    /**
-     * Save delivery record into persistent storage.
-     */
-    private static function saveDelivery(string $ref, array $record): void
-    {
-        $ref = strtoupper(trim($ref));
-        $key = self::kvKey($ref);
-        $json = json_encode($record, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if ($json === false) {
-            return;
+    public static function drain(int $limit=5): int {
+        if (!TeamRegistry::ready()) { return 0; }
+        require_once ROOT_PATH.'/whatsapp/api.php'; require_once __DIR__.'/watemplates.php';
+        if (META_ACCESS_TOKEN==='' || META_PHONE_NUMBER_ID==='') {
+            Database::run("UPDATE team_card_jobs SET error='Official Cloud API credentials missing; use manual sharing.' WHERE state='queued'"); return 0;
         }
-
-        try {
-            Database::run(
-                "INSERT INTO kv_store (kscope, kkey, kvalue, updated_by) VALUES ('global', :k, :v, 'carddelivery')
-                 ON DUPLICATE KEY UPDATE kvalue = :v2, updated_by = 'carddelivery'",
-                ['k' => $key, 'v' => $json, 'v2' => $json]
-            );
-        } catch (Throwable $e) {
-            Logger::warning('CardDelivery::saveDelivery failed: ' . $e->getMessage(), ['ref' => $ref], 'whatsapp');
-        }
-    }
-
-    /**
-     * Prepare public/download URLs for cards.
-     * Uses signed or permanent card viewer URLs.
-     */
-    public static function cardUrls(string $ref): array
-    {
-        $base = rtrim(APP_URL, '/');
-        return [
-            'id_card_front' => $base . '/admin/id-card.php?ref=' . urlencode($ref) . '&png=front',
-            'id_card_back'  => $base . '/admin/id-card.php?ref=' . urlencode($ref) . '&png=back',
-            'visiting_front'=> $base . '/admin/id-card.php?ref=' . urlencode($ref) . '&v=front',
-            'visiting_back' => $base . '/admin/id-card.php?ref=' . urlencode($ref) . '&v=back',
-            'pdf'           => $base . '/admin/id-card.php?ref=' . urlencode($ref) . '&pdf=all',
-            'verify'        => IdCard::verifyUrl($ref),
-        ];
-    }
-
-    /**
-     * Send ID Card and Visiting Card to applicant's verified WhatsApp number.
-     *
-     * @param string $ref Card reference (e.g. STF-000001, AGR-000001, DRV-000001)
-     * @param bool $force Resend even if already delivered or sent
-     * @return array{ok: bool, status: string, detail: string, manual: array}
-     */
-    public static function send(string $ref, bool $force = false): array
-    {
-        $ref = strtoupper(trim($ref));
-        $p = IdCard::person($ref);
-        if ($p === null) {
-            return [
-                'ok' => false,
-                'status' => self::STATUS_FAILED,
-                'detail' => 'Card record not found for ' . $ref,
-                'manual' => self::manualFallback($ref),
-            ];
-        }
-
-        $existing = self::getDelivery($ref);
-        if (!$force && $existing !== null) {
-            if ($existing['status'] === self::STATUS_DELIVERED) {
-                return [
-                    'ok' => true,
-                    'status' => self::STATUS_DELIVERED,
-                    'detail' => 'Cards already delivered via WhatsApp (webhook confirmed).',
-                    'manual' => self::manualFallback($ref),
-                ];
+        // A crashed/ambiguous send is held for explicit human resend, never blindly sent twice.
+        Database::run("UPDATE team_card_jobs SET state='unknown',error='Send interrupted; confirm provider status before explicit resend.' WHERE state='processing' AND updated_at<DATE_SUB(NOW(),INTERVAL 10 MINUTE)");
+        $rows=Database::fetchAll("SELECT * FROM team_card_jobs WHERE state='queued' ORDER BY id LIMIT ".max(1,min(20,$limit))); $count=0;
+        foreach($rows as $r) {
+            $p=IdCard::person($r['ref']); $m=TeamRegistry::meta(TeamRegistry::key($r['ref']));
+            if (!$p || !$p['valid'] || empty($m['delivery_consent']) || self::recipient($r['ref'])!==$r['recipient'] || hash('sha256',serialize($p).($m['template_json']??''))!==$r['version_hash']) {
+                Database::update('team_card_jobs',['state'=>'failed','error'=>'Approval, consent, phone or card version changed. Generate current cards again.'],'id=:i',['i'=>$r['id']]); continue;
             }
-            if ($existing['status'] === self::STATUS_SENT) {
-                return [
-                    'ok' => true,
-                    'status' => self::STATUS_SENT,
-                    'detail' => 'Cards already sent via WhatsApp; awaiting delivery confirmation.',
-                    'manual' => self::manualFallback($ref),
-                ];
-            }
-        }
-
-        $phone = $p['waDigits'] !== '' ? $p['waDigits'] : preg_replace('/\D/', '', (string) $p['phone']);
-        if ($phone === '' || strlen($phone) < 10) {
-            $record = [
-                'ref' => $ref,
-                'status' => self::STATUS_FAILED,
-                'phone' => (string) $p['phone'],
-                'name' => (string) $p['name'],
-                'provider' => 'none',
-                'provider_msg_id' => null,
-                'id_card_url' => '',
-                'visiting_card_url' => '',
-                'pdf_url' => '',
-                'error_message' => 'No valid mobile number on file.',
-                'created_at' => date('Y-m-d H:i:s'),
-                'sent_at' => null,
-                'delivered_at' => null,
-                'failed_at' => date('Y-m-d H:i:s'),
-                'retry_count' => ($existing['retry_count'] ?? 0) + 1,
-            ];
-            self::saveDelivery($ref, $record);
-            return [
-                'ok' => false,
-                'status' => self::STATUS_FAILED,
-                'detail' => 'Invalid or missing mobile number.',
-                'manual' => self::manualFallback($ref),
-            ];
-        }
-
-        $urls = self::cardUrls($ref);
-        $company = Settings::getString('company_name', APP_NAME);
-
-        // Build friendly WhatsApp message
-        $greeting = "🎉 नमस्ते " . $p['name'] . " जी!\n\n"
-                  . "तपाईंको " . $company . " (" . $p['roleEn'] . " / " . $p['roleNe'] . ") को आधिकारिक डिजिटल परिचयपत्र (ID Card) तथा भिजिटिङ कार्ड तयार भएको छ।\n\n"
-                  . "📌 परिचयपत्र नं. (Card No): " . $ref . "\n"
-                  . "🛡️ अनलाइन प्रमाणीकरण लिंक (Verify Online):\n" . $urls['verify'] . "\n\n"
-                  . "📎 कार्ड डाउनलोड गर्नुहोस् (Download Cards):\n"
-                  . "• परिचयपत्र (ID Card): " . $urls['id_card_front'] . "\n"
-                  . "• भिजिटिङ कार्ड (Visiting Card): " . $urls['visiting_front'] . "\n"
-                  . "• प्रिन्ट प्रति (Print-Ready PDF): " . $urls['pdf'] . "\n\n"
-                  . "हार्दिक बधाई तथा स्वागत छ!\n" . $company;
-
-        $record = [
-            'ref' => $ref,
-            'status' => self::STATUS_QUEUED,
-            'phone' => $phone,
-            'name' => (string) $p['name'],
-            'provider' => 'cloud_api',
-            'provider_msg_id' => null,
-            'id_card_url' => $urls['id_card_front'],
-            'visiting_card_url' => $urls['visiting_front'],
-            'pdf_url' => $urls['pdf'],
-            'error_message' => null,
-            'created_at' => $existing['created_at'] ?? date('Y-m-d H:i:s'),
-            'sent_at' => null,
-            'delivered_at' => null,
-            'failed_at' => null,
-            'retry_count' => ($existing['retry_count'] ?? 0) + 1,
-        ];
-
-        // Attempt automated delivery via Meta Cloud API or configured Notify::whatsapp
-        $sendOk = false;
-        $errorMsg = null;
-        $providerMsgId = null;
-
-        try {
-            $token   = Settings::getString('whatsapp_api_token', '');
-            $phoneId = Settings::getString('whatsapp_phone_id', '');
-            $driver  = Settings::getString('whatsapp_driver', 'click_to_chat');
-
-            if ($token !== '' && $phoneId !== '') {
-                // Post through WhatsApp Cloud API directly with media
-                $version  = Settings::getString('whatsapp_api_version', 'v21.0');
-                $endpoint = 'https://graph.facebook.com/' . $version . '/' . $phoneId . '/messages';
-
-                // Send Message with ID card image header
-                $payload = json_encode([
-                    'messaging_product' => 'whatsapp',
-                    'to'                => $phone,
-                    'type'              => 'image',
-                    'image'             => [
-                        'link'    => $urls['id_card_front'],
-                        'caption' => mb_substr($greeting, 0, 1024),
-                    ],
-                ], JSON_UNESCAPED_UNICODE);
-
-                $ch = curl_init($endpoint);
-                curl_setopt_array($ch, [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_POST           => true,
-                    CURLOPT_POSTFIELDS     => $payload,
-                    CURLOPT_HTTPHEADER     => [
-                        'Authorization: Bearer ' . $token,
-                        'Content-Type: application/json',
-                    ],
-                    CURLOPT_TIMEOUT        => 20,
-                ]);
-
-                $response = curl_exec($ch);
-                $status   = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                curl_close($ch);
-
-                $respJson = json_decode((string) $response, true);
-                if ($status >= 200 && $status < 300) {
-                    $sendOk = true;
-                    if (is_array($respJson) && isset($respJson['messages'][0]['id'])) {
-                        $providerMsgId = (string) $respJson['messages'][0]['id'];
-                    }
-                } else {
-                    $errorMsg = 'Meta Cloud API HTTP ' . $status . ': ' . (string) ($respJson['error']['message'] ?? 'Send error');
-                    Logger::error('Card WhatsApp delivery failed', ['ref' => $ref, 'phone' => $phone, 'resp' => $response], 'whatsapp');
+            $window=WaTemplates::inSessionWindow($r['recipient']); $template=Settings::getString('team_card_template','');
+            if (!$window && $template==='') { Database::update('team_card_jobs',['error'=>'Waiting for an approved document-header template or recipient WhatsApp reply.'],'id=:i',['i'=>$r['id']]); continue; }
+            $claimed=Database::transaction(static function()use($r):bool {
+                $x=Database::fetch('SELECT state FROM team_card_jobs WHERE id=:i FOR UPDATE',['i'=>$r['id']]);
+                if (($x['state']??'')!=='queued') { return false; }
+                Database::update('team_card_jobs',['state'=>'processing','error'=>null],'id=:i',['i'=>$r['id']]); return true;
+            }); if (!$claimed) { continue; }
+            $attempted=false;
+            try {
+                $pdf=TeamRegistry::open($r['file_key']);
+                $ch=curl_init(META_API_BASE.'/'.rawurlencode(META_PHONE_NUMBER_ID).'/media');
+                curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_RETURNTRANSFER=>true,CURLOPT_CONNECTTIMEOUT=>8,CURLOPT_TIMEOUT=>30,CURLOPT_HTTPHEADER=>['Authorization: Bearer '.META_ACCESS_TOKEN],CURLOPT_POSTFIELDS=>['messaging_product'=>'whatsapp','type'=>'application/pdf','file'=>new CURLStringFile($pdf,'SHG-Cards.pdf','application/pdf')]]);
+                $body=curl_exec($ch);$http=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);$media=json_decode((string)$body,true);
+                if ($http<200 || $http>=300 || empty($media['id'])) { throw new RuntimeException('Cloud API media upload rejected (HTTP '.$http.').'); }
+                $document=['id'=>$media['id'],'filename'=>'SHG-Cards-'.$r['ref'].'.pdf'];
+                $payload=$window?['type'=>'document','document'=>$document+['caption'=>'Your approved S Hari Global ID and visiting cards.']]:['type'=>'template','template'=>['name'=>$template,'language'=>['code'=>Settings::getString('team_card_template_lang','en')],'components'=>[['type'=>'header','parameters'=>[['type'=>'document','document'=>$document]]]]]];
+                $attempted=true;
+                $res=waGraphPost($r['recipient'],$payload,'team_cards',null,null,1);
+                $state=!empty($res['success'])&&!empty($res['message_id'])?'sent':(((int)$res['http']===0 || (int)$res['http']>=500)?'unknown':'failed');
+                Database::update('team_card_jobs',['state'=>$state,'provider_ref'=>$res['message_id']?:null,'error'=>$state==='sent'?null:mb_substr((string)($res['error']?:'No message ID returned; check provider before resend.'),0,255)],'id=:i',['i'=>$r['id']]);
+                if ($state==='sent') {
+                    $ev=Database::fetch('SELECT * FROM team_card_events WHERE provider_ref=:w',['w'=>$res['message_id']]);
+                    if ($ev) { self::status($res['message_id'],$ev['state'],$ev['error'],(int)$ev['event_at']); }
                 }
-            } else {
-                // Fallback to standard Notify::whatsapp
-                $notifyRes = Notify::whatsapp($phone, $greeting, $urls['id_card_front']);
-                if ($notifyRes === true) {
-                    $sendOk = true;
-                } else {
-                    $errorMsg = 'WhatsApp API not configured or refused send.';
-                }
-            }
-        } catch (Throwable $e) {
-            $errorMsg = $e->getMessage();
-            Logger::error('CardDelivery exception: ' . $e->getMessage(), ['ref' => $ref], 'whatsapp');
-        }
-
-        if ($sendOk) {
-            $record['status'] = self::STATUS_SENT;
-            $record['sent_at'] = date('Y-m-d H:i:s');
-            $record['provider_msg_id'] = $providerMsgId;
-            self::saveDelivery($ref, $record);
-
-            Logger::audit('card.whatsapp_sent', $p['kind'], $ref, null, ['phone' => maskPhone($phone), 'msg_id' => $providerMsgId], 'Card sent via WhatsApp');
-
-            return [
-                'ok' => true,
-                'status' => self::STATUS_SENT,
-                'detail' => 'Card successfully dispatched to +' . $phone . ' via WhatsApp (awaiting delivery receipt).',
-                'manual' => self::manualFallback($ref),
-            ];
-        }
-
-        $record['status'] = self::STATUS_FAILED;
-        $record['failed_at'] = date('Y-m-d H:i:s');
-        $record['error_message'] = $errorMsg;
-        self::saveDelivery($ref, $record);
-
-        return [
-            'ok' => false,
-            'status' => self::STATUS_FAILED,
-            'detail' => $errorMsg ?: 'WhatsApp automatic delivery could not be completed. Please use manual share below.',
-            'manual' => self::manualFallback($ref),
-        ];
+                $count++;
+            } catch(Throwable $e) { Database::update('team_card_jobs',['state'=>$attempted?'unknown':'failed','error'=>mb_substr($e->getMessage(),0,255)],'id=:i',['i'=>$r['id']]); }
+        } return $count;
     }
-
-    /**
-     * Mark a delivery as confirmed 'delivered' or 'read' via webhook.
-     */
-    public static function markDelivered(string $providerMsgId): bool
-    {
-        if (trim($providerMsgId) === '') {
-            return false;
-        }
-
-        try {
-            $rows = Database::fetchAll(
-                "SELECT kkey, kvalue FROM kv_store WHERE kscope = 'global' AND kkey LIKE 'card_delivery:%'"
-            );
-            foreach ($rows as $r) {
-                $decoded = json_decode((string) $r['kvalue'], true);
-                if (is_array($decoded) && ($decoded['provider_msg_id'] ?? '') === $providerMsgId) {
-                    $decoded['status'] = self::STATUS_DELIVERED;
-                    $decoded['delivered_at'] = date('Y-m-d H:i:s');
-                    $k = (string) $r['kkey'];
-                    $v = json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                    Database::run("UPDATE kv_store SET kvalue = :v, updated_by = 'webhook' WHERE kscope = 'global' AND kkey = :k", ['v' => $v, 'k' => $k]);
-                    Logger::info('Card delivery confirmed via webhook', ['ref' => $decoded['ref'], 'msg_id' => $providerMsgId], 'whatsapp');
-                    return true;
-                }
-            }
-        } catch (Throwable $e) {
-            Logger::warning('markDelivered error: ' . $e->getMessage(), [], 'whatsapp');
-        }
-
-        return false;
+    public static function status(string $wamid,string $state,string $error='',int $at=0): void {
+        if (!TeamRegistry::ready() || !in_array($state,['sent','delivered','read','failed'],true) || $wamid==='') { return; }
+        Database::transaction(static function()use($wamid,$state,$error,$at):void {
+            Database::run("INSERT IGNORE INTO team_card_events(provider_ref,state,error,event_at) VALUES(:w,:s,:e,:a)",['w'=>$wamid,'s'=>$state,'e'=>mb_substr($error,0,255),'a'=>$at]);
+            $old=Database::fetch('SELECT * FROM team_card_events WHERE provider_ref=:w FOR UPDATE',['w'=>$wamid]);
+            $rank=['sent'=>1,'failed'=>2,'delivered'=>3,'read'=>4];
+            $chosen=$rank[$state]>=$rank[$old['state']]?$state:$old['state'];
+            Database::update('team_card_events',['state'=>$chosen,'error'=>$chosen==='failed'?mb_substr($error,0,255):'','event_at'=>max($at,(int)$old['event_at'])],'provider_ref=:w',['w'=>$wamid]);
+            Database::run("UPDATE team_card_jobs SET state=:s,error=:e WHERE provider_ref=:w",['s'=>$chosen,'e'=>$chosen==='failed'?mb_substr($error,0,255):null,'w'=>$wamid]);
+        });
     }
-
-    /**
-     * Build Manual WhatsApp Fallback structure.
-     * Note: wa.me links cannot automatically attach local files, so we provide:
-     * 1. Direct Web Share API payload with files
-     * 2. Prefilled wa.me link with rich text and download links
-     * 3. One-click direct downloads for PNG/PDF
-     */
+    public static function markDelivered(string $id): bool { self::status($id,'delivered'); return true; }
     public static function manualFallback(string $ref): array
     {
         $ref = strtoupper(trim($ref));
         $p = IdCard::person($ref);
-        $phone = $p !== null ? ($p['waDigits'] ?: preg_replace('/\D/', '', (string) $p['phone'])) : '';
+        $phone = $p !== null ? (self::recipient($p['ref'])) : '';
         $urls = self::cardUrls($ref);
         $company = Settings::getString('company_name', APP_NAME);
 
@@ -369,7 +115,7 @@ final class CardDelivery
              . "तपाईंको " . $company . " परिचयपत्र (ID Card) तथा भिजिटिङ कार्ड तयार छ।\n\n"
              . "📌 कार्ड नं: " . $ref . "\n"
              . "🛡️ अनलाइन प्रमाणीकरण: " . $urls['verify'] . "\n"
-             . "📥 कार्ड डाउनलोड: " . $urls['id_card_front'] . "\n\n"
+             . "📥 कार्ड डाउनलोड: " . appUrl('team/') . "\n\n"
              . "धन्यवाद,\n" . $company;
 
         $waMe = $phone !== '' ? 'https://wa.me/' . $phone . '?text=' . rawurlencode($msg) : '';

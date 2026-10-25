@@ -294,36 +294,14 @@
         txt.textContent = '⚠️ Low resolution: photo may appear grainy on ID card.';
       } else if (origW > 4000 || origH > 4000) {
         badge.className = 'ps-quality ok';
-        txt.textContent = '✅ Ultra HD: photo will be crisp and auto-optimized.';
+        txt.textContent = '✅ High resolution. Review sharpness and lighting manually.';
       } else {
         badge.className = 'ps-quality ok';
-        txt.textContent = '✅ Optimal passport quality: sharp face and correct scale.';
+        txt.textContent = '✅ Resolution is sufficient. Review face sharpness and lighting manually.';
       }
     },
 
-    cleanBackground: function () {
-      // Gentle studio background brightening while preserving skin tones
-      var ctx = this.ctx;
-      var b = this.cropBox;
-      try {
-        var idata = ctx.getImageData(b.x, b.y, b.w, b.h);
-        var data = idata.data;
-        for (var i = 0; i < data.length; i += 4) {
-          var r = data[i], g = data[i + 1], bl = data[i + 2];
-          // If pixel is light/greyish (typical background wall), brighten toward neutral studio white
-          var maxD = Math.max(Math.abs(r - g), Math.abs(g - bl), Math.abs(r - bl));
-          var brightness = (r + g + bl) / 3;
-          if (brightness > 130 && maxD < 35) {
-            data[i] = Math.min(255, r * 1.15);
-            data[i + 1] = Math.min(255, g * 1.15);
-            data[i + 2] = Math.min(255, bl * 1.18);
-          }
-        }
-        ctx.putImageData(idata, b.x, b.y);
-      } catch (e) {
-        console.warn('Clean BG canvas error: ' + e.message);
-      }
-    },
+    cleanBackground: function () { alert('Automatic background removal is not configured. Crop and rotate preserve the original face.'); },
 
     exportDataUrl: function () {
       var b = this.cropBox;
@@ -365,9 +343,7 @@
             if (self.onSaveCallback) self.onSaveCallback(dataUrl, data);
             self.close();
             // Reload card preview images if on id-card.php or team.php
-            document.querySelectorAll('img[src*="' + self.targetRef + '"]').forEach(function (img) {
-              img.src = img.src.split('?')[0] + '?ref=' + encodeURIComponent(self.targetRef) + '&png=front&v=' + Date.now();
-            });
+            window.location.reload();
           } else {
             alert(data.error || 'Photo replacement failed.');
           }

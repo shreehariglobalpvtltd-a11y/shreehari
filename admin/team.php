@@ -1,433 +1,85 @@
 <?php
-/**
- * admin/team.php — S Hari Global Unified Team Management Panel.
- *
- * Consolidates:
- *  - Members: Unified registry across Agents, Drivers, Staff, and Transit Partners
- *  - Approvals: Digital KYC & Handwritten OCR queue with uncertain field highlighting, live selfie match, on-behalf editing
- *  - Earnings: Flexible commission (% of fare, per-seat, per-booking) & salary with bonus/deduction ledger and cancellation reversal
- *  - Withdrawals: Wallet balances, reserved funds logic, payout approval requiring UTR / payment reference
- *  - Cards: High-res branded ID and visiting card gallery, dual QR verification, automated Cloud API delivery tracker, retry, manual fallback
- *  - Announcements: Role-targeted team broadcasts with optional WhatsApp blast
- */
-
 declare(strict_types=1);
-
-require __DIR__ . '/_guard.php';
-require_once INCLUDE_PATH . '/staffapplications.php';
-require_once INCLUDE_PATH . '/agentapplications.php';
-require_once INCLUDE_PATH . '/idcard.php';
-require_once INCLUDE_PATH . '/carddelivery.php';
-require_once INCLUDE_PATH . '/teamdupes.php';
-require_once INCLUDE_PATH . '/docverify.php';
-require_once INCLUDE_PATH . '/agentwallet.php';
-require_once INCLUDE_PATH . '/agentsettlement.php';
-require_once INCLUDE_PATH . '/payroll.php';
-
-$admin = admin_boot('staff.manage');
-$adminId = (int) ($admin['id'] ?? 0);
-
-$tab = (string) ($_GET['tab'] ?? 'members');
-if (!in_array($tab, ['members', 'approvals', 'earnings', 'withdrawals', 'cards', 'announcements'], true)) {
-    $tab = 'members';
-}
-
-$flash = null;
-
-// =========================================================================
-// POST ACTION HANDLERS
-// =========================================================================
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
-    if (!Security::verifyCsrf()) {
-        $flash = ['bad', 'Session expired or security token mismatch. Please try again.'];
-    } else {
-        $action = (string) ($_POST['action'] ?? '');
-
-        // 1. APPROVE APPLICATION
-        if ($action === 'approve_application') {
-            $type = (string) ($_POST['app_type'] ?? 'staff');
-            $id   = (int) ($_POST['app_id'] ?? 0);
-
-            try {
-                if ($type === 'staff') {
-                    $app = StaffApps::find($id);
-                    if ($app === null) throw new RuntimeException('Staff application not found.');
-
-                    StaffApps::setStatus($id, 'approved', $adminId, 'Approved via Unified Team Panel');
-
-                    // If driver, ensure driver record
-                    if ((string) $app['role_applied'] === 'driver') {
-                        Database::run(
-                            "INSERT INTO drivers (name, phone, license_no, status, created_at)
-                             VALUES (:n, :p, :l, 'active', NOW())
-                             ON DUPLICATE KEY UPDATE status = 'active', name = :n2",
-                            ['n' => $app['full_name'], 'p' => $app['phone'], 'l' => (string)($app['license_number'] ?? ''), 'n2' => $app['full_name']]
-                        );
-                    } else {
-                        // Create counter/office login if role is office/accountant
-                        if (in_array((string)$app['role_applied'], ['office', 'accountant'], true)) {
-                            TeamPortal::makeCounterLogin($id, '', $adminId);
-                        }
-                    }
-                    $ref = StaffApps::refFor($id);
-                } else {
-                    // Agent or Partner
-                    $app = AgentApplications::find($id);
-                    if ($app === null) throw new RuntimeException('Application not found.');
-
-                    AgentApplications::update($id, [
-                        'status' => 'approved',
-                        'reviewed_by' => $adminId,
-                        'reviewed_at' => date('Y-m-d H:i:s'),
-                    ], $adminId);
-                    $ref = AgentApplications::refFor($id);
-                }
-
-                // Auto-dispatch Cards via WhatsApp Cloud API
-                $deliveryRes = CardDelivery::send($ref, false);
-
-                Logger::audit('team.approved', $type, $ref, null, ['admin' => $admin['username'] ?? ''], 'Application approved; login activated; cards generated');
-                $flash = ['ok', 'Application ' . $ref . ' approved! Cards generated and WhatsApp dispatch initiated: ' . $deliveryRes['detail']];
-            } catch (Throwable $e) {
-                Logger::error('Approve failed: ' . $e->getMessage());
-                $flash = ['bad', 'Approval failed: ' . $e->getMessage()];
-            }
-        }
-
-        // 2. REJECT APPLICATION
-        elseif ($action === 'reject_application') {
-            $type   = (string) ($_POST['app_type'] ?? 'staff');
-            $id     = (int) ($_POST['app_id'] ?? 0);
-            $reason = trim((string) ($_POST['reason'] ?? ''));
-
-            if ($reason === '') {
-                $flash = ['bad', 'Please provide a clear rejection reason.'];
-            } else {
-                try {
-                    if ($type === 'staff') {
-                        StaffApps::setStatus($id, 'rejected', $adminId, $reason);
-                        $ref = StaffApps::refFor($id);
-                    } else {
-                        AgentApplications::update($id, [
-                            'status' => 'rejected',
-                            'reviewed_by' => $adminId,
-                            'reviewed_at' => date('Y-m-d H:i:s'),
-                            'notes' => $reason
-                        ], $adminId);
-                        $ref = AgentApplications::refFor($id);
-                    }
-                    Logger::audit('team.rejected', $type, $ref, null, ['reason' => $reason], 'Application rejected');
-                    $flash = ['ok', 'Application ' . $ref . ' has been rejected.'];
-                } catch (Throwable $e) {
-                    $flash = ['bad', 'Rejection failed: ' . $e->getMessage()];
-                }
-            }
-        }
-
-        // 3. COMPLETE / EDIT ON BEHALF
-        elseif ($action === 'edit_on_behalf') {
-            $type    = (string) ($_POST['app_type'] ?? 'staff');
-            $id      = (int) ($_POST['app_id'] ?? 0);
-            $consent = trim((string) ($_POST['consent_proof'] ?? ''));
-
-            if ($consent === '') {
-                $flash = ['bad', 'Admin editing on behalf requires applicant consent confirmation.'];
-            } else {
-                try {
-                    if ($type === 'staff') {
-                        $changed = TeamPortal::officeEditStaff($id, $_POST, $adminId);
-                        Logger::audit('team.edit_on_behalf', 'staff', (string)$id, null, ['consent' => $consent, 'changed' => $changed], 'Admin completed/edited staff application on behalf with consent');
-                    } else {
-                        AgentApplications::update($id, [
-                            'name' => Security::clean((string)($_POST['name'] ?? ''), 120),
-                            'area' => Security::clean((string)($_POST['area'] ?? ''), 120),
-                        ], $adminId);
-                        Logger::audit('team.edit_on_behalf', 'agent', (string)$id, null, ['consent' => $consent], 'Admin edited agent application on behalf with consent');
-                    }
-                    $flash = ['ok', 'Application updated on behalf with applicant consent audit trail.'];
-                } catch (Throwable $e) {
-                    $flash = ['bad', 'Update failed: ' . $e->getMessage()];
-                }
-            }
-        }
-
-        // 4. RECORD BONUS OR DEDUCTION
-        elseif ($action === 'record_adjustment') {
-            $memberId = (int) ($_POST['member_id'] ?? 0);
-            $amount   = (float) ($_POST['amount'] ?? 0);
-            $type     = (string) ($_POST['adj_type'] ?? 'bonus'); // bonus or deduction
-            $reason   = trim((string) ($_POST['reason'] ?? ''));
-
-            if ($memberId <= 0 || $amount <= 0 || $reason === '') {
-                $flash = ['bad', 'Please provide a valid member, positive amount, and mandatory reason.'];
-            } else {
-                try {
-                    $signedAmount = ($type === 'deduction') ? -$amount : $amount;
-                    Database::run(
-                        "INSERT INTO agent_transactions (agent_id, booking_id, type, amount, balance_after, description, created_at)
-                         VALUES (:a, NULL, :t, :amt, (SELECT COALESCE(balance, 0) + :amt2 FROM agent_wallets WHERE agent_id = :a2), :d, NOW())",
-                        ['a' => $memberId, 't' => $type, 'amt' => $signedAmount, 'amt2' => $signedAmount, 'a2' => $memberId, 'd' => $reason]
-                    );
-                    Database::run(
-                        "UPDATE agent_wallets SET balance = balance + :amt, updated_at = NOW() WHERE agent_id = :a",
-                        ['amt' => $signedAmount, 'a' => $memberId]
-                    );
-                    Logger::audit('wallet.adjustment', 'admin', (string)$memberId, null, ['type' => $type, 'amount' => $amount, 'reason' => $reason], 'Wallet adjustment recorded by admin');
-                    $flash = ['ok', 'Wallet ' . $type . ' of ₹/' . $amount . ' successfully applied.'];
-                } catch (Throwable $e) {
-                    $flash = ['bad', 'Adjustment failed: ' . $e->getMessage()];
-                }
-            }
-        }
-
-        // 5. APPROVE WITHDRAWAL
-        elseif ($action === 'approve_withdrawal') {
-            $reqId = (int) ($_POST['request_id'] ?? 0);
-            $utr   = trim((string) ($_POST['utr_reference'] ?? ''));
-
-            if ($reqId <= 0 || $utr === '') {
-                $flash = ['bad', 'Payment reference number / UTR / transaction ID is mandatory before marking paid.'];
-            } else {
-                try {
-                    Database::run(
-                        "UPDATE agent_payout_requests
-                         SET status = 'paid', payment_ref = :utr, paid_at = NOW(), processed_by = :adm
-                         WHERE id = :id AND status = 'pending'",
-                        ['utr' => $utr, 'adm' => $adminId, 'id' => $reqId]
-                    );
-                    Logger::audit('wallet.payout_paid', 'withdrawal', (string)$reqId, null, ['utr' => $utr], 'Withdrawal payout marked paid with UTR confirmation');
-                    $flash = ['ok', 'Payout approved and marked paid. Payment reference: ' . Security::e($utr)];
-                } catch (Throwable $e) {
-                    $flash = ['bad', 'Payout confirmation failed: ' . $e->getMessage()];
-                }
-            }
-        }
-
-        // 6. REJECT WITHDRAWAL
-        elseif ($action === 'reject_withdrawal') {
-            $reqId  = (int) ($_POST['request_id'] ?? 0);
-            $reason = trim((string) ($_POST['reject_reason'] ?? ''));
-
-            if ($reqId <= 0 || $reason === '') {
-                $flash = ['bad', 'Rejection reason is required.'];
-            } else {
-                try {
-                    $req = Database::fetch("SELECT * FROM agent_payout_requests WHERE id = :id AND status = 'pending'", ['id' => $reqId]);
-                    if ($req !== null) {
-                        // Release reserved funds back to balance
-                        Database::run(
-                            "UPDATE agent_wallets SET balance = balance + :amt WHERE agent_id = :a",
-                            ['amt' => (float)$req['amount'], 'a' => (int)$req['agent_id']]
-                        );
-                        Database::run(
-                            "UPDATE agent_payout_requests SET status = 'rejected', notes = :n, processed_by = :adm WHERE id = :id",
-                            ['n' => $reason, 'adm' => $adminId, 'id' => $reqId]
-                        );
-                        Logger::audit('wallet.payout_rejected', 'withdrawal', (string)$reqId, null, ['reason' => $reason], 'Withdrawal rejected; reserved funds released');
-                        $flash = ['ok', 'Withdrawal rejected. Reserved funds restored to member balance.'];
-                    }
-                } catch (Throwable $e) {
-                    $flash = ['bad', 'Withdrawal rejection failed: ' . $e->getMessage()];
-                }
-            }
-        }
-
-        // 7. POST TEAM ANNOUNCEMENT
-        elseif ($action === 'post_announcement') {
-            $title    = trim((string) ($_POST['title'] ?? ''));
-            $body     = trim((string) ($_POST['body'] ?? ''));
-            $target   = (string) ($_POST['target_role'] ?? 'all');
-            $priority = (string) ($_POST['priority'] ?? 'normal');
-
-            if ($title === '' || $body === '') {
-                $flash = ['bad', 'Announcement title and content are required.'];
-            } else {
-                try {
-                    Database::run(
-                        "INSERT INTO team_announcements (title, body, target_role, priority, created_by, created_at)
-                         VALUES (:t, :b, :r, :p, :c, NOW())",
-                        ['t' => $title, 'b' => $body, 'r' => $target, 'p' => $priority, 'c' => $adminId]
-                    );
-                    Logger::audit('team.announcement', 'team', $target, null, ['title' => $title, 'priority' => $priority], 'Team announcement posted');
-                    $flash = ['ok', 'Announcement posted successfully to: ' . Security::e($target)];
-                } catch (Throwable $e) {
-                    // Fallback to kv_store if table not yet created
-                    $kvKey = 'announcement:' . time();
-                    $data = ['title' => $title, 'body' => $body, 'target' => $target, 'priority' => $priority, 'by' => $admin['username'] ?? '', 'at' => date('Y-m-d H:i:s')];
-                    Database::run(
-                        "INSERT INTO kv_store (kscope, kkey, kvalue, updated_by) VALUES ('global', :k, :v, 'admin')",
-                        ['k' => $kvKey, 'v' => json_encode($data)]
-                    );
-                    $flash = ['ok', 'Announcement recorded successfully.'];
-                }
-            }
-        }
+require __DIR__.'/_guard.php';
+require_once INCLUDE_PATH.'/teamregistry.php';
+require_once INCLUDE_PATH.'/teamfinance.php';
+require_once INCLUDE_PATH.'/carddelivery.php';
+require_once INCLUDE_PATH.'/payroll.php';
+$admin=admin_boot('staff.manage');
+if (!TeamManager::allowed($admin)) { http_response_code(403); exit('Manager permission required.'); }
+$adminId=(int)$admin['id'];$h=static fn($v):string=>Security::e((string)($v??''));
+$tab=(string)($_GET['tab']??'members');
+if(!in_array($tab,['members','approvals','earnings','withdrawals','cards','announcements','settings'],true)){$tab='members';}
+$key=Security::clean((string)($_POST['person']??$_GET['person']??''),40);$flash=null;
+if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'){
+ try{
+  if(!Security::verifyCsrf()){throw new RuntimeException('Page expired. Reload before submitting.');}
+  if(!TeamRegistry::ready()){throw new RuntimeException('Unified team database upgrade required.');}
+  $action=(string)($_POST['action']??'');$id=(int)($_POST['app_id']??0);$kind=($_POST['app_type']??'')==='staff'?'staff':'agent';
+  if($action==='approve_application'){
+   $ref=TeamRegistry::approve($kind.':'.$id,$adminId);$send=CardDelivery::send($ref);
+   $flash=['ok','Application approved. '.$send['detail'].' Activate securely at /team/ using verified WhatsApp recovery; existing passwords are preserved.'];
+  }elseif($action==='reject_application'){
+   $reason=Security::clean((string)($_POST['reason']??''),255);if(mb_strlen($reason)<5){throw new RuntimeException('Give a rejection reason.');}
+   if($kind==='staff'){StaffApps::decide($id,'reject',$adminId,['reason'=>$reason]);}else{AgentApplications::update($id,['status'=>'rejected','note'=>$reason],$adminId);}
+   $flash=['ok','Application rejected with an audit record.'];
+  }elseif($action==='approve_request'){TeamFinance::approve((int)$_POST['request_id'],$adminId);$flash=['ok','Withdrawal approved; funds remain reserved. No payment recorded.'];
+  }elseif($action==='approve_withdrawal'){TeamFinance::pay((int)$_POST['request_id'],(string)($_POST['utr_reference']??''),$adminId);$flash=['ok','Confirmed payment reference and payout ledger recorded.'];
+  }elseif($action==='reject_withdrawal'){
+   if(!Auth::can('commissions.pay')){throw new RuntimeException('Payout permission required.');}
+   AgentWallet::decidePayoutRequest((int)$_POST['request_id'],'declined',$adminId,(string)($_POST['reject_reason']??''));$flash=['ok','Withdrawal rejected. Reservation released; ledger funds preserved.'];
+  }elseif($action==='record_adjustment'){
+   TeamFinance::adjustment((int)$_POST['member_id'],(float)$_POST['amount'],(string)$_POST['adj_type'],(string)$_POST['reason'],(string)($_POST['operation_token']??''),$adminId);$flash=['ok','Adjustment recorded in the existing ledger.'];
+  }elseif($action==='post_announcement'){
+   $title=Security::clean((string)$_POST['title'],160);$message=Security::clean((string)$_POST['body'],8000);$target=(string)$_POST['target_role'];$priority=(string)$_POST['priority'];
+   if(!$title||!$message||!in_array($target,['all','agent','driver','office','partner'],true)||!in_array($priority,['normal','important','urgent'],true)){throw new RuntimeException('Check announcement fields.');}
+   Database::insert('team_notices',['title'=>$title,'body'=>$message,'target'=>$target,'priority'=>$priority,'created_by'=>$adminId]);Logger::audit('team.announcement','team',$target,null,['title'=>$title],'Published to team portal');$flash=['ok','Announcement published in the team portal.'];
+  }elseif($action==='positions'){
+   $name=Security::clean((string)($_POST['position_label']??''),120);$slug=strtolower(trim((string)($_POST['position_key']??'')));$required=array_values(array_intersect((array)($_POST['requirements']??[]),['license_number','license_expiry','qualification','experience_years','emergency_contact_name']));
+   if(!$name||!preg_match('/^[a-z][a-z0-9_]{1,39}$/',$slug)){throw new RuntimeException('Use a position key such as sales_assistant and a display name.');}
+   $roles=Settings::getArray('team_staff_positions',[]);$roles[$slug]=['label'=>$name,'required'=>$required];Settings::set('team_staff_positions',$roles,'json','team',false);Logger::audit('team.position','team',$slug,null,$roles[$slug],'Staff position configured');$flash=['ok','Staff position and role requirements saved. The three main agreements are unchanged.'];
+  }else{
+   $r=TeamManager::find($key);if(!$r){throw new RuntimeException('Choose a person.');}
+   if($action==='archive'||$action==='restore'){TeamManager::archive($key,$action==='restore',$admin);}
+   elseif($r['archived']){throw new RuntimeException('Restore the record before editing.');}
+   elseif($action==='profile'){TeamRegistry::save($key,$_POST,$adminId);}
+   elseif($action==='code'){TeamRegistry::changeCode($key,(string)$_POST['code'],(string)$_POST['reason'],$adminId);}
+   elseif($action==='pay'){TeamFinance::terms((int)$r['admin_id'],$_POST,$adminId);}
+   elseif($action==='details'){
+    $consent=Security::clean((string)($_POST['consent_proof']??''),255);if(mb_strlen($consent)<5){throw new RuntimeException('Record applicant consent before editing their KYC.');}
+    if($r['kind']==='staff'){TeamPortal::officeEditStaff((int)$r['id'],$_POST,$adminId);}else{AgentApplications::saveCard((int)$r['id'],$_POST,$adminId,true);}
+    if (!empty($_POST['import_id'])) {
+        if (empty($_POST['import_reviewed'])) { throw new RuntimeException('Review the original before saving OCR fields.'); }
+        Database::run('UPDATE team_reviews SET reviewed_at=NOW() WHERE id=:i AND person_key=:k',['i'=>(int)$_POST['import_id'],'k'=>$key]);
     }
+    Database::run('DELETE FROM team_drafts WHERE person_key=:k AND admin_id=:a',['k'=>$key,'a'=>$adminId]);
+    Logger::audit('team.assisted_edit','team',$key,null,['consent'=>$consent],'Application corrected on behalf of applicant');
+   }else{throw new RuntimeException('Unknown action.');}
+   $flash=['ok','Saved with audit history.'];
+  }
+ }catch(Throwable $e){Logger::warning('Team action: '.$e->getMessage());$flash=['bad',$e->getMessage()];}
+ // Refreshing the resulting GET cannot repeat an approval, adjustment or send.
+ $_SESSION['team_flash']=$flash;Response::redirect('admin/team.php?tab='.rawurlencode($tab).($key!==''?'&person='.rawurlencode($key):''));
 }
-
-// =========================================================================
-// DATA QUERIES PER TAB
-// =========================================================================
-
-// TAB 1: MEMBERS
-$members = [];
-if ($tab === 'members') {
-    $searchRole = (string) ($_GET['role'] ?? 'all');
-    $query = trim((string) ($_GET['q'] ?? ''));
-
-    // 1. Staff applications approved
-    try {
-        $stfRows = Database::fetchAll(
-            "SELECT id, full_name as name, phone, phone_country, role_applied, status, created_at, photo_path, admin_id
-             FROM staff_applications WHERE status IN ('approved','suspended') ORDER BY id DESC"
-        );
-        foreach ($stfRows as $r) {
-            $code = 'SHG-' . (str_starts_with((string)$r['role_applied'], 'driver') ? 'D' : 'S') . str_pad((string)$r['id'], 4, '0', STR_PAD_LEFT);
-            $roleLabel = StaffApps::roleLabel((string)$r['role_applied']);
-            $members[] = [
-                'ref'      => StaffApps::refFor((int)$r['id']),
-                'code'     => $code,
-                'name'     => (string)$r['name'],
-                'role'     => (string)$r['role_applied'],
-                'role_lbl' => $roleLabel,
-                'category' => (string)$r['role_applied'] === 'driver' ? 'driver' : 'staff',
-                'phone'    => (string)$r['phone'],
-                'cc'       => (string)$r['phone_country'],
-                'status'   => (string)$r['status'],
-                'balance'  => 0.00,
-                'joined'   => (string)$r['created_at'],
-                'app_type' => 'staff',
-                'app_id'   => (int)$r['id']
-            ];
-        }
-    } catch (Throwable $e) {}
-
-    // 2. Agents & Partners
-    try {
-        $agRows = Database::fetchAll(
-            "SELECT a.id, a.ref, a.type, a.name, a.phone, a.status, a.created_at, a.admin_id,
-                    COALESCE(w.balance, 0) as balance
-             FROM agent_applications a
-             LEFT JOIN agent_wallets w ON w.agent_id = a.admin_id
-             WHERE a.status = 'approved' ORDER BY a.id DESC"
-        );
-        foreach ($agRows as $r) {
-            $isOrg = (string)$r['type'] === 'org';
-            $code = 'SHG-' . ($isOrg ? 'P' : 'A') . str_pad((string)$r['id'], 4, '0', STR_PAD_LEFT);
-            $members[] = [
-                'ref'      => (string)$r['ref'] ?: AgentApplications::refFor((int)$r['id']),
-                'code'     => $code,
-                'name'     => (string)$r['name'],
-                'role'     => $isOrg ? 'partner' : 'agent',
-                'role_lbl' => $isOrg ? 'Transit Partner (Pvt. Ltd.)' : 'Booking Agent',
-                'category' => $isOrg ? 'partner' : 'agent',
-                'phone'    => (string)$r['phone'],
-                'cc'       => '91',
-                'status'   => (string)$r['status'],
-                'balance'  => (float)$r['balance'],
-                'joined'   => (string)$r['created_at'],
-                'app_type' => 'agent',
-                'app_id'   => (int)$r['id']
-            ];
-        }
-    } catch (Throwable $e) {}
-
-    // Filter
-    if ($searchRole !== 'all') {
-        $members = array_values(array_filter($members, static fn($m) => $m['category'] === $searchRole));
-    }
-    if ($query !== '') {
-        $members = array_values(array_filter($members, static function($m) use ($query) {
-            return stripos($m['name'], $query) !== false ||
-                   stripos($m['phone'], $query) !== false ||
-                   stripos($m['code'], $query) !== false ||
-                   stripos($m['ref'], $query) !== false;
-        }));
-    }
+$flash=$_SESSION['team_flash']??null;unset($_SESSION['team_flash']);
+$rows=TeamManager::rows();$selected=null;$members=[];$pendingQueue=[];$payoutRequests=[];$earningsRules=[];
+$query=Security::clean((string)($_GET['q']??''),80);$searchRole=(string)($_GET['role']??'all');$archiveView=($_GET['view']??'')==='archive';
+foreach($rows as $r){
+ if($r['key']===$key){$selected=$r;}
+ if($r['kind']==='account'||(!TeamRegistry::digital($r)&&!$archiveView)||$r['archived']!==$archiveView){continue;}
+ $isStaff=$r['kind']==='staff';$a=$isStaff?StaffApps::find((int)$r['id']):AgentApplications::find((int)$r['id']);
+ $m=TeamRegistry::meta($r['key']);$category=$isStaff?(($a['role_applied']??'')==='driver'?'driver':'staff'):($a['type']==='org'?'partner':'agent');
+ if(!in_array($a['status'],['approved','suspended'],true)){
+  if(!in_array($a['status'],['rejected','exited'],true)){$pendingQueue[]=['type'=>$r['kind'],'id'=>$r['id'],'ref'=>$r['ref'],'name'=>$r['name'],'role'=>$r['label'],'phone'=>$r['phone_raw'],'phone_verified'=>!empty($a['phone_verified']),'district'=>$r['area'],'id_type'=>$isStaff?($a['id_type']??''):($a['fields']['p_idtype']??''),'id_no'=>'Private document · open KYC review','created'=>$a['created_at'],'file_url'=>'','photo_url'=>'','key'=>$r['key']];}
+  continue;
+ }
+ if(($searchRole!=='all'&&$category!==$searchRole)||($query!==''&&stripos(implode(' ',[$r['name'],$r['phone'],$r['ref'],$m['code']??'',$m['route']??'']),$query)===false)){continue;}
+ $aid=(int)($r['admin_id']??0);$balance=$aid?TeamFinance::available($aid):['available'=>0,'pending'=>0];
+ $members[]=['ref'=>$r['ref'],'code'=>$m['code']??'Pending allocation','name'=>$r['name'],'role'=>$category,'role_lbl'=>($m['position_name']??'')?:($isStaff?StaffApps::roleLabel((string)$a['role_applied']):$r['label']),'category'=>$category,'phone'=>$r['phone_raw'],'cc'=>'','status'=>$a['status'],'balance'=>$balance['available'],'pending'=>$balance['pending'],'joined'=>$a['created_at'],'app_type'=>$r['kind'],'app_id'=>$r['id'],'admin_id'=>$aid,'key'=>$r['key'],'verified'=>!empty($a['phone_verified'])];
 }
-
-// TAB 2: APPROVALS QUEUE
-$pendingQueue = [];
-if ($tab === 'approvals') {
-    // 1. Staff Applications
-    try {
-        $stf = Database::fetchAll(
-            "SELECT id, full_name as name, phone, phone_country, role_applied, id_type, id_number,
-                    district, created_at, phone_verified, doc_verify_status, id_front_path, photo_path
-             FROM staff_applications WHERE status IN ('pending','under_review') ORDER BY id DESC"
-        );
-        foreach ($stf as $r) {
-            $pendingQueue[] = [
-                'type'     => 'staff',
-                'id'       => (int)$r['id'],
-                'ref'      => StaffApps::refFor((int)$r['id']),
-                'name'     => (string)$r['name'],
-                'role'     => StaffApps::roleLabel((string)$r['role_applied']),
-                'phone'    => '+' . countryDialCode((string)$r['phone_country']) . ' ' . $r['phone'],
-                'phone_verified' => (int)$r['phone_verified'] === 1,
-                'district' => (string)$r['district'],
-                'id_type'  => (string)$r['id_type'],
-                'id_no'    => (string)$r['id_number'],
-                'created'  => (string)$r['created_at'],
-                'file_url' => 'staff-file.php?id=' . (int)$r['id'] . '&f=id_front&e=' . (time() + 900) . '&s=' . StaffApps::fileSig((int)$r['id'], 'id_front', time() + 900, $adminId),
-                'photo_url'=> 'staff-file.php?id=' . (int)$r['id'] . '&f=photo&e=' . (time() + 900) . '&s=' . StaffApps::fileSig((int)$r['id'], 'photo', time() + 900, $adminId),
-            ];
-        }
-    } catch (Throwable $e) {}
-
-    // 2. Agent & Partner Applications
-    try {
-        $ag = Database::fetchAll(
-            "SELECT id, ref, type, name, phone, created_at, phone_verified, fields_json, photo_data
-             FROM agent_applications WHERE status = 'pending' ORDER BY id DESC"
-        );
-        foreach ($ag as $r) {
-            $f = json_decode((string)($r['fields_json'] ?? ''), true) ?: [];
-            $pendingQueue[] = [
-                'type'     => (string)$r['type'] === 'org' ? 'partner' : 'agent',
-                'id'       => (int)$r['id'],
-                'ref'      => (string)$r['ref'] ?: AgentApplications::refFor((int)$r['id']),
-                'name'     => (string)$r['name'],
-                'role'     => (string)$r['type'] === 'org' ? 'Transit Partner (Pvt. Ltd.)' : 'Booking Agent',
-                'phone'    => (string)$r['phone'],
-                'phone_verified' => (int)($r['phone_verified'] ?? 0) === 1,
-                'district' => (string)($f['p_district'] ?? $f['p_address'] ?? '—'),
-                'id_type'  => (string)($f['p_idtype'] ?? 'citizenship'),
-                'id_no'    => (string)($f['p_idno'] ?? '—'),
-                'created'  => (string)$r['created_at'],
-                'file_url' => '',
-                'photo_url'=> is_string($r['photo_data'] ?? null) && str_starts_with((string)$r['photo_data'], 'data:image/') ? (string)$r['photo_data'] : '',
-            ];
-        }
-    } catch (Throwable $e) {}
+if($tab==='withdrawals'&&Auth::can('commissions.pay')){
+ $payoutRequests=Database::fetchAll('SELECT r.*,a.full_name AS agent_name,a.phone AS agent_phone,r.agent_admin_id AS agent_id,x.payment_reference AS payment_ref,x.approved_at FROM agent_payout_requests r LEFT JOIN admins a ON a.id=r.agent_admin_id LEFT JOIN team_withdrawal_approvals x ON x.request_id=r.id ORDER BY r.id DESC LIMIT 100');
 }
-
-// TAB 3: EARNINGS
-$earningsRules = [];
-if ($tab === 'earnings') {
-    try {
-        $earningsRules = Database::fetchAll("SELECT * FROM agent_commission_rules ORDER BY id DESC");
-    } catch (Throwable $e) {
-        $earningsRules = [];
-    }
-}
-
-// TAB 4: WITHDRAWALS
-$payoutRequests = [];
-if ($tab === 'withdrawals') {
-    try {
-        $payoutRequests = Database::fetchAll(
-            "SELECT r.*, a.name as agent_name, a.phone as agent_phone, COALESCE(w.balance, 0) as current_balance
-             FROM agent_payout_requests r
-             LEFT JOIN agent_applications a ON a.admin_id = r.agent_id
-             LEFT JOIN agent_wallets w ON w.agent_id = r.agent_id
-             ORDER BY r.id DESC LIMIT 50"
-        );
-    } catch (Throwable $e) {
-        $payoutRequests = [];
-    }
-}
-
 admin_header('Team Management & Approvals · टिम व्यवस्थापन', 'team.php');
 ?>
 <link rel="stylesheet" href="/assets/css/admin.css?v=20261025">
@@ -473,6 +125,7 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
   <a class="team-tab <?= $tab === 'announcements' ? 'active' : '' ?>" href="team.php?tab=announcements">📢 Announcements · सूचना</a>
 </nav>
 
+<?php require __DIR__.'/_team-workbench.php'; ?>
 <!-- =====================================================================
      TAB 1: MEMBERS REGISTRY
      ===================================================================== -->
@@ -490,7 +143,7 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
       <input type="text" name="q" placeholder="Search by name, phone or code..." value="<?= Security::e($query ?? '') ?>" style="flex:1;min-width:200px">
       <button type="submit" class="btn-sm btn-primary">Search · खोज्नुहोस्</button>
     </form>
-    <a href="/agreements/apply.html" target="_blank" class="btn-sm btn-success">+ Register New Member</a>
+    <a href="team.php?view=archive" class="btn-sm btn-outline">Archived records</a><a href="/agreements/apply.html" target="_blank" class="btn-sm btn-success">+ Register New Member</a>
   </div>
 
   <div class="data-card" style="padding:0;overflow-x:auto">
@@ -499,8 +152,8 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
         <tr style="background:#f8fafc">
           <th>Staff Code</th>
           <th>Name & Role</th>
-          <th>Verified Phone</th>
-          <th>Wallet Balance</th>
+          <th>Phone / verification</th>
+          <th>Available / reserved</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
@@ -514,17 +167,17 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
               <td><b class="mono" style="color:#0a2a8f"><?= Security::e($m['code']) ?></b><br><small style="color:#64748b"><?= Security::e($m['ref']) ?></small></td>
               <td><b><?= Security::e($m['name']) ?></b><br><span style="font-size:12px;color:#64748b"><?= Security::e($m['role_lbl']) ?></span></td>
               <td>
-                <a href="https://wa.me/<?= Security::e(preg_replace('/\D/','',$m['phone'])) ?>" target="_blank" style="text-decoration:none">
-                  💬 +<?= Security::e($m['cc']) ?> <?= Security::e($m['phone']) ?>
+                <a href="https://wa.me/<?= Security::e(CardDelivery::recipient($m['ref'])) ?>" target="_blank" style="text-decoration:none">
+                  💬 <?= Security::e($m['phone']) ?> <?= $m['verified'] ? '✓ Verified' : 'Unverified' ?>
                 </a>
               </td>
-              <td><b>₹/रू <?= number_format((float)$m['balance'], 2) ?></b></td>
+              <td><b>INR <?= number_format((float)$m['balance'], 2) ?></b><br><small>Reserved: <?= number_format((float)$m['pending'],2) ?></small></td>
               <td><span class="pill pill-<?= $m['status'] === 'approved' ? 'active' : 'suspended' ?>"><?= Security::e(ucfirst($m['status'])) ?></span></td>
               <td>
                 <div class="action-grid">
                   <a href="id-card.php?ref=<?= urlencode($m['ref']) ?>" class="btn-sm btn-outline">🪪 Cards</a>
-                  <button type="button" class="btn-sm btn-primary" onclick="openAdjustmentModal(<?= (int)$m['app_id'] ?>, '<?= Security::e($m['name']) ?>')">₹ Adjust</button>
-                  <a href="/verify-id.php?ref=<?= urlencode($m['ref']) ?>" target="_blank" class="btn-sm btn-outline">🛡️ Verify</a>
+                  <a class="btn-sm btn-primary" href="team.php?person=<?= rawurlencode($m['key']) ?>">Manage</a>
+                  <a href="<?= Security::e(IdCard::verifyUrl($m['ref'])) ?>" target="_blank" class="btn-sm btn-outline">🛡️ Verify</a>
                 </div>
               </td>
             </tr>
@@ -568,8 +221,8 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
               <button type="submit" class="btn-sm btn-success">✅ Approve & Issue Cards</button>
             </form>
 
-            <button type="button" class="btn-sm btn-danger" onclick="openRejectModal('<?= Security::e($p['type']) ?>', <?= (int)$p['id'] ?>, '<?= Security::e($p['name']) ?>')">❌ Reject</button>
-            <button type="button" class="btn-sm btn-outline" onclick="openOnBehalfModal('<?= Security::e($p['type']) ?>', <?= (int)$p['id'] ?>, '<?= Security::e($p['name']) ?>')">✏️ Edit on Behalf</button>
+            <button type="button" class="btn-sm btn-danger" onclick="openRejectModal('<?= Security::e($p['type']) ?>', <?= (int)$p['id'] ?>, 'this application')">❌ Reject</button>
+            <a class="btn-sm btn-outline" href="team.php?person=<?= rawurlencode($p['key']) ?>">Review / complete KYC</a>
           </div>
         </div>
 
@@ -596,59 +249,8 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
      TAB 3: FLEXIBLE EARNINGS & SALARY
      ===================================================================== -->
 <?php elseif ($tab === 'earnings'): ?>
-  <div class="data-card">
-    <h3>⚙️ Configure Flexible Earnings Models</h3>
-    <p style="font-size:13.5px;color:#64748b">
-      Configure percentage of eligible fare, per-passenger or per-booking fixed commissions, or fixed salaries with effective dates. Cancellations automatically reverse commission to prevent duplicate or unearned payouts.
-    </p>
-
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:16px">
-      <div style="padding:14px;border:1.5px solid #cbd5e1;border-radius:14px;background:#f8fafc">
-        <b>📊 1. Percentage of Fare</b>
-        <p style="font-size:12.5px;color:#64748b;margin:6px 0 10px">Default 8.5% of eligible net ticket fare, calculated upon confirmed trip.</p>
-        <input type="number" step="0.1" value="8.5" style="width:90px;padding:6px;border-radius:8px;border:1px solid #cbd5e1"> %
-      </div>
-      <div style="padding:14px;border:1.5px solid #cbd5e1;border-radius:14px;background:#f8fafc">
-        <b>🎟️ 2. Per-Seat Fixed Fee</b>
-        <p style="font-size:12.5px;color:#64748b;margin:6px 0 10px">Fixed amount per booked passenger seat (e.g. ₹ 100 / रू 150).</p>
-        <input type="number" step="1" value="100" style="width:90px;padding:6px;border-radius:8px;border:1px solid #cbd5e1"> ₹/रू
-      </div>
-      <div style="padding:14px;border:1.5px solid #cbd5e1;border-radius:14px;background:#f8fafc">
-        <b>💼 3. Monthly Salary (Staff/Drivers)</b>
-        <p style="font-size:12.5px;color:#64748b;margin:6px 0 10px">Monthly pay slip settlement with advance deduction derivation.</p>
-        <span class="pill pill-active">Integrated via includes/payroll.php</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="data-card">
-    <h3>💳 Record Extra Bonus or Deduction</h3>
-    <form method="post" action="team.php?tab=earnings" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:14px">
-      <?= Security::csrfField() ?>
-      <input type="hidden" name="action" value="record_adjustment">
-      <label class="f">
-        <span>Team Member (Admin / Agent ID) <em>*</em></span>
-        <input type="number" name="member_id" required placeholder="Member Admin ID">
-      </label>
-      <label class="f">
-        <span>Type <em>*</em></span>
-        <select name="adj_type">
-          <option value="bonus">➕ Bonus / Incentive</option>
-          <option value="deduction">➖ Deduction / Advance Recovery</option>
-        </select>
-      </label>
-      <label class="f">
-        <span>Amount (₹/रू) <em>*</em></span>
-        <input type="number" step="0.01" name="amount" required placeholder="500.00">
-      </label>
-      <label class="f" style="grid-column:1/-1">
-        <span>Reason (Mandatory for audit trail) <em>*</em></span>
-        <input type="text" name="reason" required placeholder="जस्तै: Festive Dashain Bonus / Fuel Advance Settlement">
-      </label>
-      <button type="submit" class="btn-sm btn-primary" style="grid-column:1/-1;min-height:44px;justify-content:center">Submit Adjustment · दर्ता गर्नुहोस्</button>
-    </form>
-  </div>
-
+<div class="data-card"><h3>Earnings, salary and loans</h3><p>Select a member → Manage to set dated percentage, per-passenger or per-booking terms and salary. Existing earnings are preserved.</p><div class="action-grid"><a class="btn-sm btn-primary" href="team.php">Select member</a><a class="btn-sm btn-outline" href="payroll.php">Staff payroll / salary slips</a><a class="btn-sm btn-outline" href="ledger-check.php">Ledger reconciliation</a><a class="btn-sm btn-outline" href="team.php?tab=settings">Staff positions / services</a></div></div>
+<div class="data-card"><h3>Bonus / deduction</h3><form method="post"><?= Security::csrfField() ?><input type="hidden" name="action" value="record_adjustment"><input type="hidden" name="operation_token" value="<?= bin2hex(random_bytes(16)) ?>"><label>Linked account ID * <input name="member_id" type="number" min="1" required></label><label>Type <select name="adj_type"><option value="bonus">Bonus</option><option value="deduction">Deduction</option></select></label><label>Amount (INR) * <input name="amount" type="number" min="0.01" step="0.01" required></label><label>Reason * <input name="reason" minlength="5" required></label><button class="btn-sm btn-primary">Submit adjustment</button></form></div>
 <!-- =====================================================================
      TAB 4: WALLET & WITHDRAWALS
      ===================================================================== -->
@@ -680,10 +282,11 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
               <td><b><?= Security::e($w['agent_name'] ?: 'Agent #' . $w['agent_id']) ?></b><br><small><?= Security::e($w['agent_phone']) ?></small></td>
               <td><b style="color:#0a2a8f;font-size:15px">₹/रू <?= number_format((float)$w['amount'], 2) ?></b></td>
               <td><?= Security::e($w['payment_method'] ?? 'Bank') ?>: <code><?= Security::e($w['account_details'] ?? 'On file') ?></code></td>
-              <td><span class="pill pill-<?= $w['status'] === 'paid' ? 'active' : ($w['status'] === 'pending' ? 'pending' : 'suspended') ?>"><?= Security::e(ucfirst($w['status'])) ?></span></td>
+              <td><span class="pill pill-<?= $w['status'] === 'paid' ? 'active' : ($w['status'] === 'open' ? 'pending' : 'suspended') ?>"><?= Security::e(ucfirst($w['status'])) ?></span></td>
               <td>
-                <?php if ($w['status'] === 'pending'): ?>
+                <?php if ($w['status'] === 'open'): ?>
                   <div class="action-grid">
+                    <?php if (empty($w['approved_at'])): ?><form method="post"><?= Security::csrfField() ?><input type="hidden" name="action" value="approve_request"><input type="hidden" name="request_id" value="<?= (int)$w['id'] ?>"><button class="btn-sm btn-primary">Approve request</button></form><?php else: ?><span>Approved · unpaid</span><?php endif; ?>
                     <button type="button" class="btn-sm btn-success" onclick="openPayoutModal(<?= (int)$w['id'] ?>, '<?= number_format((float)$w['amount'], 2) ?>')">Mark Paid (UTR)</button>
                     <button type="button" class="btn-sm btn-danger" onclick="openRejectPayoutModal(<?= (int)$w['id'] ?>)">Reject</button>
                   </div>
@@ -845,12 +448,12 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
       <input type="hidden" name="action" value="reject_withdrawal">
       <input type="hidden" name="request_id" id="rejPayoutReqId">
       <label class="f">
-        <span>Rejection Reason (Funds will be restored to wallet) <em>*</em></span>
+        <span>Rejection reason (reservation will be released) <em>*</em></span>
         <textarea name="reject_reason" required rows="3" placeholder="e.g. Invalid bank account IFSC code"></textarea>
       </label>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button type="button" class="btn-sm btn-outline" onclick="document.getElementById('rejectPayoutModal').style.display='none'">Cancel</button>
-        <button type="submit" class="btn-sm btn-danger">Reject & Restore Funds</button>
+        <button type="submit" class="btn-sm btn-danger">Reject & Release Reservation</button>
       </div>
     </form>
   </div>

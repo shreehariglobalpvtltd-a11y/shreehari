@@ -321,9 +321,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                                     . 'Portal: ' . appUrl('admin/login.php?portal=agent') . "\n"
                                     . 'Email: ' . ($res['email'] !== '' ? $res['email'] : '(not set)') . "\n"
                                     . 'Username: ' . $res['username'] . "\n"
-                                    . ($pwSet ? "Password: " . (string) $_POST['login_password'] . "\n" : '')
+                                    . 'Set or recover your password securely at the team portal using your verified WhatsApp number.\n'
                                     . 'Sign in with all three. Never share this message.');
-                                $note .= ' Sent to the agent on WhatsApp.';
+                                $note .= ' Notification requested; check WhatsApp message status for confirmation.';
                             } else {
                                 $note .= ' No mobile number on file, so nothing was sent.';
                             }

@@ -1111,8 +1111,9 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
           if (!state.photo && big) { state.photo = big; var p = $('selfPrev'); p.style.backgroundImage = 'url(' + big + ')'; p.classList.add('has'); $('selfOk').textContent = '✓ लाइभ फोटो · live photo'; }
           res('⏳ AI ले अनुहार जाँच्दै… · Checking…');
           return token().then(function (t) {
+            if (!window.confirm('I consent to sending these three selfie frames and my ID photo to the configured verification service for a quality/liveness suggestion and manual office review. This does not approve identity.')) { throw new Error('Selfie review cancelled.'); }
             return fetch('/api/face-check.php', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' },
-              body: JSON.stringify({ frames: frames, doc: state.doc || null }) });
+              body: JSON.stringify({ consent: true, frames: frames, doc: state.doc || null }) });
           }).then(function (r) { return r.json(); }).then(function (d) {
             state.selfie = d && d.ok ? (d.status === 'pass' ? 'pass' : d.status === 'unavailable' ? 'done' : 'warn') : 'warn'; cvSoon();
             if (!d || !d.ok) { res((d && (d.error || d.message)) || 'जाँच हुन सकेन — फारम पठाउन मिल्छ · Not checked, you can still send.', false); return; }

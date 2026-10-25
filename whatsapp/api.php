@@ -135,7 +135,7 @@ if (!function_exists('waGraphPost')) {
      * @param array<string, mixed> $payload  body WITHOUT messaging_product/to (added here)
      * @return array{success: bool, message_id: string, error: string, http: int, code: int}
      */
-    function waGraphPost(string $to, array $payload, string $type = 'text', ?string $token = null, ?string $phoneId = null): array
+    function waGraphPost(string $to, array $payload, string $type = 'text', ?string $token = null, ?string $phoneId = null, int $maxAttempts = 2): array
     {
         $token   = $token   ?? META_ACCESS_TOKEN;
         $phoneId = $phoneId ?? META_PHONE_NUMBER_ID;
@@ -162,7 +162,7 @@ if (!function_exists('waGraphPost')) {
 
         $endpoint = META_API_BASE . '/' . rawurlencode($phoneId) . '/messages';
 
-        for ($attempt = 1; $attempt <= 2; $attempt++) {
+        for ($attempt = 1; $attempt <= max(1, min(2, $maxAttempts)); $attempt++) {
             $response = false;
             $status   = 0;
             $curlErr  = '';
@@ -209,7 +209,7 @@ if (!function_exists('waGraphPost')) {
             logWhatsAppEvent($type, $to, ['attempt' => $attempt], $result);
 
             $retryable = $status === 0 || $status >= 500;
-            if (!$retryable || $attempt === 2) {
+            if (!$retryable || $attempt >= $maxAttempts) {
                 break;
             }
             usleep(700000);   // brief back-off before the single retry

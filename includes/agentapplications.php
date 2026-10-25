@@ -975,6 +975,7 @@ final class AgentApplications
         $ref = self::refFor($id);
         Database::update('agent_applications', ['ref' => $ref], 'id = :id', ['id' => $id]);
 
+        require_once __DIR__.'/teamregistry.php'; if(TeamRegistry::ready()){TeamRegistry::ensure('agent:'.$id);}
         return ['id' => $id, 'ref' => $ref, 'duplicate' => false, 'repeat_of' => $dupOf > 0 ? self::refFor($dupOf) : null];
     }
 
@@ -1273,6 +1274,7 @@ final class AgentApplications
         if ($set === []) {
             return [];
         }
+        if (($set['status']??'')==='approved' && $app['status']!=='approved') { require_once __DIR__.'/teamregistry.php'; if(TeamRegistry::ready()){TeamRegistry::validateApproval('agent:'.$id);} }
         $before = array_intersect_key($app, $set);
         $set['reviewed_by'] = $by > 0 ? $by : null;
         $set['reviewed_at'] = date('Y-m-d H:i:s');
@@ -1584,7 +1586,7 @@ final class AgentApplications
             'phone_raw'    => $raw,
             'fields_json'  => json_encode(['p_name' => $name, 'p_phone' => $digits, 'p_occ' => 'Added by the office'], JSON_UNESCAPED_UNICODE) ?: '{}',
             'public_ok'    => 0,
-            'status'       => 'approved',
+            'status'       => 'reviewing',
             'kyc_status'   => in_array($kycSt, self::KYC, true) ? $kycSt : 'none',
             'payload_hash' => hash('sha256', 'office|' . $digits . '|' . microtime(true) . '|' . random_int(0, PHP_INT_MAX)),
             'reviewed_by'  => $by > 0 ? $by : null,

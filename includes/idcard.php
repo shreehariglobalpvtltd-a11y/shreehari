@@ -52,6 +52,23 @@ final class IdCard
      */
     public static function person(string $ref): ?array
     {
+        require_once __DIR__.'/teamregistry.php';
+        $ref=strtoupper(trim($ref));
+        if (preg_match('/^[AS]-[1-9][0-9]*$/',$ref)) { $ref=TeamRegistry::refForCode($ref)??''; }
+        $p=self::lookupPerson($ref); if (!$p) { return null; }
+        $key=TeamRegistry::key($p['ref']); $m=TeamRegistry::meta($key);
+        $p['memberCode']=$m['code']??$p['ref']; $p['route']=$m['route']??'';
+        if (!empty($m['position_name'])) { $p['roleEn']=$m['position_name']; }
+        $p['studio']=json_decode((string)($m['template_json']??''),true)?:null;
+        if (!$p['public']) { $p['waDigits']=''; }
+        $r=str_starts_with($key,'staff:')?StaffApps::find((int)substr($key,6)):AgentApplications::find((int)substr($key,6));
+        if (empty($r['phone_verified'])) { $p['waDigits']=''; }
+        if (!empty($p['expires']) && $p['expires']<date('Y-m-d')) { $p['valid']=false; $p['standing']='Expired'; $p['waDigits']=''; }
+        return $p;
+    }
+
+    private static function lookupPerson(string $ref): ?array
+    {
         $ref = strtoupper(trim($ref));
         if (preg_match('/^STF-(\d{1,9})$/', $ref, $m) === 1) {
             return self::forStaff((int) $m[1]);
@@ -59,36 +76,6 @@ final class IdCard
         if (preg_match('/^AGR-(\d{1,9})$/', $ref, $m) === 1) {
             $id = AgentApplications::available() ? (int) Database::scalar('SELECT id FROM agent_applications WHERE ref = :r LIMIT 1', ['r' => $ref], 0) : 0;
             return self::forAgent($id > 0 ? $id : (int) $m[1]);
-        }
-        if (preg_match('/^DRV-(\d{1,9})$/', $ref, $m) === 1) {
-            if (StaffApps::available()) {
-                $sid = (int) Database::scalar("SELECT id FROM staff_applications WHERE role_applied = 'driver' AND (ref = :r OR id = :i) LIMIT 1", ['r' => $ref, 'i' => (int) $m[1]], 0);
-                if ($sid > 0) {
-                    return self::forStaff($sid);
-                }
-            }
-            return self::forDriver((int) $m[1]);
-        }
-        if (str_starts_with($ref, 'SHG-')) {
-            if (StaffApps::available()) {
-                $sid = (int) Database::scalar("SELECT id FROM staff_applications WHERE ref = :r LIMIT 1", ['r' => $ref], 0);
-                if ($sid > 0) {
-                    return self::forStaff($sid);
-                }
-            }
-            if (AgentApplications::available()) {
-                $aid = (int) Database::scalar("SELECT id FROM agent_applications WHERE ref = :r LIMIT 1", ['r' => $ref], 0);
-                if ($aid > 0) {
-                    return self::forAgent($aid);
-                }
-            }
-            $admId = (int) Database::scalar("SELECT id FROM admins WHERE username = :u LIMIT 1", ['u' => $ref], 0);
-            if ($admId > 0 && AgentApplications::available()) {
-                $appId = (int) Database::scalar("SELECT id FROM agent_applications WHERE admin_id = :a LIMIT 1", ['a' => $admId], 0);
-                if ($appId > 0) {
-                    return self::forAgent($appId);
-                }
-            }
         }
         return null;
     }
@@ -292,7 +279,7 @@ final class IdCard
     public static function waQrUrl(array $p): string
     {
         $d = (string) ($p['waDigits'] ?? '');
-        if (strlen($d) < 10) {
+        if (!preg_match('/^(91[6-9][0-9]{9}|9779[78][0-9]{8})$/', $d)) {
             $digits = preg_replace('/\D/', '', (string) ($p['phone'] ?? '')) ?? '';
             if (strlen($digits) === 10) {
                 $d = '977' . $digits;
@@ -306,7 +293,7 @@ final class IdCard
     public static function waLink(array $p): string
     {
         $d = (string) ($p['waDigits'] ?? '');
-        if (strlen($d) < 10) {
+        if (!preg_match('/^(91[6-9][0-9]{9}|9779[78][0-9]{8})$/', $d)) {
             return '';
         }
         $co = Settings::company();
@@ -321,6 +308,7 @@ final class IdCard
 
     public static function png(array $p, string $side = 'front'): string
     {
+        if (!empty($p['studio'])) { return self::designPng($p,'id',$side,$p['studio']); }
         if ($side === 'sheet') {
             $gap = 40;
             $im = imagecreatetruecolor(self::W * 2 + $gap, self::H);
@@ -533,6 +521,7 @@ final class IdCard
 
     public static function visitingPng(array $p, string $side = 'front'): string
     {
+        if (!empty($p['studio'])) { return self::designPng($p,'visiting',$side,$p['studio']); }
         if ($side === 'sheet') {
             $gap = 40;
             $im = imagecreatetruecolor(self::VW, self::VH * 2 + $gap);
@@ -735,6 +724,7 @@ final class IdCard
             $latin = trim((string) preg_replace('/[^\x20-\x7E]+/', '', (string) $p['name']));
             $pdf->text(36, 32, $title . '  -  ' . ($latin !== '' ? $latin . '  -  ' : '') . $p['ref'], 9, 'F1', [255, 215, 160]);
             $pdf->rect(0, 44, $pdf->width(), 4, [240, 122, 30], true);
+            if (!empty($p['studio'])) { $sz=getimagesizefromstring($sides[0][1]); $wmm=$sz[0]/300*25.4; $hmm=$sz[1]/300*25.4; }
             $w = $wmm * $mm;
             $h = $hmm * $mm;
             $gap = 10 * $mm;
@@ -947,5 +937,36 @@ final class IdCard
     {
         $d = preg_replace('/\D/', '', $digits) ?? '';
         return strlen($d) === 12 ? '+' . substr($d, 0, 2) . ' ' . substr($d, 2, 5) . ' ' . substr($d, 7) : ($d !== '' ? '+' . $d : '');
+    }
+
+    public static function designPng(array $p,string $doc,string $side,array $config): string {
+        require_once __DIR__.'/carddesign.php'; $cfg=CardDesign::clean($config);
+        $doc=$doc==='visiting'?'visiting':'id';$w=$doc==='id'?self::W:self::VW;$h=$doc==='id'?self::H:self::VH;
+        if (($cfg['orient_'.$doc]==='landscape')!==($w>$h)) { [$w,$h]=[$h,$w]; }
+        if ($side==='sheet') {
+            $f=imagecreatefromstring(self::designPng($p,$doc,'front',$cfg));$b=imagecreatefromstring(self::designPng($p,$doc,'back',$cfg));
+            $im=imagecreatetruecolor($w*2+40,$h);imagefill($im,0,0,imagecolorallocate($im,255,255,255));imagecopy($im,$f,0,0,0,0,$w,$h);imagecopy($im,$b,$w+40,0,0,0,$w,$h);imagedestroy($f);imagedestroy($b);
+        } else {
+            $im=imagecreatetruecolor($w,$h);
+            $rgb=static fn(string $hex):array=>[hexdec(substr($hex,1,2)),hexdec(substr($hex,3,2)),hexdec(substr($hex,5,2))];
+            imagefill($im,0,0,self::c($im,$rgb($cfg['background'])));$accent=self::c($im,$rgb($cfg['accent']));
+            imagefilledrectangle($im,0,0,$w,12,$accent);imagefilledrectangle($im,0,$h-12,$w,$h,$accent);
+            $co=Settings::company();$text=['company'=>'S HARI GLOBAL','name'=>$p['name'],'role'=>$p['roleEn'],'code'=>$p['memberCode']??$p['ref'],'route'=>$p['route']??$p['place'],'phone'=>$p['public']?$p['phone']:'Contact the company office','contact'=>$co['phone'].' · '.$co['email'],'notice'=>'Official verification QR checks current status. WhatsApp QR opens personal chat only.','signature'=>'Holder signature'];
+            foreach($cfg['fields'][$doc.'_'.($side==='back'?'back':'front')] as $field){
+                if(!$field['visible']){continue;}$key=$field['key'];$x=(int)round($field['x']*$w);$y=(int)round($field['y']*$h);$fw=(int)round($field['w']*$w);$fh=(int)round($field['h']*$h);$color=self::c($im,$rgb($field['color']));$size=(float)$field['size'];
+                if($key==='logo'){DocArt::mark($im,$x,$y,$fw,$fh,true);}
+                elseif($key==='photo'){if(!empty($p['photo'])){self::picture($im,$p['photo'],$x,$y,$fw,$fh,false);}}
+                elseif($key==='signature'){if(!empty($p['sig'])){self::picture($im,$p['sig'],$x,$y,$fw,$fh,true);}}
+                elseif(in_array($key,['verify','whatsapp'],true)){
+                    $payload=$key==='verify'?self::verifyUrl($p['ref']):self::waLink($p);if($payload===''){continue;}
+                    $max=min($fw,$fh-38);if($max<80){continue;}$actual=GoldSheet::qrSide($payload,$max);imagefilledrectangle($im,$x-8,$y-8,$x+$actual+8,$y+$actual+8,imagecolorallocate($im,255,255,255));GoldSheet::qr($im,$payload,$x,$y,$max);
+                    self::t($im,9,$x,$y+$actual+8,$color,$key==='verify'?'Verify identity':'Personal WhatsApp',true);if($key==='whatsapp'){self::t($im,8,$x,$y+$actual+24,$color,'Does not verify identity');}
+                }else{
+                    $value=$key==='text'?$field['text']:($text[$key]??'');
+                    foreach(self::wrap((string)$value,$size,$fw,max(1,(int)floor($fh/($size*1.6)))) as $line){self::t($im,$size,$x,$y,$color,$line,in_array($key,['name','company','code'],true));$y+=(int)ceil($size*1.6);}
+                }
+            }
+        }
+        if($cfg['bw']){imagefilter($im,IMG_FILTER_GRAYSCALE);}imageresolution($im,300,300);ob_start();imagepng($im,null,6);$out=(string)ob_get_clean();imagedestroy($im);return $out;
     }
 }

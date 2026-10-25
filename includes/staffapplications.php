@@ -189,9 +189,10 @@ final class StaffApps
         return preg_match('/^(?:STF-?)?0*(\d{1,9})$/i', trim($ref), $m) === 1 ? (int) $m[1] : 0;
     }
 
+    public static function roles(): array { return array_values(array_unique(array_merge(self::ROLES,array_keys(Settings::getArray('team_staff_positions',[]))))); }
     public static function roleLabel(string $role, bool $nepali = false): string
     {
-        return self::ROLE_LABELS[$role][$nepali ? 1 : 0] ?? ucfirst($role);
+        return self::ROLE_LABELS[$role][$nepali ? 1 : 0] ?? (string)(Settings::getArray('team_staff_positions',[])[$role]['label'] ?? ucfirst($role));
     }
 
     public static function applyOpen(): bool
@@ -336,7 +337,8 @@ final class StaffApps
         $c['address_current'] = $c['address_current'] !== '' ? $c['address_current'] : null;
         $c['province']        = $c['province'] !== '' ? $c['province'] : null;
 
-        $c['role_applied'] = empty($in['role']) ? 'other' : (in_array($in['role'], self::ROLES, true) ? (string) $in['role'] : '');
+        $c['role_applied'] = empty($in['role']) ? 'other' : (in_array($in['role'], self::roles(), true) ? (string) $in['role'] : '');
+        foreach ((array)(Settings::getArray('team_staff_positions',[])[$c['role_applied']]['required']??[]) as $required) { if (trim((string)($in[$required]??''))==='') { $e[$required]='Required for this position.'; } }
         if ($c['role_applied'] === '') {
             $e['role'] = 'कुन काम? छान्नुहोस् · Choose the job you are applying for.';
         }
@@ -607,6 +609,7 @@ final class StaffApps
                 $saved['signature'] ?? null, $ip, $ua);
         }
 
+        require_once __DIR__.'/teamregistry.php'; if(TeamRegistry::ready()){TeamRegistry::ensure('staff:'.$id);}
         return ['id' => $id, 'ref' => self::refFor($id), 'reapplied' => $old !== null];
     }
 
@@ -886,7 +889,7 @@ final class StaffApps
             $where[] = 'status = :st';
             $p['st'] = $f['status'];
         }
-        if (in_array($f['role'] ?? '', self::ROLES, true)) {
+        if (in_array($f['role'] ?? '', self::roles(), true)) {
             $where[] = 'role_applied = :ro';
             $p['ro'] = $f['role'];
         }
@@ -971,6 +974,7 @@ final class StaffApps
 
         switch ($action) {
             case 'approve':
+                require_once __DIR__.'/teamregistry.php'; if(TeamRegistry::ready()){TeamRegistry::validateApproval('staff:'.$id);}
                 if (!in_array($old, ['pending', 'under_review', 'suspended', 'rejected'], true)) {
                     throw new StaffAppError('Only a pending, under-review, suspended or rejected application can be approved.');
                 }

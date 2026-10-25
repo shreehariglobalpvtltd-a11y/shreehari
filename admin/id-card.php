@@ -53,7 +53,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $ok = Passkeys::remove($owner[0], $owner[1], (int) ($_POST['id'] ?? 0), 'the office (' . ($admin['username'] ?? '') . ')');
         $flash = $ok ? ['ok', 'Device login removed — the person signs in with password.'] : ['bad', 'Nothing removed.'];
     } elseif ((string) ($_POST['action'] ?? '') === 'send_whatsapp') {
-        $res = CardDelivery::send($p['ref'], true);
+        $res = CardDelivery::send($p['ref'], !empty($_POST['resend']));
         $flash = $res['ok'] ? ['ok', $res['detail']] : ['bad', $res['detail']];
     }
 }
@@ -112,6 +112,7 @@ $waPersonal = IdCard::waLink($p);
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="<?= Security::e(Security::csrfToken()) ?>">
 <meta name="robots" content="noindex">
 <meta name="csrf-token" content="<?= $h(Security::csrfToken()) ?>">
 <title>Digital ID <?= $h($p['ref']) ?> · <?= $h($p['name']) ?> | S Hari Global</title>
@@ -233,7 +234,7 @@ th{color:var(--mut);font-weight:700;font-size:12px}
     <div class="dl" style="margin-top:12px">
       <form method="post" action="<?= $h($q([])) ?>" style="display:inline">
         <?= Security::csrfField() ?>
-        <input type="hidden" name="action" value="send_whatsapp">
+        <input type="hidden" name="action" value="send_whatsapp"><label><input type="checkbox" name="resend" value="1"> Explicit resend (may duplicate a previous accepted message)</label>
         <button type="submit" class="wa-act">💬 Auto-Send Cards via WhatsApp Cloud API</button>
       </form>
       <button type="button" onclick="openShareModal()">📤 Open WhatsApp / Share Cards (Manual Fallback)</button>
@@ -331,7 +332,7 @@ th{color:var(--mut);font-weight:700;font-size:12px}
 
 <script>
 function openPhotoStudio() {
-  PhotoStudio.open('<?= $h($q(['png' => 'front'])) ?>', {
+  PhotoStudio.open('', {
     targetRef: '<?= $h($p['ref']) ?>',
     onSave: function(dataUrl) {
       location.reload();

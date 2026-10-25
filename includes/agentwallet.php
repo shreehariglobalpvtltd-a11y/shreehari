@@ -806,8 +806,11 @@ final class AgentWallet
      * active. Flat mode pays per passenger; percent mode is the original
      * "x% of the sale" behaviour.
      */
-    public static function commissionForBooking(float $total, int $adminId, int $seats): float
+    public static function commissionForBooking(float $total, int $adminId, int $seats, ?string $at = null): float
     {
+        require_once __DIR__.'/teamfinance.php';
+        $term=TeamFinance::term($adminId,$at);
+        if ($term !== null) { return round(match($term['basis']) { 'percent'=>max(0,$total)*(float)$term['rate']/100, 'booking'=>(float)$term['rate'], 'flat'=>max(0,$seats)*(float)$term['rate'], default=>0.0 },2); }
         // A per-agent override beats the company scheme entirely: their own
         // flat ₹ per passenger, or forced onto the percent engine (which in
         // turn honours their commission_percent when one is set).
@@ -1701,7 +1704,7 @@ final class AgentWallet
             // of the sum — read from the live seat rows rather than trusting a
             // caller-supplied figure.
             $seats = self::seatCountFor($bookingId);
-            $comm  = self::commissionForBooking($total, $agentId, $seats);
+            $comm  = self::commissionForBooking($total, $agentId, $seats, (string)($booking['created_at'] ?? date('Y-m-d H:i:s')));
 
             if ($comm > 0) {
                 self::insertEntry([
@@ -2133,6 +2136,8 @@ final class AgentWallet
     /** This agent's agreed monthly salary, or 0.0 when they are commission-only. */
     public static function salaryFor(int $adminId): float
     {
+        require_once __DIR__.'/teamfinance.php';
+        $term=TeamFinance::term($adminId); if ($term !== null) { return (float)$term['salary']; }
         return self::salaryMap()[(string) $adminId] ?? 0.0;
     }
 
@@ -2184,6 +2189,13 @@ final class AgentWallet
      * @param string $month YYYY-MM
      */
     public static function postSalary(int $adminId, string $month, int $by = 0): float
+    {
+        return Database::transaction(static function()use($adminId,$month,$by):float {
+            Database::fetch('SELECT id FROM admins WHERE id=:a FOR UPDATE',['a'=>$adminId]);
+            return self::postSalaryLocked($adminId,$month,$by);
+        });
+    }
+    private static function postSalaryLocked(int $adminId, string $month, int $by): float
     {
         if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
             throw new RuntimeException('Pick a month in YYYY-MM form.');
@@ -2354,6 +2366,20 @@ final class AgentWallet
     }
 
     public static function record(int $agentId, string $entryType, float $amount, array $meta = []): int
+    {
+        return Database::transaction(static function()use($agentId,$entryType,$amount,$meta):int {
+            Database::fetch('SELECT id FROM admins WHERE id=:a FOR UPDATE',['a'=>$agentId]);
+            if ($entryType==='payout') {
+                if (mb_strlen(trim((string)($meta['ref']??'')))<5) { throw new RuntimeException('Confirmed payment reference is required before recording a payout.'); }
+                $req=(int)($meta['request_id']??0);
+                $reserved=(float)Database::scalar("SELECT COALESCE(SUM(amount),0) FROM agent_payout_requests WHERE agent_admin_id=:a AND status='open' AND id<>:i",['a'=>$agentId,'i'=>$req],0);
+                if (abs($amount)>self::balances($agentId)['commission']-$reserved+0.001) { throw new RuntimeException('Funds are reserved for an open withdrawal. Use Team Management → Withdrawals.'); }
+                if(Database::exists("SELECT 1 FROM agent_ledger WHERE entry_type='payout' AND ref=:r",['r'=>$meta['ref']])) { throw new RuntimeException('Payment reference already recorded.'); }
+            }
+            return self::recordLocked($agentId,$entryType,$amount,$meta);
+        });
+    }
+    private static function recordLocked(int $agentId, string $entryType, float $amount, array $meta): int
     {
         $amount = round(abs($amount), 2);
         if ($amount <= 0) {
@@ -2996,8 +3022,8 @@ final class AgentWallet
      */
     public static function requestPayout(int $adminId, float $amount, string $note = ''): int
     {
-        if ($adminId <= 0) {
-            throw new RuntimeException('Choose an agent first.');
+        if ($adminId <= 0 || !is_finite($amount) || $amount < 0) {
+            throw new RuntimeException('Choose an agent and a valid withdrawal amount.');
         }
         /* 23 Oct 2026 review: two taps / two tabs at once made two open requests (check-then-insert with no
            lock). The agent's own admins row is the lock: one request at a time per agent. */
@@ -3033,7 +3059,7 @@ final class AgentWallet
                 'status'         => 'open',
             ]);
         } catch (Throwable $e) {
-            Logger::warning('agent_payout_requests unavailable: ' . $e->getMessage(), [], 'agent');
+            throw new RuntimeException('Withdrawal request could not be saved. Please retry.');
         }
 
         // Same audit row as before — new_value.amount is what the panel reads.
@@ -3116,6 +3142,15 @@ final class AgentWallet
      */
     public static function decidePayoutRequest(int $id, string $decision, int $by, string $note = '', ?int $ledgerId = null): void
     {
+        Database::transaction(static function()use($id,$decision,$by,$note,$ledgerId):void {
+            $row=Database::fetch('SELECT agent_admin_id FROM agent_payout_requests WHERE id=:i',['i'=>$id]);
+            if($row){Database::fetch('SELECT id FROM admins WHERE id=:a FOR UPDATE',['a'=>$row['agent_admin_id']]);}
+            Database::fetch('SELECT id FROM agent_payout_requests WHERE id=:i FOR UPDATE',['i'=>$id]);
+            self::decidePayoutLocked($id,$decision,$by,$note,$ledgerId);
+        });
+    }
+    private static function decidePayoutLocked(int $id,string $decision,int $by,string $note,?int $ledgerId): void
+    {
         $decision = strtolower(trim($decision));
         if (!in_array($decision, ['paid', 'declined'], true)) {
             throw new RuntimeException('Decide paid or declined.');
@@ -3130,6 +3165,11 @@ final class AgentWallet
         }
         if ((string) $row['status'] !== 'open') {
             throw new RuntimeException('That payout request was already ' . (string) $row['status'] . '.');
+        }
+        if ($decision === 'paid') {
+            $payment=$ledgerId ? Database::fetch("SELECT * FROM agent_ledger WHERE id=:i AND entry_type='payout'",['i'=>$ledgerId]) : null;
+            if (!$payment || (int)$payment['agent_admin_id']!==(int)$row['agent_admin_id'] || abs((float)$payment['amount'])+0.001<(float)$row['amount'] || mb_strlen(trim((string)$payment['ref']))<5) { throw new RuntimeException('A matching confirmed payout ledger reference is required.'); }
+            if(Database::exists("SELECT 1 FROM agent_payout_requests WHERE ledger_id=:l AND id<>:i AND status='paid'",['l'=>$ledgerId,'i'=>$id])){throw new RuntimeException('This payment already settled another request.');}
         }
         $note = Security::clean($note, 255);
         if ($decision === 'declined' && $note === '') {

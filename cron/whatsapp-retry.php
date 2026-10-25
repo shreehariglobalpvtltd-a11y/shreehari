@@ -33,6 +33,7 @@ require_once INCLUDE_PATH . '/qr.php';
 require_once INCLUDE_PATH . '/pdf.php';
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/notify.php';
+try { require_once INCLUDE_PATH . '/carddelivery.php'; CardDelivery::drain(5); } catch (Throwable $e) { Logger::exception($e, 'whatsapp'); }
 
 const MAX_TRIES  = 6;    // total WhatsApp attempts per booking before giving up
 const BATCH_SIZE = 25;   // bookings per run
