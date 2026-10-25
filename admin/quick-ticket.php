@@ -36,6 +36,68 @@ $canSell  = Auth::isSellingStaff();
 $csrf     = Security::e(Security::csrfToken());
 $preName  = Security::clean((string) ($_GET['name'] ?? ''), 120);
 $prePhone = Security::clean((string) ($_GET['phone'] ?? ''), 20);
+
+/* ---- Agent picker (29 Sep 2026) -------------------------------------------
+   Managers / office staff can attribute a counter sale to a specific agent.
+   A logged-in agent (role='agent') always sells under their own name — no picker.
+   Never fatal: a DB error means no picker, not a broken desk. */
+$isAgentRole  = ((string) ($admin['role'] ?? '')) === 'agent';
+$agentPickerOn = $canSell && !$isAgentRole;
+$agentListJson = '[]';
+if ($agentPickerOn) {
+    try {
+        require_once INCLUDE_PATH . '/agentwallet.php';
+        $agentRows = Database::fetchAll(
+            "SELECT a.id, a.full_name, a.username, a.is_active,
+                    COALESCE(p.agent_kind,'org') AS agent_kind,
+                    COALESCE(p.display_phone,'')  AS mobile,
+                    COALESCE(p.counter_name,'')   AS location
+               FROM admins a
+          LEFT JOIN admin_profiles p ON p.admin_id = a.id
+              WHERE a.role = 'agent' AND a.is_active = 1
+           ORDER BY COALESCE(p.agent_kind,'org') ASC, a.full_name"
+        );
+        // Single-query commission balance (org agent's advance/balance)
+        $balMap = [];
+        try {
+            $balRows = Database::fetchAll(
+                "SELECT agent_admin_id, COALESCE(SUM(amount),0) AS bal
+                   FROM agent_ledger WHERE account = 'commission'
+                  GROUP BY agent_admin_id"
+            );
+            foreach ($balRows as $br) {
+                $balMap[(int) $br['agent_admin_id']] = (float) $br['bal'];
+            }
+        } catch (Throwable $e) { /* balance query optional */ }
+        // Attach code from settings map
+        $agentList = [];
+        foreach ($agentRows as $ar) {
+            $aid  = (int) $ar['id'];
+            $code = AgentWallet::agentCodeFor($aid);
+            $agentList[] = [
+                'id'       => $aid,
+                'code'     => $code !== null ? 'SHG-' . sprintf('%04d', $code) : '',
+                'name'     => (string) $ar['full_name'],
+                'kind'     => (string) $ar['agent_kind'],   // 'org' | 'person'
+                'kindLabel'=> (string) $ar['agent_kind'] === 'person' ? 'Individual' : 'Organization',
+                'mobile'   => (string) $ar['mobile'],
+                'location' => (string) $ar['location'],
+                'balance'  => $balMap[$aid] ?? 0.0,
+            ];
+        }
+        // org (code 1-20) first, then person (21+)
+        usort($agentList, static function (array $a, array $b): int {
+            if ($a['kind'] !== $b['kind']) {
+                return $a['kind'] === 'org' ? -1 : 1;
+            }
+            return strcmp($a['name'], $b['name']);
+        });
+        $agentListJson = json_encode($agentList, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
+    } catch (Throwable $e) {
+        Logger::warning('QuickTicket agent picker load failed', ['e' => $e->getMessage()]);
+        $agentPickerOn = false;
+    }
+}
 /* The engine's own cap, not a second opinion. This read min(10, ...) — a
    hard-coded ceiling that is not a setting — so with counter_max_seats_per_
    booking at its default 20 the desk offered only chips 1-10 and refused to
@@ -252,6 +314,32 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 :root[data-theme="dark"] .qt-src.input,:root[data-theme="dark"] .qt-src.text{background:#1e3a8a;color:#dbeafe}
 :root[data-theme="dark"] .qt-src.history{background:#4c1d95;color:#ede9fe}
 :root[data-theme="dark"] .qt-src.desk,:root[data-theme="dark"] .qt-src.pattern{background:#78350f;color:#fef3c7}
+/* Agent picker */
+.qt-agent-wrap{margin:10px 0;border:1.5px solid var(--line);border-radius:12px;overflow:hidden}
+.qt-agent-hdr{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--hover);cursor:pointer;font-size:13px;font-weight:800;user-select:none}
+.qt-agent-hdr .qt-agent-tag{flex:1;min-width:0}
+.qt-agent-clear{border:0;background:transparent;color:var(--orange);font-weight:800;font-size:12px;cursor:pointer;padding:2px 6px;border-radius:6px;white-space:nowrap}
+.qt-agent-clear:hover{background:rgba(240,124,31,.12)}
+.qt-agent-body{padding:10px 12px;display:none}
+.qt-agent-wrap.open .qt-agent-body{display:block}
+.qt-agent-search{width:100%;box-sizing:border-box;padding:7px 10px;border:1.5px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font-size:14px;margin-bottom:8px}
+.qt-agent-search:focus{outline:none;border-color:var(--navy)}
+.qt-agent-list{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow-y:auto}
+.qt-agent-item{display:flex;flex-direction:column;gap:2px;padding:9px 10px;border:1.5px solid var(--line);border-radius:9px;cursor:pointer;background:var(--card);transition:border-color .15s,background .15s;text-align:left}
+.qt-agent-item:hover{border-color:var(--navy);background:var(--hover)}
+.qt-agent-item.sel{border-color:var(--orange);background:rgba(240,124,31,.08)}
+.qt-agent-item.direct{border-style:dashed}
+.qt-agent-row1{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.qt-agent-name{font-size:14px;font-weight:800}
+.qt-agent-code{font-size:11px;font-weight:800;background:var(--navy);color:#fff;padding:1px 7px;border-radius:999px}
+.qt-agent-kind{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:999px}
+.qt-agent-kind.org{background:#dbeafe;color:#1e3a8a}
+.qt-agent-kind.person{background:#dcfce7;color:#14532d}
+.qt-agent-row2{font-size:12px;color:var(--mut);display:flex;gap:10px;flex-wrap:wrap}
+.qt-agent-bal{font-size:12px;font-weight:700;margin-left:auto;white-space:nowrap}
+.qt-agent-bal.pos{color:#178A50}.qt-agent-bal.neg{color:#b91c1c}
+:root[data-theme="dark"] .qt-agent-kind.org{background:#1e3a8a;color:#dbeafe}
+:root[data-theme="dark"] .qt-agent-kind.person{background:#14532d;color:#dcfce7}
 
 /* ---- 🌙 Passive Brain: what the night shift left on the desk ---------- */
 .qt-brain{margin-bottom:14px}
@@ -409,6 +497,20 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
         <div class="qt-hint">Max discount <?= Security::e((string) $maxDisc) ?>% (server re-checks). Boarding choice is remembered on this desk.</div>
       </details>
 
+      <?php if ($agentPickerOn): ?>
+      <div class="qt-agent-wrap" id="qtAgentWrap">
+        <div class="qt-agent-hdr" id="qtAgentHdr">
+          <span>🏷️ Agent</span>
+          <span class="qt-agent-tag" id="qtAgentTag">Direct / No Agent</span>
+          <button type="button" class="qt-agent-clear" id="qtAgentClear" hidden>✕ Clear</button>
+        </div>
+        <div class="qt-agent-body" id="qtAgentBody">
+          <input type="text" class="qt-agent-search" id="qtAgentSearch" placeholder="Search agent name, code, location…" autocomplete="off">
+          <div class="qt-agent-list" id="qtAgentList"></div>
+        </div>
+      </div>
+      <?php endif; ?>
+
       <button type="submit" class="qt-go" id="qtGo" <?= $canSell ? '' : 'disabled' ?>>⚡ Confirm &amp; Issue Ticket →</button>
       <div class="qt-hint">Enter in the line = confirm · The sale confirms instantly (cash / UPI already received at the desk), the ticket PNG + PDF are ready and the WhatsApp goes, credited to <b><?= Security::e($who) ?></b>.</div>
     </form>
@@ -555,7 +657,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   }
   function seatLabelJoin(seats, coach, mode){ return (seats||[]).map(function(s){return seatLabel(s,coach,mode);}).join(', '); }
 
-  var st = { direction: '', date: '', boarding: '', seats: 1, gender: '', pay: 'cash', cc: 'IN', prefer: [], preferPhone: '' };
+  var st = { direction: '', date: '', boarding: '', seats: 1, gender: '', pay: 'cash', cc: 'IN', prefer: [], preferPhone: '', agentId: 0 };
   var lastBot = null;   // the last QuickBot answer (for the "same as last time" tap)
   try {
     st.boarding = localStorage.getItem('shg_qt_boarding') || '';
@@ -563,6 +665,85 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   } catch (e) {}
   var plan = null, planReq = 0, planTimer = null, busy = false;
   var t0 = 0, clockTimer = null;
+
+  /* ---- Agent picker (29 Sep 2026) ---------------------------------------- */
+  var AGENT_LIST = <?= $agentPickerOn ? $agentListJson : '[]' ?>;
+  var AGENT_PICKER = <?= $agentPickerOn ? 'true' : 'false' ?>;
+  (function () {
+    if (!AGENT_PICKER || !AGENT_LIST.length) return;
+    var wrap   = $('#qtAgentWrap');
+    var hdr    = $('#qtAgentHdr');
+    var tag    = $('#qtAgentTag');
+    var clrBtn = $('#qtAgentClear');
+    var body   = $('#qtAgentBody');
+    var search = $('#qtAgentSearch');
+    var list   = $('#qtAgentList');
+    if (!wrap) return;
+
+    function inr(n) { return '₹' + Number(n||0).toLocaleString('en-IN'); }
+    function renderList(query) {
+      var q = (query || '').toLowerCase().trim();
+      var html = '';
+      // Direct / No Agent always first
+      html += '<button type="button" class="qt-agent-item direct' + (st.agentId === 0 ? ' sel' : '') + '" data-aid="0">'
+            + '<div class="qt-agent-row1"><span class="qt-agent-name">Direct / No Agent</span></div>'
+            + '<div class="qt-agent-row2">Unattributed — sale goes to desk staff</div></button>';
+      AGENT_LIST.forEach(function (a) {
+        var match = !q || a.name.toLowerCase().indexOf(q) >= 0 || a.code.toLowerCase().indexOf(q) >= 0
+                    || (a.location || '').toLowerCase().indexOf(q) >= 0 || (a.mobile || '').indexOf(q) >= 0;
+        if (!match) return;
+        var bal = Number(a.balance || 0);
+        var balTxt = inr(Math.abs(bal));
+        var balClass = bal >= 0 ? 'pos' : 'neg';
+        var balLabel = bal >= 0 ? 'Commission: ' + balTxt : 'Debit: ' + balTxt;
+        html += '<button type="button" class="qt-agent-item' + (st.agentId === a.id ? ' sel' : '') + '" data-aid="' + a.id + '">'
+              + '<div class="qt-agent-row1">'
+              + (a.code ? '<span class="qt-agent-code">' + esc(a.code) + '</span>' : '')
+              + '<span class="qt-agent-name">' + esc(a.name) + '</span>'
+              + '<span class="qt-agent-kind ' + esc(a.kind) + '">' + esc(a.kindLabel) + '</span>'
+              + '<span class="qt-agent-bal ' + balClass + '">' + balLabel + '</span>'
+              + '</div>'
+              + '<div class="qt-agent-row2">'
+              + (a.mobile ? '📱 ' + esc(a.mobile) : '')
+              + (a.location ? (a.mobile ? ' &nbsp;' : '') + '📍 ' + esc(a.location) : '')
+              + '</div></button>';
+      });
+      list.innerHTML = html;
+      $$('button[data-aid]', list).forEach(function (b) {
+        b.addEventListener('click', function () {
+          pickAgent(parseInt(b.getAttribute('data-aid'), 10) || 0);
+        });
+      });
+    }
+    function pickAgent(id) {
+      st.agentId = id;
+      if (id === 0) {
+        tag.textContent = 'Direct / No Agent';
+        clrBtn.hidden = true;
+      } else {
+        var a = AGENT_LIST.find(function (x) { return x.id === id; });
+        if (a) {
+          tag.textContent = (a.code ? a.code + ' · ' : '') + a.name + ' · ' + a.kindLabel;
+          clrBtn.hidden = false;
+        }
+      }
+      wrap.classList.remove('open');
+      renderList('');
+      summary();
+    }
+    hdr.addEventListener('click', function (e) {
+      if (e.target === clrBtn) return;
+      wrap.classList.toggle('open');
+      if (wrap.classList.contains('open')) { renderList(''); search.value = ''; setTimeout(function(){search.focus();},50); }
+    });
+    clrBtn.addEventListener('click', function (e) { e.stopPropagation(); pickAgent(0); });
+    search.addEventListener('input', function () { renderList(this.value); });
+    // close on click-outside
+    document.addEventListener('click', function (e) {
+      if (wrap && !wrap.contains(e.target)) wrap.classList.remove('open');
+    });
+    renderList('');
+  }());
 
   /* ---- transport ---------------------------------------------------- */
   function api(body) {
@@ -636,6 +817,10 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     if (st.seats > 1) parts.push(st.seats + ' seats');
     if (st.gender) parts.push(st.gender);
     if (st.pay !== 'cash') parts.push(st.pay);
+    if (AGENT_PICKER && st.agentId > 0) {
+      var ag = AGENT_LIST.find(function(a){return a.id===st.agentId;});
+      if (ag) parts.push('🏷️ ' + (ag.code || ag.name));
+    }
     $('#qtOptSum').textContent = parts.length ? parts.join(' · ') : 'auto';
   }
 
@@ -825,6 +1010,8 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       action: 'sell', name: name, phone: fullPhone(phone), country: st.cc, gender: st.gender, seats: st.seats, prefer: st.prefer,
       direction: st.direction, date: dateValue(), boarding: st.boarding, pay: st.pay,
       discountType: dv > 0 ? $('#qtDiscType').value : '', discountValue: dv, note: $('#qtNote').value.trim(),
+      // Agent attribution: 0 = Direct/No Agent, >0 = specific agent admin_id
+      pickedAgentId: AGENT_PICKER ? (st.agentId || 0) : undefined,
       // 🤖 what the bot proposed for this sale (null when it proposed nothing) — scores the outcome loop
       bot: botPrefill || undefined,
       // 🌙 the Ready Queue card this sale came from, so the brain can score

@@ -784,6 +784,22 @@ final class QuickTicket
             'note'          => self::NOTE . ($note !== '' ? ' · ' . $note : ''),
         ];
 
+        // Agent picker override (29 Sep 2026): counter/manager staff can attribute
+        // the sale to a specific agent. pickedAgentId=-1 means not sent (agent role
+        // or picker disabled); 0 = Direct/No Agent (keep session staff); >0 = agent.
+        $pickedAgentId = (int) ($input['pickedAgentId'] ?? -1);
+        if ($pickedAgentId > 0) {
+            $agentRow = Database::fetch(
+                "SELECT id FROM admins WHERE id = :id AND role = 'agent' AND is_active = 1 LIMIT 1",
+                ['id' => $pickedAgentId]
+            );
+            if ($agentRow !== null) {
+                $seller['adminId'] = $pickedAgentId;
+                $seller['source']  = 'agent';
+            }
+        }
+        // pickedAgentId === 0: Direct/No Agent — session staff keeps attribution, source stays 'counter'
+
         $plan    = [];
         $booking = [];
         $exclude = [];
