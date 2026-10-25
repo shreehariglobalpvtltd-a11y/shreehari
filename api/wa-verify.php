@@ -1,24 +1,6 @@
 <?php
 /**
- * POST /api/wa-verify.php — "send hi on WhatsApp" number check for the
- * staff form, the agent form and the staff agreement's sign box
- * (22 Oct 2026, includes/waverify.php).
- *
- *   X-CSRF-Token (the session token the page already has from
- *   /api/staff-apply.php or /api/agreement-apply.php), application/json:
- *
- *   {"action":"start","purpose":"staff"|"agent"|"sign","phone":"98…","cc":"91"|"977"}
- *     200 {"ok":true,"token":"K7Q2M9","url":"https://wa.me/…?text=hi%20VERIFY%20K7Q2M9","text":"hi VERIFY K7Q2M9","qr":"data:image/png;base64,…"}
- *   {"action":"check","token":"K7Q2M9"}
- *     200 {"ok":true,"status":"verified"|"waiting"|"mismatch"|"expired"|"unknown"}
- *
- * Budgets: 8 starts per 10 minutes per IP, 4 per number per 10 minutes;
- * checks are cheap (the page asks every few seconds while waiting).
- *
- * 22 Oct 2026 (review): "start" takes staff | agent | sign only. A team
- * portal password reset token is made by /team/ alone (TeamPortal::
- * startVerify, bound to the account's own full number); /team/ may still
- * "check" one it made — that only reports the status.
+ * POST /api/wa-verify.php — "send hi on WhatsApp" number check for forms.
  */
 
 declare(strict_types=1);
@@ -31,9 +13,7 @@ try {
     }
     Security::requireCsrf();
     Response::$maxInputBytes = 4000;
-    if (!WaVerify::ready()) {
-        Response::error('WhatsApp check is not set up yet.', 503);
-    }
+
     $ip = Security::clientIp();
     $action = (string) Response::field('action', '');
 
@@ -48,10 +28,9 @@ try {
         if (strlen($phone) !== 10 || !Security::isValidPhone($phone) || isPlaceholderPhone($phone)) {
             Response::invalid(['phone' => 'number'], '१० अङ्कको मोबाइल नम्बर लेख्नुहोस् · Enter a 10-digit mobile number.');
         }
-        Security::requireRateLimit('wa_verify_ip', $ip, 8, 600);
-        Security::requireRateLimit('wa_verify_phone', $phone, 4, 600);
+        Security::requireRateLimit('wa_verify_ip', $ip, 12, 600);
+        Security::requireRateLimit('wa_verify_phone', $phone, 6, 600);
         $s = WaVerify::start($purpose, $phone, $country, $ip);
-        // 23 Oct 2026: on a computer the page shows this QR - the phone scans it and WhatsApp opens with the text typed
         try {
             require_once INCLUDE_PATH . '/qr.php';
             $s['qr'] = QrCode::dataUri('https://wa.me/' . $s['to'] . '?text=' . rawurlencode($s['text']), 5, 2);
@@ -62,12 +41,14 @@ try {
     }
 
     if ($action === 'check') {
-        Security::requireRateLimit('wa_verify_check', $ip, 120, 600);
-        $r = WaVerify::check((string) Response::field('token', ''));
+        Security::requireRateLimit('wa_verify_check', $ip, 180, 600);
+        $token = (string) Response::field('token', '');
+        $r = WaVerify::check($token);
         Response::json(['ok' => true, 'status' => $r['status']]);
     }
 
     Response::error('Unknown action.', 400);
 } catch (Throwable $e) {
-    Response::serverError($e);
+    Logger::error('wa-verify error: ' . $e->getMessage());
+    Response::error($e->getMessage(), 500);
 }

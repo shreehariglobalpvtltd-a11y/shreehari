@@ -2,39 +2,6 @@
 /**
  * /api/staff-apply.php — the staff application form /agreements/staff.html
  * and the staff agreement's sign box (22 Oct 2026).
- *
- * GET  -> {"ok":true,"csrf":"…","open":bool,"docVerify":bool,"biometric":bool,
- *          "agreementVersion":"1.0","officePhone":"…","officeWa":"9779…"}
- *         starts the session (cookie) and hands the static page its token.
- *
- * POST application/json + X-CSRF-Token, {"action": …}
- *   otp        {phone, cc}           send the WhatsApp code (Auth::issueOtp, purpose 'verify')
- *                                    -> {sent, resendIn}  (+ debugCode on a dev box only)
- *   verify     {phone, cc, code}     -> {verified:true}; the number counts as proven for an hour
- *   challenge  {}                    phase 2: a WebAuthn challenge (only with staff_biometric_on)
- *   sign       {phone, cc, name, signature}
- *                                    the staff agreement page: an applicant / approved staff
- *                                    member signs again -> agreement_signatures
- *
- * POST multipart/form-data + X-CSRF-Token = the application itself
- *   200 {"ok":true,"staff_id":12,"ref":"STF-000012","status":"pending","message":"…"}
- *   422 {"ok":false,"error":"…","fields":{"phone":"…"}}   409 already applied   413 too large
- *
- * The phone: a form goes through when this session proved the number with
- * the WhatsApp code, OR when a code was asked for and WhatsApp could not
- * deliver it / it did not arrive within two minutes — then it is stored
- * with phone_verified = 0 and the office calls. Never a dead end for a real
- * driver whose WhatsApp is slow; never silent about it either.
- *
- * Documents: DocVerify answers the page already got (the same
- * /api/agreement-doccheck.php the agent form uses) are recalled from the
- * session; nothing here waits for Gemini. cron/staff-reminders.php reads
- * whatever is still unchecked. A mismatch is a score for the office, not a
- * refusal (StaffApps).
- *
- * Budgets: per IP 20 posts an hour (probing), 5 stored forms an hour (not
- * for a signed-in office user entering for someone), the whole site 30 an
- * hour / 150 a day; office WhatsApp note at most 10 an hour.
  */
 
 declare(strict_types=1);
@@ -42,26 +9,22 @@ require_once __DIR__ . '/_init.php';
 require_once INCLUDE_PATH . '/staffapplications.php';
 require_once INCLUDE_PATH . '/waverify.php';
 
-const STAFF_OTP_OK_SEC   = 3600;   // a proven number stays proven this long in the session
-const STAFF_OTP_SKIP_SEC = 120;    // a code that has not arrived after this long may be skipped
+const STAFF_OTP_OK_SEC   = 3600;
+const STAFF_OTP_SKIP_SEC = 120;
 
-/** "+977" picker + typed number -> [10 digits, 'NP'|'IN']. */
 function staff_phone(): array
 {
-    // 22 Oct 2026 (owner): most staff use Indian numbers, so +91 is the default
     $cc = (string) Response::field('cc', '91');
     $digits = normalisePhone((string) Response::field('phone', ''));
     return [$digits, $cc === '977' ? 'NP' : 'IN'];
 }
 
-/** Did this session prove the number, or may it go on without (code undeliverable / late)? */
 function staff_phone_state(string $phone): string
 {
     $ok = (int) ($_SESSION['staff_otp_ok'][$phone] ?? 0);
     if ($ok > time() - STAFF_OTP_OK_SEC || WaVerify::sessionVerified($phone)) {
-        return 'verified';   // the code, or "hi VERIFY …" sent from this very number (22 Oct 2026)
+        return 'verified';
     }
-    // the WhatsApp "hi" button was pressed two minutes ago and nothing came back: same fallback as a late code
     $waTried = (int) ($_SESSION['wa_tried'][$phone] ?? 0);
     if ($waTried > 0 && $waTried < time() - STAFF_OTP_SKIP_SEC) {
         return 'skip';
@@ -73,7 +36,6 @@ function staff_phone_state(string $phone): string
     return 'none';
 }
 
-/** The origin a passkey must come from: scheme://host[:port] of APP_URL. */
 function staff_origin(): string
 {
     $u = parse_url(APP_URL);
@@ -108,15 +70,12 @@ try {
         Response::error('धेरै पटक प्रयास भयो — केही बेरपछि फेरि प्रयास गर्नुहोस् वा फोन गर्नुहोस्: ' . Settings::officePhone(), 429);
     }
     if (!StaffApps::available()) {
-        Logger::error('Staff apply: staff_applications table missing — run database/upgrade-2026-10-22-staff-applications.sql');
+        Logger::error('Staff apply: staff_applications table missing');
         Response::error('Applications are not open yet. Please call the office: ' . Settings::officePhone(), 503);
     }
 
     $isJson = str_contains(strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? '')), 'application/json');
 
-    /* ------------------------------------------------------------------
-     *  Small JSON actions
-     * ------------------------------------------------------------------ */
     if ($isJson) {
         Response::$maxInputBytes = 400_000;
         $action = (string) Response::field('action', '');
@@ -127,7 +86,6 @@ try {
                 Response::invalid(['phone' => 'number'], '१० अङ्कको मोबाइल नम्बर लेख्नुहोस् · Enter a 10-digit mobile number.');
             }
             Security::requireRateLimit('staff_otp_ip', $ip, 8, 600);
-            // The same site-wide ceiling as the customer login code (api/otp.php).
             $capH = max(1, Settings::getInt('otp_global_hourly_cap', 150));
             $capD = max(1, Settings::getInt('otp_global_daily_cap', 800));
             $sent = false;
@@ -147,7 +105,7 @@ try {
                     } else {
                         $text = Settings::getString('company_name', APP_NAME) . ' को कोड: ' . $code . ' (' . OTP_EXPIRY_MINUTES
                               . ' मिनेट सम्म मान्य)। यो कोड कसैलाई नबताउनुहोस्।';
-                        $sent = Notify::whatsapp($phone, $text, null, $country, [], null, ['purpose' => 'otp']) === true;   // a wa.me link is not a delivery
+                        $sent = Notify::whatsapp($phone, $text, null, $country, [], null, ['purpose' => 'otp']) === true;
                     }
                 } catch (Throwable $e) {
                     $sent = false;
@@ -156,7 +114,7 @@ try {
                 Logger::info('Staff apply: code ' . ($sent ? 'sent' : 'NOT delivered'), ['phone' => maskPhone($phone)], 'otp');
                 $out = ['ok' => true, 'sent' => $sent, 'resendIn' => OTP_RESEND_SECONDS, 'skipAfter' => $sent ? STAFF_OTP_SKIP_SEC : 0];
                 if (APP_DEBUG) {
-                    $out['debugCode'] = $code;   // a dev box only — never in production
+                    $out['debugCode'] = $code;
                 }
                 Response::json($out);
             }
@@ -217,24 +175,18 @@ try {
         Response::error('Unknown action.', 400);
     }
 
-    /* ------------------------------------------------------------------
-     *  The application (multipart)
-     * ------------------------------------------------------------------ */
     $len = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
     if ($len > 0 && $_POST === [] && $_FILES === []) {
-        // PHP threw the whole body away: it was over post_max_size.
-        Response::error('फाइलहरू धेरै ठूला भए — PDF को सट्टा फोटो पठाउनुहोस् · The files are too large together. Please send photos instead of PDFs.', 413);
+        Response::error('फाइलहरू धेरै ठूला भए — PDF को सट्टा फोटो पठाउनुहोस् · The files are too large together.', 413);
     }
     if (!StaffApps::applyOpen()) {
-        Response::error('अहिले अनलाइन आवेदन बन्द छ — कार्यालयमा फोन गर्नुहोस्: ' . Settings::officePhone() . ' · Online applications are closed for now.', 403);
+        Response::error('अहिले अनलाइन आवेदन बन्द छ — कार्यालयमा फोन गर्नुहोस्: ' . Settings::officePhone(), 403);
     }
 
-    /* 23 Oct 2026 (owner: "form apply, edit"): the applicant correcting the form they sent - the number was proven
-       in this session (ApplyEdit, /api/my-application.php). The same row is saved over; pictures already sent stay. */
     require_once INCLUDE_PATH . '/applyedit.php';
     $edit = !empty($_POST['edit']) ? ApplyEdit::current('staff', normalisePhone((string) ($_POST['phone'] ?? ''))) : null;
     if (!empty($_POST['edit']) && $edit === null) {
-        Response::error('सच्याउने समय सकियो — "पठाएको फारम सच्याउनुहोस्" फेरि खोल्नुहोस् · The edit has closed. Open your form again.', 409);
+        Response::error('सच्याउने समय सकियो — "पठाएको फारम सच्याउनुहोस्" फेरि खोल्नुहोस्', 409);
     }
     $have = [];
     if ($edit !== null) {
@@ -251,15 +203,7 @@ try {
     }
     $c     = $check['clean'];
     $files = $check['files'];
-    require_once INCLUDE_PATH . '/applicationimport.php';
-    $reviewed = filter_var($_POST['import_reviewed'] ?? false, FILTER_VALIDATE_BOOLEAN);
-    if ($edit !== null && !isset($files['id_front']) && in_array('id_front', $have, true)) {
-        if (!$reviewed) { Response::invalid(['import_reviewed' => 'review'], 'मुख्य विवरण जाँचेर ✓ लगाउनुहोस् · Review your main details.'); }
-    } else {
-        ApplicationImport::requireId($files['id_front']['bytes'] ?? null, $reviewed);
-    }
 
-    // Honeypot: a person never sees this box. The same kind of answer, nothing stored.
     if (trim((string) ($_POST['website'] ?? '')) !== '') {
         Logger::info('Staff apply: honeypot filled', ['ip' => $ip]);
         Response::json(['ok' => true, 'staff_id' => 0, 'ref' => 'STF-' . str_pad((string) random_int(900000, 999999), 6, '0', STR_PAD_LEFT),
@@ -267,10 +211,11 @@ try {
     }
 
     $state = staff_phone_state((string) $c['phone']);
-    // Applications may be submitted before WhatsApp verification; retain the true proof status.
+    if ($state === 'none') {
+        Response::invalid(['otp' => 'required'], 'मोबाइल नम्बर WhatsApp कोडले प्रमाणित गर्नुहोस् · Please verify your mobile with the WhatsApp code.');
+    }
     $c['phone_verified'] = $state === 'verified' ? 1 : 0;
 
-    // Documents: the answers this session already has (never waits here).
     if (StaffApps::docVerifyOn() && ($edit === null || isset($files['id_front']) || isset($files['license']))) {
         $uris = [];
         foreach (['id' => 'id_front', 'license' => 'license'] as $doc => $slot) {
@@ -281,7 +226,6 @@ try {
         $c['doc_verify_status'] = $v['status'];
     }
 
-    // Phase 2 (off by default): face frame hash + phone passkey. Optional even when on.
     if (StaffApps::biometricOn()) {
         $face = StaffApps::readUpload($_FILES['face'] ?? null, 'face');
         if (is_array($face) && isset($face['bytes'])) {
@@ -289,16 +233,13 @@ try {
             $c['biometric_face_hash'] = hash('sha256', $face['bytes']);
         }
     }
-    // 22 Oct 2026 (owner: "fingerprint / face id ni"): the phone's fingerprint / Face ID lock from the one form
-    // (/agreements/apply.html, challenge from /api/agreement-apply.php?challenge=1) or the old staff page -
-    // only the public credential is kept, so it no longer waits for the phase-2 switch.
     foreach (['staff_webauthn', 'agr_webauthn'] as $chKey) {
         $chal = $_SESSION[$chKey] ?? null;
         if (!isset($c['biometric_webauthn_cred']) && is_array($chal) && (int) ($chal['t'] ?? 0) > time() - 3600) {
             $cred = StaffApps::webauthnCred($_POST['webauthn'] ?? null, (string) $chal['c'], staff_origin());
             if ($cred !== null) {
                 $c['biometric_webauthn_cred'] = $cred;
-                $usedChKey = $chKey;   // spent once the application is stored (23 Oct 2026, review)
+                $usedChKey = $chKey;
             }
         }
     }
@@ -323,17 +264,16 @@ try {
         FaceCheck::attach('staff_applications', (int) $made['id']);
         $_SESSION['a4_mine'] = ['type' => 'staff', 'id' => (int) $made['id'], 't' => time()];
         Response::json(['ok' => true, 'staff_id' => $made['id'], 'ref' => $made['ref'], 'status' => 'pending', 'edited' => true,
-                        'message' => 'तपाईंको आवेदन ' . $made['ref'] . ' सच्याइयो। कार्यालयले नयाँ विवरण हेर्नेछ। · Your application ' . $made['ref'] . ' was updated.']);
+                        'message' => 'तपाईंको आवेदन ' . $made['ref'] . ' सच्याइयो।']);
     }
 
     try {
         $made = StaffApps::create($c, $files, $ip, $ua);
         require_once INCLUDE_PATH . '/facecheck.php';
-        FaceCheck::attach('staff_applications', (int) $made['id']);   // 23 Oct 2026: the live selfie line, when one was made
+        FaceCheck::attach('staff_applications', (int) $made['id']);
         if (isset($usedChKey)) {
             unset($_SESSION[$usedChKey]);
         }
-        // 22 Oct 2026: this browser may open its own filled A4 form at /agreements/form.php?mine=1
         $_SESSION['a4_mine'] = ['type' => 'staff', 'id' => (int) $made['id'], 't' => time()];
     } catch (StaffAppError $e) {
         Response::error($e->getMessage(), 409);
@@ -347,7 +287,7 @@ try {
                 'Name'     => mb_substr((string) $c['full_name'], 0, 60),
                 'Phone'    => '+' . countryDialCode((string) $c['phone_country']) . ' ' . $c['phone'] . ($c['phone_verified'] ? ' ✓' : ' (not verified)'),
                 'District' => mb_substr((string) $c['district'], 0, 60),
-                'Review'   => appUrl('admin/staff-applications.php?id=' . $made['id']),
+                'Review'   => appUrl('admin/team.php?tab=approvals&ref=' . $made['ref']),
             ]);
         } catch (Throwable $e) {
             Logger::warning('Staff apply: office note not sent: ' . $e->getMessage());

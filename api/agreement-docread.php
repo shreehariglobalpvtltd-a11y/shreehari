@@ -1,19 +1,7 @@
 <?php
 /**
  * /api/agreement-docread.php — "read my ID card and fill the form" for
- * /agreements/apply.html (23 Oct 2026, owner: "document upload garepachi
- * naam, janma miti afai aos, bala manche le correction garne").
- *
- * POST  Content-Type: application/json, X-CSRF-Token (from GET /api/agreement-apply.php)
- *       {"doc":"data:image/jpeg;base64,..."}
- *   200 {"ok":true,"status":"read"|"unavailable"|"notdoc",
- *        "fields":{"name":"Ram Bahadur Thapa","idno":"52-01-75-12345","idtype":"1","dob":"1990-05-14",
- *                  "gender":"male","address":"Nepalgunj-5, Banke","father":"…","doc_type":"citizenship"}}
- *
- * Nothing read here is trusted: the page only PRE-FILLS empty boxes and
- * the applicant corrects them; the usual name / number check
- * (agreement-doccheck.php) still runs on the final values. No value is
- * logged. Same budgets as the check: 15 reads an hour per IP, 300 a day.
+ * /agreements/apply.html.
  */
 
 declare(strict_types=1);
