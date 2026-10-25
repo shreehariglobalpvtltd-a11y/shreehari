@@ -20,7 +20,7 @@ final class CardDelivery {
     public static function getDelivery(string $ref): ?array {
         if (!TeamRegistry::ready()) { return null; }
         $r=Database::fetch('SELECT * FROM team_card_jobs WHERE ref=:r ORDER BY id DESC LIMIT 1',['r'=>$ref]);
-        if (!$r) { $raw=Database::scalar("SELECT kvalue FROM kv_store WHERE kscope='global' AND kkey=:k",['k'=>'card_delivery:'.$ref],null);$legacy=is_string($raw)?json_decode($raw,true):null;return is_array($legacy)?array_replace($legacy,['id'=>0,'state'=>'legacy','status'=>'legacy','version_hash'=>'','error_message'=>'Legacy attempt retained. Review provider receipts before explicit resend.']):null; }
+        if (!$r) { $raw=Database::scalar("SELECT kvalue FROM kv_store WHERE kscope='global' AND kkey=:k",['k'=>'card_delivery:'.$ref],null);$legacy=is_string($raw)?json_decode($raw,true):null;return is_array($legacy)?array_replace($legacy,['id'=>0,'state'=>'legacy','status'=>'legacy','version_hash'=>'','sent_at'=>null,'delivered_at'=>null,'error_message'=>'Legacy attempt retained. Review provider receipts before explicit resend.']):null; }
         $p=IdCard::person($ref);
         return $r+['status'=>$r['state'],'phone'=>$r['recipient'],'name'=>$p['name']??'','provider'=>'cloud_api','provider_msg_id'=>$r['provider_ref'],'error_message'=>$r['error'],'retry_count'=>(int)Database::scalar('SELECT COUNT(*) FROM team_card_jobs WHERE ref=:r',['r'=>$ref],0)-1,'sent_at'=>in_array($r['state'],['sent','delivered','read'])?$r['updated_at']:null,'delivered_at'=>in_array($r['state'],['delivered','read'])?$r['updated_at']:null];
     }
@@ -28,7 +28,7 @@ final class CardDelivery {
         $ref=strtoupper(trim($ref));
         try {
             $p=IdCard::person($ref); if (!$p || !$p['valid'] || !$p['photo']) { throw new RuntimeException('An active approved card and approved photo are required.'); }
-            $key=TeamRegistry::key($ref); $m=TeamRegistry::meta($key); $to=self::recipient($ref);
+            $ref=$p['ref']; $key=TeamRegistry::key($ref); $m=TeamRegistry::meta($key); $to=self::recipient($ref);
             if (!$to || empty($m['delivery_consent'])) { throw new RuntimeException('Record WhatsApp card-delivery consent and verify the exact registered number first.'); }
             // Create the complete ID and visiting PDF BEFORE enqueueing a send; never give Meta an admin-only URL.
             $pdf=IdCard::pdf($p,'all');
@@ -82,7 +82,7 @@ final class CardDelivery {
                 $payload=$window?['type'=>'document','document'=>$document+['caption'=>'Your approved S Hari Global ID and visiting cards.']]:['type'=>'template','template'=>['name'=>$template,'language'=>['code'=>Settings::getString('team_card_template_lang','en')],'components'=>[['type'=>'header','parameters'=>[['type'=>'document','document'=>$document]]]]]];
                 $attempted=true;
                 $res=waGraphPost($r['recipient'],$payload,'team_cards',null,null,1);
-                $state=!empty($res['success'])&&!empty($res['message_id'])?'sent':(((int)$res['http']===0 || (int)$res['http']>=500)?'unknown':'failed');
+                $state=!empty($res['success'])&&!empty($res['message_id'])?'sent':(((int)$res['http']===0 || (int)$res['http']>=500 || ((int)$res['http']>=200 && (int)$res['http']<300))?'unknown':'failed');
                 Database::update('team_card_jobs',['state'=>$state,'provider_ref'=>$res['message_id']?:null,'sent_at'=>$state==='sent'?date('Y-m-d H:i:s'):null,'error'=>$state==='sent'?null:mb_substr((string)($res['error']?:'No message ID returned; check provider before resend.'),0,255)],'id=:i',['i'=>$r['id']]);
                 if ($state==='sent') {
                     $ev=Database::fetch('SELECT * FROM team_card_events WHERE provider_ref=:w',['w'=>$res['message_id']]);
