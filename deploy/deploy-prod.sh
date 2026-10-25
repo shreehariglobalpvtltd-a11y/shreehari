@@ -36,37 +36,55 @@
 # =====================================================================
 set -euo pipefail
 
+if [[ $# -lt 3 || $# -gt 4 || (${4:-} != '' && ${4:-} != --dry-run) ]]; then
+  echo 'usage: deploy-prod.sh <base> <target> <release-YYYYMMDD-label> [--dry-run]' >&2; exit 2
+fi
 BASE=${1:?base branch (what is live now)}
 NEW=${2:?new ref to release}
 REL=${3:?release branch name to create}
 DRY=${4:-}
 
-GIT="git --git-dir=/var/repos/shg.git"
+GIT_DIR=/var/repos/shg.git
+GIT=(git --git-dir="$GIT_DIR")
 LIVE=/var/www/shreehariglobal.in/public_html
 DB=shari
+LOCK=/var/lock/shg-deploy.lock
+
+# All invocations of this deployer (including dry runs) serialize before
+# inspecting live. No environment override can redirect production paths.
+command -v flock >/dev/null || { echo 'ABORT: flock is required' >&2; exit 2; }
+exec 9>"$LOCK"
+flock -n 9 || { echo 'ABORT: another deployment is running' >&2; exit 2; }
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+source "$SCRIPT_DIR/release-preflight.sh"
+PLAN=$(shg_release_plan "$GIT_DIR" "$BASE" "$NEW" "$REL") || exit 2
+mapfile -t COMMITS <<< "$PLAN"
+# Resolve mutable branch names ONCE. All diffs, archives, backups and
+# verification below use these exact commits even if another session pushes.
+BASE=${COMMITS[0]}
+NEW=${COMMITS[1]}
+echo "build base=$BASE target=$NEW release=$REL"
 TS=$(date +%Y%m%d-%H%M%S)
 BK=/root/backups/pre-deploy-$REL-$TS
 
-$GIT rev-parse --verify -q "$BASE^{commit}" >/dev/null || { echo "ABORT: unknown base $BASE"; exit 2; }
-$GIT rev-parse --verify -q "$NEW^{commit}"  >/dev/null || { echo "ABORT: unknown ref $NEW"; exit 2; }
-$GIT merge-base --is-ancestor "$BASE" "$NEW" || { echo "ABORT: $NEW is not built on $BASE"; exit 2; }
 if [ -e "$LIVE/public_html" ]; then echo "ABORT: $LIVE holds a nested public_html (stale tree)"; exit 2; fi
 
 # web files this release adds or changes (docs/ and tests/ never go live)
-mapfile -t FILES < <($GIT diff --name-only --diff-filter=ACMR "$BASE" "$NEW" | grep -vE '^(docs|tests|\.github)/' | grep -vE '^config/config(\.local)?\.php$' || true)
-mapfile -t GONE  < <($GIT diff --name-only --diff-filter=D "$BASE" "$NEW" | grep -vE '^(docs|tests|\.github)/' || true)
+mapfile -t FILES < <("${GIT[@]}" diff --name-only --diff-filter=ACMR "$BASE" "$NEW" | grep -vE '^(docs|tests|\.github)/' | grep -vE '^config/config(\.local)?\.php$' || true)
+mapfile -t GONE  < <("${GIT[@]}" diff --name-only --diff-filter=D "$BASE" "$NEW" | grep -vE '^(docs|tests|\.github)/' || true)
 mapfile -t SQLS  < <(printf '%s\n' "${FILES[@]}" | grep -E '^database/' || true)
 echo "release $REL: ${#FILES[@]} file(s) to write, ${#GONE[@]} deleted in git (left on live), ${#SQLS[@]} database file(s)"
 [ "${#FILES[@]}" -gt 0 ] || { echo "nothing to deploy"; exit 0; }
 
 # 1. drift guard
-DRIFT=0
+check_live_drift() {
+local DRIFT=0 f a b
 for f in "${FILES[@]}"; do
-  if $GIT cat-file -e "$BASE:$f" 2>/dev/null; then
+  if "${GIT[@]}" cat-file -e "$BASE:$f" 2>/dev/null; then
     if [ -e "$LIVE/$f" ]; then
       # Line endings are ignored (a Windows scp writes CRLF, git stores LF):
       # only a real content difference is someone else's change.
-      a=$($GIT show "$BASE:$f" | tr -d '\r' | md5sum | cut -c1-32); b=$(tr -d '\r' < "$LIVE/$f" | md5sum | cut -c1-32)
+      a=$("${GIT[@]}" show "$BASE:$f" | tr -d '\r' | md5sum | cut -c1-32); b=$(tr -d '\r' < "$LIVE/$f" | md5sum | cut -c1-32)
       [ "$a" = "$b" ] || { echo "LIVE DRIFT: $f differs from $BASE"; DRIFT=1; }
     else
       echo "LIVE DRIFT: $f is in $BASE but missing on live"; DRIFT=1
@@ -75,13 +93,15 @@ for f in "${FILES[@]}"; do
     echo "LIVE DRIFT: $f is new in this release but already exists on live"; DRIFT=1
   fi
 done
-[ "$DRIFT" = 0 ] || { echo "ABORT: live is not the base this release was built on - nothing was written"; exit 3; }
+[ "$DRIFT" = 0 ] || { echo "ABORT: live is not the base this release was built on - nothing was written"; return 3; }
+}
+check_live_drift
 echo "drift guard: live == $BASE for every touched file"
 
 # 3 (early). lint in a staging dir before anything is backed up or written
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
-$GIT archive "$NEW" "${FILES[@]}" | tar -x -C "$STAGE"
+"${GIT[@]}" archive "$NEW" "${FILES[@]}" | tar -x -C "$STAGE"
 for f in "${FILES[@]}"; do
   case "$f" in *.php) php -l "$STAGE/$f" >/dev/null || { echo "ABORT: php -l failed on $f"; exit 4; } ;; esac
 done
@@ -100,21 +120,28 @@ for f in "${FILES[@]}"; do
 done
 mysqldump --single-transaction --routines --triggers "$DB" | gzip > "$BK/db-$DB.sql.gz"
 cat > "$BK/ROLLBACK.txt" <<TXT
-Deploy $TS  $REL  ($BASE -> $($GIT rev-parse --short "$NEW")).
+Deploy $TS  $REL  ($BASE -> $NEW).
 To roll back the code:
   cp -a $BK/<files> back into $LIVE (same relative paths)
   delete the files listed in NEW-FILES.txt (if present)
   chown www-data:www-data the restored files; systemctl reload php8.3-fpm
   curl the home page and /admin/login.php - both must answer 200
-Database: db-$DB.sql.gz is the dump taken BEFORE this deploy. Migrations of
-this release are additive; restoring the dump is only for a real emergency.
+Database: db-$DB.sql.gz is the dump taken BEFORE this deploy. Do not restore
+it over newer valid transactions. Code rollback never requires a database
+restore; any data recovery requires a separate reviewed reconciliation plan.
 TXT
 
 # 4. write
-$GIT branch -f "$REL" "$NEW"
+# A backup/lint can take time. Preserve edits made directly to live while
+# we were preparing, as well as competing invocations blocked by flock.
+check_live_drift
+# Compare-and-create: even an external Git writer racing our lock cannot
+# make us overwrite an existing release branch after the preflight check.
+"${GIT[@]}" update-ref "refs/heads/$REL" "$NEW" '' || { echo 'ABORT: release name was claimed during deploy' >&2; exit 2; }
 for f in "${FILES[@]}"; do
   mkdir -p "$LIVE/$(dirname "$f")"
-  cp "$STAGE/$f" "$LIVE/$f.deploytmp" && mv "$LIVE/$f.deploytmp" "$LIVE/$f"
+  cp "$STAGE/$f" "$LIVE/$f.deploytmp"
+  mv "$LIVE/$f.deploytmp" "$LIVE/$f"
   chown www-data:www-data "$LIVE/$f"
 done
 
@@ -122,11 +149,11 @@ done
 systemctl reload php8.3-fpm
 BAD=0
 for f in "${FILES[@]}"; do
-  a=$($GIT show "$NEW:$f" | md5sum | cut -c1-32); b=$(md5sum "$LIVE/$f" | cut -c1-32)
+  a=$("${GIT[@]}" show "$NEW:$f" | md5sum | cut -c1-32); b=$(md5sum "$LIVE/$f" | cut -c1-32)
   [ "$a" = "$b" ] || { echo "MD5 MISMATCH $f"; BAD=1; }
 done
-H=$(curl -s -o /dev/null -w '%{http_code}' https://www.shreehariglobal.in/)
-A=$(curl -s -o /dev/null -w '%{http_code}' https://shreehariglobal.network/admin/login.php)
+H=$(curl -sS --connect-timeout 5 --max-time 20 -o /dev/null -w '%{http_code}' https://www.shreehariglobal.in/) || H=000
+A=$(curl -sS --connect-timeout 5 --max-time 20 -o /dev/null -w '%{http_code}' https://shreehariglobal.network/admin/login.php) || A=000
 echo "home -> $H   admin login -> $A   backup -> $BK"
 [ "${#GONE[@]}" -eq 0 ] || { echo "deleted in git, still on live (remove by hand after checking):"; printf '  %s\n' "${GONE[@]}"; }
 [ "${#SQLS[@]}" -eq 0 ] || { echo "database files in this release - apply by hand, in order:"; printf '  %s\n' "${SQLS[@]}"; }
