@@ -23,3 +23,7 @@ q.stop();assert.equal(Object.keys(q.BUS.m).length,0);assert.ok(q.BUS.by[1],'over
 q.apply(snap(base+40000,121));assert.equal(Object.keys(q.BUS.by).length,0,'stale fix has no live speed/marker');
 q.apply(snap(base+50000,5));now+=116000;assert.equal(q.fresh(q.BUS.by[1]),false,'local expiry works even when connection stops');
 console.log('GPS marker checks passed: speed, no map recenter, duplicate/order, animation cancellation/off, toggle, stale expiry');
+const gpsPoint={id:-7,bus:'QA-GPS',from:'',to:'',dep:'',lat:23.1,lng:72.6,kmh:0,fixAt:base+60000,trackingOnly:true};
+q.apply({t:base+65000,buses:[],gps:[gpsPoint],fleet:[]});assert.ok(q.BUS.m[-7]);assert.equal(q.BUS.by[-7].kmh,0,'stationary speed is not lost');
+q.apply({t:base+200000,buses:[],gps:[gpsPoint],fleet:[]});assert.equal(q.BUS.m[-7],undefined,'stale standalone GPS marker removed');
+console.log('Standalone GPS marker and expiry checks passed');

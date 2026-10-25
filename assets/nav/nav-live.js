@@ -518,6 +518,7 @@ var BUS = { on: LSg.get('shg:nl:bus', true) !== false, animate: LSg.get('shg:nl:
 function fleetText(k) {
   var lang = X.S.lang || document.documentElement.lang || 'en';
   var texts = {
+    gpsOnly: ['Live GPS · no trip assigned', 'लाइभ GPS · यात्रा जोडिएको छैन', 'लाइव GPS · यात्रा नहीं जुड़ी'],
     title: ['Live buses', 'लाइभ बसहरू', 'लाइव बसें'], show: ['Show buses on map', 'नक्सामा बस देखाउने', 'मानचित्र पर बस दिखाएं'],
     motion: ['Smooth bus animation', 'बसको सहज एनिमेसन', 'बस का सहज एनिमेशन'],
     empty: ['No live position yet. The map will update when a bus sends GPS.', 'अहिले लाइभ स्थान छैन। बसबाट GPS आएपछि नक्सा अपडेट हुन्छ।', 'अभी लाइव स्थान नहीं है। बस का GPS आने पर मानचित्र अपडेट होगा।'],
@@ -558,13 +559,13 @@ function busApply(snap) {
   if (snap.t <= BUS.stamp) { BUS.errors = 0; busRows(); return; }
   var m = X.S.map, seen = {};
   BUS.stamp = snap.t; BUS.received = performance.now(); BUS.fleet = snap.fleet || []; BUS.errors = 0;
-  (snap.buses || []).forEach(function (b) {
+  (snap.buses || []).concat(snap.gps || []).forEach(function (b) {
     b._age = Number.isFinite(b.fixAt) ? (snap.t - b.fixAt) / 1000 : b.age;
     if (!Number.isFinite(b.lat) || !Number.isFinite(b.lng) || !busFresh(b)) return;
     seen[b.id] = true;
     var prev = BUS.by[b.id]; BUS.by[b.id] = b;
     if (!m || !window.maplibregl || !BUS.on || document.hidden) return;
-    var lbl = (b.bus ? '<b>' + esc(b.bus) + '</b>' : '') + '<em>' + (b.kmh == null ? '→ ' + esc(b.to) : Math.round(b.kmh) + ' km/h') + '</em>';
+    var lbl = (b.bus ? '<b>' + esc(b.bus) + '</b>' : '') + '<em>' + (b.kmh == null ? (b.trackingOnly ? esc(fleetText('gpsOnly')) : '→ ' + esc(b.to)) : Math.round(b.kmh) + ' km/h') + '</em>';
     if (BUS.m[b.id]) {
       if (!prev || prev.fixAt !== b.fixAt || prev.lat !== b.lat || prev.lng !== b.lng) {
         moveMarker(BUS.m[b.id], [b.lng, b.lat], !BUS.animate);
@@ -590,7 +591,7 @@ function busRows() {
   var plates = {};
   rows.innerHTML = (BUS.errors ? '<p role="status">' + esc(fleetText('error')) + '</p>' : '') + items.map(function (b) {
     plates[b.bus] = true;
-    return '<button class="nl-b nl-fleet-row" type="button" data-fleet-bus="' + Number(b.id) + '"><b>🟢 ' + esc(b.bus || b.busName || 'S Hari') + '</b><span>' + esc(b.from) + ' → ' + esc(b.to) + '</span><small>' + esc(busTelemetry(b)) + '</small></button>';
+    return '<button class="nl-b nl-fleet-row" type="button" data-fleet-bus="' + Number(b.id) + '"><b>🟢 ' + esc(b.bus || b.busName || 'S Hari') + '</b><span>' + (b.trackingOnly ? esc(fleetText('gpsOnly')) : esc(b.from) + ' → ' + esc(b.to)) + '</span><small>' + esc(busTelemetry(b)) + '</small></button>';
   }).join('') + BUS.fleet.filter(function (f) { return !plates[f.bus]; }).map(function (f) {
     return '<div class="nl-fleet-row"><b>⚪ ' + esc(f.bus) + '</b><small>' + esc(fleetText(f.state === 'live' ? 'stale' : f.state)) + '</small></div>';
   }).join('') + (!items.length ? '<p>' + esc(fleetText('empty')) + '</p>' : '');
@@ -621,7 +622,7 @@ function busSheet(id) {
   var b = BUS.by[id]; if (!b || !busFresh(b)) return;
   BUS.detail = id;
   sheet('<h3>S Hari Global <span class="nl-plate">' + esc(b.bus || '') + '</span></h3>' +
-    '<p>' + esc(b.from) + ' → ' + esc(b.to) + ' · ' + esc(b.dep) + '</p>' +
+    '<p>' + (b.trackingOnly ? esc(fleetText('gpsOnly')) : esc(b.from) + ' → ' + esc(b.to) + ' · ' + esc(b.dep)) + '</p>' +
     '<p id="nlBusTelemetry" role="status">' + esc(busTelemetry(b)) + '</p>' +
     (b.next ? '<p>' + esc(t('busNext')) + ': <b>' + esc(b.next.name) + '</b> · ' + esc(String(b.next.eta)) + ' ' + esc(t('min')) + '</p>' : '') +
     '<div class="nl-acts"><button type="button" class="nl-b" id="nlFleetBack">🚌 ' + esc(fleetText('title')) + '</button><a class="nl-b" href="/#/track">' + esc(t('busTrack')) + '</a></div>');

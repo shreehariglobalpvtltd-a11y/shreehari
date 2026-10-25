@@ -73,6 +73,14 @@ if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 Logger::audit('gps_tracker.delete', 'bus', (string) $t['bus_id'], ['tracker' => $id, 'label' => $t['label']], null, 'by admin #' . $admin['id']);
                 $flash = ['ok', 'Tracker deleted.'];
 
+            } elseif ($action === 'public_map' && $canSwitch) {
+                $busId = (int) ($_POST['bus_id'] ?? 0);
+                if (!Database::exists('SELECT 1 FROM buses WHERE id=:b AND is_active=1', ['b' => $busId])) { throw new RuntimeException('Active bus not found.'); }
+                $on = ($_POST['on'] ?? '') === '1';
+                Settings::set('gps_public_bus_' . $busId, $on, 'bool', 'automation');
+                Settings::flush();
+                Logger::audit('gps_tracker.public_map', 'bus', (string) $busId, null, ['public' => $on], 'by admin #' . $admin['id']);
+                $flash = ['ok', $on ? 'Public GPS sharing ON. Fresh GPS shows on S Hari Map, including without a scheduled trip.' : 'Public GPS sharing OFF. Device-only positions remain private.'];
             } elseif ($action === 'switch' && $canSwitch) {
                 $on = ((string) ($_POST['on'] ?? '')) === '1';
                 Settings::set('gps_trackers_on', $on ? '1' : '0', 'bool', 'automation');
@@ -242,6 +250,13 @@ admin_header('GPS trackers (vehicle number)', 'gps-trackers');
         <div style="font-size:12px;margin-top:2px"><?= $run !== null
           ? '🚌 On ' . Security::e($run['route'] . ' · ' . $run['date'] . ' ' . $run['dep'])
           : '<span class="muted">Parked - no departure within the hour</span>' ?></div>
+        <?php $publicOn = Settings::getBool('gps_public_bus_' . (int) $b['id'], false); ?>
+        <div style="font-size:12px;margin-top:6px">Public GPS map: <b><?= $publicOn ? 'ON' : 'OFF' ?></b></div>
+        <?php if ($canSwitch && (int) $b['is_active'] === 1): ?>
+        <form method="post" style="margin-top:4px"><?= Security::csrfField() ?>
+          <input type="hidden" name="action" value="public_map"><input type="hidden" name="bus_id" value="<?= (int) $b['id'] ?>"><input type="hidden" name="on" value="<?= $publicOn ? '0' : '1' ?>">
+          <button class="btn ghost" type="submit" style="padding:4px 8px;font-size:12px"><?= $publicOn ? 'Stop public GPS sharing' : 'Share GPS on public map' ?></button>
+        </form><?php endif; ?>
       <?php $busCell = (string) ob_get_clean();
       if ($b['trackers'] === []): ?>
       <tr>

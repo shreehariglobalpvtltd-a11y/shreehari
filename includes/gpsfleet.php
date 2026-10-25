@@ -6,6 +6,29 @@ require_once __DIR__ . '/gpstrackers.php';
 /** Read-only device health. Credentials never leave the configuration page. */
 final class GpsFleet
 {
+    /** Public bus GPS is separately opted in; no booking/trip is fabricated for a map test. */
+    public static function publicPoints(array $devices, int $now): array
+    {
+        $byBus = [];
+        foreach ($devices as $d) {
+            if (empty($d['public']) || $d['state'] !== 'live' || !is_numeric($d['fixAt'] ?? null)
+                || !is_numeric($d['seenAt'] ?? null) || !is_numeric($d['lat'] ?? null) || !is_numeric($d['lng'] ?? null)) { continue; }
+            $age = $now - (int) floor($d['fixAt'] / 1000);
+            $seenAge = $now - (int) floor($d['seenAt'] / 1000);
+            if ($age < -120 || $age > 120 || $seenAge < -120 || $seenAge > 120
+                || $d['lat'] < 6 || $d['lat'] > 37.5 || $d['lng'] < 68 || $d['lng'] > 98) { continue; }
+            $bus = (int) $d['busId'];
+            if (isset($byBus[$bus]) && $byBus[$bus]['fixAt'] >= $d['fixAt']) { continue; }
+            $health = $d['diagnostic'] ?? null;
+            $acc = is_array($health) && ($health['reportedAt'] ?? null) === $d['fixAt'] ? ($health['accuracyM'] ?? null) : null;
+            $byBus[$bus] = ['id' => -$bus, 'bus' => $d['bus'], 'busName' => $d['name'], 'trackingOnly' => true,
+                'from' => '', 'to' => '', 'dep' => '', 'lat' => (float) $d['lat'], 'lng' => (float) $d['lng'],
+                'kmh' => $d['kmh'], 'brg' => null, 'pct' => null, 'next' => null,
+                'fixAt' => (int) $d['fixAt'], 'age' => max(0, $age), 'acc' => $acc];
+        }
+        return array_values($byBus);
+    }
+
     public static function state(array $r, int $now, bool $enabled): string
     {
         if (!$enabled || !(int) ($r['is_active'] ?? 0)) { return 'disabled'; }
@@ -29,6 +52,7 @@ final class GpsFleet
             $state = self::state($r, $now, $enabled);
             $out[] = ['id' => (int) $r['id'], 'busId' => (int) $r['bus_id'], 'bus' => $r['bus_number'],
                 'diagnostic' => GpsTrackers::health((int) $r['id']),
+                'public' => Settings::getBool('gps_public_bus_' . (int) $r['bus_id'], false),
                 'name' => $r['bus_name'], 'label' => $r['label'], 'kind' => $r['kind'], 'state' => $state,
                 'seenAt' => $r['last_seen'] ? strtotime($r['last_seen']) * 1000 : null,
                 'fixAt' => $r['last_fix_at'] ? strtotime($r['last_fix_at']) * 1000 : null,
