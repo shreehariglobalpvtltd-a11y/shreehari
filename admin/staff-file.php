@@ -1,19 +1,7 @@
 <?php
 /**
  * admin/staff-file.php?id=<id>&f=<slot>&e=<expiry>&s=<sig> — streams one
- * file of a staff application (22 Oct 2026).
- *
- * WHY A SCRIPT: an ID card, a licence or a marksheet is never a link under
- * /uploads/ (nginx denies /uploads/staff/ and the names are random). The
- * only door is this page, and it needs ALL of:
- *   - a signed-in office user who may see KYC in full (super-admin or
- *     manager, the same rule as Admin -> Agreements),
- *   - a signature made for THIS user, this file and an expiry at most
- *     15 minutes away (StaffApps::fileUrl) — a copied link dies quickly and
- *     works for nobody else,
- *   - a stored path that is really inside uploads/staff/ (StaffApps::absPath).
- * The type is read from the bytes, the answer is never cached, and every
- * view is written to the audit trail.
+ * file of a staff application.
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
@@ -33,7 +21,7 @@ $slot    = (string) ($_GET['f'] ?? '');
 $exp     = (int) ($_GET['e'] ?? 0);
 $sig     = (string) ($_GET['s'] ?? '');
 
-if (!(Auth::isSuperadmin() || (string) ($admin['role'] ?? '') === 'manager')) {
+if (!(Auth::isSuperadmin() || (string) ($admin['role'] ?? '') === 'manager' || Auth::can('staff.manage'))) {
     $deny(403, 'Only a super-admin or a manager may open staff documents.');
 }
 if ($id <= 0 || $exp < time() || $exp > time() + 3600 || !hash_equals(StaffApps::fileSig($id, $slot, $exp, $adminId), $sig)) {
@@ -68,4 +56,3 @@ header('Content-Disposition: ' . ($ext === 'bin' ? 'attachment' : 'inline') . ';
 header('Cache-Control: private, no-store, max-age=0');
 header('X-Content-Type-Options: nosniff');
 readfile($abs);
-exit;

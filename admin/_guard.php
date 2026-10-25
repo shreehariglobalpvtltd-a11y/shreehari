@@ -224,6 +224,7 @@ function admin_nav(): array
         // 27 Sep 2026 agreements, restored 2 Oct 2026 (a later deploy had dropped
         // them): applications + KYC + agreement status, the editable agreement
         // points the public /agreements/ pages show, and the Hindi agreement PDF.
+        ['href' => 'team.php', 'icon' => 'user-cog', 'label' => 'Team & Approvals', 'perm' => in_array((string) ((Auth::admin() ?? [])['role'] ?? ''), ['superadmin', 'manager'], true) ? 'customers.view' : '__superadmin_only__', 'section' => 'Agents & counters', 'hot' => true],
         ['href' => 'team-manager.php', 'icon' => 'id-card', 'label' => '🪪 Agent / Staff Management', 'perm' => in_array((string) ((Auth::admin() ?? [])['role'] ?? ''), ['superadmin', 'manager'], true) ? 'customers.view' : '__superadmin_only__', 'section' => 'Agents & counters', 'hot' => true],
         ['href' => 'agreement-points.php', 'icon' => 'doc',   'label' => '📜 Agreement points', 'perm' => $agentView ? '__superadmin_only__' : 'dashboard.view', 'section' => 'Agents & counters'],
         ['href' => 'agreement-pdf.php','icon' => 'notepad',   'label' => 'Agreement PDF (Hindi)', 'perm' => 'staff.manage', 'section' => 'Agents & counters'],

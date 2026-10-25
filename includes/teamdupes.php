@@ -6,20 +6,6 @@
  *  Owner prompt (registration system, point 9): before the office decides,
  *  check the ID number, the mobile and the name + date of birth against
  *  every other agent / partner / staff file and WARN — the office decides.
- *
- *  lookalikes('agent', $id) / lookalikes('staff', $id) returns the OTHER
- *  files that share
- *    doc       the ID number (letters and digits only, upper case, at least
- *              5 characters — "12-01-75-1234" == "1201751234")
- *    phone     the last 10 digits of the mobile
- *    name_dob  the name (case, dots and spaces folded) AND the birth date
- *  with the reasons for each. A warning only — nothing is blocked, merged or
- *  changed. An application's own repeat inside 24 h (duplicate_of) is shown
- *  by admin/agreements.php already and is still listed here.
- *
- *  Read-only. Agent rows keep the ID number and birth date inside
- *  fields_json (p_idno / p_dob), so the comparison runs in PHP over at most
- *  SCAN_MAX rows per table — a few hundred today.
  * =====================================================================
  */
 
@@ -39,14 +25,11 @@ final class TeamDupes
         'name_dob' => 'same name + date of birth',
     ];
 
-    /** @var array<int, array<string, string>>|null every file, folded once per request */
     private static ?array $all = null;
 
     private function __construct() {}
 
     /**
-     * The other files that look like the same person.
-     *
      * @return array<int, array{kind: string, id: int, ref: string, name: string, status: string, why: array<int, string>, url: string}>
      */
     public static function lookalikes(string $kind, int $id): array
@@ -80,17 +63,14 @@ final class TeamDupes
                 $out[] = [
                     'kind' => $r['kind'], 'id' => (int) $r['id'], 'ref' => $r['ref'], 'name' => $r['name'],
                     'status' => $r['status'], 'why' => $why,
-                    'url' => $r['kind'] === 'staff' ? 'staff-applications.php?id=' . (int) $r['id'] . '#stfTitle'
-                                                    : 'agreements.php?tab=apps&id=' . (int) $r['id'] . '#detail',
+                    'url' => 'team.php?tab=approvals&ref=' . urlencode($r['ref']),
                 ];
             }
         }
-        // the strongest match first: an ID number beats a shared phone
         usort($out, static fn(array $a, array $b): int => [in_array('doc', $b['why'], true), count($b['why'])] <=> [in_array('doc', $a['why'], true), count($a['why'])]);
         return array_slice($out, 0, 12);
     }
 
-    /** One line for the office page; '' when nothing matched. */
     public static function html(string $kind, int $id): string
     {
         try {
@@ -114,9 +94,6 @@ final class TeamDupes
              . '<ul style="margin:6px 0 0;padding-left:18px">' . implode('', $li) . '</ul></div>';
     }
 
-    /* ----------------------------------------------------------------- */
-
-    /** Letters and digits only, upper case; '' when shorter than 5. */
     public static function foldDoc(string $s): string
     {
         $d = strtoupper(preg_replace('/[^0-9A-Za-z]/', '', strtr($s, ['०' => '0', '१' => '1', '२' => '2', '३' => '3', '४' => '4', '५' => '5', '६' => '6', '७' => '7', '८' => '8', '९' => '9'])) ?? '');
@@ -136,14 +113,12 @@ final class TeamDupes
         return preg_replace('/[^\p{L}\p{N}]+/u', '', $s) ?? '';
     }
 
-    /** Y-m-d, or ''. */
     public static function foldDob(string $s): string
     {
         $s = trim($s);
         return preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $s, $m) === 1 && $s !== '0000-00-00' ? $m[1] . '-' . $m[2] . '-' . $m[3] : '';
     }
 
-    /** @return array<int, array<string, string>> */
     private static function all(): array
     {
         if (self::$all !== null) {
@@ -176,7 +151,6 @@ final class TeamDupes
         return self::$all = $all;
     }
 
-    /** Tests: forget the per-request cache. */
     public static function reset(): void
     {
         self::$all = null;

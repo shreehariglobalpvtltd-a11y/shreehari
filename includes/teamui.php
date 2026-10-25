@@ -1,8 +1,7 @@
 <?php
 /**
- * includes/teamui.php — the frame of the /team/ pages (22 Oct 2026): one
- * light / dark design for the team portal, phone first, no app shell (the
- * pages are plain PHP so they work on any phone without the SPA).
+ * includes/teamui.php — the frame of the /team/ pages: one
+ * light / dark design for the team portal, phone first, no app shell.
  */
 
 declare(strict_types=1);
@@ -92,14 +91,13 @@ h3{font-size:15px;margin:14px 0 6px;color:var(--royal2)}
         $co = Settings::company();
         ?>
 </main>
-<p class="tp-foot">समस्या भए · Need help? <a href="tel:<?= Security::e(preg_replace('/[^\d+]/', '', (string) $co['phone']) ?? '') ?>"><?= Security::e($co['phone']) ?></a> · <a href="/">shreehariglobal.in</a></p>
-<script defer src="/assets/js/wa-direct.js?v=20261022a"></script><!-- every wa.me link opens WhatsApp in one tap -->
+<p class="tp-foot">समस्या भए · Need help? <a href="tel:<?= Security::e(preg_replace('/[^\d+]/', '', (string) ($co['phone'] ?? '')) ?? '') ?>"><?= Security::e((string) ($co['phone'] ?? '')) ?></a> · <a href="/">shreehariglobal.in</a></p>
+<script defer src="/assets/js/wa-direct.js?v=20261022a"></script>
 </body>
 </html>
 <?php
     }
 
-    /** One flash line from the session, shown once. */
     public static function flash(): void
     {
         $f = $_SESSION['team_flash'] ?? null;
@@ -112,11 +110,5 @@ h3{font-size:15px;margin:14px 0 6px;color:var(--royal2)}
     public static function setFlash(string $kind, string $text): void
     {
         $_SESSION['team_flash'] = [$kind, $text];
-    }
-
-    public static function go(string $to): never
-    {
-        header('Location: ' . $to, true, 303);
-        exit;
     }
 }

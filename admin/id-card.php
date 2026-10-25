@@ -1,27 +1,20 @@
 <?php
 /**
- * admin/id-card.php?ref=STF-000005 | AGR-000035 — a person's digital identity
- * for the office (22 Oct 2026, owner: team portal; 23 Oct 2026: visiting
- * card, PDF, device logins, verification log).
+ * admin/id-card.php?ref=STF-000005 | AGR-000035 | DRV-000001 — Digital Identity & Visiting Card.
  *
- *   ?ref=…                     the page: ID card + visiting card, Print, PNG /
- *                              PDF downloads, the public verify link, the
- *                              person's passkeys (Face ID / fingerprint devices,
- *                              with "forget"), the verification log
- *   ?ref=…&png=front|back|sheet         the ID card PNG      (&dl=1 to save)
- *   ?ref=…&v=front|back|sheet           the visiting card PNG (&dl=1 to save)
- *   ?ref=…&pdf=id|visiting|all          the print-ready A4 PDF
- *   POST action=passkey_remove id=…     forget one device (CSRF)
- *
- * Who: a super-admin or a manager (the card carries the photo and the
- * mobile), each card made is written to the audit trail. Staff cards are
- * for approved / suspended / exited people (the QR then says "not valid"),
- * agent and partner cards for approved applications. The person prints
- * their own from the team portal.
+ * Implements:
+ *  - High-res CR80 portrait ID Card (54 × 85.6 mm) & Landscape Visiting Card (89 × 51 mm)
+ *  - Front & back PNG and PDF downloads
+ *  - Official verification QR vs Personal WhatsApp QR (with separate disclaimer)
+ *  - Automated WhatsApp Cloud API card delivery tracker & Resend button
+ *  - Manual WhatsApp Fallback modal (Web Share API + wa.me prefill + download fallback)
+ *  - Photo Studio replacement with instant card regeneration
+ *  - Passkeys & Verification logs
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/idcard.php';
+require_once INCLUDE_PATH . '/carddelivery.php';
 require_once INCLUDE_PATH . '/passkeys.php';
 $admin = admin_boot('');
 
@@ -31,31 +24,37 @@ $deny = static function (int $code, string $msg): never {
     header('Cache-Control: no-store');
     exit($msg);
 };
-if (!(Auth::isSuperadmin() || (string) ($admin['role'] ?? '') === 'manager')) {
+if (!(Auth::isSuperadmin() || (string) ($admin['role'] ?? '') === 'manager' || Auth::can('staff.manage'))) {
     $deny(403, 'Only a super-admin or a manager may print ID cards.');
 }
 $ref = strtoupper(Security::clean((string) ($_GET['ref'] ?? ''), 20));
 $p   = IdCard::person($ref);
 if ($p === null) {
-    $deny(404, 'No card for ' . $ref . ' — only approved staff, agents and partners get one.');
+    $deny(404, 'No card for ' . $ref . ' — only approved staff, agents, partners and drivers get one.');
 }
 $h = static fn($v): string => Security::e((string) ($v ?? ''));
 
-// who owns the passkeys: a staff card -> the staff row; an agent / partner card -> its linked account
+// Passkey owner resolution
 $owner = null;
 if ($p['kind'] === 'staff') {
+    $owner = ['staff', (int) substr($p['ref'], 4)];
+} elseif ($p['kind'] === 'driver') {
     $owner = ['staff', (int) substr($p['ref'], 4)];
 } else {
     $aid = (int) Database::scalar('SELECT admin_id FROM agent_applications WHERE ref = :r LIMIT 1', ['r' => $p['ref']], 0);
     $owner = $aid > 0 ? ['admin', $aid] : null;
 }
+
 $flash = null;
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!Security::verifyCsrf()) {
         $flash = ['bad', 'This page was open too long — please try again.'];
     } elseif ((string) ($_POST['action'] ?? '') === 'passkey_remove' && $owner !== null) {
         $ok = Passkeys::remove($owner[0], $owner[1], (int) ($_POST['id'] ?? 0), 'the office (' . ($admin['username'] ?? '') . ')');
-        $flash = $ok ? ['ok', 'Device login removed — the person signs in with the password (or adds the device again).'] : ['bad', 'Nothing removed.'];
+        $flash = $ok ? ['ok', 'Device login removed — the person signs in with password.'] : ['bad', 'Nothing removed.'];
+    } elseif ((string) ($_POST['action'] ?? '') === 'send_whatsapp') {
+        $res = CardDelivery::send($p['ref'], true);
+        $flash = $res['ok'] ? ['ok', $res['detail']] : ['bad', $res['detail']];
     }
 }
 
@@ -90,129 +89,281 @@ if (in_array($which, ['front', 'back', 'sheet'], true)) {
     echo $png;
     exit;
 }
+
 $q = static fn(array $x): string => 'id-card.php?' . http_build_query(['ref' => $p['ref']] + $x);
-$back = $p['kind'] === 'staff' ? 'staff-applications.php?id=' . (int) substr($p['ref'], 4) . '#detail' : 'agreements.php?tab=apps';
+$back = 'team.php?tab=members';
 $keys = $owner !== null ? Passkeys::listFor($owner[0], $owner[1]) : [];
+$delivery = CardDelivery::getDelivery($p['ref']);
+$manualShare = CardDelivery::manualFallback($p['ref']);
+
 $log = [];
 try {
     $log = Database::fetchAll(
         "SELECT action, actor_name, detail, new_value, created_at FROM audit_logs
-          WHERE entity_id = :r AND action IN ('idcard.verify','idcard.print','idcard.self','team.login','team.login.passkey','team.passkey.add','team.passkey.remove','team.agreement.sign')
+          WHERE entity_id = :r AND action IN ('idcard.verify','idcard.print','idcard.self','team.login','team.login.passkey','team.passkey.add','team.passkey.remove','team.agreement.sign','card.whatsapp_sent','photo.replaced')
           ORDER BY id DESC LIMIT 40", ['r' => $p['ref']]);
 } catch (Throwable $e) {
     $log = [];
 }
-if ($owner !== null && $owner[0] === 'admin') {
-    try {
-        $more = Database::fetchAll(
-            "SELECT action, actor_name, detail, new_value, created_at FROM audit_logs
-              WHERE entity_type = 'admin' AND entity_id = :i AND action IN ('team.login','team.login.passkey','team.passkey.add','team.passkey.remove')
-              ORDER BY id DESC LIMIT 20", ['i' => (string) $owner[1]]);
-        $log = array_merge($log, $more);
-        usort($log, static fn(array $a, array $b): int => strcmp((string) $b['created_at'], (string) $a['created_at']));
-    } catch (Throwable $e) {
-    }
-}
 $verify = IdCard::verifyUrl($p['ref']);
+$waPersonal = IdCard::waLink($p);
 ?><!doctype html>
-<html lang="en">
+<html lang="ne">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Digital ID <?= $h($p['ref']) ?> · <?= $h($p['name']) ?></title>
+<meta name="csrf-token" content="<?= $h(Security::csrfToken()) ?>">
+<title>Digital ID <?= $h($p['ref']) ?> · <?= $h($p['name']) ?> | S Hari Global</title>
 <style>
-body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,"Noto Sans Devanagari",sans-serif;background:#eef2f8;color:#16233c}
-.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:14px 16px;background:#0a2a8f;color:#fff}
-.bar b{flex:1 1 220px}
-.bar a,.bar button{display:inline-flex;align-items:center;min-height:42px;padding:0 14px;border-radius:10px;border:0;font:inherit;font-weight:800;font-size:14px;text-decoration:none;cursor:pointer;background:#fff;color:#0a2a8f}
-.bar .pr{background:#f07a1e;color:#fff}
-.wrap{max-width:980px;margin:0 auto;padding:16px}
-.box{background:#fff;border:1px solid #dfe5f0;border-radius:18px;padding:16px;margin:0 0 16px;box-shadow:0 12px 30px -24px rgba(10,42,143,.6)}
-.box h2{margin:0 0 10px;font-size:17px}
+:root{--royal:#0a2a8f;--royal2:#1f4fe0;--orange:#f07a1e;--bg:#eef3fc;--card:#fff;--line:#d8e1f3;--ink:#16233c;--mut:#5c6b85;--ok:#0f9d6b;--bad:#d93025;--warn:#b26a00}
+body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,"Noto Sans Devanagari",sans-serif;background:var(--bg);color:var(--ink)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:14px 18px;background:linear-gradient(135deg,var(--royal),var(--royal2));color:#fff}
+.bar b{flex:1 1 240px;font-size:16px}
+.bar a,.bar button{display:inline-flex;align-items:center;gap:6px;min-height:42px;padding:0 14px;border-radius:10px;border:0;font:inherit;font-weight:800;font-size:13.5px;text-decoration:none;cursor:pointer;background:#fff;color:var(--royal)}
+.bar .pr{background:var(--orange);color:#fff}
+.bar .pr:hover{background:#d4570c}
+.wrap{max-width:1040px;margin:0 auto;padding:16px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin:0 0 16px;box-shadow:0 12px 30px -24px rgba(10,42,143,.45)}
+.box h2{margin:0 0 12px;font-size:17px;display:flex;align-items:center;justify-content:space-between}
 .cards{display:flex;flex-wrap:wrap;gap:24px;justify-content:center}
 .cards figure{margin:0;text-align:center}
-.cards img.id{width:54mm;height:85.6mm;border-radius:3mm;box-shadow:0 10px 30px -12px rgba(10,42,143,.6);background:#fff}
-.cards img.vc{width:89mm;height:51mm;border-radius:2mm;box-shadow:0 10px 30px -12px rgba(10,42,143,.6);background:#fff}
-.cards figcaption{font-size:12px;color:#5c6b85;margin-top:6px}
-.dl{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.dl a{display:inline-flex;align-items:center;min-height:38px;padding:0 12px;border-radius:10px;border:1.5px solid #c9d2e1;font-weight:700;font-size:13px;text-decoration:none;color:#0a2a8f;background:#fff}
-.note{font-size:13px;color:#5c6b85;line-height:1.5;margin:10px 0 0}
+.cards img.id{width:54mm;height:85.6mm;border-radius:3mm;box-shadow:0 12px 32px -12px rgba(10,42,143,.5);background:#fff}
+.cards img.vc{width:89mm;height:51mm;border-radius:2mm;box-shadow:0 12px 32px -12px rgba(10,42,143,.5);background:#fff}
+.cards figcaption{font-size:12.5px;font-weight:700;color:var(--mut);margin-top:8px}
+.dl{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.dl a,.dl button{display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:0 12px;border-radius:10px;border:1.5px solid #c9d2e1;font-weight:800;font-size:13px;text-decoration:none;color:var(--royal);background:#fff;cursor:pointer}
+.dl a:hover,.dl button:hover{background:#eef4fc}
+.dl .wa-act{background:#1faa59;color:#fff;border-color:#1faa59}
+.dl .wa-act:hover{background:#178f49}
+.delivery-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;font-size:12.5px;font-weight:800}
+.delivery-pill.sent{background:rgba(31,79,224,.12);color:var(--royal2)}
+.delivery-pill.delivered{background:rgba(15,157,107,.14);color:var(--ok)}
+.delivery-pill.failed{background:rgba(217,48,37,.12);color:var(--bad)}
+.delivery-pill.queued{background:rgba(178,106,0,.12);color:var(--warn)}
+.note{font-size:13.5px;color:var(--mut);line-height:1.5;margin:10px 0 0}
+.qrs{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:12px}
+.qr-item{padding:12px;border-radius:14px;background:#f8faff;border:1px solid #e0e8f7}
+.qr-item b{display:block;margin-bottom:4px;font-size:14px}
+.qr-item small{display:block;color:var(--mut);font-size:12px;margin-bottom:8px}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
-td,th{padding:7px 8px;border-bottom:1px solid #e4e9f1;text-align:left;vertical-align:top}
-th{color:#5c6b85;font-weight:700;font-size:12px}
-.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:800;background:#eef4fc;color:#0a2a8f}
+td,th{padding:8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--mut);font-weight:700;font-size:12px}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:800;background:#eef4fc;color:var(--royal)}
 .tag.ok{background:#e6f5ea;color:#12652b}.tag.bad{background:#fde8e6;color:#b3261e}
-.flash{padding:10px 14px;border-radius:12px;font-weight:700;margin:0 0 14px}
-.flash.ok{background:#e6f5ea;color:#12652b}.flash.bad{background:#fde8e6;color:#b3261e}
-.rm{border:0;background:#fde8e6;color:#b3261e;border-radius:8px;padding:6px 10px;font:inherit;font-weight:800;font-size:12.5px;cursor:pointer}
+.flash{padding:12px 14px;border-radius:12px;font-weight:700;margin:0 0 14px}
+.flash.ok{background:#e6f5ea;color:#12652b;border:1px solid rgba(18,101,43,.3)}
+.flash.bad{background:#fde8e6;color:#b3261e;border:1px solid rgba(179,38,30,.3)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px}
+.modal-box{background:#fff;border-radius:18px;max-width:500px;width:100%;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.4)}
 @media screen and (min-width:900px){.cards img.id{width:70mm;height:111mm}.cards img.vc{width:120mm;height:68.8mm}}
-@media print{@page{size:A4;margin:12mm}body{background:#fff}.bar,.note,.cards figcaption,.box.np,.dl,.flash{display:none}.box{border:0;box-shadow:none;padding:0}.cards{padding:0;gap:8mm;justify-content:flex-start}.cards img.id{width:54mm;height:85.6mm;box-shadow:none;border:0.2mm solid #ccd}.cards img.vc{width:89mm;height:51mm;box-shadow:none;border:0.2mm solid #ccd}}
+@media print{@page{size:A4;margin:12mm}body{background:#fff}.bar,.note,.cards figcaption,.box.np,.dl,.flash,.qrs{display:none!important}.box{border:0;box-shadow:none;padding:0}.cards{padding:0;gap:8mm;justify-content:flex-start}.cards img.id{width:54mm;height:85.6mm;box-shadow:none;border:0.2mm solid #ccd}.cards img.vc{width:89mm;height:51mm;box-shadow:none;border:0.2mm solid #ccd}}
 </style>
+<script src="/assets/js/photo-studio.js?v=20261025"></script>
 </head>
 <body>
 <div class="bar">
-  <b>🪪 <?= $h($p['name']) ?> · <?= $h($p['ref']) ?> · <?= $h($p['standing']) ?><?= (string) ($p['expires'] ?? '') !== '' ? ' · valid till ' . $h(date('d M Y', strtotime((string) $p['expires']) ?: time())) : '' ?></b>
-  <button class="pr" type="button" onclick="window.print()">🖨️ Print (card size)</button>
-  <a href="<?= $h($q(['pdf' => 'all'])) ?>">📄 PDF (ID + visiting)</a>
-  <a href="<?= $h($verify) ?>" target="_blank" rel="noopener">🔍 Public profile / verify</a>
-  <a href="<?= $h($back) ?>">← Back</a>
+  <b>🪪 <?= $h($p['name']) ?> (<?= $h($p['ref']) ?>) · <?= $h($p['roleEn']) ?> · <?= $h($p['standing']) ?></b>
+  <button class="pr" type="button" onclick="window.print()">🖨️ Print Real Size</button>
+  <a href="<?= $h($q(['pdf' => 'all'])) ?>">📄 PDF (ID + Visiting)</a>
+  <a href="<?= $h($verify) ?>" target="_blank" rel="noopener">🛡️ Verify Online</a>
+  <a href="<?= $h($back) ?>">← Back to Team</a>
 </div>
+
 <div class="wrap">
   <?php if ($flash !== null): ?><div class="flash <?= $h($flash[0]) ?>"><?= $h($flash[1]) ?></div><?php endif; ?>
+
+  <!-- Identity Card Section -->
   <div class="box">
-    <h2>Identity card · परिचयपत्र (CR80, 54 × 85.6 mm)</h2>
+    <h2>
+      <span>🪪 Identity Card · परिचयपत्र (CR80 Portrait 54 × 85.6 mm)</span>
+      <button type="button" class="tag" style="cursor:pointer;padding:6px 12px;font-size:12px" onclick="openPhotoStudio()">📷 Replace / Crop Photo</button>
+    </h2>
     <div class="cards">
-      <figure><img class="id" src="<?= $h($q(['png' => 'front'])) ?>" alt="Front of the ID card"><figcaption>Front · अगाडि</figcaption></figure>
-      <figure><img class="id" src="<?= $h($q(['png' => 'back'])) ?>" alt="Back of the ID card"><figcaption>Back · पछाडि</figcaption></figure>
+      <figure><img class="id" src="<?= $h($q(['png' => 'front'])) ?>" alt="Front ID"><figcaption>Front (Front side with Photo & Verify QR)</figcaption></figure>
+      <figure><img class="id" src="<?= $h($q(['png' => 'back'])) ?>" alt="Back ID"><figcaption>Back (Contact & Personal WhatsApp QR)</figcaption></figure>
     </div>
-    <div class="dl"><a href="<?= $h($q(['png' => 'front', 'dl' => 1])) ?>">⬇ Front PNG</a><a href="<?= $h($q(['png' => 'back', 'dl' => 1])) ?>">⬇ Back PNG</a><a href="<?= $h($q(['png' => 'sheet', 'dl' => 1])) ?>">⬇ Both</a><a href="<?= $h($q(['pdf' => 'id'])) ?>">📄 ID card PDF</a></div>
+    <div class="dl">
+      <a href="<?= $h($q(['png' => 'front', 'dl' => 1])) ?>">⬇ Front PNG</a>
+      <a href="<?= $h($q(['png' => 'back', 'dl' => 1])) ?>">⬇ Back PNG</a>
+      <a href="<?= $h($q(['png' => 'sheet', 'dl' => 1])) ?>">⬇ Printable Sheet</a>
+      <a href="<?= $h($q(['pdf' => 'id'])) ?>">📄 ID Card PDF</a>
+    </div>
   </div>
+
+  <!-- Visiting Card Section -->
   <div class="box">
-    <h2>Visiting card · भिजिटिङ कार्ड (89 × 51 mm)</h2>
+    <h2>Visiting Card · भिजिटिङ कार्ड (Landscape 89 × 51 mm)</h2>
     <div class="cards">
-      <figure><img class="vc" src="<?= $h($q(['v' => 'front'])) ?>" alt="Front of the visiting card"><figcaption>Front</figcaption></figure>
-      <figure><img class="vc" src="<?= $h($q(['v' => 'back'])) ?>" alt="Back of the visiting card"><figcaption>Back</figcaption></figure>
+      <figure><img class="vc" src="<?= $h($q(['v' => 'front'])) ?>" alt="Front Visiting"><figcaption>Front (Branded Gold / Identity)</figcaption></figure>
+      <figure><img class="vc" src="<?= $h($q(['v' => 'back'])) ?>" alt="Back Visiting"><figcaption>Back (Dual QRs: Verification & Direct WhatsApp)</figcaption></figure>
     </div>
-    <div class="dl"><a href="<?= $h($q(['v' => 'front', 'dl' => 1])) ?>">⬇ Front PNG</a><a href="<?= $h($q(['v' => 'back', 'dl' => 1])) ?>">⬇ Back PNG</a><a href="<?= $h($q(['pdf' => 'visiting'])) ?>">📄 Visiting card PDF</a></div>
-    <p class="note">Public contact on the card and on the verify page: <b><?= $p['public'] ? 'YES — the person agreed (WhatsApp, call' . ($p['email'] !== '' ? ', e-mail' : '') . ($p['facebook'] !== '' ? ', Facebook' : '') . ')' : 'NO — the number is masked; switch it on from the person\'s record (public listing / public fields)' ?></b>.</p>
+    <div class="dl">
+      <a href="<?= $h($q(['v' => 'front', 'dl' => 1])) ?>">⬇ Front PNG</a>
+      <a href="<?= $h($q(['v' => 'back', 'dl' => 1])) ?>">⬇ Back PNG</a>
+      <a href="<?= $h($q(['pdf' => 'visiting'])) ?>">📄 Visiting Card PDF</a>
+    </div>
   </div>
+
+  <!-- WhatsApp Delivery Tracker & Two Distinct QRs -->
+  <div class="box">
+    <h2>
+      <span>📲 WhatsApp Card Delivery & QR Destinations</span>
+      <?php if ($delivery !== null): ?>
+        <span class="delivery-pill <?= $h($delivery['status']) ?>">
+          <?= match($delivery['status']) {
+            'delivered' => '✅ Delivered (Webhook confirmed)',
+            'sent'      => '🚀 Sent via Cloud API (Pending receipt)',
+            'failed'    => '❌ Send Failed',
+            default     => '⏳ Queued'
+          } ?>
+        </span>
+      <?php else: ?>
+        <span class="delivery-pill queued">⚪ Not Dispatched Yet</span>
+      <?php endif; ?>
+    </h2>
+
+    <p class="note">
+      Mobile: <b>+<?= $h($p['waDigits'] ?: preg_replace('/\D/', '', (string) $p['phone'])) ?></b>
+      <?php if ($delivery !== null && !empty($delivery['sent_at'])): ?> · Sent: <?= $h($delivery['sent_at']) ?><?php endif; ?>
+      <?php if ($delivery !== null && !empty($delivery['delivered_at'])): ?> · Confirmed delivered: <?= $h($delivery['delivered_at']) ?><?php endif; ?>
+      <?php if ($delivery !== null && !empty($delivery['error_message'])): ?><br><span style="color:var(--bad)">Reason: <?= $h($delivery['error_message']) ?></span><?php endif; ?>
+    </p>
+
+    <div class="dl" style="margin-top:12px">
+      <form method="post" action="<?= $h($q([])) ?>" style="display:inline">
+        <?= Security::csrfField() ?>
+        <input type="hidden" name="action" value="send_whatsapp">
+        <button type="submit" class="wa-act">💬 Auto-Send Cards via WhatsApp Cloud API</button>
+      </form>
+      <button type="button" onclick="openShareModal()">📤 Open WhatsApp / Share Cards (Manual Fallback)</button>
+    </div>
+
+    <!-- Two distinct QRs breakdown -->
+    <div class="qrs">
+      <div class="qr-item">
+        <b>🛡️ 1. Official Verification QR (Front & Back)</b>
+        <small>URL: <a href="<?= $h($verify) ?>" target="_blank"><?= $h($verify) ?></a></small>
+        <p style="margin:0;font-size:12.5px;color:var(--ink)">
+          Scanned by passengers, border security or office staff. Checks cryptographic HMAC token and confirms active standing in company database.
+        </p>
+      </div>
+      <div class="qr-item">
+        <b>💬 2. Personal WhatsApp QR (Back only)</b>
+        <small>URL: <a href="<?= $h($waPersonal) ?>" target="_blank"><?= $h($waPersonal) ?></a></small>
+        <p style="margin:0;font-size:12.5px;color:var(--ink)">
+          Direct personal chat with <b><?= $h($p['name']) ?></b>. Contains mandatory disclaimer: <i>"Personal WhatsApp · सम्पर्क मात्र — Does not verify identity."</i>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Device Passkeys -->
   <div class="box np">
-    <h2>Device logins · Face ID / fingerprint (passkeys)</h2>
-    <?php if ($owner === null): ?><p class="note">No login account is linked to this card yet, so no device can be registered.</p>
-    <?php elseif ($keys === []): ?><p class="note">None yet. The person adds a device at /team/ → Face ID / fingerprint. Only the public key is stored here — never a fingerprint or face.</p>
+    <h2>Device Logins · Passkeys (Face ID / Fingerprint)</h2>
+    <?php if ($owner === null): ?><p class="note" style="padding:16px">No login account is linked to this card yet.</p>
+    <?php elseif ($keys === []): ?><p class="note" style="padding:16px">None yet. The team member adds a device via /team/ portal. Only the cryptographic public key is stored — never raw biometric templates.</p>
     <?php else: ?>
     <table><tr><th>Device</th><th>Added</th><th>Last used</th><th></th></tr>
     <?php foreach ($keys as $k): ?>
-      <tr><td><?= $h($k['label']) ?> <span class="tag"><?= $h($k['transports'] ?: 'platform') ?></span></td><td><?= $h($k['created_at']) ?></td><td><?= $h($k['last_used_at'] ?: '—') ?></td>
-        <td><form method="post" action="<?= $h($q([])) ?>" onsubmit="return confirm('Forget this device? The person will sign in with the password.')"><?= Security::csrfField() ?><input type="hidden" name="action" value="passkey_remove"><input type="hidden" name="id" value="<?= (int) $k['id'] ?>"><button class="rm" type="submit">Forget</button></form></td></tr>
+      <tr>
+        <td><?= $h($k['label']) ?> <span class="tag"><?= $h($k['transports'] ?: 'platform') ?></span></td>
+        <td><?= $h($k['created_at']) ?></td>
+        <td><?= $h($k['last_used_at'] ?: '—') ?></td>
+        <td>
+          <form method="post" action="<?= $h($q([])) ?>" onsubmit="return confirm('Forget this device?')">
+            <?= Security::csrfField() ?>
+            <input type="hidden" name="action" value="passkey_remove">
+            <input type="hidden" name="id" value="<?= (int) $k['id'] ?>">
+            <button class="rm" type="submit">Forget Device</button>
+          </form>
+        </td>
+      </tr>
     <?php endforeach; ?>
     </table>
     <?php endif; ?>
   </div>
+
+  <!-- Verification Log -->
   <div class="box np">
-    <h2>Verification log · जाँचको अभिलेख</h2>
-    <?php if ($log === []): ?><p class="note">Nothing yet — QR scans of this card, cards printed, portal sign-ins and device changes appear here.</p>
+    <h2>Verification & Audit Log · जाँच तथा गतिविधि अभिलेख</h2>
+    <?php if ($log === []): ?><p class="note" style="padding:16px">No activity recorded yet for this card.</p>
     <?php else: ?>
-    <table><tr><th>When</th><th>What</th><th>By</th><th>Detail</th></tr>
-    <?php foreach (array_slice($log, 0, 40) as $r):
+    <table><tr><th>Timestamp</th><th>Action</th><th>Actor</th><th>Detail</th></tr>
+    <?php foreach ($log as $r):
         $nv = json_decode((string) ($r['new_value'] ?? ''), true);
         $lbl = match ((string) $r['action']) {
-            'idcard.verify' => isset($nv['valid']) && !$nv['valid'] ? '<span class="tag bad">QR scanned · not valid</span>' : '<span class="tag ok">QR scanned · genuine</span>',
-            'idcard.print' => '<span class="tag">Card printed (office)</span>',
-            'idcard.self' => '<span class="tag">Card saved (portal)</span>',
-            'team.login' => '<span class="tag">Portal sign-in</span>',
-            'team.login.passkey' => '<span class="tag ok">Sign-in · Face ID / fingerprint</span>',
-            'team.passkey.add' => '<span class="tag ok">Device added</span>',
-            'team.passkey.remove' => '<span class="tag bad">Device removed</span>',
+            'idcard.verify' => isset($nv['valid']) && !$nv['valid'] ? '<span class="tag bad">QR scanned · Invalid</span>' : '<span class="tag ok">QR scanned · Verified</span>',
+            'idcard.print' => '<span class="tag">Card Printed</span>',
+            'card.whatsapp_sent' => '<span class="tag ok">Cards WhatsApp Dispatched</span>',
+            'photo.replaced' => '<span class="tag ok">Photo Replaced</span>',
             default => '<span class="tag">' . $h($r['action']) . '</span>',
         }; ?>
-      <tr><td><?= $h($r['created_at']) ?></td><td><?= $lbl ?></td><td><?= $h($r['actor_name'] ?: 'public') ?></td><td><?= $h(is_array($nv) ? mb_substr((string) ($nv['ua'] ?? ($nv['label'] ?? ($nv['side'] ?? ($nv['pdf'] ?? '')))), 0, 60) : '') ?></td></tr>
+      <tr>
+        <td><?= $h($r['created_at']) ?></td>
+        <td><?= $lbl ?></td>
+        <td><?= $h($r['actor_name'] ?: 'Public / Automated') ?></td>
+        <td><?= $h(is_array($nv) ? json_encode($nv, JSON_UNESCAPED_UNICODE) : (string) ($r['detail'] ?? '')) ?></td>
+      </tr>
     <?php endforeach; ?>
     </table>
     <?php endif; ?>
   </div>
-  <p class="note">Prints at real size on A4 — cut along the edge, or send the PNGs / PDF to a card printer. The QR opens <?= $h(preg_replace('~^https?://~', '', appUrl('verify-id.php'))) ?>, which always shows the person's current standing<?= $p['valid'] ? '' : ' — this person is <b>not active</b> now, so the QR will say “not valid”' ?>. To revoke: suspend the staff record or switch the account off; the printed card then fails its QR check.</p>
 </div>
+
+<!-- Manual WhatsApp Share Modal -->
+<div class="modal-overlay" id="shareModal" onclick="if(event.target===this)closeShareModal()">
+  <div class="modal-box">
+    <h3 style="margin:0 0 10px;font-size:18px">📤 Share Cards / Manual WhatsApp</h3>
+    <p style="font-size:13.5px;color:var(--mut);line-height:1.5;margin-bottom:12px">
+      A <code>wa.me</code> link cannot automatically attach files due to WhatsApp security restrictions. You can share natively using the Web Share API (which attaches the files), or send the prefilled message and attach the downloaded card files.
+    </p>
+
+    <div style="background:#f4f7fc;padding:12px;border-radius:12px;font-size:13px;white-space:pre-wrap;margin-bottom:14px;max-height:140px;overflow-y:auto;border:1px solid #d8e1f3"><?= $h($manualShare['message']) ?></div>
+
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button type="button" class="wa-act" style="min-height:46px;border-radius:12px;border:0;font-weight:800;cursor:pointer" onclick="shareViaNative()">📱 Native Device Share (Attach Files)</button>
+      <a href="<?= $h($manualShare['wa_me_url']) ?>" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;min-height:46px;background:#25d366;color:#fff;text-decoration:none;border-radius:12px;font-weight:800">💬 Open in WhatsApp (wa.me)</a>
+      <button type="button" style="min-height:40px;background:transparent;border:1.5px solid #c9d2e1;border-radius:12px;color:var(--mut);font-weight:700;cursor:pointer" onclick="closeShareModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openPhotoStudio() {
+  PhotoStudio.open('<?= $h($q(['png' => 'front'])) ?>', {
+    targetRef: '<?= $h($p['ref']) ?>',
+    onSave: function(dataUrl) {
+      location.reload();
+    }
+  });
+}
+
+function openShareModal() {
+  document.getElementById('shareModal').style.display = 'flex';
+}
+function closeShareModal() {
+  document.getElementById('shareModal').style.display = 'none';
+}
+
+function shareViaNative() {
+  if (navigator.share) {
+    fetch('<?= $h($q(['png' => 'front', 'dl' => 1])) ?>')
+      .then(res => res.blob())
+      .then(blob => {
+        var file = new File([blob], 'SHG-ID-<?= $h($p['ref']) ?>.png', { type: 'image/png' });
+        navigator.share({
+          title: 'S Hari Global ID Card - <?= $h($p['name']) ?>',
+          text: <?= json_encode($manualShare['message']) ?>,
+          files: [file]
+        }).catch(e => console.log('Share dismissed', e));
+      }).catch(err => {
+        window.open('<?= $h($manualShare['wa_me_url']) ?>', '_blank');
+      });
+  } else {
+    window.open('<?= $h($manualShare['wa_me_url']) ?>', '_blank');
+  }
+}
+</script>
 </body>
 </html>
