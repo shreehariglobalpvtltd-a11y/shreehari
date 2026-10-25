@@ -213,7 +213,7 @@ final class WaVerify
         Database::update('wa_verify', ['verified_at' => date('Y-m-d H:i:s'), 'verified_from' => mb_substr($from, 0, 20)], 'id = :id', ['id' => (int) $r['id']]);
         Logger::info('WhatsApp verify: number proven', ['token' => $token, 'purpose' => (string) $r['purpose'], 'from' => maskPhone($from)], 'whatsapp');
         if ($reset) {
-            return "✅ नम्बर प्रमाणित भयो — यो " . $co . " टिम पोर्टलको पासवर्ड बदल्नको लागि हो (PASSWORD RESET)।\nआफैं बदल्दै हुनुहुन्छ भने पेजमा फर्केर नयाँ पासवर्ड राख्नुहोस्।";
+            return "✅ नम्बर प्रमाणित भयो — यो " . $co . " टिम पोर्टलको पासवर्ड बदल्नको लागि हो (PASSWORD RESET)।\nआफैं बदल्दै हुनुहुन्छ भने पेजमा फर्केर नयाँ पासवर्ड राख्नुहोस्। तपाईंले मागेको होइन भने कार्यालयमा फोन गर्नुहोस्।\nYour number is verified for a PASSWORD RESET. If you requested it, return to the page. Otherwise call the office.";
         }
         return "✅ नमस्ते! तपाईंको नम्बर " . $co . " मा प्रमाणित भयो।\nअब फारम भएको पेजमा फर्कनुहोस् — आफैं हरियो देखिन्छ।\nYour number is verified - go back to the form.";
     }

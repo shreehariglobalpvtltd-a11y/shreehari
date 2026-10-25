@@ -347,7 +347,7 @@ final class IdCard
         self::tC($im, 19, 0, $W, 196, $white, $kindEn, true);
         self::tC($im, 16, 0, $W, 232, self::c($im, [255, 215, 160]), $kindNe);
 
-        $pill = $p['valid'] ? 'VERIFIED' : 'NOT VALID';
+        $pill = $p['valid'] ? 'ACTIVE' : 'NOT VALID';
         $pw0 = self::w(11, $pill) + 30;
         self::roundRect($im, $W - 26 - $pw0, 184, $W - 26, 212, 14, self::c($im, $p['valid'] ? [24, 201, 139] : [217, 48, 37]));
         self::tC($im, 11, $W - 26 - $pw0, $W - 26, 191, $white, $pill, true);
@@ -383,8 +383,8 @@ final class IdCard
         $qy = max($y, 716);
         $muted = self::c($im, self::MUTED);
         $rows = [
-            ['Staff / ID No.', (string) $p['ref']],
-            [$p['kind'] === 'staff' ? 'Office / Route' : 'Area / Route', (string) ($p['place'] ?: 'Nepalgunj / Surat')],
+            ['Staff / ID No.', (string) ($p['memberCode']??$p['ref'])],
+            [$p['kind'] === 'staff' ? 'Office / Route' : 'Area / Route', (string) (($p['route']??'') ?: $p['place'])],
             ['Mobile', (string) $p['phone']],
             ['Valid till', self::date((string) ($p['expires'] ?? '')) . '   (issued ' . self::date((string) $p['issued']) . ')'],
         ];
@@ -606,7 +606,7 @@ final class IdCard
         $pillW = 190;
         if ($p['valid']) {
             self::roundRect($im, $nx, $ny, $nx + $pillW, $ny + 26, 13, self::c($im, [24, 201, 139]));
-            self::tC($im, 11, $nx, $nx + $pillW, $ny + 6, $white, 'VERIFIED  ·  ' . $p['ref'], true);
+            self::tC($im, 11, $nx, $nx + $pillW, $ny + 6, $white, 'ACTIVE  ·  ' . ($p['memberCode']??$p['ref']), true);
         } else {
             self::roundRect($im, $nx, $ny, $nx + $pillW, $ny + 26, 13, self::c($im, [217, 48, 37]));
             self::tC($im, 11, $nx, $nx + $pillW, $ny + 6, $white, 'NOT VALID', true);

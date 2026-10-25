@@ -1323,6 +1323,7 @@ final class AgentApplications
         unset($changed['reviewed_by'], $changed['reviewed_at']);
         Logger::audit('agreement_app.update', 'agent_application', (string) ($app['ref'] ?: self::refFor($id)),
             $before, $changed, 'agreements dashboard');
+        if ($nowApproved) { Database::afterCommit(static function()use($id):void { require_once __DIR__.'/carddelivery.php'; $a=AgentApplications::find($id); if($a){CardDelivery::send($a['ref']);} }); }
         return $changed;
     }
 
@@ -1449,6 +1450,7 @@ final class AgentApplications
                 $set['phone_raw'] = $raw;
             }
         }
+        if (isset($set['phone']) || isset($set['phone_raw'])) { $set['phone_verified']=0; }
         foreach (['area' => 160, 'email' => 160] as $k => $max) {
             if (array_key_exists($k, $in)) {
                 $v = self::oneLine(Security::clean((string) $in[$k], $max));

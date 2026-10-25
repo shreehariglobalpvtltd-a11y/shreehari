@@ -835,8 +835,9 @@ final class AgentWallet
     }
 
     /** Human note for the ledger row, so the agent can see how it was worked out. */
-    public static function commissionNoteFor(int $adminId, int $seats, float $total): string
+    public static function commissionNoteFor(int $adminId, int $seats, float $total, ?string $at = null): string
     {
+        require_once __DIR__.'/teamfinance.php';$t=TeamFinance::term($adminId,$at);if($t){return match($t['basis']){'percent'=>$t['rate'].'% of eligible fare '.inr($total),'flat'=>$seats.' passengers × '.inr((float)$t['rate']),'booking'=>'1 booking × '.inr((float)$t['rate']),default=>'Salary only'}.' (terms #'.$t['id'].')';}
         // Says what was ACTUALLY paid — an override note must not read like
         // the company tier, or the office can never explain a payout.
         $ov = self::commissionOverrideFor($adminId);
@@ -1714,7 +1715,7 @@ final class AgentWallet
                     'entry_type'     => 'commission',
                     'amount'         => $comm,
                     'note'           => 'Commission on ' . ($booking['pnr'] ?? '')
-                                        . ' (' . self::commissionNoteFor($agentId, $seats, $total) . ')',
+                                        . ' (' . self::commissionNoteFor($agentId, $seats, $total, (string)($booking['created_at']??date('Y-m-d H:i:s'))) . ')',
                     'ref'            => (string) ($booking['pnr'] ?? ''),
                 ]);
             }
@@ -3029,6 +3030,8 @@ final class AgentWallet
            lock). The agent's own admins row is the lock: one request at a time per agent. */
         return Database::transaction(static function () use ($adminId, $amount, $note): int {
         Database::fetchForUpdate('SELECT id FROM admins WHERE id = :i', ['i' => $adminId]);
+        require_once __DIR__.'/teamregistry.php';
+        if (TeamRegistry::ready() && !Database::exists("SELECT 1 FROM team_identity i JOIN agent_applications a ON i.person_key=CONCAT('agent:',a.id) WHERE a.admin_id=:a AND i.payout_verified=1",['a'=>$adminId])) { throw new RuntimeException('Ask the office to verify your payout recipient details before requesting a withdrawal.'); }
         $due    = self::balances($adminId)['commission'];
         $amount = round($amount, 2);
         if ($amount <= 0) {

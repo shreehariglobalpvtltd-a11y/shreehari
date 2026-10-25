@@ -411,7 +411,7 @@ final class TeamPortal
                 return ['ok' => false, 'error' => 'WhatsApp मा आएको ६ अङ्कको कोड लेख्नुहोस् (वा तलको "hi VERIFY") · Enter the 6-digit code from WhatsApp, or use "hi VERIFY" below.'];
             }
             if (self::resetLocked($phone10)) {
-                return ['ok' => false, 'error' => 'धेरै पटक गलत कोड — २४ घण्टा कोडबाट पासवर्ड बदल्न मिल्दैन; तलको "hi VERIFY" वा कार्यालय · Too many wrong codes: use "hi VERIFY" below or call the office.'];
+                return ['ok' => false, 'error' => 'धेरै पटक गलत कोड — २४ घण्टा कोडबाट पासवर्ड बदल्न मिल्दैन; तलको "hi VERIFY" वा कार्यालय · Too many wrong codes: code recovery is locked for 24 hours; use "hi VERIFY" below or call the office.'];
             }
             foreach ($targets as $t) {
                 if (Auth::verifyOtp('team:' . $t['intl'], $code, 'reset')['ok']) {

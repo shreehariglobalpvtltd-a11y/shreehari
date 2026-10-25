@@ -39,6 +39,7 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require __DIR__ . '/_export.php';
 $admin = admin_boot('customers.view');
+if (in_array((string)($admin['role']??''),['manager','superadmin'],true) && empty($_GET['export'])) { Response::redirect('admin/team.php'); }
 // 5 Sep 2026: the register lists every agent's balance and commission —
 // office viewers need commissions.view (counter/support roles do not hold it).
 Auth::requireAdmin('commissions.view');

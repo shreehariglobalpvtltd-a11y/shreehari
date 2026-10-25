@@ -36,7 +36,7 @@ if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'){
    Database::insert('team_notices',['title'=>$title,'body'=>$message,'target'=>$target,'priority'=>$priority,'created_by'=>$adminId]);Logger::audit('team.announcement','team',$target,null,['title'=>$title],'Published to team portal');$flash=['ok','Announcement published in the team portal.'];
   }elseif($action==='positions'){
    $name=Security::clean((string)($_POST['position_label']??''),120);$slug=strtolower(trim((string)($_POST['position_key']??'')));$required=array_values(array_intersect((array)($_POST['requirements']??[]),['license_number','license_expiry','qualification','experience_years','emergency_contact_name']));
-   if(!$name||!preg_match('/^[a-z][a-z0-9_]{1,39}$/',$slug)){throw new RuntimeException('Use a position key such as sales_assistant and a display name.');}
+   if(!$name||!preg_match('/^[a-z][a-z0-9_]{1,29}$/',$slug)){throw new RuntimeException('Use a position key such as sales_assistant and a display name.');}
    $roles=Settings::getArray('team_staff_positions',[]);$roles[$slug]=['label'=>$name,'required'=>$required];Settings::set('team_staff_positions',$roles,'json','team',false);Logger::audit('team.position','team',$slug,null,$roles[$slug],'Staff position configured');$flash=['ok','Staff position and role requirements saved. The three main agreements are unchanged.'];
   }else{
    $r=TeamManager::find($key);if(!$r){throw new RuntimeException('Choose a person.');}
@@ -115,6 +115,7 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
 
 <!-- NAVIGATION TABS -->
 <nav class="team-tabs">
+  <a class="team-tab" href="team.php?tab=settings">⚙️ Positions / services</a>
   <a class="team-tab <?= $tab === 'members' ? 'active' : '' ?>" href="team.php?tab=members">👥 Team Members · सदस्य सूची</a>
   <a class="team-tab <?= $tab === 'approvals' ? 'active' : '' ?>" href="team.php?tab=approvals">
     📋 Approvals Queue · अनुमोदन <?= count($pendingQueue) > 0 ? '<span class="badge-count">' . count($pendingQueue) . '</span>' : '' ?>
@@ -213,7 +214,7 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
             </p>
           </div>
           <div class="action-grid">
-            <form method="post" action="team.php?tab=approvals" style="display:inline" onsubmit="return confirm('Approve <?= Security::e($p['name']) ?>? This activates their login and dispatches ID cards via WhatsApp.')">
+            <form method="post" action="team.php?tab=approvals" style="display:inline">
               <?= Security::csrfField() ?>
               <input type="hidden" name="action" value="approve_application">
               <input type="hidden" name="app_type" value="<?= Security::e($p['type']) ?>">
@@ -250,7 +251,7 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
      ===================================================================== -->
 <?php elseif ($tab === 'earnings'): ?>
 <div class="data-card"><h3>Earnings, salary and loans</h3><p>Select a member → Manage to set dated percentage, per-passenger or per-booking terms and salary. Existing earnings are preserved.</p><div class="action-grid"><a class="btn-sm btn-primary" href="team.php">Select member</a><a class="btn-sm btn-outline" href="payroll.php">Staff payroll / salary slips</a><a class="btn-sm btn-outline" href="ledger-check.php">Ledger reconciliation</a><a class="btn-sm btn-outline" href="team.php?tab=settings">Staff positions / services</a></div></div>
-<div class="data-card"><h3>Bonus / deduction</h3><form method="post"><?= Security::csrfField() ?><input type="hidden" name="action" value="record_adjustment"><input type="hidden" name="operation_token" value="<?= bin2hex(random_bytes(16)) ?>"><label>Linked account ID * <input name="member_id" type="number" min="1" required></label><label>Type <select name="adj_type"><option value="bonus">Bonus</option><option value="deduction">Deduction</option></select></label><label>Amount (INR) * <input name="amount" type="number" min="0.01" step="0.01" required></label><label>Reason * <input name="reason" minlength="5" required></label><button class="btn-sm btn-primary">Submit adjustment</button></form></div>
+<div class="data-card"><h3>Bonus / deduction</h3><form method="post"><?= Security::csrfField() ?><input type="hidden" name="action" value="record_adjustment"><input type="hidden" name="operation_token" value="<?= bin2hex(random_bytes(16)) ?>"><label>Linked account ID * <select name="member_id" required><option value="">Choose linked agent</option><?php foreach($members as $member): if(!$member['admin_id']||$member['app_type']!=='agent')continue; ?><option value="<?= (int)$member['admin_id'] ?>"><?= $h($member['code'].' · '.$member['name']) ?></option><?php endforeach; ?></select></label><label>Type <select name="adj_type"><option value="bonus">Bonus</option><option value="deduction">Deduction</option></select></label><label>Amount (INR) * <input name="amount" type="number" min="0.01" step="0.01" required></label><label>Reason * <input name="reason" minlength="5" required></label><button class="btn-sm btn-primary">Submit adjustment</button></form></div>
 <!-- =====================================================================
      TAB 4: WALLET & WITHDRAWALS
      ===================================================================== -->
@@ -491,4 +492,5 @@ function openAdjustmentModal(id, name) {
 }
 </script>
 
+<script>document.querySelectorAll('form[method="post"]').forEach(form=>form.addEventListener('submit',event=>{const b=event.submitter;if(b){if(b.name){const h=document.createElement('input');h.type='hidden';h.name=b.name;h.value=b.value;form.append(h);}b.disabled=true;b.textContent='Saving…';}}));</script>
 <?php admin_footer(); ?>

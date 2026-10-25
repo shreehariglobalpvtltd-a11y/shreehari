@@ -8,6 +8,8 @@ final class CardDesign {
   $back=['company'=>[.08,.06,.84,.1,24],'code'=>[.08,.20,.82,.08,22],'contact'=>[.08,.32,.83,.08,16],'route'=>[.08,.43,.82,.08,16],'phone'=>[.08,.54,.8,.07,18],'whatsapp'=>[.65,.65,.28,.26,11],'signature'=>[.08,.68,.4,.13,16],'notice'=>[.08,.9,.84,.06,10]];
   $vf=['logo'=>[.04,.05,.23,.23,20],'company'=>[.31,.08,.64,.12,28],'photo'=>[.05,.34,.22,.49,16],'name'=>[.31,.31,.63,.12,28],'role'=>[.31,.47,.62,.1,19],'code'=>[.31,.59,.62,.1,18],'route'=>[.31,.7,.42,.11,15],'verify'=>[.79,.67,.15,.26,11]];
   $vb=['company'=>[.06,.08,.86,.14,30],'phone'=>[.06,.32,.63,.12,25],'contact'=>[.06,.49,.63,.12,18],'route'=>[.06,.65,.58,.12,18],'whatsapp'=>[.77,.35,.17,.31,11],'notice'=>[.06,.87,.88,.07,12]];
+  if($name==='minimal'){$front['photo']=[.34,.22,.32,.28,20];$front['name']=[.13,.55,.8,.09,26];$front['role']=[.13,.65,.78,.06,18];$vf['photo']=[.72,.29,.22,.49,16];$vf['name']=[.06,.34,.62,.12,28];$vf['role']=[.06,.5,.6,.1,19];$vf['code']=[.06,.63,.6,.1,18];$vf['verify']=[.52,.7,.14,.24,11];}
+  if($name==='orange'){$front['photo']=[.55,.23,.36,.3,20];$front['name']=[.07,.58,.85,.1,28];$front['code']=[.07,.74,.6,.06,20];}
   $fields=[];foreach(['id_front'=>$front,'id_back'=>$back,'visiting_front'=>$vf,'visiting_back'=>$vb] as $surface=>$rows){foreach($rows as $key=>$box){$fields[$surface][]=['key'=>$key,'x'=>$box[0],'y'=>$box[1],'w'=>$box[2],'h'=>$box[3],'size'=>$box[4],'color'=>$theme[1],'text'=>'','visible'=>true];}}
   return ['preset'=>$name,'background'=>$theme[0],'ink'=>$theme[1],'accent'=>$theme[2],'orient_id'=>'portrait','orient_visiting'=>'landscape','bw'=>false,'fields'=>$fields];
  }

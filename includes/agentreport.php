@@ -257,6 +257,7 @@ final class AgentReport
      */
     public static function rateCard(int $agentId): array
     {
+        require_once __DIR__.'/teamfinance.php';$term=TeamFinance::term($agentId);if($term){$label=match($term['basis']){'percent'=>$term['rate'].'% of eligible fare','flat'=>inr((float)$term['rate']).' / pax','booking'=>inr((float)$term['rate']).' / ticket',default=>'Salary only'};return ['mode'=>$term['basis'],'flat'=>(float)$term['rate'],'label'=>$label,'sub'=>'effective '.$term['effective_at'],'tier'=>(float)$term['rate']];}
         $ov   = AgentWallet::commissionOverrideFor($agentId);
         $tier = AgentWallet::flatRateFor($agentId);
         $pct  = AgentWallet::commissionPercentFor($agentId);

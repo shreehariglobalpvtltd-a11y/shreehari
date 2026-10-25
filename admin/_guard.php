@@ -215,7 +215,6 @@ function admin_nav(): array
         // bookings.view — an agent still sees their own pages, but the new
         // counter role (and support) must not browse other sellers' money.
         // The pages enforce the same rule server-side; this only hides nav.
-        ['href' => 'agents.php',       'icon' => 'users',  'label' => 'Agents',           'perm' => 'commissions.view', 'section' => 'Agents & counters'],
         ['href' => 'agent.php',        'icon' => 'wallet', 'label' => $agentView ? 'My Dashboard' : 'Agent Panel',    'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents & counters'],
         ['href' => 'agent-sales.php',  'icon' => 'chart-up',        'label' => $agentView ? 'My Sales' : 'Agent Sales',        'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents & counters'],
         // Oct 2026: the agent statement — on screen and as branded PNG pages (own statement only for an agent).
@@ -225,7 +224,6 @@ function admin_nav(): array
         // them): applications + KYC + agreement status, the editable agreement
         // points the public /agreements/ pages show, and the Hindi agreement PDF.
         ['href' => 'team.php', 'icon' => 'user-cog', 'label' => 'Team & Approvals', 'perm' => in_array((string) ((Auth::admin() ?? [])['role'] ?? ''), ['superadmin', 'manager'], true) ? 'customers.view' : '__superadmin_only__', 'section' => 'Agents & counters', 'hot' => true],
-        ['href' => 'team.php', 'icon' => 'id-card', 'label' => '🪪 Agent / Staff Management', 'perm' => in_array((string) ((Auth::admin() ?? [])['role'] ?? ''), ['superadmin', 'manager'], true) ? 'customers.view' : '__superadmin_only__', 'section' => 'Agents & counters', 'hot' => true],
         ['href' => 'agreement-points.php', 'icon' => 'doc',   'label' => '📜 Agreement points', 'perm' => $agentView ? '__superadmin_only__' : 'dashboard.view', 'section' => 'Agents & counters'],
         ['href' => 'agreement-pdf.php','icon' => 'notepad',   'label' => 'Agreement PDF (Hindi)', 'perm' => 'staff.manage', 'section' => 'Agents & counters'],
         ['href' => 'agent-passengers.php','icon' => 'id-card','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents & counters'],
@@ -234,7 +232,7 @@ function admin_nav(): array
         // staff.php itself admits only a super-admin (it says so on the page),
         // so the item is shown only to one — a manager used to see a link
         // that refused them every time.
-        ['href' => 'staff.php',        'icon' => 'user-cog',  'label' => 'Staff & Approvals', 'perm' => Auth::isSuperadmin() ? 'dashboard.view' : '__superadmin_only__',  'section' => 'Agents & counters'],
+        ['href' => 'staff.php',        'icon' => 'user-cog',  'label' => 'Account permissions', 'perm' => Auth::isSuperadmin() ? 'dashboard.view' : '__superadmin_only__',  'section' => 'Agents & counters'],
         // 5 Oct 2026: settlements - who is waiting, draft -> approved -> paid -> the
         // agent's confirmation, receipts, batch drafts (an agent sees only their own).
         ['href' => 'settlements.php',  'icon' => 'banknote',  'label' => $agentView ? 'My Settlements' : '🧾 Settlements', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Ledger & payments'],

@@ -20,6 +20,7 @@ final class TeamFinance {
     $r=$b==='percent'?AgentWallet::commissionPercentFor($aid):($ov['flat']??AgentWallet::flatRateFor($aid));
     Database::insert('team_terms',['admin_id'=>$aid,'basis'=>$b,'rate'=>$r,'salary'=>AgentWallet::salaryFor($aid),'effective_at'=>'2000-01-01 00:00:00','reason'=>'Preserved existing agreement before scheduled change','created_by'=>$by]);
    }
+   if(Database::exists('SELECT 1 FROM team_terms WHERE admin_id=:a AND basis=:b AND rate=:r AND salary=:s AND reason=:why AND DATE(effective_at)=:d',['a'=>$aid,'b'=>$basis,'r'=>$basis==='salary'?0:round((float)$rate,2),'s'=>round((float)$salary,2),'why'=>$reason,'d'=>$date])){return;}
    $effective=$date===date('Y-m-d')?date('Y-m-d H:i:s'):$date.' 00:00:00';
    Database::insert('team_terms',['admin_id'=>$aid,'basis'=>$basis,'rate'=>$basis==='salary'?0:round((float)$rate,2),'salary'=>round((float)$salary,2),'effective_at'=>$effective,'reason'=>$reason,'created_by'=>$by]);
    Logger::audit('team.terms','admin',(string)$aid,null,['basis'=>$basis,'rate'=>$rate,'salary'=>$salary,'effective_at'=>$effective],$reason);
@@ -56,6 +57,7 @@ final class TeamFinance {
  }
  public static function adjustment(int $aid,float $amount,string $type,string $reason,string $token,int $by): int {
   if(!Auth::can('commissions.pay')||!is_finite($amount)||$amount<=0||$amount>10000000||!in_array($type,['bonus','deduction'],true)||mb_strlen(trim($reason))<5||!preg_match('/^[a-f0-9]{32}$/',$token)){throw new RuntimeException('Valid account, amount, type and reason required.');}
+  if(!Database::exists("SELECT 1 FROM admins WHERE id=:a AND role='agent'",['a'=>$aid])){throw new RuntimeException('Choose a linked agent account. Staff pay uses Payroll.');}
   return Database::transaction(static function()use($aid,$amount,$type,$reason,$token,$by):int {
    Database::fetch('SELECT id FROM admins WHERE id=:a FOR UPDATE',['a'=>$aid]);$ref='ADJ-'.$token;
    $old=(int)Database::scalar('SELECT id FROM agent_ledger WHERE ref=:r AND agent_admin_id=:a',['r'=>$ref,'a'=>$aid],0);if($old){return $old;}

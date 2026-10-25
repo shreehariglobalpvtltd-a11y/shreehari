@@ -1027,6 +1027,7 @@ final class StaffApps
         Logger::audit('staff_app.' . $action, 'staff_application', (string) $r['ref'], ['status' => $old], ['status' => $set['status'] ?? $old]
             + ($action === 'info' ? ['asked' => (string) ($in['template'] ?? '')] : []), 'Staff application ' . $action, $reason);
 
+        if ($action==='approve') { Database::afterCommit(static function()use($id):void { require_once __DIR__.'/carddelivery.php'; CardDelivery::send(StaffApps::refFor($id)); }); }
         $wa = false;
         if ($msg !== '') {
             $wa = self::sendWa($r, $msg, 'staff_app_' . $action);

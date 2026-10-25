@@ -2080,6 +2080,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     if (!validate()) return;
     var btn = $('saSubmit'); btn.disabled = true; var lab = btn.innerHTML; btn.innerHTML = '<span class="ei">⏳</span>पठाउँदै…';
     var fd = new FormData();
+    document.querySelectorAll('[data-position-extra]').forEach(function(e){fd.append(e.dataset.positionExtra,e.value);});
     fd.set('import_reviewed', window.ShgIntake && window.ShgIntake.reviewed() ? '1' : '0');
     fd.set('full_name', v('sa_name')); fd.set('phone', digits('sa_phone')); fd.set('cc', v('sa_cc'));
     fd.set('role', v('sa_role')); fd.set('id_type', STAFF_ID[v('sa_idtype')] != null ? STAFF_ID[v('sa_idtype')] : v('sa_idtype')); fd.set('id_number', v('sa_idno'));
@@ -2220,5 +2221,5 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 .sa.sa-en .sa-f>label .en{color:#0a2a8f}
 .sa.sa-en .sa-cl .pt .ne{opacity:.72}
 </style>
-</body>
+<script src="/assets/js/team-positions.js?v=20261025b"></script></body>
 </html>

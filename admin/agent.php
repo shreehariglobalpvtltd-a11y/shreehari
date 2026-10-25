@@ -605,6 +605,7 @@ if (($_GET['export'] ?? '') === 'ledger') {
 
 $profile  = AgentWallet::profile($viewId);
 $balances = AgentWallet::balances($viewId);
+require_once INCLUDE_PATH.'/teamfinance.php';$funds=TeamFinance::available($viewId);
 
 /* Open payout request (self-serve, 3 Sep 2026; durable rows 17 Sep 2026):
    shown to the agent as "waiting" and to a supervisor as a nudge above the
@@ -1247,7 +1248,7 @@ if ($perfWin !== []):
   <?php endif; ?>
   <div class="hcard hc-green">
     <span class="hicon">💰</span>
-    <div class="hk">Commission due</div>
+    <div class="hk">Commission due</div><small>Available <?= Security::e(inr($funds['available'])) ?> · Reserved <?= Security::e(inr($funds['pending'])) ?></small>
     <div class="hv"><?= Security::e(inr($balances['commission'])) ?></div>
     <div class="hsub">
       earned <?= Security::e(inr($summary['earned'])) ?>
@@ -1391,7 +1392,7 @@ $tripCard = static function (array $t) use ($today, $base): void {
         <input type="number" name="amount" min="1" max="<?= (int) floor($balances['commission']) ?>" step="1" value="<?= (int) floor($balances['commission']) ?>" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:16px;width:140px">
         <input type="text" name="note" maxlength="200" placeholder="Note (optional)" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:16px;flex:1 1 200px">
         <button class="btn ok" type="submit">Request payout</button>
-        <span class="muted" style="font-size:12px;flex-basis:100%">Commission due <?= Security::e(inr($balances['commission'])) ?>. The office is notified on WhatsApp and pays to the account on your profile.</span>
+        <span class="muted" style="font-size:12px;flex-basis:100%">Commission due <?= Security::e(inr($balances['commission'])) ?>. The request reserves funds. The office checks payout details and records payment confirmation separately.</span>
       </form>
     <?php else: ?>
       <p class="muted" style="margin:0">Nothing due right now — commission appears here as your sales are confirmed.</p>
