@@ -227,8 +227,10 @@ final class GpsTrackers
             }
             $speed = $nonNeg($num($q['speed'] ?? null));
             $v     = strtolower(is_scalar($q['valid'] ?? null) ? (string) $q['valid'] : '');
+            // GPSLogger reports metres/second; OsmAnd / Traccar forward uses knots.
+            $speedFactor = ($q['source'] ?? '') === 'gpslogger' ? 3.6 : self::KNOT_KMH;
             $raw[] = [$lat, $lng, $q['timestamp'] ?? $q['time'] ?? null,
-                      $speed !== null ? $speed * self::KNOT_KMH : null,
+                      $speed !== null ? $speed * $speedFactor : null,
                       $nonNeg($num($q['bearing'] ?? $q['heading'] ?? $q['course'] ?? null)),
                       $nonNeg($num($q['accuracy'] ?? null)), !in_array($v, ['false', '0'], true)];
             $out['batt'] = $pct($num($q['batt'] ?? $q['battery'] ?? null));

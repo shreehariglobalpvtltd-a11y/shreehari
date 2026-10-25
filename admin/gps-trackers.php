@@ -21,6 +21,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/gpstrackers.php';
+require_once INCLUDE_PATH . '/gpsloggerprofile.php';
 $admin = admin_boot('buses.view');
 
 $base      = '';
@@ -204,7 +205,7 @@ admin_header('GPS trackers (vehicle number)', 'gps-trackers');
       </label>
       <label>Kind
         <select name="kind" id="gtKind">
-          <option value="phone">Phone (Traccar Client app)</option>
+          <option value="phone">Phone (GPSLogger / Traccar Client)</option>
           <option value="hardware">GPS device (IMEI, via Traccar server)</option>
         </select>
       </label>
@@ -262,6 +263,9 @@ admin_header('GPS trackers (vehicle number)', 'gps-trackers');
           <?= $on ? '' : ' <span class="pill" style="background:#f7dcdc;color:#8a1f1f">Off</span>' ?></div>
         </td>
         <td><span class="gt-uid"><?= Security::e((string) $t['device_uid']) ?></span><button class="btn ghost gt-copy" type="button" data-copy="<?= Security::e((string) $t['device_uid']) ?>">Copy</button>
+          <?php if ($t['kind'] === 'phone' && $on && GpsTrackers::isGeneratedUid((string) $t['device_uid'])): ?>
+            <div style="margin-top:6px"><a class="btn ghost" href="<?= Security::e(GpsTrackers::PUBLIC_URL . '/gpslogger-setup.php?' . GpsLoggerProfile::query((int) $t['id'])) ?>" target="_blank" rel="noopener noreferrer">GPSLogger · Easy setup</a></div>
+          <?php endif; ?>
           <?php if (GpsTrackers::needsKey((string) $t['device_uid'])): ?><div class="muted" style="font-size:11px">needs the forward key</div><?php endif; ?>
         </td>
         <td class="<?= $cls ?>"><?= $seen === null ? 'Waiting for first GPS report' : Security::e(timeAgo((string) $t['last_seen'])) ?></td>
