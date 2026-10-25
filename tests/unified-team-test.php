@@ -30,7 +30,9 @@ $check(TeamRegistry::approve($key,(int)$owner)===$ref&&(int)Database::scalar("SE
 $p=IdCard::person($ref);$check($p['memberCode']==='A-999991'&&$p['route']==='Synthetic route','cards use current display code and route');
 $check(str_starts_with(IdCard::waLink($p),'https://wa.me/919876543210?text='),'personal QR opens exact Indian recipient');
 $np=$p;$np['waDigits']='9779812345678';$check(str_starts_with(IdCard::waLink($np),'https://wa.me/9779812345678?text='),'personal QR supports Nepal country code');
+$check(IdCard::waQrUrl($p)==='https://wa.me/919876543210','printed WhatsApp QR uses exact validated personal URL');$private=$p;$private['waDigits']='';$check(IdCard::waQrUrl($private)==='','printed QR never guesses a country or bypasses contact privacy');
 $bad=$p;$bad['waDigits']='9876543210';$check(IdCard::waLink($bad)==='','local/ambiguous WhatsApp destination refused');
+Database::update('agent_applications',['kyc_status'=>'submitted'],'id=:i',['i'=>$id]);$check(!IdCard::person($ref)['valid'],'legacy approved status cannot make unreviewed identity valid');Database::update('agent_applications',['kyc_status'=>'verified'],'id=:i',['i'=>$id]);
 $check(IdCard::parse(IdCard::code($ref))===$ref&&!str_contains(IdCard::verifyUrl($ref),'wa.me'),'verification QR is signed and separate');
 $check(IdCard::parse($ref.'.000000000000')===null,'tampered official QR refused');
 foreach(['royal','minimal','orange']as$name){foreach(['portrait','landscape']as$ori){$cfg=CardDesign::preset($name);$cfg['orient_id']=$ori;foreach(['front','back']as$side){$png=IdCard::designPng($p,'id',$side,$cfg);$sz=getimagesizefromstring($png);$check($sz&&($ori==='portrait'?$sz[0]===638&&$sz[1]===1011:$sz[0]===1011&&$sz[1]===638),$name.' '.$ori.' '.$side.' dimensions');} $p['studio']=$cfg;$pdf=IdCard::pdf($p,'all');$check(str_starts_with($pdf,'%PDF-')&&strlen($pdf)>10000,$name.' '.$ori.' PDF contains both cards');}}

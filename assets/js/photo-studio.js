@@ -148,8 +148,10 @@
         var reader = new FileReader();
         reader.onload = function (e) { img.src = e.target.result; };
         reader.readAsDataURL(source);
-      } else if (typeof source === 'string') {
+      } else if (typeof source === 'string' && source) {
         img.src = source;
+      } else {
+        var chooser=document.createElement('input');chooser.type='file';chooser.accept='image/jpeg,image/png,image/webp';chooser.onchange=function(){if(chooser.files[0])self.open(chooser.files[0],options);};chooser.click();
       }
     },
 
@@ -283,23 +285,14 @@
     },
 
     analyzeQuality: function (origW, origH) {
-      var badge = document.getElementById('psQualityBadge');
-      var txt = document.getElementById('psQualityText');
-      var dim = document.getElementById('psDimensions');
-
-      dim.textContent = origW + ' × ' + origH + ' px';
-
-      if (origW < 240 || origH < 300) {
-        badge.className = 'ps-quality warn';
-        txt.textContent = '⚠️ Low resolution: photo may appear grainy on ID card.';
-      } else if (origW > 4000 || origH > 4000) {
-        badge.className = 'ps-quality ok';
-        txt.textContent = '✅ High resolution. Review sharpness and lighting manually.';
-      } else {
-        badge.className = 'ps-quality ok';
-        txt.textContent = '✅ Resolution is sufficient. Review face sharpness and lighting manually.';
-      }
-      if(caution){badge.className='ps-quality warn';txt.textContent=caution+' Review the real face, focus and lighting before saving.';}
+      var badge=document.getElementById('psQualityBadge'),txt=document.getElementById('psQualityText');
+      document.getElementById('psDimensions').textContent=origW+' × '+origH+' px';var caution='';
+      if(origW<240||origH<300)caution='Low resolution.';
+      try{var b=this.cropBox,p=this.ctx.getImageData(Math.floor(b.x),Math.floor(b.y),Math.max(1,Math.floor(b.w)),Math.max(1,Math.floor(b.h))),d=p.data,w=p.width,h=p.height,sum=0,edge=0,count=0;
+        for(var y=1;y<h-1;y+=3)for(var x=1;x<w-1;x+=3){var i=(y*w+x)*4,g=(d[i]+d[i+1]+d[i+2])/3,j=i+4,k=i+w*4;sum+=g;edge+=Math.abs(g-(d[j]+d[j+1]+d[j+2])/3)+Math.abs(g-(d[k]+d[k+1]+d[k+2])/3);count++;}
+        if(count){var mean=sum/count;if(mean<45)caution='Photo may be too dark.';else if(mean>230)caution='Photo may be overexposed.';else if(edge/count<3)caution='Low detail / contrast: check for blur.';}
+      }catch(e){}
+      badge.className='ps-quality '+(caution?'warn':'ok');txt.textContent=(caution||'Resolution is sufficient.')+' Review the real face, sharpness and lighting manually.';
     },
 
     cleanBackground: function () { alert('Automatic background removal is not configured. Crop and rotate preserve the original face.'); },

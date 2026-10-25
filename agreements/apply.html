@@ -1224,6 +1224,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   }
   hookShot('docIn', 'docPrev', 'docOk', 'doc', 1400, 420000);
   hookShot('selfIn', 'selfPrev', 'selfOk', 'photo', 900, 260000);
+  var cropAgent=document.createElement('button');cropAgent.type='button';cropAgent.className='btn ghost';cropAgent.textContent='Crop / rotate passport photo';$('selfIn').parentElement.after(cropAgent);cropAgent.onclick=function(){window.PhotoStudio.open(state.photo||'',{onSave:function(u){state.photo=u;$('selfPrev').style.backgroundImage='url('+u+')';$('selfPrev').classList.add('has');$('selfOk').textContent='Photo ready for office review';}});};
   hookShot('logoIn', 'logoPrev', 'logoOk', 'logo', 600, 150000);
   hookShot('regIn', 'regPrev', 'regOk', 'reg_cert', 1600, 320000);
   hookShot('taxIn', 'taxPrev', 'taxOk', 'tax_cert', 1600, 320000);
@@ -2190,6 +2191,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 
   /* ---- wire it all up ---- */
   hookDrop('sa_photoIn', 'photo', 900, 260, function () { badge('sa_vbSelfie', true); });
+  var cropStaff=document.createElement('button');cropStaff.type='button';cropStaff.className='btn ghost';cropStaff.textContent='Crop / rotate passport photo';$('sa_photoDrop').after(cropStaff);cropStaff.onclick=function(){window.PhotoStudio.open(img.photo||'',{onSave:function(u){img.photo=u;$('sa_photoDrop').style.backgroundImage='url('+u+')';$('sa_photoDrop').classList.add('has');sync();}});};
   hookDrop('sa_idFront', 'idFront', 1500, 360, function (data) { if (window.ShgIntake) window.ShgIntake.readData(data, 'id').catch(function () {}); });
   hookDrop('sa_idBack', 'idBack', 1500, 360);
   hookDrop('sa_licDoc', 'licDoc', 1400, 420);
@@ -2221,5 +2223,5 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 .sa.sa-en .sa-f>label .en{color:#0a2a8f}
 .sa.sa-en .sa-cl .pt .ne{opacity:.72}
 </style>
-<script src="/assets/js/team-positions.js?v=20261025b"></script></body>
+<script src="/assets/js/photo-studio.js?v=20261025c"></script><script src="/assets/js/team-positions.js?v=20261025b"></script></body>
 </html>

@@ -158,8 +158,12 @@ th{color:var(--mut);font-weight:700;font-size:12px}
 .modal-box{background:#fff;border-radius:18px;max-width:500px;width:100%;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.4)}
 @media screen and (min-width:900px){.cards img.id{width:70mm;height:111mm}.cards img.vc{width:120mm;height:68.8mm}}
 @media print{@page{size:A4;margin:12mm}body{background:#fff}.bar,.note,.cards figcaption,.box.np,.dl,.flash,.qrs{display:none!important}.box{border:0;box-shadow:none;padding:0}.cards{padding:0;gap:8mm;justify-content:flex-start}.cards img.id{width:54mm;height:85.6mm;box-shadow:none;border:0.2mm solid #ccd}.cards img.vc{width:89mm;height:51mm;box-shadow:none;border:0.2mm solid #ccd}}
+<?php if(!empty($p['studio'])): ?>
+.cards img.id{width:<?= ($p['studio']['orient_id']??'')==='landscape'?'85.6mm':'54mm' ?>;height:auto;max-width:100%}.cards img.vc{width:<?= ($p['studio']['orient_visiting']??'')==='portrait'?'51mm':'89mm' ?>;height:auto;max-width:100%}
+@media print{.cards img.id{width:<?= ($p['studio']['orient_id']??'')==='landscape'?'85.6mm':'54mm' ?>;height:auto}.cards img.vc{width:<?= ($p['studio']['orient_visiting']??'')==='portrait'?'51mm':'89mm' ?>;height:auto}}
+<?php endif; ?>
 </style>
-<script src="/assets/js/photo-studio.js?v=20261025"></script>
+<script src="/assets/js/photo-studio.js?v=20261025c"></script>
 </head>
 <body>
 <div class="bar">

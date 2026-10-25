@@ -150,7 +150,7 @@ try {
     /* ---- 5. Payout and handover are bounded by the balance ---------- */
     expectThrow('a payout bigger than what is owed is refused',
         fn() => AgentWallet::record($agentId, 'payout', 5000, ['by' => $agentId]));
-    AgentWallet::record($agentId, 'payout', 100, ['by' => $agentId, 'note' => 'Part payment']);
+    AgentWallet::record($agentId, 'payout', 100, ['by' => $agentId, 'note' => 'Part payment', 'ref' => 'SYNTHETIC-WALLET-PAYMENT-1']);
     check('a valid payout reduces what we owe', money_is(AgentWallet::balances($agentId)['commission'], 25.00));
 
     expectThrow('handing over more cash than held is refused',

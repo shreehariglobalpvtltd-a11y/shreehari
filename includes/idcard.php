@@ -63,6 +63,8 @@ final class IdCard
         if (!$p['public']) { $p['waDigits']=''; }
         $r=str_starts_with($key,'staff:')?StaffApps::find((int)substr($key,6)):AgentApplications::find((int)substr($key,6));
         if (empty($r['phone_verified'])) { $p['waDigits']=''; }
+        $p['kycVerified']=($r['kyc_status']??'')==='verified';
+        if (!$p['kycVerified']) { $p['valid']=false; $p['standing']='KYC review pending'; $p['standingNe']='KYC जाँच बाँकी'; $p['waDigits']=''; }
         if (!empty($p['expires']) && $p['expires']<date('Y-m-d')) { $p['valid']=false; $p['standing']='Expired'; $p['waDigits']=''; }
         return $p;
     }
@@ -276,18 +278,9 @@ final class IdCard
     }
 
     /** Personal WhatsApp URL — opens direct chat with this person */
-    public static function waQrUrl(array $p): string
-    {
-        $d = (string) ($p['waDigits'] ?? '');
-        if (!preg_match('/^(91[6-9][0-9]{9}|9779[78][0-9]{8})$/', $d)) {
-            $digits = preg_replace('/\D/', '', (string) ($p['phone'] ?? '')) ?? '';
-            if (strlen($digits) === 10) {
-                $d = '977' . $digits;
-            } elseif (strlen($digits) > 10) {
-                $d = $digits;
-            }
-        }
-        return $d !== '' ? 'https://wa.me/' . $d : '';
+    public static function waQrUrl(array $p): string {
+        $d=(string)($p['waDigits']??'');
+        return preg_match('/^(91[6-9][0-9]{9}|9779[78][0-9]{8})$/',$d)?'https://wa.me/'.$d:'';
     }
 
     public static function waLink(array $p): string
@@ -322,6 +315,7 @@ final class IdCard
         } else {
             $im = $side === 'back' ? self::back($p) : self::front($p);
         }
+        imageresolution($im,300,300);
         ob_start();
         imagepng($im, null, 6);
         imagedestroy($im);
@@ -535,6 +529,7 @@ final class IdCard
         } else {
             $im = $side === 'back' ? self::vBack($p) : self::vFront($p);
         }
+        imageresolution($im,300,300);
         ob_start();
         imagepng($im, null, 6);
         imagedestroy($im);
@@ -617,8 +612,8 @@ final class IdCard
         $qy = $H - 45 - $qr;
         $dy = max($py + $ps + 40, 270);
         $rows = [];
-        if ($p['place'] !== '') {
-            $rows[] = [$p['kind'] === 'staff' ? 'Office / Route' : 'Area / Route', (string) $p['place']];
+        if (($p['route']??'') !== '' || $p['place'] !== '') {
+            $rows[] = [$p['kind'] === 'staff' ? 'Office / Route' : 'Area / Route', (string) (($p['route']??'')?:$p['place'])];
         }
         if ($p['contact'] !== '') {
             $rows[] = ['Contact', (string) $p['contact']];
@@ -958,7 +953,7 @@ final class IdCard
                 elseif($key==='photo'){if(!empty($p['photo'])){self::picture($im,$p['photo'],$x,$y,$fw,$fh,false);}}
                 elseif($key==='signature'){if(!empty($p['sig'])){self::picture($im,$p['sig'],$x,$y,$fw,$fh,true);}}
                 elseif(in_array($key,['verify','whatsapp'],true)){
-                    $payload=$key==='verify'?self::verifyUrl($p['ref']):self::waLink($p);if($payload===''){continue;}
+                    $payload=$key==='verify'?self::verifyUrl($p['ref']):self::waQrUrl($p);if($payload===''){continue;}
                     $max=min($fw,$fh-38);if($max<80){continue;}$actual=GoldSheet::qrSide($payload,$max);imagefilledrectangle($im,$x-8,$y-8,$x+$actual+8,$y+$actual+8,imagecolorallocate($im,255,255,255));GoldSheet::qr($im,$payload,$x,$y,$max);
                     self::t($im,9,$x,$y+$actual+8,$color,$key==='verify'?'Verify identity':'Personal WhatsApp',true);if($key==='whatsapp'){self::t($im,8,$x,$y+$actual+24,$color,'Does not verify identity');}
                 }else{

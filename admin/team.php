@@ -109,7 +109,7 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px}
 .modal-box{background:#fff;border-radius:18px;max-width:540px;width:100%;max-height:92vh;overflow-y:auto;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,.4)}
 </style>
-<script src="/assets/js/photo-studio.js?v=20261025"></script>
+<script src="/assets/js/photo-studio.js?v=20261025c"></script>
 
 <?php if ($flash !== null): ?>
   <div class="data-card" style="border-left:5px solid <?= $flash[0] === 'ok' ? '#0f9d6b' : '#d93025' ?>;padding:12px 16px;font-weight:700">
