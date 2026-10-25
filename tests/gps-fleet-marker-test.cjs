@@ -8,7 +8,7 @@ class Marker{
 }
 let c={URLSearchParams,location:{search:''},localStorage:{getItem(){return null;}},window:{maplibregl:{Marker}},maplibregl:{Marker},document:{hidden:false,documentElement:{lang:'en'},querySelector(){return null;},createElement:element,addEventListener(){}},performance:{now:()=>now},requestAnimationFrame:f=>{frames.set(++seq,f);return seq;},cancelAnimationFrame:id=>{canceled.push(id);frames.delete(id);},setTimeout(){},console};
 let src=fs.readFileSync('assets/nav/nav-live.js','utf8');
-src=src.replace("if (window.SHGNAV_X) start();", "window.QA = {BUS:BUS, apply:busApply, fresh:busFresh, stop:busStop, move:moveMarker, setX:function(v){X=v;}}; if (window.SHGNAV_X) start();");
+src=src.replace("if (window.SHGNAV_X) start();", "window.QA = {BUS:BUS, apply:busApply, fresh:busFresh, rows:busRows, stop:busStop, move:moveMarker, setX:function(v){X=v;}}; if (window.SHGNAV_X) start();");
 vm.runInNewContext(src,c);let q=c.window.QA;
 q.setX({S:{lang:'en',saver:false,map:{easeTo(){throw Error('updates must not center navigation');}}},esc:String});
 const base=1792900000000;
@@ -27,3 +27,8 @@ const gpsPoint={id:-7,bus:'QA-GPS',from:'',to:'',dep:'',lat:23.1,lng:72.6,kmh:0,
 q.apply({t:base+65000,buses:[],gps:[gpsPoint],fleet:[]});assert.ok(q.BUS.m[-7]);assert.equal(q.BUS.by[-7].kmh,0,'stationary speed is not lost');
 q.apply({t:base+200000,buses:[],gps:[gpsPoint],fleet:[]});assert.equal(q.BUS.m[-7],undefined,'stale standalone GPS marker removed');
 console.log('Standalone GPS marker and expiry checks passed');
+
+let htmlWrites=0;const fakeRows={dataset:{},querySelectorAll(){return [];},set innerHTML(v){htmlWrites++;}};
+c.document.querySelector=s=>s==='#nlFleetRows'?fakeRows:null;
+q.rows();const writes=htmlWrites;now+=1000;q.rows();assert.equal(htmlWrites,writes,'one-second telemetry refresh preserves focused bus buttons');
+console.log('Live list focus stability check passed');

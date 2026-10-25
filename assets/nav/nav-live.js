@@ -588,10 +588,16 @@ function busRows() {
   var telemetry = $('#nlBusTelemetry'), detail = BUS.by[BUS.detail];
   if (telemetry) telemetry.textContent = detail && busFresh(detail) ? busTelemetry(detail) : fleetText('stale');
   if (!rows) return;
+  var rowKey = JSON.stringify([items.map(function (b) { return [b.id, b.bus, b.from, b.to, !!b.trackingOnly]; }), BUS.fleet, !!BUS.errors]);
+  if (rows.dataset.fleetKey === rowKey) {
+    rows.querySelectorAll('[data-fleet-telemetry]').forEach(function (el) { var b = BUS.by[el.dataset.fleetTelemetry]; if (b) el.textContent = busTelemetry(b); });
+    return;
+  }
+  rows.dataset.fleetKey = rowKey;
   var plates = {};
   rows.innerHTML = (BUS.errors ? '<p role="status">' + esc(fleetText('error')) + '</p>' : '') + items.map(function (b) {
     plates[b.bus] = true;
-    return '<button class="nl-b nl-fleet-row" type="button" data-fleet-bus="' + Number(b.id) + '"><b>🟢 ' + esc(b.bus || b.busName || 'S Hari') + '</b><span>' + (b.trackingOnly ? esc(fleetText('gpsOnly')) : esc(b.from) + ' → ' + esc(b.to)) + '</span><small>' + esc(busTelemetry(b)) + '</small></button>';
+    return '<button class="nl-b nl-fleet-row" type="button" data-fleet-bus="' + Number(b.id) + '"><b>🟢 ' + esc(b.bus || b.busName || 'S Hari') + '</b><span>' + (b.trackingOnly ? esc(fleetText('gpsOnly')) : esc(b.from) + ' → ' + esc(b.to)) + '</span><small data-fleet-telemetry="' + Number(b.id) + '">' + esc(busTelemetry(b)) + '</small></button>';
   }).join('') + BUS.fleet.filter(function (f) { return !plates[f.bus]; }).map(function (f) {
     return '<div class="nl-fleet-row"><b>⚪ ' + esc(f.bus) + '</b><small>' + esc(fleetText(f.state === 'live' ? 'stale' : f.state)) + '</small></div>';
   }).join('') + (!items.length ? '<p>' + esc(fleetText('empty')) + '</p>' : '');
@@ -1036,8 +1042,8 @@ function start() {
     Object.keys(BUS.by).forEach(function (id) { if (!busFresh(BUS.by[id])) removeBus(id); });
     busRows();
     // Repair a silent WebSocket without redundant polling while push is healthy.
-    if (BUS.on && performance.now() - BUS.received > 20000) busRefresh(false);
-  }, 5000);
+    if (BUS.on && performance.now() - BUS.received > 8000) busRefresh(false);
+  }, 1000);
   (function waitMap(n) { if (X.S.map || n > 60) ready(); else setTimeout(function () { waitMap(n + 1); }, 300); })(0);   /* DOM markers need the map, not its style */
   /* reports follow the rider: a new list after 10 km or 5 minutes */
   setInterval(function () {

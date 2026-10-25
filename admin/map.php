@@ -205,9 +205,9 @@ admin_header('Live Map', 'map');
 
 <!-- GPSLIVE-20261025 -->
 <div class="lm-top">
-  <a class="btn ghost" href="<?= $base ?>/admin/gps-trackers.php">🛰️ Configure bus GPS</a>
+  <a class="btn ghost" href="<?= $base ?>/admin/gps-center.php">🛰️ GPS setup & Simulation</a>
   <a class="btn ghost" href="/navigate.html" target="_blank" rel="noopener">🚌 S Hari Live Map</a>
-  <span class="muted" style="font-size:12.5px">GPS devices + driver phones · live speed and last update · refreshes every 10 s</span>
+  <span class="muted" style="font-size:12.5px">GPS devices + driver phones · live speed and last update · GPS status refreshes every second</span>
   <span class="spacer"></span>
   <button class="btn ghost" type="button" id="lmFollow">🎯 Follow bus</button>
   <button class="btn ghost" type="button" id="lmFit">🗺️ Fit routes</button>
@@ -441,5 +441,5 @@ window.ADMAP = {
   }).catch(function(){ document.getElementById('lmLoad').textContent = 'Map library could not be loaded — check the connection.'; });
 })();
 </script>
-<script src="/assets/nav/gps-admin.js?v=20261025gps2" defer></script>
+<script src="/assets/nav/gps-admin.js?v=20261025gps6" defer></script>
 <?php admin_footer(); ?>

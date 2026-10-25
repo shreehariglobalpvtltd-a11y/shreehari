@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require dirname(__DIR__) . '/_guard.php';
-$admin = admin_boot('schedules.view');
+$admin = admin_boot(Auth::can('buses.view') ? 'buses.view' : 'schedules.view');
 require_once INCLUDE_PATH . '/gpsfleet.php';
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, private');

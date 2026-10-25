@@ -3,7 +3,7 @@
  * GET /api/nav-buses.php - S Hari coaches on the road now, for the SHARI NAV
  * map (Phase 2, 22 Oct 2026): position, from -> to, next boarding stop and
  * minutes to it. Only coaches with a fresh, accurate fix (the track page's
- * rules, EtaAlerts::fixForTrip). One snapshot serves everyone for 12 s, and
+ * rules, EtaAlerts::fixForTrip). One snapshot serves everyone for 1 s, and
  * the same snapshot is pushed on channel "bus" by cron/nav-live.php.
  */
 declare(strict_types=1);

@@ -35,7 +35,7 @@ final class NavLive
     public const KEY_FILE  = '/var/lib/shg-live/key';
     public const SHARE_H   = 4;          /* a share stops by itself after 4 h */
     public const NEAR_KM   = 30.0;       /* reports shown around the rider */
-    public const BUS_CACHE = 12;         /* seconds one bus snapshot is reused */
+    public const BUS_CACHE = 1;         /* seconds one bus snapshot is reused */
 
     /** kind => [minutes it lives, emoji] (owner's list, 21 Oct 2026) */
     public const KINDS = [
@@ -85,6 +85,23 @@ final class NavLive
         }
         @fwrite($s, hash_hmac('sha256', $json, $key) . "\n" . $json);
         @fclose($s);
+    }
+
+    /** Fresh accepted fixes fan out once for all map viewers; no per-viewer polling load. */
+    public static function gpsChanged(): void
+    {
+        @unlink(sys_get_temp_dir() . '/shg-navlive-bus-v3.json');
+        if (self::key() === '') { return; }
+        $lockFile = sys_get_temp_dir() . '/shg-gps-push.lock';
+        $lock = @fopen($lockFile, 'c+');
+        if (is_resource($lock)) { @chown($lockFile, 'www-data'); @chgrp($lockFile, 'www-data'); @chmod($lockFile, 0660); }
+        if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) { if (is_resource($lock)) fclose($lock); return; }
+        try {
+            $now = microtime(true); rewind($lock); $previous = (float) stream_get_contents($lock);
+            if ($now - $previous < 0.2) { return; }
+            rewind($lock); ftruncate($lock, 0); fwrite($lock, (string) $now); fflush($lock);
+            self::publish('bus', self::buses());
+        } finally { flock($lock, LOCK_UN); fclose($lock); }
     }
 
     /* ---------------------------------------------------------------
@@ -215,6 +232,7 @@ final class NavLive
      */
     public static function buses(?int $now = null): array
     {
+        $snapshotMs = $now === null ? (int) round(microtime(true) * 1000) : $now * 1000;
         $now = $now ?? time();
         $file = sys_get_temp_dir() . '/shg-navlive-bus-v3.json';
         if (is_file($file) && $now - (int) filemtime($file) < self::BUS_CACHE) {
@@ -307,8 +325,9 @@ final class NavLive
         } catch (Throwable $e) {
             Logger::warning('NavLive: GPS health unavailable', [], 'nav');
         }
-        $snap = ['t' => $now * 1000, 'buses' => $out, 'gps' => $gps, 'fleet' => array_values($fleet)];
+        $snap = ['t' => $snapshotMs, 'buses' => $out, 'gps' => $gps, 'fleet' => array_values($fleet)];
         @file_put_contents($file . '.tmp', json_encode($snap, JSON_UNESCAPED_UNICODE));
+        @chown($file . '.tmp', 'www-data'); @chgrp($file . '.tmp', 'www-data'); @chmod($file . '.tmp', 0660);
         @rename($file . '.tmp', $file);
         return $snap;
     }

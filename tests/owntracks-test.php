@@ -29,6 +29,7 @@ $profile=json_decode(OwnTracksGateway::profile($tracker),true,512,JSON_THROW_ON_
 check($profile['mode']===3&&$profile['auth']===true&&$profile['monitoring']===2,'HTTP Move profile');
 check($profile['url']==='https://www.shreehariglobal.in/api/owntracks.php','canonical HTTPS receiver');
 check($profile['username']==='bus-7'&&$profile['password']===$uid,'correct bus account');
-check($profile['locatorInterval']===10&&$profile['locatorPriority']===0,'10-second high accuracy');
+check($profile['locatorInterval']===3&&$profile['locatorPriority']===0,'3-second high accuracy');
+check($profile['autostartOnBoot']===true,'dedicated bus phone restarts tracking after boot');
 check(!isset($profile['allowConfigurationByURIAndConfigFile']),'external import switch stays under user control');
-echo "18 OwnTracks auth, protocol and profile checks passed\n";
+echo "19 OwnTracks auth, protocol and profile checks passed\n";

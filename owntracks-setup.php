@@ -24,6 +24,6 @@ $import = 'owntracks:///config?inline=' . rawurlencode(base64_encode(OwnTracksGa
 <a class="btn" href="<?= Security::e($import) ?>">4 · तयार settings OwnTracks मा import</a>
 <p>OwnTracks खुलेपछि <b>✓ / Import</b> थिचेर पुष्टि गर्नुहोस्। Monitoring <b>Move</b> राख्नुहोस्, अनि <b>↑ Publish location</b> एकपटक थिच्नुहोस्।</p>
 <details><summary>माथिको बटनले app नखोलेमा</summary><a class="btn light" href="<?= Security::e($download) ?>">Configuration file (.otrc) डाउनलोड</a><p>Downloads बाट यो file खोल्दा <b>OwnTracks</b> छान्नुहोस्। Settings import स्वीकृत गर्नुहोस्।</p></details>
-<p><small>यस फोनमा परीक्षण गर्दा Traccar Client र GPSLogger बन्द राख्नुहोस्। Profile: HTTPS · high accuracy · 10-second location request · सही km/h। वास्तविक update GPS signal र Android background settings मा निर्भर हुन्छ।</small></p>
+<p><small>यस फोनमा परीक्षण गर्दा Traccar Client र GPSLogger बन्द राख्नुहोस्। Profile: HTTPS · high accuracy · 3-second location request · auto-start on boot · सही km/h। वास्तविक update GPS signal र Android background settings मा निर्भर हुन्छ।</small></p>
 <small>यो निजी setup link 24 घण्टासम्म मान्य हुन्छ। Link र configuration आफूसँग राख्नुहोस्।</small>
 </main></html>

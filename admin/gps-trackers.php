@@ -170,6 +170,7 @@ admin_header('GPS trackers (vehicle number)', 'gps-trackers');
 <?php admin_footer(); exit; endif; ?>
 
 <!-- GPSLIVE-20261025 -->
+<p><a class="btn" href="/admin/gps-center.php">🛰️ Easy bus GPS setup · Live & Simulation</a></p>
 <div class="panel">
   <h2>🛰️ Bus GPS connection</h2>
   <p>Configure each bus once below. A saved key alone does not connect a device: it must send reports to the server URL.</p>

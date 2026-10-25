@@ -522,22 +522,29 @@ final class GpsTrackers
                  'speed' => $newest['kmh'], 'id' => (int) $t['id'], 'older' => date('Y-m-d H:i:s', $newest['ts'])]);
         }
 
+        $finish = static function (?int $tripId = null, bool $moved = false) use ($newest, $res): array {
+            if ($newest !== null) {
+                try { require_once __DIR__ . '/navlive.php'; NavLive::gpsChanged(); }
+                catch (Throwable $e) { Logger::warning('GPS map push unavailable', [], 'nav'); }
+            }
+            return $res(200, '', $tripId, $moved);
+        };
         if ($points === [] || !LiveTrips::available()) {
-            return $res(200);
+            return $finish();
         }
         $run = self::tripForBus($busId, $now);
         if ($run === null) {
-            return $res(200);   // parked: no departure of this bus is on now
+            return $finish();   // parked: no departure of this bus is on now
         }
         try {
             $trip = LiveTrips::startForBus((int) $run['scheduleId'], $busId, $now);
         } catch (RuntimeException $e) {
-            return $res(200);
+            return $finish();
         }
         if ((string) $trip['status'] !== 'running') {
-            return $res(200);   // the driver ended this trip: it stays ended
+            return $finish();   // the driver ended this trip: it stays ended
         }
         $r = LiveTrips::ingest($trip, $points, $now, true);
-        return $res(200, '', (int) $run['scheduleId'], $r['moved']);
+        return $finish((int) $run['scheduleId'], $r['moved']);
     }
 }

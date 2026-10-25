@@ -64,7 +64,7 @@ function poll() {
       failures++; root.textContent = 'GPS connection status unavailable · retrying. Last positions are not live.';
       rows.forEach(function (r) { if (r.state === 'live') { r.state = 'offline'; r.kmh = null; } }); draw();
     })
-    .finally(function () { busy = false; if (!document.hidden) timer = setTimeout(poll, Math.min(60000, 10000 * Math.pow(2, failures))); });
+    .finally(function () { busy = false; if (!document.hidden) timer = setTimeout(poll, Math.min(60000, 1000 * Math.pow(2, failures))); });
 }
 var b = document.getElementById('gpsFleetRefresh'); if (b) b.onclick = poll;
 document.addEventListener('shg:admin-map-ready', draw);

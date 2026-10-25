@@ -47,8 +47,8 @@ final class OwnTracksGateway
         return json_encode(['_type' => 'configuration', 'mode' => 3, 'url' => GpsTrackers::PUBLIC_URL . '/api/owntracks.php',
             'auth' => true, 'username' => 'bus-' . (int) $tracker['bus_id'], 'password' => $tracker['device_uid'],
             'deviceId' => $plate, 'trackerId' => substr(preg_replace('/[^A-Za-z0-9]/', '', $plate), -2),
-            'monitoring' => 2, 'locatorPriority' => 0, 'locatorInterval' => 10, 'locatorDisplacement' => 5,
-            'ignoreInaccurateLocations' => 100, 'autostartOnBoot' => false, 'allowRemoteLocation' => false],
+            'monitoring' => 2, 'locatorPriority' => 0, 'locatorInterval' => 3, 'locatorDisplacement' => 0,
+            'ignoreInaccurateLocations' => 100, 'autostartOnBoot' => true, 'allowRemoteLocation' => false],
             JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
     }
 }
