@@ -350,16 +350,6 @@ if ($v === 'forgot'): ?>
     <div id="faceMsg" class="tp-msg info" hidden></div>
     <div class="tf-doors">
       <?php if (Passkeys::ready()): ?><button class="b or" type="button" data-pk="login">👆 Face ID / फिंगरप्रिन्ट (फोनको लक) · Phone lock</button><?php endif; ?>
-      <button class="b face" type="button" data-face="login">📷 अनुहारले भित्र जानुहोस् · Face login (camera)</button>
-      <button class="b gh" type="button" data-face="show-facts">🎂 जन्म मिति + ID नम्बर · Birth date + ID number</button>
-    </div>
-    <div id="factsBox" hidden style="padding:10px 12px;border:1.5px solid #c5d0e6;border-radius:14px;margin:0 0 6px">
-      <label class="f" for="fDob">जन्म मिति (ईस्वी) · Date of birth (AD)</label>
-      <input class="i" id="fDob" type="date" max="2015-12-31" autocomplete="bday">
-      <label class="f" for="fId">नागरिकता / आधार / ID नम्बर · ID number</label>
-      <input class="i" id="fId" type="text" maxlength="40" autocomplete="off" placeholder="जस्तै: 52-01-75-12345">
-      <button class="b" type="button" data-face="facts">भित्र जानुहोस् · Sign in</button>
-      <p class="tp-sub" style="margin:6px 0 0">फारममा दिएको जन्म मिति र ID नम्बर — कार्यालयको रेकर्डसँग मिल्नुपर्छ। · The birth date and ID number you gave on your form.</p>
     </div>
     <details class="tf-pw"><summary>🔑 पासवर्डले · With the password</summary>
     <label class="f" for="pw">पासवर्ड · Password</label>
@@ -368,14 +358,12 @@ if ($v === 'forgot'): ?>
     <a class="b gh" href="/team/?v=forgot" style="margin-top:8px">पासवर्ड बनाउनुहोस् / बिर्सनुभयो? · Set / forgot password</a>
     </details>
   </form>
-  <p class="tp-sub" style="margin-top:10px">🔒 अनुहार फारममा दिएको फोटोसँग मात्र मिलाइन्छ, कतै राखिँदैन। फोनको फिंगरप्रिन्ट / Face ID फोनभित्रै रहन्छ। · Your face is only compared with the photo on your own record and never stored; the phone's fingerprint / Face ID never leaves the phone.</p>
   <p class="tp-links">
     <a href="/agreements/apply.html">🤝 एजेन्ट बन्नुहोस्</a>
     <a href="/agreements/apply.html?kind=staff">🧑‍✈️ स्टाफ बन्नुहोस्</a>
     <a href="/agreements/apply.html?kind=partner">🏢 साझेदार बन्नुहोस्</a>
   </p>
   <?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261023j"></script><?php endif; ?>
-  <script src="/assets/js/team-face.js?v=20261023j"></script>
   <p class="tp-links" style="font-weight:400"><a href="/admin/login.php?portal=admin">Office login (admin)</a></p>
 </div>
 <?php endif;

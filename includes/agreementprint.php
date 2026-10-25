@@ -221,4 +221,25 @@ final class AgreementPrint
         $s = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         return trim((string) preg_replace('~\s+~u', ' ', $s));
     }
+
+    /** Full current master terms plus the existing applicant signature; never invents legal clauses. */
+    public static function digitalPdf(array $person,string $lang='en'): string {
+        require_once __DIR__.'/pdf.php';require_once __DIR__.'/devshape.php';
+        $kind=$person['kind']==='staff'?'staff':($person['kind']==='partner'?'partner':'agent');
+        $sections=self::sections($kind,self::lang($kind,$lang));if(!$sections){throw new RuntimeException('Agreement master is unavailable.');}
+        $pdf=new Pdf();$pdf->registerTTF(DevShape::fontFile());$co=Settings::company();
+        $plain=static function(string $html):string{return trim(preg_replace('/\s+/u',' ',html_entity_decode(strip_tags(preg_replace('/<span class="fill"><\/span>/', ' __________ ', $html)),ENT_QUOTES|ENT_HTML5,'UTF-8')));};
+        $terms=[];foreach($sections as $section){$terms[]=$plain($section['no'].' '.$section['title']);foreach($section['points']as$point){$terms[]=$plain($point['num'].' '.$point['html']);}}
+        $wrap=static function(string $text,float $font)use($pdf):array{$out=[];$line='';foreach(preg_split('/\s+/u',$text)as$word){$test=$line===''?$word:$line.' '.$word;if($pdf->textWidth($test,$font,'F7')>515&&$line!==''){$out[]=$line;$line=$word;}else{$line=$test;}}if($line!==''){$out[]=$line;}return $out;};
+        $size=10.0;do{$lines=[];foreach($terms as $term){array_push($lines,...$wrap($term,$size));$lines[]='';}$capacity=(int)floor(700/($size*1.45));if(count($lines)<=$capacity*3){break;}$size-=.5;}while($size>=8.5);
+        if(count($lines)>$capacity*3){throw new RuntimeException('Current master exceeds four readable pages. Use the full print version or shorten the approved master terms.');}
+        $pages=max(1,(int)ceil(count($lines)/$capacity));$header=static function(int $page)use($pdf,$co,$person,$kind,$pages):void{$pdf->rect(0,0,$pdf->width(),54,[10,42,143],true);$pdf->text(40,20,'S HARI GLOBAL PRIVATE LIMITED',13,'F2',[255,255,255]);$pdf->text(40,38,strtoupper($kind).' AGREEMENT  |  '.$person['ref'].'  |  '.($page+1).' / '.($pages+1),9,'F1',[255,205,135]);$pdf->line(40,800,555,800,[240,122,30]);$pdf->text(40,815,'Current master agreement - private signed application record',8,'F1',[92,107,133]);};
+        $header(0);$y=86;
+        foreach(['Agreement: '.ucfirst($kind),'Applicant: '.$person['name'],'Permanent code: '.($person['memberCode']??$person['ref']),'Position: '.$person['roleEn'],'Location: '.$person['place'],'Route: '.($person['route']??''),'Issued / reviewed: '.$person['issued'],'Company: '.$co['legal'],'Office contact: '.$co['phone']] as $text){foreach($wrap($text,12)as$line){$pdf->textCID(40,$y,$line,12,'F7',[22,35,60]);$y+=22;}$y+=14;}
+        $pdf->text(40,570,'Applicant digital signature from the application',10,'F2',[10,42,143]);
+        if(!empty($person['sig'])){$pdf->imageFromString($person['sig'],40,595,210,85);}else{$pdf->text(40,610,'Signature not recorded; this document is not a newly signed agreement.',10,'F1',[150,60,0]);}
+        $pdf->text(40,735,'The complete current master terms follow. This export does not create a new signature.',8,'F1',[92,107,133]);
+        foreach(array_chunk($lines,$capacity)as$index=>$chunk){$pdf->newPage();$header($index+1);$y=76;foreach($chunk as$line){if($line!==''){$pdf->textCID(40,$y,$line,$size,'F7',[22,35,60]);}$y+=$size*1.45;}}
+        return $pdf->output();
+    }
 }

@@ -112,7 +112,6 @@ $waPersonal = IdCard::waLink($p);
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="csrf-token" content="<?= Security::e(Security::csrfToken()) ?>">
 <meta name="robots" content="noindex">
 <meta name="csrf-token" content="<?= $h(Security::csrfToken()) ?>">
 <title>Digital ID <?= $h($p['ref']) ?> · <?= $h($p['name']) ?> | S Hari Global</title>
@@ -348,23 +347,15 @@ function closeShareModal() {
 }
 
 function shareViaNative() {
-  if (navigator.share) {
-    fetch('<?= $h($q(['png' => 'front', 'dl' => 1])) ?>')
-      .then(res => res.blob())
-      .then(blob => {
-        var file = new File([blob], 'SHG-ID-<?= $h($p['ref']) ?>.png', { type: 'image/png' });
-        navigator.share({
-          title: 'S Hari Global ID Card - <?= $h($p['name']) ?>',
-          text: <?= json_encode($manualShare['message']) ?>,
-          files: [file]
-        }).catch(e => console.log('Share dismissed', e));
-      }).catch(err => {
-        window.open('<?= $h($manualShare['wa_me_url']) ?>', '_blank');
-      });
-  } else {
-    window.open('<?= $h($manualShare['wa_me_url']) ?>', '_blank');
-  }
+  const text=<?= json_encode($manualShare['message'],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>;
+  const fallback=()=>{window.open(<?= json_encode($manualShare['wa_me_url'],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>, '_blank','noopener');};
+  fetch(<?= json_encode($q(['pdf'=>'all'])) ?>).then(r=>{if(!r.ok)throw Error('Download failed');return r.blob();}).then(blob=>{
+    const file=new File([blob], 'SHG-ID-and-Visiting-Cards.pdf',{type:'application/pdf'});
+    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]}))return navigator.share({title:'S Hari Global Cards',text,files:[file]});
+    fallback();
+  }).catch(e=>{if(e.name!=='AbortError')fallback();});
 }
+
 </script>
 </body>
 </html>

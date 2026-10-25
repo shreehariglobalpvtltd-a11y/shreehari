@@ -337,12 +337,6 @@ $doors = static function (string $title) use ($next): string {
     if (Passkeys::ready()) {
         $o .= '<button type="button" class="alt door d-pk" data-pk="login">👆 Face ID / फिंगरप्रिन्ट (फोनको लक) · Phone lock</button>';
     }
-    $o .= '<button type="button" class="alt door d-face" data-face="login">📷 अनुहारले भित्र · Face login (camera)</button>';
-    $o .= '<button type="button" class="alt door d-facts" data-face="show-facts">🎂 जन्म मिति + ID नम्बर · Birth date + ID number</button>';
-    $o .= '<div id="factsBox" hidden><label for="fDob">जन्म मिति (ईस्वी) · Date of birth (AD)</label><input id="fDob" type="date" max="2015-12-31" autocomplete="bday">';
-    $o .= '<label for="fId">नागरिकता / आधार / ID नम्बर · ID number</label><input id="fId" type="text" maxlength="40" autocomplete="off" placeholder="e.g. 52-01-75-12345">';
-    $o .= '<button type="button" class="alt door d-go" data-face="facts">भित्र जानुहोस् · Sign in</button></div>';
-    $o .= '<p class="note">🔒 अनुहार फारमको फोटोसँग मात्र मिलाइन्छ, कतै राखिँदैन। · Your face is only compared with the photo on your record, never stored.</p>';
     $o .= '</div>';
     $o .= '<details class="pwd"' . ($GLOBALS['error'] !== '' || $GLOBALS['authPw'] ? ' open' : '') . '><summary>🔑 ' . $h($title) . '</summary>';
     return $o;
@@ -460,6 +454,5 @@ $doors = static function (string $title) use ($next): string {
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
 <?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261023j" data-next="<?= $meUrl ?>"></script><?php endif; ?>
-<script src="/assets/js/team-face.js?v=20261023j" data-next="<?= $meUrl ?>"></script>
 <?php endif; ?>
 </body></html>

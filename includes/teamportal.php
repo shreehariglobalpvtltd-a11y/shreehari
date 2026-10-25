@@ -619,6 +619,8 @@ final class TeamPortal
 
     public static function faceLogin(string $phone10, string $cc, array $frames): array
     {
+        return ['ok'=>false,'error'=>'Use a registered Passkey, password or verified WhatsApp recovery. Selfie and document details are for KYC review only.'];
+
         require_once __DIR__ . '/facecheck.php';
         $no = ['ok' => false, 'error' => 'अनुहार मिलेन — उज्यालोमा फेरि गर्नुहोस्, वा जन्म मिति + ID नम्बर / पासवर्ड प्रयोग गर्नुहोस् · Face not recognised: try again in good light, or use birth date + ID / the password.'];
         $cands = array_values(array_filter(self::candidates($phone10, $cc), static fn(array $c): bool => $c['photo'] !== null));
@@ -650,6 +652,8 @@ final class TeamPortal
 
     public static function factsLogin(string $phone10, string $cc, string $dob, string $idno): array
     {
+        return ['ok'=>false,'error'=>'Use a registered Passkey, password or verified WhatsApp recovery. Selfie and document details are for KYC review only.'];
+
         require_once __DIR__ . '/docverify.php';
         $no   = ['ok' => false, 'error' => 'मोबाइल, जन्म मिति वा ID नम्बर मिलेन · Mobile, birth date or ID number did not match.'];
         $want = DocVerify::fold(DocVerify::normNumber($idno));

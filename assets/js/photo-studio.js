@@ -74,7 +74,7 @@
               <button type="button" class="ps-btn" id="psBtnSquare" onclick="PhotoStudio.setRatio(1, this)">⬛ 1:1 Square</button>
               <button type="button" class="ps-btn" onclick="PhotoStudio.rotate(90)">↷ Rotate 90°</button>
               <button type="button" class="ps-btn" onclick="PhotoStudio.toggleFlip()">⇄ Flip</button>
-              <button type="button" class="ps-btn" onclick="PhotoStudio.cleanBackground()" title="Light background smoothing preserving real face">🪄 Clean BG</button>
+              <button type="button" class="ps-btn" onclick="PhotoStudio.cleanBackground()" title="Optional background removal is not configured">Background options</button>
             </div>
 
             <div class="ps-quality ok" id="psQualityBadge">
