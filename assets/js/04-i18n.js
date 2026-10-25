@@ -7,6 +7,7 @@
 ================================================================ */
 const I18N = {
 en: {
+  coreTicket: '10-Second Ticket', coreTicketSub: 'Cash / Online · Auto / Choose seat', coreIdentity: 'Digital ID & Agreements', coreIdentitySub: 'Agent · Staff · Partner', coreNavigation: 'Live Map & Navigation', coreNavigationSub: 'SHARI NAV · Bus tracking',
   premiumFront: "Front · direction of travel", premiumRear: "Rear", premiumBeyond: "Travel Beyond Borders", premiumDirector: "CHAIRMAN / DIRECTOR", premiumPromise: "Your Journey, Our Responsibility.", premiumSafe: "Safe Travel", premiumEasy: "Easy Booking", premiumLoading: "Preparing your journey…", premiumRetry: "Connection is taking longer. Reload", premiumSlow: "Still connecting. You can retry or continue.", premiumTrust: "Travel with Trust.", premiumPay: "SCAN & PAY", premiumPaid: "PAID · Verified", premiumPending: "Payment verification pending", premiumVerify: "Ticket verification", premiumDue: "Pending amount",
   navHome: 'Home', navBook: 'Book Tickets', navServices: 'Services', navRoute: 'India–Nepal',
   navAbout: 'About', navFaq: 'FAQ', navContact: 'Contact', navMy: 'My Bookings', navStaff: 'Agent / Staff sign-in', agentLateSummary: 'Agent? Enter your code to book a departed bus (24h)',
@@ -603,6 +604,7 @@ en: {
   faqCargoQ: 'Do you do cargo or parcels to Nepal?', faqCargoA: 'Not yet — import-export, truck booking, packaging and shop-to-Nepal delivery are coming soon. The bus carries personal luggage only.', faqCargoLink: 'Register interest on the Business services page',
 },
 hi: {
+  coreTicket: '१०-सेकंड टिकट', coreTicketSub: 'नकद / ऑनलाइन · ऑटो / सीट चुनें', coreIdentity: 'डिजिटल ID और समझौते', coreIdentitySub: 'एजेंट · स्टाफ · पार्टनर', coreNavigation: 'लाइव मैप और नेविगेशन', coreNavigationSub: 'SHARI NAV · बस ट्रैकिंग',
   premiumFront: "आगे · यात्रा की दिशा", premiumRear: "पीछे", premiumBeyond: "सरहदों के पार सफ़र", premiumDirector: "अध्यक्ष / निदेशक", premiumPromise: "आपकी यात्रा, हमारी ज़िम्मेदारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "आसान बुकिंग", premiumLoading: "आपकी यात्रा तैयार हो रही है…", premiumRetry: "कनेक्शन में समय लग रहा है। पुनः लोड करें", premiumSlow: "कनेक्ट हो रहा है। पुनः प्रयास करें या आगे बढ़ें।", premiumTrust: "भरोसे के साथ यात्रा।", premiumPay: "स्कैन करके भुगतान करें", premiumPaid: "भुगतान सत्यापित", premiumPending: "भुगतान सत्यापन लंबित", premiumVerify: "टिकट सत्यापन", premiumDue: "बकाया राशि",
   navHome: 'होम', navBook: 'टिकट बुक करें', navServices: 'सेवाएं', navRoute: 'भारत–नेपाल',
   navAbout: 'कंपनी', navFaq: 'सवाल-जवाब', navContact: 'संपर्क', navMy: 'मेरी बुकिंग', navStaff: 'एजेंट / स्टाफ लॉगिन', agentLateSummary: 'एजेंट हैं? छूटी बस बुक करने के लिए कोड डालें (24 घंटे)',
@@ -1185,6 +1187,7 @@ hi: {
   faqCargoQ: 'क्या आप नेपाल के लिए कार्गो या पार्सल भेजते हैं?', faqCargoA: 'अभी नहीं — इम्पोर्ट-एक्सपोर्ट, ट्रक बुकिंग, पैकेजिंग और शॉप-टू-नेपाल डिलीवरी जल्द आ रही है। बस में सिर्फ़ निजी सामान जाता है।', faqCargoLink: 'व्यापार सेवाएँ पेज पर रुचि दर्ज करें',
 },
 ne: {
+  coreTicket: '१०-सेकेन्ड टिकट', coreTicketSub: 'नगद / अनलाइन · अटो / सिट छान्नुहोस्', coreIdentity: 'डिजिटल ID र सम्झौता', coreIdentitySub: 'एजेन्ट · स्टाफ · साझेदार', coreNavigation: 'लाइभ नक्सा र नेभिगेसन', coreNavigationSub: 'SHARI NAV · बस ट्र्याकिङ',
   premiumFront: "अगाडि · यात्राको दिशा", premiumRear: "पछाडि", premiumBeyond: "सीमापारको यात्रा", premiumDirector: "अध्यक्ष / निर्देशक", premiumPromise: "तपाईंको यात्रा, हाम्रो जिम्मेवारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "सजिलो बुकिङ", premiumLoading: "तपाईंको यात्रा तयार हुँदैछ…", premiumRetry: "जडानमा समय लाग्यो। फेरि लोड गर्नुहोस्", premiumSlow: "जडान हुँदैछ। फेरि प्रयास गर्नुहोस् वा अगाडि बढ्नुहोस्।", premiumTrust: "विश्वासका साथ यात्रा।", premiumPay: "स्क्यान गरेर तिर्नुहोस्", premiumPaid: "भुक्तानी प्रमाणित", premiumPending: "भुक्तानी प्रमाणीकरण बाँकी", premiumVerify: "टिकट प्रमाणीकरण", premiumDue: "बाँकी रकम",
   navHome: 'होम', navBook: 'टिकट बुक गर्नुहोस्', navServices: 'सेवाहरू', navRoute: 'भारत–नेपाल',
   navAbout: 'कम्पनी', navFaq: 'प्रश्नोत्तर', navContact: 'सम्पर्क', navMy: 'मेरो बुकिङ', navStaff: 'एजेन्ट / स्टाफ लगइन', agentLateSummary: 'एजेन्ट हो? छुटेको बस बुक गर्न कोड राख्नुहोस् (२४ घण्टा)',

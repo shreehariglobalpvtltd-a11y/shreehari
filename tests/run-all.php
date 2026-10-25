@@ -259,8 +259,10 @@ const CORE_SUITES = [
     'payment-risk-test.php'       => 'fake-proof scoring, screenshot fingerprint, two-step approval, report-fake, gate live code',
     'staff-msg-test.php'          => 'admin <-> agent chat: scope, CSRF, files behind PHP, push, unread counts',
     'content-pages-test.php'      => '/india-nepal, /offices, /explore, /tours pages, enquiry form, sitemap',
-    // 10 Oct 2026 S Hari Nav pro (static, no DB).
-    'nav-pro-test.php'            => 'S Hari Nav pro: loader chain, precache, i18n, hooks, honest live / flight / device rows',
+    // Current SHARI NAV module suite replaces the missing legacy nav-pro suite.
+    'nav-ai1-test.php'            => 'SHARI NAV: module hooks, endpoint gates, multilingual knowledge, JS/PHP syntax and encoding',
+    'gps-fleet-status-test.php'   => 'GPS device health, invalid fixes and payload-free diagnostics',
+    'gps-public-map-test.php'     => 'public GPS opt-in, fresh fixes, deduplication and private metadata exclusion',
 ];
 
 /**
@@ -286,6 +288,7 @@ const KNOWN_STALE = [
  * reported as a skip rather than silently shrinking the battery.
  */
 const NODE_SUITES = [
+    'gps-fleet-marker-test.cjs' => 'GPS marker freshness, animation, expiry and no unexpected map recentering',
     'i18n-check.js'          => 'en/hi/ne key parity',
     'offline-ticket-test.js' => 'the ticket survives a deploy and works offline',
     'lazy-retry-test.js'     => 'failed lazy downloads remain retryable without duplicate actions',

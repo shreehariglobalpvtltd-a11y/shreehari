@@ -35,7 +35,7 @@
  *    • the endpoints refuse without the expected params (regex on the
  *      400 / 403 / 405 / 429 branches, in the A19 order), the P11 role
  *      override, the P12 limits, the P13 facts, the P10 rounding
- *    • navigate.html keeps CRLF and stays UTF-8 without BOM
+ *    • navigate.html uses consistent LF or CRLF and stays UTF-8 without BOM
  *
  *    php -c .claude/php-dev.ini tests/nav-ai1-test.php
  *    php tests/nav-ai1-test.php --modules <dir>
@@ -747,7 +747,12 @@ if ($tpPhp === '') {
 }
 
 echo "\n-- 9. the page keeps its line endings and encoding --\n";
-check('navigate.html keeps CRLF line endings (the splice converts LF module files)', substr_count($page, "\r\n") > 3000 && substr_count($page, "\n") - substr_count($page, "\r\n") < 5, substr_count($page, "\r\n") . ' CRLF, ' . (substr_count($page, "\n") - substr_count($page, "\r\n")) . ' bare LF');
+$crlf = substr_count($page, "\r\n");
+$bareLf = substr_count($page, "\n") - $crlf;
+$bareCr = substr_count($page, "\r") - $crlf;
+check('navigate.html uses consistent LF or CRLF line endings',
+    $crlf + $bareLf > 3000 && $bareCr === 0 && ($crlf === 0 || $bareLf === 0),
+    $crlf . ' CRLF, ' . $bareLf . ' bare LF, ' . $bareCr . ' bare CR');
 check('navigate.html is UTF-8 without a BOM', substr($page, 0, 3) !== "\xEF\xBB\xBF" && preg_match('//u', $page) === 1);
 check('the page still ends with boot(); })(); </script></body></html>', (bool) preg_match('~\nboot\(\);\n\}\)\(\);\n</script>\n(?:<script src="[^"]+"[^>]*></script>\n)*</body>\n</html>\s*$~', $pageLF));
 check('one IIFE in strict mode wraps the whole script', substr_count($script, "'use strict';") === 1 && str_starts_with(ltrim($script), '(function () {'));

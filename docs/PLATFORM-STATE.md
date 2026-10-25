@@ -197,3 +197,55 @@ evidence. Then complete staging and
 validate/register critical team/ledger tests on `shari_test`.
 Before every release, produce the exact target/base IDs, test evidence, changed
 files, migration assessment, release notes and rollback plan for owner review.
+
+## Website increment 2 — 26 October 2026
+
+The owner requested an actual website update after the initial audit. This
+increment changes the existing homepage and fixes the verified asset-cache
+failures; it does not replace the website or business engines.
+
+- The existing three core links now appear in the requested order: 10-Second
+  Ticket, Digital ID & Agreements, Live Map & Navigation. The identity subtitle
+  explicitly includes Agent, Staff and Partner. Existing destinations and the
+  booking scroll handler are preserved. Decorative emoji are hidden from screen
+  readers; six new translation keys exist in English, Hindi and Nepali.
+- The existing asset-bump tool synchronized the main app's cache stamp to
+  `20261026a`, service-worker version `shg-v258`, and the stale manifest/CSS icon
+  references. Both previous asset-version failures now pass all 9 assertions.
+  No cache assertion was disabled or broadened to obtain that result.
+- The nonexistent `nav-pro-test.php` registration is replaced with the actual
+  current `nav-ai1-test.php` suite. Its obsolete Windows-only line-ending rule
+  now requires consistent LF or CRLF, rejects bare CR and mixed endings, and
+  retains UTF-8/module/endpoint/syntax checks. The map file itself is untouched.
+  All 258 navigation checks pass locally.
+- Existing GPS health/public privacy tests and marker behavior are registered
+  in CI/the main runner so stale fixes, private metadata and unexpected map
+  recentering are covered. These tests previously existed outside that runner.
+- The public application page differs substantially from the inspected Git
+  version. Its incidental cache-only edit from the asset tool was deliberately
+  removed; `agreements/apply.html` is unchanged by this increment. It must not
+  be replaced with an older form to ship the homepage update. A fresh HTTP
+  attempt timed out, so the earlier public snapshot remains point-in-time only.
+
+Local verification now uses an isolated PHP 8.3.6 CLI prepared for testing,
+without installing or connecting any database. Passed: asset versions 9,
+navigation 258, AI tool loop 11, AI charts 15, GPS health/quality 16, public GPS
+privacy/freshness cases, browser marker behavior, offline-ticket 21, lazy retry,
+release safety 19, both manifest JSON parses, EN/HI/NE translation parity
+(1,490 keys each), PHP syntax for touched PHP/tests, JS syntax, the three
+homepage destinations/order and whitespace checks with CRLF preservation.
+
+No DB migration, live data change, booking/payment rule or wallet mutation was
+introduced. The earlier database battery's other failures still require triage;
+they are not declared resolved by these frontend/test registration changes.
+Real Android, weak-network visual testing, authenticated staging and production
+deployment remain unverified.
+
+Live deployment remains blocked by the absence of an active VPS/Hostinger
+operation tool/session here. Hostinger servers are registered in the local
+configuration, but no hosting/VPS tool is exposed; connector search returned
+mailbox functionality only, which cannot deploy this site. No production write,
+release approval or successful deployment is claimed. Next: verify this exact
+PR on connected staging, reconcile the actual live file inventory, obtain
+owner approval for a concrete release, then run the guarded deployer and check
+the live homepage, APIs, forms and both domains.

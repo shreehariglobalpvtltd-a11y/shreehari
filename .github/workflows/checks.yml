@@ -48,6 +48,11 @@ jobs:
         run: node -e "JSON.parse(require('node:fs').readFileSync('manifest.webmanifest', 'utf8'))"
       - name: Asset versions
         run: php tests/asset-version-test.php
+      - name: GPS privacy and freshness (no database)
+        run: |
+          php tests/gps-fleet-status-test.php
+          php tests/gps-public-map-test.php
+          node tests/gps-fleet-marker-test.cjs
       - name: AI tool loop (no database)
         run: php tests/ai-turn-test.php
       - name: AI report charts (no database)
