@@ -31,11 +31,11 @@ the unified implementation; it is not a production migration for this candidate.
 | Implemented and locally verified | Browser OCR suggestions on staff/agent/partner forms, preservation of trusted manual edits, original PDF upload and scope; mocked OCR responses and synthetic documents only |
 | Implemented and locally verified | 74 unified-team checks, 26 manager checks; approval/linking, codes, recipient privacy, card generation/delivery states, reservations, reference requirements and immutable history |
 | Implemented and locally verified | Four A4 pages each for blank staff, agent and partner forms; rendered and visually inspected. Active PDF wrapping uses CID font metrics, batches shaping and includes the recorded photo and signature |
-| Implemented; verification in progress | Registered the six omitted suites and made the financial races independent of another suite's leftovers; full database battery and hosted checks must be recorded below before release |
+| Implemented and hosted verified | Registered all six omitted suites and made the financial races independent of another suite's leftovers; both hosted jobs pass with 185 suites passed, 0 failed and 0 missing (one pre-existing stale suite excluded) |
 | Implemented; authenticated staging pending | ID upload/review are enforced by submit APIs, applicant originals attach in the application's transaction, agent/partner edit requests use the existing verified edit session, old country identity is preserved, pending edits lock against concurrent approval |
 | Implemented; device staging pending | Existing device passkey is the first login action, password/recovery remains available; UI distinguishes device biometrics from an uploaded thumbprint image |
 | Blocked by access | Whole VPS inventory, VPS-only changes, current backups/snapshot completion, real service/runtime/schema, authenticated staging and deployment |
-| Genuinely unfinished release work | Resolve remaining full-battery/hosted failures, reconcile live-only form differences, staging booking/payment/team/PWA/device checks and exact owner-approved guarded release |
+| Genuinely unfinished release work | Reconcile live-only form differences, staging booking/payment/team/PWA/device checks and exact owner-approved guarded release |
 
 ## Actual changes
 
@@ -78,9 +78,10 @@ and Node is 26; hosted CI retains MariaDB 10.11 and Node 24.
 - The whereis fixture no longer requires a post-2038 TIMESTAMP on MariaDB 10.11.
 - The pre-existing deliberately excluded stale suite remains explicitly reported.
 
-Local HarfBuzz/FFI is unavailable. Browser-printed A4 has correct Devanagari shaping;
-the native PDF fallback can be visually inspected locally, but the mandatory hosted
-HarfBuzz test and production runtime check are still required for final signoff.
+Local HarfBuzz/FFI is unavailable. Browser-printed A4 was visually inspected;
+the native generator fails closed without Devanagari shaping. All nine native
+language exports pass with real HarfBuzz in hosted CI. The production runtime
+check remains required before release.
 
 ## Production reconciliation and required next steps
 
