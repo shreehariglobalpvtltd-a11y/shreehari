@@ -3,10 +3,11 @@
 Latest continuation: see `CONTINUATION-RELEASE-20261026.md` for recovered source,
 report/OCR integration, active-form fixes, verification and explicit release blockers.
 The older observations below remain historical; this development work is not a deployment.
-Hosted checkpoint `27220ad` passed both CI jobs and all 184 registered suites
-(0 failed, 0 missing; one legacy suite explicitly excluded). A subsequent scoped
-intake UI fix adds stale-response coverage and stamps `20261026c` / `shg-v260`;
-its final CI result is recorded in the continuation release note.
+Implementation checkpoint `7c5dd08` passed both CI jobs and all 185 registered
+suites in hosted run `40279499315` (0 failed, 0 missing; one legacy suite
+explicitly excluded). It includes scoped intake UI/stale-response coverage and
+final stamps `20261026c` / `shg-v260`. The continuation release note records the
+evidence, migration boundary and remaining production-access/staging blockers.
 
 Verified on 26 October 2026 (Asia/Kolkata). This is a development audit and
 incremental implementation record, not a production readiness certificate.

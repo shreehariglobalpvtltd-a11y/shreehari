@@ -164,7 +164,12 @@ provider failure and manual corrections pass. A deterministic test runs the real
 intake JavaScript and proves stale-response rejection, explicit review and kind
 isolation without a provider/database; it is registered in both CI and the battery.
 Final client stamps are `20261026c` / `shg-v260` and asset/offline checks pass.
-The final commit's hosted verification is pending at this writing.
+Hosted run `40279499315` on implementation commit
+`7c5dd08fd641faf471e87e3558e8e6421554c3ac` passed both jobs:
+**185 suites passed, 0 failed, 0 missing** (145.8 seconds for the battery).
+The one pre-existing stale suite remains explicitly excluded, not counted as a
+pass. The following documentation-only checkpoint records these results;
+runtime code and the final client stamps are unchanged.
 
 Production remains blocked on actual live inventory, backup verification, staging
 and owner approval. An Ubuntu/Dokploy label does not establish the site's runtime;
