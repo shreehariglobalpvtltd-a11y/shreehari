@@ -977,7 +977,7 @@ var MODES = {
   /* 22 Oct 2026 (Phase 3): two-wheeler, like Google India - Valhalla motorcycle costing keeps
      off roads tagged motorcycle=no (the expressways); toll-free in India */
   moto: { name: 'Scooty', costing: 'motorcycle', osrm: 'car', color: '#BF5AF2', casing: '#4E1F6B', verb: 'ride' },
-  bus:  { name: 'Bus',  costing: 'bus',        osrm: 'car',  color: '#D4A843', casing: '#6E5418', verb: 'go by bus', mult: 1.3 },
+  bus:  { name: 'Bus',  costing: 'bus',        osrm: null,  color: '#D4A843', casing: '#6E5418', verb: 'go by bus', mult: 1.3 },
   bike: { name: 'Bike', costing: 'bicycle',    osrm: 'bike', color: '#34C759', casing: '#145C29', verb: 'cycle' },
   walk: { name: 'Walk', costing: 'pedestrian', osrm: 'foot', color: '#FF9F0A', casing: '#7A4A00', verb: 'walk' }
 };
@@ -2350,6 +2350,7 @@ async function routeFetch(mode, a, b, o) {
     if (j && (j.code === 'DistanceExceeded' || /exceeds the max distance/i.test(j.message || j.error || ''))) far = true;
   } catch (e) { /* engine unreachable: fall through to OSRM */ } finally { if (!q) busy(false); }
   if (far) { var fe = new Error('too far'); fe.far = true; throw fe; }
+  if (mode === 'bus') { var be = new Error('Bus routing is unavailable. Car routes cannot verify bus access, height or weight restrictions. Try again when connected.'); be.busRoutingUnavailable = true; throw be; }
   var pts = [a].concat(via, [b]).map(function (p) { return p.lng.toFixed(6) + ',' + p.lat.toFixed(6); }).join(';');
   var url = OSRM[M.osrm] + pts + '?overview=full&geometries=geojson&steps=true' + (o.alts ? '&alternatives=true' : '');
   if (l0.heading != null) url += '&bearings=' + l0.heading + ',60' + new Array(locs.length).join(';');
@@ -4053,7 +4054,7 @@ function saveRouteOffline(r) {
   while (list.length > 4500 && zmax > 11) build(--zmax);
   if (!list.length) { toast('This route is outside the SHARI NAV map'); return; }
   LS.set('shg:nm:lastRoute', { to: S.to, mode: S.mode, at: Date.now() });
-  openModal('<h3>Save route offline</h3><div class="note" style="margin-top:0">Saving the map along this route (' + list.length.toLocaleString('en-IN') + ' tiles, zoom ' + zmax + ').' +
+  openModal('<h3>Save route offline</h3><p>Saved maps and trip details can be viewed offline. New routes and off-route recalculation need an internet connection to the routing service.</p><div class="note" style="margin-top:0">Saving the map along this route (' + list.length.toLocaleString('en-IN') + ' tiles, zoom ' + zmax + ').' +
     '<div class="prog" id="offProg"><i></i></div><div class="row-s" id="offTxt"></div></div>');
   downloadTiles(list);
 }

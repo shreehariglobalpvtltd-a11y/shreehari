@@ -4,6 +4,7 @@ require dirname(__DIR__) . '/_guard.php';
 $admin = admin_boot('buses.view');
 require_once INCLUDE_PATH . '/gpssimulator.php';
 header('Content-Type: application/json; charset=utf-8'); header('Cache-Control: no-store, private');
+if (!GpsSimulator::available()) { http_response_code(403); echo json_encode(['ok'=>false,'error'=>'GPS simulation is disabled in production.']); exit; }
 if (session_status() === PHP_SESSION_ACTIVE) { session_write_close(); }
 try {
     $state = GpsSimulator::state();

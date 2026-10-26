@@ -6,6 +6,16 @@ require_once __DIR__ . '/routegeo.php';
 /** Private demo only: never creates fleet buses, trips, trackers, or GPS reports. */
 final class GpsSimulator
 {
+    public static function available(): bool
+    {
+        return defined('APP_ENV') && in_array(APP_ENV, ['development', 'staging', 'test'], true);
+    }
+
+    private static function requireEnvironment(): void
+    {
+        if (!self::available()) { throw new RuntimeException('GPS simulation is available only in development or staging.'); }
+    }
+
     public static function options(array $d): array
     {
         $count = (int) ($d['count'] ?? 3); $speed = (float) ($d['speed'] ?? 60); $route = (int) ($d['route_id'] ?? 0);
@@ -17,6 +27,7 @@ final class GpsSimulator
 
     public static function state(): array
     {
+        self::requireEnvironment();
         return Settings::getArray('gps_simulator', []) + ['routeId' => 0, 'count' => 3, 'speed' => 60.0, 'running' => false, 'elapsed' => 0, 'changedAt' => time()];
     }
 
@@ -27,6 +38,7 @@ final class GpsSimulator
 
     public static function save(string $action, array $d, int $by, ?int $now = null): array
     {
+        self::requireEnvironment();
         $now ??= time(); $s = self::state();
         if ($action === 'start') {
             $options = self::options($d); self::route($options['routeId']);
@@ -45,6 +57,7 @@ final class GpsSimulator
 
     public static function route(int $id): array
     {
+        self::requireEnvironment();
         $route = Database::fetch('SELECT id,from_city,to_city FROM routes WHERE id=:r AND is_active=1', ['r' => $id]);
         if ($route === null) { throw new RuntimeException('Active route not found.'); }
         $road = RouteGeo::load($id); $pts = [];
@@ -76,6 +89,7 @@ final class GpsSimulator
 
     public static function frame(array $s, array $route, float $now): array
     {
+        self::requireEnvironment();
         $elapsed = self::elapsed($s, $now); $buses = [];
         for ($i = 0; $i < min(3, max(1, (int) $s['count'])); $i++) {
             $point = self::point($route, $elapsed * (float) $s['speed'] / 3600 + $i * 0.8);

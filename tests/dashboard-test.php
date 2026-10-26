@@ -260,6 +260,9 @@ try {
 
     /* ── 4. ?date= snapshot: berths, not rows ─────────────────────── */
     echo "\n=== 4. Snapshot restates sold in physical berths ===\n";
+    // Own the required test schedule instead of relying on another suite's order.
+    $testRoute = (int) Database::scalar('SELECT id FROM routes WHERE is_active=1 ORDER BY id LIMIT 1', [], 0);
+    if ($testRoute > 0) { Seats::schedule($testRoute, $tomorrow); }
     $sched = Database::fetch(
         "SELECT s.id FROM schedules s JOIN routes r ON r.id = s.route_id
           WHERE s.travel_date = :t AND r.is_active = 1 ORDER BY s.id LIMIT 1", ['t' => $tomorrow]);
@@ -317,6 +320,7 @@ try {
         // 16 Oct 2026: SmartBook is the one booking screen, and the Book button
         // on the dashboard now reaches it (it was linked without a gate entry).
         'smartbook.php' => ['bookings.view'],
+        'team.php' => ['staff.manage'], 'gps-center.php' => ['buses.view'],
         'offline-requests.php' => ['bookings.view'], 'ai-copilot.php' => ['bookings.view'], 'trips.php' => ['schedules.view'],
         'seatmap.php' => ['schedules.view'], 'buses.php' => ['schedules.view'], 'scan.php' => ['tickets.scan'],
         'payments.php' => ['payments.view'], 'refunds.php' => ['refunds.view'], 'support-inbox.php' => ['support.view'],
@@ -348,6 +352,9 @@ try {
         }
         check("$role: page renders and every link opens for the role", $page !== '' && $bad === [], count(array_unique($lm[1])) . ' pages linked' . ($bad ? ' — ' . implode('; ', $bad) : ''));
     }
+    check('manager sees exactly three business management categories', substr_count($byRole['manager'], 'class="command-category"') === 3);
+    check('support has no unified team management link', !str_contains($byRole['support'], 'href="/admin/team.php"'));
+    check('manager reaches the existing team and fleet screens', str_contains($byRole['manager'], 'href="/admin/team.php"') && str_contains($byRole['manager'], 'href="/admin/gps-center.php"'));
     $v = $byRole['viewer'];
     check('viewer: no passenger name column, no Edit / Date, no sale buttons',
         !str_contains($v, '<th>Passenger</th>') && !str_contains($v, '#edit"') && !str_contains($v, 'QuickBot Ticket</a>') && !str_contains($v, '/index.php?counter=1'));

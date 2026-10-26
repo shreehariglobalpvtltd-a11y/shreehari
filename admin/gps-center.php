@@ -44,8 +44,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 }
 $buses = GpsTrackers::busesWithTrackers();
 $routes = Database::fetchAll('SELECT id,from_city,to_city FROM routes WHERE is_active=1 ORDER BY id');
-$simulation = GpsSimulator::state();
-$initialMode = ($_GET['mode'] ?? '') === 'sim' ? 'sim' : 'real';
+$canSimulate = GpsSimulator::available();
+$simulation = $canSimulate ? GpsSimulator::state() : ['routeId'=>0, 'count'=>3, 'speed'=>60];
+$initialMode = $canSimulate && ($_GET['mode'] ?? '') === 'sim' ? 'sim' : 'real';
 $csrf = Security::csrfField();
 admin_header('Bus GPS · Live & Simulation', 'gps-center');
 require __DIR__ . '/_gps-center-view.php';

@@ -68,8 +68,11 @@ $pageGate = [
     'agents.php'        => ['customers.view', 'commissions.view'],
     'settlements.php'   => ['commissions.view'],
     'agent-ranking.php' => ['dashboard.view'],
+    'team.php' => ['staff.manage'], 'gps-center.php' => ['buses.view'],
+    'ai-copilot.php' => ['bookings.view'],
 ];
 $may = static function (string $page) use ($pageGate): bool {
+    if ($page === 'team.php' && !in_array((string)(Auth::admin()['role']??''), ['superadmin','manager'], true)) { return false; }
     if (!isset($pageGate[$page])) {
         return false;
     }
@@ -408,7 +411,7 @@ if (Auth::can('refunds.view')) {
     }
 }
 
-admin_header('Dashboard', 'index');
+admin_header('CEO Command Center', 'index');
 
 $e = static fn($v): string => Security::e((string) $v);
 /* A tile opens as a link only when its page admits this role (15 Oct 2026). */
@@ -442,6 +445,23 @@ admin_page_head(
     $actions
 );
 ?>
+<nav class="command-categories" aria-label="Business management">
+<?php foreach (AdminNavigation::groups(array_values(array_filter(admin_nav(), static fn(array $item): bool => $may($item['href'])))) as $category => $links): ?>
+  <section class="command-category" data-category="<?= Security::e($category) ?>">
+    <h2><?= Security::e(AdminNavigation::CATEGORIES[$category]) ?></h2>
+    <?php $priority = array_flip(['bookings.php','team.php','accounting.php','smartbook.php','payments.php','gps-center.php']);
+    usort($links, static fn(array $a, array $b): int => ($priority[$a['href']] ?? 99) <=> ($priority[$b['href']] ?? 99)); ?>
+    <?php foreach (array_slice($links, 0, 3) as $link): ?>
+      <a href="/admin/<?= Security::e($link['href']) ?>"><?= Security::e($link['label']) ?></a>
+    <?php endforeach; ?>
+    <?php if (count($links) > 3): ?><details><summary>More options</summary>
+      <?php foreach (array_slice($links, 3) as $link): ?>
+        <a href="/admin/<?= Security::e($link['href']) ?>"><?= Security::e($link['label']) ?></a>
+      <?php endforeach; ?>
+    </details><?php endif; ?>
+  </section>
+<?php endforeach; ?>
+</nav>
 <style>
 /* 15 Oct 2026 — the five dashboard sections (phones first, no sideways scroll) */
 .dash-sec{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:26px 0 12px;scroll-margin-top:72px}

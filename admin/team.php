@@ -10,6 +10,9 @@ if (!TeamManager::allowed($admin)) { http_response_code(403); exit('Manager perm
 $adminId=(int)$admin['id'];$h=static fn($v):string=>Security::e((string)($v??''));
 $tab=(string)($_GET['tab']??'members');
 if(!in_array($tab,['members','approvals','earnings','withdrawals','cards','announcements','settings'],true)){$tab='members';}
+$family=(string)($_POST['family']??$_GET['family']??'agent');
+if(!in_array($family,['agent','staff','partner','all'],true)){$family='agent';}
+$familyQuery='&family='.rawurlencode($family);
 $key=Security::clean((string)($_POST['person']??$_GET['person']??''),40);$flash=null;
 if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'){
  try{
@@ -63,7 +66,7 @@ if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'){
   }
  }catch(Throwable $e){Logger::warning('Team action: '.$e->getMessage());$flash=['bad',$e->getMessage()];}
  // Refreshing the resulting GET cannot repeat an approval, adjustment or send.
- $_SESSION['team_flash']=$flash;Response::redirect('admin/team.php?tab='.rawurlencode($tab).($key!==''?'&person='.rawurlencode($key):''));
+ $_SESSION['team_flash']=$flash;Response::redirect('admin/team.php?tab='.rawurlencode($tab).$familyQuery.($key!==''?'&person='.rawurlencode($key):''));
 }
 $flash=$_SESSION['team_flash']??null;unset($_SESSION['team_flash']);
 $rows=TeamManager::rows();$selected=null;$members=[];$pendingQueue=[];$payoutRequests=[];$earningsRules=[];
@@ -77,6 +80,7 @@ foreach($rows as $r){
   if(!in_array($a['status'],['rejected','exited'],true)){$pendingQueue[]=['type'=>$r['kind'],'id'=>$r['id'],'ref'=>$r['ref'],'name'=>$r['name'],'role'=>$r['label'],'phone'=>$r['phone_raw'],'phone_verified'=>!empty($a['phone_verified']),'district'=>$r['area'],'id_type'=>$isStaff?($a['id_type']??''):($a['fields']['p_idtype']??''),'id_no'=>'Private document · open KYC review','created'=>$a['created_at'],'file_url'=>'','photo_url'=>'','key'=>$r['key']];}
   if(!in_array($a['status'],['approved','suspended'],true)){continue;}
  }
+ if($family!=='all'&&AdminNavigation::teamFamily($category)!==$family){continue;}
  if(($searchRole!=='all'&&$category!==$searchRole)||($query!==''&&stripos(implode(' ',[$r['name'],$r['phone'],$r['ref'],$m['code']??'',$m['route']??'']),$query)===false)){continue;}
  $aid=(int)($r['admin_id']??0);$balance=$aid?TeamFinance::available($aid):['available'=>0,'pending'=>0];
  $members[]=['ref'=>$r['ref'],'code'=>$m['code']??'Pending allocation','name'=>$r['name'],'role'=>$category,'role_lbl'=>($m['position_name']??'')?:($isStaff?StaffApps::roleLabel((string)$a['role_applied']):$r['label']),'category'=>$category,'phone'=>$r['phone_raw'],'cc'=>'','status'=>$a['status'],'balance'=>$balance['available'],'pending'=>$balance['pending'],'joined'=>$a['created_at'],'app_type'=>$r['kind'],'app_id'=>$r['id'],'admin_id'=>$aid,'key'=>$r['key'],'verified'=>!empty($a['phone_verified'])];
@@ -117,17 +121,23 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
   </div>
 <?php endif; ?>
 
+<nav class="team-tabs" aria-label="Team category">
+<?php foreach (['agent'=>'Agent Management','staff'=>'Staff Management','partner'=>'Partner Management'] as $value=>$label): ?>
+  <a class="team-tab <?= $family===$value?'active':'' ?>" <?= $family===$value?'aria-current="page"':'' ?> href="team.php?tab=members&amp;family=<?= $value ?>"><?= $h($label) ?></a>
+<?php endforeach; ?>
+</nav>
+<?php if($family==='partner'): ?><p class="gc-hint">Existing organisation partners are shown here. Legal ownership, capital and India/Nepal company accounts require their existing entity-specific records; an organisation application does not establish shareholding.</p><?php endif; ?>
 <!-- NAVIGATION TABS -->
 <nav class="team-tabs">
-  <a class="team-tab" href="team.php?tab=settings">⚙️ Positions / services</a>
-  <a class="team-tab <?= $tab === 'members' ? 'active' : '' ?>" href="team.php?tab=members">👥 Team Members · सदस्य सूची</a>
-  <a class="team-tab <?= $tab === 'approvals' ? 'active' : '' ?>" href="team.php?tab=approvals">
+  <a class="team-tab" href="team.php?tab=settings&amp;family=<?= $h($family) ?>">⚙️ Positions / services</a>
+  <a class="team-tab <?= $tab === 'members' ? 'active' : '' ?>" href="team.php?tab=members&amp;family=<?= $h($family) ?>">👥 Team Members · सदस्य सूची</a>
+  <a class="team-tab <?= $tab === 'approvals' ? 'active' : '' ?>" href="team.php?tab=approvals&amp;family=<?= $h($family) ?>">
     📋 Approvals Queue · अनुमोदन <?= count($pendingQueue) > 0 ? '<span class="badge-count">' . count($pendingQueue) . '</span>' : '' ?>
   </a>
-  <a class="team-tab <?= $tab === 'earnings' ? 'active' : '' ?>" href="team.php?tab=earnings">💰 Flexible Earnings · कमिसन तथा तलब</a>
-  <a class="team-tab <?= $tab === 'withdrawals' ? 'active' : '' ?>" href="team.php?tab=withdrawals">🏦 Wallet & Withdrawals · भुक्तानी</a>
-  <a class="team-tab <?= $tab === 'cards' ? 'active' : '' ?>" href="team.php?tab=cards">🪪 ID Cards & WhatsApp · परिचयपत्र</a>
-  <a class="team-tab <?= $tab === 'announcements' ? 'active' : '' ?>" href="team.php?tab=announcements">📢 Announcements · सूचना</a>
+  <a class="team-tab <?= $tab === 'earnings' ? 'active' : '' ?>" href="team.php?tab=earnings&amp;family=<?= $h($family) ?>">💰 Flexible Earnings · कमिसन तथा तलब</a>
+  <a class="team-tab <?= $tab === 'withdrawals' ? 'active' : '' ?>" href="team.php?tab=withdrawals&amp;family=<?= $h($family) ?>">🏦 Wallet & Withdrawals · भुक्तानी</a>
+  <a class="team-tab <?= $tab === 'cards' ? 'active' : '' ?>" href="team.php?tab=cards&amp;family=<?= $h($family) ?>">🪪 ID Cards & WhatsApp · परिचयपत्र</a>
+  <a class="team-tab <?= $tab === 'announcements' ? 'active' : '' ?>" href="team.php?tab=announcements&amp;family=<?= $h($family) ?>">📢 Announcements · सूचना</a>
 </nav>
 
 <?php require __DIR__.'/_team-workbench.php'; ?>
@@ -137,25 +147,25 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
 <?php if ($tab === 'members'): ?>
   <div class="filter-bar">
     <form method="get" action="team.php" style="display:flex;gap:8px;flex-wrap:wrap;flex:1">
-      <input type="hidden" name="tab" value="members">
-      <select name="role" onchange="this.form.submit()">
+      <input type="hidden" name="tab" value="members"><input type="hidden" name="family" value="<?= $h($family) ?>"><?php if($archiveView): ?><input type="hidden" name="view" value="archive"><?php endif; ?>
+      <?php if($family==='staff'||$family==='all'): ?><select name="role" onchange="this.form.submit()">
         <option value="all" <?= ($searchRole ?? '') === 'all' ? 'selected' : '' ?>>All Roles · सबै पद</option>
-        <option value="agent" <?= ($searchRole ?? '') === 'agent' ? 'selected' : '' ?>>Agents · एजेन्ट</option>
+        <?php if($family==='all'): ?><option value="agent" <?= ($searchRole ?? '') === 'agent' ? 'selected' : '' ?>>Agents · एजेन्ट</option><?php endif; ?>
         <option value="driver" <?= ($searchRole ?? '') === 'driver' ? 'selected' : '' ?>>Drivers · चालक</option>
         <option value="staff" <?= ($searchRole ?? '') === 'staff' ? 'selected' : '' ?>>Office Staff · कर्मचारी</option>
-        <option value="partner" <?= ($searchRole ?? '') === 'partner' ? 'selected' : '' ?>>Transit Partners · साझेदार</option>
-      </select>
+        <?php if($family==='all'): ?><option value="partner" <?= ($searchRole ?? '') === 'partner' ? 'selected' : '' ?>>Transit Partners · साझेदार</option><?php endif; ?>
+      </select><?php endif; ?>
       <input type="text" name="q" placeholder="Search by name, phone or code..." value="<?= Security::e($query ?? '') ?>" style="flex:1;min-width:200px">
       <button type="submit" class="btn-sm btn-primary">Search · खोज्नुहोस्</button>
     </form>
-    <a href="team.php?view=archive" class="btn-sm btn-outline">Archived records</a><a href="/agreements/apply.html" target="_blank" class="btn-sm btn-success">+ Register New Member</a>
+    <a href="team.php?tab=members&amp;family=all" class="btn-sm btn-outline">All members</a><a href="team.php?view=archive&amp;family=<?= $h($family) ?>" class="btn-sm btn-outline">Archived records</a><a href="/agreements/apply.html" target="_blank" class="btn-sm btn-success">+ Register New Member</a>
   </div>
 
   <div class="data-card" style="padding:0;overflow-x:auto">
     <table style="margin:0">
       <thead>
         <tr style="background:#f8fafc">
-          <th>Staff Code</th>
+          <th>Member Code</th>
           <th>Name & Role</th>
           <th>Phone / verification</th>
           <th>Available / reserved</th>
@@ -184,7 +194,7 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
               <td>
                 <div class="action-grid">
                   <a href="id-card.php?ref=<?= urlencode($m['ref']) ?>" class="btn-sm btn-outline">🪪 Cards</a>
-                  <a class="btn-sm btn-primary" href="team.php?person=<?= rawurlencode($m['key']) ?>">Manage</a>
+                  <a class="btn-sm btn-primary" href="team.php?person=<?= rawurlencode($m['key']) ?>&amp;family=<?= $h($family) ?>">Manage</a>
                   <a href="<?= Security::e(IdCard::verifyUrl($m['ref'])) ?>" target="_blank" class="btn-sm btn-outline">🛡️ Verify</a>
                 </div>
               </td>
@@ -257,7 +267,7 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
      TAB 3: FLEXIBLE EARNINGS & SALARY
      ===================================================================== -->
 <?php elseif ($tab === 'earnings'): ?>
-<div class="data-card"><h3>Earnings, salary and loans</h3><p>Select a member → Manage to set dated percentage, per-passenger or per-booking terms and salary. Existing earnings are preserved.</p><div class="action-grid"><a class="btn-sm btn-primary" href="team.php">Select member</a><a class="btn-sm btn-outline" href="payroll.php">Staff payroll / salary slips</a><a class="btn-sm btn-outline" href="ledger-check.php">Ledger reconciliation</a><a class="btn-sm btn-outline" href="team.php?tab=settings">Staff positions / services</a></div></div>
+<div class="data-card"><h3>Earnings, salary and loans</h3><p>Select a member → Manage to set dated percentage, per-passenger or per-booking terms and salary. Existing earnings are preserved.</p><div class="action-grid"><a class="btn-sm btn-primary" href="team.php">Select member</a><a class="btn-sm btn-outline" href="payroll.php">Staff payroll / salary slips</a><a class="btn-sm btn-outline" href="ledger-check.php">Ledger reconciliation</a><a class="btn-sm btn-outline" href="team.php?tab=settings&amp;family=<?= $h($family) ?>">Staff positions / services</a></div></div>
 <div class="data-card"><h3>Bonus / deduction</h3><form method="post"><?= Security::csrfField() ?><input type="hidden" name="action" value="record_adjustment"><input type="hidden" name="operation_token" value="<?= bin2hex(random_bytes(16)) ?>"><label>Linked account ID * <select name="member_id" required><option value="">Choose linked agent</option><?php foreach($members as $member): if(!$member['admin_id']||$member['app_type']!=='agent')continue; ?><option value="<?= (int)$member['admin_id'] ?>"><?= $h($member['code'].' · '.$member['name']) ?></option><?php endforeach; ?></select></label><label>Type <select name="adj_type"><option value="bonus">Bonus</option><option value="deduction">Deduction</option></select></label><label>Amount (INR) * <input name="amount" type="number" min="0.01" step="0.01" required></label><label>Reason * <input name="reason" minlength="5" required></label><button class="btn-sm btn-primary">Submit adjustment</button></form></div>
 <!-- =====================================================================
      TAB 4: WALLET & WITHDRAWALS

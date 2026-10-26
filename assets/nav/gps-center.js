@@ -1,7 +1,8 @@
 /* GPS-CENTER-20261025: private live GPS and separate demo view. */
 (function () {
 'use strict';
-var mode=(window.GPS_CENTER||{}).mode||'real', map=null, markers={}, real=[], demo=[], selected=null, timer=null, busy=false, failures=0, needLine=true, firstFit=true, line=null, lineAdded=false, lastDemoKey='';
+if(!window.GpsTelemetry){var status=document.getElementById('gcPoll');if(status)status.textContent='GPS display could not load. Reload to retry; current status is unavailable.';return;}
+var telemetry=new window.GpsTelemetry(), mode=(window.GPS_CENTER||{}).mode||'real', map=null, markers={}, real=[], demo=[], selected=null, timer=null, busy=false, failures=0, needLine=true, firstFit=true, line=null, lineAdded=false, lastDemoKey='';
 var $=function(s){return document.querySelector(s);};
 var stateNames={live:'🟢 Live GPS',waiting:'पहिलो GPS report पर्खिँदै',offline:'Offline · last known',no_fix:'Connected · no GPS fix',stale:'GPS fix पुरानो छ',disabled:'Tracker OFF'};
 function motionOff(){return window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;}
@@ -70,18 +71,24 @@ function poll(){
  .then(function(r){if(!r.ok)throw Error('HTTP '+r.status);return r.json();})
  .then(function(j){if(!j.ok)throw Error(j.error||'Unavailable');if(requestedMode!==mode)return;failures=0;
   if(mode==='sim'){demo=j.data.buses||[];if(j.data.line){line=j.data.line;needLine=false;drawLine();}simCards(j.data);}
-  else{real=j.data.devices||[];realCards();}
+  else{if(!telemetry.accept(j.data))return;real=telemetry.rows();realCards();}
   $('#gcPoll').textContent=(mode==='sim'?'DEMO · ':'Live GPS · ')+new Date().toLocaleTimeString()+' · screen refresh 1 s';draw();
  }).catch(function(e){if(requestedMode!==mode)return;failures++;$('#gcPoll').textContent='Connection unavailable · retrying';
-  if(mode==='real'){real.forEach(function(r){if(r.state==='live'){r.state='offline';r.kmh=null;}});realCards();draw();}
+  if(mode==='real'){telemetry.failed=true;real.forEach(function(r){if(r.state==='live'){r.state='offline';r.kmh=null;}});realCards();draw();}
   else $('#gcPoll').textContent='Simulation paused on screen · '+e.message;
  }).finally(function(){clearTimeout(abort);busy=false;schedule(Math.min(30000,1000*Math.pow(2,failures)));});
 }
-function setMode(next){if(next===mode)return;mode=next;selected=null;$('#gcFollow').checked=false;Object.keys(markers).forEach(clearMarker);firstFit=true;needLine=true;line=null;drawLine();
+function setMode(next){if(next==='sim'&&!(window.GPS_CENTER||{}).simulationAllowed)return;if(next===mode)return;mode=next;selected=null;$('#gcFollow').checked=false;Object.keys(markers).forEach(clearMarker);firstFit=true;needLine=true;line=null;drawLine();
  document.querySelectorAll('[data-gc-mode]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.gcMode===mode));});
  $('#gcSimControls').hidden=mode!=='sim';$('#gcSimRows').hidden=mode!=='sim';$('#gcRealRows').hidden=mode!=='real';
- $('#gcMapHint').textContent=mode==='sim'?'SIMULATION · private demo · no real GPS/booking data is changed.':'Screen refresh: 1 second. GPS positions change only when a new device fix arrives.';
+ $('#gcMapHint').textContent=mode==='sim'?'SIMULATION · private demo · no real GPS/booking data is changed.':'Screen refresh: 1 second. Marker transitions are visual interpolation between device readings; see the GPS timestamp and accuracy.';
  history.replaceState(null,'','?mode='+mode);poll();
+}
+function refreshHealth(){
+ if(mode!=='real'||document.hidden)return;
+ var before=real.map(function(r){return r.id+':'+r.state;}).join(',');
+ real=telemetry.rows();realCards();
+ if(before!==real.map(function(r){return r.id+':'+r.state;}).join(','))draw();
 }
 function wire(){
  document.querySelectorAll('[data-gc-mode]').forEach(function(b){b.onclick=function(){setMode(b.dataset.gcMode);};});
@@ -95,7 +102,7 @@ function wire(){
   map.addControl(new maplibregl.NavigationControl(),'top-right');map.on('load',function(){var load=$('#gcMapLoad');if(load)load.remove();drawLine();draw();});map.on('dragstart',function(){$('#gcFollow').checked=false;});
  }catch(e){var load=$('#gcMapLoad');if(load)load.textContent='Map unavailable on this browser; GPS status remains available below.';}
  if(mode==='sim')$('#gcMapHint').textContent='SIMULATION · private demo · no real GPS/booking data is changed.';
- poll();document.addEventListener('visibilitychange',function(){if(document.hidden){clearTimeout(timer);Object.keys(markers).forEach(function(k){if(markers[k].anim)cancelAnimationFrame(markers[k].anim);});}else poll();});window.addEventListener('online',poll);
+ setInterval(refreshHealth,1000);poll();document.addEventListener('visibilitychange',function(){if(document.hidden){clearTimeout(timer);Object.keys(markers).forEach(function(k){if(markers[k].anim)cancelAnimationFrame(markers[k].anim);});}else {refreshHealth();poll();}});window.addEventListener('online',poll);
 }
 wire();
 })();

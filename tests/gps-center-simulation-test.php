@@ -1,5 +1,5 @@
 <?php
-declare(strict_types=1);define('SHG_APP',true);
+declare(strict_types=1);define('SHG_APP',true);define('APP_ENV','test');
 class Settings {public static array $data=[];public static function getArray($k,$d=[]){return self::$data[$k]??$d;}public static function set($k,$v,...$rest){self::$data[$k]=$v;}public static function flush(){} }
 class Logger {public static array $audit=[];public static function audit(...$args){self::$audit[]=$args;} }
 class Database {public static array $queries=[];public static function fetch($sql,$p=[]){self::$queries[]=$sql;if(str_contains($sql,'FROM routes'))return ['id'=>1,'from_city'=>'QA A','to_city'=>'QA B'];throw new RuntimeException('Road geometry not present in isolated test');}public static function fetchAll($sql,$p=[]){self::$queries[]=$sql;if(str_contains($sql,'FROM route_stops'))return [['latitude'=>23.0,'longitude'=>72.0],['latitude'=>23.01,'longitude'=>72.01]];throw new RuntimeException('Unexpected query');} }

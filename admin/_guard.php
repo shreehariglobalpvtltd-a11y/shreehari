@@ -32,6 +32,7 @@ require_once INCLUDE_PATH . '/agentwallet.php';
 require_once INCLUDE_PATH . '/reportpdf.php';
 require_once INCLUDE_PATH . '/livesync.php';
 require_once INCLUDE_PATH . '/brand.php';      // emblem + SVG India / Nepal flags (9 Oct 2026)
+require_once INCLUDE_PATH . '/adminnavigation.php';
 require_once INCLUDE_PATH . '/staffmsg.php';   // Office chat: admin <-> agent / counter (9 Oct 2026)
 
 /**
@@ -321,7 +322,7 @@ function admin_nav_is_active(string $href, string $active): bool
     if ($active === '' || str_starts_with($href, '/')) {
         return false;
     }
-    return pathinfo($href, PATHINFO_FILENAME) === $active;
+    return pathinfo(explode('#', explode('?', $href)[0])[0], PATHINFO_FILENAME) === pathinfo($active, PATHINFO_FILENAME);
 }
 
 function admin_header(string $title, string $active = ''): void
@@ -350,7 +351,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261016b';
+    $av = '20261026d';
     /* 5 Oct 2026 (owner, Point 12): Poppins across the panel. display=swap, so a
        slow counter line shows the device font at once and swaps when the file
        lands; Devanagari comes from the same family. The CSP already allows it. */
@@ -396,6 +397,7 @@ function admin_header(string $title, string $active = ''): void
        . 'o.frequency.value=988;g.gain.setValueAtTime(0.0001,x.currentTime);g.gain.exponentialRampToValueAtTime(0.12,x.currentTime+0.02);'
        . 'g.gain.exponentialRampToValueAtTime(0.0001,x.currentTime+0.3);o.connect(g);g.connect(x.destination);o.start();o.stop(x.currentTime+0.32);'
        . 'setTimeout(function(){try{x.close();}catch(e){}},600);}catch(e){}}}</script>';
+    echo '<style>.side .side-sec.side-toggle{letter-spacing:0!important;text-transform:none;line-height:1.4;white-space:normal;text-align:left;min-height:52px}.side-subsection{padding:12px 16px 4px;font-size:11px;color:var(--on-navy-muted,#b6c5dc)}.command-categories{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0 24px}.command-category{min-width:0;padding:16px;border:1px solid var(--line);border-top:3px solid var(--orange,#ef7d24);border-radius:14px;background:var(--card)}.command-category h2{font-size:16px;line-height:1.5;margin:0 0 10px}.command-category a{display:block;padding:10px 0;color:var(--ink);overflow-wrap:anywhere}.command-category summary{cursor:pointer;min-height:44px;padding-top:12px;color:var(--mut)}@media(max-width:820px){.command-categories{grid-template-columns:1fr}}</style>';
     echo '</head><body class="shg-adm">';
 
     // One admin-wide SVG icon sprite — sidebar, top-bar and brand row all
@@ -511,72 +513,34 @@ function admin_header(string $title, string $active = ''): void
            . Security::e($item['label']) . $badge . '</a>';
     };
 
-    /* Office menu by CATEGORY (8 Oct 2026, owner: "admin / agent panel ko har
-       ek option category ma milayera"). WhatsApp pages sat in three sections,
-       customer pages inside Bookings, AI pages in two. Only the heading an
-       item is filed under changes — every link, permission and label stays.
-       A counter agent's flat strip (below) is not affected. */
-    if (!Auth::isCounterAgent()) {
-        $secMap = [
-            'customers.php' => '👥 Customers', 'customer-ledger.php' => '👥 Customers', 'customer-directory.php' => '👥 Customers',
-            'customer-duplicates.php' => '👥 Customers', 'enquiries.php' => '👥 Customers', 'support-inbox.php' => '👥 Customers',
-            'wa-compose.php' => '📲 WhatsApp & marketing', 'campaigns.php' => '📲 WhatsApp & marketing', 'wa-manager.php' => '📲 WhatsApp & marketing', 'wa-form.php' => '📲 WhatsApp & marketing',
-            'wa-templates.php' => '📲 WhatsApp & marketing', 'messages-log.php' => '📲 WhatsApp & marketing', 'ai-marketing.php' => '📲 WhatsApp & marketing',
-            'promo-card.php' => '📲 WhatsApp & marketing', 'wa-pending.php' => '📲 WhatsApp & marketing', 'wa-queue.php' => '📲 WhatsApp & marketing',
-            'wa-routing.php' => '📲 WhatsApp & marketing', 'customer-lists.php' => '👥 Customers',
-            'offers.php' => '💳 Ledger, payments & offers', 'ledger-check.php' => '💳 Ledger, payments & offers', 'payments.php' => '💳 Ledger, payments & offers',
-            'refunds.php' => '💳 Ledger, payments & offers', 'accounting.php' => '💳 Ledger, payments & offers', 'payroll.php' => '💳 Ledger, payments & offers',
-            'ai-copilot.php' => '🤖 AI', 'ai-brain.php' => '🤖 AI', 'ai-knowledge.php' => '🤖 AI', 'ai-activity.php' => '🤖 AI',
-            'analytics.php' => '📊 Reports', 'feedback.php' => '📊 Reports',
-            'staff-chat.php' => '🤝 Agents & counters',
-        ];
-        $rename = ['Bookings & tickets' => '🎫 Bookings & tickets', 'Seat management' => '🪑 Seats', 'Trips, buses & chalani' => '🚌 Trips, buses & chalani',
-                   'Agents & counters' => '🤝 Agents & counters', 'Ledger & payments' => '💳 Ledger, payments & offers', 'Expenses & reports' => '📊 Reports', 'Settings' => '⚙️ Settings'];
-        $order = ['', '🎫 Bookings & tickets', '🪑 Seats', '🚌 Trips, buses & chalani', '👥 Customers', '🤝 Agents & counters',
-                  '💳 Ledger, payments & offers', '📲 WhatsApp & marketing', '🤖 AI', '📊 Reports', '⚙️ Settings'];
-        foreach ($items as &$it) {
-            $sec = (string) ($it['section'] ?? '');
-            if (isset($secMap[$it['href']])) { $sec = $secMap[$it['href']]; }
-            elseif (isset($rename[$sec])) { $sec = $rename[$sec]; }
-            $it['section'] = $sec;
-        }
-        unset($it);
-        $rank = array_flip($order);
-        usort($items, static fn(array $a, array $c): int => ($rank[$a['section']] ?? 99) <=> ($rank[$c['section']] ?? 99));   // stable: page order kept inside a section
-    }
-
-    // Group items by section, preserving first-seen order.
-    $groups = [];
-    foreach ($items as $item) {
-        $groups[(string) ($item['section'] ?? '')][] = $item;
-    }
-    $namedSections = array_filter(array_keys($groups), static fn(string $s): bool => $s !== '');
-    // Only office admins see >=2 sections; a counter agent's whole nav is one
-    // strip, so it renders flat (no collapsing) exactly as before.
-    // Counter agents always get the flat strip (3 Sep 2026): on a phone their
-    // "+ New Booking" must never sit under a collapsed group header.
-    $showGroups = count($namedSections) >= 2 && !Auth::isCounterAgent();
-
+    // Existing permission filters run before presentation; endpoint gates stay authoritative.
+    $groups = AdminNavigation::groups($items);
+    $showGroups = !Auth::isCounterAgent() && $groups !== [];
     if (!$showGroups) {
         foreach ($items as $item) { $renderLink($item); }
     } else {
-        // Which section holds the current page? That group starts expanded so
-        // the active item is always visible; the rest collapse into tidy
-        // headers. The client then restores the admin's remembered open/closed
-        // set from localStorage on top of this (see admin_nav_js).
-        $activeSec = '';
         foreach ($items as $item) {
-            if (admin_nav_is_active($item['href'], $active)) { $activeSec = (string) ($item['section'] ?? ''); break; }
+            if (AdminNavigation::category($item) === '') { $renderLink($item); }
         }
-        foreach ($groups as $sec => $groupItems) {
-            if ($sec === '') { foreach ($groupItems as $item) { $renderLink($item); } continue; }
-            $open = ($sec === $activeSec) ? ' open' : '';
-            echo '<div class="side-group' . $open . '" data-sec="' . Security::e($sec) . '">';
-            echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-label="Toggle ' . Security::e($sec) . '">'
-               . Security::e($sec)
-               . '<svg class="a-ic nav-caret"><use href="#a-chevron"/></svg></button>';
-            echo '<div class="side-items">';
-            foreach ($groupItems as $item) { $renderLink($item); }
+        foreach ($groups as $key => $groupItems) {
+            $isActive = false;
+            foreach ($groupItems as $item) {
+                if (admin_nav_is_active($item['href'], $active)) { $isActive = true; break; }
+            }
+            $label = AdminNavigation::CATEGORIES[$key];
+            $expanded = $isActive ? 'true' : 'false';
+            echo '<div class="side-group' . ($isActive ? ' open' : '') . '" data-sec="' . $key . '">';
+            echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-expanded="' . $expanded . '" aria-controls="side-' . $key . '">'
+               . Security::e($label) . '<svg class="a-ic nav-caret"><use href="#a-chevron"/></svg></button>';
+            echo '<div class="side-items" id="side-' . $key . '">';
+            $subsection = null;
+            foreach ($groupItems as $item) {
+                if ($subsection !== $item['section']) {
+                    $subsection = $item['section'];
+                    echo '<div class="side-subsection">' . Security::e($subsection) . '</div>';
+                }
+                $renderLink($item);
+            }
             echo '</div></div>';
         }
     }
@@ -1182,6 +1146,7 @@ function shgNavToggle(btn){
   try{
     var g = btn.closest('.side-group'); if(!g) return;
     g.classList.toggle('open');
+    btn.setAttribute('aria-expanded', String(g.classList.contains('open')));
     var open = [];
     document.querySelectorAll('.side-group.open').forEach(function(x){ open.push(x.getAttribute('data-sec')); });
     localStorage.setItem('shg_nav_open', JSON.stringify(open));
@@ -1194,6 +1159,7 @@ function shgNavToggle(btn){
     var open = JSON.parse(raw) || [];
     document.querySelectorAll('.side-group').forEach(function(g){
       if(open.indexOf(g.getAttribute('data-sec')) >= 0){ g.classList.add('open'); }
+      g.querySelector('.side-toggle').setAttribute('aria-expanded',String(g.classList.contains('open')));
     });
   }catch(e){}
 })();
