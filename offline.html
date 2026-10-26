@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ne" style="background:#0E1E40">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1A3A6A">
+<meta name="robots" content="noindex">
+<title>Offline · S Hari Global</title>
+<!-- =====================================================================
+     offline.html — what a phone with NO network and NO cached app sees.
+
+     The service worker serves the cached app shell offline; this page is
+     the fallback for the one case that has nothing to serve (a first-ever
+     offline open, or a shell the browser evicted). It reads the tickets the
+     app already keeps in this browser (localStorage 'shg:bookings', written
+     by the storage bridge in index.php) and offers the ticket IMAGE, which
+     sw.js keeps in its own cache for the border post. No external assets:
+     everything a passenger needs at Rupaidiha with zero signal is in here.
+     ===================================================================== -->
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#0E1E40;color:#F4F7FC;font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif;-webkit-font-smoothing:antialiased}
+  body{min-height:100vh;min-height:100dvh;padding:calc(20px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom))}
+  .wrap{max-width:480px;margin:0 auto}
+  .hdr{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+  /* 9 Oct 2026 (BRAND): the emblem only (no baked name, no white tile), inlined as
+     data so it shows with zero signal; drawn India + Nepal flags (no emoji: Windows
+     and many Android skins print 🇮🇳🇳🇵 as letters). */
+  .hdr img{height:46px;width:auto;max-width:100px;object-fit:contain;flex:none;background:none;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45))}
+  .hdr>div{min-width:0}
+  .hdr b{display:block;font-size:15px;letter-spacing:.02em}
+  .hdr small{color:#B9C7E2;font-size:12px}
+  .hdr .flags{margin-left:auto;display:inline-flex;align-items:center;gap:5px;flex:none}
+  .hdr .flags svg{display:block;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.45))}
+  @media (max-width:340px){.hdr .flags{display:none}}
+  .card{background:#fff;color:#16233C;border-radius:18px;padding:22px 18px;box-shadow:0 10px 30px rgba(0,0,0,.35);margin-bottom:14px}
+  .big{font-size:44px;line-height:1;text-align:center;margin-bottom:6px}
+  h1{font-size:20px;margin:6px 0 4px;text-align:center}
+  .sub{color:#5C6B85;font-size:13.5px;text-align:center;margin:0 0 6px}
+  .tk{border:1px solid #E2E9F4;border-radius:14px;padding:12px 14px;margin-top:12px;background:#F6F8FC}
+  .tk .pnr{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:800;font-size:15px;color:#1A3A6A}
+  .tk .st{float:right;font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;background:#E9F8EF;color:#178A50}
+  .tk .st.pend{background:#FFF3E2;color:#B7791F}
+  .tk .st.off{background:#F1F3F7;color:#5C6B85}
+  .tk .rt{font-weight:700;margin-top:4px}
+  .tk .meta{color:#5C6B85;font-size:13px;margin-top:2px}
+  .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .btn{flex:1;min-width:140px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:12px;padding:10px 12px;font-weight:800;font-size:14px;text-decoration:none;border:0;cursor:pointer;touch-action:manipulation}
+  .btn-o{background:#F07C1F;color:#fff}
+  .btn-b{background:#1A3A6A;color:#fff}
+  .btn-g{background:#fff;color:#1A3A6A;border:1.5px solid #C9D6EA}
+  .empty{text-align:center;color:#5C6B85;padding:8px 0 2px;font-size:14px}
+  .routes{font-size:13.5px;color:#16233C}
+  .routes div{padding:8px 0;border-top:1px solid #E2E9F4}
+  .routes div:first-child{border-top:0}
+  .foot{text-align:center;color:#8FA2C4;font-size:12px;margin-top:14px;line-height:1.7}
+  .foot a{color:#fff;font-weight:700;text-decoration:none}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#C53030;margin-right:6px;vertical-align:middle;animation:blink 1.2s infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .online .dot{background:#178A50;animation:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <img src="data:image/png;base64,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" alt="S Hari Global" width="88" height="46">
+    <div><b>S HARI GLOBAL PVT LTD</b><small>Gujarat ⇄ Rupaidiha · India–Nepal bus</small></div>
+    <span class="flags" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" class="flg flg-in" viewBox="0 0 30 20" width="27" height="18" aria-hidden="true" focusable="false" style="vertical-align:middle"><path fill="#FF9933" stroke="none" d="M.8 0H29.2A.8.8 0 0 1 30 .8V6.667H0V.8A.8.8 0 0 1 .8 0Z"/><path fill="#FFFFFF" stroke="none" d="M0 6.667H30V13.333H0Z"/><path fill="#138808" stroke="none" d="M0 13.333H30V19.2A.8.8 0 0 1 29.2 20H.8A.8.8 0 0 1 0 19.2Z"/><g fill="none" stroke="#000080"><circle cx="15" cy="10" r="2.9" stroke-width=".42"/><path stroke-width=".2" d="M17.9 10L12.1 10M17.801 10.751L12.199 9.249M17.511 11.45L12.489 8.55M17.051 12.051L12.949 7.949M16.45 12.511L13.55 7.489M15.751 12.801L14.249 7.199M15 12.9L15 7.1M14.249 12.801L15.751 7.199M13.55 12.511L16.45 7.489M12.949 12.051L17.051 7.949M12.489 11.45L17.511 8.55M12.199 10.751L17.801 9.249"/></g><circle cx="15" cy="10" r=".55" fill="#000080" stroke="none"/></svg> <svg xmlns="http://www.w3.org/2000/svg" class="flg flg-np" viewBox="-2.582 -4.664 71.571 87.246" width="18.05" height="22" aria-hidden="true" focusable="false" style="vertical-align:middle"><path fill="#003893" stroke="none" d="M-2.582 -4.664 L68.989 40.156 L23.808 40.156 L66.234 82.582 L-2.582 82.582Z"/><path fill="#DC143C" stroke="none" d="M0 0L60 37.574L17.574 37.574L60 80L0 80Z"/><g fill="#fff" stroke="none"><path d="M3.05 23.483A11.95 11.95 0 0 0 26.95 23.483A12.84 12.84 0 0 1 3.05 23.483Z"/><circle cx="15" cy="29.045" r="5.561"/><path d="M20.561 29.045L22.575 27.538L20.138 26.916ZM20.138 26.916L21.422 24.754L18.932 25.112ZM18.932 25.112L19.291 22.623L17.128 23.907ZM17.128 23.907L16.507 21.47L15 23.483ZM15 23.483L13.493 21.47L12.872 23.907ZM12.872 23.907L10.709 22.623L11.068 25.112ZM11.068 25.112L8.578 24.754L9.862 26.916ZM9.862 26.916L7.425 27.538L9.439 29.045Z"/><circle cx="15" cy="58.787" r="8.143"/><path d="M17.108 50.921L15 45.947L12.892 50.921L8.58 47.667L9.242 53.029L3.88 52.367L7.134 56.679L2.16 58.787L7.134 60.894L3.88 65.207L9.242 64.545L8.58 69.907L12.892 66.653L15 71.627L17.108 66.653L21.42 69.907L20.758 64.545L26.12 65.207L22.866 60.894L27.84 58.787L22.866 56.679L26.12 52.367L20.758 53.029L21.42 47.667Z"/></g></svg></span>
+  </div>
+
+  <div class="card">
+    <div class="big">📵</div>
+    <h1 id="h1"><span class="dot"></span>तपाईं अफलाइन हुनुहुन्छ · You're offline</h1>
+    <p class="sub">इन्टरनेट छैन। तपाईंको सुरक्षित टिकट तल छ — बोर्डरमा यही देखाउनुहोस्।<br>No internet right now. Your saved tickets are below — show these at the border.</p>
+    <div id="tickets"></div>
+    <div class="row">
+      <button class="btn btn-o" type="button" onclick="location.replace('/')">🔄 फेरि प्रयास · Retry</button>
+      <a class="btn btn-g" href="tel:+919104801507">📞 Office</a>
+    </div>
+  </div>
+
+  <div class="card" id="routesCard" hidden>
+    <b style="display:block;margin-bottom:6px">🚌 दैनिक बस · Daily service</b>
+    <div class="routes" id="routes"></div>
+  </div>
+
+  <div class="foot">Rupaidiha ⇄ Jamunaha border · photo ID तयार राख्नुहोस्<br>
+    <a href="https://wa.me/919104801507">WhatsApp +91 91048 01507</a></div>
+</div>
+<script>
+(function () {
+  function read(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+  /* "Name · Landmark @ HH:MM [lat,lng]" → Name */
+  function stopName(s) { return String(s || '').split(' @ ')[0].split(' [')[0].split(' · ')[0].trim(); }
+  var bookings = read('shg:bookings') || [];
+  var routes = read('shg:routes') || [];
+  var byId = {}; routes.forEach(function (r) { if (r && r.id) byId[r.id] = r; });
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var iso = today.toISOString().slice(0, 10);
+  var live = bookings.filter(function (b) {
+    return b && b.id && (b.status === 'confirmed' || b.status === 'pending') && (!b.date || b.date >= iso);
+  }).sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }).slice(0, 3);
+  if (!live.length) {
+    live = bookings.filter(function (b) { return b && b.id && b.status === 'confirmed'; })
+      .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); }).slice(0, 2);
+  }
+  var box = document.getElementById('tickets');
+  if (!live.length) {
+    box.innerHTML = '<p class="empty">यो फोनमा सुरक्षित टिकट छैन · No saved ticket on this phone yet.</p>';
+  } else {
+    box.innerHTML = live.map(function (b) {
+      var r = byId[b.routeId] || {};
+      var from = stopName(b.boarding) || r.from || '', to = stopName(b.drop) || r.to || '';
+      var st = b.status === 'confirmed' ? '<span class="st">✓ Confirmed</span>' : (b.status === 'pending' ? '<span class="st pend">⏳ Pending</span>' : '<span class="st off">' + esc(b.status) + '</span>');
+      var pax = (b.passengers && b.passengers[0] && b.passengers[0].name) ? esc(b.passengers[0].name) + ' · ' : '';
+      var img = '/download-ticket.php?pnr=' + encodeURIComponent(b.id) + '&img=1&view=1';
+      return '<div class="tk">' + st + '<div class="pnr">' + esc(b.id) + '</div>'
+        + '<div class="rt">' + esc(from) + ' → ' + esc(to) + '</div>'
+        + '<div class="meta">' + pax + '📅 ' + esc(b.date || '') + (r.depTime ? ' · 🕒 ' + esc(r.depTime) : '') + (b.seats && b.seats.length ? ' · 💺 ' + esc(b.seats.join(', ')) : '') + '</div>'
+        + '<div class="row">'
+        + (b.status === 'confirmed' ? '<a class="btn btn-b" href="' + img + '">🎫 Ticket image</a>' : '')
+        + '<a class="btn btn-g" href="/#/ticket/' + encodeURIComponent(b.id) + '">Open in app →</a>'
+        + '</div></div>';
+    }).join('');
+  }
+  var act = routes.filter(function (r) { return r && r.active && r.from && r.to; });
+  if (act.length) {
+    document.getElementById('routesCard').hidden = false;
+    document.getElementById('routes').innerHTML = act.map(function (r) {
+      return '<div><b>' + esc(r.from) + ' → ' + esc(r.to) + '</b> · 🕒 ' + esc(r.depTime || '') + (r.busName ? ' · ' + esc(r.busName) : '') + '</div>';
+    }).join('');
+  }
+  function paint() {
+    document.body.classList.toggle('online', navigator.onLine);
+    if (navigator.onLine) document.getElementById('h1').innerHTML = '<span class="dot"></span>नेटवर्क फर्कियो · Back online — tap Retry';
+  }
+  window.addEventListener('online', function () { paint(); setTimeout(function () { location.replace('/'); }, 800); });
+  window.addEventListener('offline', paint);
+  paint();
+})();
+</script>
+</body>
+</html>

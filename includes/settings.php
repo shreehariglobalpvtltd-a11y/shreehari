@@ -1,0 +1,882 @@
+<?php
+/**
+ * =====================================================================
+ *  Settings — typed access to the `settings` table.
+ *
+ *  The whole table is small, so it is loaded once per request and cached
+ *  in memory. Admin edits go through set() which keeps the cache honest.
+ * =====================================================================
+ */
+
+declare(strict_types=1);
+
+if (!defined('SHG_APP')) {
+    http_response_code(403);
+    exit('Forbidden');
+}
+
+/* The company's Mehsana desk, on its Indian number (owner, 8 Sep 2026).
+   Defined once, here, so every "call us" line, wa.me link and ticket footer
+   in the system falls back to the SAME number when the settings row is
+   missing — rather than to an empty string, which printed "call " with
+   nothing after it and produced a dead wa.me/ link on a real ticket. */
+const OFFICE_PHONE_DISPLAY   = '+91 91048 01507';
+const OFFICE_WHATSAPP_DIGITS = '919104801507';
+
+final class Settings
+{
+    /** @var array<string, array{value: string|null, type: string, public: bool}>|null */
+    private static ?array $cache = null;
+
+    /** Decoded json values, memoised per request (5 Sep 2026): agent_codes
+     *  & co. were re-decoded on every agentCodeLabel() call in render loops. */
+    /** @var array<string, mixed> */
+    private static array $decoded = [];
+
+    /**
+     * Load every setting once per request.
+     */
+    private static function load(): void
+    {
+        if (self::$cache !== null) {
+            return;
+        }
+
+        self::$cache = [];
+
+        try {
+            $rows = Database::fetchAll('SELECT skey, svalue, stype, is_public FROM settings');
+            foreach ($rows as $row) {
+                self::$cache[(string) $row['skey']] = [
+                    'value'  => $row['svalue'] !== null ? (string) $row['svalue'] : null,
+                    'type'   => self::safeType((string) $row['stype']),
+                    'public' => (bool) $row['is_public'],
+                ];
+            }
+        } catch (Throwable $e) {
+            // A missing settings table should not take the whole site down —
+            // callers fall back to their supplied defaults.
+            Logger::error('Settings load failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Raw string value, or $default when the key is absent.
+     */
+    public static function get(string $key, mixed $default = null): mixed
+    {
+        self::load();
+
+        if (!isset(self::$cache[$key])) {
+            return $default;
+        }
+
+        $entry = self::$cache[$key];
+        $raw   = $entry['value'];
+
+        if ($raw === null || $raw === '') {
+            // An explicitly empty string is a legitimate value for text
+            // settings such as GSTIN; only fall back for null.
+            return $raw === null ? $default : $raw;
+        }
+
+        if ($entry['type'] === 'json') {
+            if (!array_key_exists($key, self::$decoded)) {
+                self::$decoded[$key] = json_decode($raw, true);
+            }
+            return self::$decoded[$key] ?? $default;
+        }
+
+        return match ($entry['type']) {
+            'int'   => (int) $raw,
+            'float' => (float) $raw,
+            'bool'  => $raw === '1' || strtolower($raw) === 'true',
+            default => $raw,
+        };
+    }
+
+    public static function getString(string $key, string $default = ''): string
+    {
+        $value = self::get($key, $default);
+        return is_scalar($value) ? (string) $value : $default;
+    }
+
+    public static function getInt(string $key, int $default = 0): int
+    {
+        $value = self::get($key, $default);
+        return is_numeric($value) ? (int) $value : $default;
+    }
+
+    public static function getFloat(string $key, float $default = 0.0): float
+    {
+        $value = self::get($key, $default);
+        return is_numeric($value) ? (float) $value : $default;
+    }
+
+    public static function getBool(string $key, bool $default = false): bool
+    {
+        $value = self::get($key, $default);
+
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_numeric($value)) {
+            return (int) $value === 1;
+        }
+        if (is_string($value)) {
+            return in_array(strtolower($value), ['1', 'true', 'yes', 'on'], true);
+        }
+
+        return $default;
+    }
+
+    /**
+     * Decoded JSON setting.
+     *
+     * @param array<mixed> $default
+     * @return array<mixed>
+     */
+    public static function getArray(string $key, array $default = []): array
+    {
+        $value = self::get($key, $default);
+        return is_array($value) ? $value : $default;
+    }
+
+    /**
+     * Write a setting. Creates the row if it does not exist yet.
+     */
+    /**
+     * The settings.stype ENUM is string|int|float|bool|json. A migration that
+     * seeded 'text' (multi-provider, counter-locations) left rows whose stype
+     * MariaDB stored as '' — and writing that '' back under strict mode threw
+     * "Data truncated for column 'stype'", which rolled back the WHOLE
+     * Settings form: no fare, private cabin price or switch could be saved
+     * (8 Oct 2026, five failed saves in the live log). Anything unknown is
+     * now written as 'string'.
+     */
+    public static function safeType(string $type): string
+    {
+        $type = strtolower(trim($type));
+        if (in_array($type, ['string', 'int', 'float', 'bool', 'json'], true)) {
+            return $type;
+        }
+        return match ($type) {
+            'integer', 'number' => 'int',
+            'decimal', 'double' => 'float',
+            'boolean'           => 'bool',
+            'array', 'object'   => 'json',
+            default             => 'string',
+        };
+    }
+
+    public static function set(string $key, mixed $value, string $type = 'string', string $group = 'general', bool $isPublic = false): void
+    {
+        $type = self::safeType($type);
+        if ($type === 'json' && is_string($value)) {
+            // 4 Sep 2026: the admin form posts a JSON *string* for stype=json
+            // rows. json_encode()-ing that string wrapped it in quotes and
+            // escaped it, so every Save added one more layer and the row
+            // became unreadable (cabin_pricing on live carried 1,792
+            // backslashes; getArray() then silently returned the code
+            // default). Decode first — peeling any layers an earlier save
+            // already added — and refuse invalid JSON instead of storing it.
+            $value = self::decodeJsonLayers($value, $key);
+        }
+
+        $stored = match ($type) {
+            'json'  => json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'bool'  => ($value === true || $value === 1 || $value === '1') ? '1' : '0',
+            default => is_scalar($value) ? (string) $value : (string) json_encode($value),
+        };
+
+        Database::query(
+            'INSERT INTO settings (skey, svalue, stype, sgroup, is_public)
+                  VALUES (:k, :v, :t, :g, :p)
+             ON DUPLICATE KEY UPDATE
+                  svalue = VALUES(svalue),
+                  stype  = VALUES(stype)',
+            [
+                'k' => $key,
+                'v' => $stored,
+                't' => $type,
+                'g' => $group,
+                'p' => $isPublic ? 1 : 0,
+            ]
+        );
+
+        self::load();
+        self::$cache[$key] = [
+            'value'  => $stored,
+            'type'   => $type,
+            'public' => $isPublic,
+        ];
+        unset(self::$decoded[$key]);
+    }
+
+    /**
+     * Turn a JSON string (possibly wrapped in one or more stray layers of
+     * encoding by the pre-4-Sep-2026 writer) into the value it represents.
+     * Throws on text that is not JSON at all, so a typo in the admin form
+     * keeps the previous value instead of replacing it with garbage.
+     *
+     * @throws InvalidArgumentException
+     */
+    public static function decodeJsonLayers(string $raw, string $key = ''): mixed
+    {
+        $trim = trim($raw);
+        if ($trim === '') {
+            return [];
+        }
+        $value = json_decode($trim, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new InvalidArgumentException(
+                ($key !== '' ? $key . ': ' : '') . 'not valid JSON (' . json_last_error_msg() . ')'
+            );
+        }
+        // A doubly-encoded row decodes to a *string* that is itself JSON;
+        // keep peeling while that is the case (bounded — a real string
+        // value such as "abc" stops the loop at once).
+        $guard = 0;
+        while (is_string($value) && $guard++ < 12) {
+            $inner = json_decode($value, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                break;
+            }
+            $value = $inner;
+        }
+        return $value;
+    }
+
+    /**
+     * Bulk write, used by the admin settings form.
+     *
+     * @param array<string, mixed> $pairs key => value (types are preserved
+     *                                    from the existing row)
+     */
+    public static function setMany(array $pairs): void
+    {
+        self::load();
+
+        // Snapshot BEFORE the write so the audit row records old→new, not
+        // just "these keys were touched". Previously only array_keys($pairs)
+        // was logged — a stealth change to upi_id, twilio_auth_token or
+        // agent_flat_direct was invisible after the fact.
+        $before = [];
+        foreach ($pairs as $key => $_v) {
+            if (isset(self::$cache[$key])) {
+                $before[$key] = self::$cache[$key]['value'];
+            }
+        }
+
+        Database::transaction(static function () use ($pairs): void {
+            foreach ($pairs as $key => $value) {
+                $type  = self::$cache[$key]['type'] ?? 'string';
+                $known = isset(self::$cache[$key]);
+
+                if (!$known) {
+                    // Unknown keys are ignored rather than silently created,
+                    // so a stray form field cannot pollute configuration.
+                    continue;
+                }
+
+                self::set($key, $value, $type);
+            }
+        });
+
+        // Mask obvious secrets before they land in audit_logs — the log itself
+        // is protected but there is no reason to keep a plaintext copy of a
+        // Twilio auth token or SMTP password inside it.
+        $mask = static function (string $key, $value): string {
+            // isSecretKey() is the rule the Settings form uses; the older, broader
+            // pattern stays beside it so nothing that was masked stops being masked.
+            $sensitive = self::isSecretKey($key) || preg_match('/(token|password|secret|auth|key|api)/i', $key) === 1;
+            $str       = is_scalar($value) ? (string) $value : json_encode($value);
+            if ($str === '' || $str === false || $str === null) { return ''; }
+            if (!$sensitive) {
+                return mb_strlen($str) > 200 ? mb_substr($str, 0, 200) . '…' : $str;
+            }
+            $len = mb_strlen($str);
+            return $len <= 4 ? str_repeat('*', $len) : mb_substr($str, 0, 2) . str_repeat('*', max(0, $len - 4)) . mb_substr($str, -2);
+        };
+
+        $diff = [];
+        foreach ($pairs as $key => $value) {
+            if (!isset(self::$cache[$key])) { continue; }
+            $oldStr = $mask($key, $before[$key] ?? null);
+            $newStr = $mask($key, $value);
+            if ($oldStr !== $newStr) {
+                $diff[$key] = ['old' => $oldStr, 'new' => $newStr];
+            }
+        }
+
+        Logger::audit('settings.update', 'settings', '', $diff === [] ? null : ['keys' => array_keys($diff)], $diff === [] ? array_keys($pairs) : $diff);
+    }
+
+    /**
+     * Is this settings key a secret - a value that is write-only in the admin
+     * form and masked in the audit log? ONE rule for both (4 Oct 2026): the
+     * form's own pattern missed push_vapid_private (it was printed into the
+     * page for every role that can open Settings) and the audit mask missed
+     * smtp_pass ("pass", not "password").
+     */
+    /** Company or desk details changed: cached tickets redraw on their next open. */
+    public static function touchTicketIdentity(): void
+    {
+        self::set('ticket_identity_changed_at', (string) time(), 'int', 'company');
+    }
+
+    public static function isSecretKey(string $key): bool
+    {
+        return preg_match('/(token|secret|password|_pass$|api_?key|_private$|private_key)/i', $key) === 1;
+    }
+
+    /**
+     * Everything marked is_public — safe to hand to the browser.
+     *
+     * @return array<string, mixed>
+     */
+    public static function publicSettings(): array
+    {
+        self::load();
+
+        $out = [];
+        foreach (self::$cache as $key => $entry) {
+            if ($entry['public']) {
+                $out[$key] = self::get($key);
+            }
+        }
+
+        /* Round trip gate (17 Sep 2026): the app offers the "Round trip" pill
+           only when this public bool is on (row added by
+           database/upgrade-2026-09-round-trip.sql, shipped off). Guaranteed
+           present in the feed — a site that has not run the upgrade behaves
+           exactly like one that has, instead of the browser guessing. */
+        if (!array_key_exists('round_trip_on', $out)) {
+            $out['round_trip_on'] = false;
+        }
+
+        /* Automatic discounts (2 Oct 2026): the page quotes a group / member
+           discount only when the office switched it on — same answer as
+           Fare::autoDiscountOn(), present even before the upgrade row exists. */
+        foreach (['group_discount_on', 'loyalty_tier_discount_on', 'sharing_short_run_on'] as $k) {
+            $out[$k] = self::getBool($k, false);
+        }
+
+        // A dialable business number, never the Cloud API phone ID or token.
+        // Chat must go to the configured sender so the booking bot receives it;
+        // admin_whatsapp is a notification recipient and may be a different desk.
+        $out['whatsapp_booking_number'] = self::bookingWhatsApp();
+
+        return $out;
+    }
+
+    /**
+     * All settings in one group, for rendering the admin form.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function group(string $group): array
+    {
+        return Database::fetchAll(
+            'SELECT skey, svalue, stype, sgroup, label, is_public
+               FROM settings
+              WHERE sgroup = :g
+              ORDER BY id',
+            ['g' => $group]
+        );
+    }
+
+    /* =================================================================
+     *  THE OFFICE NUMBER — one definition (owner, 8 Sep 2026)
+     *
+     *  The company's Mehsana desk on its Indian number, 9104801507. It was
+     *  already the live value of company_phone and admin_whatsapp, but it was
+     *  READ with four different fallbacks: '', '+91 91048 01507',
+     *  '919104801507', and admin_whatsapp-then-company_phone-then-''. Most
+     *  sites used the empty one, so if that row were ever cleared or mistyped
+     *  a passenger would be told to "call " with nothing after it, and the
+     *  wa.me links would point at wa.me/ — a dead link on a ticket.
+     *
+     *  These two are now the only way to ask. The number is the built-in
+     *  fallback, so the office number cannot go missing even with no row at
+     *  all; a row still overrides it, which is how the desk moves it later.
+     * ================================================================= */
+
+    /** The office number as PEOPLE read it: "+91 91048 01507". */
+    public static function officePhone(): string
+    {
+        $v = trim(self::getString('company_phone', ''));
+        return $v !== '' ? $v : OFFICE_PHONE_DISPLAY;
+    }
+
+    /**
+     * The office number as wa.me / tel: want it — digits, country code, no
+     * punctuation: "919104801507". Prefers an explicit company_whatsapp (the
+     * desk may answer WhatsApp on a different handset), then company_phone.
+     */
+    public static function officeWhatsApp(): string
+    {
+        foreach ([self::getString('company_whatsapp', ''), self::getString('company_phone', '')] as $raw) {
+            $d = preg_replace('/\D/', '', $raw) ?? '';
+            if ($d === '') {
+                continue;
+            }
+            // A bare 10-digit Indian number needs its country code for wa.me.
+            if (strlen($d) === 10) {
+                $d = '91' . $d;
+            }
+            if (strlen($d) >= 11) {
+                return $d;
+            }
+        }
+        return OFFICE_WHATSAPP_DIGITS;
+    }
+
+    /** The public number customers message to start a booking conversation. */
+    public static function bookingWhatsApp(): string
+    {
+        $driver = self::getString('whatsapp_driver', '');
+        $senderKey = match ($driver) {
+            'twilio' => 'twilio_whatsapp_from',
+            'gupshup' => 'gupshup_source',
+            default => 'company_whatsapp', // Meta phone IDs are not dialable.
+        };
+        foreach ([self::getString('whatsapp_booking_number', ''), self::getString($senderKey, '')] as $raw) {
+            $number = preg_replace('/\D/', '', $raw) ?? '';
+            if (str_starts_with($number, '00')) { $number = substr($number, 2); }
+            if (strlen($number) === 10) { $number = '91' . $number; }
+            if (preg_match('/^[1-9]\d{7,14}$/', $number)) { return $number; }
+        }
+        return self::officeWhatsApp();
+    }
+
+    /* =================================================================
+     *  THE LETTERHEAD — one definition (owner, 10 Sep 2026:
+     *  "logo name details haru ramro sita manage hos")
+     *
+     *  Every printed document used to carry its own copy of the company's
+     *  identity: the chalani PDF had the Mehsana address, the operator's
+     *  name and the office email typed into its header function, the
+     *  challan PNG read company_name only, and the CIN default was spelled
+     *  out in three files. Change the address and you had to remember all
+     *  of them.
+     *
+     *  One call now answers "whose document is this?", with the values that
+     *  were already hard-coded as the built-in fallbacks — so nothing moves
+     *  until someone edits a row, and after the migration every one of these
+     *  is editable in Admin -> Settings (group "company").
+     *
+     *  Keys: name, legal, address, addressNe, phone, whatsapp, email, cin,
+     *  web, operator, operatorNe, counters.
+     *
+     * @return array<string,string>
+     * ================================================================= */
+    public static function company(): array
+    {
+        $s = static fn(string $k, string $d): string => trim(self::getString($k, '')) !== ''
+            ? trim(self::getString($k, '')) : $d;
+
+        return [
+            'name'      => $s('company_name', APP_NAME),
+            'legal'     => $s('company_legal', 'S Hari Global Private Limited'),
+            'legalNe'   => $s('company_legal_ne', 'एस हरि ग्लोबल प्राइभेट लिमिटेड'),
+            'address'   => $s('company_address', 'Near Shilpa Garage, Silver Complex, Mehsana - 384002, Gujarat, India'),
+            'addressNe' => $s('company_address_ne', 'प्रधान कार्यालय : शिल्पा ग्यारेज नजिक, सिल्भर कम्प्लेक्स, मेहसाणा – ३८४००२, गुजरात, भारत'),
+            'phone'     => self::officePhone(),
+            'whatsapp'  => self::officeWhatsApp(),
+            'email'     => $s('company_email', 'shreehariglobalpvtltd@gmail.com'),
+            'cin'       => $s('company_cin', 'U52291GJ2026PTC174029'),
+            'web'       => $s('company_web', 'shreehariglobal.in'),
+            // company_ceo is the row this site has always carried; company_operator
+            // is the newer, document-specific name. Prefer the specific one.
+            'operator'  => $s('company_operator', $s('company_ceo', 'Sher Bahadur Bishwakarma')),
+            'operatorNe'=> $s('company_operator_ne', 'शेर बहादुर विश्वकर्मा'),
+            'counters'  => $s('company_counters',
+                'Mehsana +91 91048 01507 · Ahmedabad +91 91570 01507 · Baroda +91 97264 01507 · Surat +91 73059 01507 · Rajkot +91 94268 27507'),
+        ];
+    }
+
+    /**
+     * WHOSE document is this? - the letterhead for one sale (4 Oct 2026).
+     *
+     * Two companies sell on this system: the India company (company_* rows)
+     * and the Nepal partner company (nepal_* rows). A ticket carries the
+     * identity of the company that ISSUED it - the entity frozen on the
+     * booking, else the desk's, else India (every online sale, and every row
+     * before the stamp existed).
+     *
+     * Returns everything company() does, for the issuing company, plus:
+     *   entity     'IN' | 'NP' - the letterhead actually returned
+     *   saleEntity 'IN' | 'NP' - the company the sale belongs to
+     *   regLabel / regNo  'CIN' + number, or 'PAN' / 'Reg.' for Nepal
+     *   gstin, logo (settings path, '' = site logo), tz ('IST' | 'NPT')
+     *   otherHelp  ['label' => 'Nepal'|'India', 'phone' => ...] or null -
+     *              the OTHER side's help number, so a passenger who crossed
+     *              the border still has someone to ring
+     *   desk       ['code','name','phone','address','hours','country'] or null
+     *
+     * NOTHING IS INVENTED. Until the office types the Nepal company's name
+     * into Admin -> Settings (nepal_company), a Nepal sale keeps the India
+     * letterhead exactly as before; any single blank Nepal field is simply
+     * left out, never borrowed from India - except the support phone, where
+     * a real India number is better than none.
+     *
+     * @return array<string,mixed>
+     */
+    public static function companyFor(?string $deskCode = null, ?string $entity = null): array
+    {
+        $g     = static fn(string $k): string => trim(self::getString($k, ''));
+        $india = self::company();
+        $code  = mb_strtoupper(trim((string) $deskCode));
+        $desk  = ($code !== '' && class_exists('CounterDesk', false)) ? CounterDesk::get($code) : null;
+
+        $sale = strtoupper(trim((string) $entity));
+        if ($sale !== 'IN' && $sale !== 'NP') {
+            $sale = $desk !== null && ($desk['entity'] ?? 'IN') === 'NP' ? 'NP' : 'IN';
+        }
+
+        $out = $india + [
+            'entity'     => 'IN',
+            'saleEntity' => $sale,
+            'regLabel'   => $india['cin'] !== '' ? 'CIN' : '',
+            'regNo'      => $india['cin'],
+            'gstin'      => $g('company_gstin'),
+            'logo'       => $g('company_logo'),
+            'tz'         => 'IST',
+        ];
+
+        $npName  = $g('nepal_company');
+        $npPhone = $g('nepal_phone');
+        if ($sale === 'NP' && $npName !== '') {
+            $pan = $g('nepal_pan');
+            $reg = $g('nepal_reg');
+            $wa  = preg_replace('/\D/', '', $g('nepal_whatsapp')) ?? '';
+            if (str_starts_with($wa, '00')) { $wa = substr($wa, 2); }
+            if (strlen($wa) === 10) { $wa = '977' . $wa; }           // a bare Nepali mobile
+            if (!preg_match('/^[1-9]\d{7,14}$/', $wa)) { $wa = ''; }
+
+            $out = array_merge($out, [
+                'entity'    => 'NP',
+                'name'      => $npName,
+                'legal'     => $npName,
+                'legalNe'   => $g('nepal_company_ne'),
+                'address'   => $g('nepal_office'),
+                'addressNe' => $g('nepal_office_ne'),
+                'phone'     => $npPhone !== '' ? $npPhone : $india['phone'],
+                'whatsapp'  => $wa,
+                'email'     => $g('nepal_email'),
+                'cin'       => '',
+                'regLabel'  => $pan !== '' ? 'PAN' : ($reg !== '' ? 'Reg.' : ''),
+                'regNo'     => $pan !== '' ? $pan : $reg,
+                'gstin'     => '',
+                'logo'      => $g('nepal_logo') !== '' ? $g('nepal_logo') : $g('company_logo'),
+                'tz'        => 'NPT',
+            ]);
+        }
+
+        /* Where the customer pays (4 Oct 2026). The Nepal company's own eSewa /
+           bank once the office has typed them on Admin -> Company details;
+           until then the India company's account, exactly as before. */
+        $npEsewa = $g('nepal_esewa_id');
+        $npBank  = $g('nepal_bank');
+        $useNp   = $sale === 'NP';
+        $out['payUpi']       = $g('upi_id');
+        $out['payEsewa']     = $useNp && $npEsewa !== '' ? $npEsewa : $g('esewa_id');
+        $out['payEsewaName'] = $useNp && $npEsewa !== '' ? $g('nepal_esewa_name') : '';
+        $out['payBank']      = $useNp && $npBank !== '' ? $npBank : '';
+        $out['payOwnNepal']  = $useNp && ($npEsewa !== '' || $npBank !== '');
+
+        $out['otherHelp'] = $out['entity'] === 'NP'
+            ? ['label' => 'India', 'phone' => $india['phone']]
+            : ($npPhone !== '' ? ['label' => 'Nepal', 'phone' => $npPhone] : null);
+
+        $out['desk'] = $desk === null ? null : [
+            'code'    => (string) $desk['code'],
+            'name'    => (string) $desk['name'],
+            'phone'   => trim((string) ($desk['phone'] ?? '')),
+            'address' => trim((string) ($desk['address'] ?? '')),
+            'hours'   => trim((string) ($desk['hours'] ?? '')),
+            'country' => (string) ($desk['country'] ?? 'IN'),
+        ];
+
+        return $out;
+    }
+
+    /**
+     * Up to $max help numbers as [place, phone] - desks that carry a phone
+     * first (the issuing company's own, then the rest), else the office's
+     * company_counters line, and always the OTHER side's help number when
+     * one is set. The one list every printed ticket and the app's own
+     * fallback ticket read (4 Oct 2026).
+     *
+     * @return list<array{0:string,1:string}>
+     */
+    public static function helpContacts(array $co, int $max = 4): array
+    {
+        $out  = [];
+        $seen = [];
+        $add  = static function (string $place, string $phone) use (&$out, &$seen): void {
+            $key = preg_replace('/\D/', '', $phone) ?? '';
+            if ($place === '' || strlen($key) < 8 || isset($seen[$key])) {
+                return;
+            }
+            $seen[$key] = true;
+            $out[] = [$place, $phone];
+        };
+        $short = static fn(string $name): string => trim((string) preg_split('/\s+[\x{2014}\x{2013}-]\s+/u', $name)[0]);
+
+        $desks = class_exists('CounterDesk', false) ? CounterDesk::all(true) : [];
+        usort($desks, static fn(array $a, array $b): int =>
+            [($a['entity'] ?? 'IN') === $co['entity'] ? 0 : 1, (int) $a['sort_order']]
+            <=> [($b['entity'] ?? 'IN') === $co['entity'] ? 0 : 1, (int) $b['sort_order']]);
+        foreach ($desks as $d) {
+            $add($short((string) $d['name']), trim((string) ($d['phone'] ?? '')));
+        }
+        if ($out === []) {
+            foreach (preg_split('/\s*[\x{00B7}|;]\s*/u', (string) ($co['counters'] ?? '')) ?: [] as $part) {
+                if (preg_match('/^(.*?)\s*(\+?\d[\d ]{7,})$/u', trim($part), $m) === 1) {
+                    $add(trim($m[1]), trim($m[2]));
+                }
+            }
+        }
+        $out = array_slice($out, 0, $max);
+
+        $other = $co['otherHelp'] ?? null;
+        if (is_array($other) && ($other['phone'] ?? '') !== '') {
+            $key = preg_replace('/\D/', '', (string) $other['phone']) ?? '';
+            if (!isset($seen[$key]) || !in_array($key, array_map(
+                static fn(array $r): string => preg_replace('/\D/', '', $r[1]) ?? '', $out), true)) {
+                if (count($out) >= $max) { array_pop($out); }
+                $out[] = [(string) $other['label'], (string) $other['phone']];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The Nepal office's people for the home page (5 Oct 2026, owner's
+     * "Nepalgunj office contacts"): CEO, Operations (Nepalgunj) and Parking
+     * in-charge (Rupaidiha) - a name and a number each, typed on Admin ->
+     * Company details. NOTHING IS INVENTED: a row without a dialable number is
+     * left out. Only the CEO has a fallback - the Director's published 24/7
+     * line, which is the same person.
+     *
+     * A number typed with its country code is used as written; a bare
+     * 10-digit number is taken as a Nepali mobile (+977), the same rule
+     * companyFor() applies to nepal_whatsapp.
+     *
+     * @return list<array{key:string,role:string,roleNe:string,name:string,phone:string,tel:string}>
+     */
+    public static function nepalTeam(): array
+    {
+        $g    = static fn(string $k): string => trim(self::getString($k, ''));
+        /* 7 Oct 2026 (owner: "CEO lai alag desh sita najodera rakha, Nepal
+           ko aru number rakhdeu"): the Nepalgunj office line + two more
+           Nepal numbers. The site shows the CEO in a block of his own, not
+           inside the Nepal office list (his default number is Indian). */
+        /* 9 Oct 2026 (site facts): the CEO's default NAME is company_ceo - the
+           one CEO row the whole website reads (SiteFacts) - so the home card,
+           the CEO block and the facts can never spell him two ways. */
+        $ceoName = trim(self::getString('company_ceo', ''));
+        $rows = [
+            ['ceo',     'CEO',                           'प्रमुख कार्यकारी',     $ceoName !== '' ? $ceoName : 'Sher Bahadur Bishwokarma', '+91 97264 01507'],
+            ['office',  'Nepal Office · Nepalgunj',      'नेपाल कार्यालय · नेपालगन्ज', 'Lok Bahadur Sunar',  '+977 986-6201375'],
+            ['ops',     'Operations · Nepalgunj',        'सञ्चालन · नेपालगन्ज',  'Lokesh Mama',              ''],
+            ['parking', 'Parking in-charge · Rupaidiha', 'पार्किङ · रुपैडिहा',   'Vishal Bhai',              ''],
+            ['extra1',  'Nepal Office',                  'नेपाल कार्यालय',        'Nepal Office',             ''],
+            ['extra2',  'Nepal Office',                  'नेपाल कार्यालय',        'Nepal Office',             ''],
+        ];
+        $out = [];
+        foreach ($rows as [$key, $role, $roleNe, $defName, $defPhone]) {
+            $phone = $g('np_' . $key . '_phone');
+            if ($phone === '') {
+                $phone = $defPhone;
+            }
+            $tel = preg_replace('/\D/', '', $phone) ?? '';
+            if (str_starts_with($tel, '00')) { $tel = substr($tel, 2); }
+            if (strlen($tel) === 10) { $tel = '977' . $tel; }
+            if (!preg_match('/^[1-9]\d{9,14}$/', $tel)) {
+                continue;
+            }
+            $name  = $g('np_' . $key . '_name');
+            $out[] = [
+                'key'    => $key,
+                'role'   => $role,
+                'roleNe' => $roleNe,
+                'name'   => $name !== '' ? $name : $defName,
+                'phone'  => $phone,
+                'tel'    => $tel,
+                'country'=> str_starts_with($tel, '977') ? 'NP' : (str_starts_with($tel, '91') ? 'IN' : ''),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Where the Nepal office is, as people write it (9 Oct 2026): Company
+     * details -> "Office address (English)" (nepal_office), else the address
+     * the site has always published. One definition for the home banner,
+     * the office list and the facts object.
+     */
+    public static function nepalOfficePlace(): string
+    {
+        $v = trim(self::getString('nepal_office', ''));
+        return $v !== '' ? $v : 'Puspalal Chowk, Nepalgunj';
+    }
+
+    /**
+     * The counter locations the office has defined, as code => name.
+     *
+     * Owner ask (24 Sep 2026): "counter mode lai location haru ni add garna
+     * milos, like NPJ". The list lives in ONE settings row rather than a
+     * table — it is a dozen short lines only a superadmin ever edits, and a
+     * table would cost a CRUD screen to buy integrity nobody needs. Format
+     * is one desk per line:
+     *
+     *     NPJ|Nepalgunj — Bus Park
+     *
+     * A line with no pipe is taken as the name and given itself as the
+     * code, so somebody who types just "Birgunj" still gets a usable row
+     * instead of a silently dropped one. Blank lines are skipped, codes are
+     * upper-cased and trimmed to 16 characters (the column width), and a
+     * duplicate code keeps the FIRST spelling so the order on screen is the
+     * order in the box.
+     *
+     * @return array<string,string> code => name, in the order written
+     */
+    public static function counterLocations(): array
+    {
+        /* 4 Oct 2026: the desks are a table now (includes/counterdesk.php).
+           This stays the one call every datalist and picker already makes -
+           it simply answers from the table once the migration has run, and
+           from the settings row (kept as a mirror) until then. */
+        if (class_exists('CounterDesk', false) && CounterDesk::hasTable()) {
+            $opts = CounterDesk::options(true);
+            if ($opts !== []) {
+                return $opts;
+            }
+        }
+
+        return self::counterLocationsRaw();
+    }
+
+    /**
+     * The settings row itself, parsed - the pre-table list and the mirror
+     * CounterDesk keeps in sync. Only CounterDesk should need this.
+     *
+     * @return array<string,string> code => name, in the order written
+     */
+    public static function counterLocationsRaw(): array
+    {
+        $raw = self::getString('counter_locations', '');
+        $out = [];
+        foreach (preg_split('/\r\n|\r|\n/', $raw) ?: [] as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            [$code, $name] = array_pad(explode('|', $line, 2), 2, null);
+            $code = mb_strtoupper(trim((string) $code));
+            $name = trim((string) ($name ?? ''));
+            if ($name === '') {
+                $name = $code;
+            }
+            $code = mb_substr($code, 0, 16);
+            if ($code === '' || isset($out[$code])) {
+                continue;
+            }
+            $out[$code] = mb_substr($name, 0, 120);
+        }
+
+        return $out;
+    }
+
+    /**
+     * The printable label for a desk: "Nepalgunj — Bus Park (NPJ)".
+     *
+     * Either half may be missing — a desk can be given a name with no code
+     * or a code the list has never heard of — and the label degrades to
+     * whichever half exists rather than printing stray brackets on a
+     * ticket. An unknown code still resolves its name from the list when
+     * the profile carries only the code.
+     */
+    public static function counterLabel(string $code, string $name = ''): string
+    {
+        $code = mb_strtoupper(trim($code));
+        $name = trim($name);
+        if ($name === '' && $code !== '') {
+            $name = self::counterLocations()[$code] ?? '';
+            if ($name === '' && class_exists('CounterDesk', false)) {
+                $name = (string) (CounterDesk::get($code)['name'] ?? '');   // a closed desk still has its name
+            }
+        }
+        if ($name === '') {
+            return $code;
+        }
+
+        return $code === '' ? $name : $name . ' (' . $code . ')';
+    }
+
+    /**
+     * Desks on the NEPAL side of the border (3 Oct 2026, owner: "Nepalgunj
+     * ko lagi counter … ticket Nepal bata pathauda Nepal to India, Gujarat
+     * ko just opposite"). A clerk at one of these sells the RETURN run by
+     * default: counter mode opens on Nepal → India, QuickBot pre-picks
+     * "Return", and the desk sees the NPR to collect beside every rupee
+     * total. Fares stay in INR everywhere — nothing here touches money.
+     *
+     * Setting `counter_nepal_desks` = comma list of desk codes; the default
+     * covers the Nepal desks the counter_locations seed ships with.
+     *
+     * @return list<string>
+     */
+    public static function nepalDeskCodes(): array
+    {
+        $raw = trim(self::getString('counter_nepal_desks', ''));
+        if ($raw === '') {
+            $raw = 'NPJ,NPJD,RPD,KHL';   // a blank box means "the default", never "no Nepal desks"
+        }
+        $out = [];
+        foreach (preg_split('/[\s,;|]+/', mb_strtoupper($raw)) ?: [] as $c) {
+            $c = trim($c);
+            if ($c !== '' && !in_array($c, $out, true)) {
+                $out[] = mb_substr($c, 0, 16);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Is this desk on the Nepal side? By code first (the desk picker on
+     * Staff), else by a free-typed counter name that names a Nepal town —
+     * an agent whose "City / counter" says "Nepalgunj" is a Nepal desk too.
+     */
+    public static function isNepalDesk(string $code, string $name = ''): bool
+    {
+        $code = mb_strtoupper(trim($code));
+        /* With the desk table this is the SIDE question only - "does this
+           desk sell the return run?" - answered by the desk's own row.
+           Money is a separate question: CounterDesk::currency(). */
+        if ($code !== '' && class_exists('CounterDesk', false) && CounterDesk::hasTable()
+            && CounterDesk::get($code) !== null) {
+            return CounterDesk::side($code) === 'nepal';
+        }
+        if ($code !== '') {
+            return in_array($code, self::nepalDeskCodes(), true);
+        }
+
+        return $name !== '' && preg_match('/nepalg[au]nj|rupaidiha|kohalpur|khajura|\bbanke\b|नेपालगञ्ज|नेपालगंज|रुपैडिहा/iu', $name) === 1;
+    }
+
+    /**
+     * Drop the in-memory cache — used by long-running cron scripts.
+     */
+    public static function flush(): void
+    {
+        self::$cache   = null;
+        self::$decoded = [];
+    }
+}

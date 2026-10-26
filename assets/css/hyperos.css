@@ -1,0 +1,218 @@
+/* =====================================================================
+   SHG 12D HYPER-OS LAYER - 17 Oct 2026 (owner's "12D Hyper-OS" prompt)
+   Loads after premium3d.css, before perf.css + depth.css.
+
+   The owner's shg-12d-hyperos.css, SCOPED: the prompt restyled body and
+   every element (* {font-family}), which would have overridden the
+   palette picker (themes.css / data-palette), the AMOLED display and the
+   admin pages. Here every rule hangs off a class or #hyperBus, so the
+   3-coat look lives on the new night-highway band and the ticket moment,
+   and the rest of the site keeps its own theme. No web-font download
+   (Outfit / Space Grotesk are named first, then the site's stack).
+
+   Motion: transform/opacity only. The in-app Motion switch
+   (data-motion=reduced) stops it; the OS battery-saver flag does not,
+   because app.css's reduced-motion rule froze the coaches (p3j) - the
+   !important below beats that rule exactly like premium3d.css section 6.
+   ===================================================================== */
+
+:root {
+  /* 7D: 3-coat Cryo-Chiso palette */
+  --hx-abyss: #030711;
+  --hx-sapphire: #071529;
+  --hx-aurora-cyan: rgba(56, 189, 248, .16);
+  --hx-aurora-mint: rgba(16, 185, 129, .14);
+  --hx-royal-gold: rgba(251, 191, 36, .13);
+  --hx-prism: rgba(255, 255, 255, .26);
+  --pixel-fluid-spring: cubic-bezier(.16, 1, .3, 1);
+  --hyper-bounce: cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* ---- 1. 3D extruded liquid-metal title ------------------------------ */
+.shg-title-12d {
+  font-family: 'Outfit', var(--font-display, inherit), sans-serif;
+  font-weight: 900; letter-spacing: -.03em;
+  background: linear-gradient(110deg, #fff 0%, #bae6fd 22%, #fde68a 48%, #6ee7b7 74%, #fff 100%);
+  background-size: 240% auto;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: hyperLiquidText 6.5s linear infinite;
+  filter: drop-shadow(0 1px 0 rgba(255,255,255,.3)) drop-shadow(0 3px 0 #061224) drop-shadow(0 6px 0 #030914) drop-shadow(0 12px 24px rgba(56,189,248,.35));
+}
+.shg-tech-badge { font-family: 'Space Grotesk', ui-monospace, monospace; letter-spacing: .06em; }
+@keyframes hyperLiquidText { 0% { background-position: 0% center } 100% { background-position: 240% center } }
+
+/* ---- 2. 3-coat triple-insulated cryo glass deck --------------------- */
+.shg-3coat-deck {
+  position: relative;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 45%, rgba(16,185,129,.06) 100%),
+    radial-gradient(circle at 12% 18%, var(--hx-aurora-cyan) 0%, transparent 42%),
+    radial-gradient(circle at 88% 22%, var(--hx-aurora-mint) 0%, transparent 46%),
+    radial-gradient(circle at 50% 100%, var(--hx-royal-gold) 0%, transparent 55%),
+    linear-gradient(180deg, var(--hx-abyss) 0%, #07162c 52%, #02050c 100%);
+  -webkit-backdrop-filter: blur(26px) saturate(210%); backdrop-filter: blur(26px) saturate(210%);
+  border-radius: 30px;
+  border-top: 1.5px solid rgba(255,255,255,.35);
+  border-left: 1px solid rgba(255,255,255,.22);
+  border-right: 1px solid rgba(56,189,248,.18);
+  border-bottom: 2.5px solid rgba(0,0,0,.65);
+  box-shadow: 0 28px 70px -12px rgba(0,0,0,.55), 0 0 40px -8px rgba(56,189,248,.18), inset 0 1px 3px rgba(255,255,255,.32);
+  color: #f8fafc;
+  transition: transform .42s var(--pixel-fluid-spring), box-shadow .42s var(--pixel-fluid-spring);
+}
+
+/* ---- 3. holographic foil sheen -------------------------------------- */
+.shg-holo-foil { position: relative; overflow: hidden; }
+.shg-holo-foil::after {
+  content: ''; position: absolute; inset: -60%; pointer-events: none; z-index: 1;
+  background: linear-gradient(115deg, transparent 32%, rgba(56,189,248,.22) 44%, rgba(251,191,36,.26) 50%, rgba(16,185,129,.22) 56%, transparent 68%);
+  transform: translateX(-130%) rotate(18deg);
+  animation: shgHoloPass 4.2s ease-in-out infinite;
+}
+@keyframes shgHoloPass { 0% { transform: translateX(-130%) rotate(18deg) } 55%, 100% { transform: translateX(130%) rotate(18deg) } }
+
+/* ---- 4. 10D laser sweep + 360 ticket turn --------------------------- */
+@keyframes shgLaserSweep { 0% { top: -5%; opacity: 0 } 20%, 80% { opacity: 1 } 100% { top: 105%; opacity: 0 } }
+.shg-ai-laser-bar {
+  position: absolute; left: 0; right: 0; top: -5%; height: 4px; z-index: 50; pointer-events: none;
+  background: linear-gradient(90deg, transparent, #38bdf8, #fde68a, #10b981, transparent);
+  box-shadow: 0 0 28px 6px rgba(56,189,248,.85);
+  animation: shgLaserSweep .65s ease-in-out forwards;
+}
+@keyframes shgTicketSpin360 {
+  0%   { transform: perspective(1500px) rotateY(0) scale(1); filter: brightness(1) }
+  45%  { transform: perspective(1500px) rotateY(180deg) scale(1.07) translateZ(50px); filter: brightness(1.4) drop-shadow(0 0 45px rgba(56,189,248,.85)) }
+  100% { transform: perspective(1500px) rotateY(360deg) scale(1); filter: brightness(1) }
+}
+.shg-ticket-360-active,
+#smartBook .sb-tk.shg-ticket-360-active { animation: shgTicketSpin360 .92s var(--pixel-fluid-spring) forwards; }   /* beats smartbook.css sbRise */
+/* the ticket host needs room for the laser */
+#smartBook .sb-tk { position: relative; }
+
+/* ---- 5. 5D water ripple + tactile spring ---------------------------- */
+.hx-rel { position: relative; }
+#smartBook .sb-pay, #smartBook .sb-dir-b, #smartBook .sb-bot-go { overflow: hidden; }
+.hx-ripple {
+  position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+  pointer-events: none; z-index: 3;
+  background: radial-gradient(circle, rgba(255,255,255,.75) 0%, rgba(125,211,252,.45) 40%, rgba(16,185,129,0) 72%);
+  animation: hxRipple .62s var(--pixel-fluid-spring) forwards;
+}
+@keyframes hxRipple { 0% { transform: scale(.3); opacity: .9 } 100% { transform: scale(14); opacity: 0 } }
+@media (hover: hover) and (pointer: fine) {
+  #smartBook .sb-pay { transition: transform .28s var(--hyper-bounce), box-shadow .28s var(--hyper-bounce); }
+  #smartBook .sb-pay:hover { transform: translate3d(0,-3px,0) scale(1.018); }
+}
+#smartBook .sb-pay:active, #smartBook .sb-dir-b:active { transform: scale(.965); }
+/* 6D: the card leans as the route flips */
+@keyframes hxSwap { 0% { transform: perspective(1400px) rotateY(0) } 40% { transform: perspective(1400px) rotateY(-7deg) translateZ(10px) } 100% { transform: perspective(1400px) rotateY(0) } }
+#sbCard.hx-swap { animation: hxSwap .55s var(--pixel-fluid-spring); }
+
+/* ---- 6. 11D vault pill (SmartBook head, HTTPS only - 30-hyperos.js) - */
+#smartBook .hx-vault {
+  display: inline-flex; align-items: center; gap: 6px; margin: 6px 0 0;
+  padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; line-height: 1.4;
+  color: #065f46; background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.35);
+}
+#smartBook .hx-vault i { width: 7px; height: 7px; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 0 rgba(16,185,129,.6); animation: hxPing 1.8s ease-out infinite; }
+@keyframes hxPing { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.6) } 100% { box-shadow: 0 0 0 8px rgba(16,185,129,0) } }
+html[data-display="amoled"] #smartBook .hx-vault, html[data-theme="dark"] #smartBook .hx-vault { color: #6ee7b7; }
+
+/* ---- 7. night-highway band (#hyperBus, app.template.html) ------------
+   Owner, 17 Oct 2026: the official white coach photo, nothing drawn. The
+   coach is hd/bus-cutout(-m).webp (1600x800); its rims turn in place:
+   each .hx-hub sits over one rim, the crop inside is stretched back to a
+   circle (the rims are seen in perspective, rx < ry) and the hub box is
+   squeezed by --k = rx/ry, so the turning rim matches the photo exactly.
+   Rims measured on the 1600px file: rear c(307.5,610.5) rx38 ry45,
+   front c(1018,627) rx47 ry52. The tyres end at 90.25% of the height,
+   hence the photo's -4.875% bottom margin (of its own width). */
+html #view-home > #hyperBus { order: -1 !important; }   /* same as SmartBook; DOM after it, so right below the card */
+#hyperBus { --hx-road: 46px; width: 100%; max-width: 1100px; margin: 14px auto 6px; padding: 0 12px; box-sizing: border-box; }
+#hyperBus .hx-deck { overflow: hidden; padding: 14px 16px 0; }
+#hyperBus .hx-mist { position: absolute; width: 320px; height: 160px; border-radius: 50%; filter: blur(48px); pointer-events: none; }
+#hyperBus .hx-mist.m1 { top: -80px; left: 18%; background: rgba(56,189,248,.14); animation: hxDrift 14s ease-in-out infinite alternate; }
+#hyperBus .hx-mist.m2 { bottom: -64px; right: 18%; background: rgba(148,163,184,.14); animation: hxDrift 17s ease-in-out infinite alternate-reverse; }
+@keyframes hxDrift { 0% { transform: translate3d(-30px,0,0) } 100% { transform: translate3d(40px,10px,0) } }
+
+#hyperBus .hx-top { position: relative; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; font-size: 12.5px; }
+#hyperBus .hx-live { display: flex; align-items: center; gap: 9px; min-width: 0; }
+#hyperBus .hx-logo { display: block; width: auto; height: 26px; max-width: none; flex: 0 0 auto; filter: drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
+#hyperBus .hx-dot { position: relative; width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: #10b981; }
+#hyperBus .hx-dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: #34d399; animation: hxDotPing 1.6s cubic-bezier(0,0,.2,1) infinite; }
+@keyframes hxDotPing { 75%, 100% { transform: scale(2.2); opacity: 0 } }
+#hyperBus .hx-corr { font-weight: 700; color: #fff; overflow-wrap: anywhere; }
+#hyperBus .hx-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+#hyperBus .hx-pill { padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+#hyperBus .hx-pill.c { color: #e0f2fe; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.22); }
+#hyperBus .hx-pill.g { color: #d1fae5; background: rgba(16,185,129,.14); border: 1px solid rgba(52,211,153,.3); }
+
+#hyperBus .hx-stage { position: relative; display: flex; align-items: flex-end; justify-content: center; padding-top: 6px; user-select: none; -webkit-user-select: none; }
+#hyperBus .hx-coach { position: relative; z-index: 2; width: 82%; max-width: 600px; margin-bottom: calc(var(--hx-road) * .55); }
+#hyperBus .hx-photo { position: relative; margin-bottom: -4.875%; }
+#hyperBus .hx-bus { display: block; width: 100%; max-width: none; height: auto; filter: drop-shadow(0 10px 14px rgba(0,0,0,.45)); }
+#hyperBus .hx-hub { position: absolute; z-index: 1; border-radius: 50%; overflow: hidden; transform: scaleX(var(--k)); -webkit-mask: radial-gradient(circle, #000 90%, transparent 100%); mask: radial-gradient(circle, #000 90%, transparent 100%); }
+#hyperBus .hx-hub i { position: absolute; inset: 0; display: block; border-radius: 50%; overflow: hidden; }
+#hyperBus .hx-hub img { position: absolute; display: block; max-width: none !important; max-height: none !important; }
+#hyperBus .hx-hub.h1 { --k: .8444; left: 16.406%; top: 70.6875%; width: 5.625%; height: 11.25%; }
+#hyperBus .hx-hub.h1 img { width: 2105.26%; height: 888.89%; left: -354.6%; top: -628.33%; }
+#hyperBus .hx-hub.h2 { --k: .90385; left: 60.375%; top: 71.875%; width: 6.5%; height: 13%; }
+#hyperBus .hx-hub.h2 img { width: 1702.13%; height: 769.23%; left: -1032.98%; top: -552.88%; }
+/* LED headlight throw, anchored to the coach's nose so it rides with it */
+#hyperBus .hx-beam {
+  position: absolute; left: 95%; top: 60%; width: 46%; height: 26%; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse 100% 60% at 0% 50%, rgba(255,251,235,.45) 0%, rgba(254,243,199,.14) 45%, transparent 80%);
+  clip-path: polygon(0 40%, 100% 8%, 100% 92%, 0 60%); filter: blur(6px);
+  animation: hxBeam 2.6s ease-in-out infinite;
+}
+@keyframes hxBeam { 0%, 100% { opacity: .8 } 50% { opacity: 1 } }
+#hyperBus .hx-shadow { position: absolute; z-index: 1; left: 50%; bottom: calc(var(--hx-road) * .55 - 7px); width: min(76%, 560px); height: 16px; transform: translateX(-46%); border-radius: 50%; background: radial-gradient(closest-side, rgba(0,0,0,.65), transparent); }
+/* asphalt with a white edge line and white lane marks */
+#hyperBus .hx-road {
+  position: absolute; left: -16px; right: -16px; bottom: 0; height: var(--hx-road); overflow: hidden; display: flex; align-items: center;
+  background: linear-gradient(180deg, #3a3f47 0%, #2a2e35 40%, #1d2026 100%);
+  border-top: 3px solid rgba(255,255,255,.75);
+  box-shadow: inset 0 6px 10px rgba(0,0,0,.35);
+}
+#hyperBus .hx-dashes { display: flex; gap: 56px; width: max-content; padding-left: 20px; }
+#hyperBus .hx-dashes i { display: block; width: 80px; height: 5px; flex: 0 0 auto; border-radius: 2px; background: rgba(255,255,255,.88); }
+
+.shg-bus-suspension { animation: shgCoachSuspension 1.4s ease-in-out infinite; }
+.shg-wheel-spin { transform-origin: center; animation: shgAlloySpin .5s linear infinite; }
+.shg-highway-dash { animation: shgRoadSpeed .42s linear infinite; }
+@keyframes shgCoachSuspension { 0%, 100% { transform: translate3d(0,-1.5px,0) rotate(-.15deg) } 50% { transform: translate3d(0,1.5px,0) rotate(.15deg) } }
+@keyframes shgAlloySpin { 0% { transform: rotate(0) } 100% { transform: rotate(360deg) } }
+@keyframes shgRoadSpeed { 0% { transform: translate3d(0,0,0) } 100% { transform: translate3d(-136px,0,0) } }   /* one dash + gap = seamless */
+
+@media (max-width: 600px) {
+  #hyperBus { --hx-road: 34px; padding: 0 10px; margin-top: 10px; }
+  #hyperBus .hx-deck { border-radius: 22px; padding: 12px 10px 0; }
+  #hyperBus .hx-coach { width: 94%; }
+  #hyperBus .hx-top { font-size: 11px; }
+  #hyperBus .hx-logo { height: 22px; }
+  #hyperBus .hx-road { left: -10px; right: -10px; }
+}
+/* the short-phone rule premium3d.css uses for #hero3d: keep the card in view */
+@media (max-width: 859px) and (max-height: 600px) { html.sb-on.sb-home #hyperBus { display: none; } }
+html[data-tier="low"] #hyperBus .hx-mist { display: none; }
+html[data-tier="low"] .shg-3coat-deck { -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* ---- 8. motion: the in-app switch stops it, the OS flag does not ----- */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="reduced"]) .shg-bus-suspension { animation: shgCoachSuspension 1.4s ease-in-out infinite !important; }
+  html:not([data-motion="reduced"]) .shg-wheel-spin { animation: shgAlloySpin .5s linear infinite !important; }
+  html:not([data-motion="reduced"]) .shg-highway-dash { animation: shgRoadSpeed .42s linear infinite !important; }
+  html:not([data-motion="reduced"]) .shg-holo-foil::after { animation: shgHoloPass 4.2s ease-in-out infinite !important; }
+  html:not([data-motion="reduced"]) .shg-ai-laser-bar { animation: shgLaserSweep .65s ease-in-out forwards !important; }
+  html:not([data-motion="reduced"]) #smartBook .sb-tk.shg-ticket-360-active { animation: shgTicketSpin360 .92s var(--pixel-fluid-spring) forwards !important; }
+}
+html[data-motion="reduced"] .shg-bus-suspension,
+html[data-motion="reduced"] .shg-wheel-spin,
+html[data-motion="reduced"] .shg-highway-dash,
+html[data-motion="reduced"] .shg-holo-foil::after,
+html[data-motion="reduced"] .shg-title-12d,
+html[data-motion="reduced"] #hyperBus .hx-mist,
+html[data-motion="reduced"] #hyperBus .hx-beam { animation: none !important; }
+
+@media print { #hyperBus, .shg-ai-laser-bar, .hx-ripple { display: none !important; } }

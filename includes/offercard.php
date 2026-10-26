@@ -1,0 +1,335 @@
+<?php
+/**
+ * =====================================================================
+ *  OfferCard — the festival offer pamphlet (6 Oct 2026).
+ *
+ *  Owner: "10% off offer — mail, Facebook, website, jaha jaha haalna
+ *  sakinchha; pamphlet banayera". One 1080×1350 PNG (Facebook / Instagram
+ *  / WhatsApp status size) drawn with GD from the offer that is RUNNING in
+ *  Admin → Offers (Fare::runningOffers()) and the live direction fares
+ *  (Fare::dirFares()), so the picture can never promise a discount or a
+ *  fare the checkout does not give. Nepali / Hindi shaped by DevShape, as
+ *  on the ticket and the private-cabin card (includes/promocard.php).
+ * =====================================================================
+ */
+
+declare(strict_types=1);
+
+if (!defined('SHG_APP')) {
+    http_response_code(403);
+    exit('Forbidden');
+}
+
+require_once __DIR__ . '/fare.php';
+
+final class OfferCard
+{
+    public const LANGS = ['ne', 'hi', 'en'];
+
+    /** The offer the card shows: the first running one, or null. */
+    public static function offer(): ?array
+    {
+        $o = Fare::runningOffers()[0] ?? null;
+        return $o !== null && (float) $o['value'] > 0 ? $o : null;
+    }
+
+    /** "10%" or "₹200". */
+    public static function amount(array $o): string
+    {
+        return $o['type'] === 'percent'
+            ? rtrim(rtrim(number_format((float) $o['value'], 2), '0'), '.') . '%'
+            : '₹' . number_format((float) $o['value']);
+    }
+
+    /** A fare after the offer (what the checkout would charge for one seat). */
+    public static function after(array $o, float $fare): int
+    {
+        $cut = $o['type'] === 'percent' ? round($fare * (float) $o['value'] / 100) : (float) $o['value'];
+        if ((float) ($o['max'] ?? 0) > 0) {
+            $cut = min($cut, (float) $o['max']);
+        }
+        return (int) max(0, round($fare - $cut));
+    }
+
+    public static function festive(array $o): bool
+    {
+        return preg_match('/dashain|tihar|dasain|दशैं|तिहार/iu', $o['title'] . ' ' . $o['code']) === 1;
+    }
+
+    /** @return array<string,string> */
+    public static function copy(string $lang, array $o, string $site): array
+    {
+        $amt = self::amount($o);
+        $h = (int) ($o['ahead'] ?? 0);
+        $till = $o['until'] !== '' ? date('j M Y', (int) strtotime($o['until'])) : '';
+        $fest = self::festive($o);
+        $all = [
+            'ne' => ['kicker' => $fest ? 'दशैं – तिहार विशेष' : 'विशेष अफर', 'off' => 'छुट',
+                     'how' => $h > 0 ? 'यात्रा भन्दा ' . $h . ' घण्टा अगाडि बुक गर्नुहोस्' : 'अहिले नै बुक गर्नुहोस्',
+                     'go' => 'घर जाने  Gujarat – Rupaidiha', 'back' => 'फर्कने  Rupaidiha – Gujarat',
+                     'till' => $till !== '' ? $till . ' सम्म मात्र' : '', 'note' => 'छुट आफैं लाग्छ — कुनै कोड चाहिँदैन',
+                     'cta' => 'WhatsApp वा ' . $site . ' मा बुक गर्नुहोस्', 'pickup' => 'आफ्नो pickup को भाडामा ' . $amt . ' छुट'],
+            'hi' => ['kicker' => $fest ? 'दशहरा – दिवाली विशेष' : 'विशेष ऑफ़र', 'off' => 'छूट',
+                     'how' => $h > 0 ? 'यात्रा से ' . $h . ' घंटे पहले बुक करें' : 'अभी बुक करें',
+                     'go' => 'घर जाना  Gujarat – Rupaidiha', 'back' => 'वापसी  Rupaidiha – Gujarat',
+                     'till' => $till !== '' ? $till . ' तक ही' : '', 'note' => 'छूट अपने-आप लगती है — कोई कोड नहीं',
+                     'cta' => 'WhatsApp या ' . $site . ' पर बुक करें', 'pickup' => 'अपने pickup के किराये पर ' . $amt . ' छूट'],
+            'en' => ['kicker' => $fest ? 'DASHAIN – TIHAR SPECIAL' : 'SPECIAL OFFER', 'off' => 'OFF',
+                     'how' => $h > 0 ? 'Book ' . $h . ' hours or more before departure' : 'Book now',
+                     'go' => 'Going home  Gujarat – Rupaidiha', 'back' => 'Coming back  Rupaidiha – Gujarat',
+                     'till' => $till !== '' ? 'Till ' . $till . ' only' : '', 'note' => 'Applied automatically — no code needed',
+                     'cta' => 'Book on WhatsApp or ' . $site, 'pickup' => $amt . ' off your pickup\'s fare'],
+        ];
+        return $all[in_array($lang, self::LANGS, true) ? $lang : 'ne'];
+    }
+
+    /**
+     * The lowest per-seat fare of a direction on the fare board ('go' |
+     * 'back') and whether other stops pay more — what a caption may quote
+     * as "from ₹X" (9 Oct 2026, site facts: fares are per pickup / drop).
+     *
+     * @return array{min: float, varies: bool}
+     */
+    public static function fareFrom(string $side): array
+    {
+        $r = Fare::board()['range'][$side === 'back' ? 'back' : 'go'];
+        return ['min' => (float) $r['min'], 'varies' => (float) $r['max'] > (float) $r['min']];
+    }
+
+    /** The caption for Facebook / WhatsApp / email (plain text, all three languages). */
+    public static function caption(array $o, string $phone, string $site): string
+    {
+        /* 9 Oct 2026: "from ₹min" over the fare board - every pickup / drop has
+           its own fare, so the old single direction default under-quoted most
+           stops. The after-offer figure is the same stop's price after the offer. */
+        $go   = self::fareFrom('go');
+        $back = self::fareFrom('back');
+        $noteGo   = ' देखि (चढ्ने ठाउँ अनुसार फरक)';     // "from" - pickups differ
+        $noteBack = ' देखि (ओर्लने ठाउँ अनुसार फरक)';    // "from" - drops differ
+        $amt = self::amount($o);
+        $h = (int) ($o['ahead'] ?? 0);
+        $till = $o['until'] !== '' ? date('j M', (int) strtotime($o['until'])) : '';
+        $fest = self::festive($o);
+        $brand = (string) (Settings::company()['name'] ?? '');
+        return '🪔 ' . ($fest ? 'दशैं–तिहार अफर' : 'विशेष अफर') . ' — ' . $amt . ' छुट!' . "\n"
+             . ($h > 0 ? 'यात्रा भन्दा ' . $h . ' घण्टा अगाडि बुक गर्नुहोस्, भाडामा ' . $amt . ' छुट पाउनुहोस्।' : 'भाडामा ' . $amt . ' छुट।') . "\n"
+             . '🚌 घर जाने Gujarat → Rupaidiha: ₹' . number_format($go['min']) . ' → ₹' . number_format(self::after($o, $go['min'])) . ($go['varies'] ? $noteGo : '') . "\n"
+             . '🚌 फर्कने Rupaidiha → Gujarat: ₹' . number_format($back['min']) . ' → ₹' . number_format(self::after($o, $back['min'])) . ($back['varies'] ? $noteBack : '') . "\n"
+             . ($till !== '' ? '⏳ ' . $till . ' सम्म मात्र · ' : '') . 'छुट आफैं लाग्छ, कोड चाहिँदैन।' . "\n\n"
+             . ($fest ? 'Dashain–Tihar offer' : 'Special offer') . ': ' . $amt . ' off when you book ' . ($h > 0 ? $h . '+ hours before departure' : 'now')
+             . ($till !== '' ? ' (till ' . $till . ')' : '') . '. Fares from ₹' . number_format($go['min']) . ' (Gujarat → Rupaidiha) and ₹' . number_format($back['min']) . " (Rupaidiha → Gujarat).\n"
+             . '📞 ' . $phone . '  ·  🌐 https://' . $site . ($brand !== '' ? '  ·  ' . $brand : '') . "\n"
+             . '#Dashain #Tihar #Nepal #Gujarat #BusTicket #SHariGlobal';
+    }
+
+    /** Every customer email we hold, once each (booking contact, app sign-in, office record). */
+    public static function customerEmails(): array
+    {
+        $out = [];
+        foreach ([
+            "SELECT DISTINCT LOWER(TRIM(contact_email)) e FROM bookings WHERE contact_email LIKE '%_@_%._%'",
+            "SELECT DISTINCT LOWER(TRIM(email)) e FROM users WHERE email LIKE '%_@_%._%'",
+            "SELECT DISTINCT LOWER(TRIM(email)) e FROM user_profiles WHERE email LIKE '%_@_%._%'",
+        ] as $sql) {
+            try {
+                foreach (Database::fetchAll($sql) as $r) {
+                    $e = Security::email((string) $r['e']);
+                    if ($e !== '') {
+                        $out[$e] = true;
+                    }
+                }
+            } catch (Throwable $e) {
+                // a table without the column simply adds nobody
+            }
+        }
+        $staff = [];
+        try {
+            foreach (Database::fetchAll("SELECT LOWER(email) e FROM admins WHERE email IS NOT NULL AND email <> ''") as $r) {
+                $staff[(string) $r['e']] = true;
+            }
+        } catch (Throwable $e) {
+        }
+        return array_values(array_filter(array_keys($out), static fn (string $e): bool => !isset($staff[$e])));
+    }
+
+    /** The offer email: the caption as HTML + the pamphlet attached. */
+    public static function mail(array $offer, string $to, string $phone, string $site): bool
+    {
+        $cap  = self::caption($offer, $phone, $site);
+        $amt  = self::amount($offer);
+        $co   = Settings::company();
+        $subj = '🪔 ' . (self::festive($offer) ? 'दशैं–तिहार अफर' : 'विशेष अफर') . ': ' . $amt . ' छुट — ' . (string) $co['name'];
+        $html = '<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:3px solid #FFD166;border-radius:14px;overflow:hidden">'
+              . '<div style="background:#7a1020;color:#FFD166;padding:18px 20px;font-size:22px;font-weight:bold">🪔 ' . Security::e(self::festive($offer) ? 'दशैं–तिहार अफर' : 'विशेष अफर') . ' — ' . Security::e($amt) . ' छुट</div>'
+              . '<div style="padding:18px 20px;font-size:15px;line-height:1.6;color:#222">' . nl2br(Security::e($cap)) . '</div>'
+              . '<div style="padding:0 20px 20px"><a href="https://' . Security::e($site) . '/?src=offer_mail" style="display:inline-block;background:#ff7a00;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:999px">अहिले बुक गर्नुहोस् · Book now</a></div>'
+              . '<div style="padding:10px 20px;background:#fff3d6;font-size:12px;color:#555">' . Security::e((string) $co['name']) . ' · ' . Security::e($phone) . ' · यो इमेल नचाहिए reply मा STOP लेख्नुहोस्।</div></div>';
+        if (!class_exists('Ticket')) {
+            require_once __DIR__ . '/ticket.php';
+        }
+        if (!class_exists('Notify')) {
+            require_once __DIR__ . '/notify.php';
+        }
+        $png  = self::png('ne', $offer, $phone, $site, Ticket::logoFile());
+        return Notify::email($to, $subj, $html, $cap . "\n\nTo stop these emails, reply STOP.",
+            [['name' => 'shg-offer-' . strtolower((string) $offer['code']) . '.png', 'mime' => 'image/png', 'data' => $png]]);
+    }
+
+    /** @return string PNG bytes */
+    public static function png(string $lang, array $o, string $phone, string $site, ?string $logoFile): string
+    {
+        $copy = self::copy($lang, $o, $site);
+        $fares = Fare::dirFares();
+        $font = dirname(__DIR__) . '/assets/fonts/NotoSansDevanagari.ttf';
+        if (!class_exists('DevShape') && is_file(__DIR__ . '/devshape.php')) {
+            require_once __DIR__ . '/devshape.php';
+        }
+        $txt = static function ($im, float $size, int $x, int $y, int $col, string $s, bool $bold = false) use ($font): void {
+            if (class_exists('DevShape') && DevShape::needs($s)
+                && DevShape::gdText($im, $size, $x, $y, $col, $s, $bold ? [[0, 0], [1, 0]] : [[0, 0]])) {
+                return;
+            }
+            imagettftext($im, $size, 0, $x, $y, $col, $font, $s);
+            if ($bold) {
+                imagettftext($im, $size, 0, $x + 1, $y, $col, $font, $s);
+                imagettftext($im, $size, 0, $x + 2, $y, $col, $font, $s);
+            }
+        };
+        $wd = static function (float $size, string $s) use ($font): int {
+            if (class_exists('DevShape') && DevShape::needs($s) && ($w = DevShape::gdWidth($size, $s)) !== null) {
+                return $w;
+            }
+            $b = @imagettfbbox($size, 0, $font, $s);
+            return $b ? (int) abs($b[2] - $b[0]) : 0;
+        };
+
+        $W = 1080; $H = 1350;
+        $im = imagecreatetruecolor($W, $H);
+        imageantialias($im, true);
+        $c = static fn (string $hex, int $a = 0): int => imagecolorallocatealpha($im, (int) hexdec(substr($hex, 1, 2)), (int) hexdec(substr($hex, 3, 2)), (int) hexdec(substr($hex, 5, 2)), $a);
+        // Deep maroon at the top to festive orange at the bottom.
+        for ($y = 0; $y < $H; $y++) {
+            $t = $y / $H;
+            imageline($im, 0, $y, $W, $y, imagecolorallocate($im, (int) (96 + 140 * $t), (int) (10 + 70 * $t), (int) (24 - 10 * $t)));
+        }
+        $gold = $c('#FFD166'); $white = $c('#FFFFFF'); $cream = $c('#FFF3D6'); $maroon = $c('#5E0B15'); $dark = $c('#3B1D00');
+        $glow = $c('#FFD166', 100);
+
+        // Soft rangoli rings behind the big number.
+        foreach ([[540, 520, 640], [540, 520, 520], [540, 520, 400]] as $i => [$cx, $cy, $d]) {
+            imagesetthickness($im, 3);
+            imageellipse($im, $cx, $cy, $d, $d, $c('#FFD166', 70 + 15 * $i));
+        }
+        for ($k = 0; $k < 24; $k++) {
+            $a = $k * M_PI / 12;
+            imagefilledellipse($im, (int) (540 + cos($a) * 320), (int) (520 + sin($a) * 320), 14, 14, $c('#FFD166', 60));
+        }
+        imagesetthickness($im, 1);
+
+        // Gold frame.
+        imagesetthickness($im, 6);
+        imagerectangle($im, 28, 28, $W - 29, $H - 29, $gold);
+        imagesetthickness($im, 2);
+        imagerectangle($im, 44, 44, $W - 45, $H - 45, $c('#FFD166', 50));
+        imagesetthickness($im, 1);
+
+        // Diyas (little oil lamps) along the top — drawn, the font has no emoji.
+        $diya = static function (int $x, int $y) use ($im, $c): void {
+            imagefilledarc($im, $x, $y, 70, 40, 0, 180, $c('#B5542A'), IMG_ARC_PIE);
+            imagefilledrectangle($im, $x - 35, $y - 4, $x + 35, $y + 2, $c('#8A3A1A'));
+            imagefilledellipse($im, $x, $y - 22, 18, 34, $c('#FFB000'));
+            imagefilledellipse($im, $x, $y - 18, 9, 18, $c('#FFF3B0'));
+            imagefilledellipse($im, $x, $y - 22, 46, 54, $c('#FFD166', 105));
+        };
+        foreach ([150, 330, 750, 930] as $dx) {
+            $diya($dx, 130);
+        }
+
+        /* The emblem in the middle of the lamps, then the company NAME as a
+           live line under it (9 Oct 2026): the logo no longer carries the
+           name baked in, so the card would otherwise be anonymous. The
+           caller's full logo is only the fallback when the emblem file is
+           missing; a caller passing null still gets the name line. */
+        if (!class_exists('DocArt')) {
+            require_once __DIR__ . '/docart.php';
+        }
+        if ($logoFile !== null) {
+            $mark = DocArt::markFile();
+            if ($mark !== null) {
+                DocArt::mark($im, (int) (($W - 230) / 2), 46, 230, 108, true, '', 'center');
+            } elseif (is_file($logoFile)) {
+                DocArt::placeImage($im, $logoFile, (int) (($W - 230) / 2), 46, 230, 108, 'center');
+            }
+        }
+        $coName = 'S Hari Global Pvt Ltd';
+        try { $n = trim((string) (Settings::company()['name'] ?? '')); if ($n !== '') { $coName = $n; } } catch (Throwable $e) {}
+        $nmW = $wd(26, $coName);
+        $flW = DocArt::flagPairWidth(22, 7);
+        $nx  = (int) (($W - $nmW - 16 - $flW) / 2);
+        $txt($im, 26, $nx, 200, $gold, $coName, true);
+        DocArt::flagPair($im, $nx + $nmW + 16, 180, 22, 7, 'IN');
+
+        // Kicker ribbon.
+        $y = 240;
+        $kw = $wd(30, $copy['kicker']) + 90;
+        $kx = (int) (($W - $kw) / 2);
+        imagefilledrectangle($im, $kx, $y, $kx + $kw, $y + 64, $gold);
+        imagefilledpolygon($im, [$kx - 30, $y + 32, $kx, $y, $kx, $y + 64], $gold);
+        imagefilledpolygon($im, [$kx + $kw + 30, $y + 32, $kx + $kw, $y, $kx + $kw, $y + 64], $gold);
+        $txt($im, 30, $kx + 45, $y + 46, $maroon, $copy['kicker'], true);
+
+        // The big number.
+        $amt = self::amount($o);
+        $y = 560;
+        $bw = $wd(190, $amt);
+        $txt($im, 190, (int) (($W - $bw) / 2) - 70, $y, $glow, $amt, true);
+        $txt($im, 190, (int) (($W - $bw) / 2) - 76, $y - 6, $white, $amt, true);
+        $txt($im, 64, (int) (($W + $bw) / 2) - 40, $y - 6, $gold, $copy['off'], true);
+
+        // How to get it.
+        $y = 680;
+        $txt($im, 38, (int) (($W - $wd(38, $copy['how'])) / 2), $y, $cream, $copy['how'], true);
+
+        // Fare boxes: before → after (direction default fares).
+        $y = 740;
+        $box = static function (int $x, int $y, string $label, float $from, int $to) use ($im, $c, $txt, $wd, $gold, $white, $cream): void {
+            imagefilledrectangle($im, $x, $y, $x + 440, $y + 190, $c('#3B0A0F', 30));
+            imagefilledrectangle($im, $x, $y, $x + 440, $y + 8, $gold);
+            $txt($im, 22, $x + 24, $y + 52, $cream, $label, true);
+            $old = '₹' . number_format($from);
+            $txt($im, 34, $x + 24, $y + 120, $c('#E8C9A0'), $old);
+            $ow = $wd(34, $old);
+            imagesetthickness($im, 4);
+            imageline($im, $x + 20, $y + 106, $x + 30 + $ow, $y + 96, $c('#FF5A5A'));
+            imagesetthickness($im, 1);
+            $txt($im, 56, $x + 50 + $ow, $y + 128, $gold, '₹' . number_format($to), true);
+            $txt($im, 17, $x + 24, $y + 168, $white, 'per seat');
+        };
+        $box(80, $y, $copy['go'], $fares['toNepal'], self::after($o, $fares['toNepal']));
+        $box(560, $y, $copy['back'], $fares['toIndia'], self::after($o, $fares['toIndia']));
+
+        // Fine print.
+        $y = 990;
+        $txt($im, 24, (int) (($W - $wd(24, $copy['pickup'])) / 2), $y, $cream, $copy['pickup']);
+        $y += 46;
+        $txt($im, 24, (int) (($W - $wd(24, $copy['note'])) / 2), $y, $cream, $copy['note']);
+        if ($copy['till'] !== '') {
+            $y += 62;
+            $tw = $wd(30, $copy['till']) + 60;
+            $tx = (int) (($W - $tw) / 2);
+            imagefilledrectangle($im, $tx, $y - 42, $tx + $tw, $y + 14, $maroon);
+            $txt($im, 30, $tx + 30, $y, $gold, $copy['till'], true);
+        }
+
+        // Footer band.
+        imagefilledrectangle($im, 29, $H - 170, $W - 30, $H - 30, $gold);
+        $txt($im, 28, (int) (($W - $wd(28, $copy['cta'])) / 2), $H - 108, $dark, $copy['cta'], true);
+        $ph = 'Call / WhatsApp  ' . $phone;
+        $txt($im, 30, (int) (($W - $wd(30, $ph)) / 2), $H - 56, $maroon, $ph, true);
+
+        ob_start();
+        imagepng($im, null, 6);
+        imagedestroy($im);
+        return (string) ob_get_clean();
+    }
+}

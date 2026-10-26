@@ -1,0 +1,735 @@
+/* =====================================================================
+   S HARI GLOBAL REDESIGN — Oct 2026 (customer app, shreehariglobal.in)
+
+   Loads LAST, after app.css / views.css / premium.css and ds.css. It does
+   three jobs, in this order:
+     1. Points every legacy colour/type/shadow token at the design-system
+        tokens in ds.css, so the ~1,300 existing var(--blue)/var(--orange)/
+        var(--card)... references repaint in the one brand without touching
+        the rules that use them. The 7 day-palettes are retired (the
+        pre-paint script no longer stamps data-day).
+     2. Switches off decoration the brief rules out: looping motion, sheen
+        text, rays/particles, gradients on surfaces and buttons.
+     3. Restyles the booking screens with the sg- component rules.
+   Element ids and JS hooks are untouched; only presentation changes.
+   Source of truth for every value: the "S Hari Global" design system
+   (tokens.json -> ds.css). Do not add raw colours here — use tokens.
+   ===================================================================== */
+
+/* ---------- 1. Legacy tokens -> design-system tokens ----------
+   The selector list matches the specificity of every legacy palette rule
+   (:root[data-theme] 0,2,0 · :root[data-theme][data-day] 0,3,0) so this map
+   wins by order even if an old client still stamps data-day. */
+:root, :root[data-theme], :root[data-day], :root[data-theme][data-day] {
+  /* blues (logo) */
+  --blue: var(--royal);
+  --blue-deep: var(--navy);
+  --blue-800: var(--royal-strong);
+  --blue-100: var(--royal-soft);
+  --blue-50: var(--royal-tint);
+  --sky: var(--royal);
+  --brand-navy: var(--navy);
+  --brand-navy-950: var(--navy);
+  --brand-royal: var(--royal);
+  --brand-royal-700: var(--royal-strong);
+  /* the old orange was the primary-action colour: actions are royal now */
+  --orange: var(--royal);
+  --orange-600: var(--royal-strong);
+  --orange-100: var(--royal-tint);
+  --orange-200: var(--royal-soft);
+  --shg-orange: var(--royal);
+  --shg-orange-l: var(--royal-tint);
+  --brand-saffron: var(--royal);
+  --brand-saffron-700: var(--royal-strong);
+  --brand-saffron-800: var(--royal);
+  --brand-saffron-900: var(--royal-strong);
+  --brand-amber: var(--on-navy-muted);
+  --brand-gold: var(--on-navy-muted);
+  --brand-cream: var(--royal-tint);
+  --gold: var(--orange);
+  /* gradients become flat brand fills */
+  --grad-brand: var(--navy);
+  --grad-warm: var(--royal);
+  /* neutrals + status */
+  --bg: var(--page);
+  --card: var(--surface);
+  --surface-2: var(--surface-sunken);
+  --text: var(--ink);
+  --fg: var(--ink);
+  --ok: var(--success);
+  --warn: var(--warning);
+  --bad: var(--danger);
+  /* type: Cinzel is the wordmark only; everything else is the device sans */
+  --f-display: var(--font-sans);
+  --f-body: var(--font-sans);
+  --f-code: var(--font-mono);
+  --f-deva: var(--font-sans);
+  /* shape + depth */
+  --r: var(--radius-lg);
+  --r-sm: var(--radius-md);
+  --shadow-sm: var(--shadow-1);
+  --shadow-md: var(--shadow-2);
+  --shadow-lg: var(--shadow-3);
+  --e-1: var(--shadow-1);
+  --e-2: var(--shadow-2);
+  --e-3: var(--shadow-3);
+  /* motion: one short vocabulary */
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  --dur-slow: 250ms;
+  --m-quick: 120ms;
+  --m-base: 150ms;
+  --m-slow: 250ms;
+  --sheen-speed: 0s;
+  --sparkle-speed: 0s;
+}
+/* --ink / --muted / --line share their names with the design system: ds.css
+   loads after views.css, so its per-theme values already win. */
+html,:root[data-theme="dark"], :root[data-theme="dark"] body, body { background: var(--page); }
+body { color: var(--ink); font-family: var(--font-sans); }
+
+/* ---------- 2. Decoration off ----------
+   Looping motion that carries no information (sheen text, rays, particles,
+   floating flags, a bus that drives forever, a pulsing logo) is switched
+   off. Kept: loading spinners and skeletons, the assistant's typing dots,
+   the mic "listening" state, and live-location pulses on the tracking map,
+   because each of those tells the user something is happening now. */
+.txt-gold, .txt-silver, .txt-diamond, .txt-diamond::after, .hd-shine::before,
+.credit-div, .lh-route .lh-pin, .btn-orange::after, .hero .grad,
+.flag-card .fl, .flag-bus-bridge .bus-run,
+.status-band.pending .big-ico, .trk-hl-mini .pulse-ring,
+.ra3-far i, .ra3-near i, .ra3-bus, .ra3-body img,
+.shg-live i, .shg-rail::after, .shg-stop i, .shg-bus, .shg-bus-i,
+.hero-live-ticker .live-dot, .whatsapp-fab, .premium-mode .vip-badge,
+.splash::before, .splash-motif, .shg-dash, .topbar-logo img, .nav .logo-img, #logoNav,
+.splash .motif svg, .founder-avatar-wrap, .float-bus, .float-flag-in, .float-flag-np,
+.float-om, .float-trident, .float-lotus, .float-wheel, .float-mountain,
+.founder-card::before, .f-ceo img, .intro-flag, .intro-icon-big, .flag-big, .chakra, .flag-bus,
+.tc-hero.shimmer, .tc-card.urgent, .lt-eta-hero .leh-ic, .tc-livebus .tlb-ic,
+.rov-3d, .rov-line, .hero-qt-cta, .qt-route b, .paystep li.now i,
+.jy-far, .jy-near, .stagger-item, .reveal {
+  animation: none !important;
+}
+.txt-gold, .txt-silver, .txt-diamond {
+  background: none !important; -webkit-text-fill-color: currentColor !important; color: inherit !important; filter: none !important;
+}
+.reveal, .stagger-item { opacity: 1 !important; transform: none !important; }
+.glow-orange, .glow-blue { filter: none !important; }
+/* decorative layers: hidden outright */
+.bhagwan-hero-bg, .float-hero-wrap, .intro-scenes, .shg-aura,
+.splash-map, .premium-fleet, .credit-div { display: none !important; }
+/* buttons and surfaces lose their gradients and glows */
+.btn-orange, .btn-blue, .btn-primary, .nav-cta, .btn-search, .qt-banner .btn-orange, .ai-send {
+  background: var(--royal) !important; background-image: none !important; color: var(--on-royal) !important;
+  box-shadow: none !important; border-color: transparent !important; text-shadow: none !important;
+}
+.btn-orange:hover, .btn-blue:hover, .btn-primary:hover, .btn-search:hover { background: var(--royal-strong) !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* ---------- 3. App shell ---------- */
+/* Divine-name line: first on every screen (owner's wish), one quiet line. */
+.divine-bar { background: var(--surface-sunken) !important; border-bottom: 1px solid var(--line) !important; padding: 4px 0 !important; text-align: center; }
+.divine-bar .divine-name { color: var(--muted) !important; font: 600 12px/18px var(--font-sans) !important; letter-spacing: 0 !important; text-shadow: none !important; background: none !important; -webkit-text-fill-color: currentColor !important; }
+/* Top utility row (language, theme, phone) down to 761px; phones use the nav's compact language pill. The palette picker is retired. */
+.topbar .mantra, .topbar .palette-wrap, .topbar a[href^="mailto:"] { display: none !important; }
+@media (max-width: 760px) { .topbar { display: none !important; } }
+.topbar { background: var(--surface) !important; color: var(--ink-2) !important; border-bottom: 1px solid var(--line); font-size: 13px; }
+.topbar a { color: var(--royal) !important; font-weight: 700; }
+.topbar .lang-btn, .topbar .theme-btn { background: var(--surface) !important; color: var(--ink) !important; border: 1px solid var(--line-control) !important; border-radius: var(--radius-sm) !important; min-height: 32px; box-shadow: none !important; }
+.topbar .lang-btn.on { background: var(--royal-soft) !important; color: var(--royal-strong) !important; border-color: var(--royal) !important; }
+/* CEO credit ribbon: the director and office numbers live in Help and the footer. */
+.credit-ribbon { display: none !important; }
+/* App bar */
+.nav, .nav.scrolled { background: var(--navy) !important; border-bottom: 3px solid var(--red) !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+.nav .nav-inner { min-height: var(--appbar-h) !important; gap: 12px !important; }
+.nav .brand { display: inline-flex !important; align-items: center; gap: 10px; text-decoration: none; min-width: 0; }
+/* 9 Oct 2026 (owner: "logo only, no white background"): the emblem sits straight
+   on the navy bar - no white tile; a soft light rim keeps the blue globe readable. */
+.nav .brand-tile { width: 64px; height: 40px; border-radius: 0; background: none; display: grid; place-items: center; flex: none; overflow: visible; }
+.nav .brand-tile #logoNav { display: block !important; width: 64px !important; height: 34px !important; max-width: none !important; object-fit: contain; margin: 0 !important; filter: drop-shadow(0 0 1px rgba(255, 255, 255, .85)) drop-shadow(0 2px 5px rgba(0, 0, 0, .35)) !important; box-shadow: none !important; background: none !important; padding: 0 !important; border-radius: 0 !important; }
+.nav .brand-word { display: flex; flex-direction: column; color: var(--on-navy); line-height: 1.1; white-space: nowrap; }
+.nav .brand-word b { font: 800 16px/20px var(--font-brand); letter-spacing: .02em; }
+.nav .brand-word small { font: 600 11px/14px var(--font-sans); color: var(--on-navy-muted); letter-spacing: .02em; }
+.nav .nav-link, .nav .nav-drop-btn { color: var(--on-navy-muted) !important; font-weight: 700 !important; border-radius: var(--radius-sm); }
+.nav .nav-link:hover, .nav .nav-drop-btn:hover { color: var(--on-navy) !important; background: rgba(255, 255, 255, .08) !important; }
+.nav .nav-cta { display: none !important; }
+.nav .nav-bell { color: var(--on-navy) !important; background: transparent !important; }
+.nav .hamburger span { background: var(--on-navy) !important; }
+.nav .hamburger { background: transparent !important; border: 1px solid rgba(255, 255, 255, .28) !important; border-radius: var(--radius-sm) !important; }
+.nav .num-inner, .nav .num-pill { display: none !important; }
+.nav .lang-mini { background: transparent !important; color: var(--on-navy) !important; border: 1px solid rgba(255, 255, 255, .28) !important; box-shadow: none !important; }
+/* phones: the top utility row is hidden, the nav's compact language pill takes over */
+@media (max-width: 760px) { .nav .lang-mini { display: block !important; } }
+/* tablets (761–979px): the full link row is shown but was 48–62px wider than the bar (iPad portrait scrolled sideways) */
+@media (min-width: 761px) and (max-width: 979px) {
+  .nav .nav-links { gap: 2px !important; }
+  .nav .nav-links .nav-link, .nav .nav-links #navUserBtn { padding-left: 7px !important; padding-right: 7px !important; font-size: 13.5px !important; }
+}
+.nav .nav-drop-list { background: var(--surface) !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-2) !important; border-radius: var(--radius-md) !important; }
+.nav .nav-drop-list a { color: var(--ink) !important; }
+.mobile-menu { background: var(--surface) !important; border-bottom: 1px solid var(--line) !important; box-shadow: var(--shadow-2) !important; }
+.mobile-menu a { color: var(--ink) !important; min-height: var(--tap-min); display: flex !important; align-items: center; gap: 10px; border-radius: var(--radius-sm); }
+.mobile-menu a:hover { background: var(--surface-hover) !important; }
+.mobile-menu .mm-hot { background: var(--royal-tint) !important; color: var(--royal-strong) !important; }
+.num-strip { background: var(--navy) !important; background-image: none !important; border-bottom: 1px solid rgba(255, 255, 255, .12) !important; }
+.num-strip .num-pill { background: rgba(255, 255, 255, .08) !important; border: 1px solid rgba(255, 255, 255, .16) !important; color: var(--on-navy) !important; box-shadow: none !important; }
+.num-strip .num-pill * { color: inherit !important; opacity: 1 !important; }
+.notice-bar { background: var(--royal-tint) !important; color: var(--ink) !important; border-bottom: 1px solid var(--royal-soft) !important; animation: none !important; }
+.notice-bar .megaphone { display: none !important; }
+.skip-link:focus { background: var(--navy) !important; color: var(--on-navy) !important; }
+:focus-visible { outline: 3px solid var(--focus) !important; outline-offset: 2px !important; }
+
+/* ---------- 4. Home: booking first ----------
+   One column on every width: the booking panel, your next trip, the two
+   other ways to book, QuickBot, facilities, then everything else. */
+#view-home.active { display: flex !important; flex-direction: column; }
+#view-home.active > * { width: 100%; min-width: 0; }
+#view-home > * { order: 10 !important; }
+/* 8 Oct 2026 (owner prompt, D3-09): the premium hero (logo, headline, Book /
+   Track / My Ticket), the booking panel, your next trip, the facilities strip,
+   QuickBot, then the offices card + coach animation. DOM order = this order. */
+#view-home > #homeHero { order: 0 !important; }
+#view-home > .search-wrap { order: 1 !important; }
+#view-home > #nextTripBox { order: 2 !important; }
+#view-home > #homeFeat { order: 3 !important; }
+#view-home > #quick-ticket { order: 4 !important; }
+#view-home > #topHero { order: 5 !important; }
+/* decorative or duplicated blocks
+   10 Oct 2026 (HD pack, review fix): .hero stays in this list. The old particle hero
+   is now the calm coach card (hd.css .hero-hd), STAGED for the owner's yes - shown
+   here it would repeat #homeHero, #homeFeat and QuickBot right above it. */
+#view-home > .hero, #view-home > .wa-ticket-highlight, #view-home > .ra-wrap, #routeAnim, #homeRouteMap,
+#heroLiveTicker, .intl-badge { display: none !important; }
+/* unverifiable claims and hard-coded prices stay out until the office confirms them */
+#styleHighlight, #whyUs, #facilities, #testimonials { display: none !important; }
+/* the customer page never shows staff-only controls */
+#pvrOverlay, #ceoPhotoBtn { display: none !important; }
+
+/* Booking panel */
+#view-home > .search-wrap { margin-top: var(--space-4) !important; padding-top: 0 !important; }
+#view-home .search-card.simple-search {
+  background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-2) !important; padding: var(--space-4) !important; display: grid !important; gap: var(--space-3) !important; margin: 0 !important;
+}
+#view-home .search-card::before, #view-home .search-card::after { display: none !important; }
+.search-card .sp-head { display: grid; gap: 2px; order: -2; }
+.search-card .sp-title { margin: 0; font: 800 22px/28px var(--font-sans); color: var(--ink); letter-spacing: 0; }
+.search-card .sp-sub { margin: 0; font: 500 13px/18px var(--font-sans); color: var(--muted); }
+/* direction: a segmented control */
+.search-card .dir-toggle { display: grid !important; grid-template-columns: 1fr 1fr; gap: 4px !important; padding: 4px !important; background: var(--surface-sunken) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-md) !important; margin: 0 !important; order: -1; }
+.search-card .dir-pill { min-height: 52px !important; border: 0 !important; border-radius: var(--radius-sm) !important; background: transparent !important; color: var(--ink-2) !important; box-shadow: none !important; display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 6px 8px !important; }
+.search-card .dir-pill.on { background: var(--surface) !important; color: var(--royal) !important; box-shadow: var(--shadow-1) !important; outline: 1.5px solid var(--royal); outline-offset: -1.5px; }
+.search-card .dir-pill .dp-fl { display: none !important; }
+.search-card .dir-pill b { font: 700 14px/18px var(--font-sans) !important; color: inherit !important; }
+.search-card .dir-pill small { font: 500 12px/16px var(--font-sans) !important; color: var(--muted) !important; opacity: 1 !important; }
+/* date strip: chips */
+.search-card .date-strip-30 { display: flex !important; gap: 8px !important; overflow-x: auto; scrollbar-width: none; padding: 2px 0 4px !important; margin: 0 !important; background: none !important; border: 0 !important; }
+.search-card .date-strip-30::-webkit-scrollbar { display: none; }
+.search-card .d-btn { flex: none !important; min-width: 58px !important; min-height: 64px !important; border-radius: var(--radius-md) !important; border: 1.5px solid var(--line-control) !important; background: var(--surface) !important; color: var(--ink) !important; box-shadow: none !important; display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 4px 6px !important; }
+.search-card .d-btn .d-day, .search-card .d-btn .d-mo, .search-card .d-btn .d-bs { font: 600 11px/14px var(--font-sans) !important; color: var(--muted) !important; }
+.search-card .d-btn .d-num { font: 800 18px/22px var(--font-sans) !important; color: inherit !important; font-variant-numeric: tabular-nums; }
+.search-card .d-btn.on { background: var(--royal) !important; border-color: var(--royal-strong) !important; color: var(--on-royal) !important; }
+.search-card .d-btn.on .d-day, .search-card .d-btn.on .d-mo, .search-card .d-btn.on .d-bs { color: var(--on-royal) !important; }
+.search-card .d-btn.past, .search-card .d-btn.sold-out { opacity: .5; border-style: dashed !important; }
+.search-card .d-btn.today:not(.on) { border-color: var(--royal) !important; }
+/* labels + controls */
+.search-card .s-field label, .search-card .s-lbl { display: block; font: 700 13px/18px var(--font-sans) !important; color: var(--ink-2) !important; margin: 0 0 6px !important; text-transform: none !important; letter-spacing: 0 !important; }
+.search-card .s-field .box { border: 1.5px solid var(--line-control) !important; border-radius: var(--radius-md) !important; background: var(--surface) !important; min-height: var(--tap-min); box-shadow: none !important; }
+.search-card .s-field .box:focus-within { border-color: var(--royal) !important; box-shadow: 0 0 0 3px var(--royal-soft) !important; }
+.search-card .s-field select, .search-card .s-field input { font: 600 16px/22px var(--font-sans) !important; color: var(--ink) !important; background: transparent !important; min-height: 44px; }
+.search-card .s-field-date-input { margin: 0 !important; }
+.search-card .s-field-date-input label { font-weight: 600 !important; color: var(--muted) !important; }
+.search-card .search-grid { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; gap: var(--space-3) !important; align-items: end !important; margin: 0 !important; }
+.search-card .s-field-town { grid-column: 1 / 2; }
+.search-card .s-field-pax { grid-column: 2 / 3; }
+.search-card .s-field-pax .sg-stepper { height: var(--tap-min); }
+.search-card .s-field-pax .sg-stepper button { height: 100%; width: 46px; }
+.search-card .s-field-pax .sg-stepper .ic { width: 18px; height: 18px; }
+.search-card .btn-search { grid-column: 1 / -1; width: 100% !important; min-height: 56px !important; border-radius: var(--radius-md) !important; font: 800 16px/20px var(--font-sans) !important; display: flex !important; align-items: center; justify-content: center; gap: 8px; margin: 0 !important; letter-spacing: 0 !important; text-transform: none !important; }
+.search-card .btn-search .ic { width: 20px; height: 20px; }
+.search-card .s-wa-row { margin: 0 !important; }
+.search-card .s-wa-btn { width: 100%; min-height: 44px !important; background: transparent !important; color: var(--royal) !important; border: 0 !important; box-shadow: none !important; font-weight: 700 !important; display: flex !important; flex-direction: row !important; gap: 6px; align-items: center; justify-content: center; }
+.search-card .s-wa-btn small { display: none !important; }
+.search-card .s-agent-latebook { order: 20; margin: 0 !important; }
+.search-card .s-agent-latebook summary { color: var(--muted) !important; font-size: 12.5px !important; min-height: 32px; display: flex; align-items: center; }
+.search-card .fare-live { background: var(--royal-tint) !important; border: 1px solid var(--royal-soft) !important; border-radius: var(--radius-md) !important; color: var(--ink) !important; box-shadow: none !important; }
+.search-card .fare-live:empty { display: none !important; }
+.search-card .search-note { color: var(--muted) !important; font-size: 12.5px !important; line-height: 18px; margin: 0 !important; }
+.search-card .search-note .route-dash { display: none !important; }
+@media (min-width: 900px) {
+  #view-home .search-card.simple-search { padding: var(--space-6) !important; }
+  .search-card .search-grid { grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr) !important; }
+  .search-card .btn-search { grid-column: auto; }
+}
+
+/* Next trip */
+#nextTripBox:not([hidden]) { margin-top: var(--space-4); }
+
+/* Other ways to book */
+#view-home > #entryCards { margin-top: var(--space-6) !important; }
+.entry-cards .ec-head { font: 700 16px/22px var(--font-sans) !important; color: var(--ink) !important; margin: 0 0 var(--space-3) !important; text-align: left !important; }
+.entry-cards .ec-head::after { display: none !important; }
+.entry-cards .ec-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: var(--space-3) !important; }
+.entry-cards .ec-grid .ec-card { min-height: 72px !important; display: flex !important; flex-direction: row !important; align-items: center !important; text-align: left !important; gap: 10px !important; padding: 12px !important; border-radius: var(--radius-lg) !important; background: var(--surface) !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; }
+.entry-cards .ec-card:hover { border-color: var(--royal) !important; transform: none !important; }
+.entry-cards .ec-ico { width: 40px !important; height: 40px !important; border-radius: var(--radius-sm) !important; background: var(--royal-tint) !important; color: var(--royal) !important; display: grid !important; place-items: center; flex: none; font-size: 0 !important; box-shadow: none !important; }
+.entry-cards .ec-ico .ic { width: 20px; height: 20px; }
+.entry-cards .ec-txt { display: flex; flex-direction: column; min-width: 0; }
+.entry-cards .ec-card b { font: 700 14px/18px var(--font-sans) !important; color: var(--ink) !important; }
+.entry-cards .ec-card small { font: 500 12px/16px var(--font-sans) !important; color: var(--muted) !important; opacity: 1 !important; }
+
+/* QuickBot: a plain card under the booking panel */
+#view-home > #quick-ticket { margin-top: var(--space-6) !important; }
+#quick-ticket .qt-banner { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; padding: var(--space-4) !important; }
+#quick-ticket .qt-banner::before, #quick-ticket .qt-banner::after { display: none !important; }
+#quick-ticket .qt-badge { background: var(--royal-tint) !important; color: var(--royal-strong) !important; border: 0 !important; box-shadow: none !important; font-weight: 700 !important; }
+#quick-ticket .bk-switch, #quick-ticket .qt-alt { background: transparent !important; color: var(--royal) !important; border: 1px solid var(--line-control) !important; box-shadow: none !important; }
+#quick-ticket .qt-ai { display: none !important; }   /* 9 Oct 2026: the 1-2-3 steps are back (showcase.css .sc-qsteps) */
+#quick-ticket h3 { font: 700 16px/22px var(--font-sans) !important; color: var(--ink) !important; }
+#quick-ticket p { color: var(--muted) !important; }
+#quick-ticket input { border: 1.5px solid var(--line-control) !important; border-radius: var(--radius-md) !important; background: var(--surface) !important; color: var(--ink) !important; min-height: var(--tap-min); font-size: 16px !important; box-shadow: none !important; }
+#quick-ticket .qt-mic { background: var(--surface) !important; color: var(--royal) !important; border: 1px solid var(--line-control) !important; box-shadow: none !important; }
+#quick-ticket .qt-err { background: var(--danger-soft) !important; color: var(--ink) !important; border: 1px solid var(--danger) !important; }
+#quick-ticket .qt-understood { color: var(--ink-2) !important; }
+#quick-ticket input::placeholder { color: var(--muted) !important; opacity: 1; }
+#quick-ticket .qt-me { background: var(--royal-tint) !important; border: 1px solid var(--line) !important; color: var(--ink) !important; }
+#quick-ticket .qt-me a { color: var(--royal) !important; }
+#qtCollapsed { background: var(--surface) !important; color: var(--ink) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; }
+#qtCollapsed b { color: var(--ink) !important; }
+
+/* Facilities (the four printed on the company visiting card) */
+#view-home > #brandBand { display: block !important; margin-top: var(--space-6) !important; }
+#brandBand .brand-band { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; padding: var(--space-4) !important; color: var(--ink) !important; text-align: left !important; }
+#brandBand .brand-band::before, #brandBand .brand-band::after { display: none !important; }
+#brandBand .bb-route, #brandBand .bb-name { display: none !important; }
+#brandBand .bb-tag { font: 700 16px/22px var(--font-sans) !important; color: var(--ink) !important; margin: 0 0 var(--space-3) !important; }
+#brandBand .bb-feats { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: var(--space-2) !important; margin: 0 !important; padding: 0 !important; list-style: none; }
+#brandBand .bb-feats li { display: flex !important; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px !important; border-radius: var(--radius-sm) !important; background: var(--surface-sunken) !important; border: 1px solid var(--line) !important; color: var(--ink) !important; font: 600 13.5px/18px var(--font-sans) !important; box-shadow: none !important; }
+#brandBand .bb-ic { display: none !important; }
+#brandBand .bb-feats li::before { content: ""; width: 16px; height: 16px; flex: none; background: var(--success); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7'/%3E%3C/svg%3E") center / contain no-repeat; }
+
+/* Shortcut cards duplicate the bottom bar on a phone */
+
+.hero-actions .ha-card { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; }
+.hero-actions .ha-card:hover { border-color: var(--royal) !important; transform: none !important; }
+.hero-actions .ha-ico { background: var(--royal-tint) !important; color: var(--royal) !important; box-shadow: none !important; }
+.hero-actions .ha-card b { color: var(--ink) !important; }
+.hero-actions .ha-card small { color: var(--muted) !important; }
+
+/* Bottom navigation (phone): Home, Book, My Tickets, Help */
+.bottom-nav { background: var(--surface) !important; border-top: 1px solid var(--line) !important; box-shadow: var(--shadow-2) !important; backdrop-filter: none !important; }
+.bottom-nav .bn-item { color: var(--muted) !important; font: 700 12px/14px var(--font-sans) !important; min-height: var(--bottomnav-h) !important; background: transparent !important; }
+.bottom-nav .bn-item .bi { display: grid !important; place-items: center; width: 56px; height: 30px; border-radius: var(--radius-pill); background: transparent !important; box-shadow: none !important; transform: none !important; }
+.bottom-nav .bn-item.on { color: var(--royal) !important; }
+.bottom-nav .bn-item.on .bi { background: var(--royal-soft) !important; }
+.bottom-nav .bn-item::after, .bottom-nav .bn-item.on::after, .bottom-nav .bn-item::before { display: none !important; }
+
+/* Booking panel, phone layout: town on its own row, passengers as one row
+   (label left, stepper right), then the button. The calendar input is the
+   fallback for dates beyond the strip, so it is one compact row. */
+@media (max-width: 899px) {
+  .search-card .search-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .search-card .s-field-town, .search-card .s-field-pax { grid-column: 1 / -1 !important; }
+  .search-card .s-field-pax { display: flex !important; align-items: center; justify-content: space-between; gap: var(--space-3); }
+  .search-card .s-field-pax .s-lbl { margin: 0 !important; }
+}
+.search-card .s-field-date-input { display: grid !important; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-3); }
+.search-card .s-field-date-input label { margin: 0 !important; white-space: nowrap; }
+.search-card .s-field-date-input .box { min-height: 44px !important; }
+.search-card .s-field-date-input .date-chips { grid-column: 1 / -1; }
+.search-card .s-field-date-input .date-chips:empty { display: none; }
+/* trip summary under the button: real fare for the chosen town */
+.search-card .fare-live.on { display: flex !important; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px 14px !important; font-size: 13.5px; }
+.search-card .fare-live .fl-dir { font-weight: 700; color: var(--ink); }
+.search-card .fare-live .fl-buses { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--surface) !important; color: var(--royal-strong) !important; border: 1px solid var(--royal-soft) !important; font-weight: 700; font-size: 12.5px; }
+.search-card .fare-live .fl-buses.none { color: var(--danger) !important; border-color: var(--danger-soft) !important; }
+.search-card .fare-live .fl-amt { font: 800 20px/24px var(--font-sans); color: var(--ink) !important; font-variant-numeric: tabular-nums; }
+.search-card .fare-live .fl-lbl, .search-card .fare-live .fl-npr { color: var(--muted) !important; font-size: 12px; }
+.search-card .fare-live .fl-was { color: var(--muted) !important; text-decoration: line-through; }
+.search-card .fare-live .fl-save { color: var(--warm-ink) !important; font-weight: 700; }
+.search-card .fare-live .fl-off { background: var(--royal) !important; color: var(--on-royal) !important; border-radius: var(--radius-pill); padding: 1px 8px; margin-right: 6px; }
+/* floating buttons sit above the bottom bar and stay small */
+.whatsapp-fab, .ai-fab { width: 48px !important; height: 48px !important; box-shadow: var(--shadow-2) !important; }
+.ai-fab { background: var(--navy) !important; color: var(--on-navy) !important; border: 2px solid var(--surface) !important; }
+
+/* ---------- 5. Booking flow: shared header ---------- */
+.flow-head { background: var(--navy) !important; background-image: none !important; color: var(--on-navy) !important; border-bottom: 0 !important; padding: var(--space-4) 0 var(--space-3) !important; }
+.flow-head::before, .flow-head::after { display: none !important; }
+.flow-head h2 { font: 800 20px/26px var(--font-sans) !important; color: var(--on-navy) !important; letter-spacing: 0 !important; margin: 0 !important; }
+.flow-head .sub { color: var(--on-navy-muted) !important; font: 500 13px/18px var(--font-sans) !important; margin: 2px 0 0 !important; }
+.flow-head .steps { display: flex !important; gap: 6px !important; margin-top: var(--space-3) !important; overflow-x: auto; scrollbar-width: none; }
+.flow-head .steps::-webkit-scrollbar { display: none; }
+.flow-head .step { flex: none; display: inline-flex !important; align-items: center; gap: 6px; padding: 4px 10px 4px 4px !important; border-radius: var(--radius-pill) !important; background: rgba(255, 255, 255, .08) !important; color: var(--on-navy-muted) !important; font: 700 12px/16px var(--font-sans) !important; border: 0 !important; box-shadow: none !important; }
+.flow-head .step .n { width: 22px; height: 22px; border-radius: 50%; display: grid !important; place-items: center; background: rgba(255, 255, 255, .14) !important; color: var(--on-navy) !important; font: 800 11px/1 var(--font-sans) !important; border: 0 !important; }
+.flow-head .step.now { background: var(--surface) !important; color: var(--royal) !important; }
+.flow-head .step.now .n { background: var(--royal) !important; color: var(--on-royal) !important; }
+.flow-head .step.done .n { background: var(--success) !important; color: #FFFFFF !important; }
+:root[data-theme="dark"] .flow-head .step.done .n { color: var(--page) !important; }
+.flow-body { background: var(--page) !important; }
+
+/* ---------- 6. Results ---------- */
+.res-toolbar { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; padding: 12px 14px !important; }
+.res-toolbar .rt-route { font: 700 16px/22px var(--font-sans) !important; color: var(--ink) !important; }
+.res-toolbar .rt-date { color: var(--muted) !important; font-size: 13px !important; }
+.bus-card { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; }
+.bus-card:hover { border-color: var(--royal) !important; transform: none !important; box-shadow: var(--shadow-1) !important; }
+.bus-card::before, .bus-card::after { display: none !important; }
+.bus-card .depTime-big, .bus-card .bc-time .t { font: 800 22px/26px var(--font-sans) !important; color: var(--ink) !important; font-variant-numeric: tabular-nums; }
+.bus-card .dur, .bus-card .busno, .bus-card .bc-points { color: var(--muted) !important; }
+.bus-card h3 { font: 700 16px/22px var(--font-sans) !important; color: var(--ink) !important; }
+.bus-card .bc-fare .amt { font: 800 22px/26px var(--font-sans) !important; color: var(--ink) !important; font-variant-numeric: tabular-nums; }
+.bus-card .bc-fare .npr, .bus-card .bc-fare .left { color: var(--muted) !important; }
+.bus-card .seats-avail-pill { border-radius: var(--radius-pill) !important; font-weight: 700 !important; }
+.bus-card .seats-avail-pill.ok { background: var(--success-soft) !important; color: var(--success) !important; border-color: transparent !important; }
+.bus-card .seats-avail-pill.low { background: var(--warning-soft) !important; color: var(--warning) !important; border-color: transparent !important; }
+.bus-card .seats-avail-pill.gone { background: var(--danger-soft) !important; color: var(--danger) !important; border-color: transparent !important; }
+.bus-card .chip, .bus-card .badge, .bus-card .vbadge { background: var(--surface-sunken) !important; color: var(--ink-2) !important; border: 1px solid var(--line) !important; box-shadow: none !important; }
+.bus-card .save-badge { background: var(--orange-soft) !important; color: var(--warm-ink) !important; border: 0 !important; }
+.bus-card button[data-sel] { min-height: var(--tap-min) !important; border-radius: var(--radius-md) !important; }
+.bus-card.is-sold-out { opacity: .7; }
+.skel-card { background: var(--surface) !important; border-color: var(--line) !important; }
+.empty-state { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; color: var(--ink) !important; }
+/* the decorative bus-on-the-road strip on results and seats */
+.jy-wrap, .jy-strip, .journey-strip, #jyStrip { display: none !important; }
+
+/* ---------- 7. Seat map ---------- */
+.seat-panel { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; }
+.booking-type-toggle { background: var(--surface-sunken) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-md) !important; padding: 4px !important; box-shadow: none !important; }
+.booking-type-toggle .bt-pill { min-height: 44px !important; border-radius: var(--radius-sm) !important; background: transparent !important; color: var(--ink-2) !important; border: 0 !important; box-shadow: none !important; font-weight: 700 !important; }
+.booking-type-toggle .bt-pill.on { background: var(--surface) !important; color: var(--royal) !important; box-shadow: var(--shadow-1) !important; outline: 1.5px solid var(--royal); outline-offset: -1.5px; }
+.deck-tabs .deck-tab { min-height: 44px !important; border-radius: var(--radius-sm) !important; border: 1.5px solid var(--line-control) !important; background: var(--surface) !important; color: var(--ink) !important; box-shadow: none !important; font-weight: 700 !important; }
+.deck-tabs .deck-tab.on, .deck-tabs .deck-tab[aria-selected="true"] { background: var(--royal) !important; color: var(--on-royal) !important; border-color: var(--royal-strong) !important; }
+.seat-count-picker { background: var(--surface-sunken) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-md) !important; }
+.seat-count-picker .scp-n { min-width: 44px !important; height: 44px !important; border-radius: var(--radius-sm) !important; border: 1.5px solid var(--line-control) !important; background: var(--surface) !important; color: var(--ink) !important; }
+.seat-count-picker .scp-n.on { background: var(--royal) !important; border-color: var(--royal-strong) !important; color: var(--on-royal) !important; }
+.seat-count-picker .scp-hint { flex-basis: 100%; margin: 4px 0 0; font: 600 13px/18px var(--font-sans); color: var(--royal-strong); }
+.seat-count-picker .scp-hint[hidden] { display: none; }
+.pref-chip { min-height: 44px !important; border-radius: var(--radius-pill) !important; border: 1.5px solid var(--line-control) !important; background: var(--surface) !important; color: var(--ink) !important; }
+.pref-chip.on { background: var(--royal-soft) !important; border-color: var(--royal) !important; color: var(--royal-strong) !important; }
+.seat-pick-status { background: var(--royal-tint) !important; border: 1px solid var(--royal-soft) !important; color: var(--ink) !important; border-radius: var(--radius-md) !important; }
+.seat-pick-status.ok { background: var(--success-soft) !important; border-color: transparent !important; color: var(--ink) !important; }
+.seat-pick-status.warn { background: var(--warning-soft) !important; border-color: transparent !important; color: var(--ink) !important; }
+#seatAutoPick { background: var(--surface) !important; color: var(--royal) !important; border: 1.5px solid var(--line-control) !important; box-shadow: none !important; min-height: 44px; }
+.women-safe-strip { display: none !important; }
+.deck-block .deck-head, .deck-head { background: var(--navy) !important; background-image: none !important; color: var(--on-navy) !important; border-radius: var(--radius-sm) !important; box-shadow: none !important; }
+.deck-head .dh-range { background: rgba(255, 255, 255, .14) !important; color: var(--on-navy) !important; }
+.cabin-card { background: var(--surface) !important; border: 1px solid var(--line) !important; box-shadow: none !important; }
+.cabin-card:has(.seat.sel) { border-color: var(--royal) !important; box-shadow: none !important; }
+.seat-row.slp-shr:has(.seat.sel), .seat-row.slp-pvt:has(.seat.sel) { background: var(--royal-tint) !important; box-shadow: none !important; }
+.cab-free { background: var(--success-soft) !important; color: var(--success) !important; border-color: transparent !important; }
+.cab-free.cab-full { background: var(--danger-soft) !important; color: var(--danger) !important; }
+/* states: each one differs by fill, border style AND a mark, never colour alone */
+#view-seats .seat { background: var(--surface) !important; border: 1.5px solid var(--line-control) !important; color: var(--ink) !important; box-shadow: none !important; min-height: 48px; transition: background-color .15s, border-color .15s !important; }
+#view-seats .seat:not(:disabled):hover { border-color: var(--royal) !important; background: var(--royal-tint) !important; transform: none !important; }
+#view-seats .seat.sel { background: var(--royal) !important; border-color: var(--royal-strong) !important; color: var(--on-royal) !important; animation: none !important; }
+#view-seats .seat.sel.holding { background: var(--royal-tint) !important; color: var(--royal-strong) !important; border: 2px dashed var(--royal) !important; }
+#view-seats .seat.sel.hold-wait { background: var(--warning-soft) !important; color: var(--warning) !important; border: 2px dashed var(--warning) !important; }
+#view-seats .seat.bkd { background: var(--seat-booked) !important; border-color: var(--seat-booked) !important; color: var(--seat-booked-ink) !important; text-decoration: line-through; }
+#view-seats .seat.hold { background: var(--warning-soft) !important; background-image: none !important; border: 1.5px dashed var(--warning) !important; color: var(--warning) !important; text-decoration: none; }
+#view-seats .seat.reserved { background: var(--danger-soft) !important; border-color: var(--danger) !important; color: var(--danger) !important; }
+#view-seats .seat.u-fem:not(.sel):not(.bkd), #view-seats .seat.fem:not(.sel):not(.bkd):not(.reserved) { background: var(--seat-ladies) !important; border-color: var(--seat-ladies-line) !important; color: var(--seat-ladies-ink) !important; }
+#view-seats .seat.u-male:not(.sel):not(.bkd) { background: var(--seat-gents) !important; border-color: var(--seat-gents-ink) !important; color: var(--seat-gents-ink) !important; }
+#view-seats .seat.pvt:not(.sel):not(.bkd):not(.reserved):not(.u-fem):not(.u-male) { background: var(--royal-tint) !important; border-color: var(--royal) !important; border-style: dashed !important; color: var(--royal-strong) !important; }
+#view-seats .seat.bkd.xmode { background: var(--surface-sunken) !important; border: 1.5px dashed var(--line-control) !important; color: var(--muted) !important; text-decoration: none; }
+#view-seats .seat.suggested { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--royal) !important; animation: none !important; }
+.legend, .legend-sticky { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-md) !important; box-shadow: none !important; color: var(--ink-2) !important; }
+.legend .lg { border-radius: 5px !important; border: 1.5px solid var(--line-control) !important; background: var(--surface) !important; box-shadow: none !important; }
+.legend .lg.sel { background: var(--royal) !important; border-color: var(--royal-strong) !important; }
+.legend .lg.bkd { background: var(--seat-booked) !important; border-color: var(--seat-booked) !important; }
+.legend .lg.hold { background: var(--warning-soft) !important; border: 1.5px dashed var(--warning) !important; }
+.legend .lg.u-fem, .legend .lg.fem { background: var(--seat-ladies) !important; border-color: var(--seat-ladies-line) !important; }
+.legend .lg.u-male { background: var(--seat-gents) !important; border-color: var(--seat-gents-ink) !important; }
+.legend .lg.pvt { background: var(--royal-tint) !important; border: 1.5px dashed var(--royal) !important; }
+.legend .lg.lg-emerg { background: var(--danger-soft) !important; border-color: var(--danger) !important; }
+.legend .lg.lg-acc { background: #E0F7F4 !important; border-color: #00897B !important; }
+.legend .lg.bkd.xmode { background: var(--surface-sunken) !important; border: 1.5px dashed var(--line-control) !important; }
+.legend b, .legend .lg-2f { background: var(--navy) !important; color: var(--on-navy) !important; border-radius: 5px; padding: 0 5px; }
+
+/* summary card + sticky action bar (seats and checkout) */
+.sum-card { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; }
+.sum-card::before, .sum-card::after { display: none !important; }
+.sum-card h3 { font: 800 18px/24px var(--font-sans) !important; color: var(--ink) !important; }
+.sum-row { border-color: var(--line) !important; }
+.sum-row span { color: var(--muted) !important; }
+.sum-row b { color: var(--ink) !important; }
+.sum-row.total b, #sumFare { font: 800 22px/26px var(--font-sans) !important; color: var(--ink) !important; font-variant-numeric: tabular-nums; }
+.hold-pill { background: var(--warning-soft) !important; color: var(--warning) !important; border: 0 !important; border-radius: var(--radius-pill) !important; font-weight: 700 !important; animation: none !important; }
+.seat-quick { background: var(--royal-tint) !important; border: 1px solid var(--royal-soft) !important; border-radius: var(--radius-md) !important; }
+.seat-quick input, .sum-card select, .sum-card .bp-other, .field select, .field input, .field textarea { border: 1.5px solid var(--line-control) !important; border-radius: var(--radius-md) !important; background: var(--surface) !important; color: var(--ink) !important; min-height: var(--tap-min); font-size: 16px !important; box-shadow: none !important; }
+.seat-quick .sq-g button, .tier-pill { min-height: 44px !important; border-radius: var(--radius-sm) !important; border: 1.5px solid var(--line-control) !important; background: var(--surface) !important; color: var(--ink) !important; box-shadow: none !important; }
+.seat-quick .sq-g button.on, .seat-quick .sq-g button[aria-pressed="true"], .tier-pill.on, .tier-pill[aria-pressed="true"] { background: var(--royal-soft) !important; border-color: var(--royal) !important; color: var(--royal-strong) !important; }
+.vip-badge, .vip-priority-chip { display: none !important; }
+.occ-bar { background: var(--surface-hover) !important; }
+.occ-fill { background: var(--royal) !important; }
+.flow-actions .fa-recap { font: 700 13.5px/18px var(--font-sans) !important; color: var(--ink) !important; }
+.flow-actions .btn-ghost, #seatBackBtn { background: var(--surface) !important; color: var(--royal) !important; border: 1.5px solid var(--line-control) !important; box-shadow: none !important; }
+.btn:disabled, .btn[disabled] { opacity: .45 !important; cursor: not-allowed !important; }
+.flow-head .steps { flex-wrap: nowrap !important; }
+.flow-head .step::after { display: none !important; }
+.flow-head .step span:last-child { font-size: 12px !important; white-space: nowrap; }
+@media (max-width: 420px) { .flow-head .step:not(.now) span:last-child { display: none; } .flow-head .step:not(.now) { padding: 4px !important; } }
+
+/* ---------- 8. Ticket screen ---------- */
+#ticketCard, .status-card.tk2 { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; overflow: hidden; }
+#ticketCard .tk2-head { background: var(--navy) !important; background-image: none !important; color: var(--on-navy) !important; border-bottom: 3px solid var(--red) !important; }
+#ticketCard .tk2-head * { color: inherit; }
+#ticketCard .tk2-pill { border-radius: var(--radius-pill) !important; font-weight: 700 !important; border: 0 !important; box-shadow: none !important; }
+#ticketCard .tk2-pill.ok { background: var(--success-soft) !important; color: var(--success) !important; }
+#ticketCard .tk2-pill.pend { background: var(--warning-soft) !important; color: var(--warning) !important; }
+#ticketCard .tk2-pill.bad { background: var(--danger-soft) !important; color: var(--danger) !important; }
+#ticketCard .tk2-pill.off { background: var(--surface-sunken) !important; color: var(--muted) !important; }
+#ticketCard .tk2-tile, #ticketCard .tk2-ess > div { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-md) !important; box-shadow: none !important; }
+#ticketCard .tk2-fare, #ticketCard .premium-pay-card { border-radius: var(--radius-lg) !important; box-shadow: none !important; }
+#ticketCard .tk2-fare { background: var(--navy) !important; background-image: none !important; color: var(--on-navy) !important; }
+#ticketCard .premium-payment-state { border-radius: var(--radius-md) !important; box-shadow: none !important; }
+/* the passenger table always fits the card */
+#ticketCard .pax-table { width: 100% !important; table-layout: fixed; border-collapse: collapse; font-size: 13.5px; }
+#ticketCard .pax-table th { font: 700 11px/14px var(--font-sans) !important; color: var(--muted) !important; text-transform: uppercase; letter-spacing: .03em; white-space: normal !important; overflow-wrap: anywhere; padding: 8px 6px !important; background: var(--surface-sunken) !important; }
+#ticketCard .pax-table td { padding: 8px 6px !important; overflow-wrap: anywhere; border-color: var(--line) !important; }
+#ticketCard .pax-table th:first-child, #ticketCard .pax-table td:first-child { width: 22%; }
+#ticketCard .pax-table th:nth-child(3), #ticketCard .pax-table td:nth-child(3) { width: 14%; }
+#ticketCard .pax-table th:nth-child(4), #ticketCard .pax-table td:nth-child(4) { width: 22%; }
+/* actions: one primary (Download), the rest secondary, three across */
+#ticketCard .tk2-actions { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: var(--space-2) !important; }
+#ticketCard .tk2-actions > .btn { min-height: 56px !important; white-space: normal !important; font: 700 13px/16px var(--font-sans) !important; padding: 6px 8px !important; border-radius: var(--radius-md) !important; text-align: center; display: flex !important; align-items: center; justify-content: center; margin: 0 !important; width: auto !important; }
+#ticketCard .tk2-actions > .tk2-wide { grid-column: 1 / -1; min-height: var(--tap-min) !important; }
+#ticketCard .tk2-actions > .btn.btn-blue, #ticketCard .tk2-actions > .btn.btn-wa, #ticketCard .tk2-actions > .btn.btn-ghost,
+#ticketCard .btn.btn-ghost, #ticketCard .btn.btn-wa {
+  background: var(--surface) !important; color: var(--royal) !important; border: 1.5px solid var(--line-control) !important; box-shadow: none !important;
+}
+@media print { #ticketCard .tk2-actions, #ticketCard .tk2-actions > .btn { display: none !important; } }
+#ticketCard .tk2-more summary { min-height: var(--tap-min); display: flex; align-items: center; color: var(--royal) !important; font-weight: 700; }
+#ticketCard .rate-card { border-radius: var(--radius-md) !important; box-shadow: none !important; }
+/* status / not-found screens */
+#statusBody .empty-state, #view-status .empty-state { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; }
+
+/* ---------- 9. My Tickets ---------- */
+.mybk-card { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; }
+.mybk-card:hover { border-color: var(--royal) !important; transform: none !important; }
+.my-tabs .my-tab { min-height: 44px !important; border-radius: var(--radius-sm) !important; }
+.my-tabs .my-tab.on { background: var(--surface) !important; color: var(--royal) !important; box-shadow: var(--shadow-1) !important; }
+.loy-card { background: var(--surface) !important; background-image: none !important; color: var(--ink) !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-1) !important; }
+.loy-card * { color: inherit !important; }
+
+/* ---------- 10. Footer ---------- */
+footer { background: var(--navy) !important; background-image: none !important; color: var(--on-navy-muted) !important; border-top: 3px solid var(--red) !important; }
+footer .f-flagline { display: none !important; }
+footer a { color: var(--on-navy) !important; }
+footer h4, footer h5, footer b, footer strong { color: var(--on-navy) !important; }
+footer .f-ceo { background: rgba(255, 255, 255, .06) !important; border-color: rgba(255, 255, 255, .12) !important; box-shadow: none !important; }
+/* every page clears the bottom bar on a phone */
+@media (max-width: 899px) { body:not(.in-flow) footer { padding-bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom, 0) + 16px) !important; } }
+
+/* ---------- 11. Shared controls inside the customer app ---------- */
+.shg-modal .m-box, .wa-sheet-card, .ct-sheet > div, .ai-panel { border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important; box-shadow: var(--shadow-3) !important; }
+@media (min-width: 640px) { .shg-modal .m-box { border-radius: var(--radius-xl) !important; } }
+.shg-modal .m-box, .wa-sheet-card { background: var(--surface) !important; color: var(--ink) !important; }
+.wa-req input, .wa-req select, .wa-req textarea { border: 1.5px solid var(--line-control) !important; border-radius: var(--radius-md) !important; min-height: var(--tap-min); font-size: 16px !important; background: var(--surface) !important; color: var(--ink) !important; }
+#toast { background: var(--navy) !important; color: var(--on-navy) !important; border-radius: var(--radius-sm) !important; box-shadow: var(--shadow-3) !important; }
+.btn { border-radius: var(--radius-md); }
+.btn-ghost { background: var(--surface) !important; color: var(--royal) !important; border: 1.5px solid var(--line-control) !important; box-shadow: none !important; }
+.btn-wa { box-shadow: none !important; }
+.badge.ok, .badge.confirmed { background: var(--success-soft) !important; color: var(--success) !important; }
+.badge.pend, .badge.pending { background: var(--warning-soft) !important; color: var(--warning) !important; }
+.badge.bad, .badge.cancelled { background: var(--danger-soft) !important; color: var(--danger) !important; }
+
+/* ---------- 12. Counter mode bar (staff selling in the customer app) ----------
+   India desk: navy. Nepal desk: solid crimson, so the desk side is obvious
+   without a gradient; the words "Counter mode" / "Nepal counter" say it too. */
+#counterBar { background: var(--navy) !important; background-image: none !important; border-bottom: 3px solid var(--red); box-shadow: none !important; }
+#counterBar.cb-nepal { background: #8E1B2E !important; background-image: none !important; border-bottom-color: var(--navy); }
+#counterBar a, #counterBar button { min-height: 44px !important; border-radius: var(--radius-sm) !important; background: rgba(255, 255, 255, .14) !important; color: #FFFFFF !important; box-shadow: none !important; }
+#counterBar #cbQuick { background: var(--royal) !important; color: #FFFFFF !important; }
+:root[data-theme="dark"] #counterBar #cbQuick { background: var(--royal-strong) !important; color: var(--on-royal) !important; }
+
+/* the bus-on-the-road strip on results / seats: decorative — results come first on a phone */
+@media (max-width: 760px) { .shg-journey { display: none !important; } }
+
+/* Speed (4 Oct 2026): the view the server paints first is already on screen -
+   no entrance fade. An opacity-0 start hid it from LCP until ~7 s on a phone. */
+#view-home[data-first].view.active{animation:none}
+
+/* =====================================================================
+   5 Oct 2026 (owner) — the top of the home page: logo, company name and
+   branch-office numbers on the left, the coach banner (anim.css .sa-top)
+   on the right; on a phone a slim brand card above the coach.
+   ===================================================================== */
+#view-home > #topHero { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+/* 5 Oct 2026: a visitor who arrived on a Google Ads / Facebook ad click sees
+   the booking card first (ShgAds.landing in 05-router.js sets the class). */
+html.shg-from-ad #view-home > #search-anchor { order: -1 !important; margin-top: 12px; }
+#topHero > .container { padding: 0; margin: 0; max-width: none; width: auto; }
+#view-home .th-brand { display: block; position: relative; overflow: hidden; border-radius: 18px; padding: 12px 14px; color: #fff;
+  background: radial-gradient(120% 140% at 0% 0%, #1e4f9c 0%, #0c2c63 55%, #071a3d 100%);
+  border: 1px solid #2c4f86; box-shadow: 0 10px 26px rgba(7, 26, 61, .22); }
+#view-home .th-brand::after { content: ""; position: absolute; right: -40px; bottom: -60px; width: 180px; height: 180px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(240, 124, 31, .35), transparent 70%); pointer-events: none; }
+.th-top { display: flex; align-items: center; gap: 12px; }
+.th-logo { width: 64px; height: auto; flex: none; border-radius: 0; background: none; padding: 0; filter: drop-shadow(0 0 1px rgba(255, 255, 255, .8)) drop-shadow(0 3px 8px rgba(0, 0, 0, .35)); }
+.th-name b { display: block; font: 900 18px/1.05 var(--font-sans, sans-serif); letter-spacing: .02em;
+  background: linear-gradient(90deg, #fff 0%, #ffe3b0 60%, #f7b046 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.th-name span { display: block; font: 800 11px/1.3 var(--font-sans, sans-serif); letter-spacing: .28em; color: #f7b046; margin-top: 2px; }
+.th-tag { margin: 6px 0; font: 800 12.5px/1.3 var(--font-sans, sans-serif); color: #fff; }
+.th-tag small { display: none; font-weight: 500; font-size: 12px; color: #c7d6ee; margin-top: 2px; }
+.th-offices { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; position: relative; z-index: 1; }
+.th-offices li:nth-child(n+3) { display: none; }
+.th-offices a { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 6px 9px 6px 30px; position: relative; border-radius: 11px; text-decoration: none;
+  background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .16); color: #fff; transition: background .2s; }
+.th-offices a:hover { background: rgba(255, 255, 255, .16); }
+.th-ic { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); font-size: 13px; }
+.th-l { font: 600 10.5px/1.2 var(--font-sans, sans-serif); color: #c7d6ee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.th-n { font: 800 12.5px/1.25 var(--font-sans, sans-serif); color: #fff; white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (min-width: 1000px) {
+  #view-home > #topHero { grid-template-columns: minmax(290px, 360px) minmax(0, 1fr); align-items: stretch; gap: 14px; max-width: 1040px; margin-left: auto; margin-right: auto; }
+  #view-home .th-brand { display: flex; flex-direction: column; justify-content: center; padding: 18px; }
+  .th-logo { width: 78px; }
+  .th-name b { font-size: 25px; }
+  .th-tag { margin: 10px 0 8px; font-size: 14px; }
+  .th-tag small { display: block; }
+  .th-offices { grid-template-columns: minmax(0, 1fr); }
+  .th-offices li:nth-child(n+3) { display: list-item; }
+  .th-offices a { flex-direction: row; justify-content: space-between; align-items: center; gap: 10px; }
+  .th-l { flex: 1 1 auto; min-width: 0; font-size: 12px; }
+  .th-n { flex: none; font-size: 13.5px; }
+}
+@media (min-width: 1100px) { #topHero .shg-animation.sa-top .sa-journey { aspect-ratio: 2 / 1; } }
+
+/* ---------- 5 Oct 2026 · "how to book" guide behind one highlighted Help button ----------
+   9 Oct 2026: restyled as colourful real buttons (owner: "the guide's buttons look
+   plain white") - every rule for #bookHelp now lives in showcase.css, and its
+   display order in the showcase order map there (#bookHelp 14). The sample
+   booking animation is no longer inside the guide. */
+
+/* 5 Oct 2026 · the office list, dressed up: a city badge, name + number, a call
+   button; Nepalgunj in Nepal crimson. Phones: one swipeable row of all five. */
+.th-oh { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 8px 0 6px; position: relative; z-index: 1; }
+.th-oh span { font: 900 13px/1.2 var(--font-sans, sans-serif); color: #ffd28a; letter-spacing: .02em; }
+.th-oh small { font: 600 12px/1.35 var(--font-sans, sans-serif); color: #c7d6ee; }
+#view-home .th-offices { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 6px; margin: 0 -2px;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch; grid-template-columns: none; }
+#view-home .th-offices::-webkit-scrollbar { display: none; }
+#view-home .th-offices li, #view-home .th-offices li:nth-child(n+3) { display: block; flex: 0 0 auto; scroll-snap-align: start; }
+#view-home .th-o a { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 9px; row-gap: 1px; align-items: center;
+  min-width: 190px; padding: 8px 10px; border-radius: 14px; text-decoration: none; color: #fff;
+  background: linear-gradient(135deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .05)); border: 1px solid rgba(255, 255, 255, .18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); transition: transform .18s, background .18s; }
+#view-home .th-o a:hover { transform: translateY(-1px); background: linear-gradient(135deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .08)); }
+.th-badge { grid-row: 1 / 3; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font: 900 14px/1 var(--font-sans, sans-serif);
+  color: #10264d; background: linear-gradient(135deg, #ffd28a, #f7a535); box-shadow: 0 3px 8px rgba(0, 0, 0, .25); }
+#view-home .th-o .th-l { grid-column: 2; font: 800 12px/1.2 var(--font-sans, sans-serif); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.th-l small { display: block; font: 600 10px/1.25 var(--font-sans, sans-serif); color: #b9cbe6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#view-home .th-o .th-n { grid-column: 2; font: 900 13px/1.2 var(--font-sans, sans-serif); color: #ffe6b8; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.th-call { grid-column: 3; grid-row: 1 / 3; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 14px;
+  background: #25a35a; box-shadow: 0 3px 10px rgba(37, 163, 90, .45); }
+.th-np .th-badge { color: #fff; background: linear-gradient(135deg, #dc143c, #8a0c25); }
+#view-home .th-np a { border-color: rgba(220, 20, 60, .55); background: linear-gradient(135deg, rgba(220, 20, 60, .28), rgba(255, 255, 255, .05)); }
+.th-ic { display: none; }
+@media (min-width: 1000px) {
+  #view-home .th-offices { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; overflow: visible; padding: 0; margin: 0; }
+  #view-home .th-offices li, #view-home .th-offices li:nth-child(n+3) { display: block; }
+  #view-home .th-o a { min-width: 0; padding: 7px 10px; }
+  #view-home .th-o .th-l { font-size: 12.5px; }
+  #view-home .th-o .th-n { font-size: 14px; }
+}
+
+/* desktop: one line per office, and the coach grows to the brand card's height */
+@media (min-width: 1000px) {
+  #view-home .th-o a { grid-template-columns: 26px minmax(0, 1fr) auto 28px; grid-template-rows: auto; column-gap: 9px; padding: 6px 8px 6px 9px; }
+  .th-badge { grid-row: auto; width: 26px; height: 26px; font-size: 12.5px; border-radius: 8px; }
+  #view-home .th-o .th-l { grid-column: 2; }
+  #view-home .th-o .th-n { grid-column: 3; grid-row: 1; }
+  .th-call { grid-column: 4; grid-row: 1; width: 28px; height: 28px; font-size: 13px; }
+  .th-in .th-l small { display: none; }
+  .th-tag small { display: none !important; }
+  .th-oh { margin-top: 4px; }
+  #topHero > #animJourney, #topHero > #animJourney .sa-stage { height: 100%; }
+  #topHero .shg-animation.sa-top .sa-journey { aspect-ratio: auto; height: 100%; min-height: 300px; }
+}
+
+/* the Nepal row's second line (place · contact person) */
+.th-sub { grid-column: 2; grid-row: 2; font: 600 12px/1.3 var(--font-sans, sans-serif); color: #ffc9d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.th-np .th-n { grid-row: 3; }
+.th-np .th-badge, .th-np .th-call { grid-row: 1 / 4; }
+@media (min-width: 1000px) {
+  .th-np .th-sub { grid-column: 2 / 5; grid-row: 2; }
+  .th-np .th-n { grid-row: 1; }
+  .th-np .th-badge, .th-np .th-call { grid-row: 1; }
+}
+/* tablets: the brand card above the coach, offices as one swipe row */
+@media (min-width: 760px) and (max-width: 999px) {
+  #view-home > #topHero { max-width: 760px; margin-left: auto; margin-right: auto; }
+}
+.th-in .th-sub { color: #b9cbe6; }
+
+/* ---------- 5 Oct 2026 · Nepal office card (CEO / Operations / Parking) under the office list ---------- */
+.th-npcard { position: relative; z-index: 1; margin-top: 8px; padding: 8px 9px 9px; border-radius: 14px;
+  background: linear-gradient(135deg, rgba(220, 20, 60, .26), rgba(255, 255, 255, .05)); border: 1px solid rgba(220, 20, 60, .55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); }
+.th-npcard[hidden] { display: none; }
+.th-nph { display: flex; align-items: center; gap: 7px; margin: 0 0 6px; color: #fff; }
+.th-nph b { flex: none; white-space: nowrap; font: 900 13px/1.2 var(--font-sans, sans-serif); letter-spacing: .02em; }
+.th-nph small { font: 600 12px/1.35 var(--font-sans, sans-serif); color: #ffc9d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.np-flag { flex: none; display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35)); }
+.th-npl { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.np-p { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; gap: 6px; align-items: center; }
+.np-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; min-width: 0; min-height: 44px; padding: 4px 9px;
+  border-radius: 11px; text-decoration: none; color: #fff; background: rgba(255, 255, 255, .09); border: 1px solid rgba(255, 255, 255, .16); }
+/* D2-09 (8 Oct 2026): role, name and number each get a full row - the role
+   was cut to "N." and the CEO's name to "Bishwokar…" - at a readable size,
+   and the call / WhatsApp keys are 44px. */
+.np-main .np-role { grid-column: 1 / -1; grid-row: 1; font: 700 11.5px/1.3 var(--font-sans, sans-serif); letter-spacing: 0; text-transform: none; color: #ffc9d3; white-space: normal; overflow: visible; }
+.np-main b { grid-column: 1 / -1; grid-row: 3; font: 800 13px/1.3 var(--font-sans, sans-serif); white-space: normal; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.np-main .np-num { grid-column: 1 / -1; grid-row: 2; font: 900 13px/1.3 var(--font-sans, sans-serif); color: #ffe6b8; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.np-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-size: 17px; text-decoration: none; color: #fff;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, .28), 0 6px 12px rgba(0, 0, 0, .25); transition: transform .12s, box-shadow .12s; }
+.np-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .28), 0 2px 5px rgba(0, 0, 0, .25); }
+.np-call { background: linear-gradient(180deg, #2fbf6c, #1c8f4c); }
+.np-wa { background: linear-gradient(180deg, #2fe07b, #128c4a); }
+.wa-row > span .np-flag { width: 20px; height: 24px; }
+/* phones: one swipe row, so the booking form stays on the first screen */
+@media (max-width: 759px) {
+  .th-npl { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+  .th-npl::-webkit-scrollbar { display: none; }
+  .np-p { flex: 0 0 min(88%, 310px); scroll-snap-align: start; }
+  .np-p:only-child { flex-basis: 100%; }
+}
+
+/* ============ Running offer ribbon (6 Oct 2026) — top of every page while an
+   office offer runs (SHG_BOOT.offers, Admin -> Offers). ============ */
+.offer-ribbon{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;
+  padding:9px 16px;text-decoration:none;color:#3b1d00;font-weight:700;font-size:14px;line-height:1.35;text-align:center;
+  background:linear-gradient(90deg,#ffb300,#ff7a00 45%,#ffb300);background-size:200% 100%;
+  animation:orShine 6s linear infinite;box-shadow:0 2px 10px rgba(255,122,0,.35);position:relative;z-index:5}
+.offer-ribbon.hide{display:none}
+.offer-ribbon .or-lamp{font-size:18px}
+.offer-ribbon .or-text{min-width:0;overflow-wrap:anywhere}
+.offer-ribbon .or-cta{background:#3b1d00;color:#ffd166;border-radius:999px;padding:4px 12px;font-size:13px;white-space:nowrap}
+.offer-ribbon:hover .or-cta,.offer-ribbon:focus-visible .or-cta{background:#000}
+@keyframes orShine{0%{background-position:0 0}100%{background-position:200% 0}}
+@media (prefers-reduced-motion:reduce){.offer-ribbon{animation:none}}
+@media (max-width:520px){.offer-ribbon{font-size:13px;padding:8px 12px;gap:6px}.offer-ribbon .or-cta{font-size:12px}}
+/* 8 Oct 2026: on a phone the ribbon is one compact row (it was 112px at
+   360px and pushed the booking card down): lamp, a two-line text, the CTA. */
+@media (max-width:520px){
+  .offer-ribbon{flex-wrap:nowrap;justify-content:flex-start;text-align:left;padding:7px 12px;font-size:12.5px;line-height:1.35}
+  .offer-ribbon .or-lamp{font-size:16px;flex:none}
+  .offer-ribbon .or-text{flex:1 1 auto;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .offer-ribbon .or-cta{flex:none;padding:6px 10px;min-height:32px;display:inline-flex;align-items:center}
+}
+/* D1-05 (8 Oct 2026): AMOLED keeps --orange (and --gold) on the royal key
+   like light and dark - depth.css re-pointed it to #FF9A3D for the company
+   app, which this customer-only sheet does not load. 0,3,0 beats depth. */
+:root[data-theme][data-display="amoled"] { --orange: var(--royal); }
+/* D3-06 (8 Oct 2026): 761-899px has neither the hamburger nor room for the
+   wordmark - the logo tile alone keeps the bell and Sign in on screen. */
+@media (min-width: 761px) and (max-width: 899px) { .nav .brand-word { display: none !important; } }
+/* D1-09 (8 Oct 2026): the peach trust icons glowed on dark / AMOLED */
+:root[data-theme="dark"] .t-badge .ico.or { background: var(--orange-soft) !important; color: var(--warm-ink) !important; }
+/* 7 Oct 2026: the CEO in a block of his own under the Nepal office list */
+.np-ceo { margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255, 255, 255, .28); }
+.th-npcard > .np-ceo:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.np-ceo .th-nph small { color: #cfe0ff; }
+.np-ceo .np-main { background: rgba(45, 123, 224, .22); border-color: rgba(143, 191, 255, .35); }
+.np-ceo .np-main .np-role { color: #cfe0ff; }

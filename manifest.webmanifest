@@ -1,0 +1,65 @@
+{
+  "id": "/",
+  "name": "S Hari Global — India–Nepal Bus",
+  "short_name": "SHG Bus",
+  "description": "Gujarat ⇄ Rupaidiha (India–Nepal border) AC sleeper bus: 10-second booking, offline e-ticket, delay alerts, live bus map.",
+  "start_url": "/",
+  "scope": "/",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFFFFF",
+  "theme_color": "#0C306C",
+  "lang": "en",
+  "categories": [
+    "travel",
+    "navigation",
+    "maps"
+  ],
+  "icons": [
+    {
+      "src": "/assets/img/icon-192.png?v=20261022z",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/img/icon-512.png?v=20261022z",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/img/icon-maskable-512.png?v=20261022z",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/assets/img/badge-96.png?v=20261022z",
+      "type": "image/png",
+      "sizes": "96x96",
+      "purpose": "monochrome"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Book Ticket",
+      "short_name": "Book",
+      "url": "/#/",
+      "description": "Search buses and book a seat"
+    },
+    {
+      "name": "My Bookings",
+      "short_name": "Bookings",
+      "url": "/#/my"
+    },
+    {
+      "name": "SHARI NAV · AI Map",
+      "short_name": "AI Map",
+      "url": "/navigate.html",
+      "description": "SHARI NAV: India-Nepal AI map, navigation and live S Hari coaches"
+    }
+  ]
+}

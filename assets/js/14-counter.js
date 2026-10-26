@@ -1,0 +1,1162 @@
+
+/* ================================================================
+   [JS] 14. COUNTER MODE — staff sell through the SAME app (3 Sep 2026)
+
+   Owner rule: multi-seat booking must work identically for customer,
+   agent and admin — same search, same seat map, same checkout, no
+   separate logic per role. So instead of a second seat picker in the
+   admin panel, a signed-in staff member who may sell simply opens this
+   app (index.php?counter=1) and this file adds the counter details on
+   top of the customer flow:
+
+     • a "Counter mode" bar (who is selling, back to panel, sell another)
+     • ?from=&to=&date= pre-fills the search (links from the panel)
+     • the date input accepts ANY date for staff (6 Sep 2026; was: yesterday)
+     • checkout: "Received at counter" chips (cash / UPI / eSewa / bank),
+       a capped discount box and a note replace the customer's UPI-proof
+       screen; the agent code is fixed to the seller's own code
+     • /api/book.php gets counterPayment + discount; the server confirms
+       the booking, marks the payment verified and issues the ticket
+     • the ticket screen gets "Same bus · next ticket" / "Same date · choose
+       another bus" / "Sell another" (re-runs the search) / "Open in panel"
+     • desk memory (1 Oct 2026, owner R3b): the agent picked once is kept per
+       clerk (localStorage shg_ctr_agent_<id>, shared with QuickBot), so are
+       the payment chip and boarding/drop (QuickBot's shg_qt_pay /
+       shg_qt_boarding keys); the last sale's departure lives in
+       sessionStorage so a reload keeps the "Same bus" buttons. The
+       PASSENGER is never remembered (owner rule, 6 Sep: forgetPassenger).
+     • seat view: "Confirm counter sale" shortcut runs Continue → checkout →
+       the one-screen confirm through the app's own handlers (owner R3c)
+
+   Everything is a no-op unless window.SHG_BOOT.staff is present (index.php
+   only adds it for a staff session), so the customer bundle is unchanged.
+   Hooks wrap existing globals (renderCheckout, renderStatus, shgApi.post,
+   pushNotif) rather than editing them — the customer files stay intact.
+================================================================ */
+(function () {
+  'use strict';
+  var STAFF = null;
+  try { STAFF = (window.SHG_BOOT && window.SHG_BOOT.staff) || null; } catch (e) { STAFF = null; }
+  if (!STAFF) return;
+
+  var $q = function (sel, root) { return (root || document).querySelector(sel); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); };
+  /* last = the departure the previous sale went on ({from,to,date,sid,rid}),
+     for "Same bus · next ticket"; confirmWatch = the timer that mirrors the
+     real submit button's outcome onto the one-screen confirm button. */
+  var CTR = { pay: 'cash', lastPnr: '', lastAdminUrl: '', lastDraft: '', last: null, confirmWatch: null, seatWatch: null, rcTick: 0 };
+  /* Desk memory (1 Oct 2026, owner: "select/search an agent once … eliminate
+     repeated entry"). What is remembered is the DESK's own setup — agent,
+     payment chip, boarding/drop — never the passenger (forgetPassenger).
+       KEY_AGENT  per clerk, read/written by QuickBot's #qtAgent too
+       KEY_PAY / KEY_BOARD  QuickBot's own keys (quick-ticket.php) so the two
+                  desks agree; KEY_DROP has no QuickBot twin
+       KEY_LAST   the last sale's departure, per TAB (sessionStorage) so a
+                  second desk tab never inherits another clerk's bus */
+  var KEY_AGENT = 'shg_ctr_agent_' + (STAFF.id || 0);
+  var KEY_PAY = 'shg_qt_pay', KEY_BOARD = 'shg_qt_boarding', KEY_DROP = 'shg_ctr_drop', KEY_LAST = 'shg:ctr:last';
+  var PAYS = ['cash', 'upi', 'esewa', 'bank'];
+  /* A desk takes only the money it may (4 Oct 2026): the desk row lists its
+     methods and the server refuses the rest, so the chips never offer them. */
+  (function () {
+    var m = STAFF.desk && STAFF.desk.methods;
+    if (m && m.length) {
+      PAYS = PAYS.filter(function (k) { return m.indexOf(k) >= 0; });
+      if (!PAYS.length) PAYS = ['cash'];
+    }
+  })();
+  /* Which account the customer pays into at this desk (4 Oct 2026) - the
+     Nepal company's own eSewa / bank once the office has typed them on
+     Admin -> Company details, else the India account. Shown, never sent. */
+  function showPayTo() {
+    var box = document.getElementById('ctrPayTo'); if (!box) return;
+    var pay = (STAFF.desk && STAFF.desk.pay) || {};
+    var line = '';
+    if (CTR.pay === 'esewa' && pay.esewa) line = '🇳🇵 eSewa: <b>' + esc(pay.esewa) + '</b>' + (pay.esewaName ? ' · ' + esc(pay.esewaName) : '');
+    else if (CTR.pay === 'upi' && pay.upi) line = '📱 UPI: <b>' + esc(pay.upi) + '</b>';
+    else if (CTR.pay === 'bank' && pay.bank) line = '🏦 ' + esc(pay.bank);
+    box.innerHTML = line;
+    box.hidden = line === '';
+  }
+  var PAY_LBL = { cash: '💵 Cash', upi: '📱 UPI received', esewa: '🇳🇵 eSewa received', bank: '🏦 Bank' };
+  function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function lsSet(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} }
+  (function () { var p0 = lsGet(KEY_PAY); if (PAYS.indexOf(p0) >= 0) CTR.pay = p0; if (PAYS.indexOf(CTR.pay) < 0) CTR.pay = PAYS[0]; })();
+  function loadLast() {
+    try {
+      var j = JSON.parse(sessionStorage.getItem(KEY_LAST) || 'null');
+      if (j && j.from && j.to && j.date) CTR.last = { from: String(j.from), to: String(j.to), date: String(j.date), sid: parseInt(j.sid, 10) || 0, rid: String(j.rid || '') };
+    } catch (e) {}
+  }
+  function saveLast() { try { if (CTR.last) sessionStorage.setItem(KEY_LAST, JSON.stringify(CTR.last)); } catch (e) {} }
+  var PANEL = STAFF.panelUrl || '/admin/';
+  var WHO = STAFF.code ? (STAFF.code + ' · ' + (STAFF.name || '')) : (STAFF.name || 'staff');
+  var CAN = !!STAFF.canSell;
+  /* Nepal-side desk (3 Oct 2026, owner: "Nepalgunj ko lagi fully optimised
+     counter … Gujarat ko just opposite"). The desk on the clerk's profile
+     decides the side (Staff → desk NPJ / Rupaidiha …); the bar's switch
+     overrides it for this browser. A Nepal desk opens on the RETURN run
+     (Nepal → India), wears a red bar so nobody sells the wrong way, and
+     every total shows the NPR to collect (fares stay in INR). */
+  var DESK = STAFF.desk || {};
+  var KEY_SIDE = 'shg_ctr_side_' + (STAFF.id || 0);
+  var SIDE = (lsGet(KEY_SIDE) === 'nepal' || lsGet(KEY_SIDE) === 'india') ? lsGet(KEY_SIDE) : (DESK.side === 'nepal' ? 'nepal' : 'india');
+  /* SIDE and MONEY are separate (4 Oct 2026): Rupaidiha opens on the return
+     run but takes rupees. When the server says what the desk collects, the
+     NPR aid follows the desk's currency and its own rate; an older boot
+     payload (no desk.currency) keeps the side rule. */
+  var NPR_RATE = (DESK.currency === 'NPR' && Number(DESK.rate) > 0) ? Number(DESK.rate)
+    : (Number(STAFF.nprRate) > 0 ? Number(STAFF.nprRate) : 0);
+  function showNpr() { return DESK.currency ? DESK.currency === 'NPR' : SIDE === 'nepal'; }
+  function nprText(inrAmt) {
+    if (!NPR_RATE || !(Number(inrAmt) > 0)) return '';
+    return 'NPR ' + Math.round(Number(inrAmt) * NPR_RATE).toLocaleString('en-IN');
+  }
+  /* Point the home search at this desk's side: Nepal → India ('back') for a
+     Nepal desk, India → Nepal ('go') otherwise. Waits for the router's
+     direction controls; never overrides a deep link (from/to in the URL)
+     or a remembered "same bus" sale. */
+  function applySide(force) {
+    var p = new URLSearchParams(location.search);
+    if (!force && (p.get('from') || p.get('to'))) return;
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries++;
+      if (typeof setSearchDir !== 'function' || !$q('#dirBack')) { if (tries > 40) clearInterval(timer); return; }
+      clearInterval(timer);
+      try { setSearchDir(SIDE === 'nepal' ? 'back' : 'go'); } catch (e) {}
+    }, 250);
+  }
+
+  /* Bulk booking (5 Sep 2026): a selling staff session lifts the per-booking
+     seat cap to the staff cap the boot payload carries (default 20). Runs
+     after 02-config's applyServerSeatCap, so the public cap never wins here;
+     the server re-checks the same staff cap in BookingService::create(). */
+  try {
+    var staffCap = parseInt(STAFF.maxSeats, 10);
+    if (CAN && staffCap > 0 && staffCap <= 40) CONFIG.booking.maxSeats = staffCap;
+  } catch (e) {}
+
+  /* ---- 1. Counter bar --------------------------------------------- */
+  /* The running bundle version, read off this script's own ?v= — so the
+     badge can never lie, and support can diagnose "stale tab" in seconds. */
+  var CTR_VER = (function () {
+    try {
+      var s = document.querySelector('script[src*="14-counter"]');
+      return (s && (s.src.match(/[?&]v=([\w-]+)/) || [])[1]) || '';
+    } catch (e) { return ''; }
+  })();
+
+  function bar() {
+    if ($q('#counterBar')) return;
+    var el = document.createElement('div');
+    el.id = 'counterBar';
+    var nep = SIDE === 'nepal';
+    el.className = nep ? 'cb-nepal' : 'cb-india';
+    el.innerHTML = '<span class="cb-who">' + (nep ? '🇳🇵' : '🧾') + ' <b>' + (nep ? 'Nepal counter' : 'Counter mode') + '</b>'
+      + (DESK.name ? ' <small style="opacity:.8">· ' + esc(DESK.name) + '</small>' : '')
+      + ' · ' + (CAN ? 'selling as <b>' + esc(WHO) + '</b>' : esc(WHO) + ' · <i>view only — your role cannot sell</i>')
+      + ' <span class="cb-dir" title="Default direction for this desk">' + (nep ? '🇳🇵 Nepal → India 🇮🇳' : '🇮🇳 India → Nepal 🇳🇵') + '</span>'
+      + (showNpr() && NPR_RATE ? ' <small style="opacity:.8">· ₹1 = NPR ' + esc(String(NPR_RATE)) + '</small>' : '')
+      + (CTR_VER ? ' <small class="cb-ver" style="opacity:.65">· v' + esc(CTR_VER) + '</small>' : '') + '</span>'
+      + '<span class="cb-links">'
+      + (CAN ? '<a href="#" id="cbSide" title="Switch this browser to the other side of the border">' + (nep ? '⇄ India side' : '⇄ Nepal side') + '</a>' : '')
+      /* 16 Oct 2026 (owner: "3 ta booking system lai eutai ma"): every sale is
+         made on SmartBook - the one booking screen (agent code on top, same
+         engine for counter, agent and office). QuickBot and this app's old
+         search -> seats -> checkout both lead there now. */
+      + (CAN ? '<a href="/admin/smartbook.php" id="cbQuick" style="background:#F07C1F">⚡ SmartBook — sell</a>' : '')
+      + '<a href="' + (CAN ? '/admin/smartbook.php' : '#/') + '" id="cbSellAnother">＋ Sell another</a><a href="' + esc(PANEL) + '">← Back to panel</a></span>';
+    document.body.insertBefore(el, document.body.firstChild);
+    var st = document.createElement('style');
+    st.textContent = '#counterBar{position:sticky;top:0;z-index:1200;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;justify-content:space-between;padding:8px 14px;background:#0C3B2A;color:#fff;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.25)}'
+      + '#counterBar a{color:#fff;font-weight:700;text-decoration:none;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.14);min-height:36px;display:inline-flex;align-items:center}'
+      + '#counterBar.cb-nepal{background:linear-gradient(90deg,#8E1B2E,#1F3A93)}'
+      + '#counterBar .cb-dir{display:inline-block;margin-left:4px;padding:2px 9px;border-radius:999px;background:rgba(255,255,255,.18);font-weight:800;white-space:nowrap}'
+      + '.ctr-npr{display:inline-block;padding:2px 8px;border-radius:8px;background:#1F3A93;color:#fff;font-weight:800}'
+      + '#counterBar .cb-links{display:flex;gap:8px;flex-wrap:wrap}'
+      /* 8 Oct 2026 (D9-07): on a phone the bar scrolls away with the page (it
+         was sticky, 167px tall, and hid the app's own menu / language bar),
+         sits tighter, and its four links are one row that swipes sideways.
+         The build stamp is dropped there; desk, seller, direction and the
+         NPR rate stay. The customer .nav is not touched. */
+      + '@media (max-width:600px){#counterBar{position:relative;padding:6px 10px;gap:4px 8px;font-size:12px;line-height:1.35}'
+      + '#counterBar .cb-ver{display:none}'
+      + '#counterBar .cb-links{flex-wrap:nowrap;overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}'
+      + '#counterBar .cb-links::-webkit-scrollbar{display:none}'
+      + '#counterBar .cb-links a{white-space:nowrap;flex:0 0 auto}}'
+      + '#ctrPanel{border:2px solid #178A50;border-radius:14px;padding:14px;margin:12px 0;background:#f3fbf6}'
+      + ':root[data-theme="dark"] #ctrPanel{background:#0f2a1c}'
+      + '#ctrPanel h4{margin:0 0 10px;font-size:15px}'
+      + '#ctrPanel .ctr-agent{margin:12px 0 4px;padding:10px;border:1.5px dashed #178A50;border-radius:12px;background:var(--card,#fff)}'
+      + '#ctrPanel .ctr-agent.invalid{border-color:var(--bad,#c00)}'
+      + '.ctr-pays{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}'
+      + '.ctr-pay{flex:1 1 120px;min-height:48px;border:2px solid var(--line,#dde3ee);border-radius:10px;background:var(--card,#fff);font-weight:700;font-size:14px;cursor:pointer;color:inherit}'
+      + '.ctr-pay.on{background:#178A50;color:#fff;border-color:#178A50}'
+      + '.ctr-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}'
+      + '.ctr-row input,.ctr-row select{font-size:16px;padding:10px 12px;border:1px solid var(--line,#dde3ee);border-radius:9px;background:var(--card,#fff);color:inherit;min-width:0}'
+      + '.ctr-row input[type=number]{width:120px}.ctr-row input[type=text]{flex:1 1 160px}'
+      + '.ctr-note{font-size:12px;color:var(--muted,#6b7688);margin-top:8px}'
+      + '#ctrActions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}'
+      + '#ctrActions a{flex:1 1 140px;text-align:center}'
+      /* one-screen confirm + the seat view's quick passenger line (17 Sep 2026) */
+      + '.ctr-sum{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin:10px 0 12px;padding:10px 12px;border-radius:10px;background:#FFF3E2;border:1px solid #F3D9B0;font-size:13.5px;color:inherit}'
+      + ':root[data-theme="dark"] .ctr-sum{background:rgba(240,124,31,.14);border-color:#5a3a1a}'
+      + '#ctrConfirmBtn{flex:1;width:100%}'
+      + '#ctrQuick{margin:12px 0 4px;padding:10px 12px;border:1.5px dashed #178A50;border-radius:12px;background:#f3fbf6}'
+      + ':root[data-theme="dark"] #ctrQuick{background:#0f2a1c}'
+      + '.ctr-q-lbl{font-size:12.5px;font-weight:700;margin-bottom:6px}.ctr-q-lbl small{font-weight:500;color:var(--muted,#6b7688)}'
+      + '.ctr-q-row{display:flex;gap:8px;flex-wrap:wrap}'
+      + '#ctrQuickAgent.invalid{border-color:var(--bad,#c00)!important;box-shadow:0 0 0 3px rgba(204,0,0,.15)}'
+      + '.ctr-q-row input{flex:1 1 130px;min-width:0;font-size:16px;padding:10px 12px;border:1px solid var(--line,#dde3ee);border-radius:9px;background:var(--card,#fff);color:inherit}'
+      + '#ctrSeatConfirm{flex:1 1 100%;min-height:48px}';
+    document.head.appendChild(st);
+    var sw = $q('#cbSide');
+    if (sw) sw.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      SIDE = SIDE === 'nepal' ? 'india' : 'nepal';
+      lsSet(KEY_SIDE, SIDE === (DESK.side === 'nepal' ? 'nepal' : 'india') ? '' : SIDE);   // back to the desk default = forget the override
+      CTR.last = null; try { sessionStorage.removeItem(KEY_LAST); } catch (e) {}
+      el.remove(); bar();
+      try { location.hash = '#/'; } catch (e) {}
+      applySide(true);
+      try { ctrSummary(); } catch (e) {}
+    });
+    $q('#cbSellAnother').addEventListener('click', function () {
+      try { if (typeof releaseMyLocks === 'function') releaseMyLocks(); } catch (e) {}
+      try { Flow.route = null; Flow.seats = []; Flow.legs = []; Flow.legIndex = 0; Flow.draftId = ''; Flow.paxIndividual = false; } catch (e) {}
+      forgetPassenger();
+    });
+    updateWatch();
+  }
+
+  /* The desk sells to a NEW stranger every sale: whatever passenger the seat
+     view's quick line or "Book return journey" handed over (window.SHG_QUICK,
+     read by renderCheckout) is dropped the moment a sale completes or the
+     clerk starts over, so it can never ride into the next ticket. */
+  function forgetPassenger() {
+    try { window.SHG_QUICK = null; } catch (e) {}
+    CTR.typed = null;
+    ['#ctrQuickName', '#ctrQuickPhone', '#qtName', '#qtPhone'].forEach(function (id) { var el = $q(id); if (el) el.value = ''; });
+  }
+
+  /* A counter tab stays open ALL DAY, so deploys never reached it until a
+     manual reload — every fix looked "still broken" at the desk. Watch
+     sw.js's ETag (served no-cache, changes on every deploy): when it moves,
+     show a refresh chip in the bar. Checked every 10 min and whenever the
+     tab comes back to the foreground. */
+  var swTag = null;
+  function checkVer() {
+    fetch('/sw.js', { method: 'HEAD', cache: 'no-store' }).then(function (r) {
+      var tag = r.headers.get('ETag') || r.headers.get('Last-Modified') || '';
+      if (!tag) return;
+      if (swTag === null) { swTag = tag; return; }
+      if (tag !== swTag && !$q('#cbUpdate')) {
+        var links = $q('#counterBar .cb-links');
+        if (links) {
+          var a = document.createElement('a');
+          a.id = 'cbUpdate'; a.href = '#';
+          a.style.background = '#F07C1F';
+          a.textContent = '🔄 New version — tap to refresh';
+          a.addEventListener('click', function (e) { e.preventDefault(); location.reload(); });
+          links.insertBefore(a, links.firstChild);
+        }
+      }
+    }).catch(function () {});
+  }
+  function updateWatch() {
+    checkVer();
+    setInterval(checkVer, 10 * 60 * 1000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) checkVer(); });
+  }
+
+  /* ---- 2. Date floor + search prefill ------------------------------ */
+  function isoOffset(days) {
+    var d = new Date(); d.setDate(d.getDate() + days);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function setSelect(sel, want) {
+    if (!sel || !want) return false;
+    var w = String(want).trim().toLowerCase();
+    for (var i = 0; i < sel.options.length; i++) {
+      var o = sel.options[i];
+      if (String(o.value).trim().toLowerCase() === w || String(o.textContent).trim().toLowerCase() === w) { sel.value = o.value; return true; }
+    }
+    return false;
+  }
+  function prefill() {
+    var di = $q('#dateInput');
+    if (di && CAN) {
+      /* Any date at the counter (6 Sep 2026). The old min of "yesterday" was
+         the 24h departed-bus grace; a paper ticket from three days ago, or a
+         group two months out, could not be entered at all. The server holds
+         the only hard floor (the inaugural date) and still refuses a
+         cancelled or OFF departure, so nothing here needs to guess. The
+         30-day strip stays as the quick pick; any other date is typed here. */
+      di.removeAttribute('min');
+      di.removeAttribute('max');
+    }
+    var p = new URLSearchParams(location.search);
+    /* Customer 360 → "New booking" (3 Oct 2026): the customer's name and
+       mobile wait here and fill the seat view's quick passenger line ONCE
+       (decorateSeats), so a returning customer is not retyped. */
+    if (CAN && (p.get('cname') || p.get('cphone'))) {
+      CTR.pax = { name: String(p.get('cname') || '').slice(0, 80), phone: String(p.get('cphone') || '').replace(/[^0-9]/g, '').slice(0, 15) };
+    }
+    if (!p.get('from') && !p.get('to') && !p.get('date')) return;
+    // Deep link from the admin seat map (5 Sep 2026): &sid= names the exact
+    // departure (0 / absent = daily bus) and &seat= a seat to pre-select, so
+    // "book this bus" is one click with nothing to retype.
+    var wantSid = parseInt(p.get('sid') || '0', 10) || 0;
+    var wantSeat = String(p.get('seat') || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries++;
+      var fs = $q('#fromSel'), ts = $q('#toSel'), form = $q('#searchForm');
+      if (!fs || !ts || !form || fs.options.length === 0) { if (tries > 40) clearInterval(timer); return; }
+      clearInterval(timer);
+      var okFrom = setSelect(fs, p.get('from')), okTo = setSelect(ts, p.get('to'));
+      if (p.get('date') && di) { di.value = p.get('date'); try { di.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {} }
+      if (okFrom && okTo && di && di.value) {
+        // The link's departure is the desk's target: "Same bus" / "Same
+        // date" work even when the first sale on it fails (1 Oct 2026).
+        if (CAN) { CTR.last = { from: fs.value, to: ts.value, date: di.value, sid: wantSid, rid: '' }; saveLast(); }
+        try { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); } catch (e) {}
+        // Auto-select ONLY when the link explicitly named a departure or a
+        // seat. Legacy from/to/date links (agent panel "Sell seats",
+        // new-booking redirect) must keep stopping at the results list —
+        // auto-entering the daily bus there would sell the wrong departure
+        // on a day that also runs an extra bus.
+        if (CAN && (wantSid > 0 || wantSeat !== '')) autoPick(wantSid, wantSeat);
+      }
+      // Clean the query so a reload does not re-run the search.
+      try { history.replaceState(null, '', location.pathname + '?counter=1' + location.hash); } catch (e) {}
+    }, 250);
+  }
+
+  /* After the auto-submitted search: click the result card the deep link
+     named (matching data-sid for an extra bus, the plain daily card for
+     sid=0), then — once the seat grid is up — tap the requested seat.
+     Every step goes through the app's own click handlers, so locks, the
+     pair rule and the summary all behave exactly as a manual tap.
+     Extra-bus cards render LATE — the board paints daily cards from the
+     local catalogue first and only adds extras once /api/search.php
+     answers — so for sid>0 keep polling until the matching card appears
+     rather than giving up at the first cards seen.
+     rid (optional, 17 Sep 2026) = the client route code (data-sel) to match
+     as well, so "Same bus · next ticket" re-enters the exact daily bus on a
+     board that lists more than one route; the deep links leave it blank. */
+  function autoPick(sid, seat, rid) {
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries++; if (tries > 40) { clearInterval(timer); return; }   // ~10s, then leave the list up
+      var sels = document.querySelectorAll('#resultsList [data-sel]');
+      if (!sels.length) return;
+      var btn = null;
+      for (var i = 0; i < sels.length; i++) {
+        var s = parseInt(sels[i].getAttribute('data-sid') || '0', 10) || 0;
+        if (s === sid && (!rid || sels[i].getAttribute('data-sel') === rid)) { btn = sels[i]; break; }
+      }
+      if (!btn) return;                    // not rendered yet (or gone) — keep waiting
+      clearInterval(timer);
+      btn.click();
+      if (!seat) return;
+      var st = 0;
+      var seatTimer = setInterval(function () {
+        st++; if (st > 40) { clearInterval(seatTimer); return; }
+        var cell = document.querySelector('.seat[data-id="' + seat + '"]');
+        if (!cell) return;
+        clearInterval(seatTimer);
+        if (!cell.disabled && !cell.classList.contains('sel')) cell.click();
+      }, 250);
+    }, 250);
+  }
+
+  /* ---- 3. Checkout: counter payment + discount --------------------- */
+  function decorateCheckout() {
+    if (!CAN) return;
+
+    /* A fresh form for every sale (6 Sep 2026). The checkout view is reused
+       between sales and the contact / document boxes are not rebuilt, so the
+       previous passenger's phone, email and ID rode into the next ticket —
+       and its WhatsApp went to the wrong person. Blank them once per draft
+       (a new draft id = a new sale); a draft the clerk is mid-way through is
+       never touched. The passenger rows are rebuilt by renderCheckout itself,
+       and 07-checkout's repeat-customer prefills are off for staff. */
+    try {
+      var draft = (typeof Flow !== 'undefined' && Flow && Flow.draftId) || '';
+      if (draft && draft !== CTR.lastDraft) {
+        CTR.lastDraft = draft;
+        ['#cPhone', '#cEmail', '#idNum', '#ctrDiscVal', '#ctrNote'].forEach(function (id) { var el = $q(id); if (el) el.value = ''; });
+        var wb = $q('#wbNote'); if (wb) wb.classList.add('hide');
+        var pm = $q('#paxMemory'); if (pm) pm.remove();
+        // and a live button — renderCheckout resets it too; this is the belt to that brace
+        var sb = $q('#submitBookingBtn'); if (sb) { sb.disabled = false; sb.classList.remove('loading'); }
+        // per-seat names are off for the new party (renderCheckout resets the
+        // flag when it mints the draft id; this keeps the class honest too)
+        try { Flow.paxIndividual = false; var pr0 = $q('#paxRows'); if (pr0) pr0.classList.remove('pax-names-on'); } catch (e) {}
+        // The seat view's quick line / "Book return journey" handed THIS sale's
+        // passenger over in SHG_QUICK: renderCheckout already put the name on the
+        // lead row, and the phone was blanked just above — put it back.
+        try {
+          var q0 = window.SHG_QUICK, cp0 = $q('#cPhone');
+          if (q0 && q0.phone && cp0 && !cp0.value) cp0.value = String(q0.phone).replace(/[^0-9]/g, '');
+        } catch (e) {}
+      }
+    } catch (e) {}
+
+    /* T&C tick (5 Sep 2026): the checkbox is the CUSTOMER's electronic
+       signature — at the desk the customer is standing in front of the
+       staff and the desk paperwork covers it. Left unticked it kept the
+       "भुक्तानीमा जानुहोस्" button disabled and lit the checkbox red on
+       every counter sale ("ticket hun lako xain"). Auto-accept it and
+       swap the signature wording for an honest desk note. */
+    var tnc = $q('#agreeTnc');
+    if (tnc) {
+      if (!tnc.checked) {
+        tnc.checked = true;
+        try { tnc.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+      }
+      var tncBox = tnc.closest('.tnc-box');
+      if (tncBox && !tncBox.hasAttribute('data-ctr')) {
+        tncBox.setAttribute('data-ctr', '1');
+        tncBox.style.display = 'none';
+        var tncNote = document.createElement('div');
+        tncNote.className = 'ctr-note';
+        tncNote.textContent = '🧾 Counter sale — Terms & Conditions accepted at the desk · काउन्टरमा नियम स्वीकृत।';
+        tncBox.parentNode.insertBefore(tncNote, tncBox);
+      }
+      var tncErr = $q('#tncErr'); if (tncErr) tncErr.style.display = 'none';
+    }
+
+    /* Phone is OPTIONAL at the desk (5 Sep 2026): say so on the field
+       itself, lift the 10-char maxlength so a +977 Nepali number fits,
+       and soften the error line. The validator already accepts blank /
+       8-15 digits for a selling staff session. */
+    var cp = $q('#cPhone');
+    if (cp && !cp.hasAttribute('data-ctr')) {
+      cp.setAttribute('data-ctr', '1');
+      cp.maxLength = 15;
+      cp.placeholder = 'optional · WhatsApp ticket ko lagi';
+      var cpl = cp.closest('.field') && cp.closest('.field').querySelector('label');
+      if (cpl) cpl.innerHTML = 'Mobile <small>(optional at counter · +977 pani milcha)</small>';
+      var cpe = cp.closest('.field') && cp.closest('.field').querySelector('.err');
+      if (cpe) cpe.textContent = 'Blank OK — or 8-15 digits (Indian / Nepali).';
+      /* 5 Oct 2026: 12 desk tickets in two weeks carried a 9-digit number and
+         30 in a week none at all - WhatsApp cannot deliver those. Say, while
+         typing, where THIS ticket will go; never blocks the sale. */
+      var cph = document.createElement('div');
+      cph.id = 'ctrPhoneReach';
+      cph.className = 'ctr-note';
+      cph.setAttribute('aria-live', 'polite');
+      (cp.closest('.field') || cp.parentNode).appendChild(cph);
+      var reach = function () {
+        var d = String(cp.value || '').replace(/\D/g, '').replace(/^00/, '');
+        var bare = d.replace(/^0+/, '');
+        var ok = /^[6-9]\d{9}$/.test(bare) || /^91[6-9]\d{9}$/.test(bare) || /^9779[78]\d{8}$/.test(bare);
+        if (bare === '') cph.textContent = '📵 Number chhaina — ticket counter / agent ko WhatsApp ma janchha.';
+        else if (ok) cph.textContent = '✅ Ticket yo number ko WhatsApp ma sidhai janchha.';
+        else cph.textContent = '⚠️ ' + bare.length + ' digits — number galat jasto chha (India 10 digits · Nepal 98/97…). Ticket yatru lai pugdaina, counter / agent lai janchha.';
+        cph.style.color = (bare !== '' && !ok) ? '#B4231F' : '';
+      };
+      cp.addEventListener('input', reach);
+      cp.addEventListener('change', reach);
+      reach();
+    }
+
+    var card = $q('#payCard'); if (!card) return;
+    // Hide the customer's payment tabs, panels and proof uploader; the "cod"
+    // path is the proof-free one, so drive the existing flow through it.
+    try { if (typeof setPayMethod === 'function') setPayMethod('cod'); } catch (e) {}
+    ['#payMethodUpi', '#payMethodEsewa', '#payMethodLink', '#payMethodCod', '#upiPanel', '#esewaPanel', '#linkPayPanel', '#codPanel', '#proofSection', '#ppCard']
+      .forEach(function (id) { var el = $q(id); if (el) el.style.display = 'none'; });
+    var tabsWrap = $q('#payMethodUpi') && $q('#payMethodUpi').parentElement; if (tabsWrap) tabsWrap.style.display = 'none';
+
+    var btn = $q('#submitBookingBtn');
+    if (btn) { btn.textContent = '🧾 Confirm counter sale →'; btn.removeAttribute('data-i18n'); }
+
+    /* Belt and braces (5 Sep 2026): re-assert the proof-free 'cod' path and
+       the auto-accepted T&C at the very moment of submit — a document-level
+       CAPTURE listener runs before the app's own click handler, so no state
+       drift in a long-open counter tab can resurrect the hidden UTR field
+       or the signature checkbox as an invisible "highlighted field". */
+    if (!document._ctrSubmitGuard) {
+      document._ctrSubmitGuard = true;
+      document.addEventListener('click', function (e) {
+        if (!e.target || !e.target.closest || !e.target.closest('#submitBookingBtn')) return;
+        try { if (typeof setPayMethod === 'function') setPayMethod('cod'); } catch (e2) {}
+        try {
+          var t2 = $q('#agreeTnc');
+          if (t2 && !t2.checked) { t2.checked = true; t2.dispatchEvent(new Event('change', { bubbles: true })); }
+        } catch (e2) {}
+      }, true);
+    }
+
+    if (!$q('#ctrPanel')) {
+      var maxPct = Number(STAFF.maxDiscountPct || 15);
+      var el = document.createElement('div');
+      el.id = 'ctrPanel';
+      el.innerHTML = '<h4>🧾 Received at counter · काउन्टरमा लिएको</h4>'
+        + '<div class="ctr-pays">'
+        // the chip the desk used last time is lit (CTR.pay ← shg_qt_pay)
+        + PAYS.map(function (k) { return '<button type="button" class="ctr-pay' + (CTR.pay === k ? ' on' : '') + '" data-pay="' + k + '">' + PAY_LBL[k] + '</button>'; }).join('')
+        + '</div>'
+        + '<div class="ctr-note" id="ctrPayTo" aria-live="polite"></div>'
+        + '<div class="ctr-row"><label style="font-size:12px;font-weight:700">Discount</label>'
+        + '<input type="number" id="ctrDiscVal" min="0" step="1" placeholder="0" inputmode="numeric">'
+        + '<select id="ctrDiscType"><option value="flat">₹ off</option><option value="percent">% off</option></select>'
+        + '<input type="text" id="ctrNote" maxlength="255" placeholder="Note (optional) · receipt no, remarks"></div>'
+        + '<div class="ctr-note">Max discount ' + esc(maxPct) + '% of the fare (server re-checks). The booking is <b>confirmed immediately</b>, the ticket goes to the passenger\'s WhatsApp and the sale is credited to the <b>agent chosen above</b> (Other = company code). Cash stays with <b>' + esc(WHO) + '</b>.</div>';
+      // One screen (17 Sep 2026): the panel lives on step 1, right above the
+      // Confirm button — the desk never has to open the customer's payment step.
+      var nav0 = $q('#coStep1 .flow-actions');
+      if (nav0 && nav0.parentNode) nav0.parentNode.insertBefore(el, nav0);
+      else if (btn && btn.parentElement) btn.parentElement.insertBefore(el, btn); else card.appendChild(el);
+      showPayTo();
+      el.addEventListener('click', function (e) {
+        var b = e.target.closest('.ctr-pay'); if (!b) return;
+        CTR.pay = b.getAttribute('data-pay') || 'cash';
+        lsSet(KEY_PAY, CTR.pay);
+        showPayTo();
+        el.querySelectorAll('.ctr-pay').forEach(function (x) { x.classList.toggle('on', x === b); });
+        ctrSummary();
+      });
+      $q('#ctrDiscVal').addEventListener('input', function () {
+        var v = parseFloat(this.value) || 0;
+        if ($q('#ctrDiscType').value === 'percent' && v > maxPct) { this.value = String(maxPct); }
+        ctrSummary();
+      });
+      $q('#ctrDiscType').addEventListener('change', ctrSummary);
+    }
+    oneScreen();
+
+    // Agent selection is MANDATORY at the counter / admin desk, and sits in
+    // the payment panel, right under Cash / UPI / eSewa / Bank.
+    var ac = $q('#cAgentCode');
+    if (ac) {
+      var field = ac.closest('.field') || ac.parentElement;
+      var pays = $q('#ctrPanel .ctr-pays');
+      if (field && pays && field.parentNode !== pays.parentNode) {
+        var oldCard = field.parentNode;
+        field.classList.add('ctr-agent');
+        pays.parentNode.insertBefore(field, pays.nextSibling);
+        if (oldCard && oldCard.classList && oldCard.classList.contains('co-card') && !oldCard.querySelector('.field')) oldCard.style.display = 'none';
+      }
+      var otherBtn = $q('#cAgentOther'); if (otherBtn) otherBtn.style.display = 'none';
+      var agents = (STAFF.agents || []);
+      if (ac.tagName === 'SELECT') {
+        // already the desk dropdown - follow the pick made on the seat map
+        var w0 = agentWant();
+        if (w0 && ac.value !== w0 && [].some.call(ac.options, function (o) { return o.value === w0; })) ac.value = w0;
+      } else if (agents.length > 0) {
+        /* Picked once, remembered per clerk (1 Oct 2026, owner R3b): the last
+           choice lives in localStorage under shg_ctr_agent_<staff id> — the
+           key QuickBot's #qtAgent reads and writes too — so a reload, the
+           "New version" refresh or a fresh tab never asks again. The clerk's
+           own SHG code is the fallback; an agent no longer on the list leaves
+           the select blank and the validator asks. The server still checks
+           the code and falls back to the company code. */
+        /* 5 Oct 2026 (owner): compulsory again — the clerk's own code is no
+           longer filled in silently and the "Other (direct sale)" escape is
+           gone (a direct sale = the company code from the list). Only an
+           agent selling for himself starts on his own code. */
+        var want = agentWant();
+        var sel = document.createElement('select');
+        sel.id = 'cAgentCode';
+        sel.style.cssText = 'width:100%;font-size:16px;padding:10px 12px;border:1.5px solid var(--line,#dde3ee);border-radius:12px;background:var(--card,#fff);color:inherit';
+        sel.innerHTML = '<option value="">— एजेन्ट छान्नुहोस् / Select Agent —</option>'
+          + agents.map(function (a) {
+            var selected = (want && a.code === want) ? ' selected' : '';
+            return '<option value="' + esc(a.code) + '"' + agentOptAttrs(a) + selected + '>' + (a.co ? '🏢 ' : '👤 ') + esc(a.code) + ' · ' + esc(a.name) + '</option>';
+          }).join('');
+        ac.parentNode.replaceChild(sel, ac);
+        agentPickerOn(sel);
+        /* 5 Oct 2026: say when this sale began as a WhatsApp message (channel tag). */
+        if (!$q('#cViaWa')) {
+          var waLbl = document.createElement('label');
+          waLbl.className = 'ctr-via-wa';
+          waLbl.style.cssText = 'display:flex;align-items:center;gap:10px;min-height:44px;margin-top:8px;font-size:13.5px;font-weight:600;cursor:pointer';
+          waLbl.innerHTML = '<input type="checkbox" id="cViaWa" style="width:22px;height:22px;accent-color:#25D366;flex:none"> <span>💬 WhatsApp बाट आएको request · came from a WhatsApp message</span>';
+          (sel.closest('.shg-ap') || sel).insertAdjacentElement('afterend', waLbl);
+        }
+        sel.addEventListener('change', function () {
+          lsSet(KEY_AGENT, sel.value);
+          if (field) field.classList.remove('invalid');
+          try { if (typeof coSyncContinue === 'function') coSyncContinue(); } catch (e) {}
+          ctrSummary();
+        });
+        // the remembered pick is in: let the readiness check and the summary's commission line see it
+        try { if (typeof coSyncContinue === 'function') coSyncContinue(); } catch (e) {}
+        ctrSummary();
+        var lbl = field && field.querySelector('label');
+        if (lbl) lbl.innerHTML = 'एजेन्ट छान्नुहोस् · Select Agent <small style="color:var(--bad)">(अनिवार्य / required)</small>';
+        if (field) field.classList.remove('field-optional');
+        var hint = field && field.querySelector('.hint');
+        if (hint) hint.textContent = 'काउन्टर / एडमिन बिक्रीमा एजेन्ट चयन अनिवार्य छ। · Agent selection is mandatory for counter/admin sales.';
+      } else if (STAFF.code) {
+        ac.value = STAFF.code; ac.readOnly = true;
+        var lbl2 = field && field.querySelector('label');
+        if (lbl2) lbl2.innerHTML = 'एजेन्ट कोड · Agent Code <small style="color:var(--bad)">(अनिवार्य / required)</small>';
+        if (field) field.classList.remove('field-optional');
+      } else if (field) { field.style.display = 'none'; }
+    }
+    // Do not pre-fill the passenger phone with the staff member's own customer login.
+    try {
+      var ph = $q('#cPhone');
+      if (ph && typeof USER !== 'undefined' && USER && ph.value === USER.phone) ph.value = '';
+    } catch (e) {}
+  }
+
+  /* ---- 3b. One-screen confirm (17 Sep 2026) ------------------------
+     Counter mode used to run the customer's two-step checkout: staff had
+     to tap "Continue to Payment →" to reach a step whose only staff
+     content was the #ctrPanel above and the confirm button. Now the
+     panel sits on step 1, the step-2 label reads "Counter payment", the
+     Continue button is relabelled "Received at counter →" and hidden,
+     and a cloned "Confirm counter sale" button in step 1's own action bar
+     runs coGoStep(2) and then clicks the REAL #submitBookingBtn — so
+     validateCheckoutDetails, the capture-phase submit guard, submitBooking
+     and the /api/book.php payload (hookApi) are exactly as they were. A
+     one-line sale summary above it says what is being confirmed. */
+  function oneScreen() {
+    var s1 = $q('#coStep1'); if (!s1) return;
+    var nav = s1.querySelector('.flow-actions');
+    var cont = $q('#coContinueBtn');
+    if (cont && !cont.hasAttribute('data-ctr')) {
+      cont.setAttribute('data-ctr', '1');
+      cont.removeAttribute('data-i18n');
+      cont.textContent = '🧾 Received at counter →';
+      cont.style.display = 'none';
+    }
+    var stepLbl = document.querySelector('#co2Step .cs2[data-step="2"] span');
+    if (stepLbl && !stepLbl.hasAttribute('data-ctr')) {
+      stepLbl.setAttribute('data-ctr', '1');
+      stepLbl.removeAttribute('data-i18n');
+      stepLbl.textContent = 'Counter payment';
+    }
+    // belt and braces: an older ctrPanel (or one re-parented by anything) moves up here
+    var panel = $q('#ctrPanel');
+    if (panel && nav && panel.parentNode !== s1) s1.insertBefore(panel, nav);
+    if (nav && !$q('#ctrSummary')) {
+      var sum = document.createElement('div');
+      sum.id = 'ctrSummary'; sum.className = 'ctr-sum'; sum.setAttribute('aria-live', 'polite');
+      s1.insertBefore(sum, nav);
+    }
+    if (nav && !$q('#ctrConfirmBtn')) {
+      var cb = document.createElement('button');
+      cb.type = 'button'; cb.id = 'ctrConfirmBtn'; cb.className = 'btn btn-orange';
+      cb.textContent = '🧾 Confirm counter sale →';
+      nav.appendChild(cb);
+      cb.addEventListener('click', ctrConfirm);
+    }
+    // re-arm on every render, like the real submit button
+    var live = $q('#ctrConfirmBtn'); if (live) { live.disabled = false; live.classList.remove('loading'); }
+    ctrSummary();
+  }
+
+  /* "2 seats · ₹4,000 · 💵 Cash · discount − ₹200 · ≈ ₹3,800 to collect" —
+     read from the checkout's own maths (Flow.checkoutTotals, the same
+     function submitBooking uses) and the desk's chips/discount box. The
+     discount line is an estimate: the server applies and caps it. */
+  function ctrSummary() {
+    var el = $q('#ctrSummary'); if (!el) return;
+    var seats = 0, total = 0;
+    try { seats = ((Flow.legs && Flow.legs[0] && Flow.legs[0].seats) || []).length; } catch (e) {}
+    try { total = (typeof Flow.checkoutTotals === 'function') ? (Number(Flow.checkoutTotals().total) || 0) : 0; } catch (e) { total = 0; }
+    if (!total) {
+      var pa = $q('#payAmount');
+      total = parseInt(String((pa && (pa.getAttribute('data-val') || pa.textContent)) || '').replace(/[^0-9]/g, ''), 10) || 0;
+    }
+    var dv = parseFloat(($q('#ctrDiscVal') || {}).value) || 0;
+    var dt = (($q('#ctrDiscType') || {}).value) || 'flat';
+    var maxPct = Number(STAFF.maxDiscountPct || 15);
+    /* 6 Oct 2026: the running office offer is already inside `total`; the desk
+       discount never stacks on it - the server gives the BIGGER one. */
+    var offerDisc = 0;
+    try { offerDisc = (typeof Flow.checkoutTotals === 'function') ? (Number(Flow.checkoutTotals().offerDisc) || 0) : 0; } catch (e) { offerDisc = 0; }
+    var pre = total + offerDisc;
+    var off = 0;
+    if (dv > 0 && pre > 0) {
+      off = dt === 'percent' ? Math.round(pre * Math.min(dv, maxPct) / 100) : Math.min(dv, pre);
+      off = Math.min(off, Math.round(pre * maxPct / 100));
+    }
+    if (off > 0 && off <= offerDisc) { off = 0; }       // the offer is bigger: it stays, the desk discount is not added
+    if (off > 0 && offerDisc > 0) { total = pre; }       // the desk discount replaces the offer
+    var payLbl = PAY_LBL[CTR.pay] || CTR.pay;
+    var fmt = function (n) { try { return inr(n); } catch (e) { return '₹' + n; } };
+    var commLine = '';
+    var agSel = $q('#cAgentCode');
+    if (agSel && agSel.value && agSel.value !== 'OTHER' && seats > 0 && STAFF.commFlat) {
+      var selAgent = (STAFF.agents || []).find(function (a) { return a.code === agSel.value; });
+      var rate = (selAgent && selAgent.type === 'joint') ? Number(STAFF.commJoint || 400) : Number(STAFF.commDirect || 200);
+      commLine = '<span>·</span><small style="color:var(--good)">💰 ' + esc(agSel.value) + ' कमिशन ' + fmt(rate) + ' × ' + seats + ' = ' + fmt(rate * seats) + '</small>';
+    }
+    var due = off > 0 ? Math.max(1, total - off) : total;
+    var npr = showNpr() ? nprText(due) : '';
+    el.innerHTML = '<b>' + seats + ' seat' + (seats === 1 ? '' : 's') + '</b><span>·</span>' + fmt(total)
+      + '<span>·</span>' + esc(payLbl)
+      + (off > 0 ? '<span>·</span>discount − ' + fmt(off) + '<span>·</span><b>≈ ' + fmt(due) + ' to collect</b>'
+                 : '<span>·</span><b>' + fmt(total) + ' to collect</b>')
+      + (npr ? '<span>·</span><span class="ctr-npr" title="Fare is in INR; NPR at the rate in Admin → Settings">≈ ' + esc(npr) + '</span>' : '')
+      + commLine;
+  }
+
+  function ctrConfirm() {
+    var sb = $q('#submitBookingBtn'), me = $q('#ctrConfirmBtn');
+    if (!sb || typeof coGoStep !== 'function') return;
+    if (sb.disabled) return;                       // a sale is already in flight
+    try { coGoStep(2); } catch (e) { return; }
+    // details refused → coGoStep never reached step 2; the validator has
+    // already toasted the field names and scrolled to the first bad one
+    if (!(typeof Flow !== 'undefined' && Flow && Flow.coStep === 2)) return;
+    if (me) { me.disabled = true; me.classList.add('loading'); }
+    sb.click();
+    // From here the sale is submitBooking()'s: on success it navigates to the
+    // ticket; on failure it re-enables #submitBookingBtn (and returns to step 1
+    // itself when the details were the problem). Mirror that outcome onto our
+    // button and bring the desk back to the one screen it works on.
+    var n = 0;
+    clearInterval(CTR.confirmWatch);
+    CTR.confirmWatch = setInterval(function () {
+      n++;
+      var onCheckout = (location.hash || '') === '#/checkout';
+      if (onCheckout && sb.disabled && n <= 240) return;    // still submitting (≤ 60 s)
+      clearInterval(CTR.confirmWatch); CTR.confirmWatch = null;
+      if (me) { me.disabled = false; me.classList.remove('loading'); }
+      if (onCheckout) { try { if (Flow.coStep === 2) coGoStep(1); } catch (e) {} }
+    }, 250);
+  }
+
+  /* ---- 3c. Seat view: quick passenger line (17 Sep 2026) ------------
+     The QuickBot desk lane (name + mobile → ticket) and the seat map were
+     two different surfaces. For staff only, the seat view's summary card
+     gets a compact Name · Mobile pair above Continue; at Continue they are
+     handed to the checkout through the SAME window.SHG_QUICK prefill the
+     home-page card uses (renderCheckout reads name/phone), so a repeat
+     sale is: tap seat → type name/mobile → Continue → Confirm counter
+     sale. Nothing here submits — the confirm stays a deliberate tap. */
+  function decorateSeats() {
+    if (!CAN) return;
+    var card = document.querySelector('#view-seats .sum-card'); if (!card) return;
+    var nav = card.querySelector('.flow-actions');
+    if (!nav || $q('#ctrQuick')) return;
+    var el = document.createElement('div');
+    el.id = 'ctrQuick';
+    el.innerHTML = '<div class="ctr-q-lbl">⚡ Passenger for this ticket <small>· lands on the checkout, ready to confirm</small></div>'
+      + '<div class="ctr-q-row">'
+      + '<input id="ctrQuickName" type="text" maxlength="80" placeholder="Name" autocomplete="off" autocapitalize="words">'
+      + '<input id="ctrQuickPhone" type="tel" inputmode="numeric" maxlength="15" placeholder="Mobile (optional)" autocomplete="off">'
+      + '</div>'
+      /* 5 Oct 2026 (owner): the agent is compulsory at the counter AND the
+         seat map must still go straight to the ticket — so the agent is
+         picked right here (remembered per clerk, the same key the checkout
+         dropdown and QuickBot use) and Confirm never stops on the checkout. */
+      + quickAgentRow()
+      /* One tap from the seat map to the ticket (1 Oct 2026, owner R3c). The
+         button presses the app's own Continue (Flow.legs, boarding and drop
+         are built exactly as a manual tap), waits until renderCheckout has
+         painted THIS draft, then presses the one-screen confirm — so the real
+         validator, the capture-phase submit guard, submitBooking and the
+         /api/book.php payload are untouched. A refused detail (no name, no
+         agent) leaves the desk on the checkout with the field highlighted,
+         where ID, age and per-seat names can still be edited; Continue →
+         still opens the checkout without confirming. */
+      + '<div class="ctr-q-row" style="margin-top:8px"><button type="button" class="btn btn-orange" id="ctrSeatConfirm" disabled>🧾 Confirm counter sale →</button></div>'
+      + '<div class="ctr-note">Confirm here = ticket at once · Continue → = open the checkout to edit ID / age / per-seat names</div>';
+    card.insertBefore(el, nav);
+    if (CTR.pax) {
+      var pn0 = $q('#ctrQuickName'), pp0 = $q('#ctrQuickPhone');
+      if (pn0 && CTR.pax.name) pn0.value = CTR.pax.name;
+      if (pp0 && CTR.pax.phone) pp0.value = CTR.pax.phone;
+      CTR.pax = null;
+    }
+    /* 5 Oct 2026 (owner: "naam dohoryaera lekhnu parchha"): a name / mobile
+       already typed on the home Quick card is this ticket's passenger - carry
+       it here; and what the clerk types is kept if this box is ever rebuilt. */
+    try {
+      var pn1 = $q('#ctrQuickName'), pp1 = $q('#ctrQuickPhone'), qn1 = $q('#qtName'), qp1 = $q('#qtPhone'), ty = CTR.typed || {};
+      if (pn1 && !pn1.value) pn1.value = ty.name || (qn1 && qn1.value.trim()) || '';
+      if (pp1 && !pp1.value) pp1.value = ty.phone || (qp1 && qp1.value.replace(/[^0-9]/g, '')) || '';
+      [pn1, pp1].forEach(function (el) { if (el) el.addEventListener('input', function () { CTR.typed = { name: pn1.value, phone: pp1.value }; }); });
+    } catch (e) {}
+    var qa = $q('#ctrQuickAgent');
+    if (qa) qa.addEventListener('change', function () { lsSet(KEY_AGENT, qa.value); qa.classList.remove('invalid'); });
+    var cont0 = $q('#continueBtn'), scb = $q('#ctrSeatConfirm');
+    if (cont0 && scb) {
+      var mirror = function () { scb.disabled = cont0.disabled; };   // same readiness as Continue (seats picked, fare good)
+      mirror();
+      try { new MutationObserver(mirror).observe(cont0, { attributes: true, attributeFilter: ['disabled'] }); } catch (e) {}
+      scb.addEventListener('click', seatConfirm);
+    }
+    rememberStops();
+    if (!document._ctrQuickGuard) {
+      document._ctrQuickGuard = true;
+      // capture phase on the document: runs before the app's own Continue
+      // handler navigates to #/checkout and renders it
+      document.addEventListener('click', function (e) {
+        if (!e.target || !e.target.closest || !e.target.closest('#continueBtn')) return;
+        var nm = (($q('#ctrQuickName') || {}).value || '').trim();
+        var ph = (($q('#ctrQuickPhone') || {}).value || '').replace(/[^0-9]/g, '');
+        try { window.SHG_QUICK = (nm || ph) ? { name: nm, phone: ph } : null; } catch (e2) {}
+      }, true);
+    }
+  }
+
+  /* The seat map's agent dropdown (same list and remembered pick as the
+     checkout's); empty when this desk sees no agents. */
+  function agentWant() {
+    var w = lsGet(KEY_AGENT) || (STAFF.role === 'agent' ? (STAFF.code || '') : '');
+    return w === 'OTHER' ? '' : w;
+  }
+  function quickAgentRow() {
+    var agents = STAFF.agents || [];
+    if (!agents.length) return '';
+    var want = agentWant();
+    return '<div class="ctr-q-row" style="margin-top:8px"><select id="ctrQuickAgent" aria-label="Agent (required)" style="flex:1;min-width:0;font-size:15px;padding:9px 10px;border:1.5px solid var(--line,#dde3ee);border-radius:10px;background:var(--card,#fff);color:inherit">'
+      + '<option value="">— एजेन्ट छान्नुहोस् / Select Agent (अनिवार्य) —</option>'
+      + agents.map(function (a) {
+        return '<option value="' + esc(a.code) + '"' + agentOptAttrs(a) + (want && a.code === want ? ' selected' : '') + '>' + (a.co ? '🏢 ' : '👤 ') + esc(a.code) + ' · ' + esc(a.name) + '</option>';
+      }).join('') + '</select></div>';
+  }
+  /* 5 Oct 2026 (owner: "agent lai list bata search garera select") - the agent
+     <select>s become a search box (assets/js/agent-picker.js: name / code /
+     city). The select itself stays, so everything that reads its value is
+     unchanged; if the file cannot load, the plain list still works. */
+  function agentOptAttrs(a) {
+    return ' data-name="' + esc(a.name) + '" data-city="' + esc(a.city || '') + '" data-co="' + (a.co ? '1' : '0') + '"';
+  }
+  var PICKER_SRC = (function () {
+    try {
+      var s = document.querySelector('script[src*="14-counter.js"]');
+      if (s) return s.getAttribute('src').replace('14-counter.js', 'agent-picker.js');
+    } catch (e) {}
+    return '/assets/js/agent-picker.js';
+  })();
+  var pickerWait = null;
+  function agentPickerOn(sel) {
+    if (!sel) return;
+    if (window.shgAgentPicker) { try { window.shgAgentPicker(sel); } catch (e) {} return; }
+    if (!pickerWait) {
+      pickerWait = [];
+      var sc = document.createElement('script');
+      sc.src = PICKER_SRC;
+      sc.onload = function () { var q = pickerWait || []; pickerWait = []; q.forEach(function (el) { if (el.isConnected) { try { window.shgAgentPicker(el); } catch (e) {} } }); };
+      document.head.appendChild(sc);
+    }
+    pickerWait.push(sel);
+  }
+  /* the seat-map quick row is written as HTML - turn its select into the search box once it is in the page */
+  try {
+    new MutationObserver(function () {
+      var qa = document.getElementById('ctrQuickAgent');
+      if (qa && qa.getAttribute('data-ap') !== '1' && qa.getAttribute('data-ap-wait') !== '1') { qa.setAttribute('data-ap-wait', '1'); agentPickerOn(qa); }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
+  function seatConfirm() {
+    var cont = $q('#continueBtn'); if (!cont || cont.disabled) return;
+    var nmEl = $q('#ctrQuickName');
+    if (nmEl && !nmEl.value.trim()) {
+      try { toast('यात्रीको नाम लेख्नुहोस् · Passenger name first'); } catch (e) {}
+      nmEl.focus(); return;
+    }
+    var qa = $q('#ctrQuickAgent');
+    if (qa && !qa.value) {
+      try { toast('एजेन्ट छान्नुहोस् · Select the agent first (required)'); } catch (e) {}
+      qa.classList.add('invalid'); qa.focus(); return;
+    }
+    if (qa) lsSet(KEY_AGENT, qa.value);
+    var round = false; try { round = Flow.tripType === 'round' && Flow.legIndex === 0; } catch (e) {}
+    var tick = CTR.rcTick;
+    cont.click();            // capture guard → SHG_QUICK; 06-results builds the leg and routes to #/checkout
+    if (round) return;       // the return leg's seat view comes next — confirm from there
+    var n = 0;
+    clearInterval(CTR.seatWatch);
+    CTR.seatWatch = setInterval(function () {
+      n++;
+      if (n > 50) { clearInterval(CTR.seatWatch); CTR.seatWatch = null; return; }   // ~5 s: Continue refused (it toasted) — stay put
+      // wait for THIS render: renderCheckout bumps rcTick after it (and decorateCheckout) ran
+      if ((location.hash || '') !== '#/checkout' || CTR.rcTick === tick || !$q('#ctrConfirmBtn')) return;
+      clearInterval(CTR.seatWatch); CTR.seatWatch = null;
+      ctrConfirm();
+    }, 100);
+  }
+
+  /* ---- 3d. Boarding / drop remembered per desk (1 Oct 2026, owner R3b) ----
+     Under the SAME localStorage key QuickBot uses (shg_qt_boarding, stored as
+     the stop NAME and matched by town the way Boarding::townKey does), so the
+     two desks agree; the drop has no QuickBot twin (shg_ctr_drop). Written
+     when the clerk picks a stop, re-applied after every renderSeats (which
+     refills both selects with the route defaults). "Other" is never
+     remembered, and a select sitting on Other is left alone. The server
+     still validates the posted stop (BookingService::defaultBoardingStop). */
+  function stopKey(s) {
+    s = String(s || '').replace(/\[[^\]]*\]/g, ' ').replace(/@.*$/, ' ');
+    s = s.split(/[\u2014\u2013\-\u00b7|,(]/)[0];
+    return s.replace(/[^A-Za-z0-9\u0900-\u097F]+/g, '').toLowerCase();
+  }
+  function stopName(v) { try { return (typeof parseBP === 'function' && parseBP(v).name) || v; } catch (e) { return v; } }
+  function rememberStops() {
+    if (document._ctrStopGuard) return;
+    document._ctrStopGuard = true;
+    document.addEventListener('change', function (e) {
+      var el = e.target; if (!el || !el.id) return;
+      var key = el.id === 'boardingSel' ? KEY_BOARD : (el.id === 'dropSel' ? KEY_DROP : '');
+      if (!key) return;
+      var v = String(el.value || '');
+      if (!v || v === '__other__') return;
+      lsSet(key, stopName(v));
+    });
+  }
+  function recallStops() {
+    if (!CAN) return;
+    [['#boardingSel', KEY_BOARD], ['#dropSel', KEY_DROP]].forEach(function (pair) {
+      var sel = $q(pair[0]), want = lsGet(pair[1]);
+      if (!sel || !want || sel.value === '__other__') return;
+      var k = stopKey(want); if (!k) return;
+      for (var i = 0; i < sel.options.length; i++) {
+        var v = sel.options[i].value;
+        if (v !== '__other__' && (v === want || stopKey(v) === k)) { if (sel.selectedIndex !== i) sel.selectedIndex = i; break; }
+      }
+    });
+    // the agent picked on the checkout (or in QuickBot) shows on the seat map too
+    var qa = $q('#ctrQuickAgent'), wa = agentWant();
+    if (qa && wa && qa.value !== wa && [].some.call(qa.options, function (o) { return o.value === wa; })) qa.value = wa;
+  }
+
+  /* ---- 4. Payload + result hooks ---------------------------------- */
+  function hookApi() {
+    if (typeof shgApi === 'undefined' || !shgApi || typeof shgApi.post !== 'function') return;
+    var orig = shgApi.post;
+    shgApi.post = function (path, body) {
+      var isBook = CAN && typeof path === 'string' && path.indexOf('/book.php') === 0 && body && typeof body === 'object';
+      if (isBook) {
+        var dv = parseFloat(($q('#ctrDiscVal') || {}).value) || 0;
+        var agSel = $q('#cAgentCode');
+        body = Object.assign({}, body, {
+          counterPayment: CTR.pay,
+          agentCode: agSel ? (agSel.value || '').trim() : '',
+          viaWhatsapp: !!($q('#cViaWa') && $q('#cViaWa').checked),
+          discountType: dv > 0 ? (($q('#ctrDiscType') || {}).value || 'flat') : '',
+          discountValue: dv,
+          note: (($q('#ctrNote') || {}).value || '').trim(),
+          couponCode: '', pointsRequested: 0, isCod: false
+        });
+      }
+      var p = orig.call(shgApi, path, body);
+      if (!isBook) return p;
+      return p.then(function (res) {
+        if (res && res.counter && res.pnr) {
+          CTR.lastPnr = res.pnr; CTR.lastAdminUrl = res.adminUrl || '';
+          CTR.justSold = res.pnr;   // the ticket screen takes the desk back to this bus's seat map by itself
+          // Remember the departure for "Same bus · next ticket" (17 Sep 2026).
+          // Flow.legs[0] is still intact here: submitBooking resets Flow only
+          // after this promise hands the result back.
+          try {
+            var leg0 = (typeof Flow !== 'undefined' && Flow && Flow.legs && Flow.legs[0]) || null;
+            CTR.last = {
+              from: (Flow && Flow.from) || '', to: (Flow && Flow.to) || '',
+              date: body.travelDate || (leg0 && leg0.date) || '',
+              sid: parseInt(body.scheduleId, 10) || 0,
+              rid: (leg0 && leg0.routeId) || ''
+            };
+            saveLast();
+          } catch (e) {}
+          forgetPassenger();   // this sale's passenger never rides into the next one
+          try { if ($q('#cViaWa')) $q('#cViaWa').checked = false; } catch (e) {}
+          // submitBooking() stores the local record right after this resolves
+          // (as a COD-style pending booking); mark it confirmed + paid.
+          setTimeout(function () { patchLocal(res.pnr); }, 0);
+        }
+        return res;
+      });
+    };
+  }
+  function patchLocal(pnr) {
+    try {
+      var b = DB.bookings.find(function (x) { return x.id === pnr; });
+      if (!b) return;
+      b.status = 'confirmed'; b.codFlag = false;
+      b.payment = Object.assign({}, b.payment || {}, { method: CTR.pay, mode: 'counter', status: 'verified' });
+      b.counter = { by: WHO, code: STAFF.code || '', adminUrl: CTR.lastAdminUrl };
+      if (typeof persist === 'function') persist('bookings');
+      if (location.hash === '#/ticket/' + pnr && typeof renderStatus === 'function') renderStatus(pnr);
+      var dv = $q('#ctrDiscVal'); if (dv) dv.value = ''; var nt = $q('#ctrNote'); if (nt) nt.value = '';
+    } catch (e) {}
+  }
+
+  /* ---- 5. Ticket screen: staff actions ----------------------------- */
+  /* WhatsApp "hi" QR (4 Oct 2026): the customer scans it with their own
+     phone and presses send - their free 24 h window opens and the ticket
+     arrives on WhatsApp by itself (includes/waqueue.php). */
+  function waHiBox(id) {
+    var n = window.SHG_BOOT && SHG_BOOT.waHi ? String(SHG_BOOT.waHi).replace(/\D/g, '') : '';
+    if (!n || !id) return '';
+    var link = 'https://wa.me/' + n + '?text=' + encodeURIComponent('Hi ' + id);
+    return '<div class="ctr-wahi" style="display:flex;gap:12px;align-items:center;margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card)">'
+      + '<img src="/qr/?scale=5&data=' + encodeURIComponent(link) + '" width="132" height="132" alt="WhatsApp QR" style="flex:none;background:#fff;border-radius:8px">'
+      + '<div style="font-size:13px;line-height:1.45"><b>📲 Customer: scan → "hi" → ticket</b><br>यात्रुको फोनले स्क्यान गरेर "hi" पठाउनुहोस् — टिकट WhatsApp मा आफैं आउँछ (निःशुल्क)।'
+      + '<br><a href="' + esc(link) + '" target="_blank" rel="noopener" style="font-weight:700">wa.me/' + esc(n) + '</a></div></div>';
+  }
+  function decorateStatus(id) {
+    var body = $q('#statusBody'); if (!body || $q('#ctrActions')) return;
+    var b = null; try { b = DB.bookings.find(function (x) { return x.id === id; }); } catch (e) {}
+    var adminUrl = (b && b.counter && b.counter.adminUrl) || ('/admin/booking-view.php?pnr=' + encodeURIComponent(id));
+    var L = CTR.last;
+    /* 5 Oct 2026 (owner: "ticket kati sakepachhi feri bus ko seat map ma
+       januparchha"): right after a sale the desk goes back to the SAME bus's
+       seat map by itself, a few seconds after the ticket shows (the picture
+       has downloaded by then). Any touch on the ticket screen keeps it open;
+       only for the ticket just sold, never for one opened later. */
+    if (CTR.justSold === id && L) { CTR.justSold = ''; armReturn(id); }
+    var ret = CTR.ret && CTR.ret.pnr === id;
+    var el = document.createElement('div');
+    el.id = 'ctrActions';
+    /* Three ways on (1 Oct 2026, owner R3d: "provide 'Book another ticket'
+       while retaining the same date/route and allowing another bus/seat
+       selection immediately"): the same departure again, the same date's
+       board to pick another bus, or a fresh search that keeps the from/to/
+       date already set. The first two need a remembered sale (CTR.last,
+       kept in sessionStorage so a reload does not lose them). */
+    el.innerHTML = (ret ? '<div class="ctr-note" id="ctrRet" style="font-size:14px;font-weight:700;margin:0 0 10px">🚌 Seat map ma farkidai · back to the seat map in <b id="ctrRetN">'
+                        + Math.max(1, Math.ceil((CTR.ret.at - Date.now()) / 1000)) + '</b>s — <span style="font-weight:500">touch the screen to stay on this ticket</span></div>' : '')
+      + (L ? '<a class="btn btn-orange" href="#/results" id="ctrSameBus">🚌 Same bus · next ticket</a>'
+                      + '<a class="btn btn-blue" href="#/results" id="ctrSameDate">📅 Same date · choose another bus</a>' : '')
+      + '<a class="btn ' + (L ? 'btn-blue' : 'btn-orange') + '" href="#/" id="ctrSellAnother">🧾 Sell another · अर्को टिकट</a>'
+      + '<a class="btn btn-blue" href="' + esc(adminUrl) + '">📋 Open in panel</a>'
+      + '<a class="btn" href="' + esc(PANEL) + '">← Back to panel</a>'
+      + waHiBox(id);
+    body.insertBefore(el, body.firstChild);
+    $q('#ctrSellAnother').addEventListener('click', function (e) { if (sellAnother()) e.preventDefault(); });
+    var same = $q('#ctrSameBus');
+    if (same) same.addEventListener('click', function (e) { e.preventDefault(); sameBus(true); });
+    var sameDate = $q('#ctrSameDate');
+    if (sameDate) sameDate.addEventListener('click', function (e) { e.preventDefault(); sameBus(false); });
+  }
+
+  function cancelReturn() {
+    CTR.ret = null;
+    if (CTR.retT) { clearInterval(CTR.retT); CTR.retT = null; }
+    var b = $q('#ctrRet'); if (b && b.parentNode) b.parentNode.removeChild(b);
+  }
+  function armReturn(id) {
+    cancelReturn();
+    CTR.ret = { pnr: id, at: Date.now() + 5000 };
+    CTR.retT = setInterval(function () {
+      var r = CTR.ret;
+      if (!r || location.hash !== '#/ticket/' + r.pnr) { cancelReturn(); return; }
+      var left = Math.ceil((r.at - Date.now()) / 1000), n = $q('#ctrRetN');
+      if (n) n.textContent = Math.max(0, left);
+      if (left <= 0) { cancelReturn(); sameBus(true); }
+    }, 250);
+    if (!document._ctrRetGuard) {
+      document._ctrRetGuard = true;
+      ['pointerdown', 'keydown', 'wheel', 'touchmove'].forEach(function (ev) {
+        document.addEventListener(ev, function () { if (CTR.ret) cancelReturn(); }, { passive: true, capture: true });
+      });
+    }
+  }
+
+  /* Put the remembered departure back on the search card, so "Change
+     search" starts from this bus. */
+  function setSearchCard(L) {
+    try {
+      var fs = $q('#fromSel'), ts = $q('#toSel'), di = $q('#dateInput');
+      var setOpt = function (sel, v) {
+        if (!sel || !v) return;
+        if (!setSelect(sel, v)) { sel.insertAdjacentHTML('beforeend', '<option>' + esc(v) + '</option>'); sel.value = v; }
+      };
+      setOpt(fs, L.from); setOpt(ts, L.to);
+      if (di) { di.value = L.date; try { if (typeof markDateChip === 'function') markDateChip(); } catch (e2) {} }
+    } catch (e) {}
+  }
+
+  /* "Sell another" (1 Oct 2026): keep the route and date the desk is working
+     on. With a remembered sale (or from/to/date still on the search card)
+     the search is re-run through the form's OWN submit handler — one coach
+     on the board opens its seat map at once (Flow.autoSkip, 06-results.js) —
+     instead of parking on the home page. Returns true when it navigated. */
+  function sellAnother() {
+    try { if (typeof releaseMyLocks === 'function') releaseMyLocks(); } catch (e) {}
+    try { Flow.route = null; Flow.seats = []; Flow.legs = []; Flow.legIndex = 0; Flow.draftId = ''; Flow.paxIndividual = false; } catch (e) {}
+    forgetPassenger();
+    var form = $q('#searchForm'), fs = $q('#fromSel'), ts = $q('#toSel'), di = $q('#dateInput');
+    if (!form || !fs || !ts || !di) return false;
+    var L = CTR.last;
+    if (L && L.from && L.to && L.date) setSearchCard(L);
+    if (!fs.value || !ts.value || !di.value || fs.value === ts.value) { applySide(true); return false; }   // nothing to re-run: home it is, on this desk's side
+    try {
+      var ri = $q('#retInput');
+      if (Flow.tripType === 'round' && !(ri && ri.value) && typeof setTripType === 'function') setTripType('one');
+    } catch (e) {}
+    try { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); } catch (e) { return false; }
+    return true;
+  }
+
+  /* "Same bus · next ticket" (17 Sep 2026): the desk sells ticket after
+     ticket on ONE departure, and "Sell another" threw the bus and date
+     away every time. Re-run the search the last sale came from and let
+     autoPick tap the same card — every step goes through the app's own
+     handlers (results click → seat map with fresh occupancy: SeatSrv was
+     invalidated by submitBooking), so holds and pricing behave exactly as
+     a manual tap. No server involvement. */
+  function sameBus(pick) {
+    var L = CTR.last; if (!L || !L.from || !L.to || !L.date) return;
+    try { if (typeof releaseMyLocks === 'function') releaseMyLocks(); } catch (e) {}
+    forgetPassenger();
+    try {
+      if (typeof setTripType === 'function') setTripType('one');
+      Flow.from = L.from; Flow.to = L.to; Flow.date = L.date; Flow.retDate = '';
+      Flow.route = null; Flow.seats = []; Flow.legs = []; Flow.legIndex = 0; Flow.draftId = '';
+      Flow.scheduleId = L.sid || 0; Flow.fareOverride = 0; Flow.paxIndividual = false;
+      Flow.shotThumb = ''; Flow.shotBlob = null;
+      // the board stays up: autoPick taps the same card (pick) or the clerk
+      // picks another bus (!pick) — never 06-results' single-coach auto-enter
+      Flow.autoSkip = false;
+    } catch (e) { return; }
+    setSearchCard(L);   // keep the search card in step, so "Change search" starts from this bus
+    location.hash = '#/results';
+    if (location.hash === '#/results') { try { if (typeof router === 'function') router(); } catch (e) {} }
+    if (pick) autoPick(L.sid || 0, '', L.rid || '');
+  }
+
+  /* ---- 6. Wire the hooks once the app's globals exist -------------- */
+  function wrap() {
+    if (typeof renderCheckout === 'function') {
+      var rc = renderCheckout;
+      window.renderCheckout = function () { var r = rc.apply(this, arguments); try { decorateCheckout(); } catch (e) {} CTR.rcTick++; return r; };
+    }
+    if (typeof renderSeats === 'function') {
+      var rsv = renderSeats;
+      window.renderSeats = function () { var r = rsv.apply(this, arguments); try { recallStops(); } catch (e) {} return r; };
+    }
+    if (typeof renderStatus === 'function') {
+      var rs = renderStatus;
+      window.renderStatus = function (id) { var r = rs.apply(this, arguments); try { decorateStatus(id); } catch (e) {} return r; };
+    }
+    if (typeof pushNotif === 'function') {
+      // The customer-facing "pay cash at the counter" notice makes no sense for staff.
+      window.pushNotif = function () {};
+    }
+    hookApi();
+  }
+
+  function start() {
+    /* The office browser is the DESK, not a passenger. Before today's fix a
+       sale signed this tab in as the customer it sold to (ensureCustomerSession),
+       so live counters still carry the last passenger's identity: their name
+       on the 👤 button, their My Bookings, their offline ticket. Drop any
+       customer sign-in when counter mode starts (setUser(null) also tells the
+       service worker to forget cached tickets — right on a shared machine). */
+    try { if (CAN && typeof setUser === 'function' && typeof USER !== 'undefined' && USER) setUser(null); } catch (e) {}
+    try { loadLast(); } catch (e) {}   // "Same bus" / "Same date" survive a reload (sessionStorage, per tab)
+    try { bar(); } catch (e) {}
+    try { wrap(); } catch (e) {}
+    try { prefill(); } catch (e) {}
+    try { if (CAN && !(CTR.last && CTR.last.from)) applySide(false); } catch (e) {}
+    try { decorateSeats(); } catch (e) {}   // the seat view's summary card is static markup — once is enough
+    // Already on the checkout / ticket screen when this ran late? Decorate now.
+    try { if (location.hash === '#/checkout') decorateCheckout(); } catch (e) {}
+    try { if (location.hash.indexOf('#/ticket/') === 0) decorateStatus(location.hash.slice(9)); } catch (e) {}
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();

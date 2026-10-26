@@ -1,0 +1,9 @@
+*config*.php
+config/
+uploads/
+private-team/
+logs/
+backup/
+*.pem
+*.key
+.env*

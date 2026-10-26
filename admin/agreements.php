@@ -1,0 +1,878 @@
+<?php
+/**
+ * admin/agreements.php — Agreements & agents (27 Sep 2026).
+ *
+ * The owner asked for one place that shows who registered: the people and
+ * organizations who applied for an agreement on /agreements/, AND the agents
+ * and partners already working, each with their KYC and agreement status.
+ *
+ *   Top cards   new applications · KYC pending · agreement pending ·
+ *               signed / approved · agents & partners
+ *   Tab 1       Applications: search (name / phone / ref / area), status and
+ *               type filters, the list, and one opened application in full
+ *               (every field, the photo, witnesses) with its actions:
+ *               status, KYC, agreement (+ signed date — the end date is
+ *               signed + 11 months, worked out here), note, linked account.
+ *   Tab 2       Existing agents & partners: every agent account with KYC,
+ *               agreement status / end and the two public-list switches;
+ *               the name opens Agent 360.
+ *
+ * Who: viewing needs customers.view (manager, support, counter staff and
+ * the super-admin) — the list, the statuses, name, phone and area. The KYC
+ * and bank details (ID / PAN / account numbers, date of birth, an
+ * individual's home address, bank, IFSC, UPI) and the photo are shown in
+ * full only to a super-admin or a manager, and every such opening is written
+ * to the activity log; everyone else sees them masked (••••1234 / hidden).
+ * Any change needs POST + CSRF + a super-admin or a manager. The photo is
+ * printed as a data: URI into this page only — it is never a file on an
+ * open URL.
+ *
+ * 22 Oct 2026 (review, #18): a Pvt. Ltd. partner's company logo from the
+ * public form is shown in the application like the photo (to a manager
+ * only), and the card preview shows it the way the home page does. A logo
+ * has no "show" switch of its own — an approved, live partner's logo is
+ * public at once — so approving a partner with a logo (Save with status
+ * Approved, or "Approve & put live") is refused until the office picks
+ * "Show this logo" or "Remove it" next to the picture. The Website card
+ * can remove it later ("Remove the logo").
+ */
+declare(strict_types=1);
+require __DIR__ . '/_guard.php';
+require_once INCLUDE_PATH . '/agentapplications.php';
+$admin = admin_boot('customers.view');
+
+$role    = (string) ($admin['role'] ?? '');
+$canEdit = Auth::isSuperadmin() || $role === 'manager';
+$canKyc  = $canEdit;   // who sees ID, bank and photo in full
+$selfId  = (int) ($admin['id'] ?? 0);
+$h       = static fn($v): string => Security::e((string) ($v ?? ''));
+$tab     = (string) ($_GET['tab'] ?? 'apps') === 'agents' ? 'agents' : 'apps';
+$flash   = null;
+$ready   = AgentApplications::available();
+
+// 22 Oct 2026 (review, #18): a partner's logo goes public with the approval (agent-photo.php serves it for every
+// approved, live partner; there is no "show logo" column), so the office decides on it next to the picture first.
+$logoOf = static fn(?array $a): string => $a !== null && (string) ($a['type'] ?? '') === 'org' && is_string($a['logo'] ?? null)
+    && str_starts_with((string) $a['logo'], 'data:image/') && AgentApplications::logoReady() ? (string) $a['logo'] : '';
+$logoDrop = static function (array $app, string $why) use ($selfId): void {
+    Database::update('agent_applications', ['logo' => null, 'reviewed_by' => $selfId > 0 ? $selfId : null, 'reviewed_at' => date('Y-m-d H:i:s')],
+        'id = :id', ['id' => (int) $app['id']]);
+    Logger::audit('agreement_app.logo', 'agent_application', (string) ($app['ref'] ?: AgentApplications::refFor((int) $app['id'])),
+        ['logo' => 'sent'], ['logo' => 'removed'], $why . ' — agreements dashboard (by admin #' . $selfId . ')');
+};
+$logoDecide = static function (array $app, string $why) use ($selfId, $logoDrop): void {
+    $choice = (string) ($_POST['logo_ok'] ?? '');
+    if ($choice !== '1' && $choice !== '0') {
+        throw new AgreementError('This partner sent a company logo, and approving puts it on the website. Look at the logo, choose “Show this logo on the website” or “Remove it”, then approve again. Nothing was changed.');
+    }
+    if ($choice === '0') {
+        $logoDrop($app, $why);
+        return;
+    }
+    Logger::audit('agreement_app.logo', 'agent_application', (string) ($app['ref'] ?: AgentApplications::refFor((int) $app['id'])),
+        null, ['logo' => 'shown'], $why . ' — agreements dashboard (by admin #' . $selfId . ')');
+};
+
+/* ---------- actions (POST + CSRF + super-admin / manager) ---------- */
+/* 22 Oct 2026 (team portal): an approved agent / partner gets a login - username = the mobile;
+   they make the password at /team/ with a WhatsApp code, or the office sets one under "Login account". */
+$agrMakeLogin = static function (array $app, string $pw = '') use ($selfId): int {
+    require_once INCLUDE_PATH . '/agentwallet.php';
+    try {
+        $newId = AgentWallet::createAgent((string) $app['name'], (string) (($app['phone_raw'] ?? '') ?: $app['phone']),
+            (string) $app['type'] === 'org' ? 'org' : 'person', (string) ($app['area'] ?? ''), (string) ($app['email'] ?? '') ?: null, $selfId,
+            $pw !== '' ? ['password' => $pw, 'no_welcome' => true] : []);
+    } catch (RuntimeException $re) {
+        throw new AgreementError($re->getMessage());
+    }
+    AgentApplications::update((int) $app['id'], ['admin_id' => $newId], $selfId);
+    return $newId;
+};
+/* 23 Oct 2026 (owner: "admin approve paxi ID password WhatsApp ma aaune"): the sign-in details go out by
+   themselves. $pw '' = a one-time password is made here; it reaches the person on WhatsApp with the agent
+   code and the /team/ link (Notify::agentCredentials), and they replace it at the first sign-in
+   (must_change_pw). When no sender can deliver, the office gets a tap-to-send WhatsApp button instead. */
+$agrSendCreds = static function (array $app, string $pw, int $adminId): void {
+    $kind = (string) $app['type'] === 'org' ? 'partner' : 'agent';
+    $sent = Notify::agentCredentials($adminId, (string) $app['name'], (string) (($app['phone_raw'] ?? '') ?: $app['phone']),
+        preg_replace('/\D+/', '', (string) $app['phone']) ?: (string) $app['phone'], $pw, $kind);
+    $_SESSION['agr_wa_sent'] = $sent === true;
+    $_SESSION['agr_wa_hand'] = is_string($sent) ? $sent : '';
+    Logger::audit('agreement_app.credentials', 'agent_application', (string) ($app['ref'] ?: AgentApplications::refFor((int) $app['id'])),
+        null, ['delivered' => $sent === true ? 'whatsapp' : 'link'], 'Sign-in details sent (by admin #' . (int) ($_SESSION[ADMIN_SESSION_KEY]['id'] ?? 0) . ')');
+};
+$agrApproveAll = static function (int $id, string $pw) use ($agrMakeLogin, $agrSendCreds, $selfId): void {
+    $now = AgentApplications::find($id);
+    if ($now === null || (string) $now['status'] !== 'approved') {
+        return;
+    }
+    if (empty($now['admin_id']) && (string) $now['phone'] !== '') {
+        require_once INCLUDE_PATH . '/agentwallet.php';
+        if ($pw === '') {
+            $pw = AgentWallet::tempPassword();
+        }
+        $agrMakeLogin($now, $pw);
+        $now = AgentApplications::find($id);
+    }
+    if ($pw !== '' && $now !== null && !empty($now['admin_id'])) {
+        try {
+            Auth::setStaffCredentials((int) $now['admin_id'], ['password' => $pw, 'must_change' => true], $selfId);
+        } catch (RuntimeException $re) {
+            throw new AgreementError($re->getMessage());
+        }
+        $agrSendCreds($now, $pw, (int) $now['admin_id']);
+    }
+};
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    $act = (string) ($_POST['action'] ?? '');
+    if (!Security::verifyCsrf()) {
+        http_response_code(419);
+        $flash = ['bad', 'This page was open too long — nothing was saved. Please try again.'];
+    } elseif (!$canEdit) {
+        http_response_code(403);
+        $flash = ['bad', 'Only a super-admin or a manager can change agreements and KYC.'];
+    } else {
+        try {
+            if ($act === 'app') {
+                $id = (int) ($_POST['id'] ?? 0);
+                $in = [
+                    'status'              => (string) ($_POST['status'] ?? ''),
+                    'kyc_status'          => (string) ($_POST['kyc_status'] ?? ''),
+                    'agreement_status'    => (string) ($_POST['agreement_status'] ?? ''),
+                    'agreement_signed_at' => (string) ($_POST['agreement_signed_at'] ?? ''),
+                ];
+                if (array_key_exists('note', $_POST)) {
+                    $in['note'] = (string) $_POST['note'];
+                }
+                if (array_key_exists('admin_id', $_POST)) {
+                    $in['admin_id'] = (int) $_POST['admin_id'];
+                }
+                // 22 Oct 2026 (review, #18): approving a partner publishes its logo - only once the office chose.
+                $was = AgentApplications::find($id);
+                if ($was !== null && $in['status'] === 'approved' && (string) $was['status'] !== 'approved' && $logoOf($was) !== '') {
+                    $logoDecide($was, 'approved');
+                }
+                $changed = AgentApplications::update($id, $in, $selfId);
+                if ($in['status'] === 'approved' && empty($in['admin_id'])) {
+                    $agrApproveAll($id, trim((string) ($_POST['new_password'] ?? '')));
+                }
+                Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=' . ($changed === [] ? '0' : '1') . '#detail');
+            } elseif ($act === 'card' || $act === 'add') {
+                // 19 Oct 2026: the website card + KYC / bank edit, and the office's own "add agent".
+                $in = [
+                    'name'      => (string) ($_POST['name'] ?? ''),
+                    'phone'     => (string) ($_POST['phone'] ?? ''),
+                    'area'      => (string) ($_POST['area'] ?? ''),
+                    'email'     => (string) ($_POST['email'] ?? ''),
+                    'web_addr'  => (string) ($_POST['web_addr'] ?? ''),
+                    'public_ok' => isset($_POST['public_ok']) ? 1 : 0,
+                    'web_photo' => isset($_POST['web_photo']) ? 1 : 0,
+                    'web_live'  => isset($_POST['web_live']) ? 1 : 0,
+                ];
+                if ($canKyc) {
+                    foreach (AgentApplications::OFFICE_KYC_FIELDS as $k) {
+                        if (array_key_exists($k, $_POST)) {
+                            $in[$k] = (string) $_POST[$k];
+                        }
+                    }
+                }
+                $up = AgentApplications::photoFromUpload(isset($_FILES['photo']) && is_array($_FILES['photo']) ? $_FILES['photo'] : null);
+                if ($up !== null) {
+                    $in['photo'] = $up;
+                }
+                // 22 Oct 2026: a partner company's logo (home page partner cards)
+                $logo = AgentApplications::photoFromUpload(isset($_FILES['logo']) && is_array($_FILES['logo']) ? $_FILES['logo'] : null);
+                if ($act === 'add') {
+                    $in['type']       = (string) ($_POST['type'] ?? 'ind');
+                    $in['kyc_status'] = (string) ($_POST['kyc_status'] ?? 'none');
+                    $made = AgentApplications::adminCreate($in, $selfId, $canKyc);
+                    if ($logo !== null) {
+                        AgentApplications::saveCard((int) $made['id'], ['logo' => $logo], $selfId, false);
+                    }
+                    Response::redirect('admin/agreements.php?tab=apps&id=' . $made['id'] . '&saved=1#detail');
+                }
+                if ($logo !== null) {
+                    $in['logo'] = $logo;
+                }
+                $id = (int) ($_POST['id'] ?? 0);
+                $changed = AgentApplications::saveCard($id, $in, $selfId, $canKyc);
+                // 22 Oct 2026 (review, #18): the office can take a partner's logo off (a new file replaces it instead).
+                if ($logo === null && isset($_POST['logo_remove'])) {
+                    $cur = AgentApplications::find($id);
+                    if ($cur !== null && $logoOf($cur) !== '') {
+                        $logoDrop($cur, 'website card');
+                        $changed[] = 'logo';
+                    }
+                }
+                Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=' . ($changed === [] ? '0' : '1') . '#web');
+            } elseif ($act === 'golive') {
+                $id = (int) ($_POST['id'] ?? 0);
+                // 22 Oct 2026 (review, #18): the button puts a partner's logo live too - the office chooses first.
+                $was = AgentApplications::find($id);
+                if ($was !== null && !AgentApplications::isLive($was) && $logoOf($was) !== '') {
+                    $logoDecide($was, (string) $was['status'] === 'approved' ? 'put live' : 'approved & put live');
+                }
+                AgentApplications::update($id, ['status' => 'approved'], $selfId);
+                AgentApplications::saveCard($id, ['web_live' => 1], $selfId, false);
+                // 22 Oct 2026 (owner: approve = team account too): a login when there is none and a mobile is on file
+                if ($canEdit && isset($_POST['mklogin'])) {
+                    $agrApproveAll($id, trim((string) ($_POST['new_password'] ?? '')));
+                }
+                Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=1#web');
+            } elseif ($act === 'creds' && $canEdit) {
+                // 22 Oct 2026 (owner: "password email id haru sabai form bata manage"): the linked login, from the record
+                $id  = (int) ($_POST['id'] ?? 0);
+                $app = AgentApplications::find($id);
+                if ($app === null || empty($app['admin_id'])) {
+                    throw new AgreementError('This application has no login yet.');
+                }
+                try {
+                    $res = Auth::setStaffCredentials((int) $app['admin_id'], [
+                        'username'    => (string) ($_POST['username'] ?? ''),
+                        'email'       => (string) ($_POST['login_email'] ?? ''),
+                        'password'    => (string) ($_POST['new_password'] ?? ''),
+                        'must_change' => isset($_POST['must_change']),
+                    ], $selfId);
+                } catch (RuntimeException $re) {
+                    throw new AgreementError($re->getMessage());
+                }
+                Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=' . ($res['changed'] === [] ? '0' : '1') . '#login');
+            } elseif ($act === 'sendcreds' && $canEdit) {
+                // 23 Oct 2026: a fresh one-time password, sent on WhatsApp (forgot phone, never got the first one).
+                $id  = (int) ($_POST['id'] ?? 0);
+                $app = AgentApplications::find($id);
+                if ($app === null || empty($app['admin_id'])) {
+                    throw new AgreementError('This application has no login yet.');
+                }
+                require_once INCLUDE_PATH . '/agentwallet.php';
+                $pw = AgentWallet::tempPassword();
+                try {
+                    Auth::setStaffCredentials((int) $app['admin_id'], ['password' => $pw, 'must_change' => true], $selfId);
+                } catch (RuntimeException $re) {
+                    throw new AgreementError($re->getMessage());
+                }
+                $agrSendCreds($app, $pw, (int) $app['admin_id']);
+                Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=1#login');
+            } elseif ($act === 'import') {
+                // 19 Oct 2026 (owner): "sabai agent eutai hun" - every agent account gets its card here.
+                // The company's own login (username "shari") is brought in but not put on the website.
+                $own = array_map('intval', array_column(Database::fetchAll("SELECT id FROM admins WHERE role = 'agent' AND username = 'shari'"), 'id'));
+                $res = AgentApplications::importAgents($selfId, $own);
+                Response::redirect('admin/agreements.php?tab=apps&imported=' . count($res['made']));
+            } elseif ($act === 'delete') {
+                $ref = AgentApplications::remove((int) ($_POST['id'] ?? 0), $selfId);
+                Response::redirect('admin/agreements.php?tab=apps&deleted=' . rawurlencode($ref));
+            } elseif ($act === 'mklogin' && $canEdit) {
+                // 22 Oct 2026 (team portal): an approved agent / partner with no account gets one -
+                // username = mobile; they make the password at /team/ with a WhatsApp code.
+                $id  = (int) ($_POST['id'] ?? 0);
+                $app = AgentApplications::find($id);
+                if ($app === null || (string) $app['status'] !== 'approved' || !empty($app['admin_id'])) {
+                    throw new AgreementError('Only an approved application without an account can get a login.');
+                }
+                $agrMakeLogin($app);
+                Response::redirect('admin/agreements.php?tab=apps&id=' . $id . '&saved=1#detail');
+            } elseif ($act === 'agent') {
+                $aid = (int) ($_POST['admin_id'] ?? 0);
+                AgentApplications::setAgentProfile($aid, [
+                    'agreement_status'    => (string) ($_POST['agreement_status'] ?? ''),
+                    'agreement_signed_at' => (string) ($_POST['agreement_signed_at'] ?? ''),
+                    'public_listing'      => isset($_POST['public_listing']) ? 1 : 0,
+                    'public_phone'        => isset($_POST['public_phone']) ? 1 : 0,
+                ], $selfId);
+                Response::redirect('admin/agreements.php?tab=agents&saved=1#ag' . $aid);
+            } else {
+                $flash = ['bad', 'Unknown action.'];
+            }
+        } catch (AgreementError $ex) {
+            // Our own refusals only ("That is not an agent account.").
+            // A database error is a RuntimeException too (PDOException) and
+            // must never put SQL text on the page — it falls through below.
+            $flash = ['bad', $ex->getMessage()];
+        } catch (Throwable $ex) {
+            Logger::exception($ex);
+            $flash = ['bad', 'That could not be saved. Please try again.'];
+        }
+    }
+}
+/* 23 Oct 2026: did the sign-in details reach the person? (set by $agrSendCreds, read once) */
+$waHand = is_string($_SESSION['agr_wa_hand'] ?? null) && str_starts_with((string) $_SESSION['agr_wa_hand'], 'https://wa.me/') ? (string) $_SESSION['agr_wa_hand'] : null;
+$waSent = !empty($_SESSION['agr_wa_sent']);
+unset($_SESSION['agr_wa_hand'], $_SESSION['agr_wa_sent']);
+if ($flash === null && isset($_GET['saved'])) {
+    $flash = (string) $_GET['saved'] === '1' ? ['ok', 'Saved.'] : ['ok', 'Nothing to change.'];
+    if ($waSent) {
+        $flash[1] .= ' ✅ Username, one-time password and agent code sent on WhatsApp — they change the password at the first sign-in.';
+    } elseif ($waHand !== null) {
+        $flash[1] .= ' WhatsApp could not send the sign-in details by itself — tap “Send on WhatsApp” below (the message is ready).';
+    }
+}
+if ($flash === null && isset($_GET['imported'])) {
+    $flash = ['ok', (int) $_GET['imported'] . ' agent account(s) brought into this list. Open each one to add or correct the number, photo and address.'];
+}
+if ($flash === null && isset($_GET['deleted'])) {
+    $flash = ['ok', 'Removed ' . Security::clean((string) $_GET['deleted'], 20) . ' — it is off the website and the list.'];
+}
+$webReady = $ready && AgentApplications::webColumnsAvailable();
+
+/* ---------- data ---------- */
+$counts = AgentApplications::counts();
+$agents = AgentApplications::agents();
+$activeAgents = array_values(array_filter($agents, static fn($a) => (int) $a['is_active'] === 1));
+$agPartners   = count(array_filter($activeAgents, static fn($a) => $a['kind'] === 'partner'));
+$agKycWait    = count(array_filter($activeAgents, static fn($a) => in_array($a['kyc_status'], ['none', 'submitted'], true)));
+$agAgrWait    = count(array_filter($activeAgents, static fn($a) => $a['agreement_status'] !== 'signed'));
+$agSigned     = count(array_filter($activeAgents, static fn($a) => $a['agreement_status'] === 'signed'));
+
+$q      = trim(Security::clean($_GET['q'] ?? '', 80));
+$fStat  = (string) ($_GET['status'] ?? '');
+$fType  = (string) ($_GET['type'] ?? '');
+$apps   = $tab === 'apps' ? AgentApplications::list(['q' => $q, 'status' => $fStat, 'type' => $fType]) : [];
+$openId = (int) ($_GET['id'] ?? 0);
+$open   = $openId > 0 ? AgentApplications::find($openId) : null;
+
+// Opening an application's KYC / bank details or photo IN FULL is written
+// to the activity log: who looked at whose documents, and when.
+if ($open !== null && $canKyc) {
+    $kycShown = !empty($open['photo']);
+    foreach (array_keys(is_array($open['fields'] ?? null) ? $open['fields'] : []) as $fn) {
+        if (AgentApplications::isKycField((string) $fn, (string) $open['type'])) {
+            $kycShown = true;
+            break;
+        }
+    }
+    if ($kycShown) {
+        Logger::audit('agreement_app.view', 'agent_application',
+            (string) ($open['ref'] ?: AgentApplications::refFor((int) $open['id'])), null, null, 'KYC / bank details opened');
+    }
+}
+
+$keep = static function (array $extra = []) use ($q, $fStat, $fType): string {
+    $p = array_filter(['tab' => 'apps', 'q' => $q, 'status' => $fStat, 'type' => $fType], static fn($v) => $v !== '');
+    return 'agreements.php?' . http_build_query(array_merge($p, $extra));
+};
+$statusPill = static function (string $s): string {
+    $cls = match ($s) {
+        'new' => 'st-info', 'reviewing' => 'st-violet', 'kyc_pending', 'agreement_pending' => 'st-warn',
+        'approved' => 'st-ok', 'rejected' => 'st-bad', default => 'st-muted',
+    };
+    return '<span class="pill ' . $cls . '">' . Security::e(AgentApplications::STATUS_LABELS[$s] ?? ucfirst($s)) . '</span>';
+};
+$kycPill = static function (string $s): string {
+    $cls = ['verified' => 'st-ok', 'submitted' => 'st-warn', 'rejected' => 'st-bad'][$s] ?? 'st-muted';
+    return '<span class="pill ' . $cls . '">' . Security::e(AgentApplications::KYC_LABELS[$s] ?? ucfirst($s)) . '</span>';
+};
+$agrPill = static function (string $s, ?string $end = null): string {
+    $cls = ['signed' => 'st-ok', 'sent' => 'st-info', 'expired' => 'st-bad'][$s] ?? 'st-muted';
+    $txt = AgentApplications::AGREEMENT_LABELS[$s] ?? ucfirst($s);
+    if ($s === 'signed' && $end !== null && $end !== '' && $end < date('Y-m-d')) {
+        $cls = 'st-bad';
+        $txt = 'Ended';
+    }
+    return '<span class="pill ' . $cls . '">' . Security::e($txt) . '</span>'
+        . ($end ? '<div class="muted text-xs">till ' . Security::e(date('d M Y', (int) strtotime($end))) . '</div>' : '');
+};
+$fmtDate = static fn(?string $d): string => $d ? date('d M Y', (int) strtotime($d)) : '—';
+$csrfField = Security::csrfField();
+
+admin_header('Agreements & agents', 'agents');
+admin_page_head(
+    'Who applied for an agreement, and where every agent and partner stands on KYC and agreement.',
+    ['Agents' => '/admin/agents.php', 'Agreements & agents' => ''],
+    '<a class="btn ghost sm" href="/agreements/" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-doc"/></svg>Agreement pages</a>'
+    . '<a class="btn ghost sm" href="agents.php"><svg class="a-ic"><use href="#a-users"/></svg>Agents register</a>'
+    . '<a class="btn ghost sm" href="staff.php#addStaff"><svg class="a-ic"><use href="#a-user-cog"/></svg>Agent logins</a>'
+    . '<a class="btn sm" href="agreements.php?tab=apps&amp;add=1#add"><svg class="a-ic"><use href="#a-plus"/></svg>Add agent</a>'
+);
+if ($flash !== null) {
+    echo '<div class="flash ' . $flash[0] . '">' . $h($flash[1])
+       . ($waHand !== null ? ' <a class="btn sm" style="margin-left:8px;background:#25D366;color:#fff" href="' . $h($waHand) . '" target="_blank" rel="noopener">📲 Send on WhatsApp</a>' : '')
+       . '</div>';
+}
+if (!$ready) {
+    echo '<div class="flash bad">The applications table is not there yet. Run <code>database/upgrade-2026-09-27-agent-applications.sql</code> once.</div>';
+}
+?>
+<style>
+.agr-photo{width:132px;height:164px;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:var(--soft)}
+.agr-nophoto{width:132px;height:164px;border-radius:12px;border:1px dashed var(--line-2);display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;color:var(--mut);padding:8px}
+.agr-head{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.agr-head .kv-list{flex:1 1 280px}
+.agr-sec{margin:18px 0 6px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+.agr-act{border-top:1px solid var(--line);margin-top:18px;padding-top:16px}
+.agr-end{font-size:12px;color:var(--mut);margin-top:4px}
+.agr-row-open{background:var(--blue-50)}
+.agr-check{display:inline-flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;min-height:44px;cursor:pointer}
+.agr-check input{width:20px;height:20px}
+.agr-mini{min-height:36px;padding:6px 8px;border:1px solid var(--line-2);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;font-size:13px;max-width:100%}
+.agr-masked{color:var(--mut);font-style:italic}
+.agr-repeat{display:inline-block;margin-left:4px;font-size:11px;font-weight:700;color:var(--mut)}
+.kv-list dd{min-width:0;overflow-wrap:anywhere}
+.agr-add{padding:0}
+.agr-add>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 18px;min-height:48px}
+.agr-add>summary::-webkit-details-marker{display:none}
+.agr-card-prev{display:flex;gap:12px;align-items:center;max-width:420px;padding:10px 12px;border-radius:16px;color:#fff;background:linear-gradient(140deg,#0a2a8f,#1f4fe0 60%,#2f6bff)}
+.agr-card-prev img,.agr-card-prev .agr-ini{flex:0 0 52px;width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid #fff;background:#fff;display:grid;place-items:center;font-weight:900;color:#0a2a8f}
+.agr-card-prev .muted{color:#dbe5ff}
+.agr-card-prev img.agr-card-logo{object-fit:contain;padding:3px}
+/* 22 Oct 2026 (review, #18): the partner's logo, reviewed like the photo */
+.agr-logo-box{margin:0;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--mut)}
+.agr-logo{width:164px;height:164px;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:#fff;padding:6px}
+.agr-logo-pick{display:flex;gap:6px 18px;align-items:center;flex-wrap:wrap}
+.agr-logo-sm{width:64px;height:64px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#fff;padding:3px}
+@media(max-width:560px){.agr-photo,.agr-nophoto{width:108px;height:134px}.agr-logo{width:134px;height:134px}.kv-list{grid-template-columns:1fr}.kv-list dt{margin-top:6px}.agr-mini{min-height:44px}}
+</style>
+
+<?php $n = static fn(int $c, string $one, string $many): string => $c . ' ' . ($c === 1 ? $one : $many); ?>
+<div class="kpis">
+  <?= admin_kpi('New applications', (string) $counts['new'], $counts['total'] . ' in all', 'doc', 'blue', null, $keep(['status' => 'new'])) ?>
+  <?= admin_kpi('KYC pending', (string) ($counts['kyc_waiting'] + $agKycWait), $n($counts['kyc_waiting'], 'application', 'applications') . ' · ' . $n($agKycWait, 'agent', 'agents'), 'id-card', 'orange') ?>
+  <?= admin_kpi('Not signed yet',(string) ($counts['agreement_waiting'] + $agAgrWait), $n($counts['agreement_waiting'], 'application', 'applications') . ' · ' . $n($agAgrWait, 'agent', 'agents'), 'handshake', 'violet') ?>
+  <?= admin_kpi('Signed / approved', (string) ($counts['signed'] + $agSigned), $n($counts['signed'], 'application', 'applications') . ' · ' . $n($agSigned, 'agent', 'agents'), 'check-circle', 'green') ?>
+  <?= admin_kpi('Agents & partners', (string) count($activeAgents), $n($agPartners, 'partner', 'partners') . ' · ' . $n(count($activeAgents) - $agPartners, 'agent', 'agents') . ' (active)', 'users', 'navy', null, 'agreements.php?tab=agents') ?>
+</div>
+
+<nav class="tabs" aria-label="Sections">
+  <a href="agreements.php?tab=apps" class="<?= $tab === 'apps' ? 'on' : '' ?>">Applications (<?= (int) $counts['total'] ?>)</a>
+  <a href="agreements.php?tab=agents" class="<?= $tab === 'agents' ? 'on' : '' ?>">Existing agents &amp; partners (<?= count($agents) ?>)</a>
+  <a href="team-invite.php">📨 Invite many · 🔁 Renewals</a><?php /* 23 Oct 2026: bulk WhatsApp invites + agreements ending in 30 days */ ?>
+</nav>
+
+<?php if ($tab === 'apps'): ?>
+
+<?php if ($open !== null):
+    $f = is_array($open['fields'] ?? null) ? $open['fields'] : [];
+    $isOrg = (string) $open['type'] === 'org';
+    $openLogo = $logoOf($open);   // 22 Oct 2026 (review, #18)
+    $openApproved = (string) $open['status'] === 'approved';
+    $phoneDigits = preg_replace('/\D/', '', (string) $open['phone']) ?? '';
+    // India and Nepal mobiles are both 10 digits, so the country comes from
+    // what the person typed (+91 / +977). Not typed = offer both.
+    $country = resolvePhoneCountry('', (string) ($open['phone_raw'] ?? ''));
+    $telHref = ($country !== '' ? '+' . countryDialCode($country) : '') . $phoneDigits;
+    $waLinks = [];
+    if ($phoneDigits !== '' && strlen($phoneDigits) === 10) {
+        $codes = $country !== '' ? [countryDialCode($country) => 'WhatsApp'] : ['91' => 'WhatsApp (India +91)', '977' => 'WhatsApp (Nepal +977)'];
+        foreach ($codes as $cc => $label) {
+            $waLinks[] = ['https://wa.me/' . $cc . $phoneDigits, $label];
+        }
+    } elseif ($phoneDigits !== '') {
+        $waLinks[] = ['https://wa.me/' . $phoneDigits, 'WhatsApp'];
+    }
+    $groups = [
+        'Applicant'       => ['p_name', 'p_type', 'p_reg', 'p_tax', 'p_rep', 'p_rep_desig', 'p_rep_phone', 'p_id', 'p_dob', 'p_occ', 'p_idtype', 'p_idno', 'p_pan', 'p_phone', 'p_email', 'p_area', 'p_addr', 'p_addr2', 'p_office'],
+        'Agreement'       => ['a_no', 'a_date', 'a_place', 'a_start', 'a_end', 'co_sig', 'co_desig', 'org_rate', 'org_pct', 'org_target', 'org_fixed', 'org_day', 'ind_target', 'ind_fixed', 'ind_pct', 'c73'],
+        'Bank / payment'  => ['b_name', 'b_bank', 'b_acc', 'b_ifsc', 'b_upi'],
+        'Witnesses'       => ['w1_name', 'w1_addr', 'w2_name', 'w2_addr'],
+    ];
+    $sameAgent = null;
+    foreach ($agents as $ag) {
+        if ($phoneDigits !== '' && normalisePhone((string) $ag['phone_any']) === $phoneDigits) { $sameAgent = (int) $ag['id']; break; }
+    }
+?>
+<div class="panel" id="detail">
+  <h2><svg class="a-ic"><use href="#a-id-card"/></svg><span class="mono"><?= $h($open['ref']) ?></span> · <?= $h($open['name']) ?> <span style="margin-left:auto;display:inline-flex;gap:8px;align-items:center"><a class="btn sm ghost" href="application-print.php?type=agent&amp;id=<?= (int) $open['id'] ?>" target="_blank" rel="noopener" title="The application as an A4 form with photo, company letterhead and seal — Print or Save as PDF (22 Oct 2026)">🖨 A4 / PDF</a><?= $statusPill((string) $open['status']) ?></span></h2>
+  <div class="panel-body" style="padding:16px 18px">
+    <div class="agr-head">
+      <?php if (!empty($open['photo']) && str_starts_with((string) $open['photo'], 'data:image/')): ?>
+        <?php if ($canKyc): ?>
+        <img class="agr-photo" src="<?= $h($open['photo']) ?>" alt="Photo of <?= $h($open['name']) ?>">
+        <?php else: ?>
+        <div class="agr-nophoto">Photo sent — shown to a manager only</div>
+        <?php endif; ?>
+      <?php else: ?>
+        <div class="agr-nophoto">No photo sent — take one at the office</div>
+      <?php endif; ?>
+      <?php if ($openLogo !== ''): /* 22 Oct 2026 (review, #18): the partner's logo, like the photo */ ?>
+        <?php if ($canKyc): ?>
+        <figure class="agr-logo-box"><img class="agr-logo" src="<?= $h($openLogo) ?>" alt="Company logo of <?= $h($open['name']) ?>"><figcaption>🏢 Company logo</figcaption></figure>
+        <?php else: ?>
+        <div class="agr-nophoto">Company logo sent — shown to a manager only</div>
+        <?php endif; ?>
+      <?php endif; ?>
+      <?php require_once INCLUDE_PATH . '/staffapplications.php'; require_once INCLUDE_PATH . '/teamdupes.php'; echo TeamDupes::html('agent', (int) $open['id']); /* 23 Oct 2026: same ID no. / mobile / name + DOB elsewhere - a warning, the office decides */ ?>
+      <dl class="kv-list">
+        <dt>Kind</dt><dd><?= $isOrg ? '🏢 Organization partner' : '👤 Individual agent' ?></dd>
+        <dt>Mobile</dt><dd class="mono"><a href="tel:<?= $h($telHref) ?>"><?= $h($open['phone']) ?></a><?php foreach ($waLinks as [$waUrl, $waLabel]): ?> · <a href="<?= $h($waUrl) ?>" target="_blank" rel="noopener"><?= $h($waLabel) ?></a><?php endforeach; ?><?php if (!empty($open['phone_raw']) && preg_replace('/\D/', '', (string) $open['phone_raw']) !== $phoneDigits): ?> <span class="muted text-xs">(typed: <?= $h($open['phone_raw']) ?>)</span><?php endif; ?><?= (int) ($open['phone_verified'] ?? 0) === 1 ? ' <span style="color:var(--ok,#0f9d6b);font-weight:800" title="The applicant sent hi VERIFY from this number on WhatsApp (22 Oct 2026)">✓ WhatsApp verified</span>' : '' ?></dd>
+        <?php if (!empty($open['repeat_of_ref'])): ?><dt>Sent before</dt><dd>The same mobile sent <a href="<?= $h($keep(['id' => (int) $open['duplicate_of']])) ?>#detail" class="mono"><?= $h($open['repeat_of_ref']) ?></a> in the 24 hours before this one — compare the two (a corrected form, or somebody else using this number).</dd><?php endif; ?>
+        <dt>Email</dt><dd><?= $h($open['email'] ?: '—') ?></dd>
+        <dt>Work area</dt><dd><?= $h($open['area'] ?: '—') ?></dd>
+        <?php /* 18 Oct 2026: the simple online form's document photo, finger signature and phone location */ ?>
+        <?php if (!empty($open['geo']) && preg_match('/^(-?[\d.]+),(-?[\d.]+)(?:,(\d+))?$/', (string) $open['geo'], $gm) === 1): ?>
+        <dt>Location</dt><dd><a href="https://www.google.com/maps?q=<?= $h($gm[1] . ',' . $gm[2]) ?>" target="_blank" rel="noopener">📍 <?= $h($gm[1] . ', ' . $gm[2]) ?></a><?= isset($gm[3]) && $gm[3] !== '' ? ' <span class="muted text-xs">(± ' . $h($gm[3]) . ' m, from the phone)</span>' : '' ?></dd>
+        <?php endif; ?>
+        <?php foreach (['doc_photo' => 'ID document', 'signature' => 'Signature', 'reg_cert' => '🏢 Company registration certificate', 'tax_cert' => '🏢 PAN / VAT / GST certificate'] as $imgKey => $imgLabel): /* 22 Oct 2026: a partner's company papers */ ?>
+          <?php if (!empty($open[$imgKey]) && str_starts_with((string) $open[$imgKey], 'data:image/')): ?>
+          <dt><?= $h($imgLabel) ?></dt><dd>
+            <?php if ($canKyc): ?>
+            <a href="<?= $h($open[$imgKey]) ?>" target="_blank" rel="noopener" download="<?= $h($open['ref'] . '-' . $imgKey) ?>"><img src="<?= $h($open[$imgKey]) ?>" alt="<?= $h($imgLabel) ?> of <?= $h($open['name']) ?>" style="max-width:260px;max-height:<?= $imgKey === 'signature' ? '110' : '200' ?>px;border:1px solid var(--line);border-radius:10px;background:#fff;display:block"></a>
+            <?php else: ?>
+            <span class="muted">Sent — shown to a manager only</span>
+            <?php endif; ?>
+          </dd>
+          <?php endif; ?>
+        <?php endforeach; ?>
+        <?php if ($isOrg && AgentApplications::certReady() && empty($open['reg_cert'])): ?>
+        <dt>Company papers</dt><dd><span style="color:var(--bad,#c62828);font-weight:700">⚠️ No registration certificate sent</span> <span class="muted text-xs">— ask for a copy (and the PAN / VAT certificate) before KYC = Verified</span></dd>
+        <?php endif; ?>
+        <?php if (!empty($open['doc_verify'])): $dvPass = str_starts_with((string) $open['doc_verify'], 'PASS'); ?>
+        <dt>Document check</dt><dd><span style="font-weight:700;color:<?= $dvPass ? 'var(--ok,#0f9d6b)' : 'var(--bad,#c62828)' ?>"><?= $dvPass ? '✅ Name + number match the card' : '⚠️ Not matched' ?></span> <span class="muted text-xs"><?= $h((string) $open['doc_verify']) ?></span></dd>
+        <?php elseif (!empty($open['doc_photo'])): ?>
+        <dt>Document check</dt><dd><span class="muted">Not checked — compare the name and number on the photo by hand</span></dd>
+        <?php endif; ?>
+        <dt>Sent on</dt><dd><?= $h(date('d M Y, H:i', (int) strtotime((string) $open['created_at']))) ?> · form in <?= $h(['ne' => 'Nepali', 'hi' => 'Hindi', 'en' => 'English'][(string) $open['lang']] ?? $open['lang']) ?></dd>
+        <dt>Public list</dt><dd><?= (int) $open['public_ok'] === 1 ? 'Agreed — the full phone may be shown once approved' : 'Not agreed — the phone is shown masked (98•••••123) once approved' ?></dd>
+        <?php if ($openLogo !== ''): /* 22 Oct 2026 (review, #18) */ ?>
+        <dt>Company logo</dt><dd><?php if (!$openApproved): ?><b>Goes on the website when approved</b> — on the home page's “Partner companies” card and on the ID card. Approving asks you to choose “Show this logo” or “Remove it” (below).<?php elseif (AgentApplications::isLive($open)): ?><b>On the website now</b> — the home page's “Partner companies” card and the ID card. To take it off, tick “Remove the logo” under Website card.<?php else: ?>Approved, but “Live on website” is off — shown again once it is on. To keep it off for good, tick “Remove the logo” under Website card.<?php endif; ?></dd>
+        <?php endif; ?>
+        <?php if (!empty($open['face_check'])): /* 23 Oct 2026: live selfie KYC (includes/facecheck.php) - a score, never a gate */ ?><dt>🤳 Live selfie</dt><dd><?= str_contains((string) $open['face_check'], 'LIVE ✓') ? '✅ ' : '⚠️ ' ?><?= $h($open['face_check']) ?></dd><?php endif; ?>
+        <dt>KYC · agreement</dt><dd><?= $kycPill((string) $open['kyc_status']) ?> <?= $agrPill((string) $open['agreement_status'], $open['agreement_end'] ?? null) ?></dd>
+        <?php if (!empty($open['agreement_signed_at'])): ?><dt>Signed · ends</dt><dd><?= $h($fmtDate($open['agreement_signed_at'])) ?> → <?= $h($fmtDate($open['agreement_end'])) ?></dd><?php endif; ?>
+        <dt>Agent account</dt><dd><?php if (!empty($open['admin_id'])): require_once INCLUDE_PATH . '/agentwallet.php'; $acLbl = AgentWallet::agentCodeLabel((int) $open['admin_id']); ?><?php if ($acLbl !== ''): ?><b class="mono">🏷 <?= $h($acLbl) ?></b> · <?php endif; ?><?php if ((string) $open['status'] === 'approved' && !empty($open['ref'])): ?><a href="id-card.php?ref=<?= $h($open['ref']) ?>">🪪 ID card</a> · <?php endif; ?><a href="agent-360.php?agent=<?= (int) $open['admin_id'] ?>">Open Agent 360 (#<?= (int) $open['admin_id'] ?>)</a> · <span class="muted">team portal: /team/ with mobile + password</span><?php else: ?><span class="muted">Not linked yet</span>
+          <?php if ($canEdit && (string) $open['status'] === 'approved' && (string) $open['phone'] !== ''): /* 22 Oct 2026: team portal */ ?>
+          <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" style="display:inline;margin-left:6px" onsubmit="return confirm('Create an agent login for <?= $h(addslashes((string) $open['name'])) ?>? Username = the mobile; they make the password at /team/ with a WhatsApp code.')"><?= $csrfField ?><input type="hidden" name="action" value="mklogin"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>"><button class="btn sm" type="submit">🔐 Create login (sell tickets)</button></form>
+          <?php endif; ?><?php endif; ?></dd>
+        <?php if (array_key_exists('cv_json', $open)): require_once INCLUDE_PATH . '/teamportal.php'; ?>
+        <dt><?= (string) $open['type'] === 'org' ? 'Company profile' : 'CV' ?></dt><dd><details><summary class="muted">from the team portal</summary><?= TeamPortal::cvHtml(TeamPortal::cv($open, 'agent'), (string) $open['type'] === 'org') ?></details></dd>
+        <?php foreach (Database::fetchAll("SELECT * FROM agreement_signatures WHERE party_type = 'agent' AND party_id = :i ORDER BY id DESC LIMIT 3", ['i' => (int) $open['id']]) as $sg): $sgImg = TeamPortal::signImage($sg); ?>
+        <dt>Signed online</dt><dd>✅ <?= $h(ucfirst((string) $sg['doc'])) ?> agreement v<?= $h($sg['version']) ?> · <?= $h(date('d M Y H:i', strtotime((string) $sg['signed_at']) ?: time())) ?> · SIG-<?= str_pad((string) (int) $sg['id'], 6, '0', STR_PAD_LEFT) ?> · <span class="mono muted"><?= $h($sg['ip_address'] ?? '') ?></span><?php if ($sgImg !== null): ?><br><img src="<?= $h($sgImg) ?>" alt="Signature" style="height:48px;background:#fff;border-radius:6px;margin-top:4px"><?php endif; ?></dd>
+        <?php endforeach; ?>
+        <?php endif; ?>
+        <?php if (!empty($open['note'])): ?><dt>Office note</dt><dd><?= $h($open['note']) ?></dd><?php endif; ?>
+        <?php if (!empty($open['reviewed_at'])): ?><dt>Last change</dt><dd class="muted"><?= $h(date('d M Y, H:i', (int) strtotime((string) $open['reviewed_at']))) ?></dd><?php endif; ?>
+      </dl>
+    </div>
+
+    <?php $masked = false;
+    foreach ($groups as $gName => $names):
+        $rows = array_values(array_filter($names, static fn($n) => isset($f[$n]) && (string) $f[$n] !== ''));
+        if ($rows === []) { continue; } ?>
+      <div class="agr-sec"><?= $h($gName) ?></div>
+      <dl class="kv-list">
+        <?php foreach ($rows as $n):
+            $isMasked = !$canKyc && AgentApplications::isKycField($n, (string) $open['type']);
+            $masked = $masked || $isMasked; ?>
+          <dt><?= $h(AgentApplications::FIELD_LABELS[$n] ?? $n) ?></dt><dd<?= $isMasked ? ' class="agr-masked"' : '' ?>><?= nl2br($h(AgentApplications::officeValue($n, (string) $f[$n], (string) $open['type'], $canKyc))) ?></dd>
+        <?php endforeach; ?>
+      </dl>
+    <?php endforeach; ?>
+    <?php if ($masked): ?><p class="muted text-xs" style="margin:10px 0 0">ID, PAN, bank details, date of birth and home address are shown in full to a super-admin or a manager only.</p><?php endif; ?>
+
+    <div class="agr-act">
+    <?php if ($canEdit): ?>
+      <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>">
+        <?= $csrfField ?>
+        <input type="hidden" name="action" value="app"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
+        <div class="form-grid">
+          <div class="field"><label for="agrStatus">Status</label>
+            <select id="agrStatus" name="status" class="inp">
+              <?php foreach (AgentApplications::STATUS_LABELS as $v => $l): ?><option value="<?= $h($v) ?>"<?= $open['status'] === $v ? ' selected' : '' ?>><?= $h($l) ?></option><?php endforeach; ?>
+            </select></div>
+          <div class="field"><label for="agrKyc">KYC</label>
+            <select id="agrKyc" name="kyc_status" class="inp">
+              <?php foreach (AgentApplications::KYC_LABELS as $v => $l): ?><option value="<?= $h($v) ?>"<?= $open['kyc_status'] === $v ? ' selected' : '' ?>><?= $h($l) ?></option><?php endforeach; ?>
+            </select>
+            <span class="help">Verified = you saw the original ID and it matches.</span></div>
+          <div class="field"><label for="agrAgr">Agreement</label>
+            <select id="agrAgr" name="agreement_status" class="inp">
+              <?php foreach (AgentApplications::AGREEMENT_LABELS as $v => $l): ?><option value="<?= $h($v) ?>"<?= $open['agreement_status'] === $v ? ' selected' : '' ?>><?= $h($l) ?></option><?php endforeach; ?>
+            </select></div>
+          <div class="field"><label for="agrSigned">Signed on</label>
+            <input id="agrSigned" type="date" name="agreement_signed_at" class="inp" value="<?= $h($open['agreement_signed_at'] ?? '') ?>" max="<?= $h(date('Y-m-d', strtotime('+1 day'))) ?>">
+            <span class="help">The end date is set to signed + 11 months. Blank with "Signed" = today.</span></div>
+          <div class="field"><label for="agrLink">Agent account</label>
+            <select id="agrLink" name="admin_id" class="inp">
+              <option value="0">— not linked —</option>
+              <?php foreach ($agents as $ag): ?>
+                <option value="<?= (int) $ag['id'] ?>"<?= (int) ($open['admin_id'] ?? 0) === (int) $ag['id'] ? ' selected' : '' ?>><?= $h(($ag['full_name'] ?: $ag['username']) . ' · ' . ($ag['phone_any'] ?: 'no phone') . ((int) $ag['is_active'] === 1 ? '' : ' (inactive)') . ($sameAgent === (int) $ag['id'] ? ' ← same phone' : '')) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <span class="help">Leave “not linked”: setting the status to <b>Approved</b> makes the login + agent code by itself (username = mobile). Pick an account only to join an existing one.</span></div>
+          <?php if (empty($open['admin_id'])): ?>
+          <div class="field"><label for="agrPw">Password on approve (optional)</label>
+            <input id="agrPw" name="new_password" class="inp" type="text" minlength="8" maxlength="72" autocomplete="new-password" placeholder="leave empty = made and sent by itself">
+            <span class="help">Used only when the status becomes Approved. Empty = a one-time password is made here and sent on WhatsApp with the username, agent code and the /team/ link; they change it at the first sign-in.</span></div>
+          <?php endif; ?>
+          <div class="field" style="grid-column:1/-1"><label for="agrNote">Office note</label>
+            <input id="agrNote" name="note" class="inp" maxlength="255" value="<?= $h($open['note'] ?? '') ?>" placeholder="e.g. called on 28 Sep, coming Monday with the original citizenship"></div>
+          <?php if ($openLogo !== '' && !$openApproved): /* 22 Oct 2026 (review, #18): nothing is chosen for the office */ ?>
+          <div class="field" style="grid-column:1/-1" role="radiogroup" aria-labelledby="agrLogoLbl"><label id="agrLogoLbl">Company logo — choose before you approve</label>
+            <div class="agr-logo-pick"><img class="agr-logo-sm" src="<?= $h($openLogo) ?>" alt="Company logo of <?= $h($open['name']) ?>">
+              <label class="agr-check"><input type="radio" name="logo_ok" value="1"> ✅ Show this logo on the website</label>
+              <label class="agr-check"><input type="radio" name="logo_ok" value="0"> 🗑 Remove it</label></div>
+            <span class="help">Approved = this logo goes on the home page's partner card and the ID card. Removed = the card shows the photo or the first letter. Needed only when the status is set to Approved.</span></div>
+          <?php endif; ?>
+        </div>
+        <div class="form-actions" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" type="submit"><svg class="a-ic"><use href="#a-check"/></svg>Save</button>
+          <a class="btn ghost" href="<?= $h($keep()) ?>">Close</a>
+        </div>
+      </form>
+    <?php else: ?>
+      <p class="muted" style="margin:0">Only a super-admin or a manager can change the status, KYC or agreement. <a href="<?= $h($keep()) ?>">Close</a></p>
+    <?php endif; ?>
+    </div>
+  </div>
+</div>
+
+<?php /* 22 Oct 2026 (owner: "KYC password email id haru sabai form bata manage"): the linked login, from the record */
+  $acct = $canEdit && !empty($open['admin_id'])
+      ? Database::fetch('SELECT id, username, email, role, is_active, must_change_pw, last_login_at, phone FROM admins WHERE id = :i', ['i' => (int) $open['admin_id']])
+      : null;
+  if ($acct !== null): ?>
+<div class="panel" id="login">
+  <h2><svg class="a-ic"><use href="#a-users"/></svg>Login account
+    <span style="margin-left:auto"><?= (int) $acct['is_active'] === 1 ? '<span class="pill st-ok">🟢 Active</span>' : '<span class="pill st-muted">⚪ Switched off</span>' ?></span></h2>
+  <div class="panel-body" style="padding:16px 18px">
+    <p class="muted text-xs" style="margin:0 0 10px">Sells tickets at <b>/admin/agent.php</b> and signs in at <b>/team/</b> with mobile <?= $h($acct['phone']) ?> + password<?= !empty($acct['last_login_at']) ? ' · last sign-in ' . $h(date('d M Y H:i', strtotime((string) $acct['last_login_at']) ?: time())) : ' · never signed in yet' ?><?= (int) $acct['must_change_pw'] === 1 ? ' · must change the password at the next sign-in' : '' ?>. <a href="agent-360.php?agent=<?= (int) $acct['id'] ?>">Agent 360 →</a></p>
+    <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" autocomplete="off">
+      <?= $csrfField ?><input type="hidden" name="action" value="creds"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
+      <div class="form-grid">
+        <div class="field"><label for="lUser">Username</label><input id="lUser" name="username" class="inp mono" maxlength="60" value="<?= $h($acct['username']) ?>" autocapitalize="none"></div>
+        <div class="field"><label for="lMail">Login email</label><input id="lMail" name="login_email" class="inp" type="email" maxlength="191" value="<?= $h($acct['email'] ?? '') ?>"></div>
+        <div class="field"><label for="lPw">New password</label><input id="lPw" name="new_password" class="inp" type="text" minlength="8" maxlength="72" autocomplete="new-password" placeholder="leave empty = keep"><span class="help">8+ characters. Tell them in person or by phone — or use “Send a new password on WhatsApp” below.</span></div>
+        <div class="field" style="display:flex;align-items:flex-end"><label class="agr-check"><input type="checkbox" name="must_change" value="1"<?= (int) $acct['must_change_pw'] === 1 ? ' checked' : '' ?>> Must change it at the next sign-in</label></div>
+      </div>
+      <div class="form-actions" style="margin-top:12px"><button class="btn" type="submit"><svg class="a-ic"><use href="#a-check"/></svg>Save login</button></div>
+    </form>
+    <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" style="margin-top:10px" onsubmit="return confirm('Make a NEW one-time password and send it on WhatsApp to <?= $h($acct['phone']) ?>? The old password stops working.')">
+      <?= $csrfField ?><input type="hidden" name="action" value="sendcreds"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
+      <button class="btn sm" type="submit" style="background:#25D366;color:#fff">📲 Send a new password on WhatsApp</button>
+      <span class="help" style="margin-left:8px">Username, agent code, one-time password and the /team/ link in one message. 23 Oct 2026.</span>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
+
+<?php /* 19 Oct 2026 (owner): the website card - name, photo, address, number, WhatsApp - and the KYC / bank edit */
+  $isLive = AgentApplications::isLive($open);
+  $waText = rawurlencode('Namaste ' . $open['name'] . ' ji, S Hari Global office bata. Tapaiko agent form (' . $open['ref'] . ') ko barema: ');
+?>
+<div class="panel" id="web">
+  <h2><svg class="a-ic"><use href="#a-globe"/></svg>Website card &amp; KYC
+    <span style="margin-left:auto"><?= $isLive ? '<span class="pill st-ok">🟢 LIVE on website</span>' : '<span class="pill st-muted">⚪ Not on website</span>' ?></span></h2>
+  <div class="panel-body" style="padding:16px 18px">
+    <div class="agr-card-prev">
+      <?php if ($openLogo !== ''): /* 22 Oct 2026 (review, #18): a partner card shows the logo first, as on the home page */ ?><?= $canKyc ? '<img class="agr-card-logo" src="' . $h($openLogo) . '" alt="">' : '<span class="agr-ini" title="Company logo — shown to a manager only">🏢</span>' ?><?php elseif (!empty($open['photo']) && (int) ($open['web_photo'] ?? 0) === 1): ?><img src="<?= $h($open['photo']) ?>" alt=""><?php else: ?><span class="agr-ini"><?= $h(mb_strtoupper(mb_substr(trim((string) $open['name']), 0, 1, 'UTF-8'), 'UTF-8')) ?></span><?php endif; ?>
+      <div style="min-width:0;flex:1"><b><?= $h($open['name']) ?></b>
+        <div class="muted text-xs"><?= $h(trim(($open['area'] ?? '') . (!empty($open['web_addr']) ? ' · ' . $open['web_addr'] : ''), ' ·') ?: '—') ?></div>
+        <div class="muted text-xs mono"><?= (int) $open['public_ok'] === 1 ? $h($open['phone']) . ' · WhatsApp + call buttons' : $h(AgentApplications::maskPhone((string) $open['phone'])) . ' · number hidden' ?></div></div>
+    </div>
+    <p class="muted text-xs" style="margin:8px 0 0"><?php if ($isLive): ?>This is how the card looks on the home page (<?= $isOrg ? '“Partner companies”' : '“Our agents”' ?>) and on /agreements/.<?php elseif ((string) $open['status'] !== 'approved'): ?>Goes on the website once the status is <b>Approved</b> and “Live on website” is ticked.<?= $openLogo !== '' ? ' The logo goes with it only if you choose “Show this logo” when you approve.' : '' ?><?php else: ?>Approved, but “Live on website” is off — hidden from the public list.<?php endif; ?>
+      <?php foreach ($waLinks as [$waUrl, $waLabel]): ?> · <a href="<?= $h($waUrl . '?text=' . $waText) ?>" target="_blank" rel="noopener">💬 <?= $h($waLabel) ?> message</a><?php endforeach; ?></p>
+    <?php if ($canEdit && (string) $open['status'] === 'approved' && !empty($open['ref'])): /* 22 Oct 2026: team portal ID card */ ?>
+    <p style="margin:10px 0 0"><a class="btn sm" href="id-card.php?ref=<?= $h($open['ref']) ?>">🪪 Print <?= (string) $open['type'] === 'org' ? 'partner' : 'agent' ?> ID card</a></p>
+    <?php endif; ?>
+
+    <?php if ($canEdit): ?>
+    <?php if (!$isLive): ?>
+    <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" style="margin:12px 0 0">
+      <?= $csrfField ?><input type="hidden" name="action" value="golive"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
+      <?php if ($openLogo !== ''): /* 22 Oct 2026 (review, #18): the logo goes live with the card - nothing is chosen for the office */ ?>
+      <div class="agr-logo-pick" role="radiogroup" aria-label="Company logo" style="margin-bottom:8px"><img class="agr-logo-sm" src="<?= $h($openLogo) ?>" alt="Company logo of <?= $h($open['name']) ?>">
+        <label class="agr-check"><input type="radio" name="logo_ok" value="1"> ✅ Show this logo on the website</label>
+        <label class="agr-check"><input type="radio" name="logo_ok" value="0"> 🗑 Remove it</label></div>
+      <?php endif; ?>
+      <?php if (empty($open['admin_id']) && (string) $open['phone'] !== ''): ?>
+      <label class="agr-check" style="display:block;margin-bottom:8px"><input type="checkbox" name="mklogin" value="1" checked> 🔐 Also create the login + agent code (sell tickets + team portal; username = mobile)</label>
+      <?php endif; ?>
+      <?php if (empty($open['admin_id'])): ?>
+      <label style="display:block;margin-bottom:8px;max-width:360px"><span class="muted text-xs">Password (optional) — leave empty and they make their own at /team/ with a WhatsApp code</span>
+        <input name="new_password" class="inp" type="text" minlength="8" maxlength="72" autocomplete="new-password" placeholder="8+ characters, changed at first sign-in"></label>
+      <?php endif; ?>
+      <button class="btn" type="submit" style="background:#0f9d6b;border-color:#0f9d6b">✅ Approve &amp; put live on website</button>
+    </form>
+    <?php endif; ?>
+    <?php if (!$webReady): ?><div class="flash bad" style="margin-top:12px">Run <code>database/upgrade-2026-10-19-agent-website-card.sql</code> once for the photo, address and live switch.</div><?php endif; ?>
+    <form method="post" enctype="multipart/form-data" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" style="margin-top:14px">
+      <?= $csrfField ?><input type="hidden" name="action" value="card"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
+      <div class="agr-sec">On the website</div>
+      <div class="form-grid">
+        <div class="field"><label for="cName">Name</label><input id="cName" name="name" class="inp" maxlength="160" required value="<?= $h($open['name']) ?>"></div>
+        <div class="field"><label for="cPhone">Mobile / WhatsApp</label><input id="cPhone" name="phone" class="inp" type="tel" maxlength="20" required value="<?= $h(($open['phone_raw'] ?? '') ?: $open['phone']) ?>"><span class="help">Type +977 or +91 in front so WhatsApp opens the right country.</span></div>
+        <div class="field"><label for="cArea">Area / city</label><input id="cArea" name="area" class="inp" maxlength="160" value="<?= $h($open['area'] ?? '') ?>"></div>
+        <div class="field"><label for="cAddr">Shop / office address (public)</label><input id="cAddr" name="web_addr" class="inp" maxlength="200" value="<?= $h($open['web_addr'] ?? '') ?>" placeholder="e.g. Bus Park Road, Nepalgunj-4"><span class="help">Shown on the website. Not the home address from KYC.</span></div>
+        <div class="field"><label for="cEmail">Email</label><input id="cEmail" name="email" class="inp" type="email" maxlength="160" value="<?= $h($open['email'] ?? '') ?>"></div>
+        <div class="field"><label for="cPhoto">New photo</label><input id="cPhoto" name="photo" class="inp" type="file" accept="image/*"><span class="help">Optional — replaces the photo. Shrunk to 640 px.</span></div>
+        <?php if ((string) $open['type'] === 'org' && AgentApplications::logoReady()): ?>
+        <div class="field"><label for="cLogo"><?= $openLogo !== '' ? 'New company logo' : 'Company logo' ?></label>
+          <?php if ($openLogo !== ''): /* 22 Oct 2026 (review, #18): the logo now, and a way to take it off */ ?>
+          <div class="agr-logo-pick" style="margin-bottom:6px"><img class="agr-logo-sm" src="<?= $h($openLogo) ?>" alt="Company logo now"><label class="agr-check"><input type="checkbox" name="logo_remove" value="1"> 🗑 Remove the logo</label></div>
+          <?php endif; ?>
+          <input id="cLogo" name="logo" class="inp" type="file" accept="image/*"><span class="help">Pvt. Ltd. partner — on the home page's partner card and the ID card while this card is live. A new file replaces it; “Remove the logo” takes it off (the card then shows the photo or the first letter).</span></div>
+        <?php endif; ?>
+        <div class="field" style="grid-column:1/-1;display:flex;gap:4px 18px;flex-wrap:wrap">
+          <label class="agr-check"><input type="checkbox" name="web_live" value="1"<?= (int) ($open['web_live'] ?? 1) === 1 ? ' checked' : '' ?>> 🟢 Live on website</label>
+          <label class="agr-check"><input type="checkbox" name="web_photo" value="1"<?= (int) ($open['web_photo'] ?? 0) === 1 ? ' checked' : '' ?>> 📷 Show photo</label>
+          <label class="agr-check"><input type="checkbox" name="public_ok" value="1"<?= (int) $open['public_ok'] === 1 ? ' checked' : '' ?>> 📞 Show full number + WhatsApp</label>
+        </div>
+      </div>
+      <?php if ($canKyc): $f = is_array($open['fields'] ?? null) ? $open['fields'] : []; ?>
+      <div class="agr-sec">KYC &amp; bank account (office only — never on the website)</div>
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1"><label for="kAddr">Permanent address</label><input id="kAddr" name="p_addr" class="inp" maxlength="300" value="<?= $h($f['p_addr'] ?? '') ?>"></div>
+        <div class="field"><label for="kIdt">ID type</label><select id="kIdt" name="p_idtype" class="inp"><option value="">—</option><?php foreach (AgentApplications::ID_TYPES as $i => $l): ?><option value="<?= $i ?>"<?= isset($f['p_idtype']) && (string) $f['p_idtype'] === (string) $i ? ' selected' : '' ?>><?= $h($l) ?></option><?php endforeach; ?></select></div>
+        <div class="field"><label for="kIdn">ID number</label><input id="kIdn" name="p_idno" class="inp mono" maxlength="40" value="<?= $h($f['p_idno'] ?? '') ?>"></div>
+        <div class="field"><label for="kPan">PAN</label><input id="kPan" name="p_pan" class="inp mono" maxlength="20" value="<?= $h($f['p_pan'] ?? '') ?>"></div>
+        <div class="field"><label for="kBn">Account holder name</label><input id="kBn" name="b_name" class="inp" maxlength="80" value="<?= $h($f['b_name'] ?? '') ?>"></div>
+        <div class="field"><label for="kBb">Bank &amp; branch</label><input id="kBb" name="b_bank" class="inp" maxlength="80" value="<?= $h($f['b_bank'] ?? '') ?>"></div>
+        <div class="field"><label for="kBa">Account number</label><input id="kBa" name="b_acc" class="inp mono" maxlength="40" inputmode="numeric" value="<?= $h($f['b_acc'] ?? '') ?>"></div>
+        <div class="field"><label for="kBi">IFSC / SWIFT</label><input id="kBi" name="b_ifsc" class="inp mono" maxlength="20" value="<?= $h($f['b_ifsc'] ?? '') ?>"></div>
+        <div class="field"><label for="kBu">UPI / eSewa / Khalti</label><input id="kBu" name="b_upi" class="inp" maxlength="80" value="<?= $h($f['b_upi'] ?? '') ?>"></div>
+      </div>
+      <?php endif; ?>
+      <div class="form-actions" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" type="submit"><svg class="a-ic"><use href="#a-check"/></svg>Save card<?= $canKyc ? ' &amp; KYC' : '' ?></button>
+      </div>
+    </form>
+    <form method="post" action="agreements.php?tab=apps" style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px" onsubmit="return confirm('Remove <?= $h($open['ref']) ?> (<?= $h(addslashes((string) $open['name'])) ?>) for good? It goes off the website and its KYC is deleted.')">
+      <?= $csrfField ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
+      <button class="btn ghost sm" type="submit" style="color:var(--bad,#c62828)">🗑 Remove this agent / application</button>
+      <span class="muted text-xs">To only hide from the website, untick “Live on website” instead.</span>
+    </form>
+    <?php endif; ?>
+  </div>
+</div>
+<?php elseif ($openId > 0): ?>
+  <div class="flash bad">That application was not found.</div>
+<?php endif; ?>
+
+<?php $noCard = count(array_filter($agents, static fn($a) => empty($a['card_id'])));
+if ($canEdit && $ready && $noCard > 0): /* 19 Oct 2026: one agent list - bring the agent accounts in */ ?>
+<form method="post" action="agreements.php?tab=apps" class="flash" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap" onsubmit="return confirm('Bring <?= $noCard ?> agent account(s) into this list and put them on the website (with their number)?')">
+  <?= $csrfField ?><input type="hidden" name="action" value="import">
+  <span style="flex:1 1 260px"><b><?= $noCard ?> agent account(s)</b> from the Agents register are not in this list yet. Bring them in — each becomes an Approved card, live on the website with name and number (those with no number stay off until you add one).</span>
+  <button class="btn sm" type="submit"><svg class="a-ic"><use href="#a-users"/></svg>Bring all agents here</button>
+</form>
+<?php endif; ?>
+<?php if ($canEdit && $ready): /* 19 Oct 2026: the office adds an agent by hand - straight to Approved */ ?>
+<details class="panel agr-add" id="add"<?= $openId === 0 && isset($_GET['add']) ? ' open' : '' ?>>
+  <summary><svg class="a-ic"><use href="#a-plus"/></svg><b>Add agent</b> <span class="muted text-xs">— came to the office or phoned in; goes live on the website at once</span></summary>
+  <form method="post" enctype="multipart/form-data" action="agreements.php?tab=apps" style="padding:4px 18px 18px">
+    <?= $csrfField ?><input type="hidden" name="action" value="add">
+    <div class="form-grid">
+      <div class="field"><label for="nName">Name *</label><input id="nName" name="name" class="inp" maxlength="160" required></div>
+      <div class="field"><label for="nPhone">Mobile / WhatsApp *</label><input id="nPhone" name="phone" class="inp" type="tel" maxlength="20" required placeholder="+977 98XXXXXXXX"></div>
+      <div class="field"><label for="nType">Kind</label><select id="nType" name="type" class="inp"><option value="ind">👤 Individual agent</option><option value="org">🏢 Organization partner</option></select></div>
+      <div class="field"><label for="nArea">Area / city</label><input id="nArea" name="area" class="inp" maxlength="160" placeholder="e.g. Nepalgunj"></div>
+      <div class="field"><label for="nAddr">Shop / office address (public)</label><input id="nAddr" name="web_addr" class="inp" maxlength="200"></div>
+      <div class="field"><label for="nPhoto">Photo</label><input id="nPhoto" name="photo" class="inp" type="file" accept="image/*"></div>
+      <?php if (AgentApplications::logoReady()): ?><div class="field"><label for="nLogo">Company logo (partners)</label><input id="nLogo" name="logo" class="inp" type="file" accept="image/*"><span class="help">Only for an organization partner — shown on the home page's partner card.</span></div><?php endif; ?>
+      <?php if ($canKyc): ?>
+      <div class="field" style="grid-column:1/-1"><label for="nPAddr">Permanent address (KYC)</label><input id="nPAddr" name="p_addr" class="inp" maxlength="300"></div>
+      <div class="field"><label for="nIdt">ID type</label><select id="nIdt" name="p_idtype" class="inp"><option value="">—</option><?php foreach (AgentApplications::ID_TYPES as $i => $l): ?><option value="<?= $i ?>"><?= $h($l) ?></option><?php endforeach; ?></select></div>
+      <div class="field"><label for="nIdn">ID number</label><input id="nIdn" name="p_idno" class="inp mono" maxlength="40"></div>
+      <div class="field"><label for="nBn">Account holder</label><input id="nBn" name="b_name" class="inp" maxlength="80"></div>
+      <div class="field"><label for="nBb">Bank &amp; branch</label><input id="nBb" name="b_bank" class="inp" maxlength="80"></div>
+      <div class="field"><label for="nBa">Account number</label><input id="nBa" name="b_acc" class="inp mono" maxlength="40" inputmode="numeric"></div>
+      <div class="field"><label for="nBi">IFSC / SWIFT</label><input id="nBi" name="b_ifsc" class="inp mono" maxlength="20"></div>
+      <div class="field"><label for="nBu">UPI / eSewa / Khalti</label><input id="nBu" name="b_upi" class="inp" maxlength="80"></div>
+      <div class="field"><label for="nKyc">KYC</label><select id="nKyc" name="kyc_status" class="inp"><?php foreach (AgentApplications::KYC_LABELS as $v => $l): ?><option value="<?= $h($v) ?>"<?= $v === 'none' ? ' selected' : '' ?>><?= $h($l) ?></option><?php endforeach; ?></select><span class="help">Verified = you saw the original ID.</span></div>
+      <?php endif; ?>
+      <div class="field" style="grid-column:1/-1;display:flex;gap:4px 18px;flex-wrap:wrap">
+        <label class="agr-check"><input type="checkbox" name="web_live" value="1" checked> 🟢 Live on website</label>
+        <label class="agr-check"><input type="checkbox" name="web_photo" value="1" checked> 📷 Show photo</label>
+        <label class="agr-check"><input type="checkbox" name="public_ok" value="1" checked> 📞 Show full number + WhatsApp</label>
+      </div>
+    </div>
+    <div class="form-actions" style="margin-top:12px"><button class="btn" type="submit"><svg class="a-ic"><use href="#a-plus"/></svg>Add agent</button></div>
+  </form>
+</details>
+<?php endif; ?>
+
+<form class="toolbar" method="get" action="agreements.php" role="search">
+  <input type="hidden" name="tab" value="apps">
+  <input type="search" name="q" value="<?= $h($q) ?>" placeholder="Search name / mobile / AGR number / area" aria-label="Search applications" style="flex:1 1 240px">
+  <select name="status" aria-label="Status">
+    <option value="">All statuses</option>
+    <option value="open"<?= $fStat === 'open' ? ' selected' : '' ?>>Still open (not approved / rejected)</option>
+    <?php foreach (AgentApplications::STATUS_LABELS as $v => $l): ?><option value="<?= $h($v) ?>"<?= $fStat === $v ? ' selected' : '' ?>><?= $h($l) ?></option><?php endforeach; ?>
+  </select>
+  <select name="type" aria-label="Kind">
+    <option value="">Partners and agents</option>
+    <option value="org"<?= $fType === 'org' ? ' selected' : '' ?>>Organization partners</option>
+    <option value="ind"<?= $fType === 'ind' ? ' selected' : '' ?>>Individual agents</option>
+  </select>
+  <button class="btn" type="submit"><svg class="a-ic"><use href="#a-search"/></svg>Search</button>
+  <?php if ($q !== '' || $fStat !== '' || $fType !== ''): ?><a class="btn ghost" href="agreements.php?tab=apps">Clear</a><?php endif; ?>
+</form>
+
+<div class="panel">
+  <h2><svg class="a-ic"><use href="#a-list"/></svg>Applications <span class="muted text-xs" style="font-weight:600;margin-left:auto"><?= count($apps) ?> shown</span></h2>
+  <?php if ($apps === []): ?>
+    <?= admin_empty($q !== '' || $fStat !== '' || $fType !== '' ? 'Nothing matches this search' : 'No applications yet', 'People apply from the agreement pages on the website (/agreements/).', '📝') ?>
+  <?php else: ?>
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>Ref</th><th>Date</th><th>Kind</th><th>Name</th><th>Mobile</th><th>Area</th><th>Status</th><th>KYC</th><th>Agreement</th><th>Website</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($apps as $a): ?>
+      <tr class="<?= (int) $a['id'] === $openId ? 'agr-row-open' : '' ?>">
+        <td class="mono" style="white-space:nowrap"><b><?= $h($a['ref']) ?></b></td>
+        <td style="white-space:nowrap"><?= $h(date('d M Y', (int) strtotime((string) $a['created_at']))) ?></td>
+        <td style="white-space:nowrap"><?= (string) $a['type'] === 'org' ? '🏢 Partner' : '👤 Agent' ?></td>
+        <td><b><?= $h($a['name']) ?></b><?= (int) $a['has_photo'] === 1 ? ' <span title="Photo sent">📷</span>' : '' ?><?php if (!empty($a['repeat_of_ref'])): ?><span class="agr-repeat" title="The same mobile applied in the 24 hours before">↺ again after <?= $h($a['repeat_of_ref']) ?></span><?php endif; ?><?php if (!empty($a['admin_name'])): ?><div class="muted text-xs">↳ <?= $h($a['admin_name']) ?></div><?php endif; ?></td>
+        <td class="mono" style="white-space:nowrap"><?= $h($a['phone']) ?></td>
+        <td><?= $h($a['area'] ?: '—') ?></td>
+        <td><?= $statusPill((string) $a['status']) ?></td>
+        <td><?= $kycPill((string) $a['kyc_status']) ?></td>
+        <td><?= $agrPill((string) $a['agreement_status'], $a['agreement_end'] ?? null) ?></td>
+        <td style="white-space:nowrap"><?= AgentApplications::isLive($a) ? '<span class="pill st-ok">🟢 Live</span>' : '<span class="muted">—</span>' ?></td>
+        <td><a class="btn ghost sm" href="<?= $h($keep(['id' => (int) $a['id']])) ?>#detail"><svg class="a-ic"><use href="#a-eye"/></svg>Open</a></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  </div>
+  <?php endif; ?>
+</div>
+
+<?php else: /* ---------------- tab 2: existing agents & partners ---------------- */ ?>
+
+<p class="muted" style="margin:0 0 12px;font-size:13px">KYC documents are checked on each agent's <b>Agent 360</b> page (tap the name). Here: the agreement and what the public list may show. Nobody is on the public list until you tick <b>Listed</b> — tick it only for real agents and partners who agreed. The list shows only the name, kind, area and phone — the phone masked (98•••••123) unless "Full" is ticked under Phone shown. An account with no mobile number is never listed. <b>An agent with a 🌐 Website card is shown on the website through that card</b> (name, number, photo, address, Live switch) — the Listed / Full ticks here are only for agents without a card.</p>
+<div class="panel">
+  <h2><svg class="a-ic"><use href="#a-users"/></svg>Existing agents &amp; partners</h2>
+  <?php if ($agents === []): ?>
+    <?= admin_empty('No agent accounts yet', 'Add one on Staff & Agents.', '👥') ?>
+  <?php else: ?>
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>Name</th><th>Mobile</th><th>KYC</th><th>Agreement</th><th>Signed on</th><th>Public list</th><th>Phone shown</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($agents as $ag):
+        $fid = 'agf' . (int) $ag['id'];
+        $inactive = (int) $ag['is_active'] !== 1; ?>
+      <tr id="ag<?= (int) $ag['id'] ?>"<?= $inactive ? ' style="opacity:.7"' : '' ?>>
+<?php $agName = (string) ($ag['full_name'] ?: $ag['username']);
+              $cp = trim((string) ($ag['contact_person'] ?? ''));
+              $sub = ($ag['kind'] === 'partner' ? '🏢 Partner' : '👤 Agent') . (!empty($ag['counter_name']) ? ' · ' . $ag['counter_name'] : ''); ?>
+        <td style="min-width:150px"><a href="agent-360.php?agent=<?= (int) $ag['id'] ?>"><b><?= $h($agName) ?></b></a><?php if ($inactive): ?> <span class="pill st-muted">Inactive</span><?php endif; ?>
+          <?php if (!empty($ag['card_id'])): ?><a class="btn ghost sm" style="margin-left:4px" href="agreements.php?tab=apps&amp;id=<?= (int) $ag['card_id'] ?>#web">🌐 Website card</a><?php endif; ?>
+          <div class="muted text-xs"><?= $h($sub) ?></div>
+          <?php if ($ag['kind'] === 'partner' && $cp !== '' && strcasecmp($cp, $agName) !== 0): ?><div class="muted text-xs">Contact: <?= $h($cp) ?></div><?php endif; ?></td>
+        <td class="mono" style="white-space:nowrap"><?= $h($ag['phone_any'] ?: '—') ?></td>
+        <td><?= $kycPill((string) $ag['kyc_status']) ?></td>
+        <?php if ($canEdit): ?>
+          <td><select class="agr-mini" name="agreement_status" form="<?= $fid ?>" aria-label="Agreement">
+            <?php foreach (AgentApplications::AGREEMENT_LABELS as $v => $l): ?><option value="<?= $h($v) ?>"<?= $ag['agreement_status'] === $v ? ' selected' : '' ?>><?= $h($l) ?></option><?php endforeach; ?>
+          </select><?php if (!empty($ag['agreement_end'])): ?><div class="agr-end">till <?= $h($fmtDate($ag['agreement_end'])) ?></div><?php endif; ?></td>
+          <td><input class="agr-mini" type="date" name="agreement_signed_at" form="<?= $fid ?>" value="<?= $h($ag['agreement_signed_at'] ?? '') ?>" aria-label="Signed on"></td>
+          <td><label class="agr-check"><input type="checkbox" name="public_listing" value="1" form="<?= $fid ?>"<?= (int) $ag['public_listing'] === 1 ? ' checked' : '' ?>> Listed</label></td>
+          <td><label class="agr-check"><input type="checkbox" name="public_phone" value="1" form="<?= $fid ?>"<?= (int) $ag['public_phone'] === 1 ? ' checked' : '' ?>> Full</label></td>
+          <td><form id="<?= $fid ?>" method="post" action="agreements.php?tab=agents" style="margin:0"><?= $csrfField ?><input type="hidden" name="action" value="agent"><input type="hidden" name="admin_id" value="<?= (int) $ag['id'] ?>"><button class="btn sm" type="submit">Save</button></form></td>
+        <?php else: ?>
+          <td><?= $agrPill((string) $ag['agreement_status'], $ag['agreement_end'] ?? null) ?></td>
+          <td><?= $h($fmtDate($ag['agreement_signed_at'] ?? null)) ?></td>
+          <td><?= (int) $ag['public_listing'] === 1 ? 'Yes' : 'No' ?></td>
+          <td><?= (int) $ag['public_phone'] === 1 ? 'Full' : 'Masked' ?></td>
+          <td></td>
+        <?php endif; ?>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  </div>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
+<?php admin_footer(); ?>

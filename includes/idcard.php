@@ -1,0 +1,967 @@
+<?php
+/**
+ * includes/idcard.php — ID cards & visiting cards for S Hari Global team
+ * (22-25 Oct 2026, owner: team portal).
+ *
+ * One card for each approved S Hari staff member (staff_applications),
+ * agent (agent_applications type ind), driver, and Pvt. Ltd. partner company
+ * (agent_applications type org): a CR80 card, 638 x 1011 px portrait
+ * (54 x 85.6 mm at 300 dpi), front and back, drawn with GD.
+ *
+ * Visiting card: 1050 x 602 px landscape (89 x 51 mm at 300 dpi).
+ *
+ * TWO DISTINCT QR CODES:
+ *   1. Verification QR (Front):
+ *      Destination: https://www.shreehariglobal.in/verify-id.php?c=<REF>.<HMAC>
+ *      Label: "Scan to verify · जाँच्नुहोस्"
+ *      Purpose: Verifies authentic standing in current company database.
+ *
+ *   2. Personal WhatsApp QR (Back):
+ *      Destination: https://wa.me/<countrycode><number>
+ *      Label: "Personal WhatsApp · व्यक्तिगत सम्पर्क (Does not verify identity / परिचय प्रमाणीकरण गर्दैन)"
+ *      Purpose: Direct chat with the person; explicitly does not verify identity.
+ */
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/staffapplications.php';
+require_once __DIR__ . '/agentapplications.php';
+require_once __DIR__ . '/docart.php';
+require_once __DIR__ . '/goldsheet.php';
+
+final class IdCard
+{
+    public const W = 638;
+    public const H = 1011;
+
+    private const ROYAL  = [10, 42, 143];
+    private const ROYAL2 = [31, 79, 224];
+    private const ORANGE = [240, 122, 30];
+    private const INK    = [22, 35, 60];
+    private const MUTED  = [92, 107, 133];
+    private const LINE   = [222, 228, 238];
+
+    private function __construct() {}
+
+    /* =================================================================
+     *  Who is on a card
+     * ================================================================= */
+
+    /**
+     * Everything a card shows, for a ref (STF-000005, AGR-000035, DRV-000012, SHG-XXXXX), or null.
+     */
+    public static function person(string $ref): ?array
+    {
+        require_once __DIR__.'/teamregistry.php';
+        $ref=strtoupper(trim($ref));
+        if (preg_match('/^[AS]-[1-9][0-9]*$/',$ref)) { $ref=TeamRegistry::refForCode($ref)??''; }
+        $p=self::lookupPerson($ref); if (!$p) { return null; }
+        $key=TeamRegistry::key($p['ref']); $m=TeamRegistry::meta($key);
+        $p['memberCode']=$m['code']??$p['ref']; $p['route']=$m['route']??'';
+        if (!empty($m['position_name'])) { $p['roleEn']=$m['position_name']; }
+        $p['studio']=json_decode((string)($m['template_json']??''),true)?:null;
+        if (!$p['public']) { $p['waDigits']=''; }
+        $r=str_starts_with($key,'staff:')?StaffApps::find((int)substr($key,6)):AgentApplications::find((int)substr($key,6));
+        $p['waDigits']=$p['public']?TeamRegistry::verifiedIntl($p['ref']):'';
+        $p['kycVerified']=($r['kyc_status']??'')==='verified';
+        if (!$p['kycVerified']) { $p['valid']=false; $p['standing']='KYC review pending'; $p['standingNe']='KYC जाँच बाँकी'; $p['waDigits']=''; }
+        if (!empty($p['expires']) && $p['expires']<date('Y-m-d')) { $p['valid']=false; $p['standing']='Expired'; $p['waDigits']=''; }
+        return $p;
+    }
+
+    private static function lookupPerson(string $ref): ?array
+    {
+        $ref = strtoupper(trim($ref));
+        if (preg_match('/^STF-(\d{1,9})$/', $ref, $m) === 1) {
+            return self::forStaff((int) $m[1]);
+        }
+        if (preg_match('/^AGR-(\d{1,9})$/', $ref, $m) === 1) {
+            $id = AgentApplications::available() ? (int) Database::scalar('SELECT id FROM agent_applications WHERE ref = :r LIMIT 1', ['r' => $ref], 0) : 0;
+            return self::forAgent($id > 0 ? $id : (int) $m[1]);
+        }
+        return null;
+    }
+
+    public static function forStaff(int $id): ?array
+    {
+        $r = StaffApps::available() ? StaffApps::find($id) : null;
+        if ($r === null || !in_array((string) $r['status'], ['approved', 'suspended', 'exited'], true)) {
+            return null;
+        }
+        $st = (string) $r['status'];
+        if (class_exists('Settings') && method_exists('Settings', 'getArray') && isset(Settings::getArray('team_manager_archive', [])['staff:' . $id])) { $st = 'exited'; }
+        $cc = countryDialCode((string) $r['phone_country']) ?: '977';
+        $photo = !empty($r['photo_path']) && ($abs = StaffApps::absPath((string) $r['photo_path'])) !== null && is_file($abs) ? (string) file_get_contents($abs) : null;
+        $sig   = !empty($r['signature_path']) && ($abs = StaffApps::absPath((string) $r['signature_path'])) !== null && is_file($abs) ? (string) file_get_contents($abs) : null;
+        $pub   = (int) ($r['show_on_website'] ?? 0) === 1 ? array_flip(StaffApps::publicFields()) : [];
+        $links = self::links((string) ($r['cv_json'] ?? ''));
+        $issued = substr((string) ($r['approved_at'] ?: $r['created_at']), 0, 10);
+        $phoneDigits = preg_replace('/\D/', '', (string) $r['phone']) ?? '';
+        return [
+            'kind'       => 'staff',
+            'expires'    => self::plusMonths($issued, 12),
+            'public'     => isset($pub['phone']),
+            'waDigits'   => $cc . $phoneDigits,
+            'email'      => isset($pub['phone']) ? trim((string) ($r['email'] ?? '')) : '',
+            'facebook'   => isset($pub['phone']) ? $links['facebook'] : '',
+            'ref'        => (string) $r['ref'],
+            'name'       => (string) $r['full_name'],
+            'roleEn'     => StaffApps::roleLabel((string) $r['role_applied']),
+            'roleNe'     => StaffApps::roleLabel((string) $r['role_applied'], true),
+            'place'      => trim((string) (($r['base_location'] ?? '') ?: ($r['district'] ?? ''))),
+            'phone'      => '+' . $cc . ' ' . $r['phone'],
+            'photo'      => $photo,
+            'sig'        => $sig,
+            'issued'     => $issued,
+            'valid'      => $st === 'approved',
+            'standing'   => match ($st) { 'approved' => 'Active staff', 'suspended' => 'Suspended', default => 'No longer with S Hari Global' },
+            'standingNe' => match ($st) { 'approved' => 'सक्रिय कर्मचारी', 'suspended' => 'निलम्बित', default => 'अब कम्पनीमा हुनुहुन्न' },
+            'contact'    => '',
+        ];
+    }
+
+    public static function forAgent(int $id): ?array
+    {
+        $r = AgentApplications::find($id);
+        if ($r === null || (string) $r['status'] !== 'approved') {
+            return null;
+        }
+        $org = (string) $r['type'] === 'org';
+        $active = true;
+        $archived = class_exists('Settings') && method_exists('Settings', 'getArray') && isset(Settings::getArray('team_manager_archive', [])['agent:' . $id]);
+        if (!empty($r['admin_id'])) {
+            $active = (int) Database::scalar('SELECT is_active FROM admins WHERE id = :i', ['i' => (int) $r['admin_id']], 0) === 1;
+        }
+        if ($archived) {
+            $active = false;
+        }
+        $f = is_array($r['fields'] ?? null) ? $r['fields'] : [];
+        $pic = $org && !empty($r['logo']) ? (string) $r['logo'] : (string) ($r['photo'] ?? '');
+        $raw = (string) (($r['phone_raw'] ?? '') ?: $r['phone']);
+        $pub = (int) ($r['public_ok'] ?? 0) === 1 && (int) ($r['web_live'] ?? 1) === 1 && $active;
+        $digits = preg_replace('/\D/', '', (string) $r['phone']) ?? '';
+        if (strlen($digits) === 10) {
+            $digits = (countryDialCode(resolvePhoneCountry('', $raw)) ?: '91') . $digits;
+        }
+        $links = self::links((string) ($r['cv_json'] ?? ''));
+        $issued = substr((string) ($r['reviewed_at'] ?: $r['created_at']), 0, 10);
+        $end = trim((string) ($r['agreement_end'] ?? ''));
+        if ($active && $end !== '' && $end !== '0000-00-00' && substr($end, 0, 10) < date('Y-m-d')) {
+            $active = false;
+        }
+        return [
+            'kind'       => $org ? 'partner' : 'agent',
+            'expires'    => $end !== '' && $end !== '0000-00-00' ? substr($end, 0, 10) : self::plusMonths($issued, AgentApplications::TERM_MONTHS),
+            'public'     => $pub,
+            'waDigits'   => $digits,
+            'email'      => $pub ? trim((string) ($f['p_email'] ?? '')) : '',
+            'facebook'   => $pub ? $links['facebook'] : '',
+            'ref'        => (string) ($r['ref'] ?: AgentApplications::refFor((int) $r['id'])),
+            'name'       => (string) $r['name'],
+            'roleEn'     => $org ? 'Pvt. Ltd. Partner' : 'Authorised Agent',
+            'roleNe'     => $org ? 'साझेदार कम्पनी' : 'अधिकृत एजेन्ट',
+            'place'      => trim((string) (($r['area'] ?? '') ?: ($r['web_addr'] ?? ''))),
+            'phone'      => $raw,
+            'photo'      => self::fromDataUri($pic),
+            'sig'        => self::fromDataUri((string) ($r['signature'] ?? '')),
+            'issued'     => $issued,
+            'valid'      => $active,
+            'standing'   => $active ? ($org ? 'Active partner' : 'Active agent') : ($end !== '' && $end !== '0000-00-00' && substr($end, 0, 10) < date('Y-m-d') ? 'Agreement ended' : 'Account switched off'),
+            'standingNe' => $active ? ($org ? 'सक्रिय साझेदार' : 'सक्रिय एजेन्ट') : ($end !== '' && $end !== '0000-00-00' && substr($end, 0, 10) < date('Y-m-d') ? 'सम्झौता सकियो' : 'खाता बन्द'),
+            'contact'    => $org ? trim((string) ($f['p_rep'] ?? '')) : '',
+        ];
+    }
+
+    public static function forDriver(int $id): ?array
+    {
+        try {
+            $d = Database::fetch("SELECT * FROM drivers WHERE id = :id LIMIT 1", ['id' => $id]);
+            if ($d === null) {
+                return null;
+            }
+            $raw = (string) $d['phone'];
+            $digits = preg_replace('/\D/', '', $raw) ?? '';
+            $cc = countryDialCode(resolvePhoneCountry('', $raw)) ?: '977';
+            $waDigits = strlen($digits) === 10 ? $cc . $digits : $digits;
+            $active = (int) ($d['is_active'] ?? 1) === 1;
+            $issued = substr((string) ($d['created_at'] ?? date('Y-m-d')), 0, 10);
+            return [
+                'kind'       => 'staff',
+                'expires'    => !empty($d['licence_exp']) ? (string) $d['licence_exp'] : self::plusMonths($issued, 12),
+                'public'     => true,
+                'waDigits'   => $waDigits,
+                'email'      => '',
+                'facebook'   => '',
+                'ref'        => 'DRV-' . str_pad((string) $d['id'], 6, '0', STR_PAD_LEFT),
+                'name'       => (string) $d['full_name'],
+                'roleEn'     => ucfirst((string) ($d['role'] ?: 'driver')),
+                'roleNe'     => 'चालक (सवारी चालक)',
+                'place'      => 'Nepalgunj / Surat route',
+                'phone'      => '+' . $cc . ' ' . (strlen($digits) === 10 ? $digits : substr($digits, -10)),
+                'photo'      => null,
+                'sig'        => null,
+                'issued'     => $issued,
+                'valid'      => $active,
+                'standing'   => $active ? 'Active driver' : 'Inactive driver',
+                'standingNe' => $active ? 'सक्रिय चालक' : 'निष्क्रिय चालक',
+                'contact'    => !empty($d['licence_no']) ? 'Lic: ' . $d['licence_no'] : '',
+            ];
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    public static function thumb(?string $bytes, int $max = 240): ?string
+    {
+        if (($src = self::open($bytes)) === null) {
+            return null;
+        }
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $k = min(1.0, $max / max($w, $h));
+        $dst = imagecreatetruecolor(max(1, (int) round($w * $k)), max(1, (int) round($h * $k)));
+        imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255));
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, imagesx($dst), imagesy($dst), $w, $h);
+        ob_start();
+        imagejpeg($dst, null, 82);
+        imagedestroy($src);
+        imagedestroy($dst);
+        return 'data:image/jpeg;base64,' . base64_encode((string) ob_get_clean());
+    }
+
+    private static function open(?string $bytes): ?\GdImage
+    {
+        if ($bytes === null || $bytes === '' || !function_exists('imagecreatefromstring')) {
+            return null;
+        }
+        $info = @getimagesizefromstring($bytes);
+        if (!is_array($info) || !in_array((string) ($info['mime'] ?? ''), AgentApplications::PHOTO_MIME, true)
+            || !AgentApplications::imageFits($info)) {
+            return null;
+        }
+        $src = @imagecreatefromstring($bytes);
+        return $src instanceof \GdImage ? $src : null;
+    }
+
+    private static function fromDataUri(string $uri): ?string
+    {
+        if (preg_match('~^data:image/(?:jpeg|jpg|png|webp);base64,(.+)$~s', $uri, $m) !== 1) {
+            return null;
+        }
+        $b = base64_decode($m[1], true);
+        return $b === false || $b === '' ? null : $b;
+    }
+
+    /* =================================================================
+     *  The QR codes & URL helpers
+     * ================================================================= */
+
+    public static function code(string $ref): string
+    {
+        $ref = strtoupper(trim($ref));
+        return $ref . '.' . substr(Security::sign('idcard|' . $ref), 0, 12);
+    }
+
+    public static function parse(string $code): ?string
+    {
+        if (preg_match('/^((?:STF|AGR|DRV|SHG)-[A-Z0-9-]+)\.([a-f0-9]{12})$/i', trim($code), $m) !== 1) {
+            return null;
+        }
+        $ref = strtoupper($m[1]);
+        return hash_equals(self::code($ref), $ref . '.' . strtolower($m[2])) ? $ref : null;
+    }
+
+    /** Official ID Verification URL */
+    public static function verifyUrl(string $ref): string
+    {
+        return appUrl('verify-id.php') . '?c=' . rawurlencode(self::code($ref));
+    }
+
+    /** Personal WhatsApp URL — opens direct chat with this person */
+    public static function waQrUrl(array $p): string {
+        $d=(string)($p['waDigits']??'');
+        return preg_match('/^(91[6-9][0-9]{9}|9779[78][0-9]{8})$/',$d)?'https://wa.me/'.$d:'';
+    }
+
+    public static function waLink(array $p): string
+    {
+        $d = (string) ($p['waDigits'] ?? '');
+        if (!preg_match('/^(91[6-9][0-9]{9}|9779[78][0-9]{8})$/', $d)) {
+            return '';
+        }
+        $co = Settings::company();
+        $txt = 'Namaste ' . $p['name'] . ' ji, I found your ' . $co['name'] . ' ' . $p['roleEn'] . ' card (' . $p['ref'] . ') on '
+             . preg_replace('~^(https?://)?(www\.)?~', '', (string) $co['web']) . '. I would like to enquire about bus tickets.';
+        return 'https://wa.me/' . $d . '?text=' . rawurlencode($txt);
+    }
+
+    /* =================================================================
+     *  Drawing ID Card
+     * ================================================================= */
+
+    public static function png(array $p, string $side = 'front'): string
+    {
+        if (!empty($p['studio'])) { return self::designPng($p,'id',$side,$p['studio']); }
+        if ($side === 'sheet') {
+            $gap = 40;
+            $im = imagecreatetruecolor(self::W * 2 + $gap, self::H);
+            imagefill($im, 0, 0, imagecolorallocate($im, 255, 255, 255));
+            $f = self::front($p);
+            $b = self::back($p);
+            imagecopy($im, $f, 0, 0, 0, 0, self::W, self::H);
+            imagecopy($im, $b, self::W + $gap, 0, 0, 0, self::W, self::H);
+            imagedestroy($f);
+            imagedestroy($b);
+        } else {
+            $im = $side === 'back' ? self::back($p) : self::front($p);
+        }
+        imageresolution($im,300,300);
+        ob_start();
+        imagepng($im, null, 6);
+        imagedestroy($im);
+        return (string) ob_get_clean();
+    }
+
+    private static function front(array $p): \GdImage
+    {
+        $W = self::W;
+        $H = self::H;
+        $im = imagecreatetruecolor($W, $H);
+        imagealphablending($im, true);
+        imagesavealpha($im, false);
+        $white = self::c($im, [255, 255, 255]);
+        imagefill($im, 0, 0, $white);
+
+        self::brand($im, 26, 22, 150);
+        imagefilledrectangle($im, 0, 168, $W, 175, self::c($im, self::ORANGE));
+
+        self::gradient($im, 0, 176, $W, 420, self::ROYAL, self::ROYAL2);
+        $kindEn = ['staff' => 'STAFF IDENTITY CARD', 'agent' => 'AGENT IDENTITY CARD', 'partner' => 'PARTNER IDENTITY CARD'][$p['kind']] ?? 'IDENTITY CARD';
+        $kindNe = ['staff' => 'कर्मचारी परिचयपत्र', 'agent' => 'एजेन्ट परिचयपत्र', 'partner' => 'साझेदार परिचयपत्र'][$p['kind']] ?? 'परिचयपत्र';
+        self::tC($im, 19, 0, $W, 196, $white, $kindEn, true);
+        self::tC($im, 16, 0, $W, 232, self::c($im, [255, 215, 160]), $kindNe);
+
+        $pill = $p['valid'] ? 'ACTIVE' : 'NOT VALID';
+        $pw0 = self::w(11, $pill) + 30;
+        self::roundRect($im, $W - 26 - $pw0, 184, $W - 26, 212, 14, self::c($im, $p['valid'] ? [24, 201, 139] : [217, 48, 37]));
+        self::tC($im, 11, $W - 26 - $pw0, $W - 26, 191, $white, $pill, true);
+        imagefilledpolygon($im, [0, 176, 96, 176, 0, 272], self::c($im, self::ORANGE));
+
+        $px = 184; $py = 276; $pw = 270; $ph = 300;
+        self::roundRect($im, $px - 9, $py - 9, $px + $pw + 9, $py + $ph + 9, 26, $white);
+        self::roundRect($im, $px - 3, $py - 3, $px + $pw + 3, $py + $ph + 3, 22, self::c($im, self::ORANGE));
+        self::roundRect($im, $px, $py, $px + $pw, $py + $ph, 20, self::c($im, [238, 243, 252]));
+        $drawn = $p['photo'] !== null && self::rounded($im, (string) $p['photo'], $px, $py, $pw, $ph, 20, $p['kind'] === 'partner');
+        if (!$drawn) {
+            $ini = self::initials((string) $p['name']);
+            self::tC($im, 80, $px, $px + $pw, $py + 95, self::c($im, self::ROYAL), $ini, true);
+        }
+
+        $ink = self::c($im, self::INK);
+        $y = 600;
+        $names = self::wrap((string) $p['name'], 27, $W - 80, 2);
+        $ns = count($names) > 1 ? 23 : 27;
+        foreach (count($names) > 1 ? self::wrap((string) $p['name'], $ns, $W - 70, 2) : $names as $line) {
+            self::tC($im, $ns, 0, $W, $y, $ink, $line, true);
+            $y += $ns > 24 ? 46 : 38;
+        }
+        $role = strtoupper((string) $p['roleEn']) . '  ·  ' . $p['roleNe'];
+        $rw = self::w(15, $role) + 44;
+        $rx = (int) (($W - $rw) / 2);
+        self::roundRect($im, $rx, $y + 4, $rx + $rw, $y + 46, 21, self::c($im, [255, 228, 199]));
+        self::tC($im, 15, 0, $W, $y + 12, self::c($im, [154, 74, 0]), $role, true);
+        $y += 62;
+
+        $qrBox = 172;
+        $qx = $W - 34 - $qrBox;
+        $qy = max($y, 716);
+        $muted = self::c($im, self::MUTED);
+        $rows = [
+            ['Staff / ID No.', (string) ($p['memberCode']??$p['ref'])],
+            [$p['kind'] === 'staff' ? 'Office / Route' : 'Area / Route', (string) (($p['route']??'') ?: $p['place'])],
+            ['Mobile', (string) $p['phone']],
+            ['Valid till', self::date((string) ($p['expires'] ?? '')) . '   (issued ' . self::date((string) $p['issued']) . ')'],
+        ];
+        if ($p['contact'] !== '') {
+            array_splice($rows, 1, 0, [['Contact', (string) $p['contact']]]);
+        }
+        $avail = $H - 58 - 8 - $qy;
+        $rows = array_slice($rows, 0, max(2, min(count($rows), intdiv($avail, 44))));
+        $step = min(50, intdiv($avail, count($rows)));
+        $ly = $qy - 2;
+        foreach ($rows as [$k, $v]) {
+            self::t($im, 12.5, 40, $ly, $muted, $k);
+            $v = self::fit($v, 16, $qx - 40 - 20);
+            self::t($im, 16, 40, $ly + 19, $ink, $v, true);
+            $ly += $step;
+        }
+
+        // Official Verification QR (Front)
+        GoldSheet::qr($im, self::verifyUrl((string) $p['ref']), $qx, $qy, $qrBox);
+        $side = GoldSheet::qrSide(self::verifyUrl((string) $p['ref']), $qrBox);
+        self::tC($im, 11, $qx, $qx + $side, $qy + $side + 2, self::c($im, self::ROYAL), 'Scan to verify · जाँच्नुहोस्', true);
+        self::tC($im, 9.5, $qx, $qx + $side, $qy + $side + 18, $muted, 'Official Verification');
+
+        self::gradient($im, 0, $H - 58, $W, $H, self::ROYAL2, self::ROYAL);
+        $co = Settings::company();
+        self::tC($im, 14, 0, $W, $H - 44, $white, 'www.' . preg_replace('~^(https?://)?(www\.)?~', '', (string) $co['web']) . '   ·   ' . $co['phone'], true);
+        return $im;
+    }
+
+    private static function back(array $p): \GdImage
+    {
+        $W = self::W;
+        $H = self::H;
+        $im = imagecreatetruecolor($W, $H);
+        imagealphablending($im, true);
+        $white = self::c($im, [255, 255, 255]);
+        imagefill($im, 0, 0, $white);
+        $ink = self::c($im, self::INK);
+        $muted = self::c($im, self::MUTED);
+
+        self::gradient($im, 0, 0, $W, 120, self::ROYAL, self::ROYAL2);
+        self::tC($im, 18, 0, $W, 26, $white, 'S HARI GLOBAL PRIVATE LIMITED', true);
+        self::tC($im, 14, 0, $W, 64, self::c($im, [255, 215, 160]), 'एस हरि ग्लोबल प्राइभेट लिमिटेड');
+        imagefilledrectangle($im, 0, 120, $W, 126, self::c($im, self::ORANGE));
+
+        $rules = [
+            ['This card belongs to S Hari Global Pvt. Ltd. Carry it while on duty and show it when asked.',
+             'यो परिचयपत्र कम्पनीको सम्पत्ति हो। काम गर्दा साथमा राख्नुहोस्।'],
+            ['It is valid only while the verification QR says "Active". Scan it to check standing.',
+             'अगाडिको प्रमाणीकरण QR ले "सक्रिय" देखाएसम्म मात्र मान्य।'],
+            ['Never lend it. If found, please return it to any S Hari Global office or call helpline.',
+             'अरूलाई नदिनुहोस्। भेटिएमा नजिकको कार्यालयमा फिर्ता गर्नुहोस्।'],
+        ];
+        $y = 145;
+        foreach ($rules as $i => [$en, $ne]) {
+            self::t($im, 15, 34, $y, self::c($im, self::ORANGE), (string) ($i + 1) . '.', true);
+            foreach (self::wrap($en, 13, $W - 100, 2) as $line) {
+                self::t($im, 13, 62, $y, $ink, $line);
+                $y += 24;
+            }
+            foreach (self::wrap($ne, 12.5, $W - 100, 2) as $line) {
+                self::t($im, 12.5, 62, $y, $muted, $line);
+                $y += 24;
+            }
+            $y += 8;
+        }
+
+        $y += 14;
+        $line = self::c($im, self::LINE);
+        $bw = (int) (($W - 34 * 2 - 30) / 2);
+        $lx = 34; $rx = 34 + $bw + 30;
+        self::roundRect($im, $lx, $y, $lx + $bw, $y + 138, 14, self::c($im, [247, 249, 253]));
+        self::roundRect($im, $rx, $y, $rx + $bw, $y + 138, 14, self::c($im, [247, 249, 253]));
+        if ($p['sig'] !== null) {
+            self::picture($im, (string) $p['sig'], $lx + 14, $y + 8, $bw - 28, 92, true);
+        }
+        imageline($im, $lx + 14, $y + 106, $lx + $bw - 14, $y + 106, $line);
+        self::tC($im, 11.5, $lx, $lx + $bw, $y + 112, $muted, $p['kind'] === 'partner' ? 'Partner signature' : 'Holder signature');
+        GoldSheet::seal($im, $rx + intdiv($bw, 2), $y + 54, 82);
+        imageline($im, $rx + 14, $y + 106, $rx + $bw - 14, $y + 106, $line);
+        self::tC($im, 11.5, $rx, $rx + $bw, $y + 112, $muted, 'Authorised signatory');
+        $y += 156;
+
+        $co = Settings::company();
+        self::tC($im, 12.5, 0, $W, $y, $ink, 'Head office: ' . $co['address'], true);
+        $y += 24;
+        self::tC($im, 11.5, 0, $W, $y, $muted, 'CIN ' . $co['cin'] . '   ·   ' . $co['email']);
+
+        // ---- Bottom Box: Official Verify info (left) & Personal WhatsApp QR (right) ----
+        $vy = $H - 70 - 18 - 180;
+        self::roundRect($im, 34, $vy, $W - 34, $vy + 180, 18, self::c($im, [238, 244, 252]));
+
+        $waUrl = self::waQrUrl($p);
+        $waQrSize = 132;
+        $waX = $W - 34 - $waQrSize - 16;
+        $waY = $vy + 14;
+
+        if ($waUrl !== '') {
+            GoldSheet::qr($im, $waUrl, $waX, $waY, $waQrSize);
+            self::tC($im, 10, $waX - 8, $waX + $waQrSize + 8, $waY + $waQrSize + 4, self::c($im, [18, 101, 43]), 'Personal WhatsApp', true);
+            self::tC($im, 8.5, $waX - 16, $waX + $waQrSize + 16, $waY + $waQrSize + 18, $muted, 'Does NOT verify ID');
+        }
+
+        $boxW = $waUrl !== '' ? $waX - 34 - 24 : $W - 68 - 20;
+        self::t($im, 13.5, 48, $vy + 14, self::c($im, self::ROYAL), 'Card No. ' . $p['ref'] . '   ·   Issued ' . self::date((string) $p['issued']), true);
+        self::t($im, 11.5, 48, $vy + 40, $muted, 'Official verification: scan front QR or visit:');
+        self::t($im, 12, 48, $vy + 60, $ink, self::fit((string) preg_replace('~^https?://~', '', appUrl('verify-id.php')), 12, $boxW), true);
+        self::t($im, 11, 48, $vy + 84, $muted, self::fit('Office Helpline: ' . $co['phone'], 11, $boxW));
+        self::t($im, 10.5, 48, $vy + 110, $muted, self::fit('सक्कली कार्ड जाँच्न अगाडिको QR स्क्यान गर्नुहोस्।', 10.5, $boxW));
+        self::t($im, 10, 48, $vy + 132, self::c($im, [150, 70, 0]), self::fit('व्हाट्सएप QR व्यक्तिगत च्याटको लागि मात्र हो।', 10, $boxW));
+
+        self::gradient($im, 0, $H - 70, $W, $H, self::ROYAL2, self::ROYAL);
+        self::tC($im, 13, 0, $W, $H - 60, self::c($im, [255, 215, 160]), 'Helpline · हेल्पलाइन', true);
+        self::tC($im, 16, 0, $W, $H - 36, $white, (string) $co['phone'] . '   ·   WhatsApp ' . self::waShow((string) $co['whatsapp']), true);
+        return $im;
+    }
+
+    public static function plusMonths(string $ymd, int $months): string
+    {
+        $t = strtotime($ymd);
+        return $t ? date('Y-m-d', strtotime('+' . $months . ' months', $t)) : '';
+    }
+
+    private static function links(string $cvJson): array
+    {
+        $cv = json_decode($cvJson, true);
+        $l = is_array($cv) && is_array($cv['links'] ?? null) ? $cv['links'] : [];
+        $fb = trim((string) ($l['facebook'] ?? ''));
+        return ['facebook' => preg_match('~^https://(www\.|m\.)?(facebook\.com|fb\.com|fb\.me)/[\w./?=&%-]{1,120}$~i', $fb) === 1 ? $fb : ''];
+    }
+
+    public const VW = 1050;
+    public const VH = 602;
+
+    public static function visitingPng(array $p, string $side = 'front'): string
+    {
+        if (!empty($p['studio'])) { return self::designPng($p,'visiting',$side,$p['studio']); }
+        if ($side === 'sheet') {
+            $gap = 40;
+            $im = imagecreatetruecolor(self::VW, self::VH * 2 + $gap);
+            imagefill($im, 0, 0, imagecolorallocate($im, 255, 255, 255));
+            $f = self::vFront($p);
+            $b = self::vBack($p);
+            imagecopy($im, $f, 0, 0, 0, 0, self::VW, self::VH);
+            imagecopy($im, $b, 0, self::VH + $gap, 0, 0, self::VW, self::VH);
+            imagedestroy($f);
+            imagedestroy($b);
+        } else {
+            $im = $side === 'back' ? self::vBack($p) : self::vFront($p);
+        }
+        imageresolution($im,300,300);
+        ob_start();
+        imagepng($im, null, 6);
+        imagedestroy($im);
+        return (string) ob_get_clean();
+    }
+
+    private static function vFront(array $p): \GdImage
+    {
+        $W = self::VW;
+        $H = self::VH;
+        $im = imagecreatetruecolor($W, $H);
+        imagealphablending($im, true);
+        $white = self::c($im, [255, 255, 255]);
+        imagefill($im, 0, 0, $white);
+        $ink = self::c($im, self::INK);
+        $muted = self::c($im, self::MUTED);
+        $co = Settings::company();
+
+        $pw = 400;
+        self::gradient($im, 0, 0, $pw + 60, $H, self::ROYAL, self::ROYAL2);
+        imagefilledpolygon($im, [$pw, 0, $pw + 60, 0, $pw + 60, $H, $pw - 40, $H], $white);
+        imagefilledpolygon($im, [$pw - 6, 0, $pw + 10, 0, $pw - 30, $H, $pw - 46, $H], self::c($im, self::ORANGE));
+        $soft = imagecolorallocatealpha($im, 255, 255, 255, 110);
+        imagefilledellipse($im, 60, 70, 260, 260, $soft);
+        imagefilledellipse($im, 330, $H - 40, 200, 200, $soft);
+        DocArt::mark($im, 46, 50, 150, 100, true);
+        $tx = 46;
+        $ty = 170;
+        self::t($im, 30, $tx, $ty, $white, 'S HARI GLOBAL', true);
+        self::t($im, 12, $tx + self::w(30, 'S HARI GLOBAL') + 4, $ty - 4, $white, '™', true);
+        self::t($im, 14, $tx + 1, $ty + 46, self::c($im, [255, 215, 160]), 'PRIVATE  LIMITED', true);
+        self::t($im, 13, $tx + 1, $ty + 76, $white, 'India – Nepal bus service');
+        self::t($im, 13, $tx + 1, $ty + 100, $white, 'भारत – नेपाल बस सेवा');
+        $y = $H - 150;
+        imageline($im, $tx, $y, $tx + 250, $y, self::c($im, [255, 215, 160]));
+        self::t($im, 13.5, $tx, $y + 14, $white, 'www.' . preg_replace('~^(https?://)?(www\.)?~', '', (string) $co['web']), true);
+        self::t($im, 12.5, $tx, $y + 42, $white, (string) $co['phone']);
+        $ay = $y + 70;
+        foreach (self::wrap((string) $co['address'], 10.5, 300, 2) as $l) {
+            self::t($im, 10.5, $tx, $ay, self::c($im, [220, 228, 250]), $l);
+            $ay += 18;
+        }
+
+        $rx = $pw + 100;
+        $px = $rx;
+        $py = 56;
+        $ps = 150;
+        imagefilledellipse($im, $px + intdiv($ps, 2), $py + intdiv($ps, 2), $ps + 14, $ps + 14, self::c($im, self::ORANGE));
+        imagefilledellipse($im, $px + intdiv($ps, 2), $py + intdiv($ps, 2), $ps + 4, $ps + 4, $white);
+        $drawn = $p['photo'] !== null && self::circle($im, (string) $p['photo'], $px, $py, $ps, $p['kind'] === 'partner');
+        if (!$drawn) {
+            imagefilledellipse($im, $px + intdiv($ps, 2), $py + intdiv($ps, 2), $ps, $ps, self::c($im, [238, 243, 252]));
+            self::tC($im, 46, $px, $px + $ps, $py + 44, self::c($im, self::ROYAL), self::initials((string) $p['name']), true);
+        }
+        $nx = $px + $ps + 26;
+        $nw = $W - 40 - $nx;
+        $names = self::wrap((string) $p['name'], 26, $nw, 2);
+        $ny = $py + (count($names) > 1 ? 4 : 22);
+        foreach ($names as $line) {
+            self::t($im, 26, $nx, $ny, $ink, $line, true);
+            $ny += 40;
+        }
+        $role = strtoupper((string) $p['roleEn']);
+        $rw = self::w(12.5, $role) + 30;
+        self::roundRect($im, $nx, $ny + 2, $nx + $rw, $ny + 32, 15, self::c($im, [255, 228, 199]));
+        self::t($im, 12.5, $nx + 15, $ny + 9, self::c($im, [154, 74, 0]), $role, true);
+        self::t($im, 12, $nx + $rw + 12, $ny + 9, $muted, (string) $p['roleNe']);
+        $ny += 44;
+        $pillW = 190;
+        if ($p['valid']) {
+            self::roundRect($im, $nx, $ny, $nx + $pillW, $ny + 26, 13, self::c($im, [24, 201, 139]));
+            self::tC($im, 11, $nx, $nx + $pillW, $ny + 6, $white, 'ACTIVE  ·  ' . ($p['memberCode']??$p['ref']), true);
+        } else {
+            self::roundRect($im, $nx, $ny, $nx + $pillW, $ny + 26, 13, self::c($im, [217, 48, 37]));
+            self::tC($im, 11, $nx, $nx + $pillW, $ny + 6, $white, 'NOT VALID', true);
+        }
+
+        $qr = 145;
+        $qx = $W - 40 - $qr;
+        $qy = $H - 45 - $qr;
+        $dy = max($py + $ps + 40, 270);
+        $rows = [];
+        if (($p['route']??'') !== '' || $p['place'] !== '') {
+            $rows[] = [$p['kind'] === 'staff' ? 'Office / Route' : 'Area / Route', (string) (($p['route']??'')?:$p['place'])];
+        }
+        if ($p['contact'] !== '') {
+            $rows[] = ['Contact', (string) $p['contact']];
+        }
+        $rows[] = ['Mobile', (string) $p['phone']];
+        if ((string) ($p['email'] ?? '') !== '') {
+            $rows[] = ['E-mail', (string) $p['email']];
+        }
+        $rows[] = ['Valid till', self::date((string) ($p['expires'] ?? ''))];
+        $maxW = $qx - 24 - $rx;
+        foreach (array_slice($rows, 0, 5) as [$k, $v]) {
+            self::t($im, 11.5, $rx, $dy, $muted, $k);
+            self::t($im, 15, $rx + 92, $dy - 3, $ink, self::fit($v, 15, $maxW - 92), true);
+            $dy += 40;
+        }
+
+        // Official verification QR on front
+        GoldSheet::qr($im, self::verifyUrl((string) $p['ref']), $qx, $qy, $qr);
+        $side = GoldSheet::qrSide(self::verifyUrl((string) $p['ref']), $qr);
+        self::tC($im, 10, $qx, $qx + $side, $qy + $side + 2, self::c($im, self::ROYAL), 'Scan to verify', true);
+        self::tC($im, 8.5, $qx, $qx + $side, $qy + $side + 16, $muted, 'Official ID');
+        imagefilledrectangle($im, $pw + 60, $H - 8, $W, $H, self::c($im, self::ORANGE));
+        return $im;
+    }
+
+    private static function vBack(array $p): \GdImage
+    {
+        $W = self::VW;
+        $H = self::VH;
+        $im = imagecreatetruecolor($W, $H);
+        imagealphablending($im, true);
+        $white = self::c($im, [255, 255, 255]);
+        self::gradient($im, 0, 0, $W, $H, self::ROYAL, self::ROYAL2);
+        $soft = imagecolorallocatealpha($im, 255, 255, 255, 112);
+        imagefilledellipse($im, $W - 120, 80, 420, 420, $soft);
+        imagefilledellipse($im, 90, $H - 60, 300, 300, $soft);
+        imagefilledpolygon($im, [0, $H - 70, $W, $H - 130, $W, $H, 0, $H], self::c($im, self::ORANGE));
+        $co = Settings::company();
+
+        $waUrl = self::waQrUrl($p);
+        $hasWa = $waUrl !== '';
+
+        $cx = $hasWa ? intdiv($W, 2) - 130 : intdiv($W, 2);
+        DocArt::mark($im, $cx - 100, 80, 200, 130, true);
+        self::tC($im, 34, 0, $hasWa ? $W - 280 : $W, 230, $white, 'S HARI GLOBAL', true);
+        self::tC($im, 14, 0, $hasWa ? $W - 280 : $W, 280, self::c($im, [255, 215, 160]), 'P R I V A T E   L I M I T E D', true);
+        self::tC($im, 14, 0, $hasWa ? $W - 280 : $W, 312, $white, 'एस हरि ग्लोबल प्राइभेट लिमिटेड');
+        self::tC($im, 12.5, 0, $hasWa ? $W - 280 : $W, 355, $white, 'Surat  ·  Rupaidiha  ·  Nepalgunj   —   daily AC sleeper coach');
+
+        // Personal WhatsApp QR on Back of Visiting Card
+        if ($hasWa) {
+            $wqSize = 145;
+            $wqX = $W - 45 - $wqSize;
+            $wqY = 120;
+            self::roundRect($im, $wqX - 14, $wqY - 14, $wqX + $wqSize + 14, $wqY + $wqSize + 56, 16, $white);
+            GoldSheet::qr($im, $waUrl, $wqX, $wqY, $wqSize);
+            self::tC($im, 10.5, $wqX - 10, $wqX + $wqSize + 10, $wqY + $wqSize + 6, self::c($im, [18, 101, 43]), 'Personal WhatsApp', true);
+            self::tC($im, 8.5, $wqX - 14, $wqX + $wqSize + 14, $wqY + $wqSize + 22, self::c($im, self::MUTED), 'Scan to chat directly');
+            self::tC($im, 7.5, $wqX - 14, $wqX + $wqSize + 14, $wqY + $wqSize + 36, self::c($im, [160, 60, 0]), 'Does not verify identity');
+        }
+
+        self::tC($im, 13.5, 0, $W, $H - 44, $white, 'www.' . preg_replace('~^(https?://)?(www\.)?~', '', (string) $co['web']) . '   ·   ' . $co['phone'] . '   ·   ' . $co['email'], true);
+        self::t($im, 10, 30, $H - 112, self::c($im, [220, 228, 250]), $p['kind'] === 'partner' ? 'Authorised partner of ' . $co['legal'] : 'Card No. ' . $p['ref'] . '  ·  issued ' . self::date((string) $p['issued']));
+        return $im;
+    }
+
+    private static function circle(\GdImage $im, string $bytes, int $x, int $y, int $d, bool $contain): bool
+    {
+        $bak = imagecreatetruecolor($d, $d);
+        imagecopy($bak, $im, 0, 0, $x, $y, $d, $d);
+        if (!self::picture($im, $bytes, $x, $y, $d, $d, $contain)) {
+            imagedestroy($bak);
+            return false;
+        }
+        $r = $d / 2;
+        for ($i = 0; $i < $d; $i++) {
+            for ($j = 0; $j < $d; $j++) {
+                $dx = $i + 0.5 - $r;
+                $dy = $j + 0.5 - $r;
+                if ($dx * $dx + $dy * $dy > $r * $r) {
+                    imagesetpixel($im, $x + $i, $y + $j, imagecolorat($bak, $i, $j));
+                }
+            }
+        }
+        imagedestroy($bak);
+        return true;
+    }
+
+    public static function pdf(array $p, string $what = 'all'): string
+    {
+        require_once __DIR__ . '/pdf.php';
+        $pdf = new Pdf();
+        $mm = 72 / 25.4;
+        $co = Settings::company();
+        $first = true;
+        $page = function (string $title, array $sides, float $wmm, float $hmm) use ($pdf, $mm, $p, $co, &$first): void {
+            if (!$first) {
+                $pdf->newPage();
+            }
+            $first = false;
+            $pdf->rect(0, 0, $pdf->width(), 44, [10, 42, 143], true);
+            $pdf->text(36, 18, 'S HARI GLOBAL PRIVATE LIMITED', 12, 'F2', [255, 255, 255]);
+            $latin = trim((string) preg_replace('/[^\x20-\x7E]+/', '', (string) $p['name']));
+            $pdf->text(36, 32, $title . '  -  ' . ($latin !== '' ? $latin . '  -  ' : '') . $p['ref'], 9, 'F1', [255, 215, 160]);
+            $pdf->rect(0, 44, $pdf->width(), 4, [240, 122, 30], true);
+            if (!empty($p['studio'])) { $sz=getimagesizefromstring($sides[0][1]); $wmm=$sz[0]/300*25.4; $hmm=$sz[1]/300*25.4; }
+            $w = $wmm * $mm;
+            $h = $hmm * $mm;
+            $gap = 10 * $mm;
+            $x = ($pdf->width() - ($w * 2 + $gap)) / 2;
+            $y = 70;
+            foreach ($sides as $i => [$label, $png]) {
+                $cx = $x + $i * ($w + $gap);
+                foreach ([[$cx, $y], [$cx + $w, $y], [$cx, $y + $h], [$cx + $w, $y + $h]] as [$mx, $my]) {
+                    $pdf->line($mx - 14, $my, $mx - 4, $my, [120, 120, 120], 0.4);
+                    $pdf->line($mx + 4, $my, $mx + 14, $my, [120, 120, 120], 0.4);
+                    $pdf->line($mx, $my - 14, $mx, $my - 4, [120, 120, 120], 0.4);
+                    $pdf->line($mx, $my + 4, $mx, $my + 14, [120, 120, 120], 0.4);
+                }
+                $pdf->imageFromString($png, $cx, $y, $w, $h);
+                $pdf->textCenter($cx, $cx + $w, $y + $h + 16, $label . '  (' . $wmm . ' x ' . $hmm . ' mm)', 8, 'F1', [92, 107, 133]);
+            }
+            $py = $y + $h + 40;
+            $k = min(($pdf->width() - 72) / $w, ($pdf->height() - 60 - $py) / $h, 2.2);
+            $pdf->imageFromString($sides[0][1], ($pdf->width() - $w * $k) / 2, $py, $w * $k, $h * $k);
+            $pdf->textCenter(0, $pdf->width(), $pdf->height() - 30, 'Cut on crop marks, or send to a card printer. QR opens '
+                . preg_replace('~^https?://~', '', appUrl('verify-id.php')) . ' to check current standing.', 8, 'F1', [92, 107, 133]);
+            $pdf->textCenter(0, $pdf->width(), $pdf->height() - 18, $co['legal'] . '  -  ' . $co['web'] . '  -  ' . $co['phone'], 8, 'F1', [92, 107, 133]);
+        };
+        if ($what === 'id' || $what === 'all') {
+            $page('Identity card', [['Front', self::png($p, 'front')], ['Back', self::png($p, 'back')]], 54, 85.6);
+        }
+        if ($what === 'visiting' || $what === 'all') {
+            $page('Visiting card', [['Front', self::visitingPng($p, 'front')], ['Back', self::visitingPng($p, 'back')]], 89, 51);
+        }
+        return $pdf->output();
+    }
+
+    private static function brand(\GdImage $im, int $x, int $y, int $h): void
+    {
+        $m = DocArt::mark($im, $x, $y + 6, 190, $h - 34);
+        $tx = $x + (is_array($m) ? (int) $m['w'] : 0) + 18;
+        $ink = self::c($im, self::ROYAL);
+        self::t($im, 30, $tx, $y + 22, $ink, 'S HARI GLOBAL', true);
+        $tw = self::w(30, 'S HARI GLOBAL');
+        self::t($im, 13, $tx + $tw + 4, $y + 18, $ink, '™', true);
+        self::t($im, 14.5, $tx + 2, $y + 74, self::c($im, self::ORANGE), 'PRIVATE  LIMITED', true);
+        self::t($im, 11.5, $tx + 2, $y + 104, self::c($im, self::MUTED), 'India – Nepal bus service');
+    }
+
+    private static function picture(\GdImage $im, string $bytes, int $x, int $y, int $w, int $h, bool $contain): bool
+    {
+        $src = self::open($bytes);
+        if ($src === null) {
+            return false;
+        }
+        $sw = imagesx($src);
+        $sh = imagesy($src);
+        if ($contain) {
+            $k = min($w / $sw, $h / $sh);
+            $dw = max(1, (int) round($sw * $k));
+            $dh = max(1, (int) round($sh * $k));
+            imagefilledrectangle($im, $x, $y, $x + $w, $y + $h, self::c($im, [255, 255, 255]));
+            imagecopyresampled($im, $src, $x + intdiv($w - $dw, 2), $y + intdiv($h - $dh, 2), 0, 0, $dw, $dh, $sw, $sh);
+        } else {
+            $k = max($w / $sw, $h / $sh);
+            $cw = (int) round($w / $k);
+            $ch = (int) round($h / $k);
+            $cx = intdiv($sw - $cw, 2);
+            $cy = max(0, (int) round(($sh - $ch) * 0.3));
+            imagecopyresampled($im, $src, $x, $y, $cx, $cy, $w, $h, $cw, $ch);
+        }
+        imagedestroy($src);
+        return true;
+    }
+
+    private static function rounded(\GdImage $im, string $bytes, int $x, int $y, int $w, int $h, int $r, bool $contain): bool
+    {
+        $bak = imagecreatetruecolor($w, $h);
+        imagecopy($bak, $im, 0, 0, $x, $y, $w, $h);
+        if (!self::picture($im, $bytes, $x, $y, $w, $h, $contain)) {
+            imagedestroy($bak);
+            return false;
+        }
+        for ($i = 0; $i < $r; $i++) {
+            for ($j = 0; $j < $r; $j++) {
+                $dx = $r - $i - 0.5;
+                $dy = $r - $j - 0.5;
+                if ($dx * $dx + $dy * $dy <= $r * $r) {
+                    continue;
+                }
+                foreach ([[$i, $j], [$w - 1 - $i, $j], [$i, $h - 1 - $j], [$w - 1 - $i, $h - 1 - $j]] as [$cx, $cy]) {
+                    imagesetpixel($im, $x + $cx, $y + $cy, imagecolorat($bak, $cx, $cy));
+                }
+            }
+        }
+        imagedestroy($bak);
+        return true;
+    }
+
+    private static function roundRect(\GdImage $im, int $x1, int $y1, int $x2, int $y2, int $r, int $col): void
+    {
+        imagefilledrectangle($im, $x1 + $r, $y1, $x2 - $r, $y2, $col);
+        imagefilledrectangle($im, $x1, $y1 + $r, $x2, $y2 - $r, $col);
+        foreach ([[$x1 + $r, $y1 + $r], [$x2 - $r, $y1 + $r], [$x1 + $r, $y2 - $r], [$x2 - $r, $y2 - $r]] as [$cx, $cy]) {
+            imagefilledellipse($im, $cx, $cy, $r * 2, $r * 2, $col);
+        }
+    }
+
+    private static function gradient(\GdImage $im, int $x1, int $y1, int $x2, int $y2, array $a, array $b): void
+    {
+        $n = max(1, $y2 - $y1);
+        for ($i = 0; $i <= $n; $i++) {
+            $t = $i / $n;
+            imageline($im, $x1, $y1 + $i, $x2, $y1 + $i, self::c($im, [
+                (int) round($a[0] + ($b[0] - $a[0]) * $t), (int) round($a[1] + ($b[1] - $a[1]) * $t), (int) round($a[2] + ($b[2] - $a[2]) * $t),
+            ]));
+        }
+    }
+
+    private static function c(\GdImage $im, array $rgb): int
+    {
+        return imagecolorallocate($im, $rgb[0], $rgb[1], $rgb[2]);
+    }
+
+    private static function font(): string
+    {
+        return dirname(__DIR__) . '/assets/fonts/NotoSansDevanagari.ttf';
+    }
+
+    private static function t(\GdImage $im, float $size, int $x, int $y, int $col, string $text, bool $bold = false): void
+    {
+        if ($text === '') {
+            return;
+        }
+        $flat = dev_shape($text);
+        $box = imagettfbbox($size, 0, self::font(), $flat);
+        $base = $y - (int) min($box[5], $box[7]);
+        if (class_exists('DevShape') && DevShape::needs($text)
+            && DevShape::gdText($im, $size, $x, $base, $col, $text, $bold ? [[0, 0], [1, 0]] : [[0, 0]])) {
+            return;
+        }
+        imagettftext($im, $size, 0, $x, $base, $col, self::font(), $flat);
+        if ($bold) {
+            imagettftext($im, $size, 0, $x + 1, $base, $col, self::font(), $flat);
+        }
+    }
+
+    private static function w(float $size, string $text): int
+    {
+        if ($text === '') {
+            return 0;
+        }
+        if (class_exists('DevShape') && DevShape::needs($text) && ($sw = DevShape::gdWidth($size, $text)) !== null) {
+            return $sw;
+        }
+        $box = imagettfbbox($size, 0, self::font(), dev_shape($text));
+        return (int) (max($box[2], $box[4]) - min($box[0], $box[6]));
+    }
+
+    private static function tC(\GdImage $im, float $size, int $xl, int $xr, int $y, int $col, string $text, bool $bold = false): void
+    {
+        self::t($im, $size, (int) (($xl + $xr - self::w($size, $text)) / 2), $y, $col, $text, $bold);
+    }
+
+    private static function wrap(string $text, float $size, int $width, int $max): array
+    {
+        $words = preg_split('/\s+/u', trim($text)) ?: [];
+        $lines = [];
+        $cur = '';
+        foreach ($words as $wd) {
+            $try = $cur === '' ? $wd : $cur . ' ' . $wd;
+            if ($cur !== '' && self::w($size, $try) > $width) {
+                $lines[] = $cur;
+                $cur = $wd;
+            } else {
+                $cur = $try;
+            }
+        }
+        if ($cur !== '') {
+            $lines[] = $cur;
+        }
+        if (count($lines) > $max) {
+            $lines = array_slice($lines, 0, $max);
+            $lines[$max - 1] = self::fit($lines[$max - 1] . ' …', $size, $width);
+        }
+        return $lines;
+    }
+
+    private static function fit(string $text, float $size, int $width): string
+    {
+        if (self::w($size, $text) <= $width) {
+            return $text;
+        }
+        while (mb_strlen($text) > 2 && self::w($size, $text . '…') > $width) {
+            $text = mb_substr($text, 0, -1);
+        }
+        return rtrim($text) . '…';
+    }
+
+    private static function initials(string $name): string
+    {
+        $p = preg_split('/\s+/u', trim($name)) ?: [];
+        $a = mb_substr((string) ($p[0] ?? ''), 0, 1);
+        $b = count($p) > 1 ? mb_substr((string) end($p), 0, 1) : '';
+        return mb_strtoupper($a . $b) ?: '★';
+    }
+
+    private static function date(string $ymd): string
+    {
+        $t = strtotime($ymd);
+        return $t ? date('d M Y', $t) : '—';
+    }
+
+    private static function waShow(string $digits): string
+    {
+        $d = preg_replace('/\D/', '', $digits) ?? '';
+        return strlen($d) === 12 ? '+' . substr($d, 0, 2) . ' ' . substr($d, 2, 5) . ' ' . substr($d, 7) : ($d !== '' ? '+' . $d : '');
+    }
+
+    public static function designPng(array $p,string $doc,string $side,array $config): string {
+        require_once __DIR__.'/carddesign.php'; $cfg=CardDesign::clean($config);
+        $doc=$doc==='visiting'?'visiting':'id';$w=$doc==='id'?self::W:self::VW;$h=$doc==='id'?self::H:self::VH;
+        if (($cfg['orient_'.$doc]==='landscape')!==($w>$h)) { [$w,$h]=[$h,$w]; }
+        if ($side==='sheet') {
+            $f=imagecreatefromstring(self::designPng($p,$doc,'front',$cfg));$b=imagecreatefromstring(self::designPng($p,$doc,'back',$cfg));
+            $im=imagecreatetruecolor($w*2+40,$h);imagefill($im,0,0,imagecolorallocate($im,255,255,255));imagecopy($im,$f,0,0,0,0,$w,$h);imagecopy($im,$b,$w+40,0,0,0,$w,$h);imagedestroy($f);imagedestroy($b);
+        } else {
+            $im=imagecreatetruecolor($w,$h);
+            $rgb=static fn(string $hex):array=>[hexdec(substr($hex,1,2)),hexdec(substr($hex,3,2)),hexdec(substr($hex,5,2))];
+            imagefill($im,0,0,self::c($im,$rgb($cfg['background'])));$accent=self::c($im,$rgb($cfg['accent']));
+            imagefilledrectangle($im,0,0,$w,12,$accent);imagefilledrectangle($im,0,$h-12,$w,$h,$accent);
+            $co=Settings::company();$text=['company'=>'S HARI GLOBAL','name'=>$p['name'],'role'=>$p['roleEn'],'code'=>$p['memberCode']??$p['ref'],'route'=>$p['route']??$p['place'],'phone'=>$p['public']?$p['phone']:'Contact the company office','contact'=>$co['phone'].' · '.$co['email'],'notice'=>'Official verification QR checks current status. WhatsApp QR opens personal chat only.','signature'=>'Holder signature'];
+            foreach($cfg['fields'][$doc.'_'.($side==='back'?'back':'front')] as $field){
+                if(!$field['visible']){continue;}$key=$field['key'];$x=(int)round($field['x']*$w);$y=(int)round($field['y']*$h);$fw=(int)round($field['w']*$w);$fh=(int)round($field['h']*$h);$color=self::c($im,$rgb($field['color']));$size=(float)$field['size'];
+                if($key==='logo'){DocArt::mark($im,$x,$y,$fw,$fh,true);}
+                elseif($key==='photo'){if(!empty($p['photo'])){self::picture($im,$p['photo'],$x,$y,$fw,$fh,false);}}
+                elseif($key==='signature'){if(!empty($p['sig'])){self::picture($im,$p['sig'],$x,$y,$fw,$fh,true);}}
+                elseif(in_array($key,['verify','whatsapp'],true)){
+                    $payload=$key==='verify'?self::verifyUrl($p['ref']):self::waQrUrl($p);if($payload===''){continue;}
+                    $max=min($fw,$fh-38);if($max<80){continue;}$actual=GoldSheet::qrSide($payload,$max);imagefilledrectangle($im,$x-8,$y-8,$x+$actual+8,$y+$actual+8,imagecolorallocate($im,255,255,255));GoldSheet::qr($im,$payload,$x,$y,$max);
+                    self::t($im,9,$x,$y+$actual+8,$color,$key==='verify'?'Verify identity':'Personal WhatsApp',true);if($key==='whatsapp'){self::t($im,8,$x,$y+$actual+24,$color,'Does not verify identity');}
+                }else{
+                    $value=$key==='text'?$field['text']:($text[$key]??'');
+                    foreach(self::wrap((string)$value,$size,$fw,max(1,(int)floor($fh/($size*1.6)))) as $line){self::t($im,$size,$x,$y,$color,$line,in_array($key,['name','company','code'],true));$y+=(int)ceil($size*1.6);}
+                }
+            }
+        }
+        if($cfg['bw']){imagefilter($im,IMG_FILTER_GRAYSCALE);}imageresolution($im,300,300);ob_start();imagepng($im,null,6);$out=(string)ob_get_clean();imagedestroy($im);return $out;
+    }
+}

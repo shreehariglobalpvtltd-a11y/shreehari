@@ -1,0 +1,450 @@
+<?php
+/**
+ * =====================================================================
+ *  whatsapp/api.php — Meta WhatsApp Cloud API send functions.
+ *
+ *  One HTTP path for every WhatsApp message this app sends through Meta:
+ *  Notify::whatsapp() (tickets, alerts, OTPs, staff tools) builds its
+ *  payload and hands it to waGraphPost(); the helpers below are the same
+ *  call for scripts that want a one-liner.
+ *
+ *  Contract for every public function:
+ *    - never throws;
+ *    - returns ['success' => bool, 'message_id' => string, 'error' => string]
+ *      (+ 'http' and 'code' for diagnostics);
+ *    - retries ONCE on a network failure or a Meta 5xx;
+ *    - writes one line per attempt to whatsapp/logs/YYYY-MM-DD.log.
+ *
+ *  A 200 from Meta means ACCEPTED, not delivered. Delivery / read / failed
+ *  arrives later on whatsapp/webhook.php, which updates message_logs by the
+ *  message_id returned here.
+ * =====================================================================
+ */
+
+declare(strict_types=1);
+
+if (!defined('SHG_APP')) {
+    http_response_code(404);
+    exit;
+}
+
+require_once __DIR__ . '/config.php';
+
+if (!function_exists('waGraphPost')) {
+
+    /**
+     * Clean any India / Nepal number to international digits without "+":
+     * 91XXXXXXXXXX or 977XXXXXXXXXX. A bare 10-digit number takes the
+     * country hint ('IN' / 'NP'), else the configured default (91).
+     * Returns '' when the result cannot be a real mobile number.
+     */
+    function waCleanPhone(string $phone, ?string $countryHint = null): string
+    {
+        $d = preg_replace('/\D/', '', $phone) ?? '';
+        if (str_starts_with($d, '00')) {
+            $d = substr($d, 2);
+        }
+        if (strlen($d) === 11 && str_starts_with($d, '0')) {
+            $d = substr($d, 1);                 // 0 98xxxxxxxx trunk prefix
+        }
+        if (strlen($d) === 10) {
+            $cc = match ($countryHint) {
+                'NP'    => '977',
+                'IN'    => '91',
+                default => class_exists('Settings')
+                    ? ((preg_replace('/\D/', '', Settings::getString('whatsapp_default_country', '91')) ?? '') ?: '91')
+                    : '91',
+            };
+            $d = $cc . $d;
+        }
+        // E.164 allows 8..15 digits; India = 12, Nepal = 13.
+        if (strlen($d) < 8 || strlen($d) > 15) {
+            return '';
+        }
+        return $d;
+    }
+
+    /**
+     * A mobile number for a FILE log (15 Oct 2026, 2F-logs): the country code
+     * and the last four digits stay, the middle is hidden -
+     * 919876543210 → 91••••••3210. Enough to match a complaint to a line,
+     * not enough to harvest numbers from a leaked log. message_logs keeps the
+     * full number: the retry cron and Resend need it.
+     */
+    function waMaskPhone(string $phone): string
+    {
+        $d = preg_replace('/\D/', '', $phone) ?? '';
+        if (strlen($d) < 8) {
+            return $phone;                       // not a number ('-', a short code)
+        }
+        $cc = str_starts_with($d, '977') && strlen($d) >= 12 ? '977'
+            : (str_starts_with($d, '91') && strlen($d) === 12 ? '91' : substr($d, 0, 2));
+        return $cc . str_repeat('•', max(1, strlen($d) - strlen($cc) - 4)) . substr($d, -4);
+    }
+
+    /**
+     * Append one line to whatsapp/logs/YYYY-MM-DD.log:
+     *   [timestamp] TYPE | phone | status | message_id | detail
+     * The directory is denied by nginx (*.log), and one-time codes are
+     * masked before anything is written; since 15 Oct 2026 so are the
+     * middle digits of the phone (waMaskPhone).
+     */
+    function logWhatsAppEvent(string $type, string $phone, mixed $data, mixed $response): void
+    {
+        try {
+            $dir = defined('WHATSAPP_LOG_DIR') ? WHATSAPP_LOG_DIR : __DIR__ . '/logs';
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            $r      = is_array($response) ? $response : [];
+            $status = array_key_exists('success', $r) ? ($r['success'] ? 'OK' : 'FAIL') : (string) ($r['status'] ?? '-');
+            $msgId  = (string) ($r['message_id'] ?? '');
+            $detail = (string) ($r['error'] ?? '');
+            if ($detail === '' && !is_array($response) && $response !== null) {
+                $detail = (string) $response;
+            }
+            if (is_array($data) && isset($data['attempt'])) {
+                $detail = 'attempt ' . (int) $data['attempt'] . ($detail !== '' ? ' · ' . $detail : '');
+            }
+            $detail = preg_replace('/(code\D{0,12}?)(\d{4,8})/iu', '$1••••', $detail) ?? $detail;
+            $detail = str_replace(["\r", "\n"], ' ', mb_substr($detail, 0, 500));
+
+            $line = sprintf(
+                "[%s] %s | %s | %s | %s%s\n",
+                date('Y-m-d H:i:s'),
+                strtoupper($type),
+                $phone !== '' ? waMaskPhone($phone) : '-',
+                $status,
+                $msgId !== '' ? $msgId : '-',
+                $detail !== '' ? ' | ' . $detail : ''
+            );
+            @file_put_contents($dir . '/' . date('Y-m-d') . '.log', $line, FILE_APPEND | LOCK_EX);
+            if (class_exists('Logger', false)) {
+                Logger::adopt($dir . '/' . date('Y-m-d') . '.log');   // root cron vs website (www-data)
+            }
+        } catch (Throwable $ignored) {
+            // Logging must never break a send.
+        }
+    }
+
+    /**
+     * POST a ready /messages payload to the Graph API. Retries once on a
+     * network failure (cURL error / no HTTP status) or a Meta 5xx; a 4xx is
+     * Meta's final answer and is returned as-is.
+     *
+     * @param array<string, mixed> $payload  body WITHOUT messaging_product/to (added here)
+     * @return array{success: bool, message_id: string, error: string, http: int, code: int}
+     */
+    function waGraphPost(string $to, array $payload, string $type = 'text', ?string $token = null, ?string $phoneId = null, int $maxAttempts = 2): array
+    {
+        $token   = $token   ?? META_ACCESS_TOKEN;
+        $phoneId = $phoneId ?? META_PHONE_NUMBER_ID;
+        $result  = ['success' => false, 'message_id' => '', 'error' => '', 'http' => 0, 'code' => 0];
+
+        if ($token === '' || $phoneId === '') {
+            $result['error'] = 'Meta Cloud API not configured (access token / phone number ID missing)';
+            logWhatsAppEvent($type, $to, [], $result);
+            return $result;
+        }
+        if ($to === '') {
+            $result['error'] = 'invalid phone number';
+            logWhatsAppEvent($type, $to, [], $result);
+            return $result;
+        }
+
+        $body = ['messaging_product' => 'whatsapp', 'recipient_type' => 'individual', 'to' => $to] + $payload;
+        $json = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            $result['error'] = 'payload could not be JSON-encoded';
+            logWhatsAppEvent($type, $to, [], $result);
+            return $result;
+        }
+
+        $endpoint = META_API_BASE . '/' . rawurlencode($phoneId) . '/messages';
+
+        for ($attempt = 1; $attempt <= max(1, min(2, $maxAttempts)); $attempt++) {
+            $response = false;
+            $status   = 0;
+            $curlErr  = '';
+            try {
+                $ch = curl_init($endpoint);
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $json,
+                    CURLOPT_HTTPHEADER     => [
+                        'Authorization: Bearer ' . $token,
+                        'Content-Type: application/json',
+                    ],
+                    CURLOPT_CONNECTTIMEOUT => 8,
+                    CURLOPT_TIMEOUT        => 15,
+                ]);
+                $response = curl_exec($ch);
+                $status   = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curlErr  = curl_error($ch);
+                curl_close($ch);
+            } catch (Throwable $e) {
+                $curlErr = $e->getMessage();
+            }
+
+            $data = json_decode((string) $response, true);
+            $result['http'] = $status;
+
+            if ($status >= 200 && $status < 300 && is_array($data)) {
+                $result['success']    = true;
+                $result['message_id'] = (string) ($data['messages'][0]['id'] ?? '');
+                $result['error']      = '';
+                $result['code']       = 0;
+                logWhatsAppEvent($type, $to, ['attempt' => $attempt], $result);
+                return $result;
+            }
+
+            $err = is_array($data) ? ($data['error'] ?? []) : [];
+            $result['code']  = (int) ($err['code'] ?? 0);
+            $result['error'] = $status === 0
+                ? 'network error: ' . ($curlErr !== '' ? $curlErr : 'no response')
+                : trim('HTTP ' . $status
+                    . ($result['code'] ? ' (code ' . $result['code'] . ')' : '')
+                    . ' ' . (string) ($err['error_data']['details'] ?? ($err['message'] ?? mb_substr((string) $response, 0, 200))));
+            logWhatsAppEvent($type, $to, ['attempt' => $attempt], $result);
+
+            $retryable = $status === 0 || $status >= 500;
+            if (!$retryable || $attempt >= $maxAttempts) {
+                break;
+            }
+            usleep(700000);   // brief back-off before the single retry
+        }
+
+        if (class_exists('Logger')) {
+            Logger::error('WhatsApp Cloud API failed', [
+                'to' => $to, 'type' => $type, 'http' => $result['http'], 'code' => $result['code'], 'error' => $result['error'],
+            ], 'whatsapp');
+        }
+        return $result;
+    }
+
+    /**
+     * Send an approved template.
+     *
+     * @param list<string>|array<string,string> $bodyVars   {{1}}, {{2}} … in order
+     * @param array<int|string, string>         $headerVars ['image' => url] | ['document' => url] | ['video' => url] | list of header text vars
+     */
+    function sendWhatsAppTemplate(string $phone, string $templateName, string $langCode = 'en', array $bodyVars = [], array $headerVars = [], ?string $countryHint = null): array
+    {
+        $to = waCleanPhone($phone, $countryHint);
+        if (trim($templateName) === '') {
+            $r = ['success' => false, 'message_id' => '', 'error' => 'template name is empty', 'http' => 0, 'code' => 0];
+            logWhatsAppEvent('template', $to, [], $r);
+            return $r;
+        }
+
+        $components = [];
+        if ($headerVars !== []) {
+            $params = [];
+            foreach (['image', 'document', 'video'] as $mediaKind) {
+                if (isset($headerVars[$mediaKind]) && (string) $headerVars[$mediaKind] !== '') {
+                    $params[] = ['type' => $mediaKind, $mediaKind => ['link' => (string) $headerVars[$mediaKind]]];
+                }
+            }
+            if ($params === []) {
+                foreach ($headerVars as $v) {
+                    $params[] = ['type' => 'text', 'text' => (string) $v];
+                }
+            }
+            $components[] = ['type' => 'header', 'parameters' => $params];
+        }
+        if ($bodyVars !== []) {
+            if (!array_is_list($bodyVars)) {
+                ksort($bodyVars, SORT_NATURAL);
+            }
+            $params = [];
+            foreach ($bodyVars as $v) {
+                // WhatsApp rejects an empty variable, and newlines/tabs in one.
+                $s = trim(preg_replace('/[\r\n\t]+/', ' ', (string) $v) ?? '');
+                $params[] = ['type' => 'text', 'text' => $s !== '' ? $s : '-'];
+            }
+            $components[] = ['type' => 'body', 'parameters' => $params];
+        }
+
+        $template = ['name' => $templateName, 'language' => ['code' => $langCode !== '' ? $langCode : 'en']];
+        if ($components !== []) {
+            $template['components'] = $components;
+        }
+        return waGraphPost($to, ['type' => 'template', 'template' => $template], 'template:' . $templateName);
+    }
+
+    /** Free-form text — only delivered inside the 24 h customer-service window. */
+    function sendWhatsAppText(string $phone, string $message, ?string $countryHint = null): array
+    {
+        $to = waCleanPhone($phone, $countryHint);
+        $message = mb_substr(trim($message), 0, 4096);
+        if ($message === '') {
+            $r = ['success' => false, 'message_id' => '', 'error' => 'message is empty', 'http' => 0, 'code' => 0];
+            logWhatsAppEvent('text', $to, [], $r);
+            return $r;
+        }
+        return waGraphPost($to, ['type' => 'text', 'text' => ['preview_url' => true, 'body' => $message]], 'text');
+    }
+
+    /**
+     * Tappable answers (5 Oct 2026, the WhatsApp order menu): up to three
+     * reply buttons, or a list of up to ten rows. Free inside the 24 h
+     * window like any text. The caller keeps a plain-text version of the
+     * same question and sends that when this is refused, so a phone or a
+     * limit that cannot show buttons still gets the numbered choices.
+     *
+     * @param array{kind: string, buttons?: list<array{id: string, title: string}>,
+     *              rows?: list<array{id: string, title: string, desc?: string}>,
+     *              button?: string, footer?: string} $ui
+     * @param string|null $imageUrl header picture — reply buttons only
+     */
+    function sendWhatsAppInteractive(string $phone, string $body, array $ui, ?string $imageUrl = null, ?string $countryHint = null): array
+    {
+        $to   = waCleanPhone($phone, $countryHint);
+        $body = mb_substr(trim($body), 0, 1024);
+        $fail = static function (string $why) use ($to): array {
+            $r = ['success' => false, 'message_id' => '', 'error' => $why, 'http' => 0, 'code' => 0];
+            logWhatsAppEvent('interactive', $to, [], $r);
+            return $r;
+        };
+        if ($body === '') {
+            return $fail('message is empty');
+        }
+
+        $interactive = ['body' => ['text' => $body]];
+        $footer = trim((string) ($ui['footer'] ?? ''));
+        if ($footer !== '') {
+            $interactive['footer'] = ['text' => mb_substr($footer, 0, 60)];
+        }
+
+        if (($ui['kind'] ?? '') === 'flow') {
+            /* 15 Oct 2026: the booking FORM (includes/waflow.php) - a WhatsApp
+               Flow opened by one button, its stops / dates / seat counts sent
+               as the screen's data. Free inside the 24 h window like a list. */
+            $f = (array) ($ui['flow'] ?? []);
+            if (trim((string) ($f['id'] ?? '')) === '') {
+                return $fail('no flow id');
+            }
+            $params = [
+                'flow_message_version' => '3',
+                'flow_token'           => (string) ($f['token'] ?? 'unused'),
+                'flow_id'              => (string) $f['id'],
+                'flow_cta'             => mb_substr(trim((string) ($f['cta'] ?? 'Book')), 0, 20),
+                'flow_action'          => 'navigate',
+                'flow_action_payload'  => ['screen' => (string) ($f['screen'] ?? 'BOOK'), 'data' => (object) ((array) ($f['data'] ?? []))],
+            ];
+            if (!empty($f['draft'])) {
+                $params['mode'] = 'draft';
+            }
+            $interactive['type']   = 'flow';
+            $interactive['action'] = ['name' => 'flow', 'parameters' => $params];
+            return waGraphPost($to, ['type' => 'interactive', 'interactive' => $interactive], 'interactive');
+        }
+
+        if (($ui['kind'] ?? '') === 'list') {
+            $rows = [];
+            foreach (array_slice((array) ($ui['rows'] ?? []), 0, 10) as $row) {
+                $id    = mb_substr(trim((string) ($row['id'] ?? '')), 0, 200);
+                $title = mb_substr(trim((string) ($row['title'] ?? '')), 0, 24);
+                if ($id === '' || $title === '') {
+                    continue;
+                }
+                $one  = ['id' => $id, 'title' => $title];
+                $desc = mb_substr(trim((string) ($row['desc'] ?? '')), 0, 72);
+                if ($desc !== '') {
+                    $one['description'] = $desc;
+                }
+                $rows[] = $one;
+            }
+            if ($rows === []) {
+                return $fail('list has no rows');
+            }
+            $label = mb_substr(trim((string) ($ui['button'] ?? '')), 0, 20);
+            $interactive['type']   = 'list';
+            $interactive['action'] = ['button' => $label !== '' ? $label : 'Choose', 'sections' => [['rows' => $rows]]];
+        } else {
+            $buttons = [];
+            foreach (array_slice((array) ($ui['buttons'] ?? []), 0, 3) as $b) {
+                $id    = mb_substr(trim((string) ($b['id'] ?? '')), 0, 256);
+                $title = mb_substr(trim((string) ($b['title'] ?? '')), 0, 20);
+                if ($id !== '' && $title !== '') {
+                    $buttons[] = ['type' => 'reply', 'reply' => ['id' => $id, 'title' => $title]];
+                }
+            }
+            if ($buttons === []) {
+                return $fail('no buttons');
+            }
+            $interactive['type']   = 'button';
+            $interactive['action'] = ['buttons' => $buttons];
+            if ($imageUrl !== null && preg_match('~^https://~i', $imageUrl)) {
+                $interactive['header'] = ['type' => 'image', 'image' => ['link' => $imageUrl]];
+            }
+        }
+
+        return waGraphPost($to, ['type' => 'interactive', 'interactive' => $interactive], 'interactive');
+    }
+
+    /** Image by public https URL, optional caption (max 1024 chars). */
+    function sendWhatsAppImage(string $phone, string $imageUrl, string $caption = '', ?string $countryHint = null): array
+    {
+        $to = waCleanPhone($phone, $countryHint);
+        if (!preg_match('~^https://~i', $imageUrl)) {
+            $r = ['success' => false, 'message_id' => '', 'error' => 'image URL must be public https', 'http' => 0, 'code' => 0];
+            logWhatsAppEvent('image', $to, [], $r);
+            return $r;
+        }
+        $image = ['link' => $imageUrl];
+        if (trim($caption) !== '') {
+            $image['caption'] = mb_substr($caption, 0, 1024);
+        }
+        return waGraphPost($to, ['type' => 'image', 'image' => $image], 'image');
+    }
+
+    /**
+     * Document (PDF, image, office file) by public https URL, with the file
+     * name WhatsApp shows and an optional caption (24 Sep 2026). Used by the
+     * assistant's company_doc_send: the URL is a single-use, short-lived
+     * share link (company-doc-share.php), never a path to the file itself.
+     * Same contract as every other sender here — it never throws.
+     */
+    function sendWhatsAppDocument(string $phone, string $docUrl, string $filename = '', string $caption = '', ?string $countryHint = null): array
+    {
+        $to = waCleanPhone($phone, $countryHint);
+        if (!preg_match('~^https://~i', $docUrl)) {
+            $r = ['success' => false, 'message_id' => '', 'error' => 'document URL must be public https', 'http' => 0, 'code' => 0];
+            logWhatsAppEvent('document', $to, [], $r);
+            return $r;
+        }
+        $doc  = ['link' => $docUrl];
+        $name = trim(preg_replace('/[^\p{L}\p{N} ._()\-]+/u', '_', $filename) ?? '');
+        if ($name !== '') {
+            $doc['filename'] = mb_substr($name, 0, 120);
+        }
+        if (trim($caption) !== '') {
+            $doc['caption'] = mb_substr($caption, 0, 1024);
+        }
+        return waGraphPost($to, ['type' => 'document', 'document' => $doc], 'document');
+    }
+
+    /**
+     * Send ONE contact card — the company's visiting card.
+     *
+     * This is Meta's `contacts` message type, not a picture of a card: it
+     * arrives in WhatsApp with a "Save to contacts" button and a green
+     * "Message" button on the wa_id, so the office number lands in the
+     * passenger's phonebook in one tap. `$card` is built by
+     * VisitingCard::contact(); pass any Meta contact object to send another.
+     *
+     * Returns the same contract as every other sender — it never throws.
+     */
+    function sendWhatsAppContact(string $phone, array $card, ?string $countryHint = null): array
+    {
+        $to = waCleanPhone($phone, $countryHint);
+        if ($card === [] || !isset($card['name']['formatted_name'])) {
+            $r = ['success' => false, 'message_id' => '', 'error' => 'contact card is empty', 'http' => 0, 'code' => 0];
+            logWhatsAppEvent('contacts', $to, [], $r);
+            return $r;
+        }
+        return waGraphPost($to, ['type' => 'contacts', 'contacts' => [$card]], 'contacts');
+    }
+}

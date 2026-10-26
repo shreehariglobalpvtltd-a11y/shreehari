@@ -1,0 +1,19 @@
+{
+  "id": "/navigate.html",
+  "name": "SHARI NAV · Shree Hari Global",
+  "short_name": "SHARI NAV",
+  "description": "Free turn-by-turn navigation for India and Nepal: car, bus, bike and walking routes, Nepali voice, speed limits, offline maps.",
+  "start_url": "/navigate.html?src=pwa",
+  "scope": "/navigate.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B1426",
+  "theme_color": "#0B1426",
+  "lang": "en",
+  "categories": ["navigation", "travel", "maps"],
+  "icons": [
+    { "src": "/assets/img/icon-192.png?v=20261022z", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "/assets/img/icon-512.png?v=20261022z", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "/assets/img/icon-maskable-512.png?v=20261022z", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+  ]
+}

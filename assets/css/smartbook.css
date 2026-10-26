@@ -1,0 +1,692 @@
+/* =====================================================================
+   SmartBook card (15 Oct 2026, owner's Final Prompt v5 §5) — the home
+   booking card + Journey Summary rail. Everything is scoped under
+   #smartBook so no other screen can change it and it can change no other.
+   Tokens are the SmartBook demo's (light) with a dark set for the site's
+   Dark theme and a true-black set for AMOLED.
+   ===================================================================== */
+#smartBook{
+  --sb-bg:#edf3fa; --sb-panel:#ffffff; --sb-text:#122445; --sb-muted:#637491; --sb-line:#e0e8f2;
+  /* 16 Oct 2026: the logo's blue (themes.css "Logo Blue & Orange") */
+  --sb-primary:#1a44c8; --sb-primary-d:#0a2a8f; --sb-grad:linear-gradient(120deg,#2456e0,#0a2a8f); --sb-orange:#e8771f;
+  --sb-ok:#0b9e71; --sb-gold:#f0b54a; --sb-err:#cd4154; --sb-women:#EC4899; --sb-women-bg:#FCE7F3;
+  --sb-r:23px; --sb-ri:11px; --sb-h:43px; --sb-shadow:0 18px 55px rgba(21,52,105,.07);
+  --sb-chip:#f3f7fc; --sb-on:#e8f0ff; --sb-bar-h:66px;
+  display:block; margin:0 auto; padding:12px 16px 4px; max-width:var(--content-max,1120px);
+  color:var(--sb-text); font-family:Inter,var(--font-sans,system-ui,sans-serif);
+}
+:root[data-theme="dark"] #smartBook{
+  --sb-bg:#060b15; --sb-panel:#101928; --sb-text:#eff5ff; --sb-muted:#9caec9; --sb-line:#293750;
+  --sb-chip:#16233a; --sb-on:#1b2f55; --sb-women-bg:#3b1530; --sb-shadow:0 18px 55px rgba(0,0,0,.35);
+}
+:root[data-display="amoled"] #smartBook{ --sb-panel:#000; --sb-bg:#000; --sb-chip:#0b0f17; --sb-line:#1e2738; --sb-on:#0f1d36; }
+#smartBook[hidden]{display:none}
+html:not(.sb-on) #smartBook{display:none}
+/* the classic search card + the old QuickBot banner give way to SmartBook */
+html.sb-on #search-anchor, html.sb-on #quick-ticket{display:none}
+
+#smartBook .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#smartBook .sb-in{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+#smartBook .sb-card{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:var(--sb-r);box-shadow:var(--sb-shadow);padding:14px 14px 12px}
+#smartBook .sb-head{margin:0 0 10px}
+#smartBook .sb-title{margin:0;font-size:19px;line-height:1.2;font-weight:800;letter-spacing:-.01em;color:var(--sb-text)}
+#smartBook .sb-sub{margin:2px 0 0;font-size:12.5px;color:var(--sb-muted)}
+
+/* QuickBot — one line, dark blue gradient */
+#smartBook .sb-bot{display:flex;align-items:center;gap:6px;background:linear-gradient(120deg,#0b2a6b,#185bed);border-radius:var(--sb-ri);padding:4px 4px 4px 10px;margin:0 0 10px}
+#smartBook .sb-bot-ic{font-size:15px}
+#smartBook .sb-bot input{flex:1;min-width:0;height:36px;border:0;background:transparent;color:#fff;font:inherit;font-size:14px;outline:none}
+#smartBook .sb-bot input::placeholder{color:rgba(255,255,255,.72)}
+#smartBook .sb-bot-go{width:40px;height:36px;border:0;border-radius:9px;background:rgba(255,255,255,.18);color:#fff;display:grid;place-items:center;cursor:pointer}
+#smartBook .sb-bot-go .ic{width:18px;height:18px;fill:none;stroke:currentColor}
+
+/* direction switch */
+#smartBook .sb-dir{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--sb-chip);border-radius:var(--sb-ri);padding:4px;margin:0 0 10px}
+#smartBook .sb-dir-b{min-height:40px;border:0;border-radius:9px;background:transparent;color:var(--sb-muted);font:inherit;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;padding:0 6px}
+#smartBook .sb-dir-b b{font-weight:700}
+#smartBook .sb-dir-b.on{background:var(--sb-panel);color:var(--sb-primary);box-shadow:0 2px 10px rgba(24,91,237,.14)}
+
+#smartBook .sb-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 10px}
+#smartBook .sb-f{min-width:0;margin:0 0 8px}
+#smartBook .sb-grid .sb-f{margin:0}
+#smartBook .sb-f-date,#smartBook .sb-f-point{grid-column:1 / -1}
+#smartBook .sb-l{display:block;font-size:11.5px;font-weight:700;letter-spacing:.02em;color:var(--sb-muted);margin:0 0 4px;text-transform:uppercase}
+#smartBook input,#smartBook select{height:var(--sb-h);border:1px solid var(--sb-line);border-radius:var(--sb-ri);background:var(--sb-panel);color:var(--sb-text);font:inherit;font-size:15px;padding:0 10px;width:100%;min-width:0;box-sizing:border-box}
+#smartBook input:focus,#smartBook select:focus{outline:2px solid var(--sb-primary);outline-offset:1px;border-color:transparent}
+#smartBook .sb-sel{display:flex;gap:6px}
+#smartBook .sb-near{flex:0 0 44px;height:var(--sb-h);border:1px solid var(--sb-line);border-radius:var(--sb-ri);background:var(--sb-chip);cursor:pointer;font-size:16px}
+#smartBook .sb-why{display:block;min-height:14px;margin-top:2px;font-size:11.5px;color:var(--sb-muted)}
+#smartBook .sb-tel{display:flex;gap:6px}
+#smartBook .sb-tel select{flex:0 0 92px;padding:0 6px}
+#smartBook .sb-fe{display:block;margin-top:3px;font-size:11.5px;color:var(--sb-err);font-weight:600}
+#smartBook .sb-fe[hidden]{display:none}
+#smartBook .sb-bad{border-color:var(--sb-err)!important}
+/* ---- the desk's agent field (admin/smartbook.php injects it; never on the customer page) ---- */
+#smartBook .sb-f-agent{grid-column:1 / -1;padding:8px 10px 6px;border:1.5px dashed var(--sb-primary);border-radius:var(--sb-ri);background:color-mix(in srgb,var(--sb-primary) 6%,var(--sb-panel))}
+#smartBook .sb-agent-row{display:flex;gap:6px;align-items:center}
+#smartBook .sb-agent-row input{flex:1 1 auto}
+#smartBook .sb-agent-other{flex:0 0 auto;height:var(--sb-h);padding:0 10px;border:1px solid var(--sb-line);border-radius:var(--sb-ri);background:var(--sb-chip);color:var(--sb-text);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+#smartBook .sb-agent-other.on{background:var(--sb-primary);color:#fff;border-color:var(--sb-primary)}
+#smartBook .sb-agent-ok{color:#1a7f4b;font-weight:700}
+#smartBook .sb-agent-lock{display:flex;gap:8px;align-items:center;min-height:var(--sb-h);font-size:15px;font-weight:800}
+#smartBook .sb-agent-lock small{font-weight:500;color:var(--sb-muted)}
+#smartBook .sb-tk-agent{background:#e8f5ee;color:#135c37;border-radius:10px;padding:8px 10px;font-size:13px;font-weight:700}
+:root[data-theme="dark"] #smartBook .sb-tk-agent{background:#0f2e1f;color:#a7e6c4}
+
+/* date chips */
+#smartBook .sb-chips{display:flex;gap:6px;align-items:stretch}
+#smartBook .sb-chip{flex:1 1 0;min-height:40px;border:1px solid var(--sb-line);border-radius:var(--sb-ri);background:var(--sb-chip);color:var(--sb-text);font:inherit;font-size:13px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;padding:2px 4px}
+#smartBook .sb-chip small{font-size:10.5px;color:var(--sb-muted)}
+#smartBook .sb-chip.on{background:var(--sb-on);border-color:var(--sb-primary);color:var(--sb-primary);font-weight:700}
+#smartBook .sb-chip-cal{flex:0 0 46px}
+#smartBook .sb-date-in{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
+
+/* passengers */
+#smartBook .sb-pax-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+#smartBook .sb-pax-top .sb-l{margin:0}
+#smartBook .sb-step{display:flex;align-items:center;gap:4px}
+#smartBook .sb-step button{width:44px;height:36px;border:1px solid var(--sb-line);border-radius:9px;background:var(--sb-chip);color:var(--sb-text);font-size:20px;line-height:1;cursor:pointer}
+#smartBook .sb-step output{min-width:28px;text-align:center;font-weight:800;font-size:17px}
+#smartBook .sb-paxrow{display:flex;gap:6px;flex-wrap:wrap}
+#smartBook .sb-paxrow.sb-scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+#smartBook .sb-p{flex:0 0 auto;display:flex;align-items:center;border:1px solid var(--sb-line);border-radius:var(--sb-ri);background:var(--sb-chip);overflow:hidden;height:40px}
+#smartBook .sb-p button{height:40px;border:0;background:transparent;color:var(--sb-text);font:inherit;font-size:13px;padding:0 9px;cursor:pointer;white-space:nowrap}
+#smartBook .sb-p .sb-g{min-width:44px;font-weight:700}
+#smartBook .sb-p .sb-g.f{background:var(--sb-women-bg);color:var(--sb-women)}
+#smartBook .sb-p .sb-g.m{background:var(--sb-on);color:var(--sb-primary)}
+#smartBook .sb-p .sb-g.u{color:var(--sb-err)}
+#smartBook .sb-p .sb-g.sb-ai{outline:1px dashed currentColor;outline-offset:-3px}
+#smartBook .sb-p .sb-b{border-left:1px solid var(--sb-line);color:var(--sb-muted)}
+#smartBook .sb-p.sb-need{border-color:var(--sb-err)}
+
+/* segments */
+#smartBook .sb-row2{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
+#smartBook .sb-seg{display:inline-flex;background:var(--sb-chip);border-radius:var(--sb-ri);padding:3px;gap:3px}
+#smartBook .sb-seg[hidden]{display:none}
+#smartBook .sb-seg button{min-height:36px;border:0;border-radius:8px;background:transparent;color:var(--sb-muted);font:inherit;font-size:13px;font-weight:600;padding:0 11px;cursor:pointer;white-space:nowrap}
+#smartBook .sb-seg button.on{background:var(--sb-panel);color:var(--sb-primary);box-shadow:0 2px 8px rgba(24,91,237,.12)}
+#smartBook .sb-seg-sm button{padding:0 8px}
+#smartBook .sb-seg-seat{display:flex}
+#smartBook .sb-seg-seat button{flex:1}
+#smartBook .sb-seg-seat em{font-style:normal;font-size:10.5px;color:var(--sb-ok);font-weight:700}
+#smartBook .sb-seat{margin:0 0 6px}
+#smartBook .sb-seatline{margin:6px 2px 0;min-height:20px;font-size:13.5px;color:var(--sb-text)}
+#smartBook .sb-seatline b{color:var(--sb-primary)}
+#smartBook .sb-seatline .sb-flash{animation:sbFlash 1s ease-out}
+#smartBook .sb-seatline small{color:var(--sb-muted)}
+@keyframes sbFlash{0%{background:var(--sb-gold);border-radius:6px}100%{background:transparent}}
+#smartBook .sb-suggest,#smartBook .sb-alt{margin:4px 0 6px;padding:8px 10px;border-radius:var(--sb-ri);background:var(--sb-on);font-size:13px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#smartBook .sb-suggest[hidden],#smartBook .sb-alt[hidden]{display:none}
+#smartBook .sb-suggest button,#smartBook .sb-alt button{border:1px solid var(--sb-primary);background:var(--sb-panel);color:var(--sb-primary);border-radius:8px;min-height:36px;padding:0 10px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+#smartBook .sb-alt{background:#fff4e5;color:#7a4b00}
+:root[data-theme="dark"] #smartBook .sb-alt{background:#33240d;color:#ffd79a}
+#smartBook .sb-terms{margin:4px 0 0;font-size:11px;color:var(--sb-muted);line-height:1.35}
+#smartBook .sb-terms a{color:var(--sb-primary)}
+
+/* skeleton (no spinners) */
+#smartBook .sb-skel{display:inline-block;flex:1;min-height:40px;border-radius:var(--sb-ri);background:linear-gradient(90deg,var(--sb-chip),var(--sb-line),var(--sb-chip));background-size:200% 100%;animation:sbSk 1.2s linear infinite}
+#smartBook .sb-skel-w{min-height:16px;width:60%}
+@keyframes sbSk{to{background-position:-200% 0}}
+:root[data-motion="reduced"] #smartBook .sb-skel,:root[data-motion="reduced"] #smartBook .sb-flash{animation:none}
+
+/* rail */
+#smartBook .sb-rail{display:block}
+#smartBook .sb-sum{display:none}
+#smartBook .sb-bar{position:fixed;left:0;right:0;bottom:calc(var(--bottomnav-h,64px) + env(safe-area-inset-bottom,0px));z-index:58;display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--sb-panel);border-top:1px solid var(--sb-line);box-shadow:0 -10px 30px rgba(18,36,69,.12);min-height:var(--sb-bar-h)}
+html:not(.sb-home) #smartBook .sb-bar{display:none}
+#smartBook .sb-bar-sum{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.15}
+#smartBook .sb-bar-sum b{font-size:19px;font-weight:800;color:var(--sb-text)}
+#smartBook .sb-bar-sum small{font-size:11px;color:var(--sb-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#smartBook .sb-pay{min-width:88px;min-height:48px;border:0;border-radius:12px;font:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;padding:4px 10px;color:#fff}
+#smartBook .sb-pay span{font-size:15px;font-weight:800}
+#smartBook .sb-pay small{font-size:10px;opacity:.9}
+#smartBook .sb-cash{background:linear-gradient(120deg,#12b886,#0b9e71)}
+#smartBook .sb-online{background:var(--sb-grad)}
+#smartBook .sb-pay[disabled]{opacity:.45;cursor:not-allowed;filter:grayscale(.3)}
+/* never dead: dimmed until ready, still tappable (a tap says what is missing) */
+#smartBook .sb-pay.sb-wait{opacity:.62;filter:saturate(.7)}
+#smartBook .sb-pay.sb-ready{box-shadow:0 6px 18px rgba(11,158,113,.28)}
+#smartBook .sb-online.sb-ready{box-shadow:0 6px 18px rgba(24,91,237,.28)}
+#smartBook .sb-pay.sb-busy{opacity:.7;pointer-events:none}
+/* #view-home is outside #smartBook, so the token needs its fallback here */
+html.sb-on.sb-home #view-home{padding-bottom:calc(var(--sb-bar-h,66px) + 8px)}
+
+/* seat sheet + ticket modal */
+#smartBook .sb-sheet,#smartBook .sb-modal{position:fixed;inset:0;z-index:120;background:rgba(6,11,21,.55);display:flex;align-items:flex-end;justify-content:center}
+#smartBook .sb-sheet[hidden],#smartBook .sb-modal[hidden]{display:none}
+#smartBook .sb-sheet-in,#smartBook .sb-modal-in{background:var(--sb-panel);color:var(--sb-text);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px))}
+#smartBook .sb-sheet-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+#smartBook .sb-x{width:44px;height:44px;border:0;background:var(--sb-chip);border-radius:50%;cursor:pointer;color:var(--sb-text);font-size:16px}
+#smartBook .sb-legend{display:flex;flex-wrap:wrap;gap:8px;font-size:11.5px;color:var(--sb-muted);margin:0 0 8px}
+#smartBook .sb-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:3px;border:1px solid var(--sb-line)}
+#smartBook .sb-deck{margin:0 0 10px}
+#smartBook .sb-deck h4{margin:0 0 6px;font-size:12.5px;color:var(--sb-muted)}
+#smartBook .sb-mrow{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+#smartBook .sb-mrow .sb-aisle{width:14px}
+#smartBook .sb-mrow .sb-rl{width:16px;font-size:10px;color:var(--sb-muted)}
+#smartBook .sb-berth{flex:1;min-width:0;height:44px;border:1px solid var(--sb-line);border-radius:9px;background:var(--sb-chip);color:var(--sb-text);font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+#smartBook .sb-berth.w{background:var(--sb-women-bg);color:var(--sb-women);border-color:var(--sb-women)}
+#smartBook .sb-berth.x{background:repeating-linear-gradient(45deg,var(--sb-line),var(--sb-line) 4px,transparent 4px,transparent 8px);color:var(--sb-muted);cursor:not-allowed}
+#smartBook .sb-berth.sel{background:var(--sb-primary);color:#fff;border-color:var(--sb-primary)}
+#smartBook .sb-berth.mine{outline:2px solid var(--sb-gold)}
+#smartBook .sb-sheet-f{display:flex;justify-content:space-between;align-items:center;gap:8px;position:sticky;bottom:0;background:var(--sb-panel);padding-top:8px}
+#smartBook .sb-done{min-height:46px;min-width:120px;border:0;border-radius:12px;background:var(--sb-grad);color:#fff;font:inherit;font-weight:800;cursor:pointer}
+
+/* ticket (modal on a phone, rail on a desktop) */
+#smartBook .sb-tk{display:flex;flex-direction:column;gap:10px}
+#smartBook .sb-tk-h{display:flex;align-items:center;gap:10px}
+#smartBook .sb-tk-ok{width:40px;height:40px;border-radius:50%;background:var(--sb-ok);color:#fff;display:grid;place-items:center;font-size:20px;flex:0 0 40px}
+#smartBook .sb-tk-h b{display:block;font-size:16px}
+#smartBook .sb-tk-h small{color:var(--sb-muted)}
+#smartBook .sb-tk-pnr{font-size:22px;font-weight:800;letter-spacing:.04em;color:var(--sb-primary)}
+#smartBook .sb-tk-img{width:100%;border-radius:12px;border:1px solid var(--sb-line);background:var(--sb-chip);min-height:180px;object-fit:contain}
+#smartBook .sb-tk-imgw{position:relative;min-height:180px;border-radius:12px;overflow:hidden}
+#smartBook .sb-tk-imgw:not(.ok)::before{content:"";position:absolute;inset:0;background:linear-gradient(100deg,var(--sb-chip) 30%,rgba(255,255,255,.55) 50%,var(--sb-chip) 70%);background-size:200% 100%;animation:sbShimmer 1.2s linear infinite}
+#smartBook .sb-tk-imgw:not(.ok) img{opacity:0}
+#smartBook .sb-tk-wait{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;font-size:13px;font-weight:700;color:var(--sb-muted)}
+#smartBook .sb-tk-imgw.ok .sb-tk-wait{display:none}
+#smartBook .sb-tk-imgw.bad .sb-tk-wait::after{content:" ⚠️"}
+@keyframes sbShimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+#smartBook .sb-tk-row{font-size:13px;color:var(--sb-text)}
+#smartBook .sb-tk-row small{color:var(--sb-muted)}
+#smartBook .sb-tk-cod{background:#fff4e5;color:#7a4b00;border-radius:10px;padding:8px 10px;font-size:13px;font-weight:700}
+:root[data-theme="dark"] #smartBook .sb-tk-cod{background:#33240d;color:#ffd79a}
+#smartBook .sb-tk-acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+#smartBook .sb-tk-acts a,#smartBook .sb-tk-acts button{min-height:46px;border:1px solid var(--sb-line);border-radius:11px;background:var(--sb-chip);color:var(--sb-text);font:inherit;font-size:12.5px;font-weight:700;display:flex;align-items:center;justify-content:center;text-align:center;text-decoration:none;cursor:pointer;padding:2px 4px}
+#smartBook .sb-tk-acts .sb-main-act{background:var(--sb-grad);color:#fff;border:0}
+#smartBook .sb-tk-new{border:0;background:transparent;color:var(--sb-primary);font:inherit;font-weight:700;min-height:44px;cursor:pointer}
+
+/* the card leads the home page (#view-home is a flex column ordered by homeinfo.css) */
+html #view-home > #smartBook{order:-1 !important}   /* redesign.css sets #view-home > * {order:10 !important} */
+
+/* passengers: stepper + one chip per passenger on one line */
+#smartBook .sb-paxline{display:flex;align-items:flex-start;gap:8px}
+#smartBook .sb-paxline .sb-step{flex:0 0 auto}
+#smartBook .sb-paxline .sb-paxrow{flex:1;min-width:0}
+
+/* ---- phone (< 860 px): the whole card fits 360 × 640 with no page scroll ---- */
+@media (max-width:859px){
+  #smartBook{padding-top:4px}
+  #smartBook .sb-head,#smartBook .sb-l{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  #smartBook .sb-card{padding:9px 10px 6px;border-radius:18px}
+  #smartBook{--sb-h:41px}
+  #smartBook .sb-bot,#smartBook .sb-dir{margin-bottom:7px}
+  #smartBook .sb-bot{padding:3px 3px 3px 9px}
+  #smartBook .sb-bot input{height:32px;font-size:13.5px}
+  #smartBook .sb-bot-go{height:32px}
+  #smartBook .sb-dir{padding:3px}
+  #smartBook .sb-dir-b{min-height:36px;font-size:12.5px;white-space:nowrap}
+  #smartBook .sb-dir-b > span{display:none}
+  #smartBook .sb-dir-b b{overflow:hidden;text-overflow:ellipsis}
+  #smartBook .sb-grid{gap:7px;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+  #smartBook .sb-f{margin-bottom:7px}
+  #smartBook .sb-chip{min-height:38px}
+  #smartBook .sb-why{min-height:0;margin-top:1px;font-size:11px}
+  #smartBook .sb-why:empty{display:none}
+  #smartBook .sb-tel{gap:4px}
+  #smartBook .sb-tel select{flex:0 0 60px;padding:0 2px 0 6px;font-size:14px}
+  #smartBook .sb-f-phone{grid-column:1}
+  #smartBook .sb-f-name{grid-column:2}
+  #smartBook input,#smartBook select{font-size:14.5px;padding:0 8px}
+  #smartBook .sb-step button{width:34px;height:38px;font-size:18px}
+  #smartBook .sb-p,#smartBook .sb-p button{height:38px}
+  #smartBook .sb-step output{min-width:20px}
+  #smartBook .sb-p button{padding:0 7px;font-size:12.5px}
+  #smartBook .sb-p .sb-g{min-width:40px}
+  #smartBook .sb-row2{gap:6px;margin-bottom:3px}
+  #smartBook .sb-seg{padding:2px}
+  #smartBook .sb-seg button{min-height:32px;padding:0 9px}
+  #smartBook .sb-seg-seat{flex:1 1 100%}
+  #smartBook .sb-seatline{margin-top:2px;font-size:13px}
+  #smartBook .sb-seatline small{display:none}
+  #smartBook .sb-policy{display:none}
+  #smartBook .sb-terms{margin-top:2px}
+}
+/* the WhatsApp / Sahayak buttons would sit on the Online button: while the
+   card is on screen they step aside (27-smartbook.js toggles .sb-in-view) */
+@media (max-width:859px){
+  html.sb-on.sb-home.sb-in-view #waFab,html.sb-on.sb-home.sb-in-view #aiFab{opacity:0;pointer-events:none;transform:scale(.6);transition:opacity .2s,transform .2s}
+  /* below the card they stay, lifted above the book bar so they never cover Online */
+  html.sb-on.sb-home #waFab,html.sb-on.sb-home #aiFab{translate:0 calc(-1 * var(--sb-bar-h,66px))}
+}
+/* a short phone: the decorative top strips step aside on the booking screen */
+@media (max-width:859px) and (max-height:780px){
+  html.sb-on.sb-home .divine-bar,html.sb-on.sb-home #offerRibbon{display:none}
+}
+
+/* ---- desktop: card left (≈65 %), sticky Journey Summary right (≈35 %) ---- */
+@media (min-width:860px){
+  #smartBook{padding:18px 20px 6px}
+  #smartBook .sb-in{grid-template-columns:minmax(0,65fr) minmax(0,35fr);gap:20px}
+  #smartBook .sb-card{padding:20px 22px 16px}
+  #smartBook .sb-title{font-size:24px}
+  #smartBook .sb-f-date{grid-column:auto}
+  #smartBook .sb-f-point{grid-column:auto}
+  #smartBook .sb-rail{position:sticky;top:calc(var(--appbar-h,56px) + 14px);background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:var(--sb-r);box-shadow:var(--sb-shadow);padding:16px 18px}
+  #smartBook .sb-sum{display:block}
+  #smartBook .sb-sum-t{margin:0 0 8px;font-size:15px;font-weight:800}
+  #smartBook .sb-dl{margin:0}
+  #smartBook .sb-dl div{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--sb-line);font-size:13px}
+  #smartBook .sb-dl dt{color:var(--sb-muted);flex:0 0 auto}
+  #smartBook .sb-dl dd{margin:0;text-align:right;font-weight:600;min-width:0}
+  #smartBook .sb-total{display:flex;flex-direction:column;align-items:flex-end;padding:10px 0 6px}
+  #smartBook .sb-total small{color:var(--sb-muted);font-size:12px}
+  #smartBook .sb-total b{font-size:30px;font-weight:800;color:var(--sb-text)}
+  #smartBook .sb-total span{font-size:12px;color:var(--sb-muted)}
+  #smartBook .sb-bar{position:static;box-shadow:none;border:0;padding:4px 0 0;background:transparent;min-height:0}
+  html:not(.sb-home) #smartBook .sb-bar{display:flex}
+  #smartBook .sb-bar-sum{display:none}
+  #smartBook .sb-pay{flex:1;min-height:54px}
+  html.sb-on.sb-home #view-home{padding-bottom:0}
+  #smartBook .sb-ticket{margin-top:12px;border-top:1px solid var(--sb-line);padding-top:12px}
+  #smartBook .sb-sheet,#smartBook .sb-modal{align-items:center}
+  #smartBook .sb-sheet-in,#smartBook .sb-modal-in{border-radius:20px}
+}
+@media (max-width:380px){
+  #smartBook{padding-left:10px;padding-right:10px}
+  #smartBook .sb-card{padding:12px 10px 10px}
+  #smartBook .sb-dir-b{font-size:12px}
+  #smartBook .sb-seg button{padding:0 8px;font-size:12.5px}
+  #smartBook .sb-pay{min-width:78px}
+}
+/* 15 Oct 2026 - Quick form (name + mobile, the rest from the defaults), mic, help demo */
+#smartBook .sb-mic{width:40px;height:36px;border:0;border-radius:9px;background:rgba(255,255,255,.18);color:#fff;font-size:17px;cursor:pointer}
+#smartBook .sb-mic.on{background:#e11d48;animation:sbPulse 1s infinite}
+@keyframes sbPulse{50%{box-shadow:0 0 0 6px rgba(225,29,72,.25)}}
+#smartBook .sb-qbar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin:0 0 10px;flex-wrap:wrap}
+#smartBook .sb-qmode{display:inline-flex;border:1px solid var(--sb-line);border-radius:999px;padding:3px;background:var(--sb-panel,transparent)}
+#smartBook .sb-qmode button{border:0;background:transparent;border-radius:999px;padding:7px 12px;font:inherit;font-size:13px;font-weight:700;color:inherit;cursor:pointer;min-height:36px}
+#smartBook .sb-qmode button.on{background:var(--sb-primary);color:#fff}
+#smartBook .sb-qhelp{border:1px solid var(--sb-line);background:transparent;color:var(--sb-primary);border-radius:999px;padding:7px 12px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;min-height:36px}
+#smartBook .sb-qline{display:none}
+#smartBook.sb-quick .sb-qline{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 10px;font-size:13px}
+#smartBook .sb-qline span{padding:5px 10px;border-radius:999px;background:var(--sb-on);color:var(--sb-primary);font-weight:600}
+#smartBook .sb-qline button{border:0;background:transparent;color:var(--sb-primary);font:inherit;font-weight:700;text-decoration:underline;cursor:pointer;min-height:32px}
+#smartBook.sb-quick .sb-dir,#smartBook.sb-quick .sb-f-date,#smartBook.sb-quick .sb-f-point,#smartBook.sb-quick .sb-row2,#smartBook.sb-quick .sb-seat,#smartBook.sb-quick .sb-suggest{display:none}
+#smartBook.sb-quick:not(.sb-q-needg) .sb-f-pax{display:none}
+.sb-help{position:fixed;inset:0;z-index:1200;background:rgba(2,8,23,.55);display:grid;place-items:end center;padding:12px}
+.sb-help[hidden]{display:none}
+.sb-help-in{width:min(560px,100%);max-height:88vh;overflow:auto;background:var(--sb-panel,#fff);color:var(--sb-text,#122445);border-radius:18px;padding:16px 16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.sb-help h3{margin:0 0 10px;font-size:18px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.sb-help h3 button{border:0;background:transparent;font-size:20px;cursor:pointer;color:inherit;min-width:40px;min-height:40px}
+.sb-help ol{margin:0 0 12px;padding-left:20px;display:grid;gap:6px;font-size:14px}
+.sb-help .sb-h-sec{border:1px solid var(--sb-line,#e2e8f0);border-radius:14px;padding:10px 12px;margin:0 0 10px}
+.sb-help .sb-h-sec b{display:block;margin:0 0 6px}
+.sb-help code{display:block;background:rgba(24,91,237,.08);border-radius:10px;padding:8px 10px;margin:4px 0;font-size:14px;white-space:pre-wrap;word-break:break-word}
+.sb-help .sb-h-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.sb-help .sb-h-btns a,.sb-help .sb-h-btns button{flex:1 1 150px;text-align:center;border:0;border-radius:12px;padding:11px 12px;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;min-height:44px}
+.sb-help .sb-h-wa{background:#16a34a;color:#fff}
+.sb-help .sb-h-say{background:#185bed;color:#fff}
+.sb-help .sb-chat{background:#e7f6ea;border-radius:14px;padding:10px;display:grid;gap:8px;margin:6px 0 2px}
+.sb-help .sb-chat p{margin:0;padding:8px 10px;border-radius:12px;max-width:85%;font-size:14px;opacity:0;animation:sbIn .4s forwards}
+.sb-help .sb-chat .me{background:#d9fdd3;justify-self:end;color:#0b3d17;animation-delay:.3s}
+.sb-help .sb-chat .bot{background:#fff;justify-self:start;color:#111;animation-delay:1.4s}
+.sb-help .sb-chat .bot2{animation-delay:2.2s}
+@keyframes sbIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+:root[data-theme="dark"] .sb-help code,:root[data-display="amoled"] .sb-help code{background:rgba(255,255,255,.08)}:root[data-theme="dark"] .sb-help .sb-chat,:root[data-display="amoled"] .sb-help .sb-chat{background:#0b2a1a}
+@media (prefers-reduced-motion:reduce){.sb-help .sb-chat p{animation:none;opacity:1}#smartBook .sb-mic.on{animation:none}}
+/* 15 Oct 2026: compact completion ring (27-smartbook.js paintRing) */
+#smartBook .sb-ring{position:relative;display:inline-grid;place-items:center;width:38px;height:38px;margin-left:auto;flex:none;--sb-ring:#DC3B3B}
+#smartBook .sb-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+#smartBook .sb-ring circle{fill:none;stroke-width:3.4}
+#smartBook .sb-ring .sb-ring-bg{stroke:var(--sb-line)}
+#smartBook .sb-ring .sb-ring-fg{stroke:var(--sb-ring);stroke-linecap:round;transition:stroke-dashoffset .45s cubic-bezier(.2,.8,.2,1),stroke .3s}
+#smartBook .sb-ring b{position:relative;font-size:10.5px;font-weight:800;color:var(--sb-ring);font-variant-numeric:tabular-nums;transition:color .3s}
+#smartBook .sb-ring-mid{--sb-ring:#E08A00}
+#smartBook .sb-ring-ok{--sb-ring:#1FA35B}
+#smartBook .sb-ring-ok b{font-size:15px;animation:sbRingPop .35s ease-out}
+@keyframes sbRingPop{0%{transform:scale(.4)}70%{transform:scale(1.2)}100%{transform:scale(1)}}
+@media (max-width:859px){#smartBook .sb-ring{width:32px;height:32px}}
+@media (prefers-reduced-motion:reduce){#smartBook .sb-ring .sb-ring-fg{transition:none}#smartBook .sb-ring-ok b{animation:none}}
+
+/* =====================================================================
+   16 Oct 2026 — one booking screen: Cash verification sheet, the Online
+   QR popup (Razorpay-style, 60 s), the WhatsApp ticket button and the
+   staff desk banner on the website.
+   ===================================================================== */
+/* the ticket: WhatsApp first, speed badge */
+#smartBook .sb-tk-fast{margin-left:6px;padding:3px 8px;border-radius:999px;background:rgba(11,158,113,.12);color:var(--sb-ok);font-size:11.5px;font-weight:800;white-space:nowrap}
+#smartBook .sb-tk-wa{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:54px;border-radius:13px;background:linear-gradient(120deg,#25d366,#128c4a);color:#fff;text-decoration:none;box-shadow:0 8px 20px rgba(18,140,74,.28);padding:6px 10px;text-align:center}
+#smartBook .sb-tk-wa span{font-size:15.5px;font-weight:800}
+#smartBook .sb-tk-wa small{font-size:11.5px;opacity:.92}
+#smartBook .sb-tk-wa:active{transform:scale(.98)}
+
+/* Cash verification sheet */
+#smartBook .sb-cv,#smartBook .sb-pyo{position:fixed;inset:0;z-index:1250;background:rgba(4,10,24,.62);display:flex;align-items:flex-end;justify-content:center;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#smartBook .sb-cv[hidden],#smartBook .sb-pyo[hidden]{display:none}
+#smartBook .sb-cv-in{width:100%;max-width:520px;max-height:94vh;overflow:auto;background:var(--sb-panel);color:var(--sb-text);border-radius:22px 22px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:10px;animation:sbUp .22s ease-out}
+/* transform only: a frozen first frame (background tab, slow phone) must still be fully readable */
+@keyframes sbUp{from{transform:translateY(24px)}to{transform:none}}
+#smartBook .sb-cv-hd{display:flex;align-items:flex-start;gap:10px}
+#smartBook .sb-cv-hd > div{flex:1;min-width:0}
+#smartBook .sb-cv-hd h3{margin:0;font-size:17px;font-weight:800;line-height:1.25}
+#smartBook .sb-cv-hd small{display:block;color:var(--sb-muted);font-size:12.5px;margin-top:2px}
+#smartBook .sb-cv-ic{width:40px;height:40px;flex:0 0 40px;border-radius:12px;display:grid;place-items:center;font-size:20px;background:rgba(232,119,31,.14)}
+#smartBook .sb-cv-sum{display:grid;gap:2px;padding:10px 12px;border-radius:13px;background:var(--sb-on);font-size:12.5px;color:var(--sb-muted)}
+#smartBook .sb-cv-sum b{font-size:20px;color:var(--sb-text)}
+#smartBook .sb-cv-f{display:grid;gap:4px;font-size:12.5px;font-weight:700;color:var(--sb-muted)}
+#smartBook .sb-cv-f i{color:var(--sb-err);font-style:normal}
+#smartBook .sb-cv-f small{font-weight:500}
+#smartBook .sb-cv-f input,#smartBook .sb-cv-f select{width:100%;min-width:0;height:46px;border:1.5px solid var(--sb-line);border-radius:12px;background:var(--sb-panel);color:var(--sb-text);font:inherit;font-size:16px;font-weight:500;padding:0 12px}
+#smartBook .sb-cv-f input:focus,#smartBook .sb-cv-f select:focus{outline:none;border-color:var(--sb-primary);box-shadow:0 0 0 3px rgba(26,68,200,.14)}
+#smartBook .sb-cv-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+#smartBook .sb-cv-ph{display:flex;gap:6px}
+#smartBook .sb-cv-ph select{width:86px;flex:0 0 86px}
+#smartBook .sb-cv-e{margin:0;padding:8px 10px;border-radius:10px;background:rgba(205,65,84,.1);color:var(--sb-err);font-size:13px;font-weight:700}
+#smartBook .sb-cv-e[hidden]{display:none}
+#smartBook .sb-cv-note{margin:0;font-size:12px;color:var(--sb-muted)}
+#smartBook .sb-cv-go{min-height:52px;border:0;border-radius:14px;background:linear-gradient(120deg,#12b886,#0b9e71);color:#fff;font:inherit;font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 8px 20px rgba(11,158,113,.28)}
+#smartBook .sb-cv-go.sb-busy{opacity:.7;pointer-events:none}
+#smartBook .sb-cv-alt{min-height:44px;border:0;background:transparent;color:var(--sb-primary);font:inherit;font-weight:700;cursor:pointer}
+
+/* Online QR popup */
+#smartBook .sb-py{width:100%;max-width:420px;max-height:96vh;overflow:auto;background:var(--sb-panel);color:var(--sb-text);border-radius:22px 22px 0 0;box-shadow:0 24px 70px rgba(0,0,0,.4);animation:sbUp .22s ease-out;display:flex;flex-direction:column}
+#smartBook .sb-py-hd{display:flex;align-items:center;gap:10px;padding:14px 14px 12px;background:linear-gradient(120deg,#0a2a8f,#1a44c8);color:#fff}
+#smartBook .sb-py-logo{width:38px;height:38px;flex:0 0 38px;border-radius:11px;background:#fff;color:#0a2a8f;display:grid;place-items:center;font-weight:900;font-size:14px;letter-spacing:.02em;box-shadow:inset 0 -3px 0 var(--sb-orange)}
+#smartBook .sb-py-who{flex:1;min-width:0;line-height:1.2}
+#smartBook .sb-py-who b{display:block;font-size:15px}
+#smartBook .sb-py-who small{display:block;font-size:11.5px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#smartBook .sb-py-x{width:40px;height:40px;border:0;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font-size:16px;cursor:pointer}
+#smartBook .sb-py-amt{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:10px 16px 2px}
+#smartBook .sb-py-amt small{flex:1 0 100%;font-size:11.5px;color:var(--sb-muted);text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+#smartBook .sb-py-amt b{font-size:30px;font-weight:900;letter-spacing:-.01em}
+#smartBook .sb-py-amt span{color:var(--sb-muted);font-size:13px}
+#smartBook .sb-py-body{padding:8px 16px 4px;display:grid;gap:10px;position:relative}
+#smartBook .sb-py-tabs{display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--sb-chip)}
+#smartBook .sb-py-tabs button{flex:1;min-height:40px;border:0;border-radius:9px;background:transparent;color:var(--sb-muted);font:inherit;font-size:13px;font-weight:800;cursor:pointer}
+#smartBook .sb-py-tabs button.on{background:var(--sb-panel);color:var(--sb-primary);box-shadow:0 2px 10px rgba(26,68,200,.15)}
+#smartBook .sb-py-qrw{position:relative;justify-self:center;width:min(240px,66vw);aspect-ratio:1;border-radius:16px;background:#fff;border:1px solid var(--sb-line);padding:8px;box-shadow:0 10px 26px rgba(10,42,143,.12)}
+#smartBook .sb-py-qr{display:block;width:100%;height:100%;object-fit:contain;transition:filter .3s,opacity .3s}
+#smartBook .sb-py-dead .sb-py-qr{filter:blur(5px);opacity:.35}
+#smartBook .sb-py-exp{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;color:#122445}
+#smartBook .sb-py-exp[hidden]{display:none}
+#smartBook .sb-py-exp button{min-height:46px;border:0;border-radius:12px;background:var(--sb-grad);color:#fff;font:inherit;font-weight:800;padding:0 16px;cursor:pointer;box-shadow:0 6px 16px rgba(26,68,200,.3)}
+#smartBook .sb-py-timer{justify-self:center;display:flex;align-items:center;gap:6px;padding:4px 10px 4px 4px;border-radius:999px;background:var(--sb-panel);border:1px solid var(--sb-line);box-shadow:0 4px 12px rgba(0,0,0,.08)}
+#smartBook .sb-py-timer svg{width:30px;height:30px;transform:rotate(-90deg)}
+#smartBook .sb-py-timer circle{fill:none;stroke-width:4}
+#smartBook .sb-py-timer .bg{stroke:var(--sb-line)}
+#smartBook .sb-py-timer .fg{stroke:var(--sb-ok);stroke-linecap:round;transition:stroke-dashoffset .25s linear,stroke .3s}
+#smartBook .sb-py-timer span{display:flex;flex-direction:column;line-height:1.05}
+#smartBook .sb-py-timer small{font-size:9.5px;color:var(--sb-muted);text-transform:uppercase;font-weight:700}
+#smartBook .sb-py-timer b{font-size:15px;font-variant-numeric:tabular-nums}
+#smartBook .sb-py-timer.low .fg{stroke:var(--sb-err)}
+#smartBook .sb-py-timer.low b{color:var(--sb-err)}
+#smartBook .sb-py-note{margin:0;text-align:center;font-size:12.5px;color:var(--sb-muted)}
+#smartBook .sb-py-apps{display:flex;justify-content:center;gap:6px;flex-wrap:wrap}
+#smartBook .sb-py-apps span{padding:3px 9px;border-radius:999px;border:1px solid var(--sb-line);font-size:11px;font-weight:700;color:var(--sb-muted)}
+#smartBook .sb-py-main{display:flex;align-items:center;justify-content:center;min-height:50px;border:0;border-radius:13px;background:var(--sb-grad);color:#fff;font:inherit;font-size:15px;font-weight:800;text-decoration:none;cursor:pointer;box-shadow:0 8px 20px rgba(26,68,200,.26)}
+#smartBook .sb-py-upi{display:none}
+@media (pointer:coarse){#smartBook .sb-py-upi{display:flex}}
+#smartBook .sb-py-id{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:11px;background:var(--sb-chip);font-size:13px}
+#smartBook .sb-py-id span{color:var(--sb-muted);font-weight:700;font-size:11.5px}
+#smartBook .sb-py-id code,#smartBook .sb-py-id b{flex:1;min-width:0;word-break:break-all;font-size:13.5px}
+#smartBook .sb-py-id button{min-height:34px;border:1px solid var(--sb-line);border-radius:9px;background:var(--sb-panel);color:var(--sb-primary);font:inherit;font-weight:800;font-size:12px;padding:0 10px;cursor:pointer}
+#smartBook .sb-py-proof{display:grid;gap:8px;padding:12px;border-radius:14px;border:1.5px dashed var(--sb-line)}
+#smartBook .sb-py-proof b{font-size:13.5px}
+#smartBook .sb-py-proof input[name=utr]{height:46px;border:1.5px solid var(--sb-line);border-radius:11px;background:var(--sb-panel);color:var(--sb-text);font:inherit;font-size:16px;padding:0 12px}
+#smartBook .sb-py-file{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--sb-muted);font-weight:700}
+#smartBook .sb-py-file input{flex:1;min-width:0;font-size:12px}
+#smartBook .sb-py-err{margin:0;color:var(--sb-err);font-size:12.5px;font-weight:700}
+#smartBook .sb-py-err[hidden]{display:none}
+#smartBook .sb-py-send{min-height:48px;border:0;border-radius:12px;background:linear-gradient(120deg,#12b886,#0b9e71);color:#fff;font:inherit;font-weight:800;cursor:pointer}
+#smartBook .sb-py-send.sb-busy{opacity:.7;pointer-events:none}
+#smartBook .sb-py-ghost{display:flex;align-items:center;justify-content:center;min-height:44px;border:1px solid var(--sb-line);border-radius:12px;background:var(--sb-chip);color:var(--sb-text);font:inherit;font-weight:700;text-decoration:none;cursor:pointer}
+#smartBook .sb-py-st{display:grid;justify-items:center;gap:8px;text-align:center;padding:14px 4px}
+#smartBook .sb-py-st p{margin:0;color:var(--sb-muted);font-size:13.5px}
+#smartBook .sb-py-big{font-size:42px}
+#smartBook .sb-py-spin{width:46px;height:46px;border-radius:50%;border:4px solid var(--sb-line);border-top-color:var(--sb-primary);animation:sbSpin .9s linear infinite}
+@keyframes sbSpin{to{transform:rotate(360deg)}}
+#smartBook .sb-py-ft{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));margin-top:6px;border-top:1px solid var(--sb-line);font-size:11.5px;color:var(--sb-muted)}
+@media (min-width:600px){
+  #smartBook .sb-cv,#smartBook .sb-pyo{align-items:center}
+  #smartBook .sb-cv-in,#smartBook .sb-py{border-radius:22px}
+}
+@media (prefers-reduced-motion:reduce){#smartBook .sb-cv-in,#smartBook .sb-py{animation:none}#smartBook .sb-py-spin{animation-duration:2.5s}}
+
+/* staff signed in on the website: the desk banner instead of the customer card */
+html #view-home > #sbDesk{order:-1 !important}
+.sb-desk{display:block;margin:0 auto;padding:12px 16px 4px;max-width:var(--content-max,1120px)}
+.sb-desk-in{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:16px;border-radius:20px;background:linear-gradient(120deg,#0a2a8f,#1a44c8);color:#fff;box-shadow:0 16px 40px rgba(10,42,143,.28)}
+.sb-desk-ic{width:46px;height:46px;flex:0 0 46px;border-radius:14px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:24px}
+.sb-desk-tx{flex:1 1 220px;min-width:0}
+.sb-desk-tx b{display:block;font-size:17px}
+.sb-desk-tx small{display:block;opacity:.85;font-size:12.5px}
+.sb-desk-tx p{margin:4px 0 0;font-size:13px;opacity:.92}
+.sb-desk-go{flex:1 1 240px;display:flex;align-items:center;justify-content:center;min-height:52px;border-radius:14px;background:#fff;color:#0a2a8f;font-weight:900;text-decoration:none;box-shadow:inset 0 -3px 0 #e8771f}
+.sb-desk-alt{color:#fff;font-weight:700;text-decoration:none;opacity:.9;padding:8px 4px}
+
+/* =====================================================================
+   16 Oct 2026 (owner: "colour premium + lively blue / white / orange,
+   smooth app-like motion, Book Cash / Book Online CTA, S Hari Engine
+   feel") - a polish layer on the SAME card for the customer page and the
+   staff desk. Colour, shadow and motion only: no rule here changes what a
+   control does. Motion is transform / opacity, stops for reduced motion.
+   ===================================================================== */
+#smartBook{
+  --sb-blue:#1a44c8; --sb-blue-l:#2f6bff; --sb-navy:#0a2a8f;
+  --sb-org:#f07a1e; --sb-org-l:#ff9d45; --sb-org-d:#d4570c;
+  --sb-grad:linear-gradient(120deg,#2f6bff 0%,#1a44c8 52%,#0a2a8f 100%);
+  --sb-ograd:linear-gradient(120deg,#ffa24d 0%,#f07a1e 50%,#d4570c 100%);
+  --sb-ease:cubic-bezier(.22,1,.36,1);
+  --sb-shadow:0 1px 2px rgba(10,42,143,.06),0 10px 28px rgba(10,42,143,.09),0 30px 60px -30px rgba(10,42,143,.22);
+}
+:root[data-theme="dark"] #smartBook{--sb-shadow:0 1px 2px rgba(0,0,0,.4),0 18px 50px rgba(0,0,0,.45)}
+
+/* the card: white panel, a thin brand edge, soft depth */
+#smartBook .sb-card{position:relative;overflow:hidden;border-color:color-mix(in srgb,var(--sb-blue) 14%,var(--sb-line));transition:box-shadow .3s var(--sb-ease)}
+#smartBook .sb-card:focus-within{box-shadow:var(--sb-shadow),0 0 0 3px color-mix(in srgb,var(--sb-blue) 10%,transparent)}
+/* the road along the top edge, with the coach driving it */
+#smartBook .sb-road{position:absolute;left:0;right:0;top:0;height:22px;pointer-events:none;overflow:hidden}
+#smartBook .sb-road::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:linear-gradient(90deg,var(--sb-navy),var(--sb-blue-l) 45%,var(--sb-org-l) 78%,var(--sb-org))}
+#smartBook .sb-road-bus{position:absolute;top:5px;left:0;width:100%;height:14px;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 32'%3E%3Crect x='2' y='4' width='58' height='20' rx='5' fill='%231a44c8'/%3E%3Crect x='2' y='17' width='58' height='4' fill='%23f07a1e'/%3E%3Crect x='8' y='8' width='9' height='7' rx='1.5' fill='%23d6e6ff'/%3E%3Crect x='20' y='8' width='9' height='7' rx='1.5' fill='%23d6e6ff'/%3E%3Crect x='32' y='8' width='9' height='7' rx='1.5' fill='%23d6e6ff'/%3E%3Cpath d='M46 8h8a4 4 0 0 1 4 4v3H46z' fill='%23d6e6ff'/%3E%3Ccircle cx='15' cy='25' r='4.5' fill='%23122445'/%3E%3Ccircle cx='15' cy='25' r='1.8' fill='%23fff'/%3E%3Ccircle cx='48' cy='25' r='4.5' fill='%23122445'/%3E%3Ccircle cx='48' cy='25' r='1.8' fill='%23fff'/%3E%3Crect x='58' y='13' width='3' height='3' rx='1' fill='%23ffd166'/%3E%3C/svg%3E") 0 0 / 28px 14px no-repeat;
+  transform:translateX(-32px);animation:sbDrive 11s linear infinite;opacity:.95}
+@keyframes sbDrive{0%{transform:translateX(-32px)}100%{transform:translateX(100%)}}
+@media (max-width:859px){#smartBook .sb-road{height:12px}#smartBook .sb-road::before{height:3px}#smartBook .sb-road-bus{top:3px;height:9px;background-size:18px 9px}}
+
+/* title row + the engine badge */
+#smartBook .sb-head{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding-top:6px}
+#smartBook .sb-head .sb-title,#smartBook .sb-head .sb-sub{flex:1 1 100%}
+#smartBook .sb-title{background:linear-gradient(100deg,var(--sb-navy),var(--sb-blue) 55%,var(--sb-org));-webkit-background-clip:text;background-clip:text;color:transparent}
+:root[data-theme="dark"] #smartBook .sb-title{background:linear-gradient(100deg,#dbe7ff,#8fb2ff 55%,#ffb070);-webkit-background-clip:text;background-clip:text}
+#smartBook .sb-engine{order:-1;display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 8px;border-radius:999px;background:color-mix(in srgb,var(--sb-blue) 9%,var(--sb-panel));color:var(--sb-blue);font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px}
+#smartBook .sb-engine i{width:8px;height:8px;border-radius:50%;background:var(--sb-org);box-shadow:0 0 0 0 rgba(240,122,30,.6);animation:sbLive 2s var(--sb-ease) infinite}
+@keyframes sbLive{0%{box-shadow:0 0 0 0 rgba(240,122,30,.55)}70%{box-shadow:0 0 0 7px rgba(240,122,30,0)}100%{box-shadow:0 0 0 0 rgba(240,122,30,0)}}
+:root[data-theme="dark"] #smartBook .sb-engine{color:#9dbbff}
+
+/* QuickBot = the S Hari AI line: deep blue, a slow light sweep, a glow on focus */
+#smartBook .sb-bot{position:relative;overflow:hidden;background:linear-gradient(120deg,#0a2a8f,#1a44c8 55%,#2f6bff);box-shadow:0 8px 22px -8px rgba(26,68,200,.55);transition:box-shadow .25s var(--sb-ease),transform .25s var(--sb-ease)}
+#smartBook .sb-bot::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(100deg,transparent 35%,rgba(255,255,255,.16) 50%,transparent 65%);transform:translateX(-100%);animation:sbSweep 5.5s ease-in-out infinite}
+@keyframes sbSweep{0%,55%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+#smartBook .sb-bot:focus-within{box-shadow:0 0 0 3px rgba(255,157,69,.55),0 10px 26px -8px rgba(26,68,200,.6)}
+#smartBook .sb-bot-ic{display:inline-flex;align-items:center;gap:5px;color:#ffd166;white-space:nowrap}
+#smartBook .sb-bot-ic b{display:none;font-size:10.5px;font-weight:900;letter-spacing:.05em;color:#fff;padding:2px 7px;border-radius:999px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.22)}
+@media (min-width:420px){#smartBook .sb-bot-ic b{display:inline-block}}
+#smartBook .sb-bot-go,#smartBook .sb-mic{transition:background .2s,transform .15s}
+#smartBook .sb-bot-go:hover{background:var(--sb-org)}
+#smartBook .sb-bot-go:active,#smartBook .sb-mic:active{transform:scale(.94)}
+
+/* every tappable thing answers: lift on hover, press on tap */
+#smartBook .sb-dir-b,#smartBook .sb-chip,#smartBook .sb-seg button,#smartBook .sb-step button,#smartBook .sb-p button,
+#smartBook .sb-qmode button,#smartBook .sb-qhelp,#smartBook .sb-near,#smartBook .sb-agent-other,#smartBook .sb-qline button,
+#smartBook .sb-suggest button,#smartBook .sb-alt button,#smartBook .sb-tk-acts a,#smartBook .sb-tk-acts button{
+  transition:background-color .2s,color .2s,border-color .2s,box-shadow .25s var(--sb-ease),transform .15s var(--sb-ease)}
+@media (hover:hover){
+  #smartBook .sb-chip:hover,#smartBook .sb-near:hover,#smartBook .sb-step button:hover,#smartBook .sb-agent-other:hover,#smartBook .sb-qhelp:hover{border-color:var(--sb-blue);transform:translateY(-1px);box-shadow:0 6px 14px -6px rgba(26,68,200,.35)}
+  #smartBook .sb-dir-b:not(.on):hover,#smartBook .sb-seg button:not(.on):hover{color:var(--sb-blue);background:color-mix(in srgb,var(--sb-panel) 60%,transparent)}
+  #smartBook .sb-tk-acts a:hover,#smartBook .sb-tk-acts button:hover{transform:translateY(-1px);border-color:var(--sb-blue)}
+}
+#smartBook .sb-chip:active,#smartBook .sb-dir-b:active,#smartBook .sb-seg button:active,#smartBook .sb-step button:active,#smartBook .sb-p button:active,#smartBook .sb-qmode button:active{transform:scale(.96)}
+
+/* selected = brand blue, filled */
+#smartBook .sb-dir-b.on{background:var(--sb-grad);color:#fff;box-shadow:0 6px 16px -6px rgba(26,68,200,.6)}
+#smartBook .sb-dir-b.on b{color:#fff}
+#smartBook .sb-chip.on{background:var(--sb-grad);border-color:transparent;color:#fff;box-shadow:0 6px 14px -6px rgba(26,68,200,.55)}
+#smartBook .sb-chip.on small{color:rgba(255,255,255,.85)}
+#smartBook .sb-seg button.on{background:var(--sb-panel);color:var(--sb-blue);box-shadow:0 2px 10px rgba(26,68,200,.16),inset 0 -2px 0 var(--sb-org)}
+#smartBook .sb-qmode button.on{background:var(--sb-grad);box-shadow:0 4px 12px -4px rgba(26,68,200,.55)}
+#smartBook .sb-qline span{background:color-mix(in srgb,var(--sb-blue) 8%,var(--sb-panel));border:1px solid color-mix(in srgb,var(--sb-blue) 16%,transparent);animation:sbChipIn .35s var(--sb-ease) both}
+#smartBook .sb-qline span:nth-child(2){animation-delay:.04s}#smartBook .sb-qline span:nth-child(3){animation-delay:.08s}
+#smartBook .sb-qline span:nth-child(4){animation-delay:.12s}#smartBook .sb-qline span:nth-child(5){animation-delay:.16s}
+@keyframes sbChipIn{from{transform:translateY(4px) scale(.97)}to{transform:none}}
+
+/* inputs: a calm border, a blue ring when typing */
+#smartBook input,#smartBook select{transition:border-color .2s,box-shadow .2s,background-color .2s}
+@media (hover:hover){#smartBook input:hover,#smartBook select:hover{border-color:color-mix(in srgb,var(--sb-blue) 40%,var(--sb-line))}}
+#smartBook input:focus,#smartBook select:focus{outline:none;border-color:var(--sb-blue);box-shadow:0 0 0 3px color-mix(in srgb,var(--sb-blue) 18%,transparent)}
+#smartBook .sb-bot input:focus{box-shadow:none}
+#smartBook .sb-bad{box-shadow:0 0 0 3px rgba(205,65,84,.14)}
+#smartBook .sb-seatline b{color:var(--sb-blue)}
+#smartBook .sb-seatline .sb-flash{animation:sbFlash 1.1s var(--sb-ease)}
+
+/* the two booking buttons: Cash = brand orange, Online = brand blue */
+#smartBook .sb-pay{position:relative;isolation:isolate;transition:transform .15s var(--sb-ease),box-shadow .25s var(--sb-ease),opacity .2s,filter .2s}
+#smartBook .sb-cash{background:var(--sb-ograd)}
+#smartBook .sb-online{background:var(--sb-grad)}
+#smartBook .sb-pay span{letter-spacing:.01em;text-shadow:0 1px 0 rgba(0,0,0,.12)}
+#smartBook .sb-pay.sb-ready{box-shadow:0 10px 22px -8px rgba(212,87,12,.6)}
+#smartBook .sb-online.sb-ready{box-shadow:0 10px 22px -8px rgba(26,68,200,.6)}
+@media (hover:hover){#smartBook .sb-pay:hover{transform:translateY(-2px)}#smartBook .sb-pay.sb-ready:hover{filter:brightness(1.06) saturate(1.05)}}
+#smartBook .sb-pay:active{transform:translateY(0) scale(.97)}
+#smartBook .sb-pay:focus-visible{outline:3px solid var(--sb-org-l);outline-offset:2px}
+/* a soft pulse while the card is ready - one tap books */
+#smartBook .sb-pay::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;box-shadow:0 0 0 0 rgba(240,122,30,.5);opacity:0;pointer-events:none}
+#smartBook .sb-online::after{box-shadow:0 0 0 0 rgba(47,107,255,.5)}
+#smartBook .sb-pay.sb-ready::after{animation:sbCta 2.4s var(--sb-ease) infinite}
+#smartBook .sb-online.sb-ready::after{animation-delay:1.2s}
+@keyframes sbCta{0%{opacity:1;box-shadow:0 0 0 0 rgba(240,122,30,.45)}80%,100%{opacity:0;box-shadow:0 0 0 12px rgba(240,122,30,0)}}
+/* booking… : a spinner in the button */
+#smartBook .sb-pay.sb-busy span::before,#smartBook .sb-cv-go.sb-busy::before{content:"";display:inline-block;width:14px;height:14px;margin-right:7px;vertical-align:-2px;border-radius:50%;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;animation:sbSpin .8s linear infinite}
+#smartBook .sb-pay.sb-busy::after{animation:none}
+
+/* the phone's book bar: a glassy white strip */
+@media (max-width:859px){
+  #smartBook .sb-bar{background:color-mix(in srgb,var(--sb-panel) 92%,transparent);-webkit-backdrop-filter:blur(10px) saturate(1.2);backdrop-filter:blur(10px) saturate(1.2);border-top:1px solid color-mix(in srgb,var(--sb-blue) 14%,var(--sb-line))}
+  #smartBook .sb-bar-sum b{background:linear-gradient(100deg,var(--sb-navy),var(--sb-blue));-webkit-background-clip:text;background-clip:text;color:transparent}
+  :root[data-theme="dark"] #smartBook .sb-bar-sum b{background:none;color:var(--sb-text)}
+}
+
+/* the Journey Summary rail: brand header, the route with the coach on it */
+#smartBook .sb-route{display:none}
+@media (min-width:860px){
+  #smartBook .sb-rail{overflow:hidden;padding-top:0}
+  #smartBook .sb-sum-t{margin:0 -18px 0;padding:14px 18px 12px;background:var(--sb-grad);color:#fff;font-size:15px;letter-spacing:.01em;display:flex;align-items:center;gap:8px}
+  #smartBook .sb-sum-t::before{content:"⚡";color:#ffd166}
+  #smartBook .sb-route{display:flex;align-items:center;gap:8px;margin:12px 0 4px}
+  #smartBook .sb-route > i{flex:0 0 10px;height:10px;border-radius:50%;background:var(--sb-blue);box-shadow:0 0 0 3px color-mix(in srgb,var(--sb-blue) 18%,transparent)}
+  #smartBook .sb-route > i:last-child{background:var(--sb-org);box-shadow:0 0 0 3px rgba(240,122,30,.2)}
+  #smartBook .sb-route-line{position:relative;flex:1;height:22px;overflow:hidden}
+  #smartBook .sb-route-line::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:2px dashed color-mix(in srgb,var(--sb-blue) 35%,var(--sb-line))}
+  #smartBook .sb-route-bus{position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 32'%3E%3Crect x='2' y='4' width='58' height='20' rx='5' fill='%231a44c8'/%3E%3Crect x='2' y='17' width='58' height='4' fill='%23f07a1e'/%3E%3Crect x='8' y='8' width='9' height='7' rx='1.5' fill='%23d6e6ff'/%3E%3Crect x='20' y='8' width='9' height='7' rx='1.5' fill='%23d6e6ff'/%3E%3Crect x='32' y='8' width='9' height='7' rx='1.5' fill='%23d6e6ff'/%3E%3Cpath d='M46 8h8a4 4 0 0 1 4 4v3H46z' fill='%23d6e6ff'/%3E%3Ccircle cx='15' cy='25' r='4.5' fill='%23122445'/%3E%3Ccircle cx='15' cy='25' r='1.8' fill='%23fff'/%3E%3Ccircle cx='48' cy='25' r='4.5' fill='%23122445'/%3E%3Ccircle cx='48' cy='25' r='1.8' fill='%23fff'/%3E%3Crect x='58' y='13' width='3' height='3' rx='1' fill='%23ffd166'/%3E%3C/svg%3E") 0 50% / 40px 20px no-repeat;
+    transform:translateX(-42px);animation:sbDrive 6s cubic-bezier(.45,.05,.55,.95) infinite}
+  #smartBook .sb-dl div{transition:background-color .2s}
+  #smartBook .sb-dl dd{color:var(--sb-text)}
+  #smartBook .sb-total b{background:linear-gradient(100deg,var(--sb-navy),var(--sb-blue));-webkit-background-clip:text;background-clip:text;color:transparent;font-variant-numeric:tabular-nums}
+  :root[data-theme="dark"] #smartBook .sb-total b{background:linear-gradient(100deg,#dbe7ff,#8fb2ff);-webkit-background-clip:text;background-clip:text}
+  #smartBook .sb-pay{min-height:58px;border-radius:14px}
+  #smartBook .sb-pay span{font-size:16px}
+}
+
+/* the ticket arrives: a pop and a ring */
+#smartBook .sb-tk{animation:sbRise .4s var(--sb-ease) both}
+#smartBook .sb-tk-ok{position:relative;background:linear-gradient(135deg,#21c48d,#0b9e71);animation:sbPop .5s var(--sb-ease) both}
+#smartBook .sb-tk-ok::after{content:"";position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 0 rgba(11,158,113,.5);animation:sbRipple 1.2s .15s ease-out 2}
+#smartBook .sb-tk-pnr{background:linear-gradient(100deg,var(--sb-navy),var(--sb-blue));-webkit-background-clip:text;background-clip:text;color:transparent}
+:root[data-theme="dark"] #smartBook .sb-tk-pnr{background:none;color:#9dbbff}
+#smartBook .sb-tk-acts .sb-main-act{background:var(--sb-grad)}
+@keyframes sbRise{from{transform:translateY(10px)}to{transform:none}}
+@keyframes sbPop{0%{transform:scale(.3)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
+@keyframes sbRipple{to{box-shadow:0 0 0 14px rgba(11,158,113,0)}}
+
+/* Cash: the one summary + Confirm sheet (both faces) */
+#smartBook .sb-ok-ic{background:var(--sb-ograd);color:#fff;box-shadow:0 6px 14px -6px rgba(212,87,12,.6)}
+#smartBook .sb-ok-sum{border-radius:16px;overflow:hidden;border:1px solid color-mix(in srgb,var(--sb-blue) 18%,var(--sb-line));background:var(--sb-panel)}
+#smartBook .sb-ok-tot{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:12px 14px;background:var(--sb-grad);color:#fff}
+#smartBook .sb-ok-tot small{flex:1 0 100%;font-size:11px;text-transform:uppercase;letter-spacing:.06em;opacity:.85;font-weight:800}
+#smartBook .sb-ok-tot b{font-size:28px;font-weight:900;line-height:1.05;font-variant-numeric:tabular-nums}
+#smartBook .sb-ok-tot span{font-size:12.5px;opacity:.85}
+#smartBook .sb-ok-sum dl{margin:0;padding:4px 14px 6px}
+#smartBook .sb-ok-sum dl div{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px dashed var(--sb-line);font-size:13.5px}
+#smartBook .sb-ok-sum dl div:last-child{border-bottom:0}
+#smartBook .sb-ok-sum dt{color:var(--sb-muted);flex:0 0 auto}
+#smartBook .sb-ok-sum dd{margin:0;text-align:right;font-weight:700;min-width:0;overflow-wrap:anywhere}
+#smartBook .sb-cv-go{background:var(--sb-ograd);box-shadow:0 10px 22px -8px rgba(212,87,12,.6);transition:transform .15s var(--sb-ease),filter .2s}
+@media (hover:hover){#smartBook .sb-cv-go:hover{transform:translateY(-1px);filter:brightness(1.05)}}
+#smartBook .sb-cv-go:active{transform:scale(.98)}
+#smartBook .sb-cv-go:focus-visible{outline:3px solid var(--sb-blue-l);outline-offset:2px}
+#smartBook .sb-ok-pay{margin:0;padding:10px 12px;border-radius:13px;background:rgba(240,122,30,.1);border:1px solid rgba(240,122,30,.3);color:#8a3f06;font-size:14px;font-weight:800;line-height:1.35}
+:root[data-theme="dark"] #smartBook .sb-ok-pay{background:rgba(240,122,30,.14);color:#ffc08a}
+#smartBook .sb-ok-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#smartBook .sb-ok-row small{color:var(--sb-muted);font-size:12px}
+#smartBook .sb-cv-file{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:13px;background:rgba(11,158,113,.09);border:1px solid rgba(11,158,113,.25);font-size:13px}
+#smartBook .sb-cv-file[hidden],#smartBook .sb-cv-fields[hidden]{display:none}
+#smartBook .sb-cv-file > span{font-size:20px}
+#smartBook .sb-cv-file > div{flex:1;min-width:0}
+#smartBook .sb-cv-file b{display:block;color:var(--sb-ok)}
+#smartBook .sb-cv-file small{display:block;color:var(--sb-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#smartBook .sb-cv-file button{min-height:38px;border:1px solid var(--sb-line);border-radius:10px;background:var(--sb-panel);color:var(--sb-blue);font:inherit;font-weight:800;font-size:12.5px;padding:0 12px;cursor:pointer}
+#smartBook .sb-cv-fields{display:grid;gap:10px}
+#smartBook .sb-cv-need{margin:0;font-size:12.5px;font-weight:700;color:var(--sb-org-d)}
+:root[data-theme="dark"] #smartBook .sb-cv-need{color:var(--sb-org-l)}
+
+/* Online: the QR card - brand header, a scan line over the code */
+#smartBook .sb-py-hd{background:var(--sb-grad)}
+#smartBook .sb-py-qrw{overflow:hidden;border:2px solid transparent;background:linear-gradient(#fff,#fff) padding-box,linear-gradient(135deg,var(--sb-blue-l),var(--sb-org)) border-box}
+#smartBook .sb-py-qrw::after{content:"";position:absolute;left:8px;right:8px;top:8px;height:3px;border-radius:3px;background:linear-gradient(90deg,transparent,var(--sb-org),transparent);opacity:.75;animation:sbScan 2.6s ease-in-out infinite alternate;pointer-events:none}
+#smartBook .sb-py-dead::after{display:none}
+@keyframes sbScan{from{transform:translateY(0)}to{transform:translateY(min(220px,58vw))}}
+#smartBook .sb-py-main{transition:transform .15s var(--sb-ease),filter .2s}
+@media (hover:hover){#smartBook .sb-py-main:hover{transform:translateY(-1px);filter:brightness(1.05)}}
+#smartBook .sb-py-send{background:var(--sb-ograd)}
+#smartBook .sb-py-tabs button.on{color:var(--sb-blue);box-shadow:0 2px 10px rgba(26,68,200,.15),inset 0 -2px 0 var(--sb-org)}
+
+/* sheets glide in (transform only: a frozen first frame must stay readable) */
+#smartBook .sb-sheet-in,#smartBook .sb-modal-in{animation:sbUp .26s var(--sb-ease)}
+#smartBook .sb-berth{transition:transform .15s var(--sb-ease),background-color .2s,box-shadow .2s}
+#smartBook .sb-berth:not(.x):active{transform:scale(.94)}
+#smartBook .sb-berth.sel{background:var(--sb-grad);box-shadow:0 6px 14px -6px rgba(26,68,200,.6)}
+#smartBook .sb-done{background:var(--sb-grad)}
+
+/* the website's staff banner in the same colours */
+.sb-desk-in{background:linear-gradient(120deg,#2f6bff,#1a44c8 52%,#0a2a8f)}
+
+/* no motion when the phone or the site asks for none */
+@media (prefers-reduced-motion:reduce){
+  #smartBook .sb-road-bus,#smartBook .sb-route-bus,#smartBook .sb-bot::after,#smartBook .sb-engine i,#smartBook .sb-pay::after,
+  #smartBook .sb-qline span,#smartBook .sb-tk,#smartBook .sb-tk-ok,#smartBook .sb-tk-ok::after,#smartBook .sb-py-qrw::after,
+  #smartBook .sb-sheet-in,#smartBook .sb-modal-in{animation:none}
+}
+:root[data-motion="reduced"] #smartBook .sb-road-bus,:root[data-motion="reduced"] #smartBook .sb-route-bus,:root[data-motion="reduced"] #smartBook .sb-bot::after,
+:root[data-motion="reduced"] #smartBook .sb-engine i,:root[data-motion="reduced"] #smartBook .sb-pay::after,:root[data-motion="reduced"] #smartBook .sb-qline span,
+:root[data-motion="reduced"] #smartBook .sb-tk,:root[data-motion="reduced"] #smartBook .sb-tk-ok,:root[data-motion="reduced"] #smartBook .sb-tk-ok::after,
+:root[data-motion="reduced"] #smartBook .sb-py-qrw::after{animation:none}
+:root[data-tier="low"] #smartBook .sb-bot::after,:root[data-tier="low"] #smartBook .sb-pay::after,:root[data-tier="low"] #smartBook .sb-py-qrw::after{animation:none}
+
+/* 16 Oct 2026 (owner: "Book Cash ra Online 2 ta button ramro dekhine banos"): two bold
+   app buttons - a glossy top light, a slow shine across, a white ring, bigger type. */
+#smartBook .sb-pay{border:1px solid rgba(255,255,255,.28);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 8px 18px -8px rgba(10,42,143,.45)}
+#smartBook .sb-pay::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;
+  background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,0) 52%),linear-gradient(100deg,transparent 30%,rgba(255,255,255,.32) 48%,transparent 66%) no-repeat;
+  background-size:100% 100%,60% 100%;background-position:0 0,-150% 0}
+#smartBook .sb-pay.sb-ready::before{animation:sbShine 3.6s ease-in-out infinite}
+#smartBook .sb-online.sb-ready::before{animation-delay:1.8s}
+@keyframes sbShine{0%,55%{background-position:0 0,-150% 0}100%{background-position:0 0,250% 0}}
+#smartBook .sb-pay::after{z-index:-2}
+#smartBook .sb-pay span{font-size:16px;font-weight:900}
+#smartBook .sb-pay small{font-size:10.5px;font-weight:700;opacity:.95;margin-top:1px}
+#smartBook .sb-cash.sb-ready{box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 10px 22px -8px rgba(212,87,12,.65)}
+#smartBook .sb-online.sb-ready{box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 10px 22px -8px rgba(26,68,200,.65)}
+#smartBook .sb-pay.sb-wait{opacity:.78;filter:saturate(.8)}
+@media (max-width:859px){
+  #smartBook .sb-bar{gap:8px;padding:8px 10px}
+  #smartBook .sb-pay{min-width:112px;min-height:52px;border-radius:15px;padding:4px 12px}
+  #smartBook .sb-pay span{font-size:15px}
+}
+@media (max-width:380px){#smartBook .sb-pay{min-width:96px;padding:4px 8px}#smartBook .sb-pay span{font-size:14px}}
+@media (min-width:860px){#smartBook .sb-bar{gap:10px}#smartBook .sb-pay{min-height:62px;border-radius:16px}#smartBook .sb-pay span{font-size:17px}}
+@media (prefers-reduced-motion:reduce){#smartBook .sb-pay.sb-ready::before{animation:none}}
+:root[data-motion="reduced"] #smartBook .sb-pay.sb-ready::before,:root[data-tier="low"] #smartBook .sb-pay.sb-ready::before{animation:none}
+/* 16 Oct 2026: Sharing is the default; Private is one tap in the Quick line */
+#smartBook .sb-qline .sb-q-priv{text-decoration:none;border:1px dashed color-mix(in srgb,var(--sb-org) 55%,var(--sb-line));border-radius:999px;padding:4px 10px;color:var(--sb-org-d);background:transparent}
+#smartBook .sb-qline .sb-q-priv.on{border-style:solid;background:var(--sb-ograd);color:#fff;border-color:transparent}
+:root[data-theme="dark"] #smartBook .sb-qline .sb-q-priv:not(.on){color:var(--sb-org-l)}

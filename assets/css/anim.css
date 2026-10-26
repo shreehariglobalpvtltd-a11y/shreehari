@@ -1,0 +1,262 @@
+/* =====================================================================
+   S Hari Global — homepage animation scenes (4 Oct 2026)
+   From the owner's premium animation pack (shg-premium-animation-pack.zip):
+     #animJourney  01 the coach on the highway        7 s loop
+     #animRoute    02 Gujarat → Rupaidiha corridor     10 s loop
+   (03, the sample booking on a phone, left the home page on 16 Oct 2026 —
+   the owner asked for a minimal, professional page.)
+   Every selector is scoped under .shg-animation. Only transform and
+   opacity move. Nothing runs until assets/js/20-anim.js marks a scene
+   .is-running (on screen, tab visible, not paused, motion allowed).
+   Without JavaScript or with reduced motion each scene is a still,
+   meaningful frame. The scenes are decoration: they never touch a real
+   booking, seat, payment or WhatsApp message.
+   ===================================================================== */
+
+/* Home order: after the booking panel, QuickBot and the brand band. */
+#view-home > #animJourney { order: -3 !important; }  /* 5 Oct 2026: legacy - the banner now sits in #topHero */
+#view-home > #animRoute { order: 6 !important; }
+
+.shg-animation {
+  --sa-navy: #07172f;
+  --sa-navy-2: #0a1a33;
+  --sa-edge: #304663;
+  --sa-gold: #efb544;
+  --sa-gold-ink: #081a36;
+  --sa-ease: cubic-bezier(.22, 1, .36, 1);
+  margin-top: 28px;
+}
+.shg-animation *, .shg-animation *::before, .shg-animation *::after { box-sizing: border-box; }
+.shg-animation .sa-vh { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ---------- headings (HTML, translated by the site's i18n) ---------- */
+.shg-animation .sa-head { min-width: 0; }
+.shg-animation .sa-eyebrow { margin: 0; font: 700 12px/1.4 var(--font-sans); letter-spacing: .12em; text-transform: uppercase; color: var(--royal); }
+.shg-animation .sa-title { margin: 4px 0 4px; font: 800 22px/1.25 var(--font-sans); color: var(--ink); }
+.shg-animation .sa-sub { margin: 0 0 12px; font: 400 14px/1.5 var(--font-sans); color: var(--muted); }
+.shg-animation .sa-note { margin: 10px 0 0; font: 500 12.5px/1.45 var(--font-sans); color: var(--muted); }
+@media (min-width: 760px) { .shg-animation .sa-title { font-size: 26px; } .shg-animation .sa-sub { font-size: 15px; } }
+
+/* ---------- the scene card + its pause control ---------- */
+.shg-animation .sa-scene { position: relative; overflow: hidden; isolation: isolate; border-radius: var(--radius-xl, 22px); background: var(--sa-navy-2); border: 1px solid var(--sa-edge); }
+.shg-animation .sa-art { position: absolute; inset: 0; }
+.shg-animation .sa-pause {
+  position: absolute; top: 8px; right: 8px; z-index: 6; width: 44px; height: 44px; padding: 0; margin: 0;
+  display: grid; place-items: center; border-radius: 50%; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, .38); background: rgba(7, 23, 47, .74); color: #fff;
+}
+.shg-animation .sa-pause svg { width: 16px; height: 16px; fill: currentColor; }
+.shg-animation .sa-pause .sa-i-play { display: none; }
+.shg-animation .sa-pause[data-paused="true"] .sa-i-play { display: block; }
+.shg-animation .sa-pause[data-paused="true"] .sa-i-pause { display: none; }
+.shg-animation .sa-pause:focus-visible { outline: 3px solid var(--sa-gold) !important; outline-offset: 2px !important; }
+.shg-animation .sa-pause[hidden] { display: none; }
+
+/* CSS-driven layers stay still unless the controller says run. */
+.shg-animation .sa-scene:not(.is-running) * { animation-play-state: paused !important; }
+
+/* ================= 01 · the journey ================= */
+.shg-animation .sa-journey { aspect-ratio: 16 / 9; }
+.shg-animation .sa-journey .sa-land, .shg-animation .sa-journey .sa-scenery,
+.shg-animation .sa-journey .sa-road, .shg-animation .sa-journey .sa-shadow, .shg-animation .sa-journey .sa-bus { position: absolute; }
+.shg-animation .sa-journey picture { display: contents; }
+.shg-animation .sa-journey img { max-width: none; }   /* app.css img{max-width:100%} would clip the 108% scenery */
+.shg-animation .sa-journey .sa-land { inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.shg-animation .sa-journey .sa-scenery { width: 108%; height: 44%; left: -4%; bottom: 29%; object-fit: fill; animation: sa-parallax 7s ease-in-out infinite; }
+/* the road is a double-width strip that slides one tile per loop (never background-position) */
+.shg-animation .sa-journey .sa-road { left: 0; bottom: 0; width: 200%; height: 31%; background: #3d454d 0 0 / 50% 100% repeat-x; animation: sa-road 7s linear infinite; }
+.shg-animation .sa-journey.is-near .sa-road { background-image: url("/assets/img/anim/shg-road-foreground.svg"); }
+.shg-animation .sa-journey .sa-shadow { width: 76%; height: 8%; left: 12%; bottom: 15%; opacity: .88; animation: sa-shadow 7s ease-in-out infinite; }
+.shg-animation .sa-journey .sa-bus { width: 79%; left: 10.5%; bottom: 0; aspect-ratio: 2 / 1; animation: sa-ride 7s ease-in-out infinite; }
+.shg-animation .sa-journey .sa-bus img { display: block; width: 100%; height: 100%; }
+/* wind streaks behind the coach (it drives right; the left-facing coach gets them on the right) */
+.shg-animation .sa-journey .sa-bus::before { content: ""; position: absolute; left: -9%; top: 38%; width: 13%; height: 30%; pointer-events: none; opacity: 0;
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .85) 0 2px, transparent 2px 10px); border-radius: 2px;
+  animation: sa-wind .9s linear infinite; }
+.shg-animation .sa-journey.is-left .sa-bus::before { left: auto; right: -9%; animation-direction: reverse; }
+/* rotating copies of the real rim texture (radius 41 px of the 1440 × 720 source) */
+.shg-animation .sa-journey .sa-rim { position: absolute; width: 5.694%; aspect-ratio: 1; border-radius: 50%; background-repeat: no-repeat; background-size: 1756.1% 878.05%; animation: sa-wheel 1.1s linear infinite; }
+.shg-animation .sa-journey .sa-rim--a { left: 21.84%; top: 68.50%; background-position: 23.16% 77.30%; }
+.shg-animation .sa-journey .sa-rim--b { left: 68.82%; top: 68.51%; background-position: 72.97% 77.32%; }
+/* Rupaidiha → Gujarat: the left-facing coach (its own artwork, never mirrored) */
+.shg-animation .sa-journey.is-left .sa-rim--a { left: 24.35%; top: 68.81%; background-position: 25.82% 77.62%; }
+.shg-animation .sa-journey.is-left .sa-rim--b { left: 72.09%; top: 68.85%; background-position: 76.44% 77.70%; }
+.shg-animation .sa-journey.is-left .sa-road, .shg-animation .sa-journey.is-left .sa-rim { animation-direction: reverse; }
+@media (max-width: 759px) {
+  .shg-animation .sa-journey .sa-bus { width: 94%; left: 3%; bottom: -2%; }
+  .shg-animation .sa-journey .sa-shadow { width: 91%; left: 5%; bottom: 14%; }
+}
+@media (min-width: 760px) { .shg-animation .sa-journey { aspect-ratio: 21 / 9; } }
+
+.shg-animation .sa-amen { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.shg-animation .sa-amen li { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 6px 12px 6px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); font: 600 13px/1.25 var(--font-sans); }
+.shg-animation .sa-amen svg { flex: none; width: 20px; height: 20px; color: var(--royal); }
+@media (min-width: 760px) {
+  .shg-animation .sa-stage { position: relative; }
+  .shg-animation .sa-stage .sa-amen { position: absolute; top: 14px; left: 14px; z-index: 5; margin: 0; max-width: calc(100% - 90px); }
+  .shg-animation .sa-stage .sa-amen li { background: rgba(7, 23, 47, .86); border-color: #54718c; color: #fff; }
+  .shg-animation .sa-stage .sa-amen svg { color: #fff; }
+}
+
+/* ================= 02 · the route ================= */
+.shg-animation .sa-grid { display: grid; gap: 4px; align-items: center; }
+@media (min-width: 760px) {
+  .shg-animation .sa-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px; }
+  .shg-animation .sa-grid--book { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); }
+}
+.shg-animation .sa-map { aspect-ratio: 590 / 315; background: #061327; }
+.shg-animation .sa-map .sa-pause { top: auto; bottom: 8px; }   /* the empty sea corner, clear of the labels */
+.shg-animation .sa-map-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.shg-animation .sa-route-glow { fill: none; stroke: #efb544; stroke-opacity: .14; stroke-width: 18; stroke-linecap: round; }
+.shg-animation .sa-route-track { fill: none; stroke: #f7ca64; stroke-width: 4; stroke-linecap: round; }
+.shg-animation .sa-map.is-built .sa-route-track { opacity: .12; }
+.shg-animation .sa-route-segs path { fill: none; stroke: #f4bf52; stroke-width: 4; stroke-linecap: round; }
+.shg-animation .sa-stops circle { fill: #efb544; stroke: #fff; stroke-width: 2; }
+.shg-animation .sa-map text { font-family: var(--font-sans); paint-order: stroke; stroke: rgba(6, 19, 39, .9); stroke-linejoin: round; }
+.shg-animation .sa-map .sa-lbl { font-size: 28px; font-weight: 700; fill: #fff; stroke-width: 5px; }
+.shg-animation .sa-map .sa-cty { font-weight: 700; stroke-width: 0; }
+.shg-animation .sa-map .sa-cty--in { font-size: 36px; fill: #8aa2bb; letter-spacing: 8px; }
+.shg-animation .sa-map .sa-cty--np { font-size: 24px; fill: #efce89; letter-spacing: 5px; }
+html:not([lang="en"]) .shg-animation .sa-map .sa-cty { letter-spacing: 0; }
+.shg-animation .sa-pulse circle { fill: none; stroke: #f6c765; stroke-width: 3; transform-box: fill-box; transform-origin: center; }
+@media (min-width: 900px) {
+  .shg-animation .sa-map .sa-lbl { font-size: 23px; }
+  .shg-animation .sa-map .sa-cty--in { font-size: 30px; }
+  .shg-animation .sa-map .sa-cty--np { font-size: 21px; }
+}
+.shg-animation .sa-chip { display: grid; gap: 2px; margin: 0 0 4px; padding: 12px 14px; border-radius: var(--radius-md, 14px); background: var(--surface); border: 1px solid var(--line); border-left: 4px solid #c8952e; }
+.shg-animation .sa-chip b { font: 800 16px/1.3 var(--font-sans); color: var(--ink); }
+.shg-animation .sa-chip span { font: 500 13px/1.45 var(--font-sans); color: var(--ink-2); }
+
+/* ================= 03 · the booking demo ================= */
+.shg-animation .sa-book { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 60px 12px 16px; background: radial-gradient(ellipse at 50% 42%, #1b3a5a, #091a32 68%); }
+.shg-animation .sa-book .sa-art { position: relative; inset: auto; }
+/* a slim top bar: the Sample pill on the left, Pause on the right, both clear of the phone */
+.shg-animation .sa-demo-pill { position: absolute; top: 15px; left: 14px; z-index: 6; padding: 5px 11px; border-radius: 999px; background: rgba(239, 181, 68, .16); border: 1px solid rgba(239, 181, 68, .55); color: #f6d58f; font: 700 12px/1.2 var(--font-sans); letter-spacing: .04em; }
+/* one design unit = 1/360 of the screen (the screen is 370/420 of the phone), 1/340 of the notice (110% of the phone) */
+.shg-animation .sa-phone { --phone-w: 248px; --u: calc(var(--phone-w) * 0.881 / 360); --w: calc(var(--phone-w) * 1.1 / 340); position: relative; width: var(--phone-w); aspect-ratio: 420 / 820; }
+@media (min-width: 400px) { .shg-animation .sa-phone { --phone-w: 264px; } }
+@media (min-width: 900px) { .shg-animation .sa-phone { --phone-w: 280px; } }
+.shg-animation .sa-frame { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+.shg-animation .sa-screen { position: absolute; z-index: 1; left: 5.95%; right: 5.95%; top: 3.05%; bottom: 3.05%; border-radius: 11.4% / 5.5%; overflow: hidden; background: #f3f6fa; }
+.shg-animation .sa-ui { position: absolute; inset: 0; background: #f3f6fa; color: #081a36; font-family: Arial, var(--font-sans); }
+.shg-animation .sa-ui--route { z-index: 1; }
+.shg-animation .sa-ui--berth { z-index: 2; opacity: 0; }
+.shg-animation .sa-ui--details { z-index: 3; opacity: 0; }
+.shg-animation .sa-ui--ticket { z-index: 4; display: flex; align-items: center; justify-content: center; background: #edf2f8; }
+.shg-animation .sa-ui-top { height: calc(var(--u) * 146); background: #081a36; color: #fff; padding: calc(var(--u) * 35) calc(var(--u) * 18) 0; }
+.shg-animation .sa-brand { display: flex; align-items: center; gap: calc(var(--u) * 10); }
+.shg-animation .sa-logo { flex: none; width: calc(var(--u) * 64); height: calc(var(--u) * 48); border-radius: 0; background: transparent; object-fit: contain; padding: 0; }
+.shg-animation .sa-brand b { display: block; font-size: calc(var(--u) * 18); line-height: 1.1; letter-spacing: .01em; }
+.shg-animation .sa-brand small { display: block; font-size: calc(var(--u) * 10); color: #c1cfdf; letter-spacing: .06em; margin-top: calc(var(--u) * 3); }
+.shg-animation .sa-ui-title { margin: calc(var(--u) * 14) 0 0; font-size: calc(var(--u) * 23); line-height: 1.15; font-weight: 700; color: #fff; }
+.shg-animation .sa-ui-body { padding: calc(var(--u) * 16) calc(var(--u) * 20) 0; }
+.shg-animation .sa-ui-sub { margin: 0 0 calc(var(--u) * 14); font-size: calc(var(--u) * 17); color: #55677f; line-height: 1.3; }
+.shg-animation .sa-f-l { display: block; margin: 0 0 calc(var(--u) * 6); font-size: calc(var(--u) * 15); letter-spacing: .04em; text-transform: uppercase; color: #65758b; }
+.shg-animation .sa-f { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 8); min-height: calc(var(--u) * 60); margin: 0 0 calc(var(--u) * 14); padding: 0 calc(var(--u) * 16); background: #fff; border: 1px solid #d8e1ed; border-radius: calc(var(--u) * 12); font-size: calc(var(--u) * 20); line-height: 1.2; }
+.shg-animation .sa-f--muted { color: #55677f; }
+.shg-animation .sa-btn { display: flex; align-items: center; justify-content: center; min-height: calc(var(--u) * 56); margin: calc(var(--u) * 22) 0 0; border-radius: calc(var(--u) * 14); background: #efb544; color: #081a36; font-size: calc(var(--u) * 19); font-weight: 700; }
+.shg-animation .sa-ui-foot { margin: calc(var(--u) * 16) 0 0; text-align: center; font-size: calc(var(--u) * 16); color: #55677f; line-height: 1.3; }
+/* sleeper berths (beds with a pillow), not chairs */
+.shg-animation .sa-deck { margin: 0 0 calc(var(--u) * 10); font-size: calc(var(--u) * 18); }
+.shg-animation .sa-berths { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 16) calc(var(--u) * 28); margin: 0 calc(var(--u) * 10); }
+.shg-animation .sa-berth { position: relative; display: flex; align-items: center; height: calc(var(--u) * 54); padding: 0 calc(var(--u) * 8); background: #fff; border: 1px solid #bccbdd; border-radius: calc(var(--u) * 11); font-size: calc(var(--u) * 18); }
+.shg-animation .sa-berth::before { content: ""; flex: none; width: calc(var(--u) * 22); height: calc(var(--u) * 38); border-radius: calc(var(--u) * 5); background: #e8edf4; }
+.shg-animation .sa-berth span { position: relative; z-index: 1; flex: 1; text-align: center; }
+.shg-animation .sa-berth .sa-pick { position: absolute; inset: -1px; z-index: 0; border-radius: inherit; background: #efb544; border: 1px solid #c8952e; opacity: 0; }
+.shg-animation .sa-berth .sa-pick::before { content: ""; position: absolute; left: calc(var(--u) * 8); top: calc(var(--u) * 8); width: calc(var(--u) * 22); height: calc(var(--u) * 38); border-radius: calc(var(--u) * 5); background: #fff3d6; }
+.shg-animation .sa-sel { margin: calc(var(--u) * 20) 0 0; font-size: calc(var(--u) * 18); opacity: 0; }
+.shg-animation .sa-pay { position: relative; display: grid; }
+.shg-animation .sa-pay > span { grid-area: 1 / 1; }
+.shg-animation .sa-pay-ok { color: #11703f; font-weight: 700; opacity: 0; }
+/* the demo ticket */
+.shg-animation .sa-ticket { width: 94%; padding: calc(var(--u) * 22) calc(var(--u) * 22) calc(var(--u) * 18); background: #fff; border: 1px solid #dce5ee; border-radius: calc(var(--u) * 24); }
+.shg-animation .sa-ticket .sa-brand b { color: #081a36; }
+.shg-animation .sa-ticket .sa-brand small { color: #566982; }
+.shg-animation .sa-ticket .sa-logo { background: transparent; padding: 0; }
+.shg-animation .sa-badge { display: inline-block; margin: calc(var(--u) * 14) 0 0; padding: calc(var(--u) * 4) calc(var(--u) * 12); border-radius: calc(var(--u) * 7); background: #fff0ce; color: #815614; font-size: calc(var(--u) * 18); letter-spacing: .06em; text-transform: uppercase; }
+.shg-animation .sa-tk-route { margin: calc(var(--u) * 14) 0 0; font-size: calc(var(--u) * 24); line-height: 1.25; font-weight: 700; }
+.shg-animation .sa-tk-row { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 8); margin: calc(var(--u) * 14) 0 0; padding: calc(var(--u) * 14) 0 0; border-top: 1px dashed #ccd6e3; }
+.shg-animation .sa-tk-row small { display: block; font-size: calc(var(--u) * 14); color: #65758b; text-transform: uppercase; letter-spacing: .04em; }
+.shg-animation .sa-tk-row b { display: block; margin-top: calc(var(--u) * 4); font-size: calc(var(--u) * 22); font-weight: 400; }
+.shg-animation .sa-tk-ok { display: grid; justify-items: center; gap: calc(var(--u) * 6); margin: calc(var(--u) * 18) 0 0; text-align: center; }
+.shg-animation .sa-tk-ok svg { width: calc(var(--u) * 52); height: calc(var(--u) * 52); }
+.shg-animation .sa-tk-ok b { font-size: calc(var(--u) * 22); color: #12834e; }
+.shg-animation .sa-tk-ok small { font-size: calc(var(--u) * 18); color: #65758b; }
+/* the sample WhatsApp notice (never a real message) */
+.shg-animation .sa-wa { position: absolute; z-index: 3; left: -5%; width: 110%; bottom: 9%; }
+.shg-animation .sa-wa-in { display: flex; align-items: center; gap: calc(var(--w) * 13); padding: calc(var(--w) * 14) calc(var(--w) * 16); background: #fff; border: 1px solid #d8e1ed; border-radius: calc(var(--w) * 16); box-shadow: 0 10px 28px rgba(4, 12, 28, .38); font-family: Arial, var(--font-sans); }
+.shg-animation .sa-wa-ic { flex: none; display: grid; place-items: center; width: calc(var(--w) * 44); height: calc(var(--w) * 44); border-radius: calc(var(--w) * 12); background: #159d59; color: #fff; }
+.shg-animation .sa-wa-ic svg { width: 60%; height: 60%; }
+.shg-animation .sa-wa-txt { min-width: 0; }
+.shg-animation .sa-wa-txt > b { display: block; font-size: calc(var(--w) * 16); color: #081a36; }
+.shg-animation .sa-wa-txt > span { display: block; font-size: calc(var(--w) * 13.5); color: #526781; margin-top: calc(var(--w) * 2); }
+.shg-animation .sa-wa-txt > small { display: block; font-size: calc(var(--w) * 14); color: #7c8c9f; letter-spacing: .05em; text-transform: uppercase; margin-top: calc(var(--w) * 3); }
+/* the four steps under the phone */
+.shg-animation .sa-steps { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.shg-animation .sa-steps li { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 5px 10px; border-radius: 999px; border: 1px solid #3b516b; color: #c9d6e6; font: 600 12px/1.2 var(--font-sans); }
+.shg-animation .sa-steps li > span { position: relative; z-index: 1; }
+@media (max-width: 399px) { .shg-animation .sa-steps { gap: 4px; } .shg-animation .sa-steps li { padding: 5px 7px; font-size: 11.5px; } }   /* four chips on one row at 360px */
+.shg-animation .sa-steps .sa-on { position: absolute; inset: 0; z-index: 0; border-radius: inherit; background: rgba(239, 181, 68, .22); box-shadow: inset 0 0 0 1.5px #efb544; opacity: 0; }
+/* desktop: the same four steps as a list beside the phone, lit in sync */
+.shg-animation .sa-steplist { display: none; }
+@media (min-width: 760px) {
+  .shg-animation .sa-steplist { display: grid; gap: 10px; margin: 18px 0 4px; padding: 0; list-style: none; }
+  .shg-animation .sa-steplist li { position: relative; overflow: hidden; display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: var(--radius-md, 14px); border: 1px solid var(--line); background: var(--surface); }
+  .shg-animation .sa-steplist li > span { position: relative; z-index: 1; }
+  .shg-animation .sa-steplist .sa-n { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--royal-tint); color: var(--royal); font: 800 14px/1 var(--font-sans); }
+  .shg-animation .sa-steplist b { display: block; font: 700 15px/1.3 var(--font-sans); color: var(--ink); }
+  .shg-animation .sa-steplist small { display: block; margin-top: 2px; font: 400 13.5px/1.45 var(--font-sans); color: var(--muted); }
+  .shg-animation .sa-steplist .sa-on { position: absolute; inset: 0; z-index: 0; border-radius: inherit; background: var(--royal-tint); box-shadow: inset 3px 0 0 var(--royal); opacity: 0; }
+  .shg-animation .sa-steplist li:nth-child(4) .sa-on { opacity: 1; }
+}
+/* Without JavaScript (or with reduced motion) the booking scene rests on its
+   final frame — the demo ticket, the sample notice and step 4 lit. The
+   controller's Web Animations take these values over while it runs. */
+.shg-animation .sa-steps li[data-step="4"] .sa-on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .shg-animation .sa-scene * { animation: none !important; transition: none !important; }
+}
+
+@keyframes sa-road { to { transform: translateX(-50%); } }
+@keyframes sa-parallax { 50% { transform: translateX(-1%); } }
+@keyframes sa-wheel { to { transform: rotate(360deg); } }
+/* 16 Oct 2026 (owner: "bus animation chaleko chaina"): the old ride moved the coach
+   0.6 px - it ran, but read as a still picture. Now a visible road bounce plus a slow
+   surge forward and back, with wind streaks behind it, so it reads as driving. */
+@keyframes sa-ride {
+  0%, 100% { transform: translate(0, 0); } 12% { transform: translate(.4%, -2.2px); } 25% { transform: translate(1%, 0); }
+  37% { transform: translate(1.6%, -1.6px); } 50% { transform: translate(2%, .6px); } 62% { transform: translate(1.6%, -2px); }
+  75% { transform: translate(1%, 0); } 87% { transform: translate(.4%, -1.4px); }
+}
+@keyframes sa-wind { 0% { opacity: 0; transform: translateX(40%); } 25% { opacity: .85; } 100% { opacity: 0; transform: translateX(-90%); } }
+@keyframes sa-shadow { 50% { opacity: .78; transform: scaleX(.995); } }
+
+/* ================= 5 Oct 2026 · the coach as a compact TOP banner =================
+   Above the date picker on every screen: no heading (the booking card right
+   below says "Gujarat ⇄ Rupaidiha"), 2:1 on a phone / 21:9 on a computer and
+   never wider than 720 px, amenity chips small and laid over the sky, a sky
+   and road painted underneath so nothing flashes dark while the art loads. */
+.shg-animation.sa-top { margin-top: 0; margin-bottom: 0; }
+.shg-animation.sa-top .sa-head { display: none; }
+.shg-animation.sa-top .sa-stage { position: relative; max-width: none; margin: 0; }
+.shg-animation.sa-top .sa-journey { aspect-ratio: 2 / 1; border-radius: 18px;
+  background: linear-gradient(180deg, #7fb8ec 0%, #cfe5f8 52%, #6f8f5c 60%, #3d454d 69%, #3d454d 100%); }
+.shg-animation.sa-top .sa-stage .sa-amen { position: absolute; top: 8px; left: 8px; z-index: 5; margin: 0; gap: 5px;
+  max-width: calc(100% - 56px); flex-wrap: nowrap; overflow: hidden; }
+.shg-animation.sa-top .sa-amen li { min-height: 26px; padding: 3px 9px 3px 7px; gap: 5px; font-size: 11.5px; white-space: nowrap;
+  background: rgba(7, 23, 47, .82); border-color: #54718c; color: #fff; }
+.shg-animation.sa-top .sa-amen svg { width: 15px; height: 15px; color: #fff; }
+.shg-animation.sa-top .sa-pause { width: 36px; height: 36px; top: 6px; right: 6px; }
+/* D3-M3 (8 Oct 2026): on small phones the right-hand FAB column passes over
+   the stage's top-right corner - the pause control sits top-left there. */
+@media (max-width: 400px) { .shg-animation.sa-top .sa-pause { left: 6px; right: auto; } }
+@media (max-width: 759px) {
+  .shg-animation.sa-top .sa-journey .sa-bus { width: 80%; left: 10%; bottom: -1%; }
+  .shg-animation.sa-top .sa-journey .sa-shadow { width: 78%; left: 11%; bottom: 13%; }
+}
+@media (max-width: 380px) { .shg-animation.sa-top .sa-amen li:nth-child(3) { display: none; } }
+@media (min-width: 760px) {
+  .shg-animation.sa-top .sa-journey { aspect-ratio: 21 / 9; }
+  .shg-animation.sa-top .sa-amen li { min-height: 30px; font-size: 12.5px; }
+}

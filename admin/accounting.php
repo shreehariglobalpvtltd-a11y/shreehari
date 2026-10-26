@@ -1,0 +1,695 @@
+<?php
+/**
+ * admin/accounting.php — the office day-book (requirement 5: "Accounting").
+ *
+ * One screen that answers the questions a counter/office asks at the end of
+ * a day or a month, sourced straight from the live tables (no new storage):
+ *
+ *   • How much did we collect, split by method (cash / UPI / eSewa / bank)?
+ *   • How much cash-on-delivery is still to collect?
+ *   • What commission did agents accrue that we now owe them?
+ *   • How much went out in refunds?
+ *   • What did the paper-ticket register take in?
+ *   • Which agents are still holding our cash (to hand over)?
+ *   • Which agents are waiting for a payout decision? (17 Sep 2026)
+ *   • Salaries, agent payouts, loans / advances given and recovered, and
+ *     what is still out on loan (3 Oct 2026) — these modules wrote money
+ *     out that this page never counted, so "net" was overstated.
+ *
+ * Read-only and defensive: every figure falls back to 0 if a table/column
+ * is missing on an environment, so the page can never 500 a working panel.
+ * Money is normalised to INR with the company peg so one column stays honest.
+ */
+declare(strict_types=1);
+require __DIR__ . '/_guard.php';
+$admin = admin_boot('payments.view');
+// Oct 2026: company-wide money (collections, expenses, salaries, agents' cash)
+// is for the accounts roles — the same gate as Payroll. Counter and official
+// desks keep payments.view to verify a customer's payment on Verify Payments.
+Auth::requireAdmin('reports.view');
+
+$base = '';
+
+if (!defined('NPR_PER_INR')) {
+    define('NPR_PER_INR', 1.6);
+}
+
+/* ---- Window: default today; presets for month / last 30 days -------- */
+$from = Security::clean($_GET['from'] ?? '', 10);
+$to   = Security::clean($_GET['to']   ?? '', 10);
+if (!Security::isValidDate($from)) { $from = todayISO(); }
+if (!Security::isValidDate($to))   { $to   = todayISO(); }
+if ($from > $to) { [$from, $to] = [$to, $from]; }   // tolerate a reversed pair
+
+$paidStatuses = "'confirmed','completed'";
+/* 3 Oct 2026: the peg the owner sets in Admin > Settings (npr_per_inr) —
+   the quote, the counter and payroll already read it; this page used the
+   config constant, so changing the rate changed every screen but this. */
+$peg = Settings::getFloat('npr_per_inr', (float) NPR_PER_INR);
+if ($peg <= 0) { $peg = (float) NPR_PER_INR; }
+$inrOf = static fn(float $amt, ?string $cur): float =>
+    strtoupper((string) $cur) === 'NPR' ? $amt / $peg : $amt;
+
+/* =====================================================================
+ *  0. By company (4 Oct 2026) - the same window split by the company that
+ *     ISSUED each ticket (bookings.entity, frozen at sale; an unstamped row
+ *     is the India company, as every sale was before 4 Oct 2026). Read-only:
+ *     every figure below this panel is unchanged and stays company-wide.
+ *     Paper tickets, expenses, salaries and agent cash are not split yet.
+ * ===================================================================== */
+$byCo = [];
+$coSplit = false;
+try {
+    if (CounterDesk::hasColumn('bookings', 'entity')) {
+        $coSplit = true;
+        $ek = "CASE WHEN b.entity = 'NP' THEN 'NP' ELSE 'IN' END";
+        foreach (['IN', 'NP'] as $k) {
+            $byCo[$k] = ['tickets' => 0, 'collected' => 0.0, 'cod' => 0.0, 'refunds' => 0.0, 'commission' => 0.0, 'npr' => 0.0];
+        }
+        foreach (Database::fetchAll(
+            "SELECT $ek AS e, COUNT(*) AS n,
+                    COALESCE(SUM(CASE WHEN (SELECT p2.status FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) = 'cod_pending' THEN 0 ELSE b.total_amount END), 0) AS got,
+                    COALESCE(SUM(CASE WHEN (SELECT p2.status FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) = 'cod_pending' THEN b.total_amount ELSE 0 END), 0) AS cod
+               FROM bookings b
+              WHERE b.status IN ($paidStatuses) AND b.confirmed_at >= :f AND b.confirmed_at < :t1
+              GROUP BY e", ['f' => $from, 't1' => addDaysISO($to, 1)]) as $r) {
+            $byCo[(string) $r['e']]['tickets']   = (int) $r['n'];
+            $byCo[(string) $r['e']]['collected'] = (float) $r['got'];
+            $byCo[(string) $r['e']]['cod']       = (float) $r['cod'];
+        }
+        foreach (Database::fetchAll(
+            "SELECT $ek AS e, COALESCE(SUM(b.refund_amount), 0) AS amt
+               FROM bookings b
+              WHERE b.refund_status = 'processed' AND b.refund_amount > 0 AND b.cancelled_at >= :f AND b.cancelled_at < :t1
+              GROUP BY e", ['f' => $from, 't1' => addDaysISO($to, 1)]) as $r) {
+            $byCo[(string) $r['e']]['refunds'] = (float) $r['amt'];
+        }
+        foreach (Database::fetchAll(
+            "SELECT $ek AS e, COALESCE(SUM(l.amount), 0) AS amt
+               FROM agent_ledger l JOIN bookings b ON b.id = l.booking_id
+              WHERE l.account = 'commission' AND l.entry_type IN ('commission', 'commission_void')
+                AND l.created_at >= :f AND l.created_at < :t1
+              GROUP BY e", ['f' => $from, 't1' => addDaysISO($to, 1)]) as $r) {
+            $byCo[(string) $r['e']]['commission'] = (float) $r['amt'];
+        }
+        if (CounterDesk::hasColumn('payments', 'local_amount')) {
+            foreach (Database::fetchAll(
+                "SELECT $ek AS e, COALESCE(SUM(p.local_amount), 0) AS npr
+                   FROM payments p JOIN bookings b ON b.id = p.booking_id
+                  WHERE p.status = 'verified' AND p.local_currency = 'NPR'
+                    AND p.verified_at >= :f AND p.verified_at < :t1
+                  GROUP BY e", ['f' => $from, 't1' => addDaysISO($to, 1)]) as $r) {
+                $byCo[(string) $r['e']]['npr'] = (float) $r['npr'];
+            }
+        }
+    }
+} catch (Throwable $e) {
+    $coSplit = false;
+}
+
+/* =====================================================================
+ *  1. Collections — every confirmed booking whose money landed in the
+ *     window, one row per booking (so a second payment row can never
+ *     double-count the fare), tagged with its latest payment method.
+ * ===================================================================== */
+$collectByMethod = [];   // method => ['count'=>, 'amount'=>]
+$codPending      = ['count' => 0, 'amount' => 0.0];
+$grossCollected  = 0.0;
+$confirmedCount  = 0;   // all confirmed/completed in window (incl. COD pending)
+$collectedCount  = 0;   // only those whose money is actually in (pairs with $grossCollected)
+$incomeByDay     = [];  // Y-m-d => money in that day
+try {
+    $rows = Database::fetchAll(
+        "SELECT b.total_amount, b.currency, b.is_cod, DATE(b.confirmed_at) AS d,
+                (SELECT p2.method FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) AS method,
+                (SELECT p2.status FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) AS pay_status
+           FROM bookings b
+          WHERE b.status IN ($paidStatuses)
+            AND b.confirmed_at >= :f AND b.confirmed_at < :t1",
+        ['f' => $from, 't1' => addDaysISO($to, 1)]   // sargable range = same days as DATE() BETWEEN, uses ix_bookings_confirmed
+    );
+    foreach ($rows as $r) {
+        $confirmedCount++;
+        $amt    = $inrOf((float) $r['total_amount'], $r['currency']);
+        $method = strtolower((string) ($r['method'] ?? '')) ?: 'unknown';
+        $status = (string) ($r['pay_status'] ?? '');
+
+        if ($status === 'cod_pending') {
+            // Money is NOT in yet — it is still to be collected at the counter.
+            $codPending['count']++;
+            $codPending['amount'] += $amt;
+            continue;
+        }
+
+        $incomeByDay[(string) $r['d']] = ($incomeByDay[(string) $r['d']] ?? 0.0) + $amt;
+        $key = $method === 'cod' ? 'cash' : $method;   // a settled COD is cash in the drawer
+        if (!isset($collectByMethod[$key])) { $collectByMethod[$key] = ['count' => 0, 'amount' => 0.0]; }
+        $collectByMethod[$key]['count']++;
+        $collectByMethod[$key]['amount'] += $amt;
+        $grossCollected += $amt;
+        $collectedCount++;
+    }
+} catch (Throwable $e) {
+    // leave the section empty — the page still renders
+}
+arsort($collectByMethod);
+$methodNames = ['upi' => 'UPI', 'esewa' => 'eSewa', 'cash' => 'Cash', 'bank' => 'Bank',
+                'wallet' => 'Wallet', 'unknown' => 'Unrecorded'];
+
+/* =====================================================================
+ *  2. Commission accrued in the window (what we now owe agents), read
+ *     from the single ledger source, net of reversals.
+ * ===================================================================== */
+$commissionAccrued = 0.0;
+try {
+    $commissionAccrued = (float) Database::scalar(
+        "SELECT COALESCE(SUM(amount), 0) FROM agent_ledger
+          WHERE account = 'commission'
+            AND entry_type IN ('commission', 'commission_void')
+            AND created_at >= :f AND created_at < :t1",
+        ['f' => $from, 't1' => addDaysISO($to, 1)],
+        0
+    );
+} catch (Throwable $e) { $commissionAccrued = 0.0; }
+
+/* =====================================================================
+ *  3. Refunds paid out in the window.
+ * ===================================================================== */
+$refunds = ['count' => 0, 'amount' => 0.0];
+$refundsPending = ['count' => 0, 'amount' => 0.0];
+try {
+    /* 3 Oct 2026: only refunds marked PAID (processed) are money out. A
+       refund still pending used to be counted as paid as soon as the
+       ticket was cancelled. Refunds are settled by hand; marking them
+       processed on the booking moves them into "Refunds out". */
+    $rf = Database::fetch(
+        "SELECT COALESCE(SUM(refund_status = 'processed'), 0) c,
+                COALESCE(SUM(CASE WHEN refund_status = 'processed' THEN refund_amount ELSE 0 END), 0) amt,
+                COALESCE(SUM(refund_status = 'pending'), 0) pc,
+                COALESCE(SUM(CASE WHEN refund_status = 'pending' THEN refund_amount ELSE 0 END), 0) pamt
+           FROM bookings
+          WHERE refund_amount > 0 AND cancelled_at >= :f AND cancelled_at < :t1",
+        ['f' => $from, 't1' => addDaysISO($to, 1)]
+    );
+    $refunds = ['count' => (int) ($rf['c'] ?? 0), 'amount' => (float) ($rf['amt'] ?? 0)];
+    $refundsPending = ['count' => (int) ($rf['pc'] ?? 0), 'amount' => (float) ($rf['pamt'] ?? 0)];
+} catch (Throwable $e) { /* refund columns absent — skip */ }
+
+/* =====================================================================
+ *  4. Paper-ticket register takings in the window.
+ * ===================================================================== */
+$paper = [];
+$paperCash = 0.0;
+try {
+    foreach (Database::fetchAll(
+        "SELECT payment_mode, COUNT(*) c, COALESCE(SUM(amount),0) amt, COALESCE(SUM(commission),0) comm
+           FROM offline_tickets
+          WHERE created_at >= :f AND created_at < :t1
+          GROUP BY payment_mode",
+        ['f' => $from, 't1' => addDaysISO($to, 1)]
+    ) as $r) {
+        $paper[strtolower((string) $r['payment_mode'])] = [
+            'count' => (int) $r['c'], 'amount' => (float) $r['amt'], 'comm' => (float) $r['comm'],
+        ];
+        if (strtolower((string) $r['payment_mode']) === 'cash') { $paperCash += (float) $r['amt']; }
+    }
+} catch (Throwable $e) { /* offline_tickets absent — skip */ }
+
+/* =====================================================================
+ *  5. Cash agents are still holding for the company (live, not windowed
+ *     — a handover clears it whenever it happens). One aggregate query.
+ * ===================================================================== */
+$cashInHand = [];
+$cashInHandTotal = 0.0;
+try {
+    foreach (Database::fetchAll(
+        "SELECT l.agent_admin_id, a.full_name, a.username, COALESCE(SUM(l.amount),0) bal
+           FROM agent_ledger l
+           JOIN admins a ON a.id = l.agent_admin_id
+          WHERE l.account = 'cash'
+          GROUP BY l.agent_admin_id, a.full_name, a.username
+         HAVING bal > 0.5
+          ORDER BY bal DESC
+          LIMIT 40"
+    ) as $r) {
+        $r['code'] = AgentWallet::agentCodeLabel((int) $r['agent_admin_id']);
+        $cashInHand[] = $r;
+        $cashInHandTotal += (float) $r['bal'];
+    }
+} catch (Throwable $e) { /* ledger absent — skip */ }
+
+/* =====================================================================
+ *  6. Open payout requests (17 Sep 2026) — every "please pay out my
+ *     commission" still waiting for the office. Live, not windowed: a
+ *     request stays here until it is paid or declined on the agent's
+ *     360 view. Empty on a database without agent_payout_requests.
+ * ===================================================================== */
+/* =====================================================================
+ *  7. Salaries, payouts, loans and advances (3 Oct 2026).
+ *     Agent side from the agent ledger (salary = adjustment 'SALARY …',
+ *     advance / loan = adjustment 'ADVANCE …'), staff side from payroll.
+ *     Every query is guarded: a missing table is a zero, never a 500.
+ * ===================================================================== */
+$people = ['agent_salary' => 0.0, 'agent_payout' => 0.0, 'cash_handover' => 0.0, 'agent_advance' => 0.0, 'agent_repaid' => 0.0,
+           'staff_salary' => 0.0, 'staff_salary_cash' => 0.0, 'staff_advance' => 0.0, 'staff_count' => 0];
+$outByDay = [];   // Y-m-d => cash that left the company (salaries paid, payouts, advances)
+$tWin = ['f' => $from . ' 00:00:00', 't1' => addDaysISO($to, 1) . ' 00:00:00'];
+try {
+    foreach (Database::fetchAll(
+        "SELECT entry_type, DATE(created_at) d, UPPER(COALESCE(ref, '')) ref, amount
+           FROM agent_ledger
+          WHERE created_at >= :f AND created_at < :t1
+            AND (entry_type IN ('payout', 'cash_handover') OR (entry_type = 'adjustment' AND (ref LIKE 'SALARY%' OR ref LIKE 'ADVANCE%')))",
+        $tWin
+    ) as $r) {
+        $amt = (float) $r['amount'];
+        $d   = (string) $r['d'];
+        if ($r['entry_type'] === 'payout') {
+            $people['agent_payout'] += -$amt;                    // stored negative
+            $outByDay[$d] = ($outByDay[$d] ?? 0.0) + (-$amt);
+        } elseif ($r['entry_type'] === 'cash_handover') {
+            $people['cash_handover'] += -$amt;
+        } elseif (str_starts_with((string) $r['ref'], 'SALARY')) {
+            $people['agent_salary'] += $amt;                     // credited to the wallet, paid by a payout
+        } elseif ($amt < 0) {
+            $people['agent_advance'] += -$amt;
+            $outByDay[$d] = ($outByDay[$d] ?? 0.0) + (-$amt);
+        } else {
+            $people['agent_repaid'] += $amt;
+        }
+    }
+} catch (Throwable $e) { /* ledger absent */ }
+try {
+    foreach (Database::fetchAll(
+        'SELECT paid_on, currency, gross, bonus, other_deduction, net_paid FROM staff_salary_payments WHERE paid_on BETWEEN :f AND :t',
+        ['f' => $from, 't' => $to]
+    ) as $r) {
+        $cost = $inrOf((float) $r['gross'] + (float) $r['bonus'] - (float) $r['other_deduction'], $r['currency']);
+        $paid = $inrOf((float) $r['net_paid'], $r['currency']);
+        $people['staff_salary'] += $cost;
+        $people['staff_salary_cash'] += $paid;
+        $people['staff_count']++;
+        $outByDay[(string) $r['paid_on']] = ($outByDay[(string) $r['paid_on']] ?? 0.0) + $paid;
+    }
+    foreach (Database::fetchAll(
+        "SELECT given_on, amount FROM staff_advances WHERE status <> 'cancelled' AND given_on BETWEEN :f AND :t",
+        ['f' => $from, 't' => $to]
+    ) as $r) {
+        $people['staff_advance'] += (float) $r['amount'];
+        $outByDay[(string) $r['given_on']] = ($outByDay[(string) $r['given_on']] ?? 0.0) + (float) $r['amount'];
+    }
+} catch (Throwable $e) { /* payroll tables absent */ }
+
+/* What is still out on loan TODAY (not windowed) — agents and staff. */
+$loansOut = [];
+$loansOutTotal = 0.0;
+try {
+    // Refresh the register's recovered figures first (display only), the
+    // same step the agent pages take before they show a loan.
+    foreach (Database::fetchAll("SELECT DISTINCT agent_admin_id FROM agent_loans WHERE status = 'open'") as $o) {
+        AgentWallet::syncLoanRecovery((int) $o['agent_admin_id']);
+    }
+    foreach (Database::fetchAll(
+        "SELECT l.agent_admin_id AS who_id, a.full_name, a.username, l.kind, l.issued_on, l.principal, l.recovered
+           FROM agent_loans l JOIN admins a ON a.id = l.agent_admin_id
+          WHERE l.status = 'open' ORDER BY l.issued_on"
+    ) as $r) {
+        $left = round(max(0.0, (float) $r['principal'] - (float) $r['recovered']), 2);
+        if ($left <= 0) { continue; }
+        $loansOut[] = ['who' => (AgentWallet::agentCodeLabel((int) $r['who_id']) ?: 'Agent') . ' · ' . ($r['full_name'] ?: $r['username']),
+                       'kind' => ucfirst((string) $r['kind']), 'on' => (string) $r['issued_on'], 'principal' => (float) $r['principal'], 'left' => $left,
+                       'href' => '/admin/agent-360.php?agent=' . (int) $r['who_id']];
+        $loansOutTotal += $left;
+    }
+} catch (Throwable $e) { /* loans table absent */ }
+try {
+    foreach (Database::fetchAll(
+        "SELECT s.id, s.full_name, a.given_on, a.amount, a.recovered
+           FROM staff_advances a JOIN staff_members s ON s.id = a.staff_id
+          WHERE a.status = 'open' ORDER BY a.given_on"
+    ) as $r) {
+        $left = round(max(0.0, (float) $r['amount'] - (float) $r['recovered']), 2);
+        if ($left <= 0) { continue; }
+        $loansOut[] = ['who' => 'Staff · ' . $r['full_name'], 'kind' => 'Advance', 'on' => (string) $r['given_on'], 'principal' => (float) $r['amount'], 'left' => $left,
+                       'href' => '/admin/payroll.php'];
+        $loansOutTotal += $left;
+    }
+} catch (Throwable $e) { /* payroll tables absent */ }
+$salaryCost = $people['agent_salary'] + $people['staff_salary'];
+
+$openReqs      = AgentWallet::openPayoutRequests();
+$openReqTotal  = 0.0;
+foreach ($openReqs as &$oq) {
+    $oq['code']    = AgentWallet::agentCodeLabel((int) $oq['agent_admin_id']);
+    $openReqTotal += (float) $oq['amount'];
+}
+unset($oq);
+
+/* =====================================================================
+ *  7. Daily expenses (30 Sep 2026, "kati kamai, kati kharcha"). Stored in
+ *     trip_expenses (schema.sql) against the daily bus: the category picks
+ *     the column (diesel / toll / driver_pay), anything else goes to misc
+ *     with the category written in front of the note.
+ * ===================================================================== */
+$expCats  = ['diesel' => 'Diesel · डिजेल', 'toll' => 'Toll · टोल', 'driver' => 'Driver / crew · ड्राइभर', 'salary' => 'Salary · तलब', 'office' => 'Office / rent · अफिस', 'other' => 'Other · अन्य'];
+$canSpend = Auth::isSuperadmin() || Auth::can('payments.verify');
+$expFlash = null;
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['action'] ?? '', ['add_expense', 'delete_expense'], true)) {
+    try {
+        if (!Security::verifyCsrf()) {
+            throw new RuntimeException('Session expired — please try again.');
+        }
+        if (!$canSpend) {
+            throw new RuntimeException('You may not record expenses.');
+        }
+        if ($_POST['action'] === 'delete_expense') {
+            $eid = (int) ($_POST['id'] ?? 0);
+            $old = Database::fetch('SELECT * FROM trip_expenses WHERE id = :i', ['i' => $eid]);
+            if ($old !== null) {
+                Database::delete('trip_expenses', 'id = :i', ['i' => $eid]);
+                Logger::audit('expense.delete', 'trip_expenses', (string) $eid, $old, null, 'Expense deleted');
+            }
+            $expFlash = ['ok', 'Expense deleted.'];
+        } else {
+            $eDate = Security::clean($_POST['exp_date'] ?? '', 10);
+            $cat   = (string) ($_POST['category'] ?? '');
+            $amt   = round((float) ($_POST['amount'] ?? 0), 2);
+            $note  = Security::clean($_POST['note'] ?? '', 200);
+            if (!Security::isValidDate($eDate) || !isset($expCats[$cat]) || $amt <= 0) {
+                throw new RuntimeException('Enter the date, the kind of expense and an amount above 0.');
+            }
+            $routeId = (int) Database::scalar('SELECT id FROM routes WHERE is_active = 1 ORDER BY sort_order, id LIMIT 1', [], 0);
+            if ($routeId <= 0) {
+                throw new RuntimeException('No active route to file the expense against.');
+            }
+            $col = ['diesel' => 'diesel', 'toll' => 'toll', 'driver' => 'driver_pay'][$cat] ?? 'misc';
+            $row = ['route_id' => $routeId, 'expense_date' => $eDate, $col => $amt, 'total' => $amt,
+                    'note' => $col === 'misc' ? ('[' . $cat . '] ' . $note) : $note, 'created_by' => (int) ($admin['id'] ?? 0)];
+            $id  = Database::insert('trip_expenses', $row);
+            Logger::audit('expense.add', 'trip_expenses', (string) $id, null, $row, 'Expense recorded');
+            $expFlash = ['ok', 'Expense of ' . inr($amt) . ' recorded for ' . formatDate($eDate) . '.'];
+        }
+    } catch (Throwable $e) {
+        $expFlash = ['bad', $e->getMessage()];
+    }
+}
+$expenses     = [];
+$expenseTotal = 0.0;
+$expenseByDay = [];
+try {
+    $expenses = Database::fetchAll(
+        'SELECT e.*, a.full_name AS by_name, a.username AS by_user FROM trip_expenses e
+           LEFT JOIN admins a ON a.id = e.created_by
+          WHERE e.expense_date BETWEEN :f AND :t ORDER BY e.expense_date DESC, e.id DESC',
+        ['f' => $from, 't' => $to]
+    );
+    foreach ($expenses as &$ex) {
+        $ex['cat'] = (float) $ex['diesel'] > 0 ? 'diesel' : ((float) $ex['toll'] > 0 ? 'toll' : ((float) $ex['driver_pay'] > 0 ? 'driver' : 'other'));
+        if ($ex['cat'] === 'other' && preg_match('/^\[(\w+)\]\s*(.*)$/', (string) $ex['note'], $m) && isset($expCats[$m[1]])) {
+            $ex['cat']  = $m[1];
+            $ex['note'] = $m[2];
+        }
+        $expenseTotal += (float) $ex['total'];
+        $expenseByDay[(string) $ex['expense_date']] = ($expenseByDay[(string) $ex['expense_date']] ?? 0.0) + (float) $ex['total'];
+    }
+    unset($ex);
+} catch (Throwable $e) {
+    $expenses = [];
+}
+$days = array_unique(array_merge(array_keys($incomeByDay), array_keys($expenseByDay), array_keys($outByDay)));
+rsort($days);
+
+$isToday = ($from === $to && $from === todayISO());
+$rangeLabel = $from === $to ? formatDate($from) : (formatDate($from) . ' → ' . formatDate($to));
+
+admin_header('Accounting', 'accounting');
+?>
+<style>
+  .acc-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px}
+  .acc-tools label{font-size:12px;color:var(--mut)}
+  .acc-tools input[type="date"]{display:block;margin-top:4px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font-size:14px}
+  .acc-quick{display:flex;gap:6px;flex-wrap:wrap}
+  .acc-quick a{font-size:12px;padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font-weight:600}
+  .acc-quick a.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .acc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin-bottom:22px}
+  .acc-grid .panel{margin-bottom:0}
+  .acc-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .acc-tot td{font-weight:800;border-top:2px solid var(--line)}
+  @media(max-width:820px){.acc-grid{grid-template-columns:1fr}}
+  @media print{header.tb,nav.side,.acc-tools,.no-print{display:none!important}main.wrap{margin:0!important;padding:0!important;max-width:none!important}}
+</style>
+
+<form class="acc-tools no-print" method="get">
+  <label>From<input type="date" name="from" value="<?= Security::e($from) ?>" max="<?= Security::e(todayISO()) ?>"></label>
+  <label>To<input type="date" name="to" value="<?= Security::e($to) ?>" max="<?= Security::e(todayISO()) ?>"></label>
+  <button class="btn" type="submit">Show</button>
+  <div class="acc-quick">
+    <a class="<?= $isToday ? 'on' : '' ?>" href="?from=<?= todayISO() ?>&to=<?= todayISO() ?>">Today</a>
+    <a href="?from=<?= date('Y-m-01') ?>&to=<?= todayISO() ?>">This month</a>
+    <a href="?from=<?= date('Y-m-d', strtotime('-29 days')) ?>&to=<?= todayISO() ?>">Last 30 days</a>
+  </div>
+  <button class="btn ghost" type="button" onclick="window.print()">🖨️ Print</button>
+</form>
+
+<p class="muted" style="margin-top:-6px">Day-book for <strong><?= Security::e($rangeLabel) ?></strong> · money shown in ₹ (NPR converted @ 1:<?= Security::e((string) $peg) ?>, from Settings).</p>
+
+<?php if ($coSplit && ($byCo['NP']['tickets'] > 0 || $byCo['NP']['refunds'] > 0 || $byCo['NP']['commission'] != 0.0)): ?>
+<div class="panel no-break" style="margin-bottom:14px">
+  <h2>By company · कम्पनी अनुसार</h2>
+  <table>
+    <thead><tr><th>Company</th><th class="num">Tickets</th><th class="num">Collected</th><th class="num">Still to collect</th><th class="num">Refunds paid</th><th class="num">Agent commission</th><th class="num">NPR in drawers</th></tr></thead>
+    <tbody>
+    <?php foreach (['IN' => 'India company', 'NP' => 'Nepal company'] as $ck => $cl): $c = $byCo[$ck]; ?>
+      <tr><td><b><?= Brand::flagUse($ck, $ck === 'NP' ? 17 : 14, 'en', true) ?> <?= Security::e($cl) ?></b></td>
+        <td class="num"><?= (int) $c['tickets'] ?></td>
+        <td class="num"><?= Security::e(inr($c['collected'])) ?></td>
+        <td class="num"><?= Security::e(inr($c['cod'])) ?></td>
+        <td class="num"><?= Security::e(inr($c['refunds'])) ?></td>
+        <td class="num"><?= Security::e(inr($c['commission'])) ?></td>
+        <td class="num"><?= $c['npr'] > 0 ? Security::e(CounterDesk::format($c['npr'], 'NPR')) : '—' ?></td></tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <p class="muted" style="font-size:12px;margin:8px 0 0">The company that issued each ticket, frozen at sale (online and older tickets = India company).
+    Paper tickets, expenses, salaries and agent cash below are still for the whole business. Money one company collects for the other is settled between them by hand.</p>
+</div>
+<?php endif; ?>
+
+<div class="cards">
+  <div class="card"><div class="k">Collected (money in)</div><div class="v"><?= Security::e(inr($grossCollected)) ?><br><small><?= $collectedCount ?> paid · <?= $confirmedCount ?> confirmed</small></div></div>
+  <div class="card"><div class="k">COD still to collect</div><div class="v"><?= Security::e(inr($codPending['amount'])) ?><br><small><?= $codPending['count'] ?> booking<?= $codPending['count'] === 1 ? '' : 's' ?></small></div></div>
+  <div class="card"><div class="k">Commission payable</div><div class="v"><?= Security::e(inr($commissionAccrued)) ?><br><small>accrued this period</small></div></div>
+  <div class="card"><div class="k">Refunds out (paid)</div><div class="v"><?= Security::e(inr($refunds['amount'])) ?><br><small><?= $refunds['count'] ?> paid<?= $refundsPending['count'] > 0 ? ' · ' . $refundsPending['count'] . ' pending ' . Security::e(inr($refundsPending['amount'])) : '' ?></small></div></div>
+  <div class="card"><div class="k">Salaries · तलब</div><div class="v"><?= Security::e(inr($salaryCost)) ?><br><small>agents <?= Security::e(inr($people['agent_salary'])) ?> · staff <?= Security::e(inr($people['staff_salary'])) ?></small></div></div>
+  <div class="card"><div class="k">Loans / advances out</div><div class="v"><?= Security::e(inr($loansOutTotal)) ?><br><small><?= count($loansOut) ?> open today</small></div></div>
+  <div class="card"><div class="k">Cash held by agents</div><div class="v"><?= Security::e(inr($cashInHandTotal)) ?><br><small>awaiting handover</small></div></div>
+  <div class="card"><div class="k">Expenses · खर्च</div><div class="v"><?= Security::e(inr($expenseTotal)) ?><br><small><?= count($expenses) ?> entr<?= count($expenses) === 1 ? 'y' : 'ies' ?></small></div></div>
+  <div class="card"><div class="k">Payout requests open</div><div class="v"><?= count($openReqs) ?><br><small><?= $openReqs !== [] ? Security::e(inr($openReqTotal)) . ' asked for' : 'nothing waiting' ?></small></div></div>
+</div>
+
+<div class="acc-grid">
+  <div class="panel">
+    <h2>Collections by method</h2>
+    <table>
+      <thead><tr><th>Method</th><th class="acc-num">Bookings</th><th class="acc-num">Amount</th></tr></thead>
+      <tbody>
+        <?php if ($collectByMethod === []): ?>
+          <tr><td colspan="3" class="muted" style="padding:20px;text-align:center">No collections in this period.</td></tr>
+        <?php else: foreach ($collectByMethod as $m => $v): ?>
+          <tr>
+            <td><?= Security::e($methodNames[$m] ?? ucfirst($m)) ?></td>
+            <td class="acc-num"><?= (int) $v['count'] ?></td>
+            <td class="acc-num"><?= Security::e(inr($v['amount'])) ?></td>
+          </tr>
+        <?php endforeach; endif; ?>
+        <?php if ($codPending['amount'] > 0): ?>
+          <tr>
+            <td class="muted">COD — pending <span class="pill" style="background:#fff4d1;color:#8a6d00;font-size:11px">to collect</span></td>
+            <td class="acc-num muted"><?= (int) $codPending['count'] ?></td>
+            <td class="acc-num muted"><?= Security::e(inr($codPending['amount'])) ?></td>
+          </tr>
+        <?php endif; ?>
+      </tbody>
+      <tfoot><tr class="acc-tot"><td>Total collected</td><td class="acc-num"><?= $collectedCount ?></td><td class="acc-num"><?= Security::e(inr($grossCollected)) ?></td></tr></tfoot>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Paper-ticket register</h2>
+    <table>
+      <thead><tr><th>Paid by</th><th class="acc-num">Tickets</th><th class="acc-num">Amount</th><th class="acc-num">Commission</th></tr></thead>
+      <tbody>
+        <?php if ($paper === []): ?>
+          <tr><td colspan="4" class="muted" style="padding:20px;text-align:center">No paper tickets in this period.</td></tr>
+        <?php else: foreach ($paper as $mode => $v): ?>
+          <tr>
+            <td><?= Security::e(ucfirst($mode)) ?></td>
+            <td class="acc-num"><?= (int) $v['count'] ?></td>
+            <td class="acc-num"><?= Security::e(inr($v['amount'])) ?></td>
+            <td class="acc-num"><?= Security::e(inr($v['comm'])) ?></td>
+          </tr>
+        <?php endforeach; endif; ?>
+      </tbody>
+    </table>
+    <p class="muted" style="padding:10px 18px;font-size:12px;margin:0">Cash taken on paper tickets: <strong><?= Security::e(inr($paperCash)) ?></strong> — already on the sellers' cash-in-hand below.</p>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Cash agents are holding (to hand over)</h2>
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>Agent</th><th>Code</th><th class="acc-num">Cash in hand</th><th></th></tr></thead>
+    <tbody>
+      <?php if ($cashInHand === []): ?>
+        <tr><td colspan="4" class="muted" style="padding:20px;text-align:center">No agent is holding company cash right now.</td></tr>
+      <?php else: foreach ($cashInHand as $c): ?>
+        <tr>
+          <td><?= Security::e((string) ($c['full_name'] ?: $c['username'])) ?></td>
+          <td class="mono"><?= Security::e($c['code'] ?: '—') ?></td>
+          <td class="acc-num"><?= Security::e(inr((float) $c['bal'])) ?></td>
+          <td><a class="btn ghost" style="font-size:12px;padding:5px 12px" href="<?= $base ?>/admin/agent-360.php?agent=<?= (int) $c['agent_admin_id'] ?>&amp;tab=settlements" title="Agent 360 — record the handover and print the receipt">Settle →</a></td>
+        </tr>
+      <?php endforeach; endif; ?>
+    </tbody>
+    <?php if ($cashInHand !== []): ?>
+    <tfoot><tr class="acc-tot"><td colspan="2">Total to hand over</td><td class="acc-num"><?= Security::e(inr($cashInHandTotal)) ?></td><td></td></tr></tfoot>
+    <?php endif; ?>
+  </table>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Open payout requests <span class="muted" style="font-weight:500;font-size:13px">· agents asking to be paid their commission</span></h2>
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>Agent</th><th>Code</th><th>Requested</th><th class="acc-num">Amount</th><th>Note</th><th></th></tr></thead>
+    <tbody>
+      <?php if ($openReqs === []): ?>
+        <tr><td colspan="6" class="muted" style="padding:20px;text-align:center">No payout request is waiting for a decision.</td></tr>
+      <?php else: foreach ($openReqs as $q): ?>
+        <tr>
+          <td><?= Security::e((string) ($q['agent_name'] ?: $q['agent_username'])) ?></td>
+          <td class="mono"><?= Security::e($q['code'] ?: '—') ?></td>
+          <td class="muted"><?= Security::e(formatDate(substr((string) $q['created_at'], 0, 10), 'j M Y')) ?> <span style="font-size:11px">· <?= Security::e(timeAgo((string) $q['created_at'])) ?></span></td>
+          <td class="acc-num"><?= Security::e(inr((float) $q['amount'])) ?></td>
+          <td class="muted" style="font-size:12px"><?= Security::e((string) ($q['note'] ?: '—')) ?></td>
+          <td><a class="btn ghost" style="font-size:12px;padding:5px 12px" href="<?= $base ?>/admin/agent-360.php?agent=<?= (int) $q['agent_admin_id'] ?>&amp;tab=requests">Decide →</a>
+            <?php /* 17 Sep 2026: one WhatsApp button per row — the settlement receipt once a
+                     payout ledger row exists on the request, otherwise the agent's balance
+                     today. Nothing renders when wa_admin_tools_enabled is off. */ ?>
+            <?= (int) ($q['ledger_id'] ?? 0) > 0
+                ? admin_wa_button('agent_settlement_done', ['agent' => (int) $q['agent_admin_id'], 'ledger' => (int) $q['ledger_id']], 'Receipt', ['class' => 'btn ghost sm'])
+                : admin_wa_button('agent_outstanding', ['agent' => (int) $q['agent_admin_id']], 'Balance', ['class' => 'btn ghost sm']) ?></td>
+        </tr>
+      <?php endforeach; endif; ?>
+    </tbody>
+    <?php if ($openReqs !== []): ?>
+    <tfoot><tr class="acc-tot"><td colspan="3">Total requested</td><td class="acc-num"><?= Security::e(inr($openReqTotal)) ?></td><td colspan="2"></td></tr></tfoot>
+    <?php endif; ?>
+  </table>
+  </div>
+</div>
+
+<div class="panel" id="expenses">
+  <h2>💸 Expenses · दैनिक खर्च</h2>
+  <?php if ($expFlash !== null): ?><div class="flash <?= Security::e($expFlash[0]) ?>" style="margin:0 18px 10px"><?= Security::e($expFlash[1]) ?></div><?php endif; ?>
+  <?php if ($canSpend): ?>
+  <form method="post" action="#expenses" class="acc-tools no-print" style="padding:0 18px">
+    <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= Security::e(Security::csrfToken()) ?>">
+    <input type="hidden" name="action" value="add_expense">
+    <label>Date<input type="date" name="exp_date" value="<?= Security::e($to) ?>" required></label>
+    <label>Kind<select name="category" style="display:block;margin-top:4px"><?php foreach ($expCats as $ck => $cl): ?><option value="<?= $ck ?>"><?= Security::e($cl) ?></option><?php endforeach; ?></select></label>
+    <label>Amount ₹<input type="number" name="amount" min="1" step="0.01" required style="display:block;margin-top:4px;width:120px"></label>
+    <label style="flex:1;min-width:180px">Note<input type="text" name="note" maxlength="200" placeholder="bill no, pump, who was paid" style="display:block;margin-top:4px;width:100%"></label>
+    <button class="btn" type="submit">➕ Add expense</button>
+  </form>
+  <?php endif; ?>
+  <table>
+    <thead><tr><th>Date</th><th>Kind</th><th>Note</th><th>By</th><th class="acc-num">Amount</th><?php if ($canSpend): ?><th class="no-print"></th><?php endif; ?></tr></thead>
+    <tbody>
+    <?php if ($expenses === []): ?>
+      <tr><td colspan="6" class="muted" style="text-align:center;padding:14px">No expenses recorded for <?= Security::e($rangeLabel) ?>.</td></tr>
+    <?php endif; ?>
+    <?php foreach ($expenses as $ex): ?>
+      <tr>
+        <td><?= Security::e(formatDate((string) $ex['expense_date'])) ?></td>
+        <td><?= Security::e($expCats[$ex['cat']] ?? $ex['cat']) ?></td>
+        <td><?= Security::e((string) $ex['note']) ?></td>
+        <td class="muted"><?= Security::e((string) ($ex['by_name'] ?: $ex['by_user'] ?: '')) ?></td>
+        <td class="acc-num"><?= Security::e(inr((float) $ex['total'])) ?></td>
+        <?php if ($canSpend): ?><td class="no-print"><form method="post" action="#expenses" onsubmit="return confirm('Delete this expense?')"><input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= Security::e(Security::csrfToken()) ?>"><input type="hidden" name="action" value="delete_expense"><input type="hidden" name="id" value="<?= (int) $ex['id'] ?>"><button class="btn ghost btn-sm" type="submit">🗑</button></form></td><?php endif; ?>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+    <?php if ($expenses !== []): ?><tfoot><tr class="acc-tot"><td colspan="4">Total expenses</td><td class="acc-num"><?= Security::e(inr($expenseTotal)) ?></td><?php if ($canSpend): ?><td></td><?php endif; ?></tr></tfoot><?php endif; ?>
+  </table>
+</div>
+
+<?php if ($days !== []): ?>
+<div class="panel">
+  <h2>📅 Day by day · दिनदिनैको हिसाब</h2>
+  <table>
+    <thead><tr><th>Date</th><th class="acc-num">Money in · आम्दानी</th><th class="acc-num">Expenses · खर्च</th><th class="acc-num">Salaries, payouts, advances</th><th class="acc-num">Net · बाँकी</th></tr></thead>
+    <tbody>
+    <?php foreach ($days as $d): $in = (float) ($incomeByDay[$d] ?? 0); $out = (float) ($expenseByDay[$d] ?? 0); $pout = (float) ($outByDay[$d] ?? 0); $net = $in - $out - $pout; ?>
+      <tr><td><?= Security::e(formatDate($d)) ?></td><td class="acc-num"><?= Security::e(inr($in)) ?></td><td class="acc-num"><?= Security::e(inr($out)) ?></td><td class="acc-num"><?= Security::e(inr($pout)) ?></td>
+          <td class="acc-num" style="font-weight:700;color:<?= $net < 0 ? '#b91c1c' : '#0a6b3b' ?>"><?= Security::e(inr($net)) ?></td></tr>
+    <?php endforeach; ?>
+    </tbody>
+    <tfoot><tr class="acc-tot"><td>Total</td><td class="acc-num"><?= Security::e(inr(array_sum($incomeByDay))) ?></td><td class="acc-num"><?= Security::e(inr($expenseTotal)) ?></td><td class="acc-num"><?= Security::e(inr(array_sum($outByDay))) ?></td><td class="acc-num"><?= Security::e(inr(array_sum($incomeByDay) - $expenseTotal - array_sum($outByDay))) ?></td></tr></tfoot>
+  </table>
+  <p class="muted" style="padding:10px 18px;font-size:12px;margin:0">Cash view of each day: money in = verified payments on confirmed tickets (COD not yet collected is left out); out = expenses, staff salaries paid, agent payouts and advances / loans given. Refunds and commission earned are in the summary below.</p>
+</div>
+<?php endif; ?>
+
+<div class="acc-grid">
+  <div class="panel">
+    <h2>👥 Salaries, payouts &amp; loans <span class="muted" style="font-weight:500;font-size:13px">· this period</span></h2>
+    <table>
+      <tr><th>Agent salary credited</th><td class="acc-num"><?= Security::e(inr($people['agent_salary'])) ?></td></tr>
+      <tr><th>Staff salary (cost<?= $people['staff_count'] > 0 ? ', ' . (int) $people['staff_count'] . ' payment' . ($people['staff_count'] === 1 ? '' : 's') : '' ?>)</th><td class="acc-num"><?= Security::e(inr($people['staff_salary'])) ?></td></tr>
+      <tr><th>Staff salary paid in cash / bank</th><td class="acc-num"><?= Security::e(inr($people['staff_salary_cash'])) ?></td></tr>
+      <tr><th>Commission paid out to agents</th><td class="acc-num"><?= Security::e(inr($people['agent_payout'])) ?></td></tr>
+      <tr><th>Cash handed over by agents</th><td class="acc-num"><?= Security::e(inr($people['cash_handover'])) ?></td></tr>
+      <tr><th>Advances / loans given — agents</th><td class="acc-num"><?= Security::e(inr($people['agent_advance'])) ?></td></tr>
+      <tr><th>Advances given — staff</th><td class="acc-num"><?= Security::e(inr($people['staff_advance'])) ?></td></tr>
+      <tr><th>Loans repaid / written off — agents</th><td class="acc-num"><?= Security::e(inr($people['agent_repaid'])) ?></td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <h2>🏦 Loans &amp; advances still out <span class="muted" style="font-weight:500;font-size:13px">· today · <?= Security::e(inr($loansOutTotal)) ?></span></h2>
+    <?php if ($loansOut === []): ?>
+      <div style="padding:16px 18px" class="muted">No open loan or advance.</div>
+    <?php else: ?>
+    <table>
+      <thead><tr><th>Who</th><th>Kind</th><th>Given</th><th class="acc-num">Amount</th><th class="acc-num">Still out</th></tr></thead>
+      <tbody>
+      <?php foreach ($loansOut as $lo): ?>
+        <tr><td><a href="<?= $base . Security::e($lo['href']) ?>"><?= Security::e($lo['who']) ?></a></td><td><?= Security::e($lo['kind']) ?></td><td><?= Security::e(formatDate($lo['on'], 'j M Y')) ?></td>
+          <td class="acc-num"><?= Security::e(inr($lo['principal'])) ?></td><td class="acc-num"><b><?= Security::e(inr($lo['left'])) ?></b></td></tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+    <?php endif; ?>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Period summary</h2>
+  <table>
+    <tr><th>Money collected (verified)</th><td class="acc-num"><?= Security::e(inr($grossCollected)) ?></td></tr>
+    <tr><th>COD still to collect</th><td class="acc-num"><?= Security::e(inr($codPending['amount'])) ?></td></tr>
+    <tr><th>Refunds paid out<?= $refundsPending['count'] > 0 ? ' <span class="muted" style="font-weight:400">(' . $refundsPending['count'] . ' more pending: ' . Security::e(inr($refundsPending['amount'])) . ')</span>' : '' ?></th><td class="acc-num">− <?= Security::e(inr($refunds['amount'])) ?></td></tr>
+    <tr><th>Agent commission payable (accrued)</th><td class="acc-num">− <?= Security::e(inr($commissionAccrued)) ?></td></tr>
+    <tr class="acc-tot"><th>Net after refunds &amp; commission</th><td class="acc-num"><?= Security::e(inr($grossCollected - $refunds['amount'] - $commissionAccrued)) ?></td></tr>
+    <tr><th>Expenses (diesel, toll, salary, office…)</th><td class="acc-num">− <?= Security::e(inr($expenseTotal)) ?></td></tr>
+    <tr><th>Salaries (agents credited + staff)</th><td class="acc-num">− <?= Security::e(inr($salaryCost)) ?></td></tr>
+    <tr class="acc-tot"><th>Net after expenses &amp; salaries · खुद नाफा</th><td class="acc-num"><?= Security::e(inr($grossCollected - $refunds['amount'] - $commissionAccrued - $expenseTotal - $salaryCost)) ?></td></tr>
+  </table>
+  <p class="muted" style="padding:10px 18px;font-size:12px;margin:0">
+    Commission and agent salary are what agents <em>earned</em> this period (payable through their wallet), not what was paid out; payouts, advances and loans move cash, not profit, and are listed above. Use <a href="<?= $base ?>/admin/agent-ranking.php">Agent Ranking</a> and each agent's wallet for payouts and handovers.
+  </p>
+</div>
+<?php
+admin_footer();

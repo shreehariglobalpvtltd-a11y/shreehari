@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="ne">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a2a8f">
+<title>अनलाइन आवेदन · Digital Application — S Hari Global</title>
+<meta name="description" content="S Hari Global Agent, Driver, Staff, and Transit Partner online application form with verified WhatsApp and digital KYC.">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png">
+<style>
+:root{--navy:#0a2a8f;--blue:#1f4fe0;--sky:#2f6bff;--org:#f07a1e;--org-d:#d4570c;--gold:#ffc23d;--ink:#0d1b3e;--mut:#5b6b8c;--line:#d8e1f3;--bg:#eef3fc;--card:#fff;--ok:#0f9d6b;--bad:#c62828;--amber:#b26a00;--amber-bg:#fff8ed}
+@media (prefers-color-scheme:dark){:root{--ink:#eef3ff;--mut:#a9b8da;--line:#2a3a63;--bg:#071028;--card:#0f1b3d;--amber-bg:#261b07}}
+*{box-sizing:border-box}[hidden]{display:none!important}
+html,body{margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans Devanagari",sans-serif;color:var(--ink);background:var(--bg);line-height:1.45;-webkit-text-size-adjust:100%}
+a{color:var(--sky)}
+.top{position:relative;color:#fff;padding:20px 16px 50px;background:linear-gradient(135deg,#071a5e,var(--navy) 40%,var(--blue) 80%,var(--sky))}
+.top-in{max-width:680px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:#fff;margin-bottom:12px}
+.brand img{width:48px;height:auto;background:#fff;border-radius:10px;padding:3px}
+.brand b{display:block;font-size:16px;letter-spacing:.03em}
+.brand small{display:block;font-size:11px;color:var(--gold);letter-spacing:.08em;font-weight:700}
+h1{margin:0 0 6px;font-size:clamp(22px,5.5vw,28px);font-weight:900}
+.lead{margin:0;font-size:13.5px;color:#dfe8ff}
+.draft-bar{display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.16);padding:6px 12px;border-radius:10px;margin-top:12px;font-size:12px}
+.draft-bar button{background:transparent;border:0;color:#fff;font-weight:800;cursor:pointer;text-decoration:underline;font-size:12px}
+main{max-width:680px;margin:-34px auto 0;padding:0 12px 140px;position:relative}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;margin-bottom:14px;box-shadow:0 12px 30px -20px rgba(10,42,143,.45)}
+.card h2{margin:0 0 12px;font-size:16.5px;display:flex;align-items:center;gap:8px}
+.card h2 i{font-style:normal;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:13px;color:#fff;background:linear-gradient(140deg,var(--sky),var(--navy));flex:0 0 28px}
+label.f{display:block;margin:0 0 12px}
+label.f > span{display:block;font-size:13px;font-weight:700;margin-bottom:4px}
+label.f > span em{color:var(--bad);font-style:normal}
+input[type=text],input[type=tel],input[type=email],input[type=date],select,textarea{width:100%;min-height:48px;padding:10px 12px;font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:12px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0 3px rgba(47,107,255,.18)}
+[aria-invalid=true]{border-color:var(--bad)!important;background:rgba(198,40,40,.06)!important}
+.field-uncertain{border-color:var(--amber)!important;background:var(--amber-bg)!important}
+.amber-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;background:rgba(178,106,0,.15);color:var(--amber);margin-top:4px}
+.row{display:grid;grid-template-columns:105px minmax(0,1fr);gap:8px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:50px;padding:0 16px;border:0;border-radius:14px;font:inherit;font-size:15px;font-weight:800;cursor:pointer;text-decoration:none;color:#fff;background:linear-gradient(120deg,var(--sky),var(--navy));box-shadow:0 8px 18px -10px rgba(10,42,143,.8)}
+.btn.ghost{background:transparent;color:var(--sky);border:1.5px dashed var(--sky);box-shadow:none}
+.btn.wa{background:#1faa59;box-shadow:0 8px 18px -10px rgba(31,170,89,.8)}
+.btn.small{min-height:40px;font-size:13px;width:auto}
+.btn:active{transform:translateY(1px)}
+.shot{display:grid;grid-template-columns:100px minmax(0,1fr);gap:12px;align-items:center}
+.prev{width:100px;height:100px;border-radius:14px;border:1.5px dashed var(--line);background:var(--bg) center/cover no-repeat;display:grid;place-items:center;font-size:30px;color:var(--mut);overflow:hidden}
+.prev.has{border-style:solid;border-color:var(--ok);font-size:0}
+.sigw{position:relative;border:1.5px solid var(--line);border-radius:14px;background:#fff;overflow:hidden;touch-action:none}
+.sigw canvas{display:block;width:100%;height:160px;touch-action:none;cursor:crosshair}
+.chk{display:flex;gap:10px;align-items:flex-start;margin:10px 0;font-size:13.5px}
+.chk input{width:22px;height:22px;flex:0 0 22px;margin:1px 0 0;accent-color:var(--sky)}
+.on-behalf-box{background:rgba(240,122,30,.08);border:1.5px solid rgba(240,122,30,.4);border-radius:14px;padding:12px;margin-top:12px}
+.go{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(0,0,0,0),var(--bg) 35%)}
+.go .btn{max-width:680px;margin:0 auto;min-height:54px;font-size:16.5px;background:linear-gradient(120deg,#ffa24d,var(--org) 50%,var(--org-d));box-shadow:0 12px 22px -10px rgba(212,87,12,.9)}
+.go .btn[disabled]{opacity:.65;cursor:not-allowed}
+.msg{margin:10px 0 0;padding:10px 12px;border-radius:12px;font-size:13.5px;font-weight:700}
+.msg.ok{background:rgba(15,157,107,.12);color:var(--ok);border:1px solid rgba(15,157,107,.35)}
+.msg.bad{background:rgba(198,40,40,.1);color:var(--bad);border:1px solid rgba(198,40,40,.35)}
+</style>
+<script src="/assets/js/photo-studio.js?v=20261025"></script>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="/">
+      <img src="/assets/img/logo-mark-96h.png" alt="S Hari Global">
+      <div><b>S HARI GLOBAL™</b><small>DIGITAL TEAM ONBOARDING</small></div>
+    </a>
+    <h1>अनलाइन टिम आवेदन फारम</h1>
+    <p class="lead">एजेन्ट, चालक (Driver), कर्मचारी वा साझेदार कम्पनीको लागि डिजिटल फारम।</p>
+    <div class="draft-bar" id="draftBar" style="display:none">
+      <span>💾 अघिल्लो ड्राफ्ट भेटियो (Saved draft found)</span>
+      <div>
+        <button type="button" onclick="restoreDraft()">पुनर्स्थापना (Restore)</button> ·
+        <button type="button" onclick="clearDraft()">हटाउनुहोस् (Clear)</button>
+      </div>
+    </div>
+
+    <!-- Live Application Tracker Bar -->
+    <div style="background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.3);border-radius:14px;padding:12px 14px;margin-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <span style="font-size:13px;font-weight:700">🔍 पहिले आवेदन गर्नुभएको छ? स्थिति जाँच्नुहोस् (Track Status)</span>
+        <button type="button" class="btn ghost small" style="min-height:34px;color:#fff;border-color:rgba(255,255,255,0.6);padding:0 12px;font-size:12px" onclick="document.getElementById('trackerModal').style.display='flex'">स्थिति हेर्नुहोस् (Track Application) &rarr;</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Modal: Live Application Tracker -->
+<div id="trackerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:99999;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px)">
+  <div style="background:var(--card);border:1px solid var(--line);border-radius:20px;max-width:520px;width:100%;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,0.3);position:relative">
+    <button type="button" style="position:absolute;top:16px;right:16px;border:0;background:transparent;font-size:22px;font-weight:800;color:var(--mut);cursor:pointer" onclick="document.getElementById('trackerModal').style.display='none'">×</button>
+    <h3 style="margin:0 0 12px;font-size:17px;font-weight:900;display:flex;align-items:center;gap:8px">
+      <span>🔍</span> आवेदन स्थिति ट्र्याकर (Application Status)
+    </h3>
+    <p style="font-size:13px;color:var(--mut);margin:0 0 14px">
+      तपाईंको आवेदन नम्बर (जस्तै: <code>AGR-000035</code>, <code>STF-000010</code>) वा १० अङ्कको WhatsApp मोबाइल नम्बर लेख्नुहोस्:
+    </p>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input type="text" id="trackInput" placeholder="Ref code or 10-digit mobile" style="flex:1">
+      <button type="button" class="btn small" style="width:auto;padding:0 16px" onclick="queryTrackStatus()">जाँच्नुहोस् (Check)</button>
+    </div>
+    <div id="trackResult" style="display:none;padding:14px;border-radius:12px;background:var(--bg);border:1.5px solid var(--line);font-size:13.5px"></div>
+  </div>
+</div>
+
+<main>
+  <form id="applyForm" onsubmit="submitForm(event)">
+    <input type="hidden" name="csrf" id="csrfToken" value="">
+
+    <!-- Section 1: Role & Purpose -->
+    <section class="card">
+      <h2><i>1</i> पद तथा जिम्मेवारी · Role Selection</h2>
+      <label class="f">
+        <span>कुन पदको लागि आवेदन गर्दै हुनुहुन्छ? (Select Category) <em>*</em></span>
+        <select name="role" id="roleSelect" required onchange="onRoleChange()">
+          <option value="agent">🎫 १. मुख्य बुकिङ एजेन्ट (Authorized Master Agent)</option>
+          <option value="subagent">🤝 २. सब-एजेन्ट / काउन्टर स्टाफ (Sub-Agent / Agent Staff)</option>
+          <option value="office">🏢 ३. कम्पनी स्टाफ / काउन्टर प्रतिनिधि (Company Staff)</option>
+          <option value="driver">🚌 ४. बस चालक / क्याप्टेन (Bus Captain / Driver)</option>
+          <option value="partner">🤝 ५. ट्रान्जिट साझेदार कम्पनी (Pvt. Ltd. Transit Partner)</option>
+        </select>
+      </label>
+
+      <!-- Parent Master Agent selection for Sub-Agents -->
+      <div id="subAgentParentBox" style="display:none;background:rgba(47,107,255,0.06);border:1.5px dashed var(--sky);border-radius:12px;padding:12px;margin-top:10px">
+        <label class="f" style="margin:0">
+          <span>कुन मुख्य एजेन्टको मातहतमा काम गर्नुहुन्छ? (Parent Master Agent Code) <em>*</em></span>
+          <input type="text" name="parent_agent_code" id="f_parent_code" placeholder="जस्तै: SHG-0001, SHG-0005 वा एजेन्टको नाम/नम्बर" oninput="saveDraft()">
+          <small style="color:var(--mut);font-size:11.5px;display:block;margin-top:4px">सब-एजेन्टले बेचेको हरेक टिकटमा मुख्य एजेन्ट र सब-एजेन्ट दुवैको रेकर्ड रहनेछ।</small>
+        </label>
+      </div>
+
+      <div style="margin-top:10px">
+        <button type="button" class="btn ghost small" onclick="triggerDocRead()">📷 डकुमेन्ट स्क्यान गरी स्वतः भर्नुहोस् (Auto-Fill from ID/Form)</button>
+        <input type="file" id="docReadInput" accept="image/*,application/pdf" style="display:none" onchange="processDocRead(this)">
+      </div>
+    </section>
+
+    <!-- Section 2: Personal Details -->
+    <section class="card">
+      <h2><i>2</i> व्यक्तिगत विवरण · Personal Details</h2>
+      <label class="f">
+        <span>पूरा नाम (Full Name) <em>*</em></span>
+        <input type="text" name="name" id="f_name" required placeholder="जस्तै: राम बहादुर थापा" oninput="saveDraft()">
+      </label>
+
+      <div class="row2">
+        <label class="f">
+          <span>लिङ्ग (Gender)</span>
+          <select name="gender" id="f_gender" onchange="saveDraft()">
+            <option value="male">पुरुष (Male)</option>
+            <option value="female">महिला (Female)</option>
+            <option value="other">अन्य (Other)</option>
+          </select>
+        </label>
+        <label class="f">
+          <span>जन्म मिति (DOB) <em>*</em></span>
+          <input type="date" name="dob" id="f_dob" required onchange="saveDraft()">
+        </label>
+      </div>
+    </section>
+
+    <!-- Section 3: Contact & Phone Verification -->
+    <section class="card">
+      <h2><i>3</i> सम्पर्क तथा WhatsApp प्रमाणीकरण · Contact & Phone</h2>
+      <label class="f">
+        <span>मोबाइल नम्बर (WhatsApp Mobile) <em>*</em></span>
+        <div class="row">
+          <select name="cc" id="f_cc" onchange="saveDraft()">
+            <option value="91">🇮🇳 +91</option>
+            <option value="977">🇳🇵 +977</option>
+          </select>
+          <input type="tel" name="phone" id="f_phone" required maxlength="10" placeholder="10-digit number" oninput="saveDraft()">
+        </div>
+      </label>
+
+      <div style="margin-top:6px">
+        <button type="button" class="btn wa small" id="waVerifyBtn" onclick="startWaVerify()">💬 WhatsApp मार्फत १-क्लिक प्रमाणीकरण</button>
+        <span id="waStatusPill" style="display:none;margin-left:8px;font-weight:800;color:var(--ok)">✓ प्रमाणित (Verified)</span>
+      </div>
+
+      <label class="f" style="margin-top:12px">
+        <span>इमेल (Email - ऐच्छिक)</span>
+        <input type="email" name="email" id="f_email" placeholder="example@gmail.com" oninput="saveDraft()">
+      </label>
+    </section>
+
+    <!-- Section 4: Address, Location & Route -->
+    <section class="card">
+      <h2><i>4</i> ठेगाना तथा रुट · Location & Route</h2>
+      <div class="row2">
+        <label class="f">
+          <span>देश (Country) <em>*</em></span>
+          <select name="country" id="f_country" onchange="saveDraft()">
+            <option value="IN">भारत (India)</option>
+            <option value="NP">नेपाल (Nepal)</option>
+          </select>
+        </label>
+        <label class="f">
+          <span>जिल्ला / राज्य (District / State) <em>*</em></span>
+          <input type="text" name="district" id="f_district" required placeholder="जस्तै: Banke / Gujarat" oninput="saveDraft()">
+        </label>
+      </div>
+
+      <label class="f">
+        <span>स्थायी ठेगाना (Permanent Address) <em>*</em></span>
+        <textarea name="address" id="f_address" required rows="2" placeholder="गाउँ/नगर, वडा नं, टोल" oninput="saveDraft()"></textarea>
+      </label>
+
+      <label class="f">
+        <span>सञ्चालन हुने रुट / कार्यक्षेत्र (Operating Route / Area) <em>*</em></span>
+        <select name="route" id="f_route" onchange="saveDraft()">
+          <option value="Surat/Kamrej/Ahmedabad ↔ Rupaidiha/Nepalgunj">Surat/Kamrej/Ahmedabad ↔ Rupaidiha/Nepalgunj (Primary AC Sleeper)</option>
+          <option value="Rajkot/Mehsana ↔ Rupaidiha/Nepalgunj">Rajkot/Mehsana ↔ Rupaidiha/Nepalgunj</option>
+          <option value="Delhi ↔ Nepalgunj">Delhi ↔ Nepalgunj</option>
+          <option value="Haridwar/Dehradun ↔ Nepalgunj">Haridwar/Dehradun ↔ Nepalgunj</option>
+          <option value="All Routes / Head Office Network">All Routes / Head Office Network</option>
+        </select>
+      </label>
+
+      <!-- Emergency Contact Details -->
+      <div style="background:var(--bg);padding:12px;border-radius:12px;border:1px solid var(--line);margin-top:10px">
+        <span style="font-size:12.5px;font-weight:800;color:var(--ink);display:block;margin-bottom:8px">🚨 आपतकालीन सम्पर्क (Emergency Contact) <em>*</em></span>
+        <div class="row2">
+          <label class="f" style="margin:0">
+            <span>सम्पर्क व्यक्तिको नाम (Name)</span>
+            <input type="text" name="em_name" id="f_em_name" placeholder="नातेदार वा परिवार सदस्य" oninput="saveDraft()">
+          </label>
+          <label class="f" style="margin:0">
+            <span>सम्बन्ध (Relation)</span>
+            <input type="text" name="em_rel" id="f_em_rel" placeholder="जस्तै: बुवा, दाजु, श्रीमान्" oninput="saveDraft()">
+          </label>
+        </div>
+        <label class="f" style="margin:8px 0 0">
+          <span>आपतकालीन मोबाइल (Emergency Phone)</span>
+          <input type="tel" name="em_phone" id="f_em_phone" maxlength="10" placeholder="१० अङ्कको मोबाइल नम्बर" oninput="saveDraft()">
+        </label>
+      </div>
+    </section>
+
+    <!-- Section 5: Role-Relevant Identity & Documents -->
+    <section class="card">
+      <h2><i>5</i> परिचयपत्र तथा कागजात · Identity & Documents</h2>
+      <div class="row2">
+        <label class="f">
+          <span>परिचयपत्र प्रकार (ID Type) <em>*</em></span>
+          <select name="idtype" id="f_idtype" onchange="saveDraft()">
+            <option value="citizenship">नागरिकता (Citizenship Certificate)</option>
+            <option value="aadhaar">आधार कार्ड (Aadhaar Card)</option>
+            <option value="driving_license">सवारी चालक अनुमतिपत्र (Driving License)</option>
+            <option value="passport">राहदानी (Passport)</option>
+            <option value="pan">PAN / GST Card</option>
+          </select>
+        </label>
+        <label class="f">
+          <span>परिचयपत्र नं. (ID Number) <em>*</em></span>
+          <input type="text" name="idno" id="f_idno" required placeholder="कार्डमा भएको नम्बर" oninput="saveDraft()">
+        </label>
+      </div>
+
+      <!-- Driver Specific Fields -->
+      <div id="driverFields" style="display:none">
+        <div class="row2">
+          <label class="f">
+            <span>लाइसेन्स श्रेणी (License Category)</span>
+            <input type="text" name="license_category" id="f_lic_cat" placeholder="जस्तै: Heavy Bus / Medium">
+          </label>
+          <label class="f">
+            <span>लाइसेन्स म्याद (License Expiry)</span>
+            <input type="date" name="license_expiry" id="f_lic_exp">
+          </label>
+        </div>
+      </div>
+
+      <label class="f">
+        <span>परिचयपत्रको फोटो / स्क्यान प्रति (ID Photo / Scan) <em>*</em></span>
+        <input type="file" id="f_doc_file" accept="image/*,application/pdf" onchange="loadDocPreview(this)">
+        <input type="hidden" name="doc_data" id="f_doc_data">
+      </label>
+    </section>
+
+    <!-- Section 6: Passport Photo & Digital Signature -->
+    <section class="card">
+      <h2><i>6</i> पासपोर्ट फोटो र डिजिटल सही · Photo & Signature</h2>
+      <div class="shot">
+        <div class="prev" id="photoPreview">👤</div>
+        <div>
+          <button type="button" class="btn ghost small" onclick="openStudioForNew()">📷 पासपोर्ट फोटो खिच्नुहोस् / मिलाउनुहोस्</button>
+          <input type="hidden" name="photo_data" id="f_photo_data" required>
+          <div style="font-size:12px;color:var(--mut);margin-top:6px">३५×४५ मि.मि. पासपोर्ट साइज, अनुहार स्पष्ट देखिने</div>
+        </div>
+      </div>
+
+      <label class="f" style="margin-top:16px">
+        <span>डिजिटल सही (Digital Finger / Touch Signature) <em>*</em></span>
+        <div class="sigw">
+          <canvas id="sigCanvas"></canvas>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px">
+          <span style="font-size:12px;color:var(--mut)">औंलाले बाकसभित्र सही गर्नुहोस्</span>
+          <button type="button" class="btn ghost small" style="min-height:30px;padding:2px 10px;font-size:12px" onclick="clearSig()">मेट्नुहोस् (Clear)</button>
+        </div>
+      </label>
+    </section>
+
+    <!-- Section 7: Consent & Admin On-Behalf Mode -->
+    <section class="card">
+      <h2><i>7</i> सम्झौता सर्तहरू तथा मञ्जुरी · Operational Terms & Consent</h2>
+      
+      <!-- Dynamic Operational Agreement Preview Box -->
+      <div style="background:var(--bg);border:1.5px solid var(--line);border-radius:12px;padding:14px;font-size:12.5px;color:var(--ink);max-height:170px;overflow-y:auto;line-height:1.55;margin-bottom:12px">
+        <b style="color:var(--navy)">श्री हरि ग्लोबल प्रालि (S Hari Global Pvt. Ltd. - CIN U52291GJ2026PTC174029) का अनिवार्य सञ्चालन सर्तहरू:</b><br>
+        १. <b>दैनिक बुकिङ कोटा र सीमा:</b> मुख्य एजेन्ट तथा सब-एजेन्टले कम्पनीद्वारा तोकिएको दैनिक सिट कोटा र क्रेडिट सीमाभित्र रही आधिकारिक टिकट जारी गर्नुपर्नेछ।<br>
+        २. <b>नगद संकलन तथा भुक्तानी फछ्र्यौट:</b> काउन्टरमा संकलित नगद रकम कम्पनीको आधिकारिक खाता (ICICI eazypay QR वा eSewa) मार्फत दैनिक वा तोकिएको समयमै दाखिला गर्नुपर्नेछ।<br>
+        ३. <b>सीमा जाँच तथा यात्रु परिचयपत्र:</b> नेपाल–भारत सीमा (रुपैडिया / जमुनाहा) पार गर्ने प्रत्येक यात्रुको सक्कल आधार कार्ड / नेपाली नागरिकता / राहदानी अनिवार्य रुजु गर्नुपर्नेछ।<br>
+        ४. <b>आधिकारिक डिजिटल टिकट:</b> प्रणालीबाट उत्पन्न भएको आधिकारिक PNG / PDF टिकटमा एजेन्ट कोड छापिएको हुन्छ, सोही टिकट मात्र मान्य हुनेछ।<br>
+        ५. <b>आचारसंहिता तथा ब्रान्ड नीति:</b> कम्पनीको लोगो, टिकट दर र मर्यादा विपरीत कार्य गरेमा तुरुन्त खाता रोक्का र कानुनी कारबाही गरिनेछ।
+      </div>
+      <div style="font-size:11.5px;color:var(--mut);margin-bottom:10px">
+        डिजिटल सम्झौता मिति/समय: <strong id="termsTimestamp"></strong> · S Hari Global Pvt Ltd
+      </div>
+
+      <label class="chk">
+        <input type="checkbox" name="agree" id="f_agree" required>
+        <span>मैले माथि उल्लिखित सर्तहरू पढेँ, बुझेँ र कम्पनीको आधिकारिक नीति तथा सर्तहरू पूर्ण पालना गर्न मञ्जुर छु।</span>
+      </label>
+
+      <!-- Admin On Behalf Option -->
+      <div class="on-behalf-box">
+        <label class="chk" style="margin:0">
+          <input type="checkbox" id="adminOnBehalfChk" onchange="toggleAdminOnBehalf(this.checked)">
+          <b>प्रशासक / कार्यालय प्रतिनिधिले आवेदकको सहमतिमा फारम भर्दैछ (Admin filling on behalf)</b>
+        </label>
+        <div id="adminOnBehalfFields" style="display:none;margin-top:10px">
+          <label class="f">
+            <span>आवेदकको मौखिक वा लिखित सहमति पुष्टि भयो <em>*</em></span>
+            <input type="text" id="adminConsentProof" placeholder="जस्तै: Phone call recording / signed paper on desk">
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <div id="formMsg" class="msg" style="display:none"></div>
+
+    <div class="go">
+      <button type="submit" class="btn" id="submitBtn">
+        <span>🚀 आवेदन पेश गर्नुहोस् (Submit Application)</span>
+      </button>
+    </div>
+  </form>
+</main>
+
+<script>
+var sigCanvas, sigCtx, isDrawing = false;
+
+document.addEventListener('DOMContentLoaded', function() {
+  initSig();
+  fetchCsrf();
+  checkSavedDraft();
+  
+  var ts = document.getElementById('termsTimestamp');
+  if (ts) ts.textContent = new Date().toLocaleString('ne-NP', { timeZone: 'Asia/Kolkata' });
+
+  // Check URL query parameters for ?track= or ?ref=
+  var params = new URLSearchParams(window.location.search);
+  var trackQ = params.get('track') || params.get('ref') || params.get('phone');
+  if (trackQ) {
+    document.getElementById('trackerModal').style.display = 'flex';
+    document.getElementById('trackInput').value = trackQ;
+    queryTrackStatus();
+  }
+});
+
+function fetchCsrf() {
+  fetch('/api/agreement-apply.php')
+    .then(r => r.json())
+    .then(d => { if(d.csrf) document.getElementById('csrfToken').value = d.csrf; });
+}
+
+function onRoleChange() {
+  var role = document.getElementById('roleSelect').value;
+  document.getElementById('driverFields').style.display = (role === 'driver') ? 'block' : 'none';
+  document.getElementById('subAgentParentBox').style.display = (role === 'subagent') ? 'block' : 'none';
+  saveDraft();
+}
+
+function queryTrackStatus() {
+  var q = document.getElementById('trackInput').value.trim();
+  var res = document.getElementById('trackResult');
+  if (!q) {
+    alert('कृपया आवेदन कोड वा मोबाइल नम्बर लेख्नुहोस्।');
+    return;
+  }
+  res.style.display = 'block';
+  res.innerHTML = '⏳ स्थिति खोजी गरिँदैछ... Checking application standing...';
+
+  fetch('/api/application-status.php?query=' + encodeURIComponent(q))
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok || !d.data) {
+        res.innerHTML = '<div style="color:var(--bad)">❌ ' + (d.error || 'कुनै आवेदन फेला परेन। कृपया कोड वा फोन नम्बर जाँच्नुहोस्।') + '</div>';
+        return;
+      }
+      var a = d.data;
+      var badgeColors = {
+        'approved': 'background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7',
+        'correction': 'background:#fff3e0;color:#e65100;border:1px solid #ffb74d',
+        'reviewing': 'background:#e3f2fd;color:#1565c0;border:1px solid #90caf9',
+        'pending': 'background:#fffde7;color:#f57f17;border:1px solid #fff59d',
+        'rejected': 'background:#ffebee;color:#c62828;border:1px solid #ef9a9a'
+      };
+      var color = badgeColors[a.status_class] || badgeColors['pending'];
+      var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+        + '<b>' + (a.name || 'Applicant') + ' (' + a.ref + ')</b>'
+        + '<span style="padding:3px 10px;border-radius:20px;font-size:12px;font-weight:800;' + color + '">' + a.status_label + '</span>'
+        + '</div>';
+      
+      html += '<div style="font-size:12.5px;color:var(--mut);line-height:1.45">';
+      html += '<div>पद (Role): <strong>' + a.role_category.toUpperCase() + '</strong> · दर्ता मिति: ' + a.applied_on + '</div>';
+      html += '<div>KYC स्थिति: <strong>' + a.kyc_status.toUpperCase() + '</strong> · सम्झौता: <strong>' + a.agreement_status.toUpperCase() + '</strong></div>';
+      
+      if (a.has_correction && a.correction_notes) {
+        html += '<div style="margin-top:10px;padding:10px;background:#fff8ed;border:1px solid #f07c1f;border-radius:8px;color:#c05621">'
+          + '<strong>⚠️ कार्यालयबाट सच्याउन अनुरोध (Admin Note):</strong><br>'
+          + a.correction_notes
+          + (a.correction_fields ? '<br><small>सुधार गर्नुपर्ने फिल्डहरू: ' + a.correction_fields + '</small>' : '')
+          + '</div>';
+      }
+
+      if (a.status === 'approved') {
+        html += '<div style="margin-top:10px;padding:10px;background:#e8f5e9;border:1px solid #2e7d32;border-radius:8px;color:#1b5e20">'
+          + '🎉 <strong>बधाई छ! तपाईंको आवेदन स्वीकृत भइसकेको छ।</strong><br>'
+          + (a.official_code ? 'आधिकारिक कोड: <strong>' + a.official_code + '</strong><br>' : '')
+          + '<div style="margin-top:8px;display:flex;gap:8px">'
+          + '<a href="/verify-id.php?ref=' + encodeURIComponent(a.ref) + '" class="btn small" target="_blank" style="font-size:12px;min-height:32px;padding:0 10px;background:#0a2a8f">🪪 ID कार्ड हेर्नुहोस्</a>'
+          + '<a href="/admin/login.php" class="btn ghost small" style="font-size:12px;min-height:32px;padding:0 10px">🔑 लगइन पोर्टल</a>'
+          + '</div>'
+          + '</div>';
+      }
+      html += '</div>';
+      res.innerHTML = html;
+    })
+    .catch(err => {
+      res.innerHTML = '<div style="color:var(--bad)">जाँच्न सकिएन: ' + err.message + '</div>';
+    });
+}
+
+function initSig() {
+  sigCanvas = document.getElementById('sigCanvas');
+  sigCtx = sigCanvas.getContext('2d');
+  sigCanvas.width = sigCanvas.offsetWidth || 340;
+  sigCanvas.height = 160;
+  sigCtx.lineWidth = 2.5;
+  sigCtx.strokeStyle = '#0a2a8f';
+  sigCtx.lineCap = 'round';
+
+  function pos(e) {
+    var rect = sigCanvas.getBoundingClientRect();
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+
+  function start(e) { isDrawing = true; var p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); if(e.cancelable) e.preventDefault(); }
+  function move(e) { if(!isDrawing) return; var p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); if(e.cancelable) e.preventDefault(); }
+  function end() { isDrawing = false; }
+
+  sigCanvas.addEventListener('mousedown', start);
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+
+  sigCanvas.addEventListener('touchstart', start, { passive: false });
+  window.addEventListener('touchmove', move, { passive: false });
+  window.addEventListener('touchend', end);
+}
+
+function clearSig() {
+  sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+}
+
+function openStudioForNew() {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = function(e) {
+    if (e.target.files && e.target.files[0]) {
+      PhotoStudio.open(e.target.files[0], {
+        onSave: function(dataUrl) {
+          document.getElementById('f_photo_data').value = dataUrl;
+          var prev = document.getElementById('photoPreview');
+          prev.style.backgroundImage = 'url(' + dataUrl + ')';
+          prev.classList.add('has');
+          saveDraft();
+        }
+      });
+    }
+  };
+  input.click();
+}
+
+function loadDocPreview(input) {
+  if (input.files && input.files[0]) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('f_doc_data').value = e.target.result;
+      saveDraft();
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+
+function triggerDocRead() {
+  document.getElementById('docReadInput').click();
+}
+
+function processDocRead(input) {
+  if (!input.files || !input.files[0]) return;
+  var file = input.files[0];
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var base64 = e.target.result;
+    var btn = event ? event.target : null;
+    showMsg('डकुमेन्ट पढ्दैछ... OCR scanning in progress...', 'ok');
+
+    fetch('/api/team-docread.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': document.getElementById('csrfToken').value
+      },
+      body: JSON.stringify({ doc: base64, handwritten: true })
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok && d.fields) {
+        var f = d.fields;
+        if (f.name) { document.getElementById('f_name').value = f.name; markUncertain('f_name', d.uncertain_fields, 'name'); }
+        if (f.dob) { document.getElementById('f_dob').value = f.dob; markUncertain('f_dob', d.uncertain_fields, 'dob'); }
+        if (f.idno) { document.getElementById('f_idno').value = f.idno; markUncertain('f_idno', d.uncertain_fields, 'idno'); }
+        if (f.address) { document.getElementById('f_address').value = f.address; markUncertain('f_address', d.uncertain_fields, 'address'); }
+        document.getElementById('f_doc_data').value = base64;
+        showMsg('डकुमेन्टबाट विवरणहरू स्वतः भरियो। कृपया शंकास्पद (amber) फिल्डहरू जाँच्नुहोस्।', 'ok');
+        saveDraft();
+      } else {
+        showMsg(d.error || 'स्क्यान हुन सकेन, कृपया हातले भर्नुहोस्।', 'bad');
+      }
+    }).catch(err => {
+      showMsg('स्क्यान त्रुटि: ' + err.message, 'bad');
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+function markUncertain(elemId, uncertainList, key) {
+  var el = document.getElementById(elemId);
+  if (uncertainList && uncertainList.indexOf(key) !== -1) {
+    el.classList.add('field-uncertain');
+    var badge = document.createElement('span');
+    badge.className = 'amber-badge';
+    badge.textContent = '⚠️ जाँच्नुहोस् (Verify handwriting)';
+    if (!el.parentNode.querySelector('.amber-badge')) el.parentNode.appendChild(badge);
+  }
+}
+
+function startWaVerify() {
+  var phone = document.getElementById('f_phone').value.trim();
+  var cc = document.getElementById('f_cc').value;
+  if (phone.length !== 10) {
+    alert('१० अङ्कको सही मोबाइल नम्बर लेख्नुहोस्।');
+    return;
+  }
+  fetch('/api/wa-verify.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.getElementById('csrfToken').value },
+    body: JSON.stringify({ action: 'start', purpose: 'staff', phone: phone, cc: cc })
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok && d.url) {
+      window.open(d.url, '_blank');
+      pollWaVerify(d.token);
+    } else {
+      alert(d.error || 'WhatsApp प्रमाणीकरण सुरु हुन सकेन।');
+    }
+  });
+}
+
+function pollWaVerify(token) {
+  var interval = setInterval(function() {
+    fetch('/api/wa-verify.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.getElementById('csrfToken').value },
+      body: JSON.stringify({ action: 'check', token: token })
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok && d.status === 'verified') {
+        clearInterval(interval);
+        document.getElementById('waVerifyBtn').style.display = 'none';
+        document.getElementById('waStatusPill').style.display = 'inline-block';
+      }
+    });
+  }, 3500);
+}
+
+function toggleAdminOnBehalf(checked) {
+  document.getElementById('adminOnBehalfFields').style.display = checked ? 'block' : 'none';
+}
+
+function saveDraft() {
+  var data = {
+    role: document.getElementById('roleSelect').value,
+    name: document.getElementById('f_name').value,
+    gender: document.getElementById('f_gender').value,
+    dob: document.getElementById('f_dob').value,
+    cc: document.getElementById('f_cc').value,
+    phone: document.getElementById('f_phone').value,
+    email: document.getElementById('f_email').value,
+    country: document.getElementById('f_country').value,
+    district: document.getElementById('f_district').value,
+    address: document.getElementById('f_address').value,
+    route: document.getElementById('f_route').value,
+    idtype: document.getElementById('f_idtype').value,
+    idno: document.getElementById('f_idno').value,
+    time: Date.now()
+  };
+  localStorage.setItem('shg_apply_draft', JSON.stringify(data));
+}
+
+function checkSavedDraft() {
+  try {
+    var raw = localStorage.getItem('shg_apply_draft');
+    if (raw) {
+      var d = JSON.parse(raw);
+      if (d && (d.name || d.phone)) {
+        document.getElementById('draftBar').style.display = 'flex';
+      }
+    }
+  } catch(e) {}
+}
+
+function restoreDraft() {
+  try {
+    var d = JSON.parse(localStorage.getItem('shg_apply_draft') || '{}');
+    if (d.role) document.getElementById('roleSelect').value = d.role;
+    if (d.name) document.getElementById('f_name').value = d.name;
+    if (d.gender) document.getElementById('f_gender').value = d.gender;
+    if (d.dob) document.getElementById('f_dob').value = d.dob;
+    if (d.cc) document.getElementById('f_cc').value = d.cc;
+    if (d.phone) document.getElementById('f_phone').value = d.phone;
+    if (d.email) document.getElementById('f_email').value = d.email;
+    if (d.country) document.getElementById('f_country').value = d.country;
+    if (d.district) document.getElementById('f_district').value = d.district;
+    if (d.address) document.getElementById('f_address').value = d.address;
+    if (d.route) document.getElementById('f_route').value = d.route;
+    if (d.idtype) document.getElementById('f_idtype').value = d.idtype;
+    if (d.idno) document.getElementById('f_idno').value = d.idno;
+    onRoleChange();
+    document.getElementById('draftBar').style.display = 'none';
+  } catch(e) {}
+}
+
+function clearDraft() {
+  localStorage.removeItem('shg_apply_draft');
+  document.getElementById('draftBar').style.display = 'none';
+}
+
+function showMsg(txt, cls) {
+  var m = document.getElementById('formMsg');
+  m.textContent = txt;
+  m.className = 'msg ' + cls;
+  m.style.display = 'block';
+}
+
+function submitForm(e) {
+  e.preventDefault();
+  var btn = document.getElementById('submitBtn');
+  var photo = document.getElementById('f_photo_data').value;
+  var sig = sigCanvas.toDataURL('image/png');
+
+  if (!photo) {
+    alert('कृपया पासपोर्ट फोटो खिच्नुहोस् वा अपलोड गर्नुहोस्।');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '⏳ पेश गरिँदैछ... Submitting...';
+
+  var role = document.getElementById('roleSelect').value;
+  var onBehalf = document.getElementById('adminOnBehalfChk').checked;
+  var consent = onBehalf ? document.getElementById('adminConsentProof').value : '';
+
+  if (role === 'agent' || role === 'subagent' || role === 'partner') {
+    // Post to agreement-apply API
+    var parentCode = document.getElementById('f_parent_code') ? document.getElementById('f_parent_code').value.trim() : '';
+    var payload = {
+      type: role === 'partner' ? 'org' : 'ind',
+      role_category: role,
+      parent_agent_code: parentCode,
+      lang: 'ne',
+      fields: {
+        p_name: document.getElementById('f_name').value,
+        p_phone: document.getElementById('f_phone').value,
+        p_dob: document.getElementById('f_dob').value,
+        p_address: document.getElementById('f_address').value,
+        p_district: document.getElementById('f_district').value,
+        p_idtype: document.getElementById('f_idtype').value,
+        p_idno: document.getElementById('f_idno').value,
+        p_route: document.getElementById('f_route').value,
+        em_name: document.getElementById('f_em_name') ? document.getElementById('f_em_name').value : '',
+        em_rel: document.getElementById('f_em_rel') ? document.getElementById('f_em_rel').value : '',
+        em_phone: document.getElementById('f_em_phone') ? document.getElementById('f_em_phone').value : '',
+        parent_agent: parentCode,
+        on_behalf: onBehalf ? 1 : 0,
+        consent_proof: consent
+      },
+      photo: photo,
+      doc: document.getElementById('f_doc_data').value || null,
+      signature: sig,
+      public_ok: true
+    };
+
+    fetch('/api/agreement-apply.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.getElementById('csrfToken').value },
+      body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(handleSuccess)
+    .catch(handleErr);
+  } else {
+    // Post to staff-apply API
+    var formData = new FormData();
+    formData.append('role_applied', role);
+    formData.append('full_name', document.getElementById('f_name').value);
+    formData.append('phone', document.getElementById('f_phone').value);
+    formData.append('phone_country', document.getElementById('f_cc').value === '977' ? 'NP' : 'IN');
+    formData.append('dob', document.getElementById('f_dob').value);
+    formData.append('gender', document.getElementById('f_gender').value);
+    formData.append('email', document.getElementById('f_email').value);
+    formData.append('country', document.getElementById('f_country').value);
+    formData.append('district', document.getElementById('f_district').value);
+    formData.append('address_perm', document.getElementById('f_address').value);
+    formData.append('id_type', document.getElementById('f_idtype').value);
+    formData.append('id_number', document.getElementById('f_idno').value);
+    formData.append('signature', sig);
+    formData.append('agree', '1');
+    if (onBehalf) {
+      formData.append('on_behalf', '1');
+      formData.append('consent_proof', consent);
+    }
+
+    var docBlob = dataURItoBlob(document.getElementById('f_doc_data').value);
+    if (docBlob) formData.append('id_front', docBlob, 'id_doc.jpg');
+    var photoBlob = dataURItoBlob(photo);
+    if (photoBlob) formData.append('photo', photoBlob, 'passport.jpg');
+
+    fetch('/api/staff-apply.php', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': document.getElementById('csrfToken').value },
+      body: formData
+    })
+    .then(r => r.json())
+    .then(handleSuccess)
+    .catch(handleErr);
+  }
+
+  function handleSuccess(d) {
+    btn.disabled = false;
+    btn.innerHTML = '🚀 आवेदन पेश गर्नुहोस् (Submit Application)';
+    if (d.ok) {
+      localStorage.removeItem('shg_apply_draft');
+      showMsg('✅ सफलता! तपाईंको आवेदन ' + (d.ref || '') + ' सुरक्षित भयो। अनुमोदन पश्चात WhatsApp मा कार्ड पठाइनेछ।', 'ok');
+      setTimeout(function() {
+        window.location.href = '/verify-id.php?ref=' + encodeURIComponent(d.ref || '');
+      }, 2500);
+    } else {
+      showMsg(d.error || 'त्रुटि देखा पर्यो। कृपया रातो लागेको विवरण सच्याउनुहोस्।', 'bad');
+    }
+  }
+
+  function handleErr(err) {
+    btn.disabled = false;
+    btn.innerHTML = '🚀 आवेदन पेश गर्नुहोस् (Submit Application)';
+    showMsg('नेटवर्क त्रुटि: ' + err.message, 'bad');
+  }
+}
+
+function dataURItoBlob(dataURI) {
+  if (!dataURI || dataURI.indexOf(',') === -1) return null;
+  var byteString = atob(dataURI.split(',')[1]);
+  var mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+  var ab = new ArrayBuffer(byteString.length);
+  var ia = new Uint8Array(ab);
+  for (var i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+  return new Blob([ab], {type: mimeString});
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,296 @@
+/* =====================================================================
+   S HARI GLOBAL — company app (shreehariglobal.network /admin) on the
+   design system. Oct 2026.
+
+   Loads after ds.css and the panel's inline admin_css(): every colour is a
+   design-system token (ds.css), so light and dark follow automatically.
+     1. Shell: navy top bar with the red rule, navy sidebar, phone bar
+     2. Shared pieces: headings, cards, buttons, inputs, pills, flashes
+     3. Phone-first rules (owner brief, Oct 2026): 44px touch targets, 16px
+        inputs, no sideways scrolling for the main work, save buttons that
+        stay reachable, nothing hidden under the keyboard
+   ===================================================================== */
+
+/* ---------- 1. Shell ---------- */
+.tb { background: var(--navy) !important; background-image: none !important; box-shadow: none !important; border-bottom: 3px solid var(--red) !important; color: var(--on-navy); }
+.tb .brand { color: var(--on-navy) !important; gap: 10px !important; }
+/* 9 Oct 2026 (owner): the emblem alone — no baked name, no white tile. The
+   transparent mark sits straight on the navy bar with a soft shadow; the
+   higher-specificity line also beats depth.css's 3D tile edge (loads last). */
+.tb .brand-logo { width: auto !important; height: 34px !important; max-width: 72px !important; object-fit: contain; background: none !important; border-radius: 0 !important; padding: 0 !important; box-shadow: none !important; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .38)); }
+.shg-adm .tb .brand .brand-logo { box-shadow: none !important; background: none !important; }
+/* drawn India / Nepal flags (Brand::flagSvg / flagUse, assets/js/23-flags.js) */
+.shg-adm .flg { filter: drop-shadow(0 .5px .7px rgba(0, 0, 0, .32)); }
+.shg-adm .flagpill .flg, .shg-adm .ch-badge .flg { vertical-align: middle; }
+.tb .brand span { color: var(--on-navy-muted) !important; letter-spacing: .06em !important; }
+.tb .who { color: var(--on-navy-muted) !important; }
+.tb .who em { color: var(--on-navy-muted) !important; background: rgba(255, 255, 255, .1); border-radius: 6px; padding: 1px 6px; font-family: var(--font-mono) !important; font-size: 11px !important; }
+.tb .who .tb-name { color: var(--on-navy) !important; }
+.tb .who .tb-av { background: var(--royal) !important; color: var(--on-royal) !important; box-shadow: none !important; }
+.tb .who a, .tb .theme-tog, .tb .menu { color: var(--on-navy) !important; min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); }
+.tb-search { background: rgba(255, 255, 255, .1) !important; border: 1px solid rgba(255, 255, 255, .18) !important; }
+.tb-search:focus-within { background: rgba(255, 255, 255, .16) !important; box-shadow: 0 0 0 3px rgba(143, 191, 255, .45) !important; }
+.tb-search input { font-size: 15px !important; }
+
+.side { background: var(--navy) !important; border-right: 0 !important; color: var(--on-navy); }
+.side a { color: var(--on-navy-muted) !important; border-radius: var(--radius-sm) !important; min-height: 44px; font-weight: 700 !important; }
+.side a span { background: rgba(255, 255, 255, .08) !important; color: var(--on-navy-muted) !important; box-shadow: none !important; }
+.side a:hover { background: rgba(255, 255, 255, .08) !important; color: var(--on-navy) !important; }
+.side a:hover span { color: var(--on-navy) !important; }
+.side a.on { background: var(--surface) !important; color: var(--royal) !important; }
+.side a.on span { background: var(--royal) !important; color: var(--on-royal) !important; }
+.side a.on::before { display: none !important; }
+:root[data-theme="dark"] .side a.on { background: var(--royal-soft) !important; color: var(--royal-strong) !important; }
+.side a.hot { background: rgba(255, 255, 255, .06) !important; border: 1px solid rgba(255, 255, 255, .22) !important; color: var(--on-navy) !important; }
+.side a.hot span { background: var(--royal) !important; color: var(--on-royal) !important; }
+.side a.hot.on { background: var(--surface) !important; color: var(--royal) !important; border-color: transparent !important; }
+.side .side-sec, .side .side-sec.side-toggle { color: var(--on-navy-muted) !important; min-height: 40px; letter-spacing: .08em !important; }
+.side .side-toggle:hover { background: rgba(255, 255, 255, .06) !important; color: var(--on-navy) !important; }
+.side .side-site { border-top-color: rgba(255, 255, 255, .14) !important; }
+.navbadge { background: var(--warning-soft) !important; color: var(--warning) !important; font-weight: 800 !important; }
+.side a.on .navbadge { background: var(--warning-soft) !important; color: var(--warning) !important; }
+/* phone bar: same five slots, the centre ticket button in the action colour */
+.mnav a.fab .mn-fab { background: var(--royal) !important; background-image: none !important; box-shadow: var(--shadow-2) !important; }
+.mnav a.fab .a-ic { color: var(--on-royal) !important; }
+.mnav a.fab .mn-fab-l { color: var(--royal) !important; }
+.mnav a { min-height: 52px !important; }
+
+/* ---------- 2. Shared pieces ---------- */
+body { font-family: var(--font-sans) !important; }
+.wrap h1 { font-size: 22px !important; line-height: 28px !important; font-weight: 800 !important; letter-spacing: 0 !important; }
+.card, .panel { border-radius: var(--radius-lg) !important; }
+.flash { border-radius: var(--radius-md) !important; }
+.flash.ok { background: var(--success-soft) !important; color: var(--ink) !important; border-color: transparent !important; }
+.flash.err, .flash.bad, .flash.error { background: var(--danger-soft) !important; color: var(--ink) !important; border-color: transparent !important; }
+.flash.warn { background: var(--warning-soft) !important; color: var(--ink) !important; border-color: transparent !important; }
+/* the save guard (admin_footer): a form that is sending */
+form[aria-busy="true"] { opacity: .75; }
+button.is-saving, .btn.is-saving { cursor: progress !important; opacity: .7; }
+.save-note { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--warning-soft); color: var(--ink); font-size: 14px; }
+.save-note button { margin-left: auto; }
+
+/* ---------- 3. Phone first ---------- */
+@media (max-width: 820px) {
+  /* a little more room on the page, never wider than the screen */
+  .wrap { padding: 14px 14px 96px !important; max-width: 100vw; overflow-x: clip; }
+  .wrap h1 { font-size: 20px !important; line-height: 26px !important; margin-bottom: 12px !important; }
+  /* inputs at 16px so the phone does not zoom; 44px minimum everywhere */
+  .wrap input:not([type=checkbox]):not([type=radio]):not([type=hidden]), .wrap select, .wrap textarea { font-size: 16px !important; min-height: 44px; max-width: 100%; }
+  .wrap .btn, .wrap button:not(.flash-x):not(.side-toggle), .wrap a.btn { min-height: 44px; }
+  .wrap input[type=checkbox], .wrap input[type=radio] { width: 22px; height: 22px; }
+  .wrap label:has(> input[type=checkbox]), .wrap label:has(> input[type=radio]) { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
+  /* wide blocks scroll inside themselves, never the page */
+  .wrap pre, .wrap .chart, .wrap canvas, .wrap svg:not(.a-ic) { max-width: 100%; }
+  .wrap .table-wrap, .wrap .tbl-wrap, .wrap .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* spreadsheet registers become cards (admin_cards_js): no sticky column, readable cells */
+  table.dt.card-table th:first-child, table.dt.card-table td:first-child { position: static !important; box-shadow: none !important; }
+  table.dt.card-table td { white-space: normal !important; }
+  .dt-wrap:has(> table.card-table) { overflow: visible !important; border: 0 !important; background: none !important; max-height: none !important; }
+  .dt-bar { background: var(--page); padding: 8px 0; }
+  /* forms: the main Save stays in reach at the bottom of the screen */
+  .save-sticky, form .form-actions, form .actions-row { position: sticky; bottom: 0; z-index: 6; background: var(--surface); padding: 10px 0 calc(10px + env(safe-area-inset-bottom, 0)); border-top: 1px solid var(--line); }
+  /* 8 Oct 2026 (D9-09): the save bar rests exactly on top of the bottom bar
+     (its real height, home-indicator area included - see --mnav-h below) */
+  body.has-mnav .save-sticky, body.has-mnav form .form-actions, body.has-mnav form .actions-row { bottom: var(--mnav-h, 76px); padding-bottom: 10px; }
+  /* while the on-screen keyboard is open the bottom bar steps aside, so the
+     field and its Save button are never covered (body.kb-open, admin_footer) */
+  body.kb-open .mnav { display: none !important; }
+  body.kb-open.has-mnav .save-sticky, body.kb-open.has-mnav form .form-actions, body.kb-open.has-mnav form .actions-row { bottom: 0; }
+  body.kb-open .wrap { padding-bottom: 24px !important; }
+}
+@media (pointer: coarse) {
+  .side a { min-height: 48px; }
+  .toolbar input, .toolbar select, .toolbar .btn { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* ---------- 4. Dashboard ---------- */
+.dash-sec { font: 800 16px/22px var(--font-sans); color: var(--ink); margin: 18px 0 10px; }
+.dash-money { margin-bottom: 8px; }
+.dash-money .sg-stat { text-decoration: none; }
+.promo { background: var(--surface) !important; background-image: none !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; }
+.promo .promo-txt b, .promo .promo-txt small { color: var(--ink) !important; }
+.promo .promo-txt small { color: var(--muted) !important; }
+.promo .promo-ico { background: var(--royal-tint) !important; color: var(--royal) !important; }
+.promo .promo-cta { background: var(--royal) !important; color: var(--on-royal) !important; box-shadow: none !important; animation: none !important; }
+.promo .promo-txt b em { background: var(--royal-soft) !important; color: var(--royal-strong) !important; }
+.kpi { border-radius: var(--radius-lg) !important; }
+.quick-actions .qa { border-radius: var(--radius-md) !important; min-height: 48px; }
+@media (max-width: 820px) {
+  .wrap input[type=date], .wrap input[type=month], .wrap input[type=time] { height: auto !important; min-height: 44px !important; }
+  .flash .flash-x { min-width: 44px; min-height: 44px; }
+}
+
+/* ---------- 5. Seat map + KPI strips on a phone: two or three across ---------- */
+@media (max-width: 820px) {
+  .cards:has(#count-open) { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px !important; }
+  .cards:has(#count-open) .card { padding: 10px 12px !important; }
+  .cards:has(#count-open) .card .v { font-size: 20px !important; }
+  .cards:has(#count-open) .card .k { font-size: 11px !important; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+/* ---------- 6. Tiles and bars without gradients ---------- */
+.hcard { background: var(--surface) !important; background-image: none !important; color: var(--ink) !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-1) !important; }
+.hcard::before, .hcard::after { display: none !important; }
+.hcard .hk, .hcard .hsub { color: var(--muted) !important; opacity: 1 !important; }
+.hcard .hv { color: var(--ink) !important; }
+.hcard a, .hcard .hlink { color: var(--royal) !important; }
+.hcard .hicon { background: var(--royal-tint) !important; color: var(--royal) !important; box-shadow: none !important; }
+.hcard.hc-green .hicon, .hcard.hc-teal .hicon { background: var(--success-soft) !important; color: var(--success) !important; }
+.hcard.hc-red .hicon { background: var(--danger-soft) !important; color: var(--danger) !important; }
+.hcard.hc-violet .hicon { background: var(--refund-soft) !important; color: var(--refund) !important; }
+.hcard.hc-orange .hicon { background: var(--warning-soft) !important; color: var(--warning) !important; }
+.hcard .btn, .hcard button { background: var(--royal) !important; color: var(--on-royal) !important; border-color: transparent !important; }
+.avatar { background: var(--royal) !important; color: var(--on-royal) !important; }
+.progress i { background: var(--royal) !important; }
+.progress i.ok, .occ-green { background: var(--success) !important; }
+.progress i.warn, .occ-yellow { background: var(--warning) !important; }
+.occ-red { background: var(--danger) !important; }
+.spark-bar { background: var(--royal) !important; }
+@media (max-width: 820px) {
+  .kpi .kk { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
+}
+
+/* ---------- 5 Oct 2026 · Nepal office strip (dashboard) + channel tiles ---------- */
+.np-strip{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:0 0 14px;padding:10px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);border-left:5px solid #DC143C}
+.np-strip__h{display:inline-flex;align-items:center;gap:7px;font-weight:800;font-size:13.5px;color:var(--ink)}
+.np-strip__p{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;padding:4px 6px 4px 10px;border-radius:12px;background:var(--soft);border:1px solid var(--line)}
+.np-strip__who{display:flex;flex-direction:column;line-height:1.2}
+.np-strip__who small{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mut)}
+.np-strip__who b{font-size:13px;color:var(--ink)}
+.np-strip__b{display:inline-flex;align-items:center;gap:5px;min-height:36px;padding:0 11px;border-radius:10px;font-size:13px;font-weight:800;text-decoration:none;color:#fff;background:linear-gradient(180deg,#2F6FD0,#1C4FA3);box-shadow:0 3px 0 #153B7A,0 6px 12px rgba(21,59,122,.25);font-variant-numeric:tabular-nums}
+.np-strip__b.wa{background:linear-gradient(180deg,#2fd573,#128c4a);box-shadow:0 3px 0 #0c6a37,0 6px 12px rgba(18,140,74,.25);padding:0 10px}
+.np-strip__b:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.3)}
+.np-strip__add{font-size:12.5px;font-weight:700;color:var(--blue)}
+/* 8 Oct 2026 (D9-17): on a phone every contact has the same shape - the name
+   on top, the call button and the WhatsApp button on one row under it */
+@media(max-width:560px){
+  .np-strip__p{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;width:100%;padding:8px}
+  .np-strip__who{grid-column:1/-1}
+  .np-strip__b{justify-content:center;min-height:44px}
+}
+.kpis-chan{margin-top:-4px}
+
+/* ---------- 5 Oct 2026 · notification bell (top bar) ---------- */
+.tb-bell{position:relative;display:inline-grid;place-items:center;width:38px;height:38px;border-radius:11px;color:inherit;text-decoration:none}
+.tb-bell:hover{background:rgba(255,255,255,.12)}
+.tb-bell .a-ic{width:20px;height:20px}
+.tb-bell.has .a-ic{animation:tbBell 2.4s ease-in-out 2;transform-origin:50% 10%}
+.tb-bell-n{position:absolute;top:1px;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#E5484D;color:#fff;
+  font:800 10.5px/18px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px var(--tb-bg,#0C306C)}
+@keyframes tbBell{0%,100%{transform:rotate(0)}15%{transform:rotate(14deg)}30%{transform:rotate(-12deg)}45%{transform:rotate(8deg)}60%{transform:rotate(-5deg)}75%{transform:rotate(0)}}
+@media (prefers-reduced-motion:reduce){.tb-bell.has .a-ic{animation:none}}
+
+/* ---------- 5 Oct 2026 · Poppins + micro-interactions (owner's Point 12) ---------- */
+:root{--font-sans:"Poppins",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans Devanagari",sans-serif}
+.shg-adm .kpi .kv,.shg-adm .sg-stat__value,.shg-adm .cards .card .v{font-variant-numeric:tabular-nums}
+.fx-rip{position:absolute;border-radius:50%;pointer-events:none;background:currentColor;opacity:.22;transform:scale(0);animation:fxRip .5s ease-out forwards}
+@keyframes fxRip{to{transform:scale(1);opacity:0}}
+/* a loading block: add class="fx-skel" while the content is on its way */
+.fx-skel{position:relative;overflow:hidden;background:var(--soft);border-radius:10px;min-height:18px;color:transparent!important}
+.fx-skel::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 20%,rgba(255,255,255,.38) 50%,transparent 80%);transform:translateX(-100%);animation:fxSkel 1.2s ease-in-out infinite}
+:root[data-theme="dark"] .fx-skel::after{background:linear-gradient(100deg,transparent 20%,rgba(255,255,255,.09) 50%,transparent 80%)}
+@keyframes fxSkel{to{transform:translateX(100%)}}
+@media (prefers-reduced-motion:reduce){.fx-rip,.fx-skel::after{animation:none}}
+
+/* =====================================================================
+   8 Oct 2026 · panel consistency (premium upgrade, Phase 14 / audit D9)
+   Presentation only: no link, permission or rule changes. depth.css stays
+   the last stylesheet; where depth.css paints with !important, these rules
+   win on specificity (body.shg-adm …), never on load order.
+   ===================================================================== */
+
+/* D9-01 · a flash box that is [hidden] stays hidden (the 2 Oct
+   `.flash{display:block}` rule used to override the attribute, so empty
+   green / red bars showed on the Bus Calendar and in the bulk-cancel box) */
+.flash[hidden] { display: none !important; }
+
+/* D9-02 · caution buttons are amber, not the royal "main action" face.
+   depth.css only had ok / danger / navy variants, so every .btn.warn and
+   .btn-warn (Maintenance, Force cancel, Block date, Save advance…) looked
+   like Save. White on #B45309 = 5.0:1, on #92400E = 7.1:1. */
+body.shg-adm .btn.warn, body.shg-adm .btn-warn {
+  background: linear-gradient(180deg, #B45309 0%, #92400E 100%) !important; color: #FFFFFF !important; border-color: #D97706 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .30), 0 2px 0 #7C2D12, 0 4px 0 #6A260F, 0 6px 0 #57200C, 0 12px 16px -5px rgba(87, 32, 12, .5) !important;
+}
+:root[data-theme="dark"] body.shg-adm .btn.warn, :root[data-theme="dark"] body.shg-adm .btn-warn {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 0 #7C2D12, 0 4px 0 #6A260F, 0 6px 0 #57200C, 0 12px 16px -5px rgba(0, 0, 0, .75) !important;
+}
+
+/* D9-06 · one "selected" look for every tab row and filter chip - the same
+   raised face depth.css gives .seg / .chip.on (white on royal in light,
+   dark ink on light blue in dark, white on deep blue in AMOLED). The
+   Verify Payments tab used navy, which vanished on the dark card. */
+.shg-adm :is(.pay-tabs a.active, .hd-filters a.on, .hd-cats a.on, .cd-chips a.on, .pp-pick a.on) {
+  background: var(--dp-on-face, var(--royal)) !important; color: var(--dp-on-ink, var(--on-royal)) !important;
+  border-color: var(--dp-act-rim, var(--royal)) !important;
+}
+.shg-adm :is(.hd-filters a.on, .hd-cats a.on, .cd-chips a.on, .pp-pick a.on) { box-shadow: var(--dp-chip-on) !important; }
+.shg-adm .pay-tabs a.active :is(.tab-count, .tab-label) { color: inherit !important; }
+.shg-adm .pay-tabs a { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+@media (max-width: 820px) {
+  /* six payment tabs as a tidy 3 x 2 block (REFUNDED no longer sits alone on a row) */
+  .shg-adm .pay-tabs { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .shg-adm .pay-tabs a { min-width: 0 !important; border-bottom: 1px solid var(--line); }
+}
+
+/* D9-09 · phone chrome: the top bar scrolls away with the page (Home,
+   Tickets, Ticket, Payments and Menu stay in the bottom bar), the drawer
+   opens from the very top, and nothing fixed sits on the bottom bar. */
+@media (max-width: 820px) {
+  :root { --mnav-h: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  body.shg-adm .tb { position: relative; }
+  body.shg-adm .side { top: 0; height: 100vh; height: 100dvh; padding-top: 14px; z-index: 41; }
+  body.shg-adm.nav-open .scrim { inset: 0; }
+  body.has-mnav .bulk-bar, body.has-mnav .bkp { bottom: calc(var(--mnav-h) + 8px); }
+}
+
+/* D9-10 · KPI tiles two across on a phone on every page (only the seat map
+   and the .kpis strips were) */
+@media (max-width: 820px) {
+  .shg-adm .cards { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+  .shg-adm .cards .card { padding: 12px !important; min-width: 0; }
+  .shg-adm .cards .card .v { font-size: 20px !important; overflow-wrap: anywhere; }
+  .shg-adm .cards .card .k { letter-spacing: .04em; }
+}
+
+/* D9-12 · no old-brand orange glow behind the dashboard promo, and the
+   --orange alias means royal in AMOLED too (depth.css resets it to #FF9A3D
+   for the customer app; html:root[…] = 0,2,1 out-ranks its 0,2,0) */
+.promo::before { display: none !important; }
+html:root[data-display="amoled"] { --orange: var(--royal); --orange-600: var(--royal-strong); }
+
+/* D9-13 · the hamburger opens the phone drawer only; on a desktop the
+   sidebar is always open, so the button is not shown */
+@media (min-width: 821px) { .tb .menu { display: none !important; } }
+
+/* D9-14 · form fields use the panel font (Poppins) instead of the
+   browser's Arial. Zero specificity: any page that sets its own field
+   font (monospace codes, the WhatsApp note) still wins. */
+:where(.shg-adm) :where(input, select, textarea, button) { font-family: inherit; }
+
+/* D10 - LOGO COLOURS (16 Oct 2026, owner: "application color haru ramro design
+   gardeu" + the company logo). The panel takes the logo's own colours: the
+   deep-to-vivid royal blue of its background, the orange of its arrow as the
+   one accent (the top-bar rule, the active menu marker, the chips), white
+   type. Light mode only re-points the brand tokens; dark / AMOLED keep their
+   tuned values. Status colours (paid, pending, refund...) never change. */
+html:root:not([data-theme="dark"]) body.shg-adm {
+  --navy: #0A2A8F; --royal: #1A44C8; --royal-strong: #12339E; --royal-soft: #DDE5FF; --royal-tint: #EEF2FF;
+  --on-navy-muted: #D3DDF2; --shg-logo-orange: #F07800; --shg-logo-gold: #FFB81C;
+}
+body.shg-adm { --shg-logo-orange: #F07800; }
+html:root:not([data-theme="dark"]) body.shg-adm .tb {
+  background: radial-gradient(90% 180% at 18% 0%, #1F4FD8 0%, rgba(31, 79, 216, 0) 60%), linear-gradient(100deg, #0A2A8F 0%, #1036B4 60%, #1846CC 100%) !important;
+  border-bottom: 3px solid transparent !important;
+  border-image: linear-gradient(90deg, #F07800 0%, #FFB81C 55%, #F07800 100%) 1 !important;
+}
+html:root[data-theme="dark"] body.shg-adm .tb { border-bottom-color: var(--shg-logo-orange) !important; }
+html:root:not([data-theme="dark"]) body.shg-adm .side { background: linear-gradient(180deg, #0A2A8F 0%, #0B2580 100%) !important; }
+body.shg-adm .side a.on { box-shadow: inset 4px 0 0 var(--shg-logo-orange) !important; }
+body.shg-adm .dt-chip.on { box-shadow: 0 2px 0 var(--shg-logo-orange); }
+html:root:not([data-theme="dark"]) body.shg-adm .cards .card { border-top: 3px solid var(--royal) !important; }
+html:root:not([data-theme="dark"]) body.shg-adm .cards .card:nth-child(4n+2) { border-top-color: var(--shg-logo-orange) !important; }

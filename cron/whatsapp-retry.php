@@ -1,0 +1,312 @@
+<?php
+/**
+ * cron/whatsapp-retry.php — re-send tickets whose WhatsApp never arrived.
+ *
+ * Recommended: every 15 minutes.
+ *   crontab:   /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/whatsapp-retry.php
+ *   or by URL: https://www.shreehariglobal.in/cron/whatsapp-retry.php?token=CRON_TOKEN
+ *
+ * Why this exists: a ticket send used to be fire-and-forget. When the sender
+ * was refusing — a Twilio trial account, a pending Trust Hub KYC, or Meta
+ * disabling the WhatsApp Business Account (63112) — the passenger simply never
+ * got their ticket, and nothing anywhere knew. The only recovery was a human
+ * opening each booking and pressing Resend, with nothing to tell them which.
+ *
+ * Now Notify::whatsapp() writes a message_logs row for every outcome and
+ * api/twilio-status.php flips it to 'failed' when WhatsApp rejects it
+ * asynchronously. This job walks those rows and tries again, so the backlog
+ * drains BY ITSELF the moment the sender starts working. That is the whole
+ * point: the owner fixes the account, and yesterday's passengers get their
+ * tickets without anyone touching the admin panel.
+ *
+ * Deliberately conservative:
+ *  - only CONFIRMED bookings whose journey has not already left,
+ *  - only when the newest WhatsApp attempt for that booking FAILED,
+ *  - at most MAX_TRIES attempts per booking, ever,
+ *  - nothing at all while the sender breaker is paused (a paused sender means
+ *    the account is refusing everything, so retrying just burns the cap),
+ *  - a small batch per run, so one bad day cannot stall the cron.
+ */
+declare(strict_types=1);
+require __DIR__ . '/_cron.php';
+require_once INCLUDE_PATH . '/qr.php';
+require_once INCLUDE_PATH . '/pdf.php';
+require_once INCLUDE_PATH . '/ticket.php';
+require_once INCLUDE_PATH . '/notify.php';
+try { require_once INCLUDE_PATH . '/carddelivery.php'; CardDelivery::drain(5); } catch (Throwable $e) { Logger::exception($e, 'whatsapp'); }
+
+const MAX_TRIES  = 6;    // total WhatsApp attempts per booking before giving up
+const BATCH_SIZE = 25;   // bookings per run
+
+/**
+ * Report and STOP. cron_done() only prints — it returns, so using it alone as
+ * an early exit lets the job run on regardless. That is not theoretical: the
+ * first version of this file printed "skipped: sender-level failure" and then
+ * cheerfully retried anyway, spending the try budget it had just decided to
+ * protect.
+ */
+function retry_stop(array $result): never
+{
+    cron_done($result);
+    exit;
+}
+
+// A paused sender means Twilio is refusing the whole ACCOUNT. Retrying now
+// would spend the per-booking cap on a sender we already know is down.
+$pause = Settings::getString('whatsapp_driver', 'click_to_chat') === 'twilio'
+    ? Notify::twilioPause()
+    : null;
+if ($pause !== null) {
+    retry_stop([
+        'skipped' => 'sender paused',
+        'until'   => date('H:i', (int) $pause['until']),
+        'code'    => $pause['code'] ?? '',
+    ]);
+}
+
+if (!Settings::getBool('whatsapp_notify_customer', true)) {
+    retry_stop(['skipped' => 'whatsapp_notify_customer is off']);
+}
+
+/* The Twilio Sandbox for WhatsApp only delivers to phones that first sent the
+   account's "join <phrase>" message from their own WhatsApp — every other
+   recipient answers 63015 (channel not found). A production ticket retry
+   against a sandbox sender is therefore futile for every real customer, and
+   would silently burn the per-booking MAX_TRIES cap on the very passengers
+   this job exists to rescue. Skip until the owner switches back to a real
+   WhatsApp business sender; the moment they do, the backlog drains as usual. */
+$fromNow = trim(Settings::getString('twilio_whatsapp_from', ''));
+if (str_contains($fromNow, '14155238886')) {
+    retry_stop([
+        'skipped' => 'sender is the Twilio WhatsApp Sandbox — every non-joined recipient fails 63015',
+        'from'    => $fromNow,
+    ]);
+}
+
+/* Do not spend the per-booking try budget while the SENDER is the thing that
+   is broken. 63112 (Meta disabled the WhatsApp Business Account) and 63016 (no
+   approved template for a business-initiated message) fail identically for
+   every passenger, and — unlike a 20003 — they arrive asynchronously, so the
+   account breaker never trips and nothing else stops this loop. Without this
+   guard a disabled WABA would burn all MAX_TRIES on every upcoming booking
+   within a couple of hours and permanently give up on exactly the passengers
+   this job exists to rescue, right while the owner is still fixing Meta. */
+/* 17 Sep 2026: staff tools (admin/api/wa-send.php) write agent statements,
+   reminders and receipts into message_logs with a `purpose`. Only TICKET
+   rows may drive this job — a refused agent statement must neither halt the
+   sender-level probe nor make a confirmed booking's ticket look failed. The
+   column arrives with upgrade-2026-09-wa-templates.sql; before it exists
+   every row is a ticket row and the filter is a no-op.
+   1 Oct 2026: the manual Resend (ticket_resend) and the "your ticket
+   changed" notice (ticket_update) carry their own purposes now, so the
+   first-ticket idempotency guard no longer swallows them; both are ticket
+   deliveries and a failed one is rescued here exactly like the first. */
+$hasPurpose = (int) Database::scalar(
+    "SELECT COUNT(*) FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'message_logs' AND COLUMN_NAME = 'purpose'",
+    [], 0
+) > 0;
+$purposeM  = $hasPurpose ? " AND (purpose IS NULL OR purpose IN ('ticket','ticket_update','ticket_resend'))" : '';
+$purposeM2 = $hasPurpose ? " AND (m2.purpose IS NULL OR m2.purpose IN ('ticket','ticket_update','ticket_resend'))" : '';
+$purposeT  = $hasPurpose ? " AND (t.purpose IS NULL OR t.purpose IN ('ticket','ticket_update','ticket_resend'))" : '';
+
+$lastFail = Database::fetch(
+    "SELECT id, error, created_at FROM message_logs
+      WHERE channel = 'whatsapp' AND status = 'failed' AND error IS NOT NULL" . $purposeM . "
+      ORDER BY id DESC LIMIT 1"
+);
+if ($lastFail !== null) {
+    // 18 Sep 2026: Meta Cloud API equivalents, written by whatsapp/webhook.php as
+    // "(code N)": template missing / not approved, WABA locked, payment problem.
+    // 21 Sep 2026: Gupshup equivalents from whatsapp/gupshup-webhook.php —
+    // template not found / not approved / paused, and the free-form-outside-
+    // 24 h refusal (1014). Same shape: "(code N)".
+    foreach (['63112', '63016', '63007', '20003', '(code 132000)', '(code 132001)', '(code 131031)', '(code 131042)',
+              '(code 1002)', '(code 1004)', '(code 1005)', '(code 1014)', '(code 62)', '(code 66)',
+              // 7 Oct 2026: AiSensy wallet empty - every passenger fails the same way.
+              'Insufficient WhatsApp Conversation Credits'] as $senderCode) {
+        if (str_contains((string) $lastFail['error'], $senderCode)) {
+            /* A sender-level failure is a brake, not a permanent tombstone.
+               Meta reports these asynchronously. A stable later ticket proves
+               most faults cleared; billing is stricter because free 24 h-window
+               traffic can succeed while paid templates still fail. */
+            if ($senderCode === '(code 131042)') {
+                // A free 24 h-window delivery does not prove billing works.
+                // whatsapp/webhook.php records this only when Meta explicitly
+                // reports a successful message as billable.
+                $billingOkAt = (int) Database::scalar(
+                    "SELECT kvalue FROM kv_store
+                      WHERE kscope = 'global' AND kkey = 'wa_meta.billing_ok_at'
+                      LIMIT 1",
+                    [], 0
+                );
+                $recovered = $billingOkAt > (int) strtotime((string) $lastFail['created_at']);
+            } else {
+                $recovered = Database::exists(
+                    "SELECT 1 FROM message_logs
+                      WHERE channel = 'whatsapp'
+                        AND status = 'sent'
+                        AND id > :failed_id
+                        AND created_at <= NOW() - INTERVAL 2 MINUTE" . $purposeM . "
+                      LIMIT 1",
+                    ['failed_id' => (int) $lastFail['id']]
+                );
+            }
+            if ($recovered) {
+                break;
+            }
+            retry_stop([
+                'skipped' => 'sender-level failure, not the passengers',
+                'code'    => $senderCode,
+                'detail'  => mb_substr((string) $lastFail['error'], 0, 120),
+            ]);
+        }
+    }
+}
+
+/* Bookings whose NEWEST whatsapp row failed. Joining message_logs on its own
+   newest id per booking is what makes this idempotent: as soon as a retry
+   succeeds it writes a 'sent' row, which becomes the newest, and the booking
+   drops out of this query on the next run. */
+/* Codes that condemn the RECIPIENT, not the attempt: the number is not on
+   WhatsApp at all (63024 / 63003) or is not a valid mobile (21211 / 21614).
+   Re-sending the identical message to the identical number cannot change
+   that answer, so these are excluded from the retry loop instead of burning
+   all MAX_TRIES on them; the passenger already got the SMS with the ticket
+   link at booking time, and cron_done() lists them so the office can call. */
+const UNREACHABLE_SQL = "(m.error LIKE '%(code 63024)%' OR m.error LIKE '%(code 63003)%'
+                         OR m.error LIKE '%(code 21211)%' OR m.error LIKE '%(code 21614)%'
+                         OR m.error LIKE '%(code 131026)%')";
+
+/* 5 Oct 2026: a ticket the customer already HAS is not "failed". Since 3 Oct
+   the ticket goes out on AiSensy (message_logs provider=aisensy, and the
+   "hi" queue wa_ticket_queue), while the Meta row for the same booking still
+   reads failed (131042). Without this every such booking was re-sent up to
+   six times - 33 dead resends on 5 Oct alone, and now that a resend goes via
+   AiSensy too, each would be a duplicate ticket on the passenger's phone. */
+$hasQueue = (int) Database::scalar(
+    "SELECT COUNT(*) FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wa_ticket_queue'",
+    [], 0
+) > 0;
+$alreadyHasTicket = " AND NOT EXISTS (SELECT 1 FROM message_logs a
+                                       WHERE a.booking_id = b.id AND a.provider = 'aisensy'
+                                         AND (a.purpose IS NULL OR a.purpose <> 'seller_copy')
+                                         AND a.status IN ('sent','delivered','read'))"
+    . ($hasQueue ? " AND NOT EXISTS (SELECT 1 FROM wa_ticket_queue q
+                                      WHERE q.booking_id = b.id AND q.role IN ('customer','alt')
+                                        AND q.status IN ('sent','delivered','read'))" : '');
+
+/* 15 Oct 2026 (2F-retry): exponential backoff. A booking is tried again
+   15 min after its last failed attempt, then 30, 60, 120, 240 (12 h at the
+   most) - the same doubling msg-ledger's AiSensy poll uses. A flat 15-minute
+   beat spent all MAX_TRIES inside ~90 minutes of one bad hour; spread out,
+   the tries outlast an outage the owner fixes the same day. Bot replies are
+   never retried here: a stale answer is worse than none. */
+$due = Database::fetchAll(
+    "SELECT b.id, b.pnr, b.contact_phone, m.created_at AS last_at,
+            (SELECT COUNT(*) FROM message_logs t
+              WHERE t.booking_id = b.id AND t.channel = 'whatsapp'
+                AND t.status IN ('sent','failed')
+                -- an empty AiSensy wallet is not the passenger's fault: those
+                -- refusals must not use up the tries, or a recharge rescues nobody
+                AND NOT (t.status = 'failed' AND t.error LIKE '%Conversation Credits%')" . $purposeT . ") AS tries
+       FROM bookings b
+       JOIN message_logs m
+         ON m.id = (SELECT m2.id FROM message_logs m2
+                     WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'" . $purposeM2 . "
+                     ORDER BY m2.id DESC LIMIT 1)
+      WHERE b.status = 'confirmed'
+        AND m.status = 'failed'
+        AND NOT " . UNREACHABLE_SQL . $alreadyHasTicket . "
+        AND EXISTS (SELECT 1 FROM booking_legs bl
+                     WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
+      HAVING tries < :max
+         AND last_at < NOW() - INTERVAL LEAST(720, 15 * POW(2, GREATEST(tries - 1, 0))) MINUTE
+      ORDER BY b.id DESC
+      LIMIT " . BATCH_SIZE,
+    ['max' => MAX_TRIES]
+);
+
+// Upcoming passengers whose number WhatsApp itself rejects — call them.
+$unreachable = (int) Database::scalar(
+    "SELECT COUNT(*)
+       FROM bookings b
+       JOIN message_logs m
+         ON m.id = (SELECT m2.id FROM message_logs m2
+                     WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'" . $purposeM2 . "
+                     ORDER BY m2.id DESC LIMIT 1)
+      WHERE b.status = 'confirmed'
+        AND m.status = 'failed'
+        AND " . UNREACHABLE_SQL . "
+        AND EXISTS (SELECT 1 FROM booking_legs bl
+                     WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())",
+    [],
+    0
+);
+
+$sent = 0;
+$stillFailing = 0;
+
+foreach ($due as $row) {
+    $booking = Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => (int) $row['id']]);
+    if ($booking === null) {
+        continue;
+    }
+
+    try {
+        // resendTicketWhatsApp() carries the same {{1}}..{{7}} template
+        // variables as the original send, so it works on a template-only
+        // sender instead of falling to the free-form branch.
+        $res = Notify::resendTicketWhatsApp($booking);
+        if (!empty($res['ok'])) {
+            $sent++;
+        } else {
+            $stillFailing++;
+        }
+    } catch (Throwable $e) {
+        // One bad booking must never stop the batch.
+        $stillFailing++;
+        Logger::error('WhatsApp retry threw: ' . $e->getMessage(), [
+            'booking' => $row['id'], 'pnr' => $row['pnr'],
+        ], 'whatsapp');
+    }
+}
+
+// Passengers this job has given up on — surfaced so they can be called.
+$exhausted = (int) Database::scalar(
+    "SELECT COUNT(*)
+       FROM bookings b
+       JOIN message_logs m
+         ON m.id = (SELECT m2.id FROM message_logs m2
+                     WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'" . $purposeM2 . "
+                     ORDER BY m2.id DESC LIMIT 1)
+      WHERE b.status = 'confirmed'
+        AND m.status = 'failed'
+        AND NOT " . UNREACHABLE_SQL . $alreadyHasTicket . "
+        AND EXISTS (SELECT 1 FROM booking_legs bl
+                     WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
+        AND (SELECT COUNT(*) FROM message_logs t
+              WHERE t.booking_id = b.id AND t.channel = 'whatsapp'
+                AND t.status IN ('sent','failed')" . $purposeT . ") >= :max",
+    ['max' => MAX_TRIES],
+    0
+);
+
+if ($exhausted > 0) {
+    Logger::warning('WhatsApp retry gave up on ' . $exhausted . ' upcoming booking(s)', [
+        'max_tries' => MAX_TRIES,
+    ], 'whatsapp');
+}
+
+if ($unreachable > 0) {
+    Logger::warning('WhatsApp: ' . $unreachable . ' upcoming booking(s) have a number WhatsApp rejects (not on WhatsApp / invalid) — call them', [], 'whatsapp');
+}
+
+cron_done([
+    'due'         => count($due),
+    'sent'        => $sent,
+    'failed'      => $stillFailing,
+    'exhausted'   => $exhausted,
+    'unreachable' => $unreachable,
+]);

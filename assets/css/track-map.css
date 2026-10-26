@@ -1,0 +1,21 @@
+/* track-map.css — the road map on track.php (20 Oct 2026, phase 2). Loaded with assets/js/track-map.js, only on "Show map".
+   Uses the page's own tokens (--line, --card, --ink, --soft) so light / dark / AMOLED follow the app. */
+.tm-box{position:relative;margin:0 0 10px;border-radius:18px;overflow:hidden;border:1px solid var(--line);isolation:isolate}
+.tm-map{height:340px;background:var(--soft)}
+@media (min-height:760px){.tm-map{height:400px}}
+.tm-chip{position:absolute;left:10px;top:10px;z-index:2;max-width:calc(100% - 70px);background:rgba(20,33,61,.88);color:#fff;font:700 12px/1.2 system-ui,sans-serif;padding:7px 11px;border-radius:999px}
+.tm-fit{position:absolute;left:10px;bottom:10px;z-index:2;border:0;border-radius:999px;min-height:40px;padding:8px 14px;font:800 13px system-ui,sans-serif;background:var(--card);color:var(--ink);box-shadow:0 2px 10px rgba(0,0,0,.28);cursor:pointer}
+.tm-stop{position:relative;width:12px;height:12px;border-radius:50%;background:#fff;border:3px solid #2F7BE5;box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:pointer}
+.tm-stop.done{border-color:#9AA5B8}
+.tm-stop.board{width:20px;height:20px;background:#F07C1F;border-color:#fff;z-index:2}
+.tm-stop.drop{width:18px;height:18px;background:#1F4FA3;border-color:#fff}
+.tm-stop b{position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%);white-space:nowrap;background:#F07C1F;color:#fff;font:800 11.5px/1 system-ui,sans-serif;padding:5px 8px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.25);pointer-events:none}
+.tm-stop.drop b{background:#1F4FA3}
+.tm-bus{position:relative;width:38px;height:38px;border-radius:50%;background:#fff;border:3px solid #1F4FA3;display:flex;align-items:center;justify-content:center;font-size:20px;line-height:1;box-shadow:0 3px 10px rgba(0,0,0,.35);z-index:3}
+.tm-bus i{position:absolute;inset:-3px;border-radius:50%;pointer-events:none}
+.tm-bus.last{border-color:#9AA5B8;filter:grayscale(1);opacity:.85}
+.tm-bus span{position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);white-space:nowrap;background:rgba(20,33,61,.88);color:#fff;font:700 11px/1 system-ui,sans-serif;padding:4px 7px;border-radius:7px}
+.tm-bus span:empty{display:none}
+@media (prefers-reduced-motion:no-preference){.tm-bus.live i{animation:tmP 1.8s infinite}}
+@keyframes tmP{0%{box-shadow:0 0 0 0 rgba(47,123,229,.55)}70%{box-shadow:0 0 0 16px rgba(47,123,229,0)}100%{box-shadow:0 0 0 0 rgba(47,123,229,0)}}
+.tm-pop{font:13px/1.35 system-ui,sans-serif;color:#14213D;font-weight:700}

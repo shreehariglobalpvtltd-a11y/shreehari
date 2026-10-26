@@ -1,0 +1,267 @@
+<?php
+/**
+ * =====================================================================
+ *  admin/api/wa-send.php — one-click WhatsApp from the panel
+ *  (17 Sep 2026)
+ *
+ *  POST JSON {action, purpose, agent_id | pnr, from, to, on, ledger_id, note}
+ *
+ *    action=preview   compose the message and say HOW it can go out:
+ *                     {ok, to, intl, text, mediaUrl, link, canAutoSend,
+ *                      sessionOpen, templateConfigured, driver, reason}
+ *    action=send      send through Notify::whatsapp() (logged to
+ *                     message_logs with purpose / admin / agent), or —
+ *                     when WhatsApp would refuse a free-text message
+ *                     outside a 24-hour chat and no approved template is
+ *                     configured — return the wa.me link instead of
+ *                     burning a send that fails 63016 later.
+ *    action=handoff   record that the staff member opened the wa.me link
+ *                     on their own phone (message_logs status 'skipped',
+ *                     provider 'manual' — the convention booking-view.php
+ *                     already used), so the log is complete either way.
+ *
+ *  Gates: signed-in staff (bookings.view), CSRF, per-purpose permission
+ *  from WaTemplates::REGISTRY, agent scoping (a counter agent only ever
+ *  targets themselves or their own bookings — enforced inside compose()),
+ *  the office switch wa_admin_tools_enabled, and a per-admin rate limit.
+ * =====================================================================
+ */
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/_guard.php';
+require_once INCLUDE_PATH . '/watemplates.php';
+$admin = admin_boot('bookings.view');
+
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('X-Content-Type-Options: nosniff');
+
+function waOut(array $payload): void
+{
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+function waErr(string $error, array $extra = []): void
+{
+    waOut(['ok' => false, 'error' => $error] + $extra);
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    waErr('POST only.');
+}
+if (!Security::verifyCsrf()) {
+    waErr('Your session expired — reload the page and try again.');
+}
+if (!Settings::getBool('wa_admin_tools_enabled', true)) {
+    waErr('WhatsApp tools are switched off in Settings (wa_admin_tools_enabled).');
+}
+$adminId = (int) ($admin['id'] ?? 0);
+if (!Security::rateLimit('wa_send', 'admin:' . $adminId, 40, 60)) {
+    waErr('Too many WhatsApp actions in a minute — pause and try again.');
+}
+
+$in      = Response::input();
+$action  = (string) ($in['action'] ?? 'preview');
+$purpose = Security::clean((string) ($in['purpose'] ?? ''), 40);
+$reg     = WaTemplates::REGISTRY[$purpose] ?? null;
+if ($reg === null) {
+    waErr('Unknown message type.');
+}
+// 18 Sep 2026: a signed-in agent (scoped) may send their OWN statement-type
+// messages without commissions.view; everything else keeps the registry
+// permission. A scoped agent can never address another agent, another
+// seller's booking (checked after compose, below) or an office / departure
+// document — the same walls every admin page applies.
+$scopeId  = Auth::bookingScopeAdminId();
+$ownAgent = $scopeId !== null && (string) ($reg['target'] ?? '') === 'agent'
+    && (int) ($in['agent_id'] ?? 0) === $scopeId
+    && in_array($purpose, WaTemplates::OWN_AGENT_PURPOSES, true);
+if (!$ownAgent && !Auth::can((string) $reg['perm'])) {
+    waErr('Your role may not send this message type.');
+}
+if ($scopeId !== null) {
+    $t = (string) ($reg['target'] ?? '');
+    if ($t === 'agent' && (int) ($in['agent_id'] ?? 0) !== $scopeId) {
+        waErr('You may only send messages about your own account.');
+    }
+    if ($t === 'office' || $t === 'schedule') {
+        waErr('Office summaries and departure documents are sent by the office.');
+    }
+}
+
+$ctx = [
+    'agent_id'  => (int) ($in['agent_id'] ?? 0),
+    'pnr'       => Security::clean((string) ($in['pnr'] ?? ''), 40),
+    'from'      => Security::clean((string) ($in['from'] ?? ''), 10),
+    'to'        => Security::clean((string) ($in['to'] ?? ''), 10),
+    'on'        => Security::clean((string) ($in['on'] ?? ''), 10),
+    'ledger_id' => (int) ($in['ledger_id'] ?? 0),
+    'note'      => Security::clean((string) ($in['note'] ?? ''), 300),
+    // Departure documents (Bus Chalan hub, 17 Sep 2026)
+    'sid'       => (int) ($in['sid'] ?? 0),
+    'doc'       => Security::clean((string) ($in['doc'] ?? ''), 10),
+    'page'      => (int) ($in['page'] ?? 1),
+    'target'    => Security::clean((string) ($in['target'] ?? ''), 10),
+    'phone'     => Security::clean((string) ($in['phone'] ?? ''), 20),
+    'country'   => Security::clean((string) ($in['country'] ?? ''), 2),
+];
+$targetKey = $reg['target'] === 'agent' ? 'agent:' . $ctx['agent_id'] : ($reg['target'] === 'booking' ? $ctx['pnr'] : ($reg['target'] === 'schedule' ? 'sid:' . $ctx['sid'] . ':' . $ctx['doc'] : 'office'));
+
+try {
+    $msg = WaTemplates::compose($purpose, $ctx, $admin);
+} catch (Throwable $e) {
+    waErr($e->getMessage());
+}
+if ($scopeId !== null && (string) ($reg['target'] ?? '') === 'booking') {
+    // Same disclosure wall as booking-view.php: only the seller's own sales.
+    $soldBy = (int) Database::scalar('SELECT sold_by_admin_id FROM bookings WHERE id = :i', ['i' => (int) ($msg['bookingId'] ?? 0)], 0);
+    if ((int) ($msg['bookingId'] ?? 0) <= 0 || $soldBy !== $scopeId) {
+        waErr('That booking is not one of your sales.');
+    }
+}
+
+$driver  = Settings::getString('whatsapp_driver', 'click_to_chat');
+$apiOn   = ($driver === 'twilio' && Settings::getString('twilio_account_sid', '') !== '' && Settings::getString('twilio_whatsapp_from', '') !== '')
+        || ($driver === 'cloud_api' && Settings::getString('whatsapp_api_token', '') !== '')
+        || ($driver === 'aisensy' && (static function (): bool { require_once ROOT_PATH . '/whatsapp/aisensy.php'; return AiSensyAPI::enabled(); })());
+$sidKey  = (string) $msg['contentSidKey'];
+$contentSid = $sidKey !== '' ? Settings::getString($sidKey, '') : '';
+// The ticket template carries the ticket vars; any other purpose has no
+// template variables yet, so its Content SID can only be used once the
+// office maps variables — until then it counts as "not configured".
+$templateConfigured = $contentSid !== '' && $msg['templateVars'] !== [];
+$sessionOpen = WaTemplates::inSessionWindow($msg['intl']);
+$paused      = $driver === 'twilio' ? Notify::twilioPause() : null;
+$canAutoSend = $apiOn && $paused === null && ($templateConfigured || $sessionOpen || $driver === 'cloud_api' || $driver === 'aisensy');
+$reason = !$apiOn ? 'No WhatsApp API is configured — the message opens on your phone instead.'
+    : ($paused !== null ? 'Twilio is paused after an account-level refusal until ' . date('H:i', (int) $paused['until']) . ' — use your phone for now.'
+    : ($canAutoSend ? ($templateConfigured ? 'Sent through the approved template.' : 'This number wrote to us in the last 24 h, so free text is delivered.')
+    : 'WhatsApp only delivers free text inside a 24-hour chat; this number has not written to us recently and no approved template is set for this message (Settings → ' . $sidKey . '). It opens on your phone instead.'));
+
+$link = whatsappLink($msg['intl'], $msg['text']);
+
+if ($action === 'preview') {
+    waOut([
+        'ok' => true, 'purpose' => $purpose, 'label' => $msg['label'], 'to' => $msg['to'], 'intl' => $msg['intl'],
+        'recipient' => $msg['recipientName'], 'text' => $msg['text'], 'mediaUrl' => $msg['mediaUrl'],
+        'attachments' => $msg['attachments'], 'link' => $link, 'driver' => $driver,
+        'canAutoSend' => $canAutoSend, 'sessionOpen' => $sessionOpen, 'templateConfigured' => $templateConfigured, 'reason' => $reason,
+    ]);
+}
+
+$meta = [
+    'purpose'        => $purpose,
+    'admin_id'       => $adminId,
+    'agent_admin_id' => $msg['agentId'],
+    'media_url'      => $msg['mediaUrl'],
+    'media_type'     => $msg['mediaType'],
+];
+
+if ($action === 'handoff') {
+    Notify::logOutbound($msg['intl'], $msg['text'], 'skipped', $meta + [
+        'provider' => 'manual', 'bookingId' => $msg['bookingId'],
+        'error' => 'handed to staff phone (wa.me)',
+    ]);
+    Logger::audit('wa.handoff', 'message', $purpose . ':' . $targetKey, null,
+        ['to' => $msg['intl'], 'purpose' => $purpose], 'opened on the staff phone by admin #' . $adminId);
+    waOut(['ok' => true, 'handoff' => true, 'link' => $link]);
+}
+
+if ($action !== 'send') {
+    waErr('Unknown action.');
+}
+
+if (!$canAutoSend) {
+    Notify::logOutbound($msg['intl'], $msg['text'], 'skipped', $meta + [
+        'provider' => 'manual', 'bookingId' => $msg['bookingId'],
+        'error' => 'not auto-sent: ' . mb_substr($reason, 0, 200),
+    ]);
+    Logger::audit('wa.send', 'message', $purpose . ':' . $targetKey, null,
+        ['to' => $msg['intl'], 'purpose' => $purpose, 'result' => 'handoff'], $reason);
+    waOut(['ok' => false, 'link' => $link, 'handoff' => true, 'reason' => $reason]);
+}
+
+if ($templateConfigured) {
+    $meta['content_sid'] = $contentSid;
+}
+
+/* Outside a 24 h window Meta only delivers an approved template, so a
+   statement or a chalani sent to an agent on a quiet day simply failed.
+   shg_office_alert is the generic two-variable template ("Type" and
+   "Details"), which every staff-facing message fits: the purpose label
+   becomes the type, the composed text becomes the details. Customer
+   messages are excluded — that wording is written for the office, and a
+   passenger must never receive it. While the template is still in review
+   whatsappCloudApi() falls back to the plain text, exactly as before. */
+$templateVars = $templateConfigured ? $msg['templateVars'] : [];
+$audience     = (string) (WaTemplates::REGISTRY[$purpose]['audience'] ?? '');
+if ($templateVars === [] && in_array($audience, ['agent', 'office', 'crew'], true)) {
+    $label = (string) (WaTemplates::REGISTRY[$purpose]['label'] ?? $purpose);
+    $meta['template_name'] = 'shg_office_alert';
+    $meta['template_lang'] = 'en';
+    $templateVars = [
+        '1' => mb_substr($label, 0, 60),
+        // One variable cannot hold a newline, and Meta rejects an empty one.
+        '2' => mb_substr(trim((string) preg_replace('/\s*\R\s*/u', ' · ', $msg['text'])), 0, 600) ?: '-',
+    ];
+}
+
+/* 5 Oct 2026: on the AiSensy driver a staff message goes once, on its own
+   approved template (sendStaffMessage below) - not a second time through
+   Notify's generic one. */
+$res = ($driver === 'aisensy' && in_array($audience, ['agent', 'office', 'crew'], true)) ? false : Notify::whatsapp(
+    $msg['to'],
+    $msg['text'],
+    $msg['mediaUrl'],
+    $msg['hint'],
+    $templateVars,
+    $msg['bookingId'],
+    $meta
+);
+
+/* 3 Oct 2026 — AiSensy (whatsapp/aisensy.php) for staff messages: agent
+   statements and summaries, the bus chalani to the crew, office summaries.
+   aisensy_mode 'always' sends it there too (Meta accepts but then fails
+   async on 131042 while its billing is broken); 'fallback' only when the
+   main driver refused. A delivered AiSensy copy counts as sent. Never
+   allowed to break this endpoint. */
+try {
+    if (in_array($audience, ['agent', 'office', 'crew'], true)) {
+        require_once ROOT_PATH . '/whatsapp/aisensy.php';
+        $aisMode = AiSensyAPI::mode();
+        if (AiSensyAPI::enabled() && ($driver === 'aisensy' || $aisMode === 'always' || ($aisMode === 'fallback' && $res !== true))) {
+            $ais = AiSensyAPI::sendStaffMessage($msg, $audience);
+            Notify::logOutbound(AiSensyAPI::normalizePhone((string) ($msg['intl'] ?: $msg['to'])), $msg['text'], $ais['success'] ? 'sent' : 'failed', [
+                'provider'       => 'aisensy',
+                'sid'            => $ais['message_id'],
+                'purpose'        => $purpose,
+                'admin_id'       => $adminId,
+                'agent_admin_id' => $msg['agentId'],
+                'media_url'      => $msg['mediaUrl'],
+                'error'          => $ais['success'] ? null : mb_substr('AiSensy ' . $ais['how'] . ': ' . (string) $ais['error'], 0, 250),
+            ]);
+            if ($ais['success'] && $res !== true) {
+                $res = true;   // the AiSensy copy reached them
+            }
+        }
+    }
+} catch (Throwable $e) {
+    Logger::warning('AiSensy staff send failed', ['purpose' => $purpose, 'err' => $e->getMessage()], 'whatsapp');
+}
+
+if ($res === true) {
+    Logger::audit('wa.send', 'message', $purpose . ':' . $targetKey, null,
+        ['to' => $msg['intl'], 'purpose' => $purpose, 'result' => 'sent', 'media' => $msg['mediaUrl']], 'sent by admin #' . $adminId);
+    waOut(['ok' => true, 'sent' => true, 'to' => $msg['intl'], 'message' => 'Sent to +' . $msg['intl'] . ' on WhatsApp.']);
+}
+if (is_string($res) && $res !== '') {
+    $pause = $driver === 'twilio' ? Notify::twilioPause() : null;
+    Logger::audit('wa.send', 'message', $purpose . ':' . $targetKey, null,
+        ['to' => $msg['intl'], 'purpose' => $purpose, 'result' => 'fallback'], 'provider refused — link offered to admin #' . $adminId);
+    waOut(['ok' => false, 'link' => $res, 'handoff' => true,
+        'reason' => $pause !== null
+            ? 'Twilio is refusing the account right now — paused until ' . date('H:i', (int) $pause['until']) . '. Send from your phone for now.'
+            : 'The provider did not accept the message. Send it from your phone instead.']);
+}
+waErr('WhatsApp send failed. Use Settings → "Test WhatsApp" to see the provider error, or check logs/ (channel: whatsapp).');
