@@ -315,10 +315,11 @@ check('hidden categories still post (Save saves all)', !str_contains($sp, "p.dis
 check('curated key list matches the two panels', str_contains($sp, "'agent_cash_limit_default', 'agent_daily_booking_limit'];") && substr_count($sp, "'agent_daily_booking_limit'") >= 2);
 check('Save returns to the same category', str_contains($sp, 'form.action = location.pathname + location.hash'));
 $gd = (string) file_get_contents($root . '/admin/_guard.php');
-check('office menu: WhatsApp pages under one heading', substr_count($gd, "=> '📲 WhatsApp & marketing'") >= 8);
-check('office menu: customer pages under Customers', str_contains($gd, "'customers.php' => '👥 Customers'"));
-check('office menu: AI pages under AI', str_contains($gd, "'ai-brain.php' => '🤖 AI'"));
-check('counter agent strip untouched', str_contains($gd, 'if (!Auth::isCounterAgent()) {' . "\n" . '        $secMap') || str_contains($gd, "if (!Auth::isCounterAgent()) {\r\n        \$secMap"));
+require_once INCLUDE_PATH . '/adminnavigation.php';
+check('office menu has exactly the three requested business categories', count(AdminNavigation::CATEGORIES) === 3);
+check('customer and ticket pages stay under live operations', AdminNavigation::category(['href'=>'customers.php','section'=>'Bookings & tickets']) === 'operations');
+check('AI and settings are filed under finance and system', AdminNavigation::category(['href'=>'ai-brain.php','section'=>'Settings']) === 'finance');
+check('counter agent retains the flat workflow', str_contains($gd, '$showGroups = !Auth::isCounterAgent()') && str_contains($gd, 'foreach ($items as $item) { $renderLink($item); }'));
 $wl = (string) file_get_contents($root . '/includes/watpllib.php');
 check('template approval status can be read back from Meta', str_contains($wl, 'public static function syncMetaStatus()'));
 echo "\n----------------------------------------\n";

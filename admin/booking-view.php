@@ -1843,6 +1843,9 @@ $qeStopPick = static function (string $name, string $otherName, string $id, stri
    other gender). Per passenger: an option lists the "from" seats it fits. */
 $qeSeatOk = []; $qeSeatList = []; $qeSeatErr = ''; $qeAutoPick = null; $qeAutoFrom = '';
 $qePaxBySeat = [];
+if ($qeMay['seat'] && ($qeSid <= 0 || empty($qeLeg['seats']))) {
+    $qeSeatErr = 'This booking has no active departure or seat allocation. Review the original ticket before changing seats.';
+}
 foreach (($b['passengers'] ?? []) as $qeP) { $qePaxBySeat[(string) $qeP['seat_no']] = $qeP; }
 if ($qeMay['seat'] && $qeSid > 0 && !empty($qeLeg['seats'])) {
     try {

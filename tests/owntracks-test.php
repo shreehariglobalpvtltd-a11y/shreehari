@@ -12,6 +12,9 @@ $header=['HTTP_AUTHORIZATION'=>'Basic '.base64_encode('bus-7:'.$uid)];
 check(OwnTracksGateway::authenticatedTracker($header)['id']===3,'Basic header auth');
 check(OwnTracksGateway::authenticatedTracker(['PHP_AUTH_USER'=>'bus-7','PHP_AUTH_PW'=>$uid])['id']===3,'PHP auth variables');
 check(OwnTracksGateway::authenticatedTracker([])===null,'missing credentials refused');
+check(OwnTracksGateway::authenticatedTracker(['PHP_AUTH_USER'=>$uid,'PHP_AUTH_PW'=>$uid])['id']===3,'deployed UID/UID profile remains compatible');
+check(OwnTracksGateway::authenticatedTracker(['PHP_AUTH_USER'=>$uid,'PHP_AUTH_PW'=>'wrong'])===null,'UID username is not enough without the matching secret');
+check(OwnTracksGateway::authenticatedTracker(['PHP_AUTH_USER'=>'bus-7','PHP_AUTH_PW'=>'wrong'])===null,'bus account requires matching device credential');
 check(OwnTracksGateway::authenticatedTracker(['HTTP_AUTHORIZATION'=>'Basic !!'])===null,'bad base64 refused');
 check(OwnTracksGateway::authenticatedTracker(['PHP_AUTH_USER'=>'bus-8','PHP_AUTH_PW'=>$uid])===null,'wrong bus refused');
 Database::$row['is_active']=0;check(OwnTracksGateway::authenticatedTracker($header)===null,'inactive refused');
@@ -32,4 +35,4 @@ check($profile['username']==='bus-7'&&$profile['password']===$uid,'correct bus a
 check($profile['locatorInterval']===3&&$profile['locatorPriority']===0,'3-second high accuracy');
 check($profile['autostartOnBoot']===true,'dedicated bus phone restarts tracking after boot');
 check(!isset($profile['allowConfigurationByURIAndConfigFile']),'external import switch stays under user control');
-echo "19 OwnTracks auth, protocol and profile checks passed\n";
+echo "22 OwnTracks auth, protocol and profile checks passed\n";

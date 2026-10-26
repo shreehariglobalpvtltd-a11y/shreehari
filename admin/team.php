@@ -76,11 +76,11 @@ foreach($rows as $r){
  if($r['kind']==='account'||(!TeamRegistry::digital($r)&&!$archiveView)||$r['archived']!==$archiveView){continue;}
  $isStaff=$r['kind']==='staff';$a=$isStaff?StaffApps::find((int)$r['id']):AgentApplications::find((int)$r['id']);
  $m=TeamRegistry::meta($r['key']);$category=$isStaff?(($a['role_applied']??'')==='driver'?'driver':'staff'):($a['type']==='org'?'partner':'agent');
+ if($family!=='all'&&AdminNavigation::teamFamily($category)!==$family){continue;}
  if(!in_array($a['status'],['approved','suspended'],true)||($a['kyc_status']??'')!=='verified'){
   if(!in_array($a['status'],['rejected','exited'],true)){$pendingQueue[]=['type'=>$r['kind'],'id'=>$r['id'],'ref'=>$r['ref'],'name'=>$r['name'],'role'=>$r['label'],'phone'=>$r['phone_raw'],'phone_verified'=>!empty($a['phone_verified']),'district'=>$r['area'],'id_type'=>$isStaff?($a['id_type']??''):($a['fields']['p_idtype']??''),'id_no'=>'Private document · open KYC review','created'=>$a['created_at'],'file_url'=>'','photo_url'=>'','key'=>$r['key']];}
   if(!in_array($a['status'],['approved','suspended'],true)){continue;}
  }
- if($family!=='all'&&AdminNavigation::teamFamily($category)!==$family){continue;}
  if(($searchRole!=='all'&&$category!==$searchRole)||($query!==''&&stripos(implode(' ',[$r['name'],$r['phone'],$r['ref'],$m['code']??'',$m['route']??'']),$query)===false)){continue;}
  $aid=(int)($r['admin_id']??0);$balance=$aid?TeamFinance::available($aid):['available'=>0,'pending'=>0];
  $members[]=['ref'=>$r['ref'],'code'=>$m['code']??'Pending allocation','name'=>$r['name'],'role'=>$category,'role_lbl'=>($m['position_name']??'')?:($isStaff?StaffApps::roleLabel((string)$a['role_applied']):$r['label']),'category'=>$category,'phone'=>$r['phone_raw'],'cc'=>'','status'=>$a['status'],'balance'=>$balance['available'],'pending'=>$balance['pending'],'joined'=>$a['created_at'],'app_type'=>$r['kind'],'app_id'=>$r['id'],'admin_id'=>$aid,'key'=>$r['key'],'verified'=>!empty($a['phone_verified'])];
@@ -94,6 +94,7 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
 <style>
 .team-tabs{display:flex;gap:6px;border-bottom:2px solid var(--line,#e2e8f0);margin-bottom:20px;overflow-x:auto;padding-bottom:2px}
 .team-tab{padding:10px 18px;font-size:14px;font-weight:800;text-decoration:none;color:var(--mut,#64748b);border-radius:12px 12px 0 0;white-space:nowrap;transition:all .2s}
+nav[aria-label="Team category"]{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}nav[aria-label="Team category"] .team-tab{white-space:normal;text-align:center;padding:10px 6px}@media(max-width:600px){nav[aria-label="Team category"] .team-tab{font-size:12px}}
 .team-tab:hover{color:var(--primary,#0a2a8f);background:rgba(10,42,143,.04)}
 .team-tab.active{color:#fff;background:linear-gradient(135deg,#0a2a8f,#1f4fe0)}
 .badge-count{display:inline-block;padding:2px 7px;border-radius:999px;font-size:11px;background:#f07a1e;color:#fff;margin-left:5px}
@@ -267,14 +268,14 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
      TAB 3: FLEXIBLE EARNINGS & SALARY
      ===================================================================== -->
 <?php elseif ($tab === 'earnings'): ?>
-<div class="data-card"><h3>Earnings, salary and loans</h3><p>Select a member → Manage to set dated percentage, per-passenger or per-booking terms and salary. Existing earnings are preserved.</p><div class="action-grid"><a class="btn-sm btn-primary" href="team.php">Select member</a><a class="btn-sm btn-outline" href="payroll.php">Staff payroll / salary slips</a><a class="btn-sm btn-outline" href="ledger-check.php">Ledger reconciliation</a><a class="btn-sm btn-outline" href="team.php?tab=settings&amp;family=<?= $h($family) ?>">Staff positions / services</a></div></div>
+<div class="data-card"><h3>Earnings, salary and loans</h3><p>Select a member → Manage to set dated percentage, per-passenger or per-booking terms and salary. Existing earnings are preserved.</p><div class="action-grid"><a class="btn-sm btn-primary" href="team.php?tab=members&amp;family=<?= $h($family) ?>">Select member</a><a class="btn-sm btn-outline" href="payroll.php">Staff payroll / salary slips</a><a class="btn-sm btn-outline" href="ledger-check.php">Ledger reconciliation</a><a class="btn-sm btn-outline" href="team.php?tab=settings&amp;family=<?= $h($family) ?>">Staff positions / services</a></div></div>
 <div class="data-card"><h3>Bonus / deduction</h3><form method="post"><?= Security::csrfField() ?><input type="hidden" name="action" value="record_adjustment"><input type="hidden" name="operation_token" value="<?= bin2hex(random_bytes(16)) ?>"><label>Linked account ID * <select name="member_id" required><option value="">Choose linked agent</option><?php foreach($members as $member): if(!$member['admin_id']||$member['app_type']!=='agent')continue; ?><option value="<?= (int)$member['admin_id'] ?>"><?= $h($member['code'].' · '.$member['name']) ?></option><?php endforeach; ?></select></label><label>Type <select name="adj_type"><option value="bonus">Bonus</option><option value="deduction">Deduction</option></select></label><label>Amount (INR) * <input name="amount" type="number" min="0.01" step="0.01" required></label><label>Reason * <input name="reason" minlength="5" required></label><button class="btn-sm btn-primary">Submit adjustment</button></form></div>
 <!-- =====================================================================
      TAB 4: WALLET & WITHDRAWALS
      ===================================================================== -->
 <?php elseif ($tab === 'withdrawals'): ?>
   <div class="data-card">
-    <h3>🏦 Wallet Payout Requests</h3>
+    <h3>🏦 All-team Wallet Payout Requests</h3>
     <p style="font-size:13.5px;color:#64748b">
       When users request withdrawals, funds are reserved. Admins can approve and mark paid only after recording the payment confirmation / UTR reference number. Over-balance and duplicate requests are strictly prevented.
     </p>

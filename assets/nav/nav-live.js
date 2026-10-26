@@ -107,6 +107,15 @@ var TX = {
   pnrLast: { ne: 'अन्तिम थाहा भएको ठाउँ · {n} अघि', hi: 'आख़िरी पता जगह · {n} पहले', en: 'last known place · {n} ago' },
   pnrOff: { ne: 'बन्द गर्नुस्', hi: 'बंद करें', en: 'Stop' },
   pnrYour: { ne: 'तपाईंको स्टप', hi: 'आपका स्टॉप', en: 'Your stop' },
+  centerBus: { ne: 'बस केन्द्रित', hi: 'बस केंद्रित', en: 'Center Bus' },
+  followBus: { ne: 'बस पछ्याउनुहोस्', hi: 'बस फ़ॉलो करें', en: 'Follow My Bus' },
+  followingBus: { ne: 'बस पछ्याउँदै...', hi: 'बस फ़ॉलो हो रही है...', en: 'Following Bus...' },
+  routeOverview: { ne: 'रुट अवलोकन', hi: 'रूट पूर्वावलोकन', en: 'Route Overview' },
+  statusLive: { ne: 'लाइभ', hi: 'लाइव', en: 'LIVE' },
+  statusStopped: { ne: 'रोकिएको', hi: 'रुकी हुई', en: 'STOPPED' },
+  statusGpsLost: { ne: 'GPS खोज्दै', hi: 'GPS खोज रहे हैं', en: 'GPS LOST' },
+  statusOffline: { ne: 'अफलाइन', hi: 'ऑफ़लाइन', en: 'OFFLINE' },
+  statusCompleted: { ne: 'यात्रा सम्पन्न', hi: 'यात्रा समाप्त', en: 'TRIP COMPLETED' },
   trackPage: { ne: 'पूरा ट्र्याक', hi: 'पूरा ट्रैक', en: 'Full tracking' }
 };
 /* the owner's list; minutes each lives = NavLive::KINDS on the server */
@@ -266,6 +275,14 @@ function css() {
     '.nl-k span{font-size:26px;line-height:1}',
     '.nl-fab{position:relative}.nl-fab svg{width:22px;height:22px}',
     '.nl-livepill{background:#E5352B!important;color:#fff!important;border:none!important;font:700 11px Inter,system-ui,sans-serif!important;letter-spacing:.06em}',
+    '.nl-badge{display:inline-block;padding:3px 9px;border-radius:12px;font:700 11px Inter,system-ui,sans-serif;letter-spacing:.05em;text-transform:uppercase}',
+    '.nl-badge-live{background:#22c55e;color:#052e16}',
+    '.nl-badge-stop{background:#f59e0b;color:#451a03}',
+    '.nl-badge-warn{background:#ef4444;color:#fff}',
+    '.nl-badge-off{background:#64748b;color:#f8fafc}',
+    '.nl-badge-done{background:#3b82f6;color:#fff}',
+    '.nl-badge-wait{background:#a855f7;color:#fff}',
+    '.nl-mybus-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px;margin:8px 0}',
     '.nl-bus{cursor:pointer}.nl-bi{display:flex;align-items:center;gap:6px;padding:3px 9px 3px 3px;border-radius:22px;background:rgba(14,24,44,.92);border:2px solid #D4A843;box-shadow:0 4px 12px rgba(0,0,0,.45);color:#EEF2FA;font:600 11.5px Inter,system-ui,sans-serif;white-space:nowrap}',
     '.nl-bi img{width:34px;height:34px;border-radius:50%;object-fit:cover;background:#fff}',
     /* 22 Oct 2026: the number plate on the coach + a live pulse ("gaadi number wise") */
@@ -877,62 +894,179 @@ function openSync() {
    E · MY BUS (PNR) - the same door as track.php (WhereIs::authorised):
    the track link's key, or a login that owns the booking
 --------------------------------------------------------------------- */
-var MB = { pnr: '', k: '', timer: 0, m: null, st: null, want: null };
+var MB = { pnr: '', k: '', timer: 0, m: null, st: null, want: null, following: false, dragBound: false, received: 0, snapshot: 0, generation: 0 };
+function myBusAge() {
+  return MB.st && typeof MB.st.fixAge === 'number' ? MB.st.fixAge + Math.max(0, performance.now() - MB.received) / 1000 : null;
+}
+function myBusExpire(failed) {
+  var d = MB.st, age = myBusAge();
+  if (!d || !d.live || (!failed && age != null && age >= 0 && age <= 120)) return false;
+  d.live = false; d.lastKnown = Number.isFinite(d.lat) && Number.isFinite(d.lng);
+  d.fixAge = age; MB.received = performance.now();
+  d.kmh = null; d.etaMin = null; d.km = null; MB.following = false;
+  if (MB.m) {
+    if (MB.m._shgAnim) { cancelAnimationFrame(MB.m._shgAnim); MB.m._shgAnim = null; }
+    MB.m.getElement().style.opacity = '0.45';
+    MB.m.getElement().title = 'Last known GPS location; not live';
+  }
+  return true;
+}
 function openMyBus() {
+  myBusExpire(false);
   var saved = LSg.get('shg:nl:mybus', null), st = MB.st;
   var el = sheet('<h3><img src="/assets/img/bus-shg-sm.webp" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;background:#fff">' + esc(t('myBusT')) + '</h3>' +
     (st ? myBusHtml(st) : '') +
     '<input class="nl-url" id="nlPnr" type="text" autocapitalize="characters" spellcheck="false" maxlength="40" placeholder="' + esc(t('pnrPh')) + '" value="' + esc(MB.pnr || (saved && saved.pnr) || '') + '" style="margin-top:8px;font-size:16px">' +
-    '<div class="nl-acts"><button class="nl-b cta" type="button" data-go>' + esc(t('pnrGo')) + '</button>' +
-    (MB.pnr ? '<a class="nl-b" href="/track.php?pnr=' + encodeURIComponent(MB.pnr) + (MB.k ? '&k=' + encodeURIComponent(MB.k) : '') + '">' + esc(t('trackPage')) + '</a><button class="nl-b red" type="button" data-off>' + esc(t('pnrOff')) + '</button>' : '') + '</div>');
+    '<div class="nl-acts">' +
+      '<button class="nl-b cta" type="button" data-go>' + esc(t('pnrGo')) + '</button>' +
+      (MB.pnr ? '<a class="nl-b" href="/track.php?pnr=' + encodeURIComponent(MB.pnr) + (MB.k ? '&k=' + encodeURIComponent(MB.k) : '') + '">' + esc(t('trackPage')) + '</a><button class="nl-b red" type="button" data-off>' + esc(t('pnrOff')) + '</button>' : '') +
+    '</div>');
   el.querySelector('[data-go]').onclick = function () {
     var p = ($('#nlPnr').value || '').trim().toUpperCase();
     if (p) myBus(p, p === MB.pnr ? MB.k : (saved && saved.pnr === p ? saved.k : ''));
   };
   var off2 = el.querySelector('[data-off]'); if (off2) off2.onclick = function () { myBusOff(); sheetClose(); };
+  var btnCenter = el.querySelector('[data-mb-center]');
+  if (btnCenter) btnCenter.onclick = function () { centerBus(); };
+  var btnFollow = el.querySelector('[data-mb-follow]');
+  if (btnFollow) btnFollow.onclick = function () { toggleFollow(); };
+  var btnOverview = el.querySelector('[data-mb-overview]');
+  if (btnOverview) btnOverview.onclick = function () { routeOverview(); };
+}
+function centerBus() {
+  var m = X && X.S && X.S.map, d = MB.st;
+  if (!m || !d || d.lat == null || d.lng == null) return;
+  m.flyTo({ center: [d.lng, d.lat], zoom: Math.max(m.getZoom(), 13), pitch: X.S.saver ? 0 : 45, bearing: d.bearing || 0, duration: slow() ? 0 : 1000 });
+}
+function toggleFollow() {
+  if (myBusExpire(false) || !MB.st || !MB.st.live) { X.toast('Fresh GPS is needed to follow this bus.'); return; }
+  MB.following = !MB.following;
+  if (MB.following) centerBus();
+  if (SHT.open) openMyBus();
+}
+function routeOverview() {
+  var m = X && X.S && X.S.map, d = MB.st;
+  if (!m || !d || d.lat == null || d.lng == null) return;
+  var b = new maplibregl.LngLatBounds([d.lng, d.lat], [d.lng, d.lat]);
+  if (d.stopLng != null && d.stopLat != null) {
+    b.extend([d.stopLng, d.stopLat]);
+  } else if (d.road && d.road.pts && d.road.pts.length > 0) {
+    var p0 = d.road.pts[0], p1 = d.road.pts[d.road.pts.length - 1];
+    b.extend([p0[0], p0[1]]);
+    b.extend([p1[0], p1[1]]);
+  }
+  m.fitBounds(b, { padding: { top: 90, bottom: 200, left: 60, right: 60 }, maxZoom: 14, duration: slow() ? 0 : 800 });
 }
 function myBusHtml(d) {
-  var line = d.live && d.etaMin != null ? '🟢 ' + t('pnrLive') + ' · ' + t('pnrStop', { s: d.stop || '' }) + ' ' + d.etaMin + ' ' + t('min') + (d.km != null ? ' · ' + d.km + ' km' : '')
-           : d.lastKnown && d.fixAge != null ? t('pnrLast', { n: ago(Date.now() - d.fixAge * 1000) })
-           : d.stop ? t('pnrYour') + ': ' + d.stop + (d.stopTime ? ' · ' + d.stopTime : '') : '';
-  return '<p style="color:var(--text,#EEF2FA);font-size:15px;margin-bottom:2px">' + esc(d.pnr || MB.pnr) + (d.label ? ' · ' + esc(d.label) : '') + '</p>' + (line ? '<p>' + esc(line) + '</p>' : '');
+  var stClass = 'nl-badge-live', stText = t('statusLive');
+  if (d.state === 'arrived' || d.state === 'completed') {
+    stClass = 'nl-badge-done'; stText = t('statusCompleted');
+  } else if (d.live) {
+    if (d.kmh != null && d.kmh === 0) {
+      stClass = 'nl-badge-stop'; stText = t('statusStopped');
+    } else {
+      stClass = 'nl-badge-live'; stText = t('statusLive');
+    }
+  } else if (d.lastKnown) {
+    if (d.fixAge != null && d.fixAge < 300) {
+      stClass = 'nl-badge-warn'; stText = t('statusGpsLost');
+    } else {
+      stClass = 'nl-badge-off'; stText = t('statusOffline');
+    }
+  } else {
+    stClass = 'nl-badge-wait'; stText = d.label || 'SCHEDULED';
+  }
+
+  var speedText = (d.kmh != null && d.live) ? (d.kmh + ' km/h') : '';
+  var etaText = d.live && d.etaMin != null ? (d.etaMin + ' ' + t('min')) : '';
+  var distText = d.live && d.km != null ? (d.km + ' km') : '';
+  var stopText = d.stop ? (t('pnrYour') + ': ' + esc(d.stop)) : '';
+  var gpsAge = myBusAge();
+  var gpsDetail = (d.live ? 'GPS reading age: ' : 'Last known reading age: ') + (gpsAge != null ? Math.max(0, Math.round(gpsAge)) + ' s' : 'unavailable')
+    + (typeof d.acc === 'number' ? ' · accuracy ±' + Math.round(d.acc) + ' m' : ' · accuracy unavailable');
+
+  return '<div class="nl-mybus-card">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+      '<span class="nl-badge ' + stClass + '">' + esc(stText) + '</span>' +
+      (speedText ? '<span style="font-weight:600;font-size:13px;color:var(--text,#EEF2FA);display:flex;align-items:center;gap:4px">⚡ ' + esc(speedText) + '</span>' : '') +
+    '</div>' +
+    '<p style="color:var(--text,#EEF2FA);font-size:15px;font-weight:600;margin:0 0 4px 0">' + esc(d.pnr || MB.pnr) + (d.bus ? ' · 🚌 ' + esc(d.bus) : '') + (d.route ? ' · ' + esc(d.route) : '') + '</p>' +
+    (stopText ? '<p style="font-size:13px;color:var(--text2,#A8B4CC);margin:0 0 4px 0">' + stopText + (etaText ? ' · ⏱️ ' + esc(etaText) : '') + (distText ? ' · 📍 ' + esc(distText) : '') + '</p>' : '') +
+    (d.lastKnown && d.fixAge != null ? '<p style="font-size:12px;color:#F59E0B;margin:0 0 4px 0">⚠️ ' + t('pnrLast', { n: ago(Date.now() - (myBusAge() || 0) * 1000) }) + (d.lastStop ? ' near ' + esc(d.lastStop) : '') + '</p>' : '') +
+    (d.lat != null && d.lng != null ? '<p class="nl-hint">' + esc(gpsDetail) + '</p>' : '') +
+    '<div class="nl-acts" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">' +
+      '<button class="nl-b" type="button" data-mb-center style="min-height:36px;padding:0 12px;font-size:13px">🎯 ' + esc(t('centerBus')) + '</button>' +
+      '<button class="nl-b ' + (MB.following ? 'cta' : '') + '" type="button" data-mb-follow style="min-height:36px;padding:0 12px;font-size:13px">🛰️ ' + esc(MB.following ? t('followingBus') : t('followBus')) + '</button>' +
+      '<button class="nl-b" type="button" data-mb-overview style="min-height:36px;padding:0 12px;font-size:13px">🗺️ ' + esc(t('routeOverview')) + '</button>' +
+    '</div>' +
+  '</div>';
 }
 function myBus(pnr, k) {
+  MB.generation++; MB.snapshot = 0; MB.st = null; MB.following = false;
+  if (MB.m) { MB.m.remove(); MB.m = null; }
   MB.pnr = pnr; MB.k = k || ''; LSg.set('shg:nl:mybus', { pnr: MB.pnr, k: MB.k });
   clearInterval(MB.timer);
   myBusTick(true);
-  MB.timer = setInterval(function () { myBusTick(false); }, 20000);
+  MB.timer = setInterval(function () { myBusTick(false); }, 15000);
 }
 function myBusOff() {
-  clearInterval(MB.timer); MB.timer = 0; MB.pnr = ''; MB.k = ''; MB.st = null; LSg.set('shg:nl:mybus', null);
+  MB.generation++; MB.snapshot = 0;
+  clearInterval(MB.timer); MB.timer = 0; MB.pnr = ''; MB.k = ''; MB.st = null; MB.following = false; LSg.set('shg:nl:mybus', null);
   if (MB.m) { MB.m.remove(); MB.m = null; }
 }
 function myBusTick(first) {
   if (!MB.pnr) return;
-  X.fetchT('/api/whereis.php?pnr=' + encodeURIComponent(MB.pnr) + '&k=' + encodeURIComponent(MB.k), { credentials: 'same-origin', cache: 'no-store' }, 12000)
+  var generation = MB.generation;
+  return X.fetchT('/api/whereis.php?pnr=' + encodeURIComponent(MB.pnr) + '&k=' + encodeURIComponent(MB.k), { credentials: 'same-origin', cache: 'no-store' }, 12000)
     .then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
     .then(function (x) {
+      if (generation !== MB.generation) return;
       if (!x.j || !x.j.ok) {
         if (first) {
           var keep = { pnr: MB.pnr, k: MB.k };
           myBusOff();
           var el = sheet('<h3>' + esc(t('myBusT')) + '</h3><p>' + esc(t('pnrNo')) + '</p><div class="nl-acts"><button class="nl-b wa" type="button" data-l>' + esc(t('syncLogin')) + '</button></div>');
           el.querySelector('[data-l]').onclick = function () { MB.want = keep; SY.st = { signedIn: false }; openSync(); };
-        } else if (x.s === 404) myBusOff();                /* no longer this phone's to see: stop asking */
+        } else if (x.s === 404 || x.s === 403) myBusOff();
+        else if (myBusExpire(true) && SHT.open && $('#nlPnr')) openMyBus();                /* no longer this phone's to see: stop asking */
         return;
       }
+      var stamp = Date.parse((x.j.data || {}).updatedAt || '');
+      if (!Number.isFinite(stamp) || stamp <= MB.snapshot) return;
+      MB.snapshot = stamp; MB.received = performance.now();
       var d = MB.st = x.j.data, m = X.S.map;
-      if (m && window.maplibregl && d.lat != null && d.lng != null) {
+      myBusExpire(false);
+      if (m && window.maplibregl && Number.isFinite(d.lat) && Number.isFinite(d.lng)) {
+        if (!MB.dragBound) {
+          MB.dragBound = true;
+          m.on('dragstart', function () {
+            if (MB.following) {
+              MB.following = false;
+              if (SHT.open) openMyBus();
+            }
+          });
+        }
         if (!MB.m) {
           var el2 = wrapM('<img src="/assets/img/bus-shg-sm.webp" alt="S Hari Global"><span>' + esc(t('myBusT')) + '</span>', 'nl-bi nl-mine');
           el2.className = 'nl-bus';
           el2.addEventListener('click', function (e) { e.stopPropagation(); openMyBus(); });
           MB.m = new maplibregl.Marker({ element: el2, anchor: 'left' }).setLngLat([d.lng, d.lat]).addTo(m);
-        } else moveMarker(MB.m, [d.lng, d.lat]);
-        if (first) m.flyTo({ center: [d.lng, d.lat], zoom: Math.max(m.getZoom(), 11), duration: slow() ? 0 : 1200 });
+        } else if (d.live) moveMarker(MB.m, [d.lng, d.lat]);
+        else MB.m.setLngLat([d.lng, d.lat]);
+        MB.m.getElement().style.opacity = d.live ? '1' : '0.45';
+        MB.m.getElement().title = d.live ? 'GPS reading; marker transitions are visual interpolation' : 'Last known GPS location; not live';
+        if (first) {
+          m.flyTo({ center: [d.lng, d.lat], zoom: Math.max(m.getZoom(), 11), duration: slow() ? 0 : 1200 });
+        } else if (MB.following) {
+          m.easeTo({ center: [d.lng, d.lat], bearing: d.bearing || 0, pitch: X.S.saver ? 0 : 45, duration: slow() ? 0 : 900 });
+        }
       }
       if (first || (SHT.open && $('#nlPnr'))) openMyBus();
-    }).catch(function () { if (first) X.toast(t('failed')); });
+    }).catch(function () {
+      if (generation !== MB.generation) return;
+      if (myBusExpire(true) && SHT.open && $('#nlPnr')) openMyBus();
+      if (first) X.toast(t('failed'));
+    });
 }
 
 /* ---------------------------------------------------------------------
@@ -1031,7 +1165,7 @@ function start() {
     addEventListener('online', function () { syncRun(); });
     document.addEventListener('visibilitychange', function () { if (document.hidden) syncRun(); });
   }
-  window.SHGNAV_LIVE = { openSync: openSync, openMyBus: openMyBus, openFleet: openFleet };
+  window.SHGNAV_LIVE = { openSync: openSync, openMyBus: openMyBus, openFleet: openFleet, reportIncident: repAdd };
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) { off('bus'); Object.keys(BUS.m).forEach(function (id) { if (BUS.m[id]._shgAnim) cancelAnimationFrame(BUS.m[id]._shgAnim); }); }
     else { busRows(); if (BUS.on) busStart(); }
@@ -1041,6 +1175,7 @@ function start() {
     if (document.hidden || FW) return;
     Object.keys(BUS.by).forEach(function (id) { if (!busFresh(BUS.by[id])) removeBus(id); });
     busRows();
+    if (myBusExpire(false) && SHT.open && $('#nlPnr')) openMyBus();
     // Repair a silent WebSocket without redundant polling while push is healthy.
     if (BUS.on && performance.now() - BUS.received > 8000) busRefresh(false);
   }, 1000);

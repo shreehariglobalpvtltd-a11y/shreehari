@@ -163,7 +163,7 @@ try {
         check('offices: the head office is listed first', ($offs[0]['kind'] ?? '') === 'head');
         $head = $offs[0] ?? [];
         check('offices: head-office number on the page comes from the data', ($head['phone'] ?? '') !== '' && str_contains($off, Security::e((string) $head['phone'])));
-        check('offices: "expanding" band with partner + agent links', str_contains($off, 'id="expanding"') && str_contains($off, 'href="/agreements/"') && str_contains($off, 'href="/agent-signup.php"'));
+        check('offices: "expanding" band with partner + agent links', str_contains($off, 'id="expanding"') && str_contains($off, 'href="/agreements/"') && str_contains($off, 'href="/agreements/apply.html"'));
         $ne = req('GET', '/ne/offices')['body'];
         check('offices (ne): नयाँ कार्यालय छिट्टै once', substr_count($ne, 'नयाँ कार्यालय छिट्टै') >= 1);
         $inp = req('GET', '/india-nepal')['body'];

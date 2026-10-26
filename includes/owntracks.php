@@ -23,7 +23,7 @@ final class OwnTracksGateway
         if ($auth === null || !GpsTrackers::isGeneratedUid($auth[1])) { return null; }
         $tracker = GpsTrackers::findByUid($auth[1]);
         if ($tracker === null || $tracker['kind'] !== 'phone' || !(int) $tracker['is_active'] || $tracker['revoked_at'] !== null
-            || !hash_equals('bus-' . $tracker['bus_id'], $auth[0])) { return null; }
+            || !(hash_equals('bus-' . $tracker['bus_id'], $auth[0]) || hash_equals((string) $tracker['device_uid'], $auth[0]))) { return null; }
         return $tracker;
     }
 

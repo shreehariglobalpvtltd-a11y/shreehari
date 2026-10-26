@@ -48,6 +48,6 @@ $canSimulate = GpsSimulator::available();
 $simulation = $canSimulate ? GpsSimulator::state() : ['routeId'=>0, 'count'=>3, 'speed'=>60];
 $initialMode = $canSimulate && ($_GET['mode'] ?? '') === 'sim' ? 'sim' : 'real';
 $csrf = Security::csrfField();
-admin_header('Bus GPS · Live & Simulation', 'gps-center');
+admin_header('Live Fleet & GPS' . ($canSimulate ? ' · Development simulation' : ''), 'gps-center');
 require __DIR__ . '/_gps-center-view.php';
 admin_footer();

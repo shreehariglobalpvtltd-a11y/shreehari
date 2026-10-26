@@ -187,7 +187,7 @@ function admin_nav(): array
         ['href' => 'trip-dashboard.php','icon' => 'grid', 'label' => 'Date View',        'perm' => 'schedules.view', 'section' => 'Trips, buses & chalani'],
         ['href' => 'drivers.php',      'icon' => 'user-solo', 'label' => 'Drivers & Crew',   'perm' => 'drivers.view',   'section' => 'Trips, buses & chalani'],
         // 22 Oct 2026: a phone (Traccar Client) or a GPS box tracks a bus by its number.
-        ['href' => 'gps-center.php', 'icon' => 'map-pin',   'label' => '📡 Bus GPS & Simulation',  'perm' => 'buses.view',     'section' => 'Trips, buses & chalani'],
+        ['href' => 'gps-center.php', 'icon' => 'map-pin',   'label' => '📡 Live Fleet & GPS',  'perm' => 'buses.view',     'section' => 'Trips, buses & chalani'],
         // 22 Oct 2026: drivers, conductors, helpers and office staff who applied online (/agreements/staff.html).
         ['href' => 'staff-applications.php', 'icon' => 'id-card', 'label' => '🧑‍✈️ Staff applications', 'perm' => $agentView ? '__superadmin_only__' : 'drivers.view', 'section' => 'Trips, buses & chalani'],
 

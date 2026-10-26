@@ -1,5 +1,16 @@
 # S Hari Global continuous platform state
 
+Latest CEO/admin/navigation continuation: see `CEO-UPGRADE-20261026.md`.
+VPS browser access is now available and actual live source has been recovered
+and privately checkpointed. The prior "no VPS access" entries below are historical.
+A fresh provider snapshot was verified (expires 27 October); 24 existing live
+source files differ from unified4. No application deployment or production data
+mutation has been performed. Three-category admin organization, team family views,
+backward-compatible OwnTracks authentication, navigation/fleet freshness and
+truthful reporting improvements are implemented in the development candidate.
+Exact final CI and the remaining staging/device/finance boundaries are recorded
+in the new continuation note; the whole seven-phase upgrade is not certified.
+
 Latest continuation: see `CONTINUATION-RELEASE-20261026.md` for recovered source,
 report/OCR integration, active-form fixes, verification and explicit release blockers.
 The older observations below remain historical; this development work is not a deployment.

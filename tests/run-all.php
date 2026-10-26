@@ -50,6 +50,7 @@ require_once INCLUDE_PATH . '/seats.php';
  * later suite that guards a money or auth path and needs only the database.
  */
 const CORE_SUITES = [
+    'booking-legacy-view-test.php' => 'historical bookings without a departure remain reviewable',
     'admin-navigation-test.php' => 'three authorized management categories and preserved links',
     'gps-simulation-environment-test.php' => 'simulation fails closed in production',
     'cli-failure-test.php' => 'uncaught CLI exceptions return failure rather than HTML success',
@@ -297,6 +298,7 @@ const KNOWN_STALE = [
  * reported as a skip rather than silently shrinking the battery.
  */
 const NODE_SUITES = [
+    'nav-live-upgrade-test.cjs' => 'official corridor stops, incident truth and passenger GPS freshness',
     'gps-telemetry-test.cjs' => 'fleet local expiry, replay and simulation rejection',
     'nav-bus-routing-test.cjs' => 'bus routing never falls back to a car route',
     'application-intake-test.js' => 'manual OCR corrections, explicit review and stale cross-kind response rejection',

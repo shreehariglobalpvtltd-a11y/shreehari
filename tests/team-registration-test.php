@@ -82,7 +82,7 @@ try {
         'fields_json' => json_encode(['p_idno' => '99-88-77']),
     ]);
     $a3 = (int) Database::insert('agent_applications', [
-        'type' => 'ind', 'lang' => 'ne', 'name' => 'Clean Person', 'phone' => '9800088803', 'area' => 'Banke', 'status' => 'new',
+        'type' => 'ind', 'lang' => 'ne', 'name' => 'Clean Person', 'kyc_status' => 'verified', 'phone' => '9800088803', 'area' => 'Banke', 'status' => 'new',
         'fields_json' => json_encode(['p_idno' => 'ZZ-7766-55']),
     ]);
     foreach ([$a1, $a2, $a3] as $i) { Database::run('UPDATE agent_applications SET ref = :r WHERE id = :i', ['r' => AgentApplications::refFor($i), 'i' => $i]); }

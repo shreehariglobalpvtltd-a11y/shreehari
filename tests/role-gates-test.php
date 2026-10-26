@@ -58,8 +58,11 @@ function req(string $method, string $url, array $opt = []): array {
 function pdo(): PDO {
     static $p = null;
     if ($p === null) {
-        $p = new PDO('mysql:host=127.0.0.1;port=3307;dbname=shari_test;charset=utf8mb4', 'root', '',
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
+        $p = (function (): PDO {
+            require_once dirname(__DIR__) . '/includes/bootstrap.php';
+            if (!str_ends_with((string) DB_NAME, '_test')) { throw new RuntimeException('A configured test database is required.'); }
+            return Database::pdo();
+        })();
     }
     return $p;
 }
