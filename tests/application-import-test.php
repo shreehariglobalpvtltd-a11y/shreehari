@@ -47,7 +47,8 @@ try {
         $u=ApplicationImport::formReceipt($token,$scope); $row=Database::fetch('SELECT * FROM team_reviews WHERE id=:i',['i'=>$u['id']]); $keys[]=$row['file_key'];
         testImport(TeamRegistry::open($row['file_key'])===$bytes, "$scope retains the exact original, including page two, during provider failure");
         $sealed=file_get_contents(TEAM_PRIVATE_PATH.'/'.$row['file_key']); testImport(!str_contains($sealed,'SYNTHETIC'), 'Original is encrypted at rest');
-        $person=($scope==='staff'?'staff:':'agent:').($u['id']+100000);
+        $appId=$scope==='staff' ? Database::insert('staff_applications',['full_name'=>'Synthetic import','phone'=>'9800011111','role_applied'=>'office','id_type'=>'passport','id_number'=>'SYNTHETIC-ID']) : Database::insert('agent_applications',['ref'=>'AGR-'.bin2hex(random_bytes(4)),'type'=>$scope==='partner'?'org':'ind','name'=>'Synthetic import','phone'=>'9800011111','fields_json'=>'{}']);
+        $person=($scope==='staff'?'staff:':'agent:').$appId;
         ApplicationImport::attachForm($token,$scope,$person); ApplicationImport::attachForm($token,$scope,$person);
         testImport(Database::scalar('SELECT person_key FROM team_reviews WHERE id=:i',['i'=>$u['id']])===$person, "$scope submit/retry binds the original to exactly one application");
         try { ApplicationImport::attachForm($token,$scope,($scope==='staff'?'staff:':'agent:').'99999999'); throw new LogicException('Reattachment accepted'); } catch (ImportReceiptError $e) { testImport(true, 'Receipt cannot attach to another application'); }

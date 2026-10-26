@@ -204,6 +204,8 @@ $cleanup = static function () use ($PH): void {
     aa_exec("DELETE FROM agent_applications WHERE phone LIKE '99997000%'");
 };
 $notifyWas = null;
+$docModeWas = aa_one("SELECT svalue FROM settings WHERE skey='agr_doc_verify'");
+aa_exec("INSERT INTO settings(skey,svalue,stype,sgroup,is_public) VALUES('agr_doc_verify','off','string','agreements',0) ON DUPLICATE KEY UPDATE svalue='off'");
 
 try {
     $row = aa_one("SELECT svalue FROM settings WHERE skey = 'whatsapp_notify_admin'");
@@ -250,6 +252,9 @@ try {
     aa_check('a 5-digit mobile = 422 on p_phone', $r['code'] === 422 && isset($r['json']['fields']['p_phone']));
     aa_reset_limits();
 
+    $unseenJar=aa_jar('unseen-id'); $unseenToken=aa_token($unseenJar);
+    $unseen=aa_req('POST','/api/agreement-apply.php',$unseenJar,['json'=>['type'=>'ind','lang'=>'en','fields'=>$indFields,'import_reviewed'=>true],'headers'=>['X-CSRF-Token: '.$unseenToken]]);
+    aa_check('a valid application without this session ID upload is refused', $unseen['code']===422 && ($unseen['json']['fields']['docIn']??'')==='upload_first');
     echo "\n=== 3. two good applications ===\n";
     $r = aa_post($jar, $tok, ['type' => 'org', 'lang' => 'en', 'fields' => $orgFields,
         'photo' => 'data:image/png;base64,' . AA_PNG, 'public_ok' => false, 'website' => '']);
@@ -286,6 +291,8 @@ try {
         && str_contains((string) ($r['json']['message'] ?? ''), 'आवेदन'));
     aa_check('consent to show the full phone is stored', $ind !== null && (int) $ind['public_ok'] === 1 && $ind['lang'] === 'ne');
 
+    $unreviewed=aa_post($jar,$tok,['type'=>'ind','lang'=>'en','fields'=>$indFields,'import_reviewed'=>false]);
+    aa_check('an uploaded ID never fabricates applicant review', $unreviewed['code']===422 && isset($unreviewed['json']['fields']['import_reviewed']));
     echo "\n=== 4. retries, repeats, honeypot, limits ===\n";
     $r = aa_post($jar, $tok, $indBody);
     $n = (int) (aa_one("SELECT COUNT(*) AS n FROM agent_applications WHERE phone = '9999700002'")['n'] ?? 0);
@@ -490,6 +497,7 @@ try {
 } catch (Throwable $e) {
     aa_check('no exception', false, get_class($e) . ': ' . $e->getMessage() . ' @' . basename($e->getFile()) . ':' . $e->getLine());
 } finally {
+    if ($docModeWas === null) { aa_exec("DELETE FROM settings WHERE skey='agr_doc_verify'"); } else { aa_exec("UPDATE settings SET svalue=? WHERE skey='agr_doc_verify'", [$docModeWas['svalue']]); }
     try { $cleanup(); } catch (Throwable $e) {}
     try {
         $ids = [];

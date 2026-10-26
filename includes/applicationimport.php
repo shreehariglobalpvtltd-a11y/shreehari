@@ -88,6 +88,10 @@ final class ApplicationImport
         if (!preg_match('/^' . $expected . '[1-9][0-9]*$/', $person)) { throw new RuntimeException('Wrong application kind.'); }
         $r = Database::fetch('SELECT person_key FROM team_reviews WHERE id=:i FOR UPDATE', ['i' => $u['id']]);
         if (!$r || !in_array($r['person_key'], ['pending:' . $token, $person], true)) { throw new ImportReceiptError('Import already belongs to another application.'); }
+        $id = (int)substr($person, strlen($expected));
+        $app = $scope === 'staff' ? Database::fetch('SELECT id FROM staff_applications WHERE id=:i', ['i'=>$id])
+            : Database::fetch('SELECT id,type FROM agent_applications WHERE id=:i', ['i'=>$id]);
+        if (!$app || ($scope !== 'staff' && $app['type'] !== ($scope === 'partner' ? 'org' : 'ind'))) { throw new ImportReceiptError('Application kind does not match this original.'); }
         Database::update('team_reviews', ['person_key' => $person], 'id=:i', ['i' => $u['id']]);
     }
     /** Prune only abandoned uploads, after a full day; submitted application originals are permanent. */

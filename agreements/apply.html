@@ -2183,7 +2183,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   }
 
 
-  if (window.ShgIntake) window.ShgIntake.mount({ host: 'saForm', submit: 'saSubmit', kind: 'staff', token: token, closed: function () { return !open; },
+  if (window.ShgIntake) window.ShgIntake.mount({ host: 'saForm', submit: 'saSubmit', kind: 'staff', token: token, onSessionExpired: function () { csrf = null; }, closed: function () { return !open; },
     onId: function (data) { img.idFront = data; var drop = $('sa_idFrontDrop'); drop.style.backgroundImage = 'url(' + data + ')'; drop.classList.add('has'); sync(); saveSoon(); },
     onFields: function (f, source) {
       var types = { '0': 'aadhaar', '1': 'citizenship', '2': 'passport', '5': 'driving_license', '6': 'pan' };
@@ -2226,5 +2226,5 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 .sa.sa-en .sa-f>label .en{color:#0a2a8f}
 .sa.sa-en .sa-cl .pt .ne{opacity:.72}
 </style>
-<script src="/assets/js/photo-studio.js?v=20261025c"></script><script src="/assets/js/team-positions.js?v=20261025c"></script></body>
+<script src="/assets/js/photo-studio.js?v=20261025c"></script><script src="/assets/js/team-positions.js?v=20261026b"></script></body>
 </html>

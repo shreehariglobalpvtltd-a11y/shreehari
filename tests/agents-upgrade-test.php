@@ -129,6 +129,7 @@ if ($post !== []) {
 }
 register_shutdown_function(static function (): void {
     echo "\nHARNESS-FLASH:" . json_encode($_SESSION['shg_a360_flash'] ?? null, JSON_UNESCAPED_UNICODE);
+    echo "\nHARNESS-TEAM-FLASH:" . json_encode($_SESSION['team_flash'] ?? null, JSON_UNESCAPED_UNICODE);
     $e = error_get_last();
     if ($e !== null && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
         echo "\nHARNESS-FATAL: " . $e['message'] . ' @ ' . $e['file'] . ':' . $e['line'];
@@ -258,11 +259,17 @@ try {
     $legacy=$src('admin/agents.php');
     check('managed register redirects to unified team', str_contains($legacy, "Response::redirect('admin/team.php')"));
     $out=page('team.php',$SUPU);
-    check('superadmin sees the actual unified application queue', fatal_of($out)==='' && str_contains($out,'Digital applications'), fatal_of($out));
+    check('superadmin sees the actual unified application queue', fatal_of($out)==='' && str_contains($out,'Approvals Queue'), fatal_of($out));
     check('unified page keeps withdrawals and earnings visible', str_contains($out,'Withdrawals') && str_contains($out,'Earnings'));
     $out=page('team.php',uname($M1),[],['action'=>'post_announcement','title'=>'Synthetic CSRF test','body'=>'Must never publish','target_role'=>'all','priority'=>'normal'],true);
-    check('active team page refuses bad CSRF without writing', str_contains($out,'Page expired') && !Database::exists("SELECT 1 FROM team_notices WHERE title='Synthetic CSRF test'"));
+    check('active team page refuses bad CSRF without writing', stripos($out,'expired')!==false && !Database::exists("SELECT 1 FROM team_notices WHERE title='Synthetic CSRF test'"), substr(strip_tags($out),0,250));
     check('unified queue cannot Quick Add around KYC approval', !str_contains($src('admin/team.php'), "action==='quick_add'"));
+
+    // Shared cash-limit fixture is also used by settlement/ranking assertions below.
+    $X = mk_admin('agent', 'overcash');
+    Database::run('UPDATE admins SET created_at=:c WHERE id=:i',['c'=>date('Y-m-d H:i:s',strtotime('-60 days')),'i'=>$X]);
+    AgentWallet::saveProfile($X,['cash_limit'=>1000]);
+    AgentWallet::record($X,'cash_due',1500,['note'=>'Synthetic held cash','by'=>0]);
 
     /* ============================================================ 3. staff.php */
     echo "\n=== 3. admin/staff.php — never delete, real applications only ===\n";

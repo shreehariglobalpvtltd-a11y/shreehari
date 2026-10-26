@@ -231,6 +231,8 @@ final class AgreementPrint
         $plain=static function(string $html):string{return trim(preg_replace('/\s+/u',' ',html_entity_decode(strip_tags(preg_replace('/<span class="fill"><\/span>/', ' __________ ', $html)),ENT_QUOTES|ENT_HTML5,'UTF-8')));};
         $terms=[];foreach($sections as $section){$terms[]=$plain($section['no'].' '.$section['title']);foreach($section['points']as$point){$terms[]=$plain($point['num'].' '.$point['html']);}}
         // Shape words in one batch: line-width probing must not spawn a PHP child per word.
+        $needsShape=DevShape::needs(implode(' ', $terms) . ' ' . ($person['name']??'') . ' ' . ($person['place']??'') . ' ' . ($person['route']??'') . ' ' . ($person['roleEn']??'') . ' ' . $co['legal']);
+        if($needsShape && DevShape::shape('श्री कृष्ण क्षत्रिय')===null){throw new RuntimeException('Devanagari shaping is unavailable. Use the full browser print version; an unshaped agreement cannot be issued.');}
         $words=[];foreach($terms as $term){foreach(preg_split('/\s+/u',$term) as $word){if(DevShape::needs($word)){$words[]=$word;}}}DevShape::prime($words);
         $wrap=static function(string $text,float $font,float $max=515)use($pdf):array {
             $out=[];$line='';$width=0;$space=$pdf->textWidthCID(' ',$font,'F7');

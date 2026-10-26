@@ -115,5 +115,39 @@ new transactions. HTTP 200 and Git ref equality do not prove a successful releas
 
 ## Final verification record
 
-Pending: the full local battery and hosted CI are still running during this
-checkpoint. This document must be updated with final results and release blockers.
+The local clone initially inherited shallow boundaries. It has now been fully
+unshallowed and the complete graph confirms unified4 versus OCR = **33 ahead / 2
+behind**, and versus live = **573 ahead / 16 behind**. The report integration
+remains selective and no production branch was replaced.
+
+Hosted run `40276715339`, source checkpoint
+`1a94b292127bc4292262727ebd375f498aaad021`: the PHP/Node/release-safety job passed;
+the MariaDB battery reported **181 passed, 3 failed, 0 missing**. Failures were
+agents-upgrade fixture/harness assertions, a fixture date comment swallowing the
+PHONE constant, and synthetic ID images reaching the strict provider-dependent
+verification path. These have been corrected for the next checkpoint. The
+application-contract suite explicitly restores its test-only verification mode;
+the production strict verifier and receipt/review guards remain unchanged.
+
+Current targeted local results: import **37**, agent upgrade **114**, application
+HTTP **79**, manager **26**, registration **27**, financial races **2** all pass.
+The local unified suite passes **74** checks including failure-closed behavior;
+one positive native staff export is explicitly skipped without local HarfBuzz.
+CI now additionally renders all nine active staff/agent/partner EN/HI/NE native
+exports with the real HarfBuzz backend and requires embedded fonts and 2–4 pages.
+Unshaped native agreements are refused; full browser print remains available.
+
+All six recovered report screens also rendered through authenticated local HTTP
+at 390px width, without page overflow or SQL/application errors. Blank A4 exports
+and the mocked three-kind browser import/review paths were visually inspected.
+The earlier full local battery additionally exposed Windows ini-path assumptions
+and order-dependent delivery watches; fixtures now inherit the current PHP ini
+and temporarily park/restore unrelated watch deadlines in the disposable test DB.
+
+`php tools/release-schema-check.php` is a read-only schema inventory. It checks
+the required table columns and immutable journal UPDATE/DELETE triggers without
+printing credentials or application rows. The local synthetic schema passes.
+Run it against the actual VPS before choosing any missing migrations.
+
+The next hosted run is still required for this checkpoint. Production remains
+blocked on actual live inventory, backup verification, staging and owner approval.

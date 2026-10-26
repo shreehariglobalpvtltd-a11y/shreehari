@@ -81,6 +81,15 @@ $cleanup = static function () use ($keep): void {
 };
 register_shutdown_function($cleanup);
 $cleanup();
+// Other suites leave watches behind. On a slow battery their grace period expires and
+// they consume the tick's first 40 slots before this fixture. Park only their deadlines
+// during this synthetic test, then restore them exactly; all delivery remains mocked.
+$fixturePnrs = "'" . implode("','", PNRS) . "'";
+$otherWatches = Database::fetchAll("SELECT id,deadline_at FROM delivery_log WHERE closed=0 AND deadline_at IS NOT NULL AND pnr NOT IN ($fixturePnrs)");
+foreach ($otherWatches as $watch) { Database::update('delivery_log',['deadline_at'=>null],'id=:i',['i'=>$watch['id']]); }
+register_shutdown_function(static function () use ($otherWatches): void {
+    foreach ($otherWatches as $watch) { Database::update('delivery_log',['deadline_at'=>$watch['deadline_at']],'id=:i',['i'=>$watch['id']]); }
+});
 foreach ($keepKeys as $k => $v) {
     Settings::set($k, $v, 'string', 'whatsapp', false);
 }
