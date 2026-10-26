@@ -1028,7 +1028,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 
 <script src="/assets/js/wa-direct.js?v=20261022a"></script>
 <script src="/assets/js/wa-verify.js?v=20261023j"></script>
-<script src="/assets/js/application-import.js?v=20261026b"></script>
+<script src="/assets/js/application-import.js?v=20261026c"></script>
 <script src="/assets/js/bio-kit.js?v=20261024opt"></script>
 <script src="/assets/js/form-i18n.js?v=20261023j"></script>
 <script>
@@ -1234,6 +1234,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
   /* ---- 22 Oct 2026: individual agent or Pvt. Ltd. partner company ---- */
   function setKind(k) {
     state.kind = k === 'org' ? 'org' : k === 'staff' ? 'staff' : 'ind';
+    if (window.ShgIntake) window.ShgIntake.setKind(state.kind === 'org' ? 'partner' : state.kind === 'staff' ? 'staff' : 'agent');
     var org = state.kind === 'org', staff = state.kind === 'staff';
     $('orgBox').hidden = !org;
     $('staffBox').hidden = !staff;
@@ -2226,5 +2227,5 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 .sa.sa-en .sa-f>label .en{color:#0a2a8f}
 .sa.sa-en .sa-cl .pt .ne{opacity:.72}
 </style>
-<script src="/assets/js/photo-studio.js?v=20261025c"></script><script src="/assets/js/team-positions.js?v=20261026b"></script></body>
+<script src="/assets/js/photo-studio.js?v=20261025c"></script><script src="/assets/js/team-positions.js?v=20261026c"></script></body>
 </html>

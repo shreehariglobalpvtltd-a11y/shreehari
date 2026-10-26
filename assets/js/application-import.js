@@ -52,18 +52,20 @@
     function lock(on) { document.documentElement.classList.toggle('intake-locked', on); if (!o.closed || !o.closed()) submit.disabled = on || busy; }
     lock(true); review.disabled = true;
     function say(t, bad) { status.textContent = t; status.style.color = bad ? '#a32d2d' : '#174e30'; }
-    function post(doc, kind) {
+    function post(doc, kind, scope) {
       var controller = new AbortController(), timeout = setTimeout(function () { controller.abort(); }, 120000);
-      return o.token().then(function (t) { return fetch('/api/application-import.php', { method: 'POST', signal: controller.signal, credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' }, body: JSON.stringify({ kind: kind, application_kind: o.kind, doc: doc }) }); }).then(function (r) { return r.json().catch(function () { throw new Error('Server response could not be read. Please retry.'); }); }).finally(function () { clearTimeout(timeout); });
+      return o.token().then(function (t) { return fetch('/api/application-import.php', { method: 'POST', signal: controller.signal, credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' }, body: JSON.stringify({ kind: kind, application_kind: scope, doc: doc }) }); }).then(function (r) { return r.json().catch(function () { throw new Error('Server response could not be read. Please retry.'); }); }).finally(function () { clearTimeout(timeout); });
     }
     function read(doc, kind) {
       if (busy) return Promise.reject(new Error('AI is still reading.'));
+      var scope = o.kind;
       retryDoc = doc; retryKind = kind;
       busy = true; review.checked = false; review.disabled = true; progress.hidden = false; idInput.disabled = true; formInput.disabled = true; retry.hidden = true; submit.disabled = true;
       if (kind === 'id') { uploaded = false; currentId = doc; lock(true); }
       var elapsed = 0; say('⏳ S Hari AI ले document पढ्दैछ… कृपया पर्खनुहोस्। · Reading your document…');
       timer = setInterval(function () { elapsed += 5; say('⏳ AI ले पढ्दैछ (' + elapsed + 's)… फारम बन्द नगर्नुहोस्। · Still reading; please keep this page open.'); }, 5000);
-      return post(doc, kind).then(function (d) {
+      return post(doc, kind, scope).then(function (d) {
+        if (scope !== o.kind) throw new Error('Application kind changed. Upload the ID for the selected form again.');
         if (!d || !d.ok) throw new Error((d && (d.error || d.message)) || 'Import failed.');
         if (d.status === 'notdoc') throw new Error(kind === 'id' ? 'यो परिचयपत्र जस्तो देखिएन। नागरिकता/आधारको स्पष्ट फोटो राख्नुहोस्। · Choose a government ID.' : 'भरिएको फारम भेटिएन। स्पष्ट फोटो वा PDF राख्नुहोस्। · Choose a completed form.');
         if (kind === 'form') { formReceipt = d.receipt || ''; }
@@ -79,7 +81,7 @@
         report.textContent = 'नाम, मोबाइल र ID विवरण सही भएपछि तलको ✓ लगाउनुहोस्। बाँकी विवरण ऐच्छिक छ। · Other fields remain optional.';
       }).catch(function (e) { if (e.message && /session|expired|419|csrf/i.test(e.message) && o.onSessionExpired) o.onSessionExpired();
         say(e.name === 'AbortError' ? 'समय सकियो — फेरि प्रयास गर्नुहोस् · Reading timed out. Please retry.' : e.message || 'Could not read the file. Please retry.', true); retry.hidden = false; throw e; }).finally(function () {
-        clearInterval(timer); busy = false; progress.hidden = true; idInput.disabled = false; formInput.disabled = false; review.disabled = !uploaded; lock(!uploaded);
+        clearInterval(timer); busy = false; progress.hidden = true; idInput.disabled = false; formInput.disabled = false; review.disabled = !uploaded; lock(!uploaded); if (!retryDoc) retry.hidden = true;
       });
     }
     function choose(input, kind) {
@@ -92,7 +94,13 @@
     }
     idInput.addEventListener('change', function () { choose(idInput, 'id'); }); formInput.addEventListener('change', function () { choose(formInput, 'form'); }); retry.addEventListener('click', function () { if (retryDoc) read(retryDoc, retryKind).catch(function () {}); });
     host.addEventListener('input', function (e) { if (!root.contains(e.target) && e.isTrusted) { e.target.dataset.userEdited = '1'; review.checked = false; } });
-    var api = { receipt: function () { return formReceipt; }, readData: function (d, k) { return read(d, k || 'id'); }, reviewed: function () { return uploaded && !busy && review.checked; }, requireReviewed: function () { if (api.reviewed()) return true; root.scrollIntoView({ block: 'start', behavior: 'smooth' }); review.focus({ preventScroll: true }); say(uploaded ? 'मुख्य विवरण जाँचेर ✓ लगाउनुहोस् · Review the main details and tick the box.' : 'पहिले परिचयपत्र राख्नुहोस् · Upload your ID first.', true); return false; }, restoreExisting: function () { uploaded = true; review.disabled = false; lock(false); say('पहिले पठाएको ID सुरक्षित छ। फेरि upload नगरी विवरण सच्याउन मिल्छ। · Your existing ID is retained.'); } };
+    var api = { setKind: function (kind) {
+      if (kind === o.kind) return;
+      o.kind = kind; uploaded = false; formReceipt = ''; currentId = ''; retryDoc = '';
+      review.checked = false; review.disabled = true; idInput.value = ''; formInput.value = '';
+      preview.hidden = true; retry.hidden = true; blank.href = '/agreements/form.php?kind=' + kind;
+      lock(true); say('यो आवेदनका लागि परिचयपत्र राखेर विवरण जाँच्नुहोस् · Upload and review your ID for this application.');
+    }, receipt: function () { return formReceipt; }, readData: function (d, k) { return read(d, k || 'id'); }, reviewed: function () { return uploaded && !busy && review.checked; }, requireReviewed: function () { if (api.reviewed()) return true; root.scrollIntoView({ block: 'start', behavior: 'smooth' }); review.focus({ preventScroll: true }); say(uploaded ? 'मुख्य विवरण जाँचेर ✓ लगाउनुहोस् · Review the main details and tick the box.' : 'पहिले परिचयपत्र राख्नुहोस् · Upload your ID first.', true); return false; }, restoreExisting: function () { uploaded = true; review.disabled = false; lock(false); say('पहिले पठाएको ID सुरक्षित छ। फेरि upload नगरी विवरण सच्याउन मिल्छ। · Your existing ID is retained.'); } };
     active = api; return api;
   }
   function setField(id, value, source) {
@@ -104,5 +112,5 @@
     if (e.tagName === 'SELECT' && ![].some.call(e.options, function (o) { return o.value === String(value) && !o.disabled; })) return false;
     e.value = String(value); e.dataset.aiFilled = source; e.classList.add('auto'); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true;
   }
-  window.ShgIntake = { mount: mount, receipt: function () { return active ? active.receipt() : ''; }, setField: setField, readData: function (d,k) { return active ? active.readData(d,k) : Promise.reject(new Error('Intake not ready')); }, reviewed: function () { return active && active.reviewed(); }, requireReviewed: function () { return active && active.requireReviewed(); }, restoreExisting: function () { if (active) active.restoreExisting(); } };
+  window.ShgIntake = { mount: mount, setKind: function (kind) { if (active) active.setKind(kind); }, receipt: function () { return active ? active.receipt() : ''; }, setField: setField, readData: function (d,k) { return active ? active.readData(d,k) : Promise.reject(new Error('Intake not ready')); }, reviewed: function () { return active && active.reviewed(); }, requireReviewed: function () { return active && active.requireReviewed(); }, restoreExisting: function () { if (active) active.restoreExisting(); } };
 })();

@@ -295,6 +295,7 @@ const KNOWN_STALE = [
  * reported as a skip rather than silently shrinking the battery.
  */
 const NODE_SUITES = [
+    'application-intake-test.js' => 'manual OCR corrections, explicit review and stale cross-kind response rejection',
     'gps-fleet-marker-test.cjs' => 'GPS marker freshness, animation, expiry and no unexpected map recentering',
     'i18n-check.js'          => 'en/hi/ne key parity',
     'offline-ticket-test.js' => 'the ticket survives a deploy and works offline',

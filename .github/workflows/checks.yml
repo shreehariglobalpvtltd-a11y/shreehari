@@ -59,6 +59,8 @@ jobs:
         run: php tests/ai-chart-test.php
       - name: Offline ticket behavior
         run: node tests/offline-ticket-test.js
+      - name: Application intake state (no database or OCR provider)
+        run: node tests/application-intake-test.js
       - name: Lazy-load recovery
         run: node tests/lazy-retry-test.js
       - name: Translations

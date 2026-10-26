@@ -55,7 +55,7 @@ the unified implementation; it is not a production migration for this candidate.
 - Fixed duplicate-review links that used an unsupported ref query parameter.
 - CLI exceptions now exit nonzero instead of silently returning a successful
   process containing an HTML error. This can expose formerly hidden test/job failures.
-- Client assets/SW are synchronized at `20261026b` / `shg-v259`; the independent
+- Client assets/SW are synchronized at `20261026c` / `shg-v260`; the independent
   offline ticket cache is preserved.
 
 ## Test triage
@@ -149,5 +149,23 @@ the required table columns and immutable journal UPDATE/DELETE triggers without
 printing credentials or application rows. The local synthetic schema passes.
 Run it against the actual VPS before choosing any missing migrations.
 
-The next hosted run is still required for this checkpoint. Production remains
-blocked on actual live inventory, backup verification, staging and owner approval.
+Hosted run `40278536649` on `27220ad3572a9b226292b6c926805f1591ef395a`
+passed both jobs: **184 suites passed, 0 failed, 0 missing**, with the one
+pre-existing stale suite explicitly excluded. The nine native language exports
+therefore ran with the required real HarfBuzz backend. No security or financial
+guard was disabled to obtain that result.
+
+Final browser follow-up found and repaired one additional active-caller issue:
+switching agent/partner in the same page retained the original upload scope.
+The widget now clears its receipts/review on a kind change and rejects a delayed
+OCR response from the previous kind before applying fields. Real-browser
+agent-to-partner switching, custom staff-position mapping, exact-PDF retries,
+provider failure and manual corrections pass. A deterministic test runs the real
+intake JavaScript and proves stale-response rejection, explicit review and kind
+isolation without a provider/database; it is registered in both CI and the battery.
+Final client stamps are `20261026c` / `shg-v260` and asset/offline checks pass.
+The final commit's hosted verification is pending at this writing.
+
+Production remains blocked on actual live inventory, backup verification, staging
+and owner approval. An Ubuntu/Dokploy label does not establish the site's runtime;
+inspect the actual processes and webroot when access becomes available.
