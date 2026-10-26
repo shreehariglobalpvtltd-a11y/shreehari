@@ -123,7 +123,7 @@ try {
     check('the PWA script is on the page', str_contains($home['body'], '/assets/js/17-pwa.js?v='));
     check('iOS home-screen title is SHG Bus', str_contains($home['body'], 'name="apple-mobile-web-app-title" content="SHG Bus"'));
     check('route guide + UPI app hosts are in the markup',
-        str_contains($home['body'], 'id="snRouteGuide"') && str_contains($home['body'], 'id="upiApps"'));
+        str_contains($home['body'], 'href="/navigate.html"') && str_contains($home['body'], 'id="upiApps"'));
 
     $man = req('GET', '/manifest.webmanifest');
     $mj  = is_array($man['json']) ? $man['json'] : [];

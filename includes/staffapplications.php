@@ -625,6 +625,7 @@ final class StaffApps
      */
     public static function applicantEdit(int $id, array $c, array $files, string $ip, string $ua): array
     {
+        Database::fetch('SELECT id FROM staff_applications WHERE id=:i FOR UPDATE', ['i'=>$id]);
         $old = self::find($id);
         if ($old === null || (string) $old['phone'] !== (string) $c['phone'] || !in_array((string) $old['status'], ['pending', 'under_review'], true)) {
             throw new StaffAppError('That application cannot be changed from here.');

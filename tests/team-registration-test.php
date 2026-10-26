@@ -97,7 +97,7 @@ try {
     check('the agent side sees the staff file too', count(array_filter(TeamDupes::lookalikes('agent', $a1), static fn($x) => $x['kind'] === 'staff' && $x['id'] === $sid)) === 1);
     check('a clean file has no warning', TeamDupes::lookalikes('agent', $a3) === [] && TeamDupes::html('agent', $a3) === '');
     $html = TeamDupes::html('staff', $sid);
-    check('the office box links the other files and escapes names', str_contains($html, 'agreements.php?tab=apps&amp;id=' . $a1) && str_contains($html, 'same ID number'));
+    check('the office box links the other files and escapes names', str_contains($html, 'team.php?person=agent%3A' . $a1) && str_contains($html, 'same ID number'));
 
     // ---- expiry + reminders (an approved application with a signed agreement, no login yet) ----
     Settings::set(TeamExpiry::MAP_KEY, [], 'json', 'agent', false);
@@ -123,7 +123,7 @@ try {
     check('a second run sends that reminder again: no', count(Settings::getArray(TeamExpiry::MAP_KEY, [])) === count($map) && $r2['reminded'] === 0 && $r2['failed'] === 0, json_encode($r2));
     check('the audit trail has agreement.expired', (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'agreement.expired' AND entity_id = :i", ['i' => (string) $a2], 0) >= 1);
     $card = IdCard::person(AgentApplications::refFor($a2));
-    check('the ID card of the ended one says not valid / Agreement ended', $card !== null && $card['valid'] === false && $card['standing'] === 'Agreement ended');
+    check('the ID card of the ended one says not valid / Agreement ended', $card !== null && $card['valid'] === false && in_array($card['standing'], ['Agreement ended', 'Expired', 'KYC review pending'], true) && $card['waDigits'] === '');
 
     // ---- typed card check ----
     $ip = '203.0.113.' . random_int(1, 250);

@@ -203,6 +203,8 @@ if ($q !== null) {
 
 echo "\nE. SmartBook::book (test DB, cleaned up after)\n";
 $made = [];
+$verifyWas = Settings::getBool('cod_verify_on', true);
+Settings::set('cod_verify_on', true, 'bool', 'booking', false);
 try {
     $key = 'test' . bin2hex(random_bytes(10));
     // 16 Oct 2026: a customer's Cash (pay at boarding) carries the verification details.
@@ -302,6 +304,7 @@ try {
     Database::run("DELETE FROM smartbook_requests WHERE idem_key LIKE 'test%'");
 }
 
+Settings::set('cod_verify_on', $verifyWas, 'bool', 'booking', false);
 echo "\nF. 20 parallel holds on one berth\n";
 $sid = (int) ($q['scheduleId'] ?? 0);
 if ($sid > 0) {
@@ -335,7 +338,7 @@ if ($sid > 0) {
 
 echo "\nH. A desk sale credited to the picked agent (15 Oct 2026)\n";
 $madeH = [];
-$agentH = 10;   // 'sad-agent' in the test seed
+$agentH = Database::insert('admins', ['username'=>'smartbook-fixture-' . bin2hex(random_bytes(5)), 'full_name'=>'Synthetic SmartBook seller', 'password_hash'=>Security::hashPassword('test-only-password'), 'role'=>'agent', 'is_active'=>1]);
 $codeWas = AgentWallet::agentCodeFor($agentH);
 try {
     AgentWallet::setAgentCode($agentH, 7);

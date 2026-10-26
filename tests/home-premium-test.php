@@ -112,7 +112,7 @@ check('every tab has an icon and a label', substr_count($bn, '<svg class="ic ic-
 check('bnTrack in en / hi / ne', $val('en', 'bnTrack') === 'Track' && $val('ne', 'bnTrack') !== '' && $val('hi', 'bnTrack') !== '');
 $sht = fnBody($router, 'scrollHomeTarget');
 check('scrollHomeTarget opens #homeMore before scrolling into it', str_contains($sht, 'window.openHomeMore()') && str_contains($sht, "getElementById('homeMore')"));
-check('the Help tab scrolls to #contact through scrollHomeTarget', str_contains($router, "scrollHomeTarget(k === 'book' ? 'search-anchor' : (k === 'help' ? 'contact' : 'top'))"));
+check('the Help tab scrolls to #contact through scrollHomeTarget', str_contains($router, "scrollHomeTarget(k === 'book' ? (document.getElementById('smartBook') ? 'smartBook' : 'search-anchor') : (k === 'help' ? 'contact' : 'top'))"));
 $otb = fnBody($router, 'openTrackMyBus');
 check('Track opens only a KEYED tracker (k=), else My Tickets with the PNR box', str_contains($otb, '[?&]k=') && str_contains($otb, "'#/my'") && str_contains($otb, "getElementById('trackId')"));
 check('Track never sends a customer to the anonymous map as "my bus"', !str_contains($otb, '#/nav'));

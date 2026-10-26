@@ -59,8 +59,8 @@ const API_FIELDS = [
 /** The four languages every agreement is printed in (27 Sep 2026: Gujarati added). */
 const LANGS = ['ne', 'hi', 'en', 'gu'];
 const REQUIRED = [
-    'org' => ['p_name', 'p_phone', 'p_area', 'p_rep'],
-    'ind' => ['p_name', 'p_phone', 'p_area', 'p_idno', 'p_addr'],
+    'org' => ['p_name', 'p_phone'],
+    'ind' => ['p_name', 'p_phone', 'p_idno'],
 ];
 const OWN = [
     'org' => ['p_rep', 'p_rep_desig', 'p_rep_phone', 'p_type', 'p_office', 'p_dir_id', 'org_rate', 'org_pct', 'org_target', 'org_fixed', 'org_day', 'org_dep'],
@@ -189,7 +189,7 @@ check('index: no agent list any more', !str_contains($idx, 'id="dirList"') && !s
 check('index: one Apply now with the three forms', substr_count($idx, '<details class="applynow"') === 1
     && str_contains($idx, 'href="/agreements/apply.html?kind=staff"') && str_contains($idx, 'href="/agreements/apply.html"') && str_contains($idx, 'href="/agreements/apply.html?kind=partner"'));
 // 23 Oct 2026 (owner: "3 ota chuta chutai ... combo eutai hybrid"): one form + agreement document per kind
-check('index: every kind has its one hybrid form + agreement', str_contains($idx, 'document.php?kind=staff') && str_contains($idx, 'document.php?kind=agent') && str_contains($idx, 'document.php?kind=partner') && !str_contains($idx, 'form.php?kind='));
+check('index: every kind has its one hybrid form + agreement', str_contains($idx, '/agreements/apply.html?kind=staff') && str_contains($idx, '/agreements/apply.html') && str_contains($idx, '/agreements/apply.html?kind=partner') && str_contains($idx, '/agreements/form.php?kind=staff'));
 check('index: no innerHTML', !str_contains($idx, 'innerHTML'));
 // 22 Oct 2026: the one script the landing page may load is our own /assets/js/wa-direct.js
 // (owner: every WhatsApp button opens WhatsApp in one tap).

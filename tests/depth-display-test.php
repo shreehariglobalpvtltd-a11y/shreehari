@@ -76,7 +76,7 @@ $ver = $m[1] ?? '';
 echo "-- 1. loading --\n";
 check('depth.css exists and is not empty', strlen($css) > 5000, strlen($css) . ' bytes');
 preg_match_all('~<link rel="stylesheet" href="/assets/css/([a-z-]+)\.css\?v=([^"]+)"~', $tpl, $links);
-check('customer app: depth.css is the LAST stylesheet', end($links[1]) === 'depth', implode(' > ', $links[1]));
+check('customer app: depth.css is followed only by the reviewed polish overrides', array_slice($links[1], -2) === ['depth', 'polish'], implode(' > ', $links[1]));
 check('customer app: depth.css carries the asset stamp', in_array('depth', $links[1], true) && $links[2][array_search('depth', $links[1], true)] === $ver, $ver);
 $posAdmin = strpos($guard, '/assets/css/admin.css?v=');
 $posDepth = strpos($guard, '/assets/css/depth.css?v=');

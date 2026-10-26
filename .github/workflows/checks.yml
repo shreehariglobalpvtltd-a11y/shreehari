@@ -35,6 +35,10 @@ jobs:
           package-manager-cache: false
       - name: PHP syntax
         run: find . -type f -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
+      - name: Release safety (offline Git and filesystem integration)
+        run: |
+          bash -n deploy/deploy-prod.sh deploy/release-preflight.sh
+          python3 tests/release-safety-test.py
       - name: JavaScript syntax
         run: |
           find assets/js tests -type f -name '*.js' -print0 | xargs -0 -n1 node --check
@@ -44,12 +48,19 @@ jobs:
         run: node -e "JSON.parse(require('node:fs').readFileSync('manifest.webmanifest', 'utf8'))"
       - name: Asset versions
         run: php tests/asset-version-test.php
+      - name: GPS privacy and freshness (no database)
+        run: |
+          php tests/gps-fleet-status-test.php
+          php tests/gps-public-map-test.php
+          node tests/gps-fleet-marker-test.cjs
       - name: AI tool loop (no database)
         run: php tests/ai-turn-test.php
       - name: AI report charts (no database)
         run: php tests/ai-chart-test.php
       - name: Offline ticket behavior
         run: node tests/offline-ticket-test.js
+      - name: Application intake state (no database or OCR provider)
+        run: node tests/application-intake-test.js
       - name: Lazy-load recovery
         run: node tests/lazy-retry-test.js
       - name: Translations

@@ -114,7 +114,7 @@ $iP = array_search('perf', $order, true);
 $iD = array_search('depth', $order, true);
 check('customer app links perf.css', $iP !== false, implode(' > ', $order));
 check('perf.css is the stylesheet right before depth.css', $iP !== false && $iD !== false && $iP === $iD - 1);
-check('depth.css is still the LAST stylesheet', end($order) === 'depth');
+check('depth.css is followed only by the reviewed polish overrides', array_slice($order, -2) === ['depth', 'polish']);
 check('anim < showcase < perf (themes before depth too)', ($a = array_search('anim', $order, true)) !== false && ($s = array_search('showcase', $order, true)) !== false
     && ($t = array_search('themes', $order, true)) !== false && $a < $s && $s < $iP && $t < $iD);
 check('perf.css carries the asset stamp', $iP !== false && $links[2][$iP] === $ver, $ver);

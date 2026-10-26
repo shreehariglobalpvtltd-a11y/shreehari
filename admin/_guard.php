@@ -249,6 +249,12 @@ function admin_nav(): array
         // graphs for the office, their own book for an agent (bookings.view
         // so a counter agent finds it too; the server scopes every answer).
         ['href' => 'ai-copilot.php',   'icon' => 'msg',    'label' => '🤖 AI Sahayak',     'perm' => 'bookings.view',  'section' => 'Expenses & reports', 'hot' => true],
+        ['href' => 'compliance.php',   'icon' => 'alert',     'label' => 'Documents & Expiry','perm' => 'schedules.manage','section' => 'Buses'],
+        ['href' => 'refund-aging.php', 'icon' => 'refund',    'label' => 'Refund Aging',     'perm' => 'refunds.view',   'section' => 'Payments'],
+        ['href' => 'cancellations.php','icon' => 'refund', 'label' => 'Cancellations',    'perm' => 'dashboard.view', 'section' => 'Reports'],
+        ['href' => 'fill-rate.php',    'icon' => 'seat',   'label' => 'Fill Rate',        'perm' => 'dashboard.view', 'section' => 'Reports'],
+        ['href' => 'expenses.php',     'icon' => 'coins',       'label' => 'Trip Expenses',    'perm' => 'payments.view',  'section' => 'Reports'],
+        ['href' => 'profit.php',       'icon' => 'chart',       'label' => 'Profit & Loss',    'perm' => 'payments.view',  'section' => 'Reports'],
         ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
         ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
         ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'reports.view',   'section' => 'Expenses & reports'],

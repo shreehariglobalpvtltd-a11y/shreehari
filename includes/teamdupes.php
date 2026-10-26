@@ -63,7 +63,7 @@ final class TeamDupes
                 $out[] = [
                     'kind' => $r['kind'], 'id' => (int) $r['id'], 'ref' => $r['ref'], 'name' => $r['name'],
                     'status' => $r['status'], 'why' => $why,
-                    'url' => 'team.php?tab=approvals&ref=' . urlencode($r['ref']),
+                    'url' => 'team.php?person=' . rawurlencode($r['kind'] . ':' . (int)$r['id']) . '&tab=approvals',
                 ];
             }
         }

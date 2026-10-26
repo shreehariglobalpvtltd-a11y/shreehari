@@ -121,6 +121,7 @@ $mkStaff = static function (string $username, string $name, string $role, string
     return $id;
 };
 $agentId   = $mkStaff('wa-mgr-agent',   'WA Mgr Agent',   'agent',      WM_AGENT);
+require_once __DIR__.'/payout-fixture.php'; verifiedPayoutFixture($agentId);
 $bossId    = $mkStaff('wa-mgr-boss',    'WA Mgr Boss',    'superadmin', WM_BOSS);
 $counterId = $mkStaff('wa-mgr-counter', 'WA Mgr Counter', 'counter',    WM_COUNTER);
 $agentCode = AgentWallet::agentCodeFor($agentId);

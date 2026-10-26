@@ -58,7 +58,8 @@ function straightRoad(array $st): array {
     return ['ok' => true, 'pts' => $pts, 'source' => 'test', 'error' => ''];
 }
 
-const TD = '2099-12-03'; const PHONE = '9198700088';
+define('TD', date('Y-m-d', strtotime('+30 days'))); // MariaDB 10.11 TIMESTAMP ends in 2038.
+const PHONE = '9198700088';
 function cleanup(): void {
     foreach (pluck(Database::fetchAll("SELECT id FROM bookings WHERE contact_phone = :p", ['p' => PHONE]), 'id') as $id) {
         Database::delete('bookings', 'id = :i', ['i' => (int) $id]);

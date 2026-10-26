@@ -50,6 +50,13 @@ require_once INCLUDE_PATH . '/seats.php';
  * later suite that guards a money or auth path and needs only the database.
  */
 const CORE_SUITES = [
+    'cli-failure-test.php' => 'uncaught CLI exceptions return failure rather than HTML success',
+    'application-import-test.php' => 'OCR suggestions, session/kind receipts and private originals',
+    'ledger-journal-test.php' => 'database rejects immutable audit history updates and deletion',
+    'unified-team-test.php' => 'KYC approval, identity links, cards, delivery, finance reservations and replay guards',
+    'unified-team-race-test.php' => 'standalone simultaneous withdrawals and monthly salary posting',
+    'team-manager-test.php' => 'archive, account preservation and office workbench',
+    'team-registration-test.php' => 'duplicate detection and agreement expiry',
     /* 21 Sep 2026: e2e-booking-test.php USED to be listed here as well as in
        HTTP_SUITES. It needs the dev server on :8899 and its own PDO on the
        local dev MySQL, so in CORE it did not skip — it died on an uncaught
@@ -259,8 +266,10 @@ const CORE_SUITES = [
     'payment-risk-test.php'       => 'fake-proof scoring, screenshot fingerprint, two-step approval, report-fake, gate live code',
     'staff-msg-test.php'          => 'admin <-> agent chat: scope, CSRF, files behind PHP, push, unread counts',
     'content-pages-test.php'      => '/india-nepal, /offices, /explore, /tours pages, enquiry form, sitemap',
-    // 10 Oct 2026 S Hari Nav pro (static, no DB).
-    'nav-pro-test.php'            => 'S Hari Nav pro: loader chain, precache, i18n, hooks, honest live / flight / device rows',
+    // Current SHARI NAV module suite replaces the missing legacy nav-pro suite.
+    'nav-ai1-test.php'            => 'SHARI NAV: module hooks, endpoint gates, multilingual knowledge, JS/PHP syntax and encoding',
+    'gps-fleet-status-test.php'   => 'GPS device health, invalid fixes and payload-free diagnostics',
+    'gps-public-map-test.php'     => 'public GPS opt-in, fresh fixes, deduplication and private metadata exclusion',
 ];
 
 /**
@@ -286,6 +295,8 @@ const KNOWN_STALE = [
  * reported as a skip rather than silently shrinking the battery.
  */
 const NODE_SUITES = [
+    'application-intake-test.js' => 'manual OCR corrections, explicit review and stale cross-kind response rejection',
+    'gps-fleet-marker-test.cjs' => 'GPS marker freshness, animation, expiry and no unexpected map recentering',
     'i18n-check.js'          => 'en/hi/ne key parity',
     'offline-ticket-test.js' => 'the ticket survives a deploy and works offline',
     'lazy-retry-test.js'     => 'failed lazy downloads remain retryable without duplicate actions',

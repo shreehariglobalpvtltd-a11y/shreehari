@@ -48,32 +48,40 @@
     [title,hint,idLabel,preview,status,progress,retry,more,report,reviewLabel].forEach(function (e) { root.appendChild(e); });
     host.insertBefore(root, host.firstChild);
     var style = el('style'); style.textContent = '.ai-intake{padding:20px;margin:12px auto 24px;max-width:820px;box-sizing:border-box;background:#fff;border:2px solid #b5c9ef;border-radius:18px;color:#102657;box-shadow:0 12px 30px #10265714;font:500 15px/1.6 system-ui,sans-serif}.ai-intake h2{font-size:21px;line-height:1.5;margin:0 0 12px}.ai-intake p{margin:10px 0}.ai-pick{display:block;padding:14px;background:#edf3ff;border:2px dashed #537ed2;border-radius:12px;font-weight:750;cursor:pointer;margin:12px 0}.ai-pick input{display:block;max-width:100%;margin-top:10px;font:inherit;font-size:13px}.ai-intake details{margin-top:16px}.ai-intake summary{font-weight:750;cursor:pointer;padding:10px 0}.ai-preview{max-width:240px;max-height:150px;object-fit:contain;display:block}.ai-preview[hidden]{display:none}.ai-review{display:flex;align-items:flex-start;gap:10px;background:#eff8ee;padding:12px;border-radius:10px;margin-top:16px;font-weight:700}.ai-review input{width:22px;height:22px;flex-shrink:0}.ai-intake progress{width:100%;height:12px}.ai-status{font-weight:750}.ai-report{white-space:pre-line}.ai-retry{padding:10px 14px;background:#fff;border:1px solid #9cb8e8;border-radius:10px;cursor:pointer}.intake-locked #saForm>:not(.ai-intake),.intake-locked #ap>:not(.ai-intake){display:none!important}.intake-locked #saBar .submit{opacity:.5}@media print{.ai-intake{display:none!important}}'; document.head.appendChild(style);
-    var busy = false, uploaded = false, currentId = '', timer = null;
+    var busy = false, uploaded = false, currentId = '', formReceipt = '', retryDoc = '', retryKind = 'id', timer = null;
     function lock(on) { document.documentElement.classList.toggle('intake-locked', on); if (!o.closed || !o.closed()) submit.disabled = on || busy; }
     lock(true); review.disabled = true;
     function say(t, bad) { status.textContent = t; status.style.color = bad ? '#a32d2d' : '#174e30'; }
-    function post(doc, kind) {
-      return o.token().then(function (t) { return fetch('/api/application-import.php', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' }, body: JSON.stringify({ kind: kind, doc: doc }) }); }).then(function (r) { return r.json().catch(function () { throw new Error('Server response could not be read. Please retry.'); }); });
+    function post(doc, kind, scope) {
+      var controller = new AbortController(), timeout = setTimeout(function () { controller.abort(); }, 120000);
+      return o.token().then(function (t) { return fetch('/api/application-import.php', { method: 'POST', signal: controller.signal, credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t || '' }, body: JSON.stringify({ kind: kind, application_kind: scope, doc: doc }) }); }).then(function (r) { return r.json().catch(function () { throw new Error('Server response could not be read. Please retry.'); }); }).finally(function () { clearTimeout(timeout); });
     }
     function read(doc, kind) {
       if (busy) return Promise.reject(new Error('AI is still reading.'));
+      var scope = o.kind;
+      retryDoc = doc; retryKind = kind;
       busy = true; review.checked = false; review.disabled = true; progress.hidden = false; idInput.disabled = true; formInput.disabled = true; retry.hidden = true; submit.disabled = true;
       if (kind === 'id') { uploaded = false; currentId = doc; lock(true); }
       var elapsed = 0; say('⏳ S Hari AI ले document पढ्दैछ… कृपया पर्खनुहोस्। · Reading your document…');
       timer = setInterval(function () { elapsed += 5; say('⏳ AI ले पढ्दैछ (' + elapsed + 's)… फारम बन्द नगर्नुहोस्। · Still reading; please keep this page open.'); }, 5000);
-      return post(doc, kind).then(function (d) {
+      return post(doc, kind, scope).then(function (d) {
+        if (scope !== o.kind) throw new Error('Application kind changed. Upload the ID for the selected form again.');
         if (!d || !d.ok) throw new Error((d && (d.error || d.message)) || 'Import failed.');
         if (d.status === 'notdoc') throw new Error(kind === 'id' ? 'यो परिचयपत्र जस्तो देखिएन। नागरिकता/आधारको स्पष्ट फोटो राख्नुहोस्। · Choose a government ID.' : 'भरिएको फारम भेटिएन। स्पष्ट फोटो वा PDF राख्नुहोस्। · Choose a completed form.');
+        if (kind === 'form') { formReceipt = d.receipt || ''; }
         if (kind === 'id') { uploaded = true; preview.src = doc; preview.hidden = false; o.onId(doc); }
-        var fields = d.fields || {}, changed = o.onFields(fields, kind) || 0;
+        var fields = d.fields || {};
+        if (d.status !== 'unavailable') retry.hidden = true;
+        var changed = o.onFields(fields, kind) || 0;
         if (d.status === 'unavailable') {
-          say('परिचयपत्र राखियो, तर AI अहिले उपलब्ध भएन। फेरि पढाउन वा विवरण आफैं भर्न सक्नुहुन्छ। · AI unavailable: retry or enter the details for review.', true); retry.hidden = !currentId;
+          say('परिचयपत्र राखियो, तर AI अहिले उपलब्ध भएन। फेरि पढाउन वा विवरण आफैं भर्न सक्नुहुन्छ। · AI unavailable: retry or enter the details for review.', true); retry.hidden = false;
         } else {
           say('✓ AI ले पढ्यो — ' + changed + ' विवरण भरियो। तलको फारम हेरेर सच्याउनुहोस्। · Review and correct the filled details.');
         }
         report.textContent = 'नाम, मोबाइल र ID विवरण सही भएपछि तलको ✓ लगाउनुहोस्। बाँकी विवरण ऐच्छिक छ। · Other fields remain optional.';
-      }).catch(function (e) { say(e.message || 'Could not read the file. Please retry.', true); retry.hidden = !currentId; throw e; }).finally(function () {
-        clearInterval(timer); busy = false; progress.hidden = true; idInput.disabled = false; formInput.disabled = false; review.disabled = !uploaded; lock(!uploaded);
+      }).catch(function (e) { if (e.message && /session|expired|419|csrf/i.test(e.message) && o.onSessionExpired) o.onSessionExpired();
+        say(e.name === 'AbortError' ? 'समय सकियो — फेरि प्रयास गर्नुहोस् · Reading timed out. Please retry.' : e.message || 'Could not read the file. Please retry.', true); retry.hidden = false; throw e; }).finally(function () {
+        clearInterval(timer); busy = false; progress.hidden = true; idInput.disabled = false; formInput.disabled = false; review.disabled = !uploaded; lock(!uploaded); if (!retryDoc) retry.hidden = true;
       });
     }
     function choose(input, kind) {
@@ -82,20 +90,27 @@
       if (kind === 'form' && !uploaded) { say('पहिले माथि परिचयपत्र upload गर्नुहोस् · Upload your ID first.', true); idInput.focus(); return; }
       say('⏳ फाइल खोल्दै… · Opening your file…');
       var isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
-      (kind === 'id' ? idImage(f) : isPdf ? dataUrl(f) : dataUrl(f).then(jpeg)).then(function (uri) { return read(uri, kind); }).catch(function (e) { if (!busy) say(e.message || 'फाइल खुलेन — अर्को फोटो/PDF छान्नुहोस् · Could not open the file.', true); });
+      (kind === 'id' ? idImage(f) : dataUrl(f)).then(function (uri) { return read(uri, kind); }).catch(function (e) { if (!busy) say(e.message || 'फाइल खुलेन — अर्को फोटो/PDF छान्नुहोस् · Could not open the file.', true); });
     }
-    idInput.addEventListener('change', function () { choose(idInput, 'id'); }); formInput.addEventListener('change', function () { choose(formInput, 'form'); }); retry.addEventListener('click', function () { if (currentId) read(currentId, 'id').catch(function () {}); });
+    idInput.addEventListener('change', function () { choose(idInput, 'id'); }); formInput.addEventListener('change', function () { choose(formInput, 'form'); }); retry.addEventListener('click', function () { if (retryDoc) read(retryDoc, retryKind).catch(function () {}); });
     host.addEventListener('input', function (e) { if (!root.contains(e.target) && e.isTrusted) { e.target.dataset.userEdited = '1'; review.checked = false; } });
-    var api = { readData: function (d, k) { return read(d, k || 'id'); }, reviewed: function () { return uploaded && !busy && review.checked; }, requireReviewed: function () { if (api.reviewed()) return true; root.scrollIntoView({ block: 'start', behavior: 'smooth' }); review.focus({ preventScroll: true }); say(uploaded ? 'मुख्य विवरण जाँचेर ✓ लगाउनुहोस् · Review the main details and tick the box.' : 'पहिले परिचयपत्र राख्नुहोस् · Upload your ID first.', true); return false; }, restoreExisting: function () { uploaded = true; review.disabled = false; lock(false); say('पहिले पठाएको ID सुरक्षित छ। फेरि upload नगरी विवरण सच्याउन मिल्छ। · Your existing ID is retained.'); } };
+    var api = { setKind: function (kind) {
+      if (kind === o.kind) return;
+      o.kind = kind; uploaded = false; formReceipt = ''; currentId = ''; retryDoc = '';
+      review.checked = false; review.disabled = true; idInput.value = ''; formInput.value = '';
+      preview.hidden = true; retry.hidden = true; blank.href = '/agreements/form.php?kind=' + kind;
+      lock(true); say('यो आवेदनका लागि परिचयपत्र राखेर विवरण जाँच्नुहोस् · Upload and review your ID for this application.');
+    }, receipt: function () { return formReceipt; }, readData: function (d, k) { return read(d, k || 'id'); }, reviewed: function () { return uploaded && !busy && review.checked; }, requireReviewed: function () { if (api.reviewed()) return true; root.scrollIntoView({ block: 'start', behavior: 'smooth' }); review.focus({ preventScroll: true }); say(uploaded ? 'मुख्य विवरण जाँचेर ✓ लगाउनुहोस् · Review the main details and tick the box.' : 'पहिले परिचयपत्र राख्नुहोस् · Upload your ID first.', true); return false; }, restoreExisting: function () { uploaded = true; review.disabled = false; lock(false); say('पहिले पठाएको ID सुरक्षित छ। फेरि upload नगरी विवरण सच्याउन मिल्छ। · Your existing ID is retained.'); } };
     active = api; return api;
   }
   function setField(id, value, source) {
     var e = document.getElementById(id); if (!e || value == null || value === '' || e.disabled || e.readOnly || e.dataset.userEdited === '1') return false;
     var current = String(e.value || '').trim();
+    if (current === String(value)) return false;
     if (current && !e.dataset.aiFilled && e.tagName !== 'SELECT') return false;
     if (source === 'form' && current && e.dataset.aiFilled === 'id') return false;
     if (e.tagName === 'SELECT' && ![].some.call(e.options, function (o) { return o.value === String(value) && !o.disabled; })) return false;
     e.value = String(value); e.dataset.aiFilled = source; e.classList.add('auto'); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true;
   }
-  window.ShgIntake = { mount: mount, setField: setField, readData: function (d,k) { return active ? active.readData(d,k) : Promise.reject(new Error('Intake not ready')); }, reviewed: function () { return active && active.reviewed(); }, requireReviewed: function () { return active && active.requireReviewed(); }, restoreExisting: function () { if (active) active.restoreExisting(); } };
+  window.ShgIntake = { mount: mount, setKind: function (kind) { if (active) active.setKind(kind); }, receipt: function () { return active ? active.receipt() : ''; }, setField: setField, readData: function (d,k) { return active ? active.readData(d,k) : Promise.reject(new Error('Intake not ready')); }, reviewed: function () { return active && active.reviewed(); }, requireReviewed: function () { return active && active.requireReviewed(); }, restoreExisting: function () { if (active) active.restoreExisting(); } };
 })();

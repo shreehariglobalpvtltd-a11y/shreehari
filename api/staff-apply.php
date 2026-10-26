@@ -8,6 +8,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 require_once INCLUDE_PATH . '/staffapplications.php';
 require_once INCLUDE_PATH . '/waverify.php';
+require_once INCLUDE_PATH . '/applicationimport.php';
 
 const STAFF_OTP_OK_SEC   = 3600;
 const STAFF_OTP_SKIP_SEC = 120;
@@ -147,7 +148,14 @@ try {
             Security::requireRateLimit('staff_sign_ip', $ip, 10, 3600);
             [$phone] = staff_phone();
             $name  = StaffApps::oneLine(Response::field('name', ''), 120);
-            $state = staff_phone_state($phone);
+            $receipt = (string)($_POST['import_receipt'] ?? '');
+    ApplicationImport::formReceipt($receipt, 'staff');
+    if ($edit === null || isset($files['id_front'])) {
+        ApplicationImport::requireId($files['id_front']['bytes'] ?? null, ($_POST['import_reviewed'] ?? '') === '1', 'staff');
+    } elseif (($_POST['import_reviewed'] ?? '') !== '1') {
+        Response::invalid(['import_reviewed' => 'review'], 'Review the application details before sending.');
+    }
+    $state = staff_phone_state($phone);
             if ($state === 'none') {
                 Response::invalid(['otp' => 'required'], 'पहिले मोबाइल नम्बर WhatsApp कोडले प्रमाणित गर्नुहोस् · Verify your mobile with the WhatsApp code first.');
             }
@@ -255,7 +263,11 @@ try {
 
     if ($edit !== null) {
         try {
-            $made = StaffApps::applicantEdit($edit['id'], $c, $files, $ip, $ua);
+            $made = Database::transaction(static function () use ($edit, $c, $files, $ip, $ua, $receipt): array {
+                $made = StaffApps::applicantEdit($edit['id'], $c, $files, $ip, $ua);
+                ApplicationImport::attachForm($receipt, 'staff', 'staff:' . $made['id']);
+                return $made;
+            });
         } catch (StaffAppError $e) {
             Response::error($e->getMessage(), 409);
         }
@@ -268,7 +280,11 @@ try {
     }
 
     try {
-        $made = StaffApps::create($c, $files, $ip, $ua);
+        $made = Database::transaction(static function () use ($c, $files, $ip, $ua, $receipt): array {
+            $made = StaffApps::create($c, $files, $ip, $ua);
+            ApplicationImport::attachForm($receipt, 'staff', 'staff:' . $made['id']);
+            return $made;
+        });
         require_once INCLUDE_PATH . '/facecheck.php';
         FaceCheck::attach('staff_applications', (int) $made['id']);
         if (isset($usedChKey)) {
@@ -301,6 +317,8 @@ try {
         'status'   => 'pending',
         'message'  => 'तपाईंको आवेदन ' . $made['ref'] . ' कार्यालयमा पुग्यो। कागजात हेरेर कार्यालयले फोन / WhatsApp गर्नेछ। · Your application reached the office.',
     ]);
+} catch (ImportReceiptError $e) {
+    Response::invalid(['import_receipt' => 'expired'], $e->getMessage());
 } catch (Throwable $e) {
     Response::serverError($e);
 }

@@ -357,7 +357,7 @@ try {
     // pending proof waiting 45 min
     Database::query('UPDATE payments SET updated_at = DATE_SUB(NOW(), INTERVAL 45 MINUTE) WHERE payment_ref = :r', ['r' => 'TESTAUTO-PAY2']);
 
-    $iniArg = escapeshellarg(dirname(__DIR__) . '/.claude/php-dev.ini');
+    $iniArg = escapeshellarg(php_ini_loaded_file() ?: ''); // Inherit the runtime that actually runs the suite.
     $cronOut = shell_exec(escapeshellarg(PHP_BINARY) . ' -c ' . $iniArg . ' ' . escapeshellarg(dirname(__DIR__) . '/cron/alerts.php') . ' 2>&1') ?? '';
     $cronJson = json_decode(trim((string) strrchr(trim($cronOut), "\n") ?: $cronOut), true) ?? [];
     check('alerts cron runs clean', is_array($cronJson) && !isset($cronJson['error']));

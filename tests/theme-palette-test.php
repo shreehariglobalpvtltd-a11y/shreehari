@@ -177,7 +177,7 @@ $iD = array_search('depth', $order, true);
 check('customer app links themes.css', $iT !== false, implode(' > ', $order));
 check('themes.css loads after anim.css (and so after premium/ds/redesign)', $iT !== false && $iA !== false && $iT > $iA);
 check('themes.css loads BEFORE depth.css', $iT !== false && $iD !== false && $iT < $iD);
-check('depth.css is still the LAST stylesheet', end($order) === 'depth');
+check('depth.css is followed only by the reviewed polish overrides', array_slice($order, -2) === ['depth', 'polish']);
 check('themes.css carries the asset stamp', $iT !== false && $links[2][$iT] === $ver, $ver);
 check('sw.js precaches themes.css with ASSET_VER', strpos($sw, "'/assets/css/themes.css?v=' + ASSET_VER") !== false);
 
