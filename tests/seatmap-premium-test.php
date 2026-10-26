@@ -131,7 +131,7 @@ check('Seat AI button: still, AA gradient', str_contains($block, 'linear-gradien
 check('grid columns stay minmax(0,1fr)', str_contains($block, 'repeat(4, minmax(0, 1fr)) 16px repeat(2, minmax(0, 1fr))') && !preg_match('~repeat\(\d+,\s*1fr\)~', $block));
 check('braces balance in depth.css', substr_count($css, '{') === substr_count($css, '}'));
 preg_match_all('~<link rel="stylesheet" href="/assets/css/([a-z]+)\.css~', $tpl, $links);
-check('depth.css is still the LAST stylesheet', end($links[1]) === 'depth', implode(' > ', $links[1]));
+check('depth.css is followed only by the reviewed polish overrides', array_slice($links[1], -2) === ['depth', 'polish'], implode(' > ', $links[1]));
 
 echo "-- 7. The shipped functions, run in node --\n";
 $out = []; $code = 0;

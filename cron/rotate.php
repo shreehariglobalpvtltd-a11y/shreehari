@@ -7,6 +7,8 @@ declare(strict_types=1);
 require __DIR__ . '/_cron.php';
 
 $logsRemoved = Logger::rotate(Settings::getInt('log_keep_days', 60));
+require_once INCLUDE_PATH . '/applicationimport.php';
+$abandonedFormsPurged = ApplicationImport::purgeAbandonedForms();
 
 // Rate-limit counters older than a day are dead weight.
 $rlPurged = Database::query(
@@ -107,6 +109,7 @@ try {
 
 cron_done([
     'logFilesRemoved'  => $logsRemoved,
+    'abandonedFormsPurged' => $abandonedFormsPurged,
     'waMediaPurged'    => $mediaPurged,
     'chartsPurged'     => $chartsPurged,
     'rateLimitsPurged' => $rlPurged,

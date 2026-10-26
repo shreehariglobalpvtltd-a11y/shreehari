@@ -1028,7 +1028,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 
 <script src="/assets/js/wa-direct.js?v=20261022a"></script>
 <script src="/assets/js/wa-verify.js?v=20261023j"></script>
-<script src="/assets/js/application-import.js?v=20261024ai1"></script>
+<script src="/assets/js/application-import.js?v=20261026b"></script>
 <script src="/assets/js/bio-kit.js?v=20261024opt"></script>
 <script src="/assets/js/form-i18n.js?v=20261023j"></script>
 <script>
@@ -1576,12 +1576,13 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     email: 's_email', emergency_phone: 's_emp', ref1_phone: 's_ref1p', ref1_name: 's_ref1n', ref2_name: 'g_name', ref2_phone: 'g_phone', ref3_name: 'w1_name', ref3_phone: 'w1_phone', ref4_name: 'w2_name', ref4_phone: 'w2_phone', bank_account: 'b_acc', bank_ifsc: 'b_ifsc', agree: 'agreeTerms', marksheet: 'eduIn' };
   function sendStaff(btn, label) {
     var fd = new FormData(), v = function (id) { return $(id).value.trim(); }, dig = function (id) { return v(id).replace(/\D/g, '').replace(/^0+/, ''); };
+    fd.set('import_receipt', window.ShgIntake ? window.ShgIntake.receipt() : '');
     fd.set('import_reviewed', window.ShgIntake && window.ShgIntake.reviewed() ? '1' : '0');
     fd.set('full_name', v('p_name')); fd.set('phone', dig('p_phone')); fd.set('cc', $('cc').value);
     fd.set('role', $('s_role').value); fd.set('id_type', STAFF_ID[$('p_idtype').value] || ''); fd.set('id_number', v('p_idno'));
     fd.set('district', v('p_area')); fd.set('address_perm', v('p_addr')); fd.set('country', $('s_country').value);
     fd.set('dob', $('s_dob').value); fd.set('gender', $('s_gender').value); fd.set('email', v('s_email'));
-    fd.set('qualification', $('cv_qual').value); fd.set('experience_years', (function (x) { var n = parseFloat(String(x).replace(',', '.')); return isFinite(n) && n > 0 ? String(Math.floor(n)) : ''; })(v('cv_exp'))); fd.set('prev_employer', v('cv_prev'));
+    fd.set('qualification', $('cv_qual').value); fd.set('experience_years', (function (x) { var n = parseFloat(String(x).replace(',', '.')); return isFinite(n) && n >= 0 ? String(Math.floor(n)) : ''; })(v('cv_exp'))); fd.set('prev_employer', v('cv_prev'));
     if ($('s_role').value === 'driver') { fd.set('license_number', v('s_lic')); fd.set('license_category', v('s_licCat')); fd.set('license_expiry', $('s_licExp').value); }
     if (v('s_ref1n') || v('s_ref1p')) { fd.set('ref1_name', v('s_ref1n')); fd.set('ref1_phone', dig('s_ref1p')); }
     fd.set('emergency_name', v('s_emn')); fd.set('emergency_phone', dig('s_emp'));
@@ -1618,6 +1619,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     var phone = '+' + $('cc').value + $('p_phone').value.replace(/\D/g, '').replace(/^0+/, '');
     var body = {
       type: state.kind, lang: window.ShgFormLang ? window.ShgFormLang.get() : 'ne', website: $('website').value, public_ok: $('public_ok').checked,
+      import_receipt: window.ShgIntake ? window.ShgIntake.receipt() : '',
       import_reviewed: !!(window.ShgIntake && window.ShgIntake.reviewed()),
       photo: state.photo, doc: state.doc, signature: inked > 40 ? signaturePng() : null, geo: state.geo, edit: !!state.edit,
       fields: { p_name: $('p_name').value.trim(), p_phone: phone, p_area: $('p_area').value.trim(), p_addr: $('p_addr').value.trim(),
@@ -1817,7 +1819,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
 
 
   if (!document.documentElement.classList.contains('saMode') && window.ShgIntake) {
-    window.ShgIntake.mount({ host: 'ap', submit: 'send', kind: state.kind === 'org' ? 'partner' : 'agent', token: token,
+    window.ShgIntake.mount({ host: 'ap', submit: 'send', kind: state.kind === 'org' ? 'partner' : 'agent', token: token, onSessionExpired: function () { state.csrf = null; },
       onId: function (data) { state.doc = data; dvReset(); $('docPrev').style.backgroundImage = 'url(' + data + ')'; $('docPrev').classList.add('has'); $('docOk').textContent = '✓ परिचयपत्र राखियो · ID uploaded'; },
       onFields: function (f, source) {
         var map = { name: nameId(), idtype: 'p_idtype', idno: 'p_idno', dob: 'p_dob', address: 'p_addr', phone: 'p_phone', country_code: 'cc', work_area: 'p_area', district: 'p_area', company_name: 'p_name', registration_number: 'p_reg', tax_number: 'p_tax', qualification: 'cv_qual', experience_years: 'cv_exp', previous_employer: 'cv_prev', bank_holder: 'b_name', bank_name: 'b_bank', bank_account: 'b_acc', bank_ifsc: 'b_ifsc', reference1_name: 'g_name', reference1_phone: 'g_phone' };
@@ -2081,12 +2083,13 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     if (!validate()) return;
     var btn = $('saSubmit'); btn.disabled = true; var lab = btn.innerHTML; btn.innerHTML = '<span class="ei">⏳</span>पठाउँदै…';
     var fd = new FormData();
+    fd.set('import_receipt', window.ShgIntake ? window.ShgIntake.receipt() : '');
     fd.set('import_reviewed', window.ShgIntake && window.ShgIntake.reviewed() ? '1' : '0');
     fd.set('full_name', v('sa_name')); fd.set('phone', digits('sa_phone')); fd.set('cc', v('sa_cc'));
     fd.set('role', v('sa_role')); fd.set('id_type', STAFF_ID[v('sa_idtype')] != null ? STAFF_ID[v('sa_idtype')] : v('sa_idtype')); fd.set('id_number', v('sa_idno'));
     fd.set('district', v('sa_distprov') || v('sa_addrPerm')); fd.set('address_perm', v('sa_addrPerm')); fd.set('country', v('sa_country'));
     fd.set('dob', v('sa_dob')); fd.set('gender', v('sa_gender')); fd.set('email', v('sa_email'));
-    fd.set('qualification', v('sa_qual')); fd.set('experience_years', (function (x) { var n = parseFloat(x.replace(',', '.')); return isFinite(n) && n > 0 ? String(Math.floor(n)) : ''; })(v('sa_exp'))); fd.set('prev_employer', v('sa_prev'));
+    fd.set('qualification', v('sa_qual')); fd.set('experience_years', (function (x) { var n = parseFloat(x.replace(',', '.')); return isFinite(n) && n >= 0 ? String(Math.floor(n)) : ''; })(v('sa_exp'))); fd.set('prev_employer', v('sa_prev'));
     if (v('sa_role') === 'driver') { fd.set('license_number', v('sa_lic')); fd.set('license_category', v('sa_licCat')); fd.set('license_expiry', v('sa_licExp')); }
     if (v('sa_ref1n') || v('sa_ref1p')) { fd.set('ref1_name', v('sa_ref1n')); fd.set('ref1_phone', digits('sa_ref1p')); }
     if (v('sa_ref2n') || v('sa_ref2p')) { fd.set('ref2_name', v('sa_ref2n')); fd.set('ref2_phone', digits('sa_ref2p')); }
@@ -2185,7 +2188,7 @@ body.rv .card{transition:opacity .45s ease,transform .45s ease}
     onFields: function (f, source) {
       var types = { '0': 'aadhaar', '1': 'citizenship', '2': 'passport', '5': 'driving_license', '6': 'pan' };
       var map = { name: 'sa_name', idtype: 'sa_idtype', idno: 'sa_idno', dob: 'sa_dob', gender: 'sa_gender', address: 'sa_addrPerm', current_address: 'sa_addrCur', phone: 'sa_phone', country_code: 'sa_cc', email: 'sa_email', role: 'sa_role', district: 'sa_distprov', qualification: 'sa_qual', experience_years: 'sa_exp', previous_employer: 'sa_prev', emergency_name: 'sa_emn', emergency_phone: 'sa_emp', reference1_name: 'sa_ref1n', reference1_phone: 'sa_ref1p', reference2_name: 'sa_ref2n', reference2_phone: 'sa_ref2p', bank_holder: 'sa_bhold', bank_name: 'sa_bbank', bank_account: 'sa_bacc', bank_ifsc: 'sa_bifsc', license_number: 'sa_lic', license_category: 'sa_licCat', license_expiry: 'sa_licExp' };
-      var n = 0; Object.keys(map).forEach(function (key) { var value = key === 'idtype' ? types[f.idtype] || '' : f[key]; if (window.ShgIntake.setField(map[key], value, source)) n++; }); sync(); saveSoon(); return n;
+      var n = 0; Object.keys(map).forEach(function (key) { var value = key === 'idtype' ? types[f.idtype] || '' : f[key]; if (window.ShgIntake.setField(map[key], value, source)) n++; }); document.querySelectorAll('#saForm [data-position-extra]').forEach(function (e) { var key = e.dataset.positionExtra === 'emergency_contact_name' ? 'emergency_name' : e.dataset.positionExtra; if (window.ShgIntake.setField(e.id, f[key], source)) n++; }); sync(); saveSoon(); return n;
     }
   });
 

@@ -50,6 +50,13 @@ require_once INCLUDE_PATH . '/seats.php';
  * later suite that guards a money or auth path and needs only the database.
  */
 const CORE_SUITES = [
+    'cli-failure-test.php' => 'uncaught CLI exceptions return failure rather than HTML success',
+    'application-import-test.php' => 'OCR suggestions, session/kind receipts and private originals',
+    'ledger-journal-test.php' => 'database rejects immutable audit history updates and deletion',
+    'unified-team-test.php' => 'KYC approval, identity links, cards, delivery, finance reservations and replay guards',
+    'unified-team-race-test.php' => 'standalone simultaneous withdrawals and monthly salary posting',
+    'team-manager-test.php' => 'archive, account preservation and office workbench',
+    'team-registration-test.php' => 'duplicate detection and agreement expiry',
     /* 21 Sep 2026: e2e-booking-test.php USED to be listed here as well as in
        HTTP_SUITES. It needs the dev server on :8899 and its own PDO on the
        local dev MySQL, so in CORE it did not skip — it died on an uncaught

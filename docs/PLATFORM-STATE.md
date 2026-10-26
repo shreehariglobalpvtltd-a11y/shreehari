@@ -1,5 +1,9 @@
 # S Hari Global continuous platform state
 
+Latest continuation: see `CONTINUATION-RELEASE-20261026.md` for recovered source,
+report/OCR integration, active-form fixes, verification and explicit release blockers.
+The older observations below remain historical; this development work is not a deployment.
+
 Verified on 26 October 2026 (Asia/Kolkata). This is a development audit and
 incremental implementation record, not a production readiness certificate.
 

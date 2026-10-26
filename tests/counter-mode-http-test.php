@@ -77,6 +77,7 @@ if ($agentId === 0) {
     Database::update('admins', ['password_hash' => password_hash($pw, PASSWORD_BCRYPT), 'role' => 'agent', 'is_active' => 1, 'must_change_pw' => 0, 'failed_logins' => 0, 'locked_until' => null], 'id = :i', ['i' => $agentId]);
 }
 try { Database::query("DELETE FROM rate_limits WHERE bucket LIKE 'admin_login%' OR bucket LIKE 'book_create%'"); } catch (Throwable $e) {}
+require_once __DIR__.'/payout-fixture.php'; verifiedPayoutFixture($agentId);
 $cleanup = function () use ($D, $D_PAST, $agentId): void {
     foreach (Database::fetchAll("SELECT id FROM bookings WHERE contact_phone = '" . CH_PHONE . "'") as $r) {
         try { Database::delete('agent_ledger', 'booking_id = :b', ['b' => (int) $r['id']]); } catch (Throwable $e) {}

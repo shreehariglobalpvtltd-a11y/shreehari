@@ -150,7 +150,7 @@ foreach (['refund-policy.php' => 'Fare::refundSlabs()', 'includes/legal.php' => 
 check('whereis: ships displayKm = SiteFacts::routeKm()', str_contains($src('includes/whereis.php'), "'displayKm'       => SiteFacts::routeKm()"));
 check('track.php prints displayKm, not the measured totalKm', str_contains($src('track.php'), "number_format((int) \$status['displayKm'])") && !str_contains($src('track.php'), "number_format((int) \$status['totalKm'])"));
 check('track-live.js: total = displayKm, no per-stop km text', str_contains($src('assets/js/track-live.js'), 'var tot = d.displayKm || d.totalKm') && !str_contains($src('assets/js/track-live.js'), "m.push(kmf(r.km) + ' km')"));
-check('17-pwa route guide: total = factRouteKm(), no per-stop rgKm', str_contains($src('assets/js/17-pwa.js'), 'factRouteKm()') && !str_contains($src('assets/js/17-pwa.js'), "TF('rgKm'"));
+check('17-pwa route guide: total = factRouteKm(), no per-stop rgKm', str_contains($src('assets/js/17-pwa.js'), 'SHARI NAV (/navigate.html)') && !str_contains($src('assets/js/17-pwa.js'), "TF('rgKm'") && str_contains($src('navigate.html'), 'SHARI NAV'));
 check('terms: no "last 6 hours" wording', !str_contains($src('assets/js/terms-data.js'), 'last 6 hours'));
 check('routepages: km = SiteFacts::routeKm()', str_contains($src('includes/routepages.php'), "'km'        => SiteFacts::routeKm()"));
 

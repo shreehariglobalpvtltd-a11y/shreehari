@@ -253,44 +253,16 @@ try {
     check('a typed password under 8 characters is refused', str_contains(throws(static fn() => AgentWallet::createAgent('ZZ Pw', fresh_phone(), 'org', '', null, $SUPID, ['username' => $TAG . '_pw', 'password' => '1234'])), '8'));
     check('a username with a space is refused', str_contains(throws(static fn() => AgentWallet::createAgent('ZZ User', fresh_phone(), 'org', '', null, $SUPID, ['username' => 'a b c'])), 'Username'));
 
-    /* ============================================================ 2. agents.php */
-    echo "\n=== 2. admin/agents.php — Quick add, no Delete, Over-the-limit ===\n";
-    $pq  = fresh_phone();
-    $out = page('agents.php', $SUPU, [], ['action' => 'quick_add', 'qa_name' => 'ZZ Page Agent ' . $TAG, 'qa_phone' => substr($pq, 0, 5) . ' ' . substr($pq, 5), 'qa_kind' => 'person', 'qa_city' => 'Rupaidiha', 'qa_email' => '']);
-    $qp  = (int) Database::scalar('SELECT id FROM admins WHERE phone = :p', ['p' => $pq], 0);
-    if ($qp > 0) { $MADE[] = $qp; }
-    check('super-admin: Quick add creates the agent (spaces in the mobile are fine)', $qp > 0 && str_contains($out, 'Agent added'), fatal_of($out));
-    check('the flash links to their login / password section', str_contains($out, 'agent.php?agent=' . $qp . '#loginCredentials'));
-    check('the quick-added agent is active with an SHG code', $qp > 0 && AgentWallet::agentCodeFor($qp) !== null);
-    $pm  = fresh_phone();
-    $out = page('agents.php', uname($M1), [], ['action' => 'quick_add', 'qa_name' => 'ZZ Manager Add ' . $TAG, 'qa_phone' => $pm, 'qa_kind' => 'org']);
-    $qm  = (int) Database::scalar('SELECT id FROM admins WHERE phone = :p', ['p' => $pm], 0);
-    if ($qm > 0) { $MADE[] = $qm; }
-    check('a manager (staff.manage) can Quick add too — no dead end on staff.php', $qm > 0, fatal_of($out));
-    $pa  = fresh_phone();
-    page('agents.php', uname($ACC), [], ['action' => 'quick_add', 'qa_name' => 'ZZ Acc Add ' . $TAG, 'qa_phone' => $pa, 'qa_kind' => 'org']);
-    check('an accountant (no customers.view / staff.manage) cannot', !Database::exists('SELECT 1 FROM admins WHERE phone = :p', ['p' => $pa]));
-    $pc  = fresh_phone();
-    $out = page('agents.php', $SUPU, [], ['action' => 'quick_add', 'qa_name' => 'ZZ Csrf ' . $TAG, 'qa_phone' => $pc, 'qa_kind' => 'org'], true);
-    check('a bad CSRF token creates nothing', !Database::exists('SELECT 1 FROM admins WHERE phone = :p', ['p' => $pc]) && str_contains($out, 'Session expired'));
-    $out = page('agents.php', $SUPU, [], ['action' => 'quick_add', 'qa_name' => 'ZZ Again', 'qa_phone' => $pq, 'qa_kind' => 'org']);
-    check('a duplicate mobile is refused on the page and the typed name is kept', str_contains($out, 'already belongs to another staff account') && str_contains($out, 'value="ZZ Again"'));
-
-    $out = page('agents.php', $SUPU, [], ['action' => 'delete', 'id' => (string) $qa1]);
-    check('POST delete is refused — agents are never deleted', str_contains($out, 'never deleted') && Database::exists('SELECT 1 FROM admins WHERE id = :i', ['i' => $qa1]));
-
-    // An agent over their own ₹1,000 limit. Dated 60 days back so the ranking
-    // board below lists them without needing a sale from another suite.
-    $X = mk_admin('agent', 'overcash');
-    Database::run('UPDATE admins SET created_at = :c WHERE id = :i', ['c' => date('Y-m-d H:i:s', strtotime('-60 days')), 'i' => $X]);
-    AgentWallet::saveProfile($X, ['cash_limit' => 1000]);
-    AgentWallet::record($X, 'cash_due', 1500, ['note' => 'test cash', 'by' => 0]);
-    $out = page('agents.php', $SUPU);
-    check('register renders (no fatal)', fatal_of($out) === '' && str_contains($out, 'Quick add agent'), fatal_of($out));
-    check('Over cash limit filter + KPI card', str_contains($out, 'data-dt-filter="cash"') && str_contains($out, '<option value="over">Over cash limit</option>') && str_contains($out, '<div class="k">Over cash limit</div>'));
-    check("the agent over their limit carries data-cash=\"over\" and a red 'Over ₹1,000' pill",
-        preg_match('/<tr data-search="[^"]*zz overcash ' . preg_quote($TAG, '/') . '[^"]*"[^>]*data-cash="over"/', $out) === 1 && str_contains($out, 'Over ₹1,000</span>'));
-    check('no Delete button left on the register', !str_contains($out, 'value="delete"'));
+    // The unified release deliberately redirects managed roles to the reviewed digital applications.
+    // Creation-service coverage above remains; new approval/CSRF/account-linking coverage runs in unified-team.
+    $legacy=$src('admin/agents.php');
+    check('managed register redirects to unified team', str_contains($legacy, "Response::redirect('admin/team.php')"));
+    $out=page('team.php',$SUPU);
+    check('superadmin sees the actual unified application queue', fatal_of($out)==='' && str_contains($out,'Digital applications'), fatal_of($out));
+    check('unified page keeps withdrawals and earnings visible', str_contains($out,'Withdrawals') && str_contains($out,'Earnings'));
+    $out=page('team.php',uname($M1),[],['action'=>'post_announcement','title'=>'Synthetic CSRF test','body'=>'Must never publish','target_role'=>'all','priority'=>'normal'],true);
+    check('active team page refuses bad CSRF without writing', str_contains($out,'Page expired') && !Database::exists("SELECT 1 FROM team_notices WHERE title='Synthetic CSRF test'"));
+    check('unified queue cannot Quick Add around KYC approval', !str_contains($src('admin/team.php'), "action==='quick_add'"));
 
     /* ============================================================ 3. staff.php */
     echo "\n=== 3. admin/staff.php — never delete, real applications only ===\n";

@@ -80,7 +80,7 @@ try {
 
     // 2) A payout cannot run while the balance is negative (nothing owed yet).
     expectThrow('payout refused while an advance is outstanding',
-        fn() => AgentWallet::record($agentId, 'payout', 1000.0, ['by' => 0]));
+        fn() => AgentWallet::record($agentId, 'payout', 1000.0, ['by' => 0, 'ref' => 'SYNTHETIC-ADVANCE-PAYOUT']));
 
     // 3) A real sale accrues commission and nets against the advance automatically.
     $b1 = BookingService::counterSale($route, $sid, TD, [$free[0]], [
@@ -100,8 +100,8 @@ try {
     check('advance fully recovered → outstanding 0', money_is($adv['outstanding'], 0.0));
 
     // 5) Payout now works but is still capped at the (advance-adjusted) balance.
-    expectThrow('payout still capped at the net balance', fn() => AgentWallet::record($agentId, 'payout', 200.0, ['by' => 0]));
-    AgentWallet::record($agentId, 'payout', 100.0, ['by' => 0]);
+    expectThrow('payout still capped at the net balance', fn() => AgentWallet::record($agentId, 'payout', 200.0, ['by' => 0, 'ref' => 'SYNTHETIC-ADVANCE-PAYOUT']));
+    AgentWallet::record($agentId, 'payout', 100.0, ['by' => 0, 'ref' => 'SYNTHETIC-ADVANCE-PAYOUT']);
     check('exact-balance payout succeeds', money_is(AgentWallet::balances($agentId)['commission'], 0.0));
 
     // 6) A repayment (agent returns cash) is a credit tagged ADVANCE.

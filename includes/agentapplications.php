@@ -990,12 +990,14 @@ final class AgentApplications
      */
     public static function applicantEdit(int $id, array $clean): array
     {
+        Database::fetch('SELECT id FROM agent_applications WHERE id=:i FOR UPDATE', ['i'=>$id]);
         $row = self::find($id);
-        if ($row === null || (string) $row['type'] !== (string) $clean['type'] || (string) $row['phone'] !== (string) $clean['phone']) {
+        if ($row === null || !in_array((string)$row['status'], ['new','reviewing','kyc_pending','agreement_pending'], true) || (string) $row['type'] !== (string) $clean['type'] || (string) $row['phone'] !== (string) $clean['phone']) {
             throw new RuntimeException('That application cannot be changed from here.');
         }
         /* 23 Oct 2026 review: an edit used to overwrite the whole fields_json, wiping office-typed KYC, the
            guarantor / witness boxes and the e-mail. The form's boxes win; everything else on record stays. */
+        if (normalisePhone((string)$row['phone_raw']) === $clean['phone'] && preg_replace('/\D/', '', (string)$row['phone_raw']) !== preg_replace('/\D/', '', (string)$clean['phone_raw'])) { throw new RuntimeException('Reopen your application with its original country code.'); }
         $old = json_decode((string) ($row['fields_json'] ?? '{}'), true);
         $old = is_array($old) ? $old : [];
         $merged = array_filter((array) $clean['fields'], static fn ($x) => !(is_string($x) && trim($x) === '')) + $old;

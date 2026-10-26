@@ -166,7 +166,7 @@ if ($me !== null && $v !== 'reset') {
       <?php endif; ?>
       <p class="tp-links"><a href="/team/">← Back</a></p>
     </div>
-    <script src="/assets/js/team-passkey.js?v=20261026a"></script>
+    <script src="/assets/js/team-passkey.js?v=20261026b"></script>
     <?php elseif ($v === 'password'): ?>
     <div class="tp-card">
       <h1>🔑 पासवर्ड बदल्नुहोस् · Change password</h1>
@@ -349,7 +349,7 @@ if ($v === 'forgot'): ?>
     <div id="pkMsg" class="tp-msg info" hidden></div>
     <div id="faceMsg" class="tp-msg info" hidden></div>
     <div class="tf-doors">
-      <?php if (Passkeys::ready()): ?><button class="b or" type="button" data-pk="login">👆 Face ID / फिंगरप्रिन्ट (फोनको लक) · Phone lock</button><?php endif; ?>
+      <?php if (Passkeys::ready()): ?><button class="b or" type="button" data-pk="login">👆 Face ID / फिंगरप्रिन्ट (फोनको लक) · Phone lock</button><small>Device passkey: fingerprint / face stays on your device. An uploaded thumbprint image cannot sign you in.</small><?php endif; ?>
     </div>
     <details class="tf-pw"><summary>🔑 पासवर्डले · With the password</summary>
     <label class="f" for="pw">पासवर्ड · Password</label>
@@ -363,7 +363,7 @@ if ($v === 'forgot'): ?>
     <a href="/agreements/apply.html?kind=staff">🧑‍✈️ स्टाफ बन्नुहोस्</a>
     <a href="/agreements/apply.html?kind=partner">🏢 साझेदार बन्नुहोस्</a>
   </p>
-  <?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261026a"></script><?php endif; ?>
+  <?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261026b"></script><?php endif; ?>
   <p class="tp-links" style="font-weight:400"><a href="/admin/login.php?portal=admin">Office login (admin)</a></p>
 </div>
 <?php endif;

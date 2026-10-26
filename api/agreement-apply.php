@@ -7,6 +7,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 require_once INCLUDE_PATH . '/agentapplications.php';
 require_once INCLUDE_PATH . '/docverify.php';
+require_once INCLUDE_PATH . '/applicationimport.php';
 
 const AGR_BODY_MAX = 3_500_000;
 
@@ -94,6 +95,10 @@ try {
         Response::invalid($check['errors'], AgentApplications::message('invalid', $lang));
     }
     $clean = $check['clean'];
+    require_once INCLUDE_PATH . '/applyedit.php';
+    $edit = Response::field('edit', false) === true ? ApplyEdit::current('agent', (string)$clean['phone']) : null;
+    if (Response::field('edit', false) === true && $edit === null) { Response::error('Your edit session expired. Verify your number and reopen your application.', 403); }
+    if ($edit !== null && AgentApplications::find($edit['id'])['type'] !== $clean['type']) { Response::error('The application kind cannot change during an edit.', 403); }
     $photo = ['photo' => $clean['photo'], 'note' => (string) $clean['photo_note']];
 
     $chal = $_SESSION['agr_webauthn'] ?? null;
@@ -113,7 +118,16 @@ try {
         agr_honeypot($clean, $lang);
     }
 
+    $scope = $clean['type'] === 'org' ? 'partner' : 'agent';
+    $receipt = (string)Response::field('import_receipt', '');
+    ApplicationImport::formReceipt($receipt, $scope);
     $rawDoc = Response::field('doc', null);
+    $importId = ApplicationImport::decode($rawDoc);
+    if ($edit === null || $importId !== null) {
+        ApplicationImport::requireId($importId['bytes'] ?? null, Response::field('import_reviewed', false) === true, $scope);
+    } elseif (empty(AgentApplications::find($edit['id'])['doc_photo']) || Response::field('import_reviewed', false) !== true) {
+        Response::invalid(['import_reviewed' => 'review'], 'Upload an ID and review the application details.');
+    }
     if (is_string($rawDoc) && trim($rawDoc) !== '' && DocVerify::mode() === 'strict') {
         $idno = (string) ($clean['fields']['p_idno'] ?? '');
         if ($clean['doc'] === null) {
@@ -140,8 +154,19 @@ try {
         $clean['doc_verify'] = DocVerify::summary($vr);
     }
 
+    if ($edit !== null) {
+        $made = Database::transaction(static function () use ($edit, $clean, $receipt, $scope): array {
+            $made = AgentApplications::applicantEdit($edit['id'], $clean);
+            ApplicationImport::attachForm($receipt, $scope, 'agent:' . $made['id']);
+            return $made;
+        });
+        ApplyEdit::close();
+        $_SESSION['a4_mine'] = ['type' => 'agent', 'id' => (int)$made['id'], 't' => time()];
+        agr_answer($made['ref'], false, $photo, $lang);
+    }
     $retry = AgentApplications::findRetry($clean);
     if ($retry !== null) {
+        Database::transaction(static fn() => ApplicationImport::attachForm($receipt, $scope, 'agent:' . $retry['id']));
         agr_answer($retry['ref'], true, $photo, $lang);
     }
 
@@ -157,7 +182,11 @@ try {
         Response::error($busy, 429);
     }
 
-    $made = AgentApplications::create($clean, $ip);
+    $made = Database::transaction(static function () use ($clean, $ip, $receipt, $scope): array {
+        $made = AgentApplications::create($clean, $ip);
+        ApplicationImport::attachForm($receipt, $scope, 'agent:' . $made['id']);
+        return $made;
+    });
     if (!$made['duplicate']) {
         require_once INCLUDE_PATH . '/facecheck.php';
         FaceCheck::attach('agent_applications', (int) $made['id']);
@@ -197,6 +226,8 @@ try {
     }
 
     agr_answer($made['ref'], $made['duplicate'], $photo, $lang);
+} catch (ImportReceiptError $e) {
+    Response::invalid(['import_receipt' => 'expired'], $e->getMessage());
 } catch (Throwable $e) {
     Response::serverError($e);
 }

@@ -24,6 +24,7 @@ try {
     AgentApplications::saveCard($app['id'], ['area'=>'Surat, Ahmedabad','email'=>'agent@example.test','p_idno'=>'SYNTHETIC-ID'], $actorId, true);
     $saved = AgentApplications::find($app['id']);
     $check($saved['fields']['p_area'] === $saved['area'] && $saved['fields']['p_email'] === $saved['email'] && $saved['fields']['p_idno'] === 'SYNTHETIC-ID', 'edited contact fields sync to printed application and preserve KYC');
+    Database::update('agent_applications',['status'=>'approved','kyc_status'=>'verified','web_live'=>1],'id=:i',['i'=>$app['id']]);
     $key = 'agent:' . $app['id'];
     $check(TeamManager::find($key)['live'], 'approved application listed live');
     try { TeamManager::archive($key, false, ['id'=>999,'role'=>'support']); $check(false, 'support denied'); }
@@ -38,6 +39,7 @@ try {
     $check((int) Database::scalar('SELECT is_active FROM admins WHERE id=:i',['i'=>$aid]) === 1, 'restore returns previous login state');
     $other = AgentApplications::adminCreate(['name'=>'Corrected form','phone'=>'+919876543120','web_live'=>1], $actorId, true);
     AgentApplications::update($other['id'], ['admin_id'=>$aid], $actorId);
+    Database::update('agent_applications',['status'=>'approved','kyc_status'=>'verified','web_live'=>1],'id=:i',['i'=>$other['id']]);
     TeamManager::archive($key, false, $actor);
     $check((int) Database::scalar('SELECT is_active FROM admins WHERE id=:i',['i'=>$aid]) === 1, 'archiving duplicate keeps current shared login active');
     $check(!IdCard::person($app['ref'])['valid'] && IdCard::person($other['ref'])['valid'], 'only archived duplicate QR is invalid');
@@ -64,9 +66,9 @@ try {
     $_SERVER['REQUEST_URI'] = '/admin/team-manager.php';
     $_SERVER['HTTP_HOST'] = 'localhost';
     ob_start();
-    require dirname(__DIR__) . '/admin/team-manager.php';
+    require dirname(__DIR__) . '/admin/team.php';
     $html = ob_get_clean();
-    foreach (['Save details','Save commission / salary','Cards PDF','Login ID / password','Per ticket / PNR','Archived · पुराना'] as $label) {
+    foreach (['Commission / salary effective dates','Save terms','Withdrawals','Cards'] as $label) {
         $check(str_contains($html, $label), 'workbench renders ' . $label);
     }
     echo "SUCCESS: $count checks; no production data used.\n";

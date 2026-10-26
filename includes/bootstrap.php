@@ -122,6 +122,13 @@ require_once INCLUDE_PATH . '/events.php';
 set_exception_handler(static function (Throwable $e): void {
     Logger::exception($e);
 
+    // A failed CLI job/test must not become a successful process with an HTML error page.
+    if (PHP_SAPI === 'cli') {
+        fwrite(STDERR, APP_DEBUG ? 'Application error: ' . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine() . PHP_EOL
+            : 'Application failed. Inspect the private application log.' . PHP_EOL);
+        exit(1);
+    }
+
     $wantsJson = str_contains((string) ($_SERVER['REQUEST_URI'] ?? ''), '/api/')
         || str_contains(strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? '')), 'application/json')
         || strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';

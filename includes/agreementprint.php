@@ -230,12 +230,32 @@ final class AgreementPrint
         $pdf=new Pdf();$pdf->registerTTF(DevShape::fontFile());$co=Settings::company();
         $plain=static function(string $html):string{return trim(preg_replace('/\s+/u',' ',html_entity_decode(strip_tags(preg_replace('/<span class="fill"><\/span>/', ' __________ ', $html)),ENT_QUOTES|ENT_HTML5,'UTF-8')));};
         $terms=[];foreach($sections as $section){$terms[]=$plain($section['no'].' '.$section['title']);foreach($section['points']as$point){$terms[]=$plain($point['num'].' '.$point['html']);}}
-        $wrap=static function(string $text,float $font)use($pdf):array{$out=[];$line='';foreach(preg_split('/\s+/u',$text)as$word){$test=$line===''?$word:$line.' '.$word;if($pdf->textWidth($test,$font,'F7')>515&&$line!==''){$out[]=$line;$line=$word;}else{$line=$test;}}if($line!==''){$out[]=$line;}return $out;};
+        // Shape words in one batch: line-width probing must not spawn a PHP child per word.
+        $words=[];foreach($terms as $term){foreach(preg_split('/\s+/u',$term) as $word){if(DevShape::needs($word)){$words[]=$word;}}}DevShape::prime($words);
+        $wrap=static function(string $text,float $font,float $max=515)use($pdf):array {
+            $out=[];$line='';$width=0;$space=$pdf->textWidthCID(' ',$font,'F7');
+            foreach(preg_split('/\s+/u',$text) as $word) {
+                $wordWidth=$pdf->textWidthCID($word,$font,'F7');
+                if($line!=='' && $width+$space+$wordWidth>$max){$out[]=$line;$line='';$width=0;}
+                if($wordWidth>$max) {
+                    preg_match_all('/\X/u',$word,$clusters);
+                    foreach($clusters[0] as $cluster){if($line!=='' && $pdf->textWidthCID($line.$cluster,$font,'F7')>$max){$out[]=$line;$line='';}$line.=$cluster;}
+                    $width=$pdf->textWidthCID($line,$font,'F7');
+                } else {$width+=$wordWidth+($line===''?0:$space);$line=$line===''?$word:$line.' '.$word;}
+            }
+            if($line!==''){$out[]=$line;} return $out;
+        };
         $size=10.0;do{$lines=[];foreach($terms as $term){array_push($lines,...$wrap($term,$size));}$capacity=(int)floor(700/($size*1.45));if(count($lines)<=$capacity*3){break;}$size-=.5;}while($size>=8.5);
         if(count($lines)>$capacity*3){throw new RuntimeException('Current master exceeds four readable pages. Use the full print version or shorten the approved master terms.');}
+        DevShape::prime($lines);
         $pages=max(1,(int)ceil(count($lines)/$capacity));$header=static function(int $page)use($pdf,$co,$person,$kind,$pages):void{$pdf->rect(0,0,$pdf->width(),54,[10,42,143],true);$pdf->text(40,20,'S HARI GLOBAL PRIVATE LIMITED',13,'F2',[255,255,255]);$pdf->text(40,38,strtoupper($kind).' AGREEMENT  |  '.$person['ref'].'  |  '.($page+1).' / '.($pages+1),9,'F1',[255,205,135]);$pdf->line(40,800,555,800,[240,122,30]);$pdf->text(40,815,'Current master agreement - private signed application record',8,'F1',[92,107,133]);};
         $header(0);$y=86;
-        foreach(['Agreement: '.ucfirst($kind),'Applicant: '.$person['name'],'Permanent code: '.($person['memberCode']??$person['ref']),'Position: '.$person['roleEn'],'Location: '.$person['place'],'Route: '.($person['route']??''),'Issued / reviewed: '.$person['issued'],'Company: '.$co['legal'],'Office contact: '.$co['phone']] as $text){foreach($wrap($text,12)as$line){$pdf->textCID(40,$y,$line,12,'F7',[22,35,60]);$y+=22;}$y+=14;}
+        $cover=['Agreement: '.ucfirst($kind),'Applicant: '.$person['name'],'Permanent code: '.($person['memberCode']??$person['ref']),'Position: '.$person['roleEn'],'Location: '.$person['place'],'Route: '.($person['route']??''),'Issued / reviewed: '.$person['issued'],'Company: '.$co['legal'],'Office contact: '.$co['phone']];
+        $coverSize=11;
+        do {$coverLines=[];foreach($cover as $text){array_push($coverLines,...$wrap($text,$coverSize,365));$coverLines[]='';}if(count($coverLines)*$coverSize*1.5<=430){break;}$coverSize-=.5;}while($coverSize>=9);
+        if(count($coverLines)*$coverSize*1.5>430){throw new RuntimeException('Applicant details exceed the readable cover area. Use the full application print.');}
+        foreach($coverLines as $line){if($line!==''){$pdf->textCID(40,$y,$line,$coverSize,'F7',[22,35,60]);}$y+=$coverSize*1.5;}
+        if(!empty($person['photo'])){$pdf->imageFromString($person['photo'],440,82,105,130);}
         $pdf->text(40,570,'Applicant digital signature from the application',10,'F2',[10,42,143]);
         if(!empty($person['sig'])){$pdf->imageFromString($person['sig'],40,595,210,85);}else{$pdf->text(40,610,'Signature not recorded; this document is not a newly signed agreement.',10,'F1',[150,60,0]);}
         $pdf->text(40,735,'The complete current master terms follow. This export does not create a new signature.',8,'F1',[92,107,133]);

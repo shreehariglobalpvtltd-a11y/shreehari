@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v258** — Three public actions, translated labels and synchronized asset caches
 - **shg-v257-team20261025-2** — Keep edited KYC contact fields and printed applications consistent
 - **shg-v257-team20261025-1** — Unified agent staff KYC, recoverable archive and per-ticket commission
 - **shg-v256-gps20261025-6** — Admin GPS center, three-bus simulation and fast shared GPS updates
