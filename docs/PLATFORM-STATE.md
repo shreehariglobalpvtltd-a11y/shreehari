@@ -1,5 +1,12 @@
 # S Hari Global continuous platform state
 
+27 October release continuation: authenticated VPS/SSH access is now working.
+See `LIVE-RELEASE-20261027.md` for actual paths/runtime, the source-matched base,
+preserved live changes, the closed public application-tracker disclosure and the
+exact staging/release gate. Nine required schema tables/columns and immutable
+triggers exist; no production migration is required. Older no-access entries
+below are historical. Deployment status must come from the release evidence.
+
 Latest continuation: see `CONTINUATION-RELEASE-20261026.md` for recovered source,
 report/OCR integration, active-form fixes, verification and explicit release blockers.
 The older observations below remain historical; this development work is not a deployment.

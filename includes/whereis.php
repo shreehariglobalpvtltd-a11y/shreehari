@@ -184,11 +184,13 @@ final class WhereIs
             $out['reason'] = 'the coach is not on this route right now';
             return $out;
         }
-        $out['live']   = true;
-        $out['lat']    = $fix['lat'];
-        $out['lng']    = $fix['lng'];
-        $out['kmh']    = $fix['kmh'] !== null ? (int) round($fix['kmh']) : null;
-        $out['fixAge'] = $fixAge;
+        $out['live']    = true;
+        $out['lat']     = $fix['lat'];
+        $out['lng']     = $fix['lng'];
+        $out['kmh']     = $fix['kmh'] !== null ? (int) round($fix['kmh']) : null;
+        $out['bearing'] = $fix['bearing'] ?? ($fix['brg'] ?? null);
+        $out['acc']     = $fix['acc'] ?? null;
+        $out['fixAge']  = $fixAge;
         /* 20 Oct 2026 (phase 2): the coach's place ALONG the stored road line,
            for the page's map (grey = driven, blue = to go). on=false: the fix
            is near the line of stops but not near the road - the map shows it

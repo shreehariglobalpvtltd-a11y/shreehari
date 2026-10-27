@@ -204,6 +204,7 @@ $cleanup = static function () use ($PH): void {
     aa_exec("DELETE FROM agent_applications WHERE phone LIKE '99997000%'");
 };
 $notifyWas = null;
+$agentCodesWas = aa_one("SELECT svalue FROM settings WHERE skey='agent_codes'");
 $docModeWas = aa_one("SELECT svalue FROM settings WHERE skey='agr_doc_verify'");
 aa_exec("INSERT INTO settings(skey,svalue,stype,sgroup,is_public) VALUES('agr_doc_verify','off','string','agreements',0) ON DUPLICATE KEY UPDATE svalue='off'");
 
@@ -269,6 +270,13 @@ try {
     $of  = $org !== null ? (json_decode((string) $org['fields_json'], true) ?: []) : [];
     aa_check('the row is stored as an organization with the normalised phone', $org !== null && $org['type'] === 'org'
         && $org['phone'] === '9999700001' && $org['name'] === 'AgrTest Travels Pvt Ltd' && $org['area'] === 'Surat' && $org['status'] === 'new');
+    aa_check('partner role metadata follows the validated organization kind', ($org['role_category'] ?? '') === 'partner');
+    foreach (['A', '999970', $orgRef] as $lookup) {
+        $public = aa_req('GET', '/api/application-status.php?query=' . urlencode($lookup), aa_jar('public-status'));
+        aa_check('legacy tracker never discloses a record for an unverified query ' . $lookup,
+            $public['code'] === 403 && !str_contains($public['body'], $orgRef)
+            && !str_contains($public['body'], 'AgrTest Travels') && !array_key_exists('correction_notes', $public['json'] ?? []));
+    }
     aa_check('fields_json holds the posted fields', ($of['p_rep'] ?? '') === 'Hari Prasad' && ($of['b_acc'] ?? '') === '000111222333' && ($of['c73'] ?? '') === '1');
     aa_check('an unknown field name is not stored', !array_key_exists('evil_field', $of));
     aa_check('a long value is cut at 300 characters', strlen((string) ($of['p_addr'] ?? '')) === 300);
@@ -460,6 +468,29 @@ try {
     aa_check('tab 2 lists the existing agents with Agent 360 links', $g['code'] === 200 && str_contains($g['body'], 'AgrTest Agent')
         && str_contains($g['body'], 'agent-360.php?agent='));
     $agentId = (int) (aa_one('SELECT id FROM admins WHERE username = ?', ['agr-agent'])['id'] ?? 0);
+    // Existing live hierarchy fields record a request, never an approval or a
+    // commission. Use an isolated synthetic recipient/code and restore settings.
+    $codes = json_decode((string) ($agentCodesWas['svalue'] ?? '{}'), true) ?: [];
+    $used = array_map('intval', array_values($codes));
+    $code = 999; while (in_array($code, $used, true) && $code > 21) { --$code; }
+    $codes[(string) $agentId] = $code;
+    aa_exec("INSERT INTO settings(skey,svalue,stype,sgroup,is_public) VALUES('agent_codes',?,'json','agents',0) ON DUPLICATE KEY UPDATE svalue=VALUES(svalue)", [json_encode($codes)]);
+    aa_reset_limits();
+    $ledgerBefore = (int) (aa_one('SELECT COUNT(*) AS n FROM agent_ledger')['n'] ?? 0);
+    $referralFields = ['p_phone' => '9999700008'] + $indFields;
+    $referral = aa_post($jar, $tok, ['type'=>'ind','lang'=>'en','fields'=>$referralFields,'parent_agent_code'=>'SHG-' . str_pad((string)$code,4,'0',STR_PAD_LEFT),'role_category'=>'partner']);
+    $requested = aa_one('SELECT * FROM agent_applications WHERE phone=? ORDER BY id DESC LIMIT 1', ['9999700008']);
+    aa_check('parent request resolves an existing active agent through the shared code resolver', $referral['code']===200 && (int)($requested['parent_agent_id']??0)===$agentId);
+    aa_check('browser cannot turn an individual request into a partner or approved account', ($requested['role_category']??'')==='subagent' && ($requested['status']??'')==='new' && empty($requested['admin_id']));
+    aa_check('requesting a parent agent never posts a financial entry', (int)(aa_one('SELECT COUNT(*) AS n FROM agent_ledger')['n']??0)===$ledgerBefore);
+    aa_exec('UPDATE admins SET is_active=0 WHERE id=?', [$agentId]);
+    $inactive = aa_post($jar, $tok, ['type'=>'ind','lang'=>'en','fields'=>['p_phone'=>'9999700007']+$indFields,'parent_agent_code'=>'SHG-' . str_pad((string)$code,4,'0',STR_PAD_LEFT)]);
+    aa_check('an inactive parent is refused without storing a new application', $inactive['code']===422 && aa_one('SELECT id FROM agent_applications WHERE phone=?',['9999700007'])===null);
+    aa_exec('UPDATE admins SET is_active=1 WHERE id=?', [$agentId]);
+    $invalid = aa_post($jar, $tok, ['type'=>'ind','lang'=>'en','fields'=>['p_phone'=>'9999700007']+$indFields,'parent_agent_code'=>'not-a-code']);
+    aa_check('an invalid parent code is reported as a field error', $invalid['code']===422 && isset($invalid['json']['fields']['p_parent_agent_code']));
+    if ($agentCodesWas === null) { aa_exec("DELETE FROM settings WHERE skey='agent_codes'"); }
+    else { aa_exec("UPDATE settings SET svalue=? WHERE skey='agent_codes'",[$agentCodesWas['svalue']]); }
     $csrf2 = preg_match('/name="shg_csrf" value="([a-f0-9]+)"/', $g['body'], $m) ? $m[1] : $csrf;
     $p = aa_req('POST', '/admin/agreements.php?tab=agents', $sj, ['form' => [
         'shg_csrf' => $csrf2, 'action' => 'agent', 'admin_id' => $agentId, 'agreement_status' => 'sent', 'public_phone' => '1',
@@ -497,6 +528,8 @@ try {
 } catch (Throwable $e) {
     aa_check('no exception', false, get_class($e) . ': ' . $e->getMessage() . ' @' . basename($e->getFile()) . ':' . $e->getLine());
 } finally {
+    if ($agentCodesWas === null) { aa_exec("DELETE FROM settings WHERE skey='agent_codes'"); }
+    else { aa_exec("UPDATE settings SET svalue=? WHERE skey='agent_codes'",[$agentCodesWas['svalue']]); }
     if ($docModeWas === null) { aa_exec("DELETE FROM settings WHERE skey='agr_doc_verify'"); } else { aa_exec("UPDATE settings SET svalue=? WHERE skey='agr_doc_verify'", [$docModeWas['svalue']]); }
     try { $cleanup(); } catch (Throwable $e) {}
     try {

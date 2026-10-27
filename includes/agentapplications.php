@@ -77,6 +77,7 @@ final class AgentApplications
         'g3_name', 'g3_id', 'g3_addr', 'g4_name', 'g4_id', 'g4_addr',
         // 22 Oct 2026 (team portal): education + experience on the quick form (agents and partners)
         'cv_qual', 'cv_exp', 'cv_prev',
+        'p_parent_agent_code',
     ];
 
     /** Required on top of p_name / p_phone / p_area, per type. */
@@ -157,6 +158,7 @@ final class AgentApplications
         'g3_name' => 'India guarantor 1', 'g3_id' => 'India guarantor 1 ID no.', 'g3_addr' => 'India guarantor 1 address / mobile',
         'g4_name' => 'India guarantor 2', 'g4_id' => 'India guarantor 2 ID no.', 'g4_addr' => 'India guarantor 2 address / mobile',
         'cv_qual' => 'Highest education', 'cv_exp' => 'Experience / years in business', 'cv_prev' => 'Previous work / other services',
+        'p_parent_agent_code' => 'Requested parent agent code',
     ];
 
     /** Education levels: the quick form's cv_qual and the team portal CV (TeamPortal::EDU_LEVELS). */
