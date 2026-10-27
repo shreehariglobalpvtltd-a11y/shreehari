@@ -161,6 +161,22 @@ try {
     if (!$made['duplicate']) {
         require_once INCLUDE_PATH . '/facecheck.php';
         FaceCheck::attach('agent_applications', (int) $made['id']);
+
+        // Multi-role category & parent agent linkage (4-tier hierarchy)
+        $roleCat = (string) Response::field('role_category', Response::field('role', 'agent'));
+        if (!in_array($roleCat, ['staff', 'agent', 'subagent', 'partner'], true)) {
+            $roleCat = 'agent';
+        }
+        $parentCode = trim((string) Response::field('parent_agent_code', Response::field('parent_code', '')));
+        $parentId = null;
+        if ($parentCode !== '') {
+            require_once INCLUDE_PATH . '/agentwallet.php';
+            $parentId = AgentWallet::resolveAgentCodeFromString($parentCode);
+        }
+        Database::update('agent_applications', [
+            'role_category'   => $roleCat,
+            'parent_agent_id' => $parentId,
+        ], 'id = :id', ['id' => (int) $made['id']]);
     }
     if (isset($clean['webauthn_cred'])) {
         unset($_SESSION['agr_webauthn']);

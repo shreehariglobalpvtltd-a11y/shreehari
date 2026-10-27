@@ -42,6 +42,7 @@ REL=${3:?release branch name to create}
 DRY=${4:-}
 
 GIT="git --git-dir=/var/repos/shg.git"
+ORIGIN=https://github.com/shreehariglobalpvtltd-a11y/shreehari.git
 LIVE=/var/www/shreehariglobal.in/public_html
 DB=shari
 TS=$(date +%Y%m%d-%H%M%S)
@@ -50,6 +51,27 @@ BK=/root/backups/pre-deploy-$REL-$TS
 $GIT rev-parse --verify -q "$BASE^{commit}" >/dev/null || { echo "ABORT: unknown base $BASE"; exit 2; }
 $GIT rev-parse --verify -q "$NEW^{commit}"  >/dev/null || { echo "ABORT: unknown ref $NEW"; exit 2; }
 $GIT merge-base --is-ancestor "$BASE" "$NEW" || { echo "ABORT: $NEW is not built on $BASE"; exit 2; }
+
+# Release names are allocated HERE, in /var/repos/shg.git. Refuse a name that is
+# already taken by a different commit. On 16 Oct 2026 two sessions each cut a
+# "release-20261016-tm3" for different commits, because the only way to notice
+# was to look in a repo neither of them was looking at. Re-running the same
+# release with the same ref is fine, so a failed deploy can be retried.
+if TAKEN=$($GIT rev-parse --verify -q "refs/heads/$REL"); then
+  WANT=$($GIT rev-parse "$NEW^{commit}")
+  if [ "$TAKEN" != "$WANT" ]; then
+    echo "ABORT: release name $REL is already taken here by ${TAKEN:0:7}, but you are releasing ${WANT:0:7}."
+    echo "       Release names are never reused or moved - pick the next one."
+    exit 2
+  fi
+  echo "note: $REL already points at ${WANT:0:7} - re-running the same release"
+fi
+# ...and say so loudly if GitHub has that name on a different commit. Read-only:
+# this box has no GitHub credentials and must not be given any.
+if GHREF=$(timeout 20 git ls-remote "$ORIGIN" "refs/heads/$REL" 2>/dev/null | cut -f1) && [ -n "$GHREF" ]; then
+  [ "$GHREF" = "$($GIT rev-parse "$NEW^{commit}")" ] || \
+    echo "WARNING: GitHub already has $REL at ${GHREF:0:7} - that name will mean two different commits"
+fi
 if [ -e "$LIVE/public_html" ]; then echo "ABORT: $LIVE holds a nested public_html (stale tree)"; exit 2; fi
 
 # web files this release adds or changes (docs/ and tests/ never go live)
@@ -111,7 +133,7 @@ this release are additive; restoring the dump is only for a real emergency.
 TXT
 
 # 4. write
-$GIT branch -f "$REL" "$NEW"
+$GIT branch -f "$REL" "$NEW"   # safe: the name guard above proved $REL is free or already this ref
 for f in "${FILES[@]}"; do
   mkdir -p "$LIVE/$(dirname "$f")"
   cp "$STAGE/$f" "$LIVE/$f.deploytmp" && mv "$LIVE/$f.deploytmp" "$LIVE/$f"
@@ -134,3 +156,11 @@ if [ "$BAD" != 0 ] || [ "$H" != 200 ] || [ "$A" != 200 ]; then
   echo "DEPLOY NOT HEALTHY - see $BK/ROLLBACK.txt"; exit 5
 fi
 echo "deployed ${#FILES[@]} file(s) as $REL"
+
+# A release that never reaches GitHub is never CI-tested, and leaves GitHub a
+# partial mirror - which is how "release-20261016-tm3" came to mean two commits.
+# This box has no GitHub credentials on purpose, so mirror it from a machine
+# that does, now:
+echo
+echo "NOT DONE YET - mirror this release to GitHub from your own machine:"
+echo "    git push origin $($GIT rev-parse "$REL"):refs/heads/$REL"

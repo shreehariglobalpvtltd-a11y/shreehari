@@ -1,54 +1,145 @@
 <?php
-declare(strict_types=1);
-if (!defined('SHG_APP')) { http_response_code(403); exit('Forbidden'); }
-require_once __DIR__ . '/gpsloggerprofile.php';
+/**
+ * =====================================================================
+ *  includes/owntracks.php — OwnTracks Mobile App Integration
+ *
+ *  Supports OwnTracks on Android/iOS (HTTP mode 3).
+ *  The driver/staff phone runs OwnTracks with background location service.
+ *  It transmits GPS updates via HTTP POST to /api/owntracks.php.
+ * =====================================================================
+ */
 
-/** OwnTracks HTTP adapter. Device topics never choose the bus; authenticated credentials do. */
+declare(strict_types=1);
+
+if (!defined('SHG_APP')) {
+    http_response_code(403);
+    exit('Forbidden');
+}
+
+require_once __DIR__ . '/gpstrackers.php';
+
 final class OwnTracksGateway
 {
-    public static function credentials(array $server): ?array
-    {
-        if (isset($server['PHP_AUTH_USER'], $server['PHP_AUTH_PW'])) {
-            return [(string) $server['PHP_AUTH_USER'], (string) $server['PHP_AUTH_PW']];
-        }
-        $header = $server['HTTP_AUTHORIZATION'] ?? $server['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
-        if (!is_string($header) || strlen($header) > 512 || preg_match('/^Basic\s+(.+)$/i', $header, $m) !== 1) { return null; }
-        $decoded = base64_decode($m[1], true);
-        return is_string($decoded) && str_contains($decoded, ':') ? explode(':', $decoded, 2) : null;
-    }
-
+    /**
+     * Authenticate tracker from HTTP Basic Auth headers or bearer token.
+     *
+     * @param array<string,mixed> $server Usually $_SERVER
+     * @return array<string,mixed>|null Tracker row or null
+     */
     public static function authenticatedTracker(array $server): ?array
     {
-        $auth = self::credentials($server);
-        if ($auth === null || !GpsTrackers::isGeneratedUid($auth[1])) { return null; }
-        $tracker = GpsTrackers::findByUid($auth[1]);
-        if ($tracker === null || $tracker['kind'] !== 'phone' || !(int) $tracker['is_active'] || $tracker['revoked_at'] !== null
-            || !hash_equals('bus-' . $tracker['bus_id'], $auth[0])) { return null; }
+        $user = trim((string) ($server['PHP_AUTH_USER'] ?? ''));
+        $pass = trim((string) ($server['PHP_AUTH_PW'] ?? ''));
+
+        if ($user === '' && $pass === '') {
+            $auth = (string) ($server['HTTP_AUTHORIZATION'] ?? $server['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+            if (stripos($auth, 'Basic ') === 0) {
+                $decoded = base64_decode(substr($auth, 6), true);
+                if (is_string($decoded) && str_contains($decoded, ':')) {
+                    [$user, $pass] = explode(':', $decoded, 2);
+                    $user = trim($user);
+                    $pass = trim($pass);
+                }
+            }
+        }
+
+        // The UID can be in username, password, or both
+        $candidateUid = GpsTrackers::normaliseUid($user ?: $pass);
+        if ($candidateUid === '') {
+            $candidateUid = GpsTrackers::normaliseUid($pass);
+        }
+
+        if ($candidateUid === '') {
+            return null;
+        }
+
+        $tracker = Database::fetch(
+            "SELECT g.*, b.bus_number, b.bus_name
+               FROM gps_trackers g
+               JOIN buses b ON b.id = g.bus_id
+              WHERE g.device_uid = :uid
+                AND g.is_active = 1
+                AND g.revoked_at IS NULL
+                AND b.is_active = 1
+              LIMIT 1",
+            ['uid' => $candidateUid]
+        );
+
+        if ($tracker === null) {
+            return null;
+        }
+
+        // If the tracker needs a forward key (hardware IMEI), verify the password
+        if (GpsTrackers::needsKey($candidateUid)) {
+            $expectedKey = Settings::getString(GpsTrackers::KEY_SETTING, '');
+            if ($expectedKey === '' || !hash_equals($expectedKey, $pass)) {
+                return null;
+            }
+        }
+
         return $tracker;
     }
 
-    public static function location(array $payload, string $uid): array
+    /**
+     * Map OwnTracks JSON location payload into OsmAnd format for GpsTrackers::ingestOsmAnd.
+     *
+     * @param array<string,mixed> $payload
+     * @param string $deviceUid
+     * @return array<string,mixed>
+     */
+    public static function location(array $payload, string $deviceUid): array
     {
-        if (($payload['_type'] ?? '') !== 'location' || !is_numeric($payload['tst'] ?? null)
-            || (float) $payload['tst'] < 1000000000 || !is_numeric($payload['lat'] ?? null) || !is_numeric($payload['lon'] ?? null)) {
-            throw new InvalidArgumentException('A timestamped location is required.');
-        }
-        $velocity = is_numeric($payload['vel'] ?? null) && (float) $payload['vel'] >= 0 ? (float) $payload['vel'] : null;
-        return ['id' => $uid, 'lat' => $payload['lat'], 'lon' => $payload['lon'], 'timestamp' => $payload['tst'],
-            // OwnTracks is km/h, while this existing ingestion format uses knots.
-            'speed' => $velocity !== null ? $velocity / GpsTrackers::KNOT_KMH : null,
-            'bearing' => $payload['cog'] ?? null, 'accuracy' => $payload['acc'] ?? null, 'batt' => $payload['batt'] ?? null];
+        $lat = $payload['lat'] ?? null;
+        $lon = $payload['lon'] ?? null;
+        $tst = $payload['tst'] ?? time();
+        $vel = isset($payload['vel']) && is_numeric($payload['vel']) ? (float) $payload['vel'] : null;
+        $cog = isset($payload['cog']) && is_numeric($payload['cog']) ? (float) $payload['cog'] : null;
+        $acc = isset($payload['acc']) && is_numeric($payload['acc']) ? (float) $payload['acc'] : null;
+        $batt = isset($payload['batt']) && is_numeric($payload['batt']) ? (int) $payload['batt'] : null;
+
+        // OwnTracks sends vel in km/h. GpsTrackers::parseOsmAnd expects speed in knots and multiplies by 1.852.
+        $speedKnots = ($vel !== null && $vel >= 0) ? ($vel / GpsTrackers::KNOT_KMH) : null;
+
+        return [
+            'id'        => $deviceUid,
+            'lat'       => $lat,
+            'lon'       => $lon,
+            'timestamp' => $tst,
+            'speed'     => $speedKnots,
+            'bearing'   => $cog,
+            'accuracy'  => $acc,
+            'batt'      => $batt,
+        ];
     }
 
+    /**
+     * Generate .otrc JSON profile for 1-tap OwnTracks Android/iOS setup.
+     *
+     * @param array<string,mixed> $tracker
+     * @return string
+     */
     public static function profile(array $tracker): string
     {
-        if (!GpsTrackers::isGeneratedUid((string) $tracker['device_uid'])) { throw new InvalidArgumentException('Phone code required.'); }
-        $plate = (string) $tracker['bus_number'];
-        return json_encode(['_type' => 'configuration', 'mode' => 3, 'url' => GpsTrackers::PUBLIC_URL . '/api/owntracks.php',
-            'auth' => true, 'username' => 'bus-' . (int) $tracker['bus_id'], 'password' => $tracker['device_uid'],
-            'deviceId' => $plate, 'trackerId' => substr(preg_replace('/[^A-Za-z0-9]/', '', $plate), -2),
-            'monitoring' => 2, 'locatorPriority' => 0, 'locatorInterval' => 3, 'locatorDisplacement' => 0,
-            'ignoreInaccurateLocations' => 100, 'autostartOnBoot' => true, 'allowRemoteLocation' => false],
-            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
+        $uid = (string) ($tracker['device_uid'] ?? '');
+        $busNo = (string) ($tracker['bus_number'] ?? 'SHG-BUS');
+        $baseUrl = defined('GpsTrackers::PUBLIC_URL') ? GpsTrackers::PUBLIC_URL : 'https://www.shreehariglobal.in';
+
+        $config = [
+            '_type'               => 'configuration',
+            'mode'                => 3, // 3 = HTTP mode
+            'url'                 => $baseUrl . '/api/owntracks.php',
+            'auth'                => true,
+            'username'            => $uid,
+            'password'            => $uid,
+            'deviceId'            => $busNo,
+            'tid'                 => 'SH',
+            'locatorDisplacement' => 20,  // meters
+            'locatorInterval'     => 15,  // seconds
+            'monitoring'          => 2,   // significant movement + periodic
+            'cmd'                 => false,
+            'pubExtendedData'     => true,
+        ];
+
+        return json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }
 }

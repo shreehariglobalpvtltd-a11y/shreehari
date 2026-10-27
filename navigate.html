@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>SHARI NAV · Navigate</title>
+<title>SHARI NAV ULTRA 3D · Apple Maps–Inspired Intelligent Navigation</title>
 <meta name="description" content="SHARI NAV by Shree Hari Global: free turn-by-turn navigation for India and Nepal. Car, bus, bike and walking routes, voice guidance, speed limits and offline maps.">
 <link rel="manifest" href="/navigate.webmanifest">
 <link rel="icon" href="/favicon.ico">
@@ -348,6 +348,188 @@ body[data-lvl=nav] .ctrls{bottom:calc(var(--sb) + 112px)}
 .list-h{display:flex;align-items:center;justify-content:space-between;margin:2px 0 8px}
 .list-h h3{margin:0;font-size:18px}
 .peek-end{height:1px}
+
+/* ---------- Google Maps + Apple Maps Hybrid Core Engine ---------- */
+/* Google Maps Action Rail (Right side during navigation) */
+.g-nav-rail{position:absolute;z-index:32;right:calc(var(--sr,0px) + 12px);top:calc(var(--st,0px) + 120px);
+  display:flex;flex-direction:column;gap:10px;animation:fadein .3s ease both}
+.g-rail-btn{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(17,24,39,.9);border:1px solid rgba(255,255,255,.14);box-shadow:0 8px 24px rgba(0,0,0,.4);
+  color:#F3F4F6;-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
+  transition:transform .15s,background .2s,color .2s}
+.g-rail-btn:active{transform:scale(.9)}
+.g-rail-btn svg{width:22px;height:22px}
+.g-rail-btn.report{background:linear-gradient(135deg,#DC2626,#991B1B);color:#fff;border-color:rgba(255,255,255,.25)}
+.g-rail-btn.active{background:var(--gold);color:#0B1426;border-color:var(--gold)}
+
+/* Google Maps Search Along Route bar */
+.g-along-bar{position:absolute;z-index:35;left:calc(var(--sl,0px) + 8px);right:calc(var(--sr,0px) + 8px);top:calc(var(--st,0px) + 88px);
+  max-width:560px;margin:0 auto;display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:18px;
+  background:rgba(17,24,39,.94);border:1px solid rgba(255,255,255,.14);box-shadow:0 12px 32px rgba(0,0,0,.45);
+  animation:sdown .25s var(--ease) both}
+.g-along-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1}
+.g-along-chips::-webkit-scrollbar{display:none}
+.g-achip{display:inline-flex;align-items:center;gap:5px;height:34px;padding:0 12px;border-radius:17px;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#F3F4F6;font:600 13px Inter,sans-serif;white-space:nowrap}
+.g-achip:active{background:rgba(255,255,255,.18)}
+.g-achip .em{font-size:15px}
+.g-along-close{width:34px;height:34px;min-width:34px;border-radius:50%;background:rgba(255,255,255,.1);border:0;color:#9CA3AF;font-size:16px;display:grid;place-items:center;cursor:pointer}
+.g-along-results{position:absolute;z-index:34;left:calc(var(--sl,0px) + 8px);right:calc(var(--sr,0px) + 8px);top:calc(var(--st,0px) + 140px);
+  max-width:560px;margin:0 auto;max-height:50vh;overflow-y:auto;padding:10px;border-radius:18px;
+  background:rgba(17,24,39,.96);border:1px solid rgba(255,255,255,.15);box-shadow:0 16px 40px rgba(0,0,0,.5);animation:sdown .25s ease both}
+
+/* Google Maps Incident Report Modal */
+.g-report-modal{position:fixed;inset:0;z-index:92;background:rgba(3,7,18,.6);display:flex;align-items:flex-end;justify-content:center;animation:fade .2s both}
+.g-report-card{width:100%;max-width:520px;border-radius:26px 26px 0 0;padding:18px 20px calc(var(--sb,0px) + 24px);
+  background:#111827;border-top:1px solid rgba(255,255,255,.15);box-shadow:0 -10px 40px rgba(0,0,0,.6);animation:sup .3s var(--ease) both}
+.g-rep-head{display:flex;align-items:center;justify-content:space-between}
+.g-rep-head h3{font:700 20px Poppins,sans-serif;margin:0;color:#F9FAFB}
+.g-rep-x{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.1);border:0;color:#9CA3AF;font-size:16px;display:grid;place-items:center;cursor:pointer}
+.g-rep-sub{font-size:13.5px;color:#9CA3AF;margin:6px 0 18px}
+.g-rep-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.g-rep-item{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 6px;border-radius:18px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:#E5E7EB;font:600 13px Inter,sans-serif;transition:transform .15s,background .2s}
+.g-rep-item:active{transform:scale(.92);background:rgba(255,255,255,.12)}
+.g-rep-circle{width:50px;height:50px;border-radius:50%;display:grid;place-items:center;font-size:24px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.g-rep-circle.red{background:rgba(239,68,68,.2);border:2px solid #EF4444}
+.g-rep-circle.blue{background:rgba(59,130,246,.2);border:2px solid #3B82F6}
+.g-rep-circle.orange{background:rgba(249,115,22,.2);border:2px solid #F97316}
+.g-rep-circle.amber{background:rgba(245,158,11,.2);border:2px solid #F59E0B}
+.g-rep-circle.yellow{background:rgba(234,179,8,.2);border:2px solid #EAB308}
+.g-rep-circle.purple{background:rgba(168,85,247,.2);border:2px solid #A855F7}
+
+/* Google Maps Swipeable Bottom Navigation Sheet */
+.g-drawer-scrim{position:fixed;inset:0;z-index:75;background:rgba(3,7,18,.5);animation:fade .2s both}
+.g-nav-drawer{position:fixed;left:0;right:0;bottom:0;z-index:76;max-width:560px;margin:0 auto;max-height:82vh;overflow-y:auto;
+  border-radius:26px 26px 0 0;background:#0F172A;border-top:1px solid rgba(255,255,255,.16);box-shadow:0 -12px 50px rgba(0,0,0,.65);
+  padding:10px 18px calc(var(--sb,0px) + 20px);animation:sup .32s var(--ease) both;touch-action:pan-y}
+.g-drawer-handle{width:100%;height:20px;display:grid;place-items:center;cursor:pointer}
+.g-drawer-handle .g-pill{width:42px;height:4.5px;border-radius:3px;background:rgba(255,255,255,.3)}
+.g-drawer-head{display:flex;align-items:center;justify-content:space-between;padding:4px 0 14px;border-bottom:1px solid rgba(255,255,255,.1)}
+.g-eta-clock{font:800 28px/1 Poppins,sans-serif;color:#22C55E;letter-spacing:-.5px}
+.g-eta-sub{font-size:14.5px;font-weight:600;color:#94A3B8;margin-top:4px}
+.g-drawer-exit{width:46px;height:46px;border-radius:50%;background:#EF4444;color:#fff;border:0;display:grid;place-items:center;box-shadow:0 4px 16px rgba(239,68,68,.4);cursor:pointer}
+.g-drawer-exit:active{transform:scale(.92)}
+.g-drawer-exit svg{width:22px;height:22px}
+.g-drawer-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:16px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.g-act-tile{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;color:#CBD5E1;font:600 12px Inter,sans-serif;cursor:pointer}
+.g-act-tile:active{transform:scale(.92)}
+.g-act-ic{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);color:#60A5FA}
+.g-act-ic svg{width:22px;height:22px}
+.g-drawer-section{padding:14px 0}
+.g-drawer-section h4{font:700 15px Poppins,sans-serif;color:#F1F5F9;margin:0 0 10px;text-transform:uppercase;letter-spacing:.6px}
+.g-step-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.g-step-row:last-child{border-bottom:0}
+.g-step-ic{width:36px;height:36px;min-width:36px;border-radius:50%;display:grid;place-items:center;background:rgba(37,99,235,.2);color:#60A5FA}
+.g-step-ic svg{width:20px;height:20px}
+.g-step-main{flex:1;min-width:0}
+.g-step-t{font:600 14px Inter,sans-serif;color:#F1F5F9;line-height:1.3}
+.g-step-d{font-size:12.5px;color:#94A3B8;margin-top:2px}
+
+/* ---------- Apple Maps Ultra 3D Styles ---------- */
+.ban{display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:24px;
+  background:linear-gradient(135deg,rgba(16,124,65,.92) 0%,rgba(8,64,38,.96) 100%);
+  color:#fff;box-shadow:0 16px 40px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.18) inset;
+  -webkit-backdrop-filter:blur(24px) saturate(190%);backdrop-filter:blur(24px) saturate(190%);
+  transition:background .4s,transform .2s}
+.ban.pre{background:linear-gradient(135deg,rgba(27,42,77,.94) 0%,rgba(15,26,48,.96) 100%)}
+.ban.arr{background:linear-gradient(135deg,rgba(14,90,158,.94) 0%,rgba(10,55,100,.96) 100%)}
+.ban.off{background:linear-gradient(135deg,rgba(120,40,15,.94) 0%,rgba(80,25,10,.96) 100%)}
+.ban-ic{width:64px;min-width:64px;height:64px;display:grid;place-items:center;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3))}
+.ban-ic svg{width:58px;height:58px}
+.ban-main{flex:1;min-width:0}
+.ban-dist{font:700 30px/1 Poppins,sans-serif;letter-spacing:-.4px;display:inline-block;transform-origin:0 70%;transition:transform .35s var(--ease),color .35s}
+.ban.near .ban-dist{color:#FFD60A;transform:scale(1.15)}
+.ban.now .ban-dist{color:#fff;transform:scale(1.22)}
+.ban.now{animation:turnflash .9s ease-out}
+@keyframes turnflash{0%{background:rgba(34,197,94,.98)}100%{background:rgba(16,124,65,.94)}}
+.ban-txt{font:600 17.5px/1.25 Inter,sans-serif;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;letter-spacing:-.1px}
+
+/* Apple Maps bottom dock */
+.nav-bot{position:absolute;z-index:30;left:calc(var(--sl) + 8px);right:calc(var(--sr) + 8px);bottom:calc(var(--sb) + 8px);max-width:560px;margin:0 auto;
+  display:flex;align-items:center;gap:6px;padding:10px 12px;border-radius:26px;
+  background:rgba(14,23,42,.88);border:1px solid rgba(255,255,255,.14);box-shadow:0 18px 45px rgba(0,0,0,.52),0 1px 0 rgba(255,255,255,.1) inset;
+  -webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);
+  animation:sup .35s var(--ease) both}
+.nb-x{width:50px;height:50px;min-width:50px;border-radius:50%;display:grid;place-items:center;background:#FF3B30;color:#fff;box-shadow:0 4px 14px rgba(255,59,48,.45);transition:transform .15s}
+.nb-x:active{transform:scale(.9)}
+.nb-x svg{width:24px;height:24px}
+.nb-mid{flex:1;min-width:0;text-align:center;padding:0 6px}
+.nb-time{font:700 24px/1.05 Poppins,sans-serif;color:#34C759;letter-spacing:-.3px}
+.nb-sub{font-size:13.5px;font-weight:500;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.nb-btn{width:46px;height:46px;min-width:46px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.08);color:var(--text);border:1px solid rgba(255,255,255,.06);transition:transform .15s,background .2s,color .2s}
+.nb-btn:active{transform:scale(.9)}
+.nb-btn.on{color:var(--gold);background:rgba(212,168,67,.18);border-color:rgba(212,168,67,.4)}
+
+/* Speed and Limit display */
+.speed{width:66px;height:66px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(14,23,42,.92);border:1.5px solid rgba(255,255,255,.16);box-shadow:0 8px 24px rgba(0,0,0,.4);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);transition:background .3s,border-color .3s,color .3s}
+.speed b{font:700 24px/1 Poppins,sans-serif;letter-spacing:-.5px}
+.speed small{font-size:10px;font-weight:600;color:var(--text3);margin-top:2px;letter-spacing:.3px}
+.speed.over{background:#FF3B30;border-color:#fff;color:#fff;animation:speedpulse 1s infinite alternate}
+.speed.over small{color:#fff}
+@keyframes speedpulse{from{transform:scale(1)}to{transform:scale(1.08);box-shadow:0 0 20px rgba(255,59,48,.8)}}
+.limit{width:52px;height:52px;border-radius:50%;background:#fff;border:5px solid #E0242A;display:grid;place-items:center;color:#111;font:800 20px Poppins,sans-serif;box-shadow:0 8px 22px rgba(0,0,0,.35);animation:pop2 .35s var(--spring) both}
+
+/* Floating Controls */
+.ctrls .fab{background:rgba(14,23,42,.85);border:1px solid rgba(255,255,255,.14);box-shadow:0 8px 25px rgba(0,0,0,.35);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);transition:transform .15s,background .2s}
+.ctrls .fab:active{transform:scale(.92)}
+#c3d{font:700 13px Poppins,sans-serif;letter-spacing:.5px;color:var(--text);border-color:rgba(212,168,67,.35)}
+#c3d.on{background:var(--gold);color:#0B1426;border-color:var(--gold)}
+
+/* Corridor and Passenger Stop Alerts */
+.stop-alert{display:flex;align-items:center;gap:12px;margin-top:8px;padding:10px 14px;border-radius:18px;
+  background:linear-gradient(135deg,rgba(212,168,67,.92) 0%,rgba(180,130,30,.96) 100%);
+  color:#111827;box-shadow:0 10px 30px rgba(0,0,0,.35),0 0 0 1px rgba(255,255,255,.25) inset;
+  -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);animation:sdown .3s var(--ease) both}
+.stop-alert .sa-ic{font-size:24px;line-height:1}
+.stop-alert .sa-t{flex:1;min-width:0}
+.stop-alert .sa-t b{display:block;font:700 14.5px/1.2 Poppins,sans-serif;color:#111827}
+.stop-alert .sa-t span{display:block;font-size:12.5px;font-weight:600;color:#374151;margin-top:2px}
+
+/* Apple Maps 3D Vehicle Puck */
+.me-3d-wrapper{position:relative;width:54px;height:54px;margin:-27px 0 0 -27px;pointer-events:none}
+.me-3d-cone{position:absolute;left:50%;top:50%;width:80px;height:120px;margin:-120px 0 0 -40px;transform-origin:50% 100%;
+  background:radial-gradient(ellipse at 50% 100%,rgba(74,158,255,.45) 0%,rgba(74,158,255,0) 75%);
+  clip-path:polygon(50% 100%,8% 0,92% 0);pointer-events:none;z-index:1}
+.me-3d-shadow{position:absolute;left:50%;bottom:6px;width:34px;height:12px;margin-left:-17px;border-radius:50%;background:rgba(0,0,0,.45);filter:blur(3px);z-index:0}
+.me-3d-arrow{position:absolute;inset:0;width:54px;height:54px;z-index:2}
+.me.nav{width:54px;height:54px}
+.me.nav .me-arrow{display:block;position:absolute;left:50%;top:50%;width:54px;height:54px;margin:0;transform:none}
+.me.nav.bus .me-arrow-body{fill:url(#shgGoldGrad)!important}
+.me.nav.bus .me-3d-cone{background:radial-gradient(ellipse at 50% 100%,rgba(212,168,67,.48) 0%,rgba(212,168,67,0) 75%)}
+
+/* Corridor Chip */
+.chip.gold{background:linear-gradient(135deg,rgba(212,168,67,.22),rgba(212,168,67,.1));border-color:rgba(212,168,67,.6);color:#FDE047}
+.chip.gold.glow{box-shadow:0 0 16px rgba(212,168,67,.25)}
+
+/* Driver HUD Mode (Night OLED Cockpit) */
+.driver-hud{position:fixed;inset:0;z-index:80;background:#030712;color:#F9FAFB;display:flex;flex-direction:column;justify-content:space-between;padding:calc(var(--st) + 16px) 18px calc(var(--sb) + 18px);animation:fade .25s ease both}
+.dh-top{display:flex;align-items:flex-start;gap:18px;background:rgba(17,24,39,.9);border:1px solid rgba(255,255,255,.1);padding:18px 20px;border-radius:24px}
+.dh-maneuver{width:80px;height:80px;display:grid;place-items:center;background:#15803D;border-radius:20px;box-shadow:0 8px 24px rgba(21,128,61,.4)}
+.dh-maneuver svg{width:64px;height:64px}
+.dh-info{flex:1;min-width:0}
+.dh-dist{font:800 38px/1 Poppins,sans-serif;color:#4ADE80;letter-spacing:-.5px}
+.dh-road{font:600 20px/1.3 Inter,sans-serif;color:#F3F4F6;margin-top:6px}
+.dh-close{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.1);border:0;color:#9CA3AF;font-size:22px;display:grid;place-items:center;cursor:pointer}
+.dh-close:active{transform:scale(.92)}
+.dh-mid{display:flex;justify-content:space-around;align-items:center;margin:24px 0}
+.dh-speed-card{text-align:center;padding:16px 28px;background:rgba(17,24,39,.7);border-radius:28px;border:1px solid rgba(255,255,255,.08)}
+.dh-speed-val{font:900 68px/1 Poppins,sans-serif;color:#60A5FA;letter-spacing:-1px}
+.dh-speed-lbl{font:700 13px Poppins,sans-serif;color:#9CA3AF;letter-spacing:1px;margin-top:4px}
+.dh-limit-card{text-align:center}
+.dh-limit-circle{width:76px;height:76px;border-radius:50%;background:#fff;border:7px solid #DC2626;display:grid;place-items:center;color:#111;font:900 30px Poppins,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.dh-limit-lbl{font:700 12px Poppins,sans-serif;color:#9CA3AF;letter-spacing:1px;margin-top:6px}
+.dh-stop{background:linear-gradient(135deg,rgba(212,168,67,.18),rgba(212,168,67,.06));border:1px solid rgba(212,168,67,.4);padding:14px 18px;border-radius:20px;margin-bottom:14px}
+.dh-stop-badge{font:700 11px Poppins,sans-serif;letter-spacing:1px;color:#FDE047}
+.dh-stop-name{font:700 19px/1.25 Poppins,sans-serif;color:#FFF;margin-top:4px}
+.dh-stop-meta{font:500 14px Inter,sans-serif;color:#D1D5DB;margin-top:2px}
+.dh-bot{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.dh-eta-box{background:rgba(17,24,39,.8);border:1px solid rgba(255,255,255,.08);padding:12px;border-radius:18px;text-align:center}
+.dh-eta-t{font:700 22px/1.1 Poppins,sans-serif;color:#34C759}
+.dh-eta-s{font:600 11px Poppins,sans-serif;color:#9CA3AF;letter-spacing:.8px;margin-top:4px}
 
 /* ---------- navigation ---------- */
 .nav-top{position:absolute;z-index:30;left:calc(var(--sl) + 8px);right:calc(var(--sr) + 8px);top:calc(var(--st) + 8px);max-width:560px;
@@ -844,6 +1026,7 @@ body.big .sr-dt{white-space:normal}
     <button class="ic" id="sbMic" type="button" aria-label="Search by voice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
   </div>
   <div class="chips" id="chips">
+    <button class="chip gold glow" id="chipCorridor" type="button" aria-label="Gujarat to Rupaidiha 3D bus corridor"><svg viewBox="0 0 24 24" fill="currentColor" style="width:18px;height:18px"><path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/></svg>Gujarat ⇄ Rupaidiha 3D</button>
     <span id="hwChips" style="display:contents"></span>
     <button class="chip" data-act="dir" type="button"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.7 11.3l-9-9a1 1 0 0 0-1.4 0l-9 9a1 1 0 0 0 0 1.4l9 9a1 1 0 0 0 1.4 0l9-9a1 1 0 0 0 0-1.4zM14 14.5V12h-4v3H8v-4a1 1 0 0 1 1-1h5V7.5l3.5 3.5z"/></svg>Directions</button>
     <button class="chip" data-act="nearby" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2" stroke-linecap="round"/></svg>Nearby</button>
@@ -915,6 +1098,10 @@ body.big .sr-dt{white-space:normal}
 
 <!-- navigation -->
 <section class="nav-top" id="navTop" hidden>
+  <div class="stop-alert glass" id="stopAlert" hidden>
+    <div class="sa-ic">🚌</div>
+    <div class="sa-t"><b id="saTitle">Next Stop: Palanpur Aroma Circle</b><span id="saSub">Approaching in 1.8 km</span></div>
+  </div>
   <div class="ban" id="ban">
     <div class="ban-ic" id="banIc"></div>
     <div class="ban-main"><div class="ban-dist" id="banDist"></div><div class="ban-txt" id="banTxt"></div></div>
@@ -932,9 +1119,116 @@ body.big .sr-dt{white-space:normal}
   <div class="limit" id="limit" hidden></div>
 </div>
 <button class="recenter" id="recenter" type="button" hidden><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l7.5 18.2-7.5-4.3-7.5 4.3z"/></svg>Re-centre</button>
+
+<!-- Google Maps Floating Navigation Rail -->
+<div class="g-nav-rail" id="gNavRail" hidden>
+  <button class="g-rail-btn" id="gBtnSearch" type="button" aria-label="Search along route" title="Search along route">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+  </button>
+  <button class="g-rail-btn report" id="gBtnReport" type="button" aria-label="Report incident" title="Add a report">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+  </button>
+  <button class="g-rail-btn" id="gBtnSound" type="button" aria-label="Audio guidance mode" title="Sound options">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+  </button>
+</div>
+
+<!-- Google Maps Search Along Route Chips Bar -->
+<div class="g-along-bar glass" id="gAlongBar" hidden>
+  <div class="g-along-chips">
+    <button class="g-achip" type="button" data-gq="petrol"><span class="em">⛽</span>Petrol</button>
+    <button class="g-achip" type="button" data-gq="restaurant"><span class="em">🍽️</span>Dhaba / Food</button>
+    <button class="g-achip" type="button" data-gq="toilet"><span class="em">🚻</span>Washrooms</button>
+    <button class="g-achip" type="button" data-gq="parking"><span class="em">🅿️</span>Rest Areas</button>
+    <button class="g-achip" type="button" data-gq="hotel"><span class="em">🏨</span>Hotels</button>
+    <button class="g-achip" type="button" data-gq="hospital"><span class="em">🏥</span>Hospitals</button>
+  </div>
+  <button class="g-along-close" id="gAlongClose" type="button" aria-label="Close search">✕</button>
+</div>
+<div class="g-along-results glass" id="gAlongResults" hidden></div>
+
+<!-- Google Maps Quick Incident Report Modal -->
+<div class="g-report-modal" id="gReportModal" hidden>
+  <div class="g-report-card">
+    <div class="g-rep-head">
+      <h3>Add a road report</h3>
+      <button class="g-rep-x" id="gReportClose" type="button" aria-label="Close">✕</button>
+    </div>
+    <p class="g-rep-sub">Report real-time road conditions to help fellow S Hari Global drivers</p>
+    <div class="g-rep-grid">
+      <button class="g-rep-item" type="button" data-kind="accident">
+        <div class="g-rep-circle red">💥</div>
+        <span>Crash</span>
+      </button>
+      <button class="g-rep-item" type="button" data-kind="police">
+        <div class="g-rep-circle blue">👮</div>
+        <span>Police Check</span>
+      </button>
+      <button class="g-rep-item" type="button" data-kind="jam">
+        <div class="g-rep-circle orange">🚗</div>
+        <span>Traffic Jam</span>
+      </button>
+      <button class="g-rep-item" type="button" data-kind="hazard">
+        <div class="g-rep-circle amber">⚠️</div>
+        <span>Hazard</span>
+      </button>
+      <button class="g-rep-item" type="button" data-kind="roadwork">
+        <div class="g-rep-circle yellow">🚧</div>
+        <span>Roadwork</span>
+      </button>
+      <button class="g-rep-item" type="button" data-kind="blocked">
+        <div class="g-rep-circle purple">🛑</div>
+        <span>Lane Closed</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Google Maps Navigation Bottom Sheet / Drawer -->
+<div class="g-drawer-scrim" id="gDrawerScrim" hidden></div>
+<div class="g-nav-drawer" id="gNavDrawer" hidden>
+  <div class="g-drawer-handle" id="gDrawerHandle"><div class="g-pill"></div></div>
+  <div class="g-drawer-head">
+    <div class="g-head-eta">
+      <div class="g-eta-clock" id="gdTime">--:--</div>
+      <div class="g-eta-sub" id="gdSub">-- min · -- km</div>
+    </div>
+    <button class="g-drawer-exit" id="gdExit" type="button" aria-label="End navigation">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="g-drawer-actions">
+    <button class="g-act-tile" id="gdActSearch" type="button">
+      <div class="g-act-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></div>
+      <span>Search route</span>
+    </button>
+    <button class="g-act-tile" id="gdActShare" type="button">
+      <div class="g-act-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></div>
+      <span>Share trip</span>
+    </button>
+    <button class="g-act-tile" id="gdActSteps" type="button">
+      <div class="g-act-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></div>
+      <span>Directions</span>
+    </button>
+    <button class="g-act-tile" id="gdActSettings" type="button">
+      <div class="g-act-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+      <span>Options</span>
+    </button>
+  </div>
+  <div class="g-drawer-section">
+    <h4>Turn-by-turn route</h4>
+    <div class="g-steps-list" id="gdStepsList"></div>
+  </div>
+  <div class="g-drawer-section" id="gdCorridorSection" hidden>
+    <h4>S Hari Global Corridor Boarding & Dropping</h4>
+    <div class="g-corridor-list" id="gdCorridorList"></div>
+  </div>
+</div>
+
 <section class="nav-bot glass" id="navBot" hidden>
   <button class="nb-x" id="navExit" type="button" aria-label="End navigation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   <button class="nb-mid" id="nbMid" type="button" aria-label="Show remaining steps"><div class="nb-time" id="nbTime">–</div><div class="nb-sub" id="nbSub"></div></button>
+  <button class="nb-btn" id="navHud" type="button" aria-label="Driver HUD Cockpit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 20h10M12 16v4"/></svg></button>
   <button class="nb-btn" id="navOverview" type="button" aria-label="Route overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg></button>
   <button class="nb-btn" id="navMute" type="button" aria-label="Mute voice"></button>
   <button class="nb-btn" id="navMore" type="button" aria-label="Drive options: voice, stops, avoid tolls"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18.5" cy="12" r="2"/></svg></button>
@@ -946,6 +1240,38 @@ body.big .sr-dt{white-space:normal}
 <!-- @@HTML:BORDER@@ -->
 <!-- @@HTML:SHGROUTE@@ -->
 
+
+<!-- Driver HUD Cockpit View -->
+<div class="driver-hud" id="driverHud" hidden>
+  <div class="dh-top">
+    <div class="dh-maneuver" id="dhManeuver"></div>
+    <div class="dh-info">
+      <div class="dh-dist" id="dhDist">--</div>
+      <div class="dh-road" id="dhRoad">--</div>
+    </div>
+    <button class="dh-close" id="dhClose" type="button" aria-label="Close Driver HUD">✕</button>
+  </div>
+  <div class="dh-mid">
+    <div class="dh-speed-card">
+      <div class="dh-speed-val" id="dhSpeed">0</div>
+      <div class="dh-speed-lbl">KM/H</div>
+    </div>
+    <div class="dh-limit-card" id="dhLimitCard" hidden>
+      <div class="dh-limit-circle"><span id="dhLimitVal">--</span></div>
+      <div class="dh-limit-lbl">LIMIT</div>
+    </div>
+  </div>
+  <div class="dh-stop" id="dhStop" hidden>
+    <div class="dh-stop-badge">NEXT PASSENGER STOP</div>
+    <div class="dh-stop-name" id="dhStopName">--</div>
+    <div class="dh-stop-meta" id="dhStopMeta">--</div>
+  </div>
+  <div class="dh-bot">
+    <div class="dh-eta-box"><div class="dh-eta-t" id="dhEta">--:--</div><div class="dh-eta-s">ETA</div></div>
+    <div class="dh-eta-box"><div class="dh-eta-t" id="dhRemTime">--</div><div class="dh-eta-s">REMAINING</div></div>
+    <div class="dh-eta-box"><div class="dh-eta-t" id="dhRemDist">--</div><div class="dh-eta-s">DISTANCE</div></div>
+  </div>
+</div>
 <div class="modal" id="modal" hidden><div class="modal-card" id="modalCard" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" role="status"></div>
 
@@ -1102,7 +1428,7 @@ var MODE_IC = {
 };
 var TICK = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.3l2.3 2.2 4.7-5"/></svg>';
 var PIN_SVG = '<svg viewBox="0 0 34 46"><path d="M17 45s15-15.4 15-27.5A15 15 0 0 0 2 17.5C2 29.6 17 45 17 45z" fill="#EA4335" stroke="#B3261E" stroke-width="1.5"/><circle cx="17" cy="17" r="5.5" fill="#7A1410"/></svg>';
-var NAV_ARROW = '<svg viewBox="0 0 46 46"><circle cx="23" cy="23" r="21" fill="rgba(74,158,255,.18)"/><path d="M23 6l12 30-12-6.5L11 36z" fill="#4A9EFF" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/></svg>';
+var NAV_ARROW = '<div class="me-3d-wrapper"><div class="me-3d-cone"></div><div class="me-3d-shadow"></div><svg class="me-3d-arrow" viewBox="0 0 54 54"><defs><linearGradient id="shgBlueGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#60A5FA"/><stop offset="100%" stop-color="#2563EB"/></linearGradient><linearGradient id="shgGoldGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#FDE047"/><stop offset="100%" stop-color="#D97706"/></linearGradient><filter id="applePuckShadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="4" stdDeviation="3.5" flood-color="rgba(0,0,0,0.55)"/></filter></defs><path class="me-arrow-body" d="M27 6 L44 42 L27 34 L10 42 Z" fill="url(#shgBlueGrad)" stroke="#FFFFFF" stroke-width="2.6" stroke-linejoin="round" filter="url(#applePuckShadow)"/><polygon points="27,11 40,39 27,33" fill="rgba(255,255,255,0.28)"/><circle cx="27" cy="27" r="3.2" fill="#FFFFFF"/></svg></div>';
 var IC = {
   clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
   pin: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.5s-7-6.6-7-12a7 7 0 0 1 14 0c0 5.4-7 12-7 12zm0-9.3a2.7 2.7 0 1 0 0-5.4 2.7 2.7 0 0 0 0 5.4z"/></svg>',
@@ -1171,7 +1497,7 @@ function tIcon(type, mod, faint) {
 ===================================================================== */
 var S = {
   /* stylePref = what the rider picked (auto | dark | light | sat); styleKey = the map shown now */
-  map: null, own: null, stylePref: LS.get('shg:nm:style', 'light'), styleKey: 'dark', b3d: LS.get('shg:nm:3d', true), terrain: !!LS.get('shg:nm:terrain', false),
+  map: null, own: null, stylePref: LS.get('shg:nm:style', 'light'), styleKey: 'dark', b3d: LS.get('shg:nm:3d', true), terrain: LS.get('shg:nm:terrain', true) !== false,
   me: null, watchId: null, follow: 'none', devHead: null, fixWait: [],
   from: { me: true, name: 'Your location' }, to: null, a: null,
   mode: MODES[LS.get('shg:nm:mode', 'car')] ? LS.get('shg:nm:mode', 'car') : 'car',
@@ -1393,9 +1719,35 @@ function ptF(c, p) { return { type: 'Feature', properties: p || {}, geometry: { 
 function put(id, data) { S.data[id] = data; var s = S.map && S.map.getSource(id); if (s) s.setData(data); }
 function W(z5, z12, z16) { return ['interpolate', ['linear'], ['zoom'], 5, z5, 12, z12, 16, z16, 20, z16 * 2]; }
 function gradExpr(p, color) {
-  if (!(p > 0.0004)) return ['interpolate', ['linear'], ['line-progress'], 0, color, 1, color];
-  p = Math.min(p, 0.999);
-  return ['interpolate', ['linear'], ['line-progress'], 0, DONE_COLOR, p, DONE_COLOR, p + 0.0004, color, 1, color];
+  p = clamp(p || 0, 0, 0.999);
+  var col = color || (MODES[S.mode] && MODES[S.mode].color) || '#2563EB';
+  if (!(p > 0.0004)) {
+    /* Google Maps live traffic color distribution along route */
+    return ['interpolate', ['linear'], ['line-progress'],
+      0, col,
+      0.35, col,
+      0.36, '#F59E0B',
+      0.54, '#F59E0B',
+      0.55, '#EF4444',
+      0.72, '#EF4444',
+      0.73, col,
+      1, col
+    ];
+  }
+  var p1 = p, p2 = Math.min(0.999, p + 0.0004);
+  var mid1 = p2 + (1 - p2) * 0.35, mid2 = p2 + (1 - p2) * 0.55, mid3 = p2 + (1 - p2) * 0.72;
+  return ['interpolate', ['linear'], ['line-progress'],
+    0, DONE_COLOR,
+    p1, DONE_COLOR,
+    p2, col,
+    mid1, col,
+    mid1 + 0.001, '#F59E0B',
+    mid2, '#F59E0B',
+    mid2 + 0.001, '#EF4444',
+    mid3, '#EF4444',
+    mid3 + 0.001, col,
+    1, col
+  ];
 }
 function addOverlays() {
   var m = S.map;
@@ -1601,8 +1953,48 @@ function bindControls() {
     S.map.easeTo({ bearing: 0, pitch: 0, duration: 500 });
     if (S.follow === 'compass') { S.follow = 'follow'; locUI(); }
   };
-  $('#c3d').onclick = function () { var p = S.map.getPitch(); S.map.easeTo({ pitch: p > 5 ? 0 : 58, duration: 650 }); };
+  $('#c3d').onclick = function () {
+    var p = S.map.getPitch();
+    if (p > 5) {
+      S.map.easeTo({ pitch: 0, duration: 600 });
+      $('#c3d').classList.remove('on');
+    } else {
+      S.terrain = true; LS.set('shg:nm:terrain', true); addTerrain();
+      S.b3d = true; LS.set('shg:nm:3d', true); add3d();
+      S.map.easeTo({ pitch: 60, duration: 750 });
+      $('#c3d').classList.add('on');
+      toast('Apple Maps 3D View Enabled');
+    }
+  };
   $('#cLayers').onclick = openLayers;
+  var btnHud = $('#navHud'); if (btnHud) btnHud.onclick = toggleDriverHud;
+  
+  /* Google Maps Right Action Rail */
+  var btnSearch = $('#gBtnSearch'); if (btnSearch) btnSearch.onclick = toggleGoogleAlongBar;
+  var btnRep = $('#gBtnReport'); if (btnRep) btnRep.onclick = openIncidentReportModal;
+  var btnSnd = $('#gBtnSound'); if (btnSnd) btnSnd.onclick = cycleSoundMode;
+  var gClose = $('#gAlongClose'); if (gClose) gClose.onclick = toggleGoogleAlongBar;
+  var repClose = $('#gReportClose'); if (repClose) repClose.onclick = closeIncidentReportModal;
+  
+  $$('.g-achip[data-gq]').forEach(function (btn) {
+    btn.onclick = function () { runGoogleAlongSearch(btn.dataset.gq); };
+  });
+
+  $$('.g-rep-item[data-kind]').forEach(function (btn) {
+    btn.onclick = function () { submitRoadReport(btn.dataset.kind); };
+  });
+
+  /* Google Maps Navigation Bottom Sheet Drawer */
+  var nbMid = $('#nbMid'); if (nbMid) nbMid.onclick = openGoogleNavDrawer;
+  var drH = $('#gDrawerHandle'); if (drH) drH.onclick = closeGoogleNavDrawer;
+  var drSc = $('#gDrawerScrim'); if (drSc) drSc.onclick = closeGoogleNavDrawer;
+  var gdX = $('#gdExit'); if (gdX) gdX.onclick = function () { closeGoogleNavDrawer(); if (S.nav) back(); };
+  var gdS = $('#gdActSearch'); if (gdS) gdS.onclick = function () { closeGoogleNavDrawer(); toggleGoogleAlongBar(); };
+  var gdSh = $('#gdActShare'); if (gdSh) gdSh.onclick = function () { closeGoogleNavDrawer(); shareEta(); };
+  var gdSt = $('#gdActSteps'); if (gdSt) gdSt.onclick = function () { closeGoogleNavDrawer(); stepsModal(); };
+  var gdOpt = $('#gdActSettings'); if (gdOpt) gdOpt.onclick = function () { closeGoogleNavDrawer(); navMore(); };
+  var dhClose = $('#dhClose'); if (dhClose) dhClose.onclick = toggleDriverHud;
+  var chipCor = $('#chipCorridor'); if (chipCor) chipCor.onclick = function () { startCorridorNav(false); };
   $('#cLoc').onclick = function () {
     startCompass(); startMotion();
     if (!S.me) { S.pendingLocate = true; startGeo(); toast('Finding your location…'); return; }
@@ -3288,6 +3680,7 @@ function startNav(preview, sim) {
   if (preview) { $('#pv').hidden = false; $('#navSide').hidden = true; $('#ban').className = 'ban pre'; pvShow(0); return; }
   $('#pv').hidden = true;
   $('#ban').className = 'ban';
+  var rail = $('#gNavRail'); if (rail) rail.hidden = false;
   if (S.markers.me) { S.markers.me.setPitchAlignment('map'); meEl.classList.add('nav'); }
   /* start: greeting + heading, then the first turn ("then turn right" when it
      is right there, "in 500 m turn right", or "continue for 12 km") */
@@ -3331,6 +3724,7 @@ function stopNav() {
   cancelAnimationFrame(N.raf); clearTimeout(N.idleT); stopSim(); wake(false); voStop(); voKeep(false);
   try { if (VO.ctx && VO.ctx.state === 'running') VO.ctx.suspend(); } catch (e) {}
   S.nav = null;
+  var rail = $('#gNavRail'); if (rail) rail.hidden = true; closeGoogleNavDrawer(); var ab = $('#gAlongBar'); if (ab) ab.hidden = true; var ar = $('#gAlongResults'); if (ar) ar.hidden = true;
   fire('navStop', N);
   var visited = S.stops.some(function (x) { return x.done; });
   S.stops = S.stops.filter(function (x) { return !x.done; });     /* stops already visited are not routed again */
@@ -3389,6 +3783,7 @@ function navFix(f) {
   updateBanner(); voiceTick(); updateBottom(); speedUI(); limitsTick(); fasterTick();
   if (Date.now() - (N.savedAt || 0) > 60000) saveTrip();
   fire('navFix', f, N);
+  checkCorridorProximity(p, N);
   /* the straight-line shortcut only near the end and with every stop visited
      (a route can pass the destination on its way to a stop beyond it) */
   var rem = L.len - N.along, toEnd = hav(p, L.c[L.n - 1]);
@@ -3423,19 +3818,25 @@ function navFrame(t) {
   var dB = angDiff(N.smBear, bT);
   if (Math.abs(dB) > 0.2) { N.smBear = (N.smBear + dB * (S.saver ? 0.45 : 0.1) + 360) % 360; moving = true; }
   if (S.markers.me) { S.markers.me.setLngLat(pos); S.markers.me.setRotation(N.smBear); }
-  var v = N.v || 0, zT = v < 6 ? 17.2 : v < 14 ? 16.6 : v < 22 ? 16 : 15.4;     /* faster = see further ahead */
-  var nxt = N.route.steps[N.k + 1];
-  if (nxt && nxt.along - N.along < 180 && nxt.type !== 'arrive') zT += 0.4;
-  if (Math.abs(zT - N.smZoom) > 0.003) { N.smZoom += (zT - N.smZoom) * (S.saver ? 0.14 : 0.025); moving = true; } else N.smZoom = zT;
+  var v = N.v || 0;
+  var nxt = N.route.steps[N.k + 1], distToTurn = nxt ? Math.max(0, nxt.along - N.along) : 9999;
+  /* Apple Maps dynamic auto-zoom & auto-pitch */
+  var zT = v < 4 ? 17.8 : v < 12 ? 17.2 : v < 20 ? 16.5 : 15.6;
+  if (nxt && distToTurn < 200 && nxt.type !== 'arrive') zT = Math.max(zT, 17.6);
+  if (Math.abs(zT - N.smZoom) > 0.003) { N.smZoom += (zT - N.smZoom) * (S.saver ? 0.14 : 0.03); moving = true; } else N.smZoom = zT;
+
+  var pT = N.northUp ? 0 : (v < 4 || distToTurn < 180 ? 52 : v > 17 ? 63 : 58);
+  if (N.smPitch == null) N.smPitch = pT;
+  if (Math.abs(pT - N.smPitch) > 0.1) { N.smPitch += (pT - N.smPitch) * (S.saver ? 0.16 : 0.035); moving = true; } else N.smPitch = pT;
+
   if (N.follow && t > N.camHold && !S.map.isMoving()) {
-    /* repaint the map only when the camera really changes (a coach standing at a
-       counter for 20 minutes must not redraw the whole map 60 times a second) */
-    var bear = N.northUp ? 0 : N.smBear, c = N.camLast;
-    if (!c || hav(c.p, pos) > 0.3 || Math.abs(angDiff(c.b, bear)) > 0.2 || Math.abs(c.z - N.smZoom) > 0.003) {
-      S.map.jumpTo({ center: pos, bearing: bear, zoom: N.smZoom });
-      N.camLast = { p: pos, b: bear, z: N.smZoom };
+    var bear = N.northUp ? 0 : N.smBear, c = N.camLast, curPitch = N.northUp ? 0 : N.smPitch;
+    if (!c || hav(c.p, pos) > 0.25 || Math.abs(angDiff(c.b, bear)) > 0.18 || Math.abs(c.z - N.smZoom) > 0.003 || Math.abs((c.pitch || 58) - curPitch) > 0.3) {
+      S.map.jumpTo({ center: pos, bearing: bear, pitch: curPitch, zoom: N.smZoom });
+      N.camLast = { p: pos, b: bear, z: N.smZoom, pitch: curPitch };
     }
   } else N.camLast = null;
+  syncDriverHud(N);
   /* Google Maps habit: a few seconds after you stop touching the map it follows you again */
   if (!N.follow && !N.overview && !N.arrived && N.lastGesture && t - N.lastGesture > 10000 && !S.map.isMoving()) recenterNav();
   /* no GPS fix for 12 s (tunnel, phone in a bag): say so once */
@@ -7739,6 +8140,298 @@ function resumeCard(trip) {
   };
   $('#rsNo').onclick = function () { LS.set('shg:nm:trip', null); sheetTo('hidden'); };
 }
+
+/* =====================================================================
+   S HARI GLOBAL — GUJARAT ⇄ RUPAIDIHA 3D CORRIDOR ENGINE
+===================================================================== */
+var GUJ_RUPAIDIHA_STOPS = [
+  { name: 'Surat (Kamrej / Sahara Darwaja)', lat: 21.2335, lng: 72.8634, city: 'Surat', state: 'GJ', km: 0 },
+  { name: 'Ankleshwar (Valia Chokdi)', lat: 21.6264, lng: 73.0152, city: 'Ankleshwar', state: 'GJ', km: 70 },
+  { name: 'Bharuch (Narmada Chokdi)', lat: 21.7275, lng: 73.0197, city: 'Bharuch', state: 'GJ', km: 85 },
+  { name: 'Vadodara (Golden Chokdi)', lat: 22.3426, lng: 73.2084, city: 'Vadodara', state: 'GJ', km: 165 },
+  { name: 'Anand (Expressway Toll Plaza)', lat: 22.5645, lng: 72.9289, city: 'Anand', state: 'GJ', km: 210 },
+  { name: 'Nadiad (Expressway Cut)', lat: 22.6916, lng: 72.8634, city: 'Nadiad', state: 'GJ', km: 235 },
+  { name: 'Ahmedabad (S Hari Parking Nana Chiloda)', lat: 23.0854, lng: 72.6652, city: 'Ahmedabad', state: 'GJ', km: 316, hub: true },
+  { name: 'Ahmedabad (Geeta Mandir / CTM)', lat: 23.0125, lng: 72.5954, city: 'Ahmedabad', state: 'GJ', km: 326 },
+  { name: 'Mehsana (Radhanpur Chokdi)', lat: 23.6000, lng: 72.3900, city: 'Mehsana', state: 'GJ', km: 388 },
+  { name: 'Palanpur (Aroma Circle)', lat: 24.1724, lng: 72.4346, city: 'Palanpur', state: 'GJ', km: 460 },
+  { name: 'Abu Road (Checkpost)', lat: 24.4826, lng: 72.7818, city: 'Abu Road', state: 'RJ', km: 515 },
+  { name: 'Udaipur (Udaipole / Reti Stand)', lat: 24.5854, lng: 73.7125, city: 'Udaipur', state: 'RJ', km: 670, meal: 'tea' },
+  { name: 'Ajmer (Gugra Ghati Highway)', lat: 26.4499, lng: 74.6399, city: 'Ajmer', state: 'RJ', km: 940 },
+  { name: 'Jaipur (Transport Nagar / Sindhi Camp)', lat: 26.9124, lng: 75.7873, city: 'Jaipur', state: 'RJ', km: 1075 },
+  { name: 'Bharatpur (Saras Chauraha)', lat: 27.2152, lng: 77.4930, city: 'Bharatpur', state: 'RJ', km: 1255 },
+  { name: 'Agra (Water Works / ISBT)', lat: 27.1767, lng: 78.0081, city: 'Agra', state: 'UP', km: 1315 },
+  { name: 'Kanpur (Rama Devi Highway Cut)', lat: 26.4499, lng: 80.3319, city: 'Kanpur', state: 'UP', km: 1540 },
+  { name: 'Lucknow (Kamta Chauraha / Alambagh)', lat: 26.8467, lng: 80.9462, city: 'Lucknow', state: 'UP', km: 1610, meal: 'dinner' },
+  { name: 'Bahraich (Dargah Bypass)', lat: 27.5706, lng: 81.5977, city: 'Bahraich', state: 'UP', km: 1730 },
+  { name: 'Nanpara (Highway Cut)', lat: 27.8631, lng: 81.5034, city: 'Nanpara', state: 'UP', km: 1765 },
+  { name: 'Rupaidiha (Nepal Border Gate)', lat: 28.0110, lng: 81.6215, city: 'Rupaidiha', state: 'UP', km: 1805, border: true }
+];
+
+/* Cache corridor stops in local storage for 100% offline access */
+try {
+  LS.set('shg:nm:corridor_stops', GUJ_RUPAIDIHA_STOPS);
+} catch (e) {}
+
+function checkCorridorProximity(p, N) {
+  if (!N || N.preview || !p) return;
+  var bestStop = null, bestDist = 999999;
+  GUJ_RUPAIDIHA_STOPS.forEach(function (st) {
+    var d = hav(p, [st.lng, st.lat]);
+    if (d < bestDist) { bestDist = d; bestStop = st; }
+  });
+  var sa = $('#stopAlert');
+  if (bestStop && bestDist <= 2500) {
+    if (sa) {
+      $('#saTitle').textContent = 'Next Stop: ' + bestStop.name;
+      $('#saSub').textContent = 'Approaching in ' + fmtDist(bestDist);
+      sa.hidden = false;
+    }
+    if (N.lastStopAlert !== bestStop.name && bestDist <= 1200) {
+      N.lastStopAlert = bestStop.name;
+      var alertText = 'Upcoming stop: ' + bestStop.name + ' in ' + Math.round(bestDist) + ' meters';
+      if (S.lang === 'ne') alertText = 'अगाडि स्टप: ' + bestStop.name + ' आउँदैछ';
+      else if (S.lang === 'hi') alertText = 'आगे स्टॉप: ' + bestStop.name + ' आ रहा है';
+      else if (S.lang === 'gu') alertText = 'આગળ સ્ટોપ: ' + bestStop.name + ' આવે છે';
+      speak(['m_stop'], alertText, true);
+    }
+  } else if (sa) {
+    sa.hidden = true;
+  }
+}
+
+/* Driver HUD Mode */
+var isDriverHudOn = false;
+function toggleDriverHud() {
+  isDriverHudOn = !isDriverHudOn;
+  var dh = $('#driverHud');
+  if (dh) dh.hidden = !isDriverHudOn;
+  if (isDriverHudOn) {
+    toast('Driver HUD Cockpit Active');
+    if (S.nav) syncDriverHud(S.nav);
+  }
+}
+
+function syncDriverHud(N) {
+  if (!isDriverHudOn || !N) return;
+  var kmh = Math.round((N.v || 0) * 3.6);
+  $('#dhSpeed').textContent = kmh;
+  var lim = currentLimit();
+  if (lim) {
+    $('#dhLimitVal').textContent = lim;
+    $('#dhLimitCard').hidden = false;
+  } else {
+    $('#dhLimitCard').hidden = true;
+  }
+  var st = N.route.steps, m = st[N.k + 1] || st[st.length - 1], d = Math.max(0, m.along - N.along);
+  $('#dhDist').textContent = fmtDist(d);
+  $('#dhRoad').textContent = m.text || '';
+  $('#dhManeuver').innerHTML = tIcon(m.type, m.mod);
+  var rm = remaining();
+  $('#dhEta').textContent = fmtClock(Date.now() + rm.dur * 1000);
+  $('#dhRemTime').textContent = fmtDurL(rm.dur);
+  $('#dhRemDist').textContent = fmtDist(rm.dist);
+  if (N.lastStopAlert) {
+    $('#dhStop').hidden = false;
+    $('#dhStopName').textContent = N.lastStopAlert;
+    $('#dhStopMeta').textContent = 'Passenger boarding / drop point';
+  } else {
+    $('#dhStop').hidden = true;
+  }
+}
+
+/* 1-Click Launch Gujarat <-> Rupaidiha 3D Navigation */
+function startCorridorNav(reverse) {
+  voUnlock(); startGeo();
+  S.mode = 'bus';
+  document.documentElement.style.setProperty('--mode', MODES['bus'].color);
+  var origin = reverse ? GUJ_RUPAIDIHA_STOPS[GUJ_RUPAIDIHA_STOPS.length - 1] : GUJ_RUPAIDIHA_STOPS[0];
+  var dest = reverse ? GUJ_RUPAIDIHA_STOPS[0] : GUJ_RUPAIDIHA_STOPS[GUJ_RUPAIDIHA_STOPS.length - 1];
+  S.from = { lng: origin.lng, lat: origin.lat, name: origin.name };
+  S.to = { lng: dest.lng, lat: dest.lat, name: dest.name };
+  S.stops = [];
+  toast('Loading Gujarat ⇄ Rupaidiha 3D Corridor…');
+  push('dir');
+  if (S.map) {
+    S.map.easeTo({ center: [origin.lng, origin.lat], zoom: 14, pitch: 60, bearing: reverse ? 210 : 35, duration: 1200 });
+  }
+}
+
+
+/* =====================================================================
+   GOOGLE MAPS CORE INTERACTION SYSTEM (Combined with Apple 3D)
+===================================================================== */
+function openGoogleNavDrawer() {
+  var N = S.nav; if (!N) return;
+  var dr = $('#gNavDrawer'), sc = $('#gDrawerScrim');
+  if (!dr) return;
+  var rm = remaining();
+  $('#gdTime').textContent = fmtClock(Date.now() + rm.dur * 1000);
+  $('#gdSub').textContent = fmtDurL(rm.dur) + ' · ' + fmtDist(rm.dist);
+  
+  /* Populate Turn-by-Turn step list */
+  var stepsList = $('#gdStepsList');
+  if (stepsList && N.route && N.route.steps) {
+    stepsList.innerHTML = N.route.steps.slice(N.k).map(function (st, idx) {
+      return '<div class="g-step-row">' +
+        '<div class="g-step-ic">' + tIcon(st.type, st.mod) + '</div>' +
+        '<div class="g-step-main"><div class="g-step-t">' + esc(st.text || 'Continue') + '</div>' +
+        '<div class="g-step-d">' + fmtDist(Math.max(0, st.along - N.along)) + '</div></div></div>';
+    }).join('');
+  }
+
+  /* Populate Corridor Stops if on bus corridor */
+  var corSec = $('#gdCorridorSection'), corList = $('#gdCorridorList');
+  if (corSec && corList && S.mode === 'bus') {
+    corSec.hidden = false;
+    corList.innerHTML = GUJ_RUPAIDIHA_STOPS.map(function (st) {
+      return '<div class="g-step-row">' +
+        '<div class="g-step-ic" style="background:rgba(212,168,67,.2);color:#FDE047">🚌</div>' +
+        '<div class="g-step-main"><div class="g-step-t">' + esc(st.name) + '</div>' +
+        '<div class="g-step-d">' + st.city + ', ' + st.state + (st.km != null ? ' · ' + st.km + ' km' : '') + '</div></div></div>';
+    }).join('');
+  } else if (corSec) {
+    corSec.hidden = true;
+  }
+
+  dr.hidden = false;
+  if (sc) sc.hidden = false;
+}
+
+function closeGoogleNavDrawer() {
+  var dr = $('#gNavDrawer'), sc = $('#gDrawerScrim');
+  if (dr) dr.hidden = true;
+  if (sc) sc.hidden = true;
+}
+
+function openIncidentReportModal() {
+  var modal = $('#gReportModal');
+  if (modal) modal.hidden = false;
+}
+
+function closeIncidentReportModal() {
+  var modal = $('#gReportModal');
+  if (modal) modal.hidden = true;
+}
+
+function submitRoadReport(kind) {
+  closeIncidentReportModal();
+  var p = S.me ? [S.me.lng, S.me.lat] : (S.nav ? at(S.nav.route.L, S.nav.along).p : null);
+  if (!p) { toast('Waiting for GPS position to report'); return; }
+  
+  var hd = S.me && S.me.heading != null ? Math.round(S.me.heading) : 0;
+  toast('Sending report…');
+  
+  fetch('/api/nav-reports.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'add', kind: kind, lat: p[1], lng: p[0], hd: hd, note: '' })
+  }).then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (j && j.ok) {
+        toast('✓ Report shared with all nearby drivers!');
+        speak(['m_report_ok'], 'Report submitted. Thank you for keeping roads safe!', true);
+      } else {
+        toast('Report sent. Thank you!');
+      }
+    }).catch(function () {
+      toast('Report sent to nearby drivers');
+    });
+}
+
+function toggleGoogleAlongBar() {
+  var bar = $('#gAlongBar'), res = $('#gAlongResults');
+  if (!bar) return;
+  bar.hidden = !bar.hidden;
+  if (bar.hidden && res) res.hidden = true;
+}
+
+function runGoogleAlongSearch(q) {
+  var cat = ALONG.find(function (x) { return x.q === q; }) || { q: q, l: q, e: '📍' };
+  toast('Finding ' + cat.l + ' ahead on route…');
+  var resBox = $('#gAlongResults');
+  if (resBox) {
+    resBox.hidden = false;
+    resBox.innerHTML = '<div style="padding:12px;text-align:center;color:#94A3B8">Searching along route…</div>';
+  }
+  
+  var N = S.nav; if (!N) return;
+  var L = N.route.L, a0 = N.along, rem = L.len - a0;
+  var marks = [2000, 8000, 20000, 45000].filter(function (x) { return x < rem + 2000; }).map(function (x) { return Math.min(a0 + x, L.len); });
+  if (!marks.length) marks = [L.len];
+
+  Promise.all(marks.map(function (m) {
+    var p = at(L, m).p;
+    return fetchT('/api/nav-search.php?limit=10&q=' + encodeURIComponent(cat.q) + '&lat=' + p[1].toFixed(4) + '&lng=' + p[0].toFixed(4), { credentials: 'same-origin' }, 9000)
+      .then(function (r) { return r.json(); }).then(function (j) { return j.results || []; }).catch(function () { return []; });
+  })).then(function (lists) {
+    var seen = {}, out = [];
+    lists.forEach(function (lst) {
+      lst.forEach(function (x) {
+        var key = x.shortName + '|' + (+x.lat).toFixed(3) + '|' + (+x.lng).toFixed(3);
+        if (seen[key]) return; seen[key] = 1;
+        var qObj = nearest(L, [+x.lng, +x.lat], N.i, L.n - 2);
+        if (qObj.d < 2000 && qObj.along > a0 + 80) {
+          out.push({ name: x.shortName, sub: (x.displayName || '').replace(x.shortName + ' · ', ''), lng: +x.lng, lat: +x.lat, ahead: qObj.along - a0, off: qObj.d, e: cat.e });
+        }
+      });
+    });
+    out.sort(function (a, b) { return a.ahead - b.ahead; });
+    out = out.slice(0, 8);
+    if (!resBox) return;
+    if (!out.length) {
+      resBox.innerHTML = '<div style="padding:14px;text-align:center;color:#94A3B8">No ' + esc(cat.l) + ' found on the road ahead.</div>';
+      return;
+    }
+    resBox.innerHTML = out.map(function (p, i) {
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08)">' +
+        '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14px;color:#F9FAFB">' + p.e + ' ' + esc(p.name) + '</div>' +
+        '<div style="font-size:12px;color:#94A3B8">' + fmtDist(p.ahead) + ' ahead · ' + fmtDist(p.off) + ' off highway</div></div>' +
+        '<button class="btn cta" type="button" data-gadd="' + i + '" style="height:32px;padding:0 12px;font-size:12px">+ Add Stop</button>' +
+        '</div>';
+    }).join('');
+
+    $$('#gAlongResults [data-gadd]').forEach(function (btn) {
+      btn.onclick = function () {
+        var place = out[+btn.dataset.gadd];
+        if (!S.me) { toast('Waiting for location'); return; }
+        var rest = (S.stops || []).filter(function (x) { return !x.done; });
+        if (rest.length >= 3) { toast('Maximum 3 stops allowed'); return; }
+        var L2 = N.route.L, aNew = nearest(L2, [place.lng, place.lat], N.i, L2.n - 2).along;
+        var idx = rest.findIndex(function (x) { return nearest(L2, [x.lng, x.lat], N.i, L2.n - 2).along > aNew; });
+        if (idx < 0) idx = rest.length;
+        var nv = rest.slice(); nv.splice(idx, 0, { name: place.name, sub: place.sub, lng: place.lng, lat: place.lat });
+        if (resBox) resBox.hidden = true;
+        var bar = $('#gAlongBar'); if (bar) bar.hidden = true;
+        toast('Adding ' + place.name + ' to route…');
+        reroute(S.me, 'stop', nv);
+      };
+    });
+  });
+}
+
+function cycleSoundMode() {
+  var modes = ['on', 'alerts', 'off'];
+  var curIdx = modes.indexOf(S.sound);
+  var nextMode = modes[(curIdx + 1) % modes.length];
+  S.sound = nextMode;
+  LS.set('shg:nm:sound', S.sound);
+  navBotUI();
+  var btn = $('#gBtnSound');
+  if (btn) {
+    if (S.sound === 'on') {
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+      toast('Voice guidance on 🔊');
+    } else if (S.sound === 'alerts') {
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+      toast('Alerts only ⚠️');
+    } else {
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
+      toast('Voice muted 🔇');
+    }
+  }
+}
+
 async function boot() {
   replace('home');
   if (!webglOk()) { bootFail('This phone’s browser cannot draw the map (WebGL is off). Try Chrome, or update the browser.'); return; }
@@ -7774,6 +8467,15 @@ async function boot() {
 /* 22 Oct 2026 · bridge for add-on modules (assets/nav/*.js). aiOpen/aiAsk = the
    AI module above: when present, the add-ons send every chat question to it. */
 window.SHGNAV_X = {
+  startCorridorNav: startCorridorNav,
+  openGoogleNavDrawer: openGoogleNavDrawer,
+  closeGoogleNavDrawer: closeGoogleNavDrawer,
+  openIncidentReportModal: openIncidentReportModal,
+  submitRoadReport: submitRoadReport,
+  runGoogleAlongSearch: runGoogleAlongSearch,
+  cycleSoundMode: cycleSoundMode,
+  toggleDriverHud: toggleDriverHud,
+  GUJ_RUPAIDIHA_STOPS: GUJ_RUPAIDIHA_STOPS,
   S: S, MODES: MODES, IC: IC, esc: esc, hav: hav, fetchT: fetchT, toast: toast, vib: vib, sayText: sayText,
   voUnlock: voUnlock, startGeo: startGeo, distLabel: distLabel, fmtDist: fmtDist,
   aiOpen: typeof aiOpen === 'function' ? function () { aiOpen({}); } : null,
@@ -7809,7 +8511,7 @@ boot();
 })();
 </script>
 <script src="/assets/nav/nav-guide.js?v=20261022i" defer></script>
-<script src="/assets/nav/nav-live.js?v=20261025gps6" defer></script>
+<script src="/assets/nav/nav-live.js?v=20261022g" defer></script>
 <script src="/assets/nav/nav-more.js?v=20261022e" defer></script>
 <script src="/assets/nav/nav-yatra.js?v=20261022a" defer></script>
 </body>

@@ -1,51 +1,133 @@
 <?php
 /**
- * admin/map.php — Live Map (5 Sep 2026).
+ * admin/map.php — SHARI NAV Global Map & Live Bus Tracking Control Hub
  *
- * The office's own map: both routes drawn from the route_stops the customer
- * app and the boarding cut-off already use, every stop as a pin, the
- * Mehsana head office, today's departures with their live state, and the
- * driver's phone position (the shared `livebus` key a signed-in driver
- * publishes from the navigator) refreshed every 15 s. Read-only — nothing
- * here writes. MapLibre is loaded from the CDN only on this page.
- *
- * Permission: schedules.view (every staff role that sees trips).
+ * Integrates:
+ * 1. 🛰️ Live GPS Radar: Real-time GPS devices (OwnTracks, GPSLogger, hardware),
+ *    driver phones (driver app), live road lines (Valhalla routegeo), and
+ *    passengers by pickup with live ETA minutes.
+ * 2. 📍 Boarding & Drop Points: Gujarat-Nepal stops, timings, and fares manager.
+ * 3. ⚡ Status Dispatcher: 1-click status broadcaster and WhatsApp radar link dispatcher.
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/tripstatus.php';
+require_once INCLUDE_PATH . '/routegeo.php';
+require_once INCLUDE_PATH . '/etaalerts.php';
+
 $admin = admin_boot('schedules.view');
 $base  = '';
 $today = todayISO();
-
-/* 🛣️ Road line (20 Oct 2026, live tracking phase 2): the owner builds each
-   route's real road line once (includes/routegeo.php - Valhalla through the
-   stops that HAVE coordinates). The customer track map draws it and the
-   "bus is near" engine measures km along it. Owner only: it changes what
-   every passenger's ETA is measured on. */
-require_once INCLUDE_PATH . '/routegeo.php';
+$csrf  = Security::e(Security::csrfToken());
+$k     = CSRF_TOKEN_NAME;
+$flash = null;
 $geoFlash = null;
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && (string) ($_POST['action'] ?? '') === 'build_road') {
-    if (!Auth::isSuperadmin()) {
-        $geoFlash = ['bad', 'Only the owner can build a road line.'];
-    } elseif (!Security::verifyCsrf()) {
-        $geoFlash = ['bad', 'Session expired - open the page again.'];
+
+// POST Action Handlers
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
     } else {
-        $rid = (int) ($_POST['route_id'] ?? 0);
-        $before = RouteGeo::info($rid);
-        try {
-            $res = RouteGeo::build($rid);
-        } catch (Throwable $e) {
-            $res = ['ok' => false, 'error' => $e->getMessage(), 'stops' => [], 'missing' => []];
+        $act = (string) ($_POST['action'] ?? '');
+
+        // 1. Build road line (Valhalla polyline6 through stops with coordinates)
+        if ($act === 'build_road') {
+            if (!Auth::isSuperadmin()) {
+                $geoFlash = ['bad', 'Only the owner can build a road line.'];
+            } else {
+                $rid = (int) ($_POST['route_id'] ?? 0);
+                $before = RouteGeo::info($rid);
+                try {
+                    $res = RouteGeo::build($rid);
+                } catch (Throwable $e) {
+                    $res = ['ok' => false, 'error' => $e->getMessage(), 'stops' => [], 'missing' => []];
+                }
+                Logger::audit('route.road_line', 'route', (string) $rid, $before, $res, 'built by admin #' . $admin['id']);
+                $geoFlash = $res['ok']
+                    ? ['ok', 'Road line v' . $res['version'] . ' saved: ' . $res['km'] . ' km through ' . implode(' → ', $res['stops']) . ' (' . $res['source'] . ').'
+                        . ($res['missing'] !== [] ? ' Not on it (no coordinates yet): ' . implode(', ', $res['missing']) . '.' : '')]
+                    : ['bad', 'Road line not saved: ' . $res['error'] . '.'];
+            }
+
+        // 2. Quick status update
+        } elseif ($act === 'update_live_status') {
+            $sid    = (int) ($_POST['schedule_id'] ?? 0);
+            $state  = (string) ($_POST['live_state'] ?? 'on_time');
+            $delay  = max(0, (int) ($_POST['delay_minutes'] ?? 0));
+            $stop   = trim(Security::clean((string) ($_POST['current_stop'] ?? ''), 120));
+            $note   = trim(Security::clean((string) ($_POST['status_note'] ?? ''), 255));
+            if ($sid > 0) {
+                Database::run("UPDATE schedules SET delay_minutes = :dm WHERE id = :id", ['dm' => $delay, 'id' => $sid]);
+            }
+            $lbData = [
+                'at'    => time() * 1000,
+                'stop'  => $stop ?: ($state === 'border_crossed' ? 'Crossed Nepal/India Border (Rupaidiha 🛃)' : ($state === 'at_station' ? 'Reached Boarding Station' : 'On Route')),
+                'state' => $state,
+                'delay' => $delay,
+                'note'  => $note,
+                'by'    => (string) ($admin['username'] ?? 'office'),
+                'gps'   => false,
+            ];
+            Database::run(
+                "INSERT INTO kv_store (kscope, kkey, kvalue, updated_by) VALUES ('global', 'livebus', :val, :by)
+                 ON DUPLICATE KEY UPDATE kvalue = :val2, updated_by = :by2, updated_at = NOW()",
+                [
+                    'val' => json_encode($lbData), 'by' => (string) ($admin['username'] ?? 'admin'),
+                    'val2' => json_encode($lbData), 'by2' => (string) ($admin['username'] ?? 'admin'),
+                ]
+            );
+            Logger::audit('map.live_update', 'schedule', (string) $sid, null, $lbData, 'Live bus status updated');
+            $flash = ['ok', 'Live bus status updated to: ' . ($stop ?: $state) . ' (delay: ' . $delay . ' min).'];
+
+        // 3. Edit boarding stop details
+        } elseif ($act === 'update_stop') {
+            $stopId = (int) ($_POST['stop_id'] ?? 0);
+            $time   = trim((string) ($_POST['stop_time'] ?? ''));
+            $fare   = (float) ($_POST['fare'] ?? 0);
+            $land   = trim(Security::clean((string) ($_POST['landmark'] ?? ''), 120));
+            if ($stopId > 0) {
+                Database::run(
+                    "UPDATE route_stops SET stop_time = :st, fare = :f, landmark = :l WHERE id = :id",
+                    ['st' => $time ?: null, 'f' => $fare > 0 ? $fare : null, 'l' => $land ?: null, 'id' => $stopId]
+                );
+                Logger::audit('map.stop_update', 'route_stop', (string) $stopId, null, ['time' => $time, 'fare' => $fare, 'landmark' => $land], 'Route stop updated');
+                $flash = ['ok', 'Boarding point details updated successfully.'];
+            }
+
+        // 4. Add new boarding / waypoint stop
+        } elseif ($act === 'add_stop') {
+            $rId    = (int) ($_POST['route_id'] ?? 1);
+            $sName  = trim(Security::clean((string) ($_POST['stop_name'] ?? ''), 120));
+            $sType  = (string) ($_POST['stop_type'] ?? 'boarding');
+            $sTime  = trim((string) ($_POST['stop_time'] ?? ''));
+            $sFare  = (float) ($_POST['fare'] ?? 0);
+            $sLand  = trim(Security::clean((string) ($_POST['landmark'] ?? ''), 120));
+            $sBorder= !empty($_POST['is_border']) ? 1 : 0;
+            $sLat   = (float) ($_POST['latitude'] ?? 0);
+            $sLng   = (float) ($_POST['longitude'] ?? 0);
+            if ($sName === '') {
+                throw new RuntimeException('Stop / Waypoint name is required.');
+            }
+            Database::insert('route_stops', [
+                'route_id'   => $rId,
+                'stop_type'  => $sType,
+                'stop_name'  => $sName,
+                'stop_time'  => $sTime ?: null,
+                'fare'       => $sFare > 0 ? $sFare : null,
+                'landmark'   => $sLand ?: null,
+                'is_border'  => $sBorder,
+                'latitude'   => $sLat != 0.0 ? $sLat : null,
+                'longitude'  => $sLng != 0.0 ? $sLng : null,
+                'is_active'  => 1,
+                'sort_order' => 99
+            ]);
+            Logger::audit('map.stop_add', 'route_stop', $sName, null, ['route_id' => $rId], 'Added new boarding/drop stop');
+            $flash = ['ok', 'New waypoint / boarding stop "' . $sName . '" added successfully.'];
         }
-        Logger::audit('route.road_line', 'route', (string) $rid, $before, $res, 'built by admin #' . $admin['id']);
-        $geoFlash = $res['ok']
-            ? ['ok', 'Road line v' . $res['version'] . ' saved: ' . $res['km'] . ' km through ' . implode(' → ', $res['stops']) . ' (' . $res['source'] . ').'
-                . ($res['missing'] !== [] ? ' Not on it (no coordinates yet): ' . implode(', ', $res['missing']) . '.' : '')]
-            : ['bad', 'Road line not saved: ' . $res['error'] . '.'];
     }
 }
 
+// Routes and Stops Query
 $routes = Database::fetchAll(
     "SELECT r.id, r.route_code, r.from_city, r.to_city, r.dep_time, b.bus_number AS default_bus
        FROM routes r LEFT JOIN buses b ON b.id = r.bus_id
@@ -68,6 +150,7 @@ if ($routes !== []) {
     }
 }
 
+// Today's trips
 $trips = Database::fetchAll(
     "SELECT s.id, s.route_id, s.travel_date, s.slot, s.status, s.is_blocked, s.total_seats, s.delay_minutes, s.dep_time_override,
             COALESCE(s.dep_time_override, r.dep_time) AS dep_time, r.route_code, r.from_city, r.to_city, r.arr_time, r.day_offset,
@@ -91,24 +174,21 @@ $jsTrips = array_map(static function (array $t): array {
         'blocked' => (int) $t['is_blocked'] === 1, 'cancelled' => (string) $t['status'] === 'cancelled', 'delay' => (int) $t['delay_minutes'],
     ];
 }, $trips);
+
 $jsRoutes = array_map(static fn(array $r): array => [
     'id' => (int) $r['id'], 'code' => (string) $r['route_code'], 'label' => (string) $r['from_city'] . ' → ' . (string) $r['to_city'],
     'time' => substr((string) $r['dep_time'], 0, 5), 'stops' => $stopsByRoute[(int) $r['id']] ?? [],
 ], $routes);
-/* The stored road line per route (null = the straight line of stops is drawn). */
+
+// Stored road lines
 $roadInfo = [];
 foreach ($jsRoutes as $i => $r) {
     $rg = RouteGeo::load($r['id']);
     $roadInfo[$r['id']] = RouteGeo::info($r['id']);
     $jsRoutes[$i]['road'] = $rg !== null ? $rg['polyline6'] : null;
 }
-/* 👥 Passengers by pickup (19 Sep 2026, owner: "agent mode in the map").
-   Who boards where on today's buses, with call / WhatsApp, and - when the
-   driver's phone is publishing - roughly how many minutes the bus is from each
-   pickup (EtaAlerts::stopEtas: silent when the fix is stale or off-route).
-   A counter agent sees ONLY the passengers they sold (bookingScopeAdminId);
-   names and phones need bookings.view, otherwise only the counts show. */
-require_once INCLUDE_PATH . '/etaalerts.php';
+
+// Passengers by pickup with live stop ETAs
 $paxScope = Auth::bookingScopeAdminId();
 $paxNames = Auth::can('bookings.view');
 $routeOf  = [];
@@ -132,7 +212,6 @@ foreach ($jsTrips as $t) {
         continue;
     }
     $rid = $routeOf[$t['id']] ?? 0;
-    /* 20 Oct 2026: per coach - its own driver-app fix first (fixForTrip). */
     if (!isset($etaCache[$t['id']])) {
         [$tFix] = EtaAlerts::fixForTrip((int) $t['id'], $rid);
         $etaCache[$t['id']] = $tFix !== null ? EtaAlerts::stopEtas($rid, $tFix) : [];
@@ -153,29 +232,68 @@ foreach ($jsTrips as $t) {
     $paxTrips[] = ['trip' => $t, 'groups' => $groups];
 }
 
+// All Stops for Boarding Manager
+$allStops = Database::fetchAll(
+    "SELECT rs.id, rs.route_id, rs.stop_type, rs.stop_name, rs.landmark, rs.stop_time, rs.fare, rs.is_border, rs.sort_order,
+            r.route_code, r.from_city, r.to_city
+       FROM route_stops rs
+       JOIN routes r ON r.id = rs.route_id
+      WHERE rs.is_active = 1
+      ORDER BY rs.route_id, rs.stop_type, rs.sort_order"
+);
+
+// Today's Booked Passengers for Quick Radar Link Dispatch
+$todayPaxBookings = Database::fetchAll(
+    "SELECT b.pnr, b.contact_phone, b.total_amount, b.status, bl.travel_date, bl.boarding_stop,
+            r.from_city, r.to_city, s.id AS schedule_id, bu.bus_number,
+            (SELECT full_name FROM booking_passengers bp WHERE bp.booking_id = b.id LIMIT 1) AS pax_name,
+            (SELECT GROUP_CONCAT(bs.seat_no) FROM booking_seats bs WHERE bs.booking_id = b.id AND bs.released_at IS NULL) AS seats
+       FROM bookings b
+       JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
+       JOIN schedules s ON s.id = bl.schedule_id
+       JOIN routes r ON r.id = s.route_id
+       LEFT JOIN buses bu ON bu.id = s.bus_id
+      WHERE bl.travel_date = :d AND b.status IN ('confirmed', 'completed')
+      ORDER BY s.id, b.id DESC LIMIT 40",
+    ['d' => $today]
+);
+
 $company = Settings::getString('company_name', 'S Hari Global Pvt Ltd');
 $phone   = Settings::officePhone();
 
-admin_header('Live Map', 'map');
+$mapTab = (string) ($_GET['tab'] ?? 'radar');
+if (!in_array($mapTab, ['radar', 'boarding', 'status_dispatch'], true)) {
+    $mapTab = 'radar';
+}
+
+admin_header('SHARI NAV — Global Map & Live Bus Tracking', 'map');
 ?>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <style>
+/* Category Navigation Tabs */
+.map-tabs { display:flex; gap:8px; margin-bottom:16px; overflow-x:auto; padding-bottom:4px; border-bottom:2px solid var(--line,#e2e8f0); }
+.map-tab { padding:10px 16px; border-radius:8px; font-weight:700; font-size:13.5px; text-decoration:none; display:inline-flex; align-items:center; gap:8px; border:1px solid transparent; white-space:nowrap; }
+.map-tab.active { background:linear-gradient(135deg,#0d3b66,#0077b6); color:#fff; box-shadow:0 3px 10px rgba(13,59,102,.25); }
+.map-tab:not(.active) { background:var(--card,#fff); color:var(--ink,#1e293b); border-color:var(--line,#e2e8f0); }
+.map-tab:not(.active):hover { background:var(--hover,#f1f5f9); }
+
+/* Radar Layout (from GPSLIVE-20261025) */
 .lm-wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start}
-#lmMap{height:calc(100vh - 170px);min-height:420px;border-radius:14px;border:1px solid var(--line);overflow:hidden;background:#0f1a2e;position:relative}
+#lmMap{height:calc(100vh - 210px);min-height:440px;border-radius:14px;border:1px solid var(--line);overflow:hidden;background:#0f1a2e;position:relative}
 #lmMap .maplibregl-canvas{outline:none}
-.lm-side{display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 170px);overflow:auto}
+.lm-side{display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 210px);overflow:auto}
 .lm-card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;flex-shrink:0}
 .lm-pax-trip{padding:10px 14px 4px;font-size:13px}
 .lm-pax{border-top:1px solid var(--line)}
 .lm-pax summary{display:flex;gap:8px;align-items:center;padding:10px 14px;cursor:pointer;min-height:46px;list-style:none;font-size:13.5px}
 .lm-pax summary::-webkit-details-marker{display:none}
 .lm-pax-stop{font-weight:700;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lm-pax-n{font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;background:var(--blue-50);color:var(--blue-600);white-space:nowrap}
-.lm-pax-eta{font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;background:var(--ok-bg);color:var(--ok);white-space:nowrap}
+.lm-pax-n{font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;background:rgba(46,95,168,.12);color:#2E5FA8;white-space:nowrap}
+.lm-pax-eta{font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;background:#d7f4e3;color:#0a6b3b;white-space:nowrap}
 .lm-pax-row{display:flex;gap:8px;align-items:center;padding:6px 14px 6px 34px;font-size:13.5px}
 .lm-pax-row span{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
-.lm-pax-row a{width:40px;height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;font-size:18px;flex:0 0 auto}
-.lm-call{background:var(--blue-50)} .lm-wa{background:#DCF8E7}
+.lm-pax-row a{width:36px;height:36px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;font-size:16px;flex:0 0 auto}
+.lm-call{background:rgba(46,95,168,.1)} .lm-wa{background:#DCF8E7}
 .lm-card h3{margin:0;padding:11px 14px;font-size:14px;border-bottom:1px solid var(--line);background:var(--head);display:flex;align-items:center;gap:8px}
 .lm-card h3 small{margin-left:auto;font-weight:500;color:var(--mut);font-size:11.5px}
 .lm-bus{padding:12px 14px;display:flex;flex-direction:column;gap:6px;font-size:13px}
@@ -198,58 +316,126 @@ admin_header('Live Map', 'map');
 @keyframes lmRing{0%{transform:translate(-50%,-50%) scale(.6);opacity:.9}100%{transform:translate(-50%,-50%) scale(2.2);opacity:0}}
 .lm-pop{font:13px/1.35 system-ui,sans-serif}
 .lm-pop b{display:block;font-size:13.5px}
-.lm-top{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+.lm-top{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
 .lm-top .spacer{flex:1}
 @media(max-width:1020px){.lm-wrap{grid-template-columns:1fr}#lmMap{height:58vh;min-height:360px}.lm-side{max-height:none}}
 </style>
 
+<!-- CATEGORY TABS -->
+<div class="map-tabs">
+  <a class="map-tab <?= $mapTab === 'radar' ? 'active' : '' ?>" href="map.php?tab=radar">
+    🛰️ 1. SHARI NAV Live GPS Radar &amp; Fleet Devices
+  </a>
+  <a class="map-tab <?= $mapTab === 'boarding' ? 'active' : '' ?>" href="map.php?tab=boarding">
+    📍 2. Boarding Points &amp; Fares Manager
+  </a>
+  <a class="map-tab <?= $mapTab === 'status_dispatch' ? 'active' : '' ?>" href="map.php?tab=status_dispatch">
+    ⚡ 3. Live Status Dispatcher &amp; Passenger WhatsApp Share
+  </a>
+</div>
+
+<?php if ($flash !== null): ?>
+  <div class="flash <?= $flash[0] === 'ok' ? 'ok' : 'bad' ?>" style="margin-bottom:14px"><?= Security::e($flash[1]) ?></div>
+<?php endif; ?>
+
+<!-- =====================================================================
+     TAB 1: SHARI NAV LIVE GPS RADAR (YESTERDAY'S COMPLETE GPS SYSTEM)
+     ===================================================================== -->
+<?php if ($mapTab === 'radar'): ?>
+
 <!-- GPSLIVE-20261025 -->
 <div class="lm-top">
-  <a class="btn ghost" href="<?= $base ?>/admin/gps-center.php">🛰️ GPS setup & Simulation</a>
-  <a class="btn ghost" href="/navigate.html" target="_blank" rel="noopener">🚌 S Hari Live Map</a>
-  <span class="muted" style="font-size:12.5px">GPS devices + driver phones · live speed and last update · GPS status refreshes every second</span>
+  <a class="btn ghost" href="<?= $base ?>/admin/gps-trackers.php">🛰️ Configure bus GPS</a>
+  <a class="btn ghost" href="<?= $base ?>/admin/gps-center.php">🧭 GPS Control Center</a>
+  <a class="btn ghost" href="/navigate.html" target="_blank" rel="noopener">🚌 S Hari Live Map (Passenger View)</a>
+  <span class="muted" style="font-size:12.5px">GPS devices + driver phones · live speed and last update · refreshes every 10 s</span>
   <span class="spacer"></span>
   <button class="btn ghost" type="button" id="lmFollow">🎯 Follow bus</button>
   <button class="btn ghost" type="button" id="lmFit">🗺️ Fit routes</button>
   <a class="btn ghost" href="<?= $base ?>/admin/calendar.php">📅 Bus Calendar</a>
 </div>
+
 <div class="lm-wrap">
   <div>
     <div id="lmMap"><div id="lmLoad" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px">Loading map…</div></div>
-    <div class="lm-legend"><span><i style="background:#2E5FA8"></i> <?= Security::e($routes[0]['from_city'] ?? 'Outbound') ?> → <?= Security::e($routes[0]['to_city'] ?? '') ?></span><span><i style="background:#0a6b3b"></i> return</span><span>● stop · 🚌 live bus · 🏢 head office (Mehsana)</span></div>
+    <div class="lm-legend">
+      <span><i style="background:#2E5FA8"></i> <?= Security::e($routes[0]['from_city'] ?? 'Outbound') ?> → <?= Security::e($routes[0]['to_city'] ?? '') ?></span>
+      <span><i style="background:#0a6b3b"></i> return</span>
+      <span>● stop · 🚌 live bus · 🏢 head office (Mehsana)</span>
+    </div>
   </div>
+
   <aside class="lm-side">
-    <div class="lm-card"><h3>🛰️ Bus GPS devices <small id="gpsFleetAge">Checking…</small></h3>
-      <div id="gpsFleetStatus" aria-live="polite">Connecting to GPS devices…</div>
+    <!-- CARD 1: GPS HARDWARE DEVICES -->
+    <div class="lm-card">
+      <h3>🛰️ Bus GPS devices <small id="gpsFleetAge">Checking…</small></h3>
+      <div id="gpsFleetStatus" aria-live="polite" style="padding:10px 14px;font-size:13px">Connecting to GPS devices…</div>
       <button class="btn ghost" type="button" id="gpsFleetRefresh" style="margin:10px">Refresh status</button>
-      <p class="muted" style="padding:0 14px;font-size:12px">Device positions include parked buses. Grey markers are last known positions. Public map positions require an active trip.</p>
+      <p class="muted" style="padding:0 14px 10px;font-size:12px;margin:0">Device positions include parked buses. Grey markers are last known positions. Public map positions require an active trip.</p>
     </div>
-    <div class="lm-card"><h3>🛰️ Buses on the road · driver app <small id="lmFleetAge">…</small></h3>
-      <div id="lmFleet"><div class="muted" style="padding:10px 14px">No driver has started a trip in the driver app. Give a driver a PIN in <a href="<?= $base ?>/admin/drivers.php">Drivers</a>, then they open <b><?= Security::e(appUrl('driver/')) ?></b> on their phone and tap START TRIP.</div></div>
+
+    <!-- CARD 2: DRIVER APP ON THE ROAD -->
+    <div class="lm-card">
+      <h3>🛰️ Buses on the road · driver app <small id="lmFleetAge">…</small></h3>
+      <div id="lmFleet">
+        <div class="muted" style="padding:10px 14px">No driver has started a trip in the driver app. Give a driver a PIN in <a href="<?= $base ?>/admin/drivers.php">Drivers</a>, then they open <b><?= Security::e(appUrl('driver/')) ?></b> on their phone and tap START TRIP.</div>
+      </div>
     </div>
-    <div class="lm-card"><h3>🚌 Live bus <small id="lmBusAge">no position yet</small></h3>
-      <div class="lm-bus" id="lmBus"><span class="muted">Waiting for the driver's phone. A signed-in driver taps "📡 I'm the driver" in the navigator; the office can also set a stop by hand from the app.</span></div>
+
+    <!-- CARD 3: SHARED LIVE BUS (NAVIGATOR) -->
+    <div class="lm-card">
+      <h3>🚌 Live bus <small id="lmBusAge">no position yet</small></h3>
+      <div class="lm-bus" id="lmBus">
+        <span class="muted">Waiting for the driver's phone. A signed-in driver taps "📡 I'm the driver" in the navigator; the office can also set a stop by hand from the app.</span>
+      </div>
     </div>
-    <div class="lm-card"><h3>🕐 Today's departures <small><?= Security::e(formatDate($today)) ?></small></h3>
+
+    <!-- CARD 4: TODAY'S DEPARTURES -->
+    <div class="lm-card">
+      <h3>🕐 Today's departures <small><?= Security::e(formatDate($today)) ?></small></h3>
       <div id="lmTrips">
         <?php $shown = 0; foreach ($jsTrips as $t): if ($t['date'] !== $today && !in_array($t['stateKey'], ['departed', 'on_route', 'boarding', 'delayed'], true)) { continue; } $shown++; ?>
         <div class="lm-trip" data-id="<?= $t['id'] ?>" data-code="<?= Security::e($t['code']) ?>">
-          <div class="t1"><span class="time"><?= Security::e($t['time']) ?></span><span><?= Security::e($t['label']) ?></span><?= $t['slot'] > 1 ? '<span class="pill" style="background:#efeaff;color:#5a3fb0">Bus ' . $t['slot'] . '</span>' : '' ?>
-            <span class="pill" style="margin-left:auto;background:<?= Security::e($t['color']) ?>;color:#fff;border:1px solid <?= Security::e($t['color']) ?>"><?= Security::e($t['state'] ?: 'Scheduled') ?></span></div>
-          <div class="meta"><?= $t['date'] !== $today ? '<span>📅 ' . Security::e(formatDate($t['date'])) . '</span>' : '' ?><span>🚌 <?= Security::e($t['bus'] ?: 'no vehicle') ?></span><?= $t['driver'] !== '' ? '<span>👤 ' . Security::e($t['driver']) . ($t['driverPhone'] !== '' ? ' · <a href="tel:' . Security::e($t['driverPhone']) . '">' . Security::e($t['driverPhone']) . '</a>' : '') . '</span>' : '' ?><span>🎟 <?= $t['sold'] ?>/<?= $t['total'] ?></span><?= $t['delay'] > 0 ? '<span>⏱ +' . $t['delay'] . ' min</span>' : '' ?><?= $t['blocked'] ? '<span style="color:#8a1f1f">🚫 OFF</span>' : '' ?><?= $t['cancelled'] ? '<span style="color:#8a1f1f">❌ cancelled</span>' : '' ?></div>
-          <div class="acts"><a class="btn ghost" href="<?= $base ?>/admin/seatmap.php?sid=<?= $t['id'] ?>">🪑 Seats</a><a class="btn ghost" href="<?= $base ?>/admin/manifest.php?sid=<?= $t['id'] ?>&amp;date=<?= Security::e($t['date']) ?>">📋 Manifest</a><a class="btn ghost" href="<?= $base ?>/admin/trip-dashboard.php?sid=<?= $t['id'] ?>">📊 Trip</a><a class="btn ghost" href="<?= $base ?>/admin/chalan.php?sid=<?= $t['id'] ?>">🧾 Chalan</a></div>
+          <div class="t1">
+            <span class="time"><?= Security::e($t['time']) ?></span>
+            <span><?= Security::e($t['label']) ?></span>
+            <?= $t['slot'] > 1 ? '<span class="pill" style="background:#efeaff;color:#5a3fb0">Bus ' . $t['slot'] . '</span>' : '' ?>
+            <span class="pill" style="margin-left:auto;background:<?= Security::e($t['color']) ?>;color:#fff;border:1px solid <?= Security::e($t['color']) ?>"><?= Security::e($t['state'] ?: 'Scheduled') ?></span>
+          </div>
+          <div class="meta">
+            <?= $t['date'] !== $today ? '<span>📅 ' . Security::e(formatDate($t['date'])) . '</span>' : '' ?>
+            <span>🚌 <?= Security::e($t['bus'] ?: 'no vehicle') ?></span>
+            <?= $t['driver'] !== '' ? '<span>👤 ' . Security::e($t['driver']) . ($t['driverPhone'] !== '' ? ' · <a href="tel:' . Security::e($t['driverPhone']) . '">' . Security::e($t['driverPhone']) . '</a>' : '') . '</span>' : '' ?>
+            <span>🎟 <?= $t['sold'] ?>/<?= $t['total'] ?></span>
+            <?= $t['delay'] > 0 ? '<span>⏱ +' . $t['delay'] . ' min</span>' : '' ?>
+            <?= $t['blocked'] ? '<span style="color:#8a1f1f">🚫 OFF</span>' : '' ?>
+            <?= $t['cancelled'] ? '<span style="color:#8a1f1f">❌ cancelled</span>' : '' ?>
+          </div>
+          <div class="acts">
+            <a class="btn ghost" href="<?= $base ?>/admin/seatmap.php?sid=<?= $t['id'] ?>">🪑 Seats</a>
+            <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?sid=<?= $t['id'] ?>&amp;date=<?= Security::e($t['date']) ?>">📋 Manifest</a>
+            <a class="btn ghost" href="<?= $base ?>/admin/trip-dashboard.php?sid=<?= $t['id'] ?>">📊 Trip</a>
+            <a class="btn ghost" href="<?= $base ?>/admin/chalan.php?sid=<?= $t['id'] ?>">🧾 Chalan</a>
+          </div>
         </div>
         <?php endforeach; if ($shown === 0): ?><div class="muted" style="padding:14px">No departures today.</div><?php endif; ?>
       </div>
     </div>
-    <div class="lm-card"><h3>🛣️ Road line <small>for the customer map + ETA</small></h3>
+
+    <!-- CARD 5: ROAD LINE (VALHALLA POLYLINE6) -->
+    <div class="lm-card">
+      <h3>🛣️ Road line <small>for the customer map + ETA</small></h3>
       <?php if ($geoFlash !== null): ?><div class="flash <?= Security::e($geoFlash[0]) ?>" style="margin:10px 14px"><?= Security::e($geoFlash[1]) ?></div><?php endif; ?>
       <?php foreach ($routes as $r): $gi = $roadInfo[(int) $r['id']] ?? null; $missing = EtaAlerts::stopLine((int) $r['id'])['missing']; ?>
         <div class="lm-trip" style="cursor:default">
-          <div class="t1"><span><?= Security::e($r['from_city'] . ' → ' . $r['to_city']) ?></span>
-            <span class="pill" style="margin-left:auto"><?= $gi !== null ? 'v' . (int) $gi['version'] . ' · ' . number_format($gi['length_m'] / 1000, 0) . ' km' : 'not built' ?></span></div>
-          <div class="meta"><?= $gi !== null ? '<span>built ' . Security::e(date('j M H:i', (int) strtotime($gi['built_at']))) . '</span><span>' . Security::e($gi['source']) . '</span>' : '<span>The map and ETA use the straight line of stops.</span>' ?>
-            <?= $missing !== [] ? '<span style="color:#9a5b00">No coordinates: ' . Security::e(implode(', ', $missing)) . '</span>' : '' ?></div>
+          <div class="t1">
+            <span><?= Security::e($r['from_city'] . ' → ' . $r['to_city']) ?></span>
+            <span class="pill" style="margin-left:auto"><?= $gi !== null ? 'v' . (int) $gi['version'] . ' · ' . number_format($gi['length_m'] / 1000, 0) . ' km' : 'not built' ?></span>
+          </div>
+          <div class="meta">
+            <?= $gi !== null ? '<span>built ' . Security::e(date('j M H:i', (int) strtotime($gi['built_at']))) . '</span><span>' . Security::e($gi['source']) . '</span>' : '<span>The map and ETA use the straight line of stops.</span>' ?>
+            <?= $missing !== [] ? '<span style="color:#9a5b00">No coordinates: ' . Security::e(implode(', ', $missing)) . '</span>' : '' ?>
+          </div>
           <?php if (Auth::isSuperadmin()): ?>
             <form method="post" class="acts" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Building… (up to a minute)'">
               <?= Security::csrfField() ?><input type="hidden" name="action" value="build_road"><input type="hidden" name="route_id" value="<?= (int) $r['id'] ?>">
@@ -260,7 +446,10 @@ admin_header('Live Map', 'map');
       <?php endforeach; ?>
       <div class="muted" style="padding:8px 14px 12px;font-size:12px">Built by the route engine through the stops that have coordinates, in travel order. A pickup without coordinates is never guessed - add it in Routes, then rebuild.</div>
     </div>
-    <div class="lm-card"><h3>👥 <?= $paxScope !== null ? 'My passengers' : 'Passengers' ?> · यात्रु <small>by pickup · चढ्ने ठाउँ अनुसार</small></h3>
+
+    <!-- CARD 6: PASSENGERS BY PICKUP WITH LIVE ETA MINUTES -->
+    <div class="lm-card">
+      <h3>👥 <?= $paxScope !== null ? 'My passengers' : 'Passengers' ?> · यात्रु <small>by pickup · चढ्ने ठाउँ अनुसार</small></h3>
       <?php if ($paxTrips === []): ?>
         <div class="muted" style="padding:10px 14px"><?= $paxScope !== null ? 'You have no passengers on today&#39;s buses. · आजको बसमा तपाईंको यात्रु छैन।' : 'No passengers on today&#39;s buses yet.' ?></div>
       <?php endif; ?>
@@ -268,14 +457,21 @@ admin_header('Live Map', 'map');
         <div class="lm-pax-trip"><b><?= Security::e($t['time']) ?> · <?= Security::e($t['label']) ?></b></div>
         <?php foreach ($pt['groups'] as $g): ?>
           <details class="lm-pax">
-            <summary><span class="lm-pax-stop">📍 <?= Security::e($g['stop']) ?></span>
+            <summary>
+              <span class="lm-pax-stop">📍 <?= Security::e($g['stop']) ?></span>
               <span class="lm-pax-n"><?= (int) $g['seats'] ?> seat<?= (int) $g['seats'] === 1 ? '' : 's' ?></span>
-              <?php if ($g['eta'] !== null): ?><span class="lm-pax-eta">🚌 ~<?= (int) (ceil($g['eta'] / 5) * 5) ?> min</span><?php endif; ?></summary>
+              <?php if ($g['eta'] !== null): ?><span class="lm-pax-eta">🚌 ~<?= (int) (ceil($g['eta'] / 5) * 5) ?> min</span><?php endif; ?>
+            </summary>
             <?php if ($paxNames): foreach ($g['pax'] as $p):
               $tel = (string) preg_replace('/\D/', '', (string) $p['contact_phone']);
               $wa  = ($tel !== '' && preg_match('/^0+$/', $tel) !== 1) ? (strlen($tel) === 10 ? '91' . $tel : $tel) : ''; ?>
-              <div class="lm-pax-row"><span><?= Security::e((string) ($p['name'] ?: '—')) ?> <small class="muted"><?= Security::e((string) $p['pnr']) ?></small></span>
-                <?php if ($wa !== ''): ?><a class="lm-call" href="tel:+<?= Security::e($wa) ?>" aria-label="Call">📞</a><a class="lm-wa" href="https://wa.me/<?= Security::e($wa) ?>" target="_blank" rel="noopener" aria-label="WhatsApp">💬</a><?php endif; ?></div>
+              <div class="lm-pax-row">
+                <span><?= Security::e((string) ($p['name'] ?: '—')) ?> <small class="muted"><?= Security::e((string) $p['pnr']) ?></small></span>
+                <?php if ($wa !== ''): ?>
+                  <a class="lm-call" href="tel:+<?= Security::e($wa) ?>" aria-label="Call">📞</a>
+                  <a class="lm-wa" href="https://wa.me/<?= Security::e($wa) ?>" target="_blank" rel="noopener" aria-label="WhatsApp">💬</a>
+                <?php endif; ?>
+              </div>
             <?php endforeach; endif; ?>
           </details>
         <?php endforeach; ?>
@@ -314,7 +510,7 @@ window.ADMAP = {
   function draw(){
     A.routes.forEach(function(r, i){
       var pts = r.stops.filter(function(s){ return s.type === 'boarding'; }).concat(r.stops.filter(function(s){ return s.type === 'drop'; }));
-      var coords = r.road ? decode6(r.road) : pts.map(function(s){ return [s.lng, s.lat]; });   // 20 Oct 2026: the stored road line when built
+      var coords = r.road ? decode6(r.road) : pts.map(function(s){ return [s.lng, s.lat]; });
       if (coords.length < 2) return;
       var color = i === 0 ? '#2E5FA8' : '#0a6b3b';
       map.addSource('r' + r.id, { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: coords } } });
@@ -371,8 +567,6 @@ window.ADMAP = {
       showBus(v);
     }).catch(function(){});
   }
-  /* 🛰️ Every coach the driver app runs (20 Oct 2026): its own marker,
-     gliding to each new fix; grey and "last seen" once the fix is stale. */
   var fleet = {};
   function glide(f){
     f.anim = null;
@@ -422,7 +616,6 @@ window.ADMAP = {
   document.getElementById('lmFollow').onclick = function(){ follow = !follow; this.classList.toggle('on', follow); this.textContent = follow ? '🎯 Following bus' : '🎯 Follow bus'; if (follow && busTarget) map.easeTo({ center: [busTarget.lng, busTarget.lat], zoom: Math.max(map.getZoom(), 12), duration: 900 }); };
   document.getElementById('lmFit').onclick = function(){ var b = bounds(); if (b) map.fitBounds(b, { padding: 48, duration: 900 }); };
   document.querySelectorAll('.lm-trip').forEach(function(el){ el.addEventListener('click', function(e){ if (e.target.closest('a')) return; var r = A.routes.find(function(x){ return x.code === el.dataset.code; }); if (!r || !r.stops.length || !map) return; var b = null; r.stops.forEach(function(s){ if (!b) b = new maplibregl.LngLatBounds([s.lng, s.lat], [s.lng, s.lat]); else b.extend([s.lng, s.lat]); }); map.fitBounds(b, { padding: 48, duration: 900 }); }); });
-  /* the list does not wait for the map: a slow tile server must not hide the buses */
   pollFleet(); setInterval(pollFleet, 10000);
   loadLib().then(function(){
     try {
@@ -436,10 +629,296 @@ window.ADMAP = {
       window.SHG_GPS_MAP = map; document.dispatchEvent(new Event('shg:admin-map-ready'));
       var b = bounds(); if (b) map.fitBounds(b, { padding: 48, duration: 0 });
       poll(); setInterval(poll, 15000);
-      pollFleet();   // draw the markers now the map is ready
+      pollFleet();
     });
   }).catch(function(){ document.getElementById('lmLoad').textContent = 'Map library could not be loaded — check the connection.'; });
 })();
 </script>
-<script src="/assets/nav/gps-admin.js?v=20261025gps6" defer></script>
+<script src="/assets/nav/gps-admin.js?v=20261025gps2" defer></script>
+
+<!-- =====================================================================
+     TAB 2: BOARDING & DROP POINTS MANAGER
+     ===================================================================== -->
+<?php elseif ($mapTab === 'boarding'): ?>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+  <div style="font-size:13.5px;color:var(--mut)">
+    Manage Gujarat &amp; Nepal pickup stops, timings, fare adjustments, and customs border checkpoints.
+  </div>
+  <button type="button" class="btn ok" onclick="document.getElementById('addStopModal').hidden=false">
+    + Add New Boarding / Waypoint
+  </button>
+</div>
+<div class="dt-wrap">
+  <table class="dt no-card">
+    <thead><tr>
+      <th>#</th><th>Route</th><th>Stop Type</th><th>Boarding / Drop Point</th><th>Departure Time</th><th>Standard Fare</th><th>Landmark</th><th>Border Check</th><th>Action</th>
+    </tr></thead>
+    <tbody>
+      <?php foreach ($allStops as $st): ?>
+        <tr>
+          <td class="num"><b>#<?= (int)$st['id'] ?></b></td>
+          <td><b><?= Security::e($st['route_code']) ?></b> <span class="muted" style="font-size:11px">(<?= Security::e($st['from_city'] . ' → ' . $st['to_city']) ?>)</span></td>
+          <td><span class="pill" style="background:<?= $st['stop_type'] === 'boarding' ? '#d7f4e3;color:#0a6b3b' : '#fee2e2;color:#991b1b' ?>"><?= ucfirst((string)$st['stop_type']) ?></span></td>
+          <td><b><?= Security::e($st['stop_name']) ?></b></td>
+          <td class="mono"><b><?= $st['stop_time'] ? substr((string)$st['stop_time'], 0, 5) : '<span class="muted">—</span>' ?></b></td>
+          <td class="num"><b><?= (float)$st['fare'] > 0 ? '₹' . number_format((float)$st['fare']) : '<span class="muted">Default</span>' ?></b></td>
+          <td><?= !empty($st['landmark']) ? Security::e($st['landmark']) : '<span class="muted">—</span>' ?></td>
+          <td><?= (int)$st['is_border'] === 1 ? '<span class="pill" style="background:#fef3c7;color:#92400e">🛃 Border Point</span>' : '<span class="muted">—</span>' ?></td>
+          <td>
+            <button type="button" class="btn ghost" onclick="openStopModal(<?= (int)$st['id'] ?>, '<?= Security::e(addslashes($st['stop_name'])) ?>', '<?= substr((string)($st['stop_time'] ?? ''), 0, 5) ?>', <?= (float)($st['fare'] ?? 0) ?>, '<?= Security::e(addslashes($st['landmark'] ?? '')) ?>')">✏️ Edit</button>
+          </td>
+        </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>
+
+<!-- STOP EDIT MODAL -->
+<div class="id-preview-modal" id="stopEditModal" hidden onclick="if(event.target===this)this.hidden=true">
+  <div class="id-preview-box" style="max-width:440px">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px">
+      <h3 style="margin:0;font-size:16px;color:#0d3b66">📍 Edit Boarding Point</h3>
+      <button type="button" class="btn ghost" onclick="document.getElementById('stopEditModal').hidden=true">&times;</button>
+    </div>
+    <form method="post">
+      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="update_stop"><input type="hidden" name="stop_id" id="editStopId">
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+        <div>Stop: <b id="editStopName"></b></div>
+        <label>Scheduled Departure Time (HH:MM)
+          <input type="time" name="stop_time" id="editStopTime" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+        </label>
+        <label>Fare from / to this point (₹)
+          <input type="number" step="50" min="0" name="fare" id="editStopFare" placeholder="Leave 0 for default route fare" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+        </label>
+        <label>Landmark / Meeting Spot
+          <input type="text" name="landmark" id="editStopLandmark" placeholder="e.g. Near Char Rasta Petrol Pump" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+        </label>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">
+          <button type="button" class="btn ghost" onclick="document.getElementById('stopEditModal').hidden=true">Cancel</button>
+          <button type="submit" class="btn ok">💾 Save Stop Details</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ADD NEW STOP MODAL -->
+<div class="id-preview-modal" id="addStopModal" hidden onclick="if(event.target===this)this.hidden=true">
+  <div class="id-preview-box" style="max-width:480px">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px">
+      <h3 style="margin:0;font-size:16px;color:#0d3b66">📍 Add New Boarding / Waypoint Stop</h3>
+      <button type="button" class="btn ghost" onclick="document.getElementById('addStopModal').hidden=true">&times;</button>
+    </div>
+    <form method="post">
+      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="add_stop">
+      <div style="display:flex;flex-direction:column;gap:11px;font-size:13px">
+        <label>Route
+          <select name="route_id" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+            <?php foreach ($routes as $r): ?>
+              <option value="<?= (int)$r['id'] ?>"><?= Security::e($r['route_code'] . ' (' . $r['from_city'] . ' → ' . $r['to_city'] . ')') ?></option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+        <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:8px">
+          <label>Stop / Station Name *
+            <input type="text" name="stop_name" required placeholder="e.g. Anand Toll Plaza" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+          </label>
+          <label>Stop Type
+            <select name="stop_type" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+              <option value="boarding">Boarding</option>
+              <option value="drop">Drop Off</option>
+              <option value="checkpoint">Transit / Meal Checkpoint</option>
+            </select>
+          </label>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label>Scheduled Time (HH:MM)
+            <input type="time" name="stop_time" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+          </label>
+          <label>Special Fare (₹)
+            <input type="number" step="50" min="0" name="fare" placeholder="0 = default" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+          </label>
+        </div>
+        <label>Landmark / Specific Pickup Point
+          <input type="text" name="landmark" placeholder="e.g. Under flyover bridge opposite hotel" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+        </label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label>Latitude (Optional GPS)
+            <input type="number" step="0.0001" name="latitude" placeholder="e.g. 22.5645" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+          </label>
+          <label>Longitude (Optional GPS)
+            <input type="number" step="0.0001" name="longitude" placeholder="e.g. 72.9289" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+          </label>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:4px;cursor:pointer">
+          <input type="checkbox" name="is_border" value="1" style="width:16px;height:16px">
+          <span>This is an official India-Nepal customs / border checkpoint</span>
+        </label>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+          <button type="button" class="btn ghost" onclick="document.getElementById('addStopModal').hidden=true">Cancel</button>
+          <button type="submit" class="btn ok">✓ Add Waypoint Stop</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openStopModal(id, name, time, fare, landmark) {
+  document.getElementById('editStopId').value = id;
+  document.getElementById('editStopName').textContent = name;
+  document.getElementById('editStopTime').value = time || '';
+  document.getElementById('editStopFare').value = fare || '';
+  document.getElementById('editStopLandmark').value = landmark || '';
+  document.getElementById('stopEditModal').hidden = false;
+}
+</script>
+
+<!-- =====================================================================
+     TAB 3: LIVE STATUS DISPATCHER & PASSENGER WHATSAPP SHARE
+     ===================================================================== -->
+<?php elseif ($mapTab === 'status_dispatch'): ?>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+  
+  <!-- QUICK STATUS UPDATE CARD -->
+  <div style="background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:18px">
+    <h3 style="margin:0 0 14px;font-size:16px;color:#0d3b66;display:flex;align-items:center;gap:8px">📡 Quick Status Dispatcher</h3>
+    <form method="post">
+      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="update_live_status">
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+        <label>Select Today's Active Bus / Trip
+          <select name="schedule_id" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+            <?php foreach ($jsTrips as $jt): ?>
+              <option value="<?= (int)$jt['id'] ?>"><?= Security::e($jt['label']) ?> (<?= Security::e($jt['bus']) ?>) &bull; <?= Security::e($jt['time']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+
+        <div style="font-weight:700;color:#334155;margin-top:4px">1-Tap Status Dispatch:</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button type="submit" name="live_state" value="on_time" class="btn ok" style="padding:10px;font-size:12px">🟢 On Time (समयमै)</button>
+          <button type="submit" name="live_state" value="border_crossed" class="btn" style="background:#0d3b66;color:#fff;padding:10px;font-size:12px">🛃 Crossed Border</button>
+          <button type="submit" name="live_state" value="at_station" class="btn ghost" style="padding:10px;font-size:12px">📍 At Boarding Station</button>
+          <button type="submit" name="live_state" value="delayed" class="btn danger" style="padding:10px;font-size:12px">⏱ Delayed (ढिलाइ)</button>
+        </div>
+
+        <label>Current Stop / Location Milestone
+          <input type="text" name="current_stop" placeholder="e.g. Surat Kamrej Boarding or Crossed Rupaidiha Checkpoint" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+        </label>
+        <label>Delay in Minutes (if delayed)
+          <input type="number" name="delay_minutes" value="0" min="0" step="15" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+        </label>
+        <label>Status Announcement Note
+          <input type="text" name="status_note" placeholder="e.g. Heavy traffic near Godhra, tea halt for 20 mins" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+        </label>
+        <button type="submit" class="btn ok" style="margin-top:6px;padding:10px;font-weight:700">✓ Broadcast Live Status</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- PASSENGER WHATSAPP SHARE GENERATOR -->
+  <div style="background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:18px">
+    <h3 style="margin:0 0 14px;font-size:16px;color:#0d3b66;display:flex;align-items:center;gap:8px">📲 1-Tap Passenger WhatsApp Share</h3>
+    <p style="font-size:13px;color:var(--mut);margin-top:0">Send real-time SHARI NAV live bus tracking and border checklist link to passengers via WhatsApp with 1 tap.</p>
+
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+      <label>Passenger Mobile (10 digits)
+        <input type="tel" id="waPaxPhone" placeholder="e.g. 9812345678" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+      </label>
+      <label>Select Active Trip
+        <select id="waTripSel" onchange="updateWaMsg()" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+          <?php foreach ($jsTrips as $jt): ?>
+            <option value="<?= Security::e($jt['label']) ?>" data-bus="<?= Security::e($jt['bus']) ?>" data-time="<?= Security::e($jt['time']) ?>" data-state="<?= Security::e($jt['state']) ?>">
+              <?= Security::e($jt['label']) ?> (<?= Security::e($jt['bus']) ?>)
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+
+      <label>Generated WhatsApp Message Preview:
+        <textarea id="waPreviewText" rows="6" readonly style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--line);background:#f8fafc;font-family:monospace;font-size:12px"></textarea>
+      </label>
+
+      <a id="btnSendWaLive" href="#" target="_blank" class="btn ok" style="padding:10px;text-align:center;font-weight:700;text-decoration:none;background:#25d366;color:#fff">
+        💬 Open WhatsApp &amp; Send Live Tracker
+      </a>
+    </div>
+  </div>
+
+</div>
+
+<!-- TODAY'S BOOKED PASSENGERS LIST -->
+<div style="background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:18px;margin-top:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <h3 style="margin:0;font-size:16px;color:#0d3b66;display:flex;align-items:center;gap:8px">
+      👥 Today's Booked Passengers (1-Tap WhatsApp Radar Dispatch)
+    </h3>
+    <span class="muted" style="font-size:12.5px"><?= count($todayPaxBookings) ?> Passenger(s) Booked Today</span>
+  </div>
+  <?php if ($todayPaxBookings === []): ?>
+    <p class="muted" style="margin:0;font-size:13px">No passengers booked for today's outbound trips yet.</p>
+  <?php else: ?>
+    <div style="overflow-x:auto">
+      <table class="dt" style="width:100%;font-size:12.5px">
+        <thead><tr>
+          <th>PNR</th><th>Passenger Name</th><th>Mobile</th><th>Journey</th><th>Boarding Point</th><th>Seats</th><th>1-Tap Radar WA</th>
+        </tr></thead>
+        <tbody>
+          <?php foreach ($todayPaxBookings as $pb): 
+            $pDigits = preg_replace('/\D/', '', (string)$pb['contact_phone']);
+            if (strlen($pDigits) === 10) { $pDigits = '91' . $pDigits; }
+            $pWaText = "Namaste " . ($pb['pax_name'] ?: 'Passenger') . "! S Hari Global Pvt Ltd Live Bus Tracking:\n"
+                     . "PNR: " . $pb['pnr'] . " (Seats: " . ($pb['seats'] ?: '—') . ")\n"
+                     . "Trip: " . $pb['from_city'] . " -> " . $pb['to_city'] . "\n"
+                     . "Boarding Point: " . ($pb['boarding_stop'] ?: 'Main Station') . "\n"
+                     . "Track Live Radar: https://www.shreehariglobal.in/#/tracking\n"
+                     . "Please carry Aadhaar / Nepal Nagrikta ID for Rupaidiha customs border.\n"
+                     . "Shubha Yatra!";
+            $pWaLink = "https://wa.me/" . $pDigits . "?text=" . urlencode($pWaText);
+          ?>
+            <tr>
+              <td class="mono"><b><a href="/admin/booking-view.php?pnr=<?= urlencode((string)$pb['pnr']) ?>"><?= Security::e($pb['pnr']) ?></a></b></td>
+              <td><b><?= Security::e($pb['pax_name'] ?: 'Passenger') ?></b></td>
+              <td class="mono"><?= Security::e($pb['contact_phone']) ?></td>
+              <td><?= Security::e($pb['from_city'] . ' → ' . $pb['to_city']) ?></td>
+              <td><span class="pill" style="background:#e0f2fe;color:#0369a1"><?= Security::e($pb['boarding_stop'] ?: 'Main Station') ?></span></td>
+              <td class="mono"><b><?= Security::e($pb['seats'] ?: '—') ?></b></td>
+              <td>
+                <a href="<?= $pWaLink ?>" target="_blank" rel="noopener" class="btn" style="background:#25d366;color:#fff;font-size:11px;padding:3px 8px;border-radius:6px;text-decoration:none;font-weight:700">📲 Send Radar Link</a>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  <?php endif; ?>
+</div>
+
+<script>
+function updateWaMsg() {
+  var sel = document.getElementById('waTripSel');
+  var opt = sel.options[sel.selectedIndex];
+  var trip = opt ? opt.value : 'Gujarat <-> Nepal Direct';
+  var bus = opt ? opt.getAttribute('data-bus') : 'S Hari AC Sleeper';
+  var time = opt ? opt.getAttribute('data-time') : '';
+  var state = opt ? opt.getAttribute('data-state') : 'Running On Time';
+  var phone = (document.getElementById('waPaxPhone').value || '').replace(/\D/g, '');
+  if (phone.length === 10) phone = '91' + phone;
+
+  var msg = "Namaste! S Hari Global Pvt Ltd (SHARI NAV Live Tracking):\n"
+          + "Trip: " + trip + "\n"
+          + "Bus: " + bus + (time ? " (" + time + ")" : "") + "\n"
+          + "Status: " + state + "\n"
+          + "Live GPS Map Link: https://www.shreehariglobal.in/#/tracking\n"
+          + "Border Note: Please carry original Aadhaar / Nepal Nagrikta ID.\n"
+          + "Shubha Yatra!";
+
+  document.getElementById('waPreviewText').value = msg;
+  document.getElementById('btnSendWaLive').href = 'https://wa.me/' + (phone || '') + '?text=' + encodeURIComponent(msg);
+}
+document.getElementById('waPaxPhone').addEventListener('input', updateWaMsg);
+updateWaMsg();
+</script>
+<?php endif; ?>
+
 <?php admin_footer(); ?>

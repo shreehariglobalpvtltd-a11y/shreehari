@@ -29,4 +29,3 @@ output/
 # Editor / hot-fix backups — never tracked, never deployed (nginx already 404s *.bak)
 *.bak
 *.bak.*
-.env

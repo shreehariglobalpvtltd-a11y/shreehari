@@ -30,66 +30,13 @@ require_once INCLUDE_PATH . '/notify.php';
 require_once INCLUDE_PATH . '/tripnotify.php';
 require_once INCLUDE_PATH . '/agentwallet.php';
 require_once INCLUDE_PATH . '/reportpdf.php';
-require_once INCLUDE_PATH . '/livesync.php';
-require_once INCLUDE_PATH . '/brand.php';      // emblem + SVG India / Nepal flags (9 Oct 2026)
-require_once INCLUDE_PATH . '/staffmsg.php';   // Office chat: admin <-> agent / counter (9 Oct 2026)
 
 /**
  * Require a signed-in admin (optionally with a permission) and return them.
  */
 function admin_boot(string $permission = ''): array
 {
-    $admin = Auth::requireAdmin($permission);
-    admin_once_guard();
-    return $admin;
-}
-
-/**
- * One form submission = one save (Oct 2026). admin_save_guard_js() stamps every
- * POST form with a one-time token (_once). If the SAME token arrives again — a
- * double tap, a browser refresh that re-posts, a retry on a slow line — the
- * repeat is not processed: the admin is sent back to the page (GET, ?dup=1),
- * which shows the state the first submission produced and a short note. So a
- * repeated tap can never create a second ticket, payment or ledger entry.
- * Forms posted without a token (API clients, tests, old cached pages) are
- * handled exactly as before.
- */
-function admin_once_guard(): void
-{
-    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        return;
-    }
-    // JSON / AJAX callers (the paper-ticket outbox, fetch() saves) expect a JSON
-    // answer and keep their own duplicate checks — never redirect them.
-    if (($_POST['ajax'] ?? '') === '1'
-        || stripos((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json') !== false
-        || strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest') {
-        return;
-    }
-    $n = (string) ($_POST['_once'] ?? '');
-    if ($n === '' || preg_match('/^[A-Za-z0-9]{16,48}$/', $n) !== 1 || session_status() !== PHP_SESSION_ACTIVE) {
-        return;
-    }
-    $seen = $_SESSION['shg_once'] ?? [];
-    if (!is_array($seen)) {
-        $seen = [];
-    }
-    if (isset($seen[$n])) {
-        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/admin/');
-        if (!str_starts_with($uri, '/')) {
-            $uri = '/admin/';
-        }
-        $uri = preg_replace('/([?&])dup=1(&|$)/', '$1', $uri) ?? $uri;
-        $uri = rtrim($uri, '?&');
-        header('Location: ' . $uri . (str_contains($uri, '?') ? '&' : '?') . 'dup=1', true, 303);
-        exit;
-    }
-    $seen[$n] = time();
-    if (count($seen) > 300) {
-        asort($seen);
-        $seen = array_slice($seen, -200, null, true);
-    }
-    $_SESSION['shg_once'] = $seen;
+    return Auth::requireAdmin($permission);
 }
 
 /**
@@ -115,209 +62,61 @@ function admin_nav(): array
 {
     $agentView = Auth::isCounterAgent();
 
-    // Oct 2026 redesign: eight areas, in the order the day's work runs —
-    // Dashboard · Bookings & tickets · Seat management · Trips, buses & chalani ·
-    // Agents & counters · Ledger & payments · Expenses & reports · Settings.
-    // Every link, label and permission gate is exactly as before; only the
-    // group each item lives under changed, so every bookmark still resolves.
-    // (5 Sep 2026 grouping: Tickets · Agents · Customers · Buses · Routes ·
-    // Payments · Reports · Settings · Map.)
+    // Unified 3-Pillar Category Navigation (Org & Agent Hub, Ticketing & Bus Control, SHARI NAV Map, Finance & System)
     $all = [
-        ['href' => 'index.php',        'icon' => 'dashboard', 'label' => 'Dashboard',        'perm' => 'dashboard.view', 'section' => ''],
+        ['href' => 'index.php',        'icon' => 'dashboard', 'label' => 'Dashboard Overview', 'perm' => 'dashboard.view', 'section' => ''],
 
-        // Tickets — everything that is, or becomes, a ticket.
-        ['href' => 'bookings.php',     'icon' => 'ticket',    'label' => $agentView ? 'My Tickets' : 'Tickets', 'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
-        // 3 Sep 2026: "+ New Booking" opens the customer app in COUNTER MODE —
-        // the same seat map + checkout customers use, with the staff session
-        // recognised (see assets/js/14-counter.js). Root-relative so it stays
-        // on the host the staff signed in on (.in or the .network door).
-        // new-booking.php now redirects there (?legacy=1 keeps the old form).
-        // 15 Oct 2026 (SmartBook v5): the one-screen booking card in the staff's own mode (agent / counter / admin).
-        ['href' => 'smartbook.php',    'icon' => 'ticket',     'label' => '⚡ SmartBook',       'perm' => 'bookings.view', 'section' => 'Bookings & tickets', 'hot' => true],
-        ['href' => 'smart-rules.php',  'icon' => 'cog',        'label' => 'SmartBook rules',   'perm' => 'dashboard.view', 'section' => 'Settings'],
-        // 15 Oct 2026 (owner: "new booking remove gardeu, euta matra book"): SmartBook is
-        // THE booking screen. "+ New Booking" (counter-mode app) and QuickBot Ticket left the
-        // menu; both URLs still work for a bookmark, new-booking.php lands on SmartBook.
-        // 6 Sep 2026: ⚡ Quick Ticket — name + mobile → the server picks the
-        // bus, pickup, seat and fare → confirmed sale → PNG ticket → WhatsApp.
-        // Flagged `hot` so every desk finds it at a glance (see $renderLink).
-        // 9 Oct 2026: Office chat - the office and every agent / counter talk about
-        // a ticket inside the panel (photos, voice notes, call buttons, push).
-        // Near the top so an agent's flat strip shows it early; the office files
-        // it under Agents & counters ($secMap). Hidden when the chat tables are
-        // not installed or the role is neither office nor field.
-        ['href' => 'staff-chat.php',   'icon' => 'msg',       'label' => StaffMsg::isField() ? '💬 Office chat' : '💬 Agent chat', 'perm' => 'bookings.view', 'section' => 'Agents & counters', 'hot' => true],
-        ['href' => 'offline-requests.php', 'icon' => 'notepad', 'label' => 'Offline Desk',     'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
-        ['href' => 'passengers.php',   'icon' => 'id-card',   'label' => 'Passengers',         'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
-        ['href' => 'scan.php',         'icon' => 'scan',    'label' => 'Scan Ticket',      'perm' => 'tickets.scan',   'section' => 'Bookings & tickets'],
+        // PILLAR 1: Organization & Agent Hub (4-Tier Hierarchy & Digital Forms)
+        ['href' => 'team.php',         'icon' => 'user-cog',  'label' => 'Team & Approvals (KYC)', 'perm' => 'staff.manage',    'section' => '1. Org & Agent Hub'],
+        ['href' => 'agents.php',       'icon' => 'user-cog',  'label' => '4-Tier Entity Register', 'perm' => 'commissions.view', 'section' => '1. Org & Agent Hub'],
+        ['href' => 'agent.php',        'icon' => 'ticket-alt', 'label' => $agentView ? 'My Agent Dashboard' : 'Master & Sub-Agent Portal', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => '1. Org & Agent Hub'],
+        ['href' => 'company.php',      'icon' => 'building',  'label' => 'Pvt Ltd & Branches',     'perm' => 'dashboard.view',   'section' => '1. Org & Agent Hub'],
+        ['href' => 'staff.php',        'icon' => 'users',      'label' => 'Staff Directory',        'perm' => 'staff.manage',     'section' => '1. Org & Agent Hub'],
+        ['href' => 'agent-sales.php',  'icon' => 'doc',        'label' => $agentView ? 'My Sales' : 'Agent Sales',        'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => '1. Org & Agent Hub'],
+        ['href' => 'agent-passengers.php','icon' => 'user-solo','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => '1. Org & Agent Hub'],
+        ['href' => 'agent-offline.php','icon' => 'notepad',   'label' => 'Offline / Paper Tickets','perm' => $agentView ? 'bookings.view' : 'commissions.view',  'section' => '1. Org & Agent Hub'],
+        ['href' => 'agent-ranking.php','icon' => 'trophy',    'label' => 'Agent Rankings',         'perm' => 'dashboard.view',   'section' => '1. Org & Agent Hub'],
 
-        // Customers — leads and the people who travelled. An agent's own
-        // bookings are scoped by sold_by_admin_id, but an unclaimed lead has
-        // no seller so it belongs to the office.
-        ['href' => 'customers.php',    'icon' => 'user',     'label' => 'Customers',        'perm' => 'customers.view', 'section' => 'Bookings & tickets'],
-        // 3 Oct 2026: date-wise ledger of every booking by customer, and the
-        // duplicate finder (same person on two numbers / spelling variants).
-        // Office pages — both refuse a counter agent's session.
-        ['href' => 'customer-ledger.php', 'icon' => 'notepad', 'label' => 'Customer Ledger', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
-        // 5 Oct 2026: every number in one place (date / agent filters, export)
-        // and campaigns to a list (WhatsApp template, one-tap, SMS).
-        ['href' => 'customer-directory.php', 'icon' => 'users', 'label' => '📇 All Customers & Numbers', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
-        // 5 Oct 2026: any message to any India / Nepal number, one by one, on AiSensy.
-        ['href' => 'wa-compose.php',   'icon' => 'send',      'label' => '💬 WhatsApp message', 'perm' => $agentView ? '__superadmin_only__' : 'marketing.send', 'section' => 'Bookings & tickets'],
-        ['href' => 'campaigns.php',    'icon' => 'send',      'label' => '📣 Campaigns',       'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
-        ['href' => 'customer-duplicates.php', 'icon' => 'users', 'label' => 'Duplicate customers', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
-        ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Enquiries',        'perm' => 'customers.view', 'section' => 'Bookings & tickets'],
-        // 24 Sep 2026: requests the WhatsApp assistant handed to people (SUP-…).
-        // 5 Oct 2026: the Help Desk — every customer problem, numbered HD-0051.
-        ['href' => 'support-inbox.php','icon' => 'msg',       'label' => '🛟 Help Desk',      'perm' => 'support.view',   'section' => 'Bookings & tickets'],
-        ['href' => 'wa-pending.php',   'icon' => 'msg',       'label' => 'Tickets to hand over','perm'=> 'bookings.view',  'section' => 'Bookings & tickets'],
-        ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat Map',         'perm' => 'schedules.view', 'section' => 'Seat management'],
-        ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Passenger Manifest', 'perm' => 'bookings.view', 'section' => 'Seat management'],
-        // 8 Oct 2026: balcony / front-cabin passengers EX1..EX20 — sold, counted, settled.
-        ['href' => 'extra-seats.php',  'icon' => 'seat',      'label' => '➕ Extra seats',     'perm' => 'bookings.view', 'section' => 'Seat management'],
-        // 17 Sep 2026: every departure document on one hub (PDF / PNG / WhatsApp).
-        ['href' => 'chalan.php',       'icon' => 'doc',       'label' => 'Bus Chalan',         'perm' => 'bookings.view', 'section' => 'Trips, buses & chalani'],
+        // PILLAR 2: Ticketing & Bus Operations
+        ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket (10s)', 'perm' => 'bookings.view', 'section' => '2. Ticketing & Bus Control', 'hot' => true],
+        ['href' => 'bookings.php',     'icon' => 'ticket',    'label' => $agentView ? 'My Tickets' : 'Tickets Register', 'perm' => 'bookings.view', 'section' => '2. Ticketing & Bus Control'],
+        ['href' => '/index.php?counter=1#/', 'icon' => 'plus', 'label' => '+ Counter Booking', 'perm' => 'bookings.view', 'section' => '2. Ticketing & Bus Control'],
+        ['href' => 'buses.php',        'icon' => 'bus',       'label' => 'Bus Fleet (AC Sleeper)', 'perm' => 'schedules.view', 'section' => '2. Ticketing & Bus Control'],
+        ['href' => 'schedule.php',     'icon' => 'calendar-plus','label' => 'Schedule & Departure Manager','perm' => 'schedules.manage','section' => '2. Ticketing & Bus Control'],
+        ['href' => 'trips.php',        'icon' => 'clock',     'label' => 'Trips Board',           'perm' => 'schedules.view',   'section' => '2. Ticketing & Bus Control'],
+        ['href' => 'trip-dashboard.php','icon' => 'calendar', 'label' => 'Daily Trip View',       'perm' => 'schedules.view',   'section' => '2. Ticketing & Bus Control'],
+        ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat / Berth Layout Map','perm' => 'schedules.view',  'section' => '2. Ticketing & Bus Control'],
+        ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Manifest & Chalani',    'perm' => 'bookings.view',   'section' => '2. Ticketing & Bus Control'],
+        ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments (UPI/eSewa)', 'perm' => 'payments.view', 'section' => '2. Ticketing & Bus Control'],
+        ['href' => 'refunds.php',      'icon' => 'refund',    'label' => 'Refunds & Cancellations','perm' => 'refunds.view',    'section' => '2. Ticketing & Bus Control'],
+        ['href' => 'scan.php',         'icon' => 'camera',    'label' => 'Scan Boarding QR',      'perm' => 'tickets.scan',     'section' => '2. Ticketing & Bus Control'],
 
-        // Buses — fleet, the day-by-day schedule and the crew.
-        ['href' => 'calendar.php',     'icon' => 'calendar',  'label' => 'Bus Calendar',     'perm' => 'schedules.manage','section' => 'Trips, buses & chalani'],
-        ['href' => 'buses.php',        'icon' => 'bus',       'label' => 'Bus Fleet',        'perm' => 'schedules.view', 'section' => 'Trips, buses & chalani'],
-        ['href' => 'schedule.php',     'icon' => 'calendar-plus','label' => 'Schedule Manager','perm' => 'schedules.manage','section' => 'Trips, buses & chalani'],
-        ['href' => 'trips.php',        'icon' => 'clock',     'label' => 'Trips Board',      'perm' => 'schedules.view', 'section' => 'Trips, buses & chalani'],
-        ['href' => 'trip-dashboard.php','icon' => 'grid', 'label' => 'Date View',        'perm' => 'schedules.view', 'section' => 'Trips, buses & chalani'],
-        ['href' => 'drivers.php',      'icon' => 'user-solo', 'label' => 'Drivers & Crew',   'perm' => 'drivers.view',   'section' => 'Trips, buses & chalani'],
-        // 22 Oct 2026: a phone (Traccar Client) or a GPS box tracks a bus by its number.
-        ['href' => 'gps-center.php', 'icon' => 'map-pin',   'label' => '📡 Bus GPS & Simulation',  'perm' => 'buses.view',     'section' => 'Trips, buses & chalani'],
-        // 22 Oct 2026: drivers, conductors, helpers and office staff who applied online (/agreements/staff.html).
-        ['href' => 'staff-applications.php', 'icon' => 'id-card', 'label' => '🧑‍✈️ Staff applications', 'perm' => $agentView ? '__superadmin_only__' : 'drivers.view', 'section' => 'Trips, buses & chalani'],
+        // PILLAR 3: Global Map & Route Tracking (SHARI NAV)
+        ['href' => 'map.php',          'icon' => 'road',      'label' => 'SHARI NAV Live Bus Radar', 'perm' => 'schedules.view', 'section' => '3. SHARI NAV (Global Map)'],
+        ['href' => 'gps-trackers.php', 'icon' => 'road',      'label' => '🛰️ Bus GPS Trackers',     'perm' => 'schedules.manage','section' => '3. SHARI NAV (Global Map)'],
+        ['href' => 'gps-center.php',   'icon' => 'cog',       'label' => '🧭 GPS Control Center',     'perm' => 'schedules.manage','section' => '3. SHARI NAV (Global Map)'],
+        ['href' => '/navigate.html',   'icon' => 'road',      'label' => '🚌 Passenger Live Radar Map','perm' => 'schedules.view', 'section' => '3. SHARI NAV (Global Map)'],
+        ['href' => 'routes.php',       'icon' => 'road',      'label' => 'Route Stops & Boarding',   'perm' => 'routes.view',    'section' => '3. SHARI NAV (Global Map)'],
+        ['href' => 'calendar.php',     'icon' => 'calendar',  'label' => 'Bus Calendar',             'perm' => 'schedules.manage', 'section' => '3. SHARI NAV (Global Map)'],
+        ['href' => 'drivers.php',      'icon' => 'user-solo', 'label' => 'Drivers & Bus Crew',       'perm' => 'drivers.view',    'section' => '3. SHARI NAV (Global Map)'],
 
-        // Routes
-        ['href' => 'routes.php',       'icon' => 'route',      'label' => 'Routes',           'perm' => 'routes.view',    'section' => 'Trips, buses & chalani'],
-
-        // Map — routes, stops, head office and the driver's live position (5 Sep 2026).
-        ['href' => 'map.php',          'icon' => 'map-pin',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Trips, buses & chalani'],
-        ['href' => 'shift.php',        'icon' => 'coins',      'label' => 'Shift & Cash',      'perm' => 'bookings.view', 'section' => 'Agents & counters'],
-        // 15 Oct 2026 (SmartBook v5): every pay-at-boarding ticket - Pending / Collected / No-show, one-tap Collected, daily totals.
-        ['href' => 'cash-book.php',    'icon' => 'coins',      'label' => '💵 Cash book',      'perm' => 'bookings.view', 'section' => 'Agents & counters', 'hot' => true],
-        // 4 Oct 2026: every desk as a row (country, money, company, hours) and the book split by desk.
-        ['href' => 'counters.php',     'icon' => 'map-pin',    'label' => 'Counters & collection', 'perm' => 'reports.view', 'section' => 'Agents & counters'],
-        // 4 Oct 2026: WhatsApp tickets by "hi" - waiting / sent / delivered per number.
-        ['href' => 'wa-queue.php',     'icon' => 'msg',        'label' => 'WhatsApp tickets',  'perm' => 'bookings.view', 'section' => 'Agents & counters'],
-        // 10 Oct 2026: which agent delivers which ticket (free WhatsApp routing) + ticket changes by code.
-        ['href' => 'wa-routing.php',   'icon' => 'msg',        'label' => '🧑‍💼 WhatsApp routing', 'perm' => 'bookings.view', 'section' => 'Agents & counters'],
-        // 10 Oct 2026: customers by who is looking - CEO all, staff own routes, agent own sales.
-        ['href' => 'customer-lists.php', 'icon' => 'users',    'label' => '👥 Customer lists',  'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
-        // 4 Oct 2026: a counter keeps its own desk's phone / hours / address / map.
-        ['href' => 'my-desk.php',      'icon' => 'map-pin',    'label' => 'My desk',          'perm' => 'bookings.view', 'section' => 'Agents & counters'],
-
-        // Agents — the register first (office roles only — the page itself
-        // refuses a counter agent's session), then the working screens.
-        // 5 Sep 2026: for OFFICE viewers these gate on commissions.view, not
-        // bookings.view — an agent still sees their own pages, but the new
-        // counter role (and support) must not browse other sellers' money.
-        // The pages enforce the same rule server-side; this only hides nav.
-        ['href' => 'agent.php',        'icon' => 'wallet', 'label' => $agentView ? 'My Dashboard' : 'Agent Panel',    'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents & counters'],
-        ['href' => 'agent-sales.php',  'icon' => 'chart-up',        'label' => $agentView ? 'My Sales' : 'Agent Sales',        'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents & counters'],
-        // Oct 2026: the agent statement — on screen and as branded PNG pages (own statement only for an agent).
-        ['href' => 'agent-statement.php', 'icon' => 'notepad', 'label' => $agentView ? 'My Statement' : 'Agent statement', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents & counters'],
-        ['href' => 'agent-assign.php', 'icon' => 'user-cog',  'label' => 'Assign Agents',    'perm' => $agentView ? '__superadmin_only__' : 'commissions.view', 'section' => 'Agents & counters'],
-        // 27 Sep 2026 agreements, restored 2 Oct 2026 (a later deploy had dropped
-        // them): applications + KYC + agreement status, the editable agreement
-        // points the public /agreements/ pages show, and the Hindi agreement PDF.
-        ['href' => 'team.php', 'icon' => 'user-cog', 'label' => 'Team & Approvals', 'perm' => in_array((string) ((Auth::admin() ?? [])['role'] ?? ''), ['superadmin', 'manager'], true) ? 'customers.view' : '__superadmin_only__', 'section' => 'Agents & counters', 'hot' => true],
-        ['href' => 'agreement-points.php', 'icon' => 'doc',   'label' => '📜 Agreement points', 'perm' => $agentView ? '__superadmin_only__' : 'dashboard.view', 'section' => 'Agents & counters'],
-        ['href' => 'agreement-pdf.php','icon' => 'notepad',   'label' => 'Agreement PDF (Hindi)', 'perm' => 'staff.manage', 'section' => 'Agents & counters'],
-        ['href' => 'agent-passengers.php','icon' => 'id-card','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents & counters'],
-        ['href' => 'agent-offline.php','icon' => 'notepad',   'label' => 'Paper Tickets',    'perm' => $agentView ? 'bookings.view' : 'commissions.view',  'section' => 'Agents & counters'],
-        ['href' => 'agent-ranking.php','icon' => 'trophy',    'label' => 'Agent Ranking',    'perm' => 'dashboard.view', 'section' => 'Agents & counters'],
-        // staff.php itself admits only a super-admin (it says so on the page),
-        // so the item is shown only to one — a manager used to see a link
-        // that refused them every time.
-        ['href' => 'staff.php',        'icon' => 'user-cog',  'label' => 'Account permissions', 'perm' => Auth::isSuperadmin() ? 'dashboard.view' : '__superadmin_only__',  'section' => 'Agents & counters'],
-        // 5 Oct 2026: settlements - who is waiting, draft -> approved -> paid -> the
-        // agent's confirmation, receipts, batch drafts (an agent sees only their own).
-        ['href' => 'settlements.php',  'icon' => 'banknote',  'label' => $agentView ? 'My Settlements' : '🧾 Settlements', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Ledger & payments'],
-        // 3 Oct 2026: agent ledger vs bookings — where a stored row no longer matches.
-        ['href' => 'ledger-check.php', 'icon' => 'chart-up',  'label' => 'Ledger मिलान',     'perm' => $agentView ? '__superadmin_only__' : 'commissions.view', 'section' => 'Ledger & payments'],
-
-        // Payments — money in, money back.
-        ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments',  'perm' => 'payments.view',  'section' => 'Ledger & payments'],
-        ['href' => 'refunds.php',      'icon' => 'refund',    'label' => 'Refunds',          'perm' => 'refunds.view',   'section' => 'Ledger & payments'],
-        ['href' => 'offers.php',       'icon' => 'star',      'label' => 'Offers & Discounts','perm' => 'payments.view',  'section' => 'Ledger & payments'],
-
-        // Reports
-        // 24 Sep 2026: the assistant with hands, full-screen — reports and
-        // graphs for the office, their own book for an agent (bookings.view
-        // so a counter agent finds it too; the server scopes every answer).
-        ['href' => 'ai-copilot.php',   'icon' => 'msg',    'label' => '🤖 AI Sahayak',     'perm' => 'bookings.view',  'section' => 'Expenses & reports', 'hot' => true],
-        ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
-        ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
-        ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'reports.view',   'section' => 'Expenses & reports'],
-        // 2 Oct 2026: salary + advances for staff without a panel login. reports.view,
-        // not payments.view — the counter / official desks hold payments.view and
-        // must not read everyone's salary (the page refuses them too).
-        ['href' => 'payroll.php',      'icon' => 'rupee',       'label' => 'Staff Payroll',    'perm' => 'reports.view',   'section' => 'Expenses & reports'],
-        // 5 Oct 2026: every message in one live book - who got what, delivered / read, cost, AiSensy wallet.
-        ['href' => 'wa-manager.php',   'icon' => 'whatsapp',  'label' => '📲 WhatsApp Manager', 'perm' => 'reports.view',  'section' => 'Expenses & reports', 'hot' => true],
-        ['href' => 'wa-form.php',      'icon' => 'whatsapp',  'label' => '📝 WhatsApp booking form', 'perm' => 'reports.view', 'section' => 'Expenses & reports'],
-        // 6 Oct 2026: the AI that markets on WhatsApp by itself (budget-guarded) + learns from questions.
-        ['href' => 'ai-marketing.php', 'icon' => 'whatsapp',  'label' => '🤖 AI Marketing',   'perm' => 'customers.view', 'section' => 'Expenses & reports', 'hot' => true],
-        // 8 Oct 2026: 32 editable WhatsApp drafts (customer / marketing / agent / staff), filled from records only.
-        ['href' => 'wa-templates.php', 'icon' => 'whatsapp',  'label' => '📝 WhatsApp Templates', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Expenses & reports'],
-        ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'Message Log',      'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
-        ['href' => 'promo-card.php',   'icon' => 'image',     'label' => '🪔 Offer pamphlet & promo', 'perm' => 'dashboard.view', 'section' => 'Expenses & reports', 'hot' => true],
-        // 1 Oct 2026: each pickup's fare + ON/OFF + order (the stop editor on Routes).
-        ['href' => 'routes.php#pickups','icon' => 'map-pin',   'label' => 'Pickup points & fares','perm' => 'routes.view', 'section' => 'Settings'],
-
-        // Settings
-        ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'Settings',         'perm' => 'dashboard.view', 'section' => 'Settings'],
-        // 4 Oct 2026: both companies' details, logo and payment account in one form.
-        ['href' => 'company.php',      'icon' => 'cog',       'label' => 'Company details',  'perm' => 'dashboard.view', 'section' => 'Settings'],
-        // 5 Oct 2026: the notification centre + the alert switches (cash held, unpaid commission, …).
-        ['href' => 'notifications.php','icon' => 'bell',      'label' => '🔔 Notifications & alerts', 'perm' => 'dashboard.view', 'section' => 'Settings'],
-        ['href' => 'activity-log.php', 'icon' => 'shield',    'label' => 'Activity & Security','perm'=> 'dashboard.view', 'section' => 'Settings'],
-        ['href' => 'health.php',       'icon' => 'alert',     'label' => 'System Health',    'perm' => 'dashboard.view', 'section' => 'Settings'],
-        // 5 Oct 2026: backups + Google Drive (owner / settings.manage — the page checks).
-        ['href' => 'backup.php',       'icon' => 'upload',    'label' => '☁️ Backups & Google Drive', 'perm' => 'settings.manage', 'section' => 'Settings'],
-        // 5 Oct 2026: ONE AI for everything - pick Gemini / GPT / Claude, paste keys, test.
-        ['href' => 'ai-brain.php',     'icon' => 'cog',       'label' => '🧠 One AI (Gemini / GPT / Claude)', 'perm' => 'dashboard.view', 'section' => 'Settings'],
-        ['href' => 'ai-knowledge.php', 'icon' => 'doc',       'label' => 'AI Knowledge',     'perm' => 'dashboard.view', 'section' => 'Settings'],
-        ['href' => 'ai-activity.php',  'icon' => 'msg',       'label' => 'AI Activity',      'perm' => 'dashboard.view', 'section' => 'Settings'],
-        // 24 Sep 2026: the approved documents vault the assistant may quote and send.
-        ['href' => 'company-docs.php', 'icon' => 'doc',       'label' => 'Company Documents','perm' => 'dashboard.view', 'section' => 'Settings'],
-        // 9 Oct 2026: the public travel pages' content (/tours, /explore) - view with dashboard.view, save needs settings.manage.
-        ['href' => 'tours.php',        'icon' => 'globe',     'label' => '🧳 Tour packages',  'perm' => $agentView ? '__superadmin_only__' : 'dashboard.view', 'section' => '🌐 Website content · वेबसाइट सामग्री'],
-        ['href' => 'places.php',       'icon' => 'map-pin',   'label' => '🏔️ Places to visit', 'perm' => $agentView ? '__superadmin_only__' : 'dashboard.view', 'section' => '🌐 Website content · वेबसाइट सामग्री'],
+        // Finance, CRM & System Management
+        ['href' => 'analytics.php',    'icon' => 'chart-up',  'label' => 'Executive Analytics',    'perm' => 'dashboard.view',   'section' => 'Finance & System'],
+        ['href' => 'accounting.php',   'icon' => 'ledger',    'label' => 'Accounting & Ledgers',   'perm' => 'payments.view',    'section' => 'Finance & System'],
+        ['href' => 'customers.php',    'icon' => 'users',     'label' => 'Customer CRM',           'perm' => 'customers.view',   'section' => 'Finance & System'],
+        ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Customer Enquiries',     'perm' => 'customers.view',   'section' => 'Finance & System'],
+        ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Customer Ratings',       'perm' => 'dashboard.view',   'section' => 'Finance & System'],
+        ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'WhatsApp & SMS Logs',   'perm' => 'dashboard.view',   'section' => 'Finance & System'],
+        ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'System Settings',        'perm' => 'dashboard.view',   'section' => 'Finance & System'],
+        ['href' => 'activity-log.php', 'icon' => 'shield',    'label' => 'Activity & Security Audit','perm'=> 'dashboard.view', 'section' => 'Finance & System'],
     ];
 
-    /* 5 Oct 2026: a view-only account's menu is exactly the screens it may open. */
-    if ((Auth::admin()['role'] ?? '') === 'viewer') {
-        $all = array_filter($all, static fn(array $i): bool => in_array($i['href'], Auth::VIEWER_PAGES, true));
-    }
-    /* 9 Oct 2026: Office chat only where it works - tables installed, switch
-       on, and the person is office or field (a super-admin passes every perm,
-       so this is a filter, not a perm string). */
-    if (!StaffMsg::canUse()) {
-        $all = array_filter($all, static fn(array $i): bool => $i['href'] !== 'staff-chat.php');
-    }
     return array_values(array_filter($all, static fn(array $i): bool => $i['perm'] === '' || Auth::can($i['perm'])));
 }
 
 /**
  * Render the page head, top bar and sidebar. Call once at the top.
  */
-/**
- * Is a nav item the page being shown? Exact file-name match: 'agent' used
- * to light up agent.php AND agents.php, agent-sales.php, agent-passengers.php,
- * agent-offline.php and agent-ranking.php at once (substring match).
- */
-function admin_nav_is_active(string $href, string $active): bool
-{
-    if ($active === '' || str_starts_with($href, '/')) {
-        return false;
-    }
-    return pathinfo($href, PATHINFO_FILENAME) === $active;
-}
-
 function admin_header(string $title, string $active = ''): void
 {
     $admin = Auth::admin() ?? [];
@@ -330,82 +129,30 @@ function admin_header(string $title, string $active = ''): void
     $company = Settings::getString('company_name', APP_NAME);
 
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">';
-    echo '<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">';
+    echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
     echo '<title>' . Security::e($title) . ' · ' . Security::e($company) . ' Admin</title>';
-    // 9 Oct 2026 (BRAND): the emblem-only icons (no baked name, no white tile), mtime-stamped.
-    echo Brand::iconLinks();
-    // Design system v2 (17 Sep 2026): Inter for the UI (CSP already allows
-    // fonts.googleapis.com / fonts.gstatic.com), swap so text never blocks;
-    // the system stack in --f-ui covers offline desks and Devanagari.
-    echo '<meta name="theme-color" content="#0A2A8F">';
-    // 17 Sep 2026: the CSRF token for the panel's JSON tools (WhatsApp sends).
-    echo '<meta name="csrf" content="' . Security::e(Security::csrfToken()) . '">';
-    // Oct 2026 redesign: the S Hari Global design system (the same tokens and
-    // sg- components as the customer app) loads first; the panel's own rules
-    // follow, then admin.css restyles the shell on top. The UI uses the
-    // device's own font now (no webfont download on a slow counter line).
-    $av = '20261016b';
-    /* 5 Oct 2026 (owner, Point 12): Poppins across the panel. display=swap, so a
-       slow counter line shows the device font at once and swaps when the file
-       lands; Devanagari comes from the same family. The CSP already allows it. */
-    echo '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
-    echo '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">';
-    echo '<link rel="stylesheet" href="/assets/css/ds.css?v=' . $av . '">';
+    echo '<link rel="icon" type="image/png" href="/assets/img/favicon-32.png">';
+    echo '<link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">';
     echo '<style>' . admin_css() . '</style>';
-    echo '<link rel="stylesheet" href="/assets/css/admin.css?v=' . $av . '">';
-    // 4 Oct 2026: pop-out depth (every theme) + the AMOLED display. Loads last.
-    echo '<link rel="stylesheet" href="/assets/css/depth.css?v=' . $av . '">';
-    // 9 Oct 2026 (BRAND): drawn India / Nepal flags — 🇮🇳 / 🇳🇵 in panel text
-    // become SVG (Windows desks print them as "IN" / "NP"); <option>s untouched.
-    echo '<script defer src="/assets/js/23-flags.js?v=' . $av . '"></script>';
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
-    // 4 Oct 2026: three displays, light -> dark -> AMOLED (pure black). AMOLED
-    // is data-theme="dark" + data-display="amoled", so every dark rule and the
-    // chart colour checks (data-theme==="dark") keep working; depth.css swaps
-    // the tokens. Nothing saved = follow the device's light/dark setting.
-    echo '<script>function shgThemeApply(t){var d=document.documentElement;'
-       . 'd.setAttribute("data-theme",t==="light"?"light":"dark");'
-       . 'if(t==="amoled")d.setAttribute("data-display","amoled");else d.removeAttribute("data-display");'
-       . 'var m=document.querySelector("meta[name=theme-color]");if(m)m.setAttribute("content",t==="amoled"?"#000000":(t==="dark"?"#0F1A2E":"#0A2A8F"));'
-       . 'var L={light:"Switch to dark mode",dark:"Switch to AMOLED black mode",amoled:"Switch to light mode"}[t]||"";'
-       . 'var b=document.querySelectorAll(".theme-tog:not(.snd-tog)");for(var i=0;i<b.length;i++){b[i].setAttribute("aria-label",L);b[i].setAttribute("title",L);}}'
-       . '(function(){try{var t=localStorage.getItem("shg_admin_theme");'
-       // 5 Oct 2026 (owner): nothing chosen on this device = the dark display. The
-       // moon button still switches dark -> AMOLED -> light and the choice is kept.
-       . 'if(t!=="dark"&&t!=="light"&&t!=="amoled")t="dark";'
-       . 'shgThemeApply(t);document.addEventListener("DOMContentLoaded",function(){shgThemeApply(t);});}catch(e){}})();'
+    echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
+       . 'if(t!=="dark"&&t!=="light")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'
+       . 'document.documentElement.setAttribute("data-theme",t);}catch(e){}})();'
        . 'function shgTheme(){try{var d=document.documentElement,'
-       . 'c=d.getAttribute("data-display")==="amoled"?"amoled":(d.getAttribute("data-theme")==="dark"?"dark":"light"),'
-       . 'n=c==="light"?"dark":(c==="dark"?"amoled":"light");'
-       . 'shgThemeApply(n);localStorage.setItem("shg_admin_theme",n);}catch(e){}}'
-       // 5 Oct 2026: the new-booking / payment chime has an on/off switch in the
-       // top bar (localStorage shg_admin_sound; on unless switched off). Turning
-       // it on plays one short tone, which also unlocks audio on this page.
-       . 'function shgAdmSoundOn(){try{return localStorage.getItem("shg_admin_sound")!=="0";}catch(e){return true;}}'
-       . 'function shgAdmSoundPaint(){var on=shgAdmSoundOn(),b=document.querySelectorAll(".snd-tog");'
-       . 'for(var i=0;i<b.length;i++){b[i].textContent=on?"🔊":"🔇";b[i].setAttribute("aria-pressed",on?"true":"false");'
-       . 'var L=on?"Chime ON (new booking / payment) - tap to mute":"Chime OFF - tap to turn on";b[i].setAttribute("aria-label",L);b[i].setAttribute("title",L);}}'
-       . 'function shgAdmSound(){var on=!shgAdmSoundOn();try{localStorage.setItem("shg_admin_sound",on?"1":"0");}catch(e){}shgAdmSoundPaint();'
-       . 'if(on){try{var C=window.AudioContext||window.webkitAudioContext,x=new C(),o=x.createOscillator(),g=x.createGain();'
-       . 'o.frequency.value=988;g.gain.setValueAtTime(0.0001,x.currentTime);g.gain.exponentialRampToValueAtTime(0.12,x.currentTime+0.02);'
-       . 'g.gain.exponentialRampToValueAtTime(0.0001,x.currentTime+0.3);o.connect(g);g.connect(x.destination);o.start();o.stop(x.currentTime+0.32);'
-       . 'setTimeout(function(){try{x.close();}catch(e){}},600);}catch(e){}}}</script>';
-    echo '</head><body class="shg-adm">';
+       . 'n=d.getAttribute("data-theme")==="dark"?"light":"dark";'
+       . 'd.setAttribute("data-theme",n);localStorage.setItem("shg_admin_theme",n);}catch(e){}}</script>';
+    echo '</head><body>';
 
     // One admin-wide SVG icon sprite — sidebar, top-bar and brand row all
     // draw from this. Kept here so every admin page inherits it without
     // shipping a separate stylesheet or an extra HTTP request.
     echo admin_sprite();
-    // 9 Oct 2026 (BRAND): <symbol id="flag-in"> / <symbol id="flag-np"> for Brand::flagUse().
-    echo Brand::flagSprite();
 
     // Top bar
     echo '<header class="tb">';
     echo '<button class="menu" onclick="document.body.classList.toggle(\'nav-open\')" aria-label="Menu">☰</button>';
-    // 9 Oct 2026 (owner): the emblem only — no baked name, no white tile. The
-    // company name stays live text beside it (Settings company_name).
     echo '<a class="brand" href="' . $base . '/admin/index.php">'
-       . '<img class="brand-logo" src="' . Security::e(Brand::markUrl(34)) . '" alt="" width="65" height="34"> '
+       . '<img class="brand-logo" src="/assets/img/logo.png" alt="" width="26" height="26"> '
        . Security::e($company) . ' <span>Admin</span></a>';
 
     // Phase 3 — Global search. Sits between the brand and the "who" strip
@@ -436,42 +183,11 @@ function admin_header(string $title, string $active = ''): void
     // this case, so the form no longer deadlocks them.
     $viaOtp = !empty($admin['via_otp']) && empty($admin['must_change_pw']);
     $pwLink = $viaOtp ? ''
-        : ' <a href="' . $base . '/admin/change-password.php" title="Change your password" aria-label="Change password"><svg class="a-ic"><use href="#a-key"/></svg></a>';
-    // Initials avatar (v2): two letters from the display name, orange gradient.
-    $initials = '';
-    foreach (preg_split('/\s+/', trim((string) ($admin['full_name'] ?: ($admin['username'] ?? 'A')))) ?: [] as $part) {
-        if ($part !== '' && strlen($initials) < 2) { $initials .= mb_strtoupper(mb_substr($part, 0, 1)); }
-    }
-    /* 5 Oct 2026: the bell is the notification centre now (unread count from
-       the notifications table); the chime switch beside it shows a speaker. */
-    /* 9 Oct 2026: Office chat in the top bar - the bell-equivalent agents and
-       counters never had (the bell needs dashboard.view). Same look as the bell;
-       the 15 s poll (admin_poll_js) keeps the count live. */
-    $chatOn     = ($admin['role'] ?? '') !== 'viewer' && StaffMsg::canUse();
-    $chatUnread = $chatOn ? StaffMsg::unreadFor() : 0;
-    $chatIcon   = $chatOn
-        ? '<a class="tb-bell tb-chat' . ($chatUnread > 0 ? ' has' : '') . '" id="tbChat" href="' . $base . '/admin/staff-chat.php" title="' . (StaffMsg::isField() ? 'Office chat' : 'Agent chat') . '" aria-label="'
-          . (StaffMsg::isField() ? 'Office chat' : 'Agent chat') . ($chatUnread > 0 ? ' - ' . $chatUnread . ' unread' : '') . '"><svg class="a-ic"><use href="#a-msg"/></svg>'
-          . '<span class="tb-bell-n" id="tbChatN"' . ($chatUnread > 0 ? '' : ' hidden') . '>' . ($chatUnread > 99 ? '99+' : $chatUnread) . '</span></a>'
-        : '';
-    $bell = '';
-    if (Auth::can('dashboard.view') && ($admin['role'] ?? '') !== 'viewer') {
-        require_once INCLUDE_PATH . '/adminalerts.php';
-        $nUnread = AdminAlerts::unreadCount();
-        $bell = '<a class="tb-bell' . ($nUnread > 0 ? ' has' : '') . '" href="' . $base . '/admin/notifications.php" title="Notifications" aria-label="Notifications'
-              . ($nUnread > 0 ? ' - ' . $nUnread . ' unread' : '') . '"><svg class="a-ic"><use href="#a-bell"/></svg>'
-              . ($nUnread > 0 ? '<span class="tb-bell-n">' . ($nUnread > 99 ? '99+' : $nUnread) . '</span>' : '') . '</a>';
-    }
-    echo '<div class="who">'
-       . '<span class="tb-av" aria-hidden="true">' . Security::e($initials ?: 'A') . '</span>'
-       . '<span class="tb-name">' . $name . '</span> <em>' . $role . '</em>'
-       . $chatIcon
-       . $bell
-       . '<button type="button" class="theme-tog snd-tog" onclick="shgAdmSound()" aria-pressed="true" aria-label="Chime on / off" title="Chime on / off">&#128266;</button>'
-       . '<script>shgAdmSoundPaint();</script>'
+        : ' · <a href="' . $base . '/admin/change-password.php" title="Change your password" aria-label="Change password"><svg class="a-ic"><use href="#a-key"/></svg></a>';
+    echo '<div class="who">' . $name . ' <em>' . $role . '</em> · '
        . '<button type="button" class="theme-tog" onclick="shgTheme()" aria-label="Toggle dark mode" title="Dark / light mode"><svg class="a-ic"><use href="#a-theme"/></svg></button>'
        . $pwLink
-       . ' <a href="' . $base . '/admin/logout.php" title="Sign out" aria-label="Sign out"><svg class="a-ic"><use href="#a-logout"/></svg></a></div>';
+       . ' · <a href="' . $base . '/admin/logout.php">Sign out</a></div>';
     echo '</header>';
 
     // Sidebar — Phase 3 renders items grouped by their `section` key with
@@ -484,9 +200,9 @@ function admin_header(string $title, string $active = ''): void
     // Render one link row. Kept as a closure so the flat (counter-agent) and
     // grouped (office) branches emit identical markup — same href, icon, label
     // and the payments badge span (#navBadgePayments) that the live poll needs.
-    $renderLink = static function (array $item) use ($active, $base, $chatUnread): void {
+    $renderLink = static function (array $item) use ($active, $base): void {
         $cls = [];
-        if (admin_nav_is_active($item['href'], $active)) {
+        if ($active !== '' && !str_starts_with($item['href'], '/') && str_contains($item['href'], $active)) {
             $cls[] = 'on';
         }
         if (!empty($item['hot'])) {
@@ -495,49 +211,13 @@ function admin_header(string $title, string $active = ''): void
         $on    = $cls !== [] ? ' class="' . implode(' ', $cls) . '"' : '';
         $badge = $item['href'] === 'payments.php'
             ? '<span class="navbadge" id="navBadgePayments" style="display:none"></span>'
-            : ($item['href'] === 'staff-chat.php'
-                ? '<span class="navbadge" id="navBadgeChat"' . ($chatUnread > 0 ? '' : ' style="display:none"') . '>' . ($chatUnread > 0 ? (int) $chatUnread : '') . '</span>'
-                : '');
+            : '';
         // A root-relative href (counter mode) is used as-is; everything else lives in /admin/.
         $url = str_starts_with($item['href'], '/') ? $base . $item['href'] : $base . '/admin/' . $item['href'];
         echo '<a' . $on . ' href="' . $url . '">'
            . '<span><svg class="a-ic"><use href="#a-' . $item['icon'] . '"/></svg></span>'
            . Security::e($item['label']) . $badge . '</a>';
     };
-
-    /* Office menu by CATEGORY (8 Oct 2026, owner: "admin / agent panel ko har
-       ek option category ma milayera"). WhatsApp pages sat in three sections,
-       customer pages inside Bookings, AI pages in two. Only the heading an
-       item is filed under changes — every link, permission and label stays.
-       A counter agent's flat strip (below) is not affected. */
-    if (!Auth::isCounterAgent()) {
-        $secMap = [
-            'customers.php' => '👥 Customers', 'customer-ledger.php' => '👥 Customers', 'customer-directory.php' => '👥 Customers',
-            'customer-duplicates.php' => '👥 Customers', 'enquiries.php' => '👥 Customers', 'support-inbox.php' => '👥 Customers',
-            'wa-compose.php' => '📲 WhatsApp & marketing', 'campaigns.php' => '📲 WhatsApp & marketing', 'wa-manager.php' => '📲 WhatsApp & marketing', 'wa-form.php' => '📲 WhatsApp & marketing',
-            'wa-templates.php' => '📲 WhatsApp & marketing', 'messages-log.php' => '📲 WhatsApp & marketing', 'ai-marketing.php' => '📲 WhatsApp & marketing',
-            'promo-card.php' => '📲 WhatsApp & marketing', 'wa-pending.php' => '📲 WhatsApp & marketing', 'wa-queue.php' => '📲 WhatsApp & marketing',
-            'wa-routing.php' => '📲 WhatsApp & marketing', 'customer-lists.php' => '👥 Customers',
-            'offers.php' => '💳 Ledger, payments & offers', 'ledger-check.php' => '💳 Ledger, payments & offers', 'payments.php' => '💳 Ledger, payments & offers',
-            'refunds.php' => '💳 Ledger, payments & offers', 'accounting.php' => '💳 Ledger, payments & offers', 'payroll.php' => '💳 Ledger, payments & offers',
-            'ai-copilot.php' => '🤖 AI', 'ai-brain.php' => '🤖 AI', 'ai-knowledge.php' => '🤖 AI', 'ai-activity.php' => '🤖 AI',
-            'analytics.php' => '📊 Reports', 'feedback.php' => '📊 Reports',
-            'staff-chat.php' => '🤝 Agents & counters',
-        ];
-        $rename = ['Bookings & tickets' => '🎫 Bookings & tickets', 'Seat management' => '🪑 Seats', 'Trips, buses & chalani' => '🚌 Trips, buses & chalani',
-                   'Agents & counters' => '🤝 Agents & counters', 'Ledger & payments' => '💳 Ledger, payments & offers', 'Expenses & reports' => '📊 Reports', 'Settings' => '⚙️ Settings'];
-        $order = ['', '🎫 Bookings & tickets', '🪑 Seats', '🚌 Trips, buses & chalani', '👥 Customers', '🤝 Agents & counters',
-                  '💳 Ledger, payments & offers', '📲 WhatsApp & marketing', '🤖 AI', '📊 Reports', '⚙️ Settings'];
-        foreach ($items as &$it) {
-            $sec = (string) ($it['section'] ?? '');
-            if (isset($secMap[$it['href']])) { $sec = $secMap[$it['href']]; }
-            elseif (isset($rename[$sec])) { $sec = $rename[$sec]; }
-            $it['section'] = $sec;
-        }
-        unset($it);
-        $rank = array_flip($order);
-        usort($items, static fn(array $a, array $c): int => ($rank[$a['section']] ?? 99) <=> ($rank[$c['section']] ?? 99));   // stable: page order kept inside a section
-    }
 
     // Group items by section, preserving first-seen order.
     $groups = [];
@@ -560,7 +240,7 @@ function admin_header(string $title, string $active = ''): void
         // set from localStorage on top of this (see admin_nav_js).
         $activeSec = '';
         foreach ($items as $item) {
-            if (admin_nav_is_active($item['href'], $active)) { $activeSec = (string) ($item['section'] ?? ''); break; }
+            if ($active !== '' && str_contains($item['href'], $active)) { $activeSec = (string) ($item['section'] ?? ''); break; }
         }
         foreach ($groups as $sec => $groupItems) {
             if ($sec === '') { foreach ($groupItems as $item) { $renderLink($item); } continue; }
@@ -580,74 +260,7 @@ function admin_header(string $title, string $active = ''): void
     echo '</nav>';
     if ($showGroups) { echo '<script>' . admin_nav_js() . '</script>'; }
 
-    echo admin_mobile_nav($items, $active);
-
     echo '<main class="wrap"><h1>' . Security::e($title) . '</h1>';
-    if (($_GET['dup'] ?? '') === '1') {
-        echo '<div class="flash warn" role="status">That was a repeated tap on a form that had already been sent. It was not saved a second time — this page shows the result of the first one.</div>';
-    }
-}
-
-/**
- * Phone bottom navigation (v2, 17 Sep 2026). Five thumb-reach slots built
- * from the same permission-filtered nav: Home · Tickets · (+ New, orange
- * FAB) · Sales-or-Payments · Menu (opens the sidebar). Rendered for every
- * role and hidden by CSS above 820px, so desktops never see it. Purely
- * additive — the sidebar stays the full menu.
- */
-function admin_mobile_nav(array $items, string $active = ''): string
-{
-    $find = static function (string $href) use ($items): ?array {
-        foreach ($items as $it) { if ($it['href'] === $href) { return $it; } }
-        return null;
-    };
-    /* 19 Sep 2026 (owner: "colourful bottom buttons; Quick Ticket and the map
-       in agent mode"). Every slot keeps its own colour, always - a thumb finds
-       green = tickets, blue = map without reading. The orange button is the
-       fastest sale (QuickBot, name + mobile -> ticket); the seat-map booking
-       stays one tap away inside it and in the menu. A selling desk (agent,
-       counter - no dashboard.view) gets the Map in slot four, where its
-       passengers by pickup and the live bus are; the office keeps money. */
-    $home    = Auth::isCounterAgent() ? $find('agent.php') : $find('index.php');
-    /* 15 Oct 2026 (owner: counter landing): a counter clerk has no
-       dashboard.view, so index.php is not in its menu and the Home slot was
-       an empty hole - Home is the desk's sale screen (SmartBook), else the
-       tickets register. */
-    if ($home === null && (string) (Auth::admin()['role'] ?? '') === 'counter') {
-        $home = $find('smartbook.php') ?? $find('bookings.php');
-    }
-    $tickets = $find('bookings.php');
-    $new     = $find('smartbook.php');   // 15 Oct 2026: the one booking screen
-    $desk    = !Auth::can('dashboard.view');
-    /* 23 Oct 2026 (owner: "agent haru lai scanner ni rakhdeu"): an agent's fourth slot is the boarding
-       scanner (the map stays one tap away on the agent desk); a counter keeps the map. */
-    $fourth  = $desk
-        ? (((string) (Auth::admin()['role'] ?? '') === 'agent' ? $find('scan.php') : null) ?? $find('map.php') ?? $find('agent-sales.php'))
-        : ($find('payments.php') ?? $find('agent-sales.php') ?? $find('manifest.php'));
-    $slots   = [];
-    $slot = static function (?array $it, string $label, string $icon, string $tone, string $active, bool $fab = false): string {
-        if ($it === null) { return '<a class="mn-empty" aria-hidden="true"></a>'; }
-        $url = str_starts_with($it['href'], '/') ? $it['href'] : '/admin/' . $it['href'];
-        $on  = admin_nav_is_active($it['href'], $active) ? ' on' : '';
-        if ($fab) {
-            return '<a class="fab" href="' . $url . '" aria-label="' . Security::e($label) . '"><span class="mn-fab"><svg class="a-ic"><use href="#a-' . $icon . '"/></svg></span><span class="mn-fab-l">' . Security::e($label) . '</span></a>';
-        }
-        return '<a class="mn-' . $tone . $on . '" href="' . $url . '"><svg class="a-ic"><use href="#a-' . $icon . '"/></svg>' . Security::e($label) . '</a>';
-    };
-    $fourthMeta = match ($fourth['href'] ?? '') {
-        'map.php'      => ['Map', 'map-pin', 'map'],
-        'scan.php'     => ['Scan', 'scan', 'map'],
-        'payments.php' => ['Payments', 'card', 'money'],
-        'manifest.php' => ['Manifest', 'clipboard', 'money'],
-        default        => ['Sales', 'chart-up', 'money'],
-    };
-    $slots[] = $slot($home, 'Home', 'home', 'home', $active);
-    $slots[] = $slot($tickets, 'Tickets', 'ticket', 'tix', $active);
-    $slots[] = $new !== null ? $slot($new, 'Ticket', 'bolt', 'fab', $active, true) : '<a class="mn-empty" aria-hidden="true"></a>';
-    $slots[] = $slot($fourth, $fourthMeta[0], $fourthMeta[1], $fourthMeta[2], $active);
-    $slots[] = '<a class="mn-menu" href="#" onclick="document.body.classList.toggle(\'nav-open\');return false" aria-label="Menu"><svg class="a-ic"><use href="#a-list"/></svg>Menu</a>';
-    return '<nav class="mnav" aria-label="Quick navigation">' . implode('', $slots) . '</nav>'
-         . '<script>document.body.classList.add("has-mnav")</script>';
 }
 
 function admin_footer(): void
@@ -664,10 +277,6 @@ function admin_footer(): void
         echo '<script>' . admin_poll_js() . '</script>';
     }
 
-    // 22 Oct 2026: every wa.me button opens WhatsApp (Web) in one click, not
-    // WhatsApp's own "Continue to chat" page first (assets/js/wa-direct.js).
-    echo '<script defer src="/assets/js/wa-direct.js?v=20261022a"></script>';
-
     // Phase 3: global search autosuggest — only rendered when the search
     // form itself is on the page (bookings.view). Debounces per keystroke,
     // asks admin/api/search.php for the top 8 hits across bookings /
@@ -675,13 +284,6 @@ function admin_footer(): void
     // dropdown. Falls back to the full-page /admin/search.php on Enter.
     if (Auth::can('bookings.view')) {
         echo '<script>' . admin_search_js() . '</script>';
-        // 17 Sep 2026: one-click WhatsApp sheet (admin_wa_button / admin/api/wa-send.php).
-        echo '<script>' . admin_wa_js() . '</script>';
-    }
-    // 9 Oct 2026: Office chat - a push tap opens the conversation on any admin
-    // page, and signing out stops this handset's chat pushes (shared phones).
-    if ((Auth::admin()['role'] ?? '') !== 'viewer' && StaffMsg::canUse()) {
-        echo '<script>' . admin_chat_js() . '</script>';
     }
 
     // 3 Sep 2026: phone-friendly tables everywhere. On a narrow screen every
@@ -691,102 +293,10 @@ function admin_footer(): void
     // own mobile layout (.sm-table) or opt out (.no-card), have no thead, or
     // whose rows do not line up with the header are left exactly as they are.
     echo '<script>' . admin_cards_js() . '</script>';
-    // 5 Oct 2026: figures count up, buttons answer the finger (ripple) - see admin_fx_js().
-    echo '<script>' . admin_fx_js() . '</script>';
-    // Oct 2026: one save per tap, honest "Saving…" state, keep what was typed
-    // if the line drops, and keep inputs clear of the phone keyboard.
-    echo '<script>' . admin_save_guard_js() . '</script>';
-    // 17 Sep 2026: every flash gets a dismiss ×; success flashes fade after 7 s
-    // (errors and warnings stay until dismissed — the desk must read them).
-    // 8 Oct 2026 (D9-01): a [hidden] flash is an empty box a page script
-    // fills later (Bus Calendar #calFlash, bulk-cancel #bulkErr). It is left
-    // alone here; a flash with an id is hidden by the x, never removed, and
-    // never auto-faded - removing it made the next calendar flash() throw,
-    // so every later calendar error was silently lost.
-    echo '<script>(function(){document.querySelectorAll(".flash").forEach(function(f){'
-       . 'if(f.hidden||f.querySelector(".flash-x"))return;var t=f.textContent.trim();var x=document.createElement("button");x.type="button";x.className="flash-x";x.setAttribute("aria-label","Dismiss");x.textContent="\u00d7";'
-       . 'x.onclick=function(){if(f.id){f.hidden=true}else{f.remove()}};f.appendChild(x);'
-       . 'if(f.classList.contains("ok")&&!f.id&&t){setTimeout(function(){f.style.transition="opacity .4s";f.style.opacity="0";setTimeout(function(){f.remove()},420)},7000)}'
-       . '})})();</script>';
     // 5 Sep 2026: Excel-style list tables (Customers / Agents): search,
     // column filters, click-to-sort, sticky header, detail + edit rows.
     echo admin_datatable_assets();
-    // 5 Oct 2026: once a day, ask the owner whether to put a backup in
-    // Google Drive (Back up / Skip / every night) — admin/backup.php.
-    if (Auth::isSuperadmin() || Auth::canManageSettings()) {
-        echo admin_backup_prompt_js();
-    }
     echo '</body></html>';
-}
-
-/**
- * The daily "back up to Google Drive?" sheet (5 Oct 2026). Shown at most
- * once a day per browser, only when the last Drive copy is older than ~20 h
- * and the nightly automatic copy is not doing the job. Skip = quiet until
- * tomorrow. Nothing is sent without a tap.
- */
-function admin_backup_prompt_js(): string
-{
-    try {
-        require_once INCLUDE_PATH . '/gdrive.php';
-        $connected = GDrive::connected();
-        $auto      = Settings::getBool('gdrive_auto', false);
-        $lastAt    = GDrive::lastAt();
-    } catch (Throwable $e) {
-        return '';
-    }
-    // The nightly copy is on and worked within ~26 h: nothing to ask.
-    if ($connected && $auto && time() - $lastAt < 26 * 3600) {
-        return '';
-    }
-    if (time() - $lastAt < 20 * 3600 || basename((string) ($_SERVER['SCRIPT_NAME'] ?? '')) === 'backup.php') {
-        return '';
-    }
-    $data = json_encode(['c' => $connected, 'csrf' => Security::csrfToken(), 'last' => $lastAt ? date('d M H:i', $lastAt) : ''], JSON_HEX_TAG | JSON_HEX_AMP);
-    return <<<HTML
-<style>
-.bkp{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9999;width:min(440px,calc(100% - 24px));background:var(--card,#fff);color:var(--ink,#16233c);border:1px solid var(--line,#e2e9f4);border-radius:18px;box-shadow:0 18px 48px rgba(18,38,78,.28);padding:14px 16px;font-size:14px}
-.bkp b{display:block;font-size:15px;margin-bottom:4px}.bkp p{margin:0 0 10px;color:var(--mut,#5c6b85);font-size:13px}
-.bkp .r{display:flex;gap:8px;flex-wrap:wrap}.bkp button,.bkp a{flex:1 1 auto;min-height:42px;border-radius:12px;border:1px solid var(--line,#e2e9f4);background:var(--card,#fff);color:var(--ink,#16233c);font:inherit;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;padding:0 10px}
-.bkp .go{background:var(--royal,#0054A8);border-color:var(--royal,#0054A8);color:var(--on-royal,#fff)}.bkp .msg{margin-top:8px;font-weight:600}
-</style>
-<script>
-(function(){
-  /* 16 Oct 2026 (owner: "google drive backup popup barbar naaos"): it used to come back on
-     EVERY page until Skip was tapped. Now it shows itself once - then stays quiet for a day
-     (Drive connected) or a week (not set up yet) whether or not anything was tapped. */
-  var D={$data}, K='shg:bkAsk2', now=Date.now(), quiet=(D.c?1:7)*864e5;
-  try{ if(now-(+localStorage.getItem(K)||0)<quiet) return; }catch(e){}
-  function mark(){ try{localStorage.setItem(K,String(Date.now()));}catch(e){} }
-  function skip(){ mark(); box.remove(); }
-  function post(action){ var f=new FormData(); f.append('action',action); f.append('ajax','1'); f.append('shg_csrf',D.csrf);
-    return fetch('/admin/backup.php',{method:'POST',body:f,credentials:'same-origin'}).then(function(r){return r.json();}); }
-  var box=document.createElement('div'); box.className='bkp'; box.setAttribute('role','dialog'); box.setAttribute('aria-label','Backup');
-  if(D.c){
-    box.innerHTML='<b>☁️ Google Drive मा आजको ब्याकअप राख्ने?</b><p>Back up today’s data to Google Drive'+(D.last?' · last copy '+D.last:' · no copy yet')+'</p>'
-      +'<div class="r"><button class="go" type="button" data-a="run">ब्याकअप गर्नुहोस्</button><button type="button" data-a="skip">Skip</button><button type="button" data-a="auto">हरेक रात आफैं</button></div><div class="msg" aria-live="polite"></div>';
-  } else {
-    box.innerHTML='<b>☁️ ब्याकअप Google Drive मा राख्नुहोस्</b><p>Keep a copy of the data in your own Google Drive — set up once, then one tap a day (or automatic).</p>'
-      +'<div class="r"><a class="go" href="/admin/backup.php#bkSetup">Set up</a><a href="/admin/backup.php">Save to phone</a><button type="button" data-a="skip">Skip</button></div>';
-  }
-  box.addEventListener('click',function(ev){
-    var b=ev.target.closest('button'); if(!b) return; var a=b.getAttribute('data-a'), m=box.querySelector('.msg');
-    if(a==='skip'){ skip(); return; }
-    box.querySelectorAll('button').forEach(function(x){x.disabled=true;});
-    if(m) m.textContent='…';
-    post(a==='auto'?'auto_on':'run').then(function(j){
-      if(a==='auto'){ if(m) m.textContent='✓ हरेक रात Google Drive मा जान्छ'; return a; }
-      if(j&&j.ok){ if(m) m.textContent='✓ Google Drive मा राखियो ('+(j.sizeKB||0)+' KB)'; mark(); }
-      else { if(m) m.textContent='✗ '+((j&&j.error)||'failed'); box.querySelectorAll('button').forEach(function(x){x.disabled=false;}); }
-      return a;
-    }).then(function(a){ if(a==='auto'){ return post('run').then(function(j){ if(m) m.textContent += j&&j.ok ? ' · आजको पनि राखियो' : ''; mark(); }); } })
-      .catch(function(){ if(m) m.textContent='✗ network'; box.querySelectorAll('button').forEach(function(x){x.disabled=false;}); })
-      .then(function(){ setTimeout(function(){ if(m && /✓/.test(m.textContent)) box.remove(); },4500); });
-  });
-  setTimeout(function(){ mark(); document.body.appendChild(box); }, 2500);
-})();
-</script>
-HTML;
 }
 
 /**
@@ -808,10 +318,8 @@ function admin_datatable_assets(): string
 .dt-bar input,.dt-bar select{padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font-size:14px;min-height:40px}
 .dt-bar .dt-q{flex:1 1 220px;min-width:0}
 .dt-bar .dt-count{margin-left:auto;font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums;white-space:nowrap}
-/* ONE scroller (19 Sep 2026, owner: 'scroll down, then scroll sideways'). The box used to be 78vh tall on every table AND every table was forced 900px wide, so a four-column list on a laptop got a sideways scrollbar hidden at the bottom of an inner vertical scroller. Now: the page scrolls; a table is only as wide as its columns; only a LONG register (.dt-tall, set below from the row count) keeps a box - sized to the window, so its sticky header and its sideways scrollbar are on screen together. */
-.dt-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card);-webkit-overflow-scrolling:touch}
-.dt-wrap.dt-tall{overflow:auto;max-height:calc(100vh - 96px);scroll-margin-top:72px}
-table.dt{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px}
+.dt-wrap{overflow:auto;max-height:78vh;border:1px solid var(--line);border-radius:12px;background:var(--card);-webkit-overflow-scrolling:touch}
+table.dt{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;min-width:900px}
 table.dt th,table.dt td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
 table.dt th{position:sticky;top:0;z-index:2;background:var(--head);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);text-align:left}
 table.dt th.dt-sortable{cursor:pointer;user-select:none}
@@ -832,26 +340,10 @@ table.dt tr.dt-x[hidden]{display:none}
 .dt-grid label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--mut)}
 .dt-grid label input,.dt-grid label select{font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);text-transform:none;letter-spacing:0}
 .dt-grid .kv b{display:block;font-size:14px;color:var(--ink);font-weight:600;text-transform:none;letter-spacing:0;white-space:normal}
-@media (max-width:820px){table.dt{font-size:13px}.dt-wrap,.dt-wrap.dt-tall{max-height:none;border-radius:10px}.dt-bar .dt-count{margin-left:0}}
+@media (max-width:820px){table.dt{min-width:760px;font-size:13px}.dt-wrap{max-height:none;border-radius:10px}.dt-bar .dt-count{margin-left:0}}
 /* Phones: row buttons and the filter bar meet the 44px touch target the rest
    of the admin already keeps (the compact 32px is a desktop-only density). */
 @media (pointer:coarse){.dt-acts .btn{min-height:44px;padding:8px 12px}.dt-bar input,.dt-bar select{min-height:44px}}
-/* Category chips (16 Oct 2026) - one row, scrolls sideways on a phone. */
-.dt-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 0 10px;padding:2px 1px;-webkit-overflow-scrolling:touch}
-.dt-chips::-webkit-scrollbar{display:none}
-.dt-chip[hidden]{display:none}
-.dt-chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:6px 13px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);font:700 13px/1 inherit;cursor:pointer;white-space:nowrap;text-decoration:none;transition:background .15s,border-color .15s,color .15s}
-.dt-chip:hover{border-color:var(--royal,#1a3fc4)}
-.dt-chip i{font-style:normal;font-weight:800;font-size:11.5px;min-width:20px;padding:3px 6px;border-radius:999px;background:var(--soft,#eef2fa);color:var(--mut);text-align:center}
-.dt-chip.on{background:var(--royal,#1a3fc4);border-color:var(--royal,#1a3fc4);color:#fff}
-.dt-chip.on i{background:rgba(255,255,255,.22);color:#fff}
-.dt-chip.warn i{background:#ffe6cc;color:#9a4a00}.dt-chip.on.warn i{background:rgba(255,255,255,.22);color:#fff}
-.dt-more{position:relative}
-.dt-more>summary{list-style:none;cursor:pointer}
-.dt-more>summary::-webkit-details-marker{display:none}
-.dt-more[open]{flex-basis:100%}.dt-more[open]>summary{background:var(--soft,#eef2fa)}
-.dt-more .dt-more-p{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;flex-basis:100%}
-@media (pointer:coarse){.dt-chip{min-height:44px}}
 </style>
 <script>
 (function(){
@@ -860,65 +352,30 @@ table.dt tr.dt-x[hidden]{display:none}
   function init(t){
     var tb=t.tBodies[0]; if(!tb) return;
     var rows=Array.prototype.filter.call(tb.rows,function(r){return !r.classList.contains('dt-x');});
-    var wrap=t.closest('.dt-wrap'); if(wrap&&rows.length>25) wrap.classList.add('dt-tall');
     var ctrl=document.getElementById(t.getAttribute('data-controls')||'');
     var q=ctrl?ctrl.querySelector('.dt-q'):null;
     var filters=ctrl?Array.prototype.slice.call(ctrl.querySelectorAll('[data-dt-filter]')):[];
     var count=ctrl?ctrl.querySelector('.dt-count'):null;
     function extraOf(r){var n=r.nextElementSibling,out=[];while(n&&n.classList.contains('dt-x')){out.push(n);n=n.nextElementSibling;}return out;}
-    /* 16 Oct 2026 (owner: "category wise milau, chito name ra number"): the
-       search matches every word anywhere (name + mobile in any order), a
-       number ignores spaces / dashes / +, and [data-dt-chip] buttons are
-       one-tap categories - each sets the filters it names, clears the rest,
-       and shows how many rows it holds. */
-    var chips=ctrl?Array.prototype.slice.call(ctrl.querySelectorAll('[data-dt-chip]')):[];
-    function chipSet(c){try{return JSON.parse(c.getAttribute('data-dt-chip')||'{}')||{};}catch(e){return {};}}
-    function fval(r,f){return r.getAttribute('data-'+f.getAttribute('data-dt-filter'))||'';}
-    function passF(r,f,v){
-      var rv=fval(r,f);
-      if(f.tagName==='SELECT') return rv===v;
-      if(f.type==='date'||f.type==='month') return (f.getAttribute('data-dt-mode')==='max')?(rv!==''&&rv.slice(0,v.length)<=v):(rv!==''&&rv.slice(0,v.length)>=v);
-      return rv.toLowerCase().indexOf(v.toLowerCase())>=0;
-    }
-    function passQ(r,words){
-      if(!words.length) return true;
-      var hay=(r.__hay||(r.__hay=(r.getAttribute('data-search')||r.textContent).toLowerCase())),hd=r.__hd||(r.__hd=hay.replace(/[\s\-+().]/g,''));
-      for(var w=0;w<words.length;w++){var x=words[w];
-        if(/^[\d\s\-+()]+$/.test(x)){x=x.replace(/\D/g,''); if(x&&hd.indexOf(x)<0) return false;}
-        else if(hay.indexOf(x)<0) return false;}
-      return true;
-    }
     function apply(){
       var needle=(q&&q.value?q.value:'').trim().toLowerCase(),shown=0;
-      var words=needle?needle.match(/\+?[\d][\d\s\-()]{3,}\d|\S+/g)||[]:[];
       rows.forEach(function(r){
-        var ok=passQ(r,words);
-        for(var k=0;ok&&k<filters.length;k++){ if(filters[k].value) ok=passF(r,filters[k],filters[k].value); }
+        var ok=true;
+        if(needle){ok=(r.getAttribute('data-search')||r.textContent).toLowerCase().indexOf(needle)>=0;}
+        for(var k=0;ok&&k<filters.length;k++){
+          var f=filters[k],v=f.value; if(!v) continue;
+          var rv=r.getAttribute('data-'+f.getAttribute('data-dt-filter'))||'';
+          if(f.tagName==='SELECT') ok=(rv===v);
+          else if(f.type==='date'||f.type==='month') ok=(f.getAttribute('data-dt-mode')==='max')?(rv!==''&&rv.slice(0,v.length)<=v):(rv!==''&&rv.slice(0,v.length)>=v);
+          else ok=rv.toLowerCase().indexOf(v.toLowerCase())>=0;
+        }
         r.style.display=ok?'':'none';
         if(!ok) extraOf(r).forEach(function(x){x.hidden=true;});
         if(ok) shown++;
       });
       if(count) count.textContent=shown+' / '+rows.length;
-      chips.forEach(function(c){
-        var s=chipSet(c),on=true;
-        filters.forEach(function(f){if((s[f.getAttribute('data-dt-filter')]||'')!==(f.value||'')) on=false;});
-        c.classList.toggle('on',on); c.setAttribute('aria-pressed',on?'true':'false');
-      });
     }
-    function chipCounts(){
-      chips.forEach(function(c){
-        var s=chipSet(c),n=0,fs=filters.filter(function(f){return s[f.getAttribute('data-dt-filter')];});
-        rows.forEach(function(r){ for(var k=0;k<fs.length;k++){ if(!passF(r,fs[k],s[fs[k].getAttribute('data-dt-filter')])) return; } n++; });
-        var b=c.querySelector('i'); if(!b){b=document.createElement('i');c.appendChild(b);} b.textContent=n;
-        if(!n&&c.hasAttribute('data-dt-hide0')) c.hidden=true;
-      });
-    }
-    chips.forEach(function(c){c.addEventListener('click',function(){
-      var s=chipSet(c); filters.forEach(function(f){f.value=s[f.getAttribute('data-dt-filter')]||'';}); apply();
-    });});
-    chipCounts();
-    if(q){q.addEventListener('input',apply);
-      document.addEventListener('keydown',function(e){var t=e.target&&e.target.tagName;if(e.key==='/'&&t!=='INPUT'&&t!=='TEXTAREA'&&t!=='SELECT'&&!e.ctrlKey&&!e.metaKey){e.preventDefault();q.focus();q.select();}});}
+    if(q) q.addEventListener('input',apply);
     filters.forEach(function(f){f.addEventListener('change',apply);f.addEventListener('input',apply);});
     var ths=t.tHead&&t.tHead.rows[0]?Array.prototype.slice.call(t.tHead.rows[0].cells):[];
     ths.forEach(function(th,ci){
@@ -953,179 +410,7 @@ HTML;
  * (a section is open if it is server-active OR in the remembered set), and
  * persists every toggle. Pure presentation — no links, perms or DOM ids change.
  */
-/**
- * Save guard (Oct 2026, owner brief §4). For every POST form on the page:
- *  - a one-time token _once is added at submit (see admin_once_guard());
- *  - a page-navigating submit puts the button into "Saving…" and ignores
- *    further taps until the server answers — success is what the next page
- *    shows (its flash / updated values), never assumed here;
- *  - if the answer never comes (slow or dropped line) the button returns as
- *    "Try again" after 20 s, still carrying the SAME token, so a retry of a
- *    submission that did arrive is recognised and not saved twice;
- *  - what was typed is kept in this tab (sessionStorage, never passwords or
- *    files) and offered back if the page comes back without a success note.
- * Forms whose own script handles the submit (preventDefault) are left alone
- * apart from getting a fresh token.
- * Also: body.kb-open while the on-screen keyboard is up (admin.css moves the
- * bottom bar out of the way so the field and its Save stay visible).
- */
-function admin_save_guard_js(): string
-{
-    return <<<'JS'
-(function () {
-  function tok() { var a = new Uint8Array(16); (window.crypto || window.msCrypto).getRandomValues(a); return Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
-  // One record = one key: the path plus its query (pnr=, agent=, …), minus the
-  // parameters a save's own redirect adds.
-  var KEY = 'shg_unsent:' + location.pathname + '?' + location.search.replace(/^\?/, '').split('&').filter(function (p) { return p && !/^(tab|saved|ok|done|dup|err|msg)=/.test(p); }).sort().join('&');
-  function formId(f) { var a = f.querySelector('input[name="action"]'); return (f.getAttribute('action') || '') + '|' + (a ? a.value : '') + '|' + (f.id || ''); }
-  function isPost(f) { return (f.getAttribute('method') || '').toLowerCase() === 'post'; }
-  function snap(f, s) { return JSON.stringify([fields(f), s ? (s.name || '') + '=' + (s.value || '') : '']); }
-  function fields(f) {
-    var out = {};
-    Array.prototype.forEach.call(f.elements, function (el) {
-      if (!el.name || el.name === '_once' || el.type === 'password' || el.type === 'file' || el.type === 'hidden' || el.type === 'submit' || el.type === 'button') return;
-      if ((el.type === 'checkbox' || el.type === 'radio')) { out[el.name + '|' + el.value] = el.checked ? '1' : '0'; return; }
-      out[el.name] = el.value;
-    });
-    return out;
-  }
-  document.addEventListener('submit', function (e) {
-    var f = e.target; if (!f || f.tagName !== 'FORM' || !isPost(f)) return;
-    if (f.hasAttribute('data-no-guard')) return;   // e.g. a POST that answers with a file download
-    if (f.dataset.sending === '1') { e.preventDefault(); e.stopImmediatePropagation(); return; }
-    var t = f.querySelector('input[name="_once"]');
-    if (!t) { t = document.createElement('input'); t.type = 'hidden'; t.name = '_once'; f.appendChild(t); }
-    var s = snap(f, e.submitter);
-    // a new token only for a new submission: first time, AJAX forms, or changed values / another button
-    if (!t.value || f.dataset.ajax === '1' || (f.dataset.sent && f.dataset.sent !== s)) t.value = tok();
-    f.dataset.sent = s;
-  }, true);
-  document.addEventListener('submit', function (e) {
-    var f = e.target; if (!f || f.tagName !== 'FORM' || !isPost(f)) return;
-    if (f.hasAttribute('data-no-guard')) return;
-    if (e.defaultPrevented) { f.dataset.ajax = '1'; return; }
-    f.dataset.sending = '1'; f.setAttribute('aria-busy', 'true');
-    var btn = e.submitter || f.querySelector('button[type=submit],input[type=submit],button:not([type])');
-    try { sessionStorage.setItem(KEY, JSON.stringify({ t: Date.now(), i: Array.prototype.indexOf.call(document.forms, f), id: formId(f), v: fields(f) })); } catch (_) {}
-    setTimeout(function () {
-      if (btn) { btn.dataset.label = btn.dataset.label || (btn.tagName === 'INPUT' ? btn.value : btn.innerHTML); btn.classList.add('is-saving'); if (btn.tagName === 'INPUT') btn.value = 'Saving…'; else btn.textContent = 'Saving…'; btn.disabled = true; }
-    }, 0);
-    var gen = f.dataset.gen || '0';
-    setTimeout(function () {
-      if (!document.body.contains(f) || (f.dataset.gen || '0') !== gen) return;
-      f.dataset.sending = ''; f.removeAttribute('aria-busy');
-      if (btn) { btn.disabled = false; btn.classList.remove('is-saving'); if (btn.tagName === 'INPUT') btn.value = 'Try again'; else btn.textContent = 'Try again'; }
-    }, 20000);
-  });
-  window.addEventListener('pageshow', function (ev) {
-    if (!ev.persisted) return;
-    // the token stays: the same values sent again get ?dup=1, changed values get a new token
-    Array.prototype.forEach.call(document.forms, function (f) {
-      f.dataset.sending = ''; f.removeAttribute('aria-busy'); f.dataset.gen = String((+f.dataset.gen || 0) + 1);
-    });
-    // page-wide: a Save button may sit outside its form (form="…")
-    Array.prototype.forEach.call(document.querySelectorAll('.is-saving'), function (b) {
-      b.disabled = false; b.classList.remove('is-saving');
-      if (b.dataset.label != null) { if (b.tagName === 'INPUT') b.value = b.dataset.label; else b.innerHTML = b.dataset.label; }
-    });
-  });
-  document.addEventListener('DOMContentLoaded', offerRestore);
-  if (document.readyState !== 'loading') offerRestore();
-  function offerRestore() {
-    var raw; try { raw = sessionStorage.getItem(KEY); } catch (_) { return; }
-    if (!raw) return;
-    var d; try { d = JSON.parse(raw); } catch (_) { return; }
-    var ok = document.querySelector('.flash.ok') || /[?&](saved|ok|done|dup)=/.test(location.search);
-    if (ok) {
-      try { for (var i = sessionStorage.length - 1; i >= 0; i--) { var k = sessionStorage.key(i); if (k && k.indexOf('shg_unsent:' + location.pathname + '?') === 0) sessionStorage.removeItem(k); } } catch (_) {}
-      return;
-    }
-    if (!d || Date.now() - d.t > 30 * 60 * 1000) { try { sessionStorage.removeItem(KEY); } catch (_) {} return; }
-    var f = document.forms[d.i]; if (!f || !isPost(f) || (d.id && formId(f) !== d.id)) return;
-    var differs = Object.keys(d.v).some(function (k) { var p = k.split('|'); var el = f.elements[p[0]]; if (!el) return false; if (p.length > 1) return false; return el.value !== d.v[k]; });
-    if (!differs) { try { sessionStorage.removeItem(KEY); } catch (_) {} return; }
-    var note = document.createElement('div'); note.className = 'save-note'; note.setAttribute('role', 'status');
-    note.innerHTML = '<span>Your last save on this page did not show a confirmation. What you typed is kept.</span><button type="button" class="btn sm">Restore</button><button type="button" class="btn ghost sm">Dismiss</button>';
-    f.parentNode.insertBefore(note, f);
-    note.querySelectorAll('button')[0].onclick = function () {
-      Object.keys(d.v).forEach(function (k) { var p = k.split('|'); var els = f.querySelectorAll('[name="' + p[0].replace(/"/g, '') + '"]'); Array.prototype.forEach.call(els, function (el) { if (p.length > 1) { if (el.value === p[1]) el.checked = d.v[k] === '1'; } else el.value = d.v[k]; }); });
-      note.remove(); try { sessionStorage.removeItem(KEY); } catch (_) {}
-    };
-    note.querySelectorAll('button')[1].onclick = function () { note.remove(); try { sessionStorage.removeItem(KEY); } catch (_) {} };
-  }
-  if (window.visualViewport) {
-    var vv = window.visualViewport;
-    var sync = function () { var a = document.activeElement; var typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); document.body.classList.toggle('kb-open', !!typing && (window.innerHeight - vv.height) > 140); };
-    vv.addEventListener('resize', sync); document.addEventListener('focusin', function () { setTimeout(sync, 250); }); document.addEventListener('focusout', function () { setTimeout(sync, 250); });
-  }
-})();
-JS;
-}
-
 /** Auto card-table for phones — see admin_footer(). */
-/**
- * Small "it feels alive" touches for every panel page (5 Oct 2026, owner's
- * Point 12), all skipped when the device asks for reduced motion:
- *   - a plain figure on a KPI tile counts up from zero on load (rupees keep
- *     their Indian grouping, a % keeps its sign; anything with words in it,
- *     like "Not available" or "1 / 0", is left exactly as written);
- *   - a tap on a button, chip or quick action leaves a ripple at the finger.
- * Nothing here changes a value: the final text is the server's own string.
- */
-function admin_fx_js(): string
-{
-    return <<<'JS'
-(function () {
-  var calm = false;
-  try { calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
-  if (calm) return;
-
-  /* count-up */
-  var RX = /^(\u20b9\s?)?(\d[\d,]*)(\.\d+)?(%)?$/;
-  function countUp(el) {
-    if (el.children.length || el.hasAttribute('data-live-kpi') || el.getAttribute('data-fx') === 'off') return;
-    var txt = (el.textContent || '').trim(), m = RX.exec(txt);
-    if (!m) return;
-    var end = parseFloat((m[2] + (m[3] || '')).replace(/,/g, ''));
-    if (!isFinite(end) || end <= 0) return;
-    var dec = m[3] ? m[3].length - 1 : 0, t0 = null, dur = Math.min(900, 380 + Math.log(end + 1) * 60);
-    function fmt(v) { return (m[1] || '') + v.toLocaleString('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec }) + (m[4] || ''); }
-    function step(ts) {
-      if (t0 === null) t0 = ts;
-      var p = Math.min(1, (ts - t0) / dur), e = 1 - Math.pow(1 - p, 3);
-      el.textContent = p >= 1 ? txt : fmt(dec ? end * e : Math.round(end * e));
-      if (p < 1) requestAnimationFrame(step);
-    }
-    el.style.fontVariantNumeric = 'tabular-nums';
-    requestAnimationFrame(step);
-    /* a background tab gets no frames - never leave a half-counted figure behind */
-    setTimeout(function () { el.textContent = txt; }, dur + 400);
-  }
-  function runCount() {
-    var els = document.querySelectorAll('.kpi .kv, .sg-stat__value, .cards .card .v');
-    for (var i = 0; i < els.length && i < 40; i++) countUp(els[i]);
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', runCount); else runCount();
-
-  /* ripple */
-  document.addEventListener('pointerdown', function (ev) {
-    var b = ev.target && ev.target.closest ? ev.target.closest('.btn, .chip, .qa, .mnav a, .side a') : null;
-    if (!b || b.disabled) return;
-    var cs = getComputedStyle(b);
-    if (cs.position !== 'static' && cs.position !== 'relative') return;   // never re-anchor a floating / sticky control
-    var r = b.getBoundingClientRect(), d = Math.max(r.width, r.height) * 2, s = document.createElement('span');
-    var hadPos = b.style.position, hadOv = b.style.overflow;
-    if (cs.position === 'static') b.style.position = 'relative';
-    b.style.overflow = 'hidden';
-    s.className = 'fx-rip';
-    s.style.cssText = 'width:' + d + 'px;height:' + d + 'px;left:' + (ev.clientX - r.left - d / 2) + 'px;top:' + (ev.clientY - r.top - d / 2) + 'px';
-    b.appendChild(s);
-    setTimeout(function () { s.remove(); b.style.position = hadPos; b.style.overflow = hadOv; }, 520);
-  }, { passive: true });
-})();
-JS;
-}
-
 function admin_cards_js(): string
 {
     return <<<'JS'
@@ -1141,10 +426,7 @@ function admin_cards_js(): string
   var tables = document.querySelectorAll('table');
   for (var k = 0; k < tables.length; k++) {
     var t = tables[k];
-    // Oct 2026: a spreadsheet register (table.dt) is carded on a phone as well —
-    // its search + filters still drive the rows; only the layout changes.
-    var isDt = t.classList.contains('dt');
-    if (t.classList.contains('card-table') || /(^|\s)sm-table(\s|$)/.test(t.className) || (!isDt && /(^|\s)no-card(\s|$)/.test(t.className))) continue;
+    if (t.classList.contains('card-table') || /(^|\s)(no-card|sm-table)(\s|$)/.test(t.className)) continue;
     if (!t.tHead || !t.tHead.rows[0]) continue;
     var ths = t.tHead.rows[0].cells, labels = [];
     for (var i = 0; i < ths.length; i++) labels.push((ths[i].textContent || '').replace(/\s+/g, ' ').trim());
@@ -1207,25 +489,10 @@ function admin_poll_js(): string
 (function () {
   var KEY_LAST = 'shg_admin_last_pending';
 
-  /* 5 Oct 2026: ONE audio context, unlocked by the first tap/key on the
-     page (browsers start a timer-created context muted, so the old chime
-     was often silent), and a 🔔 switch in localStorage (shg_admin_sound,
-     on unless switched off). */
-  var actx = null;
-  function soundOn() { try { return localStorage.getItem('shg_admin_sound') !== '0'; } catch (e) { return true; } }
-  function audio() {
+  function beep() {
     try {
-      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-      if (actx.state === 'suspended') actx.resume();
-    } catch (e) { actx = null; }
-    return actx;
-  }
-  ['pointerdown', 'keydown'].forEach(function (ev) { document.addEventListener(ev, function () { if (soundOn()) audio(); }, { passive: true, once: true }); });
-  function beep(notes) {
-    if (!soundOn() || document.hidden) return;
-    try {
-      var ctx = audio(); if (!ctx) return;
-      (notes || [880, 1100]).forEach(function (freq, i) {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [880, 1100].forEach(function (freq, i) {
         setTimeout(function () {
           var o = ctx.createOscillator(), g = ctx.createGain();
           o.type = 'sine'; o.frequency.value = freq;
@@ -1244,8 +511,11 @@ function admin_poll_js(): string
     if (!el) {
       el = document.createElement('div');
       el.id = 'newPaymentBanner';
-      el.className = 'live-toast pay';
-      el.innerHTML = '<span></span><button type="button">Refresh</button>';
+      el.style.cssText = 'position:fixed;top:66px;right:16px;z-index:50;background:#12264E;color:#fff;'
+        + 'padding:12px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;'
+        + 'align-items:center;gap:10px;font-size:13px;max-width:320px';
+      el.innerHTML = '<span></span><button type="button" style="background:#F07C1F;border:0;color:#fff;'
+        + 'padding:6px 10px;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px">Refresh</button>';
       el.querySelector('button').onclick = function () { location.reload(); };
       document.body.appendChild(el);
     }
@@ -1264,8 +534,11 @@ function admin_poll_js(): string
     if (!el) {
       el = document.createElement('div');
       el.id = 'newBookingsPill';
-      el.className = 'live-toast book';
-      el.innerHTML = '<span></span><button type="button">Refresh</button>';
+      el.style.cssText = 'position:fixed;top:112px;right:16px;z-index:50;background:#0a6b3b;color:#fff;'
+        + 'padding:12px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;'
+        + 'align-items:center;gap:10px;font-size:13px;max-width:320px';
+      el.innerHTML = '<span></span><button type="button" style="background:#fff;border:0;color:#0a6b3b;'
+        + 'padding:6px 10px;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px">Refresh</button>';
       el.querySelector('button').onclick = function () { location.reload(); };
       document.body.appendChild(el);
     }
@@ -1273,97 +546,16 @@ function admin_poll_js(): string
     el.style.display = 'flex';
   }
 
-  /* Live sync (2 Oct 2026): a page that dropped #liveSync (LiveSync::anchor)
-     sends its scope with every poll. When the database fingerprint moves —
-     a seat changed, an agent assigned, a name fixed, a ticket moved to the
-     other bus — a read-only board reloads itself once the viewer is idle
-     (scroll and open sections kept); a page with forms only offers a pill. */
-  var syncEl = document.getElementById('liveSync');
-  var syncBusy = false, lastTouch = 0, typed = false;
-  ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (ev) {
-    document.addEventListener(ev, function () { lastTouch = Date.now(); }, { passive: true, capture: true });
-  });
-  document.addEventListener('input', function (e) {
-    var t = e.target;
-    // A search box that filters the list in place is not a half-typed form.
-    if (t && t.closest && t.closest('form') && !t.closest('[data-sync-ignore]')) typed = true;
-  }, true);
-  function syncIdle() {
-    var a = document.activeElement;
-    if (typed) return false;
-    if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return false;
-    if (document.querySelector('.seat-menu.on, dialog[open], .wa-sheet.on, .modal.on, .sm-selecting')) return false;
-    return Date.now() - lastTouch > 6000;
-  }
-  function syncPill() {
-    var el = document.getElementById('liveSyncPill');
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'liveSyncPill';
-      el.className = 'live-toast sync';
-      el.setAttribute('role', 'status');
-      el.innerHTML = '<span>🔄 Data changed in the system (डाटा बदलियो).</span><button type="button">Refresh</button>';
-      el.querySelector('button').onclick = syncReload;
-      document.body.appendChild(el);
-    }
-    el.style.display = 'flex';
-  }
-  function syncReload() {
-    try {
-      var open = [];
-      document.querySelectorAll('details[id][open]').forEach(function (d) { open.push(d.id); });
-      sessionStorage.setItem('shg_sync_restore', JSON.stringify({ p: location.pathname + location.search, y: window.scrollY, o: open }));
-    } catch (e) {}
-    // A GET of the same address, never reload(): a page drawn from a POST
-    // (seat map after a transfer, settle desk after a payout) would re-send
-    // that form on reload — i.e. do the action twice.
-    location.replace(location.pathname + location.search);
-  }
-  function syncChanged() {
-    if (syncBusy) return;
-    if ((syncEl.getAttribute('data-mode') || 'auto') === 'auto' && syncIdle()) {
-      syncBusy = true;
-      syncReload();
-    } else {
-      syncPill();
-    }
-  }
-  (function syncRestore() {
-    var raw = null;
-    try { raw = sessionStorage.getItem('shg_sync_restore'); sessionStorage.removeItem('shg_sync_restore'); } catch (e) {}
-    if (!raw) return;
-    var s = null; try { s = JSON.parse(raw); } catch (e) {}
-    if (!s || s.p !== location.pathname + location.search) return;
-    (s.o || []).forEach(function (id) { var d = document.getElementById(id); if (d) d.open = true; });
-    window.scrollTo(0, s.y || 0);
-    var t = document.createElement('div');
-    t.className = 'live-toast sync';
-    t.setAttribute('role', 'status');
-    t.innerHTML = '<span>✅ Updated just now — showing the latest data (भर्खरै अपडेट).</span>';
-    document.body.appendChild(t);
-    t.style.display = 'flex';
-    setTimeout(function () { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; setTimeout(function () { t.remove(); }, 420); }, 3500);
-  })();
-
   function poll() {
-    var url = 'pending-count.php';
-    if (syncEl) url += '?sync=' + encodeURIComponent(syncEl.getAttribute('data-scope') || '');
-    fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+    fetch('pending-count.php', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
         if (!j || typeof j.pending !== 'number') return;
-        if (syncEl && typeof j.ver === 'string' && j.ver !== '' && j.ver !== 'err'
-            && j.ver !== (syncEl.getAttribute('data-ver') || '')) {
-          syncChanged();
-        }
         // New-bookings pill (only on pages that supply the baseline anchor).
         var anchor = document.getElementById('liveNewBookings');
         if (anchor && typeof j.maxBooking === 'number') {
           var since = parseInt(anchor.getAttribute('data-since') || '0', 10);
-          if (since > 0 && j.maxBooking > since) {
-            if (j.maxBooking > (window.__shgLastBookChime || since)) { window.__shgLastBookChime = j.maxBooking; beep([660, 880, 1320]); }
-            showBookingsPill(j.maxBooking - since);
-          }
+          if (since > 0 && j.maxBooking > since) { showBookingsPill(j.maxBooking - since); }
         }
         var badge = document.getElementById('navBadgePayments');
         if (badge) {
@@ -1378,106 +570,13 @@ function admin_poll_js(): string
         var last = parseInt(sessionStorage.getItem(KEY_LAST) || '-1', 10);
         if (last >= 0 && j.pending > last) { beep(); showBanner(j.pending - last); }
         sessionStorage.setItem(KEY_LAST, String(j.pending));
-        if (j.chat && typeof j.chat.unread === 'number') chatPaint(j.chat);
       })
       .catch(function () {});
-  }
-
-  /* 9 Oct 2026 — Office chat on the same poll: the sidebar badge, the top-bar
-     count, a distinct two-note chime and a "New message" pill with Open when
-     a newer incoming message id shows up (sessionStorage, so one message
-     chimes once across pages). The chat page itself listens to the
-     shg-chat-poll event and skips the pill for the thread already open. */
-  var KEY_CHAT = 'shg_chat_last';
-  function chatPaint(c) {
-    var n = c.unread || 0, txt = n > 99 ? '99+' : String(n);
-    var nb = document.getElementById('navBadgeChat');
-    if (nb) {
-      nb.textContent = n > 0 ? txt : ''; nb.style.display = n > 0 ? 'inline-block' : 'none';
-      var g = n > 0 && nb.closest && nb.closest('.side-group'); if (g) g.classList.add('open');
-    }
-    var tb = document.getElementById('tbChat'), tn = document.getElementById('tbChatN');
-    if (tn) { tn.textContent = txt; tn.hidden = n <= 0; }
-    if (tb) { tb.classList.toggle('has', n > 0); tb.setAttribute('aria-label', (tb.getAttribute('title') || 'Chat') + (n > 0 ? ' - ' + n + ' unread' : '')); }
-    try { document.dispatchEvent(new CustomEvent('shg-chat-poll', { detail: c })); } catch (e) {}
-    var seen = -1; try { seen = parseInt(sessionStorage.getItem(KEY_CHAT) || '-1', 10); } catch (e) {}
-    var lastId = c.last || 0;
-    if (seen >= 0 && lastId > seen && n > 0 && window.__shgChatOpen !== c.t) {
-      beep([784, 1175]);
-      chatToast(c.t);
-    }
-    try { sessionStorage.setItem(KEY_CHAT, String(Math.max(seen, lastId))); } catch (e) {}
-  }
-  function chatToast(t) {
-    var el = document.getElementById('chatToast');
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'chatToast';
-      el.className = 'live-toast chat';
-      el.setAttribute('role', 'status');
-      el.innerHTML = '<span>💬 New message · नयाँ सन्देश</span><button type="button">Open</button>';
-      document.body.appendChild(el);
-      var st = document.createElement('style');
-      st.textContent = '.live-toast.chat{top:66px;background:var(--success,#15803d)}.live-toast.chat button{background:#fff;color:var(--success,#15803d)}'
-        + '@media(max-width:640px){.live-toast.chat{left:12px;right:12px;max-width:none;top:auto;bottom:calc(84px + env(safe-area-inset-bottom,0px))}}';
-      document.head.appendChild(st);
-    }
-    el.querySelector('button').onclick = function () { location.href = '/admin/staff-chat.php' + (t ? '?t=' + t : ''); };
-    el.style.display = 'flex';
-    clearTimeout(el.__h); el.__h = setTimeout(function () { el.style.display = 'none'; }, 12000);
   }
   poll();
   // 15s — "within seconds" per the ask, still gentle on the single VPS (two
   // cheap scalar reads per tick). Skips work while the tab is hidden.
-  // A live-sync page ticks every 10 s and checks at once when it comes back
-  // into view (the phone was in a pocket while the office changed things).
-  setInterval(function () { if (!document.hidden) poll(); }, syncEl ? 10000 : 15000);
-  if (syncEl) document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
-})();
-JS;
-}
-
-/**
- * Office chat glue for every admin page (9 Oct 2026).
- *
- *  · sw.js posts {type:'shg-open', url} to an open window when a push is
- *    tapped; admin pages had no listener, so the tap only focused the tab.
- *    Same-origin /admin/ URLs only.
- *  · Sign-out on a handset that took chat pushes: unbind this endpoint from
- *    the person first (admin/api/push.php), so a shared counter phone stops
- *    showing the previous clerk's messages. Never blocks the sign-out for
- *    more than ~1.2 s.
- */
-function admin_chat_js(): string
-{
-    return <<<'JS'
-(function () {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', function (e) {
-      var d = (e && e.data) || {};
-      if (d.type !== 'shg-open' || typeof d.url !== 'string') return;
-      try { var u = new URL(d.url, location.href); if (u.origin === location.origin && u.pathname.indexOf('/admin/') === 0) location.href = u.href; } catch (err) {}
-    });
-  }
-  var pushOn = false; try { pushOn = localStorage.getItem('shg_staff_push') === '1'; } catch (e) {}
-  if (!pushOn || !('serviceWorker' in navigator)) return;
-  document.addEventListener('click', function (e) {
-    var a = e.target && e.target.closest && e.target.closest('a[href$="/admin/logout.php"], a[href="logout.php"]');
-    if (!a || a.__shgUnbound) return;
-    e.preventDefault(); a.__shgUnbound = true;
-    var go = function () { location.href = a.href; };
-    var timer = setTimeout(go, 1200);
-    var csrf = (document.querySelector('meta[name="csrf"]') || {}).content || '';
-    navigator.serviceWorker.getRegistration('/').then(function (r) { return r && r.pushManager ? r.pushManager.getSubscription() : null; })
-      .then(function (s) {
-        if (!s) return null;
-        return fetch('/admin/api/push.php', { method: 'POST', credentials: 'same-origin', keepalive: true,
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-Token': csrf },
-          body: JSON.stringify({ action: 'unsubscribe', endpoint: s.endpoint }) });
-      })
-      .catch(function () {})
-      .then(function () { clearTimeout(timer); go(); });
-  }, true);
+  setInterval(function () { if (!document.hidden) poll(); }, 15000);
 })();
 JS;
 }
@@ -1501,14 +600,12 @@ function admin_search_js(): string
   function iconFor(type) {
     return type === 'booking' ? '🎫' : type === 'passenger' ? '👤' :
            type === 'ticket'  ? '🎟️' : type === 'bus'      ? '🚌' :
-           type === 'route'   ? '🛣️' : type === 'agent'    ? '🧑‍💼' :
-           type === 'customer' ? '📇' : type === 'payment' ? '💳' : '🔎';
+           type === 'route'   ? '🛣️' : type === 'agent'    ? '🧑‍💼' : '🔎';
   }
   function labelFor(type) {
     return type === 'booking' ? 'Bookings' : type === 'passenger' ? 'Passengers' :
            type === 'ticket'  ? 'Tickets'  : type === 'bus'       ? 'Buses'      :
-           type === 'route'   ? 'Routes'   : type === 'agent'      ? 'Agents'     :
-           type === 'customer' ? 'Customers' : type === 'payment' ? 'Transactions' : 'Results';
+           type === 'route'   ? 'Routes'   : type === 'agent'      ? 'Agents'     : 'Results';
   }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g,
     function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -1578,303 +675,20 @@ function admin_search_js(): string
 JS;
 }
 
-/**
- * Small helper: a coloured status pill. v2 maps every status the system
- * uses onto the semantic tokens (.st-ok / .st-warn / .st-bad / .st-info /
- * .st-muted / .st-orange / .st-wa) so pages, dark mode and the mobile card
- * view all agree. Unknown statuses fall back to a neutral pill.
- */
-function admin_pill(string $status, string $label = ''): string
+/** Small helper: a coloured status pill. */
+function admin_pill(string $status): string
 {
-    $s = strtolower(trim($status));
     $map = [
-        'pending'     => ['st-warn',   'Pending'],
-        'confirmed'   => ['st-ok',     'Confirmed'],
-        'verified'    => ['st-ok',     'Verified'],
-        'paid'        => ['st-ok',     'Paid'],
-        'completed'   => ['st-ok',     'Completed'],
-        'boarded'     => ['st-ok',     'Boarded'],
-        'active'      => ['st-ok',     'Active'],
-        'delivered'   => ['st-ok',     'Delivered'],
-        'read'        => ['st-ok',     'Read'],
-        'sent'        => ['st-info',   'Sent'],
-        'queued'      => ['st-warn',   'Queued'],
-        'processing'  => ['st-info',   'Processing'],
-        'cancelled'   => ['st-bad',    'Cancelled'],
-        'rejected'    => ['st-bad',    'Rejected'],
-        'failed'      => ['st-bad',    'Failed'],
-        'void'        => ['st-bad',    'Void'],
-        'blocked'     => ['st-bad',    'Blocked'],
-        'suspended'   => ['st-bad',    'Suspended'],
-        'expired'     => ['st-muted',  'Expired'],
-        'inactive'    => ['st-muted',  'Inactive'],
-        'skipped'     => ['st-muted',  'Skipped'],
-        'draft'       => ['st-muted',  'Draft'],
-        'partial'     => ['st-orange', 'Partial'],
-        'unpaid'      => ['st-orange', 'Unpaid'],
-        'due'         => ['st-orange', 'Due'],
-        'cod_pending' => ['st-orange', 'Pay at counter'],
-        'refunded'    => ['st-info',   'Refunded'],
-        'departed'    => ['st-info',   'Departed'],
-        'arrived'     => ['st-ok',     'Arrived'],
-        'boarding'    => ['st-orange', 'Boarding'],
-        'scheduled'   => ['st-info',   'Scheduled'],
-        'whatsapp'    => ['st-wa',     'WhatsApp'],
+        'pending'    => ['#8a6d00', '#fff4d1', 'Pending'],
+        'confirmed'  => ['#0a6b3b', '#d7f4e3', 'Confirmed'],
+        'verified'   => ['#0a6b3b', '#d7f4e3', 'Verified'],
+        'cancelled'  => ['#8a1f1f', '#f7dcdc', 'Cancelled'],
+        'rejected'   => ['#8a1f1f', '#f7dcdc', 'Rejected'],
+        'expired'    => ['#555',    '#e7e7e7', 'Expired'],
+        'cod_pending'=> ['#7a4a00', '#ffe6c7', 'Pay at counter'],
     ];
-    [$cls, $text] = $map[$s] ?? ['st-muted', ucfirst($s)];
-    if ($label !== '') { $text = $label; }
-    return '<span class="pill ' . $cls . '">' . Security::e($text) . '</span>';
-}
-
-/**
- * Route + date pairs that carry MORE than one bus (2 Oct 2026). On 1 Oct the
- * office ran the daily Surat bus and an extra one; berth C1 then exists on
- * both, so a list that prints "1 Oct · C1" without the bus says nothing.
- * One grouped read for a date window; key "routeId|Y-m-d" => bus count.
- *
- * @return array<string, int>
- */
-function admin_multi_bus_days(string $from, string $to): array
-{
-    $out = [];
-    try {
-        foreach (Database::fetchAll(
-            "SELECT route_id, travel_date, COUNT(*) AS n FROM schedules
-              WHERE travel_date >= :f AND travel_date <= :t AND status <> 'cancelled'
-              GROUP BY route_id, travel_date HAVING COUNT(*) > 1",
-            ['f' => $from, 't' => $to]
-        ) as $r) {
-            $out[(int) $r['route_id'] . '|' . (string) $r['travel_date']] = (int) $r['n'];
-        }
-    } catch (Throwable $e) {
-        return [];
-    }
-    return $out;
-}
-
-/**
- * "Bus 2 · GJ05AB1234" — which coach a ticket rides. The slot is named when
- * the day has several buses on the route (or it is an extra bus at all); the
- * number plate / name follows when the schedule has a bus. '' when there is
- * nothing worth saying (a plain one-bus day with no bus assigned).
- */
-function admin_bus_tag(int $slot, string $busNumber, string $busName = '', bool $multi = false): string
-{
-    $bits = [];
-    if ($multi || $slot > 1) {
-        $bits[] = 'Bus ' . max(1, $slot);
-    }
-    $plate = trim($busNumber) !== '' ? trim($busNumber) : trim($busName);
-    if ($plate !== '') {
-        $bits[] = $plate;
-    }
-    return implode(' · ', $bits);
-}
-
-/**
- * Page header with an optional subtitle, breadcrumb trail and action
- * buttons. Call right after admin_header() — it sits under the <h1>.
- *   admin_page_head('Everything about this agent', ['Agents' => '/admin/agents.php'], '<a class="btn">…</a>');
- */
-function admin_page_head(string $subtitle = '', array $crumbs = [], string $actionsHtml = ''): void
-{
-    echo '<div class="page-head"><div class="ph-txt">';
-    if ($crumbs !== []) {
-        echo '<div class="ph-crumbs">';
-        $i = 0;
-        foreach ($crumbs as $label => $href) {
-            if ($i++ > 0) { echo '<svg class="a-ic sm" style="opacity:.5"><use href="#a-chevron"/></svg>'; }
-            echo $href !== '' ? '<a href="' . Security::e((string) $href) . '">' . Security::e((string) $label) . '</a>' : '<span>' . Security::e((string) $label) . '</span>';
-        }
-        echo '</div>';
-    }
-    if ($subtitle !== '') { echo '<p class="ph-sub">' . Security::e($subtitle) . '</p>'; }
-    echo '</div>';
-    if ($actionsHtml !== '') { echo '<div class="ph-actions">' . $actionsHtml . '</div>'; }
-    echo '</div>';
-}
-
-/**
- * One KPI tile. $tone: blue (default) | green | orange | red | navy | teal | violet | wa.
- * $delta: ['up'|'down'|'flat', '+12%'] optional. $href wraps the whole tile.
- */
-function admin_kpi(string $label, string $value, string $sub = '', string $icon = 'chart', string $tone = 'blue', ?array $delta = null, string $href = ''): string
-{
-    $d = '';
-    if ($delta !== null && isset($delta[0], $delta[1])) {
-        $d = '<span class="kd ' . Security::e((string) $delta[0]) . '">' . Security::e((string) $delta[1]) . '</span>';
-    }
-    return '<div class="kpi tone-' . Security::e($tone) . '">'
-         . '<span class="ki"><svg class="a-ic"><use href="#a-' . Security::e($icon) . '"/></svg></span>'
-         . '<div class="kt"><div class="kk">' . Security::e($label) . '</div>'
-         . '<div class="kv">' . Security::e($value) . $d . '</div>'
-         . ($sub !== '' ? '<div class="ks">' . Security::e($sub) . '</div>' : '')
-         . '</div>'
-         . ($href !== '' ? '<a class="kl" href="' . Security::e($href) . '" aria-label="' . Security::e($label) . '"></a>' : '')
-         . '</div>';
-}
-
-/** Empty-state block for a panel or table cell. */
-function admin_empty(string $title, string $hint = '', string $icon = '🗂️', string $actionHtml = ''): string
-{
-    return '<div class="empty"><span class="em-ic">' . $icon . '</span><b>' . Security::e($title) . '</b>'
-         . ($hint !== '' ? '<div>' . Security::e($hint) . '</div>' : '')
-         . ($actionHtml !== '' ? '<div style="margin-top:12px">' . $actionHtml . '</div>' : '')
-         . '</div>';
-}
-
-/** Initials avatar (or photo when a public URL is given). */
-function admin_avatar(string $name, string $photoUrl = '', string $size = ''): string
-{
-    $initials = '';
-    foreach (preg_split('/\s+/', trim($name)) ?: [] as $part) {
-        if ($part !== '' && mb_strlen($initials) < 2) { $initials .= mb_strtoupper(mb_substr($part, 0, 1)); }
-    }
-    $cls = 'avatar' . ($size !== '' ? ' ' . Security::e($size) : '');
-    if ($photoUrl !== '') {
-        return '<span class="' . $cls . '"><img src="' . Security::e($photoUrl) . '" alt="' . Security::e($name) . '" loading="lazy"></span>';
-    }
-    return '<span class="' . $cls . '" aria-hidden="true">' . Security::e($initials ?: '?') . '</span>';
-}
-
-/**
- * "Send on WhatsApp" button (17 Sep 2026). Renders a button the shared sheet
- * (admin_wa_js) turns into preview -> send / open-on-phone, all logged.
- *
- *   admin_wa_button('agent_statement', ['agent' => 12, 'from' => '2026-09-01', 'to' => '2026-09-17']);
- *   admin_wa_button('booking_ticket',  ['pnr' => 'SHG-2026-00123'], 'Ticket on WhatsApp');
- *
- * $target keys: agent | pnr | from | to | on | ledger. $opts: class (default
- * 'btn ghost sm'), title, id, fallback (an href for a <noscript> anchor).
- * Nothing renders when the office switch wa_admin_tools_enabled is off or
- * the signed-in role may not send that purpose (WaTemplates::REGISTRY).
- */
-function admin_wa_button(string $purpose, array $target, string $label = 'Send on WhatsApp', array $opts = []): string
-{
-    static $registry = null;
-    if ($registry === null) {
-        require_once INCLUDE_PATH . '/watemplates.php';
-        $registry = WaTemplates::REGISTRY;
-    }
-    $reg = $registry[$purpose] ?? null;
-    if ($reg === null || !Settings::getBool('wa_admin_tools_enabled', true)) {
-        return '';
-    }
-    // 18 Sep 2026: an agent may send their OWN statement-type messages to
-    // themselves (WaTemplates::OWN_AGENT_PURPOSES) without the office
-    // permission those purposes carry. admin/api/wa-send.php applies the
-    // identical rule, so a button never appears that the API would refuse.
-    $scopeId = Auth::bookingScopeAdminId();
-    $own     = $scopeId !== null && (string) ($reg['target'] ?? '') === 'agent'
-        && (int) ($target['agent'] ?? 0) === $scopeId
-        && in_array($purpose, WaTemplates::OWN_AGENT_PURPOSES, true);
-    if (!$own && !Auth::can((string) $reg['perm'])) {
-        return '';
-    }
-    $attrs = ' data-wa-purpose="' . Security::e($purpose) . '"';
-    foreach (['agent' => 'agent', 'pnr' => 'pnr', 'from' => 'from', 'to' => 'to', 'on' => 'on', 'ledger' => 'ledger', 'sid' => 'sid', 'doc' => 'doc', 'page' => 'page', 'target' => 'target', 'phone' => 'phone', 'country' => 'country'] as $k => $attr) {
-        if (isset($target[$k]) && (string) $target[$k] !== '') {
-            $attrs .= ' data-wa-' . $attr . '="' . Security::e((string) $target[$k]) . '"';
-        }
-    }
-    $cls   = Security::e((string) ($opts['class'] ?? 'btn ghost sm'));
-    $title = Security::e((string) ($opts['title'] ?? ((string) $reg['hint'] . ' — opens a preview first')));
-    $id    = isset($opts['id']) ? ' id="' . Security::e((string) $opts['id']) . '"' : '';
-    $html  = '<button type="button" class="' . $cls . ' wa-send"' . $id . $attrs . ' title="' . $title . '">'
-           . '<svg class="a-ic" style="color:var(--wa-600)"><use href="#a-whatsapp"/></svg>' . Security::e($label) . '</button>';
-    if (!empty($opts['fallback'])) {
-        $html .= '<noscript><a class="' . $cls . '" href="' . Security::e((string) $opts['fallback']) . '" target="_blank" rel="noopener">' . Security::e($label) . '</a></noscript>';
-    }
-    return $html;
-}
-
-/**
- * The WhatsApp sheet: preview the composed message, then send through the
- * configured API (logged) or open it on the staff phone (also logged).
- * One IIFE, delegated on .wa-send, no framework — like admin_search_js().
- */
-function admin_wa_js(): string
-{
-    return <<<'JS'
-(function () {
-  var csrf = (document.querySelector('meta[name="csrf"]') || {}).content || '';
-  var sheet = null, cur = null;
-  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-  function post(body){
-    return fetch('/admin/api/wa-send.php',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(body)})
-      .then(function(r){return r.json();}).catch(function(){return {ok:false,error:'Network error — try again.'};});
-  }
-  function toast(msg, bad){
-    var t=document.createElement('div');t.className='toast';if(bad)t.style.background='var(--bad)';t.textContent=msg;document.body.appendChild(t);
-    setTimeout(function(){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(function(){t.remove();},420);},3200);
-  }
-  function build(){
-    sheet=document.createElement('div');sheet.className='wa-sheet';sheet.hidden=true;
-    sheet.innerHTML='<div class="wa-card" role="dialog" aria-modal="true" aria-labelledby="waTitle">'
-      +'<div class="wa-head"><span class="wa-ico"><svg class="a-ic"><use href="#a-whatsapp"/></svg></span><div><b id="waTitle"></b><div class="wa-to" id="waTo"></div></div><button type="button" class="wa-x" aria-label="Close">×</button></div>'
-      +'<pre class="wa-text" id="waText"></pre>'
-      +'<div class="wa-att" id="waAtt"></div>'
-      +'<label class="wa-note">Add a note (optional)<input type="text" id="waNote" maxlength="300" placeholder="e.g. Please settle by Saturday"></label>'
-      +'<div class="wa-status" id="waStatus"></div>'
-      +'<div class="wa-acts"><button type="button" class="btn wa" id="waSend"><svg class="a-ic"><use href="#a-send"/></svg>Send via WhatsApp API</button>'
-      +'<a class="btn ghost" id="waOpen" href="#" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-external"/></svg>Open in WhatsApp on this phone</a>'
-      +'<button type="button" class="btn ghost" id="waCopy"><svg class="a-ic"><use href="#a-copy"/></svg>Copy text</button></div></div>';
-    document.body.appendChild(sheet);
-    sheet.addEventListener('click',function(e){if(e.target===sheet||e.target.closest('.wa-x'))close();});
-    document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!sheet.hidden)close();});
-    sheet.querySelector('#waNote').addEventListener('change',function(){if(cur)preview(cur.btn,cur.body,true);});
-    sheet.querySelector('#waSend').addEventListener('click',send);
-    sheet.querySelector('#waOpen').addEventListener('click',function(){if(!cur)return;post(Object.assign({},cur.body,{action:'handoff',note:noteVal()}));mark(cur.btn,'Opened on phone');});
-    sheet.querySelector('#waCopy').addEventListener('click',function(){var t=sheet.querySelector('#waText').textContent;try{navigator.clipboard.writeText(t);toast('Message copied');}catch(e){}});
-  }
-  function noteVal(){return (sheet.querySelector('#waNote').value||'').trim();}
-  function close(){if(sheet){sheet.hidden=true;}cur=null;}
-  function mark(btn,txt){if(!btn)return;btn.classList.add('wa-done');btn.innerHTML='<svg class="a-ic"><use href="#a-check-circle"/></svg>'+esc(txt);}
-  function bodyFor(btn){
-    var d=btn.dataset,b={purpose:d.waPurpose||''};
-    if(d.waAgent)b.agent_id=parseInt(d.waAgent,10);if(d.waPnr)b.pnr=d.waPnr;if(d.waFrom)b.from=d.waFrom;if(d.waTo)b.to=d.waTo;if(d.waOn)b.on=d.waOn;if(d.waLedger)b.ledger_id=parseInt(d.waLedger,10);
-    if(d.waSid)b.sid=parseInt(d.waSid,10);if(d.waDoc)b.doc=d.waDoc;if(d.waPage)b.page=parseInt(d.waPage,10);if(d.waTarget)b.target=d.waTarget;if(d.waPhone)b.phone=d.waPhone;if(d.waCountry)b.country=d.waCountry;
-    return b;
-  }
-  function preview(btn,body,keep){
-    if(!sheet)build();
-    cur={btn:btn,body:body,res:null};
-    sheet.hidden=false;
-    var st=sheet.querySelector('#waStatus');st.className='wa-status';st.textContent='Preparing the message…';
-    sheet.querySelector('#waTitle').textContent='WhatsApp';sheet.querySelector('#waTo').textContent='';
-    if(!keep){sheet.querySelector('#waNote').value='';}
-    sheet.querySelector('#waText').textContent='';sheet.querySelector('#waAtt').innerHTML='';
-    post(Object.assign({},body,{action:'preview',note:noteVal()})).then(function(j){
-      if(!cur||cur.btn!==btn)return;
-      if(!j||!j.ok){st.className='wa-status bad';st.textContent=(j&&j.error)||'Could not prepare the message.';sheet.querySelector('#waSend').hidden=true;sheet.querySelector('#waOpen').hidden=true;return;}
-      cur.res=j;
-      sheet.querySelector('#waTitle').textContent=j.label||'WhatsApp';
-      sheet.querySelector('#waTo').textContent=(j.recipient?j.recipient+' · ':'')+'+'+j.intl;
-      sheet.querySelector('#waText').textContent=j.text||'';
-      var att=sheet.querySelector('#waAtt');att.innerHTML='';
-      (j.attachments||[]).forEach(function(u){var a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.className='chip';a.innerHTML='<svg class="a-ic"><use href="#a-'+(/\.pdf|statement/i.test(u)?'pdf':'image')+'"/></svg>Attachment';att.appendChild(a);});
-      var send=sheet.querySelector('#waSend'),open=sheet.querySelector('#waOpen');
-      send.hidden=!j.canAutoSend;open.hidden=false;open.href=j.link||'#';
-      st.className='wa-status '+(j.canAutoSend?'ok':'warn');st.textContent=j.reason||'';
-    });
-  }
-  function send(){
-    if(!cur||!cur.res)return;
-    var btn=sheet.querySelector('#waSend');btn.disabled=true;btn.textContent='Sending…';
-    post(Object.assign({},cur.body,{action:'send',note:noteVal()})).then(function(j){
-      btn.disabled=false;btn.innerHTML='<svg class="a-ic"><use href="#a-send"/></svg>Send via WhatsApp API';
-      var st=sheet.querySelector('#waStatus');
-      if(j&&j.ok){toast(j.message||'Sent on WhatsApp');mark(cur.btn,'Sent '+new Date().toTimeString().slice(0,5));close();return;}
-      if(j&&j.handoff&&j.link){st.className='wa-status warn';st.textContent=(j.reason||'Send it from your phone instead.');var o=sheet.querySelector('#waOpen');o.href=j.link;o.hidden=false;btn.hidden=true;return;}
-      st.className='wa-status bad';st.textContent=(j&&j.error)||'Send failed.';
-    });
-  }
-  document.addEventListener('click',function(e){
-    var b=e.target.closest('.wa-send');if(!b)return;e.preventDefault();
-    preview(b,bodyFor(b),false);
-  });
-})();
-JS;
+    [$fg, $bg, $label] = $map[$status] ?? ['#333', '#eee', ucfirst($status)];
+    return '<span class="pill" style="color:' . $fg . ';background:' . $bg . '">' . Security::e($label) . '</span>';
 }
 
 /**
@@ -1882,644 +696,239 @@ JS;
  * inside admin_header() right after <body>, then referenced with
  * <svg class="a-ic"><use href="#a-KEY"/></svg>. Stroke inherits
  * currentColor via CSS so the sidebar's on/off palette themes the icons.
- * v2 (17 Sep 2026): a full professional set (wallet, whatsapp, id-card,
- * settlement, loan, download, image, pdf, edit, phone, send, …).
  */
 function admin_sprite(): string
 {
     return <<<'SVG'
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
 <defs>
-<symbol id="a-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/></symbol>
+<symbol id="a-dashboard" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16V9M12 16v-5M17 16v-9"/></symbol>
 <symbol id="a-chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
-<symbol id="a-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
 <symbol id="a-ticket-alt" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M13 5v2M13 11v2M13 17v2"/></symbol>
-<symbol id="a-ticket" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M13 5v14"/></symbol>
 <symbol id="a-doc" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></symbol>
-<symbol id="a-pdf" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 17v-5h2a1.5 1.5 0 0 1 0 3H8M13 17v-5h1.5a2.5 2.5 0 0 1 0 5H13"/></symbol>
-<symbol id="a-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></symbol>
 <symbol id="a-user-solo" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></symbol>
-<symbol id="a-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></symbol>
-<symbol id="a-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M17.5 3.13a4 4 0 0 1 0 7.75"/></symbol>
-<symbol id="a-user-cog" viewBox="0 0 24 24"><circle cx="10" cy="7" r="4"/><path d="M2 21v-1a6 6 0 0 1 8-5.66"/><circle cx="18" cy="17" r="3"/><path d="M18 12v1M18 21v1M13.76 14.76l.71.71M22.24 21.24l-.71-.71"/></symbol>
-<symbol id="a-id-card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8.5" cy="11" r="2.2"/><path d="M5 16.5a3.5 3.5 0 0 1 7 0M14 10h5M14 13.5h5"/></symbol>
 <symbol id="a-notepad" viewBox="0 0 24 24"><path d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 8h6M9 12h6M9 16h4"/></symbol>
 <symbol id="a-chart-up" viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></symbol>
-<symbol id="a-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16V9M12 16v-5M17 16v-9"/></symbol>
 <symbol id="a-card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></symbol>
-<symbol id="a-wallet" viewBox="0 0 24 24"><path d="M20 7H4a2 2 0 0 1 0-4h13v4"/><path d="M4 7v12a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1"/><path d="M16 13h4v4h-4a2 2 0 0 1 0-4z"/></symbol>
-<symbol id="a-rupee" viewBox="0 0 24 24"><path d="M6 4h12M6 8h12M6 4c5 0 8 1.5 8 4.5S11 13 6 13l8 7"/></symbol>
-<symbol id="a-coins" viewBox="0 0 24 24"><ellipse cx="9" cy="6" rx="6" ry="3"/><path d="M3 6v6c0 1.66 2.69 3 6 3s6-1.34 6-3V6"/><path d="M3 12v6c0 1.66 2.69 3 6 3s6-1.34 6-3v-6"/><path d="M15 9.5c3.3 0 6 1.34 6 3v6c0 1.66-2.7 3-6 3"/></symbol>
-<symbol id="a-banknote" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></symbol>
-<symbol id="a-handshake" viewBox="0 0 24 24"><path d="M2 9l4-4 5 2 3-2 4 4 4 1-3 7-4 2-3-1-2 1-4-3-4-2z"/><path d="M11 7l-3 3 2 2 3-3M14 12l2 2M12 14l2 2"/></symbol>
 <symbol id="a-refund" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3.5-7.1"/><polyline points="3 3 3 8 8 8"/><path d="M12 8v4l3 2"/></symbol>
-<symbol id="a-loan" viewBox="0 0 24 24"><path d="M12 3v18M7 8h7a3 3 0 0 1 0 6H8"/><path d="M3 21h18"/><path d="M19 12l2 2-2 2"/></symbol>
+<symbol id="a-ticket" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M13 5v14"/></symbol>
 <symbol id="a-clipboard" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/></symbol>
 <symbol id="a-mail" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="m2 7 10 6 10-6"/></symbol>
+<symbol id="a-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M17.5 3.13a4 4 0 0 1 0 7.75"/></symbol>
 <symbol id="a-road" viewBox="0 0 24 24"><path d="M6 3 3 21M18 3l3 18M12 3v3M12 10v3M12 17v3"/></symbol>
-<symbol id="a-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h6a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6"/></symbol>
-<symbol id="a-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
 <symbol id="a-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
-<symbol id="a-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></symbol>
 <symbol id="a-seat" viewBox="0 0 24 24"><path d="M5 12a3 3 0 0 1 3-3h4v9H8z"/><path d="M12 9v9h4a3 3 0 0 0 3-3v-3a3 3 0 0 0-3-3z"/><path d="M8 21v-3M16 21v-3"/></symbol>
 <symbol id="a-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
 <symbol id="a-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
-<symbol id="a-whatsapp" viewBox="0 0 24 24"><path d="M3.5 20.5l1.3-4A8.5 8.5 0 1 1 8 19.3z"/><path d="M9.2 8.6c.2-.5.5-.5.8-.5h.5c.2 0 .4.1.5.4l.7 1.6c.1.2 0 .4-.1.6l-.5.6c-.1.2-.1.3 0 .5a6 6 0 0 0 2.9 2.7c.2.1.4 0 .5-.1l.7-.8c.2-.2.4-.2.6-.1l1.6.8c.2.1.4.2.4.4 0 .3 0 1-.5 1.5s-1.3.8-1.8.7c-1.2-.2-2.8-.8-4.6-2.6S8.8 11.4 8.6 10.2c-.1-.5.2-1.2.6-1.6z"/></symbol>
-<symbol id="a-phone" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.9 2.1z"/></symbol>
-<symbol id="a-send" viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></symbol>
-<symbol id="a-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></symbol>
-<symbol id="a-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/></symbol>
-<symbol id="a-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></symbol>
-<symbol id="a-printer" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="2" y="9" width="20" height="9" rx="2"/><path d="M6 14h12v7H6z"/></symbol>
-<symbol id="a-external" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14L21 3"/></symbol>
-<symbol id="a-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
-<symbol id="a-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
-<symbol id="a-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></symbol>
-<symbol id="a-eye" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></symbol>
-<symbol id="a-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
-<symbol id="a-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/></symbol>
-<symbol id="a-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
-<symbol id="a-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></symbol>
-<symbol id="a-alert" viewBox="0 0 24 24"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
-<symbol id="a-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
-<symbol id="a-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></symbol>
-<symbol id="a-plus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></symbol>
-<symbol id="a-plus-plain" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
-<symbol id="a-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
-<symbol id="a-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
-<symbol id="a-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
-<symbol id="a-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></symbol>
-<symbol id="a-filter" viewBox="0 0 24 24"><path d="M22 3H2l8 9.5V19l4 2v-8.5z"/></symbol>
-<symbol id="a-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></symbol>
-<symbol id="a-home" viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
-<symbol id="a-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
-<symbol id="a-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
-<symbol id="a-layers" viewBox="0 0 24 24"><path d="M12 2l10 5-10 5L2 7z"/><path d="M2 12l10 5 10-5M2 17l10 5 10-5"/></symbol>
-<symbol id="a-tag" viewBox="0 0 24 24"><path d="M20.6 13.4L13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"/><path d="M7 7h.01"/></symbol>
-<symbol id="a-percent" viewBox="0 0 24 24"><path d="M19 5L5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></symbol>
-<symbol id="a-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
-<symbol id="a-unlock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
 <symbol id="a-trophy" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 18v4M14 18v4"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
 <symbol id="a-star" viewBox="0 0 24 24"><path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.45l-5.81 3.05 1.11-6.47L2.6 9.45l6.5-.95L12 2.6Z"/></symbol>
 <symbol id="a-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+<symbol id="a-user-cog" viewBox="0 0 24 24"><circle cx="10" cy="7" r="4"/><path d="M2 21v-1a6 6 0 0 1 8-5.66"/><circle cx="18" cy="17" r="3"/><path d="M18 12v1M18 21v1M13.76 14.76l.71.71M22.24 21.24l-.71-.71"/></symbol>
 <symbol id="a-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
 <symbol id="a-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
 <symbol id="a-theme" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
 <symbol id="a-key" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></symbol>
 <symbol id="a-bus" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="15" rx="3"/><path d="M3 10h18"/><circle cx="7.5" cy="15.5" r="1.5"/><circle cx="16.5" cy="15.5" r="1.5"/><path d="M7 21v-2M17 21v-2"/></symbol>
 <symbol id="a-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
-<symbol id="a-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+<symbol id="a-plus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></symbol>
 <symbol id="a-calendar-plus" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 14v5M9.5 16.5h5"/></symbol>
-<symbol id="a-calendar-move" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16h6M13 13.5l2.5 2.5-2.5 2.5"/></symbol>
 <symbol id="a-ledger" viewBox="0 0 24 24"><path d="M6 2h11a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M9 7h6M9 11h6M9 15h4"/></symbol>
-<symbol id="a-receipt" viewBox="0 0 24 24"><path d="M4 2v20l3-2 3 2 3-2 3 2 3-2 1 .7V2z"/><path d="M8 7h8M8 11h8M8 15h5"/></symbol>
-<symbol id="a-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></symbol>
-<symbol id="a-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></symbol>
-<symbol id="a-bolt" viewBox="0 0 24 24"><path d="M13 2L3 14h8l-1 8 10-12h-8z"/></symbol>
-<symbol id="a-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M3 12h18"/></symbol>
+<symbol id="a-building" viewBox="0 0 24 24"><path d="M3 21V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v16"/><path d="M3 21h18"/><path d="M9 7h1M9 11h1M9 15h1M14 7h1M14 11h1M14 15h1"/></symbol>
 </defs>
 </svg>
 SVG;
 }
 
-/** The admin stylesheet (kept here so pages stay self-contained).
- *
- *  Design system v2 (17 Sep 2026) — every class the pages already use keeps
- *  working (.card .panel .btn .pill .flash .toolbar .hcard .dash-* table.dt);
- *  this pass adds tokens, a real type scale, semantic status colours, icon
- *  buttons, KPI tiles, chips, empty states, a mobile bottom nav and the
- *  micro-interactions. Brand stays navy #12264E · blue #2E5FA8 · orange #F07C1F.
- */
+/** The admin stylesheet (kept here so pages stay self-contained). */
 function admin_css(): string
 {
-    return <<<'CSS'
+    return <<<CSS
 *{box-sizing:border-box}
-/* Oct 2026 redesign: every value comes from the S Hari Global design system
-   (assets/css/ds.css, light + dark). These are the panel's own names for those
-   tokens, so the 52 pages with their own inline styles repaint unchanged.
-   --navy, --ink, --ink-2 and --line are used straight from ds.css. The
-   selector matches ds.css's specificity so these win by order in both themes. */
-:root,:root[data-theme]{
-  --navy-700:var(--royal-strong);--blue:var(--royal);--blue-600:var(--royal-strong);--blue-100:var(--royal-soft);--blue-50:var(--royal-tint);
-  --orange:var(--royal);--orange-600:var(--royal-strong);--orange-100:var(--royal-soft);--orange-50:var(--royal-tint);--gold:var(--warning);
-  --mut:var(--muted);--mut-2:var(--muted);--line-2:var(--line-strong);
-  --bg:var(--page);--card:var(--surface);--head:var(--surface-sunken);--hover:var(--surface-hover);--soft:var(--surface-sunken);
-  --ok:var(--success);--ok-bg:var(--success-soft);--warn:var(--warning);--warn-bg:var(--warning-soft);--bad:var(--danger);--bad-bg:var(--danger-soft);
-  --info:var(--royal);--info-bg:var(--royal-tint);--wa:var(--success);--wa-600:var(--success);--wa-bg:var(--success-soft);--violet:var(--refund);--violet-bg:var(--refund-soft);--teal:#0B6E64;--teal-bg:#E0F5F2;
-  --r-xs:var(--radius-xs);--r-sm:var(--radius-sm);--r:var(--radius-md);--r-lg:var(--radius-lg);--r-xl:var(--radius-xl);
-  --sh-1:var(--shadow-1);--sh-2:var(--shadow-2);--sh-3:var(--shadow-3);
-  --ease:cubic-bezier(.4,0,.2,1);--dur:.15s;
-  --f-ui:var(--font-sans);
-  --f-mono:var(--font-mono);
-  --side-w:var(--sidenav-w);--tb-h:var(--appbar-h);
-}
-:root[data-theme="dark"]{--teal:#4FC3B5;--teal-bg:#0F2E2B}
-html{overflow-x:hidden;-webkit-text-size-adjust:100%}@supports(overflow:clip){html{overflow-x:clip}}
-body{margin:0;font-family:var(--f-ui);font-size:14px;line-height:1.45;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;font-feature-settings:"cv11","ss01"}
+:root{--navy:#12264E;--blue:#2E5FA8;--orange:#F07C1F;--ink:#1b2436;--mut:#6b7688;--line:#e5e9f0;--bg:#f4f6fb;--card:#fff;--head:#fafbfe;--hover:#eef2fa}
+:root[data-theme="dark"]{--ink:#e8f0fb;--mut:#93a4be;--line:#22314a;--bg:#0b1220;--card:#111d33;--head:#0f1a2e;--hover:#182741}
+body{margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink)}
 body,.side,.card,.panel,.panel h2,th,.toolbar input,.toolbar select,.btn.ghost{transition:background-color .2s,color .2s,border-color .2s}
-img,pre{max-width:100%}
-a{color:var(--blue);text-decoration:none}
-a:hover{color:var(--blue-600)}
-:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:6px}
-::selection{background:var(--blue-100)}
 .a-ic{display:inline-block;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;flex:0 0 auto}
-.a-ic.sm{width:15px;height:15px}.a-ic.lg{width:22px;height:22px}.a-ic.xl{width:28px;height:28px;stroke-width:1.75}
-
-/* ── Top bar ─────────────────────────────────────────────────────────── */
-.tb{position:sticky;top:0;z-index:30;height:var(--tb-h);display:flex;align-items:center;gap:12px;padding:0 16px;
-    background:linear-gradient(90deg,var(--navy) 0%,var(--navy-700) 62%,var(--blue) 100%);color:#fff;box-shadow:0 2px 12px rgba(10,22,50,.28);border-bottom:3px solid var(--orange)}
-.tb .brand{display:inline-flex;align-items:center;gap:9px;color:#fff;font-weight:800;font-size:15.5px;letter-spacing:-.01em;white-space:nowrap}
-.tb .brand-logo{height:34px;width:auto;max-width:72px;object-fit:contain;background:none;border-radius:0;padding:0;box-shadow:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35));flex:0 0 auto}
-.tb .brand span{color:#FFC08A;font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-left:2px}
-.tb .who{margin-left:auto;font-size:13px;color:#CDD6E6;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
-.tb .who em{font-style:normal;color:#FFC08A;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em}
-.tb .who a{color:#fff;text-decoration:none;opacity:.9}
-.tb .who a:hover{opacity:1;text-decoration:underline}
-.tb .who .tb-av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--orange),#FFB070);color:#fff;font-weight:800;font-size:12px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:.02em;box-shadow:0 1px 3px rgba(0,0,0,.3)}
-.tb .who .tb-name{font-weight:600;color:#fff}
-.tb .menu{display:none;background:none;border:0;color:#fff;font-size:22px;cursor:pointer;line-height:1;padding:6px 8px;border-radius:8px}
-.tb .menu:hover{background:rgba(255,255,255,.12)}
-.theme-tog{background:none;border:0;color:#fff;font-size:17px;cursor:pointer;padding:6px;border-radius:8px;line-height:1;display:inline-flex;align-items:center}
+.theme-tog{background:none;border:0;color:#fff;font-size:17px;cursor:pointer;padding:4px 8px;border-radius:7px;line-height:1;display:inline-flex;align-items:center}
 .theme-tog:hover{background:rgba(255,255,255,.14)}
-.tb-ibtn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;color:#fff;background:rgba(255,255,255,.08);border:0;cursor:pointer}
-.tb-ibtn:hover{background:rgba(255,255,255,.18)}
-
-/* ── Global search ───────────────────────────────────────────────────── */
-.tb-search{flex:1;max-width:560px;position:relative;display:flex;align-items:center;gap:8px;padding:0 12px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.08);border-radius:999px;height:38px;transition:background var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
-.tb-search:focus-within{background:rgba(255,255,255,.18);box-shadow:0 0 0 3px rgba(240,124,31,.35);border-color:transparent}
-.tb-search .tb-ic{color:#CDD6E6;flex:0 0 auto}
-.tb-search input{flex:1;background:transparent;border:0;color:#fff;font-size:13.5px;height:100%;outline:none;padding:0;font-family:inherit;min-width:0}
-.tb-search input::placeholder{color:rgba(255,255,255,.55)}
-.tb-sug{position:absolute;top:calc(100% + 8px);left:0;right:0;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-3);max-height:60vh;overflow:auto;z-index:40;padding:6px}
-.tb-sug .tbs-sec{padding:8px 10px 4px;font-size:10.5px;font-weight:800;letter-spacing:.1em;color:var(--mut);text-transform:uppercase}
-.tb-sug a{display:flex;gap:10px;align-items:center;padding:9px 10px;border-radius:10px;color:var(--ink);font-size:13px}
-.tb-sug a:hover,.tb-sug a.act{background:var(--hover)}
-.tb-sug .tbs-icon{width:26px;height:26px;border-radius:8px;background:var(--blue-50);display:inline-flex;align-items:center;justify-content:center;color:var(--blue);font-weight:800;flex-shrink:0;font-size:14px}
-.tb-sug .tbs-meta{color:var(--mut);font-size:11px;margin-left:auto;flex-shrink:0}
-.tb-sug .tbs-empty{padding:14px 12px;color:var(--mut);font-size:13px;text-align:center}
-
-/* ── Sidebar ─────────────────────────────────────────────────────────── */
-.side{position:fixed;top:var(--tb-h);left:0;width:var(--side-w);height:calc(100vh - var(--tb-h));background:var(--card);border-right:1px solid var(--line);
-      padding:12px 10px 24px;overflow:auto;scrollbar-width:thin}
-.side a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:11px;color:var(--ink-2);font-weight:600;font-size:13.5px;position:relative;transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
-.side a span{width:30px;height:30px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:var(--soft);color:var(--mut);flex:0 0 auto;transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
-.side a:hover{background:var(--hover);color:var(--ink)}
-.side a:hover span{color:var(--blue)}
-.side a.on{background:var(--blue-50);color:var(--blue-600);font-weight:700}
-.side a.on span{background:var(--blue);color:#fff;box-shadow:0 3px 8px rgba(46,95,168,.35)}
-.side a.on::before{content:'';position:absolute;left:-10px;top:9px;bottom:9px;width:4px;border-radius:0 4px 4px 0;background:var(--orange)}
-.side a.hot{background:linear-gradient(90deg,var(--orange-50),transparent 80%);border:1px solid rgba(240,124,31,.35);color:var(--ink)}
-.side a.hot span{background:var(--orange-100);color:var(--orange-600)}
-.side a.hot:hover{background:var(--orange-100)}
+a{color:var(--blue);text-decoration:none}
+.tb{position:sticky;top:0;z-index:30;height:56px;display:flex;align-items:center;gap:12px;padding:0 16px;
+    background:var(--navy);color:#fff;box-shadow:0 1px 8px rgba(0,0,0,.15)}
+.tb .brand{display:inline-flex;align-items:center;gap:8px;color:#fff;font-weight:700;font-size:16px}
+.tb .brand-logo{width:26px;height:26px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3));flex:0 0 auto}
+.tb .brand span{color:var(--orange);font-weight:600}
+.tb .who{margin-left:auto;font-size:13px;color:#cdd6e6}
+.tb .who em{font-style:normal;color:var(--orange)}
+.tb .who a{color:#fff;text-decoration:underline}
+.tb .menu{display:none;background:none;border:0;color:#fff;font-size:22px;cursor:pointer}
+.side{position:fixed;top:56px;left:0;width:210px;height:calc(100vh - 56px);background:var(--card);border-right:1px solid var(--line);
+      padding:12px 8px;overflow:auto}
+.side a{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:9px;color:var(--ink);font-weight:600;font-size:14px}
+.side a span{width:22px;text-align:center}
+.side a:hover{background:var(--hover)}
+.side a.on{background:var(--navy);color:#fff}
+.side a.hot{background:linear-gradient(90deg,rgba(240,124,31,.18),transparent 75%);border:1px solid rgba(240,124,31,.55);color:var(--ink)}
+.side a.hot:hover{background:rgba(240,124,31,.24)}
 .side a.hot.on{background:var(--orange);border-color:var(--orange);color:#fff}
-.side a.hot.on span{background:rgba(255,255,255,.25);color:#fff;box-shadow:none}
-.navbadge{margin-left:auto;background:var(--orange);color:#fff;border-radius:999px;font-size:11px;font-weight:800;padding:1px 7px;line-height:1.5;min-width:20px;text-align:center}
+.navbadge{margin-left:auto;background:var(--orange);color:#fff;border-radius:999px;font-size:11px;font-weight:800;padding:1px 7px;line-height:1.5}
 .side a.on .navbadge{background:var(--card);color:var(--navy)}
-.side-sec{padding:14px 12px 4px;font-size:10.5px;font-weight:800;letter-spacing:.12em;color:var(--mut);text-transform:uppercase;user-select:none}
+
+/* Phase 3: sidebar section headers — small uppercase labels that
+   break up the 20-item strip into Operations / Sales / People /
+   Insights / System groups. Hidden when only one section is visible
+   (agent view). */
+.side-sec{padding:14px 12px 4px;font-size:10px;font-weight:800;letter-spacing:1.2px;color:var(--mut);text-transform:uppercase;user-select:none}
 .side-sec:first-child{padding-top:6px}
-.side-toggle{display:flex;align-items:center;gap:6px;width:100%;background:none;border:0;text-align:left;cursor:pointer;font:inherit;border-radius:8px}
+/* Collapsible nav groups (simplify pass): section headers become toggles so
+   the ~25-item sidebar reads as a few tidy groups. The active section starts
+   open (server-set .open); the client restores the admin's remembered set. */
+.side-toggle{display:flex;align-items:center;gap:6px;width:100%;background:none;border:0;text-align:left;cursor:pointer;font:inherit}
 .side-sec.side-toggle{color:var(--mut)}
-.side-toggle:hover{color:var(--ink);background:var(--soft)}
+.side-toggle:hover{color:var(--ink)}
 .side-group .side-items{display:none}
-.side-group.open .side-items{display:block;animation:fadeDown .18s var(--ease)}
+.side-group.open .side-items{display:block}
 .nav-caret{margin-left:auto;width:14px;height:14px;transition:transform .15s;opacity:.7}
 .side-group.open .nav-caret{transform:rotate(90deg)}
 .side-group:first-child .side-toggle{padding-top:6px}
-.side-site{margin-top:10px;border-top:1px solid var(--line);padding-top:12px}
-.side-site{border-radius:0}
+.side-site{margin-top:8px;border-top:1px solid var(--line);padding-top:12px}
 
-/* ── Mobile bottom nav (agents / counter, phones only) ───────────────── */
-.mnav{display:none}
-@media(max-width:820px){
-  .mnav{position:fixed;left:0;right:0;bottom:0;z-index:36;display:grid;grid-template-columns:repeat(5,1fr);gap:2px;padding:6px 8px calc(6px + env(safe-area-inset-bottom));
-        background:var(--card);border-top:1px solid var(--line);box-shadow:0 -6px 20px rgba(18,38,78,.10)}
-  .mnav a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 2px;border-radius:12px;color:var(--mut);font-size:10.5px;font-weight:700;letter-spacing:.01em;min-height:50px}
-  .mnav a .a-ic{width:22px;height:22px;stroke-width:1.9}
-  .mnav a.on{color:var(--blue-600);background:var(--blue-50)}
-  .mnav a.fab{color:#fff}
-  .mnav a.fab .mn-fab{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--orange),#FF9A4D);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(240,124,31,.45);margin-top:-22px;border:3px solid var(--card)}
-  .mnav a.fab .a-ic{color:#fff}
-  /* One colour per job, always on (19 Sep 2026) - tinted icon + word, a
-     filled chip when it is the page you are on. Tokens, so dark mode follows. */
-  .mnav a.mn-home{--mn:var(--blue-600)} .mnav a.mn-tix{--mn:var(--ok)} .mnav a.mn-map{--mn:#0E7C86}
-  .mnav a.mn-money{--mn:var(--warn)} .mnav a.mn-menu{--mn:var(--mut)}
-  .mnav a[class^="mn-"] .a-ic{color:var(--mn)}
-  .mnav a[class^="mn-"]{color:var(--ink)}
-  .mnav a[class^="mn-"].on{color:var(--mn);background:color-mix(in srgb,var(--mn) 14%,transparent)}
-  .mnav a.fab{gap:1px}
-  .mnav a.fab .mn-fab-l{font-size:10.5px;font-weight:800;color:var(--orange-600);margin-top:2px}
-  :root[data-theme="dark"] .mnav a.mn-map{--mn:#4FC3CC}
-  body.has-mnav .wrap{padding-bottom:86px}
-  body.has-mnav .side .side-site{display:flex}
-}
-
-/* ── Page frame ──────────────────────────────────────────────────────── */
-.wrap{margin-left:var(--side-w);padding:22px 28px 40px;max-width:1280px}
-.wrap h1{margin:2px 0 18px;font-size:23px;font-weight:800;letter-spacing:-.015em;line-height:1.2}
-.page-head{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin:-8px 0 18px}
-.page-head .ph-txt{flex:1 1 260px;min-width:0}
-.page-head .ph-sub{margin:2px 0 0;color:var(--mut);font-size:13.5px}
-.page-head .ph-crumbs{font-size:12px;color:var(--mut);margin-bottom:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.page-head .ph-crumbs a{color:var(--mut)}.page-head .ph-crumbs a:hover{color:var(--blue)}
-.page-head .ph-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.scrim{display:none}
-.muted{color:var(--mut)}
-.mono{font-family:var(--f-mono);font-size:13px}
-.money{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
-.text-sm{font-size:12.5px}.text-xs{font-size:11.5px}.fw7{font-weight:700}.fw8{font-weight:800}
-.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row.between{justify-content:space-between}
-.stack{display:flex;flex-direction:column;gap:10px}
-.grid-2,.grid-3,.grid-4{display:grid;gap:14px}
-.grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}.grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}.grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
-@media(max-width:1100px){.grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.grid-3{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:640px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
-.divider{height:1px;background:var(--line);margin:14px 0}
-
-/* ── Cards & panels ──────────────────────────────────────────────────── */
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh-1);transition:box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease),border-color var(--dur) var(--ease)}
-.card:hover{box-shadow:var(--sh-2);border-color:var(--line-2)}
-.card .k{font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
-.card .v{font-size:26px;font-weight:800;margin-top:6px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.card .v small{font-size:13px;color:var(--mut);font-weight:600}
-.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;margin-bottom:22px;box-shadow:var(--sh-1)}
-.panel h2{margin:0;padding:14px 18px;font-size:15px;font-weight:700;border-bottom:1px solid var(--line);background:var(--head);display:flex;align-items:center;gap:8px;letter-spacing:-.01em}
-.panel h2 .a-ic{color:var(--blue)}
-.panel-body{padding:18px}
-.panel-foot{padding:12px 18px;border-top:1px solid var(--line);background:var(--head);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.dash-panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--sh-1)}
-.dash-panel .dp-head{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;background:var(--head)}
-.dash-panel .dp-body{padding:18px}
-
-/* KPI hero tiles (gradient, kept) */
-.dash-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
-.hcard{border-radius:var(--r-lg);padding:20px 22px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--sh-2);transition:transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
-.hcard:hover{transform:translateY(-2px);box-shadow:var(--sh-3)}
-.hcard::after{content:'';position:absolute;right:-18px;top:-18px;width:90px;height:90px;border-radius:50%;background:rgba(255,255,255,.12)}
-.hcard::before{content:'';position:absolute;left:-30px;bottom:-40px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.06)}
-.hcard .hicon{font-size:26px;margin-bottom:8px;display:inline-flex;width:44px;height:44px;border-radius:12px;align-items:center;justify-content:center;background:rgba(255,255,255,.16);filter:drop-shadow(0 2px 4px rgba(0,0,0,.15))}
-.hcard .hk{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;opacity:.88;font-weight:700}
-.hcard .hv{font-size:30px;font-weight:800;margin:4px 0 2px;line-height:1.1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.hcard .hsub{font-size:12px;opacity:.8}
-.hcard .hlink{display:inline-block;margin-top:10px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);padding:5px 12px;border-radius:20px;text-decoration:none;transition:background var(--dur) var(--ease)}
-.hcard .hlink:hover{background:rgba(255,255,255,.35)}
-.hc-blue{background:linear-gradient(135deg,#2E5FA8,#1a3d6e)}
-.hc-green{background:linear-gradient(135deg,#0a8b4b,#065a30)}
-.hc-orange{background:linear-gradient(135deg,#F07C1F,#C85A0A)}
-.hc-red{background:linear-gradient(135deg,#c0392b,#8e2320)}
-.hc-navy{background:linear-gradient(135deg,#12264E,#0b1a36)}
-.hc-teal{background:linear-gradient(135deg,#0E8C7F,#065F56)}
-.hc-violet{background:linear-gradient(135deg,#6D4FC2,#45308F)}
-@media(max-width:900px){.dash-hero{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
-
-/* KPI tiles (light, Zepto-style) */
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:22px}
-.kpi{display:flex;gap:14px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px 18px;box-shadow:var(--sh-1);position:relative;overflow:hidden;transition:box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease)}
-.kpi:hover{box-shadow:var(--sh-2);transform:translateY(-1px)}
-.kpi .ki{width:44px;height:44px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;font-size:20px;background:var(--blue-50);color:var(--blue)}
-.kpi .ki .a-ic{width:22px;height:22px;stroke-width:1.9}
-.kpi .kt{min-width:0;flex:1}
-.kpi .kk{font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kpi .kv{font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.15;margin-top:4px;font-variant-numeric:tabular-nums}
-.kpi .ks{font-size:12px;color:var(--mut);margin-top:3px}
-.kpi .kd{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:middle}
-.kpi .kd.up{background:var(--ok-bg);color:var(--ok)}.kpi .kd.down{background:var(--bad-bg);color:var(--bad)}.kpi .kd.flat{background:var(--soft);color:var(--mut)}
-.kpi.tone-green .ki{background:var(--ok-bg);color:var(--ok)}.kpi.tone-orange .ki{background:var(--orange-100);color:var(--orange-600)}
-.kpi.tone-red .ki{background:var(--bad-bg);color:var(--bad)}.kpi.tone-navy .ki{background:var(--navy);color:#fff}
-.kpi.tone-teal .ki{background:var(--teal-bg);color:var(--teal)}.kpi.tone-violet .ki{background:var(--violet-bg);color:var(--violet)}
-.kpi.tone-wa .ki{background:var(--wa-bg);color:var(--wa-600)}
-.kpi a.kl{position:absolute;inset:0}
-
-/* ── Tables ──────────────────────────────────────────────────────────── */
-table{width:100%;border-collapse:collapse;font-size:13.5px}
-th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
-th{font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;background:var(--head);font-weight:700;white-space:nowrap}
-tbody tr{transition:background var(--dur) var(--ease)}
-tbody tr:hover>td{background:var(--soft)}
-tr:last-child td{border-bottom:0}
-td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
-.tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
-.tbl-sticky{max-height:70vh;overflow:auto}
-.tbl-sticky thead th{position:sticky;top:0;z-index:2}
+/* Phase 3: top-bar global search. Flex 1 so it takes the middle of the
+   top bar; suggest dropdown is absolutely positioned below the input.
+   On narrow viewports the form wraps under the brand+menu row so the
+   input keeps a usable width instead of shrinking to a stub. */
+.tb-search{flex:1;max-width:520px;position:relative;display:flex;align-items:center;gap:8px;padding:0 12px;background:rgba(255,255,255,.10);border-radius:22px;height:36px}
+.tb-search:focus-within{background:rgba(255,255,255,.18);box-shadow:0 0 0 2px rgba(240,124,31,.35)}
+.tb-search .tb-ic{color:#cdd6e6;flex:0 0 auto}
+.tb-search input{flex:1;background:transparent;border:0;color:#fff;font-size:13.5px;height:100%;outline:none;padding:0}
+.tb-search input::placeholder{color:rgba(255,255,255,.55)}
+.tb-sug{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.15);max-height:60vh;overflow:auto;z-index:40;padding:6px}
+.tb-sug .tbs-sec{padding:6px 10px 4px;font-size:10px;font-weight:800;letter-spacing:1px;color:var(--mut);text-transform:uppercase}
+.tb-sug a{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:8px;color:var(--ink);font-size:13px}
+.tb-sug a:hover,.tb-sug a.act{background:var(--hover)}
+.tb-sug .tbs-icon{width:22px;text-align:center;color:var(--blue);font-weight:800;flex-shrink:0}
+.tb-sug .tbs-meta{color:var(--mut);font-size:11px;margin-left:auto;flex-shrink:0}
+.tb-sug .tbs-empty{padding:14px 12px;color:var(--mut);font-size:13px;text-align:center}
 .row-highlight{background:#fff4d1 !important;animation:rowpulse 1.6s ease 2}
 @keyframes rowpulse{0%,100%{background:#fff4d1}50%{background:#ffe28a}}
+/* Dark mode: the cream highlight + near-white --ink would be invisible, so
+   give highlighted rows a legible dark palette (static — the pale pulse is
+   suppressed since its cream keyframes lose to this !important background). */
 :root[data-theme="dark"] .row-highlight{background:#3a2f12 !important;color:#ffe9a8;animation:none}
 :root[data-theme="dark"] .row-highlight td,:root[data-theme="dark"] .row-highlight th{color:#ffe9a8}
-
-/* ── Status pills & chips ────────────────────────────────────────────── */
-.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;line-height:1.5;white-space:nowrap}
-.pill::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.75}
-.pill.nodot::before,.pill.st-none::before{display:none}
-.st-ok{background:var(--ok-bg);color:var(--ok)}.st-warn{background:var(--warn-bg);color:var(--warn)}.st-bad{background:var(--bad-bg);color:var(--bad)}
-.st-info{background:var(--info-bg);color:var(--info)}.st-muted{background:var(--soft);color:var(--mut)}.st-navy{background:var(--navy);color:#fff}
-.st-orange{background:var(--orange-100);color:var(--orange-600)}.st-wa{background:var(--wa-bg);color:var(--wa-600)}.st-violet{background:var(--violet-bg);color:var(--violet)}.st-teal{background:var(--teal-bg);color:var(--teal)}
-.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:12.5px;font-weight:600;background:var(--soft);color:var(--ink-2);border:1px solid var(--line)}
-.chip .a-ic{width:14px;height:14px}
-.chip.on{background:var(--blue-50);color:var(--blue-600);border-color:var(--blue-100)}
-.chips{display:flex;gap:8px;flex-wrap:wrap}
-.avatar{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--navy));color:#fff;font-weight:800;width:38px;height:38px;font-size:13px;flex:0 0 auto;overflow:hidden;letter-spacing:.02em}
-.avatar img{width:100%;height:100%;object-fit:cover}
-.avatar.lg{width:64px;height:64px;font-size:20px;border-radius:18px}.avatar.xl{width:96px;height:96px;font-size:30px;border-radius:24px}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--mut)}
-.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}.dot.info{background:var(--blue)}
-
-/* ── Buttons ─────────────────────────────────────────────────────────── */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 15px;border-radius:var(--r-sm);border:1px solid transparent;font-weight:700;font-size:13.5px;line-height:1.2;
-     cursor:pointer;background:var(--blue);color:#fff;font-family:inherit;text-decoration:none;white-space:nowrap;transition:transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease),background var(--dur) var(--ease),filter var(--dur) var(--ease)}
-.btn:hover{filter:brightness(1.06);box-shadow:0 4px 12px rgba(46,95,168,.25);transform:translateY(-1px)}
-.btn:active{transform:translateY(0) scale(.98);box-shadow:none}
-.btn:disabled,.btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}
-.btn .a-ic{width:16px;height:16px}
-.btn.ok,.btn-ok,.btn.success{background:var(--ok)}
-.btn.ok:hover,.btn-ok:hover{box-shadow:0 4px 12px rgba(23,138,80,.3)}
-.btn.bad,.btn.danger,.btn-danger{background:var(--bad)}
-.btn.bad:hover,.btn.danger:hover,.btn-danger:hover{box-shadow:0 4px 12px rgba(197,48,48,.3)}
-.btn.warn,.btn-warn{background:var(--orange);color:#fff}
-.btn.warn:hover,.btn-warn:hover{box-shadow:0 4px 12px rgba(240,124,31,.35)}
-.btn-blue,.btn.primary{background:var(--blue)}
-.btn.navy{background:var(--navy)}
-.btn.ghost,.btn-ghost{background:var(--card);border-color:var(--line-2);color:var(--ink)}
-.btn.ghost:hover,.btn-ghost:hover{background:var(--hover);box-shadow:var(--sh-1);border-color:var(--line-2)}
-.btn.ghost.danger,.btn-ghost.danger{background:var(--card);border-color:#e3b4b4;color:#8a1f1f}
-.btn.soft{background:var(--blue-50);color:var(--blue-600);border-color:transparent}
-.btn.soft:hover{background:var(--blue-100);box-shadow:none}
-.btn.wa,.btn-wa{background:var(--wa);color:#fff}
-.btn.wa:hover,.btn-wa:hover{background:var(--wa-600);box-shadow:0 4px 12px rgba(37,211,102,.35)}
-.btn.link{background:none;border:0;color:var(--blue);padding:4px 6px;box-shadow:none}
-.btn.link:hover{text-decoration:underline;transform:none;box-shadow:none;filter:none}
-.btn.sm,.btn-sm,.btn.btn-sm{padding:6px 11px;font-size:12.5px;border-radius:8px;min-height:32px}
-.btn.lg,.btn-lg{padding:12px 20px;font-size:15px;border-radius:12px}
-.btn.block{width:100%}
-.btn.icon,.btn-icon{padding:8px;width:36px;height:36px}
-.btn.icon.sm{width:30px;height:30px;padding:6px}
-.row-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.btn-group{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--r-sm);overflow:hidden}
-.btn-group .btn{border-radius:0;border:0;border-right:1px solid var(--line);background:var(--card);color:var(--ink);box-shadow:none;transform:none}
-.btn-group .btn:last-child{border-right:0}.btn-group .btn.on{background:var(--blue-50);color:var(--blue-600)}
-
-/* ── Flash / alerts ──────────────────────────────────────────────────── */
-.flash{padding:12px 16px 12px 18px;border-radius:12px;margin-bottom:16px;font-weight:600;position:relative;border:1px solid transparent;animation:flashIn .3s ease;display:flex;gap:10px;align-items:flex-start}
-.flash::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:4px;border-radius:0 4px 4px 0;background:currentColor;opacity:.8}
-.flash.ok{background:var(--ok-bg);color:var(--ok);border-color:rgba(23,138,80,.18)}
-.flash.bad{background:var(--bad-bg);color:var(--bad);border-color:rgba(197,48,48,.18)}
-.flash.warn{background:var(--warn-bg);color:var(--warn);border-color:rgba(183,121,31,.2)}
-.flash.info{background:var(--info-bg);color:var(--info);border-color:rgba(46,95,168,.18)}
-.flash.muted{background:var(--soft);color:var(--mut);border-color:var(--line)}
-@keyframes flashIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
-@keyframes fadeDown{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
-.note{font-size:12.5px;color:var(--mut);background:var(--soft);border:1px dashed var(--line-2);border-radius:10px;padding:10px 12px}
-
-/* ── Forms ───────────────────────────────────────────────────────────── */
+.wrap{margin-left:210px;padding:22px 26px;max-width:1150px}
+.wrap h1{margin:2px 0 18px;font-size:22px}
+.scrim{display:none}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.card .k{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}
+.card .v{font-size:26px;font-weight:800;margin-top:6px}
+.card .v small{font-size:13px;color:var(--mut);font-weight:600}
+/* House-style hero stat cards (shared since 3 Sep 2026 so new pages such as
+   customer-view.php get them without copying index.php's block). Pages that
+   still carry their own copy override with identical rules — harmless. */
+.dash-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.hcard{border-radius:16px;padding:20px 22px;color:#fff;position:relative;overflow:hidden}
+.hcard::after{content:'';position:absolute;right:-18px;top:-18px;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.1)}
+.hcard .hicon{font-size:28px;margin-bottom:8px;display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,.15))}
+.hcard .hk{font-size:12px;text-transform:uppercase;letter-spacing:.5px;opacity:.85}
+.hcard .hv{font-size:30px;font-weight:800;margin:4px 0 2px;line-height:1.1}
+.hcard .hsub{font-size:12px;opacity:.75}
+.hcard .hlink{display:inline-block;margin-top:8px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);padding:4px 12px;border-radius:20px;text-decoration:none}
+.hc-blue{background:linear-gradient(135deg,#2E5FA8,#1a3d6e)}
+.hc-green{background:linear-gradient(135deg,#0a8b4b,#065a30)}
+.hc-orange{background:linear-gradient(135deg,#e67e22,#d35400)}
+.hc-red{background:linear-gradient(135deg,#c0392b,#8e2320)}
+.hc-navy{background:linear-gradient(135deg,#12264E,#0b1a36)}
+.hc-teal{background:linear-gradient(135deg,#00897b,#00695c)}
+@media(max-width:900px){.dash-hero{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:22px}
+.panel h2{margin:0;padding:14px 18px;font-size:15px;border-bottom:1px solid var(--line);background:var(--head)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px;background:var(--head)}
+tr:last-child td{border-bottom:0}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700}
+.btn{display:inline-block;padding:8px 14px;border-radius:9px;border:1px solid transparent;font-weight:700;font-size:13px;
+     cursor:pointer;background:var(--blue);color:#fff}
+.btn.ok{background:#0a6b3b}.btn.bad,.btn.danger{background:#b02a2a}.btn.ghost{background:var(--card);border-color:var(--line);color:var(--ink)}
+.btn.ghost.danger{background:var(--card);border-color:#e3b4b4;color:#8a1f1f}
+.btn:hover{filter:brightness(1.06)}
+.row-actions{display:flex;gap:8px;flex-wrap:wrap}
+.muted{color:var(--mut)}
+.flash{padding:12px 16px;border-radius:10px;margin-bottom:16px;font-weight:600}
+.flash.ok{background:#d7f4e3;color:#0a6b3b}.flash.bad{background:#f7dcdc;color:#8a1f1f}
 .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
-/* 19 Sep 2026 (phone audit of all 42 admin pages): a long route name in a toolbar <select> pushed Seat Map and Trip Dashboard 83px sideways at 375px - the only two pages that overflowed. */
-.toolbar label{min-width:0;max-width:100%}.toolbar select,.toolbar input{max-width:100%}
-@media(max-width:560px){.toolbar label{flex:1 1 100%;display:flex;flex-direction:column;gap:4px}.toolbar label select,.toolbar label input{width:100%}}
-.toolbar input,.toolbar select,.field input,.field select,.field textarea,input.inp,select.inp,textarea.inp{padding:9px 12px;border:1px solid var(--line-2);border-radius:var(--r-sm);font-size:14px;background:var(--card);color:var(--ink);font-family:inherit;min-height:40px;transition:border-color var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
-.toolbar input:focus,.toolbar select:focus,.field input:focus,.field select:focus,.field textarea:focus,.inp:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-100)}
-.field{display:flex;flex-direction:column;gap:5px}
-.field>label,.field .lbl{font-size:11.5px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
-.field .help{font-size:12px;color:var(--mut)}
-.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 16px}
-.form-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
-.seg{display:inline-flex;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:3px;gap:2px}
-.seg a,.seg button{padding:7px 13px;border-radius:9px;font-size:13px;font-weight:700;color:var(--mut);background:none;border:0;cursor:pointer;font-family:inherit;white-space:nowrap}
-.seg a:hover,.seg button:hover{color:var(--ink)}
-.seg a.on,.seg button.on{background:var(--card);color:var(--blue-600);box-shadow:var(--sh-1)}
-.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:16px;overflow-x:auto;scrollbar-width:none}
-.tabs a{padding:10px 14px;font-weight:700;font-size:13.5px;color:var(--mut);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
-.tabs a:hover{color:var(--ink)}.tabs a.on{color:var(--blue-600);border-bottom-color:var(--blue)}
-.switch{position:relative;display:inline-block;width:42px;height:24px}
-.switch input{opacity:0;width:0;height:0}
-.switch i{position:absolute;inset:0;background:var(--line-2);border-radius:999px;transition:background var(--dur) var(--ease)}
-.switch i::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform var(--dur) var(--ease)}
-.switch input:checked+i{background:var(--ok)}.switch input:checked+i::after{transform:translateX(18px)}
-
-/* ── Misc components ─────────────────────────────────────────────────── */
-.empty{padding:34px 16px;text-align:center;color:var(--mut)}
-.empty .em-ic{width:56px;height:56px;border-radius:16px;background:var(--soft);display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:10px;color:var(--mut)}
-.empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:3px}
-.progress{height:10px;border-radius:999px;background:var(--soft);overflow:hidden}
-.progress i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),#5B8AD9);transition:width .4s var(--ease)}
-.progress i.ok{background:linear-gradient(90deg,#27ae60,#2ecc71)}.progress i.warn{background:linear-gradient(90deg,#f39c12,#e67e22)}.progress i.bad{background:linear-gradient(90deg,#e74c3c,#c0392b)}
-.timeline{list-style:none;margin:0;padding:0 0 0 18px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:14px}
-.timeline li{position:relative;padding-left:14px}
-.timeline li::before{content:'';position:absolute;left:-24px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--blue);box-shadow:0 0 0 3px var(--card)}
-.timeline li.ok::before{background:var(--ok)}.timeline li.bad::before{background:var(--bad)}.timeline li.warn::before{background:var(--warn)}
-.timeline .tl-t{font-size:11.5px;color:var(--mut)}
-.kv-list{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;font-size:13.5px}
-.kv-list dt{color:var(--mut);font-weight:600}.kv-list dd{margin:0;font-weight:600}
-.skeleton{background:linear-gradient(90deg,var(--soft) 25%,var(--hover) 37%,var(--soft) 63%);background-size:400% 100%;animation:shimmer 1.4s ease infinite;border-radius:8px;min-height:14px}
-@keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--navy);color:#fff;padding:12px 18px;border-radius:12px;box-shadow:var(--sh-3);font-weight:600;font-size:13.5px;z-index:60;animation:flashIn .25s ease}
-.wa-ico{display:inline-flex;width:18px;height:18px;border-radius:50%;background:var(--wa);color:#fff;align-items:center;justify-content:center;font-size:11px;font-weight:900}
-details.advanced-section>summary{cursor:pointer;font-weight:700;color:var(--blue);padding:8px 0;list-style:none}
-details.advanced-section>summary::before{content:'▶ ';font-size:11px}
-details.advanced-section[open]>summary::before{content:'▼ '}
-
-/* ── Dashboard widgets (promoted from admin/index.php, 17 Sep 2026) ──── */
-.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:22px}
-.dash-grid.two-one{grid-template-columns:2fr 1fr}
-.dash-grid.one-two{grid-template-columns:1fr 2fr}
-.dp-note{font-size:12px;color:var(--mut)}
-.quick-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
-.qa{display:inline-flex;align-items:center;gap:9px;padding:10px 16px;border-radius:12px;background:var(--card);border:1px solid var(--line);color:var(--ink);text-decoration:none;font-weight:700;font-size:13.5px;box-shadow:var(--sh-1);transition:transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease),border-color var(--dur) var(--ease)}
-.qa:hover{border-color:var(--blue);background:var(--hover);transform:translateY(-1px);box-shadow:var(--sh-2);color:var(--ink)}
-.qa .qa-icon{font-size:20px;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px;background:var(--blue-50);color:var(--blue)}
-.qa .qa-icon .a-ic{width:17px;height:17px}
-.qa .qa-badge{background:var(--orange);color:#fff;font-size:11px;font-weight:800;padding:1px 7px;border-radius:999px;margin-left:2px}
-.spark-wrap{display:flex;align-items:flex-end;gap:6px;height:110px;padding:0 4px}
-.spark-bar{flex:1;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#5B8AD9,#2E5FA8);min-width:8px;position:relative;transition:height .3s var(--ease)}
-.spark-bar:hover{filter:brightness(1.15)}
-.spark-bar .spark-tip{display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;font-size:11px;padding:3px 8px;border-radius:6px;white-space:nowrap;margin-bottom:4px;z-index:2}
-.spark-bar:hover .spark-tip{display:block}
-@media(pointer:coarse){.spark-bar .spark-tip{display:block;font-size:9px;padding:2px 4px;margin-bottom:2px}}
-.spark-labels{display:flex;gap:6px;padding:8px 4px 0;font-size:11px;color:var(--mut);text-align:center}
-.spark-labels span{flex:1;min-width:8px}
-.occ-bar{height:20px;border-radius:10px;background:var(--hover);overflow:hidden;margin:6px 0}
-.occ-fill{height:100%;border-radius:10px;transition:width .4s var(--ease)}
-.occ-green{background:linear-gradient(90deg,#27ae60,#2ecc71)}
-.occ-yellow{background:linear-gradient(90deg,#f39c12,#e67e22)}
-.occ-red{background:linear-gradient(90deg,#e74c3c,#c0392b)}
-.donut-wrap{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
-.donut-svg{width:130px;height:130px;flex-shrink:0}
-.donut-legend{display:flex;flex-direction:column;gap:10px}
-.donut-item{display:flex;align-items:center;gap:8px;font-size:14px}
-.donut-dot{width:12px;height:12px;border-radius:4px;flex-shrink:0}
-.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--mut)}
-.status-dot.confirmed{background:#27ae60}.status-dot.pending{background:#f39c12}.status-dot.expired{background:#95a5a6}.status-dot.cancelled{background:#e74c3c}
-.src-badge{font-size:11px;padding:2px 9px;border-radius:20px;font-weight:700;display:inline-block}
-.src-badge.web,.src-badge.app{background:var(--ok-bg);color:var(--ok)}
-.src-badge.agent{background:var(--info-bg);color:var(--info)}
-.src-badge.counter,.src-badge.admin{background:var(--orange-100);color:var(--orange-600)}
-.trip-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
-.trip-row:last-child{border-bottom:0}
-.live-trip{display:grid;grid-template-columns:64px 1fr 170px 190px 150px;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
-.live-trip:last-child{border-bottom:0}
-.live-time{font-weight:800;color:var(--blue);font-size:15px;font-variant-numeric:tabular-nums}
-.live-route{font-weight:700;font-size:14px;color:var(--ink)}
-.live-route small{display:block;font-weight:500;color:var(--mut);font-size:12px;margin-top:2px}
-.live-bus{font-size:13px;color:var(--ink);line-height:1.3}
-.live-bus .lb-num{font-weight:800;background:var(--hover);padding:2px 8px;border-radius:6px;font-family:var(--f-mono);font-size:12px}
-.live-bus small{display:block;font-size:11px;color:var(--mut);margin-top:2px}
-.live-driver{font-size:13px;color:var(--ink);line-height:1.3}
-.live-driver .ld-empty{font-style:italic;color:var(--mut);font-size:12px}
-.live-driver small{display:block;font-size:11px;color:var(--mut);margin-top:2px}
-.live-state{text-align:right}
-.state-pill{display:inline-block;padding:5px 12px;border-radius:20px;font-size:11.5px;font-weight:800;letter-spacing:.04em;color:#fff;text-transform:uppercase;box-shadow:0 1px 3px rgba(0,0,0,.15)}
-.state-detail{display:block;font-size:11px;color:var(--mut);margin-top:4px}
-.live-seats{font-size:12px;color:var(--mut);margin-top:6px;text-align:right}
-.live-seats strong{color:var(--ink);font-weight:700}
-.live-fresh{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--mut);margin-left:auto;font-weight:600}
-.live-fresh::before{content:'';width:8px;height:8px;border-radius:50%;background:#27ae60;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
-.promo{display:flex;align-items:center;gap:14px;margin:0 0 20px;padding:14px 18px;border-radius:var(--r-lg);color:#fff;text-decoration:none;position:relative;overflow:hidden;
-  background:linear-gradient(135deg,#12264E 0%,#1C3B72 55%,#2E5FA8 100%);box-shadow:0 8px 24px rgba(18,38,78,.28);border:1px solid rgba(255,255,255,.12);transition:transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
-.promo::before{content:"";position:absolute;right:-60px;bottom:-80px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(240,124,31,.55),transparent 65%);pointer-events:none}
-.promo:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(18,38,78,.38);color:#fff}
-.promo .promo-ico{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.14);flex:0 0 auto}
-.promo .promo-ico .a-ic{width:26px;height:26px;stroke-width:1.8}
-.promo .promo-txt{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto}
-.promo .promo-txt b{font-size:16.5px;font-weight:800;letter-spacing:-.01em}
-.promo .promo-txt b em{font-style:normal;font-size:10px;letter-spacing:.1em;text-transform:uppercase;background:var(--orange);padding:2px 7px;border-radius:999px;margin-left:8px;vertical-align:middle}
-.promo .promo-txt small{font-size:12.5px;opacity:.88;line-height:1.4}
-.promo .promo-cta{flex:0 0 auto;background:var(--orange);color:#fff;font-weight:800;padding:10px 16px;border-radius:999px;font-size:13.5px;box-shadow:0 4px 14px rgba(240,124,31,.45);white-space:nowrap}
-.live-toast{position:fixed;right:16px;z-index:50;background:var(--navy);color:#fff;padding:12px 16px;border-radius:12px;box-shadow:var(--sh-3);display:flex;align-items:center;gap:10px;font-size:13px;max-width:320px;animation:flashIn .25s ease}
-.live-toast.pay{top:66px}.live-toast.book{top:112px;background:var(--ok)}
-.live-toast button{background:var(--orange);border:0;color:#fff;padding:6px 10px;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit}
-.live-toast.book button{background:#fff;color:var(--ok)}
-.live-toast.sync{top:158px;background:#0f766e}
-.live-toast.sync button{background:#fff;color:#0f766e}
-@media(max-width:640px){.live-toast.sync{left:12px;right:12px;max-width:none;top:auto;bottom:calc(84px + env(safe-area-inset-bottom,0px))}}
-.flash .flash-x{margin-left:auto;background:none;border:0;color:inherit;opacity:.6;cursor:pointer;font-size:16px;line-height:1;padding:0 2px}
-.flash .flash-x:hover{opacity:1}
-@media(max-width:900px){
-  .dash-grid,.dash-grid.two-one,.dash-grid.one-two{grid-template-columns:1fr}
-  .live-trip{grid-template-columns:1fr;gap:6px;padding:14px 0}
-  .live-state,.live-seats{text-align:left}
-  .promo{flex-wrap:wrap}.promo .promo-cta{width:100%;text-align:center}
-}
-
-/* ── WhatsApp sheet (admin_wa_button / admin_wa_js, 17 Sep 2026) ─────── */
-.wa-sheet{position:fixed;inset:0;z-index:70;background:rgba(6,14,30,.45);display:flex;align-items:flex-end;justify-content:center;padding:16px;backdrop-filter:blur(2px)}
-.wa-sheet[hidden]{display:none}
-.wa-card{background:var(--card);color:var(--ink);border-radius:var(--r-xl);box-shadow:var(--sh-3);width:min(560px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;animation:flashIn .2s ease}
-.wa-head{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--head)}
-.wa-head b{font-size:15px}.wa-head .wa-to{font-size:12.5px;color:var(--mut);font-family:var(--f-mono)}
-.wa-head .wa-ico{width:38px;height:38px;border-radius:12px;background:var(--wa);color:#fff;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
-.wa-head .wa-x{margin-left:auto;background:none;border:0;font-size:22px;line-height:1;color:var(--mut);cursor:pointer;padding:4px 8px;border-radius:8px}
-.wa-head .wa-x:hover{background:var(--hover);color:var(--ink)}
-.wa-text{margin:0;padding:14px 16px;font:13.5px/1.5 var(--f-ui);white-space:pre-wrap;word-break:break-word;background:#E7F5EC;color:#14311F;overflow:auto;flex:1 1 auto;border-left:4px solid var(--wa)}
-:root[data-theme="dark"] .wa-text{background:#10261A;color:#D7F4E3}
-.wa-att{display:flex;gap:8px;flex-wrap:wrap;padding:8px 16px 0}
-.wa-att:empty{display:none}
-.wa-note{display:flex;flex-direction:column;gap:4px;padding:10px 16px 0;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
-.wa-note input{font:14px var(--f-ui);padding:9px 11px;border:1px solid var(--line-2);border-radius:10px;background:var(--card);color:var(--ink);text-transform:none;letter-spacing:0;font-weight:500}
-.wa-status{padding:10px 16px 0;font-size:12.5px;color:var(--mut)}
-.wa-status.ok{color:var(--ok)}.wa-status.warn{color:var(--warn)}.wa-status.bad{color:var(--bad)}
-.wa-acts{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px 16px}
-.wa-acts .btn[hidden]{display:none}
-.btn.wa-done{background:var(--ok-bg);color:var(--ok);border-color:transparent;pointer-events:none}
-@media(min-width:700px){.wa-sheet{align-items:center}}
-
-/* ── Touch targets & responsive ──────────────────────────────────────── */
+.toolbar input,.toolbar select{padding:9px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px;background:var(--card);color:var(--ink)}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+/* --- Mobile-first hardening (simplify pass) ---------------------------
+   Nothing should push the whole admin page into horizontal scroll on a
+   phone; wide tables scroll inside their own box instead. */
+/* html only: body{overflow-x:hidden} makes BODY its own scroll container and
+   Android then routes vertical swipes to it — the exact "touch did nothing"
+   trap removed from the customer site on 2 Sep 2026 (app.css). */
+html{overflow-x:hidden}@supports(overflow:clip){html{overflow-x:clip}}
+img,pre{max-width:100%}
+/* Shared wrapper: <div class="tbl-scroll"><table>…</table></div>. A few
+   pages already use this exact class inline — keep the name identical. */
+.tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+/* Touch targets: on coarse pointers every primary control is >=44px, matching
+   the customer site. Admin previously had no such rule. */
 @media(pointer:coarse){
-  .btn{min-height:44px}
+  .btn{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
   .toolbar input,.toolbar select,.side a{min-height:44px}
-  .mf-tools input,.mf-tools select,.acc-tools input,.acc-tools select,form input[type=date],form select{min-height:44px}
-  .theme-tog,.tb .menu,.tb-ibtn{min-width:44px;min-height:44px;justify-content:center;align-items:center}
-  .btn.sm,.btn-sm,.btn.btn-sm{min-height:40px}
-  .code-edit button{min-width:36px;min-height:36px}
+  /* Filter bars that never adopted .toolbar (wallet statement, chalani
+     tools, accounting day-book) still deserve tappable controls. */
+  .mf-tools input,.mf-tools select,.acc-tools input,.acc-tools select,
+  form input[type=date],form select{min-height:44px}
+  .theme-tog,.tb .menu{min-width:44px;min-height:44px;justify-content:center;align-items:center}
 }
-@media(max-width:1024px){.wrap{padding:20px 20px 40px}}
 @media(max-width:820px){
-  .side{transform:translateX(-100%);transition:transform .22s var(--ease);z-index:40;box-shadow:var(--sh-3)}
-  .wrap{padding:14px 12px 40px;margin-left:0}
-  .wrap h1{font-size:20px;margin-bottom:14px}
+  .side{transform:translateX(-100%);transition:transform .2s;z-index:40}
+  /* Phones (3 Sep 2026): 16px controls stop iOS Safari zooming on focus;
+     tighter gutters give a 390px screen its width back; top-bar links get
+     a finger-sized hit area.
+
+     !important added 2026-09-06: without it an inline font-size on the
+     field won this rule, so a handful of controls (booking-view note ×2,
+     customers reason, trips/trip-dashboard driver+bus selects) still
+     zoomed on an iPhone. Scoped to <=820px and to form fields only, so it
+     changes nothing on desktop and cannot touch layout — it only lifts a
+     sub-16px field up to 16px on a phone. One rule fixes the whole class,
+     including any inline font-size added in future, without editing the
+     money-page markup. */
+  .wrap{padding:14px 12px}
   input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]),select,textarea{font-size:16px !important}
   .tb .who a{display:inline-block;padding:10px 4px}
-  .tb .who .tb-name,.tb .who em{display:none}
   body.nav-open .side{transform:none}
-  body.nav-open .scrim{display:block;position:fixed;inset:var(--tb-h) 0 0;background:rgba(6,14,30,.45);z-index:35;backdrop-filter:blur(2px)}
+  body.nav-open .scrim{display:block;position:fixed;inset:56px 0 0;background:rgba(0,0,0,.35);z-index:35}
+  .wrap{margin-left:0}
   .tb .menu{display:block}
   .tb .who{font-size:11px}
-  .panel{overflow-x:auto;border-radius:14px}
-  .tb-search{max-width:none;order:99;flex-basis:100%;margin-top:8px;height:36px}
+  /* Most admin list tables live inside a .panel; on a phone let the panel
+     scroll its wide table horizontally instead of clipping it (overflow:hidden)
+     or forcing the whole page to scroll. Vertical stays clipped for the
+     rounded corners. Covers the pages that lack an explicit .tbl-scroll. */
+  .panel{overflow-x:auto}
+  /* Phase 3 mobile: the search bar shrinks to a magnifier button — tapping
+     it expands into a full-width overlay dropdown so the top bar keeps its
+     brand + who strip readable. The input inside stays operable via keyboard;
+     autosuggest still opens below. */
+  .tb-search{max-width:180px;order:99;flex-basis:100%;margin-top:8px;height:34px}
   .tb{flex-wrap:wrap;height:auto;padding-top:8px;padding-bottom:8px;gap:8px}
-  .page-head .ph-actions{width:100%}
-  .page-head .ph-actions .btn{flex:1 1 auto}
+  /* Table-to-card pattern: on narrow screens, tables with .card-table class
+     turn each row into a stacked card with <th> labels from data-label. */
   table.card-table thead{display:none}
-  table.card-table tbody tr{display:block;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--card);box-shadow:var(--sh-1)}
-  table.card-table tbody tr:hover>td{background:transparent}
-  table.card-table tbody td{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border:none;font-size:14px;gap:10px}
-  table.card-table tbody td::before{content:attr(data-label);font-weight:700;font-size:11px;color:var(--mut);margin-right:12px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+  table.card-table tbody tr{display:block;border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--card)}
+  table.card-table tbody td{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border:none;font-size:14px}
+  table.card-table tbody td::before{content:attr(data-label);font-weight:700;font-size:12px;color:var(--mut);margin-right:12px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+  /* Advanced sections hidden by default on mobile */
   details.advanced-section{margin-top:12px}
+  details.advanced-section>summary{font-size:13px;font-weight:600;cursor:pointer;color:var(--blue);padding:8px 0;list-style:none}
+  details.advanced-section>summary::before{content:'▶ ';font-size:11px}
+  details.advanced-section[open]>summary::before{content:'▼ '}
 }
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}}
-@media print{.tb,.side,.scrim,.mnav,.no-print{display:none !important}.wrap{margin:0;padding:0;max-width:none}.panel,.card{box-shadow:none;break-inside:avoid}}
-/* Seat floors (23 Sep 2026) — one look on every admin seat surface: Lower Floor
-   (1F) A1–F6 BLUE, Upper Floor (2F) A7–F12 GREEN. Only the floor frame and its
-   heading take the floor colour; seat status colours stay as each page sets them. */
-.floor-L{--fl:#1E5AA8;--fl-bg:#F2F7FF;--fl-line:#C3D8F5}
-.floor-U{--fl:#15803D;--fl-bg:#F1FAF4;--fl-line:#B9E2C7}
-:root[data-theme="dark"] .floor-L{--fl:#2F6FD0;--fl-bg:rgba(47,111,208,.08);--fl-line:#27466F}
-:root[data-theme="dark"] .floor-U{--fl:#187A43;--fl-bg:rgba(31,143,78,.08);--fl-line:#245B3A}
-.floor-L,.floor-U{background:var(--fl-bg);border:1.5px solid var(--fl-line);border-radius:var(--r);padding:10px}
-.floor-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:8px 12px;border-radius:10px;background:var(--fl,var(--navy));color:#fff;font-weight:800;font-size:13.5px;letter-spacing:.01em}
-.floor-head .fh-range{margin-left:auto;font-family:var(--f-mono);font-size:12px;background:rgba(0,0,0,.28);padding:2px 9px;border-radius:999px;white-space:nowrap}
-
-/* ── Flash = flowing text (2 Oct 2026) ───────────────────────────────── */
-/* A flex .flash turned every text run and <b> into its own column, so on a
-   phone "Automatic WhatsApp is / not live yet / — the Twilio…" stood in three
-   squeezed columns. Text now flows; the leading icon floats, the × sits in the
-   corner. */
-.flash{display:block;padding-right:42px}
-.flash>.a-ic:first-child{float:left;margin:1px 10px 0 0}
-.flash::after{content:"";display:table;clear:both}
-.flash .flash-x{position:absolute;top:9px;right:8px;margin:0;min-width:32px;min-height:32px;padding:0}
-
-/* ── Phone comfort (2 Oct 2026, owner: "mobile bata easy, button thulo") ─ */
-/* Big thumb targets everywhere a desk works from a phone: 48 px buttons and
-   fields, 16 px text, labels that wrap instead of running off the card, a
-   taller bottom bar and the quick actions as two-up tiles. Phones only —
-   desktops keep the dense layout. */
-@media(max-width:820px){
-  .btn{min-height:48px;padding:11px 16px;font-size:15px;border-radius:12px;white-space:normal;text-align:center}
-  .btn .a-ic{width:19px;height:19px}
-  .btn.sm,.btn-sm,.btn.btn-sm{min-height:44px;padding:9px 13px;font-size:14px}
-  .btn.link{min-height:44px}
-  /* :where() = zero specificity, so a page's own field sizes still win */
-  :where(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=hidden]),select){min-height:48px}
-  :where(input[type=checkbox],input[type=radio]){width:22px;height:22px}
-  :where(textarea){min-height:96px}
-  .side a{min-height:52px;font-size:15px;padding:11px 12px}
-  .side-toggle{min-height:44px;font-size:12px}
-  .mnav{padding:7px 8px calc(7px + env(safe-area-inset-bottom))}
-  .mnav a{min-height:58px;font-size:12px;gap:4px}
-  .mnav a .a-ic{width:25px;height:25px}
-  .mnav a.fab .mn-fab{width:58px;height:58px;margin-top:-28px}
-  .mnav a.fab .a-ic{width:27px;height:27px}
-  body.has-mnav .wrap{padding-bottom:110px}
-  .quick-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-  .qa{min-height:64px;padding:12px;font-size:14.5px;justify-content:flex-start;border-radius:14px}
-  .qa .qa-icon{width:38px;height:38px;font-size:22px}
-  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-  .kpi{padding:12px;gap:10px}
-  .tb .who a,.theme-tog{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
-  .tb-search{height:44px}
-  .tb-search input{font-size:16px}
-  table.card-table tbody td .btn{min-height:44px}
-  /* A register (.dt) keeps cells on one line on a desk; as phone cards a long
-     offer / route name must wrap instead of pushing the card off-screen. */
-  table.card-table tbody td{white-space:normal;flex-wrap:wrap}
-  table.card-table tbody td>*{min-width:0;overflow-wrap:anywhere}
-}
-/* Small phones: the logo alone is the brand, so menu · logo · avatar · theme ·
-   key · sign-out share ONE row and the search sits right under it (the top
-   bar was three rows, ~170 px, before any work showed). */
-@media(max-width:560px){
-  .tb .brand{font-size:0;gap:0}
-  .tb .brand span{display:none}
-  .tb .who{gap:2px}
-}
+/* ── Toast animation — auto-fade after 4s ── */
+.flash{animation:flashIn .3s ease}
+@keyframes flashIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
 CSS;
 }

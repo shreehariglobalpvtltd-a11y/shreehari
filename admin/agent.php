@@ -16,15 +16,6 @@
  *
  * Gated on bookings.view, which ticketing agents hold (they deliberately
  * do NOT hold dashboard.view, so the finance dashboard stays out of reach).
- *
- * 17 Sep 2026: payout requests go through AgentWallet::requestPayout (a
- * durable agent_payout_requests row plus the same audit row as before); the
- * settle desk gained a Correction form (signed 'adjustment', ref 'ADJ …')
- * and the loans & advances register (issueLoan / repayLoan) in place of the
- * plain advance form; every payout / handover row links its printable
- * receipt (agent-receipt.php); the agent is told on WhatsApp when a
- * settlement is recorded; and supervisors get a "Full 360 view" button to
- * admin/agent-360.php. The duplicated "Request a payout" block is gone.
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
@@ -43,96 +34,6 @@ $flash        = null;
 
 if ($isSupervisor && isset($_GET['agent']) && (int) $_GET['agent'] > 0) {
     $viewId = (int) $_GET['agent'];
-}
-// The Agent 360 page is gated exactly like the agents register (office
-// roles with customers.view + commissions.view) — offer the button only to
-// someone it will actually open for.
-$canSee360 = !Auth::isCounterAgent() && Auth::can('commissions.view') && Auth::can('customers.view');
-
-/**
- * The agent's payout request still waiting for the office, or null.
- *
- * 17 Sep 2026: the durable agent_payout_requests row is the answer when the
- * migration has run (AgentWallet::openPayoutRequests). On an older database
- * the audit trail still decides, exactly as before — the newest
- * agent.payout_request row after the last payout — now also ignoring one
- * the office has already logged a decision on (paid / declined).
- *
- * @return array{id:int, amount:float, created_at:string}|null
- */
-function agent_pending_payout_request(int $agentId): ?array
-{
-    $open = AgentWallet::openPayoutRequests($agentId);
-    if ($open !== []) {
-        return ['id' => (int) $open[0]['id'], 'amount' => (float) $open[0]['amount'], 'created_at' => (string) $open[0]['created_at']];
-    }
-    try {
-        $row = Database::fetch(
-            "SELECT id, new_value, created_at FROM audit_logs
-              WHERE action = 'agent.payout_request' AND entity_type = 'admin' AND entity_id = :a
-                AND created_at > COALESCE((SELECT MAX(created_at) FROM agent_ledger WHERE agent_admin_id = :b AND entry_type = 'payout'), '1970-01-01')
-                AND created_at > COALESCE((SELECT MAX(created_at) FROM audit_logs
-                                            WHERE action IN ('agent.payout_request_paid', 'agent.payout_request_declined')
-                                              AND entity_type = 'admin' AND entity_id = :c), '1970-01-01')
-              ORDER BY id DESC LIMIT 1",
-            ['a' => (string) $agentId, 'b' => $agentId, 'c' => (string) $agentId]
-        );
-    } catch (Throwable $e) {
-        return null;
-    }
-    if ($row === null) {
-        return null;
-    }
-    $nv = json_decode((string) $row['new_value'], true) ?: [];
-    return ['id' => 0, 'amount' => (float) ($nv['amount'] ?? 0), 'created_at' => (string) $row['created_at']];
-}
-
-/**
- * Tell the agent a payout / cash handover was recorded (17 Sep 2026,
- * Settings agent_notify_settlement, default on). Best effort — an outage
- * never undoes the ledger row. Returns a short suffix for the flash.
- */
-function agent_settlement_notify(int $agentId, string $entryType, float $amount, int $ledgerId): string
-{
-    if (!Settings::getBool('agent_notify_settlement', true)) {
-        return '';
-    }
-    try {
-        $ag  = Database::fetch('SELECT full_name, phone FROM admins WHERE id = :id', ['id' => $agentId]);
-        $pr  = AgentWallet::profile($agentId);
-        $raw = (string) (($pr['whatsapp'] ?? '') ?: (string) ($ag['phone'] ?? ''));
-        $to  = preg_replace('/\D/', '', $raw) ?? '';
-        if (str_starts_with($to, '00')) {
-            $to = substr($to, 2);
-        }
-        if ($to === '') {
-            return ' No mobile on file, so the agent was not messaged.';
-        }
-        // India and Nepal share 10-digit mobiles: a typed +977/+91 wins, a
-        // Nepali citizenship card as the ID hints NP, else the configured default.
-        $country = resolvePhoneCountry('', $raw);
-        if ($country === '' && (string) ($pr['id_type'] ?? '') === 'Citizenship') {
-            $country = 'NP';
-        }
-        if (strlen($to) === 10) {
-            $cc = countryDialCode($country) ?: (preg_replace('/\D/', '', Settings::getString('whatsapp_default_country', '91')) ?: '91');
-            $to = $cc . $to;
-        }
-        $bal     = AgentWallet::balances($agentId);
-        $voucher = AgentWallet::voucherFor($ledgerId);
-        $company = Settings::getString('company_name', APP_NAME);
-        $when    = formatDate(todayISO(), 'j M Y');
-        $text    = $entryType === 'payout'
-            ? $company . ': ' . inr($amount) . ' paid out to you on ' . $when . '.'
-              . ($voucher !== '' ? ' Voucher ' . $voucher . '.' : '') . ' Commission balance now ' . inr($bal['commission']) . '.'
-            : $company . ': cash handover of ' . inr($amount) . ' received from you on ' . $when . '.'
-              . ($voucher !== '' ? ' Receipt ' . $voucher . '.' : '') . ' Cash in hand now ' . inr($bal['cash']) . '.';
-        $res = Notify::whatsapp($to, $text, null, $country !== '' ? $country : null);
-        return $res === true ? ' Agent told on WhatsApp.' : '';
-    } catch (Throwable $e) {
-        Logger::error('agent settlement notify failed', ['agent' => $agentId, 'e' => $e->getMessage()]);
-        return '';
-    }
 }
 
 /* ---- Actions ------------------------------------------------------- */
@@ -185,30 +86,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $fields['photo_path'] = AgentWallet::savePhoto($targetId, $_FILES['photo']);
                 }
 
-                /* A commission rate is money on every later sale: changing it
-                   needs a reason and leaves an old -> new audit row, the same
-                   rule Agent 360 already follows (4 Oct 2026). */
-                $rateAudit = null;
-                if ($canManage) {
-                    $oldPct = AgentWallet::profile($targetId)['commission_percent'] ?? null;
-                    $newRaw = trim((string) ($fields['commission_percent'] ?? ''));
-                    $oldN   = $oldPct === null || $oldPct === '' ? null : round((float) $oldPct, 2);
-                    $newN   = $newRaw === '' ? null : round((float) $newRaw, 2);
-                    if ($oldN !== $newN) {
-                        $rateReason = trim(Security::clean((string) ($_POST['rate_reason'] ?? ''), 200));
-                        if (mb_strlen($rateReason) < 3) {
-                            throw new RuntimeException('Give a reason for the commission rate change. / कमिसन दर बदल्नुको कारण लेख्नुहोस्।');
-                        }
-                        $rateAudit = [$oldN, $newN, $rateReason];
-                    }
-                }
-
                 AgentWallet::saveProfile($targetId, $fields);
-                if ($rateAudit !== null) {
-                    Logger::audit('agent.rate', 'admin', (string) $targetId,
-                        ['commission_percent' => $rateAudit[0]], ['commission_percent' => $rateAudit[1]],
-                        'Commission % changed by admin #' . $selfId, $rateAudit[2]);
-                }
 
                 // Salary lives in a setting, not on admin_profiles, so it is
                 // saved beside the profile rather than through it. Only when
@@ -246,7 +124,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     AgentWallet::setCommissionOverride(
                         $targetId,
                         $ovMode === '' ? null : $ovMode,
-                        (in_array($ovMode, ['flat', 'booking'], true) && $ovFlat !== '') ? (float) $ovFlat : null,
+                        ($ovMode === 'flat' && $ovFlat !== '') ? (float) $ovFlat : null,
                         $selfId
                     );
                 }
@@ -321,9 +199,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                                     . 'Portal: ' . appUrl('admin/login.php?portal=agent') . "\n"
                                     . 'Email: ' . ($res['email'] !== '' ? $res['email'] : '(not set)') . "\n"
                                     . 'Username: ' . $res['username'] . "\n"
-                                    . 'Set or recover your password securely at the team portal using your verified WhatsApp number.\n'
+                                    . ($pwSet ? "Password: " . (string) $_POST['login_password'] . "\n" : '')
                                     . 'Sign in with all three. Never share this message.');
-                                $note .= ' Notification requested; check WhatsApp message status for confirmation.';
+                                $note .= ' Sent to the agent on WhatsApp.';
                             } else {
                                 $note .= ' No mobile number on file, so nothing was sent.';
                             }
@@ -343,65 +221,53 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     throw new RuntimeException('Someone else must settle your own account.');
                 }
 
-                $settleAmt = round(abs((float) ($_POST['amount'] ?? 0)), 2);
-                $ledgerId  = AgentWallet::record($targetId, $action, $settleAmt, [
+                AgentWallet::record($targetId, $action, (float) ($_POST['amount'] ?? 0), [
                     'note' => $_POST['note'] ?? '',
                     'ref'  => $_POST['ref'] ?? '',
                     'by'   => $selfId,
                 ]);
-                $voucher = AgentWallet::voucherFor($ledgerId);
 
-                // 17 Sep 2026: a payout that covers the agent's open request
-                // settles it — the request is bookkeeping about this very
-                // payment, not more money. No-op on an un-migrated database.
-                if ($action === 'payout') {
-                    foreach (AgentWallet::openPayoutRequests($targetId) as $oreq) {
-                        if ($settleAmt + 0.009 >= (float) $oreq['amount']) {
-                            try {
-                                AgentWallet::decidePayoutRequest((int) $oreq['id'], 'paid', $selfId, 'Settled by payout ' . $voucher, $ledgerId);
-                            } catch (Throwable $e) {
-                                Logger::warning('payout request not auto-settled: ' . $e->getMessage(), [], 'agent');
-                            }
-                        }
-                        break;   // requestPayout() allows one open request at a time
-                    }
-                }
-
-                $flash = ['ok', ($action === 'payout' ? 'Commission payout recorded.' : 'Cash handover recorded.')
-                    . ($voucher !== '' ? ' Voucher ' . $voucher . '.' : '')
-                    . agent_settlement_notify($targetId, $action, $settleAmt, $ledgerId)];
+                $flash = ['ok', $action === 'payout'
+                    ? 'Commission payout recorded.'
+                    : 'Cash handover recorded.'];
                 $viewId = $targetId;
 
             } elseif ($action === 'payout_request') {
                 // Self-serve (3 Sep 2026): a counter agent asks the office to pay out
-                // their commission balance. Nothing moves here — since 17 Sep 2026
-                // the request is a durable agent_payout_requests row (plus the same
-                // audit row as before) and a WhatsApp to the office; a supervisor
-                // still records the actual payout, which is what clears the balance
-                // and the request (or declines it on the 360 view).
+                // their commission balance. Nothing moves here — the request is an
+                // audit row + a WhatsApp to the office; a supervisor still records
+                // the actual payout (above), which is what clears the balance and
+                // the request.
                 if (!Auth::isCounterAgent() || $targetId !== $selfId) {
                     throw new RuntimeException('Only an agent can request their own payout.');
                 }
-                $due    = (float) (AgentWallet::balances($selfId)['commission'] ?? 0);
+                $bal    = AgentWallet::balances($selfId);
+                $due    = (float) ($bal['commission'] ?? 0);
                 $amount = round((float) ($_POST['amount'] ?? 0), 2);
                 if ($amount <= 0) { $amount = $due; }
-                // A database without the requests table still refuses a second
-                // request while one is open — the audit trail decides there.
-                $pendingReq = agent_pending_payout_request($selfId);
+                if ($due <= 0 || $amount > $due + 0.009) {
+                    throw new RuntimeException('You can request up to your commission due (' . inr($due) . ').');
+                }
+                $pendingReq = Database::fetch(
+                    "SELECT id, created_at FROM audit_logs
+                      WHERE action = 'agent.payout_request' AND entity_type = 'admin' AND entity_id = :a
+                        AND created_at > COALESCE((SELECT MAX(created_at) FROM agent_ledger WHERE agent_admin_id = :b AND entry_type = 'payout'), '1970-01-01')
+                      ORDER BY id DESC LIMIT 1",
+                    ['a' => (string) $selfId, 'b' => $selfId]
+                );
                 if ($pendingReq !== null) {
                     throw new RuntimeException('Your payout request from ' . formatDate(substr((string) $pendingReq['created_at'], 0, 10)) . ' is still with the office.');
                 }
                 $reqNote = Security::clean((string) ($_POST['note'] ?? ''), 200);
-                // Validates the amount against the balance and agent_payout_min,
-                // writes the row and the ONE agent.payout_request audit row.
-                AgentWallet::requestPayout($selfId, $amount, $reqNote);
+                Logger::audit('agent.payout_request', 'admin', (string) $selfId, null,
+                    ['amount' => $amount, 'due' => $due, 'note' => $reqNote], 'Agent requested a commission payout');
                 try {
                     $office = Settings::getString('admin_whatsapp', Settings::officePhone());
                     if ($office !== '') {
                         Notify::whatsapp($office, "💸 Payout request\n" . (string) ($admin['full_name'] ?? ($admin['username'] ?? 'Agent'))
                             . ' (' . AgentWallet::agentCodeLabel($selfId) . ') asks for ' . inr($amount) . ' of ' . inr($due) . ' commission due.'
                             . ($reqNote !== '' ? "\nNote: " . $reqNote : '')
-                            . "\nSettle: " . appUrl('admin/agent-360.php?agent=' . $selfId . '&tab=requests'));
+                            . "\nSettle: " . appUrl('admin/agent.php?agent=' . $selfId));
                     }
                 } catch (Throwable $e) {
                     Logger::error('payout_request notify failed', ['e' => $e->getMessage()]);
@@ -432,100 +298,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $flash = ['ok', 'Salary ' . inr($paid) . ' credited — pay it out from the commission balance below.'];
                 $viewId = $targetId;
 
-            } elseif ($action === 'loan_issue') {
-                /* Loans & advances register (17 Sep 2026) in place of the plain
-                   advance form. The MONEY is unchanged — the same recordAdvance()
-                   debit on the commission account (Point 7), now tagged
-                   'ADVANCE L<id>' — but each item carries its own principal,
-                   recovery rule and dated repayments on agent_loans. Same
-                   settle-desk right as a payout; nobody lends to their own account. */
+            } elseif ($action === 'advance') {
+                // Advance against future commission (Point 7). Same settle-desk
+                // right as a payout; nobody may advance to their own account.
                 if (!$canSettle) {
                     throw new RuntimeException('You are not allowed to settle agent accounts.');
                 }
                 if ($targetId === $selfId && !Auth::isSuperadmin()) {
                     throw new RuntimeException('Someone else must record your own advance.');
                 }
-                $loanKind = (($_POST['kind'] ?? 'advance') === 'loan') ? 'loan' : 'advance';
-                $loanAmt  = round(abs((float) ($_POST['amount'] ?? 0)), 2);
-                $loanId   = AgentWallet::issueLoan(
-                    $targetId,
-                    $loanKind,
-                    $loanAmt,
-                    (string) ($_POST['recover_mode'] ?? 'full'),
-                    (float) ($_POST['recover_value'] ?? 0),
-                    (string) ($_POST['note'] ?? ''),
-                    $selfId
-                );
-                $flash = ['ok', ucfirst($loanKind) . ' #' . $loanId . ' of ' . inr($loanAmt)
-                    . ' issued — it auto-deducts from this agent’s future commission until settled.'];
-                $viewId = $targetId;
-
-            } elseif ($action === 'loan_repay') {
-                // Cash the agent returned against ONE register item: the usual
-                // recordAdvance() credit, and the item's recovered figure moves.
-                if (!$canSettle) {
-                    throw new RuntimeException('You are not allowed to settle agent accounts.');
-                }
-                if ($targetId === $selfId && !Auth::isSuperadmin()) {
-                    throw new RuntimeException('Someone else must record your own repayment.');
-                }
-                $loanId = (int) ($_POST['loan_id'] ?? 0);
-                $loan   = $loanId > 0 ? AgentWallet::loan($loanId) : null;
-                // A posted id must never reach another agent's item.
-                if ($loan === null || (int) $loan['agent_admin_id'] !== $targetId) {
-                    throw new RuntimeException('That loan is not on this agent’s register.');
-                }
-                $repayAmt = round(abs((float) ($_POST['amount'] ?? 0)), 2);
-                AgentWallet::repayLoan($loanId, $repayAmt, (string) ($_POST['note'] ?? ''), $selfId);
-                $flash = ['ok', 'Repayment of ' . inr($repayAmt) . ' recorded on ' . AgentWallet::loanLabel($loan) . ' — commission balance updated.'];
-                $viewId = $targetId;
-
-            } elseif ($action === 'adjustment') {
-                /* Generic correction (17 Sep 2026): the office fixing a wrong
-                   cash figure, crediting a bonus, debiting a shortfall — one
-                   signed 'adjustment' row on either account, tagged ref 'ADJ …'
-                   so ledger_look() reads it as a Correction and the salary /
-                   advance readers (ref LIKE 'SALARY %' / 'ADVANCE%') never
-                   count it. Same settle-desk right and self wall as a payout;
-                   the note is mandatory because a correction with no reason is
-                   the one row nobody can explain a month later. */
-                if (!$canSettle) {
-                    throw new RuntimeException('You are not allowed to settle agent accounts.');
-                }
-                if ($targetId === $selfId && !Auth::isSuperadmin()) {
-                    throw new RuntimeException('Someone else must correct your own account.');
-                }
-                $adjNote = Security::clean((string) ($_POST['note'] ?? ''), 255);
-                if (mb_strlen($adjNote) < 5) {
-                    throw new RuntimeException('Write a note of at least 5 characters saying what this correction is for.');
-                }
-                $adjAccount   = (($_POST['account'] ?? 'commission') === 'cash') ? 'cash' : 'commission';
-                $adjDirection = (($_POST['direction'] ?? 'credit') === 'debit') ? 'debit' : 'credit';
-                $adjRef       = Security::clean((string) ($_POST['ref'] ?? ''), 60);
-                $adjAmt       = round(abs((float) ($_POST['amount'] ?? 0)), 2);
-                /* Two-person rule (15 Oct 2026, agent_adjust_two_step — off by
-                   default, and then nothing here changes): for anyone but a
-                   super-admin a commission correction is STAGED on the agent's
-                   draft settlement (a different person approves, Mark paid
-                   writes the ledger) and a cash-account correction is refused. */
-                require_once INCLUDE_PATH . '/agentsettlement.php';
-                if (AgentSettlement::twoStepOn() && !Auth::isSuperadmin()) {
-                    if ($adjAccount === 'cash') {
-                        throw new RuntimeException('Two-person rule is on: a cash-account correction needs a super-admin.');
-                    }
-                    $staged = AgentSettlement::stageAdjustment($targetId, $adjDirection, $adjAmt, $adjNote . ($adjRef !== '' ? ' (' . $adjRef . ')' : ''), $selfId);
-                    $flash  = ['ok', 'Correction staged on ' . ($staged['created'] ? 'a new draft settlement ' : 'draft settlement ') . $staged['number']
-                        . ': ' . $adjDirection . ' of ' . inr($adjAmt) . ' on the commission account. Nothing is in the ledger yet — a different person approves it on Settlements, then Mark paid writes it.'];
-                } else {
-                    AgentWallet::record($targetId, 'adjustment', $adjAmt, [
-                        'account'   => $adjAccount,
-                        'direction' => $adjDirection,
-                        'note'      => $adjNote,
-                        'ref'       => 'ADJ' . ($adjRef !== '' ? ' ' . $adjRef : ''),
-                        'by'        => $selfId,
-                    ]);
-                    $flash = ['ok', 'Correction recorded: ' . $adjDirection . ' of ' . inr($adjAmt) . ' on the ' . $adjAccount . ' account.'];
-                }
+                $advKind = (($_POST['advance_kind'] ?? 'given') === 'repaid') ? 'repaid' : 'given';
+                $advAmt  = abs((float) ($_POST['amount'] ?? 0));
+                AgentWallet::recordAdvance($targetId, $advKind === 'repaid' ? -$advAmt : $advAmt, [
+                    'note' => $_POST['note'] ?? '',
+                    'ref'  => $_POST['ref'] ?? '',
+                    'by'   => $selfId,
+                ]);
+                $flash = ['ok', $advKind === 'repaid'
+                    ? 'Advance repayment recorded — commission balance updated.'
+                    : 'Advance recorded — it will auto-deduct from this agent’s future commission until settled.'];
                 $viewId = $targetId;
 
             } elseif ($action === 'tier_rates') {
@@ -534,21 +325,89 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 if (!$canManage) {
                     throw new RuntimeException('You are not allowed to change the tier rates.');
                 }
-                $tierReason  = trim(Security::clean((string) ($_POST['rate_reason'] ?? ''), 200));
-                $tierChanged = (float) (int) ($_POST['rate_direct'] ?? -1) !== Settings::getFloat('agent_flat_direct', 200.0)
-                            || (float) (int) ($_POST['rate_joint'] ?? -1) !== Settings::getFloat('agent_flat_joint', 400.0);
-                if ($tierChanged && mb_strlen($tierReason) < 3) {
-                    throw new RuntimeException('Give a reason for the tier rate change. / दर बदल्नुको कारण लेख्नुहोस्।');
-                }
                 AgentWallet::setFlatRates(
                     (int) ($_POST['rate_direct'] ?? -1),
                     (int) ($_POST['rate_joint'] ?? -1),
-                    $selfId,
-                    $tierReason
+                    $selfId
                 );
                 $flash = ['ok', 'Tier rates saved — direct ' . inr((float) (int) $_POST['rate_direct'])
                               . ' / team ' . inr((float) (int) $_POST['rate_joint']) . ' per passenger.'];
                 $viewId = $targetId;
+
+            } elseif ($action === 'add_subagent') {
+                $subName  = trim(Security::clean($_POST['sub_name'] ?? '', 120));
+                $subPhone = preg_replace('/\D/', '', (string) ($_POST['sub_phone'] ?? ''));
+                $subPin   = trim((string) ($_POST['sub_pin'] ?? ''));
+                if (mb_strlen($subName) < 2) {
+                    throw new RuntimeException('Enter staff full name.');
+                } elseif (strlen($subPhone) < 10) {
+                    throw new RuntimeException('Enter valid 10-digit mobile number.');
+                } elseif (mb_strlen($subPin) < 6) {
+                    throw new RuntimeException('PIN / password must be at least 6 characters.');
+                } else {
+                    $subUser = substr($subPhone, -10);
+                    $baseU   = $subUser;
+                    for ($i = 2; Database::exists('SELECT 1 FROM admins WHERE username = :u LIMIT 1', ['u' => $subUser]); $i++) {
+                        $subUser = $baseU . '_' . $i;
+                    }
+                    $newSubId = (int) Database::insert('admins', [
+                        'username'       => $subUser,
+                        'password_hash'  => Security::hashPassword($subPin),
+                        'full_name'      => $subName,
+                        'email'          => null,
+                        'phone'          => '+91' . substr($subPhone, -10),
+                        'role'           => 'agent',
+                        'is_active'      => 1,
+                        'must_change_pw' => 0
+                    ]);
+                    Database::run(
+                        "INSERT INTO admin_profiles (admin_id, display_phone, whatsapp, counter_name, agent_kind, parent_agent_id)
+                         VALUES (:aid, :p, :wa, :cn, 'person', :pid)
+                         ON DUPLICATE KEY UPDATE display_phone = :p2, whatsapp = :wa2, counter_name = :cn2, parent_agent_id = :pid2",
+                        [
+                            'aid' => $newSubId, 'p' => $subPhone, 'wa' => $subPhone,
+                            'cn'  => $profile['counter_name'] ?? 'Counter Staff', 'pid' => $viewId,
+                            'p2'  => $subPhone, 'wa2' => $subPhone,
+                            'cn2' => $profile['counter_name'] ?? 'Counter Staff', 'pid2' => $viewId
+                        ]
+                    );
+                    $code = AgentWallet::nextFreeAgentCode(AgentWallet::KIND_PERSON);
+                    if ($code !== null) {
+                        AgentWallet::setAgentCode($newSubId, $code, $selfId);
+                    }
+                    Logger::audit('subagent.create', 'admin', $subUser, null, ['parent_id' => $viewId], 'Created counter sub-agent');
+                    $flash = ['ok', 'Counter staff "' . $subName . '" registered successfully! Login Username: ' . $subUser . ' (PIN: ' . $subPin . ')'];
+                }
+
+            } elseif ($action === 'subagent_handover') {
+                $subId = (int) ($_POST['sub_agent_id'] ?? 0);
+                $amt   = max(0.0, (float) ($_POST['amount'] ?? 0));
+                $note  = trim(Security::clean($_POST['note'] ?? 'Cash collection handed over to master agent', 255));
+                $isSub = Database::exists("SELECT 1 FROM admin_profiles WHERE admin_id = :sid AND parent_agent_id = :pid", ['sid' => $subId, 'pid' => $viewId]);
+                if (!$isSub && !$isSupervisor) {
+                    throw new RuntimeException('You can only record handover for your own registered counter staff.');
+                }
+                if ($amt <= 0) {
+                    throw new RuntimeException('Enter a valid handover amount.');
+                }
+                $subName = (string) Database::scalar("SELECT full_name FROM admins WHERE id = :id", ['id' => $subId]);
+                $ref = 'HO-' . date('YmdHis');
+                // 1. Relieve sub-agent of cash held
+                AgentWallet::record($subId, 'cash_handover', $amt, ['ref' => $ref, 'note' => $note, 'by' => $selfId]);
+                // 2. Add cash to master agent's custody
+                AgentWallet::record($viewId, 'cash_due', $amt, ['ref' => $ref, 'note' => 'Cash received from counter staff ' . $subName, 'by' => $selfId]);
+                $flash = ['ok', 'Cash handover of ₹' . number_format($amt, 2) . ' from ' . $subName . ' recorded successfully.'];
+
+            } elseif ($action === 'toggle_subagent') {
+                $subId = (int) ($_POST['sub_agent_id'] ?? 0);
+                $isSub = Database::exists("SELECT 1 FROM admin_profiles WHERE admin_id = :sid AND parent_agent_id = :pid", ['sid' => $subId, 'pid' => $viewId]);
+                if (!$isSub && !$isSupervisor) {
+                    throw new RuntimeException('You can only manage your own registered counter staff.');
+                }
+                $current = (int) Database::scalar("SELECT is_active FROM admins WHERE id = :id", ['id' => $subId]);
+                $new = $current === 1 ? 0 : 1;
+                Database::run("UPDATE admins SET is_active = :a WHERE id = :id", ['a' => $new, 'id' => $subId]);
+                $flash = ['ok', 'Counter staff booking status updated to ' . ($new ? 'Active' : 'Paused') . '.'];
 
             } else {
                 $flash = ['bad', 'Unknown action.'];
@@ -583,11 +442,11 @@ if (($_GET['export'] ?? '') === 'ledger') {
 
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads Devanagari/₹ correctly
-    csv_put($out, ['Date', 'Entry', 'Account', 'Booking / Ref', 'Note', 'Amount (signed)', 'Recorded by']);
+    fputcsv($out, ['Date', 'Entry', 'Account', 'Booking / Ref', 'Note', 'Amount (signed)', 'Recorded by']);
     $running = 0.0;
     foreach ($rows as $r) {
         $running += (float) $r['amount'];
-        csv_put($out, [
+        fputcsv($out, [
             (string) $r['created_at'],
             (string) $r['entry_type'],
             (string) $r['account'],
@@ -597,21 +456,32 @@ if (($_GET['export'] ?? '') === 'ledger') {
             (string) ($r['by_name'] ?? ''),
         ]);
     }
-    csv_put($out, []);
-    csv_put($out, ['', '', '', '', 'Net movement in window', number_format($running, 2, '.', ''), '']);
+    fputcsv($out, []);
+    fputcsv($out, ['', '', '', '', 'Net movement in window', number_format($running, 2, '.', ''), '']);
     fclose($out);
     exit;
 }
 
 $profile  = AgentWallet::profile($viewId);
 $balances = AgentWallet::balances($viewId);
-require_once INCLUDE_PATH.'/teamfinance.php';$funds=TeamFinance::available($viewId);
 
-/* Open payout request (self-serve, 3 Sep 2026; durable rows 17 Sep 2026):
-   shown to the agent as "waiting" and to a supervisor as a nudge above the
-   settle panel. See agent_pending_payout_request() for the two sources. */
-$payoutReq    = agent_pending_payout_request($viewId);
-$payoutReqAmt = $payoutReq !== null ? (float) $payoutReq['amount'] : 0.0;
+/* Open payout request (self-serve, 3 Sep 2026): the newest request logged
+   after the last recorded payout. Shown to the agent as "waiting" and to a
+   supervisor as a nudge above the settle panel. */
+$payoutReq    = null;
+$payoutReqAmt = 0.0;
+try {
+    $payoutReq = Database::fetch(
+        "SELECT new_value, created_at FROM audit_logs
+          WHERE action = 'agent.payout_request' AND entity_type = 'admin' AND entity_id = :a
+            AND created_at > COALESCE((SELECT MAX(created_at) FROM agent_ledger WHERE agent_admin_id = :b AND entry_type = 'payout'), '1970-01-01')
+          ORDER BY id DESC LIMIT 1",
+        ['a' => (string) $viewId, 'b' => $viewId]
+    );
+    if ($payoutReq !== null) {
+        $payoutReqAmt = (float) ((json_decode((string) $payoutReq['new_value'], true) ?: [])['amount'] ?? 0);
+    }
+} catch (Throwable $e) { $payoutReq = null; }
 
 $summary  = AgentWallet::summary($viewId);
 $pct      = AgentWallet::commissionPercentFor($viewId);
@@ -621,11 +491,6 @@ $thisMonth  = date('Y-m');
 $salaryDone = $salary > 0 && AgentWallet::salaryPosted($viewId, $thisMonth);
 $deposit    = AgentWallet::depositInfo($viewId);
 $advance    = AgentWallet::advanceSummary($viewId);
-// Loans & advances register (17 Sep 2026): recovered figures are refreshed
-// from the ledger before reading — a display step, never a money movement.
-AgentWallet::syncLoanRecovery($viewId);
-$loans      = AgentWallet::loans($viewId);
-$openLoans  = array_values(array_filter($loans, static fn(array $l): bool => (string) $l['status'] === 'open'));
 $ledger   = AgentWallet::entries($viewId, 25);
 $papers   = AgentWallet::offlineTickets($viewId, 10);
 
@@ -647,32 +512,13 @@ function agent_stat(string $expr, int $adminId, string $from, string $to, string
     );
 }
 
-/**
- * Passengers (जना) on this agent's live tickets sold in a window — the
- * number the owner counts by. A ticket for four is one booking but four
- * people; the cards below used to print only the booking count.
- */
-function agent_pax(int $adminId, string $from, string $to): int
-{
-    return (int) Database::scalar(
-        "SELECT COUNT(*) FROM booking_seats bs JOIN bookings b ON b.id = bs.booking_id
-          WHERE b.sold_by_admin_id = :a AND b.created_at >= :f AND b.created_at < :t
-            AND b.status IN ('confirmed','pending','completed') AND bs.released_at IS NULL",
-        ['a' => $adminId, 'f' => $from, 't' => $to],
-        0
-    );
-}
-
 $monthlyTarget = Settings::getFloat('agent_target_monthly', 0.0);
 $stats = [
     'todayCount' => (int) agent_stat('COUNT(*)', $viewId, $today, $todayEnd),
     'todayMoney' => agent_stat('SUM(total_amount)', $viewId, $today, $todayEnd, "AND status = 'confirmed'"),
-    'todayPax'   => agent_pax($viewId, $today, $todayEnd),
     'weekCount'  => (int) agent_stat('COUNT(*)', $viewId, $weekStart, $todayEnd),
-    'weekPax'    => agent_pax($viewId, $weekStart, $todayEnd),
     'monthCount' => (int) agent_stat('COUNT(*)', $viewId, $monthStart, $monthEnd),
     'monthMoney' => agent_stat('SUM(total_amount)', $viewId, $monthStart, $monthEnd, "AND status = 'confirmed'"),
-    'monthPax'   => agent_pax($viewId, $monthStart, $monthEnd),
 ];
 
 /* 7-day bookings sparkline for THIS agent (admin/index.php $spark pattern —
@@ -691,10 +537,7 @@ $sparkMax = max(1, max(array_column($spark, 'val')));
 
 /* What this agent is ACTUALLY paid right now — override, tier or percent. */
 $override = AgentWallet::commissionOverrideFor($viewId);
-if ($override['mode'] === 'booking') {
-    $payLabel = inr((float) $override['flat']) . ' / ticket';
-    $paySub = 'one PNR, any passenger count';
-} elseif ($override['mode'] === 'flat') {
+if ($override['mode'] === 'flat') {
     $payLabel = inr((float) $override['flat']) . ' / pax';
     $paySub   = 'agent override — flat per passenger';
 } elseif ($override['mode'] === 'percent') {
@@ -710,15 +553,13 @@ if ($override['mode'] === 'booking') {
 
 /* ---- Upcoming departures the agent can still sell into -------------- */
 $upcoming = Database::fetchAll(
-    "SELECT s.id AS schedule_id, s.travel_date, s.total_seats, s.route_id, s.slot,
-            r.route_code, r.from_city, r.to_city, COALESCE(s.dep_time_override, r.dep_time) AS dep_time, r.coach_type,
-            COALESCE(bus.bus_name, '') AS bus_name, COALESCE(bus.bus_number, '') AS bus_number,
+    "SELECT s.id AS schedule_id, s.travel_date, s.total_seats, s.route_id,
+            r.route_code, r.from_city, r.to_city, r.dep_time, r.coach_type,
             (SELECT COUNT(*) FROM booking_seats bs WHERE bs.schedule_id = s.id AND bs.released_at IS NULL) AS sold
        FROM schedules s
        JOIN routes r ON r.id = s.route_id
-       LEFT JOIN buses bus ON bus.id = COALESCE(s.bus_id, r.bus_id)
       WHERE s.travel_date >= :d AND s.status = 'scheduled'
-      ORDER BY s.travel_date ASC, COALESCE(s.dep_time_override, r.dep_time) ASC, s.slot ASC
+      ORDER BY s.travel_date ASC, r.dep_time ASC
       LIMIT 8",
     ['d' => $today]
 );
@@ -737,192 +578,65 @@ if (Auth::isCounterAgent()) {
     $upcoming = array_values(array_filter($upcoming, static fn(array $u): bool => AgentWallet::maySellRoute($selfId, (int) $u['route_id'])));
 }
 
-/* ---- This agent's passengers by JOURNEY date (2 Oct 2026) -------------
-   Owner: "07 code Shiv Shanti ko data herne ho bhane 16 jana ticket ta hijo
-   ko i chha, kina dekhako chhaina?" Every figure on this panel was keyed to
-   the day a ticket was CUT (bookings.created_at). Tickets cut on 30 Sep for
-   the 1 Oct bus — and tickets the office credits to an agent later from the
-   seat map, which keep their original sale date — were therefore missing
-   from "today", "this month" and "yesterday" exactly when the owner looked
-   for them. This list is keyed to the day the passenger TRAVELS, one card
-   per bus (a date can carry the daily bus and extra buses), so "yesterday's
-   bus: 13 जना" is on the page whatever day the tickets were cut. */
-$tripFrom = addDaysISO($today, -7);
-$tripTo   = addDaysISO($today, 30);
-$tripRows = Database::fetchAll(
-    "SELECT bl.id AS leg_id, bl.schedule_id, bl.travel_date, bl.leg_type, bl.seat_count AS leg_seats,
-            s.slot, s.status AS trip_status, s.route_id,
-            r.route_code, r.from_city, r.to_city, r.coach_type,
-            COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
-            COALESCE(bus.bus_name, '') AS bus_name, COALESCE(bus.bus_number, '') AS bus_number,
-            b.id AS booking_id, b.pnr, b.status, b.total_amount, b.booking_mode, b.created_at,
-            (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
-               FROM booking_seats bs WHERE bs.leg_id = bl.id AND bs.released_at IS NULL) AS seats,
-            (SELECT COUNT(*) FROM booking_seats bs WHERE bs.leg_id = bl.id AND bs.released_at IS NULL) AS live_seats,
-            (SELECT GROUP_CONCAT(bp.full_name ORDER BY bp.is_primary DESC, bp.id SEPARATOR ', ')
-               FROM booking_passengers bp WHERE bp.booking_id = b.id) AS names
-       FROM bookings b
-       JOIN booking_legs bl ON bl.booking_id = b.id
-       JOIN schedules s ON s.id = bl.schedule_id
-       JOIN routes r ON r.id = s.route_id
-       LEFT JOIN buses bus ON bus.id = COALESCE(s.bus_id, r.bus_id)
-      WHERE b.sold_by_admin_id = :a AND bl.travel_date >= :f AND bl.travel_date <= :t
-        AND b.status IN ('confirmed','pending','completed','cancelled')
-      ORDER BY bl.travel_date, dep_time, s.slot, b.id",
-    ['a' => $viewId, 'f' => $tripFrom, 't' => $tripTo]
-);
-$multiBus = admin_multi_bus_days($tripFrom, $tripTo);
-$trips    = [];
-foreach ($tripRows as $tr) {
-    $sid = (int) $tr['schedule_id'];
-    if (!isset($trips[$sid])) {
-        $trips[$sid] = [
-            'sid'      => $sid,
-            'slot'     => (int) $tr['slot'],
-            'date'     => (string) $tr['travel_date'],
-            'routeId'  => (int) $tr['route_id'],
-            'route'    => (string) $tr['from_city'] . ' → ' . (string) $tr['to_city'],
-            'code'     => (string) $tr['route_code'],
-            'coach'    => (string) $tr['coach_type'],
-            'dep'      => $tr['dep_time'],
-            'bus'      => admin_bus_tag((int) $tr['slot'], (string) $tr['bus_number'], (string) $tr['bus_name'],
-                              isset($multiBus[(int) $tr['route_id'] . '|' . (string) $tr['travel_date']])),
-            'status'   => (string) $tr['trip_status'],
-            'pax'      => 0, 'tickets' => 0, 'money' => 0.0,
-            'cxTickets'=> 0, 'cxSeats' => 0,
-            'rows'     => [],
-        ];
-    }
-    $live = !in_array((string) $tr['status'], ['cancelled'], true);
-    if ($live) {
-        $trips[$sid]['pax']     += (int) $tr['live_seats'];
-        $trips[$sid]['tickets'] += 1;
-        if ((string) $tr['status'] === 'confirmed' || (string) $tr['status'] === 'completed') {
-            $trips[$sid]['money'] += (float) $tr['total_amount'];
-        }
-    } else {
-        $trips[$sid]['cxTickets'] += 1;
-        $trips[$sid]['cxSeats']   += (int) $tr['leg_seats'];
-    }
-    $trips[$sid]['rows'][] = $tr;
-}
-// Today and the coming days first (soonest at the top), then the past week
-// newest first — so yesterday's bus sits right under today's.
-$tripsAhead = array_values(array_filter($trips, static fn(array $t): bool => $t['date'] >= $today));
-$tripsPast  = array_values(array_filter($trips, static fn(array $t): bool => $t['date'] < $today));
-// Newest day first, but Bus 1 before Bus 2 within a day.
-usort($tripsPast, static fn(array $x, array $y): int => [$y['date'], (string) $x['dep'], $x['slot']] <=> [$x['date'], (string) $y['dep'], $y['slot']]);
-$paxOn = static function (string $d) use ($trips): int {
-    $n = 0;
-    foreach ($trips as $t) { if ($t['date'] === $d) { $n += $t['pax']; } }
-    return $n;
-};
-$stats['paxYesterday'] = $paxOn(addDaysISO($today, -1));
-$stats['paxToday']     = $paxOn($today);
-$stats['paxAhead']     = array_sum(array_map(static fn(array $t): int => $t['date'] > $today ? $t['pax'] : 0, $trips));
-
 /* ---- This agent's recent sales -------------------------------------- */
 $recent = Database::fetchAll(
-    "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source, b.booking_mode,
-            r.from_city, r.to_city, bl.travel_date, s.route_id, s.slot,
-            COALESCE(bus.bus_name, '') AS bus_name, COALESCE(bus.bus_number, '') AS bus_number,
+    "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source,
+            r.from_city, r.to_city, bl.travel_date,
             (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
-               FROM booking_seats bs WHERE bs.booking_id = b.id AND bs.released_at IS NULL) AS seats
+               FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats
        FROM bookings b
        LEFT JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
        LEFT JOIN schedules s ON s.id = bl.schedule_id
        LEFT JOIN routes r ON r.id = s.route_id
-       LEFT JOIN buses bus ON bus.id = COALESCE(s.bus_id, r.bus_id)
       WHERE b.sold_by_admin_id = :a
       ORDER BY b.id DESC LIMIT 15",
     ['a' => $viewId]
 );
-$recentMulti = [];
-if ($recent !== []) {
-    $rDates = array_filter(array_map(static fn(array $r): string => (string) ($r['travel_date'] ?? ''), $recent));
-    $recentMulti = $rDates !== [] ? admin_multi_bus_days(min($rDates), max($rDates)) : [];
-}
 
-/* ---- Tickets moved between agents (2 Oct 2026) -----------------------
-   Owner: "13 jana haina, 16 hunu parchha". Three of code 07's berths had
-   been moved to code 06 by a bulk seat-map pick on 1 Oct, and nothing on
-   this panel said so — the tickets simply vanished from the count. Every
-   move of a ticket AWAY from this agent, or onto them FROM another agent,
-   is listed here from the audit log (the routine "desk sale credited to an
-   agent" at the counter is not a move between agents and is left out). */
-$agentMoves = [];
-try {
-    $mvRows = Database::fetchAll(
-        "SELECT a.entity_id AS pnr, a.created_at, a.actor_name, a.old_value, a.new_value
-           FROM audit_logs a
-          WHERE a.action = 'booking.reassign_agent' AND a.entity_type = 'booking' AND a.created_at >= :since
-            AND (JSON_UNQUOTE(JSON_EXTRACT(a.old_value, '$.sold_by_admin_id')) = :a1
-                 OR JSON_UNQUOTE(JSON_EXTRACT(a.new_value, '$.sold_by_admin_id')) = :a2)
-          ORDER BY a.id DESC LIMIT 60",
-        ['since' => addDaysISO($today, -30), 'a1' => (string) $viewId, 'a2' => (string) $viewId]
+/* ---- Daily Quota & Sub-Agent Staff Hierarchy (2026 upgrade) -------- */
+$dailyLimit = (int) ($profile['daily_booking_limit'] ?? 0);
+$todayBookedSeats = (int) Database::scalar(
+    "SELECT COUNT(bs.id)
+       FROM bookings b
+       JOIN booking_seats bs ON bs.booking_id = b.id AND bs.released_at IS NULL
+      WHERE (b.sold_by_admin_id = :aid OR b.parent_agent_id = :aid2)
+        AND DATE(b.created_at) = CURRENT_DATE()
+        AND b.status IN ('confirmed','completed')",
+    ['aid' => $viewId, 'aid2' => $viewId], 0
+);
+$quotaPercent = $dailyLimit > 0 ? min(100, (int) round(($todayBookedSeats / $dailyLimit) * 100)) : 0;
+
+$mySubAgents = Database::fetchAll(
+    "SELECT a.id, a.username, a.full_name, a.phone, a.is_active, a.last_login_at,
+            (SELECT COUNT(*) FROM bookings b WHERE b.sold_by_admin_id = a.id AND b.status IN ('confirmed','completed')) AS sales,
+            (SELECT COALESCE(SUM(b.total_amount), 0) FROM bookings b WHERE b.sold_by_admin_id = a.id AND b.status IN ('confirmed','completed')) AS revenue,
+            (SELECT COALESCE(SUM(amount), 0) FROM agent_ledger l WHERE l.agent_admin_id = a.id AND l.account = 'cash') AS cash_held
+       FROM admins a
+       JOIN admin_profiles p ON p.admin_id = a.id
+      WHERE p.parent_agent_id = :aid
+      ORDER BY a.full_name, a.id",
+    ['aid' => $viewId]
+);
+
+$subAgentBookings = [];
+if ($mySubAgents !== []) {
+    $subAgentBookings = Database::fetchAll(
+        "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at,
+                a.full_name AS booked_by_staff,
+                r.from_city, r.to_city, bl.travel_date,
+                (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
+                   FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats
+           FROM bookings b
+           JOIN admins a ON a.id = b.sold_by_admin_id
+           JOIN admin_profiles p ON p.admin_id = a.id
+           LEFT JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
+           LEFT JOIN schedules s ON s.id = bl.schedule_id
+           LEFT JOIN routes r ON r.id = s.route_id
+          WHERE p.parent_agent_id = :aid
+          ORDER BY b.id DESC LIMIT 10",
+        ['aid' => $viewId]
     );
-    $agentRole = static function (int $id): string {
-        static $memo = [];
-        if (!isset($memo[$id])) {
-            $memo[$id] = $id > 0 ? (string) Database::scalar('SELECT role FROM admins WHERE id = :i', ['i' => $id], '') : '';
-        }
-        return $memo[$id];
-    };
-    foreach ($mvRows as $mv) {
-        $old = (int) ((json_decode((string) $mv['old_value'], true)['sold_by_admin_id'] ?? 0) ?: 0);
-        $new = (int) ((json_decode((string) $mv['new_value'], true)['sold_by_admin_id'] ?? 0) ?: 0);
-        $away = $old === $viewId && $new !== $viewId;
-        $in   = $new === $viewId && $old !== $viewId && $agentRole($old) === 'agent';
-        if (!$away && !$in) {
-            continue;
-        }
-        $agentMoves[] = ['pnr' => (string) $mv['pnr'], 'when' => (string) $mv['created_at'], 'by' => (string) ($mv['actor_name'] ?? ''),
-                         'old' => $old, 'new' => $new, 'away' => $away];
-    }
-    // Seats, journey day and bus for those tickets — one read.
-    if ($agentMoves !== []) {
-        $ph = []; $pp = [];
-        foreach (array_values(array_unique(array_column($agentMoves, 'pnr'))) as $i => $p) { $ph[] = ':p' . $i; $pp['p' . $i] = $p; }
-        $mvInfo = [];
-        foreach (Database::fetchAll(
-            "SELECT b.pnr, b.status, b.booking_mode, bl.travel_date, s.slot, s.route_id, r.coach_type,
-                    COALESCE(bus.bus_number, '') AS bus_number, COALESCE(bus.bus_name, '') AS bus_name,
-                    (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ') FROM booking_seats bs
-                      WHERE bs.booking_id = b.id AND bs.released_at IS NULL) AS seats
-               FROM bookings b
-               JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
-               JOIN schedules s ON s.id = bl.schedule_id
-               JOIN routes r ON r.id = s.route_id
-               LEFT JOIN buses bus ON bus.id = COALESCE(s.bus_id, r.bus_id)
-              WHERE b.pnr IN (" . implode(',', $ph) . ')',
-            $pp
-        ) as $mi) {
-            $mvInfo[(string) $mi['pnr']] = $mi;
-        }
-        $mvMulti = [];
-        $mvDates = array_filter(array_map(static fn(array $x): string => (string) $x['travel_date'], $mvInfo));
-        if ($mvDates !== []) { $mvMulti = admin_multi_bus_days(min($mvDates), max($mvDates)); }
-        foreach ($agentMoves as &$mv) {
-            $mi = $mvInfo[$mv['pnr']] ?? null;
-            $mv['date']  = $mi['travel_date'] ?? '';
-            $mv['bus']   = $mi !== null ? admin_bus_tag((int) $mi['slot'], (string) $mi['bus_number'], (string) $mi['bus_name'],
-                               isset($mvMulti[(int) $mi['route_id'] . '|' . (string) $mi['travel_date']])) : '';
-            $seatTxt     = trim((string) ($mi['seats'] ?? ''));
-            $mv['seats'] = $seatTxt === '' ? '' : Seats::displayLabels(explode(' ', $seatTxt), (string) ($mi['coach_type'] ?? 'sleeper'),
-                               (string) (($mi['booking_mode'] ?? '') ?: 'sharing'), ' ');
-            $mv['pax']   = $seatTxt === '' ? 0 : count(explode(' ', $seatTxt));
-            $mv['status'] = (string) ($mi['status'] ?? '');
-        }
-        unset($mv);
-    }
-} catch (Throwable $e) {
-    $agentMoves = [];
 }
-$codeOrOffice = static function (int $id): string {
-    if ($id <= 0) { return 'Office'; }
-    $c = AgentWallet::agentCodeLabel($id);
-    return $c !== '' ? $c : 'Office';
-};
 
 $agentList = $isSupervisor
     ? Database::fetchAll("SELECT id, username, full_name FROM admins WHERE role = 'agent' ORDER BY full_name, username")
@@ -935,22 +649,8 @@ $k    = CSRF_TOKEN_NAME;
  *  (ref 'ADVANCE…') read as "Advance" instead of a generic adjustment. */
 function ledger_look(string $type, string $ref = ''): array
 {
-    if ($type === 'adjustment') {
-        // Ref tags (17 Sep 2026): 'ADVANCE L<n>' ties the row to its register
-        // item, 'SALARY YYYY-MM' is a month's salary, 'ADJ …' is an office
-        // correction — none of them is a plain adjustment to the reader.
-        if (preg_match('/^ADVANCE L(\d+)/i', $ref, $m)) {
-            return ['💸', 'Advance/Loan #' . (int) $m[1], '#8a5300'];
-        }
-        if (stripos($ref, 'ADVANCE') === 0) {
-            return ['💸', 'Advance', '#8a5300'];
-        }
-        if (stripos($ref, 'SALARY') === 0) {
-            return ['📅', 'Salary', '#2E5FA8'];
-        }
-        if (stripos($ref, 'ADJ') === 0) {
-            return ['✏️', 'Correction', '#6b7688'];
-        }
+    if ($type === 'adjustment' && stripos($ref, 'ADVANCE') === 0) {
+        return ['💸', 'Advance', '#8a5300'];
     }
     return match ($type) {
         'commission'      => ['💰', 'Commission earned', '#0a6b3b'],
@@ -963,41 +663,10 @@ function ledger_look(string $type, string $ref = ''): array
 }
 
 admin_header($isOwn ? 'My Agent Panel' : 'Agent · ' . (string) $viewing['full_name'], 'agent');
-admin_page_head(
-    $isOwn
-        ? 'Your wallet, sales and profile — commission is read from the ledger the moment a sale is confirmed, never recomputed.'
-        : 'Supervisor view of this agent\'s wallet, sales and profile.',
-    $isOwn ? [] : ['Agents' => $base . '/admin/agents.php', (string) ($viewing['full_name'] ?: $viewing['username']) => ''],
-    $canSee360
-        ? '<a class="btn navy" href="' . $base . '/admin/agent-360.php?agent=' . $viewId . '"><svg class="a-ic"><use href="#a-users"/></svg> Full 360 view</a>'
-        : ''
-);
 
 if ($flash !== null) {
     echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>';
 }
-/* 23 Oct 2026 (owner: "agent haru commission dekhi sabai kura manage, scanner ni"): the four things an agent
-   does from a phone, one tap each, above the money. Scan needs tickets.scan (agents hold it since today). */
-if ($isOwn) {
-    $qa = '<div class="quick-actions" style="display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px">';
-    if (Auth::can('tickets.scan')) {
-        $qa .= '<a class="qa" href="' . $base . '/admin/scan.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-scan"/></svg></span>Scan ticket · स्क्यान</a>';
-    }
-    $qa .= '<a class="qa" href="' . $base . '/admin/agent-statement.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-chart"/></svg></span>Statement · हिसाब</a>'
-         . '<a class="qa" href="' . $base . '/admin/agent-passengers.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-users"/></svg></span>My passengers · यात्री</a>'
-         . '<a class="qa" href="' . $base . '/team/"><span class="qa-icon"><svg class="a-ic"><use href="#a-key"/></svg></span>My ID &amp; form · पोर्टल</a>'
-         . '</div>';
-    echo $qa;
-}
-// AI Watch (2 Oct 2026): the agent's own to-do - payments to collect, cash
-// to hand over, tomorrow's passengers, free berths to sell. Own view only.
-if ($isOwn) {
-    require_once INCLUDE_PATH . '/aiwatch.php';
-    echo AiWatch::render(AiWatch::forSeller($selfId), '🤖 AI Watch — your desk');
-}
-// 9 Oct 2026: Office chat — the agent's line to the office (unread, call /
-// WhatsApp office, open chat); a supervisor gets "Message this agent".
-echo StaffMsg::agentCard($viewId, $isOwn);
 ?>
 <?php if ($isSupervisor && $agentList !== []): ?>
 <form method="get" class="toolbar">
@@ -1009,116 +678,8 @@ echo StaffMsg::agentCard($viewId, $isOwn);
       </option>
     <?php endforeach; ?>
   </select>
-  <?php if ($canSee360): ?><a class="btn ghost sm" href="<?= $base ?>/admin/agent-360.php?agent=<?= $viewId ?>">🧭 Full 360 view</a><?php endif; ?>
   <span class="muted" style="font-size:12px">Supervisor view — agents only ever see their own figures.</span>
 </form>
-<?php endif; ?>
-
-<?php
-/* 15 Oct 2026 (Smart AI upgrade): "My performance" rings — today / this week /
-   this month for THIS agent only: score = revenue vs the window's share of
-   agent_target_monthly (else vs the window's top seller, a percentage only —
-   no other agent's figure is shown), plus the agent's own rank. Read only. */
-$perfWin = [];
-try {
-    $pToday  = todayISO();
-    $pTarget = Settings::getFloat('agent_target_monthly', 0.0);
-    foreach ([
-        'today' => ['Today', $pToday],
-        'week'  => ['This week', date('Y-m-d', strtotime('monday this week'))],
-        'month' => ['This month', date('Y-m-01')],
-    ] as $pk => [$pLbl, $pFrom]) {
-        $pTo   = addDaysISO($pToday, 1);
-        $board = Database::fetchAll(
-            "SELECT b.sold_by_admin_id AS id, COUNT(*) AS n, COALESCE(SUM(b.total_amount), 0) AS rev
-               FROM bookings b JOIN admins a ON a.id = b.sold_by_admin_id AND a.role = 'agent'
-              WHERE b.status IN ('confirmed','completed') AND b.created_at >= :f AND b.created_at < :t
-              GROUP BY b.sold_by_admin_id ORDER BY rev DESC",
-            ['f' => $pFrom, 't' => $pTo]
-        );
-        $mine = ['n' => 0, 'rev' => 0.0]; $rank = 0; $top = 0.0;
-        foreach ($board as $i => $br) {
-            $top = max($top, (float) $br['rev']);
-            if ((int) $br['id'] === $viewId) { $mine = ['n' => (int) $br['n'], 'rev' => (float) $br['rev']]; $rank = $i + 1; }
-        }
-        $pax = (int) Database::scalar(
-            "SELECT COUNT(*) FROM bookings b JOIN booking_seats bs ON bs.booking_id = b.id AND bs.released_at IS NULL
-              WHERE b.sold_by_admin_id = :a AND b.status IN ('confirmed','completed') AND b.created_at >= :f AND b.created_at < :t",
-            ['a' => $viewId, 'f' => $pFrom, 't' => $pTo]
-        );
-        $com = (float) Database::scalar(
-            "SELECT COALESCE(SUM(amount), 0) FROM agent_ledger
-              WHERE agent_admin_id = :a AND account = 'commission' AND entry_type IN ('commission','commission_void')
-                AND created_at >= :f AND created_at < :t",
-            ['a' => $viewId, 'f' => $pFrom, 't' => $pTo]
-        );
-        $days  = max(1, (int) round(((int) strtotime($pTo) - (int) strtotime($pFrom)) / 86400));
-        $goal  = $pTarget > 0 ? $pTarget * $days / 30 : $top;
-        $score = $goal > 0 ? (int) round($mine['rev'] * 100 / $goal) : 0;
-        $perfWin[$pk] = [
-            'lbl' => $pLbl, 'n' => $mine['n'], 'rev' => $mine['rev'], 'pax' => $pax, 'com' => $com,
-            'rank' => $rank, 'of' => count($board), 'score' => $score, 'goal' => $pTarget > 0 ? $goal : 0.0,
-            'band' => $score >= 100 ? 'gold' : ($score >= 75 ? 'good' : ($score >= 40 ? 'mid' : 'low')),
-        ];
-    }
-} catch (Throwable $e) {
-    $perfWin = [];
-}
-if ($perfWin !== []):
-    $pCol = ['gold' => '#C9971C', 'good' => '#1FA35B', 'mid' => '#E08A00', 'low' => '#DC3B3B'];
-    $pC   = 2 * M_PI * 42; ?>
-<div class="panel mp-panel">
-  <div class="mp-head"><h2>🎯 <?= $isOwn ? 'My performance' : 'Performance' ?></h2>
-    <div class="mp-tabs" role="tablist"><?php foreach ($perfWin as $pk => $w): ?><button type="button" role="tab" data-mp="<?= $pk ?>"<?= $pk === 'month' ? ' class="on" aria-selected="true"' : ' aria-selected="false"' ?>><?= Security::e($w['lbl']) ?></button><?php endforeach; ?></div></div>
-  <?php foreach ($perfWin as $pk => $w): ?>
-  <div class="mp-body" data-mp-body="<?= $pk ?>"<?= $pk === 'month' ? '' : ' hidden' ?>>
-    <div class="mp-ringbox">
-      <svg class="mp-ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="42" class="mp-bg"/>
-        <circle cx="50" cy="50" r="42" class="mp-fg" style="stroke:<?= $pCol[$w['band']] ?>" stroke-dasharray="<?= round($pC, 2) ?>" stroke-dashoffset="<?= round($pC, 2) ?>" data-off="<?= round($pC * (1 - min(100, $w['score']) / 100), 2) ?>"/></svg>
-      <div class="mp-mid"><b style="color:<?= $pCol[$w['band']] ?>"><?= (int) $w['score'] ?>%</b><small><?= $w['goal'] > 0 ? 'of target' : 'vs top seller' ?></small></div>
-    </div>
-    <dl class="mp-kv">
-      <div><dt>Rank</dt><dd><?= $w['rank'] > 0 ? ['🥇', '🥈', '🥉'][$w['rank'] - 1] ?? '#' . (int) $w['rank'] : '—' ?><?= $w['rank'] > 0 && $w['of'] > 0 ? ' <small class="muted">of ' . (int) $w['of'] . '</small>' : '' ?></dd></div>
-      <div><dt>Bookings</dt><dd><?= (int) $w['n'] ?></dd></div>
-      <div><dt>Passengers</dt><dd><?= (int) $w['pax'] ?></dd></div>
-      <div><dt>Sales</dt><dd><?= Security::e(inr((float) $w['rev'])) ?></dd></div>
-      <div><dt>Commission</dt><dd style="color:#0a6b3b"><?= Security::e(inr((float) $w['com'])) ?></dd></div>
-      <?php if ($w['goal'] > 0): ?><div><dt>Target</dt><dd><?= Security::e(inr((float) $w['goal'])) ?></dd></div><?php endif; ?>
-    </dl>
-  </div>
-  <?php endforeach; ?>
-</div>
-<style>
-.mp-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between}.mp-head h2{margin:0}
-.mp-tabs{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
-.mp-tabs button{border:0;background:transparent;border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;color:inherit;min-height:34px}
-.mp-tabs button.on{background:#2E5FA8;color:#fff}
-.mp-body{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:12px}
-.mp-ringbox{position:relative;width:120px;height:120px;flex:none}
-.mp-ring{width:100%;height:100%;transform:rotate(-90deg)}.mp-ring circle{fill:none;stroke-width:8}.mp-ring .mp-bg{stroke:var(--line)}
-.mp-ring .mp-fg{stroke-linecap:round;transition:stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1)}
-.mp-mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.mp-mid b{font-size:24px;font-weight:800}.mp-mid small{font-size:10.5px;opacity:.7}
-.mp-kv{flex:1;min-width:200px;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px 14px;margin:0}
-.mp-kv dt{font-size:11px;color:var(--muted,#6b7a90)}.mp-kv dd{margin:0;font-weight:800;font-size:15px;font-variant-numeric:tabular-nums}
-@media (prefers-reduced-motion:reduce){.mp-ring .mp-fg{transition:none}}
-</style>
-<script>
-(function () {
-  function fill(box) { box.querySelectorAll('.mp-fg').forEach(function (c) { c.setAttribute('stroke-dashoffset', c.getAttribute('data-off')); }); }
-  var p = document.querySelector('.mp-panel'); if (!p) return;
-  requestAnimationFrame(function () { setTimeout(function () { fill(p.querySelector('.mp-body:not([hidden])')); }, 60); });
-  p.querySelectorAll('[data-mp]').forEach(function (b) {
-    b.addEventListener('click', function () {
-      p.querySelectorAll('[data-mp]').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-selected', x === b ? 'true' : 'false'); });
-      p.querySelectorAll('[data-mp-body]').forEach(function (d) {
-        var on = d.getAttribute('data-mp-body') === b.getAttribute('data-mp'); d.hidden = !on;
-        if (on) { d.querySelectorAll('.mp-fg').forEach(function (c) { c.setAttribute('stroke-dashoffset', c.getAttribute('stroke-dasharray')); }); requestAnimationFrame(function () { setTimeout(function () { fill(d); }, 30); }); }
-      });
-    });
-  });
-})();
-</script>
 <?php endif; ?>
 
 <style>
@@ -1157,55 +718,146 @@ if ($perfWin !== []):
 /* Panel headings that carry a button: flex so the button wraps under the
    title on a phone instead of floating over it. */
 .panel h2{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-
-/* Passengers by journey date (2 Oct 2026) — one card per bus. */
-.tc-wrap{padding:12px 16px 16px;display:flex;flex-direction:column;gap:8px}
-.tc-sec{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:6px 2px 0}
-.trip-card{border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden}
-.trip-card.is-today{border-color:#2E5FA8;box-shadow:inset 4px 0 0 #2E5FA8}
-.trip-card summary{display:grid;grid-template-columns:86px minmax(0,1fr) 78px minmax(0,170px);gap:10px;align-items:center;
-  padding:11px 14px;cursor:pointer;list-style:none}
-.trip-card summary::-webkit-details-marker{display:none}
-.trip-card summary:hover{background:var(--head)}
-.trip-card[open] summary{border-bottom:1px solid var(--line);background:var(--head)}
-.tc-date b{display:block;font-size:15px}
-.tc-date em{font-style:normal;font-size:11.5px;color:var(--mut)}
-.tc-route{font-weight:700;min-width:0}
-.tc-route small{font-weight:500;color:var(--mut)}
-.tc-bus{display:inline-block;margin-left:4px;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:999px;background:#e6f4f1;color:#0f766e}
-[data-theme="dark"] .tc-bus{background:#0b3b36;color:#7fe0d0}
-.tc-pax b{font-size:20px;color:#0a6b3b}
-[data-theme="dark"] .tc-pax b{color:#6ee7b7}
-.tc-tk{font-size:12.5px}
-.tc-tk small,.tc-cx{display:block;color:#b02a2a;font-size:11.5px}
-.tc-body{padding:10px 12px 12px;overflow-x:auto}
-.tc-table{width:100%;border-collapse:collapse}
-.tc-table th,.tc-table td{padding:7px 8px;border-bottom:1px solid var(--line);font-size:12.5px;text-align:left;vertical-align:top}
-.tc-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-/* Tickets moved between agents (2 Oct 2026). */
-.mv-table{width:100%;border-collapse:collapse}
-.mv-table th,.mv-table td{padding:8px 10px;border-bottom:1px solid var(--line);font-size:12.5px;text-align:left;vertical-align:top}
-.mv-table tr.mv-away td:first-child{box-shadow:inset 3px 0 0 #b02a2a}
-.mv-table tr.mv-in td:first-child{box-shadow:inset 3px 0 0 #0a6b3b}
-.mv-tag{font-size:11px;font-weight:700}
-.mv-away .mv-tag{color:#b02a2a}.mv-in .mv-tag{color:#0a6b3b}
-[data-theme="dark"] .mv-away .mv-tag{color:#fca5a5}[data-theme="dark"] .mv-in .mv-tag{color:#6ee7b7}
-@media(max-width:640px){
-  .trip-card summary{grid-template-columns:64px minmax(0,1fr) 58px;gap:8px}
-  .tc-tk{grid-column:2 / -1}
-}
 </style>
+
+<!-- DAILY SEAT QUOTA INDICATOR -->
+<div style="background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;box-shadow:0 3px 10px rgba(0,0,0,0.04)">
+  <div style="flex:1;min-width:240px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <span style="font-weight:700;font-size:14px;color:#0d3b66">
+        ⚡ Today's Daily Booking Quota: <?= $dailyLimit > 0 ? $todayBookedSeats . ' / ' . $dailyLimit . ' seats booked' : $todayBookedSeats . ' seats booked (Unlimited Quota)' ?>
+      </span>
+      <span style="font-size:12px;font-weight:700;color:<?= $quotaPercent >= 100 ? '#b91c1c' : ($quotaPercent >= 80 ? '#d97706' : '#15803d') ?>">
+        <?= $dailyLimit > 0 ? $quotaPercent . '% utilized' : '✓ Active Selling' ?>
+      </span>
+    </div>
+    <?php if ($dailyLimit > 0): ?>
+      <div style="width:100%;height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden">
+        <div style="width:<?= $quotaPercent ?>%;height:100%;background:<?= $quotaPercent >= 100 ? '#ef4444' : ($quotaPercent >= 80 ? '#f59e0b' : '#22c55e') ?>;border-radius:4px;transition:width .3s"></div>
+      </div>
+    <?php endif; ?>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span class="pill" style="background:#efeaff;color:#5a3fb0;font-weight:700">Agent Ref: <?= Security::e(AgentWallet::agentCodeLabel($viewId)) ?></span>
+    <span class="pill" style="background:#e0f2fe;color:#0369a1;font-weight:700">Commission: <?= Security::e($payLabel) ?></span>
+    <?php if (count($mySubAgents) > 0): ?>
+      <span class="pill" style="background:#fef3c7;color:#92400e;font-weight:700">👥 <?= count($mySubAgents) ?> Counter Staff</span>
+    <?php endif; ?>
+    <?php if ($dailyLimit > 0): 
+      $quotaMsg = "Namaste HQ! Requesting additional seat booking quota for Agent " . ($viewing['full_name'] ?: $viewing['username']) . " (Code: " . AgentWallet::agentCodeLabel($viewId) . "). Current limit: {$todayBookedSeats}/{$dailyLimit}. Please add +10 seats quota.";
+      $quotaWa = "https://wa.me/919104801507?text=" . urlencode($quotaMsg);
+    ?>
+      <a href="<?= $quotaWa ?>" target="_blank" rel="noopener" class="btn" style="background:#f59e0b;color:#fff;font-size:12px;padding:4px 10px;text-decoration:none;border-radius:6px;font-weight:700">⚡ Request Extra Quota</a>
+    <?php endif; ?>
+  </div>
+</div>
+
+<!-- ============ 1-SCREEN EXPRESS BOOKING COUNTER ============ -->
+<div class="dash-panel" style="border:2px solid #0d3b66;box-shadow:0 4px 16px rgba(13,59,102,0.08);margin-bottom:24px">
+  <div class="dp-head" style="background:linear-gradient(135deg,#0d3b66,#0077b6);color:#fff;justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:18px">⚡</span>
+      <span style="font-size:16px;font-weight:800">1-Screen Express Booking Counter</span>
+      <span class="pill" style="background:rgba(255,255,255,0.25);color:#fff;font-size:11px">Agent Quick Desk</span>
+    </div>
+    <span style="font-size:12px;opacity:0.9">Auto-Commission &bull; Instant WhatsApp Dispatch</span>
+  </div>
+  <div class="dp-body" style="background:#f8fafc;padding:18px">
+    <form action="/admin/quick-ticket.php" method="get">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:14px">
+        <label style="font-size:12.5px;font-weight:600;color:#334155">
+          Journey Route
+          <select name="route_id" id="expressRoute" style="width:100%;margin-top:4px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff">
+            <option value="1">Gujarat (Surat / Ahmedabad) → Nepal Border (Rupaidiha)</option>
+            <option value="2">Nepal Border (Rupaidiha) → Gujarat (Ahmedabad / Surat)</option>
+          </select>
+        </label>
+        <label style="font-size:12.5px;font-weight:600;color:#334155">
+          Travel Date
+          <input type="date" name="date" value="<?= Security::e($today) ?>" min="<?= Security::e($today) ?>" style="width:100%;margin-top:4px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff">
+        </label>
+        <label style="font-size:12.5px;font-weight:600;color:#334155">
+          Boarding Point
+          <select name="boarding" style="width:100%;margin-top:4px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff">
+            <option value="Surat">Surat (Kamrej / Sahara Darwaja)</option>
+            <option value="Ahmedabad">Ahmedabad (Nana Chiloda / Geeta Mandir)</option>
+            <option value="Vadodara">Vadodara (Golden Chokdi)</option>
+            <option value="Ankleshwar">Ankleshwar (Valia Chokdi)</option>
+            <option value="Bharuch">Bharuch (Zadeshwar Chokdi)</option>
+            <option value="Anand">Anand (Expressway Toll)</option>
+            <option value="Nadiad">Nadiad (Expressway Toll)</option>
+            <option value="Rajkot">Rajkot (Greenland Chokdi)</option>
+            <option value="Rupaidiha">Rupaidiha (Border Bus Stand)</option>
+            <option value="Nepalgunj">Nepalgunj (B.P. Chowk / Jamunaha)</option>
+          </select>
+        </label>
+        <label style="font-size:12.5px;font-weight:600;color:#334155">
+          Passenger Name &amp; Mobile
+          <input type="text" name="pax" placeholder="e.g. Ram Shrestha 9812345678" required style="width:100%;margin-top:4px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff">
+        </label>
+      </div>
+
+      <!-- BERTH PICKER TOGGLE -->
+      <div style="background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:12px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:12.5px;font-weight:700;color:#0d3b66">Select Sleeper Berths (Lower Deck / Upper Deck):</span>
+          <span style="font-size:11.5px;color:var(--mut)">Selected: <b id="selSeatsText" style="color:#0a6b3b">Auto-Assign Next</b></span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11.5px">
+          <span style="font-weight:700;color:#475569;align-self:center;margin-right:4px">Lower:</span>
+          <?php for($i=1; $i<=12; $i++): ?>
+            <button type="button" class="btn ghost seat-btn" onclick="toggleExpressSeat('L<?= $i ?>', this)" style="padding:4px 8px;font-size:11px;min-width:32px">L<?= $i ?></button>
+          <?php endfor; ?>
+          <span style="font-weight:700;color:#475569;align-self:center;margin-left:8px;margin-right:4px">Upper:</span>
+          <?php for($i=1; $i<=12; $i++): ?>
+            <button type="button" class="btn ghost seat-btn" onclick="toggleExpressSeat('U<?= $i ?>', this)" style="padding:4px 8px;font-size:11px;min-width:32px">U<?= $i ?></button>
+          <?php endfor; ?>
+        </div>
+        <input type="hidden" name="seats" id="expressSeatsInp" value="">
+      </div>
+
+      <!-- REAL-TIME COMMISSION PREVIEW & DISPATCH -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-top:4px">
+        <div style="font-size:13px;color:#1e293b">
+          <span>Fare: <b>₹2,200</b> &bull; Your Commission: <b style="color:#0a6b3b"><?= Security::e($payLabel) ?></b> &bull; Agent Code on Ticket: <code><?= Security::e(AgentWallet::agentCodeLabel($viewId)) ?></code></span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button type="submit" class="btn" style="background:#0d3b66;color:#fff;padding:10px 18px;font-size:13.5px;font-weight:700">
+            🎟️ Issue 10-Second Ticket &rarr;
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+var pickedExpressSeats = [];
+function toggleExpressSeat(seat, btn) {
+  var idx = pickedExpressSeats.indexOf(seat);
+  if (idx > -1) {
+    pickedExpressSeats.splice(idx, 1);
+    btn.style.background = '';
+    btn.style.color = '';
+  } else {
+    pickedExpressSeats.push(seat);
+    btn.style.background = '#0d3b66';
+    btn.style.color = '#fff';
+  }
+  document.getElementById('expressSeatsInp').value = pickedExpressSeats.join(' ');
+  document.getElementById('selSeatsText').textContent = pickedExpressSeats.length ? pickedExpressSeats.join(', ') : 'Auto-Assign Next';
+}
+</script>
 
 <!-- ============ WALLET ============ -->
 <div class="dash-hero">
   <?php if (Auth::isSellingStaff()): ?>
-  <!-- 16 Oct 2026: the agent books on SmartBook - the one booking screen, own
-       agent code locked on top, every sale credited here. -->
-  <a class="hcard hc-orange" href="/admin/smartbook.php" style="text-decoration:none;display:block">
+  <!-- ⚡ Quick Ticket + 🤖 AI Ticket Bot (6 Sep 2026): the agent's fast lane —
+       the same desk the office uses, sales attributed to this agent. -->
+  <a class="hcard hc-orange" href="/admin/quick-ticket.php" style="text-decoration:none;display:block">
     <span class="hicon">⚡</span>
-    <div class="hk">⚡ SmartBook — book a ticket</div>
-    <div class="hv" style="font-size:22px">Name + mobile → ticket</div>
-    <div class="hsub">Your agent code is on top, locked · Cash = ticket now<br>Online = customer scans the bank QR · PNG + PDF + WhatsApp</div>
+    <div class="hk">🤖 QuickBot Ticket</div>
+    <div class="hv" style="font-size:22px">10-Second Booking</div>
+    <div class="hsub">One line: name + mobile (+ seats · town · date)<br>auto route · seat · fare → Confirm → PNG + PDF + WhatsApp</div>
   </a>
   <?php endif; ?>
   <?php if ($salary > 0): ?>
@@ -1248,16 +900,13 @@ if ($perfWin !== []):
   <?php endif; ?>
   <div class="hcard hc-green">
     <span class="hicon">💰</span>
-    <div class="hk">Commission due</div><small>Available <?= Security::e(inr($funds['available'])) ?> · Reserved <?= Security::e(inr($funds['pending'])) ?></small>
+    <div class="hk">Commission due</div>
     <div class="hv"><?= Security::e(inr($balances['commission'])) ?></div>
     <div class="hsub">
       earned <?= Security::e(inr($summary['earned'])) ?>
       <?= $summary['reversed'] > 0 ? ' · reversed ' . Security::e(inr($summary['reversed'])) : '' ?>
       · paid <?= Security::e(inr($summary['paidOut'])) ?>
       <?= $advance['given'] > 0 ? ' · advance ' . Security::e(inr($advance['given'])) : '' ?>
-      <?php if ($isOwn && $balances['commission'] > 0): /* 23 Oct 2026: the ask sits on the number, not 10 panels down */ ?>
-      <br><a href="#payoutRequest" style="display:inline-block;margin-top:6px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.18);color:inherit;font-weight:800;text-decoration:none">💸 Request payout · भुक्तानी माग्नुहोस् →</a>
-      <?php endif; ?>
     </div>
   </div>
   <?php $overCash = (float) $profile['cash_limit'] > 0 && $balances['cash'] > (float) $profile['cash_limit']; ?>
@@ -1274,110 +923,17 @@ if ($perfWin !== []):
   </div>
 </div>
 
-<?= LiveSync::anchor('agent:' . $viewId, 'auto') ?>
-<div class="kpis">
-  <?= admin_kpi("Today's bookings", $stats['todayCount'] . ' · ' . $stats['todayPax'] . ' जना', inr($stats['todayMoney']) . ' collected · cut today', 'ticket', 'blue') ?>
-  <?= admin_kpi('This month', $stats['monthCount'] . ' · ' . $stats['monthPax'] . ' जना', inr($stats['monthMoney']) . ' · ' . inr($summary['earnedMonth']) . ' commission', 'calendar', 'green') ?>
-  <?= admin_kpi('Commission pay', $payLabel, $paySub, 'percent', 'violet') ?>
-  <?= admin_kpi('This week', $stats['weekCount'] . ' · ' . $stats['weekPax'] . ' जना', 'bookings cut this week', 'chart-up', 'teal') ?>
+<div class="cards">
+  <div class="card"><div class="k">Today's bookings</div><div class="v"><?= $stats['todayCount'] ?></div>
+    <div class="muted" style="font-size:11px"><?= Security::e(inr($stats['todayMoney'])) ?> collected</div></div>
+  <div class="card"><div class="k">This month</div><div class="v"><?= $stats['monthCount'] ?><small> · <?= Security::e(inr($stats['monthMoney'])) ?></small></div>
+    <div class="muted" style="font-size:11px"><?= Security::e(inr($summary['earnedMonth'])) ?> commission this month</div></div>
+  <div class="card"><div class="k">Commission pay</div>
+    <div class="v" style="font-size:20px"><?= Security::e($payLabel) ?></div>
+    <div class="muted" style="font-size:11px"><?= Security::e($paySub) ?></div></div>
+  <div class="card"><div class="k">This week</div><div class="v"><?= $stats['weekCount'] ?></div>
+    <div class="muted" style="font-size:11px">bookings sold</div></div>
 </div>
-<?php /* Journey-day counts (2 Oct 2026) — the cards above count the day a
-         ticket was CUT; the owner counts the bus a passenger RIDES. */ ?>
-<div class="kpis">
-  <?= admin_kpi("Yesterday's bus · हिजो", $stats['paxYesterday'] . ' जना', 'passengers who travelled ' . formatDate(addDaysISO($today, -1)), 'bus', 'teal', null, '#tripsByJourney') ?>
-  <?= admin_kpi("Today's bus · आज", $stats['paxToday'] . ' जना', 'passengers travelling today', 'bus', 'blue', null, '#tripsByJourney') ?>
-  <?= admin_kpi('Upcoming · आउँदै', $stats['paxAhead'] . ' जना', 'booked for the next 30 days', 'calendar', 'green', null, '#tripsByJourney') ?>
-</div>
-
-<?php
-/** One trip card — a departure with this agent's passengers on it. */
-$tripCard = static function (array $t) use ($today, $base): void {
-    $dayTag = match (true) {
-        $t['date'] === $today                  => 'आज · Today',
-        $t['date'] === addDaysISO($today, -1)  => 'हिजो · Yesterday',
-        $t['date'] === addDaysISO($today, 1)   => 'भोलि · Tomorrow',
-        default                                => date('D', strtotime($t['date'])),
-    };
-    $seatHref = $base . '/admin/seatmap.php?' . http_build_query(['route' => $t['routeId'], 'date' => $t['date'], 'sid' => $t['sid']]);
-    ?>
-    <details class="trip-card<?= $t['date'] === $today ? ' is-today' : '' ?>" id="trip-<?= (int) $t['sid'] ?>">
-      <summary>
-        <span class="tc-date"><b><?= Security::e(date('j M', strtotime($t['date']))) ?></b><em><?= Security::e($dayTag) ?></em></span>
-        <span class="tc-route"><?= Security::e($t['route']) ?> <small><?= Security::e(formatTime($t['dep'] ?? null)) ?></small>
-          <?php if ($t['bus'] !== ''): ?><span class="tc-bus">🚌 <?= Security::e($t['bus']) ?></span><?php endif; ?></span>
-        <span class="tc-pax"><b><?= (int) $t['pax'] ?></b> जना</span>
-        <span class="tc-tk"><?= (int) $t['tickets'] ?> ticket<?= $t['tickets'] === 1 ? '' : 's' ?> · <?= Security::e(inr($t['money'])) ?>
-          <?php if ($t['cxTickets'] > 0): ?><small class="tc-cx">+<?= (int) $t['cxTickets'] ?> cancelled (<?= (int) $t['cxSeats'] ?> seat<?= $t['cxSeats'] === 1 ? '' : 's' ?>)</small><?php endif; ?></span>
-      </summary>
-      <div class="tc-body">
-        <table class="no-card tc-table">
-          <thead><tr><th>PNR</th><th>Passengers</th><th>Seats</th><th>Amount</th><th>Status</th></tr></thead>
-          <tbody>
-          <?php foreach ($t['rows'] as $r):
-              $mode = (string) ($r['booking_mode'] ?? '') ?: 'sharing';
-              $seatTxt = trim((string) ($r['seats'] ?? ''));
-          ?>
-            <tr>
-              <td class="mono"><a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>"><?= Security::e((string) $r['pnr']) ?></a>
-                <?php if ((string) $r['leg_type'] === 'return'): ?><div class="muted" style="font-size:11px">return leg</div><?php endif; ?></td>
-              <td><?= Security::e((string) ($r['names'] ?? '—')) ?></td>
-              <td class="mono"><?= $seatTxt === '' ? '—' : Security::e(Seats::displayLabels(explode(' ', $seatTxt), (string) $t['coach'], $mode, ' ')) ?></td>
-              <td><?= Security::e(inr((float) $r['total_amount'])) ?></td>
-              <td><?= admin_pill((string) $r['status']) ?></td>
-            </tr>
-          <?php endforeach; ?>
-          </tbody>
-        </table>
-        <div class="tc-links">
-          <a class="btn ghost btn-sm" href="<?= Security::e($seatHref) ?>">🗺️ Seat map of this bus</a>
-          <a class="btn ghost btn-sm" href="<?= $base ?>/admin/bookings.php?<?= Security::e(http_build_query(['travel_from' => $t['date'], 'travel_to' => $t['date']])) ?>">🎫 All tickets that day</a>
-        </div>
-      </div>
-    </details>
-    <?php
-};
-?>
-<div class="panel" id="tripsByJourney">
-  <h2>🚌 Passengers by journey date · यात्रा मिति अनुसार
-    <span class="muted" style="font-size:12px;font-weight:500;margin-left:auto">last 7 days + next 30 · tap a bus for names &amp; seats</span></h2>
-  <div class="tc-wrap">
-    <?php if ($trips === []): ?>
-      <p class="muted" style="margin:0;padding:6px 2px">No passengers travelling between <?= Security::e(formatDate($tripFrom)) ?> and <?= Security::e(formatDate($tripTo)) ?>.</p>
-    <?php else: ?>
-      <?php if ($tripsAhead !== []): ?><div class="tc-sec">Today &amp; upcoming · आज र आउँदै</div><?php endif; ?>
-      <?php foreach ($tripsAhead as $t) { $tripCard($t); } ?>
-      <?php if ($tripsPast !== []): ?><div class="tc-sec">Past 7 days · पछिल्ला ७ दिन</div><?php endif; ?>
-      <?php foreach ($tripsPast as $t) { $tripCard($t); } ?>
-    <?php endif; ?>
-  </div>
-</div>
-
-<?php if ($agentMoves !== []):
-    $awayPax = array_sum(array_map(static fn(array $m): int => $m['away'] ? (int) $m['pax'] : 0, $agentMoves)); ?>
-<div class="panel" id="agentMoves">
-  <h2>🔁 Tickets moved between agents · एजेन्ट परिवर्तन
-    <span class="muted" style="font-size:12px;font-weight:500;margin-left:auto">last 30 days<?= $awayPax > 0 ? ' · ' . $awayPax . ' जना moved away' : '' ?></span></h2>
-  <div style="overflow-x:auto">
-  <table class="no-card mv-table">
-    <thead><tr><th>When</th><th>Ticket</th><th>Journey · Bus</th><th>Seats</th><th>Change</th><th>By</th></tr></thead>
-    <tbody>
-    <?php foreach ($agentMoves as $mv): ?>
-      <tr class="<?= $mv['away'] ? 'mv-away' : 'mv-in' ?>">
-        <td style="white-space:nowrap"><?= Security::e(date('j M, g:i A', strtotime($mv['when']))) ?></td>
-        <td class="mono"><a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode($mv['pnr']) ?>"><?= Security::e($mv['pnr']) ?></a>
-          <?php if (($mv['status'] ?? '') !== '' && $mv['status'] !== 'confirmed'): ?> <?= admin_pill((string) $mv['status']) ?><?php endif; ?></td>
-        <td><?= $mv['date'] !== '' ? Security::e(formatDate($mv['date'])) : '—' ?><?= $mv['bus'] !== '' ? '<div class="muted" style="font-size:11.5px">🚌 ' . Security::e($mv['bus']) . '</div>' : '' ?></td>
-        <td class="mono"><?= Security::e($mv['seats'] !== '' ? $mv['seats'] : '—') ?></td>
-        <td style="white-space:nowrap"><b><?= Security::e($codeOrOffice($mv['old'])) ?></b> → <b><?= Security::e($codeOrOffice($mv['new'])) ?></b>
-          <div class="mv-tag"><?= $mv['away'] ? 'moved AWAY from this agent' : 'taken FROM another agent' ?></div></td>
-        <td class="muted"><?= Security::e($mv['by'] !== '' ? $mv['by'] : 'system') ?></td>
-      </tr>
-    <?php endforeach; ?>
-    </tbody>
-  </table>
-  </div>
-</div>
-<?php endif; ?>
 
 <?php if ($isOwn && Auth::isCounterAgent()): ?>
 <div class="panel" id="payoutRequest">
@@ -1392,7 +948,7 @@ $tripCard = static function (array $t) use ($today, $base): void {
         <input type="number" name="amount" min="1" max="<?= (int) floor($balances['commission']) ?>" step="1" value="<?= (int) floor($balances['commission']) ?>" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:16px;width:140px">
         <input type="text" name="note" maxlength="200" placeholder="Note (optional)" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:16px;flex:1 1 200px">
         <button class="btn ok" type="submit">Request payout</button>
-        <span class="muted" style="font-size:12px;flex-basis:100%">Commission due <?= Security::e(inr($balances['commission'])) ?>. The request reserves funds. The office checks payout details and records payment confirmation separately.</span>
+        <span class="muted" style="font-size:12px;flex-basis:100%">Commission due <?= Security::e(inr($balances['commission'])) ?>. The office is notified on WhatsApp and pays to the account on your profile.</span>
       </form>
     <?php else: ?>
       <p class="muted" style="margin:0">Nothing due right now — commission appears here as your sales are confirmed.</p>
@@ -1400,8 +956,149 @@ $tripCard = static function (array $t) use ($today, $base): void {
   </div>
 </div>
 <?php elseif ($payoutReq !== null && $canSettle): ?>
-<div class="flash warn">💸 Pending payout request: <strong><?= Security::e(inr($payoutReqAmt)) ?></strong> asked on <?= Security::e(formatDate(substr((string) $payoutReq['created_at'], 0, 10))) ?> — record the payout below to clear it<?php if ($canSee360): ?>, or <a href="<?= $base ?>/admin/agent-360.php?agent=<?= $viewId ?>&amp;tab=requests">decide it on the 360 view</a><?php endif; ?>.</div>
+<div class="flash" style="background:#fff3e0;color:#7a3e00">💸 Pending payout request: <strong><?= Security::e(inr($payoutReqAmt)) ?></strong> asked on <?= Security::e(formatDate(substr((string) $payoutReq['created_at'], 0, 10))) ?> — record the payout below to clear it.</div>
 <?php endif; ?>
+
+<!-- MY COUNTER STAFF (SUB-AGENTS) MANAGER -->
+<div class="dash-panel" style="margin-top:20px;border:1px solid #cbd5e1">
+  <div class="dp-head" style="justify-content:space-between;background:#f8fafc">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span>👥</span>
+      <span>My Counter Staff (Sub-Agents)</span>
+      <span class="pill" style="background:#efeaff;color:#5a3fb0;font-size:11px"><?= count($mySubAgents) ?> Staff Members</span>
+    </div>
+    <button type="button" class="btn ghost" onclick="var el=document.getElementById('addSubagentBox');el.hidden=!el.hidden" style="font-size:12px;padding:4px 10px">＋ Register Counter Staff</button>
+  </div>
+  <div class="dp-body" style="padding:16px">
+    
+    <!-- REGISTER COUNTER STAFF FORM (COLLAPSIBLE) -->
+    <div id="addSubagentBox" hidden style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;padding:14px;margin-bottom:16px">
+      <h4 style="margin:0 0 10px;font-size:13.5px;color:#0d3b66">Register New Shop / Counter Staff under Your Master Agent Account</h4>
+      <form method="post" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;align-items:flex-end">
+        <?= Security::csrfField() ?>
+        <input type="hidden" name="action" value="add_subagent">
+        <label style="font-size:12px;font-weight:600">Staff Full Name<input type="text" name="sub_name" required placeholder="e.g. Ramesh Giri" style="width:100%;padding:7px;border-radius:6px;border:1px solid #cbd5e1;margin-top:3px"></label>
+        <label style="font-size:12px;font-weight:600">Mobile (10 digits)<input type="tel" name="sub_phone" required placeholder="e.g. 9812345678" style="width:100%;padding:7px;border-radius:6px;border:1px solid #cbd5e1;margin-top:3px"></label>
+        <label style="font-size:12px;font-weight:600">Login PIN / Password<input type="text" name="sub_pin" required placeholder="Min 6 characters" minlength="6" style="width:100%;padding:7px;border-radius:6px;border:1px solid #cbd5e1;margin-top:3px"></label>
+        <button type="submit" class="btn ok" style="padding:8px 14px;font-size:12.5px;font-weight:700">✓ Save &amp; Generate Sub-Agent Code</button>
+      </form>
+    </div>
+
+    <!-- SUB-AGENTS TABLE -->
+    <?php if ($mySubAgents === []): ?>
+      <p class="muted" style="margin:0;font-size:13px">No counter staff registered under this account yet. Click <b>＋ Register Counter Staff</b> to add shop staff who can sell tickets under your agency.</p>
+    <?php else: ?>
+      <div style="overflow-x:auto">
+        <table class="dt" style="width:100%;font-size:12.5px;margin-bottom:14px">
+          <thead><tr>
+            <th>Staff Name</th><th>Login Username</th><th>Mobile</th><th>Tickets Sold</th><th>Revenue (₹)</th><th>Cash Held (₹)</th><th>Status</th><th>Counter Actions</th>
+          </tr></thead>
+          <tbody>
+            <?php foreach ($mySubAgents as $ms): 
+              $subDigits = preg_replace('/\D/', '', (string)$ms['phone']);
+              if (strlen($subDigits) === 10) { $subDigits = '91' . $subDigits; }
+              $subWaMsg = "Namaste " . $ms['full_name'] . "! Here are your S Hari Global counter booking credentials:\n"
+                        . "• Portal: https://www.shreehariglobal.in/admin/login.php\n"
+                        . "• Username: @" . $ms['username'] . "\n"
+                        . "• Agency: " . ($viewing['full_name'] ?: $viewing['username']) . "\n"
+                        . "• Agency Code: " . AgentWallet::agentCodeLabel($viewId) . "\n"
+                        . "Keep your password secure.";
+              $subWaLink = "https://wa.me/" . $subDigits . "?text=" . urlencode($subWaMsg);
+            ?>
+              <tr>
+                <td><b><?= Security::e($ms['full_name']) ?></b></td>
+                <td class="mono">@<?= Security::e($ms['username']) ?></td>
+                <td class="mono"><?= Security::e($ms['phone']) ?></td>
+                <td class="num"><b><?= (int)$ms['sales'] ?></b></td>
+                <td class="num">₹<?= number_format((float)$ms['revenue']) ?></td>
+                <td class="num"><b style="color:<?= (float)$ms['cash_held'] > 0 ? '#b02a2a' : '#0a6b3b' ?>">₹<?= number_format((float)$ms['cash_held']) ?></b></td>
+                <td><?= (int)$ms['is_active'] === 1 ? '<span class="pill" style="background:#d7f4e3;color:#0a6b3b;font-size:10.5px">Active</span>' : '<span class="pill" style="background:#fee2e2;color:#991b1b;font-size:10.5px">Paused</span>' ?></td>
+                <td>
+                  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                    <?php if ((float)$ms['cash_held'] > 0): ?>
+                      <button type="button" class="btn" style="background:#0a8b4b;color:#fff;font-size:11px;padding:3px 8px;border-radius:6px;font-weight:700" onclick="openSubHandoverModal(<?= (int)$ms['id'] ?>, '<?= Security::e(addslashes($ms['full_name'])) ?>', <?= (float)$ms['cash_held'] ?>)">📥 Handover Cash</button>
+                    <?php endif; ?>
+                    <a href="<?= $subWaLink ?>" target="_blank" rel="noopener" class="btn" style="background:#25d366;color:#fff;font-size:11px;padding:3px 8px;border-radius:6px;text-decoration:none;font-weight:700">📲 WA Login</a>
+                    <form method="post" style="display:inline" onsubmit="return confirm('<?= (int)$ms['is_active'] === 1 ? 'Pause booking access for ' : 'Activate booking access for ' ?><?= Security::e(addslashes($ms['full_name'])) ?>?')">
+                      <?= Security::csrfField() ?>
+                      <input type="hidden" name="action" value="toggle_subagent">
+                      <input type="hidden" name="sub_agent_id" value="<?= (int)$ms['id'] ?>">
+                      <button type="submit" class="btn ghost" style="font-size:11px;padding:3px 7px"><?= (int)$ms['is_active'] === 1 ? '⏸ Pause' : '▶ Resume' ?></button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- SUB-AGENT CASH HANDOVER MODAL -->
+      <div class="id-preview-modal" id="subHandoverModal" hidden onclick="if(event.target===this)this.hidden=true">
+        <div class="id-preview-box" style="max-width:440px">
+          <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px">
+            <h3 style="margin:0;font-size:16px;color:#0d3b66">📥 Record Counter Cash Handover</h3>
+            <button type="button" class="btn ghost" onclick="document.getElementById('subHandoverModal').hidden=true">&times;</button>
+          </div>
+          <form method="post">
+            <?= Security::csrfField() ?>
+            <input type="hidden" name="action" value="subagent_handover">
+            <input type="hidden" name="sub_agent_id" id="shSubId" value="">
+            <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+              <div>Counter Staff: <b id="shSubName">—</b></div>
+              <div>Current Cash Held: <b id="shSubHeld" style="color:#b02a2a">₹0</b></div>
+              <label>Amount Handed Over (₹)
+                <input type="number" step="1" min="1" name="amount" id="shSubAmt" required style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+              </label>
+              <label>Handover Note
+                <input type="text" name="note" value="Cash collected at counter handed over to agency" required style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+              </label>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">
+                <button type="button" class="btn ghost" onclick="document.getElementById('subHandoverModal').hidden=true">Cancel</button>
+                <button type="submit" class="btn ok">✓ Record Handover</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+      <script>
+      function openSubHandoverModal(id, name, held) {
+        document.getElementById('shSubId').value = id;
+        document.getElementById('shSubName').textContent = name;
+        document.getElementById('shSubHeld').textContent = '₹' + Number(held).toLocaleString('en-IN');
+        document.getElementById('shSubAmt').value = held;
+        document.getElementById('shSubAmt').max = held;
+        document.getElementById('subHandoverModal').hidden = false;
+      }
+      </script>
+
+      <?php if ($subAgentBookings !== []): ?>
+        <h4 style="margin:12px 0 6px;font-size:13px;color:#0d3b66">Recent Tickets Sold by Your Counter Staff:</h4>
+        <div style="overflow-x:auto">
+          <table class="dt" style="width:100%;font-size:12px">
+            <thead><tr>
+              <th>PNR</th><th>Staff Member</th><th>Journey</th><th>Date</th><th>Seats</th><th>Amount</th><th>Status</th>
+            </tr></thead>
+            <tbody>
+              <?php foreach ($subAgentBookings as $sb): ?>
+                <tr>
+                  <td class="mono"><b><a href="/admin/booking-view.php?pnr=<?= urlencode((string)$sb['pnr']) ?>"><?= Security::e((string)$sb['pnr']) ?></a></b></td>
+                  <td><b><?= Security::e($sb['booked_by_staff']) ?></b></td>
+                  <td><?= Security::e(($sb['from_city'] ?? '—') . ' → ' . ($sb['to_city'] ?? '—')) ?></td>
+                  <td><?= Security::e(formatDate($sb['travel_date'] ?? null)) ?></td>
+                  <td class="mono"><?= Security::e((string)($sb['seats'] ?? '—')) ?></td>
+                  <td class="num">₹<?= number_format((float)$sb['total_amount']) ?></td>
+                  <td><span class="pill" style="background:#d7f4e3;color:#0a6b3b;font-size:10px"><?= ucfirst((string)$sb['status']) ?></span></td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      <?php endif; ?>
+    <?php endif; ?>
+
+  </div>
+</div>
 
 <div class="dash-panel">
   <div class="dp-head">📊 Bookings — Last 7 Days</div>
@@ -1516,8 +1213,8 @@ $tripCard = static function (array $t) use ($today, $base): void {
     <form method="post">
       <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
       <input type="hidden" name="agent_id" value="<?= $viewId ?>">
-      <input type="hidden" name="action" value="loan_issue">
-      <strong style="font-size:13px">💸 Issue advance / loan</strong>
+      <input type="hidden" name="action" value="advance">
+      <strong style="font-size:13px">💸 Advance against future commission</strong>
       <div class="muted" style="font-size:12px;margin:4px 0 8px">
         <?php if ($advance['outstanding'] > 0): ?>
           <?= Security::e(inr($advance['outstanding'])) ?> still to recover from this agent’s commission.
@@ -1526,83 +1223,19 @@ $tripCard = static function (array $t) use ($today, $base): void {
         <?php endif; ?>
       </div>
       <div class="row-actions">
-        <select name="kind" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-          <option value="advance">Advance</option>
-          <option value="loan">Loan</option>
+        <select name="advance_kind" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+          <option value="given">Advance given</option>
+          <option value="repaid">Repayment / correction</option>
         </select>
         <input type="number" name="amount" step="0.01" min="0.01"
                placeholder="Amount" required style="width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-        <select name="recover_mode" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px"
-                onchange="var v=this.form.querySelector('[name=recover_value]');v.disabled=this.value==='full';v.placeholder=this.value==='percent'?'%':'₹ / payout'">
-          <option value="full">Recover: from commission (automatic)</option>
-          <option value="fixed">Plan: ₹ per payout (reminder)</option>
-          <option value="percent">Plan: % of payout (reminder)</option>
-        </select>
-        <input type="number" name="recover_value" step="0.01" min="0" placeholder="—" disabled
-               style="width:90px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-        <input type="text" name="note" maxlength="255" placeholder="What it is for"
+        <input type="text" name="ref" maxlength="60" placeholder="Voucher / note ref"
                style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-        <button class="btn" type="submit">Issue</button>
+        <button class="btn" type="submit">Record advance</button>
       </div>
       <div class="muted" style="font-size:11px;margin-top:6px">
         Unlike a payout, an advance may exceed the commission owed today — it is fronted before it is earned.
       </div>
-    </form>
-    <form method="post">
-      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
-      <input type="hidden" name="agent_id" value="<?= $viewId ?>">
-      <input type="hidden" name="action" value="loan_repay">
-      <strong style="font-size:13px">↩️ Record repayment</strong>
-      <div class="muted" style="font-size:12px;margin:4px 0 8px">
-        Cash the agent returned against one item. Recovery from commission needs no entry — the ledger nets it.
-      </div>
-      <div class="row-actions">
-        <select name="loan_id" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;max-width:220px" <?= $openLoans === [] ? 'disabled' : '' ?>>
-          <?php if ($openLoans === []): ?><option value="">— nothing open —</option><?php endif; ?>
-          <?php foreach ($openLoans as $l): ?>
-            <option value="<?= (int) $l['id'] ?>"><?= Security::e(AgentWallet::loanLabel($l)) ?> · <?= Security::e(inr((float) $l['outstanding'])) ?> due</option>
-          <?php endforeach; ?>
-        </select>
-        <input type="number" name="amount" step="0.01" min="0.01"
-               placeholder="Amount" required style="width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-        <input type="text" name="note" maxlength="255" placeholder="Note"
-               style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-        <button class="btn" type="submit" <?= $openLoans === [] ? 'disabled' : '' ?>>Record repayment</button>
-      </div>
-    </form>
-    <form method="post">
-      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
-      <input type="hidden" name="agent_id" value="<?= $viewId ?>">
-      <input type="hidden" name="action" value="adjustment">
-      <strong style="font-size:13px">✏️ Correction</strong>
-      <div class="muted" style="font-size:12px;margin:4px 0 8px">
-        Fix a wrong cash figure or credit a bonus: one signed row on either account, tagged ADJ, with a mandatory note.
-      </div>
-      <div class="row-actions">
-        <select name="account" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-          <option value="commission">Commission account</option>
-          <option value="cash">Cash account</option>
-        </select>
-        <select name="direction" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-          <option value="credit">Credit (+)</option>
-          <option value="debit">Debit (−)</option>
-        </select>
-        <input type="number" name="amount" step="0.01" min="0.01"
-               placeholder="Amount" required style="width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-        <input type="text" name="ref" maxlength="60" placeholder="Ref (optional)"
-               style="width:130px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-        <input type="text" name="note" maxlength="255" minlength="5" required placeholder="Why — at least 5 characters"
-               style="flex:1 1 100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-        <button class="btn" type="submit">Record correction</button>
-      </div>
-      <div class="muted" style="font-size:11px;margin-top:6px">
-        Credit on commission = the company owes the agent more; debit on cash = the agent holds less for the company.
-      </div>
-      <?php require_once INCLUDE_PATH . '/agentsettlement.php'; if (AgentSettlement::twoStepOn() && !Auth::isSuperadmin()): ?>
-      <div class="muted" style="font-size:11px;margin-top:4px">
-        <b>Two-person rule is on:</b> a commission correction goes onto the agent's draft settlement for a different person to approve; a cash-account correction needs a super-admin.
-      </div>
-      <?php endif; ?>
     </form>
   </div>
   <p class="muted" style="padding:0 18px 14px;font-size:12px;margin:0">
@@ -1610,35 +1243,6 @@ $tripCard = static function (array $t) use ($today, $base): void {
     whether the agent refunded the passenger from their drawer or still holds the money is something only
     the counter knows, so record it here.
   </p>
-</div>
-<?php endif; ?>
-
-<?php if ($loans !== []): ?>
-<div class="panel">
-  <h2>💸 Loans &amp; advances register
-    <?php if ($canSee360): ?><a class="btn ghost sm" style="margin-left:auto" href="<?= $base ?>/admin/agent-360.php?agent=<?= $viewId ?>&amp;tab=loans">Full register →</a><?php endif; ?>
-  </h2>
-  <table>
-    <thead><tr><th>Item</th><th>Issued</th><th style="text-align:right">Principal</th><th style="text-align:right">Recovered</th><th style="text-align:right">Outstanding</th><th>Status</th><th>Recovery</th></tr></thead>
-    <tbody>
-    <?php foreach ($loans as $l): ?>
-      <tr>
-        <td><strong><?= Security::e(AgentWallet::loanLabel($l)) ?></strong><?= $l['note'] ? '<div class="muted" style="font-size:11px">' . Security::e(truncate((string) $l['note'], 50)) . '</div>' : '' ?></td>
-        <td class="muted"><?= Security::e(formatDate((string) $l['issued_on'], 'j M Y')) ?></td>
-        <td style="text-align:right"><?= Security::e(inr((float) $l['principal'])) ?></td>
-        <td style="text-align:right"><?= Security::e(inr((float) $l['recovered'])) ?></td>
-        <td style="text-align:right;font-weight:800"><?= Security::e(inr((float) $l['outstanding'])) ?></td>
-        <td><?= admin_pill((string) $l['status'] === 'open' ? 'due' : ((string) $l['status'] === 'settled' ? 'paid' : 'void'), (string) $l['status'] === 'written_off' ? 'Written off' : ucfirst((string) $l['status'])) ?></td>
-        <td class="muted" style="font-size:12px"><?= (string) $l['recover_mode'] === 'fixed'
-            ? Security::e(inr((float) $l['recover_value'])) . ' / payout'
-            : ((string) $l['recover_mode'] === 'percent'
-                ? Security::e(rtrim(rtrim(number_format((float) $l['recover_value'], 2), '0'), '.')) . '% / payout'
-                : 'commission nets it') ?></td>
-      </tr>
-    <?php endforeach; ?>
-    </tbody>
-  </table>
-  <p class="muted" style="padding:0 18px 12px;font-size:11.5px;margin:0">“Recovered” = cash repaid + commission allocated to the item from the ledger, oldest first. The ledger's own netting is what is paid; the register is for reading.</p>
 </div>
 <?php endif; ?>
 
@@ -1654,13 +1258,6 @@ $tripCard = static function (array $t) use ($today, $base): void {
       <input type="date" name="to" value="<?= Security::e(todayISO()) ?>" style="padding:7px 9px;border:1px solid var(--line);border-radius:8px"></div>
     <button class="btn ok" type="submit" name="export" value="ledger">⬇ Download CSV</button>
     <button class="btn" type="button" onclick="window.print()">🖨 Print</button>
-    <?php /* 17 Sep 2026: an agent can WhatsApp themselves this window's statement
-             (PDF link) — office viewers have the same on Agent 360. The helper
-             renders nothing when wa_admin_tools_enabled is off or the role may not
-             send agent_statement (commissions.view). */ ?>
-    <?php if (Auth::isCounterAgent() || Auth::bookingScopeAdminId() !== null): ?>
-      <?= admin_wa_button('agent_statement', ['agent' => (int) (Auth::admin()['id'] ?? 0), 'from' => $monthStart, 'to' => $today], 'Statement on WhatsApp', ['class' => 'btn ghost']) ?>
-    <?php endif; ?>
   </form>
   <table>
     <thead><tr><th>When</th><th>Entry</th><th>Booking</th><th>Note</th><th style="text-align:right">Amount</th></tr></thead>
@@ -1679,11 +1276,7 @@ $tripCard = static function (array $t) use ($today, $base): void {
           <div class="muted" style="font-size:11px"><?= Security::e(ucfirst((string) $l['account'])) ?> account<?= $l['by_name'] ? ' · by ' . Security::e((string) $l['by_name']) : '' ?></div></td>
         <td class="mono"><?php if (!empty($l['pnr'])): ?>
             <a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $l['pnr']) ?>"><?= Security::e((string) $l['pnr']) ?></a>
-          <?php else: ?><span class="muted"><?= Security::e((string) ($l['ref'] ?: '—')) ?></span><?php endif; ?>
-          <?php /* Printable voucher / receipt for a settlement row (17 Sep 2026). */ ?>
-          <?php if (in_array((string) $l['entry_type'], ['payout', 'cash_handover'], true)): ?>
-            <a href="<?= $base ?>/admin/agent-receipt.php?id=<?= (int) $l['id'] ?>" target="_blank" title="Printable receipt" style="font-size:11px;white-space:nowrap">🧾 Receipt</a>
-          <?php endif; ?></td>
+          <?php else: ?><span class="muted"><?= Security::e((string) ($l['ref'] ?: '—')) ?></span><?php endif; ?></td>
         <td class="muted" style="font-size:12px"><?= Security::e(truncate((string) ($l['note'] ?? ''), 60)) ?></td>
         <td style="text-align:right;font-weight:800;color:<?= $amt >= 0 ? '#0a6b3b' : '#b02a2a' ?>">
           <?= $amt >= 0 ? '+' : '−' ?><?= Security::e(inr(abs($amt))) ?>
@@ -1847,22 +1440,19 @@ $tripCard = static function (array $t) use ($today, $base): void {
         <label style="font-size:12px;color:var(--mut)">Commission override <span class="muted">(this agent only)</span>
           <div style="display:flex;gap:8px;margin-top:4px">
             <select name="commission_override_mode"
-                    onchange="var f=document.getElementById('ovFlat');if(f){f.style.display=['flat','booking'].includes(this.value)?'':'none'}"
+                    onchange="var f=document.getElementById('ovFlat');if(f){f.style.display=this.value==='flat'?'':'none'}"
                     style="flex:1;min-width:0;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)">
               <option value=""        <?= $override['mode'] === null      ? 'selected' : '' ?>>Company tier default</option>
               <option value="flat"    <?= $override['mode'] === 'flat'    ? 'selected' : '' ?>>Flat ₹ per passenger</option>
-              <option value="booking" <?= $override['mode'] === 'booking' ? 'selected' : '' ?>>Flat ₹ per ticket / PNR</option>
               <option value="percent" <?= $override['mode'] === 'percent' ? 'selected' : '' ?>>% of fare</option>
             </select>
             <input type="number" id="ovFlat" name="commission_override_flat" min="0" max="10000" step="1"
                    value="<?= $override['flat'] !== null ? Security::e(number_format((float) $override['flat'], 2, '.', '')) : '' ?>"
-                   placeholder="₹ per unit"
-                   style="width:100px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)<?= in_array($override['mode'], ['flat','booking'], true) ? '' : ';display:none' ?>">
+                   placeholder="₹ / pax"
+                   style="width:100px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)<?= $override['mode'] === 'flat' ? '' : ';display:none' ?>">
           </div>
           <span class="muted" style="font-size:11px">
-            <?php if ($override['mode'] === 'booking'): ?>
-              Active — <?= Security::e(inr((float) $override['flat'])) ?> per ticket / PNR, regardless of passenger count.
-            <?php elseif ($override['mode'] === 'flat'): ?>
+            <?php if ($override['mode'] === 'flat'): ?>
               Active — this agent is paid <b><?= Security::e(inr((float) $override['flat'])) ?> per passenger</b>, ignoring the tier.
             <?php elseif ($override['mode'] === 'percent'): ?>
               Active — this agent is paid <b>% of fare</b> (the Commission % below), even while the tier pays everyone else.
@@ -1880,17 +1470,11 @@ $tripCard = static function (array $t) use ($today, $base): void {
                    style="width:86px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)">
             <button form="tierRatesForm" class="btn" type="submit" style="padding:8px 12px">Save</button>
           </div>
-          <input form="tierRatesForm" type="text" name="rate_reason" maxlength="200" placeholder="Reason for the change (required when a rate changes)"
-                 aria-label="Reason for the tier rate change"
-                 style="width:100%;margin-top:6px;padding:8px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)">
           <span class="muted" style="font-size:11px">Direct ₹ / team ₹ — changes what <b>every</b> agent on the company tier earns.</span>
         </div>
         <label style="font-size:12px;color:var(--mut)">Commission % <span class="muted">(blank = company <?= rtrim(rtrim(number_format(Settings::getFloat('agent_commission_percent', 5.0), 2), '0'), '.') ?>%<?= $flatOn ? ' · only used if the tier above is switched off' : '' ?>)</span>
           <input type="number" name="commission_percent" step="0.01" min="0" max="100"
                  value="<?= $profile['commission_percent'] === null ? '' : Security::e((string) $profile['commission_percent']) ?>"
-                 style="width:100%;margin-top:4px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)"></label>
-        <label style="font-size:12px;color:var(--mut)">Reason for a rate change <span class="muted">(required when Commission % changes · saved in the audit log)</span>
-          <input type="text" name="rate_reason" maxlength="200" placeholder="e.g. agreement renewed"
                  style="width:100%;margin-top:4px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)"></label>
         <label style="font-size:12px;color:var(--mut)">Security deposit required ₹ <span class="muted">(0 = none)</span>
           <input type="number" name="deposit_required" step="1" min="0" max="10000000"
@@ -1998,8 +1582,7 @@ $tripCard = static function (array $t) use ($today, $base): void {
           <td><strong><?= Security::e(formatDate($u['travel_date'])) ?></strong>
             <div class="muted"><?= Security::e(formatTime($u['dep_time'])) ?></div></td>
           <td><?= Security::e($u['from_city'] . ' → ' . $u['to_city']) ?>
-            <div class="muted mono"><?= Security::e($u['route_code']) ?> · <?= Security::e(ucfirst((string) $u['coach_type'])) ?></div>
-            <?php $uBus = admin_bus_tag((int) ($u['slot'] ?? 1), (string) ($u['bus_number'] ?? ''), (string) ($u['bus_name'] ?? '')); if ($uBus !== ''): ?><div class="muted" style="font-size:11.5px">🚌 <?= Security::e($uBus) ?></div><?php endif; ?></td>
+            <div class="muted mono"><?= Security::e($u['route_code']) ?> · <?= Security::e(ucfirst((string) $u['coach_type'])) ?></div></td>
           <td><strong><?= $sold ?></strong><span class="muted"> / <?= $tot ?></span></td>
           <td style="min-width:110px">
             <div style="height:6px;border-radius:99px;background:var(--line);overflow:hidden" title="<?= $fpct ?>% full">
@@ -2007,7 +1590,7 @@ $tripCard = static function (array $t) use ($today, $base): void {
             </div>
             <div class="muted" style="font-size:11px;margin-top:2px"><?= $fpct ?>% full</div>
           </td>
-          <td><a class="btn" href="<?= $base ?>/index.php?<?= Security::e(http_build_query(['counter' => 1, 'from' => (string) $u['from_city'], 'to' => (string) $u['to_city'], 'date' => (string) $u['travel_date']] + ((int) ($u['slot'] ?? 1) > 1 ? ['sid' => (int) $u['schedule_id']] : []))) ?>#/" style="padding:6px 12px" title="Opens the booking app in counter mode: pick seats on the map, fill passengers, take cash/UPI">Sell seats →</a></td>
+          <td><a class="btn" href="<?= $base ?>/index.php?<?= Security::e(http_build_query(['counter' => 1, 'from' => (string) $u['from_city'], 'to' => (string) $u['to_city'], 'date' => (string) $u['travel_date']])) ?>#/" style="padding:6px 12px" title="Opens the booking app in counter mode: pick seats on the map, fill passengers, take cash/UPI">Sell seats →</a></td>
         </tr>
       <?php endforeach; endif; ?>
     </tbody>
@@ -2054,16 +1637,13 @@ $tripCard = static function (array $t) use ($today, $base): void {
         <tr>
           <td class="mono" data-label="PNR"><a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $b['pnr']) ?>"><?= Security::e((string) $b['pnr']) ?></a></td>
           <td data-label="Route / Date"><span><?= Security::e(($b['from_city'] ?? '—') . ' → ' . ($b['to_city'] ?? '—')) ?>
-            <div class="muted"><?= $b['travel_date'] ? Security::e(formatDate($b['travel_date'])) : '' ?><?php
-              $rBus = !empty($b['travel_date']) ? admin_bus_tag((int) ($b['slot'] ?? 1), (string) ($b['bus_number'] ?? ''), (string) ($b['bus_name'] ?? ''),
-                          isset($recentMulti[(int) ($b['route_id'] ?? 0) . '|' . (string) $b['travel_date']])) : '';
-              echo $rBus !== '' ? ' · 🚌 ' . Security::e($rBus) : ''; ?></div></span></td>
+            <div class="muted"><?= $b['travel_date'] ? Security::e(formatDate($b['travel_date'])) : '' ?></div></span></td>
           <td class="mono" data-label="Seats"><?php
             $agSeats = (string) ($b['seats'] ?? '');
             echo $agSeats === ''
                 ? '—'
                 : Security::e(implode(' ', array_map(
-                    static fn($s) => Seats::displayLabel((string) $s, 'sleeper', (string) ($b['booking_mode'] ?? 'sharing')),
+                    static fn($s) => Seats::displayLabel((string) $s),
                     explode(' ', $agSeats)
                 )));
           ?></td>
