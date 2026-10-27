@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 # SHARI NAV data, step 2: build what the navigator serves from OUR server.
 #
-#   bash deploy/navdata/02-build.sh [tiles|chunks|static|cover|places|valhalla|all]
+#   bash deploy/navdata/02-build.sh [tiles|static|cover|places|valhalla|all]
 #
 # Run it inside the guarded unit (1 CPU, capped RAM, frozen by watchdog.sh
 # whenever the website gets slow), never bare:
 #
 #   systemd-run --unit=shg-nav-build --collect -p CPUQuota=100% -p Nice=19 \
 #     -p IOSchedulingClass=idle -p MemoryHigh=4500M -p MemoryMax=5500M \
-#     -p MemorySwapMax=2G -p OOMScoreAdjust=900 bash -c 'bash 02-build.sh chunks > /srv/shg-nav/log/02.log 2>&1'
-#
-# MemorySwapMax matters: without it a hungry step (osmium extract, 5 Oct) filled
-# all 10 GB of the box's swap instead of being stopped inside its own unit.
+#     -p OOMScoreAdjust=900 bash -c 'bash 02-build.sh tiles > /srv/shg-nav/log/02.log 2>&1'
 #
 # Needs step 1 (01-fetch-extract.sh) -> $PBF + the region's .poly files in $SRC.
 # Region = all of India + Nepal (since 5 Oct 2026; was Gujarat + Nepalgunj).
@@ -46,17 +43,16 @@ mkdir -p "$PUB" "$WORK"
 [ -s "$PBF" ] || { echo "missing $PBF - run 01-fetch-extract.sh"; exit 1; }
 log() { echo "$(date '+%F %T') $*"; }
 
-tiles_conf() {   # $1 = lowest zoom written
+tiles() {
   cd "$WORK"
   if [ ! -s coastline/water_polygons.shp ]; then
     curl -sSfL --retry 3 -o water.zip https://osmdata.openstreetmap.de/download/water-polygons-split-4326.zip
     rm -rf water-polygons-split-4326 && unzip -q -o water.zip && rm -f water.zip
     mkdir -p coastline && mv -f water-polygons-split-4326/* coastline/ && rmdir water-polygons-split-4326
   fi
-  MINZOOM=${1:-0} python3 - <<'PY'
-import json, os
+  python3 - <<'PY'
+import json
 c = json.load(open('/usr/share/doc/tilemaker/examples/config-openmaptiles.json'))
-c['settings']['minzoom'] = int(os.environ['MINZOOM'])
 for k in ('urban_areas', 'ice_shelf', 'glacier'):   # Natural Earth files we do not ship
     c['layers'].pop(k, None)
 c['settings']['name'] = 'SHARI NAV'
@@ -67,89 +63,11 @@ PY
   sed -e 's/^preferred_language = nil/preferred_language = "en"/' \
       -e 's/^additional_languages = { }/additional_languages = { "en", "hi", "ne", "gu" }/' \
       /usr/share/doc/tilemaker/examples/process-openmaptiles.lua > process.lua
-}
-
-tiles() {        # one run over the whole region (fine for a small region)
-  tiles_conf 0
   rm -rf tiles.new store && mkdir -p store
   log "tilemaker start ($PBF, bbox $BBOX, $THREADS thread(s))"
   /usr/bin/time -v tilemaker --input "$PBF" --output tiles.new/ --config config.json --process process.lua \
             --bbox "$BBOX" --store store/ --threads "$THREADS"
   rm -rf store
-  tiles_install
-}
-
-chunks() {
-  # All of India + Nepal in ONE tilemaker run needs ~8.5 GB (5 Oct 2026: it
-  # thrashed swap on this 8 GB box). So: z6-tile chunks (navchunks.py), each
-  # cut out with osmium (smart = complete ways + multipolygons), each run on
-  # its own (fits RAM), z8-z14 only — the navigator takes z0-7 from the
-  # planet tiles anyway (15-nav.js inside()). Resumable: a finished chunk
-  # leaves chunks/<name>.done; re-running skips it. FRESH=1 starts over.
-  tiles_conf 8
-  [ "${FRESH:-0}" = 1 ] && rm -rf tiles.new chunks
-  mkdir -p tiles.new chunks
-  ls "$SRC"/*.poly >/dev/null 2>&1 || { echo "no .poly in $SRC"; exit 1; }
-  python3 "$BIN/navcover.py" "$SRC"/*.poly > coverage.json
-  python3 "$BIN/navchunks.py" coverage.json 6 > chunks/list.tsv
-  log "chunks: $(wc -l < chunks/list.tsv)"
-  # Cut the extracts in two steps. osmium's smart strategy keeps id sets per
-  # extract (~3.5 GB of id sets each, whatever the file size): 10 in one pass
-  # took 14 GB, 2 took 7 GB (5 Oct 2026). So ONE extract per pass: the region
-  # -> one strip per chunk column, then each strip (small file, quick) -> its chunks.
-  python3 - "$WORK/chunks" <<'PY'
-import json, os, sys
-d = sys.argv[1]
-rows = [l.split('\t') for l in open(os.path.join(d, 'list.tsv')).read().split('\n') if l.strip()]
-todo = [r for r in rows if not os.path.exists(os.path.join(d, r[0] + '.done')) and not os.path.exists(os.path.join(d, r[0] + '.osm.pbf'))]
-cols = {}
-for r in todo:
-    cols.setdefault(r[0].split('_')[1], []).append(r)
-strips = []
-for x, rs in sorted(cols.items()):
-    box = [float(rs[0][1]), min(float(r[2]) for r in rs), float(rs[0][3]), max(float(r[4]) for r in rs)]
-    strips.append(('strip_' + x, box, rs))
-for s in strips:
-    json.dump({'directory': d, 'extracts': [{'output': s[0] + '.osm.pbf', 'output_format': 'pbf', 'bbox': s[1]}]},
-              open(os.path.join(d, 'a-' + s[0] + '.json'), 'w'))
-for name, box, rs in strips:
-    for j, r in enumerate(rs):
-        json.dump({'directory': d, 'extracts': [{'output': r[0] + '.osm.pbf', 'output_format': 'pbf',
-                   'bbox': [float(r[1]), float(r[2]), float(r[3]), float(r[4])]}]},
-                  open(os.path.join(d, 'b-%s-%d.json' % (name, j)), 'w'))
-PY
-  for cfg in chunks/a-strip_*.json; do
-    [ -e "$cfg" ] || continue
-    log "osmium extract $cfg (region -> strips)"
-    osmium extract -c "$cfg" -s smart --overwrite "$PBF"
-    rm -f "$cfg"
-  done
-  for cfg in chunks/b-strip_*.json; do
-    [ -e "$cfg" ] || continue
-    st="chunks/$(basename "$cfg" .json | sed -e 's/^b-//' -e 's/-[0-9]*$//').osm.pbf"
-    log "osmium extract $cfg ($st -> chunk)"
-    osmium extract -c "$cfg" -s smart --overwrite "$st"
-    rm -f "$cfg"
-  done
-  rm -f chunks/strip_*.osm.pbf
-  while IFS=$'\t' read -r name w s e n; do
-    [ -e "chunks/$name.done" ] && continue
-    [ -s "chunks/$name.osm.pbf" ] || { echo "missing chunks/$name.osm.pbf"; exit 1; }
-    # shrink the box a hair so a run never writes its neighbour's edge tiles
-    bb=$(python3 -c "import sys;w,s,e,n=map(float,sys.argv[1:]);print('%.6f,%.6f,%.6f,%.6f'%(w+1e-4,s+1e-4,e-1e-4,n-1e-4))" "$w" "$s" "$e" "$n")
-    log "chunk $name ($(du -h "chunks/$name.osm.pbf" | cut -f1)) bbox $bb"
-    rm -rf store && mkdir -p store
-    tilemaker --input "chunks/$name.osm.pbf" --output tiles.new/ --config config.json --process process.lua \
-              --bbox "$bb" --store store/ --threads "$THREADS" > "chunks/$name.log" 2>&1
-    rm -rf store "chunks/$name.osm.pbf"
-    touch "chunks/$name.done"
-    log "chunk $name done: $(find tiles.new -name '*.pbf' | wc -l) tiles so far"
-  done < chunks/list.tsv
-  tiles_install
-}
-
-tiles_install() {
-  cd "$WORK"
   log "tiles built: $(find tiles.new -name '*.pbf' | wc -l) files, $(du -sh tiles.new | cut -f1)"
   rm -rf "$WORK/tiles.old"
   if [ -d "$PUB/tiles" ]; then mv "$PUB/tiles" "$WORK/tiles.old"; fi
@@ -261,8 +179,8 @@ valhalla() {
 }
 
 case "$STAGE" in
-  tiles) tiles ;; chunks) chunks ;; static) static ;; cover) cover ;; places) places ;; valhalla) valhalla ;;
+  tiles) tiles ;; static) static ;; cover) cover ;; places) places ;; valhalla) valhalla ;;
   all) static; places; tiles; valhalla ;;
-  *) echo "usage: $0 [tiles|chunks|static|cover|places|valhalla|all]"; exit 2 ;;
+  *) echo "usage: $0 [tiles|static|cover|places|valhalla|all]"; exit 2 ;;
 esac
 chown -R www-data:www-data "$PUB" 2>/dev/null || true

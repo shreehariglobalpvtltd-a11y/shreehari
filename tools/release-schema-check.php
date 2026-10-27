@@ -4,6 +4,7 @@ declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 require dirname(__DIR__) . '/includes/bootstrap.php';
 $required = [
+    'agent_applications'=>['id','type','role_category','parent_agent_id','fields_json'],
     'trip_expenses'=>['id','route_id','expense_date','diesel','toll','driver_pay','misc','total','note','created_by','created_at'],
     'team_identity'=>['person_key','code','origin','route','consent_note','delivery_consent','payout_verified'],
     'team_reviews'=>['id','person_key','file_key','mime','suggestions','created_by','reviewed_at','created_at'],

@@ -95,6 +95,18 @@ try {
         Response::invalid($check['errors'], AgentApplications::message('invalid', $lang));
     }
     $clean = $check['clean'];
+    // Preserve the live parent-agent application request through the existing
+    // resolver. This records a request only; it does not grant an account,
+    // alter a parent profile, or post any commission.
+    $parentCode = trim((string) Response::field('parent_agent_code', $clean['fields']['p_parent_agent_code'] ?? ''));
+    $parentId = null;
+    if ($parentCode !== '') {
+        require_once INCLUDE_PATH . '/agentwallet.php';
+        $parentId = AgentWallet::resolveAgentCodeFromString($parentCode);
+        if ($parentId === null) { Response::invalid(['p_parent_agent_code' => 'invalid'], 'Valid active parent agent code required.'); }
+        $clean['fields']['p_parent_agent_code'] = mb_substr($parentCode, 0, 32, 'UTF-8');
+    }
+    $roleCategory = $clean['type'] === 'org' ? 'partner' : ($parentId !== null ? 'subagent' : 'agent');
     require_once INCLUDE_PATH . '/applyedit.php';
     $edit = Response::field('edit', false) === true ? ApplyEdit::current('agent', (string)$clean['phone']) : null;
     if (Response::field('edit', false) === true && $edit === null) { Response::error('Your edit session expired. Verify your number and reopen your application.', 403); }
@@ -182,8 +194,11 @@ try {
         Response::error($busy, 429);
     }
 
-    $made = Database::transaction(static function () use ($clean, $ip, $receipt, $scope): array {
+    $made = Database::transaction(static function () use ($clean, $ip, $receipt, $scope, $roleCategory, $parentId): array {
         $made = AgentApplications::create($clean, $ip);
+        if (!$made['duplicate']) {
+            Database::update('agent_applications', ['role_category' => $roleCategory, 'parent_agent_id' => $parentId], 'id = :id', ['id' => (int) $made['id']]);
+        }
         ApplicationImport::attachForm($receipt, $scope, 'agent:' . $made['id']);
         return $made;
     });

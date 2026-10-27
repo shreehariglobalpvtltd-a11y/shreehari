@@ -510,6 +510,7 @@ $company = (string) $issuer['name'];
          with the PDF one tap away for anyone who needs to print. */ ?>
     <a class="cta" href="<?= htmlspecialchars(Ticket::imageUrl($pnr), ENT_QUOTES, 'UTF-8') ?>">Download ticket</a>
     <a class="cta cta-alt" href="<?= htmlspecialchars(Ticket::downloadUrl($pnr), ENT_QUOTES, 'UTF-8') ?>">PDF for printing</a>
+    <a class="cta" style="background:#2563eb;margin-top:8px" href="<?= htmlspecialchars(Ticket::trackUrl($pnr), ENT_QUOTES, 'UTF-8') ?>">🛰️ Live Track Bus · बस कहाँ छ?</a>
   <?php elseif (!$authed && $state !== 'forged'): ?>
     <a class="cta" href="/#/my">Open My Bookings</a>
   <?php endif; ?>
