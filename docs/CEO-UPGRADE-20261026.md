@@ -29,6 +29,7 @@ path. Its SHA-256 matched
 `fb6b1d2b10ebeee74c12115f3d13e1a29d258654f21f7194de0f2ec528a1b2ff`.
 The temporary encrypted web file was moved back into the private backup folder;
 subsequent HTTP returned the site's HTML fallback, not the encrypted file.
+A final remote filesystem check printed `Temporary encrypted file in webroot: False`.
 The decryption key remains in the task's private working directory. No plaintext
 source, production records or credentials were publicly served. The principal
 config directory and runtime record/upload folders were excluded. A separately
@@ -49,7 +50,7 @@ not a full column/trigger/data reconciliation or an authenticated workflow test.
 | Phase | Existing modules reused | Candidate changes and verification | Files / remaining work |
 | --- | --- | --- | --- |
 | 1 Audit and protection | Existing bare Git, Hostinger backups, existing schema | Live-source recovery, independent source/code checkpoints, encrypted transfer with checksum, table-presence audit | This document; full live inventory/restore rehearsal and exact release-base construction remain |
-| 2 Admin organization | `_guard.php`, existing `admin_nav()`, dashboard, MoneySummary, AI Watch and search | Exactly three primary office categories in requested order; same authorized destinations, active-menu expansion/ARIA, directory and approval family filters; no new management application | `includes/adminnavigation.php`, `admin/_guard.php`, `admin/index.php`, `admin/team.php`; 78 dashboard checks, 26 manager checks and mobile/desktop rendering passed |
+| 2 Admin organization | `_guard.php`, existing `admin_nav()`, dashboard, MoneySummary, AI Watch and search | Exactly three primary office categories in requested order; same authorized destinations, active-menu expansion/ARIA, directory and approval family filters; twelve owner-facing settings topics reuse all existing controls; no new management application | `includes/adminnavigation.php`, `admin/_guard.php`, `admin/index.php`, `admin/team.php`, `admin/settings.php`, `includes/settingsnavigation.php`; 78 dashboard checks, 26 manager checks and mobile/desktop rendering passed |
 | 3 Team and finance | TeamRegistry/Manager/Finance, AgentWallet, Payroll, existing append-only journal and reports | Agent, Staff (including drivers) and Partner views retain existing codes/accounts; all-team withdrawal queue is explicitly labelled. Historical booking without an active leg now renders safely, including duplicate payment-proof warnings | `admin/booking-view.php`, `includes/bootstrap.php`; 112 consistency checks passed. Organisation applications do not establish legal shareholding. New capital/share-allocation models, legal entity views and a new ledger migration were not invented |
 | 4 Navigation | Current `navigate.html`, MapLibre, existing timetable, route service and NavLive | Preserves live drawer/HUD/follow controls; replaces hardcoded corridor stops with current/cached official timetable; bus mode refuses a car fallback; offline rerouting limits are stated; report drawer delegates to the existing authenticated module and cannot claim success on failure | `navigate.html`, `assets/nav/nav-live.js`, small compatible `whereis.php` / `etaalerts.php` changes. Existing navigation contract suite 258/0; new real-JS routing/report/corridor/GPS tests pass. No truck-restriction data quality or physical road validation is claimed |
 | 5 Android/GPS | Existing OwnTracks adapter/profile, tracker ingestion, GPS fleet/simulator | Both shipped bus-account/device-code and exact device-code/device-code profiles authenticate, with required matching secret and phone/bus/revocation checks. Passenger and fleet displays expire locally and reject replays; simulation is server-disabled in production | `includes/owntracks.php`, GPS simulator/fleet view/API/JS; 22 OwnTracks checks and new replay/expiry/environment tests pass. Native Android project identification and real device background, offline/reconnection and battery tests remain |
@@ -101,8 +102,17 @@ Local isolated PHP 8.3.32 / MariaDB 12.3, task-owned
 - Remaining local limitations: native Hindi font shaping needs HarfBuzz unavailable
   in this Windows setup; one existing 50ms performance threshold measured 56.6ms.
   Neither runtime safety nor font-quality assertions were weakened to hide these.
-- Final exact-head hosted CI is required to validate the full Linux/MariaDB battery
-  and real shaping backend. Record its actual result before release consideration.
+- Hosted implementation checkpoint `355730e9fdcffee4e30257e2845796f05f611e96`:
+  [run 40379443980](https://github.com/shreehariglobalpvtltd-a11y/shreehari/actions/runs/40379443980)
+  passed both jobs and **191 suites, 0 failed, 0 missing**, in 224.4 s, including
+  the required real Hindi shaping backend. The historical stale suite remains
+  explicitly excluded. The Windows performance/shaping limitations did not recur
+  in the hosted environment.
+- The subsequent settings organization passes local smart-v2 **112/0**, fares
+  **26/0**, JSON validation **15/0**, metadata classification and browser checks.
+  Its final hosted status must be read from the latest head of
+  [draft PR #27](https://github.com/shreehariglobalpvtltd-a11y/shreehari/pull/27),
+  not inferred from the older passing checkpoint.
 
 ## Release boundary / next step
 
@@ -114,5 +124,29 @@ owner approval for the exact base, target and unique release label. The existing
 guarded deployer must refuse unexplained live drift. Never restore an old database
 over newer valid transactions. The snapshot's short expiry must be accounted for.
 
-Real driver device tests, legal partner-capital accounting, the complete settings
-reorganization and all requested alert/AI acceptance scenarios remain unfinished.
+Real driver device tests, legal partner-capital accounting, saved-setting rollback
+and confirmation coverage, and all requested alert/AI acceptance scenarios remain unfinished.
+
+## Twelve settings topics — 27 October follow-up
+
+The existing Settings screen now presents the twelve requested topics, in order.
+The original classification remains a metadata fallback, while service credentials
+appear with their service (WhatsApp, AI, routing, payments, backup or security).
+Every original setting key/group/type/value and the privileged save path remain
+unchanged. No table, financial rule or backend permission was changed.
+
+Staff/Partner topics link to authorized existing team/payroll workflows; zero
+standalone partner settings are stated clearly. Organisation applications are not
+relabelled as legal share ownership. Links are filtered through the existing
+`admin_nav()` permission result. The existing settings audit viewer is linked.
+A new Cancel button resets unsaved fields; it is not a saved-setting rollback.
+
+At 390px and 1440px browser checks found **480 unique setting controls**, no
+rendered secret values, no page overflow or JS page errors. All twelve topics,
+legacy category hashes, cross-topic search, keyboard switching and Cancel passed.
+The interaction check made zero POST requests after login. Existing fares tests
+separately exercised and restored synthetic settings in the task-owned test DB.
+The normal backup reminder was dismissed during QA and only the task-owned
+localhost login throttle was reset between test runs; production safety controls
+were not changed.
+

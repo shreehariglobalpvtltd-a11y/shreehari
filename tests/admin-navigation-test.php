@@ -2,6 +2,7 @@
 declare(strict_types=1);
 define('SHG_APP', true);
 require dirname(__DIR__) . '/includes/adminnavigation.php';
+require dirname(__DIR__) . '/includes/settingsnavigation.php';
 function expect(bool $ok, string $message): void { if (!$ok) { throw new RuntimeException($message); } }
 $items = [
     ['href'=>'index.php','section'=>''],
@@ -34,3 +35,27 @@ foreach (['driver'=>'staff','staff'=>'staff','agent'=>'agent','partner'=>'partne
     expect(AdminNavigation::teamFamily($role) === $family, 'staff and partner separation');
 }
 echo "Admin categories: link preservation, ordering, permission-filtered input and team families passed\n";
+expect(count(SettingsNavigation::CATEGORIES) === 12, 'all twelve owner settings topics');
+foreach ([
+    ['twilio_auth_token','notify','keys','notifications'],
+    ['openai_api_key','ai','keys','ai'],
+    ['nav_engine_url','maps','keys','fleet'],
+    ['gdrive_refresh_token','automation','keys','backup'],
+    ['google_client_secret','integrations','keys','security'],
+    ['payment_webhook_secret','payment','keys','payments'],
+    ['app_offline_queue_on','app','website','devices'],
+    ['staffmsg_enabled','agents','agents','notifications'],
+    ['salary_day','general','other','staff'],
+    ['partner_rules','partners','other','partners'],
+    ['ticket_maps_qr','gps','tickets','booking'],
+    ['refund_days','booking','booking','payments'],
+    ['fare_to_india','pricing','fares','booking'],
+    ['agent_commission_percent','pricing','agents','agents'],
+    ['unknown_legacy_key','unknown','other','company'],
+] as [$key,$group,$legacy,$expected]) {
+    expect(SettingsNavigation::category($key,$group,$legacy) === $expected, 'setting metadata classified: ' . $key);
+}
+foreach (SettingsNavigation::LEGACY as $legacy=>$topic) {
+    expect(isset(SettingsNavigation::CATEGORIES[$topic]), 'legacy settings hash resolves: ' . $legacy);
+}
+echo "Settings topics: service credentials, payroll/partners, fallback and legacy-link compatibility passed\n";
