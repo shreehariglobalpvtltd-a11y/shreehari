@@ -137,7 +137,7 @@ set_exception_handler(static function (Throwable $e): void {
         Response::serverError($e);
     }
 
-    http_response_code(500);
+    if (!headers_sent()) { http_response_code(500); }
 
     if (APP_DEBUG) {
         echo '<h1>Application error</h1>';

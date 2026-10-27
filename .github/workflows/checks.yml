@@ -50,6 +50,13 @@ jobs:
         run: php tests/asset-version-test.php
       - name: GPS privacy and freshness (no database)
         run: |
+          php tests/admin-navigation-test.php
+          php tests/gps-simulation-environment-test.php
+          php tests/gps-center-simulation-test.php
+          node tests/gps-telemetry-test.cjs
+          node tests/nav-bus-routing-test.cjs
+          node tests/nav-live-upgrade-test.cjs
+          php tests/owntracks-test.php
           php tests/gps-fleet-status-test.php
           php tests/gps-public-map-test.php
           node tests/gps-fleet-marker-test.cjs

@@ -232,22 +232,6 @@ $choiceKeys = [
    marketing and AiSensy; WhatsApp under four groups. The page now files every
    row under one of these tabs by its meaning. Display only: the stored group
    (sgroup) and every key are untouched, so nothing in the code moves. */
-$cats = [
-    'company'  => ['🏢', 'Company & offices', 'Legal names, addresses, phone numbers, Nepal office, counters and social links printed on tickets and chalani.'],
-    'booking'  => ['🪑', 'Booking & seats', 'How seats are held and sold: limits, women-only seats, Seat AI, refunds, Quick Ticket, booking window.'],
-    'fares'    => ['💰', 'Fares & offers', 'Private and sharing prices, every pickup\'s fare, discounts, offers, loyalty and referral rewards.'],
-    'tickets'  => ['🎫', 'Tickets', 'What the ticket carries and how it is delivered: PDF / PNG, maps QR, border card, travel checklist.'],
-    'payments' => ['💳', 'Payments', 'UPI, eSewa, pay at counter, payment proof, payment webhook and the NPR rate.'],
-    'agents'   => ['🤝', 'Agents & counter', 'Agent commission, cash limits, settlement, KYC, counter desks, shifts and counter discount / seat caps.'],
-    'whatsapp' => ['📲', 'WhatsApp', 'WhatsApp sending (AiSensy / Meta / Twilio), templates, the WhatsApp bot, staff menu and seat-status messages.'],
-    'notify'   => ['🔔', 'Notifications & reports', 'SMS, e-mail, push, reminders, ETA alerts, office reports and the help desk.'],
-    'marketing'=> ['📣', 'Marketing', 'Campaign limits, consent, AI marketing autopilot, social posting.'],
-    'ai'       => ['🤖', 'AI', 'The AI assistant, provider order and models, AI watch, Passive Brain predictions.'],
-    'keys'     => ['🔑', 'API keys & connections', 'Every API key, token, password and account id in one place. Keys are write-only: the stored value is never shown.'],
-    'website'  => ['🌐', 'Website & app', 'What the public site shows: buttons ON/OFF, near-me pickup, language, notices, maps, sign-in, sounds and motion.'],
-    'security' => ['🔒', 'Security & backup', 'Admin sign-in protection, sessions, PIN lock, backups and data checks.'],
-    'other'    => ['🧩', 'Other', 'Settings not filed anywhere else.'],
-];
 $catOf = static function (string $key, string $group): string {
     // non-secret ids / hosts that belong with the keys
     $conn = ['aisensy_project_id', 'whatsapp_phone_id', 'whatsapp_waba_id', 'meta_page_id', 'ig_user_id', 'telegram_channel',
@@ -302,11 +286,14 @@ $subTitle = [
     'company'  => ['site' => 'Company WhatsApp', 'trust' => 'Women helpline'],
     'security' => ['automation' => 'Data checks & off-site backup', 'booking' => 'Sessions'],
 ];
+require_once INCLUDE_PATH . '/settingsnavigation.php';
+$cats = SettingsNavigation::CATEGORIES;
 $byCat = [];
 foreach ($groups as $g => $items) {
     foreach ($items as $r) {
         $c = $catOf((string) $r['skey'], (string) $g);
-        $byCat[$c][$g][] = $r;
+        $primary = SettingsNavigation::category((string) $r['skey'], (string) $g, $c);
+        $byCat[$primary][$c . ':' . $g][] = $r;
     }
 }
 /* The keys the two curated panels (Fares, Agent rules) show instead of the
@@ -325,9 +312,17 @@ foreach ($cats as $c => $_) {
 }
 // the curated panels: Fares (its fpKeys + the two private-cabin prices) and Agent rules (the rest of fpKeys)
 $fareFp = array_intersect($curatedKeys, ['fare_to_nepal', 'fare_to_india', 'max_seats_per_booking', 'counter_max_seats_per_booking', 'counter_max_discount_pct']);
-$catCount['fares']  += count($fareFp) + 2;
+$catCount['booking'] += count($fareFp) + 2;
 $catCount['agents'] += count($curatedKeys) - count($fareFp);
-$catCount = array_filter($catCount, static fn(int $n, string $c): bool => $n > 0 || in_array($c, ['fares', 'agents'], true), ARRAY_FILTER_USE_BOTH);
+// Keep all twelve topics visible, even when controls live in another existing workflow.
+$relatedPages = [
+    'company'=>['company-docs.php'], 'booking'=>['routes.php', 'smartbook.php'],
+    'fleet'=>['buses.php', 'routes.php', 'gps-center.php'], 'agents'=>['agents.php', 'accounting.php'],
+    'staff'=>['team.php', 'payroll.php'], 'partners'=>['team.php'], 'payments'=>['accounting.php'],
+    'notifications'=>['wa-routing.php', 'wa-queue.php'], 'devices'=>['gps-trackers.php'],
+    'security'=>['staff.php'], 'ai'=>['ai-brain.php', 'ai-activity.php'], 'backup'=>['backup.php', 'activity-log.php'],
+];
+$allowedSettingsLinks = array_column(admin_nav(), null, 'href');
 
 admin_header('Settings', 'settings');
 
@@ -339,16 +334,29 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
 <nav class="sg set-jump" aria-label="Settings categories">
   <p class="set-lede"><b><?= count($rows) ?> settings</b> in <?= count($catCount) ?> categories. Pick a category, or search. Changes apply after <b>Save all settings</b> (one button, saves every category); the page then confirms with “Settings saved.”</p>
   <input type="search" id="setSearch" class="set-search" placeholder="🔍 Search a setting — e.g. fare, upi, whatsapp, key, women, ticket…" autocomplete="off" aria-label="Search settings">
-  <div class="set-cats" role="tablist">
+  <div class="set-cats" role="tablist" aria-label="Settings topics">
     <?php foreach ($catCount as $c => $n): ?>
-      <button type="button" class="set-cat-btn" role="tab" data-cat="<?= Security::e($c) ?>">
+      <button type="button" class="set-cat-btn" role="tab" aria-selected="false" tabindex="-1" data-cat="<?= Security::e($c) ?>">
         <span class="sc-ic" aria-hidden="true"><?= $cats[$c][0] ?></span>
         <span class="sc-t"><?= Security::e($cats[$c][1]) ?> <em><?= (int) $n ?></em></span>
         <small><?= Security::e($cats[$c][2]) ?></small>
       </button>
     <?php endforeach; ?>
   </div>
+  <?php if (isset($allowedSettingsLinks['activity-log.php'])): ?><p><a href="activity-log.php?action=settings.update">View settings change history</a>. Secret values stay masked. Cancel below discards unsaved edits; it does not reverse a saved change.</p><?php endif; ?>
 </nav>
+<?php foreach ($cats as $topic => $info): ?>
+<section class="panel set-in" data-cat="<?= Security::e($topic) ?>" aria-label="<?= Security::e($info[1]) ?>">
+  <h2><?= Security::e($info[1]) ?></h2>
+  <p class="muted"><?= Security::e($info[2]) ?></p>
+  <?php if ($catCount[$topic] === 0): ?><p>No standalone settings are stored in this category. Use the existing authorized workflows below.</p><?php endif; ?>
+  <div class="toolbar">
+    <?php foreach ($relatedPages[$topic] ?? [] as $page): if (!isset($allowedSettingsLinks[$page])) { continue; } $link = $allowedSettingsLinks[$page]; ?>
+      <a class="btn btn-sm btn-ghost" href="<?= Security::e($page . ($page === 'team.php' && $topic === 'partners' ? '?family=partner' : ($page === 'team.php' && $topic === 'staff' ? '?family=staff' : ''))) ?>"><?= Security::e($link['label']) ?></a>
+    <?php endforeach; ?>
+  </div>
+</section>
+<?php endforeach; ?>
 
 <!-- ── CEO / Brand Photo Upload ── -->
 <?php if ($canEdit): ?>
@@ -420,7 +428,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   }
   $fpMissing = 'disabled title="Run database/upgrade-2026-09-fares.php once to enable this field"';
   ?>
-  <div class="panel set-in" data-cat="fares" id="faresPanel">
+  <div class="panel set-in" data-cat="booking" id="faresPanel">
     <h2>💰 Fares &amp; booking rules <span class="muted" style="font-weight:400">· भाडा · the numbers that change, in one place</span></h2>
     <div class="fp-grid">
       <label>Default fare Gujarat → Rupaidiha (₹ / person)
@@ -602,10 +610,11 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       + array_fill_keys(['company_youtube', 'company_facebook', 'company_instagram', 'company_tiktok', 'ceo_facebook'], $trustUrl);
   ?>
   <?php foreach ($cats as $cat => $catInfo): foreach ($byCat[$cat] ?? [] as $group => $items):
+      [$legacyCat, $group] = explode(':', (string) $group, 2);
       $visible = array_values(array_filter($items, static fn($r) => !in_array((string) $r['skey'], $fpKeys, true)));
       if ($visible === []) { continue; } ?>
-    <div class="panel set-group set-in" data-cat="<?= Security::e($cat) ?>" id="grp-<?= Security::e($cat . '-' . (string) $group) ?>">
-      <?php $subT = $subTitle[$cat][$group] ?? null; ?>
+    <div class="panel set-group set-in" data-cat="<?= Security::e($cat) ?>" id="grp-<?= Security::e($cat . '-' . $legacyCat . '-' . (string) $group) ?>">
+      <?php $subT = $subTitle[$legacyCat][$group] ?? null; ?>
       <h2><?= $catInfo[0] ?> <?= Security::e($subT ?? ($groupInfo[$group][0] ?? ucfirst(str_replace(['-', '_'], ' ', (string) $group)))) ?> <small class="muted set-cnt"><?= count($visible) ?></small></h2>
       <?php if ($subT === null): ?><p class="muted set-why"><?= Security::e($groupInfo[$group][1] ?? 'Settings stored under "' . $group . '".') ?></p><?php endif; ?>
       <table class="set-table no-card">
@@ -656,7 +665,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   <?php endforeach; endforeach; ?>
 
   <?php if ($canEdit): ?>
-    <div class="toolbar save-sticky"><span class="set-dirty" id="setDirty" hidden>You have unsaved changes</span><button class="btn" type="submit">Save all settings</button></div>
+    <div class="toolbar save-sticky"><span class="set-dirty" id="setDirty" hidden>You have unsaved changes</span><button class="btn btn-ghost" type="reset">Cancel unsaved changes</button><button class="btn" type="submit">Save all settings</button></div>
   <?php endif; ?>
 </form>
 <style>
@@ -708,7 +717,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
 </style>
 <script>
 (function () {
-  var dirty = document.getElementById('setDirty'), n = 0;
+  var dirty = document.getElementById('setDirty');
   document.querySelectorAll('.set-switch input').forEach(function (cb) {
     cb.addEventListener('change', function () {
       var st = cb.parentNode.querySelector('.set-state'), changed = (cb.checked ? '1' : '0') !== cb.getAttribute('data-saved');
@@ -728,8 +737,11 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   // queried each time: the test panels come AFTER this script in the page
   var allPanels = function () { return Array.prototype.slice.call(document.querySelectorAll('.set-in')); };
   var search = document.getElementById('setSearch');
+  var legacyCategories = <?= json_encode(SettingsNavigation::LEGACY, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
   function show(cat) {
-    btns.forEach(function (b) { var on = b.getAttribute('data-cat') === cat; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+    cat = legacyCategories[cat] || cat;
+    if (!btns.some(function (b) { return b.getAttribute('data-cat') === cat; })) cat = btns[0] && btns[0].getAttribute('data-cat');
+    btns.forEach(function (b) { var on = b.getAttribute('data-cat') === cat; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1; });
     allPanels().forEach(function (p) { p.classList.toggle('set-hide', p.getAttribute('data-cat') !== cat); });
     document.querySelectorAll('.set-row').forEach(function (r) { r.classList.remove('set-hide'); });
     try { history.replaceState(null, '', '#cat=' + cat); } catch (e) {}
@@ -737,7 +749,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   function find(q) {
     q = q.trim().toLowerCase();
     if (!q) { var c = (location.hash.match(/cat=([a-z]+)/) || [])[1] || (btns[0] && btns[0].getAttribute('data-cat')); show(c); return; }
-    btns.forEach(function (b) { b.classList.remove('on'); });
+    btns.forEach(function (b) { b.classList.remove('on'); b.setAttribute('aria-selected', 'false'); });
     allPanels().forEach(function (p) {
       var rows = p.querySelectorAll('.set-row'), any = false;
       if (rows.length) {
@@ -758,6 +770,18 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
     }
   }); });
   if (search) search.addEventListener('input', function () { find(search.value); });
+  btns.forEach(function (b, i) { b.addEventListener('keydown', function (e) {
+    var j = e.key === 'Home' ? 0 : e.key === 'End' ? btns.length - 1 : e.key === 'ArrowRight' ? (i + 1) % btns.length : e.key === 'ArrowLeft' ? (i + btns.length - 1) % btns.length : -1;
+    if (j < 0) return;
+    e.preventDefault(); btns[j].click(); btns[j].focus();
+  }); });
+  if (form) form.addEventListener('reset', function () {
+    if (dirty) dirty.hidden = true;
+    document.querySelectorAll('.set-switch input').forEach(function (cb) {
+      var st = cb.parentNode.querySelector('.set-state');
+      if (st) { st.textContent = cb.defaultChecked ? 'On' : 'Off'; st.classList.remove('is-unsaved'); }
+    });
+  });
   var start = (location.hash.match(/cat=([a-z]+)/) || [])[1];
   var legacy = { faresPanel: 'fares', agentRulesPanel: 'agents', waTestPanel: 'whatsapp', 'grp-site': 'website' }[location.hash.replace('#', '')];
   if (form) form.addEventListener('submit', function () { form.action = location.pathname + location.hash; });   // come back to the same tab after Save
@@ -769,7 +793,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
 <?php if ($canEdit):
   $testPhone = Settings::officePhone();
 ?>
-<div class="panel set-in" data-cat="whatsapp" id="waTestPanel">
+<div class="panel set-in" data-cat="notifications" id="waTestPanel">
   <h2>📲 Test WhatsApp ticket delivery</h2>
   <?php
     // Notify is not bootstrap-loaded (events.php pulls it lazily), so this
@@ -834,7 +858,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
 })();
 </script>
 
-<div class="panel set-in" data-cat="notify" id="smsTestPanel">
+<div class="panel set-in" data-cat="notifications" id="smsTestPanel">
   <h2>📩 Test SMS ticket delivery</h2>
   <p class="muted" style="margin:-4px 0 14px;max-width:640px">
     Sends a real SMS through Twilio. Tick <span class="mono">sms_enabled</span>, fill the
@@ -884,7 +908,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
 })();
 </script>
 
-<div class="panel set-in" data-cat="notify" id="emailTestPanel">
+<div class="panel set-in" data-cat="notifications" id="emailTestPanel">
   <h2>📧 Test email (Gmail SMTP)</h2>
   <p class="muted" style="margin:-4px 0 14px;max-width:640px">
     Sends a real email through your SMTP settings above. For Gmail set

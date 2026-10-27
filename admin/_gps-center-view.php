@@ -5,17 +5,17 @@
 </style>
 <!-- GPS-CENTER-20261025 -->
 <?php if ($flash): ?><div class="flash <?= Security::e($flash[0]) ?>"><?= Security::e($flash[1]) ?></div><?php endif; ?>
-<div class="gc-top"><h2>🛰️ Bus GPS control</h2><div class="gc-tabs"><button type="button" class="btn ghost" data-gc-mode="real" aria-pressed="<?= $initialMode === 'real' ? 'true' : 'false' ?>">वास्तविक बस · Live</button><button type="button" class="btn ghost" data-gc-mode="sim" aria-pressed="<?= $initialMode === 'sim' ? 'true' : 'false' ?>">Simulation · 3 demo buses</button></div><a class="btn ghost" href="/navigate.html" target="_blank" rel="noopener">Public map ↗</a></div>
+<div class="gc-top"><h2>🛰️ Bus GPS control</h2><div class="gc-tabs"><button type="button" class="btn ghost" data-gc-mode="real" aria-pressed="<?= $initialMode === 'real' ? 'true' : 'false' ?>">वास्तविक बस · Live</button><?php if ($canSimulate): ?><button type="button" class="btn ghost" data-gc-mode="sim" aria-pressed="<?= $initialMode === 'sim' ? 'true' : 'false' ?>">Simulation · 3 demo buses</button><?php endif; ?></div><a class="btn ghost" href="/navigate.html" target="_blank" rel="noopener">Public map ↗</a></div>
 <div class="gc-layout">
- <section class="gc-mapbox"><div id="gcMap" role="region" aria-label="Bus GPS map"><div id="gcMapLoad" style="padding:30px">Loading map…</div></div><div class="gc-maptools"><button type="button" class="btn ghost" id="gcFit">Fit buses</button><label><input type="checkbox" id="gcFollow"> Follow selected bus</label><span id="gcPoll" class="gc-hint" role="status">Connecting…</span></div><div id="gcMapHint" class="gc-hint" style="padding:0 12px 12px">Screen refresh: 1 second. GPS positions change only when a new device fix arrives.</div></section>
+ <section class="gc-mapbox"><div id="gcMap" role="region" aria-label="Bus GPS map"><div id="gcMapLoad" style="padding:30px">Loading map…</div></div><div class="gc-maptools"><button type="button" class="btn ghost" id="gcFit">Fit buses</button><label><input type="checkbox" id="gcFollow"> Follow selected bus</label><span id="gcPoll" class="gc-hint" role="status">Connecting…</span></div><div id="gcMapHint" class="gc-hint" style="padding:0 12px 12px">Screen refresh: 1 second. GPS positions change only when a new device fix arrives. Marker transitions are visual interpolation; the timestamp and accuracy describe the device reading.</div></section>
  <section>
   <div id="gcSimControls" <?= $initialMode !== 'sim' ? 'hidden' : '' ?>><div class="gc-demo-banner">SIMULATION · Admin-only demo. यी marker वास्तविक बसको location होइनन्।</div>
-   <div class="gc-panel"><h3>Route मा demo बस चलाउनुहोस्</h3><form method="post" class="gc-form"><?= $csrf ?><input type="hidden" name="action" value="start">
+   <?php if ($canSimulate): ?><div class="gc-panel"><h3>Route मा demo बस चलाउनुहोस्</h3><form method="post" class="gc-form"><?= $csrf ?><input type="hidden" name="action" value="start">
     <label>Route<select name="route_id" required><?php foreach ($routes as $r): ?><option value="<?= (int) $r['id'] ?>" <?= (int) $simulation['routeId'] === (int) $r['id'] ? 'selected' : '' ?>><?= Security::e($r['from_city'] . ' → ' . $r['to_city']) ?></option><?php endforeach; ?></select></label>
     <div class="gc-grid2"><label>Demo buses<select name="count"><?php foreach ([1,2,3] as $n): ?><option value="<?= $n ?>" <?= (int) $simulation['count'] === $n ? 'selected' : '' ?>><?= $n ?> buses</option><?php endforeach; ?></select></label><label>Demo speed · km/h<input name="speed" type="number" min="5" max="120" value="<?= (int) $simulation['speed'] ?>" required></label></div>
     <?php if ($canEdit): ?><button class="btn" type="submit">▶ Start / Resume demo</button><?php endif; ?>
    </form><div class="gc-inline" style="margin-top:10px"><?php if ($canEdit): foreach (['pause'=>'⏸ Pause','reset'=>'↺ Reset'] as $act=>$label): ?><form method="post"><?= $csrf ?><input type="hidden" name="action" value="<?= $act ?>"><button class="btn ghost" type="submit"><?= $label ?></button></form><?php endforeach; endif; ?></div>
-   <p class="gc-hint">Demo data stays here. GPS trackers, bookings, passenger messages र public map मा demo data लेखिँदैन।</p></div>
+   <p class="gc-hint">Demo data stays here. GPS trackers, bookings, passenger messages र public map मा demo data लेखिँदैन।</p></div><?php endif; ?>
   </div>
   <div id="gcSimRows" <?= $initialMode !== 'sim' ? 'hidden' : '' ?>><p class="gc-hint">Start demo to preview 1–3 buses. A bus can be selected and followed.</p></div>
   <div id="gcRealRows" <?= $initialMode !== 'real' ? 'hidden' : '' ?>>
@@ -40,6 +40,7 @@
   <a href="/admin/gps-trackers.php" class="btn ghost">Advanced GPS trackers & hardware setup</a>
  </section>
 </div>
-<script>window.GPS_CENTER=<?= json_encode(['mode'=>$initialMode], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>;</script>
+<script>window.GPS_CENTER=<?= json_encode(['mode'=>$initialMode,'simulationAllowed'=>$canSimulate], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>;</script>
 <script src="/assets/vendor/maplibre-gl-4.7.1/maplibre-gl.js" defer></script>
-<script src="/assets/nav/gps-center.js?v=20261025gps6" defer></script>
+<script src="/assets/nav/gps-telemetry.js?v=20261026d" defer></script>
+<script src="/assets/nav/gps-center.js?v=20261026d" defer></script>

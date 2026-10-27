@@ -306,19 +306,22 @@ check('install pop-up obeys its switch', str_contains((string) file_get_contents
 
 echo "-- 10. Settings by category + office menu --\n";
 $sp = (string) file_get_contents($root . '/admin/settings.php');
-foreach (['company', 'booking', 'fares', 'tickets', 'payments', 'agents', 'whatsapp', 'notify', 'marketing', 'ai', 'keys', 'website', 'security'] as $c) {
-    check("settings category '$c' defined", str_contains($sp, "'$c'") && preg_match("/'" . $c . "'\s+=> \['/u", $sp) === 1);
+require_once INCLUDE_PATH . '/settingsnavigation.php';
+check('exactly twelve owner settings categories', count(SettingsNavigation::CATEGORIES) === 12);
+foreach (['company','booking','fleet','agents','staff','partners','payments','notifications','devices','security','ai','backup'] as $c) {
+    check("settings category '$c' defined", isset(SettingsNavigation::CATEGORIES[$c]));
 }
-check('every API key / token is filed under API keys', str_contains($sp, "if (Settings::isSecretKey(\$key) || in_array(\$key, \$conn, true)) { return 'keys'; }"));
+check('API credentials appear with their service without changing secret masking', SettingsNavigation::category('twilio_auth_token','notify','keys') === 'notifications' && str_contains($sp, "\$isSecret = Settings::isSecretKey(\$key)"));
 check('one search box across every category', str_contains($sp, 'id="setSearch"'));
 check('hidden categories still post (Save saves all)', !str_contains($sp, "p.disabled") && str_contains($sp, '.set-hide { display: none !important; }'));
 check('curated key list matches the two panels', str_contains($sp, "'agent_cash_limit_default', 'agent_daily_booking_limit'];") && substr_count($sp, "'agent_daily_booking_limit'") >= 2);
 check('Save returns to the same category', str_contains($sp, 'form.action = location.pathname + location.hash'));
 $gd = (string) file_get_contents($root . '/admin/_guard.php');
-check('office menu: WhatsApp pages under one heading', substr_count($gd, "=> '📲 WhatsApp & marketing'") >= 8);
-check('office menu: customer pages under Customers', str_contains($gd, "'customers.php' => '👥 Customers'"));
-check('office menu: AI pages under AI', str_contains($gd, "'ai-brain.php' => '🤖 AI'"));
-check('counter agent strip untouched', str_contains($gd, 'if (!Auth::isCounterAgent()) {' . "\n" . '        $secMap') || str_contains($gd, "if (!Auth::isCounterAgent()) {\r\n        \$secMap"));
+require_once INCLUDE_PATH . '/adminnavigation.php';
+check('office menu has exactly the three requested business categories', count(AdminNavigation::CATEGORIES) === 3);
+check('customer and ticket pages stay under live operations', AdminNavigation::category(['href'=>'customers.php','section'=>'Bookings & tickets']) === 'operations');
+check('AI and settings are filed under finance and system', AdminNavigation::category(['href'=>'ai-brain.php','section'=>'Settings']) === 'finance');
+check('counter agent retains the flat workflow', str_contains($gd, '$showGroups = !Auth::isCounterAgent()') && str_contains($gd, 'foreach ($items as $item) { $renderLink($item); }'));
 $wl = (string) file_get_contents($root . '/includes/watpllib.php');
 check('template approval status can be read back from Meta', str_contains($wl, 'public static function syncMetaStatus()'));
 echo "\n----------------------------------------\n";

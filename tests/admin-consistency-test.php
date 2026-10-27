@@ -233,12 +233,14 @@ if ($base === '' || !function_exists('curl_init')) {
         // 16 Oct 2026: quick-ticket.php forwards to SmartBook (the one booking screen); ?legacy=1 still opens it.
         $fw = $req('GET', '/admin/quick-ticket.php');
         check('/admin/quick-ticket.php forwards to SmartBook', $fw['code'] === 302, 'HTTP ' . $fw['code']);
-        $pages = ['index.php', 'calendar.php', 'bookings.php', 'settings.php', 'buses.php', 'schedule.php', 'agents.php', 'smartbook.php', 'quick-ticket.php?legacy=1',
+        $pages = ['index.php', 'calendar.php', 'bookings.php', 'settings.php', 'buses.php', 'schedule.php', 'team.php', 'smartbook.php', 'quick-ticket.php?legacy=1',
                   'wa-manager.php', 'ai-copilot.php', 'trip-dashboard.php', 'staff.php', 'payroll.php', 'analytics.php', 'payments.php', 'trips.php'];
         foreach ($pages as $p) {
             $r = $req('GET', '/admin/' . $p);
             check("/admin/$p answers 200", $r['code'] === 200 && str_contains($r['body'], '</html>'), 'HTTP ' . $r['code']);
         }
+        $managed = $req('GET', '/admin/agents.php');
+        check('managed agent register forwards to unified Team Management', $managed['code'] === 302);
         $cal = $req('GET', '/admin/calendar.php');
         check('Bus Calendar ships its message box hidden', str_contains($cal['body'], '<div id="calFlash" class="flash ok cal-msg" hidden></div>'));
         $bp = $req('GET', '/admin/buses.php');

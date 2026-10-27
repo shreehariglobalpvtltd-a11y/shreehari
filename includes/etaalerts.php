@@ -258,6 +258,7 @@ final class EtaAlerts
         return [[
             'lat' => (float) $v['lat'], 'lng' => (float) $v['lng'],
             'kmh' => is_numeric($v['spd'] ?? null) ? (float) $v['spd'] * 3.6 : null,   // the phone reports m/s
+            'bearing' => is_numeric($v['bearing'] ?? null) ? (int) $v['bearing'] : (is_numeric($v['hd'] ?? null) ? (int) $v['hd'] : null),
         ], ''];
     }
 

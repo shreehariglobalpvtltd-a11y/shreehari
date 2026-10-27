@@ -1,0 +1,40 @@
+const assert = require('node:assert/strict');
+const GpsTelemetry = require('../assets/nav/gps-telemetry.js');
+let clock = 1000;
+const base = 1793030000000;
+const telemetry = new GpsTelemetry(() => clock);
+const row = {id:1, state:'live', seenAt:base-1000, fixAt:base-2000, lat:23, lng:72, kmh:40,
+  diagnostic:{reportedAt:base-2000, accuracyM:8}};
+const snapshot = (at=base, device=row) => ({at, devices:[device]});
+assert.equal(telemetry.accept(snapshot()), true);
+assert.equal(telemetry.rows()[0].state, 'live');
+clock += 119000;
+assert.equal(telemetry.accept(snapshot()), false, 'duplicate cannot renew receipt time');
+assert.equal(telemetry.rows()[0].state, 'stale', 'stopped updates expire locally');
+assert.equal(telemetry.rows()[0].kmh, null, 'stale speed unavailable');
+clock += 2000;
+assert.equal(telemetry.rows()[0].state, 'offline', 'device receipt expires independently');
+assert.equal(telemetry.accept(snapshot(base-1000)), false, 'older snapshots ignored');
+assert.equal(telemetry.accept({...snapshot(base+200000),simulation:true}), false, 'simulation snapshot refused');
+assert.equal(telemetry.accept(snapshot(base+200000,{...row,simulation:true})), true);
+assert.deepEqual(telemetry.rows(), [], 'simulation rows never displayed as real');
+function check(device, state) {
+  const t = new GpsTelemetry(() => 0); t.accept(snapshot(base, {...row,...device}));
+  assert.equal(t.rows()[0].state, state);
+  return t.rows()[0];
+}
+check({fixAt:base+121000}, 'stale');
+check({seenAt:base+121000}, 'offline');
+check({fixAt:null}, 'stale');
+check({lat:NaN}, 'no_fix');
+check({lng:181}, 'no_fix');
+check({state:'disabled'}, 'disabled');
+assert.equal(check({kmh:0},'live').kmh, 0, 'stationary fix retains zero speed');
+assert.equal(check({diagnostic:{reportedAt:base-3000,accuracyM:4}},'live').diagnostic, null, 'accuracy tied to exact fix');
+const t = new GpsTelemetry(() => clock); t.accept(snapshot()); t.failed=true;
+assert.equal(t.rows()[0].state, 'offline');
+assert.equal(t.rows()[0].state, 'offline', 'local timer cannot undo a failed request');
+t.accept(snapshot(base+1000)); assert.equal(t.rows()[0].state, 'live', 'fresh response recovers');
+assert.equal(row.state,'live','display expiry cannot mutate trusted source');
+assert.equal(t.accept({at:NaN,devices:[]}), false);
+console.log('Fleet telemetry freshness, replay, clock skew, simulation rejection and recovery checks passed');
