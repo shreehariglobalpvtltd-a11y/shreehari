@@ -205,6 +205,14 @@ try {
         // (the fixture day is in 2099 — outside the panel's 7-back / 30-ahead window)
         check('agent panel carries the passengers-by-journey-date panel', str_contains($html, 'id="tripsByJourney"') && !str_contains($html, 'id="trip-' . $sid . '"'));
         check('agent panel carries its live-sync anchor (own scope)', str_contains($html, 'data-scope="agent:' . $aId . '"'));
+        // Put synthetic legs inside the current panel window, then check the
+        // actual journey table and an attempted cross-agent query parameter.
+        Database::update('booking_legs', ['travel_date'=>todayISO()], 'booking_id IN (:a,:b)', ['a'=>$bkA2['id'],'b'=>$bkB2['id']]);
+        $html = req($ja, 'GET', '/admin/agent.php?agent=' . $bId)['body'];
+        $panel = explode('</section>', explode('id="tripsByJourney"', $html, 2)[1] ?? '', 2)[0];
+        check('journey panel includes own current passenger', str_contains($panel, (string)$bkA2['pnr']) && str_contains($panel, 'Sync Pax A2'));
+        check('journey panel refuses another seller even with agent query', !str_contains($panel, (string)$bkB2['pnr']) && !str_contains($panel, 'Sync Pax B2'));
+        Database::update('booking_legs', ['travel_date'=>TD], 'booking_id IN (:a,:b)', ['a'=>$bkA2['id'],'b'=>$bkB2['id']]);
         $html = req($ja, 'GET', '/admin/agent-sales.php?range=custom&from=' . TD . '&to=' . TD)['body'];
         check('My Sales on the journey basis finds the far-future trip', str_contains($html, (string) $bkA2['pnr']));
         $html = req($ja, 'GET', '/admin/agent-sales.php?basis=sale&range=custom&from=' . TD . '&to=' . TD)['body'];

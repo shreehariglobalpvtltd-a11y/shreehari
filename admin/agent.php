@@ -35,6 +35,9 @@ $flash        = null;
 if ($isSupervisor && isset($_GET['agent']) && (int) $_GET['agent'] > 0) {
     $viewId = (int) $_GET['agent'];
 }
+// An agent's own-book scope wins even if a custom permission grants dashboard access.
+$agentScopeId = Auth::bookingScopeAdminId();
+if ($agentScopeId !== null) { $viewId = $agentScopeId; }
 
 /* ---- Actions ------------------------------------------------------- */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -663,6 +666,7 @@ function ledger_look(string $type, string $ref = ''): array
 }
 
 admin_header($isOwn ? 'My Agent Panel' : 'Agent · ' . (string) $viewing['full_name'], 'agent');
+echo LiveSync::anchor('agent:' . $viewId, 'pill');
 
 if ($flash !== null) {
     echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>';
@@ -1561,6 +1565,7 @@ function toggleExpressSeat(seat, btn) {
 </div>
 
 <!-- ============ SELL ============ -->
+<?php require __DIR__ . '/_agent-journeys.php'; ?>
 <div class="panel">
   <h2>🚌 Upcoming departures — sell seats
     <?php if (AgentWallet::offlineTicketsEnabled()): ?>

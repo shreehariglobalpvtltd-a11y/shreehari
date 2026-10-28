@@ -149,9 +149,14 @@ try {
 
     /* ---- 5. Payout and handover are bounded by the balance ---------- */
     expectThrow('a payout bigger than what is owed is refused',
-        fn() => AgentWallet::record($agentId, 'payout', 5000, ['by' => $agentId]));
-    AgentWallet::record($agentId, 'payout', 100, ['by' => $agentId, 'note' => 'Part payment']);
+        fn() => AgentWallet::record($agentId, 'payout', 5000, ['by' => $agentId, 'ref' => 'TEST-OVERLIMIT']));
+    expectThrow('payout without a confirmed payment reference is refused',
+        fn() => AgentWallet::record($agentId, 'payout', 100, ['by' => $agentId]));
+    AgentWallet::record($agentId, 'payout', 100, ['by' => $agentId, 'note' => 'Part payment', 'ref' => 'TEST-PAYOUT-001']);
     check('a valid payout reduces what we owe', money_is(AgentWallet::balances($agentId)['commission'], 25.00));
+    expectThrow('a payment reference cannot be paid twice',
+        fn() => AgentWallet::record($agentId, 'payout', 10, ['by' => $agentId, 'ref' => 'TEST-PAYOUT-001']));
+    check('duplicate payout leaves the balance unchanged', money_is(AgentWallet::balances($agentId)['commission'], 25.00));
 
     expectThrow('handing over more cash than held is refused',
         fn() => AgentWallet::record($agentId, 'cash_handover', 9999, ['by' => $agentId]));
