@@ -68,17 +68,18 @@ final class AgreementPdf
      * and this class stays free of database reads of its own.
      *
      * 14 Oct 2026 (review): the Devanagari name and the Roman legal name
-     * travel as ONE pair ('legalDev' + 'legal'). Mixing the printed
-     * 'श्री हरि' with a Settings 'S Hari' put two different company names
-     * side by side on a signed contract. Both come from Company details
-     * (company_legal_ne + company_legal) only when BOTH are set; otherwise
-     * both stay the printed pair.
+     * travel as ONE pair ('legalDev' + 'legal') so a signed contract never
+     * shows two different company names side by side.
+     * 28 Oct 2026 (owner): the India company is S HARI GLOBAL PRIVATE LIMITED,
+     * matching the A4 agreement and the agreement pages. The Roman name is the
+     * default; the Devanagari name is optional (company_legal_ne). When it is
+     * not set, the letterhead and signature show the Roman name.
      *
      * @return array{legal:string, legalDev:string, cin:string, web:string}
      */
     private static function co(): array
     {
-        $out = ['legal' => 'SHREE HARI GLOBAL PVT. LTD.', 'legalDev' => 'श्री हरि ग्लोबल प्रा. लि.', 'cin' => 'U52291GJ2026PTC174029', 'web' => 'shreehariglobal.in'];
+        $out = ['legal' => 'S HARI GLOBAL PRIVATE LIMITED', 'legalDev' => '', 'cin' => 'U52291GJ2026PTC174029', 'web' => 'shreehariglobal.in'];
         if (class_exists('Settings', false)) {
             try {
                 $c = Settings::company();
@@ -87,9 +88,9 @@ final class AgreementPdf
                 }
                 $legal = trim((string) ($c['legal'] ?? ''));
                 $legalDev = trim((string) ($c['legalNe'] ?? ''));
-                if ($legal !== '' && $legalDev !== '') {
+                if ($legal !== '') {
                     $out['legal'] = strtoupper($legal);
-                    $out['legalDev'] = $legalDev;
+                    $out['legalDev'] = $legalDev;   // '' = show the Roman name on the letterhead
                 }
             } catch (Throwable $e) { /* the printed values stand */ }
         }
@@ -105,7 +106,7 @@ final class AgreementPdf
         $self->page();
         $self->heading('01  पक्ष एवं निश्चित किराया');
         $co = self::co();
-        $self->paragraph('कंपनी: ' . $co['legalDev'] . ' (' . $co['legal'] . ')');
+        $self->paragraph('कंपनी: ' . ($co['legalDev'] !== '' && $co['legalDev'] !== $co['legal'] ? $co['legalDev'] . ' (' . $co['legal'] . ')' : $co['legal']));
         $self->paragraph('एजेंट / सहयोगी: ' . $self->data['agent_name']);
         $self->paragraph('पता: ' . $self->data['address']);
         $self->paragraph('दोनों पक्ष टिकट बुकिंग और यात्रियों की सेवा के लिए नीचे दिए नियम स्वीकार करते हैं।');
@@ -162,7 +163,7 @@ final class AgreementPdf
         $self->space(125);
         $y = $self->y + 35;
         $signers = [40 => ['एजेंट / सहयोगी के हस्ताक्षर', $self->data['agent_name']],
-            310 => ['कंपनी के अधिकृत हस्ताक्षर', $co['legalDev']]];
+            310 => ['कंपनी के अधिकृत हस्ताक्षर', $co['legalDev'] !== '' ? $co['legalDev'] : $co['legal']]];
         foreach ($signers as $x => [$label, $name]) {
             $self->pdf->line($x, $y, $x + 235, $y, self::GOLD);
             $self->draw($x, $y + 8, $label, 10);
@@ -252,10 +253,12 @@ final class AgreementPdf
         // 10 Oct 2026 (trust): the legal name, CIN and website from Company details (co()), the printed values otherwise.
         // 14 Oct 2026 (review): the Devanagari heading is the same pair's name; a longer registered name steps down from 22 pt to fit the 515 pt band.
         $co = self::co();
-        $this->ensureText($co['legalDev']);
+        // 28 Oct 2026: the big letterhead name - the Devanagari name when set, otherwise the Roman name (never blank)
+        $head = $co['legalDev'] !== '' ? $co['legalDev'] : $co['legal'];
+        $this->ensureText($head);
         $hSize = 22.0;
-        while ($hSize > 14 && $this->pdf->textWidthCID($co['legalDev'], $hSize) > 515) { $hSize -= 1; }
-        $this->draw(40, 23, $co['legalDev'], $hSize, [255, 255, 255]);
+        while ($hSize > 14 && $this->pdf->textWidthCID($head, $hSize) > 515) { $hSize -= 1; }
+        $this->draw(40, 23, $head, $hSize, [255, 255, 255]);
         $this->draw(40, 57, 'व्यवसाय सहयोग / एजेंट समझौता', 15, [234, 201, 123]);
         $this->pdf->text(40, 88, $co['legal'] . ($co['cin'] !== '' ? '  |  CIN ' . $co['cin'] : '') . '  |  ' . $co['web'], 9, 'F1', [255, 255, 255]);
         $this->pdf->line(40, 778, 555, 778, self::GOLD);
