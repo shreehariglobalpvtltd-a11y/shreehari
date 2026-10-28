@@ -319,7 +319,7 @@ $staffRows = Database::fetchAll(
     "SELECT a.id, a.username, a.full_name, a.phone, a.email, a.role, a.is_active, a.created_at,
             p.display_phone, p.whatsapp, p.address, p.monthly_salary, p.duty_status, p.assigned_bus_id,
             b.bus_number AS assigned_bus,
-            (SELECT ref FROM staff_applications sap WHERE sap.admin_id = a.id ORDER BY sap.id DESC LIMIT 1) AS app_ref
+            (SELECT CONCAT('STF-', LPAD(sap.id, 6, '0')) FROM staff_applications sap WHERE sap.admin_id = a.id ORDER BY sap.id DESC LIMIT 1) AS app_ref
        FROM admins a
        LEFT JOIN admin_profiles p ON p.admin_id = a.id
        LEFT JOIN buses b ON b.id = p.assigned_bus_id

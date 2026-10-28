@@ -130,7 +130,11 @@ set_exception_handler(static function (Throwable $e): void {
         Response::serverError($e);
     }
 
-    http_response_code(500);
+    // Rendering may already have emitted the admin shell. Preserve the original
+    // exception and show the error instead of throwing a second headers warning.
+    if (!headers_sent()) {
+        http_response_code(500);
+    }
 
     if (APP_DEBUG) {
         echo '<h1>Application error</h1>';

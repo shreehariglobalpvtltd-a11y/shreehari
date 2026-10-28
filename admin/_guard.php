@@ -30,6 +30,9 @@ require_once INCLUDE_PATH . '/notify.php';
 require_once INCLUDE_PATH . '/tripnotify.php';
 require_once INCLUDE_PATH . '/agentwallet.php';
 require_once INCLUDE_PATH . '/reportpdf.php';
+require_once INCLUDE_PATH . '/livesync.php';
+require_once INCLUDE_PATH . '/brand.php';
+require_once __DIR__ . '/_compat.php';
 
 /**
  * Require a signed-in admin (optionally with a permission) and return them.
@@ -133,6 +136,7 @@ function admin_header(string $title, string $active = ''): void
     echo '<title>' . Security::e($title) . ' · ' . Security::e($company) . ' Admin</title>';
     echo '<link rel="icon" type="image/png" href="/assets/img/favicon-32.png">';
     echo '<link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">';
+    echo '<meta name="csrf" content="' . Security::e(Security::csrfToken()) . '">';
     echo '<style>' . admin_css() . '</style>';
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
     echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
@@ -296,6 +300,7 @@ function admin_footer(): void
     // 5 Sep 2026: Excel-style list tables (Customers / Agents): search,
     // column filters, click-to-sort, sticky header, detail + edit rows.
     echo admin_datatable_assets();
+    echo '<script>' . admin_wa_js() . '</script>';
     echo '</body></html>';
 }
 
