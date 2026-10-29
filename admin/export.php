@@ -182,17 +182,9 @@ if (in_array($payMethodFilter, ['upi', 'esewa', 'cash', 'bank', 'wallet', 'cod']
                          WHERE p4.booking_id = b.id AND p4.method = :payMtFlt)';
     $params['payMtFlt'] = $payMethodFilter;
 }
-$counterFilter = mb_strtoupper(Security::clean($_GET['counter'] ?? '', 16));
-$deskScope = Auth::deskScopeCode();
-if ($deskScope !== null && CounterDesk::stampColumn()) {
-    $where[] = CounterDesk::scopeClause('b');
-    $params['deskScope'] = $deskScope;
-    $counterFilter = '';
-}
-if ($counterFilter !== '' && CounterDesk::stampColumn()) {
-    $where[] = CounterDesk::scopeClause('b', 'ctrFlt');
-    $params['ctrFlt'] = $counterFilter;
-}
+// Desk isolation, Counter, pickup / drop, cabin, amount and "Export selected"
+// (29 Oct 2026) — one function shared with the register.
+shg_booking_trip_filters($where, $params, $_GET);
 shg_booking_extra_filters($where, $params, $_GET);
 // 15 Oct 2026: the register's column filters (ticket / passenger / mobile /
 // seat as printed) and "only my sales" - the file is still the screen.

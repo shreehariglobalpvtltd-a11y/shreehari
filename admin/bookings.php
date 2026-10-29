@@ -19,6 +19,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
+require_once __DIR__ . '/_booking_filters.php';   // 29 Oct 2026: desk / pickup / cabin / amount, shared with export.php
 $admin = admin_boot('bookings.view');
 
 $base   = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
@@ -90,6 +91,9 @@ $allBuses = Database::fetchAll(
     "SELECT DISTINCT b.bus_number FROM buses b WHERE b.is_active = 1 ORDER BY b.bus_number"
 );
 $agentCodes = Settings::getArray('agent_codes', []);
+$stopNames  = array_map(static fn(array $r): string => (string) $r['stop_name'], Database::fetchAll(
+    'SELECT stop_name FROM route_stops WHERE is_active = 1 GROUP BY stop_name ORDER BY MIN(sort_order), stop_name LIMIT 80'
+));
 
 // Agent dropdown: only visible to non-agent roles (agents see only their own bookings)
 $allAgents = [];
@@ -207,6 +211,11 @@ if ($payMethodFilter !== '' && in_array($payMethodFilter, $validPayMethod, true)
                          WHERE p4.booking_id = b.id AND p4.method = :payMtFlt)';
     $params['payMtFlt'] = $payMethodFilter;
 }
+// 29 Oct 2026 (management upgrade 2.1 / 3.1): desk isolation and the Counter
+// filter (counters.php links here with ?counter=CODE — it used to be ignored),
+// pickup / drop, cabin, amount range and the ticked rows. Shared with export.php.
+$tripF = shg_booking_trip_filters($where, $params, $_GET);
+$deskList = (Auth::deskScopeCode() === null && $scopeId === null && CounterDesk::stampColumn()) ? CounterDesk::options(false) : [];
 
 $fromSql = "FROM bookings b
           LEFT JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
@@ -255,6 +264,34 @@ $sql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.created
           ORDER BY b.id DESC LIMIT ' . (int) $PER_PAGE . ' OFFSET ' . (int) $offset;
 
 $rows = Database::fetchAll($sql, $params);
+
+/* 29 Oct 2026 (management upgrade 3.1, "duplicate check"): another OPEN
+   ticket on the same mobile, for the same travel date, carrying a passenger
+   of the same name. Families book several tickets on purpose, so this only
+   flags the row — it never blocks anything. One query for the whole page. */
+$dupBy = [];
+$dupIds = array_map(static fn(array $r): int => (int) $r['id'], array_filter($rows,
+    static fn(array $r): bool => in_array((string) $r['status'], ['pending', 'confirmed'], true)
+        && preg_match('/^[1-9][0-9]{9,12}$/', (string) $r['contact_phone']) === 1 && !empty($r['travel_date'])));
+if ($dupIds !== []) {
+    try {
+        foreach (Database::fetchAll(
+            "SELECT b.id, COUNT(DISTINCT b2.id) AS n
+               FROM bookings b
+               JOIN booking_legs bl  ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
+               JOIN bookings b2      ON b2.contact_phone = b.contact_phone AND b2.id <> b.id AND b2.status IN ('pending','confirmed')
+               JOIN booking_legs bl2 ON bl2.booking_id = b2.id AND bl2.leg_type = 'outbound' AND bl2.travel_date = bl.travel_date
+              WHERE b.id IN (" . implode(',', $dupIds) . ")
+                AND EXISTS (SELECT 1 FROM booking_passengers p1 JOIN booking_passengers p2 ON p2.booking_id = b2.id
+                             WHERE p1.booking_id = b.id AND LOWER(TRIM(p1.full_name)) = LOWER(TRIM(p2.full_name)))
+              GROUP BY b.id"
+        ) as $d) {
+            $dupBy[(int) $d['id']] = (int) $d['n'];
+        }
+    } catch (Throwable $e) {
+        $dupBy = [];
+    }
+}
 
 /**
  * Source badge for the booking table.
@@ -370,12 +407,20 @@ $exportBase = array_filter([
     'bus'         => $busFilter,
     'pay_status'  => in_array($payStatusFilter, $validPayStatus, true) ? $payStatusFilter : '',
     'pay_method'  => in_array($payMethodFilter, $validPayMethod, true) ? $payMethodFilter : '',
+    'counter'     => $tripF['counter'],
+    'board'       => $tripF['board'],
+    'drop'        => $tripF['drop'],
+    'mode'        => $tripF['mode'],
+    'amin'        => $tripF['amin'],
+    'amax'        => $tripF['amax'],
 ]);
 $hasFilters = ($q !== '' || $status !== '' || $isDate($from) || $isDate($to)
     || $routeFilter !== '' || $isDate($travelFrom) || $isDate($travelTo)
     || $sourceFilter !== '' || ($scopeId === null && $agentFilter !== '')
     || $busFilter !== '' || in_array($payStatusFilter, $validPayStatus, true)
-    || in_array($payMethodFilter, $validPayMethod, true));
+    || in_array($payMethodFilter, $validPayMethod, true)
+    || $tripF['counter'] !== '' || $tripF['board'] !== '' || $tripF['drop'] !== '' || $tripF['mode'] !== ''
+    || $tripF['amin'] !== '' || $tripF['amax'] !== '' || $tripF['ids'] !== '');
 $pageUrl = static fn(int $p): string => $base . '/admin/bookings.php?' . http_build_query($exportBase + ['p' => $p]);
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
@@ -385,7 +430,10 @@ $k    = CSRF_TOKEN_NAME;
 // Cancel button posts to booking-view.php, which re-checks per booking; the
 // bulk bar posts to admin/api/bulk-cancel.php, which re-checks per PNR.
 $canCancel = Auth::mayCancelAny();
-$canBulk   = $canCancel;
+/* 29 Oct 2026 (management upgrade 3.1): every row can be ticked — Export
+   selected works for anyone on this page, Resend needs payments.verify and
+   Cancel still needs a cancel right (and only open tickets are cancelled). */
+$canBulk   = true;
 $canResend = Auth::can('payments.verify');
 $canEdit   = Auth::can('bookings.edit');
 ?>
@@ -503,7 +551,7 @@ $canEdit   = Auth::can('bookings.edit');
     </div>
 
     <details class="advanced-section" id="advFilters" open>
-    <summary style="font-size:12px;font-weight:600;color:var(--blue);cursor:pointer;margin:8px 0 4px;list-style:none">📅 Dates &amp; export</summary>
+    <summary style="font-size:12px;font-weight:600;color:var(--blue);cursor:pointer;margin:8px 0 4px;list-style:none">📅 Dates, pickup, counter &amp; export</summary>
     <div class="filter-row">
       <div class="filter-group">
         <span class="flbl">Booked from</span>
@@ -521,6 +569,48 @@ $canEdit   = Auth::can('bookings.edit');
         <span class="flbl">Travel to</span>
         <input type="date" name="travel_to" value="<?= Security::e($isDate($travelTo) ? $travelTo : '') ?>">
       </div>
+
+    </div>
+    <div class="filter-row">
+      <?php if ($deskList !== []): ?>
+      <div class="filter-group">
+        <span class="flbl">Counter</span>
+        <select name="counter">
+          <option value="">All counters</option>
+          <?php foreach ($deskList as $dCode => $dName): ?>
+            <option value="<?= Security::e((string) $dCode) ?>" <?= $tripF['counter'] === (string) $dCode ? 'selected' : '' ?>><?= Security::e(CounterDesk::label((string) $dCode, (string) $dName)) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <?php endif; ?>
+      <div class="filter-group">
+        <span class="flbl">Pickup</span>
+        <input type="text" name="board" list="bkStops" maxlength="60" placeholder="e.g. Surat" value="<?= Security::e($tripF['board']) ?>">
+      </div>
+      <div class="filter-group">
+        <span class="flbl">Drop</span>
+        <input type="text" name="drop" list="bkStops" maxlength="60" placeholder="e.g. Rupaidiha" value="<?= Security::e($tripF['drop']) ?>">
+      </div>
+      <div class="filter-group">
+        <span class="flbl">Cabin</span>
+        <select name="mode">
+          <option value="">Any</option>
+          <option value="sharing" <?= $tripF['mode'] === 'sharing' ? 'selected' : '' ?>>Sharing berth</option>
+          <option value="private" <?= $tripF['mode'] === 'private' ? 'selected' : '' ?>>Private cabin</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="flbl">Amount ₹ from</span>
+        <input type="number" name="amin" min="0" step="1" inputmode="numeric" style="width:110px" value="<?= Security::e($tripF['amin']) ?>">
+      </div>
+      <div class="filter-group">
+        <span class="flbl">Amount ₹ to</span>
+        <input type="number" name="amax" min="0" step="1" inputmode="numeric" style="width:110px" value="<?= Security::e($tripF['amax']) ?>">
+      </div>
+      <datalist id="bkStops">
+        <?php foreach ($stopNames as $sn): ?><option value="<?= Security::e($sn) ?>"><?php endforeach; ?>
+      </datalist>
+      <?php if ($tripF['ids'] !== ''): ?><input type="hidden" name="ids" value="<?= Security::e($tripF['ids']) ?>"><?php endif; ?>
 
       <div class="filter-actions">
         <button class="btn" type="submit">Search</button>
@@ -542,7 +632,7 @@ $canEdit   = Auth::can('bookings.edit');
 /* Phones: fold the date filters + export links away unless one is in use. */
 (function () {
   var d = document.getElementById('advFilters'); if (!d) return;
-  var used = <?= ($isDate($from) || $isDate($to) || $isDate($travelFrom) || $isDate($travelTo)) ? 'true' : 'false' ?>;
+  var used = <?= ($isDate($from) || $isDate($to) || $isDate($travelFrom) || $isDate($travelTo) || $tripF['counter'] !== '' || $tripF['board'] !== '' || $tripF['drop'] !== '' || $tripF['mode'] !== '' || $tripF['amin'] !== '' || $tripF['amax'] !== '') ? 'true' : 'false' ?>;
   if (!used && window.matchMedia('(max-width:820px)').matches) { d.removeAttribute('open'); }
 })();
 </script>
@@ -571,7 +661,7 @@ $canEdit   = Auth::can('bookings.edit');
   <h2><?= number_format($totalResults) ?> ticket<?= $totalResults === 1 ? '' : 's' ?><?= $pages > 1 ? ' · page ' . $page . ' of ' . $pages : '' ?></h2>
   <div class="tbl-scroll">
   <table class="card-table">
-    <thead><tr><?php if ($canBulk): ?><th class="bulk-col"><input type="checkbox" id="bulkAll" aria-label="Select every open ticket on this page" title="Select all open tickets on this page"></th><?php endif; ?><th>Ticket</th><th>Booked</th><th>Travel</th><th>Passenger</th><th>Seats</th><th>Sold via</th><th>Payment</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
+    <thead><tr><?php if ($canBulk): ?><th class="bulk-col"><input type="checkbox" id="bulkAll" aria-label="Select every ticket on this page" title="Select all tickets on this page"></th><?php endif; ?><th>Ticket</th><th>Booked</th><th>Travel</th><th>Passenger</th><th>Seats</th><th>Sold via</th><th>Payment</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
     <tbody>
     <?php if ($rows === []): ?>
       <tr><td colspan="<?= $canBulk ? 11 : 10 ?>" class="muted" style="padding:22px;text-align:center">No tickets match.</td></tr>
@@ -600,10 +690,10 @@ $canEdit   = Auth::can('bookings.edit');
     ?>
       <tr data-bid="<?= (int) $b['id'] ?>">
         <?php if ($canBulk): ?>
-        <td class="bulk-col" data-label="Select"><?php if ($open): ?><input type="checkbox" class="bulk-cb" value="<?= (int) $b['id'] ?>"
+        <td class="bulk-col" data-label="Select"><input type="checkbox" class="bulk-cb" value="<?= (int) $b['id'] ?>" data-open="<?= $open ? '1' : '0' ?>"
               data-pnr="<?= Security::e((string) $b['pnr']) ?>" data-pax="<?= Security::e((string) ($b['passenger'] ?: '')) ?>"
               data-when="<?= Security::e(formatDate($b['travel_date'] ?? null, 'j M')) ?>" data-amt="<?= Security::e(inr((float) $b['total_amount'])) ?>"
-              aria-label="Select ticket <?= Security::e((string) $b['pnr']) ?>"><?php endif; ?></td>
+              aria-label="Select ticket <?= Security::e((string) $b['pnr']) ?>"></td>
         <?php endif; ?>
         <td data-label="Ticket"><a class="mono" href="<?= $viewUrl ?>"><b><?= Security::e((string) ($b['ticket_number'] ?: $b['pnr'])) ?></b></a>
           <?php if (!empty($b['ticket_number'])): ?><div class="muted mono" style="font-size:11px"><?= Security::e((string) $b['pnr']) ?></div><?php endif; ?>
@@ -614,7 +704,11 @@ $canEdit   = Auth::can('bookings.edit');
           <div class="muted" style="font-size:11.5px"><?= Security::e(($b['from_city'] ?? '—') . ' → ' . ($b['to_city'] ?? '—')) ?></div>
           <?php if (!empty($b['bus_number'])): ?><div class="muted mono" style="font-size:11px">🚌 <?= Security::e((string) $b['bus_number']) ?></div><?php endif; ?></td>
         <td data-label="Passenger"><?= Security::e((string) ($b['passenger'] ?: '—')) ?><?= (int) $b['pax_count'] > 1 ? ' <span class="muted">+' . ((int) $b['pax_count'] - 1) . '</span>' : '' ?>
-          <div class="muted mono" style="font-size:11px"><?= Security::e((string) $b['contact_phone']) ?></div></td>
+          <div class="muted mono" style="font-size:11px"><?= Security::e((string) $b['contact_phone']) ?></div>
+          <?php if (($dupBy[(int) $b['id']] ?? 0) > 0): ?>
+            <a class="pill" style="background:#fff1de;color:#8a4b00;font-size:10.5px;text-decoration:none" title="Another open ticket: same mobile, same travel date, same passenger name"
+               href="<?= $base ?>/admin/bookings.php?<?= Security::e(http_build_query(['q' => (string) $b['contact_phone'], 'travel_from' => (string) $b['travel_date'], 'travel_to' => (string) $b['travel_date']])) ?>">⚠ possible duplicate ×<?= (int) $dupBy[(int) $b['id']] ?></a>
+          <?php endif; ?></td>
         <td data-label="Seats" class="mono">
           <b><?= Security::e(($seatToks = array_filter(explode(' ', (string) ($b['seats'] ?? '')), static fn($t) => $t !== '')) ? implode(' ', array_map(static fn($t) => Seats::displayLabel((string) $t, 'sleeper', (string) ($b['booking_mode'] ?? 'sharing')), $seatToks)) : '—') ?></b>
           <?= !empty($b['booking_mode']) && $b['booking_mode'] === 'private' ? ' <span class="pill" style="background:#efeaff;color:#5a3fb0;font-size:10px">Private</span>' : '' ?>
@@ -722,7 +816,9 @@ $canEdit   = Auth::can('bookings.edit');
 <div class="bulk-bar" id="bulkBar" hidden role="region" aria-label="Selected tickets">
   <span><b id="bulkN">0</b> ticket(s) selected</span>
   <button type="button" class="btn ghost" id="bulkClear">Clear</button>
-  <button type="button" class="btn danger" id="bulkCancelBtn">✖ Cancel selected</button>
+  <button type="button" class="btn ghost" id="bulkExportBtn" title="Download the ticked tickets as CSV">⬇ Export selected</button>
+  <?php if ($canResend): ?><button type="button" class="btn ghost" id="bulkResendBtn" title="Send each ticked, confirmed ticket again on WhatsApp">📲 Resend selected</button><?php endif; ?>
+  <?php if ($canCancel): ?><button type="button" class="btn danger" id="bulkCancelBtn">✖ Cancel selected</button><?php endif; ?>
 </div>
 <div class="bulk-modal" id="bulkModal" hidden role="dialog" aria-modal="true" aria-labelledby="bulkTitle">
   <div class="bulk-box">
@@ -762,8 +858,36 @@ $canEdit   = Auth::can('bookings.edit');
   modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) close(); });
 
-  document.getElementById('bulkCancelBtn').addEventListener('click', function () {
+  function openPicked() { return picked().filter(function (c) { return c.getAttribute('data-open') === '1'; }); }
+  var exBtn = document.getElementById('bulkExportBtn');
+  if (exBtn) exBtn.addEventListener('click', function () {
     var p = picked(); if (!p.length) return;
+    location.href = base + '/admin/export.php?ids=' + encodeURIComponent(p.map(function (c) { return c.value; }).join(','));
+  });
+  var rsBtn = document.getElementById('bulkResendBtn');
+  if (rsBtn) rsBtn.addEventListener('click', function () {
+    var p = picked(); if (!p.length) return;
+    if (p.length > 25) { alert('Resend works on up to 25 tickets at a time — you ticked ' + p.length + '.'); return; }
+    if (!confirm('Send ' + p.length + ' ticket(s) again on WhatsApp? Only confirmed tickets are sent.')) return;
+    rsBtn.disabled = true; rsBtn.textContent = 'Sending…';
+    var fd = new FormData();
+    fd.append(csrfName, csrf);
+    p.forEach(function (c) { fd.append('ids[]', c.value); });
+    fetch(base + '/admin/api/bulk-resend.php', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Server sent a non-JSON reply.' }; }); })
+      .then(function (j) {
+        var msg = (j && (j.message || j.error)) || 'Done.';
+        var bad = (j && j.results ? j.results : []).filter(function (x) { return !x.ok; });
+        if (bad.length) { msg += ' ' + bad.map(function (x) { return (x.pnr || ('#' + x.id)) + ': ' + (x.error || 'not sent'); }).join(' · '); }
+        try { sessionStorage.setItem('shg_bulk_flash', JSON.stringify({ ok: !!(j && j.ok && j.sent > 0), msg: msg })); } catch (e) {}
+        location.reload();
+      })
+      .catch(function () { alert('Network error — nothing more was sent. Check the list and try again.'); rsBtn.disabled = false; rsBtn.textContent = '📲 Resend selected'; });
+  });
+
+  var cxBtn = document.getElementById('bulkCancelBtn');
+  if (cxBtn) cxBtn.addEventListener('click', function () {
+    var p = openPicked(); if (!p.length) { alert('None of the ticked tickets is open — only pending or confirmed tickets can be cancelled.'); return; }
     document.getElementById('bulkN2').textContent = p.length;
     document.getElementById('bulkN3').textContent = p.length;
     document.getElementById('bulkList').innerHTML = p.map(function (c) {
@@ -776,7 +900,7 @@ $canEdit   = Auth::can('bookings.edit');
   });
 
   document.getElementById('bulkYes').addEventListener('click', function () {
-    var p = picked(); if (!p.length) { close(); return; }
+    var p = openPicked(); if (!p.length) { close(); return; }
     var btn = this, err = document.getElementById('bulkErr');
     var reason = (document.getElementById('bulkReason').value || '').trim();
     if (!reason) { err.textContent = 'Please give a reason.'; err.hidden = false; return; }

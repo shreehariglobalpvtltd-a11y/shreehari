@@ -204,3 +204,81 @@ function shg_seat_label_exists(string $q, array &$params, string $pfx = 'qSl'): 
     return $m === null ? null
         : 'EXISTS (SELECT 1 FROM booking_seats bsq WHERE bsq.booking_id = b.id AND bsq.released_at IS NULL AND ' . $m . ')';
 }
+
+/**
+ * 29 Oct 2026 (management upgrade 2.1 / 3.1): desk, pickup / drop, cabin,
+ * amount range and a hand-picked list — shared by the register and its
+ * export so the downloaded file is still exactly the list on screen.
+ *
+ *   counter  = a desk code (bookings cut at, or sold by staff of, that desk);
+ *              ignored when desk isolation already pins a counter clerk
+ *   board    = part of the outbound pickup stop    drop = part of the drop stop
+ *   mode     = sharing | private                    amin / amax = ticket total ₹
+ *   ids      = "12,15,19" — the rows ticked in the register (Export selected)
+ *
+ * Desk isolation (Auth::deskScopeCode) is applied here too, before the
+ * user's own choices, so editing the query string can never widen it.
+ *
+ * @param list<string>          $where
+ * @param array<string, mixed>  $params
+ * @param array<string, mixed>  $in     usually $_GET
+ * @return array{counter: string, board: string, drop: string, mode: string, amin: string, amax: string, ids: string}
+ */
+function shg_booking_trip_filters(array &$where, array &$params, array $in): array
+{
+    $counter = mb_strtoupper(Security::clean((string) ($in['counter'] ?? ''), 16));
+    $board   = Security::clean((string) ($in['board'] ?? ''), 60);
+    $drop    = Security::clean((string) ($in['drop'] ?? ''), 60);
+    $mode    = (string) ($in['mode'] ?? '');
+    $amin    = trim((string) ($in['amin'] ?? ''));
+    $amax    = trim((string) ($in['amax'] ?? ''));
+    $idsRaw  = (string) ($in['ids'] ?? '');
+
+    $desk = Auth::deskScopeCode();
+    if ($desk !== null && CounterDesk::stampColumn()) {
+        $where[] = CounterDesk::scopeClause('b', 'deskScopeT');
+        $params['deskScopeT'] = $desk;
+        $counter = '';
+    }
+    if ($counter !== '' && CounterDesk::stampColumn()) {
+        $where[] = CounterDesk::scopeClause('b', 'ctrFltT');
+        $params['ctrFltT'] = $counter;
+    } else {
+        $counter = '';
+    }
+    if ($board !== '') {
+        $where[] = "EXISTS (SELECT 1 FROM booking_legs blfb WHERE blfb.booking_id = b.id AND blfb.leg_type = 'outbound' AND blfb.boarding_stop LIKE :fBoard)";
+        $params['fBoard'] = '%' . $board . '%';
+    }
+    if ($drop !== '') {
+        $where[] = "EXISTS (SELECT 1 FROM booking_legs blfd WHERE blfd.booking_id = b.id AND blfd.leg_type = 'outbound' AND blfd.drop_stop LIKE :fDrop)";
+        $params['fDrop'] = '%' . $drop . '%';
+    }
+    if (in_array($mode, ['sharing', 'private'], true)) {
+        $where[] = "COALESCE(b.booking_mode, 'sharing') = :fMode";
+        $params['fMode'] = $mode;
+    } else {
+        $mode = '';
+    }
+    if ($amin !== '' && is_numeric($amin) && (float) $amin >= 0) {
+        $where[] = 'b.total_amount >= :fAmin';
+        $params['fAmin'] = round((float) $amin, 2);
+    } else {
+        $amin = '';
+    }
+    if ($amax !== '' && is_numeric($amax) && (float) $amax >= 0) {
+        $where[] = 'b.total_amount <= :fAmax';
+        $params['fAmax'] = round((float) $amax, 2);
+    } else {
+        $amax = '';
+    }
+    $ids = array_values(array_unique(array_filter(array_map('intval', explode(',', $idsRaw)), static fn(int $v): bool => $v > 0)));
+    $ids = array_slice($ids, 0, 500);
+    if ($ids !== []) {
+        // Integers only (cast above), so they are safe to inline.
+        $where[] = 'b.id IN (' . implode(',', $ids) . ')';
+    }
+
+    return ['counter' => $counter, 'board' => $board, 'drop' => $drop, 'mode' => $mode,
+            'amin' => $amin, 'amax' => $amax, 'ids' => implode(',', $ids)];
+}
