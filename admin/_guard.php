@@ -141,6 +141,7 @@ function admin_nav(): array
         ['href' => 'cash-book.php',    'icon' => 'ledger',    'label' => 'Cash Book',              'perm' => 'bookings.view',    'section' => $S4],
         ['href' => 'shift.php',        'icon' => 'clock',     'label' => 'Shift & Cash Handover',  'perm' => 'bookings.view',    'section' => $S4],
         ['href' => 'reconcile.php',    'icon' => 'ledger',    'label' => 'Money Reconciliation',   'perm' => 'reports.view',     'section' => $S4],
+        ['href' => 'pnl.php',          'icon' => 'chart-up',  'label' => 'Profit & Loss (route · agent)', 'perm' => 'reports.view', 'section' => $S4],   // 29 Oct 2026 (management upgrade 4.4)
         ['href' => 'ledger-check.php', 'icon' => 'shield',    'label' => 'Ledger Check (मिलान)',   'perm' => 'commissions.view', 'section' => $S4],
         ['href' => 'analytics.php',    'icon' => 'chart-up',  'label' => 'Executive Analytics',    'perm' => 'dashboard.view',   'section' => $S4],
 
