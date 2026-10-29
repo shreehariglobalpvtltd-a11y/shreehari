@@ -20,6 +20,11 @@
  *   5. Paid more than the ticket now costs — a seat cancelled after the cash
  *                     was taken (per-seat cancel lowers the total, the payment
  *                     stays): the difference was returned or kept as a fee.
+ *   6. Counter shifts vs payments (29 Oct 2026, management upgrade 2.5) —
+ *                     the last 14 days: a closed count that did not match,
+ *                     payments changed after a shift was closed (re-read now
+ *                     vs frozen at close), counter cash taken with no shift
+ *                     open, and shifts nobody closed.
  *
  * Who: reports.view or commissions.pay (owner, manager, accountant).
  */
@@ -95,6 +100,40 @@ $over = Database::fetchAll(
      HAVING paid > b.total_amount + 1
       ORDER BY b.id DESC LIMIT 200"
 );
+
+/* 6. Counter shifts vs payments (29 Oct 2026, management upgrade 2.5). */
+require_once INCLUDE_PATH . '/countershift.php';
+$shOn = CounterShift::enabled();
+$shFrom = addDaysISO(todayISO(), -14);
+$shDiff = []; $shMoved = []; $shOpenOld = []; $shLoose = ['n' => 0, 'cash' => 0.0];
+try {
+    foreach (CounterShift::between(null, $shFrom, todayISO(), 500) as $r) {
+        if ((int) ($r['is_open'] ?? 0) === 1) {
+            if (substr((string) $r['opened_at'], 0, 10) < todayISO()) { $shOpenOld[] = $r; }
+            continue;
+        }
+        if (CounterShift::verdict((float) $r['variance']) !== 'ok') { $shDiff[] = $r; }
+        $now = CounterShift::totals((int) $r['admin_id'], (string) $r['opened_at'], (string) $r['closed_at'],
+            CounterShift::currencyOf($r), CounterDesk::rate((string) ($r['counter_code'] ?? '')));
+        if (abs($now['cash'] - (float) $r['cash_sales']) > 0.009 || abs($now['upi'] - (float) $r['upi_sales']) > 0.009) {
+            $shMoved[] = $r + ['now_cash' => $now['cash'], 'now_upi' => $now['upi']];
+        }
+    }
+    if ($shOn) {
+        // Cash a counter login verified while it had no shift open.
+        $lr = Database::fetch(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(p.amount), 0) AS cash
+               FROM payments p JOIN admins a ON a.id = p.verified_by AND a.role = 'counter'
+              WHERE p.status = 'verified' AND p.method IN ('cash','cod') AND p.verified_at >= :f
+                AND NOT EXISTS (SELECT 1 FROM counter_shifts s WHERE s.admin_id = p.verified_by
+                                  AND s.opened_at <= p.verified_at AND (s.closed_at IS NULL OR s.closed_at >= p.verified_at))",
+            ['f' => $shFrom . ' 00:00:00']
+        );
+        $shLoose = ['n' => (int) ($lr['n'] ?? 0), 'cash' => (float) ($lr['cash'] ?? 0)];
+    }
+} catch (Throwable $e) {
+    Logger::warning('reconcile shifts: ' . $e->getMessage());
+}
 
 admin_header('Money Reconciliation', 'reconcile');
 ?>
@@ -203,6 +242,41 @@ admin_header('Money Reconciliation', 'reconcile');
     </tbody>
   </table></div>
   <?php endif; ?>
+</div>
+
+<div class="panel">
+  <h2>6. Counter shifts vs payments · काउन्टर शिफ्ट मिलान <span class="muted" style="font-size:12.5px;font-weight:500">· last 14 days</span></h2>
+  <?php if (!$shOn): ?>
+    <p class="rc-note">Shift &amp; cash count is switched off, so counters keep no drawer count to check. <a href="shift.php">Switch it on →</a></p>
+  <?php endif; ?>
+  <div class="rc-grid">
+    <div><b><?= $shDiff === [] ? '✅' : '⚠️' ?> Count did not match</b><span><?= count($shDiff) ?></span></div>
+    <div><b><?= $shMoved === [] ? '✅' : '⚠️' ?> Changed after close</b><span><?= count($shMoved) ?></span></div>
+    <div><b><?= $shLoose['n'] === 0 ? '✅' : '⚠️' ?> Cash with no shift open</b><span><?= (int) $shLoose['n'] ?><?= $shLoose['cash'] > 0 ? ' · ' . inr($shLoose['cash']) : '' ?></span></div>
+    <div><b><?= $shOpenOld === [] ? '✅' : '⚠️' ?> Left open from earlier</b><span><?= count($shOpenOld) ?></span></div>
+  </div>
+  <p class="rc-note">“Changed after close” = the payments in that shift's window read differently now than when the drawer was counted
+    (a payment verified late, corrected or re-assigned). The count stays frozen as counted; check the slip.</p>
+  <?php $shRows = array_merge(array_map(static fn(array $r): array => $r + ['why' => 'count ' . CounterShift::verdict((float) $r['variance']) . ' ' . inr(abs((float) $r['variance']))], $shDiff),
+                              array_map(static fn(array $r): array => $r + ['why' => 'now cash ' . inr((float) $r['now_cash']) . ' (was ' . inr((float) $r['cash_sales']) . ') · UPI ' . inr((float) $r['now_upi']) . ' (was ' . inr((float) $r['upi_sales']) . ')'], $shMoved),
+                              array_map(static fn(array $r): array => $r + ['why' => 'open since ' . substr((string) $r['opened_at'], 0, 16)], $shOpenOld)); ?>
+  <?php if ($shRows !== []): ?>
+  <div class="dt-wrap"><table class="dt card-table">
+    <thead><tr><th>Shift</th><th>Who</th><th>Counter</th><th>Opened</th><th>What to check</th></tr></thead>
+    <tbody>
+    <?php foreach ($shRows as $r): ?>
+      <tr>
+        <td data-label="Shift"><a href="shift.php?<?= (int) ($r['is_open'] ?? 0) === 1 ? 'shift' : 'slip' ?>=<?= (int) $r['id'] ?>">#<?= (int) $r['id'] ?></a></td>
+        <td data-label="Who"><?= $e((string) ($r['admin_name'] ?? ('#' . $r['admin_id']))) ?></td>
+        <td data-label="Counter"><?= $e((string) ($r['counter_code'] ?? '')) ?></td>
+        <td data-label="Opened"><?= $e(substr((string) $r['opened_at'], 0, 16)) ?></td>
+        <td data-label="What to check"><?= $e($r['why']) ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+  <?php endif; ?>
+  <a class="rc-act" href="shift.php">→ Shift &amp; cash</a>
 </div>
 
 <?php admin_footer();
