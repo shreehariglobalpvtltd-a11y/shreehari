@@ -53,6 +53,7 @@ final class AdminAlerts
                              ['minutes' => ['Minutes after departure', 20]]],
         'trip_late'      => ['Bus running late', 'A departure today has a delay of more than this many minutes. If you also set the second number, its passengers are told on WhatsApp once the delay reaches it (once per 30 minutes of delay; 0 = never, the default).', true,
                              ['minutes' => ['Delay above (minutes)', 30], 'auto' => ['WhatsApp passengers at (minutes, 0 = never)', 0]]],
+        'task_due'       => ['Office task due', 'An office task (Office work page) is due today or overdue — one bell a day per task.', true, []],
     ];
 
     /**
@@ -285,6 +286,17 @@ final class AdminAlerts
             try {
                 Logger::warning('AdminAlerts day rules failed', ['error' => $e->getMessage()]);
             } catch (Throwable $ignored) {
+            }
+        }
+
+        /* --- 29 Oct 2026 (management upgrade 3.5): office tasks due --- */
+        if ($on('task_due') && is_file(INCLUDE_PATH . '/officetasks.php')) {
+            require_once INCLUDE_PATH . '/officetasks.php';
+            foreach (OfficeTasks::due($today) as $t) {
+                $late = (string) $t['due_date'] < $today;
+                $add('task_due', 'task:' . (int) $t['id'] . ':' . $today, ($late ? 'Overdue task · ' : 'Task due today · ') . ($t['assignee_name'] ?: 'office') . ': ' . $t['title'],
+                    ($late ? 'Was due ' . formatDate((string) $t['due_date'], 'j M') . '. ' : '') . ($t['priority'] === 'high' ? 'High priority. ' : '') . 'Mark it done on the Office work page when finished.',
+                    '/admin/office-ops.php', '📝');
             }
         }
 

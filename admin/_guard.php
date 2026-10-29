@@ -89,6 +89,8 @@ function admin_nav(): array
         // queue (Team & Approvals), which links to it. The page is unchanged.
         ['href' => 'team-invite.php',  'icon' => 'mail',       'label' => 'Invites & Renewals',     'perm' => 'customers.view',   'section' => $S1],
         ['href' => 'drivers.php',      'icon' => 'user-solo',  'label' => 'Drivers & Bus Crew',     'perm' => 'drivers.view',     'section' => $S1],
+        // 29 Oct 2026 (management upgrade 3.5): the office's own to-do list - never for an agent login.
+        ['href' => 'office-ops.php',   'icon' => 'clipboard',  'label' => 'Office Tasks & Daily Work', 'perm' => $agentView ? 'office.tasks' : 'bookings.view', 'section' => $S1],
         ['href' => 'company.php',      'icon' => 'building',   'label' => 'Pvt Ltd & Branches',     'perm' => 'dashboard.view',   'section' => $S1],
         ['href' => 'agent-sales.php',  'icon' => 'doc',        'label' => $agentView ? 'My Sales' : 'Agent Sales',        'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S1],
         ['href' => 'agent-passengers.php','icon' => 'user-solo','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S1],
