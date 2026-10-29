@@ -74,7 +74,10 @@ Always on, but read-only or opt-in per use:
   settings read their defaults.
 - Optional crontab line, only after `wa_onboard_on` is set:
   `0 9-20 * * * /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/wa-onboard.php >> /var/log/shg-wa-onboard.log 2>&1`
-- `/uploads/agents-kyc/` has no nginx deny rule. File names are 64-bit random, but adding it
-  next to `/uploads/staff/` in the server block is the safer choice.
+- `/uploads/agents-kyc/` is denied by nginx since 30 Oct 2026, 00:15 IST: before that, a
+  KYC scan answered 200 to anyone holding its random name. The rule was added with
+  `deploy/nginx-add-deny-rules.sh` (block marker `SHG deny rules 2026-10-30`, both vhosts). The
+  backups are `/root/backups/nginx/*.20261030-001513`. The office still opens the scans through
+  `admin/agent-kyc-file.php`, which reads them from disk.
 - Test: `php -c .claude/php-dev.ini tests/master-brief-test.php` (88 checks). The full battery
   shows the same 17 environment failures with and without this build.

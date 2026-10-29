@@ -2,8 +2,9 @@
 # =====================================================================
 #  nginx-add-deny-rules.sh — runs ON THE VPS (Deploy to VPS → nginx=apply).
 #
-#  Adds the 30 Sep 2026 deny rules (dated .bak copies, deploy/, *.sh,
-#  *.conf) to the LIVE nginx config: right after EVERY server-level
+#  Adds the deny rules (dated .bak copies, deploy/, *.sh, *.conf, and the
+#  upload folders that only PHP may stream: staff-msg, staff, fraud,
+#  agents-kyc) to the LIVE nginx config: right after EVERY server-level
 #  `root <site>;` line in every enabled site file, so each server block that
 #  serves the site folder (www, the .network staff door) gets them. A root
 #  set inside a location block is left alone. The live files have certbot edits, so they are patched in
@@ -34,10 +35,14 @@ CHECK_URL="${CHECK_URL:-https://www.shreehariglobal.in/}"
 # Ask THIS server's nginx, not whatever the public DNS points at.
 CHECK_RESOLVE="${CHECK_RESOLVE-www.shreehariglobal.in:443:127.0.0.1}"
 # 9 Oct 2026: the block gained the Office chat attachments rule
-# (/uploads/staff-msg/), so it carries a new marker. A block written by an
-# earlier run (old marker, 4 rules) is removed exactly as before and replaced.
-MARKER_OLD='SHG deny rules 2026-09-30'
-MARKER='SHG deny rules 2026-10-09'
+# (/uploads/staff-msg/), so it carries a new marker.
+# 30 Oct 2026: it gained /uploads/agents-kyc/ (agent ID and agreement scans,
+# served only by admin/agent-kyc-file.php), and now carries the
+# /uploads/staff/ and /uploads/fraud/ rules that live already had. Live had
+# outgrown the fixed line counts the removal used to skip, so an earlier block
+# of ANY date is now removed by its shape: marker, comment lines, deny lines.
+MARKER='SHG deny rules 2026-10-30'
+MARKER_ANY='SHG deny rules 20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
 
 # A SERVER-LEVEL `root <site>;` line: the innermost open block is `server`.
 # A root inside a location (e.g. `location = /sw.js { root ...; }`) must not
@@ -84,14 +89,16 @@ fi
 rules="$(mktemp)"
 cat > "$rules" <<'RULES'
 
-    # SHG deny rules 2026-10-09: dated .bak copies, editor copies, deploy/, shell/conf
-    # files were served as text; Office chat attachments stream only via PHP.
+    # SHG deny rules 2026-10-30: dated .bak copies, editor copies, deploy/, shell/conf
+    # files were served as text; chat, staff and agent KYC files stream only via PHP.
     location ~* \.(bak|old|orig|save|swp)([.~_-][^/]*)?$ { deny all; return 404; }
     location ~ ~$                                         { deny all; return 404; }
     location ~ ^/deploy/                                  { deny all; return 404; }
     location ~* \.(sh|bash|conf)$                         { deny all; return 404; }
     location ^~ /uploads/staff-msg/                       { deny all; return 404; }
+    location ^~ /uploads/staff/                           { deny all; return 404; }
     location ^~ /uploads/fraud/                           { deny all; return 404; }
+    location ^~ /uploads/agents-kyc/                      { deny all; return 404; }
 RULES
 
 stamp="$(date +%Y%m%d-%H%M%S)"
@@ -109,18 +116,21 @@ restore_all() {
 
 for file in "${files[@]}"; do
     new="$(mktemp)"
-    # 1) drop any block an earlier run inserted (blank line + marker comment
-    #    + 1 more comment line + 4 location lines for the 2026-09-30 block,
-    #    5 location lines for the 2026-10-09 block);
+    # 1) drop any block an earlier run (or a hand edit of one) left, of any
+    #    date: the blank line in front, the marker comment, the comment lines
+    #    under it, then every `location ... { deny all; return 404; }` line
+    #    that follows. The first other line ends the block (on live that is
+    #    `index ...;`), so nothing after it is ever eaten;
     # 2) insert one fresh block after EVERY server-level `root <site>;`, so the
     #    rules sit ahead of every regex location in each server block
-    #    (nginx uses the first regex match; the ^~ /uploads/staff-msg/ prefix
-    #    is longer than any /uploads/ prefix block, so it wins there too).
-    awk -v m="$MARKER_OLD" -v m2="$MARKER" '
-        skip > 0 { skip--; next }
+    #    (nginx uses the first regex match; the ^~ /uploads/<dir>/ prefixes
+    #    are longer than any /uploads/ prefix block, so they win there too).
+    awk -v m="$MARKER_ANY" '
+        inblk == 1 && /^[[:space:]]*#/ { next }
+        inblk && /^[[:space:]]*location[^{]*\{[[:space:]]*deny all;[[:space:]]*return 404;[[:space:]]*\}[[:space:]]*$/ { inblk = 2; next }
+        { inblk = 0 }
         /^[[:space:]]*$/ { if (held) print hl; hl = $0; held = 1; next }
-        index($0, m2) { held = 0; skip = 6; next }
-        index($0, m) { held = 0; skip = 5; next }
+        $0 ~ m { held = 0; inblk = 1; next }
         { if (held) { print hl; held = 0 } print }
         END { if (held) print hl }
     ' "$file" | awk -v r="$SITE_ROOT" -v rf="$rules" "$SERVER_ROOT_AWK"'
