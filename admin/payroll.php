@@ -375,6 +375,7 @@ admin_header('Staff Payroll', 'payroll');
       <div class="pr-acts">
         <?php if ($pay !== null): ?>
           <a class="btn wa pr-primary" href="<?= $e($slipLink) ?>" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-whatsapp"/></svg> Send slip on WhatsApp</a>
+          <a class="btn ghost" href="/admin/payslip.php?id=<?= (int) $pay['id'] ?>" title="Printable salary slip — Print saves it as a PDF">🖨 Slip / PDF</a>
           <?php if ($canWrite): ?><button class="btn ghost" type="button" data-open="pay" aria-expanded="false"><svg class="a-ic"><use href="#a-edit"/></svg> Correct payment</button><?php endif; ?>
         <?php elseif ($canWrite && $active): ?>
           <button class="btn ok pr-primary" type="button" data-open="pay" aria-expanded="false"><svg class="a-ic"><use href="#a-rupee"/></svg> Pay salary</button>
