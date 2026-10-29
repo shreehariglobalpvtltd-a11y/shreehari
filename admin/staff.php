@@ -451,6 +451,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 }
 
+/* 29 Oct 2026 (management upgrade 4.1): the People screen posts its row
+   actions (activate / disable, password, desk) HERE, so every account
+   change keeps one set of rules, and asks to be taken back afterwards. */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && (string) ($_POST['return'] ?? '') === 'people' && $flash !== null) {
+    $_SESSION['shg_people_flash'] = $flash;
+    Response::redirect('admin/people.php?' . http_build_query(['tab' => preg_replace('/[^a-z]/', '', (string) ($_POST['return_tab'] ?? 'all'))]));
+}
+
 admin_header('Staff & Approvals', 'staff');
 
 if (!$isSuper) {
