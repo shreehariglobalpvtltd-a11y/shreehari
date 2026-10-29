@@ -136,7 +136,8 @@ admin_header('People', 'people');
     $n = $key === 'agents' ? $byRole['agent'] : ($key === 'counters' ? $byRole['counter'] : ($key === 'staff' ? $byRole['staff'] : array_sum($byRole))); ?>
     <a href="?<?= $e(http_build_query(['tab' => $key])) ?>" class="<?= $key === $tab ? 'on' : '' ?>"><?= $e($label) ?> <span class="n"><?= (int) $n ?></span></a>
   <?php endforeach; ?>
-  <a href="/admin/staff.php" style="margin-left:auto">＋ New login</a>
+  <a href="/admin/agent-quick.php" style="margin-left:auto">⚡ Quick agent + ID card</a>
+  <a href="/admin/staff.php">＋ New login</a>
 </nav>
 
 <form method="get" class="pp-find">

@@ -382,6 +382,7 @@ admin_page_head(
     '<a class="btn ghost sm" href="/agreements/" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-doc"/></svg>Agreement pages</a>'
     . '<a class="btn ghost sm" href="agents.php"><svg class="a-ic"><use href="#a-users"/></svg>Agents register</a>'
     . '<a class="btn ghost sm" href="staff.php#addStaff"><svg class="a-ic"><use href="#a-user-cog"/></svg>Agent logins</a>'
+    . '<a class="btn sm" href="agent-quick.php">⚡ Quick agent + ID card</a>'
     . '<a class="btn sm" href="agreements.php?tab=apps&amp;add=1#add"><svg class="a-ic"><use href="#a-plus"/></svg>Add agent</a>'
 );
 if ($flash !== null) {

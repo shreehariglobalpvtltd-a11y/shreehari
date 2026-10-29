@@ -80,6 +80,7 @@ function admin_nav(): array
 
         // 1. Staff & Agent Management — accounts, codes / IDs / passwords, KYC, salary or commission
         ['href' => 'people.php',       'icon' => 'users',     'label' => 'People — Agents · Counters · Staff', 'perm' => 'staff.manage', 'section' => $S1],   // 29 Oct 2026 (management upgrade 4.1)
+        ['href' => 'agent-quick.php',  'icon' => 'plus',      'label' => '⚡ Quick Agent + ID Card', 'perm' => 'staff.manage', 'section' => $S1],   // 29 Oct 2026: the office fills the agent form
         ['href' => 'team.php',         'icon' => 'user-cog',  'label' => 'Team & Approvals (KYC, codes, passwords)', 'perm' => 'staff.manage', 'section' => $S1],
         ['href' => 'agents.php',       'icon' => 'user-cog',  'label' => 'Agents Register (CRM)', 'perm' => 'customers.view', 'section' => $S1],
         ['href' => 'agent.php',        'icon' => 'ticket-alt', 'label' => $agentView ? 'My Agent Dashboard' : 'Master & Sub-Agent Portal', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S1],
