@@ -244,6 +244,22 @@ try {
         }
     }
 
+    // 24 Oct 2026 (owner: "scan garepachhi form automatic feel hune ra attach hune"): a scanned, hand-filled copy
+    // of this form read by /api/agreement-scan.php waits in the session (45 min, kind staff). Attach it here, like
+    // the ID photo and the passkey. Stored only where the columns exist (upgrade-2026-10-24-scan-autofill.sql).
+    if (StaffApps::scanReady()) {
+        $sc = $_SESSION['agr_scan'] ?? null;
+        if (is_array($sc) && (int) ($sc['t'] ?? 0) > time() - 45 * 60 && (string) ($sc['kind'] ?? '') === 'staff') {
+            $pages = array_values(array_filter(is_array($sc['pages'] ?? null) ? $sc['pages'] : [], 'is_string'));
+            if ($pages !== []) {
+                $c['scan_doc']        = json_encode(array_slice($pages, 0, 3), JSON_UNESCAPED_SLASHES) ?: null;
+                $c['scan_ocr']        = is_array($sc['ocr'] ?? null) ? (string) json_encode($sc['ocr'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null;
+                $c['scan_ocr_status'] = in_array($sc['status'] ?? '', ['read', 'partial'], true) ? (string) $sc['status'] : null;
+                $c['scanned_at']      = date('Y-m-d H:i:s');
+            }
+        }
+    }
+
     $busy = 'धेरै आवेदन आयो — केही बेरपछि फेरि पठाउनुहोस् वा फोन गर्नुहोस्: ' . Settings::officePhone();
     if (!Auth::isAdmin() && !Security::rateLimit('staff_apply_ok_ip', $ip, 5, 3600)) {
         Response::error($busy, 429);
@@ -262,6 +278,7 @@ try {
         ApplyEdit::close();
         require_once INCLUDE_PATH . '/facecheck.php';
         FaceCheck::attach('staff_applications', (int) $made['id']);
+        unset($_SESSION['agr_scan']);   // 24 Oct 2026: the scan was attached (or did not match this kind)
         $_SESSION['a4_mine'] = ['type' => 'staff', 'id' => (int) $made['id'], 't' => time()];
         Response::json(['ok' => true, 'staff_id' => $made['id'], 'ref' => $made['ref'], 'status' => 'pending', 'edited' => true,
                         'message' => 'तपाईंको आवेदन ' . $made['ref'] . ' सच्याइयो।']);
@@ -274,6 +291,7 @@ try {
         if (isset($usedChKey)) {
             unset($_SESSION[$usedChKey]);
         }
+        unset($_SESSION['agr_scan']);   // 24 Oct 2026: the scanned form was attached to this new staff application
         $_SESSION['a4_mine'] = ['type' => 'staff', 'id' => (int) $made['id'], 't' => time()];
     } catch (StaffAppError $e) {
         Response::error($e->getMessage(), 409);

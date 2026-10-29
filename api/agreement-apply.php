@@ -75,6 +75,20 @@ try {
         Response::error('Applications are not open yet. Please call the office: ' . Settings::officePhone(), 503);
     }
 
+    // 24 Oct 2026: a scanned, hand-filled copy of this form read earlier by
+    // /api/agreement-scan.php waits in the session (45 min); it is attached to
+    // THIS application only when it was scanned for this same kind.
+    $scanIn = [];
+    $sc = $_SESSION['agr_scan'] ?? null;
+    if (is_array($sc) && (int) ($sc['t'] ?? 0) > time() - 45 * 60
+        && (string) ($sc['kind'] ?? '') === (string) AgentApplications::normaliseType(Response::field('type', ''))) {
+        $scanIn = [
+            'scan'        => is_array($sc['pages'] ?? null) ? $sc['pages'] : [],
+            'scan_ocr'    => is_array($sc['ocr'] ?? null) ? (string) json_encode($sc['ocr'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '',
+            'scan_status' => (string) ($sc['status'] ?? ''),
+        ];
+    }
+
     $check = AgentApplications::validate([
         'type'      => Response::field('type', ''),
         'lang'      => $lang,
@@ -89,6 +103,9 @@ try {
         'tax_cert'  => Response::field('tax_cert', null),
         'thumb'     => Response::field('thumb', null),
         'edu_cert'  => Response::field('edu_cert', null),
+        'scan'        => $scanIn['scan'] ?? null,           // 24 Oct 2026: scanned filled form (from the session)
+        'scan_ocr'    => $scanIn['scan_ocr'] ?? '',
+        'scan_status' => $scanIn['scan_status'] ?? '',
     ]);
     if (!$check['ok']) {
         Response::invalid($check['errors'], AgentApplications::message('invalid', $lang));
@@ -161,6 +178,7 @@ try {
     if (!$made['duplicate']) {
         require_once INCLUDE_PATH . '/facecheck.php';
         FaceCheck::attach('agent_applications', (int) $made['id']);
+        unset($_SESSION['agr_scan']);   // 24 Oct 2026: the scanned form was attached to this new application
 
         // Multi-role category & parent agent linkage (4-tier hierarchy)
         $roleCat = (string) Response::field('role_category', Response::field('role', 'agent'));

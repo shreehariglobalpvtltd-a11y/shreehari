@@ -232,6 +232,7 @@ final class AgentApplications
     private static ?bool $logoOk    = null;
     private static ?bool $certOk    = null;
     private static ?bool $thumbOk   = null;
+    private static ?bool $scanOk    = null;
 
     /* =================================================================
      *  Schema presence — a page must never 500 because the migration has
@@ -408,6 +409,24 @@ final class AgentApplications
             }
         }
         return self::$logoOk;
+    }
+
+    /** The scanned filled-form columns (24 Oct 2026, upgrade-2026-10-24-scan-autofill.sql). */
+    public static function scanReady(): bool
+    {
+        if (self::$scanOk === null) {
+            try {
+                self::$scanOk = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'agent_applications'
+                        AND COLUMN_NAME IN ('scan_doc', 'scan_ocr', 'scan_ocr_status', 'scanned_at')",
+                    [], 0
+                ) === 4;
+            } catch (Throwable $e) {
+                self::$scanOk = false;
+            }
+        }
+        return self::$scanOk;
     }
 
     /**
@@ -636,6 +655,31 @@ final class AgentApplications
     }
 
     /**
+     * 24 Oct 2026: the scanned filled-form pages (api/agreement-scan.php keeps
+     * them in the session; the submit attaches them). Each is kept only when it
+     * passes the same photo size / bytes rule, at most three of them.
+     *
+     * @return list<string>
+     */
+    public static function cleanScanPages(mixed $pages): array
+    {
+        if (!is_array($pages)) {
+            return [];
+        }
+        $out = [];
+        foreach ($pages as $p) {
+            $c = self::cleanPhoto($p)['photo'];
+            if (is_string($c)) {
+                $out[] = $c;
+                if (count($out) >= 3) {
+                    break;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /**
      * 22 Oct 2026 (review, #13/#19): may these image bytes be opened with GD?
      * Only when the header declares at most $maxSide px a side and $maxPixels
      * in all. getimagesizefromstring() reads the header and decodes nothing;
@@ -819,6 +863,10 @@ final class AgentApplications
             // certificates, photos checked by their bytes and size like the ID; office eyes only
             'reg_cert'   => $type === 'org' ? self::cleanPhoto($in['reg_cert'] ?? null)['photo'] : null,
             'tax_cert'   => $type === 'org' ? self::cleanPhoto($in['tax_cert'] ?? null)['photo'] : null,
+            // 24 Oct 2026: a scanned, hand-filled copy of this form (from the session, api/agreement-scan.php)
+            'scan'       => self::cleanScanPages($in['scan'] ?? null),
+            'scan_ocr'   => mb_substr((string) ($in['scan_ocr'] ?? ''), 0, 4000, 'UTF-8'),
+            'scan_status'=> in_array(($in['scan_status'] ?? ''), ['read', 'partial'], true) ? (string) $in['scan_status'] : '',
         ];
 
         return ['ok' => $errors === [], 'errors' => $errors, 'clean' => $clean];
@@ -956,6 +1004,13 @@ final class AgentApplications
                 }
             }
         }
+        // 24 Oct 2026: the scanned filled form read by /api/agreement-scan.php
+        if (is_array($clean['scan'] ?? null) && $clean['scan'] !== [] && self::scanReady()) {
+            $extra['scan_doc']        = json_encode($clean['scan'], JSON_UNESCAPED_SLASHES) ?: null;
+            $extra['scan_ocr']        = (string) ($clean['scan_ocr'] ?? '') !== '' ? (string) $clean['scan_ocr'] : null;
+            $extra['scan_ocr_status'] = (string) ($clean['scan_status'] ?? '') !== '' ? (string) $clean['scan_status'] : null;
+            $extra['scanned_at']      = date('Y-m-d H:i:s');
+        }
 
         $id = Database::insert('agent_applications', $extra + [
             'type'        => (string) $clean['type'],
@@ -1053,6 +1108,13 @@ final class AgentApplications
                     }
                 }
             }
+        }
+        // 24 Oct 2026: a scan attached while correcting the form
+        if (is_array($clean['scan'] ?? null) && $clean['scan'] !== [] && self::scanReady()) {
+            $set['scan_doc']        = json_encode($clean['scan'], JSON_UNESCAPED_SLASHES) ?: null;
+            $set['scan_ocr']        = (string) ($clean['scan_ocr'] ?? '') !== '' ? (string) $clean['scan_ocr'] : null;
+            $set['scan_ocr_status'] = (string) ($clean['scan_status'] ?? '') !== '' ? (string) $clean['scan_status'] : null;
+            $set['scanned_at']      = date('Y-m-d H:i:s');
         }
         Database::update('agent_applications', $set, 'id = :id', ['id' => $id]);
         $ref = (string) ($row['ref'] ?: self::refFor($id));

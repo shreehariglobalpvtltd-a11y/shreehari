@@ -119,6 +119,7 @@ final class StaffApps
 
     private static ?bool $ready = null;
     private static ?bool $locReady = null;
+    private static ?bool $scanReady = null;
 
     /** 22 Oct 2026: work locations offered first when the office sets one ("Our team" is grouped by it). */
     public const LOCATIONS = ['Nepalgunj', 'Surat'];
@@ -161,6 +162,24 @@ final class StaffApps
             }
         }
         return self::$locReady;
+    }
+
+    /** The scanned filled-form columns (24 Oct 2026, upgrade-2026-10-24-scan-autofill.sql). */
+    public static function scanReady(): bool
+    {
+        if (self::$scanReady === null) {
+            try {
+                self::$scanReady = self::available() && (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'staff_applications'
+                        AND COLUMN_NAME IN ('scan_doc', 'scan_ocr', 'scan_ocr_status', 'scanned_at')",
+                    [], 0
+                ) === 4;
+            } catch (Throwable $e) {
+                self::$scanReady = false;
+            }
+        }
+        return self::$scanReady;
     }
 
     /** @return list<string> the work locations in use, plus the usual ones */
@@ -575,6 +594,9 @@ final class StaffApps
                 'doc_verify_json' => null, 'doc_verify_status' => 'unchecked',
                 'biometric_face_hash' => null, 'biometric_webauthn_cred' => null,
             ];
+            if (self::scanReady()) {   // 30 Oct 2026: nor the earlier scanned paper form (a scan sent now still wins)
+                $row += ['scan_doc' => null, 'scan_ocr' => null, 'scan_ocr_status' => null, 'scanned_at' => null];
+            }
             require_once __DIR__ . '/teamportal.php';   // the KYC columns are the team portal's (upgrade-2026-10-22-office-manage.sql)
             if (TeamPortal::kycReady()) {
                 $row += ['kyc_status' => 'submitted', 'kyc_verified_by' => null, 'kyc_verified_at' => null];
