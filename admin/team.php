@@ -802,9 +802,12 @@ if ($tab === 'approvals') {
     } catch (Throwable $e) {}
 
     // 2. Agent & Partner Applications
+    // 29 Oct 2026: the column is `photo` (a data: URI). Asking for the
+    // non-existent `photo_data` failed the whole query, and the silent catch
+    // below left every agent / partner application out of this queue.
     try {
         $ag = Database::fetchAll(
-            "SELECT id, ref, type, name, phone, created_at, phone_verified, fields_json, photo_data
+            "SELECT id, ref, type, name, phone, created_at, phone_verified, fields_json, photo AS photo_data
              FROM agent_applications WHERE status = 'pending' ORDER BY id DESC"
         );
         foreach ($ag as $r) {

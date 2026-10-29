@@ -238,12 +238,30 @@ final class StaffApps
         return preg_replace('/[^A-Z0-9]/', '', strtoupper(DocVerify::devDigits($s))) ?? '';
     }
 
+    /** Verhoeff checksum over a digit string (Aadhaar's last digit is one). */
+    public static function verhoeffOk(string $digits): bool
+    {
+        static $d = [[0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],[3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],
+                     [5,9,8,7,6,0,4,3,2,1],[6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],[9,8,7,6,5,4,3,2,1,0]];
+        static $p = [[0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],[8,9,1,6,0,4,3,5,2,7],
+                     [9,4,5,3,1,2,6,8,7,0],[4,2,8,6,5,7,3,9,0,1],[2,7,9,3,8,0,6,4,1,5],[7,0,4,6,9,1,3,2,5,8]];
+        if ($digits === '' || !ctype_digit($digits)) {
+            return false;
+        }
+        $c = 0;
+        foreach (array_reverse(str_split($digits)) as $i => $ch) {
+            $c = $d[$c][$p[$i % 8][(int) $ch]];
+        }
+        return $c === 0;
+    }
+
     /** Is this a plausible number for that kind of ID? Checked on normId(). */
     public static function idNumberOk(string $type, string $number): bool
     {
         $n = self::normId($number);
         return match ($type) {
-            'aadhaar'         => preg_match('/^[2-9]\d{11}$/', $n) === 1,
+            // 29 Oct 2026: + the Verhoeff check digit every Aadhaar carries, so a typo is caught at submit.
+            'aadhaar'         => preg_match('/^[2-9]\d{11}$/', $n) === 1 && self::verhoeffOk($n),
             'citizenship'     => preg_match('/^\d{5,20}$/', $n) === 1,
             'passport'        => preg_match('/^[A-Z0-9]{6,9}$/', $n) === 1,
             // Nepal 01-06-12345678 (digits) / India MH12 20110012345
