@@ -36,6 +36,7 @@ require_once INCLUDE_PATH . '/tripstatus.php';
 require_once INCLUDE_PATH . '/challanpng.php';
 require_once INCLUDE_PATH . '/chalanipng.php';
 require_once INCLUDE_PATH . '/quickticket.php';
+require_once INCLUDE_PATH . '/challanlock.php';   // 29 Oct 2026: finalize, what changed since, history
 $admin = admin_boot('bookings.view');
 $base  = '';
 
@@ -141,6 +142,35 @@ $hrefStatusDl   = $base . '/admin/challan.php?' . $q(['sid' => $sid, 'doc' => 's
 $hrefManifest   = $base . '/admin/manifest.php?' . $q($manifestQs);
 $hrefSeats      = $base . '/admin/seatmap.php?' . $q(['sid' => $sid]);
 
+/* ---- Finalize / lift (29 Oct 2026, management upgrade 3.3) -------------
+   Redirect-after-post back to the same departure, flash in the session. */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $trip !== null) {
+    $act = (string) ($_POST['action'] ?? '');
+    try {
+        if (!Security::verifyCsrf()) {
+            throw new RuntimeException('Session expired — please try again.');
+        }
+        if ($act === 'challan_finalize') {
+            $v = ChallanLock::finalize($sid, (int) $admin['id'], (string) ($_POST['note'] ?? ''));
+            $_SESSION['shg_chalan_flash'] = ['ok', 'Finalized as version ' . $v . ' — from now on every change to this list shows here.'];
+        } elseif ($act === 'challan_release') {
+            if (!Auth::can('dashboard.view')) {
+                throw new RuntimeException('Only the office can lift a finalize.');
+            }
+            ChallanLock::release($sid, (int) $admin['id'], (string) ($_POST['reason'] ?? ''));
+            $_SESSION['shg_chalan_flash'] = ['ok', 'Finalize lifted.'];
+        }
+    } catch (Throwable $e) {
+        $_SESSION['shg_chalan_flash'] = ['bad', $e->getMessage()];
+    }
+    Response::redirect('admin/chalan.php?' . http_build_query(['sid' => $sid, 'date' => $date]) . '#chLock');
+}
+$chFlash = $_SESSION['shg_chalan_flash'] ?? null;
+unset($_SESSION['shg_chalan_flash']);
+$lock    = $trip !== null ? ChallanLock::active($sid) : null;
+$lockDiff = $lock !== null ? ChallanLock::diff($sid) : null;
+$lockHist = $trip !== null ? ChallanLock::history($sid) : [];
+
 admin_header('Bus Chalan', 'chalan');
 admin_page_head(
     'Pick the departure — the right chalan is worked out for it. Preview, download PDF / PNG, send on WhatsApp.',
@@ -228,6 +258,77 @@ admin_page_head(
     </dl>
     <?php if ((string) ($trip['status'] ?? '') === 'cancelled'): ?>
       <div class="flash bad" style="margin:14px 0 0">This departure is cancelled — the sheets below show the coach as it stood.</div>
+    <?php endif; ?>
+  </div>
+</div>
+
+<!-- ============ FINALIZE + WHAT CHANGED (29 Oct 2026) ============
+     A soft lock: selling is never blocked (late tickets inside the 24 h
+     grace are normal); the office just sees what moved since the list
+     went to the driver, and re-finalizes after resending. -->
+<?php if ($chFlash !== null): ?><div class="flash <?= Security::e((string) $chFlash[0]) ?>"><?= Security::e((string) $chFlash[1]) ?></div><?php endif; ?>
+<div class="panel" id="chLock" style="<?= $lockDiff !== null && $lockDiff['n'] > 0 ? 'border-left:4px solid var(--orange)' : '' ?>">
+  <h2><svg class="a-ic"><use href="#a-lock"/></svg> 🔒 Finalize &amp; changes · चलानी पक्का
+    <?php if ($lock !== null): ?><span class="pill <?= $lockDiff['n'] > 0 ? 'st-orange' : 'st-ok' ?> nodot" style="margin-left:auto"><?= $lockDiff['n'] > 0 ? $lockDiff['n'] . ' change' . ($lockDiff['n'] === 1 ? '' : 's') . ' since v' . (int) $lock['version'] : 'v' . (int) $lock['version'] . ' · up to date' ?></span><?php endif; ?>
+  </h2>
+  <div class="panel-body">
+    <?php if ($lock === null): ?>
+      <p class="muted" style="margin:0 0 10px;font-size:13px">Not finalized yet. When the challan goes to the driver, finalize it here — any ticket sold, cancelled or moved after that shows up below, so the driver never boards with an old list. Selling is never blocked.</p>
+      <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <?= Security::csrfField() ?>
+        <input type="hidden" name="action" value="challan_finalize">
+        <input type="text" name="note" maxlength="255" placeholder="Note (optional) · e.g. sent to driver on WhatsApp" style="flex:1 1 260px;min-height:44px;padding:8px 11px;border:1px solid var(--line);border-radius:10px">
+        <button class="btn ok" type="submit" style="min-height:44px">🔒 Finalize · <?= (int) $paxCount ?> passengers</button>
+      </form>
+    <?php else: ?>
+      <p style="margin:0 0 10px;font-size:13.5px">Finalized <b>v<?= (int) $lock['version'] ?></b> on <?= Security::e(substr((string) $lock['finalized_at'], 0, 16)) ?><?= (string) ($lock['by_name'] ?? '') !== '' ? ' by <b>' . Security::e((string) $lock['by_name']) . '</b>' : '' ?> · <?= (int) $lock['pax_count'] ?> passengers<?= (string) ($lock['note'] ?? '') !== '' ? ' · ' . Security::e((string) $lock['note']) : '' ?></p>
+      <?php if ($lockDiff['n'] === 0): ?>
+        <div class="flash ok" style="margin:0 0 10px">✓ No change since — the driver's list is current.</div>
+      <?php else: ?>
+        <div class="flash" style="margin:0 0 10px;background:#fff3e0;color:#7a3e00">⚠ The list changed after it was finalized — reprint / resend the challan, then re-finalize.</div>
+        <table class="dt" style="width:100%;font-size:13px;margin-bottom:10px">
+          <thead><tr><th></th><th>Seat</th><th>Passenger</th><th>PNR</th><th>Pickup → drop</th></tr></thead>
+          <tbody>
+            <?php foreach ($lockDiff['added'] as $x): ?>
+              <tr><td><span class="pill st-ok nodot">＋ added</span></td><td class="mono"><?= Security::e(Seats::displayLabel($x['seat'])) ?></td><td><?= Security::e($x['name']) ?></td><td class="mono"><?= Security::e($x['pnr']) ?></td><td><?= Security::e($x['board'] . ' → ' . $x['drop']) ?></td></tr>
+            <?php endforeach; ?>
+            <?php foreach ($lockDiff['removed'] as $x): ?>
+              <tr><td><span class="pill st-bad nodot">− removed</span></td><td class="mono"><?= Security::e(Seats::displayLabel($x['seat'])) ?></td><td><s><?= Security::e($x['name']) ?></s></td><td class="mono"><?= Security::e($x['pnr']) ?></td><td><?= Security::e($x['board'] . ' → ' . $x['drop']) ?></td></tr>
+            <?php endforeach; ?>
+            <?php foreach ($lockDiff['changed'] as $x): ?>
+              <tr><td><span class="pill st-orange nodot">↔ moved</span></td>
+                <td class="mono"><?= Security::e(Seats::displayLabel($x['before']['seat'])) ?><?= $x['before']['seat'] !== $x['after']['seat'] ? ' → ' . Security::e(Seats::displayLabel($x['after']['seat'])) : '' ?></td>
+                <td><?= Security::e($x['after']['name']) ?><?= $x['before']['name'] !== $x['after']['name'] ? ' <span class="muted">(was ' . Security::e($x['before']['name']) . ')</span>' : '' ?></td>
+                <td class="mono"><?= Security::e($x['after']['pnr']) ?></td>
+                <td><?= Security::e($x['after']['board'] . ' → ' . $x['after']['drop']) ?><?= ($x['before']['board'] . $x['before']['drop']) !== ($x['after']['board'] . $x['after']['drop']) ? ' <span class="muted">(was ' . Security::e($x['before']['board'] . ' → ' . $x['before']['drop']) . ')</span>' : '' ?></td></tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      <?php endif; ?>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <?= Security::csrfField() ?>
+          <input type="hidden" name="action" value="challan_finalize">
+          <input type="text" name="note" maxlength="255" placeholder="Note · e.g. resent to driver" style="min-height:44px;padding:8px 11px;border:1px solid var(--line);border-radius:10px">
+          <button class="btn" type="submit" style="min-height:44px">🔒 Re-finalize (v<?= (int) $lock['version'] + 1 ?>)</button>
+        </form>
+        <?php if (Auth::can('dashboard.view')): ?>
+        <form method="post" onsubmit="var r=prompt('Why lift the finalize?','');if(!r||r.trim().length<3)return false;this.reason.value=r;return true;">
+          <?= Security::csrfField() ?>
+          <input type="hidden" name="action" value="challan_release"><input type="hidden" name="reason" value="">
+          <button class="btn ghost" type="submit" style="min-height:44px">Lift finalize</button>
+        </form>
+        <?php endif; ?>
+      </div>
+    <?php endif; ?>
+    <?php if ($lockHist !== []): ?>
+      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700;color:var(--blue)">History · <?= count($lockHist) ?> event<?= count($lockHist) === 1 ? '' : 's' ?></summary>
+        <ol style="margin:8px 0 0;padding-left:20px;font-size:12.5px;line-height:1.7">
+          <?php foreach ($lockHist as $h): ?>
+            <li><span class="mono muted"><?= Security::e(substr($h['when'], 0, 16)) ?></span> · <?= $h['kind'] === 'finalize' ? '🔒 ' : ($h['kind'] === 'release' ? '🔓 ' : '🖼 ') ?><?= Security::e($h['what']) ?><?= $h['by'] !== '' ? ' · ' . Security::e($h['by']) : '' ?></li>
+          <?php endforeach; ?>
+        </ol>
+      </details>
     <?php endif; ?>
   </div>
 </div>
