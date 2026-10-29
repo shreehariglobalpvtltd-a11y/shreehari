@@ -190,6 +190,60 @@ if (!Settings::getBool('admin_daily_digest_enabled', true)) {
             $topAgents[] = $r['full_name'] . ' — ' . inr((float) $r['earned']) . ' commission';
         }
 
+        /* 29 Oct 2026 (management upgrade 4.5, "smart daily insights"): the
+           four lines the owner asked for — best routes, the emptiest coach,
+           the route that lost most tickets, and the agents who sold nothing.
+           Each read is independent; one failing never stops the digest. */
+        $insights = [];
+        if ($routes !== []) {
+            $insights[] = '🏆 Top routes: ' . implode(' · ', array_slice($routes, 0, 3));
+        }
+        try {
+            $low = null;
+            $sch = Database::fetchAll(
+                "SELECT s.id, s.total_seats, r.from_city, r.to_city, COALESCE(bu.bus_number, '') AS bus
+                   FROM schedules s JOIN routes r ON r.id = s.route_id LEFT JOIN buses bu ON bu.id = s.bus_id
+                  WHERE s.travel_date = :d AND s.status <> 'cancelled' AND s.total_seats > 0",
+                ['d' => $reportDate]
+            );
+            $sold = $sch !== [] ? Seats::occupiedBedsFor(array_map(static fn(array $x): int => (int) $x['id'], $sch)) : [];
+            foreach ($sch as $x) {
+                $pct = (int) round(((int) ($sold[(int) $x['id']] ?? 0)) * 100 / (int) $x['total_seats']);
+                if ($low === null || $pct < $low['pct']) {
+                    $low = ['pct' => $pct, 'label' => $x['from_city'] . ' → ' . $x['to_city'] . ($x['bus'] !== '' ? ' (' . $x['bus'] . ')' : ''), 'sold' => (int) ($sold[(int) $x['id']] ?? 0), 'total' => (int) $x['total_seats']];
+                }
+            }
+            if ($low !== null) {
+                $insights[] = '🪫 Lowest occupancy: ' . $low['label'] . ' — ' . $low['pct'] . '% (' . $low['sold'] . '/' . $low['total'] . ')';
+            }
+        } catch (Throwable $e) { /* occupancy is a nice-to-have */ }
+        try {
+            $cx = Database::fetch(
+                "SELECT r.from_city, r.to_city, COUNT(DISTINCT b.id) AS n
+                   FROM bookings b JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
+                   JOIN schedules s ON s.id = bl.schedule_id JOIN routes r ON r.id = s.route_id
+                  WHERE b.status = 'cancelled' AND b.cancelled_at >= :d0 AND b.cancelled_at < :d1
+                  GROUP BY r.id, r.from_city, r.to_city ORDER BY n DESC LIMIT 1",
+                ['d0' => $d0, 'd1' => $d1]
+            );
+            if ($cx !== null && (int) $cx['n'] > 0) {
+                $insights[] = '🚫 Most cancellations: ' . $cx['from_city'] . ' → ' . $cx['to_city'] . ' — ' . (int) $cx['n'];
+            }
+        } catch (Throwable $e) {}
+        try {
+            $idle = Database::fetchAll(
+                "SELECT a.full_name, a.username FROM admins a
+                  WHERE a.role = 'agent' AND a.is_active = 1
+                    AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.sold_by_admin_id = a.id AND b.created_at >= :d0 AND b.created_at < :d1)
+                  ORDER BY a.full_name",
+                ['d0' => $d0, 'd1' => $d1]
+            );
+            if ($idle !== []) {
+                $names = array_map(static fn(array $x): string => (string) ($x['full_name'] ?: $x['username']), $idle);
+                $insights[] = '😴 ' . count($names) . ' agent' . (count($names) === 1 ? '' : 's') . ' sold nothing: ' . implode(', ', array_slice($names, 0, 6)) . (count($names) > 6 ? ' …' : '');
+            }
+        } catch (Throwable $e) {}
+
         Notify::adminDailyDigest([
             'date'     => $reportDate,
             'bookings' => $bookings,
@@ -198,6 +252,7 @@ if (!Settings::getBool('admin_daily_digest_enabled', true)) {
             'pending'  => $pending,
             'routes'   => $routes,
             'agents'   => $topAgents,
+            'insights' => $insights,
         ]);
         $out['digest'] = ['bookings' => $bookings, 'revenue' => $revenue];
     } catch (Throwable $e) {

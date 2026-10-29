@@ -2965,6 +2965,11 @@ final class Notify
                . "Bookings: " . (int) $stats['bookings'] . " (" . (int) $stats['pax'] . " pax)\n"
                . "Revenue: " . inr((float) $stats['revenue']) . "\n"
                . "Pending approvals: " . (int) $stats['pending'];
+        // 29 Oct 2026: the day's insights (daily-summary.php), one line each.
+        $insights = array_values(array_filter((array) ($stats['insights'] ?? []), 'is_string'));
+        if ($insights !== []) {
+            $short .= "\n" . implode("\n", $insights);
+        }
 
         if (Settings::getBool('whatsapp_notify_admin', true) && $adminPhone !== '') {
             self::whatsapp($adminPhone, $short);
@@ -2986,6 +2991,7 @@ final class Notify
                 . '<p>Pending approvals: <strong>' . (int) $stats['pending'] . '</strong></p>'
                 . ($routeRows !== '' ? '<p><strong>By route</strong></p><ul>' . $routeRows . '</ul>' : '')
                 . ($agentRows !== '' ? '<p><strong>Top agents</strong></p><ul>' . $agentRows . '</ul>' : '')
+                . ($insights !== [] ? '<p><strong>Insights</strong></p><ul><li>' . implode('</li><li>', array_map('e', $insights)) . '</li></ul>' : '')
             );
             self::email($adminEmail, 'Daily digest · ' . $stats['date'], $html);
         }

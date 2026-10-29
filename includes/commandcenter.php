@@ -122,6 +122,9 @@ final class CommandCenter
         } catch (Throwable $e) {
             return [];
         }
+        if (!class_exists('Seats')) {
+            require_once INCLUDE_PATH . '/seats.php';
+        }
         $sold = $rows !== [] ? Seats::occupiedBedsFor(array_map(static fn(array $r): int => (int) $r['id'], $rows)) : [];
         $out  = [];
         foreach ($rows as $r) {

@@ -54,6 +54,9 @@ final class AdminAlerts
         'trip_late'      => ['Bus running late', 'A departure today has a delay of more than this many minutes. If you also set the second number, its passengers are told on WhatsApp once the delay reaches it (once per 30 minutes of delay; 0 = never, the default).', true,
                              ['minutes' => ['Delay above (minutes)', 30], 'auto' => ['WhatsApp passengers at (minutes, 0 = never)', 0]]],
         'task_due'       => ['Office task due', 'An office task (Office work page) is due today or overdue — one bell a day per task.', true, []],
+        'agent_low_target' => ['Agent behind target', 'From the 15th of the month, active agents whose sales are below this share of their monthly target (their own, else the company target) — one list a week.', true,
+                             ['pct' => ['Below (% of target)', 50]]],
+        'challan_stale'  => ['Challan out of date', 'A trip today or tomorrow gained or lost a ticket after its challan picture was drawn — reprint and resend it to the driver.', true, []],
     ];
 
     /**
@@ -298,6 +301,49 @@ final class AdminAlerts
                     ($late ? 'Was due ' . formatDate((string) $t['due_date'], 'j M') . '. ' : '') . ($t['priority'] === 'high' ? 'High priority. ' : '') . 'Mark it done on the Office work page when finished.',
                     '/admin/office-ops.php', '📝');
             }
+        }
+
+        /* --- 29 Oct 2026 (management upgrade 4.5): agents behind target --- */
+        if ($on('agent_low_target') && (int) date('j') >= 15 && is_file(INCLUDE_PATH . '/agenttargets.php')) {
+            require_once INCLUDE_PATH . '/agenttargets.php';
+            try {
+                $ym  = date('Y-m');
+                $pct = max(1, min(100, $num('agent_low_target', 'pct')));
+                $behind = [];
+                foreach (AgentTargets::salesBoard($ym) as $agentId => $money) {
+                    $t = AgentTargets::targetFor((int) $agentId, $ym);
+                    if ($t['amount'] > 0 && $money < $t['amount'] * $pct / 100) {
+                        $nm = (string) Database::scalar('SELECT COALESCE(NULLIF(full_name, \'\'), username) FROM admins WHERE id = :i', ['i' => (int) $agentId], '#' . $agentId);
+                        $behind[] = $nm . ' ' . (int) floor($money * 100 / $t['amount']) . '%';
+                    }
+                }
+                if ($behind !== []) {
+                    $add('agent_low_target', 'lowtgt:' . $week, count($behind) . ' agent' . (count($behind) === 1 ? ' is' : 's are') . ' under ' . $pct . '% of the monthly target',
+                        implode(', ', array_slice($behind, 0, 8)) . (count($behind) > 8 ? ' …' : '') . '. A call or an offer may help before the month ends.',
+                        '/admin/agent-ranking.php', '📉');
+                }
+            } catch (Throwable $e) {}
+        }
+
+        /* --- 29 Oct 2026 (management upgrade 4.5): challan out of date --- */
+        if ($on('challan_stale')) {
+            try {
+                foreach (Database::fetchAll(
+                    "SELECT x.schedule_id, x.made, s.travel_date, r.from_city, r.to_city, COALESCE(s.dep_time_override, r.dep_time) AS dep
+                       FROM (SELECT c.schedule_id, MAX(c.generated_at) AS made FROM challan_reports c
+                              WHERE c.report_date BETWEEN :d0 AND :d1 GROUP BY c.schedule_id) x
+                       JOIN schedules s ON s.id = x.schedule_id JOIN routes r ON r.id = s.route_id
+                      WHERE s.status <> 'cancelled' AND EXISTS (
+                            SELECT 1 FROM booking_legs bl JOIN bookings b ON b.id = bl.booking_id
+                             WHERE bl.schedule_id = x.schedule_id
+                               AND (b.confirmed_at > x.made OR (b.status = 'cancelled' AND b.cancelled_at > x.made)))",
+                    ['d0' => $today, 'd1' => addDaysISO($today, 1)]
+                ) as $r) {
+                    $add('challan_stale', 'chstale:' . (int) $r['schedule_id'] . ':' . (string) $r['made'], 'Challan out of date · ' . $r['from_city'] . ' → ' . $r['to_city'] . ' ' . substr((string) $r['dep'], 0, 5) . ' · ' . formatDate((string) $r['travel_date'], 'j M'),
+                        'A ticket was confirmed or cancelled after the challan was drawn at ' . substr((string) $r['made'], 11, 5) . '. Reprint it and send it to the driver again.',
+                        '/admin/chalan.php?sid=' . (int) $r['schedule_id'], '📋');
+                }
+            } catch (Throwable $e) {}
         }
 
         /* --- 29 Oct 2026 (management upgrade 3.4): boarding and delays --- */
