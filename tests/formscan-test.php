@@ -192,5 +192,26 @@ fs_ok($role('Accountant') === 'accountant', 'sa role: accountant');
 fs_ok($role('pilot') === '', 'sa role: unknown left for the applicant');
 fs_ok(!isset(FormScan::clean(['is_form' => true, 'fields' => ['sa_bifsc' => 'ABC']], 'staff', 'sa')['fields']['sa_bifsc']), 'sa: a bad IFSC is dropped');
 
+// --- 30 Oct 2026: the office view (labels, pages, the HTML block) ---
+fs_ok(FormScan::fieldLabel('f_name') === 'Full name', 'label: f_name -> Full name');
+fs_ok(FormScan::fieldLabel('sa_distprov') === 'District · Province', 'label: every English part after the Nepali');
+fs_ok(FormScan::fieldLabel('f_em_phone') === 'Emergency contact phone number', 'label: no brackets -> the text, capitalised');
+fs_ok(FormScan::fieldLabel('p_idtype') === 'परिचयपत्रको प्रकार', 'label: only Nepali in the brackets -> the Nepali');
+fs_ok(FormScan::fieldLabel('sa_role') === 'Job role', 'label: sa_role');
+fs_ok(FormScan::fieldLabel('zz_unknown') === 'zz_unknown', 'label: unknown id -> the id');
+$jpg = 'data:image/jpeg;base64,' . base64_encode('x');
+$row = ['id' => 7, 'scan_doc' => json_encode([$jpg, 'javascript:alert(1)', 42, 'data:text/html;base64,PGI+']), 'scan_ocr' => json_encode(['f_name' => 'Ram <b>', 'sa_qual' => 'plus2']),
+        'scan_ocr_status' => 'read', 'scanned_at' => '2026-10-30 00:25:02'];
+fs_ok(FormScan::pages($row) === [$jpg], 'pages: only image data URIs survive');
+fs_ok(FormScan::pages(['scan_doc' => 'not json']) === [] && FormScan::pages([]) === [], 'pages: bad or missing JSON -> none');
+$html = FormScan::officeHtml($row, 'staff', true);
+fs_ok(str_contains($html, 'scan-page.php?type=staff&amp;id=7&amp;p=0&amp;t=1'), 'office: thumbnail streams from scan-page.php');
+fs_ok(!str_contains($html, 'base64'), 'office: no base64 in the page');
+fs_ok(str_contains($html, 'Ram &lt;b&gt;') && !str_contains($html, 'Ram <b>'), 'office: what was read is escaped');
+fs_ok(str_contains($html, '<dt>Full name</dt>') && str_contains($html, '1 page · 30 Oct 2026, 00:25'), 'office: labels and page count / date');
+$html = FormScan::officeHtml($row, 'agent', false);
+fs_ok(str_contains($html, 'manager only') && !str_contains($html, 'scan-page.php') && !str_contains($html, 'Ram'), 'office: no pages and no values without KYC rights');
+fs_ok(FormScan::officeHtml(['scan_doc' => '[]'], 'agent', true) === '', 'office: nothing when no page');
+
 echo ($fail === 0 ? "OK" : "FAILED") . " — formscan-test: " . ($n - $fail) . "/$n passed\n";
 exit($fail === 0 ? 0 : 1);

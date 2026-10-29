@@ -497,6 +497,9 @@ if (!$ready) {
         <?php if (!empty($open[StaffApps::slotColumn($slot)])): ?><?= $docCard($slot, $lbl) ?><?php endif; ?>
       <?php endforeach; ?>
     </div>
+    <?php if (!empty($open['scan_doc'])): require_once INCLUDE_PATH . '/formscan.php'; /* 30 Oct 2026: scan-back - the hand-filled paper form the applicant photographed */ ?>
+    <div class="stf-doc" style="margin-top:10px"><b>📄 Paper form (scan)</b><?= FormScan::officeHtml($open, 'staff', $canKyc) ?></div>
+    <?php endif; ?>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
       <?php if (is_array($dv)): foreach ($dv as $doc => $r): ?>
         <span class="text-xs"><b><?= $h($doc === 'id' ? 'ID' : 'Licence') ?>:</b> <?= $h((string) ($r['summary'] ?? (($r['status'] ?? '') . ' ' . ($r['note'] ?? '')))) ?></span>

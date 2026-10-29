@@ -513,6 +513,9 @@ if (!$ready) {
           </dd>
           <?php endif; ?>
         <?php endforeach; ?>
+        <?php if (!empty($open['scan_doc'])): require_once INCLUDE_PATH . '/formscan.php'; /* 30 Oct 2026: scan-back - the hand-filled paper form the applicant photographed */ ?>
+        <dt>📄 Paper form (scan)</dt><dd><?= FormScan::officeHtml($open, 'agent', $canKyc) ?></dd>
+        <?php endif; ?>
         <?php if ($isOrg && AgentApplications::certReady() && empty($open['reg_cert'])): ?>
         <dt>Company papers</dt><dd><span style="color:var(--bad,#c62828);font-weight:700">⚠️ No registration certificate sent</span> <span class="muted text-xs">— ask for a copy (and the PAN / VAT certificate) before KYC = Verified</span></dd>
         <?php endif; ?>

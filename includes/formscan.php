@@ -362,6 +362,95 @@ final class FormScan
         return '';
     }
 
+    /* =================================================================
+     *  30 Oct 2026: the office's view of a scan attached to an application
+     *  (admin/agreements.php, admin/staff-applications.php). The pages are
+     *  streamed one by one by admin/scan-page.php - the office page never
+     *  carries the base64 itself.
+     * ================================================================= */
+
+    /**
+     * The scanned pages kept on an application row (scan_doc), in order.
+     *
+     * @param array<string, mixed> $row
+     * @return list<string> data: URIs of JPEG / PNG / WEBP images
+     */
+    public static function pages(array $row): array
+    {
+        $list = json_decode((string) ($row['scan_doc'] ?? ''), true);
+        if (!is_array($list)) {
+            return [];
+        }
+        return array_values(array_filter($list, static fn($p): bool => is_string($p)
+            && preg_match('#^data:image/(?:jpeg|png|webp);base64,#', $p) === 1));
+    }
+
+    /** A short office label for a box the reader filled ('f_idno' -> 'ID number'), from the catalogs. */
+    public static function fieldLabel(string $id): string
+    {
+        foreach (self::FORMS as $form) {
+            foreach (['ind', 'org', 'staff'] as $kind) {
+                $label = self::catalog($kind, $form)[$id][0] ?? null;
+                if ($label === null) {
+                    continue;
+                }
+                // "(पूरा नाम · Full name)" -> "Full name", "(जिल्ला · प्रदेश · District · Province)" -> "District · Province",
+                // "(परिचयपत्रको प्रकार)" -> the Nepali; no brackets -> the text itself
+                if (preg_match('/\(([^()]*)\)\s*$/u', $label, $m) === 1) {
+                    $parts = array_map('trim', explode('·', $m[1]));
+                    $tail  = [];
+                    for ($i = count($parts) - 1; $i >= 0 && preg_match('/\p{Devanagari}/u', $parts[$i]) !== 1; $i--) {
+                        array_unshift($tail, $parts[$i]);
+                    }
+                    return $tail !== [] ? implode(' · ', $tail) : trim($m[1]);
+                }
+                return mb_strtoupper(mb_substr($label, 0, 1)) . mb_substr($label, 1);
+            }
+        }
+        return $id;
+    }
+
+    /**
+     * The scan block on an office page: thumbnails of the pages (full size on a tap) and what the AI read.
+     * ID numbers, dates of birth and bank details are on the paper, so only a manager / super-admin sees it.
+     *
+     * @param array<string, mixed> $row  the application row (id, scan_doc, scan_ocr, scan_ocr_status, scanned_at)
+     * @param string               $type 'agent' | 'staff' (admin/scan-page.php?type=)
+     */
+    public static function officeHtml(array $row, string $type, bool $canKyc): string
+    {
+        $pages = self::pages($row);
+        if ($pages === []) {
+            return '';
+        }
+        $e    = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $n    = count($pages);
+        $when = !empty($row['scanned_at']) ? date('d M Y, H:i', (int) strtotime((string) $row['scanned_at'])) : '';
+        $meta = $n . ' page' . ($n === 1 ? '' : 's') . ($when !== '' ? ' · ' . $when : '')
+              . ((string) ($row['scan_ocr_status'] ?? '') === 'partial' ? ' · the AI could not read the boxes' : '');
+        if (!$canKyc) {
+            return '<span class="muted">Sent (' . $e($meta) . ') — shown to a manager only</span>';
+        }
+        $out = '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+        foreach (array_keys($pages) as $i) {
+            $url  = 'scan-page.php?type=' . ($type === 'staff' ? 'staff' : 'agent') . '&id=' . (int) ($row['id'] ?? 0) . '&p=' . $i;
+            $out .= '<a href="' . $e($url) . '" target="_blank" rel="noopener" title="Page ' . ($i + 1) . ' — open full size">'
+                  . '<img src="' . $e($url . '&t=1') . '" alt="Scanned page ' . ($i + 1) . '" loading="lazy" width="120" height="160"'
+                  . ' style="width:120px;height:160px;object-fit:cover;object-position:top;border:1px solid var(--line);border-radius:8px;background:#fff;display:block"></a>';
+        }
+        $out .= '</div><div class="muted text-xs" style="margin-top:4px">' . $e($meta)
+              . ' — the applicant filled it by hand; the AI pre-filled the online boxes and the applicant checked them. Compare with what was sent.</div>';
+        $read = json_decode((string) ($row['scan_ocr'] ?? ''), true);
+        if (is_array($read) && $read !== []) {
+            $out .= '<details style="margin-top:6px"><summary class="muted text-xs" style="cursor:pointer">What the AI read from the paper (' . count($read) . ')</summary><dl class="kv-list">';
+            foreach ($read as $id => $v) {
+                $out .= '<dt>' . $e(self::fieldLabel((string) $id)) . '</dt><dd>' . $e(is_scalar($v) ? (string) $v : '') . '</dd>';
+            }
+            $out .= '</dl></details>';
+        }
+        return $out;
+    }
+
     /** @return array{bytes: string, mime: string}|null */
     private static function decode(string $dataUri): ?array
     {
