@@ -53,7 +53,8 @@ $rows = Database::fetchAll(
 
 $count = ['bus' => 0, 'off' => 0, 'same' => 0, 'conflict' => 0, 'keep' => 0];
 foreach ($rows as $r) {
-    $plan = Fleet::planFor($r, (string) $r['travel_date']);
+    // planFor() matches the slot's routes by ROUTE id - $r['id'] is the schedule id here.
+    $plan = Fleet::planFor(['id' => (int) $r['route_id'], 'from_city' => $r['from_city'], 'to_city' => $r['to_city']], (string) $r['travel_date']);
     $used = (int) $r['used'] > 0;
     $tag  = sprintf('#%-5d %s %-4s', $r['id'], $r['travel_date'], $r['route_code']);
 

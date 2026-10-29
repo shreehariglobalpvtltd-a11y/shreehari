@@ -64,7 +64,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     (int) ($_POST['cycle_days'] ?? 3),
                     (string) ($_POST['start_date'] ?? $today),
                     (int) $admin['id'],
-                    (string) ($_POST['rotation_mode'] ?? 'daily')
+                    (string) ($_POST['rotation_mode'] ?? 'daily'),
+                    [
+                        // 29 Oct 2026: the owner's round-trip chart - departures every
+                        // `stagger` days, the bus leaves the Nepal side `backAfter`
+                        // days after leaving Gujarat, each bus on its own routes.
+                        'stagger'   => (int) ($_POST['rt_stagger'] ?? 2),
+                        'backAfter' => (int) ($_POST['rt_back_after'] ?? 3),
+                        'routes'    => (static function (): array {
+                            $r = [];
+                            foreach ((array) ($_POST['rt_out'] ?? []) as $busId => $v) {
+                                $r[(int) $busId]['out'] = (int) $v;
+                            }
+                            foreach ((array) ($_POST['rt_back'] ?? []) as $busId => $v) {
+                                $r[(int) $busId]['back'] = (int) $v;
+                            }
+                            return $r;
+                        })(),
+                    ]
                 );
                 $flash = ['ok', 'Bus rotation saved.'];
 
@@ -384,6 +401,8 @@ if ($flash !== null) {
    small fleet taking turns. Slot 1,2,3… is the order they take. */
 $rot     = Fleet::rotation();
 $allBus  = Fleet::allBuses();
+require_once INCLUDE_PATH . '/fare.php';
+$rtRoutes = Database::fetchAll('SELECT id, route_code, from_city, to_city, is_active FROM routes ORDER BY is_active DESC, sort_order, id');
 $slotOf  = array_flip($rot['buses']);   // busId => index (0-based)
 $preview = Fleet::upcoming(7);
 $csrfT   = Security::e(Security::csrfToken());
@@ -410,8 +429,14 @@ $kT      = CSRF_TOKEN_NAME;
       <label style="font-size:12px;color:var(--mut)">How the buses take turns
         <select name="rotation_mode" style="display:block;margin-top:4px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
           <option value="daily" <?= $rot['mode'] === 'daily' ? 'selected' : '' ?>>Same bus both directions each day (old)</option>
-          <option value="round_trip" <?= $rot['mode'] === 'round_trip' ? 'selected' : '' ?>>Round trip: out days 1–3, back days 4–6</option>
+          <option value="round_trip" <?= $rot['mode'] === 'round_trip' ? 'selected' : '' ?>>Round trip (6-day turnaround chart)</option>
         </select></label>
+      <label style="font-size:12px;color:var(--mut)">Round trip: a departure every
+        <input type="number" name="rt_stagger" min="1" max="10" value="<?= (int) $rot['stagger'] ?>"
+               style="width:70px;display:block;margin-top:4px;padding:8px 10px;border:1px solid var(--line);border-radius:8px"> days</label>
+      <label style="font-size:12px;color:var(--mut)">Leaves the Nepal side after
+        <input type="number" name="rt_back_after" min="1" max="<?= Fleet::MAX_CYCLE_DAYS ?>" value="<?= (int) $rot['backAfter'] ?>"
+               style="width:70px;display:block;margin-top:4px;padding:8px 10px;border:1px solid var(--line);border-radius:8px"> days</label>
       <button class="btn" type="submit">Save rotation</button>
     </div>
 
@@ -420,9 +445,15 @@ $kT      = CSRF_TOKEN_NAME;
       Leave a bus blank to keep it out. Three buses = a bus is back on the third day.
       Changing a bus <b>number</b> below keeps its slot, so you can swap the actual coach any day.
     </p>
+    <p class="muted" style="font-size:12.5px;margin:0 0 10px">
+      <b>Round trip</b> (the 3-bus chart): slot 1 leaves Gujarat on cycle day 1, slot 2 on day 3, slot 3 on day 5; each
+      leaves the Nepal side 3 days later. Pick each bus's own route each way (2 Surat buses + 1 Rajkot bus) — a route then
+      runs only on its bus's days. <i>Not set yet</i> = that bus's days are not sold until its route exists.
+      · हरेक बसको आफ्नै रुट छान्नुहोस्।
+    </p>
 
     <table>
-      <thead><tr><th style="width:90px">Slot</th><th>Bus name</th><th>Bus number</th><th>Type</th><th></th></tr></thead>
+      <thead><tr><th style="width:90px">Slot</th><th>Bus name</th><th>Bus number</th><th>Type</th><th>Round-trip routes (→ Nepal / → India)</th></tr></thead>
       <tbody>
       <?php foreach ($allBus as $b): $bid = (int) $b['id']; ?>
         <tr<?= (int) $b['is_active'] === 0 ? ' style="opacity:.55"' : '' ?>>
@@ -442,6 +473,17 @@ $kT      = CSRF_TOKEN_NAME;
               <span class="muted" style="font-size:12px;width:70px"><?= Security::e((string) $b['coach_type']) ?></span>
               <button form="busf<?= $bid ?>" class="btn ghost" type="submit">💾</button>
             </div>
+          </td>
+          <td>
+            <?php foreach (['out' => 'toNepal', 'back' => 'toIndia'] as $leg => $dir): $cur = (int) ($rot['routes'][$bid][$leg] ?? 0); ?>
+              <select name="rt_<?= $leg ?>[<?= $bid ?>]" style="display:block;margin:2px 0;padding:6px 8px;border:1px solid var(--line);border-radius:8px;max-width:240px">
+                <option value="0" <?= $cur === 0 ? 'selected' : '' ?>><?= $leg === 'out' ? '→ Nepal: any route' : '→ India: any route' ?></option>
+                <option value="-1" <?= $cur === -1 ? 'selected' : '' ?>><?= $leg === 'out' ? '→ Nepal' : '→ India' ?>: not set yet (not sold)</option>
+                <?php foreach ($rtRoutes as $rr): if (Fare::routeDir($rr) !== $dir) { continue; } ?>
+                  <option value="<?= (int) $rr['id'] ?>" <?= $cur === (int) $rr['id'] ? 'selected' : '' ?>><?= Security::e($rr['route_code'] . ' · ' . $rr['from_city'] . ' → ' . $rr['to_city'] . ((int) $rr['is_active'] === 1 ? '' : ' (off)')) ?></option>
+                <?php endforeach; ?>
+              </select>
+            <?php endforeach; ?>
           </td>
         </tr>
       <?php endforeach; ?>
@@ -467,14 +509,14 @@ $kT      = CSRF_TOKEN_NAME;
         }; ?>
     <div style="padding:0 18px 16px">
       <div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
-        Round trip — next 12 days (→ Nepal / → India)
+        Round trip — next 12 days (who leaves Gujarat / who leaves the Nepal side)
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <?php foreach ($rtPreview as $p): ?>
           <div style="border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-width:150px">
             <div style="font-size:11.5px;color:var(--mut)"><?= Security::e(formatDate($p['date'])) ?></div>
-            <div style="font-size:12.5px"><?= $p['out'] !== null ? '→ 🇳🇵 <b>' . Security::e($busLbl($p['out'])) . '</b>' : '<span class="muted">→ 🇳🇵 no bus</span>' ?></div>
-            <div style="font-size:12.5px"><?= $p['back'] !== null ? '→ 🇮🇳 <b>' . Security::e($busLbl($p['back'])) . '</b>' : '<span class="muted">→ 🇮🇳 no bus</span>' ?></div>
+            <div style="font-size:12.5px"><?= $p['out'] !== null ? '→ 🇳🇵 <b>Bus 0' . (int) $p['outSlot'] . '</b> ' . Security::e($busLbl($p['out'])) : '<span class="muted">→ 🇳🇵 no departure</span>' ?></div>
+            <div style="font-size:12.5px"><?= $p['back'] !== null ? '→ 🇮🇳 <b>Bus 0' . (int) $p['backSlot'] . '</b> ' . Security::e($busLbl($p['back'])) : '<span class="muted">→ 🇮🇳 no departure</span>' ?></div>
           </div>
         <?php endforeach; ?>
       </div>

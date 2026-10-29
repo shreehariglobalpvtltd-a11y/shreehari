@@ -1,14 +1,17 @@
 <?php
 /**
- * Round-trip bus rotation + corridor distance (29 Oct 2026 audit).
+ * Round-trip bus rotation (the owner's "3 Bus Round Trip Routine" chart,
+ * 29 Oct 2026) + corridor distance.
  *
  *   php -c .claude/php-dev.ini tests/fleet-roundtrip-test.php
  *
- * Pins: with 3 buses in round-trip mode, outbound runs on cycle days 1-3 and
- * the same buses come back on days 4-6; a direction never has a bus on the
- * other direction's days; the daily mode still gives one bus per date; no
- * rotation leaves the route's own bus. Works on the in-memory settings cache
- * only — nothing is written. CLI only.
+ * The chart: Bus 01 leaves Gujarat on day 1 and the Nepal side on day 4,
+ * Bus 02 on days 3 and 6, Bus 03 on days 5 and 8 (= day 2) — a 6-day
+ * turnaround, a departure every 2 days. Bus 01 and 02 run the Surat route,
+ * Bus 03 its own (Rajkot) route. Pins: every chart day, one bus never at both
+ * ends, a route runs only on its own bus's days, "not set yet" is not sold,
+ * daily mode unchanged. Works on the in-memory settings cache only —
+ * nothing is written. CLI only.
  */
 declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
@@ -36,39 +39,69 @@ function useRotation(?array $rot): void {
     $c->setValue(null, $cache);
     (new ReflectionProperty(Settings::class, 'decoded'))->setValue(null, []);
 }
+function runs(array $route, string $date): ?int {
+    $p = Fleet::planFor($route, $date);
+    return $p['runs'] ? $p['bus'] : null;
+}
 
-$out  = ['to_city' => 'Rupaidiha', 'from_city' => 'Surat'];
-$back = ['to_city' => 'Surat', 'from_city' => 'Rupaidiha'];
+$surOut = ['id' => 2,  'from_city' => 'Surat',     'to_city' => 'Rupaidiha'];
+$surBack = ['id' => 7, 'from_city' => 'Rupaidiha', 'to_city' => 'Surat'];
+$rjtOut = ['id' => 91, 'from_city' => 'Rajkot',    'to_city' => 'Rupaidiha'];
+$rjtBack = ['id' => 92, 'from_city' => 'Rupaidiha', 'to_city' => 'Rajkot'];
 
-useRotation(['enabled' => true, 'buses' => [2, 7, 9], 'cycleDays' => 3, 'startDate' => '2026-10-30', 'mode' => 'round_trip']);
-$expect = [
-    '2026-10-30' => [2, null], '2026-10-31' => [7, null], '2026-11-01' => [9, null],
-    '2026-11-02' => [null, 2], '2026-11-03' => [null, 7], '2026-11-04' => [null, 9],
-    '2026-11-05' => [2, null], '2026-10-29' => [null, 9],
+$chart = [
+    'enabled' => true, 'buses' => [2, 7, 9], 'cycleDays' => 3, 'startDate' => '2026-10-30', 'mode' => 'round_trip',
+    'stagger' => 2, 'backAfter' => 3,
+    'routes'  => [2 => ['out' => 2, 'back' => 7], 7 => ['out' => 2, 'back' => 7], 9 => ['out' => 91, 'back' => 92]],
 ];
-foreach ($expect as $d => [$o, $b]) {
-    $po = Fleet::planFor($out, $d);
-    $pb = Fleet::planFor($back, $d);
-    check("$d outbound " . ($o ?? 'off') . ' / return ' . ($b ?? 'off'),
-        ($po['runs'] ? $po['bus'] : null) === $o && ($pb['runs'] ? $pb['bus'] : null) === $b);
+useRotation($chart);
+
+// date => [Surat out, Surat back, Rajkot out, Rajkot back]  (chart day in the label)
+$expect = [
+    '2026-10-30' => ['day 1  Bus 01 leaves Surat',          [2, null, null, null]],
+    '2026-10-31' => ['day 2  Bus 03 leaves Nepal (Rajkot)', [null, null, null, 9]],
+    '2026-11-01' => ['day 3  Bus 02 leaves Surat',          [7, null, null, null]],
+    '2026-11-02' => ['day 4  Bus 01 leaves Nepal (Surat)',  [null, 2, null, null]],
+    '2026-11-03' => ['day 5  Bus 03 leaves Rajkot',         [null, null, 9, null]],
+    '2026-11-04' => ['day 6  Bus 02 leaves Nepal (Surat)',  [null, 7, null, null]],
+    '2026-11-05' => ['day 7  Bus 01 leaves Surat again',    [2, null, null, null]],
+    '2026-10-29' => ['day 0  Bus 02 leaves Nepal (Surat)',  [null, 7, null, null]],
+];
+foreach ($expect as $d => [$label, $want]) {
+    $got = [runs($surOut, $d), runs($surBack, $d), runs($rjtOut, $d), runs($rjtBack, $d)];
+    check("$d $label", $got === $want);
 }
-$sameDay = false;
-for ($i = 0; $i < 30; $i++) {
+
+$clash = false;
+for ($i = 0; $i < 60; $i++) {
     $d = addDaysISO('2026-10-30', $i);
-    $po = Fleet::planFor($out, $d);
-    $pb = Fleet::planFor($back, $d);
-    if ($po['runs'] && $pb['runs']) { $sameDay = true; }
+    $buses = array_filter([runs($surOut, $d), runs($surBack, $d), runs($rjtOut, $d), runs($rjtBack, $d)]);
+    if (count($buses) !== count(array_unique($buses))) { $clash = true; }
 }
-check('never both directions on one day (one bus cannot be at both ends)', !$sameDay);
-check('a bus that leaves on day 1 is the one that returns on day 4',
-    Fleet::planFor($out, '2026-10-30')['bus'] === Fleet::planFor($back, '2026-11-02')['bus']);
+check('60 days: no bus is ever at both ends on one day', !$clash);
+check('Bus 01 leaves Nepal 3 days after it leaves Gujarat',
+    runs($surOut, '2026-10-30') === 2 && runs($surBack, '2026-11-02') === 2);
+check('a departure every 2 days from Gujarat (any route)', (static function () use ($surOut, $rjtOut): bool {
+    for ($i = 0; $i < 12; $i++) {
+        $d = addDaysISO('2026-10-30', $i);
+        $any = runs($surOut, $d) !== null || runs($rjtOut, $d) !== null;
+        if ($any !== ($i % 2 === 0)) { return false; }
+    }
+    return true;
+})());
+
+$notSet = $chart;
+$notSet['routes'][9] = ['out' => -1, 'back' => -1];
+useRotation($notSet);
+check('Bus 03 route "not set yet": its day sells nothing on the Surat route',
+    runs($surOut, '2026-11-03') === null && runs($surBack, '2026-10-31') === null);
 
 useRotation(['enabled' => true, 'buses' => [2, 7, 9], 'cycleDays' => 3, 'startDate' => '2026-10-30', 'mode' => 'daily']);
-$a = Fleet::planFor($out, '2026-10-31');
+$a = Fleet::planFor($surOut, '2026-10-31');
 check('daily mode is unchanged: runs every day with the date\'s bus', $a['runs'] === true && $a['bus'] === 7);
 
 useRotation(null);
-$n = Fleet::planFor($out, '2026-10-31');
+$n = Fleet::planFor($surOut, '2026-10-31');
 check('no rotation: runs, route keeps its own bus', $n['runs'] === true && $n['bus'] === null);
 
 $km = SiteFacts::routeKm();
