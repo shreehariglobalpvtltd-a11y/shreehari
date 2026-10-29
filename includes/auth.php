@@ -161,6 +161,135 @@ final class Auth
     ];
 
     /* =================================================================
+     *  Permission matrix (29 Oct 2026, owner's management-system prompt,
+     *  Phase 1 "Role × Feature checkbox grid"). ROLE_PERMISSIONS above stays
+     *  the default; the super-admin may tick a box on or off per role from
+     *  admin/permissions.php, saved in the settings row
+     *  `role_permissions_override` as {role: {permission: true|false}}.
+     *  can() reads the merged set. Untouched boxes follow the code, so a
+     *  permission added to a role in a later release still reaches it.
+     * ================================================================= */
+
+    /**
+     * Every permission the code checks, grouped by module, with what it opens.
+     * The matrix shows exactly these; an override for anything else is ignored.
+     */
+    public const PERMISSION_CATALOG = [
+        'Dashboard & Reports' => [
+            'dashboard.view'  => 'Dashboard, analytics, settings screens (read)',
+            'reports.view'    => 'Company money: accounting, payroll, counters',
+            'reports.export'  => 'Download registers / Excel exports',
+        ],
+        'Bookings' => [
+            'bookings.view'       => 'Ticket register, sell from the seat map',
+            'bookings.edit'       => 'Change passenger, seat, pickup on any ticket',
+            'bookings.cancel'     => 'Cancel ANY ticket',
+            'bookings.cancel_own' => 'Cancel only tickets they sold',
+            'bookings.reassign'   => 'Change who sold a ticket (commission follows)',
+            'tickets.scan'        => 'Boarding QR scanner',
+            'waitlist.view'       => 'Waitlist',
+        ],
+        'Payments & Refunds' => [
+            'payments.view'   => 'Payments queue',
+            'payments.verify' => 'Verify a payment',
+            'payments.reject' => 'Reject a payment',
+            'refunds.view'    => 'Refund desk (read)',
+            'refunds.process' => 'Approve / pay a refund',
+        ],
+        'Commissions & Wallet' => [
+            'commissions.view' => 'Agent ledgers, sales, settlements (read)',
+            'commissions.pay'  => 'Settle / pay an agent',
+        ],
+        'Routes, Schedules & Fleet' => [
+            'routes.view'      => 'Routes & stops (read)',
+            'routes.edit'      => 'Edit routes, stops, fares',
+            'schedules.view'   => 'Trips, seat map, calendar (read)',
+            'schedules.edit'   => 'Edit a schedule',
+            'schedules.manage' => 'Block / cancel / retime a bus, routine, GPS',
+            'buses.view'       => 'Fleet (read)',
+            'buses.edit'       => 'Edit buses',
+            'drivers.view'     => 'Drivers & crew (read)',
+            'drivers.edit'     => 'Edit drivers & crew',
+            'liveops.view'     => 'Live operations (read)',
+            'liveops.edit'     => 'Live operations (act)',
+        ],
+        'People & Customers' => [
+            'staff.manage'   => 'Staff, agents, logins, team approvals',
+            'customers.view' => 'Customer CRM, agents register, invites',
+            'coupons.view'   => 'Offers & coupons (read)',
+            'coupons.edit'   => 'Create / edit offers',
+        ],
+        'WhatsApp, Support & Marketing' => [
+            'messages.view'   => 'Message logs',
+            'support.view'    => 'Support inbox (read)',
+            'support.reply'   => 'Reply to customers',
+            'marketing.send'  => 'Launch customer campaigns',
+            'staffmsg.office' => 'Office chat with agents / counters (office side)',
+        ],
+        'Settings' => [
+            'settings.manage' => 'Change switches, fares, AI knowledge',
+        ],
+    ];
+
+    /** Permissions that move money or open other people's data — shown in red. */
+    public const SENSITIVE_PERMISSIONS = [
+        'bookings.cancel', 'bookings.reassign', 'refunds.process', 'commissions.pay',
+        'staff.manage', 'settings.manage', 'reports.export', 'reports.view', 'marketing.send',
+    ];
+
+    /** Roles the matrix may change. superadmin is everything, always. */
+    public const MATRIX_ROLES = ['manager', 'accountant', 'operations', 'support', 'official', 'counter', 'agent', 'scanner', 'viewer'];
+
+    /** @return array<string, string> permission => label, flat */
+    public static function permissionList(): array
+    {
+        $out = [];
+        foreach (self::PERMISSION_CATALOG as $perms) {
+            $out += $perms;
+        }
+        return $out;
+    }
+
+    /** The code's own list for a role (before any override). @return array<int,string> */
+    public static function defaultRolePermissions(string $role): array
+    {
+        return self::ROLE_PERMISSIONS[$role] ?? [];
+    }
+
+    /**
+     * What a role may do right now: the code's list with the super-admin's
+     * ticks applied. A broken setting falls back to the code's list.
+     *
+     * @return array<int,string>
+     */
+    public static function rolePermissions(string $role): array
+    {
+        $perms = self::ROLE_PERMISSIONS[$role] ?? [];
+        if (!in_array($role, self::MATRIX_ROLES, true)) {
+            return $perms;
+        }
+        $over = Settings::getArray('role_permissions_override', []);
+        if (!isset($over[$role]) || !is_array($over[$role])) {
+            return $perms;
+        }
+        $known = self::permissionList();
+        foreach ($over[$role] as $perm => $on) {
+            $perm = (string) $perm;
+            if (!isset($known[$perm])) {
+                continue;
+            }
+            if (filter_var($on, FILTER_VALIDATE_BOOLEAN)) {
+                if (!in_array($perm, $perms, true)) {
+                    $perms[] = $perm;
+                }
+            } else {
+                $perms = array_values(array_diff($perms, [$perm]));
+            }
+        }
+        return $perms;
+    }
+
+    /* =================================================================
      *  Cancel authorisation — one rule, used by the single-ticket cancel
      *  (booking-view.php), the register row button and the bulk endpoint.
      * ================================================================= */
@@ -646,6 +775,11 @@ final class Auth
         // never be the reason someone cannot sign in.
         $newDevice = LoginLog::record((string) $admin['username'], 'success', (int) $admin['id']);
         $_SESSION[ADMIN_SESSION_KEY]['new_device'] = $newDevice;
+
+        // 29 Oct 2026: one row per signed-in browser, so the office can see
+        // it and end it (admin/sessions.php). After LoginLog, which mints the
+        // device cookie the row records. '' (no registry) changes nothing.
+        $_SESSION[ADMIN_SESSION_KEY]['sk'] = AdminSessions::open((int) $admin['id'], $viaOtp ? 'otp' : 'password');
 
         Logger::audit('admin.login', 'admin', (string) $admin['id'], null, null,
             'Signed in from ' . $ip . ($viaOtp ? ' (agent OTP)' : ''));
@@ -1168,6 +1302,7 @@ final class Auth
                 'logout',
                 (int) $_SESSION[ADMIN_SESSION_KEY]['id']
             );
+            AdminSessions::close((string) ($_SESSION[ADMIN_SESSION_KEY]['sk'] ?? ''));
         }
 
         unset($_SESSION[ADMIN_SESSION_KEY]);
@@ -1231,10 +1366,18 @@ final class Auth
                     && strtotime((string) $row['locked_until']) > time();
                 $stamp     = $row !== null ? self::pwStamp((string) ($row['password_hash'] ?? '')) : '';
                 $pwChanged = $row !== null && isset($admin['pw']) && !hash_equals($stamp, (string) $admin['pw']);
-                if ($row === null || (int) $row['is_active'] !== 1 || $locked || $pwChanged) {
+                // 29 Oct 2026: the office ended this browser (admin/sessions.php).
+                // Asked only when everything else passed; registers a session
+                // opened before the registry existed instead of ending it.
+                $ended = false;
+                if ($row !== null && (int) $row['is_active'] === 1 && !$locked && !$pwChanged) {
+                    $ended = !AdminSessions::stillOpen($_SESSION[ADMIN_SESSION_KEY]);
+                }
+                if ($row === null || (int) $row['is_active'] !== 1 || $locked || $pwChanged || $ended) {
                     Logger::audit('admin.session_revoked', 'admin', (string) $admin['id'], null, null,
                         $row === null ? 'account deleted' : ($locked ? 'account locked'
-                            : ((int) $row['is_active'] !== 1 ? 'account deactivated' : 'password changed')));
+                            : ((int) $row['is_active'] !== 1 ? 'account deactivated'
+                            : ($ended ? 'session ended by the office' : 'password changed'))));
                     // Not adminLogout(): that writes a 'logout' login-log row
                     // in the person's name and regenerates the session id,
                     // which has no session to regenerate under the CLI.
@@ -1369,7 +1512,7 @@ final class Auth
             return true;
         }
 
-        $rolePerms  = self::ROLE_PERMISSIONS[$role] ?? [];
+        $rolePerms  = self::rolePermissions($role);
         $extraPerms = is_array($admin['permissions'] ?? null) ? $admin['permissions'] : [];
 
         return in_array($permission, $rolePerms, true)

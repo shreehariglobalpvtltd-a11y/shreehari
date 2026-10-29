@@ -99,6 +99,7 @@ require_once INCLUDE_PATH . '/bookingchannel.php';   // one source tag per booki
 require_once INCLUDE_PATH . '/devshape.php';   // HarfBuzz Devanagari shaping for PNG / PDF text (24 Sep 2026)
 // Before auth.php: Auth records every sign-in attempt through LoginLog.
 require_once INCLUDE_PATH . '/loginlog.php';
+require_once INCLUDE_PATH . '/adminsessions.php';   // every signed-in office browser; the office can end one (29 Oct 2026)
 require_once INCLUDE_PATH . '/auth.php';
 // Per-pickup cut-off: decides whether a boarding point on today's run is
 // still catchable. Needed by both the search endpoint and the booking

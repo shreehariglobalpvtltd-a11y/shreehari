@@ -83,6 +83,8 @@ function admin_nav(): array
         ['href' => 'agents.php',       'icon' => 'user-cog',  'label' => 'Agents & Pvt Ltd Accounts', 'perm' => 'customers.view', 'section' => $S1],
         ['href' => 'agent.php',        'icon' => 'ticket-alt', 'label' => $agentView ? 'My Agent Dashboard' : 'Master & Sub-Agent Portal', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S1],
         ['href' => 'staff.php',        'icon' => 'users',      'label' => 'Counter Staff & Logins', 'perm' => 'staff.manage',     'section' => $S1],
+        ['href' => 'permissions.php',  'icon' => 'shield',     'label' => 'Roles & Permissions',    'perm' => 'staff.manage',     'section' => $S1],
+        ['href' => 'sessions.php',     'icon' => 'shield',     'label' => 'Sessions & Login Security', 'perm' => 'staff.manage',  'section' => $S1],
         ['href' => 'staff-applications.php', 'icon' => 'doc',  'label' => 'Staff Applications',     'perm' => 'drivers.view',     'section' => $S1],
         ['href' => 'team-invite.php',  'icon' => 'mail',       'label' => 'Invites & Renewals',     'perm' => 'customers.view',   'section' => $S1],
         ['href' => 'drivers.php',      'icon' => 'user-solo',  'label' => 'Drivers & Bus Crew',     'perm' => 'drivers.view',     'section' => $S1],
