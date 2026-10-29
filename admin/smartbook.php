@@ -259,4 +259,66 @@ document.addEventListener('DOMContentLoaded', function () {
   }, 600);
 });
 </script>
+<?php /* 29 Oct 2026 (management upgrade 2.2): desk keyboard + a beep on a sale.
+   Staff page only, so the shared card script (27-smartbook.js, also served
+   to customers) is untouched. Ctrl+Enter = book + print and Enter = one more
+   passenger stay as they were; these are the extra keys a counter asked for. */ ?>
+<div class="sbx-keys" id="sbxKeys" aria-hidden="true">⌨ <b>F2</b> new booking · <b>F3</b> find PNR · <b>F5</b> refresh seats · <b>Esc</b> close · <b>Ctrl+Enter</b> book &amp; print</div>
+<style>
+.sbx-keys{display:none;margin:10px auto 0;max-width:980px;font-size:12px;color:var(--mut);text-align:center}
+.sbx-keys b{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;background:var(--card);color:var(--ink);font-size:11px}
+@media (pointer:fine){.sbx-keys{display:block}}
+</style>
+<script>
+(function () {
+  function sb() { return window.SmartBook || null; }
+  function vis(id) { var el = document.getElementById(id); return !!(el && !el.hidden); }
+  function click(id) { var el = document.getElementById(id); if (el) { el.click(); return true; } return false; }
+  document.addEventListener('keydown', function (e) {
+    if (e.altKey || e.metaKey) return;
+    if (e.key === 'F2') {                       // a fresh card for the next customer
+      e.preventDefault();
+      if (sb() && sb().resetForNext) { sb().resetForNext(); }
+      if (vis('sbTicket')) { document.getElementById('sbTicket').hidden = true; }
+      var ph = document.getElementById('sbPhone'); if (ph) { ph.focus(); }
+    } else if (e.key === 'F3') {                // the top-bar search finds a PNR / phone / seat
+      e.preventDefault();
+      var q = document.querySelector('.tb-search input[name="q"]');
+      if (q) { q.focus(); q.select(); }
+    } else if (e.key === 'F5' && !e.ctrlKey && !e.shiftKey) {   // Ctrl+F5 / Shift+F5 still reload the page
+      e.preventDefault();
+      if (sb() && sb().requote) { sb().requote(0); }
+    } else if (e.key === 'Escape') {            // the seat map has no Esc of its own
+      if (vis('sbSheet')) { click('sbSheetX'); }
+      else if (vis('sbModal')) { document.getElementById('sbModal').hidden = true; document.body.classList.remove('shg-modal-open'); }
+    }
+  });
+
+  /* A short beep when a ticket is issued: the ticket panel (wide screens) or
+     the ticket sheet (phones) turns visible. WebAudio, no file to download;
+     silent when the browser has not allowed sound yet. */
+  var ctx = null;
+  function beep() {
+    try {
+      ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+      o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.26);
+    } catch (e) {}
+  }
+  function watch(id) {
+    var el = document.getElementById(id); if (!el || !window.MutationObserver) return;
+    var was = !el.hidden;
+    new MutationObserver(function () {
+      var now = !el.hidden;
+      if (now && !was && el.querySelector('img, .sb-tk, [data-pnr]')) { beep(); }
+      was = now;
+    }).observe(el, { attributes: true, attributeFilter: ['hidden'] });
+  }
+  document.addEventListener('DOMContentLoaded', function () { watch('sbTicket'); watch('sbModal'); });
+})();
+</script>
 <?php admin_footer();
