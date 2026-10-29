@@ -549,6 +549,17 @@ $badges      = AgentTargets::badges($viewId, $tgt);
 $net         = AgentWallet::netPosition($viewId);
 $commMonths  = array_reverse(AgentWallet::commissionByMonth($viewId, 6));
 $overdueDays = AgentWallet::settlementOverdueDays($viewId);
+/* Six months of sales for the Sales tab (management upgrade 1.5): confirmed
+   money, tickets and the cancellation share, same definition as the target. */
+$salesMonths = [];
+for ($i = 5; $i >= 0; $i--) {
+    $ym = date('Y-m', (int) strtotime(date('Y-m-01') . ' -' . $i . ' months'));
+    $salesMonths[] = ['ym' => $ym] + AgentTargets::salesFor($viewId, $ym);
+}
+/* Verification steps for the Profile tab (management upgrade 1.6). */
+$kycSt   = (string) ($profile['kyc_status'] ?? 'none');
+$bankOn  = trim((string) ($profile['payout_account'] ?? '')) !== '';
+$agrOn   = AgentWallet::agreementPath($viewId) !== '';
 
 $tabs = [
     'balance'    => '💰 Balance · ब्यालेन्स',
@@ -1080,6 +1091,7 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
   </div>
 </div>
 
+<?php /* 29 Oct 2026: the six-month chart lives in the Sales tab below the 7-day bars. */ ?>
 <?php /* The four count cards that sat here (today / month / pay / week) now
          live in the cockpit's quick stats and the Commission tab. */ ?>
 <?php if ($isOwn && Auth::isCounterAgent()): ?>
@@ -1262,6 +1274,26 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
       <span><?= $s['day'] ?><br><?= $s['date'] ?></span>
       <?php endforeach; ?>
     </div>
+  </div>
+</div>
+
+<?php $smMax = max(1.0, (float) max(array_column($salesMonths, 'money') ?: [0])); ?>
+<div class="dash-panel" data-pane="sales commission">
+  <div class="dp-head">📈 Sales — last 6 months · cancellation %</div>
+  <div class="dp-body">
+    <div class="spark-wrap" style="height:120px">
+      <?php foreach ($salesMonths as $sm): $h = max(4, ((float) $sm['money'] / $smMax) * 100); ?>
+      <div class="spark-bar" style="height:<?= (int) $h ?>%;background:linear-gradient(180deg,#0a8b4b,#065a30)">
+        <div class="spark-tip"><?= Security::e(inr((float) $sm['money'])) ?> · <?= (int) $sm['confirmed'] ?> tkt</div>
+      </div>
+      <?php endforeach; ?>
+    </div>
+    <div class="spark-labels">
+      <?php foreach ($salesMonths as $sm): $cxp = $sm['tickets'] > 0 ? (int) round($sm['cancelled'] * 100 / $sm['tickets']) : 0; ?>
+      <span><?= Security::e(date('M', (int) strtotime($sm['ym'] . '-01'))) ?><br><b style="color:<?= $cxp > 20 ? '#b02a2a' : 'var(--mut)' ?>"><?= $sm['tickets'] > 0 ? $cxp . '% ✕' : '—' ?></b></span>
+      <?php endforeach; ?>
+    </div>
+    <p class="muted" style="font-size:12px;margin:10px 0 0">Bars = confirmed sales by booking month. Under each month: the share of that month's tickets that were cancelled (red above 20%).</p>
   </div>
 </div>
 
@@ -1551,6 +1583,36 @@ $ckHave = array_column($badges, 'label');
     <?php endforeach; ?>
   </ol>
   <?php endif; ?>
+</div>
+
+<?php /* Documents & verification (29 Oct 2026, management upgrade 1.6) */
+  $vStep = static fn(bool $done, bool $bad = false): string => $bad ? '❌' : ($done ? '✅' : '⏳');
+  $kycDone = $kycSt === 'verified';
+  $ownView = $isOwn; ?>
+<div class="panel" id="docsBox" data-pane="profile">
+  <h2>🪪 Documents &amp; verification · कागजात</h2>
+  <div style="padding:6px 18px 16px">
+    <div class="ck-kv" style="margin-top:0">
+      <div><span>1 · Bank / payout details</span><b><?= $vStep($bankOn) ?> <?= $bankOn ? 'Submitted' : 'Missing' ?></b>
+        <div class="muted" style="font-size:11.5px"><?= $bankOn ? Security::e(trim((string) ($profile['payout_method'] ?? '') . ' · ' . maskPhone((string) ($profile['payout_account'] ?? '')))) : 'Add them in the profile below' ?></div></div>
+      <div><span>2 · KYC (ID) check</span><b><?= $vStep($kycDone, $kycSt === 'rejected') ?> <?= Security::e(ucfirst($kycSt === 'none' ? 'not sent' : $kycSt)) ?></b>
+        <div class="muted" style="font-size:11.5px"><?= $kycDone ? 'Checked by the office' : ($kycSt === 'rejected' ? 'Ask the office what to fix' : 'The office checks the ID document') ?></div></div>
+      <div><span>3 · Account</span><b><?= $vStep((int) $viewing['is_active'] === 1 && $kycDone && $bankOn) ?> <?= (int) $viewing['is_active'] === 1 ? ($kycDone && $bankOn ? 'Active · payouts ready' : 'Active') : 'Paused' ?></b>
+        <div class="muted" style="font-size:11.5px">Payouts go to the account on file once 1 and 2 are done</div></div>
+      <div><span>Agreement</span><b><?= $agrOn ? '✅ Signed copy on file' : '⏳ Not on file' ?></b></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <?php if ($ownView): ?>
+        <a class="btn" href="/team/card.php" target="_blank" rel="noopener" style="min-height:44px;display:inline-flex;align-items:center">🪪 My ID card</a>
+        <?php if ($agrOn): ?><a class="btn ghost" href="/admin/agent-kyc-file.php?agent=<?= $viewId ?>&amp;slot=3" target="_blank" rel="noopener" style="min-height:44px;display:inline-flex;align-items:center">📄 My agreement</a><?php endif; ?>
+        <a class="btn ghost" href="/admin/change-password.php" style="min-height:44px;display:inline-flex;align-items:center">🔑 Change my password</a>
+      <?php else: ?>
+        <?php if (Auth::can('staff.manage') && ($agCode = AgentWallet::agentCodeLabel($viewId)) !== ''): ?><a class="btn" href="/admin/id-card.php?ref=<?= urlencode($agCode) ?>" target="_blank" rel="noopener">🪪 ID card</a><?php endif; ?>
+        <?php if ($agrOn): ?><a class="btn ghost" href="/admin/agent-kyc-file.php?agent=<?= $viewId ?>&amp;slot=3" target="_blank" rel="noopener">📄 Signed agreement</a><?php endif; ?>
+        <?php if ($ckCan360): ?><a class="btn ghost" href="/admin/agent-360.php?agent=<?= $viewId ?>&amp;tab=profile">Verify KYC in Agent 360 →</a><?php endif; ?>
+      <?php endif; ?>
+    </div>
+  </div>
 </div>
 
 <?php if ($canManage): ?>
