@@ -201,7 +201,198 @@ final class CounterShift
     {
         $t = self::totals((int) $shift['admin_id'], (string) $shift['opened_at'], null,
             self::currencyOf($shift), CounterDesk::rate((string) ($shift['counter_code'] ?? '')));
-        return $t + ['expected' => round((float) $shift['opening_cash'] + $t['cash'], 2)];
+        // 29 Oct 2026: expenses already paid from the drawer are out of it.
+        $spent = self::expenseTotal((int) $shift['id']);
+        return $t + ['expenses' => $spent, 'expected' => round((float) $shift['opening_cash'] + $t['cash'] - $spent, 2)];
+    }
+
+    /* =================================================================
+     *  Expenses + the closing signature (29 Oct 2026, management upgrade
+     *  2.3). A drawer pays for tea, a pen, a refund handed back — each is
+     *  now one row with what it was for, instead of one lump "paid out"
+     *  typed at night. They are subtracted from what should be in the
+     *  drawer, and at close their total IS the cash paid out (plus any
+     *  extra the closer still types). The closer types their name to sign
+     *  the count, and may name who took the drawer over.
+     * ================================================================= */
+
+    public const EXPENSE_CATEGORIES = [
+        'tea'        => 'Tea / snacks · चिया नास्ता',
+        'stationery' => 'Stationery · स्टेसनरी',
+        'cleaning'   => 'Cleaning · सरसफाइ',
+        'refund'     => 'Refund given · फिर्ता दिएको',
+        'transport'  => 'Transport · यातायात',
+        'other'      => 'Other · अन्य',
+    ];
+
+    private static ?bool $extrasReady = null;
+
+    /**
+     * The expenses table and the two signature columns, created on first
+     * use. Call it OUTSIDE a transaction (DDL commits implicitly).
+     */
+    public static function extrasReady(): bool
+    {
+        if (self::$extrasReady !== null) {
+            return self::$extrasReady;
+        }
+        try {
+            Database::query(
+                "CREATE TABLE IF NOT EXISTS counter_shift_expenses (
+                    id          INT UNSIGNED  NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                    shift_id    INT UNSIGNED  NOT NULL,
+                    category    VARCHAR(20)   NOT NULL,
+                    amount      DECIMAL(12,2) NOT NULL,
+                    note        VARCHAR(255)  NULL,
+                    created_by  INT UNSIGNED  NULL,
+                    created_at  DATETIME      NOT NULL,
+                    KEY idx_shift (shift_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+            );
+            foreach (['signed_name' => 'VARCHAR(120) NULL', 'handover_to' => 'VARCHAR(120) NULL'] as $col => $def) {
+                if (Database::fetch("SHOW COLUMNS FROM counter_shifts LIKE '{$col}'") === null) {
+                    Database::query("ALTER TABLE counter_shifts ADD COLUMN {$col} {$def}");
+                }
+            }
+            self::$extrasReady = true;
+        } catch (Throwable $e) {
+            Logger::warning('counter shift extras unavailable: ' . $e->getMessage(), [], 'agent');
+            self::$extrasReady = false;
+        }
+        return self::$extrasReady;
+    }
+
+    /** Record one expense paid from an OPEN shift's drawer. */
+    public static function addExpense(int $shiftId, int $byAdminId, string $category, float $amount, string $note = ''): int
+    {
+        if (!self::extrasReady()) {
+            throw new RuntimeException('Expenses are not available yet — ask the developer to check the database.');
+        }
+        if (!isset(self::EXPENSE_CATEGORIES[$category])) {
+            throw new RuntimeException('Pick what the money was for. / केका लागि दिनुभयो छान्नुहोस्।');
+        }
+        $amount = round($amount, 2);
+        if ($amount <= 0 || $amount > 100000) {
+            throw new RuntimeException('Enter an amount between 1 and 1,00,000. / सही रकम लेख्नुहोस्।');
+        }
+        $shift = Database::fetch('SELECT id, is_open FROM counter_shifts WHERE id = :i', ['i' => $shiftId]);
+        if ($shift === null || (int) ($shift['is_open'] ?? 0) !== 1) {
+            throw new RuntimeException('Expenses can be added only while the shift is open.');
+        }
+        $note = Security::clean($note, 255);
+        $id = Database::insert('counter_shift_expenses', [
+            'shift_id'   => $shiftId,
+            'category'   => $category,
+            'amount'     => $amount,
+            'note'       => $note !== '' ? $note : null,
+            'created_by' => $byAdminId > 0 ? $byAdminId : null,
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+        Logger::audit('shift.expense_add', 'counter_shift', (string) $shiftId, null,
+            ['expense' => $id, 'category' => $category, 'amount' => $amount], $note);
+        return $id;
+    }
+
+    /** Take back an expense typed by mistake — only while its shift is open. */
+    public static function removeExpense(int $expenseId, int $byAdminId): int
+    {
+        if (!self::extrasReady()) {
+            throw new RuntimeException('Expenses are not available yet.');
+        }
+        $row = Database::fetch(
+            'SELECT e.*, s.is_open, s.admin_id FROM counter_shift_expenses e JOIN counter_shifts s ON s.id = e.shift_id WHERE e.id = :i',
+            ['i' => $expenseId]
+        );
+        if ($row === null) {
+            throw new RuntimeException('Expense not found.');
+        }
+        if ((int) ($row['is_open'] ?? 0) !== 1) {
+            throw new RuntimeException('The shift is closed — its expenses are part of the count now.');
+        }
+        Database::delete('counter_shift_expenses', 'id = :i', ['i' => $expenseId]);
+        Logger::audit('shift.expense_remove', 'counter_shift', (string) $row['shift_id'],
+            ['expense' => $expenseId, 'category' => $row['category'], 'amount' => (float) $row['amount']], null, 'removed by admin #' . $byAdminId);
+        return (int) $row['shift_id'];
+    }
+
+    /** @return list<array<string,mixed>> */
+    public static function expenses(int $shiftId): array
+    {
+        if ($shiftId <= 0 || !self::extrasReady()) {
+            return [];
+        }
+        try {
+            return Database::fetchAll(
+                'SELECT e.*, a.full_name AS by_name FROM counter_shift_expenses e LEFT JOIN admins a ON a.id = e.created_by
+                  WHERE e.shift_id = :s ORDER BY e.id',
+                ['s' => $shiftId]
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    public static function expenseTotal(int $shiftId): float
+    {
+        if ($shiftId <= 0 || !self::extrasReady()) {
+            return 0.0;
+        }
+        try {
+            return round((float) Database::scalar('SELECT COALESCE(SUM(amount), 0) FROM counter_shift_expenses WHERE shift_id = :s', ['s' => $shiftId], 0), 2);
+        } catch (Throwable $e) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * Payments this person verified inside a shift's window — the body of
+     * the end-of-day shift report.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function payments(array $shift): array
+    {
+        $to = (string) ($shift['closed_at'] ?? '') !== '' ? (string) $shift['closed_at'] : date('Y-m-d H:i:s');
+        try {
+            return Database::fetchAll(
+                "SELECT p.id, p.method, p.amount, p.verified_at, b.pnr, b.status AS booking_status,
+                        (SELECT bp.full_name FROM booking_passengers bp WHERE bp.booking_id = b.id ORDER BY bp.is_primary DESC, bp.id LIMIT 1) AS passenger
+                   FROM payments p
+                   JOIN bookings b ON b.id = p.booking_id
+                  WHERE p.verified_by = :a AND p.status = 'verified'
+                    AND p.verified_at >= :f AND p.verified_at <= :t
+                  ORDER BY p.verified_at",
+                ['a' => (int) $shift['admin_id'], 'f' => (string) $shift['opened_at'], 't' => $to]
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Shifts opened inside [$from, $to] (Y-m-d, inclusive) — the history
+     * list and its CSV. $scopeAdminId as in recent().
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function between(?int $scopeAdminId, string $from, string $to, int $limit = 500): array
+    {
+        $limit  = max(1, min(2000, $limit));
+        $params = ['f' => $from . ' 00:00:00', 't' => date('Y-m-d', (int) strtotime($to . ' +1 day')) . ' 00:00:00'];
+        $where  = 's.opened_at >= :f AND s.opened_at < :t';
+        if ($scopeAdminId !== null) {
+            $where .= ' AND s.admin_id = :a';
+            $params['a'] = $scopeAdminId;
+        }
+        return Database::fetchAll(
+            "SELECT s.*, a.full_name AS admin_name
+               FROM counter_shifts s
+               LEFT JOIN admins a ON a.id = s.admin_id
+              WHERE {$where}
+              ORDER BY s.is_open DESC, s.opened_at DESC
+              LIMIT {$limit}",
+            $params
+        );
     }
 
     /** Are the local-money columns on payments yet? */
@@ -251,7 +442,7 @@ final class CounterShift
      *        the stored breakdown and the stored total can never disagree.
      * @return array<string,mixed> the closed row
      */
-    public static function close(int $shiftId, int $byAdminId, float $countedCash, float $paidOut = 0.0, array $denoms = [], string $note = ''): array
+    public static function close(int $shiftId, int $byAdminId, float $countedCash, float $paidOut = 0.0, array $denoms = [], string $note = '', string $signedName = '', string $handoverTo = ''): array
     {
         $denoms = array_filter(array_map('intval', $denoms), static fn(int $n): bool => $n !== 0);
         if ($denoms !== []) {
@@ -261,8 +452,15 @@ final class CounterShift
         if ($countedCash < 0 || $paidOut < 0) {
             throw new RuntimeException('Amounts must be zero or more. / रकम ० वा बढी हुनुपर्छ।');
         }
+        /* 29 Oct 2026: the itemised expenses are part of what left the drawer
+           (none recorded = exactly the old behaviour), and the signature
+           columns are made sure of here — never inside the transaction. */
+        $extras     = self::extrasReady();
+        $paidOut    = round($paidOut + self::expenseTotal($shiftId), 2);
+        $signedName = mb_substr(trim(Security::clean($signedName, 120)), 0, 120);
+        $handoverTo = mb_substr(trim(Security::clean($handoverTo, 120)), 0, 120);
 
-        return Database::transaction(static function () use ($shiftId, $byAdminId, $countedCash, $paidOut, $denoms, $note): array {
+        return Database::transaction(static function () use ($shiftId, $byAdminId, $countedCash, $paidOut, $denoms, $note, $extras, $signedName, $handoverTo): array {
             $rows  = Database::fetchForUpdate('SELECT * FROM counter_shifts WHERE id = :i', ['i' => $shiftId]);
             $shift = $rows[0] ?? null;
             if ($shift === null) {
@@ -291,7 +489,10 @@ final class CounterShift
                 'denominations' => $denoms !== [] ? json_encode($denoms) : null,
                 'note'          => $note !== '' ? mb_substr($note, 0, 255) : ($shift['note'] ?? null),
                 'closed_by'     => $byAdminId > 0 ? $byAdminId : null,
-            ], 'id = :i', ['i' => $shiftId]);
+            ] + ($extras ? [
+                'signed_name'   => $signedName !== '' ? $signedName : null,
+                'handover_to'   => $handoverTo !== '' ? $handoverTo : null,
+            ] : []), 'id = :i', ['i' => $shiftId]);
 
             return Database::fetch('SELECT * FROM counter_shifts WHERE id = :i', ['i' => $shiftId]) ?? $shift;
         });

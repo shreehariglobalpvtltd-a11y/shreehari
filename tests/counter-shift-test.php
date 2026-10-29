@@ -45,6 +45,7 @@ $cleanup = static function () use (&$madeShifts): void {
         Database::delete('bookings', 'id = :b', ['b' => (int) $b['id']]);   // legs / payments cascade
     }
     foreach ($madeShifts as $id) {
+        try { Database::delete('counter_shift_expenses', 'shift_id = :i', ['i' => (int) $id]); } catch (Throwable $e) { /* table not created yet */ }
         Database::delete('counter_shifts', 'id = :i', ['i' => (int) $id]);
     }
     Database::delete('schedules', 'travel_date = :d', ['d' => SH_DATE]);
@@ -134,6 +135,20 @@ if (!$hasTable) {
         $live = CounterShift::live($s1);
         check('live expected = float + cash so far', $live['expected'] === round(200.0 + $t3['cash'], 2), (string) $live['expected']);
 
+        echo "-- expenses from the drawer (29 Oct 2026) --\n";
+        check('the expenses table and signature columns exist', CounterShift::extrasReady());
+        $e1 = CounterShift::addExpense((int) $s1['id'], $A, 'tea', 40.0, 'chiya');
+        $e2 = CounterShift::addExpense((int) $s1['id'], $A, 'stationery', 25.0);
+        $bad = 0;
+        foreach ([['nope', 10.0], ['tea', 0.0], ['tea', -5.0]] as [$cat, $amt]) {
+            try { CounterShift::addExpense((int) $s1['id'], $A, $cat, $amt); } catch (RuntimeException $e) { $bad++; }
+        }
+        check('an unknown category, a zero and a negative amount are refused', $bad === 3);
+        check('two expenses listed, total 65', count(CounterShift::expenses((int) $s1['id'])) === 2 && CounterShift::expenseTotal((int) $s1['id']) === 65.0);
+        check('live expected takes the expenses off', CounterShift::live($s1)['expected'] === round(200.0 + $t3['cash'] - 65.0, 2));
+        CounterShift::removeExpense($e2, $A);
+        check('a mistaken expense can be removed while the shift is open', CounterShift::expenseTotal((int) $s1['id']) === 40.0);
+
         echo "-- the note pad --\n";
         check('500x3 + 100x2 = 1700', CounterShift::sumDenominations([500 => 3, 100 => 2]) === 1700.0);
         $bad = 0;
@@ -141,13 +156,20 @@ if (!$hasTable) {
         check('a 7-rupee note and a negative count are refused, not ignored', $bad === 2);
 
         echo "-- closing --\n";
-        $expected = round(200.0 + $t3['cash'] - 100.0, 2);
+        $expected = round(200.0 + $t3['cash'] - 100.0 - 40.0, 2);   // 100 typed at close + the 40 tea expense
         $padTotal = $expected - 50;                       // fifty short, built only from real notes
         $pad = []; $left = (int) $padTotal;
         foreach (CounterShift::DENOMINATIONS as $d) { $pad[$d] = intdiv($left, $d); $left -= $pad[$d] * $d; }
-        $c1 = CounterShift::close((int) $s1['id'], $B, 9999.0, 100.0, $pad, 'closing note');
+        $c1 = CounterShift::close((int) $s1['id'], $B, 9999.0, 100.0, $pad, 'closing note', 'Test Closer', 'Next Person');
         check('the note pad IS the count - the typed 9999 is ignored', (float) $c1['counted_cash'] === (float) (int) $padTotal, (string) $c1['counted_cash']);
         check('expected = float + cash - paid out', (float) $c1['expected_cash'] === $expected, $c1['expected_cash'] . ' vs ' . $expected);
+        check('paid out = typed 100 + the 40 expense', (float) $c1['cash_paid_out'] === 140.0, (string) $c1['cash_paid_out']);
+        check('the closer\'s typed name and the handover are on the row',
+            (string) ($c1['signed_name'] ?? '') === 'Test Closer' && (string) ($c1['handover_to'] ?? '') === 'Next Person');
+        $refused = false;
+        try { CounterShift::removeExpense($e1, $A); } catch (RuntimeException $e) { $refused = true; }
+        check('expenses of a closed shift cannot be removed', $refused && CounterShift::expenseTotal((int) $s1['id']) === 40.0);
+        check('the shift report lists the payments taken', count(CounterShift::payments($c1)) >= 4);
         check('variance = counted - expected (negative = short)', (float) $c1['variance'] === round((int) $padTotal - $expected, 2), (string) $c1['variance']);
         check('...and the verdict says short', CounterShift::verdict((float) $c1['variance']) === 'short');
         check('closed: no longer open, closer recorded, pad stored',
@@ -176,9 +198,11 @@ if (!$hasTable) {
 
         echo "-- not on the sale path --\n";
         $src = preg_replace('~/\*.*?\*/|//[^\n]*~s', '', (string) file_get_contents(INCLUDE_PATH . '/countershift.php'));
-        check('countershift.php writes to counter_shifts and nothing else',
-            preg_match_all('/Database::(insert|insertIgnore|update|delete)\(\s*\'([a-z_]+)\'/', (string) $src, $m) > 0
-            && array_values(array_unique($m[2])) === ['counter_shifts']);
+        $own = preg_match_all('/Database::(insert|insertIgnore|update|delete)\(\s*\'([a-z_]+)\'/', (string) $src, $m) > 0
+            ? array_values(array_unique($m[2])) : [];
+        sort($own);
+        check('countershift.php writes only its own tables (counter_shifts, counter_shift_expenses)',
+            $own === ['counter_shift_expenses', 'counter_shifts']);
         check('booking.php / seats.php do not know the shift exists (selling cannot be blocked by it)',
             !str_contains((string) file_get_contents(INCLUDE_PATH . '/booking.php'), 'CounterShift')
             && !str_contains((string) file_get_contents(INCLUDE_PATH . '/seats.php'), 'CounterShift'));
