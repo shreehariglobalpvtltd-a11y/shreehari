@@ -80,12 +80,13 @@ function admin_nav(): array
 
         // 1. Staff & Agent Management — accounts, codes / IDs / passwords, KYC, salary or commission
         ['href' => 'team.php',         'icon' => 'user-cog',  'label' => 'Team & Approvals (KYC, codes, passwords)', 'perm' => 'staff.manage', 'section' => $S1],
-        ['href' => 'agents.php',       'icon' => 'user-cog',  'label' => 'Agents & Pvt Ltd Accounts', 'perm' => 'customers.view', 'section' => $S1],
+        ['href' => 'agents.php',       'icon' => 'user-cog',  'label' => 'Agents Register (CRM)', 'perm' => 'customers.view', 'section' => $S1],
         ['href' => 'agent.php',        'icon' => 'ticket-alt', 'label' => $agentView ? 'My Agent Dashboard' : 'Master & Sub-Agent Portal', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S1],
-        ['href' => 'staff.php',        'icon' => 'users',      'label' => 'Counter Staff & Logins', 'perm' => 'staff.manage',     'section' => $S1],
+        ['href' => 'staff.php',        'icon' => 'users',      'label' => 'Staff Logins & Passwords', 'perm' => 'staff.manage',   'section' => $S1],
         ['href' => 'permissions.php',  'icon' => 'shield',     'label' => 'Roles & Permissions',    'perm' => 'staff.manage',     'section' => $S1],
         ['href' => 'sessions.php',     'icon' => 'shield',     'label' => 'Sessions & Login Security', 'perm' => 'staff.manage',  'section' => $S1],
-        ['href' => 'staff-applications.php', 'icon' => 'doc',  'label' => 'Staff Applications',     'perm' => 'drivers.view',     'section' => $S1],
+        // 29 Oct 2026 audit: Staff Applications left the menu — one approval
+        // queue (Team & Approvals), which links to it. The page is unchanged.
         ['href' => 'team-invite.php',  'icon' => 'mail',       'label' => 'Invites & Renewals',     'perm' => 'customers.view',   'section' => $S1],
         ['href' => 'drivers.php',      'icon' => 'user-solo',  'label' => 'Drivers & Bus Crew',     'perm' => 'drivers.view',     'section' => $S1],
         ['href' => 'company.php',      'icon' => 'building',   'label' => 'Pvt Ltd & Branches',     'perm' => 'dashboard.view',   'section' => $S1],
@@ -136,6 +137,7 @@ function admin_nav(): array
         ['href' => 'agent-360.php',    'icon' => 'chart-up',  'label' => 'Agent 360 (per-person money)', 'perm' => 'customers.view', 'section' => $S4],
         ['href' => 'cash-book.php',    'icon' => 'ledger',    'label' => 'Cash Book',              'perm' => 'bookings.view',    'section' => $S4],
         ['href' => 'shift.php',        'icon' => 'clock',     'label' => 'Shift & Cash Handover',  'perm' => 'bookings.view',    'section' => $S4],
+        ['href' => 'reconcile.php',    'icon' => 'ledger',    'label' => 'Money Reconciliation',   'perm' => 'reports.view',     'section' => $S4],
         ['href' => 'ledger-check.php', 'icon' => 'shield',    'label' => 'Ledger Check (मिलान)',   'perm' => 'commissions.view', 'section' => $S4],
         ['href' => 'analytics.php',    'icon' => 'chart-up',  'label' => 'Executive Analytics',    'perm' => 'dashboard.view',   'section' => $S4],
 

@@ -894,7 +894,11 @@ final class Seats
         // takes turns (a bus that leaves today is only back on the third
         // day), so the answer depends on the DATE, not on the route. With
         // no rotation, the route's own bus stands exactly as before.
-        $busId = Fleet::busForDate($travelDate) ?? $route['bus_id'];
+        // 29 Oct 2026: a round-trip rotation also says whether this DIRECTION
+        // runs on the date at all; when it does not, the row is created
+        // blocked (hidden from search, refused at checkout).
+        $plan  = Fleet::planFor($route, $travelDate);
+        $busId = $plan['bus'] ?? $route['bus_id'];
 
         // insertIgnore absorbs the race where two visitors open the same
         // date at once — the UNIQUE(route_id, travel_date) key decides.
@@ -905,6 +909,7 @@ final class Seats
             'bus_id'      => $busId,
             'total_seats' => $totalSeats,
             'status'      => 'scheduled',
+            'is_blocked'  => $plan['runs'] ? 0 : 1,
         ]);
 
         $schedule = Database::fetch(

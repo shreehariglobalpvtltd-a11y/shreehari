@@ -27,6 +27,7 @@ require __DIR__ . '/_cron.php';
 require_once INCLUDE_PATH . '/notify.php';
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/challanpng.php';
+require_once INCLUDE_PATH . '/seats.php';
 
 $t0  = microtime(true);
 $out = ['departures' => 0, 'office' => 0, 'sellers' => 0, 'failed' => 0, 'skipped' => 0];
@@ -78,7 +79,7 @@ foreach ($deps as $d) {
         $out['departures']++;
 
         $rows = Database::fetchAll(
-            "SELECT bs.seat_no, b.pnr, b.contact_phone, b.sold_by_admin_id, b.total_amount, b.source,
+            "SELECT bs.seat_no, b.pnr, b.contact_phone, b.sold_by_admin_id, b.total_amount, b.source, b.booking_mode,
                     bp.full_name, bp.gender, bl.boarding_stop, bl.drop_stop
                FROM booking_seats bs
                JOIN bookings b ON b.id = bs.booking_id
@@ -100,7 +101,8 @@ foreach ($deps as $d) {
             $h = '<table style="border-collapse:collapse;font-size:13px" border="1" cellpadding="5">'
                . '<tr style="background:#f3f3f3"><th>Seat</th><th>Passenger</th><th>Phone</th><th>Boarding</th><th>Drop</th><th>PNR</th></tr>';
             foreach ($list as $r) {
-                $h .= '<tr><td>' . e((string) $r['seat_no']) . '</td><td>' . e(trim((string) ($r['full_name'] ?? '')))
+                // 29 Oct 2026 audit: the passenger-facing label (A1..F12), as on the ticket.
+                $h .= '<tr><td>' . e(Seats::displayLabel((string) $r['seat_no'], 'sleeper', (string) ($r['booking_mode'] ?: 'sharing'))) . '</td><td>' . e(trim((string) ($r['full_name'] ?? '')))
                     . ($r['gender'] ? ' (' . e(substr((string) $r['gender'], 0, 1)) . ')' : '') . '</td><td>' . e((string) $r['contact_phone'])
                     . '</td><td>' . e($stop($r['boarding_stop'])) . '</td><td>' . e($stop($r['drop_stop'])) . '</td><td>' . e((string) $r['pnr']) . '</td></tr>';
             }

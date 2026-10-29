@@ -84,9 +84,9 @@ final class ScheduleMaker
         // existing row, so a per-date OFF / retime / other vehicle survives.
         $stmt = $db->prepare(
             'INSERT IGNORE INTO `schedules`
-                (route_id, travel_date, slot, bus_id, status, total_seats)
+                (route_id, travel_date, slot, bus_id, status, total_seats, is_blocked)
              VALUES
-                (:route_id, :travel_date, 1, :bus_id, "scheduled", :total_seats)'
+                (:route_id, :travel_date, 1, :bus_id, "scheduled", :total_seats, :blocked)'
         );
 
         foreach ($routes as $r) {
@@ -112,16 +112,21 @@ final class ScheduleMaker
                 // Fleet rotation, when configured, is authoritative:
                 // it is exactly the mechanism that assigns "today's bus
                 // is #4, tomorrow's is #5" so a 3-bus fleet recycles.
-                $busId = self::busForDate($travelDate, $defaultBusId);
-                if ($busId === null) {
+                // 29 Oct 2026: round-trip rotation — a direction with no bus
+                // that day is created blocked rather than sold.
+                $plan  = class_exists('Fleet') ? Fleet::planFor($r, $travelDate) : ['runs' => true, 'bus' => null];
+                $busId = $plan['bus'] ?? self::busForDate($travelDate, $defaultBusId);
+                if ($busId === null && $plan['runs']) {
                     continue;
                 }
+                $busId ??= $defaultBusId;
 
                 $stmt->execute([
                     ':route_id'    => $routeId,
                     ':travel_date' => $travelDate,
                     ':bus_id'      => $busId,
                     ':total_seats' => $defaultSeats,
+                    ':blocked'     => $plan['runs'] ? 0 : 1,
                 ]);
 
                 if ($stmt->rowCount() > 0) {
@@ -333,7 +338,7 @@ final class ScheduleMaker
     private static function dailyRoutes(PDO $db): array
     {
         $stmt = $db->query(
-            "SELECT r.id, r.route_code, r.bus_id, r.coach_type,
+            "SELECT r.id, r.route_code, r.bus_id, r.coach_type, r.from_city, r.to_city,
                     b.total_seats AS bus_total_seats
                FROM routes r
                LEFT JOIN buses b ON b.id = r.bus_id

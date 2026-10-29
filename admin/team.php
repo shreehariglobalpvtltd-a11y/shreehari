@@ -901,6 +901,16 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
     🗄️ Archived Accounts · अभिलेख <?= $archivedCount > 0 ? '<span class="badge-count" style="background:#64748b">' . $archivedCount . '</span>' : '' ?>
   </a>
 </nav>
+<!-- 29 Oct 2026 audit: one home for people. Each job has one page; these are its neighbours. -->
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 14px;font-size:12.5px">
+  <span style="color:#64748b;font-weight:700">Also here:</span>
+  <a class="pill" href="staff.php">🔑 Logins &amp; passwords</a>
+  <a class="pill" href="permissions.php">🔐 Roles &amp; permissions</a>
+  <a class="pill" href="sessions.php">🟢 Sessions &amp; login security</a>
+  <a class="pill" href="staff-applications.php">📝 Staff job applications</a>
+  <a class="pill" href="agents.php">🏢 Agents register &amp; Pvt Ltd</a>
+  <a class="pill" href="counters.php">🏪 Counters &amp; locations</a>
+</div>
 
 <!-- =====================================================================
      TAB 1: MEMBERS REGISTRY
@@ -1062,15 +1072,26 @@ admin_header('Team Management & Approvals · टिम व्यवस्था�
     </p>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:16px">
-      <div style="padding:14px;border:1.5px solid #cbd5e1;border-radius:14px;background:#f8fafc">
-        <b>📊 1. Percentage of Fare</b>
-        <p style="font-size:12.5px;color:#64748b;margin:6px 0 10px">Default 8.5% of eligible net ticket fare, calculated upon confirmed trip.</p>
-        <input type="number" step="0.1" value="8.5" style="width:90px;padding:6px;border-radius:8px;border:1px solid #cbd5e1"> %
+      <?php
+        /* 29 Oct 2026 audit: these two boxes showed 8.5 % and ₹100 in inputs that
+           were never saved or read, while the ledger pays the flat per-seat
+           rates below. They now show what the money actually uses; the rates
+           are changed in one place (Agent Portal -> Commission rates). */
+        $cmMode = Settings::getString('agent_commission_mode', 'flat_per_seat');
+        $cmPct  = Settings::getFloat('agent_commission_percent', 5.0);
+        $cmDir  = Settings::getFloat('agent_flat_direct', 200.0);
+        $cmJnt  = Settings::getFloat('agent_flat_joint', 400.0);
+      ?>
+      <div style="padding:14px;border:1.5px solid <?= $cmMode === 'flat_per_seat' ? '#1d4ed8' : '#cbd5e1' ?>;border-radius:14px;background:#f8fafc">
+        <b>🎟️ 1. Per-seat commission <?= $cmMode === 'flat_per_seat' ? '<span class="pill pill-active">IN USE</span>' : '' ?></b>
+        <p style="font-size:12.5px;color:#64748b;margin:6px 0 10px">Paid per passenger seat on every confirmed ticket, reversed on cancel.</p>
+        <div style="font-size:15px"><b>₹<?= number_format($cmDir) ?></b> direct agent · <b>₹<?= number_format($cmJnt) ?></b> team / organisation agent</div>
       </div>
-      <div style="padding:14px;border:1.5px solid #cbd5e1;border-radius:14px;background:#f8fafc">
-        <b>🎟️ 2. Per-Seat Fixed Fee</b>
-        <p style="font-size:12.5px;color:#64748b;margin:6px 0 10px">Fixed amount per booked passenger seat (e.g. ₹ 100 / रू 150).</p>
-        <input type="number" step="1" value="100" style="width:90px;padding:6px;border-radius:8px;border:1px solid #cbd5e1"> ₹/रू
+      <div style="padding:14px;border:1.5px solid <?= $cmMode !== 'flat_per_seat' ? '#1d4ed8' : '#cbd5e1' ?>;border-radius:14px;background:#f8fafc">
+        <b>📊 2. Percentage of fare <?= $cmMode !== 'flat_per_seat' ? '<span class="pill pill-active">IN USE</span>' : '<span style="font-size:11.5px;color:#64748b">(not in use)</span>' ?></b>
+        <p style="font-size:12.5px;color:#64748b;margin:6px 0 10px">Used only when the mode is switched to percent, or for an agent with a personal override.</p>
+        <div style="font-size:15px"><b><?= rtrim(rtrim(number_format($cmPct, 2), '0'), '.') ?>%</b> of the ticket fare</div>
+        <a href="agent.php" style="font-size:12.5px">Change rates → Agent Portal</a>
       </div>
       <div style="padding:14px;border:1.5px solid #cbd5e1;border-radius:14px;background:#f8fafc">
         <b>💼 3. Monthly Salary (Staff/Drivers)</b>

@@ -2632,6 +2632,18 @@ final class BookingService
                 'refund_status' => $newRefundStatus,
             ], 'id = :id', ['id' => $booking['id']]);
 
+            /* 29 Oct 2026 audit: a pay-at-boarding ticket cancelled before the
+               cash came in left its payment row 'cod_pending' for ever (61 on
+               live, ₹2.37 lakh that read as money still to collect). Nothing
+               was collected, so the open request is closed — 'rejected' is the
+               ENUM's "not money" state. A cancelled booking is never revived
+               (confirm() refuses it), so this cannot strand a live ticket.
+               Verified payments are not touched: refunds stay manual. */
+            Database::update('payments', [
+                'status'        => 'rejected',
+                'reject_reason' => 'Voided: ticket cancelled before the cash was collected',
+            ], "booking_id = :b AND status = 'cod_pending'", ['b' => $booking['id']]);
+
             Seats::releaseBooking((int) $booking['id']);
             /* Cancel is terminal: return whatever redeemed points are still
                spent. The delta-based reconciler is used (not a flat refund)

@@ -63,7 +63,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     array_keys($slots),
                     (int) ($_POST['cycle_days'] ?? 3),
                     (string) ($_POST['start_date'] ?? $today),
-                    (int) $admin['id']
+                    (int) $admin['id'],
+                    (string) ($_POST['rotation_mode'] ?? 'daily')
                 );
                 $flash = ['ok', 'Bus rotation saved.'];
 
@@ -406,6 +407,11 @@ $kT      = CSRF_TOKEN_NAME;
       <label style="font-size:12px;color:var(--mut)">Cycle starts
         <input type="date" name="start_date" value="<?= Security::e($rot['startDate']) ?>"
                style="display:block;margin-top:4px;padding:8px 10px;border:1px solid var(--line);border-radius:8px"></label>
+      <label style="font-size:12px;color:var(--mut)">How the buses take turns
+        <select name="rotation_mode" style="display:block;margin-top:4px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+          <option value="daily" <?= $rot['mode'] === 'daily' ? 'selected' : '' ?>>Same bus both directions each day (old)</option>
+          <option value="round_trip" <?= $rot['mode'] === 'round_trip' ? 'selected' : '' ?>>Round trip: out days 1–3, back days 4–6</option>
+        </select></label>
       <button class="btn" type="submit">Save rotation</button>
     </div>
 
@@ -454,7 +460,28 @@ $kT      = CSRF_TOKEN_NAME;
     </form>
   <?php endforeach; ?>
 
-  <?php if ($preview !== []): ?>
+  <?php $rtPreview = Fleet::roundTripPreview(12); if ($rtPreview !== []):
+        $busLbl = static function (?int $id) use ($allBus): string {
+            foreach ($allBus as $b) { if ((int) $b['id'] === $id) { return (string) $b['bus_name'] . ' · ' . $b['bus_number']; } }
+            return $id === null ? '' : 'Bus #' . $id;
+        }; ?>
+    <div style="padding:0 18px 16px">
+      <div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+        Round trip — next 12 days (→ Nepal / → India)
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <?php foreach ($rtPreview as $p): ?>
+          <div style="border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-width:150px">
+            <div style="font-size:11.5px;color:var(--mut)"><?= Security::e(formatDate($p['date'])) ?></div>
+            <div style="font-size:12.5px"><?= $p['out'] !== null ? '→ 🇳🇵 <b>' . Security::e($busLbl($p['out'])) . '</b>' : '<span class="muted">→ 🇳🇵 no bus</span>' ?></div>
+            <div style="font-size:12.5px"><?= $p['back'] !== null ? '→ 🇮🇳 <b>' . Security::e($busLbl($p['back'])) . '</b>' : '<span class="muted">→ 🇮🇳 no bus</span>' ?></div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+      <p class="muted" style="font-size:12px;margin:10px 0 0">A direction with no bus is created switched OFF for that date (not sold).
+        Trips that already exist keep their bus — <code>tools/apply-rotation.php</code> re-plans the future ones that have no bookings.</p>
+    </div>
+  <?php elseif ($preview !== []): ?>
     <div style="padding:0 18px 16px">
       <div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
         Next 7 days — who runs when

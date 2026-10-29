@@ -66,11 +66,36 @@ final class SiteFacts
     /** D9: the Gujarat ⇄ Rupaidiha distance the site states (setting `route_distance_km`). */
     public const ROUTE_KM_DEFAULT = 1375;
 
-    /** 1375 — the one corridor distance every page, ticket and bot prints. */
+    /**
+     * The one corridor distance every page, ticket and bot prints.
+     *
+     * 29 Oct 2026 audit: the site said 1,375 km (this setting, copied onto
+     * every route) while the timetable of the route that actually runs
+     * (Surat -> Rupaidiha) measures 1,688 km to its last stop, and the map
+     * line 1,869 km. The timetable wins: the highest stop km of the first
+     * active route, the same figure fares and stops are built on. The
+     * setting is only the fallback when no active route has stop distances.
+     */
     public static function routeKm(): int
     {
-        $km = (int) round(Settings::getFloat('route_distance_km', (float) self::ROUTE_KM_DEFAULT));
-        return $km > 0 ? $km : self::ROUTE_KM_DEFAULT;
+        static $km = null;
+        if ($km !== null) {
+            return $km;
+        }
+        try {
+            $fromStops = (float) Database::scalar(
+                'SELECT MAX(rs.km_from_origin)
+                   FROM route_stops rs JOIN routes r ON r.id = rs.route_id
+                  WHERE r.is_active = 1 AND rs.is_active = 1
+                    AND r.id = (SELECT id FROM routes WHERE is_active = 1 ORDER BY sort_order, id LIMIT 1)',
+                [], 0
+            );
+        } catch (Throwable $e) {
+            $fromStops = 0.0;
+        }
+        $km = $fromStops >= 100 ? (int) round($fromStops)
+            : (int) round(Settings::getFloat('route_distance_km', (float) self::ROUTE_KM_DEFAULT));
+        return $km = $km > 0 ? $km : self::ROUTE_KM_DEFAULT;
     }
 
     /**

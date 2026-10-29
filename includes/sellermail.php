@@ -74,6 +74,7 @@ final class SellerMail
             $link    = Ticket::imageUrl($pnr);
             $name    = trim((string) ($seller['full_name'] ?? '')) ?: (string) ($seller['username'] ?? '');
 
+            require_once __DIR__ . '/seats.php';
             // Passenger / journey facts — read-only.
             $pax = Database::fetchAll('SELECT full_name, seat_no FROM booking_passengers WHERE booking_id = :b ORDER BY id', ['b' => $bid]);
             $leg = Database::fetch(
@@ -90,7 +91,8 @@ final class SellerMail
                 'Date'      => $leg !== null ? (string) $leg['travel_date'] . (empty($leg['dep_time']) ? '' : ' · ' . substr((string) $leg['dep_time'], 0, 5)) : '',
                 'Boarding'  => $leg !== null ? trim(explode('·', (string) ($leg['boarding_stop'] ?? ''))[0]) : '',
                 'Drop'      => $leg !== null ? trim(explode('·', (string) ($leg['drop_stop'] ?? ''))[0]) : '',
-                'Passengers'=> implode(', ', array_map(static fn($p) => trim((string) $p['full_name']) . ' (' . (string) $p['seat_no'] . ')', $pax)),
+                'Passengers'=> implode(', ', array_map(static fn($p) => trim((string) $p['full_name']) . ' ('
+                    . Seats::displayLabel((string) $p['seat_no'], 'sleeper', (string) (($booking['booking_mode'] ?? '') ?: 'sharing')) . ')', $pax)),
                 'Phone'     => (string) ($booking['contact_phone'] ?? ''),
                 'Amount'    => function_exists('inr') ? inr((float) ($booking['total_amount'] ?? 0)) : (string) ($booking['total_amount'] ?? ''),
             ];

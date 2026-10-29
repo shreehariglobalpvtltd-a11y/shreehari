@@ -16,6 +16,16 @@
  *  alternates, put 5 in and it runs a 5-day loop. The operator changes
  *  the list — or a single bus NUMBER — in Admin without a deploy.
  *
+ *  ROUND-TRIP MODE (29 Oct 2026 audit, owner: "3-bus rotation — outbound
+ *  dates 1/2/3, returns 4/5/6"). The daily mode gives the SAME bus to both
+ *  directions on a date, so with one route pair the board showed one coach
+ *  leaving Surat at 13:00 and Rupaidiha at 18:00 the same day. In round-trip
+ *  mode the cycle is 2 x the number of buses: on cycle days 1..n bus k leaves
+ *  on the outbound run (towards Nepal), on days n+1..2n the same bus k comes
+ *  back. A direction that has no bus that day gets its schedule row created
+ *  BLOCKED (hidden from search, refused at checkout — the same flag as a
+ *  per-date OFF), so nothing is ever sold on a bus that is not there.
+ *
  *  Stored in one `bus_rotation` settings row (zero SQL, same pattern as
  *  agent_types / agent_codes), and applied when a schedule row is first
  *  materialised, so `schedules.bus_id` carries the answer and every
@@ -38,7 +48,7 @@ final class Fleet
     /**
      * The stored rotation, normalised.
      *
-     * @return array{enabled: bool, cycleDays: int, startDate: string, buses: array<int, int>}
+     * @return array{enabled: bool, cycleDays: int, startDate: string, buses: array<int, int>, mode: string}
      */
     public static function rotation(): array
     {
@@ -65,12 +75,14 @@ final class Fleet
             'cycleDays' => $cycle,
             'startDate' => $start,
             'buses'     => $buses,
+            'mode'      => (string) ($raw['mode'] ?? '') === 'round_trip' ? 'round_trip' : 'daily',
         ];
     }
 
     /** Persist a rotation. Audited. */
-    public static function saveRotation(bool $enabled, array $busIds, int $cycleDays, string $startDate, int $by = 0): void
+    public static function saveRotation(bool $enabled, array $busIds, int $cycleDays, string $startDate, int $by = 0, string $mode = 'daily'): void
     {
+        $mode = $mode === 'round_trip' ? 'round_trip' : 'daily';
         $buses = [];
         foreach ($busIds as $b) {
             $id = (int) $b;
@@ -95,14 +107,15 @@ final class Fleet
             'cycleDays' => $cycleDays,
             'startDate' => $startDate,
             'buses'     => $buses,
+            'mode'      => $mode,
         ], 'json', 'fleet', false);
 
         Logger::audit(
             'fleet.rotation_saved',
             'settings',
             'bus_rotation',
-            ['buses' => $old['buses'], 'enabled' => $old['enabled'], 'cycleDays' => $old['cycleDays']],
-            ['buses' => $buses, 'enabled' => $enabled, 'cycleDays' => $cycleDays],
+            ['buses' => $old['buses'], 'enabled' => $old['enabled'], 'cycleDays' => $old['cycleDays'], 'mode' => $old['mode'], 'startDate' => $old['startDate']],
+            ['buses' => $buses, 'enabled' => $enabled, 'cycleDays' => $cycleDays, 'mode' => $mode, 'startDate' => $startDate],
             'by admin#' . $by
         );
     }
@@ -146,6 +159,75 @@ final class Fleet
         }
 
         return $rot['buses'][$i];
+    }
+
+    /**
+     * Route-aware answer (29 Oct 2026): which bus runs THIS route on a date,
+     * and whether the route runs at all that day.
+     *
+     *   daily mode       runs = true, bus = busForDate() (null = route's own bus)
+     *   round_trip mode  cycle of 2n days; days 0..n-1 the outbound run (to
+     *                    Nepal) goes with bus[i], days n..2n-1 the return run
+     *                    goes with bus[i-n]; the other direction does not run
+     *   no rotation      runs = true, bus = null
+     *
+     * @param array<string,mixed>|int $route routes row (needs to_city) or id
+     * @return array{runs: bool, bus: ?int, leg: string}
+     */
+    public static function planFor(array|int $route, string $travelDate): array
+    {
+        $rot = self::rotation();
+        if (!$rot['enabled'] || $rot['buses'] === []) {
+            return ['runs' => true, 'bus' => null, 'leg' => ''];
+        }
+        if ($rot['mode'] !== 'round_trip') {
+            return ['runs' => true, 'bus' => self::busForDate($travelDate), 'leg' => ''];
+        }
+        if (is_int($route)) {
+            $route = Database::fetch('SELECT id, from_city, to_city FROM routes WHERE id = :id', ['id' => $route]) ?? [];
+        }
+        $n = count($rot['buses']);
+        $i = self::dayIndex($travelDate) % (2 * $n);
+        if ($i < 0) {
+            $i += 2 * $n;
+        }
+        require_once __DIR__ . '/fare.php';
+        $outbound = Fare::routeDir($route) === 'toNepal';
+        $outDay   = $i < $n;
+        if ($outbound === $outDay) {
+            return ['runs' => true, 'bus' => $rot['buses'][$outDay ? $i : $i - $n], 'leg' => $outbound ? 'out' : 'back'];
+        }
+        return ['runs' => false, 'bus' => null, 'leg' => $outbound ? 'out' : 'back'];
+    }
+
+    /**
+     * Round-trip preview for the admin: per date, the outbound bus and the
+     * return bus (null = that direction does not run).
+     *
+     * @return array<int, array{date: string, out: ?int, back: ?int}>
+     */
+    public static function roundTripPreview(int $days = 12, ?string $fromDate = null): array
+    {
+        $rot = self::rotation();
+        if (!$rot['enabled'] || $rot['mode'] !== 'round_trip') {
+            return [];
+        }
+        require_once __DIR__ . '/fare.php';
+        // One real route each way decides the direction (Fare::routeDir).
+        $toNepal = ['to_city' => 'Rupaidiha'];
+        $toIndia = ['to_city' => 'Surat'];
+        foreach (Database::fetchAll('SELECT from_city, to_city FROM routes WHERE is_active = 1 ORDER BY sort_order, id') as $r) {
+            if (Fare::routeDir($r) === 'toNepal') { $toNepal = $r; } else { $toIndia = $r; }
+        }
+        $out   = [];
+        $from  = $fromDate ?? todayISO();
+        for ($d = 0; $d < max(1, $days); $d++) {
+            $date  = addDaysISO($from, $d);
+            $o     = self::planFor($toNepal, $date);
+            $b     = self::planFor($toIndia, $date);
+            $out[] = ['date' => $date, 'out' => $o['runs'] ? $o['bus'] : null, 'back' => $b['runs'] ? $b['bus'] : null];
+        }
+        return $out;
     }
 
     /**

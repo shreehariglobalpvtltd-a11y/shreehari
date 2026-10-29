@@ -47,6 +47,45 @@ final class OffsiteBackup
     public const ITERATIONS = 200000;
     public const MIN_PASS   = 10;
     public const MAX_BYTES  = 18 * 1024 * 1024;   // under Gmail's 25 MB after base64
+
+    /**
+     * 29 Oct 2026 audit: the nightly dump grew to ~50 MB (1.5 M map-place rows
+     * and ~200 k app-log rows), past MAX_BYTES, so even switched on nothing
+     * could leave. These tables are rebuilt from the map import / are only
+     * logs: the off-site copy keeps their structure and drops their rows.
+     * Every booking, payment, ledger, customer and settings row still goes.
+     */
+    public const SLIM_SKIP_ROWS = ['nav_places', 'nav_features', 'app_logs', 'app_events', 'rate_limits', 'push_log', 'automation_log', 'webhooks_received'];
+
+    /**
+     * The newest dump without the rows of SLIM_SKIP_ROWS, gzip bytes built in
+     * memory (null when the dump cannot be read). Streams line by line - one
+     * INSERT per row is the format cron/backup.php writes - and compresses as
+     * it goes, so no temp file is written next to the real backups.
+     */
+    public static function slimCopy(string $file): ?string
+    {
+        $in  = @gzopen($file, 'rb');
+        $ctx = deflate_init(ZLIB_ENCODING_GZIP, ['level' => 6]);
+        if ($in === false || $ctx === false) {
+            return null;
+        }
+        $skip = [];
+        foreach (self::SLIM_SKIP_ROWS as $t) {
+            $skip[] = 'INSERT INTO `' . $t . '` ';
+        }
+        $out = '';
+        while (($line = gzgets($in)) !== false) {
+            foreach ($skip as $prefix) {
+                if (str_starts_with($line, $prefix)) {
+                    continue 2;
+                }
+            }
+            $out .= deflate_add($ctx, $line, ZLIB_NO_FLUSH);
+        }
+        gzclose($in);
+        return $out . deflate_add($ctx, '', ZLIB_FINISH);
+    }
     public const MAX_AGE_H  = 26;
 
     public static function enabled(): bool
@@ -118,6 +157,13 @@ final class OffsiteBackup
                 "Run by hand and read the error:\n/usr/bin/php /var/www/shreehariglobal.in/public_html/cron/backup.php");
         }
         $size = (int) filesize($file);
+        $slim = null;
+        if ($size > self::MAX_BYTES) {
+            $slim = self::slimCopy($file);
+            if ($slim !== null) {
+                $size = strlen($slim);
+            }
+        }
         if ($size > self::MAX_BYTES) {
             return self::fail('backup.offsite_too_big', Health::CRITICAL, 'The backup has outgrown email (' . round($size / 1048576) . ' MB)',
                 'Email cannot carry a file this large, so no off-site copy is being made.',
@@ -130,7 +176,7 @@ final class OffsiteBackup
             return ['ok' => true, 'sent' => 0, 'file' => $name, 'note' => 'already sent'];
         }
 
-        $blob = self::encrypt((string) file_get_contents($file), $pass);
+        $blob = self::encrypt($slim ?? (string) file_get_contents($file), $pass);
         $html = '<p>Nightly encrypted backup of the S Hari Global booking database.</p>'
               . '<p><b>' . htmlspecialchars($name, ENT_QUOTES) . '.enc</b> · ' . round($size / 1024) . ' KB · ' . date('Y-m-d H:i', (int) filemtime($file)) . '</p>'
               . '<p>Keep these emails. To open one you need the backup password that was set in Admin &gt; Settings '

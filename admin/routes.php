@@ -948,7 +948,13 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
     <thead><tr><th>Code</th><th>Route</th><th>Bus</th><th>Type</th><th>Departs</th><th>Base fare</th><th>Seats free today</th><th>Status</th><th></th></tr></thead>
     <tbody>
     <?php foreach ($routes as $r):
-      $avail = Seats::availability((int) $r['id'], $today, $r['coach_type'] === 'sleeper' ? 'sharing' : 'seater');
+      // 29 Oct 2026 (audit): availability() materialises today's schedule row,
+      // so asking it for a switched-off route created a phantom trip on every
+      // visit to this page (11 a day on live, later flipped to "departed" by
+      // the lifecycle cron). A route that is off has no seats to show.
+      $avail = (int) $r['is_active'] === 1
+          ? Seats::availability((int) $r['id'], $today, $r['coach_type'] === 'sleeper' ? 'sharing' : 'seater')
+          : null;
     ?>
       <tr style="<?= (int) $r['is_active'] === 1 ? '' : 'opacity:.5' ?>">
         <td class="mono" data-label="Code"><?= Security::e((string) $r['route_code']) ?></td>
@@ -987,7 +993,7 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
           <?php endif; ?>
         </td>
         <td data-label="Base fare"><?= Security::e(inr((float) $r['base_fare'])) ?></td>
-        <td data-label="Seats free today"><strong><?= (int) ($avail['availableCount'] ?? 0) ?></strong><span class="muted"> / <?= (int) ($avail['total'] ?? 0) ?></span></td>
+        <td data-label="Seats free today"><?php if ($avail === null): ?><span class="muted">— off</span><?php else: ?><strong><?= (int) ($avail['availableCount'] ?? 0) ?></strong><span class="muted"> / <?= (int) ($avail['total'] ?? 0) ?></span><?php endif; ?></td>
         <td data-label="Status"><?= (int) $r['is_active'] === 1 ? admin_pill('confirmed') : admin_pill('expired') ?></td>
         <td data-label="Action">
           <?php if (Auth::can('routes.edit')): ?>

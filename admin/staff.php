@@ -9,7 +9,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
-$admin   = admin_boot('dashboard.view');
+$admin   = admin_boot('staff.manage');   // 29 Oct 2026 audit: was dashboard.view - the menu, and every write here, already need more
 $isSuper = Auth::isSuperadmin();
 
 $ROLES = ['agent', 'counter', 'operations', 'manager', 'accountant', 'support', 'scanner', 'official', 'viewer', 'superadmin'];

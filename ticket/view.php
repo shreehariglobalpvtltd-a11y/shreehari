@@ -22,6 +22,7 @@ require_once INCLUDE_PATH . '/qr.php';
 require_once INCLUDE_PATH . '/pdf.php';
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/ticketlink.php';
+require_once INCLUDE_PATH . '/seats.php';
 
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store');
@@ -85,7 +86,9 @@ if ($b !== null) {
         // The stored stop carries its map point ("Surat - Departure @ 13:00 [21.17,72.83]"): words only here.
         'boarding' => trim((string) preg_replace('/\s*\[[-\d.,\s]+\]\s*$/', '', (string) ($leg['boarding_stop'] ?? ''))),
         'drop'     => trim((string) preg_replace('/\s*\[[-\d.,\s]+\]\s*$/', '', (string) ($leg['drop_stop'] ?? ''))),
-        'pax'      => array_map(static fn(array $p): array => ['name' => $short((string) $p['full_name']), 'seat' => (string) $p['seat_no']], $pax),
+        // 29 Oct 2026 audit: the same seat label the ticket prints (A1..F12), never the raw L/U id.
+        'pax'      => array_map(static fn(array $p): array => ['name' => $short((string) $p['full_name']),
+                          'seat' => Seats::displayLabel((string) $p['seat_no'], 'sleeper', (string) (($b['booking_mode'] ?? '') ?: 'sharing'))], $pax),
         'img'      => in_array((string) $b['status'], ['confirmed', 'completed'], true) ? Ticket::imageUrl($pnr) : '',
         'pdf'      => in_array((string) $b['status'], ['confirmed', 'completed'], true) ? Ticket::downloadUrl($pnr) : '',
         'hi'       => 'https://wa.me/' . $metaNo . '?text=' . rawurlencode('Hi ' . $pnr),
