@@ -17,6 +17,7 @@ Auth::requireAdmin('dashboard.view');
 require_once INCLUDE_PATH . '/tripstatus.php';
 require_once INCLUDE_PATH . '/tripnotify.php';
 require_once INCLUDE_PATH . '/agentwallet.php';
+require_once INCLUDE_PATH . '/commandcenter.php';   // 29 Oct 2026: command center tiles, alerts, counters
 
 $base      = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
 $today     = todayISO();
@@ -277,6 +278,26 @@ $recent = Database::fetchAll(
        LEFT JOIN routes r ON r.id=s.route_id
       ORDER BY b.id DESC LIMIT 8"
 );
+
+/* Command center (29 Oct 2026, management upgrade 2.4 / 4.3 / 4.4): live
+   figures, so only on the today view; a past snapshot keeps the old page. */
+$cc = null;
+if ($isTodayView) {
+    try {
+        $cc = [
+            'rev'       => CommandCenter::revenue($today),
+            'cash'      => CommandCenter::cashDue(),
+            'occ'       => CommandCenter::occupancy($today),
+            'top'       => CommandCenter::topSellers($today),
+            'counters'  => CommandCenter::counterBoard($today),
+            'alerts'    => CommandCenter::alerts($today),
+            'approvals' => CommandCenter::approvals(),
+        ];
+    } catch (Throwable $e) {
+        Logger::error('command center failed: ' . $e->getMessage());
+        $cc = null;   // the rest of the dashboard still renders
+    }
+}
 
 admin_header('Dashboard', 'index');
 ?>
@@ -601,6 +622,194 @@ admin_header('Dashboard', 'index');
     </button>
   </div>
 </div>
+
+<?php if ($cc !== null): ?>
+<!-- ============ COMMAND CENTER (29 Oct 2026, management upgrade 2.4 / 4.3 / 4.4) ============
+     Read-only (includes/commandcenter.php). Every tile links to the page
+     that acts on it. The counter board, alerts and approvals refresh every
+     60 s from admin/api/command-center.php while the page is visible. -->
+<style>
+.cc{margin:0 0 22px}
+.cc-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.cc-tile{display:block;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;color:var(--ink);text-decoration:none;border-top:4px solid var(--blue);transition:transform .15s,box-shadow .15s;min-height:48px}
+.cc-tile:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(18,38,78,.10)}
+.cc-tile .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:800;color:var(--mut)}
+.cc-tile .v{font-size:22px;font-weight:900;margin-top:2px;font-variant-numeric:tabular-nums}
+.cc-tile .s{font-size:12px;color:var(--mut);margin-top:3px;line-height:1.4}
+.cc-tile.t-rev{border-top-color:#0a8b4b}.cc-tile.t-cash{border-top-color:var(--orange)}.cc-tile.t-appr{border-top-color:var(--blue)}.cc-tile.t-alert{border-top-color:#c0392b}
+.cc-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.cc-list{list-style:none;margin:0;padding:0}
+.cc-list li a{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);color:var(--ink);text-decoration:none;min-height:48px;font-size:13.5px}
+.cc-list li:last-child a{border-bottom:0}
+.cc-list li a:hover{background:var(--hover)}
+.cc-list .lv{width:8px;height:8px;border-radius:50%;flex:none}
+.cc-list .lv.red{background:#c0392b}.cc-list .lv.amber{background:#e67e22}.cc-list .lv.blue{background:var(--blue)}
+.cc-list .n{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cc-list .n small{font-weight:500;color:var(--mut);margin-left:6px}
+.cc-list .zero{opacity:.55}
+.cc-empty{padding:16px;color:var(--mut);font-size:13px}
+.cc-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.cc-tbl th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+.cc-tbl td{padding:9px 10px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.cc-tbl td.num,.cc-tbl th.num{text-align:right}
+.cc-tbl tr.desk td{background:var(--head);font-weight:800;font-size:12px}
+.cc-st{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:800;white-space:nowrap}
+.cc-st.open{background:#d7f4e3;color:#0a6b3b}.cc-st.closed{background:#e1ecfb;color:#1f4f96}.cc-st.closed_diff{background:#fde2e1;color:#a12a22}.cc-st.none{background:var(--head);color:var(--mut)}
+.cc-occ{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line);font-size:13px}
+.cc-occ:last-child{border-bottom:0}
+.cc-occ .bar{flex:1;height:8px;border-radius:99px;background:var(--line);overflow:hidden;min-width:60px}
+.cc-occ .bar span{display:block;height:100%}
+.cc-occ .red{background:#c0392b}.cc-occ .amber{background:#e6a116}.cc-occ .green{background:#0a8b4b}
+.cc-occ .lbl{flex:0 1 46%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc-occ .pct{width:86px;text-align:right;font-weight:800;white-space:nowrap}
+@media(max-width:900px){.cc-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.cc-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.cc-tbl .hide-sm{display:none}.cc-tile .v{font-size:19px}}
+</style>
+<?php
+$ccRev   = $cc['rev'];
+$ccCash  = $cc['cash'];
+$ccApprN = array_sum(array_column($cc['approvals'], 'n'));
+$ccRed   = count(array_filter($cc['alerts'], static fn(array $a): bool => $a['level'] === 'red'));
+$ccDiff  = $ccRev['last_month_same'] > 0 ? (int) round(($ccRev['mtd'] - $ccRev['last_month_same']) * 100 / $ccRev['last_month_same']) : null;
+?>
+<section class="cc" data-cat-section="all" aria-label="Command center">
+  <div class="cc-tiles">
+    <a class="cc-tile t-rev" href="/admin/analytics.php">
+      <div class="k">Revenue · आम्दानी</div>
+      <div class="v"><?= Security::e(inr($ccRev['today'])) ?> <small style="font-size:12px;color:var(--mut);font-weight:600">today</small></div>
+      <div class="s">MTD <b><?= Security::e(inr($ccRev['mtd'])) ?></b><?= $ccDiff !== null ? ' (' . ($ccDiff >= 0 ? '▲' : '▼') . abs($ccDiff) . '% vs last month)' : '' ?><br>
+        Projected <b><?= Security::e(inr($ccRev['projected'])) ?></b> · 7-day avg <?= Security::e(inr($ccRev['avg7'])) ?>/day</div>
+    </a>
+    <a class="cc-tile t-cash" href="/admin/reconcile.php">
+      <div class="k">Agent cash due · एजेन्टसँग नगद</div>
+      <div class="v"><?= Security::e(inr($ccCash['agents_total'])) ?></div>
+      <div class="s"><?= (int) $ccCash['agents_n'] ?> agent<?= (int) $ccCash['agents_n'] === 1 ? '' : 's' ?> holding<?= $ccCash['top_name'] !== '' ? ' · most: ' . Security::e($ccCash['top_name']) . ' ' . Security::e(inr($ccCash['top_amount'])) : '' ?>
+        <?= $ccCash['staff_total'] > 0 ? '<br>+ ' . Security::e(inr($ccCash['staff_total'])) . ' with office / counter staff' : '' ?></div>
+    </a>
+    <a class="cc-tile t-appr" href="#ccApprovals">
+      <div class="k">Waiting approvals · स्वीकृति</div>
+      <div class="v" data-cc="apprN"><?= (int) $ccApprN ?></div>
+      <div class="s">payments, payouts, settlements, refunds, applications</div>
+    </a>
+    <a class="cc-tile t-alert" href="#ccAlerts">
+      <div class="k">Alerts · चेतावनी</div>
+      <div class="v" data-cc="alertN" style="color:<?= $ccRed > 0 ? '#c0392b' : 'var(--ink)' ?>"><?= count($cc['alerts']) ?></div>
+      <div class="s" data-cc="alertSub"><?= $ccRed > 0 ? $ccRed . ' need action today' : (count($cc['alerts']) > 0 ? 'to look at' : 'all clear ✓') ?></div>
+    </a>
+  </div>
+
+  <div class="cc-grid">
+    <div class="dash-panel" id="ccAlerts" style="margin-bottom:16px">
+      <div class="dp-head">⚠️ Alert feed <span class="muted" style="margin-left:auto;font-size:11.5px;font-weight:500" data-cc="at">live</span></div>
+      <ul class="cc-list" data-cc="alerts">
+        <?php if ($cc['alerts'] === []): ?><li class="cc-empty">Nothing needs attention right now. ✓</li><?php endif; ?>
+        <?php foreach ($cc['alerts'] as $al): ?>
+          <li><a href="<?= Security::e($al['href']) ?>"><span class="lv <?= Security::e($al['level']) ?>"></span><span><?= $al['icon'] ?> <?= Security::e($al['text']) ?></span><span class="n">→</span></a></li>
+        <?php endforeach; ?>
+      </ul>
+    </div>
+    <div class="dash-panel" id="ccApprovals" style="margin-bottom:16px">
+      <div class="dp-head">✅ Waiting for a decision</div>
+      <ul class="cc-list" data-cc="approvals">
+        <?php foreach ($cc['approvals'] as $ap): ?>
+          <li><a href="<?= Security::e($ap['href']) ?>" class="<?= (int) $ap['n'] === 0 ? 'zero' : '' ?>"><span><?= Security::e($ap['label']) ?></span>
+            <span class="n"><?= (int) $ap['n'] ?><?= $ap['amount'] > 0 ? '<small>' . Security::e(inr((float) $ap['amount'])) . '</small>' : '' ?></span></a></li>
+        <?php endforeach; ?>
+      </ul>
+    </div>
+  </div>
+
+  <div class="dash-panel" id="ccCounters" data-cat-section="ticketing" style="margin-bottom:16px">
+    <div class="dp-head">🏪 Counter status · काउन्टर <span class="muted" style="margin-left:auto;font-size:11.5px;font-weight:500">today · refreshes every minute</span></div>
+    <div style="overflow-x:auto">
+      <table class="cc-tbl">
+        <thead><tr><th>Operator</th><th>Shift</th><th class="num">Tickets</th><th class="num">Cash</th><th class="num hide-sm">UPI / bank</th><th class="num hide-sm">Drawer now</th></tr></thead>
+        <tbody data-cc="counters"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="cc-grid">
+    <div class="dash-panel" data-cat-section="org" style="margin-bottom:16px">
+      <div class="dp-head">🥇 Top sellers today <a href="/admin/agent-ranking.php" style="margin-left:auto;font-size:12px;font-weight:600">Leaderboard →</a></div>
+      <ul class="cc-list">
+        <?php if ($cc['top'] === []): ?><li class="cc-empty">No confirmed sale yet today.</li><?php endif; ?>
+        <?php foreach ($cc['top'] as $i => $ts): ?>
+          <li><a href="<?= $ts['role'] === 'agent' ? '/admin/agent-360.php?agent=' . (int) $ts['id'] : '/admin/bookings.php?' . Security::e(http_build_query(['from' => $today, 'to' => $today])) ?>">
+            <span style="font-size:18px;width:24px;text-align:center"><?= ['🥇', '🥈', '🥉'][$i] ?? ($i + 1) ?></span>
+            <span><b><?= Security::e($ts['name']) ?></b> <span class="muted" style="font-size:11.5px"><?= Security::e(ucfirst($ts['role'])) ?></span></span>
+            <span class="n"><?= (int) $ts['tickets'] ?> tkt<small><?= Security::e(inr($ts['revenue'])) ?></small></span></a></li>
+        <?php endforeach; ?>
+      </ul>
+    </div>
+    <div class="dash-panel" data-cat-section="ticketing map" style="margin-bottom:16px">
+      <div class="dp-head">🚌 Occupancy by bus · today</div>
+      <div>
+        <?php if ($cc['occ'] === []): ?><div class="cc-empty">No trip today.</div><?php endif; ?>
+        <?php foreach ($cc['occ'] as $oc): ?>
+          <a class="cc-occ" href="/admin/trip-dashboard.php?date=<?= Security::e($today) ?>" style="color:var(--ink);text-decoration:none">
+            <span class="lbl" title="<?= Security::e($oc['label']) ?>"><?= Security::e($oc['label']) ?><?= $oc['bus'] !== '' ? ' <span class="muted mono" style="font-size:11px">' . Security::e($oc['bus']) . '</span>' : '' ?></span>
+            <span class="bar"><span class="<?= $oc['band'] ?>" style="width:<?= min(100, $oc['pct']) ?>%"></span></span>
+            <span class="pct"><?= (int) $oc['pct'] ?>% <small class="muted"><?= (int) $oc['sold'] ?>/<?= (int) $oc['total'] ?></small></span>
+          </a>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  </div>
+</section>
+<script>
+(function () {
+  var first = <?= json_encode(['counters' => $cc['counters'], 'alerts' => $cc['alerts'], 'approvals' => $cc['approvals']], JSON_UNESCAPED_UNICODE) ?>;
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function inr(n) { return '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN'); }
+  function $(k) { return document.querySelector('[data-cc="' + k + '"]'); }
+  var stLabel = { open: 'Open', closed: 'Closed ✓', closed_diff: 'Closed ≠', none: 'No shift' };
+  function counters(rows) {
+    var tb = $('counters'); if (!tb) return;
+    if (!rows || !rows.length) { tb.innerHTML = '<tr><td colspan="6" class="cc-empty">No counter logins yet — add one in Staff (role: Counter) and assign its desk.</td></tr>'; return; }
+    var html = '', desk = null;
+    rows.forEach(function (r) {
+      var d = r.desk || '';
+      if (d !== desk) { desk = d; html += '<tr class="desk"><td colspan="6">' + (d ? '📍 ' + esc(r.desk_name || d) + ' <span class="muted mono">(' + esc(d) + ')</span>' : '📍 No desk assigned') + '</td></tr>'; }
+      var href = r.shift_id ? (r.state === 'open' ? '/admin/shift.php?shift=' + r.shift_id : '/admin/shift.php?slip=' + r.shift_id) : '/admin/shift.php';
+      html += '<tr><td><a href="' + href + '"><b>' + esc(r.name) + '</b></a></td>'
+        + '<td><span class="cc-st ' + esc(r.state) + '">' + esc(stLabel[r.state] || r.state) + '</span>' + (r.since ? ' <span class="muted" style="font-size:11.5px">' + esc(r.since) + '</span>' : '') + '</td>'
+        + '<td class="num">' + (r.tickets | 0) + '</td><td class="num">' + inr(r.cash) + '</td>'
+        + '<td class="num hide-sm">' + inr(r.upi) + '</td><td class="num hide-sm">' + (r.drawer == null ? '<span class="muted">—</span>' : inr(r.drawer)) + '</td></tr>';
+    });
+    tb.innerHTML = html;
+  }
+  function alerts(list) {
+    var ul = $('alerts'); if (!ul) return;
+    ul.innerHTML = (!list || !list.length) ? '<li class="cc-empty">Nothing needs attention right now. ✓</li>'
+      : list.map(function (a) { return '<li><a href="' + esc(a.href) + '"><span class="lv ' + esc(a.level) + '"></span><span>' + esc(a.icon) + ' ' + esc(a.text) + '</span><span class="n">→</span></a></li>'; }).join('');
+    var red = (list || []).filter(function (a) { return a.level === 'red'; }).length;
+    if ($('alertN')) { $('alertN').textContent = (list || []).length; $('alertN').style.color = red ? '#c0392b' : ''; }
+    if ($('alertSub')) { $('alertSub').textContent = red ? red + ' need action today' : ((list || []).length ? 'to look at' : 'all clear ✓'); }
+  }
+  function approvals(list) {
+    var ul = $('approvals'); if (!ul || !list) return;
+    ul.innerHTML = list.map(function (a) {
+      return '<li><a href="' + esc(a.href) + '" class="' + ((a.n | 0) === 0 ? 'zero' : '') + '"><span>' + esc(a.label) + '</span><span class="n">' + (a.n | 0) + (a.amount > 0 ? '<small>' + inr(a.amount) + '</small>' : '') + '</span></a></li>';
+    }).join('');
+    if ($('apprN')) $('apprN').textContent = list.reduce(function (s, a) { return s + (a.n | 0); }, 0);
+  }
+  counters(first.counters);
+  function poll() {
+    if (document.hidden) return;
+    fetch('/admin/api/command-center.php', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || !j.ok) return;
+        counters(j.counters); alerts(j.alerts); approvals(j.approvals);
+        if ($('at')) $('at').textContent = 'live · ' + j.at;
+      })
+      .catch(function () { /* keep the last render */ });
+  }
+  setInterval(poll, 60000);
+})();
+</script>
+<?php endif; ?>
 
 <!-- Modal 1: Quick Update Live Bus Location -->
 <div class="shg-modal" id="modalLiveBus">
