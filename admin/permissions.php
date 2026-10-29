@@ -113,6 +113,37 @@ $withGrants = array_values(array_filter($people, static function (array $p): boo
 $dis = $isSa ? '' : ' disabled';
 $csrf = Security::csrfField();
 
+/* Named permission groups (29 Oct 2026, management upgrade 4.2): a one-tap
+   way to tick a common set in "One person". 'payments.*' = every catalog
+   permission starting with "payments.". Ticking only fills the boxes; the
+   super-admin still presses Save, and the server keeps validating each
+   permission against the catalog exactly as before. */
+$groupDefs = [
+    'finance' => ['💰 Full finance access', ['payments.*', 'commissions.*', 'refunds.*', 'reports.*']],
+    'desk'    => ['🎫 Ticket desk', ['bookings.view', 'bookings.edit', 'bookings.cancel', 'tickets.scan', 'customers.view', 'schedules.view', 'payments.view', 'payments.verify']],
+    'support' => ['🎧 Support desk', ['support.*', 'messages.view', 'customers.view', 'bookings.view', 'waitlist.view']],
+    'ops'     => ['🚌 Bus operations', ['schedules.*', 'routes.*', 'buses.*', 'drivers.*', 'liveops.*', 'tickets.scan']],
+    'reports' => ['📊 Reports only', ['dashboard.view', 'reports.view', 'reports.export']],
+];
+$groups = [];
+foreach ($groupDefs as $gk => [$glabel, $patterns]) {
+    $set = [];
+    foreach ($patterns as $pat) {
+        foreach (array_keys($known) as $perm) {
+            if ($pat === $perm || (str_ends_with($pat, '.*') && str_starts_with($perm, substr($pat, 0, -1)))) {
+                $set[$perm] = true;
+            }
+        }
+    }
+    $groups[$gk] = ['label' => $glabel, 'perms' => array_keys($set)];
+}
+/** Grants a person holds beyond their role (the "+N extra" badge). */
+$extraOf = static function (array $p) use ($known): array {
+    $g = jsonColumn($p['permissions']);
+    $g = is_array($g) ? array_values(array_filter($g, 'is_string')) : [];
+    return array_values(array_diff(array_filter($g, static fn(string $x): bool => isset($known[$x])), Auth::rolePermissions((string) $p['role'])));
+};
+
 admin_header('Roles & Permissions', 'permissions');
 ?>
 <style>
@@ -211,12 +242,26 @@ table.pm tr.pm-mod td{background:var(--bg,#F4F6FB);font-weight:800;text-align:le
       <select name="id" onchange="this.form.submit()" style="min-height:42px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);max-width:100%">
         <option value="0">— choose —</option>
         <?php foreach ($people as $p): ?>
-          <option value="<?= (int) $p['id'] ?>" <?= (int) $p['id'] === $personId ? 'selected' : '' ?>><?= $e(($p['full_name'] ?: $p['username']) . ' · ' . $p['role'] . ((int) $p['is_active'] === 1 ? '' : ' (off)')) ?></option>
+          <?php $nx = count($extraOf($p)); ?>
+          <option value="<?= (int) $p['id'] ?>" <?= (int) $p['id'] === $personId ? 'selected' : '' ?>><?= $e(($p['full_name'] ?: $p['username']) . ' · ' . $p['role'] . ($nx > 0 ? ' · +' . $nx . ' extra' : '') . ((int) $p['is_active'] === 1 ? '' : ' (off)')) ?></option>
         <?php endforeach; ?>
       </select></label>
   </form>
   <?php if ($person !== null): $fromRole = Auth::rolePermissions((string) $person['role']); ?>
-    <form method="post" data-no-guard>
+    <?php $pExtra = $extraOf($person); ?>
+    <p class="pm-note" style="margin:0 0 8px"><b><?= $e($person['full_name'] ?: $person['username']) ?></b> · <?= $e($roleName[$person['role']] ?? $person['role']) ?>
+      <?= $pExtra !== [] ? '· <span class="pm-chip" style="background:#fff1de;border-color:#f6d6a5;color:#8a4b00">+' . count($pExtra) . ' extra beyond the role</span>' : '· nothing beyond the role' ?></p>
+    <?php if ($isSa): ?>
+    <div class="pm-bar" style="margin:0 0 10px" id="pmGroups">
+      <span class="pm-note" style="margin:0">Tick a group:</span>
+      <?php foreach ($groups as $gk => $g): ?>
+        <button type="button" class="btn btn-sm" data-perms="<?= $e(implode(' ', $g['perms'])) ?>" title="<?= $e(implode(', ', $g['perms'])) ?>"><?= $e($g['label']) ?></button>
+      <?php endforeach; ?>
+      <button type="button" class="btn btn-sm ghost" data-perms="" title="Untick every extra grant">✕ Clear extras</button>
+      <span class="pm-note" style="margin:0">— then Save.</span>
+    </div>
+    <?php endif; ?>
+    <form method="post" data-no-guard id="pmPersonForm">
       <?= $csrf ?><input type="hidden" name="act" value="save_person"><input type="hidden" name="person" value="<?= (int) $person['id'] ?>">
       <?php foreach ($catalog as $module => $perms): ?>
         <h3 style="font-size:13px;margin:12px 0 6px;color:var(--blue,#1d4ed8)"><?= $e($module) ?></h3>
@@ -236,12 +281,13 @@ table.pm tr.pm-mod td{background:var(--bg,#F4F6FB);font-weight:800;text-align:le
   <?php if ($withGrants !== []): ?>
   <h3 style="font-size:13px;margin:16px 0 6px">People with extra grants (<?= count($withGrants) ?>)</h3>
   <div class="dt-wrap"><table class="dt card-table">
-    <thead><tr><th>Person</th><th>Role</th><th>Extra grants</th></tr></thead>
+    <thead><tr><th>Person</th><th>Role</th><th>Beyond role</th><th>Extra grants</th></tr></thead>
     <tbody>
     <?php foreach ($withGrants as $p): $g = jsonColumn($p['permissions']); ?>
       <tr>
         <td data-label="Person"><a href="?id=<?= (int) $p['id'] ?>"><?= $e($p['full_name'] ?: $p['username']) ?></a></td>
         <td data-label="Role"><?= $e($p['role']) ?></td>
+        <td data-label="Beyond role"><b>+<?= count($extraOf($p)) ?></b></td>
         <td data-label="Grants"><?php foreach ((array) $g as $one): ?><span class="pm-chip"><?= $e(is_string($one) ? $one : json_encode($one)) ?></span><?php endforeach; ?></td>
       </tr>
     <?php endforeach; ?>
@@ -250,4 +296,22 @@ table.pm tr.pm-mod td{background:var(--bg,#F4F6FB);font-weight:800;text-align:le
   <?php endif; ?>
 </div>
 
+<script>
+/* Permission groups (29 Oct 2026): tick a named set in the person form
+   (boxes that come from the role stay as they are); Save still posts. */
+(function () {
+  var bar = document.getElementById('pmGroups'), form = document.getElementById('pmPersonForm');
+  if (!bar || !form) return;
+  bar.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-perms]'); if (!b) return;
+    var want = (b.getAttribute('data-perms') || '').split(' ').filter(Boolean);
+    form.querySelectorAll('input[type=checkbox][name^="g["]').forEach(function (c) {
+      if (c.disabled) return;
+      var perm = c.name.slice(2, -1);
+      if (!want.length) { c.checked = false; } else if (want.indexOf(perm) >= 0) { c.checked = true; }
+    });
+    form.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  });
+})();
+</script>
 <?php admin_footer();
