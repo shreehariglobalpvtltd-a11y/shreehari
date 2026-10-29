@@ -31,6 +31,7 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/agentreport.php';
 require_once INCLUDE_PATH . '/agentsettlement.php';   // 15 Oct 2026: the two-person rule stages adjustments on a draft
+require_once INCLUDE_PATH . '/agenttargets.php';      // 29 Oct 2026: monthly target, rank, badges, bonus
 $admin = admin_boot('customers.view');
 Auth::requireAdmin('commissions.view');
 if (Auth::isCounterAgent()) {
@@ -49,6 +50,7 @@ $base      = '';   // root-relative: the panel must stay on the request host (.i
 $tabs = [
     'report'      => 'Report · रिपोर्ट',
     'overview'    => 'Overview',
+    'targets'     => '🎯 Targets · लक्ष्य',
     'statement'   => 'Statement',
     'settlements' => 'Settlements',
     'loans'       => 'Loans & advances',
@@ -515,6 +517,41 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             a360_flash('ok', $after === '' ? 'Agent code removed.' : 'Agent code is now ' . $after . ($before !== '' && $before !== $after ? ' (was ' . $before . ')' : '') . '. Tickets and the agent panel show the new code.');
             a360_go($targetId, $backTab);
 
+        } elseif ($action === 'target_set') {
+            /* 29 Oct 2026 (management upgrade Phase 1.2): this agent's own
+               monthly target. Amount and tickets both 0 = remove the row, so
+               the company default (agent_target_monthly) applies again. */
+            $needManage();
+            $ym = (string) ($_POST['month'] ?? '');
+            AgentTargets::set(
+                $targetId,
+                $ym,
+                (float) ($_POST['target_amount'] ?? 0),
+                (int) ($_POST['target_bookings'] ?? 0),
+                (float) ($_POST['bonus_pct'] ?? 0),
+                (string) ($_POST['note'] ?? ''),
+                $selfId
+            );
+            $t = AgentTargets::targetFor($targetId, $ym);
+            a360_flash('ok', $t['source'] === 'agent'
+                ? 'Target for ' . date('F Y', (int) strtotime($ym . '-01')) . ': ' . inr($t['amount'])
+                  . ($t['bookings'] > 0 ? ' · ' . $t['bookings'] . ' tickets' : '')
+                  . ($t['bonus_pct'] > 0 ? ' · bonus ' . rtrim(rtrim(number_format($t['bonus_pct'], 2), '0'), '.') . '% above it' : '')
+                  . '. The agent sees it on their panel now.'
+                : 'Own target removed — the company target (' . ($t['amount'] > 0 ? inr($t['amount']) : 'none') . ') applies.');
+            a360_go($targetId, 'targets');
+
+        } elseif ($action === 'bonus_post') {
+            // Money: only a settler, never on their own account, only for a
+            // month that has ended, once (AgentTargets::postBonus refuses a repeat).
+            $needPay();
+            $notSelf();
+            $ym  = (string) ($_POST['month'] ?? '');
+            $lid = AgentTargets::postBonus($targetId, $ym, $selfId);
+            a360_flash('ok', 'Target bonus for ' . date('F Y', (int) strtotime($ym . '-01')) . ' credited to the commission wallet ('
+                . inr(abs((float) Database::scalar('SELECT amount FROM agent_ledger WHERE id = :i', ['i' => $lid], 0))) . '). Pay it out from Settlements as usual.');
+            a360_go($targetId, 'targets');
+
         } elseif ($action === 'toggle_active') {
             $needManage();
             if ($targetId === $selfId) {
@@ -704,6 +741,16 @@ $openLoans  = array_values(array_filter($loans, static fn(array $l): bool => (st
 $openReqs   = AgentWallet::openPayoutRequests($agentId);
 $reqHist    = AgentWallet::payoutRequests($agentId, 50);
 $months     = AgentWallet::commissionByMonth($agentId, 12);
+/* Targets tab (29 Oct 2026): this month, next month's row and the six before. */
+$tgtNow     = AgentTargets::progress($agentId);
+$tgtRank    = AgentTargets::rankFor($agentId, $tgtNow['month']);
+$tgtBadges  = AgentTargets::badges($agentId, $tgtNow);
+$tgtNextYm  = date('Y-m', (int) strtotime(date('Y-m-01') . ' +1 month'));
+$tgtNext    = AgentTargets::targetFor($agentId, $tgtNextYm);
+$tgtHist    = [];
+for ($i = 1; $i <= 6; $i++) {
+    $tgtHist[] = AgentTargets::progress($agentId, date('Y-m', (int) strtotime(date('Y-m-01') . ' -' . $i . ' months')));
+}
 $overdue    = AgentWallet::settlementOverdueDays($agentId);
 $salary     = AgentWallet::salaryFor($agentId);
 $salaryPaid = AgentWallet::salaryPaidTotal($agentId);
@@ -1514,6 +1561,91 @@ $imgData = [
         <?php endif; ?>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ============ TARGETS (29 Oct 2026) ============
+     This agent's own monthly target (else the company default), where they
+     rank, their badges, and the bonus above the target. The bonus is never
+     automatic: a settler posts it for a month that has ended, once. -->
+<?php
+$tn   = $tgtNow;
+$tnT  = $tn['target'];
+$tPct = static fn(float $v): string => rtrim(rtrim(number_format($v, 2), '0'), '.');
+?>
+<section class="a360-tab" data-tab="targets"<?= $tab === 'targets' ? '' : ' hidden' ?>>
+  <div class="kpis">
+    <?= admin_kpi('This month sold', inr($tn['sales']['money']), $tn['sales']['confirmed'] . ' confirmed · ' . $tn['sales']['cancelled'] . ' cancelled', 'chart-up', 'blue') ?>
+    <?= admin_kpi('Target', $tnT['amount'] > 0 ? inr($tnT['amount']) : '—', $tnT['source'] === 'agent' ? 'own target' : ($tnT['source'] === 'default' ? 'company default' : 'none set'), 'star', 'navy') ?>
+    <?= admin_kpi('Achieved', $tnT['amount'] > 0 ? $tn['pct'] . '%' : '—', $tnT['amount'] > 0 ? ($tn['remaining'] > 0 ? inr($tn['remaining']) . ' to go · ' . $tn['days_left'] . ' days left' : 'target reached') : 'set a target below', 'chart-up', $tn['pct'] >= 100 ? 'green' : ($tn['pct'] >= 60 ? 'orange' : 'red')) ?>
+    <?= admin_kpi('Rank this month', $tgtRank['rank'] > 0 && $tn['sales']['money'] > 0 ? '#' . $tgtRank['rank'] . ' of ' . $tgtRank['of'] : '—', $tgtRank['gap'] > 0 ? inr($tgtRank['gap']) . ' behind #' . $tgtRank['ahead'] : ($tgtRank['rank'] === 1 && $tn['sales']['money'] > 0 ? 'top seller' : 'active agents, by confirmed sales'), 'trophy', 'violet') ?>
+    <?php if ($tnT['bonus_pct'] > 0): ?>
+      <?= admin_kpi('Projected bonus', inr($tn['bonus']), $tPct($tnT['bonus_pct']) . '% of ' . inr($tn['excess']) . ' above target', 'ledger', $tn['bonus'] > 0 ? 'green' : 'teal') ?>
+    <?php endif; ?>
+  </div>
+
+  <?php if ($tgtBadges !== []): ?>
+  <div class="row" style="gap:8px;flex-wrap:wrap;margin:0 0 16px">
+    <?php foreach ($tgtBadges as $b): ?>
+      <span class="pill st-ok nodot" title="<?= $e($b['why']) ?>" style="font-size:13px;padding:6px 12px"><?= $b['icon'] ?> <?= $e($b['label']) ?></span>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
+
+  <?php if ($canManage): ?>
+  <div class="panel">
+    <h2><svg class="a-ic"><use href="#a-star"/></svg> Set the monthly target</h2>
+    <div class="panel-body a360-forms">
+      <?php foreach ([[$tn['month'], $tnT], [$tgtNextYm, $tgtNext]] as [$fYm, $fT]): ?>
+      <form method="post">
+        <?= a360_form_head('targets', 'target_set', $agentId, $csrf, $k) ?>
+        <input type="hidden" name="month" value="<?= $e($fYm) ?>">
+        <strong><?= $e(date('F Y', (int) strtotime($fYm . '-01'))) ?><?= $fYm === $tn['month'] ? ' · this month' : ' · next month' ?></strong>
+        <p class="hint"><?= $fT['source'] === 'agent' ? 'Own target set.' : ($fT['source'] === 'default' ? 'Using the company target (' . $e(inr($fT['amount'])) . ').' : 'No target yet.') ?> Amount and tickets both 0 = back to the company target.</p>
+        <div class="form-grid">
+          <div class="field"><label>Sales target ₹</label><input class="inp" type="number" name="target_amount" min="0" step="100" value="<?= $fT['source'] === 'agent' ? $e(number_format($fT['amount'], 0, '.', '')) : '' ?>" placeholder="<?= $fT['amount'] > 0 ? $e(number_format($fT['amount'], 0, '.', '')) : '100000' ?>"></div>
+          <div class="field"><label>Tickets target</label><input class="inp" type="number" name="target_bookings" min="0" step="1" value="<?= $fT['source'] === 'agent' && $fT['bookings'] > 0 ? (int) $fT['bookings'] : '' ?>" placeholder="0 = none"></div>
+          <div class="field"><label>Bonus % above target</label><input class="inp" type="number" name="bonus_pct" min="0" max="50" step="0.5" value="<?= $fT['bonus_pct'] > 0 ? $e($tPct($fT['bonus_pct'])) : '' ?>" placeholder="0 = no bonus"></div>
+        </div>
+        <div class="field" style="margin-top:10px"><label>Note (the agent sees it)</label><input class="inp" type="text" name="note" maxlength="255" value="<?= $e($fT['note']) ?>"></div>
+        <div class="form-actions"><button class="btn ok" type="submit">Save target</button></div>
+      </form>
+      <?php endforeach; ?>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <div class="panel">
+    <h2><svg class="a-ic"><use href="#a-clock"/></svg> Target history · last 6 months</h2>
+    <div class="tbl-scroll">
+      <table>
+        <thead><tr><th>Month</th><th class="num">Target</th><th class="num">Sold</th><th class="num">Achieved</th><th class="num">Tickets</th><th class="num">Bonus</th><th></th></tr></thead>
+        <tbody>
+          <?php foreach ($tgtHist as $h): $hT = $h['target']; ?>
+            <tr>
+              <td><?= $e($h['label']) ?><?= $hT['source'] === 'default' ? ' <span class="muted text-xs">company</span>' : '' ?></td>
+              <td class="num"><?= $hT['amount'] > 0 ? $e(inr($hT['amount'])) : '<span class="muted">—</span>' ?></td>
+              <td class="num money"><?= $e(inr($h['sales']['money'])) ?></td>
+              <td class="num fw7" style="color:<?= $hT['amount'] <= 0 ? 'var(--mut)' : ($h['pct'] >= 100 ? 'var(--ok)' : 'var(--bad)') ?>"><?= $hT['amount'] > 0 ? $h['pct'] . '%' : '—' ?></td>
+              <td class="num"><?= (int) $h['sales']['confirmed'] ?><?= $hT['bookings'] > 0 ? ' / ' . (int) $hT['bookings'] : '' ?></td>
+              <td class="num money"><?= $h['bonus'] > 0 ? $e(inr($h['bonus'])) : '<span class="muted">—</span>' ?></td>
+              <td>
+                <?php if ($h['bonus_posted']): ?>
+                  <span class="pill st-ok">✓ posted</span>
+                <?php elseif ($h['bonus'] >= 1 && $showSettle): ?>
+                  <form method="post" onsubmit="return confirm('Credit <?= $e(inr($h['bonus'])) ?> target bonus for <?= $e($h['label']) ?> to the commission wallet?')" style="margin:0">
+                    <?= a360_form_head('targets', 'bonus_post', $agentId, $csrf, $k) ?>
+                    <input type="hidden" name="month" value="<?= $e($h['month']) ?>">
+                    <button class="btn sm ok" type="submit">Post bonus</button>
+                  </form>
+                <?php endif; ?>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted text-sm" style="padding:0 16px 12px;margin:0">Sales = this agent's confirmed bookings by booking date, the same count the leaderboard uses. A posted bonus is one credit on the commission account (ref BONUS-YYYY-MM) and is paid out like any other commission.</p>
   </div>
 </section>
 

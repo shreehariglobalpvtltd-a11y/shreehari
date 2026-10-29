@@ -20,6 +20,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 $admin = admin_boot('bookings.view');
+require_once INCLUDE_PATH . '/agenttargets.php';
 // Office viewers need the commissions permission — an agent sees their own
 // dashboard, but counter/support roles must not read other sellers' money.
 if (!Auth::isCounterAgent()) { Auth::requireAdmin('commissions.view'); }
@@ -515,7 +516,6 @@ function agent_stat(string $expr, int $adminId, string $from, string $to, string
     );
 }
 
-$monthlyTarget = Settings::getFloat('agent_target_monthly', 0.0);
 $stats = [
     'todayCount' => (int) agent_stat('COUNT(*)', $viewId, $today, $todayEnd),
     'todayMoney' => agent_stat('SUM(total_amount)', $viewId, $today, $todayEnd, "AND status = 'confirmed'"),
@@ -537,6 +537,33 @@ for ($i = 6; $i >= 0; $i--) {
     ];
 }
 $sparkMax = max(1, max(array_column($spark, 'val')));
+
+/* ---- Cockpit (29 Oct 2026, management upgrade Phase 1.1 / 1.2) -------
+   The month's target (this agent's own, else the company default), where
+   the agent stands among the active agents, the badges, and the net
+   position. All read-only here: targets are set and bonuses posted from
+   Agent 360, money is still settled in the Wallet tab below. */
+$tgt         = AgentTargets::progress($viewId);
+$rank        = AgentTargets::rankFor($viewId, $tgt['month']);
+$badges      = AgentTargets::badges($viewId, $tgt);
+$net         = AgentWallet::netPosition($viewId);
+$commMonths  = array_reverse(AgentWallet::commissionByMonth($viewId, 6));
+$overdueDays = AgentWallet::settlementOverdueDays($viewId);
+
+$tabs = [
+    'balance'    => '💰 Balance · ब्यालेन्स',
+    'sales'      => '🎟️ Sales · बिक्री',
+    'commission' => '🎯 Commission · कमिसन',
+    'wallet'     => '📜 Wallet · वालेट',
+    'profile'    => '👤 Profile · प्रोफाइल',
+];
+$tab = (string) ($_GET['tab'] ?? 'balance');
+if (!isset($tabs[$tab])) { $tab = 'balance'; }
+$tabUrl = static function (string $t, string $anchor = '') use ($isOwn, $viewId): string {
+    return '/admin/agent.php?' . http_build_query(($isOwn ? [] : ['agent' => $viewId]) + ['tab' => $t]) . $anchor;
+};
+$officeWa = preg_replace('/\D/', '', Settings::getString('company_whatsapp', '') ?: Settings::getString('company_phone', '')) ?? '';
+if (strlen($officeWa) === 10) { $officeWa = '91' . $officeWa; }
 
 /* What this agent is ACTUALLY paid right now — override, tier or percent. */
 $override = AgentWallet::commissionOverrideFor($viewId);
@@ -655,6 +682,9 @@ function ledger_look(string $type, string $ref = ''): array
     if ($type === 'adjustment' && stripos($ref, 'ADVANCE') === 0) {
         return ['💸', 'Advance', '#8a5300'];
     }
+    if ($type === 'adjustment' && stripos($ref, 'BONUS') === 0) {
+        return ['🎁', 'Target bonus', '#0a6b3b'];
+    }
     return match ($type) {
         'commission'      => ['💰', 'Commission earned', '#0a6b3b'],
         'commission_void' => ['↩️', 'Commission reversed', '#b02a2a'],
@@ -662,6 +692,22 @@ function ledger_look(string $type, string $ref = ''): array
         'cash_due'        => ['💵', 'Cash collected',     '#7a5200'],
         'cash_handover'   => ['📥', 'Cash handed over',   '#0a6b3b'],
         default           => ['✏️', 'Adjustment',         '#6b7688'],
+    };
+}
+
+/** Ledger row → [timeline class, tag] for the Wallet tab (29 Oct 2026):
+ *  green = earned, red = deducted, blue = settled, amber = cash the agent owes. */
+function ledger_tag(string $type, float $amount, string $ref = ''): array
+{
+    if ($type === 'adjustment' && stripos($ref, 'ADVANCE') === 0) {
+        return $amount < 0 ? ['t-owes', 'Advance'] : ['t-settled', 'Recovered'];
+    }
+    return match ($type) {
+        'commission'                => ['t-earned', 'Earned'],
+        'commission_void'           => ['t-deducted', 'Reversed'],
+        'payout', 'cash_handover'   => ['t-settled', 'Settled'],
+        'cash_due'                  => ['t-owes', 'Cash due'],
+        default                     => $amount >= 0 ? ['t-earned', stripos($ref, 'BONUS') === 0 ? 'Bonus' : 'Credit'] : ['t-deducted', 'Deducted'],
     };
 }
 
@@ -722,10 +768,188 @@ if ($flash !== null) {
 /* Panel headings that carry a button: flex so the button wraps under the
    title on a phone instead of floating over it. */
 .panel h2{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+
+/* ---- Cockpit (29 Oct 2026): four big buttons, the net position, quick
+   stats and one tab per job. Touch targets are 48px+ for the phone. ---- */
+.ck-acts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 16px}
+.ck-act{display:flex;align-items:center;gap:12px;min-height:76px;padding:14px 16px;border-radius:16px;background:var(--card);border:1px solid var(--line);border-left-width:5px;color:var(--ink);text-decoration:none;box-shadow:0 2px 10px rgba(18,38,78,.06);transition:transform .15s,box-shadow .15s}
+.ck-act:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(18,38,78,.12)}
+.ck-act .ci{font-size:28px;line-height:1;flex:none}
+.ck-act b{display:block;font-size:15px;font-weight:800;line-height:1.25}
+.ck-act small{display:block;font-size:12.5px;color:var(--mut);margin-top:3px}
+.ck-act.a-cash{border-left-color:var(--orange)}.ck-act.a-stmt{border-left-color:var(--blue)}
+.ck-act.a-tgt{border-left-color:#0a8b4b}.ck-act.a-book{border-left-color:var(--navy)}
+.ck-act.hot small{color:#b02a2a;font-weight:700}
+.ck-net{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:16px}
+.ck-net-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:10px;margin-bottom:10px}
+.ck-net .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);font-weight:700}
+.ck-net .v{font-size:28px;font-weight:800;line-height:1.15;font-variant-numeric:tabular-nums}
+.ck-net .s{font-size:13px;color:var(--mut)}
+.ck-net.owes .v{color:#b02a2a}.ck-net.credit .v{color:#0a6b3b}.ck-net.square .v{color:var(--navy)}
+.ck-net-legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--mut)}
+.ck-net-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.ck-net-legend b{color:var(--ink)}
+.ck-netbar{display:flex;height:14px;border-radius:99px;overflow:hidden;background:var(--line)}
+.ck-netbar span{display:block;height:100%}
+.ck-g{background:#0a8b4b}.ck-r{background:#c0392b}
+.ck-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:6px}
+.ck-stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-width:0}
+.ck-stat .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);font-weight:700}
+.ck-stat .v{font-size:22px;font-weight:800;margin-top:2px;font-variant-numeric:tabular-nums}
+.ck-stat .s{font-size:12px;color:var(--mut);margin-top:2px}
+.ck-mini{height:6px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:7px}
+.ck-mini span{display:block;height:100%}
+.ck-tabs{display:flex;gap:6px;overflow-x:auto;position:sticky;top:56px;z-index:20;background:var(--bg);padding:10px 0;margin-bottom:12px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.ck-tabs::-webkit-scrollbar{display:none}
+.ck-tabs a{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:48px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:700;font-size:14px;text-decoration:none}
+.ck-tabs a.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.ck-tabs a .n{display:inline-block;min-width:18px;padding:0 6px;border-radius:99px;background:var(--orange);color:#fff;font-size:11px;line-height:18px;text-align:center}
+html[data-ck-tab="balance"] [data-pane]:not([data-pane~="balance"]),
+html[data-ck-tab="sales"] [data-pane]:not([data-pane~="sales"]),
+html[data-ck-tab="commission"] [data-pane]:not([data-pane~="commission"]),
+html[data-ck-tab="wallet"] [data-pane]:not([data-pane~="wallet"]),
+html[data-ck-tab="profile"] [data-pane]:not([data-pane~="profile"]){display:none !important}
+.ck-badges{display:flex;flex-wrap:wrap;gap:8px}
+.ck-badge{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;font-size:13px;font-weight:800;background:#fff4e0;color:#8a4b00;border:1px solid #f6d6a5}
+.ck-badge.off{background:var(--head);color:var(--mut);border-color:var(--line);font-weight:600;filter:grayscale(1)}
+.ck-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
+.ck-kv div{background:var(--head);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.ck-kv span{display:block;font-size:11.5px;color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.ck-kv b{font-size:18px;font-variant-numeric:tabular-nums}
+.ck-bookf{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:end}
+.ck-bookf label{font-size:12.5px;font-weight:700;color:var(--ink)}
+.ck-bookf input{display:block;width:100%;margin-top:5px;min-height:48px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:16px;background:var(--card);color:var(--ink)}
+.ck-bookf .btn{min-height:48px;font-size:15px;padding:0 20px}
+.ck-tl{list-style:none;margin:0;padding:0 18px 14px;max-height:560px;overflow-y:auto}
+.ck-tl li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:11px 12px;margin-top:8px;border:1px solid var(--line);border-left:5px solid var(--line);border-radius:12px;background:var(--card)}
+.ck-tl .tg{display:inline-block;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.ck-tl .t-earned{border-left-color:#0a8b4b}.ck-tl .t-earned .tg{background:#d7f4e3;color:#0a6b3b}
+.ck-tl .t-deducted{border-left-color:#c0392b}.ck-tl .t-deducted .tg{background:#fde2e1;color:#a12a22}
+.ck-tl .t-settled{border-left-color:#2E5FA8}.ck-tl .t-settled .tg{background:#e1ecfb;color:#1f4f96}
+.ck-tl .t-owes{border-left-color:#e67e22}.ck-tl .t-owes .tg{background:#fff1de;color:#8a4b00}
+.ck-tl .what{font-weight:700;font-size:13.5px}
+.ck-tl .sub{font-size:12px;color:var(--mut);margin-top:2px;overflow-wrap:anywhere}
+.ck-tl .amt{text-align:right;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ck-tl .amt small{display:block;font-weight:500;font-size:11.5px;color:var(--mut)}
+@media(max-width:900px){
+  .ck-acts,.ck-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ck-bookf{grid-template-columns:1fr}
+}
+@media(max-width:520px){
+  .ck-act{min-height:84px;padding:12px;gap:9px}.ck-act .ci{font-size:24px}.ck-act b{font-size:14px}
+  .ck-net .v{font-size:24px}
+  .ck-tl li{grid-template-columns:minmax(0,1fr) auto}.ck-tl li .tgw{grid-column:1 / -1}
+}
+@media print{.ck-acts,.ck-tabs{display:none !important}}
 </style>
 
+<?php
+/* ---- Cockpit header ---------------------------------------------------- */
+$ckCash     = max(0.0, (float) $net['cash']);
+$ckComm     = max(0.0, (float) $net['commission']);
+$ckTot      = $ckCash + $ckComm;
+$ckGreenW   = $ckTot > 0 ? round($ckComm * 100 / $ckTot, 1) : 0.0;
+$ckRedW     = $ckTot > 0 ? round(100 - $ckGreenW, 1) : 0.0;
+$ckNetCls   = $net['net'] > 0.009 ? 'owes' : ($net['net'] < -0.009 ? 'credit' : 'square');
+$ckTgtAmt   = (float) $tgt['target']['amount'];
+$ckCanBook  = $isOwn && Auth::isSellingStaff();
+$ckCan360   = !$isOwn && Auth::can('customers.view');
+$ckCashHref = $isOwn ? $tabUrl('wallet', '#cashBox') : $tabUrl('wallet', $canSettle ? '#settleBox' : '');
+$ckStmtHref = '/admin/agent-statement.php' . ($isOwn ? '' : '?agent=' . $viewId);
+$ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balances['cash'] > (float) $profile['cash_limit']);
+?>
+<!-- ============ COCKPIT: big buttons ============ -->
+<nav class="ck-acts" aria-label="Quick actions">
+  <a class="ck-act a-cash<?= $ckCashHot ? ' hot' : '' ?>" href="<?= Security::e($ckCashHref) ?>">
+    <span class="ci">💵</span>
+    <span><b><?= $isOwn ? 'आजको Cash जम्मा गर' : 'Accept cash · Cash लिनुहोस्' ?></b>
+      <small><?= Security::e(inr($ckCash)) ?> हातमा<?= $overdueDays > 0 ? ' · ' . $overdueDays . ' दिन ढिलो' : '' ?></small></span>
+  </a>
+  <a class="ck-act a-stmt" href="<?= Security::e($ckStmtHref) ?>">
+    <span class="ci">📜</span>
+    <span><b>Statement हेर</b><small>महिनाको हिसाब · print / PDF</small></span>
+  </a>
+  <a class="ck-act a-tgt" href="<?= Security::e($tabUrl('commission', '#targetBox')) ?>">
+    <span class="ci">🎯</span>
+    <span><b>Target कति बाँकी</b>
+      <small><?php if ($ckTgtAmt <= 0): ?>Target set छैन<?php elseif ($tgt['remaining'] <= 0): ?>✓ Target पूरा — <?= (int) $tgt['pct'] ?>%<?php else: ?><?= Security::e(inr($tgt['remaining'])) ?> बाँकी · <?= (int) $tgt['days_left'] ?> दिन<?php endif; ?></small></span>
+  </a>
+  <?php if ($ckCanBook): ?>
+  <a class="ck-act a-book" href="<?= Security::e($tabUrl('sales', '#bookBox')) ?>">
+    <span class="ci">🎟️</span>
+    <span><b>Book for customer</b><small>Mobile हाल्नुस् → SmartBook</small></span>
+  </a>
+  <?php elseif ($ckCan360): ?>
+  <a class="ck-act a-book" href="/admin/agent-360.php?agent=<?= $viewId ?>&amp;tab=targets">
+    <span class="ci">🗂️</span>
+    <span><b>Agent 360 · Targets</b><small>Target set / bonus post</small></span>
+  </a>
+  <?php else: ?>
+  <a class="ck-act a-book" href="<?= Security::e($tabUrl('sales')) ?>">
+    <span class="ci">🚌</span>
+    <span><b>Sales · बिक्री</b><small>Departures &amp; recent tickets</small></span>
+  </a>
+  <?php endif; ?>
+</nav>
+
+<!-- ============ COCKPIT: net position ============ -->
+<div class="ck-net <?= $ckNetCls ?>">
+  <div class="ck-net-head">
+    <div>
+      <div class="k">Net position · नेट हिसाब</div>
+      <div class="v"><?= Security::e(inr(abs((float) $net['net']))) ?></div>
+      <div class="s"><?php if ($ckNetCls === 'owes'): ?><?= $isOwn ? 'तपाईंले company लाई बुझाउन बाँकी' : 'agent owes the company on balance' ?><?php elseif ($ckNetCls === 'credit'): ?><?= $isOwn ? 'Company ले तपाईंलाई दिन बाँकी' : 'company owes the agent on balance' ?><?php else: ?>हिसाब मिलेको छ ✓ settled<?php endif; ?>
+        <span class="muted">(cash held − commission due)</span></div>
+    </div>
+    <div class="ck-net-legend">
+      <span><i class="ck-g"></i>Commission due <b><?= Security::e(inr($ckComm)) ?></b></span>
+      <span><i class="ck-r"></i>Cash held <b><?= Security::e(inr($ckCash)) ?></b></span>
+    </div>
+  </div>
+  <div class="ck-netbar" role="img" aria-label="Commission due <?= Security::e(inr($ckComm)) ?>, cash held <?= Security::e(inr($ckCash)) ?>">
+    <?php if ($ckTot > 0): ?><span class="ck-g" style="width:<?= $ckGreenW ?>%"></span><span class="ck-r" style="width:<?= $ckRedW ?>%"></span><?php endif; ?>
+  </div>
+</div>
+
+<!-- ============ COCKPIT: quick stats ============ -->
+<div class="ck-stats">
+  <div class="ck-stat"><div class="k">Today · आज</div>
+    <div class="v"><?= Security::e(inr($stats['todayMoney'])) ?></div>
+    <div class="s"><?= (int) $stats['todayCount'] ?> ticket<?= (int) $stats['todayCount'] === 1 ? '' : 's' ?> sold</div></div>
+  <div class="ck-stat"><div class="k">This month · यो महिना</div>
+    <div class="v"><?= Security::e(inr($tgt['sales']['money'])) ?></div>
+    <div class="s"><?= (int) $tgt['sales']['confirmed'] ?> confirmed · <?= Security::e(inr($summary['earnedMonth'])) ?> commission</div></div>
+  <div class="ck-stat"><div class="k">Target · लक्ष्य</div>
+    <?php if ($ckTgtAmt > 0):
+      $ckTc = $tgt['pct'] >= 100 ? '#0a8b4b' : ($tgt['pct'] >= 60 ? '#d68910' : '#c0392b'); ?>
+      <div class="v" style="color:<?= $ckTc ?>"><?= (int) $tgt['pct'] ?>%</div>
+      <div class="s">of <?= Security::e(inr($ckTgtAmt)) ?></div>
+      <div class="ck-mini"><span style="width:<?= min(100, (int) $tgt['pct']) ?>%;background:<?= $ckTc ?>"></span></div>
+    <?php else: ?>
+      <div class="v muted">—</div><div class="s">no target this month</div>
+    <?php endif; ?></div>
+  <div class="ck-stat"><div class="k">Ranking · स्थान</div>
+    <?php if ($rank['rank'] > 0 && $tgt['sales']['money'] > 0): ?>
+      <div class="v"><?= $rank['rank'] === 1 ? '🥇 ' : '' ?>#<?= (int) $rank['rank'] ?><small class="muted" style="font-size:13px"> / <?= (int) $rank['of'] ?></small></div>
+      <div class="s"><?= $rank['gap'] > 0 ? '#' . (int) $rank['ahead'] . ' सँग ' . Security::e(inr($rank['gap'])) . ' को फरक' : 'सबैभन्दा अगाडि!' ?></div>
+    <?php elseif ($rank['rank'] > 0): ?>
+      <div class="v muted">—</div><div class="s">No sale yet this month · <?= (int) $rank['of'] ?> agents</div>
+    <?php else: ?>
+      <div class="v muted">—</div><div class="s">not ranked (inactive)</div>
+    <?php endif; ?></div>
+</div>
+
+<!-- ============ COCKPIT: tabs ============ -->
+<nav class="ck-tabs no-print" id="ckTabs" aria-label="Agent panel sections">
+  <?php foreach ($tabs as $key => $label):
+    $ckN = $key === 'commission' ? count($badges) : 0; ?>
+    <a href="<?= Security::e($tabUrl($key)) ?>" data-tab="<?= $key ?>" class="<?= $key === $tab ? 'on' : '' ?>"><?= Security::e($label) ?><?= $ckN > 0 ? '<span class="n">' . $ckN . '</span>' : '' ?></a>
+  <?php endforeach; ?>
+</nav>
+<script>document.documentElement.setAttribute('data-ck-tab', <?= json_encode($tab) ?>);</script>
+
 <!-- DAILY SEAT QUOTA INDICATOR -->
-<div style="background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;box-shadow:0 3px 10px rgba(0,0,0,0.04)">
+<div data-pane="balance" style="background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;box-shadow:0 3px 10px rgba(0,0,0,0.04)">
   <div style="flex:1;min-width:240px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <span style="font-weight:700;font-size:14px;color:#0d3b66">
@@ -756,104 +980,33 @@ if ($flash !== null) {
   </div>
 </div>
 
-<!-- ============ 1-SCREEN EXPRESS BOOKING COUNTER ============ -->
-<div class="dash-panel" style="border:2px solid #0d3b66;box-shadow:0 4px 16px rgba(13,59,102,0.08);margin-bottom:24px">
-  <div class="dp-head" style="background:linear-gradient(135deg,#0d3b66,#0077b6);color:#fff;justify-content:space-between">
-    <div style="display:flex;align-items:center;gap:8px">
-      <span style="font-size:18px">⚡</span>
-      <span style="font-size:16px;font-weight:800">1-Screen Express Booking Counter</span>
-      <span class="pill" style="background:rgba(255,255,255,0.25);color:#fff;font-size:11px">Agent Quick Desk</span>
-    </div>
-    <span style="font-size:12px;opacity:0.9">Auto-Commission &bull; Instant WhatsApp Dispatch</span>
+<!-- ============ BOOK FOR A CUSTOMER (29 Oct 2026) ============
+     Replaces the old "express counter" form, whose route list, berth
+     buttons and ₹2,200 fare were typed into this page and which sent
+     fields QuickBot never read. SmartBook is the one booking door: the
+     mobile fills the customer's name, pickup and party from their last
+     trip, the seat map there is live, and the sale lands on this agent. -->
+<?php if ($ckCanBook): ?>
+<div class="dash-panel" id="bookBox" data-pane="sales" style="border:2px solid var(--navy)">
+  <div class="dp-head" style="background:linear-gradient(135deg,#12264E,#2E5FA8);color:#fff;justify-content:space-between;flex-wrap:wrap">
+    <span>🎟️ Book for a customer · ग्राहकको टिकट</span>
+    <span style="font-size:12px;font-weight:600;opacity:.9">Code <?= Security::e(AgentWallet::agentCodeLabel($viewId)) ?> · <?= Security::e($payLabel) ?></span>
   </div>
-  <div class="dp-body" style="background:#f8fafc;padding:18px">
-    <form action="/admin/quick-ticket.php" method="get">
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:14px">
-        <label style="font-size:12.5px;font-weight:600;color:#334155">
-          Journey Route
-          <select name="route_id" id="expressRoute" style="width:100%;margin-top:4px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff">
-            <option value="1">Gujarat (Surat / Ahmedabad) → Nepal Border (Rupaidiha)</option>
-            <option value="2">Nepal Border (Rupaidiha) → Gujarat (Ahmedabad / Surat)</option>
-          </select>
-        </label>
-        <label style="font-size:12.5px;font-weight:600;color:#334155">
-          Travel Date
-          <input type="date" name="date" value="<?= Security::e($today) ?>" min="<?= Security::e($today) ?>" style="width:100%;margin-top:4px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff">
-        </label>
-        <label style="font-size:12.5px;font-weight:600;color:#334155">
-          Boarding Point
-          <select name="boarding" style="width:100%;margin-top:4px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff">
-            <option value="Surat">Surat (Kamrej / Sahara Darwaja)</option>
-            <option value="Ahmedabad">Ahmedabad (Nana Chiloda / Geeta Mandir)</option>
-            <option value="Vadodara">Vadodara (Golden Chokdi)</option>
-            <option value="Ankleshwar">Ankleshwar (Valia Chokdi)</option>
-            <option value="Bharuch">Bharuch (Zadeshwar Chokdi)</option>
-            <option value="Anand">Anand (Expressway Toll)</option>
-            <option value="Nadiad">Nadiad (Expressway Toll)</option>
-            <option value="Rajkot">Rajkot (Greenland Chokdi)</option>
-            <option value="Rupaidiha">Rupaidiha (Border Bus Stand)</option>
-            <option value="Nepalgunj">Nepalgunj (B.P. Chowk / Jamunaha)</option>
-          </select>
-        </label>
-        <label style="font-size:12.5px;font-weight:600;color:#334155">
-          Passenger Name &amp; Mobile
-          <input type="text" name="pax" placeholder="e.g. Ram Shrestha 9812345678" required style="width:100%;margin-top:4px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff">
-        </label>
-      </div>
-
-      <!-- BERTH PICKER TOGGLE -->
-      <div style="background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:12px;margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <span style="font-size:12.5px;font-weight:700;color:#0d3b66">Select Sleeper Berths (Lower Deck / Upper Deck):</span>
-          <span style="font-size:11.5px;color:var(--mut)">Selected: <b id="selSeatsText" style="color:#0a6b3b">Auto-Assign Next</b></span>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11.5px">
-          <span style="font-weight:700;color:#475569;align-self:center;margin-right:4px">Lower:</span>
-          <?php for($i=1; $i<=12; $i++): ?>
-            <button type="button" class="btn ghost seat-btn" onclick="toggleExpressSeat('L<?= $i ?>', this)" style="padding:4px 8px;font-size:11px;min-width:32px">L<?= $i ?></button>
-          <?php endfor; ?>
-          <span style="font-weight:700;color:#475569;align-self:center;margin-left:8px;margin-right:4px">Upper:</span>
-          <?php for($i=1; $i<=12; $i++): ?>
-            <button type="button" class="btn ghost seat-btn" onclick="toggleExpressSeat('U<?= $i ?>', this)" style="padding:4px 8px;font-size:11px;min-width:32px">U<?= $i ?></button>
-          <?php endfor; ?>
-        </div>
-        <input type="hidden" name="seats" id="expressSeatsInp" value="">
-      </div>
-
-      <!-- REAL-TIME COMMISSION PREVIEW & DISPATCH -->
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-top:4px">
-        <div style="font-size:13px;color:#1e293b">
-          <span>Fare: <b>₹2,200</b> &bull; Your Commission: <b style="color:#0a6b3b"><?= Security::e($payLabel) ?></b> &bull; Agent Code on Ticket: <code><?= Security::e(AgentWallet::agentCodeLabel($viewId)) ?></code></span>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button type="submit" class="btn" style="background:#0d3b66;color:#fff;padding:10px 18px;font-size:13.5px;font-weight:700">
-            🎟️ Issue 10-Second Ticket &rarr;
-          </button>
-        </div>
-      </div>
+  <div class="dp-body">
+    <form method="get" action="/admin/smartbook.php" class="ck-bookf">
+      <label>Customer mobile · मोबाइल
+        <input type="tel" name="cphone" id="ckPhone" inputmode="tel" required minlength="10" maxlength="15" pattern="[0-9+ ]{10,15}" placeholder="98XXXXXXXX / 9XXXXXXXXX" autocomplete="off" enterkeyhint="go"></label>
+      <label>Name · नाम <span class="muted" style="font-weight:400">(optional)</span>
+        <input type="text" name="cname" maxlength="80" placeholder="Filled in for a returning customer" autocomplete="off"></label>
+      <button class="btn ok" type="submit">Open SmartBook →</button>
     </form>
+    <p class="muted" style="font-size:12.5px;margin:12px 0 0">A returning customer's name, pickup point and party fill in by themselves. Pick the seats on the live map, take cash or send the QR, and the ticket (PNG + PDF) is issued on your code — commission is credited the moment it confirms.</p>
   </div>
 </div>
-<script>
-var pickedExpressSeats = [];
-function toggleExpressSeat(seat, btn) {
-  var idx = pickedExpressSeats.indexOf(seat);
-  if (idx > -1) {
-    pickedExpressSeats.splice(idx, 1);
-    btn.style.background = '';
-    btn.style.color = '';
-  } else {
-    pickedExpressSeats.push(seat);
-    btn.style.background = '#0d3b66';
-    btn.style.color = '#fff';
-  }
-  document.getElementById('expressSeatsInp').value = pickedExpressSeats.join(' ');
-  document.getElementById('selSeatsText').textContent = pickedExpressSeats.length ? pickedExpressSeats.join(', ') : 'Auto-Assign Next';
-}
-</script>
+<?php endif; ?>
 
 <!-- ============ WALLET ============ -->
-<div class="dash-hero">
+<div class="dash-hero" data-pane="balance">
   <?php if (Auth::isSellingStaff()): ?>
   <!-- ⚡ Quick Ticket + 🤖 AI Ticket Bot (6 Sep 2026): the agent's fast lane —
        the same desk the office uses, sales attributed to this agent. -->
@@ -927,20 +1080,10 @@ function toggleExpressSeat(seat, btn) {
   </div>
 </div>
 
-<div class="cards">
-  <div class="card"><div class="k">Today's bookings</div><div class="v"><?= $stats['todayCount'] ?></div>
-    <div class="muted" style="font-size:11px"><?= Security::e(inr($stats['todayMoney'])) ?> collected</div></div>
-  <div class="card"><div class="k">This month</div><div class="v"><?= $stats['monthCount'] ?><small> · <?= Security::e(inr($stats['monthMoney'])) ?></small></div>
-    <div class="muted" style="font-size:11px"><?= Security::e(inr($summary['earnedMonth'])) ?> commission this month</div></div>
-  <div class="card"><div class="k">Commission pay</div>
-    <div class="v" style="font-size:20px"><?= Security::e($payLabel) ?></div>
-    <div class="muted" style="font-size:11px"><?= Security::e($paySub) ?></div></div>
-  <div class="card"><div class="k">This week</div><div class="v"><?= $stats['weekCount'] ?></div>
-    <div class="muted" style="font-size:11px">bookings sold</div></div>
-</div>
-
+<?php /* The four count cards that sat here (today / month / pay / week) now
+         live in the cockpit's quick stats and the Commission tab. */ ?>
 <?php if ($isOwn && Auth::isCounterAgent()): ?>
-<div class="panel" id="payoutRequest">
+<div class="panel" id="payoutRequest" data-pane="balance wallet">
   <h2>💸 Request a payout</h2>
   <div style="padding:14px 18px">
     <?php if ($payoutReq !== null): ?>
@@ -960,11 +1103,11 @@ function toggleExpressSeat(seat, btn) {
   </div>
 </div>
 <?php elseif ($payoutReq !== null && $canSettle): ?>
-<div class="flash" style="background:#fff3e0;color:#7a3e00">💸 Pending payout request: <strong><?= Security::e(inr($payoutReqAmt)) ?></strong> asked on <?= Security::e(formatDate(substr((string) $payoutReq['created_at'], 0, 10))) ?> — record the payout below to clear it.</div>
+<div class="flash" data-pane="balance wallet" style="background:#fff3e0;color:#7a3e00">💸 Pending payout request: <strong><?= Security::e(inr($payoutReqAmt)) ?></strong> asked on <?= Security::e(formatDate(substr((string) $payoutReq['created_at'], 0, 10))) ?> — record the payout below to clear it.</div>
 <?php endif; ?>
 
 <!-- MY COUNTER STAFF (SUB-AGENTS) MANAGER -->
-<div class="dash-panel" style="margin-top:20px;border:1px solid #cbd5e1">
+<div class="dash-panel" data-pane="sales" style="margin-top:20px;border:1px solid #cbd5e1">
   <div class="dp-head" style="justify-content:space-between;background:#f8fafc">
     <div style="display:flex;align-items:center;gap:8px">
       <span>👥</span>
@@ -1104,7 +1247,7 @@ function toggleExpressSeat(seat, btn) {
   </div>
 </div>
 
-<div class="dash-panel">
+<div class="dash-panel" data-pane="sales">
   <div class="dp-head">📊 Bookings — Last 7 Days</div>
   <div class="dp-body">
     <div class="spark-wrap">
@@ -1122,26 +1265,144 @@ function toggleExpressSeat(seat, btn) {
   </div>
 </div>
 
-<?php if ($monthlyTarget > 0):
-  $tpct = (int) round(min(100, $stats['monthMoney'] * 100 / $monthlyTarget));
-  $barC = $tpct >= 100 ? '#0a6b3b' : ($tpct >= 60 ? '#d68910' : '#b02a2a');
+<!-- ============ COMMISSION TAB: target, badges, rank, months ============
+     Read from AgentTargets (one definition of a sale, shared with the
+     leaderboard) and the ledger. Nothing here moves money: the office
+     sets targets and posts a bonus from Agent 360 → Targets. -->
+<?php
+$ckT    = $tgt['target'];
+$ckBar  = $tgt['pct'] >= 100 ? '#0a8b4b' : ($tgt['pct'] >= 60 ? '#d68910' : '#c0392b');
+$ckAll  = [
+    ['icon' => '🏆', 'label' => 'Top Seller', 'why' => 'Highest confirmed sales of all agents this month'],
+    ['icon' => '🎯', 'label' => '100% Target', 'why' => 'Reach this month\'s target'],
+    ['icon' => '✨', 'label' => 'Zero Cancellation', 'why' => '5+ tickets this month and none cancelled'],
+];
+$ckHave = array_column($badges, 'label');
 ?>
-<div class="panel">
-  <h2>🎯 Monthly target</h2>
+<div class="panel" id="targetBox" data-pane="commission">
+  <h2>🎯 <?= Security::e($tgt['label']) ?> target · लक्ष्य
+    <?php if ($ckCan360): ?><a class="btn ghost" href="/admin/agent-360.php?agent=<?= $viewId ?>&amp;tab=targets" style="margin-left:auto;padding:6px 12px;font-size:12.5px">Set target / bonus →</a><?php endif; ?>
+  </h2>
   <div style="padding:16px 18px">
-    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:7px">
-      <span class="muted"><?= Security::e(inr($stats['monthMoney'])) ?> of <?= Security::e(inr($monthlyTarget)) ?></span>
-      <strong><?= $tpct ?>%</strong>
+    <?php if ((float) $ckT['amount'] > 0): ?>
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px">
+        <span style="font-size:22px;font-weight:800"><?= Security::e(inr($tgt['sales']['money'])) ?> <span class="muted" style="font-size:14px;font-weight:600">of <?= Security::e(inr((float) $ckT['amount'])) ?></span></span>
+        <strong style="font-size:20px;color:<?= $ckBar ?>"><?= (int) $tgt['pct'] ?>%</strong>
+      </div>
+      <div style="height:14px;border-radius:99px;background:var(--line);overflow:hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= min(100, (int) $tgt['pct']) ?>">
+        <div style="width:<?= min(100, (int) $tgt['pct']) ?>%;height:100%;background:<?= $ckBar ?>;transition:width .4s"></div>
+      </div>
+      <div class="ck-kv">
+        <div><span>Remaining · बाँकी</span><b><?= $tgt['remaining'] > 0 ? Security::e(inr($tgt['remaining'])) : '✓ पूरा' ?></b></div>
+        <div><span>Days left · दिन</span><b><?= (int) $tgt['days_left'] ?></b></div>
+        <div><span>Needed per day</span><b><?= $tgt['per_day'] > 0 ? Security::e(inr($tgt['per_day'])) : '—' ?></b></div>
+        <?php if ((int) $ckT['bookings'] > 0): ?>
+          <div><span>Tickets</span><b><?= (int) $tgt['sales']['confirmed'] ?> / <?= (int) $ckT['bookings'] ?></b></div>
+        <?php endif; ?>
+        <?php if ((float) $ckT['bonus_pct'] > 0): ?>
+          <div><span>Bonus <?= Security::e(rtrim(rtrim(number_format((float) $ckT['bonus_pct'], 2), '0'), '.')) ?>% above target</span>
+            <b style="color:<?= $tgt['bonus'] > 0 ? '#0a6b3b' : 'var(--mut)' ?>"><?= Security::e(inr($tgt['bonus'])) ?></b></div>
+        <?php endif; ?>
+      </div>
+      <p class="muted" style="font-size:12px;margin:0">
+        <?php if ($isOwn): ?>
+          <?= $ckT['source'] === 'agent' ? 'Your own target, set by the office.' : 'Company target — the office has not set one just for you.' ?>
+          Counts confirmed sales on your code, by booking date.
+          <?php if ((float) $ckT['bonus_pct'] > 0): ?>The bonus is credited to your wallet by the office after the month ends.<?php endif; ?>
+        <?php else: ?>
+          <?= $ckT['source'] === 'agent' ? 'This agent\'s own target.' : 'Company default target (agent_target_monthly).' ?>
+          Counts confirmed sales on this agent's code, by booking date.
+          <?php if ((float) $ckT['bonus_pct'] > 0): ?>Post the bonus from Agent 360 → Targets once the month ends.<?php endif; ?>
+        <?php endif; ?>
+        <?= $ckT['note'] !== '' ? '· ' . Security::e($ckT['note']) : '' ?>
+      </p>
+    <?php else: ?>
+      <p class="muted" style="margin:0">No target for <?= Security::e($tgt['label']) ?> yet. This month: <?= Security::e(inr($tgt['sales']['money'])) ?> from <?= (int) $tgt['sales']['confirmed'] ?> confirmed tickets.</p>
+    <?php endif; ?>
+
+    <h3 style="font-size:14px;margin:18px 0 8px">Badges · पदक</h3>
+    <div class="ck-badges">
+      <?php foreach ($ckAll as $b): $on = in_array($b['label'], $ckHave, true); ?>
+        <span class="ck-badge<?= $on ? '' : ' off' ?>" title="<?= Security::e($b['why']) ?>"><?= $b['icon'] ?> <?= Security::e($b['label']) ?><?= $on ? ' ✓' : '' ?></span>
+      <?php endforeach; ?>
     </div>
-    <div style="height:9px;border-radius:99px;background:var(--line);overflow:hidden">
-      <div style="width:<?= $tpct ?>%;height:100%;background:<?= $barC ?>"></div>
+
+    <?php if ($rank['rank'] > 0): ?>
+      <p style="margin:16px 0 0;padding:12px 14px;border-radius:12px;background:var(--head);border:1px solid var(--line);font-size:14px">
+        <?php if ($rank['rank'] === 1 && $tgt['sales']['money'] > 0): ?>
+          🥇 <?= $isOwn ? 'तपाईं' : 'This agent is' ?> <b>#1</b> of <?= (int) $rank['of'] ?> agents this month — <?= $isOwn ? 'सबैभन्दा अगाडि हुनुहुन्छ!' : 'ahead of everyone.' ?>
+        <?php elseif ($rank['gap'] > 0): ?>
+          📈 <?= $isOwn ? 'तपाईं' : 'This agent is' ?> <b>#<?= (int) $rank['rank'] ?></b> of <?= (int) $rank['of'] ?> — <b>#<?= (int) $rank['ahead'] ?></b> सँग <b><?= Security::e(inr($rank['gap'])) ?></b> को फरक छ।
+        <?php else: ?>
+          🚀 <?= (int) $rank['of'] ?> agents ranked by confirmed sales this month — the first sale puts <?= $isOwn ? 'you' : 'this agent' ?> on the board.
+        <?php endif; ?>
+      </p>
+    <?php endif; ?>
+  </div>
+</div>
+
+<div class="panel" data-pane="commission">
+  <h2>💰 Commission · कमिसन</h2>
+  <div class="ck-kv" style="padding:0 18px">
+    <div><span>Pay rate</span><b><?= Security::e($payLabel) ?></b><div class="muted" style="font-size:11.5px"><?= Security::e($paySub) ?></div></div>
+    <div><span>Earned this month</span><b><?= Security::e(inr($summary['earnedMonth'])) ?></b></div>
+    <div><span>Commission due</span><b><?= Security::e(inr($balances['commission'])) ?></b></div>
+    <div><span>This week</span><b><?= (int) $stats['weekCount'] ?> tickets</b></div>
+  </div>
+  <div class="tbl-scroll" style="overflow-x:auto">
+    <table>
+      <thead><tr><th>Month</th><th style="text-align:right">Earned</th><th style="text-align:right">Reversed</th><th style="text-align:right">Paid out</th><th style="text-align:right">Salary / bonus / adv.</th><th style="text-align:right">Net</th></tr></thead>
+      <tbody>
+        <?php foreach ($commMonths as $m):
+          $ckNet = (float) $m['net']; ?>
+          <tr>
+            <td><?= Security::e(date('M Y', (int) strtotime($m['month'] . '-01'))) ?></td>
+            <td style="text-align:right"><?= Security::e(inr((float) $m['earned'])) ?></td>
+            <td style="text-align:right"><?= (float) $m['reversed'] > 0 ? '−' . Security::e(inr((float) $m['reversed'])) : '<span class="muted">—</span>' ?></td>
+            <td style="text-align:right"><?= (float) $m['paidOut'] > 0 ? '−' . Security::e(inr((float) $m['paidOut'])) : '<span class="muted">—</span>' ?></td>
+            <td style="text-align:right"><?= (float) $m['adjustment'] != 0.0 ? ((float) $m['adjustment'] < 0 ? '−' : '+') . Security::e(inr(abs((float) $m['adjustment']))) : '<span class="muted">—</span>' ?></td>
+            <td style="text-align:right;font-weight:800;color:<?= $ckNet < 0 ? '#b02a2a' : '#0a6b3b' ?>"><?= $ckNet < 0 ? '−' : '+' ?><?= Security::e(inr(abs($ckNet))) ?></td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<?php if ($isOwn): ?>
+<!-- ============ WALLET TAB: hand over today's cash (agent's own view) ============
+     The agent cannot record a handover themselves — the office records it
+     when the cash arrives and the receipt number lands in the timeline
+     below. This box says how much, how late, and opens WhatsApp to the office. -->
+<div class="panel" id="cashBox" data-pane="wallet">
+  <h2>💵 आजको Cash जम्मा गर · Hand over cash</h2>
+  <div style="padding:14px 18px">
+    <div class="ck-kv" style="margin-top:0">
+      <div><span>Cash in hand · हातमा</span><b style="color:<?= $ckCashHot ? '#b02a2a' : 'var(--ink)' ?>"><?= Security::e(inr($ckCash)) ?></b></div>
+      <?php if ((float) $profile['cash_limit'] > 0): ?>
+        <div><span>Your cash limit</span><b><?= Security::e(inr((float) $profile['cash_limit'])) ?></b></div>
+      <?php endif; ?>
+      <div><span>Handed over so far</span><b><?= Security::e(inr($summary['handedOver'])) ?></b></div>
+      <?php if ($overdueDays > 0): ?>
+        <div><span>Overdue · ढिलो</span><b style="color:#b02a2a"><?= (int) $overdueDays ?> दिन</b></div>
+      <?php endif; ?>
     </div>
+    <?php if ($ckCash > 0.009): ?>
+      <p style="margin:0 0 12px;font-size:14px">Office मा <b><?= Security::e(inr($ckCash)) ?></b> बुझाउनुहोस् (cash, bank वा UPI)। Office ले receive गरेपछि receipt नम्बर तलको timeline मा <span class="pill" style="background:#e1ecfb;color:#1f4f96">Settled</span> भएर देखिन्छ।</p>
+      <?php if ($officeWa !== ''):
+        $ckWaMsg = 'Namaste office, म ' . (string) ($viewing['full_name'] ?: $viewing['username']) . ' (' . AgentWallet::agentCodeLabel($viewId) . '). '
+                 . 'आज ' . inr($ckCash) . ' cash जम्मा गर्न चाहन्छु। कसरी पठाऊँ — office मा आऊँ कि bank/UPI?'; ?>
+        <a class="btn" href="https://wa.me/<?= Security::e($officeWa) ?>?text=<?= rawurlencode($ckWaMsg) ?>" target="_blank" rel="noopener" style="background:#25d366;color:#fff;min-height:48px;display:inline-flex;align-items:center;padding:0 18px;font-weight:700">📲 Office लाई WhatsApp गर्नुहोस्</a>
+      <?php endif; ?>
+    <?php else: ?>
+      <p class="muted" style="margin:0">✓ अहिले हातमा company को cash छैन — केही जम्मा गर्न बाँकी छैन।</p>
+    <?php endif; ?>
   </div>
 </div>
 <?php endif; ?>
 
 <?php if ($canSettle && !($viewId === $selfId && !Auth::isSuperadmin())): ?>
-<div class="panel">
+<div class="panel" id="settleBox" data-pane="wallet">
   <h2>🏦 Settle this agent</h2>
   <div style="padding:16px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px">
     <?php if ($deposit['required'] > 0 || $deposit['paid'] > 0): ?>
@@ -1250,8 +1511,9 @@ function toggleExpressSeat(seat, btn) {
 </div>
 <?php endif; ?>
 
-<div class="panel">
-  <h2>📜 Wallet history</h2>
+<div class="panel" id="walletBox" data-pane="wallet">
+  <h2>📜 Wallet history · कारोबार
+    <span class="muted" style="font-weight:400;font-size:12.5px">· newest first · last <?= count($ledger) ?></span></h2>
   <?php /* Date-ranged statement export (Point 6) — pull one agent's ledger for
            a chosen window as a printable page or a CSV "mini bank statement". */ ?>
   <form method="get" class="no-print" style="display:flex;flex-wrap:wrap;gap:8px;align-items:end;padding:0 18px 6px">
@@ -1263,32 +1525,32 @@ function toggleExpressSeat(seat, btn) {
     <button class="btn ok" type="submit" name="export" value="ledger">⬇ Download CSV</button>
     <button class="btn" type="button" onclick="window.print()">🖨 Print</button>
   </form>
-  <table>
-    <thead><tr><th>When</th><th>Entry</th><th>Booking</th><th>Note</th><th style="text-align:right">Amount</th></tr></thead>
-    <tbody>
-    <?php if ($ledger === []): ?>
-      <tr><td colspan="5" class="muted" style="padding:22px;text-align:center">
-        Nothing yet. Commission appears here the moment a sale is confirmed.
-      </td></tr>
-    <?php else: foreach ($ledger as $l):
+  <?php if ($ledger === []): ?>
+    <p class="muted" style="padding:22px;text-align:center;margin:0">Nothing yet. Commission appears here the moment a sale is confirmed.</p>
+  <?php else: ?>
+  <ol class="ck-tl">
+    <?php foreach ($ledger as $l):
       [$icon, $label, $colour] = ledger_look((string) $l['entry_type'], (string) ($l['ref'] ?? ''));
       $amt = (float) $l['amount'];
+      [$tCls, $tTag] = ledger_tag((string) $l['entry_type'], $amt, (string) ($l['ref'] ?? ''));
     ?>
-      <tr>
-        <td class="muted"><?= Security::e(timeAgo((string) $l['created_at'])) ?></td>
-        <td><span style="color:<?= $colour ?>;font-weight:700"><?= $icon ?> <?= Security::e($label) ?></span>
-          <div class="muted" style="font-size:11px"><?= Security::e(ucfirst((string) $l['account'])) ?> account<?= $l['by_name'] ? ' · by ' . Security::e((string) $l['by_name']) : '' ?></div></td>
-        <td class="mono"><?php if (!empty($l['pnr'])): ?>
-            <a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $l['pnr']) ?>"><?= Security::e((string) $l['pnr']) ?></a>
-          <?php else: ?><span class="muted"><?= Security::e((string) ($l['ref'] ?: '—')) ?></span><?php endif; ?></td>
-        <td class="muted" style="font-size:12px"><?= Security::e(truncate((string) ($l['note'] ?? ''), 60)) ?></td>
-        <td style="text-align:right;font-weight:800;color:<?= $amt >= 0 ? '#0a6b3b' : '#b02a2a' ?>">
-          <?= $amt >= 0 ? '+' : '−' ?><?= Security::e(inr(abs($amt))) ?>
-        </td>
-      </tr>
-    <?php endforeach; endif; ?>
-    </tbody>
-  </table>
+      <li class="<?= $tCls ?>">
+        <span class="tgw"><span class="tg"><?= Security::e($tTag) ?></span></span>
+        <div>
+          <div class="what" style="color:<?= $colour ?>"><?= $icon ?> <?= Security::e($label) ?>
+            <?php if (!empty($l['pnr'])): ?>
+              · <a class="mono" href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $l['pnr']) ?>"><?= Security::e((string) $l['pnr']) ?></a>
+            <?php elseif ((string) ($l['ref'] ?? '') !== ''): ?>
+              <span class="mono muted" style="font-weight:600"> · <?= Security::e((string) $l['ref']) ?></span>
+            <?php endif; ?></div>
+          <div class="sub"><?= Security::e(ucfirst((string) $l['account'])) ?> account<?= $l['by_name'] ? ' · by ' . Security::e((string) $l['by_name']) : '' ?><?= (string) ($l['note'] ?? '') !== '' ? ' · ' . Security::e(truncate((string) $l['note'], 90)) : '' ?></div>
+        </div>
+        <div class="amt" style="color:<?= $amt >= 0 ? '#0a6b3b' : '#b02a2a' ?>"><?= $amt >= 0 ? '+' : '−' ?><?= Security::e(inr(abs($amt))) ?>
+          <small title="<?= Security::e((string) $l['created_at']) ?>"><?= Security::e(timeAgo((string) $l['created_at'])) ?></small></div>
+      </li>
+    <?php endforeach; ?>
+  </ol>
+  <?php endif; ?>
 </div>
 
 <?php if ($canManage): ?>
@@ -1298,7 +1560,7 @@ function toggleExpressSeat(seat, btn) {
      bcrypt hashes are one-way — so "reset" means "type a new one". Every
      change writes an agent.credentials audit row (old/new username and
      email; the password itself is never logged).                        -->
-<div class="panel" id="loginCredentials">
+<div class="panel" id="loginCredentials" data-pane="profile">
   <h2>🔑 Login credentials
     <span class="muted" style="font-weight:400">· email + username + password</span>
   </h2>
@@ -1347,7 +1609,7 @@ function toggleExpressSeat(seat, btn) {
 <?php endif; ?>
 
 <!-- ============ PROFILE ============ -->
-<div class="panel">
+<div class="panel" id="profileBox" data-pane="profile">
   <h2>👤 Profile — <?= Security::e((string) ($viewing['full_name'] ?: $viewing['username'])) ?>
     <span class="muted" style="font-weight:400">· <?= Security::e(ucfirst((string) $viewing['role'])) ?><?= (int) $viewing['is_active'] === 1 ? '' : ' · inactive' ?></span>
   </h2>
@@ -1565,8 +1827,8 @@ function toggleExpressSeat(seat, btn) {
 </div>
 
 <!-- ============ SELL ============ -->
-<?php require __DIR__ . '/_agent-journeys.php'; ?>
-<div class="panel">
+<div data-pane="sales"><?php require __DIR__ . '/_agent-journeys.php'; ?></div>
+<div class="panel" data-pane="sales">
   <h2>🚌 Upcoming departures — sell seats
     <?php if (AgentWallet::offlineTicketsEnabled()): ?>
       <a class="btn" href="<?= $base ?>/admin/agent-offline.php" style="margin-left:auto;padding:5px 11px;font-size:12px">📝 Enter a paper ticket</a>
@@ -1603,7 +1865,7 @@ function toggleExpressSeat(seat, btn) {
 </div>
 
 <?php if ($papers !== []): ?>
-<div class="panel">
+<div class="panel" data-pane="sales">
   <h2>📝 Paper tickets entered</h2>
   <table>
     <thead><tr><th>Paper no</th><th>Passenger</th><th>Journey</th><th>Amount</th><th>Commission</th><th>Booking</th></tr></thead>
@@ -1629,7 +1891,7 @@ function toggleExpressSeat(seat, btn) {
 </div>
 <?php endif; ?>
 
-<div class="panel">
+<div class="panel" data-pane="sales balance">
   <h2><?= $isOwn ? 'My recent sales' : 'Recent sales' ?></h2>
   <table class="card-table">
     <thead><tr><th>PNR</th><th>Route / Date</th><th>Seats</th><th>Passenger phone</th><th>Amount</th><th>Status</th><th>When</th></tr></thead>
@@ -1662,10 +1924,58 @@ function toggleExpressSeat(seat, btn) {
   </table>
 </div>
 
-<p class="muted" style="font-size:12.5px">
+<p class="muted" data-pane="commission" style="font-size:12.5px">
   Commission is <?= Security::e($payLabel) ?> (<?= Security::e($paySub) ?>) on confirmed sales you made, written to
   the wallet the moment a sale is confirmed and reversed if it is later cancelled. Sales made before the wallet
   was installed have no ledger entry, so they show under “recent sales” but not in the balance.
 </p>
+
+<script>
+/* Cockpit tabs (29 Oct 2026). Every section is already in the page and is
+   tagged data-pane; a tab only flips html[data-ck-tab] and rewrites ?tab=
+   (replaceState). Forms here have no action attribute, so a POST from the
+   Wallet or Profile tab comes back to that same tab. The big buttons link
+   to ?tab=…#box and are handled here too, without a reload. */
+(function () {
+  var root  = document.documentElement;
+  var links = document.querySelectorAll('#ckTabs a[data-tab]');
+  var keys  = Array.prototype.map.call(links, function (a) { return a.getAttribute('data-tab'); });
+  function show(key, push) {
+    if (keys.indexOf(key) < 0) { key = keys[0]; }
+    root.setAttribute('data-ck-tab', key);
+    links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-tab') === key); });
+    if (push) {
+      try { var u = new URL(location.href); u.searchParams.set('tab', key); u.hash = ''; history.replaceState(null, '', u.toString()); } catch (e) {}
+    }
+  }
+  function reveal(id) {
+    var el = id ? document.getElementById(id) : null;
+    if (!el) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    var pane = el.closest('[data-pane]');
+    if (pane && !pane.matches('[data-pane~="' + root.getAttribute('data-ck-tab') + '"]')) {
+      show(pane.getAttribute('data-pane').split(/\s+/)[0], true);
+    }
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
+    var f = el.querySelector('input[type="tel"],input[type="number"]');
+    if (f) { setTimeout(function () { f.focus({ preventScroll: true }); }, 300); }
+  }
+  links.forEach(function (a) {
+    a.addEventListener('click', function (ev) { ev.preventDefault(); show(a.getAttribute('data-tab'), true); });
+  });
+  document.querySelectorAll('.ck-act[href], #targetBox a[href]').forEach(function (a) {
+    a.addEventListener('click', function (ev) {
+      var u;
+      try { u = new URL(a.href, location.href); } catch (e) { return; }
+      var here = new URL(location.href);
+      if (u.pathname !== here.pathname || (u.searchParams.get('agent') || '') !== (here.searchParams.get('agent') || '')) { return; }
+      ev.preventDefault();
+      show(u.searchParams.get('tab') || keys[0], true);
+      reveal(u.hash.replace('#', ''));
+    });
+  });
+  // An old bookmark to #payoutRequest / #loginCredentials still lands on its section.
+  if (location.hash) { reveal(location.hash.slice(1)); }
+})();
+</script>
 <?php
 admin_footer();
