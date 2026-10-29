@@ -77,7 +77,7 @@ h3{font-size:15px;margin:14px 0 6px;color:var(--royal2)}
 </head>
 <body>
 <header class="tp-top">
-  <img src="/assets/img/logo-mark-96h.png" alt="">
+  <img src="/assets/img/logo-mark-96h-tm.png" alt="">
   <div><b>S HARI GLOBAL™</b><small>टिम पोर्टल · TEAM PORTAL</small></div>
   <span class="tp-sp"></span>
   <?php if ($active !== 'home'): ?><a href="/team/">🏠 Home</a><?php endif; ?>

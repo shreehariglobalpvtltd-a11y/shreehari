@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v257-team20261025-2';   // Keep edited KYC contact fields and printed applications consistent
+var VERSION = 'shg-v258';   // Ticket-first home + 3-category hub, 5-category admin menu, TM on every emblem
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,16 +43,16 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261023j';
+var ASSET_VER = '20261029a';
 var PRECACHE = [
   /* 16 Oct 2026 (owner, the logo): the full lockup WITH the ™ sign is now
      logo-tm.png (tools/make-logo-tm.php cuts it from logo.png). Neither is
      precached any more: no page loads them - the documents and the PDF read
      the file from disk on the server. */
   /* 8 Oct 2026: the 10 KB nav / home-hero logo */
-  '/assets/img/logo-nav.png?v=' + ASSET_VER,
+  '/assets/img/logo-nav-tmw.png?v=' + ASSET_VER,
   /* 9 Oct 2026: emblem-only mark (tickets, footer) + the small push badge */
-  '/assets/img/logo-mark-96h.png?v=' + ASSET_VER,
+  '/assets/img/logo-mark-96h-tm.png?v=' + ASSET_VER,
   '/assets/img/badge-96.png?v=' + ASSET_VER,
   '/assets/css/app.css?v=' + ASSET_VER,
   '/assets/css/views.css?v=' + ASSET_VER,
@@ -75,6 +75,7 @@ var PRECACHE = [
   '/assets/css/liquid.css?v=' + ASSET_VER,
   '/assets/js/31-liquid.js?v=' + ASSET_VER,
   '/assets/js/34-roles.js?v=' + ASSET_VER,
+  '/assets/js/35-homehub.js?v=' + ASSET_VER,
   /* 10 Oct 2026: the HD visual pack styles (the artwork itself is NOT precached) */
   '/assets/css/hd.css?v=' + ASSET_VER,
   /* 10 Oct 2026: touch / compositor / TV / device-tier hygiene (right before depth.css) */

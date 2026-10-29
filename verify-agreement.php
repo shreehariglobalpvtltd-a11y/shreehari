@@ -106,7 +106,7 @@ p.n{color:var(--muted);font-size:13.5px;line-height:1.5;margin:12px 0 0}
 </head>
 <body>
 <main class="w">
-  <div class="hd"><img src="/assets/img/logo-mark-96h.png" alt=""><div><b>S HARI GLOBAL™</b><small>PRIVATE LIMITED · AGREEMENT CHECK</small></div></div>
+  <div class="hd"><img src="/assets/img/logo-mark-96h-tm.png" alt=""><div><b>S HARI GLOBAL™</b><small>PRIVATE LIMITED · AGREEMENT CHECK</small></div></div>
   <div class="c">
   <?php if ($a !== null && isset($banner[$state])): [$cls, $ico, $en, $ne] = $banner[$state]; ?>
     <div class="st <?= $cls ?>"><i><?= $ico ?></i><div><?= $h($en) ?><small><?= $h($ne) ?></small></div></div>

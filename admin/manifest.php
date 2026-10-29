@@ -339,8 +339,8 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
        the company name is printed beside it); the old full logo only when the
        emblem file is missing. The 96px-tall copy keeps the data URI small. */
     $logoData = '';
-    foreach ([Settings::getString('company_logo_mark', ''), 'assets/img/logo-mark-96h.png', 'assets/img/logo-mark.png',
-              Settings::getString('company_logo', ''), 'assets/img/logo.png'] as $cand) {
+    foreach ([Settings::getString('company_logo_mark', ''), 'assets/img/logo-mark-96h-tm.png', 'assets/img/logo-mark-tm.png',
+              Settings::getString('company_logo', ''), 'assets/img/logo-tm.png'] as $cand) {
         if ($cand === '' || preg_match('#^https?://#i', $cand) === 1) { continue; }
         $lp = dirname(__DIR__) . '/' . ltrim($cand, '/');
         if (is_file($lp) && filesize($lp) > 0 && filesize($lp) < 600 * 1024) {

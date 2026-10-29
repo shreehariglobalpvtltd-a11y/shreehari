@@ -456,7 +456,7 @@ final class PublicLayout
         $soc = $f !== null && class_exists('SiteFacts', false) ? SiteFacts::socialHtml(true) : '';
         $regLine = ($addr !== '' ? '<small>' . $e($w['regOffice']) . ': ' . $e($addr) . '</small>' : '') . ($mails !== '' ? '<small>' . $mails . '</small>' : '');
         $socRow = $soc !== '' ? '<div class="foot-soc">' . $soc . '</div>' : '';
-        $logo = '<picture><source srcset="/assets/img/logo-mark-96h.webp" type="image/webp"><img class="logo" src="/assets/img/logo-mark-96h.png" width="185" height="96" alt="' . $e($co['name']) . '"></picture>';
+        $logo = '<picture><source srcset="/assets/img/logo-mark-96h-tm.webp" type="image/webp"><img class="logo" src="/assets/img/logo-mark-96h-tm.png" width="185" height="96" alt="' . $e($co['name']) . '"></picture>';
         $fl = '<span class="flags" aria-label="India · Nepal">' . self::flag('IN', 18) . self::flag('NP', 20) . '</span>';
         $book = $e($w['book']);
         $css = self::css() . (string) ($opts['css'] ?? '');

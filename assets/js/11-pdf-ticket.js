@@ -123,7 +123,7 @@ function _imgLoad(src) {
 async function _markImg() {
   var el = document.getElementById('logoNav');
   if (el && el.complete && el.naturalWidth > 0) return el;
-  return _imgLoad('/assets/img/logo-mark-96h.png');
+  return _imgLoad('/assets/img/logo-mark-96h-tm.png');
 }
 function _flagImgs() {
   return Promise.all([_imgLoad('/assets/img/flag-in.png'), _imgLoad('/assets/img/flag-np.png')]);

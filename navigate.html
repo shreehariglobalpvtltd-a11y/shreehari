@@ -1009,7 +1009,7 @@ body.big .sr-dt{white-space:normal}
 <!-- boot -->
 <div id="boot">
   <div class="boot-in">
-    <div class="boot-logo img"><img src="/assets/img/logo-mark.webp" width="439" height="228" alt="S Hari Global" fetchpriority="high" onerror="this.onerror=null;this.src='/assets/img/logo-mark.png'"></div>
+    <div class="boot-logo img"><img src="/assets/img/logo-mark-tmw.webp" width="439" height="228" alt="S Hari Global" fetchpriority="high" onerror="this.onerror=null;this.src='/assets/img/logo-mark-tmw.png'"></div>
     <div class="boot-t">SHARI <b>NAV</b> · AI Map</div>
     <div class="boot-s">S Hari Global · India ⇄ Nepal · Live Bus</div>
     <div class="boot-bar" aria-hidden="true"></div>
@@ -8098,7 +8098,7 @@ function loadOffices() {
                   lat: +o.lat, lng: +o.lng, kind: 'office', ours: true };
         var el = document.createElement('div');
         el.className = 'ofc-pin'; el.title = p.name;
-        el.innerHTML = '<img src="/assets/img/logo-mark-96h.webp" alt="" onerror="this.onerror=null;this.src=\'/assets/img/logo-mark-96h.png\'">';
+        el.innerHTML = '<img src="/assets/img/logo-mark-96h-tm.webp" alt="" onerror="this.onerror=null;this.src=\'/assets/img/logo-mark-96h-tm.png\'">';
         el.addEventListener('click', function (e) { e.stopPropagation(); if (S.level === 'nav') return; openPlace(Object.assign({}, p), S.level === 'place'); });
         new maplibregl.Marker({ element: wrapM(el), anchor: 'bottom' }).setLngLat([p.lng, p.lat]).addTo(S.map);
       });

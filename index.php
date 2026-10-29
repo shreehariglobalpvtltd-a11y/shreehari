@@ -349,7 +349,7 @@ $shgOrg  = [
     'name'      => (string) ($F['brand']['name'] ?? $shgCo['name']),
     'legalName' => (string) ($F['brand']['legal'] ?? $shgCo['legal']),
     'url'       => $baseUrl . '/',
-    'logo'      => $baseUrl . '/assets/img/logo-mark.png',
+    'logo'      => $baseUrl . '/assets/img/logo-mark-tm.png',
     // 10 Oct 2026 (trust): the domain mailbox once typed (company_email_alt), else the Gmail
     'email'     => (string) ($F['brand']['contactEmail'] ?? $F['brand']['email'] ?? $shgCo['email']),
     'telephone' => $shgTel((string) ($F['head']['tel'] ?? Settings::officeWhatsApp())),

@@ -46,9 +46,9 @@ declare(strict_types=1);
 final class Brand
 {
     /** The emblem (439x228, transparent, no name). */
-    public const MARK = 'assets/img/logo-mark.png';
+    public const MARK = 'assets/img/logo-mark-tm.png';
     /** The same emblem at nav size (240x125 palette PNG, transparent, 18 KB). */
-    public const MARK_SMALL = 'assets/img/logo-nav.png';
+    public const MARK_SMALL = 'assets/img/logo-nav-tm.png';
 
     /**
      * Flag geometry. 'vb' is the drawing's own viewBox; 'w'/'h' its size, so
@@ -119,7 +119,7 @@ final class Brand
             }
         }
 
-        return self::localImage('assets/img/logo.png');
+        return self::localImage('assets/img/logo-tm.png');
     }
 
     /**

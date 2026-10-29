@@ -184,7 +184,11 @@ function scrollHomeTarget(target) {
         if ((tp < 0 || tp > 200) && n < 8) { el.scrollIntoView({ block: 'start' }); settle(n + 1); }
       }, 300);
     };
-    if (((more && more.hidden && more.contains(el)) || (extra && extra.hidden && extra.contains(el))) && typeof window.openHomeMore === 'function') {
+    /* 29 Oct 2026: the ticket-first home folds its long sections too (#homeHub
+       note in app.template.html) - a link into one of them opens the fold. */
+    var vh = document.getElementById('view-home');
+    var folded = vh && !vh.classList.contains('home-full') && vh.contains(el) && el.offsetParent === null;
+    if ((folded || (more && more.hidden && more.contains(el)) || (extra && extra.hidden && extra.contains(el))) && typeof window.openHomeMore === 'function') {
       window.openHomeMore();
       setTimeout(function () { el.scrollIntoView({ block: 'start' }); settle(0); }, 80);
       return;
@@ -1122,6 +1126,8 @@ window.openHomeMore = function () {
   var extra = document.getElementById('homeExtra');
   var btn = document.getElementById('homeMoreToggle');
   if (!more) return;
+  var vh = document.getElementById('view-home');
+  if (vh) vh.classList.add('home-full');
   more.hidden = false;
   if (extra) extra.hidden = false;
   if (btn) { btn.setAttribute('aria-expanded', 'true'); btn.classList.add('open'); }
@@ -1136,6 +1142,8 @@ function wireHomeMore() {
       window.openHomeMore();
     } else {
       more.hidden = true;
+      var vh = document.getElementById('view-home');
+      if (vh) vh.classList.remove('home-full');
       var extra = document.getElementById('homeExtra');
       if (extra) extra.hidden = true;
       btn.setAttribute('aria-expanded', 'false');
@@ -1643,7 +1651,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261023j" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261029a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

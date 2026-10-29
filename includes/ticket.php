@@ -894,7 +894,7 @@ final class Ticket
 
     public static function logoFile(string $prefer = ''): ?string
     {
-        foreach ([$prefer, Settings::getString('company_logo', ''), 'assets/img/logo.png'] as $cand) {
+        foreach ([$prefer, Settings::getString('company_logo', ''), 'assets/img/logo-tm.png'] as $cand) {
             if ($cand === '' || preg_match('#^https?://#i', $cand) === 1) {
                 continue;
             }
@@ -1857,7 +1857,7 @@ final class Ticket
         if ($def === null || preg_match('#(^|/)assets/img/logo-mark\.png$#', strtolower(str_replace('\\', '/', $def))) !== 1) {
             return null;
         }
-        return DocArt::asset('assets/img/logo-mark-ticket.png');
+        return DocArt::asset('assets/img/logo-mark-ticket-tm.png');
     }
 
     /**

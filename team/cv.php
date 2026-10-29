@@ -65,7 +65,7 @@ if (isset($_GET['print'])) {
     <div style="flex:1;min-width:0"><h1 style="font-size:24px;margin:0"><?= $h($name) ?></h1>
       <span class="tp-chip"><?= $h($role) ?></span> <span class="tp-chip mono"><?= $h($ref) ?></span>
       <p class="tp-sub" style="margin:6px 0 0">S Hari Global Pvt. Ltd. · <?= $h($t === 'staff' ? (($row['base_location'] ?? '') ?: ($row['district'] ?? '')) : ($row['area'] ?? '')) ?></p></div>
-    <img src="/assets/img/logo-mark-96h.png" alt="" style="height:56px">
+    <img src="/assets/img/logo-mark-96h-tm.png" alt="" style="height:56px">
   </div>
   <?= TeamPortal::cvHtml($cv, $org) ?>
   <p class="tp-sub" style="margin-top:18px;font-size:12px">Printed <?= $h(date('d M Y')) ?> from the S Hari Global team portal · <?= $h($co['web']) ?></p>

@@ -110,7 +110,7 @@ h1.page-title, h2 { font-family: 'Cinzel', Georgia, serif; font-size: 28px; font
 <body>
 <div class="header">
   <a href="/">
-    <picture><source srcset="/assets/img/logo-mark-96h.webp" type="image/webp"><img src="/assets/img/logo-mark-96h.png" alt="" width="77" height="40" loading="eager"></picture>
+    <picture><source srcset="/assets/img/logo-mark-96h-tm.webp" type="image/webp"><img src="/assets/img/logo-mark-96h-tm.png" alt="" width="77" height="40" loading="eager"></picture>
     <span class="brandname"><?= $e($coName) ?></span>
   </a>
 </div>

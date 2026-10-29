@@ -166,7 +166,7 @@ if ($me !== null && $v !== 'reset') {
       <?php endif; ?>
       <p class="tp-links"><a href="/team/">← Back</a></p>
     </div>
-    <script src="/assets/js/team-passkey.js?v=20261023j"></script>
+    <script src="/assets/js/team-passkey.js?v=20261029a"></script>
     <?php elseif ($v === 'password'): ?>
     <div class="tp-card">
       <h1>🔑 पासवर्ड बदल्नुहोस् · Change password</h1>
@@ -374,7 +374,7 @@ if ($v === 'forgot'): ?>
     <a href="/agreements/apply.html?kind=staff">🧑‍✈️ स्टाफ बन्नुहोस्</a>
     <a href="/agreements/apply.html?kind=partner">🏢 साझेदार बन्नुहोस्</a>
   </p>
-  <?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261023j"></script><?php endif; ?>
+  <?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261029a"></script><?php endif; ?>
   <p class="tp-links" style="font-weight:400"><a href="/admin/login.php?portal=admin">Office login (admin)</a></p>
 </div>
 <?php endif;

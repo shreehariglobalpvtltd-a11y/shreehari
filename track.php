@@ -216,7 +216,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="fIN" viewBox="0 0 30 20"><rect width="30" height="20" fill="#fff"/><rect width="30" height="6.7" fill="#FF9933"/><rect y="13.3" width="30" height="6.7" fill="#138808"/><circle cx="15" cy="10" r="2.8" fill="none" stroke="#000080" stroke-width=".9"/><circle cx="15" cy="10" r=".7" fill="#000080"/></symbol><symbol id="fNP" viewBox="-1.2 -1.2 22.4 29.4"><path d="M0 0L20 12.5H6L20 27H0Z" fill="#DC143C" stroke="#003893" stroke-width="1.8" stroke-linejoin="round"/><path d="M2.3 7.2a3.7 3.7 0 0 0 7.4 0a3.7 2.6 0 0 1-7.4 0z" fill="#fff"/><circle cx="6" cy="8.7" r="1.3" fill="#fff"/><circle cx="6" cy="20" r="3" fill="#fff"/></symbol></svg>
 <div class="wrap">
   <div class="top">
-    <span class="brand"><picture><source srcset="/assets/img/logo-mark-96h.webp" type="image/webp"><img src="/assets/img/logo-mark-96h.png" width="65" height="34" alt=""></picture><span><?= $e($company) ?></span></span>
+    <span class="brand"><picture><source srcset="/assets/img/logo-mark-96h-tm.webp" type="image/webp"><img src="/assets/img/logo-mark-96h-tm.png" width="65" height="34" alt=""></picture><span><?= $e($company) ?></span></span>
     <span aria-hidden="true"><svg class="fl"><use href="#fIN"/></svg><svg class="fl np"><use href="#fNP"/></svg></span>
     <div class="langs">
       <?php foreach (['ne' => 'ने', 'hi' => 'हि', 'en' => 'EN'] as $l => $lab): ?>

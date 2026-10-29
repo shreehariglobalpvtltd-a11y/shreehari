@@ -720,7 +720,7 @@ final class ContentPages
         $f = PublicLayout::facts();
         $node = array_filter([
             '@type' => 'Organization', '@id' => $b . '/#org', 'name' => $co['name'], 'legalName' => $co['legal'],
-            'url' => $b . '/', 'logo' => $b . '/assets/img/logo-mark.png',
+            'url' => $b . '/', 'logo' => $b . '/assets/img/logo-mark-tm.png',
             'email' => (string) ($f['brand']['contactEmail'] ?? $co['email']), 'telephone' => $co['phone'],
             'areaServed' => ['India', 'Nepal'],
         ], static fn($v): bool => $v !== '' && $v !== null);
@@ -1052,7 +1052,7 @@ final class ContentPages
             $ldOffices[] = array_filter([
                 '@type' => 'TravelAgency', '@id' => $canon . '#office-' . strtolower($o['code'] !== '' ? $o['code'] : (string) preg_replace('/\W+/', '-', $o['city'])),
                 'name' => $co['name'] . ' — ' . $o['name'], 'telephone' => $o['phone'] !== '' ? $o['phone'] : null, 'url' => $canon,
-                'image' => PublicLayout::base() . '/assets/img/logo-mark.png',
+                'image' => PublicLayout::base() . '/assets/img/logo-mark-tm.png',
                 'address' => array_filter(['@type' => 'PostalAddress', 'streetAddress' => $o['address'] !== '' ? $o['address'] : null, 'addressLocality' => $o['city'], 'addressCountry' => $o['country']], static fn($v): bool => $v !== null),
                 'parentOrganization' => ['@id' => PublicLayout::base() . '/#org'],
                 'areaServed' => ['India', 'Nepal'],

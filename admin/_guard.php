@@ -65,53 +65,88 @@ function admin_nav(): array
 {
     $agentView = Auth::isCounterAgent();
 
-    // Unified 3-Pillar Category Navigation (Org & Agent Hub, Ticketing & Bus Control, SHARI NAV Map, Finance & System)
+    // 29 Oct 2026 (owner's overhaul prompt, part 2E): the five categories the
+    // office asked for, in their words. Pages that already existed but were
+    // missing from the menu (payroll, settlements, statements, reschedule, cash
+    // book, counters ...) now have a home. Each entry's perm is the perm the page
+    // itself boots with, so a link only shows to someone the page will let in.
+    $S1 = '1. Staff & Agent Management';
+    $S2 = '2. Location Management';
+    $S3 = '3. Ticketing & Bus Management';
+    $S4 = '4. Financial Management';
+    $S5 = '5. Settings & Configuration';
     $all = [
         ['href' => 'index.php',        'icon' => 'dashboard', 'label' => 'Dashboard Overview', 'perm' => 'dashboard.view', 'section' => ''],
 
-        // PILLAR 1: Organization & Agent Hub (4-Tier Hierarchy & Digital Forms)
-        ['href' => 'team.php',         'icon' => 'user-cog',  'label' => 'Team & Approvals (KYC)', 'perm' => 'staff.manage',    'section' => '1. Org & Agent Hub'],
-        ['href' => 'agents.php',       'icon' => 'user-cog',  'label' => '4-Tier Entity Register', 'perm' => 'commissions.view', 'section' => '1. Org & Agent Hub'],
-        ['href' => 'agent.php',        'icon' => 'ticket-alt', 'label' => $agentView ? 'My Agent Dashboard' : 'Master & Sub-Agent Portal', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => '1. Org & Agent Hub'],
-        ['href' => 'company.php',      'icon' => 'building',  'label' => 'Pvt Ltd & Branches',     'perm' => 'dashboard.view',   'section' => '1. Org & Agent Hub'],
-        ['href' => 'staff.php',        'icon' => 'users',      'label' => 'Staff Directory',        'perm' => 'staff.manage',     'section' => '1. Org & Agent Hub'],
-        ['href' => 'agent-sales.php',  'icon' => 'doc',        'label' => $agentView ? 'My Sales' : 'Agent Sales',        'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => '1. Org & Agent Hub'],
-        ['href' => 'agent-passengers.php','icon' => 'user-solo','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => '1. Org & Agent Hub'],
-        ['href' => 'agent-offline.php','icon' => 'notepad',   'label' => 'Offline / Paper Tickets','perm' => $agentView ? 'bookings.view' : 'commissions.view',  'section' => '1. Org & Agent Hub'],
-        ['href' => 'agent-ranking.php','icon' => 'trophy',    'label' => 'Agent Rankings',         'perm' => 'dashboard.view',   'section' => '1. Org & Agent Hub'],
+        // 1. Staff & Agent Management — accounts, codes / IDs / passwords, KYC, salary or commission
+        ['href' => 'team.php',         'icon' => 'user-cog',  'label' => 'Team & Approvals (KYC, codes, passwords)', 'perm' => 'staff.manage', 'section' => $S1],
+        ['href' => 'agents.php',       'icon' => 'user-cog',  'label' => 'Agents & Pvt Ltd Accounts', 'perm' => 'customers.view', 'section' => $S1],
+        ['href' => 'agent.php',        'icon' => 'ticket-alt', 'label' => $agentView ? 'My Agent Dashboard' : 'Master & Sub-Agent Portal', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S1],
+        ['href' => 'staff.php',        'icon' => 'users',      'label' => 'Counter Staff & Logins', 'perm' => 'staff.manage',     'section' => $S1],
+        ['href' => 'staff-applications.php', 'icon' => 'doc',  'label' => 'Staff Applications',     'perm' => 'drivers.view',     'section' => $S1],
+        ['href' => 'team-invite.php',  'icon' => 'mail',       'label' => 'Invites & Renewals',     'perm' => 'customers.view',   'section' => $S1],
+        ['href' => 'drivers.php',      'icon' => 'user-solo',  'label' => 'Drivers & Bus Crew',     'perm' => 'drivers.view',     'section' => $S1],
+        ['href' => 'company.php',      'icon' => 'building',   'label' => 'Pvt Ltd & Branches',     'perm' => 'dashboard.view',   'section' => $S1],
+        ['href' => 'agent-sales.php',  'icon' => 'doc',        'label' => $agentView ? 'My Sales' : 'Agent Sales',        'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S1],
+        ['href' => 'agent-passengers.php','icon' => 'user-solo','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S1],
+        ['href' => 'agent-offline.php','icon' => 'notepad',    'label' => 'Offline / Paper Tickets','perm' => $agentView ? 'bookings.view' : 'commissions.view',  'section' => $S1],
+        ['href' => 'agent-ranking.php','icon' => 'trophy',     'label' => 'Agent Rankings',         'perm' => 'dashboard.view',   'section' => $S1],
 
-        // PILLAR 2: Ticketing & Bus Operations
-        ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket (10s)', 'perm' => 'bookings.view', 'section' => '2. Ticketing & Bus Control', 'hot' => true],
-        ['href' => 'bookings.php',     'icon' => 'ticket',    'label' => $agentView ? 'My Tickets' : 'Tickets Register', 'perm' => 'bookings.view', 'section' => '2. Ticketing & Bus Control'],
-        ['href' => '/index.php?counter=1#/', 'icon' => 'plus', 'label' => '+ Counter Booking', 'perm' => 'bookings.view', 'section' => '2. Ticketing & Bus Control'],
-        ['href' => 'buses.php',        'icon' => 'bus',       'label' => 'Bus Fleet (AC Sleeper)', 'perm' => 'schedules.view', 'section' => '2. Ticketing & Bus Control'],
-        ['href' => 'schedule.php',     'icon' => 'calendar-plus','label' => 'Schedule & Departure Manager','perm' => 'schedules.manage','section' => '2. Ticketing & Bus Control'],
-        ['href' => 'trips.php',        'icon' => 'clock',     'label' => 'Trips Board',           'perm' => 'schedules.view',   'section' => '2. Ticketing & Bus Control'],
-        ['href' => 'trip-dashboard.php','icon' => 'calendar', 'label' => 'Daily Trip View',       'perm' => 'schedules.view',   'section' => '2. Ticketing & Bus Control'],
-        ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat / Berth Layout Map','perm' => 'schedules.view',  'section' => '2. Ticketing & Bus Control'],
-        ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Manifest & Chalani',    'perm' => 'bookings.view',   'section' => '2. Ticketing & Bus Control'],
-        ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments (UPI/eSewa)', 'perm' => 'payments.view', 'section' => '2. Ticketing & Bus Control'],
-        ['href' => 'refunds.php',      'icon' => 'refund',    'label' => 'Refunds & Cancellations','perm' => 'refunds.view',    'section' => '2. Ticketing & Bus Control'],
-        ['href' => 'scan.php',         'icon' => 'camera',    'label' => 'Scan Boarding QR',      'perm' => 'tickets.scan',     'section' => '2. Ticketing & Bus Control'],
+        // 2. Location Management — pickup / drop points, counters, agents by place, the map
+        ['href' => 'routes.php',       'icon' => 'road',      'label' => 'Pickup / Drop Stops & Fares', 'perm' => 'routes.view',  'section' => $S2],
+        ['href' => 'agreements.php',   'icon' => 'user-cog',  'label' => 'Agents by Location (web cards)', 'perm' => 'customers.view', 'section' => $S2],
+        ['href' => 'counters.php',     'icon' => 'building',  'label' => 'Counters & Collection',  'perm' => 'reports.view',     'section' => $S2],
+        ['href' => 'map.php',          'icon' => 'road',      'label' => 'SHARI NAV Live Bus Radar', 'perm' => 'schedules.view', 'section' => $S2],
+        ['href' => 'gps-trackers.php', 'icon' => 'road',      'label' => '🛰️ Bus GPS Trackers',     'perm' => 'schedules.manage','section' => $S2],
+        ['href' => 'gps-center.php',   'icon' => 'cog',       'label' => '🧭 GPS Control Center',     'perm' => 'schedules.manage','section' => $S2],
+        ['href' => '/navigate.html',   'icon' => 'road',      'label' => '🚌 Passenger Live Radar Map','perm' => 'schedules.view', 'section' => $S2],
+        ['href' => 'places.php',       'icon' => 'globe',     'label' => 'Places to Visit',        'perm' => 'dashboard.view',   'section' => $S2],
+        ['href' => 'nav-reports.php',  'icon' => 'shield',    'label' => 'Road Reports',           'perm' => 'dashboard.view',   'section' => $S2],
 
-        // PILLAR 3: Global Map & Route Tracking (SHARI NAV)
-        ['href' => 'map.php',          'icon' => 'road',      'label' => 'SHARI NAV Live Bus Radar', 'perm' => 'schedules.view', 'section' => '3. SHARI NAV (Global Map)'],
-        ['href' => 'gps-trackers.php', 'icon' => 'road',      'label' => '🛰️ Bus GPS Trackers',     'perm' => 'schedules.manage','section' => '3. SHARI NAV (Global Map)'],
-        ['href' => 'gps-center.php',   'icon' => 'cog',       'label' => '🧭 GPS Control Center',     'perm' => 'schedules.manage','section' => '3. SHARI NAV (Global Map)'],
-        ['href' => '/navigate.html',   'icon' => 'road',      'label' => '🚌 Passenger Live Radar Map','perm' => 'schedules.view', 'section' => '3. SHARI NAV (Global Map)'],
-        ['href' => 'routes.php',       'icon' => 'road',      'label' => 'Route Stops & Boarding',   'perm' => 'routes.view',    'section' => '3. SHARI NAV (Global Map)'],
-        ['href' => 'calendar.php',     'icon' => 'calendar',  'label' => 'Bus Calendar',             'perm' => 'schedules.manage', 'section' => '3. SHARI NAV (Global Map)'],
-        ['href' => 'drivers.php',      'icon' => 'user-solo', 'label' => 'Drivers & Bus Crew',       'perm' => 'drivers.view',    'section' => '3. SHARI NAV (Global Map)'],
+        // 3. Ticketing & Bus Management — sell, change date / name, cancel, the alternate-day routine
+        ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket (10s)', 'perm' => 'bookings.view', 'section' => $S3, 'hot' => true],
+        ['href' => 'bookings.php',     'icon' => 'ticket',    'label' => $agentView ? 'My Tickets' : 'Tickets Register', 'perm' => 'bookings.view', 'section' => $S3],
+        ['href' => '/index.php?counter=1#/', 'icon' => 'plus', 'label' => '+ Counter Booking', 'perm' => 'bookings.view', 'section' => $S3],
+        ['href' => 'reschedule.php',   'icon' => 'calendar-plus',  'label' => 'Change Date / Reschedule', 'perm' => 'bookings.view',  'section' => $S3],
+        ['href' => 'missed-bus.php',   'icon' => 'clock',     'label' => 'Missed-bus Rebooking',   'perm' => 'bookings.view',    'section' => $S3],
+        ['href' => 'refunds.php',      'icon' => 'refund',    'label' => 'Refunds & Cancellations','perm' => 'refunds.view',     'section' => $S3],
+        ['href' => 'wa-queue.php',     'icon' => 'msg',       'label' => 'WhatsApp Tickets',       'perm' => 'bookings.view',    'section' => $S3],
+        ['href' => 'schedule.php',     'icon' => 'calendar-plus','label' => 'Bus Routine (alternate days)','perm' => 'schedules.manage','section' => $S3],
+        ['href' => 'calendar.php',     'icon' => 'calendar-plus',  'label' => 'Bus Calendar',           'perm' => 'schedules.manage', 'section' => $S3],
+        ['href' => 'buses.php',        'icon' => 'bus',       'label' => 'Bus Fleet (AC Sleeper)', 'perm' => 'schedules.view',   'section' => $S3],
+        ['href' => 'trips.php',        'icon' => 'clock',     'label' => 'Trips Board',            'perm' => 'schedules.view',   'section' => $S3],
+        ['href' => 'trip-dashboard.php','icon' => 'calendar-plus', 'label' => 'Daily Trip View',        'perm' => 'schedules.view',   'section' => $S3],
+        ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat / Berth Layout Map','perm' => 'schedules.view',   'section' => $S3],
+        ['href' => 'extra-seats.php',  'icon' => 'seat',      'label' => 'Extra Seats',            'perm' => 'bookings.view',    'section' => $S3],
+        ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Manifest & Chalani',     'perm' => 'bookings.view',    'section' => $S3],
+        ['href' => 'scan.php',         'icon' => 'camera',    'label' => 'Scan Boarding QR',       'perm' => 'tickets.scan',     'section' => $S3],
+        ['href' => 'offers.php',       'icon' => 'star',      'label' => 'Offers & Discounts',     'perm' => 'payments.view',    'section' => $S3],
+        ['href' => 'customers.php',    'icon' => 'users',     'label' => 'Customer CRM',           'perm' => 'customers.view',   'section' => $S3],
+        ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Customer Enquiries',     'perm' => 'customers.view',   'section' => $S3],
+        ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Customer Ratings',       'perm' => 'dashboard.view',   'section' => $S3],
 
-        // Finance, CRM & System Management
-        ['href' => 'analytics.php',    'icon' => 'chart-up',  'label' => 'Executive Analytics',    'perm' => 'dashboard.view',   'section' => 'Finance & System'],
-        ['href' => 'accounting.php',   'icon' => 'ledger',    'label' => 'Accounting & Ledgers',   'perm' => 'payments.view',    'section' => 'Finance & System'],
-        ['href' => 'customers.php',    'icon' => 'users',     'label' => 'Customer CRM',           'perm' => 'customers.view',   'section' => 'Finance & System'],
-        ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Customer Enquiries',     'perm' => 'customers.view',   'section' => 'Finance & System'],
-        ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Customer Ratings',       'perm' => 'dashboard.view',   'section' => 'Finance & System'],
-        ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'WhatsApp & SMS Logs',   'perm' => 'dashboard.view',   'section' => 'Finance & System'],
-        ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'System Settings',        'perm' => 'dashboard.view',   'section' => 'Finance & System'],
-        ['href' => 'activity-log.php', 'icon' => 'shield',    'label' => 'Activity & Security Audit','perm'=> 'dashboard.view', 'section' => 'Finance & System'],
+        // 4. Financial Management — every rupee in / out per person: salary, commission, loans, wallet
+        ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments (UPI/eSewa)', 'perm' => 'payments.view', 'section' => $S4],
+        ['href' => 'accounting.php',   'icon' => 'ledger',    'label' => 'Accounting, Loans & Ledgers', 'perm' => 'payments.view', 'section' => $S4],
+        ['href' => 'payroll.php',      'icon' => 'users',     'label' => 'Salary / Payroll',       'perm' => 'payments.view',    'section' => $S4],
+        ['href' => 'settlements.php',  'icon' => 'refund',    'label' => $agentView ? 'My Settlements' : 'Commission & Wallet Settlements', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S4],
+        ['href' => 'agent-statement.php','icon' => 'doc',     'label' => $agentView ? 'My Monthly Statement' : 'Monthly Statements', 'perm' => 'bookings.view', 'section' => $S4],
+        ['href' => 'agent-360.php',    'icon' => 'chart-up',  'label' => 'Agent 360 (per-person money)', 'perm' => 'customers.view', 'section' => $S4],
+        ['href' => 'cash-book.php',    'icon' => 'ledger',    'label' => 'Cash Book',              'perm' => 'bookings.view',    'section' => $S4],
+        ['href' => 'shift.php',        'icon' => 'clock',     'label' => 'Shift & Cash Handover',  'perm' => 'bookings.view',    'section' => $S4],
+        ['href' => 'ledger-check.php', 'icon' => 'shield',    'label' => 'Ledger Check (मिलान)',   'perm' => 'commissions.view', 'section' => $S4],
+        ['href' => 'analytics.php',    'icon' => 'chart-up',  'label' => 'Executive Analytics',    'perm' => 'dashboard.view',   'section' => $S4],
+
+        // 5. Settings & Configuration — company, WhatsApp AI, logs, backups
+        ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'System Settings',        'perm' => 'dashboard.view',   'section' => $S5],
+        ['href' => 'wa-manager.php',   'icon' => 'msg',       'label' => 'WhatsApp Manager',       'perm' => 'reports.view',     'section' => $S5],
+        ['href' => 'wa-templates.php', 'icon' => 'msg',       'label' => 'WhatsApp Templates',     'perm' => 'customers.view',   'section' => $S5],
+        ['href' => 'ai-brain.php',     'icon' => 'star',      'label' => 'One AI (WhatsApp brain)', 'perm' => 'dashboard.view',  'section' => $S5],
+        ['href' => 'ai-activity.php',  'icon' => 'shield',    'label' => 'AI Activity',            'perm' => 'dashboard.view',   'section' => $S5],
+        ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'WhatsApp & SMS Logs',    'perm' => 'dashboard.view',   'section' => $S5],
+        ['href' => 'activity-log.php', 'icon' => 'shield',    'label' => 'Activity & Security Audit','perm'=> 'dashboard.view',  'section' => $S5],
+        ['href' => 'backup.php',       'icon' => 'shield',    'label' => 'Backups',                'perm' => 'dashboard.view',   'section' => $S5],
+        ['href' => 'health.php',       'icon' => 'shield',    'label' => 'System Health',          'perm' => 'dashboard.view',   'section' => $S5],
     ];
 
     return array_values(array_filter($all, static fn(array $i): bool => $i['perm'] === '' || Auth::can($i['perm'])));
@@ -156,7 +191,7 @@ function admin_header(string $title, string $active = ''): void
     echo '<header class="tb">';
     echo '<button class="menu" onclick="document.body.classList.toggle(\'nav-open\')" aria-label="Menu">☰</button>';
     echo '<a class="brand" href="' . $base . '/admin/index.php">'
-       . '<img class="brand-logo" src="/assets/img/logo.png" alt="" width="26" height="26"> '
+       . '<img class="brand-logo" src="/assets/img/logo-mark-96h-tmw.png" alt="" width="50" height="26"> '
        . Security::e($company) . ' <span>Admin</span></a>';
 
     // Phase 3 — Global search. Sits between the brand and the "who" strip
@@ -760,7 +795,7 @@ a{color:var(--blue);text-decoration:none}
 .tb{position:sticky;top:0;z-index:30;height:56px;display:flex;align-items:center;gap:12px;padding:0 16px;
     background:var(--navy);color:#fff;box-shadow:0 1px 8px rgba(0,0,0,.15)}
 .tb .brand{display:inline-flex;align-items:center;gap:8px;color:#fff;font-weight:700;font-size:16px}
-.tb .brand-logo{width:26px;height:26px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3));flex:0 0 auto}
+.tb .brand-logo{width:50px;height:26px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3));flex:0 0 auto}
 .tb .brand span{color:var(--orange);font-weight:600}
 .tb .who{margin-left:auto;font-size:13px;color:#cdd6e6}
 .tb .who em{font-style:normal;color:var(--orange)}

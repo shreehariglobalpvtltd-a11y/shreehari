@@ -149,7 +149,7 @@ final class ReportPdf
      */
     private static function logoFile(): ?string
     {
-        foreach ([Settings::getString('company_logo', ''), 'assets/img/logo.png'] as $cand) {
+        foreach ([Settings::getString('company_logo', ''), 'assets/img/logo-tm.png'] as $cand) {
             if ($cand === '' || preg_match('#^https?://#i', $cand) === 1) {
                 continue;
             }

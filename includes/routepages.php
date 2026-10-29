@@ -500,8 +500,8 @@ HTML);
     private static function brandImg(): string
     {
         $root = dirname(__DIR__);
-        $src  = is_file($root . '/assets/img/logo-mark-96h.png') ? '/assets/img/logo-mark-96h.png' : '/assets/img/logo-mark.png';
-        $webp = is_file($root . '/assets/img/logo-mark-96h.webp') ? '<source srcset="/assets/img/logo-mark-96h.webp" type="image/webp">' : '';
+        $src  = is_file($root . '/assets/img/logo-mark-96h-tm.png') ? '/assets/img/logo-mark-96h-tm.png' : '/assets/img/logo-mark-tm.png';
+        $webp = is_file($root . '/assets/img/logo-mark-96h-tm.webp') ? '<source srcset="/assets/img/logo-mark-96h-tm.webp" type="image/webp">' : '';
         return '<picture class="brand-mark">' . $webp . '<img src="' . $src . '" alt="" width="65" height="34" decoding="async"></picture>';
     }
 

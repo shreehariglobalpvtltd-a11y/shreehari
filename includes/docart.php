@@ -139,7 +139,7 @@ final class DocArt
                 } catch (\Throwable $e) {
                 }
             }
-            foreach (['assets/img/logo-mark.png', 'assets/img/logo-mark-96h.png'] as $c) {
+            foreach (['assets/img/logo-mark-tm.png', 'assets/img/logo-mark-96h-tm.png'] as $c) {
                 if (($p = self::asset($c)) !== null) {
                     return $p;
                 }

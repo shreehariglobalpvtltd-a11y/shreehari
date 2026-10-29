@@ -71,7 +71,7 @@ if ($print !== '') {
   <div class="tp-me" style="justify-content:space-between">
     <div><h1 style="margin:0"><?= $h($ag['title']) ?></h1>
       <p class="tp-sub" style="margin:4px 0 0">Version <?= $h($ag['version']) ?> · signed online · अनलाइन सही गरिएको</p></div>
-    <img src="/assets/img/logo-mark-96h.png" alt="" style="height:56px">
+    <img src="/assets/img/logo-mark-96h-tm.png" alt="" style="height:56px">
   </div>
   <h3>Parties · पक्षहरू</h3>
   <dl class="cv-dl">
@@ -92,7 +92,7 @@ if ($print !== '') {
       <div style="border-top:1px solid #ccd;margin-top:6px;padding-top:4px;font-size:12px;color:#5c6b85"><?= $h($ag['name']) ?></div>
     </div>
     <div style="border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center;background:#fff">
-      <img src="/assets/img/logo-mark-96h.png" alt="" style="height:90px;object-fit:contain;opacity:.9">
+      <img src="/assets/img/logo-mark-96h-tm.png" alt="" style="height:90px;object-fit:contain;opacity:.9">
       <div style="border-top:1px solid #ccd;margin-top:6px;padding-top:4px;font-size:12px;color:#5c6b85">For <?= $h($co['legal']) ?></div>
     </div>
   </div>

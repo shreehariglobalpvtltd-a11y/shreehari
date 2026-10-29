@@ -2327,7 +2327,7 @@ function tkSecureBandHTML(b) {
   const micro = ('S HARI GLOBAL · GENUINE E-TICKET · ' + b.id + ' · शुभ यात्रा · ').repeat(6);
   return '<section class="shg-sec" id="tkSecure" data-pnr="' + esc(b.id) + '" role="group" aria-label="' + esc(x.aria) + '">'
     + '<div class="shg-sec-holo" aria-hidden="true"></div>'
-    + '<div class="shg-sec-row"><span class="shg-sec-mark"><img src="/assets/img/logo-mark-96h.webp" alt="" width="42" height="22" decoding="async">S HARI</span>'
+    + '<div class="shg-sec-row"><span class="shg-sec-mark"><img src="/assets/img/logo-mark-96h-tm.webp" alt="" width="42" height="22" decoding="async">S HARI</span>'
     + '<span class="shg-sec-flags">' + tkSecFlag('IN') + tkSecFlag('NP') + '</span>'
     + '<span class="shg-sec-live"><i aria-hidden="true"></i><span id="tkSecLive">' + esc(x.live) + '</span></span></div>'
     + '<div class="shg-sec-main"><div class="shg-sec-clock"><small>' + esc(x.time) + ' · IST</small><b id="tkSecClock" aria-live="off">--:--:--</b><em id="tkSecDate"></em></div>'
@@ -2857,10 +2857,10 @@ function renderStatus(id) {
     <div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ${esc(tkMantraLine())} <span aria-hidden="true">❖</span></div>
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo-mark.webp?v=20261023j" width="439" height="228" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo-mark-tm.webp?v=20261029a" width="439" height="228" alt="" loading="lazy" decoding="async">
         <div>${tkBrandHtml(CONFIG.company.name)}<small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261023j" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261029a" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${secBand}

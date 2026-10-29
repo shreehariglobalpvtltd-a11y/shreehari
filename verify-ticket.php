@@ -462,7 +462,7 @@ $company = (string) $issuer['name'];
 <body>
 <div class="wrap">
   <div class="hdr">
-    <img src="/assets/img/logo-mark-96h.png?v=20261009t" alt="" width="85" height="44" onerror="this.style.display='none'">
+    <img src="/assets/img/logo-mark-96h-tm.png?v=20261009t" alt="" width="85" height="44" onerror="this.style.display='none'">
     <div class="hdr-t">
       <b><?= htmlspecialchars($company, ENT_QUOTES, 'UTF-8') ?></b>
       <small>Ticket verification · टिकट प्रमाणीकरण</small>

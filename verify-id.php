@@ -153,7 +153,7 @@ p.n{color:var(--muted);font-size:13px;line-height:1.5;margin:12px 0 0}
 <body>
 <main class="w">
   <div class="hd">
-    <img src="/assets/img/logo-mark-96h.png" alt="S Hari Global">
+    <img src="/assets/img/logo-mark-96h-tm.png" alt="S Hari Global">
     <div><b>S HARI GLOBAL™</b><small>DIGITAL ID VERIFICATION</small></div>
   </div>
 
