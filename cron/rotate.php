@@ -105,7 +105,41 @@ try {
     // nothing drawn yet — nothing to sweep
 }
 
+// 29 Oct 2026 - the master brief's data retention (section 10), OFF until
+// the office sets data_retention_on: the assistant's tool log after
+// ai_log_keep_days (default 90; rename / fix rows stay - the per-ticket caps
+// count them), and WhatsApp message rows (outbound log + group log) after
+// wa_log_keep_days (default 365). Bookings are never touched here.
+$retention = ['on' => false];
+if (Settings::getBool('data_retention_on', false)) {
+    $retention = ['on' => true, 'aiCalls' => 0, 'waLogs' => 0, 'waGroup' => 0];
+    $aiDays = max(30, min(730, Settings::getInt('ai_log_keep_days', 90)));
+    $waDays = max(90, min(1825, Settings::getInt('wa_log_keep_days', 365)));
+    try {
+        $retention['aiCalls'] = Database::run(
+            "DELETE FROM ai_agent_calls WHERE created_at < DATE_SUB(NOW(), INTERVAL {$aiDays} DAY)
+                AND tool NOT IN ('rename_passenger', 'fix_ticket') LIMIT 20000"
+        );
+    } catch (Throwable $e) {
+        // no tool log yet
+    }
+    try {
+        $retention['waLogs'] = Database::run(
+            "DELETE FROM message_logs WHERE channel = 'whatsapp' AND created_at < DATE_SUB(NOW(), INTERVAL {$waDays} DAY) LIMIT 20000"
+        );
+    } catch (Throwable $e) {
+    }
+    try {
+        $retention['waGroup'] = Database::run(
+            "DELETE FROM wa_group_log WHERE created_at < DATE_SUB(NOW(), INTERVAL {$waDays} DAY) LIMIT 20000"
+        );
+    } catch (Throwable $e) {
+        // no group has written yet
+    }
+}
+
 cron_done([
+    'retention'        => $retention,
     'logFilesRemoved'  => $logsRemoved,
     'waMediaPurged'    => $mediaPurged,
     'chartsPurged'     => $chartsPurged,

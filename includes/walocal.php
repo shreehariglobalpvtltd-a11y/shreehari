@@ -52,7 +52,8 @@ if (!defined('SHG_APP')) {
 final class WaLocal
 {
     private const HELP = ['help', 'madat', 'madad', 'sahayog', 'sahayata', 'command', 'commands', 'k k garna', 'ke ke garna', 'kya kya kar',
-        'k garna milcha', 'ke garna milcha', 'kya kar sakte', 'what can you do', 'सहयोग', 'मदत', 'मदद', 'सहायता', 'के के गर्न', 'क्या क्या'];
+        'k garna milcha', 'ke garna milcha', 'kya kar sakte', 'what can you do', 'सहयोग', 'मदत', 'मदद', 'सहायता', 'के के गर्न', 'क्या क्या',
+        'मद्दत', 'maddat', 'maddad'];
 
     private const TIMETABLE = ['timetable', 'time table', 'samay talika', 'samaya talika', 'samay suchi', 'pura schedule', 'full schedule',
         'sabai time', 'sab time', 'sabai samay', 'all timing', 'all time', 'timing list', 'sabai bus ko time', 'sab bus ka time',
@@ -213,6 +214,50 @@ final class WaLocal
         } catch (Throwable $e) {
         }
         return $out;
+    }
+
+    /** The answers that are the same for everyone — safe in a group chat. */
+    public const PUBLIC_INTENTS = ['timetable', 'seats_left', 'company_info', 'office_map', 'nepal_office', 'refund_rule'];
+
+    /**
+     * A PUBLIC answer for a WhatsApp group (29 Oct 2026, includes/wagroup.php):
+     * only the intents above, as a passenger with no number would get them —
+     * never a ticket, a summary, a passenger list or anything keyed on the
+     * person who asked, because everyone in the group reads the reply.
+     *
+     * @return array{text: string, intent: string}|null null = not a public question
+     */
+    public static function answerPublic(string $text): ?array
+    {
+        $text = trim($text);
+        if ($text === '' || mb_strlen($text) > 400 || !self::enabled()) {
+            return null;
+        }
+        if (preg_match('/shg[-\s]?\d{4}[-\s]?\d{3,}/iu', $text) === 1) {
+            return null;                          // a PNR is private, never answered in a group
+        }
+        try {
+            require_once INCLUDE_PATH . '/ticketbot.php';
+            $intent = self::intentOf(' ' . self::norm($text) . ' ', $text, 'customer');
+            if (!in_array($intent, self::PUBLIC_INTENTS, true)) {
+                return null;
+            }
+            $lang = self::lang($text, false);
+            $r = match ($intent) {
+                'timetable'    => self::timetable($lang),
+                'seats_left'   => self::seatsLeft($text, $lang, false),
+                'company_info' => self::companyInfo($lang),
+                'office_map'   => self::officeMap($lang),
+                'nepal_office' => self::nepalOffice($lang),
+                'refund_rule'  => self::refundRule('', $lang),
+                default        => null,
+            };
+        } catch (Throwable $e) {
+            Logger::warning('WaLocal public ' . ($intent ?? '?') . ' failed: ' . $e->getMessage(), [], 'whatsapp');
+            return null;
+        }
+        $txt = trim((string) ($r['text'] ?? ''));
+        return $txt === '' ? null : ['text' => $txt, 'intent' => $intent];
     }
 
     /**

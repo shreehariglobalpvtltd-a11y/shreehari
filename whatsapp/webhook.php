@@ -320,6 +320,20 @@ function wh_inbound(array $msg): void
         return;
     }
 
+    /* 29 Oct 2026: a GROUP message never enters the one-to-one queue - the
+       office inbox reads that queue, and a reply from there would go
+       privately to whoever wrote in the group. It is kept in wa_group_log
+       instead (includes/wagroup.php), once per Meta message id. */
+    if (trim((string) ($msg['group_id'] ?? '')) !== '') {
+        if (!Security::rateLimit('wa_meta_seen', $wamid, 1, 172800)) {
+            return;                                   // Meta re-delivered it
+        }
+        $gType = (string) ($msg['type'] ?? '');
+        require_once INCLUDE_PATH . '/wagroup.php';
+        WaGroup::inbound($msg, (string) ($gType === 'text' ? ($msg['text']['body'] ?? '') : ($msg[$gType]['caption'] ?? '')));
+        return;
+    }
+
     $queued = wh_queue_add($wamid, $from, (string) ($msg['type'] ?? ''), $msg);
     if ($queued === false) {
         return;                                   // Meta re-delivered a message already taken
@@ -362,6 +376,17 @@ function wh_process_inbound(array $msg): void
         default       => (string) ($msg[$type]['caption'] ?? ''),   // image/document captions
     };
     logWhatsAppEvent('inbound', $from, [], ['status' => strtoupper($type !== '' ? $type : 'unknown'), 'message_id' => $wamid]);
+
+    /* 29 Oct 2026 - a GROUP message (Meta Groups API: messages[].group_id)
+       goes to S HARI AI's group door and stops here. It must never be
+       answered privately to whoever wrote it, never open their one-to-one
+       window and never reach the PNR bot (includes/wagroup.php; replies
+       stay off until the office switches them on). */
+    if (trim((string) ($msg['group_id'] ?? '')) !== '') {
+        require_once INCLUDE_PATH . '/wagroup.php';
+        WaGroup::inbound($msg, $text);
+        return;
+    }
 
     try {
         require_once INCLUDE_PATH . '/watemplates.php';
@@ -444,6 +469,19 @@ function wh_process_inbound(array $msg): void
             'provider' => 'cloud_api', 'sid' => $r['message_id'] ?? '', 'purpose' => 'bot_reply', 'error' => $r['success'] ? null : ($r['error'] ?? ''),
         ]);
         return;
+    }
+
+    /* 29 Oct 2026 - a person in the office took this conversation over
+       (admin/wa-inbox.php "Pause bot"): the bot stays quiet for this number
+       until the pause ends. The window note, the verify code, the waiting
+       tickets and a filled booking form above all still run. */
+    try {
+        require_once INCLUDE_PATH . '/wainbox.php';
+        if (WaInbox::botPaused($from)) {
+            return;
+        }
+    } catch (Throwable $e) {
+        Logger::exception($e, 'whatsapp');
     }
 
     /* A voice note becomes the words that were spoken (23 Sep 2026, owner:

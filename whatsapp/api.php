@@ -135,7 +135,7 @@ if (!function_exists('waGraphPost')) {
      * @param array<string, mixed> $payload  body WITHOUT messaging_product/to (added here)
      * @return array{success: bool, message_id: string, error: string, http: int, code: int}
      */
-    function waGraphPost(string $to, array $payload, string $type = 'text', ?string $token = null, ?string $phoneId = null, int $maxAttempts = 2): array
+    function waGraphPost(string $to, array $payload, string $type = 'text', ?string $token = null, ?string $phoneId = null, int $maxAttempts = 2, string $recipientType = 'individual'): array
     {
         $token   = $token   ?? META_ACCESS_TOKEN;
         $phoneId = $phoneId ?? META_PHONE_NUMBER_ID;
@@ -152,7 +152,8 @@ if (!function_exists('waGraphPost')) {
             return $result;
         }
 
-        $body = ['messaging_product' => 'whatsapp', 'recipient_type' => 'individual', 'to' => $to] + $payload;
+        // 'group' (29 Oct 2026, includes/wagroup.php): $to is then a Groups API group id.
+        $body = ['messaging_product' => 'whatsapp', 'recipient_type' => $recipientType === 'group' ? 'group' : 'individual', 'to' => $to] + $payload;
         $json = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($json === false) {
             $result['error'] = 'payload could not be JSON-encoded';

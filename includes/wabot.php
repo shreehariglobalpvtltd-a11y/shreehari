@@ -181,6 +181,23 @@ final class WaBot
            With wa_ops_media_on the assistant is TOLD about it (kind + mime,
            never the content) and a copy is kept, encrypted, as evidence for a
            handoff. Off, or no assistant: the fixed replies below stand. */
+        /* 29 Oct 2026 — a payment screenshot is READ (wa_pay_ocr_on,
+           includes/wapayproof.php): UTR + amount, matched to this number's
+           booking that is waiting for money, sent to the Verify Payments
+           queue — never confirmed here. Not a payment, no waiting booking or
+           switch off: null, and everything below runs as before. */
+        if ($media !== [] && $kind === 'image' && $senderDigits !== '') {
+            try {
+                require_once INCLUDE_PATH . '/wapayproof.php';
+                $proof = WaPayProof::handle($senderDigits, $body, $media);
+                if ($proof !== null) {
+                    return self::out($proof);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e);
+            }
+        }
+
         $attachment = [];
         if ($media !== [] && in_array($kind, ['image', 'document', 'video', 'sticker'], true)) {
             $attachment = self::attachmentContext($senderDigits, $kind, $media);

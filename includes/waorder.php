@@ -64,7 +64,9 @@ final class WaOrder
         }
 
         if (in_array($t, ['mero ticket', 'mero tiket', 'my ticket', 'my tickets', 'mera ticket', 'meri ticket',
-                          'मेरो टिकट', 'मेरा टिकट', 'मेरी टिकट', 'મારી ટિકિટ'], true)) {
+                          'मेरो टिकट', 'मेरा टिकट', 'मेरी टिकट', 'મારી ટિકિટ',
+                          // 29 Oct 2026 ("मेरा सबै टिकट", the master brief's history ask)
+                          'mero sabai ticket', 'mera sabhi ticket', 'all my tickets', 'मेरो सबै टिकट', 'मेरा सबै टिकट', 'मेरे सभी टिकट'], true)) {
             self::dropOpenOrder($phoneDigits);
             return self::myTickets($phoneDigits, $lang !== '' ? $lang : self::langOf($text));
         }
