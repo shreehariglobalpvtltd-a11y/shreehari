@@ -48,6 +48,11 @@ final class AdminAlerts
         'agent_inactive' => ['Agent inactive', 'An active agent has sold nothing for this long — or has never sold since joining that long ago.', true,
                              ['days' => ['No sale for more than (days)', 7]]],
         'online_booking' => ['New online customer 🎉', 'A customer booked on the website by themselves, no agent in between.', true, []],
+        /* 29 Oct 2026 (management upgrade 3.4). */
+        'not_boarded'    => ['Passengers not boarded', 'A bus left this many minutes ago and confirmed passengers are still not marked boarded. Only on trips where boarding is being marked (at least one passenger scanned), so a coach nobody scans stays quiet.', true,
+                             ['minutes' => ['Minutes after departure', 20]]],
+        'trip_late'      => ['Bus running late', 'A departure today has a delay of more than this many minutes. If you also set the second number, its passengers are told on WhatsApp once the delay reaches it (once per 30 minutes of delay; 0 = never, the default).', true,
+                             ['minutes' => ['Delay above (minutes)', 30], 'auto' => ['WhatsApp passengers at (minutes, 0 = never)', 0]]],
     ];
 
     /**
@@ -279,6 +284,70 @@ final class AdminAlerts
         } catch (Throwable $e) {
             try {
                 Logger::warning('AdminAlerts day rules failed', ['error' => $e->getMessage()]);
+            } catch (Throwable $ignored) {
+            }
+        }
+
+        /* --- 29 Oct 2026 (management upgrade 3.4): boarding and delays --- */
+        try {
+            if ($on('not_boarded')) {
+                $mins = max(5, $num('not_boarded', 'minutes'));
+                foreach (Database::fetchAll(
+                    "SELECT s.id, s.travel_date, r.from_city, r.to_city, COALESCE(s.dep_time_override, r.dep_time) AS dep,
+                            SUM(bp.boarded_at IS NULL) AS missing, SUM(bp.boarded_at IS NOT NULL) AS boarded,
+                            GROUP_CONCAT(CASE WHEN bp.boarded_at IS NULL THEN bp.full_name END ORDER BY bp.seat_no SEPARATOR ', ') AS names
+                       FROM schedules s
+                       JOIN routes r ON r.id = s.route_id
+                       JOIN booking_legs bl ON bl.schedule_id = s.id
+                       JOIN bookings b ON b.id = bl.booking_id AND b.status = 'confirmed'
+                       JOIN booking_passengers bp ON bp.booking_id = b.id AND bp.leg_id = bl.id
+                      WHERE s.status <> 'cancelled' AND s.travel_date BETWEEN :d0 AND :d1
+                        AND TIMESTAMP(s.travel_date, COALESCE(s.dep_time_override, r.dep_time)) + INTERVAL :m MINUTE <= NOW()
+                        AND TIMESTAMP(s.travel_date, COALESCE(s.dep_time_override, r.dep_time)) + INTERVAL 6 HOUR >= NOW()
+                      GROUP BY s.id, s.travel_date, r.from_city, r.to_city, dep
+                     HAVING missing > 0 AND boarded > 0",
+                    ['d0' => addDaysISO($today, -1), 'd1' => $today, 'm' => $mins]
+                ) as $r) {
+                    $miss  = (int) $r['missing'];
+                    $names = explode(', ', (string) $r['names']);
+                    $add('not_boarded', 'board:' . (int) $r['id'], $miss . ' passenger' . ($miss === 1 ? '' : 's') . ' not boarded · ' . $r['from_city'] . ' → ' . $r['to_city'] . ' ' . substr((string) $r['dep'], 0, 5),
+                        implode(', ', array_slice($names, 0, 6)) . (count($names) > 6 ? ' …' : '') . ' — ' . (int) $r['boarded'] . ' boarded. Call them or mark them on the manifest.',
+                        '/admin/manifest.php?sid=' . (int) $r['id'] . '&date=' . $r['travel_date'], '🧍');
+                }
+            }
+            if ($on('trip_late')) {
+                $mins   = max(5, $num('trip_late', 'minutes'));
+                $autoAt = max(0, $num('trip_late', 'auto'));
+                foreach (Database::fetchAll(
+                    "SELECT s.id, s.travel_date, s.status, s.delay_minutes, s.delay_note, r.from_city, r.to_city,
+                            COALESCE(s.dep_time_override, r.dep_time) AS dep
+                       FROM schedules s JOIN routes r ON r.id = s.route_id
+                      WHERE s.travel_date = :d AND s.status = 'scheduled' AND s.delay_minutes > :m",
+                    ['d' => $today, 'm' => $mins]
+                ) as $r) {
+                    $dm = (int) $r['delay_minutes'];
+                    // One alert per 30-minute step, so a delay that grows is reported again.
+                    $add('trip_late', 'late:' . (int) $r['id'] . ':' . intdiv($dm, 30), 'Running ' . $dm . ' min late · ' . $r['from_city'] . ' → ' . $r['to_city'] . ' ' . substr((string) $r['dep'], 0, 5),
+                        ((string) ($r['delay_note'] ?? '') !== '' ? (string) $r['delay_note'] . '. ' : '') . ($autoAt > 0 && $dm >= $autoAt ? 'Passengers are told on WhatsApp automatically.' : 'Tell the passengers from the trips board.'),
+                        '/admin/trips.php?date=' . $r['travel_date'], '⏱️');
+                    /* Opt-in (the rule's second number, 0 = off): tell the
+                       passengers once per 30-minute step of delay, through the
+                       same TripNotify::notifyDelay the trips board's button uses.
+                       Only from the cron ($store), never from a page view. */
+                    if ($store && $autoAt > 0 && $dm >= $autoAt
+                        && EventBus::claim('delaynotify:' . (int) $r['id'] . ':' . intdiv($dm, 30), 'delay_auto_notify')) {
+                        try {
+                            require_once INCLUDE_PATH . '/tripnotify.php';
+                            TripNotify::notifyDelay((int) $r['id'], $dm, (string) ($r['delay_note'] ?? ''), 0);
+                        } catch (Throwable $e) {
+                            Logger::warning('auto delay notice failed', ['schedule' => (int) $r['id'], 'error' => $e->getMessage()]);
+                        }
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            try {
+                Logger::warning('AdminAlerts trip rules failed', ['error' => $e->getMessage()]);
             } catch (Throwable $ignored) {
             }
         }

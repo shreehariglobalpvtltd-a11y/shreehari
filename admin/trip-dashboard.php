@@ -573,6 +573,39 @@ $occColor   = $occPercent >= 80 ? '#0a6b3b' : ($occPercent >= 50 ? '#c99200' : '
 </div>
 
 <?php
+/* Boarding progress (29 Oct 2026, management upgrade 3.4): confirmed
+   passengers marked boarded (ticket scan / manifest tick) out of all.
+   Refreshes with the page; the alert for the missing ones comes from
+   cron/alerts.php (rule "Passengers not boarded"). */
+$tdBoard = ['n' => 0, 'boarded' => 0];
+try {
+    $tdBoard = Database::fetch(
+        "SELECT COUNT(*) AS n, COALESCE(SUM(bp.boarded_at IS NOT NULL), 0) AS boarded
+           FROM booking_passengers bp
+           JOIN booking_legs bl ON bl.id = bp.leg_id
+           JOIN bookings b ON b.id = bp.booking_id AND b.status = 'confirmed'
+          WHERE bl.schedule_id = :s",
+        ['s' => $scheduleId]
+    ) ?? $tdBoard;
+} catch (Throwable $e) { /* boarded_at optional */ }
+$tdBn  = (int) ($tdBoard['n'] ?? 0);
+$tdBb  = (int) ($tdBoard['boarded'] ?? 0);
+$tdBp  = $tdBn > 0 ? (int) round($tdBb * 100 / $tdBn) : 0;
+?>
+<?php if ($tdBn > 0): ?>
+<div style="margin:-10px 0 22px">
+  <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--mut);margin-bottom:4px">
+    <span>Boarding · चढेका</span>
+    <span><strong><?= $tdBb ?> of <?= $tdBn ?></strong> passengers boarded<?= $tdBb < $tdBn ? ' · ' . ($tdBn - $tdBb) . ' to go' : ' ✓' ?>
+      · <a href="<?= $base ?>/admin/manifest.php?sid=<?= (int) $scheduleId ?>&amp;date=<?= urlencode($date) ?>">manifest</a></span>
+  </div>
+  <div class="occ-bar">
+    <div class="occ-fill" style="width:<?= $tdBp ?>%;background:<?= $tdBp >= 100 ? '#0a6b3b' : '#2E5FA8' ?>"></div>
+  </div>
+</div>
+<?php endif; ?>
+
+<?php
 /* ========================================================================
  *  2d. Mini Seat Map
  * ======================================================================== */
