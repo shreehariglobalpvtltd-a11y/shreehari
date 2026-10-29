@@ -33,6 +33,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 
 require_once INCLUDE_PATH . '/aiprompt.php';   // ai_system_prompt(), shared with the WhatsApp bot
+require_once INCLUDE_PATH . '/aimaster.php';   // the S HARI AI master brief (off until switched on)
 require_once INCLUDE_PATH . '/aibrain.php';    // the one AI (5 Oct 2026)
 
 try {
@@ -78,7 +79,7 @@ try {
 
     /* ---- System prompt: server-owned, never client-supplied, built from
        live settings and tables on every call (ai_system_prompt above). */
-    $system = ai_system_prompt();
+    $system = AiMaster::brief(['role' => 'customer']) . ai_system_prompt();   // brief: '' until switched on
 
     /* ---- One AI: the provider chosen in Settings, the others as backup ---- */
     $ans = AiBrain::text($system, $messages, 900, 'web_chat');

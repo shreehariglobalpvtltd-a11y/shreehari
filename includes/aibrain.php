@@ -41,7 +41,7 @@ final class AiBrain
     public const PROVIDERS = [
         'gemini'    => ['label' => 'Google Gemini',    'key' => 'gemini_api_key',    'model' => 'gemini_model', 'default' => 'auto (free tier)'],
         'openai'    => ['label' => 'OpenAI GPT',       'key' => 'openai_api_key',    'model' => 'openai_model', 'default' => 'gpt-5-mini'],
-        'anthropic' => ['label' => 'Anthropic Claude', 'key' => 'anthropic_api_key', 'model' => 'ai_model',     'default' => 'claude-sonnet-5'],
+        'anthropic' => ['label' => 'Anthropic Claude', 'key' => 'anthropic_api_key', 'model' => 'ai_model',     'default' => 'claude-opus-5-5'],
     ];
 
     private const TIMEOUT = 25;
@@ -200,8 +200,8 @@ final class AiBrain
 
     private static function claude(string $system, array $messages, int $max): ?string
     {
-        $model = self::model('anthropic') ?: 'claude-sonnet-5';
-        [$http, $body] = self::post('https://api.anthropic.com/v1/messages', [
+        $model = self::model('anthropic') ?: self::CLAUDE_DEFAULT;
+        [$payload, $headers] = self::claudeShape($model, [
             'model'      => $model,
             'max_tokens' => max(64, $max),
             'system'     => $system,
@@ -211,17 +211,112 @@ final class AiBrain
             'anthropic-version: 2023-06-01',
             'Content-Type: application/json',
         ]);
+        [$http, $body] = self::post('https://api.anthropic.com/v1/messages', $payload, $headers);
+        if ($http === 400 && isset($payload['fallbacks']) && stripos($body, 'fallback') !== false) {
+            // An account without the fallback beta must still get its answer.
+            unset($payload['fallbacks']);
+            $headers = array_values(array_filter($headers, static fn(string $h): bool => stripos($h, 'server-side-fallback') === false));
+            [$http, $body] = self::post('https://api.anthropic.com/v1/messages', $payload, $headers);
+        }
         if ($http !== 200) {
             Logger::warning('AI brain: Claude HTTP ' . $http, ['body' => self::redact($body)], 'whatsapp');
             return null;
         }
+        $json = json_decode($body, true);
+        if (self::claudeRefusal(is_array($json) ? $json : []) !== null) {
+            return null;                          // the next provider answers instead
+        }
         $out = '';
-        foreach ((array) (json_decode($body, true)['content'] ?? []) as $b) {
+        foreach ((array) ($json['content'] ?? []) as $b) {
             if (($b['type'] ?? '') === 'text') {
                 $out .= (string) ($b['text'] ?? '');
             }
         }
         return trim($out) !== '' ? $out : null;
+    }
+
+    /* -----------------------------------------------------------------
+     *  Claude request shape (29 Oct 2026, owner's "Opus 5.5 Max" brief)
+     *
+     *  The newer Claude models think before they write, always: Opus 5.5
+     *  refuses thinking:disabled and any temperature, and its thinking is
+     *  paid out of max_tokens. A 700-token WhatsApp budget left no room for
+     *  the reply. One shape for AiBrain and AiAgent alike:
+     *    - adaptive thinking + output_config.effort (Settings
+     *      ai_claude_effort, default low — a chat answer, not a proof);
+     *    - max_tokens no lower than 2048 on those models;
+     *    - no temperature / top_p / top_k (a 400 on these models);
+     *    - server-side refusal fallback (ai_claude_fallback, on by
+     *      default): a false-positive safety decline is retried by
+     *      Anthropic on its recommended model instead of going silent.
+     *  Older models get the request exactly as before.
+     * ----------------------------------------------------------------- */
+
+    public const CLAUDE_DEFAULT = 'claude-opus-5-5';
+
+    /** Effort levels the Messages API takes in output_config.effort. */
+    public const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+    /** Does this model run adaptive thinking and take output_config.effort? */
+    public static function claudeAdaptive(string $model): bool
+    {
+        $m = strtolower($model);
+        if (str_contains($m, 'haiku')) {
+            return str_contains($m, 'haiku-5');           // Haiku 4.5 still takes budget_tokens
+        }
+        return str_contains($m, 'sonnet-5') || str_contains($m, 'opus-5') || str_contains($m, 'opus-4-')
+            || str_contains($m, 'sonnet-4-6') || str_contains($m, 'fable') || str_contains($m, 'mythos');
+    }
+
+    /** The models the server-side "default" refusal fallback is documented for. */
+    private static function claudeFallbackModel(string $model): bool
+    {
+        return (bool) preg_match('/^claude-(opus-5(-5)?|sonnet-5-5|fable-5-1)$/', strtolower(trim($model)));
+    }
+
+    public static function claudeEffort(): string
+    {
+        $e = strtolower(trim(Settings::getString('ai_claude_effort', 'low')));
+        return in_array($e, self::CLAUDE_EFFORTS, true) ? $e : 'low';
+    }
+
+    /**
+     * Payload and headers for one Claude request on this model.
+     *
+     * @param array<string,mixed> $payload
+     * @param list<string>        $headers
+     * @return array{0: array<string,mixed>, 1: list<string>}
+     */
+    public static function claudeShape(string $model, array $payload, array $headers): array
+    {
+        unset($payload['temperature'], $payload['top_p'], $payload['top_k']);
+        if (!self::claudeAdaptive($model)) {
+            return [$payload, $headers];
+        }
+        $payload['thinking']      = ['type' => 'adaptive'];
+        $payload['output_config'] = ['effort' => self::claudeEffort()];
+        $payload['max_tokens']    = max(2048, (int) ($payload['max_tokens'] ?? 0));
+        if (self::claudeFallbackModel($model) && Settings::getBool('ai_claude_fallback', true)) {
+            $payload['fallbacks'] = 'default';
+            $headers[] = 'anthropic-beta: server-side-fallback-2026-07-01';
+        }
+        return [$payload, $headers];
+    }
+
+    /**
+     * A safety decline arrives as HTTP 200 with stop_reason "refusal" and no
+     * answer in it. Returns the category (or "unknown") and logs it once.
+     *
+     * @param array<string,mixed> $json
+     */
+    public static function claudeRefusal(array $json): ?string
+    {
+        if ((string) ($json['stop_reason'] ?? '') !== 'refusal') {
+            return null;
+        }
+        $cat = (string) (($json['stop_details']['category'] ?? null) ?: 'unknown');
+        Logger::warning('AI brain: Claude declined (refusal)', ['category' => $cat, 'model' => (string) ($json['model'] ?? '')], 'whatsapp');
+        return $cat;
     }
 
     private static function openai(string $system, array $messages, int $max): ?string

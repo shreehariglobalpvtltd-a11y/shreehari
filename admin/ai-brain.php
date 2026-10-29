@@ -17,6 +17,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/aibrain.php';
+require_once INCLUDE_PATH . '/aimaster.php';
 require_once INCLUDE_PATH . '/nameguess.php';
 
 $admin   = admin_boot('dashboard.view');
@@ -58,6 +59,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     if ($m !== Settings::getString($cfg['model'], '')) {
                         Settings::set($cfg['model'], $m, 'string', 'ai');
                         $changed[] = $cfg['model'];
+                        if ($p === 'anthropic') {
+                            // The WhatsApp agent reads its own key; one choice here sets both (29 Oct 2026).
+                            Settings::set('ai_agent_model', $m, 'string', 'ai');
+                            $changed[] = 'ai_agent_model';
+                        }
                     }
                 }
             }
@@ -77,6 +83,41 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             Settings::set('wa_instant_sale', $inst, 'string', 'whatsapp');
             Logger::audit('ai.booking', 'settings', 'ai', $before, $after, 'Booking AI saved by admin #' . (int) $admin['id']);
             $flash = ['ok', 'Booking AI saved. / सेभ भयो।'];
+        } elseif ($act === 'master') {
+            /* 29 Oct 2026 - S HARI AI master brief + the Claude Opus 5.5 knobs
+               (includes/aimaster.php, AiBrain::claudeShape). */
+            $effort = (string) ($_POST['ai_claude_effort'] ?? 'low');
+            if (!in_array($effort, AiBrain::CLAUDE_EFFORTS, true)) {
+                throw new RuntimeException('Unknown effort level.');
+            }
+            $text = str_replace("\r\n", "\n", (string) ($_POST['ai_master_prompt'] ?? ''));
+            if (isset($_POST['reset_text']) || trim($text) === trim(AiMaster::defaultText())) {
+                $text = '';                                   // blank = the built-in brief, kept up to date by code
+            }
+            if (mb_strlen($text) > AiMaster::MAX_LEN) {
+                throw new RuntimeException('The master brief is too long — keep it under ' . AiMaster::MAX_LEN . ' characters.');
+            }
+            $before = [
+                'ai_master_prompt_on' => AiMaster::on() ? 1 : 0, 'ai_claude_effort' => AiBrain::claudeEffort(),
+                'ai_claude_fallback' => Settings::getBool('ai_claude_fallback', true) ? 1 : 0,
+                'ai_master_prompt' => Settings::getString('ai_master_prompt', '') === '' ? 'built-in' : 'custom',
+            ];
+            $after = [
+                'ai_master_prompt_on' => (string) ($_POST['ai_master_prompt_on'] ?? '0') === '1' ? 1 : 0, 'ai_claude_effort' => $effort,
+                'ai_claude_fallback' => (string) ($_POST['ai_claude_fallback'] ?? '0') === '1' ? 1 : 0,
+                'ai_master_prompt' => trim($text) === '' ? 'built-in' : 'custom',
+            ];
+            Settings::set('ai_master_prompt_on', $after['ai_master_prompt_on'] ? '1' : '0', 'bool', 'ai');
+            Settings::set('ai_claude_effort', $effort, 'string', 'ai');
+            Settings::set('ai_claude_fallback', $after['ai_claude_fallback'] ? '1' : '0', 'bool', 'ai');
+            Settings::set('ai_master_prompt', trim($text), 'string', 'ai');
+            Logger::audit('ai.master', 'settings', 'ai', $before, $after, 'S HARI AI master brief saved by admin #' . (int) $admin['id']);
+            $flash = ['ok', 'Master brief saved. / सेभ भयो।' . ($after['ai_master_prompt_on'] ? ' S HARI AI is ON.' : ' It stays OFF until you tick it.')];
+        } elseif ($act === 'opus55') {
+            Settings::set('ai_model', AiBrain::CLAUDE_DEFAULT, 'string', 'ai');
+            Settings::set('ai_agent_model', AiBrain::CLAUDE_DEFAULT, 'string', 'ai');
+            Logger::audit('ai.brain', 'settings', 'ai', null, ['ai_model' => AiBrain::CLAUDE_DEFAULT, 'ai_agent_model' => AiBrain::CLAUDE_DEFAULT], 'Claude set to Opus 5.5 by admin #' . (int) $admin['id']);
+            $flash = ['ok', 'Claude now uses ' . AiBrain::CLAUDE_DEFAULT . ' (website chat and WhatsApp agent). Order: ' . (implode(' → ', AiBrain::order()) ?: 'no key yet')];
         } elseif ($act === 'relearn') {
             $r = NameGuess::rebuild();
             $flash = ['ok', 'Relearned ' . $r['names'] . ' names from ' . $r['passengers'] . ' passengers. / नाम फेरि सिकियो।'];
@@ -163,6 +204,70 @@ admin_page_head('One AI brain for the whole system — the WhatsApp bot, the web
   </div>
   <?php if ($canEdit): ?><p><button class="btn" type="submit">Save</button></p><?php endif; ?>
 </form>
+
+<?php
+/* 29 Oct 2026 - S HARI AI master brief (owner's "Opus 5.5 Max" prompt, section 12). */
+$mOn      = AiMaster::on();
+$mText    = Settings::getString('ai_master_prompt', '');
+$mEffort  = AiBrain::claudeEffort();
+$mFallbk  = Settings::getBool('ai_claude_fallback', true);
+$claudeM  = Settings::getString('ai_model', '') ?: AiBrain::CLAUDE_DEFAULT;
+$agentM   = Settings::getString('ai_agent_model', '') ?: $claudeM;
+$pvRole   = in_array($_GET['brief'] ?? '', ['customer', 'staff', 'admin'], true) ? (string) $_GET['brief'] : 'customer';
+$pvTools  = [];
+try {
+    require_once INCLUDE_PATH . '/aitools.php';
+    $pvTools = AiTools::catalogue(['role' => $pvRole, 'channel' => 'whatsapp', 'phone' => '9800000000']);
+} catch (Throwable $ignored) {
+    // the preview still shows the text and the mode
+}
+$efforts = [
+    'low'    => 'low — fast WhatsApp answers (recommended)',
+    'medium' => 'medium — Opus 5.5 default, a little slower',
+    'high'   => 'high — careful, slower',
+    'xhigh'  => 'xhigh — very careful, slow',
+    'max'    => 'max — deepest reasoning, slowest and costliest',
+];
+?>
+<div class="panel" id="masterBrief">
+  <h2>S HARI AI — master brief (Claude Opus 5.5)</h2>
+  <div class="panel-body ab-uses">
+    <p class="muted" style="margin:0">One assistant on the website chat, WhatsApp and the office panel, with the <b>four security gates</b>
+      (role from the verified number · own bookings only · money only while switched on · quote first, act on the next "ho").
+      The gates are enforced by the system either way; this brief tells the AI about them, gives it the name <b>S HARI AI</b> and
+      lists only the tools that really exist for each person. It sits in front of today's tuned briefing — nothing there is removed.
+      <b>Status: <?= $mOn ? '<span class="pill st-ok">ON</span>' : '<span class="pill st-muted">OFF</span>' ?></b></p>
+    <p class="muted" style="margin:0">Claude model now: <b><?= $e($claudeM) ?></b> (chat) · <b><?= $e($agentM) ?></b> (WhatsApp agent).
+      Claude answers only when it is first in the order above or the ones before it fail.</p>
+    <?php if ($canEdit): ?>
+      <?php if ($claudeM !== AiBrain::CLAUDE_DEFAULT || $agentM !== AiBrain::CLAUDE_DEFAULT): ?>
+        <form method="post"><?= Security::csrfField() ?><input type="hidden" name="action" value="opus55">
+          <button class="btn btn-ghost" type="submit">Use Claude Opus 5.5 for both</button></form>
+      <?php endif; ?>
+      <form method="post" style="display:grid;gap:10px">
+        <?= Security::csrfField() ?>
+        <input type="hidden" name="action" value="master">
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="ai_master_prompt_on" value="1" <?= $mOn ? 'checked' : '' ?>> Turn on the S HARI AI master brief</label>
+        <label>Claude thinking effort (Opus 5.5 always thinks; this sets how much)
+          <select name="ai_claude_effort">
+            <?php foreach ($efforts as $v => $l): ?><option value="<?= $v ?>" <?= $mEffort === $v ? 'selected' : '' ?>><?= $e($l) ?></option><?php endforeach; ?>
+          </select></label>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="ai_claude_fallback" value="1" <?= $mFallbk ? 'checked' : '' ?>> If Claude's safety filter wrongly declines a message, let Anthropic answer it with its recommended backup model (recommended)</label>
+        <label>Master brief text — blank uses the built-in one. <code>{company}</code> and <code>{office_phone}</code> are filled in; the mode and the tool list are always added after it.
+          <textarea name="ai_master_prompt" rows="12" style="width:100%;font-family:ui-monospace,monospace;font-size:12.5px" maxlength="<?= AiMaster::MAX_LEN ?>"><?= $e($mText !== '' ? $mText : AiMaster::defaultText()) ?></textarea></label>
+        <p style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">Save</button>
+          <button class="btn btn-ghost" type="submit" name="reset_text" value="1">Save with the built-in text</button></p>
+      </form>
+    <?php endif; ?>
+    <details>
+      <summary>Preview what the AI reads first —
+        <?php foreach (['customer' => 'passenger', 'staff' => 'agent', 'admin' => 'office'] as $r => $l): ?>
+          <a href="?brief=<?= $r ?>#masterBrief"<?= $pvRole === $r ? ' style="font-weight:700"' : '' ?>><?= $e($l) ?></a>
+        <?php endforeach; ?></summary>
+      <pre style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto;background:var(--soft);padding:10px;border-radius:10px"><?= $e(AiMaster::compose(['role' => $pvRole], $pvTools)) ?></pre>
+    </details>
+  </div>
+</div>
 
 <div class="panel">
   <h2>Where this one AI works</h2>

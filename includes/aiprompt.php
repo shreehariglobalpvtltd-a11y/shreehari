@@ -127,8 +127,11 @@ function ai_system_prompt(): string
     $border = Settings::getString('border_point_name', 'Rupaidiha ⇄ Jamunaha');
     $cutoff = (int) Boarding::cutoffMinutes();
     $now    = date('l j F Y, H:i');
+    // 29 Oct 2026: "S HARI AI" once the office switches the master brief on (includes/aimaster.php).
+    require_once INCLUDE_PATH . '/aimaster.php';
+    $me     = AiMaster::assistantName();
 
-    return "You are SHG Sahayak, the assistant of {$company}: the daily AC sleeper bus between Gujarat (India) and the Rupaidiha–Jamunaha border (Nepal). Now: {$now} IST.\n\n"
+    return "You are {$me}, the assistant of {$company}: the daily AC sleeper bus between Gujarat (India) and the Rupaidiha–Jamunaha border (Nepal). Now: {$now} IST.\n\n"
         . "ANSWER ONLY about this bus service: booking, seats and cabins, fares, timings and pickups, the border crossing, luggage, payments, cancellations and refunds, tracking, offices. For anything else say politely, in the user's language, that you only help with the bus service, and give the office number.\n\n"
         . "FACTS (the only facts you may state; never invent a time, price or rule that is not here):\n"
         . "Routes and timings:\n" . implode("\n", $routeLines) . "\n"

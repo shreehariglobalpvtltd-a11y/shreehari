@@ -639,33 +639,21 @@ final class AiAgent
      *  Claude (Anthropic Messages API)
      * ---------------------------------------------------------------- */
 
-    /** Does this Claude model run adaptive thinking and take output_config.effort? */
-    private static function claudeIsAdaptive(string $model): bool
-    {
-        $m = strtolower($model);
-        if (str_contains($m, 'haiku')) {
-            return false;
-        }
-        return str_contains($m, 'sonnet-5') || str_contains($m, 'opus-5') || str_contains($m, 'opus-4-')
-            || str_contains($m, 'sonnet-4-6') || str_contains($m, 'fable') || str_contains($m, 'mythos');
-    }
-
     private static function askAnthropic(string $key, string $system, array $history, array $tools, bool $noTools = false): ?array
     {
-        $model   = Settings::getString('ai_agent_model', 'claude-sonnet-5');
+        if (!class_exists('AiBrain')) {
+            require_once INCLUDE_PATH . '/aibrain.php';
+        }
+        /* The AI Brain page saves ai_model; this agent used to read only
+           ai_agent_model, so a model chosen on the page never reached it. */
+        $model   = trim(Settings::getString('ai_agent_model', ''))
+            ?: (trim(Settings::getString('ai_model', '')) ?: AiBrain::CLAUDE_DEFAULT);
         $payload = [
             'model'      => $model,
             'max_tokens' => self::MAX_TOKENS_CLAUDE,
             'system'     => $system,
             'messages'   => self::anthropicMessages($history),
         ];
-        if (self::claudeIsAdaptive($model)) {
-            // Adaptive thinking at low effort: a WhatsApp turn is a short
-            // conversation, not a maths problem. Disabling thinking outright
-            // makes the model write tool calls into visible text.
-            $payload['thinking']      = ['type' => 'adaptive'];
-            $payload['output_config'] = ['effort' => 'low'];
-        }
         /* The tool list must be present whenever the history carries
            tool_use / tool_result blocks — the API rejects such a history
            with no tools defined. On the final round (budget spent) the
@@ -677,12 +665,25 @@ final class AiAgent
             }
         }
 
-        $res = self::http('https://api.anthropic.com/v1/messages', $payload, [
+        /* Adaptive thinking at the office's effort (default low: a WhatsApp
+           turn is a short conversation, not a maths problem — and disabling
+           thinking outright makes the model write tool calls into visible
+           text; Opus 5.5 refuses it anyway). AiBrain::claudeShape() is the
+           one place that knows each model's request shape (29 Oct 2026). */
+        [$payload, $headers] = AiBrain::claudeShape($model, $payload, [
             'x-api-key: ' . $key,
             'anthropic-version: 2023-06-01',
             'content-type: application/json',
         ]);
-        if ($res === null) {
+
+        $res = self::http('https://api.anthropic.com/v1/messages', $payload, $headers);
+        if ($res === null && self::$lastHttp === 400 && isset($payload['fallbacks'])) {
+            // An account without the fallback beta must still get its answer.
+            unset($payload['fallbacks']);
+            $headers = array_values(array_filter($headers, static fn(string $h): bool => stripos($h, 'server-side-fallback') === false));
+            $res = self::http('https://api.anthropic.com/v1/messages', $payload, $headers);
+        }
+        if ($res === null || AiBrain::claudeRefusal($res) !== null) {
             return null;
         }
 
@@ -1664,7 +1665,12 @@ final class AiAgent
         $known   = trim((string) ($ctx['name'] ?? ''));
         $web     = ((string) ($ctx['channel'] ?? 'whatsapp')) === 'web';
 
-        $base = ai_system_prompt() . "\n\n"
+        /* 29 Oct 2026: the owner's S HARI AI master brief goes first when
+           the office has switched it on ('' otherwise). Its tool list is the
+           catalogue this caller is actually handed (includes/aimaster.php). */
+        require_once INCLUDE_PATH . '/aimaster.php';
+        $base = AiMaster::brief($ctx, AiMaster::on() ? AiTools::catalogue($ctx) : [])
+            . ai_system_prompt() . "\n\n"
             . ($web ? self::webChannelRules($ctx) : self::whatsappChannelRules($ctx))
             . "FACTS\n"
             . "4. Anything about a booking, a seat, a fare, a bus position, money or a person — USE A TOOL. "
