@@ -31,6 +31,10 @@ if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
 }
 $routeId = (int) ($_GET['route'] ?? 0);
 $format  = in_array($_GET['format'] ?? '', ['csv', 'chalani', 'chalanipdf', 'chalanipng', 'pdf'], true) ? (string) $_GET['format'] : 'html';
+/* 29 Oct 2026 (management upgrade 3.2): passengers in the order the coach
+   picks them up — the route's own boarding-stop order (route_stops.sort_order),
+   seat order inside one stop. ?order=seat keeps the old seat-only list. */
+$order   = (string) ($_GET['order'] ?? 'stop') === 'seat' ? 'seat' : 'stop';
 
 /* An agent must not be handed the whole coach through a URL the sidebar
    does not show them. Same scope rule the bookings list and CSV export use. */
@@ -126,8 +130,12 @@ if ($trip !== null) {
            LEFT JOIN tickets t  ON t.booking_id = b.id
            LEFT JOIN admins ad  ON ad.id = b.sold_by_admin_id
           WHERE " . implode(' AND ', $where) . "
-          ORDER BY LENGTH(bp.seat_no), bp.seat_no",
-        $params
+          ORDER BY " . ($order === 'stop'
+              ? "COALESCE((SELECT MIN(rs.sort_order) FROM route_stops rs
+                            WHERE rs.route_id = :rid AND rs.stop_type = 'boarding' AND rs.stop_name <> ''
+                              AND bl.boarding_stop LIKE CONCAT(rs.stop_name, '%')), 9999), "
+              : '') . "LENGTH(bp.seat_no), bp.seat_no",
+        $params + ($order === 'stop' ? ['rid' => (int) $trip['route_id']] : [])
     );
 }
 
@@ -786,6 +794,13 @@ foreach ($rows as $r) {
   </label>
   <?php endif; ?>
 
+  <label>Order<br>
+    <select name="order" onchange="this.form.submit()">
+      <option value="stop" <?= $order === 'stop' ? 'selected' : '' ?>>Pickup order (route)</option>
+      <option value="seat" <?= $order === 'seat' ? 'selected' : '' ?>>Seat number</option>
+    </select>
+  </label>
+
   <button class="btn" type="submit">Show</button>
 
   <?php /* Add a late/missed ticket straight onto this departure — the seat map
@@ -801,7 +816,7 @@ foreach ($rows as $r) {
     <?php if ($scopeId === null): ?>
     <a class="btn" href="<?= $base ?>/admin/chalan.php?<?= Security::e(http_build_query(['sid' => (int) $trip['schedule_id']])) ?>"><svg class="a-ic"><use href="#a-doc"/></svg> Bus Chalan (PDF / PNG / WhatsApp)</a>
     <?php endif; ?>
-    <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(array_filter(['date' => $date, 'route' => $routeId, 'sid' => $sidReq > 0 ? $sidReq : null, 'format' => 'csv']))) ?>">⬇️ Download CSV</a>
+    <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(array_filter(['date' => $date, 'route' => $routeId, 'sid' => $sidReq > 0 ? $sidReq : null, 'order' => $order === 'seat' ? 'seat' : null, 'format' => 'csv']))) ?>">⬇️ Download CSV</a>
   <?php endif; ?>
 </form>
 
