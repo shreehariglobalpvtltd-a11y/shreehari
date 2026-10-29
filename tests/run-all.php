@@ -155,6 +155,8 @@ const CORE_SUITES = [
     // 28 Sep 2026, registered with the WhatsApp seller gaps they guard.
     'bot-time-test.php'           => 'the time of day is read, and a time word is never the passenger name',
     'wa-advance-test.php'         => 'a bare hello opens a booking, and a near-miss pickup never guesses between two towns',
+    // 29 Oct 2026, registered with the S HARI AI master brief build it guards.
+    'master-brief-test.php'       => 'Opus 5.5 request shape, the master brief, a no is never a yes, groups say only public facts',
 ];
 
 /**
