@@ -15,7 +15,9 @@ final class AiTurn
      * has no booking with us yet.").
      */
     private const WRITE_TOOLS = ['issue_ticket', 'staff_sell', 'cancel_ticket', 'rename_passenger',
-        'fix_ticket', 'office_confirm', 'resend_ticket', 'marketing_send'];
+        'fix_ticket', 'office_confirm', 'resend_ticket', 'marketing_send',
+        // 29 Oct 2026: the other tools that change money or a record.
+        'office_settle_cod', 'office_reject', 'office_agent_status', 'request_payout', 'bulk_issue'];
 
     public static function run(callable $ask, callable $execute, string $system, array $history,
         array $tools, int $limit, float $deadline): ?array

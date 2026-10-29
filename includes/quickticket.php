@@ -807,8 +807,14 @@ final class QuickTicket
         $plan    = [];
         $booking = [];
         $exclude = [];
+        // Only the WhatsApp assistant's staff sale sends a pin (29 Oct 2026);
+        // every desk screen sells exactly as before.
+        $expect  = is_array($input['expect'] ?? null) ? $input['expect'] : null;
         for ($attempt = 1; $attempt <= 2; $attempt++) {
             $plan    = self::plan($opts + ['exclude' => $exclude]);
+            if ($attempt === 1 && $expect !== null) {
+                self::assertPlanAsShown($plan, $expect);
+            }
             $request = self::requestFor($plan, $name, $phone, $gender, $idType, $given, $deskAgent, $country);
             try {
                 $booking = BookingService::create($request, $seller);

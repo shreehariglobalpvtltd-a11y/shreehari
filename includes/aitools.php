@@ -926,6 +926,17 @@ final class AiTools
             return self::no('No mobile number to look up.');
         }
 
+        /* 29 Oct 2026 (ownership gate): an agent or counter with a scoped
+           book sees, on another person's number, only the tickets THEY sold
+           — the same rule find_ticket applies through mayRead(). Before, any
+           counter could list a stranger's last five bookings by phone. */
+        $scope  = (string) ($ctx['role'] ?? '') === 'staff' ? ($ctx['scopeAdminId'] ?? null) : null;
+        $scoped = $scope !== null && $phone !== (string) ($ctx['phone'] ?? '');
+        $params = ['p' => $phone];
+        if ($scoped) {
+            $params['me'] = (int) $scope;
+        }
+
         $rows = Database::fetchAll(
             'SELECT b.pnr, b.status, b.total_amount, l.travel_date, l.boarding_stop,
                     r.from_city, r.to_city
@@ -933,12 +944,14 @@ final class AiTools
                LEFT JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = \'outbound\'
                LEFT JOIN schedules s ON s.id = l.schedule_id
                LEFT JOIN routes r ON r.id = s.route_id
-              WHERE b.contact_phone = :p
+              WHERE b.contact_phone = :p' . ($scoped ? ' AND b.sold_by_admin_id = :me' : '') . '
               ORDER BY b.id DESC LIMIT 5',
-            ['p' => $phone]
+            $params
         );
         if ($rows === []) {
-            return ['ok' => true, 'say' => 'This number has no booking with us yet.', 'data' => ['bookings' => []], 'media' => null];
+            return ['ok' => true, 'say' => $scoped
+                ? 'You have not sold any booking on this number.'
+                : 'This number has no booking with us yet.', 'data' => ['bookings' => []], 'media' => null];
         }
 
         $list = [];
@@ -1282,6 +1295,9 @@ final class AiTools
         if (($args['confirm'] ?? false) !== true) {
             return self::no('The passenger has not confirmed yet. Read the total back and wait for ho / yes.');
         }
+        if (self::saidNo($ctx)) {
+            return self::no('Their last message says NO — nothing is sold. Ask what they want to change; the quote stays open.');
+        }
 
         $staged = self::peekStage($ctx, 'sale');
         if ($staged === null) {
@@ -1338,6 +1354,9 @@ final class AiTools
         }
         if (($args['confirm'] ?? false) !== true) {
             return self::no('Not confirmed — read the plan back to the seller first.');
+        }
+        if (self::saidNo($ctx)) {
+            return self::no('The seller\'s last message says NO — nothing is sold. Ask what to change; the quote stays open.');
         }
         $admin = $ctx['admin'] ?? null;
         if (!is_array($admin) || (int) ($admin['id'] ?? 0) <= 0) {
@@ -1404,6 +1423,13 @@ final class AiTools
             // A whole family on one chalan, each berth under its own name.
             'passengers' => self::partyNames($args['names'] ?? null, (int) ($staged['opts']['seats'] ?? 1)),
             'note'      => 'WhatsApp desk sale',
+            /* 29 Oct 2026: the day, direction, pickup and party the seller
+               read out are pinned, as issue_ticket pins them — a sale that
+               would land on another bus is refused, never made. The price
+               is NOT pinned here: the quote was priced without the
+               passenger's number and the sale with it, so a per-number
+               offer could differ and block an honest sale. */
+            'expect'    => array_diff_key((array) ($staged['expect'] ?? []), ['total' => true]) ?: null,
         ];
 
         $res = QuickTicket::sell($input, $admin);
@@ -1452,6 +1478,9 @@ final class AiTools
         }
         if (($args['confirm'] ?? false) !== true) {
             return self::no('Not confirmed by the passenger yet.');
+        }
+        if (self::saidNo($ctx)) {
+            return self::no('Their last message says NO — nothing is cancelled. The ticket stays as it is.');
         }
         $pnr = strtoupper(trim((string) ($args['pnr'] ?? '')));
 
@@ -1787,6 +1816,29 @@ final class AiTools
     private static function saidYes(array $ctx): bool
     {
         return self::correctionConfirmed($ctx);
+    }
+
+    /**
+     * The sender's OWN message says NO (29 Oct 2026, the master brief's
+     * staging gate: "quote first, act only on a clear yes").
+     *
+     * saidYes() is anchored, so the sale tools never required it — "ho, Ram
+     * Thapa" carries the name WITH the yes, and that must keep selling. But a
+     * plain no is never consent, whatever confirm flag the model sends: this
+     * only ever REFUSES, it never lets anything through that was refused
+     * before. Words, not substrings — "Biratnagar" is not "nagarnu".
+     */
+    private static function saidNo(array $ctx): bool
+    {
+        $t = mb_strtolower(trim((string) ($ctx['messageText'] ?? '')));
+        $t = preg_replace('/[\s.!?,।]+$/u', '', $t) ?? '';
+        if ($t === '') {
+            return false;
+        }
+        if (preg_match('/^(?:no|na|nope|nahi|nahin|hoina|होइन|नाइँ|नहीं)$/u', $t) === 1) {
+            return true;
+        }
+        return preg_match('/(?:^|[\s,.!?।])(?:hoina|hoena|होइन|nagarnu\w*|nagarnus|नगर्नु\S*|nahi|nahin|नहीं|chahidaina|chaidaina|चाहिँदैन|चाहिदैन|don\'?t|dont)(?=$|[\s,.!?।])/u', $t) === 1;
     }
 
     private static function correctionConfirmed(array $ctx): bool
@@ -3376,7 +3428,11 @@ final class AiTools
     {
         $payload = self::peekStage($ctx, $kind);
         if ($payload !== null) {
-            self::clearStage((string) ($ctx['phone'] ?? ''));
+            /* 29 Oct 2026: cleared under the key it was PARKED under. The
+               website chat parks a quote under its session key, not the
+               phone, so clearing by phone left that quote in place and a
+               second "ho" within the 15 minutes could sell it again. */
+            self::clearStage(self::stageKey($ctx));
         }
         return $payload;
     }
