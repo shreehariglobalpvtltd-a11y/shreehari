@@ -535,7 +535,7 @@ final class AgentPro
             $u['dob'] = ($d !== '' && Security::isValidDate($d) && $d < date('Y-m-d')) ? $d : null;
         }
         if (array_key_exists('gender', $in)) {
-            $g = (string) $in['gender'];
+            $g = ucfirst(strtolower(trim((string) $in['gender'])));   // 'male' / 'MALE' from the paper-form reader too
             $u['gender'] = in_array($g, ['Male', 'Female', 'Other'], true) ? $g : null;
         }
         if (array_key_exists('blood_group', $in)) {
@@ -995,7 +995,7 @@ final class AgentPro
             $u['dob'] = $d !== '' ? $d : null;
         }
         if (array_key_exists('gender', $in)) {
-            $g = (string) $in['gender'];
+            $g = ucfirst(strtolower(trim((string) $in['gender'])));   // 'male' / 'MALE' from the paper-form reader too
             $u['gender'] = in_array($g, ['Male', 'Female', 'Other'], true) ? $g : null;
         }
         if (array_key_exists('id_type', $in)) {
