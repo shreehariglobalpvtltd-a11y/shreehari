@@ -402,6 +402,12 @@ final class AgentWallet
     public static function nextFreeAgentCode(?string $kind = null): ?int
     {
         $taken = array_flip(self::agentCodeMap());
+        /* 30 Oct 2026: the company's own code (company_agent_code, SHG-0001) is never handed out by
+           itself — when its old account is deleted the number is free, and an agency issued it would
+           be credited every "Other / company" desk sale. The office may still set it by hand. */
+        if (preg_match('/(\d+)$/', Settings::getString('company_agent_code', 'SHG-0001'), $co) === 1) {
+            $taken[(int) $co[1]] = true;
+        }
         $scan  = static function (int $lo, int $hi) use ($taken): ?int {
             for ($n = $lo; $n <= $hi; $n++) {
                 if (!isset($taken[$n])) {
