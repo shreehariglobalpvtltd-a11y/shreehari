@@ -1177,35 +1177,12 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
 /* ---------------------------------------------------------------------
-   FIRST OPEN = THE LOGIN SHEET (owner, 7 Oct 2026: "suru mai kholda first
-   time login page open hunu paryo, tei name ra number bata ticket katna
-   prefer garne"). A traveller who is not signed in sees the sign-in sheet
-   as the app opens; once signed in, the saved name + number fill the Quick
-   Ticket card, the seat page and the checkout. It can be closed (the ✕),
-   and then it waits for the next visit — never again in the same tab.
-   Never for staff / the counter desk, and never over a link that opens
-   something specific (a ticket, tracking, payment).
+   NO SIGN-IN SHEET ON OPEN (30 Oct 2026, owner: "customer portal lai login
+   chahidaina jasto" - the home page is the booking card only). The 7 Oct
+   "first open = the login sheet" (shgFirstOpenLogin, asked once per browser,
+   switch btn_login_popup_on) is gone: the sheet opens only when the visitor
+   asks - the header / menu 👤 (#navUserBtn, #mmUserBtn above), My Tickets
+   (#mySignInBtn / #myVerifyBtn), a cancellation or "save to my account" in
+   checkout - and a booking never needs it (SmartBook books as a guest and
+   remembers the name + mobile on this phone).
    ------------------------------------------------------------------- */
-(function shgFirstOpenLogin() {
-  function maybe() {
-    try {
-      if (USER) return;
-      const sw = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
-      if (sw.btn_login_popup_on === false || sw.btn_login_popup_on === 0 || sw.btn_login_popup_on === '0') return;   // Settings -> Website buttons
-      if (window.SHG_BOOT && (window.SHG_BOOT.staff || (window.SHG_BOOT.user && window.SHG_BOOT.user.phone))) return;
-      if (typeof isCounterSale === 'function' && isCounterSale()) return;
-      if (/[?&](counter|pnr|pay|ref|agent)=/i.test(location.search)) return;
-      const h = location.hash || '';
-      if (h && h !== '#' && h !== '#/' && h !== '#/home' && h !== '#/my') return;
-      /* 16 Oct 2026 (owner: "login ko pop naam magx - ekchoti matra"): asked ONCE per
-         browser, not once per visit - the Login button stays for anyone who wants it. */
-      if (sessionStorage.getItem('shg:lgAsked')) return;
-      try { if (localStorage.getItem('shg:lgAsked1')) return; localStorage.setItem('shg:lgAsked1', '1'); } catch (x) {}
-      sessionStorage.setItem('shg:lgAsked', '1');
-      if (document.getElementById('shgModal') && document.getElementById('shgModal').classList.contains('open')) return;
-      if (typeof openLoginModal === 'function') openLoginModal();
-    } catch (e) {}
-  }
-  const go = () => setTimeout(maybe, 1200);   // after the splash / first paint
-  if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true });
-})();

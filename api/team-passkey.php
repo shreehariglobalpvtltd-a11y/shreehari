@@ -29,8 +29,12 @@ try {
     $b64uUser = static fn(string $kind, int $id): string => Passkeys::b64u('shg-' . $kind . '-' . $id);
 
     if ($method === 'GET' && $op === 'login-options') {
+        $challenge = Passkeys::challenge('login');
+        // 30 Oct 2026 (one door): the same challenge for a fingerprint added at /me/ (ap_passkeys), so
+        // /admin/login.php opens it too now that /me/ sends signed-out people to the one door.
+        $_SESSION['ap_pk'] = ['c' => $challenge, 'at' => time(), 'for' => 'login'];
         Response::json(['ok' => true, 'publicKey' => [
-            'challenge' => Passkeys::challenge('login'), 'rpId' => Passkeys::rpId(), 'timeout' => 90000,
+            'challenge' => $challenge, 'rpId' => Passkeys::rpId(), 'timeout' => 90000,
             'userVerification' => 'required', 'allowCredentials' => [],
         ]]);
     }
@@ -62,6 +66,36 @@ try {
         if (!is_array($cred)) {
             Response::error('No passkey was offered.', 422);
         }
+        $credId = (string) ($cred['id'] ?? '');
+        if ($credId !== '' && strlen($credId) <= 700 && Auth::oneDoorOn()
+            && !Database::exists('SELECT 1 FROM team_passkeys WHERE credential_id = :c', ['c' => $credId])) {
+            /* 30 Oct 2026 (one door): a fingerprint added in /me/ lives in ap_passkeys. Verified by
+               ApPasskey (its own key store, the challenge mirrored above), then opened like every
+               no-password door — Auth::openAdminWithoutPassword keeps the 2FA rule and the password
+               stamp that ApPasskey::startSession skipped. */
+            $apRow = null;
+            try {
+                $apRow = Database::fetch('SELECT 1 FROM ap_passkeys WHERE credential_id = :c', ['c' => rtrim($credId, '=')]);
+            } catch (Throwable $e) {
+                $apRow = null;
+            }
+            if ($apRow !== null) {
+                require_once INCLUDE_PATH . '/agentpro-passkey.php';
+                unset($_SESSION['team_passkey']['login']);
+                try {
+                    $proved = ApPasskey::loginVerify($cred);
+                    $full = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => (int) $proved['id']]);
+                    if ($full === null) {
+                        throw new RuntimeException('This account is not active.');
+                    }
+                    Auth::openAdminWithoutPassword($full, 'passkey');
+                } catch (RuntimeException $e) {
+                    Response::error($e->getMessage(), 403);
+                }
+                Response::json(['ok' => true, 'kind' => 'admin', 'next' => Auth::homeUrl()]);
+            }
+        }
+        unset($_SESSION['ap_pk']);
         try {
             $row = Passkeys::assert($cred);
             $r = TeamPortal::passkeyLogin($row);
@@ -71,7 +105,8 @@ try {
         if (!$r['ok']) {
             Response::error((string) $r['error'], 403);
         }
-        Response::json(['ok' => true, 'kind' => $r['kind'], 'next' => '/team/']);
+        // 30 Oct 2026: an office / member account lands on the one home (switch on); a staff-only one on /team/
+        Response::json(['ok' => true, 'kind' => $r['kind'], 'next' => $r['kind'] === 'admin' && Auth::oneDoorOn() ? Auth::homeUrl() : '/team/']);
     }
 
     $me = TeamPortal::current();

@@ -33,6 +33,20 @@ if (!TeamPortal::ready()) {
     exit;
 }
 
+/* 30 Oct 2026 (owner: "login sabai ko lagi eutai"): with the one staff door on, signing in and "forgot
+   password" happen at /admin/login.php — it brings a /team/ visitor back here (back=team). /team/ stays the
+   page AFTER sign-in (form, CV, agreement, ID card). A reset started on an old /team/ tab goes there too:
+   the one door changes the password of the ONE ID picked, never every ID on the number. */
+$oneDoor = Auth::oneDoorOn();
+$isPost  = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
+if ($oneDoor && $me === null && !$isPost && in_array($v, ['', 'forgot', 'reset'], true)) {
+    TeamUi::go($v === '' ? '/admin/login.php?back=team' : '/admin/login.php?step=forgot&back=team');
+}
+if ($oneDoor && $isPost && in_array((string) ($_POST['action'] ?? ''), ['forgot_send', 'verify_start', 'reset'], true)) {
+    TeamUi::go('/admin/login.php?step=forgot&back=team');
+}
+$afterAdmin = $oneDoor ? Auth::homeUrl() : '/team/';   // where an opened office / member login goes
+
 /* ---------------- actions ---------------- */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $act = (string) ($_POST['action'] ?? '');
@@ -51,7 +65,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
                 $r = TeamPortal::login($p, (string) ($_POST['password'] ?? ''), $ccIn);
                 if ($r['ok']) {
-                    TeamUi::go(($r['kind'] ?? '') === 'pick' ? '/team/?v=pick' : '/team/');   // one mobile, several IDs: which one?
+                    TeamUi::go(($r['kind'] ?? '') === 'pick' ? '/team/?v=pick' : (($r['kind'] ?? '') === 'admin' ? $afterAdmin : '/team/'));   // one mobile, several IDs: which one?
                 }
                 $err = (string) $r['error'];
             } elseif ($act === 'forgot_send') {
@@ -103,7 +117,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             } elseif ($act === 'pick') {
                 $r = TeamPortal::pick((int) ($_POST['id'] ?? 0));
                 if ($r['ok']) {
-                    TeamUi::go('/team/');
+                    TeamUi::go($afterAdmin);
                 }
                 $err = (string) $r['error'];
                 $v = TeamPortal::pickList() !== [] ? 'pick' : '';
@@ -177,7 +191,7 @@ if ($me !== null && $v !== 'reset') {
       <?php endif; ?>
       <p class="tp-links"><a href="/team/">← Back</a></p>
     </div>
-    <script src="/assets/js/team-passkey.js?v=20261030c"></script>
+    <script src="/assets/js/team-passkey.js?v=20261031a"></script>
     <?php elseif ($v === 'password'): ?>
     <div class="tp-card">
       <h1>🔑 पासवर्ड बदल्नुहोस् · Change password</h1>
@@ -401,7 +415,7 @@ if ($v === 'pick'): ?>
     <a href="/agreements/apply.html?kind=staff">🧑‍✈️ स्टाफ बन्नुहोस्</a>
     <a href="/agreements/apply.html?kind=partner">🏢 साझेदार बन्नुहोस्</a>
   </p>
-  <?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261030c"></script><?php endif; ?>
+  <?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261031a"></script><?php endif; ?>
   <p class="tp-links" style="font-weight:400"><a href="/admin/login.php?portal=admin">Office login (admin)</a></p>
 </div>
 <?php endif;

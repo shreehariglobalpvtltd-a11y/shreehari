@@ -113,6 +113,21 @@ echo "\n=== 1. One login door — role chooser ===\n";
 $guest = jar('guest');
 $door = req('GET', '/admin/login.php', ['jar' => $guest]);
 check('bare /admin/login.php renders', $door['code'] === 200, 'HTTP ' . $door['code']);
+/* 30 Oct 2026 (owner: one door for everyone): with settings login_one_door_on (code default ON) the
+   page is ONE box "Mobile number or ID" — no role tiles, and every ?portal= / ?auth= link shows the
+   same door. Switched off, the role chooser below is checked exactly as before. */
+$oneDoor = str_contains($door['body'], 'data-door="one"');
+if ($oneDoor) {
+    check('one door: no role chooser', !str_contains($door['body'], 'class="choose"'));
+    check('one door: one "mobile number or ID" box + CSRF', str_contains($door['body'], 'name="who"') && csrfOf($door['body']) !== '');
+    check('one door: a passenger link back to the website', str_contains($door['body'], 'Passenger?'));
+    check('the dead /?portal=switch link is gone', !str_contains($door['body'], '?portal=switch'));
+    foreach (['?portal=agent', '?portal=agent&auth=otp', '?portal=admin', '?auth=pw'] as $q) {
+        check("one door: $q shows the same door", str_contains(req('GET', '/admin/login.php' . $q, ['jar' => $guest])['body'], 'data-door="one"'));
+    }
+    $deep = req('GET', '/admin/login.php?next=agent.php', ['jar' => $guest]);
+    check('one door: keeps the deep link', str_contains($deep['body'], 'name="next" value="agent.php"'));
+} else {
 check('chooser shown when no portal is chosen', str_contains($door['body'], 'class="choose"'));
 check('chooser links to the agent portal', str_contains($door['body'], '?portal=agent'));
 check('chooser links to the admin portal', str_contains($door['body'], '?portal=admin'));
@@ -149,6 +164,7 @@ check('inferred agent portal keeps the deep link', str_contains($deep['body'], '
 $adm = req('GET', '/admin/login.php?portal=admin', ['jar' => $guest]);
 check('?portal=admin shows username + password, no chooser',
     str_contains($adm['body'], 'name="username"') && !str_contains($adm['body'], 'class="choose"'));
+}
 
 $bounce = req('GET', '/admin/agent.php', ['jar' => $guest]);
 check('signed-out /admin/agent.php redirects to the login door with next=', $bounce['code'] === 302 && str_contains($bounce['location'], 'login.php?next=agent.php'),
@@ -159,7 +175,8 @@ echo "\n=== 2. Role-based redirect ===\n";
 $agentJar = jar('agent');
 check('agent signs in with username + password (fallback path)', login('rg-agent', $agentJar));
 $idx = req('GET', '/admin/index.php', ['jar' => $agentJar]);
-check('agent is bounced off the finance dashboard to agent.php', $idx['code'] === 302 && str_contains($idx['location'], 'agent.php'),
+check('agent is bounced off the finance dashboard to ' . ($oneDoor ? 'the one home' : 'agent.php'),
+    $idx['code'] === 302 && str_contains($idx['location'], $oneDoor ? 'home.php' : 'agent.php'),
     'HTTP ' . $idx['code'] . ' → ' . $idx['location']);
 $agHome = req('GET', '/admin/agent.php', ['jar' => $agentJar]);
 check('agent dashboard opens', $agHome['code'] === 200, 'HTTP ' . $agHome['code']);

@@ -18,6 +18,12 @@ require_once INCLUDE_PATH . '/agentpro.php';
 
 Security::sendHeaders();
 $admin = Auth::admin();
+/* 30 Oct 2026 (owner: "login sabai ko lagi eutai"): with the one staff door on, a signed-out visitor
+   signs in at /admin/login.php and comes straight back here (back=me). /me/ stays the page AFTER sign-in. */
+$oneDoor = Auth::oneDoorOn();
+if ($oneDoor && $admin === null) {
+    Response::redirect('admin/login.php?back=me');
+}
 $company = Settings::getString('company_name', APP_NAME);
 $v = static fn(string $f): string => '/assets/agentpro/' . $f . '?v=' . (is_file(ASSET_PATH . '/agentpro/' . $f) ? filemtime(ASSET_PATH . '/agentpro/' . $f) : '1');
 $cfg = [
@@ -30,7 +36,13 @@ $cfg = [
     'staffLogin' => '/admin/login.php',
     'join'   => '/join.php',
     'admin'  => $admin !== null && Auth::can('dashboard.view') ? '/admin/index.php' : '',
+    'oneDoor' => $oneDoor,
 ];
+if ($oneDoor && $admin !== null) {
+    // every signed-in member gets the way home: the one dashboard
+    $cfg['admin'] = Auth::homeUrl();
+    $cfg['adminLabel'] = '🏠 मेरो ड्यासबोर्ड · My dashboard';
+}
 ?><!doctype html>
 <html lang="ne">
 <head>

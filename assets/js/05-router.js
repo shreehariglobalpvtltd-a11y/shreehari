@@ -168,6 +168,14 @@ window.addEventListener('hashchange', router);
    tap appears to do nothing (the old bottom-bar Help tab). From any other
    view it goes home first. */
 function scrollHomeTarget(target) {
+  /* 30 Oct 2026: a "Book" link that names a booking card lands on the card that is
+     actually showing (SmartBook, the staff desk, or the classic fallback) - a
+     hidden one would be taken for a folded section and open "+ थप" instead. */
+  if (target === 'search-anchor' || target === 'quick-ticket' || target === 'smartBook') {
+    if (document.getElementById('sbDesk')) target = 'sbDesk';
+    else if (document.documentElement.classList.contains('sb-on')) target = 'smartBook';
+    else if (target === 'smartBook') target = 'search-anchor';
+  }
   const go = () => {
     if (target === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const el = document.getElementById(target);
@@ -1120,7 +1128,15 @@ function contactNumbers() {
 
 /* The collapsible company/route brochure on the home page (minimal home).
    openHomeMore() is also called by the scroll handler when a menu or footer
-   link points at a section inside it. */
+   link points at a section inside it.
+   30 Oct 2026 (owner: "home page ma ticket booking system matra - '+' thichepachhi
+   matra baaki button, video, agent ko licence"): "+ थप · More" is the one door to
+   everything except the booking card, the verified agents and the guiding video
+   (<style id="homeFold"> in app.template.html). The open state is kept for this
+   TAB only (sessionStorage 'shg:homeMore'): a reload keeps what the visitor chose,
+   but every new visit starts on the booking-only page the owner asked for - a
+   localStorage flag would bring the long page back to everyone who opened it once. */
+var HOME_MORE_KEY = 'shg:homeMore';
 window.openHomeMore = function () {
   var more = document.getElementById('homeMore');
   var extra = document.getElementById('homeExtra');
@@ -1131,25 +1147,44 @@ window.openHomeMore = function () {
   more.hidden = false;
   if (extra) extra.hidden = false;
   if (btn) { btn.setAttribute('aria-expanded', 'true'); btn.classList.add('open'); }
+  try { sessionStorage.setItem(HOME_MORE_KEY, '1'); } catch (e) {}
 };
+function closeHomeMore() {
+  var more = document.getElementById('homeMore');
+  var btn = document.getElementById('homeMoreToggle');
+  if (more) more.hidden = true;
+  var vh = document.getElementById('view-home');
+  if (vh) vh.classList.remove('home-full');
+  var extra = document.getElementById('homeExtra');
+  if (extra) extra.hidden = true;
+  if (btn) { btn.setAttribute('aria-expanded', 'false'); btn.classList.remove('open'); }
+  try { sessionStorage.removeItem(HOME_MORE_KEY); } catch (e) {}
+}
 function wireHomeMore() {
   var btn = document.getElementById('homeMoreToggle');
   var more = document.getElementById('homeMore');
   if (!btn || !more || btn._wired) return;
   btn._wired = true;
   btn.addEventListener('click', function () {
+    var bar = document.getElementById('homeMoreBar') || btn;
+    var calm = document.documentElement.getAttribute('data-motion') === 'reduced'
+      || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     if (more.hidden) {
       window.openHomeMore();
+      /* the button to the top, the opened front group right under it */
+      try { bar.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' }); } catch (e) {}
     } else {
-      more.hidden = true;
-      var vh = document.getElementById('view-home');
-      if (vh) vh.classList.remove('home-full');
-      var extra = document.getElementById('homeExtra');
-      if (extra) extra.hidden = true;
-      btn.setAttribute('aria-expanded', 'false');
-      btn.classList.remove('open');
+      closeHomeMore();
+      /* the page just got much shorter: jump (html is scroll-behavior:smooth) back to the button */
+      try { bar.scrollIntoView({ behavior: 'instant', block: 'nearest' }); } catch (e) { try { bar.scrollIntoView(false); } catch (x) {} }
     }
   });
+  /* a reload in the same tab, or a shared /#more link, opens it */
+  var keep = false;
+  try { keep = sessionStorage.getItem(HOME_MORE_KEY) === '1'; } catch (e) {}
+  var link = /^#\/?more$/i.test(location.hash || '');
+  if (keep || link) window.openHomeMore();
+  if (link) setTimeout(function () { var b = document.getElementById('homeMoreBar'); if (b) b.scrollIntoView({ block: 'start' }); }, 400);
 }
 
 /* 5 Oct 2026: the Nepal office's people (CEO / Operations / Parking in-charge)
@@ -1651,7 +1686,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261030c" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261031a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

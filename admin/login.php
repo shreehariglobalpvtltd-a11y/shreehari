@@ -27,6 +27,447 @@ $base = rtrim(APP_URL, '/');
 $next     = (string) ($_GET['next'] ?? ($_POST['next'] ?? ''));
 $safeNext = (preg_match('/^[A-Za-z0-9_\-]+\.php(\?[A-Za-z0-9_=&%.\-]*)?$/', $next) === 1) ? $next : 'index.php';
 
+/* =====================================================================
+   30 Oct 2026 — THE ONE DOOR. Owner: "login system dherai messy chha …
+   number diyo bhane number + WhatsApp OTP, natra 'hi' pathaune; natra simple
+   agent ID ra simple password. Login minimalistic, smooth, sabai ko lagi
+   eutai — .network ko door jasto, .in ma pani." Agents, counters, staff and
+   the office all start here, on both hosts; everyone then lands on the one
+   home, admin/home.php. The decisions live in includes/onedoor.php.
+   Switch: settings login_one_door_on (code default ON). Set to 0 and this
+   block is skipped — the page below runs exactly as before.
+   ===================================================================== */
+if (Auth::oneDoorOn()) {
+    require_once INCLUDE_PATH . '/onedoor.php';
+
+    // where to go back to: only these two pages (never a URL from the request)
+    $back = (string) ($_GET['back'] ?? ($_POST['back'] ?? ''));
+    $back = in_array($back, ['me', 'team'], true) ? $back : '';
+    $keepNext = $safeNext !== 'index.php' ? $safeNext : '';
+    $odDest = static function (string $go = 'home') use ($keepNext, $back): string {
+        if ($go === 'team') {
+            return '/team/';
+        }
+        if ($keepNext !== '') {
+            return '/admin/' . $keepNext;          // a deep link still wins
+        }
+        return match ($back) {
+            'me'    => '/me/',
+            'team'  => '/team/',
+            default => Auth::homeUrl(),
+        };
+    };
+    $odUrl = static function (array $q = []) use ($keepNext, $back): string {
+        $q = array_filter(['step' => $q['step'] ?? null, 'next' => $keepNext !== '' ? $keepNext : null, 'back' => $back !== '' ? $back : null],
+            static fn($v): bool => $v !== null && $v !== '');
+        return '/admin/login.php' . ($q !== [] ? '?' . http_build_query($q) : '');
+    };
+
+    // Already signed in? Straight on. (A staff member without a selling login lives at /team/.)
+    if (Auth::isAdmin()) {
+        Response::redirect($odDest());
+    }
+    if (TeamPortal::ready() && TeamPortal::current() !== null) {
+        Response::redirect('/team/');
+    }
+
+    $step = 'start';
+    $error = '';
+    $notice = '';
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+        $mode = (string) ($_POST['mode'] ?? '');
+        if (!Security::verifyCsrf()) {
+            $error = 'यो पेज धेरै बेर खुला थियो — फेरि प्रयास गर्नुहोस् · This page was open too long, please try again.';
+            $step  = (string) (OneDoor::state()['kind'] ?? 'start') ?: 'start';
+        } else {
+            $legacyMobile = static function (string $then): array {
+                // an old cached agent page (code + mobile + OTP): the mobile alone now opens its IDs
+                $w = OneDoor::who((string) ($_POST['mobile'] ?? ''), (string) ($_POST['cc'] ?? '91'));
+                if (($w['step'] ?? '') !== 'mobile') {
+                    return ['step' => 'start', 'error' => 'मोबाइल नम्बर लेख्नुहोस् · Type your mobile number.'];
+                }
+                return $then === 'send' ? OneDoor::codeSend() : OneDoor::codeVerify((string) ($_POST['otp'] ?? ''));
+            };
+            $r = match ($mode) {
+                'who'            => OneDoor::who((string) ($_POST['who'] ?? ''), (string) ($_POST['cc'] ?? '91')),
+                'pw'             => OneDoor::password((string) ($_POST['password'] ?? '')),
+                'code_send'      => OneDoor::codeSend(),
+                'code_verify'    => OneDoor::codeVerify((string) ($_POST['otp'] ?? '')),
+                'wa_start'       => OneDoor::waStart(),
+                'wa_finish'      => OneDoor::waFinish(),
+                'pick'           => OneDoor::pick((int) ($_POST['id'] ?? 0)),
+                'forgot_send'    => OneDoor::forgotSend((string) ($_POST['who'] ?? ''), (string) ($_POST['cc'] ?? '91')),
+                'forgot_hi_first'=> OneDoor::forgotHiFirst((string) ($_POST['who'] ?? ''), (string) ($_POST['cc'] ?? '91')),
+                'forgot_hi'      => OneDoor::forgotHi(),
+                'forgot_prove'   => OneDoor::forgotProve((string) ($_POST['code'] ?? '')),
+                'forgot_pick'    => OneDoor::forgotPick((string) ($_POST['who_id'] ?? '')),
+                'forgot_set'     => OneDoor::forgotSet((string) ($_POST['pw'] ?? ''), (string) ($_POST['pw2'] ?? '')),
+                'admin_2fa_verify' => (static function (): array {
+                    $a = Auth::adminLogin2faVerify((string) ($_POST['otp'] ?? ''));
+                    if ($a['ok']) {
+                        OneDoor::clear();
+                        return ['go' => 'home'];
+                    }
+                    return !empty($a['twofa'])
+                        ? ['step' => 'admin_otp', 'error' => 'कोड मिलेन · ' . (string) ($a['error'] ?? 'That code is not right.')]
+                        : ['step' => 'start', 'error' => 'फेरि लगइन गर्नुहोस् · ' . (string) ($a['error'] ?? 'Please sign in again.')];
+                })(),
+                'admin_2fa_resend' => (static function (): array {
+                    $a = Auth::adminLogin2faResend();
+                    if (!empty($a['ok'])) {
+                        return ['step' => 'admin_otp', 'notice' => 'नयाँ कोड पठाइयो · A new code has been sent to your registered mobile.'];
+                    }
+                    return !empty($_SESSION['admin_2fa_pending'])
+                        ? ['step' => 'admin_otp', 'error' => (string) ($a['error'] ?? 'Could not resend the code.')]
+                        : ['step' => 'start', 'error' => (string) ($a['error'] ?? 'Please sign in again.')];
+                })(),
+                // ---- older pages still open in a browser tab ----
+                'agent_pw'       => (static function (): array {
+                    $a = Auth::agentPasswordLogin((string) ($_POST['email'] ?? ''), (string) ($_POST['username'] ?? ''), (string) ($_POST['password'] ?? ''));
+                    return $a['ok'] ? ['go' => 'home'] : ['step' => 'start', 'error' => (string) ($a['error'] ?? 'Sign in failed.')];
+                })(),
+                'agent_request'  => $legacyMobile('send'),
+                'agent_verify'   => $legacyMobile('verify'),
+                default          => (static function (): array {
+                    // the plain username + password post (bookmarks, scripts, every HTTP test)
+                    $a = Auth::adminLogin((string) ($_POST['username'] ?? ''), (string) ($_POST['password'] ?? ''));
+                    if ($a['ok']) {
+                        return ['go' => 'home'];
+                    }
+                    return !empty($a['twofa'])
+                        ? ['step' => 'admin_otp', 'notice' => 'तपाईंको WhatsApp मा ६ अङ्कको कोड पठाइयो · A 6-digit code was sent to your registered WhatsApp.']
+                        : ['step' => 'start', 'error' => (string) ($a['error'] ?? 'Sign in failed.')];
+                })(),
+            };
+            if (isset($r['go'])) {
+                if (($r['flash'] ?? '') === 'saved') {
+                    $_SESSION['home_flash'] = '✅ नयाँ पासवर्ड राखियो, तपाईं भित्र आउनुभयो · New password saved — you are signed in.';
+                    if ($r['go'] === 'team') {
+                        $_SESSION['team_flash'] = ['ok', (string) $_SESSION['home_flash']];
+                    }
+                }
+                Response::redirect($odDest((string) $r['go']));
+            }
+            $step   = (string) ($r['step'] ?? 'start');
+            $error  = (string) ($r['error'] ?? '');
+            $notice = (string) ($r['notice'] ?? '');
+        }
+    } else {
+        $want = (string) ($_GET['step'] ?? '');
+        if ($want === 'start') {
+            OneDoor::clear();
+        }
+        $step = in_array($want, OneDoor::STEPS, true) ? $want : 'start';
+    }
+
+    // a step only shows with what it needs; otherwise one step back
+    $st    = OneDoor::state();
+    $reset = OneDoor::reset();
+    $kind  = (string) ($st['kind'] ?? '');
+    $step = match (true) {
+        in_array($step, ['mobile', 'code'], true) && $kind !== 'mobile'       => 'start',
+        $step === 'wa' && ($kind !== 'mobile' || !is_array($st['wa'] ?? null)) => ($kind === 'mobile' ? 'mobile' : 'start'),
+        $step === 'id' && $kind !== 'id'                                       => 'start',
+        $step === 'pick' && OneDoor::pickList() === []                         => ($kind !== '' ? $kind : 'start'),
+        $step === 'admin_otp' && empty($_SESSION['admin_2fa_pending'])         => 'start',
+        $step === 'forgot_code' && $reset === null                             => 'forgot',
+        $step === 'forgot_pick' && TeamPortal::resetChoices() === []           => ($reset !== null ? 'forgot_code' : 'forgot'),
+        $step === 'forgot_pw' && OneDoor::forgotWho() === null                 => ($reset !== null ? 'forgot_code' : 'forgot'),
+        default                                                                => $step,
+    };
+    $reset = OneDoor::reset();
+
+    $company   = Settings::getString('company_name', APP_NAME);
+    $ceoName   = trim(Settings::getString('company_ceo', '')) !== '' ? trim(Settings::getString('company_ceo', '')) : (string) Settings::company()['operator'];
+    $helpPhone = Settings::officePhone();
+    $helpTel   = preg_replace('/\D/', '', CounterDesk::dialDigits($helpPhone, 'IN') ?: Settings::officeWhatsApp()) ?? '';
+    $csrfTok   = Security::csrfToken();
+    $h   = static fn($v): string => Security::e((string) ($v ?? ''));
+    $hid = static fn(): string => Security::csrfField()
+        . ($keepNext !== '' ? '<input type="hidden" name="next" value="' . Security::e($keepNext) . '">' : '')
+        . ($back !== '' ? '<input type="hidden" name="back" value="' . Security::e($back) . '">' : '');
+    $ccSel = static function (string $sel) use ($h): string {
+        $o = '';
+        foreach (TeamPortal::COUNTRIES as $k => $lbl) {
+            $o .= '<option value="' . $h($k) . '"' . ((string) $k === $sel ? ' selected' : '') . '>' . $h($lbl) . '</option>';
+        }
+        return '<select name="cc" aria-label="देश · Country">' . $o . '</select>';
+    };
+    $roleLbl = static fn(string $r): string => [
+        'agent' => 'एजेन्ट · Agent', 'counter' => 'काउन्टर · Counter', 'scanner' => 'स्क्यानर · Scanner',
+        'manager' => 'म्यानेजर · Manager', 'accountant' => 'एकाउन्टेन्ट · Accountant', 'support' => 'सपोर्ट · Support',
+        'official' => 'अफिस · Official', 'operations' => 'अपरेसन · Operations', 'viewer' => 'हेर्ने मात्र · Viewer',
+        'superadmin' => 'सुपर एडमिन · Super admin', 'staff' => 'स्टाफ · Staff',
+    ][$r] ?? ucfirst($r);
+    $prefill = $kind === 'mobile' ? (string) $st['phone'] : ($kind === 'id' ? (string) $st['id'] : '');
+    $ccNow   = TeamPortal::cc($st['cc'] ?? ($reset['cc'] ?? ($_POST['cc'] ?? '91')));
+    $hiOn    = OneDoor::hiOn();
+    $waPoll  = $step === 'wa' ? (array) $st['wa'] : ($step === 'forgot_code' && is_array($reset['wa'] ?? null) ? (array) $reset['wa'] : null);
+    $qr = '';
+    if ($waPoll !== null) {
+        try {
+            require_once INCLUDE_PATH . '/qr.php';
+            $qr = QrCode::dataUri((string) $waPoll['url'], 4, 2);
+        } catch (Throwable $e) {
+            $qr = '';
+        }
+    }
+    $title = match ($step) {
+        'forgot', 'forgot_code', 'forgot_pick', 'forgot_pw' => '🔑 पासवर्ड बिर्सनुभयो? · Forgot password',
+        'pick'      => '🪪 कुन ID खोल्ने? · Which ID?',
+        'admin_otp' => '🔐 WhatsApp कोड · Login code',
+        'wa'        => '💬 WhatsApp मा hi पठाउनुहोस् · Send hi',
+        default     => 'लगइन · Sign in',
+    };
+    ?><!doctype html>
+<html lang="ne"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>लगइन · Sign in · <?= $h($company) ?></title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="csrf-token" content="<?= $h($csrfTok) ?>">
+<?= Brand::iconLinks() ?>
+<style>
+*{box-sizing:border-box}
+:root{--ink:#16233C;--mut:#5C6B85;--line:#C9D3E3;--royal:#0054A8;--wa:#128C4A;--card:#fff;--well:#F6F8FC}
+body{margin:0;min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:16px;
+  font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif;color:var(--ink);
+  background:#0A2A8F;background-image:radial-gradient(90% 60% at 20% 0%,#1F4FD8 0%,rgba(31,79,216,0) 60%),linear-gradient(160deg,#0A2A8F 0%,#1036B4 60%,#1846CC 100%);background-attachment:fixed;border-top:3px solid #F07800}
+.box{background:var(--card);width:100%;max-width:400px;padding:26px 22px 20px;border-radius:22px;border:1px solid #D5DEEB;
+  box-shadow:inset 0 1px 0 #fff,0 2px 0 #C4CFE1,0 4px 0 #A8B6CE,0 7px 0 #8B9CBB,0 20px 30px -6px rgba(0,0,0,.55)}
+.logo{text-align:center;line-height:1}
+.logo img{height:58px;width:auto;max-width:150px;object-fit:contain;filter:drop-shadow(0 6px 14px rgba(18,38,78,.26))}
+h1{font-size:20px;text-align:center;margin:10px 0 4px}
+.sub{text-align:center;color:var(--mut);font-size:13px;margin:0 0 16px;line-height:1.45}
+.ceo{display:flex;align-items:center;gap:9px;margin:0 0 14px;padding:7px 11px;border-radius:12px;background:#F8F9FB;border:1px solid #E8ECF4}
+.ceo img{width:34px;height:34px;border-radius:50%;object-fit:cover;object-position:center top;border:2px solid var(--royal);flex:0 0 auto}
+.ceo b{display:block;font-size:12.5px}.ceo span{font-size:11px;color:#8794AB;font-weight:600}
+label{display:block;font-size:13.5px;font-weight:800;margin:12px 0 6px}
+input,select{width:100%;min-height:50px;padding:12px 14px;border:1.5px solid #7D8AA0;border-radius:12px;font-size:17px;background:var(--well);color:inherit}
+input:focus,select:focus{outline:none;border-color:var(--royal);box-shadow:0 0 0 3px #D9E7FA}
+input::placeholder{font-size:14px;opacity:.7}
+.cc-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px}
+.cc-row select{width:auto;padding:0 8px;font-size:15px}
+.btn{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px;width:100%;margin-top:14px;padding:12px 14px;min-height:52px;border:0;border-radius:13px;
+  background:linear-gradient(180deg,#1F6CC8,#0054A8 58%,#004B98);color:#fff;font:inherit;font-size:16px;font-weight:800;cursor:pointer;text-decoration:none;text-align:center;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 3px 0 #003C90,0 8px 14px -5px rgba(0,52,130,.5);touch-action:manipulation}
+.btn:active{transform:translateY(2px)}
+.btn small{font-size:11.5px;font-weight:700;opacity:.92}
+.btn.wa{background:linear-gradient(180deg,#25B864,#128C4A 60%,#0E7A40);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 3px 0 #0B5E31,0 8px 14px -5px rgba(14,122,64,.5);font-size:16.5px;min-height:62px}
+.btn.alt{background:#fff;color:var(--royal);border:1.5px solid var(--royal);box-shadow:none;font-size:14.5px;min-height:48px}
+.btn.pick{align-items:flex-start;text-align:left;background:#fff;color:var(--ink);border:1.5px solid var(--line);box-shadow:0 2px 0 #CCD6E5;font-size:15px}
+.btn.pick small{color:var(--mut)}
+.btn.pk{background:#fff;color:#B4560C;border:1.5px dashed #E39A5B;box-shadow:none;font-size:14px;min-height:46px;margin-top:10px}
+.or{display:flex;align-items:center;gap:10px;margin:16px 0 0;font-size:12px;color:#8a94a6}
+.or::before,.or::after{content:'';flex:1;border-top:1px solid #E1E6EF}
+.who{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 6px;font-weight:800;font-size:15px}
+.who a{font-size:13px;font-weight:700}
+.msg{padding:10px 13px;border-radius:10px;font-size:13.5px;font-weight:650;margin:10px 0 0;line-height:1.45}
+.msg.bad{background:#F7DCDC;color:#8A1F1F}.msg.ok{background:#DEF4E4;color:#14602E}.msg.warn{background:#FFF4E0;color:#7A4A00}
+.note{font-size:12.5px;color:var(--mut);margin:10px 0 0;line-height:1.45;text-align:center}
+.links{display:flex;flex-direction:column;align-items:center;gap:9px;margin-top:18px;font-size:13.5px}
+a{color:var(--royal);font-weight:700;text-decoration:none}
+.qr{display:none;text-align:center;margin-top:12px}.qr img{width:150px;height:150px;image-rendering:pixelated;border-radius:8px;border:1px solid #E1E6EF}
+@media (min-width:760px) and (hover:hover){.qr{display:block}}
+.wait{text-align:center;font-weight:700;margin:12px 0 0}
+:focus-visible{outline:3px solid var(--royal);outline-offset:2px}
+[hidden]{display:none !important}
+:root[data-theme="dark"]{color-scheme:dark;--ink:#E8F0FB;--mut:#ACBBD0;--card:#15243E;--well:#080C13;--line:#3A5178}
+:root[data-theme="dark"] body{background:#0B1220}
+:root[data-theme="dark"] .box{border-color:#24375A;box-shadow:0 20px 30px -6px #000}
+:root[data-theme="dark"] .ceo{background:#1C2E4D;border-color:#3A5178}
+:root[data-theme="dark"] .btn.alt,:root[data-theme="dark"] .btn.pick,:root[data-theme="dark"] .btn.pk{background:#1C2E4D;color:#E8F0FB}
+:root[data-theme="dark"] a{color:#9ABFFF}
+:root[data-theme="dark"] .msg.bad{background:#30161B;color:#FFADB9}:root[data-theme="dark"] .msg.ok{background:#0F271B;color:#8CE4B8}:root[data-theme="dark"] .msg.warn{background:#2E2410;color:#FFD48A}
+@media (prefers-reduced-motion:reduce){.btn:active{transform:none}}
+</style>
+<script>(function(){try{var t=localStorage.getItem('shg_admin_theme');if(t==='dark'||t==='amoled')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+</head>
+<body>
+<main class="box" data-door="one">
+  <div class="logo"><img src="<?= $h(Brand::markUrl(68)) ?>" alt="<?= $h($company) ?>" width="112" height="58"></div>
+  <h1><?= $h($title) ?></h1>
+  <?php if ($step === 'start'): ?>
+    <p class="sub">एजेन्ट, काउन्टर, स्टाफ, अफिस — सबैको एउटै ढोका · One door for agents, counters, staff and office</p>
+    <div class="ceo"><img src="/assets/img/ceo.jpg" alt="" onerror="this.style.display='none'"><div><b><?= $h($ceoName) ?></b><span>👑 Founder &amp; CEO · <?= $h($company) ?></span></div></div>
+  <?php endif; ?>
+  <?php if ($error !== ''): ?><div class="msg bad" role="alert"><?= $h($error) ?></div><?php endif; ?>
+  <?php if ($notice !== ''): ?><div class="msg ok" role="status"><?= $h($notice) ?></div><?php endif; ?>
+
+  <?php if ($step === 'start'): ?>
+  <form method="post" action="/admin/login.php" autocomplete="on">
+    <?= $hid() ?><input type="hidden" name="mode" value="who">
+    <label for="who">मोबाइल नम्बर वा ID · Mobile number or ID</label>
+    <div class="cc-row"><?= $ccSel($ccNow) ?>
+      <input id="who" name="who" autocomplete="username" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="60" required autofocus
+             placeholder="98XXXXXXXX / SHG-29" value="<?= $h($prefill) ?>"></div>
+    <button class="btn" type="submit">अगाडि बढ्नुहोस् · Continue →</button>
+  </form>
+  <?php if (Passkeys::ready()): ?>
+    <div id="pkMsg" class="msg ok" data-cls="msg" hidden></div>
+    <button type="button" class="btn pk" data-pk="login" data-pk-soft hidden>👆 फिंगरप्रिन्ट / Face ID ले भित्र · Fingerprint / Face ID</button>
+  <?php endif; ?>
+
+  <?php elseif ($step === 'mobile' || $step === 'id'): ?>
+  <div class="who"><span><?= $h(OneDoor::masked($st)) ?></span> · <a href="<?= $h($odUrl(['step' => 'start'])) ?>">✎ बदल्नुहोस् · Change</a></div>
+  <?php if ($step === 'mobile'): ?>
+    <?php if ($hiOn): ?>
+    <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="wa_start">
+      <button class="btn wa" type="submit">💬 WhatsApp मा hi पठाएर भित्र · Sign in by sending hi<small>एक ट्याप — कोड टाइप गर्नु पर्दैन · One tap, no code to type</small></button></form>
+    <?php endif; ?>
+    <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="code_send">
+      <button class="btn alt" type="submit">📩 WhatsApp मा ६ अङ्कको कोड मगाउनुहोस् · Get a 6-digit code</button></form>
+    <div class="or">वा · or</div>
+  <?php endif; ?>
+  <form method="post" action="/admin/login.php" autocomplete="on">
+    <?= $hid() ?><input type="hidden" name="mode" value="pw">
+    <input type="text" name="username" value="<?= $h($kind === 'mobile' ? $st['phone'] : $st['id']) ?>" autocomplete="username" hidden aria-hidden="true" tabindex="-1">
+    <label for="pw">पासवर्ड · Password</label>
+    <input id="pw" name="password" type="password" autocomplete="current-password" required<?= $step === 'id' ? ' autofocus' : '' ?>>
+    <button class="btn" type="submit"><?= $step === 'mobile' ? 'पासवर्डले भित्र · Sign in with password' : 'भित्र जानुहोस् · Sign in' ?></button>
+  </form>
+  <?php if ($step === 'mobile'): ?><p class="note">एउटै मोबाइलमा २-३ ID भए, जुन ID को पासवर्ड हो त्यही खुल्छ · One mobile with 2-3 IDs? Each ID's own password opens that ID.</p><?php endif; ?>
+  <div class="links"><a href="<?= $h($odUrl(['step' => 'forgot'])) ?>">🔑 पासवर्ड बिर्सनुभयो? · Forgot password?</a></div>
+
+  <?php elseif ($step === 'code'): ?>
+  <div class="who"><span><?= $h(OneDoor::masked($st)) ?></span> · <a href="<?= $h($odUrl(['step' => 'start'])) ?>">✎ बदल्नुहोस् · Change</a></div>
+  <?php if ($notice === '' && $error === ''): ?><div class="msg ok">यो नम्बर दर्ता छ भने WhatsApp मा कोड पठाइयो · If this number is registered, a code is on its way on WhatsApp.</div><?php endif; ?>
+  <form method="post" action="/admin/login.php" autocomplete="off">
+    <?= $hid() ?><input type="hidden" name="mode" value="code_verify">
+    <label for="otp">WhatsApp कोड · 6-digit code</label>
+    <input id="otp" name="otp" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" required autofocus placeholder="______" style="letter-spacing:.35em;text-align:center;font-size:22px">
+    <button class="btn" type="submit">पुष्टि गरेर भित्र · Verify &amp; sign in</button>
+  </form>
+  <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="code_send">
+    <button class="btn alt" type="submit">फेरि पठाउनुहोस् · Resend</button></form>
+  <p class="note">अफिस खाता (म्यानेजर, एकाउन्ट, सपोर्ट) आफ्नै पासवर्डले खुल्छ · Office accounts open with their own password.</p>
+  <div class="links"><a href="<?= $h($odUrl(['step' => 'mobile'])) ?>">← पासवर्डले · Use the password</a></div>
+
+  <?php elseif ($step === 'wa'): ?>
+  <div class="who"><span><?= $h(OneDoor::masked($st)) ?></span></div>
+  <a class="btn wa" href="<?= $h($waPoll['url']) ?>" target="_blank" rel="noopener" id="waGo">WhatsApp खोल्नुहोस् · Open WhatsApp<small><?= $h($waPoll['text']) ?></small></a>
+  <?php if ($qr !== ''): ?><div class="qr"><img src="<?= $h($qr) ?>" alt="WhatsApp QR" width="150" height="150"><p class="note">फोनको क्यामेराले स्क्यान गर्नुहोस् · Scan with your phone</p></div><?php endif; ?>
+  <p class="note">Send थिचेर यहाँ फर्कनुहोस् · Tap Send, then come back</p>
+  <p class="wait" id="waWait">⏳ तपाईंको सन्देश पर्खँदै… · Waiting for your message…</p>
+  <div class="msg warn">🔒 आफैं लगइन गर्दा मात्र पठाउनुहोस् — अरूले मागे नपठाउनुहोस् · Send it only when YOU are signing in.</div>
+  <form method="post" action="/admin/login.php" id="waDone"><?= $hid() ?><input type="hidden" name="mode" value="wa_finish">
+    <button class="btn alt" type="submit">✅ मैले पठाएँ · I have sent it</button></form>
+  <div class="links"><a href="<?= $h($odUrl(['step' => 'mobile'])) ?>">← फिर्ता · Back</a></div>
+
+  <?php elseif ($step === 'pick'): ?>
+  <p class="sub">यो मोबाइलमा एकभन्दा बढी ID छन् — खोल्ने ID छान्नुहोस् · This mobile has more than one ID — choose one.</p>
+  <?php foreach (OneDoor::pickList() as $pk): ?>
+  <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="pick"><input type="hidden" name="id" value="<?= (int) $pk['id'] ?>">
+    <button class="btn pick" type="submit"><span><?= $h($pk['name']) ?></span><small><?= $h(($pk['code'] ?? '') !== '' ? $pk['code'] : '#' . $pk['id']) ?> · <?= $h($roleLbl((string) $pk['role'])) ?></small></button></form>
+  <?php endforeach; ?>
+  <div class="links"><a href="<?= $h($odUrl(['step' => 'start'])) ?>">← फेरि सुरु · Start again</a></div>
+
+  <?php elseif ($step === 'admin_otp'): ?>
+  <form method="post" action="/admin/login.php" autocomplete="off">
+    <?= $hid() ?><input type="hidden" name="mode" value="admin_2fa_verify">
+    <label for="aotp">WhatsApp कोड · One-time code</label>
+    <input id="aotp" name="otp" inputmode="numeric" pattern="[0-9]*" maxlength="8" required autofocus autocomplete="one-time-code" placeholder="______" style="letter-spacing:.35em;text-align:center;font-size:22px">
+    <button class="btn" type="submit">पुष्टि गरेर भित्र · Verify &amp; sign in</button>
+  </form>
+  <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="admin_2fa_resend">
+    <button class="btn alt" type="submit" formnovalidate>फेरि पठाउनुहोस् · Resend code</button></form>
+
+  <?php elseif ($step === 'forgot'): ?>
+  <p class="sub">दर्ता गरेको मोबाइल नम्बर लेख्नुहोस् — WhatsApp ले पुष्टि गर्छ, अनि नयाँ पासवर्ड राख्नुहोस् · Type your registered mobile; WhatsApp confirms it is you, then set a new password.</p>
+  <form method="post" action="/admin/login.php" autocomplete="on">
+    <?= $hid() ?>
+    <label for="fm">मोबाइल नम्बर · Mobile number</label>
+    <div class="cc-row"><?= $ccSel($ccNow) ?>
+      <input id="fm" name="who" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" required autofocus placeholder="98XXXXXXXX"
+             value="<?= $h($reset['phone'] ?? ($kind === 'mobile' ? $st['phone'] : '')) ?>"></div>
+    <button class="btn" type="submit" name="mode" value="forgot_send">📩 WhatsApp मा कोड पठाउनुहोस् · Send code</button>
+    <?php if ($hiOn): ?><button class="btn wa" type="submit" name="mode" value="forgot_hi_first">💬 hi पठाएर पुष्टि · Send hi instead<small>कोड टाइप गर्नु पर्दैन · No code to type</small></button><?php endif; ?>
+  </form>
+  <div class="links"><a href="<?= $h($odUrl(['step' => 'start'])) ?>">← लगइन · Sign in</a></div>
+
+  <?php elseif ($step === 'forgot_code'): ?>
+  <div class="who"><span>+<?= $h(TeamPortal::cc($reset['cc'] ?? '91')) ?> <?= $h(substr((string) $reset['phone'], 0, 2) . '•••••' . substr((string) $reset['phone'], -3)) ?></span> · <a href="<?= $h($odUrl(['step' => 'forgot'])) ?>">✎ बदल्नुहोस् · Change</a></div>
+  <div class="msg warn" role="note">🔒 यो पासवर्ड रिसेटको लागि हो — अरूले मागे कोड वा सन्देश नपठाउनुहोस् · PASSWORD RESET only — never send it because someone else asked.</div>
+  <?php if (!empty($reset['debug']) && APP_DEBUG): ?><div class="msg ok">DEV code: <?= $h($reset['debug']) ?></div><?php endif; ?>
+  <?php if (is_array($reset['wa'] ?? null)): ?>
+    <a class="btn wa" href="<?= $h($reset['wa']['url']) ?>" target="_blank" rel="noopener">WhatsApp खोल्नुहोस् · Open WhatsApp<small><?= $h($reset['wa']['text']) ?></small></a>
+    <?php if ($qr !== ''): ?><div class="qr"><img src="<?= $h($qr) ?>" alt="WhatsApp QR" width="150" height="150"></div><?php endif; ?>
+    <p class="wait" id="waWait">⏳ तपाईंको सन्देश पर्खँदै… · Waiting for your message…</p>
+    <form method="post" action="/admin/login.php" id="waDone"><?= $hid() ?><input type="hidden" name="mode" value="forgot_prove"><input type="hidden" name="code" value="">
+      <button class="btn alt" type="submit">✅ मैले पठाएँ · I have sent it</button></form>
+    <div class="or">वा कोड · or the code</div>
+  <?php endif; ?>
+  <form method="post" action="/admin/login.php" autocomplete="off">
+    <?= $hid() ?><input type="hidden" name="mode" value="forgot_prove">
+    <label for="fc">WhatsApp कोड · 6-digit code</label>
+    <input id="fc" name="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="______" style="letter-spacing:.35em;text-align:center;font-size:22px"<?= is_array($reset['wa'] ?? null) ? '' : ' autofocus required' ?>>
+    <button class="btn" type="submit">पुष्टि गर्नुहोस् · Confirm</button>
+  </form>
+  <?php if ($hiOn && !is_array($reset['wa'] ?? null)): ?>
+  <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="forgot_hi">
+    <button class="btn wa" type="submit">💬 कोड आएन? hi पठाउनुहोस् · No code? Send hi</button></form>
+  <?php endif; ?>
+  <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="forgot_send"><input type="hidden" name="who" value="<?= $h($reset['phone']) ?>"><input type="hidden" name="cc" value="<?= $h(TeamPortal::cc($reset['cc'] ?? '91')) ?>">
+    <button class="btn alt" type="submit">📩 नयाँ कोड पठाउनुहोस् · Send a new code</button></form>
+  <p class="note">कोड र hi दुवैले भएन भने देश (+91 / +977) मिलाएर हेर्नुहोस्, नत्र कार्यालयमा फोन गर्नुहोस् · Neither works? Check the country (+91 / +977), or call the office.</p>
+
+  <?php elseif ($step === 'forgot_pick'): ?>
+  <p class="sub">नम्बर पुष्टि भयो ✅ — कुन ID को पासवर्ड बदल्ने? · Number confirmed. Whose password?</p>
+  <?php foreach (TeamPortal::resetChoices() as $c): ?>
+  <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="forgot_pick"><input type="hidden" name="who_id" value="<?= $h($c['who']) ?>">
+    <button class="btn pick" type="submit"><span><?= $h($c['name']) ?></span><small><?= $h($c['code'] !== '' ? $c['code'] : '#' . substr((string) $c['who'], strpos((string) $c['who'], ':') + 1)) ?> · <?= $h($roleLbl((string) $c['role'])) ?></small></button></form>
+  <?php endforeach; ?>
+  <p class="note">छानेको ID को मात्र पासवर्ड बदलिन्छ · Only the ID you choose gets the new password.</p>
+
+  <?php elseif ($step === 'forgot_pw'): $fw = OneDoor::forgotWho(); ?>
+  <div class="who"><span><?= $h($fw['name']) ?> · <?= $h($fw['code'] !== '' ? $fw['code'] : $roleLbl((string) $fw['role'])) ?></span></div>
+  <form method="post" action="/admin/login.php" autocomplete="on">
+    <?= $hid() ?><input type="hidden" name="mode" value="forgot_set">
+    <input type="text" name="username" value="<?= $h($reset['phone'] ?? '') ?>" autocomplete="username" hidden aria-hidden="true" tabindex="-1">
+    <label for="np">नयाँ पासवर्ड · New password (<?= TeamPortal::PW_MIN ?>+)</label>
+    <input id="np" name="pw" type="password" minlength="<?= TeamPortal::PW_MIN ?>" autocomplete="new-password" required autofocus>
+    <label for="np2">फेरि लेख्नुहोस् · Again</label>
+    <input id="np2" name="pw2" type="password" minlength="<?= TeamPortal::PW_MIN ?>" autocomplete="new-password" required>
+    <button class="btn" type="submit">सेभ गरेर भित्र · Save &amp; sign in</button>
+  </form>
+  <?php if ((bool) ($fw['twofa'] ?? false)): ?><p class="note">यो खातामा 2FA छ — सेभपछि WhatsApp कोड पनि चाहिन्छ · This account uses 2FA: a WhatsApp code follows.</p><?php endif; ?>
+  <?php endif; ?>
+
+  <?php if (!in_array($step, ['forgot', 'forgot_code', 'forgot_pick', 'forgot_pw', 'wa'], true)): ?>
+  <div class="links">
+    <?php if ($step === 'start'): ?><a href="<?= $h($odUrl(['step' => 'forgot'])) ?>">🔑 पासवर्ड बिर्सनुभयो? · Forgot password?</a><?php endif; ?>
+    <a href="<?= $h(rtrim(APP_URL, '/')) ?>/">🎫 यात्री? लगइन बिना टिकट बुक गर्नुहोस् · Passenger? Book without signing in →</a>
+  </div>
+  <?php endif; ?>
+  <p class="note">📞 मद्दत · Help: <a href="tel:+<?= $h($helpTel) ?>" style="white-space:nowrap"><?= $h($helpPhone) ?></a></p>
+</main>
+<?php if ($waPoll !== null): ?>
+<script>
+(function () {
+  var tok = <?= json_encode((string) $waPoll['token']) ?>, csrf = <?= json_encode($csrfTok) ?>, n = 0, sent = false;
+  var wait = document.getElementById('waWait'), done = document.getElementById('waDone');
+  function tick() {
+    if (sent || ++n > 200) return;
+    fetch('/api/wa-verify.php', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify({ action: 'check', token: tok }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.status === 'verified') { sent = true; if (wait) wait.textContent = '✅ प्रमाणित — भित्र जाँदै… · Verified, signing in…'; if (done) done.submit(); return; }
+        if (d && d.status === 'mismatch' && wait) wait.textContent = '❌ अर्को नम्बरबाट आयो — दर्ता गरेको नम्बरको WhatsApp बाट पठाउनुहोस् · It came from a different number.';
+        if (d && d.status === 'expired') { if (wait) wait.textContent = 'पुरानो भयो — फेरि सुरु गर्नुहोस् · Expired, please start again.'; return; }
+        setTimeout(tick, 3000);
+      }).catch(function () { setTimeout(tick, 5000); });
+  }
+  setTimeout(tick, 2500);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && !sent) { n = Math.max(0, n - 1); } });
+})();
+</script>
+<?php endif; ?>
+<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261031a" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+</body></html>
+<?php
+    exit;
+}
+
 /* ---- Which portal was chosen ---------------------------------------
    Whitelisted, because it is echoed back into the page and carried through
    the form post. Anything unrecognised degrades to the neutral branding. */
@@ -478,6 +919,6 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261030c" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261031a" data-next="<?= $meUrl ?>"></script><?php endif; ?>
 <?php endif; ?>
 </body></html>

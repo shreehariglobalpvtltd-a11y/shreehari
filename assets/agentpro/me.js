@@ -130,6 +130,8 @@
 
   /* ======================= sign in ======================= */
   function renderLogin() {
+    // 30 Oct 2026 (one door): signing in happens at /admin/login.php for everybody; it brings you back here
+    if (C.oneDoor) { location.href = (C.staffLogin || '/admin/login.php') + '?back=me'; return; }
     $('#tabs').hidden = true;
     $('#heroT').textContent = t('signIn'); $('#heroS').textContent = C.company;
     var fp = window.PublicKeyCredential ? '<div class="ap-or">·</div><button type="button" class="ap-btn ghost block" id="fpLogin">🔐 ' + esc(t('fp')) + '</button>' : '';
@@ -459,7 +461,7 @@
       + (window.PublicKeyCredential ? '<button type="button" class="ap-btn block" id="fpAdd" style="margin-top:10px">🔐 ' + esc(t('fpOn')) + '</button>' : '')
       + '<h3 style="margin-top:18px">' + esc(t('waLinked')) + '</h3><ul class="ap-pass">' + (wa || '<li><span class="t"><small>' + esc(t('none')) + '</small></span></li>') + '</ul>'
       + '<p class="ap-hint">' + esc(t('waHow')) + ' <b class="ap-mono">' + esc(m.idNo || '') + '</b></p></section>'
-      + '<section class="ap-card">' + (C.admin ? '<a class="ap-btn ghost block" href="' + esc(C.admin) + '" style="margin-bottom:10px">🏢 ' + esc(t('adminPanel')) + '</a>' : '')
+      + '<section class="ap-card">' + (C.admin ? '<a class="ap-btn ghost block" href="' + esc(C.admin) + '" style="margin-bottom:10px">' + (C.adminLabel ? esc(C.adminLabel) : '🏢 ' + esc(t('adminPanel'))) + '</a>' : '')
       + '<button type="button" class="ap-btn danger block" id="out">' + esc(t('signOut')) + '</button><p class="ap-hint" style="text-align:center;margin-top:12px">' + esc(t('office')) + ': ' + esc(C.office) + '</p></section>';
   }
 

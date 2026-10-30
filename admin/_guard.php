@@ -163,6 +163,11 @@ function admin_nav(): array
         ['href' => 'health.php',       'icon' => 'shield',    'label' => 'System Health',          'perm' => 'dashboard.view',   'section' => $S5],
     ];
 
+    // 30 Oct 2026 (owner: "euta dashboard — sabai"): the one home leads the menu for every role.
+    if (Auth::oneDoorOn()) {
+        array_unshift($all, ['href' => 'home.php', 'icon' => 'dashboard', 'label' => '🏠 गृह · Home', 'perm' => '', 'section' => '']);
+    }
+
     return array_values(array_filter($all, static fn(array $i): bool => $i['perm'] === '' || Auth::can($i['perm'])));
 }
 
@@ -204,7 +209,8 @@ function admin_header(string $title, string $active = ''): void
     // Top bar
     echo '<header class="tb">';
     echo '<button class="menu" onclick="document.body.classList.toggle(\'nav-open\')" aria-label="Menu">☰</button>';
-    echo '<a class="brand" href="' . $base . '/admin/index.php">'
+    // 30 Oct 2026: the logo goes home — the one home page when it is on (index.php 403'd scanners and officials)
+    echo '<a class="brand" href="' . $base . (Auth::oneDoorOn() ? Auth::homeUrl() : '/admin/index.php') . '">'
        . '<img class="brand-logo" src="/assets/img/logo-mark-96h-tmw.png" alt="" width="50" height="26"> '
        . Security::e($company) . ' <span>Admin</span></a>';
 

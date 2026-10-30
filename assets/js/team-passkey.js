@@ -14,7 +14,10 @@
 (function () {
   'use strict';
   var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-  var NEXT = (document.currentScript && document.currentScript.getAttribute('data-next')) || '/team/';   // 23 Oct 2026: /admin/login.php too
+  // 30 Oct 2026 (one door): the page's own data-next WINS over the API's next — a fingerprint sign-in on
+  // /admin/login.php used to be thrown onto /team/ because j.next came first.
+  var PAGE_NEXT = (document.currentScript && document.currentScript.getAttribute('data-next')) || '';
+  var NEXT = PAGE_NEXT || '/team/';   // 23 Oct 2026: /admin/login.php too
   var msg = document.getElementById('pkMsg');
   function say(t, bad) { if (msg) { msg.textContent = t; msg.className = (msg.getAttribute('data-cls') || 'tp-msg') + ' ' + (bad ? 'bad' : 'info'); msg.hidden = !t; } }
   function b2u(buf) { var s = '', b = new Uint8Array(buf); for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
@@ -30,6 +33,8 @@
   if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
     window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(function (yes) {
       if (!yes) { [].forEach.call(document.querySelectorAll('[data-pk="add"]'), function (b) { b.hidden = true; }); var n = document.getElementById('pkNo'); if (n) n.hidden = false; }
+      // 30 Oct 2026 (one door): the small secondary fingerprint button shows only where the device has one
+      else { [].forEach.call(document.querySelectorAll('[data-pk-soft]'), function (b) { b.hidden = false; }); }
     }).catch(function () {});
   }
 
@@ -42,7 +47,7 @@
       if (!c) throw new Error('cancelled');
       var r = c.response;
       return api('POST', 'login', { cred: { id: c.id, clientDataJSON: b2u(r.clientDataJSON), authenticatorData: b2u(r.authenticatorData), signature: b2u(r.signature) } });
-    }).then(function (j) { say('✅ भित्र आउनुभयो · Signed in'); location.href = j.next || NEXT; })
+    }).then(function (j) { say('✅ भित्र आउनुभयो · Signed in'); location.href = PAGE_NEXT || j.next || NEXT; })
       .catch(function (e) { btn.disabled = false; say(String(e && e.message || e).indexOf('cancel') >= 0 || (e && e.name === 'NotAllowedError') ? 'रद्द भयो — पासवर्डले पनि भित्र जान सकिन्छ · Cancelled. You can sign in with your password.' : (e.message || 'Could not sign in'), true); });
   }
   function add(btn) {

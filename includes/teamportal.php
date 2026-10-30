@@ -98,6 +98,15 @@ final class TeamPortal
         return $cc !== '' ? $cc . $phone10 : '';
     }
 
+    /**
+     * 30 Oct 2026 (one door): the WhatsApp number (country code + mobile) an account's login is tied
+     * to — '' when its country cannot be told. Public face of adminIntl() for Auth::otpDoorOpen().
+     */
+    public static function intlFor(string $phone10, array $a): string
+    {
+        return self::adminIntl($phone10, $a);
+    }
+
     private static function adminIntl(string $phone10, array $a): string
     {
         $id = (int) $a['id'];
@@ -155,9 +164,17 @@ final class TeamPortal
         return (int) $a['is_active'] === 1 && !self::staffBlocked($a, self::adminIntl($phone10, $a), $phone10);
     }
 
-    private static function resetTargets(string $phone10): array
+    /**
+     * @param bool $any 30 Oct 2026 (one door, owner: "forgot password WhatsApp bata — sabai lai"): every
+     *                  active account on the number (manager, accountant, support, scanner, official,
+     *                  superadmin …), not only agent / counter. Off = the /team/ list as before.
+     */
+    private static function resetTargets(string $phone10, bool $any = false): array
     {
         $acc = self::accounts($phone10);
+        if ($any) {
+            $acc['admins'] = Auth::adminsByPhone($phone10);
+        }
         $groups = [];
         $add = static function (string $intl, string $kind, array $row) use (&$groups): void {
             foreach ($groups as $i => $g) {
@@ -200,9 +217,12 @@ final class TeamPortal
      * ================================================================= */
 
     /**
-     * @return array{ok: bool, kind?: string, error?: string, first?: bool}
+     * @param bool $anyRole 30 Oct 2026 (one door): every active account on the number, any role (each with
+     *                      its own password — the password picks the account); a 2FA account whose password
+     *                      matched comes back as 'twofaUser' (server side only) for the code step.
+     * @return array{ok: bool, kind?: string, error?: string, first?: bool, twofa?: bool, twofaUser?: string}
      */
-    public static function login(string $phone10, string $password, string $cc = ''): array
+    public static function login(string $phone10, string $password, string $cc = '', bool $anyRole = false): array
     {
         $generic = ['ok' => false, 'error' => 'मोबाइल नम्बर वा पासवर्ड मिलेन — पहिलो पटक हो भने "पासवर्ड बनाउनुहोस् / बिर्सनुभयो?" थिच्नुहोस् · Mobile or password did not match. First time here? Tap "Set / forgot password".'];
         if ($phone10 === '' || $password === '') {
@@ -214,6 +234,9 @@ final class TeamPortal
             return ['ok' => false, 'error' => 'धेरै पटक गलत भयो — ' . LOGIN_LOCKOUT_MIN . ' मिनेटपछि फेरि प्रयास गर्नुहोस् · Too many tries, wait ' . LOGIN_LOCKOUT_MIN . ' minutes.'];
         }
         $acc = self::accounts($phone10);
+        if ($anyRole) {
+            $acc['admins'] = Auth::adminsByPhone($phone10);
+        }
         $acc['admins'] = array_values(array_filter($acc['admins'], static fn(array $a): bool => self::adminUsable($a, $phone10)));
         if ($cc !== '') {
             $acc['admins'] = array_values(array_filter($acc['admins'], static fn(array $a): bool => !self::otherCountry(self::adminIntl($phone10, $a), $cc, $phone10)));
@@ -223,6 +246,7 @@ final class TeamPortal
 
         $hits = [];
         $twofa = false;
+        $twofaUser = '';
         foreach ($acc['admins'] as $a) {
             if ((string) $a['password_hash'] === '') {
                 continue;
@@ -233,6 +257,7 @@ final class TeamPortal
             if (Security::verifyPassword($password, (string) $a['password_hash'])) {
                 if (Auth::admin2faEnabled((int) $a['id'])) {
                     $twofa = true;
+                    $twofaUser = $twofaUser !== '' ? $twofaUser : (string) $a['username'];
                     continue;
                 }
                 $hits[] = $a;
@@ -240,16 +265,17 @@ final class TeamPortal
         }
         if (count($hits) > 1) {
             // 30 Oct 2026: one mobile, several IDs with this password — the person picks one (pick()).
-            self::setPick($phone10, $hits, false);
+            self::setPick($phone10, $hits, false, $anyRole);
             return ['ok' => true, 'kind' => 'pick'];
         }
         if ($hits !== []) {
-            Auth::teamOpenSession($hits[0], false);
+            Auth::teamOpenSession($hits[0], false, $anyRole);
             self::closeStaffSession();
             return ['ok' => true, 'kind' => 'admin'];
         }
         if ($twofa) {
-            return ['ok' => false, 'error' => 'यो खातामा 2FA छ — कार्यालयको लगइनबाट जानुहोस् · This account uses 2FA: please sign in at the office login.', 'twofa' => true];
+            return ['ok' => false, 'error' => 'यो खातामा 2FA छ — कार्यालयको लगइनबाट जानुहोस् · This account uses 2FA: please sign in at the office login.', 'twofa' => true]
+                + ($anyRole ? ['twofaUser' => $twofaUser] : []);
         }
         foreach ($acc['staff'] as $s) {
             if ((string) $s['status'] !== 'approved' || empty($s['password_hash'])) {
@@ -296,14 +322,14 @@ final class TeamPortal
     /**
      * @return array{ok: bool, error?: string, debugCode?: string}
      */
-    public static function sendResetCode(string $phone10, string $cc = ''): array
+    public static function sendResetCode(string $phone10, string $cc = '', bool $any = false): array
     {
         if (!Security::rateLimit('team_reset_ip', Security::clientIp(), 8, 600) || !Security::rateLimit('team_reset_phone', $phone10, 5, 3600)) {
             return ['ok' => false, 'error' => 'धेरै पटक भयो — केही बेरपछि फेरि · Too many tries, please wait a while and try again.'];
         }
         $out = ['ok' => true];
         $t0 = microtime(true);
-        $targets = self::byCountry(self::resetTargets($phone10), $cc, $phone10);
+        $targets = self::byCountry(self::resetTargets($phone10, $any), $cc, $phone10);
         if ($targets === []) {
             Logger::info('Team portal: reset asked for a number with no account that can reset', ['phone' => maskPhone($phone10)], 'otp');
             self::evenTime($t0, true);
@@ -384,13 +410,13 @@ final class TeamPortal
         }
     }
 
-    public static function startVerify(string $phone10, string $cc = ''): array
+    public static function startVerify(string $phone10, string $cc = '', bool $any = false): array
     {
         $ip = Security::clientIp();
         if (!Security::rateLimit('wa_verify_ip', $ip, 8, 600) || !Security::rateLimit('wa_verify_phone', $phone10, 4, 600)) {
             throw new TeamPortalError('धेरै पटक भयो — १० मिनेटपछि फेरि · Too many tries, wait 10 minutes.');
         }
-        $targets = self::byCountry(self::resetTargets($phone10), $cc, $phone10);
+        $targets = self::byCountry(self::resetTargets($phone10, $any), $cc, $phone10);
         $intl = count($targets) === 1 ? $targets[0]['intl'] : '';
         $s = WaVerify::start('reset', $phone10, '', $ip, $intl);
         $_SESSION['team_reset']['wa'] = ['token' => $s['token'], 'url' => $s['url'], 'text' => $s['text'], 'intl' => $intl];
@@ -484,6 +510,179 @@ final class TeamPortal
         return ['ok' => true, 'kind' => 'staff', 'count' => $n];
     }
 
+    /* =================================================================
+     *  Forgot password at the one door (30 Oct 2026, owner: "forgot
+     *  password WhatsApp bata — hi wa code pathaune, automatic confirm,
+     *  reset garna ekdam sajilo"; "each account its own password").
+     *  Three steps instead of resetPassword()'s one:
+     *    proveReset()       the 6-digit code or the "hi VERIFY … RESET"
+     *                       proves the number (same lock: RESET_FAILS
+     *                       wrong codes a day = the code way shut 24 h);
+     *    resetChoices()     the IDs on that number (one or up to three);
+     *    setResetPassword() a new password for the ONE ID picked — never
+     *                       the others on the number (resetPassword()
+     *                       above still writes all of them; it serves the
+     *                       old /team/ door only when the switch is off).
+     *  Every active role is covered ($any); a 2FA account still goes
+     *  through its code after the new password.
+     * ================================================================= */
+
+    public const PROVEN_SEC = 600;
+
+    /**
+     * @return array{ok: bool, error?: string, choices?: list<array<string, mixed>>}
+     */
+    public static function proveReset(string $phone10, string $code, bool $any = true): array
+    {
+        $targets = self::resetTargets($phone10, $any);
+        $proven = '';
+        $how = '';
+        $wa = $_SESSION['team_reset']['wa'] ?? null;
+        if (is_array($wa) && (string) ($wa['intl'] ?? '') !== '' && self::target($targets, (string) $wa['intl']) !== null
+            && WaVerify::consumeReset((string) ($wa['token'] ?? ''), (string) $wa['intl'])) {
+            $proven = (string) $wa['intl'];
+            $how = '"hi VERIFY"';
+        }
+        if ($proven === '') {
+            if (trim($code) === '') {
+                return ['ok' => false, 'error' => 'WhatsApp मा आएको ६ अङ्कको कोड लेख्नुहोस् (वा "hi" पठाउनुहोस्) · Enter the 6-digit code from WhatsApp, or send "hi".'];
+            }
+            if (self::resetLocked($phone10)) {
+                return ['ok' => false, 'error' => 'धेरै पटक गलत कोड — २४ घण्टा कोडबाट पासवर्ड बदल्न मिल्दैन; "hi" पठाउनुहोस् वा कार्यालयमा फोन गर्नुहोस् · Too many wrong codes: the code way is locked for 24 hours. Send "hi" instead, or call the office.', 'locked' => true];
+            }
+            foreach ($targets as $t) {
+                if (Auth::verifyOtp('team:' . $t['intl'], $code, 'reset')['ok']) {
+                    $proven = $t['intl'];
+                    $how = 'code';
+                    break;
+                }
+            }
+            if ($proven === '') {
+                self::resetFailed($phone10);
+                return ['ok' => false, 'error' => 'कोड मिलेन वा पुरानो भयो — चाहिए नयाँ कोड माग्नुहोस् · That code did not match or has expired. Ask for a new one if needed.'];
+            }
+        }
+        unset($_SESSION['team_reset']['wa']);
+        Database::run("DELETE FROM rate_limits WHERE bucket = 'team_reset_fail' AND identifier = :i", ['i' => $phone10]);
+        $_SESSION['team_reset']['proven'] = ['intl' => $proven, 'phone' => $phone10, 't' => time(), 'any' => $any, 'how' => $how];
+        Logger::info('Team portal: number proven for a password reset (' . $how . ')', ['phone' => maskPhone($proven)], 'otp');
+        $choices = self::resetChoices();
+        if ($choices === []) {
+            unset($_SESSION['team_reset']['proven']);
+            return ['ok' => false, 'error' => 'यो खाता बन्द छ — कार्यालयमा सम्पर्क गर्नुहोस् · This account is switched off. Please call the office.'];
+        }
+        return ['ok' => true, 'choices' => $choices];
+    }
+
+    /**
+     * The IDs the proven number may set a new password for (empty when nothing is proven, or it expired).
+     *
+     * @return list<array{who: string, name: string, role: string, code: string, twofa: bool}>
+     */
+    public static function resetChoices(): array
+    {
+        $p = $_SESSION['team_reset']['proven'] ?? null;
+        if (!is_array($p) || (int) ($p['t'] ?? 0) < time() - self::PROVEN_SEC) {
+            return [];
+        }
+        $t = self::target(self::resetTargets((string) $p['phone'], !empty($p['any'])), (string) $p['intl']);
+        if ($t === null) {
+            return [];
+        }
+        $out = [];
+        $adminIds = [];
+        foreach ($t['admins'] as $a) {
+            $adminIds[] = (int) $a['id'];
+            $out[] = ['who' => 'admin:' . (int) $a['id'], 'name' => (string) $a['full_name'], 'role' => (string) $a['role'],
+                      'code' => self::memberCode((int) $a['id']), 'twofa' => Auth::admin2faEnabled((int) $a['id'])];
+        }
+        foreach ($t['staff'] as $s) {
+            if (!empty($s['admin_id']) && in_array((int) $s['admin_id'], $adminIds, true)) {
+                continue;   // its password moves with the linked login below
+            }
+            $out[] = ['who' => 'staff:' . (int) $s['id'], 'name' => (string) $s['full_name'], 'role' => 'staff',
+                      'code' => StaffApps::refFor((int) $s['id']), 'twofa' => false];
+        }
+        return $out;
+    }
+
+    private static function memberCode(int $adminId): string
+    {
+        if (!is_file(__DIR__ . '/agentpro.php')) {
+            return '';
+        }
+        require_once __DIR__ . '/agentpro.php';
+        try {
+            return AgentPro::available() ? (string) (AgentPro::member($adminId, false)['idNo'] ?? '') : '';
+        } catch (Throwable $e) {
+            return '';
+        }
+    }
+
+    /**
+     * A new password for ONE ID of the proven number ($who = 'admin:<id>' | 'staff:<id>'), then sign
+     * that ID in. Single use: the proof is gone afterwards.
+     *
+     * @return array{ok: bool, kind?: string, username?: string, error?: string, restart?: bool}
+     */
+    public static function setResetPassword(string $who, string $pw, string $pw2): array
+    {
+        $p = $_SESSION['team_reset']['proven'] ?? null;
+        if (!is_array($p) || (int) ($p['t'] ?? 0) < time() - self::PROVEN_SEC) {
+            unset($_SESSION['team_reset']);
+            return ['ok' => false, 'restart' => true, 'error' => 'समय सकियो — फेरि सुरु गर्नुहोस् · That took too long, please start again.'];
+        }
+        $phone10 = (string) $p['phone'];
+        if (mb_strlen($pw) < self::PW_MIN) {
+            return ['ok' => false, 'error' => 'पासवर्ड कम्तीमा ' . self::PW_MIN . ' अक्षरको हुनुपर्छ · At least ' . self::PW_MIN . ' characters.'];
+        }
+        if ($pw !== $pw2) {
+            return ['ok' => false, 'error' => 'दुवै पासवर्ड एउटै हुनुपर्छ · The two passwords are not the same.'];
+        }
+        if (preg_match('/^\d+$/', $pw) === 1 && str_contains($phone10, $pw)) {
+            return ['ok' => false, 'error' => 'मोबाइल नम्बर पासवर्ड नबनाउनुहोस् · Do not use your mobile number as the password.'];
+        }
+        if (preg_match('/^(admin|staff):(\d+)$/', $who, $m) !== 1) {
+            return ['ok' => false, 'error' => 'कुन ID हो छान्नुहोस् · Pick the ID first.'];
+        }
+        $t = self::target(self::resetTargets($phone10, !empty($p['any'])), (string) $p['intl']);
+        $id = (int) $m[2];
+        $row = null;
+        foreach (($m[1] === 'admin' ? ($t['admins'] ?? []) : ($t['staff'] ?? [])) as $r) {
+            if ((int) $r['id'] === $id) {
+                $row = $r;
+            }
+        }
+        if ($row === null) {
+            return ['ok' => false, 'error' => 'यो ID यो नम्बरको होइन वा बन्द छ · That ID is not on this number or is switched off.'];
+        }
+        $hash = Security::hashPassword($pw);
+        $how = (string) ($p['how'] ?? 'code');
+        unset($_SESSION['team_reset']);   // single use, whatever happens next
+        if ($m[1] === 'admin') {
+            Database::update('admins', ['password_hash' => $hash, 'failed_logins' => 0, 'locked_until' => null, 'must_change_pw' => 0],
+                'id = :id', ['id' => $id]);
+            Auth::passwordChanged($id, 0, (string) $row['password_hash']);
+            Logger::audit('team.password_reset', 'admin', (string) $id, null, null,
+                'One door: new password for this ID only, after a WhatsApp ' . $how . ' to ' . maskPhone((string) $p['intl']));
+            if (self::ready()) {
+                foreach (Database::fetchAll("SELECT id FROM staff_applications WHERE admin_id = :a AND status = 'approved'", ['a' => $id]) as $s) {
+                    Database::update('staff_applications', ['password_hash' => $hash, 'failed_logins' => 0, 'locked_until' => null], 'id = :id', ['id' => (int) $s['id']]);
+                }
+            }
+            if (Auth::admin2faEnabled($id)) {
+                return ['ok' => true, 'kind' => 'twofa', 'username' => (string) $row['username']];
+            }
+            Auth::teamOpenSession(['must_change_pw' => 0, 'password_hash' => $hash] + $row, true, true);
+            self::closeStaffSession();
+            return ['ok' => true, 'kind' => 'admin'];
+        }
+        Database::update('staff_applications', ['password_hash' => $hash, 'failed_logins' => 0, 'locked_until' => null], 'id = :id', ['id' => $id]);
+        Logger::audit('team.password_reset', 'staff_application', StaffApps::refFor($id), null, null, 'One door: new password after a WhatsApp ' . $how);
+        self::openStaffSession($id, $hash);
+        return ['ok' => true, 'kind' => 'staff'];
+    }
+
     public static function changePassword(array $me, string $old, string $pw, string $pw2): void
     {
         if (mb_strlen($pw) < self::PW_MIN) {
@@ -562,13 +761,13 @@ final class TeamPortal
      * ================================================================= */
 
     /** @param list<array<string, mixed>> $admins */
-    private static function setPick(string $phone10, array $admins, bool $viaReset): void
+    private static function setPick(string $phone10, array $admins, bool $viaReset, bool $any = false): void
     {
         $h = [];
         foreach ($admins as $a) {
             $h[(string) (int) $a['id']] = hash('sha256', (string) $a['password_hash']);
         }
-        $_SESSION['team_pick'] = ['phone' => $phone10, 'h' => $h, 'reset' => $viaReset, 't' => time()];
+        $_SESSION['team_pick'] = ['phone' => $phone10, 'h' => $h, 'reset' => $viaReset, 't' => time(), 'any' => $any];
     }
 
     /**
@@ -604,7 +803,7 @@ final class TeamPortal
         $phone10 = (string) ($p['phone'] ?? '');
         $h = (array) ($p['h'] ?? []);
         $out = [];
-        foreach (self::accounts($phone10)['admins'] as $a) {
+        foreach ((!empty($p['any']) ? Auth::adminsByPhone($phone10) : self::accounts($phone10)['admins']) as $a) {
             $want = $h[(string) (int) $a['id']] ?? null;
             if (is_string($want) && hash_equals($want, hash('sha256', (string) $a['password_hash'])) && self::adminUsable($a, $phone10)) {
                 $out[] = $a;
@@ -624,7 +823,7 @@ final class TeamPortal
         foreach (self::pickable($p) as $a) {
             if ((int) $a['id'] === $adminId) {
                 unset($_SESSION['team_pick']);
-                Auth::teamOpenSession($a, !empty($p['reset']));
+                Auth::teamOpenSession($a, !empty($p['reset']), !empty($p['any']));
                 self::closeStaffSession();
                 Logger::audit('team.login.pick', 'admin', (string) $adminId, null, null, 'Picked one of the IDs on one mobile');
                 return ['ok' => true];

@@ -149,6 +149,30 @@ if (Security::isPost()) {
                     $rec = AgentPro::officeRecordFor($id, $me);
                     Response::redirect('join.php?office=1&d=' . rawurlencode((string) $rec['draft_key']));
                     break;
+                case 'login_creds':
+                    // 30 Oct 2026 (owner: "password ni naya set garna milos — advanced ma user name ra password, sab admin
+                    // le management, edit change, herna ni milos"): the one credential writer (Auth::setStaffCredentials:
+                    // validation, unique username, lock reset, sessions ended, audit). A password is never readable once
+                    // saved (only its hash is kept) — the new one is shown here ONCE and can go to their WhatsApp.
+                    $need($isSuper && (!$targetSuper || $self), 'Only a super-admin changes sign-in details (another super-admin\'s never).');
+                    $in = ['username' => (string) ($_POST['username'] ?? $m['username']), 'email' => (string) ($_POST['email'] ?? '')];
+                    $newPw = trim((string) ($_POST['new_password'] ?? ''));
+                    if ($newPw !== '') {
+                        if (strlen($newPw) < 8) { throw new RuntimeException('The new password must be at least 8 characters.'); }
+                        $in['password'] = $newPw;
+                        $in['must_change'] = !empty($_POST['must_change']) ? 1 : 0;
+                    }
+                    $res = Auth::setStaffCredentials($id, $in, $me);
+                    $sent = null;
+                    if ($newPw !== '' && !empty($_POST['send_wa']) && $m['phone'] !== '') {
+                        require_once INCLUDE_PATH . '/notify.php';
+                        $sent = Notify::whatsapp((string) $m['phone'], "🔐 " . Settings::getString('company_name', APP_NAME) . "\nलगइन · Sign-in\nID: " . $res['username']
+                            . "\nPassword: " . $newPw . "\n" . appUrl('admin/login.php'), null, $m['countryCode'] === '977' ? 'NP' : 'IN') !== false;
+                    }
+                    $flash = ['ok', $res['changed'] === [] ? 'No changes.' : '🔑 Saved: ' . implode(', ', $res['changed']) . ' · username "' . $res['username'] . '"'
+                        . ($newPw !== '' ? ' · new password: ' . $newPw . ' (shown once — not stored readable)' : '')
+                        . ($sent === true ? ' · sent on WhatsApp' : ($sent === false ? ' · WhatsApp did not send' : ''))];
+                    break;
                 case 'add_doc':
                     // 31 Oct 2026 (owner: "document herne, upload garne option chhaina"): straight onto the member's form
                     $need($canKyc && (!$targetSuper || $isSuper), 'Documents are added by a super-admin or a manager.');
@@ -415,6 +439,31 @@ endif; ?>
     </div>
     <?php elseif ($self): ?>
       <small class="ph-sub">This is your own record — the office changes your code, card status and validity.</small>
+    <?php endif; ?>
+    <?php if ($isSuper && (!$targetSuper || $self)):
+        $cr = Database::fetch('SELECT username, email, must_change_pw, failed_logins, locked_until, last_login_at FROM admins WHERE id = :i', ['i' => $id]) ?? [];
+        $pwAt = (string) Database::scalar("SELECT MAX(created_at) FROM audit_logs WHERE entity_id IN (:a, :u)
+            AND (action LIKE '%resetpw%' OR action LIKE '%password%' OR (action LIKE '%credentials' AND new_value LIKE '%\"password_changed\":true%'))",
+            ['a' => (string) $id, 'u' => (string) ($cr['username'] ?? '')], ''); ?>
+    <details class="mm-adv" id="login"<?= isset($_GET['login']) ? ' open' : '' ?>>
+      <summary style="cursor:pointer;font-weight:800;min-height:44px;display:flex;align-items:center">🔑 Advanced · लगइन — username र password</summary>
+      <dl class="mm-kv" style="margin-top:8px">
+        <dt>Username</dt><dd class="ap-mono"><?= $e($cr['username'] ?? '') ?></dd>
+        <dt>Password</dt><dd>•••••••• <small class="ph-sub">(saved as a one-way hash — nobody can read it, a new one can be set)</small></dd>
+        <dt>Changed</dt><dd><?= $pwAt !== '' ? $e(formatDate(substr($pwAt, 0, 10), 'j M Y') . ' ' . substr($pwAt, 11, 5)) : '—' ?><?= !empty($cr['must_change_pw']) ? ' · <span class="tp-chip warn">must change at next sign-in</span>' : '' ?></dd>
+        <dt>Sign-in</dt><dd><?= !empty($cr['last_login_at']) ? 'last ' . $e(timeAgo((string) $cr['last_login_at'])) : 'never' ?><?= (int) ($cr['failed_logins'] ?? 0) > 0 ? ' · ' . (int) $cr['failed_logins'] . ' wrong tries' : '' ?><?= !empty($cr['locked_until']) && strtotime((string) $cr['locked_until']) > time() ? ' · <span class="tp-chip bad">locked</span> (saving unlocks)' : '' ?></dd>
+      </dl>
+      <form method="post" class="mp-form" autocomplete="off"><?= Security::csrfField() ?><input type="hidden" name="action" value="login_creds">
+        <label>Username / ID<input name="username" maxlength="60" value="<?= $e($cr['username'] ?? '') ?>" autocapitalize="off" spellcheck="false"></label>
+        <label>Email (optional)<input name="email" type="email" value="<?= $e($cr['email'] ?? '') ?>"></label>
+        <label class="full">New password <small class="ph-sub">(blank = keep the current one · 8+ characters)</small>
+          <span style="display:flex;gap:8px"><input name="new_password" id="mmNewPw" minlength="8" autocomplete="new-password" style="flex:1">
+          <button class="btn ghost sm" type="button" onclick="var a='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789',p='',r=new Uint32Array(10);crypto.getRandomValues(r);for(var i=0;i<10;i++)p+=a[r[i]%a.length];document.getElementById('mmNewPw').value=p;">🎲 Make one</button></span></label>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="send_wa" value="1" checked> Send ID + new password on WhatsApp</label>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="must_change" value="1"> Ask them to change it at next sign-in</label>
+        <div class="full"><button class="btn sm" type="submit" style="min-height:48px">💾 Save sign-in details</button></div>
+      </form>
+    </details>
     <?php endif; ?>
   </div></section>
 

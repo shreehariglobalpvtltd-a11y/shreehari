@@ -28,7 +28,90 @@ final class Auth
     public const VIEWER_PAGES = [
         'index.php', 'analytics.php', 'accounting.php', 'agent-ranking.php', 'feedback.php', 'counters.php',
         'change-password.php', 'logout.php', 'pending-count.php', 'live-status.php',
+        'home.php',   // 30 Oct 2026: the one home page every sign-in lands on (admin/home.php)
     ];
+
+    /* =================================================================
+     *  One door + one home (30 Oct 2026, owner: "login system dherai
+     *  messy chha — number diyo bhane number + WhatsApp OTP, natra
+     *  'hi' pathaune, natra simple agent ID ra simple password. Euta
+     *  dashboard — agent, admin, staff sabai euta dashboard bhitra,
+     *  khali kholda pharak"). Switch: settings row login_one_door_on
+     *  (code default ON). 0 brings back every old door and landing.
+     * ================================================================= */
+
+    /** Is the one staff door (admin/login.php) + the one home (admin/home.php) switched on? */
+    public static function oneDoorOn(): bool
+    {
+        try {
+            return Settings::getBool('login_one_door_on', true);
+        } catch (Throwable $e) {
+            return true;
+        }
+    }
+
+    /**
+     * Where a signed-in staff member's day starts. One door on: everybody lands on
+     * /admin/home.php (big tiles by role). Off: the old per-role map, exactly as before.
+     */
+    public static function homeUrl(?array $admin = null): string
+    {
+        if (self::oneDoorOn()) {
+            return '/admin/home.php';
+        }
+        $admin ??= self::admin();
+        return match ((string) ($admin['role'] ?? '')) {
+            'agent'    => '/admin/agent.php',
+            'counter'  => '/admin/bookings.php',
+            'scanner'  => '/admin/scan.php',
+            'official' => '/admin/payments.php',
+            default    => '/admin/index.php',
+        };
+    }
+
+    /**
+     * 30 Oct 2026 (one door): what was typed in "Mobile number or ID" when it is not a mobile —
+     * an agent code (SHG-0029, SHG0029, 0029, 29), a staff number (SHG-S-0003), an email, or a
+     * plain username — turned into the username Auth::adminLogin() checks. Never an error and
+     * never a hint: an unknown ID is passed through and fails with the same generic message.
+     */
+    public static function resolveLoginId(string $raw): string
+    {
+        $id = trim(Security::clean($raw, 120));
+        if ($id === '') {
+            return '';
+        }
+        try {
+            if (preg_match('/^(?:SHG[\s\-]*)?0*(\d{1,5})$/i', $id, $m) === 1 && (int) $m[1] > 0) {
+                require_once __DIR__ . '/agentwallet.php';
+                $aid = AgentWallet::adminForAgentCode((int) $m[1]);
+                if ($aid !== null) {
+                    $u = (string) Database::scalar('SELECT username FROM admins WHERE id = :i', ['i' => $aid], '');
+                    if ($u !== '') {
+                        return $u;
+                    }
+                }
+            } elseif (preg_match('/^SHG[\s\-]*S[\s\-]*0*(\d{1,6})$/i', $id, $m) === 1 && (int) $m[1] > 0) {
+                $u = (string) Database::scalar(
+                    'SELECT a.username FROM ap_members m JOIN admins a ON a.id = m.admin_id WHERE m.staff_no = :n LIMIT 1',
+                    ['n' => (int) $m[1]], '');
+                if ($u !== '') {
+                    return $u;
+                }
+            } elseif (str_contains($id, '@')) {
+                $e = strtolower(Security::email($id));
+                if ($e !== '') {
+                    $u = (string) Database::scalar('SELECT username FROM admins WHERE LOWER(email) = :e ORDER BY id LIMIT 1', ['e' => $e], '');
+                    if ($u !== '') {
+                        return $u;
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            // a missing ap_members table or a settings hiccup: fall through to the plain username
+        }
+        return Security::clean($id, 60);
+    }
 
     private const ROLE_PERMISSIONS = [
         'manager' => [
@@ -940,7 +1023,8 @@ final class Auth
         $admin = trim($code) === '' ? (self::otpDoorAccounts($mobile)[0] ?? null) : self::resolveAgentLogin($code, $mobile);
         if ($admin === null) {
             Logger::warning('Agent OTP login: no match', ['code' => Security::clean($code, 12), 'ip' => $ip]);
-            return $generic;
+            // 30 Oct 2026: 'nomatch' lets the one door show every number the same neutral reply
+            return $generic + ['nomatch' => true];
         }
 
         $phone = normalisePhone((string) $admin['phone']);
@@ -996,14 +1080,51 @@ final class Auth
         if (count($list) > 1) {
             // One WhatsApp number, several IDs: the code proved the NUMBER; the person now picks
             // which of THIS number's accounts to open (agentLoginPick). Nothing else is offered.
-            $_SESSION['ap_login_pick'] = ['phone' => $phone, 'ids' => array_map(static fn(array $a): int => (int) $a['id'], $list), 't' => time()];
-            return ['ok' => true, 'choose' => array_map(static fn(array $a): array => [
-                'id' => (int) $a['id'], 'name' => (string) $a['full_name'], 'role' => (string) $a['role'],
-            ], $list)];
+            return self::otpPickList($phone, $list);
         }
 
         self::finishAdminSession($admin, $ip, true);
 
+        return ['ok' => true];
+    }
+
+    /** @param list<array<string, mixed>> $list @return array{ok: true, choose: list<array{id: int, name: string, role: string}>} */
+    private static function otpPickList(string $phone, array $list): array
+    {
+        $_SESSION['ap_login_pick'] = ['phone' => $phone, 'ids' => array_map(static fn(array $a): int => (int) $a['id'], $list), 't' => time()];
+        return ['ok' => true, 'choose' => array_map(static fn(array $a): array => [
+            'id' => (int) $a['id'], 'name' => (string) $a['full_name'], 'role' => (string) $a['role'],
+        ], $list)];
+    }
+
+    /**
+     * 30 Oct 2026 (one door, "send hi on WhatsApp"): the number was proved by a WhatsApp message from
+     * exactly $intl (WaVerify::consumeLogin). Open what the mobile-only code door would open — the
+     * OTP_DOOR_ROLES accounts on this mobile, no 2FA — and only those whose number on file is that
+     * country's (or carries no country). Several → the same "which ID?" pick as the code door.
+     *
+     * @return array{ok: bool, choose?: list<array<string, mixed>>, none?: bool, error?: string}
+     */
+    public static function otpDoorOpen(string $mobile, string $how, string $intl = ''): array
+    {
+        $phone = normalisePhone($mobile);
+        $list = self::otpDoorAccounts($phone);
+        if ($intl !== '' && $list !== []) {
+            require_once __DIR__ . '/teamportal.php';
+            $list = array_values(array_filter($list, static function (array $a) use ($phone, $intl): bool {
+                $own = TeamPortal::intlFor(substr($phone, -10), $a);
+                return $own === '' || $own === $intl;
+            }));
+        }
+        if ($list === []) {
+            return ['ok' => false, 'none' => true];
+        }
+        if (count($list) > 1) {
+            return self::otpPickList($phone, $list);
+        }
+        self::finishAdminSession($list[0], Security::clientIp(), true);
+        Logger::audit('admin.login.' . preg_replace('/[^a-z_]/', '', $how), 'admin', (string) $list[0]['id'], null, null,
+            'Signed in with WhatsApp (' . $how . ') — no password typed');
         return ['ok' => true];
     }
 
@@ -1253,9 +1374,11 @@ final class Auth
      * hash the door checked, or the one the reset just wrote — the session
      * is stamped with it.
      */
-    public static function teamOpenSession(array $admin, bool $viaOtp): void
+    public static function teamOpenSession(array $admin, bool $viaOtp, bool $anyRole = false): void
     {
-        if (!in_array((string) ($admin['role'] ?? ''), self::TEAM_ROLES, true) || (int) ($admin['is_active'] ?? 0) !== 1) {
+        // $anyRole (30 Oct 2026, one door): mobile + password opens ANY role's account on that number —
+        // each account still checked against its own password (TeamPortal::login), 2FA ones go to the code step.
+        if ((!$anyRole && !in_array((string) ($admin['role'] ?? ''), self::TEAM_ROLES, true)) || (int) ($admin['is_active'] ?? 0) !== 1) {
             throw new RuntimeException('This account cannot use the team portal.');
         }
         if ((string) ($admin['password_hash'] ?? '') === '') {
@@ -1386,7 +1509,7 @@ final class Auth
             AdminSessions::close((string) ($_SESSION[ADMIN_SESSION_KEY]['sk'] ?? ''));
         }
 
-        unset($_SESSION[ADMIN_SESSION_KEY]);
+        unset($_SESSION[ADMIN_SESSION_KEY], $_SESSION['one_door']);   // 30 Oct 2026: no half-done one-door step for the next person
         session_regenerate_id(true);
     }
 
@@ -1704,13 +1827,7 @@ final class Auth
                signing in. The status stays 403 for every caller that
                checks it (tests/role-gates-test.php). */
             if (function_exists('admin_header') && function_exists('admin_footer')) {
-                $home = match ((string) ($admin['role'] ?? '')) {
-                    'agent'   => '/admin/agent.php',
-                    'counter' => '/admin/bookings.php',
-                    'scanner' => '/admin/scan.php',
-                    'official' => '/admin/payments.php',
-                    default   => '/admin/index.php',
-                };
+                $home = self::homeUrl($admin);   // 30 Oct 2026: the one home (or the old role map when switched off)
                 admin_header('Not allowed', '');
                 echo '<div class="panel" style="max-width:560px;margin:32px auto;text-align:center;padding:32px 24px">'
                    . '<div style="font-size:44px;line-height:1">🔒</div>'

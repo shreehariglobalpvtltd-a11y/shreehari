@@ -131,82 +131,146 @@ html,body{margin:0;background:#F4F6FB}
   <!-- 8 Oct 2026 (D8-07 pass 1): the 10 KB nav/hero logo, preloaded at normal
        priority - it is not the LCP and must not compete with the CSS on 3G.
        logo.png (440px) stays for the footer, tickets and the PDF. -->
-  <link rel="preload" as="image" href="/assets/img/logo-nav-tmw.png?v=20261030c">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20261030c">
-  <link rel="stylesheet" href="/assets/css/views.css?v=20261030c">
+  <link rel="preload" as="image" href="/assets/img/logo-nav-tmw.png?v=20261031a">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20261031a">
+  <link rel="stylesheet" href="/assets/css/views.css?v=20261031a">
   <!-- The shell pass (24 Sep 2026): header + logo, motion, elevation and
        the sound/haptics switches. Loads LAST on purpose — every rule in it
        is meant to win on equal specificity without an !important war, and
        removing this one line reverts the whole pass. -->
-  <link rel="stylesheet" href="/assets/css/premium.css?v=20261030c">
+  <link rel="stylesheet" href="/assets/css/premium.css?v=20261031a">
   <!-- Oct 2026 redesign: the S Hari Global design system (tokens + shared sg-
        components, also used by the company app) and the customer-app layer
        that points every legacy token at it. Both load LAST. -->
-  <link rel="stylesheet" href="/assets/css/ds.css?v=20261030c">
-  <link rel="stylesheet" href="/assets/css/redesign.css?v=20261030c">
-  <link rel="stylesheet" href="/assets/css/anim.css?v=20261030c">
+  <link rel="stylesheet" href="/assets/css/ds.css?v=20261031a">
+  <link rel="stylesheet" href="/assets/css/redesign.css?v=20261031a">
+  <link rel="stylesheet" href="/assets/css/anim.css?v=20261031a">
   <!-- 9 Oct 2026: Pixel / Material-You palettes + UI style (themes.css), then the home
        showcase (showcase.css). Both BEFORE depth.css, which stays the last stylesheet. -->
-  <link rel="stylesheet" href="/assets/css/themes.css?v=20261030c">
-  <link rel="stylesheet" href="/assets/css/showcase.css?v=20261030c">
-  <link rel="stylesheet" href="/assets/css/homeinfo.css?v=20261030c">
-  <link rel="stylesheet" href="/assets/css/smartbook.css?v=20261030c">
+  <link rel="stylesheet" href="/assets/css/themes.css?v=20261031a">
+  <link rel="stylesheet" href="/assets/css/showcase.css?v=20261031a">
+  <link rel="stylesheet" href="/assets/css/homeinfo.css?v=20261031a">
+  <link rel="stylesheet" href="/assets/css/smartbook.css?v=20261031a">
   <!-- 10 Oct 2026: the owner's HD visual pack in the page (hero coach, illustrations,
        live-tracking section, sprite-icon sizes). Before depth.css, which stays last. -->
-  <link rel="stylesheet" href="/assets/css/hd.css?v=20261030c">
+  <link rel="stylesheet" href="/assets/css/hd.css?v=20261031a">
   <!-- 17 Oct 2026: the premium 3D layer (hero band + glass polish) - after smartbook/hd, before perf + depth -->
-  <link rel="stylesheet" href="/assets/css/premium3d.css?v=20261030c">
+  <link rel="stylesheet" href="/assets/css/premium3d.css?v=20261031a">
   <!-- 17 Oct 2026: the 12D Hyper-OS layer (night-highway band, ticket laser + 360, ripple, vault pill) - scoped, after premium3d -->
-  <link rel="stylesheet" href="/assets/css/hyperos.css?v=20261030c">
+  <link rel="stylesheet" href="/assets/css/hyperos.css?v=20261031a">
   <!-- 17 Oct 2026: liquid layer (spring motion, readable dark chips, ticket ribbon, phone book bar, WhatsApp card, colour drops) - after hyperos -->
-  <link rel="stylesheet" href="/assets/css/liquid.css?v=20261030c">
+  <link rel="stylesheet" href="/assets/css/liquid.css?v=20261031a">
   <!-- 10 Oct 2026: device / input hygiene - touch, hover guards, tap targets,
        compositor layers, dvh sheets, TV + device tiers (perf.css). Right
        BEFORE depth.css, which stays the last stylesheet. -->
-  <link rel="stylesheet" href="/assets/css/perf.css?v=20261030c">
+  <link rel="stylesheet" href="/assets/css/perf.css?v=20261031a">
   <!-- 4 Oct 2026: pop-out depth in every theme + the AMOLED display. Loads LAST. -->
-  <link rel="stylesheet" href="/assets/css/depth.css?v=20261030c">
+  <link rel="stylesheet" href="/assets/css/depth.css?v=20261031a">
   <!-- 18 Oct 2026: surgical polish top-up (route-band coach, phone feats fade,
        consistent .btn press, ticket PNR sweep, Hyper-Bus wheels). After depth.css. -->
-  <link rel="stylesheet" href="/assets/css/polish.css?v=20261030c">
+  <link rel="stylesheet" href="/assets/css/polish.css?v=20261031a">
+  <!-- 30 Oct 2026 (owner: "home page ma ticket booking system matra - dherai button hoina; '+' thichepachhi matra
+       baaki button, video ra agent ko licence"; the same evening: "ticket katne home page ma verified agent ra guiding
+       video ticketing pachhi aaos"). The home page is now: the booking card, the verified agents (#homeRoles, compact),
+       the guiding video (#homeVideo), then ONE "+ थप · More" button (#homeMoreBar). Everything else in #view-home waits
+       behind that button: openHomeMore() (05-router.js) adds .home-full. This is an ALLOW-list, not a hide-list -
+       a section added to the home later stays folded until it is named in the first rule below. Only :not(#id), no
+       :is()/:has(), so older Android WebViews keep the rule. It replaces the old hide-list in #homeHub's inline style.
+       Inline (not a stylesheet) so the fold ships with this always-fresh HTML. The h1 and the brochure stay in the HTML. -->
+  <style id="homeFold">
+    html body #view-home:not(.home-full) > :not(#smartBook):not(#sbDesk):not(#search-anchor):not(#quick-ticket):not(#nextTripBox):not(#homeRoles):not(#homeVideo):not(#homeMoreBar){display:none !important}
+    /* the order: booking (-1 .. 4, unchanged), agents 5, video 6, the button 7; behind the button the front group
+       (core tiles, WhatsApp ticket, the hub with the nav card) comes first, then the other videos / animations, then
+       the rest in the old order. Beats every older order rule (redesign / showcase / hyperos / premium3d / liquid). */
+    html body #view-home > #homeRoles{order:5 !important}
+    html body #view-home > #homeVideo{order:6 !important}
+    html body #view-home > #homeMoreBar{order:7 !important}
+    html body #view-home > #homeCore{order:8 !important}
+    html body #view-home > .wa-ticket-highlight{order:9 !important}
+    html body #view-home > #homeHub{order:10 !important}
+    html body #view-home > #animRoute{order:11 !important}
+    html body #view-home > #hyperBus{order:12 !important}
+    html body #view-home > #hero3d{order:13 !important}
+    html body #view-home > #homeHero{order:14 !important}
+    html body #view-home > #homeCeo{order:15 !important}
+    html body #view-home > #homeFeat{order:16 !important}
+    html body #view-home > #topHero{order:17 !important}
+    html body #view-home > #homeFares{order:18 !important}
+    html body #view-home > #homeRoute{order:19 !important}
+    html body #view-home > #homeLive{order:20 !important}
+    html body #view-home > #homeIndiaNepal{order:21 !important}
+    html body #view-home > #homeExplore{order:22 !important}
+    html body #view-home > #homeBiz{order:23 !important}
+    html body #view-home > #bookHelp{order:24 !important}
+    html body #view-home > #homeExtra{order:25 !important}
+    html body #view-home > #trust{order:30 !important}
+    html body #view-home > #agrBar{order:31 !important}
+    html body #view-home > #realReviews{order:32 !important}
+    html body #view-home > #homeMore{order:35 !important}
+    /* the front group pops in, ringed, each time "+ थप" opens it */
+    html body #view-home.home-full > #homeCore,html body #view-home.home-full > .wa-ticket-highlight,html body #view-home.home-full > #homeHub{animation:hmFront .5s cubic-bezier(.2,.8,.25,1.15) both}
+    html body #view-home.home-full > #homeCore{padding-left:12px;padding-right:12px;box-sizing:border-box}
+    html body #view-home.home-full > #homeCore .hc-grid,html body #view-home.home-full > #homeHub .hub-grid{padding:6px;border-radius:24px;box-shadow:0 0 0 2px rgba(240,122,30,.42),0 16px 32px -22px rgba(240,122,30,.7)}
+    @keyframes hmFront{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
+    @media (prefers-reduced-motion:reduce){html body #view-home.home-full > *{animation:none !important}}
+    html[data-motion="reduced"] body #view-home.home-full > *{animation:none !important}
+    /* the verified agents, compact while folded: title, the role tabs (they switch the card, 34-roles.js), one role's
+       Top 3 and "See all". The CEO line, the long notes and the Apply buttons come back with "+ थप". */
+    html body #view-home:not(.home-full) > #homeRoles .rl-sub,html body #view-home:not(.home-full) > #homeRoles .rl-ceo,html body #view-home:not(.home-full) > #homeRoles .rl-note,html body #view-home:not(.home-full) > #homeRoles .rl-apply,html body #view-home:not(.home-full) > #homeRoles .rl-card:not(.rl-on){display:none !important}
+    html body #view-home:not(.home-full) > #homeRoles{margin-top:14px}
+    html body #view-home:not(.home-full) > #homeRoles .rl-box{padding:16px 12px 6px}
+    html body #view-home:not(.home-full) > #homeRoles .rl-tabs{margin-bottom:12px}
+    html body #view-home:not(.home-full) > #homeRoles .rl-card{margin-bottom:10px}
+    html body #view-home:not(.home-full) > #homeRoles .rl-foot .rl-all{grid-column:1/-1}
+    /* the one button: + turns into − and the label into "कम · Less" */
+    #homeMoreBar{scroll-margin-top:76px;margin-top:16px}
+    #homeMoreToggle{gap:14px;padding:12px 16px;border:1.5px solid rgba(240,122,30,.6);border-radius:18px}
+    #homeMoreToggle .hm-ic{position:relative;flex:0 0 40px;width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#ff8a2b,#f07a1e 60%,#d4570c);box-shadow:0 8px 18px -10px rgba(212,87,12,.95)}
+    #homeMoreToggle .hm-ic::before,#homeMoreToggle .hm-ic::after{content:"";position:absolute;left:50%;top:50%;width:18px;height:3px;margin:-1.5px 0 0 -9px;border-radius:2px;background:#fff;transition:transform .25s ease}
+    #homeMoreToggle .hm-ic::after{transform:rotate(90deg)}
+    #homeMoreToggle.open .hm-ic::after{transform:rotate(90deg) scaleX(0)}
+    #homeMoreToggle .hm-tx b{font-size:16px}
+    #homeMoreToggle.open .hm-more,#homeMoreToggle:not(.open) .hm-less{display:none}
+    @media (prefers-reduced-motion:reduce){#homeMoreToggle .hm-ic::after{transition:none}}
+  </style>
 <!-- App bundle: `defer` keeps the same execution order and still runs after the
      document is parsed, but placing the tags in <head> lets the browser start
      fetching ~1 MB of JS with the FIRST bytes of HTML instead of after it has
      parsed ~190 KB of markup (perf pass, 11 Sep 2026). -->
-<script defer src="/assets/js/01-boot.js?v=20261030c"></script>
-<script defer src="/assets/js/02-config.js?v=20261030c"></script>
-<script defer src="/assets/js/03-accounts.js?v=20261030c"></script>
-<script defer src="/assets/js/04-i18n.js?v=20261030c"></script>
-<script defer src="/assets/js/05-router.js?v=20261030c"></script>
-<script defer src="/assets/js/06-results.js?v=20261030c"></script>
-<script defer src="/assets/js/07-checkout.js?v=20261030c"></script>
-<script defer src="/assets/js/14-counter.js?v=20261030c"></script>
-<script defer src="/assets/js/08-signin.js?v=20261030c"></script>
-<script defer src="/assets/js/10-track.js?v=20261030c"></script>
-<script defer src="/assets/js/11-pdf-ticket.js?v=20261030c"></script>
-<script defer src="/assets/js/13-admin-routes.js?v=20261030c"></script>
+<script defer src="/assets/js/01-boot.js?v=20261031a"></script>
+<script defer src="/assets/js/02-config.js?v=20261031a"></script>
+<script defer src="/assets/js/03-accounts.js?v=20261031a"></script>
+<script defer src="/assets/js/04-i18n.js?v=20261031a"></script>
+<script defer src="/assets/js/05-router.js?v=20261031a"></script>
+<script defer src="/assets/js/06-results.js?v=20261031a"></script>
+<script defer src="/assets/js/07-checkout.js?v=20261031a"></script>
+<script defer src="/assets/js/14-counter.js?v=20261031a"></script>
+<script defer src="/assets/js/08-signin.js?v=20261031a"></script>
+<script defer src="/assets/js/10-track.js?v=20261031a"></script>
+<script defer src="/assets/js/11-pdf-ticket.js?v=20261031a"></script>
+<script defer src="/assets/js/13-admin-routes.js?v=20261031a"></script>
 <!-- 13 Sep 2026: PWA layer — install sheet, Web Push, border prep card,
      split-pay, 7-day seat-fill chart. Last on purpose: it reads the globals
      the files above define and every hook it adds is optional. -->
-<script defer src="/assets/js/17-pwa.js?v=20261030c"></script>
-<script defer src="/assets/js/18-journey.js?v=20261030c"></script>
+<script defer src="/assets/js/17-pwa.js?v=20261031a"></script>
+<script defer src="/assets/js/18-journey.js?v=20261031a"></script>
 <!-- Premium feel (24 Sep 2026). MUST stay after 13-admin-routes.js: it
      takes over that file's SFX object in place, which means the binding has
      to exist by the time this runs. defer preserves document order. -->
-<script defer src="/assets/js/19-premium.js?v=20261030c"></script>
-<script defer src="/assets/js/20-anim.js?v=20261030c"></script>
-<script defer src="/assets/js/21-showcase.js?v=20261030c"></script>
-<script defer src="/assets/js/22-routeline.js?v=20261030c"></script>
-<script defer src="/assets/js/23-flags.js?v=20261030c"></script>
-<script defer src="/assets/js/24-homeinfo.js?v=20261030c"></script>
-<script defer src="/assets/js/27-smartbook.js?v=20261030c"></script>
-<script defer src="/assets/js/28-hero3d.js?v=20261030c"></script>
-<script defer src="/assets/js/29-scrollfx.js?v=20261030c"></script>
-<script defer src="/assets/js/30-hyperos.js?v=20261030c"></script>
-<script defer src="/assets/js/31-liquid.js?v=20261030c"></script>
-<script defer src="/assets/js/34-roles.js?v=20261030c"></script>
-<script defer src="/assets/js/35-homehub.js?v=20261030c"></script>
-<script defer src="/assets/js/wa-direct.js?v=20261030c"></script>
+<script defer src="/assets/js/19-premium.js?v=20261031a"></script>
+<script defer src="/assets/js/20-anim.js?v=20261031a"></script>
+<script defer src="/assets/js/21-showcase.js?v=20261031a"></script>
+<script defer src="/assets/js/22-routeline.js?v=20261031a"></script>
+<script defer src="/assets/js/23-flags.js?v=20261031a"></script>
+<script defer src="/assets/js/24-homeinfo.js?v=20261031a"></script>
+<script defer src="/assets/js/27-smartbook.js?v=20261031a"></script>
+<script defer src="/assets/js/28-hero3d.js?v=20261031a"></script>
+<script defer src="/assets/js/29-scrollfx.js?v=20261031a"></script>
+<script defer src="/assets/js/30-hyperos.js?v=20261031a"></script>
+<script defer src="/assets/js/31-liquid.js?v=20261031a"></script>
+<script defer src="/assets/js/34-roles.js?v=20261031a"></script>
+<script defer src="/assets/js/35-homehub.js?v=20261031a"></script>
+<script defer src="/assets/js/wa-direct.js?v=20261031a"></script>
 <meta property="og:title" content="Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper | S Hari Global">
 <meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal, Rajkot &amp; Ahmedabad (S Hari Parking, Nana Chiloda). Book online, on WhatsApp or by phone. Private &amp; sharing cabins.">
 <meta property="og:type" content="website">
@@ -237,20 +301,20 @@ html,body{margin:0;background:#F4F6FB}
      same font-display:swap, so the brand face still arrives late and the
      text is readable in Georgia from the first frame, exactly as before.
      Cinzel is SIL OFL 1.1, which allows hosting it ourselves. -->
-<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20261030c" crossorigin>
-<style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261030c) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261030c) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261030c) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261030c) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
+<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20261031a" crossorigin>
+<style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261031a) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261031a) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261031a) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261031a) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
 <title>Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper daily | {{f:brand.name}}</title>
 <meta name="description" content="सूरत से नेपाल बस · सुरत देखि नेपाल बस — daily AC sleeper from Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Rajkot & Ahmedabad to the Rupaidiha (Nepalgunj) border. Book online, on WhatsApp or by phone. Registered Indian company, Mehsana.">
 <!-- Real brand favicon, not the emoji placeholder. PNG first for the tab
      strip, the SVG kept as the scalable fallback. -->
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20261030c">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20261031a">
 <link rel="icon" type="image/svg+xml" href="/icon-shg.svg">
 <!-- PWA / offline navigator: installable app + service-worker cached maps -->
 <link rel="manifest" href="/manifest.webmanifest">
 <!-- iOS ignores SVG here and silently falls back to a screenshot of the
      page, which is why the home-screen icon looked like a web page.
      A 180px opaque PNG is the only thing Safari will use. -->
-<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20261030c">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20261031a">
 <link rel="mask-icon" href="/assets/img/mask-icon.svg" color="#1A3A6A">
 <meta name="msapplication-TileColor" content="#1A3A6A">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -279,7 +343,7 @@ html,body{margin:0;background:#F4F6FB}
      installed app (home-screen icon) opens on the logo for a moment - once per
      session, never on the website in a browser tab (no wait added to search /
      Google visits). Gone at window load, after 0.65 s at the least, 1.2 s at most. -->
-<div id="appSplash" aria-hidden="true" hidden><div class="as-in"><span class="as-logo"><img src="/assets/img/logo-mark-tm.webp?v=20261030c" width="439" height="228" alt="" fetchpriority="high" decoding="async" data-logo-clone></span><b>S HARI GLOBAL<sup>™</sup></b><small>India ⇄ Nepal · AC Sleeper</small></div></div>
+<div id="appSplash" aria-hidden="true" hidden><div class="as-in"><span class="as-logo"><img src="/assets/img/logo-mark-tm.webp?v=20261031a" width="439" height="228" alt="" fetchpriority="high" decoding="async" data-logo-clone></span><b>S HARI GLOBAL<sup>™</sup></b><small>India ⇄ Nepal · AC Sleeper</small></div></div>
 <style>
 #appSplash{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;background:radial-gradient(120% 90% at 50% 35%,#FFFFFF 0%,#EEF3FB 70%);transition:opacity .25s ease}
 #appSplash.as-out{opacity:0;pointer-events:none}
@@ -477,7 +541,7 @@ s.addEventListener('click',function(e){e.preventDefault();
          now the transparent emblem with no baked name; the company name is live
          text from the facts (brand.short), so a rename in Admin flows here too. -->
     <a class="brand" href="#/" data-scroll="top" aria-label="{{f:brand.name}} — Home">
-      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo-nav-tmw.png?v=20261030c" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
+      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo-nav-tmw.png?v=20261031a" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
       <span class="brand-word" aria-hidden="true"><span class="b-lock"><b data-fact="brand.short">S Hari Global</b><sup class="b-tm">™</sup></span><span class="b-legal" data-fact="brand.suffix">PRIVATE LIMITED</span><small><span class="b-flag" aria-hidden="true">🇮🇳</span> Gujarat ⇄ Rupaidiha <span class="b-flag" aria-hidden="true">🇳🇵</span></small></span>
     </a>
     <nav class="nav-links" aria-label="Main">
@@ -573,7 +637,8 @@ s.addEventListener('click',function(e){e.preventDefault();
        no booking path: the card right below is still the one door. Styles in
        premium3d.css; 28-hero3d.js adds pointer parallax on a desktop. A <div>,
        not a <section>: index.php's first-paint splice stops at #homeHero's
-       first </section>. Order -2 keeps it above the card (smartbook.css). -->
+       first </section>. Order -2 keeps it above the card (smartbook.css).
+       30 Oct 2026: folded behind "+ थप · More" (<style id="homeFold">), so its coach images load lazily. -->
   <div class="p3" id="hero3d" aria-labelledby="h3Title">
     <div class="p3-scene" aria-hidden="true">
       <span class="p3-india"></span><span class="p3-nepal"></span><span class="p3-tint"></span>
@@ -598,11 +663,11 @@ s.addEventListener('click',function(e){e.preventDefault();
         <span class="p3-tag" data-i18n="h3Tag">Not just a journey,<br>a bond…</span>
         <span class="p3-bus p3-coach">
           <picture>
-            <source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261030c" width="800" height="400">
-            <img class="p3-photo" id="h3Bus" src="/assets/img/hd/bus-cutout.webp?v=20261030c" width="1600" height="800" alt="S Hari Global AC sleeper coach - promotional render" decoding="async" fetchpriority="high">
+            <source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261031a" width="800" height="400">
+            <img class="p3-photo" id="h3Bus" src="/assets/img/hd/bus-cutout.webp?v=20261031a" width="1600" height="800" alt="S Hari Global AC sleeper coach - promotional render" loading="lazy" decoding="async">
           </picture>
-          <span class="hx-hub h1" aria-hidden="true"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261030c"><img src="/assets/img/hd/bus-cutout.webp?v=20261030c" width="1600" height="800" alt="" decoding="async"></picture></i></span>
-          <span class="hx-hub h2" aria-hidden="true"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261030c"><img src="/assets/img/hd/bus-cutout.webp?v=20261030c" width="1600" height="800" alt="" decoding="async"></picture></i></span>
+          <span class="hx-hub h1" aria-hidden="true"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261031a"><img src="/assets/img/hd/bus-cutout.webp?v=20261031a" width="1600" height="800" alt="" loading="lazy" decoding="async"></picture></i></span>
+          <span class="hx-hub h2" aria-hidden="true"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261031a"><img src="/assets/img/hd/bus-cutout.webp?v=20261031a" width="1600" height="800" alt="" loading="lazy" decoding="async"></picture></i></span>
         </span>
         <span class="p3-road" aria-hidden="true"></span><span class="p3-beam" aria-hidden="true"></span>
         <span class="p3-shadow" aria-hidden="true"></span>
@@ -764,7 +829,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="hh-card">
       <span class="sc-hh-sheen" aria-hidden="true"></span>
       <div class="hh-brand">
-        <span class="hh-logo-tile"><img class="hh-logo" src="/assets/img/logo-nav-tm.png?v=20261030c" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
+        <span class="hh-logo-tile"><img class="hh-logo" src="/assets/img/logo-nav-tm.png?v=20261031a" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
         <div class="hh-copy">
           <p class="sc-hh-eyebrow"><span class="flg" data-flag="IN" role="img" aria-label="India"></span><span class="b-stack"><span class="b-lock"><b data-fact="brand.short">{{f:brand.short}}</b><sup class="b-tm">™</sup></span><span class="b-legal" data-fact="brand.suffix">{{f:brand.suffix}}</span></span><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></p>
           <h1 class="hh-title" id="homeHeadline" data-i18n="hhTitle">INDIA ⇄ NEPAL PREMIUM AC SLEEPER BUS</h1>
@@ -789,10 +854,10 @@ s.addEventListener('click',function(e){e.preventDefault();
   </section>
 
   <!-- 23 Oct 2026 (owner: "3 tai core features lai highlight garera"): the three things this app IS - one tap
-       each, right under the booking card (order -1 = same band as SmartBook / the coach, DOM order decides). -->
+       each. 30 Oct 2026: the first card behind "+ थप · More" (order in <style id="homeFold">). -->
   <nav class="container" id="homeCore" aria-label="Core features · मुख्य सेवा">
     <style>
-      html #view-home > #homeCore{order:-1 !important;padding:4px 0 2px}
+      html #view-home > #homeCore{padding:4px 0 2px}
       #homeCore .hc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
       #homeCore a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:96px;padding:12px 6px;border-radius:18px;text-decoration:none;color:#fff;text-align:center;box-shadow:0 8px 22px rgba(2,12,40,.28);border:1px solid rgba(255,255,255,.18);position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent;transition:transform .18s ease,box-shadow .18s ease}
       #homeCore a:active{transform:scale(.97)}
@@ -827,7 +892,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="hx-deck shg-3coat-deck">
       <span class="hx-mist m1"></span><span class="hx-mist m2"></span>
       <div class="hx-top">
-        <div class="hx-live"><img class="hx-logo" src="/assets/img/logo-mark-tmw.webp?v=20261030c" width="439" height="228" alt="" loading="lazy" decoding="async"><span class="hx-dot"></span><span class="hx-corr">Gujarat ⇄ Rupaidiha (Nepal border) · daily AC sleeper</span></div>
+        <div class="hx-live"><img class="hx-logo" src="/assets/img/logo-mark-tmw.webp?v=20261031a" width="439" height="228" alt="" loading="lazy" decoding="async"><span class="hx-dot"></span><span class="hx-corr">Gujarat ⇄ Rupaidiha (Nepal border) · daily AC sleeper</span></div>
         <div class="hx-pills"><span class="hx-pill c">❄️ AC Sleeper Coach</span><span class="hx-pill g">🛡️ SHG Vault Verified</span></div>
       </div>
       <div class="hx-stage">
@@ -835,11 +900,11 @@ s.addEventListener('click',function(e){e.preventDefault();
           <div class="hx-photo">
             <span class="hx-beam"></span>
             <picture>
-              <source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261030c" width="800" height="400">
-              <img class="hx-bus" src="/assets/img/hd/bus-cutout.webp?v=20261030c" width="1600" height="800" alt="" loading="lazy" decoding="async">
+              <source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261031a" width="800" height="400">
+              <img class="hx-bus" src="/assets/img/hd/bus-cutout.webp?v=20261031a" width="1600" height="800" alt="" loading="lazy" decoding="async">
             </picture>
-            <span class="hx-hub h1"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261030c"><img src="/assets/img/hd/bus-cutout.webp?v=20261030c" width="1600" height="800" alt="" loading="lazy" decoding="async"></picture></i></span>
-            <span class="hx-hub h2"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261030c"><img src="/assets/img/hd/bus-cutout.webp?v=20261030c" width="1600" height="800" alt="" loading="lazy" decoding="async"></picture></i></span>
+            <span class="hx-hub h1"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261031a"><img src="/assets/img/hd/bus-cutout.webp?v=20261031a" width="1600" height="800" alt="" loading="lazy" decoding="async"></picture></i></span>
+            <span class="hx-hub h2"><i class="shg-wheel-spin"><picture><source media="(max-width: 1100px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261031a"><img src="/assets/img/hd/bus-cutout.webp?v=20261031a" width="1600" height="800" alt="" loading="lazy" decoding="async"></picture></i></span>
           </div>
         </div>
         <span class="hx-shadow"></span>
@@ -850,16 +915,15 @@ s.addEventListener('click',function(e){e.preventDefault();
 
   <!-- 29 Oct 2026 (owner's overhaul prompt: "First page = Ticket booking ONLY. No long scrolling ...
        Below the ticket section, create separate highlight categories: Agents & Locations, S Hari
-       Navigation, Agent Management System"). The home page now ends here: SmartBook, the core
-       strip, the coach, then these three cards. Everything else (company, fares, route, CEO, team,
-       reviews ...) stays in the page but waits behind the "About S Hari Global" bar - #view-home
-       gets .home-full from openHomeMore() (05-router.js), and a menu link into a folded section
-       opens it first. The location list is read-only public data (timetable, offices, the public
-       agent directory) fetched only when the card nears the screen (35-homehub.js). -->
+       Navigation, Agent Management System"). 30 Oct 2026: these three cards now wait behind the
+       "+ थप · More" button too, at the front of what it opens (<style id="homeFold"> in the head
+       holds the fold and the order) - #view-home gets .home-full from openHomeMore() (05-router.js),
+       and a menu link into a folded section opens it first. The location list is read-only public
+       data (timetable, offices, the public agent directory) fetched only when the card nears the
+       screen (35-homehub.js). -->
   <section class="container" id="homeHub" aria-labelledby="hubTitle">
     <style>
-      html #view-home > #homeHub{order:-1 !important;padding:6px 12px 4px;box-sizing:border-box}
-      html #view-home:not(.home-full) > :is(.wa-ticket-highlight,#homeHero,#homeFeat,#topHero,#homeFares,#homeRoute,#homeLive,#homeIndiaNepal,#homeExplore,#homeBiz,#homeCeo,#homeRoles,#animRoute,#bookHelp,#trust,#agrBar){display:none !important}
+      html #view-home > #homeHub{padding:6px 12px 4px;box-sizing:border-box}
       #homeHub .hub-h{margin:4px 2px 10px;font-size:clamp(18px,4.4vw,22px);line-height:1.3;font-weight:800;color:var(--fg,#0d1b3e)}
       #homeHub .hub-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
       @media (min-width:900px){#homeHub .hub-grid{grid-template-columns:1.4fr 1fr 1fr;align-items:start}}
@@ -1115,8 +1179,8 @@ s.addEventListener('click',function(e){e.preventDefault();
       </div>
       <figure class="hero-art">
         <picture>
-          <source media="(max-width: 760px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261030c" width="800" height="400">
-          <img src="/assets/img/hd/bus-cutout.webp?v=20261030c" width="1600" height="800" alt="AC sleeper coach - promotional render, not a photo of the fleet" loading="lazy" decoding="async">
+          <source media="(max-width: 760px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261031a" width="800" height="400">
+          <img src="/assets/img/hd/bus-cutout.webp?v=20261031a" width="1600" height="800" alt="AC sleeper coach - promotional render, not a photo of the fleet" loading="lazy" decoding="async">
         </picture>
       </figure>
     </div>
@@ -1234,7 +1298,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <!-- 10 Oct 2026 (HD pack): the phone-and-ticket illustration on the right
            of the card from 761px; hidden on phones so the form stays first
            (hd.css .qt-art). Decorative - the card's own words say what it does. -->
-      <img class="qt-art" src="/assets/img/hd/quick-ticket-t.webp?v=20261030c" width="480" height="480" alt="" loading="lazy" decoding="async" aria-hidden="true">
+      <img class="qt-art" src="/assets/img/hd/quick-ticket-t.webp?v=20261031a" width="480" height="480" alt="" loading="lazy" decoding="async" aria-hidden="true">
     </section>
     <!-- Seat-map mode: the card folds into this one strip (tap = back to QuickBot)
          and the regular search card right below becomes the first thing on screen. -->
@@ -1250,7 +1314,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="container top-hero" id="topHero">
     <aside class="th-brand" aria-label="{{f:brand.name}}">
       <div class="th-top">
-        <picture><source type="image/webp" srcset="/assets/img/logo-mark-96h-tm.webp?v=20261030c"><img class="th-logo" src="/assets/img/logo-mark-96h-tm.png?v=20261030c" alt="" width="185" height="96" loading="lazy" decoding="async"></picture>
+        <picture><source type="image/webp" srcset="/assets/img/logo-mark-96h-tm.webp?v=20261031a"><img class="th-logo" src="/assets/img/logo-mark-96h-tm.png?v=20261031a" alt="" width="185" height="96" loading="lazy" decoding="async"></picture>
         <div class="th-name"><span class="b-lock"><b data-fact="brand.short">{{f:brand.short}}</b><sup class="b-tm">™</sup></span><span class="b-legal" data-fact="brand.suffix">{{f:brand.suffix}}</span><span class="sc-th-flags"><span class="flg" data-flag="IN" role="img" aria-label="India"></span> India ⇄ Nepal <span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></span></div>
       </div>
       <p class="th-tag">Gujarat ⇄ Rupaidiha<small>AC Sleeper Coach · India ⇄ Nepal · 24×7</small></p>
@@ -1273,12 +1337,12 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="sa-scene sa-journey" data-anim="journey">
           <div class="sa-art" role="img" aria-labelledby="animJourneyAria">
             <span class="sa-vh" id="animJourneyAria" data-i18n="animJAria">Animation: the S Hari Global AC sleeper coach driving along a highway</span>
-            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-highway-bg-mobile.webp?v=20261030c" width="800" height="450"><img class="sa-land" data-src="/assets/img/anim/shg-highway-bg.webp?v=20261030c" width="1600" height="900" alt="" loading="lazy" decoding="async"></picture>
-            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-distant-scenery-mobile.webp?v=20261030c" width="800" height="267"><img class="sa-scenery" data-src="/assets/img/anim/shg-distant-scenery.webp?v=20261030c" width="1440" height="480" alt="" loading="lazy" decoding="async"></picture>
+            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-highway-bg-mobile.webp?v=20261031a" width="800" height="450"><img class="sa-land" data-src="/assets/img/anim/shg-highway-bg.webp?v=20261031a" width="1600" height="900" alt="" loading="lazy" decoding="async"></picture>
+            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-distant-scenery-mobile.webp?v=20261031a" width="800" height="267"><img class="sa-scenery" data-src="/assets/img/anim/shg-distant-scenery.webp?v=20261031a" width="1440" height="480" alt="" loading="lazy" decoding="async"></picture>
             <div class="sa-road"></div>
-            <img class="sa-shadow" src="/assets/img/anim/shg-bus-shadow.svg?v=20261030c" width="960" height="110" alt="" loading="lazy" decoding="async">
+            <img class="sa-shadow" src="/assets/img/anim/shg-bus-shadow.svg?v=20261031a" width="960" height="110" alt="" loading="lazy" decoding="async">
             <div class="sa-bus">
-              <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-bus-main-mobile.webp?v=20261030c" width="800" height="400"><img data-src="/assets/img/anim/shg-bus-main.webp?v=20261030c" width="1440" height="720" alt="" loading="lazy" decoding="async"></picture>
+              <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-bus-main-mobile.webp?v=20261031a" width="800" height="400"><img data-src="/assets/img/anim/shg-bus-main.webp?v=20261031a" width="1440" height="720" alt="" loading="lazy" decoding="async"></picture>
               <span class="sa-rim sa-rim--a"></span><span class="sa-rim sa-rim--b"></span>
             </div>
           </div>
@@ -1359,7 +1423,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <!-- decorative (alt="", aria-hidden): the caption is for sighted visitors only;
              the 480 px export, shown at 220 px -->
         <figure class="hx-live-art" aria-hidden="true">
-          <img src="/assets/img/hd/track-journey-t.webp?v=20261030c" width="480" height="480" alt="" loading="lazy" decoding="async">
+          <img src="/assets/img/hd/track-journey-t.webp?v=20261031a" width="480" height="480" alt="" loading="lazy" decoding="async">
           <figcaption data-i18n="hxIllus">Illustration</figcaption>
         </figure>
       </div>
@@ -1373,10 +1437,10 @@ s.addEventListener('click',function(e){e.preventDefault();
            edge figure is cut off; the old nepal-band files stay for the documents. -->
       <div class="hx-band">
         <picture>
-          <source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261030c 800w, /assets/img/hd/nepal-heritage.webp?v=20261030c 1600w" sizes="(max-width: 760px) 100vw, 1080px">
-          <img class="hx-band-img" id="hxBandImg" src="/assets/img/hd/nepal-heritage-m.webp?v=20261030c" width="1600" height="800" loading="lazy" decoding="async" alt="Illustration of Nepal's heritage: a golden Buddha, Himalayan peaks, prayer flags and a stupa">
+          <source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261031a 800w, /assets/img/hd/nepal-heritage.webp?v=20261031a 1600w" sizes="(max-width: 760px) 100vw, 1080px">
+          <img class="hx-band-img" id="hxBandImg" src="/assets/img/hd/nepal-heritage-m.webp?v=20261031a" width="1600" height="800" loading="lazy" decoding="async" alt="Illustration of Nepal's heritage: a golden Buddha, Himalayan peaks, prayer flags and a stupa">
         </picture>
-        <div class="hx-flags" aria-hidden="true"><img class="hx-flag" src="/assets/img/flag-in.svg?v=20261030c" width="33" height="22" alt="" loading="lazy" decoding="async"><span class="hx-flags-x">⇄</span><img class="hx-flag hx-flag-np" src="/assets/img/flag-np.svg?v=20261030c" width="20" height="26" alt="" loading="lazy" decoding="async"></div>
+        <div class="hx-flags" aria-hidden="true"><img class="hx-flag" src="/assets/img/flag-in.svg?v=20261031a" width="33" height="22" alt="" loading="lazy" decoding="async"><span class="hx-flags-x">⇄</span><img class="hx-flag hx-flag-np" src="/assets/img/flag-np.svg?v=20261031a" width="20" height="26" alt="" loading="lazy" decoding="async"></div>
       </div>
       <div class="hx-pad">
         <div class="hx-head">
@@ -1420,9 +1484,9 @@ s.addEventListener('click',function(e){e.preventDefault();
            thumbnails, never the same image twice) over the old CSS art, which stays as
            the fallback behind it. They are inspired illustrations, said so on each card. -->
       <ul class="hx-cards" id="hxPlaces">
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-heritage"><img class="hx-card-img" src="/assets/img/hd/lumbini-t.webp?v=20261030c" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261030c" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatPilgrimage">Pilgrimage</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Lumbini</b><small data-i18n="hxPlLumbini">Birthplace of Gautam Buddha · UNESCO World Heritage Site</small></span></a></li>
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-nature"><img class="hx-card-img" src="/assets/img/hd/pokhara-t.webp?v=20261030c" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261030c" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatNature">Nature</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Pokhara</b><small data-i18n="hxPlPokhara">Lakes and Annapurna mountain views</small></span></a></li>
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-wild"><img class="hx-card-img" src="/assets/img/hd/bardiya-t.webp?v=20261030c" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261030c" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatWildlife">Wildlife</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Bardiya National Park</b><small data-i18n="hxPlBardiya">Wildlife and jungle, near Nepalgunj</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-heritage"><img class="hx-card-img" src="/assets/img/hd/lumbini-t.webp?v=20261031a" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261031a" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatPilgrimage">Pilgrimage</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Lumbini</b><small data-i18n="hxPlLumbini">Birthplace of Gautam Buddha · UNESCO World Heritage Site</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-nature"><img class="hx-card-img" src="/assets/img/hd/pokhara-t.webp?v=20261031a" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261031a" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatNature">Nature</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Pokhara</b><small data-i18n="hxPlPokhara">Lakes and Annapurna mountain views</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-wild"><img class="hx-card-img" src="/assets/img/hd/bardiya-t.webp?v=20261031a" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261031a" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatWildlife">Wildlife</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Bardiya National Park</b><small data-i18n="hxPlBardiya">Wildlife and jungle, near Nepalgunj</small></span></a></li>
       </ul>
       <div class="hx-pkgs" id="hxPkgs" hidden></div>
       <div class="hx-tours">
@@ -1469,7 +1533,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="sc-ceo sc-reveal">
       <div class="sc-ceo-band" aria-hidden="true"><i class="sc-band-in"></i><i class="sc-band-np"></i></div>
       <div class="sc-ceo-top">
-        <div class="sc-ceo-photo"><img src="/assets/img/ceo-sm.webp?v=20261030c" width="480" height="667" alt="{{f:ceo.name}}" loading="lazy" decoding="async"></div>
+        <div class="sc-ceo-photo"><img src="/assets/img/ceo-sm.webp?v=20261031a" width="480" height="667" alt="{{f:ceo.name}}" loading="lazy" decoding="async"></div>
         <div class="sc-ceo-id">
           <p class="sc-eyebrow"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg> <span data-i18n="ceoEyebrow">Meet our founder</span></p>
           <h2 class="sc-ceo-name" id="homeCeoName" data-fact="ceo.name">{{f:ceo.name}}</h2>
@@ -1502,10 +1566,13 @@ s.addEventListener('click',function(e){e.preventDefault();
        real work), "See all" opens the full public list (/api/agent-directory.php, /api/staff-list.php - the
        same fields as the old sections), and every card has its Apply and Team-login doors. Above them the
        three-step showcase: Ticket Booking -> Digital Agreements & IDs -> Live Bus Navigation. Filled by
-       34-roles.js. Its rules live here, not in a stylesheet, so the app-shell stamp does not move. -->
+       34-roles.js. Its rules live here, not in a stylesheet, so the app-shell stamp does not move.
+       30 Oct 2026 (owner: "ticket katne home page ma verified agent ra guiding video ticketing pachhi aaos"):
+       shown right after the booking card, before "+ थप · More" - compact while folded (one role at a time:
+       the tabs switch .rl-on, the Top 3 and "See all"); the CEO line, notes and Apply doors come with "+ थप".
+       Order and the compact rules: <style id="homeFold"> in the head. -->
   <section class="container" id="homeRoles" aria-labelledby="homeRolesTitle">
     <style>
-      #view-home > #homeRoles{order:6 !important}
       #homeRoles [hidden]{display:none!important}
       #homeRoles .rl-ceo{display:flex;align-items:center;gap:14px;margin:0 0 14px;padding:12px 16px;border-radius:20px;text-decoration:none;color:#fff;background:linear-gradient(135deg,#0a2a8f,#1f4fe0 60%,#f07a1e);box-shadow:0 16px 30px -18px rgba(10,42,143,.8)}
       #homeRoles .rl-ceo-ph{flex:0 0 auto;width:68px;height:68px;border-radius:50%;padding:3px;background:conic-gradient(from 0deg,#ffd27a,#fff,#f07a1e,#ffd27a)}
@@ -1610,7 +1677,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <p class="rl-sub">कम्पनीले KYC जाँचेर परिचयपत्र दिएका मान्छे मात्र — हरेक कार्डको QR ले आजको स्थिति देखाउँछ। तपाईं पनि जोडिनुहोस्: एउटै अनलाइन फारम, सम्झौता, ई-सही, स्वीकृति, डिजिटल ID र लगइन। · Only people the office verified; every card's QR shows today's standing.</p>
       <!-- 23 Oct 2026 (owner: "3/3/3 + 1 CEO = 10 jana live"): the CEO card leads the three Top 3 rows. -->
       <a class="rl-ceo" href="https://wa.me/{{f:ceo.wa}}" data-fact-wa="ceo.wa" target="_blank" rel="noopener noreferrer">
-        <span class="rl-ceo-ph"><img src="/assets/img/ceo-sm.webp?v=20261030c" width="96" height="133" alt="" loading="lazy" decoding="async"></span>
+        <span class="rl-ceo-ph"><img src="/assets/img/ceo-sm.webp?v=20261031a" width="96" height="133" alt="" loading="lazy" decoding="async"></span>
         <span class="rl-ceo-t"><small>👑 CEO &amp; Director · सञ्चालक</small><b data-fact="ceo.name">{{f:ceo.name}}</b><span class="rl-num">📞 <span data-fact="ceo.phone">{{f:ceo.phone}}</span></span></span>
       </a>
       <nav class="rl-tabs" role="tablist" aria-label="Role">
@@ -1619,7 +1686,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <a class="rl-tab t-partner" role="tab" href="#partners" data-kind="partner" aria-selected="false">🏢 PVT. LTD. PARTNER</a>
       </nav>
 
-      <article class="rl-card k-agent" data-role="agent" id="agents">
+      <article class="rl-card k-agent rl-on" data-role="agent" id="agents">
         <div class="rl-head"><span class="rl-ic" aria-hidden="true">🤝</span><h3>एजेन्ट · Agents<small>व्यक्ति — टिकट बेच्ने, यात्रु ल्याउने, कमिसनमा</small></h3><span class="rl-count" hidden></span></div>
         <div class="rl-row"><div class="rl-skel"></div><div class="rl-skel"></div><div class="rl-skel"></div></div>
         <ul class="rl-list" hidden></ul>
@@ -1655,6 +1722,71 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
   </section>
 
+  <!-- ============ GUIDING VIDEO (30 Oct 2026, owner: "ticket katne home page ma verified agent ra guiding video
+       ticketing pachhi aaos") ============
+       Right after the verified agents, before "+ थप · More": the Nepali agent-form guide (the same file as the shareable
+       /guide/ page, assets/agentpro/guide/). Only the poster loads with the page, and lazily - the booking card above
+       never waits for it. The 18 MB video is fetched on a tap and plays with sound; it never starts on its own.
+       A <section> outside #homeHero (index.php's first-paint splice reads up to #homeHero's first </section>). -->
+  <section class="container" id="homeVideo" aria-labelledby="homeVideoTitle">
+    <style>
+      #homeVideo{margin-top:6px}
+      #homeVideo .hv-box{--k:#0054A8;position:relative;overflow:hidden;border-radius:22px;padding:12px;background:var(--surface,#fff);border:1px solid color-mix(in srgb,var(--k) 22%,var(--line,#e4e9f1));box-shadow:0 14px 30px -24px color-mix(in srgb,var(--k) 60%,transparent)}
+      #homeVideo .hv-box::before{content:"";position:absolute;inset:0 0 auto 0;height:5px;background:linear-gradient(90deg,var(--k),#f07a1e)}
+      #homeVideo .hv-row{display:flex;align-items:center;gap:14px;margin-top:4px}
+      #homeVideo .hv-poster{position:relative;flex:0 0 96px;width:96px;height:170px;padding:0;border:0;border-radius:16px;overflow:hidden;background:#0b1a3a;cursor:pointer;-webkit-tap-highlight-color:transparent}
+      #homeVideo .hv-poster[hidden]{display:none}
+      #homeVideo .hv-poster img{display:block;width:100%;height:100%;object-fit:cover}
+      #homeVideo .hv-poster:focus-visible{outline:3px solid #ffd166;outline-offset:2px}
+      #homeVideo .hv-pl{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;display:grid;place-items:center;font-size:18px;color:#fff;background:#f07a1e;box-shadow:0 0 0 6px rgba(240,122,30,.28),0 10px 20px -8px rgba(0,0,0,.7)}
+      #homeVideo .hv-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+      #homeVideo .hv-eye{margin:0;font-size:12px;font-weight:800;letter-spacing:.04em;color:#f07a1e}
+      #homeVideo h2{margin:0;font-size:18px;line-height:1.25;color:var(--fg,#0d1b3e)}
+      #homeVideo h2 small{display:block;margin-top:2px;font-size:13px;font-weight:700;color:var(--muted,#5b6b8c)}
+      #homeVideo .hv-sub{margin:0;font-size:13px;line-height:1.45;color:var(--muted,#5b6b8c)}
+      #homeVideo .hv-link{align-self:flex-start;display:inline-flex;align-items:center;min-height:40px;font-size:13px;font-weight:800;color:var(--kt,var(--k));text-decoration:none}
+      #homeVideo .hv-player{margin-top:10px;border-radius:16px;overflow:hidden;background:#000}
+      #homeVideo .hv-player video{display:block;width:100%;max-height:78vh;background:#000}
+      :root[data-theme="dark"] #homeVideo .hv-box{--kt:#8ab8ff}
+    </style>
+    <div class="hv-box">
+      <div class="hv-row">
+        <button type="button" class="hv-poster" id="homeVideoPlay" data-src="/assets/agentpro/guide/agent-form-guide-ne.mp4?v=20261031a" aria-label="▶ भिडियो चलाउनुहोस् · Play the video: how to fill the agent form (Nepali)">
+          <img src="/assets/agentpro/guide/agent-form-guide-thumb.jpg?v=20261031a" width="1080" height="1920" alt="" loading="lazy" decoding="async">
+          <span class="hv-pl" aria-hidden="true">▶</span>
+        </button>
+        <div class="hv-tx">
+          <p class="hv-eye">▶ भिडियो गाइड · VIDEO GUIDE</p>
+          <h2 id="homeVideoTitle">एजेन्ट फारम कसरी भर्ने?<small>How to fill the agent form</small></h2>
+          <p class="hv-sub">६ सजिलो चरण · नेपाली भिडियो · ट्याप गरे मात्र चल्छ · 6 easy steps, plays on tap</p>
+          <a class="hv-link" href="/guide/">📤 पूरा पेज / सेयर · Open &amp; share ↗</a>
+        </div>
+      </div>
+      <div class="hv-player" id="homeVideoPlayer" hidden></div>
+    </div>
+  </section>
+  <script>
+  (function () {
+    var b = document.getElementById('homeVideoPlay'), box = document.getElementById('homeVideoPlayer');
+    if (!b || !box) return;
+    b.addEventListener('click', function () {
+      var v = box.querySelector('video');
+      if (!v) {
+        v = document.createElement('video');
+        v.controls = true; v.playsInline = true; v.preload = 'auto';
+        v.setAttribute('playsinline', '');
+        v.poster = (b.querySelector('img') || {}).src || '';
+        v.src = b.getAttribute('data-src');
+        box.appendChild(v);
+      }
+      box.hidden = false;
+      b.hidden = true;   // the player (with its own controls) takes the poster's place
+      try { box.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {}
+      var p = v.play(); if (p && p.catch) p.catch(function () {});
+    });
+  })();
+  </script>
+
   <!-- ============ HOMEPAGE ANIMATIONS (4 Oct 2026) ============
        Three scenes from the owner's premium animation pack replace the old
        hidden §6 highway scene (#routeAnim) and route card (#homeRouteMap):
@@ -1680,7 +1812,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="sa-art" role="img" aria-labelledby="animRouteAria">
           <span class="sa-vh" id="animRouteAria" data-i18n="animMAria">Illustrative map: a route line from Gujarat to Rupaidiha on the India–Nepal border</span>
           <svg class="sa-map-svg" viewBox="36 145 590 315" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
-            <image class="sa-map-bg" data-href="/assets/img/anim/shg-map-bg.svg?v=20261030c" x="0" y="0" width="960" height="720"/>
+            <image class="sa-map-bg" data-href="/assets/img/anim/shg-map-bg.svg?v=20261031a" x="0" y="0" width="960" height="720"/>
             <path class="sa-route-glow" d="M229.61,374.43 L238.71,350.55 L222.86,335.53 C277.86,260.53 377.99,238.12 457.99,228.12"/>
             <path class="sa-route-track" d="M229.61,374.43 L238.71,350.55 L222.86,335.53 C277.86,260.53 377.99,238.12 457.99,228.12"/>
             <g class="sa-route-segs"></g>
@@ -1691,7 +1823,7 @@ s.addEventListener('click',function(e){e.preventDefault();
             <text class="sa-lbl" x="208.86" y="321.53" text-anchor="end" data-i18n="animMAhd">Ahmedabad</text>
             <text class="sa-lbl" x="457.99" y="272" text-anchor="middle" data-i18n="animMRup">Rupaidiha</text>
             <g class="sa-pulse" transform="translate(457.99 228.12)"><circle r="19"/></g>
-            <g class="sa-map-bus" transform="translate(457.99 228.12)"><image data-href="/assets/img/anim/shg-route-bus-marker.webp?v=20261030c" x="-50" y="-37" width="100" height="50"/></g>
+            <g class="sa-map-bus" transform="translate(457.99 228.12)"><image data-href="/assets/img/anim/shg-route-bus-marker.webp?v=20261031a" x="-50" y="-37" width="100" height="50"/></g>
           </svg>
         </div>
         <button type="button" class="sa-pause" data-paused="false" data-i18n-title="animPause" title="Pause animation" aria-label="Pause animation"><svg class="sa-i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg><svg class="sa-i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
@@ -1712,7 +1844,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <span class="bh-txt"><b id="bookHelpTitle" data-i18n="bhTitle">टिकट कसरी काट्ने? — सजिलो गाइड</b><small data-i18n="bhSub">मोबाइलबाटै केही मिनेटमा आफ्नो टिकट आफैं काट्नुहोस् · यहाँ थिच्नुहोस्</small></span>
       <!-- 10 Oct 2026 (HD pack): the booking helper (support-guide, a fictional illustrated
            character, alpha) beside the guide's title; decorative, hidden under 480px. -->
-      <span class="bh-art" aria-hidden="true"><img src="/assets/img/hd/support-guide-s.webp?v=20261030c" width="128" height="192" alt="" loading="lazy" decoding="async"></span>
+      <span class="bh-art" aria-hidden="true"><img src="/assets/img/hd/support-guide-s.webp?v=20261031a" width="128" height="192" alt="" loading="lazy" decoding="async"></span>
       <span class="bh-go" aria-hidden="true"><svg class="ic"><use href="#i-plus"/></svg></span>
     </button>
     <div class="bh-panel" id="bookHelpPanel" hidden>
@@ -1981,10 +2113,13 @@ s.addEventListener('click',function(e){e.preventDefault();
        (see the data-scroll handler in 05-router.js). -->
   <section class="section" id="realReviews" hidden></section>
   <div class="container home-more-bar" id="homeMoreBar">
+    <!-- 30 Oct 2026 (owner: "'+' thichepachhi matra baaki button"): the ONE button under the booking card, the agents
+         and the video. "+ थप · More" opens everything else; the + turns into − and the label into "कम · Less"
+         (two labels, <style id="homeFold"> shows one). 05-router.js wireHomeMore / openHomeMore. -->
     <button type="button" id="homeMoreToggle" class="home-more-btn" aria-expanded="false" aria-controls="homeMore">
-      <span class="hm-ic">ℹ️</span>
-      <span class="hm-tx"><b data-i18n="homeMoreTitle">About S Hari Global &amp; the route</b><small data-i18n="homeMoreSub">Company, facilities, reviews, full fares, offices</small></span>
-      <span class="hm-ch" aria-hidden="true">⌄</span>
+      <span class="hm-ic" aria-hidden="true"></span>
+      <span class="hm-tx hm-more"><b data-i18n="homeMoreTitle">More · थप</b><small data-i18n="homeMoreSub">All services, videos, CEO, fares, route, live bus, company</small></span>
+      <span class="hm-tx hm-less"><b data-i18n="homeLessTitle">Less · कम</b><small data-i18n="homeLessSub">Show ticket booking only</small></span>
     </button>
   </div>
   <div id="homeMore" class="home-more" hidden>
@@ -2491,11 +2626,11 @@ s.addEventListener('click',function(e){e.preventDefault();
         </div>
         <div class="vcard-grid">
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20261030c" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20261030c" srcset="/assets/img/card-en-sm.jpg?v=20261030c 720w, /assets/img/card-en.jpg?v=20261030c 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20261031a" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20261031a" srcset="/assets/img/card-en-sm.jpg?v=20261031a 720w, /assets/img/card-en.jpg?v=20261031a 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcEn">🇮🇳 English card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-en.jpg" download="S-Hari-Global-Card-EN.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="en">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20261030c" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20261030c" srcset="/assets/img/card-ne-sm.jpg?v=20261030c 720w, /assets/img/card-ne.jpg?v=20261030c 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20261031a" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20261031a" srcset="/assets/img/card-ne-sm.jpg?v=20261031a 720w, /assets/img/card-ne.jpg?v=20261031a 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcNe">🇳🇵 Nepali card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-ne.jpg" download="S-Hari-Global-Card-NE.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="ne">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
         </div>
@@ -3353,7 +3488,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div>
         <!-- 9 Oct 2026: the emblem only (no white plate, no baked name), the live
              company name between the two flags, and the new public pages. -->
-        <picture><source type="image/webp" srcset="/assets/img/logo-mark-tmw.webp?v=20261030c"><img id="logoFoot" src="/assets/img/logo-mark-tmw.png?v=20261030c" width="439" height="228" alt="" loading="lazy" decoding="async"></picture>
+        <picture><source type="image/webp" srcset="/assets/img/logo-mark-tmw.webp?v=20261031a"><img id="logoFoot" src="/assets/img/logo-mark-tmw.png?v=20261031a" width="439" height="228" alt="" loading="lazy" decoding="async"></picture>
         <p class="sc-f-name"><span class="flg" data-flag="IN" role="img" aria-label="India"></span><span class="b-lock"><b style="color:#fff" data-fact="brand.short">{{f:brand.short}}</b><sup class="b-tm">™</sup></span><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></p>
         <p class="sc-f-legal" data-fact="brand.suffix">{{f:brand.suffix}}</p>
         <p data-i18n="fTagline">India–Nepal bus service. Connecting Gujarat with the Rupaidiha border — partner office at Pushpalal Chowk, Nepalgunj — with safe coaches and easy ticket booking.</p>
@@ -3423,7 +3558,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
     <div class="f-dev">Developed by <strong>Dileep Sunar</strong> · <a href="https://wa.me/{{f:head.wa}}" data-fact-wa="head.wa" target="_blank" rel="noopener noreferrer">💬 WhatsApp <span data-fact="head.phone">{{f:head.phone}}</span></a> · <a href="https://www.facebook.com/dileep.soonaar/" target="_blank" rel="noopener noreferrer">Facebook</a></div>
     <div class="f-ceo reveal">
-      <img id="ceoPhoto" src="/assets/img/ceo-sm.webp?v=20261030c" alt="{{f:ceo.name}} — Founder &amp; CEO" width="44" height="44" loading="lazy" decoding="async" onerror="this.style.display='none'">
+      <img id="ceoPhoto" src="/assets/img/ceo-sm.webp?v=20261031a" alt="{{f:ceo.name}} — Founder &amp; CEO" width="44" height="44" loading="lazy" decoding="async" onerror="this.style.display='none'">
       <span>🕉️ <span id="ceoMantra"></span> — <strong id="ceoName"></strong>, Founder &amp; CEO
         <button id="mantraBtn" type="button" title="Play mantra chant · मन्त्र सुन्नुहोस्" aria-label="Play mantra chant">🔊</button>
       </span>

@@ -6,6 +6,17 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 $admin = admin_boot();
 
+/* 30 Oct 2026 (owner: "euta dashboard"): with the one door on, /admin/ (the .network front page after
+   sign-in) and anyone without dashboard.view go to the one home, admin/home.php. An explicit
+   /admin/index.php still opens this office dashboard for the roles that hold dashboard.view.
+   Switched off: the two role redirects below, exactly as before. */
+if (Auth::oneDoorOn()) {
+    $reqPath = (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) ?? '');
+    if (!Auth::can('dashboard.view') || in_array($reqPath, ['/admin', '/admin/'], true)) {
+        header('Location: ' . Auth::homeUrl());
+        exit;
+    }
+}
 if (($admin['role'] ?? '') === 'agent') { header('Location: /admin/agent.php'); exit; }
 if (($admin['role'] ?? '') === 'counter') { header('Location: /admin/bookings.php'); exit; }
 Auth::requireAdmin('dashboard.view');

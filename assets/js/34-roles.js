@@ -119,6 +119,13 @@
     more.hidden = n <= shown[kind];
     more.textContent = 'थप · More (' + Math.max(0, n - shown[kind]) + ')';
   }
+  /* 30 Oct 2026 (owner: "verified agent ... ticketing pachhi aaos"): the section sits right after the
+     booking card and, until "+ थप · More" is open, shows ONE role card - the picked tab's (.rl-on,
+     <style id="homeFold"> in app.template.html). The tabs are real tabs now. */
+  function pick(kind) {
+    [].forEach.call(document.querySelectorAll('#homeRoles .rl-tab'), function (x) { x.setAttribute('aria-selected', x.getAttribute('data-kind') === kind ? 'true' : 'false'); });
+    [].forEach.call(document.querySelectorAll('#homeRoles .rl-card'), function (c) { c.classList.toggle('rl-on', c.getAttribute('data-role') === kind); });
+  }
   function counts() {
     ['agent', 'staff', 'partner'].forEach(function (k) {
       var b = box(k), list = fullList(k); if (!b) return;
@@ -133,8 +140,11 @@
     var kind = t.getAttribute('data-kind');
     if (t.classList.contains('rl-tab')) {
       e.preventDefault();
-      [].forEach.call(document.querySelectorAll('#homeRoles .rl-tab'), function (x) { x.setAttribute('aria-selected', x === t ? 'true' : 'false'); });
-      var b = box(kind); if (b) b.scrollIntoView({ behavior: document.documentElement.getAttribute('data-motion') === 'reduced' ? 'instant' : 'smooth', block: 'start' });
+      pick(kind);
+      /* the opened ("+ थप") page shows all three cards - the tab scrolls there; the compact
+         home shows only the picked one, already in place */
+      var vh = document.getElementById('view-home');
+      var b = box(kind); if (b && vh && vh.classList.contains('home-full')) b.scrollIntoView({ behavior: document.documentElement.getAttribute('data-motion') === 'reduced' ? 'instant' : 'smooth', block: 'start' });
       return;
     }
     if (t.classList.contains('rl-more')) { shown[kind] += PAGE; paintList(kind); return; }
@@ -163,7 +173,7 @@
   /* a shared /#agents, /#team or /#partners link opens that card's full list */
   var hash = String(location.hash || '').replace(/^#/, '');
   var want = { agents: 'agent', team: 'staff', drivers: 'staff', conductors: 'staff', partners: 'partner' }[hash];
-  if (want) { open[want] = true; }
+  if (want) { open[want] = true; pick(want); }
   var root = document.getElementById('homeRoles');
   if ('IntersectionObserver' in window && !want) {
     var w = new IntersectionObserver(function (en) { if (en.some(function (x) { return x.isIntersecting; })) { w.disconnect(); loadTop(); } }, { rootMargin: '500px 0px' });

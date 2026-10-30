@@ -228,8 +228,10 @@ check('vCard download', $c === 200 && str_contains($h['content-type'] ?? '', 'te
 
 /* ======================= the member portal ======================= */
 section('/me/ with a signed-in agent');
-[$c, $b] = http('GET', $BASE . '/me/');
-check('signed out: the sign-in screen (code + mobile + WhatsApp, fingerprint)', $c === 200 && str_contains($b, '"signed":false'));
+[$c, $b, $h] = http('GET', $BASE . '/me/');
+// 30 Oct 2026 (one door, switch login_one_door_on): signed out, /me/ hands over to /admin/login.php?back=me
+check('signed out: the sign-in screen (the one door, or /me/\'s own when it is off)',
+    ($c === 200 && str_contains($b, '"signed":false')) || ($c === 302 && str_contains((string) ($h['location'] ?? ''), 'login.php?back=me')));
 [$c] = http('GET', $BASE . '/api/agentpro.php?a=me');
 check('the API refuses a guest', $c === 401);
 [$c, , , $j] = http('GET', $BASE . '/api/agentpro.php?a=me', null, $agt);

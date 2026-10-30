@@ -843,7 +843,10 @@ final class AgentPro
             $add('📋', 'मेरो चलानी (मेरा यात्रु)', 'My chalani (my passengers)', '/admin/agent-passengers.php?view=manifest');
             $add('🔁', 'सिट सार्ने', 'Shift a seat', '/admin/seatmap.php');
         } elseif (Auth::can('bookings.view')) {
-            $add('🎫', 'टिकट बुक · SmartBook', 'Book a ticket · SmartBook', '/admin/smartbook.php');
+            // 30 Oct 2026: SmartBook only for selling staff — an accountant / support got "Selling staff only."
+            if (Auth::isSellingStaff()) {
+                $add('🎫', 'टिकट बुक · SmartBook', 'Book a ticket · SmartBook', '/admin/smartbook.php');
+            }
             if ($counterMode) {
                 $add('🖥', 'काउन्टर मोड (सिट नक्सा)', 'Counter mode (seat map)', '/index.php?counter=1#/');
             }
@@ -873,6 +876,10 @@ final class AgentPro
         }
         if (Auth::can('dashboard.view')) {
             $add('🏢', 'एडमिन प्यानल', 'Admin panel', '/admin/index.php');
+        }
+        if (Auth::oneDoorOn()) {
+            // 30 Oct 2026 (owner: "euta dashboard"): the way back to the one home, first in the list
+            array_unshift($tools, ['icon' => '🏠', 'ne' => 'मेरो ड्यासबोर्ड', 'en' => 'My dashboard', 'href' => Auth::homeUrl()]);
         }
         $crew = null;
         if (($m['crewRole'] ?? '') !== '') {
@@ -2518,7 +2525,10 @@ final class AgentPro
         ];
         if ($mem['isAgent']) {
             $lines[] = '📱 आफ्नो ID, visiting card र wallet: ' . appUrl('me/');
-            $lines[] = '🔐 लगइन: एजेन्ट कोड ' . $mem['idNo'] . ' + यो मोबाइल + WhatsApp OTP';
+            // 30 Oct 2026 (one door): one sign-in page for everybody
+            $lines[] = Auth::oneDoorOn()
+                ? '🔐 लगइन: ' . appUrl('admin/login.php') . ' — यो मोबाइल लेखेर WhatsApp मा "hi" वा कोड; वा ID ' . $mem['idNo'] . ' + पासवर्ड'
+                : '🔐 लगइन: एजेन्ट कोड ' . $mem['idNo'] . ' + यो मोबाइल + WhatsApp OTP';
             $lines[] = '';
             $lines[] = '💬 यही WhatsApp मा लेख्नुहोस्: "help" — टिकट, balance, statement सबै यहीँबाट।';
         } else {
@@ -2527,7 +2537,7 @@ final class AgentPro
             if ($password !== null) {
                 $lines[] = '🔑 Temporary password: ' . $password . ' (पहिलो लगइनमा बदल्नुहोस् / change it at first sign-in)';
             }
-            $lines[] = '🌐 ' . appUrl('admin/login.php');
+            $lines[] = '🌐 ' . appUrl('admin/login.php') . (Auth::oneDoorOn() ? ' — मोबाइल वा ID + पासवर्ड · mobile or ID + password' : '');
         }
         if (($mem['crewRole'] ?? '') !== '') {
             $lines[] = '';
