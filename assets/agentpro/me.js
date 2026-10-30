@@ -15,6 +15,7 @@
       sendCode: 'Send code on WhatsApp', otp: 'Code from WhatsApp', verify: 'Sign in', fp: 'Sign in with fingerprint / face', staff: 'Office staff sign in', apply: 'Not an agent yet? Apply',
       t_id: 'ID', t_card: 'Card', t_wallet: 'Wallet', t_docs: 'Docs', t_me: 'Profile',
       tapFlip: 'Tap the card to see the back', download: 'Download', print: 'Print', share: 'Share', verifyLink: 'Verify link', copy: 'Copy link', copied: 'Copied',
+      myForm: 'मेरो फारम · My form (PDF)', myFormLead: 'The application form you filled — A4, 2 pages, with your photo and code.',
       valid: 'Valid', suspended: 'Suspended', expired: 'Expired', revoked: 'Revoked', inactive: 'Not active', validTill: 'Valid till {d}',
       vcLead: 'Scanning the QR opens a WhatsApp chat with this number.', waOnCard: 'WhatsApp number printed on the card', otherPhone: 'Second phone (optional)', tagline: 'Line under the company name',
       greeting: 'Message ready when someone scans', greetingHint: 'Keep it short (about 3 words) — a long message is left off the printed QR so it still scans.', theme: 'Style', royal: 'Royal', gold: 'Gold', night: 'Night', save: 'Save', saved: 'Saved — your cards are updated', shareWa: 'Share on WhatsApp',
@@ -33,6 +34,7 @@
       sendCode: 'WhatsApp मा कोड पठाउनुहोस्', otp: 'WhatsApp मा आएको कोड', verify: 'लगइन गर्नुहोस्', fp: 'औंठा / अनुहारले लगइन', staff: 'अफिस स्टाफ लगइन', apply: 'एजेन्ट बन्न आवेदन',
       t_id: 'ID', t_card: 'कार्ड', t_wallet: 'वालेट', t_docs: 'कागजात', t_me: 'प्रोफाइल',
       tapFlip: 'पछाडि हेर्न कार्डमा थिच्नुहोस्', download: 'डाउनलोड', print: 'प्रिन्ट', share: 'सेयर', verifyLink: 'प्रमाणित लिंक', copy: 'लिंक कपी', copied: 'कपी भयो',
+      myForm: 'मेरो फारम · My form (PDF)', myFormLead: 'तपाईंले भरेको आवेदन फारम — A4, २ पाना, फोटो र कोडसहित।',
       valid: 'मान्य', suspended: 'रोकिएको', expired: 'म्याद सकियो', revoked: 'रद्द', inactive: 'सक्रिय छैन', validTill: '{d} सम्म मान्य',
       vcLead: 'QR स्क्यान गर्दा यही नम्बरमा सिधै WhatsApp खुल्छ।', waOnCard: 'कार्डमा छापिने WhatsApp नम्बर', otherPhone: 'अर्को फोन (ऐच्छिक)', tagline: 'कम्पनीको नामतलको लाइन',
       greeting: 'स्क्यान गर्दा तयार हुने सन्देश', greetingHint: 'छोटो राख्नुहोस् (३ शब्द जति) — लामो सन्देश छापिएको QR मा राखिँदैन, ताकि QR सजिलै स्क्यान होस्।', theme: 'शैली', royal: 'शाही', gold: 'सुनौलो', night: 'रात', save: 'सेभ', saved: 'सेभ भयो — कार्ड अपडेट भयो', shareWa: 'WhatsApp मा सेयर',
@@ -51,6 +53,7 @@
       sendCode: 'WhatsApp पर कोड भेजें', otp: 'WhatsApp पर आया कोड', verify: 'लॉगिन करें', fp: 'अंगूठे / चेहरे से लॉगिन', staff: 'ऑफिस स्टाफ लॉगिन', apply: 'एजेंट बनने के लिए आवेदन',
       t_id: 'ID', t_card: 'कार्ड', t_wallet: 'वॉलेट', t_docs: 'दस्तावेज़', t_me: 'प्रोफ़ाइल',
       tapFlip: 'पीछे देखने के लिए कार्ड दबाएँ', download: 'डाउनलोड', print: 'प्रिंट', share: 'शेयर', verifyLink: 'सत्यापन लिंक', copy: 'लिंक कॉपी', copied: 'कॉपी हुआ',
+      myForm: 'मेरा फ़ॉर्म · My form (PDF)', myFormLead: 'आपका भरा हुआ आवेदन फ़ॉर्म — A4, 2 पेज, फ़ोटो और कोड के साथ।',
       valid: 'मान्य', suspended: 'रोका गया', expired: 'समाप्त', revoked: 'रद्द', inactive: 'सक्रिय नहीं', validTill: '{d} तक मान्य',
       vcLead: 'QR स्कैन करते ही इसी नंबर पर WhatsApp खुलता है।', waOnCard: 'कार्ड पर छपने वाला WhatsApp नंबर', otherPhone: 'दूसरा फ़ोन (वैकल्पिक)', tagline: 'कंपनी के नाम के नीचे की लाइन',
       greeting: 'स्कैन पर तैयार संदेश', greetingHint: 'छोटा रखें (लगभग 3 शब्द) — लंबा संदेश छपे QR में नहीं जाता, ताकि QR आसानी से स्कैन हो।', theme: 'शैली', royal: 'शाही', gold: 'सुनहरा', night: 'रात', save: 'सेव', saved: 'सेव हुआ — कार्ड अपडेट हुआ', shareWa: 'WhatsApp पर शेयर',
@@ -185,8 +188,15 @@
       + '<div class="ap-actions"><a class="ap-btn ghost sm" href="' + esc(c['id-front']) + '&dl=1">⬇ ' + esc(t('download')) + '</a>'
       + '<a class="ap-btn ghost sm" href="' + esc(c['id-back']) + '&dl=1">⬇ ' + esc(t('download')) + ' (2)</a>'
       + '<a class="ap-btn ghost sm" href="/me/print.php" target="_blank" rel="noopener">🖨 ' + esc(t('print')) + '</a>'
-      + '<button type="button" class="ap-btn ghost sm" data-copy="' + esc(S.me.verify) + '">🔗 ' + esc(t('verifyLink')) + '</button></div></section>'
+      + '<button type="button" class="ap-btn ghost sm" data-copy="' + esc(S.me.verify) + '">🔗 ' + esc(t('verifyLink')) + '</button></div>'
+      + myFormBtn() + '</section>'
       + quickNav();
+  }
+  /* 30 Oct 2026 (owner: "afnai bhareko digital form download"): the filled A4 form, /me/form.php */
+  function myFormBtn() {
+    return '<div class="ap-actions"><a class="ap-btn block" href="/me/form.php?auto=pdf" target="_blank" rel="noopener">📄 ' + esc(t('myForm')) + '</a>'
+      + '<a class="ap-btn ghost sm" href="/me/form.php" target="_blank" rel="noopener">👁 ' + esc(t('print')) + '</a></div>'
+      + '<p class="ap-hint" style="text-align:center">' + esc(t('myFormLead')) + '</p>';
   }
   function quickNav() {
     var b = S.wallet ? S.wallet.balances : { commission: 0, cash: 0 };
@@ -306,7 +316,7 @@
         + '<label class="ap-btn ghost sm" style="position:relative;margin-left:6px">' + esc(has ? t('replace') : t('addFile')) + '<input type="file" accept="image/*,application/pdf" data-kyc="' + slot + '" style="position:absolute;inset:0;opacity:0"></label></li>';
     };
     return '<section class="ap-card"><div class="ap-row" style="justify-content:space-between"><h2>' + esc(t('docs')) + '</h2><span class="ap-status ' + (m.kycStatus === 'verified' ? 'valid' : (m.kycStatus === 'rejected' ? 'revoked' : 'expired')) + '">' + esc(t('kyc')) + ': ' + esc(m.kycStatus) + '</span></div>'
-      + '<ul class="ap-pass">' + doc(1, t('docFront'), m.hasDoc1) + doc(2, t('docBack'), m.hasDoc2) + '</ul></section>';
+      + '<ul class="ap-pass">' + doc(1, t('docFront'), m.hasDoc1) + doc(2, t('docBack'), m.hasDoc2) + '</ul>' + myFormBtn() + '</section>';
   }
 
   /* ---- Profile ---- */

@@ -8,6 +8,9 @@
  *   ?u=<card token>&s=vc-front|vc-back      the visiting card is public by design (it is
  *                                           meant to be handed out); the ID card is not
  *   ?pay=<amount>&m=<id>&e=&k=              a framed UPI QR for paying the company that amount
+ *   ?m=<admin id>&pdf=1                     ONE A4 PDF, print-ready: ID card front + back and
+ *                                           visiting card front + back at true size, crop marks
+ *                                           (same access as a card side; signed side = 'pdf')
  *
  *   &dl=1  download instead of showing
  */
@@ -68,13 +71,19 @@ if (isset($_GET['pay'])) {
     exit;
 }
 
-if (!in_array($side, ApCard::SIDES, true)) {
+$wantPdf = !empty($_GET['pdf']);
+if ($wantPdf) {
+    $side = 'pdf';                                      // what a signed link was signed for
+} elseif (!in_array($side, ApCard::SIDES, true)) {
     $deny(404, 'Unknown card side.');
 }
 
 /* ---- who may see this card ---- */
 $member = null;
 if (isset($_GET['u'])) {
+    if ($wantPdf) {
+        $deny(404, 'No such card.');                    // the public token shows the visiting card only
+    }
     $member = AgentPro::memberByToken((string) $_GET['u']);
     if ($member === null || !str_starts_with($side, 'vc-')) {
         $deny(404, 'No such card.');
@@ -92,7 +101,8 @@ if (isset($_GET['u'])) {
     if ($admin === null) {
         $deny(401, 'Sign in first.');
     }
-    $own = (int) $admin['id'] === $id;
+    // No ?m= means "my own card" (the member portal links /api/agentpro-card.php?pdf=1).
+    $own = $id <= 0 || (int) $admin['id'] === $id;
     if (!$own && !(Auth::can('staff.manage') || Auth::can('commissions.view'))) {
         $deny(403, 'You may not view this card.');
     }
@@ -102,8 +112,24 @@ if ($member === null) {
     $deny(404, 'No such member.');
 }
 
+$name  = 'shg-' . strtolower(preg_replace('/[^A-Za-z0-9]+/', '-', (string) ($member['idNo'] ?: $member['name'])) ?? 'card') . '-' . ($wantPdf ? 'cards' : $side);
+if ($wantPdf) {
+    try {
+        Security::requireRateLimit('apcard_pdf', Security::clientIp(), 20, 300);     // four 300 dpi renders each
+    } catch (Throwable $e) {
+        $deny(429, 'Too many requests.');
+    }
+    @set_time_limit(60);
+    $bin = ApCard::pdf($member);
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: private, no-store');
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: ' . (!empty($_GET['dl']) ? 'attachment' : 'inline') . '; filename="' . $name . '.pdf"');
+    header('Content-Length: ' . strlen($bin));
+    echo $bin;
+    exit;
+}
 $scene = ApCard::scene($member, $side);
-$name  = 'shg-' . strtolower(preg_replace('/[^A-Za-z0-9]+/', '-', (string) ($member['idNo'] ?: $member['name'])) ?? 'card') . '-' . $side;
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: private, max-age=300');
 if (!empty($_GET['dl'])) {

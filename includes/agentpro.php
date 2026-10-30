@@ -55,6 +55,17 @@ final class AgentPro
     /** Roles an invite may carry (never superadmin — that is not handed out by link). */
     public const INVITE_ROLES = ['counter', 'manager', 'accountant', 'support', 'scanner', 'official', 'agent'];
 
+    /**
+     * 30 Oct 2026 — the extra boxes of the printed paper form (occupation …
+     * languages), column => max length. They exist once
+     * database/upgrade-2026-10-30-agentpro-af1.sql ran (appHas() guards).
+     */
+    public const EXTRA_FIELDS = ['occupation' => 120, 'education' => 120, 'experience' => 160, 'skills' => 200, 'languages' => 120];
+
+    /** A page of the hand-filled paper form, kept with the extras as {label: "Paper form p1", path, paper: 1}. */
+    public const PAPER_LABEL = 'Paper form p';
+    public const PAPER_MAX_PAGES = 4;
+
     /** What the card prints under the name when the office typed nothing. */
     private const DESIGNATION_DEFAULTS = [
         'agent:org'    => 'Authorised Booking Agency',
@@ -94,6 +105,42 @@ final class AgentPro
             }
         }
         return self::$available;
+    }
+
+    /**
+     * May this signed-in admin use the office form (join.php?office=1):
+     * fill for someone, skip the WhatsApp check, approve at once?
+     *
+     * @param array<string, mixed>|null $admin Auth::admin()
+     */
+    public static function officeAllowed(?array $admin): bool
+    {
+        if ($admin === null) {
+            return false;
+        }
+        $role = (string) ($admin['role'] ?? '');
+        return $role === 'superadmin' || $role === 'manager' || Auth::can('staff.manage');
+    }
+
+    /** @var array<string, true> */
+    private static array $appCols = [];
+
+    /** Does ap_applications have this column yet? (the af1 migration may not have run on a server) */
+    public static function appHas(string $col): bool
+    {
+        if (self::$appCols === []) {
+            self::$appCols['#'] = true;
+            try {
+                foreach (Database::fetchAll(
+                    "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ap_applications'"
+                ) as $r) {
+                    self::$appCols[(string) $r['COLUMN_NAME']] = true;
+                }
+            } catch (Throwable $e) {
+                // not installed: every optional column reads as missing
+            }
+        }
+        return isset(self::$appCols[$col]);
     }
 
     /* =================================================================
@@ -807,13 +854,14 @@ final class AgentPro
      *
      * @return array<string, mixed>
      */
-    public static function newDraft(string $inviteToken = ''): array
+    public static function newDraft(string $inviteToken = '', int $officeBy = 0): array
     {
         $invite = $inviteToken !== '' ? self::invite($inviteToken) : null;
         if ($inviteToken !== '' && $invite === null) {
             throw new RuntimeException('This invitation link has expired or was already used. Ask the office for a new one.');
         }
-        if ($invite === null && !Settings::getBool('ap_join_open', true)) {
+        // The office (join.php?office=1) fills forms even while the public form is closed.
+        if ($invite === null && $officeBy <= 0 && !Settings::getBool('ap_join_open', true)) {
             throw new RuntimeException('New agent applications are closed right now. Please call the office.');
         }
         $key = bin2hex(random_bytes(16));
@@ -828,7 +876,7 @@ final class AgentPro
                     'invite_id'   => $invite['id'] ?? null,
                     'ip'          => Security::clientIp(),
                     'user_agent'  => Security::userAgent(),
-                ]);
+                ] + ($officeBy > 0 && self::appHas('office_filled_by') ? ['office_filled_by' => $officeBy] : []));
                 break;
             } catch (Throwable $e) {
                 if ($try === 4) {
@@ -860,22 +908,33 @@ final class AgentPro
      *
      * @param array<string, mixed> $in
      */
-    public static function saveDraft(string $key, array $in): array
+    public static function saveDraft(string $key, array $in, bool $office = false): array
     {
-        $app = self::draft($key);
-        if ($app === null) {
-            throw new RuntimeException('Your form has expired — please start again.');
-        }
-        if ($app['status'] !== 'draft') {
-            throw new RuntimeException('This application was already sent. Reference ' . $app['ref'] . '.');
-        }
+        $app = self::editable($key, $office);
         $u = [];
-        foreach (['full_name' => 120, 'org_name' => 120, 'guardian' => 120, 'address' => 255, 'city' => 80,
-                  'district' => 80, 'state' => 80] as $k => $max) {
+        $text = ['full_name' => 120, 'org_name' => 120, 'guardian' => 120, 'address' => 255, 'city' => 80,
+                 'district' => 80, 'state' => 80];
+        foreach (self::EXTRA_FIELDS as $k => $max) {
+            if (self::appHas($k)) {
+                $text[$k] = $max;
+            }
+        }
+        if ($office) {
+            $text['designation'] = 80;   // printed under the name; the office decides it
+        }
+        foreach ($text as $k => $max) {
             if (array_key_exists($k, $in)) {
                 $v = Security::clean((string) $in[$k], $max);
                 $u[$k] = $v !== '' ? $v : null;
             }
+        }
+        if (array_key_exists('pan', $in) && self::appHas('pan')) {
+            // the PAN box of the paper form — separate from the ID used (often Aadhaar)
+            $p = strtoupper(preg_replace('/[\s.\-]/', '', (string) $in['pan']) ?? '');
+            if ($p !== '' && preg_match('/^[A-Z]{5}\d{4}[A-Z]$/', $p) !== 1) {
+                throw new RuntimeException('A PAN looks like ABCDE1234F.');
+            }
+            $u['pan'] = $p !== '' ? $p : null;
         }
         if (array_key_exists('agent_kind', $in) && $app['kind'] === 'agent') {
             $u['agent_kind'] = AgentWallet::normaliseKind((string) $in['agent_kind']);
@@ -947,6 +1006,208 @@ final class AgentPro
         return self::draft($key) ?? $app;
     }
 
+    /**
+     * The draft, if it may still change: a draft; for the office also a
+     * submitted application (the office finishes it before approving).
+     *
+     * @return array<string, mixed>
+     */
+    private static function editable(string $key, bool $office = false): array
+    {
+        $app = self::draft($key);
+        if ($app === null) {
+            throw new RuntimeException('Your form has expired — please start again.');
+        }
+        if ($app['status'] === 'draft' || ($office && $app['status'] === 'submitted')) {
+            return $app;
+        }
+        throw new RuntimeException('This application was already sent. Reference ' . $app['ref'] . '.');
+    }
+
+    /**
+     * Office: who the form is for — an agent (person / agency) or a staff
+     * role. Only while it is a draft (the account is made with the role).
+     */
+    public static function officeSetRole(string $key, string $role, string $designation = '', string $agentKind = 'person'): array
+    {
+        $app = self::draft($key);
+        if ($app === null) {
+            throw new RuntimeException('Your form has expired — please start again.');
+        }
+        if ($app['status'] !== 'draft') {
+            throw new RuntimeException('The role is fixed once the form was sent.');
+        }
+        if (!in_array($role, self::INVITE_ROLES, true)) {
+            throw new RuntimeException('Choose a role.');
+        }
+        $agent = $role === 'agent';
+        Database::update('ap_applications', [
+            'kind'        => $agent ? 'agent' : 'staff',
+            'role_wanted' => $agent ? null : $role,
+            'agent_kind'  => $agent ? AgentWallet::normaliseKind($agentKind) : 'person',
+            'designation' => Security::clean($designation, 80) ?: null,
+        ], 'id = :i', ['i' => (int) $app['id']]);
+        return self::draft($key) ?? $app;
+    }
+
+    /** The admins row that already uses this mobile (any status), or null. Excludes $exceptAdminId. */
+    public static function phoneOwner(string $phone, int $exceptAdminId = 0): ?array
+    {
+        $phone = normalisePhone($phone);
+        if ($phone === '') {
+            return null;
+        }
+        foreach (Database::fetchAll("SELECT id, full_name, role, is_active, phone FROM admins WHERE phone IS NOT NULL AND phone <> ''") as $r) {
+            if ((int) $r['id'] !== $exceptAdminId && normalisePhone((string) $r['phone']) === $phone) {
+                return $r;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Office: the applicant is in front of us / phoned us — the office vouches
+     * for the number instead of a WhatsApp code. Needs a reason; audited.
+     *
+     * @return array<string, mixed> the application
+     */
+    public static function officeVerify(string $key, int $by, string $reason, string $rawPhone = '', string $country = ''): array
+    {
+        $app = self::editable($key, true);
+        if (!self::appHas('office_filled_by')) {
+            throw new RuntimeException('Run database/upgrade-2026-10-30-agentpro-af1.sql first (office check).');
+        }
+        $reason = Security::clean($reason, 160);
+        if (mb_strlen($reason) < 3) {
+            throw new RuntimeException('Write why the WhatsApp check is skipped (e.g. "came to the office, no WhatsApp").');
+        }
+        $phone = trim($rawPhone) !== '' ? normalisePhone($rawPhone) : (string) ($app['phone'] ?? '');
+        if (!Security::isValidPhone($phone, true)) {
+            throw new RuntimeException('Enter the mobile number.');
+        }
+        self::assertPhoneFree($phone, (int) ($app['admin_id'] ?? 0));
+        $country = in_array($country, ['IN', 'NP'], true) ? $country : ((string) ($app['country'] ?? '') ?: (resolvePhoneCountry('', $rawPhone) ?: 'IN'));
+        $readout = jsonColumn($app['readout'] ?? null);
+        $readout['office'] = ['by' => $by, 'reason' => $reason, 'at' => date('c')];
+        Database::update('ap_applications', [
+            'phone' => $phone, 'country' => $country, 'wa_verified_at' => date('Y-m-d H:i:s'), 'wa_verified_via' => 'office',
+            'office_filled_by' => $by, 'verify_code' => null, 'readout' => json_encode($readout, JSON_UNESCAPED_UNICODE),
+        ], 'id = :i', ['i' => (int) $app['id']]);
+        if (!empty($app['admin_id'])) {
+            Database::update('admins', ['phone' => $phone], 'id = :i AND is_active = 0', ['i' => (int) $app['admin_id']]);
+        }
+        Logger::audit('agentpro.office_verify', 'application', (string) $app['ref'], null,
+            ['phone' => self::maskPhone($phone), 'reason' => $reason], 'WhatsApp check skipped by admin #' . $by);
+        return self::draft($key) ?? $app;
+    }
+
+    private static function maskPhone(string $p): string
+    {
+        return strlen($p) > 4 ? str_repeat('•', strlen($p) - 4) . substr($p, -4) : $p;
+    }
+
+    /**
+     * The hand-filled paper form: up to 4 page images (data: URIs — the
+     * browser already turned a PDF into JPEG pages with pdf.js). Stored like
+     * every other document (re-encoded JPEG, no EXIF) and kept with the
+     * extras as "Paper form p1…"; a new scan replaces the earlier pages.
+     *
+     * @param list<mixed> $dataUrls
+     * @return list<array{path: string, abs: string}>
+     */
+    public static function storePaperPages(string $key, array $dataUrls, bool $office = false): array
+    {
+        $app = self::editable($key, $office);
+        $dir = UPLOAD_PATH . '/agents-kyc';
+        ensureDir($dir);
+        $pages = [];
+        foreach (array_slice(array_values($dataUrls), 0, self::PAPER_MAX_PAGES) as $uri) {
+            if (!is_string($uri) || preg_match('#^data:image/(?:jpeg|jpg|png|webp);base64,#i', $uri) !== 1) {
+                continue;
+            }
+            $bin = base64_decode(substr($uri, (int) strpos($uri, ',') + 1), true);
+            if ($bin === false || strlen($bin) < 1500 || strlen($bin) > 8_000_000) {
+                continue;
+            }
+            $img = @imagecreatefromstring($bin);
+            unset($bin);
+            if (!$img instanceof GdImage) {
+                continue;
+            }
+            $w = imagesx($img);
+            $h = imagesy($img);
+            if ($w < 300 || $h < 300) {
+                imagedestroy($img);
+                continue;
+            }
+            $scale = min(1.0, self::DOC_MAX_EDGE / max($w, $h));
+            if ($scale < 1.0) {
+                $small = imagecreatetruecolor(max(1, (int) round($w * $scale)), max(1, (int) round($h * $scale)));
+                imagecopyresampled($small, $img, 0, 0, 0, 0, imagesx($small), imagesy($small), $w, $h);
+                imagedestroy($img);
+                $img = $small;
+            }
+            $name = Security::safeFilename('jpg');
+            $ok = imagejpeg($img, $dir . '/' . $name, 88);
+            imagedestroy($img);
+            if ($ok) {
+                $pages[] = ['path' => 'agents-kyc/' . $name, 'abs' => $dir . '/' . $name];
+            }
+        }
+        if ($pages === []) {
+            throw new RuntimeException('Add a clear photo of each page of the filled form (JPG / PNG), or the PDF.');
+        }
+        $old = [];
+        $keep = [];
+        foreach (jsonColumn($app['extras'] ?? null) as $x) {
+            if (!empty($x['paper'])) {
+                $old[] = (string) ($x['path'] ?? '');
+                continue;
+            }
+            $keep[] = $x;
+        }
+        foreach ($pages as $i => $p) {
+            $keep[] = ['label' => self::PAPER_LABEL . ($i + 1), 'path' => $p['path'], 'paper' => 1];
+        }
+        Database::update('ap_applications', ['extras' => json_encode($keep, JSON_UNESCAPED_UNICODE)], 'id = :i', ['i' => (int) $app['id']]);
+        foreach ($old as $rel) {
+            if (($abs = self::privateAbs($rel)) !== null) {
+                @unlink($abs);
+            }
+        }
+        return $pages;
+    }
+
+    /**
+     * What the paper-form reader found, for the office (readout.paper). The
+     * ID and bank numbers are masked here — the full values only ever went
+     * back to the browser that sent the pages.
+     *
+     * @param array<string, mixed> $r ApFormRead::read() result
+     */
+    public static function noteFormRead(string $key, array $r): void
+    {
+        $app = self::draft($key);
+        if ($app === null) {
+            return;
+        }
+        $fields = (array) ($r['fields'] ?? []);
+        if (isset($fields['id_number']) && is_string($fields['id_number'])) {
+            $fields['id_number'] = self::maskId((string) ($fields['id_type'] ?? $app['id_type'] ?? ''), $fields['id_number']);
+        }
+        if (isset($fields['bank_account']) && is_string($fields['bank_account'])) {
+            $d = preg_replace('/\D/', '', $fields['bank_account']) ?? '';
+            $fields['bank_account'] = $d !== '' ? '••••' . substr($d, -4) : '';
+        }
+        $all = jsonColumn($app['readout'] ?? null);
+        $all['paper'] = [
+            'status' => (string) ($r['status'] ?? ''), 'reader' => (string) ($r['reader'] ?? ''),
+            'fields' => $fields, 'confidence' => (array) ($r['confidence'] ?? []),
+            'note' => mb_substr((string) ($r['note'] ?? ''), 0, 300), 'at' => date('c'),
+        ];
+        Database::update('ap_applications', ['readout' => json_encode($all, JSON_UNESCAPED_UNICODE)], 'id = :i', ['i' => (int) $app['id']]);
+    }
+
     /** Add what the document reader found to the draft's readout (for the office). */
     public static function noteReadout(string $key, string $slot, array $read): void
     {
@@ -965,18 +1226,16 @@ final class AgentPro
      * @param array<string, mixed> $file
      * @return array{path: string, abs: string, mime: string}
      */
-    public static function storeDraftDoc(string $key, string $slot, array $file, string $label = ''): array
+    public static function storeDraftDoc(string $key, string $slot, array $file, string $label = '', bool $office = false): array
     {
-        $app = self::draft($key);
-        if ($app === null || $app['status'] !== 'draft') {
-            throw new RuntimeException('Your form has expired — please start again.');
-        }
+        $app = self::editable($key, $office);
         $col = match ($slot) {
             'front' => 'doc_front', 'back' => 'doc_back', 'selfie' => 'selfie', 'thumb' => 'thumb', 'extra' => 'extras',
             default => throw new RuntimeException('Unknown document.'),
         };
         $extras = jsonColumn($app['extras'] ?? null);
-        if ($slot === 'extra' && count($extras) >= max(1, Settings::getInt('ap_join_max_extras', 6))) {
+        $own = count(array_filter($extras, static fn($x): bool => is_array($x) && empty($x['paper'])));   // paper-form pages do not count
+        if ($slot === 'extra' && $own >= max(1, Settings::getInt('ap_join_max_extras', 6))) {
             throw new RuntimeException('That is the most documents one form can carry. Bring the rest to the office.');
         }
         $saved = self::storePrivate($file, in_array($slot, ['selfie', 'thumb'], true));
@@ -994,12 +1253,9 @@ final class AgentPro
     }
 
     /** Remove one extra document from a draft. */
-    public static function dropDraftExtra(string $key, int $index): void
+    public static function dropDraftExtra(string $key, int $index, bool $office = false): void
     {
-        $app = self::draft($key);
-        if ($app === null || $app['status'] !== 'draft') {
-            throw new RuntimeException('Your form has expired — please start again.');
-        }
+        $app = self::editable($key, $office);
         $extras = jsonColumn($app['extras'] ?? null);
         if (!isset($extras[$index])) {
             return;
@@ -1127,14 +1383,13 @@ final class AgentPro
     }
 
     /** One login per mobile / email — say where to sign in instead. */
-    private static function assertPhoneFree(string $phone): void
+    private static function assertPhoneFree(string $phone, int $exceptAdminId = 0): void
     {
-        foreach (Database::fetchAll("SELECT phone, is_active FROM admins WHERE phone IS NOT NULL AND phone <> ''") as $r) {
-            if (normalisePhone((string) $r['phone']) === $phone) {
-                throw new RuntimeException((int) $r['is_active'] === 1
-                    ? 'This mobile number already has an account — sign in at /me/ instead.'
-                    : 'An application from this mobile number is already with the office.');
-            }
+        $r = self::phoneOwner($phone, $exceptAdminId);
+        if ($r !== null) {
+            throw new RuntimeException((int) $r['is_active'] === 1
+                ? 'This mobile number already has an account — sign in at /me/ instead.'
+                : 'An application from this mobile number is already with the office.');
         }
     }
 
@@ -1144,34 +1399,41 @@ final class AgentPro
      *
      * @return array<string, mixed> the submitted application
      */
-    public static function submit(string $key): array
+    public static function submit(string $key, bool $office = false, int $by = 0): array
     {
         $app = self::draft($key);
         if ($app === null) {
             throw new RuntimeException('Your form has expired — please start again.');
         }
         if ($app['status'] !== 'draft') {
-            return $app;   // a double tap on Submit
+            return $app;   // a double tap on Submit (or the office finishing a submitted one)
         }
 
         $missing = [];
         if (mb_strlen(trim((string) ($app['full_name'] ?? ''))) < 2) { $missing[] = 'your full name'; }
         if ($app['kind'] === 'agent' && $app['agent_kind'] === 'org' && trim((string) ($app['org_name'] ?? '')) === '') { $missing[] = 'the agency name'; }
-        if (empty($app['wa_verified_at'])) { $missing[] = 'WhatsApp verification'; }
-        if (empty($app['id_type'])) { $missing[] = 'the ID type'; }
-        if (empty($app['doc_front'])) { $missing[] = 'a photo of the ID (front)'; }
+        if (empty($app['wa_verified_at'])) { $missing[] = $office ? 'the mobile number (verify on WhatsApp, or skip with a reason)' : 'WhatsApp verification'; }
+        if ($office) {
+            // The office fills fast: name, mobile, ID number and photo are enough.
+            if (trim((string) ($app['id_number_masked'] ?? '')) === '') { $missing[] = 'the ID number'; }
+        } else {
+            if (empty($app['id_type'])) { $missing[] = 'the ID type'; }
+            if (empty($app['doc_front'])) { $missing[] = 'a photo of the ID (front)'; }
+            if (trim((string) ($app['city'] ?? '')) === '' && trim((string) ($app['address'] ?? '')) === '') { $missing[] = 'your address or city'; }
+        }
         if (empty($app['selfie'])) { $missing[] = 'your photo'; }
-        if (trim((string) ($app['city'] ?? '')) === '' && trim((string) ($app['address'] ?? '')) === '') { $missing[] = 'your address or city'; }
         if ($missing !== []) {
             throw new RuntimeException('Still needed: ' . implode(', ', $missing) . '.');
         }
 
         $phone = (string) $app['phone'];
         self::assertPhoneFree($phone);
-        // Counted only now — a form that failed validation created nothing. An
-        // internet cafe may register several agents, so the per-IP budget is generous.
-        self::limit('apjoin_submit_ip', Security::clientIp(), 10, 3600);
-        self::limit('apjoin_submit_phone', $phone, 2, 86400);
+        if (!$office) {
+            // Counted only now — a form that failed validation created nothing. An
+            // internet cafe may register several agents, so the per-IP budget is generous.
+            self::limit('apjoin_submit_ip', Security::clientIp(), 10, 3600);
+            self::limit('apjoin_submit_phone', $phone, 2, 86400);
+        }
         $email = (string) ($app['email'] ?? '');
         if ($email !== '' && Database::exists('SELECT 1 FROM admins WHERE LOWER(email) = :e', ['e' => strtolower($email)])) {
             throw new RuntimeException('That email already belongs to an account. Use another, or leave it empty.');
@@ -1185,21 +1447,88 @@ final class AgentPro
         if (Database::exists('SELECT 1 FROM admins WHERE username = :u', ['u' => $username])) {
             $username = ($role === 'agent' ? 'agent_' : 'staff_') . $phone;
         }
-        $cc = $app['country'] === 'NP' ? '977' : '91';
 
-        $adminId = (int) Database::transaction(static function () use ($app, $role, $display, $username, $email, $phone): int {
-            return Database::insert('admins', [
-                'username'       => $username,
-                'password_hash'  => password_hash(bin2hex(random_bytes(12)), PASSWORD_DEFAULT),
-                'full_name'      => $display,
-                'email'          => $email !== '' ? $email : null,
-                'phone'          => $phone,
-                'role'           => $role,
-                'is_active'      => 0,
-                'must_change_pw' => 0,
-            ]);
-        });
+        // One invitation = one application. Two drafts opened from the same link
+        // race here; only the first UPDATE wins (used_at was NULL), atomically.
+        $inviteId = (int) ($app['invite_id'] ?? 0);
+        if ($inviteId > 0) {
+            $won = Database::run('UPDATE ap_invites SET used_at = NOW(), application_id = :a WHERE id = :i AND used_at IS NULL',
+                ['a' => (int) $app['id'], 'i' => $inviteId]);
+            if ($won !== 1) {
+                throw new RuntimeException('This invitation link was already used for another application. Ask the office for a new link.');
+            }
+        }
 
+        try {
+            $adminId = (int) Database::transaction(static function () use ($role, $display, $username, $email, $phone): int {
+                return Database::insert('admins', [
+                    'username'       => $username,
+                    'password_hash'  => password_hash(bin2hex(random_bytes(12)), PASSWORD_DEFAULT),
+                    'full_name'      => $display,
+                    'email'          => $email !== '' ? $email : null,
+                    'phone'          => $phone,
+                    'role'           => $role,
+                    'is_active'      => 0,
+                    'must_change_pw' => 0,
+                ]);
+            });
+        } catch (Throwable $e) {
+            if ($inviteId > 0) {   // nothing was made: the link works again
+                Database::run('UPDATE ap_invites SET used_at = NULL, application_id = NULL WHERE id = :i AND application_id = :a',
+                    ['i' => $inviteId, 'a' => (int) $app['id']]);
+            }
+            throw $e;
+        }
+
+        self::writeProfile($adminId, $app, $role);
+        if (AgentWallet::kycAvailable()) {
+            AgentWallet::saveProfile($adminId, array_filter([
+                'kyc_doc_path'  => (string) ($app['doc_front'] ?? ''),
+                'kyc_doc2_path' => (string) ($app['doc_back'] ?? ''),
+                'kyc_status'    => 'submitted',
+            ], static fn($v): bool => $v !== ''));
+        }
+
+        $upd = ['status' => 'submitted', 'submitted_at' => date('Y-m-d H:i:s'), 'admin_id' => $adminId];
+        if ($office && $by > 0 && empty($app['office_filled_by']) && self::appHas('office_filled_by')) {
+            $upd['office_filled_by'] = $by;
+        }
+        Database::update('ap_applications', $upd, 'id = :i', ['i' => (int) $app['id']]);
+
+        Logger::audit('agentpro.applied', 'admin', (string) $adminId, null,
+            ['ref' => $app['ref'], 'role' => $role, 'kind' => $app['agent_kind'], 'office' => $office ? $by : 0],
+            'Application ' . $app['ref'] . ' submitted' . ($office ? ' by the office (admin #' . $by . ')' : ''));
+
+        // Tell the office at once (the same channel as other office alerts) —
+        // unless the office itself just filled it.
+        if (!$office) {
+            try {
+                require_once __DIR__ . '/notify.php';
+                Notify::adminNote('🆕 New ' . ($role === 'agent' ? 'agent' : $role) . ' application ' . $app['ref'], [
+                    'Name'  => $display . ($isOrg ? ' (' . $person . ')' : ''),
+                    'Phone' => $phone,
+                    'City'  => (string) ($app['city'] ?? ''),
+                    'Open'  => appUrl('admin/team.php?tab=approvals'),
+                ]);
+            } catch (Throwable $e) {
+                Logger::warning('Office note for a new application failed: ' . $e->getMessage(), [], 'agent');
+            }
+        }
+
+        return self::application((int) $app['id']) ?? $app;
+    }
+
+    /**
+     * The application's contact / ID details into admin_profiles (the
+     * profile every older screen reads). At submit, and again at approve
+     * when the office changed the form after it was sent.
+     *
+     * @param array<string, mixed> $app
+     */
+    private static function writeProfile(int $adminId, array $app, string $role): void
+    {
+        $isOrg  = $role === 'agent' && $app['agent_kind'] === 'org';
+        $phone  = (string) $app['phone'];
         $address = trim(implode(', ', array_filter([
             (string) ($app['address'] ?? ''), (string) ($app['city'] ?? ''), (string) ($app['district'] ?? ''),
             (string) ($app['state'] ?? ''), (string) ($app['pincode'] ?? ''),
@@ -1210,48 +1539,15 @@ final class AgentPro
             'whatsapp'       => (string) ($app['whatsapp'] ?? '') !== '' ? (string) $app['whatsapp'] : $phone,
             'counter_name'   => (string) ($app['city'] ?? ''),
             'agent_kind'     => $role === 'agent' ? (string) $app['agent_kind'] : null,
-            'contact_person' => $isOrg ? $person : null,
+            'contact_person' => $isOrg ? trim((string) $app['full_name']) : null,
             'address'        => mb_substr($address, 0, 255),
-            'id_type'        => self::ID_TYPE_PROFILE[(string) $app['id_type']] ?? '',
+            'id_type'        => self::ID_TYPE_PROFILE[(string) ($app['id_type'] ?? '')] ?? '',
             'id_number'      => (string) ($app['id_number_masked'] ?? ''),
-            'country_code'   => $cc,
+            'country_code'   => ($app['country'] ?? '') === 'NP' ? '977' : '91',
             'id_expires_on'  => (string) ($app['id_expires_on'] ?? ''),
             'notes'          => 'Joined with the Agent Pro form ' . $app['ref'],
             'joined_on'      => date('Y-m-d'),
         ], static fn($v): bool => $v !== null));
-        if (AgentWallet::kycAvailable()) {
-            AgentWallet::saveProfile($adminId, array_filter([
-                'kyc_doc_path'  => (string) ($app['doc_front'] ?? ''),
-                'kyc_doc2_path' => (string) ($app['doc_back'] ?? ''),
-                'kyc_status'    => 'submitted',
-            ], static fn($v): bool => $v !== ''));
-        }
-
-        Database::update('ap_applications', [
-            'status' => 'submitted', 'submitted_at' => date('Y-m-d H:i:s'), 'admin_id' => $adminId,
-        ], 'id = :i', ['i' => (int) $app['id']]);
-        if (!empty($app['invite_id'])) {
-            Database::update('ap_invites', ['used_at' => date('Y-m-d H:i:s'), 'application_id' => (int) $app['id']],
-                'id = :i', ['i' => (int) $app['invite_id']]);
-        }
-
-        Logger::audit('agentpro.applied', 'admin', (string) $adminId, null,
-            ['ref' => $app['ref'], 'role' => $role, 'kind' => $app['agent_kind']], 'Application ' . $app['ref'] . ' submitted');
-
-        // Tell the office at once (the same channel as other office alerts).
-        try {
-            require_once __DIR__ . '/notify.php';
-            Notify::adminNote('🆕 New ' . ($role === 'agent' ? 'agent' : $role) . ' application ' . $app['ref'], [
-                'Name'  => $display . ($isOrg ? ' (' . $person . ')' : ''),
-                'Phone' => $phone,
-                'City'  => (string) ($app['city'] ?? ''),
-                'Open'  => appUrl('admin/team.php?tab=approvals'),
-            ]);
-        } catch (Throwable $e) {
-            Logger::warning('Office note for a new application failed: ' . $e->getMessage(), [], 'agent');
-        }
-
-        return self::application((int) $app['id']) ?? $app;
     }
 
     /**
@@ -1260,7 +1556,7 @@ final class AgentPro
      *
      * @return array{admin_id: int, code: string, password?: string}
      */
-    public static function approve(int $appId, int $by): array
+    public static function approve(int $appId, int $by, ?bool $kycVerified = null): array
     {
         $app = self::application($appId);
         if ($app === null) {
@@ -1278,6 +1574,21 @@ final class AgentPro
             throw new RuntimeException('The account for this application was deleted.');
         }
         $role = (string) $admin['role'];
+
+        // The office may have finished the form after it was sent (join.php?office=1&d=…):
+        // the account and profile take the form as it is now.
+        if (strtotime((string) ($app['updated_at'] ?? '')) > strtotime((string) ($app['submitted_at'] ?? '')) + 5) {
+            $isOrg = $role === 'agent' && $app['agent_kind'] === 'org';
+            $name = trim((string) ($isOrg ? $app['org_name'] : $app['full_name']));
+            if ($name !== '' && $name !== (string) $admin['full_name']) {
+                Database::update('admins', ['full_name' => $name], 'id = :i', ['i' => $adminId]);
+            }
+            try {
+                self::writeProfile($adminId, $app, $role);
+            } catch (Throwable $e) {
+                Logger::warning('Approve: profile not refreshed: ' . $e->getMessage(), [], 'agent');
+            }
+        }
 
         $password = null;
         $upd = ['is_active' => 1];
@@ -1299,8 +1610,11 @@ final class AgentPro
             }
             $code = AgentWallet::agentCodeLabel($adminId);
         }
-        if (AgentWallet::kycAvailable()) {
-            AgentWallet::kycVerify($adminId, 'verified', 'Approved from the Agent Pro form ' . $app['ref'], $by);
+        // $kycVerified: null = the one-tap approve (the office looked at the ID photos) → verified;
+        // the office form passes its "saw the original ID" tick — unticked leaves KYC "submitted".
+        if (AgentWallet::kycAvailable() && $kycVerified !== false) {
+            AgentWallet::kycVerify($adminId, 'verified', ($kycVerified === true ? 'Original ID seen by the office · ' : '')
+                . 'Approved from the Agent Pro form ' . $app['ref'], $by);
         }
 
         // The selfie becomes the profile photo — and so the ID card photo.
@@ -1323,14 +1637,15 @@ final class AgentPro
         if ($m !== []) {
             Database::update('ap_members', $m, 'admin_id = :a', ['a' => $adminId]);
         }
-        if (!empty($app['upi_id']) || !empty($app['bank_account_enc']) || !empty($app['esewa_id'])) {
-            $method = !empty($app['upi_id']) ? 'upi' : (!empty($app['bank_account_enc']) ? 'bank' : 'esewa');
+        if (!empty($app['upi_id']) || !empty($app['bank_account_enc']) || !empty($app['esewa_id']) || !empty($app['khalti_id'])) {
+            $method = !empty($app['upi_id']) ? 'upi' : (!empty($app['bank_account_enc']) ? 'bank' : (!empty($app['esewa_id']) ? 'esewa' : 'khalti'));
             AgentWallet::saveProfile($adminId, [
                 'payout_method'  => $method,
                 'payout_account' => match ($method) {
-                    'upi'   => (string) $app['upi_id'],
-                    'bank'  => trim(($app['bank_name'] ?? '') . ' ••••' . ($app['bank_account_last4'] ?? '') . ' ' . ($app['bank_ifsc'] ?? '')),
-                    default => 'eSewa ' . (string) $app['esewa_id'],
+                    'upi'    => (string) $app['upi_id'],
+                    'bank'   => trim(($app['bank_name'] ?? '') . ' ••••' . ($app['bank_account_last4'] ?? '') . ' ' . ($app['bank_ifsc'] ?? '')),
+                    'esewa'  => 'eSewa ' . (string) $app['esewa_id'],
+                    default  => 'Khalti ' . (string) $app['khalti_id'],
                 },
             ]);
         }
@@ -1607,8 +1922,10 @@ final class AgentPro
         }
         $adminId = (int) $req['agent_admin_id'];
         $amount  = (float) $req['amount'];
+        // request_id: record() must not count THIS request's own amount as "reserved" (it is the one being paid).
         $ledgerId = AgentWallet::record($adminId, 'payout', $amount, [
             'note' => 'Withdrawal request #' . $requestId . ($note !== '' ? ' · ' . $note : ''), 'ref' => $ref, 'by' => $by,
+            'request_id' => $requestId,
         ]);
         AgentWallet::decidePayoutRequest($requestId, 'paid', $by, $note, $ledgerId);
         $voucher = AgentWallet::voucherFor($ledgerId);

@@ -43,7 +43,10 @@ if (!empty($_GET['vcf'])) {
 }
 $e = static fn($v): string => Security::e((string) $v);
 $css = '/assets/agentpro/ap.css?v=' . (is_file(ASSET_PATH . '/agentpro/ap.css') ? filemtime(ASSET_PATH . '/agentpro/ap.css') : 1);
-$img = '/api/agentpro-card.php?u=' . rawurlencode($token) . '&s=vc-front&v=' . $m['photoVer'];
+$img  = '/api/agentpro-card.php?u=' . rawurlencode($token) . '&s=vc-front&v=' . $m['photoVer'];
+$back = '/api/agentpro-card.php?u=' . rawurlencode($token) . '&s=vc-back&v=' . $m['photoVer'];
+$brand = trim((string) preg_replace('/[\s,]+(private\s+limited|pvt\.?\s*ltd\.?)$/iu', '', (string) $co['legal']));
+$chat  = (string) ($co['chat'] ?? Settings::chatWhatsApp());
 ?><!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title><?= $e($m['name']) ?> · <?= $e($co['name']) ?></title>
@@ -52,11 +55,12 @@ $img = '/api/agentpro-card.php?u=' . rawurlencode($token) . '&s=vc-front&v=' . $
 <meta name="robots" content="noindex"><meta name="theme-color" content="#13224F">
 <link rel="icon" type="image/png" href="/assets/img/favicon-32.png"><link rel="stylesheet" href="<?= $e($css) ?>"></head>
 <body>
-<header class="ap-top"><div class="ap-top-in"><img class="ap-crest" src="/assets/agentpro/crest-dark.svg" alt="" width="42" height="52">
-<div class="ap-brand"><b>S HARI GLOBAL</b><small>Private Limited</small></div></div>
+<header class="ap-top"><div class="ap-top-in"><img src="/assets/img/logo-mark-tm.webp" alt="<?= $e($co['legal']) ?> logo" width="88" height="46" style="flex:0 0 auto;width:88px;height:auto;background:#fff;border-radius:10px;padding:4px 6px">
+<div class="ap-brand"><b><?= $e(mb_strtoupper($brand !== '' ? $brand : $co['name'])) ?></b><small><?= $e($co['service']) ?></small></div></div>
 <div class="ap-hero"><h1><?= $e($m['name']) ?></h1><p><?= $e($m['designation']) ?><?= $m['idNo'] !== '' ? ' · ' . $e($m['idNo']) : '' ?></p></div></header>
 <main class="ap-wrap">
   <div class="ap-vc"><img src="<?= $e($img) ?>" alt="Visiting card of <?= $e($m['name']) ?>" width="889" height="508"></div>
+  <div class="ap-vc" style="margin-top:12px"><img src="<?= $e($back) ?>" alt="Back of the visiting card" width="889" height="508" loading="lazy"></div>
   <div class="ap-actions" style="grid-template-columns:1fr 1fr">
     <?php if ($m['waLink'] !== ''): ?><a class="ap-btn wa" href="<?= $e($m['waLink']) ?>">💬 WhatsApp</a><?php endif; ?>
     <?php if ($m['call'] !== ''): ?><a class="ap-btn" href="tel:+<?= $e($m['call']) ?>">☎ Call</a><?php endif; ?>
@@ -67,7 +71,9 @@ $img = '/api/agentpro-card.php?u=' . rawurlencode($token) . '&s=vc-front&v=' . $
     <dl class="ap-review"><dt>WhatsApp</dt><dd class="ap-mono"><?= $e($m['waDisplay']) ?></dd>
       <?php if ($m['email'] !== ''): ?><dt>Email</dt><dd><?= $e($m['email']) ?></dd><?php endif; ?>
       <?php if ($m['branch'] !== ''): ?><dt>Branch</dt><dd><?= $e($m['branch']) ?></dd><?php endif; ?>
-      <dt>Company</dt><dd><?= $e($co['legal']) ?> · CIN <?= $e($co['cin']) ?></dd></dl>
+      <dt>Company</dt><dd><?= $e($co['legal']) ?> · CIN <?= $e($co['cin']) ?></dd>
+      <dt>24×7 help</dt><dd><a href="tel:<?= $e(preg_replace('/[^\d+]/', '', $co['phone247'])) ?>"><?= $e($co['phone247']) ?></a> · CEO &amp; Director <?= $e($co['ceo']) ?></dd>
+      <dt>Book on WhatsApp</dt><dd class="ap-mono"><a href="<?= $e(whatsappLink($chat, 'Namaste')) ?>" target="_blank" rel="noopener"><?= $e(AgentPro::displayPhone($chat)) ?></a></dd></dl>
   </section>
 </main>
 <p class="ap-footer"><a href="/"><?= $e($co['web']) ?></a> · <a href="/id.php?c=<?= $e(rawurlencode($token)) ?>">Verify</a></p>

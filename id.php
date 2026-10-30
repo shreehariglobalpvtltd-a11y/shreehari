@@ -10,6 +10,7 @@ declare(strict_types=1);
 define('SHG_APP', true);
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/agentpro.php';
+require_once INCLUDE_PATH . '/agentpro-card.php';
 
 Security::sendHeaders();
 header('X-Robots-Tag: noindex, nofollow');
@@ -32,13 +33,16 @@ $e = static fn($v): string => Security::e((string) $v);
     default     => ['NOT VALID', 'bad', 'We could not find this card. It may be fake — please call our office.'],
 };
 $css = '/assets/agentpro/ap.css?v=' . (is_file(ASSET_PATH . '/agentpro/ap.css') ? filemtime(ASSET_PATH . '/agentpro/ap.css') : 1);
+[$brand] = ApCard::wordmark($co);
+$kycOk = $m !== null && ApCard::kycVerified($m);
+$kycNo = $m !== null && ApCard::kycRejected($m);   // refused, not "in progress"
 ?><!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ID check · <?= $e($co['name']) ?></title><meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#13224F">
 <link rel="icon" type="image/png" href="/assets/img/favicon-32.png"><link rel="stylesheet" href="<?= $e($css) ?>"></head>
 <body>
-<header class="ap-top"><div class="ap-top-in"><img class="ap-crest" src="/assets/agentpro/crest-dark.svg" alt="" width="42" height="52">
-<div class="ap-brand"><b>S HARI GLOBAL</b><small>ID verification</small></div></div></header>
+<header class="ap-top"><div class="ap-top-in"><img src="/assets/img/logo-mark-tm.webp" alt="<?= $e($co['legal']) ?> logo" width="88" height="46" style="flex:0 0 auto;width:88px;height:auto;background:#fff;border-radius:10px;padding:4px 6px">
+<div class="ap-brand"><b><?= $e($brand) ?></b><small>ID verification · परिचय जाँच</small></div></div></header>
 <main class="ap-verify">
   <section class="ap-card" style="text-align:center">
     <span class="ap-stamp <?= $e($cls) ?>"><?= $e($stamp) ?></span>
@@ -55,6 +59,9 @@ $css = '/assets/agentpro/ap.css?v=' . (is_file(ASSET_PATH . '/agentpro/ap.css') 
     </div>
     <dl class="ap-review" style="margin-top:16px">
       <?php if ($m['branch'] !== ''): ?><dt>Branch</dt><dd><?= $e($m['branch']) ?></dd><?php endif; ?>
+      <dt>KYC · पहिचान</dt><dd><?= $kycOk ? '<b style="color:var(--ok)">✓ Verified</b>'
+        : ($kycNo ? '<b style="color:var(--bad)">✕ Not verified</b> · प्रमाणित छैन · the office did not accept the ID'
+        : '<b style="color:var(--warn)">Pending</b> · office has not verified the ID yet') ?></dd>
       <dt>Valid till</dt><dd><?= $e($m['validUntil'] !== '' ? formatDate($m['validUntil'], 'j M Y') : '—') ?></dd>
       <dt>Checked</dt><dd><?= $e(date('j M Y, H:i')) ?></dd>
     </dl>
@@ -64,6 +71,7 @@ $css = '/assets/agentpro/ap.css?v=' . (is_file(ASSET_PATH . '/agentpro/ap.css') 
     <div class="ap-caps">Issued by</div>
     <p style="margin:6px 0 2px;font-weight:700"><?= $e($co['legal']) ?></p>
     <p class="ap-hint" style="margin:0">CIN <?= $e($co['cin']) ?> · <?= $e($co['address']) ?></p>
+    <p class="ap-hint" style="margin:6px 0 0">CEO &amp; Director: <?= $e($co['ceo']) ?> · 24×7 <a href="tel:<?= $e(preg_replace('/[^\d+]/', '', $co['phone247'])) ?>"><?= $e($co['phone247']) ?></a></p>
     <div class="ap-actions"><a class="ap-btn sm" href="tel:<?= $e(preg_replace('/[^\d+]/', '', $co['phone'])) ?>">☎ <?= $e($co['phone']) ?></a>
       <a class="ap-btn wa sm" href="<?= $e(whatsappLink($co['whatsapp'], 'ID check: ' . (string) ($_GET['c'] ?? '') . ' — ' . ($m['name'] ?? 'unknown card'))) ?>" target="_blank" rel="noopener">💬 Report / ask</a></div>
   </section>

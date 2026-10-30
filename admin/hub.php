@@ -36,14 +36,21 @@ $meta = [
     'Reports'   => ['Reports', 'Analytics, accounts, messages', 'chart', 't-orange'],
     'Settings'  => ['Settings', 'Company, AI, security, health', 'cog', 't-red'],
     'Map'       => ['Map & Live Fleet', 'Where every bus is, right now', 'map-pin', 't-teal'],
+    // The five numbered categories of the sidebar (admin/_guard.php, 29 Oct 2026).
+    '1. Staff & Agent Management'   => ['Staff & Agents', 'Logins, codes, KYC, approvals', 'users', 't-gold'],
+    '2. Location Management'        => ['Locations', 'Stops, counters, agents by place, map', 'map-pin', 't-teal'],
+    '3. Ticketing & Bus Management' => ['Tickets & Buses', 'Sell, change, cancel; fleet and routine', 'ticket', 't-blue'],
+    '4. Financial Management'       => ['Money', 'Payments, wallets, salary, accounts', 'card', 't-green'],
+    '5. Settings & Configuration'   => ['Settings', 'Company, WhatsApp, AI, logs, backups', 'cog', 't-red'],
 ];
-/* Badges: how much work waits behind a tile. */
+/* Badges: how much work waits behind a tile. (staff.php has no AgentPro
+   applications, so it carries no badge — the queue lives on team.php.) */
 $badges = [
     'payments.php' => $counts['pendingPay'],
     'team.php'     => $counts['applications'] + $counts['withdrawals'] + $counts['deposits'],
-    'staff.php'    => $counts['applications'],
     'ai-local.php' => $counts['aiQueue'],
 ];
+$canOffice = Auth::isSuperadmin() || (string) ($admin['role'] ?? '') === 'manager' || Auth::can('staff.manage');
 
 $groups = [];
 foreach (admin_nav() as $item) {
@@ -68,7 +75,7 @@ echo '<link rel="stylesheet" href="/assets/agentpro/admin.css?v=' . (int) @filem
     <div class="cc-quick">
       <?php if (Auth::can('bookings.view')): ?><a class="primary" href="/admin/quick-ticket.php"><svg class="a-ic sm"><use href="#a-bolt"/></svg> New ticket</a><?php endif; ?>
       <?php if (Auth::can('tickets.scan')): ?><a href="/admin/scan.php"><svg class="a-ic sm"><use href="#a-scan"/></svg> Scan</a><?php endif; ?>
-      <?php if (Auth::can('staff.manage')): ?><a href="/admin/team.php?tab=invites"><svg class="a-ic sm"><use href="#a-plus"/></svg> Add agent / staff</a><?php endif; ?>
+      <?php if ($canOffice): ?><a href="/join.php?office=1"><svg class="a-ic sm"><use href="#a-plus"/></svg> नयाँ सदस्य · Add member</a><?php endif; ?>
       <a href="/me/"><svg class="a-ic sm"><use href="#a-id-card"/></svg> My ID</a>
     </div>
   </div>

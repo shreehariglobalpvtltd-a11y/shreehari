@@ -12,9 +12,18 @@
  *  (download, WhatsApp). Text is measured with the same TTF files both
  *  painters use, so a long name shrinks to fit identically on both.
  *
- *  Design: docs/card-design/PHILOSOPHY.md ("Guilloche Meridian") —
- *  machine-turned line work for trust, a deep royal field, gold only as a
- *  filament, one meridian curve, one red seal.
+ *  Design ("Guilloche Meridian", revised 30 Oct 2026): the real office
+ *  logo (logo-mark-tm, with its ™) always sits on WHITE so its blues and
+ *  orange stay true; the wordmark comes from company_legal; dark text on
+ *  light ground or white text on the deep royal field — never mid-tones
+ *  on mid-tones. Gold is only a filament, India + Nepal flags mark the
+ *  route, and the one red seal appears only when the KYC is verified
+ *  (else an amber "KYC PENDING"). Company facts (CIN, CEO & Director,
+ *  24/7 line, offices, features, the WhatsApp bot) all come from
+ *  Settings::company(), so the office edits them in one place.
+ *
+ *  ApCard::pdf() puts all four faces, true size with crop marks, on one
+ *  A4 page (api/agentpro-card.php?m=<id>&pdf=1).
  *
  *  Sizes: ID card CR80 portrait 54 × 85.6 mm; visiting card 3.5 × 2 in
  *  (88.9 × 50.8 mm). PNG at 2 px per unit = 1080 × 1712 / 1778 × 1016,
@@ -104,8 +113,15 @@ final class ApScene
         if ($maxWidth > 0 && $w > $maxWidth) {
             $fit = max($size * 0.6, $size * $maxWidth / $w);
             $tracking *= $fit / $size;
+            $min = $size * 0.6;
             $size = $fit;
             $w = ApCard::measure($font, $size, $text, $tracking);
+            // Glyph widths are not perfectly linear in size: step down until it really fits.
+            while ($w > $maxWidth && $size > $min) {
+                $tracking *= 0.98;
+                $size = max($min, $size * 0.98);
+                $w = ApCard::measure($font, $size, $text, $tracking);
+            }
         }
         $this->ops[] = ['t' => 'text', 'x' => $x, 'y' => $y, 'text' => $text, 'font' => $font, 'size' => $size,
                         'color' => $color, 'anchor' => $anchor, 'tr' => $tracking, 'op' => $opacity, 'w' => $w, 'max' => $maxWidth];
@@ -181,6 +197,31 @@ final class ApScene
         return $this;
     }
 
+    /**
+     * A site picture (the office logo, a flag) fitted INSIDE the box, its
+     * transparency kept. $rel is relative to the web root, e.g.
+     * 'assets/img/logo-mark-tm.png'. $align: start | middle | end.
+     * A missing file draws nothing.
+     */
+    public function art(float $x, float $y, float $w, float $h, string $rel, string $align = 'middle'): self
+    {
+        $abs = ApCard::assetFile($rel);
+        $sz  = $abs !== '' ? @getimagesize($abs) : false;
+        if ($sz === false || $sz[0] < 1 || $sz[1] < 1) {
+            return $this;
+        }
+        $k  = min($w / $sz[0], $h / $sz[1]);
+        $dw = $sz[0] * $k;
+        $dh = $sz[1] * $k;
+        $dx = match ($align) {
+            'start' => $x,
+            'end'   => $x + $w - $dw,
+            default => $x + ($w - $dw) / 2,
+        };
+        $this->ops[] = ['t' => 'art', 'x' => $dx, 'y' => $y + ($h - $dh) / 2, 'w' => $dw, 'h' => $dh, 'rel' => $rel, 'abs' => $abs];
+        return $this;
+    }
+
     /** @param array<int, array<int, bool>> $matrix */
     public function qr(float $x, float $y, float $size, array $matrix, string $fg = '#0F1A36'): self
     {
@@ -213,9 +254,7 @@ final class ApCard
         'mono'    => ['agentpro/fonts/GeistMono-Regular.ttf', 'APGeistMono', 400, 'normal'],
         'monoB'   => ['agentpro/fonts/GeistMono-Bold.ttf', 'APGeistMono', 700, 'normal'],
         'caps'    => ['agentpro/fonts/ArsenalSC-Regular.ttf', 'APArsenal', 400, 'normal'],
-        'disp'    => ['agentpro/fonts/Italiana-Regular.ttf', 'APItaliana', 400, 'normal'],
-        'serifBI' => ['agentpro/fonts/Lora-BoldItalic.ttf', 'APLora', 700, 'italic'],
-        'deva'    => ['fonts/NotoSansDevanagari.ttf', 'APDeva', 400, 'normal'],
+        'deva'    =>['fonts/NotoSansDevanagari.ttf', 'APDeva', 400, 'normal'],
     ];
 
     /* The palette of the philosophy: a deep royal field, ivory ground, gold filament, one red seal. */
@@ -229,6 +268,7 @@ final class ApCard
     private const MUTED  = '#5D6680';
     private const RED    = '#B3122D';
     private const WA     = '#169C4F';
+    private const AMBER  = '#B45309';
 
     /** Units per millimetre (the scene is in tenths of a mm). */
     private const UNITS_PER_MM = 10;
@@ -283,7 +323,7 @@ final class ApCard
         if ($c !== '₹' || str_starts_with($font, 'mono')) {
             return $file;
         }
-        return self::fontFile(in_array($font, ['sansB', 'serifBI'], true) ? 'monoB' : 'mono');
+        return self::fontFile($font === 'sansB' ? 'monoB' : 'mono');
     }
 
     /** One character's advance, including a space (whose ink is empty). */
@@ -360,139 +400,325 @@ final class ApCard
         return appUrl('id.php?c=' . rawurlencode((string) $m['cardToken']));
     }
 
+    /* =================================================================
+     *  Company identity, shared by every face
+     * ================================================================= */
+
+    public const LOGO       = 'assets/img/logo-mark-tm.png';
+    public const FLAG_IN    = 'assets/img/flag-in.png';
+    public const FLAG_NP    = 'assets/img/flag-np.png';
+
+    /** An asset path under the web root ('' when the file is missing). */
+    public static function assetFile(string $rel): string
+    {
+        $rel = ltrim(str_replace('\\', '/', $rel), '/');
+        if ($rel === '' || str_contains($rel, '..')) {
+            return '';
+        }
+        $abs = dirname(__DIR__) . '/' . $rel;
+        return is_file($abs) ? $abs : '';
+    }
+
+    /**
+     * The wordmark from company_legal: "S Hari Global Private Limited" →
+     * ['S HARI GLOBAL', 'PRIVATE LIMITED']. A name without a company suffix
+     * stays on one line.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function wordmark(array $co): array
+    {
+        $legal = trim((string) preg_replace('/\s+/u', ' ', (string) ($co['legal'] ?? '')));
+        if ($legal === '') {
+            $legal = 'S Hari Global Private Limited';
+        }
+        if (preg_match('/^(.+?)[\s,]+(private\s+limited|pvt\.?\s*ltd\.?|limited|ltd\.?|llp)$/iu', $legal, $mm) === 1) {
+            $tail = preg_match('/^p/iu', $mm[2]) === 1 ? 'PRIVATE  LIMITED' : mb_strtoupper(rtrim($mm[2], '.'));
+            return [mb_strtoupper(trim($mm[1])), $tail];
+        }
+        return [mb_strtoupper($legal), ''];
+    }
+
+    /**
+     * The office numbers from company_counters ("Mehsana +91 91048 01507 ·
+     * Ahmedabad …") as [town, number] pairs. A number that is the 24/7 line
+     * (already printed beside the CEO) or repeats is left out, so the
+     * Mehsana / Ahmedabad / Surat offices come first.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    public static function offices(array $co, int $max = 3): array
+    {
+        $digits = static fn(string $v): string => substr(preg_replace('/\D/', '', $v) ?? '', -10);
+        $seen = [$digits((string) ($co['phone247'] ?? '')) => true];
+        $parts = preg_split('/\s*(?:·|\||;|\n)\s*/u', (string) ($co['counters'] ?? '')) ?: [];
+        $out = [];
+        foreach ($parts as $c) {
+            // Anything that is not a letter, digit or bracket is trimmed off the ends.
+            $c = trim((string) preg_replace('/^[^\p{L}\p{N}+(]+|[^\p{L}\p{N})]+$/u', '', $c));
+            if ($c === '' || preg_match('/^(.*?)\s*(\+?\d[\d\s-]{6,})$/u', $c, $mm) !== 1) {
+                continue;
+            }
+            $key = $digits($mm[2]);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = [trim($mm[1]) !== '' ? trim($mm[1]) : 'Office', trim($mm[2])];
+            if (count($out) >= $max) {
+                break;
+            }
+        }
+        return $out;
+    }
+
+    /** "AGENT CODE" / "STAFF NO." — the label of the number the card carries. */
+    public static function codeLabel(array $m): string
+    {
+        return !empty($m['isAgent']) ? 'AGENT CODE' : 'STAFF NO.';
+    }
+
+    public static function kycVerified(array $m): bool
+    {
+        return (string) ($m['kycStatus'] ?? '') === 'verified';
+    }
+
+    /** The office looked at the ID and refused it (admin_profiles.kyc_status = 'rejected'). */
+    public static function kycRejected(array $m): bool
+    {
+        return (string) ($m['kycStatus'] ?? '') === 'rejected';
+    }
+
+    /**
+     * The line under the company name on the visiting card: the member's own
+     * vc_tagline when they typed one, else the company's card line. AgentPro::member()
+     * fills 'tagline' with ap_card_tagline when vc_tagline is empty - that is the
+     * service line the card already prints top right, so it counts as "not set".
+     */
+    private static function vcTagline(array $m): string
+    {
+        $tag = trim((string) ($m['tagline'] ?? ''));
+        if ($tag === '' || $tag === trim(Settings::getString('ap_card_tagline', 'India & Nepal Travel Service'))) {
+            $co  = (array) ($m['company'] ?? []);
+            $tag = trim((string) ($co['cardTagline'] ?? $co['tagline'] ?? ''));
+        }
+        return $tag;
+    }
+
+    /** The company's WhatsApp chat link (the bot on wa_order_number). */
+    public static function chatUrl(array $m): string
+    {
+        $d = (string) ($m['company']['chat'] ?? '');
+        if ($d === '') {
+            $d = Settings::chatWhatsApp();
+        }
+        return 'https://wa.me/' . $d;
+    }
+
+    /** India and Nepal flags side by side, $h tall, starting at $x ('start') or ending there ('end'). */
+    private static function flags(ApScene $s, float $x, float $y, float $h, string $align = 'start'): void
+    {
+        $wIn = $h * 1.5;
+        $wNp = $h * 0.82;
+        $gap = $h * 0.28;
+        $x0 = $align === 'end' ? $x - ($wIn + $gap + $wNp) : $x;
+        // A hairline frame keeps India's white band visible on a white ground.
+        $s->rect($x0 - 1, $y - 1, $wIn + 2, $h + 2, '#C9CEDB', 1.5);
+        $s->art($x0, $y, $wIn, $h, self::FLAG_IN, 'start');
+        $s->art($x0 + $wIn + $gap, $y, $wNp, $h, self::FLAG_NP, 'start');
+    }
+
+    /** The KYC mark at the photo's lower right: the red seal when verified, else an amber pill. */
+    private static function kycMark(ApScene $s, array $m, float $cx, float $cy, float $photoMidX, float $photoBottom): void
+    {
+        if (self::kycVerified($m)) {
+            $s->circle($cx, $cy, 27, '#FFFFFF');
+            $s->circle($cx, $cy, 23, self::RED);
+            $s->ring($cx, $cy, 18.5, 1.2, '#FFFFFF', 0.8);
+            $s->line([[$cx - 10, $cy + 0.5], [$cx - 2.5, $cy + 8], [$cx + 11, $cy - 8]], '#FFFFFF', 4.4);
+            return;
+        }
+        // A refused ID is not "in progress": say so, in red.
+        $rejected = self::kycRejected($m);
+        $t = $rejected ? 'KYC  NOT  VERIFIED' : 'KYC  PENDING';
+        $w = self::measure('caps', 14, $t, 1.4) + 30;
+        $s->rect($photoMidX - $w / 2, $photoBottom - 17, $w, 32, '#FFFFFF', 16);
+        $s->rect($photoMidX - $w / 2 + 2, $photoBottom - 15, $w - 4, 28, $rejected ? self::RED : self::AMBER, 14);
+        $s->text($photoMidX, $photoBottom + 4.5, $t, 'caps', 14, '#FFFFFF', 'middle', 1.4);
+    }
+
+    /** A QR on a white plate; $badge puts the green WhatsApp disc in its heart (only at ECC H). */
+    private static function qrPlate(ApScene $s, float $x, float $y, float $size, array $texts, string $rule, bool $badge = false, int $maxVersion = 40): void
+    {
+        $pad = $size * 0.075;
+        $s->rect($x, $y, $size, $size, '#FFFFFF', $size * 0.08, ['stroke' => $rule, 'sw' => 2]);
+        [$mx, $lvl] = self::safeQr($texts, $badge ? QrCode::ECC_H : QrCode::ECC_M, $maxVersion);
+        $q = $size - 2 * $pad;
+        $s->qr($x + $pad, $y + $pad, $q, $mx, self::INK);
+        if ($badge && $lvl === QrCode::ECC_H) {
+            $c = $x + $size / 2;
+            $b = $q * 0.2;
+            $s->rect($c - $b / 2, $y + $size / 2 - $b / 2, $b, $b, '#FFFFFF', $b * 0.22);
+            self::waGlyph($s, $c, $y + $size / 2, $b * 0.4);
+        }
+    }
+
     private static function idFront(array $m): ApScene
     {
+        $co = $m['company'];
+        [$w1, $w2] = self::wordmark($co);
         $s = new ApScene(540, 856, 32);
-        $s->rect(0, 0, 540, 856, self::IVORY);
-        self::rosette($s, 270, 520, 250, self::ROYAL, 0.075, 36, 7, 0.0);
+        $s->rect(0, 0, 540, 856, '#FFFFFF');
+        self::rosette($s, 270, 560, 236, self::ROYAL, 0.05, 30, 7, 0.0);
 
-        // The deep field, ending in the meridian.
-        $curve = [['M', 0, 0], ['L', 540, 0], ['L', 540, 198], ['C', 392, 262, 150, 184, 0, 234], ['Z']];
-        $s->shape($curve, self::NAVY);
-        $s->clip(0, 0, 540, 262);
-        self::waves($s, 0, 0, 540, 250, '#FFFFFF', 0.065, 18, 13.5);
-        $s->unclip();
-        // Re-lay the ivory under the curve so the waves stop exactly on it.
-        $s->shape([['M', 0, 234], ['C', 150, 184, 392, 262, 540, 198], ['L', 540, 270], ['L', 0, 270], ['Z']], self::IVORY);
-        self::rosetteArc($s);
-        // The gold meridian ribbon, thin at both ends and fullest in the middle.
-        $s->shape([['M', 0, 236], ['C', 150, 186, 392, 264, 540, 200], ['L', 540, 205],
-                   ['C', 394, 274, 150, 196, 0, 242], ['Z']], self::GOLD);
-        $s->shape([['M', 0, 247], ['C', 150, 202, 394, 280, 540, 211], ['L', 540, 212.6],
-                   ['C', 394, 283, 150, 205, 0, 249], ['Z']], self::GOLD, 0.55);
-
-        self::crest($s, 34, 30, 0.6, true);
-        $s->text(138, 82, 'S HARI GLOBAL', 'sansB', 36, '#FFFFFF', 'start', 2.4, 1.0, 380);
-        $s->text(139, 110, 'PRIVATE  LIMITED', 'caps', 16, self::GOLD_L, 'start', 5.5);
-        $s->text(139, 138, 'CIN ' . (string) ($m['company']['cin'] ?? ''), 'mono', 11.5, '#FFFFFF', 'start', 0.8, 0.55);
-
-        // The portrait plate.
-        $s->rect(153, 198, 234, 278, '#FFFFFF', 30, ['stroke' => self::GOLD, 'sw' => 2.4]);
-        self::portrait($s, $m, 165, 210, 210, 254, 22);
-        // The one red seal: KYC verified.
-        $s->circle(372, 456, 25, '#FFFFFF');
-        $s->circle(372, 456, 21, self::RED);
-        $s->line([[361, 456], [369, 465], [384, 447]], '#FFFFFF', 4.2);
-
-        $last = $s->textFit(270, 534, (string) $m['name'], 'sansB', 40, self::INK, 'middle', 476);
-        $y = 564 + ($last - 534);
-        if (!empty($m['contact'])) {
-            $s->text(270, $y, (string) $m['contact'], 'sans', 17, self::MUTED, 'middle', 0, 1.0, 460);
-            $y += 26;
+        // Letterhead on white: the real logo (with its ™), the wordmark, the CIN.
+        $s->art(18, 14, 156, 96, self::LOGO, 'start');
+        $s->text(186, 54, $w1, 'sansB', 31, self::NAVY, 'start', 0.6, 1.0, 336);
+        if ($w2 !== '') {
+            $s->text(187, 80, $w2, 'caps', 15, self::GOLD_D, 'start', 3.6, 1.0, 336);
         }
-        $s->textFit(270, $y, mb_strtoupper((string) $m['designation']), 'caps', 16, self::GOLD_D, 'middle', 470, 4.2, 1);
-        self::ornament($s, 270, $y + 22);
+        $s->text(187, 104, 'CIN ' . (string) ($co['cin'] ?? ''), 'mono', 14, self::MUTED, 'start', 0, 1.0, 336);
 
-        // The registry number.
-        $idNo = $m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING';
-        $iw = ApCard::measure('monoB', 24, $idNo, 1.6) + ApCard::measure('caps', 13, 'ID', 3) + 64;
-        $tight = !empty($m['contact']);
-        $py = $y + ($tight ? 34 : 40);
-        $s->rect(270 - $iw / 2, $py, $iw, 48, self::NAVY, 24);
-        $s->text(270 - $iw / 2 + 24, $py + 31, 'ID', 'caps', 13, self::GOLD_L, 'start', 3);
-        $s->text(270 + $iw / 2 - 24, $py + 33, $idNo, 'monoB', 24, '#FFFFFF', 'end', 1.6);
+        // The route band: India · service · Nepal.
+        $s->rect(0, 122, 540, 50, self::NAVY);
+        $s->rect(0, 172, 540, 3, self::GOLD);
+        self::flags($s, 18, 133, 28);
+        $s->text(304, 154, mb_strtoupper((string) ($co['service'] ?? 'India & Nepal Travel Service')), 'caps', 15, '#FFFFFF', 'middle', 2.2, 1.0, 380);
 
-        // Two quiet rows of facts.
+        // The portrait plate and the KYC mark.
+        $s->rect(166, 194, 208, 250, '#FFFFFF', 22, ['stroke' => self::GOLD, 'sw' => 2.4]);
+        self::portrait($s, $m, 176, 204, 188, 230, 16);
+        self::kycMark($s, $m, 368, 426, 270, 444);
+
+        // The name sits clear of the KYC mark; a two-line agency name grows downwards.
+        $last = $s->textFit(270, 506, (string) $m['name'], 'sansB', 38, self::INK, 'middle', 484);
+        $y = 536 + ($last - 506);
+        if (!empty($m['contact'])) {
+            $s->text(270, $y, (string) $m['contact'], 'sans', 17, self::MUTED, 'middle', 0, 1.0, 470);
+            $y += 25;
+        }
+        $s->textFit(270, $y, mb_strtoupper((string) $m['designation']), 'caps', 16.5, self::GOLD_D, 'middle', 480, 3.6, 1);
+
+        // The registry number: AGENT CODE SHG-0027 / STAFF NO. SHG-S-0005.
+        $idNo  = $m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING';
+        $label = self::codeLabel($m);
+        $iw = self::measure('monoB', 24, $idNo, 1.2) + self::measure('caps', 14, $label, 1.6) + 60;
+        $py = $y + 18;
+        $s->rect(270 - $iw / 2, $py, $iw, 46, self::NAVY, 23);
+        $s->text(270 - $iw / 2 + 22, $py + 29, $label, 'caps', 14, self::GOLD_L, 'start', 1.6);
+        $s->text(270 + $iw / 2 - 22, $py + 32, $idNo, 'monoB', 24, '#FFFFFF', 'end', 1.2);
+
+        // Four facts.
         $rows = [
             ['MOBILE', (string) ($m['callDisplay'] ?: $m['waDisplay'])],
             ['BRANCH', (string) ($m['branch'] !== '' ? $m['branch'] : 'Head Office')],
             ['VALID TILL', $m['validUntil'] !== '' ? date('M Y', (int) strtotime((string) $m['validUntil'])) : '—'],
-            [$m['bloodGroup'] !== '' ? 'BLOOD' : 'SINCE', $m['bloodGroup'] !== '' ? (string) $m['bloodGroup'] : ($m['joined'] !== '' ? date('M Y', (int) strtotime((string) $m['joined'])) : '—')],
+            [$m['bloodGroup'] !== '' ? 'BLOOD GROUP' : 'MEMBER SINCE', $m['bloodGroup'] !== '' ? (string) $m['bloodGroup'] : ($m['joined'] !== '' ? date('M Y', (int) strtotime((string) $m['joined'])) : '—')],
         ];
-        $gy = min(max($py + ($tight ? 80 : 88), 700), 724);
+        $gy = min(max($py + 82, 664), 712);
         foreach ($rows as $i => [$label, $value]) {
-            $x = $i % 2 === 0 ? 58 : 304;
+            $x = $i % 2 === 0 ? 46 : 300;
             $ry = $gy + intdiv($i, 2) * 50;
-            $s->text($x, $ry, $label, 'caps', 11.5, self::MUTED, 'start', 3);
-            $s->text($x, $ry + 22, $value, 'sans', 18, self::INK, 'start', 0, 1.0, $i % 2 === 0 ? 232 : 190);
+            $s->text($x, $ry, $label, 'caps', 14, self::MUTED, 'start', 1.8);
+            $s->text($x, $ry + 23, $value, 'sans', 18.5, self::INK, 'start', 0, 1.0, $i % 2 === 0 ? 240 : 200);
         }
 
-        // Classification band with security micro-text.
-        $s->rect(0, 800, 540, 56, self::NAVY);
-        $s->rect(0, 800, 540, 2.2, self::GOLD);
-        $s->clip(0, 802, 540, 10);
-        $s->text(4, 809, str_repeat('SHREEHARIGLOBAL·', 12), 'mono', 5.6, '#FFFFFF', 'start', 0.4, 0.28);
+        // Classification band with security micro-text and the website.
+        $s->rect(0, 790, 540, 66, self::NAVY);
+        $s->rect(0, 790, 540, 2.4, self::GOLD);
+        $s->clip(0, 793, 540, 9);
+        $s->text(4, 800, str_repeat('SHREEHARIGLOBAL·', 12), 'mono', 5.6, '#FFFFFF', 'start', 0.4, 0.28);
         $s->unclip();
         $class = $m['isAgent'] ? ($m['isOrg'] ? 'AUTHORISED  AGENCY' : 'AUTHORISED  AGENT') : 'OFFICE  STAFF';
-        $s->text(270, 838, $class, 'caps', 19, '#FFFFFF', 'middle', 8);
+        $s->text(270, 826, $class, 'caps', 19, '#FFFFFF', 'middle', 6);
+        $s->text(270, 847, 'www.' . self::web($co), 'mono', 14, self::GOLD_L, 'middle', 0.4);
         return $s;
+    }
+
+    /** "shreehariglobal.in" — the website without scheme or www. */
+    private static function web(array $co): string
+    {
+        $w = (string) preg_replace('~^(https?://)?(www\.)?~i', '', trim((string) ($co['web'] ?? '')));
+        return rtrim($w !== '' ? $w : 'shreehariglobal.in', '/');
     }
 
     private static function idBack(array $m): ApScene
     {
+        $co = $m['company'];
         $s = new ApScene(540, 856, 32);
-        $s->rect(0, 0, 540, 856, self::IVORY);
-        self::rosette($s, 270, 330, 230, self::ROYAL, 0.06, 30, 9, 0.4);
+        $s->rect(0, 0, 540, 856, '#FFFFFF');
+        self::rosette($s, 270, 300, 220, self::ROYAL, 0.045, 30, 9, 0.4);
 
-        $s->rect(0, 0, 540, 92, self::NAVY);
-        $s->clip(0, 0, 540, 92);
-        self::waves($s, 0, 0, 540, 92, '#FFFFFF', 0.06, 8, 12);
+        $s->rect(0, 0, 540, 62, self::NAVY);
+        $s->clip(0, 0, 540, 62);
+        self::waves($s, 0, 0, 540, 62, '#FFFFFF', 0.06, 6, 12);
         $s->unclip();
-        $s->rect(0, 92, 540, 2.2, self::GOLD);
-        $s->text(270, 58, 'ॐ नमो नारायणाय', 'deva', 22, self::GOLD_L, 'middle');
+        $s->rect(0, 62, 540, 2.4, self::GOLD);
+        $s->text(270, 41, (string) ($co['mantra'] ?? 'ॐ नमो नारायणाय'), 'deva', 20, self::GOLD_L, 'middle', 0, 1.0, 480);
 
-        $s->text(270, 140, 'IDENTITY  VERIFICATION', 'caps', 13.5, self::MUTED, 'middle', 5.5);
-        // Four modules of quiet zone around the code: the camera finds it on the first try.
-        $s->rect(126, 160, 288, 288, '#FFFFFF', 20, ['stroke' => self::GOLD, 'sw' => 2]);
-        $s->qr(152, 186, 236, self::safeQr([self::verifyUrl($m)])[0]);
-        $s->text(270, 482, 'Scan to verify this card', 'sans', 17, self::INK, 'middle');
-        $s->text(270, 506, preg_replace('#^https?://(www\.)?#', '', appUrl('id.php')) ?? '', 'mono', 11.5, self::MUTED, 'middle', 0.6);
+        // Two codes: is this card real? · talk to the company on WhatsApp.
+        self::qrPlate($s, 36, 84, 214, [self::verifyUrl($m)], self::GOLD);
+        self::qrPlate($s, 290, 84, 214, [self::chatUrl($m)], self::WA, true);
+        $s->text(143, 324, 'SCAN TO VERIFY', 'caps', 15.5, self::INK, 'middle', 1.6);
+        $s->text(143, 346, preg_replace('#^https?://(www\.)?#', '', appUrl('id.php')) ?? '', 'mono', 14, self::MUTED, 'middle', 0, 1.0, 228);
+        $s->text(397, 324, 'SCAN TO CHAT', 'caps', 15.5, self::WA, 'middle', 1.6);
+        $s->text(397, 346, 'WA ' . AgentPro::displayPhone(substr(self::chatUrl($m), 14)), 'mono', 14, self::MUTED, 'middle', 0, 1.0, 228);
 
         $rows = [
             ['HOLDER', (string) $m['name']],
-            ['ID NO.', $m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING'],
+            [self::codeLabel($m), $m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING'],
             ['ISSUED', $m['cardIssued'] !== '' ? date('d M Y', (int) strtotime((string) $m['cardIssued'])) : '—'],
             ['VALID TILL', $m['validUntil'] !== '' ? date('d M Y', (int) strtotime((string) $m['validUntil'])) : '—'],
         ];
         if ($m['emergencyPhone'] !== '') {
             $rows[] = ['EMERGENCY', trim((string) $m['emergencyName'] . ' ' . AgentPro::displayPhone(AgentPro::intlDigits((string) $m['emergencyPhone'], (string) $m['countryCode'])))];
         }
-        $y = 548;
-        foreach ($rows as [$label, $value]) {
-            $s->text(58, $y, $label, 'caps', 11.5, self::MUTED, 'start', 3);
-            $s->textFit(190, $y, $value, $label === 'ID NO.' ? 'monoB' : 'sans', $label === 'ID NO.' ? 15.5 : 16, self::INK, 'start', 300, 0, 1);
-            $y += 30;
+        $y = 384;
+        foreach ($rows as $i => [$label, $value]) {
+            $code = $i === 1;
+            $s->text(40, $y, $label, 'caps', 14, self::MUTED, 'start', 1.2);
+            $s->textFit(184, $y, $value, $code ? 'monoB' : 'sans', $code ? 16 : 16.5, self::INK, 'start', 316, 0, 1);
+            $y += 27;
+        }
+
+        // The company: CEO & Director, the 24/7 line, the offices.
+        $y += 4;
+        $s->rect(40, $y - 14, 460, 1.2, self::GOLD, 0, ['op' => 0.7]);
+        $y += 10;
+        $s->text(40, $y, 'CEO & DIRECTOR', 'caps', 14, self::MUTED, 'start', 1.2);
+        $s->textFit(184, $y, (string) ($co['ceo'] ?? ''), 'sansB', 16.5, self::INK, 'start', 316, 0, 1);
+        $y += 27;
+        $s->text(40, $y, '24 × 7 HELP', 'caps', 14, self::MUTED, 'start', 1.2);
+        $s->text(184, $y, (string) ($co['phone247'] ?? ''), 'monoB', 16, self::RED, 'start', 0.3);
+        $y += 27;
+        $offices = self::offices($co, 3);
+        if ($offices !== []) {
+            $s->text(40, $y, 'OFFICES', 'caps', 14, self::MUTED, 'start', 1.2);
+            foreach ($offices as [$town, $num]) {
+                $s->text(184, $y, $town, 'sans', 15.5, self::INK, 'start', 0, 1.0, 120);
+                $s->text(500, $y, $num, 'mono', 15, self::INK, 'end', 0.2);
+                $y += 23;
+            }
         }
 
         // Return address + signatory.
-        $co = $m['company'];
-        $y = max($y + 8, 712);
-        $s->rect(58, $y - 18, 424, 1.2, self::GOLD, 0, ['op' => 0.6]);
-        $s->text(58, $y + 6, 'If found, please return to', 'sans', 12.5, self::MUTED);
-        $addr = self::wrap((string) ($co['address'] ?? ''), 'sans', 12.5, 280, 2);
+        $y = max($y + 10, 704);
+        $s->text(40, $y, 'If found, please return to', 'sans', 14, self::MUTED);
+        // Print minimum is 14 units (~1.3 mm): the address column gives the
+        // signatory block 182 units, enough for "AUTHORISED SIGNATORY" and the CEO's name at 14.
+        $addr = self::wrap((string) ($co['address'] ?? ''), 'sans', 14, 270, 3);
         foreach ($addr as $i => $ln) {
-            $s->text(58, $y + 26 + $i * 18, $ln, 'sans', 12.5, self::INK);
+            $s->text(40, $y + 20 + $i * 18, $ln, 'sans', 14, self::INK);
         }
-        $s->text(58, $y + 26 + count($addr) * 18 + 2, (string) ($co['phone'] ?? ''), 'mono', 12, self::INK);
+        $sig = trim(Settings::getString('ap_card_signature', '')) ?: (string) ($co['ceo'] ?? $co['operator'] ?? '');
+        $s->rect(318, $y + 16, 182, 1.4, self::INK, 0, ['op' => 0.7]);
+        $s->text(409, $y + 34, 'AUTHORISED SIGNATORY', 'caps', 14, self::MUTED, 'middle', 0.3, 1.0, 182);
+        $s->text(409, $y + 53, $sig, 'sans', 14, self::INK, 'middle', 0, 1.0, 182);
 
-        $sig = trim(Settings::getString('ap_card_signature', '')) ?: (string) ($co['operator'] ?? '');
-        $s->rect(352, $y + 30, 130, 1.4, self::INK, 0, ['op' => 0.7]);
-        $s->text(417, $y + 50, 'AUTHORISED SIGNATORY', 'caps', 9.5, self::MUTED, 'middle', 1.6);
-        $s->text(417, $y + 68, $sig, 'sans', 12, self::INK, 'middle', 0, 1.0, 150);
-
-        $s->rect(0, 812, 540, 44, self::NAVY);
-        $s->rect(0, 812, 540, 2.2, self::GOLD);
-        $s->text(270, 840, mb_strtoupper((string) ($co['web'] ?? 'shreehariglobal.in')), 'caps', 14, '#FFFFFF', 'middle', 5);
+        $s->rect(0, 790, 540, 66, self::NAVY);
+        $s->rect(0, 790, 540, 2.4, self::GOLD);
+        $s->text(270, 820, 'WWW.' . mb_strtoupper(self::web($co)), 'caps', 16, '#FFFFFF', 'middle', 3.6);
+        $s->text(270, 845, 'CIN ' . (string) ($co['cin'] ?? ''), 'mono', 14, self::GOLD_L, 'middle', 0.4);
         return $s;
     }
 
@@ -514,44 +740,49 @@ final class ApCard
 
     private static function vcFront(array $m): ApScene
     {
-        $p = self::vcPalette((string) $m['theme']);
+        $p  = self::vcPalette((string) $m['theme']);
+        $co = $m['company'];
+        [$w1, $w2] = self::wordmark($co);
         $s = new ApScene(889, 508, 18);
-        $s->rect(0, 0, 889, 508, $p['ground']);
+        $s->rect(0, 0, 889, 508, '#FFFFFF');
 
-        // The panel, its waves, and the meridian edge cut back into the ground.
-        $s->rect(0, 0, 410, 508, $p['panel']);
-        $s->clip(0, 0, 410, 508);
-        self::waves($s, 0, 0, 410, 508, $p['panelLine'], 0.06, 30, 16);
+        // Letterhead on white, whatever the theme: the logo's colours stay true.
+        $s->art(26, 16, 176, 112, self::LOGO, 'start');
+        $s->text(214, 62, $w1, 'sansB', 38, self::NAVY, 'start', 0.8, 1.0, 470);
+        if ($w2 !== '') {
+            $s->text(216, 90, $w2, 'caps', 15.5, self::GOLD_D, 'start', 4.2, 1.0, 400);
+        }
+        $s->text(215, 118, self::vcTagline($m), 'sans', 16, self::MUTED, 'start', 0.2, 1.0, 420);
+        self::flags($s, 863, 26, 30, 'end');
+        $s->text(863, 90, (string) ($co['service'] ?? ''), 'caps', 14, self::NAVY, 'end', 0.6, 1.0, 230);
+        $s->text(863, 118, 'CIN ' . (string) ($co['cin'] ?? ''), 'mono', 14, self::MUTED, 'end', 0, 1.0, 230);
+
+        // The theme's field, entered by the meridian: a gold ribbon over a gentle curve.
+        $s->shape([['M', 0, 158], ['C', 260, 134, 560, 170, 889, 142], ['L', 889, 508], ['L', 0, 508], ['Z']], $p['panel']);
+        $s->clip(0, 136, 889, 372);
+        self::waves($s, 0, 136, 889, 372, $p['panelLine'], 0.05, 26, 15);
         $s->unclip();
-        $s->shape([['M', 334, 0], ['C', 300, 170, 392, 320, 306, 508], ['L', 412, 508], ['L', 412, 0], ['Z']], $p['ground']);
-        self::rosette($s, 700, 480, 300, $p['pattern'] === '#FFFFFF' ? self::ROYAL : $p['pattern'], 0.05, 30, 8, 0.2);
-        $s->shape([['M', 334, 0], ['C', 300, 170, 392, 320, 306, 508], ['L', 313, 508], ['C', 400, 320, 308, 170, 341, 0], ['Z']], $p['rule']);
+        $s->shape([['M', 0, 152], ['C', 260, 128, 560, 164, 889, 136], ['L', 889, 142], ['C', 560, 170, 260, 134, 0, 158], ['Z']], $p['rule']);
 
-        self::crest($s, 106, 46, 0.86, $p['panel'] !== '#F3EBD8');
-        $s->text(160, 300, 'S HARI GLOBAL', 'sansB', 31, $p['panelInk'], 'middle', 2.6, 1.0, 270);
-        $s->text(160, 327, 'PRIVATE  LIMITED', 'caps', 14, $p['panelSub'], 'middle', 5.5);
-        $s->rect(128, 346, 64, 1.6, $p['rule']);
-        $s->text(160, 378, (string) $m['tagline'], 'sans', 14.5, $p['panelInk'], 'middle', 0.4, 0.82, 270);
-        $s->text(160, 470, 'CIN ' . (string) ($m['company']['cin'] ?? ''), 'mono', 10, $p['panelInk'], 'middle', 0.5, 0.5);
-
-        // The person.
-        $x = 430;
-        if ($m['idNo'] !== '') {
-            $s->text(856, 58, (string) $m['idNo'], 'mono', 13, $p['muted'], 'end', 1.2);
-        }
-        $last = $s->textFit($x, 130, (string) $m['name'], 'sansB', 44, $p['ink'], 'start', 420);
-        $y = 162 + ($last - 130);
+        // The person — white on the royal field.
+        $x = 36;
+        $last = $s->textFit($x, 214, (string) $m['name'], 'sansB', 40, $p['panelInk'], 'start', 600);
+        $y = 246 + ($last - 214);
         if (!empty($m['contact'])) {
-            $s->text($x, $y, (string) $m['contact'], 'sans', 17, $p['muted'], 'start', 0, 1.0, 400);
-            $y += 26;
+            $s->text($x, $y, (string) $m['contact'], 'sans', 17, $p['panelInk'], 'start', 0, 0.85, 600);
+            $y += 25;
         }
-        $s->textFit($x, $y, mb_strtoupper((string) $m['designation']), 'caps', 15, $p['accent'], 'start', 410, 4.5, 1);
-        $s->rect($x, $y + 20, 52, 2, $p['rule']);
+        $s->textFit($x, $y, mb_strtoupper((string) $m['designation']), 'caps', 16, $p['panelSub'], 'start', 600, 3.6, 1);
+        $y += 32;
+        $label = self::codeLabel($m);
+        $s->text($x, $y, $label, 'caps', 14, $p['panelSub'], 'start', 1.4);
+        $s->text($x + self::measure('caps', 14, $label, 1.4) + 12, $y + 1, $m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING',
+            'monoB', 19, $p['panelInk'], 'start', 0.8);
 
-        // Contact rows: engraved labels, then the values. WA first and strongest.
+        // Contact rows: WA first and strongest.
         $rows = [];
         if ($m['wa'] !== '') {
-            $rows[] = ['WA', 'WA: ' . $m['waDisplay'], 'wa'];
+            $rows[] = ['WA', (string) $m['waDisplay'], 'wa'];
         }
         if ($m['call'] !== '' && $m['call'] !== $m['wa']) {
             $rows[] = ['TEL', (string) $m['callDisplay'], 'n'];
@@ -559,86 +790,109 @@ final class ApCard
         if ($m['email'] !== '') {
             $rows[] = ['MAIL', (string) $m['email'], 'n'];
         }
-        $rows[] = ['WEB', (string) ($m['company']['web'] ?? 'shreehariglobal.in'), 'n'];
         $place = trim((string) $m['branch'] . ($m['address'] !== '' && $m['branch'] === '' ? ' ' . $m['address'] : ''));
         if ($place !== '') {
             $rows[] = ['AT', $place, 'n'];
         }
-        $ry = $y + 72;
-        foreach (array_slice($rows, 0, 5) as $i => [$label, $value, $kind]) {
-            $limit = $ry > 318 ? 268 : 380;          // keep clear of the QR plate
-            if ($kind === 'wa') {
-                self::waGlyph($s, $x + 10, $ry - 8, 11);
-                $s->text($x + 30, $ry, 'WA:', 'sansB', 22, self::WA);
-                $lw = ApCard::measure('sansB', 22, 'WA:');
-                $s->text($x + 30 + $lw + 8, $ry, (string) $m['waDisplay'], 'sansB', 22, $p['ink'], 'start', 0.2, 1.0, $limit - $lw - 8);
-            } else {
-                $s->text($x, $ry, $label, 'caps', 11.5, $p['accent'], 'start', 2.5);
-                $s->text($x + 54, $ry, $value, 'sans', 16.5, $p['ink'], 'start', 0, 1.0, $limit - 24);
+        $ry = $y + 42;
+        foreach ($rows as [$label, $value, $kind]) {
+            if ($ry > 448) {
+                break;                                   // the strip below is the floor
             }
-            $ry += 44;
+            if ($kind === 'wa') {
+                self::waGlyph($s, $x + 11, $ry - 8, 12);
+                $s->text($x + 32, $ry, 'WA:', 'sansB', 22, $p['panelSub']);
+                $lw = self::measure('sansB', 22, 'WA:');
+                $s->text($x + 32 + $lw + 8, $ry, $value, 'sansB', 22, $p['panelInk'], 'start', 0.2, 1.0, 560);
+            } else {
+                $s->text($x, $ry, $label, 'caps', 14, $p['panelSub'], 'start', 1.4);
+                $s->text($x + 64, $ry, $value, 'sans', 18, $p['panelInk'], 'start', 0, 1.0, 568);
+            }
+            $ry += 34;
         }
 
-        // Small WhatsApp QR so a one-sided print still opens the chat. Just the number
-        // (no greeting): 25 modules, ~0.45 mm each in print — a phone reads it at arm's length.
+        // Small WhatsApp QR so a one-sided print still opens the chat (just the number).
         if ($m['wa'] !== '') {
-            $s->rect(728, 336, 136, 136, '#FFFFFF', 14, ['stroke' => $p['rule'], 'sw' => 1.6]);
-            $s->qr(740, 348, 112, self::safeQr(['https://wa.me/' . $m['wa']])[0]);
-            $s->text(796, 492, 'SCAN · WHATSAPP', 'caps', 9.5, $p['muted'], 'middle', 1.8);
+            self::qrPlate($s, 706, 194, 152, ['https://wa.me/' . $m['wa']], $p['rule']);
+            $s->text(782, 372, 'SCAN · WHATSAPP', 'caps', 14, $p['panelSub'], 'middle', 1, 1.0, 170);
         }
+
+        // The strip: what the coaches offer, and the website.
+        $s->rect(0, 462, 889, 1.4, $p['rule'], 0, ['op' => 0.8]);
+        $s->text($x, 492, mb_strtoupper(self::featureLine($co)), 'caps', 14.5, $p['panelInk'], 'start', 1, 0.92, 596);
+        $s->text(858, 492, 'www.' . self::web($co), 'sansB', 16, $p['panelSub'], 'end', 0.4, 1.0, 240);
         return $s;
+    }
+
+    /** "AC Sleeper | Live GPS Tracking | USB / Type-C Charging" → "AC Sleeper · Live GPS Tracking · …". */
+    private static function featureLine(array $co): string
+    {
+        return implode('  ·  ', self::features($co));
+    }
+
+    /** @return list<string> */
+    private static function features(array $co): array
+    {
+        $parts = preg_split('/\s*(?:\||·|;|\n)\s*/u', (string) ($co['features'] ?? '')) ?: [];
+        return array_values(array_filter(array_map('trim', $parts), static fn(string $v): bool => $v !== ''));
     }
 
     private static function vcBack(array $m): ApScene
     {
-        $p = self::vcPalette((string) $m['theme']);
+        $p  = self::vcPalette((string) $m['theme']);
+        $co = $m['company'];
+        [$w1, $w2] = self::wordmark($co);
         $s = new ApScene(889, 508, 18);
         $s->rect(0, 0, 889, 508, $p['back']);
-        self::waves($s, 0, 0, 889, 508, $p['pattern'], 0.05, 34, 15);
-        self::rosette($s, 700, 254, 230, $p['pattern'], 0.07, 32, 8, 0.6);
+        self::waves($s, 0, 0, 889, 508, $p['pattern'], 0.04, 34, 15);
+        self::rosette($s, 700, 254, 230, $p['pattern'], 0.05, 32, 8, 0.6);
 
-        // The big WhatsApp QR with the green mark in its heart (ECC H keeps it readable).
-        $s->rect(66, 62, 316, 316, '#FFFFFF', 22, ['stroke' => $p['rule'], 'sw' => 2.4]);
-        if ($m['waLink'] !== '') {
-            // With the greeting if the code stays small (version 7); a long or Devanagari greeting
-            // falls back to the bare number — still a direct chat. The WA mark only goes on at ECC H.
-            [$mx, $lvl] = self::safeQr([(string) $m['waLink'], 'https://wa.me/' . $m['wa']], QrCode::ECC_H, 7);
-            $s->qr(88, 84, 272, $mx);
-            if ($lvl === QrCode::ECC_H) {
-                $s->rect(198, 194, 52, 52, '#FFFFFF', 12);
-                $s->circle(224, 220, 21, self::WA);
-                $s->text(224, 228, 'WA', 'sansB', 17, '#FFFFFF', 'middle');
-            }
+        // Left: the person's own WhatsApp QR (with the greeting when the code stays small),
+        // then WHO this card belongs to — a back printed alone is never anonymous.
+        $chat = $m['waLink'] !== '' ? [(string) $m['waLink'], 'https://wa.me/' . $m['wa']] : [self::chatUrl($m)];
+        self::qrPlate($s, 50, 34, 268, $chat, $p['rule'], true, 7);
+        $y = $s->textFit(184, 340, (string) $m['name'], 'sansB', 24, $p['backInk'], 'middle', 300) + 30;
+        $s->text(184, $y, self::codeLabel($m) . '  ' . ($m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING'), 'monoB', 15.5, $p['backSub'], 'middle', 0.4, 1.0, 300);
+        $s->text(184, $y + 28, $m['waLink'] !== '' ? 'Scan to chat on WhatsApp' : 'Scan to chat with our office', 'sans', 15, $p['backInk'], 'middle', 0, 0.9, 300);
+        if ($m['wa'] !== '') {
+            $s->text(184, $y + 54, 'WA ' . (string) $m['waDisplay'], 'mono', 15, $p['backInk'], 'middle', 0.3, 1.0, 300);
         }
-        $s->text(224, 420, 'Scan to chat on WhatsApp', 'sans', 17, $p['backInk'], 'middle');
-        $s->text(224, 448, 'WA: ' . (string) $m['waDisplay'], 'monoB', 16, $p['backSub'], 'middle', 0.6);
 
-        $x = 452;
-        $s->text($x, 112, 'S HARI GLOBAL', 'sansB', 34, $p['backInk'], 'start', 2.6, 1.0, 400);
-        $s->text($x + 1, 139, 'PRIVATE  LIMITED', 'caps', 14, $p['backSub'], 'start', 5.5);
-        $s->rect($x, 158, 60, 1.6, $p['rule']);
-        $y = 196;
-        foreach (['AC SLEEPER COACHES', 'LIVE GPS TRACKING', 'INDIA · NEPAL DAILY'] as $line) {
-            $s->text($x, $y, $line, 'caps', 13, $p['backInk'], 'start', 3.2, 0.88);
+        // Right: the company — logo on a white plate, wordmark, features, offices, the CEO.
+        $x = 372;
+        $s->rect($x, 34, 136, 84, '#FFFFFF', 12);
+        $s->art($x + 8, 40, 120, 72, self::LOGO);
+        $s->text($x + 152, 70, $w1, 'sansB', 27, $p['backInk'], 'start', 0.6, 1.0, 330);
+        if ($w2 !== '') {
+            $s->text($x + 153, 95, $w2, 'caps', 14, $p['backSub'], 'start', 3, 1.0, 330);
+        }
+        $s->text($x + 153, 118, (string) ($co['service'] ?? ''), 'sans', 15, $p['backInk'], 'start', 0.2, 0.9, 330);
+        $s->rect($x, 136, 486, 1.4, $p['rule'], 0, ['op' => 0.8]);
+
+        $y = 164;
+        foreach (array_slice(self::features($co), 0, 3) as $f) {
+            $s->shape([['M', $x + 4, $y - 11], ['L', $x + 9, $y - 6], ['L', $x + 4, $y - 1], ['L', $x - 1, $y - 6], ['Z']], $p['rule']);
+            $s->text($x + 18, $y, mb_strtoupper($f), 'caps', 15, $p['backInk'], 'start', 1.4, 1.0, 470);
             $y += 25;
         }
-        $y += 12;
-        // "Mehsana +91 91048 01507 · Ahmedabad …" → town | number columns. Anything that is not
-        // a letter, digit or bracket is trimmed off the ends (a mis-encoded separator stays out).
-        $parts = preg_split('/\s*(?:·|\||;|\n)\s*/u', (string) ($m['company']['counters'] ?? '')) ?: [];
-        $counters = array_slice(array_values(array_filter(array_map(
-            static fn(string $c): string => (string) preg_replace('/^[^\p{L}\p{N}+(]+|[^\p{L}\p{N})]+$/u', '', $c), $parts))), 0, 4);
-        foreach ($counters as $c) {
-            if (preg_match('/^(.*?)\s*(\+?[\d][\d\s]{6,})$/u', $c, $mm) === 1) {
-                $s->text($x, $y, trim($mm[1]), 'sans', 14.5, $p['backInk'], 'start', 0, 0.75, 118);
-                $s->text($x + 128, $y, trim($mm[2]), 'mono', 14, $p['backInk'], 'start', 0.3);
-            } else {
-                $s->text($x, $y, $c, 'sans', 14.5, $p['backInk'], 'start', 0, 0.85, 400);
-            }
+        $y += 8;
+        foreach (self::offices($co, 3) as [$town, $num]) {
+            $s->text($x, $y, $town, 'sans', 15, $p['backInk'], 'start', 0, 0.9, 130);
+            $s->text($x + 140, $y, $num, 'mono', 15, $p['backInk'], 'start', 0.2);
             $y += 24;
         }
-        $s->text($x, 470, (string) ($m['company']['web'] ?? 'shreehariglobal.in'), 'sansB', 17, $p['backSub'], 'start', 0.6);
-        $s->text(856, 470, 'ॐ नमो नारायणाय', 'deva', 15, $p['backSub'], 'end', 0, 0.85);
+        $y += 8;
+        $s->text($x, $y, 'CEO & Director: ' . (string) ($co['ceo'] ?? ''), 'sans', 14.5, $p['backInk'], 'start', 0, 0.95, 486);
+        $y += 25;
+        $s->text($x, $y, '24 × 7', 'caps', 15, $p['backSub'], 'start', 1);
+        $s->text($x + 70, $y, (string) ($co['phone247'] ?? ''), 'monoB', 16.5, $p['backInk'], 'start', 0.2);
+
+        // Bottom right: book on the company's WhatsApp.
+        $chatUrl = self::chatUrl($m);
+        self::qrPlate($s, 754, 386, 106, [$chatUrl], self::WA);
+        $s->text(740, 424, 'BOOK ON WHATSAPP', 'caps', 14, $p['backSub'], 'end', 1);
+        $s->text(740, 450, AgentPro::displayPhone(substr($chatUrl, 14)), 'monoB', 17, $p['backInk'], 'end', 0.3);
+        $s->text(740, 480, 'www.' . self::web($co), 'sansB', 16, $p['backSub'], 'end', 0.4);
         return $s;
     }
 
@@ -674,20 +928,6 @@ final class ApCard
         }
     }
 
-    /** A second, smaller rosette arc under the ID photo plate (the lathe's echo). */
-    private static function rosetteArc(ApScene $s): void
-    {
-        for ($i = 0; $i < 9; $i++) {
-            $pts = [];
-            $r = 300 + $i * 6;
-            for ($j = 0; $j <= 60; $j++) {
-                $t = M_PI * (1.18 + 0.64 * $j / 60);
-                $pts[] = [270 + $r * cos($t), 640 + $r * sin($t) * 0.45];
-            }
-            $s->line($pts, self::GOLD, 0.8, 0.10);
-        }
-    }
-
     /** Interlaced sine waves filling a band — two families in opposite phase. */
     private static function waves(ApScene $s, float $x, float $y, float $w, float $h, string $color, float $op, int $lines, float $gap): void
     {
@@ -716,63 +956,6 @@ final class ApCard
                    ['L', $cx - $r * 0.24, $cy + $r * 0.56], ['Z']], '#FFFFFF');
         $s->ring($cx, $cy - $r * 0.02, $r * 0.56, $r * 0.16, '#FFFFFF');
         $s->circle($cx, $cy - $r * 0.02, $r * 0.18, '#FFFFFF');
-    }
-
-    /** A short gold hairline with a diamond at its centre. */
-    private static function ornament(ApScene $s, float $cx, float $cy): void
-    {
-        $s->rect($cx - 70, $cy - 0.7, 58, 1.4, self::GOLD);
-        $s->rect($cx + 12, $cy - 0.7, 58, 1.4, self::GOLD);
-        $s->shape([['M', $cx, $cy - 6], ['L', $cx + 6, $cy], ['L', $cx, $cy + 6], ['L', $cx - 6, $cy], ['Z']], self::GOLD);
-    }
-
-    /**
-     * The SHG crest (crown, ring, SH, swoosh), redrawn from the coach livery
-     * — the same drawing as assets/livefleet/shg-crest.svg, in primitives.
-     */
-    private static function crest(ApScene $s, float $x, float $y, float $k, bool $onDark): void
-    {
-        $P = static fn(float $px, float $py): array => [$x + $px * $k, $y + $py * $k];
-        $seg = static function (array $pts) use ($P): array {
-            $out = [];
-            foreach ($pts as $i => $pt) {
-                $q = $P($pt[0], $pt[1]);
-                $out[] = [$i === 0 ? 'M' : 'L', $q[0], $q[1]];
-            }
-            $out[] = ['Z'];
-            return $out;
-        };
-        $gold = self::GOLD;
-        $s->shape($seg([[56, 46], [50, 18], [65, 32], [76, 10], [87, 32], [102, 18], [96, 46]]), $gold);
-        $s->shape($seg([[55, 45], [97, 45], [97, 53], [55, 53]]), self::GOLD_D);
-        foreach ([[50, 16, 3.6], [76, 8, 4.0], [102, 16, 3.6]] as [$cx, $cy, $r]) {
-            [$qx, $qy] = $P($cx, $cy);
-            $s->circle($qx, $qy, $r * $k, self::GOLD_L);
-        }
-        [$rx, $ry] = $P(76, 103);
-        $s->circle($rx, $ry, 47.5 * $k, $onDark ? $gold : self::ROYAL);
-        $s->circle($rx, $ry, 44 * $k, '#FFFFFF');
-        $s->ring($rx, $ry, 39 * $k, 1.0 * $k, self::ROYAL, 0.55, [2 * $k, 5 * $k]);
-        $s->text($rx - 2 * $k, $ry + 21 * $k, 'SH', 'serifBI', 58 * $k, self::ROYAL, 'middle', -7 * $k);
-        // swoosh: gold, then the navy underline
-        $sw = static function (array $c) use ($P): array {
-            $o = [];
-            foreach ($c as $seg) {
-                if ($seg[0] === 'Z') { $o[] = ['Z']; continue; }
-                $pts = array_slice($seg, 1);
-                $mapped = [];
-                for ($i = 0; $i < count($pts); $i += 2) {
-                    $q = $P((float) $pts[$i], (float) $pts[$i + 1]);
-                    $mapped[] = $q[0];
-                    $mapped[] = $q[1];
-                }
-                $o[] = array_merge([$seg[0]], $mapped);
-            }
-            return $o;
-        };
-        $s->shape($sw([['M', 30, 168], ['C', 58, 150, 98, 150, 156, 108], ['C', 112, 156, 70, 170, 30, 168], ['Z']]), $gold);
-        $s->shape($sw([['M', 22, 182], ['C', 40, 160, 78, 158, 112, 150], ['C', 80, 168, 52, 176, 22, 182], ['Z']]),
-            $onDark ? '#FFFFFF' : self::ROYAL, $onDark ? 0.9 : 1.0);
     }
 
     /** The photo, or initials on a soft plate when there is none yet. */
@@ -826,8 +1009,10 @@ final class ApCard
 
     /**
      * @param string $fontBase where the browser finds the TTFs ('' = same site, root-relative)
+     * @param bool   $embedArt  logo + flags as data URIs (a standalone file); false links them
+     *                          from $fontBase (a print sheet with many cards on one page)
      */
-    public static function svg(ApScene $s, bool $embedPhoto = true, string $fontBase = '', bool $withSize = true): string
+    public static function svg(ApScene $s, bool $embedPhoto = true, string $fontBase = '', bool $withSize = true, bool $embedArt = true): string
     {
         $uid = 'ap' . substr(bin2hex(random_bytes(4)), 0, 7);
         $e = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, 'UTF-8');
@@ -912,6 +1097,13 @@ final class ApCard
                     $body[] = '<image x="' . $n($op['x']) . '" y="' . $n($op['y']) . '" width="' . $n($op['w']) . '" height="' . $n($op['h']) . '"'
                         . ' preserveAspectRatio="xMidYMid slice" clip-path="url(#' . $id . ')" href="' . $e($href) . '"/>';
                     break;
+                case 'art':
+                    $href = $embedArt ? self::artDataUri((string) $op['rel']) : rtrim($fontBase, '/') . '/' . self::artWebRel((string) $op['rel']);
+                    if ($href !== '' && $href !== '/') {
+                        $body[] = '<image x="' . $n($op['x']) . '" y="' . $n($op['y']) . '" width="' . $n($op['w']) . '" height="' . $n($op['h']) . '"'
+                            . ' preserveAspectRatio="xMidYMid meet" href="' . $e($href) . '"/>';
+                    }
+                    break;
                 case 'qr':
                     $mx = $op['m'];
                     $cnt = count($mx);
@@ -963,6 +1155,52 @@ final class ApCard
             imagedestroy($out);
         }
         return 'data:image/jpeg;base64,' . base64_encode($bin);
+    }
+
+    /** The lighter .webp twin of a site picture when there is one (browsers only; GD keeps the PNG). */
+    private static function artWebRel(string $rel): string
+    {
+        $webp = (string) preg_replace('/\.png$/i', '.webp', $rel);
+        return $webp !== $rel && self::assetFile($webp) !== '' ? $webp : $rel;
+    }
+
+    /** @var array<string, string> */
+    private static array $artUri = [];
+
+    private static function artDataUri(string $rel): string
+    {
+        $rel = self::artWebRel($rel);
+        if (!isset(self::$artUri[$rel])) {
+            $abs = self::assetFile($rel);
+            $bin = $abs !== '' ? (string) @file_get_contents($abs) : '';
+            $mime = str_ends_with(strtolower($rel), '.webp') ? 'image/webp' : (str_ends_with(strtolower($rel), '.jpg') ? 'image/jpeg' : 'image/png');
+            self::$artUri[$rel] = $bin !== '' ? 'data:' . $mime . ';base64,' . base64_encode($bin) : '';
+        }
+        return self::$artUri[$rel];
+    }
+
+    /** @var array<string, GdImage|null> decoded site pictures, kept for the request */
+    private static array $artGd = [];
+
+    private static function artImage(string $abs): ?GdImage
+    {
+        if (!array_key_exists($abs, self::$artGd)) {
+            $g = null;
+            $bin = is_file($abs) ? @file_get_contents($abs) : false;
+            if ($bin !== false && $bin !== '') {
+                $im = @imagecreatefromstring($bin);
+                if ($im instanceof GdImage) {
+                    if (!imageistruecolor($im)) {
+                        imagepalettetotruecolor($im);
+                    }
+                    imagealphablending($im, true);
+                    imagesavealpha($im, true);
+                    $g = $im;
+                }
+            }
+            self::$artGd[$abs] = $g;
+        }
+        return self::$artGd[$abs];
     }
 
     private static function photoPublicUrl(string $abs): string
@@ -1050,6 +1288,14 @@ final class ApCard
                     break;
                 case 'image':
                     self::gdImage($im, $op, $k);
+                    break;
+                case 'art':
+                    $src = self::artImage((string) $op['abs']);
+                    if ($src !== null) {
+                        // Alpha blending is on: the logo's transparent edges melt into the card.
+                        imagecopyresampled($im, $src, (int) round($op['x'] * $k), (int) round($op['y'] * $k), 0, 0,
+                            max(1, (int) round($op['w'] * $k)), max(1, (int) round($op['h'] * $k)), imagesx($src), imagesy($src));
+                    }
                     break;
                 case 'qr':
                     $c = self::col($im, $op['fg']);
@@ -1319,7 +1565,7 @@ final class ApCard
                         if ($face === 'back') {
                             $c = $cols - 1 - $c;             // mirrored: the back lands behind its front
                         }
-                        $cells[$r * $cols + $c] = self::svg(self::scene($m, $kind . '-' . $face), true, '', false);
+                        $cells[$r * $cols + $c] = self::svg(self::scene($m, $kind . '-' . $face), true, '', false, false);
                     }
                     $grid = '';
                     foreach ($cells as $cell) {
@@ -1348,6 +1594,93 @@ final class ApCard
     }
 
     /* =================================================================
+     *  One A4 PDF: ID card front + back, visiting card front + back
+     * ================================================================= */
+
+    /**
+     * A print-ready A4 page (PDF bytes): all four faces at true size (CR80
+     * 54 × 85.6 mm, visiting card 88.9 × 50.8 mm), each a 300 dpi picture
+     * from the same scene as the PNG, with crop marks. Print at 100 %.
+     *
+     * @param array<string, mixed> $m AgentPro::member()
+     */
+    public static function pdf(array $m): string
+    {
+        require_once __DIR__ . '/pdf.php';
+        $pdf = new Pdf();                                    // A4 portrait, points, top-left origin
+        $pt  = 72 / 25.4;
+        $W   = $pdf->width();
+        $H   = $pdf->height();
+        $co  = $m['company'];
+        $dpi = 300 / 25.4 / self::UNITS_PER_MM;              // px per scene unit at 300 dpi
+        // The PDF's standard fonts are Latin-1 only: common punctuation is spelled out, the rest dropped.
+        $latin = static fn(string $v): string => trim((string) preg_replace('/\s+/', ' ', (string) preg_replace('/[^\x20-\x7E]+/', ' ',
+            strtr($v, ['–' => '-', '—' => '-', '·' => '-', '×' => 'x', '’' => "'", '‘' => "'", '“' => '"', '”' => '"', '₹' => 'Rs ']))));
+        $navy = [19, 34, 79];
+        $gold = [201, 151, 58];
+        $mute = [93, 102, 128];
+
+        // Letterhead: the logo on white, the legal name, CIN, who these cards are for.
+        $pdf->rect(0, 0, $W, 74, [255, 255, 255], true);
+        $logo = self::assetFile(self::LOGO);
+        if ($logo !== '') {
+            $pdf->image($logo, 30, 12, 96, 96 * 228 / 439);
+        }
+        [$w1, $w2] = self::wordmark($co);
+        $pdf->text(138, 32, $latin(trim($w1 . ' ' . str_replace('  ', ' ', $w2))), 15, 'F2', $navy);
+        $pdf->text(138, 48, $latin('CIN ' . ($co['cin'] ?? '') . '   ·   ' . ($co['address'] ?? '')), 7.5, 'F1', $mute);
+        $who = $latin((string) $m['name']);
+        $pdf->text(138, 63, 'ID card + visiting card' . ($who !== '' ? '  -  ' . $who : '') . '  -  '
+            . self::codeLabel($m) . ' ' . ($m['idNo'] !== '' ? $m['idNo'] : 'PENDING'), 9, 'F2', $gold);
+        $pdf->rect(0, 74, $W, 3, $navy, true);
+
+        $marks = static function (float $x, float $y, float $w, float $h) use ($pdf): void {
+            foreach ([[$x, $y], [$x + $w, $y], [$x, $y + $h], [$x + $w, $y + $h]] as [$mx, $my]) {
+                $pdf->line($mx - 14, $my, $mx - 4, $my, [120, 120, 120], 0.4);
+                $pdf->line($mx + 4, $my, $mx + 14, $my, [120, 120, 120], 0.4);
+                $pdf->line($mx, $my - 14, $mx, $my - 4, [120, 120, 120], 0.4);
+                $pdf->line($mx, $my + 4, $mx, $my + 14, [120, 120, 120], 0.4);
+            }
+        };
+        $pair = function (string $kind, float $y, float $wmm, float $hmm, float $gapPt) use ($pdf, $pt, $W, $m, $dpi, $marks, $mute): float {
+            $w = $wmm * $pt;
+            $h = $hmm * $pt;
+            $x = ($W - (2 * $w + $gapPt)) / 2;
+            foreach (['front', 'back'] as $i => $face) {
+                $cx = $x + $i * ($w + $gapPt);
+                $marks($cx, $y, $w, $h);
+                $pdf->imageFromString(self::png(self::scene($m, $kind . '-' . $face), $dpi), $cx, $y, $w, $h);
+                $pdf->textCenter($cx, $cx + $w, $y + $h + 18, ($kind === 'id' ? 'ID card' : 'Visiting card') . ' - ' . $face
+                    . '  (' . rtrim(rtrim(number_format($wmm, 1), '0'), '.') . ' x ' . rtrim(rtrim(number_format($hmm, 1), '0'), '.') . ' mm)', 8, 'F1', $mute);
+            }
+            return $y + $h + 18;
+        };
+
+        $y = $pair('id', 104, 54.0, 85.6, 56);
+        $y = $pair('vc', $y + 36, 88.9, 50.8, 30);
+
+        // How to print, and where the QR leads.
+        $y += 30;
+        $pdf->roundedRect(36, $y, $W - 72, 92, 8, [246, 244, 238], true);
+        $lines = [
+            'Print this page at 100% / "Actual size" on A4 (never "Fit to page"), then cut on the crop marks.',
+            'Paste each front to its back (or print on card stock and laminate). Fronts and backs are in the same order.',
+            'The left QR on the ID card back opens ' . $latin(preg_replace('#^https?://(www\.)?#', '', appUrl('id.php')) ?? '') . ' - it shows whether this card is valid today.',
+            'KYC: ' . (self::kycVerified($m) ? 'verified (red seal printed).'
+                : (self::kycRejected($m) ? 'NOT verified - the office refused the ID; the card says "KYC NOT VERIFIED".'
+                : 'pending - the card says "KYC PENDING" until the office verifies the ID.'))
+                . '   Valid till: ' . ($m['validUntil'] !== '' ? date('d M Y', (int) strtotime((string) $m['validUntil'])) : '-') . '.',
+        ];
+        foreach ($lines as $i => $ln) {
+            $pdf->text(50, $y + 22 + $i * 18, $ln, 8.5, 'F1', [40, 46, 66]);
+        }
+        $pdf->rect(0, $H - 34, $W, 34, $navy, true);
+        $pdf->textCenter(0, $W, $H - 14, $latin(($co['legal'] ?? '') . '  -  CEO & Director: ' . ($co['ceo'] ?? '') . '  -  24x7 ' . ($co['phone247'] ?? '')
+            . '  -  www.' . self::web($co)), 8.5, 'F1', [255, 255, 255]);
+        return $pdf->output();
+    }
+
+    /* =================================================================
      *  Links that work outside a signed-in browser (WhatsApp fetches them)
      * ================================================================= */
 
@@ -1356,16 +1689,17 @@ final class ApCard
         return substr(hash_hmac('sha256', 'apcard|' . $adminId . '|' . $side . '|' . $exp, APP_KEY), 0, 32);
     }
 
+    /** $side: one of SIDES (a PNG), or 'pdf' (the A4 page with all four faces). */
     public static function signedUrl(int $adminId, string $side, int $ttl = 86400): string
     {
-        if (!in_array($side, self::SIDES, true)) {
+        if (!in_array($side, self::SIDES, true) && $side !== 'pdf') {
             throw new RuntimeException('Unknown card side.');
         }
         $exp = time() + max(60, $ttl);
         // A new photo / code must reach WhatsApp's cache too: the version is part of the link.
         $ver = (int) Database::scalar('SELECT photo_ver FROM ap_members WHERE admin_id = :a', ['a' => $adminId], 1);
-        return appUrl('api/agentpro-card.php?m=' . $adminId . '&s=' . $side . '&e=' . $exp . '&v=' . $ver
-            . '&k=' . self::sig($adminId, $side, $exp) . '&f=png');
+        return appUrl('api/agentpro-card.php?m=' . $adminId . ($side === 'pdf' ? '&pdf=1' : '&s=' . $side) . '&e=' . $exp . '&v=' . $ver
+            . '&k=' . self::sig($adminId, $side, $exp) . ($side === 'pdf' ? '' : '&f=png'));
     }
 
     public static function checkSig(int $adminId, string $side, int $exp, string $key): bool

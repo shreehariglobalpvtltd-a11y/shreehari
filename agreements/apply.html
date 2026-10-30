@@ -4,6 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a2a8f">
+<script>
+/* 30 Oct 2026 (owner: one form system): the agent / sub-agent / partner one-page form now lives at /join.php
+   (AgentPro: live selfie, paper-form AI read, office approval, ID + visiting card). Still here: ?kind=staff
+   (the A4 staff sheet + its scan card), ?kind=office|driver, the status tracker (?track= ?ref= ?phone=), ?old=1. */
+(function () {
+  try {
+    var q = new URLSearchParams(location.search), k = (q.get('kind') || '').toLowerCase();
+    if (k === 'staff' || k === 'office' || k === 'driver' || q.has('track') || q.has('ref') || q.has('phone') || q.has('old')) return;
+    var as = (k === 'partner' || k === 'org') ? 'org' : ((k === 'agent' || k === 'subagent' || k === 'ind') ? 'person' : '');
+    location.replace('/join.php' + (as ? '?as=' + as : ''));
+  } catch (e) { /* very old browser: the one-page form below still works */ }
+})();
+</script>
 <title>अनलाइन आवेदन · Digital Application — S Hari Global</title>
 <meta name="description" content="S Hari Global Agent, Driver, Staff, and Transit Partner online application form with verified WhatsApp and digital KYC.">
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png">

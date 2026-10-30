@@ -271,18 +271,33 @@ $mockLog = sys_get_temp_dir() . '/mock-ollama-requests.jsonl';
 @unlink($mockLog);
 $mock = null;
 $up = static fn(): bool => @file_get_contents('http://127.0.0.1:11555/api/version') !== false;
+// 30 Oct 2026 (af1): the PHP that runs this test may carry its extensions in a -c ini; children get the same one.
+$phpArgs = static fn(): array => php_ini_loaded_file() ? [PHP_BINARY, '-c', (string) php_ini_loaded_file()] : [PHP_BINARY];
+$devNull = DIRECTORY_SEPARATOR === '\\' ? 'NUL' : '/dev/null';
 if (!$up()) {
+    // af1: the AI switched ON with no model server = the desk's own menu, never "⏳" then "could not understand"
+    Settings::set('ap_ai_on', '1', 'bool', 'agentpro', false);
+    Settings::flush();
+    ApAi::resetHealth();
+    check('switch on but no model server: enabled() is false (cached health probe)', ApAi::configured() && !ApAi::enabled() && !ApAi::docsReady());
+    $t0 = microtime(true);
+    $r = wa($A_WA, 'malai aaunu parne paisa kati bhayo?');
+    check('…so a member gets the menu at once — no "⏳", no "could not understand"', !str_contains(txt($r), '⏳') && str_contains(txt($r), 'balance')
+        && microtime(true) - $t0 < 5, txt($r));
+    check('…and the probe result is cached (no second network call)', ApAi::health()['ok'] === false && ApAi::health()['at'] >= time() - 5);
     // The repo keeps it in tools/; a website copy elsewhere names it with AP_MOCK (tools/test-local.sh does).
-    $script = getenv('AP_MOCK') ?: dirname(__DIR__, 2) . '/tools/mock-ollama.php';
+    $script = getenv('AP_MOCK') ?: (is_file(dirname(__DIR__) . '/tools/mock-ollama.php') ? dirname(__DIR__) . '/tools/mock-ollama.php' : dirname(__DIR__, 2) . '/tools/mock-ollama.php');
     if (is_file($script)) {
-        $mock = proc_open([PHP_BINARY, '-S', '127.0.0.1:11555', $script], [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pp);
+        $mock = proc_open(array_merge($phpArgs(), ['-S', '127.0.0.1:11555', $script]), [1 => ['file', $devNull, 'w'], 2 => ['file', $devNull, 'w']], $pp);
         for ($i = 0; $i < 30 && !$up(); $i++) { usleep(100000); }
     }
 }
 check('the mock model server answers', $up());
 Settings::set('ap_ai_on', '1', 'bool', 'agentpro', false);
 Settings::flush();
+ApAi::resetHealth();
 check('ApAi sees Ollama, its models and what they can do', ApAi::enabled() && ApAi::isOllama() && count(ApAi::models(true)) === 2 && ApAi::models()[0]['vision'] && ApAi::models()[0]['tools']);
+check('health: up, the version, 2 models — cached for the next call', ApAi::health()['ok'] && ApAi::version() === '0.12.0-mock' && ApAi::health()['models'] === 2);
 check('auto-pick: the preferred installed chat model', ApAi::pickModel('chat') === 'qwen3.5:4b');
 check('documents: the same model when it can see (one model in RAM)', ApAi::pickModel('vision') === 'qwen3.5:4b');
 $j = ApAi::json('You read messages.', 'bholi 2 seat Mehsana Ram Thapa 9812345678', ['type' => 'object', 'properties' => ['intent' => ['type' => 'string']]]);
@@ -306,10 +321,57 @@ $v = ApDocRead::readWithAi($spec, 'aadhaar', 'front');
 check('vision: the model reads an ID photo into fields', ($v['full_name'] ?? '') === 'Test Person Kumar' && ($v['dob'] ?? '') === '1994-03-12' && ($v['id_number'] ?? '') === '2345 6789 0124');
 $last = json_decode((string) (array_slice(file($mockLog) ?: [], -1)[0] ?? '{}'), true);
 check('…the photo was sent to the model (and nowhere else)', ($last['images'] ?? false) === true);
+$full = ApDocRead::readAi($spec, 'aadhaar', 'front');
+check('vision ladder: the VPS reader answers with a confidence per field', ($full['reader'] ?? '') === 'vps' && ($full['confidence']['full_name'] ?? '') === 'high'
+    && ($full['confidence']['dob'] ?? '') === 'medium' && ($full['confidence']['gender'] ?? '') === 'medium', json_encode($full));
+// the background read of an uploaded ID photo: the worker stores fields + confidence + reader on the draft
+$dd = AgentPro::newDraft();
+AgentPro::saveDraft($dd['draft_key'], ['full_name' => 'APWA Doc Reader']);
+@mkdir(UPLOAD_PATH . '/agents-kyc', 0775, true);
+$docRel = 'agents-kyc/apwa-test-' . bin2hex(random_bytes(4)) . '.jpg';
+copy($spec, UPLOAD_PATH . '/' . $docRel);
+$docJob = Database::insert('ap_jobs', ['phone' => 'form', 'kind' => 'doc', 'text' => json_encode(['key' => $dd['draft_key'], 'path' => $docRel, 'type' => 'aadhaar', 'side' => 'front'])]);
+$out = (string) shell_exec(implode(' ', array_map('escapeshellarg', array_merge($phpArgs(), [dirname(__DIR__) . '/cron/agentpro-worker.php', '--once']))) . ' 2>&1');
+$jr = Database::fetch('SELECT * FROM ap_jobs WHERE id = :i', ['i' => $docJob]);
+$ro = jsonColumn(AgentPro::draft($dd['draft_key'])['readout'] ?? null);
+check('worker: the ID photo job is read on the ladder and kept with confidence + reader', ($jr['status'] ?? '') === 'done'
+    && ($ro['ai_front']['fields']['full_name'] ?? '') === 'Test Person Kumar' && ($ro['ai_front']['reader'] ?? '') === 'vps'
+    && ($ro['ai_front']['confidence']['id_number'] ?? '') === 'high', $out . ' ' . json_encode($jr));
+@unlink(UPLOAD_PATH . '/' . $docRel);
+Database::delete('ap_applications', 'draft_key = :k', ['k' => $dd['draft_key']]);
+// a document that cannot be read (file gone): failed at once, not retried for ever
+$docJob2 = Database::insert('ap_jobs', ['phone' => 'form', 'kind' => 'doc', 'text' => json_encode(['key' => str_repeat('0', 32), 'path' => 'agents-kyc/none.jpg', 'type' => 'aadhaar', 'side' => 'front'])]);
+shell_exec(implode(' ', array_map('escapeshellarg', array_merge($phpArgs(), [dirname(__DIR__) . '/cron/agentpro-worker.php', '--once']))) . ' 2>&1');
+check('worker: a doc job with no file fails cleanly', (string) Database::scalar('SELECT status FROM ap_jobs WHERE id = :i', ['i' => $docJob2], '') === 'failed');
+Database::run("DELETE FROM ap_jobs WHERE id IN ($docJob, $docJob2)");
+
+// WhatsApp never waits more than ap_ai_wa_wait behind the model (another process holds it here)
+Settings::set('ap_ai_wa_wait', '3', 'int', 'agentpro', false);
+Settings::flush();
+$holder = proc_open(array_merge($phpArgs(), ['-r', '$f = fopen(' . var_export(LOG_PATH . '/agentpro-ai.lock', true) . ', "c"); flock($f, LOCK_EX); sleep(7);']),
+    [1 => ['file', $devNull, 'w'], 2 => ['file', $devNull, 'w']], $hp);
+usleep(700000);
+$t0 = microtime(true);
+$busy = ApAi::chat([['role' => 'user', 'content' => 'balance']], ['purpose' => 'wa_member', 'format' => ['type' => 'object']]);
+$took = microtime(true) - $t0;
+check('a WhatsApp turn waits at most ap_ai_wa_wait (3 s here) for a busy model, then falls back', !$busy['ok'] && ApAi::lastBusy() && $took < 5.5, round($took, 1) . ' s');
+check('…and while it waited it raised the "someone is waiting" flag a document read gives way to', ApAi::someoneWaiting());
+proc_terminate($holder);
+@unlink(LOG_PATH . '/agentpro-ai.want');   // the turn is over (the flag would otherwise stay fresh for 3 s)
+Database::delete('settings', "skey = 'ap_ai_wa_wait'");
+Settings::flush();
+
 $b = ApAi::benchmark('qwen3.5:4b');
 check('the benchmark runs the five Nepali / Hindi / English tasks', $b['of'] === 5 && $b['score'] === 5, json_encode($b['tasks']));
 check('the recommendation follows RAM', ApAi::recommend(['ramGb' => 8, 'gpu' => false])['chat'] === 'qwen3.5:4b'
     && ApAi::recommend(['ramGb' => 16, 'gpu' => false])['chat'] === 'qwen3.5:9b' && ApAi::recommend(['ramGb' => 4, 'gpu' => false])['chat'] === 'qwen3.5:2b');
+$r8 = ApAi::recommend(['ramGb' => 7.8, 'cpus' => 2, 'gpu' => false, 'othersGb' => 3.4, 'valhallaGb' => 1.9]);
+check('…counting what MySQL, PHP and Valhalla hold: this 8 GB / 2 vCPU box still gets qwen3.5:4b, capped', $r8['chat'] === 'qwen3.5:4b'
+    && $r8['measured'] && $r8['memoryMaxMb'] >= 3500 && $r8['memoryMaxMb'] <= 5200 && $r8['cpuQuota'] === 150, json_encode($r8));
+$sh = ApAi::installScript($r8);
+check('…with exact root commands: official install, a systemd drop-in (MemoryMax, CPUQuota, keep-alive, one model), the pull',
+    str_contains($sh, 'curl -fsSL https://ollama.com/install.sh | sh') && str_contains($sh, 'MemoryMax=') && str_contains($sh, 'CPUQuota=150%')
+    && str_contains($sh, 'OLLAMA_MAX_LOADED_MODELS=1') && str_contains($sh, 'OLLAMA_KEEP_ALIVE=') && str_contains($sh, 'ollama pull qwen3.5:4b'));
 check('pull starts a download', ApAi::pull('qwen3.5:9b')['ok'] === true);
 check('a nonsense model name is refused', ApAi::pull('rm -rf /')['ok'] === false);
 
@@ -319,7 +381,7 @@ $r = wa($A_WA, 'malai aaunu parne paisa kati bhayo, bhannus na');
 $job = Database::fetch("SELECT * FROM ap_jobs WHERE phone = :p ORDER BY id DESC LIMIT 1", ['p' => $A_WA]);
 check('sync webhook: an instant "⏳" and a queued job', str_contains(txt($r), '⏳') && ($job['status'] ?? '') === 'queued');
 // ApWa already kicked the worker in the background; run it here too (a no-op if it is busy) and wait.
-$out = (string) shell_exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__) . '/cron/agentpro-worker.php') . ' --once 2>&1');
+$out = (string) shell_exec(implode(' ', array_map('escapeshellarg', array_merge($phpArgs(), [dirname(__DIR__) . '/cron/agentpro-worker.php', '--once']))) . ' 2>&1');
 for ($i = 0; $i < 100; $i++) {
     $job = Database::fetch('SELECT * FROM ap_jobs WHERE id = :i', ['i' => (int) ($job['id'] ?? 0)]);
     if (($job['status'] ?? '') === 'done' || ($job['status'] ?? '') === 'failed') { break; }
@@ -332,10 +394,16 @@ Settings::set('ap_ai_base', 'http://127.0.0.1:11555/v1', 'string', 'agentpro', f
 Settings::flush();
 check('OpenAI-compatible servers (llama.cpp, vLLM) work too', !ApAi::isOllama() && ApAi::models(true)[0]['name'] === 'mock-openai'
     && (ApAi::json('x', 'balance', ['type' => 'object'], [], ['model' => 'mock-openai'])['intent'] ?? '') === 'balance');
+check('…and its health is probed on /v1/models', ApAi::health(true)['ok'] && ApAi::health()['kind'] === 'openai');
 
 if ($mock !== null) {
     proc_terminate($mock);
+    for ($i = 0; $i < 30 && $up(); $i++) { usleep(100000); }
+    Settings::set('ap_ai_base', 'http://127.0.0.1:11555', 'string', 'agentpro', false);
+    Settings::flush();
+    check('the server goes away: a fresh probe says down and enabled() follows', !ApAi::available(true) && !ApAi::enabled());
 }
+ApAi::resetHealth();
 
 /* ---- tidy up ---- */
 $cleanup();

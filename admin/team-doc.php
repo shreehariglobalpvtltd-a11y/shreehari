@@ -20,8 +20,16 @@ $deny = static function (int $code, string $msg): never {
 if (!(Auth::can('staff.manage') || Auth::can('commissions.view'))) {
     $deny(403, 'You may not view this document.');
 }
+// 30 Oct 2026: KYC documents (ID photos, selfie, thumb print, paper-form pages)
+// are for a super-admin or a manager only — the rule agreements.php and
+// staff-applications.php already follow. A payment screenshot stays open to
+// whoever may see the money tab.
+$kycOk = Auth::isSuperadmin() || (string) (Auth::admin()['role'] ?? '') === 'manager';
 $rel = '';
 $what = '';
+if (!isset($_GET['deposit']) && !$kycOk) {
+    $deny(403, 'KYC documents are shown to a super-admin or a manager only.');
+}
 if (isset($_GET['deposit'])) {
     $row = Database::fetch('SELECT id, admin_id, proof_path FROM ap_deposit_requests WHERE id = :i', ['i' => (int) $_GET['deposit']]);
     $rel = (string) ($row['proof_path'] ?? '');

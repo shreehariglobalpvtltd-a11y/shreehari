@@ -467,7 +467,9 @@ final class Settings
      *  is editable in Admin -> Settings (group "company").
      *
      *  Keys: name, legal, address, addressNe, phone, whatsapp, email, cin,
-     *  web, operator, operatorNe, counters.
+     *  web, operator, operatorNe, counters - and (AgentPro cards, 30 Oct)
+     *  ceo, phone247, tagline, service, features, chat (the WhatsApp bot
+     *  number as wa.me digits, from wa_order_number), mantra.
      *
      * @return array<string,string>
      * ================================================================= */
@@ -492,8 +494,36 @@ final class Settings
             'operator'  => $s('company_operator', $s('company_ceo', 'Sher Bahadur Bishwakarma')),
             'operatorNe'=> $s('company_operator_ne', 'शेर बहादुर विश्वकर्मा'),
             'counters'  => $s('company_counters',
-                'Mehsana +91 91048 01507 · Ahmedabad +91 91570 01507 · Baroda +91 97264 01507 · Surat +91 73059 01507 · Rajkot +91 94268 27507'),
+                'Mehsana +91 91048 01507 · Ahmedabad +91 91570 01507 · Baroda +91 97264 01507 · Surat +91 73593 01507 · Rajkot +91 94268 27507'),
+            // The person at the top, as the cards print him ("CEO & Director").
+            'ceo'       => $s('company_ceo', 'Sher Bahadur Bishwokarma'),
+            'phone247'  => $s('company_247_phone', '+91 97264 01507'),
+            'tagline'   => $s('company_tagline', 'Your Trusted Travel Partner'),
+            // The line the printed cards carry under the name. Its own key, because
+            // company_tagline is also the chatbot's / website's line (on live it is
+            // "India to Nepal Bus Transport | International Import & Export").
+            'cardTagline' => $s('company_card_tagline', 'Your Trusted Travel Partner'),
+            'service'   => $s('company_service', 'India & Nepal Travel Service'),
+            'features'  => $s('company_features', 'AC Sleeper | Live GPS Tracking | USB / Type-C Charging'),
+            'chat'      => self::chatWhatsApp(),
+            'mantra'    => $s('company_mantra', 'ॐ नमो नारायणाय'),
         ];
+    }
+
+    /**
+     * The WhatsApp bot customers chat with (wa_order_number), as wa.me
+     * digits: "918735881507". A bare 10-digit number gets India's 91.
+     */
+    public static function chatWhatsApp(): string
+    {
+        $d = preg_replace('/\D/', '', self::getString('wa_order_number', '')) ?? '';
+        if (str_starts_with($d, '00')) {
+            $d = substr($d, 2);
+        }
+        if (strlen($d) === 10) {
+            $d = '91' . $d;
+        }
+        return preg_match('/^[1-9]\d{9,14}$/', $d) === 1 ? $d : '918735881507';
     }
 
     /**

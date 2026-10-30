@@ -4,11 +4,23 @@
  * office invitation link). Six short steps on a phone:
  *
  *   1 who  ·  2 WhatsApp (OTP, or send "JOIN 123456")  ·  3 ID photo → the
- *   form fills itself  ·  4 your photo (this is your ID card photo)  ·
+ *   form fills itself (or the hand-filled PAPER form, photos / PDF → AI)  ·
+ *   4 your photo (live selfie or a passport photo) + thumb print  ·
  *   5 bank / UPI (optional)  ·  6 extra documents, review, send
  *
  * The office approves with one tap in Admin → Team. Drafts survive a lost
- * connection (the key lives in this browser). See includes/agentpro.php.
+ * connection (the key lives in this browser) and open on any phone with the
+ * "continue later" link /join.php?d=<key>. See includes/agentpro.php.
+ *
+ * OFFICE MODE (30 Oct 2026, owner: "admin/office le fast bharna milos"):
+ *   /join.php?office=1            an office user fills it for someone — only
+ *                                 name, mobile, ID number and photo needed;
+ *                                 WhatsApp check may be skipped with a reason;
+ *                                 "Approve now" issues the login + code at once
+ *   /join.php?office=1&d=<key>    reopen any draft / sent form to finish it
+ *   Needs an admin session: superadmin, manager or staff.manage.
+ *
+ * ?as=org|person preselects agent / agency (agreements/apply.html sends it).
  */
 declare(strict_types=1);
 define('SHG_APP', true);
@@ -18,7 +30,41 @@ require_once INCLUDE_PATH . '/agentpro.php';
 Security::sendHeaders();
 $invite = preg_match('/^[A-Za-z0-9_-]{24}$/', (string) ($_GET['invite'] ?? '')) ? (string) $_GET['invite'] : '';
 $inv = $invite !== '' && AgentPro::available() ? AgentPro::invite($invite) : null;
-$company = Settings::getString('company_name', APP_NAME);
+$resume = preg_match('/^[a-f0-9]{32}$/', (string) ($_GET['d'] ?? '')) === 1 ? (string) $_GET['d'] : '';
+$as = in_array((string) ($_GET['as'] ?? ''), ['org', 'person'], true) ? (string) $_GET['as'] : '';
+$co = Settings::company();
+$company = (string) $co['name'];
+
+/* ---- office mode ---- */
+$officeAsked = (string) ($_GET['office'] ?? '') === '1';
+$officeAdmin = $officeAsked ? Auth::admin() : null;
+if ($officeAsked && !AgentPro::officeAllowed($officeAdmin)) {
+    http_response_code($officeAdmin === null ? 401 : 403);
+    ?><!doctype html><html lang="ne"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Office form · <?= Security::e($company) ?></title><meta name="robots" content="noindex">
+<link rel="stylesheet" href="/assets/agentpro/ap.css"></head><body><main class="ap-wrap"><div class="ap-card" style="margin-top:40px">
+<h2>🏢 अफिस फारम · Office form</h2>
+<p class="lead"><?= $officeAdmin === null
+    ? 'पहिले अफिस खाताबाट लगइन गर्नुहोस् · Sign in with your office account first, then open this link again.'
+    : 'यो फारम म्यानेजर वा "staff.manage" अनुमति भएकाले मात्र भर्न सक्छन् · Only a manager or a user with staff permission can fill the office form.' ?></p>
+<div class="ap-actions"><?php if ($officeAdmin === null): ?><a class="ap-btn" href="/admin/login.php?next=team.php">🔐 Office sign-in</a><?php endif; ?>
+<a class="ap-btn ghost" href="/join.php">Public form</a></div></div></main></body></html><?php
+    exit;
+}
+$office = $officeAdmin !== null;
+
+/* What the office may make (K1): agent person / agency, or a staff role. */
+$roles = [
+    ['v' => 'agent:person', 'label' => 'एजेन्ट · Agent (person)'],
+    ['v' => 'agent:org',    'label' => 'एजेन्सी · Agency / Pvt. Ltd.'],
+    ['v' => 'counter',      'label' => 'काउन्टर स्टाफ · Counter staff'],
+    ['v' => 'manager',      'label' => 'म्यानेजर · Manager'],
+    ['v' => 'accountant',   'label' => 'लेखा · Accountant'],
+    ['v' => 'support',      'label' => 'ग्राहक सेवा · Customer support'],
+    ['v' => 'scanner',      'label' => 'बोर्डिङ स्टाफ · Boarding staff'],
+    ['v' => 'official',     'label' => 'अधिकारी · Official'],
+];
+
 $v = static fn(string $f): string => '/assets/agentpro/' . $f . '?v=' . (is_file(ASSET_PATH . '/agentpro/' . $f) ? filemtime(ASSET_PATH . '/agentpro/' . $f) : '1');
 $cfg = [
     'api'      => '/api/agentpro.php',
@@ -27,32 +73,49 @@ $cfg = [
     'inviteOk' => $inv !== null,
     'role'     => $inv['role'] ?? '',
     'designation' => (string) ($inv['designation'] ?? ''),
-    'open'     => AgentPro::available() && (Settings::getBool('ap_join_open', true) || $inv !== null),
+    'open'     => AgentPro::available() && ($office || Settings::getBool('ap_join_open', true) || $inv !== null || $resume !== ''),
     'company'  => $company,
+    'legal'    => (string) $co['legal'],
+    'cin'      => (string) $co['cin'],
+    'logo'     => '/assets/img/logo-mark-tm.png',
     'wa'       => Settings::bookingWhatsApp(),
     'office'   => Settings::officePhone(),
     'idTypes'  => AgentPro::ID_TYPES,
     'maxExtras'=> max(1, Settings::getInt('ap_join_max_extras', 6)),
     'jsqr'     => $v('vendor/jsQR.js'),
+    'pdfjs'    => '/assets/vendor/pdfjs/pdf.min.js',
+    'pdfWorker'=> '/assets/vendor/pdfjs/pdf.worker.min.js',
+    'blankForm'=> '/agreements/form.php?kind=' . (($inv !== null && $inv['role'] !== 'agent') ? 'staff' : 'agent'),
     'me'       => '/me/',
+    'resume'   => $resume,
+    'as'       => $as,
+    'officeMode' => $office,
+    'officeBy' => $office ? (string) ($officeAdmin['full_name'] ?? $officeAdmin['username'] ?? '') : '',
+    'roles'    => $office ? $roles : [],
 ];
 ?><!doctype html>
 <html lang="ne">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Join <?= Security::e($company) ?></title>
+<title><?= $office ? 'Office form · ' : 'Join ' ?><?= Security::e($company) ?></title>
 <meta name="description" content="Become a ticketing agent of <?= Security::e($company) ?> — India ⇄ Nepal bus service.">
 <meta name="theme-color" content="#13224F">
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" href="/assets/img/favicon-32.png">
 <link rel="stylesheet" href="<?= Security::e($v('ap.css')) ?>">
 </head>
-<body>
+<body<?= $office ? ' class="ap-officemode"' : '' ?>>
 <header class="ap-top">
-  <div class="ap-top-in">
-    <img class="ap-crest" src="/assets/agentpro/crest-dark.svg" alt="" width="42" height="52">
-    <div class="ap-brand"><b>S HARI GLOBAL</b><small>Private Limited</small></div>
+  <div class="ap-top-in ap-top-join">
+    <picture class="ap-logo">
+      <source srcset="/assets/img/logo-mark-tm.webp" type="image/webp">
+      <img src="/assets/img/logo-mark-tm.png" alt="<?= Security::e($company) ?> logo" width="48" height="48">
+    </picture>
+    <div class="ap-brand ap-brand-join">
+      <b><?= Security::e(mb_strtoupper((string) $co['legal'])) ?></b>
+      <small class="ap-cin">CIN <?= Security::e((string) $co['cin']) ?> · ☎ <a href="tel:<?= Security::e(preg_replace('/[^\d+]/', '', Settings::officePhone()) ?? '') ?>"><?= Security::e(Settings::officePhone()) ?></a></small>
+    </div>
     <div class="ap-top-actions">
       <div class="ap-lang" role="group" aria-label="Language">
         <button type="button" data-lang="ne">नेपाली</button><button type="button" data-lang="hi">हिंदी</button><button type="button" data-lang="en">EN</button>
@@ -60,6 +123,12 @@ $cfg = [
     </div>
   </div>
   <div class="ap-hero"><h1 data-t="heroTitle">Become an agent</h1><p data-t="heroSub">5 minutes · your phone is enough</p></div>
+<?php if ($office): ?>
+  <div class="ap-officebar" role="note">
+    <span>🏢 <b data-t="officeMode">Office mode</b> · <?= Security::e($cfg['officeBy']) ?></span>
+    <span class="ap-officebar-a"><a href="/admin/team.php?tab=approvals">Team</a><button type="button" id="officeNew" data-t="officeNew">New form</button></span>
+  </div>
+<?php endif; ?>
 </header>
 
 <main class="ap-wrap" id="app" aria-live="polite">

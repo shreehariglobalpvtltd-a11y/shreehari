@@ -382,8 +382,7 @@ admin_page_head(
     '<a class="btn ghost sm" href="/agreements/" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-doc"/></svg>Agreement pages</a>'
     . '<a class="btn ghost sm" href="agents.php"><svg class="a-ic"><use href="#a-users"/></svg>Agents register</a>'
     . '<a class="btn ghost sm" href="staff.php#addStaff"><svg class="a-ic"><use href="#a-user-cog"/></svg>Agent logins</a>'
-    . '<a class="btn sm" href="agent-quick.php">⚡ Quick agent + ID card</a>'
-    . '<a class="btn sm" href="agreements.php?tab=apps&amp;add=1#add"><svg class="a-ic"><use href="#a-plus"/></svg>Add agent</a>'
+    . '<a class="btn sm" href="/join.php?office=1"><svg class="a-ic"><use href="#a-plus"/></svg>नयाँ सदस्य · Add member (office form)</a>'
 );
 if ($flash !== null) {
     echo '<div class="flash ' . $flash[0] . '">' . $h($flash[1])
@@ -749,39 +748,11 @@ if ($canEdit && $ready && $noCard > 0): /* 19 Oct 2026: one agent list - bring t
   <button class="btn sm" type="submit"><svg class="a-ic"><use href="#a-users"/></svg>Bring all agents here</button>
 </form>
 <?php endif; ?>
-<?php if ($canEdit && $ready): /* 19 Oct 2026: the office adds an agent by hand - straight to Approved */ ?>
-<details class="panel agr-add" id="add"<?= $openId === 0 && isset($_GET['add']) ? ' open' : '' ?>>
-  <summary><svg class="a-ic"><use href="#a-plus"/></svg><b>Add agent</b> <span class="muted text-xs">— came to the office or phoned in; goes live on the website at once</span></summary>
-  <form method="post" enctype="multipart/form-data" action="agreements.php?tab=apps" style="padding:4px 18px 18px">
-    <?= $csrfField ?><input type="hidden" name="action" value="add">
-    <div class="form-grid">
-      <div class="field"><label for="nName">Name *</label><input id="nName" name="name" class="inp" maxlength="160" required></div>
-      <div class="field"><label for="nPhone">Mobile / WhatsApp *</label><input id="nPhone" name="phone" class="inp" type="tel" maxlength="20" required placeholder="+977 98XXXXXXXX"></div>
-      <div class="field"><label for="nType">Kind</label><select id="nType" name="type" class="inp"><option value="ind">👤 Individual agent</option><option value="org">🏢 Organization partner</option></select></div>
-      <div class="field"><label for="nArea">Area / city</label><input id="nArea" name="area" class="inp" maxlength="160" placeholder="e.g. Nepalgunj"></div>
-      <div class="field"><label for="nAddr">Shop / office address (public)</label><input id="nAddr" name="web_addr" class="inp" maxlength="200"></div>
-      <div class="field"><label for="nPhoto">Photo</label><input id="nPhoto" name="photo" class="inp" type="file" accept="image/*"></div>
-      <?php if (AgentApplications::logoReady()): ?><div class="field"><label for="nLogo">Company logo (partners)</label><input id="nLogo" name="logo" class="inp" type="file" accept="image/*"><span class="help">Only for an organization partner — shown on the home page's partner card.</span></div><?php endif; ?>
-      <?php if ($canKyc): ?>
-      <div class="field" style="grid-column:1/-1"><label for="nPAddr">Permanent address (KYC)</label><input id="nPAddr" name="p_addr" class="inp" maxlength="300"></div>
-      <div class="field"><label for="nIdt">ID type</label><select id="nIdt" name="p_idtype" class="inp"><option value="">—</option><?php foreach (AgentApplications::ID_TYPES as $i => $l): ?><option value="<?= $i ?>"><?= $h($l) ?></option><?php endforeach; ?></select></div>
-      <div class="field"><label for="nIdn">ID number</label><input id="nIdn" name="p_idno" class="inp mono" maxlength="40"></div>
-      <div class="field"><label for="nBn">Account holder</label><input id="nBn" name="b_name" class="inp" maxlength="80"></div>
-      <div class="field"><label for="nBb">Bank &amp; branch</label><input id="nBb" name="b_bank" class="inp" maxlength="80"></div>
-      <div class="field"><label for="nBa">Account number</label><input id="nBa" name="b_acc" class="inp mono" maxlength="40" inputmode="numeric"></div>
-      <div class="field"><label for="nBi">IFSC / SWIFT</label><input id="nBi" name="b_ifsc" class="inp mono" maxlength="20"></div>
-      <div class="field"><label for="nBu">UPI / eSewa / Khalti</label><input id="nBu" name="b_upi" class="inp" maxlength="80"></div>
-      <div class="field"><label for="nKyc">KYC</label><select id="nKyc" name="kyc_status" class="inp"><?php foreach (AgentApplications::KYC_LABELS as $v => $l): ?><option value="<?= $h($v) ?>"<?= $v === 'none' ? ' selected' : '' ?>><?= $h($l) ?></option><?php endforeach; ?></select><span class="help">Verified = you saw the original ID.</span></div>
-      <?php endif; ?>
-      <div class="field" style="grid-column:1/-1;display:flex;gap:4px 18px;flex-wrap:wrap">
-        <label class="agr-check"><input type="checkbox" name="web_live" value="1" checked> 🟢 Live on website</label>
-        <label class="agr-check"><input type="checkbox" name="web_photo" value="1" checked> 📷 Show photo</label>
-        <label class="agr-check"><input type="checkbox" name="public_ok" value="1" checked> 📞 Show full number + WhatsApp</label>
-      </div>
-    </div>
-    <div class="form-actions" style="margin-top:12px"><button class="btn" type="submit"><svg class="a-ic"><use href="#a-plus"/></svg>Add agent</button></div>
-  </form>
-</details>
+<?php if ($canEdit && $ready): /* 30 Oct 2026 (AgentPro, one form system): the office adds a person with the same join form, in office mode */ ?>
+<div class="panel agr-add" id="add" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:14px 18px">
+  <span style="flex:1 1 260px"><b>Add an agent or staff member · नयाँ सदस्य</b><br><span class="muted text-xs">Came to the office or phoned in? Fill the office form — only name, mobile, ID number and photo are needed; the code, ID card and visiting card are made at once.</span></span>
+  <a class="btn" href="/join.php?office=1" style="min-height:48px;display:inline-flex;align-items:center;gap:6px"><svg class="a-ic"><use href="#a-plus"/></svg>Open the office form</a>
+</div>
 <?php endif; ?>
 
 <form class="toolbar" method="get" action="agreements.php" role="search">

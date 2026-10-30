@@ -349,7 +349,92 @@ final class DocVerify
     }
 
     /**
+     * 30 Oct 2026 (AgentPro form AI, salvaged from agentform-old): is a Gemini key saved? Yes / no only —
+     * admin/ai-local.php shows this, never the key.
+     */
+    public static function geminiReady(): bool
+    {
+        return function_exists('curl_init') && trim(Settings::getString('gemini_api_key', '')) !== '';
+    }
+
+    /**
+     * The Gemini models tried in order: the pinned one (agr_doc_gemini_model), the built-in ladder,
+     * then the site chat model (gemini_model). Model names only — never the key.
+     *
+     * @return list<string>
+     */
+    public static function geminiLadder(): array
+    {
+        $ladder = self::GEMINI_LADDER;
+        $pinned = trim(Settings::getString('agr_doc_gemini_model', ''));
+        if ($pinned !== '') {
+            array_unshift($ladder, $pinned);
+        }
+        $site = trim(Settings::getString('gemini_model', ''));
+        if ($site !== '') {
+            $ladder[] = $site;
+        }
+        return array_values(array_unique($ladder));
+    }
+
+    /** What may go to Gemini as inline data: pictures, and a scanned PDF (Gemini reads every page of it). */
+    public const INLINE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
+
+    /**
+     * The request parts: the prompt, then each image / PDF as inline_data (pure — the tests call this).
+     * A part whose mime is not in INLINE_MIMES, or that has no bytes, is left out; null when media
+     * was given and none of it is sendable (so a caller never pays for a prompt with nothing to read).
+     *
+     * @param list<array{bytes: string, mime: string}> $images
+     * @return list<array<string, mixed>>|null
+     */
+    public static function mediaParts(string $prompt, array $images): ?array
+    {
+        $parts = [['text' => $prompt]];
+        foreach ($images as $im) {
+            $mime  = strtolower(trim(explode(';', (string) ($im['mime'] ?? ''))[0]));
+            $bytes = (string) ($im['bytes'] ?? '');
+            if ($bytes === '' || !in_array($mime, self::INLINE_MIMES, true)) {
+                continue;
+            }
+            $parts[] = ['inline_data' => ['mime_type' => $mime, 'data' => base64_encode($bytes)]];
+        }
+        return ($images !== [] && count($parts) === 1) ? null : $parts;
+    }
+
+    /**
+     * Where Tesseract is (agr_doc_ocr_bin, default "tesseract" on the PATH), or null when it is not there.
+     * A path only — admin/ai-local.php shows it.
+     */
+    public static function ocrBinary(): ?string
+    {
+        if (!function_exists('proc_open')) {
+            return null;
+        }
+        $saved = trim(Settings::getString('agr_doc_ocr_bin', ''));
+        $bin   = $saved !== '' ? $saved : 'tesseract';
+        if (trim((string) ini_get('open_basedir')) !== '') {
+            // open_basedir hides /usr/bin from is_file(): trust the path the office saved, else none
+            return $saved !== '' ? $saved : null;
+        }
+        if (str_contains($bin, '/') || str_contains($bin, '\\')) {
+            return (is_file($bin) && is_executable($bin)) ? $bin : null;
+        }
+        $exts = DIRECTORY_SEPARATOR === '\\' ? ['.exe', ''] : [''];
+        foreach (explode(PATH_SEPARATOR, (string) getenv('PATH')) as $dir) {
+            foreach ($exts as $ext) {
+                $p = rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . $bin . $ext;
+                if ($dir !== '' && is_file($p) && is_executable($p)) {
+                    return $p;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * One Gemini vision call that must answer JSON.
+     * 30 Oct 2026: a part may also be application/pdf; an unsupported part is skipped (mediaParts()).
      *
      * @param list<array{bytes: string, mime: string}> $images
      * @return array<string, mixed>|null
@@ -360,25 +445,17 @@ final class DocVerify
         if ($key === '' || !function_exists('curl_init')) {
             return null;
         }
-        $parts = [['text' => $prompt]];
-        foreach ($images as $im) {
-            $parts[] = ['inline_data' => ['mime_type' => $im['mime'], 'data' => base64_encode($im['bytes'])]];
+        $parts = self::mediaParts($prompt, $images);
+        if ($parts === null) {
+            Logger::warning($who . ': nothing Gemini can read (unsupported file type)');
+            return null;
         }
         $payload = [
             'contents' => [['role' => 'user', 'parts' => $parts]],
             'generationConfig' => ['temperature' => 0, 'maxOutputTokens' => $maxTokens, 'responseMimeType' => 'application/json'],
         ];
 
-        $ladder = self::GEMINI_LADDER;
-        $pinned = trim(Settings::getString('agr_doc_gemini_model', ''));
-        if ($pinned !== '') {
-            array_unshift($ladder, $pinned);
-        }
-        $site = trim(Settings::getString('gemini_model', ''));
-        if ($site !== '') {
-            $ladder[] = $site;
-        }
-        foreach (array_unique($ladder) as $model) {
+        foreach (self::geminiLadder() as $model) {
             $ch = curl_init('https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => self::TIMEOUT_SEC,

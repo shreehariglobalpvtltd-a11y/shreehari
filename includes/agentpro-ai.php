@@ -19,6 +19,21 @@
  *  before switching models.
  *
  *  NEVER THROWS from chat(): a failure is ['ok' => false, 'error' => …].
+ *
+ *  30 Oct 2026 (af1, K7 — the AI ladder):
+ *    - health(): a cached probe (60 s up / 30 s down, LOG_PATH file) of the
+ *      model server; enabled() = switch on AND the server answers, so a
+ *      dead server never gives "⏳" then "could not understand" — the desk
+ *      falls back to its menu, the readers to Gemini / Tesseract
+ *    - docsReady(): may ID photos / paper forms use the model (ap_ai_docs)
+ *    - WhatsApp first: a chat turn waits at most ap_ai_wa_wait (20 s) for
+ *      the model and, while waiting, flags it; a document read (docread,
+ *      formread, benchmark) never jumps that queue and hangs up its HTTP
+ *      call the moment the flag appears (lastPreempted()); its own timeout
+ *      is ap_ai_doc_timeout (120 s)
+ *    - recommend() counts what MySQL, PHP and Valhalla already hold;
+ *      installScript() prints the root commands (official install + a
+ *      systemd drop-in with MemoryMax / CPUQuota / keep-alive / one model)
  * =====================================================================
  */
 
@@ -54,9 +69,40 @@ final class ApAi
      *  Settings
      * ================================================================= */
 
+    /**
+     * The WhatsApp AI is ON *and* the model server answers right now.
+     *
+     * 30 Oct 2026 (af1): this used to check only the switch, so with the
+     * switch on and no server every unknown message got "⏳" and then
+     * "could not understand". Now a down server reads as "AI off" and the
+     * desk falls back to its menu (members) / the existing bot (passengers).
+     * The health probe is cached (60 s up, 30 s down) so this stays cheap.
+     */
     public static function enabled(): bool
     {
+        return self::configured() && self::available();
+    }
+
+    /** The switch is on and a server address is set (no network call). */
+    public static function configured(): bool
+    {
         return Settings::getBool('ap_ai_on', false) && self::base() !== '' && function_exists('curl_init');
+    }
+
+    /**
+     * May the VPS model read ID photos and paper forms? Its own switch
+     * (ap_ai_docs, default on) so the office can use the model for documents
+     * while WhatsApp stays on the existing bot — and only when the server
+     * answers and a model that can SEE is installed. Otherwise the readers go
+     * on down the ladder (Gemini, then Tesseract).
+     */
+    public static function docsReady(): bool
+    {
+        if (!(Settings::getBool('ap_ai_docs', true) || Settings::getBool('ap_ai_on', false))
+            || self::base() === '' || !function_exists('curl_init') || !self::available()) {
+            return false;
+        }
+        return self::pickModel('vision') !== '';
     }
 
     public static function base(): string
@@ -67,15 +113,113 @@ final class ApAi
     /** Ollama unless the address says OpenAI-compatible (/v1) — or the probe says so. */
     public static function isOllama(): bool
     {
-        $b = self::base();
-        if (str_ends_with($b, '/v1')) {
+        if (str_ends_with(self::base(), '/v1')) {
             return false;
         }
-        static $probe = null;
-        if ($probe === null) {
-            $probe = self::get('/api/version', 4) !== null;
+        return self::health()['kind'] === 'ollama';
+    }
+
+    /* =================================================================
+     *  Health — is the model server up? (cached, so a WhatsApp turn or a
+     *  form upload never waits on a dead server)
+     * ================================================================= */
+
+    public const HEALTH_UP_SEC   = 60;
+    public const HEALTH_DOWN_SEC = 30;
+
+    /** @var array<string, array<string, mixed>> per-process memo, by base URL */
+    private static array $health = [];
+
+    /** Is the model server answering (cached probe)? */
+    public static function available(bool $fresh = false): bool
+    {
+        return (bool) self::health($fresh)['ok'];
+    }
+
+    /**
+     * The cached health probe: the server answered /api/version (Ollama) or
+     * /v1/models (OpenAI-compatible) and has at least one model.
+     * Cached in LOG_PATH/agentpro-ai-health.json, keyed by the base URL.
+     *
+     * @return array{ok: bool, kind: string, version: string, models: int, at: int, error: string}
+     */
+    public static function health(bool $fresh = false): array
+    {
+        $base = self::base();
+        $now = time();
+        $none = ['ok' => false, 'kind' => '', 'version' => '', 'models' => 0, 'at' => $now, 'error' => 'No model server is configured.'];
+        if ($base === '' || !function_exists('curl_init')) {
+            return $none;
         }
-        return $probe;
+        $fresh = $fresh || self::$healthFresh;
+        $fresh2 = static fn(array $h): bool => isset($h['at']) && $now - (int) $h['at'] < (!empty($h['ok']) ? self::HEALTH_UP_SEC : self::HEALTH_DOWN_SEC);
+        if (!$fresh && isset(self::$health[$base]) && $fresh2(self::$health[$base])) {
+            return self::$health[$base];
+        }
+        $file = self::healthFile();
+        if (!$fresh && $file !== '') {
+            $all = json_decode((string) @file_get_contents($file), true);
+            $h = is_array($all) ? ($all[md5($base)] ?? null) : null;
+            if (is_array($h) && $fresh2($h)) {
+                return self::$health[$base] = $h + $none;
+            }
+        }
+        $h = self::probe();
+        self::$health[$base] = $h;
+        if ($file !== '') {
+            $all = json_decode((string) @file_get_contents($file), true);
+            $all = is_array($all) ? $all : [];
+            $all[md5($base)] = $h;
+            // write + rename: two PHP processes never see half a file
+            $tmp = $file . '.' . getmypid() . '.tmp';
+            if (@file_put_contents($tmp, json_encode($all)) !== false) {
+                @rename($tmp, $file);
+            }
+        }
+        return $h;
+    }
+
+    /** Forget the cached probe (the admin page, the tests, a settings save). */
+    public static function resetHealth(): void
+    {
+        self::$health = [];
+        self::$caps = [];
+        $f = self::healthFile();
+        if ($f !== '') {
+            @unlink($f);
+        }
+    }
+
+    /** Tests: every health() call probes again. */
+    public static bool $healthFresh = false;
+
+    private static function healthFile(): string
+    {
+        return defined('LOG_PATH') && is_dir(LOG_PATH) ? LOG_PATH . '/agentpro-ai-health.json' : '';
+    }
+
+    /** @return array{ok: bool, kind: string, version: string, models: int, at: int, error: string} */
+    private static function probe(): array
+    {
+        $out = ['ok' => false, 'kind' => '', 'version' => '', 'models' => 0, 'at' => time(), 'error' => ''];
+        if (!str_ends_with(self::base(), '/v1')) {
+            $v = self::request('GET', '/api/version', null, 3);
+            if ($v !== null) {
+                $tags = self::request('GET', '/api/tags', null, 4);
+                $n = count((array) ($tags['models'] ?? []));
+                return ['ok' => $n > 0, 'kind' => 'ollama', 'version' => (string) ($v['version'] ?? ''), 'models' => $n, 'at' => time(),
+                        'error' => $n > 0 ? '' : 'The model server answers but no model is installed (ollama pull …).'];
+            }
+            $out['error'] = self::$lastError;
+        }
+        $m = self::request('GET', '/models', null, 3);
+        if ($m !== null) {
+            $n = count((array) ($m['data'] ?? []));
+            return ['ok' => $n > 0, 'kind' => 'openai', 'version' => 'openai-compatible', 'models' => $n, 'at' => time(),
+                    'error' => $n > 0 ? '' : 'The server answers but lists no model.'];
+        }
+        $out['error'] = $out['error'] !== '' ? $out['error'] : self::$lastError;
+        return $out;
     }
 
     private static function timeout(): int
@@ -83,18 +227,55 @@ final class ApAi
         return max(10, min(600, Settings::getInt('ap_ai_timeout', 150)));
     }
 
+    /**
+     * Seconds one document read (ID photo, one page of a paper form) may take
+     * on the model. Shorter than a chat answer can be, so a read stuck on a
+     * slow CPU gives way to Gemini / Tesseract instead of hanging the form.
+     */
+    public static function docTimeout(): int
+    {
+        return max(20, min(600, Settings::getInt('ap_ai_doc_timeout', 120)));
+    }
+
+    /** At most this long a WhatsApp turn waits for the model while something else is using it. */
+    public static function waWait(): int
+    {
+        return max(3, min(60, Settings::getInt('ap_ai_wa_wait', 20)));
+    }
+
+    /** Purposes that give way to WhatsApp: they yield the model the moment a chat turn waits for it. */
+    public const DOC_PURPOSES = ['docread', 'formread', 'benchmark'];
+
+    private static bool $preempted = false;
+    private static bool $busy = false;
+
+    /** Did the last chat() stop because a WhatsApp turn needed the model (a document read gave way)? */
+    public static function lastPreempted(): bool
+    {
+        return self::$preempted;
+    }
+
+    /** Did the last chat() fail because the model was busy for longer than it could wait? */
+    public static function lastBusy(): bool
+    {
+        return self::$busy;
+    }
+
+    /** Why the last call failed ('' when it did not). Never contains a key. */
+    public static function lastError(): string
+    {
+        return self::$lastError;
+    }
+
     /* =================================================================
      *  What is installed
      * ================================================================= */
 
     /** Server version, or '' when nothing answers. */
-    public static function version(): string
+    public static function version(bool $fresh = false): string
     {
-        if (self::isOllama()) {
-            $r = self::get('/api/version', 4);
-            return (string) ($r['version'] ?? '');
-        }
-        return self::get('/models', 4) !== null ? 'openai-compatible' : '';
+        $h = self::health($fresh);
+        return $h['kind'] !== '' ? ($h['version'] !== '' ? $h['version'] : $h['kind']) : '';
     }
 
     /**
@@ -107,6 +288,9 @@ final class ApAi
         static $cache = null;
         if ($cache !== null && !$fresh) {
             return $cache;
+        }
+        if (self::health()['kind'] === '') {
+            return [];                                    // nothing answers: no list, and nothing cached
         }
         $out = [];
         if (self::isOllama()) {
@@ -227,6 +411,8 @@ final class ApAi
     public static function chat(array $messages, array $o = []): array
     {
         $t0 = microtime(true);
+        self::$preempted = false;
+        self::$busy = false;
         $model = (string) ($o['model'] ?? '') ?: self::pickModel(!empty($o['vision']) ? 'vision' : 'chat');
         $fail = static fn(string $why) => ['ok' => false, 'text' => '', 'calls' => [], 'model' => $model,
             'ms' => (int) ((microtime(true) - $t0) * 1000), 'tokensIn' => 0, 'tokensOut' => 0, 'error' => $why];
@@ -234,18 +420,31 @@ final class ApAi
             return $fail('No model is installed on the model server.');
         }
         $purpose = (string) ($o['purpose'] ?? 'chat');
-        $timeout = (int) ($o['timeout'] ?? self::timeout());
+        // 30 Oct 2026 (af1): documents give way to WhatsApp. A document read waits for the model only
+        // while no chat turn is waiting, and its HTTP call is cut the moment one starts waiting (Ollama
+        // stops generating when the client hangs up); the caller retries later or goes down its ladder.
+        // A chat turn waits at most ap_ai_wa_wait (20 s) for the model.
+        $doc = in_array($purpose, self::DOC_PURPOSES, true);
+        $timeout = (int) ($o['timeout'] ?? ($doc ? self::docTimeout() : self::timeout()));
+        $wait = $doc ? (int) ($o['lock_wait'] ?? min($timeout, 60)) : min($timeout, self::waWait());
         // One model call at a time: on a CPU two parallel calls are each slower than one after the other.
-        $lock = self::lock($timeout);
+        $lock = self::lock($wait, !$doc);
         if ($lock === false) {
+            self::$busy = true;
+            if ($doc && self::someoneWaiting()) {
+                self::$preempted = true;
+                return $fail('The model is answering WhatsApp first; the document is read again in a moment.');
+            }
             return $fail('The model is busy with other messages; try again in a minute.');
         }
+        self::$yieldNow = $doc;
         try {
             $out = self::isOllama() ? self::chatOllama($model, $messages, $o, $timeout) : self::chatOpenAi($model, $messages, $o, $timeout);
         } catch (Throwable $e) {
             $out = null;
             $err = $e->getMessage();
         } finally {
+            self::$yieldNow = false;
             if (is_resource($lock)) {
                 flock($lock, LOCK_UN);
                 fclose($lock);
@@ -289,22 +488,59 @@ final class ApAi
 
     private static string $lastError = '';
 
-    /** @return resource|false|null a held lock, false when it was not free in time, null when locking is impossible */
-    private static function lock(int $wait)
+    /** True while a document read holds the model: request() then cuts its call when a chat turn starts waiting. */
+    private static bool $yieldNow = false;
+
+    /**
+     * @param bool $urgent a chat turn: while it waits it keeps the "someone is waiting" marker fresh, so a
+     *                     document read in another process hangs up and frees the model
+     * @return resource|false|null a held lock, false when it was not free in time, null when locking is impossible
+     */
+    private static function lock(int $wait, bool $urgent = true)
     {
         $f = @fopen(LOG_PATH . '/agentpro-ai.lock', 'c');
         if ($f === false) {
             return null;
         }
         $end = microtime(true) + max(1, $wait);
-        while (!flock($f, LOCK_EX | LOCK_NB)) {
+        while (true) {
+            // a document read never jumps in front of a waiting chat turn
+            if (($urgent || !self::someoneWaiting()) && flock($f, LOCK_EX | LOCK_NB)) {
+                return $f;
+            }
+            if ($urgent) {
+                @touch(self::wantFile());
+            } elseif (self::someoneWaiting()) {
+                break;                                    // a chat turn is queued: give up now, retry later
+            }
             if (microtime(true) > $end) {
-                fclose($f);
-                return false;
+                break;
             }
             usleep(150000);
         }
-        return $f;
+        fclose($f);
+        return false;
+    }
+
+    private static function wantFile(): string
+    {
+        return LOG_PATH . '/agentpro-ai.want';
+    }
+
+    /** Is a chat turn waiting for the model right now (marker touched in the last 3 s)? */
+    public static function someoneWaiting(): bool
+    {
+        $f = self::wantFile();
+        clearstatcache(true, $f);
+        $t = @filemtime($f);
+        return $t !== false && $t >= time() - 3;
+    }
+
+    /** How long Ollama keeps the model in RAM after a call (ap_ai_keep_alive, e.g. 30m; 0 = unload at once). */
+    public static function keepAlive(): string
+    {
+        $k = trim(Settings::getString('ap_ai_keep_alive', '30m'));
+        return preg_match('/^(?:-1|0|\d{1,4}[smh])$/', $k) === 1 ? $k : '30m';
     }
 
     /** @return array{text: string, calls: list<array>, tokensIn: int, tokensOut: int}|null */
@@ -330,7 +566,7 @@ final class ApAi
             'model'      => $model,
             'messages'   => $msgs,
             'stream'     => false,
-            'keep_alive' => '30m',
+            'keep_alive' => self::keepAlive(),
             'options'    => array_filter([
                 'temperature' => (float) ($o['temperature'] ?? 0.2),
                 'num_predict' => (int) ($o['max_tokens'] ?? 600),
@@ -480,40 +716,170 @@ final class ApAi
             $cpus = substr_count($cpu, "\nprocessor") + (str_starts_with($cpu, 'processor') ? 1 : 0);
         }
         $disk = @disk_free_space(ROOT_PATH);
+        $others = self::otherServices();
         return [
-            'ramGb'   => $ram,
-            'availGb' => $avail,
-            'cpus'    => max(1, $cpus),
-            'diskGb'  => $disk !== false ? round($disk / 1e9, 1) : 0.0,
-            'gpu'     => is_dir('/proc/driver/nvidia') || is_file('/dev/nvidia0'),
-            'os'      => PHP_OS_FAMILY,
+            'ramGb'      => $ram,
+            'availGb'    => $avail,
+            'cpus'       => max(1, $cpus),
+            'diskGb'     => $disk !== false ? round($disk / 1e9, 1) : 0.0,
+            'gpu'        => is_dir('/proc/driver/nvidia') || is_file('/dev/nvidia0'),
+            'os'         => PHP_OS_FAMILY,
+            // 30 Oct 2026 (af1): what the other services on this box hold right now (null = not measurable here)
+            'othersGb'   => $others['total'],
+            'valhallaGb' => $others['valhalla'],
+            'services'   => $others['list'],
         ];
     }
 
     /**
-     * What to run on this machine. The site, MySQL and PHP keep ~3 GB; the
-     * model gets the rest.
+     * Resident memory of the other big services on this box (MySQL / MariaDB,
+     * PHP-FPM, nginx / Apache, the Valhalla route engine in Docker, Redis),
+     * read from /proc. The model server itself is left out. null totals when
+     * /proc cannot be read (Windows, open_basedir).
      *
-     * @return array{chat: string, vision: string, why: string, alternatives: list<string>}
+     * @return array{total: ?float, valhalla: ?float, list: array<string, float>}
+     */
+    public static function otherServices(): array
+    {
+        $none = ['total' => null, 'valhalla' => null, 'list' => []];
+        if (!@is_dir('/proc/self')) {
+            return $none;
+        }
+        $pids = @scandir('/proc');
+        if (!is_array($pids)) {
+            return $none;
+        }
+        $groups = ['mysql' => '/^(mysqld|mariadbd)$/', 'php' => '/^php(-fpm|\d|\.|$)|^php-fpm/', 'web' => '/^(nginx|apache2|httpd|caddy)$/',
+                   'valhalla' => '/valhalla/', 'docker' => '/^(dockerd|containerd)/', 'redis' => '/^redis/'];
+        $sum = array_fill_keys(array_keys($groups), 0.0);
+        $seen = 0;
+        foreach ($pids as $pid) {
+            if (!ctype_digit($pid)) {
+                continue;
+            }
+            $comm = trim((string) @file_get_contents('/proc/' . $pid . '/comm'));
+            if ($comm === '' || str_starts_with($comm, 'ollama')) {
+                continue;
+            }
+            foreach ($groups as $g => $re) {
+                if (preg_match($re, $comm) === 1) {
+                    $st = (string) @file_get_contents('/proc/' . $pid . '/status');
+                    if (preg_match('/VmRSS:\s+(\d+)/', $st, $m) === 1) {
+                        $sum[$g] += (int) $m[1] / 1048576;
+                        $seen++;
+                    }
+                    break;
+                }
+            }
+        }
+        if ($seen === 0) {
+            return $none;
+        }
+        $list = array_map(static fn(float $v): float => round($v, 2), array_filter($sum, static fn(float $v): bool => $v > 0.01));
+        return ['total' => round(array_sum($sum), 1), 'valhalla' => round($sum['valhalla'], 2), 'list' => $list];
+    }
+
+    /** RAM a model needs when loaded with the context we use (weights + KV cache + runtime), GB. */
+    public const MODEL_NEED_GB = ['qwen3.5:2b' => 2.6, 'qwen3.5:4b' => 4.0, 'qwen3.5:9b' => 7.5, 'gemma4:e4b' => 10.5];
+
+    /**
+     * What to run on this machine.
+     *
+     * 30 Oct 2026 (af1): the model gets what the OTHER services leave, not
+     * "RAM minus 3 GB". Measured from /proc when possible; otherwise the
+     * site, MySQL and PHP are counted as 2 GB and the Valhalla route engine
+     * (Docker) as 1 GB (it uses 0.3-2 GB depending on the tiles it has
+     * loaded). Half a GB stays free for the page cache. On this 8 GB / 2 vCPU
+     * VPS that leaves ~4-4.5 GB: qwen3.5:4b (one model for WhatsApp and for
+     * reading documents), capped by a systemd MemoryMax so it can never push
+     * MySQL out.
+     *
+     * @return array{chat: string, vision: string, why: string, alternatives: list<string>, budgetGb: float,
+     *               othersGb: float, measured: bool, memoryMaxMb: int, cpuQuota: int, ctx: int, warn: string}
      */
     public static function recommend(?array $hw = null): array
     {
         $hw = $hw ?? self::hardware();
-        $ram = (float) $hw['ramGb'];
-        if ($hw['gpu'] || $ram >= 30) {
-            return ['chat' => 'qwen3.5:9b', 'vision' => 'gemma4:e4b', 'alternatives' => ['qwen3.5:27b'],
-                    'why' => 'Plenty of memory: the 9B model answers WhatsApp while Gemma 4 reads ID photos, both stay loaded.'];
+        $ram = (float) ($hw['ramGb'] ?? 0);
+        $unknown = $ram <= 0;
+        if ($unknown) {
+            $ram = 8.0;                                   // /proc not readable here: plan for the company VPS (8 GB, 2 vCPU)
+            $hw['cpus'] = max(2, (int) ($hw['cpus'] ?? 2));
         }
-        if ($ram >= 14) {
-            return ['chat' => 'qwen3.5:9b', 'vision' => 'qwen3.5:9b', 'alternatives' => ['qwen3.5:4b', 'gemma4:e4b'],
-                    'why' => 'With ~16 GB the 9B model fits beside the website and speaks clearly better Nepali and Hindi. It also reads ID photos.'];
+        $cpus = max(1, (int) ($hw['cpus'] ?? 2));
+        $measured = isset($hw['othersGb']) && is_numeric($hw['othersGb']) && (float) $hw['othersGb'] > 0;
+        $valhalla = isset($hw['valhallaGb']) && is_numeric($hw['valhallaGb']) && (float) $hw['valhallaGb'] > 0 ? (float) $hw['valhallaGb'] : 1.0;
+        // measured services + 0.5 GB head-room for PHP spikes; else the estimate
+        $others = $measured ? max(1.5, (float) $hw['othersGb'] + 0.5) : 2.0 + $valhalla;
+        $budget = round(max(0.0, $ram - $others - 0.5), 1);
+        $common = ['budgetGb' => $budget, 'othersGb' => round($others, 1), 'measured' => $measured, 'ramKnown' => !$unknown,
+                   'cpuQuota' => max(100, (int) (floor($cpus * 0.75 * 2) / 2 * 100))];
+        $cap = static fn(string $m): int => (int) (ceil(min(max(self::MODEL_NEED_GB[$m] + 0.5, $budget), max(self::MODEL_NEED_GB[$m] + 0.5, $ram * 0.6)) * 2) / 2 * 1024);
+        if (!empty($hw['gpu']) || $budget >= 18.5) {
+            return ['chat' => 'qwen3.5:9b', 'vision' => 'gemma4:e4b', 'alternatives' => ['qwen3.5:27b'], 'ctx' => 8192, 'warn' => '',
+                    'memoryMaxMb' => (int) (ceil($budget * 2) / 2 * 1024),
+                    'why' => 'Plenty of memory: the 9B model answers WhatsApp while Gemma 4 reads ID photos and paper forms, both stay loaded.'] + $common;
         }
-        if ($ram >= 7) {
-            return ['chat' => 'qwen3.5:4b', 'vision' => 'qwen3.5:4b', 'alternatives' => ['qwen3.5:2b'],
-                    'why' => 'An 8 GB VPS runs the 4B model comfortably next to MySQL; one model does WhatsApp and reads ID photos.'];
+        if ($budget >= self::MODEL_NEED_GB['qwen3.5:9b']) {
+            return ['chat' => 'qwen3.5:9b', 'vision' => 'qwen3.5:9b', 'alternatives' => ['qwen3.5:4b', 'gemma4:e4b'], 'ctx' => 8192, 'warn' => '',
+                    'memoryMaxMb' => $cap('qwen3.5:9b'),
+                    'why' => sprintf('About %.1f GB is free for the model after the other services (%.1f GB): the 9B model fits and speaks clearly better Nepali and Hindi. It also reads ID photos and forms.', $budget, $others)] + $common;
         }
-        return ['chat' => 'qwen3.5:2b', 'vision' => 'qwen3.5:2b', 'alternatives' => [],
-                'why' => 'Little memory: the 2B model fits, but expect simpler Nepali. More RAM (8 GB) is the best upgrade for the AI.'];
+        if ($budget >= self::MODEL_NEED_GB['qwen3.5:4b'] - 0.3 || ($ram >= 7.5 && $budget >= 3.2)) {
+            $tight = $budget < self::MODEL_NEED_GB['qwen3.5:4b'];
+            return ['chat' => 'qwen3.5:4b', 'vision' => 'qwen3.5:4b', 'alternatives' => ['qwen3.5:2b'], 'ctx' => $tight ? 4096 : 8192,
+                    'memoryMaxMb' => $cap('qwen3.5:4b'),
+                    'warn' => $tight ? 'Memory is tight: keep one model (OLLAMA_MAX_LOADED_MODELS=1), context 4096, and the MemoryMax cap below.' : '',
+                    'why' => sprintf('About %.1f GB is free for the model after the website, MySQL and the route engine (%.1f GB): '
+                        . 'qwen3.5:4b (3.4 GB download) fits — one model answers WhatsApp and reads ID photos and paper forms. '
+                        . 'On %d CPU cores expect ~5-20 s for a WhatsApp answer and 1-3 min for a form page; Gemini / Tesseract take over when it is slower.', $budget, $others, $cpus)] + $common;
+        }
+        return ['chat' => 'qwen3.5:2b', 'vision' => 'qwen3.5:2b', 'alternatives' => [], 'ctx' => 4096,
+                'memoryMaxMb' => $cap('qwen3.5:2b'),
+                'warn' => $budget < self::MODEL_NEED_GB['qwen3.5:2b'] ? 'Not enough free memory even for the 2B model — keep using Gemini / Tesseract, or add RAM.' : '',
+                'why' => 'Little memory: the 2B model fits, but expect simpler Nepali and weaker handwriting reading. More RAM is the best upgrade for the AI.'] + $common;
+    }
+
+    /**
+     * The exact root commands to install Ollama on this VPS with limits — the
+     * admin page cannot install anything itself (PHP runs as www-data).
+     */
+    public static function installScript(?array $rec = null): string
+    {
+        $rec = $rec ?? self::recommend();
+        $models = array_values(array_unique([$rec['chat'], $rec['vision']]));
+        $port = (string) (parse_url(self::base(), PHP_URL_PORT) ?: 11434);
+        $lines = [
+            '# 1. Install Ollama (official script), as root:',
+            'curl -fsSL https://ollama.com/install.sh | sh',
+            '',
+            '# 2. Limits so the model never starves the website, MySQL or Valhalla:',
+            'mkdir -p /etc/systemd/system/ollama.service.d',
+            "cat > /etc/systemd/system/ollama.service.d/shg-limits.conf <<'EOF'",
+            '[Service]',
+            'Environment="OLLAMA_HOST=127.0.0.1:' . $port . '"',
+            'Environment="OLLAMA_NUM_PARALLEL=1"',
+            'Environment="OLLAMA_MAX_LOADED_MODELS=1"',
+            'Environment="OLLAMA_KEEP_ALIVE=' . self::keepAlive() . '"',
+            'Environment="OLLAMA_CONTEXT_LENGTH=' . (int) $rec['ctx'] . '"',
+            'MemoryMax=' . (int) $rec['memoryMaxMb'] . 'M',
+            'MemorySwapMax=0',
+            'CPUQuota=' . (int) $rec['cpuQuota'] . '%',
+            'Nice=10',
+            'EOF',
+            'systemctl daemon-reload',
+            'systemctl enable --now ollama',
+            'systemctl restart ollama',
+            '',
+            '# 3. The model' . (count($models) > 1 ? 's' : '') . ' for this VPS:',
+        ];
+        foreach ($models as $m) {
+            $lines[] = 'ollama pull ' . $m;
+        }
+        $lines[] = '';
+        $lines[] = '# 4. Check (should print a version and the model):';
+        $lines[] = 'curl -s http://127.0.0.1:' . $port . '/api/version && ollama list';
+        return implode("\n", $lines);
     }
 
     /* =================================================================
@@ -659,12 +1025,35 @@ final class ApAi
             $opts[CURLOPT_POST] = true;
             $opts[CURLOPT_POSTFIELDS] = json_encode($payload, JSON_UNESCAPED_UNICODE);
         }
+        $cut = false;
+        if (self::$yieldNow && $method === 'POST') {
+            // A document read: hang up as soon as a WhatsApp turn waits for the model.
+            $next = 0.0;
+            $opts[CURLOPT_NOPROGRESS] = false;
+            $opts[CURLOPT_XFERINFOFUNCTION] = static function () use (&$next, &$cut): int {
+                $now = microtime(true);
+                if ($now < $next) {
+                    return 0;
+                }
+                $next = $now + 0.5;
+                if (self::someoneWaiting()) {
+                    $cut = true;
+                    return 1;                             // abort the transfer
+                }
+                return 0;
+            };
+        }
         $opts[CURLOPT_HTTPHEADER] = $headers;
         curl_setopt_array($ch, $opts);
         $body = curl_exec($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err  = curl_error($ch);
         curl_close($ch);
+        if ($cut) {
+            self::$preempted = true;
+            self::$lastError = 'Stopped so the model could answer WhatsApp first; the document is read again in a moment.';
+            return null;
+        }
         if ($body === false || $code === 0) {
             self::$lastError = 'Model server not reachable at ' . self::base() . ($err !== '' ? ' (' . $err . ')' : '');
             return null;
