@@ -179,8 +179,15 @@ check('visiting card → the card image + the share link', str_contains((string)
 check('"me" shows their own details', str_contains(txt(wa($A_WA, 'me')), $code));
 $r = wa($A_WA, 'contacts');
 check('an agent sees the office, not other agents\' numbers', str_contains(txt($r), 'APWA Office Manager') && !str_contains(txt($r), 'APWA Other Agent'), txt($r));
+if (!Settings::getBool('ap_wa_dir_agents', false)) {
+    $r = wa($MGR, 'contacts');
+    check('a manager on a registered-only number (no OTP link) does not get every agent\'s number', !str_contains(txt($r), 'APWA Other Agent'), txt($r));
+}
+// the office number is linked with the OTP (as LINK + code does)
+Database::run("INSERT INTO ap_wa_links (phone, admin_id, via, verified_at, revoked_at) VALUES (:p, :a, 'otp', NOW(), NULL)
+               ON DUPLICATE KEY UPDATE admin_id = VALUES(admin_id), via = 'otp', revoked_at = NULL", ['p' => normalisePhone('+' . $MGR), 'a' => $mgrId]);
 $r = wa($MGR, 'contacts');
-check('the office sees everyone', str_contains(txt($r), 'APWA Other Agent') && str_contains(txt($r), 'APWA Ramesh Agent'));
+check('the office (OTP-linked) sees everyone', str_contains(txt($r), 'APWA Other Agent') && str_contains(txt($r), 'APWA Ramesh Agent'));
 check('"number <name>" searches', str_contains(txt(wa($MGR, 'number Other')), 'APWA Other Agent'));
 check('office facts with the CIN', str_contains(txt(wa($A_WA, 'cin')), Settings::company()['cin']));
 check('"bus" answers with the day\'s buses', str_contains(txt(wa($A_WA, 'bus')), '🚌'));
@@ -260,9 +267,18 @@ if ($pnr !== '') {
     $other = wa('7000000304', "$pnr naam Hacker");
     check('another agent cannot touch this ticket', str_contains(txt($other), '⚠️'), txt($other));
     $r = wa($A_WA, "$pnr cancel");
-    check('cancel: the refund figure first', str_contains(txt($r), '₹') && str_contains(txt($r), '*ho*'), txt($r));
+    check('cancel (agent): the refund figure first', str_contains(txt($r), '₹') && str_contains(txt($r), '*ho*'), txt($r));
     $r = wa($A_WA, 'ho');
-    check('…then cancelled', (string) Database::scalar('SELECT status FROM bookings WHERE id = :i', ['i' => (int) $bk['id']], '') === 'cancelled', txt($r));
+    // owner: refunds / cancels are manual — an agent's cancel is a REQUEST in the office queue
+    check('…an agent\'s "ho" sends a cancel REQUEST to the office queue; the ticket stays', str_contains(txt($r), 'HD-')
+        && (string) Database::scalar('SELECT status FROM bookings WHERE id = :i', ['i' => (int) $bk['id']], '') === 'confirmed'
+        && Database::exists("SELECT 1 FROM support_tickets WHERE booking_id = :b AND category = 'refund'", ['b' => (int) $bk['id']]), txt($r));
+    $r = wa($MGR, "$pnr cancel");
+    check('cancel (office manager): the refund figure first', str_contains(txt($r), '₹') && str_contains(txt($r), '*ho*'), txt($r));
+    $r = wa($MGR, 'ho');
+    check('…then the manager\'s "ho" cancels it', (string) Database::scalar('SELECT status FROM bookings WHERE id = :i', ['i' => (int) $bk['id']], '') === 'cancelled', txt($r));
+    Database::run('DELETE m FROM support_messages m JOIN support_tickets t ON t.id = m.ticket_id WHERE t.booking_id = :b', ['b' => (int) $bk['id']]);
+    Database::delete('support_tickets', 'booking_id = :b', ['b' => (int) $bk['id']]);
 }
 
 /* =================================================================== */
@@ -387,7 +403,7 @@ for ($i = 0; $i < 100; $i++) {
     if (($job['status'] ?? '') === 'done' || ($job['status'] ?? '') === 'failed') { break; }
     usleep(200000);
 }
-check('the worker answered it and sent the reply', ($job['status'] ?? '') === 'done' && str_contains((string) $job['reply'], '1,200'), $out . ' ' . json_encode($job));
+check('the worker answered it and sent the reply', ($job['status'] ?? '') === 'done' && str_contains((string) $job['reply'], inr(AgentWallet::balances($agentId)['commission'])), $out . ' ' . json_encode($job));
 check('…and records its heartbeat', (int) Database::scalar("SELECT svalue FROM settings WHERE skey = 'ap_worker_seen'", [], 0) > time() - 120);
 
 Settings::set('ap_ai_base', 'http://127.0.0.1:11555/v1', 'string', 'agentpro', false);

@@ -4,7 +4,8 @@
  *  /api/driver.php - the driver app's only door (20 Oct 2026).
  *  (driver/ app, includes/livetrips.php, includes/driverauth.php)
  *
- *    POST {action:'login', phone, pin}      -> {token, driver}
+ *    POST {action:'login', phone, pin}      -> {token, driver}   (driver.role: driver / co-driver / conductor / host
+ *                                              - a conductor shares the bus location exactly like the driver)
  *    GET  ?action=me                         -> {driver, trip, trips[], pingSec}
  *    POST {action:'start', scheduleId}       -> {trip}
  *    POST {action:'ping', tripId, points[]}  -> {ack, stored, moved}
@@ -55,6 +56,7 @@ try {
         }
         Response::success(['token' => $res['token'], 'driver' => [
             'name' => (string) $res['driver']['full_name'], 'phone' => (string) $res['driver']['phone'],
+            'role' => (string) ($res['driver']['role'] ?? 'driver'),
         ]]);
     }
 
@@ -77,7 +79,7 @@ try {
             ['dev' => $driver['deviceId']]
         );
         Response::success([
-            'driver'  => ['name' => $driver['name'], 'phone' => $driver['phone']],
+            'driver'  => ['name' => $driver['name'], 'phone' => $driver['phone'], 'role' => $driver['role']],
             'trip'    => $trip === null ? null : [
                 'tripId' => (int) $trip['id'], 'scheduleId' => (int) $trip['schedule_id'],
                 'lastSeq' => (int) $trip['last_seq'], 'lastPingAt' => $trip['last_ping_at'],

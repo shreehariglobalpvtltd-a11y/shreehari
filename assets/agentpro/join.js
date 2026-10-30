@@ -69,7 +69,7 @@
       o_skip_t: 'Office: accept this mobile without a WhatsApp code', o_reason: 'Reason (e.g. came to the office, no WhatsApp)', o_skip_btn: 'Accept this mobile', o_taken: 'This mobile already has an account:', openMember: 'Open member',
       o_saw: 'I saw the original ID (KYC verified)', o_approve: 'Approve now — issue the login and ID code', o_consent: 'The applicant agreed to the terms (signed the paper form or said yes).',
       o_send_ok: 'Approve & issue ID', o_done_t: 'Approved — ID issued', o_done_sent: 'Sent to approvals', o_code: 'ID / agent code',
-      o_cards: 'Open member — ID card & visiting card', o_form: 'Filled form (PDF)', o_next: 'Fill the next form', o_appr: 'Open approvals', o_kycNo: 'KYC still to check — the original ID was not seen.', o_kycMgr: 'A manager checks the KYC — the ID stays "to check" until then.',
+      o_cards: 'Open member — ID card & visiting card', o_form: 'Filled form (PDF)', o_next: 'Create another', o_driver: 'Driver app ready: they sign in at /driver/ with this mobile + the PIN sent on WhatsApp, or tap “Start bus location” in /me/.', o_appr: 'Open approvals', o_kycNo: 'KYC still to check — the original ID was not seen.', o_kycMgr: 'A manager checks the KYC — the ID stays "to check" until then.',
       net: 'No connection — check your internet and try again.', saved: 'Saved'
     },
     ne: {
@@ -116,7 +116,7 @@
       o_skip_t: 'अफिस: WhatsApp कोड बिना यो मोबाइल स्वीकार्ने', o_reason: 'कारण (जस्तै: अफिसमै आउनुभयो, WhatsApp छैन)', o_skip_btn: 'मोबाइल स्वीकार्नुहोस्', o_taken: 'यो मोबाइलको खाता पहिल्यै छ:', openMember: 'सदस्य खोल्नुहोस्',
       o_saw: 'सक्कल परिचयपत्र हेरेँ (KYC प्रमाणित)', o_approve: 'अहिल्यै स्वीकृत — लगइन र ID कोड दिनुहोस्', o_consent: 'आवेदक सर्तमा सहमत हुनुभयो (कागजी फारममा सही वा मौखिक सहमति)।',
       o_send_ok: 'स्वीकृत गरी ID दिनुहोस्', o_done_t: 'स्वीकृत — ID जारी भयो', o_done_sent: 'स्वीकृतिका लागि पठाइयो', o_code: 'ID / एजेन्ट कोड',
-      o_cards: 'सदस्य खोल्नुहोस् — ID र भिजिटिङ कार्ड', o_form: 'भरिएको फारम (PDF)', o_next: 'अर्को फारम भर्नुहोस्', o_appr: 'स्वीकृति सूची', o_kycNo: 'KYC बाँकी — सक्कल परिचयपत्र हेरिएन।', o_kycMgr: 'KYC म्यानेजरले जाँच्छ — त्यतिन्जेल ID "जाँच्न बाँकी" रहन्छ।',
+      o_cards: 'सदस्य खोल्नुहोस् — ID र भिजिटिङ कार्ड', o_form: 'भरिएको फारम (PDF)', o_next: 'अर्को बनाउनुहोस्', o_driver: 'ड्राइभर एप तयार: /driver/ मा यही मोबाइल + WhatsApp मा गएको PIN ले लगइन, वा /me/ मा “बस लोकेसन सुरु”।', o_appr: 'स्वीकृति सूची', o_kycNo: 'KYC बाँकी — सक्कल परिचयपत्र हेरिएन।', o_kycMgr: 'KYC म्यानेजरले जाँच्छ — त्यतिन्जेल ID "जाँच्न बाँकी" रहन्छ।',
       net: 'इन्टरनेट छैन — जाँचेर फेरि प्रयास गर्नुहोस्।', saved: 'सेभ भयो'
     },
     hi: {
@@ -163,7 +163,7 @@
       o_skip_t: 'ऑफिस: WhatsApp कोड के बिना यह मोबाइल स्वीकार करें', o_reason: 'कारण (जैसे: ऑफिस आए, WhatsApp नहीं)', o_skip_btn: 'मोबाइल स्वीकार करें', o_taken: 'इस मोबाइल का खाता पहले से है:', openMember: 'सदस्य खोलें',
       o_saw: 'असली पहचान पत्र देखा (KYC सत्यापित)', o_approve: 'अभी स्वीकृत — लॉगिन और ID कोड दें', o_consent: 'आवेदक शर्तों से सहमत (कागज़ी फ़ॉर्म पर हस्ताक्षर या मौखिक हाँ)।',
       o_send_ok: 'स्वीकृत कर ID दें', o_done_t: 'स्वीकृत — ID जारी', o_done_sent: 'स्वीकृति के लिए भेजा', o_code: 'ID / एजेंट कोड',
-      o_cards: 'सदस्य खोलें — ID और विज़िटिंग कार्ड', o_form: 'भरा फ़ॉर्म (PDF)', o_next: 'अगला फ़ॉर्म भरें', o_appr: 'स्वीकृति सूची', o_kycNo: 'KYC बाकी — असली पहचान पत्र नहीं देखा।', o_kycMgr: 'KYC मैनेजर जाँचेंगे — तब तक ID "जाँच बाकी" रहेगा।',
+      o_cards: 'सदस्य खोलें — ID और विज़िटिंग कार्ड', o_form: 'भरा फ़ॉर्म (PDF)', o_next: 'एक और बनाएँ', o_driver: 'ड्राइवर ऐप तैयार: /driver/ पर यही मोबाइल + WhatsApp पर भेजा PIN, या /me/ में “बस लोकेशन शुरू”।', o_appr: 'स्वीकृति सूची', o_kycNo: 'KYC बाकी — असली पहचान पत्र नहीं देखा।', o_kycMgr: 'KYC मैनेजर जाँचेंगे — तब तक ID "जाँच बाकी" रहेगा।',
       net: 'इंटरनेट नहीं — जाँचकर फिर कोशिश करें।', saved: 'सेव हुआ'
     }
   };
@@ -243,6 +243,19 @@
     return api('start', { invite: C.invite || '' }).then(function (s) {
       if (!s.ok) { return fatal(s.error || t('net')); }
       S.key = s.data.key; remember();
+      // 30 Oct 2026: the office form starts with the role asked for (?role=driver from Team) or the
+      // role of the last form this office user filled — "Create another" makes the next one fast.
+      if (OFF) {
+        var want = C.roleWanted || '';
+        if (!want) { try { want = localStorage.getItem('apjoin_office_role') || ''; } catch (e) { want = ''; } }
+        var okRole = want && want !== 'agent:person' && (C.roles || []).some(function (r) { return r.v === want; });
+        if (okRole) {
+          var ag = want.indexOf('agent:') === 0;
+          return api('office_role', { role: ag ? 'agent' : want, agent_kind: ag ? want.split(':')[1] : 'person', designation: '' }).then(function (r) {
+            take(r.ok ? r.data.draft : s.data.draft);
+          });
+        }
+      }
       // agreements/apply.html?kind=partner → an agency; an office invitation also brings the name / mobile
       var pf = (!OFF && C.prefill) || {}, first = {};
       if (C.as === 'org' && !OFF) first.agent_kind = 'org';
@@ -646,6 +659,8 @@
         + '<div class="ap-caps" style="margin-top:14px">' + esc(t('done_ref')) + '</div><div class="ap-ref">' + esc(ref) + '</div>'
         + (R.code ? '<div class="ap-caps">' + esc(t('o_code')) + '</div><div class="ap-ref ap-code">' + esc(R.code) + '</div>' : '')
         + (approved && R.kyc === 'submitted' ? '<div class="ap-note warn">' + esc(t('o_kycNo')) + '</div>' : '')
+        + (approved && R.admin_id ? '<div style="text-align:center;margin:14px 0 4px"><a href="' + esc(member || '#') + '"><img alt="ID card" src="/api/agentpro-card.php?m=' + (+R.admin_id) + '&s=id-front&t=' + Date.now() + '" style="width:min(240px,70vw);border-radius:14px;box-shadow:var(--sh-2)"></a></div>' : '')
+        + (approved && R.driver ? '<div class="ap-note" style="margin-top:10px">🚌 ' + esc(t('o_driver')) + '</div>' : '')
         + '<div class="ap-actions">'
         + (member ? '<a class="ap-btn" href="' + esc(member) + '">🪪 ' + esc(t('o_cards')) + '</a>' : '')
         + (form ? '<a class="ap-btn ghost" href="' + esc(form + (form.indexOf('?') >= 0 ? '&' : '?') + 'auto=pdf') + '" target="_blank" rel="noopener">📄 ' + esc(t('o_form')) + '</a>' : '')
@@ -689,6 +704,7 @@
         var v = b.dataset.role, agent = v.indexOf('agent:') === 0;
         api('office_role', { role: agent ? 'agent' : v, agent_kind: agent ? v.split(':')[1] : 'person', designation: S.d.designation || '' }).then(function (r) {
           if (!r.ok) { toast(r.error, true); return; }
+          try { localStorage.setItem('apjoin_office_role', v); } catch (e) {}
           S.d = Object.assign(r.data.draft, pickTyped()); render();
         });
       });

@@ -152,6 +152,7 @@ function admin_nav(): array
         ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'System Settings',        'perm' => 'dashboard.view',   'section' => $S5],
         ['href' => 'wa-manager.php',   'icon' => 'msg',       'label' => 'WhatsApp Manager',       'perm' => 'reports.view',     'section' => $S5],
         ['href' => 'wa-inbox.php',     'icon' => 'msg',       'label' => 'WhatsApp Inbox & Groups', 'perm' => 'customers.view',  'section' => $S5],
+        ['href' => 'wa-outbox.php',    'icon' => 'msg',       'label' => '📤 WhatsApp outbox',      'perm' => 'marketing.send',   'section' => $S5],   // 30 Oct 2026: official Cloud API sends, contacts, wa.me fallback
         ['href' => 'wa-templates.php', 'icon' => 'msg',       'label' => 'WhatsApp Templates',     'perm' => 'customers.view',   'section' => $S5],
         ['href' => 'ai-brain.php',     'icon' => 'star',      'label' => 'One AI (WhatsApp brain)', 'perm' => 'dashboard.view',  'section' => $S5],
         ['href' => 'ai-activity.php',  'icon' => 'shield',    'label' => 'AI Activity',            'perm' => 'dashboard.view',   'section' => $S5],

@@ -33,7 +33,23 @@ final class ApBrain
 {
     public const INTENTS = ['book', 'edit', 'cancel', 'resend', 'status', 'balance', 'statement', 'withdraw', 'deposit',
                             'id_card', 'visiting_card', 'profile', 'directory', 'company', 'bus', 'report', 'passengers',
-                            'help', 'join', 'question', 'other'];
+                            'tickets', 'portal', 'pending', 'help', 'join', 'question', 'other'];
+
+    /**
+     * Seconds the model may still take for this turn: what is left of the
+     * turn's budget (ApWa::turnBudget, ~60 s) after the time already spent and
+     * the longest wait for the model lock. ApAi::chat waits min(timeout,
+     * waWait) for the lock, so with T = left − min(waWait, left/2) the wait
+     * plus T never pass what is left (T ≥ left/2 ≥ the wait). Never under
+     * 8 s — below that the answer would not come anyway, and the menu is the
+     * reply.
+     */
+    public static function timeoutFor(float $t0, ?int $budget = null): int
+    {
+        $budget ??= max(15, min(120, Settings::getInt('ap_wa_turn_budget', 60)));
+        $left = $budget - (microtime(true) - $t0);
+        return max(8, (int) floor($left - min(ApAi::waWait(), $left / 2)));
+    }
 
     /**
      * @param array<string, mixed> $ctx
@@ -79,7 +95,14 @@ final class ApBrain
             ],
             'required' => ['intent'],
         ];
-        $d = ApAi::json(self::system($customer), $user, $schema, [], ['purpose' => $customer ? 'wa_customer' : 'wa_member', 'max_tokens' => 350]);
+        // One turn never runs past its budget: the lock wait + this HTTP timeout fit inside what is left.
+        $t0 = (float) ($ctx['t0'] ?? microtime(true));
+        if (microtime(true) - $t0 > max(15, min(120, Settings::getInt('ap_wa_turn_budget', 60))) - 8) {
+            return null;                                   // the turn is already spent: the menu answers
+        }
+        $timeout = self::timeoutFor($t0);
+        $d = ApAi::json(self::system($customer), $user, $schema, [], ['purpose' => $customer ? 'wa_customer' : 'wa_member', 'max_tokens' => 350,
+            'timeout' => $timeout]);
         if ($d === null) {
             return null;
         }
@@ -110,7 +133,10 @@ final class ApBrain
            . "- cancel, resend (send the ticket again), status (where is my ticket / bus): pnr.\n"
            . ($customer ? '' : "- balance, statement (days), withdraw (amount), deposit (amount, ref = UTR): the sender's own wallet.\n"
               . "- id_card, visiting_card, profile: the sender's own cards / details. directory: someone's number (query = the name). "
-              . "report: today's sales. passengers: who travels (date). bus: buses on a date.\n")
+              . "report: today's sales. passengers: who travels (date). bus: buses on a date.\n"
+              . "- tickets: the sender's own sold tickets (date when they name a day). portal: how to sign in to their web portal / app. "
+              . "pending: (office staff) what is waiting for approval.\n"
+              . "Never approve, pay, cancel or sell anything yourself: only say which intent it is.\n")
            . "- company: office address, CIN, phone numbers, email, website. join: wants to become an agent.\n"
            . "- question / other: put a SHORT helpful reply (1-4 lines, no markdown) in answer, in the requested language, using ONLY the "
            . "FACTS below. If the facts do not cover it, say the office will help and give the office phone.\n"

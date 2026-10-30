@@ -69,16 +69,38 @@
       waLinked: 'आपके कोड से जुड़े WhatsApp', waHow: 'दूसरे WhatsApp से भेजें: LINK', signOut: 'लॉगआउट', lang: 'भाषा', office: 'ऑफिस', adminPanel: 'एडमिन पैनल',
       open_s: 'इंतज़ार', paid_s: 'भुगतान हुआ', declined_s: 'अस्वीकृत', confirmed_s: 'पुष्टि हुई', net: 'इंटरनेट नहीं — फिर कोशिश करें।', loading: 'खुल रहा है…' }
   };
+  /* 30 Oct 2026 — every staff role gets a portal that fits it (owner: "staff, counter sabai lai
+     ustai portal"): a Work tab with the pages their role opens instead of a wallet they do not have,
+     and for a driver / conductor one big "Start bus location" button into the driver app. */
+  var W2 = {
+    en: { t_work: 'Work', work: 'My work', workLead: 'The pages your role opens. Sign in once with your office login.', noTools: 'Nothing extra for your role — your ID and documents are here.',
+      busBtn: 'Start bus location', busSub: 'Opens the driver app, already signed in', busT: 'Share the bus location',
+      busWhy: ['This phone\'s GPS sends where the bus is.', 'When Chrome asks for “Location”, tap Allow.', 'Keep the screen on and the phone on the charger while the trip runs — with the screen off the location stops.', 'Only the office and the passengers of this bus see it, and only until you tap END TRIP.'],
+      busGo: 'Allow & open the driver app', busOff: 'The office switched off your driver app — call the office.', busPin: 'Another phone? Sign in there with your mobile + the PIN sent on WhatsApp.' },
+    ne: { t_work: 'काम', work: 'मेरो काम', workLead: 'तपाईंको पदले खोल्ने पेजहरू। अफिस लगइनले एक पटक लगइन गर्नुहोस्।', noTools: 'तपाईंको पदका लागि थप पेज छैन — ID र कागजात यहीँ छन्।',
+      busBtn: 'बस लोकेसन सुरु', busSub: 'ड्राइभर एप लगइन भएरै खुल्छ', busT: 'बसको लोकेसन पठाउनुहोस्',
+      busWhy: ['बस कहाँ छ भनेर यो फोनको GPS ले पठाउँछ।', 'Chrome ले “Location / लोकेसन” अनुमति माग्दा Allow (अनुमति दिनुहोस्) थिच्नुहोस्।', 'यात्रा चलुन्जेल स्क्रिन खुला र फोन चार्जरमा राख्नुहोस् — स्क्रिन बन्द भए लोकेसन रोकिन्छ।', 'अफिस र यही बसका यात्रुले मात्र देख्छन्, END TRIP थिचेपछि लोकेसन जाँदैन।'],
+      busGo: 'अनुमति दिएर ड्राइभर एप खोल्नुहोस्', busOff: 'अफिसले तपाईंको ड्राइभर एप बन्द गरेको छ — अफिसलाई फोन गर्नुहोस्।', busPin: 'अर्को फोनमा? मोबाइल नम्बर + WhatsApp मा आएको PIN ले लगइन गर्नुहोस्।' },
+    hi: { t_work: 'काम', work: 'मेरा काम', workLead: 'आपकी भूमिका के पेज। ऑफिस लॉगिन से एक बार लॉगिन करें।', noTools: 'आपकी भूमिका के लिए और पेज नहीं — ID और दस्तावेज़ यहीं हैं।',
+      busBtn: 'बस लोकेशन शुरू', busSub: 'ड्राइवर ऐप लॉगिन होकर खुलेगा', busT: 'बस की लोकेशन भेजें',
+      busWhy: ['बस कहाँ है, यह इस फ़ोन का GPS भेजता है।', 'Chrome “Location” की अनुमति माँगे तो Allow दबाएँ।', 'यात्रा के दौरान स्क्रीन चालू और फ़ोन चार्जर पर रखें — स्क्रीन बंद होने पर लोकेशन रुक जाती है।', 'सिर्फ़ ऑफिस और इसी बस के यात्री देखते हैं, END TRIP के बाद लोकेशन नहीं जाती।'],
+      busGo: 'अनुमति देकर ड्राइवर ऐप खोलें', busOff: 'ऑफिस ने आपका ड्राइवर ऐप बंद किया है — ऑफिस को फ़ोन करें।', busPin: 'दूसरे फ़ोन पर? मोबाइल + WhatsApp पर आया PIN डालें।' }
+  };
+  Object.keys(W2).forEach(function (l) { Object.keys(W2[l]).forEach(function (k) { W[l][k] = W2[l][k]; }); });
   var lang = (function () { try { var s = localStorage.getItem('ap_lang'); if (s && W[s]) return s; } catch (e) {} var n = (navigator.language || 'en').toLowerCase(); return n.indexOf('ne') === 0 ? 'ne' : (n.indexOf('hi') === 0 ? 'hi' : 'en'); })();
   var t = function (k) { return (W[lang] && W[lang][k]) || W.en[k] || k; };
   var S = { me: null, wallet: null, tab: (location.hash || '#id').slice(1) };
   var TABS = [['id', 'idcard'], ['card', 'card'], ['wallet', 'wallet'], ['docs', 'doc'], ['me', 'user']];
+  /* agents (and anyone who holds company money) see the wallet; other staff see their Work tab */
+  function tabs() { var w = S.me && S.me.portal && !S.me.portal.walletOn; return TABS.map(function (x) { return w && x[0] === 'wallet' ? ['work', 'work'] : x; }); }
+  function portal() { return (S.me && S.me.portal) || { walletOn: true, tools: [], crew: null }; }
   var ICON = {
     idcard: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17c.8-2 2-3 3.5-3s2.7 1 3.5 3M15 10h3M15 13.5h3"/></svg>',
     card: '<svg viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M6 10h6M6 13.5h4M15.5 9.5h3v3h-3z"/></svg>',
     wallet: '<svg viewBox="0 0 24 24"><path d="M4 7.5V18a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1v-3"/><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H17v2.5"/><path d="M20 10.5h-4a2 2 0 0 0 0 4h4z"/></svg>',
     doc: '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>',
-    user: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c1.3-3.4 3.8-5 7-5s5.7 1.6 7 5"/></svg>'
+    user: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c1.3-3.4 3.8-5 7-5s5.7 1.6 7 5"/></svg>',
+    work: '<svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M8.5 7V5.5A1.5 1.5 0 0 1 10 4h4a1.5 1.5 0 0 1 1.5 1.5V7M3 12.5h18"/></svg>'
   };
 
   function api(action, body, isForm) {
@@ -168,12 +190,14 @@
   function fmtDate(d) { try { return new Date(d.replace(' ', 'T')).toLocaleDateString(lang === 'en' ? 'en-IN' : (lang === 'hi' ? 'hi-IN' : 'ne-NP'), { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return d; } }
   function renderTabs() {
     var tb = $('#tabs'); tb.hidden = false;
-    tb.innerHTML = TABS.map(function (x) { return '<button type="button" role="tab" data-tab="' + x[0] + '" aria-selected="' + (S.tab === x[0]) + '">' + ICON[x[1]] + '<span>' + esc(t('t_' + x[0])) + '</span></button>'; }).join('');
+    var tl = tabs();
+    if (!tl.some(function (x) { return x[0] === S.tab; })) S.tab = 'id';
+    tb.innerHTML = tl.map(function (x) { return '<button type="button" role="tab" data-tab="' + x[0] + '" aria-selected="' + (S.tab === x[0]) + '">' + ICON[x[1]] + '<span>' + esc(t('t_' + x[0])) + '</span></button>'; }).join('');
     $$('#tabs button').forEach(function (b) { b.addEventListener('click', function () { S.tab = b.dataset.tab; history.replaceState(null, '', '#' + S.tab); renderTabs(); render(); window.scrollTo(0, 0); }); });
   }
   function render() {
     if (!S.me) return;
-    var f = { id: tabId, card: tabCard, wallet: tabWallet, docs: tabDocs, me: tabMe }[S.tab] || tabId;
+    var f = { id: tabId, card: tabCard, wallet: tabWallet, work: tabWork, docs: tabDocs, me: tabMe }[S.tab] || tabId;
     $('#app').innerHTML = f();
     bindTab();
   }
@@ -181,7 +205,7 @@
   /* ---- ID ---- */
   function tabId() {
     var c = S.me.cards, v = '&t=' + Date.now();
-    return '<section class="ap-card" style="padding:18px 14px"><div class="ap-cardview"><div class="ap-flip" id="flip" role="button" tabindex="0" aria-label="' + esc(t('tapFlip')) + '">'
+    return busCard() + '<section class="ap-card" style="padding:18px 14px"><div class="ap-cardview"><div class="ap-flip" id="flip" role="button" tabindex="0" aria-label="' + esc(t('tapFlip')) + '">'
       + '<div class="face"><img alt="ID card front" src="' + esc(c['id-front'] + v) + '" width="540" height="856"></div>'
       + '<div class="face b"><img alt="ID card back" src="' + esc(c['id-back'] + v) + '" width="540" height="856"></div></div></div>'
       + '<p class="ap-hint" style="text-align:center;margin-top:12px">↻ ' + esc(t('tapFlip')) + '</p>'
@@ -198,7 +222,32 @@
       + '<a class="ap-btn ghost sm" href="/me/form.php" target="_blank" rel="noopener">👁 ' + esc(t('print')) + '</a></div>'
       + '<p class="ap-hint" style="text-align:center">' + esc(t('myFormLead')) + '</p>';
   }
+  /* driver / conductor: the one big button (top of ID and Work) */
+  function busCard() {
+    var cr = portal().crew;
+    if (!cr) return '';
+    if (cr.linked && !cr.active) return '<section class="ap-card"><div class="ap-note warn">🚌 ' + esc(t('busOff')) + '</div></section>';
+    return '<section class="ap-card" style="padding:14px"><button type="button" class="ap-btn gold block" data-bus="1" style="min-height:76px;font-size:20px;line-height:1.25;flex-direction:column;gap:2px">🚌 '
+      + esc(t('busBtn')) + '<small style="display:block;font-size:13px;font-weight:600;opacity:.85;margin-top:4px">' + esc(t('busSub')) + '</small></button>'
+      + '<p class="ap-hint" style="text-align:center;margin:10px 0 0">' + esc(t('busPin')) + '</p></section>';
+  }
+  function toolList() {
+    var tl = portal().tools || [];
+    if (!tl.length) return '<p class="ap-hint">' + esc(t('noTools')) + '</p>';
+    return '<ul class="ap-pass">' + tl.map(function (x) {
+      return '<li><span class="ic q blue">' + esc(x.icon) + '</span><span class="t"><b>' + esc(lang === 'en' ? x.en : x.ne) + '</b><small>' + esc(lang === 'en' ? x.ne : x.en) + '</small></span>'
+        + '<a class="ap-btn ghost sm" href="' + esc(x.href) + '">' + esc(t('open')) + ' →</a></li>';
+    }).join('') + '</ul>';
+  }
+  function tabWork() {
+    return busCard() + '<section class="ap-card"><h2>' + esc(t('work')) + '</h2><p class="lead">' + esc(t('workLead')) + '</p>' + toolList() + '</section>'
+      + '<section class="ap-card">' + myFormBtn() + '</section>';
+  }
   function quickNav() {
+    if (!portal().walletOn) {
+      return '<section class="ap-card"><div class="ap-row" style="justify-content:space-between"><h3 style="margin:0">' + esc(t('work')) + '</h3>'
+        + '<button type="button" class="ap-btn sm" data-go="work">' + esc(t('t_work')) + ' →</button></div>' + toolList() + '</section>';
+    }
     var b = S.wallet ? S.wallet.balances : { commission: 0, cash: 0 };
     return '<section class="ap-card"><div class="ap-row" style="justify-content:space-between"><div><div class="ap-caps">' + esc(t('available')) + '</div><div style="font-size:26px;font-weight:700">' + money(b.commission) + '</div></div>'
       + '<button type="button" class="ap-btn sm" data-go="wallet">' + esc(t('t_wallet')) + ' →</button></div></section>';
@@ -375,8 +424,34 @@
       api('kyc_upload', fd, true).then(function (r) { r.ok ? (toast('✓ ' + (r.message || t('saved'))), load()) : toast(r.error, true); });
     }); });
     var fa = $('#fpAdd'); if (fa) fa.addEventListener('click', function () { passkeyAdd(fa); });
+    $$('[data-bus]').forEach(function (b) { b.addEventListener('click', sheetBus); });
     $$('[data-pk]').forEach(function (b) { b.addEventListener('click', function () { api('pk_delete', { id: +b.dataset.pk }).then(function () { load(); }); }); });
     var out = $('#out'); if (out) out.addEventListener('click', function () { api('logout', {}).then(function () { C.signed = false; S.me = null; S.tab = 'id'; history.replaceState(null, '', location.pathname); renderLogin(); }); });
+  }
+  /* ---- 🚌 Start bus location: explain the permission, then open the driver app signed in ---- */
+  function sheetBus() {
+    var why = t('busWhy'); if (!Array.isArray(why)) why = W.en.busWhy;
+    sheet('<h2>🚌 ' + esc(t('busT')) + '</h2><ul class="ap-pass">' + why.map(function (w, i) {
+      return '<li><span class="ic q ' + (['blue', 'green', 'gold', 'violet'][i] || 'blue') + '">' + (['📍', '✅', '🔌', '🔒'][i] || '•') + '</span><span class="t"><b style="font-weight:600">' + esc(w) + '</b></span></li>';
+    }).join('') + '</ul><button type="button" class="ap-btn gold block" id="busGo" style="min-height:60px;font-size:18px;margin-top:12px">📍 ' + esc(t('busGo')) + '</button>');
+    $('#busGo').addEventListener('click', function () {
+      var b = this, prev = '';
+      try { prev = localStorage.getItem('shgDrv:token') || ''; } catch (e) {}
+      busy(b, true);
+      api('bus_link', { prev: prev }).then(function (r) {
+        busy(b, false);
+        if (!r.ok) { toast(r.error || t('net'), true); return; }
+        var tok = r.data.token, kept = false;
+        try {
+          localStorage.setItem('shgDrv:token', tok); localStorage.setItem('shgDrv:name', r.data.name || '');
+          localStorage.setItem('shgDrv:role', r.data.role || 'driver');
+          kept = localStorage.getItem('shgDrv:token') === tok;
+        } catch (e) { kept = false; }
+        // Same site: the driver app reads the sign-in from storage. If this browser refuses storage,
+        // hand it over once in the #fragment (not sent to the server; the app wipes it at once).
+        location.href = r.data.app + (kept ? '' : '#t=' + tok);
+      });
+    });
   }
   function formObj(f) { var o = {}; $$('[name]', f).forEach(function (el) { o[el.name] = el.value; }); return o; }
   function copy(text) {

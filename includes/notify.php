@@ -454,11 +454,15 @@ final class Notify
            carries templates while wa_meta_templates_on. Only when neither
            applies does the paid AiSensy template below go out. Never allowed
            to break a send: any exception falls through to the old ladder. */
+        $freeTried = false;   // the Meta number's free reply was tried (and did not go) - the Cloud fallback skips it
         try {
             require_once __DIR__ . '/waroute.php';
             $purpose = (string) ($meta['purpose'] ?? 'message');
             $free = WaRoute::freeFirst($number, $message, $mediaUrl, $purpose,
                 ['bookingId' => $bookingId] + array_intersect_key($meta, ['admin_id' => 1, 'agent_admin_id' => 1]));
+            if ($free === null && trim($message) !== '' && WaRoute::metaOn() && WaRoute::metaWindowOpen($number)) {
+                $freeTried = true;
+            }
             if ($free !== null && $free['success']) {
                 self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => 'meta_free', 'ref' => $free['message_id']];
                 self::metaTicketRecorded($bookingId, $purpose, $number, 'meta free', (string) $free['message_id']);
@@ -497,6 +501,11 @@ final class Notify
                 return true;
             }
             if ($ais === false) {
+                // 30 Oct 2026: AiSensy refused it - the official Cloud API number carries it (includes/wasend.php).
+                $cf = self::cloudFallback($driver, $number, $message, $mediaUrl, $templateVars, $bookingId, $meta, $freeTried);
+                if ($cf !== null) {
+                    return $cf;
+                }
                 $link = whatsappLink($number, $message);
                 self::$journal[] = ['to' => $number, 'ok' => false, 'link' => $link, 'driver' => 'aisensy', 'reason' => 'fallback'];
                 return $link;
@@ -606,12 +615,30 @@ final class Notify
             }
         }
 
+        /* 30 Oct 2026 (owner: "AiSensy chaldaina bhane Meta ko official API
+           bata pathaos"): the configured sender (AiSensy with no key, a
+           refusal, Twilio / Gupshup down) could not send - the official Meta
+           Cloud API on the bot number carries it: free inside the 24 h
+           window, else the approved template, paced through the outbox
+           (includes/wasend.php, admin/wa-outbox.php). Not for click_to_chat
+           (no API on purpose) or cloud_api (already tried above). */
+        $cf = self::cloudFallback($driver, $number, $message, $mediaUrl, $templateVars, $bookingId, $meta, $freeTried);
+        if ($cf !== null) {
+            return $cf;
+        }
+
         // No driver configured, or the configured driver failed — log a
         // click-to-chat link so staff can still send the message with one tap
         // from the admin logs/tools.
         $link = whatsappLink($number, $message);
+        $secretLink = ($meta['purpose'] ?? '') === 'team_credentials';
+        try {
+            require_once __DIR__ . '/wasend.php';
+            $secretLink = $secretLink || WaSend::isSecret((string) ($meta['purpose'] ?? 'message'), $message);
+        } catch (Throwable $ignored) {
+        }
         Logger::info('WhatsApp click-to-chat queued', ['to' => $number,
-            'link' => (($meta['purpose'] ?? '') === 'team_credentials' ? '[hidden: carries a one-time password]' : $link)], 'whatsapp');
+            'link' => ($secretLink ? '[hidden: carries a one-time code / password]' : $link)], 'whatsapp');
         self::$journal[] = ['to' => $number, 'ok' => false, 'link' => $link, 'driver' => $driver, 'reason' => $paused ? 'paused' : 'fallback'];
         // The customer has NOT been reached — only staff got a tappable link.
         // Persisting it is what makes the miss recoverable: admin/messages-log
@@ -628,6 +655,67 @@ final class Notify
                         ? 'provider refused the send: ' . mb_substr(self::$lastProviderError, 0, 300) . ' - click-to-chat link only'
                         : 'provider refused the send - click-to-chat link only')),
         ] + $meta);
+        return $link;
+    }
+
+    /**
+     * The official Meta Cloud API as the fallback sender (30 Oct 2026,
+     * includes/wasend.php). null = not attempted (the caller carries on to
+     * its click-to-chat link exactly as before); true = Meta accepted it;
+     * a wa.me link = it waits in the outbox (paced / no window and no
+     * template; a "failed" click-to-chat row is written for it here) or Meta
+     * refused it (WaSend already wrote that attempt's message_logs row).
+     */
+    private static function cloudFallback(string $driver, string $number, string $message, ?string $mediaUrl, array $templateVars, ?int $bookingId, array $meta, bool $freeTried): bool|string|null
+    {
+        if ($driver === 'cloud_api' || $driver === 'click_to_chat') {
+            return null;
+        }
+        try {
+            require_once __DIR__ . '/wasend.php';
+            if (!WaSend::fallbackOn() || !WaSend::cloudConfigured()) {
+                return null;
+            }
+            $r = WaSend::fallback($number, $message, $mediaUrl, (string) ($meta['purpose'] ?? 'message'), [
+                'bookingId'     => $bookingId,
+                'admin_id'      => (int) ($meta['admin_id'] ?? 0),
+                'tpl_vars'      => $templateVars,
+                'template_name' => (string) ($meta['template_name'] ?? ''),
+                'template_lang' => (string) ($meta['template_lang'] ?? 'en'),
+                'skip_free'     => $freeTried,
+                'label'         => (string) ($meta['label'] ?? ''),
+                'name'          => (string) ($meta['name'] ?? ''),
+            ]);
+        } catch (Throwable $e) {
+            Logger::warning('Cloud API fallback failed: ' . $e->getMessage(), ['to' => $number], 'whatsapp');
+            return null;
+        }
+        if ($r['state'] === 'skipped' || ($r['state'] === 'failed' && $r['id'] <= 0)) {
+            return null;
+        }
+        if ($r['state'] === 'sent') {
+            self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => 'cloud_fallback', 'ref' => $r['message_id']];
+            return true;
+        }
+        if ($r['state'] === 'failed') {
+            self::$lastProviderError = 'Cloud API: ' . $r['error'];
+        }
+        /* Queued (paced) or waiting (no window, template held / not set): the
+           passenger is not reached yet. The same "failed" row the click-to-chat
+           fallback below writes, so "Tickets to hand over", the fail alert and
+           the messages log still see it, and cron/whatsapp-retry's tries and
+           backoff advance. The outbox's own "sent" row clears it when it goes. */
+        if ($r['state'] === 'queued' || $r['state'] === 'waiting') {
+            $why = $r['error'] !== '' ? $r['error'] : $r['how'];
+            self::logMessage('whatsapp', $number, $message, 'failed', [
+                'provider'  => $driver, 'bookingId' => $bookingId,
+                'error'     => mb_substr('Cloud API outbox #' . (int) $r['id'] . ' ' . $r['state'] . ': ' . $why . ' - click-to-chat link only', 0, 255),
+            ] + $meta);
+        }
+        $link = whatsappLink($number, $message);
+        self::$journal[] = ['to' => $number, 'ok' => false, 'link' => $link, 'driver' => 'cloud_api',
+                            'reason' => $r['state'] === 'failed' ? 'cloud_failed' : ($r['state'] === 'unknown' ? 'cloud_unknown' : 'cloud_queued'),
+                            'ref' => $r['message_id']];
         return $link;
     }
 
@@ -828,6 +916,12 @@ final class Notify
         if ($driver === 'aisensy') {
             $ok = self::whatsapp($phone, $msg, null, $countryHint, [], null, ['purpose' => 'test', 'label' => 'WhatsApp test']);
             $last = self::$journal !== [] ? self::$journal[count(self::$journal) - 1] : [];
+            if ($ok === true && ($last['driver'] ?? '') === 'cloud_api') {
+                return ['ok' => true, 'stage' => 'sent', 'detail' => 'AiSensy could not send, so the official Meta Cloud API number sent it to +' . $number . ' (' . (string) ($last['reason'] ?? '') . ') - check WhatsApp on that phone.'];
+            }
+            if ($ok !== true && ($last['reason'] ?? '') === 'cloud_queued') {
+                return ['ok' => false, 'stage' => 'api', 'detail' => 'AiSensy could not send; the Meta Cloud API outbox holds it for +' . $number . ' (outside the 24 h window with no approved template, or paced) - see Admin -> WhatsApp outbox.'];
+            }
             return $ok === true
                 ? ['ok' => true, 'stage' => 'sent', 'detail' => 'AiSensy accepted it for +' . $number . ' - check WhatsApp on that phone (delivery shows in Admin -> Messages log).']
                 : ['ok' => false, 'stage' => 'api', 'detail' => 'AiSensy did not accept it' . (self::$lastProviderError !== '' ? ': ' . self::$lastProviderError : '') . (($last['reason'] ?? '') === 'number' ? ' (not a usable number)' : '') . '.'];
@@ -2007,6 +2101,12 @@ final class Notify
         // before the row is written, so admin/messages-log.php can show the
         // delivery status without handing any reader a live second factor.
         $body = preg_replace('/(code\D{0,12}?)(\d{4,8})/iu', '$1••••', $body) ?? $body;
+        // 30 Oct 2026: and "कोड: 123456", "PIN: 1234", "Password: …" (admin / agent login, driver PIN, team credentials).
+        try {
+            require_once __DIR__ . '/wasend.php';
+            $body = WaSend::maskSecrets($body);
+        } catch (Throwable $ignored) {
+        }
         // 24 Sep 2026: the same for a one-time link token (step-up verification,
         // document share) — the bot's reply carrying it is logged here too.
         $body = preg_replace('~([?&]t=)[A-Za-z0-9]{16,}~', '$1[hidden]', $body) ?? $body;

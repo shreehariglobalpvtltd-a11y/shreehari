@@ -17,6 +17,13 @@
  *     on their own record a member may edit only what the visiting card
  *     prints, payout details and their own sign-ins
  *   - KYC documents only for a super-admin or a manager
+ *
+ * 30 Oct 2026, agentpro2:
+ *   - a super-admin may set what THEIR OWN card prints (name, designation,
+ *     department, photo) — the owner's ID card; code / status / validity of
+ *     their own record still only by someone else
+ *   - bus crew (driver / conductor): the driver-app account — link / make it,
+ *     a new PIN on WhatsApp (shown once here too), mark a staff member as crew
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
@@ -45,12 +52,18 @@ $canKyc    = $isSuper || $isMgr;                                       // KYC do
 $canStatus = !$self && !$targetSuper && (TeamPurge::mayManage($admin) || Auth::can('staff.manage'));
 $canArch   = !$self && !$targetSuper && TeamPurge::mayManage($admin);
 $canOwn    = $canManage || $self;                                      // visiting card text, payout, own sign-ins
+// The office edits what prints on someone else's ID card - a super-admin's card only by a super-admin
+// (as admin/team.php card_for_login).
+$canOffice = $canManage && (!$targetSuper || $isSuper);
+$canPrint  = $canOffice || ($self && $isSuper);                        // name / designation / photo on the card (the owner's own ID too)
+$crew      = (string) ($m['crewRole'] ?? '');
 $archived  = TeamPurge::archived($id);
 $e = static fn($v): string => Security::e((string) $v);
 $flash = null;
 
 /** Fields only the office may change (they print on the ID card or decide its validity). */
 $officeCardFields = ['designation', 'department', 'dob', 'gender', 'guardian', 'card_valid_until'];
+$printCardFields  = ['designation', 'department', 'dob', 'gender', 'guardian'];   // a super-admin on their own card: not the validity
 $ownCardFields    = ['vc_whatsapp', 'vc_phone', 'vc_email', 'vc_tagline', 'vc_greeting', 'vc_theme', 'blood_group', 'emergency_name', 'emergency_phone', 'lang'];
 
 if (Security::isPost()) {
@@ -65,7 +78,11 @@ if (Security::isPost()) {
             switch ($act) {
                 case 'card':
                     $need($canOwn);
-                    $allowed = $canManage ? array_merge($officeCardFields, $ownCardFields) : $ownCardFields;
+                    $allowed = $canOffice ? array_merge($officeCardFields, $ownCardFields)
+                        : ($canPrint ? array_merge($printCardFields, $ownCardFields) : $ownCardFields);
+                    if ($canPrint && isset($_POST['full_name']) && trim((string) $_POST['full_name']) !== '') {
+                        AgentPro::makeCardFor($id, ['full_name' => (string) $_POST['full_name']], $me);
+                    }
                     AgentPro::saveCard($id, array_intersect_key($_POST, array_flip($allowed)), $me);
                     $flash = ['ok', 'Saved — both cards show it now.'];
                     break;
@@ -75,13 +92,13 @@ if (Security::isPost()) {
                     $flash = ['ok', 'Payout details saved.'];
                     break;
                 case 'photo':
-                    $need($canManage, 'The ID card photo is changed by the office.');
+                    $need($canPrint, 'The ID card photo is changed by the office.');
                     if (empty($_FILES['photo'])) { throw new RuntimeException('Choose a photo.'); }
                     AgentPro::setPhoto($id, $_FILES['photo'], $me);
                     $flash = ['ok', 'Photo changed — the ID card uses it now.'];
                     break;
                 case 'reissue':
-                    $need($canManage, 'Only the office can re-issue a card (and never their own).');
+                    $need($canOffice, 'Only the office can re-issue a card (never their own; a super-admin\'s only by a super-admin).');
                     AgentPro::reissueCard($id, $me);
                     $flash = ['ok', 'Card re-issued. Old printed cards now scan as REVOKED — print the new one.'];
                     break;
@@ -149,6 +166,21 @@ if (Security::isPost()) {
                     $flash = $okN === count($sides) ? ['ok', 'Sent on WhatsApp (' . $okN . ' image' . ($okN > 1 ? 's' : '') . ').']
                         : ['bad', 'WhatsApp sent ' . $okN . ' of ' . count($sides) . ' — see Message Log.'];
                     break;
+                case 'crew_set':
+                    $need($canManage && !$m['isAgent'] && !$targetSuper, 'Only the office marks a staff member as bus crew.');
+                    if (!AgentPro::memberHas('crew_role')) { throw new RuntimeException('Run database/upgrade-2026-10-30-agentpro2.sql first.'); }
+                    $want = (string) ($_POST['crew'] ?? '');
+                    AgentPro::setCrewRole($id, in_array($want, AgentPro::CREW_ROLES, true) ? $want : '', $me);
+                    $flash = ['ok', $want !== '' ? '🚌 Marked as ' . $want . '. Now make the driver-app account below.' : 'No longer bus crew (the driver-app account is kept — switch it off in Drivers).'];
+                    break;
+                case 'driver_link':
+                case 'driver_pin':
+                    $need($canManage, 'Only the office gives the driver app.');
+                    $res = AgentPro::linkDriver($id, $me, true, $act === 'driver_pin');
+                    $sent = $res['pin'] !== null && AgentPro::sendDriverPin($id, $res['pin']);
+                    $flash = ['ok', '🚌 Driver app ' . ($res['created'] ? 'account made' : 'ready')
+                        . ($res['pin'] !== null ? ' — PIN ' . $res['pin'] . ($sent ? ' (sent on WhatsApp)' : ' (WhatsApp did not send — tell them)') . '. Phones signed in before are signed out.' : ' — their PIN stays as it was.')];
+                    break;
                 case 'welcome':
                     $need($canManage);
                     $flash = AgentPro::sendWelcome($id) ? ['ok', 'Welcome message with the ID card sent.'] : ['bad', 'WhatsApp could not send right now.'];
@@ -170,6 +202,7 @@ if (Security::isPost()) {
             $flash = ['bad', $ex->getMessage()];
         }
         $m = AgentPro::member($id) ?? $m;
+        $crew = (string) ($m['crewRole'] ?? '');
         $archived = TeamPurge::archived($id);
     }
 }
@@ -199,6 +232,9 @@ admin_page_head($m['designation'] . ($m['idNo'] !== '' ? ' · ' . $m['idNo'] : '
     . '<a class="btn ghost sm" href="' . $e($cardPdf) . '" target="_blank" rel="noopener">⬇ Cards PDF</a>'
     . ($m['isAgent'] ? '<a class="btn soft sm" href="/admin/agent-360.php?agent=' . $id . '">Agent 360</a>' : '')
     . '<a class="btn wa sm" href="' . $e(whatsappLink($m['wa'], 'Namaste ' . $m['name'] . ',')) . '" target="_blank" rel="noopener">💬 WhatsApp</a>');
+if ($flash === null && !empty($_GET['made'])) {
+    $flash = ['ok', '🪪 ID card ready — ' . $m['name'] . ($m['idNo'] !== '' ? ' · ' . $m['idNo'] : '') . '. Print it, or send it on WhatsApp.'];
+}
 if ($flash !== null) {
     echo '<div class="flash ' . $e($flash[0]) . '">' . $e($flash[1]) . '</div>';
 }
@@ -245,7 +281,7 @@ endif; ?>
         <?php if ($canOwn): ?>
         <form method="post" style="display:inline"><?= Security::csrfField() ?><input type="hidden" name="action" value="send_all"><button class="btn wa sm">📲 Send all cards on WhatsApp</button></form>
         <?php endif; ?>
-        <?php if ($canManage): ?>
+        <?php if ($canOffice): ?>
         <form method="post" style="display:inline" onsubmit="return confirm('Re-issue? Every card printed so far will scan as REVOKED.')"><?= Security::csrfField() ?><input type="hidden" name="action" value="reissue"><button class="btn ghost sm">Re-issue</button></form>
         <?php endif; ?>
       </div>
@@ -340,7 +376,8 @@ endif; ?>
 <?php if ($canOwn): ?>
 <section class="panel"><h2><svg class="a-ic"><use href="#a-edit"/></svg> What the cards print</h2><div class="panel-body">
   <form method="post" class="mp-form"><?= Security::csrfField() ?><input type="hidden" name="action" value="card">
-    <?php if ($canManage): ?>
+    <?php if ($canPrint): ?>
+    <label class="full">Name on the card<input name="full_name" maxlength="120" value="<?= $e($m['name']) ?>"></label>
     <label>Designation (under the name)<input name="designation" maxlength="80" value="<?= $e($m['designation']) ?>"></label>
     <label>Department<input name="department" maxlength="80" value="<?= $e($m['department']) ?>"></label>
     <?php endif; ?>
@@ -350,25 +387,73 @@ endif; ?>
     <label>Style<select name="vc_theme"><?php foreach (['royal' => 'Royal (navy & gold)', 'gold' => 'Gold (ivory)', 'night' => 'Night (black & gold)'] as $k => $l): ?><option value="<?= $k ?>"<?= $m['theme'] === $k ? ' selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select></label>
     <label class="full">Line under the company name<input name="vc_tagline" maxlength="120" value="<?= $e($m['tagline']) ?>"></label>
     <label class="full">WhatsApp message ready when the QR is scanned<input name="vc_greeting" maxlength="160" value="<?= $e($m['greeting']) ?>"></label>
-    <?php if ($canManage): ?>
+    <?php if ($canPrint): ?>
     <label>Date of birth<input type="date" name="dob" value="<?= $e($m['dob']) ?>"></label>
     <label>Gender<select name="gender"><option value=""></option><?php foreach (['Male', 'Female', 'Other'] as $g): ?><option<?= $m['gender'] === $g ? ' selected' : '' ?>><?= $g ?></option><?php endforeach; ?></select></label>
     <label>Father / husband<input name="guardian" value="<?= $e($m['guardian']) ?>"></label>
+    <?php endif; ?>
+    <?php if ($canOffice): ?>
     <label>Card valid till<input type="date" name="card_valid_until" value="<?= $e($m['validUntil']) ?>"></label>
     <?php endif; ?>
     <label>Blood group<select name="blood_group"><option value=""></option><?php foreach (AgentPro::BLOOD_GROUPS as $b): ?><option<?= $m['bloodGroup'] === $b ? ' selected' : '' ?>><?= $b ?></option><?php endforeach; ?></select></label>
     <label>Emergency contact name<input name="emergency_name" value="<?= $e($m['emergencyName']) ?>"></label>
     <label>Emergency phone<input name="emergency_phone" value="<?= $e($m['emergencyPhone']) ?>"></label>
     <label>WhatsApp language<select name="lang"><?php foreach (['ne' => 'नेपाली', 'hi' => 'हिंदी', 'en' => 'English'] as $k => $l): ?><option value="<?= $k ?>"<?= $m['lang'] === $k ? ' selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select></label>
-    <div class="full"><button class="btn" type="submit">Save</button><?php if (!$canManage): ?> <small class="ph-sub">Name, designation, date of birth and card validity are changed by the office.</small><?php endif; ?></div>
+    <div class="full"><button class="btn" type="submit">Save</button><?php if (!$canPrint): ?> <small class="ph-sub">Name, designation, date of birth and card validity are changed by the office.</small><?php elseif (!$canOffice): ?> <small class="ph-sub">Card validity is changed by another office user.</small><?php endif; ?></div>
   </form>
+</div></section>
+<?php endif; ?>
+
+<?php if (!$m['isAgent'] && !$targetSuper && ($crew !== '' || ($canManage && $m['role'] === AgentPro::CREW_LOGIN_ROLE))):
+    $drv = $crew !== '' ? AgentPro::driverRow($id) : null;
+    $dev = null;
+    if ($drv !== null) {
+        try {
+            $dev = Database::fetch('SELECT COUNT(*) AS n, MAX(last_seen) AS seen FROM driver_devices WHERE driver_id = :d AND revoked_at IS NULL', ['d' => $drv['id']]);
+        } catch (Throwable $ex) {
+            $dev = null;
+        }
+    }
+    ?>
+<section class="panel"><h2>🚌 Bus crew &amp; driver app · बस लोकेसन</h2><div class="panel-body" style="display:flex;flex-direction:column;gap:10px">
+  <dl class="mm-kv">
+    <dt>Crew role</dt><dd><?= $e($crew !== '' ? ucfirst($crew) : '— not bus crew') ?></dd>
+    <?php if ($crew !== ''): ?>
+    <dt>Driver app</dt><dd><?php if ($drv === null): ?><span class="tp-chip warn">no account yet</span><?php else: ?>
+      <span class="tp-chip <?= $drv['is_active'] === 1 ? 'ok' : 'bad' ?>"><?= $drv['is_active'] === 1 ? 'on' : 'switched off' ?></span>
+      · <?= $drv['has_pin'] ? 'PIN set' : 'no PIN' ?> · <?= $e($drv['role']) ?> · <span class="ap-mono"><?= $e($drv['phone']) ?></span>
+      <?php if ($dev !== null): ?> · <?= (int) $dev['n'] ?> phone(s)<?= $dev['seen'] ? ', last seen ' . $e(timeAgo((string) $dev['seen'])) : '' ?><?php endif; ?>
+      <?php endif; ?></dd>
+    <?php endif; ?>
+  </dl>
+  <?php if ($canManage): ?>
+  <div class="mm-acts">
+    <?php if (AgentPro::memberHas('crew_role')): ?>
+    <form method="post" class="mm-inline"><?= Security::csrfField() ?><input type="hidden" name="action" value="crew_set">
+      <select name="crew" style="min-height:48px;border-radius:12px;padding:0 10px"><option value="">Not bus crew</option>
+        <?php foreach (AgentPro::CREW_ROLES as $c): ?><option value="<?= $e($c) ?>"<?= $crew === $c ? ' selected' : '' ?>><?= $e(ucfirst($c)) ?></option><?php endforeach; ?></select>
+      <button class="btn ghost sm" type="submit" style="min-height:48px">Save</button></form>
+    <?php endif; ?>
+    <?php if ($crew !== ''): ?>
+      <?php if ($drv === null || $drv['is_active'] !== 1 || !$drv['has_pin']): ?>
+      <form method="post" style="margin:0"><?= Security::csrfField() ?><input type="hidden" name="action" value="driver_link"><button class="btn ok sm" type="submit" style="min-height:48px">🚌 Give driver app (PIN on WhatsApp)</button></form>
+      <?php endif; ?>
+      <?php if ($drv !== null): ?>
+      <form method="post" style="margin:0" onsubmit="return confirm('Make a new PIN? Every phone signed in with the old one is signed out.')"><?= Security::csrfField() ?><input type="hidden" name="action" value="driver_pin"><button class="btn ghost sm" type="submit" style="min-height:48px">🔑 New PIN → WhatsApp</button></form>
+      <a class="btn ghost sm" href="/admin/drivers.php?q=<?= $e(rawurlencode($drv['phone'])) ?>" style="min-height:48px">Drivers list</a>
+      <?php endif; ?>
+      <a class="btn ghost sm" href="/admin/map.php" style="min-height:48px">🗺 Live map</a>
+    <?php endif; ?>
+  </div>
+  <small class="ph-sub">They open /me/ → “🚌 बस लोकेसन सुरु” (signed in at once), or /driver/ with this mobile + PIN. Their phone's position goes to the live map, the passenger track page and the “bus is near” WhatsApp.</small>
+  <?php endif; ?>
 </div></section>
 <?php endif; ?>
 
 <div class="tp-money">
   <section class="panel"><h2><svg class="a-ic"><use href="#a-camera"/></svg> Photo</h2><div class="panel-body" style="display:flex;gap:14px;align-items:center">
     <span class="tp-ph" style="width:90px;height:108px"><?= $m['photoUrl'] !== '' ? '<img alt="" src="' . $e($m['photoUrl']) . '">' : '?' ?></span>
-    <?php if ($canManage): ?><form method="post" enctype="multipart/form-data"><?= Security::csrfField() ?><input type="hidden" name="action" value="photo">
+    <?php if ($canPrint): ?><form method="post" enctype="multipart/form-data"><?= Security::csrfField() ?><input type="hidden" name="action" value="photo">
       <input type="file" name="photo" accept="image/*" required> <button class="btn sm" type="submit">Upload</button></form><?php endif; ?>
   </div></section>
   <section class="panel"><h2><svg class="a-ic"><use href="#a-wallet"/></svg> Wallet</h2><div class="panel-body">

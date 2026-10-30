@@ -57,6 +57,22 @@ final class ApWa
     private const YES = '/^(ho|hoo|ha+|haan|han|yes|y|yeah|ok|okay|okk|confirm|confirmed|done|thik\s*cha|thik\s*xa|theek\s*hai|hunchha|huncha|hunxa|हो|हुन्छ|हाँ|हां|ठीक\s*छ|ठिक\s*छ|ठीक\s*है|पक्का|कन्फर्म)[\s.!।]*$/iu';
     private const NO  = '/^(no|nah|n|cancel|stop|chhod|chhodnu|chodo|nai|hoina|hoena|hoeina|नाइ|होइन|रद्द|छोड|नहीं|नही|मत)[\s.!।]*$/iu';
 
+    /** The numbered menu (help): a digit alone runs the same command as its word. */
+    private const MENU = [1 => 'ticket', 2 => 'tickets', 3 => 'balance', 4 => 'statement', 5 => 'withdraw', 6 => 'portal',
+                          7 => 'id card', 8 => 'aaja', 9 => 'office', 0 => 'admin'];
+
+    /** Seconds one WhatsApp turn may take in all, model included (owner: "up to about a minute is fine"). */
+    public static function turnBudget(): int
+    {
+        return max(15, min(120, Settings::getInt('ap_wa_turn_budget', 60)));
+    }
+
+    /** Devanagari digits → ASCII, spaces kept. */
+    private static function asciiDigits(string $s): string
+    {
+        return strtr($s, ['०' => '0', '१' => '1', '२' => '2', '३' => '3', '४' => '4', '५' => '5', '६' => '6', '७' => '7', '८' => '8', '९' => '9']);
+    }
+
     /* =================================================================
      *  Entry points
      * ================================================================= */
@@ -113,17 +129,34 @@ final class ApWa
             // 3. The one thing this number was asked to confirm.
             if (!empty($state['pending'])) {
                 $p = $state['pending'];
-                if (preg_match(self::YES, $text) === 1) {
-                    self::clearPending($phone);
+                $yes = preg_match(self::YES, $text) === 1;
+                if ($p['kind'] === 'done') {
+                    // A CONFIRM again after the sale / payment went through: say what happened, do nothing.
+                    if ($yes) {
+                        return self::out(self::t('already_done', $lang) . "\n\n" . (string) ($p['text'] ?? ''), $p['media'] ?? null);
+                    }
+                    if (preg_match(self::NO, $text) === 1) {
+                        self::clearPending($phone);
+                        return self::out(self::t('done_no_undo', $lang));
+                    }
+                } elseif ($p['kind'] === 'book' && preg_match(self::NO, $text) !== 1) {
+                    // Mid-questions an "ok" is no answer: the question is asked again (a command leaves the booking).
+                    if (($r = self::bookStep($p, $text, $member, $ctx, $lang)) !== null) {
+                        return $r;
+                    }
+                } elseif ($yes) {
+                    if (!self::claimPending($phone, (string) $state['raw'])) {
+                        return self::out(self::t('nothing_pending', $lang));     // the other CONFIRM took it
+                    }
                     return self::confirm($p, $member, $ctx, $lang);
-                }
-                if (preg_match(self::NO, $text) === 1) {
+                } elseif (preg_match(self::NO, $text) === 1) {
                     self::clearPending($phone);
                     return self::out(self::t('cancelled', $lang));
-                }
-                if ($p['kind'] === 'sale' && ($r = self::saleAmend($p, $text, $member, $ctx, $lang)) !== null) {
+                } elseif ($p['kind'] === 'sale' && ($r = self::saleAmend($p, $text, $member, $ctx, $lang)) !== null) {
                     return $r;
                 }
+            } elseif (preg_match(self::YES, $text) === 1 && preg_match('/^(confirm|confirmed|कन्फर्म)/iu', $text) === 1) {
+                return self::out(self::t('nothing_pending', $lang));
             }
 
             // 4. Instant commands.
@@ -163,10 +196,13 @@ final class ApWa
         $turn = self::bumpTurn($phone);
         $ctx = ['role' => 'customer', 'admin' => null, 'adminId' => 0, 'scopeAdminId' => null, 'name' => '',
                 'phone' => $phone, 'channel' => 'whatsapp', 'messageText' => $text, 'raw_text' => $text, 'turn' => $turn];
-        if (!empty($state['pending'])) {
+        $ctx['t0'] = microtime(true);
+        if (!empty($state['pending']) && $state['pending']['kind'] !== 'done') {
             $p = $state['pending'];
             if (preg_match(self::YES, $text) === 1) {
-                self::clearPending($phone);
+                if (!self::claimPending($phone, (string) $state['raw'])) {
+                    return ['text' => self::t('nothing_pending', $lang), 'media' => null];
+                }
                 $r = self::confirm($p, null, $ctx, $lang);
                 return ['text' => $r['text'], 'media' => $r['media'] ?? null];
             }
@@ -192,11 +228,12 @@ final class ApWa
     public static function memberFor(string $phone): ?array
     {
         $cols = 'id, username, full_name, phone, role, is_active, must_change_pw, locked_until';
-        $link = Database::fetch('SELECT admin_id FROM ap_wa_links WHERE phone = :p AND revoked_at IS NULL', ['p' => $phone]);
+        $link = Database::fetch('SELECT admin_id, via FROM ap_wa_links WHERE phone = :p AND revoked_at IS NULL', ['p' => $phone]);
         if ($link !== null) {
             $a = Database::fetch("SELECT $cols FROM admins WHERE id = :i", ['i' => (int) $link['admin_id']]);
             if ($a !== null && self::usable($a)) {
-                return $a + ['via' => 'link'];
+                // 'link' = proved with the OTP sent to the registered mobile; only that number gets the office desk.
+                return $a + ['via' => (string) ($link['via'] ?? 'otp') === 'otp' ? 'link' : 'registered'];
             }
             return null;
         }
@@ -237,7 +274,28 @@ final class ApWa
             'messageText'  => $text,
             'raw_text'     => $text,
             'turn'         => $turn,
+            't0'           => microtime(true),           // the turn's clock: the model gets what is left of ap_wa_turn_budget
+            'office'       => self::officeMember($member) && $toolRole === 'admin',
         ];
+    }
+
+    /**
+     * A super-admin / manager writing from a number linked with the OTP (LINK
+     * + the code sent to the registered mobile). A number that only matches
+     * the typed admins.phone (maybe mistyped, shared or old) gets no office
+     * rights: payouts, declines, bank details, applicants' numbers.
+     */
+    private static function officeMember(array $member): bool
+    {
+        return in_array((string) $member['role'], self::OFFICE, true)
+            && (int) ($member['must_change_pw'] ?? 0) === 0
+            && (string) ($member['via'] ?? '') === 'link';
+    }
+
+    /** officeMember() and the office desk switched on (ap_wa_admin_on). */
+    private static function isOffice(array $ctx): bool
+    {
+        return !empty($ctx['office']) && Settings::getBool('ap_wa_admin_on', true);
     }
 
     /* =================================================================
@@ -257,9 +315,29 @@ final class ApWa
             'lang'    => $row['lang'] ?? null,
             'turn'    => (int) ($row['turn'] ?? 0),
             'pending' => is_array($pending) ? $pending : null,
+            'raw'     => is_array($pending) ? (string) $row['pending'] : '',
             'history' => is_array($hist) ? $hist : [],
             'updated' => (string) ($row['updated_at'] ?? ''),
         ];
+    }
+
+    /**
+     * Take the pending action for THIS message, atomically: of two "CONFIRM"s
+     * arriving together (a double tap, a webhook retry) only one clears the
+     * row, so only one sells / pays. The other finds nothing to confirm.
+     */
+    private static function claimPending(string $phone, string $raw): bool
+    {
+        if ($raw === '') {
+            return false;
+        }
+        return Database::run('UPDATE ap_wa_state SET pending = NULL WHERE phone = :p AND pending = :r', ['p' => $phone, 'r' => $raw]) === 1;
+    }
+
+    /** Remember what a CONFIRM just did, so a repeated CONFIRM answers "already done" instead of doing it again. */
+    private static function markDone(string $phone, string $what, string $text, ?string $media = null): void
+    {
+        self::setPending($phone, 'done', ['what' => $what, 'text' => mb_substr($text, 0, 1500), 'media' => $media]);
     }
 
     private static function saveState(string $phone, array $cols): void
@@ -388,6 +466,61 @@ final class ApWa
             return self::out(self::t('unlinked', $lang));
         }
 
+        // The numbered menu: "3" = balance, … (the same handlers as the words).
+        $digit = ApDocRead_digits($text);
+        if (preg_match('/^[0-9]$/', $digit) === 1) {
+            $word = self::MENU[(int) $digit] ?? 'help';
+            if ($word === 'admin' && !self::isOffice($ctx)) {
+                $word = 'help';
+            }
+            return self::command($word, $member, $ctx, $lang);
+        }
+
+        // The office's own desk (super-admin / manager only).
+        if (preg_match('/^(?:admin|office\s*menu|अफिस\s*मेनु|एडमिन)$/u', $l)) {
+            return self::isOffice($ctx) ? self::adminHelp($lang) : self::out(self::t('no_permission', $lang));
+        }
+        if (preg_match('/^(?:pending|baki\s*kam|बाँकी\s*काम|approvals?)$/u', $l)) {
+            return self::isOffice($ctx) ? self::adminPending($lang) : self::out(self::t('no_permission', $lang));
+        }
+        if (preg_match('/^(?:joins?|applications?|apps|aavedan|abedan|आवेदन\w*|join\s*list)$/u', $l)) {
+            return self::isOffice($ctx) ? self::adminJoins($lang) : null;
+        }
+        if (preg_match('/^(?:withdrawals|payouts|wd|wd\s*list|withdraw\s*list|pending\s*withdraw\w*)$/u', $l) && self::isOffice($ctx)) {
+            return self::adminWithdrawals($lang);
+        }
+        // The reference is kept as typed ("UTR430987651234"), the way the Team page records it.
+        if (preg_match('/^(?:approve|wd\s*pay|wd\s*approve)\s*#?(\d{1,9})\s*[:#-]?\s*(.*)$/iu', self::asciiDigits($text), $m)) {
+            return self::isOffice($ctx) ? self::adminPayPreview((int) $m[1], trim($m[2]), $ctx, $lang) : self::out(self::t('no_permission', $lang));
+        }
+        if (preg_match('/^(?:reject|decline|wd\s*reject)\s*#?(\d{1,9})\s*[:#-]?\s*(.*)$/iu', self::asciiDigits($text), $m)) {
+            return self::isOffice($ctx) ? self::adminRejectPreview((int) $m[1], trim($m[2]), $ctx, $lang) : self::out(self::t('no_permission', $lang));
+        }
+        // Payments members say they made (ap_deposit_requests): list, confirm, decline — before "jama" (pay in) below.
+        if (preg_match('/^(?:deposits|payments|jama\s*list|jama\s*check|भुक्तानी\s*जाँच|जम्मा\s*सूची)$/u', $l) && self::isOffice($ctx)) {
+            return self::adminDeposits($lang);
+        }
+        if (preg_match('/^(?:jama|jamma|जम्मा|deposit|dep)\s*(?:ok|okay|confirm|approve|yes|ho|हो)\s*#?(\d{1,9})\s*[:#-]?\s*(.*)$/iu', self::asciiDigits($text), $m)) {
+            return self::isOffice($ctx) ? self::adminDepositPreview((int) $m[1], 'confirmed', trim($m[2]), $ctx, $lang) : self::out(self::t('no_permission', $lang));
+        }
+        if (preg_match('/^(?:jama|jamma|जम्मा|deposit|dep)\s*(?:no|reject|decline|hoina|होइन)\s*#?(\d{1,9})\s*[:#-]?\s*(.*)$/iu', self::asciiDigits($text), $m)) {
+            return self::isOffice($ctx) ? self::adminDepositPreview((int) $m[1], 'declined', trim($m[2]), $ctx, $lang) : self::out(self::t('no_permission', $lang));
+        }
+
+        // A booking, one question at a time.
+        if (preg_match('/^(?:ticket|tikat|tikut|टिकट|टिकेट|book|booking|बुक|बुकिङ|बुकिंग|new\s*ticket|naya\s*ticket|नयाँ\s*टिकट|ticket\s*(?:book|kata\w*|katnu|chahiyo|चाहियो)|टिकट\s*(?:काट\w*|चाहियो|बुक))$/u', $l)) {
+            return self::bookStart($member, $ctx, $lang);
+        }
+        // The seller's own tickets: "tickets", "tickets bholi", "mero ticket 2 Nov".
+        if (preg_match('/^(?:my\s*tickets?|tickets|mero\s*ticket\w*|mera\s*ticket\w*|मेरो\s*टिकट\w*|मेरा\s*टिकट|sold\s*tickets?|bechya\w*|बेचेको\s*टिकट)(?:\s+(.+))?$/u', $l, $m)) {
+            $d = isset($m[1]) ? self::dateWord((string) $m[1]) : '';
+            return self::myTickets($member, $ctx, $lang, $d);
+        }
+        // The member portal: where and how to sign in.
+        if (preg_match('/^(?:portal|login|log\s*in|sign\s*in|signin|me\s*link|my\s*portal|app|लगइन|लग\s*इन|पोर्टल)$/u', $l)) {
+            return self::portal($member, $lang);
+        }
+
         // A PNR: status, edit, cancel, resend.
         if ($pnr !== '') {
             return self::pnrCommand($pnr, $text, $member, $ctx, $lang);
@@ -455,10 +588,595 @@ final class ApWa
     {
         $code = AgentPro::member((int) $member['id'], false)['idNo'] ?? '';
         $sells = in_array((string) $member['role'], self::SELLERS, true);
+        $office = self::officeMember($member) && Settings::getBool('ap_wa_admin_on', true);
         return self::out(self::t($sells ? 'help_seller' : 'help_member', $lang, [
             'name' => explode(' ', (string) $member['full_name'])[0], 'code' => $code !== '' ? ' (' . $code . ')' : '',
             'company' => Settings::getString('company_name', APP_NAME),
-        ]));
+        ]) . ($office ? "\n" . self::t('help_admin_line', $lang) : ''));
+    }
+
+    /* ---------------- the office's desk ---------------- */
+
+    private static function adminHelp(string $lang): array
+    {
+        $c = AgentPro::counts();
+        return self::out(self::t('admin_help', $lang, ['apps' => (string) $c['applications'], 'wd' => (string) $c['withdrawals'],
+            'dep' => (string) $c['deposits'], 'link' => appUrl('admin/team.php')]));
+    }
+
+    private static function adminPending(string $lang): array
+    {
+        $c = AgentPro::counts();
+        $lines = [self::t('adm_pending', $lang, ['apps' => (string) $c['applications'], 'wd' => (string) $c['withdrawals'],
+            'dep' => (string) $c['deposits'], 'kyc' => (string) $c['kycWaiting'], 'pay' => (string) $c['pendingPay'],
+            't' => (string) $c['todayTickets'], 'bus' => (string) $c['liveBuses']])];
+        $lines[] = '';
+        $lines[] = self::t('adm_pending_tail', $lang);
+        return self::out(implode("\n", $lines));
+    }
+
+    private static function adminJoins(string $lang): array
+    {
+        $rows = AgentPro::applications('submitted', 15);
+        $lines = [self::t('adm_joins_head', $lang, ['n' => (string) count($rows)])];
+        foreach ($rows as $a) {
+            $who = trim((string) ($a['org_name'] ?? '') !== '' ? (string) $a['org_name'] . ' · ' . (string) $a['full_name'] : (string) $a['full_name']);
+            $role = (string) ($a['kind'] ?? 'agent') === 'staff' ? (string) ($a['designation'] ?: $a['role_wanted'] ?: 'staff') : 'agent';
+            $ph = normalisePhone((string) ($a['whatsapp'] ?: $a['phone']));
+            $lines[] = '📝 ' . $a['ref'] . ' · ' . ($who !== '' ? $who : '—') . ' · ' . $role
+                . ($ph !== '' ? ' · ' . AgentPro::displayPhone(AgentPro::intlDigits($ph)) : '')
+                . ((string) ($a['city'] ?? '') !== '' ? ' · ' . $a['city'] : '')
+                . ' · ' . formatDate(substr((string) ($a['submitted_at'] ?: $a['created_at']), 0, 10), 'j M')
+                . (!empty($a['wa_verified_at']) ? ' ✅WA' : '');
+        }
+        if ($rows === []) {
+            $lines[] = self::t('dir_none', $lang);
+        }
+        $lines[] = '';
+        $lines[] = self::t('adm_joins_tail', $lang, ['link' => appUrl('admin/team.php?tab=approvals')]);
+        return self::out(implode("\n", $lines));
+    }
+
+    private static function adminWithdrawals(string $lang): array
+    {
+        $rows = AgentWallet::openPayoutRequests(null);
+        $lines = [self::t('adm_wd_head', $lang, ['n' => (string) count($rows)])];
+        foreach (array_slice($rows, 0, 20) as $r) {
+            $aid = (int) $r['agent_admin_id'];
+            $p = AgentWallet::profile($aid);
+            $to = trim((string) ($p['payout_method'] ?? '') . ' ' . (string) ($p['payout_account'] ?? ''));
+            $code = self::codeOf($aid);
+            $lines[] = '💸 #' . (int) $r['id'] . ' · ' . ((string) ($r['agent_name'] ?? '') !== '' ? (string) $r['agent_name'] : 'member #' . $aid)
+                . ($code !== '' ? ' (' . $code . ')' : '') . ' · *' . inr((float) $r['amount']) . '*'
+                . ' · ' . formatDate(substr((string) $r['created_at'], 0, 10), 'j M')
+                . ($to !== '' ? "\n    → " . $to : '')
+                . "\n    " . self::t('adm_wd_due', $lang, ['v' => inr(AgentWallet::balances($aid)['commission'])]);
+        }
+        if ($rows === []) {
+            $lines[] = self::t('dir_none', $lang);
+        }
+        $lines[] = '';
+        $lines[] = self::t('adm_wd_tail', $lang);
+        return self::out(implode("\n", $lines));
+    }
+
+    /** "approve 12 UTR430987651234": show exactly what will be recorded, then wait for CONFIRM. */
+    private static function adminPayPreview(int $id, string $ref, array $ctx, string $lang): array
+    {
+        $req = Database::fetch('SELECT r.*, a.full_name AS agent_name FROM agent_payout_requests r LEFT JOIN admins a ON a.id = r.agent_admin_id WHERE r.id = :i', ['i' => $id]);
+        if ($req === null || (string) $req['status'] !== 'open') {
+            return self::out(self::t('adm_wd_notopen', $lang, ['id' => (string) $id, 's' => strtoupper((string) ($req['status'] ?? '—'))]));
+        }
+        // "UTR430987651234" stays as typed; only a spelled-out label ("utr: 4309…", "ref 4309…") is dropped.
+        $ref = (string) preg_replace('/^(?:ref|utr|txn|rrn)\.?(?:\s*[:#-]\s*|\s+)(?=\S)/i', '', trim($ref));
+        $ref = trim((string) preg_replace('/[^A-Za-z0-9\/\-_.]/', '', $ref));
+        if (mb_strlen($ref) < 5 || mb_strlen($ref) > 60) {
+            return self::out(self::t('adm_wd_needref', $lang, ['id' => (string) $id]));
+        }
+        if (self::payoutRefUsed($ref)) {
+            return self::out(self::t('adm_wd_refused', $lang, ['ref' => $ref]));
+        }
+        $aid = (int) $req['agent_admin_id'];
+        $p = AgentWallet::profile($aid);
+        $to = trim((string) ($p['payout_method'] ?? '') . ' ' . (string) ($p['payout_account'] ?? ''));
+        self::setPending($ctx['phone'], 'wd_pay', ['id' => $id, 'ref' => $ref, 'amount' => (float) $req['amount'], 'agent' => $aid]);
+        return self::out(self::t('adm_pay_confirm', $lang, ['id' => (string) $id, 'name' => (string) $req['agent_name'], 'code' => self::codeOf($aid),
+            'v' => inr((float) $req['amount']), 'to' => $to !== '' ? $to : '—', 'ref' => $ref]));
+    }
+
+    private static function adminRejectPreview(int $id, string $note, array $ctx, string $lang): array
+    {
+        $req = Database::fetch('SELECT r.*, a.full_name AS agent_name FROM agent_payout_requests r LEFT JOIN admins a ON a.id = r.agent_admin_id WHERE r.id = :i', ['i' => $id]);
+        if ($req === null || (string) $req['status'] !== 'open') {
+            return self::out(self::t('adm_wd_notopen', $lang, ['id' => (string) $id, 's' => strtoupper((string) ($req['status'] ?? '—'))]));
+        }
+        $note = Security::clean($note, 200);
+        if (mb_strlen($note) < 3) {
+            return self::out(self::t('adm_wd_needwhy', $lang, ['id' => (string) $id]));
+        }
+        self::setPending($ctx['phone'], 'wd_decline', ['id' => $id, 'note' => $note, 'amount' => (float) $req['amount']]);
+        return self::out(self::t('adm_reject_confirm', $lang, ['id' => (string) $id, 'name' => (string) $req['agent_name'],
+            'v' => inr((float) $req['amount']), 'note' => $note]));
+    }
+
+    /**
+     * Record the payout exactly like the Team page: one transaction, the
+     * agent's admins row then the request locked, the ledger payout with the
+     * bank reference, the request marked paid with it. An already-decided
+     * request (another tab, another phone) changes nothing.
+     */
+    private static function adminPayDo(array $p, ?array $member, array $ctx, string $lang): array
+    {
+        if ($member === null || !self::isOffice($ctx)) {
+            return self::out(self::t('no_permission', $lang));
+        }
+        $id = (int) ($p['id'] ?? 0);
+        $ref = (string) ($p['ref'] ?? '');
+        $by = (int) $member['id'];
+        try {
+            $req = Database::fetch('SELECT agent_admin_id FROM agent_payout_requests WHERE id = :i', ['i' => $id]);
+            if ($req === null) {
+                throw new RuntimeException(self::t('adm_wd_notopen', $lang, ['id' => (string) $id, 's' => '—']));
+            }
+            $aid = (int) $req['agent_admin_id'];
+            $lid = Database::transaction(static function () use ($id, $aid, $by, $ref, $p, $lang, $ctx): int {
+                Database::fetch('SELECT id FROM admins WHERE id = :a FOR UPDATE', ['a' => $aid]);
+                $row = Database::fetch('SELECT * FROM agent_payout_requests WHERE id = :i FOR UPDATE', ['i' => $id]);
+                if ($row === null || (string) $row['status'] !== 'open') {
+                    throw new RuntimeException(self::t('adm_wd_notopen', $lang, ['id' => (string) $id, 's' => strtoupper((string) ($row['status'] ?? '—'))]));
+                }
+                if (abs((float) $row['amount'] - (float) ($p['amount'] ?? -1)) > 0.009) {
+                    throw new RuntimeException(self::t('adm_wd_changed', $lang, ['id' => (string) $id]));
+                }
+                // One bank transfer pays one request, however the reference was typed here or on the Team page.
+                if (self::payoutRefUsed($ref)) {
+                    throw new RuntimeException(self::t('adm_wd_refused', $lang, ['ref' => $ref]));
+                }
+                $lid = AgentWallet::record($aid, 'payout', (float) $row['amount'], [
+                    'note' => 'Withdrawal request #' . $id . ' · WhatsApp desk', 'ref' => $ref, 'by' => $by, 'request_id' => $id,
+                ]);
+                AgentWallet::decidePayoutRequest($id, 'paid', $by, 'Paid from the WhatsApp desk (+' . $ctx['phone'] . ')', $lid);
+                return $lid;
+            }, 1);
+        } catch (RuntimeException $e) {
+            return self::out('⚠️ ' . $e->getMessage());
+        }
+        $voucher = AgentWallet::voucherFor($lid);
+        Logger::audit('agentpro.wa_payout_paid', 'admin', (string) $aid, ['request' => $id, 'status' => 'open'],
+            ['request' => $id, 'ledger' => $lid, 'ref' => $ref, 'by' => $by, 'wa' => $ctx['phone']], 'Withdrawal paid from the WhatsApp desk');
+        AgentPro::tellMember($aid, '💸 ' . inr((float) $p['amount']) . ' पठाइयो / paid to you. Ref ' . $voucher . ' · ' . $ref);
+        $text = self::t('adm_paid', $lang, ['id' => (string) $id, 'v' => inr((float) $p['amount']), 'voucher' => $voucher, 'ref' => $ref]);
+        self::markDone($ctx['phone'], 'wd_pay', $text);
+        return self::out($text);
+    }
+
+    private static function adminRejectDo(array $p, ?array $member, array $ctx, string $lang): array
+    {
+        if ($member === null || !self::isOffice($ctx)) {
+            return self::out(self::t('no_permission', $lang));
+        }
+        $id = (int) ($p['id'] ?? 0);
+        try {
+            AgentPro::declineWithdrawal($id, (int) $member['id'], (string) $p['note']);
+        } catch (RuntimeException $e) {
+            return self::out('⚠️ ' . $e->getMessage());
+        }
+        Logger::audit('agentpro.wa_payout_declined', 'payout_request', (string) $id, ['status' => 'open'],
+            ['status' => 'declined', 'note' => (string) $p['note'], 'by' => (int) $member['id'], 'wa' => $ctx['phone']], 'Withdrawal declined from the WhatsApp desk');
+        $text = self::t('adm_rejected', $lang, ['id' => (string) $id]);
+        self::markDone($ctx['phone'], 'wd_decline', $text);
+        return self::out($text);
+    }
+
+    /** A bank reference without its spelling: "UTR 4309-8765", "utr43098765" and "43098765" are one payment. */
+    private static function refKey(string $ref): string
+    {
+        $k = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $ref));
+        $bare = (string) preg_replace('/^(?:UTR|REF|TXN|RRN|UPI|NEFT|IMPS|RTGS)+(?=[0-9A-Z])/', '', $k);
+        return $bare !== '' ? $bare : $k;
+    }
+
+    /** Is this bank reference already on a payout in the ledger (from here or from the Team page)? */
+    private static function payoutRefUsed(string $ref): bool
+    {
+        $key = self::refKey($ref);
+        if (strlen($key) < 5) {
+            return false;
+        }
+        $rows = Database::fetchAll("SELECT ref FROM agent_ledger WHERE entry_type = 'payout' AND ref LIKE :l LIMIT 200",
+            ['l' => '%' . substr($key, -6) . '%']);
+        foreach ($rows as $r) {
+            if (self::refKey((string) $r['ref']) === $key) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /* ---------------- payments members made (ap_deposit_requests) ---------------- */
+
+    private static function adminDeposits(string $lang): array
+    {
+        $rows = AgentPro::openDeposits(null);
+        $lines = [self::t('adm_dep_head', $lang, ['n' => (string) count($rows)])];
+        foreach (array_slice($rows, 0, 20) as $d) {
+            $aid = (int) $d['admin_id'];
+            $code = self::codeOf($aid);
+            $sec = (string) $d['purpose'] === 'security';
+            $lines[] = '💵 #' . (int) $d['id'] . ' · ' . ((string) ($d['member_name'] ?? '') !== '' ? (string) $d['member_name'] : 'member #' . $aid)
+                . ($code !== '' ? ' (' . $code . ')' : '') . ' · *' . inr((float) $d['amount']) . '*'
+                . ' · ' . strtoupper((string) $d['method']) . ((string) ($d['utr'] ?? '') !== '' ? ' ' . $d['utr'] : '')
+                . ' · ' . formatDate(substr((string) $d['created_at'], 0, 10), 'j M')
+                . "\n    " . ($sec ? self::t('adm_dep_security', $lang) : self::t('adm_dep_held', $lang, ['v' => inr(AgentWallet::balances($aid)['cash'])]))
+                . (!empty($d['proof_path']) ? ' · 📎' : '');
+        }
+        if ($rows === []) {
+            $lines[] = self::t('dir_none', $lang);
+        }
+        $lines[] = '';
+        $lines[] = self::t('adm_dep_tail', $lang, ['link' => appUrl('admin/team.php?tab=money')]);
+        return self::out(implode("\n", $lines));
+    }
+
+    /** "jama ok 12" / "jama no 12 not in the bank": show what will happen, then wait for CONFIRM. */
+    private static function adminDepositPreview(int $id, string $decision, string $note, array $ctx, string $lang): array
+    {
+        $d = Database::fetch('SELECT d.*, a.full_name AS member_name FROM ap_deposit_requests d LEFT JOIN admins a ON a.id = d.admin_id WHERE d.id = :i', ['i' => $id]);
+        if ($d === null || (string) $d['status'] !== 'open') {
+            return self::out(self::t('adm_dep_notopen', $lang, ['id' => (string) $id, 's' => strtoupper((string) ($d['status'] ?? '—'))]));
+        }
+        $note = Security::clean($note, 200);
+        if ($decision === 'declined' && mb_strlen($note) < 3) {
+            return self::out(self::t('adm_dep_needwhy', $lang, ['id' => (string) $id]));
+        }
+        $aid = (int) $d['admin_id'];
+        $sec = (string) $d['purpose'] === 'security';
+        if ($decision === 'confirmed' && !$sec && (float) $d['amount'] > AgentWallet::balances($aid)['cash'] + 0.009) {
+            return self::out(self::t('adm_dep_toomuch', $lang, ['id' => (string) $id, 'v' => inr(AgentWallet::balances($aid)['cash'])]));
+        }
+        self::setPending($ctx['phone'], $decision === 'confirmed' ? 'dep_confirm' : 'dep_decline',
+            ['id' => $id, 'decision' => $decision, 'note' => $note, 'amount' => (float) $d['amount']]);
+        $vars = ['id' => (string) $id, 'name' => (string) ($d['member_name'] ?? ''), 'code' => self::codeOf($aid), 'v' => inr((float) $d['amount']),
+                 'how' => strtoupper((string) $d['method']) . ((string) ($d['utr'] ?? '') !== '' ? ' ' . $d['utr'] : ''),
+                 'what' => $sec ? self::t('adm_dep_security', $lang) : self::t('adm_dep_handover', $lang), 'note' => $note !== '' ? $note : '—'];
+        return self::out(self::t($decision === 'confirmed' ? 'adm_dep_confirm' : 'adm_dep_decline', $lang, $vars));
+    }
+
+    /**
+     * Decide a payment exactly like the Team page: one transaction, the
+     * member's admins row then the request locked; confirmed = the ledger
+     * entry (cash handed over, or a security deposit), declined = the reason.
+     * An already-decided request (another tab, another phone) writes nothing.
+     */
+    private static function adminDepositDo(array $p, ?array $member, array $ctx, string $lang): array
+    {
+        if ($member === null || !self::isOffice($ctx)) {
+            return self::out(self::t('no_permission', $lang));
+        }
+        $id = (int) ($p['id'] ?? 0);
+        $decision = (string) ($p['decision'] ?? '') === 'confirmed' ? 'confirmed' : 'declined';
+        $note = Security::clean((string) ($p['note'] ?? ''), 255);
+        $by = (int) $member['id'];
+        try {
+            if ($decision === 'declined' && $note === '') {
+                throw new RuntimeException(self::t('adm_dep_needwhy', $lang, ['id' => (string) $id]));
+            }
+            $pre = Database::fetch('SELECT admin_id FROM ap_deposit_requests WHERE id = :i', ['i' => $id]);
+            if ($pre === null) {
+                throw new RuntimeException(self::t('adm_dep_notopen', $lang, ['id' => (string) $id, 's' => '—']));
+            }
+            $aid = (int) $pre['admin_id'];
+            $row = Database::transaction(static function () use ($id, $aid, $decision, $by, $note, $p, $lang): array {
+                Database::fetch('SELECT id FROM admins WHERE id = :a FOR UPDATE', ['a' => $aid]);
+                $row = Database::fetch('SELECT * FROM ap_deposit_requests WHERE id = :i FOR UPDATE', ['i' => $id]);
+                if ($row === null || (string) $row['status'] !== 'open') {
+                    throw new RuntimeException(self::t('adm_dep_notopen', $lang, ['id' => (string) $id, 's' => strtoupper((string) ($row['status'] ?? '—'))]));
+                }
+                $amount = (float) $row['amount'];
+                if (abs($amount - (float) ($p['amount'] ?? -1)) > 0.009) {
+                    throw new RuntimeException(self::t('adm_wd_changed', $lang, ['id' => (string) $id]));
+                }
+                $ledgerId = null;
+                if ($decision === 'confirmed') {
+                    $ref = (string) ($row['utr'] ?? '');
+                    if ((string) $row['purpose'] === 'security') {
+                        AgentWallet::recordDeposit($aid, $amount, $by, 'Security deposit (' . $row['method'] . ') · WhatsApp desk', $ref);
+                    } else {
+                        $held = AgentWallet::balances($aid)['cash'];
+                        if ($amount > $held + 0.009) {
+                            throw new RuntimeException(self::t('adm_dep_toomuch', $lang, ['id' => (string) $id, 'v' => inr($held)]));
+                        }
+                        $ledgerId = AgentWallet::record($aid, 'cash_handover', $amount, [
+                            'note' => 'Paid by ' . strtoupper((string) $row['method']) . ' · WhatsApp desk' . ($note !== '' ? ' · ' . $note : ''),
+                            'ref'  => $ref, 'by' => $by,
+                        ]);
+                    }
+                }
+                $n = Database::update('ap_deposit_requests', [
+                    'status' => $decision, 'decided_by' => $by ?: null, 'decided_at' => date('Y-m-d H:i:s'),
+                    'decided_note' => $note !== '' ? $note : null, 'ledger_id' => $ledgerId,
+                ], "id = :i AND status = 'open'", ['i' => $id]);
+                if ($n !== 1) {
+                    throw new RuntimeException(self::t('adm_dep_notopen', $lang, ['id' => (string) $id, 's' => '—']));
+                }
+                return $row + ['_ledger' => $ledgerId];
+            }, 1);
+        } catch (RuntimeException $e) {
+            $msg = $e->getMessage();
+            return self::out(preg_match('/^(?:⚠|✍)/u', $msg) === 1 ? $msg : '⚠️ ' . $msg);
+        }
+        Logger::audit('agentpro.wa_deposit_' . $decision, 'admin', (string) $aid, ['request' => $id, 'status' => 'open'],
+            ['request' => $id, 'status' => $decision, 'amount' => (float) $row['amount'], 'ledger' => $row['_ledger'], 'note' => $note, 'by' => $by, 'wa' => $ctx['phone']],
+            'Payment ' . $decision . ' from the WhatsApp desk');
+        AgentPro::tellMember($aid, $decision === 'confirmed'
+            ? '✅ ' . inr((float) $row['amount']) . ' प्राप्त भयो, धन्यवाद। / received, thank you.' . (!empty($row['utr']) ? ' Ref ' . $row['utr'] : '')
+            : '⚠️ ' . inr((float) $row['amount']) . ' भुक्तानी भेटिएन / not matched: ' . $note);
+        $text = self::t($decision === 'confirmed' ? 'adm_dep_done' : 'adm_dep_declined', $lang, ['id' => (string) $id, 'v' => inr((float) $row['amount'])]);
+        self::markDone($ctx['phone'], 'dep_' . $decision, $text);
+        return self::out($text);
+    }
+
+    /* ---------------- my tickets, the portal ---------------- */
+
+    private static function myTickets(array $member, array $ctx, string $lang, string $date): array
+    {
+        if (!in_array($ctx['role'], ['staff', 'admin'], true)) {
+            return self::out(self::t('no_permission', $lang));
+        }
+        require_once __DIR__ . '/aitools.php';
+        $r = AiTools::run('my_sales', ['date' => $date, 'limit' => 12], $ctx);
+        if (!$r['ok']) {
+            return self::out('⚠️ ' . $r['say']);
+        }
+        $sales = (array) ($r['data']['sales'] ?? []);
+        $lines = [self::t($date !== '' ? 'tk_head_date' : 'tk_head', $lang, ['d' => $date !== '' ? formatDate($date, 'D, j M') : '', 'n' => (string) count($sales)])];
+        foreach ($sales as $s) {
+            $lines[] = '🎫 ' . $s['pnr'] . ' · ' . strtoupper((string) $s['status']) . ($s['paid'] ? ' ✅' : '')
+                . "\n    " . $s['dateLabel'] . ' · ' . $s['pickup'] . ' · ' . $s['seats'] . ' 💺 · ' . $s['totalLabel']
+                . "\n    👤 " . $s['name'] . ' ' . $s['phone'];
+        }
+        if ($sales === []) {
+            $lines[] = self::t('tk_none', $lang);
+        }
+        $lines[] = '';
+        $lines[] = self::t('card_tail', $lang);
+        return self::out(implode("\n", $lines));
+    }
+
+    /**
+     * Where to sign in: the member portal (agent code + mobile + a WhatsApp
+     * OTP, or fingerprint), or the admin sign-in for office staff. No secret
+     * travels in the link — the OTP is asked for on the page itself.
+     */
+    private static function portal(array $member, string $lang): array
+    {
+        $id = (int) $member['id'];
+        $code = AgentWallet::isAgentRow($id) ? AgentWallet::agentCodeLabel($id) : '';
+        $reg = normalisePhone((string) $member['phone']);
+        $mask = $reg !== '' ? str_repeat('•', max(0, strlen($reg) - 4)) . substr($reg, -4) : '—';
+        $me = appUrl('me/');
+        if ($code !== '' && (string) $member['role'] === 'agent') {
+            return self::out(self::t('portal_agent', $lang, ['me' => $me, 'code' => $code, 'mob' => $mask]));
+        }
+        return self::out(self::t('portal_staff', $lang, ['me' => $me, 'admin' => appUrl('admin/login.php'), 'user' => (string) $member['username']]));
+    }
+
+    /* ---------------- a booking, one question at a time ---------------- */
+
+    /** "ticket" → route, date, pickup, seats, passenger — then the same quote + CONFIRM as a one-line sale. */
+    private static function bookStart(array $member, array $ctx, string $lang, array $seed = []): array
+    {
+        if ($ctx['role'] === 'member' || !in_array((string) $member['role'], self::SELLERS, true) || !Settings::getBool('ap_wa_sell', true)) {
+            return self::out(self::t('no_permission', $lang));
+        }
+        $b = array_intersect_key($seed, array_flip(['direction', 'date', 'boarding', 'seats', 'name', 'phone', 'country', 'names', 'gender', 'pay']));
+        return self::bookNext($b, $member, $ctx, $lang, '');
+    }
+
+    /** @return list<array{key: string, label: string}> */
+    private static function bookDirections(): array
+    {
+        require_once __DIR__ . '/quickticket.php';
+        $out = [];
+        foreach (QuickTicket::routes() as $r) {
+            $d = (string) $r['direction'];
+            if (!isset($out[$d])) {
+                $out[$d] = ['key' => $d, 'label' => $r['from_city'] . ' → ' . $r['to_city']];
+            }
+        }
+        return array_values($out);
+    }
+
+    /** @return list<string> pickup towns (display names) on the routes of one direction ('' = every route) */
+    private static function bookPickups(string $direction): array
+    {
+        require_once __DIR__ . '/quickticket.php';
+        require_once __DIR__ . '/boarding.php';
+        $seen = [];
+        foreach (QuickTicket::routes() as $r) {
+            if ($direction !== '' && (string) $r['direction'] !== $direction) {
+                continue;
+            }
+            foreach (Boarding::stopsFor((int) $r['id']) as $s) {
+                $name = Boarding::stopDisplay((string) $s['name'])['name'];
+                $k = Boarding::townKey($name);
+                if ($k !== '' && !isset($seen[$k])) {
+                    $seen[$k] = $name;
+                }
+            }
+        }
+        return array_slice(array_values($seen), 0, 20);
+    }
+
+    private static function bookNext(array $b, array $member, array $ctx, string $lang, string $prefix): array
+    {
+        $dirs = self::bookDirections();
+        if ($dirs === []) {
+            return self::out('⚠️ ' . self::t('bk_no_bus', $lang));
+        }
+        if (empty($b['direction']) && count($dirs) === 1) {
+            $b['direction'] = $dirs[0]['key'];
+        }
+        $step = match (true) {
+            empty($b['direction']) && empty($b['boarding']) => 'direction',
+            empty($b['date'])                               => 'date',
+            empty($b['boarding'])                           => 'pickup',
+            (int) ($b['seats'] ?? 0) <= 0                   => 'seats',
+            mb_strlen(trim((string) ($b['name'] ?? ''))) < 2 || (string) ($b['phone'] ?? '') === '' => 'who',
+            default => 'quote',
+        };
+        if ($step === 'quote') {
+            $sale = [
+                'name' => (string) $b['name'], 'phone' => (string) $b['phone'], 'country' => (string) ($b['country'] ?? ''),
+                'seats' => (int) $b['seats'], 'date' => (string) $b['date'], 'direction' => (string) ($b['direction'] ?? ''),
+                'boarding' => (string) $b['boarding'], 'gender' => (string) ($b['gender'] ?? ''), 'pay' => (string) ($b['pay'] ?? ''),
+                'names' => (array) ($b['names'] ?? []),
+            ];
+            $r = self::saleQuote($sale, $member, $ctx, $lang);
+            if (str_starts_with((string) $r['text'], '⚠️')) {
+                // No bus can be sold like that (that day / that pickup): ask for another day, keep the rest.
+                unset($b['date']);
+                return self::bookNext($b, $member, $ctx, $lang, trim($prefix . "\n" . $r['text']));
+            }
+            return $prefix !== '' ? self::out($prefix . "\n\n" . $r['text'], $r['media'] ?? null) : $r;
+        }
+        $opts = [];
+        $lines = [];
+        switch ($step) {
+            case 'direction':
+                foreach ($dirs as $i => $d) {
+                    $opts[] = $d['key'];
+                    $lines[] = ($i + 1) . '. ' . $d['label'];
+                }
+                $q = self::t('bk_q_direction', $lang) . "\n" . implode("\n", $lines);
+                break;
+            case 'date':
+                $opts = [date('Y-m-d'), date('Y-m-d', strtotime('+1 day')), date('Y-m-d', strtotime('+2 days'))];
+                $q = self::t('bk_q_date', $lang, ['d1' => formatDate($opts[0], 'D j M'), 'd2' => formatDate($opts[1], 'D j M'), 'd3' => formatDate($opts[2], 'D j M')]);
+                break;
+            case 'pickup':
+                $opts = self::bookPickups((string) ($b['direction'] ?? ''));
+                $list = [];
+                foreach ($opts as $i => $o) {
+                    $list[] = ($i + 1) . '. ' . $o;
+                }
+                $q = self::t('bk_q_pickup', $lang) . "\n" . implode("\n", $list);
+                break;
+            case 'seats':
+                $q = self::t('bk_q_seats', $lang, ['max' => (string) BookingService::maxSeatsFor(true)]);
+                break;
+            default:
+                $q = self::t('bk_q_who', $lang, ['n' => (string) (int) ($b['seats'] ?? 1)]);
+        }
+        self::setPending($ctx['phone'], 'book', ['b' => $b, 'step' => $step, 'opts' => $opts]);
+        $sofar = self::bookSoFar($b, $lang);
+        return self::out(($prefix !== '' ? $prefix . "\n\n" : '') . ($sofar !== '' ? $sofar . "\n\n" : '') . $q . "\n\n" . self::t('bk_stop', $lang));
+    }
+
+    private static function bookSoFar(array $b, string $lang): string
+    {
+        $bits = [];
+        if (!empty($b['date'])) { $bits[] = '📅 ' . formatDate((string) $b['date'], 'D, j M'); }
+        if (!empty($b['boarding'])) { $bits[] = '📍 ' . $b['boarding']; }
+        if ((int) ($b['seats'] ?? 0) > 0) { $bits[] = '💺 ' . (int) $b['seats']; }
+        if (!empty($b['name'])) { $bits[] = '👤 ' . $b['name'] . (!empty($b['phone']) ? ' ' . $b['phone'] : ''); }
+        return $bits !== [] ? '🎫 ' . implode(' · ', $bits) : '';
+    }
+
+    /** One answer in the booking conversation. null = not an answer (a command): the caller carries on. */
+    private static function bookStep(array $pending, string $text, array $member, array $ctx, string $lang): ?array
+    {
+        $b = (array) ($pending['b'] ?? []);
+        $step = (string) ($pending['step'] ?? '');
+        $opts = array_values((array) ($pending['opts'] ?? []));
+        $l = mb_strtolower(trim($text));
+        // A command in the middle (help, balance, a PNR …) leaves the booking and runs the command.
+        if (preg_match('/^(help|menu|madat|मद्दत|reset|naya|नयाँ|balance|statement|bus|office|tickets|portal|admin)$/u', $l) === 1
+            || preg_match('/\bSHG-[A-Z0-9]+-/i', $text) === 1) {
+            self::clearPending($ctx['phone']);
+            return null;
+        }
+        // "ok" / "ho" / "CONFIRM" answers no question (never a passenger called "ok"): the same question again.
+        if (preg_match(self::YES, $text) === 1) {
+            return self::bookNext($b, $member, $ctx, $lang, self::t('bk_again', $lang));
+        }
+        require_once __DIR__ . '/quickticket.php';
+        require_once __DIR__ . '/ticketbot.php';
+        $t = trim(self::asciiDigits($text));
+        $got = false;
+        if (preg_match('/^\d{1,2}$/', $t) === 1) {
+            $n = (int) $t;
+            if (in_array($step, ['direction', 'date', 'pickup'], true) && $n >= 1 && $n <= count($opts)) {
+                $b[$step === 'pickup' ? 'boarding' : $step] = $opts[$n - 1];
+                $got = true;
+            } elseif ($step === 'seats' && $n >= 1 && $n <= BookingService::maxSeatsFor(true)) {
+                $b['seats'] = $n;
+                $got = true;
+            }
+        }
+        if (!$got) {
+            require_once __DIR__ . '/quickticket.php';
+            require_once __DIR__ . '/ticketbot.php';
+            $p = TicketBot::parse($text);
+            if ($step === 'date' && ($d = self::dateWord($text)) !== '') {
+                $b['date'] = $d;
+                $got = true;
+            } elseif ((string) $p['date'] !== '') {
+                $b['date'] = (string) $p['date'];
+                $got = true;
+            }
+            if ($step === 'pickup' && !$got) {
+                foreach ($opts as $o) {
+                    if (Boarding::townKey($o) !== '' && (str_contains(Boarding::townKey($o), Boarding::townKey($text)) || str_contains(Boarding::townKey($text), Boarding::townKey($o)))
+                        && mb_strlen(Boarding::townKey($text)) >= 3) {
+                        $b['boarding'] = $o;
+                        $got = true;
+                        break;
+                    }
+                }
+            }
+            if ((string) $p['boarding'] !== '' && empty($b['boarding'])) {
+                $b['boarding'] = (string) $p['boarding'];
+                $got = true;
+            }
+            if ((string) $p['direction'] !== '' && empty($b['direction'])) {
+                $b['direction'] = (string) $p['direction'];
+                $got = true;
+            }
+            if ((int) $p['seats'] > 0 && ($step === 'seats' || preg_match('/seat|सिट|सीट|jana|जना|berth/iu', $text) === 1)) {
+                $b['seats'] = (int) $p['seats'];
+                $got = true;
+            }
+            if (preg_match('/^(?:names?|naam(?:haru)?|नामहरू|नाम)\s*[:\-]?\s*(.+)$/iu', trim($text), $m) === 1) {
+                $list = array_values(array_filter(array_map('trim', preg_split('/\s*(?:,|;|\band\b|\bra\b|र|और)\s*/u', (string) preg_replace('/\+?\d[\d\s-]{8,}/', ' ', $m[1])) ?: [])));
+                if ($list !== []) {
+                    $b['names'] = count($list) >= 2 ? $list : [];
+                    $b['name'] = $list[0];
+                    $got = true;
+                }
+            }
+            if ((string) $p['phone'] !== '') {
+                $b['phone'] = (string) $p['phone'];
+                $b['country'] = (string) $p['country'];
+                $got = true;
+            }
+            if ($step === 'who' && empty($b['names'])) {
+                $nm = (string) $p['name'];
+                if ($nm === '') {
+                    $bare = trim((string) preg_replace('/\+?\d[\d\s-]{6,}\d/', ' ', $text));
+                    if (preg_match('/^\p{L}[\p{L}\p{M} .]{1,60}$/u', $bare) === 1 && preg_match(self::YES, $bare) !== 1 && preg_match(self::NO, $bare) !== 1) {
+                        $nm = $bare;
+                    }
+                }
+                if (mb_strlen($nm) >= 2) {
+                    $b['name'] = Security::clean($nm, 120);
+                    $got = true;
+                }
+            }
+            if ((string) $p['gender'] !== '') { $b['gender'] = (string) $p['gender']; }
+            if ((string) $p['pay'] !== '') { $b['pay'] = (string) $p['pay']; }
+        }
+        return self::bookNext($b, $member, $ctx, $lang, $got ? '' : self::t('bk_again', $lang));
     }
 
     /* ---------------- applicant verification ---------------- */
@@ -734,7 +1452,7 @@ final class ApWa
 
     private static function directory(array $member, string $lang, string $query, string $raw): array
     {
-        $office = in_array((string) $member['role'], self::OFFICE, true);
+        $office = self::officeMember($member);            // every agent's number: an OTP-linked office number only
         $wantAgents = str_starts_with($raw, 'agent') || str_starts_with($raw, 'एजेन्ट');
         $wantStaff  = str_starts_with($raw, 'staff') || str_starts_with($raw, 'स्टाफ') || str_starts_with($raw, 'team');
         $seeAgents  = $office || Settings::getBool('ap_wa_dir_agents', false);
@@ -915,6 +1633,15 @@ final class ApWa
             if (!$q['ok']) {
                 return self::out('⚠️ ' . $q['say']);
             }
+            // Owner: "refund vane cancel vane sabai manually garxu". An agent / counter only ASKS:
+            // the request goes to the office queue (Help Desk) and nothing is cancelled or refunded here.
+            if ($member !== null && !self::isOffice($ctx)) {
+                $reason = trim((string) preg_replace('/\b(cancel|radda|radd|रद्द|क्यान्सिल|कैंसिल|garnu\w*|गर्नु\w*|please|plz)\b/iu', ' ', $rest));
+                self::setPending($ctx['phone'], 'cancel_req', ['pnr' => $pnr, 'refund' => (string) $q['data']['refundLabel'],
+                    'note' => (string) ($q['data']['note'] ?? ''), 'reason' => Security::clean($reason, 200)]);
+                return self::out(self::t('cancel_req_quote', $lang, ['pnr' => $pnr, 'v' => (string) $q['data']['refundLabel'],
+                    'note' => (string) ($q['data']['note'] ?? '')]));
+            }
             self::setPending($ctx['phone'], 'cancel', ['pnr' => $pnr]);
             return self::out(self::t('cancel_quote', $lang, ['pnr' => $pnr, 'v' => (string) $q['data']['refundLabel'],
                 'note' => (string) ($q['data']['note'] ?? '')]));
@@ -971,12 +1698,18 @@ final class ApWa
         if ($ctx['role'] === 'member') {
             return self::out(self::t('no_permission', $lang));
         }
+        if ($field === 'pickup') {
+            $value = self::stopLabelFor($pnr, $value);
+        }
         $p = ApEdit::preview($pnr, $field, $value, $ctx, $which);
         if (!$p['ok']) {
             return self::out(self::editError($p, $lang));
         }
         if (!empty($p['office'])) {
-            ApEdit::forwardToOffice($p['change'], $ctx);
+            // officeQueue opens the Help Desk ticket AND sends the one office note (ApEdit::forwardToOffice would send a second).
+            $c = (array) $p['change'];
+            self::officeQueue($pnr, $field === 'seat' ? 'seat' : 'booking_help',
+                'Change request from the WhatsApp desk: ' . $field . ' → ' . (string) ($c['new'] ?? $value), $ctx);
             return self::out(self::t('edit_office', $lang, ['pnr' => $pnr]));
         }
         $c = $p['change'];
@@ -995,6 +1728,38 @@ final class ApWa
         return self::out(self::t('edit_confirm', $lang, ['pnr' => $pnr, 'f' => $label, 'old' => $old !== '' ? $old : '—', 'new' => $new]));
     }
 
+    /**
+     * The route's own stop label for a town the way it is shown ("Baroda" is
+     * the stop "Barauda", "Mehsana" is "Mehsana Head Office - Silver Complex"),
+     * so a pickup typed as it reads on the ticket finds its stop.
+     */
+    private static function stopLabelFor(string $pnr, string $value): string
+    {
+        try {
+            require_once __DIR__ . '/boarding.php';
+            $d = BookingService::detail($pnr);
+            $sid = (int) ($d['legs'][0]['schedule_id'] ?? 0);
+            $routeId = $sid > 0 ? (int) Database::scalar('SELECT route_id FROM schedules WHERE id = :s', ['s' => $sid], 0) : 0;
+            $want = Boarding::townKey($value);
+            if ($routeId <= 0 || $want === '') {
+                return $value;
+            }
+            foreach (Boarding::stopsFor($routeId) as $s) {
+                if (Boarding::townKey((string) $s['name']) === $want) {
+                    return $value;                                  // already exact
+                }
+            }
+            foreach (Boarding::stopsFor($routeId) as $s) {
+                if (Boarding::townKey(Boarding::stopDisplay((string) $s['name'])['name']) === $want) {
+                    return (string) $s['name'];
+                }
+            }
+        } catch (Throwable $e) {
+            // ApEdit gives its own answer
+        }
+        return $value;
+    }
+
     private static function editError(array $p, string $lang): string
     {
         $e = (string) ($p['error'] ?? '');
@@ -1008,6 +1773,45 @@ final class ApWa
             'tools', 'refused' => '⚠️ ' . (string) ($p['say'] ?? self::t('error', $lang)),
             default     => self::t('e_value', $lang),
         };
+    }
+
+    /**
+     * A request the office must handle by hand (cancel / refund, a change the
+     * desk may not make): one numbered Help Desk ticket, linked to the booking,
+     * shown to the office — the passenger is not messaged from here.
+     *
+     * @return string the HD reference, '' when the Help Desk is not available (the office note still went)
+     */
+    private static function officeQueue(string $pnr, string $category, string $message, array $ctx): string
+    {
+        $d = BookingService::detail($pnr);
+        $who = (array) ($ctx['admin'] ?? []);
+        $from = trim((string) ($who['full_name'] ?? '') . ' ' . ((int) ($ctx['adminId'] ?? 0) > 0 ? '(' . self::codeOf((int) $ctx['adminId']) . ')' : ''));
+        $msg = $message . "\nFrom: " . ($from !== '' ? $from : 'WhatsApp') . ' · +' . $ctx['phone'];
+        $ref = '';
+        try {
+            require_once __DIR__ . '/helpdesk.php';
+            $r = HelpDesk::open([
+                'name' => '', 'phone' => (string) ($d['contact_phone'] ?? $ctx['phone']),
+                'country' => (string) ($d['contact_country_code'] ?? '') === '977' ? 'NP' : 'IN',
+                'category' => $category, 'message' => $msg, 'pnr' => $pnr, 'source' => 'desk', 'trusted' => true,
+                'created_by' => (int) ($ctx['adminId'] ?? 0) ?: null, 'lang' => 'ne', 'ack' => false,
+            ]);
+            $ref = $r['ok'] ? (string) ($r['ref'] ?? '') : '';
+        } catch (Throwable $e) {
+            Logger::warning('Help Desk ticket from the WhatsApp desk failed: ' . $e->getMessage(), [], 'whatsapp');
+        }
+        try {
+            require_once __DIR__ . '/notify.php';
+            Notify::adminNote('📨 ' . ($category === 'refund' ? 'Cancel request' : 'Ticket change request') . ' (WhatsApp desk)', [
+                'PNR' => $pnr, 'Request' => $message, 'From' => $from . ' +' . $ctx['phone'], 'Help Desk' => $ref !== '' ? $ref : '—',
+            ], isset($d['id']) ? (int) $d['id'] : null);
+        } catch (Throwable $e) {
+            // the Help Desk ticket is the record
+        }
+        Logger::audit('agentpro.wa_office_request', 'booking', $pnr, null,
+            ['category' => $category, 'hd' => $ref, 'by' => (int) ($ctx['adminId'] ?? 0), 'wa' => $ctx['phone']], $message);
+        return $ref;
     }
 
     private static function bookingCard(string $pnr, array $ctx, string $lang): ?array
@@ -1144,11 +1948,17 @@ final class ApWa
     {
         switch ((string) $p['kind']) {
             case 'withdraw':
+                if ($member === null) {
+                    return self::out(self::t('no_permission', $lang));
+                }
                 try {
+                    // requestPayout locks the member's row and refuses a second open request: a repeated CONFIRM cannot file two.
                     $id = AgentWallet::requestPayout((int) $member['id'], (float) $p['amount'], 'WhatsApp');
                 } catch (RuntimeException $e) {
                     return self::out('⚠️ ' . $e->getMessage());
                 }
+                Logger::audit('agentpro.wa_withdraw', 'admin', (string) $member['id'], null,
+                    ['request' => $id, 'amount' => (float) $p['amount'], 'wa' => $ctx['phone']], 'Withdrawal requested from the WhatsApp desk');
                 try {
                     require_once __DIR__ . '/notify.php';
                     Notify::adminNote('💸 Withdrawal request (WhatsApp)', ['Member' => (string) $member['full_name'], 'Amount' => inr((float) $p['amount']),
@@ -1171,6 +1981,27 @@ final class ApWa
                 $r = AiTools::run('cancel_ticket', ['pnr' => (string) $p['pnr'], 'reason' => 'Cancelled on WhatsApp', 'confirm' => true], $ctx);
                 return self::out($r['ok'] ? self::t('cancel_done', $lang, ['pnr' => (string) $p['pnr'], 'v' => (string) ($r['data']['refundLabel'] ?? '')])
                                           : '⚠️ ' . $r['say']);
+
+            case 'cancel_req':
+                if ($member === null) {
+                    return self::out(self::t('no_permission', $lang));
+                }
+                $ref = self::officeQueue((string) $p['pnr'], 'refund',
+                    'Cancel request for ' . $p['pnr'] . ' (refund by the policy now: ' . $p['refund'] . ($p['note'] !== '' ? ' — ' . $p['note'] : '') . ')'
+                    . ((string) ($p['reason'] ?? '') !== '' ? "\nReason: " . $p['reason'] : '') . "\nNothing was cancelled or refunded automatically.", $ctx);
+                $text = self::t('cancel_req_sent', $lang, ['pnr' => (string) $p['pnr'], 'hd' => $ref !== '' ? $ref : '—']);
+                self::markDone($ctx['phone'], 'cancel_req', $text);
+                return self::out($text);
+
+            case 'wd_pay':
+                return self::adminPayDo($p, $member, $ctx, $lang);
+
+            case 'wd_decline':
+                return self::adminRejectDo($p, $member, $ctx, $lang);
+
+            case 'dep_confirm':
+            case 'dep_decline':
+                return self::adminDepositDo($p, $member, $ctx, $lang);
 
             case 'brain':
                 // The AI proposed an action and the sender agreed: run it now, without the model.
@@ -1217,10 +2048,21 @@ final class ApWa
             return self::out('⚠️ ' . $e->getMessage());
         }
         $pnr = (string) ($res['pnr'] ?? '');
-        Logger::audit('agentpro.wa_sale', 'booking', $pnr, null, ['seller' => (int) $member['id'], 'wa' => $ctx['phone']], 'Sold from the WhatsApp desk');
-        return self::out(self::t('sale_done', $lang, ['pnr' => $pnr, 'seats' => implode(', ', array_map('strval', (array) ($res['seats'] ?? []))),
-            'total' => (string) ($res['totalLabel'] ?? ''), 'phone' => (string) $sale['phone']]),
-            ($res['status'] ?? '') === 'confirmed' && $pnr !== '' ? Ticket::imageUrl($pnr) : null);
+        Logger::audit('agentpro.wa_sale', 'booking', $pnr, null, ['seller' => (int) $member['id'], 'wa' => $ctx['phone'],
+            'seats' => (int) $sale['seats'], 'total' => (float) ($want['total'] ?? 0)], 'Sold from the WhatsApp desk');
+        $media = ($res['status'] ?? '') === 'confirmed' && $pnr !== '' ? Ticket::imageUrl($pnr) : null;
+        $text = self::t('sale_done', $lang, ['pnr' => $pnr, 'seats' => implode(', ', array_map('strval', (array) ($res['seats'] ?? []))),
+            'total' => (string) ($res['totalLabel'] ?? ''), 'phone' => (string) $sale['phone']]);
+        if ($pnr !== '') {
+            try {
+                $text .= "\n📄 PDF: " . Ticket::downloadUrl($pnr);
+            } catch (Throwable $e) {
+                // the picture is enough
+            }
+            // A second CONFIRM now answers "already issued" with this PNR — it never sells again.
+            self::markDone($ctx['phone'], 'sale', $text, $media);
+        }
+        return self::out($text, $media);
     }
 
     /* =================================================================
@@ -1266,11 +2108,20 @@ final class ApWa
     public static function think(string $phone, string $text, ?array $member, array $ctx, string $lang): ?array
     {
         require_once __DIR__ . '/agentpro-brain.php';
+        $ctx['t0'] = (float) ($ctx['t0'] ?? microtime(true));
         $intent = ApBrain::understand($text, $ctx, $lang, $member);
         if ($intent === null) {
-            return self::out(self::t('ai_down', $lang, ['phone' => Settings::officePhone()]));
+            // Model down, busy or out of time: the numbered menu, never a guess.
+            return self::aiFallback($member, $lang);
         }
-        return self::act($intent, $member, $ctx, $lang) ?? self::out(self::t('ai_down', $lang, ['phone' => Settings::officePhone()]));
+        return self::act($intent, $member, $ctx, $lang) ?? self::aiFallback($member, $lang);
+    }
+
+    /** "I could not understand" + the office number, and for a member the numbered menu to tap instead. */
+    private static function aiFallback(?array $member, string $lang): array
+    {
+        $head = self::t('ai_down', $lang, ['phone' => Settings::officePhone()]);
+        return self::out($member !== null ? $head . "\n\n" . self::help($member, $lang)['text'] : $head);
     }
 
     /**
@@ -1299,7 +2150,9 @@ final class ApWa
                 if (!in_array((string) $member['role'], self::SELLERS, true)) {
                     return self::out(self::t('no_permission', $lang));
                 }
-                return self::saleQuote($sale, $member, $ctx, $lang);
+                // What the model read only fills the questions; anything it left out is ASKED, then quoted, then CONFIRM.
+                $sale['seats'] = max((int) ($i['seats'] ?? 0), count($sale['names']));
+                return self::bookStart($member, $ctx, $lang, array_filter($sale, static fn($v) => $v !== '' && $v !== [] && $v !== 0));
             case 'edit':
                 return $pnr !== '' && in_array((string) ($i['field'] ?? ''), ApEdit_fields(), true)
                     ? self::editPreview($pnr, (string) $i['field'], (string) ($i['value'] ?? ''), (string) ($i['which'] ?? ''), $ctx, $lang)
@@ -1324,10 +2177,15 @@ final class ApWa
             case 'bus':           return self::buses($member, $lang, (string) ($i['date'] ?? '') ?: date('Y-m-d'));
             case 'report':        return self::report($member, $ctx, $lang, '');
             case 'passengers':    return self::passengers($member, $ctx, $lang, (string) ($i['date'] ?? '') ?: date('Y-m-d'));
+            case 'tickets':       return self::myTickets($member, $ctx, $lang, (string) ($i['date'] ?? ''));
+            case 'portal':        return self::portal($member, $lang);
+            case 'pending':       return self::isOffice($ctx) ? self::adminPending($lang) : self::help($member, $lang);
             case 'help':          return self::help($member, $lang);
         }
+        // The model on this CPU only READS intent. A free-text answer from it reaches a member only when
+        // the office has switched that on (ap_wa_ai_answers); otherwise the numbered menu.
         $answer = trim((string) ($i['answer'] ?? ''));
-        return $answer !== '' ? self::out($answer) : self::help($member, $lang);
+        return $answer !== '' && Settings::getBool('ap_wa_ai_answers', false) ? self::out($answer) : self::aiFallback($member, $lang);
     }
 
     /** What the model may do for a passenger: answer, guide a booking, their own tickets. */
@@ -1465,15 +2323,67 @@ final class ApWa
     {
         return [
             'help_seller' => [
-                'ne' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\n\n🎫 टिकट: *2 सिट भोलि Mehsana, Ram Thapa 98XXXXXXXX*\n✏️ सच्याउने: *SHG-… नाम Sita Thapa* (pickup / seat / phone / date पनि)\n❌ रद्द: *SHG-… cancel* · 🔁 *SHG-… resend*\n💰 *balance* · *statement* · *withdraw 2000* · *jama*\n🪪 *id card* · *visiting card* · *me*\n📋 *aaja* (आजको हिसाब) · *passengers bholi* · *bus*\n📞 *office* · *contacts*\n🌐 *english* / *hindi* / *nepali*",
-                'hi' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\n\n🎫 टिकट: *2 सीट कल Mehsana, Ram Thapa 98XXXXXXXX*\n✏️ बदलें: *SHG-… नाम Sita Thapa* (pickup / seat / phone / date भी)\n❌ रद्द: *SHG-… cancel* · 🔁 *SHG-… resend*\n💰 *balance* · *statement* · *withdraw 2000* · *jama*\n🪪 *id card* · *visiting card* · *me*\n📋 *today* · *passengers kal* · *bus*\n📞 *office* · *contacts*\n🌐 *english* / *hindi* / *nepali*",
-                'en' => "🙏 Hello {name}{code}! {company} WhatsApp desk.\n\n🎫 Ticket: *2 seats tomorrow Mehsana, Ram Thapa 98XXXXXXXX*\n✏️ Fix: *SHG-… name Sita Thapa* (or pickup / seat / phone / date)\n❌ Cancel: *SHG-… cancel* · 🔁 *SHG-… resend*\n💰 *balance* · *statement* · *withdraw 2000* · *pay*\n🪪 *id card* · *visiting card* · *me*\n📋 *today* · *passengers tomorrow* · *bus*\n📞 *office* · *contacts*\n🌐 *english* / *hindi* / *nepali*",
+                'ne' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनम्बर वा शब्द पठाउनुहोस्:\n\n1️⃣ 🎫 टिकट बुक — *ticket* (वा सिधै: *2 सिट भोलि Mehsana, Ram Thapa 98XXXXXXXX*)\n2️⃣ 📋 मेरा टिकट — *tickets* · *tickets bholi*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लगइन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me*\n8️⃣ 📊 *aaja* (आजको हिसाब) · *passengers bholi* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ सच्याउने: *SHG-… नाम Sita Thapa* (pickup / seat / phone / date पनि)\n❌ रद्द अनुरोध: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
+                'hi' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनंबर या शब्द भेजें:\n\n1️⃣ 🎫 टिकट बुक — *ticket* (या सीधे: *2 सीट कल Mehsana, Ram Thapa 98XXXXXXXX*)\n2️⃣ 📋 मेरे टिकट — *tickets* · *tickets kal*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लॉगिन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me*\n8️⃣ 📊 *today* · *passengers kal* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ बदलें: *SHG-… नाम Sita Thapa* (pickup / seat / phone / date भी)\n❌ रद्द अनुरोध: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
+                'en' => "🙏 Hello {name}{code}! {company} WhatsApp desk.\nSend a number or a word:\n\n1️⃣ 🎫 Ticket — *ticket* (or in one line: *2 seats tomorrow Mehsana, Ram Thapa 98XXXXXXXX*)\n2️⃣ 📋 My tickets — *tickets* · *tickets tomorrow*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 Portal sign-in — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me*\n8️⃣ 📊 *today* · *passengers tomorrow* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ Fix: *SHG-… name Sita Thapa* (or pickup / seat / phone / date)\n❌ Cancel request: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *pay* · 🌐 *english* / *hindi* / *nepali*",
             ],
             'help_member' => [
-                'ne' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\n\n💰 *balance* · *statement* · *withdraw 2000* · *jama*\n🪪 *id card* · *visiting card* · *me*\n📞 *office* · *contacts* · *bus*\n🌐 *english* / *hindi* / *nepali*",
-                'hi' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\n\n💰 *balance* · *statement* · *withdraw 2000* · *jama*\n🪪 *id card* · *visiting card* · *me*\n📞 *office* · *contacts* · *bus*\n🌐 *english* / *hindi* / *nepali*",
-                'en' => "🙏 Hello {name}{code}! {company} WhatsApp desk.\n\n💰 *balance* · *statement* · *withdraw 2000* · *pay*\n🪪 *id card* · *visiting card* · *me*\n📞 *office* · *contacts* · *bus*\n🌐 *english* / *hindi* / *nepali*",
+                'ne' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनम्बर वा शब्द पठाउनुहोस्:\n\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लगइन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me*\n9️⃣ 📞 *office* · *contacts* · *bus*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
+                'hi' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनंबर या शब्द भेजें:\n\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लॉगिन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me*\n9️⃣ 📞 *office* · *contacts* · *bus*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
+                'en' => "🙏 Hello {name}{code}! {company} WhatsApp desk.\nSend a number or a word:\n\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 Portal sign-in — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me*\n9️⃣ 📞 *office* · *contacts* · *bus*\n💵 *pay* · 🌐 *english* / *hindi* / *nepali*",
             ],
+            'help_admin_line' => ['ne' => "0️⃣ 🛡️ *admin* — अफिस: आवेदन, withdraw स्वीकृति, आजको बिक्री", 'hi' => "0️⃣ 🛡️ *admin* — ऑफिस: आवेदन, withdraw मंज़ूरी, आज की बिक्री", 'en' => "0️⃣ 🛡️ *admin* — office: applications, withdrawal approvals, today's sales"],
+            'admin_help'  => [
+                'ne' => "🛡️ अफिस डेस्क\n📝 *joins* — नयाँ आवेदन ({apps})\n💸 *withdrawals* — withdraw अनुरोध ({wd})\n✅ *approve 12 UTR430987651234* — भुक्तानी गरेपछि रेकर्ड\n⛔ *reject 12 कारण* — अस्वीकार\n📊 *today* — कम्पनीको आजको बिक्री · *pending* — बाँकी काम\n💵 *deposits* — भुक्तानी जाँच ({dep}) · *jama ok 12* · *jama no 12 कारण*\n🖥️ {link}\n\nपैसाको हरेक काम *CONFIRM* पछि मात्र हुन्छ।",
+                'hi' => "🛡️ ऑफिस डेस्क\n📝 *joins* — नए आवेदन ({apps})\n💸 *withdrawals* — withdraw अनुरोध ({wd})\n✅ *approve 12 UTR430987651234* — भुगतान के बाद दर्ज करें\n⛔ *reject 12 कारण* — अस्वीकार\n📊 *today* — कंपनी की आज की बिक्री · *pending* — बाकी काम\n💵 *deposits* — भुगतान जाँच ({dep}) · *jama ok 12* · *jama no 12 कारण*\n🖥️ {link}\n\nपैसे का हर काम *CONFIRM* के बाद ही होता है।",
+                'en' => "🛡️ Office desk\n📝 *joins* — new applications ({apps})\n💸 *withdrawals* — withdrawal requests ({wd})\n✅ *approve 12 UTR430987651234* — record a payout you have made\n⛔ *reject 12 reason* — decline\n📊 *today* — the company's sales today · *pending* — what is waiting\n💵 *deposits* — payments to check ({dep}) · *jama ok 12* · *jama no 12 reason*\n🖥️ {link}\n\nEvery money action happens only after *CONFIRM*.",
+            ],
+            'adm_pending' => ['ne' => "⏳ बाँकी काम\n📝 आवेदन: {apps}\n💸 withdraw: {wd}\n💵 भुक्तानी जाँच: {dep}\n🪪 KYC: {kyc}\n🎫 भुक्तानी बाँकी बुकिङ: {pay}\n📊 आज टिकट: {t} · 🚌 लाइभ बस: {bus}", 'hi' => "⏳ बाकी काम\n📝 आवेदन: {apps}\n💸 withdraw: {wd}\n💵 भुगतान जाँच: {dep}\n🪪 KYC: {kyc}\n🎫 भुगतान बाकी बुकिंग: {pay}\n📊 आज टिकट: {t} · 🚌 लाइव बस: {bus}", 'en' => "⏳ Waiting\n📝 Applications: {apps}\n💸 Withdrawals: {wd}\n💵 Payments to check: {dep}\n🪪 KYC: {kyc}\n🎫 Unpaid bookings: {pay}\n📊 Tickets today: {t} · 🚌 Live buses: {bus}"],
+            'adm_pending_tail' => ['ne' => "👉 *joins* · *withdrawals* · *deposits* · *today*", 'hi' => "👉 *joins* · *withdrawals* · *deposits* · *today*", 'en' => "👉 *joins* · *withdrawals* · *deposits* · *today*"],
+            'adm_joins_head' => ['ne' => "📝 स्वीकृतिको लागि आवेदन ({n})", 'hi' => "📝 मंज़ूरी के लिए आवेदन ({n})", 'en' => "📝 Applications waiting ({n})"],
+            'adm_joins_tail' => ['ne' => "ID हेरेर स्वीकृत गर्नुहोस्: {link}", 'hi' => "ID देखकर मंज़ूर करें: {link}", 'en' => "Check the ID and approve: {link}"],
+            'adm_wd_head' => ['ne' => "💸 खुला withdraw अनुरोध ({n})", 'hi' => "💸 खुले withdraw अनुरोध ({n})", 'en' => "💸 Open withdrawal requests ({n})"],
+            'adm_wd_due'  => ['ne' => "कमिसन बाँकी: {v}", 'hi' => "कमीशन बाकी: {v}", 'en' => "commission due: {v}"],
+            'adm_wd_tail' => ['ne' => "भुक्तानी गरेपछि: *approve 12 UTR430987651234* · अस्वीकार: *reject 12 कारण*", 'hi' => "भुगतान के बाद: *approve 12 UTR430987651234* · अस्वीकार: *reject 12 कारण*", 'en' => "After paying: *approve 12 UTR430987651234* · decline: *reject 12 reason*"],
+            'adm_wd_notopen' => ['ne' => "⚠️ अनुरोध #{id} खुला छैन ({s})।", 'hi' => "⚠️ अनुरोध #{id} खुला नहीं है ({s})।", 'en' => "⚠️ Request #{id} is not open ({s})."],
+            'adm_wd_needref' => ['ne' => "✍️ भुक्तानीको UPI / बैंक रेफरेन्स पनि लेख्नुहोस् (कम्तीमा ५ अक्षर): *approve {id} UTR430987651234*", 'hi' => "✍️ भुगतान का UPI / बैंक रेफरेंस भी लिखें (कम से कम 5 अक्षर): *approve {id} UTR430987651234*", 'en' => "✍️ Add the UPI / bank reference of the payment (5+ characters): *approve {id} UTR430987651234*"],
+            'adm_wd_needwhy' => ['ne' => "✍️ कारण पनि लेख्नुहोस्: *reject {id} बैंक विवरण मिलेन*", 'hi' => "✍️ कारण भी लिखें: *reject {id} बैंक विवरण नहीं मिला*", 'en' => "✍️ Add the reason: *reject {id} bank details do not match*"],
+            'adm_wd_changed' => ['ne' => "⚠️ अनुरोध #{id} को रकम बदलियो — *withdrawals* फेरि हेर्नुहोस्।", 'hi' => "⚠️ अनुरोध #{id} की रकम बदल गई — *withdrawals* फिर देखें।", 'en' => "⚠️ Request #{id} changed — look at *withdrawals* again."],
+            'adm_pay_confirm' => ['ne' => "💸 भुक्तानी रेकर्ड गर्ने?\n#{id} · {name} ({code}) · *{v}*\n→ {to}\nRef: {ref}\n\nतपाईंले पैसा पठाइसक्नुभएको हो भने *CONFIRM* लेख्नुहोस् (नभए *no*)।", 'hi' => "💸 भुगतान दर्ज करें?\n#{id} · {name} ({code}) · *{v}*\n→ {to}\nRef: {ref}\n\nपैसा भेज दिया है तो *CONFIRM* लिखें (नहीं तो *no*)।", 'en' => "💸 Record this payout?\n#{id} · {name} ({code}) · *{v}*\n→ {to}\nRef: {ref}\n\nIf you have sent the money, reply *CONFIRM* (or *no*)."],
+            'adm_reject_confirm' => ['ne' => "⛔ अनुरोध #{id} ({name}, {v}) अस्वीकार गर्ने?\nकारण: {note}\n\n*CONFIRM* लेख्नुहोस् (नभए *no*)।", 'hi' => "⛔ अनुरोध #{id} ({name}, {v}) अस्वीकार करें?\nकारण: {note}\n\n*CONFIRM* लिखें (नहीं तो *no*)।", 'en' => "⛔ Decline request #{id} ({name}, {v})?\nReason: {note}\n\nReply *CONFIRM* (or *no*)."],
+            'adm_paid'    => ['ne' => "✅ #{id} भुक्तानी रेकर्ड भयो — {v} · भौचर {voucher} · Ref {ref}। सदस्यलाई WhatsApp गयो।", 'hi' => "✅ #{id} भुगतान दर्ज — {v} · वाउचर {voucher} · Ref {ref}। सदस्य को WhatsApp गया।", 'en' => "✅ #{id} payout recorded — {v} · voucher {voucher} · ref {ref}. The member was told on WhatsApp."],
+            'adm_rejected'=> ['ne' => "✅ #{id} अस्वीकार गरियो; सदस्यलाई कारण पठाइयो।", 'hi' => "✅ #{id} अस्वीकार; सदस्य को कारण भेजा गया।", 'en' => "✅ #{id} declined; the member was told why."],
+            'adm_wd_refused' => ['ne' => "⚠️ रेफरेन्स {ref} अर्को भुक्तानीमा पहिल्यै रेकर्ड छ — एउटै भुक्तानी दुई पटक लेखिँदैन।", 'hi' => "⚠️ रेफरेंस {ref} किसी और भुगतान में पहले से दर्ज है — एक भुगतान दो बार दर्ज नहीं होता।", 'en' => "⚠️ Reference {ref} is already recorded on another payout — one payment is never recorded twice."],
+            'adm_dep_head' => ['ne' => "💵 जाँच्न बाँकी भुक्तानी ({n})", 'hi' => "💵 जाँच के लिए भुगतान ({n})", 'en' => "💵 Payments to check ({n})"],
+            'adm_dep_held' => ['ne' => "नगद हातमा: {v}", 'hi' => "नकद हाथ में: {v}", 'en' => "cash held: {v}"],
+            'adm_dep_security' => ['ne' => "धरौटी (security deposit)", 'hi' => "सिक्योरिटी डिपॉज़िट", 'en' => "security deposit"],
+            'adm_dep_handover' => ['ne' => "नगद बुझाएको (cash handover)", 'hi' => "नकद जमा (cash handover)", 'en' => "cash handed over"],
+            'adm_dep_tail' => ['ne' => "बैंकमा भेटिएपछि: *jama ok 12* · नभेटिए: *jama no 12 कारण* · फोटो: {link}", 'hi' => "बैंक में मिलने पर: *jama ok 12* · न मिले तो: *jama no 12 कारण* · फोटो: {link}", 'en' => "Found in the bank: *jama ok 12* · not found: *jama no 12 reason* · screenshots: {link}"],
+            'adm_dep_notopen' => ['ne' => "⚠️ भुक्तानी #{id} खुला छैन ({s})।", 'hi' => "⚠️ भुगतान #{id} खुला नहीं है ({s})।", 'en' => "⚠️ Payment #{id} is not open ({s})."],
+            'adm_dep_needwhy' => ['ne' => "✍️ कारण पनि लेख्नुहोस्: *jama no {id} बैंकमा भेटिएन*", 'hi' => "✍️ कारण भी लिखें: *jama no {id} बैंक में नहीं मिला*", 'en' => "✍️ Add the reason: *jama no {id} not found in the bank*"],
+            'adm_dep_toomuch' => ['ne' => "⚠️ #{id}: यो सदस्यसँग कम्पनीको नगद {v} मात्र छ — बाँकीलाई Team पेजमा धरौटी बनाउनुहोस् वा *jama no {id} कारण*।", 'hi' => "⚠️ #{id}: इस सदस्य के पास कंपनी का नकद सिर्फ़ {v} है — बाकी Team पेज पर सिक्योरिटी डिपॉज़िट करें या *jama no {id} कारण*।", 'en' => "⚠️ #{id}: this member holds only {v} of company cash — record the rest as a security deposit on the Team page, or *jama no {id} reason*."],
+            'adm_dep_confirm' => ['ne' => "💵 भुक्तानी प्राप्त भएको रेकर्ड गर्ने?\n#{id} · {name} ({code}) · *{v}*\n{how} · {what}\n\nबैंक/हातमा पैसा आएको हो भने *CONFIRM* लेख्नुहोस् (नभए *no*)।", 'hi' => "💵 भुगतान मिलना दर्ज करें?\n#{id} · {name} ({code}) · *{v}*\n{how} · {what}\n\nपैसा बैंक/हाथ में आ गया है तो *CONFIRM* लिखें (नहीं तो *no*)।", 'en' => "💵 Record this payment as received?\n#{id} · {name} ({code}) · *{v}*\n{how} · {what}\n\nIf the money is in the bank / in hand, reply *CONFIRM* (or *no*)."],
+            'adm_dep_decline' => ['ne' => "⛔ भुक्तानी #{id} ({name}, {v}) अस्वीकार गर्ने?\nकारण: {note}\n\n*CONFIRM* लेख्नुहोस् (नभए *no*)।", 'hi' => "⛔ भुगतान #{id} ({name}, {v}) अस्वीकार करें?\nकारण: {note}\n\n*CONFIRM* लिखें (नहीं तो *no*)।", 'en' => "⛔ Decline payment #{id} ({name}, {v})?\nReason: {note}\n\nReply *CONFIRM* (or *no*)."],
+            'adm_dep_done' => ['ne' => "✅ #{id} {v} प्राप्त भएको रेकर्ड भयो; सदस्यलाई WhatsApp गयो।", 'hi' => "✅ #{id} {v} मिलना दर्ज; सदस्य को WhatsApp गया।", 'en' => "✅ #{id} {v} recorded as received; the member was told on WhatsApp."],
+            'adm_dep_declined' => ['ne' => "✅ #{id} अस्वीकार गरियो; सदस्यलाई कारण पठाइयो।", 'hi' => "✅ #{id} अस्वीकार; सदस्य को कारण भेजा गया।", 'en' => "✅ #{id} declined; the member was told why."],
+            'already_done'=> ['ne' => "ℹ️ यो पहिल्यै भइसक्यो — फेरि गरिएन।", 'hi' => "ℹ️ यह पहले ही हो चुका है — दोबारा नहीं किया।", 'en' => "ℹ️ This was already done — nothing was repeated."],
+            'nothing_pending' => ['ne' => "ℹ️ अहिले पुष्टि गर्नुपर्ने केही छैन। *help* लेख्नुहोस्।", 'hi' => "ℹ️ अभी पुष्टि करने को कुछ नहीं है। *help* लिखें।", 'en' => "ℹ️ There is nothing waiting for confirmation. Type *help*."],
+            'done_no_undo'=> ['ne' => "ℹ️ त्यो भइसकेको छ — फिर्ता गर्न अफिसलाई भन्नुहोस् (टिकट भए *PNR cancel*)।", 'hi' => "ℹ️ वह हो चुका है — वापस करने के लिए ऑफिस से कहें (टिकट हो तो *PNR cancel*)।", 'en' => "ℹ️ That is already done — ask the office to undo it (for a ticket: *PNR cancel*)."],
+            'tk_head'     => ['ne' => "📋 तपाईंले बेचेका पछिल्ला टिकट ({n})", 'hi' => "📋 आपके बेचे हाल के टिकट ({n})", 'en' => "📋 Your latest tickets ({n})"],
+            'tk_head_date'=> ['ne' => "📋 {d} मा यात्रा गर्ने तपाईंका टिकट ({n})", 'hi' => "📋 {d} को यात्रा वाले आपके टिकट ({n})", 'en' => "📋 Your tickets travelling {d} ({n})"],
+            'tk_none'     => ['ne' => "(कुनै टिकट छैन)", 'hi' => "(कोई टिकट नहीं)", 'en' => "(no tickets)"],
+            'portal_agent'=> ['ne' => "🔑 तपाईंको पोर्टल: {me}\nएजेन्ट कोड: *{code}* · मोबाइल: {mob}\nत्यहाँ कोड र मोबाइल लेख्नुहोस् — OTP यहीँ WhatsApp मा आउँछ। पछि fingerprint ले पनि खुल्छ।\nयो लिंक/OTP कसैलाई नदिनुहोस्।", 'hi' => "🔑 आपका पोर्टल: {me}\nएजेंट कोड: *{code}* · मोबाइल: {mob}\nवहाँ कोड और मोबाइल लिखें — OTP यहीं WhatsApp पर आएगा। बाद में fingerprint से भी खुलेगा।\nयह OTP किसी को न दें।", 'en' => "🔑 Your portal: {me}\nAgent code: *{code}* · mobile: {mob}\nType the code and mobile there — the OTP comes here on WhatsApp. Later a fingerprint opens it too.\nNever share the OTP."],
+            'portal_staff'=> ['ne' => "🔑 तपाईंको पोर्टल: {me}\nस्टाफ साइन-इन: {admin} (युजर: *{user}*)\nपासवर्ड बिर्सनुभयो भने अफिसलाई भन्नुहोस्।", 'hi' => "🔑 आपका पोर्टल: {me}\nस्टाफ साइन-इन: {admin} (यूज़र: *{user}*)\nपासवर्ड भूल गए तो ऑफिस से कहें।", 'en' => "🔑 Your portal: {me}\nStaff sign-in: {admin} (user: *{user}*)\nForgot the password? Ask the office."],
+            'bk_no_bus'   => ['ne' => "अहिले बिक्रीमा कुनै बस छैन।", 'hi' => "अभी बिक्री में कोई बस नहीं।", 'en' => "No bus is on sale right now."],
+            'bk_q_direction' => ['ne' => "🚌 कुन रुट? नम्बर पठाउनुहोस्:", 'hi' => "🚌 कौन सा रूट? नंबर भेजें:", 'en' => "🚌 Which route? Send the number:"],
+            'bk_q_date'   => ['ne' => "📅 कुन दिन? 1. आज ({d1}) · 2. भोलि ({d2}) · 3. पर्सि ({d3})\nवा मिति: *5 Nov*", 'hi' => "📅 किस दिन? 1. आज ({d1}) · 2. कल ({d2}) · 3. परसों ({d3})\nया तारीख: *5 Nov*", 'en' => "📅 Which day? 1. today ({d1}) · 2. tomorrow ({d2}) · 3. day after ({d3})\nor a date: *5 Nov*"],
+            'bk_q_pickup' => ['ne' => "📍 कहाँबाट चढ्ने? नम्बर वा ठाउँको नाम:", 'hi' => "📍 कहाँ से चढ़ना है? नंबर या जगह का नाम:", 'en' => "📍 Pickup? Send the number or the town:"],
+            'bk_q_seats'  => ['ne' => "💺 कति सिट? (1–{max})", 'hi' => "💺 कितनी सीट? (1–{max})", 'en' => "💺 How many seats? (1–{max})"],
+            'bk_q_who'    => ['ne' => "👤 यात्रुको नाम र मोबाइल: *Ram Thapa 98XXXXXXXX*\n({n} जना भए: *names Ram, Sita* अनि नम्बर)", 'hi' => "👤 यात्री का नाम और मोबाइल: *Ram Thapa 98XXXXXXXX*\n({n} लोग हों तो: *names Ram, Sita* और नंबर)", 'en' => "👤 Passenger name and mobile: *Ram Thapa 98XXXXXXXX*\n(for {n} travellers: *names Ram, Sita* and the number)"],
+            'bk_stop'     => ['ne' => "(रोक्न *no*)", 'hi' => "(रोकने के लिए *no*)", 'en' => "(*no* to stop)"],
+            'bk_again'    => ['ne' => "🤔 बुझिनँ।", 'hi' => "🤔 समझ नहीं आया।", 'en' => "🤔 I did not catch that."],
+            'cancel_req_quote' => ['ne' => "❌ {pnr} रद्द गर्ने अनुरोध अफिसमा पठाउने?\nनियम अनुसार फिर्ता अहिले: *{v}*\n{note}\nरद्द र फिर्ता अफिसले नै गर्छ — यहाँबाट केही रद्द हुँदैन।\n\nपठाउने भए *ho* / *CONFIRM* लेख्नुहोस्।", 'hi' => "❌ {pnr} रद्द करने का अनुरोध ऑफिस भेजें?\nनियम से वापसी अभी: *{v}*\n{note}\nरद्द और वापसी ऑफिस ही करता है — यहाँ से कुछ रद्द नहीं होता।\n\nभेजना है तो *ha* / *CONFIRM* लिखें।", 'en' => "❌ Send a cancel request for {pnr} to the office?\nRefund by the policy now: *{v}*\n{note}\nThe office does the cancel and the refund — nothing is cancelled from here.\n\nReply *yes* / *CONFIRM* to send."],
+            'cancel_req_sent' => ['ne' => "📨 {pnr} रद्द गर्ने अनुरोध अफिसमा पुग्यो — Help Desk {hd}। टिकट अहिले जस्ताको तस्तै छ; अफिसले फोन गर्छ।", 'hi' => "📨 {pnr} रद्द करने का अनुरोध ऑफिस पहुँचा — Help Desk {hd}। टिकट अभी वैसा ही है; ऑफिस फ़ोन करेगा।", 'en' => "📨 The cancel request for {pnr} is with the office — Help Desk {hd}. The ticket stays as it is until the office acts; they will call."],
             'join_link'   => ['ne' => "🤝 एजेन्ट बन्न यो फारम भर्नुहोस् (५ मिनेट):\n{link}", 'hi' => "🤝 एजेंट बनने के लिए यह फ़ॉर्म भरें (5 मिनट):\n{link}", 'en' => "🤝 Become an agent — fill this form (5 minutes):\n{link}"],
             'join_ok'     => ['ne' => "✅ तपाईंको WhatsApp प्रमाणित भयो (फारम {ref})।\nअब फारममा फर्केर बाँकी भर्नुहोस्।", 'hi' => "✅ आपका WhatsApp सत्यापित हो गया (फ़ॉर्म {ref})।\nअब फ़ॉर्म पर लौटकर बाकी भरें।", 'en' => "✅ Your WhatsApp is verified (form {ref}).\nGo back to the form to finish."],
             'join_bad'    => ['ne' => "⚠️ यो कोड भेटिएन वा पुरानो भयो। फारममा फेरि \"Verify by WhatsApp\" थिच्नुहोस्।", 'hi' => "⚠️ यह कोड नहीं मिला या पुराना है। फ़ॉर्म में फिर \"Verify by WhatsApp\" दबाएँ।", 'en' => "⚠️ That code was not found or has expired. Tap \"Verify by WhatsApp\" on the form again."],
@@ -1542,7 +2452,7 @@ final class ApWa
             'card_tail'   => ['ne' => "✏️ बदल्न: *PNR नाम / pickup / seat / phone / date …* · ❌ *PNR cancel*", 'hi' => "✏️ बदलने के लिए: *PNR नाम / pickup / seat / phone / date …* · ❌ *PNR cancel*", 'en' => "✏️ To change: *PNR name / pickup / seat / phone / date …* · ❌ *PNR cancel*"],
             'no_permission' => ['ne' => "🔒 तपाईंको खाताले यो गर्न मिल्दैन — अफिसलाई सोध्नुहोस्।", 'hi' => "🔒 आपके खाते से यह नहीं हो सकता — ऑफिस से पूछें।", 'en' => "🔒 Your account cannot do this — please ask the office."],
             'sale_quote'  => ['ne' => "🎫 कोटेसन (अझै बुक भएको छैन)\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} सिट: {seats} (बाँकी {left})\n👤 {who}\n💰 जम्मा *{total}*", 'hi' => "🎫 कोटेशन (अभी बुक नहीं हुआ)\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} सीट: {seats} (बाकी {left})\n👤 {who}\n💰 कुल *{total}*", 'en' => "🎫 Quote (nothing booked yet)\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} seat(s): {seats} ({left} left)\n👤 {who}\n💰 Total *{total}*"],
-            'sale_ask_yes'=> ['ne' => "टिकट काट्ने भए *ho* लेख्नुहोस्। (UPI भए *upi*, धेरै नाम: *names Ram, Sita*)", 'hi' => "टिकट काटना है तो *ha* लिखें। (UPI हो तो *upi*, कई नाम: *names Ram, Sita*)", 'en' => "Reply *yes* to issue. (UPI: *upi*; several travellers: *names Ram, Sita*)"],
+            'sale_ask_yes'=> ['ne' => "टिकट काट्ने भए *ho* वा *CONFIRM* लेख्नुहोस्। (UPI भए *upi*, धेरै नाम: *names Ram, Sita*)", 'hi' => "टिकट काटना है तो *ha* या *CONFIRM* लिखें। (UPI हो तो *upi*, कई नाम: *names Ram, Sita*)", 'en' => "Reply *yes* or *CONFIRM* to issue. (UPI: *upi*; several travellers: *names Ram, Sita*)"],
             'sale_need'   => ['ne' => "✍️ अझै चाहियो: {what}। जस्तै: *Ram Thapa 98XXXXXXXX*", 'hi' => "✍️ अभी चाहिए: {what}। जैसे: *Ram Thapa 98XXXXXXXX*", 'en' => "✍️ Still needed: {what}. E.g. *Ram Thapa 98XXXXXXXX*"],
             'sale_done'   => ['ne' => "✅ टिकट काटियो! PNR *{pnr}*\n💺 {seats} · {total}\n📲 टिकट {phone} को WhatsApp मा गयो; कमिसन तपाईंको wallet मा।", 'hi' => "✅ टिकट कट गया! PNR *{pnr}*\n💺 {seats} · {total}\n📲 टिकट {phone} के WhatsApp पर गया; कमीशन आपके wallet में।", 'en' => "✅ Ticket issued! PNR *{pnr}*\n💺 {seats} · {total}\n📲 The ticket went to {phone} on WhatsApp; the commission is on your wallet."],
             'thinking'    => ['ne' => "⏳ बुझ्दैछु… (करिब १ मिनेटमा जवाफ आउँछ)", 'hi' => "⏳ समझ रहा हूँ… (लगभग 1 मिनट में जवाब)", 'en' => "⏳ Working on it… (answer in about a minute)"],

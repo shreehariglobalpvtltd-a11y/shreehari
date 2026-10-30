@@ -20,6 +20,10 @@
  *   /join.php?office=1&d=<key>    reopen any draft / sent form to finish it
  *   Needs an admin session: superadmin, manager or staff.manage.
  *
+ *   /join.php?office=1&role=driver  start with that role (Team → quick add); otherwise the
+ *                                 role of the last office form on this browser
+ *   Drivers / conductors (30 Oct 2026) also get the driver app (driver/) at approve.
+ *
  * ?as=org|person preselects agent / agency (agreements/apply.html sends it);
  * ?name=&phone=&cc= (an office invitation, admin/team-invite.php) prefill a new form.
  */
@@ -67,6 +71,8 @@ $roles = [
     ['v' => 'support',      'label' => 'ग्राहक सेवा · Customer support'],
     ['v' => 'scanner',      'label' => 'बोर्डिङ स्टाफ · Boarding staff'],
     ['v' => 'official',     'label' => 'अधिकारी · Official'],
+    ['v' => 'driver',       'label' => '🚌 ड्राइभर · Driver'],
+    ['v' => 'conductor',    'label' => '🎫 कन्डक्टर · Conductor'],
 ];
 // KYC "saw the original ID" and the manager / accountant logins: super-admin or manager only (as admin/team.php)
 $officeKyc = $office && AgentPro::officeCanKyc($officeAdmin);
@@ -106,6 +112,8 @@ $cfg = [
     'officeMode' => $office,
     'officeBy' => $office ? (string) ($officeAdmin['full_name'] ?? $officeAdmin['username'] ?? '') : '',
     'roles'    => $office ? $roles : [],
+    // ?role=driver (Team → quick add): the office form starts with this role
+    'roleWanted' => $office && in_array((string) ($_GET['role'] ?? ''), array_column($roles, 'v'), true) ? (string) $_GET['role'] : '',
     'canKyc'   => $officeKyc,
     'prefill'  => ['name' => $pfName, 'phone' => strlen($pfPhone) >= 8 ? $pfPhone : '', 'cc' => $pfCc],
 ];

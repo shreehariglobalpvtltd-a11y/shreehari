@@ -103,8 +103,9 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
 
 <!-- 2. Pick today's bus -->
 <section class="card" id="vPick" hidden>
-  <h1>Which bus are you driving? · कौन सी बस?</h1>
+  <h1 id="pickT">Which bus are you driving? · कौन सी बस?</h1>
   <p class="mut">Tap your bus, then START TRIP. · अपनी बस चुनें, फिर START TRIP दबाएं।</p>
+  <p class="note" id="gpsWhy">📍 लोकेसन अनुमति माग्दा <b>Allow / अनुमति दिनुहोस्</b> थिच्नुहोस्। बस कहाँ पुग्यो भनेर अफिस र टिकट भएका यात्रुले मात्र देख्छन् — यात्रा सकिएपछि END TRIP थिच्नुहोस्, त्यसपछि लोकेसन जाँदैन। · Allow location when asked: only the office and this bus's passengers see where the bus is, and only until END TRIP.</p>
   <div id="tripList"></div>
   <button class="btn go" type="button" id="bStart" disabled>START TRIP<small>यात्रा शुरू करें</small></button>
   <div class="err" id="ePick" role="alert"></div>
@@ -131,7 +132,7 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
 (function () {
   'use strict';
   var API = '/api/driver.php';
-  var K = { token: 'shgDrv:token', trip: 'shgDrv:trip', seq: 'shgDrv:seq', name: 'shgDrv:name' };
+  var K = { token: 'shgDrv:token', trip: 'shgDrv:trip', seq: 'shgDrv:seq', name: 'shgDrv:name', role: 'shgDrv:role' };
   var S = { token: null, trip: null, pingSec: 15, pick: null, watchId: null, fix: null, lastRec: 0,
             lastSentAt: 0, sending: false, wake: null, hiddenAt: 0, timer: null, ending: false };
   var $ = function (id) { return document.getElementById(id); };
@@ -197,7 +198,7 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
     });
   }
   function signedOut() {
-    stopGps(); S.token = null; S.trip = null; lsSet(K.token, null); lsSet(K.trip, null);
+    stopGps(); S.token = null; S.trip = null; lsSet(K.token, null); lsSet(K.trip, null); lsSet(K.role, null);
     show('vLogin');
   }
 
@@ -208,7 +209,7 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
     api('POST', { action: 'login', phone: $('phone').value, pin: $('pin').value }).then(function (j) {
       $('bLogin').disabled = false;
       if (!j.ok) { $('eLogin').textContent = j.error || 'Could not sign in.'; return; }
-      S.token = j.data.token; lsSet(K.token, S.token); lsSet(K.name, j.data.driver.name);
+      S.token = j.data.token; lsSet(K.token, S.token); lsSet(K.name, j.data.driver.name); lsSet(K.role, j.data.driver.role || 'driver');
       $('pin').value = '';
       loadMe();
     }).catch(function () { $('bLogin').disabled = false; $('eLogin').textContent = 'No internet. Try again. · इंटरनेट नहीं है।'; });
@@ -228,6 +229,7 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
       if (!j.ok) { $('ePick').textContent = j.error || 'Could not load.'; show('vPick'); return; }
       S.pingSec = j.data.pingSec || 15;
       $('whoName').textContent = j.data.driver.name;
+      lsSet(K.role, j.data.driver.role || 'driver'); roleText();
       if (j.data.trip) {
         var t = (j.data.trips || []).find(function (x) { return x.scheduleId === j.data.trip.scheduleId; }) || {};
         S.trip = { tripId: j.data.trip.tripId, scheduleId: j.data.trip.scheduleId, route: t.route || '', bus: t.bus || '', dep: t.dep || '', date: t.date || '' };
@@ -247,6 +249,11 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
       $('ePick').textContent = 'No internet. The list needs a connection once. · इंटरनेट नहीं है।';
       show('vPick');
     });
+  }
+  /* a conductor (or host) shares the bus location exactly like the driver - only the words differ */
+  function roleText() {
+    var r = lsGet(K.role) || 'driver', crew = r === 'conductor' || r === 'host';
+    $('pickT').textContent = crew ? 'Which bus are you on? · कुन बसमा हुनुहुन्छ?' : 'Which bus are you driving? · कौन सी बस?';
   }
   function renderTrips(list) {
     var box = $('tripList'); box.innerHTML = ''; S.pick = null; $('bStart').disabled = true;
@@ -429,7 +436,16 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/driver/sw.php', { scope: '/driver/' }).catch(function () {});
   }
-  S.token = lsGet(K.token);
+  /* Opened from the member portal (/me/ → Start bus location) when this browser refused to
+     store the sign-in: the token comes once in the #fragment (never sent to the server, never
+     in a Referer) and is wiped from the address bar at once. */
+  var hm = /^#t=([a-f0-9]{48})$/.exec(location.hash || '');
+  if (hm) {
+    lsSet(K.token, hm[1]); S.token = hm[1];
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  }
+  S.token = S.token || lsGet(K.token);
+  roleText();
   try { S.trip = JSON.parse(lsGet(K.trip) || 'null'); } catch (e) { S.trip = null; }
   if (!S.token) { show('vLogin'); return; }
   if (S.trip) run();       // resume at once, even with no network

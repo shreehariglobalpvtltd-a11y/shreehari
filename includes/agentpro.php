@@ -53,7 +53,23 @@ final class AgentPro
     ];
 
     /** Roles an invite may carry (never superadmin — that is not handed out by link). */
-    public const INVITE_ROLES = ['counter', 'manager', 'accountant', 'support', 'scanner', 'official', 'agent'];
+    public const INVITE_ROLES = ['counter', 'manager', 'accountant', 'support', 'scanner', 'official', 'agent', 'driver', 'conductor'];
+
+    /**
+     * 30 Oct 2026 — bus crew. They are AgentPro staff (ID card, /me/) AND have
+     * a driver-app account (drivers row + PIN, driver/) so the bus shows live.
+     * admins.role has no such value: their login is CREW_LOGIN_ROLE (boarding
+     * staff, tickets.scan only) and ap_members.crew_role says which crew role.
+     */
+    public const CREW_ROLES = ['driver', 'conductor'];
+    public const CREW_LOGIN_ROLE = 'scanner';
+
+    /** Short role names for the office screens (AgentPro roles, crew included). */
+    public const ROLE_LABELS = [
+        'agent' => 'Agent', 'counter' => 'Counter', 'manager' => 'Manager', 'accountant' => 'Accountant',
+        'support' => 'Support', 'scanner' => 'Boarding staff', 'official' => 'Official', 'operations' => 'Operations',
+        'viewer' => 'Viewer', 'superadmin' => 'Super-admin', 'driver' => 'Driver', 'conductor' => 'Conductor',
+    ];
 
     /**
      * 30 Oct 2026 — the extra boxes of the printed paper form (occupation …
@@ -77,6 +93,8 @@ final class AgentPro
         'support'      => 'Customer Support',
         'scanner'      => 'Boarding Staff',
         'official'     => 'Official',
+        'driver'       => 'Bus Driver',
+        'conductor'    => 'Bus Conductor',
     ];
 
     public const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
@@ -172,6 +190,33 @@ final class AgentPro
             }
         }
         return isset(self::$appCols[$col]);
+    }
+
+    /** @var array<string, true> */
+    private static array $memCols = [];
+
+    /** Does ap_members have this column yet? (upgrade-2026-10-30-agentpro2.sql: crew_role, driver_id) */
+    public static function memberHas(string $col): bool
+    {
+        if (self::$memCols === []) {
+            self::$memCols['#'] = true;
+            try {
+                foreach (Database::fetchAll(
+                    "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ap_members'"
+                ) as $r) {
+                    self::$memCols[(string) $r['COLUMN_NAME']] = true;
+                }
+            } catch (Throwable $e) {
+                // not installed
+            }
+        }
+        return isset(self::$memCols[$col]);
+    }
+
+    /** The admins.role an AgentPro role signs in with (bus crew → boarding staff). */
+    public static function loginRole(string $role): string
+    {
+        return in_array($role, self::CREW_ROLES, true) ? self::CREW_LOGIN_ROLE : $role;
     }
 
     /* =================================================================
@@ -328,9 +373,10 @@ final class AgentPro
             $idNo = 'SHG-S-' . str_pad((string) (int) $m['staff_no'], 4, '0', STR_PAD_LEFT);
         }
 
+        $crew = $isAgent ? '' : self::crewRole($adminId, $m);
         $designation = trim((string) ($m['designation'] ?? ''));
         if ($designation === '') {
-            $designation = self::DESIGNATION_DEFAULTS[$isAgent ? 'agent:' . $kind : $role] ?? ucfirst($role);
+            $designation = self::DESIGNATION_DEFAULTS[$isAgent ? 'agent:' . $kind : ($crew !== '' ? $crew : $role)] ?? ucfirst($role);
         }
 
         // The number on the visiting card: what the member chose, else their
@@ -373,6 +419,9 @@ final class AgentPro
             'email'         => trim((string) ($m['vc_email'] ?? '')) ?: (trim((string) ($p['display_email'] ?? '')) ?: (string) ($a['email'] ?? '')),
             'phone'         => (string) ($a['phone'] ?? ''),
             'role'          => $role,
+            'crewRole'      => $crew,                       // 'driver' / 'conductor' / ''
+            'roleKey'       => $crew !== '' ? $crew : $role, // the AgentPro role (crew instead of 'scanner')
+            'roleLabel'     => self::ROLE_LABELS[$crew !== '' ? $crew : $role] ?? ucfirst($role),
             'isAgent'       => $isAgent,
             'agentKind'     => $kind,
             'isOrg'         => $isOrg,
@@ -476,6 +525,331 @@ final class AgentPro
                 usleep(20000);
             }
         }
+    }
+
+    /* =================================================================
+     *  30 Oct 2026 — IDs for the office: "issue code" in one tap, and a
+     *  member card for a login that already exists (the owner's own
+     *  super-admin account: its mobile cannot be used for a new login).
+     * ================================================================= */
+
+    /** Give a member without one their agent code (agents) or SHG-S staff number. Returns the ID. */
+    public static function issueCode(int $adminId, int $by): string
+    {
+        $a = Database::fetch('SELECT id, role FROM admins WHERE id = :i', ['i' => $adminId]);
+        if ($a === null) {
+            throw new RuntimeException('No such member.');
+        }
+        if ((string) $a['role'] === 'agent') {
+            if (AgentWallet::agentCodeFor($adminId) === null) {
+                $n = AgentWallet::nextFreeAgentCode(AgentWallet::agentKindFor($adminId));
+                if ($n === null) {
+                    throw new RuntimeException('Every agent number is taken.');
+                }
+                AgentWallet::setAgentCode($adminId, $n, $by);
+            }
+            $code = AgentWallet::agentCodeLabel($adminId);
+        } else {
+            self::ensureMember($adminId, (string) $a['role']);
+            $code = (string) (self::member($adminId)['idNo'] ?? '');
+        }
+        Logger::audit('agentpro.code_issued', 'admin', (string) $adminId, null, ['code' => $code], 'ID issued by admin #' . $by);
+        return $code;
+    }
+
+    /**
+     * An ID card for a login that already exists (any role, the super-admin
+     * too): makes the member row (card token, validity, staff number) and
+     * saves the name / designation / department the card prints.
+     *
+     * @param array<string, mixed> $in full_name, designation, department
+     * @return array<string, mixed> the member
+     */
+    public static function makeCardFor(int $adminId, array $in, int $by): array
+    {
+        $a = Database::fetch('SELECT id, role, full_name FROM admins WHERE id = :i', ['i' => $adminId]);
+        if ($a === null) {
+            throw new RuntimeException('Choose the login to make the card for.');
+        }
+        self::ensureMember($adminId, (string) $a['role']);
+        $name = trim(Security::clean((string) ($in['full_name'] ?? ''), 120));
+        if ($name !== '' && mb_strlen($name) < 2) {
+            throw new RuntimeException('Write the full name as it should print on the card.');
+        }
+        if ($name !== '' && $name !== (string) $a['full_name']) {
+            Database::update('admins', ['full_name' => $name], 'id = :i', ['i' => $adminId]);
+            Logger::audit('agentpro.card_name', 'admin', (string) $adminId, ['full_name' => (string) $a['full_name']], ['full_name' => $name],
+                'Name on the card changed by admin #' . $by);
+        }
+        $card = array_intersect_key($in, array_flip(['designation', 'department']));
+        if ($card !== []) {
+            self::saveCard($adminId, $card, $by);
+        }
+        Logger::audit('agentpro.card_for_login', 'admin', (string) $adminId, null, ['role' => (string) $a['role']],
+            'ID card made for an existing login by admin #' . $by);
+        return self::member($adminId) ?? [];
+    }
+
+    /* =================================================================
+     *  Bus crew (driver / conductor) — the driver app account
+     * ================================================================= */
+
+    /** @var array<int, string> */
+    private static array $crewCache = [];
+
+    /**
+     * 'driver' / 'conductor' when this member is bus crew, else ''.
+     * ap_members.crew_role when the agentpro2 migration ran; before that, the
+     * role of their join application (a crew login is always CREW_LOGIN_ROLE).
+     *
+     * @param array<string, mixed>|null $memberRow the ap_members row when the caller has it
+     */
+    public static function crewRole(int $adminId, ?array $memberRow = null): string
+    {
+        if ($adminId <= 0) {
+            return '';
+        }
+        if (isset(self::$crewCache[$adminId])) {
+            return self::$crewCache[$adminId];
+        }
+        $crew = '';
+        try {
+            if (self::memberHas('crew_role')) {
+                $v = $memberRow !== null && array_key_exists('crew_role', $memberRow)
+                    ? $memberRow['crew_role']
+                    : Database::scalar('SELECT crew_role FROM ap_members WHERE admin_id = :a', ['a' => $adminId]);
+                $crew = in_array((string) $v, self::CREW_ROLES, true) ? (string) $v : '';
+            } elseif (self::available()) {
+                $v = Database::scalar(
+                    "SELECT ap.role_wanted FROM ap_applications ap JOIN admins a ON a.id = ap.admin_id
+                      WHERE ap.admin_id = :a AND ap.status IN ('submitted','approved') AND a.role = :r
+                      ORDER BY ap.id DESC LIMIT 1",
+                    ['a' => $adminId, 'r' => self::CREW_LOGIN_ROLE]
+                );
+                $crew = in_array((string) $v, self::CREW_ROLES, true) ? (string) $v : '';
+            }
+        } catch (Throwable $e) {
+            $crew = '';
+        }
+        return self::$crewCache[$adminId] = $crew;
+    }
+
+    /** Mark (or unmark, '') a staff member as bus crew. Needs the agentpro2 migration. */
+    public static function setCrewRole(int $adminId, string $crew, int $by = 0): void
+    {
+        if ($crew !== '' && !in_array($crew, self::CREW_ROLES, true)) {
+            throw new RuntimeException('Choose driver or conductor.');
+        }
+        unset(self::$crewCache[$adminId]);
+        if (!self::memberHas('crew_role')) {
+            return;   // the application role is read instead (crewRole fallback)
+        }
+        $role = (string) Database::scalar('SELECT role FROM admins WHERE id = :a', ['a' => $adminId], '');
+        self::ensureMember($adminId, $role);
+        Database::update('ap_members', ['crew_role' => $crew !== '' ? $crew : null], 'admin_id = :a', ['a' => $adminId]);
+        if ($by > 0) {
+            Logger::audit('agentpro.crew_role', 'admin', (string) $adminId, null, ['crew' => $crew ?: null], 'Bus crew role set by admin #' . $by);
+        }
+    }
+
+    /**
+     * The member's driver-app account (drivers row): the linked id, else the
+     * drivers row with the same mobile. Null when there is none.
+     *
+     * @return array{id:int, full_name:string, phone:string, role:string, is_active:int, has_pin:bool}|null
+     */
+    public static function driverRow(int $adminId): ?array
+    {
+        $row = null;
+        try {
+            if (self::memberHas('driver_id')) {
+                $did = (int) Database::scalar('SELECT driver_id FROM ap_members WHERE admin_id = :a', ['a' => $adminId], 0);
+                if ($did > 0) {
+                    $row = Database::fetch('SELECT id, full_name, phone, role, is_active, pin_hash FROM drivers WHERE id = :i', ['i' => $did]);
+                }
+            }
+            if ($row === null) {
+                $phone = normalisePhone((string) Database::scalar('SELECT phone FROM admins WHERE id = :a', ['a' => $adminId], ''));
+                if ($phone !== '') {
+                    $row = Database::fetch('SELECT id, full_name, phone, role, is_active, pin_hash FROM drivers WHERE phone = :p', ['p' => $phone]);
+                }
+            }
+        } catch (Throwable $e) {
+            return null;   // no drivers table on this database
+        }
+        if ($row === null) {
+            return null;
+        }
+        return ['id' => (int) $row['id'], 'full_name' => (string) $row['full_name'], 'phone' => (string) $row['phone'],
+                'role' => (string) $row['role'], 'is_active' => (int) $row['is_active'], 'has_pin' => !empty($row['pin_hash'])];
+    }
+
+    /** A 6-digit PIN that is not 000000 / 123456-like. */
+    public static function newDriverPin(): string
+    {
+        do {
+            $pin = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        } while (preg_match('/^(\d)\1{5}$/', $pin) === 1 || in_array($pin, ['123456', '654321', '012345', '543210'], true));
+        return $pin;
+    }
+
+    /**
+     * Give a crew member their driver-app account: link (or make) the drivers
+     * row of their mobile, keep its role in step (a co-driver stays co-driver,
+     * a host stays host) and set a PIN when it has none — or always with
+     * $newPin (that signs every phone of theirs out).
+     *
+     * $activate (the office): switch a deactivated drivers row back on.
+     * Without it (the member's own "Start bus location") a row the office
+     * switched off stays off and this refuses.
+     *
+     * @return array{driverId:int, pin:?string, created:bool}
+     */
+    public static function linkDriver(int $adminId, int $by, bool $activate = true, bool $newPin = false): array
+    {
+        $crew = self::crewRole($adminId);
+        if ($crew === '') {
+            throw new RuntimeException('Only a driver or conductor gets the driver app.');
+        }
+        $a = Database::fetch('SELECT id, full_name, phone, is_active FROM admins WHERE id = :i', ['i' => $adminId]);
+        $phone = normalisePhone((string) ($a['phone'] ?? ''));
+        if ($a === null || $phone === '') {
+            throw new RuntimeException('Add the mobile number first — the driver app signs in with it.');
+        }
+        require_once __DIR__ . '/driverauth.php';
+        $row = self::driverRow($adminId);
+        $created = false;
+        if ($row === null) {
+            try {
+                $id = Database::insert('drivers', [
+                    'full_name' => mb_substr((string) $a['full_name'], 0, 120), 'phone' => $phone, 'role' => $crew, 'is_active' => 1,
+                ]);
+            } catch (Throwable $e) {
+                // the same mobile was added in Admin → Drivers a moment ago: use that row
+                $id = (int) Database::scalar('SELECT id FROM drivers WHERE phone = :p', ['p' => $phone], 0);
+                if ($id <= 0) {
+                    throw new RuntimeException('Could not make the driver-app account: ' . $e->getMessage());
+                }
+            }
+            $created = true;
+            $hasPin = (bool) Database::scalar('SELECT pin_hash IS NOT NULL FROM drivers WHERE id = :i', ['i' => (int) $id], 0);
+            $row = ['id' => (int) $id, 'is_active' => 1, 'has_pin' => $hasPin, 'role' => $crew];
+        } else {
+            if ((int) $row['is_active'] !== 1 && !$activate) {
+                throw new RuntimeException('The office has switched off your driver app. Call the office. · अफिसले ड्राइभर एप बन्द गरेको छ।');
+            }
+            $keep = $crew === 'driver' ? ['driver', 'co-driver'] : ['conductor', 'host'];
+            $upd = [];
+            if (!in_array($row['role'], $keep, true)) { $upd['role'] = $crew; }
+            if ($activate && (int) $row['is_active'] !== 1) { $upd['is_active'] = 1; }
+            if ($activate && trim((string) $a['full_name']) !== '' && $row['full_name'] !== (string) $a['full_name']) {
+                $upd['full_name'] = mb_substr((string) $a['full_name'], 0, 120);
+            }
+            if ($upd !== []) {
+                Database::update('drivers', $upd, 'id = :i', ['i' => (int) $row['id']]);
+            }
+        }
+        $driverId = (int) $row['id'];
+        $pin = null;
+        if ($newPin || empty($row['has_pin'])) {
+            $pin = self::newDriverPin();
+            DriverAuth::setPin($driverId, $pin);
+        }
+        if (self::memberHas('driver_id')) {
+            Database::update('ap_members', ['driver_id' => $driverId], 'admin_id = :a', ['a' => $adminId]);
+        }
+        Logger::audit('agentpro.driver_link', 'admin', (string) $adminId, null,
+            ['driver' => $driverId, 'crew' => $crew, 'created' => $created, 'pin' => $pin !== null],
+            'Driver app account ' . ($created ? 'made' : 'linked') . ($by > 0 ? ' by admin #' . $by : ''));
+        return ['driverId' => $driverId, 'pin' => $pin, 'created' => $created];
+    }
+
+    /** The driver-app sign-in on WhatsApp (mobile + PIN), like the staff password. */
+    public static function sendDriverPin(int $adminId, string $pin): bool
+    {
+        $mem = self::member($adminId, false);
+        if ($mem === null || $mem['phone'] === '') {
+            return false;
+        }
+        require_once __DIR__ . '/notify.php';
+        $ok = Notify::whatsapp((string) $mem['phone'], implode("\n", self::driverPinLines($mem, $pin)), null, $mem['countryCode'] === '977' ? 'NP' : 'IN');
+        return $ok !== false;
+    }
+
+    /**
+     * @param array<string, mixed> $mem
+     * @return list<string>
+     */
+    private static function driverPinLines(array $mem, string $pin): array
+    {
+        return [
+            '🚌 बस लोकेसन एप · SHG Driver app',
+            '📱 ' . appUrl('driver/'),
+            '👤 मोबाइल / Mobile: ' . $mem['phone'],
+            '🔑 PIN: ' . $pin,
+            'बस छुट्दा "START TRIP" थिच्नुहोस्, स्क्रिन खुला र फोन चार्जरमा राख्नुहोस्। / Tap START TRIP when the bus leaves.',
+            '(/me/ मा "🚌 बस लोकेसन सुरु" बटनले PIN बिना नै खोल्छ।)',
+        ];
+    }
+
+    /**
+     * What a member's portal (/me/) shows for their role: the wallet only for
+     * those who hold money (agents, counters, or anyone with ledger entries),
+     * and links to the work pages their permissions open.
+     * Call with the member signed in (Auth::can reads the session).
+     *
+     * @param array<string, mixed> $m member()
+     * @return array{walletOn: bool, tools: list<array{icon:string, ne:string, en:string, href:string}>, crew: array<string, mixed>|null}
+     */
+    public static function portal(array $m): array
+    {
+        $id = (int) $m['id'];
+        $hasLedger = false;
+        try {
+            $hasLedger = Database::exists('SELECT 1 FROM agent_ledger WHERE agent_admin_id = :a LIMIT 1', ['a' => $id]);
+        } catch (Throwable $e) {
+        }
+        $walletOn = !empty($m['isAgent']) || $m['role'] === 'counter' || $hasLedger;
+        $tools = [];
+        $add = static function (string $icon, string $ne, string $en, string $href) use (&$tools): void {
+            $tools[] = ['icon' => $icon, 'ne' => $ne, 'en' => $en, 'href' => $href];
+        };
+        if (self::mustChangePw(Auth::admin())) {
+            $add('🔑', 'अस्थायी पासवर्ड बदल्नुहोस्', 'Change your temporary password', '/admin/change-password.php');
+        }
+        if (!empty($m['isAgent'])) {
+            $add('🎫', 'टिकट बुक', 'Book a ticket', '/admin/agent.php');
+        } elseif (Auth::can('bookings.view')) {
+            $add('🎫', 'टिकट बुक · SmartBook', 'Book a ticket · SmartBook', '/admin/smartbook.php');
+            $add('📋', 'टिकट रजिस्टर', 'Tickets register', '/admin/bookings.php');
+            $add('🧾', 'मेरो डेस्क / सिफ्ट', 'My desk & shift', '/admin/my-desk.php');
+        }
+        if (Auth::can('tickets.scan')) {
+            $add('📷', 'टिकट स्क्यान (बोर्डिङ)', 'Scan tickets (boarding)', '/admin/scan.php');
+        }
+        if (Auth::can('payments.view')) {
+            $add('💳', 'भुक्तानी जाँच', 'Verify payments', '/admin/payments.php');
+        }
+        if (Auth::can('support.view')) {
+            $add('💬', 'ग्राहक सेवा', 'Support inbox', '/admin/support-inbox.php');
+        }
+        if (Auth::can('schedules.view')) {
+            $add('🗺', 'बस लाइभ नक्सा', 'Live bus map', '/admin/map.php');
+        }
+        if (Auth::can('staff.manage')) {
+            $add('👥', 'टिम र ID कार्ड', 'Team & ID cards', '/admin/team.php');
+            $add('＋', 'नयाँ सदस्य थप्नुहोस्', 'Add a member', '/join.php?office=1');
+        }
+        if (Auth::can('dashboard.view')) {
+            $add('🏢', 'एडमिन प्यानल', 'Admin panel', '/admin/index.php');
+        }
+        $crew = null;
+        if (($m['crewRole'] ?? '') !== '') {
+            $d = self::driverRow($id);
+            $crew = ['role' => (string) $m['crewRole'], 'linked' => $d !== null, 'active' => $d !== null && $d['is_active'] === 1,
+                     'app' => '/driver/'];
+        }
+        return ['walletOn' => $walletOn, 'tools' => $tools, 'crew' => $crew];
     }
 
     /** 24 url-safe characters. */
@@ -1530,15 +1904,16 @@ final class AgentPro
             }
         }
 
+        $loginRole = self::loginRole($role);   // a driver / conductor signs in as boarding staff
         try {
-            $adminId = (int) Database::transaction(static function () use ($role, $display, $username, $email, $phone): int {
+            $adminId = (int) Database::transaction(static function () use ($loginRole, $display, $username, $email, $phone): int {
                 return Database::insert('admins', [
                     'username'       => $username,
                     'password_hash'  => password_hash(bin2hex(random_bytes(12)), PASSWORD_DEFAULT),
                     'full_name'      => $display,
                     'email'          => $email !== '' ? $email : null,
                     'phone'          => $phone,
-                    'role'           => $role,
+                    'role'           => $loginRole,
                     'is_active'      => 0,
                     'must_change_pw' => 0,
                 ]);
@@ -1552,6 +1927,13 @@ final class AgentPro
         }
 
         self::writeProfile($adminId, $app, $role);
+        if (in_array($role, self::CREW_ROLES, true)) {
+            try {
+                self::setCrewRole($adminId, $role);
+            } catch (Throwable $e) {
+                Logger::warning('Submit: crew role not stored: ' . $e->getMessage(), [], 'agent');
+            }
+        }
         if (AgentWallet::kycAvailable()) {
             AgentWallet::saveProfile($adminId, array_filter([
                 'kyc_doc_path'  => (string) ($app['doc_front'] ?? ''),
@@ -1722,19 +2104,35 @@ final class AgentPro
             ]);
         }
 
+        // Bus crew: the driver-app account (drivers row + PIN) so they can share the bus location.
+        $driver = null;
+        $crew = in_array((string) ($app['role_wanted'] ?? ''), self::CREW_ROLES, true) && $role === self::CREW_LOGIN_ROLE
+            ? (string) $app['role_wanted'] : self::crewRole($adminId);
+        if ($crew !== '') {
+            try {
+                if (self::crewRole($adminId) !== $crew) {
+                    self::setCrewRole($adminId, $crew);
+                }
+                $driver = self::linkDriver($adminId, $by, true, false);
+            } catch (Throwable $e) {
+                Logger::warning('Approve: driver app account not made: ' . $e->getMessage(), [], 'agent');
+            }
+        }
+
         Database::update('ap_applications', [
             'status' => 'approved', 'decided_by' => $by ?: null, 'decided_at' => date('Y-m-d H:i:s'),
         ], 'id = :i', ['i' => $appId]);
         Logger::audit('agentpro.approved', 'admin', (string) $adminId, ['status' => 'submitted'],
-            ['status' => 'approved', 'code' => $code, 'ref' => $app['ref']], 'Approved in one tap by admin #' . $by);
+            ['status' => 'approved', 'code' => $code, 'ref' => $app['ref'], 'driver' => $driver['driverId'] ?? null], 'Approved in one tap by admin #' . $by);
 
-        self::sendWelcome($adminId, $password);
+        self::sendWelcome($adminId, $password, $driver['pin'] ?? null);
 
-        return ['admin_id' => $adminId, 'code' => $code] + ($password !== null ? ['password' => $password] : []);
+        return ['admin_id' => $adminId, 'code' => $code] + ($password !== null ? ['password' => $password] : [])
+            + ($driver !== null ? ['driver_id' => $driver['driverId'], 'driver_pin' => $driver['pin']] : []);
     }
 
     /** Welcome on WhatsApp: who they are now, how to sign in, the ID card itself. */
-    public static function sendWelcome(int $adminId, ?string $password = null): bool
+    public static function sendWelcome(int $adminId, ?string $password = null, ?string $driverPin = null): bool
     {
         $mem = self::member($adminId);
         if ($mem === null || $mem['phone'] === '') {
@@ -1760,6 +2158,16 @@ final class AgentPro
                 $lines[] = '🔑 Temporary password: ' . $password . ' (पहिलो लगइनमा बदल्नुहोस् / change it at first sign-in)';
             }
             $lines[] = '🌐 ' . appUrl('admin/login.php');
+        }
+        if (($mem['crewRole'] ?? '') !== '') {
+            $lines[] = '';
+            if ($driverPin !== null) {
+                foreach (self::driverPinLines($mem, $driverPin) as $l) {
+                    $lines[] = $l;
+                }
+            } else {
+                $lines[] = '🚌 बस लोकेसन / Driver app: ' . appUrl('driver/') . ' — मोबाइल + PIN (अफिसबाट), वा /me/ मा "🚌 बस लोकेसन सुरु"।';
+            }
         }
         $media = null;
         try {
@@ -2049,8 +2457,16 @@ final class AgentPro
         );
         $members = [];
         if (self::available()) {
-            foreach (Database::fetchAll('SELECT admin_id, staff_no, designation, card_status, card_valid_until, photo_ver FROM ap_members') as $m) {
+            $crewCol = self::memberHas('crew_role') ? ', crew_role' : '';
+            foreach (Database::fetchAll('SELECT admin_id, staff_no, designation, card_status, card_valid_until, photo_ver' . $crewCol . ' FROM ap_members') as $m) {
                 $members[(int) $m['admin_id']] = $m;
+            }
+            if ($crewCol === '') {   // before the agentpro2 migration: the crew role of the application
+                foreach (Database::fetchAll("SELECT ap.admin_id, ap.role_wanted FROM ap_applications ap JOIN admins a ON a.id = ap.admin_id
+                                              WHERE ap.role_wanted IN ('driver','conductor') AND a.role = :r AND ap.status IN ('submitted','approved')",
+                                             ['r' => self::CREW_LOGIN_ROLE]) as $r) {
+                    $members[(int) $r['admin_id']]['crew_role'] = (string) $r['role_wanted'];
+                }
             }
         }
         $pending = [];
@@ -2068,15 +2484,20 @@ final class AgentPro
             $idNo = $isAgent ? AgentWallet::agentCodeLabel($id)
                 : (!empty($m['staff_no']) ? 'SHG-S-' . str_pad((string) (int) $m['staff_no'], 4, '0', STR_PAD_LEFT) : '');
             $photo = (string) ($r['photo_path'] ?? '');
+            $crew = !$isAgent && in_array((string) ($m['crew_role'] ?? ''), self::CREW_ROLES, true) ? (string) $m['crew_role'] : '';
+            $roleKey = $crew !== '' ? $crew : (string) $r['role'];
             $out[] = [
                 'id'        => $id,
                 'name'      => (string) $r['full_name'],
                 'phone'     => (string) ($r['phone'] ?? ''),
                 'role'      => (string) $r['role'],
+                'crew'      => $crew,
+                'roleLabel' => self::ROLE_LABELS[$roleKey] ?? ucfirst($roleKey),
+                'hasMember' => $m !== [] && isset($m['admin_id']),
                 'isAgent'   => $isAgent,
                 'kind'      => $kind,
                 'idNo'      => $idNo,
-                'designation' => trim((string) ($m['designation'] ?? '')) ?: (self::DESIGNATION_DEFAULTS[$isAgent ? 'agent:' . $kind : (string) $r['role']] ?? ucfirst((string) $r['role'])),
+                'designation' => trim((string) ($m['designation'] ?? '')) ?: (self::DESIGNATION_DEFAULTS[$isAgent ? 'agent:' . $kind : $roleKey] ?? ucfirst($roleKey)),
                 'active'    => (int) $r['is_active'] === 1,
                 'pendingRef'=> $pending[$id] ?? '',
                 'kyc'       => (string) ($r['kyc_status'] ?? 'none'),

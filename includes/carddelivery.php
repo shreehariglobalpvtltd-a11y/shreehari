@@ -66,6 +66,7 @@ final class CardDelivery {
             }); if (!$claimed) { continue; }
             $attempted=false;
             try {
+                if ($count>0 && PHP_SAPI==='cli') { require_once __DIR__.'/wasend.php'; usleep(WaSend::gapSeconds()*1000000); } // 30 Oct 2026: paced like the outbox - no bursts
                 $pdf=TeamRegistry::open($r['file_key']);
                 $ch=curl_init(META_API_BASE.'/'.rawurlencode(META_PHONE_NUMBER_ID).'/media');
                 curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_RETURNTRANSFER=>true,CURLOPT_CONNECTTIMEOUT=>8,CURLOPT_TIMEOUT=>30,CURLOPT_HTTPHEADER=>['Authorization: Bearer '.META_ACCESS_TOKEN],CURLOPT_POSTFIELDS=>['messaging_product'=>'whatsapp','type'=>'application/pdf','file'=>new CURLStringFile($pdf,'SHG-Cards.pdf','application/pdf')]]);

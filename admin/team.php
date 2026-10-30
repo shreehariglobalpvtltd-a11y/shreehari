@@ -21,6 +21,14 @@
  * 30 Oct 2026 (owner: "admin le sabai control garna paune"): the office
  * form (/join.php?office=1) is the one way the office adds a person;
  * KYC documents are shown only to a super-admin or a manager.
+ *
+ * 30 Oct 2026, agentpro2 (owner: "admin le sajilai ID banauna"):
+ *   - "＋ Add member" first on every tab, one tap per role (driver and
+ *     conductor too: they also get the driver app + PIN at approve)
+ *   - ⚡ Issue code on anyone without an agent code / staff number
+ *   - 🪪 ID card for a login that already exists (the owner's own super-admin
+ *     account — its mobile cannot make a second login): name, designation,
+ *     department and photo, then the member page
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
@@ -43,6 +51,7 @@ $isSuper = Auth::isSuperadmin();
 $canKyc  = $isSuper || $role === 'manager';                 // KYC documents: super-admin / manager only
 $canOffice = $isSuper || $role === 'manager' || Auth::can('staff.manage');   // K1 office form
 $canPay  = $isSuper || Auth::can('commissions.pay');
+$canCode = $isSuper || $role === 'manager';                 // issue codes / cards for existing logins (as team-member.php)
 $tab = (string) ($_GET['tab'] ?? 'approvals');
 $tabs = ['approvals', 'agents', 'staff', 'money', 'cards', 'invites'];
 if (!in_array($tab, $tabs, true)) {
@@ -164,7 +173,33 @@ if (Security::isPost()) {
                     $m = AgentPro::member($r['admin_id']);
                     $flash = ['ok', '✓ Approved — ' . ($m['name'] ?? '') . ($r['code'] !== '' ? ' is ' . $r['code'] : '') . '. Login, ID card and welcome sent on WhatsApp.'
                         . ($canKyc ? '' : ' KYC still to check by a manager · KYC म्यानेजरले जाँच्न बाँकी.')
-                        . (isset($r['password']) ? ' Temporary password: ' . $r['password'] : '')];
+                        . (isset($r['password']) ? ' Temporary password: ' . $r['password'] : '')
+                        . (isset($r['driver_id']) ? ' 🚌 Driver app ready' . (!empty($r['driver_pin']) ? ' — PIN ' . $r['driver_pin'] . ' (also sent on WhatsApp)' : ' — they keep the PIN they already had') . '.' : '')];
+                    break;
+                case 'issue_code':
+                    if (!$canCode) { throw new RuntimeException('Only a super-admin or a manager issues ID numbers.'); }
+                    $tid = (int) ($_POST['member'] ?? 0);
+                    if ($tid === $me) { throw new RuntimeException('Nobody issues their own number — ask another manager / the super-admin.'); }
+                    if (!$isSuper && (string) Database::scalar('SELECT role FROM admins WHERE id = :i', ['i' => $tid], '') === 'superadmin') {
+                        throw new RuntimeException('Only a super-admin issues a super-admin\'s ID.');
+                    }
+                    $code = AgentPro::issueCode($tid, $me);
+                    $flash = ['ok', '⚡ ID issued: ' . ($code !== '' ? $code : '—') . '. Print the card from the member page.'];
+                    break;
+                case 'card_for_login':
+                    if (!$canCode) { throw new RuntimeException('Only a super-admin or a manager makes an ID card for an existing login.'); }
+                    $tid = (int) ($_POST['member'] ?? 0);
+                    $trole = (string) Database::scalar('SELECT role FROM admins WHERE id = :i', ['i' => $tid], '');
+                    if ($trole === '') { throw new RuntimeException('Choose the login.'); }
+                    if ($trole === 'superadmin' && !$isSuper) { throw new RuntimeException('Only a super-admin makes a super-admin\'s card.'); }
+                    $mm = AgentPro::makeCardFor($tid, [
+                        'full_name' => (string) ($_POST['full_name'] ?? ''), 'designation' => (string) ($_POST['designation'] ?? ''),
+                        'department' => (string) ($_POST['department'] ?? ''),
+                    ], $me);
+                    if (!empty($_FILES['photo']['name'])) {
+                        AgentPro::setPhoto($tid, $_FILES['photo'], $me);
+                    }
+                    Response::redirect('admin/team-member.php?id=' . $tid . '&made=1');
                     break;
                 case 'reject':
                     if (!Auth::can('staff.manage')) { throw new RuntimeException('Only staff managers can reject.'); }
@@ -252,7 +287,7 @@ $draftCount = (int) Database::scalar("SELECT COUNT(*) FROM ap_applications WHERE
 admin_header('Team & ID Cards', 'team.php');
 echo '<link rel="stylesheet" href="/assets/agentpro/admin.css?v=' . (int) @filemtime(ASSET_PATH . '/agentpro/admin.css') . '">';
 admin_page_head('Join applications, ID cards, visiting cards and wallets — one place.', [],
-    ($canOffice ? '<a class="btn ok sm tp-add" href="' . $e($officeUrl) . '">＋ नयाँ सदस्य · Add member (office form)</a>' : '')
+    ($canOffice ? '<a class="btn ok sm tp-add" href="' . $e($officeUrl) . '">＋ नयाँ सदस्य · Add member</a>' : '')
     . '<a class="btn ghost sm" href="/join.php" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-external"/></svg> Join form</a>'
     . '<a class="btn soft sm" href="/admin/ai-local.php"><svg class="a-ic"><use href="#a-msg"/></svg> WhatsApp & AI</a>');
 if ($flash !== null) {
@@ -285,8 +320,36 @@ $tabLabel = ['approvals' => ['Approvals', $counts['applications']], 'agents' => 
 .tp-adj .full{grid-column:1/-1}
 @media(max-width:640px){.tp-adj{grid-template-columns:1fr}}
 .tp-req form input[type=text]{min-height:44px}
+.tp-quick .panel-body{display:flex;flex-direction:column;gap:10px}
+.tp-addbig{min-height:56px;font-size:17px;justify-content:center;display:flex;align-items:center}
+.tp-qroles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.tp-qroles a{min-height:48px;display:flex;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);font-weight:700;font-size:13px;text-decoration:none}
+.tp-qroles a span{font-size:18px}
+.tp-issue{position:absolute;bottom:8px;right:8px;z-index:2;margin:0}
+.tp-issue button{min-height:36px;padding:0 10px;font-size:12px}
+.tp-mk{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.tp-mk label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--mut,#64748b)}
+.tp-mk input,.tp-mk select{min-height:48px;padding:0 12px;border:1px solid var(--line-2,var(--line));border-radius:12px;background:var(--card);color:var(--ink);font:inherit}
+.tp-mk input[type=file]{padding:10px 12px}
+.tp-mk .full{grid-column:1/-1}
+@media(max-width:640px){.tp-mk{grid-template-columns:1fr}}
 </style>
 <div class="ap-a">
+<?php if ($canOffice):
+    // ＋ Add member, first: one tap per role → the office form starts with that role (join.php?role=)
+    $quick = [['agent:person', '🧑‍💼', 'Agent'], ['agent:org', '🏢', 'Agency'], ['counter', '🎫', 'Counter'],
+              ['driver', '🚌', 'Driver'], ['conductor', '🎟', 'Conductor'], ['support', '💬', 'Support'],
+              ['scanner', '📷', 'Boarding'], ['official', '🗂', 'Official']];
+    if ($canKyc) { $quick[] = ['manager', '👔', 'Manager']; $quick[] = ['accountant', '📒', 'Accountant']; }
+    ?>
+<section class="panel tp-quick" aria-label="Add a member">
+  <div class="panel-body">
+    <a class="btn ok tp-add tp-addbig" href="<?= $e($officeUrl) ?>">＋ नयाँ सदस्य · Add member</a>
+    <div class="tp-qroles"><?php foreach ($quick as [$qv, $qi, $ql]): ?><a href="<?= $e($officeUrl . '&role=' . rawurlencode($qv)) ?>"><span><?= $qi ?></span><?= $e($ql) ?></a><?php endforeach; ?></div>
+    <small class="ph-sub">Only name, mobile, ID number and photo are needed · "Approve now" issues the login, code and ID card at once. Drivers / conductors also get the driver app (live bus location).</small>
+  </div>
+</section>
+<?php endif; ?>
 <nav class="tp-tabs" aria-label="Team sections">
   <?php foreach ($tabLabel as $k => [$label, $n]): ?>
     <a href="?tab=<?= $e($k) ?>" class="<?= $tab === $k ? 'on' : '' ?>"><?= $e($label) ?><?= $n > 0 ? '<span class="c">' . (int) $n . '</span>' : '' ?></a>
@@ -496,7 +559,8 @@ $tabLabel = ['approvals' => ['Approvals', $counts['applications']], 'agents' => 
         if ($p['suspended'] || $p['card'] === 'suspended') { $chips[] = ['bad', 'Suspended']; }
         $chips[] = [$p['kyc'] === 'verified' ? 'ok' : ($p['kyc'] === 'submitted' ? 'warn' : ''), 'KYC ' . $p['kyc']];
         if ($p['card'] === 'revoked') { $chips[] = ['bad', 'Card revoked']; }
-        if ($p['isAgent']) { $chips[] = ['blue', $p['kind'] === 'org' ? 'Agency' : 'Person']; } else { $chips[] = ['blue', ucfirst($p['role'])]; }
+        if ($p['isAgent']) { $chips[] = ['blue', $p['kind'] === 'org' ? 'Agency' : 'Person']; } else { $chips[] = ['blue', ($p['crew'] !== '' ? '🚌 ' : '') . $p['roleLabel']]; }
+        $issuable = $canCode && $p['idNo'] === '' && $p['id'] !== $me && ($isSuper || $p['role'] !== 'superadmin');
         ?>
       <div class="tp-pw" data-q="<?= $e(mb_strtolower($p['name'] . ' ' . $p['idNo'] . ' ' . $p['branch'] . ' ' . $p['phone'])) ?>">
       <a class="tp-person" href="/admin/team-member.php?id=<?= (int) $p['id'] ?>">
@@ -506,10 +570,30 @@ $tabLabel = ['approvals' => ['Approvals', $counts['applications']], 'agents' => 
           <span class="tp-chips"><?php foreach ($chips as [$c, $t]): ?><span class="tp-chip <?= $e($c) ?>"><?= $e($t) ?></span><?php endforeach; ?></span></span>
       </a>
       <?php if (isset($appOf[$p['id']])): ?><a class="tp-formlink" href="/admin/team-form.php?app=<?= (int) $appOf[$p['id']] ?>" target="_blank" rel="noopener" title="Filled form">📄 Form</a><?php endif; ?>
+      <?php if ($issuable): ?><form method="post" class="tp-issue"><?= Security::csrfField() ?><input type="hidden" name="action" value="issue_code"><input type="hidden" name="member" value="<?= (int) $p['id'] ?>"><button class="btn soft sm" type="submit" title="Give the next free <?= $p['isAgent'] ? 'agent code' : 'staff number' ?>">⚡ Issue code</button></form><?php endif; ?>
       </div>
     <?php endforeach; ?>
   </div>
   <script>(function(){var q=document.getElementById('tpq');if(!q)return;q.addEventListener('input',function(){var v=q.value.toLowerCase().trim();document.querySelectorAll('#tpList .tp-pw').forEach(function(a){a.style.display=!v||a.dataset.q.indexOf(v)>-1?'':'none';});});})();</script>
+  <?php if (!$wantAgents && $canCode):
+      // 🪪 an ID card for a login that already exists — e.g. the owner's own super-admin account
+      $logins = array_values(array_filter($roster, static fn(array $r): bool => !$r['isAgent'] && ($isSuper || $r['role'] !== 'superadmin')));
+      usort($logins, static fn(array $a, array $b): int => [(int) $a['hasMember'], $a['name']] <=> [(int) $b['hasMember'], $b['name']]);
+      ?>
+  <section class="panel" id="cardfor" style="margin-top:14px"><h2><svg class="a-ic"><use href="#a-id-card"/></svg> 🪪 ID card for an existing login · भइसकेको लगइनको ID कार्ड</h2><div class="panel-body">
+    <p class="ph-sub" style="margin-top:0">For someone who already signs in here (your own super-admin account too — its mobile cannot make a second login). The card prints this name, designation and photo; nothing about the login changes.</p>
+    <form method="post" enctype="multipart/form-data" class="tp-mk"><?= Security::csrfField() ?><input type="hidden" name="action" value="card_for_login">
+      <label class="full">Login · लगइन<select name="member" required><option value="">— choose —</option>
+        <?php foreach ($logins as $r): ?><option value="<?= (int) $r['id'] ?>"><?= $e($r['name'] . ' · ' . $r['roleLabel'] . ($r['idNo'] !== '' ? ' · ' . $r['idNo'] : ' · no card yet') . ((int) $r['id'] === $me ? ' · (you)' : '')) ?></option><?php endforeach; ?>
+      </select></label>
+      <label>Name on the card (empty = keep)<input name="full_name" maxlength="120" placeholder="e.g. Hari Prasad Sharma"></label>
+      <label>Designation (under the name)<input name="designation" maxlength="80" placeholder="e.g. Managing Director"></label>
+      <label>Department<input name="department" maxlength="80" placeholder="e.g. Head Office"></label>
+      <label>Photo (passport style)<input type="file" name="photo" accept="image/*"></label>
+      <div class="full"><button class="btn" type="submit" style="min-height:48px">🪪 Make the ID card</button></div>
+    </form>
+  </div></section>
+  <?php endif; ?>
 
 <?php elseif ($tab === 'money'):
     $wds = AgentWallet::openPayoutRequests();
@@ -644,7 +728,7 @@ $tabLabel = ['approvals' => ['Approvals', $counts['applications']], 'agents' => 
           <a class="btn wa sm" style="margin-top:8px" href="<?= $e(whatsappLink('', 'Join S Hari Global — fill this form (5 minutes): ' . $newLink['link'])) ?>" target="_blank" rel="noopener">💬 Send on WhatsApp</a></div>
       <?php endif; ?>
       <form method="post" class="mp-form"><?= Security::csrfField() ?><input type="hidden" name="action" value="invite">
-        <label>Role<select name="role"><?php foreach (AgentPro::INVITE_ROLES as $r): ?><option value="<?= $e($r) ?>"><?= $e(ucfirst($r)) ?></option><?php endforeach; ?></select></label>
+        <label>Role<select name="role"><?php foreach (AgentPro::INVITE_ROLES as $r): ?><option value="<?= $e($r) ?>"><?= $e(AgentPro::ROLE_LABELS[$r] ?? ucfirst($r)) ?></option><?php endforeach; ?></select></label>
         <label>Printed on the ID card<input name="designation" placeholder="e.g. Counter Executive, Surat"></label>
         <label>Valid for<select name="days"><option value="3">3 days</option><option value="7" selected>7 days</option><option value="30">30 days</option></select></label>
         <label>Note (for you)<input name="note" maxlength="160"></label>

@@ -522,7 +522,65 @@ final class WaQueue
         } catch (Throwable $e) {
             Logger::warning('wa queue status check failed', ['e' => $e->getMessage()]);
         }
+        /* 30 Oct 2026: this cron (every 5 min) also works the Cloud API outbox
+           (includes/wasend.php) - one message at a time, wa_cloud_gap_sec
+           apart - until a dedicated every-minute cron calls WaSend::drain(). */
+        if (PHP_SAPI === 'cli' && Settings::getBool('wa_outbox_in_queue_cron', true)) {
+            try {
+                require_once INCLUDE_PATH . '/wasend.php';
+                if (WaSend::cloudConfigured() && WaSend::fallbackOn()) {
+                    $d = WaSend::drain(12, 50);
+                    $out['outbox_sent'] = $d['sent'];
+                    $out['outbox_failed'] = $d['failed'];
+                }
+            } catch (Throwable $e) {
+                Logger::warning('wa outbox drain failed', ['e' => $e->getMessage()]);
+            }
+        }
         return $out;
+    }
+
+    /** AiSensy cannot send and the official Cloud API can: tickets go by WaSend (30 Oct 2026). */
+    public static function cloudInstead(): bool
+    {
+        try {
+            if (AiSensyAPI::enabled() && AiSensyAPI::mode() !== 'off') {
+                return false;
+            }
+            require_once INCLUDE_PATH . '/wasend.php';
+            return WaSend::fallbackOn() && WaSend::cloudConfigured();
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * This queue row's ticket through the Cloud API outbox. The outbox owns
+     * the window / template choice, the pacing and the "never twice" rule
+     * (one outbox row per ticket and number), so the "hi" queue and
+     * Notify's own fallback can never send the same ticket twice.
+     */
+    private static function deliverCloud(array $q, array $b, bool $noFree = false): bool
+    {
+        $role = (string) $q['role'];
+        // Sent once already (a PNR typed again, a send Meta failed later): a deliberate resend, else the first ticket.
+        $resend = (string) ($q['wamid'] ?? '') !== '';
+        $c = WaSend::ticket((string) $b['id'], [
+            'to' => (string) $q['phone'], 'role' => $role === 'seller' ? 'seller' : 'customer',
+            'purpose' => $resend ? 'ticket_resend' : ($role === 'seller' ? 'seller_copy' : 'ticket'),
+            'source' => 'hi_queue', 'no_free' => $noFree,
+        ]);
+        $ok = $c['state'] === 'sent';
+        // On success WaSend::afterSent() already wrote via / wamid on this row (recordSent).
+        if (!$ok) {
+            Database::run(
+                "UPDATE wa_ticket_queue SET status = :s, attempts = attempts + 1, last_error = :e, checked_at = NULL WHERE id = :i AND status NOT IN ('sent','delivered','read')",
+                ['s' => in_array($c['state'], ['queued', 'waiting'], true) ? 'pending' : 'failed',
+                 'e' => mb_substr('Cloud API outbox #' . $c['id'] . ': ' . $c['state'] . ($c['error'] !== '' ? ' - ' . $c['error'] : ''), 0, 250),
+                 'i' => (int) $q['id']]
+            );
+        }
+        return $ok;
     }
 
     /* -----------------------------------------------------------------
@@ -532,6 +590,10 @@ final class WaQueue
     /** Send the ticket picture (caption = the facts), text + link as the fallback. */
     private static function deliver(array $q, array $b): bool
     {
+        // 30 Oct 2026: no AiSensy key - the official Cloud API outbox carries it (free in the window, else the template).
+        if (self::cloudInstead()) {
+            return self::deliverCloud($q, $b);
+        }
         $pnr  = (string) $b['pnr'];
         $role = (string) $q['role'];
         if (!class_exists('Ticket')) {
@@ -653,6 +715,21 @@ final class WaQueue
             }
             if (!class_exists('AiSensyAPI') && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
                 require_once ROOT_PATH . '/whatsapp/aisensy.php';
+            }
+            /* 30 Oct 2026: no AiSensy - the approved ticket template on the
+               official Cloud API number instead (the window evidently closed,
+               so never the free route again). Marked failed first so the
+               outbox's "already sent" check does not see this dead send. */
+            if (self::cloudInstead()) {
+                Database::run("UPDATE wa_ticket_queue SET status = 'failed', last_error = :e WHERE id = :i",
+                    ['e' => 'Meta failed it later (code ' . $code . ')', 'i' => (int) $q['id']]);
+                $q['status'] = 'failed';
+                // The outbox's own send: it decides (template once, never a loop).
+                $own = WaSend::metaFailed($wamid, $code);
+                if ($own !== null) {
+                    return $own === 'sent';
+                }
+                return self::deliverCloud($q, $b, true);
             }
             $f    = AiSensyAPI::facts((int) $b['id']);
             $role = (string) $q['role'];

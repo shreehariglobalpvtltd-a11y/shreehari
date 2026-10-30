@@ -21,7 +21,8 @@
  *    office_role · office_verify (skip WhatsApp with a reason) · phone_check
  *    submit approve_now=1 saw_id=1 → approved at once, code issued
  *  ME (signed-in staff session):
- *    me · wallet · photo · profile_save · bank_save · withdraw · deposit
+ *    me (+ portal: wallet on/off, role tools, bus crew) · bus_link (driver / conductor →
+ *    a driver-app token, the "Start bus location" button) · wallet · photo · profile_save · bank_save · withdraw · deposit
  *    statement · kyc_upload · pk_reg_options · pk_reg_verify · pk_delete · logout
  *  SIGN-IN (no session yet):
  *    login_otp_start · login_otp_verify · pk_login_options · pk_login_verify
@@ -521,6 +522,7 @@ try {
                 $out['code'] = (string) (($res['code'] ?? '') !== '' ? $res['code'] : ($m['idNo'] ?? ''));
                 $out['member_url'] = '/admin/team-member.php?id=' . (int) $res['admin_id'];
                 $out['kyc'] = $sawId ? 'verified' : 'submitted';
+                $out['driver'] = isset($res['driver_id']);   // bus crew: driver app account made, PIN on WhatsApp
                 // a staff member's first password goes to them on WhatsApp (sendWelcome) — never back to this screen
             }
             Response::success($out, $out['status'] === 'approved' ? 'Approved — ID issued.' : 'Sent to approvals.');
@@ -569,12 +571,47 @@ try {
             unset($m['company']);
             Response::success([
                 'member' => $m, 'cards' => $cards, 'passkeys' => $pk, 'whatsapp' => $wa,
+                'portal' => AgentPro::portal($m),
                 'share' => appUrl('c.php?u=' . rawurlencode((string) $m['cardToken'])),
                 'verify' => appUrl('id.php?c=' . rawurlencode((string) $m['cardToken'])),
                 'company' => ['name' => Settings::getString('company_name', APP_NAME), 'upi' => Settings::getString('upi_id', ''),
                               'upiName' => Settings::getString('upi_name', APP_NAME), 'wa' => Settings::bookingWhatsApp()],
                 'csrf' => Security::csrfToken(),
             ]);
+
+        case 'bus_link':
+            // 30 Oct 2026 — "🚌 Start bus location": a signed-in driver / conductor opens the
+            // driver app (driver/) already signed in. The device token goes back in this JSON
+            // (session + CSRF), me.js puts it where the driver app keeps it (same site) —
+            // it never travels in a URL the server or a log could see.
+            Security::requirePost();
+            $admin = ap_me();
+            $id = (int) $admin['id'];
+            Security::requireRateLimit('ap_bus_link', (string) $id, 20, 3600);
+            $m = AgentPro::member($id);
+            if ($m === null || ($m['crewRole'] ?? '') === '') {
+                Response::forbidden('Only a driver or conductor shares the bus location. · बस लोकेसन ड्राइभर / कन्डक्टरले मात्र।');
+            }
+            if (!in_array($m['status'], ['valid', 'expired'], true)) {
+                Response::forbidden('Your card is ' . $m['status'] . ' — call the office. · अफिसलाई फोन गर्नुहोस्।');
+            }
+            require_once INCLUDE_PATH . '/livetrips.php';
+            require_once INCLUDE_PATH . '/driverauth.php';
+            if (!LiveTrips::enabled() || !LiveTrips::available()) {
+                Response::error('The driver app is switched off by the office.', 503);
+            }
+            $link = AgentPro::linkDriver($id, $id, false, false);
+            if ($link['pin'] !== null) {
+                // first time: they also get the PIN for signing in on another phone
+                AgentPro::sendDriverPin($id, $link['pin']);
+            }
+            $prev = (string) Response::field('prev', '');
+            $res = DriverAuth::issue((int) $link['driverId'], 'From /me/ · ' . Security::clean((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 120), $prev);
+            if ($res === null) {
+                Response::error('The driver app account is switched off — call the office.', 409);
+            }
+            Response::success(['token' => $res['token'], 'name' => (string) $res['driver']['full_name'],
+                'role' => (string) $res['driver']['role'], 'app' => '/driver/']);
 
         case 'wallet':
             $admin = ap_me();
