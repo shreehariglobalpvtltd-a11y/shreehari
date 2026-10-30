@@ -63,6 +63,7 @@ if (!in_array($view, ['waiting', 'drafts', 'history'], true)) {
 }
 $flash = null;
 $newLink = null;
+$bulkResults = null;   // per-person results of "Delete ALL archived / disabled" (31 Oct 2026)
 $e = static fn($v): string => Security::e((string) $v);
 $officeUrl = '/join.php?office=1';
 
@@ -157,7 +158,12 @@ $decideDeposit = static function (int $id, string $decision, int $by, string $no
 
 if (!empty($_GET['purged'])) {
     $flash = ['ok', '🗑 Deleted permanently: ' . Security::clean((string) $_GET['purged'], 40) . ' — a backup copy was saved first (backup/team-purge/).'];
+    // 31 Oct 2026: the member page's "Delete with all history" leaves its full result line here (TeamPurge::resultText).
+    if (!empty($_SESSION['tp_purge_result']) && is_string($_SESSION['tp_purge_result'])) {
+        $flash = ['ok', $_SESSION['tp_purge_result']];
+    }
 }
+unset($_SESSION['tp_purge_result']);
 
 if (Security::isPost()) {
     if (!Security::verifyCsrf()) {
@@ -214,6 +220,49 @@ if (Security::isPost()) {
                     $res = TeamPurge::purge('ap', (int) $app['id'], $admin, (string) ($_POST['confirm_delete'] ?? ''), (string) ($_POST['purge_reason'] ?? ''));
                     $flash = ['ok', '🗑 Deleted permanently: ' . $res['ref'] . ' (' . $res['rows'] . ' rows, ' . $res['files'] . ' files). Backup: ' . $res['backup']];
                     break;
+                case 'purge_all':
+                    // 31 Oct 2026: the same panel's red "Delete with all history" form (super-admin, typed DELETE ALL).
+                    $app = AgentPro::application((int) ($_POST['app'] ?? 0));
+                    if ($app === null) { throw new RuntimeException('Application not found.'); }
+                    if ($app['status'] === 'approved') { throw new RuntimeException('This person was approved — open their member page to archive or delete them.'); }
+                    @set_time_limit(300);
+                    $res = TeamPurge::purgeWithHistory('ap', (int) $app['id'], $admin, (string) ($_POST['confirm'] ?? ''),
+                        (string) ($_POST['reason'] ?? ''), (string) ($_POST['tickets'] ?? 'office'));
+                    $flash = ['ok', TeamPurge::resultText($res)];
+                    break;
+                case 'purge_all_bulk':
+                    // 31 Oct 2026 (owner: "disable gareko purano member — sab delete gardeu, dhyan rakha"): every
+                    // archived / disabled member ticked, one by one — each its own transaction and backup, so one
+                    // refusal never stops (or undoes) the others.
+                    if (!$isSuper) { throw new RuntimeException('Only a super-admin can delete permanently · सुपर-एडमिन मात्र।'); }
+                    if (trim((string) ($_POST['confirm'] ?? '')) !== TeamPurge::CONFIRM_ALL) {
+                        throw new RuntimeException('Type DELETE ALL (in capitals) to confirm · पुष्टि गर्न DELETE ALL टाइप गर्नुहोस्।');
+                    }
+                    $pick = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['ids'] ?? [])))));
+                    if ($pick === []) { throw new RuntimeException('Tick at least one member.'); }
+                    $allowed = [];
+                    foreach (TeamPurge::disabledMembers($me) as $dm) { $allowed[$dm['id']] = $dm['name']; }
+                    @set_time_limit(0);
+                    $bulkResults = [];
+                    foreach ($pick as $tid) {
+                        if (!isset($allowed[$tid])) {
+                            $bulkResults[] = ['bad', '#' . $tid, 'Not an archived / disabled member any more — skipped.'];
+                            continue;
+                        }
+                        try {
+                            $res = TeamPurge::purgeWithHistory('admin', $tid, $admin, (string) $_POST['confirm'],
+                                (string) ($_POST['reason'] ?? ''), (string) ($_POST['tickets'] ?? 'office'));
+                            $bulkResults[] = ['ok', $allowed[$tid], TeamPurge::resultText($res)];
+                        } catch (TeamPurgeError $ex) {
+                            $bulkResults[] = ['bad', $allowed[$tid], $ex->getMessage()];
+                        } catch (Throwable $ex) {
+                            Logger::exception($ex);
+                            $bulkResults[] = ['bad', $allowed[$tid], 'Not deleted — a database error (written to the error log); nothing of this person was changed.'];
+                        }
+                    }
+                    $nOk = count(array_filter($bulkResults, static fn(array $r): bool => $r[0] === 'ok'));
+                    $flash = [$nOk === count($bulkResults) ? 'ok' : 'bad', '🗑 ' . $nOk . ' of ' . count($bulkResults) . ' deleted with their history — details below.'];
+                    break;
                 case 'pay':
                     if (!$canPay) { throw new RuntimeException('Your role cannot pay out.'); }
                     $lid = $payWithdrawal((int) $_POST['req'], $me, (string) ($_POST['ref'] ?? ''), (string) ($_POST['note'] ?? ''));
@@ -253,6 +302,15 @@ if (Security::isPost()) {
                     ]);
                     Logger::audit('agentpro.wallet_adjust', 'admin', (string) $aid, null,
                         ['ledger' => $lid, 'account' => $acct, 'direction' => $dir, 'amount' => $amt], 'Manual ' . $dir . ' by admin #' . $me, $why);
+                    // 31 Oct 2026 (owner: "hisab kitab admin le chalaune, agent lai ni thaha hos"): the member
+                    // hears of every office credit / debit. The entry is already written - a WhatsApp failure never undoes it.
+                    try {
+                        AgentPro::tellMember($aid, ($dir === 'credit' ? '➕ ' : '➖ ') . inr($amt) . ' '
+                            . ($acct === 'cash' ? 'नगद (cash held)' : 'कमिसन (commission)') . ' — '
+                            . ($dir === 'credit' ? 'जम्मा · credited' : 'कट्टा · debited') . "\n" . $why . "\n📒 " . appUrl('me/#wallet'));
+                    } catch (Throwable $ex) {
+                        Logger::warning('Wallet adjust notice failed: ' . $ex->getMessage(), [], 'agent');
+                    }
                     $flash = ['ok', '✓ ' . ucfirst($dir) . ' ' . inr($amt) . ' (' . ($acct === 'cash' ? 'cash held' : 'commission due') . ') written for ' . $who['full_name'] . '.'];
                     break;
                 case 'invite':
@@ -412,7 +470,7 @@ $tabLabel = ['approvals' => ['Approvals', $counts['applications']], 'agents' => 
         }
         $byOffice = (string) ($a['wa_verified_via'] ?? '') === 'office' || !empty($a['office_filled_by']);
         ?>
-  <article class="tp-app">
+  <article class="tp-app" id="app-<?= (int) $a['id'] ?>">
     <div class="tp-app-h">
       <b><?= $e($isOrg ? $a['org_name'] : $a['full_name']) ?></b>
       <span class="ref"><?= $e($a['ref']) ?></span>
@@ -542,12 +600,15 @@ $tabLabel = ['approvals' => ['Approvals', $counts['applications']], 'agents' => 
     $nArch = count(array_filter($mine, static fn(array $r): bool => isset($archivedIds[$r['id']])));
     $people = array_values(array_filter($mine, static fn(array $r): bool =>
         ($kycF === '' || $r['kyc'] === $kycF) && ($showArch ? isset($archivedIds[$r['id']]) : !isset($archivedIds[$r['id']]))));
+    // 31 Oct 2026: archived + disabled members a super-admin may delete for good (with their history).
+    $disabled = $isSuper ? TeamPurge::disabledMembers($me) : [];
     ?>
   <div class="tp-bar">
     <input type="search" id="tpq" placeholder="Search name, code, branch…" aria-label="Search">
     <a class="btn ghost sm" href="?tab=<?= $e($tab) ?>">All (<?= count($mine) - $nArch ?>)</a>
     <?php if ($wantAgents): ?><a class="btn ghost sm" href="?tab=agents&amp;kyc=submitted">KYC to check</a><?php endif; ?>
     <?php if ($nArch > 0): ?><a class="btn ghost sm" href="?tab=<?= $e($tab) ?>&amp;archived=1">🗄 Archived (<?= $nArch ?>)</a><?php endif; ?>
+    <?php if ($disabled !== []): ?><a class="btn ghost danger sm" href="?tab=<?= $e($tab) ?>&amp;archived=1#purgeall">🗑 Delete disabled (<?= count($disabled) ?>)</a><?php endif; ?>
     <?php if ($canOffice): ?><a class="btn ok sm" href="<?= $e($officeUrl) ?>">＋ Add <?= $wantAgents ? 'agent' : 'staff' ?></a><?php endif; ?>
   </div>
   <?php if ($people === []) { echo admin_empty('Nobody here yet', $wantAgents ? 'Share /join.php — approved agents appear here.' : 'Add staff with the office form, or invite them from the Invites tab.', '👥'); } ?>
@@ -575,6 +636,65 @@ $tabLabel = ['approvals' => ['Approvals', $counts['applications']], 'agents' => 
     <?php endforeach; ?>
   </div>
   <script>(function(){var q=document.getElementById('tpq');if(!q)return;q.addEventListener('input',function(){var v=q.value.toLowerCase().trim();document.querySelectorAll('#tpList .tp-pw').forEach(function(a){a.style.display=!v||a.dataset.q.indexOf(v)>-1?'':'none';});});})();</script>
+  <?php if ($isSuper && ($showArch || $bulkResults !== null) && ($disabled !== [] || $bulkResults !== null)):
+      /* 31 Oct 2026 (owner: "disable gareko purano member — baki ticket haru ni chhan — sab delete gardeu,
+         dhyan rakha"): every archived / disabled member, deleted for good with their history, one by one. */
+      $prev = [];
+      foreach ($disabled as $dm) {
+          try { $prev[$dm['id']] = TeamPurge::forcePreview('admin', $dm['id']); } catch (Throwable $ex) { $prev[$dm['id']] = ['error' => $ex->getMessage()]; }
+      }
+      $tot = ['b' => 0, 'up' => 0, 'del' => 0, 'money' => 0, 'cust' => 0, 'value' => 0.0];
+      foreach ($prev as $f) {
+          if (isset($f['error'])) { continue; }
+          $tot['b'] += $f['bookings']; $tot['up'] += $f['upcoming']; $tot['del'] += $f['delete']['bookings_deleted'];
+          $tot['money'] += $f['money_rows']; $tot['cust'] += $f['delete']['customers']; $tot['value'] += $f['value'];
+      }
+      ?>
+  <section class="panel" id="purgeall" style="margin-top:14px;border:2px solid #dc2626"><h2 style="color:#b91c1c">🗑 Delete ALL archived / disabled agents permanently · पुराना बन्द सदस्य सबै स्थायी रूपमा मेटाउने</h2><div class="panel-body" style="display:flex;flex-direction:column;gap:12px">
+    <?php if ($bulkResults !== null): ?>
+      <div class="tp-hist" aria-label="Results">
+        <?php foreach ($bulkResults as [$ok, $who, $msg]): ?>
+          <div class="tp-hrow" style="border-color:<?= $ok === 'ok' ? '#86efac' : '#fca5a5' ?>"><span class="tp-chip <?= $e($ok) ?>"><?= $ok === 'ok' ? '✓ Deleted' : '✕ Not deleted' ?></span>
+            <span class="who"><b><?= $e($who) ?></b><small style="white-space:normal;word-break:break-word"><?= $e($msg) ?></small></span></div>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+    <?php if ($disabled === []): ?>
+      <p class="ph-sub" style="margin:0">No archived or disabled members left · कोही बाँकी छैन।</p>
+    <?php else: ?>
+    <p class="ph-sub" style="margin:0">Super-admin only. Each person is deleted on their own (a refusal never stops the others): login, ID card, money account (ledger, settlements, payouts, deposits) and forms go for good.
+      A full backup copy of each is saved on the server first (backup/team-purge/). A join form still waiting for approval is never listed here.
+      Together: <b><?= (int) $tot['b'] ?></b> tickets (<?= $e(inr($tot['value'])) ?> confirmed), <?= (int) $tot['up'] ?> with a trip still to come (always kept), <?= (int) $tot['money'] ?> money rows.</p>
+    <form method="post" style="display:flex;flex-direction:column;gap:12px" autocomplete="off"
+          onsubmit="var c=this.querySelectorAll('input[name=&quot;ids[]&quot;]:checked').length;if(!c){alert('Tick at least one member.');return false;}return confirm('Delete '+c+' member(s) and their history for good? A backup of each is saved first.');">
+      <?= Security::csrfField() ?><input type="hidden" name="action" value="purge_all_bulk">
+      <div class="tp-hist">
+        <?php foreach ($disabled as $dm): $f = $prev[$dm['id']]; ?>
+          <label class="tp-hrow" style="cursor:pointer;align-items:flex-start">
+            <input type="checkbox" name="ids[]" value="<?= (int) $dm['id'] ?>" checked style="width:22px;height:22px;margin-top:2px">
+            <span class="who"><b><?= $e($dm['name']) ?></b> <span class="ap-mono" style="font-size:12px"><?= $e(($f['code'] ?? '') !== '' ? $f['code'] : $dm['username']) ?></span>
+              <span class="tp-chip"><?= $e($dm['role']) ?></span><?= $dm['archived'] ? ' <span class="tp-chip bad">Archived</span>' : '' ?><?= !$dm['active'] ? ' <span class="tp-chip bad">Login off</span>' : '' ?>
+              <?php if (isset($f['error'])): ?><small style="color:#b91c1c"><?= $e($f['error']) ?></small>
+              <?php else: ?><ul style="margin:4px 0 0 18px;padding:0;font-size:12.5px;color:var(--mut,#64748b)"><?= TeamPurge::forceFactsHtml($f) ?></ul><?php endif; ?>
+            </span>
+          </label>
+        <?php endforeach; ?>
+      </div>
+      <fieldset style="border:0;padding:0;margin:0;display:grid;gap:6px"><legend style="font-weight:800;margin-bottom:4px">Their tickets · टिकट</legend>
+        <label style="display:flex;gap:8px;align-items:flex-start;min-height:44px"><input type="radio" name="tickets" value="office" checked style="width:20px;height:20px;margin-top:2px">
+          <span><b>Keep tickets — move them to the office · टिकट अफिसमा सार्ने</b><br><small class="ph-sub">all <?= (int) $tot['b'] ?> stay; the office note on each says who sold it</small></span></label>
+        <label style="display:flex;gap:8px;align-items:flex-start;min-height:44px"><input type="radio" name="tickets" value="delete" style="width:20px;height:20px;margin-top:2px">
+          <span><b>Delete old tickets too (upcoming trips are always kept) · पुराना टिकट पनि मेटाउने</b><br><small class="ph-sub"><?= (int) $tot['del'] ?> deleted; every customer's name + mobile on them (<?= (int) $tot['cust'] ?>) stays in the customer list · ग्राहकको नाम/नम्बर रहन्छ</small></span></label>
+      </fieldset>
+      <label style="display:grid;gap:4px;font-weight:700;font-size:13px">Reason (kept in the audit log) · कारण
+        <input type="text" name="reason" maxlength="300" placeholder="e.g. old agents disabled in the 30 Oct reset" style="min-height:48px;border:1.5px solid #fca5a5;border-radius:10px;padding:0 12px;font:inherit;background:var(--card);color:var(--ink)"></label>
+      <label style="display:grid;gap:4px;font-weight:700;font-size:13px">Type <span style="color:#dc2626">DELETE ALL</span> to confirm · पुष्टि गर्न DELETE ALL लेख्नुहोस्
+        <input type="text" name="confirm" required pattern="DELETE ALL" placeholder="DELETE ALL" autocapitalize="characters" spellcheck="false" style="min-height:48px;border:1.5px solid #fca5a5;border-radius:10px;padding:0 12px;font:inherit;letter-spacing:.08em;background:var(--card);color:var(--ink)"></label>
+      <button type="submit" class="btn danger" style="min-height:52px;background:#b91c1c;color:#fff;border:0;border-radius:12px;font-weight:800">🗑 Delete the ticked members with all history · सबै इतिहास सहित मेटाउनुहोस्</button>
+    </form>
+    <?php endif; ?>
+  </div></section>
+  <?php endif; ?>
   <?php if (!$wantAgents && $canCode):
       // 🪪 an ID card for a login that already exists — e.g. the owner's own super-admin account
       $logins = array_values(array_filter($roster, static fn(array $r): bool => !$r['isAgent'] && ($isSuper || $r['role'] !== 'superadmin')));

@@ -4,6 +4,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
+require_once INCLUDE_PATH . '/staffmsg.php';   // 31 Oct 2026: StaffMsg is no longer loaded by _guard.php (an agent's ticket page was a 500)
 require_once INCLUDE_PATH . '/tripstatus.php';   // edit-window gate for seat changes (5 Sep 2026)
 require_once INCLUDE_PATH . '/passengerdocs.php'; // passenger photo / ID documents (17 Sep 2026)
 require_once INCLUDE_PATH . '/ticketedit.php';    // Quick Edit: fare fix, correction requests, Auto Assign (15 Oct 2026)

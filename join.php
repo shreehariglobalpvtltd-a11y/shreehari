@@ -33,6 +33,15 @@
  *
  * ?as=org|person preselects agent / agency (agreements/apply.html sends it);
  * ?name=&phone=&cc= (an office invitation, admin/team-invite.php) prefill a new form.
+ *
+ * 31 Oct 2026 (owner: "suru mai ID card ya bhareko document upload garne, ekdum fast read garos …
+ * agent staff le fast effectively quick form bharna milos"; "digital signature ni print hos"):
+ *   - a new form opens on UPLOAD FIRST (ID card photos / the filled paper form, or ✍️ fill by hand);
+ *     the steps go on while the reading runs — a chip in the bottom bar (#readChip) shows it
+ *   - the reading order is ap_read_order (fast = cloud first; see includes/agentpro-docs.php)
+ *   - a signature pad on the last step (an extra document "Signature", printed on the filled form)
+ *   - /join.php?office=1&d=<key> of an APPROVED member (admin/team-member.php) = edit mode: every
+ *     change is saved live; the last step is "Save & finish" (no submit)
  */
 declare(strict_types=1);
 define('SHG_APP', true);
@@ -174,6 +183,7 @@ $cfg = [
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" href="/assets/img/favicon-32.png">
 <link rel="stylesheet" href="<?= Security::e($v('ap.css')) ?>">
+<link rel="stylesheet" href="<?= Security::e($v('join.css')) ?>">
 </head>
 <body<?= $office ? ' class="ap-officemode"' : '' ?>>
 <header class="ap-top">
@@ -206,7 +216,9 @@ $cfg = [
   <div class="ap-card" id="booting"><div class="ap-row"><span class="ap-spin" style="border-color:var(--line-2);border-top-color:var(--royal)"></span><span data-t="loading">Loading…</span></div></div>
 </main>
 
-<div class="ap-bar" id="bar" hidden><div class="ap-bar-in">
+<div class="ap-bar" id="bar" hidden>
+  <div class="ap-readchip" id="readChip" role="status" aria-live="polite" hidden><span id="rcT"></span><span id="rcS" aria-hidden="true"></span><span id="rcN"></span></div>
+  <div class="ap-bar-in">
   <button type="button" class="ap-btn ghost" id="back" data-t="back">Back</button>
   <button type="button" class="ap-btn" id="next" data-t="next">Continue</button>
 </div></div>

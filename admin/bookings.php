@@ -118,6 +118,18 @@ if ($scopeId !== null) {
     $where[] = 'b.sold_by_admin_id = :scope';
     $params['scope'] = $scopeId;
 }
+/* 31 Oct 2026 (owner: "aafule kateko ticket"): ?mine=1 = the tickets I cut — sold by me, or cut by me
+   at the counter and credited to an agent code (bookings.booked_by_admin_id). An agent is already scoped. */
+$mineFilter = $scopeId === null && (string) ($_GET['mine'] ?? '') === '1';
+if ($mineFilter) {
+    $meId = (int) ($admin['id'] ?? 0);
+    $where[] = CounterDesk::hasColumn('bookings', 'booked_by_admin_id')
+        ? '(b.sold_by_admin_id = :mineId OR b.booked_by_admin_id = :mineId2)' : 'b.sold_by_admin_id = :mineId';
+    $params['mineId'] = $meId;
+    if (CounterDesk::hasColumn('bookings', 'booked_by_admin_id')) {
+        $params['mineId2'] = $meId;
+    }
+}
 if ($q !== '') {
     // Global search: PNR, ticket number, phone, email, and — via subqueries so
     // a booking is never multiplied by its seats/passengers — passenger name,
@@ -404,6 +416,7 @@ $exportBase = array_filter([
     'travel_to'   => $isDate($travelTo) ? $travelTo : '',
     'source'      => $sourceFilter,
     'agent'       => ($scopeId === null) ? $agentFilter : '',
+    'mine'        => $mineFilter ? '1' : '',   // export.php reads the same flag (shg_booking_column_filters)
     'bus'         => $busFilter,
     'pay_status'  => in_array($payStatusFilter, $validPayStatus, true) ? $payStatusFilter : '',
     'pay_method'  => in_array($payMethodFilter, $validPayMethod, true) ? $payMethodFilter : '',
@@ -510,6 +523,12 @@ $canEdit   = Auth::can('bookings.edit');
             <option value="<?= (int) $ag['id'] ?>" <?= $agentFilter === (string) $ag['id'] ? 'selected' : '' ?>><?= Security::e($label) ?></option>
           <?php endforeach; ?>
         </select>
+      </div>
+      <?php endif; ?>
+      <?php if ($scopeId === null): ?>
+      <div class="filter-group">
+        <span class="flbl">Whose</span>
+        <label style="display:flex;align-items:center;gap:6px;min-height:40px;font-weight:600"><input type="checkbox" name="mine" value="1"<?= $mineFilter ? ' checked' : '' ?> onchange="this.form.submit()"> 🙋 मैले काटेको · Cut by me</label>
       </div>
       <?php endif; ?>
       <div class="filter-group">

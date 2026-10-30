@@ -16,7 +16,7 @@
       sendCode: 'Send code on WhatsApp', otp: 'Code from WhatsApp', verify: 'Sign in', fp: 'Sign in with fingerprint / face', staff: 'Office staff sign in', apply: 'Not an agent yet? Apply',
       t_id: 'ID', t_card: 'Card', t_wallet: 'Wallet', t_docs: 'Docs', t_me: 'Profile',
       tapFlip: 'Tap the card to see the back', download: 'Download', print: 'Print', share: 'Share', verifyLink: 'Verify link', copy: 'Copy link', copied: 'Copied',
-      myForm: 'मेरो फारम · My form (PDF)', myFormLead: 'The application form you filled — A4, 2 pages, with your photo and code.',
+      allCards: 'All cards (PDF)', allDocs: 'All my documents', docKind: 'What is it?', pickFile: 'Upload from phone', camera: 'Camera', docAddLead: 'Pick a photo or PDF from the phone, or take one with the camera — it is added to your form and the office sees it.', myForm: 'मेरो फारम · My form (PDF)', myFormLead: 'The application form you filled — A4, 2 pages, with your photo and code.',
       valid: 'Valid', suspended: 'Suspended', expired: 'Expired', revoked: 'Revoked', inactive: 'Not active', validTill: 'Valid till {d}',
       vcLead: 'Scanning the QR opens a WhatsApp chat with this number.', waOnCard: 'WhatsApp number printed on the card', otherPhone: 'Second phone (optional)', tagline: 'Line under the company name',
       greeting: 'Message ready when someone scans', greetingHint: 'Keep it short (about 3 words) — a long message is left off the printed QR so it still scans.', theme: 'Style', royal: 'Royal', gold: 'Gold', night: 'Night', save: 'Save', saved: 'Saved — your cards are updated', shareWa: 'Share on WhatsApp',
@@ -36,7 +36,7 @@
       sendCode: 'WhatsApp मा कोड पठाउनुहोस्', otp: 'WhatsApp मा आएको कोड', verify: 'लगइन गर्नुहोस्', fp: 'औंठा / अनुहारले लगइन', staff: 'अफिस स्टाफ लगइन', apply: 'एजेन्ट बन्न आवेदन',
       t_id: 'ID', t_card: 'कार्ड', t_wallet: 'वालेट', t_docs: 'कागजात', t_me: 'प्रोफाइल',
       tapFlip: 'पछाडि हेर्न कार्डमा थिच्नुहोस्', download: 'डाउनलोड', print: 'प्रिन्ट', share: 'सेयर', verifyLink: 'प्रमाणित लिंक', copy: 'लिंक कपी', copied: 'कपी भयो',
-      myForm: 'मेरो फारम · My form (PDF)', myFormLead: 'तपाईंले भरेको आवेदन फारम — A4, २ पाना, फोटो र कोडसहित।',
+      allCards: 'सबै कार्ड (PDF)', allDocs: 'मेरा सबै कागजात', docKind: 'कुन कागजात?', pickFile: 'फोनबाट अपलोड', camera: 'क्यामेरा', docAddLead: 'फोनको फोटो वा PDF छान्नुहोस्, वा क्यामेराले खिच्नुहोस् — तपाईंको फारममा जोडिन्छ र अफिसले देख्छ।', myForm: 'मेरो फारम · My form (PDF)', myFormLead: 'तपाईंले भरेको आवेदन फारम — A4, २ पाना, फोटो र कोडसहित।',
       valid: 'मान्य', suspended: 'रोकिएको', expired: 'म्याद सकियो', revoked: 'रद्द', inactive: 'सक्रिय छैन', validTill: '{d} सम्म मान्य',
       vcLead: 'QR स्क्यान गर्दा यही नम्बरमा सिधै WhatsApp खुल्छ।', waOnCard: 'कार्डमा छापिने WhatsApp नम्बर', otherPhone: 'अर्को फोन (ऐच्छिक)', tagline: 'कम्पनीको नामतलको लाइन',
       greeting: 'स्क्यान गर्दा तयार हुने सन्देश', greetingHint: 'छोटो राख्नुहोस् (३ शब्द जति) — लामो सन्देश छापिएको QR मा राखिँदैन, ताकि QR सजिलै स्क्यान होस्।', theme: 'शैली', royal: 'शाही', gold: 'सुनौलो', night: 'रात', save: 'सेभ', saved: 'सेभ भयो — कार्ड अपडेट भयो', shareWa: 'WhatsApp मा सेयर',
@@ -56,7 +56,7 @@
       sendCode: 'WhatsApp पर कोड भेजें', otp: 'WhatsApp पर आया कोड', verify: 'लॉगिन करें', fp: 'अंगूठे / चेहरे से लॉगिन', staff: 'ऑफिस स्टाफ लॉगिन', apply: 'एजेंट बनने के लिए आवेदन',
       t_id: 'ID', t_card: 'कार्ड', t_wallet: 'वॉलेट', t_docs: 'दस्तावेज़', t_me: 'प्रोफ़ाइल',
       tapFlip: 'पीछे देखने के लिए कार्ड दबाएँ', download: 'डाउनलोड', print: 'प्रिंट', share: 'शेयर', verifyLink: 'सत्यापन लिंक', copy: 'लिंक कॉपी', copied: 'कॉपी हुआ',
-      myForm: 'मेरा फ़ॉर्म · My form (PDF)', myFormLead: 'आपका भरा हुआ आवेदन फ़ॉर्म — A4, 2 पेज, फ़ोटो और कोड के साथ।',
+      allCards: 'सभी कार्ड (PDF)', allDocs: 'मेरे सभी दस्तावेज़', docKind: 'कौन सा दस्तावेज़?', pickFile: 'फ़ोन से अपलोड', camera: 'कैमरा', docAddLead: 'फ़ोन से फ़ोटो या PDF चुनें, या कैमरे से खींचें — यह आपके फ़ॉर्म में जुड़ता है और ऑफिस देखता है।', myForm: 'मेरा फ़ॉर्म · My form (PDF)', myFormLead: 'आपका भरा हुआ आवेदन फ़ॉर्म — A4, 2 पेज, फ़ोटो और कोड के साथ।',
       valid: 'मान्य', suspended: 'रोका गया', expired: 'समाप्त', revoked: 'रद्द', inactive: 'सक्रिय नहीं', validTill: '{d} तक मान्य',
       vcLead: 'QR स्कैन करते ही इसी नंबर पर WhatsApp खुलता है।', waOnCard: 'कार्ड पर छपने वाला WhatsApp नंबर', otherPhone: 'दूसरा फ़ोन (वैकल्पिक)', tagline: 'कंपनी के नाम के नीचे की लाइन',
       greeting: 'स्कैन पर तैयार संदेश', greetingHint: 'छोटा रखें (लगभग 3 शब्द) — लंबा संदेश छपे QR में नहीं जाता, ताकि QR आसानी से स्कैन हो।', theme: 'शैली', royal: 'शाही', gold: 'सुनहरा', night: 'रात', save: 'सेव', saved: 'सेव हुआ — कार्ड अपडेट हुआ', shareWa: 'WhatsApp पर शेयर',
@@ -238,6 +238,8 @@
       + '<a class="ap-btn ghost sm" href="' + esc(c['id-back']) + '&dl=1">⬇ ' + esc(t('download')) + ' (2)</a>'
       + '<a class="ap-btn ghost sm" href="/me/print.php" target="_blank" rel="noopener">🖨 ' + esc(t('print')) + '</a>'
       + '<button type="button" class="ap-btn ghost sm" data-copy="' + esc(S.me.verify) + '">🔗 ' + esc(t('verifyLink')) + '</button></div>'
+      /* 31 Oct 2026 (owner: "afno portal kholera agent staff le sabai chhapauna milos"): every card in one PDF */
+      + '<div class="ap-actions"><a class="ap-btn sm" href="/api/agentpro-card.php?pdf=1" target="_blank" rel="noopener">⬇ ' + esc(t('allCards')) + '</a></div>'
       + myFormBtn() + '</section>'
       + quickNav();
   }
@@ -274,8 +276,11 @@
         + '<button type="button" class="ap-btn sm" data-go="work">' + esc(t('t_work')) + ' →</button></div>' + toolList() + '</section>';
     }
     var b = S.wallet ? S.wallet.balances : { commission: 0, cash: 0 };
+    /* 31 Oct 2026 (owner: "counter mode bata ticket katna, chalani, ticket management, seat shift"): an
+       agent's counter tools sit under the wallet too — before this only staff without a wallet saw them. */
     return '<section class="ap-card"><div class="ap-row" style="justify-content:space-between"><div><div class="ap-caps">' + esc(t('available')) + '</div><div style="font-size:26px;font-weight:700">' + money(b.commission) + '</div></div>'
-      + '<button type="button" class="ap-btn sm" data-go="wallet">' + esc(t('t_wallet')) + ' →</button></div></section>';
+      + '<button type="button" class="ap-btn sm" data-go="wallet">' + esc(t('t_wallet')) + ' →</button></div></section>'
+      + ((portal().tools || []).length ? '<section class="ap-card"><h3 style="margin:0 0 8px">' + esc(t('work')) + '</h3>' + toolList() + '</section>' : '');
   }
 
   /* ---- Visiting card ---- */
@@ -287,6 +292,7 @@
       + '<div class="ap-vc" style="margin-top:12px"><img alt="Visiting card back" src="' + esc(c['vc-back'] + v) + '" width="889" height="508"></div>'
       + '<div class="ap-actions"><button type="button" class="ap-btn wa sm" id="shareVc">💬 ' + esc(t('shareWa')) + '</button>'
       + '<a class="ap-btn ghost sm" href="' + esc(c['vc-front']) + '&dl=1">⬇ ' + esc(t('download')) + '</a>'
+      + '<a class="ap-btn ghost sm" href="' + esc(c['vc-back']) + '&dl=1">⬇ ' + esc(t('download')) + ' (2)</a>'
       + '<a class="ap-btn ghost sm" href="/me/print.php?only=vc" target="_blank" rel="noopener">🖨 ' + esc(t('print')) + '</a>'
       + '<button type="button" class="ap-btn ghost sm" data-copy="' + esc(S.me.share) + '">🔗 ' + esc(t('copy')) + '</button></div></section>'
       + '<section class="ap-card"><form id="vcForm"><label class="ap-field"><span>' + esc(t('waOnCard')) + '</span><input class="ap-in" name="vc_whatsapp" type="tel" value="' + esc(m.waDisplay) + '" placeholder="+91 98765 43210"></label>'
@@ -386,11 +392,43 @@
     var m = S.me.member;
     var doc = function (slot, label, has) {
       return '<li><span class="ic q ' + (has ? 'green' : 'gold') + '">' + (has ? '✓' : '＋') + '</span><span class="t"><b>' + esc(label) + '</b><small>' + esc(has ? m.idType + ' ' + (m.idMasked || '') : t('none')) + '</small></span>'
-        + (has ? '<a class="ap-btn ghost sm" href="/admin/agent-kyc-file.php?agent=' + m.id + '&slot=' + slot + '" target="_blank" rel="noopener">' + esc(t('open')) + '</a>' : '')
+        + (has ? '<a class="ap-btn ghost sm" href="/me/doc.php?k=kyc' + slot + '" target="_blank" rel="noopener">' + esc(t('open')) + '</a>' : '')
         + '<label class="ap-btn ghost sm" style="position:relative;margin-left:6px">' + esc(has ? t('replace') : t('addFile')) + '<input type="file" accept="image/*,application/pdf" data-kyc="' + slot + '" style="position:absolute;inset:0;opacity:0"></label></li>';
     };
     return '<section class="ap-card"><div class="ap-row" style="justify-content:space-between"><h2>' + esc(t('docs')) + '</h2><span class="ap-status ' + (m.kycStatus === 'verified' ? 'valid' : (m.kycStatus === 'rejected' ? 'revoked' : 'expired')) + '">' + esc(t('kyc')) + ': ' + esc(m.kycStatus) + '</span></div>'
-      + '<ul class="ap-pass">' + doc(1, t('docFront'), m.hasDoc1) + doc(2, t('docBack'), m.hasDoc2) + '</ul>' + myFormBtn() + '</section>';
+      + '<ul class="ap-pass">' + doc(1, t('docFront'), m.hasDoc1) + doc(2, t('docBack'), m.hasDoc2) + '</ul>' + myFormBtn() + '</section>'
+      /* 31 Oct 2026 (owner: "documents haru pani herne, upload garne option chhaina"): every file of
+         theirs (form photos, signature, paper pages, extras) — open any, add more (me/doc.php) */
+      + '<section class="ap-card"><h2>' + esc(t('allDocs')) + '</h2><ul class="ap-pass" id="docList"><li><span class="t"><small>' + esc(t('loading')) + '</small></span></li></ul>'
+      + '<form id="docAdd" style="margin-top:12px"><label class="ap-field"><span>' + esc(t('docKind')) + '</span><select class="ap-in" name="label" id="docLabel"></select></label>'
+      + '<div class="ap-actions"><label class="ap-btn sm" style="position:relative">🖼 ' + esc(t('pickFile')) + '<input type="file" name="file" accept="image/*,application/pdf" style="position:absolute;inset:0;opacity:0"></label>'
+      + '<label class="ap-btn ghost sm" style="position:relative">📸 ' + esc(t('camera')) + '<input type="file" name="file" accept="image/*" capture="environment" style="position:absolute;inset:0;opacity:0"></label></div>'
+      + '<p class="ap-hint">' + esc(t('docAddLead')) + '</p></form></section>';
+  }
+  function docsBind() {
+    var list = $('#docList'), form = $('#docAdd');
+    if (!list || !form) return;
+    var paint = function (docs) {
+      list.innerHTML = docs.length ? docs.map(function (d) {
+        return '<li><span class="ic q green">✓</span><span class="t"><b>' + esc(d.label) + '</b></span><a class="ap-btn ghost sm" href="/me/doc.php?k=' + encodeURIComponent(d.key) + '" target="_blank" rel="noopener">' + esc(t('open')) + '</a></li>';
+      }).join('') : '<li><span class="t"><small>' + esc(t('none')) + '</small></span></li>';
+    };
+    fetch('/me/doc.php?list=1', { credentials: 'same-origin', headers: { Accept: 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || !j.ok) { paint([]); return; }
+      paint(j.docs || []);
+      $('#docLabel').innerHTML = (j.labels || []).map(function (l) { return '<option>' + esc(l) + '</option>'; }).join('');
+    }).catch(function () { paint([]); });
+    $$('input[type=file]', form).forEach(function (inp) { inp.addEventListener('change', function () {
+      if (!inp.files[0]) return;
+      var fd = new FormData(); fd.append('file', inp.files[0]); fd.append('label', $('#docLabel').value || '');
+      toast(t('loading'));
+      fetch('/me/doc.php', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': C.csrf, Accept: 'application/json' }, body: fd })
+        .then(function (r) { return r.json(); }).then(function (j) {
+          inp.value = '';
+          if (j && j.ok) { toast('✓ ' + (j.message || t('saved'))); paint((j.data && j.data.docs) || j.docs || []); }
+          else toast((j && (j.error || j.message)) || t('net'), true);
+        }).catch(function () { toast(t('net'), true); });
+    }); });
   }
 
   /* ---- Profile ---- */
@@ -401,7 +439,10 @@
     var bloods = ['', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(function (b) { return '<option' + (m.bloodGroup === b ? ' selected' : '') + '>' + b + '</option>'; }).join('');
     return '<section class="ap-card"><h3>' + esc(t('photo')) + '</h3><div class="ap-row" style="gap:16px"><div style="width:96px;height:116px;border-radius:14px;overflow:hidden;border:2px solid var(--gold);background:var(--soft);flex:0 0 auto">'
       + (m.photoUrl ? '<img alt="" src="' + esc(m.photoUrl) + '" style="width:100%;height:100%;object-fit:cover">' : '') + '</div>'
-      + '<div><p class="lead" style="margin:0 0 10px">' + esc(t('photoLead')) + '</p><label class="ap-btn sm" style="position:relative">📸 ' + esc(t('changePhoto')) + '<input type="file" accept="image/*" capture="user" id="newPhoto" style="position:absolute;inset:0;opacity:0"></label></div></div></section>'
+      /* 31 Oct 2026 (owner: "photo khichne matra option chha, upload garne option chhaina"): camera OR a photo from the gallery */
+      + '<div><p class="lead" style="margin:0 0 10px">' + esc(t('photoLead')) + '</p><div class="ap-actions" style="margin:0">'
+      + '<label class="ap-btn sm" style="position:relative">📸 ' + esc(t('camera')) + '<input type="file" accept="image/*" capture="user" class="newPhoto" style="position:absolute;inset:0;opacity:0"></label>'
+      + '<label class="ap-btn ghost sm" style="position:relative">🖼 ' + esc(t('pickFile')) + '<input type="file" accept="image/*" class="newPhoto" style="position:absolute;inset:0;opacity:0"></label></div></div></div></section>'
       + '<section class="ap-card"><h3>' + esc(t('details')) + '</h3><dl class="ap-review"><dt>ID</dt><dd class="ap-mono">' + esc(m.idNo || '—') + '</dd><dt>' + esc(t('mobile')) + '</dt><dd>' + esc(m.callDisplay || m.phone) + '</dd><dt>Branch</dt><dd>' + esc(m.branch || '—') + '</dd></dl>'
       + '<form id="pForm" style="margin-top:14px"><div class="ap-grid2"><label class="ap-field"><span>' + esc(t('dob')) + '</span><input class="ap-in" type="date" name="dob" value="' + esc(m.dob) + '"></label>'
       + '<label class="ap-field"><span>' + esc(t('blood')) + '</span><select class="ap-sel" name="blood_group">' + bloods + '</select></label></div>'
@@ -440,10 +481,11 @@
     }
     var pf = $('#pForm'); if (pf) pf.addEventListener('submit', function (e) { e.preventDefault(); var b = $('button[type=submit]', pf); busy(b, true); api('profile_save', formObj(pf)).then(function (r) { busy(b, false); r.ok ? (toast('✓ ' + t('saved')), load()) : toast(r.error, true); }); });
     var bf = $('#bForm'); if (bf) bf.addEventListener('submit', function (e) { e.preventDefault(); var b = $('button[type=submit]', bf), o = formObj(bf); if (!o.bank_account) delete o.bank_account; busy(b, true); api('bank_save', o).then(function (r) { busy(b, false); r.ok ? (toast('✓ ' + (r.message || t('saved'))), load()) : toast(r.error, true); }); });
-    var np = $('#newPhoto'); if (np) np.addEventListener('change', function () {
+    $$('.newPhoto').forEach(function (np) { np.addEventListener('change', function () {
       if (!np.files[0]) return; var fd = new FormData(); fd.append('file', np.files[0]);
       toast(t('loading')); api('photo', fd, true).then(function (r) { r.ok ? (toast('✓ ' + (r.message || t('saved'))), load()) : toast(r.error, true); });
-    });
+    }); });
+    docsBind();
     $$('[data-kyc]').forEach(function (inp) { inp.addEventListener('change', function () {
       if (!inp.files[0]) return; var fd = new FormData(); fd.append('file', inp.files[0]); fd.append('slot', inp.dataset.kyc);
       api('kyc_upload', fd, true).then(function (r) { r.ok ? (toast('✓ ' + (r.message || t('saved'))), load()) : toast(r.error, true); });

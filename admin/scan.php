@@ -33,6 +33,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
+require_once INCLUDE_PATH . '/staffmsg.php';   // 31 Oct 2026: StaffMsg is no longer loaded by _guard.php (an agent's ticket page was a 500)
 require_once INCLUDE_PATH . '/paymentrisk.php';
 require_once INCLUDE_PATH . '/adminalerts.php';
 $admin = admin_boot('tickets.scan');

@@ -9,7 +9,8 @@
  *  /join.php?d=<key>, so it opens on another phone too):
  *    start · get · save (lenient=1: skip a bad field, say which) · otp_send
  *    otp_verify · reverse · reverse_status
- *    upload (front|back|selfie|thumb|extra, + qr text) · read_status
+ *    upload (front|back|selfie|thumb|extra, + qr text; 31 Oct 2026: the join form's signature pad sends
+ *      an extra labelled "Signature") · read_status (the background AI read: ai fields, conf, reader, waiting)
  *    scan_form (the hand-filled paper form: pages[] JPEG data URIs → ApFormRead;
  *      under PHP-FPM it answers status "queued" + job at once and reads after the
  *      connection closed) · scan_status (job → still "queued", or the result once)
@@ -406,9 +407,12 @@ try {
                     ? ApDocRead::merge($qr !== '' && ($q = ApDocRead::parseQr($qr)) !== null ? [['src' => 'qr', 'fields' => $q]] : [])
                     : ApDocRead::read($saved['abs'], $type, $slot, $qr);
                 AgentPro::noteReadout((string) $d['draft_key'], $slot, $read);
-                // The vision model reads in the background; the form asks again in a while.
+                // The AI reads in the background (cron/agentpro-worker.php → ApDocRead::readAi, in the
+                // ap_read_order order); the form asks again in a moment. 31 Oct 2026: queued whenever ANY AI
+                // reader can run (the VPS model's own ap_ai_docs switch, or Gemini) — it used to need the
+                // WhatsApp AI switch (ap_ai_on) as well, so with WhatsApp AI off no ID was ever read by AI.
                 require_once INCLUDE_PATH . '/agentpro-ai.php';
-                if ($saved['mime'] !== 'application/pdf' && ApAi::enabled()) {
+                if ($saved['mime'] !== 'application/pdf' && ApDocRead::aiReady()) {
                     Database::insert('ap_jobs', ['phone' => 'form', 'kind' => 'doc', 'text' => json_encode([
                         'key' => $d['draft_key'], 'path' => $saved['path'], 'type' => $type, 'side' => $slot,
                     ])]);
@@ -512,14 +516,25 @@ try {
             $d = ap_draft();
             $all = jsonColumn($d['readout'] ?? null);
             $ai = [];
+            $conf = [];
+            $readers = [];
             foreach (['ai_front', 'ai_back'] as $k) {
                 foreach ((array) ($all[$k]['fields'] ?? []) as $f => $v) {
-                    $ai[$f] = $ai[$f] ?? $v;
+                    if (!isset($ai[$f])) {
+                        $ai[$f] = $v;
+                        $c = (string) (((array) ($all[$k]['confidence'] ?? []))[$f] ?? '');
+                        if (in_array($c, ['high', 'medium', 'low'], true)) {
+                            $conf[$f] = $c;   // 31 Oct 2026: a 'low' field shows red ("AI not sure — check")
+                        }
+                    }
+                }
+                if (!empty($all[$k]['reader'])) {
+                    $readers[] = (string) $all[$k]['reader'];
                 }
             }
             $waiting = (int) Database::scalar("SELECT COUNT(*) FROM ap_jobs WHERE kind = 'doc' AND status IN ('queued','running') AND text LIKE :k",
                 ['k' => '%' . $d['draft_key'] . '%'], 0);
-            Response::success(['ai' => $ai, 'waiting' => $waiting > 0]);
+            Response::success(['ai' => $ai, 'conf' => (object) $conf, 'reader' => implode(',', array_unique($readers)), 'waiting' => $waiting > 0]);
 
         case 'drop_extra':
             Security::requirePost();
@@ -547,7 +562,7 @@ try {
             // a mobile already in use: submit() throws ApPhoneTaken → 409 with the owners (catch below)
             $app = AgentPro::submit((string) $d['draft_key'], true, (int) $off['id'], ap_share());
             $adminId = (int) ($app['admin_id'] ?? 0);
-            $out = ['ref' => (string) $app['ref'], 'status' => (string) $app['status'], 'admin_id' => $adminId, 'code' => '',
+            $out = ['ref' => (string) $app['ref'], 'status' => (string) $app['status'], 'admin_id' => $adminId, 'code' => '', 'app_id' => (int) $app['id'],
                     'member_url' => $adminId > 0 ? '/admin/team-member.php?id=' . $adminId : null,
                     'form_url' => '/admin/team-form.php?app=' . (int) $app['id']];
             $senior = ($app['kind'] ?? '') === 'staff' && in_array((string) ($app['role_wanted'] ?? ''), AgentPro::OFFICE_SENIOR_ROLES, true);

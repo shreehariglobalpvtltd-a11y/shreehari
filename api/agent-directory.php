@@ -16,12 +16,20 @@
  * two positive badges. Built key by key in AgentApplications::directory()
  * and again below, so a new column can never leak by accident.
  *
- * Identical for every visitor, so it may be cached for 5 minutes.
+ * 31 Oct 2026: AgentPro agents and agencies on the website (ApWeb::directory -
+ * approved / KYC verified, with a photo; the visiting-card number, the branch,
+ * the /api/ap-photo.php face; addr and logo stay empty) come first, then the
+ * list above without anyone already there (ApWeb::merge: same last 10 phone
+ * digits or same name). An AgentPro failure only drops the AgentPro part.
+ *
+ * Identical for every visitor, so it may be cached for 2 minutes (a new
+ * approval shows soon).
  */
 
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 require_once INCLUDE_PATH . '/agentapplications.php';
+require_once INCLUDE_PATH . '/agentpro-web.php';
 
 try {
     if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
@@ -29,8 +37,16 @@ try {
     }
     Security::requireRateLimit('agent_directory', Security::clientIp(), 60, 60);
 
+    $rows = AgentApplications::directory();
+    try {
+        $rows = ApWeb::merge(ApWeb::directory(), $rows);
+    } catch (Throwable $e) {
+        Logger::warning('Agent directory (AgentPro): ' . $e->getMessage());
+    }
+
+    // Both lists go through the same key-by-key builder.
     $items = [];
-    foreach (AgentApplications::directory() as $r) {
+    foreach ($rows as $r) {
         $items[] = [
             'name'     => (string) $r['name'],
             'kind'     => $r['kind'] === 'partner' ? 'partner' : 'agent',
@@ -49,7 +65,7 @@ try {
         ];
     }
 
-    Response::$publicCacheSeconds = 300;
+    Response::$publicCacheSeconds = 120;
     Response::json(['ok' => true, 'count' => count($items), 'items' => $items]);
 } catch (Throwable $e) {
     Response::serverError($e);

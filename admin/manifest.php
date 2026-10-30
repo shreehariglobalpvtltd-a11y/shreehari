@@ -316,8 +316,13 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     }
     /* 17 Sep 2026: an agent login sees only its own sales, so a chalani
        drawn from its rows would be an official sheet missing half the bus.
-       Same refusal challan.php and the PNG picker already made. */
-    if ($scopeId !== null) {
+       31 Oct 2026 (owner: "agent, staff counter mode bata ... chalani herna
+       milos"): the agent gets an AGENT COPY instead — the same sheet, only
+       the passengers it sold, its number ending -A<code> and the page saying
+       so, never mistaken for the office's whole-bus chalani. Setting
+       agent_chalani_on (default on) brings back the old refusal. */
+    $agentCopy = $scopeId !== null;
+    if ($agentCopy && !Settings::getBool('agent_chalani_on', true)) {
         http_response_code(403);
         header('Content-Type: text/plain; charset=utf-8');
         exit('The chalani lists every seat on the bus. An agent login sees only its own sales — use My Passengers.');
@@ -326,6 +331,9 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     // Same number the challan picture prints: an extra bus carries its slot.
     $chalaniNo = 'CH-' . str_replace('-', '', $date) . '-' . strtoupper((string) $trip['route_code'])
                . ((int) ($trip['slot'] ?? 1) > 1 ? '-' . (int) $trip['slot'] : '');
+    if ($agentCopy) {
+        $chalaniNo .= '-A' . (AgentWallet::agentCodeFor((int) $scopeId) ?? (int) $scopeId);
+    }
     $collected = 0.0;
     $methods   = [];
     $seen      = [];
@@ -505,12 +513,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
      *  session is scoped precisely so it reads only its own sales.
      * ================================================================= */
     if ($format === 'chalanipng') {
-        if ($scopeId !== null) {
-            http_response_code(403);
-            header('Content-Type: text/plain; charset=utf-8');
-            exit('The chalani lists every seat on the bus. An agent login sees only its own sales — use My Passengers.');
-        }
-        require_once INCLUDE_PATH . '/chalanipng.php';
+        require_once INCLUDE_PATH . '/chalanipng.php';   // an agent: its AGENT COPY (see above)
 
         $pageCount = ChalaniPng::pageCount($rows);
         $wanted    = (int) ($_GET['page'] ?? 0);
@@ -645,6 +648,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   </div>
   <div class="sh">
     <h2>बस चलानी · यात्रु विवरण</h2>
+    <?php if ($agentCopy): ?><div class="kv" style="color:#b45309;font-weight:800">एजेन्ट प्रति · AGENT COPY — <?= $e((string) ($admin['full_name'] ?? '')) ?> का यात्रु मात्र</div><?php endif; ?>
     <div class="rt">गुजरात ⇄ रुपैडिहा · <?= $e($coachNe((string) $trip['coach_type'])) ?></div>
     <div class="kv">चलानी नं. : <span><?= $e($chalaniNo) ?></span></div>
     <div class="kv">मिति : <span><?= $e($neDate($date)) ?></span></div>

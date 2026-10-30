@@ -331,8 +331,11 @@ final class Auth
      * FIELD roles are listed: every office role keeps its permission
      * (bookings.edit / payments.verify) exactly as before.
      */
+    /* 31 Oct 2026 (owner: "aafule kateko ticket ko seat haru shift garna milos"): an agent moves the
+       seat and the pickup of ITS OWN tickets too (mayEditField pins it to sold_by = me, the seat map
+       Transfer already allowed it) — Seats::transferSeat checks the seat is free and redraws the ticket. */
     public const TICKET_EDIT_DEFAULTS = [
-        'agent'   => ['name' => true, 'phone' => true, 'pickup' => false],
+        'agent'   => ['name' => true, 'phone' => true, 'pickup' => true, 'seat' => true],
         'counter' => ['name' => true, 'phone' => true, 'pickup' => true, 'seat' => true, 'payment' => true],
     ];
 

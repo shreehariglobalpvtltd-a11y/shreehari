@@ -14,6 +14,28 @@
      * OFFICE MODE (C.officeMode, join.php?office=1): role picker, only
        name + mobile + ID number + photo required, WhatsApp check may be
        skipped with a reason, "Approve now" issues the login + code
+
+   31 Oct 2026 (owner: "suru mai ID card ya bhareko document upload garne,
+   ekdum fast read garos … part part ma pahila one page bharos … checking
+   agadi" and "digital signature ni print hos"):
+     * UPLOAD FIRST: a new form opens on "📷 ID card / 📄 filled form —
+       upload, we fill it" (or ✍️ fill by hand); the person goes on to
+       step 1 at once while the reading runs in the background
+     * a sticky chip in the bottom bar ("📖 Reading… 12 s · 5 fields
+       filled" → "✓ 9 fields filled — please check") on every step
+     * results fill EMPTY boxes one by one (120 ms apart, amber), in place
+       — no re-render, so nothing typed or focused is lost; a typed box is
+       never overwritten (applyRead ranking, applyPaper empty-only)
+     * read_status is asked every 1.5 s at first, then less often, on
+       every step (the server order is ap_read_order: fast = cloud first)
+     * ✍️ signature pad before Send → a PNG extra labelled "Signature"
+       (the filled form prints it in the signature box); a new one
+       replaces the old; optional for the office, asked once for self-fill
+     * the review ("checking") groups the values by step, Edit per group
+     * office: a sent (not approved) form shows "✅ Approve now & send cards"
+     * EDIT MODE (office + an APPROVED member, join.php?office=1&d=<key>):
+       every change is saved live to the account; the role stays; the
+       last step is "💾 Save & finish" → back to the member page
    ===================================================================== */
 (function () {
   'use strict';
@@ -50,7 +72,7 @@
       selfieBtn: 'Live selfie', selfieSub: 'Camera opens here', passportBtn: 'Upload passport photo', passportSub: 'From gallery or files', photoOr: 'Either one is enough.',
       lookCam: 'Fit your face in the oval', tooDark: 'Too dark — move to the light', camNo: 'Camera not available — upload a photo instead.', cardPreview: 'Your ID card will look like this',
       thumb: 'Thumb print', thumbLead: 'Optional. Press your right thumb on an ink pad and then on white paper — or photograph the thumb close up. We turn it into a black & white print.',
-      thumbCam: 'Take photo', thumbFile: 'Choose photo', thumbUse: 'Use this', thumbRetake: 'Retake', thumbSaved: 'Thumb print saved', thumbWeak: 'Lines are faint — try closer in good light (you can still use it).', thumbSkipped: 'Skipped', thumbAdd: 'Add thumb print', thumbWorking: 'Making the print…',
+      thumbCam: 'Take photo', thumbFile: 'Upload from phone', thumbUse: 'Use this', thumbRetake: 'Retake', thumbSaved: 'Thumb print saved', thumbWeak: 'Lines are faint — try closer in good light (you can still use it).', thumbSkipped: 'Skipped', thumbAdd: 'Add thumb print', thumbWorking: 'Making the print…',
       bank_q: 'Where should we pay your commission?', bank_lead: 'Optional — you can add this later in your account.', upi: 'UPI ID', holder: 'Account holder', account: 'Account number', ifsc: 'IFSC code', bankName: 'Bank name', branch: 'Branch',
       esewa: 'eSewa ID', khalti: 'Khalti ID', bankIn: 'India', bankNp: 'Nepal',
       finish_q: 'Almost done', extras: 'More documents', extrasLead: 'PAN, address proof, shop licence… (optional)', addDoc: 'Add a document', docLabel: 'What is it?',
@@ -75,7 +97,18 @@
       o_saw: 'I saw the original ID (KYC verified)', o_approve: 'Approve now — issue the login and ID code', o_consent: 'The applicant agreed to the terms (signed the paper form or said yes).',
       o_send_ok: 'Approve & issue ID', o_done_t: 'Approved — ID issued', o_done_sent: 'Sent to approvals', o_code: 'ID / agent code',
       o_cards: 'Open member — ID card & visiting card', o_form: 'Filled form (PDF)', o_next: 'Create another', o_driver: 'Driver app ready: they sign in at /driver/ with this mobile + the PIN sent on WhatsApp, or tap “Start bus location” in /me/.', o_appr: 'Open approvals', o_kycNo: 'KYC still to check — the original ID was not seen.', o_kycMgr: 'A manager checks the KYC — the ID stays "to check" until then.',
-      net: 'No connection — check your internet and try again.', saved: 'Saved'
+      net: 'No connection — check your internet and try again.', saved: 'Saved',
+      up_t: 'Upload first — we fill the form for you', up_lead: 'A photo of the ID card or the filled paper form — the details are read while you go on.',
+      up_id: 'ID card photo', up_idSub: 'Front (+ back) · camera, gallery or PDF', up_paper: 'Filled paper form', up_paperSub: 'Photos of the pages (up to 4) or a PDF',
+      up_hand: 'Fill by hand', up_tip: 'Tip: choose the front and back photos together.',
+      rd_reading: 'Reading…', rd_filled: '{n} fields filled', rd_done: '{n} fields filled — please check', rd_none: 'Read — nothing new to fill, please type it',
+      fill_note: '{list} filled — check & Next', fill_more: '+{n} more',
+      sig_t: 'Sign here', sig_lead: 'With your finger (or the mouse) — it prints in the signature box of your form.', sig_clear: 'Clear',
+      sig_short: 'Too short — please sign your full signature.', sig_ask: 'Please sign above — it goes on your form. Tap Send again to send without it.',
+      sig_saved: 'Signature saved — sign again to replace it', sig_pad: 'Signature pad', sig_review: 'Signature',
+      ed_banner: 'Editing an approved member — every change is saved live', ed_back: 'Back to member', ed_save: 'Save & finish',
+      o_apprNow: 'Approve now & send cards', o_apprLead: 'The form waits in Approvals — approving issues the login, ID card and visiting card.',
+      rv_edit: 'Edit', rv_docs: 'Documents', photoOk: 'Photo added', none: '—'
     },
     ne: {
       idSays: 'परिचयपत्रमा:', useIt: 'यही राख्नुहोस्', paperSays: 'कागजी फारममा:',
@@ -102,7 +135,7 @@
       selfieBtn: 'लाइभ सेल्फी', selfieSub: 'यहीँ क्यामेरा खुल्छ', passportBtn: 'पासपोर्ट फोटो अपलोड', passportSub: 'ग्यालरी वा फाइलबाट', photoOr: 'जुनसुकै एउटा पुग्छ।',
       lookCam: 'अनुहार गोलाभित्र राख्नुहोस्', tooDark: 'अँध्यारो छ — उज्यालोमा जानुहोस्', camNo: 'क्यामेरा चलेन — फोटो छान्नुहोस्।', cardPreview: 'तपाईंको ID कार्ड यस्तो देखिन्छ',
       thumb: 'औंठाछाप', thumbLead: 'ऐच्छिक। दायाँ औंठा मसीमा थिचेर सेतो कागजमा छाप्नुहोस् — वा औंठाको नजिकबाट फोटो खिच्नुहोस्। हामी कालो-सेतो छाप बनाउँछौँ।',
-      thumbCam: 'फोटो खिच्नुहोस्', thumbFile: 'फोटो छान्नुहोस्', thumbUse: 'यही राख्नुहोस्', thumbRetake: 'फेरि खिच्नुहोस्', thumbSaved: 'औंठाछाप सेभ भयो', thumbWeak: 'रेखा कम देखिए — उज्यालोमा नजिकबाट फेरि खिच्नुहोस् (यही पनि राख्न मिल्छ)।', thumbSkipped: 'छोडियो', thumbAdd: 'औंठाछाप थप्नुहोस्', thumbWorking: 'छाप बनाउँदै…',
+      thumbCam: 'फोटो खिच्नुहोस्', thumbFile: 'फोनबाट अपलोड', thumbUse: 'यही राख्नुहोस्', thumbRetake: 'फेरि खिच्नुहोस्', thumbSaved: 'औंठाछाप सेभ भयो', thumbWeak: 'रेखा कम देखिए — उज्यालोमा नजिकबाट फेरि खिच्नुहोस् (यही पनि राख्न मिल्छ)।', thumbSkipped: 'छोडियो', thumbAdd: 'औंठाछाप थप्नुहोस्', thumbWorking: 'छाप बनाउँदै…',
       bank_q: 'कमिसन कहाँ पठाउने?', bank_lead: 'ऐच्छिक — पछि आफ्नो खातामा पनि थप्न सकिन्छ।', upi: 'UPI ID', holder: 'खातावालाको नाम', account: 'खाता नम्बर', ifsc: 'IFSC कोड', bankName: 'बैंकको नाम', branch: 'शाखा',
       esewa: 'eSewa ID', khalti: 'Khalti ID', bankIn: 'भारत', bankNp: 'नेपाल',
       finish_q: 'लगभग सकियो', extras: 'थप कागजात', extrasLead: 'PAN, ठेगाना प्रमाण, पसल दर्ता… (ऐच्छिक)', addDoc: 'कागजात थप्नुहोस्', docLabel: 'के हो?',
@@ -127,7 +160,18 @@
       o_saw: 'सक्कल परिचयपत्र हेरेँ (KYC प्रमाणित)', o_approve: 'अहिल्यै स्वीकृत — लगइन र ID कोड दिनुहोस्', o_consent: 'आवेदक सर्तमा सहमत हुनुभयो (कागजी फारममा सही वा मौखिक सहमति)।',
       o_send_ok: 'स्वीकृत गरी ID दिनुहोस्', o_done_t: 'स्वीकृत — ID जारी भयो', o_done_sent: 'स्वीकृतिका लागि पठाइयो', o_code: 'ID / एजेन्ट कोड',
       o_cards: 'सदस्य खोल्नुहोस् — ID र भिजिटिङ कार्ड', o_form: 'भरिएको फारम (PDF)', o_next: 'अर्को बनाउनुहोस्', o_driver: 'ड्राइभर एप तयार: /driver/ मा यही मोबाइल + WhatsApp मा गएको PIN ले लगइन, वा /me/ मा “बस लोकेसन सुरु”।', o_appr: 'स्वीकृति सूची', o_kycNo: 'KYC बाँकी — सक्कल परिचयपत्र हेरिएन।', o_kycMgr: 'KYC म्यानेजरले जाँच्छ — त्यतिन्जेल ID "जाँच्न बाँकी" रहन्छ।',
-      net: 'इन्टरनेट छैन — जाँचेर फेरि प्रयास गर्नुहोस्।', saved: 'सेभ भयो'
+      net: 'इन्टरनेट छैन — जाँचेर फेरि प्रयास गर्नुहोस्।', saved: 'सेभ भयो',
+      up_t: 'पहिले अपलोड — फारम हामी आफैं भर्छौँ', up_lead: 'परिचयपत्रको फोटो वा भरेको कागजी फारम — तपाईं अगाडि बढ्दै गर्दा विवरण पढिन्छ।',
+      up_id: 'परिचयपत्रको फोटो', up_idSub: 'अगाडि (+ पछाडि) · क्यामेरा, ग्यालरी वा PDF', up_paper: 'भरेको कागजी फारम', up_paperSub: 'पानाहरूको फोटो (४ सम्म) वा PDF',
+      up_hand: 'हातले भर्ने', up_tip: 'सुझाव: अगाडि र पछाडिको फोटो एकैपटक छान्नुहोस्।',
+      rd_reading: 'पढ्दै…', rd_filled: '{n} ठाउँ भरियो', rd_done: '{n} ठाउँ भरियो — कृपया जाँच्नुहोस्', rd_none: 'पढियो — भर्नुपर्ने नयाँ केही भेटिएन, कृपया लेख्नुहोस्',
+      fill_note: '{list} भरियो — जाँचेर Next थिच्नुहोस्', fill_more: '+{n} थप',
+      sig_t: 'यहाँ सही गर्नुहोस्', sig_lead: 'औंलाले (वा माउसले) — यो तपाईंको फारमको सही बाकसमा छापिन्छ।', sig_clear: 'मेटाउनुहोस्',
+      sig_short: 'धेरै छोटो — पूरा सही गर्नुहोस्।', sig_ask: 'माथि सही गर्नुहोस् — फारममा जान्छ। सही बिना पठाउन फेरि थिच्नुहोस्।',
+      sig_saved: 'सही सेभ भयो — बदल्न फेरि सही गर्नुहोस्', sig_pad: 'सही गर्ने ठाउँ', sig_review: 'सही',
+      ed_banner: 'स्वीकृत सदस्य सम्पादन — परिवर्तन तुरुन्त लागू हुन्छ', ed_back: 'सदस्यमा फर्कनुहोस्', ed_save: 'सेभ गरी फर्कने',
+      o_apprNow: 'अहिले स्वीकृत गरी कार्ड पठाउने', o_apprLead: 'फारम स्वीकृति सूचीमा छ — स्वीकृत गर्दा लगइन, ID कार्ड र भिजिटिङ कार्ड जान्छ।',
+      rv_edit: 'सच्याउनुहोस्', rv_docs: 'कागजात', photoOk: 'फोटो थपियो', none: '—'
     },
     hi: {
       idSays: 'पहचान पत्र में:', useIt: 'यही रखें', paperSays: 'कागज़ी फ़ॉर्म में:',
@@ -154,7 +198,7 @@
       selfieBtn: 'लाइव सेल्फ़ी', selfieSub: 'यहीं कैमरा खुलेगा', passportBtn: 'पासपोर्ट फ़ोटो अपलोड', passportSub: 'गैलरी या फ़ाइल से', photoOr: 'कोई भी एक काफी है।',
       lookCam: 'चेहरा गोले के अंदर रखें', tooDark: 'अंधेरा है — रोशनी में जाएँ', camNo: 'कैमरा नहीं चला — फ़ोटो चुनें।', cardPreview: 'आपका ID कार्ड ऐसा दिखेगा',
       thumb: 'अंगूठे का निशान', thumbLead: 'वैकल्पिक। दायाँ अंगूठा स्याही पर दबाकर सफ़ेद कागज़ पर छापें — या अंगूठे की पास से फ़ोटो लें। हम इसे काला-सफ़ेद निशान बनाते हैं।',
-      thumbCam: 'फ़ोटो लें', thumbFile: 'फ़ोटो चुनें', thumbUse: 'यही रखें', thumbRetake: 'फिर से लें', thumbSaved: 'अंगूठे का निशान सेव हुआ', thumbWeak: 'रेखाएँ कम दिखीं — रोशनी में पास से फिर लें (यही भी चलेगा)।', thumbSkipped: 'छोड़ा', thumbAdd: 'अंगूठा निशान जोड़ें', thumbWorking: 'निशान बन रहा है…',
+      thumbCam: 'फ़ोटो लें', thumbFile: 'फ़ोन से अपलोड', thumbUse: 'यही रखें', thumbRetake: 'फिर से लें', thumbSaved: 'अंगूठे का निशान सेव हुआ', thumbWeak: 'रेखाएँ कम दिखीं — रोशनी में पास से फिर लें (यही भी चलेगा)।', thumbSkipped: 'छोड़ा', thumbAdd: 'अंगूठा निशान जोड़ें', thumbWorking: 'निशान बन रहा है…',
       bank_q: 'कमीशन कहाँ भेजें?', bank_lead: 'वैकल्पिक — बाद में अपने खाते में भी जोड़ सकते हैं।', upi: 'UPI ID', holder: 'खाताधारक', account: 'खाता नंबर', ifsc: 'IFSC कोड', bankName: 'बैंक का नाम', branch: 'शाखा',
       esewa: 'eSewa ID', khalti: 'Khalti ID', bankIn: 'भारत', bankNp: 'नेपाल',
       finish_q: 'लगभग हो गया', extras: 'और दस्तावेज़', extrasLead: 'PAN, पते का प्रमाण, दुकान लाइसेंस… (वैकल्पिक)', addDoc: 'दस्तावेज़ जोड़ें', docLabel: 'यह क्या है?',
@@ -179,7 +223,18 @@
       o_saw: 'असली पहचान पत्र देखा (KYC सत्यापित)', o_approve: 'अभी स्वीकृत — लॉगिन और ID कोड दें', o_consent: 'आवेदक शर्तों से सहमत (कागज़ी फ़ॉर्म पर हस्ताक्षर या मौखिक हाँ)।',
       o_send_ok: 'स्वीकृत कर ID दें', o_done_t: 'स्वीकृत — ID जारी', o_done_sent: 'स्वीकृति के लिए भेजा', o_code: 'ID / एजेंट कोड',
       o_cards: 'सदस्य खोलें — ID और विज़िटिंग कार्ड', o_form: 'भरा फ़ॉर्म (PDF)', o_next: 'एक और बनाएँ', o_driver: 'ड्राइवर ऐप तैयार: /driver/ पर यही मोबाइल + WhatsApp पर भेजा PIN, या /me/ में “बस लोकेशन शुरू”।', o_appr: 'स्वीकृति सूची', o_kycNo: 'KYC बाकी — असली पहचान पत्र नहीं देखा।', o_kycMgr: 'KYC मैनेजर जाँचेंगे — तब तक ID "जाँच बाकी" रहेगा।',
-      net: 'इंटरनेट नहीं — जाँचकर फिर कोशिश करें।', saved: 'सेव हुआ'
+      net: 'इंटरनेट नहीं — जाँचकर फिर कोशिश करें।', saved: 'सेव हुआ',
+      up_t: 'पहले अपलोड — फ़ॉर्म हम खुद भरेंगे', up_lead: 'पहचान पत्र की फ़ोटो या भरा हुआ कागज़ी फ़ॉर्म — आप आगे बढ़ते रहें, विवरण पढ़ा जाता रहेगा।',
+      up_id: 'पहचान पत्र की फ़ोटो', up_idSub: 'आगे (+ पीछे) · कैमरा, गैलरी या PDF', up_paper: 'भरा हुआ कागज़ी फ़ॉर्म', up_paperSub: 'पन्नों की फ़ोटो (4 तक) या PDF',
+      up_hand: 'हाथ से भरें', up_tip: 'सुझाव: आगे और पीछे की फ़ोटो एक साथ चुनें।',
+      rd_reading: 'पढ़ रहे हैं…', rd_filled: '{n} जगह भरी', rd_done: '{n} जगह भरी — कृपया जाँचें', rd_none: 'पढ़ लिया — भरने को नया कुछ नहीं, कृपया लिखें',
+      fill_note: '{list} भरा गया — जाँचकर Next दबाएँ', fill_more: '+{n} और',
+      sig_t: 'यहाँ हस्ताक्षर करें', sig_lead: 'उँगली से (या माउस से) — यह आपके फ़ॉर्म के हस्ताक्षर बॉक्स में छपेगा।', sig_clear: 'मिटाएँ',
+      sig_short: 'बहुत छोटा — पूरा हस्ताक्षर करें।', sig_ask: 'ऊपर हस्ताक्षर करें — फ़ॉर्म पर जाएगा। बिना हस्ताक्षर भेजने के लिए फिर दबाएँ।',
+      sig_saved: 'हस्ताक्षर सेव हुआ — बदलने के लिए फिर करें', sig_pad: 'हस्ताक्षर की जगह', sig_review: 'हस्ताक्षर',
+      ed_banner: 'स्वीकृत सदस्य संपादन — हर बदलाव तुरंत लागू होता है', ed_back: 'सदस्य पर वापस', ed_save: 'सेव कर वापस जाएँ',
+      o_apprNow: 'अभी स्वीकृत कर कार्ड भेजें', o_apprLead: 'फ़ॉर्म स्वीकृति सूची में है — स्वीकृत करने पर लॉगिन, ID कार्ड और विज़िटिंग कार्ड जाएगा।',
+      rv_edit: 'बदलें', rv_docs: 'दस्तावेज़', photoOk: 'फ़ोटो जुड़ी', none: '—'
     }
   };
   var lang = (function () {
@@ -188,11 +243,20 @@
     return n.indexOf('ne') === 0 ? 'ne' : (n.indexOf('hi') === 0 ? 'hi' : 'en');
   })();
   var t = function (k) { return (W[lang] && W[lang][k]) || W.en[k] || k; };
+  /** The owner's key words in both languages: "Fill by hand · हातले भर्ने" (English → Nepali, Nepali / Hindi → English). */
+  var bi = function (k) { var o = lang === 'en' ? W.ne[k] : W.en[k]; return t(k) + (o && o !== t(k) ? ' · ' + o : ''); };
 
   /* ---------------- state ---------------- */
   var S = { key: '', d: {}, step: 0, read: {}, src: {}, conf: {}, bad: {}, warn: {}, touched: {}, keep: {}, suggest: {}, previews: {},
-            aiPoll: null, revPoll: null, consent: false, otpSent: false, paper: null, paperPhone: '',
-            thumb: { pv: null, q: 0, skip: false, busy: false }, sawId: false, approveNow: true, res: null };
+            aiPoll: null, aiUntil: 0, revPoll: null, consent: false, otpSent: false, paper: null, paperPhone: '',
+            thumb: { pv: null, q: 0, skip: false, busy: false }, sawId: false, approveNow: true, res: null,
+            intro: false, edit: false, upBusy: {}, saveP: null, sigNudged: false, pending: false };
+  /* 31 Oct 2026: the background reading — how many readers run, since when, which boxes they filled */
+  var RD = { n: 0, t0: 0, tick: null, filled: {}, done: false, doneStep: -1 };
+  var FILL_MS = 120;                    // one box after the other, so the person sees each one fill
+  /* the signature pad: strokes as 0..1 points, so a re-render or a turned phone redraws them */
+  var SIG = { strokes: [], cur: null, dirty: false, w: 0, h: 0 };
+  var SIG_RE = /signature|सही/i;
   var STEPS = ['who', 'wa', 'id', 'photo', 'bank', 'finish'];
   var staffInvite = !!(C.inviteOk && C.role && C.role !== 'agent');
   var KEY = OFF ? 'apjoin_office' : 'apjoin_' + (C.invite || 'public');
@@ -253,7 +317,14 @@
     var pf0 = C.prefill || {};
     if (OFF && !C.resume && (pf0.name || pf0.phone)) S.key = '';
     (S.key ? api('get') : Promise.resolve({ ok: false })).then(function (r) {
-      if (r.ok) { remember(); take(r.data.draft); return; }
+      if (r.ok) {
+        var approved = OFF && r.data.draft && r.data.draft.status === 'approved';
+        // 31 Oct 2026: an approved member opens for editing only from its own link (?d= on the member page) —
+        // never from this browser's memory, so "Office form" after an approval starts a NEW form
+        if (approved && !C.resume) { try { localStorage.removeItem(KEY); } catch (e) {} S.key = ''; return startNew(); }
+        if (!approved) remember();
+        take(r.data.draft, true); return;
+      }
       if (C.resume) { return fatal(r.error || t('badLink')); }   // a stale "continue later" link
       return startNew();
     });
@@ -286,24 +357,33 @@
     if (pf.phone) { S.pfPhone = pf.phone; first.country = pf.cc === 'NP' ? 'NP' : 'IN'; }
     if (Object.keys(first).length) {
       return api('save', first).then(function (r) {
-        take(r.ok ? r.data.draft : draft);
-        if (S.step > 0 && S.step < 6) { S.step = 0; render(); }   // a new form starts at "who" — they confirm the prefilled name
+        take(r.ok ? r.data.draft : draft, true, true);   // a new form starts at "who" — they confirm the prefilled name
       });
     }
-    take(draft);
+    take(draft, true);
   }
   function remember() { try { localStorage.setItem(KEY, S.key); } catch (e) {} }
-  function take(d) {
+  function hasDocs() { var h = S.d.has || {}; return !!(h.front || h.back || h.paper); }
+  /**
+   * @param first   the form was just opened (boot / a new form): a fresh one starts on the upload-first screen
+   * @param atStart a prefilled new form starts at "who" (they confirm the prefilled name)
+   */
+  function take(d, first, atStart) {
     S.d = d || {};
+    S.edit = OFF && S.d.status === 'approved';   // 31 Oct 2026: the office edits an approved member — saved live
     applyLang();
-    if (S.d.status && S.d.status !== 'draft' && !(OFF && S.d.status === 'submitted')) { S.step = 6; render(); return; }
+    if (S.d.status && S.d.status !== 'draft' && !(OFF && (S.d.status === 'submitted' || S.edit))) { S.step = 6; render(); return; }
     // Resume at the first step that is not finished yet.
     var s = 0;
     if (S.d.full_name && (isStaff() || S.d.agent_kind)) s = 1;
     if (s === 1 && S.d.verified) s = 2;
     if (s === 2 && (OFF ? S.d.id_number_masked : (S.d.has && S.d.has.front && S.d.dob))) s = 3;
     if (s === 3 && S.d.has && S.d.has.selfie) s = 4;
+    if (S.edit || atStart) s = 0;
     S.step = s;
+    // Upload first: a draft with nothing uploaded and not past the WhatsApp step opens on the upload screen
+    // (edit mode goes straight to step 1 — its upload buttons stay on the ID step)
+    S.intro = !!first && !S.edit && S.d.status === 'draft' && s <= 1 && !hasDocs();
     render();
   }
   function fatal(msg) {
@@ -324,12 +404,20 @@
     return '<div class="ap-steps" aria-hidden="true">' + bars + '</div>'
       + '<div class="ap-step-label"><span>' + t('step') + ' ' + idx + ' ' + t('of') + ' ' + n + '</span><b>' + esc(t('s_' + STEPS[S.step])) + '</b></div>';
   }
+  /** Filled by a reader and not sure (paper form or AI said "low"), and nobody typed in it since. */
+  function isLow(name) { var s = S.src[name]; return (s === 'paper' || s === 'ai') && S.conf[name] === 'low' && !S.touched[name]; }
+  /** The little "from QR / read by AI / AI not sure — check" tag next to a label. */
+  function srcTag(name) {
+    var s = S.src[name]; if (!s) return '';
+    var low = isLow(name);
+    return '<span class="ap-src ' + s + (low ? ' low' : '') + '">' + esc(low ? t('lowConf') : t('src_' + s)) + '</span>';
+  }
   function field(name, label, opts) {
     opts = opts || {};
     var v = S.d[name] != null ? S.d[name] : '';
     var s = S.src[name];
-    var low = s === 'paper' && S.conf[name] === 'low' && !S.touched[name];
-    var src = s ? '<span class="ap-src ' + s + (low ? ' low' : '') + '">' + esc(low ? t('lowConf') : t('src_' + s)) + '</span>' : '';
+    var low = isLow(name);
+    var src = srcTag(name);
     var opt = opts.optional ? ' <em>· ' + esc(OFF ? t('addLater') : t('optional')) + '</em>' : '';
     var warn = S.warn[name] ? '<div class="ap-hint" style="color:var(--warn)">⚠ ' + esc(t(S.warn[name])) + '</div>' : '';
     if (S.bad[name] && !S.touched[name]) warn += '<div class="ap-err">⚠ ' + esc(S.bad[name]) + '</div>';
@@ -347,21 +435,170 @@
   }
   function render() {
     stopPolls(false);
+    S.pending = false;
+    // the "✓ 9 fields filled" chip stays until the person moves on to another step
+    if (RD.done && RD.doneStep !== S.step) RD.done = false;
+    chip();
     var app = $('#app');
     if (S.step === 6) { $('#bar').hidden = true; app.innerHTML = renderDone(); bindDone(); return; }
+    if (S.intro) { $('#bar').hidden = true; app.innerHTML = renderIntro(); bindIntro(); return; }
     $('#bar').hidden = false;
     var st = STEPS[S.step];
     var body = { who: renderWho, wa: renderWa, id: renderId, photo: renderPhoto, bank: renderBank, finish: renderFinish }[st]();
+    // the "✓ Name, DOB filled — check & Next" note sits under the step (above the bar): it never pushes what is on screen
+    body += '<div class="ap-fillnote" id="fillNote" role="status"></div>';
     if (S.step >= 2 && S.d.status === 'draft') body += laterCard();
-    app.innerHTML = head() + body;
+    app.innerHTML = editBanner() + head() + body;
     $('#back').style.visibility = S.step === 0 ? 'hidden' : 'visible';
     var last = S.step === 5;
-    $('#next').innerHTML = esc(last ? (OFF && S.approveNow ? t('o_send_ok') : t('send')) : t('next'));
+    $('#next').innerHTML = esc(last ? (S.edit ? '💾 ' + bi('ed_save') : (OFF && S.approveNow ? t('o_send_ok') : t('send'))) : t('next'));
     $('#next').className = 'ap-btn' + (last ? ' gold' : '');
     bind();
+    fillNote();   // before the browser paints: no jump
     var first = $('#app .ap-in:not([value]), #app .ap-in[value=""]');
     if (first && window.innerWidth > 700) first.focus();
   }
+  /** Re-render now — or, while the person is typing in a box, as soon as they leave it (nothing typed is lost). */
+  function renderSoon() {
+    var a = document.activeElement;
+    if (a && a.closest && a.closest('#app') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { S.pending = true; return; }
+    collect(); render();
+  }
+  document.addEventListener('focusout', function () {
+    if (!S.pending) return;
+    setTimeout(function () {
+      var a = document.activeElement;
+      if (S.pending && !(a && a.closest && a.closest('#app') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) { collect(); render(); }
+    }, 60);
+  });
+
+  /* ---- edit mode (31 Oct 2026): an approved member, opened from admin/team-member.php ---- */
+  function memberBack() { var u = S.d.memberUrl || (S.d.adminId ? '/admin/team-member.php?id=' + S.d.adminId : '/admin/team.php'); return u; }
+  function editBanner() {
+    if (!S.edit) return '';
+    return '<div class="ap-note ap-editbar" role="note"><span>✏️ <b>' + esc(bi('ed_banner')) + '</b></span>'
+      + '<a class="ap-btn ghost sm" href="' + esc(memberBack()) + '">← ' + esc(t('ed_back')) + '</a></div>';
+  }
+
+  /* ---- upload first (31 Oct 2026): "ID card ko photo · bhareko form — upload garnus, hami afai bharchhau" ---- */
+  function renderIntro() {
+    var big = function (id, ico, title, sub) {
+      return '<label class="ap-bigup"><span class="ico" aria-hidden="true">' + ico + '</span><b>' + esc(title) + '</b><small>' + esc(sub) + '</small>'
+        + '<input type="file" id="' + id + '" accept="image/*,application/pdf" multiple aria-label="' + esc(title + ' — ' + sub) + '"></label>';
+    };
+    return '<section class="ap-card ap-intro"><h2>' + esc(t('up_t')) + '</h2><p class="lead">' + esc(t('up_lead')) + '</p>'
+      + '<div class="ap-upgrid">' + big('upId', '📷', t('up_id'), t('up_idSub')) + big('upPaper', '📄', t('up_paper'), t('up_paperSub')) + '</div>'
+      + '<p class="ap-hint">💡 ' + esc(t('up_tip')) + '</p>'
+      + '<button type="button" class="ap-btn ghost block ap-hand" id="upHand">✍️ ' + esc(bi('up_hand')) + '</button>'
+      + '<div class="ap-intro-foot"><a class="ap-link" href="' + esc(C.blankForm || '/agreements/form.php?kind=agent') + '" target="_blank" rel="noopener">🖨 ' + esc(t('paper_blank')) + '</a></div>'
+      + '</section>';
+  }
+  function bindIntro() {
+    var files = function (inp) { var a = Array.prototype.slice.call(inp.files || []); inp.value = ''; return a; };
+    $('#upId').addEventListener('change', function () { var fs = files(this); if (!fs.length) return; leaveIntro(); introId(fs); });
+    $('#upPaper').addEventListener('change', function () { var fs = files(this); if (!fs.length) return; leaveIntro(); scanPaper(fs); });
+    $('#upHand').addEventListener('click', leaveIntro);
+  }
+  function leaveIntro() { S.intro = false; render(); window.scrollTo(0, 0); }
+  /** The ID chosen on the upload-first screen: 1st photo = front, 2nd = back; one PDF → its pages 1 and 2. */
+  function introId(list) {
+    var isPdf = function (f) { return f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''); };
+    readBegin();
+    var prep = list.length === 1 && isPdf(list[0])
+      ? pdfPages(list[0], 2).then(function (pages) {
+          var fs = pages.map(function (u, i) { var b = dataUrlBlob(u); return b ? new File([b], 'id-' + (i ? 'back' : 'front') + '.jpg', { type: 'image/jpeg' }) : null; }).filter(Boolean);
+          return fs.length ? fs : list;
+        }, function () { return list; })
+      : Promise.resolve(list.slice(0, 2));
+    prep.then(function (fs) {
+      return upload('front', fs[0]).then(function () { return fs[1] ? upload('back', fs[1]) : null; });
+    }).then(readEnd, readEnd);
+  }
+
+  /* ---- the reading chip (in the bottom bar: fixed, so it never moves the page) ---- */
+  function readBegin() {
+    if (!RD.n) { RD.t0 = Date.now(); RD.done = false; }
+    RD.n++;
+    if (!RD.tick) RD.tick = setInterval(chip, 1000);
+    chip();
+  }
+  function readEnd() {
+    RD.n = Math.max(0, RD.n - 1);
+    if (!RD.n) { clearInterval(RD.tick); RD.tick = null; RD.done = true; RD.doneStep = S.intro ? 0 : S.step; fillNote(); readBox(); }
+    chip();
+  }
+  function chip() {
+    var el = $('#readChip'); if (!el) return;
+    var n = Object.keys(RD.filled).length, on = RD.n > 0 || RD.done;
+    el.hidden = !on;
+    document.body.classList.toggle('ap-rc-on', on);
+    if (!on) return;
+    var a = $('#rcT', el), s = $('#rcS', el), b = $('#rcN', el);
+    el.className = 'ap-readchip' + (RD.n > 0 ? '' : ' done');
+    if (RD.n > 0) {
+      var txt = '📖 ' + t('rd_reading'), cnt = n ? ' · ' + t('rd_filled').replace('{n}', n) : '';
+      if (a.textContent !== txt) a.textContent = txt;
+      s.textContent = ' ' + Math.max(0, Math.round((Date.now() - RD.t0) / 1000)) + ' s';
+      if (b.textContent !== cnt) b.textContent = cnt;
+    } else {
+      a.textContent = n ? '✓ ' + t('rd_done').replace('{n}', n) : 'ℹ ' + t('rd_none');
+      s.textContent = ''; b.textContent = '';
+    }
+  }
+  /** "AI is reading your ID…" on the ID step while a reader runs. */
+  function readBoxHtml() { return S.aiPoll || S.upBusy.front || S.upBusy.back ? '<div class="ap-reading"><span class="dot"></span>' + esc(t('aiReading')) + '</div>' : ''; }
+  function readBox() { var b = $('#readBox'); if (b) b.innerHTML = readBoxHtml(); }
+
+  /* ---- results fill the boxes one by one, in place ---- */
+  var LBL = { full_name: 'fullName', org_name: 'orgName', dob: 'dob', gender: 'gender', guardian: 'guardian', id_number: 'idNumber', id_type: 'idType',
+    address: 'address', city: 'city', district: 'district', state: 'state', pincode: 'pincode', id_expires_on: 'expires', pan: 'pan', email: 'email',
+    occupation: 'occupation', education: 'education', experience: 'experience', skills: 'skills', languages: 'languages', whatsapp: 'whatsapp2',
+    upi_id: 'upi', bank_holder: 'holder', bank_account: 'account', bank_ifsc: 'ifsc', bank_name: 'bankName', bank_branch: 'branch', esewa_id: 'esewa', khalti_id: 'khalti' };
+  function boxOf(k) {
+    if (k === 'gender') { var g = $('#app [data-gender]'); return g ? g.closest('.ap-field') : null; }
+    if (k === 'id_type') { var c = $('#app [data-idt]'); return c ? c.closest('.ap-field') : null; }
+    return $('#app .ap-in[name="' + k + '"]');
+  }
+  function pop(el) { if (!el) return; el.classList.remove('ap-pop'); void el.offsetWidth; el.classList.add('ap-pop'); }
+  function tagIn(box, k) {
+    var sp = box && box.querySelector('span'); if (!sp) return;
+    var old = sp.querySelector('.ap-src'); if (old) old.parentNode.removeChild(old);
+    sp.insertAdjacentHTML('beforeend', srcTag(k));
+  }
+  /** Put one reader value on screen (if its box is on this step and nobody typed in it). */
+  function paintField(k) {
+    if (S.touched[k]) return;
+    if (k === 'gender' || k === 'id_type') {
+      var attr = k === 'gender' ? 'data-gender' : 'data-idt';
+      $$('#app [' + attr + ']').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute(attr) === S.d[k])); });
+      var box = boxOf(k); pop(box); tagIn(box, k); return;
+    }
+    var el = boxOf(k); if (!el) return;
+    el.value = S.d[k] == null ? '' : S.d[k];
+    el.classList.add('filled'); el.classList.toggle('low', isLow(k) || !!S.bad[k]);
+    pop(el); tagIn(el.closest('.ap-field'), k);
+  }
+  /** Count the boxes a reader filled and show the ones on this step one after the other (~120 ms apart). */
+  function fillIn(keys) {
+    var seen = {};
+    keys = (keys || []).filter(function (k) { if (seen[k] || k === 'country' || k === 'full_name_local' || k === 'phone') return false; seen[k] = 1; return true; });
+    keys.forEach(function (k) { RD.filled[k] = true; });
+    var j = 0;
+    keys.forEach(function (k) {
+      if (S.touched[k] || !boxOf(k)) return;
+      setTimeout(function () { paintField(k); }, (j++) * FILL_MS);
+    });
+    setTimeout(fillNote, j * FILL_MS + 40);
+    chip();
+  }
+  /** "✓ Name, DOB, Address filled — check & Next · जाँचेर Next थिच्नुहोस्" for the boxes on this step. */
+  function fillNoteHtml() {
+    var here = Object.keys(RD.filled).filter(function (k) { return !S.touched[k] && LBL[k] && boxOf(k) !== null; });
+    if (!here.length || S.step === 6 || S.intro) return '';
+    var names = here.slice(0, 4).map(function (k) { return t(LBL[k]); }).join(', ') + (here.length > 4 ? ' ' + t('fill_more').replace('{n}', here.length - 4) : '');
+    return '✓ ' + esc(t('fill_note').replace('{list}', names)) + (lang === 'en' ? ' · जाँचेर Next थिच्नुहोस्' : '');
+  }
+  function fillNote() { var n = $('#fillNote'); if (n) { var h = fillNoteHtml(); if (n.innerHTML !== h) n.innerHTML = h; } }
 
   function renderWho() {
     var staff = isStaff();
@@ -397,7 +634,7 @@
       return '<section class="ap-card"><h2>' + esc(t('wa_q')) + '</h2><div class="ap-ok">✅ ' + esc(via) + ' · <span class="ap-mono">' + esc(S.d.phone || '') + '</span></div>'
         + '<p class="lead" style="margin-top:12px">' + esc(t('wa_lead')) + '</p>'
         + field('whatsapp', t('whatsapp2'), { optional: true, type: 'tel', mode: 'numeric', max: 15, ac: 'tel' })
-        + (S.d.status === 'draft' ? '<button type="button" class="ap-link" id="waChange">' + esc(t('change')) + '</button>' : '') + '</section>'
+        + (S.d.status === 'draft' || S.edit ? '<button type="button" class="ap-link" id="waChange">' + esc(t('change')) + '</button>' : '') + '</section>'
         + (S.d.status === 'draft' ? laterCard() : '');
     }
     var cc = S.d.country === 'NP' ? 'NP' : 'IN';
@@ -455,17 +692,16 @@
       return '<button type="button" class="ap-chip" data-idt="' + k + '" aria-pressed="' + (S.d.id_type === k) + '">' + esc(types[k]) + '</button>';
     }).join('');
     var g = S.d.gender || '';
-    var gLow = S.src.gender === 'paper' && S.conf.gender === 'low' && !S.touched.gender;
-    var gender = '<div class="ap-field"><span>' + esc(t('gender')) + (S.src.gender ? '<span class="ap-src ' + S.src.gender + (gLow ? ' low' : '') + '">' + esc(gLow ? t('lowConf') : t('src_' + S.src.gender)) + '</span>' : '') + '</span><div class="ap-chips" role="group">'
+    var gender = '<div class="ap-field"><span>' + esc(t('gender')) + srcTag('gender') + '</span><div class="ap-chips" role="group" aria-label="' + esc(t('gender')) + '">'
       + ['Male', 'Female', 'Other'].map(function (x) { return '<button type="button" class="ap-chip" data-gender="' + x + '" aria-pressed="' + (g === x) + '">' + esc(t(x.toLowerCase())) + '</button>'; }).join('') + '</div></div>';
     var expiryTypes = { passport: 1, dl: 1 };
     var opt = OFF;   // 30 Oct 2026: the office needs nothing here — name + mobile are enough, the rest "add later"
     return paperCard()
       + '<section class="ap-card"><h2>' + esc(t('id_q')) + '</h2><p class="lead">' + esc(t('id_lead')) + '</p>'
       + (OFF ? '<div class="ap-note" style="margin-bottom:12px">🏢 ' + esc(t('o_later')) + '</div>' : '')
-      + '<div class="ap-field"><span>' + esc(t('idType')) + '</span><div class="ap-chips" role="group">' + chips + '</div></div>'
+      + '<div class="ap-field"><span>' + esc(t('idType')) + srcTag('id_type') + '</span><div class="ap-chips" role="group" aria-label="' + esc(t('idType')) + '">' + chips + '</div></div>'
       + '<div class="ap-tiles">' + tile('front', t('front'), OFF) + tile('back', t('back2'), true) + '</div>'
-      + '<div id="readBox"></div></section>'
+      + '<div id="readBox">' + readBoxHtml() + '</div></section>'
       + '<section class="ap-card"><p class="lead">' + esc(t('checkFields')) + '</p>'
       + field('full_name', t('fullName'), { ac: 'name', max: 120 })
       + '<div class="ap-grid2 stack">' + field('dob', t('dob'), { type: 'date', optional: opt }) + field('id_number', t('idNumber'), { max: 40, ac: 'off', ph: S.d.id_number_masked || '', optional: opt }) + '</div>'
@@ -484,7 +720,16 @@
     // No capture attribute: the phone offers camera AND gallery / files (an ID card photo or scan already on the phone).
     return '<label class="ap-tile' + (has ? ' has' : '') + '" data-slot="' + slot + '">' + prev
       + (has ? '<span class="tag">✓ ' + esc(label) + '</span>' : '<span class="big">📷</span><b>' + esc(label) + '</b><small>' + esc(optional ? (OFF ? t('addLater') : t('optional')) : t('tapPhoto')) + '</small>')
+      + (S.upBusy[slot] ? '<div class="busy">' + esc(t('reading')) + '</div>' : '')
       + '<input type="file" accept="image/*,application/pdf" data-up="' + slot + '" aria-label="' + esc(label) + '"></label>';
+  }
+  /** Re-draw one ID tile in place (busy / the new photo) — the boxes below keep what is typed in them. */
+  function paintTile(slot) {
+    var el = $('.ap-tile[data-slot="' + slot + '"]'); if (!el) return;
+    var box = document.createElement('div');
+    box.innerHTML = tile(slot, slot === 'front' ? t('front') : t('back2'), slot === 'back' || OFF);
+    var nu = box.firstChild; el.parentNode.replaceChild(nu, el);
+    $$('[data-up]', nu).forEach(bindUp);
   }
 
   function renderPhoto() {
@@ -516,8 +761,10 @@
     if (T.skip && !T.pv) {
       return head + '<div class="ap-row" style="justify-content:space-between"><span class="ap-hint">' + esc(t('thumbSkipped')) + '</span><button type="button" class="ap-link" id="thumbUnskip">➕ ' + esc(t('thumbAdd')) + '</button></div>';
     }
-    var pick = '<label class="ap-btn ghost sm" style="position:relative">📷 ' + esc(t('thumbCam')) + '<input type="file" accept="image/*" capture="environment" data-thumb="1" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>'
-      + '<label class="ap-btn ghost sm" style="position:relative">🖼 ' + esc(t('thumbFile')) + '<input type="file" accept="image/*" data-thumb="1" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>';
+    // 31 Oct 2026 (owner: "photo khichne matra option chha, upload garne option chhaina"): the camera AND a photo
+    // already on the phone, side by side — the second input has no capture attribute, so the gallery / files open
+    var pick = '<label class="ap-btn ghost sm" style="position:relative">📷 ' + esc(t('thumbCam')) + '<input type="file" accept="image/*" capture="environment" data-thumb="1" aria-label="' + esc(t('thumbCam')) + '" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>'
+      + '<label class="ap-btn ghost sm" style="position:relative">🖼 ' + esc(bi('thumbFile')) + '<input type="file" accept="image/*" data-thumb="1" aria-label="' + esc(t('thumbFile')) + '" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>';
     var shown = T.pv || (has ? S.previews.thumb : '');
     var pv = shown ? '<img alt="" src="' + shown + '">' : (has ? '✅' : '👍');
     var body;
@@ -640,17 +887,12 @@
   }
 
   function renderFinish() {
-    var ex = (S.d.extras || []).filter(function (x) { return !x.paper; }).map(function (x) {
+    // the signature has its own pad below — not listed with the other documents
+    var ex = (S.d.extras || []).filter(function (x) { return !x.paper && !SIG_RE.test(x.label || ''); }).map(function (x) {
       return '<li class="ap-row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)"><span>📎 ' + esc(x.label) + '</span><button type="button" class="ap-link" data-drop="' + x.i + '" aria-label="Remove">✕</button></li>';
     }).join('');
     var own = (S.d.extras || []).filter(function (x) { return !x.paper; }).length;
-    var name = S.d.agent_kind === 'org' && S.d.org_name && !isStaff() ? S.d.org_name + ' (' + (S.d.full_name || '') + ')' : (S.d.full_name || '');
-    var types = C.idTypes || {};
-    var rv = [[t('fullName'), name], [t('mobile'), S.d.phone], [t('dob'), S.d.dob], [t('idType'), types[S.d.id_type] || ''], [t('idNumber'), S.d.id_number_masked || ''],
-      [t('address'), [S.d.address, S.d.city, S.d.district, S.d.state, S.d.pincode].filter(Boolean).join(', ')],
-      [t('s_bank'), S.d.upi_id || (S.d.bank_account_last4 ? (S.d.bank_name || '') + ' ••••' + S.d.bank_account_last4 : '') || S.d.esewa_id || S.d.khalti_id || '—']];
-    if (S.d.has && S.d.has.paper) rv.push(['📄', S.d.has.paper + ' ' + t('paper_pages')]);
-    var office = OFF
+    var office = OFF && !S.edit
       ? (C.canKyc   // KYC verified: super-admin / manager only (the admin/team.php rule); others leave it for a manager
         ? '<label class="ap-row ap-tick"><input type="checkbox" id="oSaw"' + (S.sawId ? ' checked' : '') + '><span>🪪 ' + esc(t('o_saw')) + '</span></label>'
         : '<div class="ap-note warn">' + esc(t('o_kycMgr')) + '</div>')
@@ -667,9 +909,193 @@
         ? '<div class="ap-row"><input class="ap-in" id="docLabel" placeholder="' + esc(t('docLabel')) + '" maxlength="60" style="flex:1"><label class="ap-btn ghost sm" style="position:relative">➕ ' + esc(t('addDoc'))
           + '<input type="file" accept="image/*,application/pdf" data-up="extra" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label></div>' : '')
       + '</section>'
-      + '<section class="ap-card"><h3>' + esc(t('review')) + '</h3><dl class="ap-review">' + rv.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1] || '—') + '</dd>'; }).join('') + '</dl>'
+      + sigCard()
+      + '<section class="ap-card"><h3>' + esc(t('review')) + '</h3><div id="review">' + reviewInner() + '</div>'
       + office
-      + '<label class="ap-row ap-tick" style="margin-top:16px"><input type="checkbox" id="consent"' + (S.consent ? ' checked' : '') + '><span>' + esc(OFF ? t('o_consent') : t('consent')) + '</span></label></section>';
+      + (S.edit ? '' : '<label class="ap-row ap-tick" style="margin-top:16px"><input type="checkbox" id="consent"' + (S.consent ? ' checked' : '') + '><span>' + esc(OFF ? t('o_consent') : t('consent')) + '</span></label>')
+      + '</section>';
+  }
+
+  /* ---- the review ("checking", 31 Oct 2026): grouped by step, an Edit link per group ---- */
+  function maskNo(v) { v = String(v || '').replace(/\s+/g, ''); return v.length > 4 ? '••••' + v.slice(-4) : v; }
+  function reviewInner() {
+    var d = S.d, h = d.has || {}, types = C.idTypes || {};
+    var role = '';
+    if (OFF) {
+      var cur = d.kind === 'staff' ? (d.role_wanted || 'counter') : 'agent:' + (d.agent_kind || 'person');
+      (C.roles || []).forEach(function (r) { if (r.v === cur) role = r.label; });
+    } else if (isStaff()) role = d.designation || C.designation || d.role_wanted || C.role || '';
+    else role = d.agent_kind === 'org' ? t('org') : (d.agent_kind === 'person' ? t('person') : '');
+    var bank = d.upi_id || (d.bank_account_last4 ? (d.bank_name || '') + ' ••••' + d.bank_account_last4 : (d.bank_account ? (d.bank_name || '') + ' ' + maskNo(d.bank_account) : ''))
+      || d.esewa_id || d.khalti_id || '';
+    var docs = (d.extras || []).filter(function (x) { return !x.paper && !SIG_RE.test(x.label || ''); }).map(function (x) { return x.label; });
+    if (h.paper) docs.unshift('📄 ' + h.paper + ' ' + t('paper_pages'));
+    var sig = SIG.strokes.length && sigOk() ? '✓ ✍️' : (hasSavedSig() ? '✓' : '');
+    // [label, value, keep the row even when empty]
+    var groups = [
+      [0, t('s_who'), [[OFF ? t('role_q') : t('who_q'), role, false], [t('orgName'), d.agent_kind === 'org' && !isStaff() ? d.org_name : '', false],
+        [t('fullName'), d.full_name, true], [t('designation'), OFF ? d.designation : '', false]]],
+      [1, t('s_wa'), [[t('mobile'), d.phone, true], [t('whatsapp2'), d.whatsapp, false]]],
+      [2, t('s_id'), [[t('idType'), types[d.id_type] || '', true], [t('idNumber'), d.id_number ? maskNo(d.id_number) : (d.id_number_masked || ''), true],
+        [t('dob'), d.dob, true], [t('gender'), d.gender ? t(String(d.gender).toLowerCase()) : '', false], [t('guardian'), d.guardian, false],
+        [t('address'), [d.address, d.city, d.district, d.state, d.pincode].filter(Boolean).join(', '), true], [t('pan'), d.pan, false]]],
+      [3, t('s_photo'), [[t('photo_q'), h.selfie ? '✓ ' + t('photoOk') : '', true], [t('thumb'), h.thumb ? '✓' : '', false]]],
+      [4, t('s_bank'), [[t('s_bank'), bank, true]]],
+      [5, t('more_q'), [[t('occupation'), d.occupation, false], [t('education'), d.education, false], [t('experience'), d.experience, false],
+        [t('skills'), d.skills, false], [t('languages'), d.languages, false], [t('email'), d.email, false], [t('rv_docs'), docs.join(', '), false],
+        [t('sig_review'), sig, !OFF]]]
+    ];
+    return groups.map(function (g) {
+      var rows = g[2].filter(function (r) { return r[2] || (r[1] != null && String(r[1]).trim() !== ''); });
+      if (!rows.length) return '';
+      return '<div class="ap-rvgroup"><div class="ap-rvh"><b>' + esc(g[1]) + '</b><button type="button" class="ap-link" data-goto="' + g[0] + '" aria-label="'
+        + esc(t('rv_edit') + ' — ' + g[1]) + '">✏️ ' + esc(t('rv_edit')) + '</button></div><dl class="ap-review">'
+        + rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1] != null && String(r[1]).trim() !== '' ? r[1] : t('none')) + '</dd>'; }).join('')
+        + '</dl></div>';
+    }).join('');
+  }
+  function paintReview() { var b = $('#review'); if (b) { collect(); b.innerHTML = reviewInner(); bindGoto(b); } }
+  function bindGoto(root) {
+    $$('[data-goto]', root).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var n = +b.dataset.goto;
+        collect(); stopCam();
+        if (n === S.step) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }   // "more about you" is on this step
+        S.step = n; render(); window.scrollTo(0, 0);
+      });
+    });
+  }
+
+  /* ---- ✍️ the signature pad (31 Oct 2026: "digital signature ni print hos") ---- */
+  function hasSavedSig() { return (S.d.extras || []).some(function (x) { return !x.paper && SIG_RE.test(x.label || ''); }); }
+  function strokeLen(s) {
+    var L = 0;
+    for (var i = 1; i < s.length; i++) L += Math.sqrt(Math.pow((s[i].x - s[i - 1].x) * SIG.w, 2) + Math.pow((s[i].y - s[i - 1].y) * SIG.h, 2));
+    return L;
+  }
+  /** A real signature: enough ink, and wider than a scribble (a dot or a tick is not one). */
+  function sigOk() {
+    if (!SIG.strokes.length) return false;
+    var L = 0, minX = 1, maxX = 0;
+    SIG.strokes.forEach(function (s) { L += strokeLen(s); s.forEach(function (p) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); }); });
+    return L >= 60 && (maxX - minX) * SIG.w >= 40;
+  }
+  function sigCard() {
+    return '<section class="ap-card ap-sigcard" id="sigCard"><h3>✍️ ' + esc(bi('sig_t')) + (OFF ? ' <span class="ap-hint">· ' + esc(t('optional')) + '</span>' : '') + '</h3>'
+      + '<p class="lead">' + esc(t('sig_lead')) + '</p>'
+      + '<div class="ap-sigpad" id="sigWrap"><canvas id="sigPad" role="img" aria-label="' + esc(t('sig_pad')) + '"></canvas>'
+      + '<span class="ap-sigline" aria-hidden="true"></span><span class="ap-sigx" aria-hidden="true">✕</span></div>'
+      + '<div class="ap-row ap-sigrow"><span class="ap-hint" id="sigMsg" role="status">' + (hasSavedSig() && !SIG.strokes.length ? '✅ ' + esc(t('sig_saved')) : '') + '</span>'
+      + '<button type="button" class="ap-link" id="sigClear">↺ ' + esc(t('sig_clear')) + '</button></div></section>';
+  }
+  function sigMsg(html) { var m = $('#sigMsg'); if (m) m.innerHTML = html; }
+  /** Draw the strokes at w × h (CSS px of that canvas), in ink that prints. */
+  function sigPaint(ctx, w, h, line) {
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#0B1A45'; ctx.fillStyle = '#0B1A45'; ctx.lineWidth = line;
+    SIG.strokes.forEach(function (s) {
+      if (s.length === 1) { ctx.beginPath(); ctx.arc(s[0].x * w, s[0].y * h, line / 2, 0, Math.PI * 2); ctx.fill(); return; }
+      ctx.beginPath(); ctx.moveTo(s[0].x * w, s[0].y * h);
+      for (var i = 1; i < s.length - 1; i++) {   // through the midpoints: a smooth line, not a zig-zag
+        ctx.quadraticCurveTo(s[i].x * w, s[i].y * h, (s[i].x + s[i + 1].x) / 2 * w, (s[i].y + s[i + 1].y) / 2 * h);
+      }
+      var l = s[s.length - 1]; ctx.lineTo(l.x * w, l.y * h); ctx.stroke();
+    });
+  }
+  function sigRedraw() {
+    var cv = $('#sigPad'); if (!cv || !SIG.w) return;
+    var ctx = cv.getContext('2d'); ctx.clearRect(0, 0, SIG.w, SIG.h); sigPaint(ctx, SIG.w, SIG.h, 2.6);
+  }
+  function bindSig() {
+    var cv = $('#sigPad'), wrap = $('#sigWrap'); if (!cv || !wrap) return;
+    var size = function () {
+      var w = wrap.clientWidth, h = wrap.clientHeight, dpr = Math.min(3, window.devicePixelRatio || 1);
+      if (!w || !h) return;
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);   // sharp on a phone screen
+      cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+      SIG.w = w; SIG.h = h; sigRedraw();
+    };
+    SIG.resize = size;
+    size();
+    var pt = function (e) {
+      var r = cv.getBoundingClientRect();
+      return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+    };
+    cv.addEventListener('pointerdown', function (e) {
+      if (e.button > 0) return;
+      e.preventDefault();
+      try { cv.setPointerCapture(e.pointerId); } catch (x) {}
+      SIG.cur = [pt(e)]; SIG.strokes.push(SIG.cur); sigRedraw();
+    });
+    cv.addEventListener('pointermove', function (e) {
+      if (!SIG.cur) return;
+      e.preventDefault();
+      var evs = (e.getCoalescedEvents && e.getCoalescedEvents()) || [];
+      (evs.length ? evs : [e]).forEach(function (ev) { SIG.cur.push(pt(ev)); });
+      sigRedraw();
+    });
+    var end = function () {
+      if (!SIG.cur) return;
+      var s = SIG.cur; SIG.cur = null;
+      if (strokeLen(s) < 6) SIG.strokes.splice(SIG.strokes.indexOf(s), 1);   // a dot / a slip of the finger
+      else SIG.dirty = true;
+      sigRedraw(); sigMsg(''); paintReview();
+    };
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    cv.addEventListener('lostpointercapture', end);
+    $('#sigClear').addEventListener('click', function () {
+      SIG.strokes = []; SIG.cur = null; SIG.dirty = false; sigRedraw();
+      sigMsg(hasSavedSig() ? '✅ ' + esc(t('sig_saved')) : ''); paintReview();
+    });
+  }
+  window.addEventListener('resize', function () { if (SIG.resize && $('#sigPad')) SIG.resize(); });
+  /** The signature as a PNG on white (the server keeps it as a JPEG), cut to the ink with a margin. */
+  function sigBlob() {
+    return new Promise(function (resolve) {
+      var W0 = 1200, k = W0 / SIG.w, H0 = Math.round(SIG.h * k), pad = 24, minX = 1, minY = 1, maxX = 0, maxY = 0;
+      SIG.strokes.forEach(function (s) { s.forEach(function (p) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); }); });
+      var x0 = Math.max(0, minX * W0 - pad), y0 = Math.max(0, minY * H0 - pad), x1 = Math.min(W0, maxX * W0 + pad), y1 = Math.min(H0, maxY * H0 + pad);
+      var cv = document.createElement('canvas'); cv.width = Math.max(40, Math.round(x1 - x0)); cv.height = Math.max(20, Math.round(y1 - y0));
+      var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.translate(-x0, -y0); sigPaint(ctx, W0, H0, 2.6 * k);
+      if (cv.toBlob) cv.toBlob(function (b) { resolve(b); }, 'image/png'); else resolve(dataUrlBlob(cv.toDataURL('image/png')));
+    });
+  }
+  /**
+   * Send a new signature as the extra "Signature" (the form prints it in its signature box), then drop the
+   * earlier one(s) — after, so a failed send never loses the old signature. Resolves true unless it failed.
+   */
+  function sigSave() {
+    if (!SIG.dirty) return Promise.resolve(true);
+    if (!sigOk()) { if (SIG.strokes.length) sigMsg('⚠ ' + esc(t('sig_short'))); return Promise.resolve(true); }
+    var oldIdx = function () {
+      return (S.d.extras || []).filter(function (x) { return !x.paper && SIG_RE.test(x.label || ''); }).map(function (x) { return x.i; });
+    };
+    var before = oldIdx();
+    var send = function (blob) {
+      var fd = new FormData();
+      fd.append('slot', 'extra'); fd.append('label', 'Signature');
+      fd.append('file', new File([blob], 'signature.png', { type: 'image/png' }));
+      return api('upload', fd, true);
+    };
+    var dropAll = function (list) {   // highest index first: the others keep their place
+      return list.sort(function (a, b) { return b - a; }).reduce(function (p, i) {
+        return p.then(function () { return api('drop_extra', { i: i }).then(function (r) { if (r.ok) S.d = Object.assign(S.d, r.data.draft, pickTyped()); }); });
+      }, Promise.resolve());
+    };
+    return sigBlob().then(function (blob) {
+      if (!blob) return true;
+      return send(blob).then(function (r) {
+        // the most documents one form may carry: make room by dropping the old signature first, then send again
+        if (!r.ok && before.length) return dropAll(before).then(function () { before = []; return send(blob); });
+        return r;
+      }).then(function (r) {
+        if (!r.ok) { toast(r.error || t('net'), true); return false; }
+        S.d = Object.assign(S.d, r.data.draft, pickTyped());
+        SIG.dirty = false;
+        return dropAll(before).then(function () { toast('✓ ' + t('sig_review')); return true; });
+      });
+    });
   }
 
   function renderDone() {
@@ -685,10 +1111,14 @@
         + (approved && R.kyc === 'submitted' ? '<div class="ap-note warn">' + esc(t('o_kycNo')) + '</div>' : '')
         + (approved && R.admin_id ? '<div style="text-align:center;margin:14px 0 4px"><a href="' + esc(member || '#') + '"><img alt="ID card" src="/api/agentpro-card.php?m=' + (+R.admin_id) + '&s=id-front&t=' + Date.now() + '" style="width:min(240px,70vw);border-radius:14px;box-shadow:var(--sh-2)"></a></div>' : '')
         + (approved && R.driver ? '<div class="ap-note" style="margin-top:10px">🚌 ' + esc(t('o_driver')) + '</div>' : '')
+        + (R.note ? '<div class="ap-note warn" style="margin-top:10px">' + esc(R.note) + '</div>' : '')
         + '<div class="ap-actions">'
+        // 31 Oct 2026: sent but not approved here — the next step is one obvious tap (the approval itself is admin/team.php's, unchanged)
+        + (!approved && !R.note ? '<a class="ap-btn gold ap-apprnow" href="/admin/team.php?tab=approvals&amp;view=waiting' + (R.app_id ? '#app-' + (+R.app_id) : '') + '">✅ '
+          + esc(bi('o_apprNow')) + '</a><p class="ap-hint" style="margin:0">' + esc(t('o_apprLead')) + '</p>' : '')
         + (member ? '<a class="ap-btn" href="' + esc(member) + '">🪪 ' + esc(t('o_cards')) + '</a>' : '')
         + (form ? '<a class="ap-btn ghost" href="' + esc(form + (form.indexOf('?') >= 0 ? '&' : '?') + 'auto=pdf') + '" target="_blank" rel="noopener">📄 ' + esc(t('o_form')) + '</a>' : '')
-        + (!approved ? '<a class="ap-btn ghost" href="/admin/team.php?tab=approvals">📋 ' + esc(t('o_appr')) + '</a>' : '')
+        + (!approved && R.note ? '<a class="ap-btn ghost" href="/admin/team.php?tab=approvals">📋 ' + esc(t('o_appr')) + '</a>' : '')
         + '<button type="button" class="ap-btn gold" id="doneNew">➕ ' + esc(t('o_next')) + '</button></div></section>';
     }
     var waText = encodeURIComponent('Namaste! My application ' + ref + ' — ' + (S.d.full_name || ''));
@@ -723,7 +1153,7 @@
     });
     $$('[data-role]').forEach(function (b) {
       b.addEventListener('click', function () {
-        if (b.disabled) return;
+        if (b.disabled || S.d.status !== 'draft') return;   // the role is fixed once sent (and for an approved member)
         collect();
         var v = b.dataset.role, agent = v.indexOf('agent:') === 0;
         api('office_role', { role: agent ? 'agent' : v, agent_kind: agent ? v.split(':')[1] : 'person', designation: S.d.designation || '' }).then(function (r) {
@@ -746,9 +1176,7 @@
     $$('[data-bc]').forEach(function (b) {
       b.addEventListener('click', function () { collect(); S.d.country = b.dataset.bc; render(); });
     });
-    $$('[data-up]').forEach(function (inp) {
-      inp.addEventListener('change', function () { if (inp.files && inp.files[0]) upload(inp.dataset.up, inp.files[0]); });
-    });
+    $$('[data-up]').forEach(bindUp);
     $$('[data-drop]').forEach(function (b) {
       b.addEventListener('click', function () { api('drop_extra', { i: +b.dataset.drop }).then(function (r) { if (r.ok) { S.d = Object.assign(r.data.draft, pickTyped()); render(); } }); });
     });
@@ -773,6 +1201,13 @@
     });
     if (STEPS[S.step] === 'wa') bindWa();
     if (STEPS[S.step] === 'photo') { bindPhoto(); bindThumb(); }
+    if (STEPS[S.step] === 'finish') {
+      bindSig(); bindGoto($('#app'));
+      $$('#app .ap-in[name]').forEach(function (el) { el.addEventListener('change', paintReview); });   // the review follows what is typed above it
+    }
+  }
+  function bindUp(inp) {
+    inp.addEventListener('change', function () { var f = inp.files && inp.files[0]; if (f) upload(inp.dataset.up, f); });
   }
   /** Copy what is on screen into the draft (no network). */
   function collect() {
@@ -901,21 +1336,27 @@
   }
 
   /* ---- documents ---- */
+  /**
+   * Send one document. 31 Oct 2026: the ID sides (front / back) run in the BACKGROUND — the person may be on any
+   * step meanwhile: the tile and the boxes are updated in place (no re-render), the chip counts. Resolves when done.
+   */
   function upload(slot, file) {
-    var tileEl = $('.ap-tile[data-slot="' + slot + '"]');
-    if (tileEl) { var b = document.createElement('div'); b.className = 'busy'; b.textContent = t('reading'); tileEl.appendChild(b); }
+    var isId = slot === 'front' || slot === 'back';
+    if (isId) { S.upBusy[slot] = true; readBegin(); paintTile(slot); readBox(); }
+    else { var tileEl = $('.ap-tile[data-slot="' + slot + '"]'); if (tileEl) { var b = document.createElement('div'); b.className = 'busy'; b.textContent = t('reading'); tileEl.appendChild(b); } }
+    var fin = function () { if (isId) { S.upBusy[slot] = false; paintTile(slot); readEnd(); readBox(); } };
     var isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
     // A PDF of the ID: its first page becomes a JPEG here, so the QR / OCR / AI can read it.
     var prep = (isPdf && (slot === 'front' || slot === 'back'))
       ? pdfPages(file, 1).then(function (pages) { return pages[0] ? new File([dataUrlBlob(pages[0])], 'id-' + slot + '.jpg', { type: 'image/jpeg' }) : file; }, function () { return file; })
       : Promise.resolve(file);
-    prep.then(function (f) {
+    return prep.then(function (f) {
       var isImg = /^image\//.test(f.type) || (!f.type && !/\.pdf$/i.test(f.name || ''));
       var fpdf = !isImg && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''));
       // 30 Oct 2026: a PDF goes up as it is — only when it fits what the server takes
       if (fpdf && f.size > maxUpload()) throw tooBig(t('pdfBig').replace('{mb}', mb(maxUpload())));
-      if (isImg && (slot === 'front' || slot === 'back')) S.previews[slot] = URL.createObjectURL(f);
-      var qrP = (isImg && (slot === 'front' || slot === 'back')) ? readQr(f) : Promise.resolve('');
+      if (isImg && isId) { S.previews[slot] = URL.createObjectURL(f); paintTile(slot); }
+      var qrP = (isImg && isId) ? readQr(f) : Promise.resolve('');
       return Promise.all([qrP, isImg ? shrink(f, slot) : Promise.resolve(f)]);
     }).then(function (res) {
       var fd = new FormData();
@@ -927,15 +1368,19 @@
       collect();
       return api('upload', fd, true);
     }).then(function (r) {
-      if (!r.ok) { toast(r.error, true); render(); return; }
+      if (!r.ok) { toast(r.error, true); if (isId) { delete S.previews[slot]; fin(); } else render(); return; }
       S.d = Object.assign(S.d, r.data.draft, pickTyped());
-      if (r.data.read) applyRead(r.data.read, false);
-      render();
       if (r.data.aiQueued) pollAi();
+      if (!isId) { render(); return; }
+      // the fast readers' answer (QR / passport code / OCR) at once; the AI's follows through read_status
+      var filled = r.data.read ? applyRead(r.data.read, false) : [];
+      fin();
+      fillIn(filled);
+      if (Object.keys(S.suggest).some(function (k) { return boxOf(k); })) renderSoon();
     }).catch(function (e) {
       // a PDF over the limit, or a picture this browser cannot open (HEIC …): say so, send nothing
       toast(e && e.code === 'big' ? e.message : t('photoBad'), true);
-      render();
+      if (isId) { delete S.previews[slot]; fin(); } else render();
     });
   }
   /** The most one upload may be (join.php works it out from MAX_UPLOAD_BYTES and PHP's own limits). */
@@ -951,27 +1396,41 @@
     extra:  { maxEdge: 2000, maxBytes: 1500000 },
     paper:  { maxEdge: 1600, maxBytes: 1200000 }
   };
-  /** Keep what the person typed this session (and what the paper form filled); the server copy may be older. */
+  /**
+   * Keep what the person typed this session (and what the paper form / the ID readers filled); the server copy
+   * may be older — 31 Oct 2026: readers now fill while other saves are on the way, so their values are kept too.
+   */
   function pickTyped() {
     var o = {};
-    Object.keys(S.touched).concat(Object.keys(S.keep)).forEach(function (k) { if (S.d[k] != null) o[k] = S.d[k]; });
+    Object.keys(S.touched).concat(Object.keys(S.keep), Object.keys(S.src)).forEach(function (k) { if (S.d[k] != null) o[k] = S.d[k]; });
     return o;
   }
   var RANK = { qr: 4, mrz: 3, ai: 2, paper: 2, ocr: 1 };
-  function applyRead(read, fromAi) {
-    var f = read.fields || {}, src = read.sources || {};
+  /** Put a reader's values in the draft (ranking: QR > passport code > AI = paper > OCR). @return the keys it filled */
+  function applyRead(read, fromAi, conf) {
+    var f = read.fields || {}, src = read.sources || {}, filled = [];
+    conf = conf || {};
     Object.keys(f).forEach(function (k) {
       var s = fromAi ? 'ai' : (src[k] || 'ocr');
       // Typed by the person: never overwrite — offer the ID's version when it is certain (QR / passport code).
       if (S.touched[k]) { if ((RANK[s] || 0) >= 3 && String(S.d[k] || '') !== String(f[k])) S.suggest[k] = { v: f[k], s: s }; return; }
-      var key = k === 'id_expires_on' ? 'id_expires_on' : k;
-      if (key === 'id_number') { if (S.src.id_number && (RANK[S.src.id_number] || 0) >= (RANK[s] || 0)) return; S.d.id_number = f[k]; S.src.id_number = s; return; }
+      var key = k;
+      if (key === 'id_number') {
+        if (S.src.id_number && (RANK[S.src.id_number] || 0) >= (RANK[s] || 0)) return;
+        if (String(S.d.id_number || '') !== String(f[k])) filled.push(k);
+        S.d.id_number = f[k]; S.src.id_number = s; if (conf[k]) S.conf[k] = conf[k];
+        return;
+      }
       if (key === 'full_name_local' || key === 'country') { if (key === 'country' && !S.d.country) S.d.country = f[k]; return; }
       if (S.src[key] && (RANK[S.src[key]] || 0) >= (RANK[s] || 0)) return;
-      if (!fromAi || !S.d[key]) { S.d[key] = f[k]; S.src[key] = s; }
+      if (!fromAi || !S.d[key]) {
+        if (String(S.d[key] || '') !== String(f[k])) filled.push(key);
+        S.d[key] = f[k]; S.src[key] = s; if (conf[k]) S.conf[key] = conf[k];
+      }
     });
     (read.warnings || []).forEach(function (w) { if (w === 'dob_from_bs') S.warn.dob = 'dobBs'; });
-    saveQuiet();
+    if (filled.length) saveQuiet();
+    return filled;
   }
   function saveQuiet() {
     var o = {};
@@ -979,24 +1438,43 @@
     if (S.d.id_type) o.id_type = S.d.id_type;
     if (o.id_number && /^X{4}/.test(o.id_number)) delete o.id_number;
     o.lenient = '1';   // a doubtful read must not block the good ones
-    api('save', o).then(function (r) { if (r.ok) { var keep = pickTyped(); S.d = Object.assign(r.data.draft, keep, { id_number: S.d.id_number }); } });
+    S.saveP = api('save', o).then(function (r) { if (r.ok) { var keep = pickTyped(); S.d = Object.assign(r.data.draft, keep, { id_number: S.d.id_number }); } return r; });
+    return S.saveP;
   }
+  /**
+   * Ask read_status for the AI's answer (cron/agentpro-worker.php reads in the background) on EVERY step.
+   * 31 Oct 2026: every 1.5 s at first (the cloud reader answers in seconds), then less often, up to ~3½ minutes.
+   * One poller: a second upload only lengthens it.
+   */
   function pollAi() {
-    var box = $('#readBox'); if (box) box.innerHTML = '<div class="ap-reading"><span class="dot"></span>' + esc(t('aiReading')) + '</div>';
+    S.aiUntil = Date.now() + 210000;
+    if (S.aiPoll) return;
+    readBegin();
     var n = 0;
-    stopPolls(false);
-    S.aiPoll = setInterval(function () {
-      if (++n > 40) { stopPolls(false); var b = $('#readBox'); if (b) b.innerHTML = ''; return; }
-      api('read_status').then(function (r) {
-        if (!r.ok) return;
-        if (Object.keys(r.data.ai || {}).length) { applyRead({ fields: r.data.ai }, true); if (STEPS[S.step] === 'id') render(); }
-        if (!r.data.waiting) { stopPolls(false); var b2 = $('#readBox'); if (b2) b2.innerHTML = ''; }
-      });
-    }, 4000);
+    var finish = function () { S.aiPoll = null; readEnd(); readBox(); };
+    var next = function () {
+      if (Date.now() > S.aiUntil) { finish(); return; }
+      var wait = n < 6 ? 1500 : (n < 12 ? 2500 : (n < 20 ? 4000 : 6000));
+      n++;
+      S.aiPoll = setTimeout(function () {
+        api('read_status').then(function (r) {
+          if (!r.ok) { next(); return; }   // a dropped poll (the phone lost signal) is simply asked again
+          var got = r.data.ai || {};
+          if (Object.keys(got).length) {
+            var filled = applyRead({ fields: got }, true, r.data.conf || {});
+            fillIn(filled);
+            if (filled.length && Object.keys(S.suggest).some(function (k) { return boxOf(k); })) renderSoon();
+          }
+          if (!r.data.waiting) finish(); else next();
+        });
+      }, wait);
+    };
+    next();
+    readBox();
   }
   function stopPolls(rev) {
+    // 31 Oct 2026: the AI poll is no longer stopped here — the reading goes on while the person is on other steps
     if (rev && S.revPoll) { clearInterval(S.revPoll); S.revPoll = null; }
-    if (!rev && S.aiPoll && STEPS[S.step] !== 'id') { /* keep polling only while the ID step is on screen */ clearInterval(S.aiPoll); S.aiPoll = null; }
     if (!rev && S.step !== 1 && S.revPoll) { clearInterval(S.revPoll); S.revPoll = null; }
   }
 
@@ -1067,6 +1545,8 @@
   function scanPaper(files) {
     var list = Array.prototype.slice.call(files, 0, 8), pages = [], pdfBad = false;
     var work = Promise.resolve();
+    readBegin();   // 31 Oct 2026: the chip shows it on every step — the person goes on meanwhile
+    var ended = false, end = function () { if (!ended) { ended = true; readEnd(); } };
     list.forEach(function (f) {
       work = work.then(function () {
         if (pages.length >= 4) return;
@@ -1081,20 +1561,24 @@
       });
     });
     work.then(function () {
-      if (!pages.length) { paperMsg(esc(pdfBad ? t('paper_pdfFail') : t('paper_notform')), true); return; }
+      if (!pages.length) { paperMsg(esc(pdfBad ? t('paper_pdfFail') : t('paper_notform')), true); toast(pdfBad ? t('paper_pdfFail') : t('paper_notform'), true); end(); return; }
       var started = Date.now();
       var tick = function () { paperMsg('<span class="ap-spin dark"></span> ' + esc(t('paper_read')) + ' · ' + Math.round((Date.now() - started) / 1000) + 's'); };
       tick(); var timer = setInterval(tick, 1000);
       collect();
       // Under PHP-FPM the server answers "queued" at once and reads in the background (a model may take
-      // minutes, longer than the web server waits); ask scan_status every 4 s for up to 8 minutes.
+      // minutes, longer than the web server waits); ask scan_status for up to 8 minutes — 31 Oct 2026: every
+      // 1.5 s at first (the fast order answers within about a minute), then less often.
+      var until = Date.now() + 480000;
       var poll = function (job, tries) {
-        return new Promise(function (res) { setTimeout(res, 4000); }).then(function () {
+        var wait = tries < 10 ? 1500 : (tries < 25 ? 2500 : 4000);
+        return new Promise(function (res) { setTimeout(res, wait); }).then(function () {
           return api('scan_status', { job: job });
         }).then(function (s) {
-          if (s.ok && s.status === 'queued' && tries < 120) return poll(job, tries + 1);
+          var more = Date.now() < until;
+          if (s.ok && s.status === 'queued' && more) return poll(job, tries + 1);
           if (s.ok && s.status === 'queued') return { ok: false, error: t('paper_zero') };
-          if (!s.ok && s.error === t('net') && tries < 120) return poll(job, tries + 1);   // a dropped poll (phone lost signal) is retried
+          if (!s.ok && s.error === t('net') && more) return poll(job, tries + 1);   // a dropped poll (phone lost signal) is retried
           return s;
         });
       };
@@ -1102,11 +1586,12 @@
         return r.ok && r.status === 'queued' && r.job ? poll(r.job, 0) : r;
       }).then(function (r) {
         clearInterval(timer);
-        if (!r.ok) { paperMsg('⚠ ' + esc(r.error || t('net')), true); return; }
+        if (!r.ok) { paperMsg('⚠ ' + esc(r.error || t('net')), true); toast(r.error || t('net'), true); end(); return; }
         S.d = Object.assign(S.d, r.data.draft, pickTyped());
         applyPaper(r);
+        end();
       });
-    });
+    }).catch(function () { end(); });
   }
   /** Fill only EMPTY boxes; a differing value becomes a "Paper form says … Use this" offer. */
   function applyPaper(r) {
@@ -1130,17 +1615,23 @@
     var reader = r.reader ? ' · ' + esc(t('reader_' + r.reader)) : '';
     var note = r.note ? '<div class="ap-hint">' + esc(r.note) + '</div>' : '';
     var pages = r.pages ? ' · 📎 ' + r.pages + ' ' + esc(t('paper_pages')) : '';
-    if (r.status === 'notform') paperMsg('⚠ ' + esc(t('paper_notform')) + reader + note, true);
+    if (r.status === 'notform') { paperMsg('⚠ ' + esc(t('paper_notform')) + reader + note, true); toast(t('paper_notform'), true); }
     else if (r.status === 'unavailable' || !Object.keys(f).length) paperMsg(esc(t('paper_zero')) + pages + note, r.status === 'unavailable');
     else paperMsg('✨ <b>' + filled + '</b> ' + esc(t('paper_done')) + reader + pages + note);
-    if (!Object.keys(toSave).length) { render(); return; }
+    // 31 Oct 2026: in place, one box after the other — what is typed / focused stays; "Use this" offers need a redraw
+    var keys = Object.keys(toSave);
+    fillIn(keys);
+    var offers = Object.keys(S.suggest).some(function (k) { return S.suggest[k].s === 'paper' && boxOf(k); });
+    if (offers) setTimeout(renderSoon, keys.length * FILL_MS + 200);
+    if (STEPS[S.step] === 'wa' && S.paperPhone && $('#phone') && !$('#phone').value) $('#phone').value = S.paperPhone;
+    if (!keys.length) return;
     toSave.lenient = '1';
     api('save', toSave).then(function (s) {
-      if (s.ok) {
-        Object.keys(s.data.skipped || {}).forEach(function (k) { S.bad[k] = s.data.skipped[k]; S.conf[k] = 'low'; });
-        S.d = Object.assign(s.data.draft, pickTyped());
-      }
-      render();
+      if (!s.ok) return;
+      var bad = Object.keys(s.data.skipped || {});
+      bad.forEach(function (k) { S.bad[k] = s.data.skipped[k]; S.conf[k] = 'low'; });
+      S.d = Object.assign(s.data.draft, pickTyped());
+      bad.forEach(function (k) { if (boxOf(k)) paintField(k); });   // red: the server could not take it as read
     });
   }
 
@@ -1258,7 +1749,7 @@
       else if (!d.dob) need = 'need_dob';
       else if (!(d.address || d.city)) need = 'need_addr';
     } else if (st === 'photo' && !OFF && !(d.has && d.has.selfie)) need = 'need_selfie';
-    else if (st === 'finish' && !S.consent) need = 'need_consent';
+    else if (st === 'finish' && !S.consent && !S.edit) need = 'need_consent';   // edit mode: the member agreed when they joined
     if (need) { toast(t(need), true); }
     return !need;
   }
@@ -1288,12 +1779,27 @@
       return;
     }
     if (!validate()) return;
+    // 31 Oct 2026: self-fill is asked ONCE to sign (not blocking — a second tap sends without it)
+    if (STEPS[S.step] === 'finish' && !OFF && !S.edit && !sigOk() && !hasSavedSig() && !S.sigNudged) {
+      S.sigNudged = true;
+      var pad = $('#sigCard'); if (pad && pad.scrollIntoView) pad.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (SIG.strokes.length) sigMsg('⚠ ' + esc(t('sig_short')));
+      toast(t('sig_ask'));
+      return;
+    }
     busy(btn, true);
     var fields = stepFields();
     var p = Object.keys(fields).length ? api('save', fields) : Promise.resolve({ ok: true, data: { draft: S.d } });
     p.then(function (r) {
       if (!r.ok) { busy(btn, false); toast(r.error, true); return; }
       S.d = Object.assign(r.data.draft, pickTyped());
+      if (STEPS[S.step] === 'finish' && S.edit) {
+        // an approved member: every save went to the account already — no submit; wait for the last saves, back to the member
+        return Promise.all([S.saveP, sigSave()]).then(function () {
+          var u = memberBack();
+          location.href = u + (u.indexOf('?') >= 0 ? '&' : '?') + 'saved=1';
+        });
+      }
       if (STEPS[S.step] === 'finish') {
         var body = { consent: '1' };
         if (OFF) { body.approve_now = S.approveNow ? '1' : '0'; body.saw_id = S.sawId ? '1' : '0'; body.share = shareFor(S.d.phone); }
@@ -1306,7 +1812,8 @@
             return s;
           });
         };
-        return send(body).then(function (s) {
+        // the signature first (the filled form prints it); a failed signature never stops the form
+        return sigSave().then(function () { return send(body); }).then(function (s) {
           busy(btn, false);
           if (!s.ok) { toast(s.error, true); return; }
           S.res = s.data; S.d.ref = s.data.ref; S.d.status = s.data.status; S.step = 6; stopCam();
@@ -1317,7 +1824,11 @@
       S.step = Math.min(5, S.step + 1); render(); window.scrollTo(0, 0);
     });
   });
-  $('#back').addEventListener('click', function () { collect(); stopCam(); S.step = Math.max(0, S.step - 1); render(); window.scrollTo(0, 0); });
+  $('#back').addEventListener('click', function () {
+    collect(); stopCam();
+    if (STEPS[S.step] === 'finish') sigSave();   // a drawn signature is kept on the form when going back
+    S.step = Math.max(0, S.step - 1); render(); window.scrollTo(0, 0);
+  });
 
   boot();
 })();

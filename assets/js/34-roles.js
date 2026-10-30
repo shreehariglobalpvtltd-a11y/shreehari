@@ -10,17 +10,22 @@
    companies, /api/staff-list.php for staff - the same public fields as
    before, nothing new leaves the server). Apply and Login doors per role.
    Read-only, no booking path. Replaces 32-agents.js and 33-team.js.
+   31 Oct 2026: the lists also carry approved AgentPro members (photo from
+   /api/ap-photo.php, role keys counter / manager / driver …); Apply goes to
+   /join.php (an office user lands on the office form). Staff keep the A4
+   staff sheet: the public join.php makes staff only from an office invite.
    ===================================================================== */
 (function () {
   'use strict';
   if (!document.getElementById('homeRoles')) return;
   var PAGE = 12;
-  var APPLY = { agent: '/agreements/apply.html', staff: '/agreements/apply.html?kind=staff', partner: '/agreements/apply.html?kind=partner' };
-  var NE = { driver: 'चालक', conductor: 'कन्डक्टर', helper: 'हेल्पर', office: 'अफिस', accountant: 'लेखापाल', mechanic: 'मेकानिक', cleaner: 'सफाइ', security: 'सुरक्षा', other: 'अन्य' };
+  var APPLY = { agent: '/join.php?from=apply&kind=agent', staff: '/agreements/apply.html?kind=staff', partner: '/join.php?from=apply&kind=partner' };
+  var NE = { driver: 'चालक', conductor: 'कन्डक्टर', helper: 'हेल्पर', office: 'अफिस', accountant: 'लेखापाल', mechanic: 'मेकानिक', cleaner: 'सफाइ', security: 'सुरक्षा', other: 'अन्य',
+    counter: 'काउन्टर', manager: 'म्यानेजर', support: 'ग्राहक सेवा', scanner: 'बोर्डिङ स्टाफ', official: 'अधिकारी', operations: 'सञ्चालन', viewer: 'कर्मचारी', superadmin: 'सञ्चालक' };
   var top = null, dir = null, staff = null, shown = { agent: PAGE, staff: PAGE, partner: PAGE }, open = {};
 
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-  function okPhoto(src) { return /^\/api\/(agent|staff)-photo\.php\?k=[a-f0-9]+(&v=logo)?$/.test(String(src || '')); }
+  function okPhoto(src) { src = String(src || ''); return /^\/api\/(agent|staff)-photo\.php\?k=[a-f0-9]+(&v=logo)?$/.test(src) || /^\/api\/ap-photo\.php\?k=[a-f0-9]{20}$/.test(src); }
   function box(kind) { return document.querySelector('#homeRoles [data-role="' + kind + '"]'); }
   var io = 'IntersectionObserver' in window && document.documentElement.getAttribute('data-motion') !== 'reduced'
     ? new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }); }, { rootMargin: '0px 0px -6% 0px' }) : null;
@@ -78,7 +83,7 @@
     who.appendChild(el('b', '', p.name || ''));
     if (num) who.appendChild(el('small', 'rl-num', '📞 ' + num));
     var sub = [];
-    if (kind === 'staff') { if (p.role) sub.push((NE[p.role] || '') + (p.roleEn ? ' · ' + p.roleEn : '')); if (p.loc) sub.push(p.loc); }
+    if (kind === 'staff') { if (p.role) sub.push((NE[p.role] || p.roleNe || '') + (p.roleEn ? ' · ' + p.roleEn : '')); if (p.loc) sub.push(p.loc); }
     else if (p.area) sub.push(p.area);
     if (sub.length) who.appendChild(el('small', '', sub.join(' · ')));
     var tick = el('small', 'rl-tick', kind === 'staff' ? '✔ ID verified' : (p.verified ? '✔ KYC verified' : '✔ Approved') + (p.signed ? ' · 📝 signed' : ''));

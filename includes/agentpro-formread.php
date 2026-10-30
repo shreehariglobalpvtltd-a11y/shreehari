@@ -31,6 +31,12 @@
  *                  Aadhaar (12 digits, 4-4-4), PAN, IFSC, e-mail, date
  *                  of birth — every one 'low'
  *
+ *  31 Oct 2026 (ap_read_order = fast, the default): Gemini goes FIRST
+ *  with a short window (ap_read_cloud_timeout + 10 s), the VPS model only
+ *  when Gemini read nothing useful and time remains, Tesseract last — the
+ *  whole first pass within ap_form_fast_deadline (60 s). The VPS model on
+ *  CPU needed 312 s for one page. No Gemini key = the order above.
+ *
  *  What the reader knows (owner's own sample, .claude/samples/): a dash
  *  means blank; dates are day/month/year; 12 digits in groups of 4 is an
  *  Aadhaar; the UPI line is often just a mobile number; obvious language
@@ -130,7 +136,8 @@ final class ApFormRead
      *
      * @param list<string> $jpegPaths up to MAX_PAGES page pictures (JPEG / PNG / WEBP files), in page order
      * @param string       $kind      'agent' | 'staff'
-     * @param array{readers?: list<string>, budget?: int, deadline?: int} $o
+     * @param array{readers?: list<string>, budget?: int, deadline?: int, order?: string} $o
+     *        order:    'fast' (Gemini first, ~60 s) | 'vps' (the 30 Oct ladder); default ap_read_order (fast)
      *        readers:  which rungs may run (default all: vps, gemini, tesseract) — admin/ai-local.php tries one
      *        budget:   seconds the VPS model may spend on all pages together (default ap_form_vps_budget, 150)
      *        deadline: seconds the whole read may take, every rung and every wait included (default
@@ -152,19 +159,34 @@ final class ApFormRead
         if ($pages === []) {
             return ['note' => 'No page picture could be opened.'] + $none;
         }
-        // 30 Oct 2026 (af1 review): ONE deadline for the whole read — lock waits, Gemini and Tesseract included —
-        // so the web request answers before nginx's fastcgi_read_timeout (60 s) cuts it.
-        $span = (int) ($o['deadline'] ?? Settings::getInt('ap_form_read_deadline', self::DEADLINE));
-        $span = max(15, min(900, $span));
-        $deadline = microtime(true) + $span;
-        $leftTo = static fn(float $until): int => (int) floor($until - microtime(true));
-        @set_time_limit($span + 30);
         $geminiOn = in_array('gemini', $allow, true) && (self::$geminiHook !== null || DocVerify::geminiReady());
         $ocrOn = in_array('tesseract', $allow, true) && (self::$ocrHook !== null || ApDocRead::tesseractAvailable());
+        // 31 Oct 2026 (ap_read_order): 'fast' asks Gemini first with a short timeout, the VPS model only when Gemini
+        // read nothing useful and time remains, Tesseract last — the first pass within ~60 s. Without Gemini: 'vps'.
+        $fast = self::fastOrder($o, $geminiOn);
+        // 30 Oct 2026 (af1 review): ONE deadline for the whole read — lock waits, Gemini and Tesseract included —
+        // so the web request answers before nginx's fastcgi_read_timeout (60 s) cuts it.
+        $span = self::span($o, $fast);
+        $t0 = microtime(true);
+        $deadline = $t0 + $span;
+        $leftTo = static fn(float $until): int => (int) floor($until - microtime(true));
+        @set_time_limit($span + 30);
         $t = self::training();
         $tried = [];
         $notes = [];
         $fallback = null;                                 // an answer with nothing filled, kept in case no rung does better
+
+        // fast: Gemini first (the same rung as below, with a short window), then the VPS model and Tesseract
+        if ($fast) {
+            $g = self::geminiRung($pages, $kind, $t, min($deadline - ($ocrOn ? self::OCR_KEEP : 0), $t0 + ApDocRead::cloudTimeout() + 10), $tried, $notes);
+            if ($g !== null && ($g['status'] === 'read' || $g['status'] === 'notform')) {
+                return self::done($g, 'gemini', $tried, $notes);
+            }
+            if ($g !== null) {
+                $fallback = ['r' => $g, 'reader' => 'gemini'];
+            }
+            $geminiOn = false;                            // asked already: the ladder below goes on with the VPS model
+        }
 
         // 1. the model on this VPS, one page at a time (it leaves the later rungs their share of the deadline)
         if (in_array('vps', $allow, true) && ApAi::docsReady()) {
@@ -212,7 +234,7 @@ final class ApFormRead
                 // "not a form" / nothing readable from a small model: ask the next rung for a second opinion
                 // (a "not a form" from an unfinished read is no evidence — then the next rungs decide alone)
                 if (!$failed || $r['status'] === 'partial') {
-                    $fallback = ['r' => $r, 'reader' => 'vps'];
+                    $fallback ??= ['r' => $r, 'reader' => 'vps'];
                 }
             }
         }
@@ -224,31 +246,12 @@ final class ApFormRead
             $notes[] = 'No time was left to ask Gemini.';
         }
         if ($geminiOn) {
-            $tried[] = 'gemini';
-            $media = [];
-            foreach ($pages as $abs) {
-                $b = ApDocRead::forModel($abs, self::GEMINI_PX, false);
-                if ($b !== '') {
-                    $media[] = ['bytes' => $b, 'mime' => 'image/jpeg'];
-                }
+            $r = self::geminiRung($pages, $kind, $t, $geminiEnd, $tried, $notes);
+            if ($r !== null && ($r['status'] === 'read' || $r['status'] === 'notform')) {
+                return self::done($r, 'gemini', $tried, $notes);
             }
-            $prompt = self::prompt($kind, 0, count($media), $t['hints'], $t['examples']);
-            $g = $media === [] ? null : (self::$geminiHook !== null
-                ? (self::$geminiHook)($prompt, $media)
-                : DocVerify::geminiJson($prompt, $media, 900 * count($media) + 600, 'ApFormRead', $geminiEnd));
-            if (is_array($g)) {
-                $list = isset($g['pages']) && is_array($g['pages']) ? array_values(array_filter($g['pages'], 'is_array')) : [$g];
-                foreach ($list as $i => &$pg) {
-                    $pg['_index'] = $i + 1;
-                }
-                unset($pg);
-                $r = self::combine($list, $kind);
-                if ($r['status'] === 'read' || $r['status'] === 'notform') {
-                    return self::done($r, 'gemini', $tried, $notes);
-                }
+            if ($r !== null) {
                 $fallback ??= ['r' => $r, 'reader' => 'gemini'];
-            } else {
-                $notes[] = 'Gemini did not answer.';
             }
         }
         if ($fallback !== null && $fallback['r']['status'] === 'notform') {
@@ -283,6 +286,68 @@ final class ApFormRead
         }
         return ['note' => trim(implode(' ', $notes) . ($tried === [] ? ' No reader is set up on this server (no model server, no Gemini key, no Tesseract).' : '')),
                 'tried' => $tried] + $none;
+    }
+
+    /**
+     * Gemini, every page in one call, cut at $until. Null when it did not answer (a note says so).
+     *
+     * @param list<string> $pages
+     * @param array{hints: string, examples: list<array<string, string>>} $t
+     * @param list<string> $tried
+     * @param list<string> $notes
+     * @return array{status: string, fields: array<string, string>, confidence: array<string, string>, note: string}|null
+     */
+    private static function geminiRung(array $pages, string $kind, array $t, float $until, array &$tried, array &$notes): ?array
+    {
+        $tried[] = 'gemini';
+        $media = [];
+        foreach ($pages as $abs) {
+            $b = ApDocRead::forModel($abs, self::GEMINI_PX, false);
+            if ($b !== '') {
+                $media[] = ['bytes' => $b, 'mime' => 'image/jpeg'];
+            }
+        }
+        $prompt = self::prompt($kind, 0, count($media), $t['hints'], $t['examples']);
+        $g = $media === [] ? null : (self::$geminiHook !== null
+            ? (self::$geminiHook)($prompt, $media)
+            : DocVerify::geminiJson($prompt, $media, 900 * count($media) + 600, 'ApFormRead', $until));
+        if (!is_array($g)) {
+            $notes[] = 'Gemini did not answer.';
+            return null;
+        }
+        $list = isset($g['pages']) && is_array($g['pages']) ? array_values(array_filter($g['pages'], 'is_array')) : [$g];
+        foreach ($list as $i => &$pg) {
+            $pg['_index'] = $i + 1;
+        }
+        unset($pg);
+        return self::combine($list, $kind);
+    }
+
+    /**
+     * 31 Oct 2026: does this read go cloud-first (ap_read_order = fast, or $o['order'])? Only when Gemini may run —
+     * without it the VPS model is the one real reader and the 30 Oct ladder (vps order) is kept.
+     *
+     * @param array{order?: string} $o
+     */
+    public static function fastOrder(array $o, bool $geminiOn): bool
+    {
+        $order = in_array($o['order'] ?? null, ApDocRead::READ_ORDERS, true) ? (string) $o['order'] : ApDocRead::readOrder();
+        return $order === 'fast' && $geminiOn;
+    }
+
+    /**
+     * Seconds the whole read may take: $o['deadline'], else ap_form_read_deadline (DEADLINE) — in the fast order at most
+     * ap_form_fast_deadline (60 s), so the first pass comes back within about a minute.
+     *
+     * @param array{deadline?: int} $o
+     */
+    public static function span(array $o, bool $fast): int
+    {
+        if (isset($o['deadline'])) {
+            return max(15, min(900, (int) $o['deadline']));
+        }
+        $span = max(15, min(900, Settings::getInt('ap_form_read_deadline', self::DEADLINE)));
+        return $fast ? min($span, max(30, min(120, Settings::getInt('ap_form_fast_deadline', 60)))) : $span;
     }
 
     /**

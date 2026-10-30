@@ -41,10 +41,8 @@ $admin = admin_boot('bookings.view');
 $base  = '';
 
 if (Auth::bookingScopeAdminId() !== null) {
-    admin_header('Bus Chalan', 'chalan');
-    echo '<div class="flash bad"><svg class="a-ic"><use href="#a-lock"/></svg>The chalan lists every seat on the bus. An agent login sees only its own sales — use <a href="' . $base . '/admin/agent-passengers.php">My Passengers</a>.</div>';
-    admin_footer();
-    exit;
+    // 31 Oct 2026: an agent's own chalani (AGENT COPY, its passengers only) is one tap away on My Passengers.
+    Response::redirect('admin/agent-passengers.php?view=manifest' . (Security::isValidDate((string) ($_GET['date'] ?? '')) ? '&date=' . rawurlencode((string) $_GET['date']) : ''));
 }
 
 $date = Security::clean($_GET['date'] ?? '', 10);

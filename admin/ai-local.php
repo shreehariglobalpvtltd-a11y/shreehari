@@ -27,17 +27,27 @@
  *     (ap_form_examples); try a filled sample (photos or a PDF, turned
  *     into page pictures in the browser) through ApFormRead and save the
  *     corrections as examples in one tap. A sample is never stored.
+ *
+ * 31 Oct 2026 (idc-learn, owner: "VPS ko model le herera practice garos,
+ * sikdai jaos, fast hudai jaos"): "🧠 Learning & practice" — the WhatsApp
+ * desk's examples by source (ApLearn), fast-path answers today, the last 14
+ * practice runs (accuracy, seconds), "Practice now (60 s)", teach / remove an
+ * example. Plainly said on the card: the model learns from examples and
+ * practice; its weights are not re-trained on this server.
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/agentpro.php';
 require_once INCLUDE_PATH . '/agentpro-ai.php';
+require_once INCLUDE_PATH . '/agentpro-brain.php';
+require_once INCLUDE_PATH . '/agentpro-learn.php';
 require_once INCLUDE_PATH . '/agentpro-docs.php';
 require_once INCLUDE_PATH . '/docverify.php';
 require_once INCLUDE_PATH . '/agentpro-formread.php';
 $admin = admin_boot('dashboard.view');
 $super = Auth::isSuperadmin();
 $canTrain = $super || (string) ($admin['role'] ?? '') === 'manager' || Auth::can('staff.manage');
+$canLearn = $super || (string) ($admin['role'] ?? '') === 'manager';   // practice now, teach / remove a WhatsApp example
 $selfId = (int) ($admin['id'] ?? 0);
 $e = static fn($v): string => Security::e((string) $v);
 $flash = null;
@@ -122,6 +132,12 @@ if (Security::isPost()) {
             }
             if (in_array($act, ['hints', 'hints_reset', 'example_add', 'corrections', 'example_delete', 'examples_clear'], true) && !$canTrain) {
                 throw new RuntimeException('Only a super-admin, a manager or staff.manage can train the form AI.');
+            }
+            if (in_array($act, ['practice_now', 'learn_teach', 'learn_forget'], true) && !$canLearn) {
+                throw new RuntimeException('Only a super-admin or a manager can start practice or teach the WhatsApp desk.');
+            }
+            if ($act === 'learn_save' && !$super) {
+                throw new RuntimeException('Only the super-admin can change the practice settings.');
             }
             if ($act === 'save') {
                 foreach (array_keys($switches) as $k) {
@@ -236,6 +252,65 @@ if (Security::isPost()) {
                 }
                 $saveExamples([], 'Form AI examples cleared');
                 $flash = ['ok', 'Every example removed. / सबै हटाइयो।'];
+            } elseif ($act === 'practice_now') {
+                if (!ApLearn::ready()) {
+                    throw new RuntimeException('Run database/upgrade-2026-10-31-idc-learn.sql first.');
+                }
+                if (!Security::rateLimit('ap_practice_now', 'admin:' . $selfId, 6, 3600)) {
+                    throw new RuntimeException('Practice was started several times this hour — please wait a little.');
+                }
+                Logger::audit('agentpro.ai_practice', 'ai', 'practice', null, ['admin' => $selfId], 'Practice started from the admin page');
+                if (ApLearn::kick(60)) {
+                    $flash = ['ok', 'Practice started on the VPS (about a minute; it stops at once if WhatsApp needs the model). Refresh this page to see the run. / अभ्यास सुरु भयो — एक मिनेटपछि रिफ्रेस गर्नुहोस्।'];
+                } else {
+                    // no background start here: a shorter run inside this request (nginx gives a page ~60 s)
+                    $pr = ApLearn::practice(45);
+                    $flash = $pr['ok']
+                        ? ['ok', sprintf('Practice: %d / %d read right (%d%%), %.1f s each. / अभ्यास सकियो।', $pr['correct'], $pr['n'], $pr['pct'], $pr['avg_ms'] / 1000)]
+                        : ['bad', 'Practice did not run: ' . $pr['skipped'] . '.'];
+                }
+            } elseif ($act === 'learn_teach') {
+                $text = trim((string) ($_POST['text'] ?? ''));
+                $intent = (string) ($_POST['intent'] ?? '');
+                $field = (string) ($_POST['field'] ?? '');
+                if (mb_strlen($text) < 2 || mb_strlen($text) > 300) {
+                    throw new RuntimeException('Type the message as an agent would write it (2-300 characters).');
+                }
+                if (!in_array($intent, array_diff(ApBrain::INTENTS, ['question', 'other']), true)) {
+                    throw new RuntimeException('Pick what the message means.');
+                }
+                if ($intent === 'edit' && !in_array($field, ['name', 'phone', 'pickup', 'seat', 'date', 'gender', 'age'], true)) {
+                    throw new RuntimeException('For a ticket change, pick which part changes.');
+                }
+                if (!ApLearn::on()) {
+                    throw new RuntimeException(ApLearn::ready() ? 'Learning is switched off below — switch it on first.' : 'Run database/upgrade-2026-10-31-idc-learn.sql first.');
+                }
+                $norm = ApLearn::norm($text);
+                ApLearn::record($text, ['intent' => $intent, 'field' => $field], 'office');
+                if (!Database::exists('SELECT 1 FROM ap_wa_examples WHERE text_hash = :h', ['h' => sha1($norm)])) {
+                    throw new RuntimeException('Nothing to learn from that — it has no words left once numbers and names are taken out.');
+                }
+                Logger::audit('agentpro.wa_teach', 'ai', 'ap_wa_examples', null, ['intent' => $intent, 'field' => $field], 'WhatsApp desk example taught by admin #' . $selfId);
+                $flash = ['ok', 'Taught: "' . $norm . '" → ' . $intent . ($field !== '' && $intent === 'edit' ? ' (' . $field . ')' : '')
+                    . '. The desk now answers it without the model; money and tickets still wait for "ho". / सिकाइयो।'];
+            } elseif ($act === 'learn_forget') {
+                $flash = ApLearn::forget((int) ($_POST['id'] ?? 0)) ? ['ok', 'Example removed. / हटाइयो।'] : ['bad', 'That example is already gone.'];
+                Logger::audit('agentpro.wa_teach', 'ai', 'ap_wa_examples', null, ['removed' => (int) ($_POST['id'] ?? 0)], 'WhatsApp desk example removed by admin #' . $selfId);
+            } elseif ($act === 'learn_save') {
+                foreach (['ap_learn_on', 'ap_learn_fast', 'ap_practice_on'] as $k) {
+                    Settings::set($k, !empty($_POST[$k]) ? '1' : '0', 'bool', 'agentpro', false);
+                }
+                $hrs = preg_replace('/\s+/', '', (string) ($_POST['ap_practice_hours'] ?? '1-5')) ?? '';
+                if (preg_match('/^(?:\d{1,2}(?:-\d{1,2})?)(?:,\d{1,2}(?:-\d{1,2})?)*$/', $hrs) !== 1
+                    || preg_match('/(?<!\d)(?:2[4-9]|[3-9]\d)(?!\d)/', $hrs) === 1) {
+                    throw new RuntimeException('Practice hours look wrong — e.g. 1-5, or 23-4, or 1-5,14 (hours 0-23, IST).');
+                }
+                Settings::set('ap_practice_hours', $hrs, 'string', 'agentpro', false);
+                Settings::set('ap_practice_seconds', (string) max(60, min(1800, (int) ($_POST['ap_practice_seconds'] ?? 900))), 'int', 'agentpro', false);
+                Settings::set('ap_learn_fast_min', (string) max(1, min(20, (int) ($_POST['ap_learn_fast_min'] ?? 2))), 'int', 'agentpro', false);
+                Settings::flush();
+                Logger::audit('agentpro.ai_settings', 'settings', 'agentpro', null, null, 'Learning / practice settings saved');
+                $flash = ['ok', 'Saved. / सेभ भयो।'];
             }
         } catch (RuntimeException $ex) {
             $flash = ['bad', $ex->getMessage()];
@@ -252,6 +327,23 @@ $rec = ApAi::recommend($hw);
 $chat = $version !== '' ? ApAi::pickModel('chat') : '';
 $vision = $version !== '' ? ApAi::pickModel('vision') : '';
 $stats = ApAi::stats();
+// 31 Oct 2026: the nightly practice (and a benchmark) are not answers to anyone — keep them out of "Answers (24 h)"
+try {
+    $msOk = [];
+    $kRows = Database::fetchAll("SELECT ms, ok FROM ap_ai_calls WHERE created_at > (NOW() - INTERVAL 1 DAY) AND purpose <> 'benchmark'");
+    foreach ($kRows as $kr) {
+        if ((int) $kr['ok'] === 1) {
+            $msOk[] = (int) $kr['ms'];
+        }
+    }
+    $stats['calls'] = count($kRows);
+    $stats['failed'] = count($kRows) - count($msOk);
+    $stats['avgMs'] = $msOk === [] ? 0 : (int) (array_sum($msOk) / count($msOk));
+} catch (Throwable $ex) {
+    // ApAi::stats() as it was
+}
+$learn = ApLearn::stats();
+$learnLatest = $canLearn ? ApLearn::latest(8) : [];
 $queue = (int) Database::scalar("SELECT COUNT(*) FROM ap_jobs WHERE status IN ('queued','running')", [], 0);
 $seen = (int) Settings::getString('ap_worker_seen', '0');
 $installed = array_column($models, 'name');
@@ -457,6 +549,95 @@ if ($flash !== null) {
   <?php endif; ?>
 </div></section>
 
+<section class="panel" id="learn"><h2><svg class="a-ic"><use href="#a-layers"/></svg> 🧠 Learning &amp; practice · सिकाइ र अभ्यास</h2><div class="panel-body">
+  <p class="fa-note" style="margin-top:0"><b>How the AI "learns" here:</b> from examples and practice. Every WhatsApp message the desk understood for sure becomes an
+    example (numbers, PNRs, codes and names are taken out first — no one's details are kept). Words confirmed <?= ApLearn::fastMin() ?>× are answered at once
+    without the model; the closest examples go into the model's prompt; at night the model re-reads examples and its accuracy is measured below.
+    <b>The model's weights are not re-trained on this server</b> (2 vCPUs, ~8 GB RAM) — money and tickets still move only after "ho".
+    · मोडेल उदाहरण र अभ्यासबाट सिक्छ; यो सर्भरमा मोडेल आफैं फेरि train हुँदैन।</p>
+  <?php if (!$learn['ready']): ?>
+    <div class="flash bad">Not installed yet — run <code>database/upgrade-2026-10-31-idc-learn.sql</code>. Until then the desk works exactly as before.</div>
+  <?php else: $runs = $learn['runs']; ?>
+    <div class="ai-ladder">
+      <div class="st"><span class="ai-step">typed commands</span><b><?= (int) $learn['bySource']['parser'] ?></b><small>examples from commands the desk knew (balance, PNR cancel …)</small></div>
+      <div class="st"><span class="ai-step">confirmed with "ho"</span><b><?= (int) $learn['bySource']['confirmed'] ?></b><small>AI readings the agent then confirmed</small></div>
+      <div class="st"><span class="ai-step">taught by the office</span><b><?= (int) $learn['bySource']['office'] ?></b><small>added below · <?= (int) $learn['trusted'] ?> trusted for the fast path</small></div>
+      <div class="st <?= $learn['fastToday'] > 0 ? 'ok' : '' ?>"><span class="ai-step">fast path today</span><b><?= (int) $learn['fastToday'] ?></b><small>answered without the model · <?= (int) $learn['fastAll'] ?> in all</small></div>
+    </div>
+
+    <h3 style="margin:16px 0 6px;font-size:15px">📈 Practice runs (last 14) · अभ्यास</h3>
+    <?php if ($runs === []): ?>
+      <p class="ph-sub">No practice yet. It runs at night (<?= $e(Settings::getString('ap_practice_hours', '1-5')) ?> IST) once there are examples and the model server answers — or press the button.</p>
+    <?php else: ?>
+      <div style="overflow:auto"><table class="fa-t"><thead><tr><th>When</th><th>Model</th><th>Messages</th><th>Read right</th><th>Avg · median</th><th>Notes</th></tr></thead><tbody>
+      <?php foreach ($runs as $run): $pct = (int) $run['n'] > 0 ? (int) round((int) $run['correct'] * 100 / (int) $run['n']) : 0; ?>
+        <tr><td><?= $e(formatDate(substr((string) $run['run_at'], 0, 10), 'j M')) ?> <?= $e(substr((string) $run['run_at'], 11, 5)) ?></td>
+          <td class="ap-mono" style="font-size:12px"><?= $e($run['model']) ?></td><td><?= (int) $run['n'] ?></td>
+          <td><span class="fa-c <?= $pct >= 80 ? 'high' : ($pct >= 50 ? 'medium' : 'low') ?>"><?= $pct ?>%</span> <span class="ph-sub"><?= (int) $run['correct'] ?> / <?= (int) $run['n'] ?></span></td>
+          <td><?= $e(round((int) $run['avg_ms'] / 1000, 1)) ?> s · <?= $e(round((int) $run['p50_ms'] / 1000, 1)) ?> s</td>
+          <td class="ph-sub" style="white-space:normal;font-size:12px"><?= $e((string) ($run['notes'] ?? '')) ?></td></tr>
+      <?php endforeach; ?>
+      </tbody></table></div>
+    <?php endif; ?>
+    <?php if ($canLearn): ?>
+    <form method="post" class="fa-acts" action="#learn"><?= Security::csrfField() ?><input type="hidden" name="action" value="practice_now">
+      <button class="btn ok ai-btn48" type="submit" <?= $learn['total'] === 0 ? 'disabled' : '' ?>>▶ Practice now (60 s) · अहिले अभ्यास</button>
+      <span class="ph-sub">Uses the model only while WhatsApp does not need it — it stops the moment a message comes in.</span></form>
+
+    <h3 style="margin:18px 0 6px;font-size:15px">✍️ Teach the desk a message · सन्देश सिकाउनुहोस्</h3>
+    <form method="post" action="#learn"><?= Security::csrfField() ?><input type="hidden" name="action" value="learn_teach">
+      <div class="fa-f">
+        <label class="full">The message, as an agent writes it · एजेन्टले लेख्ने जस्तै<input name="text" maxlength="300" required placeholder="e.g. mero commission ko paisa kahile aaucha"></label>
+        <label>It means · यसको अर्थ<select name="intent" required><option value="">— choose —</option>
+          <?php foreach (['balance' => 'Balance / commission due', 'statement' => 'Statement', 'withdraw' => 'Withdraw (asks "ho")', 'deposit' => 'Pay in (jama)',
+                          'book' => 'Book a ticket (asks the questions, then "ho")', 'status' => 'Ticket status', 'edit' => 'Change a ticket', 'cancel' => 'Cancel a ticket (asks "ho")',
+                          'resend' => 'Send the ticket again', 'tickets' => 'My sold tickets', 'id_card' => 'My ID card', 'visiting_card' => 'My visiting card', 'profile' => 'My details',
+                          'form' => 'My filled form', 'portal' => 'Portal sign-in', 'directory' => 'Someone\'s number', 'company' => 'Office / company facts', 'bus' => 'Buses',
+                          'report' => 'Today\'s sales', 'passengers' => 'Passenger list', 'pending' => 'Office: waiting work', 'help' => 'The menu', 'join' => 'Become an agent'] as $k => $l): ?>
+            <option value="<?= $e($k) ?>"><?= $e($l) ?></option><?php endforeach; ?></select></label>
+        <label>Part to change (ticket change only)<select name="field"><option value="">—</option>
+          <?php foreach (['name', 'phone', 'pickup', 'seat', 'date', 'gender', 'age'] as $f): ?><option value="<?= $e($f) ?>"><?= $e($f) ?></option><?php endforeach; ?></select></label>
+      </div>
+      <div class="fa-acts"><button class="btn ai-btn48" type="submit">＋ Teach · सिकाउनुहोस्</button>
+        <span class="ph-sub">Numbers, PNRs, codes and names are taken out before it is kept.</span></div></form>
+
+    <?php if ($learnLatest !== []): ?>
+    <h3 style="margin:18px 0 6px;font-size:15px">📚 Latest examples · पछिल्ला उदाहरण (<?= (int) $learn['total'] ?>)</h3>
+    <div style="overflow:auto"><table class="fa-t"><thead><tr><th>Message (normalised)</th><th>Means</th><th>From</th><th>Seen · confirmed</th><th>Practice</th><th></th></tr></thead><tbody>
+    <?php foreach ($learnLatest as $ex): $ij = json_decode((string) $ex['intent_json'], true) ?: []; ?>
+      <tr><td class="v ap-mono" style="font-size:12.5px"><?= $e($ex['text_norm']) ?></td>
+        <td><?= $e(($ij['intent'] ?? '?') . (!empty($ij['field']) ? ' · ' . $ij['field'] : '')) ?></td><td><?= $e($ex['source']) ?></td>
+        <td><?= (int) $ex['hits'] ?> · <?= (int) $ex['ok_hits'] ?><?= (int) $ex['ok_hits'] >= ApLearn::fastMin() ? ' ⚡' : '' ?></td>
+        <td><?= (int) $ex['px_n'] > 0 ? (int) $ex['px_ok'] . ' / ' . (int) $ex['px_n'] : '—' ?></td>
+        <td><form method="post" style="margin:0" action="#learn"><?= Security::csrfField() ?><input type="hidden" name="action" value="learn_forget"><input type="hidden" name="id" value="<?= (int) $ex['id'] ?>">
+          <button class="btn ghost ai-btn48" type="submit" aria-label="Remove this example">✕</button></form></td></tr>
+    <?php endforeach; ?>
+    </tbody></table></div>
+    <p class="ph-sub">⚡ = answered without the model. Remove an example that is wrong; the desk then asks the model again.</p>
+    <?php endif; ?>
+    <?php endif; ?>
+
+    <?php if ($super): ?>
+    <details style="margin-top:14px"><summary class="ph-sub" style="cursor:pointer;min-height:48px;display:flex;align-items:center">⚙ Learning &amp; practice settings</summary>
+    <form method="post" action="#learn"><?= Security::csrfField() ?><input type="hidden" name="action" value="learn_save">
+      <?php foreach (['ap_learn_on' => ['Keep examples from the WhatsApp desk', 'Off = nothing new is kept; the model still answers as before.'],
+                      'ap_learn_fast' => ['Answer confirmed messages without the model', 'The fast path. Money and tickets still wait for "ho".'],
+                      'ap_practice_on' => ['Practise at night', 'cron/agentpro-practice.php re-reads examples inside the hours below.']] as $k => [$label, $help]): ?>
+        <label class="ai-switch"><span><b><?= $e($label) ?></b><small><?= $e($help) ?></small></span>
+          <input type="checkbox" name="<?= $e($k) ?>" value="1" <?= Settings::getBool($k, true) ? 'checked' : '' ?> style="width:22px;height:22px"></label>
+      <?php endforeach; ?>
+      <div class="mp-form" style="margin-top:12px">
+        <label>Practice hours (IST, e.g. 1-5)<input name="ap_practice_hours" value="<?= $e(Settings::getString('ap_practice_hours', '1-5')) ?>"></label>
+        <label>Seconds per practice run<input name="ap_practice_seconds" type="number" min="60" max="1800" value="<?= max(60, min(1800, Settings::getInt('ap_practice_seconds', 900))) ?>"></label>
+        <label>Confirmations before the fast path<input name="ap_learn_fast_min" type="number" min="1" max="20" value="<?= ApLearn::fastMin() ?>"></label>
+      </div>
+      <button class="btn ai-btn48" type="submit" style="margin-top:10px">Save</button></form>
+    <p class="ph-sub" style="margin-top:10px">Practice cron (hourly; it decides the hours itself): <code>15 * * * * php <?= $e(ROOT_PATH) ?>/cron/agentpro-practice.php &gt;/dev/null 2&gt;&amp;1</code></p>
+    </details>
+    <?php endif; ?>
+  <?php endif; ?>
+</div></section>
+
 <div class="tp-money">
   <section class="panel"><h2><svg class="a-ic"><use href="#a-eye"/></svg> What would the AI understand? (dry run)</h2><div class="panel-body">
     <form method="post" class="mp-form"><?= Security::csrfField() ?><input type="hidden" name="action" value="dry">
@@ -505,6 +686,8 @@ if ($flash !== null) {
         ['balance · statement · withdraw 2000', 'Wallet: what is due, the passbook with a PDF, a payout request.'],
         ['jama 1500 UTR 430987651234', 'Tell the office you paid; it appears under Team → Money.'],
         ['id card · visiting card · me', 'The cards as pictures, and their own details.'],
+        ['form', 'Their own filled application form (PDF): the 30-day personal link, else the portal after sign-in.'],
+        ['id SHG-0027 · id 98XXXXXXXX · id Ram', 'Office only (OTP-linked manager / super-admin): anyone\'s ID card + visiting card to forward; several matches → up to 5 codes.'],
         ['contacts · number Ram · office · bus · aaja · passengers bholi', 'People, company facts (CIN …), today\'s buses, the day\'s sales, the passenger list.'],
     ] as [$cmd, $what]): ?>
       <div class="tp-req"><span class="who"><b class="ap-mono" style="font-size:13px"><?= $e($cmd) ?></b><small style="white-space:normal"><?= $e($what) ?></small></span></div>

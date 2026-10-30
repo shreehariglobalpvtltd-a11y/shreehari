@@ -130,7 +130,14 @@ function shg_booking_column_filters(array &$where, array &$params, array $in): a
     if ($mine === '1') {
         $me = (int) (Auth::admin()['id'] ?? 0);
         if ($me > 0) {
-            $where[] = 'b.sold_by_admin_id = :mineId';
+            // 31 Oct 2026: a counter clerk's desk sale is credited to an agent code at once —
+            // "mine" is also every ticket they CUT (bookings.booked_by_admin_id).
+            if (CounterDesk::hasColumn('bookings', 'booked_by_admin_id')) {
+                $where[] = '(b.sold_by_admin_id = :mineId OR b.booked_by_admin_id = :mineId2)';
+                $params['mineId2'] = $me;
+            } else {
+                $where[] = 'b.sold_by_admin_id = :mineId';
+            }
             $params['mineId'] = $me;
         } else {
             $mine = '';

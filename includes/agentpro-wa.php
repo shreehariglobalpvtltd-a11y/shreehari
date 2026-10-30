@@ -31,6 +31,14 @@
  *  SAFETY: money and tickets only ever move after a "ho" in a LATER
  *  message, and every action is the same function the admin screens use
  *  (QuickTicket::sell, AgentWallet::requestPayout, ApEdit, AiTools).
+ *
+ *  31 Oct 2026 (idc-learn, owner: "training lidai fast hudai jaos"): the
+ *  desk learns from examples (ApLearn, includes/agentpro-learn.php) — a
+ *  typed command it knew, and an AI reading the member confirmed with
+ *  "ho", are kept (normalised, no one's details); words confirmed twice
+ *  skip the model next time (the handler and its "ho" stay the same).
+ *  New: "form" (my filled form) and, for the office, "id <code | phone |
+ *  name>" (anyone's ID card to forward).
  * =====================================================================
  */
 
@@ -42,6 +50,7 @@ if (!defined('SHG_APP')) {
 }
 
 require_once __DIR__ . '/agentpro.php';
+require_once __DIR__ . '/agentpro-learn.php';
 
 final class ApWa
 {
@@ -60,6 +69,16 @@ final class ApWa
     /** The numbered menu (help): a digit alone runs the same command as its word. */
     private const MENU = [1 => 'ticket', 2 => 'tickets', 3 => 'balance', 4 => 'statement', 5 => 'withdraw', 6 => 'portal',
                           7 => 'id card', 8 => 'aaja', 9 => 'office', 0 => 'admin'];
+
+    /** What the typed command just run meant (ApLearn, source "parser"); null = nothing worth learning. */
+    private static ?array $cmdIntent = null;
+
+    /**
+     * While an AI / learnt reading is acted on (or its booking questions go on):
+     * the normalised words + intent that ride along on the pending action, so
+     * its "ho" teaches ApLearn ("confirmed").
+     */
+    private static ?array $learnTag = null;
 
     /** Seconds one WhatsApp turn may take in all, model included (owner: "up to about a minute is fine"). */
     public static function turnBudget(): int
@@ -152,27 +171,37 @@ final class ApWa
                     }
                 } elseif ($p['kind'] === 'book' && preg_match(self::NO, $text) !== 1) {
                     // Mid-questions an "ok" is no answer: the question is asked again (a command leaves the booking).
-                    if (($r = self::bookStep($p, $text, $member, $ctx, $lang)) !== null) {
+                    // An AI-read booking keeps its learn tag through the questions, so its final "ho" still teaches.
+                    if (($r = self::withLearnTag($p['learn'] ?? null, fn() => self::bookStep($p, $text, $member, $ctx, $lang))) !== null) {
                         return $r;
                     }
                 } elseif ($yes) {
                     if (!self::claimPending($phone, (string) $state['raw'])) {
                         return self::out(self::t('nothing_pending', $lang));     // the other CONFIRM took it
                     }
+                    // 31 Oct 2026: the member confirmed what the AI (or a learnt example) read — that reading is now an example
+                    if (is_array($p['learn'] ?? null) && is_string($p['learn']['n'] ?? null) && is_array($p['learn']['i'] ?? null)) {
+                        ApLearn::record($p['learn']['n'], $p['learn']['i'], 'confirmed');
+                    }
                     return self::confirm($p, $member, $ctx, $lang);
                 } elseif (preg_match(self::NO, $text) === 1) {
                     self::clearPending($phone);
                     return self::out(self::t('cancelled', $lang));
-                } elseif ($p['kind'] === 'sale' && ($r = self::saleAmend($p, $text, $member, $ctx, $lang)) !== null) {
+                } elseif ($p['kind'] === 'sale'
+                    && ($r = self::withLearnTag($p['learn'] ?? null, fn() => self::saleAmend($p, $text, $member, $ctx, $lang))) !== null) {
                     return $r;
                 }
             } elseif (preg_match(self::YES, $text) === 1 && preg_match('/^(confirm|confirmed|कन्फर्म)/iu', $text) === 1) {
                 return self::out(self::t('nothing_pending', $lang));
             }
 
-            // 4. Instant commands.
+            // 4. Instant commands. What one meant is kept as an example (ApLearn "parser": normalised, no one's details).
+            self::$cmdIntent = null;
             $r = self::command($text, $member, $ctx, $lang);
             if ($r !== null) {
+                if (self::$cmdIntent !== null) {
+                    ApLearn::record($text, self::$cmdIntent, 'parser');
+                }
                 return $r;
             }
 
@@ -465,7 +494,27 @@ final class ApWa
 
     private static function setPending(string $phone, string $kind, array $payload): void
     {
+        // An action proposed from an AI / learnt reading carries that reading (normalised words + intent, no one's
+        // details), so the member's "ho" can teach it (reply() → ApLearn::record … 'confirmed').
+        if (self::$learnTag !== null && !in_array($kind, ['done', 'pick', 'link'], true)) {
+            $payload['learn'] = self::$learnTag;
+        }
         self::saveState($phone, ['pending' => json_encode(['kind' => $kind, 'at' => time()] + $payload, JSON_UNESCAPED_UNICODE)]);
+    }
+
+    /**
+     * Run $fn with this learn tag active (setPending attaches it), then put the
+     * previous tag back. A malformed tag counts as none.
+     */
+    private static function withLearnTag(mixed $tag, callable $fn): mixed
+    {
+        $before = self::$learnTag;
+        self::$learnTag = is_array($tag) && is_string($tag['n'] ?? null) && is_array($tag['i'] ?? null) ? ['n' => $tag['n'], 'i' => $tag['i']] : null;
+        try {
+            return $fn();
+        } finally {
+            self::$learnTag = $before;
+        }
     }
 
     private static function clearPending(string $phone): void
@@ -559,6 +608,7 @@ final class ApWa
             return self::out(self::t('lang_set', $lang));
         }
         if (preg_match('/^(help|menu|madat|maddat|मद्दत|सहायता|सहयोग|\?|start|hi|hello|hey|namaste|namaskar|नमस्ते|नमस्कार|हेलो|hii+)$/u', $l)) {
+            self::$cmdIntent = ['intent' => 'help'];
             return self::help($member, $lang);
         }
         if (preg_match('/^unlink$/i', $l)) {
@@ -585,7 +635,9 @@ final class ApWa
             if ($word === 'admin' && !self::isOffice($ctx)) {
                 $word = 'help';
             }
-            return self::command($word, $member, $ctx, $lang);
+            $r = self::command($word, $member, $ctx, $lang);
+            self::$cmdIntent = null;                          // "3" means balance only on this menu: not an example
+            return $r;
         }
 
         // The office's own desk (super-admin / manager only).
@@ -593,6 +645,7 @@ final class ApWa
             return self::isOffice($ctx) ? self::adminHelp($lang) : self::out(self::t('no_permission', $lang));
         }
         if (preg_match('/^(?:pending|baki\s*kam|बाँकी\s*काम|approvals?)$/u', $l)) {
+            self::$cmdIntent = ['intent' => 'pending'];
             return self::isOffice($ctx) ? self::adminPending($lang) : self::out(self::t('no_permission', $lang));
         }
         if (preg_match('/^(?:joins?|applications?|apps|aavedan|abedan|आवेदन\w*|join\s*list)$/u', $l)) {
@@ -621,16 +674,43 @@ final class ApWa
 
         // A booking, one question at a time.
         if (preg_match('/^(?:ticket|tikat|tikut|टिकट|टिकेट|book|booking|बुक|बुकिङ|बुकिंग|new\s*ticket|naya\s*ticket|नयाँ\s*टिकट|ticket\s*(?:book|kata\w*|katnu|chahiyo|चाहियो)|टिकट\s*(?:काट\w*|चाहियो|बुक))$/u', $l)) {
+            self::$cmdIntent = ['intent' => 'book'];
             return self::bookStart($member, $ctx, $lang);
         }
         // The seller's own tickets: "tickets", "tickets bholi", "mero ticket 2 Nov".
         if (preg_match('/^(?:my\s*tickets?|tickets|mero\s*ticket\w*|mera\s*ticket\w*|मेरो\s*टिकट\w*|मेरा\s*टिकट|sold\s*tickets?|bechya\w*|बेचेको\s*टिकट)(?:\s+(.+))?$/u', $l, $m)) {
             $d = isset($m[1]) ? self::dateWord((string) $m[1]) : '';
+            self::$cmdIntent = ['intent' => 'tickets'];
             return self::myTickets($member, $ctx, $lang, $d);
         }
         // The member portal: where and how to sign in.
         if (preg_match('/^(?:portal|login|log\s*in|sign\s*in|signin|me\s*link|my\s*portal|app|लगइन|लग\s*इन|पोर्टल)$/u', $l)) {
+            self::$cmdIntent = ['intent' => 'portal'];
             return self::portal($member, $lang);
+        }
+        // 31 Oct 2026 (owner: "bhareko form WhatsApp ma pathaune"): my own filled application form.
+        if (preg_match('/^(?:form|my\s*form|mero\s*form|mera\s*form|फारम|फर्म|फॉर्म|मेरो\s*फारम|मेरो\s*फर्म|मेरा\s*फॉर्म|application\s*form|bhareko\s*form|भरेको\s*फारम|form\s*pdf|फारम\s*pdf)$/u', $l)) {
+            self::$cmdIntent = ['intent' => 'form'];
+            return self::myForm($member, $lang);
+        }
+
+        // 31 Oct 2026 (owner: "ID … WhatsApp ma pathaune"): the office asks for SOMEONE's card — "id SHG-0027",
+        // "id SHG-S-0004", "id 98…", "id Ram" (+ "back") — to forward it. An OTP-linked manager / super-admin only
+        // (isOffice). Before the PNR below: a staff number SHG-S-0004 looks like a PNR to that pattern.
+        if (preg_match('/^(?:id\s*card|idcard|id|आईडी\s*कार्ड|आईडी|आइडी)\s+(.{2,60}?)(?:\s+(back|pachadi|पछाडि|पीछे))?$/u', $l, $m) === 1
+            && ($pnr === '' || preg_match('/^shg\s*-\s*s\s*-\s*\d+$/u', trim($m[1])) === 1)) {
+            $q = trim($m[1]);
+            if (preg_match('/^(?:(front|agadi|अगाडि|card|kard|कार्ड)|(back|pachadi|पछाडि|पीछे))$/u', $q, $own) === 1) {
+                self::$cmdIntent = ['intent' => 'id_card'];            // "id back", "id card", "id front": my own card
+                return self::card($member, empty($own[2]) ? 'id-front' : 'id-back', $lang);
+            }
+            if (self::isOffice($ctx)) {
+                return self::officeId($q, !empty($m[2]) ? 'id-back' : 'id-front', $ctx, $lang);
+            }
+            if (preg_match('/\d/', $q) === 1) {
+                return self::out(self::t('no_permission', $lang));   // someone else's code / number: the office's desk only
+            }
+            // "id card bhayena …" from an agent is a sentence, not a lookup: the AI / the menu below answers it
         }
 
         // A PNR: status, edit, cancel, resend.
@@ -640,47 +720,60 @@ final class ApWa
 
         // Money.
         if (preg_match('/^(?:balance|bal|wallet|baki|baaki|बाँकी|बाकी|ब्यालेन्स|बैलेंस|बैलेन्स|kati\s*paisa|mero\s*paisa|paisa\s*kati|commission|कमिसन|कमीशन)\b/u', $l)) {
+            self::$cmdIntent = ['intent' => 'balance'];
             return self::balance($member, $lang);
         }
         if (preg_match('/^(?:statement|stmt|hisab|hisaab|हिसाब|स्टेटमेन्ट|स्टेटमेंट|passbook|ledger|khata|खाता)\b\s*(\d{1,3})?/u', $l, $m)) {
+            self::$cmdIntent = ['intent' => 'statement', 'days' => isset($m[1]) ? (int) $m[1] : 0];
             return self::statement($member, $lang, isset($m[1]) ? (int) $m[1] : 0);
         }
         if (preg_match('/^(?:withdraw|withdrawal|payout|nikal|nikalnu|निकाल|निकाल्ने|पैसा\s*निकाल|paisa\s*nikal|पैसे\s*निकाल)\w*\s*(?:rs\.?|₹|inr)?\s*([\d,]+)?/u', $l, $m)) {
+            self::$cmdIntent = ['intent' => 'withdraw'];
             return self::withdraw($member, $ctx, $lang, isset($m[1]) ? (float) str_replace(',', '', $m[1]) : 0.0);
         }
         if (preg_match('/^(?:jama|jamma|जम्मा|deposit|paid|pay|tirne|tireko|तिरेको|भुक्तानी|bhuktani|handover|बुझाएँ|bujhaye)\b/u', $l)) {
+            self::$cmdIntent = ['intent' => 'deposit'];
             return self::payIn($member, $text, $lang);
         }
 
         // Cards and me.
         if (preg_match('/^(?:id|id\s*card|idcard|आईडी|आइडी|परिचय\s*पत्र|parichay\s*patra|identity)(?:\s*(back|pachadi|पछाडि|पीछे))?$/u', $l, $m)) {
+            self::$cmdIntent = ['intent' => 'id_card'];
             return self::card($member, empty($m[1]) ? 'id-front' : 'id-back', $lang);
         }
         if (preg_match('/^(?:visiting|visiting\s*card|vc|card|business\s*card|भिजिटिङ|विजिटिंग)(?:\s*card)?(?:\s*(back|pachadi|पछाडि|पीछे))?$/u', $l, $m)) {
+            self::$cmdIntent = ['intent' => 'visiting_card'];
             return self::card($member, empty($m[1]) ? 'vc-front' : 'vc-back', $lang);
         }
         if (preg_match('/^(?:me|profile|mero\s*detail|my\s*details|details|मेरो\s*विवरण|विवरण)$/u', $l)) {
+            self::$cmdIntent = ['intent' => 'profile'];
             return self::profile($member, $lang);
         }
 
         // People and the company.
         if (preg_match('/^(?:list|contacts?|directory|numbers?|सबैको\s*नम्बर|नम्बरहरू|agents?|staff|team|एजेन्टहरू|स्टाफ)(?:\s+(.+))?$/u', $l, $m)) {
+            self::$cmdIntent = ['intent' => 'directory', 'query' => trim((string) ($m[1] ?? ''))];
             return self::directory($member, $lang, trim((string) ($m[1] ?? '')), $l);
         }
         if (preg_match('/^(?:number|nambar|नम्बर|phone|फोन)\s+(?:of\s+)?(.{2,40})$/u', $l, $m) && preg_match('/\d{6,}/', $m[1]) !== 1) {
+            self::$cmdIntent = ['intent' => 'directory', 'query' => trim($m[1])];
             return self::directory($member, $lang, trim($m[1]), 'search');
         }
         if (preg_match('/^(?:office|company|cin|address|thegana|ठेगाना|कार्यालय|अफिस|ऑफिस|contact\s*office|email|website|counters?|काउन्टर)\b/u', $l)) {
+            self::$cmdIntent = ['intent' => 'company'];
             return self::company($lang);
         }
         if (preg_match('/^(?:bus|buses|gadi|gaadi|गाडी|बस|aaja\s*ko\s*bus|bus\s*number|bus\s*details)\b(?:\s+(bholi|tomorrow|भोलि|kal|कल))?/u', $l, $m)) {
+            self::$cmdIntent = ['intent' => 'bus'];
             return self::buses($member, $lang, !empty($m[1]) ? date('Y-m-d', strtotime('+1 day')) : date('Y-m-d'));
         }
         if (preg_match('/^(?:today|aaja|aja|आज|report|sales|bikri|बिक्री|मेरो\s*दिन|my\s*day|आजको\s*रिपोर्ट)\b/u', $l)) {
+            self::$cmdIntent = ['intent' => 'report'];
             return self::report($member, $ctx, $lang, str_contains($l, 'office') || str_contains($l, 'company') ? 'office' : '');
         }
         if (preg_match('/^(?:passengers?|yatri|यात्रु|यात्री|manifest)\b(?:\s+(.+))?$/u', $l, $m)) {
             $d = isset($m[1]) ? self::dateWord((string) $m[1]) : date('Y-m-d');
+            self::$cmdIntent = ['intent' => 'passengers'];
             return self::passengers($member, $ctx, $lang, $d !== '' ? $d : date('Y-m-d'));
         }
 
@@ -688,6 +781,9 @@ final class ApWa
         if (in_array((string) $member['role'], self::SELLERS, true)) {
             $sale = self::saleParse($text);
             if ($sale !== null) {
+                // the passenger's name(s) go out of the example (ApLearn::norm), the seats and words stay
+                self::$cmdIntent = ['intent' => 'book', 'seats' => (int) ($sale['seats'] ?? 0), 'direction' => (string) ($sale['direction'] ?? ''),
+                    'name' => (string) ($sale['name'] ?? ''), 'names' => (array) ($sale['names'] ?? []), 'pay' => (string) ($sale['pay'] ?? '')];
                 return self::saleQuote($sale, $member, $ctx, $lang);
             }
         }
@@ -1560,6 +1656,126 @@ final class ApWa
         ]));
     }
 
+    /**
+     * "form" — my own filled application form. The applicant's own signed
+     * link (/join-form.php?t=…, an HMAC token, 30 days after sending) while
+     * it is valid; after that /me/form.php, which opens after signing in to
+     * the portal (agent code + mobile + WhatsApp OTP) — the form shows the
+     * member's ID, PAN and bank numbers in full, so no longer-lived public
+     * link is made here.
+     */
+    private static function myForm(array $member, string $lang): array
+    {
+        require_once __DIR__ . '/agentpro-form.php';
+        $id = (int) $member['id'];
+        $app = null;
+        try {
+            $app = ApForm::applicationFor($id);
+        } catch (Throwable $e) {
+            Logger::warning('WhatsApp form link: ' . $e->getMessage(), [], 'agent');
+        }
+        $signed = '';
+        if ($app !== null && ApForm::applicantMayOpen($app) && ($u = ApForm::applicantUrl($app)) !== '') {
+            $signed = appUrl(ltrim($u, '/') . '&auto=pdf');
+        }
+        Logger::audit('agentpro.wa_form', 'admin', (string) $id, null, ['signed' => $signed !== ''], 'Own filled form asked for on the WhatsApp desk');
+        if ($signed !== '') {
+            return self::out(self::t('form_signed', $lang, ['url' => $signed, 'me' => appUrl('me/form.php?auto=pdf')]));
+        }
+        return self::out(self::t($app !== null ? 'form_signin' : 'form_none', $lang, ['url' => appUrl('me/form.php?auto=pdf'), 'me' => appUrl('me/')]));
+    }
+
+    /**
+     * The office: "id <code | phone | name>" → that member's ID card (a
+     * signed picture link, 24 h) + their visiting card + one line about them,
+     * to forward. Several matches → up to 5 with their codes. Only reached
+     * from isOffice() (an OTP-linked manager / super-admin), audited.
+     */
+    private static function officeId(string $query, string $side, array $ctx, string $lang): array
+    {
+        require_once __DIR__ . '/agentpro-card.php';
+        $hits = self::findMembers($query);
+        if ($hits === []) {
+            return self::out(self::t('oid_none', $lang, ['q' => mb_substr($query, 0, 40)]));
+        }
+        if (count($hits) > 1) {
+            $lines = [self::t('oid_many', $lang, ['n' => (string) count($hits), 'q' => mb_substr($query, 0, 40)])];
+            foreach (array_slice($hits, 0, 5) as $i => $r) {
+                $lines[] = ($i + 1) . '. ' . ($r['idNo'] !== '' ? $r['idNo'] . ' · ' : '') . $r['name'] . ' · ' . $r['roleLabel'] . ($r['branch'] !== '' ? ' · ' . $r['branch'] : '');
+            }
+            if (count($hits) > 5) {
+                $lines[] = '… +' . (count($hits) - 5);
+            }
+            $lines[] = '';
+            $lines[] = self::t('oid_pick', $lang);
+            return self::out(implode("\n", $lines));
+        }
+        $m = AgentPro::member((int) $hits[0]['id']);
+        if ($m === null) {
+            return self::out(self::t('error', $lang));
+        }
+        $media = ApCard::signedUrl((int) $m['id'], $side, 86400);
+        $vc = ApCard::signedUrl((int) $m['id'], 'vc-front', 86400);
+        Logger::audit('agentpro.wa_office_id', 'admin', (string) $m['id'], null, ['by' => (int) ($ctx['adminId'] ?? 0), 'side' => $side, 'wa' => (string) ($ctx['phone'] ?? '')],
+            'Office asked for a member\'s ID card on the WhatsApp desk');
+        return self::out(self::t('oid_one', $lang, [
+            'name' => $m['name'], 'code' => $m['idNo'] !== '' ? $m['idNo'] : '—', 'role' => $m['designation'],
+            'branch' => $m['branch'] !== '' ? $m['branch'] : '—', 'phone' => $m['callDisplay'] ?: ($m['waDisplay'] ?: '—'),
+            'status' => strtoupper((string) $m['status']), 'kyc' => strtoupper((string) ($m['kycStatus'] ?? '')),
+            'vc' => $vc, 'share' => (string) $m['cardToken'] !== '' ? appUrl('c.php?u=' . rawurlencode((string) $m['cardToken'])) : '—',
+            'back' => $m['idNo'] !== '' ? $m['idNo'] : $query,
+        ]), $media);
+    }
+
+    /**
+     * Members matching a code (SHG-0027, SHG-S-0004 …), a mobile number or a
+     * name (every word), active ones only, best first.
+     *
+     * @return list<array<string, mixed>> AgentPro::roster() rows
+     */
+    private static function findMembers(string $query): array
+    {
+        $q = trim(mb_strtolower(self::asciiDigits($query)));
+        if ($q === '') {
+            return [];
+        }
+        $rows = array_values(array_filter(AgentPro::roster(), static fn(array $r): bool => (bool) $r['active']));
+        $squash = static fn(string $s): string => (string) preg_replace('/[\s_.-]+/', '', mb_strtolower($s));
+        // 1. the exact code
+        $code = array_values(array_filter($rows, static fn(array $r): bool => $r['idNo'] !== '' && $squash($r['idNo']) === $squash($q)));
+        if ($code !== []) {
+            return $code;
+        }
+        // 2. the mobile (10 digits or more)
+        $digits = (string) preg_replace('/\D/', '', $q);
+        if (strlen($digits) >= 10) {
+            $want = normalisePhone($digits);
+            return array_values(array_filter($rows, static fn(array $r): bool => $r['phone'] !== '' && normalisePhone((string) $r['phone']) === $want));
+        }
+        // a bare agent number: "id 27" = SHG-0027
+        if (preg_match('/^(?:shg\s*-?\s*)?0*(\d{1,4})$/', $q, $mm) === 1) {
+            $label = 'shg' . str_pad($mm[1], 4, '0', STR_PAD_LEFT);
+            return array_values(array_filter($rows, static fn(array $r): bool => $r['idNo'] !== '' && $squash($r['idNo']) === $label));
+        }
+        // 3. the name: every word of the query in the name (or code / branch)
+        $words = array_values(array_filter(preg_split('/\s+/u', $q) ?: [], static fn(string $w): bool => mb_strlen($w) >= 2));
+        if ($words === []) {
+            return [];
+        }
+        $hits = array_values(array_filter($rows, static function (array $r) use ($words): bool {
+            $hay = mb_strtolower($r['name'] . ' ' . $r['idNo'] . ' ' . $r['branch']);
+            foreach ($words as $w) {
+                if (!str_contains($hay, $w)) {
+                    return false;
+                }
+            }
+            return true;
+        }));
+        // a whole-name match first
+        usort($hits, static fn(array $a, array $b): int => (int) (mb_strtolower($b['name']) === $q) <=> (int) (mb_strtolower($a['name']) === $q));
+        return $hits;
+    }
+
     /* ---------------- people and the company ---------------- */
 
     private static function directory(array $member, string $lang, string $query, string $raw): array
@@ -1741,6 +1957,7 @@ final class ApWa
         $rest = trim(str_ireplace($pnr, ' ', $text));
         $l = mb_strtolower($rest);
         if (preg_match('/\b(cancel|radda|radd|रद्द|क्यान्सिल|कैंसिल)\b/u', $l)) {
+            self::$cmdIntent = ['intent' => 'cancel'];
             $q = AiTools::run('refund_quote', ['pnr' => $pnr], $ctx);
             if (!$q['ok']) {
                 return self::out('⚠️ ' . $q['say']);
@@ -1759,16 +1976,20 @@ final class ApWa
                 'note' => (string) ($q['data']['note'] ?? '')]));
         }
         if (preg_match('/\b(resend|pathau|pathaunu|फेरि\s*पठाउ|पठाउनु|bhej|भेज|send\s*again)\b/u', $l)) {
+            self::$cmdIntent = ['intent' => 'resend'];
             $r = AiTools::run('resend_ticket', ['pnr' => $pnr], $ctx);
             return self::out(($r['ok'] ? '✅ ' : '⚠️ ') . self::t($r['ok'] ? 'resent' : 'error', $lang, ['pnr' => $pnr]), $r['media'] ?? null);
         }
         [$field, $value, $which] = self::editIntent($rest);
         if ($field !== '') {
+            // the new value / the passenger go out of the example (ApLearn::norm): only "edit <field>" is learnt
+            self::$cmdIntent = ['intent' => 'edit', 'field' => $field, 'value' => $value, 'which' => $which];
             return self::editPreview($pnr, $field, $value, $which, $ctx, $lang);
         }
         if ($rest !== '' && $member !== null && preg_match('/\p{L}{3,}/u', $rest) === 1 && !preg_match('/^(status|kaha|कहाँ|where|ticket|टिकट|detail)/iu', $l)) {
             return null;                                       // a sentence about a ticket: let the AI read it
         }
+        self::$cmdIntent = ['intent' => 'status'];
         return self::bookingCard($pnr, $ctx, $lang);
     }
 
@@ -2192,6 +2413,12 @@ final class ApWa
     private static function thinkSlowly(string $fromRaw, string $phone, string $text, ?array $member, array $ctx, string $lang): ?array
     {
         require_once __DIR__ . '/agentpro-ai.php';
+        // 31 Oct 2026 (idc-learn): words the desk was confirmed on (ap_learn_fast_min times) need no model —
+        // instant, even with the WhatsApp AI off. Only the READING is skipped: the same handler runs, and
+        // money / tickets still wait for "ho". Members only (passengers' words are left to their own bot).
+        if ($member !== null && ($fast = ApLearn::fast($text)) !== null) {
+            return self::actLearned($fast, $text, $member, $ctx, $lang) ?? self::help($member, $lang);
+        }
         if (!ApAi::enabled()) {
             return $member !== null ? self::help($member, $lang) : null;
         }
@@ -2226,7 +2453,26 @@ final class ApWa
             // Model down, busy or out of time: the numbered menu, never a guess.
             return self::aiFallback($member, $lang);
         }
-        return self::act($intent, $member, $ctx, $lang) ?? self::aiFallback($member, $lang);
+        return self::actLearned($intent, $text, $member, $ctx, $lang) ?? self::aiFallback($member, $lang);
+    }
+
+    /**
+     * act() on an AI / learnt reading of a member's message. Any action it
+     * proposes (withdraw, cancel, a booking's questions → the sale) carries
+     * the reading — normalised words, no one's details — so the member's "ho"
+     * makes it an example (ApLearn "confirmed"). A passenger's reading is not
+     * learnt.
+     *
+     * @param array<string, mixed> $intent
+     * @return array{text: string, media?: ?string}|null
+     */
+    private static function actLearned(array $intent, string $text, ?array $member, array $ctx, string $lang): ?array
+    {
+        if ($member === null) {
+            return self::act($intent, $member, $ctx, $lang);
+        }
+        $tag = ['n' => ApLearn::norm($text, $intent), 'i' => ApLearn::skeleton($intent)];
+        return self::withLearnTag($tag, fn() => self::act($intent, $member, $ctx, $lang));
     }
 
     /** "I could not understand" + the office number, and for a member the numbered menu to tap instead. */
@@ -2281,9 +2527,13 @@ final class ApWa
             case 'statement':     return self::statement($member, $lang, (int) ($i['days'] ?? 0));
             case 'withdraw':      return self::withdraw($member, $ctx, $lang, (float) ($i['amount'] ?? 0));
             case 'deposit':       return self::payIn($member, 'jama ' . ((float) ($i['amount'] ?? 0) ?: '') . ' ' . ($i['ref'] ?? ''), $lang);
-            case 'id_card':       return self::card($member, 'id-front', $lang);
+            case 'id_card':
+                // the office asking for someone else's card ("AG-RAM27 ko ID pathau"): the same lookup as "id <query>"
+                $q = trim((string) ($i['query'] ?? ''));
+                return $q !== '' && self::isOffice($ctx) ? self::officeId($q, 'id-front', $ctx, $lang) : self::card($member, 'id-front', $lang);
             case 'visiting_card': return self::card($member, 'vc-front', $lang);
             case 'profile':       return self::profile($member, $lang);
+            case 'form':          return self::myForm($member, $lang);
             case 'directory':     return self::directory($member, $lang, (string) ($i['query'] ?? ''), 'search');
             case 'company':       return self::company($lang);
             case 'bus':           return self::buses($member, $lang, (string) ($i['date'] ?? '') ?: date('Y-m-d'));
@@ -2435,20 +2685,20 @@ final class ApWa
     {
         return [
             'help_seller' => [
-                'ne' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनम्बर वा शब्द पठाउनुहोस्:\n\n1️⃣ 🎫 टिकट बुक — *ticket* (वा सिधै: *2 सिट भोलि Mehsana, Ram Thapa 98XXXXXXXX*)\n2️⃣ 📋 मेरा टिकट — *tickets* · *tickets bholi*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लगइन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me*\n8️⃣ 📊 *aaja* (आजको हिसाब) · *passengers bholi* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ सच्याउने: *SHG-… नाम Sita Thapa* (pickup / seat / phone / date पनि)\n❌ रद्द अनुरोध: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
-                'hi' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनंबर या शब्द भेजें:\n\n1️⃣ 🎫 टिकट बुक — *ticket* (या सीधे: *2 सीट कल Mehsana, Ram Thapa 98XXXXXXXX*)\n2️⃣ 📋 मेरे टिकट — *tickets* · *tickets kal*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लॉगिन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me*\n8️⃣ 📊 *today* · *passengers kal* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ बदलें: *SHG-… नाम Sita Thapa* (pickup / seat / phone / date भी)\n❌ रद्द अनुरोध: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
-                'en' => "🙏 Hello {name}{code}! {company} WhatsApp desk.\nSend a number or a word:\n\n1️⃣ 🎫 Ticket — *ticket* (or in one line: *2 seats tomorrow Mehsana, Ram Thapa 98XXXXXXXX*)\n2️⃣ 📋 My tickets — *tickets* · *tickets tomorrow*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 Portal sign-in — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me*\n8️⃣ 📊 *today* · *passengers tomorrow* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ Fix: *SHG-… name Sita Thapa* (or pickup / seat / phone / date)\n❌ Cancel request: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *pay* · 🌐 *english* / *hindi* / *nepali*",
+                'ne' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनम्बर वा शब्द पठाउनुहोस्:\n\n1️⃣ 🎫 टिकट बुक — *ticket* (वा सिधै: *2 सिट भोलि Mehsana, Ram Thapa 98XXXXXXXX*)\n2️⃣ 📋 मेरा टिकट — *tickets* · *tickets bholi*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लगइन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n8️⃣ 📊 *aaja* (आजको हिसाब) · *passengers bholi* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ सच्याउने: *SHG-… नाम Sita Thapa* (pickup / seat / phone / date पनि)\n❌ रद्द अनुरोध: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
+                'hi' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनंबर या शब्द भेजें:\n\n1️⃣ 🎫 टिकट बुक — *ticket* (या सीधे: *2 सीट कल Mehsana, Ram Thapa 98XXXXXXXX*)\n2️⃣ 📋 मेरे टिकट — *tickets* · *tickets kal*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लॉगिन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n8️⃣ 📊 *today* · *passengers kal* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ बदलें: *SHG-… नाम Sita Thapa* (pickup / seat / phone / date भी)\n❌ रद्द अनुरोध: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
+                'en' => "🙏 Hello {name}{code}! {company} WhatsApp desk.\nSend a number or a word:\n\n1️⃣ 🎫 Ticket — *ticket* (or in one line: *2 seats tomorrow Mehsana, Ram Thapa 98XXXXXXXX*)\n2️⃣ 📋 My tickets — *tickets* · *tickets tomorrow*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 Portal sign-in — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n8️⃣ 📊 *today* · *passengers tomorrow* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ Fix: *SHG-… name Sita Thapa* (or pickup / seat / phone / date)\n❌ Cancel request: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *pay* · 🌐 *english* / *hindi* / *nepali*",
             ],
             'help_member' => [
-                'ne' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनम्बर वा शब्द पठाउनुहोस्:\n\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लगइन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me*\n9️⃣ 📞 *office* · *contacts* · *bus*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
-                'hi' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनंबर या शब्द भेजें:\n\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लॉगिन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me*\n9️⃣ 📞 *office* · *contacts* · *bus*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
-                'en' => "🙏 Hello {name}{code}! {company} WhatsApp desk.\nSend a number or a word:\n\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 Portal sign-in — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me*\n9️⃣ 📞 *office* · *contacts* · *bus*\n💵 *pay* · 🌐 *english* / *hindi* / *nepali*",
+                'ne' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनम्बर वा शब्द पठाउनुहोस्:\n\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लगइन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n9️⃣ 📞 *office* · *contacts* · *bus*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
+                'hi' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनंबर या शब्द भेजें:\n\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लॉगिन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n9️⃣ 📞 *office* · *contacts* · *bus*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
+                'en' => "🙏 Hello {name}{code}! {company} WhatsApp desk.\nSend a number or a word:\n\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 Portal sign-in — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n9️⃣ 📞 *office* · *contacts* · *bus*\n💵 *pay* · 🌐 *english* / *hindi* / *nepali*",
             ],
             'help_admin_line' => ['ne' => "0️⃣ 🛡️ *admin* — अफिस: आवेदन, withdraw स्वीकृति, आजको बिक्री", 'hi' => "0️⃣ 🛡️ *admin* — ऑफिस: आवेदन, withdraw मंज़ूरी, आज की बिक्री", 'en' => "0️⃣ 🛡️ *admin* — office: applications, withdrawal approvals, today's sales"],
             'admin_help'  => [
-                'ne' => "🛡️ अफिस डेस्क\n📝 *joins* — नयाँ आवेदन ({apps})\n💸 *withdrawals* — withdraw अनुरोध ({wd})\n✅ *approve 12 UTR430987651234* — भुक्तानी गरेपछि रेकर्ड\n⛔ *reject 12 कारण* — अस्वीकार\n📊 *today* — कम्पनीको आजको बिक्री · *pending* — बाँकी काम\n💵 *deposits* — भुक्तानी जाँच ({dep}) · *jama ok 12* · *jama no 12 कारण*\n🖥️ {link}\n\nपैसाको हरेक काम *CONFIRM* पछि मात्र हुन्छ।",
-                'hi' => "🛡️ ऑफिस डेस्क\n📝 *joins* — नए आवेदन ({apps})\n💸 *withdrawals* — withdraw अनुरोध ({wd})\n✅ *approve 12 UTR430987651234* — भुगतान के बाद दर्ज करें\n⛔ *reject 12 कारण* — अस्वीकार\n📊 *today* — कंपनी की आज की बिक्री · *pending* — बाकी काम\n💵 *deposits* — भुगतान जाँच ({dep}) · *jama ok 12* · *jama no 12 कारण*\n🖥️ {link}\n\nपैसे का हर काम *CONFIRM* के बाद ही होता है।",
-                'en' => "🛡️ Office desk\n📝 *joins* — new applications ({apps})\n💸 *withdrawals* — withdrawal requests ({wd})\n✅ *approve 12 UTR430987651234* — record a payout you have made\n⛔ *reject 12 reason* — decline\n📊 *today* — the company's sales today · *pending* — what is waiting\n💵 *deposits* — payments to check ({dep}) · *jama ok 12* · *jama no 12 reason*\n🖥️ {link}\n\nEvery money action happens only after *CONFIRM*.",
+                'ne' => "🛡️ अफिस डेस्क\n📝 *joins* — नयाँ आवेदन ({apps})\n💸 *withdrawals* — withdraw अनुरोध ({wd})\n✅ *approve 12 UTR430987651234* — भुक्तानी गरेपछि रेकर्ड\n⛔ *reject 12 कारण* — अस्वीकार\n📊 *today* — कम्पनीको आजको बिक्री · *pending* — बाँकी काम\n🪪 *id SHG-0027* · *id 98XXXXXXXX* · *id Ram* — जो कोहीको ID कार्ड (फर्वार्ड गर्न)\n💵 *deposits* — भुक्तानी जाँच ({dep}) · *jama ok 12* · *jama no 12 कारण*\n🖥️ {link}\n\nपैसाको हरेक काम *CONFIRM* पछि मात्र हुन्छ।",
+                'hi' => "🛡️ ऑफिस डेस्क\n📝 *joins* — नए आवेदन ({apps})\n💸 *withdrawals* — withdraw अनुरोध ({wd})\n✅ *approve 12 UTR430987651234* — भुगतान के बाद दर्ज करें\n⛔ *reject 12 कारण* — अस्वीकार\n📊 *today* — कंपनी की आज की बिक्री · *pending* — बाकी काम\n🪪 *id SHG-0027* · *id 98XXXXXXXX* · *id Ram* — किसी का भी ID कार्ड (फ़ॉरवर्ड के लिए)\n💵 *deposits* — भुगतान जाँच ({dep}) · *jama ok 12* · *jama no 12 कारण*\n🖥️ {link}\n\nपैसे का हर काम *CONFIRM* के बाद ही होता है।",
+                'en' => "🛡️ Office desk\n📝 *joins* — new applications ({apps})\n💸 *withdrawals* — withdrawal requests ({wd})\n✅ *approve 12 UTR430987651234* — record a payout you have made\n⛔ *reject 12 reason* — decline\n📊 *today* — the company's sales today · *pending* — what is waiting\n🪪 *id SHG-0027* · *id 98XXXXXXXX* · *id Ram* — anyone's ID card (to forward)\n💵 *deposits* — payments to check ({dep}) · *jama ok 12* · *jama no 12 reason*\n🖥️ {link}\n\nEvery money action happens only after *CONFIRM*.",
             ],
             'adm_pending' => ['ne' => "⏳ बाँकी काम\n📝 आवेदन: {apps}\n💸 withdraw: {wd}\n💵 भुक्तानी जाँच: {dep}\n🪪 KYC: {kyc}\n🎫 भुक्तानी बाँकी बुकिङ: {pay}\n📊 आज टिकट: {t} · 🚌 लाइभ बस: {bus}", 'hi' => "⏳ बाकी काम\n📝 आवेदन: {apps}\n💸 withdraw: {wd}\n💵 भुगतान जाँच: {dep}\n🪪 KYC: {kyc}\n🎫 भुगतान बाकी बुकिंग: {pay}\n📊 आज टिकट: {t} · 🚌 लाइव बस: {bus}", 'en' => "⏳ Waiting\n📝 Applications: {apps}\n💸 Withdrawals: {wd}\n💵 Payments to check: {dep}\n🪪 KYC: {kyc}\n🎫 Unpaid bookings: {pay}\n📊 Tickets today: {t} · 🚌 Live buses: {bus}"],
             'adm_pending_tail' => ['ne' => "👉 *joins* · *withdrawals* · *deposits* · *today*", 'hi' => "👉 *joins* · *withdrawals* · *deposits* · *today*", 'en' => "👉 *joins* · *withdrawals* · *deposits* · *today*"],
@@ -2536,6 +2786,13 @@ final class ApWa
             'card_id'     => ['ne' => "🪪 तपाईंको ID कार्ड ({code})\nपछाडि: *id back* · प्रिन्ट / डाउनलोड: {me}", 'hi' => "🪪 आपका ID कार्ड ({code})\nपीछे: *id back* · प्रिंट / डाउनलोड: {me}", 'en' => "🪪 Your ID card ({code})\nBack side: *id back* · print / download: {me}"],
             'card_vc'     => ['ne' => "💼 तपाईंको visiting card — QR स्क्यान गर्दा सिधै WhatsApp {wa}\nपछाडि: *card back*\nसेयर गर्ने लिंक: {share}", 'hi' => "💼 आपका visiting card — QR स्कैन करते ही सीधे WhatsApp {wa}\nपीछे: *card back*\nशेयर लिंक: {share}", 'en' => "💼 Your visiting card — scanning the QR opens WhatsApp {wa}\nBack side: *card back*\nShare link: {share}"],
             'profile'     => ['ne' => "👤 {name}\n🪪 {code} · {role}\n☎ {phone} · WA {wa}\n📍 {branch}\n✅ KYC: {kyc} · कार्ड {valid} सम्म\n🏦 {bank}\n📱 {me}", 'hi' => "👤 {name}\n🪪 {code} · {role}\n☎ {phone} · WA {wa}\n📍 {branch}\n✅ KYC: {kyc} · कार्ड {valid} तक\n🏦 {bank}\n📱 {me}", 'en' => "👤 {name}\n🪪 {code} · {role}\n☎ {phone} · WA {wa}\n📍 {branch}\n✅ KYC: {kyc} · card valid till {valid}\n🏦 {bank}\n📱 {me}"],
+            'form_signed' => ['ne' => "📄 तपाईंको भरिएको फारम (PDF):\n{url}\nयो लिंक तपाईंको मात्र हो — ID / बैंक नम्बर पूरै देखिन्छ, कसैलाई नपठाउनुहोस्।\nपछि: {me} (पोर्टलमा लगइन गरेर)", 'hi' => "📄 आपका भरा हुआ फ़ॉर्म (PDF):\n{url}\nयह लिंक सिर्फ़ आपका है — ID / बैंक नंबर पूरे दिखते हैं, किसी को न भेजें।\nबाद में: {me} (पोर्टल में लॉगिन करके)", 'en' => "📄 Your filled form (PDF):\n{url}\nThis link is yours alone — it shows your ID / bank numbers in full; do not forward it.\nLater: {me} (after signing in to the portal)"],
+            'form_signin' => ['ne' => "📄 तपाईंको भरिएको फारम (PDF): {url}\nपहिले पोर्टलमा लगइन गर्नुहोस् ({me} — कोड + मोबाइल + WhatsApp OTP), अनि लिंक खोल्नुहोस्। *portal* लेखे लगइनको तरिका आउँछ।", 'hi' => "📄 आपका भरा हुआ फ़ॉर्म (PDF): {url}\nपहले पोर्टल में लॉगिन करें ({me} — कोड + मोबाइल + WhatsApp OTP), फिर लिंक खोलें। *portal* लिखें तो लॉगिन का तरीका आएगा।", 'en' => "📄 Your filled form (PDF): {url}\nSign in to the portal first ({me} — code + mobile + WhatsApp OTP), then open the link. Send *portal* for how to sign in."],
+            'form_none'   => ['ne' => "📄 तपाईंको नाममा भरिएको फारम भेटिएन। अफिसले भरिदिन सक्छ — फोन गर्नुहोस्, वा {me} मा हेर्नुहोस्।", 'hi' => "📄 आपके नाम पर भरा हुआ फ़ॉर्म नहीं मिला। ऑफिस भर सकता है — फ़ोन करें, या {me} पर देखें।", 'en' => "📄 No filled form was found for you. The office can fill it in — call them, or look at {me}."],
+            'oid_one'     => ['ne' => "🪪 {name} · {code}\n{role} · 📍 {branch} · ☎ {phone}\nकार्ड: {status} · KYC: {kyc}\n💼 Visiting card: {vc}\n🔗 सेयर: {share}\nपछाडि: *id {back} back* · यो सन्देश फर्वार्ड गर्न मिल्छ (लिंक २४ घण्टा)।", 'hi' => "🪪 {name} · {code}\n{role} · 📍 {branch} · ☎ {phone}\nकार्ड: {status} · KYC: {kyc}\n💼 Visiting card: {vc}\n🔗 शेयर: {share}\nपीछे: *id {back} back* · यह संदेश फ़ॉरवर्ड कर सकते हैं (लिंक 24 घंटे)।", 'en' => "🪪 {name} · {code}\n{role} · 📍 {branch} · ☎ {phone}\nCard: {status} · KYC: {kyc}\n💼 Visiting card: {vc}\n🔗 Share: {share}\nBack side: *id {back} back* · you can forward this message (links last 24 h)."],
+            'oid_many'    => ['ne' => "🔎 \"{q}\" — {n} जना भेटिए:", 'hi' => "🔎 \"{q}\" — {n} लोग मिले:", 'en' => "🔎 \"{q}\" — {n} found:"],
+            'oid_pick'    => ['ne' => "कोड पठाउनुहोस्: *id SHG-0027*", 'hi' => "कोड भेजें: *id SHG-0027*", 'en' => "Send the code: *id SHG-0027*"],
+            'oid_none'    => ['ne' => "🔎 \"{q}\" नामको सक्रिय सदस्य भेटिएन। कोड, मोबाइल वा नाम लेख्नुहोस्: *id SHG-0027* · *id 98XXXXXXXX* · *id Ram*", 'hi' => "🔎 \"{q}\" से कोई सक्रिय सदस्य नहीं मिला। कोड, मोबाइल या नाम लिखें: *id SHG-0027* · *id 98XXXXXXXX* · *id Ram*", 'en' => "🔎 No active member matches \"{q}\". Send a code, mobile or name: *id SHG-0027* · *id 98XXXXXXXX* · *id Ram*"],
             'dir_head'    => ['ne' => "📇 सम्पर्क ({n})", 'hi' => "📇 संपर्क ({n})", 'en' => "📇 Contacts ({n})"],
             'dir_more'    => ['ne' => "नाम लेखेर खोज्नुहोस्: *number Ram*", 'hi' => "नाम लिखकर खोजें: *number Ram*", 'en' => "search by name: *number Ram*"],
             'dir_none'    => ['ne' => "(कोही भेटिएन)", 'hi' => "(कोई नहीं मिला)", 'en' => "(nobody found)"],

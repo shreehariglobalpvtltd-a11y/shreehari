@@ -83,7 +83,7 @@ if ($view === 'manifest') {
     $manifest = Database::fetchAll(
         "SELECT bp.full_name, bp.seat_no, bp.age, bp.gender, bp.boarded_at,
                 b.pnr, b.contact_phone, b.total_amount, b.booking_mode,
-                bl.travel_date, bl.boarding_stop, bl.drop_stop,
+                bl.travel_date, bl.boarding_stop, bl.drop_stop, bl.schedule_id,
                 r.from_city, r.to_city, r.dep_time, r.route_code
            FROM booking_passengers bp
            JOIN bookings b  ON b.id = bp.booking_id
@@ -106,6 +106,7 @@ if ($view === 'manifest') {
                 'to'    => $row['to_city'],
                 'dep'   => $row['dep_time'],
                 'code'  => $row['route_code'],
+                'sid'   => (int) ($row['schedule_id'] ?? 0),
                 'pax'   => [],
                 'value' => 0.0,
             ];
@@ -270,6 +271,14 @@ echo LiveSync::anchor('agent:' . $viewId, 'auto');
           · <?= count($t['pax']) ?> passenger<?= count($t['pax']) === 1 ? '' : 's' ?>
         </span>
       </div>
+      <?php if ($t['sid'] > 0 && $isOwn): /* 31 Oct 2026 (owner: "chalani herna, aafule kateko ticket ko seat shift garna milos") */
+        $chq = '?date=' . urlencode((string) $t['date']) . '&sid=' . $t['sid']; ?>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;padding:8px 12px">
+        <a class="btn sm" href="<?= $base ?>/admin/manifest.php<?= Security::e($chq) ?>&amp;format=chalanipdf">📄 मेरो चलानी PDF · My chalani</a>
+        <a class="btn ghost sm" href="<?= $base ?>/admin/manifest.php<?= Security::e($chq) ?>&amp;format=chalani" target="_blank" rel="noopener">🖨 Print</a>
+        <a class="btn ghost sm" href="<?= $base ?>/admin/seatmap.php?sid=<?= $t['sid'] ?>">🔁 सिट सार्ने · Shift seat</a>
+      </div>
+      <?php endif; ?>
       <div style="overflow-x:auto">
       <table>
         <thead><tr><th>Seat</th><th>Passenger</th><th>Age / Gender</th><th>Phone</th><th>Boarding</th><th>PNR</th><th>Boarded</th></tr></thead>

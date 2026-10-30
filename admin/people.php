@@ -90,7 +90,9 @@ $actions = static function (array $r) use ($e, $csrf, $isSuper, $desks, $tab, $a
     $id   = (int) $r['id'];
     $ret  = '<input type="hidden" name="return" value="people"><input type="hidden" name="return_tab" value="' . $e($tab) . '"><input type="hidden" name="id" value="' . $id . '">';
     $self = $id === (int) $admin['id'];
-    $h    = '<div class="pp-acts">';
+    // 31 Oct 2026 (owner: "user ID, password matra edit huncha — purai details admin le change garna milos"):
+    // name, number, code, photo, documents, form, cards, delete — all on the member page.
+    $h    = '<div class="pp-acts"><a class="btn soft" href="/admin/team-member.php?id=' . $id . '">✏️ All details</a>';
     if (!$self) {
         $h .= '<form method="post" action="/admin/staff.php" onsubmit="return confirm(\'' . ((int) $r['is_active'] === 1 ? 'Disable' : 'Activate') . ' ' . $e(addslashes((string) ($r['full_name'] ?: $r['username']))) . '?\')">'
             . $csrf . $ret . '<input type="hidden" name="action" value="toggle"><button class="btn ' . ((int) $r['is_active'] === 1 ? 'ghost' : 'ok') . '" type="submit">' . ((int) $r['is_active'] === 1 ? '⏸ Disable' : '▶ Activate') . '</button></form>';

@@ -17,6 +17,12 @@
  *  The prompt's fixed part comes first and stays byte-identical between
  *  messages, so Ollama reuses its cached prefix; the changing part (today,
  *  who is writing, the message) comes last.
+ *
+ *  31 Oct 2026 (idc-learn, owner: "VPS ko model le herera practice garos,
+ *  sikdai jaos"): a member's message also carries the few confirmed
+ *  examples most like it (ApLearn::shotsText — placeholders, no one's
+ *  details), in the changing part; practiceRead() is the same reading for
+ *  the nightly practice. The weights are never re-trained here.
  * =====================================================================
  */
 
@@ -32,7 +38,7 @@ require_once __DIR__ . '/agentpro-ai.php';
 final class ApBrain
 {
     public const INTENTS = ['book', 'edit', 'cancel', 'resend', 'status', 'balance', 'statement', 'withdraw', 'deposit',
-                            'id_card', 'visiting_card', 'profile', 'directory', 'company', 'bus', 'report', 'passengers',
+                            'id_card', 'visiting_card', 'profile', 'form', 'directory', 'company', 'bus', 'report', 'passengers',
                             'tickets', 'portal', 'pending', 'help', 'join', 'question', 'other'];
 
     /**
@@ -61,16 +67,54 @@ final class ApBrain
             return null;
         }
         $customer = $member === null;
+        // 31 Oct 2026: the confirmed examples most like this message (the desk's members only — passengers' words differ)
+        $shots = '';
+        if (!$customer) {
+            try {
+                require_once __DIR__ . '/agentpro-learn.php';
+                $shots = ApLearn::shotsText($text);
+            } catch (Throwable $e) {
+                $shots = '';
+            }
+        }
+        $user = self::userPrompt($text, $lang, $member, $shots);
+        $schema = self::schema();
+        // One turn never runs past its budget: the lock wait + this HTTP timeout fit inside what is left.
+        $t0 = (float) ($ctx['t0'] ?? microtime(true));
+        if (microtime(true) - $t0 > max(15, min(120, Settings::getInt('ap_wa_turn_budget', 60))) - 8) {
+            return null;                                   // the turn is already spent: the menu answers
+        }
+        $timeout = self::timeoutFor($t0);
+        $d = ApAi::json(self::system($customer), $user, $schema, [], ['purpose' => $customer ? 'wa_customer' : 'wa_member', 'max_tokens' => 350,
+            'timeout' => $timeout]);
+        if ($d === null) {
+            return null;
+        }
+        return self::clean($d, $text);
+    }
+
+    /**
+     * The changing part of the prompt: the day, who writes, the reply
+     * language, what the simple parser saw, the learnt examples, the message.
+     */
+    public static function userPrompt(string $text, string $lang, ?array $member, string $shots = ''): string
+    {
+        $customer = $member === null;
         $hints = self::hints($text);
-        $today = date('Y-m-d');
-        $user = "Today: " . $today . ' (' . date('l') . '). Tomorrow: ' . date('Y-m-d', strtotime('+1 day'))
-              . '. Day after: ' . date('Y-m-d', strtotime('+2 day')) . ".\n"
-              . 'Sender: ' . ($customer ? 'a passenger writing about their own trip' : 'our ' . ($member['role'] === 'agent' ? 'ticketing agent' : 'staff member')
-                  . ' ' . $member['full_name'] . ' (books for passengers; name/phone in a booking are the PASSENGER\'s)') . ".\n"
-              . 'Reply language: ' . ['ne' => 'Nepali (Devanagari)', 'hi' => 'Hindi', 'en' => 'English'][$lang] . ".\n"
-              . ($hints !== '' ? 'A simple parser already saw: ' . $hints . " (trust it unless the message clearly says otherwise).\n" : '')
-              . "Message:\n" . mb_substr($text, 0, 800);
-        $schema = [
+        return "Today: " . date('Y-m-d') . ' (' . date('l') . '). Tomorrow: ' . date('Y-m-d', strtotime('+1 day'))
+             . '. Day after: ' . date('Y-m-d', strtotime('+2 day')) . ".\n"
+             . 'Sender: ' . ($customer ? 'a passenger writing about their own trip' : 'our ' . (($member['role'] ?? '') === 'agent' ? 'ticketing agent' : 'staff member')
+                 . ' ' . ($member['full_name'] ?? '') . ' (books for passengers; name/phone in a booking are the PASSENGER\'s)') . ".\n"
+             . 'Reply language: ' . (['ne' => 'Nepali (Devanagari)', 'hi' => 'Hindi', 'en' => 'English'][$lang] ?? 'Nepali (Devanagari)') . ".\n"
+             . ($hints !== '' ? 'A simple parser already saw: ' . $hints . " (trust it unless the message clearly says otherwise).\n" : '')
+             . $shots
+             . "Message:\n" . mb_substr($text, 0, 800);
+    }
+
+    /** The JSON the model must answer with. @return array<string, mixed> */
+    public static function schema(): array
+    {
+        return [
             'type' => 'object',
             'properties' => [
                 'intent'    => ['type' => 'string', 'enum' => self::INTENTS],
@@ -95,18 +139,22 @@ final class ApBrain
             ],
             'required' => ['intent'],
         ];
-        // One turn never runs past its budget: the lock wait + this HTTP timeout fit inside what is left.
-        $t0 = (float) ($ctx['t0'] ?? microtime(true));
-        if (microtime(true) - $t0 > max(15, min(120, Settings::getInt('ap_wa_turn_budget', 60))) - 8) {
-            return null;                                   // the turn is already spent: the menu answers
-        }
-        $timeout = self::timeoutFor($t0);
-        $d = ApAi::json(self::system($customer), $user, $schema, [], ['purpose' => $customer ? 'wa_customer' : 'wa_member', 'max_tokens' => 350,
-            'timeout' => $timeout]);
-        if ($d === null) {
-            return null;
-        }
-        return self::clean($d, $text);
+    }
+
+    /**
+     * Practice (ApLearn::practice, at night): read one learnt example exactly
+     * as a member's message is read — same system prompt, same schema — but
+     * as a document-class call ("benchmark"): it waits only while no
+     * WhatsApp turn waits and hangs up the moment one does. Works with the
+     * WhatsApp AI switched off (only the model server must answer).
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function practiceRead(string $text, string $shots, int $timeout): ?array
+    {
+        $d = ApAi::json(self::system(false), self::userPrompt($text, 'ne', ['role' => 'agent', 'full_name' => 'an agent'], $shots), self::schema(), [],
+            ['purpose' => 'benchmark', 'max_tokens' => 350, 'timeout' => max(10, $timeout), 'lock_wait' => 5]);
+        return $d === null ? null : self::clean($d, $text);
     }
 
     /** The fixed part of the prompt: instructions, then the company's facts. */
@@ -132,7 +180,8 @@ final class ApBrain
            . "which = the passenger (name or seat) when several travel.\n"
            . "- cancel, resend (send the ticket again), status (where is my ticket / bus): pnr.\n"
            . ($customer ? '' : "- balance, statement (days), withdraw (amount), deposit (amount, ref = UTR): the sender's own wallet.\n"
-              . "- id_card, visiting_card, profile: the sender's own cards / details. directory: someone's number (query = the name). "
+              . "- id_card, visiting_card, profile: the sender's own cards / details (id_card with query = a code, phone or name when the "
+              . "office asks for SOMEONE ELSE's card). form: the sender's own filled application form. directory: someone's number (query = the name). "
               . "report: today's sales. passengers: who travels (date). bus: buses on a date.\n"
               . "- tickets: the sender's own sold tickets (date when they name a day). portal: how to sign in to their web portal / app. "
               . "pending: (office staff) what is waiting for approval.\n"

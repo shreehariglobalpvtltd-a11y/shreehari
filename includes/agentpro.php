@@ -831,11 +831,28 @@ final class AgentPro
         if (self::mustChangePw(Auth::admin())) {
             $add('🔑', 'अस्थायी पासवर्ड बदल्नुहोस्', 'Change your temporary password', '/admin/change-password.php');
         }
+        // 31 Oct 2026 (owner: "agent, staff counter mode bata ticket katna, chalani herna, ticket management
+        // garna, aafule kateko ticket ko seat shift garna milos"): the whole counter round, one tap each.
+        $counterMode = Auth::can('bookings.edit') || Auth::can('schedules.edit') || Auth::isSuperadmin();
         if (!empty($m['isAgent'])) {
             $add('🎫', 'टिकट बुक', 'Book a ticket', '/admin/agent.php');
+            if ($counterMode) {
+                $add('🖥', 'काउन्टर मोड (सिट नक्सा)', 'Counter mode (seat map)', '/index.php?counter=1#/');
+            }
+            $add('🧾', 'मेरो टिकट — हेर्ने, सच्याउने, पठाउने', 'My tickets — view, edit, resend', '/admin/bookings.php');
+            $add('📋', 'मेरो चलानी (मेरा यात्रु)', 'My chalani (my passengers)', '/admin/agent-passengers.php?view=manifest');
+            $add('🔁', 'सिट सार्ने', 'Shift a seat', '/admin/seatmap.php');
         } elseif (Auth::can('bookings.view')) {
             $add('🎫', 'टिकट बुक · SmartBook', 'Book a ticket · SmartBook', '/admin/smartbook.php');
+            if ($counterMode) {
+                $add('🖥', 'काउन्टर मोड (सिट नक्सा)', 'Counter mode (seat map)', '/index.php?counter=1#/');
+            }
+            $add('🙋', 'मैले काटेको टिकट', 'Tickets I cut', '/admin/bookings.php?mine=1');
             $add('📋', 'टिकट रजिस्टर', 'Tickets register', '/admin/bookings.php');
+            $add('🚌', 'चलानी (बस अनुसार)', 'Chalani (per bus)', '/admin/chalan.php');
+            if (Auth::can('schedules.view')) {
+                $add('🔁', 'सिट सार्ने', 'Shift a seat', '/admin/seatmap.php');
+            }
             $add('🧾', 'मेरो डेस्क / सिफ्ट', 'My desk & shift', '/admin/my-desk.php');
         }
         if (Auth::can('tickets.scan')) {
@@ -1424,6 +1441,9 @@ final class AgentPro
         if ($u !== []) {
             Database::update('ap_applications', $u, 'id = :i', ['i' => (int) $app['id']]);
             self::markOfficeEdit($app);
+            if ($app['status'] === 'approved') {
+                self::syncApproved((int) $app['id'], array_keys($u));
+            }
         }
         return self::draft($key) ?? $app;
     }
@@ -1470,7 +1490,217 @@ final class AgentPro
         if ($app['status'] === 'draft' || ($office && $app['status'] === 'submitted')) {
             return $app;
         }
+        if ($office && $app['status'] === 'approved' && self::mayEditApproved($app)) {
+            return $app;
+        }
         throw new RuntimeException('This application was already sent. Reference ' . $app['ref'] . '.');
+    }
+
+    /**
+     * 31 Oct 2026 (owner: "ekdum purai details — agent code, name, number, anything — admin change garna milos;
+     * photo change, document change sab"): an APPROVED member is edited through the same office form
+     * (join.php?office=1&d=…) and every change goes to the live account at once (syncApproved).
+     * A super-admin or a manager only — a new mobile is a new sign-in identity — and a super-admin's
+     * own form only by a super-admin.
+     *
+     * @param array<string, mixed> $app
+     */
+    private static function mayEditApproved(array $app): bool
+    {
+        $actor = class_exists('Auth') ? Auth::admin() : null;
+        if (!self::officeCanKyc($actor) || self::mustChangePw($actor) || empty($app['admin_id'])) {
+            return false;
+        }
+        $role = (string) Database::scalar('SELECT role FROM admins WHERE id = :i', ['i' => (int) $app['admin_id']], '');
+        return $role !== '' && ($role !== 'superadmin' || (string) $actor['role'] === 'superadmin');
+    }
+
+    /** The signed-in admin's id for audit lines (0 in CLI / tests). */
+    private static function actorId(): int
+    {
+        return class_exists('Auth') ? (int) (Auth::admin()['id'] ?? 0) : 0;
+    }
+
+    /**
+     * An approved form changed: copy what changed into the live account — the
+     * login (name, email, mobile), the profile every older screen reads, the
+     * ID-card record and the payout details. Only the fields named in $keys,
+     * so an unrelated save never rewrites the desk or the joined date.
+     *
+     * @param list<string> $keys application columns that changed
+     */
+    private static function syncApproved(int $appId, array $keys): void
+    {
+        $app = self::application($appId);
+        if ($app === null || $app['status'] !== 'approved' || empty($app['admin_id']) || $keys === []) {
+            return;
+        }
+        $adminId = (int) $app['admin_id'];
+        $admin = Database::fetch('SELECT id, role, full_name, email, phone FROM admins WHERE id = :i', ['i' => $adminId]);
+        if ($admin === null) {
+            return;
+        }
+        $role  = (string) $admin['role'];
+        $isOrg = $role === 'agent' && $app['agent_kind'] === 'org';
+        $has   = static fn(string ...$k): bool => array_intersect($k, $keys) !== [];
+
+        $login = [];
+        if ($has('full_name', 'org_name')) {
+            $name = trim((string) ($isOrg ? $app['org_name'] : $app['full_name']));
+            if (mb_strlen($name) >= 2 && $name !== (string) $admin['full_name']) {
+                $login['full_name'] = $name;
+            }
+        }
+        if ($has('email')) {
+            $email = (string) ($app['email'] ?? '');
+            if ($email !== '' && $email !== (string) $admin['email']
+                && !Database::exists('SELECT 1 FROM admins WHERE email = :e AND id <> :i', ['e' => $email, 'i' => $adminId])) {
+                $login['email'] = $email;
+            }
+        }
+        if ($has('phone') && (string) ($app['phone'] ?? '') !== '' && normalisePhone((string) $app['phone']) !== normalisePhone((string) $admin['phone'])) {
+            $login['phone'] = (string) $app['phone'];   // officeVerify checked the number is free first
+        }
+        if ($login !== []) {
+            Database::update('admins', $login, 'id = :i', ['i' => $adminId]);
+        }
+
+        $prof = [];
+        if ($has('phone')) {
+            $prof['display_phone'] = (string) $app['phone'];
+        }
+        if ($has('whatsapp', 'phone')) {
+            $prof['whatsapp'] = (string) ($app['whatsapp'] ?? '') !== '' ? (string) $app['whatsapp'] : (string) $app['phone'];
+        }
+        if ($has('full_name') && $isOrg) {
+            $prof['contact_person'] = trim((string) $app['full_name']);
+        }
+        if ($has('address', 'city', 'district', 'state', 'pincode')) {
+            $prof['address'] = mb_substr(trim(implode(', ', array_filter([
+                (string) ($app['address'] ?? ''), (string) ($app['city'] ?? ''), (string) ($app['district'] ?? ''),
+                (string) ($app['state'] ?? ''), (string) ($app['pincode'] ?? ''),
+            ], static fn(string $s): bool => trim($s) !== ''))), 0, 255);
+            if ($role === 'agent' && $has('city') && trim((string) ($app['city'] ?? '')) !== '') {
+                $prof['counter_name'] = (string) $app['city'];   // an agent's area; a staff desk is set in Staff Logins, never here
+            }
+        }
+        if ($has('agent_kind') && $role === 'agent') {
+            $prof['agent_kind'] = (string) $app['agent_kind'];
+        }
+        if ($has('id_type', 'id_number_masked')) {
+            $prof['id_type']   = self::ID_TYPE_PROFILE[(string) ($app['id_type'] ?? '')] ?? '';
+            $prof['id_number'] = (string) ($app['id_number_masked'] ?? '');
+        }
+        if ($has('id_expires_on')) {
+            $prof['id_expires_on'] = (string) ($app['id_expires_on'] ?? '');
+        }
+        if ($has('country')) {
+            $prof['country_code'] = ($app['country'] ?? '') === 'NP' ? '977' : '91';
+        }
+        if (AgentWallet::kycAvailable()) {
+            if ($has('doc_front')) { $prof['kyc_doc_path'] = (string) ($app['doc_front'] ?? ''); }
+            if ($has('doc_back'))  { $prof['kyc_doc2_path'] = (string) ($app['doc_back'] ?? ''); }
+        }
+        if ($prof !== []) {
+            AgentWallet::saveProfile($adminId, $prof);
+        }
+
+        $card = [];
+        foreach (['dob', 'gender', 'guardian', 'designation', 'bank_holder', 'bank_name', 'bank_account_enc', 'bank_account_last4',
+                  'bank_ifsc', 'bank_branch', 'upi_id', 'esewa_id', 'khalti_id'] as $k) {
+            if ($has($k) && array_key_exists($k, $app)) {
+                $card[$k] = $app[$k] !== '' ? $app[$k] : null;
+            }
+        }
+        if ($card !== []) {
+            self::ensureMember($adminId, $role);
+            Database::update('ap_members', $card, 'admin_id = :a', ['a' => $adminId]);
+        }
+
+        Logger::audit('agentpro.member_edited', 'admin', (string) $adminId, null, ['fields' => array_values($keys), 'ref' => $app['ref']],
+            'Approved member edited through the office form' . (self::actorId() > 0 ? ' by admin #' . self::actorId() : ''));
+    }
+
+    /**
+     * The office form for an older member who never filled one (an account
+     * made before AgentPro, or straight in Staff Logins): an APPROVED form is
+     * made from what the account already holds, so the office can open it,
+     * fill the rest, add photos / documents / signature and print it.
+     * The existing one when there is one.
+     *
+     * @return array<string, mixed> the ap_applications row
+     */
+    public static function officeRecordFor(int $adminId, int $by): array
+    {
+        $have = Database::fetch(
+            "SELECT * FROM ap_applications WHERE admin_id = :a AND status <> 'rejected' ORDER BY (status = 'approved') DESC, id DESC LIMIT 1",
+            ['a' => $adminId]
+        );
+        if ($have !== null) {
+            return $have;
+        }
+        $a = Database::fetch('SELECT id, role, full_name, email, phone FROM admins WHERE id = :i', ['i' => $adminId]);
+        if ($a === null) {
+            throw new RuntimeException('No such member.');
+        }
+        if ((string) $a['role'] === 'superadmin' && (string) (Auth::admin()['role'] ?? '') !== 'superadmin') {
+            throw new RuntimeException('A super-admin\'s form is opened by a super-admin.');
+        }
+        $p = AgentWallet::profile($adminId);
+        $m = self::ensureMember($adminId, (string) $a['role']);
+        $agent = (string) $a['role'] === 'agent';
+        $isOrg = $agent && AgentWallet::normaliseKind((string) ($p['agent_kind'] ?? 'person')) === 'org';
+        $phone = normalisePhone((string) ($a['phone'] ?? ''));
+        $idType = (string) (array_flip(self::ID_TYPE_PROFILE)[(string) ($p['id_type'] ?? '')] ?? '');
+        $key = bin2hex(random_bytes(16));
+        $row = [
+            'draft_key'        => $key,
+            'status'           => 'approved',
+            'kind'             => $agent ? 'agent' : 'staff',
+            'agent_kind'       => $isOrg ? 'org' : 'person',
+            'role_wanted'      => $agent ? null : (string) (self::crewRole($adminId) ?: $a['role']),
+            'designation'      => $m['designation'] ?? null,
+            'full_name'        => $isOrg ? (trim((string) ($p['contact_person'] ?? '')) ?: null) : (string) $a['full_name'],
+            'org_name'         => $isOrg ? (string) $a['full_name'] : null,
+            'phone'            => $phone !== '' ? $phone : null,
+            'whatsapp'         => AgentWallet::cleanPhone((string) ($p['whatsapp'] ?? '')) ?: null,
+            'wa_verified_at'   => $phone !== '' ? date('Y-m-d H:i:s') : null,
+            'email'            => (string) ($a['email'] ?? '') !== '' ? (string) $a['email'] : null,
+            'dob'              => $m['dob'] ?? null,
+            'gender'           => $m['gender'] ?? null,
+            'guardian'         => $m['guardian'] ?? null,
+            'address'          => trim((string) ($p['address'] ?? '')) ?: null,
+            'city'             => trim((string) ($p['counter_name'] ?? '')) ?: null,
+            'country'          => (string) ($p['country_code'] ?? '') === '977' ? 'NP' : 'IN',
+            'id_type'          => $idType !== '' ? $idType : null,
+            'id_number_masked' => trim((string) ($p['id_number'] ?? '')) ?: null,
+            'admin_id'         => $adminId,
+            'decided_by'       => $by ?: null,
+            'decided_at'       => date('Y-m-d H:i:s'),
+            'decision_note'    => 'Office record for a member who joined before the Agent Pro form',
+            'submitted_at'     => date('Y-m-d H:i:s'),
+            'ip'               => Security::clientIp(),
+            'user_agent'       => Security::userAgent(),
+        ];
+        if ($phone !== '') {
+            $row['wa_verified_via'] = 'office';
+        }
+        if (self::appHas('office_filled_by')) {
+            $row['office_filled_by'] = $by ?: null;
+        }
+        for ($try = 0; $try < 5; $try++) {
+            try {
+                Database::insert('ap_applications', $row + ['ref' => self::newRef()]);
+                break;
+            } catch (Throwable $e) {
+                if ($try === 4) {
+                    throw $e;
+                }
+            }
+        }
+        Logger::audit('agentpro.office_record', 'admin', (string) $adminId, null, ['role' => (string) $a['role']],
+            'Office form made for an older member by admin #' . $by);
+        return self::draft($key) ?? [];
     }
 
     /**
@@ -1624,7 +1854,9 @@ final class AgentPro
             'office_filled_by' => $by, 'verify_code' => null, 'readout' => json_encode($readout, JSON_UNESCAPED_UNICODE),
         ], 'id = :i', ['i' => (int) $app['id']]);
         self::markOfficeEdit($app);   // the number changed after sending: approve() refreshes the profile
-        if (!empty($app['admin_id'])) {
+        if ($app['status'] === 'approved') {
+            self::syncApproved((int) $app['id'], ['phone', 'country']);   // a live member's new mobile (checked free above)
+        } elseif (!empty($app['admin_id'])) {
             Database::update('admins', ['phone' => $phone], 'id = :i AND is_active = 0', ['i' => (int) $app['admin_id']]);
         }
         Logger::audit('agentpro.office_verify', 'application', (string) $app['ref'], null,
@@ -1785,6 +2017,13 @@ final class AgentPro
         } else {
             $old = (string) ($app[$col] ?? '');
             Database::update('ap_applications', [$col => $saved['path']], 'id = :i', ['i' => (int) $app['id']]);
+            if ($app['status'] === 'approved') {
+                // an approved member: a new photo is the ID-card photo at once; new ID photos are the KYC copy
+                if ($slot === 'selfie') {
+                    self::setPhotoFromFile((int) $app['admin_id'], $saved['abs'], self::actorId());
+                }
+                self::syncApproved((int) $app['id'], [$col]);
+            }
             if (($oldAbs = self::privateAbs($old)) !== null) {
                 @unlink($oldAbs);
             }
@@ -2300,15 +2539,35 @@ final class AgentPro
                 $lines[] = '🚌 बस लोकेसन / Driver app: ' . appUrl('driver/') . ' — मोबाइल + PIN (अफिसबाट), वा /me/ मा "🚌 बस लोकेसन सुरु"।';
             }
         }
+        // 31 Oct 2026 (owner: "ID card, visiting card, bhareko form … WhatsApp ma pathaune"): the filled
+        // form too — their own 30-day link while it lasts, else /me/ (always there once signed in).
+        $formUrl = appUrl('me/form.php?auto=pdf');
+        try {
+            require_once __DIR__ . '/agentpro-form.php';
+            $app = ApForm::applicationFor($adminId);
+            if ($app !== null && ApForm::applicantMayOpen($app) && ($u = ApForm::applicantUrl($app)) !== '') {
+                $formUrl = appUrl(ltrim($u, '/') . '&auto=pdf');
+            }
+        } catch (Throwable $e) {
+            Logger::warning('Welcome: form link skipped: ' . $e->getMessage(), [], 'agent');
+        }
+        $lines[] = '';
+        $lines[] = '📄 भरिएको फारम (PDF) · Filled form: ' . $formUrl;
+
         $media = null;
+        $vc = null;
         try {
             require_once __DIR__ . '/agentpro-card.php';
             $media = ApCard::signedUrl($adminId, 'id-front', 86400 * 3);
+            $vc    = ApCard::signedUrl($adminId, 'vc-front', 86400 * 3);
         } catch (Throwable $e) {
             $media = null;
         }
         $country = $mem['countryCode'] === '977' ? 'NP' : 'IN';
         $ok = Notify::whatsapp((string) $mem['phone'], implode("\n", $lines), $media, $country);
+        if ($ok !== false && $vc !== null) {
+            Notify::whatsapp((string) $mem['phone'], '💼 Visiting card · भिजिटिङ कार्ड — ' . appUrl('c.php?u=' . rawurlencode((string) $mem['cardToken'])), $vc, $country);
+        }
         return $ok !== false;
     }
 
@@ -2554,6 +2813,122 @@ final class AgentPro
     }
 
     /** A short WhatsApp line to a member about their money / account. Never throws. */
+    /* =================================================================
+     *  A member's own documents (/me/ → Docs, me/doc.php)
+     *  31 Oct 2026 (owner: "documents haru pani herne, upload garne option
+     *  chhaina"): the Docs tab opened only an AGENT's two KYC photos
+     *  (admin/agent-kyc-file.php refuses staff). Now every member sees
+     *  every file of theirs — the KYC ID photos and everything on their
+     *  form — and can add more (signature, PAN, passbook …) to the form.
+     * ================================================================= */
+
+    /** Labels a member picks for a document they add. */
+    public const MEMBER_DOC_LABELS = [
+        'Signature · सही', 'PAN card', 'Address proof · ठेगाना प्रमाण', 'Bank passbook / cheque', 'Passport',
+        'Driving licence', 'Education certificate', 'Other · अन्य',
+    ];
+
+    /**
+     * @return list<array{key: string, label: string, kind: string}>
+     */
+    public static function memberDocs(int $adminId): array
+    {
+        $out = [];
+        $seen = [];
+        $p = AgentWallet::profile($adminId);
+        foreach (['kyc1' => ['kyc_doc_path', 'ID (front) · परिचयपत्र अगाडि'], 'kyc2' => ['kyc_doc2_path', 'ID (back) / address · पछाडि']] as $key => [$col, $label]) {
+            $rel = (string) ($p[$col] ?? '');
+            if ($rel !== '' && self::privateAbs($rel) !== null) {
+                $out[] = ['key' => $key, 'label' => $label, 'kind' => 'id'];
+                $seen[$rel] = true;
+            }
+        }
+        require_once __DIR__ . '/agentpro-form.php';
+        $app = ApForm::applicationFor($adminId);
+        if ($app !== null) {
+            foreach (['doc_front' => ['front', 'ID photo (front) · परिचयपत्र'], 'doc_back' => ['back', 'ID photo (back) · पछाडि'],
+                      'selfie' => ['selfie', 'Photo · फोटो'], 'thumb' => ['thumb', 'Thumb print · औंठा छाप']] as $col => [$key, $label]) {
+                $rel = (string) ($app[$col] ?? '');
+                if ($rel !== '' && !isset($seen[$rel]) && self::privateAbs($rel) !== null) {
+                    $out[] = ['key' => $key, 'label' => $label, 'kind' => $col === 'selfie' || $col === 'thumb' ? 'photo' : 'id'];
+                    $seen[$rel] = true;
+                }
+            }
+            foreach (jsonColumn($app['extras'] ?? null) as $i => $x) {
+                $rel = is_array($x) ? (string) ($x['path'] ?? '') : '';
+                if ($rel !== '' && !isset($seen[$rel]) && self::privateAbs($rel) !== null) {
+                    $out[] = ['key' => 'x' . (int) $i, 'label' => (string) ($x['label'] ?? 'Document'), 'kind' => !empty($x['paper']) ? 'paper' : 'extra'];
+                    $seen[$rel] = true;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /** The file behind one of memberDocs()' keys — only ever the member's own. */
+    public static function memberDocPath(int $adminId, string $key): ?string
+    {
+        if ($key === 'kyc1' || $key === 'kyc2') {
+            return self::privateAbs((string) (AgentWallet::profile($adminId)[$key === 'kyc1' ? 'kyc_doc_path' : 'kyc_doc2_path'] ?? ''));
+        }
+        require_once __DIR__ . '/agentpro-form.php';
+        $app = ApForm::applicationFor($adminId);
+        if ($app === null) {
+            return null;
+        }
+        $col = ['front' => 'doc_front', 'back' => 'doc_back', 'selfie' => 'selfie', 'thumb' => 'thumb'][$key] ?? null;
+        if ($col !== null) {
+            return self::privateAbs((string) ($app[$col] ?? ''));
+        }
+        if (preg_match('/^x(\d{1,2})$/', $key, $mm) === 1) {
+            $x = jsonColumn($app['extras'] ?? null)[(int) $mm[1]] ?? null;
+            return is_array($x) ? self::privateAbs((string) ($x['path'] ?? '')) : null;
+        }
+        return null;
+    }
+
+    /**
+     * A member adds a document to their own form (made from the account first
+     * when they never had one). The office sees it on the member page.
+     *
+     * @param array<string, mixed> $file a $_FILES entry
+     */
+    public static function memberAddDoc(int $adminId, array $file, string $label, int $by = 0): void
+    {
+        $label = Security::clean($label, 60);
+        if ($label === '') {
+            $label = 'Document';
+        }
+        $app = self::officeRecordFor($adminId, 0);   // 0: nobody "approved" it — the form prints "Office"
+        if ($app === [] || empty($app['id'])) {
+            throw new RuntimeException('Your form could not be opened — please ask the office.');
+        }
+        $extras = jsonColumn($app['extras'] ?? null);
+        $own = count(array_filter($extras, static fn($x): bool => is_array($x) && empty($x['paper'])));
+        if ($own >= max(6, Settings::getInt('ap_member_max_docs', 12))) {
+            throw new RuntimeException('That is the most documents one form can carry — bring the rest to the office.');
+        }
+        $saved = self::storePrivate($file);
+        $isSig = stripos($label, 'signature') !== false || str_contains($label, 'सही');
+        if ($isSig) {
+            // one signature: a new one replaces the old (the printed form uses the newest)
+            foreach ($extras as $i => $x) {
+                $l = is_array($x) ? (string) ($x['label'] ?? '') : '';
+                if ($l !== '' && (stripos($l, 'signature') !== false || str_contains($l, 'सही'))) {
+                    if (($abs = self::privateAbs((string) ($x['path'] ?? ''))) !== null) {
+                        @unlink($abs);
+                    }
+                    unset($extras[$i]);
+                }
+            }
+            $extras = array_values($extras);
+        }
+        $extras[] = ['label' => $label, 'path' => $saved['path'], 'by' => $by > 0 && $by !== $adminId ? 'office:' . $by : 'member', 'at' => date('c')];
+        Database::update('ap_applications', ['extras' => json_encode($extras, JSON_UNESCAPED_UNICODE)], 'id = :i', ['i' => (int) $app['id']]);
+        Logger::audit('agentpro.member_doc_added', 'admin', (string) $adminId, null, ['label' => $label, 'ref' => (string) ($app['ref'] ?? '')],
+            $by > 0 && $by !== $adminId ? 'Document added to the form by admin #' . $by : 'Member added a document to their form from /me/');
+    }
+
     public static function tellMember(int $adminId, string $text): void
     {
         try {

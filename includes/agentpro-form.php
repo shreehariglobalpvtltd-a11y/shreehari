@@ -26,7 +26,12 @@
  *                  thumbprint pictures.
  *    full = false  other office roles: ID / PAN / account masked, no
  *                  document or thumbprint pictures (the photo stays - it
- *                  is printed on the public ID card anyway).
+ *                  is printed on the public ID card anyway). The thumb
+ *                  boxes stay empty for an ink impression.
+ *  Either way the applicant's own signature (an extra labelled "Signature"
+ *  / "सही") prints in the signature box, and an approved form carries the
+ *  office's digital signature: approver, date, code, HMAC fingerprint and
+ *  the verify QR (31 Oct 2026).
  *  Every picture is embedded as a small re-encoded JPEG (data: URI), so
  *  nothing private gets a URL and html2canvas never meets a tainted image.
  *
@@ -338,13 +343,22 @@ final class ApForm
         };
         $doc('परिचयपत्र — अगाडि · ID — front', $g('doc_front'));
         $doc('परिचयपत्र — पछाडि · ID — back', $g('doc_back'));
-        $sig = '';   // 30 Oct 2026: a signature picture sent as an extra document ("Signature" / "सही") prints in the signature box
-        foreach (jsonColumn($a['extras'] ?? null) as $x) {
-            if (is_array($x) && $sig === '' && $full && preg_match('/signature|सही/iu', (string) ($x['label'] ?? ''))
-                && ($abs = AgentPro::privateAbs((string) ($x['path'] ?? ''))) !== null && !str_ends_with(strtolower($abs), '.pdf')) {
-                $sig = self::dataImg($abs, 600, 85);
+        // 31 Oct 2026: the applicant's signature (an extra labelled "Signature" / "सही" - the drawn pad on
+        // /join.php uploads one) prints in the signature box for EVERY viewer who may open the form: a
+        // signature is not sensitive like a fingerprint. Extras are appended, so the last one is the newest.
+        $extras = array_values(array_filter(jsonColumn($a['extras'] ?? null), 'is_array'));
+        $sig = '';
+        $sigAt = -1;
+        for ($i = count($extras) - 1; $i >= 0; $i--) {
+            if (preg_match('/signature|सही/iu', (string) ($extras[$i]['label'] ?? '')) === 1
+                && ($abs = AgentPro::privateAbs((string) ($extras[$i]['path'] ?? ''))) !== null && !str_ends_with(strtolower($abs), '.pdf')
+                && ($sig = self::dataImg($abs, 600, 85)) !== '') {
+                $sigAt = $i;
+                break;
             }
-            if (is_array($x)) {
+        }
+        foreach ($extras as $i => $x) {
+            if ($i !== $sigAt) {   // the printed signature is not repeated as a document tile
                 $doc(AgentPro::fixMojibake(trim((string) ($x['label'] ?? 'Document'))) ?: 'Document', (string) ($x['path'] ?? ''));
             }
         }
@@ -488,6 +502,34 @@ final class ApForm
         $seal = substr(hash_hmac('sha256', 'apform|' . (int) ($a['id'] ?? 0) . '|' . $ref . '|' . $adminId . '|' . $status . '|'
             . implode('|', [$g('full_name'), $phone, $g('id_number_masked'), $g('bank_account_last4'), $g('submitted_at'), $g('decided_at')]), APP_KEY), 0, 16);
 
+        /* ---- 31 Oct 2026: the office's digital signature on an approved form ----
+         * Who approved (decided_by -> admins), when (decided_at), the form no., the member code the ID
+         * card prints, a short HMAC fingerprint and the card's verify QR. A member made before Agent Pro
+         * has no decision row: the office approved them when the login was made. */
+        $office = null;
+        $refShown = $ref !== '' ? $ref : ($code !== '' ? $code : 'M-' . $adminId);
+        $decidedRaw = $g('decided_at');
+        if ($decidedRaw === '' && $fromMember && $live) {
+            $decidedRaw = (string) ($mm['cardIssued'] ?? '') !== '' ? (string) $mm['cardIssued'] : (string) ($mm['joined'] ?? '');
+        }
+        if ($approved && ($live || $g('decided_at') !== '')) {
+            [$byName, $byRole] = self::approver((int) ($a['decided_by'] ?? 0));
+            // the name the ID card back prints under AUTHORISED SIGNATORY (ApCard::idBack)
+            $signatory = AgentPro::fixMojibake(trim(Settings::getString('ap_card_signature', '')));
+            $office = [
+                'by'        => $byName !== '' ? $byName : 'कार्यालय · Office',
+                'role'      => $byRole,
+                'at'        => $fmt($decidedRaw, 'd M Y, H:i'),
+                'date'      => $fmt($decidedRaw, 'd/m/Y'),
+                'ref'       => $refShown,
+                'codeNe'    => $isStaff ? 'कर्मचारी नं.' : 'एजेन्ट कोड',
+                'codeEn'    => $live ? ApCard::codeLabel($mm) : ($isStaff ? 'STAFF NO.' : 'AGENT CODE'),   // the ID card's own label
+                'code'      => $code,
+                'digital'   => self::digitalSignature($refShown, $g('full_name') !== '' ? $g('full_name') : $mv('name'), $phone, $g('id_number_masked'), $decidedRaw),
+                'signatory' => $signatory !== '' ? $signatory : trim((string) ($co['ceo'] ?? $co['operator'] ?? '')),
+            ];
+        }
+
         return [
             'co'         => $co,
             'logo'       => class_exists('Brand', false) ? Brand::markUrl(120) : '/assets/img/logo-mark-tm.png',
@@ -530,6 +572,7 @@ final class ApForm
             'decidedBy'  => $decidedBy,
             'decidedAt'  => $fmt($g('decided_at'), 'd/m/Y'),
             'kycOk'      => $kyc === 'verified',
+            'office'     => $office,
             'seal'       => strtoupper($seal),
             'file'       => 'SHG-form-' . preg_replace('/[^A-Za-z0-9-]/', '-', $ref !== '' ? $ref : ($code !== '' ? $code : 'member-' . $adminId)),
         ];
@@ -593,6 +636,47 @@ final class ApForm
             ''          => '',
             default     => 'बाँकी · pending',
         };
+    }
+
+    /**
+     * The office digital signature printed on an approved form (31 Oct 2026):
+     * the first 16 hex of HMAC-SHA256(ref|name|phone|id_number_masked|decided_at,
+     * APP_KEY) as "AB12-CD34-EF56-7890". Only the server can make it, so the
+     * office can re-check a paper copy against the record.
+     */
+    public static function digitalSignature(string $ref, string $name, string $phone, string $idMasked, string $decidedAt): string
+    {
+        $h = strtoupper(substr(hash_hmac('sha256', implode('|', [$ref, $name, $phone, $idMasked, $decidedAt]), APP_KEY), 0, 16));
+        return implode('-', str_split($h, 4));
+    }
+
+    /**
+     * The office person who approved: [name, designation or role] ('' when
+     * nobody is recorded). The designation comes from their own card.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private static function approver(int $id): array
+    {
+        if ($id <= 0) {
+            return ['', ''];
+        }
+        $r = Database::fetch('SELECT full_name, username, role FROM admins WHERE id = :i', ['i' => $id]);
+        if ($r === null) {
+            return ['#' . $id, ''];
+        }
+        $name = trim((string) $r['full_name']) !== '' ? trim((string) $r['full_name']) : (string) $r['username'];
+        $desig = '';
+        try {
+            $desig = trim((string) Database::scalar('SELECT designation FROM ap_members WHERE admin_id = :i', ['i' => $id], ''));
+        } catch (Throwable $e) {
+            $desig = '';
+        }
+        $role = (string) $r['role'];
+        if ($desig !== '') {
+            return [$name, AgentPro::fixMojibake($desig)];
+        }
+        return [$name, isset(self::ROLES[$role]) ? self::ROLES[$role][0] . ' · ' . self::ROLES[$role][1] : (AgentPro::ROLE_LABELS[$role] ?? ucfirst($role))];
     }
 
     /**
@@ -706,17 +790,21 @@ final class ApForm
         $docsBox = $section('🗂️', 'कागजात', 'Documents', '<div class="docs">' . $tiles . '</div>' . $more,
             '<small>' . ($vm['full'] ? 'अनलाइन पठाइएको · as sent online' : 'चित्र म्यानेजरले मात्र · pictures for a manager only') . '</small>');
 
+        // 31 Oct 2026: two ruled boxes the size of a real ink thumb impression (28 x 34 mm), to press
+        // after printing. The captured right thumb prints only for a full viewer; for the rest the box
+        // stays empty for ink and only says a digital copy is on file.
+        $hint = '<span class="th">प्रिन्ट गरेपछि यहाँ औंठा छाप<br>Put thumb impression here after printing</span>';
         $thumbBox = $vm['thumb'] !== ''
             ? '<div class="tb ink" role="img" aria-label="Thumb impression" style="background-image:url(' . $e($vm['thumb']) . ')"></div>'
-            : '<div class="tb">' . ($vm['hasThumb'] ? '✓ फाइलमा<br>on file' : '') . '</div>';
+            : '<div class="tb">' . $hint . ($vm['hasThumb'] ? '<span class="tf">✓ डिजिटल प्रति फाइलमा · digital copy on file</span>' : '') . '</div>';
+        $esign = $vm['sig'] !== ''
+            ? '<img class="sig" src="' . $e($vm['sig']) . '" alt="Signature"><small>' . $e($vm['name']) . ($vm['signedOn'] !== '' ? ' — ' . $e($vm['signedOn']) : '') . '</small>'
+            : ($vm['consent'] ? '✓ अनलाइन स्वीकार गरियो · accepted online<br><small>' . $e($vm['name']) . ' — ' . $e($vm['signedOn']) . '</small>' : '');
         $sign = $section('✍️', 'सही र औंठाछाप', 'Signature & thumbprints',
-            '<div class="signrow"><div class="sbox"><div class="esign">' . ($vm['sig'] !== ''
-                ? '<img src="' . $e($vm['sig']) . '" alt="Signature" style="max-width:100%;max-height:22mm;display:block;margin:0 auto">'
-                : '') . ($vm['consent']
-                ? '✓ अनलाइन स्वीकार गरियो · accepted online<br><small>' . $e($vm['name']) . ' — ' . $e($vm['signedOn']) . '</small>'
-                : '') . '</div><span>आवेदकको सही · Applicant\'s signature</span></div>'
+            '<div class="signrow"><div class="sbox' . ($vm['sig'] !== '' ? ' has' : '') . '"><div class="esign">' . $esign . '</div>'
+            . '<span>आवेदकको सही · Applicant\'s signature</span></div>'
             . '<figure>' . $thumbBox . '<figcaption>दायाँ औंठा · Right thumb</figcaption></figure>'
-            . '<figure><div class="tb"></div><figcaption>बायाँ औंठा · Left thumb</figcaption></figure></div>');
+            . '<figure><div class="tb">' . $hint . '</div><figcaption>बायाँ औंठा · Left thumb</figcaption></figure></div>');
 
         $verify = $section('🛡️', 'डिजिटल प्रमाणीकरण', 'Digital verification', $rows($vm['verify']));
         $check = '';
@@ -731,13 +819,34 @@ final class ApForm
             . 'I declare that the details above are true and the documents are mine. I agree to the ' . ($vm['kindKey'] === 'staff' ? 'staff rules' : 'agent agreement')
             . ' of ' . $e($co['legal']) . '.</p>'
             . '<div class="dl"><div><small>स्थान · Place</small><b>' . $e($vm['place']) . '</b></div><div><small>मिति · Date</small><b>' . $e($vm['signedOn']) . '</b></div>'
-            . '<div><small>सही · Signature</small><b>' . ($vm['consent'] ? '✓ e-consent' : '') . '</b></div></div></section>';
+            . '<div><small>सही · Signature</small><b>' . ($vm['sig'] !== '' ? '<img class="dsg" src="' . $e($vm['sig']) . '" alt="Signature">' : '')
+            . ($vm['consent'] ? '✓ e-consent' : '') . '</b></div></div></section>';
 
         $tick = static fn(bool $on): string => '<i class="bx' . ($on ? ' on' : '') . '">' . ($on ? '✓' : '') . '</i>';
-        $office = '<section class="office"><div><small>कार्यालय प्रयोग · Office use — checked by (name)</small><b>' . $e($vm['decidedBy']) . '</b></div>'
-            . '<div class="ticks">' . $tick(false) . ' सक्कल ID देखियो · Original ID seen<br>' . $tick($vm['kycOk']) . ' KYC प्रमाणित · KYC verified<br>'
-            . $tick($vm['approved']) . ' स्वीकृत · Approved ' . ($vm['decidedAt'] !== '' ? $e($vm['decidedAt']) : '') . '</div>'
-            . '<div><small>सही, मिति र छाप · Signature, date &amp; stamp</small><b></b></div></section>';
+        $ticks = '<div class="ticks">' . $tick(false) . ' सक्कल ID देखियो · Original ID seen<br>' . $tick($vm['kycOk']) . ' KYC प्रमाणित · KYC verified<br>'
+            . $tick($vm['approved']) . ' स्वीकृत · Approved ' . ($vm['decidedAt'] !== '' ? $e($vm['decidedAt']) : '') . '</div>';
+        $o = $vm['office'];
+        if (is_array($o)) {
+            // 31 Oct 2026: an approved form carries the office's digital signature - who, when, form no.,
+            // member code, HMAC fingerprint, a typeset stamp (no signatory image is configured anywhere)
+            // and the ID card's verify QR. The "original ID seen" box stays empty for ink.
+            $cell = static fn(string $ne, string $en, string $v, string $cls = ''): string => '<div' . ($cls !== '' ? ' class="' . $cls . '"' : '') . '><small>'
+                . $lbl($ne, $en) . '</small><b>' . ($v === '' ? '—' : $e($v)) . '</b></div>';
+            $dsig = $cell('स्वीकृत गर्ने', 'Approved by', $o['by'] . ($o['role'] !== '' ? ' — ' . $o['role'] : ''), 'w')
+                . $cell('मिति र समय', 'Date & time', $o['at'])
+                . $cell('फारम नं.', 'Form no.', $o['ref'])
+                . $cell($o['codeNe'], $o['codeEn'], $o['code'])
+                . '<div class="w fp"><small>डिजिटल सही · Digital signature</small><b>' . $e($o['digital']) . '</b></div>';
+            $stamp = '<div class="stamp"><b>✓ DIGITALLY SIGNED</b><span>डिजिटल रूपमा स्वीकृत</span>'
+                . '<span class="co">' . $e($legal) . '</span><span>' . $e($o['date']) . '</span>'
+                . ($o['signatory'] !== '' ? '<span class="sg">Authorised signatory: ' . $e($o['signatory']) . '</span>' : '') . '</div>';
+            $oqr = $vm['qr'] !== '' ? '<figure class="oqr"><img src="' . $e($vm['qr']) . '" alt="Verify QR"><figcaption>प्रमाणित · Verify</figcaption></figure>' : '';
+            $office = '<section class="office signed"><div><small>कार्यालय प्रयोग · Office use</small>' . $ticks . '</div>'
+                . '<div class="dsig">' . $dsig . '</div><div class="dst">' . $stamp . $oqr . '</div></section>';
+        } else {
+            $office = '<section class="office"><div><small>कार्यालय प्रयोग · Office use — checked by (name)</small><b>' . $e($vm['decidedBy']) . '</b></div>'
+                . $ticks . '<div><small>सही, मिति र छाप · Signature, date &amp; stamp</small><b></b></div></section>';
+        }
 
         $counters = trim((string) ($co['counters'] ?? ''));
         // company_ceo (the owner's spelling, same as the cards), not company_operator
@@ -832,12 +941,16 @@ body{--k:{$k};--ink:#13224F;--mut:#5A6478;--line:#C9D1DE;--band:#EEF1F6}
 .doc figcaption{font-size:8px;text-align:center;color:#3A4A66;margin-top:2px;line-height:1.2}
 .more{margin:0 9px 6px;font-size:9px;color:var(--mut)}
 .signrow{display:flex;gap:5mm;align-items:flex-end;padding:6px 9px 7px}
-.sbox{flex:1;border:1.5px solid #B9C2D0;border-radius:10px;height:27mm;display:flex;flex-direction:column;justify-content:space-between;padding:5px 8px;background:#fff}
+.sbox{flex:1;border:1.5px solid #B9C2D0;border-radius:10px;height:34mm;display:flex;flex-direction:column;justify-content:space-between;padding:5px 8px;background:#fff}
 .sbox .esign{font-size:10.5px;font-weight:600;color:#11703F}.sbox .esign small{font-weight:400;color:#3A4A66}
-.sbox span{font-size:8.5px;color:var(--mut)}
+.sbox.has .esign{text-align:center}.sbox.has .esign small{display:block;font-size:8.5px}
+.sbox img.sig{display:block;max-width:100%;max-height:20mm;margin:0 auto}
+.sbox span{font-size:8.5px;color:var(--mut);border-top:1px solid #6B7280;padding-top:2px}
 .signrow figure{margin:0;text-align:center}
-.tb{width:21mm;height:27mm;border:1.5px dashed #9AA6B8;border-radius:50%;background:#fff center/contain no-repeat;display:flex;align-items:center;justify-content:center;font-size:8px;color:#11703F}
-.tb.ink{border-style:solid;border-radius:8px}
+.tb{position:relative;width:28mm;height:34mm;border:1.2px solid #7D889C;border-radius:2mm;background:#fff center/contain no-repeat;display:flex;align-items:center;justify-content:center}
+.tb .th{font-size:7px;line-height:1.3;color:#C3CAD5;text-align:center;padding:0 2mm}
+.tb .tf{position:absolute;left:0;right:0;bottom:1mm;font-size:6.5px;line-height:1.2;color:#11703F;text-align:center;padding:0 1mm}
+.tb.ink{border-color:#9AA6B8}
 .signrow figcaption{font-size:8px;color:var(--mut);margin-top:2px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:3mm}
 .two .sx{margin-bottom:2.6mm}
@@ -853,10 +966,30 @@ body{--k:{$k};--ink:#13224F;--mut:#5A6478;--line:#C9D1DE;--band:#EEF1F6}
 .decl p{margin:0 0 4px;font-size:9.5px;color:#0F1B33}
 .dl{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:6mm}
 .dl div{border-bottom:1px solid #6B7280;padding-bottom:1px}.dl small,.office small{display:block;font-size:8.5px;color:var(--mut)}.dl b{font-size:11px;color:var(--k)}
+.dl img.dsg{display:inline-block;height:5.5mm;width:auto;max-width:60%;vertical-align:middle;margin-right:5px}
 .office{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:3mm}
 .office>div{border:1.5px dashed #9AA6B8;border-radius:10px;padding:5px 8px;min-height:20mm;font-size:9px}
 .office b{display:block;font-size:11px;color:var(--k);margin-top:3px}
 .ticks{line-height:2}
+.office.signed{grid-template-columns:40mm minmax(0,1fr) auto}
+.office.signed .ticks{margin-top:1px;font-size:8.5px;line-height:1.45}.office.signed .ticks .bx{margin:1px 0}
+.office .dsig{display:grid;grid-template-columns:repeat(3,auto);gap:1.2mm 3mm;align-content:start}
+.dsig>div{min-width:0;border-bottom:1px dotted var(--line);padding-bottom:1px}
+.dsig .w{grid-column:1/-1}
+.office .dsig small{font-size:7.8px}
+.office .dsig b{margin-top:0;font-size:9.5px;line-height:1.3;word-break:break-word}
+.dsig .fp{display:flex;align-items:baseline;gap:6px;border-bottom:0}
+.dsig .fp small{color:var(--ink);font-weight:600}
+.office .dsig .fp b{font-family:Consolas,"Courier New",monospace;font-size:10.5px;letter-spacing:.8px;color:#0F1B33}
+.office .dst{display:flex;gap:2.5mm;align-items:center;border-style:solid;border-color:#CFE3D6}
+.stamp{width:32mm;border:3px double #11703F;border-radius:3mm;padding:3px;text-align:center;color:#11703F;background:#F3FAF5}
+.office .stamp b{margin:0;font-size:8.6px;letter-spacing:.3px;color:#11703F}
+.stamp span{display:block;font-size:7.4px;line-height:1.3}
+.stamp .co{font-weight:700;font-size:6.6px;color:#0F1B33}
+.stamp .sg{font-size:6.4px;color:#3A4A66;margin-top:1px}
+.oqr{margin:0;text-align:center}
+.oqr img{display:block;width:18mm;height:18mm;image-rendering:pixelated}
+.oqr figcaption{font-size:7px;color:var(--mut)}
 .bx{font-style:normal;display:inline-flex;width:12px;height:12px;border:1.5px solid #3A4A66;border-radius:2px;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#11703F;vertical-align:-2px}
 .cofoot{margin:2.5mm 0 0;font-size:8.5px;color:var(--mut);text-align:center;word-break:break-all}
 .pf{display:flex;justify-content:space-between;gap:8px;border-top:2px solid var(--ink);padding-top:3px;margin-top:2px;font-size:8.5px;color:#3A4A66}

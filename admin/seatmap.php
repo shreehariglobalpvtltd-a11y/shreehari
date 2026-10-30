@@ -1071,7 +1071,9 @@ if ($legendStops !== []): ?>
       <b>🔁 Transfer / reseat a passenger</b>
       <select name="seat" required>
         <option value="">From booked seat…</option>
-        <?php foreach ($bookedSeats as $s): ?><option value="<?= Security::e($s) ?>"><?= Security::e(Seats::displayLabel((string) $s, $coach, 'sharing')) ?><?= !empty($map[$s]['passenger']) ? ' · ' . Security::e((string) $map[$s]['passenger']) : '' ?></option><?php endforeach; ?>
+        <?php /* 31 Oct 2026: an agent sees only the seats it sold here (transferSeat refuses the rest anyway) */
+        $tfOwnOnly = Auth::bookingScopeAdminId() !== null;
+        foreach ($bookedSeats as $s): if ($tfOwnOnly && empty($map[$s]['mine'])) { continue; } ?><option value="<?= Security::e($s) ?>"><?= Security::e(Seats::displayLabel((string) $s, $coach, 'sharing')) ?><?= !empty($map[$s]['passenger']) ? ' · ' . Security::e((string) $map[$s]['passenger']) : '' ?></option><?php endforeach; ?>
         <?php foreach ($extraRows as $s => $xr): if (!$extraMine($xr)) { continue; } ?><option value="<?= Security::e($s) ?>"><?= Security::e($s) ?> · extra · <?= Security::e((string) ($xr['full_name'] ?? '')) ?></option><?php endforeach; ?>
       </select>
       <select name="to_seat" required>

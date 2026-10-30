@@ -1,0 +1,70 @@
+/* =====================================================================
+   join.css — join.php only (31 Oct 2026): upload first, the reading
+   chip, one-by-one fill, the signature pad, the grouped review, the
+   office "Approve now" button and the edit-mode banner. The tokens
+   (--gold, --line …) come from ap.css, loaded first.
+   Nothing here moves the page while the person is on it: the chip lives
+   in the fixed bottom bar, the fill flash is a box-shadow, the pad has a
+   fixed height.
+   ===================================================================== */
+
+/* ── Upload first ───────────────────────────────────────────────────── */
+.ap-intro h2{font-size:20px}
+.ap-upgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:4px 0 10px}
+.ap-bigup{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;
+  min-height:156px;padding:18px 12px;border:2px dashed var(--gold);border-radius:20px;cursor:pointer;
+  background:linear-gradient(180deg,rgba(233,199,123,.14),rgba(233,199,123,.03)),var(--paper);transition:transform .12s var(--ease),box-shadow .15s}
+.ap-bigup:hover{box-shadow:var(--sh-2)}
+.ap-bigup:active{transform:scale(.985)}
+.ap-bigup:focus-within{outline:3px solid var(--gold);outline-offset:2px}
+.ap-bigup .ico{width:56px;height:56px;border-radius:18px;display:grid;place-items:center;font-size:30px;background:var(--paper);box-shadow:var(--sh-1)}
+.ap-bigup b{font-size:16px;line-height:1.25}
+.ap-bigup small{color:var(--mut);font-size:12.5px;line-height:1.35}
+.ap-bigup input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.ap-hand{margin-top:6px;min-height:56px;font-size:16.5px}
+.ap-intro-foot{text-align:center;margin-top:6px}
+@media (max-width:380px){.ap-upgrid{grid-template-columns:1fr}.ap-bigup{min-height:120px}}
+
+/* ── The reading chip (inside the fixed bottom bar) ────────────────── */
+.ap-readchip{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;max-width:620px;margin:0 auto 8px;
+  padding:6px 12px;border-radius:99px;font-size:13.5px;font-weight:600;line-height:1.3;text-align:center;
+  background:linear-gradient(90deg,#EEE7FB,#F6F1FF);color:#4B33A0}
+.ap-readchip[hidden]{display:none}
+.ap-readchip #rcS{font-variant-numeric:tabular-nums;opacity:.8}
+.ap-readchip.done{background:var(--ok-bg);color:var(--ok)}
+:root[data-theme="dark"] .ap-readchip:not(.done){background:#211A3D;color:#CDBEFF}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ap-readchip:not(.done){background:#211A3D;color:#CDBEFF}}
+/* the bar is taller while the chip shows: the last box and the toast stay clear of it */
+body.ap-rc-on .ap-wrap{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+body.ap-rc-on .ap-toast{bottom:calc(136px + env(safe-area-inset-bottom))}
+
+/* ── One box after the other (a glow, no size change) ──────────────── */
+.ap-in.ap-pop,.ap-field.ap-pop{animation:apfillpop 1.1s var(--ease)}
+@keyframes apfillpop{0%{box-shadow:0 0 0 0 rgba(201,151,58,.65)}60%{box-shadow:0 0 0 8px rgba(201,151,58,.18)}100%{box-shadow:0 0 0 0 rgba(201,151,58,0)}}
+.ap-field.ap-pop{border-radius:14px}
+.ap-src.ai.low{background:var(--bad-bg);color:var(--bad)}
+.ap-fillnote:empty{display:none}
+.ap-fillnote{margin:4px 0 14px;padding:12px 14px;border-radius:14px;background:var(--ok-bg);color:var(--ok);font-size:14px;font-weight:600}
+
+/* ── Signature pad ─────────────────────────────────────────────────── */
+/* always white paper and dark ink — in the dark theme too (it prints like that) */
+.ap-sigpad{position:relative;height:180px;border:1.5px dashed var(--line-2);border-radius:16px;background:#fff;overflow:hidden;touch-action:none}
+.ap-sigpad canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+.ap-sigline{position:absolute;left:9%;right:6%;bottom:30%;border-bottom:1.5px solid #CFC8B6;pointer-events:none}
+.ap-sigx{position:absolute;left:4%;bottom:calc(30% - 4px);font-size:16px;color:#B9B19C;pointer-events:none;line-height:1}
+.ap-sigrow{justify-content:space-between;min-height:44px;margin-top:6px}
+.ap-sigrow .ap-hint{margin:0;flex:1}
+@media (min-width:600px){.ap-sigpad{height:200px}}
+
+/* ── Review grouped by step ────────────────────────────────────────── */
+.ap-rvgroup{padding:10px 0;border-top:1px solid var(--line)}
+.ap-rvgroup:first-child{border-top:0;padding-top:0}
+.ap-rvh{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
+.ap-rvh b{font-size:14.5px}
+.ap-rvh .ap-link{min-height:44px;font-size:14px}
+
+/* ── Office: "Approve now & send cards"; edit mode banner ──────────── */
+.ap-apprnow{min-height:58px;font-size:16.5px}
+.ap-editbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:12px 0 4px;
+  background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.ap-editbar .ap-btn{min-height:44px}

@@ -44,10 +44,14 @@ function section(string $s): void { echo "-- $s --\n"; }
 
 /* ---- settings for the run (restored at the end); Gemini can never be called ---- */
 $keep = [];
+// 31 Oct 2026: the af1 ladder tests below pin ap_read_order = vps (VPS model first); the fast order has its own section
 foreach (['gemini_api_key' => '', 'ap_ai_on' => '0', 'ap_ai_docs' => '1', 'ap_ai_base' => 'http://127.0.0.1:11555', 'ap_ai_model' => '',
-          'ap_ai_vision_model' => '', 'ap_ai_doc_timeout' => '30', 'agr_doc_ocr_bin' => 'no-such-tesseract-af1'] as $k => $v) {
+          'ap_ai_vision_model' => '', 'ap_ai_doc_timeout' => '30', 'agr_doc_ocr_bin' => 'no-such-tesseract-af1', 'ap_read_order' => 'vps',
+          'ap_form_read_deadline' => '45', 'ap_form_fast_deadline' => '60', 'ap_read_cloud_timeout' => '25', 'ap_read_fast_budget' => '150'] as $k => $v) {
     $keep[$k] = Database::fetch('SELECT svalue, stype FROM settings WHERE skey = :k', ['k' => $k]);
-    Settings::set($k, $v, in_array($k, ['ap_ai_on', 'ap_ai_docs'], true) ? 'bool' : ($k === 'ap_ai_doc_timeout' ? 'int' : 'string'), 'agentpro', false);
+    $type = in_array($k, ['ap_ai_on', 'ap_ai_docs'], true) ? 'bool'
+        : (in_array($k, ['ap_ai_doc_timeout', 'ap_form_read_deadline', 'ap_form_fast_deadline', 'ap_read_cloud_timeout', 'ap_read_fast_budget'], true) ? 'int' : 'string');
+    Settings::set($k, $v, $type, 'agentpro', false);
 }
 foreach (['ap_form_hints', 'ap_form_examples'] as $k) {
     $keep[$k] = Database::fetch('SELECT svalue, stype FROM settings WHERE skey = :k', ['k' => $k]);
@@ -326,6 +330,83 @@ $rdl = ApFormRead::read([$pg1], 'agent', ['deadline' => 20]);
 check('deadline 20 s: the VPS rung gets 12 s (< 15, not started), Tesseract still answers in time',
     $rdl['reader'] === 'tesseract' && str_contains($rdl['note'], 'ran out of time') && microtime(true) - $t0 < 5, json_encode($rdl));
 ApFormRead::$ocrHook = null;
+
+/* =================================================================== */
+section('31 Oct 2026: the read order (ap_read_order) — fast = Gemini first, the VPS model only for what is left');
+sleep(1);
+$chatCalls = static function () use ($mockLog): int {
+    return count(array_filter(array_map(static fn($l) => json_decode($l, true), @file($mockLog) ?: []), static fn($c) => ($c['path'] ?? '') === '/api/chat'));
+};
+check('readOrder(): vps (pinned for the tests above)', ApDocRead::readOrder() === 'vps');
+Settings::set('ap_read_order', 'something-else', 'string', 'agentpro', false);
+Settings::flush();
+check('readOrder(): an unknown value reads as the default, fast', ApDocRead::readOrder() === 'fast');
+Database::delete('settings', 'skey = :k', ['k' => 'ap_read_order']);
+Settings::flush();
+check('readOrder(): not set at all = fast (the default)', ApDocRead::readOrder() === 'fast');
+Settings::set('ap_form_read_deadline', '420', 'int', 'agentpro', false);
+Settings::flush();
+check('first pass: at most ap_form_fast_deadline (60 s) in the fast order, ap_form_read_deadline (420) in the vps order',
+    ApFormRead::span([], true) === 60 && ApFormRead::span([], false) === 420, ApFormRead::span([], true) . ' / ' . ApFormRead::span([], false));
+check('…an explicit deadline (admin trial read, the tests) wins in both orders', ApFormRead::span(['deadline' => 20], true) === 20 && ApFormRead::span(['deadline' => 90], false) === 90);
+check('fast only when Gemini may run; $o[order] overrides the setting',
+    ApFormRead::fastOrder([], true) && !ApFormRead::fastOrder([], false) && !ApFormRead::fastOrder(['order' => 'vps'], true));
+Settings::set('ap_form_read_deadline', '45', 'int', 'agentpro', false);
+Settings::flush();
+
+// the paper form
+@unlink($mockLog);
+ApFormRead::$geminiHook = static fn(string $prompt, array $media): array => ['pages' => [$p1, $p2]];
+$t0 = microtime(true);
+$rf = ApFormRead::read([$pg1, $pg2], 'agent');
+check('paper, fast: Gemini first and done — the VPS model is never asked', $rf['reader'] === 'gemini' && $rf['tried'] === ['gemini']
+    && $rf['status'] === 'read' && $chatCalls() === 0 && microtime(true) - $t0 < 5, json_encode($rf));
+$rv = ApFormRead::read([$pg1, $pg2], 'agent', ['order' => 'vps']);
+check('paper, vps order: the VPS model first (Gemini not asked)', $rv['reader'] === 'vps' && $rv['tried'] === ['vps'], json_encode($rv));
+ApFormRead::$geminiHook = static fn(): ?array => null;
+$rf2 = ApFormRead::read([$pg1, $pg2], 'agent');
+check('paper, fast: Gemini does not answer → the VPS model reads it in the same pass', $rf2['reader'] === 'vps' && $rf2['tried'] === ['gemini', 'vps']
+    && $rf2['status'] === 'read' && str_contains($rf2['note'], 'Gemini did not answer'), json_encode($rf2));
+ApFormRead::$geminiHook = static fn(string $prompt, array $media): array => ['pages' => [['page_number' => 1, 'is_form' => false, 'is_id_card' => false, 'fields' => [], 'confidence' => []]]];
+@unlink($mockLog);
+$rnf = ApFormRead::read([$pg1], 'agent');
+check('paper, fast: Gemini says "not our form" — the answer at once, no VPS read', $rnf['status'] === 'notform' && $rnf['reader'] === 'gemini' && $chatCalls() === 0, json_encode($rnf));
+ApFormRead::$geminiHook = null;
+$rn = ApFormRead::read([$pg1, $pg2], 'agent');
+check('paper, fast without a Gemini key: the 30 Oct ladder (VPS model first)', $rn['reader'] === 'vps' && $rn['tried'] === ['vps'], json_encode($rn));
+
+// an ID photo (the background job, cron/agentpro-worker.php → ApDocRead::readAi)
+$idPhoto2 = $page(800, 'id2.jpg');
+ApAi::resetHealth();
+@unlink($mockLog);
+ApDocRead::$geminiHook = static fn(string $prompt, string $jpeg): array => ['is_id_document' => true, 'full_name' => 'Gemini Person', 'dob' => '1990-01-02',
+    'id_number' => '2345 6789 0124', 'gender' => 'Male', 'confidence' => ['full_name' => 'high', 'dob' => 'high', 'id_number' => 'high']];
+$ri = ApDocRead::readAi($idPhoto2, 'aadhaar', 'front');
+check('ID, fast: Gemini read the name, birth date and number — the VPS model is not asked',
+    is_array($ri) && $ri['reader'] === 'gemini' && ($ri['fields']['full_name'] ?? '') === 'Gemini Person' && ($ri['fields']['dob'] ?? '') === '1990-01-02'
+    && $chatCalls() === 0, json_encode($ri));
+ApDocRead::$geminiHook = static fn(string $prompt, string $jpeg): array => ['is_id_document' => true, 'full_name' => 'Gemini Person', 'dob' => '', 'id_number' => '',
+    'confidence' => ['full_name' => 'high']];
+$rp2 = ApDocRead::readAi($idPhoto2, 'aadhaar', 'front');
+check('ID, fast: Gemini left the birth date and number empty → the VPS model fills only those (Gemini keeps the name)',
+    is_array($rp2) && $rp2['reader'] === 'gemini+vps' && ($rp2['fields']['full_name'] ?? '') === 'Gemini Person' && ($rp2['fields']['dob'] ?? '') === '1994-03-12'
+    && ($rp2['fields']['id_number'] ?? '') !== '' && ($rp2['confidence']['full_name'] ?? '') === 'high' && $chatCalls() === 1, json_encode($rp2));
+@unlink($mockLog);
+$rb = ApDocRead::readAi($idPhoto2, 'aadhaar', 'back');
+check('ID back, fast: no address from Gemini → the VPS model is asked for it', is_array($rb) && $chatCalls() === 1, json_encode($rb));
+@unlink($mockLog);
+$rv2 = ApDocRead::readAi($idPhoto2, 'aadhaar', 'front', 'vps');
+check('ID, vps order: the VPS model first, Gemini not asked', is_array($rv2) && $rv2['reader'] === 'vps' && ($rv2['fields']['full_name'] ?? '') === 'Test Person Kumar'
+    && $chatCalls() === 1, json_encode($rv2));
+ApDocRead::$geminiHook = static fn(string $prompt, string $jpeg): array => ['is_id_document' => false];
+@unlink($mockLog);
+$rx = ApDocRead::readAi($idPhoto2, 'aadhaar', 'front');
+check('ID, fast: Gemini says "not an ID card" — no fields, no VPS read', is_array($rx) && $rx['is_id'] === false && $rx['fields'] === [] && $chatCalls() === 0, json_encode($rx));
+ApDocRead::$geminiHook = static fn(): ?array => null;
+$ry = ApDocRead::readAi($idPhoto2, 'aadhaar', 'front');
+check('ID, fast: Gemini does not answer → the VPS model reads it alone', is_array($ry) && $ry['reader'] === 'vps' && ($ry['fields']['full_name'] ?? '') === 'Test Person Kumar', json_encode($ry));
+ApDocRead::$geminiHook = null;
+check('aiReady(): a Gemini key OR the VPS model (the upload queues the background read for either)', ApDocRead::aiReady());
 
 if ($mock !== null) {
     proc_terminate($mock);

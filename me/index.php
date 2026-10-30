@@ -47,7 +47,8 @@ $cfg = [
 <body>
 <header class="ap-top">
   <div class="ap-top-in">
-    <img class="ap-crest" src="/assets/agentpro/crest-dark.svg" alt="" width="42" height="52">
+    <?php /* 31 Oct 2026 (owner: "top ma logo chhaina"): the company logo, the one the ID card prints */ ?>
+    <picture><source srcset="/assets/img/logo-mark-96h-tm.webp" type="image/webp"><img class="ap-logo" src="/assets/img/logo-mark-96h-tm.png" alt="S Hari Global" width="92" height="48" style="height:48px;width:auto;flex:0 0 auto;border-radius:10px;background:#fff;padding:3px 6px"></picture>
     <div class="ap-brand"><b>S HARI GLOBAL</b><small id="who">Private Limited</small></div>
     <div class="ap-top-actions">
       <div class="ap-lang" role="group" aria-label="Language">

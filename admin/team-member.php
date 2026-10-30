@@ -29,6 +29,7 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/agentpro-card.php';
 require_once INCLUDE_PATH . '/teampurge.php';
+require_once INCLUDE_PATH . '/agentpro-web.php';
 $admin = admin_boot();
 $id = (int) ($_GET['id'] ?? 0);
 $me = (int) $admin['id'];
@@ -58,8 +59,21 @@ $canOffice = $canManage && (!$targetSuper || $isSuper);
 $canPrint  = $canOffice || ($self && $isSuper);                        // name / designation / photo on the card (the owner's own ID too)
 $crew      = (string) ($m['crewRole'] ?? '');
 $archived  = TeamPurge::archived($id);
+// 31 Oct 2026 (owner: "purai details — code, name, number, photo, document — admin le change garna milos"):
+// the full office form for this member (AgentPro::mayEditApproved is the same rule).
+$canEditAll = ($isSuper || $isMgr) && (!$targetSuper || $isSuper);
 $e = static fn($v): string => Security::e((string) $v);
 $flash = null;
+
+/** The member's filled form as a link they can open on the phone: their own 30-day link, else /me/ (signed in). */
+$memberFormLink = static function () use ($id): string {
+    require_once INCLUDE_PATH . '/agentpro-form.php';
+    $app = ApForm::applicationFor($id);
+    if ($app !== null && ApForm::applicantMayOpen($app) && ($u = ApForm::applicantUrl($app)) !== '') {
+        return appUrl(ltrim($u, '/') . '&auto=pdf');
+    }
+    return appUrl('me/form.php?auto=pdf');
+};
 
 /** Fields only the office may change (they print on the ID card or decide its validity). */
 $officeCardFields = ['designation', 'department', 'dob', 'gender', 'guardian', 'card_valid_until'];
@@ -119,6 +133,44 @@ if (Security::isPost()) {
                     $res = TeamPurge::purge('admin', $id, $admin, (string) ($_POST['confirm_delete'] ?? ''), (string) ($_POST['purge_reason'] ?? ''));
                     Response::redirect('admin/team.php?tab=' . ($m['isAgent'] ? 'agents' : 'staff') . '&purged=' . rawurlencode($m['name'] . ' (' . $res['ref'] . ')'));
                     break;
+                case 'purge_all':
+                    // 31 Oct 2026 (owner: "agent lai permanently delete — sab kura admin ko haat ma"): with the history
+                    // (tickets to the office, or old tickets deleted with the customers kept) — TeamPurge::purgeWithHistory.
+                    $need($isSuper && !$self, 'Only a super-admin can delete permanently (never their own login).');
+                    @set_time_limit(300);
+                    $res = TeamPurge::purgeWithHistory('admin', $id, $admin, (string) ($_POST['confirm'] ?? ''), (string) ($_POST['reason'] ?? ''), (string) ($_POST['tickets'] ?? 'office'));
+                    $_SESSION['tp_purge_result'] = TeamPurge::resultText($res);
+                    Response::redirect('admin/team.php?tab=' . ($m['isAgent'] ? 'agents' : 'staff') . '&purged=' . rawurlencode($m['name'] . ' (' . $res['ref'] . ')'));
+                    break;
+                case 'edit_form':
+                    // 31 Oct 2026: every detail (name, mobile, address, ID, photo, documents, signature, bank) in the
+                    // same office form, saved live — an older member without a form gets an office record first.
+                    $need($canEditAll, 'A super-admin or a manager edits every detail (a super-admin\'s only by a super-admin).');
+                    $rec = AgentPro::officeRecordFor($id, $me);
+                    Response::redirect('join.php?office=1&d=' . rawurlencode((string) $rec['draft_key']));
+                    break;
+                case 'add_doc':
+                    // 31 Oct 2026 (owner: "document herne, upload garne option chhaina"): straight onto the member's form
+                    $need($canKyc && (!$targetSuper || $isSuper), 'Documents are added by a super-admin or a manager.');
+                    if (empty($_FILES['doc'])) { throw new RuntimeException('Choose a photo or PDF.'); }
+                    AgentPro::memberAddDoc($id, $_FILES['doc'], (string) ($_POST['label'] ?? ''), $me);
+                    $flash = ['ok', '📎 Document added to the form.'];
+                    break;
+                case 'web_show':
+                    // 31 Oct 2026 (owner: "form bharera verified admin le dinchha — live home page ma photo dekhiyos")
+                    $need($canOffice || ($self && $isSuper), 'The office decides who shows on the website.');
+                    $want = (string) ($_POST['web'] ?? 'auto');
+                    ApWeb::set($id, $want === '1' ? 1 : ($want === '0' ? 0 : null), $me);
+                    $flash = ['ok', '🌐 ' . ApWeb::status($id)['reason']];
+                    break;
+                case 'send_form':
+                    $need($canOwn);
+                    require_once INCLUDE_PATH . '/notify.php';
+                    $ok = Notify::whatsapp((string) $m['phone'], '📄 ' . $m['name'] . ' · ' . ($m['idNo'] ?: '') . "\nभरिएको फारम (PDF) · Filled form:\n" . $memberFormLink(),
+                        null, $m['countryCode'] === '977' ? 'NP' : 'IN');
+                    Logger::audit('agentpro.form_sent', 'admin', (string) $id, null, ['sent' => $ok !== false], 'Form link sent on WhatsApp by admin #' . $me);
+                    $flash = $ok !== false ? ['ok', 'Form link sent on WhatsApp.'] : ['bad', 'WhatsApp could not send right now — see Message Log.'];
+                    break;
                 case 'set_code':
                     $need($canCode && $m['isAgent'], 'Only a super-admin or a manager sets agent codes (never their own).');
                     $want = trim((string) ($_POST['code'] ?? ''));
@@ -158,7 +210,8 @@ if (Security::isPost()) {
                     $label = ['id-front' => 'ID card · front', 'id-back' => 'ID card · back', 'vc-front' => 'Visiting card · front', 'vc-back' => 'Visiting card · back'];
                     $okN = 0;
                     foreach ($sides as $i => $side) {
-                        $text = $i === 0 ? '🪪 ' . $m['name'] . ' · ' . ($m['idNo'] ?: '') . "\n" . $label[$side] . "\n" . appUrl('me/') : $label[$side];
+                        $text = $i === 0 ? '🪪 ' . $m['name'] . ' · ' . ($m['idNo'] ?: '') . "\n" . $label[$side] . "\n" . appUrl('me/')
+                            . ($act === 'send_all' ? "\n📄 Form (PDF): " . $memberFormLink() : '') : $label[$side];
                         $ok = Notify::whatsapp((string) $m['phone'], $text, ApCard::signedUrl($id, $side, 86400 * 3), $m['countryCode'] === '977' ? 'NP' : 'IN');
                         if ($ok !== false) { $okN++; }
                     }
@@ -227,7 +280,9 @@ $purgeOpen = isset($_GET['purge']) && $isSuper && !$self;
 admin_header($m['name'], 'team.php');
 echo '<link rel="stylesheet" href="/assets/agentpro/admin.css?v=' . (int) @filemtime(ASSET_PATH . '/agentpro/admin.css') . '">';
 admin_page_head($m['designation'] . ($m['idNo'] !== '' ? ' · ' . $m['idNo'] : ''), ['Team & ID Cards' => '/admin/team.php?tab=' . ($m['isAgent'] ? 'agents' : 'staff'), $m['name'] => ''],
-    '<a class="btn soft sm" href="' . $e($formUrl) . '" target="_blank" rel="noopener">📄 Filled form</a>'
+    ($canEditAll ? '<form method="post" style="display:inline;margin:0">' . Security::csrfField() . '<input type="hidden" name="action" value="edit_form">'
+        . '<button class="btn sm" type="submit" title="Name, mobile, address, ID, photo, documents, signature, bank — saved live">✏️ Edit all details · सबै विवरण</button></form>' : '')
+    . '<a class="btn soft sm" href="' . $e($formUrl) . '" target="_blank" rel="noopener">📄 Filled form</a>'
     . '<a class="btn ghost sm" href="' . $e($formUrl . '&auto=pdf') . '" target="_blank" rel="noopener">⬇ Form PDF</a>'
     . '<a class="btn ghost sm" href="' . $e($cardPdf) . '" target="_blank" rel="noopener">⬇ Cards PDF</a>'
     . ($m['isAgent'] ? '<a class="btn soft sm" href="/admin/agent-360.php?agent=' . $id . '">Agent 360</a>' : '')
@@ -235,8 +290,21 @@ admin_page_head($m['designation'] . ($m['idNo'] !== '' ? ' · ' . $m['idNo'] : '
 if ($flash === null && !empty($_GET['made'])) {
     $flash = ['ok', '🪪 ID card ready — ' . $m['name'] . ($m['idNo'] !== '' ? ' · ' . $m['idNo'] : '') . '. Print it, or send it on WhatsApp.'];
 }
+if ($flash === null && !empty($_GET['saved'])) {
+    $flash = ['ok', '✓ Saved — the account, ID card, visiting card and form show the new details now · परिवर्तन लागू भयो।'];
+}
 if ($flash !== null) {
     echo '<div class="flash ' . $e($flash[0]) . '">' . $e($flash[1]) . '</div>';
+}
+// 31 Oct 2026 (owner: "dhyan rakha, double chha"): the same mobile on another login is usually the same
+// person twice — show it, with a link, so the office keeps one (an agent ID + a staff ID is allowed).
+$twins = $m['phone'] !== '' ? AgentPro::phoneOwners($m['phone'], $id) : [];
+if ($twins !== []) {
+    echo '<div class="flash warn">⚠️ This mobile is also on: ';
+    foreach ($twins as $i => $t) {
+        echo ($i > 0 ? ', ' : '') . '<a href="/admin/team-member.php?id=' . (int) $t['id'] . '"><b>' . $e($t['full_name']) . '</b> #' . (int) $t['id'] . ' (' . $e($t['role']) . ((int) $t['is_active'] === 1 ? '' : ', off') . ')</a>';
+    }
+    echo ' — if it is the same person twice, keep one and delete the other · एउटै मान्छे दुई पटक भए एउटा मेटाउनुहोस्।</div>';
 }
 if ($archived !== null) {
     echo '<div class="flash bad">🗄 Archived ' . $e(isset($archived['at']) ? formatDate(substr((string) $archived['at'], 0, 10), 'j M Y') : '')
@@ -302,7 +370,18 @@ endif; ?>
       <dt>Login</dt><dd><?= $e($m['username']) ?> · <?= $m['active'] ? '<span class="tp-chip ok">on</span>' : '<span class="tp-chip bad">off</span>' ?><?= $m['lastLogin'] !== '' ? ' · last ' . $e(timeAgo($m['lastLogin'])) : '' ?></dd>
       <dt>Card</dt><dd><?= $e($m['cardStatus']) ?></dd>
       <dt>KYC</dt><dd><?= $e($m['kycStatus']) ?><?= $m['idType'] !== '' ? ' · ' . $e($m['idType']) . ' ' . $e($m['idMasked']) : '' ?></dd>
+      <?php $web = ApWeb::status($id); ?>
+      <dt>Website</dt><dd><span class="tp-chip <?= $web['shown'] ? 'ok' : 'warn' ?>"><?= $web['shown'] ? '🌐 on the home page' : 'not shown' ?></span> <small class="ph-sub"><?= $e($web['reason']) ?></small></dd>
     </dl>
+    <?php if ($canOffice || ($self && $isSuper)): ?>
+      <form method="post" class="mm-inline"><?= Security::csrfField() ?><input type="hidden" name="action" value="web_show">
+        <select name="web" style="min-height:48px;border-radius:12px;padding:0 10px" aria-label="Home page"<?= $web['ready'] ? '' : ' disabled' ?>>
+          <option value="auto"<?= $web['mode'] === 'auto' ? ' selected' : '' ?>>🌐 Automatic (approved + photo) · स्वतः</option>
+          <option value="1"<?= $web['mode'] === 'show' ? ' selected' : '' ?>>Always show · सधैं देखाउने</option>
+          <option value="0"<?= $web['mode'] === 'hide' ? ' selected' : '' ?>>Hide · लुकाउने</option>
+        </select>
+        <button class="btn ghost sm" type="submit" style="min-height:48px"<?= $web['ready'] ? '' : ' disabled' ?>>Save</button></form>
+    <?php endif; ?>
     <?php if ($canCode && $m['isAgent']): ?>
       <form method="post" class="mm-inline"><?= Security::csrfField() ?><input type="hidden" name="action" value="set_code">
         <input name="code" inputmode="numeric" placeholder="<?= $e($code !== null ? (string) $code : 'e.g. 27') ?>" aria-label="Agent number">
@@ -341,7 +420,10 @@ endif; ?>
 
   <section class="panel"><h2><svg class="a-ic"><use href="#a-doc"/></svg> Application &amp; documents</h2><div class="panel-body">
     <?php if ($app === null): ?>
-      <p class="ph-sub" style="margin:0">No join form on file for this member (added before AgentPro).</p>
+      <p class="ph-sub" style="margin:0 0 10px">No join form on file for this member (added before AgentPro).<?= $canEditAll ? ' “✏️ Edit all details” makes one from the account — then add the photo, ID, signature and print it.' : '' ?></p>
+      <?php if ($canEditAll): ?>
+      <form method="post" style="margin:0"><?= Security::csrfField() ?><input type="hidden" name="action" value="edit_form"><button class="btn sm" type="submit">✏️ Make the form &amp; edit all details</button></form>
+      <?php endif; ?>
     <?php else: ?>
       <dl class="mm-kv">
         <dt>Form</dt><dd><b class="ap-mono"><?= $e($app['ref']) ?></b> · <?= $e($app['status']) ?><?= !empty($app['submitted_at']) ? ' · sent ' . $e(formatDate(substr((string) $app['submitted_at'], 0, 10), 'j M Y')) : '' ?></dd>
@@ -352,6 +434,11 @@ endif; ?>
         <a class="btn ghost sm" href="/admin/team-form.php?app=<?= (int) $app['id'] ?>&amp;auto=pdf" target="_blank" rel="noopener">⬇ PDF</a>
         <?php if (in_array($app['status'], ['draft', 'submitted'], true) && ($isSuper || $isMgr || Auth::can('staff.manage'))): ?>
           <a class="btn ghost sm" href="/join.php?office=1&amp;d=<?= $e(rawurlencode((string) $app['draft_key'])) ?>">✏️ Finish / edit</a>
+        <?php elseif ($app['status'] === 'approved' && $canEditAll): ?>
+          <form method="post" style="display:inline;margin:0"><?= Security::csrfField() ?><input type="hidden" name="action" value="edit_form"><button class="btn sm" type="submit">✏️ Edit all details</button></form>
+        <?php endif; ?>
+        <?php if ($canOwn && $app['status'] === 'approved'): ?>
+          <form method="post" style="display:inline;margin:0"><?= Security::csrfField() ?><input type="hidden" name="action" value="send_form"><button class="btn wa sm" type="submit">📲 Send form on WhatsApp</button></form>
         <?php endif; ?>
       </div>
       <?php if ($canKyc):
@@ -366,6 +453,12 @@ endif; ?>
           ?>
         <div class="mm-docs"><?php foreach ($docs as [$u, $l]): ?><a href="<?= $e($u) ?>" target="_blank" rel="noopener"><img loading="lazy" alt="" src="<?= $e($u) ?>"><span><?= $e($l) ?></span></a><?php endforeach; ?></div>
         <?php if ($docs === []) { echo '<small class="ph-sub">No photos or documents on the form.</small>'; } ?>
+        <?php if (!$targetSuper || $isSuper): ?>
+        <form method="post" enctype="multipart/form-data" class="mm-inline" style="margin-top:10px"><?= Security::csrfField() ?><input type="hidden" name="action" value="add_doc">
+          <select name="label" style="min-height:48px;border-radius:12px;padding:0 10px" aria-label="Document"><?php foreach (AgentPro::MEMBER_DOC_LABELS as $l): ?><option><?= $e($l) ?></option><?php endforeach; ?></select>
+          <input type="file" name="doc" accept="image/*,application/pdf" required style="max-width:220px">
+          <button class="btn sm" type="submit" style="min-height:48px">📎 Add document</button></form>
+        <?php endif; ?>
       <?php else: ?>
         <small class="ph-sub">🔒 ID documents are shown to a super-admin or a manager only.</small>
       <?php endif; ?>

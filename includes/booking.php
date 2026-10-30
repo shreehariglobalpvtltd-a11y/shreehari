@@ -88,14 +88,18 @@ final class BookingService
      */
     private static function deskStamp(?int $clerkAdminId, float $totalInr): array
     {
+        /* 31 Oct 2026 (owner: "aafule kateko ticket"): who cut it, kept even after
+           attributeDeskSale credits the sale to another agent code. */
+        $out = $clerkAdminId !== null && $clerkAdminId > 0 && CounterDesk::hasColumn('bookings', 'booked_by_admin_id')
+            ? ['booked_by_admin_id' => $clerkAdminId] : [];
         if (!CounterDesk::stampColumn()) {
-            return [];
+            return $out;
         }
         $code = CounterDesk::codeForSale($clerkAdminId);
         if ($code === null) {
-            return [];
+            return $out;
         }
-        $out = ['counter_code' => $code];
+        $out['counter_code'] = $code;
         if (CounterDesk::hasColumn('bookings', 'entity')) {
             $out['entity'] = CounterDesk::entity($code);
         }

@@ -930,6 +930,9 @@ if ($pageIds !== []) {
         <td>
           <strong><?= Security::e((string) $s['full_name']) ?></strong><?= $self ? ' <span class="muted">(you)</span>' : '' ?>
           <div class="mono muted" style="font-size:11px">@<?= Security::e((string) $s['username']) ?></div>
+          <?php if ((string) $s['role'] !== 'superadmin' || $self): ?>
+            <a class="btn sm soft" style="margin-top:4px" href="/admin/team-member.php?id=<?= (int) $s['id'] ?>" title="Name, number, code, photo, documents, form, ID card — everything">✏️ All details</a>
+          <?php endif; ?>
           <?php if (trim((string) ($s['email'] ?? '')) !== ''): ?>
             <div class="mono muted" style="font-size:11px">✉️ <?= Security::e((string) $s['email']) ?></div>
           <?php endif; ?>

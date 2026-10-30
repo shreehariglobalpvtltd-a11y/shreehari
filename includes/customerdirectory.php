@@ -233,8 +233,13 @@ final class CustomerDirectory
             $w[] = 'DATE(created_at) <= :lt';
             $p['lt'] = $f['to'];
         }
+        // 31 Oct 2026 (owner: "sab delete — customer name number for data"): when old tickets are deleted
+        // with an agent (TeamPurge, tickets = delete), the customers stay in user_profiles — listed here
+        // as "saved" so the office and campaigns still reach them.
         $sql = 'SELECT name, phone, created_at, \'lead\' AS src FROM enquiries WHERE ' . implode(' AND ', $w)
              . ' UNION ALL SELECT name, phone, created_at, \'help\' AS src FROM support_tickets WHERE ' . implode(' AND ', $w)
+             . ' UNION ALL SELECT full_name AS name, phone, created_at, \'saved\' AS src FROM user_profiles WHERE ' . implode(' AND ', $w)
+             . ' AND is_placeholder = 0 AND merged_into IS NULL'
              . ' ORDER BY created_at DESC LIMIT 2000';
         try {
             $list = Database::fetchAll($sql, $p);
@@ -296,7 +301,8 @@ final class CustomerDirectory
             foreach (array_filter(explode(',', (string) ($r['sellers'] ?? ''))) as $s) {
                 $labels[] = $sellers[(int) $s] ?? ('#' . $s);
             }
-            $r['agents'] = $labels !== [] ? implode(' / ', $labels) : (($r['lead'] ?? '') !== '' ? ($r['lead'] === 'help' ? 'Help desk' : 'Enquiry') : 'Online / office');
+            $r['agents'] = $labels !== [] ? implode(' / ', $labels) : (($r['lead'] ?? '') !== ''
+                ? (['help' => 'Help desk', 'saved' => 'Saved customer · पुरानो ग्राहक'][$r['lead']] ?? 'Enquiry') : 'Online / office');
             $r['intl'] = ($r['cc'] === '977' ? '977' : '91') . $ph;
             $r['optout'] = isset($optout[$ph]);
             $r['staff'] = $staff[$ph] ?? '';

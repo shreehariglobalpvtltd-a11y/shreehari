@@ -29,6 +29,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
+require_once INCLUDE_PATH . '/staffmsg.php';   // 31 Oct 2026: StaffMsg is no longer loaded by _guard.php (an agent's ticket page was a 500)
 require_once INCLUDE_PATH . '/agentreport.php';
 require_once INCLUDE_PATH . '/agentsettlement.php';   // 15 Oct 2026: the two-person rule stages adjustments on a draft
 require_once INCLUDE_PATH . '/agenttargets.php';      // 29 Oct 2026: monthly target, rank, badges, bonus
