@@ -346,7 +346,7 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
   <div class="who"><span><?= $h(OneDoor::masked($st)) ?></span></div>
   <a class="btn wa" href="<?= $h($waPoll['url']) ?>" target="_blank" rel="noopener" id="waGo">WhatsApp खोल्नुहोस् · Open WhatsApp<small><?= $h($waPoll['text']) ?></small></a>
   <?php if ($qr !== ''): ?><div class="qr"><img src="<?= $h($qr) ?>" alt="WhatsApp QR" width="150" height="150"><p class="note">फोनको क्यामेराले स्क्यान गर्नुहोस् · Scan with your phone</p></div><?php endif; ?>
-  <p class="note">Send थिचेर यहाँ फर्कनुहोस् · Tap Send, then come back</p>
+  <p class="note">Send थिचेर, जवाफमा YES पठाएर यहाँ फर्कनुहोस् · Tap Send, reply YES, then come back</p>
   <p class="wait" id="waWait">⏳ तपाईंको सन्देश पर्खँदै… · Waiting for your message…</p>
   <div class="msg warn">🔒 आफैं लगइन गर्दा मात्र पठाउनुहोस् — अरूले मागे नपठाउनुहोस् · Send it only when YOU are signing in.</div>
   <form method="post" action="/admin/login.php" id="waDone"><?= $hid() ?><input type="hidden" name="mode" value="wa_finish">
@@ -382,6 +382,7 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
     <button class="btn" type="submit" name="mode" value="forgot_send">📩 WhatsApp मा कोड पठाउनुहोस् · Send code</button>
     <?php if ($hiOn): ?><button class="btn wa" type="submit" name="mode" value="forgot_hi_first">💬 hi पठाएर पुष्टि · Send hi instead<small>कोड टाइप गर्नु पर्दैन · No code to type</small></button><?php endif; ?>
   </form>
+  <p class="note">अफिस खाता (म्यानेजर, एकाउन्ट, एडमिन) को पासवर्ड WhatsApp बाट बदलिँदैन — सुपर एडमिनलाई भन्नुहोस् · Office accounts (manager, accounts, admin) are reset by a super admin, not by WhatsApp.</p>
   <div class="links"><a href="<?= $h($odUrl(['step' => 'start'])) ?>">← लगइन · Sign in</a></div>
 
   <?php elseif ($step === 'forgot_code'): ?>
@@ -452,6 +453,7 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.status === 'verified') { sent = true; if (wait) wait.textContent = '✅ प्रमाणित — भित्र जाँदै… · Verified, signing in…'; if (done) done.submit(); return; }
+        if (d && d.status === 'confirm' && wait) wait.textContent = '📩 WhatsApp को जवाफमा YES लेखेर पठाउनुहोस् · Now reply YES in WhatsApp.';
         if (d && d.status === 'mismatch' && wait) wait.textContent = '❌ अर्को नम्बरबाट आयो — दर्ता गरेको नम्बरको WhatsApp बाट पठाउनुहोस् · It came from a different number.';
         if (d && d.status === 'expired') { if (wait) wait.textContent = 'पुरानो भयो — फेरि सुरु गर्नुहोस् · Expired, please start again.'; return; }
         setTimeout(tick, 3000);

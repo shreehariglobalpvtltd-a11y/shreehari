@@ -33,6 +33,14 @@ final class WaVerify
        sender must be the number on file, the message must carry the LOGIN word, a token opens once. */
     public const PURPOSES  = ['staff', 'agent', 'driver', 'sign', 'reset', 'customer', 'login'];
     public const FORM_PURPOSES = ['staff', 'agent', 'driver', 'sign'];
+    /* 31 Oct 2026 (review): a "hi … LOGIN" / "hi … RESET" signs someone in (or sets a password), and the
+       wa.me link that carries it can be forwarded: "tap Send to get today's commission" was enough to
+       sign the sender's account in on the forwarder's browser. For these two the hi is no longer the
+       proof by itself: the reply says what is being approved (time, IP) and asks for YES; only that
+       YES, from the same number, proves it (confirmReply()). The hi marks the row (verified_from set,
+       verified_at empty) = waiting for YES. */
+    public const CONFIRM_PURPOSES = ['login', 'reset'];
+    public const CONFIRM_WORDS = ['yes', 'हो', 'ho'];
 
     private static ?bool $ready = null;
 
@@ -151,6 +159,9 @@ final class WaVerify
         if (strtotime((string) $r['expires_at']) < time()) {
             return ['status' => 'expired', 'phone' => $phone];
         }
+        if (in_array((string) $r['purpose'], self::CONFIRM_PURPOSES, true) && !empty($r['verified_from'])) {
+            return ['status' => 'confirm', 'phone' => $phone];   // the hi came; the YES has not yet
+        }
         return ['status' => !empty($r['mismatch_from']) ? 'mismatch' : 'waiting', 'phone' => $phone];
     }
 
@@ -212,8 +223,11 @@ final class WaVerify
 
     public static function inbound(string $fromDigits, string $text): ?string
     {
-        if (preg_match('/\bVERIFY\s*[:#-]?\s*([A-Z2-9]{6})\b/i', $text, $m) !== 1 || !self::ready()) {
+        if (!self::ready()) {
             return null;
+        }
+        if (preg_match('/\bVERIFY\s*[:#-]?\s*([A-Z2-9]{6})\b/i', $text, $m) !== 1) {
+            return self::confirmReply($fromDigits, $text);   // "YES" to a waiting LOGIN / RESET, else null (the bot)
         }
         $token = strtoupper($m[1]);
         $from  = preg_replace('/\D/', '', $fromDigits) ?? '';
@@ -250,14 +264,62 @@ final class WaVerify
             Logger::info('WhatsApp verify: reset token without the reset words', ['token' => $token, 'from' => maskPhone($from)], 'whatsapp');
             return "⚠️ यो कोड " . $co . " टिम पोर्टलको पासवर्ड बदल्नको लागि हो (PASSWORD RESET)। अरूले मागे नपठाउनुहोस्।\nआफैं पासवर्ड बदल्दै हुनुहुन्छ भने पूरा सन्देश (\"PASSWORD RESET\" सहित) पठाउनुहोस्।";
         }
+        if ($login || $reset) {
+            // 31 Oct 2026 (review): the hi only ASKS — nothing is proven until a YES from this number
+            Database::update('wa_verify', ['verified_from' => mb_substr($from, 0, 20)], 'id = :id', ['id' => (int) $r['id']]);
+            Logger::info('WhatsApp verify: waiting for YES', ['token' => $token, 'purpose' => (string) $r['purpose'], 'from' => maskPhone($from)], 'whatsapp');
+            $when = date('H:i', strtotime((string) ($r['created_at'] ?? '')) ?: time());
+            $ip = trim((string) ($r['ip_address'] ?? ''));
+            $where = $when . ($ip !== '' ? ', IP ' . $ip : '');
+            return $login
+                ? "🔐 " . $co . " — लगइन अनुरोध (" . $where . ")।\nतपाईं आफैं अहिले आफ्नो स्क्रिनमा लगइन गर्दै हुनुहुन्छ भने YES लेखेर पठाउनुहोस्।\nकसैले यो सन्देश पठाउन भनेको हो भने जवाफ नदिनुहोस् — कार्यालयमा फोन गर्नुहोस्।\n\nSign-in request (" . $where . "). If YOU are signing in on your own screen right now, reply YES. If someone asked you to send this message, do NOT reply - call the office."
+                : "🔐 " . $co . " — पासवर्ड रिसेट अनुरोध (" . $where . ")।\nतपाईं आफैं अहिले पासवर्ड बदल्दै हुनुहुन्छ भने YES लेखेर पठाउनुहोस्।\nकसैले यो सन्देश पठाउन भनेको हो भने जवाफ नदिनुहोस् — कार्यालयमा फोन गर्नुहोस्।\n\nPASSWORD RESET request (" . $where . "). If YOU are changing your password right now, reply YES. If someone asked you to send this message, do NOT reply - call the office.";
+        }
         Database::update('wa_verify', ['verified_at' => date('Y-m-d H:i:s'), 'verified_from' => mb_substr($from, 0, 20)], 'id = :id', ['id' => (int) $r['id']]);
         Logger::info('WhatsApp verify: number proven', ['token' => $token, 'purpose' => (string) $r['purpose'], 'from' => maskPhone($from)], 'whatsapp');
-        if ($login) {
-            return "✅ लगइन प्रमाणित — पेजमा फर्कनुहोस्। तपाईंले मागेको होइन भने कार्यालयमा फोन गर्नुहोस्।\nLogin verified - go back to the page. If it was not you, call the office.";
-        }
-        if ($reset) {
-            return "✅ नम्बर प्रमाणित भयो — यो " . $co . " टिम पोर्टलको पासवर्ड बदल्नको लागि हो (PASSWORD RESET)।\nआफैं बदल्दै हुनुहुन्छ भने पेजमा फर्केर नयाँ पासवर्ड राख्नुहोस्। तपाईंले मागेको होइन भने कार्यालयमा फोन गर्नुहोस्।\nYour number is verified for a PASSWORD RESET. If you requested it, return to the page. Otherwise call the office.";
-        }
         return "✅ नमस्ते! तपाईंको नम्बर " . $co . " मा प्रमाणित भयो।\nअब फारम भएको पेजमा फर्कनुहोस् — आफैं हरियो देखिन्छ।\nYour number is verified - go back to the form.";
+    }
+
+    /**
+     * 31 Oct 2026 (review): the YES that turns a waiting LOGIN / RESET hi into a proof. Only from the
+     * very number the hi came from (= the number on file), only while that token lives, only one: two
+     * requests waiting on one number are both cancelled (one of them may be someone else's link).
+     * Anything that is not a YES, or a YES with nothing waiting, returns null and goes to the bot.
+     */
+    private static function confirmReply(string $fromDigits, string $text): ?string
+    {
+        $word = mb_strtolower(trim((string) preg_replace('/[^\p{L}\p{M}\p{N}]+/u', ' ', $text)));
+        if (!in_array($word, self::CONFIRM_WORDS, true)) {
+            return null;
+        }
+        $from = preg_replace('/\D/', '', $fromDigits) ?? '';
+        if (strlen($from) < 11) {
+            return null;
+        }
+        $rows = Database::fetchAll(
+            "SELECT id, purpose FROM wa_verify
+              WHERE purpose IN ('" . implode("','", self::CONFIRM_PURPOSES) . "') AND verified_at IS NULL
+                AND verified_from = :f AND intl = :f2 AND expires_at > NOW()",
+            ['f' => $from, 'f2' => $from]
+        );
+        if ($rows === []) {
+            return null;
+        }
+        if (count($rows) > 1) {
+            foreach ($rows as $row) {
+                Database::update('wa_verify', ['expires_at' => date('Y-m-d H:i:s', time() - 1)], 'id = :id', ['id' => (int) $row['id']]);
+            }
+            Logger::warning('WhatsApp verify: YES with several requests waiting — all cancelled', ['from' => maskPhone($from), 'n' => count($rows)], 'whatsapp');
+            return "⚠️ यो नम्बरमा एकभन्दा बढी अनुरोध पर्खिरहेका थिए — सुरक्षाका लागि सबै रद्द गरियो। आफ्नै स्क्रिनबाट फेरि सुरु गर्नुहोस्।\nMore than one request was waiting on this number - for safety all were cancelled. Start again on your own screen.";
+        }
+        $won = Database::run('UPDATE wa_verify SET verified_at = :at WHERE id = :id AND verified_at IS NULL',
+            ['at' => date('Y-m-d H:i:s'), 'id' => (int) $rows[0]['id']]);
+        if ($won !== 1) {
+            return null;
+        }
+        Logger::info('WhatsApp verify: YES — number proven', ['purpose' => (string) $rows[0]['purpose'], 'from' => maskPhone($from)], 'whatsapp');
+        return (string) $rows[0]['purpose'] === 'login'
+            ? "✅ लगइन स्वीकृत — पेजमा फर्कनुहोस्। तपाईंले गरेको होइन भने तुरुन्तै कार्यालयमा फोन गर्नुहोस्।\nSign-in approved - go back to the page. If it was not you, call the office now."
+            : "✅ पासवर्ड रिसेट स्वीकृत — पेजमा फर्केर नयाँ पासवर्ड राख्नुहोस्। तपाईंले गरेको होइन भने कार्यालयमा फोन गर्नुहोस्।\nPASSWORD RESET approved - go back to the page and set the new password. If it was not you, call the office.";
     }
 }

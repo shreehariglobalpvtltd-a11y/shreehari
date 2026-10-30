@@ -23,6 +23,8 @@ final class TeamPortal
     public const PW_MIN   = 8;
     public const RESET_FAILS = 10;
     public const SIGN_TRIES  = 6;
+    /** 31 Oct 2026 (review): wrong passwords on one mobile (any IP) in 15 minutes before its mobile + password door pauses. */
+    public const PHONE_TRIES = 10;
 
     private static ?bool $ready = null;
 
@@ -165,15 +167,19 @@ final class TeamPortal
     }
 
     /**
-     * @param bool $any 30 Oct 2026 (one door, owner: "forgot password WhatsApp bata — sabai lai"): every
-     *                  active account on the number (manager, accountant, support, scanner, official,
-     *                  superadmin …), not only agent / counter. Off = the /team/ list as before.
+     * @param bool $any 30 Oct 2026 (one door): the accounts the one door's WhatsApp reset covers.
+     *                  31 Oct 2026 (review): exactly the IDs WhatsApp may open anyway —
+     *                  Auth::OTP_DOOR_ROLES (agent, counter, scanner) WITHOUT 2FA. An office role
+     *                  (manager, accountant, superadmin …) or a 2FA account was being reset and opened
+     *                  by WhatsApp alone, its 2FA code going to that same WhatsApp; a superadmin resets
+     *                  those (team-member.php "Advanced"). Off = the /team/ list as before.
      */
     private static function resetTargets(string $phone10, bool $any = false): array
     {
         $acc = self::accounts($phone10);
         if ($any) {
-            $acc['admins'] = Auth::adminsByPhone($phone10);
+            $acc['admins'] = array_values(array_filter(Auth::adminsByPhone($phone10), static fn(array $a): bool =>
+                in_array((string) $a['role'], Auth::OTP_DOOR_ROLES, true) && !Auth::admin2faEnabled((int) $a['id'])));
         }
         $groups = [];
         $add = static function (string $intl, string $kind, array $row) use (&$groups): void {
@@ -233,6 +239,13 @@ final class TeamPortal
             LoginLog::record('team:' . $phone10, 'locked');
             return ['ok' => false, 'error' => 'धेरै पटक गलत भयो — ' . LOGIN_LOCKOUT_MIN . ' मिनेटपछि फेरि प्रयास गर्नुहोस् · Too many tries, wait ' . LOGIN_LOCKOUT_MIN . ' minutes.'];
         }
+        if ($anyRole && self::phoneThrottled($phone10)) {
+            // 31 Oct 2026 (review): too many wrong passwords on this NUMBER (from any IP) pause the
+            // mobile + password door for it — the accounts themselves are not locked (ID + password,
+            // WhatsApp still work)
+            LoginLog::record('team:' . $phone10, 'locked');
+            return ['ok' => false, 'phoneLocked' => true, 'error' => 'धेरै पटक गलत भयो — ' . LOGIN_LOCKOUT_MIN . ' मिनेटपछि फेरि, वा ID + पासवर्डले भित्र जानुहोस् · Too many tries, wait ' . LOGIN_LOCKOUT_MIN . ' minutes or sign in with your ID.'];
+        }
         $acc = self::accounts($phone10);
         if ($anyRole) {
             $acc['admins'] = Auth::adminsByPhone($phone10);
@@ -290,22 +303,34 @@ final class TeamPortal
             }
         }
 
+        /* 31 Oct 2026 (review): a wrong password at the MOBILE door counts against the IDs the old
+           /team/ door covered (agent, counter) and the staff records only — never an office or other
+           role reached through $anyRole (5 tries on the owner's mobile used to lock the owner and every
+           manager on it). Those are guarded by the per-number pause instead (phoneThrottled). A row
+           that is still locked was not even tried, so it is not counted again; a lock that has run out
+           starts the count from 0 (Auth::failedSoFar). */
+        if ($anyRole) {
+            Security::rateLimit('team_login_phone', $phone10, self::PHONE_TRIES, 900, LOGIN_LOCKOUT_MIN * 60);
+        }
+        $lockAt = static fn(int $f): array => $f >= MAX_LOGIN_ATTEMPTS ? ['locked_until' => date('Y-m-d H:i:s', $now + LOGIN_LOCKOUT_MIN * 60)] : ['locked_until' => null];
         foreach ($acc['admins'] as $a) {
-            if ((string) $a['password_hash'] === '') {
+            if ((string) $a['password_hash'] === '' || (!empty($a['locked_until']) && strtotime((string) $a['locked_until']) > $now)) {
                 continue;
             }
-            $f = (int) $a['failed_logins'] + 1;
-            Database::update('admins', ['failed_logins' => $f] + ($f >= MAX_LOGIN_ATTEMPTS ? ['locked_until' => date('Y-m-d H:i:s', $now + LOGIN_LOCKOUT_MIN * 60)] : []),
-                'id = :id', ['id' => (int) $a['id']]);
+            if ($anyRole && !in_array((string) $a['role'], Auth::TEAM_ROLES, true)) {
+                LoginLog::record((string) $a['username'], 'bad_password', (int) $a['id']);
+                continue;
+            }
+            $f = Auth::failedSoFar($a) + 1;
+            Database::update('admins', ['failed_logins' => $f] + $lockAt($f), 'id = :id', ['id' => (int) $a['id']]);
             LoginLog::record((string) $a['username'], 'bad_password', (int) $a['id']);
         }
         foreach ($acc['staff'] as $s) {
-            if (empty($s['password_hash'])) {
+            if (empty($s['password_hash']) || (!empty($s['locked_until']) && strtotime((string) $s['locked_until']) > $now)) {
                 continue;
             }
-            $f = (int) $s['failed_logins'] + 1;
-            Database::update('staff_applications', ['failed_logins' => $f] + ($f >= MAX_LOGIN_ATTEMPTS ? ['locked_until' => date('Y-m-d H:i:s', $now + LOGIN_LOCKOUT_MIN * 60)] : []),
-                'id = :id', ['id' => (int) $s['id']]);
+            $f = Auth::failedSoFar($s) + 1;
+            Database::update('staff_applications', ['failed_logins' => $f] + $lockAt($f), 'id = :id', ['id' => (int) $s['id']]);
         }
         if ($acc['admins'] === [] && $acc['staff'] === []) {
             LoginLog::record('team:' . $phone10, 'unknown_user');
@@ -393,6 +418,13 @@ final class TeamPortal
         } catch (Throwable $e) {
             return false;
         }
+    }
+
+    /** The mobile + password door of this number is paused (too many wrong passwords on it, any IP). */
+    private static function phoneThrottled(string $phone10): bool
+    {
+        $until = (string) Database::scalar("SELECT blocked_until FROM rate_limits WHERE bucket = 'team_login_phone' AND identifier = :i", ['i' => $phone10], '');
+        return $until !== '' && strtotime($until) > time();
     }
 
     private static function resetLocked(string $phone10): bool
@@ -523,8 +555,9 @@ final class TeamPortal
      *                       the others on the number (resetPassword()
      *                       above still writes all of them; it serves the
      *                       old /team/ door only when the switch is off).
-     *  Every active role is covered ($any); a 2FA account still goes
-     *  through its code after the new password.
+     *  $any covers the WhatsApp-door roles only (agent, counter, scanner,
+     *  no 2FA) plus staff-portal records — 31 Oct 2026 (review): never an
+     *  office or 2FA account, see resetTargets().
      * ================================================================= */
 
     public const PROVEN_SEC = 600;
@@ -726,6 +759,7 @@ final class TeamPortal
 
     private static function openStaffSession(int $staffId, string $hash): void
     {
+        Auth::clearDoorState();   // 31 Oct 2026 (review): no leftover pick / reset step outlives a sign-in
         session_regenerate_id(true);
         $_SESSION[self::SESSION] = ['staff_id' => $staffId, 'at' => time(), 'seen' => time(), 'pw' => self::pwStamp($hash)];
         Database::update('staff_applications', ['failed_logins' => 0, 'locked_until' => null, 'last_login_at' => date('Y-m-d H:i:s')],
@@ -744,6 +778,7 @@ final class TeamPortal
             Auth::adminLogout();
         }
         self::closeStaffSession();
+        Auth::clearDoorState();   // 31 Oct 2026 (review): pick lists, a proven reset, a 2FA step
         unset($_SESSION['wa_verified'], $_SESSION['wa_tokens'], $_SESSION['wa_tried'], $_SESSION['team_reset'], $_SESSION['staff_otp_ok'],
               $_SESSION['a4_mine'], $_SESSION['agr_webauthn']);
         if (session_status() === PHP_SESSION_ACTIVE) {

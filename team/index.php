@@ -342,6 +342,7 @@ if ($v === 'pick'): ?>
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d && d.status === 'verified') return done();
+          if (d && d.status === 'confirm') document.getElementById('waWait').textContent = '📩 WhatsApp को जवाफमा YES लेखेर पठाउनुहोस् · Now reply YES in WhatsApp.';
           if (d && d.status === 'mismatch') document.getElementById('waWait').textContent = '❌ अर्को नम्बरबाट आयो — दर्ता गरेको नम्बरको WhatsApp बाट पठाउनुहोस्।';
           if (d && d.status === 'expired') { document.getElementById('waWait').textContent = 'पुरानो भयो — फेरि तयार गर्नुहोस्।'; return; }
           setTimeout(tick, 3000);

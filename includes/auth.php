@@ -577,11 +577,15 @@ final class Auth
         }
 
         if (!Security::verifyPassword($password, (string) $admin['password_hash'])) {
-            $failed = (int) $admin['failed_logins'] + 1;
+            // 31 Oct 2026 (review): a lock that has run out starts the count again — one wrong try
+            // every 15 minutes used to re-lock the account for good (failed_logins never went down).
+            $failed = self::failedSoFar($admin) + 1;
 
             $update = ['failed_logins' => $failed];
             if ($failed >= MAX_LOGIN_ATTEMPTS) {
                 $update['locked_until'] = date('Y-m-d H:i:s', time() + (LOGIN_LOCKOUT_MIN * 60));
+            } elseif (!empty($admin['locked_until'])) {
+                $update['locked_until'] = null;   // the old lock is over
             }
 
             Database::update('admins', $update, 'id = :id', ['id' => $admin['id']]);
@@ -600,9 +604,10 @@ final class Auth
 
            Availability guarantee (owner's hard constraint — no lockout): 2FA
            can only ever ADD a factor, never remove the password path's
-           availability. If a code cannot be MINTED (gateway down) or there is
-           no phone on file, we log it and complete with the password alone —
-           exactly today's behaviour — rather than stranding the admin. */
+           availability. If there is no phone on file we log it and complete
+           with the password alone rather than stranding the admin. (31 Oct
+           2026: a code REFUSED by the resend limits no longer does that — see
+           below; the code step is held instead.) */
         if (self::admin2faEnabled((int) $admin['id'])) {
             $phone = normalisePhone((string) ($admin['phone'] ?? ''));
             if ($phone !== '') {
@@ -630,9 +635,20 @@ final class Auth
                         'Second-factor code issued at login');
                     return ['ok' => false, 'twofa' => true, 'resend' => OTP_RESEND_SECONDS];
                 }
-                // Code could not be minted — degrade to password-only (no lockout).
-                Logger::audit('admin.2fa.delivery_failed', 'admin', (string) $admin['id'], null, null,
-                    'Second factor could not be sent — signed in with password only');
+                /* 31 Oct 2026 (review): issueOtp() refuses only on its own limits (1 a minute, 6-8 an
+                   hour for this account). That used to "degrade to password-only", so typing the
+                   password twice within a minute signed in WITHOUT the code. A refused code is never a
+                   reason to skip it: hold the code step (the code already sent still works; Resend
+                   after the minute), and only an account with no phone on file signs in with the
+                   password alone. */
+                $_SESSION['admin_2fa_pending'] = [
+                    'id' => (int) $admin['id'], 'ip' => $ip, 'at' => time(),
+                    'pw' => self::pwStamp((string) $admin['password_hash']),
+                ];
+                Logger::audit('admin.2fa.held', 'admin', (string) $admin['id'], null, null,
+                    'Second-factor code not re-sent (' . (string) ($otp['error'] ?? 'limit') . ') — held at the code step');
+                return ['ok' => false, 'twofa' => true, 'wait' => true, 'resend' => OTP_RESEND_SECONDS,
+                        'error' => (string) ($otp['error'] ?? 'Please wait a moment before requesting another code.')];
             } else {
                 Logger::audit('admin.2fa.no_phone', 'admin', (string) $admin['id'], null, null,
                     '2FA enabled but no phone on file — signed in with password only');
@@ -782,6 +798,36 @@ final class Auth
     }
 
     /**
+     * 31 Oct 2026 (review): the wrong-password count to add to — 0 once an old lock has run out, so
+     * one more wrong try after the 15 minutes does not lock the account again at once.
+     *
+     * @param array<string, mixed> $row admins / staff_applications row (failed_logins, locked_until)
+     */
+    public static function failedSoFar(array $row): int
+    {
+        $until = (string) ($row['locked_until'] ?? '');
+        if ($until !== '' && (strtotime($until) ?: 0) <= time()) {
+            return 0;
+        }
+        return (int) ($row['failed_logins'] ?? 0);
+    }
+
+    /**
+     * 31 Oct 2026 (review): every half-done sign-in step a browser can hold — the one door's state,
+     * a "which ID?" list (WhatsApp code or password), a proven password reset and an office 2FA
+     * step. Cleared on every sign-in, sign-out, "Start again" and new door start, so the next
+     * person on a shared counter PC can never finish someone else's step.
+     */
+    public const DOOR_KEYS = ['one_door', 'ap_login_pick', 'team_pick', 'team_reset', 'admin_2fa_pending'];
+
+    public static function clearDoorState(): void
+    {
+        foreach (self::DOOR_KEYS as $k) {
+            unset($_SESSION[$k]);
+        }
+    }
+
+    /**
      * Shared session bootstrap for BOTH staff login paths (password and
      * agent OTP), so counters, session hygiene, LoginLog device tracking
      * and audit stay identical however someone signed in.
@@ -800,6 +846,8 @@ final class Auth
      */
     private static function finishAdminSession(array $admin, string $ip, bool $viaOtp = false, ?string $pwStamp = null): void
     {
+        self::clearDoorState();   // 31 Oct 2026 (review): no leftover pick / reset / 2FA step outlives a sign-in
+
         // Success — clear counters and start a fresh session id.
         Database::update('admins', [
             'failed_logins' => 0,
@@ -1009,7 +1057,7 @@ final class Auth
      *
      * @return array{ok: bool, error?: string, resend?: int}
      */
-    public static function agentLoginStart(string $code, string $mobile): array
+    public static function agentLoginStart(string $code, string $mobile, string $intl = ''): array
     {
         $ip      = Security::clientIp();
         $generic = ['ok' => false, 'error' => 'Agent code and mobile number did not match our records.'];
@@ -1020,15 +1068,17 @@ final class Auth
 
         // 30 Oct 2026: the code may be left empty — the mobile alone; when it carries several
         // IDs the person picks one after the code (agentLoginVerify → agentLoginPick).
-        $admin = trim($code) === '' ? (self::otpDoorAccounts($mobile)[0] ?? null) : self::resolveAgentLogin($code, $mobile);
+        // 31 Oct 2026 (review): India and Nepal share 10-digit mobiles, so the door works on the WHOLE
+        // WhatsApp number (country + mobile): only accounts whose own number is exactly that one, and
+        // the code goes to that number — never to the +91 twin of a +977 member.
+        [$admin, $intl] = self::agentDoorAccount($code, $mobile, $intl);
         if ($admin === null) {
             Logger::warning('Agent OTP login: no match', ['code' => Security::clean($code, 12), 'ip' => $ip]);
             // 30 Oct 2026: 'nomatch' lets the one door show every number the same neutral reply
             return $generic + ['nomatch' => true];
         }
 
-        $phone = normalisePhone((string) $admin['phone']);
-        $otp   = self::issueOtp('agent:' . $phone, 'login', 'whatsapp');
+        $otp   = self::issueOtp(self::agentOtpKey($intl), 'login', 'whatsapp');
         if (!$otp['ok']) {
             return ['ok' => false, 'error' => (string) ($otp['error'] ?? 'Could not send a code right now.')];
         }
@@ -1039,9 +1089,9 @@ final class Auth
         $text = Settings::getString('company_name', APP_NAME)
               . ' एजेन्ट लगइन कोड: ' . $otp['code'] . "\n"
               . OTP_EXPIRY_MINUTES . ' मिनेट सम्म मान्य। यो कोड कसैलाई नबताउनुहोस्।';
-        Notify::whatsapp($phone, $text);
+        Notify::whatsapp($intl, $text);
         if (Settings::getBool('sms_send_otp', false)) {
-            Notify::sms($phone, $text);
+            Notify::sms($intl, $text);
         }
 
         Logger::audit('agent.otp.sent', 'admin', (string) $admin['id'], null, null, 'Agent login OTP issued');
@@ -1056,7 +1106,7 @@ final class Auth
      *
      * @return array{ok: bool, error?: string}
      */
-    public static function agentLoginVerify(string $code, string $mobile, string $otpCode): array
+    public static function agentLoginVerify(string $code, string $mobile, string $otpCode, string $intl = ''): array
     {
         $ip = Security::clientIp();
 
@@ -1064,14 +1114,21 @@ final class Auth
             return ['ok' => false, 'error' => 'Too many attempts. Try again in ' . LOGIN_LOCKOUT_MIN . ' minutes.'];
         }
 
-        $list = trim($code) === '' ? self::otpDoorAccounts($mobile) : array_values(array_filter([self::resolveAgentLogin($code, $mobile)]));
+        // 31 Oct 2026 (review): the same whole WhatsApp number the code was sent to (agentLoginStart).
+        if (trim($code) === '') {
+            $intl = self::doorIntl($mobile, $intl);
+            $list = self::otpDoorAccountsFor($mobile, $intl);
+        } else {
+            [$one, $intl] = self::agentDoorAccount($code, $mobile, '');
+            $list = $one !== null ? [$one] : [];
+        }
         $admin = $list[0] ?? null;
         if ($admin === null) {
             return ['ok' => false, 'error' => 'Agent code and mobile number did not match our records.'];
         }
 
         $phone  = normalisePhone((string) $admin['phone']);
-        $result = self::verifyOtp('agent:' . $phone, trim($otpCode), 'login');
+        $result = self::verifyOtp(self::agentOtpKey($intl), trim($otpCode), 'login');
         if (!$result['ok']) {
             LoginLog::record((string) $admin['username'], 'bad_password', (int) $admin['id']);
             return ['ok' => false, 'error' => (string) ($result['error'] ?? 'That code is not right.')];
@@ -1080,7 +1137,7 @@ final class Auth
         if (count($list) > 1) {
             // One WhatsApp number, several IDs: the code proved the NUMBER; the person now picks
             // which of THIS number's accounts to open (agentLoginPick). Nothing else is offered.
-            return self::otpPickList($phone, $list);
+            return self::otpPickList($phone, $list, $intl);
         }
 
         self::finishAdminSession($admin, $ip, true);
@@ -1089,38 +1146,109 @@ final class Auth
     }
 
     /** @param list<array<string, mixed>> $list @return array{ok: true, choose: list<array{id: int, name: string, role: string}>} */
-    private static function otpPickList(string $phone, array $list): array
+    private static function otpPickList(string $phone, array $list, string $intl): array
     {
-        $_SESSION['ap_login_pick'] = ['phone' => $phone, 'ids' => array_map(static fn(array $a): int => (int) $a['id'], $list), 't' => time()];
+        $_SESSION['ap_login_pick'] = ['phone' => $phone, 'intl' => $intl, 'ids' => array_map(static fn(array $a): int => (int) $a['id'], $list), 't' => time()];
         return ['ok' => true, 'choose' => array_map(static fn(array $a): array => [
             'id' => (int) $a['id'], 'name' => (string) $a['full_name'], 'role' => (string) $a['role'],
         ], $list)];
     }
 
+    /* ---- 31 Oct 2026 (review): the WhatsApp door works on the WHOLE number ----
+       normalisePhone() strips both +91 and +977, and 98XXXXXXXX exists in both countries, so a
+       10-digit match let the +91 holder of a +977 member's digits get that member's login code
+       (Notify had no country hint → +91) and open the account. Every WhatsApp login (code or hi)
+       now names one full number, opens only accounts whose OWN number is exactly that one
+       (TeamPortal::intlFor; an account whose country cannot be told never opens this way — the
+       office sets its country, or it uses its password), sends the code to that number, and keys
+       the code to it. */
+
+    /** The full WhatsApp number the door is about: $intl when it is this mobile's (+91/+977), else from what was typed (+977… → Nepal, otherwise India). */
+    private static function doorIntl(string $mobile, string $intl = ''): string
+    {
+        $p10  = substr(normalisePhone($mobile), -10);
+        $intl = preg_replace('/\D/', '', $intl) ?? '';
+        if (strlen($p10) === 10 && in_array($intl, ['91' . $p10, '977' . $p10], true)) {
+            return $intl;
+        }
+        $d = preg_replace('/\D/', '', $mobile) ?? '';
+        $d = str_starts_with($d, '00') ? substr($d, 2) : $d;
+        return (strlen($d) === 13 && str_starts_with($d, '977') ? '977' : '91') . $p10;
+    }
+
+    /** The whole WhatsApp number on file for an account ('' = its country cannot be told). */
+    private static function accountIntl(array $admin): string
+    {
+        require_once __DIR__ . '/teamportal.php';
+        $p10 = substr(normalisePhone((string) ($admin['phone'] ?? '')), -10);
+        return strlen($p10) === 10 ? TeamPortal::intlFor($p10, $admin) : '';
+    }
+
+    /** The otp_codes key of a WhatsApp login code. India keeps its bare 10 digits (codes in flight survive the deploy); any other country carries its code, so the keys never meet. */
+    private static function agentOtpKey(string $intl): string
+    {
+        return 'agent:' . ((strlen($intl) === 12 && str_starts_with($intl, '91')) ? substr($intl, 2) : $intl);
+    }
+
+    /**
+     * The account a code login is about, with the whole number its code goes to.
+     * Mobile only: the oldest OTP-door account whose own number is exactly the door's number.
+     * Agent code + mobile (the older door): that agent; a number with no country on file keeps the
+     * old default (+91 — what it always got), a known country gets its own.
+     *
+     * @return array{0: ?array<string, mixed>, 1: string}
+     */
+    private static function agentDoorAccount(string $code, string $mobile, string $intl): array
+    {
+        if (trim($code) === '') {
+            $intl = self::doorIntl($mobile, $intl);
+            return [self::otpDoorAccountsFor($mobile, $intl)[0] ?? null, $intl];
+        }
+        $admin = self::resolveAgentLogin($code, $mobile);
+        if ($admin === null) {
+            return [null, ''];
+        }
+        $own = self::accountIntl($admin);
+        return [$admin, $own !== '' ? $own : self::doorIntl((string) $admin['phone'])];
+    }
+
+    /** otpDoorAccounts() of this mobile whose own WhatsApp number is exactly $intl. @return list<array<string, mixed>> */
+    public static function otpDoorAccountsFor(string $mobile, string $intl): array
+    {
+        $intl = preg_replace('/\D/', '', $intl) ?? '';
+        if ($intl === '') {
+            return [];
+        }
+        $out = [];
+        foreach (self::otpDoorAccounts($mobile) as $a) {
+            $own = self::accountIntl($a);
+            if ($own !== '' && $own === $intl) {
+                $out[] = $a;
+            } elseif ($own === '') {
+                Logger::info('WhatsApp sign-in refused: no country on file for account #' . (int) $a['id'] . ' — set +91 / +977 in its profile', [], 'otp');
+            }
+        }
+        return $out;
+    }
+
     /**
      * 30 Oct 2026 (one door, "send hi on WhatsApp"): the number was proved by a WhatsApp message from
      * exactly $intl (WaVerify::consumeLogin). Open what the mobile-only code door would open — the
-     * OTP_DOOR_ROLES accounts on this mobile, no 2FA — and only those whose number on file is that
-     * country's (or carries no country). Several → the same "which ID?" pick as the code door.
+     * OTP_DOOR_ROLES accounts on this mobile, no 2FA — and only those whose number on file is exactly
+     * $intl (31 Oct 2026, review: an account with no country on file no longer opens for either
+     * country). Several → the same "which ID?" pick as the code door.
      *
      * @return array{ok: bool, choose?: list<array<string, mixed>>, none?: bool, error?: string}
      */
     public static function otpDoorOpen(string $mobile, string $how, string $intl = ''): array
     {
         $phone = normalisePhone($mobile);
-        $list = self::otpDoorAccounts($phone);
-        if ($intl !== '' && $list !== []) {
-            require_once __DIR__ . '/teamportal.php';
-            $list = array_values(array_filter($list, static function (array $a) use ($phone, $intl): bool {
-                $own = TeamPortal::intlFor(substr($phone, -10), $a);
-                return $own === '' || $own === $intl;
-            }));
-        }
+        $list = self::otpDoorAccountsFor($phone, $intl);
         if ($list === []) {
             return ['ok' => false, 'none' => true];
         }
         if (count($list) > 1) {
-            return self::otpPickList($phone, $list);
+            return self::otpPickList($phone, $list, (string) preg_replace('/\D/', '', $intl));
         }
         self::finishAdminSession($list[0], Security::clientIp(), true);
         Logger::audit('admin.login.' . preg_replace('/[^a-z_]/', '', $how), 'admin', (string) $list[0]['id'], null, null,
@@ -1180,7 +1308,8 @@ final class Auth
             return ['ok' => false, 'error' => 'फेरि लगइन गर्नुहोस् · Please sign in again.'];
         }
         $admin = null;
-        foreach (self::otpDoorAccounts((string) $p['phone']) as $a) {
+        // 31 Oct 2026 (review): still on the very WhatsApp number that was proved (a list from before carries none → sign in again)
+        foreach (self::otpDoorAccountsFor((string) $p['phone'], (string) ($p['intl'] ?? '')) as $a) {
             if ((int) $a['id'] === $adminId) {
                 $admin = $a;
             }
@@ -1509,7 +1638,8 @@ final class Auth
             AdminSessions::close((string) ($_SESSION[ADMIN_SESSION_KEY]['sk'] ?? ''));
         }
 
-        unset($_SESSION[ADMIN_SESSION_KEY], $_SESSION['one_door']);   // 30 Oct 2026: no half-done one-door step for the next person
+        unset($_SESSION[ADMIN_SESSION_KEY]);
+        self::clearDoorState();   // 30-31 Oct 2026: no half-done door step (pick, reset, 2FA) for the next person
         session_regenerate_id(true);
     }
 

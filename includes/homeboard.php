@@ -144,9 +144,12 @@ final class HomeBoard
             if (strlen($p10) !== 10 || isPlaceholderPhone($p10)) {
                 return 0;
             }
+            // 31 Oct 2026 (review): the same WHOLE number (+91 vs +977 share 10 digits) — never the other country's twin
+            require_once __DIR__ . '/teamportal.php';
+            $own = TeamPortal::intlFor($p10, ['id' => $adminId, 'phone' => $phone]);
             $n = 0;
             foreach (Auth::adminsByPhone($p10) as $a) {
-                if ((int) $a['id'] !== $adminId) {
+                if ((int) $a['id'] !== $adminId && $own !== '' && TeamPortal::intlFor($p10, $a) === $own) {
                     $n++;
                 }
             }

@@ -66,7 +66,10 @@ final class OneDoor
 
     /**
      * Sort the one box without touching the accounts: a mobile (any form: +91 …, 0…, spaces),
-     * an A-1 / S-1 team code (its mobile), or anything else = an ID.
+     * or anything else = an ID. An A-1 / S-1 team code is an ID too (31 Oct 2026, review): it used
+     * to be swapped for the member's mobile here, which then sat in the page — anyone typing A-1,
+     * A-2 … read every member's number. Its mobile is now looked up only behind the password
+     * (password()), and never shown.
      *
      * @return array{kind: string, phone: string, cc: string, id: string}
      */
@@ -79,10 +82,6 @@ final class OneDoor
         }
         $up = strtoupper($raw);
         if (preg_match('/^[AS]-[1-9][0-9]*$/', $up) === 1) {
-            $m = self::teamCodeMobile($up);
-            if ($m !== null) {
-                return ['kind' => 'mobile', 'phone' => $m[0], 'cc' => $m[1], 'id' => ''];
-            }
             return ['kind' => 'id', 'phone' => '', 'cc' => $cc, 'id' => $up];
         }
         if (preg_match('/^\+?[0-9][0-9\s\-().]{8,20}$/', $raw) === 1) {
@@ -148,13 +147,15 @@ final class OneDoor
         if ($c['kind'] === '') {
             return ['step' => 'start', 'error' => 'मोबाइल नम्बर वा ID लेख्नुहोस् · Type your mobile number or ID.'];
         }
+        self::clear();   // 31 Oct 2026 (review): a new start leaves no earlier pick / reset / 2FA step behind
         $_SESSION[self::KEY] = $c + ['t' => time()];
         return ['step' => $c['kind']];
     }
 
+    /** "Start again", "Change", a finished sign-in: every half-done door step goes (Auth::DOOR_KEYS). */
     public static function clear(): void
     {
-        unset($_SESSION[self::KEY]);
+        Auth::clearDoorState();
     }
 
     /** "+91 98•••••210" — only what was typed, never anything from the records. */
@@ -185,22 +186,43 @@ final class OneDoor
         if ($pw === '') {
             return ['step' => (string) $s['kind'], 'error' => 'पासवर्ड लेख्नुहोस् · Type your password.'];
         }
+        // 31 Oct 2026 (review): a wrong password answers in the same ~1 s whatever is behind the box —
+        // one bcrypt per ID on a mobile used to tell how many IDs (if any) a number carries.
+        $t0 = microtime(true);
         if ($s['kind'] === 'mobile') {
-            $r = TeamPortal::login((string) $s['phone'], $pw, (string) $s['cc'], true);
-            if ($r['ok']) {
-                if (($r['kind'] ?? '') === 'pick') {
-                    $_SESSION[self::KEY]['src'] = 'pw';
-                    return ['step' => 'pick'];
-                }
-                self::clear();
-                return ['go' => ($r['kind'] ?? '') === 'staff' ? 'team' : 'home'];
-            }
-            if (!empty($r['twofaUser'])) {
-                return self::adminPassword((string) $r['twofaUser'], $pw, 'mobile');
-            }
-            return ['step' => 'mobile', 'error' => (string) ($r['error'] ?? 'मिलेन · Did not match.')];
+            $r = self::mobilePassword((string) $s['phone'], (string) $s['cc'], $pw, 'mobile');
+        } elseif (preg_match('/^[AS]-[1-9][0-9]*$/', (string) $s['id']) === 1 && ($m = self::teamCodeMobile((string) $s['id'])) !== null) {
+            $r = self::mobilePassword($m[0], $m[1], $pw, 'id');   // A-1 / S-1: its mobile, looked up only here
+        } else {
+            $r = self::adminPassword(Auth::resolveLoginId((string) $s['id']), $pw, 'id');
         }
-        return self::adminPassword(Auth::resolveLoginId((string) $s['id']), $pw, 'id');
+        if (isset($r['error']) && !isset($r['go'])) {
+            self::evenTime($t0);
+        }
+        return $r;
+    }
+
+    /** Mobile + password: TeamPortal::login over every ID on the number (the password picks the ID). */
+    private static function mobilePassword(string $phone, string $cc, string $pw, string $back): array
+    {
+        $r = TeamPortal::login($phone, $pw, $cc, true);
+        if ($r['ok']) {
+            if (($r['kind'] ?? '') === 'pick') {
+                $_SESSION[self::KEY]['src'] = 'pw';
+                return ['step' => 'pick'];
+            }
+            self::clear();
+            return ['go' => ($r['kind'] ?? '') === 'staff' ? 'team' : 'home'];
+        }
+        if (!empty($r['twofaUser'])) {
+            return self::adminPassword((string) $r['twofaUser'], $pw, $back);
+        }
+        $e = (string) ($r['error'] ?? '');
+        if ($back === 'id') {
+            // a team code answers exactly like any other ID (a code that exists must not look different)
+            return ['step' => 'id', 'error' => str_contains($e, 'Too many') && empty($r['phoneLocked']) ? $e : self::pwError('')];
+        }
+        return ['step' => 'mobile', 'error' => $e !== '' ? $e : 'मिलेन · Did not match.'];
     }
 
     /** One account by username: Auth::adminLogin (rate limit, lockout, 2FA, password stamp). */
@@ -212,9 +234,20 @@ final class OneDoor
             return ['go' => 'home'];
         }
         if (!empty($r['twofa'])) {
-            return ['step' => 'admin_otp', 'notice' => 'तपाईंको WhatsApp मा ६ अङ्कको कोड पठाइयो · A 6-digit code was sent to your registered WhatsApp.'];
+            return ['step' => 'admin_otp', 'notice' => !empty($r['wait'])
+                ? 'कोड भर्खरै पठाइएको छ — त्यही कोड लेख्नुहोस्, वा एक मिनेटपछि फेरि मगाउनुहोस् · A code was sent a moment ago: enter that code, or ask for a new one after a minute.'
+                : 'तपाईंको WhatsApp मा ६ अङ्कको कोड पठाइयो · A 6-digit code was sent to your registered WhatsApp.'];
         }
-        return ['step' => $back, 'error' => self::pwError((string) ($r['error'] ?? ''))];
+        $e = (string) ($r['error'] ?? '');
+        if (!str_contains($e, 'Too many') && (str_contains($e, 'locked') || str_contains($e, 'disabled'))) {
+            // 31 Oct 2026 (review): "locked" / "switched off" only to someone who typed that ID's own
+            // password — to anyone else the same "did not match" as an unknown ID (no ID enumeration)
+            $hash = (string) Database::scalar('SELECT password_hash FROM admins WHERE username = :u', ['u' => Security::clean($username, 60)], '');
+            if ($hash === '' || !Security::verifyPassword($pw, $hash)) {
+                $e = '';
+            }
+        }
+        return ['step' => $back, 'error' => self::pwError($e)];
     }
 
     private static function pwError(string $e): string
@@ -239,7 +272,11 @@ final class OneDoor
             return ['step' => 'start', 'error' => 'फेरि सुरु गर्नुहोस् · Please start again.'];
         }
         $t0 = microtime(true);
-        $r = Auth::agentLoginStart('', (string) $s['phone']);
+        // 31 Oct 2026 (review): the WHOLE WhatsApp number (country + mobile) — the code goes to that number
+        // and opens only accounts whose own number it is (a +977 member's code never reaches the +91 twin)
+        $intl = self::loginIntl((string) $s['phone'], (string) $s['cc']);
+        $_SESSION[self::KEY]['code_intl'] = $intl;
+        $r = Auth::agentLoginStart('', (string) $s['phone'], $intl);
         if (!$r['ok'] && empty($r['nomatch']) && str_contains((string) ($r['error'] ?? ''), 'Too many attempts')) {
             // the per-IP throttle: about this browser, not the number
             return ['step' => 'mobile', 'error' => 'धेरै पटक भयो — ' . LOGIN_LOCKOUT_MIN . ' मिनेटपछि फेरि · Too many tries, wait ' . LOGIN_LOCKOUT_MIN . ' minutes.'];
@@ -255,7 +292,8 @@ final class OneDoor
         if ($s === null || ($s['kind'] ?? '') !== 'mobile') {
             return ['step' => 'start', 'error' => 'फेरि सुरु गर्नुहोस् · Please start again.'];
         }
-        $r = Auth::agentLoginVerify('', (string) $s['phone'], $otp);
+        $intl = (string) ($s['code_intl'] ?? '') ?: self::loginIntl((string) $s['phone'], (string) $s['cc']);
+        $r = Auth::agentLoginVerify('', (string) $s['phone'], $otp, $intl);
         if ($r['ok'] && empty($r['choose'])) {
             self::clear();
             return ['go' => 'home'];
@@ -403,7 +441,12 @@ final class OneDoor
     }
 
     /* =================================================================
-     *  Forgot password — WhatsApp only, then ONE ID gets the new one
+     *  Forgot password — WhatsApp only, then ONE ID gets the new one.
+     *  31 Oct 2026 (review): only the IDs WhatsApp may open anyway
+     *  (Auth::OTP_DOOR_ROLES without 2FA) and staff-portal records. An
+     *  office account (manager, accountant, superadmin …) is never reset by
+     *  WhatsApp alone — its 2FA code would go to the very same WhatsApp —
+     *  a superadmin resets it (team-member.php "Advanced").
      * ================================================================= */
 
     /** @return array<string, mixed>|null the reset in progress ($_SESSION['team_reset'], shared with TeamPortal) */
@@ -423,6 +466,7 @@ final class OneDoor
         if (!$r['ok']) {
             return ['step' => 'forgot', 'error' => (string) $r['error']];
         }
+        self::clear();   // 31 Oct 2026 (review): a new reset starts clean (no older proof, pick or 2FA step)
         $_SESSION['team_reset'] = ['phone' => $c['phone'], 'cc' => $c['cc'], 't' => time(), 'any' => true]
             + (isset($r['debugCode']) ? ['debug' => $r['debugCode']] : []);
         return ['step' => 'forgot_code', 'notice' => 'यो नम्बर दर्ता छ भने WhatsApp मा कोड पठाइयो · If this number is registered, a code is on its way on WhatsApp.'];
@@ -435,6 +479,7 @@ final class OneDoor
         if ($c['kind'] !== 'mobile') {
             return ['step' => 'forgot', 'error' => 'दर्ता गरेको मोबाइल नम्बर लेख्नुहोस् · Type the mobile number you registered with.'];
         }
+        self::clear();
         $_SESSION['team_reset'] = ['phone' => $c['phone'], 'cc' => $c['cc'], 't' => time(), 'any' => true];
         return self::forgotHi();
     }

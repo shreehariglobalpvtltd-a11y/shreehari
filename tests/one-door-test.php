@@ -82,7 +82,12 @@ $PHS = '7000000812';   // agent B + counter D, the SAME password
 $PHM = '7000000813';   // a manager
 $PHX = '7000000814';   // a superadmin with 2FA
 $PHN = '7000000819';   // nobody
-$PHONES = [$PH, $PHS, $PHM, $PHX, $PHN];
+// 31 Oct 2026 (review fixes)
+$PHNP = '7000000815';  // a +977 agent only (its +91 twin is somebody else)
+$PHT  = '7000000816';  // a +91 agent AND a +977 counter on the same 10 digits
+$PHL  = '7000000817';  // superadmin + manager + agent: mobile lockout
+$PHU  = '9700000818';  // an agent stored bare, no country anywhere (96/97/98 = India or Nepal)
+$PHONES = [$PH, $PHS, $PHM, $PHX, $PHN, $PHNP, $PHT, $PHL, $PHU];
 
 $keep = [];
 foreach (['whatsapp_driver' => ['click_to_chat', 'string'], 'login_one_door_on' => ['1', 'bool'], 'login_one_door_hi_on' => ['1', 'bool'],
@@ -125,7 +130,8 @@ $cleanup = static function () use ($PHONES): void {
         Database::delete('admins', 'id = :i', ['i' => $id]);
     }
     try { Database::run("DELETE FROM wa_verify WHERE phone IN ($in)"); } catch (Throwable $e) {}
-    Database::run("DELETE FROM otp_codes WHERE identifier LIKE 'agent:7000000%' OR identifier LIKE 'team:917000000%' OR identifier LIKE 'admin:%' AND created_at > NOW() - INTERVAL 1 DAY AND ip_address IN ('127.0.0.1','::1','')");
+    Database::run("DELETE FROM otp_codes WHERE identifier LIKE 'agent:7000000%' OR identifier LIKE 'team:917000000%' OR identifier LIKE 'agent:977700000081%'
+        OR identifier IN ('agent:9700000818', 'agent:9779700000818') OR identifier LIKE 'admin:%' AND created_at > NOW() - INTERVAL 1 DAY AND ip_address IN ('127.0.0.1','::1','')");
     Database::run("DELETE FROM rate_limits WHERE identifier IN ($in) OR bucket LIKE 'admin_login%' OR bucket LIKE 'team_login%' OR bucket LIKE 'agent_otp%'
         OR bucket LIKE 'otp\\_%' OR bucket LIKE 'wa_verify%' OR bucket LIKE 'team_reset%' OR bucket LIKE 'one_door%' OR bucket LIKE 'admin_2fa%'");
 };
@@ -264,7 +270,12 @@ Database::run("UPDATE wa_verify SET mismatch_from = NULL WHERE token = :t", ['t'
 $reply = (string) WaVerify::inbound('91' . $PH, 'hi VERIFY ' . $tok);
 check('without the LOGIN word: not verified', WaVerify::check($tok)['status'] !== 'verified', mb_substr($reply, 0, 60));
 $reply = (string) WaVerify::inbound('91' . $PH, (string) $st['wa']['text']);
-check('the full message from the number on file: verified', WaVerify::check($tok)['status'] === 'verified', mb_substr($reply, 0, 40));
+check('the full message from the number on file: asks for YES, nothing proven yet (review 31 Oct)', WaVerify::check($tok)['status'] === 'confirm'
+    && str_contains($reply, 'YES') && (OneDoor::waFinish()['step'] ?? '') === 'wa' && sid() === 0, mb_substr($reply, 0, 60));
+check('…a YES from another number does nothing (goes to the bot)', WaVerify::inbound('919999999999', 'YES') === null && WaVerify::check($tok)['status'] === 'confirm');
+check('…"yes please" is not the YES', WaVerify::inbound('91' . $PH, 'yes please') === null && WaVerify::check($tok)['status'] === 'confirm');
+$reply = (string) WaVerify::inbound('91' . $PH, 'Yes!');
+check('the YES from the number on file: verified', WaVerify::check($tok)['status'] === 'verified' && str_contains($reply, 'approved'), mb_substr($reply, 0, 40));
 $r = OneDoor::waFinish();
 check('…2 IDs on the number → which ID?', ($r['step'] ?? '') === 'pick' && count(OneDoor::pickList()) === 2);
 check('…the same token cannot be used twice', WaVerify::consumeLogin($tok, '91' . $PH) === false);
@@ -274,6 +285,7 @@ fresh(); OneDoor::who($PHM, '91');
 OneDoor::waStart();
 $st = OneDoor::state();
 WaVerify::inbound('91' . $PHM, (string) $st['wa']['text']);
+WaVerify::inbound('91' . $PHM, 'YES');
 $r = OneDoor::waFinish();
 check('hi on an office-only number: "use your password", no session', sid() === 0 && str_contains((string) ($r['error'] ?? ''), 'use your password'));
 Settings::set('login_one_door_hi_on', '0', 'bool', 'security', false); Settings::flush();
@@ -303,20 +315,40 @@ check('…the proof is used up', TeamPortal::resetChoices() === [] && (OneDoor::
 check('…audited for that ID only', (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'team.password_reset' AND entity_id = :i AND created_at > NOW() - INTERVAL 5 MINUTE", ['i' => (string) $C], 0) >= 1
     && (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'team.password_reset' AND entity_id = :i AND created_at > NOW() - INTERVAL 5 MINUTE", ['i' => (string) $A], 0) === 0);
 
-section('forgot: a manager can reset (one ID → straight to the new password)');
+section('forgot: an office account is NOT reset by WhatsApp (review 31 Oct: its 2FA code goes to that same WhatsApp)');
 fresh(); $CODES = [];
-OneDoor::forgotSend($PHM, '91');
-$r = OneDoor::forgotProve((string) ($CODES['91' . $PHM] ?? ''));
-check('one ID on the number → no chooser', ($r['step'] ?? '') === 'forgot_pw' && (OneDoor::forgotWho()['who'] ?? '') === 'admin:' . $M);
-$r = OneDoor::forgotSet('NewManager#2026', 'NewManager#2026');
-check('the manager is signed in with the new password', ($r['go'] ?? '') === 'home' && sid() === $M && password_verify('NewManager#2026', pwOf($M)));
+$hashM = pwOf($M);
+$r = OneDoor::forgotSend($PHM, '91');
+check('a manager\'s number: the same neutral reply, but no code goes out', ($r['step'] ?? '') === 'forgot_code' && $CODES === [], json_encode(array_keys($CODES)));
+$iss = Auth::issueOtp('team:91' . $PHM, 'reset', 'whatsapp');
+$r = OneDoor::forgotProve((string) $iss['code']);
+check('…even a valid reset code for that number proves nothing for the manager', ($r['step'] ?? '') === 'forgot_code' && TeamPortal::resetChoices() === [] && sid() === 0);
+check('…forgotSet has nothing to set; the password is untouched', (OneDoor::forgotSet('NewManager#2026', 'NewManager#2026')['step'] ?? '') === 'forgot' && pwOf($M) === $hashM && sid() === 0);
+fresh();
+OneDoor::forgotHiFirst($PHM, '91');
+$wa = $_SESSION['team_reset']['wa'] ?? [];
+WaVerify::inbound('91' . $PHM, (string) ($wa['text'] ?? ''));
+WaVerify::inbound('91' . $PHM, 'YES');
+$r = OneDoor::forgotProve('');
+check('…nor by "hi" + YES from the manager\'s own WhatsApp', ($r['step'] ?? '') !== 'forgot_pw' && TeamPortal::resetChoices() === [] && sid() === 0 && pwOf($M) === $hashM);
 
-section('forgot: a 2FA superadmin keeps the code step');
+section('forgot: a 2FA superadmin is never reset by WhatsApp');
 fresh(); $CODES = [];
+$hashX = pwOf($X);
 OneDoor::forgotSend($PHX, '91');
-OneDoor::forgotProve((string) ($CODES['91' . $PHX] ?? ''));
+check('no code goes out, nothing to choose', $CODES === [] && TeamPortal::resetChoices() === []);
+$iss = Auth::issueOtp('team:91' . $PHX, 'reset', 'whatsapp');
+OneDoor::forgotProve((string) $iss['code']);
 $r = OneDoor::forgotSet('NewSuper#2026', 'NewSuper#2026');
-check('new password saved, then the 2FA code step (no session yet)', ($r['step'] ?? '') === 'admin_otp' && sid() === 0 && password_verify('NewSuper#2026', pwOf($X)));
+check('…a reset code proves nothing: no new password, no session, no 2FA step', ($r['step'] ?? '') === 'forgot' && sid() === 0 && pwOf($X) === $hashX
+    && empty($_SESSION['admin_2fa_pending']));
+fresh(); $CODES = [];
+Auth::setAdmin2fa($C, true);
+OneDoor::forgotSend($PH, '91');
+OneDoor::forgotProve((string) ($CODES['91' . $PH] ?? ''));
+$who = array_column(TeamPortal::resetChoices(), 'who');
+check('a 2FA counter is not offered either; the agent on the number still is', $who === ['admin:' . $A], json_encode($who));
+Auth::setAdmin2fa($C, false);
 
 section('forgot: no hint for an unknown number; wrong codes lock');
 fresh(); $CODES = [];
@@ -341,10 +373,235 @@ $wa = $_SESSION['team_reset']['wa'] ?? [];
 check('hi step ready, tied to +91 ' . $PH, ($wa['intl'] ?? '') === '91' . $PH && str_contains((string) ($wa['text'] ?? ''), 'RESET'));
 WaVerify::inbound('91' . $PH, (string) $wa['text']);
 $r = OneDoor::forgotProve('');
-check('the message proves the number → whose password?', ($r['step'] ?? '') === 'forgot_pick');
+check('the hi alone proves nothing yet (YES needed)', ($r['step'] ?? '') === 'forgot_code' && TeamPortal::resetChoices() === []);
+WaVerify::inbound('91' . $PH, 'हो');
+$r = OneDoor::forgotProve('');
+check('the hi + YES (हो) prove the number → whose password?', ($r['step'] ?? '') === 'forgot_pick');
 OneDoor::forgotPick('admin:' . $A);
 $r = OneDoor::forgotSet('NewAgent#2026', 'NewAgent#2026');
 check('…the agent only', sid() === $A && password_verify('NewAgent#2026', pwOf($A)) && pwOf($C) === $hashC);
+
+/* =================================================================== *
+ *  31 Oct 2026 — the security review's findings, one regression each   *
+ * =================================================================== */
+$adm = static fn(int $id): array => (array) Database::fetch('SELECT failed_logins, locked_until, password_hash FROM admins WHERE id = :i', ['i' => $id]);
+$audits = static fn(string $action, int $id): int => (int) Database::scalar(
+    "SELECT COUNT(*) FROM audit_logs WHERE action = :a AND entity_id = :i AND created_at > NOW() - INTERVAL 10 MINUTE", ['a' => $action, 'i' => (string) $id], 0);
+
+section('review: 2FA is never skipped by typing the password twice');
+fresh(); OneDoor::who('od1_super', '91');
+$r1 = OneDoor::password('Super#2026');
+$r2 = OneDoor::password('Super#2026');
+check('the password twice inside the resend minute: the code step both times, no session', ($r1['step'] ?? '') === 'admin_otp' && ($r2['step'] ?? '') === 'admin_otp'
+    && sid() === 0 && (int) ($_SESSION['admin_2fa_pending']['id'] ?? 0) === $X, json_encode([$r1['step'] ?? '', $r2['step'] ?? '', $r2['go'] ?? '']));
+$_SESSION = [];   // a brand-new browser, the same minute
+$a = Auth::adminLogin('od1_super', 'Super#2026');
+check('…a new browser in the same minute: still the code step', empty($a['ok']) && !empty($a['twofa']) && sid() === 0, json_encode($a, JSON_UNESCAPED_UNICODE));
+check('…audited as held, never "signed in with password only"', $audits('admin.2fa.delivery_failed', $X) === 0 && $audits('admin.2fa.held', $X) >= 1);
+Database::run("DELETE FROM rate_limits WHERE bucket LIKE 'otp\\_%'");
+$iss = Auth::issueOtp('admin:' . $X, 'login', 'whatsapp');
+check('…the owner\'s code still opens it', Auth::adminLogin2faVerify((string) $iss['code'])['ok'] && sid() === $X);
+
+section('review: the WhatsApp door works on the WHOLE number (+91 vs +977)');
+$NP  = $mk('od1_np_agent', 'agent', $PHNP, 'NpAgent#2026', 'OD1 Nepal Agent');
+$IN2 = $mk('od1_in_agent2', 'agent', $PHT, 'InAgent#2026', 'OD1 India Twin');
+$NP2 = $mk('od1_np_counter2', 'counter', $PHT, 'NpCounter#2026', 'OD1 Nepal Twin');
+$UNK = $mk('od1_nocc_agent', 'agent', $PHU, 'NoCc#2026', 'OD1 No Country');
+Database::update('admins', ['phone' => '+977 ' . $PHNP], 'id = :i', ['i' => $NP]);
+Database::update('admins', ['phone' => '+977 ' . $PHT], 'id = :i', ['i' => $NP2]);
+Database::update('admins', ['phone' => $PHU], 'id = :i', ['i' => $UNK]);
+check('setup: +977 on file / no country on file', TeamPortal::intlFor($PHNP, ['id' => $NP, 'phone' => '+977 ' . $PHNP]) === '977' . $PHNP
+    && TeamPortal::intlFor($PHU, ['id' => $UNK, 'phone' => $PHU]) === '');
+fresh(); OneDoor::who($PHNP, '91');   // the +977 member's digits typed with the default +91
+OneDoor::codeSend();
+$j = Notify::whatsappJournal();
+$to = (string) (end($j)['to'] ?? '');
+check('a +977 member\'s login code goes to +977, never to the +91 twin', $to === '977' . $PHNP, $to);
+fresh(); OneDoor::who($PHNP, '91');
+$twin = Auth::issueOtp('agent:' . $PHNP, 'login', 'whatsapp');   // a code the +91 holder got for himself
+$v = OneDoor::codeVerify((string) $twin['code']);
+check('…a +91 code never opens the +977 account', sid() === 0 && empty($v['go']));
+fresh(); OneDoor::who('+977 ' . $PHNP, '91');
+$own = Auth::issueOtp('agent:977' . $PHNP, 'login', 'whatsapp');
+$v = OneDoor::codeVerify((string) $own['code']);
+check('…the +977 owner\'s own code opens it', ($v['go'] ?? '') === 'home' && sid() === $NP, json_encode($v, JSON_UNESCAPED_UNICODE));
+fresh(); OneDoor::who($PHT, '91');
+$iss = Auth::issueOtp('agent:' . $PHT, 'login', 'whatsapp');
+$v = OneDoor::codeVerify((string) $iss['code']);
+check('+91 and +977 accounts on the same digits: the +91 code opens only the +91 one (no chooser with the twin)', ($v['go'] ?? '') === 'home' && sid() === $IN2, json_encode($v, JSON_UNESCAPED_UNICODE));
+fresh();
+$_SESSION['ap_login_pick'] = ['phone' => $PHT, 'intl' => '91' . $PHT, 'ids' => [$IN2, $NP2], 't' => time()];
+check('…a pick list can never open the other country\'s twin', !Auth::agentLoginPick($NP2)['ok'] && sid() === 0);
+fresh();
+$_SESSION['ap_login_pick'] = ['phone' => $PHT, 'ids' => [$IN2], 't' => time()];   // a list made before the fix (no number)
+check('…nor a list from before the fix', !Auth::agentLoginPick($IN2)['ok'] && sid() === 0);
+check('…Switch ID does not count the other country\'s twin', HomeBoard::otherIds($IN2) === 0 && HomeBoard::otherIds($NP2) === 0);
+fresh(); OneDoor::who($PHU, '91');
+$n0 = count(Notify::whatsappJournal());
+OneDoor::codeSend();
+check('no country on file: no login code is sent anywhere', count(Notify::whatsappJournal()) === $n0);
+foreach (['91', '977'] as $cc) {
+    fresh(); OneDoor::who($PHU, $cc);
+    OneDoor::waStart();
+    $st = OneDoor::state();
+    WaVerify::inbound($cc . $PHU, (string) ($st['wa']['text'] ?? ''));
+    WaVerify::inbound($cc . $PHU, 'YES');
+    $r = OneDoor::waFinish();
+    check("…nor does a hi + YES from +$cc open it", sid() === 0 && empty($r['go']), json_encode($r, JSON_UNESCAPED_UNICODE));
+}
+fresh();
+$ok = Auth::agentLoginStart('', '+977 ' . $PHNP)['ok'];
+$j = Notify::whatsappJournal();
+check('…the /me/ API door (mobile typed with +977) sends to +977 too', $ok && (string) (end($j)['to'] ?? '') === '977' . $PHNP);
+$codeNP = (int) AgentWallet::nextFreeAgentCode();
+AgentWallet::setAgentCode($NP, $codeNP);
+fresh();
+$ok = Auth::agentLoginStart((string) $codeNP, $PHNP)['ok'];
+$j = Notify::whatsappJournal();
+check('…and the older agent code + mobile door sends to the agent\'s own +977', $ok && (string) (end($j)['to'] ?? '') === '977' . $PHNP);
+fresh();
+$own = Auth::issueOtp('agent:977' . $PHNP, 'login', 'whatsapp');
+$v = Auth::agentLoginVerify((string) $codeNP, $PHNP, (string) $own['code']);
+check('…where only the +977 code opens it', $v['ok'] && sid() === $NP);
+fresh();
+$twin = Auth::issueOtp('agent:' . $PHNP, 'login', 'whatsapp');
+check('…and the +91 one does not', !Auth::agentLoginVerify((string) $codeNP, $PHNP, (string) $twin['code'])['ok'] && sid() === 0);
+$codeUNK = (int) AgentWallet::nextFreeAgentCode();
+AgentWallet::setAgentCode($UNK, $codeUNK);
+fresh();
+$ok = Auth::agentLoginStart((string) $codeUNK, $PHU)['ok'];
+$j = Notify::whatsappJournal();
+check('…the agent code + mobile door keeps the old +91 for a number with no country (unchanged, needs the agent code)', $ok && (string) (end($j)['to'] ?? '') === '91' . $PHU);
+
+section('review: no half-done step outlives Start again, a sign-in or a sign-out');
+fresh(); OneDoor::who($PH, '91');
+$iss = Auth::issueOtp('agent:' . $PH, 'login', 'whatsapp');
+OneDoor::codeVerify((string) $iss['code']);
+check('setup: the WhatsApp chooser is waiting', count(OneDoor::pickList()) === 2 && isset($_SESSION['ap_login_pick']));
+OneDoor::clear();   // "← Start again" / "Change"
+check('"Start again" ends the chooser', !isset($_SESSION['ap_login_pick']) && !Auth::agentLoginPick($A)['ok'] && sid() === 0);
+fresh(); OneDoor::who($PH, '91');
+$iss = Auth::issueOtp('agent:' . $PH, 'login', 'whatsapp');
+OneDoor::codeVerify((string) $iss['code']);
+$a = Auth::adminLogin('od1_manager', 'Manager#2026');   // signs in another way meanwhile
+check('a different sign-in ends the chooser', $a['ok'] && sid() === $M && !isset($_SESSION['ap_login_pick']));
+Auth::adminLogout();
+check('…after sign-out the next person cannot pick the other ID', !Auth::agentLoginPick($A)['ok'] && sid() === 0);
+fresh(); OneDoor::who($PHS, '91');
+OneDoor::password('SamePass#2026');
+check('setup: the password chooser is waiting', TeamPortal::pickList() !== []);
+Auth::adminLogin('od1_manager', 'Manager#2026');
+Auth::adminLogout();
+check('…a sign-in + sign-out ends it (/team/ pick refused)', TeamPortal::pickList() === [] && !TeamPortal::pick($B)['ok'] && sid() === 0);
+fresh(); $CODES = [];
+OneDoor::forgotSend($PH, '91');
+OneDoor::forgotProve((string) ($CODES['91' . $PH] ?? ''));
+check('setup: a proven reset is waiting', TeamPortal::resetChoices() !== []);
+OneDoor::clear();
+check('"Start again" ends a proven reset', TeamPortal::resetChoices() === [] && OneDoor::forgotWho() === null);
+fresh(); $CODES = [];
+OneDoor::forgotSend($PH, '91');
+OneDoor::forgotProve((string) ($CODES['91' . $PH] ?? ''));
+Auth::adminLogin('od1_manager', 'Manager#2026');
+Auth::adminLogout();   // Switch ID and the idle timeout use this
+check('…so do a sign-in and Auth::adminLogout (Switch ID, idle timeout)', TeamPortal::resetChoices() === [] && OneDoor::forgotWho() === null && sid() === 0);
+fresh(); OneDoor::who('od1_super', '91');
+OneDoor::password('Super#2026');
+$held = !empty($_SESSION['admin_2fa_pending']);
+OneDoor::who($PH, '91');
+check('a new start drops a waiting 2FA step', $held && empty($_SESSION['admin_2fa_pending']));
+$lo = (string) file_get_contents(dirname(__DIR__) . '/admin/logout.php');
+check('admin/logout.php clears the pick lists and the 2FA step too', str_contains($lo, "'ap_login_pick'") && str_contains($lo, "'team_pick'") && str_contains($lo, "'admin_2fa_pending'"));
+
+section('review: wrong passwords on a mobile never lock the office accounts on it');
+$LS = $mk('od1_lk_super', 'superadmin', $PHL, 'LkSuper#2026', 'OD1 Lock Boss');
+$LM = $mk('od1_lk_manager', 'manager', $PHL, 'LkManager#2026', 'OD1 Lock Manager');
+$LA = $mk('od1_lk_agent', 'agent', $PHL, 'LkAgent#2026', 'OD1 Lock Agent');
+for ($i = 0; $i < MAX_LOGIN_ATTEMPTS; $i++) {
+    fresh(); OneDoor::who($PHL, '91');
+    OneDoor::password('Wrong#' . $i . 'xx');
+}
+check(MAX_LOGIN_ATTEMPTS . ' wrong tries on the owner\'s mobile: superadmin + manager neither counted nor locked',
+    (int) $adm($LS)['failed_logins'] === 0 && empty($adm($LS)['locked_until']) && (int) $adm($LM)['failed_logins'] === 0 && empty($adm($LM)['locked_until']));
+fresh();
+check('…their own username + password still work', Auth::adminLogin('od1_lk_manager', 'LkManager#2026')['ok'] && sid() === $LM);
+fresh();
+for ($i = 0; $i <= TeamPortal::PHONE_TRIES; $i++) {
+    Database::run("DELETE FROM rate_limits WHERE bucket = 'team_login'");   // a new IP each time
+    OneDoor::who($PHL, '91');
+    OneDoor::password('Wrong#' . $i . 'yy');
+}
+Database::run("DELETE FROM rate_limits WHERE bucket = 'team_login'");
+OneDoor::who($PHL, '91');
+$r = OneDoor::password('LkManager#2026');
+check('…' . (TeamPortal::PHONE_TRIES + 1) . ' wrong tries from many IPs pause that mobile\'s password door only', sid() === 0 && str_contains((string) ($r['error'] ?? ''), 'Too many')
+    && (int) $adm($LM)['failed_logins'] === 0 && empty($adm($LM)['locked_until']), (string) ($r['error'] ?? ''));
+Database::run("DELETE FROM rate_limits WHERE bucket LIKE 'admin_login%'");
+$_SESSION = [];
+check('…the manager\'s ID + password still open it', Auth::adminLogin('od1_lk_manager', 'LkManager#2026')['ok'] && sid() === $LM);
+Database::update('admins', ['failed_logins' => MAX_LOGIN_ATTEMPTS, 'locked_until' => date('Y-m-d H:i:s', time() - 60)], 'id = :i', ['i' => $LM]);
+fresh(); Auth::adminLogin('od1_lk_manager', 'nope-nope-1');
+check('a lock that has run out: one wrong try counts from 0 (no instant re-lock)', (int) $adm($LM)['failed_logins'] === 1 && empty($adm($LM)['locked_until']));
+Database::update('admins', ['failed_logins' => MAX_LOGIN_ATTEMPTS, 'locked_until' => date('Y-m-d H:i:s', time() - 60)], 'id = :i', ['i' => $LA]);
+fresh(); OneDoor::who($PHL, '91');
+OneDoor::password('nope-nope-2');
+check('…the same at the mobile door', (int) $adm($LA)['failed_logins'] === 1 && empty($adm($LA)['locked_until']));
+
+section('review: A-1 / S-1 are IDs — the member\'s mobile never reaches the page');
+foreach (['A-1', 's-12'] as $tc) {
+    $c = OneDoor::classify($tc, '91');
+    check("'$tc' is an ID, no mobile looked up", $c['kind'] === 'id' && $c['phone'] === '' && $c['id'] === strtoupper($tc));
+}
+fresh(); OneDoor::who('A-1', '91');
+check('…the screen shows only what was typed', OneDoor::masked() === 'A-1' && (string) (OneDoor::state()['phone'] ?? 'x') === '');
+$r = OneDoor::password('Wrong#2026x');
+check('…a wrong password answers like any ID', ($r['step'] ?? '') === 'id' && str_contains((string) ($r['error'] ?? ''), 'ID or password did not match'));
+
+section('review: a wrong password tells nothing (locked / switched off / timing)');
+Database::update('admins', ['locked_until' => date('Y-m-d H:i:s', time() + 600)], 'id = :i', ['i' => $ROLES['support']]);
+Database::update('admins', ['is_active' => 0, 'email' => 'od1.off@example.test'], 'id = :i', ['i' => $ROLES['viewer']]);
+fresh(); OneDoor::who('od1_support', '91');
+$r = OneDoor::password('Wrong#2026x');
+check('a locked ID + a wrong password: the plain "did not match"', str_contains((string) ($r['error'] ?? ''), 'ID or password did not match'), (string) ($r['error'] ?? ''));
+fresh(); OneDoor::who('od1_support', '91');
+$r = OneDoor::password('Role#support2026');
+check('…with its own password: "locked" (the owner is told)', str_contains((string) ($r['error'] ?? ''), 'locked'), (string) ($r['error'] ?? ''));
+fresh(); OneDoor::who('od1.off@example.test', '91');
+$r = OneDoor::password('Wrong#2026x');
+check('a switched-off ID by email + a wrong password: the plain "did not match"', str_contains((string) ($r['error'] ?? ''), 'ID or password did not match'), (string) ($r['error'] ?? ''));
+fresh(); OneDoor::who('od1.off@example.test', '91');
+$r = OneDoor::password('Role#viewer2026');
+check('…with its own password: "switched off"', str_contains((string) ($r['error'] ?? ''), 'switched off'), (string) ($r['error'] ?? ''));
+Database::update('admins', ['locked_until' => null, 'failed_logins' => 0], 'id = :i', ['i' => $ROLES['support']]);
+Database::update('admins', ['is_active' => 1, 'email' => null], 'id = :i', ['i' => $ROLES['viewer']]);
+OneDoor::$evenTiming = true;
+fresh(); OneDoor::who($PHN, '91');
+$t = microtime(true); OneDoor::password('Wrong#2026x'); $tn = microtime(true) - $t;
+fresh(); OneDoor::who($PHL, '91');
+$t = microtime(true); OneDoor::password('Wrong#2026x'); $t3 = microtime(true) - $t;
+OneDoor::$evenTiming = false;
+check('a wrong mobile password: the same ~1 s for nobody and for a 3-ID number', $tn >= 0.85 && $t3 >= 0.85 && abs($tn - $t3) < 0.45, sprintf('%.2f s / %.2f s', $tn, $t3));
+
+section('review: a forwarded "hi" link alone signs nobody in');
+fresh(); OneDoor::who($PH, '91');
+OneDoor::waStart();
+$st1 = OneDoor::state();
+$tok1 = (string) $st1['wa']['token'];
+WaVerify::inbound('91' . $PH, (string) $st1['wa']['text']);   // the owner taps Send on a link someone forwarded
+check('the hi alone: the other browser cannot finish (waiting for YES)', WaVerify::check($tok1)['status'] === 'confirm' && (OneDoor::waFinish()['step'] ?? '') === 'wa' && sid() === 0);
+$_SESSION = [];
+OneDoor::who($PH, '91');
+OneDoor::waStart();
+$st2 = OneDoor::state();
+$tok2 = (string) $st2['wa']['token'];
+WaVerify::inbound('91' . $PH, (string) $st2['wa']['text']);
+$reply = (string) WaVerify::inbound('91' . $PH, 'YES');
+check('two requests waiting on one number + YES: both cancelled, neither proven', str_contains($reply, 'cancelled')
+    && (int) Database::scalar('SELECT COUNT(*) FROM wa_verify WHERE token IN (:a, :b) AND verified_at IS NULL', ['a' => $tok1, 'b' => $tok2], 0) === 2
+    && WaVerify::check($tok2)['status'] === 'expired' && sid() === 0);
+$f = WaVerify::start('staff', $PHN, 'IN');
+WaVerify::inbound('91' . $PHN, (string) $f['text']);
+check('form proofs (staff / agent forms) still verify with the one hi', WaVerify::check((string) $f['token'])['status'] === 'verified');
 
 /* =================================================================== */
 section('landing: everybody → admin/home.php; the switch off → the old map');
@@ -362,7 +619,7 @@ check('switch off: no Home item in the menu', (static function (): bool { $_SESS
 Settings::set('login_one_door_on', '1', 'bool', 'security', false); Settings::flush();
 check('switch on: Home leads the menu', array_column(admin_nav(), 'href')[0] === 'home.php');
 fresh();
-check('the old /team/ rules stand: a manager is not a /team/ account', !TeamPortal::login($PHM, 'NewManager#2026', '91')['ok'] && sid() === 0);
+check('the old /team/ rules stand: a manager is not a /team/ account', !TeamPortal::login($PHM, 'Manager#2026', '91')['ok'] && sid() === 0);
 $e = null; try { Auth::teamOpenSession(Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $M]), false); } catch (RuntimeException $ex) { $e = $ex; }
 check('…teamOpenSession without anyRole still refuses office roles', $e !== null && sid() === 0);
 
@@ -466,7 +723,7 @@ if ($probe === false || $probeCode !== 200) {
     check('…the mobile screen is ready (other ID: its own password / WhatsApp)', str_contains($sw['body'], '+91 70•••••811') && str_contains($sw['body'], 'wa_start'));
     check('…and the old ID is signed out', $http('GET', '/admin/home.php', [], $g)['code'] === 302);
 
-    foreach (['agent' => [$A, 'od1_agent', 'NewAgent#2026'], 'manager' => [$M, 'od1_manager', 'NewManager#2026'],
+    foreach (['agent' => [$A, 'od1_agent', 'NewAgent#2026'], 'manager' => [$M, 'od1_manager', 'Manager#2026'],
               'accountant' => [$ROLES['accountant'], 'od1_accountant', 'Role#accountant2026'], 'scanner' => [$ROLES['scanner'], 'od1_scanner', 'Role#scanner2026'],
               'support' => [$ROLES['support'], 'od1_support', 'Role#support2026']] as $role => [$id, $u, $pw]) {
         $j = $jar($role);
@@ -487,7 +744,7 @@ if ($probe === false || $probeCode !== 200) {
         }
     }
     $j = $jar('deep');
-    $li = $signIn('od1_manager', 'NewManager#2026', $j, ['next' => 'bookings.php']);
+    $li = $signIn('od1_manager', 'Manager#2026', $j, ['next' => 'bookings.php']);
     check('a next= deep link still wins', $li['code'] === 302 && $li['loc'] === '/admin/bookings.php', $li['loc']);
     $j = $jar('back');
     $li = $signIn('od1_agent', 'NewAgent#2026', $j, ['back' => 'me']);
