@@ -45,6 +45,14 @@ final class WaBot
         $phone        = Settings::officePhone();
         $body         = trim($body);
         $senderDigits = normalisePhone($from);
+        // Agent Pro (Oct 2026): the agents' and staff WhatsApp desk
+        if (is_file(INCLUDE_PATH . '/agentpro-wa.php')) {
+            require_once INCLUDE_PATH . '/agentpro-wa.php';
+            $apReply = ApWa::reply($from, $body, $kind);
+            if ($apReply !== null) {
+                return self::out($apReply['text'], $apReply['media'] ?? null);
+            }
+        }
         // +91 / +977 as the transport delivered it — a Nepali sender's ticket
         // must be addressed to +977, and ten normalised digits cannot say so.
         $senderCountry = resolvePhoneCountry('', $from);

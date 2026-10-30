@@ -1,0 +1,14 @@
+{
+  "name": "S Hari Global — My ID",
+  "short_name": "SHG ID",
+  "start_url": "/me/",
+  "scope": "/me/",
+  "display": "standalone",
+  "background_color": "#FBF9F3",
+  "theme_color": "#13224F",
+  "icons": [
+    { "src": "/assets/img/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/assets/img/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/assets/img/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

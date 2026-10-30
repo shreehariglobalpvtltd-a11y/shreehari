@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 152 190" width="152" height="190" role="img" aria-label="S Hari Global">
+  <!-- The SHG crest alone (crown, ring, SH, swoosh) — for small places: headers, favicons, markers. -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F2CF78"/>
+      <stop offset=".55" stop-color="#D9A441"/>
+      <stop offset="1" stop-color="#B98325"/>
+    </linearGradient>
+    <linearGradient id="gs" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#B98325"/>
+      <stop offset=".6" stop-color="#E9BD5C"/>
+      <stop offset="1" stop-color="#F4D488"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#g)" stroke="#9A6B1C" stroke-width="1.2" stroke-linejoin="round">
+    <path d="M56 46 L50 18 L65 32 L76 10 L87 32 L102 18 L96 46 Z"/>
+    <rect x="55" y="45" width="42" height="8" rx="2"/>
+    <circle cx="50" cy="16" r="3.4"/><circle cx="76" cy="8" r="3.8"/><circle cx="102" cy="16" r="3.4"/>
+  </g>
+  <circle cx="76" cy="103" r="45" fill="#fff" stroke="#C9973A" stroke-width="3.6"/>
+  <circle cx="76" cy="103" r="40" fill="none" stroke="#1C2F6B" stroke-width="1" stroke-dasharray="2 5" opacity=".55"/>
+  <text x="76" y="124" text-anchor="middle" font-family="Georgia,'Times New Roman',Cambria,serif" font-style="italic" font-weight="700"
+        font-size="60" letter-spacing="-9" fill="#1C2F6B">SH</text>
+  <path d="M30 168 C 58 150, 98 150, 150 110 C 112 156, 70 170, 30 168 Z" fill="url(#gs)"/>
+  <path d="M22 182 C 40 160, 78 158, 112 150 C 80 168, 52 176, 22 182 Z" fill="#FFFFFF" opacity=".92"/>
+</svg>
