@@ -338,7 +338,12 @@ final class ApForm
         };
         $doc('परिचयपत्र — अगाडि · ID — front', $g('doc_front'));
         $doc('परिचयपत्र — पछाडि · ID — back', $g('doc_back'));
+        $sig = '';   // 30 Oct 2026: a signature picture sent as an extra document ("Signature" / "सही") prints in the signature box
         foreach (jsonColumn($a['extras'] ?? null) as $x) {
+            if (is_array($x) && $sig === '' && $full && preg_match('/signature|सही/iu', (string) ($x['label'] ?? ''))
+                && ($abs = AgentPro::privateAbs((string) ($x['path'] ?? ''))) !== null && !str_ends_with(strtolower($abs), '.pdf')) {
+                $sig = self::dataImg($abs, 600, 85);
+            }
             if (is_array($x)) {
                 $doc(AgentPro::fixMojibake(trim((string) ($x['label'] ?? 'Document'))) ?: 'Document', (string) ($x['path'] ?? ''));
             }
@@ -504,6 +509,7 @@ final class ApForm
             'verifyUrl'  => $verifyUrl,
             'thumb'      => $thumb,
             'hasThumb'   => $g('thumb') !== '',
+            'sig'        => $sig,
             'full'       => $full,
             'sections'   => [
                 // 5th = grid: 'c4' puts four short fields on one row (keeps page 1 on one A4)
@@ -704,7 +710,9 @@ final class ApForm
             ? '<div class="tb ink" role="img" aria-label="Thumb impression" style="background-image:url(' . $e($vm['thumb']) . ')"></div>'
             : '<div class="tb">' . ($vm['hasThumb'] ? '✓ फाइलमा<br>on file' : '') . '</div>';
         $sign = $section('✍️', 'सही र औंठाछाप', 'Signature & thumbprints',
-            '<div class="signrow"><div class="sbox"><div class="esign">' . ($vm['consent']
+            '<div class="signrow"><div class="sbox"><div class="esign">' . ($vm['sig'] !== ''
+                ? '<img src="' . $e($vm['sig']) . '" alt="Signature" style="max-width:100%;max-height:22mm;display:block;margin:0 auto">'
+                : '') . ($vm['consent']
                 ? '✓ अनलाइन स्वीकार गरियो · accepted online<br><small>' . $e($vm['name']) . ' — ' . $e($vm['signedOn']) . '</small>'
                 : '') . '</div><span>आवेदकको सही · Applicant\'s signature</span></div>'
             . '<figure>' . $thumbBox . '<figcaption>दायाँ औंठा · Right thumb</figcaption></figure>'
