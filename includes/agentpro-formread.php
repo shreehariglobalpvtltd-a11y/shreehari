@@ -73,6 +73,16 @@ final class ApFormRead
     public const VPS_PX       = 1280;   // the page as the VPS model sees it
     public const GEMINI_PX    = 1600;
     public const OCR_PAGE_SEC = 20;
+    /** Seconds one read() may take in all (ap_form_read_deadline): it runs inside a web request, and nginx hangs up at 60 s. */
+    public const DEADLINE     = 45;
+    public const GEMINI_KEEP  = 15;     // seconds of the deadline the VPS rung leaves for Gemini (when Gemini is set up)
+    public const OCR_KEEP     = 8;      // … and for Tesseract
+
+    /**
+     * Never kept as a training example: one person's ID / bank / contact numbers would otherwise sit in
+     * settings and go into every later prompt (af1 review). The office corrects those boxes on the form itself.
+     */
+    public const PRIVATE_KEYS = ['id_number', 'bank_account', 'bank_ifsc', 'pan', 'phone', 'email', 'upi_id', 'esewa_id', 'khalti_id', 'dob'];
 
     /** The K2 keys = ap_applications columns (occupation … pan are the af1 migration's new columns). */
     public const KEYS = [
@@ -93,13 +103,14 @@ final class ApFormRead
 
     /**
      * Built-in notes, shown (and editable) on admin/ai-local.php until the office saves its own
-     * (ap_form_hints). From the owner's real hand-filled sample of 30 Oct 2026.
+     * (ap_form_hints). From the owner's real hand-filled sample of 30 Oct 2026 — the example numbers
+     * are made up: the sample applicant's own ID, mobile and birth date never go into a prompt.
      */
     public const DEFAULT_HINTS = "A dash (-) written on a line means that box is blank.\n"
-        . "Dates are written day/month/year: 03/01/1993 = 3 January 1993 (1993-01-03).\n"
-        . "12 digits written in groups of 4 (6197 1671 0143) on the ID line is an Aadhaar number.\n"
+        . "Dates are written day/month/year: 05/02/1990 = 5 February 1990 (1990-02-05).\n"
+        . "12 digits written in groups of 4 (2345 6789 0123) on the ID line is an Aadhaar number.\n"
         . "The UPI / eSewa / Khalti line is often just the mobile number — copy the digits.\n"
-        . "A space inside a mobile number is only grouping (96241177 65 = 9624117765).\n"
+        . "A space inside a mobile number is only grouping (98765432 10 = 9876543210).\n"
         . "Fix obvious spellings of languages: Gujrati = Gujarati, Nepli = Nepali, Hindhi = Hindi.\n"
         . "Page 2 (document ticks, signature, thumbprints, KYC checklist, the Office use box with checked by / Original ID seen / KYC verified / Approved) is filled by the office — never the applicant's data.\n"
         . "Most of our agents live in Gujarat (Surat, Ahmedabad, Mehsana) or Nepal; a town written alone on the home address line is the address.";
@@ -119,9 +130,11 @@ final class ApFormRead
      *
      * @param list<string> $jpegPaths up to MAX_PAGES page pictures (JPEG / PNG / WEBP files), in page order
      * @param string       $kind      'agent' | 'staff'
-     * @param array{readers?: list<string>, budget?: int} $o
-     *        readers: which rungs may run (default all: vps, gemini, tesseract) — admin/ai-local.php tries one
-     *        budget:  seconds the VPS model may spend on all pages together (default ap_form_vps_budget, 150)
+     * @param array{readers?: list<string>, budget?: int, deadline?: int} $o
+     *        readers:  which rungs may run (default all: vps, gemini, tesseract) — admin/ai-local.php tries one
+     *        budget:   seconds the VPS model may spend on all pages together (default ap_form_vps_budget, 150)
+     *        deadline: seconds the whole read may take, every rung and every wait included (default
+     *                  ap_form_read_deadline, DEADLINE = 45 — a web request; a background job may pass more)
      * @return array{ok: bool, status: string, fields: array<string, string>, confidence: array<string, string>,
      *               reader: string, note: string, tried: list<string>}
      */
@@ -139,49 +152,78 @@ final class ApFormRead
         if ($pages === []) {
             return ['note' => 'No page picture could be opened.'] + $none;
         }
-        @set_time_limit(400);
+        // 30 Oct 2026 (af1 review): ONE deadline for the whole read — lock waits, Gemini and Tesseract included —
+        // so the web request answers before nginx's fastcgi_read_timeout (60 s) cuts it.
+        $span = (int) ($o['deadline'] ?? Settings::getInt('ap_form_read_deadline', self::DEADLINE));
+        $span = max(15, min(900, $span));
+        $deadline = microtime(true) + $span;
+        $leftTo = static fn(float $until): int => (int) floor($until - microtime(true));
+        @set_time_limit($span + 30);
+        $geminiOn = in_array('gemini', $allow, true) && (self::$geminiHook !== null || DocVerify::geminiReady());
+        $ocrOn = in_array('tesseract', $allow, true) && (self::$ocrHook !== null || ApDocRead::tesseractAvailable());
         $t = self::training();
         $tried = [];
         $notes = [];
         $fallback = null;                                 // an answer with nothing filled, kept in case no rung does better
 
-        // 1. the model on this VPS, one page at a time
+        // 1. the model on this VPS, one page at a time (it leaves the later rungs their share of the deadline)
         if (in_array('vps', $allow, true) && ApAi::docsReady()) {
             $tried[] = 'vps';
             $budget = (int) ($o['budget'] ?? max(30, min(900, Settings::getInt('ap_form_vps_budget', 150))));
-            $end = microtime(true) + $budget;
+            $end = min(microtime(true) + $budget, $deadline - ($geminiOn ? self::GEMINI_KEEP : 0) - ($ocrOn ? self::OCR_KEEP : 0));
             $per = [];
-            $ok = true;
+            $failed = false;
             foreach ($pages as $i => $abs) {
-                $left = (int) floor($end - microtime(true));
+                $left = $leftTo($end);
+                // Page 1 holds the applicant's boxes (page 2 is office marks, 3-4 repeat the parties table):
+                // once it gave values, a later page that cannot get a full page's time is not started.
+                if ($i > 0 && $left < ApAi::docTimeout() && self::combine($per, $kind)['status'] === 'read') {
+                    break;
+                }
                 if ($left < 15) {
-                    $ok = false;
+                    $failed = true;
                     $notes[] = 'The model on our server ran out of time.';
                     break;
                 }
                 $img = ApDocRead::forModel($abs, self::VPS_PX);
+                $wait = min(10, max(1, intdiv($left, 4)));             // waiting for the model counts against the deadline too
                 $g = $img === '' ? null : ApAi::json(self::system(), self::prompt($kind, $i + 1, count($pages), $t['hints'], $t['examples']),
-                    self::pageSchema(), [$img], ['purpose' => 'formread', 'max_tokens' => 1100, 'timeout' => min(ApAi::docTimeout(), $left)]);
+                    self::pageSchema(), [$img], ['purpose' => 'formread', 'max_tokens' => 1100,
+                    'lock_wait' => $wait, 'timeout' => max(5, min(ApAi::docTimeout(), $left - $wait))]);
                 if ($g === null) {
-                    $ok = false;
+                    $failed = true;
                     $notes[] = ApAi::lastPreempted() ? 'The model on our server was needed for WhatsApp.' : 'The model on our server did not answer.';
                     break;
                 }
                 $g['_index'] = $i + 1;
                 $per[] = $g;
             }
-            if ($ok) {
+            if ($per !== []) {
+                // keep what was read even when a later page timed out / gave way (af1 review)
                 $r = self::combine($per, $kind);
+                $skipped = count($pages) - count($per);
                 if ($r['status'] === 'read') {
+                    if ($skipped > 0) {
+                        $notes[] = 'Page ' . (count($per) + 1) . ($skipped > 1 ? ' and later were' : ' was') . ' not read (time) — the office checks '
+                                 . ($skipped > 1 ? 'them' : 'it') . ' on the attached pictures.';
+                    }
                     return self::done($r, 'vps', $tried, $notes);
                 }
                 // "not a form" / nothing readable from a small model: ask the next rung for a second opinion
-                $fallback = ['r' => $r, 'reader' => 'vps'];
+                // (a "not a form" from an unfinished read is no evidence — then the next rungs decide alone)
+                if (!$failed || $r['status'] === 'partial') {
+                    $fallback = ['r' => $r, 'reader' => 'vps'];
+                }
             }
         }
 
-        // 2. Gemini, every page in one call
-        if (in_array('gemini', $allow, true) && (self::$geminiHook !== null || DocVerify::geminiReady())) {
+        // 2. Gemini, every page in one call (leaves Tesseract its share of the deadline)
+        $geminiEnd = $deadline - ($ocrOn ? self::OCR_KEEP : 0);
+        if ($geminiOn && $leftTo($geminiEnd) < 5) {
+            $geminiOn = false;
+            $notes[] = 'No time was left to ask Gemini.';
+        }
+        if ($geminiOn) {
             $tried[] = 'gemini';
             $media = [];
             foreach ($pages as $abs) {
@@ -193,7 +235,7 @@ final class ApFormRead
             $prompt = self::prompt($kind, 0, count($media), $t['hints'], $t['examples']);
             $g = $media === [] ? null : (self::$geminiHook !== null
                 ? (self::$geminiHook)($prompt, $media)
-                : DocVerify::geminiJson($prompt, $media, 900 * count($media) + 600, 'ApFormRead'));
+                : DocVerify::geminiJson($prompt, $media, 900 * count($media) + 600, 'ApFormRead', $geminiEnd));
             if (is_array($g)) {
                 $list = isset($g['pages']) && is_array($g['pages']) ? array_values(array_filter($g['pages'], 'is_array')) : [$g];
                 foreach ($list as $i => &$pg) {
@@ -214,12 +256,20 @@ final class ApFormRead
         }
 
         // 3. Tesseract on this VPS: only what has a shape of its own, all 'low'
-        if (in_array('tesseract', $allow, true) && (self::$ocrHook !== null || ApDocRead::tesseractAvailable())) {
+        if ($ocrOn && $leftTo($deadline) < 3) {
+            $ocrOn = false;
+            $notes[] = 'No time was left for Tesseract.';
+        }
+        if ($ocrOn) {
             $tried[] = 'tesseract';
             $text = '';
             foreach ($pages as $abs) {
+                $sec = min(self::OCR_PAGE_SEC, $leftTo($deadline) - 1);
+                if ($sec < 3) {
+                    break;                                // the deadline: the pages read so far are what Tesseract has
+                }
                 $text .= (self::$ocrHook !== null ? (string) (self::$ocrHook)($abs)
-                    : ApDocRead::ocrImage($abs, ['eng', 'hin', 'nep'], self::OCR_PAGE_SEC, 2000)) . "\n";
+                    : ApDocRead::ocrImage($abs, ['eng', 'hin', 'nep'], $sec, 2000)) . "\n";
             }
             if (trim($text) !== '') {
                 $r = self::localExtract($text, $kind);
@@ -376,12 +426,12 @@ final class ApFormRead
             . "\nREADING RULES:\n"
             . "- A value is exactly what the applicant WROTE, not the printed label. Names and addresses in English letters (transliterate Devanagari: राम बहादुर थापा -> Ram Bahadur Thapa), each word of a name with a capital first letter.\n"
             . "- A dash (-), \"N/A\", \"nil\" or \"छैन\" on a line means blank: \"\".\n"
-            . "- Write every number with 0-9 (Nepali digits ० १ २ ३ ४ ५ ६ ७ ८ ९ = 0-9). Spaces inside a number are only grouping (96241177 65 = 9624117765). Look at every digit; never change, add or drop one.\n"
+            . "- Write every number with 0-9 (Nepali digits ० १ २ ३ ४ ५ ६ ७ ८ ९ = 0-9). Spaces inside a number are only grouping (98765432 10 = 9876543210). Look at every digit; never change, add or drop one.\n"
             . "- Mobile: 10 digits; India starts 6, 7, 8 or 9, Nepal starts 97 or 98. Leave out +91 / +977 / a leading 0.\n"
             . "- ID: 12 digits (often 4-4-4) = aadhaar; a Nepali citizenship number has dashes or slashes (12-01-75-12345) = citizenship; "
             . "PAN (India) = 5 letters, 4 digits, 1 letter (ABCDE1234F) — read places 1-5 and 10 as letters, 6-9 as digits. id_type is one of: "
             . implode(', ', array_keys(AgentPro::ID_TYPES)) . ".\n"
-            . "- Dates as YYYY-MM-DD. India and Nepal write the DAY first: 03/01/1993 = 1993-01-03. A Bikram Sambat date (BS / वि.सं., a year 2000-2099, e.g. २०४८/०५/१२) is NOT converted: answer \"BS 2048-05-12\". If day and month cannot be told apart, answer \"\".\n"
+            . "- Dates as YYYY-MM-DD. India and Nepal write the DAY first: 05/02/1990 = 1990-02-05. A Bikram Sambat date (BS / वि.सं., a year 2000-2099, e.g. २०४८/०५/१२) is NOT converted: answer \"BS 2048-05-12\". If day and month cannot be told apart, answer \"\".\n"
             . "- Fix only an obvious misspelling of a common word (Gujrati -> Gujarati, Nepli -> Nepali); never change a name or a number.\n"
             . "- A crossed-out answer is replaced by the one written next to it. A ticked / circled option is the chosen one.\n"
             . "- Never use a father's, husband's, reference's or emergency contact's name as the applicant's name.\n"
@@ -393,7 +443,8 @@ final class ApFormRead
         if ($hints !== '') {
             $p .= "\nTHE OFFICE'S OWN NOTES ABOUT THESE FORMS (they never change the JSON shape or the rules above):\n" . $hints . "\n";
         }
-        $examples = self::cleanExamples($examples);
+        // the examples stay on this server: never in the all-pages prompt that goes to Gemini (af1 review)
+        $examples = $page > 0 ? self::cleanExamples($examples) : [];
         if ($examples !== []) {
             $p .= "\nCORRECTIONS THE OFFICE MADE BEFORE (learn the handwriting from them; they are examples, not values for this form):\n";
             foreach ($examples as $ex) {
@@ -432,8 +483,15 @@ final class ApFormRead
         return trim(mb_substr(trim($text), 0, self::HINTS_MAX));
     }
 
+    /** May a corrected example be kept for this box? Not for ID / bank / contact numbers or a date of birth. */
+    public static function exampleAllowed(string $field): bool
+    {
+        return in_array($field, self::KEYS, true) && !in_array($field, self::PRIVATE_KEYS, true);
+    }
+
     /**
-     * Corrected examples [{field, written, value}] (array or JSON text): field must be a K2 key, value non-empty.
+     * Corrected examples [{field, written, value}] (array or JSON text): field must be a K2 key that is not
+     * in PRIVATE_KEYS (ID / bank / contact numbers, date of birth are never kept), value non-empty.
      * The same field + written keeps the newest; at most EXAMPLES_MAX (the newest).
      *
      * @return list<array{field: string, written: string, value: string}>
@@ -454,7 +512,7 @@ final class ApFormRead
             }
             $field = is_scalar($row['field'] ?? null) ? trim((string) $row['field']) : '';
             $value = $one($row['value'] ?? '');
-            if (!in_array($field, self::KEYS, true) || $value === '') {
+            if (!self::exampleAllowed($field) || $value === '') {
                 continue;
             }
             $written = $one($row['written'] ?? '');

@@ -69,7 +69,7 @@
       o_skip_t: 'Office: accept this mobile without a WhatsApp code', o_reason: 'Reason (e.g. came to the office, no WhatsApp)', o_skip_btn: 'Accept this mobile', o_taken: 'This mobile already has an account:', openMember: 'Open member',
       o_saw: 'I saw the original ID (KYC verified)', o_approve: 'Approve now — issue the login and ID code', o_consent: 'The applicant agreed to the terms (signed the paper form or said yes).',
       o_send_ok: 'Approve & issue ID', o_done_t: 'Approved — ID issued', o_done_sent: 'Sent to approvals', o_code: 'ID / agent code',
-      o_cards: 'Open member — ID card & visiting card', o_form: 'Filled form (PDF)', o_next: 'Fill the next form', o_appr: 'Open approvals', o_kycNo: 'KYC still to check — the original ID was not seen.',
+      o_cards: 'Open member — ID card & visiting card', o_form: 'Filled form (PDF)', o_next: 'Fill the next form', o_appr: 'Open approvals', o_kycNo: 'KYC still to check — the original ID was not seen.', o_kycMgr: 'A manager checks the KYC — the ID stays "to check" until then.',
       net: 'No connection — check your internet and try again.', saved: 'Saved'
     },
     ne: {
@@ -116,7 +116,7 @@
       o_skip_t: 'अफिस: WhatsApp कोड बिना यो मोबाइल स्वीकार्ने', o_reason: 'कारण (जस्तै: अफिसमै आउनुभयो, WhatsApp छैन)', o_skip_btn: 'मोबाइल स्वीकार्नुहोस्', o_taken: 'यो मोबाइलको खाता पहिल्यै छ:', openMember: 'सदस्य खोल्नुहोस्',
       o_saw: 'सक्कल परिचयपत्र हेरेँ (KYC प्रमाणित)', o_approve: 'अहिल्यै स्वीकृत — लगइन र ID कोड दिनुहोस्', o_consent: 'आवेदक सर्तमा सहमत हुनुभयो (कागजी फारममा सही वा मौखिक सहमति)।',
       o_send_ok: 'स्वीकृत गरी ID दिनुहोस्', o_done_t: 'स्वीकृत — ID जारी भयो', o_done_sent: 'स्वीकृतिका लागि पठाइयो', o_code: 'ID / एजेन्ट कोड',
-      o_cards: 'सदस्य खोल्नुहोस् — ID र भिजिटिङ कार्ड', o_form: 'भरिएको फारम (PDF)', o_next: 'अर्को फारम भर्नुहोस्', o_appr: 'स्वीकृति सूची', o_kycNo: 'KYC बाँकी — सक्कल परिचयपत्र हेरिएन।',
+      o_cards: 'सदस्य खोल्नुहोस् — ID र भिजिटिङ कार्ड', o_form: 'भरिएको फारम (PDF)', o_next: 'अर्को फारम भर्नुहोस्', o_appr: 'स्वीकृति सूची', o_kycNo: 'KYC बाँकी — सक्कल परिचयपत्र हेरिएन।', o_kycMgr: 'KYC म्यानेजरले जाँच्छ — त्यतिन्जेल ID "जाँच्न बाँकी" रहन्छ।',
       net: 'इन्टरनेट छैन — जाँचेर फेरि प्रयास गर्नुहोस्।', saved: 'सेभ भयो'
     },
     hi: {
@@ -163,7 +163,7 @@
       o_skip_t: 'ऑफिस: WhatsApp कोड के बिना यह मोबाइल स्वीकार करें', o_reason: 'कारण (जैसे: ऑफिस आए, WhatsApp नहीं)', o_skip_btn: 'मोबाइल स्वीकार करें', o_taken: 'इस मोबाइल का खाता पहले से है:', openMember: 'सदस्य खोलें',
       o_saw: 'असली पहचान पत्र देखा (KYC सत्यापित)', o_approve: 'अभी स्वीकृत — लॉगिन और ID कोड दें', o_consent: 'आवेदक शर्तों से सहमत (कागज़ी फ़ॉर्म पर हस्ताक्षर या मौखिक हाँ)।',
       o_send_ok: 'स्वीकृत कर ID दें', o_done_t: 'स्वीकृत — ID जारी', o_done_sent: 'स्वीकृति के लिए भेजा', o_code: 'ID / एजेंट कोड',
-      o_cards: 'सदस्य खोलें — ID और विज़िटिंग कार्ड', o_form: 'भरा फ़ॉर्म (PDF)', o_next: 'अगला फ़ॉर्म भरें', o_appr: 'स्वीकृति सूची', o_kycNo: 'KYC बाकी — असली पहचान पत्र नहीं देखा।',
+      o_cards: 'सदस्य खोलें — ID और विज़िटिंग कार्ड', o_form: 'भरा फ़ॉर्म (PDF)', o_next: 'अगला फ़ॉर्म भरें', o_appr: 'स्वीकृति सूची', o_kycNo: 'KYC बाकी — असली पहचान पत्र नहीं देखा।', o_kycMgr: 'KYC मैनेजर जाँचेंगे — तब तक ID "जाँच बाकी" रहेगा।',
       net: 'इंटरनेट नहीं — जाँचकर फिर कोशिश करें।', saved: 'सेव हुआ'
     }
   };
@@ -243,8 +243,16 @@
     return api('start', { invite: C.invite || '' }).then(function (s) {
       if (!s.ok) { return fatal(s.error || t('net')); }
       S.key = s.data.key; remember();
-      if (C.as === 'org' && !OFF) {   // agreements/apply.html?kind=partner → an agency
-        return api('save', { agent_kind: 'org' }).then(function (r) { take(r.ok ? r.data.draft : s.data.draft); });
+      // agreements/apply.html?kind=partner → an agency; an office invitation also brings the name / mobile
+      var pf = (!OFF && C.prefill) || {}, first = {};
+      if (C.as === 'org' && !OFF) first.agent_kind = 'org';
+      if (pf.name) first.full_name = pf.name;
+      if (pf.phone) { S.pfPhone = pf.phone; first.country = pf.cc === 'NP' ? 'NP' : 'IN'; }
+      if (Object.keys(first).length) {
+        return api('save', first).then(function (r) {
+          take(r.ok ? r.data.draft : s.data.draft);
+          if (S.step > 0 && S.step < 6) { S.step = 0; render(); }   // a new form starts at "who" — they confirm the prefilled name
+        });
       }
       take(s.data.draft);
     });
@@ -358,7 +366,7 @@
         + (S.d.status === 'draft' ? laterCard() : '');
     }
     var cc = S.d.country === 'NP' ? 'NP' : 'IN';
-    var phone = S.d.phone || (OFF ? S.paperPhone : '') || '';
+    var phone = S.d.phone || (OFF ? S.paperPhone : '') || S.pfPhone || '';
     var officeBox = OFF
       ? '<section class="ap-card ap-officecard"><h3>🏢 ' + esc(t('o_skip_t')) + '</h3>'
         + '<label class="ap-field"><span>' + esc(t('o_reason')) + '</span><input class="ap-in" id="oReason" maxlength="160" value="' + esc(S.oReason || '') + '"></label>'
@@ -402,7 +410,7 @@
     return '<section class="ap-card ap-paper"><h3>📄 ' + esc(t('paper_q')) + '</h3><p class="lead">' + esc(t('paper_lead')) + '</p>'
       + '<div class="ap-actions" style="margin-top:0"><label class="ap-btn" style="position:relative">📷 ' + esc(t('paper_btn'))
       + '<input type="file" id="paperIn" accept="image/*,application/pdf" multiple style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>'
-      + '<a class="ap-btn ghost" href="' + esc(C.blankForm || '/agreements/form.php?kind=agent') + '&auto=pdf" target="_blank" rel="noopener">🖨 ' + esc(t('paper_blank')) + '</a></div>'
+      + '<a class="ap-btn ghost" href="' + esc(C.blankForm || '/agreements/form.php?kind=agent') + '" target="_blank" rel="noopener">🖨 ' + esc(t('paper_blank')) + '</a></div>'
       + '<div id="paperBox">' + res + '</div></section>';
   }
 
@@ -606,7 +614,9 @@
       [t('s_bank'), S.d.upi_id || (S.d.bank_account_last4 ? (S.d.bank_name || '') + ' ••••' + S.d.bank_account_last4 : '') || S.d.esewa_id || S.d.khalti_id || '—']];
     if (S.d.has && S.d.has.paper) rv.push(['📄', S.d.has.paper + ' ' + t('paper_pages')]);
     var office = OFF
-      ? '<label class="ap-row ap-tick"><input type="checkbox" id="oSaw"' + (S.sawId ? ' checked' : '') + '><span>🪪 ' + esc(t('o_saw')) + '</span></label>'
+      ? (C.canKyc   // KYC verified: super-admin / manager only (the admin/team.php rule); others leave it for a manager
+        ? '<label class="ap-row ap-tick"><input type="checkbox" id="oSaw"' + (S.sawId ? ' checked' : '') + '><span>🪪 ' + esc(t('o_saw')) + '</span></label>'
+        : '<div class="ap-note warn">' + esc(t('o_kycMgr')) + '</div>')
         + '<label class="ap-row ap-tick"><input type="checkbox" id="oNow"' + (S.approveNow ? ' checked' : '') + '><span>⚡ ' + esc(t('o_approve')) + '</span></label>'
       : '';
     return '<section class="ap-card"><h2>' + esc(t('more_q')) + '</h2><p class="lead">' + esc(t('more_lead')) + '</p>'
@@ -643,13 +653,15 @@
         + '<button type="button" class="ap-btn gold" id="doneNew">➕ ' + esc(t('o_next')) + '</button></div></section>';
     }
     var waText = encodeURIComponent('Namaste! My application ' + ref + ' — ' + (S.d.full_name || ''));
-    var pdf = '/join-form.php?k=' + encodeURIComponent(S.key) + '&auto=pdf';
+    // K3: the applicant's own copy — the HMAC link from submit / get (join-form.php refuses a raw ?k= draft key)
+    var own = (S.res && S.res.form_url) || S.d.formUrl || '';
+    var pdf = own ? own + (own.indexOf('?') >= 0 ? '&' : '?') + 'auto=pdf' : '';
     return '<section class="ap-card ap-done"><div class="seal">✓</div><h2>' + esc(t('done_t')) + '</h2>'
       + '<div class="ap-caps" style="margin-top:14px">' + esc(t('done_ref')) + '</div><div class="ap-ref">' + esc(ref) + '</div>'
       + '<p class="lead">' + esc(t('done_s')) + '</p>'
       + '<p class="lead">🪪 ' + esc(t('done_cards')) + '</p>'
       + '<div class="ap-actions">'
-      + (S.d.status === 'submitted' || S.d.status === 'approved' ? '<a class="ap-btn gold" href="' + esc(pdf) + '" target="_blank" rel="noopener">📄 ' + esc(t('done_pdf')) + '</a>' : '')
+      + (pdf && (S.d.status === 'submitted' || S.d.status === 'approved') ? '<a class="ap-btn gold" href="' + esc(pdf) + '" target="_blank" rel="noopener">📄 ' + esc(t('done_pdf')) + '</a>' : '')
       + '<a class="ap-btn wa" href="https://wa.me/' + esc(C.wa) + '?text=' + waText + '" target="_blank" rel="noopener">💬 ' + esc(t('done_wa')) + '</a>'
       + '<a class="ap-btn ghost" href="' + esc(C.me) + '">🔐 ' + esc(t('done_me')) + '</a>'
       + '<button type="button" class="ap-link" id="doneNew">➕ ' + esc(t('done_new')) + '</button></div></section>';
@@ -920,7 +932,11 @@
           var view = page.getViewport({ scale: Math.min(3, 1600 / Math.max(v1.width, v1.height)) });
           var cv = document.createElement('canvas'); cv.width = Math.round(view.width); cv.height = Math.round(view.height);
           var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
-          return page.render({ canvasContext: cx, viewport: view }).promise.then(function () { out.push(cv.toDataURL('image/jpeg', 0.82)); i++; return next(); });
+          // intent 'print': no requestAnimationFrame pacing, so a page still renders while the phone
+          // shows another app (a hidden tab never runs rAF and the render would wait forever)
+          var job = page.render({ canvasContext: cx, viewport: view, intent: 'print' }).promise;
+          var limit = new Promise(function (res, rej) { setTimeout(function () { rej(new Error('pdf page timeout')); }, 60000); });
+          return Promise.race([job, limit]).then(function () { out.push(cv.toDataURL('image/jpeg', 0.82)); i++; return next(); });
         });
       };
       return next();
@@ -963,7 +979,21 @@
       var tick = function () { paperMsg('<span class="ap-spin dark"></span> ' + esc(t('paper_read')) + ' · ' + Math.round((Date.now() - started) / 1000) + 's'); };
       tick(); var timer = setInterval(tick, 1000);
       collect();
+      // Under PHP-FPM the server answers "queued" at once and reads in the background (a model may take
+      // minutes, longer than the web server waits); ask scan_status every 4 s for up to 8 minutes.
+      var poll = function (job, tries) {
+        return new Promise(function (res) { setTimeout(res, 4000); }).then(function () {
+          return api('scan_status', { job: job });
+        }).then(function (s) {
+          if (s.ok && s.status === 'queued' && tries < 120) return poll(job, tries + 1);
+          if (s.ok && s.status === 'queued') return { ok: false, error: t('paper_zero') };
+          if (!s.ok && s.error === t('net') && tries < 120) return poll(job, tries + 1);   // a dropped poll (phone lost signal) is retried
+          return s;
+        });
+      };
       return api('scan_form', { pages: pages }).then(function (r) {
+        return r.ok && r.status === 'queued' && r.job ? poll(r.job, 0) : r;
+      }).then(function (r) {
         clearInterval(timer);
         if (!r.ok) { paperMsg('⚠ ' + esc(r.error || t('net')), true); return; }
         S.d = Object.assign(S.d, r.data.draft, pickTyped());
@@ -1134,6 +1164,9 @@
     if (st === 'bank') { pick(['upi_id', 'bank_holder', 'bank_ifsc', 'bank_name', 'bank_branch', 'esewa_id', 'khalti_id', 'country']); var acc = $('#app [name="bank_account"]'); if (acc && acc.value) o.bank_account = acc.value; }
     if (st === 'finish') pick(['email'].concat(EXTRA));
     if (o.id_number && /^[X•*]{4}/.test(o.id_number)) delete o.id_number;   // a masked number from the QR is already stored
+    // The server never sends the full ID number back (only id_number_masked), so after a reload / ?d= resume /
+    // office reopen the box is empty: an empty box nobody typed in must not erase the stored number.
+    if ((o.id_number == null || String(o.id_number).trim() === '') && S.d.id_number_masked && !S.touched.id_number && !S.src.id_number) delete o.id_number;
     return o;
   }
   $('#next').addEventListener('click', function () {

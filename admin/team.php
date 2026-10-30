@@ -159,9 +159,11 @@ if (Security::isPost()) {
             switch ($act) {
                 case 'approve':
                     if (!Auth::can('staff.manage')) { throw new RuntimeException('Only staff managers can approve.'); }
-                    $r = AgentPro::approve((int) $_POST['app'], $me);
+                    // Only someone who can see the ID photos may mark KYC verified; anyone else leaves it "submitted".
+                    $r = AgentPro::approve((int) $_POST['app'], $me, $canKyc ? null : false);
                     $m = AgentPro::member($r['admin_id']);
                     $flash = ['ok', '✓ Approved — ' . ($m['name'] ?? '') . ($r['code'] !== '' ? ' is ' . $r['code'] : '') . '. Login, ID card and welcome sent on WhatsApp.'
+                        . ($canKyc ? '' : ' KYC still to check by a manager · KYC म्यानेजरले जाँच्न बाँकी.')
                         . (isset($r['password']) ? ' Temporary password: ' . $r['password'] : '')];
                     break;
                 case 'reject':
@@ -399,6 +401,7 @@ $tabLabel = ['approvals' => ['Approvals', $counts['applications']], 'agents' => 
       <?php if (Auth::can('staff.manage')): ?>
       <form method="post" style="margin:0"><?= Security::csrfField() ?><input type="hidden" name="action" value="approve"><input type="hidden" name="app" value="<?= (int) $a['id'] ?>">
         <button class="tp-approve" type="submit">✓ Approve</button></form>
+      <?php if (!$canKyc): ?><small class="ph-sub" style="align-self:center">KYC still to check — a manager verifies the ID · KYC म्यानेजरले जाँच्छ</small><?php endif; ?>
       <?php endif; ?>
       <?php if ($canOffice): ?><a class="btn soft" href="<?= $e($officeUrl . '&d=' . rawurlencode((string) $a['draft_key'])) ?>">✏️ Finish / edit</a><?php endif; ?>
       <a class="btn ghost" href="/admin/team-form.php?app=<?= (int) $a['id'] ?>" target="_blank" rel="noopener">📄 Form</a>

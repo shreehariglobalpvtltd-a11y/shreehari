@@ -570,7 +570,8 @@ final class ApAi
             'options'    => array_filter([
                 'temperature' => (float) ($o['temperature'] ?? 0.2),
                 'num_predict' => (int) ($o['max_tokens'] ?? 600),
-                'num_ctx'     => (int) ($o['ctx'] ?? 8192),
+                // a form page is ~3k picture tokens + ~2k of instructions + the answer: 8192 by default
+                'num_ctx'     => (int) ($o['ctx'] ?? max(2048, min(32768, Settings::getInt('ap_ai_ctx', 8192)))),
             ], static fn($v): bool => $v !== null),
         ];
         if (!empty($o['tools'])) {
@@ -827,14 +828,14 @@ final class ApAi
         }
         if ($budget >= self::MODEL_NEED_GB['qwen3.5:4b'] - 0.3 || ($ram >= 7.5 && $budget >= 3.2)) {
             $tight = $budget < self::MODEL_NEED_GB['qwen3.5:4b'];
-            return ['chat' => 'qwen3.5:4b', 'vision' => 'qwen3.5:4b', 'alternatives' => ['qwen3.5:2b'], 'ctx' => $tight ? 4096 : 8192,
+            return ['chat' => 'qwen3.5:4b', 'vision' => 'qwen3.5:4b', 'alternatives' => ['qwen3.5:2b'], 'ctx' => 8192,
                     'memoryMaxMb' => $cap('qwen3.5:4b'),
-                    'warn' => $tight ? 'Memory is tight: keep one model (OLLAMA_MAX_LOADED_MODELS=1), context 4096, and the MemoryMax cap below.' : '',
+                    'warn' => $tight ? 'Memory is tight: keep one model (OLLAMA_MAX_LOADED_MODELS=1), the 8-bit context cache and the MemoryMax cap below.' : '',
                     'why' => sprintf('About %.1f GB is free for the model after the website, MySQL and the route engine (%.1f GB): '
                         . 'qwen3.5:4b (3.4 GB download) fits — one model answers WhatsApp and reads ID photos and paper forms. '
                         . 'On %d CPU cores expect ~5-20 s for a WhatsApp answer and 1-3 min for a form page; Gemini / Tesseract take over when it is slower.', $budget, $others, $cpus)] + $common;
         }
-        return ['chat' => 'qwen3.5:2b', 'vision' => 'qwen3.5:2b', 'alternatives' => [], 'ctx' => 4096,
+        return ['chat' => 'qwen3.5:2b', 'vision' => 'qwen3.5:2b', 'alternatives' => [], 'ctx' => 8192,
                 'memoryMaxMb' => $cap('qwen3.5:2b'),
                 'warn' => $budget < self::MODEL_NEED_GB['qwen3.5:2b'] ? 'Not enough free memory even for the 2B model — keep using Gemini / Tesseract, or add RAM.' : '',
                 'why' => 'Little memory: the 2B model fits, but expect simpler Nepali and weaker handwriting reading. More RAM is the best upgrade for the AI.'] + $common;
@@ -862,6 +863,8 @@ final class ApAi
             'Environment="OLLAMA_MAX_LOADED_MODELS=1"',
             'Environment="OLLAMA_KEEP_ALIVE=' . self::keepAlive() . '"',
             'Environment="OLLAMA_CONTEXT_LENGTH=' . (int) $rec['ctx'] . '"',
+            'Environment="OLLAMA_FLASH_ATTENTION=1"',
+            'Environment="OLLAMA_KV_CACHE_TYPE=q8_0"',
             'MemoryMax=' . (int) $rec['memoryMaxMb'] . 'M',
             'MemorySwapMax=0',
             'CPUQuota=' . (int) $rec['cpuQuota'] . '%',

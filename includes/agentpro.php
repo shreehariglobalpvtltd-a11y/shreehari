@@ -118,9 +118,40 @@ final class AgentPro
         if ($admin === null) {
             return false;
         }
+        // The same gates as Auth::requireAdmin(): a temporary password (sent on WhatsApp)
+        // must be changed first, and a view-only account changes nothing.
+        if (self::mustChangePw($admin)) {
+            return false;
+        }
         $role = (string) ($admin['role'] ?? '');
+        if ($role === 'viewer') {
+            return false;
+        }
         return $role === 'superadmin' || $role === 'manager' || Auth::can('staff.manage');
     }
+
+    /** Is this session still on a temporary password (Auth::requireAdmin shuts everything until it is changed)? */
+    public static function mustChangePw(?array $admin): bool
+    {
+        return !empty($admin['must_change_pw'])
+            || (defined('ADMIN_SESSION_KEY') && !empty($_SESSION[ADMIN_SESSION_KEY]['must_change_pw'] ?? null));
+    }
+
+    /**
+     * May this office user mark KYC verified ("saw the original ID") and make
+     * the senior staff roles? The same rule as admin/team.php ($canKyc):
+     * super-admin or manager only.
+     *
+     * @param array<string, mixed>|null $admin
+     */
+    public static function officeCanKyc(?array $admin): bool
+    {
+        $role = (string) ($admin['role'] ?? '');
+        return $admin !== null && ($role === 'superadmin' || $role === 'manager');
+    }
+
+    /** Staff roles only a super-admin / manager office user may create from the office form. */
+    public const OFFICE_SENIOR_ROLES = ['manager', 'accountant'];
 
     /** @var array<string, true> */
     private static array $appCols = [];
@@ -602,7 +633,9 @@ final class AgentPro
         }
         if (array_key_exists('upi_id', $in)) {
             $upi = strtolower(trim((string) $in['upi_id']));
-            if ($upi !== '' && preg_match('/^[a-z0-9._-]{2,64}@[a-z][a-z0-9.-]{1,30}$/', $upi) !== 1) {
+            // A bare 10-digit Indian mobile is accepted too: UPI apps pay "to mobile number"
+            // (the paper form's "UPI / eSewa / Khalti" box usually holds just the number).
+            if ($upi !== '' && preg_match('/^[a-z0-9._-]{2,64}@[a-z][a-z0-9.-]{1,30}$/', $upi) !== 1 && preg_match('/^[6-9]\d{9}$/', $upi) !== 1) {
                 throw new RuntimeException('The UPI ID looks wrong (like name@okaxis).');
             }
             $u['upi_id'] = $upi !== '' ? $upi : null;
@@ -1002,8 +1035,36 @@ final class AgentPro
         ])));
         if ($u !== []) {
             Database::update('ap_applications', $u, 'id = :i', ['i' => (int) $app['id']]);
+            self::markOfficeEdit($app);
         }
         return self::draft($key) ?? $app;
+    }
+
+    /**
+     * The office changed a form AFTER it was sent (join.php?office=1&d=…):
+     * note it in readout.office_edited_at, so approve() copies the form as it
+     * is now into the account and profile. An explicit marker, not updated_at
+     * vs submitted_at: those two come from different clocks (MySQL TIMESTAMP in
+     * the server's zone vs PHP date() in Asia/Kolkata), and background readout
+     * writes touch updated_at too. Its own column (af1 migration) so the
+     * background ID reader, which rewrites readout from an older copy, cannot
+     * drop it; before the migration, one atomic JSON_SET into readout.
+     *
+     * @param array<string, mixed> $app the row as it was before the change
+     */
+    private static function markOfficeEdit(array $app): void
+    {
+        if ((string) ($app['status'] ?? '') !== 'submitted') {
+            return;
+        }
+        if (self::appHas('office_edited_at')) {
+            Database::update('ap_applications', ['office_edited_at' => date('Y-m-d H:i:s')], 'id = :i', ['i' => (int) $app['id']]);
+            return;
+        }
+        Database::run(
+            "UPDATE ap_applications SET readout = JSON_SET(IF(JSON_VALID(readout), readout, '{}'), '$.office_edited_at', :t) WHERE id = :i",
+            ['t' => date('c'), 'i' => (int) $app['id']]
+        );
     }
 
     /**
@@ -1093,6 +1154,7 @@ final class AgentPro
             'phone' => $phone, 'country' => $country, 'wa_verified_at' => date('Y-m-d H:i:s'), 'wa_verified_via' => 'office',
             'office_filled_by' => $by, 'verify_code' => null, 'readout' => json_encode($readout, JSON_UNESCAPED_UNICODE),
         ], 'id = :i', ['i' => (int) $app['id']]);
+        self::markOfficeEdit($app);   // the number changed after sending: approve() refreshes the profile
         if (!empty($app['admin_id'])) {
             Database::update('admins', ['phone' => $phone], 'id = :i AND is_active = 0', ['i' => (int) $app['admin_id']]);
         }
@@ -1127,6 +1189,15 @@ final class AgentPro
             }
             $bin = base64_decode(substr($uri, (int) strpos($uri, ',') + 1), true);
             if ($bin === false || strlen($bin) < 1500 || strlen($bin) > 8_000_000) {
+                continue;
+            }
+            // The header's size BEFORE GD opens it: a tiny PNG can claim 46000x46000 px
+            // (libgd would allocate gigabytes outside memory_limit). Same rule as every upload.
+            if (!class_exists('AgentApplications')) {
+                require_once __DIR__ . '/agentapplications.php';
+            }
+            if (!AgentApplications::imageFits($bin)) {
+                unset($bin);
                 continue;
             }
             $img = @imagecreatefromstring($bin);
@@ -1576,8 +1647,9 @@ final class AgentPro
         $role = (string) $admin['role'];
 
         // The office may have finished the form after it was sent (join.php?office=1&d=…):
-        // the account and profile take the form as it is now.
-        if (strtotime((string) ($app['updated_at'] ?? '')) > strtotime((string) ($app['submitted_at'] ?? '')) + 5) {
+        // the account and profile take the form as it is now. saveDraft / officeVerify set
+        // the marker; no comparison of updated_at with submitted_at (two different clocks).
+        if (!empty($app['office_edited_at']) || !empty(jsonColumn($app['readout'] ?? null)['office_edited_at'])) {
             $isOrg = $role === 'agent' && $app['agent_kind'] === 'org';
             $name = trim((string) ($isOrg ? $app['org_name'] : $app['full_name']));
             if ($name !== '' && $name !== (string) $admin['full_name']) {

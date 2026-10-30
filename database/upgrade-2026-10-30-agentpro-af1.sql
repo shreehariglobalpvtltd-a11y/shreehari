@@ -7,6 +7,7 @@
 --      office_filled_by = the admin who filled / vouched for it
 --    * the printed paper form has more boxes than the online one had:
 --      occupation, education, experience, skills, languages, PAN
+--    * office_edited_at: the office changed a SENT form (approve refreshes the account)
 --
 --  Additive and re-runnable: each column is added only when missing, the
 --  ENUM only gains a value (stored values never change), and nothing runs
@@ -78,5 +79,13 @@ SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ap_applications' AND COLUMN_NAME = 'pan');
 SET @sql := IF(@t = 1 AND @col = 0,
   'ALTER TABLE `ap_applications` ADD COLUMN `pan` VARCHAR(12) NULL',
+  'DO 0');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- ---- office_edited_at (the office changed the form after it was sent: approve copies it into the profile) ----
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ap_applications' AND COLUMN_NAME = 'office_edited_at');
+SET @sql := IF(@t = 1 AND @col = 0,
+  'ALTER TABLE `ap_applications` ADD COLUMN `office_edited_at` DATETIME NULL COMMENT ''set when the office edits a submitted form - approve refreshes the account from it''',
   'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;

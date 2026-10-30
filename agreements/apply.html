@@ -5,15 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a2a8f">
 <script>
-/* 30 Oct 2026 (owner: one form system): the agent / sub-agent / partner one-page form now lives at /join.php
-   (AgentPro: live selfie, paper-form AI read, office approval, ID + visiting card). Still here: ?kind=staff
-   (the A4 staff sheet + its scan card), ?kind=office|driver, the status tracker (?track= ?ref= ?phone=), ?old=1. */
+/* 30 Oct 2026 (owner: one form system): the agent / partner one-page form now lives at /join.php
+   (AgentPro: live selfie, paper-form AI read, office approval, ID + visiting card). Only ?kind=agent|ind|partner|org
+   goes there, with the invitation's name / phone / cc (admin/team-invite.php bulk invites).
+   Still here until join.php covers them: a bare apply.html (the role chooser, incl. driver), ?kind=subagent
+   (the parent agent code), ?kind=staff (the A4 staff sheet + its scan card), ?kind=office|driver,
+   the status tracker (?track= ?ref=, or ?phone= with no kind / name), ?old=1. */
 (function () {
   try {
     var q = new URLSearchParams(location.search), k = (q.get('kind') || '').toLowerCase();
-    if (k === 'staff' || k === 'office' || k === 'driver' || q.has('track') || q.has('ref') || q.has('phone') || q.has('old')) return;
-    var as = (k === 'partner' || k === 'org') ? 'org' : ((k === 'agent' || k === 'subagent' || k === 'ind') ? 'person' : '');
-    location.replace('/join.php' + (as ? '?as=' + as : ''));
+    var as = (k === 'partner' || k === 'org') ? 'org' : ((k === 'agent' || k === 'ind') ? 'person' : '');
+    if (!as || q.has('track') || q.has('ref') || q.has('old') || (q.has('phone') && !k && !q.has('name'))) return;
+    var out = new URLSearchParams(); out.set('as', as);
+    ['name', 'phone', 'cc'].forEach(function (p) { var v = q.get(p); if (v) out.set(p, v.slice(0, 120)); });
+    location.replace('/join.php?' + out.toString());
   } catch (e) { /* very old browser: the one-page form below still works */ }
 })();
 </script>

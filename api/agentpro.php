@@ -10,8 +10,12 @@
  *    start · get · save (lenient=1: skip a bad field, say which) · otp_send
  *    otp_verify · reverse · reverse_status
  *    upload (front|back|selfie|thumb|extra, + qr text) · read_status
- *    scan_form (the hand-filled paper form: pages[] JPEG data URIs → ApFormRead)
+ *    scan_form (the hand-filled paper form: pages[] JPEG data URIs → ApFormRead;
+ *      under PHP-FPM it answers status "queued" + job at once and reads after the
+ *      connection closed) · scan_status (job → still "queued", or the result once)
  *    drop_extra · submit
+ *  A sent form (not a draft any more) shows the public side only its ref, status
+ *  and the applicant's own form link (ApForm::applicantUrl) — see ap_draft_view.
  *  OFFICE (office=1 + an office sign-in, AgentPro::officeAllowed; join.php?office=1):
  *    the same actions on any draft or submitted form, plus
  *    office_role · office_verify (skip WhatsApp with a reason) · phone_check
@@ -67,9 +71,28 @@ function ap_draft(): array
     return $d;
 }
 
-/** What the browser may see of a draft (never the encrypted numbers or file paths). */
+/**
+ * What the browser may see of a draft (never the encrypted numbers or file paths).
+ *
+ * The public side (a draft key only — it travels in "continue later" links and
+ * office pages print it) sees the whole form only while it is still a DRAFT.
+ * Once sent: the reference and status, plus the applicant's own form link
+ * (ApForm::applicantUrl, an HMAC token — not the key) for the 30 days
+ * ApForm::applicantMayOpen allows. The office (office=1 + sign-in) sees it all.
+ */
 function ap_draft_view(array $d, ?array $office = null): array
 {
+    if ($office === null && (string) ($d['status'] ?? 'draft') !== 'draft') {
+        $form = null;
+        if (in_array((string) $d['status'], ['submitted', 'approved'], true)) {
+            require_once INCLUDE_PATH . '/agentpro-form.php';
+            if (ApForm::applicantMayOpen($d)) {
+                $form = ApForm::applicantUrl($d) ?: null;
+            }
+        }
+        return ['ref' => $d['ref'] ?? null, 'status' => (string) $d['status'], 'kind' => $d['kind'] ?? null,
+                'submittedAt' => $d['submitted_at'] ?? null, 'formUrl' => $form];
+    }
     $all = jsonColumn($d['extras'] ?? null);
     $extras = [];
     $paper = 0;
@@ -130,6 +153,73 @@ function ap_phone_taken(?array $owner): void
 const AP_SCAN_FIELDS = ['full_name', 'org_name', 'dob', 'gender', 'guardian', 'phone', 'email', 'address', 'city', 'district', 'state',
     'pincode', 'country', 'id_type', 'id_number', 'id_expires_on', 'bank_holder', 'bank_name', 'bank_account', 'bank_ifsc', 'bank_branch',
     'upi_id', 'esewa_id', 'khalti_id', 'occupation', 'education', 'experience', 'skills', 'languages', 'pan'];
+
+/**
+ * Run ApFormRead on the stored page JPEGs (the K7 ladder: VPS model → Gemini → Tesseract).
+ *
+ * @param list<string> $abs
+ * @return array<string, mixed>
+ */
+function ap_scan_read(array $abs, string $kind): array
+{
+    $r = ['status' => 'unavailable', 'fields' => [], 'confidence' => [], 'reader' => '',
+          'note' => 'The pages are attached for the office — the form reader is not switched on yet, please fill the boxes.'];
+    if (!is_file(INCLUDE_PATH . '/agentpro-formread.php')) {
+        return $r;
+    }
+    require_once INCLUDE_PATH . '/agentpro-formread.php';
+    if (!class_exists('ApFormRead') || !method_exists('ApFormRead', 'read')) {
+        return $r;
+    }
+    // a model on the VPS may take minutes; the session must not block this browser's other calls
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+    @set_time_limit(330);
+    try {
+        $got = ApFormRead::read($abs, $kind);
+        if (is_array($got)) {
+            $r = array_merge($r, $got);
+        }
+    } catch (Throwable $e) {
+        Logger::warning('AgentPro paper form read failed: ' . $e->getMessage(), [], 'agent');
+        $r['note'] = 'The reader could not read it this time — the pages are attached; please fill the boxes.';
+    }
+    return $r;
+}
+
+/**
+ * The reader's answer cut to the K2 contract (known columns, high/medium/low),
+ * noted for the office (masked) and logged.
+ *
+ * @param array<string, mixed> $r
+ * @return array<string, mixed>
+ */
+function ap_scan_finish(array $r, string $key, string $ref, int $officeId, int $pageCount): array
+{
+    $fields = [];
+    $conf = [];
+    foreach ((array) ($r['fields'] ?? []) as $k => $v) {
+        $k = (string) $k;
+        if (!in_array($k, AP_SCAN_FIELDS, true) || !is_scalar($v) || trim((string) $v) === '') {
+            continue;
+        }
+        $fields[$k] = mb_substr(trim((string) $v), 0, 255);
+        $c = (string) (((array) ($r['confidence'] ?? []))[$k] ?? 'low');
+        $conf[$k] = in_array($c, ['high', 'medium', 'low'], true) ? $c : 'low';
+    }
+    if (isset($fields['id_type']) && !isset(AgentPro::ID_TYPES[$fields['id_type']])) {
+        unset($fields['id_type'], $conf['id_type']);
+    }
+    $status = in_array((string) ($r['status'] ?? ''), ['read', 'partial', 'notform', 'unavailable'], true) ? (string) $r['status'] : 'partial';
+    $out = ['status' => $status, 'fields' => (object) $fields, 'confidence' => (object) $conf,
+            'reader' => in_array((string) ($r['reader'] ?? ''), ['vps', 'gemini', 'tesseract'], true) ? (string) $r['reader'] : '',
+            'note' => mb_substr((string) ($r['note'] ?? ''), 0, 300), 'pages' => $pageCount];
+    AgentPro::noteFormRead($key, ['fields' => $fields, 'confidence' => $conf] + $out);
+    Logger::info('AgentPro paper form', ['ref' => $ref, 'status' => $status, 'reader' => $out['reader'],
+        'filled' => array_keys($fields), 'pages' => $pageCount, 'office' => $officeId]);
+    return $out;
+}
 
 /** Signed-in member or 401. */
 function ap_me(): array
@@ -219,6 +309,9 @@ try {
             Security::requirePost();
             $off = ap_office() ?? Response::forbidden('Office only.');
             $d = ap_draft();
+            if (in_array((string) Response::field('role', ''), AgentPro::OFFICE_SENIOR_ROLES, true) && !AgentPro::officeCanKyc($off)) {
+                Response::forbidden('Only a manager or the super-admin can make a manager / accountant login. · म्यानेजर / लेखा खाता म्यानेजरले मात्र बनाउन सक्छन्।');
+            }
             $d = AgentPro::officeSetRole((string) $d['draft_key'], (string) Response::field('role', 'agent'),
                 (string) Response::field('designation', ''), (string) Response::field('agent_kind', 'person'));
             Response::success(['draft' => ap_draft_view($d, $off)]);
@@ -287,53 +380,85 @@ try {
             $d = ap_draft();
             Security::requireRateLimit('apjoin_scan', (string) $d['draft_key'], 8, 3600);
             if ($off === null) {
-                Security::requireRateLimit('apjoin_scan_ip', Security::clientIp(), 20, 3600);
+                Security::requireRateLimit('apjoin_scan_ip', Security::clientIp(), 10, 3600);   // each read is minutes of model time
             }
             $raw = Response::field('pages', []);
             $pages = AgentPro::storePaperPages((string) $d['draft_key'], is_array($raw) ? $raw : [], $off !== null);
             unset($raw);
             $kind = ($d['kind'] ?? '') === 'staff' ? 'staff' : 'agent';
-            $r = ['status' => 'unavailable', 'fields' => [], 'confidence' => [], 'reader' => '',
-                  'note' => 'The pages are attached for the office — the form reader is not switched on yet, please fill the boxes.'];
-            if (is_file(INCLUDE_PATH . '/agentpro-formread.php')) {
-                require_once INCLUDE_PATH . '/agentpro-formread.php';
-                if (class_exists('ApFormRead') && method_exists('ApFormRead', 'read')) {
-                    // a model on the VPS may take minutes; the session must not block this browser's other calls
-                    session_write_close();
-                    @set_time_limit(330);
+            $key = (string) $d['draft_key'];
+            $abs = array_column($pages, 'abs');
+            $hasReader = is_file(INCLUDE_PATH . '/agentpro-formread.php');
+            // A model on the VPS may take minutes — longer than nginx waits for PHP (60 s by default).
+            // Under PHP-FPM the answer goes back at once ("queued"), the read runs after the
+            // connection is closed, and the page asks scan_status every few seconds.
+            if ($hasReader && PHP_SAPI === 'fpm-fcgi' && function_exists('fastcgi_finish_request')) {
+                $jobId = Database::insert('ap_jobs', [
+                    'phone' => 'form', 'kind' => 'formscan', 'status' => 'running', 'attempts' => 3,   // attempts 3: the worker never claims or re-queues it
+                    'text' => json_encode(['key' => $key, 'ref' => (string) $d['ref']]), 'started_at' => date('Y-m-d H:i:s'),
+                ]);
+                $offId = (int) ($off['id'] ?? 0);
+                $ref = (string) $d['ref'];
+                $count = count($pages);
+                register_shutdown_function(static function () use ($jobId, $abs, $kind, $key, $ref, $offId, $count): void {
                     try {
-                        $got = ApFormRead::read(array_column($pages, 'abs'), $kind);
-                        if (is_array($got)) {
-                            $r = array_merge($r, $got);
+                        if (session_status() === PHP_SESSION_ACTIVE) {
+                            session_write_close();
                         }
+                        fastcgi_finish_request();
+                        ignore_user_abort(true);
+                        $out = ap_scan_finish(ap_scan_read($abs, $kind), $key, $ref, $offId, $count);
+                        // the full values (ID / bank numbers) wait encrypted for this one browser; scan_status hands them over once
+                        Database::update('ap_jobs', ['status' => 'done', 'finished_at' => date('Y-m-d H:i:s'),
+                            'reply' => AgentPro::encrypt((string) json_encode($out, JSON_UNESCAPED_UNICODE))], 'id = :i', ['i' => (int) $jobId]);
                     } catch (Throwable $e) {
-                        Logger::warning('AgentPro paper form read failed: ' . $e->getMessage(), [], 'agent');
-                        $r['note'] = 'The reader could not read it this time — the pages are attached; please fill the boxes.';
+                        Logger::warning('AgentPro paper form read (background) failed: ' . $e->getMessage(), [], 'agent');
+                        try {
+                            Database::update('ap_jobs', ['status' => 'failed', 'finished_at' => date('Y-m-d H:i:s'),
+                                'error' => mb_substr($e->getMessage(), 0, 250)], 'id = :i', ['i' => (int) $jobId]);
+                        } catch (Throwable $e2) {
+                        }
                     }
+                });
+                $out = ['status' => 'queued', 'job' => (int) $jobId, 'fields' => (object) [], 'confidence' => (object) [], 'reader' => '',
+                        'note' => '', 'pages' => $count];
+                Response::json(['ok' => true] + $out + ['data' => $out + ['draft' => ap_draft_view(AgentPro::draft($key) ?? $d, $off)]]);
+            }
+            // php -S / CLI (no FastCGI): read in this request, as before.
+            $out = ap_scan_finish(ap_scan_read($abs, $kind), $key, (string) $d['ref'], (int) ($off['id'] ?? 0), count($pages));
+            Response::json(['ok' => true] + $out + ['data' => $out + ['draft' => ap_draft_view(AgentPro::draft($key) ?? $d, $off)]]);
+
+        case 'scan_status':
+            // The background paper-form read (scan_form answered "queued"): still reading, or the result — once.
+            Security::requirePost();
+            $off = ap_office();
+            $d = ap_draft();
+            $jobId = (int) Response::field('job', 0);
+            $job = $jobId > 0 ? Database::fetch("SELECT * FROM ap_jobs WHERE id = :i AND kind = 'formscan'", ['i' => $jobId]) : null;
+            $p = $job !== null ? json_decode((string) $job['text'], true) : null;
+            if ($job === null || !is_array($p) || !hash_equals((string) $d['draft_key'], (string) ($p['key'] ?? ''))) {
+                Response::error('That form read was not found — upload the pages again.', 404);
+            }
+            $view = static function (array $o) use ($d, $off): void {
+                Response::json(['ok' => true] + $o + ['data' => $o + ['draft' => ap_draft_view(AgentPro::draft((string) $d['draft_key']) ?? $d, $off)]]);
+            };
+            $gone = ['status' => 'unavailable', 'fields' => (object) [], 'confidence' => (object) [], 'reader' => '', 'pages' => 0,
+                     'note' => 'The reader could not read it this time — the pages are attached; please fill the boxes.'];
+            if ($job['status'] === 'running') {
+                if (strtotime((string) $job['started_at']) < time() - 600) {   // the PHP worker died mid-read
+                    Database::update('ap_jobs', ['status' => 'failed', 'finished_at' => date('Y-m-d H:i:s'), 'error' => 'timed out'], 'id = :i', ['i' => $jobId]);
+                    $view($gone);
                 }
+                $view(['status' => 'queued', 'job' => $jobId, 'fields' => (object) [], 'confidence' => (object) [], 'reader' => '', 'note' => '', 'pages' => 0]);
             }
-            $fields = [];
-            $conf = [];
-            foreach ((array) ($r['fields'] ?? []) as $k => $v) {
-                $k = (string) $k;
-                if (!in_array($k, AP_SCAN_FIELDS, true) || !is_scalar($v) || trim((string) $v) === '') {
-                    continue;
-                }
-                $fields[$k] = mb_substr(trim((string) $v), 0, 255);
-                $c = (string) (($r['confidence'] ?? [])[$k] ?? 'low');
-                $conf[$k] = in_array($c, ['high', 'medium', 'low'], true) ? $c : 'low';
+            $res = $job['status'] === 'done' && (string) ($job['reply'] ?? '') !== '' ? json_decode(AgentPro::decrypt((string) $job['reply']), true) : null;
+            Database::update('ap_jobs', ['reply' => null], 'id = :i', ['i' => $jobId]);   // handed over once; nothing readable stays behind
+            if (!is_array($res)) {
+                $view($gone);
             }
-            if (isset($fields['id_type']) && !isset(AgentPro::ID_TYPES[$fields['id_type']])) {
-                unset($fields['id_type'], $conf['id_type']);
-            }
-            $status = in_array((string) $r['status'], ['read', 'partial', 'notform', 'unavailable'], true) ? (string) $r['status'] : 'partial';
-            $out = ['status' => $status, 'fields' => (object) $fields, 'confidence' => (object) $conf,
-                    'reader' => in_array((string) $r['reader'], ['vps', 'gemini', 'tesseract'], true) ? (string) $r['reader'] : '',
-                    'note' => mb_substr((string) ($r['note'] ?? ''), 0, 300), 'pages' => count($pages)];
-            AgentPro::noteFormRead((string) $d['draft_key'], ['fields' => $fields, 'confidence' => $conf] + $out);
-            Logger::info('AgentPro paper form', ['ref' => $d['ref'], 'status' => $status, 'reader' => $out['reader'],
-                'filled' => array_keys($fields), 'pages' => count($pages), 'office' => $off['id'] ?? 0]);
-            Response::json(['ok' => true] + $out + ['data' => $out + ['draft' => ap_draft_view(AgentPro::draft((string) $d['draft_key']) ?? $d, $off)]]);
+            $res['fields'] = (object) ($res['fields'] ?? []);
+            $res['confidence'] = (object) ($res['confidence'] ?? []);
+            $view($res);
 
         case 'read_status':
             $d = ap_draft();
@@ -364,8 +489,11 @@ try {
             }
             if ($off === null) {
                 $app = AgentPro::submit((string) $d['draft_key']);
+                // K3: the applicant's own copy — /join-form.php?t=<HMAC token> (join-form.php refuses a raw ?k= key)
+                require_once INCLUDE_PATH . '/agentpro-form.php';
+                $full = AgentPro::application((int) $app['id']) ?? $app;
                 Response::success(['ref' => $app['ref'], 'status' => $app['status'],
-                    'form_url' => '/join-form.php?k=' . $d['draft_key']], 'Sent to the office.');
+                    'form_url' => ApForm::applicantMayOpen($full) ? (ApForm::applicantUrl($full) ?: null) : null], 'Sent to the office.');
             }
             // K1: the office filled it — send, and (approve_now=1) approve at once: login + agent code / staff no.
             if ($d['status'] === 'draft') {
@@ -376,9 +504,17 @@ try {
             $out = ['ref' => (string) $app['ref'], 'status' => (string) $app['status'], 'admin_id' => $adminId, 'code' => '',
                     'member_url' => $adminId > 0 ? '/admin/team-member.php?id=' . $adminId : null,
                     'form_url' => '/admin/team-form.php?app=' . (int) $app['id']];
+            $senior = ($app['kind'] ?? '') === 'staff' && in_array((string) ($app['role_wanted'] ?? ''), AgentPro::OFFICE_SENIOR_ROLES, true);
+            if ($senior && !AgentPro::officeCanKyc($off) && $app['status'] !== 'approved') {
+                // a manager / accountant login is approved by a manager in Team → Approvals, never at once here
+                Response::success($out + ['note' => 'Sent to approvals — a manager approves a manager / accountant login.'], 'Sent to approvals.');
+            }
             if ((string) Response::field('approve_now', '') === '1' && $app['status'] !== 'rejected') {
-                $sawId = in_array(Response::field('saw_id', ''), ['1', 1, true], true);
-                $res = AgentPro::approve((int) $app['id'], (int) $off['id'], $sawId);
+                // Only a super-admin / manager may mark KYC verified — the admin/team.php rule ($canKyc);
+                // anyone else's "saw the original ID" tick leaves KYC "submitted" for a manager to check.
+                $canKyc = AgentPro::officeCanKyc($off);
+                $sawId = $canKyc && in_array(Response::field('saw_id', ''), ['1', 1, true], true);
+                $res = AgentPro::approve((int) $app['id'], (int) $off['id'], $canKyc ? $sawId : false);
                 $m = AgentPro::member((int) $res['admin_id']);
                 $out['status'] = 'approved';
                 $out['admin_id'] = (int) $res['admin_id'];

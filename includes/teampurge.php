@@ -440,6 +440,16 @@ final class TeamPurge
                 ['admin_profiles',        'parent_agent_id','subagents',   'Sub-agents under this agent · सब-एजेन्ट'],
                 ['agent_applications',    'parent_agent_id','sub_apps',    'Applications under this agent · मातहत आवेदन'],
                 ['ap_deposit_requests',   'decided_by',     'ap_dep_by',   'Payments-in this person decided · जम्मा निर्णय'],
+                ['offline_requests',      'admin_id',       'offline_q',   'Offline bookings / cash taken · अफलाइन बुकिङ / नगद'],
+                ['payment_reviews',       'admin_id',       'pay_reviews', 'Payment reviews this person did · भुक्तानी जाँच'],
+                ['trip_expenses',         'created_by',     'trip_exp_by', 'Trip expenses this person recorded · यात्रा खर्च'],
+                ['counter_shift_expenses','created_by',     'shift_exp_by','Counter expenses this person recorded · काउन्टर खर्च'],
+                ['staff_salary_payments', 'created_by',     'salary_by',   'Salary payments this person recorded · तलब भुक्तानी'],
+                ['staff_salary_payments', 'updated_by',     'salary_upd',  'Salary payments this person edited · तलब सम्पादन'],
+                ['staff_advances',        'created_by',     'advance_by',  'Staff advances this person recorded · कर्मचारी पेस्की'],
+                ['agent_loans',           'created_by',     'loans_by',    'Agent loans this person recorded · एजेन्ट ऋण'],
+                ['agent_deposit_txns',    'created_by',     'deposits_by', 'Deposit entries this person recorded · धरौटी प्रविष्टि'],
+                ['offline_tickets',       'created_by',     'offline_by',  'Paper tickets this person recorded · कागजी टिकट (लेखेको)'],
             ];
             foreach ($money as [$t, $c, $key, $label]) {
                 if (self::has($t, $c)) {

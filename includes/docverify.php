@@ -436,10 +436,13 @@ final class DocVerify
      * One Gemini vision call that must answer JSON.
      * 30 Oct 2026: a part may also be application/pdf; an unsupported part is skipped (mediaParts()).
      *
+     * 30 Oct 2026 (af1 review): $deadline (a microtime, 0 = none) — no model is tried, and no call
+     * waits, past it (ApFormRead runs inside a web request).
+     *
      * @param list<array{bytes: string, mime: string}> $images
      * @return array<string, mixed>|null
      */
-    public static function geminiJson(string $prompt, array $images, int $maxTokens = 600, string $who = 'DocVerify'): ?array
+    public static function geminiJson(string $prompt, array $images, int $maxTokens = 600, string $who = 'DocVerify', float $deadline = 0.0): ?array
     {
         $key = trim(Settings::getString('gemini_api_key', ''));
         if ($key === '' || !function_exists('curl_init')) {
@@ -456,9 +459,17 @@ final class DocVerify
         ];
 
         foreach (self::geminiLadder() as $model) {
+            $sec = self::TIMEOUT_SEC;
+            if ($deadline > 0) {
+                $sec = min($sec, (int) floor($deadline - microtime(true)));
+                if ($sec < 4) {
+                    Logger::warning($who . ': no time left for another Gemini model', ['model' => $model]);
+                    break;
+                }
+            }
             $ch = curl_init('https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent');
             curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => self::TIMEOUT_SEC,
+                CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => $sec, CURLOPT_CONNECTTIMEOUT => min(10, $sec),
                 CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'x-goog-api-key: ' . $key],
             ]);

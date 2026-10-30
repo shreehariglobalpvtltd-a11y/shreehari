@@ -139,6 +139,7 @@ if (Security::isPost()) {
                 Settings::set('ap_ai_doc_timeout', (string) max(20, min(600, (int) ($_POST['ap_ai_doc_timeout'] ?? 120))), 'int', 'agentpro', false);
                 Settings::set('ap_ai_wa_wait', (string) max(3, min(60, (int) ($_POST['ap_ai_wa_wait'] ?? 20))), 'int', 'agentpro', false);
                 Settings::set('ap_form_vps_budget', (string) max(30, min(900, (int) ($_POST['ap_form_vps_budget'] ?? 150))), 'int', 'agentpro', false);
+                Settings::set('ap_form_read_deadline', (string) max(15, min(900, (int) ($_POST['ap_form_read_deadline'] ?? ApFormRead::DEADLINE))), 'int', 'agentpro', false);
                 $ka = trim((string) ($_POST['ap_ai_keep_alive'] ?? '30m'));
                 Settings::set('ap_ai_keep_alive', preg_match('/^(?:-1|0|\d{1,4}[smh])$/', $ka) === 1 ? $ka : '30m', 'string', 'agentpro', false);
                 if (isset($_POST['ap_ai_api_key']) && $_POST['ap_ai_api_key'] !== '••••') {
@@ -181,7 +182,10 @@ if (Security::isPost()) {
                 $flash = ['ok', 'Back to the built-in notes. / सुरुकै निर्देशन।'];
             } elseif ($act === 'example_add') {
                 $field = (string) ($_POST['field'] ?? '');
-                if (!in_array($field, ApFormRead::KEYS, true)) {
+                if (in_array($field, ApFormRead::PRIVATE_KEYS, true)) {
+                    throw new RuntimeException('ID, PAN, bank, mobile, e-mail, UPI / wallet numbers and dates of birth are never kept as examples — they are one person\'s details. / यी विवरण उदाहरणमा राखिँदैन।');
+                }
+                if (!ApFormRead::exampleAllowed($field)) {
                     throw new RuntimeException('Pick which box the example is for.');
                 }
                 if (trim((string) ($_POST['value'] ?? '')) === '') {
@@ -197,18 +201,26 @@ if (Security::isPost()) {
                 }
                 $have = ApFormRead::training()['examples'];
                 $added = 0;
+                $private = 0;
                 foreach (array_slice($in, 0, ApFormRead::EXAMPLES_MAX) as $row) {
                     $v = is_array($row) ? trim((string) ($row['value'] ?? '')) : '';
-                    if ($v !== '' && in_array((string) ($row['field'] ?? ''), ApFormRead::KEYS, true) && $v !== trim((string) ($row['written'] ?? ''))) {
-                        $have[] = ['field' => (string) $row['field'], 'written' => (string) ($row['written'] ?? ''), 'value' => $v];
+                    $f = is_array($row) && is_scalar($row['field'] ?? null) ? (string) $row['field'] : '';
+                    if ($v === '' || $v === trim((string) ($row['written'] ?? ''))) {
+                        continue;
+                    }
+                    if (in_array($f, ApFormRead::PRIVATE_KEYS, true)) {
+                        $private++;                       // one person's ID / bank / contact number: never kept
+                    } elseif (ApFormRead::exampleAllowed($f)) {
+                        $have[] = ['field' => $f, 'written' => (string) ($row['written'] ?? ''), 'value' => $v];
                         $added++;
                     }
                 }
+                $skipNote = $private > 0 ? ' ' . $private . ' ID / bank / contact correction' . ($private === 1 ? ' was' : 's were') . ' not kept (never stored).' : '';
                 if ($added === 0) {
-                    throw new RuntimeException('No correction differed from what the AI read — nothing to save.');
+                    throw new RuntimeException('Nothing to save — no correction differed from what the AI read.' . $skipNote);
                 }
                 $n = $saveExamples($have, 'Form AI corrections saved (' . $added . ')');
-                $flash = ['ok', $added . ' correction' . ($added === 1 ? '' : 's') . ' saved as examples — ' . $n . ' in all. The next read uses them. / सिकाइयो।'];
+                $flash = ['ok', $added . ' correction' . ($added === 1 ? '' : 's') . ' saved as examples — ' . $n . ' in all. The next read uses them. / सिकाइयो।' . $skipNote];
             } elseif ($act === 'example_delete') {
                 $have = ApFormRead::training()['examples'];
                 $i = (int) ($_POST['i'] ?? -1);
@@ -245,6 +257,12 @@ $seen = (int) Settings::getString('ap_worker_seen', '0');
 $installed = array_column($models, 'name');
 $readers = ApFormRead::readers();                 // yes / no and names only
 $recHave = in_array($rec['vision'], $installed, true) || in_array($rec['chat'], $installed, true);
+// examples saved before the af1 review may hold one person's ID / bank / contact numbers: drop them from settings
+$rawEx = Settings::get('ap_form_examples', []);
+$rawEx = is_string($rawEx) ? json_decode($rawEx, true) : $rawEx;
+if (is_array($rawEx) && array_filter($rawEx, static fn($r): bool => is_array($r) && is_scalar($r['field'] ?? null) && in_array(trim((string) $r['field']), ApFormRead::PRIVATE_KEYS, true)) !== []) {
+    $saveExamples($rawEx, 'Form AI examples: ID / bank / contact numbers removed');
+}
 $t = ApFormRead::training();
 $hintsSaved = Settings::get('ap_form_hints', null) !== null;
 $labels = ApFormRead::labels('agent');
@@ -379,7 +397,7 @@ if ($flash !== null) {
     <div style="overflow:auto"><table class="fa-t"><thead><tr><th>Box · बाकस</th><th>AI read · AI ले पढ्यो</th><th>Sure?</th><th>Correct value · सही मान</th></tr></thead><tbody id="faRows"></tbody></table></div>
     <form method="post" id="faSave" class="fa-acts" action="#formai"><?= Security::csrfField() ?><input type="hidden" name="action" value="corrections"><input type="hidden" name="corrections" id="faCorr">
       <button class="btn ok ai-btn48" type="submit">💾 Save corrections as examples · सिकाउनुहोस्</button>
-      <span class="ph-sub">Only rows where you typed a different value are saved. The sample itself is never stored.</span></form>
+      <span class="ph-sub">Only rows where you typed a different value are saved. The sample itself is never stored, and ID, PAN, bank, mobile, e-mail, UPI / wallet numbers and dates of birth are never kept as examples (examples stay on our server — they are not sent to Gemini). · ID र बैंक नम्बर कहिल्यै राखिँदैन।</span></form>
   </div>
 
   <h3 style="margin:20px 0 6px;font-size:15px">📝 Notes for the AI · AI लाई निर्देशन</h3>
@@ -408,7 +426,7 @@ if ($flash !== null) {
   <form method="post" style="margin-top:12px" action="#formai"><?= Security::csrfField() ?><input type="hidden" name="action" value="example_add">
     <div class="fa-f">
       <label>Box · बाकस<select name="field" required><option value="">— choose —</option>
-        <?php foreach ($labels as $k => $l): ?><option value="<?= $e($k) ?>"><?= $e($l) ?></option><?php endforeach; ?></select></label>
+        <?php foreach ($labels as $k => $l): if (!ApFormRead::exampleAllowed($k)) { continue; } ?><option value="<?= $e($k) ?>"><?= $e($l) ?></option><?php endforeach; ?></select></label>
       <label>Read as / written · जस्तो लेखिएको<input name="written" maxlength="<?= ApFormRead::EXAMPLE_LEN ?>" placeholder="e.g. Gujrati or २०४८/५/१२"></label>
       <label>Correct value · सही मान<input name="value" maxlength="<?= ApFormRead::EXAMPLE_LEN ?>" required placeholder="e.g. Gujarati or 1991-08-28"></label>
     </div>
@@ -462,6 +480,7 @@ if ($flash !== null) {
         <label>Seconds per WhatsApp answer (max)<input name="ap_ai_timeout" type="number" min="20" max="600" value="<?= (int) Settings::getInt('ap_ai_timeout', 150) ?>" <?= $super ? '' : 'disabled' ?>></label>
         <label>Seconds per document / page (max)<input name="ap_ai_doc_timeout" type="number" min="20" max="600" value="<?= ApAi::docTimeout() ?>" <?= $super ? '' : 'disabled' ?>></label>
         <label>Seconds for a whole paper form on the VPS<input name="ap_form_vps_budget" type="number" min="30" max="900" value="<?= max(30, min(900, Settings::getInt('ap_form_vps_budget', 150))) ?>" <?= $super ? '' : 'disabled' ?>></label>
+        <label>Seconds for one paper-form read in all (VPS + Gemini + Tesseract; keep under nginx's fastcgi_read_timeout, 60 s by default)<input name="ap_form_read_deadline" type="number" min="15" max="900" value="<?= max(15, min(900, Settings::getInt('ap_form_read_deadline', ApFormRead::DEADLINE))) ?>" <?= $super ? '' : 'disabled' ?>></label>
         <label>WhatsApp waits at most (s) while the model is busy<input name="ap_ai_wa_wait" type="number" min="3" max="60" value="<?= ApAi::waWait() ?>" <?= $super ? '' : 'disabled' ?>></label>
         <label>Keep the model in RAM after a call (e.g. 30m, 0)<input name="ap_ai_keep_alive" value="<?= $e(ApAi::keepAlive()) ?>" <?= $super ? '' : 'disabled' ?>></label>
         <label>Chat model (empty = best installed)<input name="ap_ai_model" list="mdl" value="<?= $e(Settings::getString('ap_ai_model', '')) ?>" <?= $super ? '' : 'disabled' ?>></label>
@@ -508,6 +527,7 @@ if ($flash !== null) {
 
   var file = document.getElementById('faFile');
   if (!file) return;
+  var PRIVATE_KEYS = <?= json_encode(ApFormRead::PRIVATE_KEYS) ?>;
   var MAX_PAGES = <?= (int) ApFormRead::MAX_PAGES ?>, CSRF_NAME = <?= json_encode(CSRF_TOKEN_NAME) ?>, CSRF = <?= json_encode(Security::csrfToken()) ?>;
   var go = document.getElementById('faRead'), msg = document.getElementById('faMsg'), thumbs = document.getElementById('faThumbs');
   var out = document.getElementById('faOut'), rows = document.getElementById('faRows'), note = document.getElementById('faNote');
@@ -563,7 +583,7 @@ if ($flash !== null) {
   function cell(tr, text, cls) { var td = document.createElement('td'); if (cls) td.className = cls; td.textContent = text; tr.appendChild(td); return td; }
   go.addEventListener('click', function () {
     if (!pages.length) return;
-    go.disabled = true; out.hidden = true; say('The AI is reading… (up to a few minutes on the VPS) · पढ्दैछ…');
+    go.disabled = true; out.hidden = true; say('The AI is reading… (up to about a minute) · पढ्दैछ…');
     var fd = new FormData();
     fd.append(CSRF_NAME, CSRF); fd.append('action', 'formtry');
     fd.append('kind', document.getElementById('faKind').value); fd.append('reader', document.getElementById('faReader').value);
@@ -583,6 +603,10 @@ if ($flash !== null) {
         var p = document.createElement('span'); p.className = 'fa-c ' + (c || 'none'); p.textContent = c || '—';
         var tc = document.createElement('td'); tc.appendChild(p); tr.appendChild(tc);
         var ti = document.createElement('td'), inp = document.createElement('input');
+        if (PRIVATE_KEYS.indexOf(id) !== -1) {           // one person's ID / bank / contact number: never kept as an example
+          var nk = document.createElement('span'); nk.className = 'ph-sub'; nk.textContent = 'not kept · राखिँदैन';
+          ti.appendChild(nk); tr.appendChild(ti); rows.appendChild(tr); return;
+        }
         inp.dataset.field = id; inp.dataset.ai = v; inp.maxLength = <?= (int) ApFormRead::EXAMPLE_LEN ?>; inp.placeholder = v ? 'only if wrong' : 'if written on the paper';
         inp.setAttribute('aria-label', 'Correct value for ' + j.labels[id]);
         ti.appendChild(inp); tr.appendChild(ti); rows.appendChild(tr);

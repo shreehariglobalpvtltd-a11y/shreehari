@@ -350,3 +350,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .ap-mini .h span{display:flex;flex-direction:column;line-height:1.05}
 .ap-mini .h small{font-size:7.5px;letter-spacing:.2em;color:var(--gold-l);margin-top:2px}
 @media (max-width:380px){.ap-choices{grid-template-columns:1fr}}
+/* link-buttons keep their button colours (the dark theme's gold link colour made them unreadable) */
+#app a.ap-btn{color:#fff}
+#app a.ap-btn.gold{color:#1A1406}
+#app a.ap-btn.ghost{color:var(--ink)}

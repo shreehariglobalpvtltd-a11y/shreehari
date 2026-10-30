@@ -20,7 +20,8 @@
  *   /join.php?office=1&d=<key>    reopen any draft / sent form to finish it
  *   Needs an admin session: superadmin, manager or staff.manage.
  *
- * ?as=org|person preselects agent / agency (agreements/apply.html sends it).
+ * ?as=org|person preselects agent / agency (agreements/apply.html sends it);
+ * ?name=&phone=&cc= (an office invitation, admin/team-invite.php) prefill a new form.
  */
 declare(strict_types=1);
 define('SHG_APP', true);
@@ -44,10 +45,13 @@ if ($officeAsked && !AgentPro::officeAllowed($officeAdmin)) {
 <title>Office form · <?= Security::e($company) ?></title><meta name="robots" content="noindex">
 <link rel="stylesheet" href="/assets/agentpro/ap.css"></head><body><main class="ap-wrap"><div class="ap-card" style="margin-top:40px">
 <h2>🏢 अफिस फारम · Office form</h2>
+<?php $tempPw = $officeAdmin !== null && AgentPro::mustChangePw($officeAdmin); ?>
 <p class="lead"><?= $officeAdmin === null
     ? 'पहिले अफिस खाताबाट लगइन गर्नुहोस् · Sign in with your office account first, then open this link again.'
-    : 'यो फारम म्यानेजर वा "staff.manage" अनुमति भएकाले मात्र भर्न सक्छन् · Only a manager or a user with staff permission can fill the office form.' ?></p>
-<div class="ap-actions"><?php if ($officeAdmin === null): ?><a class="ap-btn" href="/admin/login.php?next=team.php">🔐 Office sign-in</a><?php endif; ?>
+    : ($tempPw
+        ? 'पहिले अस्थायी पासवर्ड बदल्नुहोस् · Change your temporary password first, then open this link again.'
+        : 'यो फारम म्यानेजर वा "staff.manage" अनुमति भएकाले मात्र भर्न सक्छन् · Only a manager or a user with staff permission can fill the office form.') ?></p>
+<div class="ap-actions"><?php if ($officeAdmin === null): ?><a class="ap-btn" href="/admin/login.php?next=team.php">🔐 Office sign-in</a><?php elseif ($tempPw): ?><a class="ap-btn" href="/admin/change-password.php">🔐 पासवर्ड बदल्नुहोस् · Change password</a><?php endif; ?>
 <a class="ap-btn ghost" href="/join.php">Public form</a></div></div></main></body></html><?php
     exit;
 }
@@ -64,6 +68,16 @@ $roles = [
     ['v' => 'scanner',      'label' => 'बोर्डिङ स्टाफ · Boarding staff'],
     ['v' => 'official',     'label' => 'अधिकारी · Official'],
 ];
+// KYC "saw the original ID" and the manager / accountant logins: super-admin or manager only (as admin/team.php)
+$officeKyc = $office && AgentPro::officeCanKyc($officeAdmin);
+if ($office && !$officeKyc) {
+    $roles = array_values(array_filter($roles, static fn(array $r): bool => !in_array($r['v'], AgentPro::OFFICE_SENIOR_ROLES, true)));
+}
+
+/* Prefill from an invitation link (admin/team-invite.php → agreements/apply.html?kind=&name=&phone=&cc=). */
+$pfName = mb_substr(trim(Security::clean((string) ($_GET['name'] ?? ''), 120)), 0, 120);
+$pfPhone = substr(preg_replace('/\D/', '', (string) ($_GET['phone'] ?? '')) ?? '', -10);
+$pfCc = preg_replace('/\D/', '', (string) ($_GET['cc'] ?? '')) === '977' ? 'NP' : 'IN';
 
 $v = static fn(string $f): string => '/assets/agentpro/' . $f . '?v=' . (is_file(ASSET_PATH . '/agentpro/' . $f) ? filemtime(ASSET_PATH . '/agentpro/' . $f) : '1');
 $cfg = [
@@ -92,6 +106,8 @@ $cfg = [
     'officeMode' => $office,
     'officeBy' => $office ? (string) ($officeAdmin['full_name'] ?? $officeAdmin['username'] ?? '') : '',
     'roles'    => $office ? $roles : [],
+    'canKyc'   => $officeKyc,
+    'prefill'  => ['name' => $pfName, 'phone' => strlen($pfPhone) >= 8 ? $pfPhone : '', 'cc' => $pfCc],
 ];
 ?><!doctype html>
 <html lang="ne">
