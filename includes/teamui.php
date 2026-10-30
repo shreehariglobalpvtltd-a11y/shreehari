@@ -111,4 +111,15 @@ h3{font-size:15px;margin:14px 0 6px;color:var(--royal2)}
     {
         $_SESSION['team_flash'] = [$kind, $text];
     }
+
+    /**
+     * Redirect after a POST (303). 30 Oct 2026: restored — team portal 3 (97f0f1eb) had it, a later
+     * capture (68ef0134) dropped it, and every successful /team/ sign-in, reset and sign-out then
+     * ended in "Something went wrong" (an undefined method, caught by the page).
+     */
+    public static function go(string $to): never
+    {
+        header('Location: ' . $to, true, 303);
+        exit;
+    }
 }

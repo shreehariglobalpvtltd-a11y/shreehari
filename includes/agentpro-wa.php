@@ -111,6 +111,17 @@ final class ApWa
                 return self::linkStart($phone, trim($m[1]), $lang);
             }
 
+            // 30 Oct 2026: a number several IDs share and none picked yet — "which ID?" (once; remembered).
+            if ($member === null && self::pickOn() && !self::linked($phone)) {
+                $cands = self::sharedCandidates($phone);
+                if (count($cands) > 1) {
+                    if (!Security::rateLimit('ap_wa', $phone, 90, 3600)) {
+                        return self::out(self::t('slow_down', $lang));
+                    }
+                    return self::pickTurn($phone, $text, $cands, $state, $lang);
+                }
+            }
+
             if ($member === null) {
                 // Somebody who wants to become an agent.
                 if (preg_match('/^(join|agent\s*(?:banne|banna|bannu|bano|apply|form)|apply|एजेन्ट\s*बन्ने|एजेंट\s*बनना)\b/iu', $text) === 1) {
@@ -237,17 +248,106 @@ final class ApWa
             }
             return null;
         }
+        $hits = self::sharedCandidates($phone);
+        if (count($hits) === 1) {
+            return $hits[0] + ['via' => 'registered'];
+        }
+        // 30 Oct 2026: one number, several IDs (ap_phone_max_accounts) — the one this number
+        // picked on the desk ("which ID?", remembered in ap_wa_state.admin_id; "switch" asks again).
+        // Never picked: nothing yet — reply() asks which ID.
+        $picked = self::pickedId($phone);
+        foreach ($hits as $a) {
+            if ($picked > 0 && (int) $a['id'] === $picked) {
+                return $a + ['via' => 'registered'];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The usable (active, not locked) accounts registered on this mobile, oldest first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function sharedCandidates(string $phone): array
+    {
         $hits = [];
-        foreach (Database::fetchAll("SELECT $cols FROM admins WHERE phone IS NOT NULL AND phone <> ''") as $a) {
-            if (normalisePhone((string) $a['phone']) === $phone) {
+        foreach (Database::fetchAll("SELECT id, username, full_name, phone, role, is_active, must_change_pw, locked_until
+                                       FROM admins WHERE phone IS NOT NULL AND phone <> '' ORDER BY id ASC") as $a) {
+            if (normalisePhone((string) $a['phone']) === $phone && self::usable($a)) {
                 $hits[] = $a;
             }
         }
-        // A shared number confers nothing: which of them would it be?
-        if (count($hits) === 1 && self::usable($hits[0])) {
-            return $hits[0] + ['via' => 'registered'];
+        return $hits;
+    }
+
+    /** Is this WhatsApp number linked to one ID with the OTP (ap_wa_links)? Then that link decides, never a pick. */
+    private static function linked(string $phone): bool
+    {
+        return Database::exists('SELECT 1 FROM ap_wa_links WHERE phone = :p AND revoked_at IS NULL', ['p' => $phone]);
+    }
+
+    private static ?bool $pickCol = null;
+
+    /** Is ap_wa_state.admin_id there (database/upgrade-2026-10-30-agentpro3.sql)? */
+    private static function pickOn(): bool
+    {
+        if (self::$pickCol === null) {
+            try {
+                self::$pickCol = Database::exists("SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+                                                     AND TABLE_NAME = 'ap_wa_state' AND COLUMN_NAME = 'admin_id'");
+            } catch (Throwable $e) {
+                self::$pickCol = false;
+            }
         }
-        return null;
+        return self::$pickCol;
+    }
+
+    /** The ID this WhatsApp number picked on the desk (0 = none). */
+    private static function pickedId(string $phone): int
+    {
+        return self::pickOn() ? (int) Database::scalar('SELECT admin_id FROM ap_wa_state WHERE phone = :p', ['p' => $phone], 0) : 0;
+    }
+
+    /** Remember (or, with 0, forget) the ID this number picked. */
+    private static function setPicked(string $phone, int $adminId): void
+    {
+        if (self::pickOn()) {
+            self::saveState($phone, ['admin_id' => $adminId > 0 ? $adminId : null]);
+        }
+    }
+
+    /**
+     * "Which ID?" for a number several accounts share: the numbered list (asked once;
+     * the pick is remembered). With $text a digit while that question is open: take it.
+     *
+     * @param list<array<string, mixed>> $cands
+     * @return array{text: string, media?: ?string}
+     */
+    private static function pickTurn(string $phone, string $text, array $cands, array $state, string $lang): array
+    {
+        $ids = array_map(static fn(array $a): int => (int) $a['id'], $cands);
+        $p = $state['pending'] ?? null;
+        $n = ApDocRead_digits($text);
+        if (is_array($p) && ($p['kind'] ?? '') === 'pick' && preg_match('/^[1-9]$/', $n) === 1) {
+            $want = (int) (((array) ($p['ids'] ?? []))[(int) $n - 1] ?? 0);
+            if ($want > 0 && in_array($want, $ids, true)) {   // still one of THIS number's usable accounts
+                self::clearPending($phone);
+                self::setPicked($phone, $want);
+                Logger::audit('agentpro.wa_pick', 'admin', (string) $want, null, ['wa' => $phone], 'WhatsApp desk: ID picked on a shared number');
+                $member = self::memberFor($phone);
+                $ok = self::t('pick_ok', $lang, ['code' => self::codeOf($want)]);
+                return $member !== null ? self::out($ok . "\n\n" . self::help($member, $lang)['text']) : self::out($ok);
+            }
+        }
+        self::setPending($phone, 'pick', ['ids' => $ids]);
+        $lines = [self::t('pick_q', $lang)];
+        foreach ($cands as $i => $a) {
+            $lines[] = ($i + 1) . '. ' . (string) $a['full_name'] . ' · ' . self::codeOf((int) $a['id']) . ' · ' . (AgentPro::ROLE_LABELS[(string) $a['role']] ?? (string) $a['role']);
+        }
+        $lines[] = '';
+        $lines[] = self::t('pick_how', $lang);
+        return self::out(implode("\n", $lines));
     }
 
     private static function usable(array $a): bool
@@ -464,6 +564,18 @@ final class ApWa
         if (preg_match('/^unlink$/i', $l)) {
             Database::run('UPDATE ap_wa_links SET revoked_at = NOW() WHERE phone = :p', ['p' => $ctx['phone']]);
             return self::out(self::t('unlinked', $lang));
+        }
+        // One number, several IDs: pick another one ("switch").
+        if (preg_match('/^(?:switch|switch\s*id|id\s*switch|change\s*id|id\s*change|id\s*badal\w*|badal|बदल\w*|आईडी\s*बदल\w*|id\s*बदल\w*)$/u', $l)) {
+            if (self::linked($ctx['phone'])) {
+                return self::out(self::t('switch_linked', $lang));
+            }
+            $cands = self::sharedCandidates($ctx['phone']);
+            if (count($cands) < 2 || !self::pickOn()) {
+                return self::out(self::t('switch_one', $lang));
+            }
+            self::setPicked($ctx['phone'], 0);
+            return self::pickTurn($ctx['phone'], '', $cands, ['pending' => null], $lang);
         }
 
         // The numbered menu: "3" = balance, … (the same handlers as the words).
@@ -2393,6 +2505,11 @@ final class ApWa
             'lang_set'    => ['ne' => "✅ अब नेपालीमा जवाफ दिन्छु।", 'hi' => "✅ अब हिंदी में जवाब दूँगा।", 'en' => "✅ I will reply in English now."],
             'cancelled'   => ['ne' => "👍 ठिक छ, केही गरिएन।", 'hi' => "👍 ठीक है, कुछ नहीं किया गया।", 'en' => "👍 OK, nothing was done."],
             'unlinked'    => ['ne' => "🔓 यो WhatsApp अब कुनै एजेन्ट कोडसँग जोडिएको छैन।", 'hi' => "🔓 यह WhatsApp अब किसी एजेंट कोड से जुड़ा नहीं है।", 'en' => "🔓 This WhatsApp is no longer linked to an agent code."],
+            'pick_q'      => ['ne' => "🪪 यो WhatsApp नम्बरमा एकभन्दा बढी ID छन्। कुन ID बाट काम गर्ने?", 'hi' => "🪪 इस WhatsApp नंबर पर एक से ज़्यादा ID हैं। किस ID से काम करें?", 'en' => "🪪 This WhatsApp number has more than one ID. Which ID do you want to use?"],
+            'pick_how'    => ['ne' => "नम्बर मात्र पठाउनुहोस् (जस्तै *1*)। पछि बदल्न: *switch*", 'hi' => "सिर्फ़ नंबर भेजें (जैसे *1*)। बाद में बदलने के लिए: *switch*", 'en' => "Send just the number (e.g. *1*). To change later: *switch*"],
+            'pick_ok'     => ['ne' => "✅ अब तपाईं {code} को रूपमा हुनुहुन्छ। अर्को ID: *switch*", 'hi' => "✅ अब आप {code} के रूप में हैं। दूसरी ID: *switch*", 'en' => "✅ You are now working as {code}. Another ID: *switch*"],
+            'switch_one'  => ['ne' => "ℹ️ यो नम्बरमा एउटा मात्र ID छ।", 'hi' => "ℹ️ इस नंबर पर सिर्फ़ एक ID है।", 'en' => "ℹ️ This number has only one ID."],
+            'switch_linked' => ['ne' => "ℹ️ यो WhatsApp एउटा ID सँग OTP ले जोडिएको छ। अर्को ID: पहिले *unlink*, अनि *LINK <कोड>*", 'hi' => "ℹ️ यह WhatsApp एक ID से OTP से जुड़ा है। दूसरी ID: पहले *unlink*, फिर *LINK <कोड>*", 'en' => "ℹ️ This WhatsApp is linked to one ID with an OTP. For another ID: send *unlink*, then *LINK <code>*."],
             'link_unknown'=> ['ne' => "⚠️ त्यो कोड वा नम्बर कुनै सक्रिय खातासँग मिलेन। उदाहरण: *LINK SHG-0027*", 'hi' => "⚠️ यह कोड या नंबर किसी सक्रिय खाते से नहीं मिला। उदाहरण: *LINK SHG-0027*", 'en' => "⚠️ That code or number does not match an active account. Example: *LINK SHG-0027*"],
             'link_already'=> ['ne' => "✅ यो WhatsApp पहिल्यै {code} सँग जोडिएको छ। *help* लेख्नुहोस्।", 'hi' => "✅ यह WhatsApp पहले से {code} से जुड़ा है। *help* लिखें।", 'en' => "✅ This WhatsApp is already linked to {code}. Type *help*."],
             'link_sent'   => ['ne' => "🔐 {code} को दर्ता भएको मोबाइल (…{tail}) मा ६ अंकको कोड पठाइयो।\nत्यो कोड यहीँ लेख्नुहोस्।", 'hi' => "🔐 {code} के रजिस्टर्ड मोबाइल (…{tail}) पर 6 अंकों का कोड भेजा गया।\nवह कोड यहीं लिखें।", 'en' => "🔐 A 6-digit code went to the mobile registered for {code} (…{tail}).\nType that code here."],

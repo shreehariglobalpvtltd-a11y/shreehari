@@ -577,8 +577,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             if (strlen($phone) < 10 || strlen($phone) > 15) {
                 throw new RuntimeException('Enter a valid mobile number.');
             }
-            if (Database::exists('SELECT 1 FROM admins WHERE phone = :p AND id <> :id LIMIT 1', ['p' => $phone, 'id' => $targetId])) {
-                throw new RuntimeException('That mobile number belongs to another staff account.');
+            // 30 Oct 2026: one mobile may carry up to ap_phone_max_accounts IDs — an
+            // unchanged number always saves; a changed one must still have room.
+            if (normalisePhone($phone) !== normalisePhone((string) ($agent['phone'] ?? ''))) {
+                require_once INCLUDE_PATH . '/agentpro.php';
+                if (count(AgentPro::phoneOwners($phone, $targetId)) >= AgentPro::phoneMax()) {
+                    throw new RuntimeException('That mobile number already has the most logins one number may carry (' . AgentPro::phoneMax() . ').');
+                }
             }
             $before = ['full_name' => $agent['full_name'], 'phone' => $agent['phone'],
                        'whatsapp' => $profile['whatsapp'] ?? null, 'city' => $profile['counter_name'] ?? null];

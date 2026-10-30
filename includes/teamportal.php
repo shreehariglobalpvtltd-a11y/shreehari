@@ -221,6 +221,8 @@ final class TeamPortal
         }
         $now = time();
 
+        $hits = [];
+        $twofa = false;
         foreach ($acc['admins'] as $a) {
             if ((string) $a['password_hash'] === '') {
                 continue;
@@ -230,12 +232,24 @@ final class TeamPortal
             }
             if (Security::verifyPassword($password, (string) $a['password_hash'])) {
                 if (Auth::admin2faEnabled((int) $a['id'])) {
-                    return ['ok' => false, 'error' => 'यो खातामा 2FA छ — कार्यालयको लगइनबाट जानुहोस् · This account uses 2FA: please sign in at the office login.', 'twofa' => true];
+                    $twofa = true;
+                    continue;
                 }
-                Auth::teamOpenSession($a, false);
-                self::closeStaffSession();
-                return ['ok' => true, 'kind' => 'admin'];
+                $hits[] = $a;
             }
+        }
+        if (count($hits) > 1) {
+            // 30 Oct 2026: one mobile, several IDs with this password — the person picks one (pick()).
+            self::setPick($phone10, $hits, false);
+            return ['ok' => true, 'kind' => 'pick'];
+        }
+        if ($hits !== []) {
+            Auth::teamOpenSession($hits[0], false);
+            self::closeStaffSession();
+            return ['ok' => true, 'kind' => 'admin'];
+        }
+        if ($twofa) {
+            return ['ok' => false, 'error' => 'यो खातामा 2FA छ — कार्यालयको लगइनबाट जानुहोस् · This account uses 2FA: please sign in at the office login.', 'twofa' => true];
         }
         foreach ($acc['staff'] as $s) {
             if ((string) $s['status'] !== 'approved' || empty($s['password_hash'])) {
@@ -455,6 +469,12 @@ final class TeamPortal
         if ($twofa) {
             return ['ok' => true, 'kind' => 'none', 'twofa' => true, 'count' => $n];
         }
+        $proved = array_values(array_map(static fn(array $a): array => ['password_hash' => $hash] + $a, $t['admins'] ?? []));
+        if (count($proved) > 1) {
+            // 30 Oct 2026: the WhatsApp code proved the number; it carries several IDs — which one to open?
+            self::setPick(substr($proven, -10), $proved, true);
+            return ['ok' => true, 'kind' => 'pick', 'count' => $n];
+        }
         if ($open !== null) {
             Auth::teamOpenSession(['must_change_pw' => 0, 'password_hash' => $hash] + $open, true);
             self::closeStaffSession();
@@ -530,6 +550,87 @@ final class TeamPortal
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_regenerate_id(true);
         }
+    }
+
+    /* =================================================================
+     *  One mobile, several IDs (30 Oct 2026, owner: up to 3 IDs on one
+     *  WhatsApp number). The door (password, or the WhatsApp code of a
+     *  reset) proved the NUMBER; the person then picks one of THAT
+     *  number's accounts. The list lives in this session for 5 minutes,
+     *  with a fingerprint of each account's password hash, so a pick can
+     *  never open an account the door did not prove.
+     * ================================================================= */
+
+    /** @param list<array<string, mixed>> $admins */
+    private static function setPick(string $phone10, array $admins, bool $viaReset): void
+    {
+        $h = [];
+        foreach ($admins as $a) {
+            $h[(string) (int) $a['id']] = hash('sha256', (string) $a['password_hash']);
+        }
+        $_SESSION['team_pick'] = ['phone' => $phone10, 'h' => $h, 'reset' => $viaReset, 't' => time()];
+    }
+
+    /**
+     * The IDs waiting to be picked: id, name, role, code (empty when no pick is waiting).
+     *
+     * @return list<array{id: int, name: string, role: string, code: string}>
+     */
+    public static function pickList(): array
+    {
+        $p = $_SESSION['team_pick'] ?? null;
+        if (!is_array($p) || (int) ($p['t'] ?? 0) < time() - 300) {
+            return [];
+        }
+        $out = [];
+        foreach (self::pickable($p) as $a) {
+            $code = '';
+            if (is_file(__DIR__ . '/agentpro.php')) {
+                require_once __DIR__ . '/agentpro.php';
+                try {
+                    $code = AgentPro::available() ? (string) (AgentPro::member((int) $a['id'], false)['idNo'] ?? '') : '';
+                } catch (Throwable $e) {
+                    $code = '';
+                }
+            }
+            $out[] = ['id' => (int) $a['id'], 'name' => (string) $a['full_name'], 'role' => (string) $a['role'], 'code' => $code];
+        }
+        return $out;
+    }
+
+    /** @return list<array<string, mixed>> the accounts of the pick that are still on that number, usable, same password */
+    private static function pickable(array $p): array
+    {
+        $phone10 = (string) ($p['phone'] ?? '');
+        $h = (array) ($p['h'] ?? []);
+        $out = [];
+        foreach (self::accounts($phone10)['admins'] as $a) {
+            $want = $h[(string) (int) $a['id']] ?? null;
+            if (is_string($want) && hash_equals($want, hash('sha256', (string) $a['password_hash'])) && self::adminUsable($a, $phone10)) {
+                $out[] = $a;
+            }
+        }
+        return $out;
+    }
+
+    /** Open the picked ID. @return array{ok: bool, error?: string} */
+    public static function pick(int $adminId): array
+    {
+        $p = $_SESSION['team_pick'] ?? null;
+        if (!is_array($p) || (int) ($p['t'] ?? 0) < time() - 300) {
+            unset($_SESSION['team_pick']);
+            return ['ok' => false, 'error' => 'फेरि लगइन गर्नुहोस् · Please sign in again.'];
+        }
+        foreach (self::pickable($p) as $a) {
+            if ((int) $a['id'] === $adminId) {
+                unset($_SESSION['team_pick']);
+                Auth::teamOpenSession($a, !empty($p['reset']));
+                self::closeStaffSession();
+                Logger::audit('team.login.pick', 'admin', (string) $adminId, null, null, 'Picked one of the IDs on one mobile');
+                return ['ok' => true];
+            }
+        }
+        return ['ok' => false, 'error' => 'यो ID खुलेन — फेरि लगइन गर्नुहोस् · That ID could not be opened, please sign in again.'];
     }
 
     public static function passkeyOwner(array $me): ?array

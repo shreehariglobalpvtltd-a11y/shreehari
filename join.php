@@ -14,9 +14,16 @@
  *
  * OFFICE MODE (30 Oct 2026, owner: "admin/office le fast bharna milos"):
  *   /join.php?office=1            an office user fills it for someone — only
- *                                 name, mobile, ID number and photo needed;
+ *                                 name + mobile (+ role) needed (30 Oct: ID,
+ *                                 photos, bank "पछि थप्न सकिन्छ · add later");
  *                                 WhatsApp check may be skipped with a reason;
  *                                 "Approve now" issues the login + code at once
+ *                                 (no ID photo → KYC stays "submitted");
+ *                                 a mobile that already has logins may carry
+ *                                 another ID once the office says so (max
+ *                                 ap_phone_max_accounts, default 3)
+ *   /join.php?from=apply&kind=…   the OLD agreements/apply.html sends everyone
+ *                                 here; an office user → ?office=1&role=…
  *   /join.php?office=1&d=<key>    reopen any draft / sent form to finish it
  *   Needs an admin session: superadmin, manager or staff.manage.
  *
@@ -42,6 +49,32 @@ $company = (string) $co['name'];
 
 /* ---- office mode ---- */
 $officeAsked = (string) ($_GET['office'] ?? '') === '1';
+
+/* 30 Oct 2026 (owner: the OLD one-page form failed with "That is too large to send"): agreements/apply.html
+   now sends everyone here as /join.php?from=apply&kind=…&name=&phone=&cc= — a signed-in office user (the
+   "Admin filling on behalf" case) goes on to the office form with the role that kind meant. */
+if (!$officeAsked && (string) ($_GET['from'] ?? '') === 'apply' && AgentPro::available()) {
+    $kindIn = strtolower((string) ($_GET['kind'] ?? ''));
+    if (AgentPro::officeAllowed(Auth::admin())) {
+        $roleFor = ['agent' => 'agent:person', 'ind' => 'agent:person', 'subagent' => 'agent:person', 'partner' => 'agent:org',
+                    'org' => 'agent:org', 'office' => 'counter', 'driver' => 'driver'][$kindIn] ?? '';
+        $q = ['office' => '1'] + ($roleFor !== '' ? ['role' => $roleFor] : []);
+        foreach (['name', 'phone', 'cc'] as $p) {
+            $pv = $_GET[$p] ?? '';
+            if (is_string($pv) && trim($pv) !== '') {
+                $q[$p] = mb_substr(trim($pv), 0, 120);
+            }
+        }
+        header('Cache-Control: no-store');
+        header('Location: /join.php?' . http_build_query($q), true, 302);
+        exit;
+    }
+    if ($as === '' && in_array($kindIn, ['partner', 'org'], true)) {
+        $as = 'org';
+    } elseif ($as === '' && in_array($kindIn, ['agent', 'ind', 'subagent'], true)) {
+        $as = 'person';
+    }
+}
 $officeAdmin = $officeAsked ? Auth::admin() : null;
 if ($officeAsked && !AgentPro::officeAllowed($officeAdmin)) {
     http_response_code($officeAdmin === null ? 401 : 403);
@@ -86,6 +119,18 @@ $pfPhone = substr(preg_replace('/\D/', '', (string) ($_GET['phone'] ?? '')) ?? '
 $pfCc = preg_replace('/\D/', '', (string) ($_GET['cc'] ?? '')) === '977' ? 'NP' : 'IN';
 
 $v = static fn(string $f): string => '/assets/agentpro/' . $f . '?v=' . (is_file(ASSET_PATH . '/agentpro/' . $f) ? filemtime(ASSET_PATH . '/agentpro/' . $f) : '1');
+
+/* The most ONE upload may be: our own cap and what PHP itself takes (upload_max_filesize, post_max_size
+   less room for the other fields) — join.js shrinks photos well below it and refuses a bigger PDF. */
+$iniBytes = static function (string $k): int {
+    $s = trim((string) ini_get($k));
+    if ($s === '' || $s === '0' || $s === '-1') {
+        return PHP_INT_MAX;
+    }
+    $n = (int) $s;
+    return match (strtolower(substr($s, -1))) { 'g' => $n * 1073741824, 'm' => $n * 1048576, 'k' => $n * 1024, default => $n };
+};
+$maxUpload = max(500_000, min(MAX_UPLOAD_BYTES, $iniBytes('upload_max_filesize'), $iniBytes('post_max_size') - 64_000));
 $cfg = [
     'api'      => '/api/agentpro.php',
     'csrf'     => Security::csrfToken(),
@@ -102,6 +147,7 @@ $cfg = [
     'office'   => Settings::officePhone(),
     'idTypes'  => AgentPro::ID_TYPES,
     'maxExtras'=> max(1, Settings::getInt('ap_join_max_extras', 6)),
+    'maxUpload'=> $maxUpload,
     'jsqr'     => $v('vendor/jsQR.js'),
     'pdfjs'    => '/assets/vendor/pdfjs/pdf.min.js',
     'pdfWorker'=> '/assets/vendor/pdfjs/pdf.worker.min.js',
@@ -167,6 +213,7 @@ $cfg = [
 <div class="ap-toast" id="toast" role="status"></div>
 
 <script>window.APJOIN = <?= Security::jsonForHtml($cfg) ?>;</script>
+<script src="<?= Security::e($v('shrink.js')) ?>" defer></script>
 <script src="<?= Security::e($v('join.js')) ?>" defer></script>
 </body>
 </html>

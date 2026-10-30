@@ -5,18 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a2a8f">
 <script>
-/* 30 Oct 2026 (owner: one form system): the agent / partner one-page form now lives at /join.php
-   (AgentPro: live selfie, paper-form AI read, office approval, ID + visiting card). Only ?kind=agent|ind|partner|org
-   goes there, with the invitation's name / phone / cc (admin/team-invite.php bulk invites).
-   Still here until join.php covers them: a bare apply.html (the role chooser, incl. driver), ?kind=subagent
-   (the parent agent code), ?kind=staff (the A4 staff sheet + its scan card), ?kind=office|driver,
-   the status tracker (?track= ?ref=, or ?phone= with no kind / name), ?old=1. */
+/* 30 Oct 2026 (owner: one form system; the old one-page form failed with "That is too large to send"):
+   the one-page form now lives at /join.php (AgentPro: live selfie, paper-form AI read, office approval,
+   ID + visiting card). EVERY kind goes there - a bare apply.html too, and ?kind=agent|ind|subagent|partner|org
+   |office|driver - with the invitation's name / phone / cc (admin/team-invite.php bulk invites). join.php
+   sends a signed-in office user (the "Admin filling on behalf" case) on to /join.php?office=1&role=...
+   Still here: ?kind=staff (the A4 staff sheet + its scan card), the status tracker (?track= ?ref=, or
+   ?phone= with no kind / name), ?old=1. Whoever still reaches this form gets its photos shrunk before
+   sending (assets/agentpro/shrink.js), so it never meets "too large" either. */
 (function () {
   try {
     var q = new URLSearchParams(location.search), k = (q.get('kind') || '').toLowerCase();
-    var as = (k === 'partner' || k === 'org') ? 'org' : ((k === 'agent' || k === 'ind') ? 'person' : '');
-    if (!as || q.has('track') || q.has('ref') || q.has('old') || (q.has('phone') && !k && !q.has('name'))) return;
-    var out = new URLSearchParams(); out.set('as', as);
+    if (k === 'staff' || q.has('track') || q.has('ref') || q.has('old') || (q.has('phone') && !k && !q.has('name'))) return;
+    var out = new URLSearchParams(); out.set('from', 'apply');
+    if (k) out.set('kind', k.slice(0, 20));
+    var as = (k === 'partner' || k === 'org') ? 'org' : ((k === 'agent' || k === 'ind' || k === 'subagent') ? 'person' : '');
+    if (as) out.set('as', as);
     ['name', 'phone', 'cc'].forEach(function (p) { var v = q.get(p); if (v) out.set(p, v.slice(0, 120)); });
     location.replace('/join.php?' + out.toString());
   } catch (e) { /* very old browser: the one-page form below still works */ }
@@ -300,6 +304,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0
 <script>try{if(/[?&]kind=staff(?:&|$)/.test(location.search))document.documentElement.classList.add('saMode');}catch(e){}</script>
 <script src="/assets/js/photo-studio.js?v=20261025"></script>
 <script src="/assets/js/kyc-selfie.js?v=20261029"></script>
+<script src="/assets/agentpro/shrink.js?v=20261030c"></script>
 </head>
 <body>
 <!-- ============ STAFF 4-PAGE A4 SHEET (kind=staff) ============ -->
@@ -1089,12 +1094,29 @@ function openStudioForNew() {
   pickPhotoFile();
 }
 
+/* 30 Oct 2026 (owner: "That is too large to send"): /api/agreement-apply.php takes 3.5 MB in all, and a
+   phone photo alone is 4-12 MB. Every picture is shrunk here first (assets/agentpro/shrink.js):
+   the passport photo to ~900 px / 300 KB, the ID to ~1600 px / 600 KB. */
+var SHRINK_PHOTO = { maxEdge: 900, maxBytes: 300000 };
+var SHRINK_ID = { maxEdge: 1600, maxBytes: 600000 };
+var PDF_MAX = 1900000;   // a PDF of the ID goes as it is: under ~1.9 MB it still fits with the photo and signature
+function shrinkTo(src, opts) {
+  if (window.ApShrink) return window.ApShrink.dataUrl(src, opts);
+  // shrink.js did not load: the simple redraw below (size only), never the raw file
+  if (typeof src === 'string') return Promise.resolve(src);
+  return new Promise(function (res) { shrinkImage(src, opts.maxEdge, 0.8, res); });
+}
 function savePhoto(dataUrl) {
-  document.getElementById('f_photo_data').value = dataUrl;
-  var prev = document.getElementById('photoPreview');
-  prev.style.backgroundImage = 'url(' + dataUrl + ')';
-  prev.classList.add('has');
-  saveDraft();
+  shrinkTo(dataUrl, SHRINK_PHOTO).then(function (small) {
+    small = small || dataUrl;
+    document.getElementById('f_photo_data').value = small;
+    var prev = document.getElementById('photoPreview');
+    prev.style.backgroundImage = 'url(' + small + ')';
+    prev.classList.add('has');
+    saveDraft();
+  }, function () {
+    showMsg('यो फोटो खुलेन — JPG/PNG फोटो छान्नुहोस् · This photo could not be opened, please choose a JPG/PNG photo.', 'bad');
+  });
 }
 
 function pickPhotoFile() {
@@ -1103,29 +1125,35 @@ function pickPhotoFile() {
   input.accept = 'image/*';
   input.onchange = function(e) {
     if (e.target.files && e.target.files[0]) {
-      PhotoStudio.open(e.target.files[0], {
-        onSave: function(dataUrl) {
-          document.getElementById('f_photo_data').value = dataUrl;
-          var prev = document.getElementById('photoPreview');
-          prev.style.backgroundImage = 'url(' + dataUrl + ')';
-          prev.classList.add('has');
-          saveDraft();
-        }
-      });
+      PhotoStudio.open(e.target.files[0], { onSave: savePhoto });
     }
   };
   input.click();
 }
 
 function loadDocPreview(input) {
-  if (input.files && input.files[0]) {
+  if (!input.files || !input.files[0]) return;
+  var file = input.files[0];
+  var isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+  if (isPdf) {
+    if (file.size > PDF_MAX) {
+      input.value = '';
+      showMsg('यो PDF धेरै ठूलो भयो (१.९ MB भन्दा बढी) — परिचयपत्रको फोटो खिचेर हाल्नुहोस् · This PDF is too large (over 1.9 MB) — add a photo of the ID instead.', 'bad');
+      return;
+    }
     var reader = new FileReader();
-    reader.onload = function(e) {
-      document.getElementById('f_doc_data').value = e.target.result;
-      saveDraft();
-    };
-    reader.readAsDataURL(input.files[0]);
+    reader.onload = function (e) { document.getElementById('f_doc_data').value = e.target.result; saveDraft(); };
+    reader.readAsDataURL(file);
+    return;
   }
+  shrinkTo(file, SHRINK_ID).then(function (small) {
+    if (!small) throw new Error('decode');
+    document.getElementById('f_doc_data').value = small;
+    saveDraft();
+  }).catch(function () {
+    input.value = '';
+    showMsg('यो फोटो खुलेन — JPG/PNG फोटो छान्नुहोस् · This picture could not be opened, please choose a JPG/PNG photo.', 'bad');
+  });
 }
 
 function triggerDocRead() {
@@ -1160,7 +1188,7 @@ function shrinkImage(file, maxDim, quality, done) {
 function processDocRead(input) {
   if (!input.files || !input.files[0]) return;
   var file = input.files[0];
-  shrinkImage(file, 1600, 0.85, function (base64) {
+  shrinkTo(file, SHRINK_ID).then(null, function () { return null; }).then(function (base64) {
     if (!base64) { showMsg('यो फोटो पढ्न सकिएन — JPG/PNG फोटो छान्नुहोस् वा हातले भर्नुहोस्।', 'bad'); return; }
     showMsg('डकुमेन्ट पढ्दैछ... OCR scanning in progress...', 'ok');
 
@@ -1416,12 +1444,18 @@ function submitForm(e) {
       public_ok: true
     };
 
+    // 30 Oct 2026: the server takes 3.5 MB in all — never send more (that was "That is too large to send")
+    var bodyStr = JSON.stringify(payload);
+    if (bodyStr.length > 3400000) {
+      handleSuccess({ ok: false, error: 'फोटो / कागजात धेरै ठूला भए — परिचयपत्र PDF को सट्टा फोटो हाल्नुहोस् · The photos are too large together — add a photo of the ID instead of a PDF.' });
+      return;
+    }
     fetch('/api/agreement-apply.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.getElementById('csrfToken').value },
-      body: JSON.stringify(payload)
+      body: bodyStr
     })
-    .then(r => r.json())
+    .then(readJson)
     .then(handleSuccess)
     .catch(handleErr);
   } else {
@@ -1460,9 +1494,18 @@ function submitForm(e) {
       headers: { 'X-CSRF-Token': document.getElementById('csrfToken').value },
       body: formData
     })
-    .then(r => r.json())
+    .then(readJson)
     .then(handleSuccess)
     .catch(handleErr);
+  }
+
+  /** A 413 (or any non-JSON answer) becomes a clear message instead of "network error". */
+  function readJson(r) {
+    return r.json().catch(function () {
+      return { ok: false, error: r.status === 413
+        ? 'फोटोहरू धेरै ठूला भए — फेरि सानो फोटो खिचेर पठाउनुहोस् · The photos are too large — please take smaller photos and send again.'
+        : 'त्रुटि (HTTP ' + r.status + ') — फेरि प्रयास गर्नुहोस् · Error, please try again.' };
+    });
   }
 
   function handleSuccess(d) {
@@ -1474,6 +1517,8 @@ function submitForm(e) {
       setTimeout(function() {
         window.location.href = '/verify-id.php?ref=' + encodeURIComponent(d.ref || '');
       }, 2500);
+    } else if (d.code === 413) {
+      showMsg('फोटोहरू धेरै ठूला भए — फेरि सानो फोटो खिचेर पठाउनुहोस् · The photos are too large — please take smaller photos and send again.', 'bad');
     } else {
       showMsg(d.error || 'त्रुटि देखा पर्यो। कृपया रातो लागेको विवरण सच्याउनुहोस्।', 'bad');
     }

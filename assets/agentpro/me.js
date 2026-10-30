@@ -11,7 +11,8 @@
   var money = function (n) { n = +n || 0; var s = Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: Math.abs(n) % 1 ? 2 : 0 }); return '₹' + s; };
 
   var W = {
-    en: { hi: 'Hello', signIn: 'Sign in', signLead: 'Agents: your agent code and mobile — a code comes on WhatsApp.', code: 'Agent code', mobile: 'Registered mobile',
+    en: { hi: 'Hello', signIn: 'Sign in', signLead: 'Your registered mobile — a code comes on WhatsApp. Agent code optional.', code: 'Agent code (optional)', mobile: 'Registered mobile',
+      pickQ: 'Which ID?', pickLead: 'This WhatsApp number has more than one ID. Choose the one to open.',
       sendCode: 'Send code on WhatsApp', otp: 'Code from WhatsApp', verify: 'Sign in', fp: 'Sign in with fingerprint / face', staff: 'Office staff sign in', apply: 'Not an agent yet? Apply',
       t_id: 'ID', t_card: 'Card', t_wallet: 'Wallet', t_docs: 'Docs', t_me: 'Profile',
       tapFlip: 'Tap the card to see the back', download: 'Download', print: 'Print', share: 'Share', verifyLink: 'Verify link', copy: 'Copy link', copied: 'Copied',
@@ -30,7 +31,8 @@
       security_t: 'Sign-in & security', fpOn: 'Turn on fingerprint / face sign-in', fpLead: 'Next time, sign in with your finger — no OTP.', fpAdded: 'Fingerprint sign-in is on', remove: 'Remove',
       waLinked: 'WhatsApp numbers linked to your code', waHow: 'On another WhatsApp, send: LINK', signOut: 'Sign out', lang: 'Language', office: 'Office', adminPanel: 'Admin panel',
       open_s: 'Waiting', paid_s: 'Paid', declined_s: 'Declined', confirmed_s: 'Confirmed', net: 'No connection — try again.', loading: 'Loading…' },
-    ne: { hi: 'नमस्ते', signIn: 'लगइन', signLead: 'एजेन्ट: आफ्नो एजेन्ट कोड र मोबाइल — WhatsApp मा कोड आउँछ।', code: 'एजेन्ट कोड', mobile: 'दर्ता भएको मोबाइल',
+    ne: { hi: 'नमस्ते', signIn: 'लगइन', signLead: 'दर्ता भएको मोबाइल — WhatsApp मा कोड आउँछ। एजेन्ट कोड ऐच्छिक।', code: 'एजेन्ट कोड (ऐच्छिक)', mobile: 'दर्ता भएको मोबाइल',
+      pickQ: 'कुन ID?', pickLead: 'यो WhatsApp नम्बरमा एकभन्दा बढी ID छन्। खोल्ने ID छान्नुहोस्।',
       sendCode: 'WhatsApp मा कोड पठाउनुहोस्', otp: 'WhatsApp मा आएको कोड', verify: 'लगइन गर्नुहोस्', fp: 'औंठा / अनुहारले लगइन', staff: 'अफिस स्टाफ लगइन', apply: 'एजेन्ट बन्न आवेदन',
       t_id: 'ID', t_card: 'कार्ड', t_wallet: 'वालेट', t_docs: 'कागजात', t_me: 'प्रोफाइल',
       tapFlip: 'पछाडि हेर्न कार्डमा थिच्नुहोस्', download: 'डाउनलोड', print: 'प्रिन्ट', share: 'सेयर', verifyLink: 'प्रमाणित लिंक', copy: 'लिंक कपी', copied: 'कपी भयो',
@@ -49,7 +51,8 @@
       security_t: 'लगइन र सुरक्षा', fpOn: 'औंठा / अनुहार लगइन खोल्नुहोस्', fpLead: 'अर्को पटक OTP बिना औंठाले लगइन।', fpAdded: 'औंठा लगइन खुल्यो', remove: 'हटाउनुहोस्',
       waLinked: 'तपाईंको कोडसँग जोडिएका WhatsApp', waHow: 'अर्को WhatsApp बाट पठाउनुहोस्: LINK', signOut: 'लगआउट', lang: 'भाषा', office: 'अफिस', adminPanel: 'एडमिन प्यानल',
       open_s: 'पर्खँदै', paid_s: 'भुक्तानी भयो', declined_s: 'अस्वीकृत', confirmed_s: 'पुष्टि भयो', net: 'इन्टरनेट छैन — फेरि प्रयास गर्नुहोस्।', loading: 'खुल्दैछ…' },
-    hi: { hi: 'नमस्ते', signIn: 'लॉगिन', signLead: 'एजेंट: अपना एजेंट कोड और मोबाइल — WhatsApp पर कोड आएगा।', code: 'एजेंट कोड', mobile: 'रजिस्टर्ड मोबाइल',
+    hi: { hi: 'नमस्ते', signIn: 'लॉगिन', signLead: 'रजिस्टर्ड मोबाइल — WhatsApp पर कोड आएगा। एजेंट कोड वैकल्पिक।', code: 'एजेंट कोड (वैकल्पिक)', mobile: 'रजिस्टर्ड मोबाइल',
+      pickQ: 'कौन सी ID?', pickLead: 'इस WhatsApp नंबर पर एक से ज़्यादा ID हैं। खोलने वाली ID चुनें।',
       sendCode: 'WhatsApp पर कोड भेजें', otp: 'WhatsApp पर आया कोड', verify: 'लॉगिन करें', fp: 'अंगूठे / चेहरे से लॉगिन', staff: 'ऑफिस स्टाफ लॉगिन', apply: 'एजेंट बनने के लिए आवेदन',
       t_id: 'ID', t_card: 'कार्ड', t_wallet: 'वॉलेट', t_docs: 'दस्तावेज़', t_me: 'प्रोफ़ाइल',
       tapFlip: 'पीछे देखने के लिए कार्ड दबाएँ', download: 'डाउनलोड', print: 'प्रिंट', share: 'शेयर', verifyLink: 'सत्यापन लिंक', copy: 'लिंक कॉपी', copied: 'कॉपी हुआ',
@@ -144,9 +147,31 @@
     });
     $('#lverify').addEventListener('click', function () {
       var b = this; busy(b, true);
-      api('login_otp_verify', { code: $('#lc').value, mobile: $('#lm').value, otp: $('#lo').value }).then(function (r) { busy(b, false); if (!r.ok) { toast(r.error || t('net'), true); return; } C.csrf = r.data.csrf; C.signed = true; start(); });
+      api('login_otp_verify', { code: $('#lc').value, mobile: $('#lm').value, otp: $('#lo').value }).then(function (r) {
+        busy(b, false); if (!r.ok) { toast(r.error || t('net'), true); return; }
+        if (r.data && r.data.choose) { renderPick(r.data.choose); return; }   // one WhatsApp number, several IDs
+        C.csrf = r.data.csrf; C.signed = true; start();
+      });
     });
     var fb = $('#fpLogin'); if (fb) fb.addEventListener('click', function () { passkeyLogin(this); });
+  }
+  /** 30 Oct 2026: the WhatsApp code proved the number; it carries several IDs — which one? */
+  function renderPick(list) {
+    $('#app').innerHTML = '<section class="ap-card"><h2>🪪 ' + esc(t('pickQ')) + '</h2><p class="lead">' + esc(t('pickLead')) + '</p>'
+      + list.map(function (c) {
+        return '<button type="button" class="ap-btn ghost block" style="margin-top:10px;justify-content:flex-start;text-align:left" data-pick="' + (+c.id) + '">'
+          + '<b>' + esc(c.name) + '</b>&nbsp;· <span class="ap-mono">' + esc(c.code || ('#' + c.id)) + '</span>&nbsp;· ' + esc(c.designation || c.role) + '</button>';
+      }).join('') + '</section>';
+    $$('[data-pick]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        busy(btn, true);
+        api('login_pick', { id: +btn.dataset.pick }).then(function (r) {
+          busy(btn, false);
+          if (!r.ok) { toast(r.error || t('net'), true); renderLogin(); return; }
+          C.csrf = r.data.csrf; C.signed = true; start();
+        });
+      });
+    });
   }
 
   /* ---- passkeys (WebAuthn) ---- */

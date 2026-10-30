@@ -26,6 +26,11 @@
  *    statement · kyc_upload · pk_reg_options · pk_reg_verify · pk_delete · logout
  *  SIGN-IN (no session yet):
  *    login_otp_start · login_otp_verify · pk_login_options · pk_login_verify
+ *    (30 Oct 2026: the agent code may be empty — mobile alone; a mobile with several IDs
+ *    answers verify with choose[] and the person opens one with login_pick)
+ *  ONE MOBILE, UP TO 3 IDs (ap_phone_max_accounts): a number already in use answers 409
+ *    {owners, can_share, max}; the office repeats the call with share=1 ("add another ID").
+ *    The public side never sees whose number it is.
  *
  *  Every POST carries the session CSRF token (X-CSRF-Token header).
  * =====================================================================
@@ -139,15 +144,59 @@ function ap_office(): ?array
     return $admin;
 }
 
-/** "This mobile already has an account" with the member page, for the office. */
-function ap_phone_taken(?array $owner): void
+/**
+ * The accounts already on a mobile, for the office screen: name, code, role, member page.
+ *
+ * @param list<array<string, mixed>> $owners
+ * @return list<array<string, mixed>>
+ */
+function ap_owner_list(array $owners): array
 {
-    if ($owner === null) {
-        return;
+    $out = [];
+    foreach ($owners as $o) {
+        $m = null;
+        try {
+            $m = AgentPro::member((int) $o['id'], false);
+        } catch (Throwable $e) {
+            $m = null;
+        }
+        $out[] = ['id' => (int) $o['id'], 'name' => (string) $o['full_name'], 'role' => (string) $o['role'],
+                  'code' => (string) ($m['idNo'] ?? ''), 'active' => (int) $o['is_active'] === 1,
+                  'member_url' => '/admin/team-member.php?id=' . (int) $o['id']];
     }
-    Response::error(((int) $owner['is_active'] === 1 ? 'This mobile already belongs to ' : 'An application from this mobile is already with the office: ')
-        . (string) $owner['full_name'] . ' (#' . (int) $owner['id'] . ').', 409,
-        ['admin_id' => (string) (int) $owner['id'], 'member_url' => '/admin/team-member.php?id=' . (int) $owner['id']]);
+    return $out;
+}
+
+/**
+ * "This mobile already has a login" (30 Oct 2026: up to ap_phone_max_accounts IDs on one
+ * number). 409 with the owners; can_share = the office may add one more ID once it says yes
+ * (share=1). The public form is always refused here.
+ */
+function ap_phone_check(string $phone, int $exceptAdminId, ?array $office, bool $share): void
+{
+    try {
+        AgentPro::assertPhoneFree($phone, $exceptAdminId, $office !== null, $share);
+    } catch (ApPhoneTaken $e) {
+        ap_phone_refuse($e, $office !== null);
+    }
+}
+
+function ap_phone_refuse(ApPhoneTaken $e, bool $office): never
+{
+    $first = $e->owners[0] ?? null;
+    Response::error($e->getMessage(), 409, [
+        'admin_id'   => $office && $first !== null ? (string) (int) $first['id'] : '',
+        'member_url' => $office && $first !== null ? '/admin/team-member.php?id=' . (int) $first['id'] : '',
+        'owners'     => $office ? ap_owner_list($e->owners) : [],   // the public side never learns whose number it is
+        'can_share'  => $office && $e->canShare,
+        'max'        => $e->max,
+    ]);
+}
+
+/** The office ticked "add another ID on the same number" (share=1). */
+function ap_share(): bool
+{
+    return in_array(Response::field('share', ''), ['1', 1, true], true);
 }
 
 /** The ap_applications columns a paper-form read may fill (the K2 contract). */
@@ -283,10 +332,9 @@ try {
             Security::requirePost();
             $off = ap_office();
             $d = ap_draft();
-            if ($off !== null) {
-                ap_phone_taken(AgentPro::phoneOwner((string) Response::field('phone', ''), (int) ($d['admin_id'] ?? 0)));
-            }
-            $r = AgentPro::sendJoinOtp((string) $d['draft_key'], (string) Response::field('phone', ''), (string) Response::field('country', ''));
+            ap_phone_check((string) Response::field('phone', ''), (int) ($d['admin_id'] ?? 0), $off, $off !== null && ap_share());
+            $r = AgentPro::sendJoinOtp((string) $d['draft_key'], (string) Response::field('phone', ''), (string) Response::field('country', ''),
+                $off !== null, $off !== null && ap_share());
             Response::success($r, 'Code sent on WhatsApp.');
 
         case 'otp_verify':
@@ -300,11 +348,10 @@ try {
 
         case 'phone_check':
             $off = ap_office() ?? Response::forbidden('Office only.');
-            $owner = AgentPro::phoneOwner((string) Response::field('phone', ''), (int) (AgentPro::draft((string) Response::field('key', ''))['admin_id'] ?? 0));
-            Response::success(['free' => $owner === null, 'owner' => $owner === null ? null : [
-                'id' => (int) $owner['id'], 'name' => (string) $owner['full_name'], 'role' => (string) $owner['role'],
-                'active' => (int) $owner['is_active'] === 1, 'member_url' => '/admin/team-member.php?id=' . (int) $owner['id'],
-            ]]);
+            $owners = ap_owner_list(AgentPro::phoneOwners((string) Response::field('phone', ''), (int) (AgentPro::draft((string) Response::field('key', ''))['admin_id'] ?? 0)));
+            $max = AgentPro::phoneMax();
+            Response::success(['free' => $owners === [], 'owner' => $owners[0] ?? null, 'owners' => $owners,
+                'count' => count($owners), 'max' => $max, 'can_share' => $owners !== [] && count($owners) < $max]);
 
         case 'office_role':
             Security::requirePost();
@@ -322,9 +369,9 @@ try {
             $off = ap_office() ?? Response::forbidden('Office only.');
             $d = ap_draft();
             $phone = (string) Response::field('phone', '') !== '' ? (string) Response::field('phone', '') : (string) ($d['phone'] ?? '');
-            ap_phone_taken(AgentPro::phoneOwner($phone, (int) ($d['admin_id'] ?? 0)));
+            ap_phone_check($phone, (int) ($d['admin_id'] ?? 0), $off, ap_share());
             $d = AgentPro::officeVerify((string) $d['draft_key'], (int) $off['id'], (string) Response::field('reason', ''),
-                $phone, (string) Response::field('country', ''));
+                $phone, (string) Response::field('country', ''), ap_share());
             Response::success(['draft' => ap_draft_view($d, $off)], 'Mobile accepted by the office.');
 
         case 'reverse':
@@ -497,10 +544,8 @@ try {
                     'form_url' => ApForm::applicantMayOpen($full) ? (ApForm::applicantUrl($full) ?: null) : null], 'Sent to the office.');
             }
             // K1: the office filled it — send, and (approve_now=1) approve at once: login + agent code / staff no.
-            if ($d['status'] === 'draft') {
-                ap_phone_taken(AgentPro::phoneOwner((string) ($d['phone'] ?? ''), 0));
-            }
-            $app = AgentPro::submit((string) $d['draft_key'], true, (int) $off['id']);
+            // a mobile already in use: submit() throws ApPhoneTaken → 409 with the owners (catch below)
+            $app = AgentPro::submit((string) $d['draft_key'], true, (int) $off['id'], ap_share());
             $adminId = (int) ($app['admin_id'] ?? 0);
             $out = ['ref' => (string) $app['ref'], 'status' => (string) $app['status'], 'admin_id' => $adminId, 'code' => '',
                     'member_url' => $adminId > 0 ? '/admin/team-member.php?id=' . $adminId : null,
@@ -537,6 +582,19 @@ try {
         case 'login_otp_verify':
             Security::requirePost();
             $r = Auth::agentLoginVerify((string) Response::field('code', ''), (string) Response::field('mobile', ''), (string) Response::field('otp', ''));
+            if ($r['ok'] && !empty($r['choose'])) {
+                // one WhatsApp number, several IDs: name + code + role of each, the person picks (login_pick)
+                Response::success(['choose' => array_map(static function (array $c): array {
+                    $m = AgentPro::member((int) $c['id'], false);
+                    return $c + ['code' => (string) ($m['idNo'] ?? ''), 'designation' => (string) ($m['designation'] ?? '')];
+                }, $r['choose'])]);
+            }
+            $r['ok'] ? Response::success(['csrf' => Security::csrfToken()]) : Response::error((string) $r['error'], 422);
+
+        case 'login_pick':
+            Security::requirePost();
+            Security::requireRateLimit('ap_login_pick', Security::clientIp(), 20, 600);
+            $r = Auth::agentLoginPick((int) Response::field('id', 0));
             $r['ok'] ? Response::success(['csrf' => Security::csrfToken()]) : Response::error((string) $r['error'], 422);
 
         case 'pk_login_options':
@@ -744,6 +802,8 @@ try {
             Response::success(null);
     }
     Response::notFound('Unknown action.');
+} catch (ApPhoneTaken $e) {
+    ap_phone_refuse($e, (string) Response::field('office', '') === '1' && AgentPro::officeAllowed(Auth::admin()));
 } catch (RuntimeException $e) {
     Response::error($e->getMessage(), 422);
 } catch (Throwable $e) {

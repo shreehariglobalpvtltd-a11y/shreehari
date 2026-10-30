@@ -26,6 +26,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require __DIR__ . '/_export.php';
+require_once INCLUDE_PATH . '/agentpro.php';   // phoneOwners() / phoneMax(): one mobile, up to 3 IDs
 $admin = admin_boot('customers.view');
 // 5 Sep 2026: the register lists every agent's balance and commission —
 // office viewers need commissions.view (counter/support roles do not hold it).
@@ -168,8 +169,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $flash = ['bad', 'Enter the agent\'s name.'];
             } elseif (strlen($phone) < 10 || strlen($phone) > 15) {
                 $flash = ['bad', 'Enter a valid mobile number.'];
-            } elseif (Database::exists('SELECT 1 FROM admins WHERE phone = :p AND id <> :id LIMIT 1', ['p' => $phone, 'id' => $id])) {
-                $flash = ['bad', 'That mobile number belongs to another staff account.'];
+            } elseif (normalisePhone($phone) !== normalisePhone((string) ($a['phone'] ?? ''))
+                      && count(AgentPro::phoneOwners($phone, $id)) >= AgentPro::phoneMax()) {
+                // 30 Oct 2026: one mobile may carry up to ap_phone_max_accounts IDs (office
+                // join form) — an unchanged number always saves; a new one must have room.
+                $flash = ['bad', 'That mobile number already has the most logins one number may carry (' . AgentPro::phoneMax() . ').'];
             } elseif ($code !== '' && (!ctype_digit($code) || (int) $code < AgentWallet::AGENT_CODE_MIN || (int) $code > AgentWallet::AGENT_CODE_MAX)) {
                 $flash = ['bad', 'The serial must be a number between ' . AgentWallet::AGENT_CODE_MIN . ' and ' . AgentWallet::AGENT_CODE_MAX . '.'];
             } else {

@@ -135,6 +135,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             Response::redirect('admin/' . login_destination($safeNext));
         }
         $error = $result['error'] ?? 'Sign in failed.';
+    } elseif (($mode === 'agent_request' || $mode === 'agent_verify') && trim($agentCode) === '') {
+        // An empty code is the mobile-only door (one number, several IDs → a chooser),
+        // which lives on /me/; this page opens exactly the one account the code names.
+        $step  = $mode === 'agent_verify' ? 'otp' : 'start';
+        $error = 'Enter your agent code. (One mobile with several IDs? Sign in at /me/ and pick the ID.)';
     } elseif ($mode === 'agent_request') {
         $result = Auth::agentLoginStart($agentCode, $agentMobile);
         if ($result['ok']) {
@@ -145,11 +150,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
     } elseif ($mode === 'agent_verify') {
         $result = Auth::agentLoginVerify($agentCode, $agentMobile, (string) ($_POST['otp'] ?? ''));
-        if ($result['ok']) {
+        if ($result['ok'] && empty($result['choose'])) {
             Response::redirect('admin/' . login_destination($safeNext));
         }
-        $step  = 'otp';
-        $error = $result['error'] ?? 'That code is not right.';
+        if (!empty($result['choose'])) {
+            // ok + choose = the number was proved but NO session was opened; never treat it as signed in.
+            unset($_SESSION['ap_login_pick']);
+            $step  = 'start';
+            $error = 'Enter your agent code. (One mobile with several IDs? Sign in at /me/ and pick the ID.)';
+        } else {
+            $step  = 'otp';
+            $error = $result['error'] ?? 'That code is not right.';
+        }
     } elseif ($mode === 'admin_2fa_verify') {
         // Admin second factor, step 2 (opt-in 2FA). Identity is held in the
         // session pending marker set by adminLogin(); only the code is posted.

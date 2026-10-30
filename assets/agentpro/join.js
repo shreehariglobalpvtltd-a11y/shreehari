@@ -28,7 +28,7 @@
     en: {
       idSays: 'Your ID says:', useIt: 'Use this', paperSays: 'Paper form says:',
       heroTitle: 'Become an agent', heroSub: '5 minutes · your phone is enough', heroStaff: 'Join the team', loading: 'Loading…',
-      heroOffice: 'Office form · fast', heroOfficeSub: 'Name, mobile, ID number and photo are enough — the rest is optional',
+      heroOffice: 'Office form · fast', heroOfficeSub: 'Only the name and mobile are needed — ID, photo and bank can be added later',
       back: 'Back', next: 'Continue', send: 'Send to office', skip: 'Skip', step: 'Step', of: 'of',
       s_who: 'About you', s_wa: 'WhatsApp', s_id: 'ID document', s_photo: 'Your photo', s_bank: 'Payout', s_finish: 'Finish',
       who_q: 'Who is applying?', who_lead: 'Keep your Aadhaar / citizenship card near you.', person: 'Individual agent', personSub: 'You sell tickets yourself', org: 'Travel agency', orgSub: 'A shop or company with a counter',
@@ -65,6 +65,11 @@
       need_kind: 'Choose individual or agency.', need_name: 'Enter your full name.', need_org: 'Enter the agency name.', need_wa: 'Verify your WhatsApp first.',
       need_front: 'Add a photo of the front of your ID.', need_dob: 'Enter your date of birth.', need_addr: 'Enter your address or city.', need_selfie: 'Add your photo.', need_consent: 'Please tick the box.',
       need_idno: 'Enter the ID number.', need_role: 'Choose who the form is for.',
+      photoBad: 'This picture could not be opened — choose a JPG / PNG photo, or take it again with the camera.', photoBig: 'That picture is still too large — take it again a little further away.',
+      pdfBig: 'This PDF is too large (over {mb} MB) — send photos of the pages instead, or a smaller PDF.',
+      addLater: 'can be added later', o_later: 'Office form: only the name and mobile are needed — ID, photos and bank can be added later from Team.',
+      o_reason_def: 'Filled at the office', o_share: 'Add another ID on this number', o_shareOk: 'OK — this number will carry one more ID.', o_full: 'This number already has the most IDs allowed.',
+      o_has: 'This number already has {n} login(s):', o_shareQ: 'Add another ID on the same number?', o_photoLater: 'No photo yet? The ID card shows the initials until a photo is added.',
       officeMode: 'Office mode', officeNew: 'New form', role_q: 'Who is this form for?', designation: 'Designation (printed on the ID card)', roleFixed: 'The role is fixed once the form was sent.',
       o_skip_t: 'Office: accept this mobile without a WhatsApp code', o_reason: 'Reason (e.g. came to the office, no WhatsApp)', o_skip_btn: 'Accept this mobile', o_taken: 'This mobile already has an account:', openMember: 'Open member',
       o_saw: 'I saw the original ID (KYC verified)', o_approve: 'Approve now — issue the login and ID code', o_consent: 'The applicant agreed to the terms (signed the paper form or said yes).',
@@ -75,7 +80,7 @@
     ne: {
       idSays: 'परिचयपत्रमा:', useIt: 'यही राख्नुहोस्', paperSays: 'कागजी फारममा:',
       heroTitle: 'एजेन्ट बन्नुहोस्', heroSub: '५ मिनेट · मोबाइल मात्र पुग्छ', heroStaff: 'टिममा सामेल हुनुहोस्', loading: 'खुल्दैछ…',
-      heroOffice: 'अफिस फारम · छिटो', heroOfficeSub: 'नाम, मोबाइल, परिचयपत्र नम्बर र फोटो पुग्छ — बाँकी ऐच्छिक',
+      heroOffice: 'अफिस फारम · छिटो', heroOfficeSub: 'नाम र मोबाइल मात्र चाहिन्छ — परिचयपत्र, फोटो, बैंक पछि थप्न सकिन्छ',
       back: 'पछाडि', next: 'अगाडि बढ्नुहोस्', send: 'अफिसमा पठाउनुहोस्', skip: 'छोड्नुहोस्', step: 'चरण', of: 'मध्ये',
       s_who: 'तपाईंको बारेमा', s_wa: 'WhatsApp', s_id: 'परिचयपत्र', s_photo: 'तपाईंको फोटो', s_bank: 'भुक्तानी', s_finish: 'अन्तिम',
       who_q: 'को आवेदन दिँदै हुनुहुन्छ?', who_lead: 'आफ्नो आधार / नागरिकता नजिकै राख्नुहोस्।', person: 'व्यक्तिगत एजेन्ट', personSub: 'तपाईं आफैं टिकट बेच्नुहुन्छ', org: 'ट्राभल एजेन्सी', orgSub: 'काउन्टर भएको पसल वा कम्पनी',
@@ -112,6 +117,11 @@
       need_kind: 'व्यक्तिगत वा एजेन्सी छान्नुहोस्।', need_name: 'पूरा नाम लेख्नुहोस्।', need_org: 'एजेन्सीको नाम लेख्नुहोस्।', need_wa: 'पहिले WhatsApp प्रमाणित गर्नुहोस्।',
       need_front: 'परिचयपत्रको अगाडिको फोटो थप्नुहोस्।', need_dob: 'जन्म मिति लेख्नुहोस्।', need_addr: 'ठेगाना वा सहर लेख्नुहोस्।', need_selfie: 'आफ्नो फोटो थप्नुहोस्।', need_consent: 'कृपया बाकसमा टिक लगाउनुहोस्।',
       need_idno: 'परिचयपत्र नम्बर लेख्नुहोस्।', need_role: 'फारम कसको लागि हो छान्नुहोस्।',
+      photoBad: 'यो फोटो खुलेन — JPG / PNG फोटो छान्नुहोस्, वा क्यामेराले फेरि खिच्नुहोस्।', photoBig: 'फोटो अझै धेरै ठूलो भयो — अलि टाढाबाट फेरि खिच्नुहोस्।',
+      pdfBig: 'यो PDF धेरै ठूलो भयो ({mb} MB भन्दा बढी) — पानाहरूको फोटो पठाउनुहोस्, वा सानो PDF।',
+      addLater: 'पछि थप्न सकिन्छ · add later', o_later: 'अफिस फारम: नाम र मोबाइल मात्र चाहिन्छ — परिचयपत्र, फोटो, बैंक पछि Team बाट थप्न सकिन्छ।',
+      o_reason_def: 'अफिसमै भरिएको', o_share: 'यही नम्बरमा अर्को ID थप्नुहोस्', o_shareOk: 'ठीक छ — यो नम्बरमा अर्को ID थपिन्छ।', o_full: 'यो नम्बरमा बढीमा हुने जति ID पुगिसके।',
+      o_has: 'यो नम्बरमा पहिल्यै {n} लगइन छ:', o_shareQ: 'सोही नम्बरमा अर्को ID थप्ने?', o_photoLater: 'फोटो छैन? फोटो नथपुन्जेल ID कार्डमा नामका अक्षर देखिन्छ।',
       officeMode: 'अफिस मोड', officeNew: 'नयाँ फारम', role_q: 'यो फारम कसको लागि?', designation: 'पद (ID कार्डमा छापिने)', roleFixed: 'फारम पठाएपछि पद बदलिँदैन।',
       o_skip_t: 'अफिस: WhatsApp कोड बिना यो मोबाइल स्वीकार्ने', o_reason: 'कारण (जस्तै: अफिसमै आउनुभयो, WhatsApp छैन)', o_skip_btn: 'मोबाइल स्वीकार्नुहोस्', o_taken: 'यो मोबाइलको खाता पहिल्यै छ:', openMember: 'सदस्य खोल्नुहोस्',
       o_saw: 'सक्कल परिचयपत्र हेरेँ (KYC प्रमाणित)', o_approve: 'अहिल्यै स्वीकृत — लगइन र ID कोड दिनुहोस्', o_consent: 'आवेदक सर्तमा सहमत हुनुभयो (कागजी फारममा सही वा मौखिक सहमति)।',
@@ -122,7 +132,7 @@
     hi: {
       idSays: 'पहचान पत्र में:', useIt: 'यही रखें', paperSays: 'कागज़ी फ़ॉर्म में:',
       heroTitle: 'एजेंट बनें', heroSub: '5 मिनट · सिर्फ मोबाइल काफी है', heroStaff: 'टीम से जुड़ें', loading: 'खुल रहा है…',
-      heroOffice: 'ऑफिस फ़ॉर्म · तेज़', heroOfficeSub: 'नाम, मोबाइल, पहचान नंबर और फ़ोटो काफी — बाकी वैकल्पिक',
+      heroOffice: 'ऑफिस फ़ॉर्म · तेज़', heroOfficeSub: 'सिर्फ़ नाम और मोबाइल ज़रूरी — पहचान, फ़ोटो, बैंक बाद में जोड़ सकते हैं',
       back: 'पीछे', next: 'आगे बढ़ें', send: 'ऑफिस भेजें', skip: 'छोड़ें', step: 'चरण', of: 'में से',
       s_who: 'आपके बारे में', s_wa: 'WhatsApp', s_id: 'पहचान पत्र', s_photo: 'आपकी फ़ोटो', s_bank: 'भुगतान', s_finish: 'आखिरी',
       who_q: 'कौन आवेदन कर रहा है?', who_lead: 'अपना आधार / नागरिकता कार्ड पास रखें।', person: 'व्यक्तिगत एजेंट', personSub: 'आप खुद टिकट बेचते हैं', org: 'ट्रैवल एजेंसी', orgSub: 'काउंटर वाली दुकान या कंपनी',
@@ -159,6 +169,11 @@
       need_kind: 'व्यक्तिगत या एजेंसी चुनें।', need_name: 'पूरा नाम लिखें।', need_org: 'एजेंसी का नाम लिखें।', need_wa: 'पहले WhatsApp सत्यापित करें।',
       need_front: 'पहचान पत्र के आगे की फ़ोटो जोड़ें।', need_dob: 'जन्म तिथि लिखें।', need_addr: 'पता या शहर लिखें।', need_selfie: 'अपनी फ़ोटो जोड़ें।', need_consent: 'कृपया बॉक्स पर टिक करें।',
       need_idno: 'पहचान पत्र नंबर लिखें।', need_role: 'फ़ॉर्म किसके लिए है चुनें।',
+      photoBad: 'यह फ़ोटो नहीं खुली — JPG / PNG फ़ोटो चुनें, या कैमरे से फिर लें।', photoBig: 'फ़ोटो अब भी बहुत बड़ी है — थोड़ा दूर से फिर लें।',
+      pdfBig: 'यह PDF बहुत बड़ी है ({mb} MB से ज़्यादा) — पन्नों की फ़ोटो भेजें, या छोटी PDF।',
+      addLater: 'बाद में जोड़ सकते हैं', o_later: 'ऑफिस फ़ॉर्म: सिर्फ़ नाम और मोबाइल ज़रूरी — पहचान, फ़ोटो, बैंक बाद में Team से जोड़ें।',
+      o_reason_def: 'ऑफिस में भरा गया', o_share: 'इसी नंबर पर एक और ID जोड़ें', o_shareOk: 'ठीक — इस नंबर पर एक और ID जुड़ेगी।', o_full: 'इस नंबर पर अधिकतम ID पहले से हैं।',
+      o_has: 'इस नंबर पर पहले से {n} लॉगिन हैं:', o_shareQ: 'इसी नंबर पर एक और ID जोड़ें?', o_photoLater: 'फ़ोटो नहीं? फ़ोटो जुड़ने तक ID कार्ड पर नाम के अक्षर दिखेंगे।',
       officeMode: 'ऑफिस मोड', officeNew: 'नया फ़ॉर्म', role_q: 'यह फ़ॉर्म किसके लिए?', designation: 'पद (ID कार्ड पर छपेगा)', roleFixed: 'फ़ॉर्म भेजने के बाद पद नहीं बदलता।',
       o_skip_t: 'ऑफिस: WhatsApp कोड के बिना यह मोबाइल स्वीकार करें', o_reason: 'कारण (जैसे: ऑफिस आए, WhatsApp नहीं)', o_skip_btn: 'मोबाइल स्वीकार करें', o_taken: 'इस मोबाइल का खाता पहले से है:', openMember: 'सदस्य खोलें',
       o_saw: 'असली पहचान पत्र देखा (KYC सत्यापित)', o_approve: 'अभी स्वीकृत — लॉगिन और ID कोड दें', o_consent: 'आवेदक शर्तों से सहमत (कागज़ी फ़ॉर्म पर हस्ताक्षर या मौखिक हाँ)।',
@@ -193,7 +208,8 @@
       else { body.key = S.key; opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
     } else if (S.key) { url += '&key=' + encodeURIComponent(S.key); }
     return fetch(url, opt).then(function (r) {
-      return r.json().catch(function () { return { ok: false, error: t('net') }; });
+      // 413 from the web server itself (no JSON): say what it is, not "network"
+      return r.json().catch(function () { return { ok: false, error: r.status === 413 ? t('photoBig') : t('net') }; });
     }, function () { return { ok: false, error: t('net') }; });
   }
   function toast(msg, bad) {
@@ -233,6 +249,9 @@
     var stored = '';
     try { stored = localStorage.getItem(KEY) || ''; } catch (e) { stored = ''; }
     S.key = C.resume || stored;
+    // an office link that brings a name / mobile (the old apply.html, an invitation) starts a NEW form
+    var pf0 = C.prefill || {};
+    if (OFF && !C.resume && (pf0.name || pf0.phone)) S.key = '';
     (S.key ? api('get') : Promise.resolve({ ok: false })).then(function (r) {
       if (r.ok) { remember(); take(r.data.draft); return; }
       if (C.resume) { return fatal(r.error || t('badLink')); }   // a stale "continue later" link
@@ -252,23 +271,26 @@
         if (okRole) {
           var ag = want.indexOf('agent:') === 0;
           return api('office_role', { role: ag ? 'agent' : want, agent_kind: ag ? want.split(':')[1] : 'person', designation: '' }).then(function (r) {
-            take(r.ok ? r.data.draft : s.data.draft);
+            return prefill(r.ok ? r.data.draft : s.data.draft);
           });
         }
       }
-      // agreements/apply.html?kind=partner → an agency; an office invitation also brings the name / mobile
-      var pf = (!OFF && C.prefill) || {}, first = {};
-      if (C.as === 'org' && !OFF) first.agent_kind = 'org';
-      if (pf.name) first.full_name = pf.name;
-      if (pf.phone) { S.pfPhone = pf.phone; first.country = pf.cc === 'NP' ? 'NP' : 'IN'; }
-      if (Object.keys(first).length) {
-        return api('save', first).then(function (r) {
-          take(r.ok ? r.data.draft : s.data.draft);
-          if (S.step > 0 && S.step < 6) { S.step = 0; render(); }   // a new form starts at "who" — they confirm the prefilled name
-        });
-      }
-      take(s.data.draft);
+      return prefill(s.data.draft);
     });
+  }
+  /** agreements/apply.html?kind=partner → an agency; an office invitation / the old form also brings the name / mobile */
+  function prefill(draft) {
+    var pf = C.prefill || {}, first = {};
+    if (C.as === 'org' && !OFF) first.agent_kind = 'org';
+    if (pf.name) first.full_name = pf.name;
+    if (pf.phone) { S.pfPhone = pf.phone; first.country = pf.cc === 'NP' ? 'NP' : 'IN'; }
+    if (Object.keys(first).length) {
+      return api('save', first).then(function (r) {
+        take(r.ok ? r.data.draft : draft);
+        if (S.step > 0 && S.step < 6) { S.step = 0; render(); }   // a new form starts at "who" — they confirm the prefilled name
+      });
+    }
+    take(draft);
   }
   function remember() { try { localStorage.setItem(KEY, S.key); } catch (e) {} }
   function take(d) {
@@ -308,7 +330,7 @@
     var s = S.src[name];
     var low = s === 'paper' && S.conf[name] === 'low' && !S.touched[name];
     var src = s ? '<span class="ap-src ' + s + (low ? ' low' : '') + '">' + esc(low ? t('lowConf') : t('src_' + s)) + '</span>' : '';
-    var opt = opts.optional ? ' <em>· ' + esc(t('optional')) + '</em>' : '';
+    var opt = opts.optional ? ' <em>· ' + esc(OFF ? t('addLater') : t('optional')) + '</em>' : '';
     var warn = S.warn[name] ? '<div class="ap-hint" style="color:var(--warn)">⚠ ' + esc(t(S.warn[name])) + '</div>' : '';
     if (S.bad[name] && !S.touched[name]) warn += '<div class="ap-err">⚠ ' + esc(S.bad[name]) + '</div>';
     var hint = opts.hint ? '<div class="ap-hint">' + esc(opts.hint) + '</div>' : '';
@@ -382,7 +404,7 @@
     var phone = S.d.phone || (OFF ? S.paperPhone : '') || S.pfPhone || '';
     var officeBox = OFF
       ? '<section class="ap-card ap-officecard"><h3>🏢 ' + esc(t('o_skip_t')) + '</h3>'
-        + '<label class="ap-field"><span>' + esc(t('o_reason')) + '</span><input class="ap-in" id="oReason" maxlength="160" value="' + esc(S.oReason || '') + '"></label>'
+        + '<label class="ap-field"><span>' + esc(t('o_reason')) + '</span><input class="ap-in" id="oReason" maxlength="160" value="' + esc(S.oReason || t('o_reason_def')) + '"></label>'
         + '<button type="button" class="ap-btn gold block" id="oSkip">✔ ' + esc(t('o_skip_btn')) + '</button><div id="oTaken"></div></section>'
       : '';
     return '<section class="ap-card"><h2>' + esc(t('wa_q')) + '</h2><p class="lead">' + esc(t('wa_lead')) + '</p>'
@@ -437,15 +459,16 @@
     var gender = '<div class="ap-field"><span>' + esc(t('gender')) + (S.src.gender ? '<span class="ap-src ' + S.src.gender + (gLow ? ' low' : '') + '">' + esc(gLow ? t('lowConf') : t('src_' + S.src.gender)) + '</span>' : '') + '</span><div class="ap-chips" role="group">'
       + ['Male', 'Female', 'Other'].map(function (x) { return '<button type="button" class="ap-chip" data-gender="' + x + '" aria-pressed="' + (g === x) + '">' + esc(t(x.toLowerCase())) + '</button>'; }).join('') + '</div></div>';
     var expiryTypes = { passport: 1, dl: 1 };
-    var opt = OFF;   // the office needs only the ID number here
+    var opt = OFF;   // 30 Oct 2026: the office needs nothing here — name + mobile are enough, the rest "add later"
     return paperCard()
       + '<section class="ap-card"><h2>' + esc(t('id_q')) + '</h2><p class="lead">' + esc(t('id_lead')) + '</p>'
+      + (OFF ? '<div class="ap-note" style="margin-bottom:12px">🏢 ' + esc(t('o_later')) + '</div>' : '')
       + '<div class="ap-field"><span>' + esc(t('idType')) + '</span><div class="ap-chips" role="group">' + chips + '</div></div>'
       + '<div class="ap-tiles">' + tile('front', t('front'), OFF) + tile('back', t('back2'), true) + '</div>'
       + '<div id="readBox"></div></section>'
       + '<section class="ap-card"><p class="lead">' + esc(t('checkFields')) + '</p>'
       + field('full_name', t('fullName'), { ac: 'name', max: 120 })
-      + '<div class="ap-grid2 stack">' + field('dob', t('dob'), { type: 'date', optional: opt }) + field('id_number', t('idNumber'), { max: 40, ac: 'off', ph: S.d.id_number_masked || '' }) + '</div>'
+      + '<div class="ap-grid2 stack">' + field('dob', t('dob'), { type: 'date', optional: opt }) + field('id_number', t('idNumber'), { max: 40, ac: 'off', ph: S.d.id_number_masked || '', optional: opt }) + '</div>'
       + gender
       + field('guardian', t('guardian'), { optional: true, max: 120 })
       + field('address', t('address'), { ac: 'street-address', max: 255, optional: opt })
@@ -460,7 +483,7 @@
     var prev = S.previews[slot] ? '<img alt="" src="' + S.previews[slot] + '">' : '';
     // No capture attribute: the phone offers camera AND gallery / files (an ID card photo or scan already on the phone).
     return '<label class="ap-tile' + (has ? ' has' : '') + '" data-slot="' + slot + '">' + prev
-      + (has ? '<span class="tag">✓ ' + esc(label) + '</span>' : '<span class="big">📷</span><b>' + esc(label) + '</b><small>' + esc(optional ? t('optional') : t('tapPhoto')) + '</small>')
+      + (has ? '<span class="tag">✓ ' + esc(label) + '</span>' : '<span class="big">📷</span><b>' + esc(label) + '</b><small>' + esc(optional ? (OFF ? t('addLater') : t('optional')) : t('tapPhoto')) + '</small>')
       + '<input type="file" accept="image/*,application/pdf" data-up="' + slot + '" aria-label="' + esc(label) + '"></label>';
   }
 
@@ -474,6 +497,7 @@
       + '<label class="ap-choice" style="cursor:pointer"><span class="ico">🖼</span><b>' + esc(t('passportBtn')) + '</b><small>' + esc(t('passportSub')) + '</small>'
       + '<input type="file" accept="image/*" id="selfieFile" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label></div>'
       + '<p class="ap-hint" style="text-align:center">' + esc(t('photoOr')) + '</p>'
+      + (OFF && !has && !src ? '<div class="ap-note" style="margin-top:10px">🏢 ' + esc(t('o_photoLater')) + ' · ' + esc(t('addLater')) + '</div>' : '')
       + '</section>'
       + '<section class="ap-card" id="thumbCard">' + renderThumb() + '</section>'
       + '<section class="ap-card"><h3>' + esc(t('cardPreview')) + '</h3>' + mini() + '<p class="ap-hint" style="text-align:center;margin-top:12px">🔐 ' + esc(t('fpNote')) + '</p></section>';
@@ -755,39 +779,79 @@
     $$('#app .ap-in[name]').forEach(function (el) { if (el.name !== 'bank_account' || el.value) S.d[el.name] = el.value; });
   }
 
+  /* ---- one mobile, up to 3 IDs (30 Oct 2026): the office says "add another ID on the same number" ---- */
+  function digitsOf(p) { return String(p || '').replace(/\D/g, '').slice(-10); }
+  function shareFor(p) { return S.share && S.sharePhone && S.sharePhone === digitsOf(p) ? '1' : ''; }
+  /** The owners a 409 answer carries ({owners, max, can_share}), or null. */
+  function ownersIn(r) {
+    var f = r && r.fields;
+    return f && f.owners && f.owners.length ? { owners: f.owners, max: f.max, can_share: !!f.can_share } : null;
+  }
+  /** "This number already has N login(s): …  — add another ID on the same number?" */
+  function showOwners(box, info, phone) {
+    if (!box) return;
+    var owners = (info && info.owners) || [];
+    if (!owners.length) { box.innerHTML = ''; return; }
+    var list = owners.map(function (o) {
+      return '<li>' + (o.member_url ? '<a href="' + esc(o.member_url) + '">' + esc(o.name) + '</a>' : esc(o.name))
+        + ' · <span class="ap-mono">' + esc(o.code || ('#' + o.id)) + '</span> · ' + esc(o.role) + (o.active ? '' : ' ⏳') + '</li>';
+    }).join('');
+    var shared = shareFor(phone) === '1';
+    box.innerHTML = '<div class="ap-note warn" style="margin-top:12px">⚠ ' + esc(t('o_has').replace('{n}', owners.length))
+      + '<ul style="margin:6px 0 8px 18px;padding:0">' + list + '</ul>'
+      + (shared ? '✅ ' + esc(t('o_shareOk'))
+        : (info.can_share ? '<b>' + esc(t('o_shareQ')) + '</b><br><button type="button" class="ap-btn sm gold" data-share="1" style="margin-top:8px">➕ ' + esc(t('o_share')) + ' (' + (owners.length + 1) + '/' + (+info.max || 3) + ')</button>'
+          : '<b>⛔ ' + esc(t('o_full')) + '</b> (' + (+info.max || 3) + ')'))
+      + '</div>';
+    var sb = box.querySelector('[data-share]');
+    if (sb) sb.addEventListener('click', function () { S.share = true; S.sharePhone = digitsOf(phone); showOwners(box, info, phone); toast('✓ ' + t('o_shareOk')); });
+  }
+  /**
+   * Office: take this mobile without a WhatsApp code (the reason defaults to "filled at the
+   * office", so name + mobile really are enough). Resolves true when accepted.
+   */
+  function officeAccept(btn) {
+    var p = ($('#phone') && $('#phone').value || '').replace(/\D/g, '');
+    var reason = (($('#oReason') && $('#oReason').value) || '').trim() || t('o_reason_def'); S.oReason = reason;
+    if (p.length < 8) { if ($('#phone')) $('#phone').setAttribute('aria-invalid', 'true'); toast(t('mobile'), true); return Promise.resolve(false); }
+    busy(btn, true);
+    return api('office_verify', { phone: p, country: $('#cc').value, reason: reason, share: shareFor(p) }).then(function (r) {
+      busy(btn, false);
+      if (!r.ok) {
+        var info = ownersIn(r);
+        if (info) showOwners($('#phoneTaken'), info, p); else if ($('#oTaken')) $('#oTaken').innerHTML = takenNote(r);
+        toast(r.error, true); return false;
+      }
+      S.d = Object.assign(r.data.draft, pickTyped()); return true;
+    });
+  }
+
   function bindWa() {
     var ch = $('#waChange');
     if (ch) { ch.addEventListener('click', function () { S.d.verified = false; S.otpSent = false; render(); }); }
     if (S.d.verified) return;
     var phoneOf = function () { return ($('#phone').value || '').replace(/\D/g, ''); };
     if (OFF) {
-      // The office learns at once when the mobile already belongs to someone (not at submit).
-      $('#phone').addEventListener('change', function () {
+      // The office learns at once when the mobile already has logins (not at submit) — and may add
+      // another ID on the same number (up to the most allowed, ap_phone_max_accounts).
+      var check = function () {
         var p = phoneOf(); if (p.length < 8) return;
-        api('phone_check', { phone: p }).then(function (r) {
-          var box = $('#phoneTaken'); if (!box) return;
-          box.innerHTML = r.ok && r.data.owner ? takenNote({ error: t('o_taken') + ' ' + r.data.owner.name + ' (#' + r.data.owner.id + ')', fields: { member_url: r.data.owner.member_url } }) : '';
-        });
-      });
+        api('phone_check', { phone: p }).then(function (r) { if (r.ok) showOwners($('#phoneTaken'), r.data, p); });
+      };
+      $('#phone').addEventListener('change', check);
+      if (phoneOf().length >= 10) check();
       $('#oSkip').addEventListener('click', function () {
-        var p = phoneOf(), reason = ($('#oReason').value || '').trim(); S.oReason = reason;
-        if (p.length < 8) { $('#phone').setAttribute('aria-invalid', 'true'); toast(t('mobile'), true); return; }
-        if (reason.length < 3) { $('#oReason').setAttribute('aria-invalid', 'true'); toast(t('o_reason'), true); return; }
-        var btn = this; busy(btn, true);
-        api('office_verify', { phone: p, country: $('#cc').value, reason: reason }).then(function (r) {
-          busy(btn, false);
-          if (!r.ok) { $('#oTaken').innerHTML = takenNote(r); toast(r.error, true); return; }
-          S.d = Object.assign(r.data.draft, pickTyped()); toast('✓ ' + t('officeOk')); render();
-        });
+        var btn = this;
+        officeAccept(btn).then(function (ok) { if (ok) { toast('✓ ' + t('officeOk')); render(); } });
       });
     }
     var send = function (btn) {
       var phone = phoneOf();
       if (phone.length < 10) { $('#phone').setAttribute('aria-invalid', 'true'); toast(t('mobile'), true); return; }
       busy(btn, true);
-      api('otp_send', { phone: phone, country: $('#cc').value }).then(function (r) {
+      api('otp_send', { phone: phone, country: $('#cc').value, share: OFF ? shareFor(phone) : '' }).then(function (r) {
         busy(btn, false);
-        if (!r.ok) { var tb = $('#phoneTaken'); if (tb) tb.innerHTML = takenNote(r); toast(r.error, true); return; }
+        if (!r.ok) { var tb = $('#phoneTaken'); if (tb) { if (OFF && ownersIn(r)) showOwners(tb, ownersIn(r), phone); else tb.innerHTML = takenNote(r); } toast(r.error, true); return; }
         S.otpSent = true; S.d.phone = phone; S.d.country = $('#cc').value;
         $('#otpBox').hidden = false; var f = $('.ap-otp input'); if (f) f.focus();
         toast('✓ WhatsApp');
@@ -846,10 +910,13 @@
       ? pdfPages(file, 1).then(function (pages) { return pages[0] ? new File([dataUrlBlob(pages[0])], 'id-' + slot + '.jpg', { type: 'image/jpeg' }) : file; }, function () { return file; })
       : Promise.resolve(file);
     prep.then(function (f) {
-      var isImg = /^image\//.test(f.type);
+      var isImg = /^image\//.test(f.type) || (!f.type && !/\.pdf$/i.test(f.name || ''));
+      var fpdf = !isImg && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''));
+      // 30 Oct 2026: a PDF goes up as it is — only when it fits what the server takes
+      if (fpdf && f.size > maxUpload()) throw tooBig(t('pdfBig').replace('{mb}', mb(maxUpload())));
       if (isImg && (slot === 'front' || slot === 'back')) S.previews[slot] = URL.createObjectURL(f);
       var qrP = (isImg && (slot === 'front' || slot === 'back')) ? readQr(f) : Promise.resolve('');
-      return Promise.all([qrP, isImg ? shrink(f, slot === 'selfie' ? 1400 : 2200) : Promise.resolve(f)]);
+      return Promise.all([qrP, isImg ? shrink(f, slot) : Promise.resolve(f)]);
     }).then(function (res) {
       var fd = new FormData();
       fd.append('slot', slot);
@@ -865,8 +932,25 @@
       if (r.data.read) applyRead(r.data.read, false);
       render();
       if (r.data.aiQueued) pollAi();
+    }).catch(function (e) {
+      // a PDF over the limit, or a picture this browser cannot open (HEIC …): say so, send nothing
+      toast(e && e.code === 'big' ? e.message : t('photoBad'), true);
+      render();
     });
   }
+  /** The most one upload may be (join.php works it out from MAX_UPLOAD_BYTES and PHP's own limits). */
+  function maxUpload() { return +C.maxUpload > 0 ? +C.maxUpload : 8000000; }
+  function mb(n) { return (Math.floor(n / 104857.6) / 10).toString(); }
+  function tooBig(msg) { var e = new Error(msg); e.code = 'big'; return e; }
+  /** Under-the-limit sizes per slot: an ID stays sharp enough for the QR / OCR, a face photo needs less. */
+  var SHRINK = {
+    front:  { maxEdge: 2000, maxBytes: 1500000 },
+    back:   { maxEdge: 2000, maxBytes: 1500000 },
+    selfie: { maxEdge: 1200, maxBytes: 500000 },
+    thumb:  { maxEdge: 1200, maxBytes: 500000 },
+    extra:  { maxEdge: 2000, maxBytes: 1500000 },
+    paper:  { maxEdge: 1600, maxBytes: 1200000 }
+  };
   /** Keep what the person typed this session (and what the paper form filled); the server copy may be older. */
   function pickTyped() {
     var o = {};
@@ -952,14 +1036,21 @@
           // shows another app (a hidden tab never runs rAF and the render would wait forever)
           var job = page.render({ canvasContext: cx, viewport: view, intent: 'print' }).promise;
           var limit = new Promise(function (res, rej) { setTimeout(function () { rej(new Error('pdf page timeout')); }, 60000); });
-          return Promise.race([job, limit]).then(function () { out.push(cv.toDataURL('image/jpeg', 0.82)); i++; return next(); });
+          return Promise.race([job, limit]).then(function () {
+            var uri = cv.toDataURL('image/jpeg', 0.82);
+            // a dense page can still be big: bring it under the per-page budget (ApShrink, same as a photo)
+            var fits = !window.ApShrink || window.ApShrink.dataUrlBytes(uri) <= SHRINK.paper.maxBytes;
+            return (fits ? Promise.resolve(uri) : window.ApShrink.dataUrl(uri, SHRINK.paper).catch(function () { return uri; }))
+              .then(function (u) { out.push(u); i++; return next(); });
+          });
         });
       };
       return next();
     });
   }
-  /** One photo of a page → JPEG data URI, longest edge 1600 px. */
+  /** One photo of a page → JPEG data URI, longest edge 1600 px, ≤ SHRINK.paper bytes (4 pages stay under the 9 MB body). */
   function photoPage(file) {
+    if (window.ApShrink) return window.ApShrink.dataUrl(file, SHRINK.paper).catch(function () { return ''; });
     return new Promise(function (resolve) {
       var url = URL.createObjectURL(file), im = new Image();
       im.onload = function () {
@@ -1053,19 +1144,20 @@
     });
   }
 
-  /** Shrink a photo before upload: phones send 4–12 MB; 2200 px JPEG is plenty and quick on 3G. */
-  function shrink(file, max) {
-    return new Promise(function (resolve) {
-      if (!/^image\//.test(file.type) || file.type === 'image/gif') { resolve(file); return; }
-      var img = new Image();
-      img.onload = function () {
-        var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, max / Math.max(w, h));
-        var cv = document.createElement('canvas'); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
-        var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(img, 0, 0, cv.width, cv.height);
-        cv.toBlob(function (b) { URL.revokeObjectURL(img.src); resolve(b || file); }, 'image/jpeg', 0.88);
-      };
-      img.onerror = function () { resolve(file); };
-      img.src = URL.createObjectURL(file);
+  /**
+   * Shrink a photo before upload: phones send 4–12 MB. 30 Oct 2026: every slot has a size AND a
+   * byte budget (SHRINK) — ApShrink lowers the quality, then the size, until it fits, so a 10 MB
+   * photo never meets "too large". A picture the browser cannot open rejects (code 'decode').
+   */
+  function shrink(file, slot) {
+    var o = SHRINK[slot] || SHRINK.extra;
+    if (!window.ApShrink) return Promise.resolve(file);   // shrink.js did not load: the server still re-sizes what fits
+    if (file.size && file.size <= o.maxBytes * 0.6 && /^image\/jpe?g$/i.test(file.type || '') && slot !== 'front' && slot !== 'back') {
+      return Promise.resolve(file);                          // already a small JPEG (the camera selfie)
+    }
+    return window.ApShrink.blob(file, o).then(function (b) {
+      if (b.size > maxUpload()) throw tooBig(t('photoBig'));
+      return b;
     });
   }
 
@@ -1159,14 +1251,13 @@
       else if ((d.full_name || '').trim().length < 2) need = 'need_name';
     } else if (st === 'wa' && !d.verified) need = 'need_wa';
     else if (st === 'id') {
-      if (OFF) {   // the office: the ID number is enough
+      if (OFF) {   // the office: name + mobile are enough, the ID can follow ("add later")
         if ((d.full_name || '').trim().length < 2) need = 'need_name';
-        else if (!(d.id_number || '').trim() && !d.id_number_masked) need = 'need_idno';
       } else if (!(d.has && d.has.front)) need = 'need_front';
       else if ((d.full_name || '').trim().length < 2) need = 'need_name';
       else if (!d.dob) need = 'need_dob';
       else if (!(d.address || d.city)) need = 'need_addr';
-    } else if (st === 'photo' && !(d.has && d.has.selfie)) need = 'need_selfie';
+    } else if (st === 'photo' && !OFF && !(d.has && d.has.selfie)) need = 'need_selfie';
     else if (st === 'finish' && !S.consent) need = 'need_consent';
     if (need) { toast(t(need), true); }
     return !need;
@@ -1187,8 +1278,17 @@
   }
   $('#next').addEventListener('click', function () {
     collect();
+    var btn = this;
+    // Office: a mobile typed but not checked — "Continue" accepts it for the office (name + mobile are enough).
+    if (OFF && STEPS[S.step] === 'wa' && !S.d.verified && $('#phone') && ($('#phone').value || '').replace(/\D/g, '').length >= 10) {
+      officeAccept(btn).then(function (ok) {
+        if (!ok) return;
+        toast('✓ ' + t('officeOk')); stopCam(); S.step = Math.min(5, S.step + 1); render(); window.scrollTo(0, 0);
+      });
+      return;
+    }
     if (!validate()) return;
-    var btn = this; busy(btn, true);
+    busy(btn, true);
     var fields = stepFields();
     var p = Object.keys(fields).length ? api('save', fields) : Promise.resolve({ ok: true, data: { draft: S.d } });
     p.then(function (r) {
@@ -1196,8 +1296,17 @@
       S.d = Object.assign(r.data.draft, pickTyped());
       if (STEPS[S.step] === 'finish') {
         var body = { consent: '1' };
-        if (OFF) { body.approve_now = S.approveNow ? '1' : '0'; body.saw_id = S.sawId ? '1' : '0'; }
-        return api('submit', body).then(function (s) {
+        if (OFF) { body.approve_now = S.approveNow ? '1' : '0'; body.saw_id = S.sawId ? '1' : '0'; body.share = shareFor(S.d.phone); }
+        var send = function (b2) {
+          return api('submit', b2).then(function (s) {
+            // the number got another login meanwhile: ask once, then send with share=1
+            if (!s.ok && OFF && s.fields && s.fields.can_share && !b2.share && window.confirm(s.error)) {
+              S.share = true; S.sharePhone = digitsOf(S.d.phone); b2.share = '1'; return send(b2);
+            }
+            return s;
+          });
+        };
+        return send(body).then(function (s) {
           busy(btn, false);
           if (!s.ok) { toast(s.error, true); return; }
           S.res = s.data; S.d.ref = s.data.ref; S.d.status = s.data.status; S.step = 6; stopCam();

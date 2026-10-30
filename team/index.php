@@ -51,7 +51,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
                 $r = TeamPortal::login($p, (string) ($_POST['password'] ?? ''), $ccIn);
                 if ($r['ok']) {
-                    TeamUi::go('/team/');
+                    TeamUi::go(($r['kind'] ?? '') === 'pick' ? '/team/?v=pick' : '/team/');   // one mobile, several IDs: which one?
                 }
                 $err = (string) $r['error'];
             } elseif ($act === 'forgot_send') {
@@ -87,6 +87,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $r = TeamPortal::resetPassword($p, (string) ($_POST['code'] ?? ''), (string) ($_POST['pw'] ?? ''), (string) ($_POST['pw2'] ?? ''));
                 if ($r['ok']) {
                     unset($_SESSION['team_reset']);
+                    if (($r['kind'] ?? '') === 'pick') {
+                        TeamUi::setFlash('ok', '✅ नयाँ पासवर्ड राखियो — कुन ID खोल्ने? · New password saved — which ID do you want to open?');
+                        TeamUi::go('/team/?v=pick');
+                    }
                     if (!empty($r['twofa'])) {
                         TeamUi::setFlash('ok', '✅ नयाँ पासवर्ड राखियो। यो खातामा 2FA छ — कार्यालयको लगइनबाट जानुहोस् · Password saved; this account signs in at the office login (2FA).');
                         TeamUi::go('/admin/login.php');
@@ -96,6 +100,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
                 $err = (string) $r['error'];
                 $v = 'reset';
+            } elseif ($act === 'pick') {
+                $r = TeamPortal::pick((int) ($_POST['id'] ?? 0));
+                if ($r['ok']) {
+                    TeamUi::go('/team/');
+                }
+                $err = (string) $r['error'];
+                $v = TeamPortal::pickList() !== [] ? 'pick' : '';
             } elseif ($act === 'password' && $me !== null) {
                 TeamPortal::changePassword($me, (string) ($_POST['old'] ?? ''), (string) ($_POST['pw'] ?? ''), (string) ($_POST['pw2'] ?? ''));
                 TeamUi::setFlash('ok', '✅ पासवर्ड बदलियो · Password changed.');
@@ -238,7 +249,23 @@ $ccPick = static function (string $sel) use ($h): string {
 };
 $ccNow = TeamPortal::cc($_POST['cc'] ?? ($reset['cc'] ?? '91'));
 
-if ($v === 'forgot'): ?>
+$pickList = $v === 'pick' ? TeamPortal::pickList() : [];
+if ($v === 'pick' && $pickList === []) {
+    $v = '';
+}
+if ($v === 'pick'): ?>
+<div class="tp-card">
+  <h1>🪪 कुन ID? · Which ID?</h1>
+  <p class="tp-sub">यो मोबाइलमा एकभन्दा बढी ID छन् — खोल्ने ID छान्नुहोस्। · This mobile has more than one ID — choose the one to open.</p>
+  <?php foreach ($pickList as $pk): ?>
+  <form method="post" action="/team/?v=pick" style="margin:8px 0">
+    <?= $csrf ?><input type="hidden" name="action" value="pick"><input type="hidden" name="id" value="<?= (int) $pk['id'] ?>">
+    <button class="b" type="submit" style="width:100%;text-align:left"><b><?= $h($pk['name']) ?></b> · <?= $h($pk['code'] !== '' ? $pk['code'] : '#' . $pk['id']) ?> · <?= $h($pk['role']) ?></button>
+  </form>
+  <?php endforeach; ?>
+  <p class="tp-links"><a href="/team/">← Sign in · लगइन</a></p>
+</div>
+<?php elseif ($v === 'forgot'): ?>
 <div class="tp-card">
   <h1>🔑 पासवर्ड बनाउनुहोस् / बिर्सनुभयो?</h1>
   <p class="tp-sub">Set or reset your password. दर्ता गरेको मोबाइल नम्बर लेख्नुहोस् — WhatsApp मा ६ अङ्कको कोड आउँछ।</p>

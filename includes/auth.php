@@ -932,7 +932,9 @@ final class Auth
             return ['ok' => false, 'error' => 'Too many attempts. Try again in ' . LOGIN_LOCKOUT_MIN . ' minutes.'];
         }
 
-        $admin = self::resolveAgentLogin($code, $mobile);
+        // 30 Oct 2026: the code may be left empty — the mobile alone; when it carries several
+        // IDs the person picks one after the code (agentLoginVerify → agentLoginPick).
+        $admin = trim($code) === '' ? (self::otpDoorAccounts($mobile)[0] ?? null) : self::resolveAgentLogin($code, $mobile);
         if ($admin === null) {
             Logger::warning('Agent OTP login: no match', ['code' => Security::clean($code, 12), 'ip' => $ip]);
             return $generic;
@@ -975,7 +977,8 @@ final class Auth
             return ['ok' => false, 'error' => 'Too many attempts. Try again in ' . LOGIN_LOCKOUT_MIN . ' minutes.'];
         }
 
-        $admin = self::resolveAgentLogin($code, $mobile);
+        $list = trim($code) === '' ? self::otpDoorAccounts($mobile) : array_values(array_filter([self::resolveAgentLogin($code, $mobile)]));
+        $admin = $list[0] ?? null;
         if ($admin === null) {
             return ['ok' => false, 'error' => 'Agent code and mobile number did not match our records.'];
         }
@@ -987,8 +990,83 @@ final class Auth
             return ['ok' => false, 'error' => (string) ($result['error'] ?? 'That code is not right.')];
         }
 
+        if (count($list) > 1) {
+            // One WhatsApp number, several IDs: the code proved the NUMBER; the person now picks
+            // which of THIS number's accounts to open (agentLoginPick). Nothing else is offered.
+            $_SESSION['ap_login_pick'] = ['phone' => $phone, 'ids' => array_map(static fn(array $a): int => (int) $a['id'], $list), 't' => time()];
+            return ['ok' => true, 'choose' => array_map(static fn(array $a): array => [
+                'id' => (int) $a['id'], 'name' => (string) $a['full_name'], 'role' => (string) $a['role'],
+            ], $list)];
+        }
+
         self::finishAdminSession($admin, $ip, true);
 
+        return ['ok' => true];
+    }
+
+    /** Roles the mobile + WhatsApp-code door may open (no password typed): the member roles only, never office ones. */
+    public const OTP_DOOR_ROLES = ['agent', 'counter', 'scanner'];
+
+    /**
+     * 30 Oct 2026 (owner: one WhatsApp number may carry up to 3 IDs): every account the
+     * mobile-only WhatsApp-code door may open for this mobile — active, not locked, a
+     * member role (OTP_DOOR_ROLES), no 2FA. Oldest first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function otpDoorAccounts(string $mobile): array
+    {
+        $mobile = normalisePhone($mobile);
+        if (strlen($mobile) < 7) {
+            return [];
+        }
+        $out = [];
+        foreach (Database::fetchAll(
+            "SELECT id, username, full_name, phone, role, permissions, is_active, locked_until, must_change_pw
+               FROM admins
+              WHERE is_active = 1 AND role IN ('" . implode("','", self::OTP_DOOR_ROLES) . "') AND phone IS NOT NULL AND phone <> ''
+              ORDER BY id ASC"
+        ) as $a) {
+            if (normalisePhone((string) $a['phone']) !== $mobile) {
+                continue;
+            }
+            if (!empty($a['locked_until']) && strtotime((string) $a['locked_until']) > time()) {
+                continue;
+            }
+            if (self::admin2faEnabled((int) $a['id'])) {
+                continue;
+            }
+            $out[] = $a;
+        }
+        return $out;
+    }
+
+    /**
+     * Agent login, step 3 (only when the mobile carries several IDs): open the one picked.
+     * Only an account in the list THIS session proved the WhatsApp code for (5 minutes),
+     * and only while it still has that mobile, is active and a member role.
+     *
+     * @return array{ok: bool, error?: string}
+     */
+    public static function agentLoginPick(int $adminId): array
+    {
+        $p = $_SESSION['ap_login_pick'] ?? null;
+        if (!is_array($p) || (int) ($p['t'] ?? 0) < time() - 300 || !in_array($adminId, array_map('intval', (array) ($p['ids'] ?? [])), true)) {
+            unset($_SESSION['ap_login_pick']);   // one try: a pick outside the list ends it (sign in again)
+            return ['ok' => false, 'error' => 'फेरि लगइन गर्नुहोस् · Please sign in again.'];
+        }
+        $admin = null;
+        foreach (self::otpDoorAccounts((string) $p['phone']) as $a) {
+            if ((int) $a['id'] === $adminId) {
+                $admin = $a;
+            }
+        }
+        unset($_SESSION['ap_login_pick']);
+        if ($admin === null) {
+            return ['ok' => false, 'error' => 'यो ID अहिले खुल्दैन · That ID cannot be opened now — please sign in again.'];
+        }
+        self::finishAdminSession($admin, Security::clientIp(), true);
+        Logger::audit('agent.login.pick', 'admin', (string) $adminId, null, null, 'Picked one of ' . count((array) $p['ids']) . ' IDs on one WhatsApp number');
         return ['ok' => true];
     }
 

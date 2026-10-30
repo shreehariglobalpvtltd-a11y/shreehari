@@ -33,6 +33,20 @@ if (!defined('SHG_APP')) {
 
 require_once __DIR__ . '/agentwallet.php';
 
+/**
+ * "This mobile already has a login" (30 Oct 2026, owner: one WhatsApp number may
+ * carry up to 3 IDs). $owners = the accounts on it (id, full_name, role, is_active);
+ * $canShare = the office may still add one more ID on it (with the office's yes).
+ */
+final class ApPhoneTaken extends RuntimeException
+{
+    /** @param list<array<string, mixed>> $owners */
+    public function __construct(string $message, public readonly array $owners, public readonly bool $canShare, public readonly int $max)
+    {
+        parent::__construct($message);
+    }
+}
+
 final class AgentPro
 {
     /** The ID documents the join form understands. Value => label. */
@@ -1485,19 +1499,96 @@ final class AgentPro
         return self::draft($key) ?? $app;
     }
 
-    /** The admins row that already uses this mobile (any status), or null. Excludes $exceptAdminId. */
+    /** The (first) admins row that already uses this mobile (any status), or null. Excludes $exceptAdminId. */
     public static function phoneOwner(string $phone, int $exceptAdminId = 0): ?array
+    {
+        return self::phoneOwners($phone, $exceptAdminId)[0] ?? null;
+    }
+
+    /**
+     * Every admins row on this mobile (any status, oldest first), excluding $exceptAdminId.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function phoneOwners(string $phone, int $exceptAdminId = 0): array
     {
         $phone = normalisePhone($phone);
         if ($phone === '') {
-            return null;
+            return [];
         }
-        foreach (Database::fetchAll("SELECT id, full_name, role, is_active, phone FROM admins WHERE phone IS NOT NULL AND phone <> ''") as $r) {
+        $out = [];
+        foreach (Database::fetchAll("SELECT id, full_name, role, is_active, phone FROM admins WHERE phone IS NOT NULL AND phone <> '' ORDER BY id ASC") as $r) {
             if ((int) $r['id'] !== $exceptAdminId && normalisePhone((string) $r['phone']) === $phone) {
-                return $r;
+                $out[] = $r;
             }
         }
-        return null;
+        return $out;
+    }
+
+    /**
+     * How many logins one mobile may carry (owner 30 Oct 2026: "euta WhatsApp number ma 3 ota ID").
+     * Setting ap_phone_max_accounts, default 3, never below 1 or above 5.
+     */
+    public static function phoneMax(): int
+    {
+        return max(1, min(5, Settings::getInt('ap_phone_max_accounts', 3)));
+    }
+
+    /**
+     * May one more account be made on this mobile?
+     *   public form: only a number nobody has yet;
+     *   office form: up to phoneMax() accounts, and only once the office said
+     *   "add another ID on the same number" ($share).
+     *
+     * @throws ApPhoneTaken
+     */
+    public static function assertPhoneFree(string $phone, int $exceptAdminId = 0, bool $office = false, bool $share = false): void
+    {
+        $owners = self::phoneOwners($phone, $exceptAdminId);
+        if ($owners === []) {
+            return;
+        }
+        $n = count($owners);
+        $max = self::phoneMax();
+        $canShare = $office && $n < $max;
+        if ($canShare && $share) {
+            return;
+        }
+        $names = implode(', ', array_map(static fn(array $o): string => (string) $o['full_name'] . ' (#' . (int) $o['id'] . ')', $owners));
+        if (!$office) {
+            $active = array_filter($owners, static fn(array $o): bool => (int) $o['is_active'] === 1) !== [];
+            throw new ApPhoneTaken($active
+                ? 'यो मोबाइलको खाता पहिल्यै छ — /me/ मा लगइन गर्नुहोस्; अर्को ID चाहिए अफिसलाई भन्नुहोस् · This mobile number already has an account — sign in at /me/ instead (for another ID on the same number, ask the office).'
+                : 'यो मोबाइलको आवेदन पहिल्यै अफिसमा छ · An application from this mobile number is already with the office.', $owners, false, $max);
+        }
+        if (!$canShare) {
+            throw new ApPhoneTaken('यो मोबाइलमा पहिल्यै ' . $n . ' वटा ID छन् (बढीमा ' . $max . ') · This mobile already has ' . $n . ' logins — the most one number may carry is ' . $max . ': ' . $names . '.', $owners, false, $max);
+        }
+        throw new ApPhoneTaken('यो मोबाइलमा पहिल्यै ' . $n . ' लगइन छ: ' . $names . ' — सोही नम्बरमा अर्को ID थप्ने? · This number already has ' . $n . ' login(s): ' . $names . ' — add another ID on the same number?', $owners, true, $max);
+    }
+
+    /**
+     * The office said yes to "add another ID on the same number" for this draft's mobile:
+     * remembered on the draft, so the WhatsApp step and the final submit agree.
+     */
+    public static function officeSharePhone(string $key, string $phone): void
+    {
+        $app = self::editable($key, true);
+        $phone = normalisePhone($phone);
+        if ($phone === '') {
+            return;
+        }
+        self::assertPhoneFree($phone, (int) ($app['admin_id'] ?? 0), true, true);   // still room (max) — throws when full
+        $readout = jsonColumn($app['readout'] ?? null);
+        $readout['phone_share'] = ['phone' => $phone, 'at' => date('c')];
+        Database::update('ap_applications', ['readout' => json_encode($readout, JSON_UNESCAPED_UNICODE)], 'id = :i', ['i' => (int) $app['id']]);
+    }
+
+    /** Did the office already say yes to sharing THIS mobile on this draft? */
+    private static function shareAgreed(array $app, string $phone): bool
+    {
+        $s = jsonColumn($app['readout'] ?? null)['phone_share'] ?? null;
+        return is_array($s) && $phone !== '' && (string) ($s['phone'] ?? '') === normalisePhone($phone);
     }
 
     /**
@@ -1506,7 +1597,7 @@ final class AgentPro
      *
      * @return array<string, mixed> the application
      */
-    public static function officeVerify(string $key, int $by, string $reason, string $rawPhone = '', string $country = ''): array
+    public static function officeVerify(string $key, int $by, string $reason, string $rawPhone = '', string $country = '', bool $share = false): array
     {
         $app = self::editable($key, true);
         if (!self::appHas('office_filled_by')) {
@@ -1520,10 +1611,14 @@ final class AgentPro
         if (!Security::isValidPhone($phone, true)) {
             throw new RuntimeException('Enter the mobile number.');
         }
-        self::assertPhoneFree($phone, (int) ($app['admin_id'] ?? 0));
+        $share = $share || self::shareAgreed($app, $phone);
+        self::assertPhoneFree($phone, (int) ($app['admin_id'] ?? 0), true, $share);
         $country = in_array($country, ['IN', 'NP'], true) ? $country : ((string) ($app['country'] ?? '') ?: (resolvePhoneCountry('', $rawPhone) ?: 'IN'));
         $readout = jsonColumn($app['readout'] ?? null);
         $readout['office'] = ['by' => $by, 'reason' => $reason, 'at' => date('c')];
+        if ($share && self::phoneOwners($phone, (int) ($app['admin_id'] ?? 0)) !== []) {
+            $readout['phone_share'] = ['phone' => $phone, 'at' => date('c'), 'by' => $by];   // "another ID on the same number"
+        }
         Database::update('ap_applications', [
             'phone' => $phone, 'country' => $country, 'wa_verified_at' => date('Y-m-d H:i:s'), 'wa_verified_via' => 'office',
             'office_filled_by' => $by, 'verify_code' => null, 'readout' => json_encode($readout, JSON_UNESCAPED_UNICODE),
@@ -1715,7 +1810,7 @@ final class AgentPro
     /* ---------------- WhatsApp verification of the applicant ---------------- */
 
     /** Send a 6-digit code to the number on WhatsApp (SMS too when the office enabled SMS OTP). */
-    public static function sendJoinOtp(string $key, string $rawPhone, string $country = ''): array
+    public static function sendJoinOtp(string $key, string $rawPhone, string $country = '', bool $office = false, bool $share = false): array
     {
         $app = self::draft($key);
         if ($app === null || $app['status'] !== 'draft') {
@@ -1725,7 +1820,11 @@ final class AgentPro
         if (!Security::isValidPhone($phone, true)) {
             throw new RuntimeException('Enter your 10-digit mobile number.');
         }
-        self::assertPhoneFree($phone);
+        $share = $office && ($share || self::shareAgreed($app, $phone));
+        self::assertPhoneFree($phone, (int) ($app['admin_id'] ?? 0), $office, $share);
+        if ($share && self::phoneOwners($phone, (int) ($app['admin_id'] ?? 0)) !== []) {
+            self::officeSharePhone($key, $phone);
+        }
         $country = in_array($country, ['IN', 'NP'], true) ? $country : (resolvePhoneCountry('', $rawPhone) ?: 'IN');
         self::limit('apjoin_otp_ip', Security::clientIp(), 12, 3600);
         $otp = Auth::issueOtp('apjoin:' . $phone, 'verify', 'whatsapp');
@@ -1827,16 +1926,6 @@ final class AgentPro
         }
     }
 
-    /** One login per mobile / email — say where to sign in instead. */
-    private static function assertPhoneFree(string $phone, int $exceptAdminId = 0): void
-    {
-        $r = self::phoneOwner($phone, $exceptAdminId);
-        if ($r !== null) {
-            throw new RuntimeException((int) $r['is_active'] === 1
-                ? 'This mobile number already has an account — sign in at /me/ instead.'
-                : 'An application from this mobile number is already with the office.');
-        }
-    }
 
     /**
      * Send the application: make the (inactive) staff account, exactly the
@@ -1844,7 +1933,7 @@ final class AgentPro
      *
      * @return array<string, mixed> the submitted application
      */
-    public static function submit(string $key, bool $office = false, int $by = 0): array
+    public static function submit(string $key, bool $office = false, int $by = 0, bool $share = false): array
     {
         $app = self::draft($key);
         if ($app === null) {
@@ -1858,21 +1947,47 @@ final class AgentPro
         if (mb_strlen(trim((string) ($app['full_name'] ?? ''))) < 2) { $missing[] = 'your full name'; }
         if ($app['kind'] === 'agent' && $app['agent_kind'] === 'org' && trim((string) ($app['org_name'] ?? '')) === '') { $missing[] = 'the agency name'; }
         if (empty($app['wa_verified_at'])) { $missing[] = $office ? 'the mobile number (verify on WhatsApp, or skip with a reason)' : 'WhatsApp verification'; }
-        if ($office) {
-            // The office fills fast: name, mobile, ID number and photo are enough.
-            if (trim((string) ($app['id_number_masked'] ?? '')) === '') { $missing[] = 'the ID number'; }
-        } else {
+        if (!$office) {
+            // 30 Oct 2026 (owner): the OFFICE form needs only name + mobile (+ role) — ID number,
+            // ID photos, photo, bank are "पछि थप्न सकिन्छ · add later". Self-fill keeps all of these.
             if (empty($app['id_type'])) { $missing[] = 'the ID type'; }
             if (empty($app['doc_front'])) { $missing[] = 'a photo of the ID (front)'; }
             if (trim((string) ($app['city'] ?? '')) === '' && trim((string) ($app['address'] ?? '')) === '') { $missing[] = 'your address or city'; }
+            if (empty($app['selfie'])) { $missing[] = 'your photo'; }
         }
-        if (empty($app['selfie'])) { $missing[] = 'your photo'; }
         if ($missing !== []) {
             throw new RuntimeException('Still needed: ' . implode(', ', $missing) . '.');
         }
 
         $phone = (string) $app['phone'];
-        self::assertPhoneFree($phone);
+        // One lock per mobile from the "is there room on this number?" check until the
+        // admins row exists, so two office drafts for the same number sent at the same
+        // moment cannot both pass the limit (ap_phone_max_accounts). Released below.
+        $phoneLock = 'ap_phone_' . (normalisePhone($phone) ?: md5($phone));
+        if ((int) Database::scalar('SELECT GET_LOCK(:k, 5)', ['k' => $phoneLock], 0) !== 1) {
+            throw new RuntimeException('यो मोबाइलको अर्को फारम पठाइँदैछ — केही बेरपछि फेरि · Another form for this mobile is being sent — please try again in a moment.');
+        }
+        try {
+            // Re-read under the lock: a double tap that waited here finds the form already sent.
+            $app = self::draft($key) ?? $app;
+            if ($app['status'] !== 'draft') {
+                return $app;
+            }
+            return self::submitLocked($app, $phone, $office, $by, $share);
+        } finally {
+            Database::scalar('SELECT RELEASE_LOCK(:k)', ['k' => $phoneLock], 0);
+        }
+    }
+
+    /**
+     * submit(), from the per-number limit on, while the caller holds the phone lock.
+     *
+     * @param array<string, mixed> $app
+     * @return array<string, mixed>
+     */
+    private static function submitLocked(array $app, string $phone, bool $office, int $by, bool $share): array
+    {
+        self::assertPhoneFree($phone, 0, $office, $office && ($share || self::shareAgreed($app, $phone)));
         if (!$office) {
             // Counted only now — a form that failed validation created nothing. An
             // internet cafe may register several agents, so the per-IP budget is generous.
@@ -1890,7 +2005,12 @@ final class AgentPro
         $display = $isOrg ? trim((string) $app['org_name']) : $person;
         $username = $phone;
         if (Database::exists('SELECT 1 FROM admins WHERE username = :u', ['u' => $username])) {
-            $username = ($role === 'agent' ? 'agent_' : 'staff_') . $phone;
+            // a second / third ID on the same number (office, ap_phone_max_accounts): agent_98…, agent_98…_2
+            $base = ($role === 'agent' ? 'agent_' : 'staff_') . $phone;
+            $username = $base;
+            for ($n = 2; $n < 20 && Database::exists('SELECT 1 FROM admins WHERE username = :u', ['u' => $username]); $n++) {
+                $username = $base . '_' . $n;
+            }
         }
 
         // One invitation = one application. Two drafts opened from the same link
@@ -1906,8 +2026,8 @@ final class AgentPro
 
         $loginRole = self::loginRole($role);   // a driver / conductor signs in as boarding staff
         try {
-            $adminId = (int) Database::transaction(static function () use ($loginRole, $display, $username, $email, $phone): int {
-                return Database::insert('admins', [
+            $adminId = (int) Database::transaction(static function () use ($loginRole, $display, $username, $email, $phone, $office): int {
+                $id = (int) Database::insert('admins', [
                     'username'       => $username,
                     'password_hash'  => password_hash(bin2hex(random_bytes(12)), PASSWORD_DEFAULT),
                     'full_name'      => $display,
@@ -1917,6 +2037,12 @@ final class AgentPro
                     'is_active'      => 0,
                     'must_change_pw' => 0,
                 ]);
+                // Belt and braces with the phone lock: counted again with the new row in,
+                // so a writer outside this lock can never leave more than the limit.
+                if (count(self::phoneOwners($phone)) > ($office ? self::phoneMax() : 1)) {
+                    throw new ApPhoneTaken('यो मोबाइलमा बढीमा ' . self::phoneMax() . ' वटा ID · This mobile already has the most logins one number may carry (' . self::phoneMax() . ').', self::phoneOwners($phone, $id), false, self::phoneMax());
+                }
+                return $id;
             });
         } catch (Throwable $e) {
             if ($inviteId > 0) {   // nothing was made: the link works again
@@ -2066,6 +2192,11 @@ final class AgentPro
         }
         // $kycVerified: null = the one-tap approve (the office looked at the ID photos) → verified;
         // the office form passes its "saw the original ID" tick — unticked leaves KYC "submitted".
+        // 30 Oct 2026: an office form sent with no ID photo at all ("add later") is never KYC-verified
+        // by the one-tap approve — only by a manager's explicit "saw the original ID" tick.
+        if ($kycVerified === null && empty($app['doc_front']) && empty($app['doc_back'])) {
+            $kycVerified = false;
+        }
         if (AgentWallet::kycAvailable() && $kycVerified !== false) {
             AgentWallet::kycVerify($adminId, 'verified', ($kycVerified === true ? 'Original ID seen by the office · ' : '')
                 . 'Approved from the Agent Pro form ' . $app['ref'], $by);
