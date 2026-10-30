@@ -366,13 +366,17 @@ final class DocVerify
     public static function geminiLadder(): array
     {
         $ladder = self::GEMINI_LADDER;
+        /* 30 Oct 2026 (owner: "AI dherai dhilo — Gemini pahile, chhito"): the site's own model
+           (gemini_model, the light one that answers) goes FIRST. Last, it was never reached: the
+           bigger models answered 503 "high demand" or timed out and used up the whole budget, so
+           every ID photo fell through to the 120 s VPS read (291 s for one form on live). */
+        $site = trim(Settings::getString('gemini_model', ''));
+        if ($site !== '') {
+            array_unshift($ladder, $site);
+        }
         $pinned = trim(Settings::getString('agr_doc_gemini_model', ''));
         if ($pinned !== '') {
             array_unshift($ladder, $pinned);
-        }
-        $site = trim(Settings::getString('gemini_model', ''));
-        if ($site !== '') {
-            $ladder[] = $site;
         }
         return array_values(array_unique($ladder));
     }
@@ -453,9 +457,11 @@ final class DocVerify
             Logger::warning($who . ': nothing Gemini can read (unsupported file type)');
             return null;
         }
+        // 30 Oct 2026: never under 4096 — the 3.x models spend part of maxOutputTokens thinking, and
+        // a Devanagari name costs many tokens; at 900 the answer stopped mid-name ("not JSON").
         $payload = [
             'contents' => [['role' => 'user', 'parts' => $parts]],
-            'generationConfig' => ['temperature' => 0, 'maxOutputTokens' => $maxTokens, 'responseMimeType' => 'application/json'],
+            'generationConfig' => ['temperature' => 0, 'maxOutputTokens' => max($maxTokens, 4096), 'responseMimeType' => 'application/json'],
         ];
 
         foreach (self::geminiLadder() as $model) {
@@ -490,9 +496,36 @@ final class DocVerify
             if (is_array($read)) {
                 return $read;
             }
+            // A cut-off answer still carries the fields it got to (the name comes first): keep them
+            // rather than wait for another model. Only complete "key": "value" / number pairs count.
+            $salvage = self::salvageJson($out);
+            if (count($salvage) >= 2) {
+                Logger::warning($who . ': Gemini answer cut off — kept ' . count($salvage) . ' fields', ['model' => $model]);
+                return $salvage;
+            }
             Logger::warning($who . ': Gemini answer not JSON', ['model' => $model, 'out' => mb_substr($out, 0, 200)]);
         }
         return null;
+    }
+
+    /**
+     * The complete top-level "key": "string" / number / true|false pairs of a JSON answer that was
+     * cut off (pure — the tests call it). A half-written last value is dropped.
+     *
+     * @return array<string, string|int|float|bool>
+     */
+    public static function salvageJson(string $out): array
+    {
+        $got = [];
+        if (preg_match_all('/"([A-Za-z_][A-Za-z0-9_]{0,40})"\s*:\s*("(?:[^"\\\\]|\\\\.)*"|-?\d+(?:\.\d+)?|true|false)\s*[,}\n]/u', $out, $mm, PREG_SET_ORDER) > 0) {
+            foreach ($mm as $m) {
+                $v = json_decode($m[2], true);
+                if ($v !== null && !array_key_exists($m[1], $got)) {
+                    $got[$m[1]] = $v;
+                }
+            }
+        }
+        return $got;
     }
 
     /** Tesseract on the VPS. null = not installed / failed. */

@@ -542,6 +542,25 @@ final class AgentWallet
             ];
         }
         usort($list, static fn(array $x, array $y): int => strnatcmp($x['code'], $y['code']));
+        // 30 Oct 2026: then the staff, by staff number (credited at the same fixed rate)
+        try {
+            $staff = Database::fetchAll(
+                "SELECT a.id, a.username, a.full_name, m.staff_no, COALESCE(p.counter_name, '') AS city
+                   FROM admins a JOIN ap_members m ON m.admin_id = a.id LEFT JOIN admin_profiles p ON p.admin_id = a.id
+                  WHERE a.role <> 'agent' AND a.is_active = 1 AND m.staff_no IS NOT NULL ORDER BY m.staff_no"
+            );
+        } catch (Throwable $e) {
+            $staff = [];
+        }
+        foreach ($staff as $sr) {
+            $list[] = [
+                'code' => 'SHG-S-' . str_pad((string) (int) $sr['staff_no'], 4, '0', STR_PAD_LEFT),
+                'name' => (string) ($sr['full_name'] ?: $sr['username']),
+                'type' => 'staff',
+                'co'   => false,
+                'city' => trim((string) ($sr['city'] ?? '')),
+            ];
+        }
         return $list;
     }
 
@@ -565,8 +584,57 @@ final class AgentWallet
         if (preg_match('/^\d{1,4}$/', $raw) === 1) {
             $raw = 'SHG-' . $raw;   // a desk types the number alone
         }
+        if (self::isStaffCode($raw)) {
+            $sid = self::resolveStaffCode($raw);
+            return $sid === null ? null : self::staffCodeLabel($sid);
+        }
         $aid = self::resolveAgentCodeFromString($raw);
         return $aid === null ? null : self::agentCodeLabel($aid);
+    }
+
+    /* 30 Oct 2026 (owner: "ticket katda list ma S Hari Global Pvt Ltd, staff, agent — jaslai ni mention
+       garna milos, commission fix"): a desk may credit a sale to a member of STAFF too, by their staff
+       number SHG-S-0004 (ap_members.staff_no). The commission is the same fixed flat rate. */
+
+    /** "SHG-S-0004", "shg s 4", "S-4" … */
+    public static function isStaffCode(string $raw): bool
+    {
+        return preg_match('/^(?:SHG)?S(\d{1,5})$/', preg_replace('/[^A-Z0-9]/', '', strtoupper($raw)) ?? '') === 1;
+    }
+
+    /** The active office login (not an agent) holding that staff number, or null. */
+    public static function resolveStaffCode(string $raw): ?int
+    {
+        if (preg_match('/^(?:SHG)?S(\d{1,5})$/', preg_replace('/[^A-Z0-9]/', '', strtoupper($raw)) ?? '', $m) !== 1) {
+            return null;
+        }
+        try {
+            $id = Database::scalar(
+                "SELECT a.id FROM ap_members m JOIN admins a ON a.id = m.admin_id
+                  WHERE m.staff_no = :n AND a.role <> 'agent' AND a.is_active = 1
+                    AND (a.locked_until IS NULL OR a.locked_until < NOW()) LIMIT 1",
+                ['n' => (int) $m[1]], null
+            );
+        } catch (Throwable $e) {
+            return null;   // AgentPro not installed
+        }
+        return $id !== null ? (int) $id : null;
+    }
+
+    public static function staffCodeLabel(int $adminId): string
+    {
+        try {
+            $n = (int) Database::scalar('SELECT staff_no FROM ap_members WHERE admin_id = :a', ['a' => $adminId], 0);
+        } catch (Throwable $e) {
+            $n = 0;
+        }
+        return $n > 0 ? 'SHG-S-' . str_pad((string) $n, 4, '0', STR_PAD_LEFT) : '';
+    }
+
+    /** An agent code or a staff code → the login a desk sale is credited to (null = nobody). */
+    public static function resolveDeskCode(string $raw): ?int
+    {
+        return self::isStaffCode($raw) ? self::resolveStaffCode($raw) : self::resolveAgentCodeFromString($raw);
     }
 
     /**
@@ -1975,8 +2043,10 @@ final class AgentWallet
         $oldAgentId = (int) ($booking['sold_by_admin_id'] ?? 0);
 
         if ($newAgentId > 0) {
+            // 30 Oct 2026: at the sale a desk may credit a member of staff too (SHG-S-…); a later
+            // correction still moves a sale only to an agent.
             $ok = Database::exists(
-                "SELECT 1 FROM admins WHERE id = :i AND role = 'agent'",
+                $atSale ? 'SELECT 1 FROM admins WHERE id = :i AND is_active = 1' : "SELECT 1 FROM admins WHERE id = :i AND role = 'agent'",
                 ['i' => $newAgentId]
             );
             if (!$ok) {

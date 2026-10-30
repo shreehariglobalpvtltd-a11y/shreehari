@@ -248,6 +248,13 @@ final class ApDocRead
                         $missing[] = $k;
                     }
                 }
+                /* 30 Oct 2026 (owner: "naam bata suru, chhito — 3-4 minute naam padhna lagyo"): once Gemini
+                   has the NAME the form is filled at once; the 2-minute VPS read for the remaining boxes
+                   only when the office switches ap_read_vps_fill on (the person types the rest). */
+                if (is_array($d) && in_array('full_name', self::keyFields($side), true) && trim((string) ($got['full_name'] ?? '')) !== ''
+                    && !Settings::getBool('ap_read_vps_fill', false)) {
+                    $missing = [];
+                }
             }
             $left = (int) floor($t0 + self::fastBudget() - microtime(true));
             if ($missing !== [] && $left >= 20 && ApAi::docsReady()) {

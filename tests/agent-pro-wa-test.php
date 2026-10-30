@@ -209,7 +209,11 @@ check('…with the commission on the agent\'s wallet', (bool) Database::fetch("S
     ['b' => (int) ($bk['id'] ?? 0), 'a' => $agentId]));
 check('…and the ticket picture back to the agent', str_contains((string) ($r['media'] ?? ''), 'ticket') || str_contains((string) ($r['media'] ?? ''), $pnr));
 $r = wa($A_WA, 'bholi 1 seat Surat');
-check('a quote without the passenger asks for name + number', str_contains(txt($r), 'मोबाइल') || str_contains(txt($r), 'mobile'));
+// 30 Oct 2026: no passenger number = the ticket comes to the seller's own WhatsApp — only the name is asked
+check('a quote without the passenger asks for the name only (ticket to the seller\'s WhatsApp)',
+    (str_contains(txt($r), 'नाम') || str_contains(txt($r), 'name')) && (str_contains(txt($r), 'तपाईंकै WhatsApp') || str_contains(txt($r), 'your own WhatsApp')), txt($r));
+$r = wa($A_WA, 'Ok yeti ho ticket deu');
+check('"ok yeti ho ticket deu" is never taken as the passenger\'s name', !str_contains(mb_strtolower(txt($r)), 'yeti deu'), txt($r));
 $r = wa($A_WA, 'Hari Thapa 9812345672');
 check('…which the next message fills in (re-quoted)', str_contains(txt($r), 'Hari Thapa') && str_contains(txt($r), '*ho*'), txt($r));
 wa($A_WA, 'no');

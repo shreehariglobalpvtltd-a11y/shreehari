@@ -864,7 +864,7 @@ final class BookingService
     {
         try {
             $code    = strtoupper(trim($code));
-            $agentId = ($code !== '' && $code !== 'OTHER') ? AgentWallet::resolveAgentCodeFromString($code) : null;
+            $agentId = ($code !== '' && $code !== 'OTHER') ? AgentWallet::resolveDeskCode($code) : null;   // an agent or (30 Oct) a staff code
             if ($agentId === null) {
                 $agentId = AgentWallet::resolveAgentCodeFromString(Settings::getString('company_agent_code', 'SHG-0001'));
             }

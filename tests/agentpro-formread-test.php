@@ -387,8 +387,14 @@ check('ID, fast: Gemini read the name, birth date and number — the VPS model i
     && $chatCalls() === 0, json_encode($ri));
 ApDocRead::$geminiHook = static fn(string $prompt, string $jpeg): array => ['is_id_document' => true, 'full_name' => 'Gemini Person', 'dob' => '', 'id_number' => '',
     'confidence' => ['full_name' => 'high']];
+$rp1 = ApDocRead::readAi($idPhoto2, 'aadhaar', 'front');
+check('ID, fast (30 Oct): Gemini has the NAME → answered at once, no 2-minute VPS read for the rest',
+    is_array($rp1) && $rp1['reader'] === 'gemini' && ($rp1['fields']['full_name'] ?? '') === 'Gemini Person' && $chatCalls() === 0, json_encode($rp1));
+Settings::set('ap_read_vps_fill', '1', 'bool', 'agentpro', false);   // the office wants the VPS model to fill the rest
+@unlink($mockLog);
 $rp2 = ApDocRead::readAi($idPhoto2, 'aadhaar', 'front');
-check('ID, fast: Gemini left the birth date and number empty → the VPS model fills only those (Gemini keeps the name)',
+Database::run("DELETE FROM settings WHERE skey = 'ap_read_vps_fill'");
+check('ID, fast + ap_read_vps_fill: Gemini left the birth date and number empty → the VPS model fills only those (Gemini keeps the name)',
     is_array($rp2) && $rp2['reader'] === 'gemini+vps' && ($rp2['fields']['full_name'] ?? '') === 'Gemini Person' && ($rp2['fields']['dob'] ?? '') === '1994-03-12'
     && ($rp2['fields']['id_number'] ?? '') !== '' && ($rp2['confidence']['full_name'] ?? '') === 'high' && $chatCalls() === 1, json_encode($rp2));
 @unlink($mockLog);

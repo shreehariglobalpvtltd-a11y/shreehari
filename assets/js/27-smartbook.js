@@ -1240,6 +1240,8 @@
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function normCode(s) {
     var d = String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    var st = /^(?:SHG)?S(\d{1,5})$/.exec(d);   /* 30 Oct 2026: a staff number, SHG-S-0004 */
+    if (st) return 'SHG-S-' + ('0000' + st[1]).slice(-4);
     var m = /^SHG(\d{1,4})$/.exec(d) || /^(\d{1,4})$/.exec(d);
     return m ? 'SHG-' + ('0000' + m[1]).slice(-4) : '';
   }
@@ -1278,7 +1280,7 @@
     var inp = $('sbAgent'); if (!STAFF || !inp) return;
     $('sbAgentList').innerHTML = AGENTS.map(function (a) {
       var rate = agentRate(a);
-      return '<option value="' + esc(a.code) + '">' + esc((a.co ? '🏢 ' : '👤 ') + a.name + (a.city ? ' · ' + a.city : '') + (rate ? ' · ' + rate : '')) + '</option>';
+      return '<option value="' + esc(a.code) + '">' + esc((a.co ? '🏢 ' : (a.type === 'staff' ? '🧑‍💼 ' : '👤 ')) + a.name + (a.city ? ' · ' + a.city : '') + (rate ? ' · ' + rate : '')) + '</option>';
     }).join('');
     var saved = lsGet(KEY_AGENT);
     setAgent(saved === 'OTHER' ? 'OTHER' : (findAgent(saved) ? findAgent(saved).code : ''), false);

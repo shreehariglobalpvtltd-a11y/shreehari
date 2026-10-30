@@ -159,7 +159,10 @@ final class ApWa
             // 3. The one thing this number was asked to confirm.
             if (!empty($state['pending'])) {
                 $p = $state['pending'];
-                $yes = preg_match(self::YES, $text) === 1;
+                // 30 Oct 2026 (owner's chat: "Ok yeti ho ticket deu" became the passenger "Yeti Deu"): on a
+                // complete sale quote, a sentence that only says "ok, this one, give the ticket" IS the ho.
+                $yes = preg_match(self::YES, $text) === 1
+                    || (($p['kind'] ?? '') === 'sale' && self::yesPhrase($text) && self::saleComplete((array) ($p['sale'] ?? [])));
                 if ($p['kind'] === 'done') {
                     // A CONFIRM again after the sale / payment went through: say what happened, do nothing.
                     if ($yes) {
@@ -594,6 +597,7 @@ final class ApWa
     /** @return array{text: string, media?: ?string}|null */
     private static function command(string $text, array $member, array $ctx, string $lang): ?array
     {
+        $text = self::fixTicketWord($text);   // 30 Oct 2026: "Tciket book" is a ticket too
         $l = mb_strtolower($text);
         $pnr = '';
         if (preg_match('/\bSHG-[A-Z0-9]+(?:-[A-Z0-9]+)+\b/i', $text, $m) === 1) {
@@ -2216,6 +2220,12 @@ final class ApWa
         } catch (RuntimeException $e) {
             return self::out('⚠️ ' . $e->getMessage());
         }
+        // 30 Oct 2026 (owner: "ticket katna ekdum sajilo, ticket AI janu paryo"): no passenger mobile =
+        // the ticket comes to the seller's own WhatsApp (one question less); a mobile typed later replaces it.
+        if ((string) $sale['phone'] === '' && Settings::getBool('ap_wa_sale_seller_phone', true) && (string) ($ctx['phone'] ?? '') !== '') {
+            $sale['phone'] = (string) $ctx['phone'];
+            $sale['to_seller'] = true;
+        }
         $need = [];
         if (mb_strlen(trim((string) $sale['name'])) < 2) { $need[] = self::t('f_name', $lang); }
         if ((string) $sale['phone'] === '') { $need[] = self::t('f_phone', $lang); }
@@ -2229,12 +2239,64 @@ final class ApWa
             'n' => (string) $plan['seatCount'], 'total' => inr((float) $plan['fare']['total']), 'left' => (string) $plan['seatsLeft'],
             'who' => trim(($sale['names'] !== [] ? implode(', ', $sale['names']) : (string) $sale['name']) . ' ' . (string) $sale['phone']),
         ]);
+        if (!empty($sale['to_seller'])) {
+            $text .= "\n" . ['ne' => '📲 यात्रुको नम्बर नभएकोले टिकट तपाईंकै WhatsApp मा आउँछ (नम्बर पठाए त्यहीँ जान्छ)।',
+                             'hi' => '📲 यात्री का नंबर नहीं, टिकट आपके ही WhatsApp पर आएगा (नंबर भेजें तो वहीं जाएगा)।',
+                             'en' => '📲 No passenger number — the ticket comes to your own WhatsApp (send a number to change it).'][$lang];
+        }
         if ($need !== []) {
             $text .= "\n\n" . self::t('sale_need', $lang, ['what' => implode(' + ', $need)]);
         } else {
             $text .= "\n\n" . self::t('sale_ask_yes', $lang);
         }
         return self::out($text);
+    }
+
+    /* 30 Oct 2026: the words of "ok, this one, give the ticket" in Nepali / Hindi / English — never a name. */
+    private const FILLER = ['ok', 'okay', 'okk', 'k', 'yes', 'y', 'ya', 'haan', 'han', 'ha', 'ho', 'hoo', 'hola', 'yo', 'ye', 'yei', 'yehi',
+        'yahi', 'yeti', 'yati', 'ticket', 'tiket', 'tikat', 'tciket', 'tickt', 'tikit', 'tkt', 'deu', 'de', 'dinus', 'dinu', 'dinuhos', 'dijiye',
+        'dedo', 'do', 'karo', 'kar', 'katnu', 'kata', 'kaat', 'kaatnu', 'katdeu', 'kaatdeu', 'gardeu', 'garnus', 'gara', 'garo', 'please', 'plz',
+        'pls', 'sir', 'dai', 'bhai', 'ji', 'hai', 'la', 'lau', 'confirm', 'confirmed', 'pakka', 'thik', 'theek', 'cha', 'chha', 'xa', 'hunchha',
+        'huncha', 'hunxa', 'done', 'book', 'final', 'ahile', 'aba', 'abhi', 'हो', 'ठीक', 'छ', 'दिनुहोस्', 'देउ', 'टिकट', 'काट्नु', 'काट', 'पक्का',
+        'हुन्छ', 'कन्फर्म', 'यो', 'यही', 'यति', 'हाँ', 'दो', 'दीजिए', 'ओके'];
+    private const YES_WORDS = ['ok', 'okay', 'okk', 'yes', 'haan', 'han', 'ho', 'hoo', 'deu', 'de', 'dinus', 'dinuhos', 'dijiye', 'dedo',
+        'confirm', 'confirmed', 'pakka', 'thik', 'theek', 'done', 'katdeu', 'kaatdeu', 'gardeu', 'हो', 'ठीक', 'देउ', 'दिनुहोस्', 'पक्का',
+        'कन्फर्म', 'हाँ', 'दीजिए', 'ओके'];
+
+    /** @return list<string> */
+    private static function fillerTokens(string $text): array
+    {
+        return array_values(array_filter(preg_split('/[^\p{L}\p{M}]+/u', mb_strtolower(trim($text))) ?: [], static fn(string $w): bool => $w !== ''));
+    }
+
+    private static function fillerOnly(string $text): bool
+    {
+        $w = self::fillerTokens($text);
+        return $w !== [] && array_diff($w, self::FILLER) === [];
+    }
+
+    private static function yesPhrase(string $text): bool
+    {
+        return self::fillerOnly($text) && array_intersect(self::fillerTokens($text), self::YES_WORDS) !== [];
+    }
+
+    /** Everything a sale needs before its ho: a name, a number, a priced plan. */
+    private static function saleComplete(array $sale): bool
+    {
+        return mb_strlen(trim((string) ($sale['name'] ?? ''))) >= 2 && (string) ($sale['phone'] ?? '') !== '' && !empty($sale['plan']);
+    }
+
+    /** "Tciket book", "tikit", "tickt" → "ticket" (one or two letters off, starting with t; never "tickets"). */
+    private static function fixTicketWord(string $l): string
+    {
+        return (string) preg_replace_callback('/\b(t[a-z]{3,7})\b/iu', static function (array $m): string {
+            $w = strtolower($m[1]);
+            if (str_starts_with($w, 'ticket') || levenshtein($w, 'ticket') > 2
+                || in_array($w, ['today', 'time', 'track', 'tomorrow', 'tour', 'tumro', 'timro', 'tapai', 'tapain', 'tyo', 'tala', 'turunt', 'tikat', 'tikut'], true)) {
+                return $m[1];
+            }
+            return 'ticket';
+        }, $l);
     }
 
     /** While a quote waits: "Ram Thapa 98…", "names …", "upi", "female" fill it in. */
@@ -2261,6 +2323,9 @@ final class ApWa
             $again = self::saleParse($text . ' ' . ((int) ($sale['seats'] ?? 1)) . ' seat');
             require_once __DIR__ . '/ticketbot.php';
             $p = TicketBot::parse($text);
+            if (self::fillerOnly($text)) {
+                $p['name'] = '';                                // "ok yeti ho ticket deu" is no name
+            }
             if ((string) $p['phone'] !== '' || ((string) $p['name'] !== '' && preg_match('/^\p{L}[\p{L} .]{1,60}$/u', trim($text)) === 1)) {
                 if ((string) $p['phone'] !== '') { $sale['phone'] = (string) $p['phone']; }
                 if ((string) $p['name'] !== '') { $sale['name'] = (string) $p['name']; }
