@@ -316,6 +316,10 @@ final class AiTools
      */
     private static function maySell(array $ctx): bool
     {
+        // 1 Nov 2026: Facebook Messenger has its own switch, shipped OFF (includes/fbmessenger.php).
+        if ((string) ($ctx['via'] ?? '') === 'facebook') {
+            return Settings::getBool('fb_msgr_sell', false);
+        }
         return ((string) ($ctx['channel'] ?? 'whatsapp')) === 'web'
             ? Settings::getBool('ai_web_sell', false)
             : Settings::getBool('wa_agent_sell', false);
@@ -1290,7 +1294,9 @@ final class AiTools
                 : 'Selling on WhatsApp is switched off. Say the desk will confirm the booking and give the office number.');
         }
         if ($web && (string) ($ctx['phone'] ?? '') === '') {
-            return self::no('This visitor is not signed in, so there is no mobile number to put the ticket on. Ask them to sign in at #/my with their mobile number, or book at #/.');
+            return self::no((string) ($ctx['via'] ?? '') === 'facebook'
+                ? 'This Messenger visitor has not proved a mobile number, so there is no number to put the ticket on. Ask them to send their mobile number in this chat — a code comes on WhatsApp, they type it here — then confirm again. Or they can book at ' . appUrl('') . '.'
+                : 'This visitor is not signed in, so there is no mobile number to put the ticket on. Ask them to sign in at #/my with their mobile number, or book at #/.');
         }
         if (($args['confirm'] ?? false) !== true) {
             return self::no('The passenger has not confirmed yet. Read the total back and wait for ho / yes.');
