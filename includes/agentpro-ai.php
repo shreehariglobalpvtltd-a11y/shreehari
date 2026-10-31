@@ -244,7 +244,7 @@ final class ApAi
     }
 
     /** Purposes that give way to WhatsApp: they yield the model the moment a chat turn waits for it. */
-    public const DOC_PURPOSES = ['docread', 'formread', 'benchmark'];
+    public const DOC_PURPOSES = ['docread', 'formread', 'benchmark', 'kb_learn'];   // kb_learn: AiLearn's nightly drafts (1 Nov 2026)
 
     private static bool $preempted = false;
     private static bool $busy = false;
