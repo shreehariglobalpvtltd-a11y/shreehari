@@ -27,8 +27,9 @@ if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
 /* ---- child mode: render admin/hub.php for one account with a hand-built session ---- */
 if (($argv[1] ?? '') === '--render-hub') {
     $_SERVER['REQUEST_METHOD'] = 'GET';
-    $_SERVER['SCRIPT_NAME']    = '/admin/hub.php';
-    $_SERVER['REQUEST_URI']    = '/admin/hub.php';
+    $pg = preg_match('/^[a-z-]+\.php$/', (string) ($argv[3] ?? '')) === 1 ? (string) $argv[3] : 'hub.php';
+    $_SERVER['SCRIPT_NAME']    = '/admin/' . $pg;
+    $_SERVER['REQUEST_URI']    = '/admin/' . $pg;
     $_SERVER['HTTP_HOST']      = 'localhost';
     require_once dirname(__DIR__) . '/includes/bootstrap.php';
     ob_start();
@@ -41,7 +42,7 @@ if (($argv[1] ?? '') === '--render-hub') {
         'must_change_pw' => false, 'via_otp' => false,
     ];
     register_shutdown_function(static function (): void { $o = (string) ob_get_clean(); echo $o; });
-    require dirname(__DIR__) . '/admin/hub.php';
+    require dirname(__DIR__) . '/admin/' . $pg;
     exit;
 }
 
@@ -71,6 +72,7 @@ foreach (['whatsapp_driver' => ['click_to_chat', 'string'], 'login_one_door_on' 
 Settings::flush();
 $restored = false;
 $cleanup = static function (): void {
+    try { Database::run("DELETE p FROM payments p JOIN bookings b ON b.id = p.booking_id WHERE b.pnr LIKE 'ODTX%'"); } catch (Throwable $e) {}
     try { Database::run("DELETE FROM bookings WHERE pnr LIKE 'ODTX%'"); } catch (Throwable $e) {}
     foreach (Database::fetchAll("SELECT id FROM admins WHERE username LIKE 'odt\\_%'") as $r) {
         foreach (['admin_profiles' => 'admin_id', 'admin_sessions' => 'admin_id'] as $t => $c) {
@@ -195,9 +197,9 @@ $ins(ODT_PNR . '5', 'pending', $AG2);
 $company = (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE status IN ('confirmed','completed') AND DATE(created_at) = CURDATE()");
 $companyPend = (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE status = 'pending'");
 
-$render = static function (int $id): string {
+$render = static function (int $id, string $page = 'hub.php'): string {
     $ini = (string) php_ini_loaded_file();
-    $cmd = escapeshellarg(PHP_BINARY) . ($ini !== '' ? ' -c ' . escapeshellarg($ini) : '') . ' ' . escapeshellarg(__FILE__) . ' --render-hub ' . $id . ' 2>&1';
+    $cmd = escapeshellarg(PHP_BINARY) . ($ini !== '' ? ' -c ' . escapeshellarg($ini) : '') . ' ' . escapeshellarg(__FILE__) . ' --render-hub ' . $id . ' ' . escapeshellarg($page) . ' 2>&1';
     return (string) shell_exec($cmd);
 };
 $kpis = static function (string $html): array {
@@ -239,6 +241,21 @@ if (CounterDesk::stampColumn()) {
 } else {
     echo "  (bookings.counter_code missing — desk part skipped)\n";
 }
+
+section('D. admin/payments.php for an agent with a payments.view override');
+foreach ([3, 5] as $n) {
+    $bid = (int) Database::scalar('SELECT id FROM bookings WHERE pnr = :p', ['p' => ODT_PNR . $n], 0);
+    Database::insert('payments', ['booking_id' => $bid, 'payment_ref' => 'ODTPAY' . $n, 'utr_number' => 'ODTUTR90000' . $n, 'amount' => 500, 'method' => 'upi', 'status' => 'pending']);
+}
+$perm0 = Database::scalar('SELECT permissions FROM admins WHERE id = :i', ['i' => $AG], null);
+Database::update('admins', ['permissions' => json_encode(['payments.view'])], 'id = :i', ['i' => $AG]);
+$h = $render($AG, 'payments.php');
+check('agent: payments page renders clean, own pending payment shown', $clean($h) && str_contains($h, ODT_PNR . '3'), $clean($h) ? strlen($h) . ' bytes' : mb_substr(strip_tags($h), 0, 300));
+check('agent: never another agent\'s payment', !str_contains($h, ODT_PNR . '5'));
+check('agent: no other agents in the filter list', preg_match('~<option value="' . $AG2 . '"~', $h) !== 1);
+Database::update('admins', ['permissions' => $perm0], 'id = :i', ['i' => $AG]);
+$h = $render($MG, 'payments.php');
+check('manager: payments page shows both agents\' pending payments', str_contains($h, ODT_PNR . '3') && str_contains($h, ODT_PNR . '5'), $clean($h) ? '' : mb_substr(strip_tags($h), 0, 300));
 
 $restore();
 echo "\nPASSED: $PASS   FAILED: $FAIL\n";

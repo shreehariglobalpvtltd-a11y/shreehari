@@ -3577,7 +3577,8 @@ final class ApWa
            says (a day, a name) is still read. */
         $rest = TicketBot::withoutPrefNegation($text);
         if ($rest !== mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $text)))) {
-            if (array_diff(self::fillerTokens($rest), self::FILLER) === []) {
+            // a number left over ("AC nahi chahiyo 98…") is still read below — fillerTokens sees letters only
+            if (array_diff(self::fillerTokens($rest), self::FILLER) === [] && preg_match('/\d/', $rest) !== 1) {
                 return self::out(self::t('sale_pref_noted', $lang) . "\n\n" . self::pendingAsk($pending, $lang));
             }
             $text = $rest;

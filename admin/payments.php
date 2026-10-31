@@ -70,6 +70,14 @@ function method_badge(string $method): string
     return '<span class="pill" style="color:' . $fg . ';background:' . $bg . '">' . Security::e($label) . '</span>';
 }
 
+/* 31 Oct 2026: an agent given payments.view (an override) sees and acts on only the bookings they sold
+   (Auth::bookingScopeAdminId, as admin/hub.php and the bookings register) - never the company's. */
+$ownScope = Auth::bookingScopeAdminId();
+$ownBooking = static function (int $bookingId) use ($ownScope): bool {
+    return $ownScope === null || ($bookingId > 0 && Database::exists(
+        'SELECT 1 FROM bookings WHERE id = :i AND sold_by_admin_id = :o LIMIT 1', ['i' => $bookingId, 'o' => $ownScope]));
+};
+
 /* ---- Handle Approve / Reject / Hold / Bulk / COD Settle --------- */
 $json = [];
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -98,7 +106,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 foreach ($ids as $id) {
                     $row = ['id' => $id, 'pnr' => '', 'ok' => false, 'message' => ''];
                     try {
-                        if (!CounterDesk::bookingVisible($id)) {
+                        if (!CounterDesk::bookingVisible($id) || !$ownBooking($id)) {
                             throw new RuntimeException('Belongs to another desk.');
                         }
                         $risk = PaymentRisk::score($id);
@@ -131,6 +139,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             } else {
                 if (!CounterDesk::bookingVisible($bookingId)) {   // desk isolation (7 Oct 2026)
                     throw new RuntimeException('This booking belongs to another desk.');
+                }
+                if (!$ownBooking($bookingId)) {
+                    throw new RuntimeException('This booking was sold by someone else.');
                 }
                 if ($action === 'approve') {
                     Auth::requireAdmin('payments.verify');
@@ -224,6 +235,10 @@ $deskScope = Auth::deskScopeCode();
 $deskOn    = $deskScope !== null && CounterDesk::stampColumn();
 $deskAnd   = $deskOn ? ' AND ' . CounterDesk::scopeClause('b') : '';
 $deskP     = $deskOn ? ['deskScope' => $deskScope] : [];
+if ($ownScope !== null) {   // an agent: only their own sales, in every card and count too
+    $deskAnd .= ' AND b.sold_by_admin_id = :ownScope';
+    $deskP['ownScope'] = $ownScope;
+}
 
 /* ---- Summary cards (efficient separate queries) ----------------- */
 /* 7 Oct 2026 (owner: "hunx"): the company's money for the day is a report.
@@ -276,7 +291,7 @@ $awaitCount = max(0, (int) $splitRow['n'] - $proofCount);
 $routeList = Database::fetchAll(
     "SELECT id, route_code, from_city, to_city FROM routes ORDER BY from_city, to_city"
 );
-$agentList = Database::fetchAll(
+$agentList = $ownScope !== null ? [] : Database::fetchAll(   // an agent never gets the list of other agents
     "SELECT id, username, full_name FROM admins WHERE role='agent' ORDER BY full_name, username"
 );
 $agentCodes = Settings::getArray('agent_codes', []);
@@ -310,6 +325,10 @@ switch ($tab) {
 if ($deskOn) {
     $where[] = CounterDesk::scopeClause('b');
     $params['deskScope'] = $deskScope;
+}
+if ($ownScope !== null) {
+    $where[] = 'b.sold_by_admin_id = :ownScope';
+    $params['ownScope'] = $ownScope;
 }
 
 /* Search filter */

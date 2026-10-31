@@ -1278,6 +1278,10 @@ try {
         check('desk quote + "' . $line . '": noted — the quote still waits, same passenger, nothing sold', (pendingOf($AG)['kind'] ?? '') === 'sale'
             && (pendingOf($AG)['sale']['name'] ?? '') === 'Kiran Rai' && str_contains(txt($r), '👍') && $r3sold($ph) === 0, txt($r));
     }
+    $ph2 = $nextLS();
+    $r = desk($AG, 'non AC nahi chahiyo ' . $ph2);
+    check('desk quote + "non AC nahi chahiyo <new number>": the number is still read, not dropped as a wish', (pendingOf($AG)['kind'] ?? '') === 'sale'
+        && str_contains(txt($r), substr($ph2, -4)) && $r3sold($ph) === 0 && $r3sold($ph2) === 0, txt($r));
     $r = desk($AG, 'AC nahi chahiyo, ticket pani nahi chahiyo');
     $after = desk($AG, 'ho');
     check('…"AC nahi chahiyo, ticket pani nahi chahiyo" still drops it — the later "ho" sells nothing', pendingOf($AG) === null && $r3sold($ph) === 0, txt($r) . ' / ' . txt($after));
@@ -1395,7 +1399,8 @@ try {
     $unlimit();
     $wrong = [];
     foreach (['arko 1 jana thapnu' => 1, 'arko 1 extra seat chahiyo' => 1, 'ek jana aru thap' => 1, 'one more seat' => 1, 'aur ek seat chahiye' => 1, 'add 1 seat' => 1,
-              '2 jana thapdinu' => 2, 'ek jana Ram Thapa, arko ko naam Sita Thapa' => 0, 'Gopal Thapa 2 jana' => 0, 'arko seat dinus' => 0, 'arko din' => 0, 'extra luggage' => 0, 'arko 1 jana thapnu tara ruko' => 0, 'arko 1 jana thapnu?' => 0] as $line => $n) {
+              '2 jana thapdinu' => 2, 'ek jana Ram Thapa, arko ko naam Sita Thapa' => 0, 'Gopal Thapa 2 jana' => 0, 'arko seat dinus' => 0, 'arko din' => 0, 'extra luggage' => 0, 'arko 1 jana thapnu tara ruko' => 0, 'arko 1 jana thapnu?' => 0,
+              'Sanjay More 1 ticket' => 0, 'naam Sanjay More, 2 seat' => 0, 'Rita More 1 jana' => 0, '1 more seat chahiyo' => 1, 'two more seats' => 2, 'more seats please' => 1] as $line => $n) {
         if (TicketBot::extraSeats($line) !== $n) {
             $wrong[] = $line . ' → ' . TicketBot::extraSeats($line);
         }

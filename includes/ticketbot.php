@@ -1181,10 +1181,14 @@ final class TicketBot
         }
         $noun = '(?:seats?|sit|berth|jana|janna|log|ticket|tikat|tiket|person|persons|people|passengers?|yatri|manche|manchhe|सिट|सीट|जना|टिकट|यात्री)';
         // the verb "thap…" (add), never the surname Thapa
-        $add = '(?:thap|thapnu\w*|thapd\w*|thapi\w*|thapne|thapera|thapau\w*|add|added|adding|badha\w*|badhau\w*|extra|more|plus|थप\S*|बढा\S*)';
+        $add = '(?:thap|thapnu\w*|thapd\w*|thapi\w*|thapne|thapera|thapau\w*|add|added|adding|badha\w*|badhau\w*|extra|plus|थप\S*|बढा\S*)';
         $other = '(?:arko|aru|aaru|aur|another|अर्को|अरू|और)';
         $count = '(\d{1,2}|ek|euta|one|dui|two|do|tin|teen|three|एक|दुई|दो|तीन)';
-        $hit = preg_match('/(?<![\p{L}\p{M}])' . $add . '(?![\p{L}\p{M}])/u', $t) === 1 && preg_match('/(?<![\p{L}\p{M}])' . $noun . '(?![\p{L}\p{M}])/u', $t) === 1
+        /* 31 Oct 2026: "more" is the surname More too ("Sanjay More 1 ticket") - it adds seats only after a count
+           ("one more seat", "1 more") or before a plural ("more seats", "more passengers") */
+        $more = preg_match('/(?<![\p{L}\p{M}])' . $count . '\s+more(?![\p{L}\p{M}])/u', $t) === 1
+            || preg_match('/(?<![\p{L}\p{M}])more\s+(?:seats|tickets|people|persons|passengers|jana|log)(?![\p{L}\p{M}])/u', $t) === 1;
+        $hit = ($more || preg_match('/(?<![\p{L}\p{M}])' . $add . '(?![\p{L}\p{M}])/u', $t) === 1) && preg_match('/(?<![\p{L}\p{M}])' . $noun . '(?![\p{L}\p{M}])/u', $t) === 1
             || preg_match('/(?<![\p{L}\p{M}])' . $other . '\s+' . $count . '\s+' . $noun . '(?![\p{L}\p{M}])/u', $t) === 1
             || preg_match('/(?<![\p{L}\p{M}])' . $count . '\s+' . $noun . '\s+' . $other . '(?![\p{L}\p{M}])/u', $t) === 1
             || preg_match('/\+\s*\d{1,2}\s*' . $noun . '?(?![\p{L}\p{M}])/u', $t) === 1;
