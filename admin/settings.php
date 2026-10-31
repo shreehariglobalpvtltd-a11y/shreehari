@@ -250,7 +250,7 @@ $cats = [
 ];
 $catOf = static function (string $key, string $group): string {
     // non-secret ids / hosts that belong with the keys
-    $conn = ['aisensy_project_id', 'whatsapp_phone_id', 'whatsapp_waba_id', 'meta_page_id', 'ig_user_id', 'telegram_channel',
+    $conn = ['aisensy_project_id', 'whatsapp_phone_id', 'whatsapp_waba_id', 'meta_page_id', 'fb_page_id', 'ig_user_id', 'telegram_channel',
              'google_client_id', 'twilio_account_sid', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_secure', 'push_vapid_public',
              'push_vapid_subject', 'ai_local_url', 'ai_local_endpoint', 'nav_engine_url', 'whatsapp_api_version'];
     if (Settings::isSecretKey($key) || in_array($key, $conn, true)) { return 'keys'; }
@@ -270,6 +270,7 @@ $catOf = static function (string $key, string $group): string {
     $prefix = [
         'ai_bot_' => 'ai', 'brain_' => 'ai', 'mk_' => 'marketing', 'social_' => 'marketing', 'advance_offer_' => 'fares',
         'wa_' => 'whatsapp', 'whatsapp_' => 'whatsapp', 'twilio_content_sid' => 'whatsapp', 'seat_status_wa_' => 'whatsapp', 'aisensy_' => 'whatsapp',
+        'fb_' => 'whatsapp', 'messenger_' => 'whatsapp',
         'quick_ticket_' => 'booking', 'counter_' => 'agents', 'agent_' => 'agents', 'nepal_' => 'company', 'company_' => 'company',
         'sms_' => 'notify', 'smtp_' => 'notify', 'push_' => 'notify', 'reminder_' => 'notify', 'trip_' => 'notify', 'notify_' => 'notify',
         'helpdesk_' => 'notify', 'office_report_' => 'notify', 'payment_' => 'payments',
