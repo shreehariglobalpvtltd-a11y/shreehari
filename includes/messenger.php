@@ -35,9 +35,26 @@ final class Messenger
         return $v;
     }
 
-    public static function pageToken(): string   { return self::cfg('fb_page_token',   'FB_PAGE_TOKEN'); }
-    public static function appSecret(): string    { return self::cfg('fb_app_secret',   'FB_APP_SECRET'); }
-    public static function verifyToken(): string  { return self::cfg('fb_verify_token', 'FB_VERIFY_TOKEN'); }
+    /* 1 Nov 2026: Messenger runs on the same Meta app ("SHG Messaging API") as WhatsApp Cloud, so an
+       empty fb_* key falls back to the WhatsApp / Facebook keys the office already filled in — the owner
+       never has to find the App Secret twice. The verify token only proves the callback URL to Meta
+       (every POST is still checked against the App Secret), so it has a fixed default. */
+    public const DEFAULT_VERIFY = 'shg-messenger-verify';
+
+    public static function pageToken(): string
+    {
+        return self::cfg('fb_page_token', 'FB_PAGE_TOKEN') ?: (self::cfg('meta_page_token', '') ?: self::cfg('whatsapp_api_token', ''));
+    }
+
+    public static function appSecret(): string
+    {
+        return self::cfg('fb_app_secret', 'FB_APP_SECRET') ?: self::cfg('whatsapp_app_secret', '');
+    }
+
+    public static function verifyToken(): string
+    {
+        return self::cfg('fb_verify_token', 'FB_VERIFY_TOKEN') ?: self::DEFAULT_VERIFY;
+    }
 
     /** Live only when switched on AND a Page token is present. */
     public static function enabled(): bool

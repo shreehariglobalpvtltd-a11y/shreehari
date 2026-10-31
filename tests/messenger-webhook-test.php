@@ -29,6 +29,15 @@ echo "\n=== Facebook Messenger webhook — trust & routing ===\n\n";
 
 $SECRET = 'dummy_app_secret_7f3a';
 $VERIFY = 'dummy_verify_tok_99';
+
+/* The fallback keys (WhatsApp / Facebook) are emptied for the run and put back after. */
+$FALLBACK = ['whatsapp_app_secret', 'meta_page_token', 'whatsapp_api_token'];
+$saved = [];
+foreach ($FALLBACK as $k) {
+    $saved[$k] = Database::fetch('SELECT svalue FROM settings WHERE skey = :k', ['k' => $k]);
+    Database::query('UPDATE settings SET svalue = :v WHERE skey = :k', ['v' => '', 'k' => $k]);
+}
+Settings::flush();
 Settings::set('fb_app_secret',   $SECRET, 'string', 'messenger', false);
 Settings::set('fb_verify_token', $VERIFY, 'string', 'messenger', false);
 Settings::set('fb_page_token',   'EAApagetoken_dummy', 'string', 'messenger', false);
@@ -49,8 +58,19 @@ check('a correct signature is accepted', Messenger::verifySignature($raw, $good)
 check('a tampered body is rejected',     Messenger::verifySignature($raw . ' ', $good) === false);
 check('an empty signature is rejected',  Messenger::verifySignature($raw, '') === false);
 Settings::set('fb_app_secret', '', 'string', 'messenger', false);
-check('with NO app secret every POST fails closed',
+check('with NO app secret anywhere every POST fails closed',
     Messenger::verifySignature($raw, $good) === false);
+
+/* ---- fallbacks: the WhatsApp keys of the same Meta app ---- */
+Database::query('UPDATE settings SET svalue = :v WHERE skey = :k', ['v' => $SECRET, 'k' => 'whatsapp_app_secret']);
+Settings::flush();
+check('empty fb_app_secret falls back to whatsapp_app_secret',
+    Messenger::verifySignature($raw, $good) === true || !$saved['whatsapp_app_secret'], 'needs the whatsapp_app_secret row');
+Database::query('UPDATE settings SET svalue = :v WHERE skey = :k', ['v' => '', 'k' => 'whatsapp_app_secret']);
+Settings::set('fb_verify_token', '', 'string', 'messenger', false);
+check('empty fb_verify_token uses the fixed default',
+    Messenger::verifyChallenge('subscribe', Messenger::DEFAULT_VERIFY, 'C1') === 'C1');
+Settings::set('fb_verify_token', $VERIFY, 'string', 'messenger', false);
 Settings::set('fb_app_secret', $SECRET, 'string', 'messenger', false);
 
 /* ---- messenger_bot_enabled gate ---- */
@@ -77,6 +97,12 @@ Settings::set('fb_app_secret',   '', 'string', 'messenger', false);
 Settings::set('fb_verify_token', '', 'string', 'messenger', false);
 Settings::set('fb_page_token',   '', 'string', 'messenger', false);
 Settings::set('messenger_bot_enabled', false, 'bool', 'messenger', false);
+foreach ($saved as $k => $row) {
+    if ($row !== null) {
+        Database::query('UPDATE settings SET svalue = :v WHERE skey = :k', ['v' => $row['svalue'], 'k' => $k]);
+    }
+}
+Settings::flush();
 
 echo "\n  " . ($FAIL === 0 ? "\033[32mALL $PASS PASSED\033[0m" : "\033[31m$FAIL FAILED\033[0m, $PASS passed") . "\n\n";
 exit($FAIL === 0 ? 0 : 1);
