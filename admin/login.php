@@ -16,6 +16,7 @@ declare(strict_types=1);
 define('SHG_APP', true);
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/passkeys.php';
+require_once INCLUDE_PATH . '/quickunlock.php';   // PIN + pattern quick unlock — 1 Nov 2026
 require_once INCLUDE_PATH . '/brand.php';   // the emblem (no baked name, no white tile) — 9 Oct 2026
 
 $base = rtrim(APP_URL, '/');
@@ -91,6 +92,7 @@ if (Auth::oneDoorOn()) {
             $r = match ($mode) {
                 'who'            => OneDoor::who((string) ($_POST['who'] ?? ''), (string) ($_POST['cc'] ?? '91')),
                 'pw'             => OneDoor::password((string) ($_POST['password'] ?? '')),
+                'quick'          => OneDoor::quick((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),
                 'code_send'      => OneDoor::codeSend(),
                 'code_verify'    => OneDoor::codeVerify((string) ($_POST['otp'] ?? '')),
                 'wa_start'       => OneDoor::waStart(),
@@ -325,6 +327,27 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
     <input id="pw" name="password" type="password" autocomplete="current-password" required<?= $step === 'id' ? ' autofocus' : '' ?>>
     <button class="btn" type="submit"><?= $step === 'mobile' ? 'पासवर्डले भित्र · Sign in with password' : 'भित्र जानुहोस् · Sign in' ?></button>
   </form>
+  <?php if (QuickUnlock::on()): ?>
+  <div class="or">वा · or</div>
+  <div class="qk" data-qk>
+    <div class="qk-tabs" role="tablist">
+      <button type="button" class="on" data-qk-tab="pattern">◯ Pattern</button>
+      <button type="button" data-qk-tab="pin">🔢 PIN</button>
+    </div>
+    <form method="post" action="/admin/login.php" data-qk-form="pattern">
+      <?= $hid() ?><input type="hidden" name="mode" value="quick"><input type="hidden" name="qk_kind" value="pattern"><input type="hidden" name="qk_val" value="">
+      <div class="qk-pad" data-qk-pad aria-label="Pattern"></div>
+      <p class="note">थोप्ला जोडेर आफ्नो pattern कोर्नुहोस् · Draw your pattern</p>
+    </form>
+    <form method="post" action="/admin/login.php" data-qk-form="pin" hidden>
+      <?= $hid() ?><input type="hidden" name="mode" value="quick"><input type="hidden" name="qk_kind" value="pin">
+      <label for="qkpin">PIN</label>
+      <input id="qkpin" class="qk-pin" name="qk_val" type="password" inputmode="numeric" pattern="\d{4,6}" minlength="4" maxlength="6" autocomplete="off" required>
+      <button class="btn" type="submit">PIN ले भित्र · Sign in with PIN</button>
+    </form>
+    <p class="note">PIN / pattern छैन? पासवर्डले भित्र गएर <b>🔐 PIN / Pattern</b> मा राख्नुहोस् · No PIN yet? Sign in with your password, then set one under 🔐 PIN / Pattern.</p>
+  </div>
+  <?php endif; ?>
   <?php if ($step === 'mobile'): ?><p class="note">एउटै मोबाइलमा २-३ ID भए, जुन ID को पासवर्ड हो त्यही खुल्छ · One mobile with 2-3 IDs? Each ID's own password opens that ID.</p><?php endif; ?>
   <div class="links"><a href="<?= $h($odUrl(['step' => 'forgot'])) ?>">🔑 पासवर्ड बिर्सनुभयो? · Forgot password?</a></div>
 
@@ -465,6 +488,7 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
 </script>
 <?php endif; ?>
 <?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261031b" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if (($step === 'mobile' || $step === 'id') && QuickUnlock::on()): ?><script src="/assets/js/quick-unlock.js?v=20261101a"></script><?php endif; ?>
 </body></html>
 <?php
     exit;

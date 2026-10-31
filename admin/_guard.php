@@ -246,6 +246,7 @@ function admin_header(string $title, string $active = ''): void
     echo '<div class="who">' . $name . ' <em>' . $role . '</em> · '
        . '<button type="button" class="theme-tog" onclick="shgTheme()" aria-label="Toggle dark mode" title="Dark / light mode"><svg class="a-ic"><use href="#a-theme"/></svg></button>'
        . $pwLink
+       . ' · <a href="' . $base . '/admin/quick-unlock.php" title="PIN / Pattern" aria-label="PIN / Pattern">🔐</a>'
        . ' · <a href="' . $base . '/admin/logout.php">Sign out</a></div>';
     echo '</header>';
 
