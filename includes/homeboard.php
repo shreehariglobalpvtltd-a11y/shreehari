@@ -32,8 +32,9 @@ final class HomeBoard
                            'scan', 'bus', 'pay', 'support', 'register', 'statement', 'cashbook', 'reschedule', 'map', 'refunds', 'papers'];
 
     /** The order for the office (anyone holding dashboard.view). */
-    private const OFFICE = ['sell', 'counter', 'approvals', 'pay', 'team', 'support', 'reports', 'admin', 'refunds', 'cut', 'register',
-                            'chalani', 'seat', 'scan', 'map', 'statement', 'cashbook', 'reschedule', 'shift', 'desk', 'addmember',
+    // 31 Oct 2026 (owner: "admin le form bharna milnu paryo"): "Add a member" (the office form) up front, next to the team
+    private const OFFICE = ['sell', 'counter', 'approvals', 'pay', 'team', 'addmember', 'reports', 'admin', 'support', 'refunds', 'cut',
+                            'register', 'chalani', 'seat', 'scan', 'map', 'statement', 'cashbook', 'reschedule', 'shift', 'desk',
                             'id', 'papers', 'bus', 'alltools'];
 
     private function __construct() {}
@@ -98,7 +99,7 @@ final class HomeBoard
             'statement' => ['📜', 'मासिक हिसाब', 'Monthly statement', '/admin/agent-statement.php', ($isAgent && $bv) || ($bv && Auth::can('commissions.view'))],
             'cashbook'  => ['📒', 'क्यास बुक', 'Cash book', '/admin/cash-book.php', !$isAgent && $bv],
             'reschedule'=> ['📅', 'मिति सार्नुहोस्', 'Change date', '/admin/reschedule.php', $bv],
-            'addmember' => ['＋', 'नयाँ सदस्य', 'Add a member', '/join.php?office=1', Auth::can('staff.manage')],
+            'addmember' => ['📝', 'फारम भर्नुहोस् (नयाँ सदस्य)', 'Fill a form · add a member', '/join.php?office=1', Auth::can('staff.manage')],
             'papers'    => ['📑', 'मेरो फारम, CV, सम्झौता', 'My form, CV & agreement', '/team/', !$viewer],
             'alltools'  => ['🧭', 'सबै उपकरण', 'All tools', '/admin/hub.php', $office && !$viewer],
         ];

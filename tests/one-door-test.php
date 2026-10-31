@@ -643,7 +643,7 @@ $t = $tilesFor($C);
 check('counter: SmartBook, counter mode, tickets I cut, chalani per bus, seat, desk up front', array_diff(['sell', 'counter', 'cut', 'chalani', 'seat', 'desk'], $t['hero']) === [], implode(',', $t['hero']));
 check('counter: no wallet / approvals / reports', array_intersect(['wallet', 'approvals', 'reports', 'admin'], $t['all']) === []);
 $t = $tilesFor($M);
-check('manager: sell + approvals + team + reports + admin panel up front', array_diff(['sell', 'approvals', 'team', 'reports', 'admin'], $t['hero']) === [], implode(',', $t['hero']));
+check('manager: sell + approvals + team + office form + reports + admin panel up front', array_diff(['sell', 'approvals', 'team', 'addmember', 'reports', 'admin'], $t['hero']) === [], implode(',', $t['hero']));
 $t = $tilesFor($ROLES['accountant']);
 check('accountant: no Sell / counter mode (not selling staff)', !in_array('sell', $t['all'], true) && !in_array('counter', $t['all'], true) && in_array('approvals', $t['hero'], true));
 $t = $tilesFor($ROLES['support']);

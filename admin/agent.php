@@ -198,8 +198,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                             $ag = Database::fetch('SELECT full_name, phone FROM admins WHERE id = :id', ['id' => $targetId]);
                             $to = normalisePhone((string) ($ag['phone'] ?? ''));
                             if ($to !== '') {
-                                Notify::whatsapp($to,
-                                    Settings::getString('company_name', APP_NAME) . " — agent login details\n"
+                                // 31 Oct 2026 (one door): mobile or ID + WhatsApp hi / code or the password
+                                Notify::whatsapp($to, Auth::oneDoorOn()
+                                    ? Settings::getString('company_name', APP_NAME) . " — agent login details\n"
+                                    . '👤 मोबाइल वा ID · Mobile or ID: ' . $res['username'] . "\n"
+                                    . ($pwSet ? "🔑 Password: " . (string) $_POST['login_password'] . "\n" : '')
+                                    . implode("\n", Notify::oneDoorSignInLines(true)) . "\n"
+                                    . '🔒 यो सन्देश कसैलाई नदिनुहोस् · Never share this message.'
+                                    : Settings::getString('company_name', APP_NAME) . " — agent login details\n"
                                     . 'Portal: ' . appUrl('admin/login.php?portal=agent') . "\n"
                                     . 'Email: ' . ($res['email'] !== '' ? $res['email'] : '(not set)') . "\n"
                                     . 'Username: ' . $res['username'] . "\n"
@@ -1157,8 +1163,11 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
               $subDigits = preg_replace('/\D/', '', (string)$ms['phone']);
               if (strlen($subDigits) === 10) { $subDigits = '91' . $subDigits; }
               $subWaMsg = "Namaste " . $ms['full_name'] . "! Here are your S Hari Global counter booking credentials:\n"
-                        . "• Portal: https://www.shreehariglobal.in/admin/login.php\n"
-                        . "• Username: @" . $ms['username'] . "\n"
+                        . "• Portal: " . appUrl('admin/login.php') . "\n"
+                        . (Auth::oneDoorOn()
+                            // 31 Oct 2026 (one door): the username goes in the "mobile or ID" box
+                            ? "• Mobile or ID: " . $ms['username'] . " (then WhatsApp code or password)\n"
+                            : "• Username: @" . $ms['username'] . "\n")
                         . "• Agency: " . ($viewing['full_name'] ?: $viewing['username']) . "\n"
                         . "• Agency Code: " . AgentWallet::agentCodeLabel($viewId) . "\n"
                         . "Keep your password secure.";

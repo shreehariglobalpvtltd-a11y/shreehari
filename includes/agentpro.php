@@ -2533,7 +2533,8 @@ final class AgentPro
             $lines[] = '💬 यही WhatsApp मा लेख्नुहोस्: "help" — टिकट, balance, statement सबै यहीँबाट।';
         } else {
             $lines[] = '📱 ' . appUrl('me/');
-            $lines[] = '🔐 Username: ' . Database::scalar('SELECT username FROM admins WHERE id = :i', ['i' => $adminId], '');
+            // 31 Oct 2026 (one door): the username is what goes in the "mobile or ID" box
+            $lines[] = (Auth::oneDoorOn() ? '👤 मोबाइल वा ID · Mobile or ID: ' : '🔐 Username: ') . Database::scalar('SELECT username FROM admins WHERE id = :i', ['i' => $adminId], '');
             if ($password !== null) {
                 $lines[] = '🔑 Temporary password: ' . $password . ' (पहिलो लगइनमा बदल्नुहोस् / change it at first sign-in)';
             }

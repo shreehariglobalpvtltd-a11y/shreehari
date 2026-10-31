@@ -111,7 +111,10 @@ final class CardDelivery {
              . "तपाईंको " . $company . " परिचयपत्र (ID Card) तथा भिजिटिङ कार्ड तयार छ।\n\n"
              . "📌 कार्ड नं: " . $ref . "\n"
              . "🛡️ अनलाइन प्रमाणीकरण: " . $urls['verify'] . "\n"
-             . "📥 कार्ड डाउनलोड: " . appUrl('team/') . "\n\n"
+             . (Auth::oneDoorOn()
+                 // 31 Oct 2026 (one door): sign in on the one page, it brings the member back to the cards
+                 ? "📥 कार्ड डाउनलोड: " . appUrl('admin/login.php?back=team') . " (मोबाइल वा ID → WhatsApp कोड वा पासवर्ड)\n\n"
+                 : "📥 कार्ड डाउनलोड: " . appUrl('team/') . "\n\n")
              . "धन्यवाद,\n" . $company;
 
         $waMe = $phone !== '' ? 'https://wa.me/' . $phone . '?text=' . rawurlencode($msg) : '';

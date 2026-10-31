@@ -169,6 +169,18 @@ $src = (string) file_get_contents(INCLUDE_PATH . '/walogin.php');
 check('no ?portal=agent left outside the switch-off branch', substr_count($src, "portal=agent") === 1);
 
 /* =================================================================== */
+section('B2. staff approval + sign-in lines');
+require_once INCLUDE_PATH . '/staffapplications.php';
+$appr = StaffApps::waText('approved', ['id' => 1, 'full_name' => 'Ram', 'role_applied' => 'driver']);
+check('staff approved: one door link', str_contains($appr, appUrl('admin/login.php?back=team')) && !str_contains($appr, appUrl('team/') . ' '));
+check('staff approved: first password via Forgot + WhatsApp code', str_contains($appr, 'Forgot password?') && str_contains($appr, 'WhatsApp'));
+Settings::set('login_one_door_on', '0', 'bool', 'security', false); Settings::flush();
+$apprOff = StaffApps::waText('approved', ['id' => 1, 'full_name' => 'Ram', 'role_applied' => 'driver']);
+check('switch off: staff approved keeps /team/', str_contains($apprOff, appUrl('team/')) && !str_contains($apprOff, 'back=team'));
+Settings::set('login_one_door_on', '1', 'bool', 'security', false); Settings::flush();
+$sl = implode("\n", Notify::oneDoorSignInLines(true));
+check('sign-in lines are public + one door', str_contains($sl, appUrl('admin/login.php')) && !str_contains($sl, 'portal=agent'));
+
 section('C. admin/hub.php figures per viewer');
 $ins = static function (string $pnr, string $status, int $soldBy, string $desk = ''): void {
     $row = ['pnr' => $pnr, 'contact_phone' => '7000000999', 'status' => $status, 'sold_by_admin_id' => $soldBy, 'created_at' => date('Y-m-d H:i:s')];

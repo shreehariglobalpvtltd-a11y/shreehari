@@ -2962,7 +2962,7 @@ final class Notify
      *
      * @return list<string>
      */
-    private static function oneDoorSignInLines(bool $withPassword = false, bool $waDoor = true): array
+    public static function oneDoorSignInLines(bool $withPassword = false, bool $waDoor = true): array
     {
         /* 31 Oct 2026 (review): WhatsApp proof opens only Auth::OTP_DOOR_ROLES accounts (agent, counter,
            scanner). A staff sign-in with no such account opens with the password only - say only that. */

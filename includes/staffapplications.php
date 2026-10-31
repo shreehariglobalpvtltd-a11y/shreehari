@@ -1121,7 +1121,10 @@ final class StaffApps
             'approved'  => "🎉 नमस्ते {$name}! {$co} मा तपाईंको {$role} आवेदन {$ref} स्वीकृत भयो।\n"
                          . "कर्मचारी सम्झौता पढेर फोनबाटै सही गर्नुहोस्: " . appUrl('agreements/staff-agreement.html?ref=' . $ref) . "\n"
                          // 22 Oct 2026: the team portal - ID card, CV, password made with a WhatsApp code
-                         . "🪪 टिम पोर्टल (परिचयपत्र, CV): " . appUrl('team/') . " — पहिलो पटक \"पासवर्ड बनाउनुहोस्\" थिच्नुहोस्।\n"
+                         . (Auth::oneDoorOn()
+                             // 31 Oct 2026 (one door): the same sign-in page as everybody; the first password is made with "Forgot password?" + a WhatsApp code
+                             ? "🪪 टिम पोर्टल (परिचयपत्र, CV): " . appUrl('admin/login.php?back=team') . " — पहिलो पटक \"पासवर्ड बिर्सनुभयो?\" थिचेर WhatsApp कोडले पासवर्ड बनाउनुहोस्। · First time: tap \"Forgot password?\" and make your password with the WhatsApp code.\n"
+                             : "🪪 टिम पोर्टल (परिचयपत्र, CV): " . appUrl('team/') . " — पहिलो पटक \"पासवर्ड बनाउनुहोस्\" थिच्नुहोस्।\n")
                          . "कार्यालयले काम सुरु गर्ने दिन र समयको लागि फोन गर्नेछ। · Your application is approved — please read and sign the staff agreement at the link above.",
             'rejected'  => "नमस्ते {$name}, {$co} मा तपाईंको आवेदन {$ref} अहिलेलाई स्वीकृत हुन सकेन।\nकारण: {$extra}\n"
                          . "प्रश्न भए कार्यालयमा फोन गर्नुहोस्: {$tel} · Your application was not approved this time.",
