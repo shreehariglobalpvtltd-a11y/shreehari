@@ -35,10 +35,37 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $bRow = Database::fetch("SELECT * FROM bookings WHERE pnr = :p LIMIT 1", ['p' => $pnr]);
         if ($bRow !== null) {
             if ($act === 'verify_payment') {
-                Database::run("UPDATE payments SET status = 'verified' WHERE booking_id = :bid", ['bid' => $bRow['id']]);
-                Database::run("UPDATE bookings SET status = 'confirmed' WHERE id = :bid AND status <> 'confirmed'", ['bid' => $bRow['id']]);
-                Logger::audit('booking.verify_payment', 'booking', $pnr, null, null, 'Payment verified via bookings panel');
-                $flash = ['ok', 'Payment for booking ' . $pnr . ' verified and marked confirmed.'];
+                /* 31 Oct 2026 money-safety fix: route through BookingService
+                   instead of a raw UPDATE. The old two-line UPDATE marked EVERY
+                   payment 'verified' — including COD (uncollected cash), which
+                   dropped the fare off the cash-owed queue, printed PAID on the
+                   ticket and paid commission on money nobody had, and it skipped
+                   the ticket, loyalty and the booking.approved customer WhatsApp.
+                   COD now settles only through settleCod() (cash in hand); an
+                   online payment verifies through the same risk-reviewed path the
+                   Payments queue uses. Gated on payments.verify + own-scope so a
+                   counter agent cannot verify another seller's booking by PNR. */
+                Auth::requireAdmin('payments.verify');
+                $vScope = Auth::bookingScopeAdminId();
+                if ($vScope !== null && (int) ($bRow['sold_by_admin_id'] ?? 0) !== $vScope) {
+                    $flash = ['bad', 'You can only verify payments on your own bookings.'];
+                } else {
+                    try {
+                        $vBid  = (int) $bRow['id'];
+                        $vNote = 'Verified via tickets register';
+                        if ((int) ($bRow['is_cod'] ?? 0) === 1) {
+                            BookingService::settleCod($vBid, (int) $admin['id'], $vNote);
+                            $flash = ['ok', 'Cash collected for ' . $pnr . ' — ticket issued and recorded.'];
+                        } else {
+                            $vRes = BookingService::approveReviewed($vBid, $admin, ['note' => $vNote, 'via' => 'register']);
+                            $flash = (($vRes['state'] ?? '') === 'awaiting_second')
+                                ? ['ok', 'First approval recorded for ' . $pnr . ' — a manager or accountant must give the second approval (high-risk payment).']
+                                : ['ok', 'Payment for ' . $pnr . ' verified — ticket issued and the customer notified.'];
+                        }
+                    } catch (Throwable $e) {
+                        $flash = ['bad', 'Could not verify ' . $pnr . ': ' . $e->getMessage()];
+                    }
+                }
             } elseif ($act === 'toggle_border_id') {
                 $cur = (int) ($bRow['border_id_verified'] ?? 0);
                 $new = $cur === 1 ? 0 : 1;
@@ -751,8 +778,8 @@ $canEdit   = Auth::can('bookings.edit');
         <td data-label="Payment">
           <?= pay_status_pill($b['pay_status'] ?? null) ?>
           <div class="muted" style="font-size:11px;margin-top:3px"><?= Security::e(strtoupper((string) ($b['pay_method'] ?: ((int) ($b['is_cod'] ?? 0) === 1 ? 'COD' : '—')))) ?></div>
-          <?php if (in_array((string)($b['pay_status'] ?? ''), ['pending', 'cod_pending'], true)): ?>
-            <form method="post" style="display:inline;margin-top:3px" onsubmit="return confirm('Verify payment and confirm booking <?= Security::e((string)$b['pnr']) ?>?')">
+          <?php if (in_array((string)($b['pay_status'] ?? ''), ['pending', 'cod_pending'], true) && Auth::can('payments.verify')): ?>
+            <form method="post" style="display:inline;margin-top:3px" onsubmit="return confirm('<?= ((int) ($b['is_cod'] ?? 0) === 1) ? 'Record cash collected for' : 'Verify payment and confirm' ?> booking <?= Security::e((string)$b['pnr']) ?>?')">
               <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="verify_payment"><input type="hidden" name="pnr" value="<?= Security::e((string)$b['pnr']) ?>">
               <button class="btn ok" type="submit" style="padding:2px 6px;font-size:10px;margin-top:2px">✓ Verify</button>
             </form>
