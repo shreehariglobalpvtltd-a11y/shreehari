@@ -207,7 +207,11 @@ try {
     $b3 = Database::fetch('SELECT id, pnr FROM bookings WHERE contact_phone = :p ORDER BY id DESC LIMIT 1', ['p' => $p3]);
     check('the ticket was cut', $b3 !== null);
     if ($b3 !== null) {
-        $fix = WaBot::reply('+' . $p3, 'naam galat bhayo, naam Ram Bahadur ho');
+        // 31 Oct 2026 (R1): a name correction after the sale is a preview first — it changes the ticket only on a later "ho"
+        $ask = WaBot::reply('+' . $p3, 'naam galat bhayo, naam Ram Bahadur ho');
+        $before = (string) Database::scalar('SELECT full_name FROM booking_passengers WHERE booking_id = :b LIMIT 1', ['b' => (int) $b3['id']], '');
+        check('the correction is only previewed (name unchanged until ho)', $before !== 'Ram Bahadur' && str_contains($ask['text'], 'Ram Bahadur'), $before);
+        $fix = WaBot::reply('+' . $p3, 'ho');
         $now = (string) Database::scalar('SELECT full_name FROM booking_passengers WHERE booking_id = :b LIMIT 1', ['b' => (int) $b3['id']], '');
         check('the name is corrected on the manifest', $now === 'Ram Bahadur', $now);
         check('the passenger is TOLD it was corrected, not shown a menu',

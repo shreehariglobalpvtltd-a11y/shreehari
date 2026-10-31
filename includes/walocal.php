@@ -1887,7 +1887,8 @@ final class WaLocal
         }
         // round 4 (R4): praise first, then a question, then a complaint being taken back — any of them = no ticket
         $praised = self::praiseWord($tc);
-        $asked = self::asksAboutIt($t, $text);
+        $question = self::asksAboutIt($t, $text);
+        $asked = $question || self::notMeant($tc);      // post-deploy probe B1: a joke / another company / a false claim
         $kind = self::complaintKind($tc, $open);
         if (!$praised && !$asked && self::withdrawsComplaint($tc)) {
             return ['text' => self::t($lang,
@@ -1897,7 +1898,8 @@ final class WaLocal
                 'media' => null, 'ui' => null, 'intent' => 'complaint_info'];
         }
         if ($praised || $asked || $kind === '') {
-            if ($praised || preg_match('/(?<![\p{L}])(?:dhanyabad|dhanyabaad|dhanyawad|dhanyavad|thank\w*|thanks|shukriya|धन्यवाद|शुक्रिया)(?![\p{L}])/u', $t) === 1) {
+            // a question ("… fohor huncha ki safa huncha") gets the answer, never "thank you for the kind words"
+            if (!$question && ($praised || preg_match('/(?<![\p{L}])(?:dhanyabad|dhanyabaad|dhanyawad|dhanyavad|thank\w*|thanks|shukriya|धन्यवाद|शुक्रिया)(?![\p{L}])/u', $t) === 1)) {
                 return $thanksReply(true);
             }
             return ['text' => self::t($lang,
@@ -1956,7 +1958,8 @@ final class WaLocal
     private const C_BEHAV = 'behave\w*|behaviour|behavior|byabahar|vyavahar|ब्यवहार|व्यवहार';
     // a thing of ours, then (within three words) what is wrong with it: "bus ko AC kharab", "AC chalena" — never "mausam kharab"
     private const C_BROKEN = '/(?<![\p{L}\p{M}])(?:bus|gadi|gaadi|ac|a\s*c|seat|seats|sit|berth|toilet|bathroom|charger|charging|light|fan|tv|blanket|kambal|khana|pani|window|jhyal|sleeper|bed|गाडी|बस|सिट|एसी)(?![\p{L}\p{M}])'
-        . '(?:\s+\S+){0,3}?\s+(?:kharab|kharaab|bigr\w*|tuteko|tutyo|broken|not\s*working|chalena|chalaena|chaleko\s*chaina|kam\s*gareko\s*chaina|kam\s*garena|dirty|fohor|ganda|खराब|बिग्रियो|चलेन|फोहोर)(?![\p{L}\p{M}])/u';
+        // post-deploy probe B1: the words between the thing and what is wrong are the "gap" — "the seat was NOT broken"
+        . '(?<gap>(?:\s+\S+){0,3}?)\s+(?:kharab|kharaab|bigr\w*|tuteko|tutyo|broken|not\s*working|chalena|chalaena|chaleko\s*chaina|kam\s*gareko\s*chaina|kam\s*garena|dirty|fohor|ganda|खराब|बिग्रियो|चलेन|फोहोर)(?![\p{L}\p{M}])/u';
     private const C_STAFFBAD = 'naramro|narmro|gali|kutyo|kuteko|hiryo|dhamki|नराम्रो|गाली';
     private const C_STAFF = 'driver|conductor|khalasi|helper|staff|counter|agent|manche|manchhe|ड्राइभर|कन्डक्टर|स्टाफ';
     /** R4: a negation within two words before / three words after a complaint word cancels it ("kunai complain chaina",
@@ -1967,6 +1970,7 @@ final class WaLocal
        ANYWHERE in the complaint's own clause counts (hitUnnegated). */
     private const C_NOT_NEAR = 'chaina|chhaina|xaina|thiena|thiyena|thena|garena|garenan|bhayena|bhaena|nahi|nahin|nai|nhi|no|not|never|hoina|haina|na|nathiyo|didn|didnt|wasn|wasnt|isn|isnt|dont|kabhi'
         . '|gardina|gardaina|gardainan|gardain|pardaina|pardain|pardena|lagena|lagdaina|bhaena|hudaina|hunna|chhaidaina|chaidaina|chahidaina|nobody|noone|no\s+one|nothing|none|neither|nor'
+        . '|zero'                                                     // post-deploy probe B1: "10/10, zero complaints"
         . '|छैन|थिएन|भएन|गरेन|नहीं|नही|होइन|गर्दिन|गर्दैन|पर्दैन|लागेन|નથી|નહીં|નહિ|ના';
 
     private static function cWords(string $words): string
@@ -1980,7 +1984,10 @@ final class WaLocal
         if (preg_match_all($re, $t, $all, PREG_OFFSET_CAPTURE) < 1) {
             return false;
         }
-        foreach ($all[0] as [$m, $off]) {
+        /* Post-deploy probe B1 (R4): a clause also ends at "and / but / tara / ra / aur / lekin" — "the AC was broken the
+           whole night AND nobody fixed it" is a complaint (its "nobody" belongs to the next clause). */
+        $conj = '/(?<![\p{L}\p{M}])(?:and|but|tara|lekin|magar|aur|ani|ra|while|though|although|whereas|पर|तर|र|और|लेकिन)(?![\p{L}\p{M}])/u';
+        foreach ($all[0] as $i => [$m, $off]) {
             // the window never crosses a clause (",", ".", "?"): "gali garena, ekdam ramro" — the "garena" is not the praise's
             $beforeTxt = substr($t, 0, (int) $off);
             $afterTxt = substr($t, (int) $off + strlen((string) $m));
@@ -1988,9 +1995,15 @@ final class WaLocal
             $beforeTxt = $cut !== false ? substr($beforeTxt, $cut + 1) : $beforeTxt;
             $cut = strpos($afterTxt, ',');
             $afterTxt = $cut !== false ? substr($afterTxt, 0, $cut) : $afterTxt;
+            $parts = preg_split($conj, $beforeTxt) ?: [$beforeTxt];
+            $beforeTxt = (string) end($parts);
+            $afterTxt = (string) ((preg_split($conj, $afterTxt) ?: [$afterTxt])[0]);
             /* Round 4 (R4, review B2: "gunaso garnu parne kehi chaina", "the staff was not at all rude", "I don't have any
-               complaints" — the negation sat outside the 2-before / 3-after window): the WHOLE clause is the window. */
-            $win = ' ' . trim($beforeTxt) . ' ' . trim($afterTxt) . ' ';
+               complaints" — the negation sat outside the 2-before / 3-after window): the WHOLE clause is the window.
+               Post-deploy probe B1: and the words INSIDE the match between the thing and the fault ("the seat was not
+               broken", "the toilet was never dirty") — C_BROKEN's gap. */
+            $gap = (string) ($all['gap'][$i][0] ?? '');
+            $win = ' ' . trim($beforeTxt) . ' ' . trim($gap) . ' ' . trim($afterTxt) . ' ';
             if (preg_match(self::cWords(self::C_NOT_NEAR), $win) !== 1) {
                 return true;
             }
@@ -2051,7 +2064,22 @@ final class WaLocal
     /** R4, checked first: a good word that is MEANT ("sabai ramro", "bus bahut acchi thi"; never "ramro thiena"). */
     private static function praiseWord(string $t): bool
     {
-        return self::hitUnnegated($t, self::cWords('ramro|ramrai|sundar|best|good|nice|great|excellent|accha|acha|achha|acchi|achhi|acchha|achchha|achchhi|badhiya|badiya|mast|awesome|comfortable|happy|khush|राम्रो|अच्छा|अच्छी|बढ़िया'));
+        // post-deploy probe B1: + lovely / polite / clean / acche ("the crew were lovely", "actually bahut acche hain")
+        return self::hitUnnegated($t, self::cWords('ramro|ramrai|sundar|best|good|nice|great|excellent|accha|acha|achha|acchi|achhi|acchha|achchha|achchhi|badhiya|badiya|mast|awesome|comfortable|happy|khush'
+            . '|lovely|polite|clean|friendly|helpful|acche|ache|achhe|achchhe|safa|राम्रो|अच्छा|अच्छी|अच्छे|बढ़िया'));
+    }
+
+    /**
+     * Post-deploy probe B1 (R4): a complaint word that is not the passenger's own complaint about US — a joke ("lol",
+     * "mazak me bol raha tha"), another company ("other buses overcharge, but yours never did", "dusri company wale …"),
+     * or a claim found false ("sathi le extra paisa liyo bhanyo tara tyo galat raichha"). Answered, never filed.
+     */
+    private static function notMeant(string $t): bool
+    {
+        return preg_match(self::cWords('lol|lmao|rofl|haha\w*|hehe\w*|mazak\w*|mazaak\w*|majak\w*|majaak\w*|mazaq\w*|joke\w*|joking|kidding|jk'), $t) === 1
+            || preg_match('/[😂🤣😆😜]/u', $t) === 1
+            || preg_match(self::cWords('(?:other|another|dusri|dusre|dusra|doosri|arko|arkai|anya|aru)\s+(?:bus\w*|compan\w*|travels?|wale|wala|vale|gaadi|gadi|operator\w*|kampani)'), $t) === 1
+            || preg_match(self::cWords('galat\s+raich?ha|galat\s+rahechha|jhut\w*|jhoot\w*|jhuth\w*|not\s+true|was\s+not\s+true|galat\s+thiyo|galat\s+tha|sahi\s+thiyena'), $t) === 1;
     }
 
     /** R4: a question or a hypothetical ("?", "… bhane", "k garne", "sahi ho", "kya", "… bhanera sunye") — answered, never filed. */
@@ -2062,6 +2090,19 @@ final class WaLocal
            "is the AC broken in your bus", "extra paisa liyo bhanne kura galat ho" opened tickets): where / whether /
            if-then and a reported claim are questions too; so is asking for the complaint's number / form / link. */
         $explicit = preg_match(self::cWords(self::C_EXPLICIT), $t) === 1;
+        /* Post-deploy probe B1 (R4: "Where do I complain about the bus", "who should I complain to", "Do you take complaints
+           on WhatsApp", "complain kasko ma garne", "shikayat kisse karein", "bus ko AC kharab chha ki thik chha", "… hai ya
+           theek hai" opened tickets): a line that OPENS with where / who / which, "where / who … do / can / should / to",
+           "do you …", to whom / whose (kasko, kaslai, kisse …) and an "X chha ki Y chha" / "X hai ya Y hai" alternative
+           are questions too. ("the conductor who was rude" stays a complaint.) */
+        if (preg_match('/^\s*(?:where|who|whom|whose|which)(?![\p{L}\p{M}])/u', $t) === 1
+            || preg_match(self::cWords('(?:where|who|whom|which)\s+(?:do|does|can|could|should|shall|will|would|to|i|we|you)'), $t) === 1
+            || preg_match(self::cWords('kasko|kasle|kaslai|kasma|kasmaa|kisse|kisko|kise|kisey|kiske'), $t) === 1
+            || preg_match('/^\s*(?:do|does)\s+(?:you|u|i|we|they|ya|your)(?![\p{L}\p{M}])/u', $t) === 1
+            || preg_match(self::cWords('(?:chha|cha|xa|huncha|hunchha|hunxa|thiyo|ho|hai|hain|tha|thi|hota|hoti|chhan|chan|is|was|छ|हो|है|था|थी)\s+(?:ki|ya|or|athwa|athawa|या|कि)\s+'
+                . '(?:thik|theek|ramro|safa|sahi|accha|acha|achha|acchi|good|fine|ok|okay|clean|kharab|naramro|bad|nai|nahi|hoina|chaina|chhaina|not|ठीक|राम्रो|सफा|खराब|नहीं)'), $t) === 1) {
+            return true;
+        }
         return str_contains($raw, '?') || str_contains($raw, '？')
             || preg_match(self::cWords('bhane|bhaney|bhanera|bhanchan|bhanne|bhanthe|sunye|suneko|sunya|sunen|k\s+garne|ke\s+garne|k\s+garnu|ke\s+garnu|kya\s+kar\w*|kya|sahi\s+ho|sach\s+ho|sachi\s+ho|sahi\s+hai|sach\s+hai|ki\s+nai|ki\s+hoina|hola|kasari|kaise|how|what|can\s+i|if|'
                 . 'kaha|kahan|kahaa|kata|kaun\s+se|milcha|milchha|milxa|milla|milega|milenge|milta|milti|milenga|sakincha|sakinchha|agar|yadi|jadi|bhaye|bhayo\s+bhane|hunchha\s+ki|'
@@ -2110,6 +2151,12 @@ final class WaLocal
         return trim(preg_replace('/\s+/u', ' ', $t) ?? $t);
     }
 
+    /** Post-deploy probe B4: the passenger's language for WaBot's own fallback lines ('ne' | 'hi' | 'en' | 'gu'). */
+    public static function replyLang(string $text): string
+    {
+        return self::lang($text, false);
+    }
+
     /**
      * Which language to answer in. Staff: the office's choice (wa_staff_lang)
      * unless the message is clearly in another script. Customers: the script
@@ -2120,12 +2167,13 @@ final class WaLocal
         $d = TicketBot::detectLang($text);
         $l = mb_strtolower($text);
         // round 3 (pax sim: "bus bahut acchi thi, … shukriya" read as romanised Gujarati and was answered in English)
-        if ($d === 'en' || ($d === 'gu' && preg_match('/\p{Gujarati}/u', $text) !== 1)) {
+        // post-deploy probe B2: the Gujarati BLOCK (\p{Gujarati} also matches the Devanagari danda on PCRE2 ≥ 10.40)
+        if ($d === 'en' || ($d === 'gu' && preg_match('/[\x{0A80}-\x{0AFF}]/u', $text) !== 1)) {
             // 31 Oct 2026 (passenger sim: "payment kaise karu?" was answered in English): romanised Hindi counts as Hindi
             // round 3 (pax sim: "maile paisa pathaye UTR …", "conductor le 200 rupaya badi magyo", "upi payment gardai chu"
             // were answered in English; "conductor ne 200 rupaye zyada liye" was not Hindi): more everyday markers
             $ne = preg_match_all('/(?<![a-z])(kaha|kata|kati|pugyo|cha|xa|chha|ho|bata|lai|hajur|garna|garne|garnu|k|dinus|bholi|aaja|baki|khali|tirne|firta|pathau|chahiyo|dhanyabad|dhanyawad|mero|malai|paryo|garchu|tirchu|dinu|garyo|gareko|bhayo|thiyo|thiena|pathaidinu|pathaideu|pathaunu|pheri|feri|chaina|chhaina|xaina|hunchha|huncha|parcha|lagyo|garidinu|dinuhos|tapai|hamro|maile|le|magyo|maagyo|pathaye|pathaisake|pathaisakeko|pathaunchu|gardai|chu|chhu|tireko|tirisake|kunai|sabai|ekdam|ramro|garena|tara|dai|badi|rupaya|chalena|chalyo|bigryo|ko)(?![a-z])/u', $l);
-            $hi = preg_match_all('/(?<![a-z])(kaise|karu|karun|karna|kitna|kitne|kya|hai|hain|mujhe|mera|meri|chahiye|batao|bhejo|kab|kahan|nahi|aap|kijiye|dijiye|dena|karo|shukriya|maine|ne|kar|diya|diye|bhej|bheja|kiya|liye|liya|zyada|rupaye|tha|thi|bahut|acchi|accha|bilkul|hua|mere|humne)(?![a-z])/u', $l);
+            $hi = preg_match_all('/(?<![a-z])(kaise|karu|karun|karna|kitna|kitne|kya|hai|hain|mujhe|mera|meri|chahiye|batao|bhejo|kab|kahan|nahi|aap|kijiye|dijiye|dena|karo|shukriya|maine|ne|kar|diya|diye|bhej|bheja|kiya|liye|liya|zyada|rupaye|tha|thi|bahut|acchi|accha|bilkul|hua|mere|humne|karein|karen|kisse|kisko|kiske|kise)(?![a-z])/u', $l);
             if ($ne > 0 || $hi > 0) {
                 $d = $hi > $ne ? 'hi' : 'ne';
             }

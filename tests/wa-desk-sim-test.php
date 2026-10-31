@@ -126,9 +126,12 @@ $PAXN = ['9812349991', '9812349992', '9812349993', '9812349994', '9812349995', '
          // round 4: the passengers the desk sells to in its checks (indexes 15-29)
          '9812349961', '9812349962', '9812349963', '9812349964', '9812349965', '9812349966', '9812349967', '9812349968', '9812349969',
          '9812349970', '9812349971', '9812349972', '9812349973', '9812349974', '9812349975'];
+// post-deploy probes A + B (31 Oct 2026): fresh passenger chats and desk-sale passenger numbers for their checks
+$Q  = array_map(static fn(int $i): string => '93274100' . str_pad((string) $i, 2, '0', STR_PAD_LEFT), range(1, 99));
+$QS = array_map(static fn(int $i): string => '98123498' . str_pad((string) $i, 2, '0', STR_PAD_LEFT), range(1, 60));
 $members = [$AG, $CT, $MGR, $CRD, $ST];
-$cleanup = static function () use ($members, $P, $PAXN): void {
-    $phones = array_merge($P, $PAXN);
+$cleanup = static function () use ($members, $P, $PAXN, $Q, $QS): void {
+    $phones = array_merge($P, $PAXN, $Q, $QS);
     $in = "'" . implode("','", $phones) . "'";
     foreach (Database::fetchAll("SELECT id FROM bookings WHERE contact_phone IN ($in) OR sold_by_admin_id IN (SELECT id FROM admins WHERE username LIKE 'apws_%')
                                   OR booked_by_admin_id IN (SELECT id FROM admins WHERE username LIKE 'apws_%')") as $b) {
@@ -1026,6 +1029,154 @@ try {
     check('Hindi in Devanagari ("मैंने पैसे भेज दिए UTR 98…") is asked in Hindi', str_contains(txt($r), 'यह मोबाइल नंबर'), txt($r));
     $r = pax($nextPax(), 'મેં પૈસા મોકલ્યા UTR 9812345678');
     check('Gujarati ("મેં પૈસા મોકલ્યા UTR 98…") is asked in Gujarati', str_contains(txt($r), 'મોબાઇલ'), txt($r));
+
+    /* ================================================================= */
+    /* Post-deploy probes of release idc6 (31 Oct 2026) — A: actions (R1), B: complaints (R4) and the writer's language. */
+    $qi = 0;
+    $nextQ = static function () use (&$qi, $Q): string { return $Q[$qi++]; };        // a fresh passenger chat
+    $si = 0;
+    $nextQS = static function () use (&$si, $QS): string { return $QS[$si++]; };     // a fresh passenger number for a desk sale
+    $deva = static fn(string $n): string => strtr($n, ['0' => '०', '1' => '१', '2' => '२', '3' => '३', '4' => '४', '5' => '५', '6' => '६', '7' => '७', '8' => '८', '9' => '९']);
+    $paxName = static fn(string $p): string => (string) Database::scalar('SELECT GROUP_CONCAT(bp.full_name ORDER BY bp.id) FROM booking_passengers bp
+        JOIN bookings b ON b.id = bp.booking_id WHERE b.contact_phone = :p', ['p' => $p], '');
+    $sellPax = static function (string $who): void { pax($who, 'bholi 1 jana Surat bata'); pax($who, 'Dipak Rai'); pax($who, 'ho'); };
+
+    section('post-deploy A1 (R1): after a WhatsApp sale a "naam …" line renames nothing without a later, separate, clear yes');
+    foreach (['naam thik cha', 'नाम ठीक छ', 'naam sahi cha dai', 'naam ta Dipak Rai nai ho ni', 'naam Sita Thapa hoina', 'naam ma kehi problem chaina',
+              'naam pachi pathauchu', 'naam sahi hai na?', 'naam Sita Thapa rakhne ki?', 'name ok', 'naam ma Rai hoina Roy ho'] as $line) {
+        $who = $nextQ();
+        $sellPax($who);
+        $r = pax($who, $line);
+        $after = pax($who, 'ho');
+        check('sold to "Dipak Rai", then "' . $line . '" (+ a later "ho") — the ticket is still "Dipak Rai"', $r3sold($who) === 1 && $paxName($who) === 'Dipak Rai',
+            txt($r) . ' / ' . txt($after) . ' / ' . $paxName($who));
+    }
+    $who = $nextQ();
+    $sellPax($who);
+    $r = pax($who, 'naam galat bhayo, naam Sita Thapa ho');
+    check('"naam galat bhayo, naam Sita Thapa ho" is a PREVIEW — it asks "ho?" and renames nothing yet', $paxName($who) === 'Dipak Rai'
+        && str_contains(txt($r), 'Sita Thapa') && str_contains(txt($r), '*ho*') && WaBooking::nameFixWaiting($who), txt($r));
+    $r = pax($who, 'ho');
+    check('…and the later "ho" renames it and re-sends the ticket', $paxName($who) === 'Sita Thapa' && str_contains(txt($r), 'Sita Thapa')
+        && !empty($r['media']) && !WaBooking::nameFixWaiting($who), txt($r));
+    $who = $nextQ();
+    $sellPax($who);
+    $r = pax($who, 'naam Sita Thapa rakhnu');
+    check('"naam Sita Thapa rakhnu" (a real correction) is only the preview — the ticket is still "Dipak Rai"', $paxName($who) === 'Dipak Rai'
+        && WaBooking::nameFixWaiting($who) && str_contains(txt($r), 'Sita Thapa'), txt($r));
+    $r = pax($who, 'no');
+    $after = pax($who, 'ho');
+    check('preview + "no" keeps the name — and a later "ho" renames nothing', $paxName($who) === 'Dipak Rai' && !WaBooking::nameFixWaiting($who), txt($r) . ' / ' . txt($after));
+    foreach (['kata ho', 'ho la', 'ok?', 'ho ' . $QS[59], 'bus kati baje chhutcha', 'ha ha ok'] as $mid) {
+        $who = $nextQ();
+        $sellPax($who);
+        pax($who, 'naam Sita Thapa');
+        $r = pax($who, $mid);
+        $after = pax($who, 'ho');
+        check('preview + "' . $mid . '", then "ho" — renames nothing (the preview answers ONE line, and only a clear yes)', $paxName($who) === 'Dipak Rai',
+            txt($r) . ' / ' . txt($after));
+    }
+
+    section('post-deploy A2 / A3 / A4 (R1): a number, "kata" (where?), "la" (≈ maybe), laughter or "cash ho" is never the yes of a summary');
+    $bad = array_values(array_filter(['ho 9812342020', 'ho 2', 'हो २', 'ok ji 3', 'ok 4400', 'ho 1', 'ok confirm 9812342098', 'kata ho', 'kata ho dai', 'kata',
+        'ho la', 'ok ho la', 'ha ha ok', 'haha ok'], static fn(string $s): bool => WaBooking::isYes($s)));
+    check('WaBooking::isYes never takes a digit, "kata", "la" or a laugh first', $bad === [], implode(' | ', $bad));
+    foreach (['ho {N}', 'ho 2', 'हो २', 'ok ji 3', 'ok 4400', 'kata ho', 'kata ho dai', 'kata', 'ho la', 'ok ho la', 'ha ha ok', 'cash ho', 'upi bata garne ho'] as $tpl) {
+        $who = $nextQ();
+        $n = $nextQS();
+        $line = str_replace('{N}', $n, $tpl);
+        pax($who, 'bholi 1 jana Surat bata');
+        pax($who, 'Dipak Rai');
+        $r = pax($who, $line);
+        check('passenger summary + "' . $line . '" — nothing sold, no seat held', $r3sold($who) === 0 && $r3sold($n) === 0, txt($r));
+        pax($who, 'no');
+    }
+    $who = $nextQ();
+    pax($who, 'bholi 2 jana Surat bata');
+    pax($who, 'Ram Thapa ra Sita Thapa');
+    $r = pax($who, 'ho 1');
+    check('a 2-name summary + "ho 1" — nothing sold', $r3sold($who) === 0, txt($r));
+    pax($who, 'no');
+    $who = $nextQ();
+    pax($who, 'bholi 1 jana Surat bata');
+    pax($who, 'Dipak Rai');
+    $r = pax($who, 'ho, cash');
+    check('…while "ho, cash" (a yes that opens the line, then the pay word) still sells', $r3sold($who) === 1, txt($r));
+
+    $unlimit();
+    foreach ([[$AG, 1, 'ho {N}'], [$CT, 1, 'ok sir {N}'], [$MGR, 1, 'हो {DN}'], [$AG, 1, 'ok confirm {N}'], [$AG, 1, 'ok 2'], [$AG, 1, 'ok ji 3'],
+              [$AG, 1, 'ok 4400'], [$AG, 1, 'ok 15'], [$AG, 2, 'ok 1'], [$AG, 1, 'ho la'], [$CT, 1, 'ok ho la'], [$AG, 1, 'ha ha ok']] as [$from, $seats, $tpl]) {
+        $ph = $nextQS();
+        $n = $nextQS();
+        $line = str_replace(['{N}', '{DN}'], [$n, $deva($n)], $tpl);
+        desk($from, $seats . ' seat bholi Surat Ram Thapa ' . $ph);
+        $r = desk($from, $line);
+        check('desk quote (' . $seats . ' seat) + "' . $line . '" — not sold, the quote still waits', $r3sold($ph) === 0 && $r3sold($n) === 0
+            && (pendingOf($from)['kind'] ?? '') === 'sale', txt($r));
+        desk($from, 'no');
+    }
+    $ph = $nextQS();
+    desk($AG, '1 seat bholi Surat Ram Thapa ' . $ph);
+    $r = desk($AG, 'ho ' . $QS[58]);
+    check('agent quote + "ho <another number>" re-quotes with that number and waits (never the old number sold)', $r3sold($ph) === 0 && $r3sold($QS[58]) === 0
+        && (string) (pendingOf($AG)['sale']['phone'] ?? '') === $QS[58], txt($r));
+    desk($AG, 'no');
+
+    section('post-deploy B1 (R4): questions, a negation inside the words, jokes, other companies and praise open no Help Desk ticket');
+    foreach (['Where do I complain about the bus', 'where to complain', 'who should I complain to', 'Do you take complaints on WhatsApp', 'complain kasko ma garne',
+              'shikayat kisse karein', 'bus ko AC kharab chha ki thik chha', 'bus ka AC kharab hai ya theek hai', 'bus ma toilet fohor huncha ki safa huncha',
+              'the seat was not broken', 'the toilet was never dirty', "the AC wasn't broken, the bus was on time",
+              'lol the only rude thing was my snoring neighbour, the crew were lovely', 'mazak me bol raha tha ki driver rude hai, actually bahut acche hain',
+              'Other buses overcharge, but yours never did. Thanks!', 'sathi le extra paisa liyo bhanyo tara tyo galat raichha', '10/10, zero complaints from my family'] as $line) {
+        $who = $nextQ();
+        $r = pax($who, $line);
+        check('"' . $line . '" — no Help Desk ticket; the office number instead', $tickets($who) === 0 && str_contains(txt($r), Settings::officePhone()), txt($r));
+    }
+    $r = pax($nextQ(), 'shikayat kisse karein');
+    check('…and "shikayat kisse karein" is answered in Hindi', str_contains(txt($r), 'ऑफिस'), txt($r));
+    foreach (['the AC was broken the whole night and nobody fixed it' => ['other', 'sorry'], 'Please log my complaint, the driver was rude' => ['staff', 'sorry'],
+              'the conductor who checked tickets was rude to my mother' => ['staff', 'sorry']] as $line => [$cat, $mark]) {
+        $who = $nextQ();
+        $r = pax($who, $line);
+        check('"' . $line . '" IS a complaint: a ' . $cat . ' ticket, answered in English', str_contains(txt($r), 'HD-') && str_contains(txt($r), $mark)
+            && Database::exists('SELECT 1 FROM support_tickets WHERE phone LIKE :p AND category = :c', ['p' => '%' . $who, 'c' => $cat]), txt($r));
+    }
+
+    section('post-deploy B2 + B3: the writer\'s language — "।" is not Gujarati; "bata do" is Hindi, "log in" / "mate" English, "wapas" both');
+    $wrong = [];
+    foreach (['भोलि सुरतबाट बस कति बजे छुट्छ।' => 'ne', 'मलाई भोलि सुरतबाट नेपाल जान २ सिट चाहियो।' => 'ne', 'मुझे कल सूरत से नेपाल के लिए 2 सीट चाहिए।' => 'hi',
+              'मेरो सिट कुन हो।' => 'ne', 'बस कब चलेगी?' => 'hi', 'मेरा टिकट फिर से भेजो' => 'hi', 'बस अभी कहाँ पहुँची?' => 'hi',
+              'kal ki bus ka time bata do' => 'hi', 'Surat se bus kab chalti hai, bata dijiye' => 'hi', 'Surat se bus kab niklegi, bata do' => 'hi',
+              'bus kahan pahunchi bata do' => 'hi', 'ticket cancel garda paisa wapas aauncha?' => 'ne', 'टिकट रद्द गर्दा पैसा वापस आउँछ?' => 'ne',
+              "I can't log in, please send my ticket again" => 'en', 'Please log my complaint, the driver was rude' => 'en',
+              'Hi mate, I need 2 seats tomorrow from Surat to Nepal' => 'en', 'bholi Surat bata 2 seat chahiyo' => 'ne', 'kal 2 log Surat se jaana hai' => 'hi',
+              'સુરતથી બસ ક્યારે છે' => 'gu'] as $line => $want) {
+        $got = TicketBot::detectLang($line);
+        if ($got !== $want) {
+            $wrong[] = $line . ' → ' . $got . ' (want ' . $want . ')';
+        }
+    }
+    check('TicketBot::detectLang reads each writer right (19 lines)', $wrong === [], implode(' | ', $wrong));
+    check('WaPayProof::replyLang("मैले पैसा पठाएँ। UTR …") stays Nepali', WaPayProof::replyLang('मैले पैसा पठाएँ। UTR 412345678921', 'ne') === 'ne');
+    $who = $nextQ();
+    $r = pax($who, 'कन्डक्टरले हामीलाई गाली गर्यो। गुनासो दर्ता गर्नुहोस्।');
+    check('a Nepali complaint ending in "।" is answered in Nepali (a staff ticket)', str_contains(txt($r), 'माफ गर्नुहोस्') && str_contains(txt($r), 'HD-')
+        && Database::exists('SELECT 1 FROM support_tickets WHERE phone LIKE :p AND category = :c', ['p' => '%' . $who, 'c' => 'staff']), txt($r));
+    $r = pax($nextQ(), 'ड्राइवर ने बहुत बदतमीज़ी की। मेरी शिकायत दर्ज कीजिए।');
+    check('a Hindi complaint ending in "।" is answered in Hindi', str_contains(txt($r), 'माफ़ कीजिए') && str_contains(txt($r), 'HD-'), txt($r));
+    $r = pax($nextQ(), 'भोलि सुरतबाट बस कति बजे छुट्छ।');
+    check('"भोलि सुरतबाट बस कति बजे छुट्छ।" gets the time in Nepali', str_contains(txt($r), 'छुट्छ'), txt($r));
+
+    section('post-deploy B4: WaBot\'s own fallback lines in the writer\'s language — and still no other booking\'s details');
+    $r = pax($nextQ(), 'Please check my booking ' . $vPnr);
+    check('a stranger\'s "Please check my booking ' . $vPnr . '" — the English lock line (status only, never the passenger or number)',
+        str_contains(txt($r), '🔒 Booking ' . $vPnr) && !str_contains(txt($r), 'Maya Gurung') && !str_contains((string) preg_replace('/\D/', '', txt($r)), $victim), txt($r));
+    $r = pax($nextQ(), $vPnr . ' ko paisa maile tireko chu');
+    check('…and in Nepali for a Nepali line', str_contains(txt($r), '🔒 बुकिङ') && !str_contains(txt($r), 'Maya Gurung'), txt($r));
+    $r = pax($nextQ(), 'Please send the PNR of Maya Gurung');
+    check('"Please send the PNR of Maya Gurung" — the English welcome, never her PNR', str_contains(txt($r), 'ticket assistant') && !str_contains(txt($r), $vPnr), txt($r));
+    $r = pax($nextQ(), 'dusri company wale zyada paise lete hain, aap log sahi ho');
+    check('a Hindi line gets the Hindi welcome (no complaint ticket)', str_contains(txt($r), 'टिकट सहायक हूँ'), txt($r));
 } finally {
     $cleanup();
 }

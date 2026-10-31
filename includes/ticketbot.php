@@ -1180,7 +1180,9 @@ final class TicketBot
      */
     public static function detectLang(string $text): string
     {
-        if (preg_match('/\p{Gujarati}/u', $text) === 1) {
+        /* Post-deploy probe B2: PCRE2 ≥ 10.40 reads \p{Gujarati} by script EXTENSIONS, so the Devanagari danda (। ॥)
+           matched it and every Nepali / Hindi line ending in "।" was answered in Gujarati — the Gujarati BLOCK only. */
+        if (preg_match('/[\x{0A80}-\x{0AFF}]/u', $text) === 1) {
             return 'gu';
         }
         $score = static function (array $words, string $s): int {
@@ -1193,19 +1195,30 @@ final class TicketBot
             return $n;
         };
         if (preg_match('/\p{Devanagari}/u', $text) === 1) {
-            $hi = $score(['चाहिए', 'चाहिये', 'है', 'हैं', 'हूँ', 'हूं', 'मुझे', 'हमें', 'कितने', 'कितना', 'कौन', 'जाना', 'वापस', 'कल', 'परसों', 'लिए', 'में', 'करना', 'करो', 'कीजिए', 'लोग', 'सीट'], $text);
-            $ne = $score(['चाहियो', 'चाहिन्छ', 'छ', 'छन्', 'हो', 'जना', 'भोलि', 'पर्सि', 'मलाई', 'हामीलाई', 'कति', 'जाने', 'फर्कने', 'गर्नु', 'गर्नुहोस्', 'दिनुस्', 'बाट', 'लागि', 'सम्म', 'तिर', 'हरू', 'सिट'], $text);
+            /* Post-deploy probe B3: "बस कब चलेगी?", "मेरा टिकट फिर से भेजो", "बस अभी कहाँ पहुँची?" (Hindi with no है / मुझे) fell
+               back to Nepali, and "टिकट रद्द गर्दा पैसा वापस आउँछ?" (Nepali) read as Hindi on वापस — वापस is in both. */
+            $hi = $score(['चाहिए', 'चाहिये', 'है', 'हैं', 'हूँ', 'हूं', 'मुझे', 'हमें', 'कितने', 'कितना', 'कौन', 'जाना', 'कल', 'परसों', 'लिए', 'में', 'करना', 'करो', 'कीजिए', 'लोग', 'सीट',
+                          'कब', 'चलेगी', 'चलेगा', 'भेजो', 'भेजिए', 'मेरा', 'मेरी', 'अभी', 'पहुँची', 'पहुंची', 'पहुँचेगी', 'क्या', 'करने', 'मिलेगा', 'मिलेगी'], $text);
+            $ne = $score(['चाहियो', 'चाहिन्छ', 'छ', 'छन्', 'हो', 'जना', 'भोलि', 'पर्सि', 'मलाई', 'हामीलाई', 'कति', 'जाने', 'फर्कने', 'गर्नु', 'गर्नुहोस्', 'दिनुस्', 'बाट', 'लागि', 'सम्म', 'तिर', 'हरू', 'सिट',
+                          'गर्दा', 'आउँछ', 'आउँदैन', 'पाइन्छ', 'मेरो', 'छैन', 'कहिले'], $text);
             return ($hi > $ne) ? 'hi' : 'ne';
         }
         $l  = mb_strtolower($text);
-        $gu = $score(['joie', 'joiye', 'joiee', 'chhe', 'jovu', 'javu', 'javanu', 'karvu', 'aavu', 'kaale', 'aaje', 'amne', 'ketla', 'ketli', 'thi', 'mate'], $l);
+        /* Post-deploy probe B3: Hindi "… bata do / bata dijiye" (tell me) read as Nepali "bata" (from); English "log in" /
+           "log my complaint" as Hindi "log" (people) and "Hi mate" as Gujarati "mate"; "wapas" is Nepali too. */
+        $tellHi = preg_match_all('/(?<![\p{L}\p{M}])bata\s+(?:do|dijiye|dijie|dijiyega|dena|dein|de|doge)(?![\p{L}\p{M}])/u', $l);
+        $peopleHi = preg_match_all('/(?:\d|(?<![\p{L}\p{M}])(?:do|teen|char|chaar|paanch|panch|hum|sab|kitne))\s*log(?![\p{L}\p{M}])/u', $l);
+        $lNe = (string) preg_replace('/(?<![\p{L}\p{M}])bata\s+(?=(?:do|dijiye|dijie|dijiyega|dena|dein|de|doge)(?![\p{L}\p{M}]))/u', ' ', $l);
+        $gu = $score(['joie', 'joiye', 'joiee', 'chhe', 'jovu', 'javu', 'javanu', 'karvu', 'aavu', 'kaale', 'aaje', 'amne', 'ketla', 'ketli', 'thi'], $l);
         /* 23 Sep 2026: + everyday Nepali-only words. "payment gare tara ticket
            aayena" and "Dashain ma ghar jana ticket milcha?" matched none and were
            answered in English. Words shared with Hindi (jana, jane, ho, ghar,
            kaha) are left out on purpose. */
         $ne = $score(['chahiyo', 'chaiyo', 'chahincha', 'chahinchha', 'chha', 'xa', 'hola', 'bholi', 'parsi', 'malai', 'hamilai', 'kati', 'garnu', 'garidinu', 'dinu', 'dinus', 'farkine', 'ahile', 'aaja', 'bata', 'lagi', 'samma', 'euta', 'dui', 'tin', 'huncha', 'hunchha',
-                      'mero', 'hamro', 'cha', 'milcha', 'milchha', 'garna', 'garne', 'gare', 'tara', 'aayena', 'aaena', 'bhayo', 'hajur', 'kasari', 'aaune', 'parcha', 'parchha', 'sakchu', 'sakincha', 'pathaideu', 'dekhau'], $l);
-        $hi = $score(['chahiye', 'chaiye', 'chahie', 'hai', 'hain', 'hoon', 'mujhe', 'humein', 'hume', 'kitne', 'kitna', 'jaana', 'wapas', 'wapsi', 'karo', 'karna', 'kijiye', 'banao', 'lena', 'liye', 'abhi', 'parso', 'log', 'hoga', 'milega'], $l);
+                      'mero', 'hamro', 'cha', 'milcha', 'milchha', 'garna', 'garne', 'gare', 'tara', 'aayena', 'aaena', 'bhayo', 'hajur', 'kasari', 'aaune', 'parcha', 'parchha', 'sakchu', 'sakincha', 'pathaideu', 'dekhau',
+                      'garda', 'aauncha', 'aaucha', 'auncha', 'aunchha'], $lNe);
+        $hi = $score(['chahiye', 'chaiye', 'chahie', 'hai', 'hain', 'hoon', 'mujhe', 'humein', 'hume', 'kitne', 'kitna', 'jaana', 'wapsi', 'karo', 'karna', 'kijiye', 'banao', 'lena', 'liye', 'abhi', 'parso', 'hoga', 'milega',
+                      'kab', 'kahan', 'kya', 'mera', 'meri', 'bhejo', 'chalti', 'chalegi', 'niklegi', 'pahunchi', 'dijiye', 'batao'], $l) + $tellHi + $peopleHi;
         if ($gu > 0 && $gu > $hi && $gu > $ne) { return 'gu'; }   // Gujarati only when it wins outright — most passengers write Hindi / Nepali
         if ($ne > 0 && $ne >= $hi) { return 'ne'; }
         if ($hi > 0) { return 'hi'; }

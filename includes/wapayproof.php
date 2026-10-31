@@ -229,7 +229,7 @@ final class WaPayProof
      */
     public static function replyLang(string $text, string $lang): string
     {
-        if (preg_match('/\p{Gujarati}/u', $text) === 1) {
+        if (preg_match('/[\x{0A80}-\x{0AFF}]/u', $text) === 1) {     // post-deploy probe B2: never \p{Gujarati} (the danda matches it)
             return 'gu';
         }
         if (preg_match('/\p{Devanagari}/u', $text) === 1

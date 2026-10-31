@@ -3408,10 +3408,11 @@ final class ApWa
 
     /* 30 Oct 2026: the words of "ok, this one, give the ticket" in Nepali / Hindi / English — never a name. */
     // round 4 (R1): "hola" (= maybe) is no longer a filler of the yes — "ok hola" sold a quote
+    // post-deploy probe A4 (R1): nor "la" — "ho la" / "ok ho la" (≈ "hola") sold a quote
     private const FILLER = ['ok', 'okay', 'okk', 'k', 'yes', 'y', 'ya', 'haan', 'han', 'ha', 'ho', 'hoo', 'yo', 'ye', 'yei', 'yehi',
         'yahi', 'yeti', 'yati', 'ticket', 'tiket', 'tikat', 'tciket', 'tickt', 'tikit', 'tkt', 'deu', 'de', 'dinus', 'dinu', 'dinuhos', 'dijiye',
         'dedo', 'do', 'karo', 'kar', 'katnu', 'kata', 'kaat', 'kaatnu', 'katdeu', 'kaatdeu', 'gardeu', 'garnus', 'gara', 'garo', 'please', 'plz',
-        'pls', 'sir', 'dai', 'bhai', 'ji', 'hai', 'la', 'lau', 'confirm', 'confirmed', 'pakka', 'thik', 'theek', 'cha', 'chha', 'xa', 'hunchha',
+        'pls', 'sir', 'dai', 'bhai', 'ji', 'hai', 'lau', 'confirm', 'confirmed', 'pakka', 'thik', 'theek', 'cha', 'chha', 'xa', 'hunchha',
         'huncha', 'hunxa', 'done', 'book', 'final', 'ahile', 'aba', 'abhi', 'हो', 'ठीक', 'छ', 'दिनुहोस्', 'देउ', 'टिकट', 'काट्नु', 'काट', 'पक्का',
         'हुन्छ', 'कन्फर्म', 'यो', 'यही', 'यति', 'हाँ', 'दो', 'दीजिए', 'ओके',
         // round 2 (agent sim: "haan ticket nikal do", "ha ticket kaat do", "haan ticket bana do" = Hindi "yes, issue the ticket")
@@ -3444,9 +3445,12 @@ final class ApWa
         /* Round 4 (31 Oct 2026, owner's rule R1 — safety review A2: "ticket confirm ho?", "confirm?", "ho?", "pakka ho?",
            "ticket done?", "thik cha?", "ok?", "ok hola", "ha ha" each SOLD a complete quote, posting commission and cash
            due): a question is never the yes ("?" or a question word), nor a guess ("hola" = maybe), nor laughter. */
-        $low = mb_strtolower(trim($text));
-        if (str_contains($low, '?') || str_contains($low, '？') || self::isQuestion($low)
-            || preg_match('/^(?:h+a+\s*){2,}[\s.!]*$|^(?:ha){2,}h?[\s.!]*$/u', $low) === 1) {
+        /* Post-deploy probe A2/A4 (R1): "ho 9812342025", "ok sir 9812342001", "हो ९८१२३४२०९९", "ok 2", "ok 4400", "ok 1" on a
+           2-seat quote SOLD the old quote (the word split threw the digits away) — a line with any digit is never the
+           yes, it goes to the amend path; "ha ha ok" (laughter first) is not a yes either. */
+        $low = mb_strtolower(trim(self::asciiDigits($text)));
+        if (str_contains($low, '?') || str_contains($low, '？') || self::isQuestion($low) || preg_match('/\d/', $low) === 1
+            || preg_match('/^(?:h+a+[\s,.!]*){2,}|^(?:ha){2,}h?(?![\p{L}\p{M}])/u', $low) === 1) {
             return false;
         }
         if (!self::fillerOnly($text)) {

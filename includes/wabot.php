@@ -53,6 +53,22 @@ final class WaBot
                 return self::out($apReply['text'], $apReply['media'] ?? null);
             }
         }
+        /* Post-deploy probe A1 (31 Oct 2026, owner's rule R1): a passenger's name correction right after a sale is a
+           preview; the very next line answers it — a clear yes renames, "no" keeps the name, anything else drops the
+           preview and is read as itself below. Answered first, so no other path can swallow that yes. */
+        if ($senderDigits !== '' && $body !== '') {
+            try {
+                require_once INCLUDE_PATH . '/ticketbot.php';
+                require_once INCLUDE_PATH . '/quickticket.php';
+                require_once INCLUDE_PATH . '/wabooking.php';
+                $nameFix = WaBooking::answerNameFix($senderDigits, $body);
+                if ($nameFix !== null) {
+                    return self::out($nameFix['text'], $nameFix['media'] ?? null, $nameFix['ui'] ?? null);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+            }
+        }
         // +91 / +977 as the transport delivered it — a Nepali sender's ticket
         // must be addressed to +977, and ten normalised digits cannot say so.
         $senderCountry = resolvePhoneCountry('', $from);
@@ -574,10 +590,12 @@ final class WaBot
                 Logger::exception($e);          // a parser hiccup must never eat the reply
             }
 
+            // post-deploy probe B4: the draft reply and the welcome in the writer's language (they were Nepali for everyone)
+            $fl = self::fallbackLang($body);
             if ($draft !== null) {
                 $got = [];
                 if (($draft['seats'] ?? 0) > 0) {
-                    $got[] = (int) $draft['seats'] . ' सिट';
+                    $got[] = (int) $draft['seats'] . self::tr($fl, ' सिट', ' सीट', ' seat(s)');
                 }
                 if (($draft['date'] ?? '') !== '') {
                     $got[] = formatDate((string) $draft['date'], 'D, j M');
@@ -586,25 +604,43 @@ final class WaBot
                     $got[] = QuickTicket::directionLabel((string) $draft['direction']);
                 }
                 if (($draft['boarding'] ?? '') !== '') {
-                    $got[] = Boarding::stopDisplay((string) $draft['boarding'])['name'] . ' बाट';
+                    $stop = Boarding::stopDisplay((string) $draft['boarding'])['name'];
+                    $got[] = self::tr($fl, $stop . ' बाट', $stop . ' से', 'from ' . $stop);
                 }
 
                 return self::out(
-                    "🙏 नमस्ते! तपाईंको अनुरोध प्राप्त भयो।\n\n"
-                    . ($got !== [] ? "मैले बुझेँ: " . implode(' · ', $got) . "\n\n" : '')
-                    . "हाम्रो डेस्कले बस, सिट र भाडा पक्का गरेर तपाईंको टिकट यहीँ छिट्टै पठाउनेछ।"
-                    . (($draft['date'] ?? '') === '' ? "\n\nतपाईं कुन मितिमा यात्रा गर्न चाहनुहुन्छ?" : '')
-                    . ($phone !== '' ? "\n\nहतार छ? फोन गर्नुहोस्: " . $phone . "।" : '')
+                    self::tr($fl, "🙏 नमस्ते! तपाईंको अनुरोध प्राप्त भयो।\n\n", "🙏 नमस्ते! आपका अनुरोध मिल गया।\n\n", "🙏 Hello! We have your request.\n\n")
+                    . ($got !== [] ? self::tr($fl, "मैले बुझेँ: ", "मैंने समझा: ", "I understood: ") . implode(' · ', $got) . "\n\n" : '')
+                    . self::tr($fl, "हाम्रो डेस्कले बस, सिट र भाडा पक्का गरेर तपाईंको टिकट यहीँ छिट्टै पठाउनेछ।",
+                        "हमारा डेस्क बस, सीट और किराया पक्का करके आपका टिकट यहीं जल्दी भेजेगा।",
+                        "Our desk will confirm the bus, the seat and the fare and send your ticket here soon.")
+                    . (($draft['date'] ?? '') === '' ? self::tr($fl, "\n\nतपाईं कुन मितिमा यात्रा गर्न चाहनुहुन्छ?", "\n\nआप किस तारीख को यात्रा करना चाहते हैं?",
+                        "\n\nWhich date do you want to travel?") : '')
+                    . ($phone !== '' ? self::tr($fl, "\n\nहतार छ? फोन गर्नुहोस्: " . $phone . "।", "\n\nजल्दी है? फ़ोन कीजिए: " . $phone . "।",
+                        "\n\nIn a hurry? Call: " . $phone . ".") : '')
                 );
             }
 
             return self::out(
-                "🙏 नमस्ते! म " . $company . " को टिकट सहायक हुँ।\n\n"
-                . "आफ्नो बुकिङ PNR (जस्तै SHG-XXXX-XXXX-XXXX) पठाउनुहोस्, म तुरुन्तै तपाईंको टिकट "
-                . "स्थिति र PDF पठाउँछु।\n\n"
-                . "यात्रा गर्नु छ? मलाई मिति, कति सिट र कहाँबाट चढ्ने भन्नुहोस् — "
-                . "जस्तै \"2 सिट Nepal 15 Sep, Mehsana\"।\n\n"
-                . ($phone !== '' ? "मान्छेसँग कुरा गर्नु छ? फोन गर्नुहोस्: " . $phone . "।" : "")
+                self::tr($fl,
+                    "🙏 नमस्ते! म " . $company . " को टिकट सहायक हुँ।\n\n"
+                    . "आफ्नो बुकिङ PNR (जस्तै SHG-XXXX-XXXX-XXXX) पठाउनुहोस्, म तुरुन्तै तपाईंको टिकट "
+                    . "स्थिति र PDF पठाउँछु।\n\n"
+                    . "यात्रा गर्नु छ? मलाई मिति, कति सिट र कहाँबाट चढ्ने भन्नुहोस् — "
+                    . "जस्तै \"2 सिट Nepal 15 Sep, Mehsana\"।\n\n"
+                    . ($phone !== '' ? "मान्छेसँग कुरा गर्नु छ? फोन गर्नुहोस्: " . $phone . "।" : ""),
+                    "🙏 नमस्ते! मैं " . $company . " का टिकट सहायक हूँ।\n\n"
+                    . "अपना बुकिंग PNR (जैसे SHG-XXXX-XXXX-XXXX) भेजिए, मैं तुरंत आपके टिकट की "
+                    . "स्थिति और PDF भेजूँगा।\n\n"
+                    . "यात्रा करनी है? मुझे तारीख, कितनी सीट और कहाँ से चढ़ना है बताइए — "
+                    . "जैसे \"2 सीट Nepal 15 Sep, Mehsana\"।\n\n"
+                    . ($phone !== '' ? "किसी इंसान से बात करनी है? फ़ोन कीजिए: " . $phone . "।" : ""),
+                    "🙏 Hello! I am the ticket assistant of " . $company . ".\n\n"
+                    . "Send your booking PNR (like SHG-XXXX-XXXX-XXXX) and I will send your ticket "
+                    . "status and PDF at once.\n\n"
+                    . "Want to travel? Tell me the date, how many seats and where you board — "
+                    . "like \"2 seats Nepal 15 Sep, Mehsana\".\n\n"
+                    . ($phone !== '' ? "Want to talk to a person? Call: " . $phone . "." : ""))
             );
         }
 
@@ -620,11 +656,12 @@ final class WaBot
         }
 
         $detail = BookingService::detail($pnr);
+        $fl = self::fallbackLang($body);                 // post-deploy probe B4: the writer's language
         if ($detail === null) {
-            return self::out(
-                "❌ PNR " . $pnr . " को कुनै बुकिङ भेटिएन।\n"
-                . "कृपया कोड जाँचेर फेरि पठाउनुहोस्।"
-            );
+            return self::out(self::tr($fl,
+                "❌ PNR " . $pnr . " को कुनै बुकिङ भेटिएन।\nकृपया कोड जाँचेर फेरि पठाउनुहोस्।",
+                "❌ PNR " . $pnr . " की कोई बुकिंग नहीं मिली।\nकृपया कोड जाँचकर फिर भेजिए।",
+                "❌ No booking was found for PNR " . $pnr . ".\nPlease check the code and send it again."));
         }
 
         // Only the booking's own number gets full detail + the ticket —
@@ -659,10 +696,13 @@ final class WaBot
         $status = strtoupper((string) $detail['status']);
 
         if (!$owns) {
-            return self::out(
+            return self::out(self::tr($fl,
                 "🔒 बुकिङ " . $detail['pnr'] . " — स्थिति: " . $status . "।\n"
-                . "पूरा विवरण र टिकट PDF को लागि, बुकिङमा प्रयोग गरेको मोबाइल नम्बरबाट सन्देश पठाउनुहोस्।"
-            );
+                . "पूरा विवरण र टिकट PDF को लागि, बुकिङमा प्रयोग गरेको मोबाइल नम्बरबाट सन्देश पठाउनुहोस्।",
+                "🔒 बुकिंग " . $detail['pnr'] . " — स्थिति: " . $status . "।\n"
+                . "पूरी जानकारी और टिकट PDF के लिए, बुकिंग वाले मोबाइल नंबर से मैसेज भेजिए।",
+                "🔒 Booking " . $detail['pnr'] . " — status: " . $status . ".\n"
+                . "For the full details and the ticket PDF, message us from the mobile number used for the booking."));
         }
 
         // Owner — build the full summary.
@@ -856,6 +896,24 @@ final class WaBot
         }
         $text = trim((string) ($saved['text'] ?? ''));
         return $text !== '' ? $text : null;
+    }
+
+    /** Post-deploy probe B4: the language of a fallback line — the writer's (Nepali when unsure); Gujarati reads English. */
+    private static function fallbackLang(string $body): string
+    {
+        try {
+            require_once INCLUDE_PATH . '/ticketbot.php';
+            require_once INCLUDE_PATH . '/walocal.php';
+            $l = WaLocal::replyLang($body);
+        } catch (Throwable $e) {
+            $l = 'ne';
+        }
+        return in_array($l, ['ne', 'hi', 'en'], true) ? $l : ($l === 'gu' ? 'en' : 'ne');
+    }
+
+    private static function tr(string $lang, string $ne, string $hi, string $en): string
+    {
+        return match ($lang) { 'hi' => $hi, 'en' => $en, default => $ne };
     }
 
     /** Greeting for a plain GET on a webhook URL. */

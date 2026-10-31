@@ -125,13 +125,16 @@ final class WaBooking
            answered here instead of falling through to the menu. Only the
            name: a wrong date or pickup moves seats and money, and that
            stays with fix_ticket and the desk. */
+        /* Post-deploy probe A1 (31 Oct 2026, owner's rule R1: "naam thik cha", "naam Sita Thapa hoina", "naam pachi
+           pathauchu", "name ok" RENAMED the passenger at once, no yes): the correction is only a PREVIEW ("… ho?"), asked
+           once; the rename happens on a later clear yes (answerNameFix). */
         if ($state === null && $seller === null) {
             $justSold = self::recentSale($phoneDigits);
             if ($justSold !== null && self::looksLikeNameFix($text)) {
                 $soldLang = ($justSold['lang'] ?? '') !== '' ? (string) $justSold['lang'] : $lang;
-                $fixed = self::fixNameLocally($phoneDigits, $justSold, $text, $soldLang);
-                if ($fixed !== null) {
-                    return $fixed;
+                $asked = self::previewNameFix($phoneDigits, $justSold, $text, $soldLang);
+                if ($asked !== null) {
+                    return $asked;
                 }
             }
         }
@@ -1524,11 +1527,16 @@ final class WaBooking
         static $payWords = ['upi', 'qr', 'gpay', 'google', 'pay', 'phonepe', 'phone', 'pe', 'paytm', 'online', 'cash', 'nagad', 'nakad', 'cod', 'bus',
             'busma', 'ma', 'me', 'mein', 'mai', 'counter', 'bata', 'se', 'through', 'by', 'via', 'with', 'in', 'on', 'the', 'from', 'le', 'tirchu', 'tirchhu',
             'tirxu', 'tirne', 'tirnchu', 'tirchau', 'dinchu', 'dinchhu', 'dinxu', 'dine', 'dunga', 'dungi', 'denge', 'karunga', 'karungi', 'karenge',
-            'garchu', 'garchhu', 'garxu', 'garne', 'payment', 'paisa', 'pathaunus', 'pathaideu', 'pathaidinus', 'pathau', 'link', 'scan', 'code', 'will',
-            'i', 'we', 'now', 'ahile', 'abhi', 'aba', 'ho', 'ok', 'okay', 'yes', 'haan', 'ha', 'dai', 'ji', 'sir', 'hajur', 'please', 'plz', 'pls', 'chha',
+            'garchu', 'garchhu', 'garxu', 'payment', 'paisa', 'pathaunus', 'pathaideu', 'pathaidinus', 'pathau', 'link', 'scan', 'code', 'will',
+            'i', 'we', 'now', 'ahile', 'abhi', 'aba', 'ok', 'okay', 'yes', 'haan', 'ha', 'dai', 'ji', 'sir', 'hajur', 'please', 'plz', 'pls', 'chha',
             'cha', 'hai', 'garidinus', 'नगद', 'बसमा', 'मा', 'तिर्छु', 'दिन्छु', 'दूँगा', 'यूपीआई', 'युपिआई', 'बस', 'में', 'से', 'बाट', 'अहिले', 'अभी'];
-        if (str_contains($t, '?') || str_contains($t, '？')
-            || array_diff(preg_split('/[^\p{L}\p{M}]+/u', $t, -1, PREG_SPLIT_NO_EMPTY) ?: [], $payWords) !== []) {
+        /* Post-deploy probe A4 (R1): "cash ho" (≈ "is it cash?") sold as cash and "upi bata garne ho" (≈ "should it be
+           UPI?") made a UPI booking — "ho" / "garne" are not pay words; a "ho" that OPENS the line ("ho, cash") still is the yes. */
+        $pw = preg_split('/[^\p{L}\p{M}]+/u', $t, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if ($pw !== [] && in_array($pw[0], ['ho', 'हो'], true)) {
+            array_shift($pw);
+        }
+        if (str_contains($t, '?') || str_contains($t, '？') || $pw === [] || array_diff($pw, $payWords) !== []) {
             return '';
         }
         if (mb_strlen($t) <= 40 && preg_match('/(?<![\p{L}])(badal\w*|change|date|miti|naam|name|seat|sit|cancel|hoina|nahi|no|jana|bholi|parsi|kal)(?![\p{L}])|\d/u', $t) !== 1) {
@@ -2036,6 +2044,19 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 'ne' => 'मिलाइयो — टिकट अब %s को नाममा छ। सच्याइएको टिकट तल छ।',
                 'gu' => 'સુધારી દીધું — ટિકિટ હવે %s ના નામે છે. સુધારેલી ટિકિટ નીચે છે.',
             ],
+            // probe A1 (R1): the name change is asked first; nothing is renamed until the yes
+            'nameAsk' => [
+                'en' => '✏️ Ticket %s: change the name from %s to *%s*? Reply *ho* (yes) to change it, or *no* to keep it.',
+                'hi' => '✏️ टिकट %s: नाम %s से बदलकर *%s* कर दें? बदलना हो तो *ho* / *haan* लिखिए, नहीं तो *no*।',
+                'ne' => '✏️ टिकट %s: नाम %s बाट *%s* बनाउने? बदल्ने भए *ho* लेख्नुहोस्, नबदल्ने भए *no*।',
+                'gu' => '✏️ ટિકિટ %s: નામ %s થી બદલીને *%s* કરવું? બદલવું હોય તો *ho* લખો, નહીં તો *no*.',
+            ],
+            'nameKept' => [
+                'en' => 'OK — the name was not changed (%s).',
+                'hi' => 'ठीक है — नाम नहीं बदला (%s)।',
+                'ne' => 'ठिक छ — नाम बदलिएन (%s)।',
+                'gu' => 'બરાબર — નામ બદલ્યું નથી (%s).',
+            ],
             'checkThis' => [
                 'en' => 'Please check this booking:',
                 'hi' => 'यह बुकिंग देख लीजिए:',
@@ -2291,6 +2312,8 @@ Example: Ram Bahadur 35, Sita Gurung 30",
     private const SOLD_SCOPE = 'wa_sold';
     /** Corrections allowed per booking from this path. */
     private const SOLD_FIX_MAX = 2;
+    /** Probe A1: how long a name preview waits for its yes. */
+    private const NAME_ASK_TTL = 600;
 
     private static function rememberSale(string $who, string $pnr, string $lang = ''): void
     {
@@ -2330,7 +2353,61 @@ Example: Ram Bahadur 35, Sita Gurung 30",
             return null;
         }
         return ['pnr' => (string) $v['pnr'], 'at' => (int) $v['at'],
-                'fixes' => (int) ($v['fixes'] ?? 0), 'lang' => (string) ($v['lang'] ?? '')];
+                'fixes' => (int) ($v['fixes'] ?? 0), 'lang' => (string) ($v['lang'] ?? ''),
+                'nameAsk' => (string) ($v['nameAsk'] ?? ''), 'nameWas' => (string) ($v['nameWas'] ?? ''),
+                'askAt' => (int) ($v['askAt'] ?? 0)];
+    }
+
+    /** Probe A1: rewrite the remembered sale (the name preview waiting for its yes, or none). */
+    private static function storeSale(string $who, array $sold): void
+    {
+        try {
+            Database::run(
+                "UPDATE kv_store SET kvalue = :v WHERE kscope = :s AND kkey = :k",
+                ['v' => json_encode(['pnr' => (string) $sold['pnr'], 'at' => (int) $sold['at'], 'fixes' => (int) ($sold['fixes'] ?? 0),
+                                     'lang' => (string) ($sold['lang'] ?? ''), 'nameAsk' => (string) ($sold['nameAsk'] ?? ''),
+                                     'nameWas' => (string) ($sold['nameWas'] ?? ''), 'askAt' => (int) ($sold['askAt'] ?? 0)]),
+                 's' => self::SOLD_SCOPE, 'k' => $who]
+            );
+        } catch (Throwable $e) {
+            // the preview is simply not kept: nothing is renamed
+        }
+    }
+
+    /** Probe A1: is a name correction waiting for its yes on this chat? */
+    public static function nameFixWaiting(string $phoneDigits): bool
+    {
+        $s = $phoneDigits !== '' ? self::recentSale($phoneDigits) : null;
+        return $s !== null && $s['nameAsk'] !== '' && (time() - $s['askAt']) <= self::NAME_ASK_TTL;
+    }
+
+    /**
+     * Post-deploy probe A1 (31 Oct 2026, owner's rule R1): the ONE line after a name preview ("Change the name to Sita
+     * Thapa? ho / no") answers it. A clear yes (the whole line, WaBooking::isYes; never a question, a hedge, a pause or a
+     * "no") renames and re-issues the ticket; a "no" / pause keeps the name; any other line drops the preview and is read
+     * as itself (null). The preview is used up either way — a later stray "ho" renames nothing.
+     */
+    public static function answerNameFix(string $phoneDigits, string $text): ?array
+    {
+        $sold = $phoneDigits !== '' ? self::recentSale($phoneDigits) : null;
+        if ($sold === null || $sold['nameAsk'] === '') {
+            return null;
+        }
+        $new = $sold['nameAsk'];
+        $was = $sold['nameWas'];
+        $fresh = (time() - $sold['askAt']) <= self::NAME_ASK_TTL;
+        self::storeSale($phoneDigits, ['nameAsk' => '', 'nameWas' => '', 'askAt' => 0] + $sold);
+        $lang = $sold['lang'] !== '' ? $sold['lang'] : TicketBot::detectLang($text);
+        if (!$fresh) {
+            return null;
+        }
+        if (self::isNo($text) || TicketBot::holdOrNo($text)) {
+            return self::out(sprintf(self::say('nameKept', $lang), $was !== '' ? $was : $sold['pnr']));
+        }
+        if (!self::isYes($text)) {
+            return null;
+        }
+        return self::fixNameLocally($phoneDigits, $sold, $new, $lang);
     }
 
     /**
@@ -2346,21 +2423,42 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         if ($t === '') {
             return false;
         }
-        // An outright "naam Ram Bahadur" is a correction on its own.
-        if (preg_match('/^\s*(?:naam|nam|name|नाम|નામ)\s*[:\-]?\s*\p{L}/ui', $t) === 1) {
-            return true;
-        }
         $wrong = ['galat', 'galati', 'wrong', 'mistake', 'gadbad', 'milena', 'mileko chaina',
                   'sachya', 'sudhar', 'change', 'badal', 'fix', 'correct',
                   'गलत', 'गल्ती', 'सच्या', 'सुधार', 'बदल', 'मिलेन', 'ખોટું', 'સુધાર'];
-        $about = ['naam', 'nam', 'name', 'नाम', 'નામ', 'spelling', 'हिज्जे'];
         $hasWrong = false;
         foreach ($wrong as $w) { if (str_contains($t, $w)) { $hasWrong = true; break; } }
+        /* An outright "naam Ram Bahadur" is a correction on its own. Probe A1 (R1): "naam" as a whole word ("name ok"
+           was read as "nam" + "e ok"), and never a line that only says the name is fine ("naam thik cha", "name ok"),
+           asks ("naam sahi hai na?", "… rakhne ki"), says no / not now ("naam Sita Thapa hoina", "naam pachi
+           pathauchu") or "nothing is wrong" ("naam ma kehi problem chaina"). */
+        if (!$hasWrong && preg_match('/^\s*(?:naam|nam|name|नाम|નામ)(?![\p{L}\p{M}])\s*[:\-]?\s*\p{L}/ui', $t) === 1) {
+            return !self::nameLineNotAFix($t);
+        }
         if (!$hasWrong) {
             return false;
         }
-        foreach ($about as $w) { if (str_contains($t, $w)) { return true; } }
-        return false;
+        // "naamma galti cha" / "name wrong" / "spelling milena" — the complaint is about the NAME (word starts only)
+        return preg_match('/(?<![\p{L}\p{M}])(?:naam|name|नाम|નામ|spelling|हिज्जे)|(?<![\p{L}\p{M}])nam(?:ma|ko)?(?![\p{L}\p{M}])/u', $t) === 1;
+    }
+
+    /** Probe A1: a "naam …" line that is not asking for a change — fine / a question / a no or not-now / nothing wrong. */
+    private static function nameLineNotAFix(string $t): bool
+    {
+        $t = mb_strtolower(trim($t));
+        if (str_contains($t, '?') || str_contains($t, '？') || TicketBot::holdOrNo($t)) {
+            return true;
+        }
+        if (preg_match('/(?<![\p{L}\p{M}])(?:chaina|chhaina|xaina|chhain|thiena|छैन|छैन।|nathi|નથી)(?![\p{L}\p{M}])/u', $t) === 1) {
+            return true;
+        }
+        // a question word / a trailing question particle without "?" ("naam Sita Thapa rakhne ki", "naam ke ho")
+        if (preg_match('/(?<![\p{L}\p{M}])(?:k|ke|ki|kya|kun|kaun|kasto|kaisa|kaise|hola|na|ni)\s*[.!]*$|(?<![\p{L}\p{M}])(?:kya|kun|kaun|kasto|kaisa|kaise|what|which|ke\s+ho|k\s+ho|क्या|के)(?![\p{L}\p{M}])/u', $t) === 1) {
+            return true;
+        }
+        // only says the name is right: thik / sahi / ok / ramro — unless it also asks to change it ("naam sahi garnu")
+        return preg_match('/(?<![\p{L}\p{M}])(?:thik|theek|thikai|thik\s*cha|sahi|ok|okay|okey|ramro|fine|right|perfect|barabar|ठीक|ठिक|सही|राम्रो|બરાબર)(?![\p{L}\p{M}])/u', $t) === 1
+            && preg_match('/(?<![\p{L}\p{M}])(?:gar\w*|kar\w*|banau\w*|banai\w*|rakh\w*|lekh\w*|change\w*|badal\w*|sachya\w*|sudhar\w*|गर्\S*|गरि\S*|कर\S*|बदल\S*)/u', $t) !== 1;
     }
 
     /**
@@ -2385,35 +2483,83 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         if ($t === '') {
             return '';
         }
-        // Every "naam X" / "नाम X" in the message; the LAST one is the fix.
-        if (preg_match_all('/(?:naam|nam|name|नाम|નામ)\s*[:\-]?\s*([^\n,;।]{2,60})/ui', $t, $mm) !== 1 + 0
-            && empty($mm[1])) {
+        // Probe A1 (R1): a question, a "no" / not-now line is never a new name
+        if (str_contains($t, '?') || str_contains($t, '？') || TicketBot::holdOrNo($t)) {
             return '';
         }
-        if (empty($mm[1])) {
+        // Every "naam X" / "नाम X" in the message; the LAST one is the fix. Probe A1: "naam" as a WHOLE word.
+        if (preg_match_all('/(?<![\p{L}\p{M}])(?:naam|nam|name|नाम|નામ)(?![\p{L}\p{M}])\s*[:\-]?\s*([^\n,;।?]{2,60})/ui', $t, $mm) < 1
+            || empty($mm[1])) {
             return '';
         }
         $cand = trim((string) end($mm[1]));
 
-        // Trailing sentence tails: "Ram Bahadur ho", "… hunchha", "… cha".
-        $cand = (string) preg_replace('/\s+(?:ho|hos|hunchha|hunxa|huncha|cha|chha|hai|हो|हुन्छ|छ)\s*[.!]?$/ui', '', $cand);
+        // Trailing sentence tails: "Ram Bahadur ho", "… hunchha", "… cha"; probe A1: "… rakhnu", "… garnu", "… kar do".
+        $cand = (string) preg_replace('/(?:\s+(?:ho|hos|hunchha|hunxa|huncha|cha|chha|hai|हो|हुन्छ|छ|rakhnu\w*|rakhdinu\w*|rakhidinu\w*|rakhdeu|rakho|rakhiye|rakh\s*do|'
+            . 'garnu\w*|gardinu\w*|garidinu\w*|gardeu|garnus|karo|kar\s*do|kardo|kar\s*dijiye|kijiye|banaunu\w*|banaidinu\w*|banao|lekhnu\w*|lekhidinu\w*|likho|'
+            . 'dai|ji|sir|please|plz|pls|राख्नु\S*|गर्नु\S*|गरिदिनु\S*|करो|कीजिए))+\s*[.!]?$/ui', '', $cand);
         $cand = trim((string) preg_replace('/\s{2,}/u', ' ', $cand));
 
         if (mb_strlen($cand) < 2 || preg_match('/\p{L}/u', $cand) !== 1) {
             return '';
         }
-        // A candidate that still sounds like the complaint is not a name.
+        // A candidate that still sounds like the complaint — or says the name is fine — is not a name.
         foreach (['galat', 'galati', 'wrong', 'mistake', 'gadbad', 'milena', 'sachya', 'sudhar',
                   'change', 'badal', 'fix', 'correct', 'गलत', 'गल्ती', 'सच्या', 'सुधार', 'बदल', 'मिलेन'] as $w) {
             if (str_contains(mb_strtolower($cand), $w)) {
                 return '';
             }
         }
+        if (preg_match('/(?<![\p{L}\p{M}])(?:thik|theek|sahi|ok|okay|ramro|fine|right|problem|kehi|kei|ठीक|ठिक|सही|राम्रो)(?![\p{L}\p{M}])/iu', $cand) === 1) {
+            return '';
+        }
         // A name is words, not digits.
         if (preg_match('/\d/u', $cand) === 1) {
             return '';
         }
-        return mb_substr($cand, 0, 60);
+        // Probe A1: the candidate must BE a person's name, as PersonName prints it (nothing dropped, nothing added)
+        require_once INCLUDE_PATH . '/personname.php';
+        $clean = PersonName::clean($cand);
+        if ($clean === '' || mb_strtolower($clean) !== mb_strtolower($cand)) {
+            return '';
+        }
+        return mb_substr($clean, 0, 60);
+    }
+
+    /**
+     * Probe A1 (R1): a name correction right after the sale is a PREVIEW — the new name is kept and the passenger is
+     * asked "… ho?"; answerNameFix() renames only on the later clear yes. Null when nothing can be safely asked
+     * (a party, a booking that is not this chat's, the same name) — the caller then reads the line as itself.
+     */
+    private static function previewNameFix(string $who, array $sold, string $text, string $lang): ?array
+    {
+        if ($sold['fixes'] >= self::SOLD_FIX_MAX) {
+            return null;                       // hand it on; a human should look
+        }
+        $new = self::correctedNameFrom($text);
+        if ($new === '') {
+            // They said it is wrong but not what it should be.
+            return self::out(self::say('askRightName', $lang));
+        }
+        try {
+            $detail = BookingService::detail($sold['pnr']);
+        } catch (Throwable $e) {
+            return null;
+        }
+        if ($detail === null || normalisePhone((string) ($detail['contact_phone'] ?? '')) !== $who
+            || !in_array((string) ($detail['status'] ?? ''), ['pending', 'confirmed'], true)) {
+            return null;
+        }
+        $pax = $detail['passengers'] ?? [];
+        if (count($pax) !== 1) {
+            return null;
+        }
+        $was = (string) ($pax[0]['full_name'] ?? '');
+        if (mb_strtolower(trim($was)) === mb_strtolower($new)) {
+            return null;
+        }
+        self::storeSale($who, ['nameAsk' => $new, 'nameWas' => $was, 'askAt' => time()] + $sold);
+        return self::out(sprintf(self::say('nameAsk', $lang), $sold['pnr'], $was, $new));
     }
 
     /**
@@ -2424,16 +2570,15 @@ Example: Ram Bahadur 35, Sita Gurung 30",
      * WHICH name is meant — so the caller falls through to the assistant or
      * the menu rather than guessing.
      */
-    private static function fixNameLocally(string $who, array $sold, string $text, string $lang): ?array
+    private static function fixNameLocally(string $who, array $sold, string $new, string $lang): ?array
     {
         if ($sold['fixes'] >= self::SOLD_FIX_MAX) {
             return null;                       // hand it on; a human should look
         }
-
-        $new = self::correctedNameFrom($text);
-        if ($new === '') {
-            // They said it is wrong but not what it should be.
-            return self::out(self::say('askRightName', $lang));
+        // Probe A1: only ever the name the passenger was shown in the preview and said yes to — re-checked here
+        require_once INCLUDE_PATH . '/personname.php';
+        if ($new === '' || PersonName::clean($new) !== $new) {
+            return null;
         }
 
         try {
@@ -2680,20 +2825,25 @@ Example: Ram Bahadur 35, Sita Gurung 30",
            a yes-word was a yes): the yes is the WHOLE line — yes-words, and the polite / "issue it" words around them
            ("ho dai", "ok sir", "haan ji kar do", "thik cha book garnus"), nothing else. A question mark is never a yes,
            and neither is laughter ("ha ha", "haha"). */
-        if ($t === '' || str_contains($t, '?') || str_contains($t, '？')) {
+        /* Post-deploy probe A2/A3/A4 (R1): "ho 9812342020" / "ho 2" / "हो २" / "ok 4400" sold the OLD summary (the digits
+           were thrown away by the word split) — a line with any digit is never the yes (it goes to the change path);
+           "kata ho" (Nepali "where is it?") and "ho la" (≈ "hola", maybe) were a yes — 'kata' and 'la' are no longer
+           yes / polite words; and a line that STARTS with laughter ("ha ha ok") is not a yes. */
+        $t = TicketBot::asciiDigits($t);
+        if ($t === '' || str_contains($t, '?') || str_contains($t, '？') || preg_match('/\d/', $t) === 1) {
             return false;
         }
         $yes = ['yes', 'y', 'ok', 'okay', 'oke', 'okk', 'sure', 'confirm', 'confirmed', 'done', 'go', 'ho', 'hoo', 'hos', 'hunchha', 'hunxa', 'huncha',
             'hunca', 'hajur', 'hajoor', 'thik', 'thikcha', 'theek', 'thek', 'tik', 'tikcha', 'haa', 'han', 'ha', 'haan', 'haanji', 'hanji', 'sahi', 'chahiyo',
-            'pakka', 'book', 'kaat', 'kata', 'katnus', 'katdinus', 'katidinus', 'हो', 'हजुर', 'हाँ', 'हा', 'ठीक', 'ठिक', 'हां', 'हुन्छ', 'पक्का', 'काट',
+            'pakka', 'book', 'kaat', 'katnus', 'katdinus', 'katidinus', 'हो', 'हजुर', 'हाँ', 'हा', 'ठीक', 'ठिक', 'हां', 'हुन्छ', 'पक्का', 'काट',
             'काट्नुहोस्', 'કન્ફર્મ', 'હા', 'બરાબર', 'હોવ', 'ઓકે'];
-        $polite = ['cha', 'chha', 'xa', 'hai', 'ji', 'jee', 'dai', 'didi', 'bhai', 'sir', 'madam', 'please', 'plz', 'pls', 'ni', 'la', 'ta', 'it', 'now',
-            'abhi', 'ahile', 'aba', 'malai', 'book', 'booking', 'ticket', 'kaat', 'kata', 'katnus', 'katidinus', 'katdinus', 'kaatdinus', 'gara', 'garnus',
+        $polite = ['cha', 'chha', 'xa', 'hai', 'ji', 'jee', 'dai', 'didi', 'bhai', 'sir', 'madam', 'please', 'plz', 'pls', 'ni', 'ta', 'it', 'now',
+            'abhi', 'ahile', 'aba', 'malai', 'book', 'booking', 'ticket', 'kaat', 'katnus', 'katidinus', 'katdinus', 'kaatdinus', 'gara', 'garnus',
             'garidinus', 'gardinus', 'kar', 'karo', 'kardo', 'kardijiye', 'kijiye', 'do', 'dijiye', 'deu', 'dinus', 'final', 'this', 'one', 'yehi', 'yahi',
             'yo', 'yei', 'छ', 'है', 'जी', 'दाइ', 'सर', 'कृपया', 'बुक', 'टिकट', 'काट', 'काट्नुहोस्', 'गर्नुहोस्', 'करो', 'कर', 'दो', 'दीजिए', 'छे', 'જી',
             'गर्ने', 'गर्नुस्', 'करें', 'कीजिए', 'काट्ने', 'काटो', 'दिनुस्', 'दिनुहोस्', 'બુક', 'કરો'];
         $words = preg_split('/[^\p{L}\p{M}]+/u', $t, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        if ($words === [] || preg_match('/^(?:h+a+\s*){2,}$|^(?:ha){2,}h?$/u', $t) === 1) {
+        if ($words === [] || preg_match('/^(?:h+a+[\s,.!]*){2,}|^(?:ha){2,}h?(?![\p{L}\p{M}])/u', $t) === 1) {
             return false;
         }
         $saidYes = false;
