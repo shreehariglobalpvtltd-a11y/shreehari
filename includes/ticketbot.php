@@ -841,7 +841,7 @@ final class TicketBot
                   . '|સીટ|સીટો|ટિકિટ|ટીકીટ|જણ|જણા|મુસાફર|મુસાફરો|વ્યક્તિ|લોકો|પેસેન્જર)';
         $numAlt   = implode('|', array_map(static fn(string $w): string => preg_quote($w, '/'), array_keys($numWords)));
         $nb       = self::NB;   // Unicode-safe "end of word" — \b is ASCII-only and fails after Devanagari
-        if (preg_match('/\b(\d{1,2})\s*' . $seatWord . $nb . '/u', $lower, $m)
+        if (preg_match('/\b(\d{1,2})\s*(?:(?:extra|more|aru|thap|additional)\s+)?' . $seatWord . $nb . '/u', $lower, $m)   // round 2: "2 extra seat"
             /* Noun-then-number is only a COUNT when the noun is plural
                ("seats 3") or carries a separator ("seats: 3"). A SINGULAR noun
                followed by a number is a POSITION — "seat 12", "berth 15",
@@ -973,6 +973,13 @@ final class TicketBot
             }
         }
 
+        /* 31 Oct 2026 (counter sim: "kaat do Surat se, naam Mohan Lal" named the passenger "Kaat Do Mohan Lal"):
+           after an explicit "naam / name / नाम", only what follows it is the name. */
+        if (preg_match('/(?<![\p{L}\p{M}])(?:naam|name|nam|नाम)(?![\p{L}\p{M}])\s*[:\-]?\s*(\S.*)$/u', $lower, $nmAfter) === 1
+            && preg_match('/\p{L}/u', $nmAfter[1]) === 1) {
+            $lower = $nmAfter[1];
+        }
+
         /* name = what is left, minus filler */
         $filler = ['ticket', 'tickets', 'tkt', 'seat', 'seats', 'sit', 'book', 'booking', 'banau', 'banao', 'banaidinu', 'garnu', 'gara', 'garne', 'please', 'pls', 'plz',
                    'ko', 'ka', 'ki', 'lai', 'le', 'for', 'and', 'the', 'a', 'an', 'quick', 'bot', 'name', 'naam', 'mobile', 'phone', 'no', 'number', 'ph', 'mob',
@@ -995,7 +1002,23 @@ final class TicketBot
                    // passenger "Chahiye" on the desk card.
                    'chahiye', 'chaiye', 'chahie', 'chaiyo', 'chahincha', 'chahinchha', 'milcha', 'milxa', 'milega', 'milega?', 'khali',
                    'cha', 'chha', 'xa', 'hola', 'hola?', 'kati', 'kina', 'namaste', 'namaskar', 'hello', 'helo', 'hi', 'hey',
-                   'bhai', 'dai', 'didi', 'sir', 'madam', 'maam', 'ji', 'ok', 'okay', 'thik', 'theek'];
+                   'bhai', 'dai', 'didi', 'sir', 'madam', 'maam', 'ji', 'ok', 'okay', 'thik', 'theek',
+                   // 31 Oct 2026 (desk sims: "Tciket", "Tikat", "Ke Liye", "Lagi", "Kaat Do", "Nahi" became passengers):
+                   // the ways "ticket" is typed, and the request / refusal words around it, are never a name
+                   'tciket', 'tikat', 'tiket', 'tikit', 'tikut', 'tickt', 'tikt', 'ticet', 'tcket', 'ticktet', 'tikets', 'tikats', 'tikkat', 'tikit',
+                   'chahiyo', 'ke', 'liye', 'lagi', 'laagi', 'kaat', 'kato', 'katdo', 'kaatdo', 'katnu', 'katne', 'katdeu', 'kaatdeu', 'kardo',
+                   'karna', 'kariye', 'dena', 'dedo', 'deu', 'nahi', 'nahin', 'mat', 'pardaina', 'chahidaina', 'chaidaina', 'paryo', 'garideu',
+                   'gardeu', 'garidinu', 'garidinus', 'gardinus', 'pathaidinu', 'pathau', 'pathaunu', 'register', 'registration', 'regi', 'darta',
+                   // round 2 (passenger sim: "my name is John, I want 1 ticket…" → "John I Want"; "mero naam Sunil Kumar ho"):
+                   // the words of a sentence ABOUT the name are never part of it
+                   'i', 'im', 'am', 'my', 'we', 'our', 'want', 'wants', 'need', 'needs', 'would', 'like', 'give', 'get', 'send', 'mero', 'mera', 'meri',
+                   'hamro', 'mujhe', 'malai', 'hun', 'hoon', 'chu', 'chhu', 'chahanchu', 'chahanchhu', 'chahta', 'chahti', 'pathaidinus',
+                   'extra', 'more', 'aru', 'thap', 'additional',
+                   // round 3 (safety review: "paisa pathaye UTR 9176…" → passenger "Paisa Pathaye Utr"; "wait" → "Wait"):
+                   // payment-reference words and pause / refusal words are never a passenger's name
+                   'utr', 'ref', 'refno', 'reference', 'txn', 'txnid', 'transaction', 'rrn', 'paisa', 'paise', 'pathaye', 'pathae', 'pathaeko',
+                   'pathayeko', 'pathayo', 'pathaisake', 'pathaisakeko', 'payment', 'paid', 'wait', 'hold', 'ruko', 'ruka', 'rukiye', 'ekchin',
+                   'pakhnus', 'parkhanus', 'nakaat', 'nakat', 'nagarnu', 'hoina', 'baad', 'pachhi', 'pachi', 'later', 'sochchu', 'sodhchu'];
         /* \p{M} keeps a combining mark WITH its letter. Devanagari vowel signs
            (matras) are category Mn and match neither \p{L} nor \p{N}, so every
            matra was treated as a word break: "राम बहादुर" came out as
@@ -1065,6 +1088,85 @@ final class TicketBot
             foreach (['૦', '૧', '૨', '૩', '૪', '૫', '૬', '૭', '૮', '૯'] as $i => $d) { $map[$d] = (string) $i; }
         }
         return strtr($text, $map);
+    }
+
+    /**
+     * Round 3 (31 Oct 2026, owner's rule R1 — safety review: "abhi nahi", "ruko abhi", "ahile nakaat", "wait" re-dated a
+     * waiting quote to today or renamed its passenger "Ruko" / "Wait", and a later "ho" sold it): a "no" or a "not now /
+     * wait" ANYWHERE in the line. While a quote or a preview waits for "ho", such a line drops it — it is never read as
+     * a name, a day or a yes. Nepali, Hindi, English, romanised and Devanagari; "mobile no 98…", "seat no. 5",
+     * "no problem" and "bus stop" are not refusals. The ONE list every path asks (ApWa desk, WaBooking summary).
+     */
+    public static function holdOrNo(string $text): bool
+    {
+        $t = ' ' . mb_strtolower(self::asciiDigits(trim($text))) . ' ';
+        $t = (string) preg_replace('/(?<![\p{L}\p{M}])(?:mobile|mob|phone|ph|contact|whatsapp|wa|seat|sit|berth|ticket|pnr|utr|ref|reference|txn|transaction|account|a\/c|bus|roll|serial|sl|booking|order)\s*(?:no|num)(?![\p{L}\p{M}])\.?/u', ' ', $t);
+        $t = (string) preg_replace('/(?<![\p{L}\p{M}])no\s*[.:#-]?\s*\d/u', ' ', $t);
+        $t = (string) preg_replace('/(?<![\p{L}\p{M}])(?:no\s+(?:problem|issue|tension|worries|worry|mobile|phone|number|whatsapp|contact)|bus\s*stop\w*|stop\s*(?:ma|pe|par|bata|se)|koi\s+baat\s+nahi|koi\s+baat\s+nahin)(?![\p{L}\p{M}])/u', ' ', $t);
+        $re = '/(?<![\p{L}\p{M}])(?:'
+            . 'no|nope|nah|not|dont|don\'t|do\s+not|never|cancel|cancle|stop|'
+            . 'nahi|nahin|nahii|nhi|nahee|nai|mat|naa|'
+            . 'hoina|hoena|hoeina|haina|hainna|pardaina|pardain|pardena|chahidaina|chaidaina|chaindaina|chahindaina|chahiyena|chaiyena|'
+            . 'hudaina|hunna|bhayena|bhaena|'
+            . 'na(?:kaa?t\w*|gar(?:nu\w*|a|e|o|deu|dinu\w*)|pathau\w*|pathai\w*|bana(?:u\w*|o)|bech\w*|deu|dinu\w*|tir(?:nu\w*|a|e))|'
+            . 'chh?od(?:o|nu\w*|deu|idinu\w*|ideu|a|e)?|chhoddeu|'
+            . 'rehne\s*(?:do|dijiye|dinus)|rahne\s*(?:do|dijiye|dinus)|rehnedo|rahnedo|'
+            . 'wait|waiting|hold|later|ruk|ruko|ruka|rukiye|rukie|rukna|ruknu|rukjao|ruk\s*jao|'
+            . 'rok|roko|rokdo|rokdeu|roknu\w*|rokidinu\w*|rokideu|rokiye|rokna|'
+            . 'ek\s*chh?in|ek\s*xin|ekchh?in|ekxin|ek\s*min(?:ute)?|ek\s*second|one\s*min(?:ute)?|'
+            . 'pakh(?:a|nu\w*|anu\w*)|parkh(?:a|nu\w*|anu\w*|inu\w*)|'
+            . 'baad\s*(?:me|mein|mai)|baadme|baad|bad\s+(?:me|mein)|pachh?i|paxi|'
+            . 'soch\w*|sodh(?:chu|chhu|era|nu\w*|ne|chha|xu)|puchh?(?:chu|chhu|ke|kar|ta|ti|unga|ungi|na|iye|o)?|'
+            . 'batata\s*h(?:u|oon|un)|bataunga|batauchu|batauchhu|bataunchu|bhanchu|bhanchhu|'
+            . 'नहीं|नही|मत|होइन|हैन|पर्दैन|चाहिँदैन|चाहिदैन|हुँदैन|न(?:काट|गर्|पठाउ|बनाउ|दिनु)\S*|छोड\S*|रद्द|रुको|रुकिए|रोक\S*|पर्ख\S*|'
+            . 'एकछिन|एक\s*छिन|बाद|पछि|सोच\S*|सोध\S*|पूछ\S*'
+            . ')(?![\p{L}\p{M}])/u';
+        if (preg_match($re, $t) === 1) {
+            return true;
+        }
+        // "na, abhi nahi" / "na kaato" / "na karo": a leading "na", or "na" before a verb (a trailing "dinus na" is a please)
+        return preg_match('/^\s*(?:na|ना)(?![\p{L}\p{M}])|(?<![\p{L}\p{M}])(?:na|ना)\s+(?:kar\w*|ka+t\w*|bhej\w*|bana\w*|nikal\w*|gar\w*|de\w*|di\w*|pathau\w*)/u', $t) === 1;
+    }
+
+    /**
+     * Round 4 (31 Oct 2026, owner's rule R1 — safety review A4: "SHG-… cancel nagarnu hai", "don't cancel SHG-…",
+     * "SHG-… phone 98… nahi", "withdraw 500 abhi nahi", "… ticket mat kaatna", "… baad me book karunga" each STARTED a
+     * preview / a summary that a natural "ho" then carried out): holdOrNo() for a line that would start an action. The
+     * command's own verb ("cancel", "stop") is not the refusal here; any other "no / not now / wait" in the line is —
+     * such a line never starts anything.
+     */
+    public static function cmdHoldOrNo(string $text): bool
+    {
+        return self::holdOrNo((string) preg_replace('/(?<![\p{L}\p{M}])(?:cancel|cancle|cancell?ation|stop)(?![\p{L}\p{M}])/iu', ' ', $text));
+    }
+
+    /**
+     * Round 4 (R1 — safety review A5: "kal confirm karunga", "bholi pheri msg garchu", "customer bholi aaucha" RE-DATED a
+     * waiting quote / summary and the next "ho" sold the new day): what parse() could not read (its 'residual') holds only
+     * the words of a change — "date", "ko garnu", "tara", "please" — so the line IS a date / pickup / seat change, not a
+     * sentence (a promise, a pause) that happens to contain a day word. '' = nothing left over = a change.
+     */
+    public static function amendOnly(string $residual): bool
+    {
+        static $ok = ['date', 'miti', 'din', 'tarik', 'tarikh', 'gate', 'change', 'badal', 'badla', 'badlo', 'badli', 'badlu', 'badalnu', 'badaldinu',
+            'badaldeu', 'badalidinu', 'badalidinus', 'badaldinus', 'badaldo', 'shift', 'move', 'sarnu', 'sardinu', 'sardeu', 'garnu', 'gardinu', 'gardeu',
+            'garnus', 'gara', 'garo', 'gar', 'garidinu', 'garidinus', 'gardinus', 'garne', 'karo', 'kardo', 'kar', 'kardijiye', 'kardena', 'kijiye',
+            'karde', 'karna', 'banau', 'banaunus', 'banaideu', 'banaidinu', 'banaidinus', 'banao', 'banado', 'bana', 'rakh', 'rakho', 'rakhnu',
+            'rakhdinu', 'rakhdeu', 'rakhidinu', 'rakhiye', 'for', 'to', 'make', 'it', 'the', 'please', 'plz', 'pls', 'ji', 'dai', 'sir', 'bhai',
+            'hajur', 'didi', 'ho', 'ok', 'okay', 'haan', 'ha', 'yes', 'tara', 'but', 'par', 'lekin', 'instead', 'arko', 'next', 'wala', 'wali',
+            'vala', 'ko', 'ka', 'ki', 'ma', 'lai', 'ke', 'naya', 'nayan', 'new', 'number', 'phone', 'mobile', 'no', 'hai', 'cha', 'chha', 'xa',
+            'ticket', 'seat', 'seats', 'sit', 'jana', 'matra', 'only', 'pani', 'chahiyo', 'chahiye', 'chaiyo', 'chaiye', 'pick', 'pickup',
+            'boarding', 'bata', 'se', 'from', 'at', 'in', 'on', 'jane', 'jaane', 'tarikko', 'dateko', 'din', 'तारिख', 'मिति', 'गते', 'को', 'मा',
+            'do', 'de', 'deu', 'dinus', 'dinu', 'dijiye', 'dena', 'dedo', 'kaat', 'kat', 'kato', 'kaato', 'katdo', 'kaatdo', 'katnu', 'kaatnu',
+            'katdeu', 'kaatdeu', 'nikal', 'nikalo', 'nikaldo', 'banado', 'book', 'tickets', 'tikat', 'tiket', 'log', 'jan', 'jana', 'wala',
+            'गर्नु', 'गर्नुहोस्', 'गरिदिनुस्', 'करो', 'कर', 'दो', 'बदल', 'बदलो', 'तर', 'पर'];
+        foreach (preg_split('/\s+/u', mb_strtolower(trim($residual))) ?: [] as $w) {
+            $w = trim($w, ".'");
+            if ($w !== '' && !in_array($w, $ok, true)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

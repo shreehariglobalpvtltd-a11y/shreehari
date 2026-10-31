@@ -166,9 +166,12 @@ wa($A_WA, 'withdraw 500');
 $r = wa($A_WA, 'ho');
 check('"ho" files the request with the office', str_contains(txt($r), '✅') && count(AgentWallet::openPayoutRequests($agentId)) === 1);
 check('more than due is refused', str_contains(txt(wa($A_WA, 'withdraw 99999')), '⚠️'));
-$utr = (string) random_int(100000000000, 999999999999);
+$utr = (string) random_int(400000000000, 899999999999);   // a UTR, never shaped like a +91 mobile
 $r = wa($A_WA, 'jama 1500 UTR ' . $utr);
-check('pay-in with a UTR is recorded for the office', str_contains(txt($r), $utr) && count(AgentPro::openDeposits($agentId)) === 1, txt($r));
+// 31 Oct 2026 round 2 (safety review): a pay-in is a preview first; the request is filed on the member's "ho"
+check('pay-in with a UTR is a preview first — nothing filed', str_contains(txt($r), $utr) && str_contains(txt($r), '*ho*') && count(AgentPro::openDeposits($agentId)) === 0, txt($r));
+$r = wa($A_WA, 'ho');
+check('pay-in with a UTR is recorded for the office on "ho"', str_contains(txt($r), $utr) && count(AgentPro::openDeposits($agentId)) === 1, txt($r));
 check('the same UTR again is refused', str_contains(txt(wa($A_WA, 'jama 1500 UTR ' . $utr)), '⚠️'));
 $r = wa($A_WA, 'id card');
 check('id card → a signed PNG link', str_contains((string) ($r['media'] ?? ''), 'api/agentpro-card.php?m=' . $agentId . '&s=id-front'));
@@ -252,7 +255,9 @@ if ($pnr !== '') {
     if ($free !== '') {
         $seatNow = (string) Database::scalar('SELECT seat_no FROM booking_passengers WHERE booking_id = :b AND full_name = :n', ['b' => (int) $bk['id'], 'n' => 'Sita Thapa'], '');
         $r = wa($A_WA, "$pnr Sita ko seat $free");
-        check('seat change: preview', str_contains(txt($r), $free), txt($r));
+        // 31 Oct 2026: the desk shows the berth as the ticket prints it (L35 is "F5" on the ticket)
+        $freeLbl = Seats::displayLabel($free, Seats::coachForSchedule($schedule), (string) ($bk['booking_mode'] ?? 'sharing'));
+        check('seat change: preview (the berth as printed on the ticket)', str_contains(txt($r), $freeLbl), txt($r));
         $r = wa($A_WA, 'ho');
         check('seat change: moved (the seat map\'s own transfer)', Database::exists('SELECT 1 FROM booking_seats WHERE booking_id = :b AND seat_no = :s', ['b' => (int) $bk['id'], 's' => $free]), txt($r));
     }

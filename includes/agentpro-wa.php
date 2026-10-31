@@ -63,8 +63,13 @@ final class ApWa
     /** Roles that see the whole office: every booking, every member's number. */
     private const OFFICE = ['manager', 'superadmin'];
 
+    /* Round 4 (R1): a typed office DECLINE with its request number ("reject 12 …", "jama no 12 bank ma nahi aayo") is itself the
+       decision — its "nahi" is the reason, not a pause. ("jama 700 UTR … abhi nahi" is no request number: it is held.) */
+    private const NEG_DECISION = '/^\s*(?:(?:reject|rejct|rejet|rject|decline|declin|wd\s*reject)\s*#?\d{1,9}|(?:jama|jamma|deposit|dep)\s*(?:no|reject|decline|hoina)\s*#?\d{1,9})(?!\d)/iu';
     private const YES = '/^(ho|hoo|ha+|haan|han|yes|y|yeah|ok|okay|okk|confirm|confirmed|done|thik\s*cha|thik\s*xa|theek\s*hai|hunchha|huncha|hunxa|हो|हुन्छ|हाँ|हां|ठीक\s*छ|ठिक\s*छ|ठीक\s*है|पक्का|कन्फर्म)[\s.!।]*$/iu';
-    private const NO  = '/^(no|nah|n|cancel|stop|chhod|chhodnu|chodo|nai|hoina|hoena|hoeina|नाइ|होइन|रद्द|छोड|नहीं|नही|मत)[\s.!।]*$/iu';
+    /* 31 Oct 2026 (desk sims: "nahi" / "pardaina" / "mat karo" became the passenger's name and the quote stayed
+       ready for a "ha"): romanised Hindi and Nepali refusals are a NO, the same as "no" and "नहीं". */
+    private const NO  = '/^(?:no|nah|n|na|naa|cancel|stop|chhod|chhodnu|chodo|chhodo|nai|nahi|nahin|nahii|nhi|nahi\s*chahiye|nahi\s*chaiye|nahin\s*chahiye|mat|mat\s*karo|mat\s*kar|rehne\s*do|rahne\s*do|rehne\s*dijiye|hoina|hoena|hoeina|hoina\s*hai|pardaina|pardain|pardena|chahidaina|chaidaina|chaindaina|chahindaina|chahiyena|hudaina|hunna|bhayena|bhaena|parena|नाइ|होइन|रद्द|छोड|नहीं|नही|मत|मत\s*करो|नहीं\s*चाहिए|रहने\s*दो|पर्दैन|चाहिँदैन|चाहिदैन|हुँदैन|भएन)(?:\s+(?:dai|bhai|sir|ji|hajur|जी))?[\s.!।]*$/iu';
 
     /** The numbered menu (help): a digit alone runs the same command as its word. */
     private const MENU = [1 => 'ticket', 2 => 'tickets', 3 => 'balance', 4 => 'statement', 5 => 'withdraw', 6 => 'portal',
@@ -72,6 +77,8 @@ final class ApWa
 
     /** What the typed command just run meant (ApLearn, source "parser"); null = nothing worth learning. */
     private static ?array $cmdIntent = null;
+    /** Round 4 (R1): this turn's line says no / not now / wait (reply()) — no money route is opened for it. */
+    private static bool $holdLine = false;
 
     /**
      * While an AI / learnt reading is acted on (or its booking questions go on):
@@ -108,6 +115,7 @@ final class ApWa
         }
         $text  = trim(preg_replace('/\s+/u', ' ', $body) ?? '');
         $phone = normalisePhone($fromRaw);
+        self::$holdLine = false;
         if ($phone === '' || $text === '') {
             return null;
         }
@@ -126,7 +134,9 @@ final class ApWa
                     return self::linkVerify($phone, ApDocRead_digits($text), $state['pending'], $lang);
                 }
             }
-            if (preg_match('/^(?:link|register|regi|jod|jodnu|जोड|दर्ता|मेरो\s*कोड|my\s*code)\s*[:#-]?\s*(.+)$/iu', $text, $m) === 1) {
+            /* 31 Oct 2026 (passenger sim: "Jodhpur bata bus cha?" / "register garnu paryo ticket ko lagi" got "that
+               code matched no account"): LINK only as a whole word followed by a code or a mobile number. */
+            if (preg_match('/^(?:link|register|regi|jod|jodnu|जोड|दर्ता|मेरो\s*कोड|my\s*code)(?![\p{L}\p{M}])\s*[:#-]?\s*((?:shg[\s-]*(?:[a-z][\s-]*)?)?\d{1,5}|\+?\d[\d\s-]{7,16}\d)\s*$/iu', $text, $m) === 1) {
                 return self::linkStart($phone, trim($m[1]), $lang);
             }
 
@@ -156,6 +166,23 @@ final class ApWa
             self::touchLink($phone);
             $ctx  = self::ctx($member, $phone, $text, $turn);
 
+            /* Round 3 (agent sim: "maile 2000 jama gareko chu" asked for the UTR, and the answer "UTR 412345670006" got the
+               menu): the reference the desk itself asked for becomes the PREVIEW of that payment (filed on "ho"). Anything
+               else simply goes on as a new message. */
+            if ((string) ($state['pending']['kind'] ?? '') === 'pay_need') {
+                require_once __DIR__ . '/wapayproof.php';
+                $askedRef = WaPayProof::refFrom($text, $phone);
+                $askedAmt = (float) ($state['pending']['amount'] ?? 0);
+                self::clearPending($phone);
+                $state['pending'] = null;
+                $state['raw'] = '';
+                require_once __DIR__ . '/ticketbot.php';
+                if ($askedRef !== '' && $askedAmt > 0 && self::amountIn(mb_strtolower(self::asciiDigits($text)), $askedRef) === ''
+                    && !TicketBot::cmdHoldOrNo($text)) {                 // round 4 (R1): "UTR … abhi nahi" previews nothing
+                    return self::payIn($member, 'jama ' . (int) $askedAmt . ' UTR ' . $askedRef, $lang, $ctx);
+                }
+            }
+
             // 3. The one thing this number was asked to confirm.
             if (!empty($state['pending'])) {
                 $p = $state['pending'];
@@ -163,6 +190,7 @@ final class ApWa
                 // complete sale quote, a sentence that only says "ok, this one, give the ticket" IS the ho.
                 $yes = preg_match(self::YES, $text) === 1
                     || (($p['kind'] ?? '') === 'sale' && self::yesPhrase($text) && self::saleComplete((array) ($p['sale'] ?? [])));
+                require_once __DIR__ . '/ticketbot.php';
                 if ($p['kind'] === 'done') {
                     // A CONFIRM again after the sale / payment went through: say what happened, do nothing.
                     if ($yes) {
@@ -172,6 +200,17 @@ final class ApWa
                         self::clearPending($phone);
                         return self::out(self::t('done_no_undo', $lang));
                     }
+                } elseif (!$yes && !in_array((string) $p['kind'], ['link', 'pick'], true)
+                    && preg_match('/\bSHG-[A-Z0-9]+-[A-Z0-9]+/i', $text) !== 1
+                    // a typed office command with a request number ("jama no 12 bank ma nahi aayo") runs as itself
+                    && preg_match(self::NEG_DECISION, self::asciiDigits($text)) !== 1
+                    && TicketBot::holdOrNo($text)) {
+                    /* Round 3 (31 Oct 2026, owner's rule R1 — safety review #1: "abhi nahi", "ahile hoina", "ruko abhi",
+                       "ahile nakaat", "wait", "abhi mat kaato, customer se puchh ke batata hu" RE-DATED the waiting quote
+                       to today or renamed its passenger "Ruko" / "Wait", and a later "ho" SOLD it): a "no" or a "not now"
+                       anywhere in the line drops whatever waits for a "ho" — a quote, a money preview, a change. */
+                    self::clearPending($phone);
+                    return self::out(self::t($p['kind'] === 'sale' || $p['kind'] === 'book' ? 'held_sale' : 'held', $lang));
                 } elseif ($p['kind'] === 'book' && preg_match(self::NO, $text) !== 1) {
                     // Mid-questions an "ok" is no answer: the question is asked again (a command leaves the booking).
                     // An AI-read booking keeps its learn tag through the questions, so its final "ho" still teaches.
@@ -194,18 +233,76 @@ final class ApWa
                     && ($r = self::withLearnTag($p['learn'] ?? null, fn() => self::saleAmend($p, $text, $member, $ctx, $lang))) !== null) {
                     return $r;
                 }
-            } elseif (preg_match(self::YES, $text) === 1 && preg_match('/^(confirm|confirmed|कन्फर्म)/iu', $text) === 1) {
+            } elseif (preg_match(self::YES, $text) === 1 || preg_match(self::NO, $text) === 1) {
+                // 31 Oct 2026 (owner desk sim: a lone "ho" got the whole menu): nothing is waiting — say so, do nothing.
                 return self::out(self::t('nothing_pending', $lang));
             }
+
+            /* Round 4 (31 Oct 2026, owner's rule R1 — safety review A4: with nothing waiting, "SHG-… cancel nagarnu hai" /
+               "don't cancel SHG-…" made a cancel preview that "ho" carried out with a refund; "SHG-… phone 98… nahi" changed
+               the phone; "withdraw 500 abhi nahi" / "jama 700 UTR … abhi nahi" filed money; "SHG-… cancel mat karna" opened
+               an office cancel request; "… nakaatnu" / "ticket mat kaatna" / "wait garnu" / "chaidaina" sale lines were
+               quoted and sold): a line that says no / not now / wait never STARTS an action. A PNR line does nothing at
+               all; any other line may still answer (a report, a balance) but whatever preview it would open is dropped,
+               and the AI / learnt fast path never reads it. A typed office decision ("jama no 12 bank ma nahi aayo") is
+               itself the decision and runs as typed. */
+            require_once __DIR__ . '/ticketbot.php';
+            $holdLine = TicketBot::cmdHoldOrNo($text)
+                && preg_match(self::NEG_DECISION, self::asciiDigits($text)) !== 1;
+            if ($holdLine && preg_match('/\bSHG-\d{4}-\d{3,6}\b/i', $text, $hm) === 1) {
+                if (!empty($state['pending']) && !in_array((string) ($state['pending']['kind'] ?? ''), ['link', 'pick'], true)) {
+                    self::clearPending($phone);
+                }
+                return self::out(self::t('held_cmd', $lang, ['what' => ' (' . strtoupper($hm[0]) . ')']));
+            }
+            self::$holdLine = $holdLine;
+            $pendBefore = $holdLine ? (string) Database::scalar('SELECT pending FROM ap_wa_state WHERE phone = :p', ['p' => $phone], '') : '';
 
             // 4. Instant commands. What one meant is kept as an example (ApLearn "parser": normalised, no one's details).
             self::$cmdIntent = null;
             $r = self::command($text, $member, $ctx, $lang);
+            if ($holdLine) {
+                $pendAfter = (string) Database::scalar('SELECT pending FROM ap_wa_state WHERE phone = :p', ['p' => $phone], '');
+                if ($pendAfter !== '' && $pendAfter !== $pendBefore) {
+                    self::clearPending($phone);                       // the preview this line opened is never left for a "ho"
+                    return self::out(self::t('held_cmd', $lang, ['what' => '']));
+                }
+                if ($r === null) {
+                    return self::out(self::t('held_cmd', $lang, ['what' => '']));
+                }
+                self::$cmdIntent = null;                              // a refused line teaches nothing
+            }
             if ($r !== null) {
                 if (self::$cmdIntent !== null) {
                     ApLearn::record($text, self::$cmdIntent, 'parser');
                 }
+                /* 31 Oct 2026 (counter sim: a quote stayed live under "aaja" / "balance" and a later "ok" sold it;
+                   a "ho" after other commands replayed an old sale): another command answered, so whatever was
+                   waiting for a "ho" (a quote, a preview, a finished action) is dropped. A command that set its
+                   own new pending (a new quote / preview) is left alone. */
+                $was = (string) ($state['pending']['kind'] ?? '');
+                if ($was !== '' && !in_array($was, ['book', 'link', 'pick'], true)) {
+                    if ((string) Database::scalar('SELECT pending FROM ap_wa_state WHERE phone = :p', ['p' => $phone], '') === (string) $state['raw']) {
+                        self::clearPending($phone);
+                        if ($was !== 'done') {
+                            $r['text'] = (string) $r['text'] . "\n\n" . self::t('pending_dropped', $lang);
+                        }
+                    } elseif ($was !== 'done') {
+                        /* round 3 (agent sim: "jama 700 UTR …" then "maile 800 tireko chu, UTR …" — the ₹700 preview was
+                           silently replaced and "ho" filed only ₹800): a NEW preview replacing one that waited says so. */
+                        $r['text'] = (string) $r['text'] . "\n\n" . self::t('pending_dropped', $lang);
+                    }
+                }
                 return $r;
+            }
+
+            /* Round 3 (owner's rule R1): a quote / preview still waits and this line was neither its yes, its no, an
+               amendment nor a command — it keeps waiting, and the member is told how to answer (never the menu, never
+               the AI guessing at it). */
+            $wait = (array) ($state['pending'] ?? []);
+            if ($wait !== [] && !in_array((string) ($wait['kind'] ?? ''), ['done', 'book', 'link', 'pick'], true)
+                && (string) Database::scalar('SELECT pending FROM ap_wa_state WHERE phone = :p', ['p' => $phone], '') === (string) $state['raw']) {
+                return self::out(self::pendingAsk($wait, $lang));
             }
 
             // 5. The AI on this VPS.
@@ -551,7 +648,35 @@ final class ApWa
         };
         // Switch only on real evidence: a message of names, numbers and a town keeps the
         // language this number has been using (Nepali until shown otherwise).
-        $detected = $explicit === null ? self::detect($text) : null;
+        $score = 0;
+        $detected = $explicit === null ? self::detect($text, $score) : null;
+        if (preg_match('/^(?:ok\s+)?(?:thank\s*you|thanks|thank\s*u|thanku|thx|ty)(?:\s+\S+)?[\s.!🙏]*$/iu', trim($l)) === 1) {
+            $detected = null;                               // "thank you dai" in a Nepali chat is no switch to English
+        }
+        /* 31 Oct 2026 (agent sim: after "nepali", "thank you dai" switched the whole desk to English): a language
+           the member CHOSE stays until they choose another, or write a real sentence (3+ words) in another one. */
+        $locked = '';
+        try {
+            if ($explicit !== null) {
+                Database::run("INSERT INTO kv_store (kscope, kkey, kvalue, updated_by) VALUES ('ap_wa_lang', :k, :v, 'apwa')
+                               ON DUPLICATE KEY UPDATE kvalue = :v2", ['k' => $phone, 'v' => $explicit, 'v2' => $explicit]);
+            } else {
+                $locked = (string) Database::scalar("SELECT kvalue FROM kv_store WHERE kscope = 'ap_wa_lang' AND kkey = :k", ['k' => $phone], '');
+            }
+        } catch (Throwable $e) {
+            $locked = '';
+        }
+        if ($locked !== '' && in_array($locked, ['ne', 'hi', 'en'], true) && $detected !== $locked) {
+            if ($score < 3) {
+                $detected = null;
+                $state['lang'] = $locked;
+            } elseif ($detected !== null) {
+                try {                                   // a real sentence in another language: that is the new choice
+                    Database::run("UPDATE kv_store SET kvalue = :v WHERE kscope = 'ap_wa_lang' AND kkey = :k", ['v' => $detected, 'k' => $phone]);
+                } catch (Throwable $e) {
+                }
+            }
+        }
         $lang = $explicit ?? $detected ?? ($state['lang'] ?? null) ?? 'ne';
         if ($lang !== ($state['lang'] ?? null)) {
             self::saveState($phone, ['lang' => $lang]);
@@ -560,8 +685,9 @@ final class ApWa
     }
 
     /** 'ne' | 'hi' | 'en' when the words say so, null when they do not. */
-    public static function detect(string $text): ?string
+    public static function detect(string $text, ?int &$score = null): ?string
     {
+        $score = 0;
         $l = ' ' . mb_strtolower(preg_replace('/[^\p{L}\p{M}\s]/u', ' ', $text) ?? $text) . ' ';
         $count = static function (array $words) use ($l): int {
             $n = 0;
@@ -576,8 +702,12 @@ final class ApWa
             'hi' => $count(['है', 'हैं', 'मेरा', 'मेरी', 'मुझे', 'हमें', 'कितना', 'कितने', 'चाहिए', 'करें', 'कीजिए', 'आप', 'आपका', 'नहीं', 'हूँ', 'हूं', 'कल', 'परसों', 'से', 'तक', 'क्या', 'कहाँ', 'जाना', 'भेजो', 'भेजिए', 'बताइए', 'बताओ', 'था', 'लोग']),
             'en' => 0,
         ] : [
-            'ne' => $count(['cha', 'chha', 'xa', 'chaina', 'mero', 'malai', 'hamilai', 'kati', 'chahiyo', 'chaiyo', 'garnu', 'garnus', 'garidinu', 'tapai', 'hunchha', 'huncha', 'bholi', 'parsi', 'bata', 'samma', 'hola', 'kaha', 'pathaunu', 'pathaidinu', 'bhayo', 'thiyo', 'jana', 'paisa', 'baki', 'dinus', 'paryo']),
-            'hi' => $count(['hai', 'hain', 'mera', 'meri', 'mujhe', 'humein', 'kitna', 'kitne', 'chahiye', 'chaiye', 'karo', 'kijiye', 'aap', 'aapka', 'nahi', 'nahin', 'hoon', 'kal', 'parso', 'se', 'tak', 'kya', 'kahan', 'jaana', 'bhejo', 'batao', 'tha', 'log']),
+            'ne' => $count(['cha', 'chha', 'xa', 'chaina', 'mero', 'malai', 'hamilai', 'kati', 'chahiyo', 'chaiyo', 'garnu', 'garnus', 'garidinu', 'tapai', 'hunchha', 'huncha', 'bholi', 'parsi', 'bata', 'samma', 'hola', 'kaha', 'pathaunu', 'pathaidinu', 'bhayo', 'thiyo', 'jana', 'paisa', 'baki', 'dinus', 'paryo',
+                            // 31 Oct 2026 (counter sim: "aajako hisab dekhau" was answered in English)
+                            'aaja', 'aajako', 'hisab', 'hisaab', 'dekhau', 'dekhaunu', 'dekhaideu', 'pathau', 'deu', 'dinu', 'kasko', 'kun', 'lai', 'gareko', 'garyo', 'milena', 'chahidaina', 'pardaina']),
+            'hi' => $count(['hai', 'hain', 'mera', 'meri', 'mujhe', 'humein', 'kitna', 'kitne', 'chahiye', 'chaiye', 'karo', 'kijiye', 'aap', 'aapka', 'nahi', 'nahin', 'hoon', 'kal', 'parso', 'se', 'tak', 'kya', 'kahan', 'jaana', 'bhejo', 'batao', 'tha', 'log',
+                            // 31 Oct 2026 (owner sim: "aaj kitne ticket bike?" was answered in English)
+                            'aaj', 'bike', 'bika', 'bikey', 'kaise', 'karu', 'karun', 'dikhao', 'kaun', 'kab', 'kaam']),
             'en' => $count(['the', 'is', 'are', 'my', 'me', 'what', 'where', 'when', 'please', 'want', 'need', 'book', 'seats', 'tomorrow', 'today', 'send', 'how', 'much', 'can', 'you', 'ticket', 'from', 'to', 'for', 'change', 'cancel', 'thanks', 'thank', 'hello', 'i']),
         ];
         arsort($sc);
@@ -587,6 +717,7 @@ final class ApWa
         if ($vals[0] === 0 || $vals[0] === $vals[1] || ($top === 'en' && $vals[0] < 2)) {
             return null;
         }
+        $score = (int) $vals[0];
         return $top;
     }
 
@@ -595,7 +726,7 @@ final class ApWa
      * ================================================================= */
 
     /** @return array{text: string, media?: ?string}|null */
-    private static function command(string $text, array $member, array $ctx, string $lang): ?array
+    private static function command(string $text, array $member, array $ctx, string $lang, bool $nl = true): ?array
     {
         $text = self::fixTicketWord($text);   // 30 Oct 2026: "Tciket book" is a ticket too
         $l = mb_strtolower($text);
@@ -639,9 +770,89 @@ final class ApWa
             if ($word === 'admin' && !self::isOffice($ctx)) {
                 $word = 'help';
             }
-            $r = self::command($word, $member, $ctx, $lang);
+            $r = self::command($word, $member, $ctx, $lang, false);
             self::$cmdIntent = null;                          // "3" means balance only on this menu: not an example
             return $r;
+        }
+
+        /* 31 Oct 2026 (owner: "jhe bhane ni tehi anusar reply"; four desk sims): a SENTENCE that means one of the
+           commands below ("mero commission kati bhayo?", "bholi ko yatri list pathau", "Sunil ko number deu",
+           "baki kam k k cha?") is read into that command. With the VPS AI off these all got the menu. */
+        if ($nl) {
+            $money = self::$holdLine ? null : self::moneyRoute($text, $member, $ctx, $lang);
+            if ($money !== null) {
+                return $money;
+            }
+            $c = self::canon($text, $ctx);
+            if ($c !== null) {
+                switch ($c) {
+                    case '__private':
+                        return self::out(self::t('no_private', $lang, ['phone' => Settings::officePhone()]));
+                    case '__thanks':
+                        return self::out(self::t('thanks', $lang));
+                    case '__local':
+                        $local = self::localAnswer($text, $ctx);
+                        if ($local !== null) {
+                            return $local;
+                        }
+                        break;
+                    case '__fare':
+                        // round 2 (agent sim: "Surat dekhi Rupaidiha bhada kati ho?" got the menu): the fare board's answer
+                        try {
+                            require_once __DIR__ . '/wafaq.php';
+                            $fact = WaFaq::factAnswer('+91' . (string) ($ctx['phone'] ?? ''), $text);
+                            if ($fact !== null) {
+                                return self::out((string) $fact['text'], $fact['media'] ?? null);
+                            }
+                        } catch (Throwable $e) {
+                            Logger::warning('Fare answer on the desk failed: ' . $e->getMessage(), [], 'whatsapp');
+                        }
+                        break;
+                    case '__cancel_which':
+                        return self::out(self::t('cancel_which', $lang));
+                    default:
+                        if (str_starts_with($c, '__ref_only:')) {
+                            // round 3 (counter / agent sims: a bare "UTR 4123…" got the whole menu): whose payment, how much
+                            $ref = substr($c, 11);
+                            return self::out(self::t('ref_only', $lang, ['tail' => substr($ref, -4), 'ref' => $ref, 'link' => appUrl('admin/payments.php')]));
+                        }
+                        if (str_starts_with($c, '__pay_later:')) {
+                            return self::out(self::t('pay_later', $lang, ['n' => substr($c, 12), 'v' => inr((float) substr($c, 12))]));
+                        }
+                        if (str_starts_with($c, '__paxfind:')) {
+                            if (!in_array($ctx['role'], ['staff', 'admin'], true)) {
+                                break;
+                            }
+                            require_once __DIR__ . '/aitools.php';
+                            $q = substr($c, 10);
+                            $f = AiTools::run('my_sales', ['name' => $q, 'limit' => 10], $ctx);
+                            $sales = $f['ok'] ? (array) ($f['data']['sales'] ?? []) : [];
+                            if ($sales === []) {
+                                return self::out(self::t('pf_none', $lang, ['q' => mb_convert_case($q, MB_CASE_TITLE)]));
+                            }
+                            $lines = [self::t('pf_head', $lang, ['q' => mb_convert_case($q, MB_CASE_TITLE), 'n' => (string) count($sales)])];
+                            foreach ($sales as $s) {
+                                $lines[] = '🎫 ' . $s['pnr'] . ' · ' . strtoupper((string) $s['status']) . "\n    " . $s['dateLabel'] . ' · ' . $s['pickup']
+                                    . ' · ' . $s['seats'] . ' 💺 · 👤 ' . $s['name'];
+                            }
+                            $lines[] = '';
+                            $lines[] = self::t('card_tail', $lang);
+                            return self::out(implode("\n", $lines));
+                        }
+                        if (str_starts_with($c, '__book')) {
+                            if (!in_array((string) $member['role'], self::SELLERS, true)) {
+                                break;
+                            }
+                            self::$cmdIntent = ['intent' => 'book'];
+                            $d = substr($c, 7);
+                            return self::bookStart($member, $ctx, $lang, $d !== '' ? ['date' => $d] : []);
+                        }
+                        $r = self::command($c, $member, $ctx, $lang, false);
+                        if ($r !== null) {
+                            return $r;
+                        }
+                }
+            }
         }
 
         // The office's own desk (super-admin / manager only).
@@ -659,10 +870,10 @@ final class ApWa
             return self::adminWithdrawals($lang);
         }
         // The reference is kept as typed ("UTR430987651234"), the way the Team page records it.
-        if (preg_match('/^(?:approve|wd\s*pay|wd\s*approve)\s*#?(\d{1,9})\s*[:#-]?\s*(.*)$/iu', self::asciiDigits($text), $m)) {
+        if (preg_match('/^(?:approve|aprove|aproove|approov\w*|apprve|aprv|apporve|approv|wd\s*pay|wd\s*approve)\s*#?(\d{1,9})\s*[:#-]?\s*(.*)$/iu', self::asciiDigits($text), $m)) {
             return self::isOffice($ctx) ? self::adminPayPreview((int) $m[1], trim($m[2]), $ctx, $lang) : self::out(self::t('no_permission', $lang));
         }
-        if (preg_match('/^(?:reject|decline|wd\s*reject)\s*#?(\d{1,9})\s*[:#-]?\s*(.*)$/iu', self::asciiDigits($text), $m)) {
+        if (preg_match('/^(?:reject|rejct|rejet|rject|reejct|decline|declin|wd\s*reject)\s*#?(\d{1,9})\s*[:#-]?\s*(.*)$/iu', self::asciiDigits($text), $m)) {
             return self::isOffice($ctx) ? self::adminRejectPreview((int) $m[1], trim($m[2]), $ctx, $lang) : self::out(self::t('no_permission', $lang));
         }
         // Payments members say they made (ap_deposit_requests): list, confirm, decline — before "jama" (pay in) below.
@@ -714,20 +925,42 @@ final class ApWa
             if (preg_match('/\d/', $q) === 1) {
                 return self::out(self::t('no_permission', $lang));   // someone else's code / number: the office's desk only
             }
+            // round 3 (agent sim: "Kamal ko id card pathau" got the menu; office sim: "Ramesh lai id card pathaidiye" sent
+            // the SENDER's own card): another member's card is the office's to send — said plainly, never the sender's own
+            $cardOf = self::findMembers($q);
+            if ($cardOf !== [] && !in_array((int) $member['id'], array_map(static fn(array $h): int => (int) $h['id'], $cardOf), true)) {
+                return self::out(self::t('card_own_only', $lang));
+            }
             // "id card bhayena …" from an agent is a sentence, not a lookup: the AI / the menu below answers it
         }
 
         // A PNR: status, edit, cancel, resend.
         if ($pnr !== '') {
-            return self::pnrCommand($pnr, $text, $member, $ctx, $lang);
+            $r = self::pnrCommand($pnr, $text, $member, $ctx, $lang);
+            /* round 3 (counter sim: "<PNR> UTR 4123…" showed the card and dropped the reference silently): a passenger's
+               payment reference beside a PNR is answered — the office verifies it; nothing is filed from here (R2). */
+            require_once __DIR__ . '/wapayproof.php';
+            if ($r !== null && WaPayProof::payTalk($text)) {
+                $r['text'] = (string) $r['text'] . "\n\n" . self::t('pay_pax_note', $lang, ['link' => appUrl('admin/payments.php'), 'phone' => Settings::officePhone()]);
+            }
+            return $r;
         }
 
         // Money.
         if (preg_match('/^(?:balance|bal|wallet|baki|baaki|बाँकी|बाकी|ब्यालेन्स|बैलेंस|बैलेन्स|kati\s*paisa|mero\s*paisa|paisa\s*kati|commission|कमिसन|कमीशन)\b/u', $l)) {
+            // 31 Oct 2026 (owner sim: "balance SHG-0024" answered with the owner's own ₹0): someone else's wallet
+            $who = self::otherMember($text, $member, $ctx, $lang);
+            if ($who !== null) {
+                return isset($who['text']) ? $who : self::balance($who, $lang, true);
+            }
             self::$cmdIntent = ['intent' => 'balance'];
             return self::balance($member, $lang);
         }
         if (preg_match('/^(?:statement|stmt|hisab|hisaab|हिसाब|स्टेटमेन्ट|स्टेटमेंट|passbook|ledger|khata|खाता)\b\s*(\d{1,3})?/u', $l, $m)) {
+            $who = self::otherMember($text, $member, $ctx, $lang);
+            if ($who !== null) {
+                return isset($who['text']) ? $who : self::statement($who, $lang, isset($m[1]) ? (int) $m[1] : 0, true);
+            }
             self::$cmdIntent = ['intent' => 'statement', 'days' => isset($m[1]) ? (int) $m[1] : 0];
             return self::statement($member, $lang, isset($m[1]) ? (int) $m[1] : 0);
         }
@@ -737,7 +970,7 @@ final class ApWa
         }
         if (preg_match('/^(?:jama|jamma|जम्मा|deposit|paid|pay|tirne|tireko|तिरेको|भुक्तानी|bhuktani|handover|बुझाएँ|bujhaye)\b/u', $l)) {
             self::$cmdIntent = ['intent' => 'deposit'];
-            return self::payIn($member, $text, $lang);
+            return self::payIn($member, $text, $lang, $ctx);
         }
 
         // Cards and me.
@@ -763,7 +996,8 @@ final class ApWa
             self::$cmdIntent = ['intent' => 'directory', 'query' => trim($m[1])];
             return self::directory($member, $lang, trim($m[1]), 'search');
         }
-        if (preg_match('/^(?:office|company|cin|address|thegana|ठेगाना|कार्यालय|अफिस|ऑफिस|contact\s*office|email|website|counters?|काउन्टर)\b/u', $l)) {
+        if (preg_match('/^(?:office|company|cin|address|thegana|ठेगाना|कार्यालय|अफिस|ऑफिस|contact\s*office|email|website|counters?|काउन्टर)\b/u', $l)
+            && !(in_array((string) $member['role'], self::SELLERS, true) && self::saleParse($text) !== null)) {   // 31 Oct 2026: a sale line wins
             self::$cmdIntent = ['intent' => 'company'];
             return self::company($lang);
         }
@@ -783,15 +1017,660 @@ final class ApWa
 
         // A sale.
         if (in_array((string) $member['role'], self::SELLERS, true)) {
+            /* Round 3 (owner's rule R2): a line about a payment made (utr / ref / txn / "paisa pathaye") is never a sale
+               line — the payment and the ticket go in two messages. */
+            require_once __DIR__ . '/wapayproof.php';
+            require_once __DIR__ . '/ticketbot.php';
+            if (WaPayProof::payTalk($text)) {
+                return (int) TicketBot::parse($text)['seats'] > 0 ? self::out(self::t('pay_split', $lang)) : null;
+            }
             $sale = self::saleParse($text);
             if ($sale !== null) {
                 // the passenger's name(s) go out of the example (ApLearn::norm), the seats and words stay
                 self::$cmdIntent = ['intent' => 'book', 'seats' => (int) ($sale['seats'] ?? 0), 'direction' => (string) ($sale['direction'] ?? ''),
                     'name' => (string) ($sale['name'] ?? ''), 'names' => (array) ($sale['names'] ?? []), 'pay' => (string) ($sale['pay'] ?? '')];
+                /* 31 Oct 2026 (agent sim: "Dileep, 2 ticket ok tciket" was quoted for the next Surat bus — a day and a
+                   pickup nobody said — and one "ok" would have sold it): no day or no pickup = ask for them. */
+                if ((string) $sale['date'] === '' || (string) $sale['boarding'] === '') {
+                    return self::bookStart($member, $ctx, $lang, $sale);
+                }
                 return self::saleQuote($sale, $member, $ctx, $lang);
             }
         }
         return null;
+    }
+
+    /* ---------------- sentences → commands (31 Oct 2026) ---------------- */
+
+    /**
+     * What a sentence means as one of the typed commands: "mero commission kati bhayo?" → "balance",
+     * "bholi ko yatri list pathau" → "passengers 2026-11-01", "Sunil ko number deu" → "number sunil",
+     * "baki kam k k cha?" (office) → "pending". Special answers: __private (someone's bank / ID numbers —
+     * never on WhatsApp), __thanks, __local (a timetable / free-seat question for the local brain).
+     * null = not one of these (a sale, a name, anything else goes on exactly as before).
+     */
+    private static function canon(string $text, array $ctx): ?string
+    {
+        $l = mb_strtolower(self::asciiDigits($text));
+        $question = str_contains($l, '?') || str_contains($l, '？');
+        $l = ' ' . trim((string) preg_replace('/\s+/u', ' ', (string) preg_replace('/[?？!.,;:।"\'()]+/u', ' ', $l))) . ' ';
+        $bare = trim($l);
+        if ($bare === '' || mb_strlen($bare) > 220 || preg_match('/shg-?\s?\d{4}-?\s?\d{3,6}/u', $l) === 1) {
+            return null;                                              // a PNR: pnrCommand reads it
+        }
+        if (preg_match('/^(?:approve|aprove|aproove|approv\w*|reject|rejct|rejet|decline|wd|jama|jamma|deposit|dep|link|unlink|switch|names?)(?![\p{L}])/u', $bare) === 1) {
+            return null;                                              // a typed office / money command, read as typed
+        }
+        $office = self::isOffice($ctx);
+        $has = static fn(string $re): bool => preg_match('/(?<![\p{L}\p{M}])(?:' . $re . ')(?![\p{L}\p{M}])/u', $l) === 1;
+        $day = $has('parsi|parso|पर्सि|परसों|day\s*after') ? date('Y-m-d', strtotime('+2 day'))
+             : ($has('bholi|bholli|tomorrow|kal|भोलि|कल') ? date('Y-m-d', strtotime('+1 day'))
+             : ($has('aaja|aaj|aajako|aja|today|आज|आजको') ? date('Y-m-d') : ''));
+
+        if (preg_match('/^(?:ok\s+)?(?:dhanyabad|dhanyabaad|dhanyawad|dhanyavad|dhanybad|thank\s*you|thanks|thank\s*u|thanku|thnx|thx|ty|shukriya|shukria|धन्यवाद|धन्यबाद|शुक्रिया)(?:\s+(?:dai|ji|sir|hajur|bhai|didi|जी|हजुर|very\s*much|so\s*much))*$/u', $bare) === 1) {
+            return '__thanks';
+        }
+        /* A sale line ("company ko 1 seat bholi Surat …", "kal 2 ticket nikal do Surat Ram Thapa 98…", "2 seat … paisa
+           4400 jama garchu", "… bank bata pay garchu") is the sale's, never a command. Round 2 (31 Oct 2026): this guard
+           now comes FIRST — after the money rules it turned "ticket nikal do" into a withdrawal of the whole commission,
+           "jama garchu" into a deposit with the passenger's mobile as the UTR, and "bank bata" into the bank refusal. */
+        if (preg_match('/\d+\s*(?:seat|seats|sit|sits|ticket|tickets|tikat|tkt|jana|jan|log|berth|सिट|सीट|टिकट|जना)(?![\p{L}])/u', $l) === 1
+            || preg_match('/(?<!\d)\d{10}(?!\d)/', $l) === 1) {
+            return null;
+        }
+        // someone's bank / ID numbers: never on WhatsApp (owner rule; the Team page has them). "mero account ma balance
+        // k cha?" is the balance, not a bank number: a bank / account word needs a NUMBER / details word with it.
+        $idDoc = $has('aadhar|aadhaar|adhar|pan\s*card|pan\s*number|citizenship|nagarikta|nagrikta|passport|ifsc|आधार|नागरिकता|पासपोर्ट');
+        if (($idDoc && $has('number|nambar|nmbr|नम्बर|नंबर|deu|dinu|dinus|pathau\w*|chahiyo|chahiye|batao|send|share|details?|photo|copy|k|ke|kya|ho|cha|de|do'))
+            || ($has('bank|account|a\/c|acc|खाता|बैंक') && $has('number|nambar|nmbr|नम्बर|नंबर|details?|ifsc'))) {
+            return '__private';
+        }
+        /* A payment the member made — only ever a PREVIEW (payIn waits for "ho"). The reference must be explicit
+           (utr / ref / txn / transaction id + 10 or more digits; never a mobile, never on a question or "I will pay"),
+           and the amount is the one beside rs / ₹ or the verb — not a date ("26 Oct") or the first number. */
+        /* Round 3: the office never gets its OWN deposit / withdrawal from a sentence (owner's rule R3 — moneyRoute()
+           has already sent a sentence that names a member to that member's request); its own is typed: "jama … UTR …". */
+        // round 3 (agent sim: "maine 3000 bhej diye hai UTR …", "payment kar diya 3000 UTR …" got the menu): Hindi pay verbs
+        $payWords = 'tireko|tire|tiryo|tiriyo|tirisake\w*|pathaye|pathaeko|pathako|pathayeko|pathaisake\w*|jama|jamma|deposit|paid|pay\s*gare\w*|bhuktani|transfer|bujhaye|bujhaeko|bujhayeko|bujhaisake\w*|bhej\s*diy[ae]|bhej\s*diye|bheje|bheja|kar\s*diya|kar\s*diye|payment\s*kiya|bhar\s*diya|bhar\s*diye|तिरेको|पठाएँ|जम्मा|भुक्तानी|बुझाएँ|भेज\s*दिए|भेज\s*दिया';
+        require_once __DIR__ . '/wapayproof.php';
+        $refAny = $office ? '' : WaPayProof::refFrom($text, (string) ($ctx['phone'] ?? ''));
+        // round 3 (agent sim: "maile 2,500 tireko chu UTR …" previewed ₹500): the amount is read with its commas
+        $amtRaw = self::amountIn(mb_strtolower(self::asciiDigits($text)), $refAny);
+        if (!$office && $refAny !== '' && $amtRaw !== '' && !$has($payWords) && !$has('withdraw\w*|payout|nikal\w*')) {
+            return 'jama ' . $amtRaw . ' UTR ' . $refAny;                 // "3000 ko UTR 4123…": the member's own payment (a preview)
+        }
+        if (!$office && $refAny !== '' && $amtRaw === '' && !$has('withdraw\w*|payout|nikal\w*')) {
+            return '__ref_only:' . $refAny;                              // "UTR 4123…" alone: whose / how much is asked
+        }
+        if (!$office && $has($payWords)) {
+            $ref = $refAny;
+            $amt = $amtRaw;
+            if ($ref !== '') {
+                return 'jama' . ($amt !== '' ? ' ' . $amt : '') . ' UTR ' . $ref;
+            }
+            // round 3 (agent sim: "kal 500 jama karunga UTR …" got the menu): a payment still to be made — how to file it after
+            if ($amt !== '' && !$question && WaPayProof::questionOrFuture($text)) {
+                return '__pay_later:' . $amt;
+            }
+            // "maile 2000 jama gareko chu", "office ma 5000 cash bujhaye": no reference yet — payIn asks for it
+            if ($amt !== '' && !$question && !WaPayProof::questionOrFuture($text)
+                && $has('jama\s*gar\w*|jamma\s*gar\w*|jama\s*bhayo|tireko|tiryo|tiriyo|tirisake\w*|bujhaye|bujhaeko|bujhayeko|bujhaisake\w*|deposit\s*gar\w*|paid|pay\s*gare\w*|transfer\s*gare\w*|pathaye|pathaeko|pathayeko|तिरेको|बुझाएँ|बुझाएको')
+                && $has('jama|jamma|deposit|cash|nagad|paisa|rupaya|rs|upi|bank|payment|tireko|tiryo|tiriyo|bujhaye|bujhaeko|bujhayeko|जम्मा|नगद|पैसा')) {
+                return 'jama ' . $amt . ($has('cash|nagad|नगद|haat\s*ma|hath\s*ma') ? ' cash' : ' done');
+            }
+        }
+        /* A withdrawal (a preview; "ho" files it). "nikal" alone is Hindi "issue the ticket" / "the bus will leave"
+           ("ticket nikal do", "bus kitne baje nikalegi?"): it counts only with money and never beside a ticket / bus. */
+        $wdWord = $has('withdraw|withdrawal|withdrawl|payout');
+        $nikal = $has('nikal\w*|निकाल\w*') && !$has('ticket|tickets|tikat|tiket|tkt|seat|seats|sit|bus|buses|gadi|gaadi|baje|time|samay|kahile|kab|टिकट|सिट|बस|गाडी|बजे');
+        if ($wdWord || $nikal) {
+            $amt = self::amountIn(mb_strtolower(self::asciiDigits($text)), '');
+            $moneyWord = $has('paisa|paise|rs|rupaya|rupees|commission|comission|kamisan|amount|balance|पैसा|पैसे|कमिसन|कमीशन');
+            if ($office && $amt === '' && $has('baki|baaki|pending|kasko|kaskako|kun|list|open|kati|cha|chha|request|haru|ko')) {
+                return 'withdrawals';
+            }
+            if ($office) {
+                return null;                                          // round 3 (R3): never the office's own withdrawal from a sentence
+            }
+            // round 3 (safety review, low: "kati samma withdraw garna milcha" previewed a ₹1,800 withdrawal): a question
+            // about withdrawing is answered with the balance — a withdrawal is only previewed when it is asked for
+            if ($amt === '' && ($question || $has('milcha|milchha|milxa|milla|sakinchha|sakincha|sakinxa|kati\s*samma|kahile|kaile|kab|how\s*much|kitna|kitne|can\s*i|kasari|kaise'))) {
+                return 'balance';
+            }
+            if (($wdWord || $amt !== '' || $moneyWord) && !$has('kasko|kaskako|list|haru')) {
+                return 'withdraw' . ($amt !== '' ? ' ' . $amt : '');
+            }
+        }
+        if ($office && $has('pending|pendng|pendig|pendin|pendings|baki\s*kaa?m|baaki\s*kaa?m|बाँकी\s*काम|बाकी\s*काम|pending\s*kaa?m|kaa?m\s*baa?ki|kaa?m\s*pending')) {
+            return 'pending';
+        }
+        if ($office && $has('form|forms|aavedan|abedan|aawedan|application|applications|join|joining|joins|आवेदन|फारम')
+            && !$has('mero|my|mera|meri') && $has('naya|nayan|new|aayo|aaye|aako|aaeko|aayeko|cha|chha|kati|list|pending|baki|आयो|नयाँ|kasko|kun')) {
+            return 'joins';
+        }
+        // "company ko UPI id pathau": the company's pay-in details (UPI + QR), never the sender's own ID card
+        if ($has('upi|gpay|google\s*pay|phonepe|phone\s*pe|paytm|qr|scanner|esewa') && $has('id|number|nambar|details?|pathau\w*|deu|dinu|dinus|kun|k|ke|kya|ho|cha|chahiyo|chahiye|batao|send|code')) {
+            return 'jama';
+        }
+        // "ticket cancel garnu cha" with no PNR: ask which one
+        if ($has('cancel|cancle|radda|radd|रद्द|क्यान्सिल|कैंसिल') && $has('ticket|tickets|tikat|tiket|booking|टिकट|बुकिङ')) {
+            return '__cancel_which';
+        }
+        // "Ram Thapa ko ticket kun bus ma cha?": the seller's own sales for that passenger (never anyone else's)
+        if (preg_match('/^\s*(\p{L}[\p{L}\p{M}.]*(?:\s+\p{L}[\p{L}\p{M}.]*){0,2})\s+(?:ko|ka|ki|को|का|की)\s+(?:ticket|tikat|tiket|seat|sit|bus|pnr|booking|टिकट|सिट|बस)(?![\p{L}\p{M}])/u', $l, $pm) === 1
+            && ($question || $has('kun|kaha|kata|kahan|k|ke|kya|cha|chha|hai|kahile|kab|kati|dekhau|batau|batao|check'))) {
+            $who = self::nameRef($pm[1]);
+            require_once __DIR__ . '/personname.php';
+            if ($who !== '' && mb_strlen($who) >= 3 && !PersonName::looksLikePlace($who)
+                && !$has('aaja|aaj|bholi|parsi|kal|today|tomorrow|nepal|india|gujarat|aajako|bholiko')) {
+                return '__paxfind:' . $who;
+            }
+        }
+        // "Surat dekhi Rupaidiha bhada kati ho?": the fare board
+        if ($has('bhada|bhaada|bhadaa|fare|kiraya|kiraaya|kiraye|भाडा|किराया') || ($has('kati\s*parcha|kati\s*lagcha|kitna\s*lagega|kitna\s*lagta|how\s*much') && $has('surat|baroda|mehsana|ahmedabad|rajkot|vapi|bharuch|kamrej|rupaidiha|nepalgunj|nepal|per\s*seat|ek\s*jana|1\s*jana'))) {
+            return '__fare';
+        }
+        if ($has('balance|balanse|ballance|belance|blance|balnce|bal|wallet|commission|comission|commision|kamisan|kamishan|कमिसन|कमीशन|ब्यालेन्स|बैलेंस|बैलेन्स')) {
+            $ref = self::memberRef($text);
+            return 'balance' . ($ref !== '' ? ' ' . $ref : '');
+        }
+        if ($has('statement|stmt|passbook|ledger|khata|स्टेटमेन्ट')) {
+            $ref = self::memberRef($text);
+            return 'statement' . ($ref !== '' ? ' ' . $ref : '');
+        }
+        if ($has('portal|login|log\s*in|sign\s*in|signin|password|पासवर्ड|लगइन|पोर्टल|लग\s*इन')) {
+            return 'portal';
+        }
+        if ($has('visiting|visiting\s*card|business\s*card|भिजिटिङ|विजिटिंग')) {
+            return 'visiting card' . ($has('back|pachadi|पछाडि|पीछे') ? ' back' : '');
+        }
+        if ($has('id\s*card|idcard|id|आईडी|आइडी|parichay\s*patra|परिचय\s*पत्र') && !$has('switch|badal\w*|change')
+            && !$has('upi\s*id|email\s*id|mail\s*id|gmail\s*id|txn\s*id|transaction\s*id|user\s*id|login\s*id')) {
+            if (preg_match('/^\s*(.{2,40}?)\s*(?:ko|ka|ki|lai|को|का|की|लाई)\s*(?:id\s*card|idcard|id|आईडी|आइडी)/u', $l, $m) === 1) {
+                $head = self::nameRef($m[1]);
+                if ($head !== '') {
+                    return 'id ' . $head . ($has('back|pachadi|पछाडि|पीछे') ? ' back' : '');
+                }
+            }
+            if ($has('mero|my|mera|pathau\w*|pathai\w*|deu|dinu|dinus|chahiyo|chahiye|send|bhej\w*|dekhau|de|do')) {
+                return 'id card' . ($has('back|pachadi|पछाडि|पीछे') ? ' back' : '');
+            }
+        }
+        // "Sunil ko number deu", "Ramesh agent ko phone number k ho?", "सुनिलको नम्बर दिनुस्", "manager ko number"
+        if (preg_match('/^\s*(.{2,40}?)\s*(?:ko|ka|ki|को|का|की)?\s*(?:phone\s*number|mobile\s*number|contact\s*number|whatsapp\s*number|number|nambar|nmbr|phone|mobile|contact|नम्बर|नंबर|फोन|मोबाइल)(?:\s|$)/u', $l, $m) === 1) {
+            $head = self::nameRef($m[1]);
+            if ($head !== '') {
+                return 'number ' . $head;
+            }
+        }
+        if (($has('khali|khaali|available|bacheko|bachyo|baki|baaki|खाली|बाँकी') && $has('seat|seats|sit|सिट|सीट|berth'))
+            || $has('kati\s*seat|kitni\s*seat|kitne\s*seat|कति\s*सिट|timetable|time\s*table')) {
+            return '__local';
+        }
+        if ($has('bus|buses|gadi|gaadi|गाडी|बस') && !$has('seat|sit|सिट|ticket|tikat|टिकट|khali')
+            && $has('kati\s*baje|baje|time|samay|chhut\w*|chut\w*|nikal\w*|kati\s*ota|kati\s*wata|kati\s*vata|list|kun\s*kun|kati|kitne|cha|chha|hai|xa|aaja|aaj|bholi|today|tomorrow|kal|number|details|kaha|kata|kahan|location|live|pugyo|बजे|कति|छ')) {
+            return 'bus' . ($day === date('Y-m-d', strtotime('+1 day')) ? ' bholi' : '');
+        }
+        if ($has('passengers?|pasengers?|passangers?|pasangers?|passenger\s*list|yatri|yatru|yatriharu|yatruharu|यात्रु|यात्री|manifest')) {
+            return 'passengers ' . ($day !== '' ? $day : date('Y-m-d'));
+        }
+        /* "aaja ko ticket book garnu cha", "bholi ko ticket chahiyo": a booking, one question at a time (seeded with the
+           day) — before the day report below took "aaja" (round 2, agent sim). */
+        if ($has('tickets?|tikat|tiket|tkt|seats?|टिकट|सिट') && $has('book|booking|chahiyo|chaiyo|chahiye|chaiye|chahincha|katnu|kaatnu|katna|kaatna|katne|kaatne|banaunu|banana|nikalnu|बुक|चाहियो|चाहिए|काट्नु')
+            && !$has('mero|my|mera|meri|dekhau|dikhao|show|list|haru|becheko|sold|cancel|radda')) {
+            return '__book' . ($day !== '' ? ':' . $day : '');
+        }
+        if (($has('how\s*many|kitne|kitna|kati|kati\s*ota|how\s*much') && $has('sold|sell|bike|bika|bikyo|katyo|kateko|becheko|bechyo|becha|beche|bechi') && $has('aaj|aaja|today|आज') )) {
+            return 'aaja';                                    // "how many tickets sold today?" is the day's report
+        }
+        if ($has('tickets?|tikat|tiket|टिकट') && $has('dekhau|dekhaunu|dekhaideu|dekha|dikhao|dikha|show|list|haru|becheko|bechya|bechyeko|mero|my|mera|meri')
+            && !$has('pathau\w*|pathai\w*|resend|feri|pheri|bhej\w*|send|book|kaat\w*|kat\w*|chahiyo|chahiye|chaiyo')) {
+            return 'tickets' . ($day !== '' ? ' ' . $day : '');
+        }
+        if (($has('aaj|aaja|aajako|aja|आज|आजको|today|todays') && $has('bikri|बिक्री|sale|sales|sell|selling|sold|bike|bika|bikey|bechyo|becheko|becha|beche|hisab|hisaab|हिसाब|report|cash|nagad|collection|tickets?|टिकट|kati|kitne|kitna|uthyo|kamai|कति|bhayo|भयो'))
+            || ($has('how\s*many\s*tickets?|kitne\s*tickets?|kati\s*tickets?|kati\s*ota\s*ticket') && $has('sold|sell|bike|bika|katyo|kateko|becheko|bechyo|bikyo'))
+            || $has('mero\s*bikri|my\s*sales?|mero\s*sale')) {
+            return 'aaja';
+        }
+        return null;
+    }
+
+    /**
+     * The amount a money sentence names: beside rs / ₹ / rupaya first, else the first number that is not a date
+     * ("26 Oct", "15 tarik"), a time, a seat count, a member code, a phone or the payment reference. '' = none.
+     */
+    private static function amountIn(string $l, string $ref = ''): string
+    {
+        $s = ' ' . mb_strtolower(self::asciiDigits($l)) . ' ';
+        if ($ref !== '') {
+            $s = str_ireplace($ref, ' ', $s);
+        }
+        $months = 'jan\w*|feb\w*|mar\w*|apr\w*|may|jun\w*|jul\w*|aug\w*|sep\w*|oct\w*|nov\w*|dec\w*|kartik|mangsir|असोज|कार्तिक|मंसिर';
+        $s = (string) preg_replace('/(?<![a-z\d])shg[\s-]*(?:[a-z][\s-]*)?\d{1,6}(?:-\d+)*/u', ' ', $s);                 // member codes, PNRs
+        $s = (string) preg_replace('/(?<![\p{L}\d])(?:utr|ref|reference|txn|rrn|transaction)(?:\s*(?:id|no|number))?\s*[:#-]?\s*[a-z]{0,4}\d{6,}/u', ' ', $s);
+        $s = (string) preg_replace('/\+?\d[\d\s-]{8,}\d/u', ' ', $s);                                                   // phones, references
+        $s = (string) preg_replace('/\d{1,2}:\d{2}/u', ' ', $s);                                                         // times
+        $s = (string) preg_replace('/(?<![\d,])\d{1,2}\s*(?:st|nd|rd|th)?\s*(?:tarik\w*|tarikh\w*|gate|date|' . $months . '|baje|बजे|din|dina|days?|mahina|month\w*|ghanta|hours?|minute\w*|min|seats?|sit|tickets?|tikat|tkt|jana|jan|log|berth|सिट|टिकट|जना|गते|तारिख)(?![\p{L}])/u', ' ', $s);
+        $s = (string) preg_replace('/(?<![\p{L}])(?:' . $months . ')\s*\d{1,2}(?![\d,])/u', ' ', $s);
+        if (preg_match('/(?:rs\.?|₹|inr|rupees?|rupaya|rupaiya|रु\.?)\s*([\d,]{2,9})(?![\d])/u', $s, $m) === 1
+            || preg_match('/(?<![\d,])([\d,]{2,9})\s*(?:rs|₹|rupees?|rupaya|rupaiya|rupaye|रुपैयाँ|रुपये|\/-)/u', $s, $m) === 1) {
+            $v = str_replace(',', '', $m[1]);
+            return ctype_digit($v) && (int) $v > 0 ? (string) (int) $v : '';
+        }
+        // "2,500" is one number; "1800, utr …" is 1800 and a clause comma (round 3)
+        if (preg_match_all('/(?<!\d)(?<!\d,)(\d{1,3}(?:,\d{2,3})+|\d{2,7})(?!\d|,\d)/u', $s, $all) > 0) {
+            foreach ($all[1] as $v) {
+                $v = str_replace(',', '', $v);
+                if ((int) $v >= 10) {
+                    return (string) (int) $v;
+                }
+            }
+        }
+        return '';
+    }
+
+    /** A member named in a sentence: a code (SHG-0024, SHG-S-0006), a mobile, or "<name> ko balance". '' = none. */
+    private static function memberRef(string $text): string
+    {
+        $l = mb_strtolower(self::asciiDigits(trim($text)));
+        if (preg_match('/(?<![a-z\d])(shg[\s-]*(?:[a-z][\s-]*)?\d{1,5})(?![\d-])/u', $l, $m) === 1) {
+            return strtoupper((string) preg_replace('/\s+/', '', $m[1]));
+        }
+        if (preg_match('/(?<!\d)(\+?\d[\d\s-]{8,14}\d)(?!\d)/', $l, $m) === 1 && strlen((string) preg_replace('/\D/', '', $m[1])) >= 10) {
+            return (string) preg_replace('/\D/', '', $m[1]);
+        }
+        $l = trim((string) preg_replace('/[?？!.,;:।]+/u', ' ', $l));
+        if (preg_match('/^\s*(.{2,40}?)\s*(?:ko|ka|ki|को|का|की)\s+(?:balance|balanse|bal|wallet|commission|kamisan|statement|stmt|hisab|khata|passbook|ledger|कमिसन|ब्यालेन्स|बैलेंस)/u', $l, $m) === 1) {
+            return self::nameRef($m[1]);
+        }
+        if (preg_match('/^(?:balance|bal|wallet|commission|statement|stmt|ledger|passbook)\s+([\p{L}][\p{L}\p{M}\s.]{1,40})$/u', $l, $m) === 1) {
+            return self::nameRef($m[1]);
+        }
+        return '';
+    }
+
+    /** "Ramesh agent" → "ramesh", "सुनिलको" → "sunil"; '' for "mero", "bus", "account" … (not a person). */
+    private static function nameRef(string $s): string
+    {
+        $s = trim(mb_strtolower($s));
+        $s = (string) preg_replace('/(को|का|की|ले|लाई)$/u', '', $s);
+        if (preg_match('/\p{Devanagari}/u', $s) === 1) {
+            $s = self::deva2latin($s);
+        }
+        $skip = ['agent', 'agents', 'ejent', 'staff', 'counter', 'sir', 'ji', 'jee', 'dai', 'daju', 'bhai', 'didi', 'saheb', 'sahab', 'ko', 'ka', 'ki',
+            'ma', 'le', 'lai', 'the', 'of', 'k', 'ke', 'kya', 'what', 'is', 'are', 'please', 'plz', 'pls', 'batao', 'dekhau', 'deu', 'dinu', 'dinus',
+            'kati', 'kitna', 'cha', 'chha', 'hai', 'ho', 'bhayo', 'check', 'herna', 'hernu', 'najik', 'nearest', 'hamro', 'hajur', 'yo', 'tyo', 'ani', 'and',
+            // round 3 (owner sim: "maile Ramesh lai 400 pathaye UTR …" looked for a member "maile ramesh"; "approve Ramesh ko …")
+            'maile', 'maine', 'mai', 'main', 'hamile', 'humne', 'hami', 'ham', 'i', 'we', 'approve', 'aprove', 'approved', 'pass', 'paid', 'pay',
+            'sent', 'gave', 'to', 'mr', 'mrs', 'shri', 'ok', 'okay'];
+        $bad = ['mero', 'my', 'mera', 'meri', 'bus', 'gadi', 'gaadi', 'seat', 'ticket', 'tickets', 'pnr', 'office', 'company', 'account', 'bank',
+            'aadhar', 'aadhaar', 'sabai', 'sab', 'all', 'passenger', 'yatri', 'customer', 'driver', 'conductor', 'helper', 'whatsapp', 'mobile',
+            'phone', 'number', 'id', 'card', 'aaja', 'bholi', 'today', 'your', 'tapai', 'tapain', 'apna', 'apka',
+            // round 3: money words and days are never a member's name
+            'cash', 'nagad', 'upi', 'paisa', 'paise', 'payment', 'commission', 'kamisan', 'withdraw', 'withdrawal', 'payout', 'jama', 'jamma',
+            'deposit', 'rs', 'rupaya', 'rupees', 'utr', 'ref', 'txn', 'reference', 'transaction', 'kal', 'parsi', 'hijo', 'tomorrow', 'yesterday',
+            'aajako', 'bholiko', 'mahina', 'month', 'week', 'hapta', 'it', 'this', 'that', 'him', 'her', 'them', 'usko', 'uslai', 'unlai', 'tyaslai'];
+        $words = array_values(array_filter(preg_split('/[^\p{L}\p{M}\d-]+/u', $s) ?: [], static fn(string $w): bool => $w !== '' && !in_array($w, $skip, true) && !(ctype_digit($w) && strlen($w) < 6)));
+        foreach ($words as $w) {
+            if (in_array($w, $bad, true)) {
+                return '';
+            }
+        }
+        return implode(' ', array_slice($words, 0, 3));
+    }
+
+    /** A Devanagari name in Latin letters, close enough to find "Sunil" from "सुनिल". */
+    private static function deva2latin(string $s): string
+    {
+        $cons = ['क' => 'k', 'ख' => 'kh', 'ग' => 'g', 'घ' => 'gh', 'ङ' => 'n', 'च' => 'ch', 'छ' => 'chh', 'ज' => 'j', 'झ' => 'jh', 'ञ' => 'n',
+            'ट' => 't', 'ठ' => 'th', 'ड' => 'd', 'ढ' => 'dh', 'ण' => 'n', 'त' => 't', 'थ' => 'th', 'द' => 'd', 'ध' => 'dh', 'न' => 'n', 'प' => 'p',
+            'फ' => 'ph', 'ब' => 'b', 'भ' => 'bh', 'म' => 'm', 'य' => 'y', 'र' => 'r', 'ल' => 'l', 'व' => 'v', 'श' => 'sh', 'ष' => 'sh', 'स' => 's', 'ह' => 'h'];
+        $vow = ['अ' => 'a', 'आ' => 'aa', 'इ' => 'i', 'ई' => 'i', 'उ' => 'u', 'ऊ' => 'u', 'ए' => 'e', 'ऐ' => 'ai', 'ओ' => 'o', 'औ' => 'au', 'ऋ' => 'ri'];
+        $mat = ['ा' => 'a', 'ि' => 'i', 'ी' => 'i', 'ु' => 'u', 'ू' => 'u', 'े' => 'e', 'ै' => 'ai', 'ो' => 'o', 'ौ' => 'au', 'ृ' => 'ri', 'ं' => 'n', 'ँ' => 'n', 'ः' => 'h'];
+        $ch = mb_str_split($s);
+        $out = '';
+        $n = count($ch);
+        for ($i = 0; $i < $n; $i++) {
+            $c = $ch[$i];
+            if (isset($cons[$c])) {
+                $out .= $cons[$c];
+                $next = $ch[$i + 1] ?? '';
+                if ($next === '्') {
+                    $i++;
+                    continue;
+                }
+                if (isset($mat[$next]) && !in_array($next, ['ं', 'ँ', 'ः'], true)) {
+                    continue;                                         // the vowel sign follows
+                }
+                if ($next !== '' && (isset($cons[$next]) || isset($mat[$next]))) {
+                    $out .= 'a';                                      // the inherent a, not at a word's end
+                }
+                continue;
+            }
+            $out .= $mat[$c] ?? $vow[$c] ?? ($c === '्' ? '' : $c);
+        }
+        return $out;
+    }
+
+    /**
+     * The member a balance / statement asks about, when it is not the sender: the office gets theirs (audited);
+     * anyone else is told it is their own only. null = the sender's own.
+     *
+     * @return array<string, mixed>|null an admins row, or a reply (with 'text')
+     */
+    private static function otherMember(string $text, array $member, array $ctx, string $lang): ?array
+    {
+        $ref = self::memberRef($text);
+        if ($ref === '') {
+            return null;
+        }
+        $hits = self::findMembers($ref);
+        if ($hits === []) {
+            // a name that matches nobody is just words ("balance batao"); a code / number that matches nobody is an answer
+            return preg_match('/\d/', $ref) === 1 ? self::out(self::t('oid_none', $lang, ['q' => mb_substr($ref, 0, 40)])) : null;
+        }
+        if (count($hits) === 1 && (int) $hits[0]['id'] === (int) $member['id']) {
+            return null;
+        }
+        if (!self::isOffice($ctx)) {
+            return self::out(self::t('own_only', $lang));
+        }
+        if (count($hits) > 1) {
+            $lines = [self::t('oid_many', $lang, ['n' => (string) count($hits), 'q' => mb_substr($ref, 0, 40)])];
+            foreach (array_slice($hits, 0, 5) as $i => $r) {
+                $lines[] = ($i + 1) . '. ' . ($r['idNo'] !== '' ? $r['idNo'] . ' · ' : '') . $r['name'] . ' · ' . $r['roleLabel'];
+            }
+            $lines[] = '';
+            $lines[] = self::t('pick_code', $lang);
+            return self::out(implode("\n", $lines));
+        }
+        $row = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => (int) $hits[0]['id']]);
+        if ($row === null) {
+            return self::out(self::t('oid_none', $lang, ['q' => mb_substr($ref, 0, 40)]));
+        }
+        Logger::audit('agentpro.wa_office_wallet', 'admin', (string) $row['id'], null, ['by' => (int) ($ctx['adminId'] ?? 0), 'wa' => (string) ($ctx['phone'] ?? '')],
+            'Office looked at a member\'s wallet on the WhatsApp desk');
+        return $row;
+    }
+
+    /**
+     * Round 3 (31 Oct 2026, owner's rule R3 — safety review #3 + owner sims: "Ramesh ko 5000 jama bhayo UTR …",
+     * "SHG-0039 ko 400 withdraw approve gardeu UTR …", "I paid Ramesh 400, UTR …" from an office number previewed —
+     * and on "ho" FILED — a deposit / withdrawal of the office member's OWN account, with the agent's reference):
+     * WHOSE money a sentence is about decides where it goes, for every member.
+     *   - another member named (a code, "X ko / X le / X lai", "paid X", "withdraw X …"): the office gets that
+     *     member's open request (preview + CONFIRM) or a plain answer; anyone else is told member-to-member money goes
+     *     through the office. Nobody's own account is touched.
+     *   - a passenger's payment ("passenger le UTR … pathayo"): explained (the office verifies it), never filed.
+     *   - nobody named: the office is asked whose payment it is (its own only by the typed "jama … UTR …" /
+     *     "withdraw …"); a member goes on to their own (payIn / withdraw, whose previews name the payer).
+     * Only ever a preview or an answer — the money moves on a later CONFIRM, exactly like "approve 12 UTR…".
+     */
+    private static function moneyRoute(string $text, array $member, array $ctx, string $lang): ?array
+    {
+        $l = mb_strtolower(self::asciiDigits(trim($text)));
+        // the typed commands with a request number (approve 12 …, jama ok 12 …) and PNR lines are read as typed
+        if (preg_match('/^(?:approve|aprove|aproove|approv\w*|apprve|aprv|apporve|wd\s*pay|wd\s*approve|reject|rejct|rejet|rject|reejct|decline|declin|wd\s*reject)\s*#?\d{1,9}(?!\d)/u', $l) === 1
+            || preg_match('/^(?:jama|jamma|जम्मा|deposit|dep)\s*(?:ok|okay|confirm|approve|yes|ho|हो|no|reject|decline|hoina|होइन)\s*#?\d/u', $l) === 1
+            || preg_match('/shg-?\s?\d{4}-?\s?\d{3,6}/u', $l) === 1) {
+            return null;
+        }
+        $has = static fn(string $re): bool => preg_match('/(?<![\p{L}\p{M}])(?:' . $re . ')(?![\p{L}\p{M}])/u', $l) === 1;
+        $toThem = $has('withdraw\w*|payout|approve|aprove|approv\w*|pass|paid|pay|pathaidiye|pathaideko|pathaidiyo|pathaidiye|pathaye|pathaeko|pathayeko|pathayo|transfer\w*|bheja|bhej\s*diya|bhej\s*diye|diye|diyo|dieko|dinu|gave|sent|gardiye|gardiyo|gardie|gardieko|kar\s*diya|kar\s*diye|पठाइदिएँ|पठाएँ|दिएँ')
+            || ($has('nikal\w*|निकाल\w*') && !$has('tickets?|tikat|tiket|tkt|seats?|sit|bus|buses|gadi|gaadi|baje|time|samay|kahile|kab|टिकट|सिट|बस|गाडी|बजे'));
+        $fromThem = $has('jama|jamma|deposit|bujhaye\w*|bujhayo|bujhaeko|aayo|aaeko|aako|milyo|tiryo|tireko|tirisake\w*|जम्मा|आयो|बुझायो');
+        if (!$toThem && !$fromThem) {
+            return null;
+        }
+        require_once __DIR__ . '/wapayproof.php';
+        $utr = WaPayProof::refFrom($text, (string) ($ctx['phone'] ?? ''));
+        $amount = (float) self::amountIn($l, $utr);
+        if ($amount <= 0 && $utr === '' && !$has('paisa|paise|rupees?|rupaya|rs|inr|jama|jamma|deposit|payment|bhuktani|withdraw\w*|payout|commission|kamisan|cash|nagad|upi|bank|neft|imps|rtgs|पैसा|रुपैयाँ|जम्मा|भुक्तानी|नगद')) {
+            return null;
+        }
+        // a sentence about a ticket / seat / form / card / number is no money unless a reference is in it
+        if ($utr === '' && $has('tickets?|tikat|tiket|tkt|seats?|sit|form|forms|farm|card|id|photo|pdf|document|kagaj|aavedan|number|nambar|nmbr|टिकट|सिट|फारम|नम्बर|कार्ड')) {
+            return null;
+        }
+        $office = self::isOffice($ctx);
+        $question = str_contains($l, '?') || self::isQuestion($l) || $has('ki\s+nai|ki\s+hoina|hola|kya');
+        // a passenger's / customer's payment: the office verifies it — never the member's own deposit
+        if ($has('passengers?|pasenger\w*|customers?|costumer\w*|yatri|yatru|grahak|पेसेन्जर|यात्रु|यात्री|ग्राहक')) {
+            return self::out(self::t('pay_pax_note', $lang, ['link' => appUrl('admin/payments.php'), 'phone' => Settings::officePhone()]));
+        }
+        $ref = self::moneyWhoRef($l);
+        $hits = [];
+        // money going TO somebody ("Kamal lai 400 pathaye", "paid X", "approve X") is never a payment to the company
+        $toSomebody = $has('lai|लाई|to|approve|aprove|approv\w*|pass|paid|gave|sent|pathaidiye|pathaideko|pathaidiyo|withdraw\w*|payout');
+        if ($ref !== '') {
+            $found = self::findMembers($ref);
+            $hits = array_values(array_filter($found, static fn(array $h): bool => (int) $h['id'] !== (int) $member['id']));
+            if ($hits === [] && ($found !== [] || (!$office && !$toSomebody))) {
+                // the sender named themselves, or a member wrote about a non-member ("Ram Thapa ko 1500 jama gareko UTR …":
+                // the member's own payment — its preview names the payer)
+                $ref = '';
+            }
+        }
+        if ($ref === '') {
+            if (!$office) {
+                return null;                                          // a member's own payment / withdrawal: payIn / withdraw
+            }
+            if (preg_match('/^(?:jama|jamma|जम्मा|deposit|dep|withdraw\w*|payout|nikal\w*|निकाल\w*)(?![\p{L}\p{M}])/u', $l) === 1) {
+                /* Round 4 (R3 — safety review A6: "jama 900 UTR … (Kamal)", "deposit 900 for Kamal UTR …" and "withdraw
+                   700 for Kamal" from the office were previewed — and on "ho" FILED — on the office member's OWN account):
+                   the office's own typed command is only the bare one ("jama 5000 UTR …", "withdraw 700"). Any other word
+                   in it names somebody: that member's request is used, or the office is asked whose money it is. */
+                $named = self::ownCmdNames($l, $utr);
+                if ($named === null) {
+                    return null;                                      // the bare typed command: the office's own (a preview)
+                }
+                foreach ($named as $w) {
+                    $found = array_values(array_filter(self::findMembers($w), static fn(array $h): bool => (int) $h['id'] !== (int) $member['id']));
+                    if ($found !== []) {
+                        $ref = $w;
+                        $hits = $found;
+                        break;
+                    }
+                }
+                if ($ref === '') {
+                    return self::out(self::t('office_money_whose', $lang));
+                }
+            } elseif ($question) {
+                return null;                                          // a question (canon answers it)
+            } else {
+                return self::out(self::t('office_money_whose', $lang));
+            }
+        }
+        if (!$office) {
+            // member-to-member money ("Kamal lai 400 pathaye utr …"): the office does it — never the sender's own deposit
+            return self::out(self::t('money_via_office', $lang, ['phone' => Settings::officePhone()]));
+        }
+        if ($hits === []) {
+            return self::out(self::t('oid_none', $lang, ['q' => mb_substr($ref, 0, 40)]));
+        }
+        $deposit = $fromThem && !$has('withdraw\w*|payout|approve|aprove|approv\w*|pass|paid|pathaidiye|pathaideko|pathaidiyo|lai|लाई|to')
+            || ($has('le|ne|ले|ने') && $has('pathayo|pathaeko|pathayeko|tiryo|tireko|bheja|diyo|dieko') && !$has('lai|लाई|withdraw\w*|payout|approve|approv\w*|pass'));
+        if ($question) {
+            return self::memberMoneyStatus($hits, $lang);
+        }
+        return self::officeMoneyFor($hits, $deposit, $amount, $utr, $ref, $ctx, $lang);
+    }
+
+    /**
+     * Round 4 (R3, review A6): the words of an office's typed "jama … / deposit … / withdraw …" that are not the bare
+     * command's own (amount, UTR, pay mode, "mero", "gareko" …). null = none (the office's own command); else the words
+     * that may name a member, in order (connectors like "for", "ko", "lai" left out — they only show somebody was named).
+     *
+     * @return list<string>|null
+     */
+    private static function ownCmdNames(string $l, string $utr): ?array
+    {
+        static $own = ['jama', 'jamma', 'jammaa', 'deposit', 'dep', 'withdraw', 'withdrawal', 'withdrawl', 'payout', 'nikal', 'nikalnu', 'nikalne', 'nikaldo',
+            'nikaldeu', 'nikalidinu', 'rs', 'inr', 'rupees', 'rupee', 'rupaya', 'rupaiya', 'utr', 'ref', 'refno', 'reference', 'txn', 'txnid', 'transaction',
+            'id', 'no', 'number', 'num', 'cash', 'nagad', 'upi', 'bank', 'neft', 'imps', 'rtgs', 'online', 'gpay', 'phonepe', 'paytm', 'esewa', 'khalti',
+            'ma', 'bata', 'through', 'via', 'by', 'mero', 'my', 'own', 'maile', 'i', 'ho', 'ok', 'okay', 'please', 'plz', 'pls', 'gare', 'gareko', 'garyo',
+            'garchu', 'garnu', 'gardeu', 'gardinu', 'garidinu', 'garidinus', 'kiya', 'kar', 'karo', 'diya', 'done', 'security', 'handover', 'bujhaye',
+            'bujhaeko', 'chu', 'chhu', 'cha', 'chha', 'hai', 'request', 'amount', 'commission', 'kamisan', 'paisa', 'paise', 'payment', 'tireko', 'tiryo',
+            'pathaye', 'pathaeko', 'sent', 'paid', 'transfer', 'transferred', 'today', 'aaja', 'aaj', 'hijo', 'yesterday', 'account', 'ac', 'wallet',
+            'from', 'मेरो', 'जम्मा', 'निकाल', 'रु', 'बैंक', 'नगद', 'गरेको', 'गरें'];
+        static $link = ['for', 'of', 'to', 'ko', 'ka', 'ki', 'le', 'ne', 'lai', 'ke', 'liye', 'lagi', 'the', 'a', 'an', 'and', 'ra', 'ani', 'को', 'ले', 'लाई'];
+        $s = $utr !== '' ? str_ireplace(mb_strtolower($utr), ' ', $l) : $l;
+        $words = preg_split('/[^\p{L}\p{M}]+/u', $s, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $extra = array_values(array_filter($words, static fn(string $w): bool => !in_array($w, $own, true) && !(str_starts_with($w, 'withdraw') || str_starts_with($w, 'nikal'))));
+        if ($extra === []) {
+            return null;
+        }
+        return array_values(array_filter($extra, static fn(string $w): bool => !in_array($w, $link, true) && mb_strlen($w) >= 3));
+    }
+
+    /** The other member a money sentence names: a code, "X ko / le / lai / ne", "paid X", "withdraw X …". '' = nobody. */
+    private static function moneyWhoRef(string $l): string
+    {
+        if (preg_match('/(?<![a-z\d])(shg[\s-]*(?:[a-z][\s-]*)?\d{1,5})(?![\d-])/u', $l, $m) === 1) {
+            return strtoupper((string) preg_replace('/\s+/', '', $m[1]));
+        }
+        $l = trim((string) preg_replace('/[?？!.,;:।"\'()]+/u', ' ', $l));
+        if (preg_match_all('/((?:\p{L}[\p{L}\p{M}.]*\s+){0,2}\p{L}[\p{L}\p{M}.]*)\s+(?:ko|ka|ki|le|ne|lai|को|का|की|ले|ने|लाई)(?![\p{L}\p{M}])/u', $l, $all) > 0) {
+            foreach ($all[1] as $cand) {
+                $who = self::nameRef($cand);
+                if ($who !== '' && mb_strlen($who) >= 3) {
+                    return $who;
+                }
+            }
+        }
+        if (preg_match('/(\p{Devanagari}{2,}?)(?:को|ले|लाई)(?![\p{L}\p{M}])/u', $l, $m) === 1) {
+            $who = self::nameRef($m[1]);
+            if ($who !== '' && mb_strlen($who) >= 3) {
+                return $who;
+            }
+        }
+        if (preg_match('/(?<![\p{L}\p{M}])(?:paid|pay|sent|send|gave|transferred|transfer)\s+(?:rs\.?\s*|₹\s*|inr\s*)?(?:\d[\d,]*\s+)?(?:to\s+)?(\p{L}[\p{L}.]*(?:\s+\p{L}[\p{L}.]*)?)/u', $l, $m) === 1
+            || preg_match('/(?<![\p{L}\p{M}])to\s+(\p{L}[\p{L}.]*(?:\s+\p{L}[\p{L}.]*)?)/u', $l, $m) === 1) {
+            $who = self::nameRef($m[1]);
+            if ($who !== '' && mb_strlen($who) >= 3) {
+                return $who;
+            }
+        }
+        // "withdraw Ramesh 400", "approve Ramesh" — a word after the command counts only when it IS a member
+        if (preg_match('/^(?:withdraw\w*|payout|jama|jamma|deposit|nikal\w*|approve|aprove|approv\w*)\s+(\p{L}[\p{L}.]*(?:\s+\p{L}[\p{L}.]*)?)/u', $l, $m) === 1) {
+            $who = self::nameRef($m[1]);
+            if ($who !== '' && mb_strlen($who) >= 3 && self::findMembers($who) !== []) {
+                return $who;
+            }
+        }
+        return '';
+    }
+
+    /** "Ramesh ko cash diyo?" / "Ramesh ko jama aayo?": that member's open payments and withdrawals — nothing changes. */
+    private static function memberMoneyStatus(array $hits, string $lang): array
+    {
+        $lines = [];
+        foreach (array_slice($hits, 0, 3) as $h) {
+            $aid = (int) $h['id'];
+            $deps = AgentPro::openDeposits($aid);
+            $wds = AgentWallet::openPayoutRequests($aid);
+            $bits = [];
+            foreach (array_slice($deps, 0, 3) as $d) {
+                $bits[] = '💵 #' . (int) $d['id'] . ' ' . inr((float) $d['amount']) . ((string) ($d['utr'] ?? '') !== '' ? ' (UTR …' . substr((string) $d['utr'], -4) . ')' : '');
+            }
+            foreach (array_slice($wds, 0, 3) as $w) {
+                $bits[] = '💸 #' . (int) $w['id'] . ' ' . inr((float) $w['amount']);
+            }
+            $lines[] = '👤 ' . (string) $h['name'] . ((string) $h['idNo'] !== '' ? ' (' . $h['idNo'] . ')' : '') . ': '
+                . ($bits !== [] ? implode(' · ', $bits) : self::t('adm_member_nothing', $lang));
+        }
+        return self::out(implode("\n", $lines) . "\n\n" . self::t('adm_member_money_tail', $lang));
+    }
+
+    /** The office acting on one named member's open payment (deposit) or withdrawal (payout): a preview or an answer. */
+    private static function officeMoneyFor(array $hits, bool $deposit, float $amount, string $utr, string $name, array $ctx, string $lang): array
+    {
+        if (count($hits) > 1) {
+            // two "Ramesh"es: the one with an open payment / withdrawal (of that amount) is meant
+            $openOf = static fn(array $h): array => $deposit ? AgentPro::openDeposits((int) $h['id']) : AgentWallet::openPayoutRequests((int) $h['id']);
+            $open = array_values(array_filter($hits, static function (array $h) use ($openOf, $amount): bool {
+                foreach ($openOf($h) as $r) {
+                    if ($amount <= 0 || abs((float) $r['amount'] - $amount) < 0.01) {
+                        return true;
+                    }
+                }
+                return false;
+            }));
+            if ($open === [] && $amount > 0) {
+                // owner sim: a wrong amount made it "none of them has a request" while one Ramesh had one — any open one counts
+                $open = array_values(array_filter($hits, static fn(array $h): bool => $openOf($h) !== []));
+            }
+            if ($open === []) {
+                $list = implode(', ', array_map(static fn(array $h): string => (string) $h['name'] . ((string) $h['idNo'] !== '' ? ' (' . $h['idNo'] . ')' : ''), array_slice($hits, 0, 5)));
+                return self::out(self::t($deposit ? 'adm_dep_none_many' : 'adm_wd_none_many', $lang, ['list' => $list, 'v' => $amount > 0 ? inr($amount) : '']));
+            }
+            $hits = $open;
+        }
+        if (count($hits) > 1) {
+            $lines = [self::t('oid_many', $lang, ['n' => (string) count($hits), 'q' => mb_substr($name, 0, 40)])];
+            foreach (array_slice($hits, 0, 5) as $i => $r) {
+                $lines[] = ($i + 1) . '. ' . ($r['idNo'] !== '' ? $r['idNo'] . ' · ' : '') . $r['name'];
+            }
+            return self::out(implode("\n", $lines) . "\n\n" . self::t($deposit ? 'adm_dep_tail' : 'adm_wd_tail', $lang, ['link' => appUrl('admin/team.php?tab=money')]));
+        }
+        $aid = (int) $hits[0]['id'];
+        $who = ['name' => (string) $hits[0]['name'], 'code' => self::codeOf($aid)];
+        if ($deposit) {
+            $open = AgentPro::openDeposits($aid);
+            $fit = $utr !== '' ? array_values(array_filter($open, static fn(array $d): bool => self::refKey((string) ($d['utr'] ?? '')) === self::refKey($utr))) : [];
+            if ($fit === []) {
+                $fit = $amount > 0 ? array_values(array_filter($open, static fn(array $d): bool => abs((float) $d['amount'] - $amount) < 0.01)) : $open;
+            }
+            if (count($fit) !== 1) {
+                return self::out(self::t($fit === [] ? 'adm_dep_none_for' : 'adm_dep_tail', $lang, $who + ['v' => $amount > 0 ? inr($amount) : '', 'link' => appUrl('admin/team.php?tab=money')]));
+            }
+            return self::adminDepositPreview((int) $fit[0]['id'], 'confirmed', '', $ctx, $lang);
+        }
+        $open = AgentWallet::openPayoutRequests($aid);
+        if ($open === []) {
+            return self::out(self::t('adm_wd_none_for', $lang, $who));
+        }
+        $req = $open[0];
+        if ($amount > 0 && abs((float) $req['amount'] - $amount) > 0.009) {
+            return self::out(self::t('adm_wd_amount_differs', $lang, ['id' => (string) (int) $req['id'], 'v' => inr((float) $req['amount']), 'asked' => inr($amount)]));
+        }
+        if ($utr === '') {
+            return self::out(self::t('adm_wd_needref', $lang, ['id' => (string) (int) $req['id']]));
+        }
+        return self::adminPayPreview((int) $req['id'], $utr, $ctx, $lang);
+    }
+
+    /** A timetable / free-seat / bus question from a member: the local brain answers it the way it answers the office. */
+    private static function localAnswer(string $text, array $ctx): ?array
+    {
+        try {
+            require_once __DIR__ . '/walocal.php';
+            /* Round 4 (31 Oct 2026, owner's rule R5 — safety review B1: a counter that is not OTP-linked sent "khali seat
+               kati cha bholi SHG-0043" and got that agent's personal mobile and home address; "… ani Qwzxbik agent ko
+               number pani" another agent's, matched on a town word — around the desk's own directory lock): from the
+               desk the local brain answers ONLY the free-seat / timetable question, and with the office's view only for
+               the OTP-linked office. Everything else in such a line goes to the desk's own (locked) commands. */
+            $officeView = self::isOffice($ctx);
+            $who = ['role' => $officeView ? 'admin' : (in_array((string) $ctx['role'], ['staff', 'admin'], true) ? 'staff' : 'customer'),
+                    'adminId' => (int) ($ctx['adminId'] ?? 0), 'scopeAdminId' => $ctx['scopeAdminId'] ?? null, 'name' => (string) ($ctx['name'] ?? ''),
+                    'phone' => (string) ($ctx['phone'] ?? ''), 'intl' => '', 'admin' => $ctx['admin'] ?? null,
+                    'intents' => ['seats_left', 'timetable']];
+            $r = WaLocal::answer('+91' . (string) ($ctx['phone'] ?? ''), $text, $who);
+            return $r !== null ? self::out((string) $r['text'], $r['media'] ?? null) : null;
+        } catch (Throwable $e) {
+            Logger::warning('WaLocal from the desk failed: ' . $e->getMessage(), [], 'whatsapp');
+            return null;
+        }
+    }
+
+    /** "SBI 30123456789 IFSC SBIN0001234" → "SBI …6789" — owner: nobody's bank / UPI numbers on WhatsApp. */
+    public static function maskAccount(string $s): string
+    {
+        $s = (string) preg_replace('/\bIFSC\s*[:#-]?\s*[A-Z]{4}0[A-Z0-9]{6}\b/i', '', $s);
+        $s = (string) preg_replace('/\b[A-Z]{4}0[A-Z0-9]{6}\b/', '', $s);
+        $s = (string) preg_replace_callback('/\d[\d\s-]{3,}\d/', static fn(array $m): string => '…' . substr((string) preg_replace('/\D/', '', $m[0]), -4), $s);
+        $s = (string) preg_replace_callback('/\b([a-z0-9._-]{1,2})[a-z0-9._-]*@([a-z0-9.-]+)\b/i', static fn(array $m): string => $m[1] . '…@' . $m[2], $s);
+        return trim((string) preg_replace('/\s{2,}/', ' ', $s));
     }
 
     /* ---------------- help ---------------- */
@@ -856,7 +1735,7 @@ final class ApWa
         foreach (array_slice($rows, 0, 20) as $r) {
             $aid = (int) $r['agent_admin_id'];
             $p = AgentWallet::profile($aid);
-            $to = trim((string) ($p['payout_method'] ?? '') . ' ' . (string) ($p['payout_account'] ?? ''));
+            $to = self::maskAccount(trim((string) ($p['payout_method'] ?? '') . ' ' . (string) ($p['payout_account'] ?? '')));   // 31 Oct 2026: never the full account
             $code = self::codeOf($aid);
             $lines[] = '💸 #' . (int) $r['id'] . ' · ' . ((string) ($r['agent_name'] ?? '') !== '' ? (string) $r['agent_name'] : 'member #' . $aid)
                 . ($code !== '' ? ' (' . $code . ')' : '') . ' · *' . inr((float) $r['amount']) . '*'
@@ -880,8 +1759,23 @@ final class ApWa
             return self::out(self::t('adm_wd_notopen', $lang, ['id' => (string) $id, 's' => strtoupper((string) ($req['status'] ?? '—'))]));
         }
         // "UTR430987651234" stays as typed; only a spelled-out label ("utr: 4309…", "ref 4309…") is dropped.
-        $ref = (string) preg_replace('/^(?:ref|utr|txn|rrn)\.?(?:\s*[:#-]\s*|\s+)(?=\S)/i', '', trim($ref));
+        $typed = trim($ref);
+        $ref = (string) preg_replace('/^(?:ref|utr|txn|rrn)\.?(?:\s*[:#-]\s*|\s+)(?=\S)/i', '', $typed);
+        /* 31 Oct 2026 (owner sim: "approve 176 UTR998877665544 confirm" became the ref "UTR998877665544confirm", which
+           payoutRefUsed() would not have matched to the same transfer): the reference is the first word only. */
+        $ref = (string) (preg_split('/\s+/u', trim($ref))[0] ?? '');
         $ref = trim((string) preg_replace('/[^A-Za-z0-9\/\-_.]/', '', $ref));
+        /* Round 3 (owner sim: "approve 298 utr number 5802…" / "reference 5802…" / "transaction id 5802…" / "payment UTR
+           5802…" / "UTR no 5802…" stored the WORD "number" / "reference" … as the payout reference, and the next payout
+           was refused as a duplicate): a first word with no digits is a label — the digits come from the same reader the
+           sentences use (WaPayProof::refFrom). */
+        if (preg_match('/\d{4,}/', $ref) !== 1) {
+            require_once __DIR__ . '/wapayproof.php';
+            $ref = WaPayProof::refFrom($typed, (string) ($ctx['phone'] ?? ''));
+            if ($ref === '' && preg_match('/(?<!\d)(\d{10,22})(?!\d)/', self::asciiDigits($typed), $dm) === 1 && !WaPayProof::phoneLike($dm[1])) {
+                $ref = $dm[1];                                       // "approve 12 payment 5802…" — the one long number
+            }
+        }
         if (mb_strlen($ref) < 5 || mb_strlen($ref) > 60) {
             return self::out(self::t('adm_wd_needref', $lang, ['id' => (string) $id]));
         }
@@ -890,7 +1784,7 @@ final class ApWa
         }
         $aid = (int) $req['agent_admin_id'];
         $p = AgentWallet::profile($aid);
-        $to = trim((string) ($p['payout_method'] ?? '') . ' ' . (string) ($p['payout_account'] ?? ''));
+        $to = self::maskAccount(trim((string) ($p['payout_method'] ?? '') . ' ' . (string) ($p['payout_account'] ?? '')));
         self::setPending($ctx['phone'], 'wd_pay', ['id' => $id, 'ref' => $ref, 'amount' => (float) $req['amount'], 'agent' => $aid]);
         return self::out(self::t('adm_pay_confirm', $lang, ['id' => (string) $id, 'name' => (string) $req['agent_name'], 'code' => self::codeOf($aid),
             'v' => inr((float) $req['amount']), 'to' => $to !== '' ? $to : '—', 'ref' => $ref]));
@@ -956,8 +1850,11 @@ final class ApWa
         $voucher = AgentWallet::voucherFor($lid);
         Logger::audit('agentpro.wa_payout_paid', 'admin', (string) $aid, ['request' => $id, 'status' => 'open'],
             ['request' => $id, 'ledger' => $lid, 'ref' => $ref, 'by' => $by, 'wa' => $ctx['phone']], 'Withdrawal paid from the WhatsApp desk');
-        AgentPro::tellMember($aid, '💸 ' . inr((float) $p['amount']) . ' पठाइयो / paid to you. Ref ' . $voucher . ' · ' . $ref);
-        $text = self::t('adm_paid', $lang, ['id' => (string) $id, 'v' => inr((float) $p['amount']), 'voucher' => $voucher, 'ref' => $ref]);
+        $told = self::tellMemberSent($aid, '💸 ' . inr((float) $p['amount']) . ' पठाइयो / paid to you. Ref ' . $ref
+            . ($voucher !== '' && self::refKey($voucher) !== self::refKey($ref) ? ' · ' . $voucher : ''));
+        $text = self::t('adm_paid', $lang, ['id' => (string) $id, 'v' => inr((float) $p['amount']),
+            'voucher' => $voucher !== '' && self::refKey($voucher) !== self::refKey($ref) ? $voucher . ' · ' : '', 'ref' => $ref,
+            'told' => self::t($told ? 'told_yes' : 'told_no', $lang)]);
         self::markDone($ctx['phone'], 'wd_pay', $text);
         return self::out($text);
     }
@@ -978,6 +1875,29 @@ final class ApWa
         $text = self::t('adm_rejected', $lang, ['id' => (string) $id]);
         self::markDone($ctx['phone'], 'wd_decline', $text);
         return self::out($text);
+    }
+
+    /** AgentPro::tellMember(), and whether WhatsApp actually took the message (message_logs 'sent'). */
+    private static function tellMemberSent(int $adminId, string $text): bool
+    {
+        $before = (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM message_logs', [], 0);
+        AgentPro::tellMember($adminId, $text);
+        return self::sentSince($before, (string) (AgentPro::member($adminId, false)['phone'] ?? ''));
+    }
+
+    /** Did a WhatsApp message to this number go out (status sent) after message_logs row $before? */
+    private static function sentSince(int $before, string $phone): bool
+    {
+        $d = normalisePhone($phone);
+        if ($d === '') {
+            return false;
+        }
+        try {
+            return Database::exists("SELECT 1 FROM message_logs WHERE id > :i AND channel = 'whatsapp' AND status = 'sent' AND to_number LIKE :p LIMIT 1",
+                ['i' => $before, 'p' => '%' . $d]);
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 
     /** A bank reference without its spelling: "UTR 4309-8765", "utr43098765" and "43098765" are one payment. */
@@ -1120,10 +2040,11 @@ final class ApWa
         Logger::audit('agentpro.wa_deposit_' . $decision, 'admin', (string) $aid, ['request' => $id, 'status' => 'open'],
             ['request' => $id, 'status' => $decision, 'amount' => (float) $row['amount'], 'ledger' => $row['_ledger'], 'note' => $note, 'by' => $by, 'wa' => $ctx['phone']],
             'Payment ' . $decision . ' from the WhatsApp desk');
-        AgentPro::tellMember($aid, $decision === 'confirmed'
+        $told = self::tellMemberSent($aid, $decision === 'confirmed'
             ? '✅ ' . inr((float) $row['amount']) . ' प्राप्त भयो, धन्यवाद। / received, thank you.' . (!empty($row['utr']) ? ' Ref ' . $row['utr'] : '')
             : '⚠️ ' . inr((float) $row['amount']) . ' भुक्तानी भेटिएन / not matched: ' . $note);
-        $text = self::t($decision === 'confirmed' ? 'adm_dep_done' : 'adm_dep_declined', $lang, ['id' => (string) $id, 'v' => inr((float) $row['amount'])]);
+        $text = self::t($decision === 'confirmed' ? 'adm_dep_done' : 'adm_dep_declined', $lang, ['id' => (string) $id, 'v' => inr((float) $row['amount']),
+            'told' => self::t($told ? 'told_yes' : 'told_no', $lang)]);
         self::markDone($ctx['phone'], 'dep_' . $decision, $text);
         return self::out($text);
     }
@@ -1167,6 +2088,11 @@ final class ApWa
         $reg = normalisePhone((string) $member['phone']);
         $mask = $reg !== '' ? str_repeat('•', max(0, strlen($reg) - 4)) . substr($reg, -4) : '—';
         $me = appUrl('me/');
+        if (Auth::oneDoorOn()) {
+            // 30 Oct 2026 (owner: "login sabai ko lagi eutai"): one sign-in page for every role
+            return self::out(self::t('portal_one', $lang, ['url' => appUrl('admin/login.php'), 'me' => $me,
+                'id' => $code !== '' ? $code : (string) $member['username'], 'mob' => $mask]));
+        }
         if ($code !== '' && (string) $member['role'] === 'agent') {
             return self::out(self::t('portal_agent', $lang, ['me' => $me, 'code' => $code, 'mob' => $mask]));
         }
@@ -1181,7 +2107,7 @@ final class ApWa
         if ($ctx['role'] === 'member' || !in_array((string) $member['role'], self::SELLERS, true) || !Settings::getBool('ap_wa_sell', true)) {
             return self::out(self::t('no_permission', $lang));
         }
-        $b = array_intersect_key($seed, array_flip(['direction', 'date', 'boarding', 'seats', 'name', 'phone', 'country', 'names', 'gender', 'pay']));
+        $b = array_intersect_key($seed, array_flip(['direction', 'date', 'boarding', 'seats', 'name', 'phone', 'country', 'names', 'gender', 'pay', 'agentCode']));
         return self::bookNext($b, $member, $ctx, $lang, '');
     }
 
@@ -1234,7 +2160,8 @@ final class ApWa
             empty($b['date'])                               => 'date',
             empty($b['boarding'])                           => 'pickup',
             (int) ($b['seats'] ?? 0) <= 0                   => 'seats',
-            mb_strlen(trim((string) ($b['name'] ?? ''))) < 2 || (string) ($b['phone'] ?? '') === '' => 'who',
+            mb_strlen(trim((string) ($b['name'] ?? ''))) < 2
+                || ((string) ($b['phone'] ?? '') === '' && !Settings::getBool('ap_wa_sale_seller_phone', true)) => 'who',
             default => 'quote',
         };
         if ($step === 'quote') {
@@ -1242,7 +2169,7 @@ final class ApWa
                 'name' => (string) $b['name'], 'phone' => (string) $b['phone'], 'country' => (string) ($b['country'] ?? ''),
                 'seats' => (int) $b['seats'], 'date' => (string) $b['date'], 'direction' => (string) ($b['direction'] ?? ''),
                 'boarding' => (string) $b['boarding'], 'gender' => (string) ($b['gender'] ?? ''), 'pay' => (string) ($b['pay'] ?? ''),
-                'names' => (array) ($b['names'] ?? []),
+                'names' => (array) ($b['names'] ?? []), 'agentCode' => (string) ($b['agentCode'] ?? ''),
             ];
             $r = self::saleQuote($sale, $member, $ctx, $lang);
             if (str_starts_with((string) $r['text'], '⚠️')) {
@@ -1292,6 +2219,7 @@ final class ApWa
         if (!empty($b['boarding'])) { $bits[] = '📍 ' . $b['boarding']; }
         if ((int) ($b['seats'] ?? 0) > 0) { $bits[] = '💺 ' . (int) $b['seats']; }
         if (!empty($b['name'])) { $bits[] = '👤 ' . $b['name'] . (!empty($b['phone']) ? ' ' . $b['phone'] : ''); }
+        if (!empty($b['agentCode'])) { $bits[] = '🤝 ' . $b['agentCode']; }
         return $bits !== [] ? '🎫 ' . implode(' · ', $bits) : '';
     }
 
@@ -1303,10 +2231,24 @@ final class ApWa
         $opts = array_values((array) ($pending['opts'] ?? []));
         $l = mb_strtolower(trim($text));
         // A command in the middle (help, balance, a PNR …) leaves the booking and runs the command.
+        require_once __DIR__ . '/wapayproof.php';
         if (preg_match('/^(help|menu|madat|मद्दत|reset|naya|नयाँ|balance|statement|bus|office|tickets|portal|admin)$/u', $l) === 1
-            || preg_match('/\bSHG-[A-Z0-9]+-/i', $text) === 1) {
+            || preg_match('/\bSHG-[A-Z0-9]+-/i', $text) === 1
+            || WaPayProof::payTalk($text)) {                       // round 3 (R2): a payment line is never a booking answer
             self::clearPending($ctx['phone']);
             return null;
+        }
+        /* 31 Oct 2026 (counter sim: "company ko 1 seat bholi Surat, Hari 98…" typed while the questions of an
+           earlier "SHG-0042 ko lagi 2 ticket" were open was merged into THAT booking — credited to SHG-0042, for a
+           passenger "Company Hari Prasad"): a whole new sale line (seats and a day or pickup) starts afresh. */
+        if (!in_array($step, ['seats'], true) && preg_match('/^\d{1,2}$/', trim(self::asciiDigits($text))) !== 1) {
+            require_once __DIR__ . '/ticketbot.php';
+            $fresh = TicketBot::parse($text);
+            if ((int) $fresh['seats'] > 0 && ((string) $fresh['date'] !== '' || (string) $fresh['boarding'] !== '')
+                && ((string) $fresh['phone'] !== '' || (string) $fresh['name'] !== '' || preg_match('/(?<![a-z\d])shg[\s-]*\d{1,4}(?![\d-])|company|office/iu', $text) === 1)) {
+                self::clearPending($ctx['phone']);
+                return null;
+            }
         }
         // "ok" / "ho" / "CONFIRM" answers no question (never a passenger called "ok"): the same question again.
         if (preg_match(self::YES, $text) === 1) {
@@ -1372,13 +2314,20 @@ final class ApWa
                 $b['country'] = (string) $p['country'];
                 $got = true;
             }
-            if ($step === 'who' && empty($b['names'])) {
-                $nm = (string) $p['name'];
-                if ($nm === '') {
+            // 31 Oct 2026 (counter sim: "Surat bata, Ram Thapa 98…" at the route question dropped the name): a name
+            // beside a mobile number is the passenger, whatever was asked
+            if (($step === 'who' || (string) $p['phone'] !== '') && empty($b['names'])) {
+                $nm = self::cleanName((string) $p['name']);
+                if ($nm === '' && $step === 'who') {
                     $bare = trim((string) preg_replace('/\+?\d[\d\s-]{6,}\d/', ' ', $text));
                     if (preg_match('/^\p{L}[\p{L}\p{M} .]{1,60}$/u', $bare) === 1 && preg_match(self::YES, $bare) !== 1 && preg_match(self::NO, $bare) !== 1) {
                         $nm = $bare;
                     }
+                }
+                // round 3: the one name rule (never a pause / payment / chat word)
+                require_once __DIR__ . '/personname.php';
+                if ($nm !== '' && (PersonName::clean($nm) === '' || self::cleanName($nm) !== $nm)) {
+                    $nm = '';
                 }
                 if (mb_strlen($nm) >= 2) {
                     $b['name'] = Security::clean($nm, 120);
@@ -1492,16 +2441,18 @@ final class ApWa
 
     /* ---------------- money ---------------- */
 
-    private static function balance(array $member, string $lang): array
+    /** $forOffice: the office looking at SOMEONE ELSE's wallet — third person, and the office's own next steps (round 2). */
+    private static function balance(array $member, string $lang, bool $forOffice = false): array
     {
         $id = (int) $member['id'];
         $b = AgentWallet::balances($id);
         $s = AgentWallet::summary($id);
         $open = AgentWallet::openPayoutRequests($id);
         $dep = AgentPro::openDeposits($id);
-        $lines = [self::t('bal_head', $lang, ['name' => (string) $member['full_name'], 'code' => self::codeOf($id)])];
-        $lines[] = self::t('bal_commission', $lang, ['v' => inr($b['commission'])]);
-        $lines[] = self::t('bal_cash', $lang, ['v' => inr($b['cash'])]);
+        $who = ['name' => (string) $member['full_name'], 'code' => self::codeOf($id)];
+        $lines = [self::t('bal_head', $lang, $who)];
+        $lines[] = self::t($forOffice ? 'bal_commission_o' : 'bal_commission', $lang, $who + ['v' => inr($b['commission'])]);
+        $lines[] = self::t($forOffice ? 'bal_cash_o' : 'bal_cash', $lang, $who + ['v' => inr($b['cash'])]);
         $lines[] = self::t('bal_month', $lang, ['v' => inr($s['earnedMonth'])]);
         if ($open !== []) {
             $lines[] = self::t('bal_open', $lang, ['v' => inr((float) $open[0]['amount']), 'd' => formatDate(substr((string) $open[0]['created_at'], 0, 10), 'j M')]);
@@ -1510,11 +2461,11 @@ final class ApWa
             $lines[] = self::t('bal_dep', $lang, ['n' => (string) count($dep), 'v' => inr(array_sum(array_map(static fn($d) => (float) $d['amount'], $dep)))]);
         }
         $lines[] = '';
-        $lines[] = self::t('bal_tail', $lang);
+        $lines[] = self::t($forOffice ? 'bal_tail_o' : 'bal_tail', $lang, $who);
         return self::out(implode("\n", $lines));
     }
 
-    private static function statement(array $member, string $lang, int $days): array
+    private static function statement(array $member, string $lang, int $days, bool $forOffice = false): array
     {
         $id = (int) $member['id'];
         $days = $days > 0 ? min(366, $days) : 30;
@@ -1523,6 +2474,9 @@ final class ApWa
         $rows = AgentWallet::entriesBetween($id, $from, $to);
         $lines = [self::t('stmt_head', $lang, ['days' => (string) $days, 'name' => (string) $member['full_name']])];
         $labels = self::entryLabels($lang);
+        if ($forOffice) {
+            $labels['payout'] = ['en' => 'paid out', 'hi' => 'भुगतान किया', 'ne' => 'भुक्तानी गरियो'][$lang] ?? 'भुक्तानी गरियो';
+        }
         foreach (array_slice(array_reverse($rows), 0, 12) as $r) {
             $amt = (float) $r['amount'];
             $acct = (string) $r['account'];
@@ -1535,9 +2489,10 @@ final class ApWa
             $lines[] = self::t('stmt_empty', $lang);
         }
         $b = AgentWallet::balances($id);
+        $who = ['name' => (string) $member['full_name'], 'code' => self::codeOf($id)];
         $lines[] = '';
-        $lines[] = self::t('bal_commission', $lang, ['v' => inr($b['commission'])]);
-        $lines[] = self::t('bal_cash', $lang, ['v' => inr($b['cash'])]);
+        $lines[] = self::t($forOffice ? 'bal_commission_o' : 'bal_commission', $lang, $who + ['v' => inr($b['commission'])]);
+        $lines[] = self::t($forOffice ? 'bal_cash_o' : 'bal_cash', $lang, $who + ['v' => inr($b['cash'])]);
         try {
             require_once __DIR__ . '/statement.php';
             require_once __DIR__ . '/reportpdf.php';
@@ -1583,38 +2538,55 @@ final class ApWa
             return self::out(self::t('wd_open', $lang));
         }
         $p = AgentWallet::profile($id);
-        $to = trim((string) ($p['payout_method'] ?? '') . ' ' . (string) ($p['payout_account'] ?? ''));
+        $to = self::maskAccount(trim((string) ($p['payout_method'] ?? '') . ' ' . (string) ($p['payout_account'] ?? '')));
         self::setPending($ctx['phone'], 'withdraw', ['amount' => $amount]);
-        return self::out(self::t('wd_confirm', $lang, ['v' => inr($amount), 'to' => $to !== '' ? $to : self::t('wd_to_office', $lang)]));
+        return self::out(self::t('wd_confirm', $lang, ['v' => inr($amount), 'to' => $to !== '' ? $to : self::t('wd_to_office', $lang), 'who' => self::payerLabel($member)]));
     }
 
-    private static function payIn(array $member, string $text, string $lang): array
+    /** "Bikash Agent (SHG-0005)": whose wallet a money preview is for (owner's rule R3 — the preview always names them). */
+    private static function payerLabel(array $member): string
+    {
+        $name = trim((string) ($member['full_name'] ?? ''));
+        $code = self::codeOf((int) $member['id']);
+        return $name . ($code !== '' && $code !== '—' && mb_strtolower($code) !== mb_strtolower($name) ? ' (' . $code . ')' : '');
+    }
+
+    /**
+     * "jama 1500 UTR 4309…" — round 2 (31 Oct 2026, safety review: a sentence filed a deposit at once, with a
+     * passenger's mobile as the UTR and "26 Oct" as ₹26): only a PREVIEW here; the request is filed on a later
+     * "ho" (confirm() 'deposit'). The reference must be explicit (WaPayProof::refFrom), the amount is read with
+     * amountIn(). No reference: how to pay (or, for cash handed over, that the office confirms it).
+     */
+    private static function payIn(array $member, string $text, string $lang, array $ctx = []): array
     {
         $id = (int) $member['id'];
-        require_once __DIR__ . '/agentpro-docs.php';
-        $t = ApDocRead::asciiDigits($text);
-        $utr = preg_match('/\b(?:utr|ref|txn|reference|रेफ)\s*[:#-]?\s*([A-Za-z0-9-]{6,30})/iu', $t, $m) === 1 ? $m[1]
-             : (preg_match('/\b(\d{10,22})\b/', $t, $m2) === 1 ? $m2[1] : '');
-        $amount = 0.0;
-        $tNoUtr = $utr !== '' ? str_replace($utr, ' ', $t) : $t;
-        if (preg_match('/(?:rs\.?|₹|inr)?\s*([\d,]{2,8}(?:\.\d{1,2})?)/iu', $tNoUtr, $m3) === 1) {
-            $amount = (float) str_replace(',', '', $m3[1]);
-        }
+        require_once __DIR__ . '/wapayproof.php';
+        $t = self::asciiDigits($text);
+        $utr = WaPayProof::refFrom($t, (string) ($ctx['phone'] ?? ''));
+        $amount = (float) self::amountIn(mb_strtolower($t), $utr);
         $held = AgentWallet::balances($id)['cash'];
         if ($amount > 0 && $utr !== '') {
-            try {
-                $rid = AgentPro::requestDeposit($id, $amount, $amount > $held + 0.009 ? 'security' : 'handover', 'upi', $utr, null, 'WhatsApp');
-            } catch (RuntimeException $e) {
-                return self::out('⚠️ ' . $e->getMessage());
+            if (Database::exists("SELECT 1 FROM ap_deposit_requests WHERE utr = :u AND status <> 'declined'", ['u' => $utr])) {
+                return self::out(self::t('pay_ref_used', $lang, ['utr' => $utr]));
             }
-            try {
-                require_once __DIR__ . '/notify.php';
-                Notify::adminNote('💵 Payment to verify (WhatsApp)', ['Member' => (string) $member['full_name'], 'Amount' => inr($amount),
-                    'UTR' => $utr, 'Open' => appUrl('admin/team.php?tab=money')]);
-            } catch (Throwable $e) {
-                // the request is saved; the office sees it on the Team page
+            if (($ctx['phone'] ?? '') === '') {
+                return self::out(self::t('error', $lang));
             }
-            return self::out(self::t('pay_saved', $lang, ['v' => inr($amount), 'utr' => $utr, 'id' => (string) $rid]));
+            self::setPending((string) $ctx['phone'], 'deposit', ['amount' => $amount, 'utr' => $utr,
+                'purpose' => $amount > $held + 0.009 ? 'security' : 'handover']);
+            // round 3 (owner's rule R3): the preview always names the payer — whose account the payment goes on
+            return self::out(self::t('pay_confirm', $lang, ['v' => inr($amount), 'utr' => $utr, 'who' => self::payerLabel($member)]));
+        }
+        if ($amount > 0 && $utr === '' && preg_match('/(?<![\p{L}])(?:cash|nagad|नगद)(?![\p{L}])/iu', $t) === 1) {
+            return self::out(self::t('pay_cash_note', $lang, ['v' => inr($amount)]));
+        }
+        if ($amount > 0 && $utr === '' && preg_match('/(?<![\p{L}])done$/iu', trim($t)) === 1) {
+            // "maile 2000 jama gareko chu": already paid — ask for the reference, record nothing. Round 3 (agent sim: the
+            // answer "UTR 4123…" then got the menu): the amount is kept for that answer (pending 'pay_need', no "ho").
+            if (($ctx['phone'] ?? '') !== '') {
+                self::setPending((string) $ctx['phone'], 'pay_need', ['amount' => $amount]);
+            }
+            return self::out(self::t('pay_need_ref', $lang, ['v' => inr($amount), 'n' => (string) (int) $amount]));
         }
         $upi = Settings::getString('upi_id', '');
         $amt = $amount > 0 ? $amount : max(0.0, $held);
@@ -1788,6 +2760,28 @@ final class ApWa
         $wantAgents = str_starts_with($raw, 'agent') || str_starts_with($raw, 'एजेन्ट');
         $wantStaff  = str_starts_with($raw, 'staff') || str_starts_with($raw, 'स्टाफ') || str_starts_with($raw, 'team');
         $seeAgents  = $office || Settings::getBool('ap_wa_dir_agents', false);
+        /* 31 Oct 2026 round 2 (safety review: round 1 gave EVERY counter — even one known only by the typed admins.phone —
+           every agent's personal mobile, over ap_wa_dir_agents = off): a counter that proved its number with the OTP
+           (via = link) sees only the agents the public website already lists (ApWeb), with the website's own
+           visiting-card number — never the roster's personal mobile, never bank / ID numbers. */
+        $publicAgents = [];
+        if (!$seeAgents && (string) $member['role'] === 'counter' && (string) ($member['via'] ?? '') === 'link') {
+            try {
+                require_once __DIR__ . '/agentpro-web.php';
+                $ids = array_map(static fn(array $r): int => (int) $r['id'], array_filter(AgentPro::roster(), static fn(array $r): bool => (bool) $r['isAgent'] && (bool) $r['active']));
+                foreach (ApWeb::shownMany($ids) as $aid => $shown) {
+                    if ($shown) {
+                        $pm = AgentPro::member((int) $aid);
+                        $wa = (string) ($pm['wa'] ?? '');
+                        if ($wa !== '') {
+                            $publicAgents[(int) $aid] = $wa;
+                        }
+                    }
+                }
+            } catch (Throwable $e) {
+                $publicAgents = [];
+            }
+        }
         $rows = AgentPro::roster();
         $out = [];
         $q = mb_strtolower($query);
@@ -1795,7 +2789,8 @@ final class ApWa
             if (!$r['active'] || $r['phone'] === '') {
                 continue;
             }
-            if ($r['isAgent'] && !$seeAgents && $r['id'] !== (int) $member['id']) {
+            $public = $r['isAgent'] && !$seeAgents && isset($publicAgents[(int) $r['id']]);
+            if ($r['isAgent'] && !$seeAgents && $r['id'] !== (int) $member['id'] && !$public) {
                 continue;
             }
             if (!$r['isAgent'] && !$office && !in_array($r['role'], self::OFFICE, true) && $r['role'] !== 'counter') {
@@ -1803,10 +2798,12 @@ final class ApWa
             }
             if ($wantAgents && !$r['isAgent']) { continue; }
             if ($wantStaff && $r['isAgent']) { continue; }
-            if ($q !== '' && !str_contains(mb_strtolower($r['name'] . ' ' . $r['idNo'] . ' ' . $r['branch']), $q)) {
+            // the role is searched only where the whole list may be seen ("number agent" listed every agent's mobile)
+            if ($q !== '' && !str_contains(mb_strtolower($r['name'] . ' ' . $r['idNo'] . ' ' . $r['branch'] . ' ' . $r['designation'] . ($seeAgents ? ' ' . $r['role'] : '')), $q)) {
                 continue;
             }
-            $out[] = ($r['idNo'] !== '' ? $r['idNo'] . ' · ' : '') . $r['name'] . ' — ' . AgentPro::displayPhone(AgentPro::intlDigits($r['phone']))
+            $shownPhone = $public ? (string) $publicAgents[(int) $r['id']] : AgentPro::intlDigits($r['phone']);
+            $out[] = ($r['idNo'] !== '' ? $r['idNo'] . ' · ' : '') . $r['name'] . ' — ' . AgentPro::displayPhone($shownPhone)
                 . ($r['branch'] !== '' ? ' · ' . $r['branch'] : '') . ($r['isAgent'] ? '' : ' (' . $r['designation'] . ')');
         }
         $co = Settings::company();
@@ -1816,7 +2813,10 @@ final class ApWa
             $lines[] = '… +' . (count($out) - 40) . ' · ' . self::t('dir_more', $lang);
         }
         if ($out === []) {
-            $lines[] = self::t('dir_none', $lang);
+            // an agent who IS there but is not on the public website: say why there is no number (never "nobody")
+            $hidden = !$seeAgents && $q !== '' && array_filter($rows, static fn(array $r): bool => $r['isAgent'] && $r['active']
+                && str_contains(mb_strtolower($r['name'] . ' ' . $r['idNo']), $q)) !== [];
+            $lines[] = $hidden ? self::t('dir_hidden', $lang, ['phone' => Settings::officePhone()]) : self::t('dir_none', $lang);
         }
         $lines[] = '';
         $lines[] = '🏢 ' . AgentPro::fixMojibake((string) $co['counters']);
@@ -1940,7 +2940,7 @@ final class ApWa
         foreach ((array) $r['data']['byPickup'] as $stop => $list) {
             $lines[] = '📍 ' . Boarding_display((string) $stop);
             foreach ($list as $p) {
-                $lines[] = '   ' . $p['seat'] . ' ' . $p['name'] . ' · ' . $p['phone'];
+                $lines[] = '   ' . self::seatLabel((string) $p['seat'], (string) ($p['pnr'] ?? '')) . ' ' . $p['name'] . ' · ' . $p['phone'];
             }
         }
         return self::out(implode("\n", $lines));
@@ -1960,12 +2960,15 @@ final class ApWa
         require_once __DIR__ . '/aitools.php';
         $rest = trim(str_ireplace($pnr, ' ', $text));
         $l = mb_strtolower($rest);
-        if (preg_match('/\b(cancel|radda|radd|रद्द|क्यान्सिल|कैंसिल)\b/u', $l)) {
+        // 31 Oct 2026 (owner sim: "SHG-… ko phone number k ho?" was read as an edit to "number k"): a question is answered.
+        $question = self::isQuestion($l);
+        if (!$question && preg_match('/(?<![\p{L}\p{M}])(cancel|radda|radd|रद्द|क्यान्सिल|कैंसिल)/u', $l)) {
             self::$cmdIntent = ['intent' => 'cancel'];
             $q = AiTools::run('refund_quote', ['pnr' => $pnr], $ctx);
             if (!$q['ok']) {
-                return self::out('⚠️ ' . $q['say']);
+                return self::out(self::pnrRefusal($pnr, (string) $q['say'], $ctx, $lang));
             }
+            $q['data']['note'] = self::refundNote((string) ($q['data']['note'] ?? ''), $lang);
             // Owner: "refund vane cancel vane sabai manually garxu". An agent / counter only ASKS:
             // the request goes to the office queue (Help Desk) and nothing is cancelled or refunded here.
             if ($member !== null && !self::isOffice($ctx)) {
@@ -1979,22 +2982,118 @@ final class ApWa
             return self::out(self::t('cancel_quote', $lang, ['pnr' => $pnr, 'v' => (string) $q['data']['refundLabel'],
                 'note' => (string) ($q['data']['note'] ?? '')]));
         }
-        if (preg_match('/\b(resend|pathau|pathaunu|फेरि\s*पठाउ|पठाउनु|bhej|भेज|send\s*again)\b/u', $l)) {
+        // 31 Oct 2026: "ko ticket feri pathaidinu", "pathaideu", "pheri pathau", "resend garidinu" too
+        if (!$question && preg_match('/(?<![\p{L}\p{M}])(resend\w*|pathau\w*|pathai\w*|pathae\w*|feri|pheri|phir|फेरि|फेरी|पठाउ\S*|पठाइ\S*|bhej\w*|भेज\S*|send\s*again|send)(?![\p{L}\p{M}])/u', $l)) {
             self::$cmdIntent = ['intent' => 'resend'];
             $r = AiTools::run('resend_ticket', ['pnr' => $pnr], $ctx);
-            return self::out(($r['ok'] ? '✅ ' : '⚠️ ') . self::t($r['ok'] ? 'resent' : 'error', $lang, ['pnr' => $pnr]), $r['media'] ?? null);
+            if (!$r['ok']) {
+                return self::out(self::pnrRefusal($pnr, (string) ($r['say'] ?? ''), $ctx, $lang));
+            }
+            // round 2 (counter / agent sims: "✅ … फेरि पठाइयो" while message_logs said failed): "sent" only when it went
+            if (empty($r['data']['sent'])) {
+                $media = $r['media'] ?? null;
+                if ($media === null) {
+                    try {
+                        $media = Ticket::imageUrl($pnr);
+                    } catch (Throwable $e) {
+                        $media = null;
+                    }
+                }
+                $pdf = '';
+                try {
+                    $pdf = "\n📄 PDF: " . Ticket::downloadUrl($pnr);
+                } catch (Throwable $e) {
+                    $pdf = '';
+                }
+                return self::out(self::t('resent_not_sent', $lang, ['pnr' => $pnr]) . $pdf, $media);
+            }
+            return self::out('✅ ' . self::t('resent', $lang, ['pnr' => $pnr]), $r['media'] ?? null);
         }
-        [$field, $value, $which] = self::editIntent($rest);
+        [$field, $value, $which] = $question ? ['', '', ''] : self::editIntent($rest);
         if ($field !== '') {
             // the new value / the passenger go out of the example (ApLearn::norm): only "edit <field>" is learnt
             self::$cmdIntent = ['intent' => 'edit', 'field' => $field, 'value' => $value, 'which' => $which];
             return self::editPreview($pnr, $field, $value, $which, $ctx, $lang);
         }
-        if ($rest !== '' && $member !== null && preg_match('/\p{L}{3,}/u', $rest) === 1 && !preg_match('/^(status|kaha|कहाँ|where|ticket|टिकट|detail)/iu', $l)) {
-            return null;                                       // a sentence about a ticket: let the AI read it
+        /* A sentence about a ticket: the AI reads it when it is on. With it off (or for a plain question —
+           "ko status k cha", "kaha pugyo") the booking card answers; never the menu (owner: "ticket ko
+           kura ma jaba pani reply"). */
+        if (!$question && $rest !== '' && $member !== null && preg_match('/\p{L}{3,}/u', $rest) === 1
+            && !preg_match('/^(status|kaha|कहाँ|where|ticket|टिकट|detail)/iu', $l)) {
+            require_once __DIR__ . '/agentpro-ai.php';
+            if (ApAi::enabled()) {
+                return null;
+            }
         }
         self::$cmdIntent = ['intent' => 'status'];
         return self::bookingCard($pnr, $ctx, $lang);
+    }
+
+    /** "ko phone number k ho?", "ko date kahile ho?", "kaha pugyo?", "status k cha" — a question, never an edit. */
+    private static function isQuestion(string $l): bool
+    {
+        $l = trim($l);
+        return $l !== '' && (str_contains($l, '?')
+            || preg_match('/(?<![\p{L}\p{M}])(k|ke|kya|kahile|kaile|kati|kun|kasto|what|when|where|which|who|kab|kitna|kitne|kaun|kahan|kaha|kata|कहिले|कति|के|कुन|क्या|कब|कहाँ)\s*(ho|cha|chha|xa|hai|hola|ho\s*ra|छ|हो|है)?\s*$/u', $l) === 1
+            || preg_match('/(?<![\p{L}\p{M}])(status|kaha\s*pug\w*|kata\s*pug\w*|pugyo|pahunch\w*|detail|details|info)(?![\p{L}\p{M}])/u', $l) === 1);
+    }
+
+    /** Why a PNR command was refused, in the chat's language: not theirs = one clear line, else the tool's reason. */
+    private static function pnrRefusal(string $pnr, string $say, array $ctx, string $lang): string
+    {
+        require_once __DIR__ . '/agentpro-edit.php';
+        $d = BookingService::detail($pnr);
+        if ($d === null || !ApEdit::mayRead($d, $ctx)) {
+            return self::t('e_notfound', $lang);
+        }
+        $say = trim(preg_replace('/^⚠️\s*/u', '', $say) ?? $say);
+        if (preg_match('/There is no ticket yet — the booking is (\w+)/u', $say, $m) === 1) {
+            return self::t('e_notlive', $lang, ['s' => strtoupper($m[1])]);
+        }
+        if (preg_match('/is already cancelled/u', $say) === 1) {
+            return self::t('e_notlive', $lang, ['s' => 'CANCELLED']);
+        }
+        return '⚠️ ' . ($say !== '' ? $say : self::t('error', $lang));
+    }
+
+    /** The refund rule line (Fare::refundFor, English) in the chat's language. */
+    private static function refundNote(string $note, string $lang): string
+    {
+        if ($lang === 'en' || $note === '') {
+            return $note;
+        }
+        if (preg_match('/^Cancelled ([\d,]+) hours before departure — ([\d.]+)% refundable\.?$/u', $note, $m) === 1) {
+            return $lang === 'hi' ? 'प्रस्थान से ' . $m[1] . ' घंटे पहले रद्द — ' . $m[2] . '% वापसी।'
+                                  : 'छुट्नुभन्दा ' . $m[1] . ' घण्टा अगाडि रद्द — ' . $m[2] . '% फिर्ता।';
+        }
+        if (str_starts_with($note, 'Cancelled after the free-cancellation window')) {
+            return $lang === 'hi' ? 'रद्द करने की समय सीमा निकल चुकी — वापसी नहीं।' : 'रद्द गर्ने समय सीमा नाघिसक्यो — फिर्ता छैन।';
+        }
+        if (str_starts_with($note, 'No payment had been collected')) {
+            return $lang === 'hi' ? 'कोई भुगतान नहीं लिया गया था।' : 'कुनै भुक्तानी लिइएको थिएन।';
+        }
+        return $note;
+    }
+
+    /** A stored berth (L35) as the ticket prints it (F5); a PNR or the coach / mode tell which layout. */
+    private static function seatLabel(string $seat, string $pnr = '', string $coach = '', string $mode = ''): string
+    {
+        if ($seat === '') {
+            return '';
+        }
+        try {
+            require_once __DIR__ . '/seats.php';
+            if ($pnr !== '' && ($coach === '' || $mode === '')) {
+                $row = Database::fetch("SELECT b.booking_mode, l.schedule_id FROM bookings b LEFT JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
+                                         WHERE b.pnr = :p LIMIT 1", ['p' => $pnr]);
+                $mode = $mode !== '' ? $mode : (string) ($row['booking_mode'] ?? 'sharing');
+                $coach = $coach !== '' ? $coach : ((int) ($row['schedule_id'] ?? 0) > 0 ? Seats::coachForSchedule((int) $row['schedule_id']) : 'sleeper');
+            }
+            $lbl = Seats::displayLabel($seat, $coach !== '' ? $coach : 'sleeper', $mode !== '' ? $mode : 'sharing');
+            return $lbl !== '' ? $lbl : $seat;
+        } catch (Throwable $e) {
+            return $seat;
+        }
     }
 
     /**
@@ -2060,7 +3159,11 @@ final class ApWa
         }
         if ($field === 'date') {
             $old = $old !== '' ? formatDate($old, 'D, j M Y') : '—';
-            $new = formatDate($new, 'D, j M Y') . (!empty($c['seats']) ? ' · ' . implode(', ', (array) $c['seats']) : '');
+            $new = formatDate($new, 'D, j M Y') . (!empty($c['seats']) ? ' · ' . implode(', ', array_map(static fn($s): string => self::seatLabel((string) $s, $pnr), (array) $c['seats'])) : '');
+        }
+        if ($field === 'seat') {
+            $old = self::seatLabel($old, $pnr);
+            $new = self::seatLabel($new, $pnr);
         }
         return self::out(self::t('edit_confirm', $lang, ['pnr' => $pnr, 'f' => $label, 'old' => $old !== '' ? $old : '—', 'new' => $new]));
     }
@@ -2107,6 +3210,8 @@ final class ApWa
             'whichpax'  => self::t('e_whichpax', $lang, ['names' => implode(', ', (array) ($p['names'] ?? []))]),
             'badstop'   => self::t('e_badstop', $lang, ['stops' => implode(', ', (array) ($p['stops'] ?? []))]),
             'same'      => self::t('e_same', $lang),
+            'badseat'   => self::t('e_badseat', $lang, ['seat' => (string) ($p['seat'] ?? '')]),
+            'seattaken' => self::t('e_seattaken', $lang, ['seat' => (string) ($p['seat'] ?? '')]),
             'tools', 'refused' => '⚠️ ' . (string) ($p['say'] ?? self::t('error', $lang)),
             default     => self::t('e_value', $lang),
         };
@@ -2159,7 +3264,8 @@ final class ApWa
             return $ctx['role'] === 'customer' ? null : self::out(self::t('e_notfound', $lang));
         }
         $leg = $d['legs'][0] ?? [];
-        $pax = array_map(static fn(array $p): string => (string) $p['seat_no'] . ' ' . $p['full_name'], $d['passengers'] ?? []);
+        $pnrNow = (string) $d['pnr'];
+        $pax = array_map(static fn(array $p): string => self::seatLabel((string) $p['seat_no'], $pnrNow) . ' ' . $p['full_name'], $d['passengers'] ?? []);
         $text = "🎫 " . $d['pnr'] . ' · ' . strtoupper((string) $d['status']) . "\n"
               . '🚌 ' . ($leg['from_city'] ?? '') . ' → ' . ($leg['to_city'] ?? '') . ' · ' . formatDate((string) ($leg['travel_date'] ?? ''), 'D, j M')
               . ' ' . substr((string) ($leg['dep_time'] ?? ''), 0, 5) . "\n"
@@ -2184,6 +3290,18 @@ final class ApWa
         require_once __DIR__ . '/ticketbot.php';
         $names = [];
         $work = $text;
+        /* 31 Oct 2026 (counter sim: "SHG-0042 ko lagi 2 ticket bholi" was sold for a passenger "Lagi" and credited to
+           the company; "company ko 1 seat …" got the company card): an agent code in the line is who the sale is FOR
+           (QuickTicket agentCode → BookingService::attributeDeskSale); "company / office ko" is the company's own code. */
+        $agentCode = '';
+        if (preg_match('/(?<![a-z\d])shg[\s-]*(?:([a-z])[\s-]*)?0*(\d{1,4})(?![\d-])/iu', $work, $mc) === 1) {
+            $agentCode = 'SHG-' . ($mc[1] !== '' ? strtoupper($mc[1]) . '-' : '') . str_pad($mc[2], 4, '0', STR_PAD_LEFT);
+            $work = str_replace($mc[0], ' ', $work);
+        } elseif (preg_match('/^\s*(?:company|office|कम्पनी|कंपनी|अफिस)\s*(?:ko|ka|को|का)?\s*(?:lagi|liye|लागि|लिए)?(?![\p{L}\p{M}])/iu', $work, $mc) === 1) {
+            $agentCode = strtoupper(Settings::getString('company_agent_code', 'SHG-0001'));
+            $work = (string) substr($work, strlen($mc[0]));
+        }
+        $text = $work;
         if (preg_match('/\b(?:names?|naam(?:haru)?|नामहरू|नाम)\s*[:\-]\s*([^\d\n]+?)(?=\s*(?:\+?\d{8,}|$))/iu', $text, $m) === 1
             || preg_match('/\b(?:names|naamharu|नामहरू)\s+([^\d\n]+?)(?=\s*(?:\+?\d{8,}|$))/iu', $text, $m) === 1) {
             $list = array_values(array_filter(array_map('trim', preg_split('/\s*(?:,|;|\band\b|\bra\b|र|और)\s*/u', $m[1]) ?: [])));
@@ -2198,12 +3316,27 @@ final class ApWa
         if (!$booking) {
             return null;
         }
+        /* round 3 (counter sim: "3 seat bholi Surat, Ram Thapa, Sita Thapa and Gita Thapa 98…" became ONE passenger "Ram Thapa
+           Sita Thapa Gita" — the parser had already dropped the commas and "and"): the list is read from the line as typed. */
+        if ($names === []) {
+            $raw = self::rawNameList($text);
+            if (count($raw) >= 2) {
+                $names = $raw;
+            }
+        }
+        // round 2 (counter sim: "… naam Gopal Thapa ra Sita Thapa 98…" sold two seats to "Gopal Thapa Ra Sita Thapa")
+        if ($names === [] && (string) $p['name'] !== '') {
+            $split = self::nameList((string) $p['name']);
+            if (count($split) >= 2) {
+                $names = $split;
+            }
+        }
         $seats = max((int) $p['seats'], count($names), 1);
-        $name = $names[0] ?? (string) $p['name'];
+        $name = $names[0] ?? self::cleanName((string) $p['name']);
         return [
             'name' => $name, 'phone' => (string) $p['phone'], 'country' => (string) $p['country'], 'seats' => $seats,
             'date' => (string) $p['date'], 'direction' => (string) $p['direction'], 'boarding' => (string) $p['boarding'],
-            'gender' => (string) $p['gender'], 'pay' => (string) $p['pay'], 'names' => $names,
+            'gender' => (string) $p['gender'], 'pay' => (string) $p['pay'], 'names' => $names, 'agentCode' => $agentCode,
         ];
     }
 
@@ -2229,16 +3362,37 @@ final class ApWa
         $need = [];
         if (mb_strlen(trim((string) $sale['name'])) < 2) { $need[] = self::t('f_name', $lang); }
         if ((string) $sale['phone'] === '') { $need[] = self::t('f_phone', $lang); }
+        // 31 Oct 2026: a sale FOR an agent (counter / office): say who gets it; an unknown code is refused here, before any "ho"
+        $agentLine = '';
+        if ((string) ($sale['agentCode'] ?? '') !== '' && (string) $member['role'] !== 'agent') {
+            require_once __DIR__ . '/agentwallet.php';
+            $aid = AgentWallet::resolveDeskCode((string) $sale['agentCode']);
+            if ($aid === null) {
+                return self::out(self::t('agent_code_unknown', $lang, ['code' => (string) $sale['agentCode']]));
+            }
+            $company = AgentWallet::resolveAgentCodeFromString(Settings::getString('company_agent_code', 'SHG-0001'));
+            $agentLine = "\n" . ($aid === $company ? self::t('sale_company', $lang, ['code' => AgentWallet::agentCodeLabel($aid) ?: (string) $sale['agentCode']])
+                : self::t('sale_agent', $lang, ['code' => AgentWallet::agentCodeLabel($aid) ?: (string) $sale['agentCode'],
+                    'name' => (string) Database::scalar('SELECT full_name FROM admins WHERE id = :i', ['i' => $aid], '')]));
+        } elseif ((string) $member['role'] === 'agent') {
+            $sale['agentCode'] = '';                                // an agent sells on their own code
+        }
         $sale['plan'] = ['date' => (string) $plan['date'], 'direction' => (string) $plan['direction'], 'boarding' => (string) $plan['boarding'],
-                         'boardingCode' => (string) $plan['boardingCode'], 'seats' => (int) $plan['seatCount'], 'total' => (float) $plan['fare']['total']];
+                         'boardingCode' => (string) $plan['boardingCode'], 'seats' => (int) $plan['seatCount'], 'total' => (float) $plan['fare']['total'],
+                         // round 3: the berths as printed, for "seat kun kun ho?" while the quote waits (pendingAsk)
+                         'labels' => Seats::displayLabels(array_map('strval', (array) $plan['seats']), (string) ($plan['coach'] ?? 'sleeper'), (string) ($plan['bookingMode'] ?? 'sharing'))];
         self::setPending($ctx['phone'], 'sale', ['sale' => $sale]);
         $text = self::t('sale_quote', $lang, [
             'date' => (string) $plan['dateLabel'], 'dep' => substr((string) $plan['depTime'], 0, 5),
             'route' => $plan['from'] . ' → ' . $plan['to'], 'pickup' => (string) $plan['boardingName'],
-            'ptime' => substr((string) $plan['boardingTime'], 0, 5), 'seats' => implode(', ', array_map('strval', (array) $plan['seats'])),
+            'ptime' => substr((string) $plan['boardingTime'], 0, 5),
+            'seats' => Seats::displayLabels(array_map('strval', (array) $plan['seats']), (string) ($plan['coach'] ?? 'sleeper'), (string) ($plan['bookingMode'] ?? 'sharing')),
             'n' => (string) $plan['seatCount'], 'total' => inr((float) $plan['fare']['total']), 'left' => (string) $plan['seatsLeft'],
             'who' => trim(($sale['names'] !== [] ? implode(', ', $sale['names']) : (string) $sale['name']) . ' ' . (string) $sale['phone']),
-        ]);
+        ]) . $agentLine;
+        if (in_array((string) ($sale['pay'] ?? ''), ['upi', 'esewa', 'bank'], true)) {
+            $text .= "\n💳 " . ['upi' => 'UPI', 'esewa' => 'eSewa', 'bank' => 'Bank'][(string) $sale['pay']];   // round 2: "upi bata tircha" shows on the quote
+        }
         if (!empty($sale['to_seller'])) {
             $text .= "\n" . ['ne' => '📲 यात्रुको नम्बर नभएकोले टिकट तपाईंकै WhatsApp मा आउँछ (नम्बर पठाए त्यहीँ जान्छ)।',
                              'hi' => '📲 यात्री का नंबर नहीं, टिकट आपके ही WhatsApp पर आएगा (नंबर भेजें तो वहीं जाएगा)।',
@@ -2253,15 +3407,25 @@ final class ApWa
     }
 
     /* 30 Oct 2026: the words of "ok, this one, give the ticket" in Nepali / Hindi / English — never a name. */
-    private const FILLER = ['ok', 'okay', 'okk', 'k', 'yes', 'y', 'ya', 'haan', 'han', 'ha', 'ho', 'hoo', 'hola', 'yo', 'ye', 'yei', 'yehi',
+    // round 4 (R1): "hola" (= maybe) is no longer a filler of the yes — "ok hola" sold a quote
+    private const FILLER = ['ok', 'okay', 'okk', 'k', 'yes', 'y', 'ya', 'haan', 'han', 'ha', 'ho', 'hoo', 'yo', 'ye', 'yei', 'yehi',
         'yahi', 'yeti', 'yati', 'ticket', 'tiket', 'tikat', 'tciket', 'tickt', 'tikit', 'tkt', 'deu', 'de', 'dinus', 'dinu', 'dinuhos', 'dijiye',
         'dedo', 'do', 'karo', 'kar', 'katnu', 'kata', 'kaat', 'kaatnu', 'katdeu', 'kaatdeu', 'gardeu', 'garnus', 'gara', 'garo', 'please', 'plz',
         'pls', 'sir', 'dai', 'bhai', 'ji', 'hai', 'la', 'lau', 'confirm', 'confirmed', 'pakka', 'thik', 'theek', 'cha', 'chha', 'xa', 'hunchha',
         'huncha', 'hunxa', 'done', 'book', 'final', 'ahile', 'aba', 'abhi', 'हो', 'ठीक', 'छ', 'दिनुहोस्', 'देउ', 'टिकट', 'काट्नु', 'काट', 'पक्का',
-        'हुन्छ', 'कन्फर्म', 'यो', 'यही', 'यति', 'हाँ', 'दो', 'दीजिए', 'ओके'];
+        'हुन्छ', 'कन्फर्म', 'यो', 'यही', 'यति', 'हाँ', 'दो', 'दीजिए', 'ओके',
+        // round 2 (agent sim: "haan ticket nikal do", "ha ticket kaat do", "haan ticket bana do" = Hindi "yes, issue the ticket")
+        'haa', 'haanji', 'hanji', 'kato', 'kaato', 'katdo', 'kaatdo', 'kat', 'nikal', 'nikalo', 'nikaldo', 'nikaal', 'nikaalo', 'bana', 'banao',
+        'banado', 'banaa', 'banaao', 'banaideu', 'banaidinu', 'banaunus', 'dena', 'dedijiye', 'kardo', 'kardijiye', 'karde', 'निकाल', 'निकालो', 'बना',
+        'बनाओ', 'बनादो', 'काटो', 'काट्दो'];
     private const YES_WORDS = ['ok', 'okay', 'okk', 'yes', 'haan', 'han', 'ho', 'hoo', 'deu', 'de', 'dinus', 'dinuhos', 'dijiye', 'dedo',
         'confirm', 'confirmed', 'pakka', 'thik', 'theek', 'done', 'katdeu', 'kaatdeu', 'gardeu', 'हो', 'ठीक', 'देउ', 'दिनुहोस्', 'पक्का',
-        'कन्फर्म', 'हाँ', 'दीजिए', 'ओके'];
+        'कन्फर्म', 'हाँ', 'दीजिए', 'ओके', 'ha', 'haa', 'haanji', 'hanji', 'katdo', 'kaatdo', 'nikaldo', 'banado', 'banaideu', 'banaidinu', 'kardo'];
+    /** "kaat / nikal / bana" + "do / deu / dijiye": an order to issue the ticket — the yes on a complete quote. */
+    private const ISSUE_VERBS = ['kat', 'kaat', 'kato', 'kaato', 'kata', 'katnu', 'kaatnu', 'nikal', 'nikalo', 'nikaal', 'nikaalo', 'bana', 'banao',
+        'banaa', 'banaao', 'book', 'काट', 'काटो', 'निकाल', 'निकालो', 'बना', 'बनाओ'];
+    private const ISSUE_IMPER = ['do', 'de', 'deu', 'dena', 'dijiye', 'dedo', 'dinus', 'dinu', 'dinuhos', 'karo', 'kar', 'kardo', 'karde', 'gardeu',
+        'garnus', 'दो', 'देउ', 'दीजिए', 'दिनुहोस्'];
 
     /** @return list<string> */
     private static function fillerTokens(string $text): array
@@ -2277,7 +3441,24 @@ final class ApWa
 
     private static function yesPhrase(string $text): bool
     {
-        return self::fillerOnly($text) && array_intersect(self::fillerTokens($text), self::YES_WORDS) !== [];
+        /* Round 4 (31 Oct 2026, owner's rule R1 — safety review A2: "ticket confirm ho?", "confirm?", "ho?", "pakka ho?",
+           "ticket done?", "thik cha?", "ok?", "ok hola", "ha ha" each SOLD a complete quote, posting commission and cash
+           due): a question is never the yes ("?" or a question word), nor a guess ("hola" = maybe), nor laughter. */
+        $low = mb_strtolower(trim($text));
+        if (str_contains($low, '?') || str_contains($low, '？') || self::isQuestion($low)
+            || preg_match('/^(?:h+a+\s*){2,}[\s.!]*$|^(?:ha){2,}h?[\s.!]*$/u', $low) === 1) {
+            return false;
+        }
+        if (!self::fillerOnly($text)) {
+            return false;
+        }
+        // "do ticket kaat do" names a COUNT ("two tickets") — that re-plans the quote, it is not its yes
+        if (preg_match('/(?<![\p{L}\p{M}])(?:\d+|ek|do|dui|teen|tin|char|chaar|panch|एक|दो|दुई|तीन|चार)\s+(?:tickets?|tikat|tiket|tkt|seats?|sit|jana|log|टिकट|सिट|जना)(?![\p{L}\p{M}])/iu', $text) === 1) {
+            return false;
+        }
+        $w = self::fillerTokens($text);
+        return array_intersect($w, self::YES_WORDS) !== []
+            || (array_intersect($w, self::ISSUE_VERBS) !== [] && array_intersect($w, self::ISSUE_IMPER) !== []);
     }
 
     /** Everything a sale needs before its ho: a name, a number, a priced plan. */
@@ -2299,42 +3480,310 @@ final class ApWa
         }, $l);
     }
 
-    /** While a quote waits: "Ram Thapa 98…", "names …", "upi", "female" fill it in. */
+    /**
+     * Round 3 (owner's rule R1): what a waiting quote / preview says when the line was not its answer — kept, with how
+     * to answer. "seat kun kun ho?" / "kati bhayo?" on a quote get its seats and total this way.
+     */
+    private static function pendingAsk(array $p, string $lang): string
+    {
+        if ((string) ($p['kind'] ?? '') !== 'sale') {
+            return self::t('pending_waiting', $lang);
+        }
+        $sale = (array) ($p['sale'] ?? []);
+        $plan = (array) ($sale['plan'] ?? []);
+        $who = trim(((array) ($sale['names'] ?? []) !== [] ? implode(', ', (array) $sale['names']) : (string) ($sale['name'] ?? '')) . ' ' . (string) ($sale['phone'] ?? ''));
+        $date = (string) ($plan['date'] ?? ($sale['date'] ?? ''));
+        return self::t('sale_waiting', $lang, [
+            'who' => $who !== '' ? $who : '—',
+            'date' => $date !== '' && Security::isValidDate($date) ? formatDate($date, 'D, j M') : $date,
+            'n' => (string) (int) ($plan['seats'] ?? ($sale['seats'] ?? 1)),
+            'seats' => (string) ($plan['labels'] ?? '') !== '' ? ' (' . $plan['labels'] . ')' : '',
+            'total' => isset($plan['total']) ? inr((float) $plan['total']) : '—',
+        ]);
+    }
+
+    /** While a quote waits: "Ram Thapa 98…", "names …", "upi", "parsi", "Mehsana", "3 seat" fill it in. */
     private static function saleAmend(array $pending, string $text, array $member, array $ctx, string $lang): ?array
     {
         $sale = (array) ($pending['sale'] ?? []);
         if ($sale === [] || preg_match('/\bSHG-[A-Z0-9]+-/i', $text) === 1) {
             return null;
         }
+        require_once __DIR__ . '/wapayproof.php';
+        require_once __DIR__ . '/ticketbot.php';
+        require_once __DIR__ . '/personname.php';
+        // round 3 (R2): a payment reference / "paisa pathaye" is never an amendment (never a phone, never a name)
+        if (WaPayProof::payTalk($text)) {
+            return null;
+        }
+        // round 3 (agent sim: "ho, naam Sita Thapa" got the menu): a yes-word in front of a correction is not the yes
+        $text = (string) preg_replace('/^\s*(?:ho|hoo|ha|haan|han|ok|okay|yes|thik\s*cha|theek\s*hai|हो|हाँ)\s*[,.:;-]+\s*(?=(?:naam|name|names|नाम)(?![\p{L}\p{M}]))/iu', '', $text);
+        /* round 3 (agent sim: "upi ma pathaucha", "esewa bata pathaunchu", "gpay cha", "ho tara upi ma" DROPPED the quote
+           and showed the company's pay-in card): on a waiting quote a short line that names how the passenger pays sets
+           the pay mode — never the company's UPI card, never a name. "company ko UPI id pathau" is still the card. */
+        $l0 = mb_strtolower($text);
+        if (count(self::fillerTokens($text)) <= 7 && !str_contains($l0, '?')
+            && preg_match('/(?<![\p{L}\p{M}])(cash|nagad|upi|gpay|phonepe|paytm|online|esewa|e-sewa|bank|नगद|नकद)(?![\p{L}\p{M}])/iu', $text, $pm) === 1
+            && preg_match('/(?<![\p{L}\p{M}])(?:company|office|kampani|id|qr|scanner|number|nambar|details?|account|kun|kya|k|ke|jama|jamma|deposit|कम्पनी|अफिस)(?![\p{L}\p{M}])/u', $l0) !== 1) {
+            $mode = mb_strtolower($pm[1]);
+            $sale['pay'] = match ($mode) {
+                'नगद', 'नकद', 'nagad' => 'cash',
+                'gpay', 'phonepe', 'paytm', 'online' => 'upi',
+                'e-sewa' => 'esewa',
+                default => $mode,
+            };
+            return self::saleQuote($sale, $member, $ctx, $lang);
+        }
+        /* round 2 (counter sim: "What is my sale today?" / "aaj kitna becha?" / "bus today" RE-DATED the waiting quote to
+           today and a bare "yes" then sold it for the wrong day): a question or a command is never an amendment — it
+           runs as itself and the quote is dropped (reply()). Only a line that is a date / pickup / phone / name / pay
+           mode / seat count fills the quote in. Round 3: a question about the quote itself ("seat kun kun ho?",
+           "kati bhayo?") gets the waiting quote back. */
+        $isQ = self::isQuestion(mb_strtolower(trim($text)));
+        if ($isQ || self::canon($text, $ctx) !== null) {
+            if ($isQ && self::canon($text, $ctx) === null
+                && preg_match('/(?<![\p{L}\p{M}])(?:seats?|sit|berth|kati|kitna|kitne|total|price|rakam|bhada|fare|kun|kaun|which|miti|date|din|kahile|kab|time|baje|पैसा|कति|सिट|कुन)(?![\p{L}\p{M}])/u', $l0) === 1) {
+                return self::out(self::pendingAsk($pending, $lang));
+            }
+            return null;
+        }
         $changed = false;
+        $askName = false;
+        $explicitName = false;
         if (preg_match('/^(?:names?|naam(?:haru)?|नामहरू|नाम)\s*[:\-]?\s*(.+)$/iu', $text, $m) === 1) {
-            $list = array_values(array_filter(array_map('trim', preg_split('/\s*(?:,|;|\band\b|\bra\b|र|और)\s*/u', $m[1]) ?: [])));
+            $explicitName = true;
+            $list = array_values(array_filter(array_map(static fn(string $n): string => self::cleanName(trim($n)),
+                preg_split('/\s*(?:,|;|&|\band\b|\bra\b|\baur\b|र|और)\s*/u', (string) preg_replace('/\+?\d[\d\s-]{8,}\d/', ' ', $m[1])) ?: [])));
+            // round 3: every name must be a name (PersonName) — "naam wait" / "naam utr" never replace the passenger
+            $list = array_values(array_filter($list, static fn(string $n): bool => PersonName::clean($n) !== ''));
             if ($list !== []) {
                 $sale['names'] = count($list) >= 2 ? $list : [];
                 $sale['name'] = $list[0];
+                if (count($list) > (int) ($sale['seats'] ?? 1)) {
+                    $sale['seats'] = count($list);
+                }
                 $changed = true;
+            } else {
+                return self::out(self::t('sale_name_how', $lang));
             }
         }
-        if (preg_match('/^(cash|upi|esewa|bank|नगद|नकद)$/iu', trim($text), $m) === 1) {
-            $sale['pay'] = ['नगद' => 'cash', 'नकद' => 'cash'][$m[1]] ?? strtolower($m[1]);
-            $changed = true;
-        }
+        // "Ram Thapa ra Sita Thapa" on a 2-seat quote: two passengers, never one called "Ram Thapa Ra Sita Thapa"
+        $twoNames = false;
         if (!$changed) {
-            $again = self::saleParse($text . ' ' . ((int) ($sale['seats'] ?? 1)) . ' seat');
+            $two = self::nameList((string) preg_replace('/\+?\d[\d\s-]{8,}\d/', ' ', $text));
+            if (count($two) >= 2) {
+                $sale['names'] = $two;
+                $sale['name'] = $two[0];
+                if (count($two) > (int) ($sale['seats'] ?? 1)) {
+                    $sale['seats'] = count($two);
+                }
+                $changed = true;
+                $twoNames = true;
+            }
+        }
+        if ($twoNames) {
+            // a phone typed beside the names still counts
             require_once __DIR__ . '/ticketbot.php';
             $p = TicketBot::parse($text);
-            if (self::fillerOnly($text)) {
-                $p['name'] = '';                                // "ok yeti ho ticket deu" is no name
+            if ((string) $p['phone'] !== '') {
+                $sale['phone'] = (string) $p['phone'];
+                $sale['country'] = (string) $p['country'];
+                unset($sale['to_seller']);
             }
-            if ((string) $p['phone'] !== '' || ((string) $p['name'] !== '' && preg_match('/^\p{L}[\p{L} .]{1,60}$/u', trim($text)) === 1)) {
-                if ((string) $p['phone'] !== '') { $sale['phone'] = (string) $p['phone']; }
-                if ((string) $p['name'] !== '') { $sale['name'] = (string) $p['name']; }
+        } elseif (!$changed) {
+            require_once __DIR__ . '/ticketbot.php';
+            require_once __DIR__ . '/boarding.php';
+            $p = TicketBot::parse($text);
+            if ((string) $p['phone'] !== '') {
+                $sale['phone'] = (string) $p['phone'];
+                $sale['country'] = (string) $p['country'];
+                unset($sale['to_seller']);                    // 31 Oct 2026: a number given = the ticket goes there, not to the seller
                 $changed = true;
-            } elseif ($again !== null && ((string) $again['date'] !== '' || (int) $again['seats'] !== (int) ($sale['seats'] ?? 1))) {
-                return null;                                    // a different booking: quote it fresh
+            }
+            /* 31 Oct 2026 (agent sim: "parsi Surat 98…" re-quoted the OLD day and "ho" sold it; "parsi" alone got the
+               menu): a day, a pickup or a seat count in the line re-plans the quote before any "ho".
+               Round 3 (owner's rule R1): "abhi" / "ahile" / "now" / "aaja" / "today" alone never re-date it — only a
+               day that is stated (bholi, parsi, a weekday) or a written date ("2 Nov", "1/11") does. */
+            $plan = (array) ($sale['plan'] ?? []);
+            /* Round 4 (R1 — safety review A5: on a quote for Mon 2 Nov, "kal confirm karunga", "bholi pheri msg garchu" and
+               "customer bholi aaucha" RE-QUOTED it for Sun 1 Nov and "ho" sold that): a day / pickup / seat count changes
+               the quote only when the line IS that change — what the parser left over (less a name typed in it) is only
+               the words of a change ("date", "ko garnu", "tara" …). A promise or a pause with a day word in it is not. */
+            $resid = (string) ($p['residual'] ?? '');
+            $nmIn = self::nameLine($text, $p);
+            if ($nmIn !== '') {
+                $resid = implode(' ', array_diff(preg_split('/\s+/u', mb_strtolower(trim($resid))) ?: [], preg_split('/\s+/u', mb_strtolower($nmIn)) ?: []));
+            }
+            $amend = TicketBot::amendOnly($resid);
+            if ($amend && (string) $p['date'] !== '' && (string) $p['date'] !== (string) ($plan['date'] ?? ($sale['date'] ?? ''))
+                && ((string) $p['date'] !== date('Y-m-d') || self::writtenDate($text))) {
+                $sale['date'] = (string) $p['date'];
+                $changed = true;
+            }
+            if ($amend && (string) $p['boarding'] !== '' && Boarding::townKey((string) $p['boarding']) !== Boarding::townKey((string) ($plan['boarding'] ?? ($sale['boarding'] ?? '')))) {
+                $sale['boarding'] = (string) $p['boarding'];
+                $changed = true;
+            }
+            if ($amend && (int) $p['seats'] > 0 && (int) $p['seats'] !== (int) ($sale['seats'] ?? 1) && $sale['names'] === []) {
+                $sale['seats'] = (int) $p['seats'];
+                $changed = true;
+            }
+            /* A name only from a line that IS a name ("Ram Thapa", "Ram Thapa 98…"): never from a sentence or a
+               command ("aajako hisab dekhau", "nahi", "Kamal ko bank account number deu" became the passenger).
+               Round 3 (owner's rule R1 — agent sim: "wait", "ruka", "ekchin", "pakhnus", "sochchu", "customer lai
+               sodhchu" each REPLACED "Ram Thapa" and a later "ho" sold "Wait, Wait (2)"): a quote that already has a
+               name is renamed only by "naam …" or by a name typed WITH its mobile; a bare word is never guessed to
+               be a new passenger — the desk asks instead. */
+            $nm = self::nameLine($text, $p);
+            if ($nm !== '') {
+                $hasName = mb_strlen(trim((string) ($sale['name'] ?? ''))) >= 2;
+                if (!$hasName || (string) $p['phone'] !== '') {
+                    $sale['name'] = $nm;
+                    $sale['names'] = [];
+                    $changed = true;
+                } else {
+                    $askName = true;
+                }
             }
         }
+        if ($askName && !$changed) {
+            return self::out(self::t('sale_name_how', $lang));
+        }
         return $changed ? self::saleQuote($sale, $member, $ctx, $lang) : null;
+    }
+
+    /** A day written as a date ("2 Nov", "Nov 2", "1/11", "15 tarik", "15 gate"), not a word for now / today. */
+    private static function writtenDate(string $text): bool
+    {
+        $l = mb_strtolower(self::asciiDigits($text));
+        return preg_match('/\d{1,2}\s*[\/.\-]\s*\d{1,2}|\d{1,2}\s*(?:st|nd|rd|th)?\s*(?:jan\w*|feb\w*|mar\w*|apr\w*|may|jun\w*|jul\w*|aug\w*|sep\w*|oct\w*|nov\w*|dec\w*|tarik\w*|tarikh\w*|gate|गते|तारिख)|(?:jan\w*|feb\w*|mar\w*|apr\w*|may|jun\w*|jul\w*|aug\w*|sep\w*|oct\w*|nov\w*|dec\w*)\s*\d{1,2}/u', $l) === 1;
+    }
+
+    /** Words that are never part of a passenger's name (commands, questions, refusals, verbs). */
+    private const NAME_STOP = ['aaja', 'aajako', 'aaj', 'hisab', 'hisaab', 'dekhau', 'dekhaunu', 'dikhao', 'batao', 'balance', 'balanse', 'bal', 'wallet',
+        'report', 'sale', 'sales', 'bikri', 'tickets', 'passengers', 'passenger', 'yatri', 'bus', 'gadi', 'office', 'company', 'help', 'menu', 'statement',
+        'withdraw', 'number', 'account', 'bank', 'aadhar', 'aadhaar', 'pathau', 'pathaunu', 'deu', 'dinu', 'dinus', 'do', 'what', 'is', 'my', 'me',
+        'today', 'kati', 'kitna', 'kitne', 'kya', 'k', 'ke', 'ko', 'ka', 'ki', 'cha', 'chha', 'hai', 'ho', 'nahi', 'nahin', 'nai', 'mat', 'karo',
+        'kar', 'pardaina', 'chahidaina', 'chaidaina', 'chahiye', 'chahiyo', 'chaiyo', 'lagi', 'liye', 'kaat', 'kat', 'tikat', 'tiket', 'tciket',
+        'date', 'miti', 'seat', 'upi', 'cash', 'ok', 'yes', 'no', 'haan', 'thik', 'theek', 'commission', 'kamisan', 'khali', 'time', 'baje', 'kaha',
+        'kata', 'where', 'when', 'how', 'much', 'sold', 'id', 'card', 'visiting', 'portal', 'login', 'hello', 'hi', 'namaste', 'thanks', 'thank',
+        'you', 'dhanyabad', 'rehne', 'dijiye', 'chhod', 'chhodo', 'cancel', 'stop', 'hoina', 'bhayena', 'hudaina', 'parena', 'change', 'badal',
+        'badalnu', 'pheri', 'feri', 'naya', 'pending', 'list', 'aayo', 'gardeu', 'garnu', 'paryo', 'milena', 'chaina', 'xaina', 'sakdaina',
+        // round 2 (agent sim: "upi bata tircha" renamed the passenger "Tircha"): verbs and postpositions of a sentence
+        'bata', 'dekhi', 'samma', 'ma', 'le', 'lai', 'tircha', 'tirchu', 'tirne', 'tireko', 'tiryo', 'tirnu', 'garchu', 'garcha', 'garchha',
+        'garne', 'gareko', 'garyo', 'gardai', 'gardaichu', 'dinchu', 'dincha', 'dinchha', 'dinchhu', 'pathaunchu', 'pathaucha', 'pathaidinu',
+        'pathaideu', 'pathaye', 'pathayo', 'hunchha', 'huncha', 'bhayo', 'thiyo', 'paisa', 'payment', 'pay', 'paid', 'jama', 'online', 'gpay',
+        'phonepe', 'paytm', 'esewa', 'nagad', 'karunga', 'karenge', 'dunga', 'denge', 'bhejo', 'bhej', 'sell', 'sale', 'did', 'i', 'will',
+        'nikal', 'nikalo', 'nikalegi', 'bana', 'banao', 'and', 'aur', 'ra',
+        // round 3 (safety review #1 + agent sim: "Ruko", "Nakaat", "Wait", "Ekchin", "Pakhnus", "Sochchu", "Customer Sodhchu",
+        // "Ramesh Pathaidiye" became passengers): pause / refusal / asking words and past-tense verbs are never a name
+        'ruko', 'ruka', 'rukiye', 'rukie', 'ruk', 'wait', 'hold', 'later', 'ekchin', 'ekchhin', 'ek', 'chin', 'chhin', 'pakhnus', 'pakha',
+        'parkhanus', 'parkhnus', 'parkha', 'nakaat', 'nakat', 'nakaatnu', 'nagarnu', 'nagara', 'baad', 'pachhi', 'pachi', 'paxi', 'abhi', 'ahile',
+        'aile', 'now', 'sochchu', 'sochchhu', 'sochu', 'sodhchu', 'sodhchhu', 'sodhera', 'puchhchu', 'puchh', 'puchhke', 'puchhunga', 'batata',
+        'bataunga', 'bhanchu', 'customer', 'customers', 'grahak', 'pathaidiye', 'pathaidiyo', 'pathaideko', 'pathaeko', 'pathayeko', 'utr', 'ref',
+        'txn', 'reference', 'transaction', 'rrn', 'wapas', 'firta',
+        // round 4 (R1 / R2): "hola", promises and refusals, glued payment labels are never a passenger
+        'hola', 'karunga', 'karungi', 'karenge', 'aaucha', 'aauchha', 'aunchha', 'aaunchha', 'msg', 'message', 'confirm', 'nakatnu', 'nakaatnu',
+        'kaatna', 'katna', 'chaina', 'utrno', 'refno', 'txnid', 'transactionid'];
+
+    /**
+     * "Ram Thapa ra Sita Thapa", "Gopal, Sita & Hari": two or more passenger names, or [] when the line is not a plain
+     * list of names (a sentence, a command, one name).
+     *
+     * @return list<string>
+     */
+    private static function nameList(string $line): array
+    {
+        $line = trim((string) preg_replace('/^(?:naam|nam|name|names|नाम)\s*[:\-]?\s*/iu', '', trim($line)));
+        if ($line === '' || preg_match('/\d|\?/u', $line) === 1) {
+            return [];
+        }
+        $parts = preg_split('/\s*(?:,|;|&|\+|(?<![\p{L}\p{M}])(?:ra|and|aur|र|और)(?![\p{L}\p{M}]))\s*/iu', $line) ?: [];
+        $out = [];
+        foreach ($parts as $part) {
+            $part = trim($part, " .-\t");
+            if ($part === '') {
+                continue;
+            }
+            if (preg_match('/^\p{L}[\p{L}\p{M} .]{0,40}$/u', $part) !== 1) {
+                return [];
+            }
+            foreach (self::fillerTokens($part) as $w) {
+                if (in_array($w, self::NAME_STOP, true) || in_array($w, self::FILLER, true)) {
+                    return [];                                    // a sentence, not a name
+                }
+            }
+            $out[] = implode(' ', array_map(static fn(string $w): string => mb_convert_case($w, MB_CASE_TITLE), preg_split('/\s+/u', $part) ?: []));
+        }
+        return count($out) >= 2 ? $out : [];
+    }
+
+    /**
+     * Round 3: the passengers of a sale line typed as a list — "…, Ram Thapa, Sita Thapa and Gita Thapa 98…",
+     * "2 seats tomorrow from Surat, Ram Thapa and Sita Thapa 98…". The line is cut at commas and at ra / and / aur;
+     * only the pieces that are names (no digit, no command / chat word, not a stop) are kept, in order.
+     *
+     * @return list<string>
+     */
+    private static function rawNameList(string $text): array
+    {
+        require_once __DIR__ . '/personname.php';
+        $t = (string) preg_replace('/\+?\d[\d\s-]{8,}\d/u', ' ', self::asciiDigits($text));
+        $out = [];
+        foreach (preg_split('/\s*[,;]\s*/u', $t) ?: [] as $chunk) {
+            foreach (preg_split('/\s*(?:&|\+|(?<![\p{L}\p{M}])(?:ra|and|aur|र|और)(?![\p{L}\p{M}]))\s*/iu', trim($chunk)) ?: [] as $part) {
+                $part = trim($part, " .-\t");
+                if ($part === '' || preg_match('/^\p{L}[\p{L}\p{M} .]{1,40}$/u', $part) !== 1 || count(preg_split('/\s+/u', $part) ?: []) > 4) {
+                    continue;
+                }
+                $bad = false;
+                foreach (self::fillerTokens($part) as $w) {
+                    if (in_array($w, self::NAME_STOP, true) || in_array($w, self::FILLER, true)) {
+                        $bad = true;
+                        break;
+                    }
+                }
+                if ($bad || PersonName::clean($part) === '') {
+                    continue;
+                }
+                $out[] = PersonName::clean($part);
+            }
+        }
+        return $out;
+    }
+
+    /** The passenger name a line gives, '' when the line is not a name (a sentence, a command, a refusal). */
+    private static function nameLine(string $text, array $p): string
+    {
+        $nm = self::cleanName((string) ($p['name'] ?? ''));
+        if ($nm === '' || self::fillerOnly($text) || str_contains($text, '?')) {
+            return '';
+        }
+        foreach (self::fillerTokens((string) ($p['residual'] ?? $nm)) as $w) {
+            if (in_array($w, self::NAME_STOP, true)) {
+                return '';
+            }
+        }
+        // letters only (a name), or a name beside a number / a day / a pickup the parser took out
+        $bare = trim((string) preg_replace('/\+?\d[\d\s-]{6,}\d/', ' ', $text));
+        if ((string) ($p['phone'] ?? '') === '' && preg_match('/^\p{L}[\p{L}\p{M} .]{1,60}$/u', $bare) !== 1) {
+            return '';
+        }
+        // round 3: the one name rule every path shares (no pause / payment / chat word, not a stop, not a number)
+        require_once __DIR__ . '/personname.php';
+        return PersonName::clean($nm) !== '' ? $nm : '';
+    }
+
+    /** A parsed name with the request words taken out ("Kaat Do Mohan Lal" → "Mohan Lal", "Tikat" → ""). */
+    private static function cleanName(string $name): string
+    {
+        $keep = [];
+        foreach (preg_split('/\s+/u', trim($name)) ?: [] as $w) {
+            if ($w !== '' && !in_array(mb_strtolower($w), self::FILLER, true) && !in_array(mb_strtolower($w), self::NAME_STOP, true)) {
+                $keep[] = $w;
+            }
+        }
+        return implode(' ', $keep);
     }
 
     /* =================================================================
@@ -2365,14 +3814,40 @@ final class ApWa
                 }
                 return self::out(self::t('wd_saved', $lang, ['v' => inr((float) $p['amount']), 'id' => (string) $id]));
 
+            case 'deposit':
+                // round 2: the payment the member said they made is filed only now, on their "ho"
+                if ($member === null) {
+                    return self::out(self::t('no_permission', $lang));
+                }
+                try {
+                    $rid = AgentPro::requestDeposit((int) $member['id'], (float) $p['amount'], (string) ($p['purpose'] ?? 'handover'), 'upi', (string) $p['utr'], null, 'WhatsApp');
+                } catch (RuntimeException $e) {
+                    return self::out('⚠️ ' . $e->getMessage());
+                }
+                try {
+                    require_once __DIR__ . '/notify.php';
+                    Notify::adminNote('💵 Payment to verify (WhatsApp)', ['Member' => (string) $member['full_name'], 'Amount' => inr((float) $p['amount']),
+                        'UTR' => (string) $p['utr'], 'Open' => appUrl('admin/team.php?tab=money')]);
+                } catch (Throwable $e) {
+                    // the request is saved; the office sees it on the Team page
+                }
+                $text = self::t('pay_saved', $lang, ['v' => inr((float) $p['amount']), 'utr' => (string) $p['utr'], 'id' => (string) $rid]);
+                self::markDone($ctx['phone'], 'deposit', $text);
+                return self::out($text);
+
             case 'sale':
                 return self::saleConfirm((array) $p['sale'], $member, $ctx, $lang);
 
             case 'edit':
                 require_once __DIR__ . '/agentpro-edit.php';
+                $before = (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM message_logs', [], 0);
                 $r = ApEdit::apply((array) $p['change'], $ctx);
-                return $r['ok'] ? self::out(self::t('edit_done', $lang, ['pnr' => (string) $r['pnr']]), $r['media'] ?? null)
-                                : self::out(self::editError($r, $lang));
+                if (!$r['ok']) {
+                    return self::out(self::editError($r, $lang));
+                }
+                // 31 Oct 2026: "the new ticket also went to the passenger" only when WhatsApp took it
+                $went = self::sentSince($before, (string) (BookingService::detail((string) $r['pnr'])['contact_phone'] ?? ''));
+                return self::out(self::t($went ? 'edit_done' : 'edit_done_nosend', $lang, ['pnr' => (string) $r['pnr']]), $r['media'] ?? null);
 
             case 'cancel':
                 require_once __DIR__ . '/aitools.php';
@@ -2435,12 +3910,14 @@ final class ApWa
         foreach ((array) ($sale['names'] ?? []) as $n) {
             $party[] = ['name' => Security::clean((string) $n, 120), 'gender' => null];
         }
+        $logBefore = (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM message_logs', [], 0);
         try {
             $res = QuickTicket::sell([
                 'name' => (string) $sale['name'], 'phone' => (string) $sale['phone'], 'country' => (string) ($sale['country'] ?? ''),
                 'seats' => (int) $sale['seats'], 'date' => $opts['date'], 'direction' => $opts['direction'], 'boarding' => $opts['boarding'],
                 'gender' => $opts['gender'], 'pay' => in_array($sale['pay'], ['cash', 'upi', 'esewa', 'bank'], true) ? $sale['pay'] : 'cash',
                 'passengers' => count($party) >= 2 ? $party : [], 'note' => 'WhatsApp desk (Agent Pro)',
+                'agentCode' => (string) $member['role'] !== 'agent' ? (string) ($sale['agentCode'] ?? '') : '',
             ], $member);
         } catch (RuntimeException $e) {
             return self::out('⚠️ ' . $e->getMessage());
@@ -2449,8 +3926,31 @@ final class ApWa
         Logger::audit('agentpro.wa_sale', 'booking', $pnr, null, ['seller' => (int) $member['id'], 'wa' => $ctx['phone'],
             'seats' => (int) $sale['seats'], 'total' => (float) ($want['total'] ?? 0)], 'Sold from the WhatsApp desk');
         $media = ($res['status'] ?? '') === 'confirmed' && $pnr !== '' ? Ticket::imageUrl($pnr) : null;
-        $text = self::t('sale_done', $lang, ['pnr' => $pnr, 'seats' => implode(', ', array_map('strval', (array) ($res['seats'] ?? []))),
-            'total' => (string) ($res['totalLabel'] ?? ''), 'phone' => (string) $sale['phone']]);
+        /* 31 Oct 2026 (sims): the berths as the ticket prints them (the quote said F4, the sale said L34); "the ticket
+           went to 98…" only when WhatsApp took it; "commission on your wallet" only for an agent — a counter holds the
+           cash, an office seller earns none, a sale FOR an agent credits that agent. */
+        $seatsShown = Seats::displayLabels(array_map('strval', (array) ($res['seats'] ?? [])), (string) ($fresh['coach'] ?? 'sleeper'), (string) ($fresh['bookingMode'] ?? 'sharing'));
+        $total = (string) ($res['totalLabel'] ?? '');
+        $sent = !empty($sale['to_seller']) ? self::t('sale_sent_you', $lang)
+              : self::t(self::sentSince($logBefore, (string) $sale['phone']) ? 'sale_sent' : 'sale_not_sent', $lang, ['phone' => (string) $sale['phone']]);
+        $role = (string) $member['role'];
+        $soldBy = $pnr !== '' ? (int) Database::scalar('SELECT sold_by_admin_id FROM bookings WHERE pnr = :p', ['p' => $pnr], 0) : 0;
+        $company = AgentWallet::resolveAgentCodeFromString(Settings::getString('company_agent_code', 'SHG-0001'));
+        $tail = '';
+        if ($role === 'agent') {
+            $tail = self::t('sale_tail_agent', $lang);
+        } else {
+            if ($role === 'counter') {
+                // round 3 (counter sim: a UPI sale told the counter "cash ₹2,200 is on your account — hand it to the office")
+                $tail = self::t(in_array((string) ($sale['pay'] ?? ''), ['upi', 'esewa', 'bank'], true) ? 'sale_tail_counter_upi' : 'sale_tail_counter', $lang, ['total' => $total]);
+            }
+            if ($soldBy > 0 && $soldBy !== (int) $member['id'] && $soldBy !== (int) $company) {
+                $tail .= ($tail !== '' ? "\n" : '') . self::t('sale_tail_credit', $lang, ['code' => AgentWallet::agentCodeLabel($soldBy),
+                    'name' => (string) Database::scalar('SELECT full_name FROM admins WHERE id = :i', ['i' => $soldBy], '')]);
+            }
+        }
+        $text = self::t('sale_done', $lang, ['pnr' => $pnr, 'seats' => $seatsShown !== '' ? $seatsShown : implode(', ', array_map('strval', (array) ($res['seats'] ?? []))),
+            'total' => $total, 'sent' => $sent, 'tail' => $tail !== '' ? "\n" . $tail : '']);
         if ($pnr !== '') {
             try {
                 $text .= "\n📄 PDF: " . Ticket::downloadUrl($pnr);
@@ -2590,8 +4090,20 @@ final class ApWa
                     ?? self::bookingCard($pnr, $ctx, $lang);
             case 'balance':       return self::balance($member, $lang);
             case 'statement':     return self::statement($member, $lang, (int) ($i['days'] ?? 0));
-            case 'withdraw':      return self::withdraw($member, $ctx, $lang, (float) ($i['amount'] ?? 0));
-            case 'deposit':       return self::payIn($member, 'jama ' . ((float) ($i['amount'] ?? 0) ?: '') . ' ' . ($i['ref'] ?? ''), $lang);
+            case 'withdraw':
+            case 'deposit':
+                /* Round 4 (R3 — safety review A6: a learnt "withdraw" example for "Kamal ko payment <AMOUNT> gardiye" made
+                   the manager's "ho" file a payout on the MANAGER's own account): what the AI / a learnt example reads for
+                   the office goes through moneyRoute — that member's request, or "whose money is it?" — never the office's
+                   own account (its own is only the bare typed "jama … UTR …" / "withdraw …"). */
+                if (self::isOffice($ctx)) {
+                    return self::moneyRoute((string) ($ctx['raw_text'] ?? ($ctx['messageText'] ?? '')), $member, $ctx, $lang)
+                        ?? self::out(self::t('office_money_whose', $lang));
+                }
+                if ($intent === 'withdraw') {
+                    return self::withdraw($member, $ctx, $lang, (float) ($i['amount'] ?? 0));
+                }
+                return self::payIn($member, 'jama ' . ((float) ($i['amount'] ?? 0) ?: '') . ((string) ($i['ref'] ?? '') !== '' ? ' UTR ' . $i['ref'] : ''), $lang, $ctx);
             case 'id_card':
                 // the office asking for someone else's card ("AG-RAM27 ko ID pathau"): the same lookup as "id <query>"
                 $q = trim((string) ($i['query'] ?? ''));
@@ -2778,7 +4290,7 @@ final class ApWa
             'adm_wd_changed' => ['ne' => "⚠️ अनुरोध #{id} को रकम बदलियो — *withdrawals* फेरि हेर्नुहोस्।", 'hi' => "⚠️ अनुरोध #{id} की रकम बदल गई — *withdrawals* फिर देखें।", 'en' => "⚠️ Request #{id} changed — look at *withdrawals* again."],
             'adm_pay_confirm' => ['ne' => "💸 भुक्तानी रेकर्ड गर्ने?\n#{id} · {name} ({code}) · *{v}*\n→ {to}\nRef: {ref}\n\nतपाईंले पैसा पठाइसक्नुभएको हो भने *CONFIRM* लेख्नुहोस् (नभए *no*)।", 'hi' => "💸 भुगतान दर्ज करें?\n#{id} · {name} ({code}) · *{v}*\n→ {to}\nRef: {ref}\n\nपैसा भेज दिया है तो *CONFIRM* लिखें (नहीं तो *no*)।", 'en' => "💸 Record this payout?\n#{id} · {name} ({code}) · *{v}*\n→ {to}\nRef: {ref}\n\nIf you have sent the money, reply *CONFIRM* (or *no*)."],
             'adm_reject_confirm' => ['ne' => "⛔ अनुरोध #{id} ({name}, {v}) अस्वीकार गर्ने?\nकारण: {note}\n\n*CONFIRM* लेख्नुहोस् (नभए *no*)।", 'hi' => "⛔ अनुरोध #{id} ({name}, {v}) अस्वीकार करें?\nकारण: {note}\n\n*CONFIRM* लिखें (नहीं तो *no*)।", 'en' => "⛔ Decline request #{id} ({name}, {v})?\nReason: {note}\n\nReply *CONFIRM* (or *no*)."],
-            'adm_paid'    => ['ne' => "✅ #{id} भुक्तानी रेकर्ड भयो — {v} · भौचर {voucher} · Ref {ref}। सदस्यलाई WhatsApp गयो।", 'hi' => "✅ #{id} भुगतान दर्ज — {v} · वाउचर {voucher} · Ref {ref}। सदस्य को WhatsApp गया।", 'en' => "✅ #{id} payout recorded — {v} · voucher {voucher} · ref {ref}. The member was told on WhatsApp."],
+            'adm_paid'    => ['ne' => "✅ #{id} भुक्तानी रेकर्ड भयो — {v} · {voucher}Ref {ref}।\n{told}", 'hi' => "✅ #{id} भुगतान दर्ज — {v} · {voucher}Ref {ref}।\n{told}", 'en' => "✅ #{id} payout recorded — {v} · {voucher}ref {ref}.\n{told}"],
             'adm_rejected'=> ['ne' => "✅ #{id} अस्वीकार गरियो; सदस्यलाई कारण पठाइयो।", 'hi' => "✅ #{id} अस्वीकार; सदस्य को कारण भेजा गया।", 'en' => "✅ #{id} declined; the member was told why."],
             'adm_wd_refused' => ['ne' => "⚠️ रेफरेन्स {ref} अर्को भुक्तानीमा पहिल्यै रेकर्ड छ — एउटै भुक्तानी दुई पटक लेखिँदैन।", 'hi' => "⚠️ रेफरेंस {ref} किसी और भुगतान में पहले से दर्ज है — एक भुगतान दो बार दर्ज नहीं होता।", 'en' => "⚠️ Reference {ref} is already recorded on another payout — one payment is never recorded twice."],
             'adm_dep_head' => ['ne' => "💵 जाँच्न बाँकी भुक्तानी ({n})", 'hi' => "💵 जाँच के लिए भुगतान ({n})", 'en' => "💵 Payments to check ({n})"],
@@ -2791,8 +4303,8 @@ final class ApWa
             'adm_dep_toomuch' => ['ne' => "⚠️ #{id}: यो सदस्यसँग कम्पनीको नगद {v} मात्र छ — बाँकीलाई Team पेजमा धरौटी बनाउनुहोस् वा *jama no {id} कारण*।", 'hi' => "⚠️ #{id}: इस सदस्य के पास कंपनी का नकद सिर्फ़ {v} है — बाकी Team पेज पर सिक्योरिटी डिपॉज़िट करें या *jama no {id} कारण*।", 'en' => "⚠️ #{id}: this member holds only {v} of company cash — record the rest as a security deposit on the Team page, or *jama no {id} reason*."],
             'adm_dep_confirm' => ['ne' => "💵 भुक्तानी प्राप्त भएको रेकर्ड गर्ने?\n#{id} · {name} ({code}) · *{v}*\n{how} · {what}\n\nबैंक/हातमा पैसा आएको हो भने *CONFIRM* लेख्नुहोस् (नभए *no*)।", 'hi' => "💵 भुगतान मिलना दर्ज करें?\n#{id} · {name} ({code}) · *{v}*\n{how} · {what}\n\nपैसा बैंक/हाथ में आ गया है तो *CONFIRM* लिखें (नहीं तो *no*)।", 'en' => "💵 Record this payment as received?\n#{id} · {name} ({code}) · *{v}*\n{how} · {what}\n\nIf the money is in the bank / in hand, reply *CONFIRM* (or *no*)."],
             'adm_dep_decline' => ['ne' => "⛔ भुक्तानी #{id} ({name}, {v}) अस्वीकार गर्ने?\nकारण: {note}\n\n*CONFIRM* लेख्नुहोस् (नभए *no*)।", 'hi' => "⛔ भुगतान #{id} ({name}, {v}) अस्वीकार करें?\nकारण: {note}\n\n*CONFIRM* लिखें (नहीं तो *no*)।", 'en' => "⛔ Decline payment #{id} ({name}, {v})?\nReason: {note}\n\nReply *CONFIRM* (or *no*)."],
-            'adm_dep_done' => ['ne' => "✅ #{id} {v} प्राप्त भएको रेकर्ड भयो; सदस्यलाई WhatsApp गयो।", 'hi' => "✅ #{id} {v} मिलना दर्ज; सदस्य को WhatsApp गया।", 'en' => "✅ #{id} {v} recorded as received; the member was told on WhatsApp."],
-            'adm_dep_declined' => ['ne' => "✅ #{id} अस्वीकार गरियो; सदस्यलाई कारण पठाइयो।", 'hi' => "✅ #{id} अस्वीकार; सदस्य को कारण भेजा गया।", 'en' => "✅ #{id} declined; the member was told why."],
+            'adm_dep_done' => ['ne' => "✅ #{id} {v} प्राप्त भएको रेकर्ड भयो।\n{told}", 'hi' => "✅ #{id} {v} मिलना दर्ज।\n{told}", 'en' => "✅ #{id} {v} recorded as received.\n{told}"],
+            'adm_dep_declined' => ['ne' => "✅ #{id} अस्वीकार गरियो।\n{told}", 'hi' => "✅ #{id} अस्वीकार।\n{told}", 'en' => "✅ #{id} declined.\n{told}"],
             'already_done'=> ['ne' => "ℹ️ यो पहिल्यै भइसक्यो — फेरि गरिएन।", 'hi' => "ℹ️ यह पहले ही हो चुका है — दोबारा नहीं किया।", 'en' => "ℹ️ This was already done — nothing was repeated."],
             'nothing_pending' => ['ne' => "ℹ️ अहिले पुष्टि गर्नुपर्ने केही छैन। *help* लेख्नुहोस्।", 'hi' => "ℹ️ अभी पुष्टि करने को कुछ नहीं है। *help* लिखें।", 'en' => "ℹ️ There is nothing waiting for confirmation. Type *help*."],
             'done_no_undo'=> ['ne' => "ℹ️ त्यो भइसकेको छ — फिर्ता गर्न अफिसलाई भन्नुहोस् (टिकट भए *PNR cancel*)।", 'hi' => "ℹ️ वह हो चुका है — वापस करने के लिए ऑफिस से कहें (टिकट हो तो *PNR cancel*)।", 'en' => "ℹ️ That is already done — ask the office to undo it (for a ticket: *PNR cancel*)."],
@@ -2800,6 +4312,7 @@ final class ApWa
             'tk_head_date'=> ['ne' => "📋 {d} मा यात्रा गर्ने तपाईंका टिकट ({n})", 'hi' => "📋 {d} को यात्रा वाले आपके टिकट ({n})", 'en' => "📋 Your tickets travelling {d} ({n})"],
             'tk_none'     => ['ne' => "(कुनै टिकट छैन)", 'hi' => "(कोई टिकट नहीं)", 'en' => "(no tickets)"],
             'portal_agent'=> ['ne' => "🔑 तपाईंको पोर्टल: {me}\nएजेन्ट कोड: *{code}* · मोबाइल: {mob}\nत्यहाँ कोड र मोबाइल लेख्नुहोस् — OTP यहीँ WhatsApp मा आउँछ। पछि fingerprint ले पनि खुल्छ।\nयो लिंक/OTP कसैलाई नदिनुहोस्।", 'hi' => "🔑 आपका पोर्टल: {me}\nएजेंट कोड: *{code}* · मोबाइल: {mob}\nवहाँ कोड और मोबाइल लिखें — OTP यहीं WhatsApp पर आएगा। बाद में fingerprint से भी खुलेगा।\nयह OTP किसी को न दें।", 'en' => "🔑 Your portal: {me}\nAgent code: *{code}* · mobile: {mob}\nType the code and mobile there — the OTP comes here on WhatsApp. Later a fingerprint opens it too.\nNever share the OTP."],
+            'portal_one'  => ['ne' => "🔑 लगइन: {url}\nमोबाइल ({mob}) लेख्नुहोस् → WhatsApp मा \"hi\" पठाउनुहोस् वा ६ अङ्कको कोड; वा ID *{id}* + पासवर्ड।\nपासवर्ड बिर्सनुभयो? त्यही पेजमा \"पासवर्ड बिर्सनुभयो?\" — WhatsApp ले पुष्टि हुन्छ।\nतपाईंको ID कार्ड र wallet: {me}\nयो कोड/सन्देश कसैलाई नदिनुहोस्।", 'hi' => "🔑 लॉगिन: {url}\nमोबाइल ({mob}) लिखें → WhatsApp पर \"hi\" भेजें या 6 अंकों का कोड; या ID *{id}* + पासवर्ड।\nपासवर्ड भूल गए? उसी पेज पर \"पासवर्ड भूल गए?\" — WhatsApp से पुष्टि होगी।\nआपका ID कार्ड और wallet: {me}\nयह कोड किसी को न दें।", 'en' => "🔑 Sign in: {url}\nType your mobile ({mob}) → send \"hi\" on WhatsApp or get a 6-digit code; or ID *{id}* + password.\nForgot the password? Tap \"Forgot password?\" on the same page — WhatsApp confirms it is you.\nYour ID card and wallet: {me}\nNever share the code."],
             'portal_staff'=> ['ne' => "🔑 तपाईंको पोर्टल: {me}\nस्टाफ साइन-इन: {admin} (युजर: *{user}*)\nपासवर्ड बिर्सनुभयो भने अफिसलाई भन्नुहोस्।", 'hi' => "🔑 आपका पोर्टल: {me}\nस्टाफ साइन-इन: {admin} (यूज़र: *{user}*)\nपासवर्ड भूल गए तो ऑफिस से कहें।", 'en' => "🔑 Your portal: {me}\nStaff sign-in: {admin} (user: *{user}*)\nForgot the password? Ask the office."],
             'bk_no_bus'   => ['ne' => "अहिले बिक्रीमा कुनै बस छैन।", 'hi' => "अभी बिक्री में कोई बस नहीं।", 'en' => "No bus is on sale right now."],
             'bk_q_direction' => ['ne' => "🚌 कुन रुट? नम्बर पठाउनुहोस्:", 'hi' => "🚌 कौन सा रूट? नंबर भेजें:", 'en' => "🚌 Which route? Send the number:"],
@@ -2844,10 +4357,23 @@ final class ApWa
             'wd_too_much' => ['ne' => "⚠️ बढीमा {v} मात्र निकाल्न मिल्छ।", 'hi' => "⚠️ ज़्यादा से ज़्यादा {v} निकाल सकते हैं।", 'en' => "⚠️ You can withdraw up to {v}."],
             'wd_open'     => ['ne' => "⏳ तपाईंको अघिल्लो withdraw अनुरोध अझै अफिसमा छ।", 'hi' => "⏳ आपका पिछला withdraw अनुरोध अभी ऑफिस में है।", 'en' => "⏳ Your earlier withdrawal request is still with the office."],
             'wd_to_office'=> ['ne' => "अफिसमा (भुक्तानी विवरण /me/ मा थप्नुहोस्)", 'hi' => "ऑफिस में (भुगतान विवरण /me/ में जोड़ें)", 'en' => "at the office (add payout details in /me/)"],
-            'wd_confirm'  => ['ne' => "💸 *{v}* निकाल्ने अनुरोध पठाउने?\nपठाउने ठाउँ: {to}\n\n*ho* लेख्नुहोस् (नभए *no*)।", 'hi' => "💸 *{v}* निकालने का अनुरोध भेजें?\nभेजने की जगह: {to}\n\n*ha* लिखें (नहीं तो *no*)।", 'en' => "💸 Send a withdrawal request for *{v}*?\nPaid to: {to}\n\nReply *yes* (or *no*)."],
+            'wd_confirm'  => ['ne' => "💸 *{v}* निकाल्ने अनुरोध पठाउने?\n👤 {who} (तपाईंकै हिसाबबाट)\nपठाउने ठाउँ: {to}\n\n*ho* लेख्नुहोस् (नभए *no*)।", 'hi' => "💸 *{v}* निकालने का अनुरोध भेजें?\n👤 {who} (आपके अपने हिसाब से)\nभेजने की जगह: {to}\n\n*ha* लिखें (नहीं तो *no*)।", 'en' => "💸 Send a withdrawal request for *{v}*?\n👤 {who} (from your own wallet)\nPaid to: {to}\n\nReply *yes* (or *no*)."],
             'wd_saved'    => ['ne' => "✅ {v} को अनुरोध #{id} अफिसमा पुग्यो। भुक्तानी भएपछि यहीँ खबर आउँछ।", 'hi' => "✅ {v} का अनुरोध #{id} ऑफिस पहुँच गया। भुगतान होने पर यहीं सूचना आएगी।", 'en' => "✅ Request #{id} for {v} is with the office. You will be told here when it is paid."],
             'pay_how'     => ['ne' => "💵 तपाईंसँग कम्पनीको नगद: {held}\n\nUPI: *{upi}* मा {v} तिर्नुहोस् (QR माथि छ)\nतिरेपछि यस्तो लेख्नुहोस्:\n*jama 1500 UTR 430987651234*", 'hi' => "💵 आपके पास कंपनी का नकद: {held}\n\nUPI: *{upi}* पर {v} भरें (QR ऊपर है)\nभरने के बाद ऐसे लिखें:\n*jama 1500 UTR 430987651234*", 'en' => "💵 Company cash you hold: {held}\n\nPay {v} to UPI *{upi}* (QR above)\nThen send:\n*pay 1500 UTR 430987651234*"],
             'pay_saved'   => ['ne' => "✅ {v} (UTR {utr}) अफिसमा पठाइयो — #{id}। बैंकमा मिलेपछि यहीँ पुष्टि आउँछ।", 'hi' => "✅ {v} (UTR {utr}) ऑफिस भेजा गया — #{id}। बैंक में मिलने पर यहीं पुष्टि आएगी।", 'en' => "✅ {v} (UTR {utr}) sent to the office — #{id}. You will get a confirmation here once it is matched."],
+            'pay_confirm' => ['ne' => "💵 कम्पनीलाई तिरेको *{v}* (UTR {utr}) अफिसलाई जाँच्न पठाउने?\n👤 तिर्ने: {who} (तपाईंकै हिसाबमा)\n\n*ho* लेख्नुहोस् (नभए *no*)। अहिले केही रेकर्ड भएको छैन।", 'hi' => "💵 कंपनी को भरे *{v}* (UTR {utr}) ऑफिस को जाँच के लिए भेजें?\n👤 भरने वाले: {who} (आपके अपने हिसाब में)\n\n*ha* लिखें (नहीं तो *no*)। अभी कुछ दर्ज नहीं हुआ है।", 'en' => "💵 Send *{v}* paid to the company (UTR {utr}) to the office to check?\n👤 Paid by: {who} (on your own account)\n\nReply *yes* (or *no*). Nothing is recorded yet."],
+            'pay_cash_note' => ['ne' => "💵 {v} नगद अफिसमा बुझाएको — अफिसले Team पेजमा पुष्टि गरेपछि तपाईंको खातामा देखिन्छ। यहाँबाट केही रेकर्ड गरिएन।\nबैंक / UPI बाट तिरेको भए: *jama 1500 UTR 430987651234*", 'hi' => "💵 {v} नकद ऑफिस में जमा — ऑफिस Team पेज पर पुष्टि करेगा तब आपके खाते में दिखेगा। यहाँ से कुछ दर्ज नहीं किया।\nबैंक / UPI से भरा हो तो: *jama 1500 UTR 430987651234*", 'en' => "💵 {v} cash handed to the office — it shows on your wallet once the office confirms it on the Team page. Nothing was recorded from here.\nPaid by bank / UPI? Send: *pay 1500 UTR 430987651234*"],
+            'pf_head'     => ['ne' => "🔎 {q} — तपाईंका टिकट ({n}):", 'hi' => "🔎 {q} — आपके टिकट ({n}):", 'en' => "🔎 {q} — your tickets ({n}):"],
+            'pf_none'     => ['ne' => "🔎 {q} नामको यात्रु तपाईंका टिकटमा भेटिएन। PNR भए पठाउनुहोस्, वा *tickets* लेख्नुहोस्।", 'hi' => "🔎 {q} नाम का यात्री आपके टिकटों में नहीं मिला। PNR हो तो भेजें, या *tickets* लिखें।", 'en' => "🔎 No passenger called {q} among your tickets. Send the PNR, or write *tickets*."],
+            'bal_commission_o' => ['ne' => "🟢 कम्पनीले {name} लाई दिनुपर्ने (कमिसन): *{v}*", 'hi' => "🟢 कंपनी को {name} को देना है (कमीशन): *{v}*", 'en' => "🟢 Company owes {name} (commission): *{v}*"],
+            'bal_cash_o'  => ['ne' => "🔸 {name} सँग रहेको कम्पनीको नगद: *{v}*", 'hi' => "🔸 {name} के पास कंपनी का नकद: *{v}*", 'en' => "🔸 Company cash {name} holds: *{v}*"],
+            'bal_tail_o'  => ['ne' => "👉 *statement {code}* · *withdrawals* · *deposits*", 'hi' => "👉 *statement {code}* · *withdrawals* · *deposits*", 'en' => "👉 *statement {code}* · *withdrawals* · *deposits*"],
+            'adm_wd_none_many' => ['ne' => "ℹ️ {list} — कसैको पनि खुला निकासी अनुरोध छैन। केही रेकर्ड गरिएन।", 'hi' => "ℹ️ {list} — किसी का भी खुला निकासी अनुरोध नहीं। कुछ दर्ज नहीं किया।", 'en' => "ℹ️ {list} — none of them has an open withdrawal request. Nothing was recorded."],
+            'adm_dep_none_many' => ['ne' => "ℹ️ {list} — कसैको पनि {v} को खुला भुक्तानी अनुरोध छैन — सूची: *deposits*। केही रेकर्ड गरिएन।", 'hi' => "ℹ️ {list} — किसी का भी {v} का खुला भुगतान अनुरोध नहीं — सूची: *deposits*। कुछ दर्ज नहीं किया।", 'en' => "ℹ️ {list} — none of them has an open payment {v} — list: *deposits*. Nothing was recorded."],
+            'pay_need_ref' => ['ne' => "💵 {v} तिर्नुभयो भने बैंक / UPI को UTR (रेफरेन्स) नम्बर पठाउनुहोस्, जस्तै: *jama {n} UTR 430987651234*\nत्यसपछि *ho* भनेपछि मात्र अफिसमा जान्छ। अहिले केही रेकर्ड भएको छैन।", 'hi' => "💵 {v} भर दिए हैं तो बैंक / UPI का UTR (रेफरेंस) नंबर भेजें, जैसे: *jama {n} UTR 430987651234*\nफिर *ha* कहने पर ही ऑफिस जाएगा। अभी कुछ दर्ज नहीं हुआ है।", 'en' => "💵 If you paid {v}, send the bank / UPI reference (UTR), like: *pay {n} UTR 430987651234*\nIt goes to the office only after your *yes*. Nothing is recorded yet."],
+            'pay_ref_used' => ['ne' => "⚠️ UTR {utr} पहिले नै पठाइसकिएको छ — केही रेकर्ड गरिएन।", 'hi' => "⚠️ UTR {utr} पहले ही भेजा जा चुका है — कुछ दर्ज नहीं किया।", 'en' => "⚠️ UTR {utr} was already sent — nothing was recorded."],
+            'cancel_which' => ['ne' => "❌ कुन टिकट? PNR सहित पठाउनुहोस्: *SHG-2026-01234 cancel* (आफ्ना टिकट: *tickets*)। रद्द / फिर्ता अफिसले नै गर्छ।", 'hi' => "❌ कौन सा टिकट? PNR के साथ भेजें: *SHG-2026-01234 cancel* (अपने टिकट: *tickets*)। रद्द / वापसी ऑफिस ही करता है।", 'en' => "❌ Which ticket? Send it with the PNR: *SHG-2026-01234 cancel* (your tickets: *tickets*). The office does cancellations / refunds."],
+            'resent_not_sent' => ['ne' => "📲 {pnr} को टिकट WhatsApp मा अहिले जान सकेन — यो टिकट फोटो / PDF लिंक यात्रुलाई फर्वार्ड गर्नुहोस्।", 'hi' => "📲 {pnr} का टिकट WhatsApp पर अभी नहीं जा सका — यह टिकट फोटो / PDF लिंक यात्री को फॉरवर्ड करें।", 'en' => "📲 The ticket for {pnr} did not go through on WhatsApp just now — forward this ticket picture / PDF link to the passenger."],
             'card_id'     => ['ne' => "🪪 तपाईंको ID कार्ड ({code})\nपछाडि: *id back* · प्रिन्ट / डाउनलोड: {me}", 'hi' => "🪪 आपका ID कार्ड ({code})\nपीछे: *id back* · प्रिंट / डाउनलोड: {me}", 'en' => "🪪 Your ID card ({code})\nBack side: *id back* · print / download: {me}"],
             'card_vc'     => ['ne' => "💼 तपाईंको visiting card — QR स्क्यान गर्दा सिधै WhatsApp {wa}\nपछाडि: *card back*\nसेयर गर्ने लिंक: {share}", 'hi' => "💼 आपका visiting card — QR स्कैन करते ही सीधे WhatsApp {wa}\nपीछे: *card back*\nशेयर लिंक: {share}", 'en' => "💼 Your visiting card — scanning the QR opens WhatsApp {wa}\nBack side: *card back*\nShare link: {share}"],
             'profile'     => ['ne' => "👤 {name}\n🪪 {code} · {role}\n☎ {phone} · WA {wa}\n📍 {branch}\n✅ KYC: {kyc} · कार्ड {valid} सम्म\n🏦 {bank}\n📱 {me}", 'hi' => "👤 {name}\n🪪 {code} · {role}\n☎ {phone} · WA {wa}\n📍 {branch}\n✅ KYC: {kyc} · कार्ड {valid} तक\n🏦 {bank}\n📱 {me}", 'en' => "👤 {name}\n🪪 {code} · {role}\n☎ {phone} · WA {wa}\n📍 {branch}\n✅ KYC: {kyc} · card valid till {valid}\n🏦 {bank}\n📱 {me}"],
@@ -2861,6 +4387,7 @@ final class ApWa
             'dir_head'    => ['ne' => "📇 सम्पर्क ({n})", 'hi' => "📇 संपर्क ({n})", 'en' => "📇 Contacts ({n})"],
             'dir_more'    => ['ne' => "नाम लेखेर खोज्नुहोस्: *number Ram*", 'hi' => "नाम लिखकर खोजें: *number Ram*", 'en' => "search by name: *number Ram*"],
             'dir_none'    => ['ne' => "(कोही भेटिएन)", 'hi' => "(कोई नहीं मिला)", 'en' => "(nobody found)"],
+            'dir_hidden'  => ['ne' => "🔒 एजेन्टको निजी नम्बर WhatsApp मा दिइँदैन (वेबसाइटमा देखिने एजेन्टको मात्र)। अफिस: {phone}", 'hi' => "🔒 एजेंट का निजी नंबर WhatsApp पर नहीं दिया जाता (सिर्फ वेबसाइट पर दिखने वाले एजेंट का)। ऑफिस: {phone}", 'en' => "🔒 An agent's personal number is not given on WhatsApp (only agents listed on the website). Office: {phone}"],
             'co_operator' => ['ne' => "👔 सञ्चालक: {n}", 'hi' => "👔 संचालक: {n}", 'en' => "👔 Director: {n}"],
             'bus_head'    => ['ne' => "🚌 बसहरू — {d}", 'hi' => "🚌 बसें — {d}", 'en' => "🚌 Buses — {d}"],
             'bus_sold'    => ['ne' => "{n} सिट बिक्री", 'hi' => "{n} सीट बिकी", 'en' => "{n} seats sold"],
@@ -2886,6 +4413,8 @@ final class ApWa
             'e_departed'  => ['ne' => "⚠️ बस छुटिसक्यो — अब टिकट बदल्न मिल्दैन।", 'hi' => "⚠️ बस निकल चुकी — अब टिकट नहीं बदल सकते।", 'en' => "⚠️ The bus has left — the ticket can no longer be changed."],
             'e_whichpax'  => ['ne' => "👥 कुन यात्रु? ({names}) — जस्तै: *SHG-… Ram ko naam Sita*", 'hi' => "👥 कौन सा यात्री? ({names}) — जैसे: *SHG-… Ram ka naam Sita*", 'en' => "👥 Which passenger? ({names}) — e.g. *SHG-… Ram name Sita*"],
             'e_badstop'   => ['ne' => "⚠️ त्यो ठाउँ यो बसको रुटमा छैन। यीमध्ये: {stops}", 'hi' => "⚠️ यह जगह इस बस के रूट में नहीं है। इनमें से: {stops}", 'en' => "⚠️ That stop is not on this bus's route. One of: {stops}"],
+            'e_badseat'   => ['ne' => "⚠️ सिट {seat} यो बसमा छैन — टिकटमा छापिएजस्तै सिट लेख्नुहोस् (जस्तै F5)। केही बदलिएन।", 'hi' => "⚠️ सीट {seat} इस बस में नहीं — टिकट पर छपी सीट लिखें (जैसे F5)। कुछ नहीं बदला।", 'en' => "⚠️ Seat {seat} is not on this bus — type the seat as printed on the ticket (e.g. F5). Nothing was changed."],
+            'e_seattaken' => ['ne' => "⚠️ सिट {seat} मा अरू यात्रु हुनुहुन्छ — अर्को खाली सिट छान्नुहोस्। केही बदलिएन।", 'hi' => "⚠️ सीट {seat} पर दूसरा यात्री है — दूसरी खाली सीट चुनें। कुछ नहीं बदला।", 'en' => "⚠️ Seat {seat} is taken — choose another free seat. Nothing was changed."],
             'e_same'      => ['ne' => "ℹ️ टिकटमा पहिल्यै त्यही छ।", 'hi' => "ℹ️ टिकट पर पहले से वही है।", 'en' => "ℹ️ The ticket already says that."],
             'e_value'     => ['ne' => "⚠️ नयाँ मान बुझिएन। जस्तै: *SHG-… seat L5* / *phone 98XXXXXXXX* / *date 2026-11-02*", 'hi' => "⚠️ नया मान समझ नहीं आया। जैसे: *SHG-… seat L5* / *phone 98XXXXXXXX* / *date 2026-11-02*", 'en' => "⚠️ I did not understand the new value. E.g. *SHG-… seat L5* / *phone 98XXXXXXXX* / *date 2026-11-02*"],
             'card_tail'   => ['ne' => "✏️ बदल्न: *PNR नाम / pickup / seat / phone / date …* · ❌ *PNR cancel*", 'hi' => "✏️ बदलने के लिए: *PNR नाम / pickup / seat / phone / date …* · ❌ *PNR cancel*", 'en' => "✏️ To change: *PNR name / pickup / seat / phone / date …* · ❌ *PNR cancel*"],
@@ -2893,7 +4422,45 @@ final class ApWa
             'sale_quote'  => ['ne' => "🎫 कोटेसन (अझै बुक भएको छैन)\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} सिट: {seats} (बाँकी {left})\n👤 {who}\n💰 जम्मा *{total}*", 'hi' => "🎫 कोटेशन (अभी बुक नहीं हुआ)\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} सीट: {seats} (बाकी {left})\n👤 {who}\n💰 कुल *{total}*", 'en' => "🎫 Quote (nothing booked yet)\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} seat(s): {seats} ({left} left)\n👤 {who}\n💰 Total *{total}*"],
             'sale_ask_yes'=> ['ne' => "टिकट काट्ने भए *ho* वा *CONFIRM* लेख्नुहोस्। (UPI भए *upi*, धेरै नाम: *names Ram, Sita*)", 'hi' => "टिकट काटना है तो *ha* या *CONFIRM* लिखें। (UPI हो तो *upi*, कई नाम: *names Ram, Sita*)", 'en' => "Reply *yes* or *CONFIRM* to issue. (UPI: *upi*; several travellers: *names Ram, Sita*)"],
             'sale_need'   => ['ne' => "✍️ अझै चाहियो: {what}। जस्तै: *Ram Thapa 98XXXXXXXX*", 'hi' => "✍️ अभी चाहिए: {what}। जैसे: *Ram Thapa 98XXXXXXXX*", 'en' => "✍️ Still needed: {what}. E.g. *Ram Thapa 98XXXXXXXX*"],
-            'sale_done'   => ['ne' => "✅ टिकट काटियो! PNR *{pnr}*\n💺 {seats} · {total}\n📲 टिकट {phone} को WhatsApp मा गयो; कमिसन तपाईंको wallet मा।", 'hi' => "✅ टिकट कट गया! PNR *{pnr}*\n💺 {seats} · {total}\n📲 टिकट {phone} के WhatsApp पर गया; कमीशन आपके wallet में।", 'en' => "✅ Ticket issued! PNR *{pnr}*\n💺 {seats} · {total}\n📲 The ticket went to {phone} on WhatsApp; the commission is on your wallet."],
+            'sale_done'   => ['ne' => "✅ टिकट काटियो! PNR *{pnr}*\n💺 {seats} · {total}\n{sent}{tail}", 'hi' => "✅ टिकट कट गया! PNR *{pnr}*\n💺 {seats} · {total}\n{sent}{tail}", 'en' => "✅ Ticket issued! PNR *{pnr}*\n💺 {seats} · {total}\n{sent}{tail}"],
+            'sale_sent'   => ['ne' => "📲 टिकट {phone} को WhatsApp मा गयो।", 'hi' => "📲 टिकट {phone} के WhatsApp पर गया।", 'en' => "📲 The ticket went to {phone} on WhatsApp."],
+            'sale_not_sent' => ['ne' => "📲 {phone} मा WhatsApp अहिले जान सकेन — यो टिकट फोटो / PDF लिंक यात्रुलाई फर्वार्ड गर्नुहोस् (उहाँले हाम्रो नम्बरमा \"hi\" लेखे पनि आउँछ)।", 'hi' => "📲 {phone} पर WhatsApp अभी नहीं जा सका — यह टिकट फोटो / PDF लिंक यात्री को फॉरवर्ड करें (वे हमारे नंबर पर \"hi\" लिखें तो भी आएगा)।", 'en' => "📲 WhatsApp to {phone} did not go through just now — forward this ticket picture / PDF link (it also arrives once they write \"hi\" to our number)."],
+            'sale_sent_you' => ['ne' => "📲 टिकट यहीँ (तपाईंको WhatsApp मा) — यात्रुलाई फर्वार्ड गर्नुहोस्।", 'hi' => "📲 टिकट यहीं (आपके WhatsApp पर) — यात्री को फॉरवर्ड करें।", 'en' => "📲 The ticket is here (your WhatsApp) — forward it to the passenger."],
+            'sale_tail_agent' => ['ne' => "💰 कमिसन तपाईंको wallet मा।", 'hi' => "💰 कमीशन आपके wallet में।", 'en' => "💰 The commission is on your wallet."],
+            'sale_tail_counter' => ['ne' => "💵 नगद {total} तपाईंको हिसाबमा — अफिसलाई बुझाउनुहोस्।", 'hi' => "💵 नकद {total} आपके हिसाब में — ऑफिस को जमा करें।", 'en' => "💵 Cash {total} is on your account — hand it to the office."],
+            'sale_tail_credit' => ['ne' => "🤝 बिक्री र कमिसन {code} {name} लाई।", 'hi' => "🤝 बिक्री और कमीशन {code} {name} को।", 'en' => "🤝 Sale and commission credited to {code} {name}."],
+            'sale_company' => ['ne' => "🏢 कम्पनीको आफ्नै बिक्री ({code})", 'hi' => "🏢 कंपनी की अपनी बिक्री ({code})", 'en' => "🏢 The company's own sale ({code})"],
+            'sale_agent'  => ['ne' => "🤝 एजेन्ट: {code} · {name} (बिक्री र कमिसन उहाँको)", 'hi' => "🤝 एजेंट: {code} · {name} (बिक्री और कमीशन उनका)", 'en' => "🤝 Agent: {code} · {name} (the sale and commission are theirs)"],
+            'agent_code_unknown' => ['ne' => "⚠️ {code} कुनै सक्रिय एजेन्टको कोड होइन — कोड जाँचेर फेरि पठाउनुहोस्। केही बुक भएको छैन।", 'hi' => "⚠️ {code} किसी सक्रिय एजेंट का कोड नहीं — कोड जाँचकर फिर भेजें। कुछ बुक नहीं हुआ।", 'en' => "⚠️ {code} is not an active agent's code — check it and send again. Nothing was booked."],
+            'no_private'  => ['ne' => "🔒 कसैको बैंक खाता, आधार / नागरिकता जस्ता नम्बर WhatsApp मा दिइँदैन। अफिसको Team पेजमा हेर्नुहोस्, वा अफिस: {phone}", 'hi' => "🔒 किसी का बैंक खाता, आधार / नागरिकता जैसे नंबर WhatsApp पर नहीं दिए जाते। ऑफिस के Team पेज पर देखें, या ऑफिस: {phone}", 'en' => "🔒 Bank account, Aadhaar / citizenship and similar numbers are never given on WhatsApp. See the office Team page, or call the office: {phone}"],
+            'thanks'      => ['ne' => "🙏 धन्यवाद! अरू केही चाहिए भने यहीँ लेख्नुहोस्।", 'hi' => "🙏 धन्यवाद! और कुछ चाहिए तो यहीं लिखें।", 'en' => "🙏 Thank you! Write here if you need anything else."],
+            'pending_dropped' => ['ne' => "ℹ️ (अघिल्लो पुष्टि गर्न बाँकी कुरा छोडियो — केही गरिएन।)", 'hi' => "ℹ️ (पिछली पुष्टि वाली बात छोड़ दी — कुछ नहीं किया गया।)", 'en' => "ℹ️ (The earlier request waiting for your yes was dropped — nothing was done.)"],
+            // round 3 (owner's rules R1–R3)
+            'held_sale'   => ['ne' => "👍 ठिक छ — कोटेसन छोडियो, टिकट काटिएको छैन। फेरि चाहिँदा पूरा लाइन पठाउनुहोस् (जस्तै *1 seat bholi Surat Ram Thapa 98XXXXXXXX*)।", 'hi' => "👍 ठीक है — कोटेशन छोड़ दिया, टिकट नहीं कटा। फिर चाहिए तो पूरी लाइन भेजें (जैसे *1 seat kal Surat Ram Thapa 98XXXXXXXX*)।", 'en' => "👍 OK — the quote is dropped, no ticket was issued. Send the whole line again when you want it (e.g. *1 seat tomorrow Surat Ram Thapa 98XXXXXXXX*)."],
+            'held'        => ['ne' => "👍 ठिक छ — रोकियो, केही रेकर्ड / पठाइएको छैन। फेरि चाहिँदा पूरा कुरा पठाउनुहोस्।", 'hi' => "👍 ठीक है — रोक दिया, कुछ दर्ज / भेजा नहीं गया। फिर चाहिए तो पूरी बात भेजें।", 'en' => "👍 OK — stopped; nothing was recorded or sent. Send it again in full when you want it."],
+            // round 4 (R1, review A4): a command line that also says no / not now / wait starts nothing
+            'held_cmd'    => ['ne' => "✋ केही गरिएन{what} — सन्देशमा \"नगर्नु / होइन / पछि / पर्ख\" जस्तो कुरा छ। गर्ने भए त्यो शब्द बिना फेरि पठाउनुहोस्।", 'hi' => "✋ कुछ नहीं किया{what} — संदेश में \"मत / नहीं / बाद में / रुको\" जैसी बात है। करना हो तो वह शब्द हटाकर फिर भेजिए।", 'en' => "✋ Nothing done{what} — the message says no / not now / wait. To go ahead, send it again without that."],
+            'sale_waiting'=> ['ne' => "⏳ कोटेसन अझै *ho* पर्खिरहेको छ (टिकट काटिएको छैन):\n👤 {who} · 📅 {date} · 💺 {n}{seats} · {total}\n\n*ho* = टिकट काट्ने · *no* = छोड्ने\nबदल्न: *naam Sita Thapa* · मोबाइल नम्बर · *bholi* / *parsi* · *upi*", 'hi' => "⏳ कोटेशन अभी *ha* का इंतज़ार कर रहा है (टिकट नहीं कटा):\n👤 {who} · 📅 {date} · 💺 {n}{seats} · {total}\n\n*ha* = टिकट काटें · *no* = छोड़ें\nबदलने के लिए: *naam Sita Thapa* · मोबाइल नंबर · *kal* / *parso* · *upi*", 'en' => "⏳ The quote still waits for your *yes* (no ticket issued yet):\n👤 {who} · 📅 {date} · 💺 {n}{seats} · {total}\n\n*yes* = issue · *no* = drop\nTo change: *naam Sita Thapa* · a mobile number · *tomorrow* · *upi*"],
+            'pending_waiting' => ['ne' => "⏳ अघिल्लो कुरा अझै तपाईंको *ho* पर्खिरहेको छ — केही रेकर्ड भएको छैन। *ho* = पठाउने, *no* = छोड्ने।", 'hi' => "⏳ पिछली बात अभी आपके *ha* का इंतज़ार कर रही है — कुछ दर्ज नहीं हुआ। *ha* = भेजें, *no* = छोड़ें।", 'en' => "⏳ The earlier request still waits for your *yes* — nothing is recorded yet. *yes* = go ahead, *no* = drop it."],
+            'sale_name_how' => ['ne' => "✍️ यात्रुको नाम बदल्ने भए *naam Sita Thapa* लेख्नुहोस् (वा नाम + मोबाइल: *Sita Thapa 98XXXXXXXX*)। कोटेसन जस्ताको तस्तै छ — काट्न *ho*, छोड्न *no*।", 'hi' => "✍️ यात्री का नाम बदलना हो तो *naam Sita Thapa* लिखें (या नाम + मोबाइल: *Sita Thapa 98XXXXXXXX*)। कोटेशन वैसा ही है — काटने के लिए *ha*, छोड़ने के लिए *no*।", 'en' => "✍️ To change the passenger, write *naam Sita Thapa* (or the name + mobile: *Sita Thapa 98XXXXXXXX*). The quote is unchanged — *yes* to issue, *no* to drop."],
+            'money_via_office' => ['ne' => "🔒 सदस्यहरूबीचको पैसा (भुक्तानी, हस्तान्तरण) अफिसले मात्र रेकर्ड गर्छ — यो तपाईंको कम्पनीलाई तिरेको रकममा राखिँदैन। अफिस: {phone}\nआफ्नै भुक्तानी भए: *jama 1500 UTR 430987651234*", 'hi' => "🔒 सदस्यों के बीच का पैसा (भुगतान, हस्तांतरण) सिर्फ़ ऑफिस दर्ज करता है — यह आपकी कंपनी को भरी रकम में नहीं जाता। ऑफिस: {phone}\nअपना भुगतान हो तो: *jama 1500 UTR 430987651234*", 'en' => "🔒 Money between members (payouts, hand-overs) is recorded by the office only — it is not filed as your payment to the company. Office: {phone}\nFor your own payment: *pay 1500 UTR 430987651234*"],
+            'office_money_whose' => ['ne' => "❓ यो कसको भुक्तानी हो? सदस्यको नाम वा कोड लेख्नुहोस्, जस्तै *Ramesh lai 400 pathaidiye UTR 430987651234* वा *Ramesh le 600 jama gareko aayo*। केही रेकर्ड भएको छैन।\n(अफिसको आफ्नै: *jama 5000 UTR …*)", 'hi' => "❓ यह किसका भुगतान है? सदस्य का नाम या कोड लिखें, जैसे *Ramesh lai 400 pathaidiye UTR 430987651234* या *Ramesh le 600 jama gareko aayo*। कुछ दर्ज नहीं हुआ।\n(ऑफिस का अपना: *jama 5000 UTR …*)", 'en' => "❓ Whose payment is this? Name the member or their code, e.g. *Ramesh lai 400 pathaidiye UTR 430987651234* or *Ramesh le 600 jama gareko aayo*. Nothing was recorded.\n(The office's own: *jama 5000 UTR …*)"],
+            'pay_pax_note' => ['ne' => "🧾 यात्रुको भुक्तानी अफिसले बैंकसँग मिलाएर Verify Payments मा पक्का गर्छ — यहाँबाट कसैको हिसाबमा रेकर्ड हुँदैन।\nयात्रुले आफ्नै WhatsApp बाट PNR सहित UTR वा screenshot पठाओस्, वा अफिसमा भन्नुहोस्: {phone}", 'hi' => "🧾 यात्री का भुगतान ऑफिस बैंक से मिलाकर Verify Payments में पक्का करता है — यहाँ से किसी के हिसाब में दर्ज नहीं होता।\nयात्री अपने WhatsApp से PNR के साथ UTR या screenshot भेजे, या ऑफिस को बताएँ: {phone}", 'en' => "🧾 A passenger's payment is matched with the bank and confirmed by the office in Verify Payments — nothing is filed on anyone's account from here.\nAsk the passenger to send the UTR or screenshot with the PNR from their own WhatsApp, or tell the office: {phone}"],
+            'pay_split'   => ['ne' => "✂️ टिकट र भुक्तानी छुट्टाछुट्टै पठाउनुहोस्: पहिले टिकटको लाइन (*1 seat bholi Surat Ram Thapa 98XXXXXXXX*), अनि आफ्नो भुक्तानी *jama 1500 UTR 430987651234*। केही रेकर्ड भएको छैन।", 'hi' => "✂️ टिकट और भुगतान अलग-अलग भेजें: पहले टिकट की लाइन (*1 seat kal Surat Ram Thapa 98XXXXXXXX*), फिर अपना भुगतान *jama 1500 UTR 430987651234*। कुछ दर्ज नहीं हुआ।", 'en' => "✂️ Send the ticket and the payment separately: first the ticket line (*1 seat tomorrow Surat Ram Thapa 98XXXXXXXX*), then your payment *pay 1500 UTR 430987651234*. Nothing was recorded."],
+            'ref_only'    => ['ne' => "🧾 UTR …{tail} — कसको, कति रकमको भुक्तानी?\n• आफ्नो (कम्पनीलाई): *jama 1500 UTR {ref}*\n• यात्रुको: PNR सहित — अफिसले Verify Payments मा मिलाउँछ।\nअहिले केही रेकर्ड भएको छैन।", 'hi' => "🧾 UTR …{tail} — किसका, कितनी रकम का भुगतान?\n• अपना (कंपनी को): *jama 1500 UTR {ref}*\n• यात्री का: PNR के साथ — ऑफिस Verify Payments में मिलाता है।\nअभी कुछ दर्ज नहीं हुआ।", 'en' => "🧾 UTR …{tail} — whose payment, and how much?\n• Your own (to the company): *pay 1500 UTR {ref}*\n• A passenger's: with the PNR — the office matches it in Verify Payments.\nNothing is recorded yet."],
+            'pay_later'   => ['ne' => "🕐 {v} तिरेपछि मात्र पठाउनुहोस्: *jama {n} UTR 430987651234* — त्यसपछि *ho* भनेपछि अफिसमा जान्छ। अहिले केही रेकर्ड भएको छैन।", 'hi' => "🕐 {v} भरने के बाद ही भेजें: *jama {n} UTR 430987651234* — फिर *ha* कहने पर ऑफिस जाएगा। अभी कुछ दर्ज नहीं हुआ।", 'en' => "🕐 Send it after paying {v}: *pay {n} UTR 430987651234* — it goes to the office after your *yes*. Nothing is recorded yet."],
+            'adm_member_nothing' => ['ne' => "कुनै खुला भुक्तानी / निकासी अनुरोध छैन", 'hi' => "कोई खुला भुगतान / निकासी अनुरोध नहीं", 'en' => "no open payment / withdrawal request"],
+            'adm_member_money_tail' => ['ne' => "पैसा आएको: *jama ok 12* · निकासी तिरेपछि: *approve 12 UTR430987651234* · सूची: *deposits* / *withdrawals*", 'hi' => "पैसा आया: *jama ok 12* · निकासी भरने के बाद: *approve 12 UTR430987651234* · सूची: *deposits* / *withdrawals*", 'en' => "Money in: *jama ok 12* · payout sent: *approve 12 UTR430987651234* · lists: *deposits* / *withdrawals*"],
+            'card_own_only' => ['ne' => "🔒 अरूको ID / visiting कार्ड यहाँबाट दिइँदैन — आफ्नो: *id card* / *visiting card*। अरूको अफिसले पठाउँछ।", 'hi' => "🔒 दूसरों का ID / visiting कार्ड यहाँ से नहीं दिया जाता — अपना: *id card* / *visiting card*। दूसरों का ऑफिस भेजता है।", 'en' => "🔒 Someone else's ID / visiting card is not given here — yours: *id card* / *visiting card*. The office sends others'."],
+            'sale_tail_counter_upi' => ['ne' => "💳 यात्रुले {total} UPI / अनलाइन तिर्ने — नगद तपाईंसँग छैन; अफिसले UTR / screenshot जाँचेर मिलाउँछ।", 'hi' => "💳 यात्री {total} UPI / ऑनलाइन भरेगा — नकद आपके पास नहीं; ऑफिस UTR / screenshot जाँचकर मिलाएगा।", 'en' => "💳 The passenger pays {total} by UPI / online — no cash is with you; the office checks the UTR / screenshot."],
+            'own_only'    => ['ne' => "🔒 अरूको wallet / हिसाब यहाँबाट हेर्न मिल्दैन — आफ्नो मात्र: *balance*। अरूको अफिसले हेर्छ।", 'hi' => "🔒 दूसरों का wallet / हिसाब यहाँ से नहीं दिखता — सिर्फ अपना: *balance*। दूसरों का ऑफिस देखता है।", 'en' => "🔒 Only your own wallet can be seen here: *balance*. The office sees everyone's."],
+            'pick_code'   => ['ne' => "कुन? कोडसहित फेरि पठाउनुहोस् — जस्तै *balance SHG-0024*", 'hi' => "कौन? कोड के साथ फिर भेजें — जैसे *balance SHG-0024*", 'en' => "Which one? Send it again with the code — e.g. *balance SHG-0024*"],
+            'adm_wd_none_for' => ['ne' => "ℹ️ {name} ({code}) को कुनै खुला निकासी अनुरोध छैन — केही रेकर्ड गरिएन।", 'hi' => "ℹ️ {name} ({code}) का कोई खुला निकासी अनुरोध नहीं — कुछ दर्ज नहीं किया।", 'en' => "ℹ️ {name} ({code}) has no open withdrawal request — nothing was recorded."],
+            'adm_dep_none_for' => ['ne' => "ℹ️ {name} ({code}) को {v} को कुनै खुला भुक्तानी अनुरोध भेटिएन — सूची: *deposits*। केही रेकर्ड गरिएन।", 'hi' => "ℹ️ {name} ({code}) का {v} का कोई खुला भुगतान अनुरोध नहीं मिला — सूची: *deposits*। कुछ दर्ज नहीं किया।", 'en' => "ℹ️ No open payment of {v} from {name} ({code}) — list: *deposits*. Nothing was recorded."],
+            'adm_wd_amount_differs' => ['ne' => "⚠️ अनुरोध #{id} को रकम {v} हो, {asked} होइन — जाँचेर *approve {id} UTR…* पठाउनुहोस्। केही रेकर्ड गरिएन।", 'hi' => "⚠️ अनुरोध #{id} की रकम {v} है, {asked} नहीं — जाँचकर *approve {id} UTR…* भेजें। कुछ दर्ज नहीं किया।", 'en' => "⚠️ Request #{id} is for {v}, not {asked} — check and send *approve {id} UTR…*. Nothing was recorded."],
+            'told_yes'    => ['ne' => "सदस्यलाई WhatsApp गयो।", 'hi' => "सदस्य को WhatsApp गया।", 'en' => "The member was told on WhatsApp."],
+            'told_no'     => ['ne' => "⚠️ सदस्यलाई WhatsApp जान सकेन — आफैं खबर गर्नुहोस्।", 'hi' => "⚠️ सदस्य को WhatsApp नहीं जा सका — खुद बता दें।", 'en' => "⚠️ WhatsApp to the member did not go through — please tell them yourself."],
+            'edit_done_nosend' => ['ne' => "✅ {pnr} सच्चियो। नयाँ टिकट यहीँ छ — यात्रुलाई WhatsApp अहिले जान सकेन, फर्वार्ड गर्नुहोस्।", 'hi' => "✅ {pnr} बदल गया। नया टिकट यहीं है — यात्री को WhatsApp अभी नहीं जा सका, फॉरवर्ड करें।", 'en' => "✅ {pnr} is corrected. The new ticket is here — WhatsApp to the passenger did not go through, please forward it."],
             'thinking'    => ['ne' => "⏳ बुझ्दैछु… (करिब १ मिनेटमा जवाफ आउँछ)", 'hi' => "⏳ समझ रहा हूँ… (लगभग 1 मिनट में जवाब)", 'en' => "⏳ Working on it… (answer in about a minute)"],
             'ai_down'     => ['ne' => "🙏 अहिले यो बुझ्न सकिनँ। *help* लेख्नुहोस्, वा अफिस: {phone}", 'hi' => "🙏 अभी यह समझ नहीं पाया। *help* लिखें, या ऑफिस: {phone}", 'en' => "🙏 I could not understand that just now. Type *help*, or call the office: {phone}"],
             'ask_pnr'     => ['ne' => "🔎 कुन टिकट? PNR पठाउनुहोस् (जस्तै SHG-2026-00123)।", 'hi' => "🔎 कौन सा टिकट? PNR भेजें (जैसे SHG-2026-00123)।", 'en' => "🔎 Which ticket? Send the PNR (like SHG-2026-00123)."],

@@ -44,6 +44,27 @@ final class PersonName
         'हो', 'हजुर', 'हुन्छ', 'ठिक', 'ठीक', 'नमस्ते', 'पुरुष', 'महिला', 'टिकट', 'सिट', 'नेपाल', 'भारत', 'भोलि', 'आज',
     ];
 
+    /* Round 3 (31 Oct 2026, safety review: "Paisa Pathaye Utr", "Utr", "Wait", "Ruko", "Nakaat", "Customer Sodhchu" were
+       printed on tickets): a payment-reference word or a pause / refusal word ANYWHERE in it — the text is not a name. */
+    private const NEVER_IN_A_NAME = [
+        'utr', 'ref', 'refno', 'reference', 'txn', 'txnid', 'transaction', 'rrn', 'paisa', 'paise', 'payment', 'paid', 'pathaye', 'pathae',
+        'pathaeko', 'pathayeko', 'pathayo', 'pathaisake', 'pathaisakeko', 'wait', 'waiting', 'hold', 'later', 'ruko', 'ruka', 'rukiye', 'rukie',
+        'ekchin', 'ekchhin', 'pakhnus', 'parkhanus', 'parkhnus', 'nakaat', 'nakat', 'nagarnu', 'nahi', 'nahin', 'hoina', 'pardaina', 'chhod',
+        'chhodo', 'cancel', 'pachhi', 'pachi', 'baad', 'sochchu', 'sodhchu', 'puchhchu', 'customer', 'passenger',
+        'पैसा', 'पठाएँ', 'पठाएको', 'रुको', 'पर्खनुस्', 'नकाट्नु', 'नगर्नु', 'नहीं', 'होइन', 'पछि', 'बाद',
+        // round 4 (safety reviews A3 / A4 / B: "Utrno", "Transactionid", "यूटीआर", "Pathaidiye", "Nakatnu", "Karunga",
+        // "Ram Thapa Kaatna", "Driver Dinus" were printed as passengers): refusals, promises, requests and job words
+        'nakatnu', 'nakaatnu', 'nakaatna', 'nakatna', 'kaatna', 'katna', 'mat', 'chaidaina', 'chahidaina', 'chaina', 'chhaina', 'xaina',
+        'karunga', 'karungi', 'karenge', 'garchu', 'garchhu', 'garxu', 'garnechu', 'aaunchu', 'aauchu', 'aaucha', 'aauchha', 'aunchha', 'aaunchha',
+        'aayega', 'aayegi', 'batata', 'bataunga', 'batauchu', 'bhanchu', 'bhanchhu', 'soch', 'sochke', 'sochunga', 'msg', 'message', 'call',
+        'driver', 'conductor', 'khalasi', 'helper', 'staff', 'agent', 'counter', 'office', 'number', 'nambar', 'nmbr', 'phone', 'mobile', 'contact',
+        'dinus', 'dinu', 'deu', 'dijiye', 'dena', 'dedo', 'pathaidinu', 'pathaideu', 'wapas', 'firta', 'refund', 'complain', 'complaint', 'gunaso',
+        'यूटीआर', 'युटिआर', 'रेफ', 'ड्राइभर', 'ड्राइवर', 'नम्बर', 'नंबर', 'दिनुस्',
+    ];
+
+    /** Round 4: word STARTS that are never in a name — "UTRno", "TransactionID", "Refno", "pathaidiye", "pathaisakeko". */
+    private const NEVER_STARTS = '/^(?:utr|txn|trxn|transaction|refno|refer|referen|pathai|pathay|pathae|यूटीआर|युटीआर|युटिआर|रेफ)/u';
+
     /** Given names that are also towns we serve — a person before a place. */
     private const GIVEN_NAMES = ['anand', 'dang', 'nadia', 'gorakh', 'gorakhi', 'nepal', 'bharat'];
 
@@ -103,6 +124,22 @@ final class PersonName
         }
         if ($chat === count($words)) {
             return '"' . $name . '" is not a name';
+        }
+        foreach ($words as $w) {
+            if (in_array(trim($w, '.'), self::NEVER_IN_A_NAME, true) || preg_match(self::NEVER_STARTS, trim($w, '.')) === 1) {
+                return '"' . $name . '" is a payment / pause word, not a name';
+            }
+        }
+        /* 31 Oct 2026 (passenger sim: "mero naam Sunil Kumar ho" was printed on a ticket as the passenger): a sentence
+           ABOUT the name — "mero naam …", "my name is …", "… ho / hun / hai" after a name — is not the name itself. */
+        $last = trim((string) end($words), '.');
+        foreach ($words as $w) {
+            if (in_array(trim($w, '.'), ['mero', 'mera', 'meri', 'my', 'naam', 'nam', 'name', 'is', 'am', 'want', 'need', 'मेरो', 'मेरा', 'नाम'], true)) {
+                return '"' . $name . '" is a sentence — just the name, please';
+            }
+        }
+        if (count($words) >= 2 && in_array($last, ['ho', 'hun', 'hu', 'hoon', 'hai', 'हो', 'हुँ', 'हूँ', 'है'], true)) {
+            return '"' . $name . '" is a sentence — just the name, please';
         }
         if (self::looksLikePlace($lower)) {
             return '"' . $name . '" is a bus stop, not a passenger';

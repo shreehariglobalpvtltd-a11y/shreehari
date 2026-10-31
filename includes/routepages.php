@@ -329,6 +329,17 @@ final class RoutePages
         return $w[$lang] ?? $w['en'];
     }
 
+    /**
+     * One published answer from the route pages' "Questions people ask" (31 Oct 2026: the WhatsApp bot answers
+     * "border ma k document chahincha?" / "luggage kati kg?" with exactly what the website already says).
+     * $key: a1 (border documents), a6 (luggage). '' = no such answer.
+     */
+    public static function faqAnswer(string $key, string $lang): string
+    {
+        $w = self::words(in_array($lang, self::LANGS, true) ? $lang : 'en');
+        return in_array($key, ['a1', 'a6'], true) ? (string) ($w[$key] ?? '') : '';
+    }
+
     /* ----------------------------------------------------------------
      *  Pages
      * ---------------------------------------------------------------- */

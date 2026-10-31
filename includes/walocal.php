@@ -118,7 +118,7 @@ final class WaLocal
     private const AGENT = ['agent', 'ejent', 'agents', 'एजेन्ट', 'एजेंट', 'एजेन्टहरू', 'एजेन्ट को', 'एजेंट का', 'એજન્ટ', 'dalal', 'counter wala', 'counter walo', 'agent code'];
 
     /** A message that ASKS to cancel / change is for a person, never a policy line. */
-    private const IMPERATIVE = ['garideu', 'garidinu', 'garidinus', 'gardeu', 'gardinus', 'kar do', 'kardo', 'kar dijiye', 'kijiye', 'karna hai', 'garnu cha',
+    private const IMPERATIVE = ['chahiyo', 'chahiye', 'chaiyo', 'chaiye', 'garideu', 'garidinu', 'garidinus', 'gardeu', 'gardinus', 'kar do', 'kardo', 'kar dijiye', 'kijiye', 'karna hai', 'garnu cha',
         'garnu xa', 'garnu paryo', 'chahanchu', 'chahanchhu', 'chahta', 'chahti', 'please cancel', 'cancel my', 'mero cancel', 'गरिदेउ', 'गरिदिनु', 'गर्देउ',
         'कर दो', 'कर दीजिए', 'करना है', 'गर्नु छ', 'गर्नुपर्‍यो'];
 
@@ -148,6 +148,16 @@ final class WaLocal
         try {
             require_once INCLUDE_PATH . '/ticketbot.php';
             require_once INCLUDE_PATH . '/wabooking.php';
+            /* 31 Oct 2026 (passenger sim; owner: "jhe bhane ni tehi anusar reply"): a complaint, a payment reference
+               typed after paying, or a thank-you is answered even while a booking chat is open — never read as a sale
+               or an answer to the booking's question. */
+            // round 4 (R5): a caller that allows only some answers (the desk: seats / timetable) gets no complaint / payment turn
+            $early = is_array($who['intents'] ?? null) ? null : self::earlyTurn($fromRaw, $digits, $text, $who);
+            if ($early !== null) {
+                self::remember($digits, $text, (string) $early['text']);
+                self::log($digits, (string) $early['intent'], 'customer', microtime(true));
+                return $early;
+            }
             if (WaBooking::isOpen($digits)) {
                 return null;                     // a sale in progress keeps its conversation
             }
@@ -166,6 +176,14 @@ final class WaLocal
         $isStaff = in_array($role, ['staff', 'admin'], true);
         $t       = ' ' . self::norm($text) . ' ';
         $intent  = self::intentOf($t, $text, $role);
+        /* Round 4 (31 Oct 2026, owner's rule R5 — safety review B1: from the WhatsApp desk "khali seat kati cha bholi
+           SHG-0043" answered with that agent's personal mobile and home address): a caller may allow only some answers
+           ($who['intents']); a line that is also a free-seat / timetable question gets that answer, and only that. */
+        $only = $who['intents'] ?? null;
+        if (is_array($only) && !in_array($intent, $only, true)) {
+            $intent = in_array('seats_left', $only, true) && self::hasWord($t, self::SEATS) ? 'seats_left'
+                : (in_array('timetable', $only, true) && self::has($t, self::TIMETABLE) ? 'timetable' : '');
+        }
         if ($intent === '') {
             return null;
         }
@@ -176,8 +194,19 @@ final class WaLocal
                 'help'          => self::help($role, $lang),
                 'timetable'     => self::timetable($lang),
                 'company_info'  => self::companyInfo($lang),
-                'office_map'    => self::officeMap($lang),
+                'office_map'    => self::officeMap($lang, $text),
                 'agent_info'    => self::agentInfo($who, $lang, $text),
+                'not_served'    => self::notServedAnswer($t, $lang),
+                'served_yes'    => self::servedAnswer($lang),
+                'my_seat'       => self::mySeat($digits, $lang),
+                'my_due'        => self::myDue($digits, $lang),
+                'owner_number'  => self::ownerNumber($lang),
+                'other_number'  => ['text' => self::t($lang,
+                    '🙏 अरू यात्रु वा कसैको निजी नम्बर हामी दिँदैनौं। केही काम भए अफिसमा फोन / WhatsApp गर्नुहोस्: ' . Settings::officePhone(),
+                    '🙏 दूसरे यात्री या किसी का निजी नंबर हम नहीं देते। कोई काम हो तो ऑफिस को फ़ोन / WhatsApp कीजिए: ' . Settings::officePhone(),
+                    '🙏 We do not share another passenger\'s or anyone\'s personal number. For anything you need, call or WhatsApp the office: ' . Settings::officePhone()),
+                    'media' => null, 'ui' => null],
+                'register_help' => self::registerHelp($lang),
                 'seats_left'    => self::seatsLeft($text, $lang, $isStaff),
                 'bus_live'      => self::busLive($fromRaw, $who, $lang),
                 'bus_crew'      => self::busCrew($fromRaw, $who, $lang, $text),
@@ -292,8 +321,11 @@ final class WaLocal
                 'help'         => self::help($role, $lang),
                 'timetable'    => self::timetable($lang),
                 'company_info' => self::companyInfo($lang),
-                'office_map'   => self::officeMap($lang),
+                'office_map'   => self::officeMap($lang, $text),
                 'agent_info'   => self::agentInfo($who, $lang, $text),
+                'not_served'   => self::notServedAnswer($t, $lang),
+                'owner_number' => self::ownerNumber($lang),
+                'register_help' => self::registerHelp($lang),
                 'seats_left'   => self::seatsLeft($text, $lang, $isStaff),
                 'bus_live'     => self::busLive($from, $who, $lang),
                 'bus_crew'     => self::busCrew($from, $who, $lang, $text),
@@ -333,8 +365,53 @@ final class WaLocal
         if (self::has($t, self::HELP) && mb_strlen($bare) <= 30) {
             return 'help';
         }
+        /* round 2 (passenger sim: a ticket holder's "seat number" became a SECOND booking for today and "mero seat kun
+           ho?" a desk draft; "kati paisa tirnu baki cha?" got the whole fare board): their own seat / their own amount due. */
+        if (!$isStaff && !$request && $seats === 0
+            && (preg_match('/(?<![\p{L}])(?:mero|my|mera|meri|hamro|hamra|मेरो|मेरा)\s+(?:seat|sit|सिट|सीट|berth)(?![\p{L}])/u', $t) === 1
+                || preg_match('/^\s*(?:seat|sit|सिट|सीट|berth)\s*(?:number|no|nambar|nmbr|नम्बर|नंबर|kun|k|kati|kaha|कुन|कति)?\s*(?:ho|cha|hai|छ|हो|है)?\s*$/u', $t) === 1)
+            && preg_match('/(?<![\p{L}])(?:khali|baki|baaki|bacheko|available|chahiyo|chahiye|book|badal\w*|change)(?![\p{L}])/u', $t) !== 1) {
+            return 'my_seat';
+        }
+        if (!$isStaff && !$request && preg_match('/(?<![\p{L}])(?:seat|sit|सिट|सीट)(?![\p{L}])/u', $t) !== 1
+            && preg_match('/(?<![\p{L}])(?:baki|baaki|bakki|due|बाँकी|बाकी)(?![\p{L}])/u', $t) === 1
+            && preg_match('/(?<![\p{L}])(?:paisa|paise|rakam|amount|tirnu|tirna|tirne|dena|dene|bharna|payment|bhada|पैसा|रकम|तिर्नु)(?![\p{L}])/u', $t) === 1) {
+            return 'my_due';
+        }
         if (self::has($t, self::TIMETABLE)) {
             return 'timetable';
+        }
+        // "Mehsana counter ko number dinu", "Surat counter ko phone number": the counters' numbers (with the office)
+        if (preg_match('/(?<![\p{L}])(?:counter|kaunter|branch|office|अफिस|काउन्टर)\s*(?:ko|ka|ki|को|का)?\s*(?:phone\s*|mobile\s*|contact\s*|whatsapp\s*)?(?:number|nambar|nmbr|no|phone|mobile|contact|नम्बर|नंबर|फोन)(?![\p{L}])/u', $t) === 1) {
+            return 'office_map';
+        }
+        /* 31 Oct 2026 (passenger sim: "tapai ko bus ta Kathmandu samma janchha hoina?" / "Jodhpur bata bus cha?" got
+           a desk draft or a LINK error): a town we do not run to or from is said plainly, with our route. Round 2: not
+           when the line is a booking ("bholi 1 seat Surat bata, Kathmandu jane ho") — the booking goes on (WaBot adds
+           one line that the bus ends at the Rupaidiha border). */
+        $bookingSignal = $seats > 0 || (string) ($p['date'] ?? '') !== '' || (string) ($p['boarding'] ?? '') !== '';
+        if (!$isStaff && !$bookingSignal && self::notServed($t) !== '') {
+            return 'not_served';
+        }
+        // "Nepalgunj samma bus jancha?": yes, to the Rupaidiha (Nepalgunj) border — with the route and times
+        if (!$isStaff && !$bookingSignal
+            && preg_match('/(?<![\p{L}])(?:nepalgunj|nepalganj|rupaidiha|rupaidiya|rupediha|banke|nepal|नेपालगञ्ज|नेपालगंज|रुपैडिहा|नेपाल)(?![\p{L}])/u', $t) === 1
+            && preg_match('/(?<![\p{L}])(?:samma|sama|tak|jancha|janchha|janxa|jaanchha|jaancha|jaati|jaata|jayegi|jaegi|jaayegi|pugcha|pugchha|puganchha|पुग्छ|जान्छ|सम्म|तक|जाती)(?![\p{L}])/u', $t) === 1) {
+            return 'served_yes';
+        }
+        // "Gita Sharma ko phone number k ho?": another person's number is never given (the office line is)
+        if (!$isStaff && preg_match('/^\s*(\p{L}+(?:\s+\p{L}+){0,2})\s+(?:ko|ka|ki|को|का|की)\s+(?:phone\s*|mobile\s*|whatsapp\s*|contact\s*)?(?:number|nambar|nmbr|phone|mobile|नम्बर|नंबर|फोन)(?![\p{L}])/u', $t, $pm) === 1
+            && preg_match('/(?<![\p{L}])(?:mero|my|mera|meri|hamro|tapai|tapain|apna|office|counter|kaunter|company|agent|ejent|driver|conductor|khalasi|helper|bus|gadi|gaadi|helpline|branch|nepal|surat|baroda|mehsana|ahmedabad|rajkot|मेरो|अफिस|काउन्टर)(?![\p{L}])/u', $pm[1]) !== 1) {
+            return 'other_number';
+        }
+        // "register garnu paryo ticket ko lagi" (passenger sim: a LINK error, then a sale for a passenger "Register")
+        if (!$isStaff && preg_match('/(?<![\p{L}])(?:register|registration|regi|darta|signup|sign\s*up|account\s*(?:banau\w*|kholn\w*|khol\w*|create|bana\w*))(?![\p{L}])/u', $t) === 1
+            && preg_match('/(?<![\p{L}])(?:agent|ejent|एजेन्ट|एजेंट)(?![\p{L}])/u', $t) !== 1) {
+            return 'register_help';
+        }
+        // "Hari sir ko personal number dinus" — personal numbers are not given; the office line reaches the management
+        if (preg_match('/(?<![\p{L}])(?:(?:personal|niji|nijee|private|ghar\s*ko)\s*(?:number|nambar|no|phone|mobile)|(?:sir|malik|maalik|owner|ceo|saheb|sahab|hajur)\s*(?:ko|ka|ki)?\s*(?:personal\s*)?(?:number|nambar|phone|mobile|whatsapp))(?![\p{L}])/u', $t) === 1) {
+            return 'owner_number';
         }
         /* The company, the people and the places (9 Oct 2026, owner: "CEO ko
            naam, agent ko naam / code / number, office ko address, Google map
@@ -358,13 +435,22 @@ final class WaLocal
                 || preg_match('/code|number|list|kun|ko ho|kasko|naam|name|कुन|कसको|नाम|नम्बर|नंबर|सूची|लिस्ट/u', $t) === 1)) {
             return 'agent_info';
         }
-        if (self::has($t, self::OFFICE_MAP) && preg_match('/bus kaha|bus kata|bus kahan|gadi kaha|gadi kata|बस कहाँ|बस कहां|गाडी कहाँ/u', $t) !== 1) {
+        // 31 Oct 2026 (passenger sim: "Nepalgunj ma office cha?" got the menu): an office / counter on the Nepal side
+        if (preg_match('/(?<![\p{L}])(?:nepalgunj|nepalganj|nepal|rupaidiha|rupaidiya|rupediha|kohalpur|dhamboji|नेपालगञ्ज|नेपालगंज|नेपाल|रुपैडिहा)\s*(?:ma|मा|me|में)?\s*(?:ko\s*)?(?:office|counter|karyalay|kaunter|अफिस|काउन्टर|कार्यालय)/u', $t) === 1) {
+            return 'nepal_office';
+        }
+        if ((self::has($t, self::OFFICE_MAP) || preg_match('/(?<![\p{L}])(?:office|counter|karyalay)\s*(?:kaha|kata|kahan|cha|chha|xa|hai)(?![\p{L}])/u', $t) === 1)
+            && preg_match('/bus kaha|bus kata|bus kahan|gadi kaha|gadi kata|बस कहाँ|बस कहां|गाडी कहाँ/u', $t) !== 1) {
             return 'office_map';
         }
         if (self::has($t, self::COMPANY)) {
             return 'company_info';
         }
         if (self::hasWord($t, self::TICKET_PNG) && !$booking && !$request) {
+            return 'my_ticket_png';
+        }
+        // 31 Oct 2026 (passenger sim: "mero ticket pheri pathaidinu na" became a desk draft for a new seat)
+        if (!$booking && !$request && preg_match('/(?<![\p{L}])(?:ticket|tikat|tiket|टिकट)(?![\p{L}]).{0,25}?(?<![\p{L}])(?:pheri|feri|phir|again|pathai\w*|pathau\w*|pathae\w*|bhej\w*|send|resend|फेरि|फेरी|पठाइ\S*|पठाउ\S*|भेज\S*)/u', $t) === 1) {
             return 'my_ticket_png';
         }
         if (self::has($t, self::CREW)) {
@@ -506,11 +592,21 @@ final class WaLocal
     }
 
     /** Where we are: head office, counters and every pickup with a Google Maps link. */
-    private static function officeMap(string $lang): array
+    private static function officeMap(string $lang, string $text = ''): array
     {
         $c = Settings::company();
-        $lines = ['📍 ' . self::t($lang, 'प्रधान कार्यालय', 'मुख्य कार्यालय', 'Head office') . ': ' . ($lang === 'ne' ? $c['addressNe'] : $c['address'])];
+        // the Nepali address already starts with its own "प्रधान कार्यालय :" label — not printed twice
+        $addr = trim((string) preg_replace('/^\s*प्रधान\s*कार्यालय\s*[:：]\s*/u', '', $lang === 'ne' ? (string) $c['addressNe'] : (string) $c['address']));
+        $lines = ['📍 ' . self::t($lang, 'प्रधान कार्यालय', 'मुख्य कार्यालय', 'Head office') . ': ' . $addr];
         $lines[] = '🗺 ' . self::mapsSearch($c['address']) . ' · 📞 ' . $c['phone'];
+        /* 31 Oct 2026 (passenger sim: "office kaha cha? phone number dinu" got ~40 lines): the head office, its map
+           and the counter numbers; every counter and pickup with a map link only when that is what they asked. */
+        $full = $text === '' || preg_match('/(?<![\p{L}])(map|maps|naksha|nakshya|नक्सा|नक्शा|location|direction|sabai|sab|all|list|pickup|boarding|chadne|parking|counter\s*kaha|counter\s*kata|counters)(?![\p{L}])/u', mb_strtolower($text)) === 1;
+        if (!$full) {
+            $lines[] = self::t($lang, '🏪 काउन्टर: ', '🏪 काउंटर: ', '🏪 Counters: ') . $c['counters'];
+            $lines[] = self::t($lang, 'सबै काउन्टर र चढ्ने ठाउँको नक्सा: "map" लेख्नुहोस्।', 'सभी काउंटर और चढ़ने की जगह का नक्शा: "map" लिखें।', 'Every counter and pickup on the map: write "map".');
+            return ['text' => implode("\n", $lines), 'media' => null, 'ui' => null];
+        }
         // Counters (Settings counter_locations: CODE|Town — note, one per line).
         $counters = [];
         foreach (preg_split('/\r\n|\r|\n|\\\\n/', Settings::getString('counter_locations', '')) ?: [] as $line) {
@@ -590,6 +686,13 @@ final class WaLocal
                   FROM admins a LEFT JOIN admin_profiles p ON p.admin_id = a.id
                  WHERE a.role IN ('agent', 'counter') AND a.is_active = 1";
 
+        /* Round 4 (31 Oct 2026, owner's rule R5 — safety reviews B1 + B3: a counter / an agent got another agent's personal
+           mobile and home address from a desk sentence, and a passenger who typed "SHG-0043" got the mobile and the "Secret
+           Lane" address of an agent who is NOT in the public directory): a member's personal mobile and address are the
+           office's only (role admin). Anyone else sees the name, the code and the area — and a passenger only an agent
+           who is listed publicly, with the number that listing allows. */
+        $officeView = $role === 'admin';
+
         // A code in the message.
         if (preg_match('/(?<![a-z\d])shg\s?-?\s?0*(\d{1,4})(?![\d-])/u', $t, $m) === 1) {
             $adminId = AgentWallet::adminForAgentCode((int) $m[1]);
@@ -599,8 +702,22 @@ final class WaLocal
                 return ['text' => self::t($lang, $label . ' — यो code कुनै सक्रिय एजेन्टको छैन। अफिस: ' . $office,
                     $label . ' — यह code किसी सक्रिय एजेंट का नहीं है। ऑफिस: ' . $office, $label . ' — no active agent holds this code. Office: ' . $office), 'media' => null, 'ui' => null];
             }
-            return ['text' => $one($a, true) . "\n" . self::t($lang, 'टिकट बुक गर्दा यो code लेख्नुहोस् — एजेन्टको कमिसन मिल्छ।',
-                'टिकट बुक करते समय यह code लिखें — एजेंट को कमीशन मिलता है।', 'Give this code when you book — the agent is credited.'), 'media' => null, 'ui' => null];
+            $tail = "\n" . self::t($lang, 'टिकट बुक गर्दा यो code लेख्नुहोस् — एजेन्टको कमिसन मिल्छ।',
+                'टिकट बुक करते समय यह code लिखें — एजेंट को कमीशन मिलता है।', 'Give this code when you book — the agent is credited.');
+            if ($officeView) {
+                return ['text' => $one($a, true) . $tail, 'media' => null, 'ui' => null];
+            }
+            if ($isStaff) {
+                return ['text' => $one($a, false) . $tail, 'media' => null, 'ui' => null];
+            }
+            $pub = self::publicAgent((int) $a['id'], $a);
+            if ($pub === null) {
+                return ['text' => self::t($lang, '✅ ' . $label . ' हाम्रो एजेन्टको code हो। टिकट बुक गर्दा यो code लेख्नुहोस्। एजेन्टको सम्पर्क अफिसबाट: ' . $office,
+                    '✅ ' . $label . ' हमारे एजेंट का code है। टिकट बुक करते समय यह code लिखें। एजेंट से संपर्क ऑफिस से: ' . $office,
+                    '✅ ' . $label . ' is one of our agents\' codes. Give it when you book. To reach the agent, call the office: ' . $office), 'media' => null, 'ui' => null];
+            }
+            return ['text' => '👤 ' . $pub['name'] . ' · ' . $label . ($pub['area'] !== '' ? ' · ' . $pub['area'] : '') . ($pub['phone'] !== '' ? ' · ' . $pub['phone'] : '') . $tail,
+                'media' => null, 'ui' => null];
         }
 
         // A name in the message (staff only: "agent dalbir ko number").
@@ -611,7 +728,7 @@ final class WaLocal
                 $hits = Database::fetchAll($sql . ' AND (LOWER(a.full_name) LIKE :w OR LOWER(a.username) LIKE :w2 OR LOWER(p.counter_name) LIKE :w3) ORDER BY a.id LIMIT 5',
                     ['w' => '%' . $w . '%', 'w2' => '%' . $w . '%', 'w3' => '%' . $w . '%']);
                 if ($hits !== []) {
-                    return ['text' => implode("\n", array_map(static fn(array $a): string => $one($a, true), $hits)), 'media' => null, 'ui' => null];
+                    return ['text' => implode("\n", array_map(static fn(array $a): string => $one($a, $officeView), $hits)), 'media' => null, 'ui' => null];
                 }
             }
             // The whole list for the office; an agent sees their own card + the office numbers.
@@ -631,6 +748,35 @@ final class WaLocal
         // A customer: the public directory (agents who opted in), else how to reach one.
         require_once INCLUDE_PATH . '/agentapplications.php';
         $dir = AgentApplications::directory();
+        /* 31 Oct 2026 (passenger sim: "Surat ma najik ko agent" listed eight Nepalgunj agents): a town in the
+           question keeps the agents of that town; none there = say so, with that town's counter. */
+        $town = '';
+        try {
+            $town = Boarding::townKey((string) (TicketBot::parse($text)['boarding'] ?? ''));
+            if ($town === '' && preg_match('/(?<![\p{L}])(nepalgunj|nepalganj|kohalpur|rupaidiha|surat|baroda|vadodara|ahmedabad|mehsana|rajkot|godhra|himatnagar)(?![\p{L}])/u', $t, $tw) === 1) {
+                $town = $tw[1];
+            }
+        } catch (Throwable $e) {
+            $town = '';
+        }
+        if ($town !== '') {
+            $near = array_values(array_filter($dir, static fn(array $d): bool => str_contains(mb_strtolower((string) $d['area'] . ' ' . (string) $d['name']), $town)));
+            if ($near === []) {
+                $counter = '';
+                foreach (preg_split('/\s*·\s*/u', (string) Settings::company()['counters']) ?: [] as $seg) {
+                    if (str_contains(mb_strtolower($seg), $town)) {
+                        $counter = $seg;
+                        break;
+                    }
+                }
+                $T = mb_convert_case($town, MB_CASE_TITLE, 'UTF-8');
+                return ['text' => self::t($lang, '🤝 ' . $T . ' मा सूचीमा रहेको एजेन्ट अहिले छैन।', '🤝 ' . $T . ' में अभी कोई सूचीबद्ध एजेंट नहीं है।', '🤝 No listed agent in ' . $T . ' right now.')
+                    . "\n" . ($counter !== '' ? self::t($lang, '🏪 काउन्टर: ', '🏪 काउंटर: ', '🏪 Counter: ') . $counter : self::t($lang, 'अफिस: ', 'ऑफिस: ', 'Office: ') . $office)
+                    . "\n" . self::t($lang, 'टिकट यहीँ WhatsApp मा पनि बुक हुन्छ — "ticket" लेख्नुहोस्।', 'टिकट यहीं WhatsApp पर भी बुक होता है — "ticket" लिखें।', 'You can also book right here on WhatsApp — write "ticket".'),
+                    'media' => null, 'ui' => null];
+            }
+            $dir = $near;
+        }
         $lines = [self::t($lang, '🤝 हाम्रा एजेन्ट / साझेदार:', '🤝 हमारे एजेंट / पार्टनर:', '🤝 Our agents / partners:')];
         foreach (array_slice($dir, 0, 12) as $d) {
             $lines[] = '• ' . (string) $d['name'] . ((string) $d['area'] !== '' ? ' · ' . $d['area'] : '') . ' · ' . (string) $d['phone'] . (!empty($d['verified']) ? ' ✅' : '');
@@ -642,6 +788,46 @@ final class WaLocal
             'एजेंट बनने के लिए: https://' . Settings::getString('company_web', 'shreehariglobal.in') . '/agent-signup.php · ऑफिस: ' . $office,
             'Become an agent: https://' . Settings::getString('company_web', 'shreehariglobal.in') . '/agent-signup.php · Office: ' . $office);
         return ['text' => implode("\n", $lines), 'media' => null, 'ui' => null];
+    }
+
+    /**
+     * Round 4 (R5, review B3): what a passenger may see of one agent — the public directory's own rule
+     * (AgentApplications::directory): listed through the approved card (shown on the website) or the account's
+     * public_listing; the number in full only where the agent allowed it, else masked; never the address. null = the
+     * agent is not listed publicly (a counter never is).
+     *
+     * @param array<string, mixed> $a the admins + admin_profiles row agentInfo() read
+     * @return array{name: string, area: string, phone: string}|null
+     */
+    private static function publicAgent(int $adminId, array $a): ?array
+    {
+        require_once INCLUDE_PATH . '/agentapplications.php';
+        if ((string) ($a['role'] ?? '') !== 'agent') {
+            return null;
+        }
+        $card = null;
+        try {
+            $card = Database::fetch("SELECT name, phone, area, public_ok, web_live FROM agent_applications WHERE admin_id = :i AND status = 'approved' ORDER BY id DESC LIMIT 1", ['i' => $adminId]);
+        } catch (Throwable $e) {
+            try {
+                $card = Database::fetch("SELECT name, phone, area, public_ok, 1 AS web_live FROM agent_applications WHERE admin_id = :i AND status = 'approved' ORDER BY id DESC LIMIT 1", ['i' => $adminId]);
+            } catch (Throwable $e2) {
+                $card = null;
+            }
+        }
+        if ($card !== null) {
+            if ((int) ($card['web_live'] ?? 1) !== 1 || trim((string) $card['name']) === '' || (string) $card['phone'] === '') {
+                return null;
+            }
+            return ['name' => trim((string) $card['name']), 'area' => trim((string) ($card['area'] ?? '')),
+                'phone' => (int) $card['public_ok'] === 1 ? (string) $card['phone'] : AgentApplications::maskPhone((string) $card['phone'])];
+        }
+        if ((int) ($a['public_listing'] ?? 0) !== 1) {
+            return null;
+        }
+        $ph = normalisePhone((string) (($a['phone'] ?? '') ?: ($a['display_phone'] ?? '')));
+        return ['name' => trim((string) $a['full_name']), 'area' => trim((string) ($a['counter_name'] ?? '')),
+            'phone' => $ph === '' ? '' : ((int) ($a['public_phone'] ?? 0) === 1 ? $ph : AgentApplications::maskPhone($ph))];
     }
 
     private static function mapsSearch(string $query): string
@@ -993,6 +1179,18 @@ final class WaLocal
         $pend   = $digits !== '' ? Database::fetch(
             "SELECT pnr, total_amount, currency FROM bookings WHERE (contact_phone = :p OR alt_phone = :p2) AND status = 'pending'
                AND created_at >= NOW() - INTERVAL 3 DAY ORDER BY id DESC LIMIT 1", ['p' => $digits, 'p2' => $digits]) : null;
+        if ($pend === null && $digits !== '') {
+            // round 2 (passenger sim): the sale this chat just made for a typed contact number is theirs to pay too
+            try {
+                require_once INCLUDE_PATH . '/wabooking.php';
+                $sold = WaBooking::lastSoldPnr($digits);
+                if ($sold !== '') {
+                    $pend = Database::fetch("SELECT pnr, total_amount, currency FROM bookings WHERE pnr = :n AND status = 'pending'", ['n' => $sold]);
+                }
+            } catch (Throwable $e) {
+                $pend = null;
+            }
+        }
         if ($pend !== null && (float) $pend['total_amount'] > 0) {
             $lines[] = '💳 ' . (string) $pend['pnr'] . ' · ' . self::t($lang, 'तिर्न बाँकी: ', 'भुगतान बाकी: ', 'Due: ') . inr((float) $pend['total_amount']);
             if ($upi !== '') {
@@ -1058,6 +1256,14 @@ final class WaLocal
     {
         $rows = Settings::nepalTeam();
         $lines = [self::t($lang, '🇳🇵 नेपाल कार्यालय / सम्पर्क', '🇳🇵 नेपाल ऑफिस / संपर्क', '🇳🇵 Nepal office / contacts')];
+        // 31 Oct 2026: the counters on the Nepal side (Nepalgunj Bus Park, Dhamboji, Kohalpur, Rupaidiha) first
+        foreach (preg_split('/\r\n|\r|\n|\\\\n/', Settings::getString('counter_locations', '')) ?: [] as $cl) {
+            $parts = array_map('trim', explode('|', trim($cl), 2));
+            $town = $parts[1] ?? $parts[0];
+            if ($town !== '' && preg_match('/nepalgunj|nepalganj|kohalpur|rupaidiha|dhamboji/i', $town) === 1) {
+                $lines[] = '🏪 ' . $town;
+            }
+        }
         foreach ($rows as $r) {
             $lines[] = '• ' . ($lang === 'ne' ? (string) $r['roleNe'] : (string) $r['role']) . ': ' . (string) $r['name'] . ' ' . (string) $r['phone'];
         }
@@ -1394,6 +1600,509 @@ final class WaLocal
         return false;
     }
 
+    /* -----------------------------------------------------------------
+     *  31 Oct 2026 — complaints, a typed payment reference, thanks, towns we
+     *  do not serve, personal numbers (owner: "jhe bhane ni tehi anusar reply;
+     *  galat cha bhane galat bhanne").
+     * --------------------------------------------------------------- */
+
+    /** Towns people ask about that are not on our route (checked against the live stops before saying so). */
+    private const NOT_SERVED = ['kathmandu' => 'Kathmandu', 'ktm' => 'Kathmandu', 'kathmandau' => 'Kathmandu', 'pokhara' => 'Pokhara',
+        'butwal' => 'Butwal', 'bhairahawa' => 'Bhairahawa', 'bhairahwa' => 'Bhairahawa', 'birgunj' => 'Birgunj', 'biratnagar' => 'Biratnagar',
+        'dhangadhi' => 'Dhangadhi', 'dhangadi' => 'Dhangadhi', 'mahendranagar' => 'Mahendranagar', 'ghorahi' => 'Ghorahi', 'tulsipur' => 'Tulsipur',
+        'surkhet' => 'Surkhet', 'birendranagar' => 'Surkhet', 'janakpur' => 'Janakpur', 'chitwan' => 'Chitwan', 'narayanghat' => 'Narayanghat',
+        'narayangarh' => 'Narayanghat', 'hetauda' => 'Hetauda', 'itahari' => 'Itahari', 'dharan' => 'Dharan', 'lumbini' => 'Lumbini',
+        'delhi' => 'Delhi', 'dilli' => 'Delhi', 'mumbai' => 'Mumbai', 'bombay' => 'Mumbai', 'jaipur' => 'Jaipur', 'jodhpur' => 'Jodhpur',
+        'udaipur' => 'Udaipur', 'pune' => 'Pune', 'lucknow' => 'Lucknow', 'gorakhpur' => 'Gorakhpur', 'varanasi' => 'Varanasi',
+        'kolkata' => 'Kolkata', 'bangalore' => 'Bengaluru', 'bengaluru' => 'Bengaluru', 'hyderabad' => 'Hyderabad', 'chennai' => 'Chennai',
+        'indore' => 'Indore', 'bhopal' => 'Bhopal', 'ajmer' => 'Ajmer', 'bikaner' => 'Bikaner', 'ludhiana' => 'Ludhiana', 'amritsar' => 'Amritsar',
+        'chandigarh' => 'Chandigarh', 'kanpur' => 'Kanpur', 'agra' => 'Agra', 'patna' => 'Patna', 'goa' => 'Goa', 'nagpur' => 'Nagpur', 'nashik' => 'Nashik',
+        'काठमाडौं' => 'Kathmandu', 'काठमाडौँ' => 'Kathmandu', 'काठमाण्डौ' => 'Kathmandu', 'पोखरा' => 'Pokhara', 'बुटवल' => 'Butwal', 'भैरहवा' => 'Bhairahawa',
+        'वीरगंज' => 'Birgunj', 'विराटनगर' => 'Biratnagar', 'धनगढी' => 'Dhangadhi', 'दिल्ली' => 'Delhi', 'मुम्बई' => 'Mumbai', 'जयपुर' => 'Jaipur',
+        'जोधपुर' => 'Jodhpur', 'लखनऊ' => 'Lucknow'];
+
+    /** The display name of a town in the message we do not run to or from; '' when none (or it IS one of our stops). */
+    private static function notServed(string $t): string
+    {
+        foreach (self::NOT_SERVED as $w => $name) {
+            if (preg_match('/(?<![\p{L}\p{M}])' . preg_quote($w, '/') . '(?![\p{L}\p{M}])/u', $t) !== 1) {
+                continue;
+            }
+            try {
+                $onRoute = Database::exists("SELECT 1 FROM route_stops s JOIN routes r ON r.id = s.route_id
+                                              WHERE r.is_active = 1 AND (LOWER(s.stop_name) LIKE :w OR LOWER(r.from_city) LIKE :w2 OR LOWER(r.to_city) LIKE :w3) LIMIT 1",
+                    ['w' => '%' . mb_strtolower($name) . '%', 'w2' => '%' . mb_strtolower($name) . '%', 'w3' => '%' . mb_strtolower($name) . '%']);
+            } catch (Throwable $e) {
+                $onRoute = true;                       // not sure: say nothing
+            }
+            if (!$onRoute) {
+                return $name;
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Each active route with its first pickups, in the order the bus reaches them (round 2: the list printed Kamrej,
+     * the second stop, last — it followed sort_order; now the clock, counted on from the route's first pickup).
+     *
+     * @return list<string>
+     */
+    private static function routeLines(): array
+    {
+        $go = [];
+        foreach (Database::fetchAll('SELECT id, from_city, to_city FROM routes WHERE is_active = 1 ORDER BY sort_order, dep_time') as $r) {
+            $rows = [];
+            foreach (Database::fetchAll("SELECT stop_name, stop_time FROM route_stops WHERE route_id = :r AND stop_type = 'boarding'" . Boarding::activeSql() . ' ORDER BY sort_order, id',
+                ['r' => (int) $r['id']]) as $s) {
+                if ((string) ($s['stop_time'] ?? '') !== '') {
+                    $hm = array_map('intval', explode(':', (string) $s['stop_time']) + [0, 0]);
+                    $rows[] = ['m' => $hm[0] * 60 + $hm[1], 'label' => self::short((string) $s['stop_name']) . ' ' . self::clock((string) $s['stop_time'])];
+                }
+            }
+            if ($rows === []) {
+                continue;
+            }
+            $first = $rows[0]['m'];
+            foreach ($rows as &$row) {
+                $row['k'] = $row['m'] < $first ? $row['m'] + 1440 : $row['m'];   // after midnight = later on the same trip
+            }
+            unset($row);
+            usort($rows, static fn(array $a, array $b): int => $a['k'] <=> $b['k']);
+            $go[] = '🚌 ' . trim((string) $r['from_city']) . ' → ' . trim((string) $r['to_city']) . ': ' . implode(' · ', array_slice(array_column($rows, 'label'), 0, 6));
+        }
+        return $go;
+    }
+
+    /** "Nepalgunj samma bus jancha?" — yes: to the Rupaidiha (Nepalgunj) border, with the route and times. */
+    private static function servedAnswer(string $lang): array
+    {
+        $go = self::routeLines();
+        return ['text' => self::t($lang,
+                '🙏 हो — हाम्रो बस रुपैडिहा (नेपालगञ्ज बोर्डर) सम्म जान्छ, र त्यहीँबाट फर्कन्छ।',
+                '🙏 हाँ — हमारी बस रुपईडीहा (नेपालगंज बॉर्डर) तक जाती है, और वहीं से वापस आती है।',
+                '🙏 Yes — our bus goes to Rupaidiha (the Nepalgunj border) and comes back from there.')
+            . ($go !== [] ? "\n" . implode("\n", $go) : '')
+            . "\n" . self::t($lang, 'भाडा: "bhada" · बुक गर्न "ticket" लेख्नुहोस्। अफिस: ', 'किराया: "kiraya" · बुक करने के लिए "ticket" लिखें। ऑफिस: ', 'Fare: "fare" · to book, write "ticket". Office: ') . Settings::officePhone(),
+            'media' => null, 'ui' => null];
+    }
+
+    /**
+     * One line for a booking that names a town we do not reach ("bholi 1 seat Surat bata, Kathmandu jane ho"): the
+     * booking goes on, and the passenger is told where the bus ends. '' when the line names no such town.
+     */
+    public static function routeEndNote(string $text): string
+    {
+        $t = ' ' . self::norm($text) . ' ';
+        $place = self::notServed($t);
+        if ($place === '') {
+            return '';
+        }
+        $lang = self::lang($text, false);
+        return self::t($lang, 'ℹ️ हाम्रो बस ' . $place . ' जाँदैन — रुपैडिहा (नेपालगञ्ज बोर्डर) सम्म जान्छ; त्यहाँबाट अगाडि आफैं जानुपर्छ।',
+            'ℹ️ हमारी बस ' . $place . ' नहीं जाती — रुपईडीहा (नेपालगंज बॉर्डर) तक जाती है; आगे खुद जाना होगा।',
+            'ℹ️ Our bus does not go to ' . $place . ' — it ends at Rupaidiha (the Nepalgunj border); from there you travel on yourself.');
+    }
+
+    /**
+     * This number's coming tickets: PNR, date, the seats as the ticket prints them.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function comingTickets(string $digits): array
+    {
+        if ($digits === '') {
+            return [];
+        }
+        return Database::fetchAll(
+            "SELECT b.id, b.pnr, b.status, b.is_cod, b.total_amount, b.booking_mode, bl.travel_date, bl.schedule_id
+               FROM bookings b JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
+              WHERE (b.contact_phone = :p OR b.alt_phone = :p2) AND b.status IN ('confirmed', 'pending')
+                AND bl.travel_date >= :d
+              ORDER BY bl.travel_date ASC, b.id DESC LIMIT 3",
+            ['p' => $digits, 'p2' => $digits, 'd' => date('Y-m-d')]
+        );
+    }
+
+    /** "seat number" / "mero seat kun ho?" from a ticket holder: their own seat(s), as printed — never a new booking. */
+    private static function mySeat(string $digits, string $lang): array
+    {
+        $rows = self::comingTickets($digits);
+        if ($rows === []) {
+            return ['text' => self::t($lang, 'यो नम्बरमा आउँदो कुनै टिकट भेटिएन। टिकटको PNR (SHG-…) पठाउनुहोस्, सिट भनिदिन्छु। नयाँ टिकट चाहिए "ticket" लेख्नुहोस्।',
+                'इस नंबर पर आगे की कोई टिकट नहीं मिली। टिकट का PNR (SHG-…) भेजिए, सीट बता दूँगा। नई टिकट के लिए "ticket" लिखिए।',
+                'No coming ticket on this number. Send the PNR (SHG-…) and I will tell you the seat. For a new ticket, write "ticket".'), 'media' => null, 'ui' => null];
+        }
+        require_once INCLUDE_PATH . '/seats.php';
+        $lines = [];
+        foreach ($rows as $r) {
+            $pax = Database::fetchAll('SELECT full_name, seat_no FROM booking_passengers WHERE booking_id = :b ORDER BY id', ['b' => (int) $r['id']]);
+            $coach = (int) $r['schedule_id'] > 0 ? Seats::coachForSchedule((int) $r['schedule_id']) : 'sleeper';
+            $bits = [];
+            foreach ($pax as $p) {
+                $lbl = (string) $p['seat_no'] !== '' ? Seats::displayLabel((string) $p['seat_no'], $coach, (string) ($r['booking_mode'] ?? 'sharing')) : '';
+                $bits[] = ($lbl !== '' ? $lbl : (string) $p['seat_no']) . ' ' . (string) $p['full_name'];
+            }
+            $lines[] = '💺 ' . (string) $r['pnr'] . ' · ' . formatDate((string) $r['travel_date'], 'D, j M') . "\n   " . implode(' · ', $bits);
+        }
+        return ['text' => self::t($lang, 'तपाईंको सिट:', 'आपकी सीट:', 'Your seat:') . "\n" . implode("\n", $lines), 'media' => null, 'ui' => null];
+    }
+
+    /** "kati paisa tirnu baki cha?" from a ticket holder: what is still due on their own booking. null = no ticket here. */
+    private static function myDue(string $digits, string $lang): ?array
+    {
+        $rows = self::comingTickets($digits);
+        if ($rows === []) {
+            return null;
+        }
+        $lines = [];
+        foreach ($rows as $r) {
+            $pay = (string) Database::scalar('SELECT status FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => (int) $r['id']], '');
+            $amt = inr((float) $r['total_amount']);
+            $head = '💳 ' . (string) $r['pnr'] . ' · ' . formatDate((string) $r['travel_date'], 'D, j M') . ' · ';
+            if (in_array($pay, ['verified', 'settled'], true)) {
+                $lines[] = $head . self::t($lang, $amt . ' — पूरा तिरिसक्नुभयो ✅', $amt . ' — पूरा भुगतान हो चुका ✅', $amt . ' — fully paid ✅');
+            } elseif ((int) $r['is_cod'] === 1) {
+                $lines[] = $head . self::t($lang, $amt . ' बाँकी — काउन्टरमा / बस चढ्दा तिर्नुहोस्', $amt . ' बाकी — काउंटर पर / बस में चढ़ते समय भरिए', $amt . ' due — pay at the counter / when you board');
+            } else {
+                $lines[] = $head . self::t($lang, $amt . ' तिर्न बाँकी — "payment kasari" लेख्नुहोस् (QR आउँछ)', $amt . ' भुगतान बाकी — "payment kaise" लिखिए (QR आएगा)', $amt . ' due — write "how to pay" for the QR');
+            }
+        }
+        return ['text' => implode("\n", $lines), 'media' => null, 'ui' => null];
+    }
+
+    /** "No — we do not run to Kathmandu; our route and pickups are …" */
+    private static function notServedAnswer(string $t, string $lang): array
+    {
+        $place = self::notServed($t);
+        $go = self::routeLines();
+        $phone = Settings::officePhone();
+        return ['text' => self::t($lang,
+                '🙏 होइन — हाम्रो बस ' . $place . ' जाँदैन / त्यहाँबाट चल्दैन। हाम्रो रुट: गुजरात ↔ रुपैडिहा (नेपालगञ्ज बोर्डर)।',
+                '🙏 नहीं — हमारी बस ' . $place . ' नहीं जाती / वहाँ से नहीं चलती। हमारा रूट: गुजरात ↔ रुपईडीहा (नेपालगंज बॉर्डर)।',
+                '🙏 No — our bus does not run to or from ' . $place . '. Our route is Gujarat ↔ Rupaidiha (the Nepalgunj border).')
+            . ($go !== [] ? "\n" . implode("\n", $go) : '')
+            . "\n" . self::t($lang, 'बुक गर्न "ticket" लेख्नुहोस्। अफिस: ', 'बुक करने के लिए "ticket" लिखें। ऑफिस: ', 'To book, write "ticket". Office: ') . $phone,
+            'media' => null, 'ui' => null];
+    }
+
+    /** A passenger needs no account: book here, or on the website with the mobile + OTP; agents join with "join". */
+    private static function registerHelp(string $lang): array
+    {
+        $web = 'https://' . Settings::getString('company_web', 'shreehariglobal.in');
+        return ['text' => self::t($lang,
+            '🙏 टिकटका लागि दर्ता (account) चाहिँदैन — यहीँ "ticket" लेख्नुहोस् (नाम, चढ्ने ठाउँ, मिति, कति जना), वा ' . $web . ' मा मोबाइल नम्बर + OTP ले बुक गर्नुहोस्।' . "
+" . 'एजेन्ट बन्न: "join" लेख्नुहोस्।',
+            '🙏 टिकट के लिए रजिस्ट्रेशन (account) नहीं चाहिए — यहीं "ticket" लिखिए (नाम, चढ़ने की जगह, तारीख, कितने लोग), या ' . $web . ' पर मोबाइल नंबर + OTP से बुक कीजिए।' . "
+" . 'एजेंट बनने के लिए: "join" लिखिए।',
+            '🙏 No registration (account) is needed for a ticket — write "ticket" here (name, pickup, date, how many), or book on ' . $web . ' with your mobile number + OTP.' . "
+" . 'To become an agent: write "join".'),
+            'media' => null, 'ui' => null];
+    }
+
+    /** Personal numbers are not shared; the office line reaches the management. */
+    private static function ownerNumber(string $lang): array
+    {
+        $phone = Settings::officePhone();
+        return ['text' => self::t($lang,
+            '🙏 कम्पनीका व्यक्तिहरूको निजी नम्बर हामी दिँदैनौं। अफिस नम्बर ' . $phone . ' मा फोन वा WhatsApp गर्नुहोस् — कुरा व्यवस्थापनसम्म पुग्छ।',
+            '🙏 कंपनी के लोगों का निजी नंबर हम नहीं देते। ऑफिस नंबर ' . $phone . ' पर कॉल या WhatsApp करें — बात मैनेजमेंट तक पहुँचती है।',
+            '🙏 We do not share personal numbers. Call or WhatsApp the office on ' . $phone . ' — it reaches the management.'), 'media' => null, 'ui' => null];
+    }
+
+    /** A complaint, a typed payment reference, or a thank-you. null = none of these. */
+    private static function earlyTurn(string $fromRaw, string $digits, string $text, ?array $who): ?array
+    {
+        $low = mb_strtolower(trim($text));
+        $t = ' ' . self::norm($text) . ' ';
+        $lang = self::lang($text, false);
+        // round 2: the "ho" / "no" to a typed payment reference this chat previewed (WaPayProof::handleText)
+        require_once INCLUDE_PATH . '/wapayproof.php';
+        $answer = WaPayProof::confirmTurn($digits, $text);
+        if ($answer !== null) {
+            return ['text' => $answer, 'media' => null, 'ui' => null, 'intent' => 'pay_ref'];
+        }
+        // round 2 (passenger sim: a stray "ho" right after the sale got the generic welcome): say the sale is done
+        if (preg_match('/^(?:ho|hoo|ha+|haan|han|ji|yes|y|ok|okay|okk|thik\s*cha|theek\s*hai|हो|हाँ|हां|ठीक\s*छ)[\s.!।🙏]*$/u', $low) === 1
+            && !WaBooking::isOpen($digits)) {
+            $sold = WaBooking::lastSoldPnr($digits);
+            if ($sold !== '') {
+                $st = (string) Database::scalar('SELECT status FROM bookings WHERE pnr = :p', ['p' => $sold], '');
+                $sl = WaBooking::lastSoldLang($digits);
+                $sl = $sl !== '' ? $sl : $lang;
+                if ($st === 'pending') {
+                    return ['text' => self::t($sl, '✅ ' . $sold . ' बुक भइसक्यो — माथिको QR वा लिंकबाट तिर्नुहोस्; तिरेपछि screenshot यहीँ पठाउनुहोस्।',
+                        '✅ ' . $sold . ' बुक हो चुकी — ऊपर के QR या लिंक से भुगतान कीजिए; फिर screenshot यहीं भेजिए।',
+                        '✅ ' . $sold . ' is booked — pay with the QR or the link above, then send the screenshot here.'), 'media' => null, 'ui' => null, 'intent' => 'sold_ack'];
+                }
+                if ($st === 'confirmed') {
+                    return ['text' => self::t($sl, '✅ ' . $sold . ' पक्का भइसक्यो — टिकट माथि छ। शुभ यात्रा!', '✅ ' . $sold . ' पक्की हो चुकी — टिकट ऊपर है। शुभ यात्रा!',
+                        '✅ ' . $sold . ' is confirmed — the ticket is above. Safe journey!'), 'media' => null, 'ui' => null, 'intent' => 'sold_ack'];
+                }
+            }
+        }
+        if (preg_match('/^(?:ok\s+)?(?:dhanyabad|dhanyabaad|dhanyawad|dhanyavad|dhanybad|thank\s*you|thanks|thank\s*u|thanku|thnx|thx|shukriya|shukria|धन्यवाद|धन्यबाद|शुक्रिया)(?:\s+(?:dai|ji|sir|hajur|bhai|didi|जी|हजुर))*\s*[🙏!.]*$/u', $low) === 1) {
+            return ['text' => self::t($lang, '🙏 धन्यवाद! अरू केही चाहिए भने यहीँ लेख्नुहोस्। शुभ यात्रा!', '🙏 धन्यवाद! और कुछ चाहिए तो यहीं लिखिए। शुभ यात्रा!',
+                '🙏 Thank you! Write here if you need anything else. Safe journey!'), 'media' => null, 'ui' => null, 'intent' => 'thanks'];
+        }
+        /* A payment reference typed after paying: "paisa pathaye UPI bata, UTR 412345678901". Round 2: WaPayProof reads
+           only an explicit reference (never a mobile, a question or "I will pay") and answers with a PREVIEW for "ho".
+           Round 3 (owner's rule R2): ANY line that talks about a payment made (utr / ref / txn / "paisa pathaye") is
+           answered here — the preview, or "send the 12-digit UTR or the screenshot" — and never reaches the booking
+           engine ("<mobile> bata paisa pathaye" / "UTR 98…" were sold as tickets for "Paisa Pathaye" / "Utr"). */
+        $payAnswer = WaPayProof::answerPayTalk($digits, $text, $lang);
+        if ($payAnswer !== null) {
+            return ['text' => $payAnswer, 'media' => null, 'ui' => null, 'intent' => 'pay_ref'];
+        }
+        $open = false;
+        try {
+            $open = WaBooking::isOpen($digits);
+        } catch (Throwable $e) {
+            $open = false;
+        }
+        /* Round 3 (31 Oct 2026, owner's rule R4 — safety review #4: "kunai complain chaina dai, sabai ramro", "no
+           complaints, thank you", "AC bhi bilkul kharab nahi tha", "driver le kunai gali garena", "seat kharab cha bhane
+           arko dinu hunchha?", "… jyada paisa liyo bhanera sunye, sahi ho?" each opened a Help Desk ticket — staff /
+           payment ones HIGH, with an office alert). A ticket needs a complaint that is MEANT: praise is checked first,
+           then a question, then a negation beside the complaint word (complaintKind) — any of them = no ticket; the
+           passenger gets the answer and the office number instead. */
+        $office = Settings::officePhone();
+        $thanksReply = fn(bool $withOffice): array => ['text' => self::t($lang, '🙏 धन्यवाद! तपाईंको राम्रो शब्द टोलीलाई पुर्‍याउँछौं। शुभ यात्रा!', '🙏 धन्यवाद! आपकी अच्छी बात टीम तक पहुँचाएँगे। शुभ यात्रा!',
+                '🙏 Thank you! We will pass your kind words to the team. Safe journey!')
+            . ($withOffice ? "\n" . self::t($lang, 'केही समस्या भए अफिसमा भन्नुहोस्: ', 'कोई दिक्कत हो तो ऑफिस को बताइए: ', 'If anything was wrong, tell the office: ') . $office : ''),
+            'media' => null, 'ui' => null, 'intent' => 'thanks'];
+        $tc = ' ' . self::clauses($text) . ' ';
+        if (!self::complaintSignal($tc)) {
+            // "staff ko behaviour ekdam ramro thiyo, dhanyabad": praise + thanks is a thank-you, never a complaint;
+            // round 3: so is praise told about a trip ("bus ekdam ramro, … driver le ramro chalayo") — never a booking line
+            if (!$open && (self::praise($t) || (self::praiseWord($tc) && !str_contains($text, '?')
+                    && preg_match(self::cWords('thiyo|thyo|thie|thiye|thi|tha|was|were|chalayo|chalaye|garyo|gare|lagyo|bhayo|rahyo|raha|rahi'), $tc) === 1
+                    && preg_match(self::cWords('seats?|sit|tickets?|tikat|tiket|jana|book\w*|chahiyo|chahiye|chaiyo|chaiye|kati|kahile|kab|kitna'), $tc) !== 1))) {
+                return $thanksReply(false);
+            }
+            return null;
+        }
+        if ($open && !self::complaintSignal($tc, true)) {
+            return null;                                          // a sale is being made: only explicit complaint words leave it
+        }
+        // round 4 (R4): praise first, then a question, then a complaint being taken back — any of them = no ticket
+        $praised = self::praiseWord($tc);
+        $asked = self::asksAboutIt($t, $text);
+        $kind = self::complaintKind($tc, $open);
+        if (!$praised && !$asked && self::withdrawsComplaint($tc)) {
+            return ['text' => self::t($lang,
+                    '🙏 ठिक छ, नोट गर्यौं — नयाँ गुनासो दर्ता गरिएको छैन। पहिलेको गुनासो बन्द गर्न अफिसलाई भन्नुहोस्: ' . $office,
+                    '🙏 ठीक है, नोट किया — कोई नई शिकायत दर्ज नहीं हुई। पुरानी शिकायत बंद करवानी हो तो ऑफिस को बताइए: ' . $office,
+                    '🙏 Noted — no new complaint was recorded. To close an earlier complaint, tell the office: ' . $office),
+                'media' => null, 'ui' => null, 'intent' => 'complaint_info'];
+        }
+        if ($praised || $asked || $kind === '') {
+            if ($praised || preg_match('/(?<![\p{L}])(?:dhanyabad|dhanyabaad|dhanyawad|dhanyavad|thank\w*|thanks|shukriya|धन्यवाद|शुक्रिया)(?![\p{L}])/u', $t) === 1) {
+                return $thanksReply(true);
+            }
+            return ['text' => self::t($lang,
+                    'ℹ️ यात्रामा सिट, AC, स्टाफ वा भाडाको कुनै समस्या भए बसका स्टाफलाई भन्नुहोस् वा अफिसमा फोन गर्नुहोस् — अफिसले तुरुन्त मिलाउँछ। टिकटमा लेखिएभन्दा बढी भाडा लाग्दैन।'
+                        . "\nगुनासो दर्ता गर्ने भए के भयो लेखेर *complain* लेख्नुहोस्।",
+                    'ℹ️ सफ़र में सीट, AC, स्टाफ या किराये की कोई दिक्कत हो तो बस के स्टाफ को बताइए या ऑफिस को फ़ोन कीजिए — ऑफिस तुरंत सुलझाएगा। टिकट पर लिखे से ज़्यादा किराया नहीं लगता।'
+                        . "\nशिकायत दर्ज करनी हो तो क्या हुआ लिखकर *complain* लिखिए।",
+                    'ℹ️ If anything is wrong on the trip — the seat, the AC, the staff or the fare — tell the bus staff or call the office; they sort it out at once. You never pay more than the fare on the ticket.'
+                        . "\nTo record a complaint, write what happened with the word *complain*.")
+                . "\n📞 " . self::t($lang, 'अफिस: ', 'ऑफिस: ', 'Office: ') . $office,
+                'media' => null, 'ui' => null, 'intent' => 'complaint_info'];
+        }
+        if ($who === null) {
+            try {
+                require_once INCLUDE_PATH . '/aitools.php';
+                $who = AiTools::whoIs($fromRaw);
+            } catch (Throwable $e) {
+                $who = ['role' => 'customer'];
+            }
+        }
+        if ((string) ($who['role'] ?? 'customer') !== 'customer') {
+            return null;                                          // staff have their own desk
+        }
+        $pnr = (string) Database::scalar('SELECT pnr FROM bookings WHERE contact_phone = :p ORDER BY id DESC LIMIT 1', ['p' => $digits], '');
+        $ref = '';
+        try {
+            require_once INCLUDE_PATH . '/helpdesk.php';
+            $r = HelpDesk::open(['name' => '', 'phone' => $digits, 'country' => str_starts_with((string) preg_replace('/\D/', '', $fromRaw), '977') ? 'NP' : 'IN',
+                'category' => $kind, 'message' => 'WhatsApp: ' . $text, 'pnr' => $pnr, 'source' => 'chat', 'lang' => $lang, 'ack' => false]);
+            $ref = !empty($r['ok']) ? (string) ($r['ref'] ?? '') : '';
+        } catch (Throwable $e) {
+            Logger::warning('Help Desk complaint from WhatsApp failed: ' . $e->getMessage(), [], 'whatsapp');
+        }
+        $tag = trim($ref . ($pnr !== '' ? ' · ' . $pnr : ''));
+        $phone = Settings::officePhone();
+        $money = $kind === 'refund' || $kind === 'payment';
+        return ['text' => self::t($lang,
+                '🙏 माफ गर्नुहोस् — यस्तो हुनु हुँदैनथ्यो। तपाईंको गुनासो अफिसमा दर्ता भयो' . ($tag !== '' ? ' (' . $tag . ')' : '') . '। अफिसले छिट्टै फोन गर्नेछ।'
+                    . ($money ? "\nपैसाको कुरा अफिसले नै जाँचेर मिलाउँछ।" : ''),
+                '🙏 माफ़ कीजिए — ऐसा नहीं होना चाहिए था। आपकी शिकायत ऑफिस में दर्ज हो गई' . ($tag !== '' ? ' (' . $tag . ')' : '') . '। ऑफिस जल्दी फ़ोन करेगा।'
+                    . ($money ? "\nपैसे की बात ऑफिस खुद जाँचकर सुलझाएगा।" : ''),
+                '🙏 We are sorry — that should not have happened. Your complaint is recorded with the office' . ($tag !== '' ? ' (' . $tag . ')' : '') . '; they will call you soon.'
+                    . ($money ? "\nThe office checks and settles any money matter itself." : ''))
+            . "\n📞 " . self::t($lang, 'अफिस: ', 'ऑफिस: ', 'Office: ') . $phone,
+            'media' => null, 'ui' => null, 'intent' => 'complaint'];
+    }
+
+    /* Round 3 (31 Oct 2026, owner's rule R4): the complaint signals, read ONE way for every caller. */
+    // round 4 (review B4): + Gujarati ફરિયાદ (complaint)
+    private const C_EXPLICIT = 'complain\w*|ujuri|ujur|gunaso|shikayat|shikaayat|rude|badtameez|badtamiz|badtamij|misbehav\w*|thag\w*|dhoka|cheat\w*|overcharg\w*|गुनासो|उजुरी|शिकायत|ठग\S*|ફરિયાદ';
+    // round 3 (pax sim: "conductor ne 200 rupaye zyada liye" got the bus list): Hindi zyada / rupaye / le liye / maange
+    private const C_OVER = '(?:badi|badhi|jyada|jyaada|zyada|zyaada|jada|extra|besi|bese|dherai|adhik)\s*(?:paisa\s*|paise\s*|rupaya\s*|rupaye\s*|rupaiye\s*|rupees\s*|rs\s*)?'
+        . '(?:liyo|lie|liye|liya|le\s*liye|le\s*liya|maagyo|magyo|maange|mange|maanga|manga|maangyo|lagaayo|lagayo|charge\w*)|overcharg\w*'
+        . '|\d+\s*(?:rupaya|rupaye|rupaiye|rupees|rs|ru|₹)\s*(?:badi|badhi|jyada|jyaada|zyada|zyaada|extra|besi|bese)';
+    private const C_BADWORD = 'naramro|narmro|kharab|kharaab|bad|worst|rude|gali|ganda|bura|ramro\s*(?:chhaina|chaina|xaina|thiena|thiyena|bhayena)|thik\s*(?:chhaina|chaina|xaina)|theek\s*nahi|accha\s*nahi|acha\s*nahi|नराम्रो|खराब|बुरा';
+    private const C_BEHAV = 'behave\w*|behaviour|behavior|byabahar|vyavahar|ब्यवहार|व्यवहार';
+    // a thing of ours, then (within three words) what is wrong with it: "bus ko AC kharab", "AC chalena" — never "mausam kharab"
+    private const C_BROKEN = '/(?<![\p{L}\p{M}])(?:bus|gadi|gaadi|ac|a\s*c|seat|seats|sit|berth|toilet|bathroom|charger|charging|light|fan|tv|blanket|kambal|khana|pani|window|jhyal|sleeper|bed|गाडी|बस|सिट|एसी)(?![\p{L}\p{M}])'
+        . '(?:\s+\S+){0,3}?\s+(?:kharab|kharaab|bigr\w*|tuteko|tutyo|broken|not\s*working|chalena|chalaena|chaleko\s*chaina|kam\s*gareko\s*chaina|kam\s*garena|dirty|fohor|ganda|खराब|बिग्रियो|चलेन|फोहोर)(?![\p{L}\p{M}])/u';
+    private const C_STAFFBAD = 'naramro|narmro|gali|kutyo|kuteko|hiryo|dhamki|नराम्रो|गाली';
+    private const C_STAFF = 'driver|conductor|khalasi|helper|staff|counter|agent|manche|manchhe|ड्राइभर|कन्डक्टर|स्टाफ';
+    /** R4: a negation within two words before / three words after a complaint word cancels it ("kunai complain chaina",
+        "no complaints", "kharab nahi tha", "gali garena", "rude thiena"). */
+    /* Round 4 (R4 — safety review B2: "hamro driver le gali gardaina", "staff ko kunai kura naramro lagena", "ma complain
+       gardina", "complain garnu pardaina", "nobody was rude", "nothing to complain about", "I don't have any complaints"
+       opened tickets): + the present / habitual negatives, "nobody / nothing / none / no one", Gujarati; and a negation
+       ANYWHERE in the complaint's own clause counts (hitUnnegated). */
+    private const C_NOT_NEAR = 'chaina|chhaina|xaina|thiena|thiyena|thena|garena|garenan|bhayena|bhaena|nahi|nahin|nai|nhi|no|not|never|hoina|haina|na|nathiyo|didn|didnt|wasn|wasnt|isn|isnt|dont|kabhi'
+        . '|gardina|gardaina|gardainan|gardain|pardaina|pardain|pardena|lagena|lagdaina|bhaena|hudaina|hunna|chhaidaina|chaidaina|chahidaina|nobody|noone|no\s+one|nothing|none|neither|nor'
+        . '|छैन|थिएन|भएन|गरेन|नहीं|नही|होइन|गर्दिन|गर्दैन|पर्दैन|लागेन|નથી|નહીં|નહિ|ના';
+
+    private static function cWords(string $words): string
+    {
+        return '/(?<![\p{L}\p{M}])(?:' . $words . ')(?![\p{L}\p{M}])/u';
+    }
+
+    /** R4: at least one match of $re in $t with no negation beside it. */
+    private static function hitUnnegated(string $t, string $re): bool
+    {
+        if (preg_match_all($re, $t, $all, PREG_OFFSET_CAPTURE) < 1) {
+            return false;
+        }
+        foreach ($all[0] as [$m, $off]) {
+            // the window never crosses a clause (",", ".", "?"): "gali garena, ekdam ramro" — the "garena" is not the praise's
+            $beforeTxt = substr($t, 0, (int) $off);
+            $afterTxt = substr($t, (int) $off + strlen((string) $m));
+            $cut = strrpos($beforeTxt, ',');
+            $beforeTxt = $cut !== false ? substr($beforeTxt, $cut + 1) : $beforeTxt;
+            $cut = strpos($afterTxt, ',');
+            $afterTxt = $cut !== false ? substr($afterTxt, 0, $cut) : $afterTxt;
+            /* Round 4 (R4, review B2: "gunaso garnu parne kehi chaina", "the staff was not at all rude", "I don't have any
+               complaints" — the negation sat outside the 2-before / 3-after window): the WHOLE clause is the window. */
+            $win = ' ' . trim($beforeTxt) . ' ' . trim($afterTxt) . ' ';
+            if (preg_match(self::cWords(self::C_NOT_NEAR), $win) !== 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** @return array{explicit: bool, over: bool, behaviour: bool, broken: bool, staffBad: bool} raw ($meant false) or meant (no negation beside it) */
+    private static function signals(string $t, bool $meant): array
+    {
+        $hit = $meant ? static fn(string $re): bool => self::hitUnnegated($t, $re) : static fn(string $re): bool => preg_match($re, $t) === 1;
+        return [
+            'explicit'  => $hit(self::cWords(self::C_EXPLICIT)),
+            'over'      => $hit('/(?<![\p{L}])(?:' . self::C_OVER . ')(?![\p{L}])/u'),
+            'behaviour' => preg_match(self::cWords(self::C_BEHAV), $t) === 1 && $hit(self::cWords(self::C_BADWORD)),
+            'broken'    => $hit(self::C_BROKEN),
+            'staffBad'  => $hit(self::cWords(self::C_STAFFBAD)) && preg_match(self::cWords(self::C_STAFF), $t) === 1,
+        ];
+    }
+
+    /** Any complaint word at all (negated or not) — $explicitOnly: complain / gunaso / rude … only. */
+    private static function complaintSignal(string $t, bool $explicitOnly = false): bool
+    {
+        $s = self::signals($t, false);
+        return $explicitOnly ? $s['explicit'] : in_array(true, $s, true);
+    }
+
+    /**
+     * '' = not a complaint; else the Help Desk category (staff / payment / refund / other).
+     * Round 2 (31 Oct 2026, safety review #4 + passenger sim): "malai 2 extra seat chahiyo" was an overcharge, "mausam
+     * kharab cha, bholi bus chalcha?" and "staff ko behaviour ekdam ramro thiyo" were complaints with a HIGH Help Desk
+     * ticket and an office alert. Now: an overcharge needs money; "behaviour" needs a bad word; "kharab" / "chalena"
+     * need a thing of ours (bus, AC, seat …); and while a booking chat is open only explicit complaint words count.
+     * Round 3 (R4): a signal with a negation beside it does not count ("kunai complain chaina", "gali garena").
+     */
+    private static function complaintKind(string $t, bool $bookingOpen = false): string
+    {
+        $s = self::signals($t, true);
+        if ($bookingOpen) {
+            // a sale is being made: "arko 1 extra seat chahiyo" is part of it — only explicit complaint words leave it
+            if (!$s['explicit']) {
+                return '';
+            }
+        } elseif (!in_array(true, $s, true)) {
+            return '';
+        }
+        if ($s['over']) {
+            return 'payment';
+        }
+        if (self::hitUnnegated($t, self::cWords('rude|naramro|narmro|badtameez|badtamiz|badtamij|misbehav\w*|gali|kutyo|kuteko|dhamki|नराम्रो|गाली'))
+            || $s['behaviour'] || $s['staffBad']) {
+            return 'staff';
+        }
+        $refund = preg_match('/(?<![\p{L}])(?:paisa\s*firta|paise\s*wapas|refund|firta|wapas|फिर्ता|वापस)\s*(?:chahiyo|chahiye|chaiyo|garnu|garideu|dinus|dinu|deu|karo|kar\s*do|chahta|चाहियो|चाहिए)?/u', $t) === 1;
+        return $refund ? 'refund' : 'other';
+    }
+
+    /** R4, checked first: a good word that is MEANT ("sabai ramro", "bus bahut acchi thi"; never "ramro thiena"). */
+    private static function praiseWord(string $t): bool
+    {
+        return self::hitUnnegated($t, self::cWords('ramro|ramrai|sundar|best|good|nice|great|excellent|accha|acha|achha|acchi|achhi|acchha|achchha|achchhi|badhiya|badiya|mast|awesome|comfortable|happy|khush|राम्रो|अच्छा|अच्छी|बढ़िया'));
+    }
+
+    /** R4: a question or a hypothetical ("?", "… bhane", "k garne", "sahi ho", "kya", "… bhanera sunye") — answered, never filed. */
+    private static function asksAboutIt(string $t, string $raw): bool
+    {
+        /* Round 4 (R4, review B2: "complain kaha garne", "gunaso kaha dine", "shikayat kahan karein", "complain garna milcha",
+           "complaint number dinus", "agar AC kharab ho to paise wapas milenge", "AC kharab bhaye paisa firta hunchha",
+           "is the AC broken in your bus", "extra paisa liyo bhanne kura galat ho" opened tickets): where / whether /
+           if-then and a reported claim are questions too; so is asking for the complaint's number / form / link. */
+        $explicit = preg_match(self::cWords(self::C_EXPLICIT), $t) === 1;
+        return str_contains($raw, '?') || str_contains($raw, '？')
+            || preg_match(self::cWords('bhane|bhaney|bhanera|bhanchan|bhanne|bhanthe|sunye|suneko|sunya|sunen|k\s+garne|ke\s+garne|k\s+garnu|ke\s+garnu|kya\s+kar\w*|kya|sahi\s+ho|sach\s+ho|sachi\s+ho|sahi\s+hai|sach\s+hai|ki\s+nai|ki\s+hoina|hola|kasari|kaise|how|what|can\s+i|if|'
+                . 'kaha|kahan|kahaa|kata|kaun\s+se|milcha|milchha|milxa|milla|milega|milenge|milta|milti|milenga|sakincha|sakinchha|agar|yadi|jadi|bhaye|bhayo\s+bhane|hunchha\s+ki|'
+                . 'भने|भन्ने|के\s+गर्ने|सही\s+हो|क्या|कैसे|कसरी|कहाँ|कहां|अगर|यदि|मिल्छ|मिलेगा|મળશે|ક્યાં|કેવી\s+રીતે'), $t) === 1
+            || preg_match('/^\s*(?:is|are|does|did|can|could|will|would|should)\s/u', $t) === 1
+            || ($explicit && preg_match(self::cWords('number|nambar|nmbr|no|form|link|website|app|email|portal|helpline|नम्बर|नंबर|फारम'), $t) === 1);
+    }
+
+    /** Round 4 (R4, review B2): "maile pahile gareko complain firta linchu", "complaint cancel gardinus, problem solve bhayo"
+        — a complaint being taken back, never a new complaint or a refund. */
+    private static function withdrawsComplaint(string $t): bool
+    {
+        foreach (explode(',', $t) as $clause) {
+            if (preg_match(self::cWords(self::C_EXPLICIT), $clause) === 1
+                && preg_match(self::cWords('firta|phirta|wapas|wapis|cancel|cancle|withdraw\w*|hatau\w*|hataidinu\w*|radd|radda|close|band|बन्द|फिर्ता|वापस|रद्द|हटाउ\S*'), $clause) === 1) {
+                return true;
+            }
+        }
+        return preg_match(self::cWords('solve\s+bhayo|solve\s+ho\s+gaya|solved|milisakyo|mil\s+gaya|thik\s+bhayo|theek\s+ho\s+gaya|resolved'), $t) === 1
+            && preg_match(self::cWords(self::C_EXPLICIT), $t) === 1;
+    }
+
+    /** "staff ko behaviour ekdam ramro thiyo, dhanyabad": praise with thanks, and nothing bad in it. */
+    private static function praise(string $t): bool
+    {
+        return preg_match('/(?<![\p{L}])(?:ramro|ramrai|ekdam\s*ramro|sundar|best|good|nice|great|excellent|accha|acha|achha|badhiya|badiya|mast|राम्रो|अच्छा|बढ़िया)(?![\p{L}])/u', $t) === 1
+            && preg_match('/(?<![\p{L}])(?:dhanyabad|dhanyabaad|dhanyawad|dhanyavad|thank\w*|thanks|shukriya|धन्यवाद|शुक्रिया)(?![\p{L}])/u', $t) === 1
+            && preg_match('/(?<![\p{L}])(?:chaina|chhaina|xaina|nahi|nahin|not|bad|kharab|naramro|complain\w*|thiena|bhayena)(?![\p{L}])/u', $t) !== 1;
+    }
+
+    /** norm() with each clause end kept as " , " (R4: a negation belongs to its own clause). */
+    private static function clauses(string $text): string
+    {
+        $t = mb_strtolower(trim($text));
+        // round 4 (R4, review B2: "I don't have any complaints" became "don t" and the "not" was lost)
+        $t = preg_replace('/(?<=\p{L})n[\'’`]t(?![\p{L}])/u', ' not', $t) ?? $t;
+        $t = preg_replace('/[?？!.,;:।॥]+/u', ' , ', $t) ?? $t;
+        $t = preg_replace('/["\'()]+/u', ' ', $t) ?? $t;
+        return trim(preg_replace('/\s+/u', ' ', $t) ?? $t);
+    }
+
     private static function norm(string $text): string
     {
         $t = mb_strtolower(trim($text));
@@ -1410,8 +2119,16 @@ final class WaLocal
     {
         $d = TicketBot::detectLang($text);
         $l = mb_strtolower($text);
-        if ($d === 'en' && preg_match('/(?<![a-z])(kaha|kata|kati|pugyo|cha|xa|chha|ho|bata|lai|hajur|garna|garne|garnu|k |ke |dinus|bholi|aaja|baki|khali|tirne|firta|pathau|chahiyo)(?![a-z])/u', $l) === 1) {
-            $d = 'ne';
+        // round 3 (pax sim: "bus bahut acchi thi, … shukriya" read as romanised Gujarati and was answered in English)
+        if ($d === 'en' || ($d === 'gu' && preg_match('/\p{Gujarati}/u', $text) !== 1)) {
+            // 31 Oct 2026 (passenger sim: "payment kaise karu?" was answered in English): romanised Hindi counts as Hindi
+            // round 3 (pax sim: "maile paisa pathaye UTR …", "conductor le 200 rupaya badi magyo", "upi payment gardai chu"
+            // were answered in English; "conductor ne 200 rupaye zyada liye" was not Hindi): more everyday markers
+            $ne = preg_match_all('/(?<![a-z])(kaha|kata|kati|pugyo|cha|xa|chha|ho|bata|lai|hajur|garna|garne|garnu|k|dinus|bholi|aaja|baki|khali|tirne|firta|pathau|chahiyo|dhanyabad|dhanyawad|mero|malai|paryo|garchu|tirchu|dinu|garyo|gareko|bhayo|thiyo|thiena|pathaidinu|pathaideu|pathaunu|pheri|feri|chaina|chhaina|xaina|hunchha|huncha|parcha|lagyo|garidinu|dinuhos|tapai|hamro|maile|le|magyo|maagyo|pathaye|pathaisake|pathaisakeko|pathaunchu|gardai|chu|chhu|tireko|tirisake|kunai|sabai|ekdam|ramro|garena|tara|dai|badi|rupaya|chalena|chalyo|bigryo|ko)(?![a-z])/u', $l);
+            $hi = preg_match_all('/(?<![a-z])(kaise|karu|karun|karna|kitna|kitne|kya|hai|hain|mujhe|mera|meri|chahiye|batao|bhejo|kab|kahan|nahi|aap|kijiye|dijiye|dena|karo|shukriya|maine|ne|kar|diya|diye|bhej|bheja|kiya|liye|liya|zyada|rupaye|tha|thi|bahut|acchi|accha|bilkul|hua|mere|humne)(?![a-z])/u', $l);
+            if ($ne > 0 || $hi > 0) {
+                $d = $hi > $ne ? 'hi' : 'ne';
+            }
         }
         if ($isStaff) {
             $pref = strtolower(trim(Settings::getString('wa_staff_lang', 'ne')));

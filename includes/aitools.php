@@ -944,7 +944,7 @@ final class AiTools
                LEFT JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = \'outbound\'
                LEFT JOIN schedules s ON s.id = l.schedule_id
                LEFT JOIN routes r ON r.id = s.route_id
-              WHERE b.contact_phone = :p' . ($scoped ? ' AND b.sold_by_admin_id = :me' : '') . '
+              WHERE b.contact_phone = :p' . ($scoped ? ' AND ' . self::sellerSql((int) $scope, 'me') : '') . '
               ORDER BY b.id DESC LIMIT 5',
             $params
         );
@@ -2108,7 +2108,7 @@ final class AiTools
                  WHERE l.travel_date = :d AND b.status IN ('confirmed','completed')";
         $params = ['d' => $date];
         if ($scope !== null) {
-            $sql .= ' AND b.sold_by_admin_id = :a';
+            $sql .= ' AND ' . self::sellerSql((int) $scope, 'a');
             $params['a'] = (int) $scope;
         }
         $sql .= ' ORDER BY l.boarding_stop, p.seat_no LIMIT 60';
@@ -2372,11 +2372,17 @@ final class AiTools
                        (SELECT COUNT(*) FROM payments pm WHERE pm.booking_id = b.id AND pm.status = 'verified') AS paid
                   FROM bookings b
                   LEFT JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
-                 WHERE b.sold_by_admin_id = :a";
+                 WHERE " . self::sellerSql($adminId, 'a');
         $params = ['a' => $adminId];
         if ($date !== '') {
             $sql .= ' AND l.travel_date = :d';
             $params['d'] = $date;
+        }
+        // 31 Oct 2026 round 2 (agent sim: "Ram Thapa ko ticket kun bus ma cha?"): the seller's own sales for one passenger
+        $who = trim(mb_strtolower(Security::clean((string) ($args['name'] ?? ''), 60)));
+        if (mb_strlen($who) >= 2) {
+            $sql .= ' AND EXISTS (SELECT 1 FROM booking_passengers p2 WHERE p2.booking_id = b.id AND LOWER(p2.full_name) LIKE :n)';
+            $params['n'] = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $who) . '%';
         }
         $sql .= ' ORDER BY b.id DESC LIMIT ' . $limit;
 
@@ -2680,20 +2686,20 @@ final class AiTools
                   payment rows was counted twice in tickets and amount. */
                LEFT JOIN payments p ON p.booking_id = b.id
                     AND p.id = (SELECT MAX(p2.id) FROM payments p2 WHERE p2.booking_id = b.id)
-              WHERE b.sold_by_admin_id = :a
+              WHERE " . self::sellerSql($adminId, 'a') . "
                 AND DATE(b.created_at) = :d
                 AND b.status IN ('confirmed','completed')",
             ['a' => $adminId, 'd' => $date]
         ) ?? [];
         $seats = (int) Database::scalar(
             "SELECT COUNT(*) FROM booking_seats s JOIN bookings b ON b.id = s.booking_id
-              WHERE b.sold_by_admin_id = :a AND DATE(b.created_at) = :d
+              WHERE " . self::sellerSql($adminId, 'a') . " AND DATE(b.created_at) = :d
                 AND b.status IN ('confirmed','completed') AND s.released_at IS NULL",
             ['a' => $adminId, 'd' => $date],
             0
         );
         $cancelled = (int) Database::scalar(
-            "SELECT COUNT(*) FROM bookings WHERE sold_by_admin_id = :a AND DATE(created_at) = :d AND status IN ('cancelled','rejected')",
+            "SELECT COUNT(*) FROM bookings b WHERE " . self::sellerSql($adminId, 'a') . " AND DATE(b.created_at) = :d AND b.status IN ('cancelled','rejected')",
             ['a' => $adminId, 'd' => $date],
             0
         );
@@ -3311,6 +3317,32 @@ final class AiTools
             && empty($ctx['verified']);
     }
 
+    /**
+     * 31 Oct 2026 (counter sim: right after a counter cut a ticket, "tickets", "passengers bholi", the PNR, its edit,
+     * resend and cancel all said "not yours", and "aaja" counted 0): a counter's desk sale is credited to the company
+     * code (sold_by_admin_id, BookingService::attributeDeskSale) while booked_by_admin_id keeps the counter. A COUNTER's
+     * own tickets are both; an agent's stay sold_by only (a sale moved to another agent leaves them).
+     */
+    public static function isCounterId(int $adminId): bool
+    {
+        static $cache = [];
+        if ($adminId <= 0) {
+            return false;
+        }
+        if (!isset($cache[$adminId])) {
+            $cache[$adminId] = (string) Database::scalar('SELECT role FROM admins WHERE id = :i', ['i' => $adminId], '') === 'counter';
+        }
+        return $cache[$adminId];
+    }
+
+    /** "b.sold_by_admin_id = :a" — for a counter also its own booked_by (the parameter is used once). */
+    private static function sellerSql(int $adminId, string $key): string
+    {
+        return self::isCounterId($adminId)
+            ? ':' . $key . ' IN (b.sold_by_admin_id, b.booked_by_admin_id)'
+            : 'b.sold_by_admin_id = :' . $key;
+    }
+
     /** May this sender READ the full detail of this booking? */
     private static function mayRead(array $detail, array $ctx): bool
     {
@@ -3320,7 +3352,8 @@ final class AiTools
         }
         if ($role === 'staff') {
             $scope = $ctx['scopeAdminId'] ?? null;
-            return $scope === null || (int) ($detail['sold_by_admin_id'] ?? 0) === (int) $scope;
+            return $scope === null || (int) ($detail['sold_by_admin_id'] ?? 0) === (int) $scope
+                || ((int) ($detail['booked_by_admin_id'] ?? 0) === (int) $scope && self::isCounterId((int) $scope));
         }
         // Website customers read only after the WhatsApp code (D7-02).
         if (self::webUnverified($ctx)) {

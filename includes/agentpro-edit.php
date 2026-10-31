@@ -137,9 +137,22 @@ final class ApEdit
                             'time' => Boarding::timeForStop($routeId, $hit)];
                 break;
             case 'seat':
-                $want = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $value) ?? '');
+                /* 31 Oct 2026 (desk sims: "seat F5" / "seat A1" — the berth as the TICKET prints it — was previewed and
+                   only refused after the "ho"): a printed label is mapped to the stored berth (Seats::storageIdsForLabel),
+                   and a berth this coach does not have, or that is taken, is refused here, before any "ho". */
+                $raw = strtoupper(preg_replace('/[^A-Za-z0-9+\-]/', '', $value) ?? '');
+                $sid = (int) ($leg['schedule_id'] ?? 0);
+                $ids = $sid > 0 ? array_map('strval', Seats::seatIdsForSchedule($sid)) : [];
+                $want = in_array($raw, $ids, true) ? $raw : '';
+                if ($want === '' && $raw !== '' && $sid > 0) {
+                    $map = Seats::storageIdsForLabel($raw, Seats::coachForSchedule($sid), (string) ($d['booking_mode'] ?? 'sharing'));
+                    $want = count($map) === 1 && in_array((string) $map[0], $ids, true) ? (string) $map[0] : '';
+                }
                 if ($want === '' || !Security::isValidSeat($want)) {
-                    return ['ok' => false, 'error' => 'badseat'];
+                    return ['ok' => false, 'error' => 'badseat', 'seat' => $raw];
+                }
+                if (in_array($want, array_map('strval', Seats::bookedSeats($sid)), true)) {
+                    return ['ok' => false, 'error' => 'seattaken', 'seat' => $raw];
                 }
                 $from = $target !== null && ($target['seat_no'] ?? '') !== '' ? (string) $target['seat_no'] : (string) (($leg['seats'] ?? [])[0] ?? '');
                 if ($from === '') {
@@ -249,14 +262,22 @@ final class ApEdit
             return ['ok' => false, 'error' => 'refused', 'say' => $e->getMessage()];
         }
 
-        Ticket::reissue($bid);
+        /* 31 Oct 2026 round 2 (owner + agent sims: one seat move sent the passenger TWO "सिट बदलियो" messages — the
+           printed label, then the stored id L35 — and the ticket went REV +2): Seats::transferSeat already ran
+           TicketSync (reissue + the passenger's notice with the printed labels) and says the caller must not do it
+           again. Every other field is reissued and notified here, as before. */
+        if ($kind !== 'seat') {
+            Ticket::reissue($bid);
+        }
         Logger::audit('booking.edit_whatsapp', 'booking', $pnr, [$field => $change['old'] ?? null], [$field => $change['new'] ?? null],
             'Ticket changed from ' . $who);
         $fresh = BookingService::detail($pnr) ?? $d;
-        try {
-            Notify::ticketChanged($fresh, $kind, $notifyCtx);
-        } catch (Throwable $e) {
-            Logger::warning('ticketChanged after a WhatsApp edit failed: ' . $e->getMessage(), [], 'whatsapp');
+        if ($kind !== 'seat') {
+            try {
+                Notify::ticketChanged($fresh, $kind, $notifyCtx);
+            } catch (Throwable $e) {
+                Logger::warning('ticketChanged after a WhatsApp edit failed: ' . $e->getMessage(), [], 'whatsapp');
+            }
         }
         return ['ok' => true, 'pnr' => $pnr, 'media' => (string) $fresh['status'] === 'confirmed' ? Ticket::imageUrl($pnr) : null];
     }
@@ -284,7 +305,11 @@ final class ApEdit
         }
         if ($role === 'staff') {
             $scope = $ctx['scopeAdminId'] ?? null;
-            return $scope === null || (int) ($d['sold_by_admin_id'] ?? 0) === (int) $scope;
+            // 31 Oct 2026 (counter sim): a counter's sale is credited to the company code (sold_by), but the counter
+            // cut it (booked_by) — it is still the counter's own ticket.
+            require_once __DIR__ . '/aitools.php';
+            return $scope === null || (int) ($d['sold_by_admin_id'] ?? 0) === (int) $scope
+                || ((int) ($d['booked_by_admin_id'] ?? 0) === (int) $scope && AiTools::isCounterId((int) $scope));
         }
         return (string) ($ctx['phone'] ?? '') !== '' && normalisePhone((string) ($d['contact_phone'] ?? '')) === (string) $ctx['phone'];
     }
@@ -301,6 +326,16 @@ final class ApEdit
         $w = mb_strtolower(trim($which));
         if ($w === '') {
             return null;
+        }
+        /* round 2 (agent sim: "SHG-… dosro yatri ko naam Sita Thapa" got "which passenger?"): an ordinal is the
+           passenger's place on the ticket — pahilo / pehla / first = 1, dosro / dusra / second = 2, … */
+        $ord = trim((string) preg_replace('/(?<![\p{L}\p{M}])(?:yatri|yatru|passenger|pax|wala|vala|wali|ko|ka|ki|ji)(?![\p{L}\p{M}])/u', ' ', $w));
+        $ordinals = ['pahilo' => 1, 'pahila' => 1, 'pehla' => 1, 'pahla' => 1, 'first' => 1, '1st' => 1, 'पहिलो' => 1, 'पहला' => 1,
+            'dosro' => 2, 'dosra' => 2, 'dusro' => 2, 'dusra' => 2, 'doosra' => 2, 'second' => 2, '2nd' => 2, 'दोस्रो' => 2, 'दूसरा' => 2,
+            'tesro' => 3, 'tesra' => 3, 'teesra' => 3, 'tisra' => 3, 'third' => 3, '3rd' => 3, 'तेस्रो' => 3, 'तीसरा' => 3,
+            'chautho' => 4, 'chautha' => 4, 'fourth' => 4, '4th' => 4, 'चौथो' => 4, 'चौथा' => 4];
+        if (isset($ordinals[$ord])) {
+            return $pax[$ordinals[$ord] - 1] ?? null;
         }
         foreach ($pax as $i => $p) {
             if ($w === (string) ($i + 1) || $w === mb_strtolower((string) ($p['seat_no'] ?? ''))

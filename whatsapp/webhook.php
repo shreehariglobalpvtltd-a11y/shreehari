@@ -426,12 +426,25 @@ function wh_process_inbound(array $msg): void
        open here. Every ticket waiting for them goes out now, free, as the
        PNG (WaRoute). A short "hi" / PNR that got its tickets needs no bot
        menu on top - the ticket was the answer. */
+    /* 31 Oct 2026 (agent sim: "SHG-… naam Sita", "SHG-… resend", "SHG-… cancel garnu paryo" from an AGENT got no
+       answer at all — the seller copy below "answered" them, or was deduped and still counted): a desk member's
+       (agent / counter / office, ApWa) message always reaches the desk, which answers every PNR command itself.
+       Their own waiting customer tickets still flush (no PNR read from the text). */
+    $deskMember = false;
+    try {
+        if (is_file(INCLUDE_PATH . '/agentpro-wa.php')) {
+            require_once INCLUDE_PATH . '/agentpro-wa.php';
+            $deskMember = AgentPro::available() && Settings::getBool('ap_wa_on', true) && ApWa::memberFor(normalisePhone($from)) !== null;
+        }
+    } catch (Throwable $e) {
+        $deskMember = false;
+    }
     try {
         require_once INCLUDE_PATH . '/waqueue.php';
         if (WaQueue::ready()) {
-            $gotTickets = WaQueue::onInbound($from, $text, 'meta');
+            $gotTickets = WaQueue::onInbound($from, $deskMember ? '' : $text, 'meta');
             $plainText  = trim(preg_replace('/SHG-?\s?\d{4}-?\s?\d{3,6}/i', '', $text) ?? '');
-            if ($gotTickets > 0 && mb_strlen($plainText) <= 25 && !isset($msg['interactive']['nfm_reply'])) {   // a filled booking form still books
+            if (!$deskMember && $gotTickets > 0 && mb_strlen($plainText) <= 25 && !isset($msg['interactive']['nfm_reply'])) {   // a filled booking form still books
                 return;
             }
         }

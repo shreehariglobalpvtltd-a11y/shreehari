@@ -330,7 +330,7 @@ if (str_ends_with($p, "/api/chat")) {
     $u = "";
     foreach ((array) ($in["messages"] ?? []) as $m) { if (($m["role"] ?? "") !== "system") { $u .= (string) ($m["content"] ?? ""); } }
     $msg = preg_match("/Message:\\s*\\n(.*)$/s", $u, $mm) === 1 ? $mm[1] : $u;
-    if (str_contains($msg, ' . var_export($tag, true) . ') && str_contains($msg, "nikalera")) {
+    if (str_contains($msg, ' . var_export($tag, true) . ') && str_contains($msg, "jhikera")) {
         file_put_contents(' . var_export($hitsLog, true) . ', "x", FILE_APPEND);
         header("Content-Type: application/json");
         echo json_encode(["model" => $in["model"] ?? "", "done" => true, "message" => ["role" => "assistant", "content" => json_encode(["intent" => "withdraw"])],
@@ -346,7 +346,9 @@ $set('ap_ai_on', '1', 'bool');
 Settings::flush();
 ApAi::resetHealth();
 check('the model (a router in front of the mock) answers', $upP() && ApAi::enabled());
-$w = "$tag mero commission bata 2000 nikalera pathaidinus";
+// 31 Oct 2026: words the typed-command reader does not know ("mero commission … nikalera" is now read without the
+// model, as "withdraw 2000"), so this still tests what the AI reads and the desk learns
+$w = "$tag mero kamai bata 2000 jhikera pathaidinus";
 $modelCalls = static fn(): int => strlen((string) @file_get_contents($hitsLog));
 $round = static function (int $i) use ($A, $w, $agentId): array {
     $r = wa($A, $w);
@@ -377,7 +379,7 @@ ApAi::resetHealth();
 check('the model server is gone now', !ApAi::available(true));
 $fast0 = ApLearn::stats()['fastToday'];
 $calls0 = $modelCalls();                     // the practice run above also read these words on the model
-$r = wa($A, "$tag mero commission bata 1500 nikalera pathaidinus");
+$r = wa($A, "$tag mero kamai bata 1500 jhikera pathaidinus");
 check('round 3: the same words (another amount) answer WITHOUT a model — the amount from THIS message — and still only ask for "ho"',
     str_contains(txt($r), '*ho*') && str_contains(txt($r), '1,500')
     && (pendingOf($A)['kind'] ?? '') === 'withdraw' && AgentWallet::openPayoutRequests($agentId) === [] && $modelCalls() === $calls0, txt($r));

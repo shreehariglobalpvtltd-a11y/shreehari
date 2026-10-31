@@ -332,10 +332,13 @@ wa($MGR, 'no');
 section('payments members made: the office confirms or declines on WhatsApp');
 AgentWallet::record($agentId, 'cash_due', 2000, ['note' => 'desk test cash']);
 $held0 = AgentWallet::balances($agentId)['cash'];
-$utrA = (string) random_int(100000000000, 999999999999);
-$utrB = (string) random_int(100000000000, 999999999999);
+$utrA = (string) random_int(400000000000, 899999999999);   // UTRs, never shaped like a +91 mobile
+$utrB = (string) random_int(400000000000, 899999999999);
+// 31 Oct 2026 round 2: a member's pay-in is a preview; their "ho" files it
 wa($A, 'jama 500 UTR ' . $utrA);
+wa($A, 'ho');
 wa($A, 'jama 300 UTR ' . $utrB);
+wa($A, 'ho');
 $deps = AgentPro::openDeposits($agentId);
 $depA = (int) ($deps[0]['id'] ?? 0);
 $depB = (int) ($deps[1]['id'] ?? 0);

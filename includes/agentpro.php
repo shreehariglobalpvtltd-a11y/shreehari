@@ -3047,7 +3047,7 @@ final class AgentPro
         $ap = self::available();
         return [
             'applications' => $ap ? $q("SELECT COUNT(*) FROM ap_applications WHERE status = 'submitted'") : 0,
-            'withdrawals'  => $q("SELECT COUNT(*) FROM agent_payout_requests WHERE status = 'open'"),
+            'withdrawals'  => $q("SELECT COUNT(*) FROM agent_payout_requests r JOIN admins a ON a.id = r.agent_admin_id WHERE r.status = 'open'"),   // 31 Oct 2026: not a purged member's
             'deposits'     => $ap ? $q("SELECT COUNT(*) FROM ap_deposit_requests WHERE status = 'open'") : 0,
             'agents'       => $q("SELECT COUNT(*) FROM admins WHERE role = 'agent' AND is_active = 1"),
             'staff'        => $q("SELECT COUNT(*) FROM admins WHERE role <> 'agent' AND is_active = 1"),

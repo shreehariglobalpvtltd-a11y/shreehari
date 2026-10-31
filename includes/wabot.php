@@ -444,6 +444,17 @@ final class WaBot
         if ($localFirst && !$pnrOnly && !$staffToAssistant) {
             $booking = $tryLocalBooking();
             if ($booking !== null) {
+                /* round 2 (passenger sim: "bholi 1 seat Surat bata, Kathmandu jane ho" was answered "our bus does not
+                   go there" and the booking was lost): the booking goes on, with one line on where the bus ends. */
+                try {
+                    require_once INCLUDE_PATH . '/walocal.php';
+                    $note = WaLocal::routeEndNote($body);
+                    if ($note !== '' && !str_contains((string) $booking['text'], $note)) {
+                        $booking['text'] = (string) $booking['text'] . "\n\n" . $note;
+                    }
+                } catch (Throwable $e) {
+                    Logger::exception($e);
+                }
                 return self::out($booking['text'], $booking['media'] ?? null, $booking['ui'] ?? null);
             }
         }
@@ -534,6 +545,25 @@ final class WaBot
                 }
             } catch (Throwable $e) {
                 Logger::exception($e);
+            }
+
+            /* 31 Oct 2026 (passenger sim: "Surat to Rupaidiha bhada kati ho?", "kal ki bus kitne baje hai Surat se"
+               were parked below as a desk booking draft with a fixed Nepali "the desk will confirm" and no fare):
+               a fare / time question is answered from the fare board and the timetable (WaFaq's own answers),
+               even with wa_faq_on off — only a real booking request is left to the draft queue. */
+            try {
+                require_once INCLUDE_PATH . '/wafaq.php';
+                $fact = WaFaq::factAnswer($from, $body);
+                if ($fact !== null) {
+                    return self::out($fact['text'], $fact['media'] ?? null);
+                }
+                // round 2: a bare question is answered by the office line — it is never parked as a ticket on its way
+                $ask = WaFaq::questionFallback($body);
+                if ($ask !== null) {
+                    return self::out($ask);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e);          // the draft below still answers
             }
 
             $draft = null;

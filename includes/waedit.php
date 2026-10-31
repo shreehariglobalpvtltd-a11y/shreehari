@@ -210,7 +210,33 @@ final class WaEdit
         if ($b === null || !self::mayEdit($b, $fromRaw, $who)) {
             return null;          // words about a ticket that is not theirs: the rest of the bot answers
         }
-        return self::start($fromRaw, $intl, $intent, $pnr, $who);
+        $opened = self::start($fromRaw, $intl, $intent, $pnr, $who);
+        /* 31 Oct 2026 (passenger sim: "naam galat cha, Ram Thapa hoina Ram Bahadur Thapa ho" / "miti badalnu paryo,
+           3 November ma jane" were asked for the new name / date again): a new value already in the opening words is
+           taken at once — old → new, then the 6-digit code, exactly as if it had been typed next. */
+        if (in_array($intent, ['name', 'date'], true)) {
+            $value = $intent === 'name' ? self::nameFrom($body) : (self::parseDate($body) !== '' ? $body : '');
+            $st = self::state($intl);
+            if ($value !== '' && $st !== null && in_array((string) ($st['step'] ?? ''), ['name_new', 'date_new'], true)) {
+                $next = self::continueStep($fromRaw, $intl, $st, $value, self::norm($value), $who);
+                if ($next !== null) {
+                    return $next;
+                }
+            }
+        }
+        return $opened;
+    }
+
+    /** "Ram Thapa hoina Ram Bahadur Thapa ho" / "sahi naam: Ram Bahadur Thapa" → the corrected name; '' = none said. */
+    private static function nameFrom(string $body): string
+    {
+        $b = trim((string) preg_replace('/\s+/u', ' ', $body));
+        if (preg_match('/(?:hoina|hoena|होइन|nahi|नहीं)\s*,?\s*([\p{L}\p{M} .\'-]{2,60}?)\s*(?:ho|हो|hunu\s*parcha|hunuparcha|banaunus|banaideu|banau|chahiyo|hai|है)?\s*[.!।]*$/iu', $b, $m) === 1
+            || preg_match('/(?:sahi|sachha|सही|correct|naya|नयाँ|new)\s*(?:naam|name|नाम)\s*[:\-]?\s*([\p{L}\p{M} .\'-]{2,60}?)\s*(?:ho|हो)?\s*[.!।]*$/iu', $b, $m) === 1) {
+            $n = trim($m[1], " .'-");
+            return count(preg_split('/\s+/u', $n) ?: []) <= 5 ? $n : '';
+        }
+        return '';
     }
 
     /** Which action these words ask for ('' = none). */
@@ -362,6 +388,19 @@ final class WaEdit
                 self::save($intl, $st);
                 $d = (array) ($q['data'] ?? []);
                 $seats = implode(', ', array_map(static fn($x): string => is_scalar($x) ? (string) $x : '', (array) ($d['seats'] ?? [])));
+                // round 2 (passenger sim: the preview said "Seat: L36", the ticket prints E1): the berths as printed
+                try {
+                    require_once INCLUDE_PATH . '/seats.php';
+                    $lay = Database::fetch("SELECT b.booking_mode, l.schedule_id FROM bookings b LEFT JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
+                                             WHERE b.id = :b LIMIT 1", ['b' => $bid]);
+                    if ($seats !== '' && $lay !== null && (int) ($lay['schedule_id'] ?? 0) > 0) {
+                        $shown = Seats::displayLabels(array_map('strval', (array) ($d['seats'] ?? [])), Seats::coachForSchedule((int) $lay['schedule_id']),
+                            (string) ($lay['booking_mode'] ?? 'sharing'));
+                        $seats = $shown !== '' ? $shown : $seats;
+                    }
+                } catch (Throwable $e) {
+                    // the stored ids, as before
+                }
                 $pickup = trim((string) preg_replace('/\s*\[[-\d.,\s]+\]\s*$/', '', (string) ($d['pickup'] ?? '')));
                 return self::askOtp($intl, $bid, "📅 मिति बदल्ने · New date\n"
                     . formatDate($st['old'], 'D, j M Y') . ' → ' . formatDate((string) ($d['date'] ?? $date), 'D, j M Y') . "\n"

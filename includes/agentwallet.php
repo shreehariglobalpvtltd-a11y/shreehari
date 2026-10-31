@@ -3178,9 +3178,11 @@ final class AgentWallet
         }
         try {
             return Database::fetchAll(
+                /* 31 Oct 2026 (owner sim: "withdraw: 4", three of them "member #148 · ₹0 due"): a request whose
+                   member row is gone (delete-with-history purge) is nobody's pending work — not listed, not counted. */
                 "SELECT r.*, a.full_name AS agent_name, a.username AS agent_username
                    FROM agent_payout_requests r
-                   LEFT JOIN admins a ON a.id = r.agent_admin_id
+                   JOIN admins a ON a.id = r.agent_admin_id
                   WHERE $where
                   ORDER BY r.created_at ASC, r.id ASC
                   LIMIT 500",

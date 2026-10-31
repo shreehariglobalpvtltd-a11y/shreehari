@@ -52,6 +52,10 @@ final class WaBooking
         if ($text === '' || $phoneDigits === '') {
             return null;
         }
+        /* 31 Oct 2026 (passenger sim: "Tciket book" was summarised for a passenger called "Tciket", at a pickup and
+           on a day nobody said): the ways people type "ticket" ARE the word, so "Tciket book" is the order button
+           (the combined question asks the name, pickup and day) and "tciket" is never a name. */
+        $text = (string) preg_replace('/(?<![\p{L}\p{M}])(?:tciket|tikat|tiket|tikit|tikut|tickt|tikt|ticet|tcket|tikkat)(?![\p{L}\p{M}])/iu', 'ticket', $text);
         $firstText = $text;                       // the message as it came (one-message sale)
         if (!Settings::getBool('wa_booking_on', true)) {
             return null;
@@ -70,6 +74,17 @@ final class WaBooking
         $lang  = TicketBot::detectLang($text);
         if ($state !== null && ($state['lang'] ?? '') !== '') {
             $lang = (string) $state['lang'];          // the language they opened with
+        }
+
+        /* Round 3 (31 Oct 2026, owner's rule R2 — safety review: "paisa pathaye UTR 917612345678", "UTR 9812345678" and
+           "<mobile> bata paisa pathaye" became a summary for a passenger "Paisa Pathaye" / "Utr", on a day and at a pickup
+           nobody said, and a later "ho" SOLD it): a line about a payment made is never a booking line or an answer to the
+           booking's question. A valid reference is previewed for the office, anything else asks for the 12-digit UTR or
+           the screenshot. The booking in progress (if any) stays exactly where it was. */
+        require_once INCLUDE_PATH . '/wapayproof.php';
+        $payAnswer = WaPayProof::answerPayTalk($phoneDigits, $text, $lang);
+        if ($payAnswer !== null) {
+            return self::out($payAnswer);
         }
 
         /* THE ORDER BUTTON (5 Oct 2026). "ticket" / "टिकट बुक" / a tap on the
@@ -137,6 +152,21 @@ final class WaBooking
             return null;
         }
 
+        /* Round 4 (31 Oct 2026, owner's rule R1 — safety review A4: "bholi 1 jana Surat bata ticket nakatnu", "kal 1 seat
+           Surat se baad me book karunga", "… ticket chaidaina" opened a summary for a passenger "Nakatnu" / "Karunga" that
+           a natural "ho" then SOLD): a fresh line that says no / not now / later starts nothing — said so, nothing kept.
+           The question being answered mid-order ("ruko" at the combined question) is simply asked again. */
+        if ($command === null && TicketBot::cmdHoldOrNo($text) && !self::isCancel($text)) {
+            $was = (string) ($state['awaiting'] ?? '');
+            if ($state === null || $was === '') {
+                self::clear($phoneDigits);
+                return self::out(self::say('heldFresh', $lang));
+            }
+            if ($was === 'combo' && $seller === null) {
+                return self::comboChange($phoneDigits, is_array($state['slots'] ?? null) ? $state['slots'] : [], $lang);
+            }
+        }
+
         /* Computed BEFORE anything writes the conversation row, because
            greetedAlready() keys on exactly that row: once the state exists
            we are mid-conversation and the mantra must not repeat. A tapped
@@ -153,6 +183,9 @@ final class WaBooking
             } elseif ($quick['phone'] !== '' && normalisePhone($quick['phone']) !== normalisePhone($phoneDigits)) {
                 $slots['contact'] = $quick['phone'];       // booking for somebody else: their number gets it
             }
+        } elseif ($seller === null && preg_match('/\+?\d[\d\s-]{8,14}\d\s*(?:ma|मा|pe|par|पर|me|में)\s*(?:pathau\w*|pathai\w*|pathae\w*|bhej\w*|send\w*|पठाउ\S*|पठाइ\S*|भेज\S*)/iu', $text) === 1) {
+            // round 2: "ticket 9327055512 ma pathaunu" with no name yet — that number is where the ticket goes
+            self::noteContact($slots, $text, $phoneDigits, $seller);
         }
 
         /* 15 Oct 2026: "Ram, Surat, bholi, 2" on a fresh chat is the combined
@@ -244,8 +277,15 @@ final class WaBooking
                    name, or — when the party is 3 — with all three at once.
                    parseParty() reads every shape; the first is the booking
                    name and the rest ride on their own berths. */
-                $party = self::parseParty($text, max(1, (int) ($slots['seats'] ?? 1)));
-                $lead  = $party !== [] ? (string) $party[0]['name'] : self::stripNameWord($text);
+                // round 3 (R1): "ruko", "wait", "ek chin" answer no question — the name is simply asked again
+                if (TicketBot::holdOrNo($text) && !self::isCancel($text)) {
+                    self::save($phoneDigits, $slots, 'name', [], $lang);
+                    return self::out(self::say('askName', $lang));
+                }
+                // round 2: "mero naam Sunil Kumar ho" / "my name is Sunil" / "Sunil Kumar ho" answer with "Sunil Kumar"
+                $nameText = self::unwrapName($text);
+                $party = self::parseParty($nameText, max(1, (int) ($slots['seats'] ?? 1)));
+                $lead  = $party !== [] ? (string) $party[0]['name'] : self::stripNameWord($nameText);
                 /* Checked HERE, at intake (24 Sep review): a stop, a request
                    word or a yes-word is refused with the reason, before it
                    can reach the summary and loop at the sale. */
@@ -259,6 +299,7 @@ final class WaBooking
                 } else {
                     $slots['name'] = $lead;
                 }
+                self::noteContact($slots, $text, $phoneDigits, $seller);
                 $text = '';
             }
         }
@@ -277,6 +318,7 @@ final class WaBooking
            make for itself, since any word could be a name. A list behind the
            same word is the whole family: "naam Ram, Sita 30, Maya 12". */
         if ($quick === null && preg_match('/^\s*(?:naam|nam|name|नाम|નામ)\s*[:\-]?\s*(.{2,400})$/ui', $text, $m)) {
+            $m[1] = self::unwrapName($m[1]);
             $party = self::parseParty($m[1], max(1, (int) ($slots['seats'] ?? 1)));
             $lead  = $party !== [] ? (string) $party[0]['name'] : trim($m[1]);
             if (PersonName::clean($lead) === '') {
@@ -289,21 +331,31 @@ final class WaBooking
             } else {
                 $slots['name'] = $lead;
             }
+            self::noteContact($slots, $text, $phoneDigits, $seller);
             $text = '';
         }
 
         // The summary was on the table: yes sells it, no drops it.
         if ($awaiting === 'confirm') {
+            /* Round 3 (owner's rule R1): "no" anywhere, or a pause ("ruko", "wait", "pachhi", "abhi nahi") while the
+               summary waits for its yes drops it — never a correction that renames the passenger or moves the day.
+               Round 4 (safety review A1: "ok wait", "ho tara ruko", "haan par abhi nahi", "ok but not now", "hajur ek chin",
+               "cash? ruko", "upi wait" SOLD the seat because the yes / pay word was read first): the pause is read FIRST. */
+            if (self::isNo($text) || TicketBot::holdOrNo($text)) {
+                self::clear($phoneDigits);
+                return self::out(self::say('cancelled', $lang));
+            }
+            // round 4: a question ("ho ki?", "upi chalcha?") is never the yes — it is answered and the summary waits
+            if (str_contains($text, '?') || str_contains($text, '？')) {
+                return null;
+            }
             /* "pay cash" / "pay upi" (the two payment buttons) is a yes that
                also says HOW: on the bus, or by UPI now. A plain yes keeps the
-               office default. */
+               office default. Round 4: only a WHOLE line of yes / pay words — "ho tara date galat cha", "upi chaina"
+               are not a yes (isYes / payChoice). */
             $pay = self::payChoice($text);
             if ($pay !== '' || self::isYes($text)) {
                 return self::sell($phoneDigits, $slots, $lang, $senderCountry, $pay, $seller, (string) ($slots['contact'] ?? ''));
-            }
-            if (self::isNo($text)) {
-                self::clear($phoneDigits);
-                return self::out(self::say('cancelled', $lang));
             }
             /* A question while the summary is up ("kati ghanta lagcha?")
                deserves an answer, not a re-print of the same summary. Hand it
@@ -311,7 +363,19 @@ final class WaBooking
             if ($text !== '' && self::isQuestion(mb_strtolower($text))) {
                 return null;
             }
-            // Anything else is a correction — fall through and re-plan.
+            /* Anything else is a correction — fall through and re-plan. Round 4 (R1, review A1/A5: "ho tara date galat
+               cha", "kal confirm karunga"): only a line that IS a change (a day / pickup / seat count and the words of a
+               change, TicketBot::amendOnly) moves anything; any other line re-shows the same summary, still waiting. */
+            if ($text !== '') {
+                $chk = TicketBot::parse($text);
+                if (!TicketBot::amendOnly((string) ($chk['residual'] ?? ''))) {
+                    $text = '';
+                } elseif ((string) ($chk['date'] ?? '') === date('Y-m-d') && !self::writtenDate($text)
+                    && (string) ($slots['date'] ?? '') !== date('Y-m-d')) {
+                    // "abhi" / "ahile" / "now" / "today" alone never re-date the summary (a written date does)
+                    $text = (string) preg_replace('/(?<![\p{L}\p{M}])(?:abhi|ahile|aile|aba|now|today|aaja|aaj|aja|aajai|आज|अहिले|अभी)(?![\p{L}\p{M}])/iu', ' ', $text);
+                }
+            }
         }
 
         /* What THIS message states wins over what the conversation already
@@ -645,6 +709,27 @@ final class WaBooking
     public static function isOpen(string $phoneDigits): bool
     {
         return $phoneDigits !== '' && self::load($phoneDigits) !== null;
+    }
+
+    /**
+     * Round 4 (R1 + R2, probe of review A3: "paisa pathaidiye" while the summary waited got "send the UTR", and the next
+     * "ho" sold the summary as pay-on-bus — a "ho" to which question?): while this chat's summary waits for its yes, the
+     * line said under a payment answer — the booking is NOT made, and what "ho" / "UPI" / "no" would do. '' otherwise.
+     */
+    /** Round 4 (usability): the language this chat's open order was started in ('' = none open). */
+    public static function openLang(string $phoneDigits): string
+    {
+        $st = $phoneDigits !== '' ? self::load($phoneDigits) : null;
+        return $st !== null ? (string) ($st['lang'] ?? '') : '';
+    }
+
+    public static function summaryWaitingNote(string $phoneDigits): string
+    {
+        $st = $phoneDigits !== '' ? self::load($phoneDigits) : null;
+        if ($st === null || (string) ($st['awaiting'] ?? '') !== 'confirm') {
+            return '';
+        }
+        return "\n\n" . self::say('summaryWaits', (string) ($st['lang'] ?? '') !== '' ? (string) $st['lang'] : 'ne');
     }
 
     /** 10 Oct 2026: a ticket sold on this number minutes ago — its own name fix (below) answers first. */
@@ -1422,7 +1507,7 @@ final class WaBooking
     /** '' | 'cod' | 'upi' — the payment button, or the same thing typed. */
     private static function payChoice(string $text): string
     {
-        $t = mb_strtolower(trim((string) preg_replace('/[\s.!]+/u', ' ', $text)));
+        $t = mb_strtolower(trim((string) preg_replace('/[\s.!,]+/u', ' ', $text)));
         if (in_array($t, ['pay upi', 'upi', 'qr', 'online', 'gpay', 'google pay', 'phonepe', 'phone pe', 'paytm', 'pay now',
                           'upi now', 'अहिले upi', 'अभी upi', 'यूपीआई', 'युपिआई', 'ऑनलाइन', 'अनलाइन'], true)) {
             return 'upi';
@@ -1431,7 +1516,81 @@ final class WaBooking
                           'नगद', 'बसमा', 'बसमा तिर्ने', 'बस में', 'કેશ', 'રોકડ'], true)) {
             return 'cod';
         }
+        /* 31 Oct 2026 (passenger sim: "UPI bata tirchu" re-printed the summary and the next "ho" sold the seats as
+           pay-on-bus): a short line that only says HOW they will pay is that choice — "UPI bata tirchu", "QR
+           pathaunus", "cash ma tirchu", "bus ma dinchu". A line that also changes something is a correction. */
+        /* Round 4 (R1 — safety review A1: "upi chaina", "upi wait", "upi chalcha?" made a UPI booking): only a line whose
+           EVERY word is a pay / "I will pay" word is the choice; a question is never one. */
+        static $payWords = ['upi', 'qr', 'gpay', 'google', 'pay', 'phonepe', 'phone', 'pe', 'paytm', 'online', 'cash', 'nagad', 'nakad', 'cod', 'bus',
+            'busma', 'ma', 'me', 'mein', 'mai', 'counter', 'bata', 'se', 'through', 'by', 'via', 'with', 'in', 'on', 'the', 'from', 'le', 'tirchu', 'tirchhu',
+            'tirxu', 'tirne', 'tirnchu', 'tirchau', 'dinchu', 'dinchhu', 'dinxu', 'dine', 'dunga', 'dungi', 'denge', 'karunga', 'karungi', 'karenge',
+            'garchu', 'garchhu', 'garxu', 'garne', 'payment', 'paisa', 'pathaunus', 'pathaideu', 'pathaidinus', 'pathau', 'link', 'scan', 'code', 'will',
+            'i', 'we', 'now', 'ahile', 'abhi', 'aba', 'ho', 'ok', 'okay', 'yes', 'haan', 'ha', 'dai', 'ji', 'sir', 'hajur', 'please', 'plz', 'pls', 'chha',
+            'cha', 'hai', 'garidinus', 'नगद', 'बसमा', 'मा', 'तिर्छु', 'दिन्छु', 'दूँगा', 'यूपीआई', 'युपिआई', 'बस', 'में', 'से', 'बाट', 'अहिले', 'अभी'];
+        if (str_contains($t, '?') || str_contains($t, '？')
+            || array_diff(preg_split('/[^\p{L}\p{M}]+/u', $t, -1, PREG_SPLIT_NO_EMPTY) ?: [], $payWords) !== []) {
+            return '';
+        }
+        if (mb_strlen($t) <= 40 && preg_match('/(?<![\p{L}])(badal\w*|change|date|miti|naam|name|seat|sit|cancel|hoina|nahi|no|jana|bholi|parsi|kal)(?![\p{L}])|\d/u', $t) !== 1) {
+            if (preg_match('/(?<![\p{L}])(upi|qr|gpay|google\s*pay|phonepe|phone\s*pe|paytm|online|यूपीआई|युपिआई)(?![\p{L}])/u', $t) === 1) {
+                return 'upi';
+            }
+            if (preg_match('/(?<![\p{L}])(cash|nagad|nakad|नगद|नकद)(?![\p{L}])/u', $t) === 1
+                || preg_match('/(?<![\p{L}])(bus\s*ma|bus\s*me|busma|बसमा|बस\s*में)\s*(tir\w*|de\w*|din\w*|pay\w*|तिर्छु|दिन्छु|दूँगा)/u', $t) === 1) {
+                return 'cod';
+            }
+        }
         return '';
+    }
+
+    /**
+     * 31 Oct 2026 (passenger sim: "Ram Thapa ra Sita Thapa, phone 9327055511" — the number was silently dropped):
+     * a mobile typed beside the names is where the ticket goes (shown on the summary). A seller's passenger number
+     * keeps its own question (custPhone).
+     */
+    private static function noteContact(array &$slots, string $text, string $phoneDigits, ?array $seller): void
+    {
+        if ($seller !== null) {
+            return;
+        }
+        $typed = (string) (TicketBot::parse($text)['phone'] ?? '');
+        $cust = $typed !== '' ? self::readCustomerPhone($typed) : null;
+        if ($cust !== null && $cust !== '' && normalisePhone($cust) !== normalisePhone($phoneDigits)) {
+            $slots['contact'] = $cust;
+        }
+    }
+
+    /** The last PNR this chat sold (a few minutes back), for a payment reference typed after the sale. */
+    public static function lastSoldPnr(string $phoneDigits): string
+    {
+        return (string) (self::recentSale($phoneDigits)['pnr'] ?? '');
+    }
+
+    /** The language that sale was made in ('' = none remembered): "UTR 4123… bhej diya" is answered in it. */
+    public static function lastSoldLang(string $phoneDigits): string
+    {
+        $l = (string) (self::recentSale($phoneDigits)['lang'] ?? '');
+        return in_array($l, ['ne', 'hi', 'en', 'gu'], true) ? $l : '';
+    }
+
+    /** Stored berths (L34) as the ticket prints them (F4). */
+    private static function printedSeats(string $pnr, array $seats): string
+    {
+        $seats = array_map('strval', $seats);
+        try {
+            $row = Database::fetch("SELECT b.booking_mode, l.schedule_id FROM bookings b
+                                      LEFT JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
+                                     WHERE b.pnr = :p LIMIT 1", ['p' => $pnr]);
+            if ($row !== null && (int) ($row['schedule_id'] ?? 0) > 0) {
+                $out = Seats::displayLabels($seats, Seats::coachForSchedule((int) $row['schedule_id']), (string) ($row['booking_mode'] ?? 'sharing'));
+                if ($out !== '') {
+                    return $out;
+                }
+            }
+        } catch (Throwable $e) {
+            // the stored ids, as before
+        }
+        return implode(', ', $seats);
     }
 
     /**
@@ -1491,6 +1650,10 @@ final class WaBooking
                 /* 15 Oct 2026: the booking form's own Mobile box books for that
                    number (the ticket goes there); blank = the sender. */
                 'phone'     => $contact !== '' ? $contact : $phoneDigits,
+                /* Round 3 (R5): who is asking — the double-tap guard keys on THIS chat for a typed number and never
+                   names a PNR that number already holds (another person's booking). */
+                'sender'    => $phoneDigits,
+                'chatPnrs'  => array_values(array_filter([self::lastSoldPnr($phoneDigits)])),
                 /* '' = the office default (pay on the bus when allowed);
                    'upi' = they chose to pay now, so the booking waits for the
                    money and the QR goes back instead of the ticket. */
@@ -1537,7 +1700,8 @@ final class WaBooking
                messages it needed - the WhatsApp Manager averages these. */
             self::auditSale($pnr, $slots);
         }
-        $seats  = implode(', ', array_map('strval', (array) ($res['seats'] ?? [])));
+        // 31 Oct 2026 (passenger sim: the summary said F4, the confirmation L34): the berth as the ticket prints it
+        $seats  = self::printedSeats($pnr, (array) ($res['seats'] ?? []));
         $total  = (string) ($res['totalLabel'] ?? '');
         $when   = (string) ($res['dateLabel'] ?? ($slots['date'] ?? ''));
         $isPaid = ($res['status'] ?? '') === 'confirmed';
@@ -1583,6 +1747,10 @@ final class WaBooking
             $lines[] = self::say('payNow', $lang);
             $lines[] = appUrl('pay.php?pnr=' . urlencode($pnr));
             $media   = appUrl('pay-image.php?pnr=' . urlencode($pnr));
+        }
+        // round 2 (passenger sim: "the ticket comes HERE" while it went to the typed number): say where it goes
+        if ($seller === null && $contact !== '' && normalisePhone($contact) !== normalisePhone($phoneDigits)) {
+            $lines[] = self::label('ticketTo', $lang) . ': ' . $contact;
         }
 
         return self::out(implode("\n", $lines), $media);
@@ -1693,7 +1861,7 @@ final class WaBooking
                  'seconds' => (int) ($slots['_started'] ?? 0) > 0 ? max(0, time() - (int) $slots['_started']) : null,
                  'messages' => max(1, (int) ($slots['_turns'] ?? 0) + 1)], 'Ticket ordered on WhatsApp by a seller');
         }
-        $seats = implode(', ', array_map('strval', (array) ($res['seats'] ?? [])));
+        $seats = self::printedSeats((string) ($res['pnr'] ?? ''), (array) ($res['seats'] ?? []));
         $lines = [self::say('soldSeller', $lang), ''];
         $lines[] = self::label('pnr', $lang) . ': ' . $pnr;
         $lines[] = self::label('name', $lang) . ': ' . $paxName;
@@ -1776,6 +1944,8 @@ final class WaBooking
             $cust    = (string) ($slots['custPhone'] ?? '');
             $lines[] = self::label('custPhone', $lang) . ': ' . ($cust !== '' ? $cust : self::say('noPhone', $lang));
             $lines[] = self::label('seller', $lang) . ': ' . trim((string) ($seller['full_name'] ?? ''));
+        } elseif ((string) ($slots['contact'] ?? '') !== '') {
+            $lines[] = self::label('ticketTo', $lang) . ': ' . (string) $slots['contact'];
         }
         $lines[] = '';
         $lines[] = self::say('howToFix', $lang);
@@ -1805,7 +1975,7 @@ final class WaBooking
             'askNames' => [
                 'en' => "Please send all %d names in one message, with age if you can.
 Example: Ram Bahadur 35, Sita Gurung 30",
-                'hi' => "कृपया चारों नाम एक ही संदेश में भेजिए, उम्र हो तो साथ में।
+                'hi' => "कृपया सभी %d नाम एक ही संदेश में भेजिए, उम्र हो तो साथ में।
 जैसे: राम बहादुर 35, सीता गुरुङ 30",
                 'ne' => "कृपया %d जनाकै नाम एउटै सन्देशमा पठाउनुहोस्, उमेर भए सँगै।
 जस्तै: राम बहादुर ३५, सीता गुरुङ ३०",
@@ -1974,6 +2144,20 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 'ne' => 'माथिको QR स्क्यान गरेर तिर्नुहोस्, वा यहाँ थिच्नुहोस्। भुक्तानी जाँच भएपछि टिकट यहीँ आउँछ।',
                 'gu' => 'ઉપરનો QR સ્કેન કરીને ચૂકવો, કે અહીં દબાવો. ચુકવણી તપાસતાં જ ટિકિટ અહીં આવશે.',
             ],
+            // round 4 (R1 + R2): under a payment answer while the summary still waits for its yes
+            'summaryWaits' => [
+                'en' => 'ℹ️ The booking shown above is NOT made yet. Reply *yes* to book it (pay on the bus), *UPI* to pay now, or *no* to drop it.',
+                'hi' => 'ℹ️ ऊपर दिखाई बुकिंग अभी नहीं बनी है। बुक करनी हो तो *ha* (बस में भुगतान), अभी भुगतान के लिए *UPI*, या छोड़ने के लिए *no* लिखिए।',
+                'ne' => 'ℹ️ माथि देखाइएको बुकिङ अझै बनेको छैन। बुक गर्न *ho* (बसमा तिर्ने), अहिले तिर्न *UPI*, वा छोड्न *no* लेख्नुहोस्।',
+                'gu' => 'ℹ️ ઉપર બતાવેલું બુકિંગ હજી થયું નથી. બુક કરવા *ha* (બસમાં ચૂકવણી), હમણાં ચૂકવવા *UPI*, અથવા છોડવા *no* લખો.',
+            ],
+            // round 4 (R1): a fresh line that says "not now / later / don't book" — nothing is started or kept
+            'heldFresh' => [
+                'en' => 'OK — nothing is booked. When you want the ticket, send the day, the pickup and how many seats again.',
+                'hi' => 'ठीक है — कुछ बुक नहीं हुआ। जब टिकट चाहिए, दिन, चढ़ने की जगह और कितनी सीट फिर से भेजिए।',
+                'ne' => 'ठिक छ — केही बुक भएको छैन। टिकट चाहिँदा मिति, चढ्ने ठाउँ र कति सिट फेरि पठाउनुहोस्।',
+                'gu' => 'બરાબર — કંઈ બુક થયું નથી. ટિકિટ જોઈએ ત્યારે દિવસ, ચઢવાની જગ્યા અને કેટલી સીટ ફરી મોકલો.',
+            ],
             'cancelled' => [
                 'en' => 'Cancelled — nothing was booked. Message me whenever you want to travel.',
                 'hi' => 'रद्द कर दिया — कुछ बुक नहीं हुआ। जब यात्रा करनी हो, लिख दीजिए।',
@@ -2010,6 +2194,7 @@ Example: Ram Bahadur 35, Sita Gurung 30",
             'offer' => ['en' => 'Offer',      'hi' => 'ऑफ़र छूट',   'ne' => 'अफर छुट',  'gu' => 'ઑફર છૂટ'],
             'bus'   => ['en' => 'Bus',        'hi' => 'बस',        'ne' => 'बस',      'gu' => 'બસ'],
             'custPhone' => ['en' => 'Passenger mobile', 'hi' => 'यात्री मोबाइल', 'ne' => 'यात्रु मोबाइल', 'gu' => 'મુસાફર મોબાઇલ'],
+            'ticketTo'  => ['en' => '📲 Ticket goes to', 'hi' => '📲 टिकट इस नंबर पर', 'ne' => '📲 टिकट जाने नम्बर', 'gu' => '📲 ટિકિટ આ નંબર પર'],
             'seller'    => ['en' => 'Sold by', 'hi' => 'बेचने वाला', 'ne' => 'बिक्रेता', 'gu' => 'વેચનાર'],
             'view'      => ['en' => 'View ticket', 'hi' => 'टिकट देखें', 'ne' => 'टिकट हेर्नुहोस्', 'gu' => 'ટિકિટ જુઓ'],
             'share'     => ['en' => 'Share', 'hi' => 'शेयर करें', 'ne' => 'सेयर गर्नुहोस्', 'gu' => 'શેર કરો'],
@@ -2067,6 +2252,24 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         $t = trim($t);
         $t = (string) preg_replace('/^\s*(?:naam|nam|name|नाम|નામ)\s*[:\-]?\s*/ui', '', $t);
         return mb_substr(trim($t), 0, 60);
+    }
+
+    /**
+     * The name inside a sentence about it (31 Oct 2026 round 2, passenger sim: "mero naam Sunil Kumar ho" was sold as
+     * the passenger "mero naam Sunil Kumar ho"): "mero naam X ho", "mera naam X hai", "my name is X", "naam X ho",
+     * "X ho", "ma X hu", "I am X" → "X". Anything else comes back as it was.
+     */
+    private static function unwrapName(string $t): string
+    {
+        $s = trim($t);
+        $s = (string) preg_replace('/^\s*(?:mero|mera|meri|my|hamro|मेरो|मेरा)\s+(?=(?:naam|nam|name|नाम|નામ)(?![\p{L}\p{M}]))/iu', '', $s);
+        $s = (string) preg_replace('/^\s*(?:naam|nam|name|नाम|નામ)(?![\p{L}\p{M}])\s*(?:is\s+)?[:\-]?\s*/iu', '', $s);
+        if (preg_match('/\s(?:hu|hun|hoon|hoo|हुँ|हूँ)\s*[.!।]*\s*$/iu', ' ' . $s) === 1) {
+            $s = (string) preg_replace('/^\s*(?:ma|म|main|mai|मैं)\s+/iu', '', $s);
+        }
+        $s = (string) preg_replace('/^\s*(?:i\s*am|i\'m|im)\s+/iu', '', $s);
+        $s = (string) preg_replace('/\s+(?:ho|hun|hu|hoon|hai|hain|ho\s*ni|हो|हुँ|हूँ|है)\s*[.!।🙏]*\s*$/iu', '', $s);
+        return trim($s) !== '' ? trim($s) : trim($t);
     }
 
     /* -----------------------------------------------------------------
@@ -2472,20 +2675,36 @@ Example: Ram Bahadur 35, Sita Gurung 30",
            being told); the moment selling moved onto this VPS it became
            the whole feature failing. Romanised Nepali, Hindi and Gujarati
            now sit beside the scripts they are typed instead of. */
-        foreach ([
-            'yes', 'y', 'ok', 'okay', 'oke', 'sure', 'book', 'confirm', 'done', 'go',
-            'ho', 'hoo', 'hos', 'hunchha', 'hunxa', 'huncha', 'hunca', 'hajur', 'hajoor',
-            'thik', 'thik cha', 'thikcha', 'theek', 'thek', 'tik', 'tikcha',
-            'haa', 'han', 'ha', 'haan', 'hai', 'sahi', 'malai chahiyo', 'chahiyo',
-            'kaat', 'kata', 'katnus', 'katidinus', 'katdinus', 'book gara', 'book garnus',
-            'हो', 'हजुर', 'हाँ', 'हा', 'ठीक', 'ठिक', 'हां', 'हुन्छ', 'काट', 'काट्नुहोस्',
-            'હા', 'બરાબર', 'હોવ',
-        ] as $w) {
-            if ($t === $w || str_starts_with($t, $w . ' ')) {
-                return true;
+        /* Round 4 (31 Oct 2026, owner's rule R1 — safety review A1: "ok wait", "ho tara date galat cha", "thik cha tara
+           bholi ko garnu", "ok soch ke batata hu", "ho ki?" each SOLD the seat, because any line that merely STARTED with
+           a yes-word was a yes): the yes is the WHOLE line — yes-words, and the polite / "issue it" words around them
+           ("ho dai", "ok sir", "haan ji kar do", "thik cha book garnus"), nothing else. A question mark is never a yes,
+           and neither is laughter ("ha ha", "haha"). */
+        if ($t === '' || str_contains($t, '?') || str_contains($t, '？')) {
+            return false;
+        }
+        $yes = ['yes', 'y', 'ok', 'okay', 'oke', 'okk', 'sure', 'confirm', 'confirmed', 'done', 'go', 'ho', 'hoo', 'hos', 'hunchha', 'hunxa', 'huncha',
+            'hunca', 'hajur', 'hajoor', 'thik', 'thikcha', 'theek', 'thek', 'tik', 'tikcha', 'haa', 'han', 'ha', 'haan', 'haanji', 'hanji', 'sahi', 'chahiyo',
+            'pakka', 'book', 'kaat', 'kata', 'katnus', 'katdinus', 'katidinus', 'हो', 'हजुर', 'हाँ', 'हा', 'ठीक', 'ठिक', 'हां', 'हुन्छ', 'पक्का', 'काट',
+            'काट्नुहोस्', 'કન્ફર્મ', 'હા', 'બરાબર', 'હોવ', 'ઓકે'];
+        $polite = ['cha', 'chha', 'xa', 'hai', 'ji', 'jee', 'dai', 'didi', 'bhai', 'sir', 'madam', 'please', 'plz', 'pls', 'ni', 'la', 'ta', 'it', 'now',
+            'abhi', 'ahile', 'aba', 'malai', 'book', 'booking', 'ticket', 'kaat', 'kata', 'katnus', 'katidinus', 'katdinus', 'kaatdinus', 'gara', 'garnus',
+            'garidinus', 'gardinus', 'kar', 'karo', 'kardo', 'kardijiye', 'kijiye', 'do', 'dijiye', 'deu', 'dinus', 'final', 'this', 'one', 'yehi', 'yahi',
+            'yo', 'yei', 'छ', 'है', 'जी', 'दाइ', 'सर', 'कृपया', 'बुक', 'टिकट', 'काट', 'काट्नुहोस्', 'गर्नुहोस्', 'करो', 'कर', 'दो', 'दीजिए', 'छे', 'જી',
+            'गर्ने', 'गर्नुस्', 'करें', 'कीजिए', 'काट्ने', 'काटो', 'दिनुस्', 'दिनुहोस्', 'બુક', 'કરો'];
+        $words = preg_split('/[^\p{L}\p{M}]+/u', $t, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if ($words === [] || preg_match('/^(?:h+a+\s*){2,}$|^(?:ha){2,}h?$/u', $t) === 1) {
+            return false;
+        }
+        $saidYes = false;
+        foreach ($words as $w) {
+            if (in_array($w, $yes, true)) {
+                $saidYes = true;
+            } elseif (!in_array($w, $polite, true)) {
+                return false;                     // any other word: a correction, a pause or a sentence — never the yes
             }
         }
-        return false;
+        return $saidYes;
     }
 
     public static function isNo(string $t): bool
@@ -2579,6 +2798,10 @@ Example: Ram Bahadur 35, Sita Gurung 30",
      */
     private static function isAboutExistingTicket(string $t): bool
     {
+        /* 31 Oct 2026 round 2 (passenger sim: "bholi 1 jana Surat bata, ticket 9327055512 ma pathaunu" was parked as a
+           draft and the number lost): "ticket <mobile> ma pathaunu" says WHERE the new ticket goes, like "phone <mobile>"
+           — it is not a resend of an old one. */
+        $t = trim((string) preg_replace('/(?:ticket|tikat|tiket|टिकट)?\s*(?:yo\s*)?(?:number\s*)?\+?\d[\d\s-]{8,14}\d\s*(?:ma|मा|pe|par|पर|me|में)\s*(?:pathau\w*|pathai\w*|pathae\w*|bhej\w*|send\w*|पठाउ\S*|पठाइ\S*|भेज\S*)/u', ' ', $t));
         foreach ([
             // something is wrong / did not arrive
             'galat', 'galti', 'wrong', 'mistake', 'problem', 'samasya', 'error', 'gadbad',
@@ -2618,6 +2841,13 @@ Example: Ram Bahadur 35, Sita Gurung 30",
     }
 
     /** "kati", "kaha", "how much", "?" — someone asking, not booking. */
+    /** Round 4: a day written as a date ("2 Nov", "1/11", "15 tarik") — the one way "today" may re-date a summary. */
+    private static function writtenDate(string $text): bool
+    {
+        $l = mb_strtolower(TicketBot::asciiDigits($text));
+        return preg_match('/\d{1,2}\s*[\/.\-]\s*\d{1,2}|\d{1,2}\s*(?:st|nd|rd|th)?\s*(?:jan\w*|feb\w*|mar\w*|apr\w*|may|jun\w*|jul\w*|aug\w*|sep\w*|oct\w*|nov\w*|dec\w*|tarik\w*|tarikh\w*|gate|गते|तारिख)|(?:jan\w*|feb\w*|mar\w*|apr\w*|may|jun\w*|jul\w*|aug\w*|sep\w*|oct\w*|nov\w*|dec\w*)\s*\d{1,2}/u', $l) === 1;
+    }
+
     private static function isQuestion(string $t): bool
     {
         if (str_contains($t, '?') || str_contains($t, '？')) {

@@ -931,9 +931,20 @@ final class QuickTicket
         for ($attempt = 1; $attempt <= 2; $attempt++) {
             $plan = self::plan($opts + ['exclude' => $exclude]);
             if ($attempt === 1) {
-                self::assertCustomerNotRepeating($phone, (int) $plan['routeId'], (string) $plan['date']);
+                /* Round 3 (31 Oct 2026, owner's rule R5 — safety review: a WhatsApp passenger who TYPED somebody else's
+                   number was told "You already have a ticket … PNR SHG-…" — that person's PNR, which with the number
+                   opens their booking on track.php): the PNR is named only to its own holder (a signed-in account, or
+                   the WhatsApp sender booking for their own number). A ticket for a typed number is checked against
+                   what THIS chat just sold (chatPnrs), so a family member's own ticket on that number never blocks it. */
+                $sender = normalisePhone((string) ($input['sender'] ?? ''));
+                $typedFor = $sender !== '' && $sender !== $phone;
+                if ($typedFor) {
+                    self::assertChatNotRepeating(array_map('strval', (array) ($input['chatPnrs'] ?? [])), (int) $plan['routeId'], (string) $plan['date']);
+                } else {
+                    self::assertCustomerNotRepeating($phone, (int) $plan['routeId'], (string) $plan['date'], $user !== null || $sender === $phone);
+                }
                 if ($cod) {
-                    self::assertCustomerOpenCap($phone);   // unpaid one-tap tickets per number
+                    self::assertCustomerOpenCap($phone, !$typedFor);   // unpaid one-tap tickets per number
                 }
                 /* PINNED sale (one-click, 6 Sep 2026): the card showed a day, a
                    direction, a pickup, a party and a price. If the fresh plan
@@ -1088,7 +1099,7 @@ final class QuickTicket
      * (payment 'verified') or that has departed no longer counts either.
      * The seat map stays open to the passenger regardless.
      */
-    private static function assertCustomerOpenCap(string $phone): void
+    private static function assertCustomerOpenCap(string $phone, bool $own = true): void
     {
         $cap = Settings::getInt('quick_ticket_max_open', 3);
         if ($cap <= 0) {
@@ -1102,6 +1113,10 @@ final class QuickTicket
                 AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id AND p.status = 'verified')",
             ['p' => $phone]
         );
+        if ($open >= $cap && !$own) {
+            // round 3 (R5): a number somebody else typed — nothing about its tickets is told
+            throw new RuntimeException('That number cannot take another pay-on-boarding ticket right now — choose UPI to pay now, or call the office. / त्यो नम्बरमा अहिले अर्को बसमा तिर्ने टिकट बन्न सक्दैन — UPI बाट तिर्नुहोस् वा अफिसमा फोन गर्नुहोस्।');
+        }
         if ($open >= $cap) {
             throw new RuntimeException('This number already holds ' . $open . ' pay-on-boarding ticket' . ($open === 1 ? '' : 's') . ' not paid yet — pay one at the counter or cancel one first; the seat map is open for more. / यो नम्बरमा भुक्तानी बाँकी ' . $open . ' टिकट छन् — एउटा काउन्टरमा तिर्नुहोस् वा रद्द गर्नुहोस्; थप बुकिङ सिट नक्साबाट गर्न सकिन्छ।');
         }
@@ -1113,7 +1128,7 @@ final class QuickTicket
      * re-trying after a slow network. The desk sells many tickets to one
      * office phone all day, so this guard is customer-only.
      */
-    private static function assertCustomerNotRepeating(string $phone, int $routeId, string $travelDate): void
+    private static function assertCustomerNotRepeating(string $phone, int $routeId, string $travelDate, bool $own = false): void
     {
         $row = Database::fetch(
             "SELECT b.pnr FROM bookings b
@@ -1125,8 +1140,40 @@ final class QuickTicket
            ORDER BY b.id DESC LIMIT 1",
             ['p' => $phone, 'r' => $routeId, 'd' => $travelDate]
         );
+        if ($row !== null && !$own) {
+            // round 3 (R5): the number is not proven to be the requester's own — its PNR is never told
+            throw new RuntimeException('You already have a ticket on this bus for ' . formatDate($travelDate) . ' made in the last hour — the ticket was sent to that number\'s WhatsApp. / यो बसमा ' . formatDate($travelDate) . ' को टिकट भर्खरै बनिसकेको छ — टिकट त्यही नम्बरको WhatsApp मा गएको छ।');
+        }
         if ($row !== null) {
             throw new RuntimeException('You already have a ticket on this bus for ' . formatDate($travelDate) . ' — PNR ' . $row['pnr'] . '. Open My Bookings to see it. / यो बसमा ' . formatDate($travelDate) . ' को टिकट (PNR ' . $row['pnr'] . ') पहिले नै छ — My Bookings हेर्नुहोस्।');
+        }
+    }
+
+    /**
+     * Round 3 (R5): the double-tap guard for a ticket a WhatsApp chat makes for a number it TYPED — keyed on what this
+     * chat itself sold in the last hour (its own PNRs, safe to name), never on the bookings that number already holds.
+     *
+     * @param list<string> $chatPnrs
+     */
+    private static function assertChatNotRepeating(array $chatPnrs, int $routeId, string $travelDate): void
+    {
+        $chatPnrs = array_values(array_filter($chatPnrs, static fn(string $p): bool => $p !== ''));
+        if ($chatPnrs === []) {
+            return;
+        }
+        $in = implode(',', array_fill(0, count($chatPnrs), '?'));
+        $row = Database::fetch(
+            "SELECT b.pnr FROM bookings b
+               JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
+               JOIN schedules s ON s.id = l.schedule_id
+              WHERE b.pnr IN ($in) AND s.route_id = ? AND l.travel_date = ?
+                AND b.status IN ('pending','confirmed')
+                AND b.created_at > (NOW() - INTERVAL 60 MINUTE)
+           ORDER BY b.id DESC LIMIT 1",
+            array_merge($chatPnrs, [$routeId, $travelDate])
+        );
+        if ($row !== null) {
+            throw new RuntimeException('This chat just booked this bus for ' . formatDate($travelDate) . ' — PNR ' . $row['pnr'] . '. Send "book another" in words if you need one more. / यो च्याटबाट भर्खरै यही बसको ' . formatDate($travelDate) . ' को टिकट (PNR ' . $row['pnr'] . ') बनिसकेको छ।');
         }
     }
 

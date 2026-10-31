@@ -185,6 +185,133 @@ final class WaFaq
     }
 
     /**
+     * 31 Oct 2026 (passenger sim: "Surat to Rupaidiha bhada kati ho?", "kal ki bus kitne baje hai Surat se" were
+     * parked as a desk booking draft with a fixed Nepali "the desk will confirm" and no fare): the fare / timing
+     * answer, with the wa_faq_on switch on OR off. includes/wabot.php asks this before it parks a draft, so a
+     * question about the fare or the time is answered from the fare board and the timetable, in the writer's
+     * language. Personal questions (their own ticket, money) still return null.
+     *
+     * @return array{text: string, media: ?string, intent: string}|null
+     */
+    public static function factAnswer(string $fromRaw, string $text): ?array
+    {
+        $text = trim($text);
+        if ($text === '' || mb_strlen($text) > 300) {
+            return null;
+        }
+        $t0 = microtime(true);
+        require_once INCLUDE_PATH . '/ticketbot.php';
+        $t = ' ' . self::norm($text) . ' ';
+        if (self::personal($t)) {
+            return null;
+        }
+        $isFare = self::has($t, self::FARE);
+        $isTime = self::has($t, self::TIME);
+        $lang = self::lang($text);
+        /* round 2 (passenger sim: "luggage kati kg samma lana milcha?", "bachha ko ticket lagcha?", "border ma k document
+           chahincha?" were parked as a booking draft that promised a ticket): the answers the website's route pages
+           already publish (RoutePages q1 / q6); for a child's fare, which is not published, the office — never a guess. */
+        $other = self::commonAnswer($t, $lang);
+        if ($other !== null && !$isFare && !$isTime) {
+            $who = normalisePhone($fromRaw);
+            self::remember($who, $text, $other['text']);
+            self::log($fromRaw, $who, 'fact:' . $other['intent'], $t0);
+            return ['text' => $other['text'], 'media' => null, 'intent' => $other['intent']];
+        }
+        // "Surat bata 2 jana ko 4400 lagcha?" — a fare stated as a question is a fare question (fare() confirms or corrects it)
+        if (!$isFare && preg_match('/(?<![\d])\d{3,6}\s*(?:rs|₹|rupaya|rupees)?\s*(?:nai\s*)?(?:lagcha|lagchha|lagxa|parcha|parchha|lagega|lagta|lagti|hunchha|huncha|ho|hai|cha)(?![\p{L}])/u', TicketBot::asciiDigits($t)) === 1
+            && (str_contains($text, '?') || preg_match('/(?<![\p{L}])(?:ho|hai|cha)\s*$/u', trim($t)) === 1)) {
+            $isFare = true;
+        }
+        if (!$isFare && !$isTime) {
+            return null;
+        }
+        $parts = [];
+        $intents = [];
+        if ($isFare) {
+            $intents[] = 'fare';
+            $parts[] = self::fare($text, $lang, true);
+        }
+        if ($isTime) {
+            $intents[] = 'timing';
+            $parts[] = self::timing($t, $text, $lang);
+        }
+        $parts = array_values(array_filter($parts, static fn($p): bool => is_string($p) && $p !== ''));
+        if ($parts === []) {
+            return null;
+        }
+        $reply = implode("\n", $parts);
+        $who = normalisePhone($fromRaw);
+        self::remember($who, $text, $reply);
+        self::log($fromRaw, $who, 'fact:' . implode('+', $intents), $t0);
+        return ['text' => $reply, 'media' => null, 'intent' => implode('+', $intents)];
+    }
+
+    /**
+     * Border documents / luggage (the route pages' published answers) and a child's fare (the office answers — it is
+     * not published, so it is never guessed). null = none of these.
+     *
+     * @return array{text: string, intent: string}|null
+     */
+    private static function commonAnswer(string $t, string $lang): ?array
+    {
+        $re = static fn(string $w): bool => preg_match('/(?<![\p{L}\p{M}])(?:' . $w . ')(?![\p{L}\p{M}])/u', $t) === 1;
+        $pageLang = in_array($lang, ['hi', 'ne'], true) ? $lang : 'en';
+        $phone = Settings::officePhone();
+        if (!is_file(INCLUDE_PATH . '/routepages.php')) {
+            return null;
+        }
+        require_once INCLUDE_PATH . '/routepages.php';
+        if ($re('document|documents|docs|kagaj|kagat|kaagaj|kagajat|id\s*proof|passport|voter\s*id|aadhar|aadhaar|citizenship|nagarikta|nagrikta|कागज|कागजात|पासपोर्ट|नागरिकता')
+            && $re('border|chahincha|chahinchha|chahiye|chahiyo|chaiyo|lagcha|lagchha|kun|k|ke|kya|chaincha|lagega|लाग्छ|चाहिन्छ|चाहिए|बोर्डर')) {
+            $a = RoutePages::faqAnswer('a1', $pageLang);
+            if ($a !== '') {
+                return ['text' => '🪪 ' . str_replace(' /travel-info', ' ' . appUrl('travel-info'), $a) . "\n📞 " . $phone, 'intent' => 'documents'];
+            }
+        }
+        if ($re('luggage|lugage|laguage|baggage|saman|samaan|saaman|bag|bags|jhola|kg|kilo|सामान|झोला')) {
+            $a = RoutePages::faqAnswer('a6', $pageLang);
+            if ($a !== '') {
+                return ['text' => '🧳 ' . $a . "\n📞 " . $phone, 'intent' => 'luggage'];
+            }
+        }
+        if ($re('bachha|bacha|baccha|bachcha|bacchako|bachhako|child|children|kid|kids|baby|infant|balak|balika|chhora|chhori|बच्चा|बच्चे|बालबालिका|केटाकेटी|छोरा|छोरी')
+            && $re('ticket|tikat|bhada|bhaada|fare|kiraya|paisa|lagcha|lagchha|lagega|free|seat|sit|chahincha|chahiye|टिकट|भाडा|किराया|लाग्छ')) {
+            return ['text' => self::t($lang,
+                "👶 बच्चाको टिकट / भाडा अफिसले पक्का गरेर भन्छ — फोन / WhatsApp: " . $phone . "\nबोर्डरमा बच्चाको जन्म दर्ता वा फोटो भएको स्कुल ID साथमा राख्नुहोस्।",
+                "👶 बच्चे का टिकट / किराया ऑफिस पक्का करके बताएगा — फ़ोन / WhatsApp: " . $phone . "\nबॉर्डर पर बच्चे का जन्म प्रमाणपत्र या फोटो वाला स्कूल ID साथ रखें।",
+                "👶 The office confirms a child's ticket / fare — call or WhatsApp: " . $phone . "\nAt the border, carry the child's birth certificate or a school ID with a photo."),
+                'intent' => 'child'];
+        }
+        return null;
+    }
+
+    /**
+     * A QUESTION with no booking in it ("mausam kharab cha, bholi bus chalcha?"): the office answers — never the
+     * "your ticket comes soon" desk draft (round 2, passenger sim). null = not a bare question (the draft may go on).
+     */
+    public static function questionFallback(string $text): ?string
+    {
+        $t = ' ' . self::norm($text) . ' ';
+        $question = str_contains($text, '?') || str_contains($text, '？')
+            || preg_match('/(?<![\p{L}\p{M}])(?:k|ke|kya|kati|kitna|kitne|kun|kaun|kasari|kaise|kahile|kab|kaha|kahan|kina|kyun|ho\s*ra|hola|milcha|milchha|milxa|milega|lagcha|lagchha|chalcha|chalchha|chalxa|chalegi|janchha|jancha|how|what|when|where|which|why|can|does|is\s*there)(?![\p{L}\p{M}])/u', $t) === 1;
+        if (!$question) {
+            return null;
+        }
+        $request = preg_match('/(?<![\p{L}\p{M}])(?:chahiyo|chahiye|chaiyo|chaiye|chahincha|book|booking|kaat\w*|katnu|katidinus|dinus|dinu|deu|pathaidinu|garidinus|garidinu|bana\w*|reserve|want|need|चाहियो|चाहिए|बुक)(?![\p{L}\p{M}])/u', $t) === 1
+            || preg_match('/\d+\s*(?:seat|seats|sit|ticket|tickets|tikat|jana|jan|log|people|persons?|सिट|सीट|टिकट|जना)(?![\p{L}])/u', TicketBot::asciiDigits($t)) === 1;
+        if ($request) {
+            return null;
+        }
+        $lang = self::lang($text);
+        $phone = Settings::officePhone();
+        return self::t($lang,
+            "🙏 यसको पक्का जवाफ अफिसले दिन्छ — फोन / WhatsApp: " . $phone . "\nटिकट चाहिए भने मिति, कति जना र कहाँबाट चढ्ने लेख्नुहोस्। (समय: \"timetable\" · भाडा: \"bhada\")",
+            "🙏 इसका पक्का जवाब ऑफिस देगा — फ़ोन / WhatsApp: " . $phone . "\nटिकट चाहिए तो तारीख, कितने लोग और कहाँ से चढ़ना है, लिखिए। (समय: \"timetable\" · किराया: \"kiraya\")",
+            "🙏 The office will answer this for sure — call or WhatsApp: " . $phone . "\nFor a ticket, write the date, how many people and your pickup. (Times: \"timetable\" · fares: \"fare\")");
+    }
+
+    /**
      * Today's figures + the 7-day chart, for an OFFICE number only (role
      * admin: superadmin / manager). Agents and customers get null here — an
      * agent's own "hisab" is the assistant's agent_day tool, scoped to them.
@@ -338,7 +465,8 @@ final class WaFaq
 
         /* One direction: a named stop gets its own number; else the price
            groups, cheapest first, each with its stops. */
-        $side = static function (array $rows, float $default, string $label) use ($want, $short, $seats, $per, $lang): array {
+        $shown = [];
+        $side = static function (array $rows, float $default, string $label) use ($want, $short, $seats, $per, $lang, &$shown): array {
             $pick = null;
             if ($want !== '') {
                 foreach ($rows as $s) {
@@ -364,6 +492,8 @@ final class WaFaq
             $multi = count($groups) > 1;
             $out = [];
             foreach ($groups as $amt => $names) {
+                $shown[] = (int) $amt;
+                $shown[] = (int) $amt * $seats;
                 $out[] = $label . ': ' . inr($amt) . $per
                        . ($seats > 1 ? ' · ' . $seats . self::t($lang, ' जनाको ', ' लोगों का ', ' people: ') . inr($amt * $seats) : '')
                        . (($multi || $pick !== null) && $names !== [] ? ' — ' . implode(', ', $names) : '');
@@ -388,6 +518,23 @@ final class WaFaq
         }
         $lines[] = self::t($lang, 'मिति र कहाँबाट भन्नुहोस्, सिट हेरिदिन्छु।',
             'तारीख और कहाँ से, बताइए — सीट देख देता हूँ।', 'Tell me the date and your pickup, and I will check seats.');
+        /* 31 Oct 2026 (passenger sim: "bhada ta 1500 matra ho ni Surat bata?" — owner: "galat cha bhane galat
+           bhanne"): a fare the writer states that is not one of ours is corrected, politely, before the right one. */
+        if (preg_match_all('/(?<![\d\/\-:.])(\d{3,5})(?![\d\/\-:])(?!\s*(?:jana|seat|sit|people|log|persons?|जना|सिट|लोग))/u', TicketBot::asciiDigits($text), $mm) > 0) {
+            foreach ($mm[1] as $claimed) {
+                $c = (int) $claimed;
+                if ($c >= 300 && $c <= 50000 && !in_array($c, $shown, true)) {
+                    array_unshift($lines, self::t($lang, 'ℹ️ भाडा ' . inr($c) . ' होइन — सही भाडा यो हो:', 'ℹ️ किराया ' . inr($c) . ' नहीं है — सही किराया यह है:',
+                        'ℹ️ The fare is not ' . inr($c) . ' — here is the correct fare:'));
+                    break;
+                }
+                if ($c >= 300 && $c <= 50000 && in_array($c, $shown, true)) {
+                    // round 2: "Surat bata 2 jana ko 4400 lagcha?" — yes, that is right
+                    array_unshift($lines, self::t($lang, '✅ हो — ' . inr($c) . ' ठीक हो:', '✅ हाँ — ' . inr($c) . ' सही है:', '✅ Yes — ' . inr($c) . ' is right:'));
+                    break;
+                }
+            }
+        }
         return implode("\n", $lines);
     }
 
@@ -579,7 +726,7 @@ final class WaFaq
     private static function origin(string $t): string
     {
         foreach (self::PLACE_ALIASES as $alias => $key) {
-            if (preg_match('/(?<![\p{L}])' . preg_quote($alias, '/') . '[\p{L}]*\s+(?:bata|baata|se|from|बाट|से)(?![\p{L}])/u', $t) === 1) {
+            if (preg_match('/(?<![\p{L}])' . preg_quote($alias, '/') . '[\p{L}]*\s+(?:bata|baata|se|from|dekhi|बाट|से|देखि)(?![\p{L}])/u', $t) === 1) {
                 return $key;
             }
         }
@@ -604,7 +751,17 @@ final class WaFaq
     /** "S Hari Parking, Nana Chiloda (Amd)" -> "Ahmedabad (Nana Chiloda)" — what people call it. */
     private static function short(string $name): string
     {
-        return stripos($name, 'chiloda') !== false ? 'Ahmedabad (Nana Chiloda)' : $name;
+        if (stripos($name, 'chiloda') !== false) {
+            return 'Ahmedabad (Nana Chiloda)';
+        }
+        // round 2 (passenger sim: "Barauda बाट …" while every other reply says Baroda): the stop's display name
+        try {
+            require_once INCLUDE_PATH . '/boarding.php';
+            $d = (string) (Boarding::stopDisplay($name)['name'] ?? '');
+            return $d !== '' ? $d : $name;
+        } catch (Throwable $e) {
+            return $name;
+        }
     }
 
     /** Lower-case, punctuation to spaces, one space between words. */
@@ -618,6 +775,15 @@ final class WaFaq
     private static function lang(string $text): string
     {
         $l = TicketBot::detectLang($text);
+        if ($l === 'en') {
+            // round 2 (passenger sim: "bachha ko ticket lagcha?" answered in English): romanised Nepali / Hindi words
+            $low = mb_strtolower($text);
+            $ne = preg_match_all('/(?<![a-z])(kaha|kata|kati|cha|xa|chha|ho|bata|dekhi|samma|lai|ko|hajur|garna|garne|garnu|k|dinus|bholi|aaja|baki|khali|tirne|lagcha|lagchha|parcha|milcha|chahincha|chahiyo|mero|malai|paryo|hunchha|jancha|janchha|chaina|bachha)(?![a-z])/u', $low);
+            $hi = preg_match_all('/(?<![a-z])(kaise|kitna|kitne|kya|hai|hain|mujhe|mera|meri|chahiye|batao|kab|kahan|nahi|aap|kijiye|dijiye|lagega|milega|se|tak|ka|ki)(?![a-z])/u', $low);
+            if ($ne > 0 || $hi > 0) {
+                $l = $hi > $ne ? 'hi' : 'ne';
+            }
+        }
         return in_array($l, ['ne', 'hi', 'gu'], true) ? $l : 'en';
     }
 
