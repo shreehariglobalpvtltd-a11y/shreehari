@@ -36,6 +36,7 @@ if (!defined('SHG_APP')) {
 
 require_once __DIR__ . '/teamportal.php';
 require_once __DIR__ . '/waverify.php';
+require_once __DIR__ . '/quickunlock.php';
 
 final class OneDoor
 {
@@ -200,6 +201,43 @@ final class OneDoor
             self::evenTime($t0);
         }
         return $r;
+    }
+
+    /**
+     * PIN or pattern (1 Nov 2026, includes/quickunlock.php). Same box as the password: an ID is
+     * one account, a mobile is every active account on that number and the PIN picks the ID. The
+     * session opens through Auth::openAdminWithoutPassword (active / not locked / no 2FA / stamped
+     * with the password, so an office reset still signs it out). The password door is untouched.
+     *
+     * @return array{step?: string, go?: string, error?: string}
+     */
+    public static function quick(string $kind, string $value): array
+    {
+        $s = self::state();
+        if ($s === null || !in_array($s['kind'] ?? '', ['mobile', 'id'], true)) {
+            return ['step' => 'start', 'error' => 'फेरि सुरु गर्नुहोस् · Please start again.'];
+        }
+        $back = (string) $s['kind'];
+        $t0 = microtime(true);
+        if ($back === 'mobile') {
+            $ids = array_map(static fn(array $a): int => (int) $a['id'], Auth::adminsByPhone((string) $s['phone']));
+        } else {
+            $user = Auth::resolveLoginId((string) $s['id']);
+            $id   = $user !== '' ? (int) Database::scalar('SELECT id FROM admins WHERE username = :u', ['u' => $user], 0) : 0;
+            $ids  = $id > 0 ? [$id] : [];
+        }
+        $m = QuickUnlock::match($ids, $kind, $value);
+        if ($m['ok']) {
+            try {
+                Auth::openAdminWithoutPassword($m['admin'], $kind);
+            } catch (RuntimeException $e) {
+                return ['step' => $back, 'error' => $e->getMessage()];
+            }
+            self::clear();
+            return ['go' => 'home'];
+        }
+        self::evenTime($t0);
+        return ['step' => $back, 'error' => (string) ($m['error'] ?? '')];
     }
 
     /** Mobile + password: TeamPortal::login over every ID on the number (the password picks the ID). */
