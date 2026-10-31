@@ -1099,7 +1099,7 @@ final class TicketBot
      */
     public static function holdOrNo(string $text): bool
     {
-        $t = ' ' . mb_strtolower(self::asciiDigits(trim($text))) . ' ';
+        $t = ' ' . self::withoutPrefNegation(mb_strtolower(self::asciiDigits(trim($text)))) . ' ';
         $t = (string) preg_replace('/(?<![\p{L}\p{M}])(?:mobile|mob|phone|ph|contact|whatsapp|wa|seat|sit|berth|ticket|pnr|utr|ref|reference|txn|transaction|account|a\/c|bus|roll|serial|sl|booking|order)\s*(?:no|num)(?![\p{L}\p{M}])\.?/u', ' ', $t);
         $t = (string) preg_replace('/(?<![\p{L}\p{M}])no\s*[.:#-]?\s*\d/u', ' ', $t);
         $t = (string) preg_replace('/(?<![\p{L}\p{M}])(?:no\s+(?:problem|issue|tension|worries|worry|mobile|phone|number|whatsapp|contact)|bus\s*stop\w*|stop\s*(?:ma|pe|par|bata|se)|koi\s+baat\s+nahi|koi\s+baat\s+nahin)(?![\p{L}\p{M}])/u', ' ', $t);
@@ -1138,6 +1138,107 @@ final class TicketBot
     public static function cmdHoldOrNo(string $text): bool
     {
         return self::holdOrNo((string) preg_replace('/(?<![\p{L}\p{M}])(?:cancel|cancle|cancell?ation|stop)(?![\p{L}\p{M}])/iu', ' ', $text));
+    }
+
+    /** 31 Oct 2026: the things of a trip a passenger may not want — never the ticket, the seat or the booking itself. */
+    private const PREF_THING = '(?:non\s*-?\s*)?(?:a\.?\s*c\.?|aircon|window|khidki|jhyal|jhyaal|upper|lower|middle|aisle|side|single|double|sleeper|seater|'
+        . 'luggage|lagej|lagage|laguage|samaan|saman|bag|bags|baggage|bora|khana|khaana|food|meal|meals|nasta|nashta|khaja|water\s*bottle|blanket|kambal|'
+        . 'pillow|takiya|sirani|charger|charging|tv|music|gaana|gana|smoking|extra\s+(?:luggage|bag|samaan|saman)|एसी|झ्याल|सामान|खाना|कम्बल)'
+        . '(?:\s+(?:wala|wali|vala|wale|ko|ka|ki|seat|seats|sit|berth|bus|gadi|गाडी|सिट))*';
+    private const PREF_NEG = '(?:ta\s+|chai\s+|chahi\s+|to\s+|toh\s+)?(?:(?:ko|ki|ka)\s+)?(?:(?:zarurat|jarurat|jaruri|zaruri|need)\s+)?'
+        . '(?:nahi\s*chahi\w*|nahin\s*chahi\w*|nhi\s*chahi\w*|na\s*chahi\w*|nahi|nahin|nhi|nai|chaina|chhaina|xaina|chahidaina|chaidaina|chaindaina|'
+        . 'chahindaina|chahiyena|chaiyena|chahinna|pardaina|hoina|haina|not\s+(?:needed|required|wanted|necessary)|नहीं\s*चाहिए|नहीं|नही|चाहिँदैन|चाहिदैन|छैन|पर्दैन)';
+    /* 31 Oct 2026 (review R1): "sleeper nahi book karna" / "AC wala nahi kaato" refuse the ISSUE - the "no" is followed by an
+       issue verb, so it is not a wish and stays in for holdOrNo(). ("mat" is never a wish word: "AC mat kaato" is a no.) */
+    private const PREF_ISSUE_VERB = '(?!\s+(?:book\w*|kaa?t\w*|nikal\w*|bana\w*|kar\w*|gar\w*|do|dena|issue|confirm\w*)(?![\p{L}\p{M}]))';
+
+    /**
+     * 31 Oct 2026 (usability leftover b: on a waiting quote "non AC nahi chahiyo" and "no luggage" were read as a "no" and
+     * DROPPED the passenger's booking): a "no" aimed at a THING of the trip (AC, window, luggage, food …) is a wish, not a
+     * refusal of the booking — it is taken out before holdOrNo() / isNo() look for a refusal. "AC nahi chahiyo, ticket
+     * pani nahi chahiyo" still keeps its second "no" (the ticket is never a thing here), so it still drops the quote.
+     */
+    public static function withoutPrefNegation(string $text): string
+    {
+        $t = ' ' . mb_strtolower($text) . ' ';
+        $t = (string) preg_replace('/(?<![\p{L}\p{M}])' . self::PREF_THING . '\s+' . self::PREF_NEG . '(?![\p{L}\p{M}])' . self::PREF_ISSUE_VERB . '/u', ' ', $t);
+        $t = (string) preg_replace('/(?<![\p{L}\p{M}])(?:no|without|bina|binaa|bagair|बिना)\s+(?:any\s+|kunai\s+|koi\s+)?' . self::PREF_THING . '(?![\p{L}\p{M}])/u', ' ', $t);
+        $t = (string) preg_replace('/(?<![\p{L}\p{M}])(?:don\'?t|do\s+not|dont)\s+(?:want|need)\s+(?:a\s+|an\s+|the\s+|any\s+)?' . self::PREF_THING . '(?![\p{L}\p{M}])/u', ' ', $t);
+        return trim((string) preg_replace('/\s+/u', ' ', $t));
+    }
+
+    /**
+     * 31 Oct 2026 (usability leftover f: "arko 1 jana thapnu" on a passenger's summary was ignored): how many seats a line
+     * ADDS to the booking in progress — "arko 1 jana thapnu", "arko 1 extra seat chahiyo", "ek jana aru thap", "one more
+     * seat", "aur ek seat chahiye", "add 1 seat", "+1 seat". 0 = not an extra-seat line ("arko seat dinus" alone may mean a
+     * DIFFERENT seat, so it needs a count or an add-word; a "no / not now" line is never one).
+     */
+    public static function extraSeats(string $text): int
+    {
+        $t = ' ' . mb_strtolower(self::asciiDigits(trim($text))) . ' ';
+        if (self::holdOrNo($text) || str_contains($t, '?')) {
+            return 0;
+        }
+        $noun = '(?:seats?|sit|berth|jana|janna|log|ticket|tikat|tiket|person|persons|people|passengers?|yatri|manche|manchhe|सिट|सीट|जना|टिकट|यात्री)';
+        // the verb "thap…" (add), never the surname Thapa
+        $add = '(?:thap|thapnu\w*|thapd\w*|thapi\w*|thapne|thapera|thapau\w*|add|added|adding|badha\w*|badhau\w*|extra|more|plus|थप\S*|बढा\S*)';
+        $other = '(?:arko|aru|aaru|aur|another|अर्को|अरू|और)';
+        $count = '(\d{1,2}|ek|euta|one|dui|two|do|tin|teen|three|एक|दुई|दो|तीन)';
+        $hit = preg_match('/(?<![\p{L}\p{M}])' . $add . '(?![\p{L}\p{M}])/u', $t) === 1 && preg_match('/(?<![\p{L}\p{M}])' . $noun . '(?![\p{L}\p{M}])/u', $t) === 1
+            || preg_match('/(?<![\p{L}\p{M}])' . $other . '\s+' . $count . '\s+' . $noun . '(?![\p{L}\p{M}])/u', $t) === 1
+            || preg_match('/(?<![\p{L}\p{M}])' . $count . '\s+' . $noun . '\s+' . $other . '(?![\p{L}\p{M}])/u', $t) === 1
+            || preg_match('/\+\s*\d{1,2}\s*' . $noun . '?(?![\p{L}\p{M}])/u', $t) === 1;
+        if (!$hit || preg_match('/(?<![\p{L}\p{M}])(?:arko|aru|another|next|अर्को)\s+(?:din|dinma|date|miti|bus|gadi|time|hapta|week|मिति|दिन)(?![\p{L}\p{M}])/u', $t) === 1) {
+            return 0;
+        }
+        $n = 1;
+        if (preg_match('/(?<![\p{L}\p{M}\d])' . $count . '(?![\p{L}\p{M}\d])/u', $t, $m) === 1) {
+            $w = $m[1];
+            $n = ctype_digit($w) ? (int) $w : (int) (['ek' => 1, 'euta' => 1, 'one' => 1, 'एक' => 1, 'dui' => 2, 'two' => 2, 'do' => 2, 'दुई' => 2, 'दो' => 2,
+                'tin' => 3, 'teen' => 3, 'three' => 3, 'तीन' => 3][$w] ?? 1);
+        }
+        return $n >= 1 && $n <= 6 ? $n : 0;
+    }
+
+    /**
+     * 31 Oct 2026 (usability leftover a: "ho tara date galat cha" on a summary re-showed the same summary): the part of the
+     * booking a line says is wrong / to be changed WITHOUT giving the new value — 'date', 'seats', 'boarding' or 'name'
+     * ('' = not such a line). The caller asks for that one value and keeps the booking waiting; nothing is sold or moved.
+     */
+    public static function fixWithoutValue(string $text): string
+    {
+        $t = ' ' . mb_strtolower(self::asciiDigits(trim($text))) . ' ';
+        $wrong = '(?:galat|galti|glt|wrong|mistake|milena|mildaina|milne\s*bhayena|sahi\s*(?:chaina|chhaina|xaina|nahi|nahin)|thik\s*(?:chaina|chhaina|xaina)|'
+            . 'theek\s*nahi|badal\w*|badla\w*|change\w*|chenj\w*|fer\w*|pher\w*|arko|arkai|dusrai|dusri|dusra|other|another|different|गलत|बदल\S*|फेर\S*|मिलेन|अर्को)';
+        if (preg_match('/(?<![\p{L}\p{M}])' . $wrong . '(?![\p{L}\p{M}])/u', $t) !== 1) {
+            return '';
+        }
+        $p = self::parse($text);
+        $fields = [
+            'date' => '(?:date|miti|din|tarik|tarikh|gate|day|मिति|तारिख|दिन|गते)',
+            'seats' => '(?:seat\s*(?:kati|ko\s*(?:number|sankhya|ganti))|kati\s*jana|jana|log|kitne\s*log|passengers?|yatri|सिट\s*कति|जना)',
+            'boarding' => '(?:pickup|pick\s*up|boarding|chadne\s*(?:thau|thaun|thaau|jagah)|chadhne\s*(?:thau|jagah)|thau|thaun|thaau|jagah|stop|स्टप|ठाउँ|चढ्ने)',
+            'name' => '(?:naam|nam|name|नाम)',
+        ];
+        foreach ($fields as $f => $re) {
+            if (preg_match('/(?<![\p{L}\p{M}])' . $re . '(?![\p{L}\p{M}])/u', $t) !== 1) {
+                continue;
+            }
+            $has = match ($f) {
+                'date' => (string) ($p['date'] ?? '') !== '',
+                'seats' => (int) ($p['seats'] ?? 0) > 0,
+                'boarding' => (string) ($p['boarding'] ?? '') !== '',
+                default => false,
+            };
+            if ($f === 'name') {
+                // "naam galat cha" asks; "naam galat, Sita Thapa ho" carries the name (the caller's own naam path reads it)
+                $rest = trim((string) preg_replace('/(?<![\p{L}\p{M}])(?:' . substr($fields['name'], 3, -1) . '|' . substr($wrong, 3, -1)
+                    . '|ho|cha|chha|xa|hai|bhayo|bhaeko|bhayeko|tara|but|par|lekin|ok|ji|dai|sir|mero|my|mera|ko|ka|ki|ticket|ma|me|in|the|is|was|chaina|nahi|हो|छ|भयो|मेरो|को|मा)(?![\p{L}\p{M}])/u', ' ', $t));
+                $has = preg_match('/\p{L}{2,}/u', $rest) === 1;
+            }
+            return $has ? '' : $f;
+        }
+        return '';
     }
 
     /**
@@ -1216,7 +1317,11 @@ final class TicketBot
            kaha) are left out on purpose. */
         $ne = $score(['chahiyo', 'chaiyo', 'chahincha', 'chahinchha', 'chha', 'xa', 'hola', 'bholi', 'parsi', 'malai', 'hamilai', 'kati', 'garnu', 'garidinu', 'dinu', 'dinus', 'farkine', 'ahile', 'aaja', 'bata', 'lagi', 'samma', 'euta', 'dui', 'tin', 'huncha', 'hunchha',
                       'mero', 'hamro', 'cha', 'milcha', 'milchha', 'garna', 'garne', 'gare', 'tara', 'aayena', 'aaena', 'bhayo', 'hajur', 'kasari', 'aaune', 'parcha', 'parchha', 'sakchu', 'sakincha', 'pathaideu', 'dekhau',
-                      'garda', 'aauncha', 'aaucha', 'auncha', 'aunchha'], $lNe);
+                      'garda', 'aauncha', 'aaucha', 'auncha', 'aunchha',
+                      // 31 Oct 2026 (usability leftover c: "upi chalcha?" was answered in English): more Nepali-only words
+                      'chalcha', 'chalchha', 'chalxa', 'chaldaina', 'milxa', 'paincha', 'painchha', 'paaincha', 'paainchha', 'pugyo', 'pugcha', 'pugchha',
+                      'chhutcha', 'chhutchha', 'chutcha', 'kun', 'kina', 'kahile', 'kasto', 'chaina', 'chhaina', 'xaina', 'thapnu', 'thapdinu', 'arko',
+                      'garchu', 'tirchu', 'pathaunu', 'hunxa', 'sakinchha', 'dinuhos', 'dinuhola', 'hola'], $lNe);
         $hi = $score(['chahiye', 'chaiye', 'chahie', 'hai', 'hain', 'hoon', 'mujhe', 'humein', 'hume', 'kitne', 'kitna', 'jaana', 'wapsi', 'karo', 'karna', 'kijiye', 'banao', 'lena', 'liye', 'abhi', 'parso', 'hoga', 'milega',
                       'kab', 'kahan', 'kya', 'mera', 'meri', 'bhejo', 'chalti', 'chalegi', 'niklegi', 'pahunchi', 'dijiye', 'batao'], $l) + $tellHi + $peopleHi;
         if ($gu > 0 && $gu > $hi && $gu > $ne) { return 'gu'; }   // Gujarati only when it wins outright — most passengers write Hindi / Nepali

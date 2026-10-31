@@ -129,9 +129,12 @@ $PAXN = ['9812349991', '9812349992', '9812349993', '9812349994', '9812349995', '
 // post-deploy probes A + B (31 Oct 2026): fresh passenger chats and desk-sale passenger numbers for their checks
 $Q  = array_map(static fn(int $i): string => '93274100' . str_pad((string) $i, 2, '0', STR_PAD_LEFT), range(1, 99));
 $QS = array_map(static fn(int $i): string => '98123498' . str_pad((string) $i, 2, '0', STR_PAD_LEFT), range(1, 60));
+// usability leftovers a-g (31 Oct 2026): fresh passenger chats and desk-sale passenger numbers for their checks
+$L  = array_map(static fn(int $i): string => '93274200' . str_pad((string) $i, 2, '0', STR_PAD_LEFT), range(1, 90));
+$LS = array_map(static fn(int $i): string => '98123497' . str_pad((string) $i, 2, '0', STR_PAD_LEFT), range(1, 60));
 $members = [$AG, $CT, $MGR, $CRD, $ST];
-$cleanup = static function () use ($members, $P, $PAXN, $Q, $QS): void {
-    $phones = array_merge($P, $PAXN, $Q, $QS);
+$cleanup = static function () use ($members, $P, $PAXN, $Q, $QS, $L, $LS): void {
+    $phones = array_merge($P, $PAXN, $Q, $QS, $L, $LS);
     $in = "'" . implode("','", $phones) . "'";
     foreach (Database::fetchAll("SELECT id FROM bookings WHERE contact_phone IN ($in) OR sold_by_admin_id IN (SELECT id FROM admins WHERE username LIKE 'apws_%')
                                   OR booked_by_admin_id IN (SELECT id FROM admins WHERE username LIKE 'apws_%')") as $b) {
@@ -1177,6 +1180,286 @@ try {
     check('"Please send the PNR of Maya Gurung" — the English welcome, never her PNR', str_contains(txt($r), 'ticket assistant') && !str_contains(txt($r), $vPnr), txt($r));
     $r = pax($nextQ(), 'dusri company wale zyada paise lete hain, aap log sahi ho');
     check('a Hindi line gets the Hindi welcome (no complaint ticket)', str_contains(txt($r), 'टिकट सहायक हूँ'), txt($r));
+
+    /* ================================================================= */
+    /* Usability leftovers a-g (31 Oct 2026) — closed WITHOUT weakening R1-R5: none of these lines sells, books, renames
+       or re-dates by itself; a later, separate, clear yes is still the only sale. */
+    $li = 0;
+    $nextL = static function () use (&$li, $L): string { return $L[$li++]; };       // a fresh passenger chat
+    $lsi = 0;
+    $nextLS = static function () use (&$lsi, $LS): string { return $LS[$lsi++]; };  // a fresh passenger number for a desk sale
+    $dateAsk = static fn(string $s): bool => str_contains($s, 'कुन मिति') || str_contains($s, 'किस तारीख') || str_contains($s, 'Which date')
+        || str_contains($s, 'which date') || str_contains($s, 'कौन सी तारीख');
+    $tomLabel = formatDate($TOM, 'D, j M');
+
+    section('leftover a: "ho tara date galat cha" / a correction without the new value asks for it — the booking waits, nothing sells');
+    $unlimit();
+    $miss = array_values(array_filter(['ho tara date galat cha', 'miti galat bhayo', 'date galat hai', 'wrong date', 'date badalnu cha', 'arko date ma'],
+        static fn(string $s): bool => TicketBot::fixWithoutValue($s) !== 'date'));
+    check('TicketBot::fixWithoutValue reads a wrong / changed date with no new day (6 phrasings)', $miss === [], implode(' | ', $miss));
+    $bad = array_values(array_filter(['date galat, parsi', 'bholi ko garnu', 'ho', 'naam galat, Sita Thapa ho', 'bholi pheri msg garchu', '1 jana galat'],
+        static fn(string $s): bool => TicketBot::fixWithoutValue($s) !== ''));
+    check('…and never a line that carries the value ("date galat, parsi", "bholi ko garnu") or no correction', $bad === [], implode(' | ', $bad));
+    check('…"naam galat cha" asks the name, "kati jana galat" the count, "pickup galat" the pickup', TicketBot::fixWithoutValue('naam galat cha') === 'name'
+        && TicketBot::fixWithoutValue('kati jana galat') === 'seats' && TicketBot::fixWithoutValue('pickup galat') === 'boarding');
+    foreach (['ho tara date galat cha', 'miti galat bhayo', 'date galat hai', 'wrong date', 'date badalnu cha'] as $line) {
+        $who = $nextL();
+        pax($who, 'parsi 1 jana Surat bata');
+        pax($who, 'Hira Rai');
+        $r = pax($who, $line);
+        $after = pax($who, 'ho');
+        check('passenger summary + "' . $line . '": asked "which date?" — nothing sold, and the "ho" after it only shows the summary again',
+            $dateAsk(txt($r)) && $r3sold($who) === 0 && WaBooking::isOpen($who) && !str_contains(txt($after), 'SHG-20'), txt($r) . ' / ' . txt($after));
+        pax($who, 'no');
+    }
+    $who = $nextL();
+    pax($who, 'parsi 1 jana Surat bata');
+    pax($who, 'Hira Rai');
+    pax($who, 'date galat cha');
+    $r = pax($who, 'bholi');
+    check('…the day that answers it re-plans the summary for that day (still waiting for ho)', str_contains(txt($r), $tomLabel) && $r3sold($who) === 0 && WaBooking::isOpen($who), txt($r));
+    pax($who, 'no');
+    $who = $nextL();
+    pax($who, 'parsi 1 jana Surat bata');
+    pax($who, 'Hira Rai');
+    pax($who, 'wrong date');
+    $r = pax($who, 'no');
+    $after = pax($who, 'ho');
+    check('…and "no" to "which date?" drops the booking — the later "ho" sells nothing', !WaBooking::isOpen($who) && $r3sold($who) === 0, txt($r) . ' / ' . txt($after));
+    foreach ([[$AG, 'ho tara date galat cha'], [$CT, 'date galat bhayo'], [$AG, 'miti galat cha dai']] as [$from, $line]) {
+        $ph = $nextLS();
+        desk($from, '1 seat parsi Surat Kiran Rai ' . $ph);
+        $r = desk($from, $line);
+        check('desk quote + "' . $line . '": "kun miti? · which date?" — the quote waits for that day', $dateAsk(txt($r)) && (pendingOf($from)['kind'] ?? '') === 'sale'
+            && $qDate($from) === $PARSI && $r3sold($ph) === 0, txt($r));
+        $r = desk($from, 'ho');
+        check('…the next "ho" is not that day: nothing sold, asked again', str_contains(txt($r), '✋') && $r3sold($ph) === 0 && (pendingOf($from)['kind'] ?? '') === 'sale', txt($r));
+        $r = desk($from, 'bholi');
+        check('…"bholi" re-quotes it for tomorrow (still waiting for a fresh ho)', $qDate($from) === $TOM && $r3sold($ph) === 0
+            && empty(pendingOf($from)['sale']['ask']), txt($r));
+        desk($from, 'no');
+    }
+    $ph = $nextLS();
+    desk($AG, '1 seat bholi Surat Kiran Rai ' . $ph);
+    $r = desk($AG, 'naam galat cha');
+    check('desk quote + "naam galat cha": asks the right name, keeps "Kiran Rai" until it comes', str_contains(txt($r), 'naam Sita Thapa')
+        && (pendingOf($AG)['sale']['name'] ?? '') === 'Kiran Rai', txt($r));
+    $r = desk($AG, 'Sita Thapa');
+    check('…the bare name that answers it renames the passenger (a fresh quote, nothing sold)', (pendingOf($AG)['sale']['name'] ?? '') === 'Sita Thapa' && $r3sold($ph) === 0, txt($r));
+    desk($AG, 'no');
+
+    section('leftover b: an innocent "nahi / no" inside a request is a wish, not a pause — only a no to the booking drops it');
+    $unlimit();
+    $wish = ['non AC nahi chahiyo', 'no luggage', 'window seat nahi chahiye', 'AC ki zarurat nahi', 'without luggage', "don't want a window seat", 'khana chaidaina dai',
+        'upper berth nahi', 'no AC', 'samaan chaina'];
+    $bad = array_values(array_filter($wish, static fn(string $s): bool => TicketBot::holdOrNo($s) || WaBooking::isNo($s)));
+    check('holdOrNo() / isNo() never read a wish about the trip as a no (' . count($wish) . ' phrasings)', $bad === [], implode(' | ', $bad));
+    $still = ['AC nahi chahiyo, ticket pani nahi chahiyo', 'no luggage, ruko', 'ticket nahi chahiyo', 'no', 'seat chahidaina', 'non AC nahi chahiyo, abhi nahi',
+        'luggage chaina, pachi bhanchu', 'booking nahi chahiye',
+        // 31 Oct 2026 (review R1): "<trip thing> mat / nahi <issue verb>" refuses the issue itself
+        'AC bus mat kaato', 'AC wala mat karo', 'non AC mat karna', 'sleeper bus mat book karna', 'AC gadi mat kaatnu', 'window seat mat kaato abhi',
+        'seater mat banao', 'sleeper mat nikalo', 'double mat kaato', 'single seat mat kaato', 'lower berth mat do', 'AC mat', 'sleeper nahi book karna',
+        'AC wali bus mat book karo'];
+    $miss = array_values(array_filter($still, static fn(string $s): bool => !TicketBot::holdOrNo($s)));
+    check('…while a no to the booking itself — even beside a wish — is still a no (' . count($still) . ' phrasings)', $miss === [], implode(' | ', $miss));
+    foreach (['non AC nahi chahiyo', 'no luggage', 'window seat nahi chahiye'] as $line) {
+        $who = $nextL();
+        pax($who, 'bholi 1 jana Surat bata');
+        pax($who, 'Hira Rai');
+        $r = pax($who, $line);
+        check('passenger summary + "' . $line . '": noted, the summary still waits (not dropped, not sold)', WaBooking::isOpen($who) && $r3sold($who) === 0
+            && str_contains(txt($r), 'नोट') && str_contains(txt($r), 'Hira Rai'), txt($r));
+        pax($who, 'no');
+    }
+    $ph = $nextLS();
+    desk($AG, '1 seat bholi Surat Kiran Rai ' . $ph);
+    foreach (['non AC nahi chahiyo', 'no luggage', 'window seat nahi chahiye dai', 'AC ki zarurat nahi'] as $line) {
+        $r = desk($AG, $line);
+        check('desk quote + "' . $line . '": noted — the quote still waits, same passenger, nothing sold', (pendingOf($AG)['kind'] ?? '') === 'sale'
+            && (pendingOf($AG)['sale']['name'] ?? '') === 'Kiran Rai' && str_contains(txt($r), '👍') && $r3sold($ph) === 0, txt($r));
+    }
+    $r = desk($AG, 'AC nahi chahiyo, ticket pani nahi chahiyo');
+    $after = desk($AG, 'ho');
+    check('…"AC nahi chahiyo, ticket pani nahi chahiyo" still drops it — the later "ho" sells nothing', pendingOf($AG) === null && $r3sold($ph) === 0, txt($r) . ' / ' . txt($after));
+
+    section('leftover c: a clear Nepali / Hindi writer is answered in their language — "upi chalcha?", a bare agent code');
+    $unlimit();
+    $wrong = [];
+    foreach (['upi chalcha?' => 'ne', 'esewa chalchha ki?' => 'ne', 'bus kaha pugyo' => 'ne', 'kun bus ho' => 'ne', 'online payment milcha?' => 'ne'] as $line => $want) {
+        if (TicketBot::detectLang($line) !== $want) {
+            $wrong[] = $line;
+        }
+    }
+    check('TicketBot::detectLang: "upi chalcha?", "esewa chalchha ki?", "kun bus ho" … are Nepali', $wrong === [], implode(' | ', $wrong));
+    $r = pax($nextL(), 'upi chalcha?');
+    check('passenger "upi chalcha?" — the ways to pay in Nepali', str_contains(txt($r), 'तिर्ने तरिका') && !str_contains(txt($r), 'Ways to pay'), txt($r));
+    $who = $nextL();
+    pax($who, 'bholi 1 jana Surat bata');
+    pax($who, 'Hira Rai');
+    $r = pax($who, 'upi chalcha?');
+    check('…and on an open summary: answered in Nepali, the summary still waits (nothing sold)', str_contains(txt($r), 'तिर्ने तरिका') && WaBooking::isOpen($who)
+        && $r3sold($who) === 0 && str_contains(txt($r), 'अझै बनेको छैन'), txt($r));
+    pax($who, 'no');
+    $who = $nextL();
+    pax($who, 'Nepalgunj ma office cha?');
+    $r = pax($who, $crdCode);
+    check('a bare agent code after a Nepali line — answered in Nepali (never the agent\'s mobile)', str_contains(txt($r), 'एजेन्ट') && !str_contains(txt($r), 'one of our agents')
+        && !str_contains((string) preg_replace('/\D/', '', txt($r)), $CRD), txt($r));
+    $who = $nextL();
+    pax($who, 'office kahan hai bhai?');
+    $r = pax($who, $crdCode);
+    check('…and after a Hindi line, not English', !str_contains(txt($r), 'one of our agents') && preg_match('/\p{Devanagari}/u', txt($r)) === 1, txt($r));
+
+    section('leftover d: an open booking answers an unrelated question and keeps waiting — the question is never the name');
+    $unlimit();
+    foreach (['driver ko number', 'bus kaha pugyo', 'office kaha cha', 'bus kata pugyo?', 'Surat counter ko number'] as $line) {
+        $who = $nextL();
+        pax($who, 'bholi 1 jana Surat bata');
+        $r = pax($who, $line);
+        $after = pax($who, 'Hira Rai');
+        check('at the name question "' . $line . '" is answered (the booking waits) — the next line is the name', str_contains(txt($r), 'पर्खिरहेको') && WaBooking::isOpen($who)
+            && str_contains(txt($after), 'Hira Rai') && !str_contains(mb_strtolower(txt($after)), mb_strtolower($line)) && $r3sold($who) === 0, txt($r) . ' / ' . txt($after));
+        pax($who, 'no');
+    }
+    foreach (['office kaha cha', 'driver ko number', 'bus kaha pugyo'] as $line) {
+        $who = $nextL();
+        pax($who, 'bholi 1 jana Surat bata');
+        pax($who, 'Hira Rai');
+        $r = pax($who, $line);
+        check('at the summary "' . $line . '" is answered, the summary still waits (told it is NOT booked)', str_contains(txt($r), 'अझै बनेको छैन') && WaBooking::isOpen($who)
+            && $r3sold($who) === 0, txt($r));
+        pax($who, 'no');
+    }
+    $who = $nextL();
+    pax($who, 'bholi 1 jana Surat bata');
+    pax($who, 'bus kaha pugyo');
+    $r = pax($who, 'ho');
+    check('…a "ho" at the name question after a side answer sells nothing (it is no name)', $r3sold($who) === 0, txt($r));
+    pax($who, 'no');
+
+    section('leftover e: "naam X ho, arko Y" names two travellers');
+    $unlimit();
+    foreach (['mero naam Ram Thapa ho, arko Sita Thapa', 'Ram Thapa ra arko Sita Thapa', 'ek jana Ram Thapa, arko ko naam Sita Thapa', 'mera naam Ram Thapa hai aur dusra Sita Thapa',
+              'pahilo Ram Thapa dosro Sita Thapa'] as $line) {
+        $who = $nextL();
+        pax($who, 'bholi 2 seat Surat bata');
+        $r = pax($who, $line);
+        check('2 seats + "' . $line . '" → Ram Thapa and Sita Thapa on the summary (nothing sold)', str_contains(txt($r), '1. Ram Thapa') && str_contains(txt($r), '2. Sita Thapa')
+            && $r3sold($who) === 0, txt($r));
+        pax($who, 'no');
+    }
+    $who = $nextL();
+    pax($who, 'bholi 1 seat Surat bata');
+    $r = pax($who, 'naam Ram Thapa ho, arko Sita Thapa');
+    check('1 seat + "naam Ram Thapa ho, arko Sita Thapa" → a 2-traveller summary to say yes to', str_contains(txt($r), '2. Sita Thapa') && $r3sold($who) === 0, txt($r));
+    pax($who, 'no');
+    $ph = $nextLS();
+    desk($AG, '2 seat bholi Surat Kiran Rai ' . $ph);
+    $r = desk($AG, 'naam Ram Thapa ho, arko Sita Thapa');
+    check('desk quote + "naam Ram Thapa ho, arko Sita Thapa" → passengers Ram Thapa, Sita Thapa (never "arko Sita Thapa")',
+        (array) (pendingOf($AG)['sale']['names'] ?? []) === ['Ram Thapa', 'Sita Thapa'] && $r3sold($ph) === 0, txt($r));
+    desk($AG, 'no');
+    // 31 Oct 2026 (review): "arko / aru / other" only as a WORD - never inside "Tarun", "Charu" or "mother"
+    $ph = $nextLS();
+    desk($AG, '1 seat bholi Surat Kiran Rai ' . $ph);
+    foreach (['naam Tarun Thapa' => 'Tarun Thapa', 'naam Charu Thapa' => 'Charu Thapa', 'naam Varun Shah' => 'Varun Shah'] as $line => $want) {
+        $r = desk($AG, $line);
+        check('desk quote + "' . $line . '" → passenger "' . $want . '", still 1 seat (no split inside the name)', (pendingOf($AG)['sale']['name'] ?? '') === $want
+            && (int) (pendingOf($AG)['sale']['seats'] ?? 0) === 1 && $r3sold($ph) === 0, txt($r));
+    }
+    $r = desk($AG, 'names Tarun, Sita');
+    check('desk quote + "names Tarun, Sita" → Tarun and Sita, 2 seats', (array) (pendingOf($AG)['sale']['names'] ?? []) === ['Tarun', 'Sita']
+        && (int) (pendingOf($AG)['sale']['seats'] ?? 0) === 2 && $r3sold($ph) === 0, txt($r));
+    desk($AG, 'no');
+    foreach (['Tarun Thapa ra arko Sita Thapa' => ['Tarun Thapa', 'Sita Thapa'], 'Charu Thapa, arko Sita Rai' => ['Charu Thapa', 'Sita Rai']] as $line => [$n1, $n2]) {
+        $who = $nextL();
+        pax($who, 'bholi 2 seat Surat bata');
+        $r = pax($who, $line);
+        check('2 seats + "' . $line . '" → ' . $n1 . ' and ' . $n2 . ' only (nothing sold)', str_contains(txt($r), '1. ' . $n1) && str_contains(txt($r), '2. ' . $n2)
+            && !str_contains(txt($r), '3. ') && $r3sold($who) === 0, txt($r));
+        pax($who, 'no');
+    }
+    // 31 Oct 2026 (review, leftover a for passengers): "naam galat cha" asks the name - never renames the passenger "galat cha"
+    $who = $nextL();
+    pax($who, 'bholi 1 jana Surat bata');
+    pax($who, 'Hira Rai');
+    $r = pax($who, 'naam galat cha');
+    $after = pax($who, 'ho');
+    check('passenger summary + "naam galat cha": the name is asked, never "galat cha"; the "ho" after it sells nothing',
+        !str_contains(mb_strtolower(txt($r) . txt($after)), 'galat cha') && $r3sold($who) === 0 && WaBooking::isOpen($who), txt($r) . ' / ' . txt($after));
+    $r = pax($who, 'Sita Thapa');
+    check('…the name that answers it goes on the summary (still waiting for ho)', str_contains(txt($r), 'Sita Thapa') && $r3sold($who) === 0 && WaBooking::isOpen($who), txt($r));
+    pax($who, 'no');
+
+    section('leftover f: one more traveller mid-booking = one more seat, and the new name is asked (never sold without it)');
+    $unlimit();
+    $wrong = [];
+    foreach (['arko 1 jana thapnu' => 1, 'arko 1 extra seat chahiyo' => 1, 'ek jana aru thap' => 1, 'one more seat' => 1, 'aur ek seat chahiye' => 1, 'add 1 seat' => 1,
+              '2 jana thapdinu' => 2, 'ek jana Ram Thapa, arko ko naam Sita Thapa' => 0, 'Gopal Thapa 2 jana' => 0, 'arko seat dinus' => 0, 'arko din' => 0, 'extra luggage' => 0, 'arko 1 jana thapnu tara ruko' => 0, 'arko 1 jana thapnu?' => 0] as $line => $n) {
+        if (TicketBot::extraSeats($line) !== $n) {
+            $wrong[] = $line . ' → ' . TicketBot::extraSeats($line);
+        }
+    }
+    check('TicketBot::extraSeats reads an added traveller — never "arko seat" (a different seat), another day, luggage, a pause or a question', $wrong === [], implode(' | ', $wrong));
+    $who = $nextL();
+    pax($who, 'bholi 1 seat Surat bata');
+    $r = pax($who, 'arko 1 extra seat chahiyo');
+    check('at the name question "arko 1 extra seat chahiyo" → 2 seats, both names asked', str_contains(txt($r), '2 जनाकै') && WaBooking::isOpen($who), txt($r));
+    $r = pax($who, 'Ram Thapa, Sita Thapa');
+    check('…and the two names give a 2-seat summary (nothing sold)', str_contains(txt($r), '2. Sita Thapa') && $r3sold($who) === 0, txt($r));
+    pax($who, 'no');
+    foreach (['arko 1 jana thapnu', 'ek jana aru thap', 'one more seat'] as $line) {
+        $who = $nextL();
+        pax($who, 'bholi 1 seat Surat bata');
+        pax($who, 'Ram Thapa');
+        $r = pax($who, $line);
+        $yes = pax($who, 'ho');
+        check('summary + "' . $line . '": a seat is added and the NEW name asked — the "ho" before it sells nothing', str_contains(txt($r), '➕')
+            && str_contains(txt($r), 'Ram Thapa') && $r3sold($who) === 0 && WaBooking::isOpen($who), txt($r) . ' / ' . txt($yes));
+        if ($line === 'arko 1 jana thapnu') {
+            $r = pax($who, 'Sita Thapa');
+            check('…the new name joins Ram Thapa on a 2-seat summary (Ram Thapa stays first)', str_contains(txt($r), '1. Ram Thapa') && str_contains(txt($r), '2. Sita Thapa')
+                && $r3sold($who) === 0, txt($r));
+            pax($who, 'ho');
+            check('…and only the later, separate "ho" sells it — to both travellers', $r3sold($who) === 1 && $paxName($who) === 'Ram Thapa,Sita Thapa', $paxName($who));
+        } else {
+            pax($who, 'no');
+        }
+    }
+    $ph = $nextLS();
+    desk($AG, '1 seat bholi Surat Kiran Rai ' . $ph);
+    $r = desk($AG, 'arko 1 jana thapnu');
+    check('desk quote + "arko 1 jana thapnu" → 2 seats, the added name asked', (int) (pendingOf($AG)['sale']['seats'] ?? 0) === 2 && (pendingOf($AG)['sale']['ask'] ?? '') === 'names'
+        && str_contains(txt($r), 'Kiran Rai') && $r3sold($ph) === 0, txt($r));
+    foreach (['ho', 'ok ticket kaat do'] as $line) {
+        $r = desk($AG, $line);
+        check('…"' . $line . '" before the added name issues nothing (asked for the name)', str_contains(txt($r), '✋') && $r3sold($ph) === 0 && (pendingOf($AG)['kind'] ?? '') === 'sale', txt($r));
+    }
+    $r = desk($AG, 'Sita Thapa');
+    check('…"Sita Thapa" completes it: Kiran Rai + Sita Thapa, a fresh quote waiting for ho', (array) (pendingOf($AG)['sale']['names'] ?? []) === ['Kiran Rai', 'Sita Thapa']
+        && empty(pendingOf($AG)['sale']['ask']) && $r3sold($ph) === 0, txt($r));
+    desk($AG, 'no');
+
+    section('leftover g: a sale line that ends in a question is answered with availability — never quoted as if ordered');
+    $unlimit();
+    foreach (['bholi Surat bata 2 jana ko ticket milcha?', 'bholi 2 seat Surat bata milcha?', 'parsi Surat bata 3 jana milchha', 'kal Surat se 2 log ka ticket milega?'] as $line) {
+        $who = $nextL();
+        $r = pax($who, $line);
+        $after = pax($who, 'ho');
+        check('passenger "' . $line . '" → the free seats, no booking opened — and "ho" sells nothing', str_contains(txt($r), '💺') && !WaBooking::isOpen($who)
+            && $r3sold($who) === 0, txt($r) . ' / ' . txt($after));
+    }
+    foreach (['milcha?', 'painchha?', 'available?', 'milega kya?'] as $tail) {
+        $ph = $nextLS();
+        $r = desk($AG, '1 seat bholi Surat Kiran Rai ' . $ph . ' ' . $tail);
+        check('desk "1 seat bholi Surat Kiran Rai … ' . $tail . '" → "yes, available" (not a 🎫 quote) — nothing sold', str_contains(txt($r), '✅')
+            && !str_contains(txt($r), '🎫') && $r3sold($ph) === 0, txt($r));
+        desk($AG, 'no');
+    }
+    $ph = $nextLS();
+    desk($CT, '1 seat bholi Surat Kiran Rai ' . $ph . ' milcha?');
+    $r = desk($CT, 'ho');
+    check('…the availability answer is sold only by the later, separate "ho"', $r3sold($ph) === 1, txt($r));
 } finally {
     $cleanup();
 }

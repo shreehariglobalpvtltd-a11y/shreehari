@@ -2944,9 +2944,60 @@ final class Notify
         $company = Settings::getString('company_name', APP_NAME);
         $text = "🙏 " . $company . " मा स्वागत छ" . ($name !== '' ? ", " . $name : '') . "!\n"
               . ($code !== '' ? "तपाईंको एजेन्ट कोड: " . $code . "\n" : "तपाईंको एजेन्ट कोड अफिसले दिनेछ।\n")
-              . "लगइन (एजेन्ट पोर्टल): " . appUrl('admin/login.php?portal=agent') . "\n"
-              . "अफिसले दिएको इमेल, युजरनेम र पासवर्डले साइन इन गर्नुहोस्।";
+              . (Auth::oneDoorOn()
+                  // 31 Oct 2026 (one door): every staff member and agent signs in on admin/login.php
+                  ? implode("\n", self::oneDoorSignInLines())
+                  : "लगइन (एजेन्ट पोर्टल): " . appUrl('admin/login.php?portal=agent') . "\n"
+                    . "अफिसले दिएको इमेल, युजरनेम र पासवर्डले साइन इन गर्नुहोस्।");
         self::whatsapp($phone, $text);
+    }
+
+    /**
+     * 31 Oct 2026 (one door): how a member of staff or an agent signs in now - ONE page,
+     * admin/login.php, for agents, counters, staff and the office alike: "mobile number or ID",
+     * then WhatsApp "hi" (then YES) or the 6-digit WhatsApp code, or the password. One mobile
+     * may carry 2-3 IDs; each ID's own password opens that ID. Everyone lands on admin/home.php.
+     * Short Nepali + English lines for agentWelcome / agentCredentials. Nothing here reads as
+     * "password: …" or "code: 123456", so WaSend never mistakes the welcome for a secret.
+     *
+     * @return list<string>
+     */
+    private static function oneDoorSignInLines(bool $withPassword = false, bool $waDoor = true): array
+    {
+        /* 31 Oct 2026 (review): WhatsApp proof opens only Auth::OTP_DOOR_ROLES accounts (agent, counter,
+           scanner). A staff sign-in with no such account opens with the password only - say only that. */
+        if (!$waDoor) {
+            $lines = [
+                '🔐 लगइन · Sign in: ' . appUrl('admin/login.php'),
+                'मोबाइल नम्बर वा ID लेख्नुहोस्, अनि पासवर्ड।',
+                'Type your mobile number or ID, then your password.',
+            ];
+            if ($withPassword) {
+                $lines[] = 'एउटै मोबाइलमा २-३ ID भए, जुन ID को पासवर्ड हाल्नुहुन्छ त्यही ID खुल्छ।';
+                $lines[] = 'One mobile can hold 2-3 IDs: each ID opens with its own password.';
+            }
+            return $lines;
+        }
+        $hi = false;
+        try {
+            require_once __DIR__ . '/waverify.php';
+            $hi = Settings::getBool('login_one_door_hi_on', true) && WaVerify::ready();
+        } catch (Throwable $ignored) {
+        }
+        $lines = [
+            '🔐 लगइन · Sign in: ' . appUrl('admin/login.php'),
+            $hi
+                ? 'मोबाइल नम्बर वा ID लेख्नुहोस्, अनि WhatsApp मा "hi" पठाउनुहोस् (त्यसपछि YES), वा ६ अङ्कको WhatsApp कोड, वा पासवर्ड।'
+                : 'मोबाइल नम्बर वा ID लेख्नुहोस्, अनि ६ अङ्कको WhatsApp कोड वा पासवर्ड।',
+            $hi
+                ? 'Type your mobile number or ID, then send "hi" on WhatsApp (then YES), or use the 6-digit WhatsApp code, or your password.'
+                : 'Type your mobile number or ID, then use the 6-digit WhatsApp code or your password.',
+        ];
+        if ($withPassword) {
+            $lines[] = 'एउटै मोबाइलमा २-३ ID भए, जुन ID को पासवर्ड हाल्नुहुन्छ त्यही ID खुल्छ।';
+            $lines[] = 'One mobile can hold 2-3 IDs: each ID opens with its own password.';
+        }
+        return $lines;
     }
 
     /**
@@ -2973,12 +3024,28 @@ final class Notify
         }
         $company = Settings::getString('company_name', APP_NAME);
         $who     = $kind === 'partner' ? 'Partner' : ($kind === 'staff' ? 'Staff' : 'Agent');
+        /* 31 Oct 2026 (one door): the sign-in page is admin/login.php for everybody - "mobile number or ID",
+           then WhatsApp hi / code or this password. The old /team/ page stays only while the switch is off.
+           "🔑 Password: …" keeps its shape: WaSend / MsgLedger mask exactly that in every log. */
+        $oneDoor = Auth::oneDoorOn();
+        /* 31 Oct 2026 (review): a staff sign-in opens with WhatsApp hi / code only when this mobile also
+           carries a member account (e.g. the "counter login" tick); otherwise it is the password only. */
+        $waDoor = true;
+        if ($oneDoor && $kind === 'staff') {
+            try {
+                $waDoor = Auth::otpDoorAccounts($phone) !== [];
+            } catch (Throwable $ignored) {
+                $waDoor = false;
+            }
+        }
         $text = "🙏 " . $company . " मा स्वागत छ" . ($name !== '' ? ", " . $name : '') . "!\n"
               . "तपाईंको " . $who . " खाता स्वीकृत भयो · Your " . strtolower($who) . " account is approved ✅\n\n"
               . ($code !== '' ? "🆔 " . $who . " code: " . $code . "\n" : '')
-              . "👤 Username: " . $username . "\n"
+              . ($oneDoor ? "👤 मोबाइल वा ID · Mobile or ID: " : "👤 Username: ") . $username . "\n"
               . "🔑 Password: " . $password . "\n"
-              . "🔗 Login: " . appUrl('team/') . "\n\n"
+              . ($oneDoor
+                  ? implode("\n", self::oneDoorSignInLines(true, $waDoor)) . "\n\n"
+                  : "🔗 Login: " . appUrl('team/') . "\n\n")
               . "पहिलो लगइनमा नयाँ पासवर्ड राख्नुहोस्। Face ID / फिंगरप्रिन्ट पनि थप्न सकिन्छ।\n"
               . "Change the password at your first sign-in. You can add Face ID / fingerprint there too.\n"
               . "🔒 यो पासवर्ड कसैलाई नदिनुहोस् · Never share this password.";

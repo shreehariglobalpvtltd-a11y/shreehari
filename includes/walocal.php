@@ -141,6 +141,9 @@ final class WaLocal
         if ($digits === '') {
             return null;
         }
+        if (!is_array($who['intents'] ?? null)) {
+            self::noteLang($digits, $text);       // 31 Oct 2026 (leftover c): the chat's language, for a later line that has none
+        }
         // A PNR (SHG-2026-00123) in the message is the PNR reply's (or the assistant's) business; an agent code (SHG-0027) is ours.
         if (preg_match('/shg[-\s]?\d{4}[-\s]?\d{3,}/iu', $text) === 1) {
             return null;
@@ -159,7 +162,16 @@ final class WaLocal
                 return $early;
             }
             if (WaBooking::isOpen($digits)) {
-                return null;                     // a sale in progress keeps its conversation
+                /* 31 Oct 2026 (usability leftover d — passenger sim: at the name question "bus kaha pugyo" became the
+                   passenger's NAME, "driver ko number" / "office kaha cha" were refused as names): a question about
+                   something else — the bus, the crew, the office, a number — is answered, and the booking keeps waiting
+                   exactly where it was (said under the answer). Never a line that carries booking details. */
+                $side = self::sideAnswer($fromRaw, $digits, $text, $who);
+                if ($side !== null) {
+                    self::remember($digits, $text, (string) $side['text']);
+                    self::log($digits, (string) $side['intent'], 'customer', microtime(true));
+                }
+                return $side;                    // null: a sale in progress keeps its conversation
             }
         } catch (Throwable $e) {
             return null;
@@ -187,7 +199,7 @@ final class WaLocal
         if ($intent === '') {
             return null;
         }
-        $lang = self::lang($text, $isStaff);
+        $lang = self::chatLang($digits, $text, $isStaff);
         $t0   = microtime(true);
         try {
             $r = match ($intent) {
@@ -243,6 +255,133 @@ final class WaLocal
         } catch (Throwable $e) {
         }
         return $out;
+    }
+
+    /** 31 Oct 2026 (leftover d): what is answered beside an open booking — questions about something else. */
+    private const SIDE_INTENTS = ['bus_crew', 'bus_live', 'office_map', 'nepal_office', 'other_number', 'owner_number', 'company_info', 'refund_rule', 'pay_how',
+        'my_due'];
+
+    /**
+     * Leftover d: a question about something else while this chat's booking is half-way ("driver ko number", "bus kaha
+     * pugyo", "office kaha cha", "upi chalcha?") — answered, with the line that the booking still waits. null = the line
+     * belongs to the booking (a name, a day, a pickup, a count, a yes, a pay choice) or is not one of these questions.
+     *
+     * @return array{text: string, media: ?string, ui: ?array, intent: string}|null
+     */
+    private static function sideAnswer(string $fromRaw, string $digits, string $text, ?array $who): ?array
+    {
+        if (is_array($who['intents'] ?? null)) {
+            return null;
+        }
+        $p = TicketBot::parse($text);
+        if ((int) ($p['seats'] ?? 0) > 0 || (string) ($p['date'] ?? '') !== '' || (string) ($p['phone'] ?? '') !== ''
+            || TicketBot::holdOrNo($text) || WaBooking::isYes($text)) {
+            return null;
+        }
+        if ($who === null) {
+            try {
+                require_once INCLUDE_PATH . '/aitools.php';
+                $who = AiTools::whoIs($fromRaw);
+            } catch (Throwable $e) {
+                $who = ['role' => 'customer'];
+            }
+        }
+        $role = (string) ($who['role'] ?? 'customer');
+        if ($role !== 'customer') {
+            return null;                                   // a seller's order has its own questions
+        }
+        $t = ' ' . self::norm($text) . ' ';
+        $intent = self::intentOf($t, $text, $role);
+        if (!in_array($intent, self::SIDE_INTENTS, true)) {
+            return null;
+        }
+        // "UPI bata tirchu" / "cash" on the summary is the pay choice — only a QUESTION about paying / refunds is answered here
+        $asking = str_contains($text, '?') || str_contains($text, '？') || self::asksAboutIt($t, $text)
+            || preg_match('/(?<![\p{L}\p{M}])(?:k|ke|kya|kati|kun|kasari|kaise|kahile|kab|kaha|kahan|kata|kina|kyun|chalcha|chalchha|chalxa|chalega|chalta|milcha|milchha|hunchha|huncha|how|what|where|which|can|does|do\s+you)(?![\p{L}\p{M}])/u', $t) === 1;
+        if (in_array($intent, ['pay_how', 'refund_rule', 'company_info', 'my_due'], true) && !$asking) {
+            return null;
+        }
+        // a pickup in the line is the booking's, unless the line asks for a place / a number / the crew
+        if ((string) ($p['boarding'] ?? '') !== '' && !in_array($intent, ['office_map', 'nepal_office', 'other_number', 'owner_number', 'bus_crew'], true)) {
+            return null;
+        }
+        $lang = self::signalLang($text);
+        if ($lang === '') {
+            $lang = WaBooking::openLang($digits);
+        }
+        $lang = in_array($lang, ['ne', 'hi', 'en', 'gu'], true) ? $lang : 'ne';
+        $r = match ($intent) {
+            'bus_crew'     => self::busCrew($fromRaw, $who, $lang, $text),
+            'bus_live'     => self::busLive($fromRaw, $who, $lang),
+            'office_map'   => self::officeMap($lang, $text),
+            'nepal_office' => self::nepalOffice($lang),
+            'company_info' => self::companyInfo($lang),
+            'refund_rule'  => self::refundRule($fromRaw, $lang),
+            'pay_how'      => self::payHow($fromRaw, $lang),
+            'my_due'       => self::myDue($digits, $lang),
+            'owner_number' => self::ownerNumber($lang),
+            'other_number' => ['text' => self::t($lang,
+                '🙏 अरू यात्रु वा कसैको निजी नम्बर हामी दिँदैनौं। केही काम भए अफिसमा फोन / WhatsApp गर्नुहोस्: ' . Settings::officePhone(),
+                '🙏 दूसरे यात्री या किसी का निजी नंबर हम नहीं देते। कोई काम हो तो ऑफिस को फ़ोन / WhatsApp कीजिए: ' . Settings::officePhone(),
+                '🙏 We do not share another passenger\'s or anyone\'s personal number. For anything you need, call or WhatsApp the office: ' . Settings::officePhone()),
+                'media' => null, 'ui' => null],
+            default        => null,
+        };
+        if ($r === null || trim((string) ($r['text'] ?? '')) === '') {
+            return null;
+        }
+        return ['text' => (string) $r['text'] . WaBooking::waitingNote($digits), 'media' => $r['media'] ?? null, 'ui' => null, 'intent' => 'side:' . $intent];
+    }
+
+    /* ---- 31 Oct 2026 (usability leftover c): the chat's language for a line that has none ("SHG-0043", "9812…") ---- */
+    private const LANG_SCOPE = 'wa_lang';
+
+    /** The language a line itself shows ('ne' | 'hi' | 'en' | 'gu'), or '' when it carries none (a code, a number, "ok"). */
+    private static function signalLang(string $text): string
+    {
+        if (preg_match('/[\p{Devanagari}\x{0A80}-\x{0AFF}]/u', $text) === 1) {
+            return self::lang($text, false);
+        }
+        $l = self::lang($text, false);
+        if ($l !== 'en') {
+            return $l;
+        }
+        $bare = (string) preg_replace('/shg[\s-]*(?:[a-z][\s-]*)?\d{1,4}(?:[\s-]*\d{3,})?|\+?\d[\d\s-]*|[\p{P}\p{S}]+/iu', ' ', mb_strtolower($text));
+        $real = array_filter(preg_split('/\s+/u', trim($bare), -1, PREG_SPLIT_NO_EMPTY) ?: [], static fn(string $w): bool => mb_strlen($w) >= 2
+            && !in_array($w, ['ok', 'okay', 'hi', 'hii', 'hello', 'shg', 'pnr', 'upi', 'ac', 'sir', 'ji', 'dai', 'agent', 'code', 'utr', 'no', 'yes', 'ho'], true));
+        return count($real) >= 2 ? 'en' : '';
+    }
+
+    private static function noteLang(string $digits, string $text): void
+    {
+        $l = self::signalLang($text);
+        if ($l === '' || $digits === '') {
+            return;
+        }
+        try {
+            $done = Database::update('kv_store', ['kvalue' => $l, 'updated_by' => 'walocal'], 'kscope = :s AND kkey = :k', ['s' => self::LANG_SCOPE, 'k' => $digits]);
+            if ($done === 0) {
+                Database::insertIgnore('kv_store', ['kscope' => self::LANG_SCOPE, 'kkey' => $digits, 'kvalue' => $l, 'updated_by' => 'walocal']);
+            }
+        } catch (Throwable $e) {
+        }
+    }
+
+    /** The line's own language; a line with none (a bare agent code) takes the language this chat last wrote in (7 days). */
+    private static function chatLang(string $digits, string $text, bool $isStaff): string
+    {
+        if (!$isStaff && $digits !== '' && self::signalLang($text) === '') {
+            try {
+                $mem = (string) Database::scalar('SELECT kvalue FROM kv_store WHERE kscope = :s AND kkey = :k AND updated_at > (NOW() - INTERVAL 7 DAY)',
+                    ['s' => self::LANG_SCOPE, 'k' => $digits], '');
+            } catch (Throwable $e) {
+                $mem = '';
+            }
+            if (in_array($mem, ['ne', 'hi', 'en', 'gu'], true)) {
+                return $mem;
+            }
+        }
+        return self::lang($text, $isStaff);
     }
 
     /** The answers that are the same for everyone — safe in a group chat. */
@@ -457,6 +596,14 @@ final class WaLocal
             return 'bus_crew';
         }
         if (self::hasWord($t, self::SEATS) && !$request && !($booking && !preg_match('/\?|\bcha\b|\bxa\b|\bhai\b|\bmilcha\b|\bmilega\b|छ|है/u', $t))) {
+            return 'seats_left';
+        }
+        /* 31 Oct 2026 (usability leftover g — passenger sim: "bholi Surat bata 2 jana ko ticket milcha?" opened a booking
+           and asked for the names): a booking line that ASKS whether it can be had is answered with the free seats —
+           never started as an order. "… ticket chahiyo" (an order) is still the sale engine's. */
+        if (!$isStaff && $booking && !$request && (str_contains($raw, '?') || str_contains($raw, '？')
+                || preg_match('/(?:milcha|milchha|milxa|painchha|paincha|paaincha|paainchha|milega|milegi|mil\s*jayega|mil\s*jaegi|available|khali\s*(?:cha|chha|xa|hai)|(?:cha|chha|xa)\s*ki|hai\s*kya)\s*$/u', trim($t)) === 1)
+            && preg_match('/(?<![\p{L}\p{M}])(?:milcha|milchha|milxa|painchha|paincha|paaincha|paainchha|milega|milegi|mil|available|khali|baki|baaki|cha|chha|xa|hai|hola|होला|छ|है|मिल\S*|पाइन्छ)(?![\p{L}\p{M}])/u', $t) === 1) {
             return 'seats_left';
         }
         if (self::isLive($t)) {

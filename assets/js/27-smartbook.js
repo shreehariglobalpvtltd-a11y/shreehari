@@ -1397,6 +1397,9 @@
     else { host = $('sbModalIn'); host.innerHTML = html; $('sbModal').hidden = false; document.body.classList.add('shg-modal-open'); }
     wireTicketImg(host);
     try { if (!STAFF && location.hash.indexOf('#/?ticket=') !== 0) history.replaceState(null, '', '#/?ticket=' + encodeURIComponent(r.pnr)); } catch (e) {}
+    /* 31 Oct 2026 (review): SmartBook is the home page's booking path and replaceState fires no
+       hashchange - tell the install sheet a customer's booking just finished (never a staff sale). */
+    if (fresh && !STAFF) { try { if (window.SHGInstall && window.SHGInstall.afterBooking) window.SHGInstall.afterBooking(); } catch (e) {} }
     /* 15 Oct 2026: the PDF no longer downloads by itself - on a phone that
        navigation closed the ticket the customer had just been shown. The PNG
        on the page is the delivery (the server pre-draws it while the booking

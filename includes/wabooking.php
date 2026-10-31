@@ -168,6 +168,11 @@ final class WaBooking
             if ($was === 'combo' && $seller === null) {
                 return self::comboChange($phoneDigits, is_array($state['slots'] ?? null) ? $state['slots'] : [], $lang);
             }
+            // 31 Oct 2026 (leftover a): a "no / not now" to "which date?" drops the booking, as it would at the summary
+            if (!empty($state['slots']['_fixAsk']) && in_array($was, ['date', 'seats', 'boarding'], true)) {
+                self::clear($phoneDigits);
+                return self::out(self::say('cancelled', $lang));
+            }
         }
 
         /* Computed BEFORE anything writes the conversation row, because
@@ -285,8 +290,46 @@ final class WaBooking
                     self::save($phoneDigits, $slots, 'name', [], $lang);
                     return self::out(self::say('askName', $lang));
                 }
+                /* 31 Oct 2026 (usability leftover f — passenger sim: "arko 1 extra seat chahiyo" at the name question was
+                   refused as a name): one more traveller is one more seat, and every name is asked for. */
+                $more = TicketBot::extraSeats($text);
+                if ($more > 0) {
+                    $slots['seats'] = max(1, (int) ($slots['seats'] ?? 1)) + $more;
+                    if (!empty($slots['_addNames'])) {
+                        $slots['_addNames'] = (int) $slots['_addNames'] + $more;
+                    }
+                    self::save($phoneDigits, $slots, 'name', [], $lang);
+                    return self::out(!empty($slots['_addNames'])
+                        ? sprintf(self::say('askExtraNames', $lang), (int) $slots['_addNames'], self::partyLine($slots))
+                        : sprintf(self::say('askNames', $lang), (int) $slots['seats']));
+                }
                 // round 2: "mero naam Sunil Kumar ho" / "my name is Sunil" / "Sunil Kumar ho" answer with "Sunil Kumar"
                 $nameText = self::unwrapName($text);
+                /* 31 Oct 2026 (leftover f): the names of the travellers ADDED to a summary join the party already named —
+                   they never replace the first passenger. */
+                if (!empty($slots['_addNames'])) {
+                    $add = self::parseParty($nameText, (int) $slots['_addNames']);
+                    $bad = array_values(array_filter($add, static fn(array $p): bool => PersonName::clean((string) $p['name']) === ''));
+                    if ($add === [] || $bad !== []) {
+                        self::save($phoneDigits, $slots, 'name', [], $lang);
+                        return self::out(sprintf(self::say('askExtraNames', $lang), (int) $slots['_addNames'], self::partyLine($slots))
+                            . ($bad !== [] ? ' (' . PersonName::why((string) $bad[0]['name']) . ')' : ''));
+                    }
+                    $slots['party'] = array_merge(self::partyBase($slots), $add);
+                    $slots['name'] = (string) $slots['party'][0]['name'];
+                    $slots['namesAsked'] = true;
+                    unset($slots['_addNames']);
+                    self::noteContact($slots, $text, $phoneDigits, $seller);
+                    $text = '';
+                }
+                if ($text !== '') {
+                // leftover e: "naam Ram ho, arko Sita" on a 1-seat booking names TWO travellers — the summary shows 2 seats
+                if (preg_match('/(?<=\p{L})\s*[,;।]?\s*(?:(?:ani|ra|aur|and)\s+)?(?:arko|dusro|dosro|dusra|doosra|another|अर्को|दोस्रो|दूसरा)(?![\p{L}\p{M}])/iu', $text) === 1) {
+                    $listed = count(self::parseParty($nameText, 6));
+                    if ($listed > max(1, (int) ($slots['seats'] ?? 1))) {
+                        $slots['seats'] = $listed;
+                    }
+                }
                 $party = self::parseParty($nameText, max(1, (int) ($slots['seats'] ?? 1)));
                 $lead  = $party !== [] ? (string) $party[0]['name'] : self::stripNameWord($nameText);
                 /* Checked HERE, at intake (24 Sep review): a stop, a request
@@ -304,6 +347,7 @@ final class WaBooking
                 }
                 self::noteContact($slots, $text, $phoneDigits, $seller);
                 $text = '';
+                }
             }
         }
 
@@ -321,6 +365,15 @@ final class WaBooking
            make for itself, since any word could be a name. A list behind the
            same word is the whole family: "naam Ram, Sita 30, Maya 12". */
         if ($quick === null && preg_match('/^\s*(?:naam|nam|name|नाम|નામ)\s*[:\-]?\s*(.{2,400})$/ui', $text, $m)) {
+            /* 31 Oct 2026 (review, leftover a): "naam galat cha" / "naam wrong" says the name is wrong WITHOUT a new one -
+               ask for it (the summary's own fix-ask), never rename the passenger "galat cha". */
+            if (TicketBot::fixWithoutValue($text) === 'name') {
+                $slots['_fixAsk'] = 'name';
+                unset($slots['party'], $slots['namesAsked']);
+                self::save($phoneDigits, $slots, 'name', [], $lang);
+                $paxN = max(1, (int) ($slots['seats'] ?? 1));
+                return self::out(self::say('fixAsk', $lang) . "\n" . ($paxN > 1 ? sprintf(self::say('askNames', $lang), $paxN) : self::say('askName', $lang)));
+            }
             $m[1] = self::unwrapName($m[1]);
             $party = self::parseParty($m[1], max(1, (int) ($slots['seats'] ?? 1)));
             $lead  = $party !== [] ? (string) $party[0]['name'] : trim($m[1]);
@@ -348,6 +401,35 @@ final class WaBooking
                 self::clear($phoneDigits);
                 return self::out(self::say('cancelled', $lang));
             }
+            /* 31 Oct 2026 (usability leftover f — passenger sim: "arko 1 jana thapnu" re-showed the same summary): one more
+               traveller = one more seat; the new name is asked for (it joins the party, never replaces the first name), and
+               the summary comes back for a fresh yes. Nothing is sold here. */
+            $more = TicketBot::extraSeats($text);
+            if ($more > 0) {
+                $base = self::partyBase($slots);
+                $slots['party'] = $base;
+                $slots['seats'] = max(count($base), (int) ($slots['seats'] ?? 1)) + $more;
+                $slots['_addNames'] = $more;
+                self::save($phoneDigits, $slots, 'name', [], $lang);
+                return self::out(sprintf(self::say('askExtraNames', $lang), $more, self::partyLine($slots)));
+            }
+            /* 31 Oct 2026 (usability leftover a: "ho tara date galat cha", "miti galat bhayo", "wrong date" re-showed the same
+               summary): a part said to be wrong WITHOUT the new value — that one value is asked for ("kun miti?"); the
+               booking keeps everything else and waits. Nothing is sold, nothing moves until the value comes. */
+            $fixField = TicketBot::fixWithoutValue($text);
+            if ($fixField !== '') {
+                $slots['_fixAsk'] = $fixField;
+                if ($fixField === 'name') {
+                    unset($slots['party'], $slots['namesAsked']);
+                    self::save($phoneDigits, $slots, 'name', [], $lang);
+                    $paxN = max(1, (int) ($slots['seats'] ?? 1));
+                    return self::out(self::say('fixAsk', $lang) . "\n" . ($paxN > 1 ? sprintf(self::say('askNames', $lang), $paxN) : self::say('askName', $lang)));
+                }
+                $q = self::guidedQuestion($fixField, $lang, null, false);
+                self::save($phoneDigits, $slots, $fixField, $q['options'], $lang);
+                return self::out(self::say('fixAsk', $lang) . "\n" . self::withOptions($q['question'], $q['options'], $lang), null,
+                    self::choiceUi(self::say('fixAsk', $lang) . "\n" . $q['question'], $q['options'], $lang));
+            }
             // round 4: a question ("ho ki?", "upi chalcha?") is never the yes — it is answered and the summary waits
             if (str_contains($text, '?') || str_contains($text, '？')) {
                 return null;
@@ -372,6 +454,8 @@ final class WaBooking
             if ($text !== '') {
                 $chk = TicketBot::parse($text);
                 if (!TicketBot::amendOnly((string) ($chk['residual'] ?? ''))) {
+                    // leftover b: "non AC nahi chahiyo" / "no luggage" — a wish, noted above the same summary (still waiting)
+                    $prefNote = TicketBot::withoutPrefNegation($text) !== mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $text)));
                     $text = '';
                 } elseif ((string) ($chk['date'] ?? '') === date('Y-m-d') && !self::writtenDate($text)
                     && (string) ($slots['date'] ?? '') !== date('Y-m-d')) {
@@ -641,6 +725,9 @@ final class WaBooking
             }
         }
         $summary = self::summary($plan, $slots, $lang, $seller);
+        if (!empty($prefNote)) {
+            $opener .= self::say('prefNoted', $lang) . "\n\n";
+        }
         return self::out(
             $opener . $summary . "\n" . self::confirmHelp($lang, $seller !== null),
             $picture,
@@ -2172,6 +2259,34 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 'ne' => 'ℹ️ माथि देखाइएको बुकिङ अझै बनेको छैन। बुक गर्न *ho* (बसमा तिर्ने), अहिले तिर्न *UPI*, वा छोड्न *no* लेख्नुहोस्।',
                 'gu' => 'ℹ️ ઉપર બતાવેલું બુકિંગ હજી થયું નથી. બુક કરવા *ha* (બસમાં ચૂકવણી), હમણાં ચૂકવવા *UPI*, અથવા છોડવા *no* લખો.',
             ],
+            // 31 Oct 2026 (leftover f): one more traveller added to the booking — their name, please
+            'askExtraNames' => [
+                'en' => "➕ Added %d more seat(s). Please send the new traveller's name (already: %s). Nothing is booked yet.",
+                'hi' => "➕ %d सीट और जोड़ दी। नए यात्री का नाम भेजिए (पहले से: %s)। अभी कुछ बुक नहीं हुआ।",
+                'ne' => "➕ %d सिट थपियो। थपिएको यात्रुको नाम पठाउनुहोस् (पहिले नै: %s)। अझै केही बुक भएको छैन।",
+                'gu' => "➕ %d સીટ ઉમેરી. નવા મુસાફરનું નામ મોકલો (પહેલેથી: %s). હજી કંઈ બુક થયું નથી.",
+            ],
+            // 31 Oct 2026 (leftover a): a part said to be wrong with no new value — before the one question that asks for it
+            'fixAsk' => [
+                'en' => '👍 OK — nothing is booked yet; the rest of the booking is kept.',
+                'hi' => '👍 ठीक है — अभी कुछ बुक नहीं हुआ; बाकी बुकिंग वैसी ही रखी है।',
+                'ne' => '👍 ठिक छ — अझै केही बुक भएको छैन; बाँकी बुकिङ जस्ताको तस्तै राखेको छु।',
+                'gu' => '👍 બરાબર — હજી કંઈ બુક થયું નથી; બાકીનું બુકિંગ એમ જ રાખ્યું છે.',
+            ],
+            // 31 Oct 2026 (leftover b): "non AC nahi chahiyo" / "no luggage" on the summary — a wish, not a no to the booking
+            'prefNoted' => [
+                'en' => '👍 Noted. The booking below is still waiting for your yes (nothing booked yet):',
+                'hi' => '👍 ठीक है, नोट किया। नीचे की बुकिंग अभी आपके *ha* का इंतज़ार कर रही है (अभी कुछ बुक नहीं हुआ):',
+                'ne' => '👍 ठिक छ, नोट गरें। तलको बुकिङ अझै तपाईंको *ho* पर्खिरहेको छ (अझै केही बुक भएको छैन):',
+                'gu' => '👍 બરાબર, નોંધ્યું. નીચેનું બુકિંગ હજી તમારા *ha* ની રાહ જુએ છે (હજી કંઈ બુક થયું નથી):',
+            ],
+            // 31 Oct 2026 (leftover d): under the answer to another question while the booking is half-way
+            'orderWaits' => [
+                'en' => 'ℹ️ Your booking is still waiting (nothing booked yet) — carry on whenever you are ready.',
+                'hi' => 'ℹ️ आपकी बुकिंग रुकी हुई है (अभी कुछ बुक नहीं हुआ) — जब चाहें आगे लिखिए।',
+                'ne' => 'ℹ️ तपाईंको बुकिङ पर्खिरहेको छ (अझै केही बुक भएको छैन) — तयार हुँदा अगाडि लेख्नुहोस्।',
+                'gu' => 'ℹ️ તમારું બુકિંગ રાહ જુએ છે (હજી કંઈ બુક થયું નથી) — તૈયાર હો ત્યારે આગળ લખો.',
+            ],
             // round 4 (R1): a fresh line that says "not now / later / don't book" — nothing is started or kept
             'heldFresh' => [
                 'en' => 'OK — nothing is booked. When you want the ticket, send the day, the pickup and how many seats again.',
@@ -2289,6 +2404,16 @@ Example: Ram Bahadur 35, Sita Gurung 30",
             $s = (string) preg_replace('/^\s*(?:ma|म|main|mai|मैं)\s+/iu', '', $s);
         }
         $s = (string) preg_replace('/^\s*(?:i\s*am|i\'m|im)\s+/iu', '', $s);
+        /* 31 Oct 2026 (usability leftover e — passenger sim: "mero naam Ram Thapa ho, arko Sita Thapa" was refused as a
+           sentence): "X ho, arko Y" / "X, ani arko ko naam Y" / "ek jana X, dosro Y" / "X aur dusra Y" are two travellers —
+           read as "X, Y" (parseParty splits on the comma). Review (31 Oct 2026): "arko / aru / other" only as a WORD after a
+           space or a comma - never inside "Tarun", "Charu" or "mother". */
+        $other = '(?:arko|aru|dusro|dosro|doosro|dusra|doosra|dusri|other|another|second|अर्को|दोस्रो|दूसरा|दूसरी)';
+        if (preg_match('/(?<![\p{L}\p{M}])' . $other . '(?![\p{L}\p{M}])/iu', $s) === 1) {
+            $s = (string) preg_replace('/^\s*(?:ek\s*jana|euta|pahilo|pehla|pahla|first|एक\s*जना|पहिलो|पहला)(?:\s+(?:ko|ka|को|का))?(?:\s+(?:naam|name|नाम))?\s*[:\-]?\s*/iu', '', $s);
+            $s = (string) preg_replace('/(?<=[\p{L}\p{M}])(?:\s+(?:ho|hun|hu|hoon|hai|हो|हुँ|है))?(?:\s*[,;।]\s*|\s+)(?:(?:ani|ra|aur|and|अनि|र|और)\s+)?(?<![\p{L}\p{M}])' . $other
+                . '(?![\p{L}\p{M}])(?:\s+(?:jana|wala|wali|ko|ka|ki|को|का|की))?(?:\s+(?:naam|name|नाम))?(?:\s+(?:chai|chahi|चाहिँ|is))?\s*[:\-]?\s*(?=\p{L})/iu', ', ', $s);
+        }
         $s = (string) preg_replace('/\s+(?:ho|hun|hu|hoon|hai|hain|ho\s*ni|हो|हुँ|हूँ|है)\s*[.!।🙏]*\s*$/iu', '', $s);
         return trim($s) !== '' ? trim($s) : trim($t);
     }
@@ -2695,6 +2820,48 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         return $g === 'Female' ? ' ♀' : ($g === 'Male' ? ' ♂' : '');
     }
 
+    /** 31 Oct 2026 (leftover f): the travellers named so far — the party, or the one booking name. */
+    private static function partyBase(array $slots): array
+    {
+        $base = self::partyForSale($slots);
+        if ($base === [] && trim((string) ($slots['name'] ?? '')) !== '') {
+            $base = [['name' => trim((string) $slots['name']), 'age' => null]];
+        }
+        return $base;
+    }
+
+    private static function partyLine(array $slots): string
+    {
+        $names = array_map(static fn(array $p): string => (string) $p['name'], self::partyBase($slots));
+        return $names !== [] ? implode(', ', $names) : '—';
+    }
+
+    /**
+     * 31 Oct 2026 (usability leftover d): the line under an answer to an unrelated question ("driver ko number", "bus kaha
+     * pugyo", "office kaha cha") asked while this chat's booking is open — the booking waits, nothing was booked, and the
+     * question it was waiting on. '' when no booking is open.
+     */
+    public static function waitingNote(string $phoneDigits): string
+    {
+        $st = $phoneDigits !== '' ? self::load($phoneDigits) : null;
+        if ($st === null) {
+            return '';
+        }
+        $lang = (string) ($st['lang'] ?? '') !== '' ? (string) $st['lang'] : 'ne';
+        $slots = is_array($st['slots'] ?? null) ? $st['slots'] : [];
+        $awaiting = (string) ($st['awaiting'] ?? '');
+        if ($awaiting === 'confirm') {
+            return "\n\n" . self::say('summaryWaits', $lang);
+        }
+        $ask = '';
+        if ($awaiting === 'name') {
+            $paxN = max(1, (int) ($slots['seats'] ?? 1));
+            $ask = !empty($slots['_addNames']) ? sprintf(self::say('askExtraNames', $lang), (int) $slots['_addNames'], self::partyLine($slots))
+                : ($paxN > 1 ? sprintf(self::say('askNames', $lang), $paxN) : self::say('askName', $lang));
+        }
+        return "\n\n" . self::say('orderWaits', $lang) . ($ask !== '' ? "\n" . $ask : '');
+    }
+
     private static function partyForSale(array $slots): array
     {
         $party = is_array($slots['party'] ?? null) ? $slots['party'] : [];
@@ -2859,7 +3026,8 @@ Example: Ram Bahadur 35, Sita Gurung 30",
 
     public static function isNo(string $t): bool
     {
-        $t = mb_strtolower(trim($t));
+        // 31 Oct 2026 (usability leftover b): "no luggage" / "non AC nahi chahiyo" is a wish about the trip, not a no to it
+        $t = TicketBot::withoutPrefNegation(mb_strtolower(trim($t)));
         foreach ([
             'no', 'n', 'nope', 'nahi', 'nai', 'haina', 'hoina', 'chaidaina', 'pardaina',
             'nachahine', 'rahana deu', 'napathau',

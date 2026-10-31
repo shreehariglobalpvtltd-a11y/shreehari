@@ -18,10 +18,55 @@ require_once INCLUDE_PATH . '/agentpro.php';
 $admin = admin_boot();
 
 $counts = AgentPro::counts();
+
+/* 31 Oct 2026: AgentPro::counts() is company-wide, but this page opens for every signed-in role. The
+   booking figures follow the rule admin/bookings.php lists by: an agent sees only the tickets they sold
+   (Auth::bookingScopeAdminId()), a counter clerk only their desk when desk isolation is on
+   (Auth::deskScopeCode(), as admin/_booking_filters.php and admin/payments.php), the office the company. */
+$hubScopeId = Auth::bookingScopeAdminId();
+$hubDesk    = null;
+if ($hubScopeId === null) {
+    require_once INCLUDE_PATH . '/counterdesk.php';
+    $d = Auth::deskScopeCode();
+    $hubDesk = ($d !== null && CounterDesk::stampColumn()) ? $d : null;
+}
+$hubCount = static function (string $statusSql, bool $todayOnly) use ($hubScopeId, $hubDesk): int {
+    $where  = [$statusSql];
+    $params = [];
+    if ($todayOnly) {
+        $where[] = 'DATE(b.created_at) = CURDATE()';
+    }
+    if ($hubScopeId !== null) {
+        $where[] = 'b.sold_by_admin_id = :hubScope';
+        $params['hubScope'] = $hubScopeId;
+    } elseif ($hubDesk !== null) {
+        $where[] = CounterDesk::scopeClause('b', 'hubDesk');
+        $params['hubDesk'] = $hubDesk;
+    }
+    try {
+        return (int) Database::scalar('SELECT COUNT(*) FROM bookings b WHERE ' . implode(' AND ', $where), $params, 0);
+    } catch (Throwable $e) {
+        return 0;
+    }
+};
+if ($hubScopeId !== null || $hubDesk !== null) {
+    $counts['todayTickets'] = $hubCount("b.status IN ('confirmed','completed')", true);
+    $counts['pendingPay']   = $hubCount("b.status = 'pending'", false);
+}
+/* An agent never sees the office's queues, even if a permission override hands them the box. */
+if ($hubScopeId !== null) {
+    foreach (['applications', 'withdrawals', 'deposits', 'agents', 'staff', 'kycWaiting', 'aiQueue', 'waLinks'] as $k) {
+        $counts[$k] = 0;
+    }
+}
 $failedWa = 0;
 try {
     $failedWa = (int) Database::scalar("SELECT COUNT(*) FROM message_logs WHERE channel = 'whatsapp' AND status = 'failed' AND created_at >= CURDATE()", [], 0);
 } catch (Throwable $e) {
+}
+/* 31 Oct 2026 (review): the failed-WhatsApp count is a company figure - never an agent's. */
+if ($hubScopeId !== null) {
+    $failedWa = 0;
 }
 
 /* What each category is for — one line, plain words. */
@@ -83,12 +128,13 @@ echo '<link rel="stylesheet" href="/assets/agentpro/admin.css?v=' . (int) @filem
   <div class="cc-kpis">
     <?php
     $kpis = [
-        ['Tickets today', $counts['todayTickets'], '/admin/bookings.php', 'bookings.view', false],
-        ['Payments to verify', $counts['pendingPay'], '/admin/payments.php', 'payments.view', $counts['pendingPay'] > 0],
+        [$hubScopeId !== null ? 'My tickets today · मेरो आजको टिकट' : ($hubDesk !== null ? 'Desk tickets today · काउन्टरको आजको टिकट' : 'Tickets today'),
+            $counts['todayTickets'], '/admin/bookings.php', 'bookings.view', false],
+        [$hubScopeId !== null ? 'My payments to verify · मेरो भुक्तानी जाँच' : 'Payments to verify', $counts['pendingPay'], '/admin/payments.php', 'payments.view', $counts['pendingPay'] > 0],
         ['New applications', $counts['applications'], '/admin/team.php?tab=approvals', 'commissions.view', $counts['applications'] > 0],
         ['Withdrawals', $counts['withdrawals'], '/admin/team.php?tab=money', 'commissions.view', $counts['withdrawals'] > 0],
         ['Payments in', $counts['deposits'], '/admin/team.php?tab=money', 'commissions.view', $counts['deposits'] > 0],
-        ['Live buses', $counts['liveBuses'], '/admin/live-fleet.php', 'schedules.view', false],
+        ['Live buses', $counts['liveBuses'], '/admin/map.php', 'schedules.view', false],
         ['Active agents', $counts['agents'], '/admin/team.php?tab=agents', 'commissions.view', false],
     ];
     foreach ($kpis as [$label, $n, $href, $perm, $hot]):

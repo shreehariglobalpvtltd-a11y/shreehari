@@ -217,6 +217,17 @@ final class ApWa
                     if (($r = self::withLearnTag($p['learn'] ?? null, fn() => self::bookStep($p, $text, $member, $ctx, $lang))) !== null) {
                         return $r;
                     }
+                } elseif ($yes && ($p['kind'] ?? '') === 'sale' && (string) ($p['sale']['ask'] ?? '') !== '') {
+                    /* 31 Oct 2026 (usability leftovers a + f): the desk asked for one value ("kun miti?", the added
+                       traveller's name) — a yes is not that value. The added name is always needed first; for a part
+                       said to be wrong the yes is asked once more, then the quote as shown stands for the NEXT yes. */
+                    $sale = (array) $p['sale'];
+                    $ask = (string) $sale['ask'];
+                    if ($ask !== 'names') {
+                        unset($sale['ask']);
+                        self::setPending($phone, 'sale', ['sale' => $sale] + (is_array($p['learn'] ?? null) ? ['learn' => $p['learn']] : []));
+                    }
+                    return self::out(self::t($ask === 'names' ? 'sale_names_first' : 'sale_ask_first', $lang, ['q' => self::askLine($sale, $ask, $lang)]));
                 } elseif ($yes) {
                     if (!self::claimPending($phone, (string) $state['raw'])) {
                         return self::out(self::t('nothing_pending', $lang));     // the other CONFIRM took it
@@ -704,10 +715,14 @@ final class ApWa
         ] : [
             'ne' => $count(['cha', 'chha', 'xa', 'chaina', 'mero', 'malai', 'hamilai', 'kati', 'chahiyo', 'chaiyo', 'garnu', 'garnus', 'garidinu', 'tapai', 'hunchha', 'huncha', 'bholi', 'parsi', 'bata', 'samma', 'hola', 'kaha', 'pathaunu', 'pathaidinu', 'bhayo', 'thiyo', 'jana', 'paisa', 'baki', 'dinus', 'paryo',
                             // 31 Oct 2026 (counter sim: "aajako hisab dekhau" was answered in English)
-                            'aaja', 'aajako', 'hisab', 'hisaab', 'dekhau', 'dekhaunu', 'dekhaideu', 'pathau', 'deu', 'dinu', 'kasko', 'kun', 'lai', 'gareko', 'garyo', 'milena', 'chahidaina', 'pardaina']),
+                            'aaja', 'aajako', 'hisab', 'hisaab', 'dekhau', 'dekhaunu', 'dekhaideu', 'pathau', 'deu', 'dinu', 'kasko', 'kun', 'lai', 'gareko', 'garyo', 'milena', 'chahidaina', 'pardaina',
+                            // 31 Oct 2026 (usability leftover c: "upi chalcha?" was answered in English)
+                            'chalcha', 'chalchha', 'chalxa', 'milcha', 'milchha', 'milxa', 'paincha', 'painchha', 'pugyo', 'kina', 'thapnu', 'arko', 'kahile']),
             'hi' => $count(['hai', 'hain', 'mera', 'meri', 'mujhe', 'humein', 'kitna', 'kitne', 'chahiye', 'chaiye', 'karo', 'kijiye', 'aap', 'aapka', 'nahi', 'nahin', 'hoon', 'kal', 'parso', 'se', 'tak', 'kya', 'kahan', 'jaana', 'bhejo', 'batao', 'tha', 'log',
                             // 31 Oct 2026 (owner sim: "aaj kitne ticket bike?" was answered in English)
-                            'aaj', 'bike', 'bika', 'bikey', 'kaise', 'karu', 'karun', 'dikhao', 'kaun', 'kab', 'kaam']),
+                            'aaj', 'bike', 'bika', 'bikey', 'kaise', 'karu', 'karun', 'dikhao', 'kaun', 'kab', 'kaam',
+                            // 31 Oct 2026 (agent sim: "kal 2 ticket nikal do …" / "haan ticket bana do" were answered in Nepali)
+                            'haan', 'nikal', 'nikalo', 'nikaldo', 'banado', 'kaatdo', 'dijiye', 'kardo', 'dena', 'chalega', 'milega', 'milegi', 'jayega']),
             'en' => $count(['the', 'is', 'are', 'my', 'me', 'what', 'where', 'when', 'please', 'want', 'need', 'book', 'seats', 'tomorrow', 'today', 'send', 'how', 'much', 'can', 'you', 'ticket', 'from', 'to', 'for', 'change', 'cancel', 'thanks', 'thank', 'hello', 'i']),
         ];
         arsort($sc);
@@ -1034,10 +1049,18 @@ final class ApWa
                 if ((string) $sale['date'] === '' || (string) $sale['boarding'] === '') {
                     return self::bookStart($member, $ctx, $lang, $sale);
                 }
-                return self::saleQuote($sale, $member, $ctx, $lang);
+                return self::saleQuote($sale, $member, $ctx, $lang, self::asksAvailability($text));
             }
         }
         return null;
+    }
+
+    /** 31 Oct 2026 (leftover g): "1 seat bholi Surat Ram Thapa 98… milcha?" — the sale line ASKS, it does not order. */
+    private static function asksAvailability(string $text): bool
+    {
+        $l = mb_strtolower(trim($text));
+        return str_contains($l, '?') || str_contains($l, '？')
+            || preg_match('/(?<![\p{L}\p{M}])(?:milcha|milchha|milxa|milla|painchha|paincha|paaincha|paainchha|milega|milegi|mil\s*jayega|mil\s*jaegi|mil\s*sakta|available|khali\s*(?:cha|chha|xa|hai)|(?:cha|chha|xa)\s*ki|hai\s*kya|होला|मिल्छ|पाइन्छ|मिलेगा|मिलेगी)\s*[.!।]*$/u', $l) === 1;
     }
 
     /* ---------------- sentences → commands (31 Oct 2026) ---------------- */
@@ -3340,7 +3363,7 @@ final class ApWa
         ];
     }
 
-    private static function saleQuote(array $sale, array $member, array $ctx, string $lang): array
+    private static function saleQuote(array $sale, array $member, array $ctx, string $lang, bool $asked = false): array
     {
         if ($ctx['role'] === 'member' || !Settings::getBool('ap_wa_sell', true)) {
             return self::out(self::t('no_permission', $lang));
@@ -3382,7 +3405,8 @@ final class ApWa
                          // round 3: the berths as printed, for "seat kun kun ho?" while the quote waits (pendingAsk)
                          'labels' => Seats::displayLabels(array_map('strval', (array) $plan['seats']), (string) ($plan['coach'] ?? 'sleeper'), (string) ($plan['bookingMode'] ?? 'sharing'))];
         self::setPending($ctx['phone'], 'sale', ['sale' => $sale]);
-        $text = self::t('sale_quote', $lang, [
+        // 31 Oct 2026 (leftover g): a sale line that ASKED ("… milcha?") is answered "yes, available" — not quoted as if ordered
+        $text = self::t($asked ? 'sale_avail' : 'sale_quote', $lang, [
             'date' => (string) $plan['dateLabel'], 'dep' => substr((string) $plan['depTime'], 0, 5),
             'route' => $plan['from'] . ' → ' . $plan['to'], 'pickup' => (string) $plan['boardingName'],
             'ptime' => substr((string) $plan['boardingTime'], 0, 5),
@@ -3401,7 +3425,7 @@ final class ApWa
         if ($need !== []) {
             $text .= "\n\n" . self::t('sale_need', $lang, ['what' => implode(' + ', $need)]);
         } else {
-            $text .= "\n\n" . self::t('sale_ask_yes', $lang);
+            $text .= "\n\n" . self::t($asked ? 'sale_avail_ask' : 'sale_ask_yes', $lang);
         }
         return self::out($text);
     }
@@ -3497,13 +3521,38 @@ final class ApWa
         $plan = (array) ($sale['plan'] ?? []);
         $who = trim(((array) ($sale['names'] ?? []) !== [] ? implode(', ', (array) $sale['names']) : (string) ($sale['name'] ?? '')) . ' ' . (string) ($sale['phone'] ?? ''));
         $date = (string) ($plan['date'] ?? ($sale['date'] ?? ''));
-        return self::t('sale_waiting', $lang, [
+        // 31 Oct 2026 (leftovers a + f): the one value the desk asked for comes first
+        $first = (string) ($sale['ask'] ?? '') !== '' ? self::askLine($sale, (string) $sale['ask'], $lang) . "\n\n" : '';
+        return $first . self::t('sale_waiting', $lang, [
             'who' => $who !== '' ? $who : '—',
             'date' => $date !== '' && Security::isValidDate($date) ? formatDate($date, 'D, j M') : $date,
             'n' => (string) (int) ($plan['seats'] ?? ($sale['seats'] ?? 1)),
             'seats' => (string) ($plan['labels'] ?? '') !== '' ? ' (' . $plan['labels'] . ')' : '',
             'total' => isset($plan['total']) ? inr((float) $plan['total']) : '—',
         ]);
+    }
+
+    /** 31 Oct 2026 (leftovers a + f): the one value a waiting quote is asked for, in the chat's language. */
+    private static function askLine(array $sale, string $field, string $lang): string
+    {
+        $lang = in_array($lang, ['ne', 'hi', 'en'], true) ? $lang : 'ne';
+        if ($field === 'names') {
+            $have = (array) ($sale['names'] ?? []) !== [] ? implode(', ', (array) $sale['names']) : trim((string) ($sale['name'] ?? ''));
+            $n = max(1, (int) ($sale['addNames'] ?? 1));
+            return ['ne' => '👤 थपिएको ' . $n . ' जनाको नाम? (पहिले नै: ' . ($have !== '' ? $have : '—') . ') — जस्तै *naam Sita Thapa*',
+                'hi' => '👤 जोड़े गए ' . $n . ' यात्री का नाम? (पहले से: ' . ($have !== '' ? $have : '—') . ') — जैसे *naam Sita Thapa*',
+                'en' => '👤 The name of the ' . $n . ' added traveller(s)? (already: ' . ($have !== '' ? $have : '—') . ') — e.g. *naam Sita Thapa*'][$lang];
+        }
+        return match ($field) {
+            'date' => ['ne' => '📅 कुन मिति? · which date? (जस्तै *bholi*, *parsi*, *5 Nov*)', 'hi' => '📅 कौन सी तारीख? · which date? (जैसे *kal*, *parso*, *5 Nov*)',
+                'en' => '📅 Which date? (e.g. *tomorrow*, *5 Nov*)'][$lang],
+            'seats' => ['ne' => '💺 कति सिट? · how many seats? (जस्तै *2 seat*)', 'hi' => '💺 कितनी सीट? · how many seats? (जैसे *2 seat*)',
+                'en' => '💺 How many seats? (e.g. *2 seat*)'][$lang],
+            'boarding' => ['ne' => '📍 कहाँबाट चढ्ने? · which pickup? (जस्तै *Surat*, *Baroda*)', 'hi' => '📍 कहाँ से चढ़ना है? · which pickup? (जैसे *Surat*, *Baroda*)',
+                'en' => '📍 Which pickup? (e.g. *Surat*, *Baroda*)'][$lang],
+            default => ['ne' => '👤 यात्रुको सही नाम? · the right name? (जस्तै *naam Sita Thapa*)', 'hi' => '👤 यात्री का सही नाम? · the right name? (जैसे *naam Sita Thapa*)',
+                'en' => '👤 The right passenger name? (e.g. *naam Sita Thapa*)'][$lang],
+        };
     }
 
     /** While a quote waits: "Ram Thapa 98…", "names …", "upi", "parsi", "Mehsana", "3 seat" fill it in. */
@@ -3522,6 +3571,64 @@ final class ApWa
         }
         // round 3 (agent sim: "ho, naam Sita Thapa" got the menu): a yes-word in front of a correction is not the yes
         $text = (string) preg_replace('/^\s*(?:ho|hoo|ha|haan|han|ok|okay|yes|thik\s*cha|theek\s*hai|हो|हाँ)\s*[,.:;-]+\s*(?=(?:naam|name|names|नाम)(?![\p{L}\p{M}]))/iu', '', $text);
+        $ask = (string) ($sale['ask'] ?? '');
+        /* 31 Oct 2026 (usability leftover b: "non AC nahi chahiyo" / "no luggage" on a waiting quote were read as a name
+           change): a "no" aimed at a THING of the trip is a wish — noted, the quote waits as it was. Whatever else the line
+           says (a day, a name) is still read. */
+        $rest = TicketBot::withoutPrefNegation($text);
+        if ($rest !== mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $text)))) {
+            if (array_diff(self::fillerTokens($rest), self::FILLER) === []) {
+                return self::out(self::t('sale_pref_noted', $lang) . "\n\n" . self::pendingAsk($pending, $lang));
+            }
+            $text = $rest;
+        }
+        /* 31 Oct 2026 (usability leftover f): "arko 1 jana thapnu" / "one more seat" on a waiting quote — one more seat, and
+           the added traveller's name is asked for before any "ho" can issue it (the yes is refused until it comes). */
+        $more = TicketBot::extraSeats($text);
+        if ($more > 0) {
+            $have = (array) ($sale['names'] ?? []) !== [] ? array_values((array) $sale['names'])
+                : (mb_strlen(trim((string) ($sale['name'] ?? ''))) >= 2 ? [trim((string) $sale['name'])] : []);
+            $sale['names'] = $have;
+            $sale['seats'] = max(count($have), (int) ($sale['seats'] ?? 1)) + $more;
+            $sale['ask'] = 'names';
+            $sale['addNames'] = (int) ($ask === 'names' ? (int) ($sale['addNames'] ?? 0) : 0) + $more;
+            $r = self::saleQuote($sale, $member, $ctx, $lang);
+            return str_starts_with((string) $r['text'], '⚠️') ? $r
+                : self::out((string) $r['text'] . "\n\n" . self::t('sale_fix_ask', $lang, ['q' => self::askLine($sale, 'names', $lang)]));
+        }
+        // …and the added traveller's name, when it comes ("Sita Thapa", "naam Sita Thapa", "Sita Thapa ra Gita Thapa")
+        if ($ask === 'names') {
+            $line = trim((string) preg_replace('/^\s*(?:naam|nam|name|names|नाम)\s*[:\-]?\s*/iu', '', trim((string) preg_replace('/\+?\d[\d\s-]{8,}\d/', ' ', $text))));
+            $new = self::nameList($line);
+            if ($new === []) {
+                $one = self::nameLine($line, TicketBot::parse($line));
+                $new = $one !== '' && !self::isQuestion(mb_strtolower($line)) ? [$one] : [];
+            }
+            $new = array_values(array_filter($new, static fn(string $n): bool => PersonName::clean($n) !== ''));
+            if ($new !== []) {
+                $want = max(1, (int) ($sale['addNames'] ?? 1));
+                $names = array_merge((array) ($sale['names'] ?? []), array_slice($new, 0, $want));
+                $sale['names'] = count($names) >= 2 ? $names : [];
+                $sale['name'] = $names[0];
+                $left = $want - min($want, count($new));
+                if ($left > 0) {
+                    $sale['addNames'] = $left;
+                } else {
+                    unset($sale['ask'], $sale['addNames']);
+                }
+                $r = self::saleQuote($sale, $member, $ctx, $lang);
+                return $left > 0 ? self::out((string) $r['text'] . "\n\n" . self::t('sale_fix_ask', $lang, ['q' => self::askLine($sale, 'names', $lang)])) : $r;
+            }
+        }
+        /* 31 Oct 2026 (usability leftover a: "ho tara date galat cha" / "date galat bhayo" on a waiting quote re-showed the
+           waiting card): a part said to be wrong WITHOUT the new value — that one value is asked for; the quote waits and
+           the next "ho" alone does not issue it (it is asked once more). The value, when it comes, re-quotes as before. */
+        $fixField = TicketBot::fixWithoutValue($text);
+        if ($fixField !== '' && $ask !== 'names') {
+            $sale['ask'] = $fixField;
+            self::setPending($ctx['phone'], 'sale', ['sale' => $sale]);
+            return self::out(self::t('sale_fix_ask', $lang, ['q' => self::askLine($sale, $fixField, $lang)]));
+        }
         /* round 3 (agent sim: "upi ma pathaucha", "esewa bata pathaunchu", "gpay cha", "ho tara upi ma" DROPPED the quote
            and showed the company's pay-in card): on a waiting quote a short line that names how the passenger pays sets
            the pay mode — never the company's UPI card, never a name. "company ko UPI id pathau" is still the card. */
@@ -3556,6 +3663,10 @@ final class ApWa
         $explicitName = false;
         if (preg_match('/^(?:names?|naam(?:haru)?|नामहरू|नाम)\s*[:\-]?\s*(.+)$/iu', $text, $m) === 1) {
             $explicitName = true;
+            // leftover e: "naam Ram Thapa ho, arko Sita Thapa" — two travellers (never one called "arko Sita Thapa")
+            // 31 Oct 2026 (review): "arko / aru / other" only as a WORD - never inside "Tarun", "Charu" or "mother"
+            $m[1] = (string) preg_replace('/(?<=[\p{L}\p{M}])(?:\s+(?:ho|hun|hu|hai|हो|है))?(?:\s*[,;।]\s*|\s+)(?:(?:ani|ra|aur|and)\s+)?(?<![\p{L}\p{M}])(?:arko|aru|dusro|dosro|dusra|doosra|another|other|second|अर्को|दोस्रो|दूसरा)(?![\p{L}\p{M}])(?:\s+(?:jana|ko|ka|ki))?(?:\s+(?:naam|name|नाम))?\s*[:\-]?\s*(?=\p{L})/iu', ', ', $m[1]);
+            $m[1] = (string) preg_replace('/\s+(?:ho|hai|हो|है)\s*[.!।]*\s*$/iu', '', $m[1]);
             $list = array_values(array_filter(array_map(static fn(string $n): string => self::cleanName(trim($n)),
                 preg_split('/\s*(?:,|;|&|\band\b|\bra\b|\baur\b|र|और)\s*/u', (string) preg_replace('/\+?\d[\d\s-]{8,}\d/', ' ', $m[1])) ?: [])));
             // round 3: every name must be a name (PersonName) — "naam wait" / "naam utr" never replace the passenger
@@ -3641,7 +3752,7 @@ final class ApWa
             $nm = self::nameLine($text, $p);
             if ($nm !== '') {
                 $hasName = mb_strlen(trim((string) ($sale['name'] ?? ''))) >= 2;
-                if (!$hasName || (string) $p['phone'] !== '') {
+                if (!$hasName || (string) $p['phone'] !== '' || $ask === 'name') {   // leftover a: the name the desk asked for
                     $sale['name'] = $nm;
                     $sale['names'] = [];
                     $changed = true;
@@ -3652,6 +3763,9 @@ final class ApWa
         }
         if ($askName && !$changed) {
             return self::out(self::t('sale_name_how', $lang));
+        }
+        if ($changed && $ask !== 'names') {
+            unset($sale['ask']);                          // leftover a: the value asked for (or another change) came — a fresh quote
         }
         return $changed ? self::saleQuote($sale, $member, $ctx, $lang) : null;
     }
@@ -4424,6 +4538,13 @@ final class ApWa
             'card_tail'   => ['ne' => "✏️ बदल्न: *PNR नाम / pickup / seat / phone / date …* · ❌ *PNR cancel*", 'hi' => "✏️ बदलने के लिए: *PNR नाम / pickup / seat / phone / date …* · ❌ *PNR cancel*", 'en' => "✏️ To change: *PNR name / pickup / seat / phone / date …* · ❌ *PNR cancel*"],
             'no_permission' => ['ne' => "🔒 तपाईंको खाताले यो गर्न मिल्दैन — अफिसलाई सोध्नुहोस्।", 'hi' => "🔒 आपके खाते से यह नहीं हो सकता — ऑफिस से पूछें।", 'en' => "🔒 Your account cannot do this — please ask the office."],
             'sale_quote'  => ['ne' => "🎫 कोटेसन (अझै बुक भएको छैन)\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} सिट: {seats} (बाँकी {left})\n👤 {who}\n💰 जम्मा *{total}*", 'hi' => "🎫 कोटेशन (अभी बुक नहीं हुआ)\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} सीट: {seats} (बाकी {left})\n👤 {who}\n💰 कुल *{total}*", 'en' => "🎫 Quote (nothing booked yet)\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} seat(s): {seats} ({left} left)\n👤 {who}\n💰 Total *{total}*"],
+            // 31 Oct 2026 (usability leftovers a, f, g)
+            'sale_pref_noted' => ['ne' => '👍 ठिक छ, नोट गरें — कोटेसन जस्ताको तस्तै छ (टिकट काटिएको छैन):', 'hi' => '👍 ठीक है, नोट किया — कोटेशन वैसा ही है (टिकट नहीं कटा):', 'en' => '👍 Noted — the quote is unchanged (no ticket issued):'],
+            'sale_fix_ask' => ['ne' => "👍 ठिक छ — कोटेसन राखेको छु, टिकट काटिएको छैन।\n{q}", 'hi' => "👍 ठीक है — कोटेशन रखा है, टिकट नहीं कटा।\n{q}", 'en' => "👍 OK — the quote is kept, no ticket issued.\n{q}"],
+            'sale_ask_first' => ['ne' => "✋ टिकट काटिएको छैन — पहिले यो भन्नुहोस्:\n{q}\n(माथिकै कोटेसन ठिक भए फेरि *ho* लेख्नुहोस्।)", 'hi' => "✋ टिकट नहीं कटा — पहले यह बताइए:\n{q}\n(ऊपर वाला कोटेशन ही ठीक हो तो फिर से *ha* लिखिए।)", 'en' => "✋ No ticket issued — first tell me:\n{q}\n(If the quote above is right after all, send *yes* again.)"],
+            'sale_names_first' => ['ne' => "✋ टिकट काटिएको छैन — थपिएको यात्रुको नाम चाहियो:\n{q}", 'hi' => "✋ टिकट नहीं कटा — जोड़े गए यात्री का नाम चाहिए:\n{q}", 'en' => "✋ No ticket issued — the added traveller's name is needed first:\n{q}"],
+            'sale_avail'  => ['ne' => "✅ हो, सिट पाइन्छ — अझै बुक गरिएको छैन\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} सिट: {seats} (बाँकी {left})\n👤 {who}\n💰 जम्मा *{total}*", 'hi' => "✅ हाँ, सीट मिल जाएगी — अभी बुक नहीं किया\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} सीट: {seats} (बाकी {left})\n👤 {who}\n💰 कुल *{total}*", 'en' => "✅ Yes, seats are available — nothing booked yet\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} seat(s): {seats} ({left} left)\n👤 {who}\n💰 Total *{total}*"],
+            'sale_avail_ask' => ['ne' => "काट्ने हो भने *ho* लेख्नुहोस् (नाम / नम्बर फरक भए पहिले पठाउनुहोस्)।", 'hi' => "काटना है तो *ha* लिखिए (नाम / नंबर अलग हो तो पहले भेजिए)।", 'en' => "Want it issued? Reply *yes* (send a different name / number first if needed)."],
             'sale_ask_yes'=> ['ne' => "टिकट काट्ने भए *ho* वा *CONFIRM* लेख्नुहोस्। (UPI भए *upi*, धेरै नाम: *names Ram, Sita*)", 'hi' => "टिकट काटना है तो *ha* या *CONFIRM* लिखें। (UPI हो तो *upi*, कई नाम: *names Ram, Sita*)", 'en' => "Reply *yes* or *CONFIRM* to issue. (UPI: *upi*; several travellers: *names Ram, Sita*)"],
             'sale_need'   => ['ne' => "✍️ अझै चाहियो: {what}। जस्तै: *Ram Thapa 98XXXXXXXX*", 'hi' => "✍️ अभी चाहिए: {what}। जैसे: *Ram Thapa 98XXXXXXXX*", 'en' => "✍️ Still needed: {what}. E.g. *Ram Thapa 98XXXXXXXX*"],
             'sale_done'   => ['ne' => "✅ टिकट काटियो! PNR *{pnr}*\n💺 {seats} · {total}\n{sent}{tail}", 'hi' => "✅ टिकट कट गया! PNR *{pnr}*\n💺 {seats} · {total}\n{sent}{tail}", 'en' => "✅ Ticket issued! PNR *{pnr}*\n💺 {seats} · {total}\n{sent}{tail}"],

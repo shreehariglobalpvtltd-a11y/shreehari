@@ -45,11 +45,25 @@
      "Share → Add to Home Screen" sheet instead. Dismissed = quiet for
      30 days; installed = never again.
   ================================================================ */
+  /* 31 Oct 2026 (owner: "home page ma ticket booking matra"): a customer's
+     FIRST visit never gets the sheet now - not even after 25 s. A customer
+     sees it only (a) a few seconds after a completed booking, on the ticket
+     screen, or (b) on a later visit (a new browser session), on the home or
+     My trips screen. A visit is counted once per session, so a reload is not
+     a "later visit". Signed-in staff (SHG_BOOT.staff: counter, agent, office)
+     keep the old timing. The menu's Install button (SHGInstall.show) works
+     any time for everyone. */
   var SHGInstall = (function () {
-    var DKEY = 'shg:installDismiss', VKEY = 'shg:visits';
-    var deferred = null, shown = false;
-    var visits = (parseInt(lsGet(VKEY) || '0', 10) || 0) + 1;
-    lsSet(VKEY, String(visits));
+    var DKEY = 'shg:installDismiss', VKEY = 'shg:visits', BKEY = 'shg:installBooked';
+    var deferred = null, shown = false, afterBookingTimer = 0;
+    var visits = parseInt(lsGet(VKEY) || '0', 10) || 0;
+    var newSession = true;
+    try { newSession = !sessionStorage.getItem('shg:visitSeen'); sessionStorage.setItem('shg:visitSeen', '1'); } catch (e) {}
+    if (newSession) { visits += 1; lsSet(VKEY, String(visits)); }
+    var isStaff = function () { try { return !!(window.SHG_BOOT && window.SHG_BOOT.staff); } catch (e) { return false; } };
+    var booked = function () { return !!lsGet(BKEY); };
+    // May the sheet open by itself on the home screen right now?
+    var eligible = function () { return isStaff() || visits >= 2 || booked(); };
 
     function quiet() {
       if (isStandalone()) return true;
@@ -80,7 +94,7 @@
       beacon('install_prompt', { source: deferred ? 'android' : 'ios' });
     }
     function head() {
-      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261031a" alt="" width="52" height="52">'
+      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261031b" alt="" width="52" height="52">'
         + '<div><b>' + E(T('pwaInstallT')) + '</b><small>' + E(T('pwaInstallP')) + '</small></div></div>';
     }
     function showAndroid() {
@@ -113,32 +127,65 @@
     function shareIcon() {
       return '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 3l4 4h-3v8h-2V7H8l4-4zm-7 9h2v7h10v-7h2v9H5v-9z"/></svg>';
     }
+    var showAny = function () { if (deferred) showAndroid(); else showIOS(); };
+    // Not on top of the checkout: the automatic sheet waits for the home / My trips screen.
+    var laterHome = function () {
+      if (quiet() || shown) return;
+      var h = location.hash || '#/';
+      if (h === '#/' || h === '#/my') showAny(); else setTimeout(laterHome, 15000);
+    };
     window.addEventListener('beforeinstallprompt', function (e) {
       e.preventDefault(); deferred = e;
       if (quiet()) return;
-      // Not on top of the checkout: the sheet waits for the home screen.
-      var later = function () {
-        var h = location.hash || '#/';
-        if (h === '#/' || h === '#/my') showAndroid(); else setTimeout(later, 15000);
-      };
-      /* 20 Sep 2026 (brief P5): was a flat 4 s, so a first-time visitor on
-         Android - which is nearly everyone on this route - got a modal over
-         the booking form before they had read it or typed anything. iOS has
-         waited since the sheet was written ("never on first paint"); Android
-         now follows the same rule: 25 s on the first visit, 6 s after that. */
-      setTimeout(later, visits >= 2 ? 6000 : 25000);
+      /* 20 Sep 2026 (brief P5): 25 s on the first visit, 6 s after that.
+         31 Oct 2026: a customer's first visit waits for a booking instead
+         (afterBooking below) - only staff keep the 25 s first-visit timer. */
+      if (visits >= 2 || booked()) setTimeout(laterHome, 6000);
+      else if (isStaff()) setTimeout(laterHome, 25000);
+      // else: a customer's first visit - afterBooking() offers it once the ticket is out.
     });
     window.addEventListener('appinstalled', function () {
       lsDel(DKEY); hide(); say('✅ ' + T('pwaDone'));
       beacon('install_prompt', { ok: true, source: 'installed' });
     });
-    // iOS: second visit or 25 s of use, whichever comes first — never on first paint.
-    if (isIOSSafari && !isStandalone() && !quiet()) {
-      setTimeout(function () { if ((location.hash || '#/') === '#/') showIOS(); }, visits >= 2 ? 6000 : 25000);
+    // iOS: a later visit (or staff after 25 s) — never on a customer's first paint.
+    if (isIOSSafari && !isStandalone() && !quiet() && eligible()) {
+      setTimeout(laterHome, (visits >= 2 || booked()) ? 6000 : 25000);
     }
+    /* After a completed booking: remember it (so the next visit may offer the
+       sheet too) and, ~8 s after the ticket screen opens, offer it once - the
+       passenger has their ticket, and "ticket offline on your phone" is the
+       pitch. Never on a counter/agent sale: that screen belongs to a staff
+       member selling to someone else. */
+    function afterBooking() {
+      if (isStaff()) return;
+      lsSet(BKEY, String(Date.now()));
+      if (afterBookingTimer || shown || quiet()) return;
+      afterBookingTimer = setTimeout(function () {
+        afterBookingTimer = 0;
+        var h = location.hash || '#/';
+        if (quiet() || shown) return;
+        // 31 Oct 2026 (review): SmartBook's ticket sits on #/?ticket=<PNR> (27-smartbook showTicket).
+        if (h.indexOf('#/ticket/') === 0 || h.indexOf('#/?ticket=') === 0 || h === '#/' || h === '#/my') showAny();
+        else setTimeout(laterHome, 15000);
+      }, 8000);
+    }
+    // A sale this browser just made lands on #/ticket/<PNR> with SHG_JUST_BOOKED set (07-checkout, 05-router).
+    function watchTicket() {
+      try {
+        var h = location.hash || '';
+        if (h.indexOf('#/ticket/') !== 0) return;
+        var jb = window.SHG_JUST_BOOKED;
+        var pnr = decodeURIComponent(h.slice(9).split(/[?&]/)[0] || '');
+        if (jb && jb.pnr && String(jb.pnr) === pnr && (Date.now() - (+jb.at || 0)) < 10 * 60000) afterBooking();
+      } catch (e) {}
+    }
+    window.addEventListener('hashchange', watchTicket);
+    watchTicket();
     return {
       available: function () { return !!deferred || (isIOSSafari && !isStandalone()); },
       show: function () { if (deferred) { shown = false; showAndroid(); } else if (isIOSSafari) { shown = false; showIOS(); } else say(T('pwaNotNow')); },
+      afterBooking: afterBooking,
       hide: hide
     };
   })();

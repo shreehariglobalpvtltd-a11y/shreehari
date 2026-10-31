@@ -150,8 +150,8 @@ final class WaLogin
                 /* Swallow the password even when the door is shut — the
                    message must not travel on to the model or a draft. */
                 if ($cmd['cmd'] === 'login' || $cmd['cmd'] === 'help') {
-                    return self::out("🔒 WhatsApp लगइन अहिले बन्द छ। कृपया वेबसाइटको एजेन्ट पोर्टलबाट साइन इन गर्नुहोस्: "
-                        . appUrl('admin/login.php?portal=agent') . "\n"
+                    return self::out("🔒 WhatsApp लगइन अहिले बन्द छ। कृपया वेबसाइटबाट साइन इन गर्नुहोस् · WhatsApp sign-in is off; please sign in on the website: "
+                        . self::doorLine() . "\n"
                         . (self::mentionsSecret($cmd) ? "सुरक्षाका लागि पासवर्ड भएको सन्देश मेटाउनुहोस्।" : ''));
                 }
                 return null;
@@ -179,7 +179,21 @@ final class WaLogin
             . "जस्तै: login SHG-0027 mypassword\n\n"
             . "पछि: logout लेखे बाहिर निस्किन्छ, \"ma ko hu\" लेखे को हो भनेर बताउँछ।\n"
             . "पासवर्ड पठाएपछि त्यो सन्देश मेटाउनुहोस्।"
+            . (Auth::oneDoorOn() ? "\n\n🌐 वेबसाइट · Website: " . self::doorLine() : '')
         );
+    }
+
+    /**
+     * 31 Oct 2026 (one door): the website sign-in these replies point to. Switch on (default): the ONE
+     * page admin/login.php - "mobile number or ID", then WhatsApp "hi" or the 6-digit code, or the
+     * password. Switch off: the old agent portal link, exactly as before.
+     */
+    private static function doorLine(): string
+    {
+        if (!Auth::oneDoorOn()) {
+            return appUrl('admin/login.php?portal=agent');
+        }
+        return appUrl('admin/login.php') . ' (मोबाइल नम्बर वा ID → WhatsApp "hi" / कोड वा पासवर्ड · mobile number or ID → WhatsApp "hi" / code or password)';
     }
 
     private static function login(string $key, string $phone, string $id, string $password): array
@@ -240,8 +254,8 @@ final class WaLogin
         }
 
         if ((int) ($admin['must_change_pw'] ?? 1) === 1) {
-            return self::out('🔑 पासवर्ड पहिले वेबसाइटमा बदल्नुपर्छ (अफिसले दिएको अस्थायी पासवर्ड हो)। यहाँबाट साइन इन गर्नुहोस्: '
-                . appUrl('admin/login.php?portal=agent') . ' — त्यसपछि WhatsApp मा फेरि login गर्नुहोस्।' . $deleteNote);
+            return self::out('🔑 पासवर्ड पहिले वेबसाइटमा बदल्नुपर्छ (अफिसले दिएको अस्थायी पासवर्ड हो) · Change the temporary password on the website first. यहाँबाट साइन इन गर्नुहोस्: '
+                . self::doorLine() . ' — त्यसपछि WhatsApp मा फेरि login गर्नुहोस्।' . $deleteNote);
         }
 
         /* The second factor. The registered mobile is the one place a code

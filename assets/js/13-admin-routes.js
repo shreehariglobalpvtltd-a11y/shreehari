@@ -381,17 +381,21 @@ const Splash = {
   }
 };
 
+/* 31 Oct 2026 (owner: "home page ma ticket booking matra"): a first visit is
+   quiet now. This used to pop the notification AND location prompts 2 s after
+   the splash on every first visit - before the passenger had seen a fare.
+   Nothing depended on it: every feature that needs a permission asks on its
+   own tap, at the moment it is needed -
+     notifications: the 🔔 boarding-reminder button and the delay-alert card on
+       the ticket after a booking (07-checkout, 17-pwa SHGPush, wireBoardingReminder
+       below), staff-chat alerts (admin/staff-chat.php);
+     location: Near me / My distance / Start live GPS / leave-by on the map and
+       results (06-results, 16-lazy, 27-smartbook, 10-track), SOS share location
+       (below), the driver/crew app's GPS (driver/index.php), the navigator.
+   Counter mode (14-counter.js) uses neither. Signed-in staff therefore lose
+   nothing; kept as a named no-op because the splash still calls it. */
 function requestStartupPermissions() {
-  if (localStorage.getItem('shg:permsAsked')) return;
-  localStorage.setItem('shg:permsAsked', '1');
-  setTimeout(function() {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(function() {}, function() {}, { timeout: 5000 });
-    }
-  }, 2000);
+  /* intentionally empty - see the note above */
 }
 
 
