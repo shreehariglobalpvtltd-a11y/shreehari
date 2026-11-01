@@ -164,6 +164,8 @@ if ($leg === null) {
 }
 
 $routeId       = (int) $leg['route_id'];
+// 31 Oct 2026: every bus of the rotation going the same way, not only this route.
+$routeIn       = implode(',', array_map('intval', Fleet::siblingRoutes($routeId)));
 $curScheduleId = (int) $leg['schedule_id'];
 $curDate       = (string) $leg['travel_date'];
 $curCoach      = (string) ($leg['cur_coach'] ?? 'sleeper');
@@ -192,12 +194,12 @@ $upcoming = Database::fetchAll(
             COUNT(*) AS buses,
             SUM(s.total_seats - s.seats_booked) AS free
        FROM schedules s
-      WHERE s.route_id = :r AND s.travel_date >= :today
+      WHERE s.route_id IN ($routeIn) AND s.travel_date >= :today
         AND s.is_blocked = 0 AND s.status <> 'cancelled'
       GROUP BY s.travel_date
       ORDER BY s.travel_date ASC
       LIMIT 45",
-    ['r' => $routeId, 'today' => todayISO()]
+    ['today' => todayISO()]
 );
 
 /* ---- Chosen target date → its departures → the chosen bus's seats ---
@@ -215,15 +217,15 @@ $openSeats      = [];
 $targetGate     = null;
 if ($targetDate !== '' && Security::isValidDate($targetDate)) {
     $departures = Database::fetchAll(
-        'SELECT s.id, s.slot, s.status,
+        'SELECT s.id, s.slot, s.status, s.route_id, r.route_code,
                 COALESCE(s.coach_type_override, r.coach_type) AS coach_type,
                 COALESCE(s.dep_time_override, r.dep_time)     AS dep_time,
                 (s.total_seats - s.seats_booked)              AS free
            FROM schedules s
            JOIN routes r ON r.id = s.route_id
-          WHERE s.route_id = :r AND s.travel_date = :d AND s.is_blocked = 0
+          WHERE s.route_id IN (' . $routeIn . ') AND s.travel_date = :d AND s.is_blocked = 0
           ORDER BY s.slot ASC, s.id ASC',
-        ['r' => $routeId, 'd' => $targetDate]
+        ['d' => $targetDate]
     );
     // Default to the first departure that is not the current trip.
     $ids = array_map(static fn($d) => (int) $d['id'], $departures);
@@ -240,7 +242,7 @@ if ($targetDate !== '' && Security::isValidDate($targetDate)) {
         $targetGate  = TripStatus::editableFor($targetSid);
         $targetCoach = Seats::coachForSchedule($targetSid);
         try {
-            $avail = Seats::availability($routeId, $targetDate, $bookingMode, $targetSid);
+            $avail = Seats::availabilityForSchedule($targetSid, $bookingMode);
             $openSeats = $avail['available'] ?? [];
             /* 15 Oct 2026 (1B-freeseats): hide the seats none of this booking's
                passengers may take — a women-only berth for an all-male party, a
@@ -272,7 +274,7 @@ if ($targetDate !== '' && Security::isValidDate($targetDate)) {
 function rsDepLabel(array $d): string
 {
     $t = substr((string) ($d['dep_time'] ?? ''), 0, 5);
-    return 'Bus ' . (int) ($d['slot'] ?? 1)
+    return (isset($d['route_code']) ? strtoupper((string) $d['route_code']) . ' · ' : '') . 'Bus ' . (int) ($d['slot'] ?? 1)
         . ($t !== '' ? ' · ' . $t : '')
         . ' · ' . ucfirst((string) ($d['coach_type'] ?? 'sleeper'));
 }
@@ -351,7 +353,10 @@ $autoSeats = ($autoPick['ok'] ?? false) ? array_values(array_map('strval', $auto
 <?php else: ?>
 
 <div class="panel">
-  <h2><svg class="a-ic"><use href="#a-calendar-move"/></svg> 1 · Pick a new date <span class="muted" style="font-weight:500">(same route)</span></h2>
+  <h2><svg class="a-ic"><use href="#a-calendar-move"/></svg> 1 · Pick a new date <span class="muted" style="font-weight:500">(any bus going the same way)</span></h2>
+  <?php if ($targetSchedule !== null && (int) ($targetSchedule['route_id'] ?? $routeId) !== $routeId): ?>
+  <div class="flash bad" style="margin:8px 16px">This day runs a <b>different bus line</b> (<?= Security::e(strtoupper((string) $targetSchedule['route_code'])) ?>) with its own pickup / drop towns — confirm the passenger's pickup point before saving.</div>
+  <?php endif; ?>
   <div class="panel-body">
   <?php if ($upcoming === []): ?>
     <p class="rs-hint">No other scheduled dates on this route yet.</p>

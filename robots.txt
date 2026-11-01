@@ -1,0 +1,14 @@
+# S Hari Global — www.shreehariglobal.in
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /track.php
+Disallow: /verify-ticket.php
+Disallow: /download-ticket.php
+Disallow: /download-chalan.php
+Disallow: /download-statement.php
+Disallow: /pay.php
+Disallow: /pay-share.php
+Disallow: /tests/
+Sitemap: https://www.shreehariglobal.in/sitemap.xml

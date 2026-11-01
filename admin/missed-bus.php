@@ -109,6 +109,8 @@ if ($leg === null) {
 }
 
 $routeId       = (int) $leg['route_id'];
+// 31 Oct 2026: every bus of the rotation going the same way, not only this route.
+$routeIn       = implode(',', array_map('intval', Fleet::siblingRoutes($routeId)));
 $curScheduleId = (int) $leg['schedule_id'];
 $curDate       = (string) $leg['travel_date'];
 $seatCount     = (int) $leg['seat_count'];
@@ -138,10 +140,11 @@ $upcoming = Database::fetchAll(
     "SELECT s.id, s.travel_date,
             (s.total_seats - s.seats_booked) AS free
        FROM schedules s
-      WHERE s.route_id = :r AND s.travel_date >= :today AND s.id <> :cur
+      WHERE s.route_id IN ($routeIn) AND s.travel_date >= :today AND s.id <> :cur
+        AND s.is_blocked = 0 AND s.status <> 'cancelled'
       ORDER BY s.travel_date ASC
       LIMIT 45",
-    ['r' => $routeId, 'today' => todayISO(), 'cur' => $curScheduleId]
+    ['today' => todayISO(), 'cur' => $curScheduleId]
 );
 
 /* ---- Chosen target date + its open seats -------------------------- */
@@ -151,13 +154,14 @@ $openSeats = [];
 $targetGate = null;
 if ($targetDate !== '' && Security::isValidDate($targetDate)) {
     $targetSchedule = Database::fetch(
-        'SELECT id FROM schedules WHERE route_id = :r AND travel_date = :d AND slot = 1 LIMIT 1',
+        'SELECT id FROM schedules WHERE route_id IN (' . $routeIn . ') AND travel_date = :d AND slot = 1
+          ORDER BY is_blocked ASC, (route_id = :r) DESC LIMIT 1',
         ['r' => $routeId, 'd' => $targetDate]
     );
     if ($targetSchedule !== null) {
         $targetGate = TripStatus::editableFor((int) $targetSchedule['id']);
         try {
-            $avail = Seats::availability($routeId, $targetDate, $bookingMode);
+            $avail = Seats::availabilityForSchedule((int) $targetSchedule['id'], $bookingMode);
             $openSeats = $avail['available'] ?? [];
         } catch (Throwable $e) {
             $openSeats = [];
@@ -243,7 +247,7 @@ if (!in_array($status, ['pending', 'confirmed'], true)): ?>
 <?php elseif ($eligible && in_array($status, ['pending', 'confirmed'], true)): ?>
 
 <div class="mb-card">
-  <h2>1 · Pick the next service <span class="muted" style="font-weight:500">(same route)</span></h2>
+  <h2>1 · Pick the next service <span class="muted" style="font-weight:500">(any bus going the same way)</span></h2>
   <?php if ($upcoming === []): ?>
     <p class="mb-hint">No other scheduled dates on this route yet.</p>
   <?php else: ?>

@@ -1316,8 +1316,9 @@ final class BookingService
             throw new RuntimeException('The chosen date does not match the target trip.');
         }
         $oldRouteId = (int) Database::scalar('SELECT route_id FROM schedules WHERE id = :id', ['id' => $oldScheduleId], 0);
-        if ((int) $newSchedule['route_id'] !== $oldRouteId) {
-            throw new RuntimeException('Reschedule is limited to the same route (a different route would change the fare — cancel + rebook instead).');
+        // 31 Oct 2026: any bus of the rotation going the same way (Fleet::siblingRoutes).
+        if (!in_array((int) $newSchedule['route_id'], Fleet::siblingRoutes($oldRouteId), true)) {
+            throw new RuntimeException('Reschedule is limited to buses going the same way (a different route would change the fare — cancel + rebook instead).');
         }
         $coach       = (string) $newSchedule['coach_type'];
         $bookingMode = (string) ($booking['booking_mode'] ?? 'sharing');
@@ -1435,8 +1436,8 @@ final class BookingService
             throw new RuntimeException('The chosen date does not match the target trip.');
         }
         $oldRouteId = (int) Database::scalar('SELECT route_id FROM schedules WHERE id = :id', ['id' => $oldScheduleId], 0);
-        if ((int) $newSchedule['route_id'] !== $oldRouteId) {
-            throw new RuntimeException('A missed-bus rebooking stays on the same route (a different route changes the fare — cancel + rebook instead).');
+        if (!in_array((int) $newSchedule['route_id'], Fleet::siblingRoutes($oldRouteId), true)) {
+            throw new RuntimeException('A missed-bus rebooking stays on a bus going the same way (a different route changes the fare — cancel + rebook instead).');
         }
         $coach       = (string) $newSchedule['coach_type'];
         $bookingMode = (string) ($booking['booking_mode'] ?? 'sharing');
@@ -3191,6 +3192,7 @@ final class BookingService
         // know WHICH seats belong to WHICH direction — recovering such a
         // ticket from a new device otherwise shows outbound seats only.
         foreach ($booking['legs'] as &$leg) {
+            $leg['bus_number'] = Fleet::publicNumber((string) ($leg['bus_number'] ?? ''));
             $leg['seats'] = array_map('strval', pluck(Database::fetchAll(
                 'SELECT seat_no FROM booking_seats
                   WHERE booking_id = :b AND schedule_id = :s ORDER BY seat_no',

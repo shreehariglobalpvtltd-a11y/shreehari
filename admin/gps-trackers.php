@@ -53,7 +53,7 @@ if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 Logger::audit('gps_tracker.add', 'bus', (string) $row['bus_id'], null,
                     ['tracker' => (int) $row['id'], 'kind' => $row['kind'], 'label' => $row['label']], 'by admin #' . $admin['id']);
                 $flash = ['ok', $row['kind'] === 'phone'
-                    ? 'Tracker added. Type the code ' . $row['device_uid'] . ' as "Device identifier" in Traccar Client on the bus phone (steps below).'
+                    ? 'Tracker added. Press "📱 1-scan setup" next to the bus and scan its QR with Traccar Client on the bus phone (or type the code ' . $row['device_uid'] . ' as "Device identifier").'
                     : 'Tracker added. Point the Traccar server forward URL here (steps below) - its fixes count only with the forward key.'];
 
             } elseif ($action === 'toggle') {
@@ -280,6 +280,7 @@ admin_header('GPS trackers (vehicle number)', 'gps-trackers');
         </td>
         <td><span class="gt-uid"><?= Security::e((string) $t['device_uid']) ?></span><button class="btn ghost gt-copy" type="button" data-copy="<?= Security::e((string) $t['device_uid']) ?>">Copy</button>
           <?php if ($t['kind'] === 'phone' && $on && GpsTrackers::isGeneratedUid((string) $t['device_uid'])): ?>
+            <div style="margin-top:6px"><a class="btn ok" href="<?= Security::e(GpsTrackers::PUBLIC_URL . '/bus-phone-setup.php?' . GpsLoggerProfile::query((int) $t['id'])) ?>" target="_blank" rel="noopener noreferrer" title="Install Traccar Client, scan one QR, allow location — done">📱 1-scan setup (Traccar)</a></div>
             <div style="margin-top:6px"><a class="btn ghost" href="<?= Security::e(GpsTrackers::PUBLIC_URL . '/owntracks-setup.php?' . GpsLoggerProfile::query((int) $t['id'])) ?>" target="_blank" rel="noopener noreferrer">OwnTracks · Easy setup</a> <a class="btn ghost" href="<?= Security::e(GpsTrackers::PUBLIC_URL . '/gpslogger-setup.php?' . GpsLoggerProfile::query((int) $t['id'])) ?>" target="_blank" rel="noopener noreferrer">GPSLogger · Easy setup</a></div>
           <?php endif; ?>
           <?php if (GpsTrackers::needsKey((string) $t['device_uid'])): ?><div class="muted" style="font-size:11px">needs the forward key</div><?php endif; ?>
@@ -323,6 +324,7 @@ admin_header('GPS trackers (vehicle number)', 'gps-trackers');
     <div>
       <h3 style="margin:0">📱 Phone in the bus · बसमा फोन</h3>
       <ol>
+        <li><b>Easiest:</b> press <b>📱 1-scan setup</b> next to the bus above, open it on this screen, and scan its QR from Traccar Client (Settings → Scan QR code) on the bus phone. Nothing to type. The page lights up ✅ once the bus phone is sending. Or set it up by hand:</li>
         <li>On a phone that stays in this bus, install the free app <b>Traccar Client</b> (Play Store / App Store).</li>
         <li><b>Server URL:</b> <code class="gt-code"><?= Security::e($endpoint) ?></code></li>
         <li><b>Device identifier:</b> the <b>SHG…</b> code shown next to the bus above - type it exactly.</li>
@@ -330,6 +332,7 @@ admin_header('GPS trackers (vehicle number)', 'gps-trackers');
         <li>Turn <b>Service status</b> ON. Allow location <b>All the time</b>, switch battery saver OFF for the app, and keep the phone on charge in the bus.</li>
       </ol>
       <ol class="np">
+        <li><b>सबैभन्दा सजिलो:</b> माथि बसको छेउमा <b>📱 1-scan setup</b> थिच्नुहोस्, यही स्क्रिनमा खोल्नुहोस्, र बसको फोनको Traccar Client (Settings → Scan QR code) ले QR scan गर्नुहोस्। केही टाइप गर्नु पर्दैन। अथवा हातैले:</li>
         <li>बसमै रहने फोनमा निःशुल्क <b>Traccar Client</b> एप (Play Store / App Store) राख्नुहोस्।</li>
         <li><b>Server URL</b> मा माथिको ठेगाना लेख्नुहोस्।</li>
         <li><b>Device identifier</b> मा माथि त्यही बसको छेउमा देखिएको <b>SHG…</b> कोड ठ्याक्कै लेख्नुहोस्।</li>

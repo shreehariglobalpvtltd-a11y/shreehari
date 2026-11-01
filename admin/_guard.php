@@ -122,6 +122,7 @@ function admin_nav(): array
         ['href' => 'wa-queue.php',     'icon' => 'msg',       'label' => 'WhatsApp Tickets',       'perm' => 'bookings.view',    'section' => $S3],
         ['href' => 'schedule.php',     'icon' => 'calendar-plus','label' => 'Bus Routine (alternate days)','perm' => 'schedules.manage','section' => $S3],
         ['href' => 'calendar.php',     'icon' => 'calendar-plus',  'label' => 'Bus Calendar',           'perm' => 'schedules.manage', 'section' => $S3],
+        ['href' => '/routine.php',     'icon' => 'calendar',  'label' => '🗓️ Bus Routine (3 Bus · Live)', 'perm' => 'schedules.view', 'section' => $S3],
         ['href' => 'buses.php',        'icon' => 'bus',       'label' => 'Bus Fleet (AC Sleeper)', 'perm' => 'schedules.view',   'section' => $S3],
         ['href' => 'trips.php',        'icon' => 'clock',     'label' => 'Trips Board',            'perm' => 'schedules.view',   'section' => $S3],
         ['href' => 'trip-dashboard.php','icon' => 'calendar-plus', 'label' => 'Daily Trip View',        'perm' => 'schedules.view',   'section' => $S3],
@@ -156,6 +157,7 @@ function admin_nav(): array
         ['href' => 'wa-templates.php', 'icon' => 'msg',       'label' => 'WhatsApp Templates',     'perm' => 'customers.view',   'section' => $S5],
         ['href' => 'ai-brain.php',     'icon' => 'star',      'label' => 'One AI (WhatsApp brain)', 'perm' => 'dashboard.view',  'section' => $S5],
         ['href' => 'ai-activity.php',  'icon' => 'shield',    'label' => 'AI Activity',            'perm' => 'dashboard.view',   'section' => $S5],
+        ['href' => 'facebook.php',     'icon' => 'msg',       'label' => 'Facebook Messenger AI',  'perm' => 'dashboard.view',   'section' => $S5],   // 1 Nov 2026
         ['href' => 'ai-local.php',     'icon' => 'sparkle',   'label' => 'AI (VPS) & WhatsApp', 'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'WhatsApp & SMS Logs',    'perm' => 'dashboard.view',   'section' => $S5],
         ['href' => 'activity-log.php', 'icon' => 'shield',    'label' => 'Activity & Security Audit','perm'=> 'dashboard.view',  'section' => $S5],

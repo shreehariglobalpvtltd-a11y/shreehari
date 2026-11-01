@@ -21,6 +21,17 @@
  *  guessed. Drafts wait for one tap on 🤖 AI Marketing → "AI ले सिकेको"
  *  unless ai_learn_autopublish is on (then a question asked 3+ times is
  *  published straight away).
+ *
+ *  1 Nov 2026 (owner: "training ma local model"): the VPS model (ApAi,
+ *  includes/agentpro-ai.php) drafts FIRST when it is on and answering —
+ *  free, nothing leaves the server. It is asked through a JSON schema so a
+ *  4 B model on CPU still returns valid JSON, as a document-class call
+ *  ('kb_learn') that gives way to WhatsApp. tick() runs inside the
+ *  every-minute campaign worker, so the local model gets at most
+ *  ai_learn_local_seconds (240) a night; after that, or when it is busy or
+ *  wrong, the one AI (AiBrain) drafts exactly as before. A draft the local
+ *  model wrote is NEVER auto-published — it always waits for the office.
+ *  Switch: ai_learn_local (default on; off = cloud only, the old way).
  * =====================================================================
  */
 
@@ -144,7 +155,7 @@ final class AiLearn
         $out = ['drafted' => 0, 'published' => 0, 'needs_owner' => 0, 'skipped' => 0];
         try {
             require_once __DIR__ . '/aibrain.php';
-            if (!AiBrain::configured()) {
+            if (!AiBrain::configured() && !self::localReady()) {
                 return $out;
             }
             $rows = Database::fetchAll(
@@ -155,8 +166,13 @@ final class AiLearn
             Logger::exception($e, 'ai');
             return $out;
         }
+        // The local model's share of this run; past it, drafting goes to the cloud brain. Only from the
+        // CLI cron: the admin "learn now" button is a web request and must not sit on a CPU model for minutes.
+        $until = PHP_SAPI === 'cli'
+            ? microtime(true) + max(30, min(900, Settings::getInt('ai_learn_local_seconds', 240)))
+            : null;
         foreach ($rows as $q) {
-            $r = self::draft($q);
+            $r = self::draft($q, $until);
             $out[$r]++;
         }
         $h = json_decode(self::kv('log'), true);
@@ -166,8 +182,12 @@ final class AiLearn
         return $out;
     }
 
-    /** One question → 'drafted' | 'published' | 'needs_owner' | 'skipped'. */
-    public static function draft(array $q): string
+    /**
+     * One question → 'drafted' | 'published' | 'needs_owner' | 'skipped'.
+     *
+     * @param float|null $until the local model may be asked only before this moment (null = no local model)
+     */
+    public static function draft(array $q, ?float $until = null): string
     {
         $id = (int) $q['id'];
         $question = (string) $q['normalized_question'];
@@ -181,21 +201,7 @@ final class AiLearn
              . "Do NOT put any fare, price, time, date, seat number or count in the answer: those change and the assistant reads them live. "
              . "Say 'see the current fare on the website / ask on WhatsApp' instead. The only number allowed is the office phone"
              . ($phone !== '' ? ' ' . $phone : '') . ". No links except " . appUrl('') . '.';
-        $r = null;
-        try {
-            $r = AiBrain::text($sys, [['role' => 'user', 'content' => 'Customer question: ' . $question]], 900, 'learn');
-        } catch (Throwable $e) {
-            $r = null;
-        }
-        if ($r === null) {
-            return 'skipped';
-        }
-        $raw = trim((string) $r['text']);
-        $raw = preg_replace('/^```(?:json)?\s*|\s*```$/i', '', $raw) ?? $raw;
-        $j = json_decode($raw, true);
-        if (!is_array($j) && preg_match('/\{.*\}/s', $raw, $m) === 1) {
-            $j = json_decode($m[0], true);
-        }
+        [$j, $provider, $local] = self::ask($sys, 'Customer question: ' . $question, $until);
         if (!is_array($j)) {
             return 'skipped';
         }
@@ -213,7 +219,8 @@ final class AiLearn
             self::mark($id, 'needs_owner', null);       // it wanted a number we will not freeze into an article
             return 'needs_owner';
         }
-        $publish = Settings::getBool('ai_learn_autopublish', false) && (int) $q['frequency'] >= 3;
+        // A small local model's draft always waits for the office, even with auto-publish on.
+        $publish = !$local && Settings::getBool('ai_learn_autopublish', false) && (int) $q['frequency'] >= 3;
         try {
             $aid = AiKb::save([
                 'category'           => 'learned',
@@ -223,7 +230,7 @@ final class AiLearn
                 'nepali_content'     => $ne,
                 'keywords'           => mb_substr(trim((string) ($j['keywords'] ?? '')) . ', ' . $question, 0, 2000),
                 'applicable_roles'   => ['public', 'customer'],
-                'source_reference'   => 'AI learned from customer question #' . $id . ' (' . date('Y-m-d') . ', ' . $r['provider'] . ')',
+                'source_reference'   => 'AI learned from customer question #' . $id . ' (' . date('Y-m-d') . ', ' . $provider . ')',
                 'publication_status' => $publish ? 'published' : 'draft',
             ], 0);
             Database::update('ai_kb_articles', ['source_type' => 'ai_learned'], 'id = :id', ['id' => $aid]);
@@ -233,6 +240,78 @@ final class AiLearn
             Logger::exception($e, 'ai');
             return 'skipped';
         }
+    }
+
+    /** The article shape, as a JSON schema the local model is held to. */
+    public static function schema(): array
+    {
+        return ['type' => 'object', 'properties' => [
+            'answerable' => ['type' => 'boolean'],
+            'title'      => ['type' => 'string'],
+            'answer_en'  => ['type' => 'string'],
+            'answer_ne'  => ['type' => 'string'],
+            'keywords'   => ['type' => 'string'],
+        ], 'required' => ['answerable', 'title', 'answer_en', 'answer_ne', 'keywords']];
+    }
+
+    /** May the VPS model draft? Switch on (ai_learn_local) and the model server answering (cached probe). */
+    public static function localReady(): bool
+    {
+        if (!Settings::getBool('ai_learn_local', true)) {
+            return false;
+        }
+        try {
+            require_once __DIR__ . '/agentpro-ai.php';
+            return ApAi::enabled();
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Ask for the article: the VPS model first (while $until allows), then
+     * the one AI. Never throws.
+     *
+     * @return array{0: ?array, 1: string, 2: bool} decoded JSON (null = no usable answer), who answered, was it local
+     */
+    private static function ask(string $sys, string $user, ?float $until): array
+    {
+        $left = $until === null ? 0 : (int) floor($until - microtime(true));
+        if ($left >= 15 && self::localReady()) {
+            try {
+                $j = ApAi::json($sys, $user, self::schema(), [], [
+                    'purpose'   => 'kb_learn',
+                    'max_tokens' => 900,
+                    'timeout'   => min($left, ApAi::docTimeout()),
+                    'lock_wait' => 10,           // busy with WhatsApp / a document → the cloud brain, not a wait
+                ]);
+                if (is_array($j)) {
+                    return [$j, 'local VPS model', true];
+                }
+            } catch (Throwable $e) {
+                Logger::warning('AI learn: local model failed: ' . $e->getMessage(), [], 'ai');
+            }
+        }
+
+        require_once __DIR__ . '/aibrain.php';
+        if (!AiBrain::configured()) {
+            return [null, '', false];
+        }
+        try {
+            $r = AiBrain::text($sys, [['role' => 'user', 'content' => $user]], 900, 'learn');
+        } catch (Throwable $e) {
+            $r = null;
+        }
+        if ($r === null) {
+            return [null, '', false];
+        }
+        $raw = trim((string) $r['text']);
+        $raw = preg_replace('/^```(?:json)?\s*|\s*```$/i', '', $raw) ?? $raw;
+        $j = json_decode($raw, true);
+        if (!is_array($j) && preg_match('/\{.*\}/s', $raw, $m) === 1) {
+            $j = json_decode($m[0], true);
+        }
+        return [is_array($j) ? $j : null, (string) $r['provider'], false];
     }
 
     /** Only the office phone may appear as a number in a learned article. */

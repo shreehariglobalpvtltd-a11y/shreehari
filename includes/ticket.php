@@ -2552,6 +2552,8 @@ final class Ticket
         if ($booking === null) {
             throw new RuntimeException('Booking not found for ticket generation.');
         }
+        // A plate not entered yet (XXXX placeholder) is left off the ticket.
+        $booking['bus_number'] = Fleet::publicNumber((string) ($booking['bus_number'] ?? ''));
 
         $booking['passengers'] = Database::fetchAll(
             'SELECT * FROM booking_passengers WHERE booking_id = :b ORDER BY id',

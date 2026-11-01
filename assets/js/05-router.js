@@ -1686,7 +1686,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261031b" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261031e" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
@@ -3677,4 +3677,44 @@ if (store.local && !store.remote) {
       fallback();
     }
   });
+})();
+
+/* Public "Book this bus" link (Bus Routine page, 31 Oct 2026):
+   /?from=Surat&to=Rupaidiha&date=YYYY-MM-DD fills the search and runs it,
+   so the passenger lands straight on that day's one bus. Staff sessions are
+   handled by 14-counter.js (same params), so this stays out of their way. */
+(function () {
+  try { if (window.SHG_BOOT && window.SHG_BOOT.staff) return; } catch (e) {}
+  var p = new URLSearchParams(location.search);
+  var want = { from: p.get('from') || '', to: p.get('to') || '', date: p.get('date') || '' };
+  if (!want.from || !want.to || !/^\d{4}-\d{2}-\d{2}$/.test(want.date)) return;
+  function pick(sel, v) {
+    if (!sel) return false;
+    var k = townKeyJS(v);
+    for (var i = 0; i < sel.options.length; i++) {
+      var o = sel.options[i];
+      if (o.value === v || townKeyJS(o.value) === k || townKeyJS(o.textContent || '') === k) {
+        sel.value = o.value;
+        try { sel.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+        return true;
+      }
+    }
+    return false;
+  }
+  var tries = 0;
+  var timer = setInterval(function () {
+    tries++;
+    var fs = document.getElementById('fromSel'), ts = document.getElementById('toSel');
+    var di = document.getElementById('dateInput'), form = document.getElementById('searchForm');
+    if (!fs || !ts || !di || !form || fs.options.length === 0) { if (tries > 40) clearInterval(timer); return; }
+    clearInterval(timer);
+    var ok = pick(fs, want.from);
+    ok = pick(ts, want.to) && ok;
+    di.value = want.date;
+    try { di.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+    try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {}
+    // A short pause lets the picker finish repainting from the changes above
+    // (the first load was submitting before it settled).
+    if (ok) { setTimeout(function () { try { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); } catch (e) {} }, 800); }
+  }, 250);
 })();

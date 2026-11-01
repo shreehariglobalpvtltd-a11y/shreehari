@@ -135,6 +135,30 @@ try {
             $routes[] = $route;
         }
     }
+
+    /* Bus routine (31 Oct 2026): the website searches the corridor as
+       "Surat ⇄ Rupaidiha", but BUS 03 starts in Rajkot and never calls at
+       Surat, so it could not be found online. A round-trip rotation route
+       running the searched DIRECTION joins the board too — on any date only
+       that day's bus is unblocked (blocked rows are skipped below), so this
+       adds exactly the one coach the routine sends, with its own pickups. */
+    $rotNow = Fleet::rotation();
+    if ($rotNow['enabled'] && $rotNow['mode'] === 'round_trip') {
+        $slotRoutes = [];
+        foreach ($rotNow['routes'] as $pair) {
+            $slotRoutes[] = (int) $pair['out'];
+            $slotRoutes[] = (int) $pair['back'];
+        }
+        $wantDir = Fare::isNepalPoint($to) ? 'toNepal' : (Fare::isNepalPoint($from) ? 'toIndia' : '');
+        $have    = array_map(static fn(array $r): int => (int) $r['id'], $routes);
+        foreach ($candidates as $route) {
+            $rid = (int) $route['id'];
+            if ($wantDir !== '' && in_array($rid, $slotRoutes, true) && !in_array($rid, $have, true)
+                && Fare::routeDir($route) === $wantDir) {
+                $routes[] = $route;
+            }
+        }
+    }
     unset($params, $fromPh, $toPh);
 
     /* Display the India-side border endpoint as "Rupaidiha" wherever the
@@ -303,9 +327,11 @@ try {
             return;
         }
 
-        // An extra bus may run a different coach than the route default.
+        // The coach THIS departure runs: an extra bus, or (31 Oct 2026) the
+        // rotation's bus for the daily departure, which need not be the
+        // route's default coach.
         $busRow = null;
-        if ($slot > 1 && (int) ($schedule['bus_id'] ?? 0) > 0) {
+        if ((int) ($schedule['bus_id'] ?? 0) > 0) {
             $busRow = Database::fetch('SELECT bus_name, bus_number FROM buses WHERE id = :b', ['b' => (int) $schedule['bus_id']]);
         }
 
@@ -362,7 +388,8 @@ try {
             'from'         => $label((string) $route['from_city']),
             'to'           => $label((string) $route['to_city']),
             'busName'      => $busRow['bus_name'] ?? ($route['bus'] ?? $route['bus_name'] ?? ''),
-            'busNumber'    => $busRow['bus_number'] ?? ($route['bus_number'] ?? ''),
+            // '' until the office enters the real plate (XXXX placeholder).
+            'busNumber'    => Fleet::publicNumber($busRow['bus_number'] ?? ($route['bus_number'] ?? '')),
             // This departure's own coach (4 Sep 2026) — an extra bus may run a
             // different layout; identical to the route's type for the daily bus.
             'coachType'    => Seats::effectiveCoach($schedule, $route),

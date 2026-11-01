@@ -248,6 +248,35 @@ final class Fleet
     }
 
     /**
+     * Routes a passenger may be moved to on Change date / Missed bus: the same
+     * route, plus — under a round-trip rotation — the other buses' routes going
+     * the SAME way (31 Oct 2026: each bus has its own route now, so "same route
+     * only" meant waiting six days for the same coach). Fares go by direction
+     * and a move keeps the price already paid.
+     *
+     * @return list<int>
+     */
+    public static function siblingRoutes(int $routeId): array
+    {
+        $rot = self::rotation();
+        if (!$rot['enabled'] || $rot['mode'] !== 'round_trip') {
+            return [$routeId];
+        }
+        foreach (['out', 'back'] as $leg) {
+            $ids = [];
+            foreach ($rot['routes'] as $pair) {
+                if ((int) ($pair[$leg] ?? 0) > 0) {
+                    $ids[] = (int) $pair[$leg];
+                }
+            }
+            if (in_array($routeId, $ids, true)) {
+                return array_values(array_unique($ids));
+            }
+        }
+        return [$routeId];
+    }
+
+    /**
      * Round-trip preview for the admin: per date, the bus (and its slot
      * number) that leaves Gujarat and the one that leaves the Nepal side
      * (null = nobody that way that day).
@@ -506,5 +535,51 @@ final class Fleet
         Database::update('buses', $set, 'id = :i', ['i' => $busId]);
 
         Logger::audit('fleet.bus_updated', 'bus', (string) $busId, $before, $set, 'by admin#' . $by);
+
+        // 31 Oct 2026: tickets already sold for this bus's coming trips print
+        // the number, so re-draw them the moment it changes (a first real
+        // number replacing the XXXX placeholder is not a "correction").
+        if ((string) $before['bus_number'] !== $busNumber) {
+            self::refreshTickets($busId, !self::isPlaceholder((string) $before['bus_number']));
+        }
+    }
+
+    /**
+     * A bus number not entered yet (owner, 31 Oct 2026: "maile nahaale samma
+     * xxxx — website ma hide, maile hale matra live"). Stored as XXXX… so the
+     * unique plate column stays happy; customers see nothing in its place.
+     */
+    public static function isPlaceholder(?string $busNumber): bool
+    {
+        $n = trim((string) $busNumber);
+        return $n === '' || preg_match('/^x{3,}/i', $n) === 1;
+    }
+
+    /** The plate as a customer may see it: '' while it is still a placeholder. */
+    public static function publicNumber(?string $busNumber): string
+    {
+        return self::isPlaceholder($busNumber) ? '' : trim((string) $busNumber);
+    }
+
+    /** Re-render the confirmed tickets of this bus's coming trips. @return int tickets */
+    public static function refreshTickets(int $busId, bool $countRevision = true): int
+    {
+        require_once __DIR__ . '/ticket.php';
+        $n = 0;
+        foreach (Database::fetchAll(
+            "SELECT DISTINCT b.id FROM bookings b
+               JOIN booking_legs l ON l.booking_id = b.id
+               JOIN schedules s ON s.id = l.schedule_id
+              WHERE s.bus_id = :bus AND s.travel_date >= CURDATE() AND b.status = 'confirmed'",
+            ['bus' => $busId]
+        ) as $row) {
+            try {
+                Ticket::reissue((int) $row['id'], $countRevision);
+                $n++;
+            } catch (Throwable $e) {
+                Logger::error('fleet.ticket_refresh_failed', ['booking' => (int) $row['id'], 'error' => $e->getMessage()]);
+            }
+        }
+        return $n;
     }
 }

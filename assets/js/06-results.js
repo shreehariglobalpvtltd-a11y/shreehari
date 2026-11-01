@@ -221,7 +221,7 @@ function renderResults(instant) {
         <div class="bc-mid">
           <h3>${esc(r.busName)}${routes.filter(x => x.busName === r.busName).length > 1 ? ' <b style="color:var(--orange);font-size:14px">(' + esc(r.busNo) + ')</b>' : ''} <span class="vbadge" title="Operated by S Hari Global Pvt Ltd · CIN ${esc(CONFIG.company.cin)}">${t('resVerified')}</span>${valueBadge}${privateBadge}${extraBadge}</h3>
           ${pillsRow}
-          <div class="busno">${esc(r.busNo)} · ${r.type === 'sleeper' ? 'AC SLEEPER 72 · 4+2 Sharing / 2+1 Private' : 'AC SEATER (40)'}</div>
+          <div class="busno">${r.busNo ? esc(r.busNo) + ' · ' : ''}${r.type === 'sleeper' ? 'AC SLEEPER 72 · 4+2 Sharing / 2+1 Private' : 'AC SEATER (40)'}</div>
           ${amenityChips}
           <div class="bc-points"><b>${t('resBoardingLbl')}</b> ${esc(bpShort(bp0))} ${r.boarding && r.boarding.length > 1 ? '+' + (r.boarding.length - 1) + ' ' + t('resMore') : ''}</div>
         </div>
@@ -1133,14 +1133,14 @@ function renderSeats(instant) {
     }
   });
 
-  let info = esc(r.busName) + ' · ' + esc(r.busNo) + ' · ' + fmtDate(ctx.date);
+  let info = esc(r.busName) + (r.busNo ? ' · ' + esc(r.busNo) : '') + ' · ' + fmtDate(ctx.date);
   if (Flow.tripType === 'round') info += ' · ' + t(ctx.ret ? 'tkRet' : 'tkOut') + ' (' + (Flow.legIndex + 1) + '/2)';
   $('#seatRouteInfo').textContent = info;
   var ssi = $('#seatStickyInfo');
   if (ssi) ssi.innerHTML = '<span class="sfi-route">' + esc(ctx.from) + ' → ' + esc(ctx.to) + '</span><span class="sfi-date">' + fmtDate(ctx.date) + ' · ' + esc(r.busName) + '</span><span class="sfi-fare">' + (function (v) { return fareOk(v) ? (r.type === 'sleeper' ? 'from ' : '') + inr(v) : '—'; })(r.type === 'sleeper' ? (Flow.fareOverride > 0 ? Flow.fareOverride : (stopFareFor(r, (r.boarding || [])[r.boardingIdx > 0 ? r.boardingIdx : 0], (r.drop || [])[r.dropIdx > 0 ? r.dropIdx : 0]) || sharingPP(ctx.to, true))) : r.fare) + '</span>';
   $('#sumRoute').textContent = ctx.from + ' → ' + ctx.to;
   $('#sumDate').textContent = fmtDate(ctx.date);
-  $('#sumBus').textContent = r.busName + ' (' + r.busNo + ')';
+  $('#sumBus').textContent = r.busName + (r.busNo ? ' (' + r.busNo + ')' : '');
 
   /* Boarding / drop selects — value keeps the raw string, label adds time &
      landmark. Options are the canonical string format the whole pipeline

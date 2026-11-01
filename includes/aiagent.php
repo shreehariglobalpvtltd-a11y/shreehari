@@ -1606,6 +1606,34 @@ final class AiAgent
      * block sets the voice, the languages, the subject fence and how a
      * report is spoken about (the chart is drawn by the page, not typed).
      */
+    /**
+     * 1 Nov 2026 (owner: "Facebook bata pani WhatsApp jastai"): the same web
+     * assistant answering on our Facebook Page's Messenger (includes/
+     * fbmessenger.php hands it a 'web' ctx with via = facebook). These lines
+     * replace the website's markdown and #/ link rules, which Messenger cannot
+     * show, and tell it how a visitor proves their number here. '' elsewhere.
+     */
+    private static function facebookRules(array $ctx): string
+    {
+        if ((string) ($ctx['via'] ?? '') !== 'facebook') {
+            return '';
+        }
+        $verified = (string) ($ctx['phone'] ?? '') !== '';
+        return "=== FACEBOOK MESSENGER — these replace rules 2 and 3 above ===\n"
+            . "You are answering on our Facebook Page in Messenger, like a friendly person at the counter.\n"
+            . "A. Plain text only: no markdown, no ** or #, no tables. 2–6 short lines, one or two emoji at most.\n"
+            . "B. Never write #/ links. When a link helps, write the full address " . appUrl('') . " — the buttons under your "
+            . "reply already carry Book / Pay / Open ticket / Where is my bus, so do not repeat those links in words.\n"
+            . ($verified
+                ? "C. This person PROVED the mobile " . maskPhone((string) $ctx['phone']) . " with the WhatsApp code here, so their own "
+                  . "bookings may be read, and a ticket may be issued on that number when the tools allow it. The ticket picture is sent "
+                  . "here in Messenger and also to that WhatsApp.\n"
+                : "C. This person has NOT proved a mobile number. They may ask anything and get a quote. To read their bookings or to get a "
+                  . "ticket issued here, ask them to send their mobile number in this chat: we send a code on WhatsApp and they type it "
+                  . "back here. Otherwise they can book themselves at " . appUrl('') . ".\n")
+            . "\n";
+    }
+
     private static function webChannelRules(array $ctx): string
     {
         $company = Settings::getString('company_name', APP_NAME);
@@ -1671,7 +1699,7 @@ final class AiAgent
         require_once INCLUDE_PATH . '/aimaster.php';
         $base = AiMaster::brief($ctx, AiMaster::on() ? AiTools::catalogue($ctx) : [])
             . ai_system_prompt() . "\n\n"
-            . ($web ? self::webChannelRules($ctx) : self::whatsappChannelRules($ctx))
+            . ($web ? self::webChannelRules($ctx) . self::facebookRules($ctx) : self::whatsappChannelRules($ctx))
             . "FACTS\n"
             . "4. Anything about a booking, a seat, a fare, a bus position, money or a person — USE A TOOL. "
             . "Never answer such a question from memory and never guess a number, a name, a seat or a time. "

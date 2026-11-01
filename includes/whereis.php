@@ -139,7 +139,7 @@ final class WhereIs
         $out['date']      = (string) $leg['travel_date'];
         $out['stop']      = (string) ($stop['name'] ?? '');
         $out['stopTime']  = (string) ($stop['time'] ?? ($leg['boarding_time'] ?? ''));
-        $out['bus']       = trim((string) ($leg['bus_number'] ?? ''));
+        $out['bus']       = Fleet::publicNumber((string) ($leg['bus_number'] ?? ''));
         $out['delayMin']  = max(0, (int) ($leg['delay_minutes'] ?? 0));
         $out['delayNote'] = (string) ($leg['delay_note'] ?? '');
         $out['tripStatus'] = (string) ($leg['trip_status'] ?? '');   // schedules.status — 'departed' once the office pressed "Bus started"

@@ -18,10 +18,35 @@ $ver = static function (string $f): string {
     $p = ASSET_PATH . '/agentpro/guide/' . $f;
     return '/assets/agentpro/guide/' . $f . '?v=' . (is_file($p) ? filemtime($p) : '1');
 };
-$video = $ver('agent-form-guide-ne.mp4');
-$thumb = $ver('agent-form-guide-thumb.jpg');
-$title = 'एजेन्ट फारम कसरी भर्ने? · S Hari Global';
-$desc  = '६ सजिलो चरणमा एजेन्ट फारम भर्ने तरिका — नेपाली भिडियो। How to fill the S Hari Global agent form.';
+/* 31 Oct 2026: ?v=customer — the 2-minute passenger guide (booking, payment,
+   WhatsApp ticket, tracking); ?v=agent — the agent guide (ID login, sell, edit,
+   chalani, withdraw). ?v=full was the first combined guide; its shared links now
+   open the agent guide. Without ?v: the agent-form guide as before. */
+$v     = (string) ($_GET['v'] ?? '');
+$full  = in_array($v, ['agent', 'full'], true);
+$cust  = $v === 'customer';
+if ($cust) {
+    $video = $ver('customer-guide-ne.mp4');
+    $thumb = $ver('customer-guide-thumb.jpg');
+    $title = 'टिकट कसरी काट्ने? — यात्री गाइड · S Hari Global';
+    $desc  = 'अनलाइन टिकट, नगद / UPI / eSewa भुक्तानी, WhatsApp (+91 87358 81507) बाट टिकट र बस ट्र्याक — २ मिनेट नेपाली भिडियो।';
+    $page  = '/guide/?v=customer';
+    $sub   = 'यात्री गाइड · Passenger guide (2 min)';
+} elseif ($full) {
+    $video = $ver('agent-guide-ne.mp4');
+    $thumb = $ver('agent-guide-thumb.jpg');
+    $title = 'एजेन्ट प्यानल कसरी चलाउने? · S Hari Global';
+    $desc  = 'एजेन्ट ID ले लगइन, टिकट काट्ने र सच्याउने, मेरो चलानी, कमिसन निकाल्ने र WhatsApp बाट टिकट — नेपाली भिडियो।';
+    $page  = '/guide/?v=agent';
+    $sub   = 'एजेन्ट गाइड · Agent guide (4 min)';
+} else {
+    $video = $ver('agent-form-guide-ne.mp4');
+    $thumb = $ver('agent-form-guide-thumb.jpg');
+    $title = 'एजेन्ट फारम कसरी भर्ने? · S Hari Global';
+    $desc  = '६ सजिलो चरणमा एजेन्ट फारम भर्ने तरिका — नेपाली भिडियो। How to fill the S Hari Global agent form.';
+    $page  = '/guide/';
+    $sub   = 'एजेन्ट फारम भर्ने तरिका · How to apply';
+}
 $office = Settings::officePhone();
 ?><!doctype html>
 <html lang="ne">
@@ -38,7 +63,7 @@ $office = Settings::officePhone();
 <meta property="og:video:type" content="video/mp4">
 <meta property="og:video:width" content="1080">
 <meta property="og:video:height" content="1920">
-<meta property="og:url" content="<?= $h($base . '/guide/') ?>">
+<meta property="og:url" content="<?= $h($base . $page) ?>">
 <meta name="theme-color" content="#0b1a3a">
 <style>
 :root{--navy:#0b1a3a;--gold:#d9a441;--orange:#f07a1e;--ink:#fff}
@@ -63,15 +88,16 @@ video{display:block;width:100%;max-height:78vh;background:#000}
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><img src="/assets/img/logo-mark-tm.png" alt="S Hari Global" width="44" height="30"><div><b>S HARI GLOBAL PVT. LTD.</b><small>एजेन्ट फारम भर्ने तरिका · How to apply</small></div></div>
+  <div class="top"><img src="/assets/img/logo-mark-tm.png" alt="S Hari Global" width="44" height="30"><div><b>S HARI GLOBAL PVT. LTD.</b><small><?= $h($sub) ?></small></div></div>
   <div class="vbox">
     <video id="v" src="<?= $h($video) ?>" poster="<?= $h($thumb) ?>" autoplay muted playsinline controls preload="auto"></video>
     <button class="sound" id="snd" type="button">🔊 आवाज खोल्नुहोस् · Sound on</button>
   </div>
   <div class="acts">
     <a class="go" href="/join.php">📝 फारम भर्नुहोस् · Apply now</a>
-    <a class="wa" href="https://wa.me/?text=<?= rawurlencode('एजेन्ट फारम भर्ने तरिका (नेपाली भिडियो): ' . $base . '/guide/') ?>">📤 WhatsApp मा सेयर</a>
+    <a class="wa" href="https://wa.me/?text=<?= rawurlencode(($cust ? 'टिकट कसरी काट्ने — यात्री गाइड (नेपाली भिडियो): ' : ($full ? 'एजेन्ट प्यानल गाइड (नेपाली भिडियो): ' : 'एजेन्ट फारम भर्ने तरिका (नेपाली भिडियो): ')) . $base . $page) ?>">📤 WhatsApp मा सेयर</a>
   </div>
+  <p class="help"><?php if (!$cust): ?><a href="/guide/?v=customer">▶ यात्री गाइड — टिकट कसरी काट्ने (२ मिनेट)</a><?php endif; ?><?php if (!$full): ?><?= $cust ? '' : ' · ' ?><a href="/guide/?v=agent">▶ एजेन्ट गाइड (४ मिनेट)</a><?php endif; ?><?php if ($v !== ''): ?> · <a href="/guide/">▶ एजेन्ट फारम भर्ने तरिका</a><?php endif; ?></p>
   <p class="help">मद्दत · Help: <a href="tel:<?= $h(preg_replace('/[^0-9+]/', '', $office) ?? '') ?>"><?= $h($office) ?></a></p>
 </div>
 <script>
