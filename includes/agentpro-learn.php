@@ -275,8 +275,10 @@ final class ApLearn
                     ['floor' => $source === 'office' ? $trusted : 0, 'src' => $source, 'i' => (int) $row['id']]);
                 return;
             }
-            $rank = ['parser' => 2, 'confirmed' => 2, 'office' => 3];
-            if ($rank[$source] >= ($rank[(string) $row['source']] ?? 0)) {
+            // Claude-written examples are useful few-shots, but never outrank
+            // a reading observed from a real member or taught by the office.
+            $rank = ['teacher' => 1, 'parser' => 2, 'confirmed' => 2, 'office' => 3];
+            if (($rank[$source] ?? 0) >= ($rank[(string) $row['source']] ?? 0)) {
                 // the newer certain reading wins; its practice record starts again
                 Database::run('UPDATE ap_wa_examples SET intent_json = :j, source = :src, hits = hits + 1, ok_hits = :ok, px_n = 0, px_ok = 0,
                                       last_at = NOW() WHERE id = :i',

@@ -141,4 +141,9 @@ $r = AiTeach::run(2.0);
 check($r["examples"] === 2 && $learned === [['bal kati xa', 'balance'], ['SHG-2026-10001 cancel gardinu', 'cancel']], 'desk examples stored, question/other skipped');
 check(($calls[count($calls) - 2]['output_config']['format']['schema']['properties']['examples']['items']['properties']['intent']['additionalProperties'] ?? true) === false, 'the intent schema is closed for structured output');
 
+$learnSrc = file_get_contents(__DIR__ . '/../includes/agentpro-learn.php');
+$teachMigration = file_get_contents(__DIR__ . '/../database/upgrade-2026-11-01-ai-teach-source.sql');
+check(str_contains($learnSrc, "'teacher' => 1"), 'teacher examples have an explicit lowest trust rank');
+check(str_contains($teachMigration, "'parser','confirmed','office','teacher'"), 'migration permits teacher examples in the live enum');
+
 echo "OK $checks checks\n";
