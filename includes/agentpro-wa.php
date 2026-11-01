@@ -918,6 +918,13 @@ final class ApWa
             self::$cmdIntent = ['intent' => 'portal'];
             return self::portal($member, $lang);
         }
+        // 1 Nov 2026 (owner: "staff agent ko personal document store garos, magda pathaos"): MY OWN papers —
+        // "kagaj" lists them, "kagaj 2" sends that one to this same verified number (a signed link, 15 min).
+        // Only the sender's own documents, ever; someone else's papers stay with the office.
+        if (preg_match('/^(?:mero\s*|my\s*|mera\s*)?(?:kagaj|kagat|kagajat|docs?|documents?|कागज|कागजात|डकुमेन्ट)(?:\s*(?:patra|haru|list))?(?:\s+(\d{1,2}))?(?:\s*(?:pathau\w*|pathai\w*|deu|dinus|dinu|send|bhej\w*))?$/u', $l, $dm) === 1) {
+            self::$cmdIntent = ['intent' => 'my_docs'];
+            return self::myDocs($member, isset($dm[1]) ? (int) $dm[1] : 0, $lang);
+        }
         // 31 Oct 2026 (owner: "bhareko form WhatsApp ma pathaune"): my own filled application form.
         if (preg_match('/^(?:form|my\s*form|mero\s*form|mera\s*form|फारम|फर्म|फॉर्म|मेरो\s*फारम|मेरो\s*फर्म|मेरा\s*फॉर्म|application\s*form|bhareko\s*form|भरेको\s*फारम|form\s*pdf|फारम\s*pdf)$/u', $l)) {
             self::$cmdIntent = ['intent' => 'form'];
@@ -2663,6 +2670,35 @@ final class ApWa
      * member's ID, PAN and bank numbers in full, so no longer-lived public
      * link is made here.
      */
+    /**
+     * The member's own papers (AgentPro::memberDocs): n = 0 lists them, n > 0
+     * sends that one as a picture/file through a signed link that lives 15
+     * minutes (me/doc-share.php). Audited either way.
+     */
+    private static function myDocs(array $member, int $n, string $lang): array
+    {
+        $id = (int) $member['id'];
+        $docs = AgentPro::memberDocs($id);
+        if ($docs === []) {
+            return self::out("📂 तपाईंको कुनै कागजात सेभ छैन। " . appUrl('me/') . " मा Docs बाट थप्न सकिन्छ।\nNo documents saved yet — add them at " . appUrl('me/'));
+        }
+        if ($n < 1 || $n > count($docs)) {
+            $lines = ["📂 तपाईंका कागजात / Your documents:"];
+            foreach ($docs as $i => $d) {
+                $lines[] = ($i + 1) . '. ' . $d['label'];
+            }
+            $lines[] = "पठाउन: \"kagaj 1\" जस्तै लेख्नुहोस्। / To get one, send \"kagaj 1\".";
+            Logger::audit('agentpro.wa_docs_list', 'admin', (string) $id, null, ['n' => count($docs)], 'Own documents listed on the WhatsApp desk');
+            return self::out(implode("\n", $lines));
+        }
+        $d = $docs[$n - 1];
+        $exp = time() + 900;
+        $sig = substr(hash_hmac('sha256', 'apdoc|' . $id . '|' . $d['key'] . '|' . $exp, APP_KEY), 0, 32);
+        $url = appUrl('me/doc-share.php?a=' . $id . '&k=' . rawurlencode($d['key']) . '&e=' . $exp . '&s=' . $sig);
+        Logger::audit('agentpro.wa_doc_sent', 'admin', (string) $id, null, ['key' => $d['key']], 'Own document sent to own WhatsApp');
+        return ['text' => '📄 ' . $d['label'] . " — तपाईंको आफ्नै नम्बरमा मात्र। अरूलाई फर्वार्ड नगर्नुहोस्।\n(Only to your own number — do not forward.)", 'media' => $url];
+    }
+
     private static function myForm(array $member, string $lang): array
     {
         require_once __DIR__ . '/agentpro-form.php';
