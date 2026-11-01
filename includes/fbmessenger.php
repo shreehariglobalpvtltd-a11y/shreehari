@@ -78,9 +78,22 @@ final class FbMessenger
         return trim(Settings::getString('fb_page_token', ''));
     }
 
+    /**
+     * The Page's messages come from the same Meta app as WhatsApp, so when no
+     * Facebook-specific secret is saved the WhatsApp app secret is the one
+     * Meta signs with (same rule as includes/messenger.php).
+     */
     public static function appSecret(): string
     {
-        return trim(Settings::getString('fb_app_secret', ''));
+        $own = trim(Settings::getString('fb_app_secret', ''));
+        return $own !== '' ? $own : trim(Settings::getString('whatsapp_app_secret', ''));
+    }
+
+    /** True when appSecret() is borrowing the WhatsApp app's secret. */
+    public static function secretFromWhatsApp(): bool
+    {
+        return trim(Settings::getString('fb_app_secret', '')) === ''
+            && trim(Settings::getString('whatsapp_app_secret', '')) !== '';
     }
 
     /** The webhook's set-up password. Made once, on first need, and kept. */

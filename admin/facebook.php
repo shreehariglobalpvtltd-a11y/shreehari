@@ -121,7 +121,7 @@ admin_header('Facebook Messenger AI', 'facebook');
   <div class="fb-note" style="margin:0">
     Page: <strong><?= $pageName !== '' ? $e($pageName) : '— (press “Test token”)' ?></strong> ·
     Token: <strong><?= $hasToken ? 'saved' : 'not saved' ?></strong> ·
-    App secret: <strong><?= $hasSec ? 'saved' : 'not saved' ?></strong>
+    App secret: <strong><?= $hasSec ? (FbMessenger::secretFromWhatsApp() ? 'using the WhatsApp app’s secret (same Meta app)' : 'saved') : 'not saved' ?></strong>
   </div>
 </div>
 
@@ -149,7 +149,7 @@ admin_header('Facebook Messenger AI', 'facebook');
       <input type="password" name="token" autocomplete="off" placeholder="<?= $hasToken ? '•••••••• saved' : 'paste the Page access token' ?>" <?= $canEdit ? '' : 'disabled' ?>>
     </label>
     <?php if ($hasToken): ?><label class="fb-check"><input type="checkbox" name="clear_token" <?= $canEdit ? '' : 'disabled' ?>> remove the saved token</label><?php endif; ?>
-    <label>App secret <?= $hasSec ? '(saved — leave empty to keep)' : '' ?>
+    <label>App secret <?= FbMessenger::secretFromWhatsApp() ? '(optional — the WhatsApp app’s secret is used; paste only if the Page is on a different Meta app)' : ($hasSec ? '(saved — leave empty to keep)' : '') ?>
       <input type="password" name="secret" autocomplete="off" placeholder="<?= $hasSec ? '•••••••• saved' : 'paste the app secret' ?>" <?= $canEdit ? '' : 'disabled' ?>>
     </label>
     <?php if ($hasSec): ?><label class="fb-check"><input type="checkbox" name="clear_secret" <?= $canEdit ? '' : 'disabled' ?>> remove the saved secret</label><?php endif; ?>
