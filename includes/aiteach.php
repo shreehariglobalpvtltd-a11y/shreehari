@@ -131,6 +131,19 @@ final class AiTeach
             return $out;
         }
 
+        // FIRST (one cheap call, so the article rounds can never starve it): the VPS model's own lesson: example messages for the WhatsApp desk, each with
+        // the reading the desk should make. Stored as source 'teacher' (one OK mark) — the
+        // local model sees them as few-shot examples and in its nightly practice, and one
+        // only skips the model after a real member confirms it.
+        if ($left() > 0.1 && Settings::getBool('ai_teach_examples', true)) {
+            $e = self::teachExamples($dry);
+            $out['cost'] += $e['cost'];
+            $out['examples'] = $e['stored'];
+            if ($e['note'] !== '' && $out['note'] === '') {
+                $out['note'] = $e['note'];
+            }
+        }
+
         $f = self::factsNow();
         $titles = array_map('mb_strtolower', $f['titles']);
         $phone = Settings::officePhone();
@@ -187,19 +200,6 @@ final class AiTeach
                 }
                 $out[$publish ? 'published' : 'drafted']++;
                 $f['titles'][] = (string) $a['title'];
-            }
-        }
-
-        // The VPS model's own lesson: example messages for the WhatsApp desk, each with
-        // the reading the desk should make. Stored as source 'teacher' (one OK mark) — the
-        // local model sees them as few-shot examples and in its nightly practice, and one
-        // only skips the model after a real member confirms it.
-        if ($left() > 0.1 && Settings::getBool('ai_teach_examples', true)) {
-            $e = self::teachExamples($dry);
-            $out['cost'] += $e['cost'];
-            $out['examples'] = $e['stored'];
-            if ($e['note'] !== '' && $out['note'] === '') {
-                $out['note'] = $e['note'];
             }
         }
 
