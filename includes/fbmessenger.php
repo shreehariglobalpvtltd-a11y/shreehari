@@ -89,6 +89,22 @@ final class FbMessenger
         return $own !== '' ? $own : trim(Settings::getString('whatsapp_app_secret', ''));
     }
 
+    /**
+     * What the office pasted → the bare token, or '' when it holds none.
+     * Copies from a notes file come with a label ("Page token: EAA…"),
+     * quotes, a line break or spaces in the middle; a Page token is one
+     * "EAA…" run of letters and digits, so that run is taken when present.
+     * Anything else (an app secret) only loses its whitespace and quotes.
+     */
+    public static function cleanToken(string $pasted): string
+    {
+        $flat = preg_replace('/[\s"\'`]+/u', '', $pasted) ?? '';
+        if (preg_match('/EAA[A-Za-z0-9]{30,}/', $flat, $m) === 1) {
+            return $m[0];
+        }
+        return preg_match('/^[A-Za-z0-9_\-|.]{16,1000}$/', $flat) === 1 ? $flat : '';
+    }
+
     /** True when appSecret() is borrowing the WhatsApp app's secret. */
     public static function secretFromWhatsApp(): bool
     {

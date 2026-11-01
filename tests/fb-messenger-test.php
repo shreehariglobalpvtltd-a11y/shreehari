@@ -130,6 +130,15 @@ $long = implode("\n", array_fill(0, 300, str_repeat('क', 20)));
 $parts = FbMessenger::chunks($long);
 check(count($parts) === 3 && max(array_map('mb_strlen', $parts)) <= 1900, 'long replies split into ≤ 3 Messenger-sized parts');
 
+$tok = 'EAAGm0PX4ZCpsBAKZB' . str_repeat('a1B2', 20);
+check(FbMessenger::cleanToken($tok) === $tok, 'a bare Page token is kept');
+check(FbMessenger::cleanToken("Page token: " . $tok . "
+") === $tok, 'a label and line break around the token are dropped');
+check(FbMessenger::cleanToken('"' . substr($tok, 0, 40) . "
+ " . substr($tok, 40) . '"') === $tok, 'a token broken by a line break / quotes is joined');
+check(FbMessenger::cleanToken('abc123def456ghi789') === 'abc123def456ghi789', 'an app secret passes through');
+check(FbMessenger::cleanToken('hello there') === '' && FbMessenger::cleanToken('') === '', 'text with no token gives nothing');
+
 /* ---- 4. off = silent ---- */
 Settings::$v = ['fb_msgr_on' => false, 'fb_page_token' => 'TOKEN_TOKEN_TOKEN_1', 'fb_app_secret' => 'sekret123', 'company_name' => 'Shree Hari Global'];
 FbMessenger::handle($ev('namaste', 'm0'));

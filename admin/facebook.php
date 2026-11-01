@@ -33,26 +33,39 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
         $act = (string) ($_POST['action'] ?? '');
         if ($act === 'save') {
-            Settings::set('fb_msgr_on', isset($_POST['fb_msgr_on']), 'bool', 'facebook');
-            Settings::set('fb_msgr_sell', isset($_POST['fb_msgr_sell']), 'bool', 'facebook');
-            $changed = ['fb_msgr_on', 'fb_msgr_sell'];
+            /* Check every pasted value FIRST: a bad paste must change nothing
+               (it used to save the switches and then refuse the token, which
+               looked like "saved" with no token). */
+            $writes = [];
             foreach (['fb_page_token' => 'token', 'fb_app_secret' => 'secret'] as $key => $field) {
                 if (isset($_POST['clear_' . $field])) {
-                    Settings::set($key, '', 'string', 'facebook');
-                    $changed[] = $key . ' (cleared)';
+                    $writes[$key] = '';
                     continue;
                 }
-                $v = trim((string) ($_POST[$field] ?? ''));
-                if ($v !== '') {
-                    if (preg_match('/^[A-Za-z0-9_\-|.]{16,600}$/', $v) !== 1) {
-                        throw new RuntimeException(($field === 'token' ? 'The Page token' : 'The app secret') . ' does not look right — copy it again.');
-                    }
-                    Settings::set($key, $v, 'string', 'facebook');
-                    $changed[] = $key;
+                $raw = (string) ($_POST[$field] ?? '');
+                if (trim($raw) === '') {
+                    continue;
                 }
+                $v = FbMessenger::cleanToken($raw);
+                if ($v === '') {
+                    throw new RuntimeException(($field === 'token'
+                        ? 'The Page token was not found in what you pasted — copy only the long code that starts with EAA. / टोकन भेटिएन: EAA बाट सुरु हुने लामो कोड मात्र कपी गर्नुहोस्।'
+                        : 'The app secret does not look right — copy it again.') . ' Nothing was saved.');
+                }
+                $writes[$key] = $v;
             }
-            Logger::audit('facebook.save', 'setting', 'fb_msgr', null, ['changed' => $changed], 'by admin #' . $admin['id']);
-            $flash = ['ok', 'Saved. / सेभ भयो।'];
+            $on = isset($_POST['fb_msgr_on']);
+            Settings::set('fb_msgr_on', $on, 'bool', 'facebook');
+            Settings::set('fb_msgr_sell', isset($_POST['fb_msgr_sell']), 'bool', 'facebook');
+            foreach ($writes as $key => $v) {
+                Settings::set($key, $v, 'string', 'facebook');
+            }
+            Logger::audit('facebook.save', 'setting', 'fb_msgr', null,
+                ['changed' => array_merge(['fb_msgr_on', 'fb_msgr_sell'], array_keys($writes))], 'by admin #' . $admin['id']);
+            $tokenNow = FbMessenger::token() !== '';
+            $flash = $on && !$tokenNow
+                ? ['bad', 'Saved, but there is still NO Page token — paste it in the box above and Save again. / टोकन छैन — माथि पेस्ट गरेर फेरि Save गर्नुहोस्।']
+                : ['ok', 'Saved. / सेभ भयो।' . (isset($writes['fb_page_token']) && $writes['fb_page_token'] !== '' ? ' Page token saved ✓ — now press “Test token”.' : '')];
         } elseif ($act === 'new_verify') {
             Settings::set('fb_verify_token', '', 'string', 'facebook');
             FbMessenger::verifyToken();
