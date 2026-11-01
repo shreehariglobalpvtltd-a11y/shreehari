@@ -460,6 +460,7 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
   <div class="links">
     <?php if ($step === 'start'): ?><a href="<?= $h($odUrl(['step' => 'forgot'])) ?>">🔑 पासवर्ड बिर्सनुभयो? · Forgot password?</a><?php endif; ?>
     <a href="<?= $h(rtrim(APP_URL, '/')) ?>/">🎫 यात्री? लगइन बिना टिकट बुक गर्नुहोस् · Passenger? Book without signing in →</a>
+    <a href="<?= $h(rtrim(APP_URL, '/')) ?>/guide/?v=agent">▶ एजेन्ट गाइड भिडियो — लगइन, टिकट, चलानी, पैसा निकाल्ने · Agent guide video</a>
   </div>
   <?php endif; ?>
   <p class="note">📞 मद्दत · Help: <a href="tel:+<?= $h($helpTel) ?>" style="white-space:nowrap"><?= $h($helpPhone) ?></a></p>
@@ -487,7 +488,7 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
 })();
 </script>
 <?php endif; ?>
-<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261031b" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261031e" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php if (($step === 'mobile' || $step === 'id') && QuickUnlock::on()): ?><script src="/assets/js/quick-unlock.js?v=20261101a"></script><?php endif; ?>
 </body></html>
 <?php
@@ -945,6 +946,6 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261031b" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261031e" data-next="<?= $meUrl ?>"></script><?php endif; ?>
 <?php endif; ?>
 </body></html>
