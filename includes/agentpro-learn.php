@@ -44,7 +44,7 @@ if (!defined('SHG_APP')) {
 
 final class ApLearn
 {
-    public const SOURCES = ['parser', 'confirmed', 'office'];
+    public const SOURCES = ['parser', 'confirmed', 'office', 'teacher'];   // teacher: written by Claude (AiTeach), 1 Nov 2026 — one OK mark, so a real confirmation is needed before the fast path
 
     /**
      * Intents the fast path may answer: read-only ones, and the ones whose

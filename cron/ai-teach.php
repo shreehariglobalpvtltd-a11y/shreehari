@@ -5,9 +5,10 @@
  *
  *     40 * * * * php /path/to/public_html/cron/ai-teach.php >/dev/null 2>&1
  *
- *   - runs only inside ai_teach_hours (default "2-5" IST), once per day
- *     (kv ai_teach:day), at most ai_teach_run_usd (2) per run and
- *     ai_teach_budget_usd (25) in all — the spend is priced from the
+ *   - runs only inside ai_teach_hours (default "1-6" IST), at most
+ *     ai_teach_runs_per_day (4) a day (kv ai_teach:day = "date:n"), at most
+ *     ai_teach_run_usd (3) per run and ai_teach_budget_usd (95) in all —
+ *     owner: "teach until the Claude credit is gone" — the spend is priced from the
  *     API's own usage figures
  *   - quietly skips with no Anthropic key, the switch ai_teach_on off, or
  *     the budget used up
@@ -45,15 +46,16 @@ if (!AiTeach::on()) {
     exit;
 }
 $hour = (int) (new DateTimeImmutable('now', new DateTimeZone('Asia/Kolkata')))->format('G');
-$hours = Settings::getString('ai_teach_hours', '2-5');
+$hours = Settings::getString('ai_teach_hours', '1-6');
 if (!$now && !ApLearn::inHours($hours, $hour)) {
     cron_done(['skipped' => 'outside ai_teach_hours (' . $hours . ' IST, now ' . $hour . ')']);
     exit;
 }
 $today = date('Y-m-d');
-$day = (string) Database::scalar("SELECT kvalue FROM kv_store WHERE kscope = 'ai_teach' AND kkey = 'day'", [], '');
-if (!$now && $day === $today) {
-    cron_done(['skipped' => 'already taught today']);
+[$dayDate, $dayRuns] = array_pad(explode(':', (string) Database::scalar("SELECT kvalue FROM kv_store WHERE kscope = 'ai_teach' AND kkey = 'day'", [], '')), 2, '0');
+$runsToday = $dayDate === $today ? (int) $dayRuns : 0;
+if (!$now && $runsToday >= max(1, Settings::getInt('ai_teach_runs_per_day', 4))) {
+    cron_done(['skipped' => 'taught ' . $runsToday . ' times today already']);
     exit;
 }
 
@@ -68,7 +70,7 @@ try {
         Database::run(
             "INSERT INTO kv_store (kscope, kkey, kvalue, updated_by) VALUES ('ai_teach', 'day', :d, 'ai')
              ON DUPLICATE KEY UPDATE kvalue = VALUES(kvalue), updated_by = 'ai'",
-            ['d' => $today]
+            ['d' => $today . ':' . ($runsToday + 1)]
         );
     }
     $r = AiTeach::run($usd, $dry);

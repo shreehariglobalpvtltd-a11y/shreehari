@@ -30,7 +30,7 @@
  *
  *  Money: every response's usage is priced and added up in kv_store; a run
  *  stops at ai_teach_run_usd (2) and everything stops at ai_teach_budget_usd
- *  (25). The facts block is prompt-cached, so the second and later calls of
+ *  (95 — owner: "teach until the Claude credit is gone"). The facts block is prompt-cached, so the second and later calls of
  *  a run read it at a tenth of the price.
  *
  *  Never throws at its caller; a failed call ends the run and is logged.
@@ -63,6 +63,8 @@ final class AiTeach
     public static ?Closure $facts = null;   // fn(): array{facts: string, titles: list<string>, questions: list<string>}
     public static ?Closure $store = null;   // fn(array $article, bool $publish): int
     public static ?array   $kv    = null;   // spend / log in memory instead of kv_store
+    public static ?Closure $desk  = null;   // fn(): array{0: string desk guide, 1: array intent schema}
+    public static ?Closure $learn = null;   // fn(string $text, array $intent): bool — store one desk example
 
     private function __construct() {}
 
@@ -79,12 +81,12 @@ final class AiTeach
 
     public static function budget(): float
     {
-        return max(0.0, (float) Settings::getString('ai_teach_budget_usd', '25'));
+        return max(0.0, (float) Settings::getString('ai_teach_budget_usd', '95'));
     }
 
     public static function runBudget(): float
     {
-        return max(0.05, (float) Settings::getString('ai_teach_run_usd', '2'));
+        return max(0.05, (float) Settings::getString('ai_teach_run_usd', '3'));
     }
 
     public static function spent(): float
@@ -112,7 +114,7 @@ final class AiTeach
      */
     public static function run(?float $runBudget = null, bool $dry = false): array
     {
-        $out = ['ok' => false, 'rounds' => 0, 'written' => 0, 'published' => 0, 'drafted' => 0, 'rejected' => 0,
+        $out = ['ok' => false, 'rounds' => 0, 'written' => 0, 'published' => 0, 'drafted' => 0, 'rejected' => 0, 'examples' => 0,
                 'cost' => 0.0, 'spent' => self::spent(), 'note' => ''];
         if (!self::on()) {
             $out['note'] = 'off or no Anthropic key';
@@ -188,6 +190,19 @@ final class AiTeach
             }
         }
 
+        // The VPS model's own lesson: example messages for the WhatsApp desk, each with
+        // the reading the desk should make. Stored as source 'teacher' (one OK mark) — the
+        // local model sees them as few-shot examples and in its nightly practice, and one
+        // only skips the model after a real member confirms it.
+        if ($left() > 0.1 && Settings::getBool('ai_teach_examples', true)) {
+            $e = self::teachExamples($dry);
+            $out['cost'] += $e['cost'];
+            $out['examples'] = $e['stored'];
+            if ($e['note'] !== '' && $out['note'] === '') {
+                $out['note'] = $e['note'];
+            }
+        }
+
         if (!$dry) {
             self::kvSet('spent', (string) round(self::spent() + $out['cost'], 6));
             $log = json_decode(self::kvGet('log', '[]'), true);
@@ -206,6 +221,82 @@ final class AiTeach
     {
         $log = json_decode(self::kvGet('log', '[]'), true);
         return is_array($log) ? $log : [];
+    }
+
+    /**
+     * One call: ~30 realistic desk messages with their intent JSON, cleaned
+     * by the desk's own ApBrain::clean() and stored through ApLearn.
+     *
+     * @return array{stored: int, cost: float, note: string}
+     */
+    private static function teachExamples(bool $dry): array
+    {
+        $guide = '';
+        $schema = null;
+        try {
+            if (self::$desk !== null) {
+                [$guide, $raw] = (self::$desk)();
+            } else {
+                require_once __DIR__ . '/agentpro-brain.php';
+                [$guide, $raw] = [ApBrain::system(false), ApBrain::schema()];
+            }
+            $schema = self::closed($raw);
+        } catch (Throwable $e) {
+            return ['stored' => 0, 'cost' => 0.0, 'note' => 'desk brain unavailable'];
+        }
+        $task = "TASK: write 30 realistic WhatsApp messages that our members (ticket agents, counter staff, office staff) send to this desk, "
+            . "and for each the exact JSON reading this desk must produce, following the desk instructions above.
+"
+            . "Mix the ways real people write: romanised Nepali, Nepali in Devanagari, Hindi (Devanagari and romanised), English, and "
+            . "mixtures, with the short forms and typos people really use (\"bal kati xa\", \"kal 2 seat surat se\", \"tkt cancel gardinu\"). "
+            . "Cover every intent, a few each, but never 'question' or 'other'. Use invented placeholders only: PNRs like SHG-2026-10001, "
+            . "phones like 9800000000, simple names. Fields the message does not give: empty string, 0 or an empty list.";
+        $r = self::ask($guide, $task, ['type' => 'object', 'properties' => ['examples' => ['type' => 'array', 'items' => [
+            'type' => 'object', 'properties' => ['text' => ['type' => 'string'], 'intent' => $schema],
+            'required' => ['text', 'intent'], 'additionalProperties' => false]]],
+            'required' => ['examples'], 'additionalProperties' => false], 12000);
+        $stored = 0;
+        foreach ((array) ($r['json']['examples'] ?? []) as $ex) {
+            $text = trim((string) ($ex['text'] ?? ''));
+            $intent = is_array($ex['intent'] ?? null) ? $ex['intent'] : [];
+            if ($text === '' || mb_strlen($text) > 300 || in_array((string) ($intent['intent'] ?? ''), ['', 'question', 'other'], true)) {
+                continue;
+            }
+            if ($dry || self::learnOne($text, $intent)) {
+                $stored++;
+            }
+        }
+        return ['stored' => $stored, 'cost' => $r['cost'], 'note' => $r['json'] === null ? $r['note'] : ''];
+    }
+
+    private static function learnOne(string $text, array $intent): bool
+    {
+        if (self::$learn !== null) {
+            return (self::$learn)($text, $intent);
+        }
+        try {
+            require_once __DIR__ . '/agentpro-learn.php';
+            $before = (int) Database::scalar("SELECT COUNT(*) FROM ap_wa_examples WHERE source = 'teacher'", [], 0);
+            ApLearn::record($text, ApBrain::clean($intent, $text), 'teacher');
+            return (int) Database::scalar("SELECT COUNT(*) FROM ap_wa_examples WHERE source = 'teacher'", [], 0) > $before;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /** A JSON schema the structured-output mode accepts: every object closed, every property required. */
+    private static function closed(array $s): array
+    {
+        if (($s['type'] ?? '') === 'object' && isset($s['properties'])) {
+            foreach ($s['properties'] as $k => $p) {
+                $s['properties'][$k] = self::closed((array) $p);
+            }
+            $s['required'] = array_keys($s['properties']);
+            $s['additionalProperties'] = false;
+        } elseif (($s['type'] ?? '') === 'array' && isset($s['items'])) {
+            $s['items'] = self::closed((array) $s['items']);
+        }
+        return $s;
     }
 
     /* =================================================================

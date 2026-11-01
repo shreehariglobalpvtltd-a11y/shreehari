@@ -128,4 +128,17 @@ $replies = [$msg(['articles' => [$art('Dry one')]]), $msg(['results' => [['index
 $r = AiTeach::run(1.0, true);
 check($r['published'] === 1 && $saved === [] && AiTeach::spent() === 0.0, '--dry counts but saves and spends nothing');
 
+/* ---- 8. desk examples for the VPS model ---- */
+$learned = []; AiTeach::$kv = []; $saved = [];
+AiTeach::$desk = static fn(): array => ['DESK GUIDE', ['type' => 'object', 'properties' => ['intent' => ['type' => 'string'], 'pnr' => ['type' => 'string']], 'required' => ['intent']]];
+AiTeach::$learn = static function (string $t, array $i) use (&$learned): bool { $learned[] = [$t, $i['intent']]; return true; };
+$replies = [$msg(['articles' => []]), $msg(['examples' => [
+    ['text' => 'bal kati xa', 'intent' => ['intent' => 'balance']],
+    ['text' => 'k cha bus ma', 'intent' => ['intent' => 'question']],
+    ['text' => 'SHG-2026-10001 cancel gardinu', 'intent' => ['intent' => 'cancel', 'pnr' => 'SHG-2026-10001']],
+]])];
+$r = AiTeach::run(2.0);
+check($r["examples"] === 2 && $learned === [['bal kati xa', 'balance'], ['SHG-2026-10001 cancel gardinu', 'cancel']], 'desk examples stored, question/other skipped');
+check(($calls[count($calls) - 1]['output_config']['format']['schema']['properties']['examples']['items']['properties']['intent']['additionalProperties'] ?? true) === false, 'the intent schema is closed for structured output');
+
 echo "OK $checks checks\n";
