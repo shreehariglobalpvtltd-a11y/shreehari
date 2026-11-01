@@ -237,6 +237,7 @@ final class AiTeach
             if (self::$desk !== null) {
                 [$guide, $raw] = (self::$desk)();
             } else {
+                require_once __DIR__ . '/agentpro.php';          // ApBrain::system() reads AgentPro
                 require_once __DIR__ . '/agentpro-brain.php';
                 [$guide, $raw] = [ApBrain::system(false), ApBrain::schema()];
             }
