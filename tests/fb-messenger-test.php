@@ -193,6 +193,7 @@ $brainOut = ['text' => 'Tapai ko ticket SHG-2026-1 confirm bhayo.', 'media' => '
 FbMessenger::handle($ev('mero ticket pathaidinus', 'm6'));
 $ctx = $asked[0]['ctx'] ?? [];
 check(($ctx['phone'] ?? '') === '9812345678' && ($ctx['verified'] ?? false) === true, 'after the code the AI sees the proven number');
+check(($ctx['intl'] ?? '') === '9779812345678', 'a Nepal number keeps +977 for WhatsApp sends (documents, tickets)');
 $img = null;
 foreach ($sent as $s) { if (($s['body']['message']['attachment']['type'] ?? '') === 'image') { $img = $s['body']['message']['attachment']['payload']['url']; } }
 check($img === 'https://www.shreehariglobal.in/download-ticket.php?pnr=SHG-2026-1&format=png', 'the ticket picture is sent in Messenger');

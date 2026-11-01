@@ -323,6 +323,8 @@ final class FbMessenger
             'scopeAdminId' => null,
             'name'         => '',
             'phone'        => $phone,
+            // With the country code, as the code was sent: a +977 number must never go out as +91.
+            'intl'         => $phone !== '' ? (((string) ($st['country'] ?? '') === 'NP' ? '977' : '91') . $phone) : '',
             'channel'      => 'web',
             'via'          => 'facebook',
             'userId'       => 0,
