@@ -365,14 +365,19 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
             <button type="button" data-v="esewa">🇳🇵 eSewa</button>
             <button type="button" data-v="bank">🏦 Bank</button>
           </div></div>
-        <div class="qt-row"><span class="qt-k">Discount</span>
-          <div class="qt-disc">
-            <input type="number" id="qtDisc" min="0" step="1" placeholder="0" inputmode="numeric">
-            <select id="qtDiscType"><option value="flat">₹ off</option><option value="percent">% off</option></select>
-            <input type="text" id="qtNote" maxlength="120" placeholder="Note (optional) · receipt no.">
-          </div></div>
-        <div class="qt-hint">Max discount <?= Security::e((string) $maxDisc) ?>% (server re-checks). Boarding choice is remembered on this desk.</div>
+        <div class="qt-hint">Boarding choice is remembered on this desk.</div>
       </details>
+
+      <div class="qt-row" id="qtDiscountBox" style="margin:10px 0;padding:12px;border:2px solid #f59e0b;border-radius:12px;background:#fffbeb">
+        <span class="qt-k" style="font-weight:800">💸 छुट / Discount</span>
+        <div class="qt-disc">
+          <input type="number" id="qtDisc" min="0" step="1" placeholder="200" inputmode="numeric" aria-label="Discount amount">
+          <select id="qtDiscType" aria-label="Discount type"><option value="flat">₹ amount off</option><option value="percent">% percent off</option></select>
+          <input type="text" id="qtNote" maxlength="120" placeholder="Note (optional) · receipt no.">
+        </div>
+        <div id="qtDiscountPreview" style="width:100%;margin-top:7px;font-size:14px;font-weight:800;color:#92400e">Fare loading…</div>
+        <div class="qt-hint" style="width:100%">Example: fare ₹2,000 − discount ₹200 = final ₹1,800. Max <?= Security::e((string) $maxDisc) ?>%.</div>
+      </div>
 
       <button type="submit" class="qt-go" id="qtGo" <?= $canSell ? '' : 'disabled' ?>>⚡ Confirm &amp; Issue Ticket →</button>
       <div class="qt-hint">Enter or tap the button → review one confirmation → issue. The sale confirms instantly (cash / UPI already received at the desk), the ticket PNG + PDF are ready and the WhatsApp goes, credited to <b><?= Security::e($who) ?></b>.</div>
@@ -616,6 +621,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       });
     }
     $('#qtPlanBody').innerHTML = html;
+    renderDiscountPreview();
     $$('button[data-alt]', $('#qtPlanBody')).forEach(function (b) {
       b.addEventListener('click', function () {
         var dir = this.getAttribute('data-alt');
@@ -696,22 +702,40 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     b.disabled = on || !CAN;
     b.innerHTML = on ? '⏳ Issuing the ticket…' : '⚡ Confirm &amp; Issue Ticket →';
   }
-  function confirmSale(name, dv) {
+  function currentDiscountAmounts() {
+    var f = plan && plan.fare ? plan.fare : {};
+    var base = Math.max(0, Number(f.total || 0));
+    var requested = Math.max(0, parseFloat($('#qtDisc').value) || 0);
+    var rawDiscount = $('#qtDiscType').value === 'percent'
+      ? base * requested / 100
+      : requested;
+    var discount = Math.round(Math.min(rawDiscount, base * Math.max(0, MAX_DISC) / 100, base) * 100) / 100;
+    return {
+      base: base,
+      discount: discount,
+      finalTotal: Math.round(Math.max(0, base - discount) * 100) / 100
+    };
+  }
+  function renderDiscountPreview() {
+    var el = $('#qtDiscountPreview');
+    if (!el) return;
+    if (!plan) { el.textContent = 'Fare loading…'; return; }
+    var amounts = currentDiscountAmounts();
+    el.textContent = 'भाडा ' + money(amounts.base) + ' − छुट ' + money(amounts.discount) + ' = तिर्ने ' + money(amounts.finalTotal);
+  }
+  $('#qtDisc').addEventListener('input', renderDiscountPreview);
+  $('#qtDiscType').addEventListener('change', renderDiscountPreview);
+  function confirmSale(name) {
     if (!plan) {
       showErr('Live fare is still loading. Please wait a moment and confirm again.');
       schedulePlan(0);
       return false;
     }
 
-    var f = plan.fare || {};
-    var base = Math.max(0, Number(f.total || 0));
-    var requested = Math.max(0, Number(dv || 0));
-    var maxPct = <?= json_encode($maxDisc, JSON_PRESERVE_ZERO_FRACTION) ?>;
-    var rawDiscount = $('#qtDiscType').value === 'percent'
-      ? base * requested / 100
-      : requested;
-    var discount = Math.round(Math.min(rawDiscount, base * Math.max(0, maxPct) / 100, base) * 100) / 100;
-    var finalTotal = Math.round(Math.max(0, base - discount) * 100) / 100;
+    var amounts = currentDiscountAmounts();
+    var base = amounts.base;
+    var discount = amounts.discount;
+    var finalTotal = amounts.finalTotal;
     var seatText = seatLabelJoin(plan.seats || [], plan.coach, plan.bookingMode) || String(st.seats) + ' seat(s)';
     var phone = $('#qtPhone').value.trim();
     var lines = [
@@ -739,7 +763,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     if (err) { showErr(err); ($('#qtName').value.trim().length < 2 ? $('#qtName') : $('#qtPhone')).focus(); return; }
     hideErr();
     var dv = parseFloat($('#qtDisc').value) || 0;
-    if (!confirmSale(name, dv)) return;
+    if (!confirmSale(name)) return;
     if (!t0) startClock();
     step(2); setBusy(true);
     api({

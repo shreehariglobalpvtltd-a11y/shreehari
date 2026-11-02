@@ -13,12 +13,14 @@ if ($source === false) {
 }
 
 $checks = [
-    'confirmation function' => "function confirmSale(name, dv)",
+    'confirmation function' => "function confirmSale(name)",
     'browser confirmation'  => "return window.confirm(lines.join('\\n'));",
     'base fare review'      => "'Base fare: ' + money(base)",
     'discount review'       => "'Discount: -' + money(discount)",
     'final total review'    => "'Final total: ' + money(finalTotal)",
-    'server cap mirrored'   => "var maxPct = <?= json_encode(\$maxDisc, JSON_PRESERVE_ZERO_FRACTION) ?>;",
+    'visible discount box'  => 'id="qtDiscountBox"',
+    'live final preview'    => "' = तिर्ने ' + money(amounts.finalTotal)",
+    'server cap mirrored'   => 'base * Math.max(0, MAX_DISC) / 100',
 ];
 
 foreach ($checks as $label => $needle) {
@@ -28,7 +30,7 @@ foreach ($checks as $label => $needle) {
     }
 }
 
-$confirmAt = strpos($source, 'if (!confirmSale(name, dv)) return;');
+$confirmAt = strpos($source, 'if (!confirmSale(name)) return;');
 $sellAt = strpos($source, "action: 'sell'");
 if ($confirmAt === false || $sellAt === false || $confirmAt > $sellAt) {
     fwrite(STDERR, "FAIL: confirmation must run before the sell request\n");
