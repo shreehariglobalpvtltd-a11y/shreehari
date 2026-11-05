@@ -925,7 +925,9 @@ final class Ticket
      */
     private static function staleBefore(string $layoutStamp): int
     {
-        return max((int) strtotime($layoutStamp), Settings::getInt('ticket_identity_changed_at', 0));
+        /* 6 Nov 2026: + the moment barcode.php reached this server (the deploy of the
+           barcode ticket), so a ticket the OLD code drew on deploy day is redrawn too. */
+        return max((int) strtotime($layoutStamp), Settings::getInt('ticket_identity_changed_at', 0), (int) @filemtime(__DIR__ . '/barcode.php'));
     }
 
     public static function logoFile(string $prefer = ''): ?string
@@ -2358,39 +2360,24 @@ final class Ticket
             imageline($im, $tx + 7, 1309 + $grow, $tx + 20, 1293 + $grow, $green);
             imagesetthickness($im, 1);
         }
-        $hTxt = $settlement['due'] > 0 ? $payQ['label'] : 'भुक्तानी  ·  PAYMENT';
+        $hTxt = $payQ['label'];
         $hMax = 420 - ($badgeW > 0 ? $badgeW + 12 : 0);
         $hSz = 22;
         foreach ([22, 20, 18, 17, 16, 15] as $try) { $hSz = $try; if (self::gdWidth($try, $hTxt) <= $hMax) { break; } }
         self::gdText($im, $hSz, 576, 1312 + $grow, $white, $clampTo($hSz, $hTxt, $hMax), true);
-        /* 6 Nov 2026 (master upgrade §2): the pay QR prints ONLY while money is
-           due; a fully paid ticket shows a PAID stamp in its place. */
-        if ($settlement['due'] > 0) {
-            try {
-                $ps  = $qrFit($payUpi, 350);
-                $pqx = 780 - intdiv($ps, 2);
-                $pqy = 1342 + $grow;
-                self::gdScanFrame($im, $pqx - 10, $pqy - 8, $pqx + $ps + 10, $pqy + $ps + 8, 34, 4, $goldM);
-                $drawQr($payUpi, $pqx, $pqy, 350);
-            }
-            catch (Throwable $e) { Logger::error('Payment QR: ' . $e->getMessage()); }
-        } else {
-            $sy = 1420 + $grow;
-            self::gdRounded($im, 586, $sy, 974, $sy + 210, 26, DocArt::col($im, [232, 247, 238]));
-            DocArt::roundOutline($im, 586, $sy, 974, $sy + 210, 26, $green, 4);
-            $pw = self::gdWidth(60, 'PAID');
-            $px = 780 - intdiv($pw + 70, 2);
-            self::gdText($im, 60, $px, $sy + 112, $green, 'PAID', true);
-            imagesetthickness($im, 10);
-            imageline($im, $px + $pw + 18, $sy + 82, $px + $pw + 36, $sy + 102, $green);
-            imageline($im, $px + $pw + 36, $sy + 102, $px + $pw + 66, $sy + 58, $green);
-            imagesetthickness($im, 1);
-            $pt = 'भुक्तानी पूरा · Payment received';
-            self::gdText($im, 18, 780 - intdiv(self::gdWidth(18, $pt), 2), $sy + 170, $green, $pt, true);
+        /* The pay QR is on every ticket (owner, 6 Nov 2026). It is the live pay
+           link, so after approval a scan shows "already paid" (pay.php). */
+        try {
+            $ps  = $qrFit($payUpi, 350);
+            $pqx = 780 - intdiv($ps, 2);
+            $pqy = 1342 + $grow;
+            self::gdScanFrame($im, $pqx - 10, $pqy - 8, $pqx + $ps + 10, $pqy + $ps + 8, 34, 4, $settlement['due'] > 0 ? $goldM : $green);
+            $drawQr($payUpi, $pqx, $pqy, 350);
         }
+        catch (Throwable $e) { Logger::error('Payment QR: ' . $e->getMessage()); }
         if ($settlement['due'] <= 0) {
-            self::gdText($im, 18, 576, 1716 + $grow, $ink, 'धन्यवाद · Thank you', true);
-            self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, $payQ['name'], 410), false);
+            self::gdText($im, 18, 576, 1716 + $grow, $green, 'भुक्तानी स्वीकृत · Payment approved', true);
+            self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'QR ले अब पैसा लिँदैन · QR closed, no charge', 410), false);
         } elseif ($payQ['mode'] === 'office') {
             self::gdText($im, 18, 576, 1716 + $grow, $ink, $clampTo(18, 'WhatsApp: +' . $payQ['wa'], 410), true);
             self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'कार्यालयले भुक्तानी विवरण पठाउनेछ', 410), false);
@@ -2640,15 +2627,21 @@ final class Ticket
         $cur  = strtoupper((string) ($booking['currency'] ?? 'INR'));
         $due  = (float) $settlement['due'];
         $out  = ['vpa' => $vpa, 'name' => $name, 'wa' => '', 'due' => $due];
+        /* 6 Nov 2026 (owner: "ticket ma QR hos, tara admin le payment approve
+           garepachhi scanner le kaam nagaros"): the QR is our LIVE pay link
+           (pay.php), not a raw upi:// code. While money is due it opens the UPI
+           app with the exact amount and PNR; once the office approves the
+           payment the same QR only says "already paid" - it can never take
+           money twice. A printed upi:// code would keep charging forever. */
+        $live = appUrl('pay.php') . '?pnr=' . rawurlencode($pnr);
         if ($vpa !== '' && $due > 0 && $cur === 'INR' && in_array($booking['status'] ?? '', ['pending', 'confirmed'], true)) {
             $amt = number_format($due, fmod($due, 1.0) > 0 ? 2 : 0);
-            return $out + ['mode' => 'due', 'payload' => upiLink($vpa, $name, $due, $pnr),
+            return $out + ['mode' => 'due', 'payload' => $live,
                 'label' => 'SCAN & PAY ₹' . $amt . ' · भुक्तानी गर्नुहोस्'];
         }
         if ($vpa !== '') {
-            return $out + ['mode' => 'upi',
-                'payload' => 'upi://pay?' . http_build_query(['pa' => $vpa, 'pn' => $name, 'cu' => 'INR', 'tn' => $pnr]),
-                'label' => 'भुक्तानी QR · UPI'];
+            return $out + ['mode' => 'upi', 'payload' => $live,
+                'label' => $due <= 0 ? 'भुक्तानी QR · PAID' : 'भुक्तानी QR · UPI'];
         }
         $wa  = Settings::officeWhatsApp();
         $msg = 'Payment for ticket ' . $pnr . ($due > 0 ? ' - ' . $cur . ' ' . number_format($due, 2) . ' due' : '');
@@ -3528,22 +3521,15 @@ final class Ticket
            live-status QR, never replacing the signed stub QR above. Same
            rules as the PNG: Ticket::paymentQr(). */
         $payPdf = self::paymentQr($booking, $sumP);
-        $payBin = $sumP['due'] > 0 ? self::qrBinary($payPdf['payload'], 6) : '';
-        if ($sumP['due'] <= 0) {
-            // 6 Nov 2026 (master upgrade §2): paid in full - a PAID stamp, no QR.
-            $pqx = 288.0;
-            $pdf->roundedRect($pqx - 4, $footY + 10, 70, 46, 6, [23, 122, 72], true);
-            $pdf->roundedRect($pqx - 2.5, $footY + 11.5, 67, 43, 5, [232, 247, 238], true);
-            $pdf->textCenter($pqx - 4, $pqx + 66, $footY + 38, 'PAID', 16, 'F2', [23, 122, 72]);
-            self::devCenter($pdf, $pqx - 10, $pqx + 72, $footY + 66, 'भुक्तानी पूरा', 6.5, $F7, self::MUTE);
-        } elseif ($payBin !== '') {
+        $payBin = self::qrBinary($payPdf['payload'], 6);
+        if ($payBin !== '') {
             $pqx = 288.0;
             $pdf->roundedRect($pqx - 4, $footY + 3, 70, 70, 4, DocArt::GOLD, true);
             $pdf->rect($pqx - 2.5, $footY + 4.5, 67, 67, [255, 255, 255], true);
             $pdf->imageFromString($payBin, $pqx, $footY + 7, 62, 62);
             $payCap = match ($payPdf['mode']) {
                 'due'    => 'SCAN & PAY ' . $money((float) $payPdf['due']),
-                'upi'    => $sumP['due'] <= 0 ? 'UPI QR  ·  PAID' : 'UPI QR',
+                'upi'    => $sumP['due'] <= 0 ? 'PAID  ·  QR CLOSED' : 'UPI QR',
                 default  => 'PAY VIA OFFICE',
             };
             $capSz = 6.5;

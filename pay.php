@@ -145,7 +145,12 @@ if (!$payable) {
     <?= $payBrand ?>
     <h1>भुक्तानी · Pay</h1>
     <div class="row">बुकिङ नं.: <code><?= htmlspecialchars($pnr, ENT_QUOTES, 'UTF-8') ?></code></div>
+<?php if ($due <= 0 && in_array($bStatus, ['confirmed', 'completed'], true)): /* 6 Nov 2026: the ticket QR after the office approved the payment */ ?>
+    <div class="row" style="font-size:20px;font-weight:800;color:#0a7c2f">✅ भुक्तानी स्वीकृत भइसकेको छ · Payment approved</div>
+    <div class="row">यो टिकटको पैसा पूरा भइसक्यो — फेरि नतिर्नुहोस्। · This ticket is fully paid — please do not pay again.</div>
+<?php else: ?>
     <div class="row">यो बुकिङमा भुक्तानी बाँकी छैन (रद्द / म्याद सकिएको / भुक्तानी भइसकेको) — कार्यालयमा सम्पर्क गर्नुहोस्। · No payment is due on this booking.</div>
+<?php endif; ?>
 <?php if ($bizWa !== ''):
       $waText = rawurlencode('मेरो बुकिङ ' . $pnr . ' बारे सोध्नु छ।'); ?>
     <a class="btn" style="background:#128C7E" href="https://wa.me/<?= htmlspecialchars($bizWa, ENT_QUOTES, 'UTF-8') ?>?text=<?= $waText ?>">WhatsApp मा कार्यालयसँग कुरा गर्नुहोस्</a>
