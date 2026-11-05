@@ -178,7 +178,9 @@ html,body{margin:0;background:#F4F6FB}
        :is()/:has(), so older Android WebViews keep the rule. It replaces the old hide-list in #homeHub's inline style.
        Inline (not a stylesheet) so the fold ships with this always-fresh HTML. The h1 and the brochure stay in the HTML. -->
   <style id="homeFold">
-    html body #view-home:not(.home-full) > :not(#smartBook):not(#sbDesk):not(#search-anchor):not(#quick-ticket):not(#nextTripBox):not(#rtBox):not(#homeRoles):not(#homeVideo):not(#homeMoreBar){display:none !important}
+    html body #view-home:not(.home-full) > :not(#smartBook):not(#sbDesk):not(#search-anchor):not(#quick-ticket):not(#nextTripBox):not(#rtBox):not(#homeRoles):not(#homeVideo):not(#homeMoreBar):not(#hero3d):not(#hyperBus){display:none !important}
+    /* 6 Nov 2026 (master upgrade §7: "the two moving-bus animations close to the ticket booking section"):
+       #hero3d (the white coach band) sits right ABOVE the booking card, #hyperBus (the rolling coach) right BELOW it. */
     /* the order: booking (-1 .. 4, unchanged), agents 5, video 6, the button 7; behind the button the front group
        (core tiles, WhatsApp ticket, the hub with the nav card) comes first, then the other videos / animations, then
        the rest in the old order. Beats every older order rule (redesign / showcase / hyperos / premium3d / liquid). */
@@ -189,8 +191,8 @@ html,body{margin:0;background:#F4F6FB}
     html body #view-home > .wa-ticket-highlight{order:9 !important}
     html body #view-home > #homeHub{order:10 !important}
     html body #view-home > #animRoute{order:11 !important}
-    html body #view-home > #hyperBus{order:12 !important}
-    html body #view-home > #hero3d{order:13 !important}
+    html body #view-home > #hyperBus{order:-1 !important}
+    html body #view-home > #hero3d{order:-2 !important}
     html body #view-home > #homeHero{order:14 !important}
     html body #view-home > #homeCeo{order:15 !important}
     html body #view-home > #homeFeat{order:16 !important}

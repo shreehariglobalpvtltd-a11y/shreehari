@@ -72,7 +72,8 @@ if ($pnr !== '' && $token !== '' && Security::isValidPnr($pnr) && !Ticket::check
    here — we neither confirm nor deny the PNR. */
 if ($pnr === '' && isset($_GET['p'])) {
     $payload = Security::clean((string) $_GET['p'], 400);
-    $decoded = Ticket::verifyQrPayload($payload);
+    // 6 Nov 2026: the ticket's barcode text (SHG<id>-<security code>) verifies here too.
+    $decoded = Ticket::looksLikeScanCode($payload) ? Ticket::verifyScanCode($payload) : Ticket::verifyQrPayload($payload);
     if ($decoded !== null) {
         $pnr   = $decoded;
         $token = Ticket::downloadToken($pnr);   // the QR signature is proof-of-genuine already

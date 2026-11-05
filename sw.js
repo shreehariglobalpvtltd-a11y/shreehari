@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v266';   // 2026-11-05 bus-ops: mandatory desk confirm sheet. asset ver 20261105a. Was:   // 2026-10-31 hidden bus number: no stray separator. asset ver 20261105a. Was:   // 2026-10-31 routine deep-link timing. asset ver 20261105a. Was:   // 2026-10-31 BUS ROUTINE: /routine.php live page + links. asset ver 20261105a.   // idc8: quiet first visit, one-door sign-in texts, hub scope, WhatsApp usability
+var VERSION = 'shg-v267';   // 2026-11-06 bus-ops: barcode ticket, buses beside booking. Was:   // 2026-11-05 bus-ops: mandatory desk confirm sheet. asset ver 20261105a. Was:   // 2026-10-31 hidden bus number: no stray separator. asset ver 20261105a. Was:   // 2026-10-31 routine deep-link timing. asset ver 20261105a. Was:   // 2026-10-31 BUS ROUTINE: /routine.php live page + links. asset ver 20261105a.   // idc8: quiet first visit, one-door sign-in texts, hub scope, WhatsApp usability
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */

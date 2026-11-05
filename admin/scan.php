@@ -296,8 +296,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && isset($_POST['qr'])) {
         $raw = trim((string) $_POST['qr']);
         $via = 'qr';
         $audit = true;
-        $verified = Ticket::verifyQrPayload($raw);
-        if ($verified !== null) {
+        /* 6 Nov 2026 (master upgrade §2): new tickets carry a Code 128 BARCODE
+           (Ticket::scanCode = booking id + keyed security code) instead of the
+           verify QR. A barcode that does not match the server key is forged. */
+        $isBar = Ticket::looksLikeScanCode($raw);
+        $verified = $isBar ? Ticket::verifyScanCode($raw) : Ticket::verifyQrPayload($raw);
+        if ($isBar && $verified === null) {
+            $qrState = 'forged';
+            $pnr = '';
+        } elseif ($verified !== null) {
             $pnr = $verified;
             $qrState = 'signed';
             if ($agentOnly) {
@@ -321,6 +328,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && isset($_POST['qr'])) {
     }
 } elseif ($pnr !== '' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     $audit = true;   // a typed / linked lookup
+    /* 6 Nov 2026: the barcode's text typed by hand or by a USB barcode gun
+       ("SHG12345-K7M2PQ") proves the ticket in hand, exactly like a scan. */
+    if (Ticket::looksLikeScanCode($pnr)) {
+        $via = 'qr';
+        $verified = Ticket::verifyScanCode($pnr);
+        if ($verified !== null) {
+            $pnr = $verified;
+            $qrState = 'signed';
+            if ($agentOnly) {
+                $_SESSION['scan_qr_ok'] = array_slice(array_filter((array) ($_SESSION['scan_qr_ok'] ?? []), static fn ($t) => is_int($t) && $t > time() - 1800), -40, null, true);
+                $_SESSION['scan_qr_ok'][$pnr] = time();
+            }
+        } else {
+            $qrState = 'forged';
+            $pnr = '';
+        }
+    }
 }
 
 $b = ($pnr !== '' && Security::isValidPnr($pnr) && $qrState !== 'forged') ? BookingService::detail($pnr) : null;
@@ -467,7 +491,7 @@ html[data-motion="reduced"] .sc-res{animation:none}
 <?php endif; ?>
 
 <form class="sc-bar" method="get">
-  <input type="search" name="pnr" placeholder="PNR · e.g. SHG-2026-00123" value="<?= Security::e($pnr) ?>" autocomplete="off" autocapitalize="characters" aria-label="Ticket PNR" <?= $outcome === null ? 'autofocus' : '' ?>>
+  <input type="search" name="pnr" placeholder="PNR or barcode · e.g. SHG-2026-00123 / SHG12345-AB3K7Q" value="<?= Security::e($pnr) ?>" autocomplete="off" autocapitalize="characters" aria-label="Ticket PNR" <?= $outcome === null ? 'autofocus' : '' ?>>
   <?php if ($tripId > 0): ?><input type="hidden" name="trip" value="<?= $tripId ?>"><?php endif; ?>
   <button class="btn" type="submit">Verify · जाँच</button>
   <button class="btn ghost" type="button" id="camBtn">📷 Camera</button>
@@ -685,7 +709,36 @@ html[data-motion="reduced"] .sc-res{animation:none}
            the fallback - on a frame no wider than 640 px, at most ~8 a second, so a phone stays cool and the
            page never hangs when the CDN library is late. After a hit the camera comes back by itself. */
         var det = null;
-        try { if (window.BarcodeDetector) { det = new window.BarcodeDetector({ formats: ['qr_code'] }); } } catch (e) { det = null; }
+        /* 6 Nov 2026: the ticket's verification BARCODE (Code 128) as well as the
+           old tickets' QR. A browser whose BarcodeDetector cannot read Code 128
+           (iPhone Safari, desktop) gets ZXing, loaded only now. */
+        var bar128 = false;
+        try {
+          if (window.BarcodeDetector) {
+            var fm = window.BarcodeDetector.getSupportedFormats ? await window.BarcodeDetector.getSupportedFormats() : ['qr_code'];
+            bar128 = fm.indexOf('code_128') >= 0;
+            det = new window.BarcodeDetector({ formats: bar128 ? ['qr_code', 'code_128'] : ['qr_code'] });
+          }
+        } catch (e) { det = null; }
+        var zx = null;
+        if (!bar128) {
+          var zs = document.createElement('script');
+          zs.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+          zs.onload = function () {
+            try {
+              var h = new Map();
+              h.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, [window.ZXing.BarcodeFormat.CODE_128, window.ZXing.BarcodeFormat.QR_CODE]);
+              zx = new window.ZXing.MultiFormatReader(); zx.setHints(h);
+            } catch (e) { zx = null; }
+          };
+          document.head.appendChild(zs);
+        }
+        var zxRead = function () {
+          try {
+            var bm = new window.ZXing.BinaryBitmap(new window.ZXing.HybridBinarizer(new window.ZXing.HTMLCanvasElementLuminanceSource(canvas)));
+            return zx.decode(bm).getText();
+          } catch (e) { return ''; }
+        };
         var canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
         var busy = false, last = 0;
         var found = function (data) {
@@ -704,8 +757,14 @@ html[data-motion="reduced"] .sc-res{animation:none}
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             if (det) {
               busy = true;
-              det.detect(canvas).then(function (codes) { busy = false; if (codes && codes[0] && codes[0].rawValue) { found(codes[0].rawValue); } })
-                .catch(function () { busy = false; det = null; });
+              det.detect(canvas).then(function (codes) {
+                busy = false;
+                if (codes && codes[0] && codes[0].rawValue) { found(codes[0].rawValue); return; }
+                if (zx) { var zt = zxRead(); if (zt) { found(zt); } }
+              }).catch(function () { busy = false; det = null; });
+            } else if (zx) {
+              var zt = zxRead();
+              if (zt) { found(zt); return; }
             } else if (window.jsQR) {
               var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
               var code = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });

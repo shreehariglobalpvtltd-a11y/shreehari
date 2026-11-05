@@ -671,6 +671,42 @@ final class Ticket
         return $row === null ? '' : self::securityCode((string) $row['pnr'], (string) ($row['qr_hash'] ?? ''));
     }
 
+    /**
+     * The verification BARCODE text (6 Nov 2026, master upgrade §2: QR only for
+     * payment): "SHG<booking id>-<security code>". The code half is the keyed
+     * security code of the CURRENT ticket revision, so a barcode cannot be made
+     * for a booking without APP_KEY, and a reissue retires the old strip.
+     */
+    public static function scanCode(int $bookingId, string $secCode): string
+    {
+        return 'SHG' . $bookingId . '-' . $secCode;
+    }
+
+    /** The PNR a scanned / typed barcode belongs to, or null when it does not verify. */
+    public static function verifyScanCode(string $raw): ?string
+    {
+        $raw = strtoupper(trim($raw));
+        if (preg_match('/^SHG(\d{1,9})-([A-Z2-9]{6})$/', $raw, $m) !== 1) {
+            return null;
+        }
+        try {
+            $row = Database::fetch('SELECT b.pnr, t.qr_hash FROM tickets t JOIN bookings b ON b.id = t.booking_id WHERE t.booking_id = :b ORDER BY t.id DESC LIMIT 1', ['b' => (int) $m[1]]);
+        } catch (Throwable $e) {
+            return null;
+        }
+        if ($row === null) {
+            return null;
+        }
+        $want = self::securityCode((string) $row['pnr'], (string) ($row['qr_hash'] ?? ''));
+        return hash_equals($want, $m[2]) ? (string) $row['pnr'] : null;
+    }
+
+    /** True when $raw has the barcode's shape (verified or not). */
+    public static function looksLikeScanCode(string $raw): bool
+    {
+        return preg_match('/^SHG\d{1,9}-[A-Z2-9]{6}$/i', trim($raw)) === 1;
+    }
+
     /** Pretty form for print: "AB3 K7Q". */
     public static function securityCodeGrouped(string $code): string
     {
@@ -2269,45 +2305,33 @@ final class Ticket
         self::pngTear($im, 36, $W - 36, 1261 + $grow, $pageRgb, 14);
 
         self::gdText($im, 20, 76, 1300 + $grow, $navy, 'टिकट जाँच  ·  VERIFY', true);
+        /* 6 Nov 2026 (master upgrade §2: "QR only for payment; barcode / secure
+           code for verification"): the verify QR and the pickup-map QR are gone.
+           ONE Code 128 barcode holds Ticket::scanCode() - booking id + the keyed
+           SECURITY CODE - which admin/scan.php reads (camera or USB gun) and
+           checks against the server key. The code is printed under the bars
+           so the crew can type it when no camera works. */
+        $secCode  = self::securityCode($pnr, (string) ($ticket['qr_hash'] ?? ''));
+        $scanCode = self::scanCode((int) ($booking['id'] ?? 0), $secCode);
         try {
-            $vs = $qrFit($qrData, 245);
-            self::gdRounded($im, 68, 1312 + $grow, 84 + $vs, 1328 + $grow + $vs, 10, $royal);
-            self::gdRounded($im, 70, 1314 + $grow, 82 + $vs, 1326 + $grow + $vs, 9, $white);
-            $drawQr($qrData, 76, 1320 + $grow, 245);
+            if (!class_exists('Barcode')) { require_once __DIR__ . '/barcode.php'; }
+            $bMods = Barcode::modules($scanCode) + 20;          // + 10-module quiet zone each side
+            $bMod  = $bMods * 2 <= 484 ? 2 : 1;
+            $bw    = $bMods * $bMod;
+            $bx    = 298 - intdiv($bw, 2);
+            self::gdRounded($im, $bx - 2, 1314 + $grow, $bx + $bw + 2, 1462 + $grow, 10, $royal);
+            self::gdRounded($im, $bx, 1316 + $grow, $bx + $bw, 1460 + $grow, 9, $white);
+            Barcode::draw($im, $scanCode, $bx + 10 * $bMod, 1328 + $grow, $bMod, 96, imagecolorallocate($im, 0, 0, 0));
+            self::gdText($im, 18, 298 - intdiv(self::gdWidth(18, $scanCode), 2), 1450 + $grow, $navy, $scanCode, true);
         }
-        catch (Throwable $e) { Logger::error('Ticket verification QR: ' . $e->getMessage()); }
+        catch (Throwable $e) { Logger::error('Ticket verification barcode: ' . $e->getMessage()); }
+        $paidNow = $settlement['due'] <= 0;
+        $stWord  = $paidNow ? 'PAID' : 'PAYMENT DUE';
+        self::gdText($im, 24, 76, 1504 + $grow, $paidNow ? $green : $orange, $stWord, true);
+        self::gdText($im, 15, 76, 1532 + $grow, $mut, 'बोर्डिङमा देखाउनुहोस् · Show at boarding', false);
         /* SECURITY CODE (9 Oct 2026, anti-fake) — keyed to this revision of
-           the ticket; verify-ticket.php shows the same letters. Under the
-           verify + map QRs, the pay card holds the right half. */
-        $secCode = self::securityCode($pnr, (string) ($ticket['qr_hash'] ?? ''));
+           the ticket; verify-ticket.php shows the same letters. */
         self::gdSecurityTile($im, 60, 1566 + $grow, 540, 1628 + $grow, $secCode);
-        /* Pickup map QR (8 Oct 2026, master prompt 2.0 · Settings -> ticket_maps_qr):
-           scanning opens directions to the OFFICIAL pickup point - never the
-           passenger's own position. It sits BESIDE the verification QR (x
-           340..530, the pay card starts at 550) with its caption under it;
-           the verification QR keeps x 76..321, so the two never touch. */
-        $mapsQr = $geo !== null && Settings::getBool('ticket_maps_qr', true);
-        if ($mapsQr) {
-            try {
-                $ms = $qrFit(self::pickupMapsUrl($geo), 190);
-                self::gdRounded($im, 340 - 4, 1330 + $grow - 4, 340 + $ms + 4, 1330 + $grow + $ms + 4, 8, $royal);
-                self::gdRounded($im, 340 - 2, 1330 + $grow - 2, 340 + $ms + 2, 1330 + $grow + $ms + 2, 7, $white);
-                $drawQr(self::pickupMapsUrl($geo), 340, 1330 + $grow, 190);
-                self::gdText($im, 16, 340, 1545 + $grow, $navy, 'PICKUP MAP · नक्सा', true);
-            } catch (Throwable $e) { Logger::error('Pickup map QR: ' . $e->getMessage()); $mapsQr = false; }
-        }
-        if (!$mapsQr) {
-            /* No map: the free column states the payment in words. */
-            $stX = 344;
-            self::gdText($im, 24, $stX, 1366 + $grow, $settlement['due'] <= 0 ? $green : $orange,
-                $settlement['due'] <= 0 ? 'PAID' : 'PAYMENT DUE', true);
-            $ref = (string) ($booking['payment']['utr_number'] ?? '');
-            if ($ref !== '') {
-                self::gdText($im, 16, $stX, 1400 + $grow, $mut, $clampTo(16, self::latin($ref), 192), false);
-            }
-            self::gdText($im, 16, $stX, 1440 + $grow, $mut, 'बोर्डिङमा देखाउनुहोस्', false);
-            self::gdText($im, 15, $stX, 1466 + $grow, $mut, 'Show at boarding', false);
-        }
 
         /* ---- PAYMENT card: mandatory, right half ---------------------- */
         $pcB = 1812 + $grow;
@@ -2334,20 +2358,40 @@ final class Ticket
             imageline($im, $tx + 7, 1309 + $grow, $tx + 20, 1293 + $grow, $green);
             imagesetthickness($im, 1);
         }
-        $hTxt = $payQ['label'];
+        $hTxt = $settlement['due'] > 0 ? $payQ['label'] : 'भुक्तानी  ·  PAYMENT';
         $hMax = 420 - ($badgeW > 0 ? $badgeW + 12 : 0);
         $hSz = 22;
         foreach ([22, 20, 18, 17, 16, 15] as $try) { $hSz = $try; if (self::gdWidth($try, $hTxt) <= $hMax) { break; } }
         self::gdText($im, $hSz, 576, 1312 + $grow, $white, $clampTo($hSz, $hTxt, $hMax), true);
-        try {
-            $ps  = $qrFit($payUpi, 350);
-            $pqx = 780 - intdiv($ps, 2);
-            $pqy = 1342 + $grow;
-            self::gdScanFrame($im, $pqx - 10, $pqy - 8, $pqx + $ps + 10, $pqy + $ps + 8, 34, 4, $goldM);
-            $drawQr($payUpi, $pqx, $pqy, 350);
+        /* 6 Nov 2026 (master upgrade §2): the pay QR prints ONLY while money is
+           due; a fully paid ticket shows a PAID stamp in its place. */
+        if ($settlement['due'] > 0) {
+            try {
+                $ps  = $qrFit($payUpi, 350);
+                $pqx = 780 - intdiv($ps, 2);
+                $pqy = 1342 + $grow;
+                self::gdScanFrame($im, $pqx - 10, $pqy - 8, $pqx + $ps + 10, $pqy + $ps + 8, 34, 4, $goldM);
+                $drawQr($payUpi, $pqx, $pqy, 350);
+            }
+            catch (Throwable $e) { Logger::error('Payment QR: ' . $e->getMessage()); }
+        } else {
+            $sy = 1420 + $grow;
+            self::gdRounded($im, 586, $sy, 974, $sy + 210, 26, DocArt::col($im, [232, 247, 238]));
+            DocArt::roundOutline($im, 586, $sy, 974, $sy + 210, 26, $green, 4);
+            $pw = self::gdWidth(60, 'PAID');
+            $px = 780 - intdiv($pw + 70, 2);
+            self::gdText($im, 60, $px, $sy + 112, $green, 'PAID', true);
+            imagesetthickness($im, 10);
+            imageline($im, $px + $pw + 18, $sy + 82, $px + $pw + 36, $sy + 102, $green);
+            imageline($im, $px + $pw + 36, $sy + 102, $px + $pw + 66, $sy + 58, $green);
+            imagesetthickness($im, 1);
+            $pt = 'भुक्तानी पूरा · Payment received';
+            self::gdText($im, 18, 780 - intdiv(self::gdWidth(18, $pt), 2), $sy + 170, $green, $pt, true);
         }
-        catch (Throwable $e) { Logger::error('Payment QR: ' . $e->getMessage()); }
-        if ($payQ['mode'] === 'office') {
+        if ($settlement['due'] <= 0) {
+            self::gdText($im, 18, 576, 1716 + $grow, $ink, 'धन्यवाद · Thank you', true);
+            self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, $payQ['name'], 410), false);
+        } elseif ($payQ['mode'] === 'office') {
             self::gdText($im, 18, 576, 1716 + $grow, $ink, $clampTo(18, 'WhatsApp: +' . $payQ['wa'], 410), true);
             self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'कार्यालयले भुक्तानी विवरण पठाउनेछ', 410), false);
         } else {
@@ -2696,13 +2740,13 @@ final class Ticket
      *  the later of the two) to the moment it is applied - apply it AFTER the
      *  files are live. The integrator may still move both stamps to the
      *  deploy minute. */
-    private const PNG_LAYOUT_CHANGED = '2026-10-17 13:56:00';   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-11-06 00:30:00';   // IST: BARCODE - verify QR + map QR replaced by a Code 128 barcode (Ticket::scanCode); pay QR only while money is due, else a PAID stamp. Was 2026-10-17 13:56:00:   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-10-16 00:15:00';   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - bigger gold seal (116x74), brand + TM sign with the legal form letter-spaced in gold under it. Was 2026-10-14 22:15:00:   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-11-06 00:30:00';   // IST: BARCODE - stub QR -> Code 128 barcode, live-status QR removed, pay QR only while due. Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - bigger gold seal (116x74), brand + TM sign with the legal form letter-spaced in gold under it. Was 2026-10-14 22:15:00:   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -3147,10 +3191,16 @@ final class Ticket
         $sw = $cardX + $cardW - $tear - 32;
         self::devCenter($pdf, $sx, $sx + $sw, $cardY + 14, 'बोर्डिङ पास', 7.5, $F7, self::MUTE);
 
-        $qrBinary = self::qrBinary((string) $ticket['qr_payload'], 8);
+        /* 6 Nov 2026 (master upgrade §2): the stub carries the verification
+           BARCODE (Ticket::scanCode) - QR codes are for payment only. */
         $qrSize   = min(110, $sw);
-        $qrX      = $sx + ($sw - $qrSize) / 2;
-        $pdf->imageFromString($qrBinary, $qrX, $cardY + 28, $qrSize, $qrSize);
+        $secCode  = self::securityCode((string) $booking['pnr'], (string) ($ticket['qr_hash'] ?? ''));
+        $scanCode = self::scanCode((int) ($booking['id'] ?? 0), $secCode);
+        try {
+            if (!class_exists('Barcode')) { require_once __DIR__ . '/barcode.php'; }
+            $pdf->imageFromString(Barcode::png($scanCode, 3, 160), $sx, $cardY + 30, $sw, $qrSize - 30);
+        } catch (Throwable $e) { Logger::error('Ticket PDF barcode: ' . $e->getMessage()); }
+        $pdf->textCenter($sx, $sx + $sw, $cardY + 30 + $qrSize - 16, $scanCode, 8, 'F2', self::INK);
 
         $stubY = $cardY + 32 + $qrSize;
         $pdf->textCenter($sx, $sx + $sw, $stubY, (string) $booking['pnr'], 11, 'F2', self::BROWN);
@@ -3159,7 +3209,6 @@ final class Ticket
         self::devCenter($pdf, $sx, $sx + $sw, $stubY + 46, 'बोर्डिङमा स्क्यान गर्नुहोस्', 6.5, $F7, self::MUTE);
         /* SECURITY CODE on the stub (9 Oct 2026, anti-fake) — the same letters
            the PNG prints and verify-ticket.php shows for this revision. */
-        $secCode = self::securityCode((string) $booking['pnr'], (string) ($ticket['qr_hash'] ?? ''));
         $pdf->roundedRect($sx + 4, $stubY + 58, $sw - 8, 40, 5, [252, 247, 232], true);
         $pdf->rect($sx + 4, $stubY + 62, 2.5, 32, [214, 168, 52], true);
         self::devCenter($pdf, $sx, $sx + $sw, $stubY + 62, 'सुरक्षा कोड · SECURITY CODE', 6, $F7, self::MUTE);
@@ -3417,17 +3466,12 @@ final class Ticket
         $statusUrl = appUrl('verify-ticket.php')
             . '?pnr=' . urlencode((string) ($booking['pnr'] ?? ''))
             . '&k=' . self::downloadToken((string) ($booking['pnr'] ?? ''));
-        $webQrBin = self::qrBinary($statusUrl, 6);
-        if ($webQrBin !== '') {
-            $pdf->roundedRect(36, $footY + 2, 70, 70, 4, DocArt::GOLD, true);
-            $pdf->rect(37.5, $footY + 3.5, 67, 67, [255, 255, 255], true);
-            $pdf->imageFromString($webQrBin, 40, $footY + 6, 62, 62);
-            self::devCenter($pdf, 38, 104, $footY + 73, 'टिकट स्थिति', 6.5, $F7, self::MUTE);
-            $pdf->textCenter(38, 104, $footY + 82, 'Live status', 6.5, 'F2', self::BROWN);
-        }
+        /* 6 Nov 2026 (master upgrade §2): no live-status QR any more - QR codes
+           are for payment only; the barcode on the stub verifies. */
+        unset($statusUrl);
 
         // Nepali travel notes — short and essential
-        $noteX = 114;
+        $noteX = 40;
         $noteY = $footY + 8;
         self::devText($pdf, $noteX, $noteY, 'महत्त्वपूर्ण:', 8, $F8, self::BROWN);
         $notes = [
@@ -3484,8 +3528,15 @@ final class Ticket
            live-status QR, never replacing the signed stub QR above. Same
            rules as the PNG: Ticket::paymentQr(). */
         $payPdf = self::paymentQr($booking, $sumP);
-        $payBin = self::qrBinary($payPdf['payload'], 6);
-        if ($payBin !== '') {
+        $payBin = $sumP['due'] > 0 ? self::qrBinary($payPdf['payload'], 6) : '';
+        if ($sumP['due'] <= 0) {
+            // 6 Nov 2026 (master upgrade §2): paid in full - a PAID stamp, no QR.
+            $pqx = 288.0;
+            $pdf->roundedRect($pqx - 4, $footY + 10, 70, 46, 6, [23, 122, 72], true);
+            $pdf->roundedRect($pqx - 2.5, $footY + 11.5, 67, 43, 5, [232, 247, 238], true);
+            $pdf->textCenter($pqx - 4, $pqx + 66, $footY + 38, 'PAID', 16, 'F2', [23, 122, 72]);
+            self::devCenter($pdf, $pqx - 10, $pqx + 72, $footY + 66, 'भुक्तानी पूरा', 6.5, $F7, self::MUTE);
+        } elseif ($payBin !== '') {
             $pqx = 288.0;
             $pdf->roundedRect($pqx - 4, $footY + 3, 70, 70, 4, DocArt::GOLD, true);
             $pdf->rect($pqx - 2.5, $footY + 4.5, 67, 67, [255, 255, 255], true);
