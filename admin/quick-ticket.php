@@ -1014,11 +1014,13 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       'Date: ' + (plan.dateLabel || dateValue() || '—'),
       'Boarding: ' + (plan.boardingCode ? plan.boardingCode + ' · ' : '') + (plan.boardingName || '—'),
       'Seat: ' + seatText,
+      'Bus: ' + (plan.busNumber || plan.busName || '—'),
       'Base fare: ' + money(base),
       'Discount: -' + money(discount),
       'Final total: ' + money(finalTotal),
       'Received by: ' + String(st.pay || 'cash').toUpperCase(),
       'Agent: ' + agentText,
+      'Note: ' + ($('#qtNote').value.trim() || '—'),
       '',
       'OK थिचेपछि मात्र ticket issue हुन्छ।'
     ];

@@ -34,7 +34,11 @@ $format  = in_array($_GET['format'] ?? '', ['csv', 'chalani', 'chalanipdf', 'cha
 /* 29 Oct 2026 (management upgrade 3.2): passengers in the order the coach
    picks them up — the route's own boarding-stop order (route_stops.sort_order),
    seat order inside one stop. ?order=seat keeps the old seat-only list. */
-$order   = (string) ($_GET['order'] ?? 'stop') === 'seat' ? 'seat' : 'stop';
+/* 5 Nov 2026 (master upgrade §3): 'group' is the default — pickup order, but
+   one booking's passengers stay together under a "Dileep — 6 passengers —
+   Surat" line. 'stop' (pure pickup order) and 'seat' stay as they were. */
+$orderReq = (string) ($_GET['order'] ?? 'group');
+$order    = in_array($orderReq, ['group', 'stop', 'seat'], true) ? $orderReq : 'group';
 
 /* An agent must not be handed the whole coach through a URL the sidebar
    does not show them. Same scope rule the bookings list and CSV export use. */
@@ -130,12 +134,13 @@ if ($trip !== null) {
            LEFT JOIN tickets t  ON t.booking_id = b.id
            LEFT JOIN admins ad  ON ad.id = b.sold_by_admin_id
           WHERE " . implode(' AND ', $where) . "
-          ORDER BY " . ($order === 'stop'
+          ORDER BY " . ($order !== 'seat'
               ? "COALESCE((SELECT MIN(rs.sort_order) FROM route_stops rs
                             WHERE rs.route_id = :rid AND rs.stop_type = 'boarding' AND rs.stop_name <> ''
                               AND bl.boarding_stop LIKE CONCAT(rs.stop_name, '%')), 9999), "
+                . ($order === 'group' ? 'bl.boarding_stop, b.id, ' : '')
               : '') . "LENGTH(bp.seat_no), bp.seat_no",
-        $params + ($order === 'stop' ? ['rid' => (int) $trip['route_id']] : [])
+        $params + ($order !== 'seat' ? ['rid' => (int) $trip['route_id']] : [])
     );
 }
 
@@ -764,6 +769,9 @@ foreach ($rows as $r) {
   .mf-paid    { background:#d9f5e3; color:#0a6b33; }
   .mf-unpaid  { background:#fff4d1; color:#8a6d00; }
   .mf-empty   { padding:24px; text-align:center; opacity:.75; }
+  tr.mf-stop td { background:#0b3d91; color:#fff; font-weight:800; font-size:15px; padding:8px 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  tr.mf-grp td  { background:#fff7e6; border-top:2px solid #f0b44c; font-size:14px; padding:7px 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  tr.mf-grp a   { font-family:monospace; }
   .mf-scroll  { overflow-x:auto; }
   .wa-mini { display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#25D366;vertical-align:middle;margin-left:4px;transition:background .15s }
   .wa-mini:hover { background:#1da851 }
@@ -800,6 +808,7 @@ foreach ($rows as $r) {
 
   <label>Order<br>
     <select name="order" onchange="this.form.submit()">
+      <option value="group" <?= $order === 'group' ? 'selected' : '' ?>>Group by booking (pickup order)</option>
       <option value="stop" <?= $order === 'stop' ? 'selected' : '' ?>>Pickup order (route)</option>
       <option value="seat" <?= $order === 'seat' ? 'selected' : '' ?>>Seat number</option>
     </select>
@@ -820,7 +829,7 @@ foreach ($rows as $r) {
     <?php if ($scopeId === null): ?>
     <a class="btn" href="<?= $base ?>/admin/chalan.php?<?= Security::e(http_build_query(['sid' => (int) $trip['schedule_id']])) ?>"><svg class="a-ic"><use href="#a-doc"/></svg> Bus Chalan (PDF / PNG / WhatsApp)</a>
     <?php endif; ?>
-    <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(array_filter(['date' => $date, 'route' => $routeId, 'sid' => $sidReq > 0 ? $sidReq : null, 'order' => $order === 'seat' ? 'seat' : null, 'format' => 'csv']))) ?>">⬇️ Download CSV</a>
+    <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(array_filter(['date' => $date, 'route' => $routeId, 'sid' => $sidReq > 0 ? $sidReq : null, 'order' => $order !== 'group' ? $order : null, 'format' => 'csv']))) ?>">⬇️ Download CSV</a>
   <?php endif; ?>
 </form>
 
@@ -874,8 +883,40 @@ foreach ($rows as $r) {
         </tr>
       </thead>
       <tbody>
+      <?php
+        /* 5 Nov 2026 (master upgrade §3): the booking groups on THIS departure —
+           lead passenger, head-count, seats, pickup → drop, phone. Built from the
+           same $rows, so cancellations / seat moves show on the next load. */
+        $grp = [];
+        if ($order === 'group') {
+            foreach ($rows as $gr) {
+                $gid = (int) $gr['booking_id'];
+                if (!isset($grp[$gid])) $grp[$gid] = ['lead' => (string) $gr['full_name'], 'n' => 0, 'seats' => [], 'row' => $gr];
+                $grp[$gid]['n']++;
+                $grp[$gid]['seats'][] = Seats::displayLabel((string) $gr['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($gr['booking_mode'] ?? 'sharing'));
+            }
+        }
+        $lastGid = null; $lastStop = null;
+      ?>
       <?php foreach ($rows as $r):
         $paid = ($r['pay_status'] ?? '') === 'verified'; ?>
+        <?php if ($order === 'group'):
+          $stopNow = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—';
+          if ($stopNow !== $lastStop): $lastStop = $stopNow;
+            $stopPax = count(array_filter($rows, static fn($x) => ($x['boarding_stop'] ? $stopShort((string) $x['boarding_stop']) : '—') === $stopNow)); ?>
+        <tr class="mf-stop"><td colspan="11">📍 <?= Security::e($stopNow) ?> · <?= $stopPax ?> passenger<?= $stopPax === 1 ? '' : 's' ?></td></tr>
+          <?php endif;
+          $gid = (int) $r['booking_id'];
+          if ($gid !== $lastGid): $lastGid = $gid; $g = $grp[$gid]; ?>
+        <tr class="mf-grp"><td colspan="11">
+          👥 <b><?= Security::e($g['lead']) ?></b> — <?= (int) $g['n'] ?> passenger<?= $g['n'] === 1 ? '' : 's' ?>
+          — <?= Security::e($stopNow) ?> → <?= Security::e($stopShort((string) ($r['drop_stop'] ?: $trip['to_city']))) ?>
+          — <span class="mono"><?= Security::e((string) $r['contact_phone']) ?></span>
+          — seats <b><?= Security::e(implode(', ', $g['seats'])) ?></b>
+          · <a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>"><?= Security::e((string) $r['pnr']) ?></a>
+        </td></tr>
+          <?php endif; ?>
+        <?php endif; ?>
         <tr>
           <td class="seat"><?= Security::e(Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing'))) ?></td>
           <td>

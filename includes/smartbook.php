@@ -620,6 +620,22 @@ final class SmartBook
         }
         $npr = round(((float) ($price['total'] ?? 0)) * (float) SiteFacts::all()['npr']);
 
+        /* 5 Nov 2026 (master upgrade §1): the confirm sheet names the real coach —
+           the departure's own bus, else the route's (same rule as the chalani). */
+        $busNumber = '';
+        if ((int) $plan['scheduleId'] > 0) {
+            try {
+                $busNumber = (string) (Database::scalar(
+                    'SELECT bu.bus_number FROM schedules s JOIN routes r ON r.id = s.route_id
+                       LEFT JOIN buses bu ON bu.id = COALESCE(s.bus_id, r.bus_id) WHERE s.id = :i',
+                    ['i' => (int) $plan['scheduleId']]
+                ) ?? '');
+            } catch (\Throwable $e) { $busNumber = ''; }
+            // A placeholder plate (XXXX-03) is never shown - same rule as the routine page.
+            if (!class_exists('Fleet')) { require_once __DIR__ . '/fleet.php'; }
+            $busNumber = Fleet::publicNumber($busNumber);
+        }
+
         $out = [
             'ok'           => $seats !== [] && $err === '',
             'error'        => $err,
@@ -641,6 +657,7 @@ final class SmartBook
             'boardingTime' => (string) $plan['boardingTime'],
             'reportTime'   => self::reportTime((string) $plan['boardingTime']),
             'drop'         => $drop,
+            'busNumber'    => $busNumber,
             'pointType'    => $points['type'],
             'point'        => $point !== '' ? $point : (string) $plan['boardingName'],
             'coach'        => $coach,

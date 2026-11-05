@@ -184,6 +184,11 @@
       okSubCus: 'तपाईंको विवरण भरिसकिएको छ — पक्का मात्र गर्नुहोस्', okPay: '{amt} नगद काउन्टरमा वा बस चढ्दा दिनुहोस्।', okGo: '✅ बुकिङ पक्का गर्नुहोस्', okBack: '← पछाडि', okEnter: 'Enter = पक्का',
       sName: 'यात्रु', sMobile: 'मोबाइल', cvOnFile: 'परिचय विवरण सुरक्षित छ', cvEdit: '✏️ बदल्नुहोस्', cvNeed: 'चढ्दा तिर्नका लागि — एक पटकको विवरण' }
   };
+  /* 5 Nov 2026 (master upgrade §1): the sheet names the coach, the drop, the fare
+     breakdown and the payment, and every desk (agent / counter / admin) must confirm. */
+  OW.en.sBus = 'Bus'; OW.en.sDrop = 'Getting off'; OW.en.sFare = 'Fare'; OW.en.sDisc = 'Discount'; OW.en.sPay = 'Payment'; OW.en.sPayCash = 'Cash — ticket issued on confirm';
+  OW.hi.sBus = 'बस'; OW.hi.sDrop = 'उतरना'; OW.hi.sFare = 'भाड़ा'; OW.hi.sDisc = 'छूट'; OW.hi.sPay = 'भुगतान'; OW.hi.sPayCash = 'कैश — पक्का करने पर टिकट';
+  OW.ne.sBus = 'बस'; OW.ne.sDrop = 'ओर्लने'; OW.ne.sFare = 'भाडा'; OW.ne.sDisc = 'छुट'; OW.ne.sPay = 'भुक्तानी'; OW.ne.sPayCash = 'नगद — पक्का गरेपछि टिकट';
   ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in OW[l]) { W[l][k] = OW[l][k]; } } });
   function tr(k, v) {
     var s = (W[lang()] && W[lang()][k]) || W.en[k] || k;
@@ -873,7 +878,10 @@
     if (!S.q || !S.q.ok) { say(S.q && S.q.error ? S.q.error : tr('loading')); if (!S.q) requote(0); return; }
     // Cash for a customer = pay at boarding: the verification sheet first (it calls back with the details).
     if (pay === 'cash' && S.codVerify && !verify) { openCash(); return; }
-    if (pay === 'cash' && tap && !verify && !STAFF) { openOk(wantPrint); return; }   // a desk books in one click
+    /* 5 Nov 2026 (master upgrade §1, supersedes the 16 Oct one-click desk): every
+       cash sale — customer, agent, counter, admin, Ctrl+Enter, Auto-book — stops on
+       the summary sheet; only its Confirm button (or Enter) issues the ticket. */
+    if (pay === 'cash' && !verify && !okGo && (tap || STAFF)) { openOk(wantPrint); return; }
     printNext = !!wantPrint;   // only a sale that really starts may print
     S.busy = true; S.idem = S.idem || newKey();
     var btn = $(pay === 'cash' ? 'sbCash' : 'sbOnline'); btn.classList.add('sb-busy');
@@ -953,6 +961,12 @@
       [tr('sMobile'), (S.cc === 'NP' ? '+977 ' : '+91 ') + digits(S.phone)],
       [tr('sSeats'), seatSummary(q)]
     ];
+    if (q.busNumber) rows.push([tr('sBus'), q.busNumber]);
+    if (q.price && Number(q.price.discount) > 0) {
+      rows.push([tr('sFare'), money(q.price.base)]);
+      rows.push([tr('sDisc'), '− ' + money(q.price.discount) + (q.price.offer ? ' · ' + q.price.offer : '')]);
+    }
+    rows.push([tr('sPay'), tr('sPayCash')]);
     if (STAFF && (S.agent || STAFF.ownCode)) rows.push([tr('credited'), S.agent === 'OTHER' ? (STAFF.company || '') : (S.agent || STAFF.ownCode)]);
     return '<div class="sb-ok-sum"><div class="sb-ok-tot"><small>' + esc(tr('total')) + '</small><b>' + esc(q.price ? money(q.price.total) : '—') + '</b>'
       + (q.price ? '<span>≈ ' + esc(npr(q.price.npr)) + '</span>' : '') + '</div><dl>'
@@ -962,7 +976,7 @@
   }
   /* Cash with no boarding check to fill (every desk, or a customer site with the
      check switched off): the summary and ONE Confirm button - Enter confirms. */
-  var okPrint = false;
+  var okPrint = false, okGo = false;
   function openOk(wantPrint) {
     var box = cashSheet(), q = S.q || {};
     var tot = q.price ? money(q.price.total) : '';
@@ -984,7 +998,8 @@
   function submitOk() {
     var go = $('sbCv').querySelector('.sb-cv-go'); if (!go || go.disabled) return;
     go.disabled = true; go.classList.add('sb-busy');
-    book('cash', okPrint);
+    okGo = true;
+    try { book('cash', okPrint); } finally { okGo = false; }
     setTimeout(function () { go.disabled = false; go.classList.remove('sb-busy'); }, 1500);
   }
   function cvComplete() {
