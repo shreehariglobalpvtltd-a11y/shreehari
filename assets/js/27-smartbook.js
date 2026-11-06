@@ -835,9 +835,10 @@
       h += '<div class="sb-deck"><h4>' + esc(dk.key === 'U' ? tr('floor2') : tr('floor1')) + '</h4>';
       dk.rows.forEach(function (r, ri) {
         h += '<div class="sb-mrow"><span class="sb-rl">' + esc(String.fromCharCode(65 + ri)) + '</span>';
-        r.left.forEach(function (s) { h += cell(s); });
+        var sf = m.singleSide === 'left';   // 6 Nov 2026: SINGLE | aisle | DOUBLE (owner's berth layout)
+        (sf ? r.right : r.left).forEach(function (s) { h += cell(s); });
         h += '<span class="sb-aisle"></span>';
-        r.right.forEach(function (s) { h += cell(s); });
+        (sf ? r.left : r.right).forEach(function (s) { h += cell(s); });
         h += '</div>';
       });
       h += '</div>';

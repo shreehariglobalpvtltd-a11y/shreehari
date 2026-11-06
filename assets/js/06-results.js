@@ -1355,13 +1355,21 @@ function renderSeats(instant) {
            server needs zero client changes to render correctly. */
         grid.innerHTML = layout.decks.map(deck => {
           let rowsHtml = '';
+          const sglFirst = layout.singleSide === 'left';
           const firstRow = deck.rows[0];
           if (firstRow) {
             const leftN  = (firstRow.left  || []).length;
             const rightN = (firstRow.right || []).length;
-            rowsHtml += bt === 'sharing'
-              ? '<div class="berth-labels berth-labels6"><span class="bl-dbl">🛏️ ' + esc(tf('berthsN', { n: leftN })) + ' — ' + esc(t('bookEach')) + '</span><span class="bl-aisle"></span><span class="bl-sgl">🛏️ ' + esc(tf('berthsN', { n: rightN })) + '</span></div>'
-              : '<div class="berth-labels"><span class="bl-dbl">👑 ' + esc(t('tqDouble')) + '</span><span class="bl-aisle"></span><span class="bl-sgl">🛏️ ' + esc(t('tqSingle')) + '</span></div>';
+            /* 6 Nov 2026: layout.singleSide 'left' = the SINGLE column is drawn left of the
+               aisle (owner's SLEEPER BERTH LAYOUT); `left` stays the double side in the data. */
+            const dblLbl = bt === 'sharing'
+              ? '<span class="bl-dbl">🛏️ ' + esc(tf('berthsN', { n: leftN })) + ' — ' + esc(t('bookEach')) + '</span>'
+              : '<span class="bl-dbl">👑 ' + esc(t('tqDouble')) + '</span>';
+            const sglLbl = bt === 'sharing'
+              ? '<span class="bl-sgl">🛏️ ' + esc(tf('berthsN', { n: rightN })) + '</span>'
+              : '<span class="bl-sgl">🛏️ ' + esc(t('tqSingle')) + '</span>';
+            rowsHtml += '<div class="berth-labels' + (bt === 'sharing' ? ' berth-labels6' : '') + (sglFirst ? ' sgl-first' : '') + '">'
+              + (sglFirst ? sglLbl + '<span class="bl-aisle"></span>' + dblLbl : dblLbl + '<span class="bl-aisle"></span>' + sglLbl) + '</div>';
           }
           deck.rows.forEach((row, ri) => {
             const left  = row.left  || [];
@@ -1370,10 +1378,12 @@ function renderSeats(instant) {
             const rowNo = seatRowLetterJS(ri);   // aisle + card name the row letter (A..F) the berths carry
             if (bt === 'private') {
               const pairAttr = left.join(',');
-              rowsHtml += '<div class="seat-row ' + cls + '">'
-                + '<span class="berth-pair" data-pair="' + esc(pairAttr) + '">' + left.map(id => seatBtn(id, true)).join('') + '</span>'
+              const pairHtml = '<span class="berth-pair" data-pair="' + esc(pairAttr) + '">' + left.map(id => seatBtn(id, true)).join('') + '</span>';
+              const sglHtml = right.map(id => seatBtn(id, true)).join('');
+              rowsHtml += '<div class="seat-row ' + cls + (sglFirst ? ' sgl-first' : '') + '">'
+                + (sglFirst ? sglHtml : pairHtml)
                 + '<span class="aisle">' + rowNo + '</span>'
-                + right.map(id => seatBtn(id, true)).join('')
+                + (sglFirst ? pairHtml : sglHtml)
                 + '</div>';
             } else {
               /* Sharing row card — per-person rate + live free counter. The row
@@ -1388,10 +1398,10 @@ function renderSeats(instant) {
                 + '₹' + PP_ON.toLocaleString('en-IN') + ' ' + esc(t('perPerson'))
                 + (PP_SAVE > 0 ? '<b class="pp-off">' + esc(tf('onlineOff', { p: PP_PCT })) + '</b>' : '')
                 + '</span><span class="cab-free"></span></div>'
-                + '<div class="seat-row ' + cls + '">'
-                + left.map(id => seatBtn(id, true)).join('')
+                + '<div class="seat-row ' + cls + (sglFirst ? ' sgl-first' : '') + '">'
+                + (sglFirst ? right : left).map(id => seatBtn(id, true)).join('')
                 + '<span class="aisle">' + rowNo + '</span>'
-                + right.map(id => seatBtn(id, true)).join('')
+                + (sglFirst ? left : right).map(id => seatBtn(id, true)).join('')
                 + '</div></div>';
             }
           });
@@ -1877,7 +1887,9 @@ function updateSeatSummary() {
   cBtn.disabled = Flow.seats.length ? !fareGood : !document.querySelector('#seatGrid .seat:not([disabled])');
   const aiOn = seatAiCfg().on;
   if (!aiOn && !Flow.seats.length) cBtn.disabled = true;
-  cBtn.textContent = (Flow.seats.length || !aiOn) ? t('btnContinue') : t('btnAutoContinue');
+  // 6 Nov 2026: manual pick first — with nothing tapped the button says "pick a seat", not "auto seat"
+  const manualFirst = !(window.SHG_BOOT && window.SHG_BOOT.settings && String(window.SHG_BOOT.settings.seat_pick_manual_first) === '0');
+  cBtn.textContent = (Flow.seats.length || !aiOn) ? t('btnContinue') : (manualFirst ? '👆 ' + t('tPickSeat') : t('btnAutoContinue'));
   // a disabled Continue says why (no fare / no free berth / nothing picked)
   cBtn.title = !cBtn.disabled ? '' : (Flow.seats.length ? t('fareNA') : (aiOn ? t('seatNoneFree') : t('tPickSeat')));
   /* The "fewer seats than passengers" prompt goes away once it no longer applies. */

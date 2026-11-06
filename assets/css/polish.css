@@ -132,3 +132,20 @@
 :root[data-motion="reduced"] #smartBook .sb-tk-imgw.ok .sb-tk-pnr{animation:none}
 :root[data-motion="reduced"] #smartBook .sb-tk-imgw.ok .sb-tk-pnr::after{animation:none;display:none}
 html[data-tier="low"] #smartBook .sb-tk-imgw.ok .sb-tk-pnr::after{display:none}
+
+/* 6 Nov 2026 (owner's SLEEPER BERTH LAYOUT): the SINGLE column is drawn LEFT of the
+   aisle (06-results.js adds .sgl-first when layout.singleSide = 'left'), so every
+   "4 | aisle | 2" grid is mirrored to "2 | aisle | 4". Last stylesheet + !important
+   so the per-width rules in app/views/depth.css cannot put the 4 back on the left. */
+.seat-row.slp-shr6.sgl-first{grid-template-columns:repeat(2,minmax(0,1fr)) 24px repeat(4,minmax(0,1fr)) !important}
+.seat-row.slp-shr.sgl-first,.seat-row.slp-pvt.sgl-first{grid-template-columns:minmax(0,1fr) 34px minmax(0,2fr) !important}
+.berth-labels.sgl-first{grid-template-columns:1fr 34px 2fr !important}
+.berth-labels6.sgl-first{grid-template-columns:2fr 24px 4fr !important}
+@media (max-width:600px){
+  .seat-row.slp-shr6.sgl-first{grid-template-columns:repeat(2,minmax(0,1fr)) 16px repeat(4,minmax(0,1fr)) !important}
+  .berth-labels6.sgl-first{grid-template-columns:2fr 16px 4fr !important}
+}
+@media (max-width:340px){
+  .seat-row.slp-shr6.sgl-first{grid-template-columns:repeat(2,minmax(0,1fr)) 12px repeat(4,minmax(0,1fr)) !important}
+  .berth-labels6.sgl-first{grid-template-columns:2fr 12px 4fr !important}
+}

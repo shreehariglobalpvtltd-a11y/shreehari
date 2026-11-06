@@ -157,6 +157,10 @@ final class Seats
                 'perDeck' => $perDeck,
                 'perRow'  => $perRow,
                 'decks'   => $decks,
+                // 6 Nov 2026: which side of the aisle the SINGLE (1-berth) column is DRAWN on.
+                // `left` stays the double side in the data (cabins, tiers, gender pairs read
+                // it); a renderer that sees 'left' here draws `right` first — rowGroups().
+                'singleSide' => self::singleSide($coachType),
             ];
         }
 
@@ -182,6 +186,41 @@ final class Seats
                 'rows'  => $rows,
             ]],
         ];
+    }
+
+    /**
+     * 6 Nov 2026 (owner's SLEEPER BERTH LAYOUT: "SINGLE SLEEPER · 1 BERTH | AISLE |
+     * DOUBLE SLEEPER · 2 BERTHS"): the single column is drawn on the LEFT of the
+     * aisle. Setting seat_single_side = 'right' brings back the old picture.
+     */
+    public static function singleSide(string $coachType = 'sleeper'): string
+    {
+        if ($coachType !== 'sleeper') {
+            return 'none';
+        }
+        return Settings::getString('seat_single_side', 'left') === 'right' ? 'right' : 'left';
+    }
+
+    /**
+     * One layout row in the order it is DRAWN, left to right:
+     * [[ids, 'single'|'double'|'seat'], [ids, …]] — the aisle sits between the two.
+     *
+     * @param array<string, mixed> $row    a layoutFor() row
+     * @param array<string, mixed> $layout the layoutFor() result (for singleSide)
+     * @return array{0: array{0: list<string>, 1: string}, 1: array{0: list<string>, 1: string}}
+     */
+    public static function rowGroups(array $row, array $layout): array
+    {
+        $l = array_values((array) ($row['left'] ?? []));
+        $r = array_values((array) ($row['right'] ?? []));
+        $side = (string) ($layout['singleSide'] ?? 'none');
+        if ($side === 'left') {
+            return [[$r, 'single'], [$l, 'double']];
+        }
+        if ($side === 'right') {
+            return [[$l, 'double'], [$r, 'single']];
+        }
+        return [[$l, 'seat'], [$r, 'seat']];
     }
 
     /**
@@ -2923,8 +2962,15 @@ final class Seats
             return '';
         }
         $coach   = $coachType !== '' ? $coachType : 'sleeper';
-        $perDeck = max(1, (int) (self::modeMap($coach)['perDeck'] ?? 36));
-        return self::bedLabel($deck . '1', $coach) . '–' . self::bedLabel($deck . $perDeck, $coach);
+        $spec    = self::modeMap($coach);
+        $perDeck = max(1, (int) ($spec['perDeck'] ?? 36));
+        // 6 Nov 2026: the single side is numbered first, so bed 1 is no longer "A1" —
+        // the range is the lowest and highest label of the floor (A1–F6 / A7–F12).
+        $labels = [];
+        for ($n = 1; $n <= $perDeck; $n++) { $labels[] = self::bedLabel($deck . $n, $coach); }
+        usort($labels, static fn(string $a, string $b): int => [strlen((string) preg_replace('/\d+$/', '', $a)), preg_replace('/\d+$/', '', $a), (int) preg_replace('/^\D+/', '', $a)]
+                                                          <=> [strlen((string) preg_replace('/\d+$/', '', $b)), preg_replace('/\d+$/', '', $b), (int) preg_replace('/^\D+/', '', $b)]);
+        return $labels[0] . '–' . end($labels);
     }
 
     /** Floor heading every seat surface prints: L -> "Lower Floor (1F)", U -> "Upper Floor (2F)". */

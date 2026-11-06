@@ -174,7 +174,7 @@ final class SeatMapPng
             $y += 40;
             foreach ($deck['rows'] as $row) {
                 $x = $gridX;
-                foreach ([$row['left'], $row['right']] as $side => $ids) {
+                foreach (array_column(Seats::rowGroups($row, $layout), 0) as $side => $ids) {   // 6 Nov 2026: single column first
                     foreach ($ids as $bed) {
                         $info  = $beds[$bed] ?? ['status' => 'open'];
                         $st    = (string) ($info['status'] ?? 'open');

@@ -40,7 +40,7 @@ final class SeatStatusPng
     private const CELL_GAP = 10;
     private const AISLE_W = 46;
     private const ROW_GAP = 12;
-    private const VERSION = 3;   // 3 = berth numbers: single side first (6 Nov 2026)   // 2 = emblem on a glow + India / Nepal flags (9 Oct 2026)
+    private const VERSION = 4;   // 4 = single column drawn left of the aisle (6 Nov 2026)   // 3 = berth numbers: single side first (6 Nov 2026)   // 2 = emblem on a glow + India / Nepal flags (9 Oct 2026)
 
     public static function enabled(): bool
     {
@@ -269,9 +269,10 @@ final class SeatStatusPng
             $cellW = (int) floor(($W - 2 * $M - self::AISLE_W - ($maxCells - 1) * self::CELL_GAP) / $maxCells);
             foreach ($deck['rows'] as $row) {
                 $cx = $M;
-                foreach ($row['left'] as $s) { self::cell($im, $s, $beds, $coach, $cx, $y, $cellW, $fill, $stroke, $txt); $cx += $cellW + self::CELL_GAP; }
+                [$ga, $gb] = Seats::rowGroups($row, $layout);   // 6 Nov 2026: single column drawn first (left)
+                foreach ($ga[0] as $s) { self::cell($im, $s, $beds, $coach, $cx, $y, $cellW, $fill, $stroke, $txt); $cx += $cellW + self::CELL_GAP; }
                 $cx += self::AISLE_W - self::CELL_GAP;
-                foreach ($row['right'] as $s) { self::cell($im, $s, $beds, $coach, $cx, $y, $cellW, $fill, $stroke, $txt); $cx += $cellW + self::CELL_GAP; }
+                foreach ($gb[0] as $s) { self::cell($im, $s, $beds, $coach, $cx, $y, $cellW, $fill, $stroke, $txt); $cx += $cellW + self::CELL_GAP; }
                 $y += self::CELL_H + self::ROW_GAP;
             }
             $y += 10;

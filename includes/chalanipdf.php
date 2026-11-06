@@ -394,8 +394,11 @@ final class ChalaniPdf
             $deckW  = ($inner - $gap * (count($decks) - 1)) / max(1, count($decks));
             $aisle  = 22.0;
             $sleeper = $seatCoach === 'sleeper';
-            $nL = max(1, count($decks[0]['rows'][0]['left'] ?? [1]));
-            $nR = max(1, count($decks[0]['rows'][0]['right'] ?? [1]));
+            // 6 Nov 2026: groups in DRAWN order (single column left of the aisle) — Seats::rowGroups
+            $g0 = Seats::rowGroups((array) ($decks[0]['rows'][0] ?? []), $layout);
+            $nL = max(1, count($g0[0][0]));
+            $nR = max(1, count($g0[1][0]));
+            $hs = ['single' => 'SINGLE SLEEPER · 1 BERTH', 'double' => 'DOUBLE SLEEPER · 2 BERTHS', 'seat' => ''];
             $cellW = ($deckW - 12 - $aisle) / ($nL + $nR);
             $maxRows = max(array_map(static fn(array $d): int => count($d['rows']), $decks));
             $avail = ($H - $M - 30) - ($y + 34);
@@ -415,16 +418,17 @@ final class ChalaniPdf
                 if ($sleeper) {
                     $lw = $nL * $cellW;
                     $pdf->roundedRect($dx + 6, $dy + 16, $lw, 11, 3, [228, 232, 239], true);
-                    $txtC($dx + 6, $dx + 6 + $lw, $dy + 24.5, 'DOUBLE SLEEPER · 2 BERTH', 6.6, true, self::INK);
+                    $txtC($dx + 6, $dx + 6 + $lw, $dy + 24.5, $hs[$g0[0][1]], 6.6, true, self::INK);
                     $rx0 = $dx + 6 + $lw + $aisle;
                     $pdf->roundedRect($rx0, $dy + 16, $nR * $cellW, 11, 3, [228, 232, 239], true);
-                    $txtC($rx0, $rx0 + $nR * $cellW, $dy + 24.5, 'SINGLE · 1 BERTH', 6.6, true, self::INK);
+                    $txtC($rx0, $rx0 + $nR * $cellW, $dy + 24.5, $hs[$g0[1][1]], 6.6, true, self::INK);
                 }
                 $ry = $dy + 30;
                 foreach ($dk['rows'] as $ri => $rw) {
                     $cells = [];
-                    foreach ($rw['left'] as $k => $bed)  { $cells[] = [$dx + 6 + $k * $cellW, $bed]; }
-                    foreach ($rw['right'] as $k => $bed) { $cells[] = [$dx + 6 + $nL * $cellW + $aisle + $k * $cellW, $bed]; }
+                    [$ga, $gb] = Seats::rowGroups($rw, $layout);
+                    foreach ($ga[0] as $k => $bed) { $cells[] = [$dx + 6 + $k * $cellW, $bed]; }
+                    foreach ($gb[0] as $k => $bed) { $cells[] = [$dx + 6 + $nL * $cellW + $aisle + $k * $cellW, $bed]; }
                     foreach ($cells as [$cxp, $bed]) {
                         $i = $info[$bed] ?? null;
                         [$fill, $edge] = $col($i);

@@ -936,7 +936,8 @@ $smToday = todayISO();
         foreach (array_merge($rw['left'] ?? [], $rw['right'] ?? []) as $s) { $deckSeats[] = $s; }
     }
     $rangeLabel = $deckSeats !== []
-        ? Seats::displayLabel((string) $deckSeats[0], $coach, 'sharing') . '–' . Seats::displayLabel((string) end($deckSeats), $coach, 'sharing')
+        ? (in_array($deck['key'], ['L', 'U'], true) ? Seats::floorRange((string) $deck['key'], $coach)   // 6 Nov 2026: A1–F6 / A7–F12
+           : Seats::displayLabel((string) $deckSeats[0], $coach, 'sharing') . '–' . Seats::displayLabel((string) end($deckSeats), $coach, 'sharing'))
         : '';
     $deckIcon = $deck['key'] === 'L' ? '🔽 ' : ($deck['key'] === 'U' ? '🔼 ' : '💺 ');
     // Lower Floor (1F) blue / Upper Floor (2F) green — .floor-* in admin/_guard.php.
@@ -946,15 +947,16 @@ $smToday = todayISO();
       <h3 class="floor-head"><?= $deckIcon ?><?= Security::e((string) $deck['label']) ?><?php if ($rangeLabel !== ''): ?><span class="fh-range"><?= Security::e($rangeLabel) ?></span><?php endif; ?></h3>
       <div class="deck-grid">
         <?php foreach ($deck['rows'] as $row): ?>
+          <?php [$g1, $g2] = Seats::rowGroups($row, $layout);   // 6 Nov 2026: single column drawn first (left) ?>
           <div class="seat-row-adm">
-            <div class="seat-group left">
-              <?php foreach (($row['left'] ?? []) as $sid): if (isset($map[$sid])) echo seatmap_seat_div($map[$sid], $femalePref, $agentCodes, $coach); endforeach; ?>
+            <div class="seat-group left g-<?= Security::e($g1[1]) ?>">
+              <?php foreach ($g1[0] as $sid): if (isset($map[$sid])) echo seatmap_seat_div($map[$sid], $femalePref, $agentCodes, $coach); endforeach; ?>
             </div>
             <?php if (!empty($row['aisle'])): ?>
               <span class="aisle-adm" title="Aisle · <?= Security::e((string) ($row['label'] ?? '')) ?>"><?= $coach === 'sleeper' ? Security::e(trim(str_replace('Row', '', (string) ($row['label'] ?? '')))) : '·' ?></span>
             <?php endif; ?>
-            <div class="seat-group right">
-              <?php foreach (($row['right'] ?? []) as $sid): if (isset($map[$sid])) echo seatmap_seat_div($map[$sid], $femalePref, $agentCodes, $coach); endforeach; ?>
+            <div class="seat-group right g-<?= Security::e($g2[1]) ?>">
+              <?php foreach ($g2[0] as $sid): if (isset($map[$sid])) echo seatmap_seat_div($map[$sid], $femalePref, $agentCodes, $coach); endforeach; ?>
             </div>
           </div>
         <?php endforeach; ?>

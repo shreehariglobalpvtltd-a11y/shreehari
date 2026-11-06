@@ -48,7 +48,7 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 13;  // 13 = berth numbers: single side first (A1 A2 | A3..A6) (6 Nov 2026)   // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 14;  // 14 = single column drawn LEFT of the aisle (6 Nov 2026)   // 13 was:  // 13 = berth numbers: single side first (A1 A2 | A3..A6) (6 Nov 2026)   // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
@@ -265,8 +265,11 @@ final class ChalaniPng
         $decks  = (array) ($layout['decks'] ?? []);
         $gap = 36; $aisle = 56;
         $deckW = (int) (($W - 2 * $M - $gap * max(0, count($decks) - 1)) / max(1, count($decks)));
-        $nL = max(1, count($decks[0]['rows'][0]['left'] ?? [1]));
-        $nR = max(1, count($decks[0]['rows'][0]['right'] ?? [1]));
+        // 6 Nov 2026: groups in DRAWN order (single column left of the aisle) — Seats::rowGroups
+        $g0 = Seats::rowGroups((array) ($decks[0]['rows'][0] ?? []), $layout);
+        $nL = max(1, count($g0[0][0]));
+        $nR = max(1, count($g0[1][0]));
+        $hs = ['single' => 'SINGLE SLEEPER · 1 BERTH', 'double' => 'DOUBLE SLEEPER · 2 BERTHS', 'seat' => ''];
         $cellW = (int) (($deckW - 28 - $aisle) / ($nL + $nR));
         $maxRows = $decks !== [] ? max(array_map(static fn(array $d): int => count($d['rows']), $decks)) : 1;
         $top = 120;
@@ -279,15 +282,16 @@ final class ChalaniPng
             if ($coach === 'sleeper') {
                 $lx2 = $dx + 14 + $nL * $cellW;
                 self::roundRect($im, $dx + 14, $top + 44, $lx2, $top + 64, 8, $head, null);
-                self::tC($im, 13, $dx + 14, $lx2, $top + 46, $ink, 'DOUBLE SLEEPER · 2 BERTH', true);
+                self::tC($im, 13, $dx + 14, $lx2, $top + 46, $ink, $hs[$g0[0][1]], true);
                 self::roundRect($im, $lx2 + $aisle, $top + 44, $lx2 + $aisle + $nR * $cellW, $top + 64, 8, $head, null);
-                self::tC($im, 13, $lx2 + $aisle, $lx2 + $aisle + $nR * $cellW, $top + 46, $ink, 'SINGLE · 1 BERTH', true);
+                self::tC($im, 13, $lx2 + $aisle, $lx2 + $aisle + $nR * $cellW, $top + 46, $ink, $hs[$g0[1][1]], true);
             }
             $ry = $top + 72;
             foreach ($dk['rows'] as $ri => $rw) {
                 $cells = [];
-                foreach ($rw['left'] as $k => $bed)  { $cells[] = [$dx + 14 + $k * $cellW, $bed]; }
-                foreach ($rw['right'] as $k => $bed) { $cells[] = [$dx + 14 + $nL * $cellW + $aisle + $k * $cellW, $bed]; }
+                [$ga, $gb] = Seats::rowGroups($rw, $layout);
+                foreach ($ga[0] as $k => $bed) { $cells[] = [$dx + 14 + $k * $cellW, $bed]; }
+                foreach ($gb[0] as $k => $bed) { $cells[] = [$dx + 14 + $nL * $cellW + $aisle + $k * $cellW, $bed]; }
                 foreach ($cells as [$x0, $bed]) {
                     $i = $info[$bed] ?? null;
                     $k = $i === null ? 'free' : (!empty($i['ws']) ? 'ws' : (!empty($i['woman']) ? 'w' : 'busy'));

@@ -126,6 +126,7 @@ try {
         Response::success([
             'type'      => $bt,
             'decks'     => $av['layout']['decks'] ?? [],
+            'singleSide' => $av['layout']['singleSide'] ?? 'none',   // 6 Nov 2026: single column drawn left of the aisle
             'available' => array_values($av['available'] ?? []),
             'female'    => $bt === 'private' ? [] : array_values($av['female'] ?? []),
             'labels'    => $labels,

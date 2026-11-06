@@ -374,6 +374,7 @@ foreach ($rows as $r) {
 $seatChartHtml = static function () use ($layout, $seatInfo, $coachT): string {
     if (($layout['decks'] ?? []) === []) { return ''; }
     $e  = static fn($v): string => Security::e((string) $v);
+    $sglFirst = ($layout['singleSide'] ?? '') === 'left';
     $sleeper = $coachT === 'sleeper';
     $cell = static function (string $bed) use ($seatInfo, $coachT, $e): string {
         $lbl = Seats::displayLabel($bed, $coachT, 'sharing');
@@ -391,12 +392,12 @@ $seatChartHtml = static function () use ($layout, $seatInfo, $coachT): string {
 .scx{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin:10px 0}
 .scx-deck{border:1px solid #DCE3EE;border-radius:14px;padding:10px 10px 12px;background:#fff;break-inside:avoid}
 .scx-deck h4{margin:0 0 8px;font-size:15px;color:#12264E}
-.scx-hd,.scx-row{display:grid;grid-template-columns:minmax(0,2fr) 34px minmax(0,1fr);gap:0;align-items:stretch}
+.scx-hd,.scx-row{display:grid;grid-template-columns:' . ($sglFirst ? 'minmax(0,1fr) 34px minmax(0,2fr)' : 'minmax(0,2fr) 34px minmax(0,1fr)') . ';gap:0;align-items:stretch}
 .scx-hd span{background:#E4E8EF;border-radius:8px;font-size:10.5px;font-weight:800;text-align:center;padding:5px 2px;color:#16233C;letter-spacing:.3px}
 .scx-row{margin-top:7px}
 .scx-g{display:grid;gap:4px;border:1.5px solid #B9C3D3;border-radius:10px;padding:4px;background:#F7F9FC}
-.scx-g.l{grid-template-columns:repeat(' . ($sleeper ? 4 : 2) . ',minmax(0,1fr))}
-.scx-g.r{grid-template-columns:repeat(' . ($sleeper ? 2 : 2) . ',minmax(0,1fr))}
+.scx-g.double{grid-template-columns:repeat(4,minmax(0,1fr))}
+.scx-g.single,.scx-g.seat{grid-template-columns:repeat(2,minmax(0,1fr))}
 .scx-a{display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#8A95A8;writing-mode:vertical-rl;letter-spacing:2px}
 .scx-s{border:1.5px solid #9FD3AE;background:#EAF7EE;border-radius:8px;min-height:44px;padding:3px 2px;text-align:center;line-height:1.15;overflow:hidden}
 .scx-s b{display:block;font-size:12px;color:#14532D}
@@ -412,13 +413,16 @@ $seatChartHtml = static function () use ($layout, $seatInfo, $coachT): string {
     foreach ($layout['decks'] as $dk) {
         $h .= '<div class="scx-deck"><h4>' . ($dk['key'] === 'U' ? '🔼 ' : '🔽 ') . $e($dk['label']) . '</h4>';
         if ($sleeper) {
-            $h .= '<div class="scx-hd"><span>DOUBLE SLEEPER · 2 BERTH</span><span style="background:none"></span><span>SINGLE · 1 BERTH</span></div>';
+            $hs = ['single' => 'SINGLE SLEEPER · 1 BERTH', 'double' => 'DOUBLE SLEEPER · 2 BERTHS'];
+            [$k1, $k2] = $sglFirst ? ['single', 'double'] : ['double', 'single'];
+            $h .= '<div class="scx-hd"><span>' . $hs[$k1] . '</span><span style="background:none"></span><span>' . $hs[$k2] . '</span></div>';
         }
         foreach ($dk['rows'] as $ri => $rw) {
-            $h .= '<div class="scx-row"><div class="scx-g l">';
-            foreach ($rw['left'] as $bed) { $h .= $cell($bed); }
-            $h .= '</div><div class="scx-a">' . ($ri === intdiv(count($dk['rows']), 2) ? 'AISLE' : '') . '</div><div class="scx-g r">';
-            foreach ($rw['right'] as $bed) { $h .= $cell($bed); }
+            [$g1, $g2] = Seats::rowGroups($rw, $layout);   // 6 Nov 2026: single column drawn first
+            $h .= '<div class="scx-row"><div class="scx-g ' . $g1[1] . '">';
+            foreach ($g1[0] as $bed) { $h .= $cell($bed); }
+            $h .= '</div><div class="scx-a">' . ($ri === intdiv(count($dk['rows']), 2) ? 'AISLE' : '') . '</div><div class="scx-g ' . $g2[1] . '">';
+            foreach ($g2[0] as $bed) { $h .= $cell($bed); }
             $h .= '</div></div>';
         }
         $h .= '</div>';

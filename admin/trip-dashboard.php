@@ -643,7 +643,7 @@ $tdBp  = $tdBn > 0 ? (int) round($tdBb * 100 / $tdBn) : 0;
           <div class="sg-rows">
             <?php foreach ($deck['rows'] as $row): ?>
               <div class="sg-row">
-              <?php foreach ([$row['left'] ?? [], $row['right'] ?? []] as $side => $ids): ?>
+              <?php foreach (array_column(Seats::rowGroups($row, $tdLayout), 0) as $side => $ids):   // 6 Nov 2026: single column first ?>
                 <?php if ($side === 1): ?><span class="sg-aisle"><?= $tdFloor !== '' ? Security::e(trim(str_replace('Row', '', (string) ($row['label'] ?? '')))) : '' ?></span><?php endif; ?>
                 <?php foreach ($ids as $sid):
                   if (!isset($map[$sid])) continue;
