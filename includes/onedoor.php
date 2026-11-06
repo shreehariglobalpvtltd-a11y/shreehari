@@ -240,6 +240,34 @@ final class OneDoor
         return ['step' => $back, 'error' => (string) ($m['error'] ?? '')];
     }
 
+    /**
+     * 6 Nov 2026: PIN / pattern on a REMEMBERED phone — the account comes from
+     * the signed device cookie (QuickUnlock::rememberedAccount), nothing typed.
+     * Same match() budget / lockout and the same session door as quick().
+     *
+     * @return array{go?: string, step?: string, error?: string}
+     */
+    public static function quickDevice(string $kind, string $value): array
+    {
+        $acc = QuickUnlock::rememberedAccount();
+        if ($acc === null) {
+            return ['step' => 'start', 'error' => 'मोबाइल नम्बर वा ID लेख्नुहोस् · Type your mobile number or ID.'];
+        }
+        $t0 = microtime(true);
+        $m = QuickUnlock::match([$acc['id']], $kind, $value);
+        if ($m['ok']) {
+            try {
+                Auth::openAdminWithoutPassword($m['admin'], $kind);
+            } catch (RuntimeException $e) {
+                return ['step' => 'start', 'error' => $e->getMessage()];
+            }
+            self::clear();
+            return ['go' => 'home'];
+        }
+        self::evenTime($t0);
+        return ['step' => 'start', 'error' => (string) ($m['error'] ?? '')];
+    }
+
     /** Mobile + password: TeamPortal::login over every ID on the number (the password picks the ID). */
     private static function mobilePassword(string $phone, string $cc, string $pw, string $back): array
     {

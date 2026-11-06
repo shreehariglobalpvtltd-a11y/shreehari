@@ -44,6 +44,32 @@ $order    = in_array($orderReq, ['group', 'stop', 'seat'], true) ? $orderReq : '
    does not show them. Same scope rule the bookings list and CSV export use. */
 $scopeId = Auth::bookingScopeAdminId();
 
+/* 6 Nov 2026 (owner: "ticket transfer / delete garna — admin le click garera
+   sajilai"): a one-click CANCEL from the chalani for the office (bookings.cancel).
+   Same engine as Booking view → Cancel (BookingService::cancel, staff-initiated,
+   refund left to the owner by hand). Transfer opens the reschedule page. */
+$mfFlash = null;
+$mfCanCancel = Auth::can('bookings.cancel') && $scopeId === null;
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['mf_action'] ?? '') === 'cancel') {
+    if (!Security::verifyCsrf()) {
+        $mfFlash = ['bad', 'Session expired — please try again.'];
+    } elseif (!$mfCanCancel) {
+        $mfFlash = ['bad', 'Only the office may cancel from the chalani.'];
+    } else {
+        $cPnr = Security::clean((string) ($_POST['pnr'] ?? ''), 40);
+        try {
+            require_once INCLUDE_PATH . '/ticketedit.php';
+            $reason = Security::clean((string) ($_POST['reason'] ?? ''), 200);
+            $res = BookingService::cancel($cPnr, $reason !== '' ? $reason : 'Cancelled from chalani by staff', false);
+            TicketEdit::closeOpenCancels((int) ($res['booking']['id'] ?? 0), (string) (($admin['full_name'] ?? '') ?: ($admin['username'] ?? 'staff')) . ' #' . (int) $admin['id']);
+            Logger::audit('manifest.cancel', 'booking', $cPnr, null, null, 'Cancelled from chalani');
+            $mfFlash = ['ok', '🗑 ' . $cPnr . ' cancelled — seats are free again. Refund (if any) is settled by hand.'];
+        } catch (Throwable $ex) {
+            $mfFlash = ['bad', $cPnr . ': ' . $ex->getMessage()];
+        }
+    }
+}
+
 /* ---- which departures run on this date ------------------------------- */
 /* 17 Sep 2026: the same facts ChallanPng::schedule() reads — the slot (daily
    bus = 1, Bus-Calendar extra buses = 2+), the per-departure coach override
@@ -251,6 +277,158 @@ $ticketLabel = static function (array $r): string {
     if (!empty($r['is_void']))     return 'VOID';
     if (empty($r['ticket_number'])) return 'not issued';
     return !empty($r['scanned_at']) ? 'BOARDED' : (string) $r['ticket_number'];
+};
+
+/* =====================================================================
+ *  6 Nov 2026 (owner: "chalani ajhai simple — location wise thau ko number
+ *  ra name, gadi name ra passenger kati chhan chhutyaera lekhdinu; single
+ *  private sleeper women lai chhutyaera highlight; seat chart bichma khali
+ *  gap rakhera"). ONE place builds, from the same $rows:
+ *    $placeList   pickup places in the route's own order, numbered 1..n,
+ *                 with head-count and seats (and $dropList for get-off);
+ *    $seatInfo    physical bed => who is on it (name, place no., woman?);
+ *    $isWomanSingle  a woman on a 1-berth (single) sleeper — highlighted on
+ *                 the screen, the printed chalani and the seat chart.
+ *  The screen and the print sheet both read these, so they cannot disagree.
+ * ===================================================================== */
+require_once INCLUDE_PATH . '/boarding.php';
+$coachT   = (string) ($trip['coach_type'] ?? 'sleeper');
+$layout   = $trip !== null ? Seats::layoutFor($coachT, 'sharing') : ['decks' => []];
+$singleBeds = [];
+if ($coachT === 'sleeper') {
+    foreach ($layout['decks'] as $dk) {
+        foreach ($dk['rows'] as $rw) {
+            foreach ($rw['right'] as $bed) { $singleBeds[$bed] = true; }
+        }
+    }
+}
+$physOf = static function (array $r) use ($coachT): array {
+    try {
+        return Seats::physicalSeats((string) $r['seat_no'], (string) (($r['booking_mode'] ?? '') ?: 'sharing'), $coachT);
+    } catch (Throwable $ex) {
+        return [strtoupper((string) $r['seat_no'])];
+    }
+};
+$isWoman = static fn(array $r): bool => in_array(strtolower(trim((string) ($r['gender'] ?? ''))), ['female', 'f', 'woman', 'mahila'], true);
+$isWomanSingle = static function (array $r) use ($isWoman, $physOf, $singleBeds): bool {
+    if (!$isWoman($r) || $singleBeds === []) { return false; }
+    foreach ($physOf($r) as $bed) { if (isset($singleBeds[$bed])) { return true; } }
+    return false;
+};
+$seatLbl = static fn(array $r): string => Seats::displayLabel((string) $r['seat_no'], $coachT, (string) (($r['booking_mode'] ?? '') ?: 'sharing'));
+
+/* place number = the route's own pickup order (Admin → Stops), so "1" is
+   always the first pickup and the crew reads the same numbers every trip */
+$routeStops = [];
+if ($trip !== null) {
+    try { $routeStops = Boarding::allStopsFor((int) $trip['route_id'], 'boarding'); } catch (Throwable $ex) { $routeStops = []; }
+}
+$placeNoOf = static function (string $stop) use ($routeStops): int {
+    $s = mb_strtolower(trim($stop));
+    foreach (array_values($routeStops) as $i => $st) {
+        $n = mb_strtolower(trim((string) ($st['name'] ?? '')));
+        if ($n !== '' && ($s === $n || str_starts_with($s, $n) || str_starts_with($n, $s))) { return $i + 1; }
+    }
+    return 0;
+};
+$placeList = [];   // key => [no, name, n, women, seats[]]
+$dropList  = [];
+foreach ($rows as $r) {
+    $pk = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—';
+    $no = $placeNoOf($pk);
+    if (!isset($placeList[$pk])) { $placeList[$pk] = ['no' => $no, 'name' => $pk, 'n' => 0, 'women' => 0, 'seats' => []]; }
+    $placeList[$pk]['n']++;
+    if ($isWoman($r)) { $placeList[$pk]['women']++; }
+    $placeList[$pk]['seats'][] = $seatLbl($r);
+    $dk = $stopShort((string) (($r['drop_stop'] ?? '') ?: ($trip['to_city'] ?? '—')));
+    if (!isset($dropList[$dk])) { $dropList[$dk] = ['name' => $dk, 'n' => 0]; }
+    $dropList[$dk]['n']++;
+}
+// unknown places (0) go after the numbered ones, keeping first-seen order
+$nextNo = count($routeStops);
+foreach ($placeList as $k => $p) {
+    if ($p['no'] === 0) { $placeList[$k]['no'] = ++$nextNo; }
+}
+uasort($placeList, static fn(array $a, array $b): int => $a['no'] <=> $b['no']);
+$womenSingleCount = count(array_filter($rows, $isWomanSingle));
+
+$seatInfo = [];   // physical bed => info
+foreach ($rows as $r) {
+    $pk = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—';
+    foreach ($physOf($r) as $bed) {
+        $seatInfo[$bed] = [
+            'name'  => (string) $r['full_name'],
+            'place' => (int) ($placeList[$pk]['no'] ?? 0),
+            'stop'  => $pk,
+            'woman' => $isWoman($r),
+            'ws'    => $isWomanSingle($r),
+            'pnr'   => (string) $r['pnr'],
+            'paid'  => ($r['pay_status'] ?? '') === 'verified',
+        ];
+    }
+}
+
+/* The seat chart — lower | upper floor, "DOUBLE · 2 BERTH | AISLE gap |
+   SINGLE · 1 BERTH", the same picture the customer books on. Self-styled
+   (scx-*) so the screen and the print sheet can both drop it in. */
+$seatChartHtml = static function () use ($layout, $seatInfo, $coachT): string {
+    if (($layout['decks'] ?? []) === []) { return ''; }
+    $e  = static fn($v): string => Security::e((string) $v);
+    $sleeper = $coachT === 'sleeper';
+    $cell = static function (string $bed) use ($seatInfo, $coachT, $e): string {
+        $lbl = Seats::displayLabel($bed, $coachT, 'sharing');
+        $i   = $seatInfo[$bed] ?? null;
+        if ($i === null) {
+            return '<div class="scx-s scx-free"><b>' . $e($lbl) . '</b></div>';
+        }
+        $cls = 'scx-s scx-busy' . ($i['woman'] ? ' scx-w' : '') . ($i['ws'] ? ' scx-ws' : '');
+        $first = mb_substr(trim(explode(' ', trim($i['name']))[0] ?? ''), 0, 9);
+        return '<div class="' . $cls . '" title="' . $e($i['name'] . ' · ' . $i['stop'] . ' · ' . $i['pnr']) . '">'
+             . '<b>' . $e($lbl) . '</b><span>' . $e($first) . '</span>'
+             . '<i>' . ($i['ws'] ? '♀ ' : '') . ($i['place'] > 0 ? '📍' . (int) $i['place'] : '') . '</i></div>';
+    };
+    $h = '<style>
+.scx{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin:10px 0}
+.scx-deck{border:1px solid #DCE3EE;border-radius:14px;padding:10px 10px 12px;background:#fff;break-inside:avoid}
+.scx-deck h4{margin:0 0 8px;font-size:15px;color:#12264E}
+.scx-hd,.scx-row{display:grid;grid-template-columns:minmax(0,2fr) 34px minmax(0,1fr);gap:0;align-items:stretch}
+.scx-hd span{background:#E4E8EF;border-radius:8px;font-size:10.5px;font-weight:800;text-align:center;padding:5px 2px;color:#16233C;letter-spacing:.3px}
+.scx-row{margin-top:7px}
+.scx-g{display:grid;gap:4px;border:1.5px solid #B9C3D3;border-radius:10px;padding:4px;background:#F7F9FC}
+.scx-g.l{grid-template-columns:repeat(' . ($sleeper ? 4 : 2) . ',minmax(0,1fr))}
+.scx-g.r{grid-template-columns:repeat(' . ($sleeper ? 2 : 2) . ',minmax(0,1fr))}
+.scx-a{display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#8A95A8;writing-mode:vertical-rl;letter-spacing:2px}
+.scx-s{border:1.5px solid #9FD3AE;background:#EAF7EE;border-radius:8px;min-height:44px;padding:3px 2px;text-align:center;line-height:1.15;overflow:hidden}
+.scx-s b{display:block;font-size:12px;color:#14532D}
+.scx-s span{display:block;font-size:10px;font-weight:700;color:#16233C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scx-s i{display:block;font-style:normal;font-size:9.5px;font-weight:800;color:#0B3D91}
+.scx-busy{background:#DCE8FB;border-color:#6E95D8}.scx-busy b{color:#0B3D91}
+.scx-w{border-color:#E06AA8;background:#FDE7F2}.scx-w b{color:#9D1C5E}
+.scx-ws{border:2.5px solid #C2185B;background:#F8BBD9;box-shadow:0 0 0 2px #FCE4EC}.scx-ws b,.scx-ws i{color:#880E4F}
+.scx-leg{display:flex;flex-wrap:wrap;gap:10px;font-size:11.5px;font-weight:700;color:#3B4A66;margin:4px 0 0}
+.scx-leg em{display:inline-block;width:14px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px;font-style:normal}
+.scx *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+</style><div class="scx">';
+    foreach ($layout['decks'] as $dk) {
+        $h .= '<div class="scx-deck"><h4>' . ($dk['key'] === 'U' ? '🔼 ' : '🔽 ') . $e($dk['label']) . '</h4>';
+        if ($sleeper) {
+            $h .= '<div class="scx-hd"><span>DOUBLE SLEEPER · 2 BERTH</span><span style="background:none"></span><span>SINGLE · 1 BERTH</span></div>';
+        }
+        foreach ($dk['rows'] as $ri => $rw) {
+            $h .= '<div class="scx-row"><div class="scx-g l">';
+            foreach ($rw['left'] as $bed) { $h .= $cell($bed); }
+            $h .= '</div><div class="scx-a">' . ($ri === intdiv(count($dk['rows']), 2) ? 'AISLE' : '') . '</div><div class="scx-g r">';
+            foreach ($rw['right'] as $bed) { $h .= $cell($bed); }
+            $h .= '</div></div>';
+        }
+        $h .= '</div>';
+    }
+    $h .= '</div><div class="scx-leg"><span><em style="background:#EAF7EE;border:1px solid #9FD3AE"></em>खाली · Free</span>'
+        . '<span><em style="background:#DCE8FB;border:1px solid #6E95D8"></em>बुक · Booked</span>'
+        . '<span><em style="background:#FDE7F2;border:1px solid #E06AA8"></em>महिला · Woman</span>'
+        . '<span><em style="background:#F8BBD9;border:2px solid #C2185B"></em>♀ महिला सिंगल स्लिपर · Woman on single sleeper</span>'
+        . '<span>📍N = चढ्ने ठाउँ नं. · pickup place no.</span></div>';
+    return $h;
 };
 
 /* =====================================================================
@@ -619,6 +797,16 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   table.ps td.n { color:#5C6B85; }
   table.ps td small { color:#5C6B85; font-size:8.5px; }
   .late { color:#8a1111; font-weight:700; }
+  /* 6 Nov 2026: place strip, place numbers, women on a single sleeper */
+  .pl { border:1.5px solid #12264E; border-radius:6px; padding:5px 9px; margin:0 0 6px; }
+  .pl-bus { font-size:12.5px; color:#12264E; margin-bottom:3px; }
+  .pl-ws { background:#F8BBD9; color:#880E4F; font-weight:800; padding:0 7px; border-radius:9px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .pl-list { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:11px; }
+  .pl-list i, i.pno { font-style:normal; display:inline-block; min-width:16px; height:16px; line-height:16px; text-align:center; border-radius:50%; background:#12264E; color:#fff; font-size:9.5px; font-weight:800; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  table.ps tr.ws td { background:#FCE4EC; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .wsb { color:#C2185B; }
+  .chartpg { break-before:page; page-break-before:always; padding-top:6px; }
+  .chartpg h2 { margin:0 0 4px; font-size:16px; color:#12264E; }
 
   .bottom { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; margin-top:9px; }
   .box { border:1.5px solid #12264E; border-radius:6px; padding:7px 10px 8px; }
@@ -672,6 +860,18 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
 <p class="stops"><b>चढ्ने ठाउँहरू :</b> <?= $e($stopsLine) ?> &nbsp;·&nbsp; <b>सीमा :</b> रुपैडिहा · जमुनाहा &nbsp;·&nbsp; <b>अगाडि :</b> नेपालगंज, बाँके</p>
 <?php endif; ?>
 
+<?php /* 6 Nov 2026: place-wise head-count, bus name and the women-on-single count, in one strip. */ ?>
+<div class="pl">
+  <div class="pl-bus">🚌 <b><?= $e(trim((string) ($trip['bus_name'] ?? '') . ' ' . (string) ($trip['bus_number'] ?? ''))) ?: 'बस' ?></b>
+    · जम्मा यात्रु <b><?= $e($neDigits((string) count($rows))) ?></b>
+    <?php if ($womenSingleCount > 0): ?> · <span class="pl-ws">♀ महिला सिंगल <?= $e($neDigits((string) $womenSingleCount)) ?></span><?php endif; ?></div>
+  <div class="pl-list">
+    <?php foreach ($placeList as $pl): ?>
+      <span><i><?= $e($neDigits((string) $pl['no'])) ?></i> <?= $e($pl['name']) ?> — <b><?= $e($neDigits((string) $pl['n'])) ?></b></span>
+    <?php endforeach; ?>
+  </div>
+</div>
+
 <div class="band"><span><?= $flagSvg('IN') ?> गुजरात ⇄ रुपैडिहा <?= $flagSvg('NP', 15) ?> · यात्रु यात्रा अभिलेख</span><span>सिट · नाम · भुक्तानी विवरण</span></div>
 
 <table class="ps">
@@ -686,13 +886,14 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     <th class="c">प्रा.लि.</th><th>कैफियत</th>
   </tr></thead>
   <tbody>
-  <?php for ($i = 0; $i < $sheetRows; $i++): $r = $rows[$i] ?? null; $m = $r ? $money($r) : null; ?>
-    <tr>
+  <?php for ($i = 0; $i < $sheetRows; $i++): $r = $rows[$i] ?? null; $m = $r ? $money($r) : null;
+        $ws = $r !== null && $isWomanSingle($r); ?>
+    <tr<?= $ws ? ' class="ws"' : '' ?>>
       <td class="c n"><?= $e($neDigits((string) ($i + 1))) ?></td>
       <td class="c"><b><?= $r ? $e(Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing'))) : '' ?></b></td>
-      <td><?php if ($r): ?><?= $e($r['full_name']) ?> <small><?= $e($r['ticket_number'] ?: $r['pnr']) ?><?php if ($isLate($r)): ?> · <span class="late">बस चलेपछि</span><?php endif; ?></small><?php endif; ?></td>
+      <td><?php if ($r): ?><?= $ws ? '<b class="wsb">♀</b> ' : '' ?><?= $e($r['full_name']) ?> <small><?= $e($r['ticket_number'] ?: $r['pnr']) ?><?php if ($isLate($r)): ?> · <span class="late">बस चलेपछि</span><?php endif; ?></small><?php endif; ?></td>
       <td><?= $r ? $e($r['contact_phone'] === '0000000000' ? '' : $r['contact_phone']) : '' ?></td>
-      <td><?= $r ? $e($stopShort((string) $r['boarding_stop'])) : '' ?></td>
+      <td><?php if ($r): $pk = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—'; ?><i class="pno"><?= $e($neDigits((string) ($placeList[$pk]['no'] ?? ''))) ?></i> <?= $e($pk) ?><?php endif; ?></td>
       <td><?= $r ? $e($stopShort((string) $r['drop_stop'])) : '' ?></td>
       <td class="r"><?= $m ? $e(number_format($m['ticket'])) : '' ?></td>
       <td class="r"><?= ($m && $m['cash'] > 0) ? $e(number_format($m['cash'])) : '' ?></td>
@@ -732,6 +933,11 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   <span>यो एस हरि ग्लोबल प्राइभेट लिमिटेडको आधिकारिक यात्रा कागजात हो। कम्पनी अभिलेखका लागि सुरक्षित राख्नुहोस्। अधिकृत सही / छापसँग मात्र मान्य। रुट : गुजरात ⇄ रुपैडिहा (भारत–नेपाल)। CIN <?= $e($cin) ?> · कर्पोरेट मामिला मन्त्रालय, भारत सरकार दर्ता</span>
   <span><b>shreehariglobal.in</b> · shreehariglobalpvtltd@gmail.com</span>
 </div>
+<?php /* 6 Nov 2026: page 2 — the seat chart with names, the aisle gap in the middle. */ ?>
+<div class="chartpg">
+  <h2>सिट चार्ट · Seat chart — <?= $e($chalaniNo) ?> · <?= $e(trim((string) ($trip['bus_name'] ?? '') . ' ' . (string) ($trip['bus_number'] ?? ''))) ?> · यात्रु <?= $e($neDigits((string) count($rows))) ?></h2>
+  <?= $seatChartHtml() ?>
+</div>
 </div></body></html>
     <?php
     Logger::audit('manifest.chalani', 'schedule', (string) $trip['schedule_id'],
@@ -770,9 +976,27 @@ foreach ($rows as $r) {
   .mf-unpaid  { background:#fff4d1; color:#8a6d00; }
   .mf-empty   { padding:24px; text-align:center; opacity:.75; }
   tr.mf-stop td { background:#0b3d91; color:#fff; font-weight:800; font-size:15px; padding:8px 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  tr.mf-grp td  { background:#fff7e6; border-top:2px solid #f0b44c; font-size:14px; padding:7px 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  tr.mf-grp a   { font-family:monospace; }
+  tr.mf-grp td  { background:#fff7e6; color:#3A2A00; border-top:2px solid #f0b44c; font-size:14px; padding:7px 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  tr.mf-grp a   { font-family:monospace; color:#0B3D91; }
   .mf-scroll  { overflow-x:auto; }
+  /* 6 Nov 2026: simple place-wise chalani + women single */
+  .mf-places { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:12px; margin:0 0 12px; }
+  @media (max-width:800px) { .mf-places { grid-template-columns:1fr; } }
+  .mf-pl-card { border:1px solid var(--line,#dcdcdc); border-radius:12px; padding:10px 12px; background:var(--card,#fff); }
+  .mf-pl-bus { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; font-size:16px; margin-bottom:6px; }
+  table.mf-pl { width:100%; border-collapse:collapse; font-size:14.5px; }
+  table.mf-pl th, table.mf-pl td { padding:6px 6px; border-bottom:1px solid var(--line,#e4e4e4); text-align:left; }
+  table.mf-pl .r { text-align:right; }
+  table.mf-pl tfoot td { border-top:2px solid var(--line,#ccc); border-bottom:0; font-size:15px; }
+  .mf-seats { font-size:12.5px; color:var(--mut,#555); }
+  i.mf-no { font-style:normal; display:inline-block; min-width:26px; height:26px; line-height:26px; border-radius:50%; background:#0b3d91; color:#fff; text-align:center; font-weight:800; }
+  .mf-wtag { background:#F8BBD9; color:#880E4F; border-radius:9px; padding:1px 6px; font-weight:800; }
+  details.mf-chart { margin:0 0 14px; } details.mf-chart summary { cursor:pointer; font-weight:800; font-size:15px; padding:6px 0; }
+  tr.mf-ws td { background:#FCE4EC !important; }
+  .mf-acts { display:inline-flex; gap:6px; flex-wrap:wrap; margin-left:6px; vertical-align:middle; }
+  .mf-acts form { display:inline; margin:0; }
+  .mf-acts .btn { padding:4px 10px; min-height:30px; font-size:12.5px; }
+  .mf-acts .del { background:#B42318; color:#fff; border-color:#B42318; }
   .wa-mini { display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#25D366;vertical-align:middle;margin-left:4px;transition:background .15s }
   .wa-mini:hover { background:#1da851 }
   .wa-mini svg { display:block }
@@ -867,8 +1091,45 @@ foreach ($rows as $r) {
       <span><b><?= $boarded ?></b> boarded</span>
       <span><b><?= $unpaid ?></b> unpaid</span>
       <span><b><?= Security::e(inr($revenue)) ?></b> booked value</span>
+      <?php if ($womenSingleCount > 0): ?><span style="color:#880E4F"><b>♀ <?= (int) $womenSingleCount ?></b> women on single sleeper</span><?php endif; ?>
     </div>
   </div>
+
+  <?php if ($mfFlash !== null): ?><div class="flash <?= $mfFlash[0] === 'ok' ? 'ok' : 'bad' ?>"><?= Security::e($mfFlash[1]) ?></div><?php endif; ?>
+
+  <?php if ($paxCount > 0): ?>
+  <?php /* 6 Nov 2026: the simple chalani — place no. + name + head-count, bus + total, then the seat chart. */ ?>
+  <div class="mf-places">
+    <div class="mf-pl-card">
+      <div class="mf-pl-bus">🚌 <b><?= Security::e(trim((string) ($trip['bus_name'] ?? '') . ' ' . (string) ($trip['bus_number'] ?? '')) ?: 'Bus not assigned') ?></b>
+        <span>👥 <b><?= $paxCount ?></b> यात्रु · passengers</span></div>
+      <table class="mf-pl">
+        <thead><tr><th>नं.</th><th>चढ्ने ठाउँ · Pickup place</th><th class="r">यात्रु</th><th>सिट · Seats</th></tr></thead>
+        <tbody>
+        <?php foreach ($placeList as $pl): ?>
+          <tr><td><i class="mf-no"><?= (int) $pl['no'] ?></i></td><td><b><?= Security::e($pl['name']) ?></b><?= $pl['women'] > 0 ? ' <small class="mf-wtag">♀ ' . (int) $pl['women'] . '</small>' : '' ?></td>
+              <td class="r"><b><?= (int) $pl['n'] ?></b></td><td class="mf-seats"><?= Security::e(implode(', ', $pl['seats'])) ?></td></tr>
+        <?php endforeach; ?>
+        </tbody>
+        <tfoot><tr><td></td><td><b>जम्मा · Total</b></td><td class="r"><b><?= $paxCount ?></b></td><td></td></tr></tfoot>
+      </table>
+    </div>
+    <div class="mf-pl-card">
+      <div class="mf-pl-bus">🏁 <b>ओर्लिने ठाउँ · Drop places</b></div>
+      <table class="mf-pl">
+        <tbody>
+        <?php foreach ($dropList as $dl): ?>
+          <tr><td><b><?= Security::e($dl['name']) ?></b></td><td class="r"><b><?= (int) $dl['n'] ?></b></td></tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <details class="mf-chart" open>
+    <summary>💺 सिट चार्ट · Seat chart (नाम सहित · with names)</summary>
+    <?= $seatChartHtml() ?>
+  </details>
+  <?php endif; ?>
 
   <?php if ($paxCount === 0): ?>
     <p class="mf-empty">No passengers are booked on this departure yet.</p>
@@ -904,7 +1165,7 @@ foreach ($rows as $r) {
           $stopNow = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—';
           if ($stopNow !== $lastStop): $lastStop = $stopNow;
             $stopPax = count(array_filter($rows, static fn($x) => ($x['boarding_stop'] ? $stopShort((string) $x['boarding_stop']) : '—') === $stopNow)); ?>
-        <tr class="mf-stop"><td colspan="11">📍 <?= Security::e($stopNow) ?> · <?= $stopPax ?> passenger<?= $stopPax === 1 ? '' : 's' ?></td></tr>
+        <tr class="mf-stop"><td colspan="11">📍 <?= (int) ($placeList[$stopNow]['no'] ?? 0) ?> · <?= Security::e($stopNow) ?> · <?= $stopPax ?> passenger<?= $stopPax === 1 ? '' : 's' ?></td></tr>
           <?php endif;
           $gid = (int) $r['booking_id'];
           if ($gid !== $lastGid): $lastGid = $gid; $g = $grp[$gid]; ?>
@@ -914,13 +1175,26 @@ foreach ($rows as $r) {
           — <span class="mono"><?= Security::e((string) $r['contact_phone']) ?></span>
           — seats <b><?= Security::e(implode(', ', $g['seats'])) ?></b>
           · <a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>"><?= Security::e((string) $r['pnr']) ?></a>
+          <span class="mf-acts no-print">
+            <a class="btn ghost" href="<?= $base ?>/admin/reschedule.php?pnr=<?= urlencode((string) $r['pnr']) ?>" title="अर्को मिति / अर्को बसमा सार्नुहोस्">🔁 Transfer</a>
+            <a class="btn ghost" href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>#seats" title="सिट बदल्नुहोस्">💺 Seat</a>
+            <?php if ($mfCanCancel): ?>
+            <form method="post" onsubmit="return confirm('<?= Security::e((string) $r['pnr']) ?> — <?= Security::e(addslashes($g['lead'])) ?> (<?= (int) $g['n'] ?>) cancel गर्ने? सिट खाली हुन्छ। Refund हातैले।')">
+              <?= Security::csrfField() ?><input type="hidden" name="mf_action" value="cancel"><input type="hidden" name="pnr" value="<?= Security::e((string) $r['pnr']) ?>">
+              <button class="btn del" type="submit">🗑 Delete</button>
+            </form>
+            <?php else: ?>
+            <a class="btn ghost" href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>" title="Cancel request">🗑 Cancel…</a>
+            <?php endif; ?>
+          </span>
         </td></tr>
           <?php endif; ?>
         <?php endif; ?>
-        <tr>
+        <?php $rowWs = $isWomanSingle($r); ?>
+        <tr<?= $rowWs ? ' class="mf-ws"' : '' ?>>
           <td class="seat"><?= Security::e(Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing'))) ?></td>
           <td>
-            <?= Security::e((string) $r['full_name']) ?>
+            <?= $rowWs ? '<b style="color:#C2185B" title="Woman on a single sleeper">♀ </b>' : '' ?><?= Security::e((string) $r['full_name']) ?>
             <?php if ($r['age'] || $r['gender']): ?>
               <br><small style="opacity:.7"><?= Security::e(trim(($r['age'] ? $r['age'] . 'y ' : '') . (string) $r['gender'])) ?></small>
             <?php endif; ?>

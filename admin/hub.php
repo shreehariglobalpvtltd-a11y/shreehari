@@ -87,6 +87,12 @@ $meta = [
     '3. Ticketing & Bus Management' => ['Tickets & Buses', 'Sell, change, cancel; fleet and routine', 'ticket', 't-blue'],
     '4. Financial Management'       => ['Money', 'Payments, wallets, salary, accounts', 'card', 't-green'],
     '5. Settings & Configuration'   => ['Settings', 'Company, WhatsApp, AI, logs, backups', 'cog', 't-red'],
+    // 6 Nov 2026: the sidebar's five trunks, renamed and reordered (tree menu)
+    '🎫 1. टिकट र बस · Tickets & Bus'   => ['Tickets & Buses', 'Sell, chalani, transfer, cancel; fleet', 'ticket', 't-blue'],
+    '👥 2. टिम · Agents & Staff'        => ['Agents & Staff', 'Quick agent, logins, codes, KYC', 'users', 't-gold'],
+    '💰 3. पैसा · Money'                => ['Money', 'Payments, wallets, salary, accounts', 'card', 't-green'],
+    '📍 4. ठाउँ · Places & Map'         => ['Places & Map', 'Stops, counters, live bus map', 'map-pin', 't-teal'],
+    '⚙️ 5. सेटिङ र AI · Settings & AI'  => ['Settings & AI', 'Say it to the AI, WhatsApp, logs', 'cog', 't-red'],
 ];
 /* Badges: how much work waits behind a tile. (staff.php has no AgentPro
    applications, so it carries no badge — the queue lives on team.php.) */

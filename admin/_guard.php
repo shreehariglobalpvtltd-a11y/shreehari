@@ -70,11 +70,15 @@ function admin_nav(): array
     // missing from the menu (payroll, settlements, statements, reschedule, cash
     // book, counters ...) now have a home. Each entry's perm is the perm the page
     // itself boots with, so a link only shows to someone the page will let in.
-    $S1 = '1. Staff & Agent Management';
-    $S2 = '2. Location Management';
-    $S3 = '3. Ticketing & Bus Management';
-    $S4 = '4. Financial Management';
-    $S5 = '5. Settings & Configuration';
+    /* 6 Nov 2026 (owner: "admin system ajhai simple — option dherai bhayo, ek
+       thau merge, euta main ma 2-5 option, tree networking jasto"): five
+       trunks in the order the office uses them; each shows its 4-5 everyday
+       pages and folds the rest into "＋ थप · More" (admin_nav_main()). */
+    $S1 = '👥 2. टिम · Agents & Staff';
+    $S2 = '📍 4. ठाउँ · Places & Map';
+    $S3 = '🎫 1. टिकट र बस · Tickets & Bus';
+    $S4 = '💰 3. पैसा · Money';
+    $S5 = '⚙️ 5. सेटिङ र AI · Settings & AI';
     $all = [
         ['href' => 'index.php',        'icon' => 'dashboard', 'label' => 'Dashboard Overview', 'perm' => 'dashboard.view', 'section' => ''],
 
@@ -170,7 +174,49 @@ function admin_nav(): array
         array_unshift($all, ['href' => 'home.php', 'icon' => 'dashboard', 'label' => '🏠 गृह · Home', 'perm' => '', 'section' => '']);
     }
 
-    return array_values(array_filter($all, static fn(array $i): bool => $i['perm'] === '' || Auth::can($i['perm'])));
+    // 6 Nov 2026: the AI command + easy settings page leads the settings trunk.
+    $esAt = array_search('settings.php', array_column($all, 'href'), true);
+    array_splice($all, $esAt === false ? count($all) : (int) $esAt, 0, [[
+        'href' => 'easy-settings.php', 'icon' => 'sparkle', 'label' => '🤖 AI सेटिङ · Easy Settings (bolera)', 'perm' => 'dashboard.view', 'section' => $S5,
+    ]]);
+
+    $main = admin_nav_main();
+    foreach ($all as &$it) {
+        // stray one-off sections join their trunk
+        if ($it['section'] === 'Agents') { $it['section'] = $S1; }
+        if ($it['section'] === 'Settings') { $it['section'] = $S5; }
+        $it['main'] = isset($main[$it['href']]);
+    }
+    unset($it);
+    // trunks in their number order (1 Tickets … 5 Settings); unsectioned links stay on top
+    $rank = static fn(array $i): int => $i['section'] === '' ? 0 : (int) (preg_match('/(\d)\./', $i['section'], $mm) === 1 ? $mm[1] : 9);
+    $keyed = $all;
+    uksort($keyed, static fn($a, $b): int => [$rank($all[$a]), $a] <=> [$rank($all[$b]), $b]);   // stable: ties keep menu order
+
+    return array_values(array_filter($keyed, static fn(array $i): bool => $i['perm'] === '' || Auth::can($i['perm'])));
+}
+
+/**
+ * 6 Nov 2026 — the everyday pages of each trunk (shown open); every other
+ * page of that trunk folds under "＋ थप · More". Order inside a trunk stays
+ * the order of admin_nav().
+ *
+ * @return array<string, true>
+ */
+function admin_nav_main(): array
+{
+    return array_fill_keys([
+        // 1 Tickets & Bus
+        'quick-ticket.php', 'bookings.php', 'manifest.php', 'reschedule.php', 'trips.php',
+        // 2 Agents & Staff
+        'agent-quick.php', 'people.php', 'team.php', 'staff.php', '/me/',
+        // 3 Money
+        'payments.php', 'cash-book.php', 'settlements.php', 'accounting.php',
+        // 4 Places & Map
+        'routes.php', 'map.php', 'counters.php',
+        // 5 Settings & AI
+        'easy-settings.php', 'settings.php', 'wa-manager.php', 'ai-brain.php',
+    ], true);
 }
 
 /**
@@ -312,7 +358,19 @@ function admin_header(string $title, string $active = ''): void
                . Security::e($sec)
                . '<svg class="a-ic nav-caret"><use href="#a-chevron"/></svg></button>';
             echo '<div class="side-items">';
-            foreach ($groupItems as $item) { $renderLink($item); }
+            /* 6 Nov 2026: tree — the everyday pages, then the rest under "＋ थप".
+               The fold opens by itself when the current page is inside it. */
+            $mainItems = array_values(array_filter($groupItems, static fn(array $i): bool => !empty($i['main'])));
+            $moreItems = array_values(array_filter($groupItems, static fn(array $i): bool => empty($i['main'])));
+            if ($mainItems === [] || count($moreItems) < 2) { $mainItems = $groupItems; $moreItems = []; }
+            foreach ($mainItems as $item) { $renderLink($item); }
+            if ($moreItems !== []) {
+                $moreOpen = false;
+                foreach ($moreItems as $mi) { if ($active !== '' && str_contains($mi['href'], $active)) { $moreOpen = true; break; } }
+                echo '<details class="side-more"' . ($moreOpen ? ' open' : '') . '><summary>＋ थप · More (' . count($moreItems) . ')</summary>';
+                foreach ($moreItems as $item) { $renderLink($item); }
+                echo '</details>';
+            }
             echo '</div></div>';
         }
     }
@@ -848,6 +906,11 @@ a{color:var(--blue);text-decoration:none}
 .side-toggle{display:flex;align-items:center;gap:6px;width:100%;background:none;border:0;text-align:left;cursor:pointer;font:inherit}
 .side-sec.side-toggle{color:var(--mut)}
 .side-toggle:hover{color:var(--ink)}
+.side-more{margin:2px 0 6px 10px;border-left:2px solid rgba(255,255,255,.18);padding-left:4px}
+.side-more>summary{cursor:pointer;list-style:none;padding:8px 10px;font-size:12.5px;font-weight:800;opacity:.85;border-radius:8px}
+.side-more>summary::-webkit-details-marker{display:none}
+.side-more>summary:hover{opacity:1;background:rgba(255,255,255,.06)}
+.side-more[open]>summary{opacity:1}
 .side-group .side-items{display:none}
 .side-group.open .side-items{display:block}
 .nav-caret{margin-left:auto;width:14px;height:14px;transition:transform .15s;opacity:.7}

@@ -93,6 +93,7 @@ if (Auth::oneDoorOn()) {
                 'who'            => OneDoor::who((string) ($_POST['who'] ?? ''), (string) ($_POST['cc'] ?? '91')),
                 'pw'             => OneDoor::password((string) ($_POST['password'] ?? '')),
                 'quick'          => OneDoor::quick((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),
+                'quick_dev'      => OneDoor::quickDevice((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),   // 6 Nov 2026: remembered phone
                 'code_send'      => OneDoor::codeSend(),
                 'code_verify'    => OneDoor::codeVerify((string) ($_POST['otp'] ?? '')),
                 'wa_start'       => OneDoor::waStart(),
@@ -142,6 +143,11 @@ if (Auth::oneDoorOn()) {
                 })(),
             };
             if (isset($r['go'])) {
+                // 6 Nov 2026: remember WHO signed in on this browser — next time the
+                // door opens straight on their pattern / PIN (QuickUnlock::rememberedAccount).
+                if (($me = Auth::admin()) !== null) {
+                    QuickUnlock::rememberDevice((int) $me['id']);
+                }
                 if (($r['flash'] ?? '') === 'saved') {
                     $_SESSION['home_flash'] = '✅ नयाँ पासवर्ड राखियो, तपाईं भित्र आउनुभयो · New password saved — you are signed in.';
                     if ($r['go'] === 'team') {
@@ -158,6 +164,9 @@ if (Auth::oneDoorOn()) {
         $want = (string) ($_GET['step'] ?? '');
         if ($want === 'start') {
             OneDoor::clear();
+        }
+        if ((string) ($_GET['forget'] ?? '') === '1') {
+            QuickUnlock::forgetDevice();   // "Not you?" — this browser forgets the account
         }
         $step = in_array($want, OneDoor::STEPS, true) ? $want : 'start';
     }
@@ -178,6 +187,8 @@ if (Auth::oneDoorOn()) {
         default                                                                => $step,
     };
     $reset = OneDoor::reset();
+    // 6 Nov 2026: a remembered phone opens on its pattern / PIN (?other=1 = the normal box)
+    $remembered = ($step === 'start' && (string) ($_GET['other'] ?? '') !== '1') ? QuickUnlock::rememberedAccount() : null;
 
     $company   = Settings::getString('company_name', APP_NAME);
     $ceoName   = trim(Settings::getString('company_ceo', '')) !== '' ? trim(Settings::getString('company_ceo', '')) : (string) Settings::company()['operator'];
@@ -295,7 +306,38 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
   <?php if ($error !== ''): ?><div class="msg bad" role="alert"><?= $h($error) ?></div><?php endif; ?>
   <?php if ($notice !== ''): ?><div class="msg ok" role="status"><?= $h($notice) ?></div><?php endif; ?>
 
-  <?php if ($step === 'start'): ?>
+  <?php if ($step === 'start' && $remembered !== null): ?>
+  <?php /* 6 Nov 2026: this phone remembers the account — pattern / PIN first, like an Android lock screen. */ ?>
+  <div class="who" style="font-size:17px">👋 <span><?= $h($remembered['name']) ?></span></div>
+  <div class="qk" data-qk>
+    <?php if ($remembered['pattern'] && $remembered['pin']): ?>
+    <div class="qk-tabs" role="tablist">
+      <button type="button" class="on" data-qk-tab="pattern">◯ Pattern</button>
+      <button type="button" data-qk-tab="pin">🔢 PIN</button>
+    </div>
+    <?php endif; ?>
+    <?php if ($remembered['pattern']): ?>
+    <form method="post" action="/admin/login.php" data-qk-form="pattern">
+      <?= $hid() ?><input type="hidden" name="mode" value="quick_dev"><input type="hidden" name="qk_kind" value="pattern"><input type="hidden" name="qk_val" value="">
+      <div class="qk-pad" data-qk-pad aria-label="Pattern"></div>
+      <p class="note">आफ्नो pattern कोर्नुहोस् · Draw your pattern</p>
+    </form>
+    <?php endif; ?>
+    <?php if ($remembered['pin']): ?>
+    <form method="post" action="/admin/login.php" data-qk-form="pin"<?= $remembered['pattern'] ? ' hidden' : '' ?>>
+      <?= $hid() ?><input type="hidden" name="mode" value="quick_dev"><input type="hidden" name="qk_kind" value="pin">
+      <label for="qkpin">PIN</label>
+      <input id="qkpin" class="qk-pin" name="qk_val" type="password" inputmode="numeric" pattern="\d{4,6}" minlength="4" maxlength="6" autocomplete="off" required<?= $remembered['pattern'] ? '' : ' autofocus' ?>>
+      <button class="btn" type="submit">PIN ले भित्र · Unlock</button>
+    </form>
+    <?php endif; ?>
+  </div>
+  <div class="links">
+    <a href="<?= $h($odUrl(['step' => 'start'])) ?>&amp;other=1">🔑 पासवर्ड / अर्को खाता · Password or another account</a>
+    <a href="/admin/login.php?forget=1&amp;other=1" style="color:#8A1F1F;font-weight:600">तपाईं होइन? यो फोनबाट हटाउने · Not you? Forget this phone</a>
+  </div>
+
+  <?php elseif ($step === 'start'): ?>
   <form method="post" action="/admin/login.php" autocomplete="on">
     <?= $hid() ?><input type="hidden" name="mode" value="who">
     <label for="who">मोबाइल नम्बर वा ID · Mobile number or ID</label>
@@ -320,15 +362,7 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
       <button class="btn alt" type="submit">📩 WhatsApp मा ६ अङ्कको कोड मगाउनुहोस् · Get a 6-digit code</button></form>
     <div class="or">वा · or</div>
   <?php endif; ?>
-  <form method="post" action="/admin/login.php" autocomplete="on">
-    <?= $hid() ?><input type="hidden" name="mode" value="pw">
-    <input type="text" name="username" value="<?= $h($kind === 'mobile' ? $st['phone'] : $st['id']) ?>" autocomplete="username" hidden aria-hidden="true" tabindex="-1">
-    <label for="pw">पासवर्ड · Password</label>
-    <input id="pw" name="password" type="password" autocomplete="current-password" required<?= $step === 'id' ? ' autofocus' : '' ?>>
-    <button class="btn" type="submit"><?= $step === 'mobile' ? 'पासवर्डले भित्र · Sign in with password' : 'भित्र जानुहोस् · Sign in' ?></button>
-  </form>
   <?php if (QuickUnlock::on()): ?>
-  <div class="or">वा · or</div>
   <div class="qk" data-qk>
     <div class="qk-tabs" role="tablist">
       <button type="button" class="on" data-qk-tab="pattern">◯ Pattern</button>
@@ -347,7 +381,15 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
     </form>
     <p class="note">PIN / pattern छैन? पासवर्डले भित्र गएर <b>🔐 PIN / Pattern</b> मा राख्नुहोस् · No PIN yet? Sign in with your password, then set one under 🔐 PIN / Pattern.</p>
   </div>
+  <div class="or">वा पासवर्ड · or password</div>
   <?php endif; ?>
+  <form method="post" action="/admin/login.php" autocomplete="on">
+    <?= $hid() ?><input type="hidden" name="mode" value="pw">
+    <input type="text" name="username" value="<?= $h($kind === 'mobile' ? $st['phone'] : $st['id']) ?>" autocomplete="username" hidden aria-hidden="true" tabindex="-1">
+    <label for="pw">पासवर्ड · Password</label>
+    <input id="pw" name="password" type="password" autocomplete="current-password" required<?= $step === 'id' && !QuickUnlock::on() ? ' autofocus' : '' ?>>
+    <button class="btn" type="submit"><?= $step === 'mobile' ? 'पासवर्डले भित्र · Sign in with password' : 'भित्र जानुहोस् · Sign in' ?></button>
+  </form>
   <?php if ($step === 'mobile'): ?><p class="note">एउटै मोबाइलमा २-३ ID भए, जुन ID को पासवर्ड हो त्यही खुल्छ · One mobile with 2-3 IDs? Each ID's own password opens that ID.</p><?php endif; ?>
   <div class="links"><a href="<?= $h($odUrl(['step' => 'forgot'])) ?>">🔑 पासवर्ड बिर्सनुभयो? · Forgot password?</a></div>
 
@@ -489,7 +531,7 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
 </script>
 <?php endif; ?>
 <?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261105a" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
-<?php if (($step === 'mobile' || $step === 'id') && QuickUnlock::on()): ?><script src="/assets/js/quick-unlock.js?v=20261101a"></script><?php endif; ?>
+<?php if ((($step === 'mobile' || $step === 'id') && QuickUnlock::on()) || ($remembered ?? null) !== null): ?><script src="/assets/js/quick-unlock.js?v=20261101a"></script><?php endif; ?>
 </body></html>
 <?php
     exit;

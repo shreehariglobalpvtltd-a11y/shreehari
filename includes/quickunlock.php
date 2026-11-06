@@ -162,6 +162,79 @@ final class QuickUnlock
     }
 
     /* =================================================================
+     *  Remembered phone (6 Nov 2026, owner: "login ma pattern ya PIN lai
+     *  focus — tesle nai khulos, Android jasto; password tyo bigreko bela
+     *  matra"). After any sign-in this browser remembers WHICH account it
+     *  was (a signed cookie: id + expiry + HMAC, nothing secret in it). The
+     *  next visit opens straight on that person's pattern / PIN — no ID to
+     *  type. The PIN / pattern is still checked by match() with the same
+     *  budget and lockout; the cookie alone opens nothing. "Not you?" and
+     *  the password door stay one tap away.
+     * ================================================================= */
+
+    public const DEVICE_COOKIE = 'shg_qk';
+    private const DEVICE_DAYS  = 180;
+
+    private static function deviceSig(string $payload): string
+    {
+        $key = defined('APP_KEY') ? (string) APP_KEY : (defined('DB_PASS') ? 'shg-qk|' . DB_PASS : 'shg-qk');
+        return substr(hash_hmac('sha256', 'qk|' . $payload, $key), 0, 32);
+    }
+
+    /** Remember the signed-in account on this browser (call after a successful sign-in). */
+    public static function rememberDevice(int $adminId): void
+    {
+        if ($adminId <= 0 || headers_sent() || !self::on()) {
+            return;
+        }
+        $payload = $adminId . '.' . (time() + self::DEVICE_DAYS * 86400);
+        $secure  = (($_SERVER['HTTPS'] ?? '') !== '' && ($_SERVER['HTTPS'] ?? '') !== 'off') || (int) ($_SERVER['SERVER_PORT'] ?? 0) === 443;
+        setcookie(self::DEVICE_COOKIE, $payload . '.' . self::deviceSig($payload), [
+            'expires' => time() + self::DEVICE_DAYS * 86400, 'path' => '/admin/',
+            'secure' => $secure, 'httponly' => true, 'samesite' => 'Lax',
+        ]);
+    }
+
+    public static function forgetDevice(): void
+    {
+        if (!headers_sent()) {
+            setcookie(self::DEVICE_COOKIE, '', ['expires' => time() - 3600, 'path' => '/admin/', 'httponly' => true, 'samesite' => 'Lax']);
+        }
+        unset($_COOKIE[self::DEVICE_COOKIE]);
+    }
+
+    /**
+     * The remembered account when this browser has one AND it can open with a
+     * PIN or pattern: ['id','name','pin','pattern'] — else null.
+     *
+     * @return array{id: int, name: string, pin: bool, pattern: bool}|null
+     */
+    public static function rememberedAccount(): ?array
+    {
+        if (!self::on()) {
+            return null;
+        }
+        $raw = (string) ($_COOKIE[self::DEVICE_COOKIE] ?? '');
+        if (preg_match('/^(\d{1,10})\.(\d{9,11})\.([a-f0-9]{32})$/', $raw, $m) !== 1) {
+            return null;
+        }
+        if ((int) $m[2] < time() || !hash_equals(self::deviceSig($m[1] . '.' . $m[2]), $m[3])) {
+            return null;
+        }
+        $r = Database::fetch('SELECT id, full_name, username, pin_hash, pattern_hash FROM admins WHERE id = :i AND is_active = 1', ['i' => (int) $m[1]]);
+        if ($r === null) {
+            return null;
+        }
+        $pin = (string) ($r['pin_hash'] ?? '') !== '';
+        $pat = (string) ($r['pattern_hash'] ?? '') !== '';
+        if (!$pin && !$pat) {
+            return null;
+        }
+        $name = trim((string) ($r['full_name'] ?? '')) ?: (string) $r['username'];
+        return ['id' => (int) $r['id'], 'name' => $name, 'pin' => $pin, 'pattern' => $pat];
+    }
+
+    /* =================================================================
      *  Unlock
      * ================================================================= */
 
