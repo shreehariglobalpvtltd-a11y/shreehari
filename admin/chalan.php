@@ -110,7 +110,7 @@ if ($trip !== null) {
           WHERE bl.schedule_id = :s AND b.status IN ('confirmed','pending','completed')",
         ['s' => $sid], 0
     );
-    $pageCount = ChalaniPng::pageCount(array_fill(0, $paxCount, []));
+    $pageCount = ChalaniPng::pageCount(array_fill(0, $paxCount, [])) + 1;   // + the seat-chart page (6 Nov 2026)
     $state     = TripStatus::editableFor($sid);
     $var = [
         'direction' => QuickTicket::directionLabel($direction),

@@ -658,7 +658,14 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
        way on paper and another in the picture. */
     $chalaniFmt = ['money' => $money, 'stopShort' => $stopShort, 'isLate' => $isLate,
                    'bookedBy' => $bookedByShort, 'stopsLine' => $stopsLine,
-                   'stopsLineRoman' => $stopsLineRoman];
+                   'stopsLineRoman' => $stopsLineRoman,
+                   /* 6 Nov 2026: the place list, women on a single sleeper and the
+                      seat chart — the PDF and the PNG pages draw the same picture
+                      as the print sheet (ChalaniPdf / ChalaniPng read these). */
+                   'placeList' => array_values($placeList), 'placeNo' => static fn(string $stop): int => (int) ($placeList[$stop]['no'] ?? 0),
+                   'womanSingle' => $isWomanSingle, 'womenSingleCount' => $womenSingleCount,
+                   'seatInfo' => $seatInfo, 'layout' => $layout,
+                   'busName' => trim((string) ($trip['bus_name'] ?? '') . ' ' . (string) ($trip['bus_number'] ?? ''))];
 
     /* Where the three chalani surfaces live. Defined HERE, before any of
        the branches: the PNG picker links back to the PDF, so leaving these
@@ -698,7 +705,12 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     if ($format === 'chalanipng') {
         require_once INCLUDE_PATH . '/chalanipng.php';   // an agent: its AGENT COPY (see above)
 
-        $pageCount = ChalaniPng::pageCount($rows);
+        $sheetPages = ChalaniPng::pageCount($rows);
+        $hasChart   = ($layout['decks'] ?? []) !== [];      // 6 Nov 2026: + the seat-chart page
+        $pageCount  = $sheetPages + ($hasChart ? 1 : 0);
+        $pngOne = static fn(int $p): array => ($hasChart && $p === $pageCount)
+            ? ChalaniPng::renderChart($trip, $rows, $date, $totals, $chalaniFmt, $p, $pageCount)
+            : ChalaniPng::render($trip, $rows, $date, $totals, $chalaniFmt, $p);
         $wanted    = (int) ($_GET['page'] ?? 0);
 
         if ($wanted >= 1) {
@@ -708,7 +720,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
                 exit('This chalani has ' . $pageCount . ' page' . ($pageCount === 1 ? '' : 's') . '.');
             }
             try {
-                $res = ChalaniPng::render($trip, $rows, $date, $totals, $chalaniFmt, $wanted);
+                $res = $pngOne($wanted);
             } catch (Throwable $ex) {
                 Logger::error('Chalani PNG failed: ' . $ex->getMessage(), ['sid' => $trip['schedule_id'] ?? 0, 'page' => $wanted]);
                 http_response_code(500);
@@ -730,7 +742,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
         $pngError = '';
         for ($p = 1; $p <= $pageCount; $p++) {
             try {
-                $pngPages[] = ChalaniPng::render($trip, $rows, $date, $totals, $chalaniFmt, $p);
+                $pngPages[] = $pngOne($p);
             } catch (Throwable $ex) {
                 $pngError = $ex->getMessage();
                 Logger::error('Chalani PNG failed: ' . $ex->getMessage(), ['sid' => $trip['schedule_id'] ?? 0, 'page' => $p]);

@@ -48,7 +48,7 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 11;  // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 12;  // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
@@ -169,6 +169,9 @@ final class ChalaniPng
             'seller' => $seller,
             'stops'  => (string) ($fmt['stopsLineRoman'] ?? $fmt['stopsLine'] ?? ''),
             'totals' => $totals,
+            'places' => $fmt['placeList'] ?? [],          // 6 Nov 2026
+            'bus'    => $fmt['busName'] ?? '',
+            'genders' => array_map(static fn(array $r): string => (string) ($r['gender'] ?? ''), $rows),
         ];
         return md5((string) json_encode($seed));
     }
@@ -207,6 +210,123 @@ final class ChalaniPng
         self::draw($trip, $rows, $date, $totals, $fmt, $page, $chunks, $path);
         self::sweep($dir, self::busLabel($trip) . '-S' . (int) ($trip['schedule_id'] ?? 0) . '-', substr($fp, 0, 8));
 
+        return ['path' => $path, 'file' => $file, 'page' => $page, 'pages' => $pages, 'fresh' => true, 'fingerprint' => $fp];
+    }
+
+    /**
+     * 6 Nov 2026 (owner: seat chart "bichma khali gap rakhera" on the chalani):
+     * the LAST picture page — lower | upper floor, DOUBLE (2 berth) | aisle |
+     * SINGLE (1 berth), each berth with the passenger's name and pickup place
+     * number; a woman on a single sleeper in pink. admin/manifest.php serves
+     * it as page pageCount()+1. Cached by the same fingerprint as the sheet.
+     *
+     * @param array<string,mixed> $fmt  needs layout, seatInfo (+ busName, placeList)
+     * @return array{path:string,file:string,page:int,pages:int,fresh:bool,fingerprint:string}
+     */
+    public static function renderChart(array $trip, array $rows, string $date, array $totals, array $fmt, int $page, int $pages): array
+    {
+        $fp   = self::fingerprint($trip, $rows, $date, $totals, $fmt);
+        $dir  = rtrim(UPLOAD_PATH, '/\\') . '/chalani/' . $date;
+        $file = self::busLabel($trip) . '-S' . (int) ($trip['schedule_id'] ?? 0) . '-seatchart-' . substr($fp, 0, 8) . '.png';
+        $path = $dir . '/' . $file;
+        if (is_file($path) && filesize($path) > 0) {
+            return ['path' => $path, 'file' => $file, 'page' => $page, 'pages' => $pages, 'fresh' => false, 'fingerprint' => $fp];
+        }
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new RuntimeException('Cannot create the chalani folder.');
+        }
+        foreach ((array) @glob($dir . '/' . self::busLabel($trip) . '-S' . (int) ($trip['schedule_id'] ?? 0) . '-seatchart-*.png') as $old) {
+            if (is_string($old)) { @unlink($old); }
+        }
+
+        $W = self::WIDTH; $H = self::HEIGHT; $M = self::M;
+        $im = imagecreatetruecolor($W, $H);
+        imagealphablending($im, true);
+        $c = static fn(string $hex): int => imagecolorallocate($im, (int) hexdec(substr($hex, 1, 2)), (int) hexdec(substr($hex, 3, 2)), (int) hexdec(substr($hex, 5, 2)));
+        $white = $c('#FFFFFF'); $navy = $c('#0A2A8F'); $ink = $c('#1A1A2E'); $muted = $c('#5F5747'); $goldL = $c('#F3DE8A');
+        $rose = $c('#C2185B'); $head = $c('#E4E8EF'); $cream = $c('#FFF8E7');
+        $pal = [
+            'free' => [$c('#EAF7EE'), $c('#9FD3AE'), $c('#14532D')],
+            'busy' => [$c('#DCE8FB'), $c('#6E95D8'), $navy],
+            'w'    => [$c('#FDE7F2'), $c('#E06AA8'), $c('#9D1C5E')],
+            'ws'   => [$c('#F8BBD9'), $rose, $c('#880E4F')],
+        ];
+        imagefilledrectangle($im, 0, 0, $W, $H, $cream);
+        imagefilledrectangle($im, 0, 0, $W, 92, $navy);
+        $coach = (string) ($trip['coach_type'] ?? 'sleeper');
+        $ws = (int) ($fmt['womenSingleCount'] ?? 0);
+        self::t($im, 30, $M, 14, $white, 'SEAT CHART  ·  ' . self::chalaniNo($trip, $date), true);
+        self::t($im, 17, $M, 56, $goldL, self::fit(17, self::ro((string) ($fmt['busName'] ?? '')) . '  ·  ' . strtoupper(formatDate($date, 'D, j M Y'))
+            . '  ·  ' . count($rows) . ' PASSENGERS' . ($ws > 0 ? '  ·  WOMEN SINGLE ' . $ws : ''), $W - 2 * $M - 260), false);
+        self::tR($im, 18, $W - $M, 34, $goldL, 'PAGE ' . $page . ' OF ' . $pages, true);
+
+        $layout = (array) ($fmt['layout'] ?? []);
+        $info   = (array) ($fmt['seatInfo'] ?? []);
+        $decks  = (array) ($layout['decks'] ?? []);
+        $gap = 36; $aisle = 56;
+        $deckW = (int) (($W - 2 * $M - $gap * max(0, count($decks) - 1)) / max(1, count($decks)));
+        $nL = max(1, count($decks[0]['rows'][0]['left'] ?? [1]));
+        $nR = max(1, count($decks[0]['rows'][0]['right'] ?? [1]));
+        $cellW = (int) (($deckW - 28 - $aisle) / ($nL + $nR));
+        $maxRows = $decks !== [] ? max(array_map(static fn(array $d): int => count($d['rows']), $decks)) : 1;
+        $top = 120;
+        $cellH = (int) min(150, max(70, ($H - $top - 70 - 90) / max(1, $maxRows) - 12));
+        foreach ($decks as $di => $dk) {
+            $dx = $M + $di * ($deckW + $gap);
+            $deckH = 70 + count($dk['rows']) * ($cellH + 12) + 6;
+            self::roundRect($im, $dx, $top, $dx + $deckW, $top + $deckH, 16, $white, $c('#C9D2E6'));
+            self::t($im, 22, $dx + 18, $top + 10, $navy, self::ro((string) $dk['label']), true);
+            if ($coach === 'sleeper') {
+                $lx2 = $dx + 14 + $nL * $cellW;
+                self::roundRect($im, $dx + 14, $top + 44, $lx2, $top + 64, 8, $head, null);
+                self::tC($im, 13, $dx + 14, $lx2, $top + 46, $ink, 'DOUBLE SLEEPER · 2 BERTH', true);
+                self::roundRect($im, $lx2 + $aisle, $top + 44, $lx2 + $aisle + $nR * $cellW, $top + 64, 8, $head, null);
+                self::tC($im, 13, $lx2 + $aisle, $lx2 + $aisle + $nR * $cellW, $top + 46, $ink, 'SINGLE · 1 BERTH', true);
+            }
+            $ry = $top + 72;
+            foreach ($dk['rows'] as $ri => $rw) {
+                $cells = [];
+                foreach ($rw['left'] as $k => $bed)  { $cells[] = [$dx + 14 + $k * $cellW, $bed]; }
+                foreach ($rw['right'] as $k => $bed) { $cells[] = [$dx + 14 + $nL * $cellW + $aisle + $k * $cellW, $bed]; }
+                foreach ($cells as [$x0, $bed]) {
+                    $i = $info[$bed] ?? null;
+                    $k = $i === null ? 'free' : (!empty($i['ws']) ? 'ws' : (!empty($i['woman']) ? 'w' : 'busy'));
+                    [$fill, $edge, $txtc] = $pal[$k];
+                    self::roundRect($im, $x0 + 4, $ry, $x0 + $cellW - 4, $ry + $cellH, 12, $fill, null);
+                    imagesetthickness($im, $k === 'ws' ? 4 : 2);
+                    imagerectangle($im, $x0 + 4, $ry, $x0 + $cellW - 4, $ry + $cellH, $edge);
+                    imagesetthickness($im, 1);
+                    self::tC($im, 22, $x0, $x0 + $cellW, $ry + 8, $txtc, Seats::displayLabel((string) $bed, $coach, 'sharing'), true);
+                    if ($i !== null && $cellH >= 80) {
+                        $first = Ticket::display((string) (explode(' ', trim((string) $i['name']))[0] ?? ''));
+                        self::tC($im, 15, $x0, $x0 + $cellW, $ry + 44, $ink, self::fit(15, $first, $cellW - 16), false);
+                        $tag = ((int) $i['place'] > 0 ? 'P' . (int) $i['place'] : '') . (!empty($i['ws']) ? ' · WOMAN' : '');
+                        self::tC($im, 13, $x0, $x0 + $cellW, $ry + 70, !empty($i['ws']) ? $rose : $navy, self::fit(13, trim($tag, ' ·'), $cellW - 12), true);
+                    }
+                }
+                if ($ri === intdiv(count($dk['rows']), 2)) {
+                    $ax = $dx + 14 + $nL * $cellW;
+                    foreach (str_split('AISLE') as $q => $ch) { self::tC($im, 13, $ax, $ax + $aisle, $ry - 8 + $q * 18, $muted, $ch, true); }
+                }
+                $ry += $cellH + 12;
+            }
+        }
+        // legend
+        $ly = $H - 70; $lx = $M;
+        foreach ([['free', 'Free'], ['busy', 'Booked'], ['w', 'Woman'], ['ws', 'Woman on single sleeper'], ['', 'P n = pickup place no.']] as [$k, $lab]) {
+            if ($k !== '') {
+                [$fill, $edge] = $pal[$k];
+                self::roundRect($im, $lx, $ly, $lx + 34, $ly + 22, 5, $fill, $edge);
+                $lx += 42;
+            }
+            self::t($im, 15, $lx, $ly + 2, $ink, $lab, false);
+            $lx += self::w(15, $lab) + 36;
+        }
+
+        $tmp = $path . '.tmp';
+        if (!imagepng($im, $tmp, 6)) { imagedestroy($im); @unlink($tmp); throw new RuntimeException('Could not write the seat chart.'); }
+        imagedestroy($im);
+        if (!@rename($tmp, $path)) { @unlink($tmp); throw new RuntimeException('Could not place the seat chart.'); }
         return ['path' => $path, 'file' => $file, 'page' => $page, 'pages' => $pages, 'fresh' => true, 'fingerprint' => $fp];
     }
 
@@ -358,6 +478,7 @@ final class ChalaniPng
         $gstin     = trim(Settings::getString('company_gstin', ''));   // 10 Oct 2026 (trust): printed only once the office has one
         $roman     = static fn(string $s): string => self::ro($s);
         $pages     = count($chunks);
+        $pagesShown = $pages + (((array) ($fmt['layout']['decks'] ?? [])) !== [] ? 1 : 0);   // + the seat-chart page (6 Nov 2026)
         $chalaniNo = self::chalaniNo($trip, $date);
 
         /* ================= mantra strip ================= */
@@ -476,7 +597,16 @@ final class ChalaniPng
         /* Boarding points, in travel order (Roman-digit twin of the PDF line). */
         $stopsLine = $roman((string) ($fmt['stopsLineRoman'] ?? $fmt['stopsLine'] ?? ''));
         $stopsLine = trim((string) preg_replace('/\(\s*:?\s*\)/', '', $stopsLine));
-        if ($stopsLine !== '') {
+        /* 6 Nov 2026: the place-wise head-count replaces the plain stops line —
+           "BUS ... · 23 PASSENGERS · 1 Surat 8 · 2 Kamrej 3 ..." */
+        $places = (array) ($fmt['placeList'] ?? []);
+        if ($places !== []) {
+            $ws  = (int) ($fmt['womenSingleCount'] ?? 0);
+            $hd  = 'BUS ' . $roman((string) ($fmt['busName'] ?? '')) . '  ·  ' . count($rows) . ' PASSENGERS' . ($ws > 0 ? '  ·  WOMEN SINGLE ' . $ws : '') . '  ·  ';
+            $pl  = implode('   ', array_map(static fn(array $p): string => (int) $p['no'] . '. ' . self::ro((string) $p['name']) . ' ' . (int) $p['n'], $places));
+            self::t($im, 15, $M, $y, $navy, self::fit(15, $hd, $stripW), true);
+            self::t($im, 15, $M + self::w(15, $hd) + 4, $y, $ink, self::fit(15, $pl, max(40, $stripW - self::w(15, $hd) - 4)), false);
+        } elseif ($stopsLine !== '') {
             self::t($im, 15, $M, $y, $muted, self::fit(15, 'Boarding points: ' . $stopsLine, $stripW), false);
         }
         $y += 28;
@@ -485,7 +615,7 @@ final class ChalaniPng
             $roman((string) ($trip['from_city'] ?? 'Gujarat')) . ' - '
             . $roman((string) ($trip['to_city'] ?? 'Rupaidiha')) . '  ·  PASSENGER RECORD'
         ), true);
-        self::tR($im, 16, $px1 - 16, $y + 3, $maroon, 'PAGE ' . $page . ' OF ' . $pages, true);
+        self::tR($im, 16, $px1 - 16, $y + 3, $maroon, 'PAGE ' . $page . ' OF ' . $pagesShown, true);
         GoldSheet::flourish($im, $M + (int) ($stripW / 2), $y + 52, $stripW - 40);
 
         /* ================= table ================= */
@@ -522,13 +652,17 @@ final class ChalaniPng
         $pTicket = 0.0; $pCash = 0.0; $pOnline = 0.0; $pPax = 0;
         $zebraA = GoldSheet::col($im, [255, 255, 255], 72);
         $zebraB = GoldSheet::col($im, [244, 228, 184], 68);
+        $pink   = $c('#F8BBD9');   // 6 Nov 2026: woman on a single sleeper
+        $rose   = $c('#C2185B');
+        $placeNo = isset($fmt['placeNo']) && is_callable($fmt['placeNo']) ? $fmt['placeNo'] : static fn(string $s): int => 0;
 
         for ($n = 0; $n < $drawRows; $n++) {
             $idx = $startIdx + $n;
             $r   = $rows[$idx] ?? null;
             $ry  = $ty + $n * self::ROW_H;
 
-            imagefilledrectangle($im, $M, $ry, $W - $M, $ry + self::ROW_H - 1, $n % 2 === 0 ? $zebraA : $zebraB);
+            $wsRow = $r !== null && isset($fmt['womanSingle']) && is_callable($fmt['womanSingle']) && $fmt['womanSingle']($r);
+            imagefilledrectangle($im, $M, $ry, $W - $M, $ry + self::ROW_H - 1, $wsRow ? $pink : ($n % 2 === 0 ? $zebraA : $zebraB));
             imageline($im, $M, $ry + self::ROW_H, $W - $M, $ry + self::ROW_H, $hair);
             foreach ($cw as $i => $wd) {
                 if ($i > 0) { imageline($im, $cx[$i], $ry, $cx[$i], $ry + self::ROW_H, $hair); }
@@ -544,7 +678,7 @@ final class ChalaniPng
             $pTicket += $m['ticket']; $pCash += $m['cash']; $pOnline += $m['online'];
             $late = (bool) $isLate($r);
 
-            self::tC($im, 19, $cx[1], $cx[1] + $cw[1], $vy, $navy, Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing')), true);
+            self::tC($im, 19, $cx[1], $cx[1] + $cw[1], $vy, $wsRow ? $rose : $navy, Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing')), true);
 
             /* Name and ticket number share ONE line (a Devanagari name is
                taller and its descenders ran through a stacked number). */
@@ -561,8 +695,10 @@ final class ChalaniPng
             self::t($im, 18, $cx[3] + 10, $vy + 2, $ink,
                 self::fit(18, $ph === '0000000000' ? '' : $roman($ph), $cw[3] - 20), false);
 
+            $pk  = $r['boarding_stop'] ? (string) $stopShrt((string) $r['boarding_stop']) : '—';
+            $pno = (int) $placeNo($pk);
             self::t($im, 17, $cx[4] + 10, $vy + 3, $ink,
-                self::fit(17, $roman((string) $stopShrt((string) $r['boarding_stop'])), $cw[4] - 20), false);
+                self::fit(17, ($pno > 0 ? $pno . ' · ' : '') . $roman($pk), $cw[4] - 20), false);
             self::t($im, 17, $cx[5] + 10, $vy + 3, $ink,
                 self::fit(17, $roman((string) $stopShrt((string) $r['drop_stop'])), $cw[5] - 20), false);
 
@@ -594,11 +730,11 @@ final class ChalaniPng
                 self::t($im, 12, $cx[9] + 10, $ry + 25, $muted, self::fit(12, $who, $cw[9] - 20), false);
             }
 
-            $rem = $late ? 'Booked after departure' : '';
+            $rem = $late ? 'Booked after departure' : ($wsRow ? 'WOMAN · single sleeper' : '');
             if ($rem === '' && !empty($r['boarded_at']))     { $rem = 'Boarded'; }
             if ($rem === '' && !empty($r['special_need']))   { $rem = $roman((string) $r['special_need']); }
             if ($rem === '' && (string) ($r['booking_status'] ?? '') === 'pending') { $rem = 'Booking pending'; }
-            self::t($im, 15, $cx[10] + 10, $vy + 3, $late ? $maroon : $muted, self::fit(15, $rem, $cw[10] - 20), false);
+            self::t($im, 15, $cx[10] + 10, $vy + 3, $late ? $maroon : ($wsRow ? $rose : $muted), self::fit(15, $rem, $cw[10] - 20), $wsRow);
         }
 
         /* Page subtotal — a crew counting cash counts THIS sheet, not the trip. */
@@ -658,7 +794,7 @@ final class ChalaniPng
         /* ================= footer ================= */
         $fy = self::FOOT_Y;
         GoldSheet::foilRule($im, $M, $W - $M, $fy, GoldSheet::CREAM);
-        $pg = 'PAGE ' . $page . ' OF ' . $pages;
+        $pg = 'PAGE ' . $page . ' OF ' . $pagesShown;
         self::tR($im, 17, $W - $M, $fy + 13, $navy, $pg, true);
         self::t($im, 14, $M, $fy + 15, $muted,
             self::fit(14, $roman('Booking counters: ' . $co['counters']), $inner - self::w(17, $pg) - 30), false);

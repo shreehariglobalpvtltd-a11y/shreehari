@@ -43,6 +43,8 @@ final class ChalaniPdf
     private const MUTE  = [59, 74, 102];
     private const LINE  = [22, 35, 60];
     private const SOFT  = [238, 242, 248];
+    private const PINK  = [252, 228, 236];   // 6 Nov 2026: woman on a single sleeper
+    private const ROSE  = [194, 24, 91];
     private const WHITE = [255, 255, 255];
     private const RED   = [138, 17, 17];
 
@@ -236,20 +238,27 @@ final class ChalaniPdf
         // Coach type for the seat-label grid (LA1/UA1). booking_mode rides on
         // each row ($r); coach is per-trip, so capture it into the row closure.
         $seatCoach = (string) ($trip['coach_type'] ?? 'sleeper');
-        $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach): void {
+        // 6 Nov 2026: a woman on a single sleeper reads pink; the pickup carries its place number
+        $womanSingle = isset($fmt['womanSingle']) && is_callable($fmt['womanSingle']) ? $fmt['womanSingle'] : static fn(array $r): bool => false;
+        $placeNo     = isset($fmt['placeNo']) && is_callable($fmt['placeNo']) ? $fmt['placeNo'] : static fn(string $s): int => 0;
+        $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach, $womanSingle, $placeNo): void {
+            $ws = $r !== null && $womanSingle($r);
+            if ($ws) { $pdf->rect($M, $y, $inner, $rowH, self::PINK, true); }
             foreach ($cw as $i => $w) { $pdf->rect($cx[$i], $y, $w, $rowH, self::LINE, false); }
             $ty = $y + 9.4;
             $txtC($cx[0], $cx[0] + $cw[0], $ty, $neDigits((string) $n), 6.8, false, self::MUTE);
             if ($r === null) { return; }
             $m = $money($r);
-            $txtC($cx[1], $cx[1] + $cw[1], $ty, Seats::displayLabel((string) $r['seat_no'], $seatCoach, (string) ($r['booking_mode'] ?? 'sharing')), 8, true, self::INK);
+            $txtC($cx[1], $cx[1] + $cw[1], $ty, Seats::displayLabel((string) $r['seat_no'], $seatCoach, (string) ($r['booking_mode'] ?? 'sharing')), 8, true, $ws ? self::ROSE : self::INK);
             $name = (string) ($r['full_name'] ?? '');
             $tail = ' ' . (string) ($r['ticket_number'] ?: $r['pnr']);
             $txt($cx[2] + 3, $ty, $fit($name, 7.8, $cw[2] - 6 - 52), 7.8, false, self::INK);
             $txtR($cx[2] + $cw[2] - 3, $ty, $fit(trim($tail), 5.6, 50), 5.6, false, $isLate($r) ? self::RED : self::MUTE);
             $ph = (string) ($r['contact_phone'] ?? '');
             $txt($cx[3] + 3, $ty, $ph === '0000000000' ? '' : $fit($ph, 7.4, $cw[3] - 6), 7.4, false, self::INK);
-            $txt($cx[4] + 3, $ty, $fit($stopShort((string) $r['boarding_stop']), 7.2, $cw[4] - 6), 7.2, false, self::INK);
+            $pk  = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—';
+            $pno = $placeNo($pk);
+            $txt($cx[4] + 3, $ty, $fit(($pno > 0 ? $neDigits((string) $pno) . ' · ' : '') . $pk, 7.2, $cw[4] - 6), 7.2, false, self::INK);
             $txt($cx[5] + 3, $ty, $fit($stopShort((string) $r['drop_stop']), 7.2, $cw[5] - 6), 7.2, false, self::INK);
             $txtR($cx[6] + $cw[6] - 3, $ty, number_format($m['ticket']), 7.6, false, self::INK);
             if ($m['cash']   > 0) { $txtR($cx[7] + $cw[7] - 3, $ty, number_format($m['cash']),   7.6, false, self::INK); }
@@ -283,6 +292,29 @@ final class ChalaniPdf
             $txt($M, $y, $fit($line, 6.6, $inner), 6.6, false, self::MUTE);
             $y += 9;
         }
+        /* 6 Nov 2026: place-wise strip — bus + total (+ women on a single sleeper),
+           then "१ Surat — ८   २ Kamrej — ३ …", wrapped inside one framed box. */
+        $places = (array) ($fmt['placeList'] ?? []);
+        if ($places !== []) {
+            $head = 'बस : ' . ((string) ($fmt['busName'] ?? '') !== '' ? (string) $fmt['busName'] : '—')
+                  . '   ·   जम्मा यात्रु : ' . $neDigits((string) count($rows))
+                  . ((int) ($fmt['womenSingleCount'] ?? 0) > 0 ? '   ·   महिला सिंगल स्लिपर : ' . $neDigits((string) (int) $fmt['womenSingleCount']) : '');
+            $lines = [];
+            $cur = '';
+            foreach ($places as $pl) {
+                $tok = $neDigits((string) (int) $pl['no']) . '. ' . (string) $pl['name'] . ' — ' . $neDigits((string) (int) $pl['n']);
+                $try = $cur === '' ? $tok : $cur . '     ' . $tok;
+                if ($cur !== '' && $width($try, 7.4) > $inner - 16) { $lines[] = $cur; $cur = $tok; } else { $cur = $try; }
+            }
+            if ($cur !== '') { $lines[] = $cur; }
+            $lines = array_slice($lines, 0, 3);
+            $bh = 14 + 10 * count($lines);
+            $pdf->roundedRect($M, $y - 2, $inner, $bh, 4, self::NAVY, false);
+            $txt($M + 8, $y + 8, $fit($head, 8.2, $inner - 16), 8.2, true, self::NAVY);
+            $ly = $y + 18;
+            foreach ($lines as $ln) { $txt($M + 8, $ly, $ln, 7.4, false, self::INK); $ly += 10; }
+            $y += $bh + 4;
+        }
         $txt($M, $y + 1, 'गुजरात ⇄ रुपैडिहा · यात्रु यात्रा अभिलेख', 8, true, self::NAVY);
         $txtR($W - $M, $y + 1, 'सिट · नाम · भुक्तानी विवरण', 8, true, self::NAVY);
         $y += 7;
@@ -292,7 +324,8 @@ final class ChalaniPdf
         $boxesH = 80;                            // summary / authorisation boxes
         $bottomReserve = 6 + $boxesH + 8;        // gap + boxes + breathing room, on the LAST page
         $y = $tableHead($y);
-        $total = max(self::MIN_ROWS, count($rows));
+        // the place strip takes the room of a few blank pen rows, so a short list still fits on page 1
+        $total = max(self::MIN_ROWS - ($places !== [] ? (int) ceil(($bh + 4) / $rowH) : 0), count($rows));
         for ($i = 0; $i < $total; $i++) {
             $isLast = ($i === $total - 1);
             $need   = $rowH + ($isLast ? $bottomReserve : 0);
@@ -343,6 +376,92 @@ final class ChalaniPdf
             $txtC($sx, $sx + $sw, $ly + 8, $lab, 6.8, false, self::MUTE);
         }
         $footer();
+
+        /* ==============================================================
+           6 Nov 2026 — LAST PAGE: the seat chart with names. Lower | upper
+           floor side by side; DOUBLE (2 berth) | aisle gap | SINGLE (1 berth),
+           the same picture the customer books on and the print sheet shows.
+           ============================================================== */
+        $layout = (array) ($fmt['layout'] ?? []);
+        $info   = (array) ($fmt['seatInfo'] ?? []);
+        if (($layout['decks'] ?? []) !== []) {
+            $pdf->newPage();
+            $y = $header();
+            $txt($M, $y + 4, 'सिट चार्ट · Seat chart — ' . $chalaniNo . ' · ' . (string) ($fmt['busName'] ?? '') . ' · यात्रु ' . $neDigits((string) count($rows)), 10, true, self::NAVY);
+            $y += 12;
+            $decks  = $layout['decks'];
+            $gap    = 14.0;
+            $deckW  = ($inner - $gap * (count($decks) - 1)) / max(1, count($decks));
+            $aisle  = 22.0;
+            $sleeper = $seatCoach === 'sleeper';
+            $nL = max(1, count($decks[0]['rows'][0]['left'] ?? [1]));
+            $nR = max(1, count($decks[0]['rows'][0]['right'] ?? [1]));
+            $cellW = ($deckW - 12 - $aisle) / ($nL + $nR);
+            $maxRows = max(array_map(static fn(array $d): int => count($d['rows']), $decks));
+            $avail = ($H - $M - 30) - ($y + 34);
+            $cellH = min(46.0, max(22.0, $avail / max(1, $maxRows) - 4));
+            $col = static function (?array $i): array {
+                if ($i === null)        { return [[234, 247, 238], [159, 211, 174]]; }
+                if (!empty($i['ws']))   { return [[248, 187, 217], [194, 24, 91]]; }
+                if (!empty($i['woman'])) { return [[253, 231, 242], [224, 106, 168]]; }
+                return [[220, 232, 251], [110, 149, 216]];
+            };
+            foreach ($decks as $di => $dk) {
+                $dx = $M + $di * ($deckW + $gap);
+                $dy = $y;
+                $deckH = 30 + count($dk['rows']) * ($cellH + 4) + 6;
+                $pdf->roundedRect($dx, $dy, $deckW, $deckH, 6, self::LINE, false);
+                $txt($dx + 8, $dy + 12, (string) $dk['label'], 9, true, self::NAVY);
+                if ($sleeper) {
+                    $lw = $nL * $cellW;
+                    $pdf->roundedRect($dx + 6, $dy + 16, $lw, 11, 3, [228, 232, 239], true);
+                    $txtC($dx + 6, $dx + 6 + $lw, $dy + 24.5, 'DOUBLE SLEEPER · 2 BERTH', 6.6, true, self::INK);
+                    $rx0 = $dx + 6 + $lw + $aisle;
+                    $pdf->roundedRect($rx0, $dy + 16, $nR * $cellW, 11, 3, [228, 232, 239], true);
+                    $txtC($rx0, $rx0 + $nR * $cellW, $dy + 24.5, 'SINGLE · 1 BERTH', 6.6, true, self::INK);
+                }
+                $ry = $dy + 30;
+                foreach ($dk['rows'] as $ri => $rw) {
+                    $cells = [];
+                    foreach ($rw['left'] as $k => $bed)  { $cells[] = [$dx + 6 + $k * $cellW, $bed]; }
+                    foreach ($rw['right'] as $k => $bed) { $cells[] = [$dx + 6 + $nL * $cellW + $aisle + $k * $cellW, $bed]; }
+                    foreach ($cells as [$cxp, $bed]) {
+                        $i = $info[$bed] ?? null;
+                        [$fill, $edge] = $col($i);
+                        $pdf->roundedRect($cxp + 1.5, $ry, $cellW - 3, $cellH, 4, $fill, true);
+                        $pdf->roundedRect($cxp + 1.5, $ry, $cellW - 3, $cellH, 4, $edge, false);
+                        $lbl = Seats::displayLabel((string) $bed, $seatCoach, 'sharing');
+                        $txtC($cxp, $cxp + $cellW, $ry + 10, $lbl, 8, true, $i !== null && !empty($i['woman']) ? self::ROSE : self::NAVY);
+                        if ($i !== null && $cellH >= 28) {
+                            $first = (string) (explode(' ', trim((string) $i['name']))[0] ?? '');
+                            $txtC($cxp, $cxp + $cellW, $ry + 20, $fit($first, 6.6, $cellW - 6), 6.6, false, self::INK);
+                            $tag = ((int) $i['place'] > 0 ? 'ठाउँ ' . $neDigits((string) (int) $i['place']) : '') . (!empty($i['ws']) ? ' · महिला' : '');
+                            $txtC($cxp, $cxp + $cellW, $ry + 29, $fit(trim($tag, ' ·'), 6, $cellW - 4), 6, true, !empty($i['ws']) ? self::ROSE : self::MUTE);
+                        }
+                    }
+                    if ($ri === intdiv(count($dk['rows']), 2)) {
+                        $txtC($dx + 6 + $nL * $cellW, $dx + 6 + $nL * $cellW + $aisle, $ry + 4, 'A', 6, true, self::MUTE);
+                        $txtC($dx + 6 + $nL * $cellW, $dx + 6 + $nL * $cellW + $aisle, $ry + 11, 'I', 6, true, self::MUTE);
+                        $txtC($dx + 6 + $nL * $cellW, $dx + 6 + $nL * $cellW + $aisle, $ry + 18, 'S', 6, true, self::MUTE);
+                        $txtC($dx + 6 + $nL * $cellW, $dx + 6 + $nL * $cellW + $aisle, $ry + 25, 'L', 6, true, self::MUTE);
+                        $txtC($dx + 6 + $nL * $cellW, $dx + 6 + $nL * $cellW + $aisle, $ry + 32, 'E', 6, true, self::MUTE);
+                    }
+                    $ry += $cellH + 4;
+                }
+            }
+            // legend
+            $ly = $y + 30 + $maxRows * ($cellH + 4) + 18;
+            $lx = $M;
+            foreach ([[null, 'खाली · Free'], [['x' => 1], 'बुक · Booked'], [['woman' => 1], 'महिला · Woman'], [['woman' => 1, 'ws' => 1], 'महिला सिंगल स्लिपर · Woman on single sleeper']] as [$sample, $lab]) {
+                [$fill, $edge] = $col($sample);
+                $pdf->roundedRect($lx, $ly - 7, 14, 9, 2, $fill, true);
+                $pdf->roundedRect($lx, $ly - 7, 14, 9, 2, $edge, false);
+                $txt($lx + 18, $ly, $lab, 7.2, false, self::INK);
+                $lx += 18 + $width($lab, 7.2) + 18;
+            }
+            $txt($lx, $ly, 'ठाउँ N = चढ्ने ठाउँ नं.', 7.2, false, self::MUTE);
+            $footer();
+        }
 
         /* ---- send ---------------------------------------------------- */
         $bytes = $pdf->output();
