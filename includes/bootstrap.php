@@ -223,6 +223,12 @@ if (PHP_SAPI !== 'cli') {
 
     Security::enforceHttps();
     Security::sendHeaders($isApiRequest);
+
+    /* 6 Nov 2026 (owner: "agent system sapai only shreehariglobal.network
+       bata matra chalos, .in bata customer portal hos"): a staff / agent
+       page opened on the customer domain moves to the .network door. */
+    require_once INCLUDE_PATH . '/opshub.php';
+    OpsHub::enforceStaffDoor();
 }
 
 
