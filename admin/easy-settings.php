@@ -46,6 +46,7 @@ $ES_KEYS = [
     'trip_reminders_enabled'   => ['⏰ Trip reminder message', 'bool', ['reminder', 'yaad', 'सम्झना', 'remind']],
     'eta_alert_on'             => ['🛰 Bus aaune samay (ETA) alert', 'bool', ['eta', 'arrival alert', 'bus aaune', 'gps alert']],
     'wa_marketing_on'          => ['📣 WhatsApp marketing', 'bool', ['marketing', 'promotion', 'offer message', 'campaign']],
+    'seat_pick_manual_first'   => ['💺 सिट आफैं छान्ने (auto भन्दा पहिले)', 'bool', ['seat select', 'seat chhan', 'auto seat', 'seat pick', 'सिट छान', 'manual seat']],
     'agent_cancel_mode'        => ['🗑 Agent cancel: direct / request', 'enum', ['agent cancel', 'cancel mode', 'agent le cancel'], ['direct' => 'Direct (agent cancels)', 'request' => 'Request (office cancels)']],
 ];
 $ES_SECRETS = [
@@ -65,7 +66,10 @@ $OFF = ['off', 'band', 'banda', 'bandh', 'bnd', 'disable', 'stop', 'roka', 'rok'
 $curVal = static function (string $k) use ($ES_KEYS): string {
     $t = $ES_KEYS[$k][1] ?? 'bool';
     if ($t === 'bool') {
-        return Settings::getBool($k, false) ? '1' : '0';
+        // the default each switch has in the code that reads it (6 Nov 2026), so an unsaved switch shows what really happens
+        $codeDefaultOn = ['quick_unlock_on', 'login_one_door_hi_on', 'agent_chalani_on', 'ap_join_open', 'whatsapp_notify_customer',
+                          'whatsapp_notify_admin', 'wa_booking_on', 'allow_cod', 'trip_reminders_enabled', 'seat_pick_manual_first'];
+        return Settings::getBool($k, in_array($k, $codeDefaultOn, true)) ? '1' : '0';
     }
     return Settings::getString($k, $t === 'enum' ? (string) array_key_first($ES_KEYS[$k][3]) : '');
 };
@@ -165,7 +169,8 @@ $parseAi = static function (string $text) use ($ES_KEYS): array {
 $save = static function (string $k, string $v) use ($ES_KEYS, $curVal, $admin): void {
     $old = $curVal($k);
     $type = $ES_KEYS[$k][1] === 'bool' ? 'bool' : 'string';
-    Settings::set($k, $type === 'bool' ? ($v === '1') : $v, $type, 'general');
+    // seat_pick_manual_first is read by the public booking page too (SHG_BOOT.settings) — public on first save
+    Settings::set($k, $type === 'bool' ? ($v === '1') : $v, $type, 'general', $k === 'seat_pick_manual_first');
     Logger::audit('settings.easy', 'setting', $k, ['value' => $old], ['value' => $v], 'Easy Settings by admin #' . (int) $admin['id']);
 };
 

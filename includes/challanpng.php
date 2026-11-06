@@ -52,7 +52,7 @@ final class ChallanPng
     public const WIDTH = 1600;
 
     /** Bump whenever the drawing changes so every cached challan re-renders once. */
-    public const LAYOUT_VERSION = 9;   // 9 = TRUST: "Computer-generated" + IST on the footer stamp, CIN in the foot band (10 Oct 2026)   // 8 = GOLD template: mantra strip, gold seal + foil bars, cream mandala paper, mandatory payment QR card + blessing (9 Oct 2026)   // 7 = emblem on a glow (no full logo), India + Nepal flags, heritage strip under the footer (9 Oct 2026)   // 6 = two-floor grid A1-F6 / A7-F12, floor bars blue (1F) / green (2F)   // 5 = berths print the LA1/UA1 row-letter grid id
+    public const LAYOUT_VERSION = 10;  // 10 = berth numbers: single side first (6 Nov 2026)   // 9 = TRUST: "Computer-generated" + IST on the footer stamp, CIN in the foot band (10 Oct 2026)   // 8 = GOLD template: mantra strip, gold seal + foil bars, cream mandala paper, mandatory payment QR card + blessing (9 Oct 2026)   // 7 = emblem on a glow (no full logo), India + Nepal flags, heritage strip under the footer (9 Oct 2026)   // 6 = two-floor grid A1-F6 / A7-F12, floor bars blue (1F) / green (2F)   // 5 = berths print the LA1/UA1 row-letter grid id
 
     private const MARGIN = 56;
     private const ART_H  = 190;    // heritage strip under the footer: 170 art + 20 margin

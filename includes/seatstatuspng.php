@@ -40,7 +40,7 @@ final class SeatStatusPng
     private const CELL_GAP = 10;
     private const AISLE_W = 46;
     private const ROW_GAP = 12;
-    private const VERSION = 2;   // 2 = emblem on a glow + India / Nepal flags (9 Oct 2026)
+    private const VERSION = 3;   // 3 = berth numbers: single side first (6 Nov 2026)   // 2 = emblem on a glow + India / Nepal flags (9 Oct 2026)
 
     public static function enabled(): bool
     {

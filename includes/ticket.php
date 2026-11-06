@@ -927,7 +927,9 @@ final class Ticket
     {
         /* 6 Nov 2026: + the moment barcode.php reached this server (the deploy of the
            barcode ticket), so a ticket the OLD code drew on deploy day is redrawn too. */
-        return max((int) strtotime($layoutStamp), Settings::getInt('ticket_identity_changed_at', 0), (int) @filemtime(__DIR__ . '/barcode.php'));
+        // 6 Nov 2026: + seats.php (the berth numbering moved: single side first), so every ticket redraws with the new labels.
+        return max((int) strtotime($layoutStamp), Settings::getInt('ticket_identity_changed_at', 0), (int) @filemtime(__DIR__ . '/barcode.php'),
+            (int) @filemtime(__DIR__ . '/seats.php'));
     }
 
     public static function logoFile(string $prefer = ''): ?string

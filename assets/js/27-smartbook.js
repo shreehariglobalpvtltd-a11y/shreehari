@@ -214,7 +214,7 @@
     agent: '',  // staff desks only: the SHG code the sale is credited to ('OTHER' = company) - never on the customer page
     /* Cash verification (customer only) - kept in memory for this visit, never
        in localStorage (an ID number must not sit on a shared phone). */
-    codVerify: false, idTypes: [], qrSeconds: 60,
+    codVerify: false, idTypes: [], qrSeconds: 60, seatPickFirst: true,
     verify: { address: '', idType: '', idNum: '', altPhone: '', altCc: 'NP' }
   };
   var store = {
@@ -278,6 +278,7 @@
         S.codVerify = !STAFF && !!d.codVerify;
         S.idTypes = d.idTypes || [];
         S.qrSeconds = d.qrSeconds || 60;
+        S.seatPickFirst = d.seatPickFirst !== false;
         if (d.prefill) {
           ['address', 'idType'].forEach(function (k) { if (d.prefill[k] && !S.verify[k]) S.verify[k] = d.prefill[k]; });
           if (d.prefill.idNum && !S.verify.idNum) S.verify.idNum = d.prefill.idNum;
@@ -876,6 +877,11 @@
     }
     if (S.busy) return;
     if (!S.q || !S.q.ok) { say(S.q && S.q.error ? S.q.error : tr('loading')); if (!S.q) requote(0); return; }
+    /* 6 Nov 2026 (owner: "customer, agent le book garda automatic bhanda seat selection
+       prefer"): the seat map opens first, AutoBerth's berths already marked — one tap on
+       OK keeps them, or tap other berths. Then the same button books. Setting
+       seat_pick_manual_first = 0 brings back the straight auto sale. */
+    if (S.seatPickFirst && S.seatMode !== 'manual') { say('💺 ' + (document.documentElement.lang === 'en' ? 'Choose the seats first, then press again.' : 'पहिले सिट छान्नुहोस्, अनि फेरि थिच्नुहोस्।')); openSheet(); return; }
     // Cash for a customer = pay at boarding: the verification sheet first (it calls back with the details).
     if (pay === 'cash' && S.codVerify && !verify) { openCash(); return; }
     /* 5 Nov 2026 (master upgrade §1, supersedes the 16 Oct one-click desk): every

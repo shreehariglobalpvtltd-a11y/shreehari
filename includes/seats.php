@@ -2748,7 +2748,18 @@ final class Seats
         return $s;
     }
 
-    /** One physical bed -> its grid label (L1 -> A1, L36 -> F6, U1 -> A7, U36 -> F12). */
+    /**
+     * One physical bed -> its grid label.
+     *
+     * 6 Nov 2026 (owner's "SHREE HARI GLOBAL · SLEEPER BERTH LAYOUT"): in each
+     * row the SINGLE (1-berth) side of the aisle is numbered FIRST, then the
+     * double (2-berth) side — lower floor single A1 A2 | double A3..A6, upper
+     * floor single A7 A8 | double A9..A12. Physically nothing moves: L1..L4
+     * are still the double side, L5 L6 the single side; only the number printed
+     * on them changes (L1 -> A3, L5 -> A1, U1 -> A9, U5 -> A7). Before 6 Nov the
+     * double side came first (L1 -> A1). assets/js/06-results.js seatBedLabelJS()
+     * MUST stay identical.
+     */
     private static function bedLabel(string $bed, string $coachType): string
     {
         if (preg_match('/^([A-Z])(\d+)$/', $bed, $m) !== 1 || (int) $m[2] < 1) {
@@ -2757,12 +2768,16 @@ final class Seats
         $spec   = self::modeMap($coachType);
         $canon  = (string) ($spec['canonical'] ?? 'sharing');
         $across = $spec['modes'][$canon]['across'] ?? [4, 2];
-        $perRow = max(1, (int) ($across[0] ?? 0) + (int) ($across[1] ?? 0));
+        $left   = max(0, (int) ($across[0] ?? 0));
+        $right  = max(0, (int) ($across[1] ?? 0));
+        $perRow = max(1, $left + $right);
         // Floor index: lower 0, upper 1 — the upper floor's columns continue
         // after the lower floor's, which is what makes every label unique.
         $floor  = (int) array_search($m[1], array_values((array) ($spec['decks'] ?? ['L', 'U'])), true);
         $n      = (int) $m[2];
-        return self::rowLetter(intdiv($n - 1, $perRow)) . ((($n - 1) % $perRow) + 1 + $floor * $perRow);
+        $col    = ($n - 1) % $perRow;                                   // 0-based, left to right as the coach sits
+        $num    = $col >= $left ? $col - $left + 1 : $right + $col + 1;  // single side first, then the double side
+        return self::rowLetter(intdiv($n - 1, $perRow)) . ($num + $floor * $perRow);
     }
 
     /** ["B5","B6"] -> "B5-6"; beds that are not one run in one row -> "A1+B1". */

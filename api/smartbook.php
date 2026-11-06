@@ -74,6 +74,8 @@ try {
             'idTypes'    => (static function (): array { require_once INCLUDE_PATH . '/customerprofile.php'; return CustomerProfile::ID_TYPES; })(),
             'prefill'    => $mode === 'customer' ? SmartBook::verifyPrefill() : null,
             'qrSeconds'  => max(30, min(600, Settings::getInt('smartbook_qr_seconds', 60))),
+            // 6 Nov 2026 (owner: "automatic bhanda seat selection prefer"): the berths are chosen on the map before a sale
+            'seatPickFirst' => Settings::getBool('seat_pick_manual_first', true),
         ]);
     }
 

@@ -442,9 +442,14 @@ function seatBedLabelJS(bed, coachType) {
   const spec = seatModeSpecJS(coachType);
   const rule = seatModeRuleJS(coachType, (spec && spec.canonical) || 'sharing');
   const across = (rule && Array.isArray(rule.across) && rule.across.length === 2) ? rule.across : [4, 2];
-  const perRow = Math.max(1, (parseInt(across[0], 10) || 0) + (parseInt(across[1], 10) || 0));
+  const left = Math.max(0, parseInt(across[0], 10) || 0), right = Math.max(0, parseInt(across[1], 10) || 0);
+  const perRow = Math.max(1, left + right);
   const floor = Math.max(0, ((spec && Array.isArray(spec.decks)) ? spec.decks : ['L', 'U']).indexOf(m[1]));
-  return seatRowLetterJS(Math.floor((n - 1) / perRow)) + (((n - 1) % perRow) + 1 + floor * perRow);
+  /* 6 Nov 2026: single (1-berth) side numbered first — A1 A2 | A3..A6 (1F), A7 A8 | A9..A12 (2F).
+     MUST match Seats::bedLabel() in includes/seats.php. */
+  const col = (n - 1) % perRow;
+  const num = col >= left ? col - left + 1 : right + col + 1;
+  return seatRowLetterJS(Math.floor((n - 1) / perRow)) + (num + floor * perRow);
 }
 /* ["B5","B6"] -> "B5-6"; beds that are not one run in one row -> "A1+B1". */
 function seatJoinBedLabelsJS(lbls) {
@@ -1691,6 +1696,16 @@ function renderSeats(instant) {
   $('#continueBtn').onclick = () => {
     const hadPick = Flow.seats.length > 0;
     if (!Flow.seats.length && !seatAiCfg().on) { toast(t('tPickSeat')); return; }
+    if (!Flow.seats.length && !(window.SHG_BOOT && window.SHG_BOOT.settings && String(window.SHG_BOOT.settings.seat_pick_manual_first) === '0')) {
+      /* 6 Nov 2026 (owner: "automatic bhanda seat selection prefer"): Continue with
+         nothing tapped no longer seats the party by itself — the recommended berths
+         glow and the passenger taps them (or presses ⚡ Auto seat on purpose). */
+      seatAiRecommendPaint($('#seatGrid'));
+      const rec = $('#seatGrid .seat.ai-rec') || $('#seatGrid .seat:not([disabled])');
+      if (rec && rec.scrollIntoView) { try { rec.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {} }
+      toast('👆 ' + t('tPickSeat') + ' · ⚡ Auto');
+      return;
+    }
     if (!Flow.seats.length) {
       /* 8 Oct 2026 "Auto seat → Continue": nothing tapped → the Seat AI
          seats the whole party (passenger count from the booking panel). */
