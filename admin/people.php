@@ -81,6 +81,37 @@ $list = array_values(array_filter($rows, static function (array $r) use ($tab, $
 $roles = array_values(array_unique(array_map(static fn(array $r): string => (string) $r['role'], $rows)));
 sort($roles);
 
+/* 6 Nov 2026 (owner: "agent system simplify — commission system: manchhe jati commission
+   tetti, ticket katna sajilo"): each agent's ₹ per passenger, set in the list itself.
+   Blank = the company rate. Same writer as Agent 360 (AgentWallet::setCommissionOverride). */
+$canComm = $isSuper || (Auth::can('staff.manage') && Auth::canManageSettings());
+if (Security::isPost() && (string) ($_POST['pp_action'] ?? '') === 'commission') {
+    if (!Security::verifyCsrf()) {
+        $_SESSION['shg_people_flash'] = ['bad', 'Page was open too long — try again.'];
+    } elseif (!$canComm) {
+        $_SESSION['shg_people_flash'] = ['bad', 'Only the super-admin / a settings manager sets commission.'];
+    } else {
+        try {
+            $aid = (int) ($_POST['id'] ?? 0);
+            if (!Database::exists("SELECT 1 FROM admins WHERE id = :i AND role = 'agent'", ['i' => $aid])) {
+                throw new RuntimeException('Not an agent.');
+            }
+            $raw = trim((string) ($_POST['rate'] ?? ''));
+            if ($raw === '') {
+                AgentWallet::setCommissionOverride($aid, null, null, (int) $admin['id']);
+                $_SESSION['shg_people_flash'] = ['ok', '🧑‍💼 ' . AgentWallet::agentCodeLabel($aid) . ': company rate ' . inr(AgentWallet::flatRateFor($aid)) . ' / passenger'];
+            } else {
+                $rate = (float) preg_replace('/[^0-9.]/', '', $raw);
+                AgentWallet::setCommissionOverride($aid, 'flat', $rate, (int) $admin['id']);
+                $_SESSION['shg_people_flash'] = ['ok', '🧑‍💼 ' . AgentWallet::agentCodeLabel($aid) . ': ' . inr($rate) . ' / passenger (new tickets)'];
+            }
+        } catch (Throwable $ex) {
+            $_SESSION['shg_people_flash'] = ['bad', $ex->getMessage()];
+        }
+    }
+    Response::redirect('admin/people.php?tab=agents');
+}
+
 $csrf = Security::csrfField();
 /** The three row actions, posted to staff.php and brought back here. */
 $actions = static function (array $r) use ($e, $csrf, $isSuper, $desks, $tab, $admin): string {
@@ -113,9 +144,12 @@ $actions = static function (array $r) use ($e, $csrf, $isSuper, $desks, $tab, $a
     return $h . '</select></form></div>';
 };
 
-admin_header('People', 'people');
+admin_header('👥 एजेन्ट र स्टाफ · Agents & Staff (एकै ठाउँ)', 'people');
 ?>
 <style>
+  .pp-comm { display:flex; gap:4px; align-items:center; margin:0; }
+  .pp-comm input { width:78px; min-height:38px; border-radius:8px; border:1px solid var(--line); padding:0 8px; background:var(--bg); color:var(--ink); }
+  .pp-comm .btn { min-height:38px; padding:0 10px; }
 .pp-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 .pp-tabs a{display:inline-flex;align-items:center;gap:6px;min-height:46px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:700;text-decoration:none}
 .pp-tabs a.on{background:var(--navy);color:#fff;border-color:var(--navy)}
@@ -139,6 +173,8 @@ admin_header('People', 'people');
     <a href="?<?= $e(http_build_query(['tab' => $key])) ?>" class="<?= $key === $tab ? 'on' : '' ?>"><?= $e($label) ?> <span class="n"><?= (int) $n ?></span></a>
   <?php endforeach; ?>
   <a href="/admin/agent-quick.php" style="margin-left:auto">⚡ Quick agent + ID card</a>
+  <a href="/admin/team.php">🪪 ID / visiting cards</a>
+  <a href="/admin/settlements.php">💰 Wallet & settle</a>
   <a href="/admin/staff.php">＋ New login</a>
 </nav>
 
@@ -157,7 +193,7 @@ admin_header('People', 'people');
   <div class="dt-wrap"><table class="dt card-table">
     <thead><tr>
       <th>Name</th>
-      <?php if ($tab === 'agents'): ?><th>Code</th><th class="num">Commission due</th><th class="num">Cash held</th><th class="num">Sales this month</th><th>KYC</th>
+      <?php if ($tab === 'agents'): ?><th>Code</th><th>₹ / passenger</th><th class="num">Commission due</th><th class="num">Cash held</th><th class="num">Sales this month</th><th>KYC</th>
       <?php elseif ($tab === 'counters'): ?><th>Desk / location</th><th>Shift today</th><th class="num">Tickets</th><th class="num">Cash</th><th class="num">UPI / bank</th>
       <?php else: ?><th>Role</th><th>Desk / branch</th><th>Last sign-in</th><th>Status</th><?php endif; ?>
       <th>Actions</th>
@@ -178,6 +214,12 @@ admin_header('People', 'people');
         <?php if ($tab === 'agents'):
           $comm = $wallet[$id]['commission'] ?? 0.0; $cash = $wallet[$id]['cash'] ?? 0.0; ?>
           <td data-label="Code" class="mono"><?= $e(AgentWallet::agentCodeLabel($id) ?: '—') ?></td>
+          <?php $ov = AgentWallet::commissionOverrideFor($id); $tier = AgentWallet::flatRateFor($id); ?>
+          <td data-label="₹ / passenger"><?php if ($canComm): ?>
+            <form method="post" class="pp-comm"><?= $csrf ?><input type="hidden" name="pp_action" value="commission"><input type="hidden" name="id" value="<?= $id ?>">
+              <input name="rate" inputmode="numeric" value="<?= $ov['flat'] !== null ? (int) $ov['flat'] : '' ?>" placeholder="<?= (int) $tier ?>" aria-label="Commission per passenger" title="खाली = company rate <?= (int) $tier ?>">
+              <button class="btn ghost" type="submit">💾</button></form>
+          <?php else: ?><?= $e(inr($ov['flat'] ?? $tier)) ?><?php endif; ?></td>
           <td data-label="Commission due" class="num"><?= $e(inr($comm)) ?></td>
           <td data-label="Cash held" class="num" style="color:<?= $cash > 0.009 ? '#b02a2a' : 'inherit' ?>"><?= $e(inr(max(0.0, $cash))) ?></td>
           <td data-label="Sales this month" class="num"><?= $e(inr((float) ($mtd[$id] ?? 0))) ?></td>

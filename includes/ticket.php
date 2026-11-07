@@ -1778,7 +1778,17 @@ final class Ticket
         foreach ([30, 26, 22, 19, 17] as $try) { $cSz = $try; if (self::gdWidth($try, $iBig) <= $chipT) { break; } }
         self::gdText($im, $cSz, $chipX1 + 20, 168, $white, $clampTo($cSz, $iBig, $chipT), true);
         if ($issued['kind'] === 'agent') {
+            /* 6 Nov 2026 (owner: "seat number, agent ko name number ticket ma clearly aaos"):
+               name AND mobile; the name gives way, never the number. */
             $iWho = self::display($issued['name']);
+            $iPh0 = self::display($issued['phone']);
+            if ($iPh0 !== '') {
+                $first = (string) (preg_split('/\s+/u', trim($iWho))[0] ?? '');
+                foreach ([$iWho . ' · ' . $iPh0, $first . ' · ' . $iPh0, $iPh0] as $try) {
+                    if (self::gdWidth(14, $try) <= $chipT) { $iWho = $try; break; }
+                    $iWho = $iPh0;
+                }
+            }
         } else {
             $iWho = '';
             foreach ([
@@ -2420,7 +2430,6 @@ final class Ticket
         self::gdRounded($im, 60, 1472 + $grow + $qrExt, $tileR, 1541 + $grow + $qrExt, 14, $tile);
         DocArt::roundOutline($im, 60, 1472 + $grow + $qrExt, $tileR, 1541 + $grow + $qrExt, 14, $edge, 1);
         imagefilledrectangle($im, 60, 1486 + $grow + $qrExt, 66, 1527 + $grow + $qrExt, $royal);
-        self::gdText($im, 15, 82, 1500 + $grow + $qrExt, $mut, 'टिकट काट्ने  ·  ' . $issued['label'], false);
         $chip  = self::latinUpper($issued['code']);
         $chipW = self::gdWidth(20, $chip) + 34;
         self::gdRounded($im, $tileR - 18 - $chipW, 1486 + $grow + $qrExt, $tileR - 14, 1530 + $grow + $qrExt, 14, $white);
@@ -2433,6 +2442,23 @@ final class Ticket
         $whoPh   = self::display($issued['phone']);
         $who     = $whoPh !== '' ? $whoName . '  ·  ' . $whoPh : $whoName;
         $maxWho = $tileR - 16 - $chipW - 20 - 82;
+        /* 6 Nov 2026 (owner: "agent ko name number ticket ma clearly aaos"): with a mobile,
+           the small line names the seller and the big line is the mobile, whole. */
+        $cap = 'टिकट काट्ने  ·  ' . $issued['label'];
+        if ($whoPh !== '') {
+            $nm = $whoName;
+            while ($nm !== '' && self::gdWidth(16, 'टिकट काट्ने  ·  ' . $nm) > $maxWho) {
+                $nm = rtrim(mb_substr($nm, 0, mb_strlen($nm) - 1));
+            }
+            if ($nm !== '') {
+                $cap = 'टिकट काट्ने  ·  ' . $nm . ($nm !== $whoName ? '…' : '');
+            }
+            $who = 'मोबाइल  ' . $whoPh;
+            if (self::gdWidth(20, $who) > $maxWho) {
+                $who = $whoPh;
+            }
+        }
+        self::gdText($im, $whoPh !== '' ? 16 : 15, 82, 1500 + $grow + $qrExt, $whoPh !== '' ? $ink : $mut, $cap, $whoPh !== '');
         while ($who !== '' && self::gdWidth(20, $who) > $maxWho) { $who = mb_substr($who, 0, mb_strlen($who) - 2) . '…'; }
         self::gdText($im, 20, 82, 1530 + $grow + $qrExt, $ink, $who, true);
 
@@ -2735,13 +2761,13 @@ final class Ticket
      *  the later of the two) to the moment it is applied - apply it AFTER the
      *  files are live. The integrator may still move both stamps to the
      *  deploy minute. */
-    private const PNG_LAYOUT_CHANGED = '2026-11-06 00:30:00';   // IST: BARCODE - verify QR + map QR replaced by a Code 128 barcode (Ticket::scanCode); pay QR only while money is due, else a PAID stamp. Was 2026-10-17 13:56:00:   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-11-07 11:00:00';   // IST: AGENT MOBILE - the issued-by chip and the "टिकट काट्ने" tile always print the agent's mobile (the name is shortened first). Was 2026-11-06 00:30:00:   // IST: BARCODE - verify QR + map QR replaced by a Code 128 barcode (Ticket::scanCode); pay QR only while money is due, else a PAID stamp. Was 2026-10-17 13:56:00:   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-11-06 00:30:00';   // IST: BARCODE - stub QR -> Code 128 barcode, live-status QR removed, pay QR only while due. Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - bigger gold seal (116x74), brand + TM sign with the legal form letter-spaced in gold under it. Was 2026-10-14 22:15:00:   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-11-07 11:00:00';   // IST: AGENT MOBILE - the ISSUED BY line keeps the agent's mobile, bold. Was 2026-11-06 00:30:00:   // IST: BARCODE - stub QR -> Code 128 barcode, live-status QR removed, pay QR only while due. Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - bigger gold seal (116x74), brand + TM sign with the legal form letter-spaced in gold under it. Was 2026-10-14 22:15:00:   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -3405,14 +3431,15 @@ final class Ticket
         $join  = static fn(array $p): string => implode('  ·  ', array_filter($p, static fn(string $s): bool => $s !== ''));
         $wide  = static fn(string $s): bool => $isDev
             ? $pdf->textWidthCID($s, 9, $F7) > $issuedW
-            : $pdf->textWidth(self::latin($s), 9, 'F1') > $issuedW;
+            : $pdf->textWidth(self::latin($s), 9, 'F2') > $issuedW;
         $issuedTxt = $join([$iName, $issued['code'], $iPh]);
-        if ($wide($issuedTxt)) {
-            $issuedTxt = $join([$iName, $issued['code']]);
-        }
+        /* 6 Nov 2026 (owner: "agent ko name number clearly"): the mobile stays; the name is shortened first. */
         while ($iName !== '' && $wide($issuedTxt)) {
-            $iName     = rtrim(mb_substr($iName, 0, max(1, mb_strlen($iName) - 2)));
-            $issuedTxt = $join([$iName . '..', $issued['code']]);
+            $iName     = rtrim(mb_substr($iName, 0, mb_strlen($iName) - 1));
+            $issuedTxt = $join([$iName !== '' ? $iName . '..' : '', $issued['code'], $iPh]);
+        }
+        if ($wide($issuedTxt)) {
+            $issuedTxt = $join([$issued['code'], $iPh]);
         }
         /* The caption carries the desk code (NPJ, MSA) — three letters is
            all this line has room for, and the code is what a clerk reads
@@ -3425,7 +3452,7 @@ final class Ticket
         if ($isDev) {
             self::devText($pdf, 400, $cY + 14, $issuedTxt, 9, $F7, self::INK);
         } else {
-            $pdf->text(400, $cY + 14, self::latin($issuedTxt), 9, 'F1', self::INK);
+            $pdf->text(400, $cY + 14, self::latin($issuedTxt), 9, 'F2', self::INK);
         }
 
         /* ==============================================================

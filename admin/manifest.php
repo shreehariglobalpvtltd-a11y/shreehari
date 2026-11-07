@@ -1083,9 +1083,9 @@ foreach ($rows as $r) {
   details.mf-chart { margin:0 0 14px; } details.mf-chart summary { cursor:pointer; font-weight:800; font-size:15px; padding:6px 0; }
   tr.mf-ws td { background:#FCE4EC !important; }
   /* 6 Nov 2026: paid green · with agent amber · due red */
-  tr.mf-st-paid td  { background:#ECFDF3; } tr.mf-st-paid td.seat  { box-shadow:inset 4px 0 0 #16A34A; }
-  tr.mf-st-agent td { background:#FFF7E6; } tr.mf-st-agent td.seat { box-shadow:inset 4px 0 0 #F59E0B; }
-  tr.mf-st-due td   { background:#FEF2F2; } tr.mf-st-due td.seat   { box-shadow:inset 4px 0 0 #DC2626; }
+  tr.mf-st-paid td  { background:rgba(22,163,74,.13); } tr.mf-st-paid td.seat  { box-shadow:inset 5px 0 0 #16A34A; }
+  tr.mf-st-agent td { background:rgba(245,158,11,.16); } tr.mf-st-agent td.seat { box-shadow:inset 5px 0 0 #F59E0B; }
+  tr.mf-st-due td   { background:rgba(220,38,38,.13); } tr.mf-st-due td.seat   { box-shadow:inset 5px 0 0 #DC2626; }
   tr.mf-grp.mf-st-paid td  { border-left:6px solid #16A34A; }
   tr.mf-grp.mf-st-agent td { border-left:6px solid #F59E0B; }
   tr.mf-grp.mf-st-due td   { border-left:6px solid #DC2626; }
