@@ -32,6 +32,7 @@ require_once INCLUDE_PATH . '/agentwallet.php';
 require_once INCLUDE_PATH . '/reportpdf.php';
 require_once INCLUDE_PATH . '/livesync.php';
 require_once INCLUDE_PATH . '/brand.php';
+require_once INCLUDE_PATH . '/opshub.php';   // 6 Nov 2026: recent-first menu, chalani ticks, staff door
 require_once __DIR__ . '/_compat.php';
 
 /**
@@ -83,7 +84,7 @@ function admin_nav(): array
         ['href' => 'index.php',        'icon' => 'dashboard', 'label' => 'Dashboard Overview', 'perm' => 'dashboard.view', 'section' => ''],
 
         // 1. Staff & Agent Management — accounts, codes / IDs / passwords, KYC, salary or commission
-        ['href' => 'people.php',       'icon' => 'users',     'label' => 'People — Agents · Counters · Staff', 'perm' => 'staff.manage', 'section' => $S1],   // 29 Oct 2026 (management upgrade 4.1)
+        ['href' => 'people.php',       'icon' => 'users',     'label' => '👥 एजेन्ट र स्टाफ एकै ठाउँ · Agents & Staff', 'perm' => 'staff.manage', 'section' => $S1],   // 29 Oct 2026 (management upgrade 4.1); 6 Nov 2026: the one people page
         ['href' => 'agent-quick.php',  'icon' => 'plus',      'label' => '⚡ Quick Agent + ID Card', 'perm' => 'staff.manage', 'section' => $S1],   // 29 Oct 2026: the office fills the agent form
         ['href' => 'hub.php',          'icon' => 'grid',      'label' => 'Control Center',   'perm' => 'dashboard.view', 'section' => ''],
         ['href' => 'team.php',         'icon' => 'id-card',   'label' => 'Team & ID Cards',  'perm' => 'commissions.view', 'section' => 'Agents'],
@@ -118,6 +119,9 @@ function admin_nav(): array
 
         // 3. Ticketing & Bus Management — sell, change date / name, cancel, the alternate-day routine
         ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket (10s)', 'perm' => 'bookings.view', 'section' => $S3, 'hot' => true],
+        /* 6 Nov 2026 (owner: "bus fleet ma seat, chalani, bus management — sapai eutai setting vitra"):
+           one page for the bus of a date — seats, chalani money, bus number, routes, extra seats, AI. */
+        ['href' => 'bus-control.php',  'icon' => 'bus',       'label' => '🚌 बस · सिट · चलानी (एकै ठाउँ)', 'perm' => 'schedules.view', 'section' => $S3],
         ['href' => 'bookings.php',     'icon' => 'ticket',    'label' => $agentView ? 'My Tickets' : 'Tickets Register', 'perm' => 'bookings.view', 'section' => $S3],
         ['href' => '/index.php?counter=1#/', 'icon' => 'plus', 'label' => '+ Counter Booking', 'perm' => 'bookings.view', 'section' => $S3],
         ['href' => 'reschedule.php',   'icon' => 'calendar-plus',  'label' => 'Change Date / Reschedule', 'perm' => 'bookings.view',  'section' => $S3],
@@ -181,17 +185,27 @@ function admin_nav(): array
     ]]);
 
     $main = admin_nav_main();
+    /* 6 Nov 2026 (owner: "jun jun recent ma hunx tyo tyo agaadi aune"): what
+       THIS person opens most / most lately leads each trunk, and a page from
+       "＋ थप" they keep using is lifted out of the fold (OpsHub::score). */
+    $meId  = (int) ((Auth::admin() ?? [])['id'] ?? 0);
+    $usage = $meId > 0 ? OpsHub::usage($meId) : [];
     foreach ($all as &$it) {
         // stray one-off sections join their trunk
         if ($it['section'] === 'Agents') { $it['section'] = $S1; }
         if ($it['section'] === 'Settings') { $it['section'] = $S5; }
-        $it['main'] = isset($main[$it['href']]);
+        $it['main']  = isset($main[$it['href']]);
+        $it['score'] = OpsHub::score($usage, (string) $it['href']);
+        if (!$it['main'] && $it['score'] >= 4.0) {
+            $it['main'] = true;
+        }
     }
     unset($it);
-    // trunks in their number order (1 Tickets … 5 Settings); unsectioned links stay on top
+    // trunks in their number order (1 Tickets … 5 Settings); unsectioned links stay on top;
+    // inside a trunk the most-used first, then the menu order
     $rank = static fn(array $i): int => $i['section'] === '' ? 0 : (int) (preg_match('/(\d)\./', $i['section'], $mm) === 1 ? $mm[1] : 9);
     $keyed = $all;
-    uksort($keyed, static fn($a, $b): int => [$rank($all[$a]), $a] <=> [$rank($all[$b]), $b]);   // stable: ties keep menu order
+    uksort($keyed, static fn($a, $b): int => [$rank($all[$a]), -round($all[$a]['score'], 2), $a] <=> [$rank($all[$b]), -round($all[$b]['score'], 2), $b]);
 
     return array_values(array_filter($keyed, static fn(array $i): bool => $i['perm'] === '' || Auth::can($i['perm'])));
 }
@@ -207,7 +221,7 @@ function admin_nav_main(): array
 {
     return array_fill_keys([
         // 1 Tickets & Bus
-        'quick-ticket.php', 'bookings.php', 'manifest.php', 'reschedule.php', 'trips.php',
+        'quick-ticket.php', 'bookings.php', 'bus-control.php', 'manifest.php', 'reschedule.php',
         // 2 Agents & Staff
         'agent-quick.php', 'people.php', 'team.php', 'staff.php', '/me/',
         // 3 Money
@@ -220,11 +234,48 @@ function admin_nav_main(): array
 }
 
 /**
+ * 6 Nov 2026 — the pages this admin opened last (newest first), taken from
+ * the permission-filtered menu, so nothing shows here that the menu hides.
+ *
+ * @param array<int, array<string, mixed>> $items admin_nav()
+ * @return array<int, array<string, mixed>>
+ */
+function admin_nav_recent(array $items, int $max = 6): array
+{
+    $me = (int) ((Auth::admin() ?? [])['id'] ?? 0);
+    if ($me <= 0) {
+        return [];
+    }
+    $byHref = [];
+    foreach ($items as $it) {
+        $byHref[(string) $it['href']] = $it;
+    }
+    $use = OpsHub::usage($me);
+    uasort($use, static fn(array $a, array $b): int => $b[1] <=> $a[1]);
+    $out = [];
+    foreach ($use as $href => [$hits, $last]) {
+        if (!isset($byHref[$href]) || in_array($href, ['hub.php', 'home.php', 'index.php'], true) || $last < time() - 30 * 86400) {
+            continue;
+        }
+        $out[] = $byHref[$href];
+        if (count($out) >= $max) {
+            break;
+        }
+    }
+    return $out;
+}
+
+/**
  * Render the page head, top bar and sidebar. Call once at the top.
  */
 function admin_header(string $title, string $active = ''): void
 {
     $admin = Auth::admin() ?? [];
+    // 6 Nov 2026: remember the page for the recent-first menu (one small upsert)
+    $script = (string) ($_SERVER['SCRIPT_NAME'] ?? '');
+    if (!empty($admin['id']) && str_starts_with($script, '/admin/') && substr_count($script, '/') === 2) {
+        OpsHub::trackPage((int) $admin['id'], substr($script, 7));
+    }
     $name  = Security::e($admin['full_name'] ?: ($admin['username'] ?? 'Admin'));
     $role  = Security::e(ucfirst((string) ($admin['role'] ?? '')));
     // Panel links are ROOT-RELATIVE so the admin stays on whichever host they
@@ -349,6 +400,16 @@ function admin_header(string $title, string $active = ''): void
         $activeSec = '';
         foreach ($items as $item) {
             if ($active !== '' && str_contains($item['href'], $active)) { $activeSec = (string) ($item['section'] ?? ''); break; }
+        }
+        /* 6 Nov 2026: "⏱ हालै" — the last pages this person opened, newest
+           first, always open on top of the tree. */
+        $recent = admin_nav_recent($items, 6);
+        if (count($recent) >= 2) {
+            echo '<div class="side-group open side-recent" data-sec="recent">';
+            echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-label="Toggle recent">⏱ हालै · Recent'
+               . '<svg class="a-ic nav-caret"><use href="#a-chevron"/></svg></button><div class="side-items">';
+            foreach ($recent as $item) { $renderLink($item); }
+            echo '</div></div>';
         }
         foreach ($groups as $sec => $groupItems) {
             if ($sec === '') { foreach ($groupItems as $item) { $renderLink($item); } continue; }
@@ -913,6 +974,9 @@ a{color:var(--blue);text-decoration:none}
 .side-more[open]>summary{opacity:1}
 .side-group .side-items{display:none}
 .side-group.open .side-items{display:block}
+.side-recent{background:rgba(240,124,31,.07);border:1px solid rgba(240,124,31,.25);border-radius:12px;margin:0 0 8px;padding-bottom:4px}
+.side-recent .side-sec{color:var(--orange)!important}
+.side-recent a{padding:8px 12px;font-size:13.5px}
 .nav-caret{margin-left:auto;width:14px;height:14px;transition:transform .15s;opacity:.7}
 .side-group.open .nav-caret{transform:rotate(90deg)}
 .side-group:first-child .side-toggle{padding-top:6px}

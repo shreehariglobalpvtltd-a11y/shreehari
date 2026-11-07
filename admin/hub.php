@@ -165,6 +165,20 @@ echo '<link rel="stylesheet" href="/assets/agentpro/admin.css?v=' . (int) @filem
   </div>
   <?php endif; ?>
 
+  <?php /* 6 Nov 2026 (owner: "recent ma hunx tyo agaadi aune"): the pages this person used last, first. */
+  $recentTiles = admin_nav_recent(admin_nav(), 8);
+  if (count($recentTiles) >= 2): ?>
+  <section class="cc-cat" style="margin:0 0 14px;border-color:rgba(240,124,31,.45)">
+    <header><span class="ic t-orange"><svg class="a-ic"><use href="#a-clock"/></svg></span>
+      <div><b>⏱ हालै प्रयोग · Recently used</b><small>तपाईंले भर्खर खोलेका पेज — पहिले</small></div></header>
+    <div class="cc-tiles">
+      <?php foreach ($recentTiles as $i): ?>
+        <a class="cc-tile" href="<?= Security::e($url($i)) ?>"><svg class="a-ic sm"><use href="#a-<?= Security::e((string) $i['icon']) ?>"/></svg><span><?= Security::e((string) $i['label']) ?></span></a>
+      <?php endforeach; ?>
+    </div>
+  </section>
+  <?php endif; ?>
+
   <div class="cc-grid">
     <?php foreach ($groups as $sec => $items):
         [$title, $sub, $icon, $tone] = $meta[$sec] ?? [$sec, '', 'grid', 't-navy']; ?>
