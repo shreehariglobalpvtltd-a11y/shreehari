@@ -221,9 +221,9 @@ final class OpsHub
     public static function payLabel(string $state): array
     {
         return match ($state) {
-            'paid'  => ['✅ भुक्तानी भयो · Paid', 'pay-paid'],
-            'agent' => ['🟠 एजेन्टसँग · With agent', 'pay-agent'],
-            default => ['🔴 बाँकी · Due', 'pay-due'],
+            'paid'  => ['Paid · भुक्तानी', 'pay-paid'],
+            'agent' => ['With agent · एजेन्टसँग', 'pay-agent'],
+            default => ['Due · बाँकी', 'pay-due'],
         };
     }
 

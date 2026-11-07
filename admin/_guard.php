@@ -33,6 +33,7 @@ require_once INCLUDE_PATH . '/reportpdf.php';
 require_once INCLUDE_PATH . '/livesync.php';
 require_once INCLUDE_PATH . '/brand.php';
 require_once INCLUDE_PATH . '/opshub.php';   // 6 Nov 2026: recent-first menu, chalani ticks, staff door
+require_once __DIR__ . '/_pro.php';             // 7 Nov 2026: the professional look (pc-* components, no emoji in the chrome)
 require_once __DIR__ . '/_compat.php';
 
 /**
@@ -84,7 +85,7 @@ function admin_nav(): array
         ['href' => 'index.php',        'icon' => 'dashboard', 'label' => 'Dashboard Overview', 'perm' => 'dashboard.view', 'section' => ''],
 
         // 1. Staff & Agent Management — accounts, codes / IDs / passwords, KYC, salary or commission
-        ['href' => 'people.php',       'icon' => 'users',     'label' => '👥 एजेन्ट र स्टाफ एकै ठाउँ · Agents & Staff', 'perm' => 'staff.manage', 'section' => $S1],   // 29 Oct 2026 (management upgrade 4.1); 6 Nov 2026: the one people page
+        ['href' => 'people.php',       'icon' => 'users',     'label' => 'Agents & Staff · एजेन्ट र स्टाफ', 'perm' => 'staff.manage', 'section' => $S1],   // 29 Oct 2026 (management upgrade 4.1); 6 Nov 2026: the one people page
         ['href' => 'agent-quick.php',  'icon' => 'plus',      'label' => '⚡ Quick Agent + ID Card', 'perm' => 'staff.manage', 'section' => $S1],   // 29 Oct 2026: the office fills the agent form
         ['href' => 'hub.php',          'icon' => 'grid',      'label' => 'Control Center',   'perm' => 'dashboard.view', 'section' => ''],
         ['href' => 'team.php',         'icon' => 'id-card',   'label' => 'Team & ID Cards',  'perm' => 'commissions.view', 'section' => 'Agents'],
@@ -121,7 +122,7 @@ function admin_nav(): array
         ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket (10s)', 'perm' => 'bookings.view', 'section' => $S3, 'hot' => true],
         /* 6 Nov 2026 (owner: "bus fleet ma seat, chalani, bus management — sapai eutai setting vitra"):
            one page for the bus of a date — seats, chalani money, bus number, routes, extra seats, AI. */
-        ['href' => 'bus-control.php',  'icon' => 'bus',       'label' => '🚌 बस · सिट · चलानी (एकै ठाउँ)', 'perm' => 'schedules.view', 'section' => $S3],
+        ['href' => 'bus-control.php',  'icon' => 'bus',       'label' => 'Bus Control · बस, सिट, चलानी', 'perm' => 'schedules.view', 'section' => $S3],
         ['href' => 'bookings.php',     'icon' => 'ticket',    'label' => $agentView ? 'My Tickets' : 'Tickets Register', 'perm' => 'bookings.view', 'section' => $S3],
         ['href' => '/index.php?counter=1#/', 'icon' => 'plus', 'label' => '+ Counter Booking', 'perm' => 'bookings.view', 'section' => $S3],
         ['href' => 'reschedule.php',   'icon' => 'calendar-plus',  'label' => 'Change Date / Reschedule', 'perm' => 'bookings.view',  'section' => $S3],
@@ -181,7 +182,7 @@ function admin_nav(): array
     // 6 Nov 2026: the AI command + easy settings page leads the settings trunk.
     $esAt = array_search('settings.php', array_column($all, 'href'), true);
     array_splice($all, $esAt === false ? count($all) : (int) $esAt, 0, [[
-        'href' => 'easy-settings.php', 'icon' => 'sparkle', 'label' => '🤖 AI सेटिङ · Easy Settings (bolera)', 'perm' => 'dashboard.view', 'section' => $S5,
+        'href' => 'easy-settings.php', 'icon' => 'sparkle', 'label' => 'S Hari AI · सेटिङ (बोलेर)', 'perm' => 'dashboard.view', 'section' => $S5,
     ]]);
 
     $main = admin_nav_main();
@@ -265,6 +266,43 @@ function admin_nav_recent(array $items, int $max = 6): array
     return $out;
 }
 
+/** "🎫 1. टिकट र बस · Tickets & Bus" → English name over a small Nepali line. */
+function admin_sec_label(string $sec): string
+{
+    $p = array_map('trim', explode('·', admin_plain($sec)));
+    $en = (string) end($p);
+    $ne = count($p) > 1 ? trim((string) preg_replace('/^\d+\.\s*/u', '', $p[0])) : '';
+    return '<span class="ss-en">' . Security::e($en) . '</span>' . ($ne !== '' && $ne !== $en ? '<span class="ss-ne">' . Security::e($ne) . '</span>' : '');
+}
+
+/** 7 Nov 2026: a calmer, professional sidebar (owner: "cartoon jasto bhayo"). */
+function admin_side_css(): string
+{
+    return <<<'CSS'
+.side{padding:10px 8px}
+.side a{gap:10px;padding:8px 10px;border-radius:8px;font-weight:500;font-size:13.5px;line-height:1.3}
+.side a .sl{font-weight:inherit;overflow:hidden;text-overflow:ellipsis}
+.side a span{width:18px;color:var(--mut)}
+.side a:hover span{color:var(--ink)}
+.side a.on{background:rgba(29,79,163,.10);color:var(--navy);font-weight:650;box-shadow:inset 3px 0 0 var(--navy)}
+.side a.on span{color:var(--navy)}
+:root[data-theme="dark"] .side a.on{background:rgba(156,192,255,.12);color:#cfe0ff;box-shadow:inset 3px 0 0 #9cc0ff}
+:root[data-theme="dark"] .side a.on span{color:#cfe0ff}
+.side a.hot{background:none;border:0;color:var(--ink)}
+.side a.hot span{color:#F07C1F}
+.side a.hot.on{background:rgba(240,124,31,.12);color:var(--ink);box-shadow:inset 3px 0 0 #F07C1F}
+.side-sec.side-toggle{display:flex;align-items:center;gap:6px;width:100%;flex-wrap:wrap;text-align:left;padding:12px 10px 6px}
+.side-sec .ss-en{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}
+.side-sec .ss-ne{flex-basis:100%;order:3;font-size:11px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--mut)}
+.side-sec .nav-caret{margin-left:auto;width:14px;height:14px;color:var(--mut)}
+.side-recent{background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;margin:0 0 6px;padding-bottom:6px}
+.side-recent .side-sec{color:var(--mut)!important}
+.side-recent a{padding:7px 10px;font-size:13px}
+.side-more>summary{font-weight:600;font-size:12.5px;color:var(--mut)}
+.wrap h1{font-size:21px;font-weight:650;letter-spacing:-.01em}
+CSS;
+}
+
 /**
  * Render the page head, top bar and sidebar. Call once at the top.
  */
@@ -286,11 +324,11 @@ function admin_header(string $title, string $active = ''): void
 
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">';
     echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
-    echo '<title>' . Security::e($title) . ' · ' . Security::e($company) . ' Admin</title>';
+    echo '<title>' . Security::e(admin_plain($title)) . ' · ' . Security::e($company) . ' Admin</title>';
     echo '<link rel="icon" type="image/png" href="/assets/img/favicon-32.png">';
     echo '<link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">';
     echo '<meta name="csrf" content="' . Security::e(Security::csrfToken()) . '">';
-    echo '<style>' . admin_css() . '</style>';
+    echo '<style>' . admin_css() . admin_pro_css() . admin_side_css() . '</style>';
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
     echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
        . 'if(t!=="dark"&&t!=="light")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'
@@ -304,6 +342,7 @@ function admin_header(string $title, string $active = ''): void
     // draw from this. Kept here so every admin page inherits it without
     // shipping a separate stylesheet or an extra HTTP request.
     echo admin_sprite();
+    echo admin_pro_sprite();
 
     // Top bar
     echo '<header class="tb">';
@@ -375,7 +414,7 @@ function admin_header(string $title, string $active = ''): void
         $url = str_starts_with($item['href'], '/') ? $base . $item['href'] : $base . '/admin/' . $item['href'];
         echo '<a' . $on . ' href="' . $url . '">'
            . '<span><svg class="a-ic"><use href="#a-' . $item['icon'] . '"/></svg></span>'
-           . Security::e($item['label']) . $badge . '</a>';
+           . '<b class="sl">' . Security::e(admin_plain((string) $item['label'])) . '</b>' . $badge . '</a>';
     };
 
     // Group items by section, preserving first-seen order.
@@ -406,7 +445,7 @@ function admin_header(string $title, string $active = ''): void
         $recent = admin_nav_recent($items, 6);
         if (count($recent) >= 2) {
             echo '<div class="side-group open side-recent" data-sec="recent">';
-            echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-label="Toggle recent">⏱ हालै · Recent'
+            echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-label="Toggle recent"><span class="ss-en">Recent</span><span class="ss-ne">हालै खोलेका</span>'
                . '<svg class="a-ic nav-caret"><use href="#a-chevron"/></svg></button><div class="side-items">';
             foreach ($recent as $item) { $renderLink($item); }
             echo '</div></div>';
@@ -415,8 +454,8 @@ function admin_header(string $title, string $active = ''): void
             if ($sec === '') { foreach ($groupItems as $item) { $renderLink($item); } continue; }
             $open = ($sec === $activeSec) ? ' open' : '';
             echo '<div class="side-group' . $open . '" data-sec="' . Security::e($sec) . '">';
-            echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-label="Toggle ' . Security::e($sec) . '">'
-               . Security::e($sec)
+            echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-label="Toggle ' . Security::e(admin_plain($sec)) . '">'
+               . admin_sec_label($sec)
                . '<svg class="a-ic nav-caret"><use href="#a-chevron"/></svg></button>';
             echo '<div class="side-items">';
             /* 6 Nov 2026: tree — the everyday pages, then the rest under "＋ थप".
@@ -441,7 +480,7 @@ function admin_header(string $title, string $active = ''): void
     echo '</nav>';
     if ($showGroups) { echo '<script>' . admin_nav_js() . '</script>'; }
 
-    echo '<main class="wrap"><h1>' . Security::e($title) . '</h1>';
+    echo '<main class="wrap"><h1>' . Security::e(admin_plain($title)) . '</h1>';
 }
 
 function admin_footer(): void

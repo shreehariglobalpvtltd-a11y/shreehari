@@ -25,7 +25,7 @@ require_once INCLUDE_PATH . '/commandcenter.php';
 
 $e       = static fn($v): string => Security::e((string) $v);
 $isSuper = Auth::isSuperadmin();
-$tabs    = ['agents' => '🧑‍💼 Agents', 'counters' => '🏪 Counters', 'staff' => '👔 Staff', 'all' => '👥 All'];
+$tabs    = ['agents' => 'Agents · एजेन्ट', 'counters' => 'Counters · काउन्टर', 'staff' => 'Staff · स्टाफ', 'all' => 'All · सबै'];
 $tab     = (string) ($_GET['tab'] ?? 'agents');
 if (!isset($tabs[$tab])) { $tab = 'agents'; }
 $q       = Security::clean((string) ($_GET['q'] ?? ''), 60);
@@ -123,14 +123,14 @@ $actions = static function (array $r) use ($e, $csrf, $isSuper, $desks, $tab, $a
     $self = $id === (int) $admin['id'];
     // 31 Oct 2026 (owner: "user ID, password matra edit huncha — purai details admin le change garna milos"):
     // name, number, code, photo, documents, form, cards, delete — all on the member page.
-    $h    = '<div class="pp-acts"><a class="btn soft" href="/admin/team-member.php?id=' . $id . '">✏️ All details</a>';
+    $h    = '<div class="pp-acts"><a class="btn soft" href="/admin/team-member.php?id=' . $id . '">Edit</a>';
     if (!$self) {
         $h .= '<form method="post" action="/admin/staff.php" onsubmit="return confirm(\'' . ((int) $r['is_active'] === 1 ? 'Disable' : 'Activate') . ' ' . $e(addslashes((string) ($r['full_name'] ?: $r['username']))) . '?\')">'
-            . $csrf . $ret . '<input type="hidden" name="action" value="toggle"><button class="btn ' . ((int) $r['is_active'] === 1 ? 'ghost' : 'ok') . '" type="submit">' . ((int) $r['is_active'] === 1 ? '⏸ Disable' : '▶ Activate') . '</button></form>';
+            . $csrf . $ret . '<input type="hidden" name="action" value="toggle"><button class="btn ' . ((int) $r['is_active'] === 1 ? 'ghost' : 'ok') . '" type="submit">' . ((int) $r['is_active'] === 1 ? 'Disable' : 'Activate') . '</button></form>';
     }
     if ($r['role'] !== 'superadmin' || $self) {
         $h .= '<form method="post" action="/admin/staff.php" onsubmit="var p=prompt(\'New password for ' . $e(addslashes((string) $r['username'])) . ' (8+ characters):\',\'\');if(!p||p.length<8){if(p!==null)alert(\'At least 8 characters.\');return false;}this.password.value=p;return true;">'
-            . $csrf . $ret . '<input type="hidden" name="action" value="resetpw"><input type="hidden" name="password" value=""><button class="btn ghost" type="submit">🔑 Password</button></form>';
+            . $csrf . $ret . '<input type="hidden" name="action" value="resetpw"><input type="hidden" name="password" value=""><button class="btn ghost" type="submit">Password</button></form>';
     }
     $cur = (string) ($r['counter_code'] ?? '');
     $h  .= '<form method="post" action="/admin/staff.php" class="pp-desk">' . $csrf . $ret . '<input type="hidden" name="action" value="setcounter">'
@@ -144,21 +144,34 @@ $actions = static function (array $r) use ($e, $csrf, $isSuper, $desks, $tab, $a
     return $h . '</select></form></div>';
 };
 
-admin_header('👥 एजेन्ट र स्टाफ · Agents & Staff (एकै ठाउँ)', 'people');
+admin_header('Agents & Staff', 'people');
 ?>
+<div class="pc" style="max-width:none">
+<?= pc_head('Agents & Staff · एजेन्ट र स्टाफ', 'Every login in one place — codes, commission, wallet, desks and access',
+    '<a class="pc-btn pri" href="/admin/agent-quick.php">' . pc_icon('plus') . 'Quick agent</a>'
+  . '<a class="pc-btn" href="/admin/team.php">' . pc_icon('id') . 'ID &amp; visiting cards</a>'
+  . '<a class="pc-btn" href="/admin/settlements.php">' . pc_icon('wallet') . 'Wallet &amp; settle</a>'
+  . '<a class="pc-btn" href="/admin/staff.php">' . pc_icon('users') . 'New login</a>') ?>
+</div>
 <style>
   .pp-comm { display:flex; gap:4px; align-items:center; margin:0; }
   .pp-comm input { width:78px; min-height:38px; border-radius:8px; border:1px solid var(--line); padding:0 8px; background:var(--bg); color:var(--ink); }
   .pp-comm .btn { min-height:38px; padding:0 10px; }
-.pp-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
-.pp-tabs a{display:inline-flex;align-items:center;gap:6px;min-height:46px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:700;text-decoration:none}
-.pp-tabs a.on{background:var(--navy);color:#fff;border-color:var(--navy)}
-.pp-tabs .n{font-size:11px;background:var(--orange);color:#fff;border-radius:99px;padding:0 7px;line-height:18px}
+.pp-tabs{display:flex;gap:2px;flex-wrap:wrap;margin:12px 0 14px;border-bottom:1px solid var(--line)}
+.pp-tabs a{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;font-size:13.5px;font-weight:600;color:var(--mut);border-bottom:2px solid transparent;margin-bottom:-1px;text-decoration:none}
+.pp-tabs a:hover{color:var(--ink)}
+.pp-tabs a.on{color:var(--navy);border-bottom-color:var(--navy)}
+:root[data-theme="dark"] .pp-tabs a.on{color:#9cc0ff;border-bottom-color:#9cc0ff}
+.pp-tabs .n{font-size:11px;font-weight:700;background:var(--hover);color:var(--ink);border-radius:99px;padding:1px 7px}
+.pp-st{border-radius:6px!important;font-weight:650!important}
 .pp-find{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
 .pp-find input,.pp-find select{min-height:44px;padding:8px 11px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:14px}
 .pp-acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .pp-acts form{margin:0}
-.pp-acts .btn{min-height:38px;padding:0 10px;font-size:12px}
+.pp-acts{flex-wrap:nowrap}
+.pp-acts .btn{min-height:32px;padding:0 10px;font-size:12px;font-weight:600;border-radius:7px;background:var(--card)!important;color:var(--ink)!important;border:1px solid var(--line)!important}
+.pp-acts .btn.soft{color:var(--navy)!important;border-color:#B9CDF2!important}
+.pp-desk select{min-height:32px!important}
 .pp-desk select{min-height:38px;max-width:190px;padding:4px 8px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font-size:12px}
 .pp-off td{opacity:.55}
 .pp-st{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:800}
@@ -172,10 +185,6 @@ admin_header('👥 एजेन्ट र स्टाफ · Agents & Staff (ए
     $n = $key === 'agents' ? $byRole['agent'] : ($key === 'counters' ? $byRole['counter'] : ($key === 'staff' ? $byRole['staff'] : array_sum($byRole))); ?>
     <a href="?<?= $e(http_build_query(['tab' => $key])) ?>" class="<?= $key === $tab ? 'on' : '' ?>"><?= $e($label) ?> <span class="n"><?= (int) $n ?></span></a>
   <?php endforeach; ?>
-  <a href="/admin/agent-quick.php" style="margin-left:auto">⚡ Quick agent + ID card</a>
-  <a href="/admin/team.php">🪪 ID / visiting cards</a>
-  <a href="/admin/settlements.php">💰 Wallet & settle</a>
-  <a href="/admin/staff.php">＋ New login</a>
 </nav>
 
 <form method="get" class="pp-find">
@@ -218,7 +227,7 @@ admin_header('👥 एजेन्ट र स्टाफ · Agents & Staff (ए
           <td data-label="₹ / passenger"><?php if ($canComm): ?>
             <form method="post" class="pp-comm"><?= $csrf ?><input type="hidden" name="pp_action" value="commission"><input type="hidden" name="id" value="<?= $id ?>">
               <input name="rate" inputmode="numeric" value="<?= $ov['flat'] !== null ? (int) $ov['flat'] : '' ?>" placeholder="<?= (int) $tier ?>" aria-label="Commission per passenger" title="खाली = company rate <?= (int) $tier ?>">
-              <button class="btn ghost" type="submit">💾</button></form>
+              <button class="btn ghost" type="submit">Save</button></form>
           <?php else: ?><?= $e(inr($ov['flat'] ?? $tier)) ?><?php endif; ?></td>
           <td data-label="Commission due" class="num"><?= $e(inr($comm)) ?></td>
           <td data-label="Cash held" class="num" style="color:<?= $cash > 0.009 ? '#b02a2a' : 'inherit' ?>"><?= $e(inr(max(0.0, $cash))) ?></td>

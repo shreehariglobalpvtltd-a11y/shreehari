@@ -37,9 +37,16 @@ if (!Security::isValidDate($date)) {
 }
 $flash = $_SESSION['bc_flash'] ?? null;
 unset($_SESSION['bc_flash']);
+/* 7 Nov 2026: one category per tab (departures · fleet · routes · extra seats · share link) */
+$TABS = ['trips', 'fleet', 'routes', 'extra', 'link'];
+$tab  = (string) ($_GET['tab'] ?? $_POST['tab'] ?? 'trips');
+if (!in_array($tab, $TABS, true)) {
+    $tab = 'trips';
+}
 $back = static function (array $f, string $date, string $anchor = ''): never {
     $_SESSION['bc_flash'] = $f;
-    Response::redirect('admin/bus-control.php?date=' . rawurlencode($date) . ($anchor !== '' ? '#' . $anchor : ''));
+    $t = in_array($anchor, ['fleet', 'routes', 'extra', 'link'], true) ? $anchor : 'trips';
+    Response::redirect('admin/bus-control.php?date=' . rawurlencode($date) . '&tab=' . $t . (str_starts_with($anchor, 'trip') ? '#' . $anchor : ''));
 };
 
 /* ---------------------------------------------------------------- POST */
@@ -205,10 +212,21 @@ $routes = Database::fetchAll('SELECT id, route_code, from_city, to_city, is_acti
 $extraN = Seats::extraSeatCount();
 
 /* ---------------------------------------------------------------- VIEW */
-$moneyLine = static function (array $m): string {
-    $p = (float) ($m['paid'] ?? 0); $a = (float) ($m['agent'] ?? 0); $d = (float) ($m['due'] ?? 0);
-    return '<span class="m-paid">✅ ' . inr($p) . '</span><span class="m-agent">🟠 ' . inr($a) . '</span><span class="m-due">🔴 ' . inr($d) . '</span>';
-};
+/* 7 Nov 2026 (owner: "professional look deu, cartoon jasto bhayo; category ma design"):
+   one category per tab, quiet cards, small text badges, line icons, no emoji. */
+$money = ['paid' => 0.0, 'agent' => 0.0, 'due' => 0.0];
+$sold = 0; $cap = 0; $exSold = 0; $onSale = 0;
+foreach ($deps as $d) {
+    $i = $bySid[(int) $d['sid']] ?? [];
+    foreach (['paid', 'agent', 'due'] as $k) { $money[$k] += (float) ($i['money'][$k] ?? 0); }
+    $ex = (int) ($i['extra'] ?? 0);
+    $sold += (int) ($i['seats'] ?? 0) - $ex;
+    $exSold += $ex;
+    $cap += (int) ($d['total_seats'] ?: ($d['bus_seats'] ?: 72));
+    if ((int) $d['is_blocked'] !== 1 && (string) $d['status'] !== 'cancelled') { $onSale++; }
+}
+$occ = $cap > 0 ? (int) round($sold * 100 / $cap) : 0;
+
 $seatPic = static function (array $dep, array $info) use ($e, $extraN): string {
     $coach  = (string) ($dep['coach_type'] ?? 'sleeper');
     $layout = Seats::layoutFor($coach, 'sharing');
@@ -217,240 +235,220 @@ $seatPic = static function (array $dep, array $info) use ($e, $extraN): string {
         $lbl = Seats::displayLabel($bed, $coach, 'sharing');
         $i   = $beds[$bed] ?? null;
         if ($i === null) {
-            return '<i class="sp sp-free" title="' . $e($lbl) . ' · खाली">' . $e($lbl) . '</i>';
+            return '<i class="pc-seat" title="' . $e($lbl) . ' · free">' . $e($lbl) . '</i>';
         }
-        return '<i class="sp sp-' . $e($i['state']) . ($i['woman'] ? ' sp-w' : '') . '" title="' . $e($lbl . ' · ' . $i['name'] . ' · ' . $i['pnr'] . ($i['agent'] !== '' ? ' · ' . $i['agent'] : '')) . '">' . $e($lbl) . '</i>';
+        return '<i class="pc-seat ' . $e($i['state']) . ($i['woman'] ? ' w' : '') . '" title="' . $e($lbl . ' · ' . $i['name'] . ' · ' . $i['pnr'] . ($i['agent'] !== '' ? ' · ' . $i['agent'] : '')) . '">' . $e($lbl) . '</i>';
     };
-    $h = '<div class="spic">';
+    $h = '<div class="pc-seats">';
     foreach ((array) ($layout['decks'] ?? []) as $dk) {
-        $h .= '<div class="sdeck"><b>' . ($dk['key'] === 'U' ? '🔼' : '🔽') . ' ' . $e($dk['label']) . '</b>';
+        $h .= '<div class="pc-deck"><h4>' . $e($dk['label']) . '</h4>';
         foreach ((array) $dk['rows'] as $rw) {
             [$g1, $g2] = Seats::rowGroups($rw, $layout);
-            $h .= '<div class="srow"><span class="sg">';
+            $h .= '<div class="pc-srow"><span class="pc-sg">';
             foreach ($g1[0] as $bed) { $h .= $cell((string) $bed); }
-            $h .= '</span><span class="saisle"></span><span class="sg">';
+            $h .= '</span><span class="pc-sg">';
             foreach ($g2[0] as $bed) { $h .= $cell((string) $bed); }
             $h .= '</span></div>';
         }
         $h .= '</div>';
     }
-    /* extra seats: the sold ones always, the free ones while extra seats are on */
     $ex = [];
     foreach ($beds as $bed => $i) { if (Seats::isExtraSeat((string) $bed)) { $ex[(string) $bed] = true; } }
     for ($k = 1; $k <= $extraN; $k++) { $ex['EX' . $k] = true; }
     if ($ex !== []) {
         uksort($ex, static fn($a, $b): int => (int) substr((string) $a, 2) <=> (int) substr((string) $b, 2));
-        $h .= '<div class="sdeck sdeck-ex"><b>💺 EXTRA · थप सिट</b><div class="srow exrow">';
+        $h .= '<div class="pc-deck"><h4>Extra seats</h4><div class="pc-srow" style="flex-wrap:wrap;max-width:430px;gap:4px">';
         foreach (array_keys($ex) as $bed) { $h .= $cell((string) $bed); }
         $h .= '</div></div>';
     }
     return $h . '</div>';
 };
+$legend = '<div class="pc-legend"><span><i style="background:#DCFCE7;border-color:#86EFAC"></i>Paid · भुक्तानी</span>'
+    . '<span><i style="background:#FEF3C7;border-color:#FCD34D"></i>With agent · एजेन्टसँग</span>'
+    . '<span><i style="background:#FEE2E2;border-color:#FCA5A5"></i>Due · बाँकी</span>'
+    . '<span><i></i>Free · खाली</span><span><i style="background:#DB2777;border-radius:50%;width:7px;height:7px;border:0"></i>Woman</span></div>';
 
-admin_header('🚌 बस · सिट · चलानी — एकै ठाउँ · Bus Control', 'bus-control');
+$prevD = date('Y-m-d', strtotime($date . ' -1 day'));
+$nextD = date('Y-m-d', strtotime($date . ' +1 day'));
+$keep  = ['date' => $date];
+
+admin_header('Bus Control', 'bus-control');
 ?>
-<style>
-.bc{display:grid;gap:14px;max-width:1240px}
-.bc .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
-.bc h2{margin:0 0 8px;font-size:17px}
-.bc-days{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.bc-days a{display:inline-flex;flex-direction:column;align-items:center;min-width:62px;padding:6px 10px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);text-decoration:none;font-weight:700;font-size:13px;line-height:1.2}
-.bc-days a small{font-weight:600;color:var(--mut);font-size:11px}
-.bc-days a.on{background:var(--navy);border-color:var(--navy);color:#fff}.bc-days a.on small{color:#cfe0ff}
-.bc-days input{min-height:44px;border-radius:10px;border:1px solid var(--line);padding:0 10px;background:var(--card);color:var(--ink)}
-.bc-ai{display:flex;gap:8px;flex-wrap:wrap}
-.bc-ai input{flex:1 1 280px;min-height:50px;font-size:16px;padding:8px 14px;border-radius:12px;border:1.5px solid #F0B44C;background:var(--bg);color:var(--ink)}
-.bc-ai .btn{min-height:50px;font-weight:800}
-.bc-ex{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.bc-ex button{border:1px dashed var(--line);background:transparent;color:inherit;border-radius:99px;padding:4px 10px;font-size:12px;cursor:pointer}
-.trip{border:1px solid var(--line);border-radius:18px;background:var(--card);padding:14px 16px;display:grid;gap:10px}
-.trip.off{opacity:.78;border-style:dashed}
-.trip-h{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between}
-.trip-h h3{margin:0;font-size:18px}
-.trip-h .tag{font-size:12px;font-weight:800;border-radius:99px;padding:3px 10px}
-.tag.on{background:#DCFCE7;color:#14532D}.tag.offt{background:#FEE2E2;color:#7F1D1D}.tag.cx{background:#E5E7EB;color:#374151}
-.trip-k{display:flex;flex-wrap:wrap;gap:8px}
-.trip-k span{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:13px;font-weight:700}
-.m-paid{color:#15803D}.m-agent{color:#B45309}.m-due{color:#B91C1C}
-.trip-k .money span{border:0;background:none;padding:0 6px 0 0}
-.trip-a{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.trip-a form{display:inline-flex;gap:4px;align-items:center;margin:0}
-.trip-a input,.trip-a select{min-height:40px;border-radius:9px;border:1px solid var(--line);padding:0 8px;background:var(--bg);color:var(--ink);max-width:150px}
-.trip-a .btn{min-height:40px;padding:0 12px}
-.spic{display:flex;flex-wrap:wrap;gap:10px}
-.sdeck{border:1px solid var(--line);border-radius:12px;padding:6px 8px;background:var(--bg)}
-.sdeck>b{display:block;font-size:12px;margin-bottom:4px}
-.srow{display:flex;gap:6px;margin:3px 0}.sg{display:inline-flex;gap:3px}.saisle{width:10px}
-.exrow{flex-wrap:wrap;max-width:420px}
-.sp{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:26px;padding:0 3px;border-radius:6px;font-style:normal;font-size:10.5px;font-weight:800;border:1.5px solid #CBD5E1;background:#fff;color:#334155}
-.sp-paid{background:#16A34A;border-color:#15803D;color:#fff}
-.sp-agent{background:#F59E0B;border-color:#B45309;color:#1F1300}
-.sp-due{background:#DC2626;border-color:#991B1B;color:#fff}
-.sp-w{box-shadow:inset 0 -3px 0 #F9A8D4}
-.leg{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;font-weight:700;color:var(--mut)}
-.leg i{display:inline-block;width:14px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px}
-.bc table{width:100%;border-collapse:collapse;font-size:14px}
-.bc td,.bc th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
-.bc td form{display:flex;gap:6px;flex-wrap:wrap;margin:0}
-.bc td input{min-height:40px;border-radius:9px;border:1px solid var(--line);padding:0 8px;background:var(--bg);color:var(--ink)}
-.pill{font-size:12px;font-weight:900;border-radius:99px;padding:3px 10px;border:0;cursor:pointer}
-.pill.on{background:#16A34A;color:#fff}.pill.off{background:#9CA3AF;color:#fff}
-.bc details>summary{cursor:pointer;font-weight:800;font-size:16px;list-style:none}
-.bc details>summary::-webkit-details-marker{display:none}
-.bc .links{display:flex;flex-wrap:wrap;gap:6px}.bc .links a{border:1px solid var(--line);border-radius:10px;padding:8px 12px;text-decoration:none;color:var(--ink);font-weight:700;font-size:13px;background:var(--card)}
-.bc .linkbox{display:flex;gap:6px;flex-wrap:wrap}.bc .linkbox input{flex:1 1 300px;min-height:44px;border-radius:10px;border:1px solid var(--line);padding:0 10px;background:var(--bg);color:var(--ink);font-size:13px}
-@media(max-width:640px){.trip-h h3{font-size:16px}.sp{min-width:26px;height:24px;font-size:9.5px}.bc-days a{min-width:54px}}
-</style>
-<div class="bc">
-<?php if ($flash !== null): ?><div class="flash <?= $flash[0] === 'ok' ? 'ok' : 'bad' ?>"><?= $e($flash[1]) ?></div><?php endif; ?>
+<div class="pc">
+<?php if ($flash !== null): ?><div class="flash <?= $flash[0] === 'ok' ? 'ok' : 'bad' ?>"><?= $e(admin_plain((string) $flash[1])) ?></div><?php endif; ?>
 
-  <div class="card">
-    <div class="bc-days">
-      <?php for ($i = -1; $i <= 7; $i++):
-          $d = date('Y-m-d', strtotime($today . ' ' . ($i >= 0 ? '+' : '') . $i . ' days')); ?>
-        <a href="?date=<?= $e($d) ?>" class="<?= $d === $date ? 'on' : '' ?>"><?= $e(formatDate($d, 'j M')) ?><small><?= $i === 0 ? 'आज' : ($i === 1 ? 'भोलि' : ($i === -1 ? 'हिजो' : $e(formatDate($d, 'D')))) ?></small></a>
-      <?php endfor; ?>
-      <form method="get" style="margin:0"><input type="date" name="date" value="<?= $e($date) ?>" onchange="this.form.submit()" aria-label="Date"></form>
-    </div>
-  </div>
+<?= pc_head('Bus Control · बस, सिट र चलानी', formatDate($date, 'l, j F Y') . ' — departures, seats, money and fleet in one place',
+    '<a class="pc-btn" href="?' . $e(http_build_query(['date' => $prevD, 'tab' => $tab])) . '" aria-label="Previous day">' . pc_icon('left') . '</a>'
+  . '<form method="get" class="pc-form"><input type="hidden" name="tab" value="' . $e($tab) . '"><input class="pc-in" type="date" name="date" value="' . $e($date) . '" onchange="this.form.submit()" aria-label="Date"></form>'
+  . '<a class="pc-btn" href="?' . $e(http_build_query(['date' => $nextD, 'tab' => $tab])) . '" aria-label="Next day">' . pc_icon('right') . '</a>'
+  . ($date !== $today ? '<a class="pc-btn" href="?' . $e(http_build_query(['date' => $today, 'tab' => $tab])) . '">Today</a>' : '')) ?>
 
-  <div class="card">
-    <h2>🤖 S Hari AI — भन्नुहोस्, AI ले बदल्छ · Tell the AI</h2>
-    <form method="post" action="/admin/easy-settings.php" class="bc-ai">
-      <?= Security::csrfField() ?><input type="hidden" name="act" value="cmd"><input type="hidden" name="back" value="bus-control.php?date=<?= $e($date) ?>">
-      <input id="bcCmd" name="cmd" placeholder="जस्तै: <?= $e(formatDate(date('Y-m-d', strtotime($date . ' +1 day')), 'j M')) ?> ko bhada 2500 · Bus 02 ko number GJ05AB1234 · Rajkot route band · 5 extra seat" autocomplete="off" <?= $canSet || $canBus ? '' : 'disabled' ?>>
-      <button class="btn ok" type="submit" <?= $canSet || $canBus ? '' : 'disabled' ?>>पठाउनुहोस् →</button>
-    </form>
-    <div class="bc-ex">
-      <?php foreach (['Surat ko bhada 2300', formatDate(date('Y-m-d', strtotime($date . ' +1 day')), 'j M') . ' ko bus band', 'Bus 03 ko number GJ05AB1234', 'Rupaidiha Surat route on', '10 extra seat', 'cancel fine 500'] as $x): ?>
-        <button type="button" onclick="var i=document.getElementById('bcCmd');i.value=this.textContent;i.focus()"><?= $e($x) ?></button>
-      <?php endforeach; ?>
-    </div>
-    <p class="muted" style="font-size:12.5px;margin:6px 0 0">नेपाली · हिन्दी · English, जुन भाषामा पनि। सधैं पहिला के बदलिन्छ देखाउँछ, "हो" भनेपछि मात्र बदल्छ।</p>
-  </div>
+<div class="pc-dates" aria-label="Choose a date">
+  <?php for ($i = -1; $i <= 10; $i++): $d = date('Y-m-d', strtotime($today . ' ' . ($i >= 0 ? '+' : '') . $i . ' days')); ?>
+    <a href="?<?= $e(http_build_query(['date' => $d, 'tab' => $tab])) ?>" class="<?= $d === $date ? 'on' : '' ?>"><small><?= $i === 0 ? 'Today' : ($i === 1 ? 'Tomorrow' : $e(formatDate($d, 'D'))) ?></small><?= $e(formatDate($d, 'j M')) ?></a>
+  <?php endfor; ?>
+</div>
 
+<div class="pc-kpis">
+  <div class="pc-kpi"><small>Departures</small><b><?= count($deps) ?></b><i><?= $onSale ?> on sale</i></div>
+  <div class="pc-kpi"><small>Seats sold</small><b><?= $sold ?> / <?= $cap ?></b><i><?= $occ ?>% full<?= $exSold > 0 ? ' · +' . $exSold . ' extra' : '' ?></i></div>
+  <div class="pc-kpi ok"><small>Paid</small><b><?= $e(inr($money['paid'])) ?></b><i>received by the office</i></div>
+  <div class="pc-kpi warn"><small>With agents</small><b><?= $e(inr($money['agent'])) ?></b><i>cash still with agents</i></div>
+  <div class="pc-kpi bad"><small>Due</small><b><?= $e(inr($money['due'])) ?></b><i>not paid yet</i></div>
+</div>
+
+<?php if ($canSet || $canBus): ?>
+<form method="post" action="/admin/easy-settings.php" class="pc-card pc-card-b pc-ai">
+  <?= Security::csrfField() ?><input type="hidden" name="act" value="cmd"><input type="hidden" name="back" value="bus-control.php?date=<?= $e($date) ?>">
+  <span class="pc-meta"><span><?= pc_icon('spark') ?><b>S Hari AI</b></span></span>
+  <input class="pc-in" id="bcCmd" name="cmd" placeholder="e.g. <?= $e(formatDate($nextD, 'j M')) ?> ko bhada 2500 · Bus 02 ko number GJ05AB1234 · Rajkot route band · 10 extra seat" autocomplete="off">
+  <button class="pc-btn pri" type="submit">Preview change</button>
+</form>
+<?php endif; ?>
+
+<?= pc_tabs([
+    'trips'  => ['Departures', 'calendar', count($deps)],
+    'fleet'  => ['Fleet', 'bus', count(array_filter($buses, static fn($b) => (int) $b['is_active'] === 1))],
+    'routes' => ['Routes', 'route', count(array_filter($routes, static fn($r) => (int) $r['is_active'] === 1))],
+    'extra'  => ['Extra seats', 'seat', $extraN],
+    'link'   => ['Share link', 'link', null],
+], $tab, $keep) ?>
+
+<?php if ($tab === 'trips'): ?>
   <?php if ($deps === []): ?>
-    <div class="card">यो दिन कुनै बस छैन · No departure on <?= $e(formatDate($date, 'j M Y')) ?>. <a href="/admin/trips.php?date=<?= $e($date) ?>">Trips Board →</a></div>
+    <div class="pc-card pc-empty">No departure on <?= $e(formatDate($date, 'j M Y')) ?>. <a href="/admin/trips.php">Open Trips Board</a></div>
   <?php endif; ?>
-
   <?php foreach ($deps as $d):
       $sid   = (int) $d['sid'];
       $info  = $bySid[$sid] ?? [];
       $off   = (int) $d['is_blocked'] === 1;
       $cx    = (string) $d['status'] === 'cancelled';
-      $seats = (int) ($info['seats'] ?? 0);
-      $exS   = (int) ($info['extra'] ?? 0);
+      $ex    = (int) ($info['extra'] ?? 0);
+      $seats = (int) ($info['seats'] ?? 0) - $ex;
       $total = (int) ($d['total_seats'] ?: ($d['bus_seats'] ?: 72));
       $plate = Fleet::publicNumber((string) $d['bus_number']);
-      $q = http_build_query(['date' => $date, 'sid' => $sid, 'route' => (int) $d['route_id']]); ?>
-    <section class="trip<?= $off || $cx ? ' off' : '' ?>" id="trip<?= $sid ?>">
-      <div class="trip-h">
-        <h3><?= $e($d['from_city']) ?> → <?= $e($d['to_city']) ?> · <?= $e(substr((string) $d['dep_time'], 0, 5)) ?><?= (int) $d['slot'] > 1 ? ' · Bus ' . (int) $d['slot'] : '' ?></h3>
-        <span class="tag <?= $cx ? 'cx' : ($off ? 'offt' : 'on') ?>"><?= $cx ? '✖ Cancelled' : ($off ? '⛔ बिक्री बन्द · Sale OFF' : '🟢 बिक्री खुला · Sale ON') ?></span>
+      $m     = (array) ($info['money'] ?? []);
+      $q     = http_build_query(['date' => $date, 'sid' => $sid, 'route' => (int) $d['route_id']]); ?>
+    <section class="pc-card" id="trip<?= $sid ?>">
+      <div class="pc-card-h">
+        <div><h3><?= $e($d['from_city']) ?> → <?= $e($d['to_city']) ?></h3>
+          <small>Departs <?= $e(date('g:i A', strtotime((string) $d['dep_time']))) ?><?= (int) $d['slot'] > 1 ? ' · extra bus ' . (int) $d['slot'] : '' ?> · <?= $e($d['route_code']) ?></small></div>
+        <?= $cx ? pc_badge('Cancelled', 'mute') : ($off ? pc_badge('Sale off', 'bad') : pc_badge('On sale', 'ok')) ?>
       </div>
-      <div class="trip-k">
-        <span>🚌 <?= $e($d['bus_name'] ?: '—') ?> · <?= $plate !== '' ? $e($plate) : '<em style="color:#B45309">number बाँकी</em>' ?></span>
-        <span>💺 <?= $seats - $exS ?>/<?= $total ?> बिक्री · <?= max(0, $total - ($seats - $exS)) ?> खाली</span>
-        <span>➕ Extra <?= $exS ?><?= $extraN > 0 ? '/' . $extraN : '' ?></span>
-        <span class="money"><?= $moneyLine((array) ($info['money'] ?? [])) ?></span>
-        <?php if ($d['fare_override'] !== null): ?><span>💰 यो दिन <?= inr((float) $d['fare_override']) ?></span><?php endif; ?>
-        <?php if (!empty($d['driver_name'])): ?><span>👤 <?= $e($d['driver_name']) ?> <?= $e($d['driver_phone'] ?? '') ?></span><?php endif; ?>
+      <div class="pc-card-b" style="display:grid;gap:12px">
+        <div class="pc-meta">
+          <span><?= pc_icon('bus') ?><b><?= $e($d['bus_name'] ?: '—') ?></b> <?= $plate !== '' ? $e($plate) : pc_badge('number not set', 'warn') ?></span>
+          <?php if (!empty($d['driver_name'])): ?><span><?= pc_icon('phone') ?><b><?= $e($d['driver_name']) ?></b> <?= $e($d['driver_phone'] ?? '') ?></span><?php endif; ?>
+          <span><?= pc_icon('seat') ?>Sold <b><?= $seats ?>/<?= $total ?></b> · free <b><?= max(0, $total - $seats) ?></b><?= $ex > 0 || $extraN > 0 ? ' · extra <b>' . $ex . '</b>' : '' ?></span>
+          <?php if ($d['fare_override'] !== null): ?><span><?= pc_icon('cash') ?>This date <b><?= $e(inr((float) $d['fare_override'])) ?></b></span><?php endif; ?>
+        </div>
+        <div class="pc-bar">
+          <?= pc_badge('Paid ' . inr((float) ($m['paid'] ?? 0)), 'ok') ?>
+          <?= pc_badge('With agents ' . inr((float) ($m['agent'] ?? 0)), 'warn') ?>
+          <?= pc_badge('Due ' . inr((float) ($m['due'] ?? 0)), 'bad') ?>
+        </div>
+        <?= $seatPic($d, $info) ?>
+        <?= $legend ?>
       </div>
-      <?= $seatPic($d, $info) ?>
-      <div class="leg"><span><i style="background:#16A34A"></i>भुक्तानी भयो · Paid</span><span><i style="background:#F59E0B"></i>एजेन्टसँग · With agent</span><span><i style="background:#DC2626"></i>बाँकी · Due</span><span><i style="background:#fff;border:1px solid #CBD5E1"></i>खाली · Free</span><span><i style="background:#fff;box-shadow:inset 0 -3px 0 #F9A8D4;border:1px solid #CBD5E1"></i>महिला · Woman</span></div>
-      <div class="trip-a">
-        <a class="btn" href="/admin/manifest.php?<?= $e($q) ?>">🧾 चलानी · Chalani</a>
-        <a class="btn ghost" href="/admin/manifest.php?<?= $e($q . '&format=chalani') ?>" target="_blank">🖨 Print</a>
-        <a class="btn ghost" href="/admin/manifest.php?<?= $e($q . '&format=chalanipdf') ?>" target="_blank">📄 PDF</a>
-        <a class="btn ghost" href="/admin/manifest.php?<?= $e($q . '&format=chalanipng') ?>" target="_blank">🖼 Photo</a>
-        <a class="btn ghost" href="/admin/seatmap.php?<?= $e(http_build_query(['date' => $date, 'route' => (int) $d['route_id']])) ?>">💺 Seat map</a>
+      <div class="pc-card-f">
+        <a class="pc-btn pri sm" href="/admin/manifest.php?<?= $e($q) ?>"><?= pc_icon('list') ?>Chalani</a>
+        <a class="pc-btn sm" href="/admin/manifest.php?<?= $e($q . '&format=chalani') ?>" target="_blank"><?= pc_icon('printer') ?>Print</a>
+        <a class="pc-btn sm" href="/admin/manifest.php?<?= $e($q . '&format=chalanipdf') ?>" target="_blank"><?= pc_icon('download') ?>PDF</a>
+        <a class="pc-btn sm" href="/admin/manifest.php?<?= $e($q . '&format=chalanipng') ?>" target="_blank"><?= pc_icon('image') ?>Image</a>
+        <a class="pc-btn sm" href="/admin/seatmap.php?<?= $e(http_build_query(['date' => $date, 'route' => (int) $d['route_id']])) ?>"><?= pc_icon('seat') ?>Seat map</a>
+        <span class="pc-sep"></span>
         <?php if ($canSale && !$cx): ?>
-          <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="trip_sale"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="schedule_id" value="<?= $sid ?>"><input type="hidden" name="on" value="<?= $off ? '1' : '0' ?>">
-            <button class="btn <?= $off ? 'ok' : 'bad' ?>" type="submit" onclick="return confirm('<?= $off ? 'यो दिनको बिक्री खोल्ने?' : 'यो दिनको बिक्री बन्द गर्ने? (पुराना टिकट जस्ताको तस्तै)' ?>')"><?= $off ? '🟢 Sale ON' : '⛔ Sale OFF' ?></button></form>
+          <form method="post" class="pc-form" onsubmit="return confirm('<?= $off ? 'Open sale for this date?' : 'Stop sale for this date? Existing tickets stay as they are.' ?>')"><?= Security::csrfField() ?><input type="hidden" name="act" value="trip_sale"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="schedule_id" value="<?= $sid ?>"><input type="hidden" name="on" value="<?= $off ? '1' : '0' ?>">
+            <button class="pc-switch<?= $off ? '' : ' on' ?>" type="submit" title="Sale on / off for this date"><i></i><?= $off ? 'Sale off' : 'Sale on' ?></button></form>
         <?php endif; ?>
         <?php if ($canBus): ?>
-          <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="trip_fare"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="schedule_id" value="<?= $sid ?>">
-            <input name="fare" inputmode="numeric" placeholder="यो दिनको भाडा ₹" value="<?= $d['fare_override'] !== null ? (int) $d['fare_override'] : '' ?>" aria-label="Fare for this date"><button class="btn ghost" type="submit">💰 Save</button></form>
+          <form method="post" class="pc-form"><?= Security::csrfField() ?><input type="hidden" name="act" value="trip_fare"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="schedule_id" value="<?= $sid ?>">
+            <input class="pc-in" style="width:120px" name="fare" inputmode="numeric" placeholder="Fare this date" value="<?= $d['fare_override'] !== null ? (int) $d['fare_override'] : '' ?>" aria-label="Fare for this date"><button class="pc-btn sm" type="submit">Save</button></form>
         <?php endif; ?>
         <?php if ($canSale): ?>
-          <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="trip_bus"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="schedule_id" value="<?= $sid ?>">
-            <select name="bus_id" aria-label="Bus for this date"><?php foreach ($buses as $b): if ((int) $b['is_active'] !== 1) { continue; } ?><option value="<?= (int) $b['id'] ?>" <?= (int) $b['id'] === (int) $d['bus_id'] ? 'selected' : '' ?>><?= $e($b['bus_name'] . ' · ' . $b['bus_number']) ?></option><?php endforeach; ?></select>
-            <button class="btn ghost" type="submit">🚌 Set</button></form>
+          <form method="post" class="pc-form"><?= Security::csrfField() ?><input type="hidden" name="act" value="trip_bus"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="schedule_id" value="<?= $sid ?>">
+            <select class="pc-sel" name="bus_id" aria-label="Bus for this date"><?php foreach ($buses as $b): if ((int) $b['is_active'] !== 1) { continue; } ?><option value="<?= (int) $b['id'] ?>" <?= (int) $b['id'] === (int) $d['bus_id'] ? 'selected' : '' ?>><?= $e($b['bus_name'] . ' · ' . $b['bus_number']) ?></option><?php endforeach; ?></select>
+            <button class="pc-btn sm" type="submit">Set bus</button></form>
         <?php endif; ?>
       </div>
     </section>
   <?php endforeach; ?>
 
-  <div class="card" id="link">
-    <h2>🔗 Chalani permanent link — login बिना, live · for agents</h2>
-    <?php if (OpsHub::publicOn()): $pl = OpsHub::publicUrl(); ?>
-      <div class="linkbox"><input id="pubLink" readonly value="<?= $e($pl) ?>" onclick="this.select()">
-        <button class="btn" type="button" onclick="var i=document.getElementById('pubLink');i.select();try{navigator.clipboard.writeText(i.value)}catch(e){document.execCommand('copy')}this.textContent='✅ Copied'">📋 Copy</button>
-        <a class="btn ok" target="_blank" rel="noopener" href="https://wa.me/?text=<?= rawurlencode('🚌 ' . Settings::getString('company_name', APP_NAME) . ' — live chalani (seat · passenger · paid/due): ' . $pl) ?>">💬 WhatsApp</a>
-        <a class="btn ghost" target="_blank" href="<?= $e($pl) ?>">👁 Open</a></div>
-      <p class="muted" style="font-size:12.5px">जहिले पनि एउटै link — admin ले बदलेको तुरुन्त देखिन्छ (३० सेकेन्डमा आफैं refresh)। Mobile number लुकेको (98•••••123)।</p>
-    <?php else: ?>
-      <p>🔒 Public link बन्द छ · OFF.</p>
-    <?php endif; ?>
+<?php elseif ($tab === 'fleet'): ?>
+  <section class="pc-card">
+    <div class="pc-card-h"><h3>Fleet · बसहरू</h3><small>Number and name change here; tickets of coming trips redraw by themselves. XXXX = number not entered yet (hidden from customers).</small></div>
+    <div style="overflow-x:auto"><table class="pc-table">
+      <thead><tr><th>Bus</th><th>Layout</th><th>Status</th><th>Number · Name</th></tr></thead><tbody>
+      <?php foreach ($buses as $b): ?>
+        <tr<?= (int) $b['is_active'] !== 1 ? ' style="opacity:.6"' : '' ?>>
+          <td><b><?= $e($b['bus_name']) ?></b><br><small class="pc-note"><?= $e($b['bus_number']) ?></small></td>
+          <td><?= (int) $b['total_seats'] ?> seats · <?= $e($b['seat_model']) ?></td>
+          <td><?= (int) $b['is_active'] === 1 ? pc_badge('Active', 'ok') : pc_badge('Off', 'mute') ?></td>
+          <td><?php if ($canBus): ?><form method="post" class="pc-form"><?= Security::csrfField() ?><input type="hidden" name="act" value="bus_save"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="bus_id" value="<?= (int) $b['id'] ?>">
+            <input class="pc-in" name="bus_number" value="<?= $e($b['bus_number']) ?>" maxlength="30" style="text-transform:uppercase;width:150px" aria-label="Bus number">
+            <input class="pc-in" name="bus_name" value="<?= $e($b['bus_name']) ?>" maxlength="120" style="width:180px" aria-label="Bus name">
+            <button class="pc-btn sm" type="submit"><?= pc_icon('check') ?>Save</button></form>
+            <?php else: ?><?= $e($b['bus_number']) ?><?php endif; ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody></table></div>
+    <div class="pc-card-f"><a class="pc-btn sm" href="/admin/buses.php"><?= pc_icon('plus') ?>Add bus / layout</a><a class="pc-btn sm" href="/admin/trips.php"><?= pc_icon('swap') ?>3-bus rotation</a><a class="pc-btn sm" href="/admin/calendar.php"><?= pc_icon('calendar') ?>Bus calendar</a></div>
+  </section>
+
+<?php elseif ($tab === 'routes'): ?>
+  <section class="pc-card">
+    <div class="pc-card-h"><h3>Routes · रुट</h3><small>Off = not sold; old tickets stay. Stops, times and pickup fares are on Stops &amp; Fares.</small></div>
+    <div style="overflow-x:auto"><table class="pc-table">
+      <thead><tr><th>Route</th><th>Code</th><th>Departs</th><th>Selling</th></tr></thead><tbody>
+      <?php $offShown = 0; foreach ($routes as $r): $on = (int) $r['is_active'] === 1; if (!$on && ++$offShown > 8) { continue; } ?>
+        <tr<?= $on ? '' : ' style="opacity:.65"' ?>>
+          <td><b><?= $e($r['from_city']) ?> → <?= $e($r['to_city']) ?></b></td>
+          <td><?= $e($r['route_code']) ?></td>
+          <td><?= $e(date('g:i A', strtotime((string) $r['dep_time']))) ?></td>
+          <td><?php if ($canRoute): ?><form method="post" class="pc-form" onsubmit="return confirm('<?= $on ? 'Stop selling this route? Old tickets stay.' : 'Start selling this route now?' ?>')"><?= Security::csrfField() ?><input type="hidden" name="act" value="route_toggle"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="route_id" value="<?= (int) $r['id'] ?>">
+            <button class="pc-switch<?= $on ? ' on' : '' ?>" type="submit"><i></i><?= $on ? 'On' : 'Off' ?></button></form>
+            <?php else: ?><?= $on ? pc_badge('On', 'ok') : pc_badge('Off', 'mute') ?><?php endif; ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody></table></div>
+    <div class="pc-card-f"><a class="pc-btn sm" href="/admin/routes.php"><?= pc_icon('pin') ?>Stops &amp; fares</a></div>
+  </section>
+
+<?php elseif ($tab === 'extra'): ?>
+  <section class="pc-card">
+    <div class="pc-card-h"><h3>Extra seats · थप सिट</h3><small>Sold like normal seats — ticket, chalani, seat chart, accounts and commission.</small></div>
+    <div class="pc-card-b" style="display:grid;gap:12px">
+      <div class="pc-meta"><span>Every bus carries <b><?= $extraN ?></b> extra seats<?= $extraN > 0 ? ' (EX1–EX' . $extraN . ')' : '' ?>.</span><span>Sold on <?= $e(formatDate($date, 'j M')) ?>: <b><?= $exSold ?></b></span></div>
+      <?php if (Auth::isSuperadmin()): ?>
+        <form method="post" class="pc-form"><?= Security::csrfField() ?><input type="hidden" name="act" value="extra_set"><input type="hidden" name="date" value="<?= $e($date) ?>">
+          <label class="pc-note" for="exN">Extra seats per bus</label><input class="pc-in" id="exN" type="number" name="n" min="0" max="40" value="<?= $extraN ?>" style="width:90px">
+          <button class="pc-btn pri sm" type="submit">Save</button></form>
+      <?php endif; ?>
+    </div>
+    <div class="pc-card-f"><a class="pc-btn sm" href="/admin/extra-seats.php"><?= pc_icon('list') ?>Extra seats register</a></div>
+  </section>
+
+<?php else: ?>
+  <section class="pc-card">
+    <div class="pc-card-h"><h3>Live chalani link · login बिना</h3><?= OpsHub::publicOn() ? pc_badge('Link on', 'ok') : pc_badge('Link off', 'mute') ?></div>
+    <div class="pc-card-b" style="display:grid;gap:12px">
+      <?php if (OpsHub::publicOn()): $pl = OpsHub::publicUrl(); ?>
+        <div class="pc-bar"><input class="pc-in" id="pubLink" style="flex:1 1 360px" readonly value="<?= $e($pl) ?>" onclick="this.select()">
+          <button class="pc-btn" type="button" onclick="var i=document.getElementById('pubLink');i.select();try{navigator.clipboard.writeText(i.value)}catch(e){document.execCommand('copy')}this.lastChild.textContent='Copied'"><?= pc_icon('link') ?><span>Copy</span></button>
+          <a class="pc-btn ok" target="_blank" rel="noopener" href="https://wa.me/?text=<?= rawurlencode(Settings::getString('company_name', APP_NAME) . ' — live chalani (seats, passengers, paid/due): ' . $pl) ?>"><?= pc_icon('share') ?>WhatsApp</a>
+          <a class="pc-btn" target="_blank" href="<?= $e($pl) ?>"><?= pc_icon('right') ?>Open</a></div>
+        <p class="pc-note">One permanent link for agents. Changes made in the office show within 30 seconds. Mobile numbers are masked.</p>
+      <?php else: ?>
+        <p class="pc-note">The public link is switched off.</p>
+      <?php endif; ?>
+    </div>
     <?php if ($canSet): ?>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="link_toggle"><input type="hidden" name="date" value="<?= $e($date) ?>"><button class="btn ghost" type="submit"><?= OpsHub::publicOn() ? '🔒 Link OFF' : '🔗 Link ON' ?></button></form>
-        <form method="post" onsubmit="return confirm('नयाँ link बनाउने? पुरानो link काम गर्न छोड्छ।')"><?= Security::csrfField() ?><input type="hidden" name="act" value="link_new"><input type="hidden" name="date" value="<?= $e($date) ?>"><button class="btn ghost" type="submit">🔑 New link</button></form>
+      <div class="pc-card-f">
+        <form method="post" class="pc-form"><?= Security::csrfField() ?><input type="hidden" name="act" value="link_toggle"><input type="hidden" name="date" value="<?= $e($date) ?>"><button class="pc-switch<?= OpsHub::publicOn() ? ' on' : '' ?>" type="submit"><i></i><?= OpsHub::publicOn() ? 'Link on' : 'Link off' ?></button></form>
+        <form method="post" class="pc-form" onsubmit="return confirm('Make a new link? The old link stops working.')"><?= Security::csrfField() ?><input type="hidden" name="act" value="link_new"><input type="hidden" name="date" value="<?= $e($date) ?>"><button class="pc-btn sm" type="submit"><?= pc_icon('refresh') ?>New link</button></form>
       </div>
     <?php endif; ?>
-  </div>
-
-  <details class="card" id="fleet" open>
-    <summary>🚍 बसहरू · Fleet (number / name यहीँ बदल्नुहोस्)</summary>
-    <table><thead><tr><th>Bus</th><th>Seats</th><th>Number · Name</th></tr></thead><tbody>
-    <?php foreach ($buses as $b): ?>
-      <tr<?= (int) $b['is_active'] !== 1 ? ' style="opacity:.55"' : '' ?>>
-        <td><b><?= $e($b['bus_name']) ?></b><br><small><?= (int) $b['is_active'] === 1 ? '🟢 active' : '⛔ off' ?></small></td>
-        <td><?= (int) $b['total_seats'] ?> · <?= $e($b['seat_model']) ?></td>
-        <td><?php if ($canBus): ?><form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="bus_save"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="bus_id" value="<?= (int) $b['id'] ?>">
-          <input name="bus_number" value="<?= $e($b['bus_number']) ?>" maxlength="30" style="text-transform:uppercase;width:150px" aria-label="Bus number">
-          <input name="bus_name" value="<?= $e($b['bus_name']) ?>" maxlength="120" style="width:170px" aria-label="Bus name">
-          <button class="btn ghost" type="submit">💾</button></form>
-          <?php else: ?><?= $e($b['bus_number']) ?><?php endif; ?></td>
-      </tr>
-    <?php endforeach; ?>
-    </tbody></table>
-    <p class="muted" style="font-size:12.5px">XXXX = number अझै राखिएको छैन (customer लाई लुकेको)। नयाँ बस / layout: <a href="/admin/buses.php">Bus Fleet →</a></p>
-  </details>
-
-  <details class="card" id="routes" open>
-    <summary>🛣 रुट · Routes (on / off एक ट्याप)</summary>
-    <table><thead><tr><th>Route</th><th>Time</th><th>Status</th></tr></thead><tbody>
-    <?php $offShown = 0; foreach ($routes as $r): $on = (int) $r['is_active'] === 1; if (!$on && ++$offShown > 8) { continue; } ?>
-      <tr<?= $on ? '' : ' style="opacity:.6"' ?>>
-        <td><b><?= $e($r['from_city']) ?> → <?= $e($r['to_city']) ?></b> <small>(<?= $e($r['route_code']) ?>)</small></td>
-        <td><?= $e(substr((string) $r['dep_time'], 0, 5)) ?></td>
-        <td><?php if ($canRoute): ?><form method="post" onsubmit="return confirm('<?= $on ? 'यो रुट बन्द गर्ने? नयाँ बिक्री रोकिन्छ, पुराना टिकट जस्ताको तस्तै।' : 'यो रुट खोल्ने? तुरुन्त बिक्री हुन्छ।' ?>')"><?= Security::csrfField() ?><input type="hidden" name="act" value="route_toggle"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="route_id" value="<?= (int) $r['id'] ?>">
-          <button class="pill <?= $on ? 'on' : 'off' ?>" type="submit"><?= $on ? 'ON' : 'OFF' ?></button></form>
-          <?php else: ?><?= $on ? 'ON' : 'OFF' ?><?php endif; ?></td>
-      </tr>
-    <?php endforeach; ?>
-    </tbody></table>
-    <p class="muted" style="font-size:12.5px">Pickup stops, समय र भाडा: <a href="/admin/routes.php">Stops & Fares →</a> · 3-bus rotation: <a href="/admin/trips.php">Trips Board →</a></p>
-  </details>
-
-  <details class="card" id="extra">
-    <summary>💺 Extra seats — हरेक बसमा <?= $extraN ?> (EX1–EX<?= max(1, $extraN) ?>)</summary>
-    <p>Extra seat पनि normal seat जस्तै बिक्छ — टिकट, चलानी, seat chart, हिसाब, commission सबैमा आउँछ।</p>
-    <?php if (Auth::isSuperadmin()): ?>
-      <form method="post" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><?= Security::csrfField() ?><input type="hidden" name="act" value="extra_set"><input type="hidden" name="date" value="<?= $e($date) ?>">
-        <label>हरेक बसमा <input type="number" name="n" min="0" max="40" value="<?= $extraN ?>" style="width:80px;min-height:40px"> extra seat</label>
-        <button class="btn" type="submit">💾 Save</button></form>
-    <?php endif; ?>
-    <p class="muted" style="font-size:12.5px"><a href="/admin/extra-seats.php">Extra seats register (कसले बेच्यो, कति पैसा) →</a></p>
-  </details>
-
-  <div class="card">
-    <h2>📚 अरू पेज · More pages</h2>
-    <div class="links">
-      <a href="/admin/trips.php">🕒 Trips Board</a><a href="/admin/trip-dashboard.php">📅 Daily Trip View</a><a href="/admin/calendar.php">🗓 Bus Calendar</a>
-      <a href="/routine.php">🗓️ 3-Bus Routine</a><a href="/admin/seatmap.php">💺 Seat / Berth Map</a><a href="/admin/buses.php">🚍 Bus Fleet</a>
-      <a href="/admin/routes.php">🛣 Stops & Fares</a><a href="/admin/extra-seats.php">➕ Extra Seats</a><a href="/admin/manifest.php">🧾 Manifest & Chalani</a>
-    </div>
-  </div>
+  </section>
+<?php endif; ?>
 </div>
 <?php admin_footer();

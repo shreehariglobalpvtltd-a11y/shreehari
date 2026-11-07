@@ -170,10 +170,10 @@ echo '<link rel="stylesheet" href="/assets/agentpro/admin.css?v=' . (int) @filem
   if (count($recentTiles) >= 2): ?>
   <section class="cc-cat" style="margin:0 0 14px;border-color:rgba(240,124,31,.45)">
     <header><span class="ic t-orange"><svg class="a-ic"><use href="#a-clock"/></svg></span>
-      <div><b>⏱ हालै प्रयोग · Recently used</b><small>तपाईंले भर्खर खोलेका पेज — पहिले</small></div></header>
+      <div><b>Recently used · हालै प्रयोग</b><small>The pages you opened last, first</small></div></header>
     <div class="cc-tiles">
       <?php foreach ($recentTiles as $i): ?>
-        <a class="cc-tile" href="<?= Security::e($url($i)) ?>"><svg class="a-ic sm"><use href="#a-<?= Security::e((string) $i['icon']) ?>"/></svg><span><?= Security::e((string) $i['label']) ?></span></a>
+        <a class="cc-tile" href="<?= Security::e($url($i)) ?>"><svg class="a-ic sm"><use href="#a-<?= Security::e((string) $i['icon']) ?>"/></svg><span><?= Security::e(admin_plain((string) $i['label'])) ?></span></a>
       <?php endforeach; ?>
     </div>
   </section>
@@ -187,7 +187,7 @@ echo '<link rel="stylesheet" href="/assets/agentpro/admin.css?v=' . (int) @filem
           <div><b><?= Security::e($title) ?></b><small><?= Security::e($sub) ?></small></div></header>
         <div class="cc-tiles">
           <?php foreach ($items as $i): $b = (int) ($badges[$i['href']] ?? 0); ?>
-            <a class="cc-tile" href="<?= Security::e($url($i)) ?>"><svg class="a-ic sm"><use href="#a-<?= Security::e((string) $i['icon']) ?>"/></svg><span><?= Security::e((string) $i['label']) ?></span><?= $b > 0 ? '<span class="b">' . $b . '</span>' : '' ?></a>
+            <a class="cc-tile" href="<?= Security::e($url($i)) ?>"><svg class="a-ic sm"><use href="#a-<?= Security::e((string) $i['icon']) ?>"/></svg><span><?= Security::e(admin_plain((string) $i['label'])) ?></span><?= $b > 0 ? '<span class="b">' . $b . '</span>' : '' ?></a>
           <?php endforeach; ?>
         </div>
       </section>

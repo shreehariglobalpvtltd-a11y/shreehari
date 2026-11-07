@@ -464,7 +464,7 @@ $seatChartHtml = static function () use ($layout, $seatInfo, $coachT): string {
 .scx *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 </style><div class="scx">';
     foreach ($layout['decks'] as $dk) {
-        $h .= '<div class="scx-deck"><h4>' . ($dk['key'] === 'U' ? '🔼 ' : '🔽 ') . $e($dk['label']) . '</h4>';
+        $h .= '<div class="scx-deck"><h4>' . $e($dk['label']) . '</h4>';
         if ($sleeper) {
             $hs = ['single' => 'SINGLE SLEEPER · 1 BERTH', 'double' => 'DOUBLE SLEEPER · 2 BERTHS'];
             [$k1, $k2] = $sglFirst ? ['single', 'double'] : ['double', 'single'];
@@ -485,7 +485,7 @@ $seatChartHtml = static function () use ($layout, $seatInfo, $coachT): string {
     $exBeds = array_values(array_filter(array_keys($seatInfo), static fn($b): bool => Seats::isExtraSeat((string) $b)));
     if ($exBeds !== []) {
         usort($exBeds, static fn($a, $b): int => (int) substr((string) $a, 2) <=> (int) substr((string) $b, 2));
-        $h .= '<div class="scx-deck"><h4>💺 EXTRA · थप सिट (' . count($exBeds) . ')</h4><div class="scx-ex">';
+        $h .= '<div class="scx-deck"><h4>Extra seats · थप सिट (' . count($exBeds) . ')</h4><div class="scx-ex">';
         foreach ($exBeds as $bed) { $h .= $cell((string) $bed); }
         $h .= '</div></div>';
     }
@@ -1029,7 +1029,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
 /* =====================================================================
  *  SCREEN
  * ===================================================================== */
-admin_header('Passenger manifest', 'manifest');
+admin_header('Chalani · Passenger manifest', 'manifest');
 
 $paxCount = count($rows);
 $boarded  = count(array_filter($rows, static fn($r) => !empty($r['boarded_at'])));
@@ -1082,6 +1082,48 @@ foreach ($rows as $r) {
   .mf-wtag { background:#F8BBD9; color:#880E4F; border-radius:9px; padding:1px 6px; font-weight:800; }
   details.mf-chart { margin:0 0 14px; } details.mf-chart summary { cursor:pointer; font-weight:800; font-size:15px; padding:6px 0; }
   tr.mf-ws td { background:#FCE4EC !important; }
+  /* 7 Nov 2026: professional skin (owner: "cartoon jasto bhayo") */
+  .mf-tools { gap:8px; }
+  .mf-tools .btn { display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:0 12px; border-radius:8px; font-weight:600; font-size:13px; background:var(--card); color:var(--ink); border:1px solid var(--line); }
+  .mf-tools .btn:hover { background:var(--hover); filter:none; }
+  .mf-tools input, .mf-tools select { min-height:36px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink); padding:0 8px; }
+  .mf-head { background:var(--card); border-radius:12px; padding:14px 16px; }
+  .mf-head h2 { font-size:18px; font-weight:650; letter-spacing:-.01em; }
+  .mf-stats { gap:22px; color:var(--mut); font-size:12.5px; }
+  .mf-stats b { font-size:18px; font-weight:650; color:var(--ink); font-variant-numeric:tabular-nums; }
+  .mf-money { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0 0; }
+  .mf-money .pc-badge { font-size:12.5px; padding:4px 10px; }
+  .mf-link.no-print { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:12px; }
+  .mf-link.no-print input { border-color:var(--line); background:var(--bg); color:var(--ink); }
+  .mf-link .muted { color:var(--mut); font-size:12.5px; }
+  table.mf { font-size:13.5px; }
+  table.mf th { background:var(--head); font-size:11px; font-weight:650; letter-spacing:.05em; text-transform:uppercase; color:var(--mut); }
+  tr.mf-stop td { background:var(--head); color:var(--ink); font-size:13px; font-weight:650; border-left:3px solid var(--navy); padding:8px 10px; }
+  .mf-no2 { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; border-radius:6px; background:var(--navy); color:#fff; font-size:12px; margin-right:6px; }
+  tr.mf-grp td { background:var(--card); color:var(--ink); border-top:1px solid var(--line); font-size:13.5px; }
+  tr.mf-grp a { font-family:inherit; }
+  tr.mf-grp .mf-tag { margin-right:6px; }
+  .mf-tag { border-radius:6px; font-weight:650; font-size:11.5px; padding:2px 8px; }
+  .mf-tag.pay-paid { background:#ECFDF3; color:#15803D; border:1px solid #BBF0CF; }
+  .mf-tag.pay-agent { background:#FFF7E8; color:#B45309; border:1px solid #F5D9A8; }
+  .mf-tag.pay-due { background:#FEF2F2; color:#B91C1C; border:1px solid #F6C9C9; }
+  .mf-acts .btn, .mf-pay .btn { display:inline-flex; align-items:center; gap:5px; border-radius:7px; font-weight:600; background:var(--card); color:var(--ink); border:1px solid var(--line); }
+  .mf-acts .btn.ok, .mf-pay .btn.ok { background:#15803D; color:#fff; border-color:#15803D; }
+  .mf-acts .del { background:var(--card) !important; color:#B91C1C !important; border-color:#F0C4C4 !important; }
+  .mf-acts .a-ic, .mf-pay .a-ic, .mf-tools .a-ic { width:15px; height:15px; }
+  .wa-mini .a-ic { width:15px; height:15px; }
+  .mf-pl-card { border-radius:12px; }
+  .mf-pl-bus { display:flex; align-items:center; gap:6px; }
+  .scx-deck { border-radius:10px; }
+  .scx-deck h4 { font-size:11px; font-weight:650; letter-spacing:.05em; text-transform:uppercase; color:var(--mut); }
+  .scx-s { border-radius:6px; border-width:1px; }
+  .scx .scx-free { background:#fff; border-color:#D9E0EA; }
+  .scx .scx-free b { color:#64748B; }
+  .scx .scx-busy { background:#EEF4FF; border-color:#B9CDF2; }
+  .scx .scx-hd span { background:var(--head); color:var(--mut); font-weight:650; }
+  :root[data-theme="dark"] .mf-tag.pay-paid { background:rgba(22,163,74,.15); border-color:rgba(22,163,74,.35); color:#6EE7A0; }
+  :root[data-theme="dark"] .mf-tag.pay-agent { background:rgba(245,158,11,.14); border-color:rgba(245,158,11,.35); color:#FBC56B; }
+  :root[data-theme="dark"] .mf-tag.pay-due { background:rgba(220,38,38,.14); border-color:rgba(220,38,38,.35); color:#FCA5A5; }
   /* 6 Nov 2026: paid green · with agent amber · due red */
   tr.mf-st-paid td  { background:rgba(22,163,74,.13); } tr.mf-st-paid td.seat  { box-shadow:inset 5px 0 0 #16A34A; }
   tr.mf-st-agent td { background:rgba(245,158,11,.16); } tr.mf-st-agent td.seat { box-shadow:inset 5px 0 0 #F59E0B; }
@@ -1147,17 +1189,17 @@ foreach ($rows as $r) {
   <?php /* Add a late/missed ticket straight onto this departure — the seat map
            applies the 24h counter grace, so it works even after the bus left. */ ?>
   <?php if ($trip !== null): ?>
-    <a class="btn" href="<?= $base ?>/admin/seatmap.php?<?= Security::e(http_build_query(['route' => $routeId, 'date' => $date])) ?>">➕ Add ticket</a>
+    <a class="btn" href="<?= $base ?>/admin/seatmap.php?<?= Security::e(http_build_query(['route' => $routeId, 'date' => $date])) ?>"><?= pc_icon('plus') ?> Add ticket</a>
   <?php endif; ?>
 
   <?php if ($trip !== null && $paxCount > 0): ?>
-    <button class="btn ghost" type="button" onclick="window.print()">🖨️ Print manifest</button>
+    <button class="btn ghost" type="button" onclick="window.print()"><?= pc_icon('printer') ?> Print</button>
     <?php /* 17 Sep 2026: every departure document (challan picture, Nepali
              chalani PDF / PNG, WhatsApp) lives on ONE hub page now. */ ?>
     <?php if ($scopeId === null): ?>
     <a class="btn" href="<?= $base ?>/admin/chalan.php?<?= Security::e(http_build_query(['sid' => (int) $trip['schedule_id']])) ?>"><svg class="a-ic"><use href="#a-doc"/></svg> Bus Chalan (PDF / PNG / WhatsApp)</a>
     <?php endif; ?>
-    <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(array_filter(['date' => $date, 'route' => $routeId, 'sid' => $sidReq > 0 ? $sidReq : null, 'order' => $order !== 'group' ? $order : null, 'format' => 'csv']))) ?>">⬇️ Download CSV</a>
+    <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(array_filter(['date' => $date, 'route' => $routeId, 'sid' => $sidReq > 0 ? $sidReq : null, 'order' => $order !== 'group' ? $order : null, 'format' => 'csv']))) ?>"><?= pc_icon('download') ?> CSV</a>
   <?php endif; ?>
 </form>
 
@@ -1165,7 +1207,7 @@ foreach ($rows as $r) {
   <p class="mf-empty">No departure is scheduled for <?= Security::e($date) ?>.</p>
   <?php if ($stillRunning !== []): ?>
     <div class="mf-empty no-print" style="background:#fff8e6;border:1px solid #f0d68a;color:#7a5300;padding:12px 16px;border-radius:10px;text-align:left">
-      <strong>🚌 Still on the road (within 24h of departure)</strong> — open its chalani or add a late ticket:
+      <strong>Still on the road (within 24h of departure)</strong> — open its chalani or add a late ticket:
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
         <?php foreach ($stillRunning as $sr): ?>
           <a class="btn ghost" href="?<?= Security::e(http_build_query(['date' => $sr['travel_date'], 'route' => (int) $sr['route_id']])) ?>">
@@ -1198,22 +1240,22 @@ foreach ($rows as $r) {
       <?php if ($womenSingleCount > 0): ?><span style="color:#880E4F"><b>♀ <?= (int) $womenSingleCount ?></b> women on single sleeper</span><?php endif; ?>
     </div>
     <div class="mf-money">
-      <span class="pay-paid">✅ भुक्तानी · Paid <?= $mfCount['paid'] ?> · <?= Security::e(inr($mfMoney['paid'])) ?></span>
-      <span class="pay-agent">🟠 एजेन्टसँग · With agent <?= $mfCount['agent'] ?> · <?= Security::e(inr($mfMoney['agent'])) ?></span>
-      <span class="pay-due">🔴 बाँकी · Due <?= $mfCount['due'] ?> · <?= Security::e(inr($mfMoney['due'])) ?></span>
+      <?= pc_badge('Paid ' . $mfCount['paid'] . ' · ' . inr($mfMoney['paid']), 'ok') ?>
+      <?= pc_badge('With agents ' . $mfCount['agent'] . ' · ' . inr($mfMoney['agent']), 'warn') ?>
+      <?= pc_badge('Due ' . $mfCount['due'] . ' · ' . inr($mfMoney['due']), 'bad') ?>
     </div>
   </div>
 
   <?php if (OpsHub::publicOn()): $mfPub = OpsHub::publicUrl($date); ?>
-  <div class="mf-link no-print">🔗 <b>Live chalani link</b> (login बिना · agent लाई share):
+  <div class="mf-link no-print"><?= pc_icon('link') ?> <b>Live chalani link</b> <span class="muted">login बिना · agent लाई share</span>
     <input readonly value="<?= Security::e($mfPub) ?>" onclick="this.select()">
-    <a class="btn ghost" target="_blank" rel="noopener" href="https://wa.me/?text=<?= rawurlencode('🚌 Live chalani ' . date('d M', strtotime($date)) . ': ' . $mfPub) ?>">💬 WhatsApp</a>
-    <a class="btn ghost" target="_blank" href="<?= Security::e($mfPub) ?>">👁 Open</a>
+    <a class="btn ghost" target="_blank" rel="noopener" href="https://wa.me/?text=<?= rawurlencode('Live chalani ' . date('d M', strtotime($date)) . ': ' . $mfPub) ?>">WhatsApp</a>
+    <a class="btn ghost" target="_blank" href="<?= Security::e($mfPub) ?>">Open</a>
   </div>
   <?php endif; ?>
 
   <?php if ($mfCanTick): ?>
-  <details class="no-print" style="margin:0 0 12px"><summary style="cursor:pointer;font-weight:800">⚙️ Payment options (<?= Security::e(implode(' · ', OpsHub::payModes())) ?>)</summary>
+  <details class="no-print" style="margin:0 0 12px"><summary style="cursor:pointer;font-weight:650">Payment options (<?= Security::e(implode(' · ', OpsHub::payModes())) ?>)</summary>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
       <?php foreach (OpsHub::payModes() as $pm): ?>
         <form method="post" style="margin:0" onsubmit="return confirm('<?= Security::e($pm) ?> हटाउने?')"><?= Security::csrfField() ?><input type="hidden" name="mf_action" value="delmode"><input type="hidden" name="mode" value="<?= Security::e($pm) ?>"><button class="btn ghost" type="submit"><?= Security::e($pm) ?> ✖</button></form>
@@ -1229,8 +1271,8 @@ foreach ($rows as $r) {
   <?php /* 6 Nov 2026: the simple chalani — place no. + name + head-count, bus + total, then the seat chart. */ ?>
   <div class="mf-places">
     <div class="mf-pl-card">
-      <div class="mf-pl-bus">🚌 <b><?= Security::e(trim((string) ($trip['bus_name'] ?? '') . ' ' . (string) ($trip['bus_number'] ?? '')) ?: 'Bus not assigned') ?></b>
-        <span>👥 <b><?= $paxCount ?></b> यात्रु · passengers</span></div>
+      <div class="mf-pl-bus"><?= pc_icon('bus') ?> <b><?= Security::e(trim((string) ($trip['bus_name'] ?? '') . ' ' . (string) ($trip['bus_number'] ?? '')) ?: 'Bus not assigned') ?></b>
+        <span><b><?= $paxCount ?></b> यात्रु · passengers</span></div>
       <table class="mf-pl">
         <thead><tr><th>नं.</th><th>चढ्ने ठाउँ · Pickup place</th><th class="r">यात्रु</th><th>सिट · Seats</th></tr></thead>
         <tbody>
@@ -1243,7 +1285,7 @@ foreach ($rows as $r) {
       </table>
     </div>
     <div class="mf-pl-card">
-      <div class="mf-pl-bus">🏁 <b>ओर्लिने ठाउँ · Drop places</b></div>
+      <div class="mf-pl-bus"><?= pc_icon('pin') ?> <b>ओर्लिने ठाउँ · Drop places</b></div>
       <table class="mf-pl">
         <tbody>
         <?php foreach ($dropList as $dl): ?>
@@ -1254,7 +1296,7 @@ foreach ($rows as $r) {
     </div>
   </div>
   <details class="mf-chart" open>
-    <summary>💺 सिट चार्ट · Seat chart (नाम सहित · with names)</summary>
+    <summary>Seat chart · सिट चार्ट (with names)</summary>
     <?= $seatChartHtml() ?>
   </details>
   <?php endif; ?>
@@ -1293,40 +1335,40 @@ foreach ($rows as $r) {
           $stopNow = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—';
           if ($stopNow !== $lastStop): $lastStop = $stopNow;
             $stopPax = count(array_filter($rows, static fn($x) => ($x['boarding_stop'] ? $stopShort((string) $x['boarding_stop']) : '—') === $stopNow)); ?>
-        <tr class="mf-stop"><td colspan="11">📍 <?= (int) ($placeList[$stopNow]['no'] ?? 0) ?> · <?= Security::e($stopNow) ?> · <?= $stopPax ?> passenger<?= $stopPax === 1 ? '' : 's' ?></td></tr>
+        <tr class="mf-stop"><td colspan="11"><span class="mf-no2"><?= (int) ($placeList[$stopNow]['no'] ?? 0) ?></span> <?= Security::e($stopNow) ?> · <?= $stopPax ?> passenger<?= $stopPax === 1 ? '' : 's' ?></td></tr>
           <?php endif;
           $gid = (int) $r['booking_id'];
           if ($gid !== $lastGid): $lastGid = $gid; $g = $grp[$gid]; ?>
         <?php $gSt = $mfState[$gid] ?? 'due'; [$gLbl, $gCls] = OpsHub::payLabel($gSt); $gTick = $mfTicks[$gid] ?? null; ?>
         <tr class="mf-grp mf-st-<?= Security::e($gSt) ?>"><td colspan="11">
           <span class="mf-tag <?= Security::e($gCls) ?>"><?= Security::e($gLbl) ?></span>
-          👥 <b><?= Security::e($g['lead']) ?></b> — <?= (int) $g['n'] ?> passenger<?= $g['n'] === 1 ? '' : 's' ?>
+          <b><?= Security::e($g['lead']) ?></b> — <?= (int) $g['n'] ?> passenger<?= $g['n'] === 1 ? '' : 's' ?>
           — <?= Security::e($stopNow) ?> → <?= Security::e($stopShort((string) ($r['drop_stop'] ?: $trip['to_city']))) ?>
           — <span class="mono"><?= Security::e((string) $r['contact_phone']) ?></span>
           — seats <b><?= Security::e(implode(', ', $g['seats'])) ?></b>
           · <a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>"><?= Security::e((string) $r['pnr']) ?></a>
           <span class="mf-acts no-print">
-            <a class="btn ghost" href="<?= $base ?>/admin/reschedule.php?pnr=<?= urlencode((string) $r['pnr']) ?>" title="अर्को मिति / अर्को बसमा सार्नुहोस्">🔁 Transfer</a>
-            <a class="btn ghost" href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>#seats" title="सिट बदल्नुहोस्">💺 Seat</a>
+            <a class="btn ghost" href="<?= $base ?>/admin/reschedule.php?pnr=<?= urlencode((string) $r['pnr']) ?>" title="अर्को मिति / अर्को बसमा सार्नुहोस्"><?= pc_icon('swap') ?> Transfer</a>
+            <a class="btn ghost" href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>#seats" title="सिट बदल्नुहोस्"><?= pc_icon('seat') ?> Seat</a>
             <?php if ($mfCanTick): ?>
               <?php if ($gSt !== 'paid'): ?>
               <form method="post" class="mf-pay" title="भुक्तानी आयो — tick"><?= Security::csrfField() ?><input type="hidden" name="mf_action" value="paid"><input type="hidden" name="booking_id" value="<?= $gid ?>">
                 <select name="mode" aria-label="Payment option"><?php foreach (OpsHub::payModes() as $pm): ?><option><?= Security::e($pm) ?></option><?php endforeach; ?></select>
                 <input name="amount" inputmode="numeric" placeholder="₹ <?= (int) round((float) $r['total_amount']) ?>" aria-label="Amount">
-                <button class="btn ok" type="submit">✅ Paid</button></form>
+                <button class="btn ok" type="submit"><?= pc_icon('check') ?> Paid</button></form>
               <?php else: ?>
               <small><?= $gTick !== null ? Security::e(trim((string) $gTick['mode'] . ' · ' . inr((float) $gTick['amount']) . ' · ' . ((string) ($gTick['by_name'] ?? '') ?: (string) ($gTick['by_user'] ?? '')))) : 'auto' ?></small>
-              <form method="post" class="mf-pay" onsubmit="return confirm('<?= Security::e((string) $r['pnr']) ?> फेरि बाँकी (due) बनाउने?')"><?= Security::csrfField() ?><input type="hidden" name="mf_action" value="due"><input type="hidden" name="booking_id" value="<?= $gid ?>"><button class="btn ghost" type="submit">↩️ Due</button></form>
+              <form method="post" class="mf-pay" onsubmit="return confirm('<?= Security::e((string) $r['pnr']) ?> फेरि बाँकी (due) बनाउने?')"><?= Security::csrfField() ?><input type="hidden" name="mf_action" value="due"><input type="hidden" name="booking_id" value="<?= $gid ?>"><button class="btn ghost" type="submit">Mark due</button></form>
               <?php endif; ?>
             <?php endif; ?>
             <?php if ($mfCanCancel): ?>
             <form method="post" onsubmit="return confirm('<?= Security::e((string) $r['pnr']) ?> — <?= Security::e(addslashes($g['lead'])) ?> (<?= (int) $g['n'] ?>) cancel गर्ने? सिट खाली हुन्छ। Refund हातैले।')">
               <?= Security::csrfField() ?><input type="hidden" name="mf_action" value="cancel"><input type="hidden" name="pnr" value="<?= Security::e((string) $r['pnr']) ?>">
               <?php if (OpsHub::fineOn()): ?><input name="fine" inputmode="numeric" placeholder="Fine ₹" value="<?= OpsHub::fineDefault() > 0 ? (int) OpsHub::fineDefault() : '' ?>" style="width:74px;min-height:30px;border-radius:8px;border:1px solid #ccc;padding:0 6px" title="जरिवाना (खाली = छैन)"><?php endif; ?>
-              <button class="btn del" type="submit">🗑 Delete</button>
+              <button class="btn del" type="submit"><?= pc_icon('trash') ?> Delete</button>
             </form>
             <?php else: ?>
-            <a class="btn ghost" href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>" title="Cancel request">🗑 Cancel…</a>
+            <a class="btn ghost" href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>" title="Cancel request"><?= pc_icon('trash') ?> Cancel…</a>
             <?php endif; ?>
           </span>
         </td></tr>
@@ -1341,7 +1383,7 @@ foreach ($rows as $r) {
               <br><small style="opacity:.7"><?= Security::e(trim(($r['age'] ? $r['age'] . 'y ' : '') . (string) $r['gender'])) ?></small>
             <?php endif; ?>
             <?php if (!empty($r['special_need'])): ?>
-              <br><small style="color:#0f5c36;font-weight:700" title="Priority boarding">🩺 <?= Security::e(ucfirst((string) $r['special_need'])) ?> · priority</small>
+              <br><small style="color:#0f5c36;font-weight:700" title="Priority boarding">Priority · <?= Security::e(ucfirst((string) $r['special_need'])) ?></small>
             <?php endif; ?>
           </td>
           <td class="mono">
@@ -1356,7 +1398,7 @@ foreach ($rows as $r) {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366"><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.28-.1-.48-.15-.68.15-.2.3-.77.97-.95 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.14-.14.3-.35.45-.53.15-.17.2-.3.3-.5.1-.2.05-.37-.03-.52-.07-.15-.68-1.63-.93-2.23-.24-.58-.49-.5-.68-.51h-.58c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.22 3.08c.15.2 2.1 3.22 5.1 4.51.71.31 1.27.49 1.7.63.72.23 1.37.2 1.88.12.58-.08 1.76-.72 2.01-1.41.25-.7.25-1.29.17-1.41-.07-.13-.28-.2-.58-.35zm-5.44 7.44h-.02a9.87 9.87 0 01-5.03-1.38l-.36-.22-3.74.98 1-3.65-.24-.37a9.86 9.86 0 01-1.51-5.26c0-5.45 4.44-9.89 9.9-9.89 2.65 0 5.14 1.03 7 2.9a9.83 9.83 0 012.9 7c0 5.45-4.44 9.89-9.9 9.89zm8.41-18.3A11.82 11.82 0 0012.04 0C5.46 0 .1 5.35.1 11.93c0 2.1.55 4.16 1.6 5.95L0 24l6.3-1.65a11.9 11.9 0 005.73 1.47h.01c6.58 0 11.94-5.35 11.94-11.93a11.86 11.86 0 00-3.54-8.47z"/></svg>
               </a>
               <?php /* 8 Oct 2026 (master prompt 2.0): one tap to call from the crew phone. */ ?>
-              <a href="tel:<?= Security::e($waNum) ?>" class="wa-mini mf-call" title="Call passenger" aria-label="Call <?= Security::e((string) $r['full_name']) ?>">📞</a>
+              <a href="tel:<?= Security::e($waNum) ?>" class="wa-mini mf-call" title="Call passenger" aria-label="Call <?= Security::e((string) $r['full_name']) ?>"><?= pc_icon('phone') ?></a>
             <?php endif; ?>
           </td>
           <td><?= Security::e($r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—') ?>
@@ -1369,7 +1411,7 @@ foreach ($rows as $r) {
                   ? 'https://www.google.com/maps/dir/?api=1&destination=' . $gm[1] . ',' . $gm[2]
                   : 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($stopShort($bpRaw));
             ?>
-              <a href="<?= Security::e($bpMap) ?>" target="_blank" rel="noopener" class="wa-mini mf-map" title="Open pickup in Maps">🗺️</a>
+              <a href="<?= Security::e($bpMap) ?>" target="_blank" rel="noopener" class="wa-mini mf-map" title="Open pickup in Maps"><?= pc_icon('pin') ?></a>
             <?php endif; ?>
           </td>
           <td><?= Security::e($stopShort((string) ($r['drop_stop'] ?: $trip['to_city']))) ?></td>
