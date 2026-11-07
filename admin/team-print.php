@@ -27,4 +27,5 @@ if ($members === []) {
 $what = in_array($_GET['what'] ?? '', ['id', 'vc'], true) ? (string) $_GET['what'] : 'all';
 Logger::audit('agentpro.cards_printed', 'admin', implode(',', $ids), null, ['what' => $what, 'count' => count($members)], 'Card sheets printed');
 header('Content-Type: text/html; charset=utf-8');
-echo ApCard::printHtml($members, $what, Settings::getString('company_name', APP_NAME) . ' cards');
+$tpl = preg_replace('/[^a-z]/', '', (string) ($_GET['tpl'] ?? '')) ?? '';   // 6 Nov 2026: one design for the whole sheet
+echo ApCard::printHtml($members, $what, Settings::getString('company_name', APP_NAME) . ' cards', $tpl);

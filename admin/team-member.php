@@ -526,7 +526,7 @@ endif; ?>
     <label>WhatsApp number on the visiting card<input name="vc_whatsapp" value="<?= $e($m['waDisplay']) ?>" placeholder="+91 98765 43210"></label>
     <label>Second phone<input name="vc_phone" value="<?= $e($m['call'] !== $m['wa'] ? $m['callDisplay'] : '') ?>"></label>
     <label>Email on the card<input name="vc_email" type="email" value="<?= $e($m['email']) ?>"></label>
-    <label>Style<select name="vc_theme"><?php foreach (['royal' => 'Royal (navy & gold)', 'gold' => 'Gold (ivory)', 'night' => 'Night (black & gold)'] as $k => $l): ?><option value="<?= $k ?>"<?= $m['theme'] === $k ? ' selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select></label>
+    <label>Style<select name="vc_theme"><?php foreach (['royal' => 'Royal (navy & gold)', 'gold' => 'Gold (ivory)', 'night' => 'Night (black & gold)', 'wave' => 'Wave (blue & orange, modern)', 'minimal' => 'Minimal (clean white)'] as $k => $l): ?><option value="<?= $k ?>"<?= $m['theme'] === $k ? ' selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select></label>
     <label class="full">Line under the company name<input name="vc_tagline" maxlength="120" value="<?= $e($m['tagline']) ?>"></label>
     <label class="full">WhatsApp message ready when the QR is scanned<input name="vc_greeting" maxlength="160" value="<?= $e($m['greeting']) ?>"></label>
     <?php if ($canPrint): ?>

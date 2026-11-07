@@ -956,7 +956,7 @@ final class AgentPro
         }
         if (array_key_exists('vc_theme', $in)) {
             $t = (string) $in['vc_theme'];
-            $u['vc_theme'] = in_array($t, ['royal', 'gold', 'night'], true) ? $t : 'royal';
+            $u['vc_theme'] = in_array($t, ['royal', 'gold', 'night', 'wave', 'minimal'], true) ? $t : 'royal';   // 6 Nov 2026: + wave, minimal
         }
         if (array_key_exists('lang', $in)) {
             $l = (string) $in['lang'];

@@ -269,6 +269,15 @@ final class ApCard
     private const RED    = '#B3122D';
     private const WA     = '#169C4F';
     private const AMBER  = '#B45309';
+    /* 6 Nov 2026: the logo's own blue + orange, for the WAVE and MINIMAL designs */
+    private const B_NAVY     = '#12264E';
+    private const B_BLUE     = '#1D4FA3';
+    private const B_ORANGE   = '#F07C1F';
+    private const B_ORANGE_L = '#FFB36B';
+    private const B_ORANGE_D = '#C25A0B';
+    /** The designs an office or a member may choose (vc_theme). wave / minimal change the fronts too. */
+    public const THEMES = ['royal' => 'Royal (navy & gold)', 'gold' => 'Gold (ivory)', 'night' => 'Night (black & gold)',
+                           'wave' => 'Wave (blue & orange, modern)', 'minimal' => 'Minimal (clean white)'];
 
     /** Units per millimetre (the scene is in tenths of a mm). */
     private const UNITS_PER_MM = 10;
@@ -351,10 +360,11 @@ final class ApCard
     /** @param array<string, mixed> $m AgentPro::member() */
     public static function scene(array $m, string $side): ApScene
     {
+        $tpl = (string) ($m['theme'] ?? '');
         return match ($side) {
-            'id-front' => self::idFront($m),
+            'id-front' => $tpl === 'wave' ? self::idFrontWave($m) : ($tpl === 'minimal' ? self::idFrontMinimal($m) : self::idFront($m)),
             'id-back'  => self::idBack($m),
-            'vc-front' => self::vcFront($m),
+            'vc-front' => $tpl === 'wave' ? self::vcFrontWave($m) : ($tpl === 'minimal' ? self::vcFrontMinimal($m) : self::vcFront($m)),
             'vc-back'  => self::vcBack($m),
             default    => throw new RuntimeException('Unknown card side.'),
         };
@@ -723,6 +733,271 @@ final class ApCard
     }
 
     /** @return array<string, string> */
+    /* =================================================================
+     *  6 Nov 2026 — two more designs (owner: "2-3 ramro ramro ID card /
+     *  visiting card design use gardeu"). Same facts, same QR rules, same
+     *  painters; only the look changes. WAVE = the logo's blue + orange in
+     *  a modern swoosh; MINIMAL = clean white with a navy spine.
+     * ================================================================= */
+
+    /** A round portrait (the photo, else initials on a soft disc). */
+    private static function circlePhoto(ApScene $s, array $m, float $cx, float $cy, float $r): void
+    {
+        $abs = ($m['photo'] !== '' && str_starts_with((string) $m['photo'], 'agents/')) ? UPLOAD_PATH . '/' . $m['photo'] : '';
+        if ($abs !== '' && is_file($abs)) {
+            $s->image($cx - $r, $cy - $r, 2 * $r, 2 * $r, $abs, $r, 'circle');
+            return;
+        }
+        $s->circle($cx, $cy, $r, '#DCE4F2');
+        $ini = '';
+        foreach (preg_split('/\s+/u', trim((string) $m['name'])) ?: [] as $part) {
+            if ($part !== '' && mb_strlen($ini) < 2) {
+                $ini .= mb_strtoupper(mb_substr($part, 0, 1));
+            }
+        }
+        $s->text($cx, $cy + 20, $ini, 'sansB', 58, self::B_BLUE, 'middle', 1);
+    }
+
+    /** @return list<array{0:string,1:string}> the four facts every ID front prints */
+    private static function idFacts(array $m): array
+    {
+        return [
+            ['MOBILE', (string) ($m['callDisplay'] ?: $m['waDisplay'])],
+            ['BRANCH', (string) ($m['branch'] !== '' ? $m['branch'] : 'Head Office')],
+            ['VALID TILL', $m['validUntil'] !== '' ? date('M Y', (int) strtotime((string) $m['validUntil'])) : '—'],
+            [$m['bloodGroup'] !== '' ? 'BLOOD GROUP' : 'MEMBER SINCE', $m['bloodGroup'] !== '' ? (string) $m['bloodGroup'] : ($m['joined'] !== '' ? date('M Y', (int) strtotime((string) $m['joined'])) : '—')],
+        ];
+    }
+
+    private static function idClass(array $m): string
+    {
+        return $m['isAgent'] ? ($m['isOrg'] ? 'AUTHORISED  AGENCY' : 'AUTHORISED  AGENT') : 'OFFICE  STAFF';
+    }
+
+    private static function idFrontWave(array $m): ApScene
+    {
+        $co = $m['company'];
+        [$w1, $w2] = self::wordmark($co);
+        $s = new ApScene(540, 856, 32);
+        $s->rect(0, 0, 540, 856, '#FFFFFF');
+
+        // The header swoosh: navy field, a lighter blue sweep, one orange filament.
+        $s->shape([['M', 0, 0], ['L', 540, 0], ['L', 540, 232], ['C', 400, 296, 170, 192, 0, 258], ['Z']], self::B_NAVY);
+        $s->shape([['M', 290, 0], ['L', 540, 0], ['L', 540, 160], ['C', 470, 118, 372, 70, 290, 0], ['Z']], self::B_BLUE, 0.75);
+        $s->shape([['M', 0, 258], ['C', 170, 192, 400, 296, 540, 232], ['L', 540, 248], ['C', 400, 314, 170, 210, 0, 276], ['Z']], self::B_ORANGE);
+
+        // The logo on its own white pill (its colours stay true), the wordmark beside it.
+        $s->rect(20, 20, 178, 86, '#FFFFFF', 16);
+        $s->art(28, 26, 162, 74, self::LOGO, 'middle');
+        $s->text(214, 52, $w1, 'sansB', 25, '#FFFFFF', 'start', 0.6, 1.0, 306);
+        if ($w2 !== '') {
+            $s->text(215, 76, $w2, 'caps', 12.5, self::B_ORANGE_L, 'start', 3, 1.0, 306);
+        }
+        self::flags($s, 215, 88, 18);
+
+        // The portrait: a white ring inside an orange one.
+        $cx = 270;
+        $cy = 318;
+        $R  = 108;
+        $s->circle($cx, $cy, $R + 15, self::B_ORANGE);
+        $s->circle($cx, $cy, $R + 8, '#FFFFFF');
+        self::circlePhoto($s, $m, $cx, $cy, $R);
+        self::kycMark($s, $m, $cx + 84, $cy + 84, $cx, $cy + $R);
+
+        $last = $s->textFit(270, 486, (string) $m['name'], 'sansB', 36, self::INK, 'middle', 480);
+        $y = 514 + ($last - 486);
+        $s->textFit(270, $y, mb_strtoupper((string) $m['designation']), 'caps', 15.5, self::B_ORANGE_D, 'middle', 470, 3.4, 1);
+
+        $idNo  = $m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING';
+        $label = self::codeLabel($m);
+        $iw = self::measure('monoB', 23, $idNo, 1.2) + self::measure('caps', 13, $label, 1.6) + 56;
+        $py = $y + 16;
+        $s->rect(270 - $iw / 2, $py, $iw, 44, self::B_NAVY, 22);
+        $s->text(270 - $iw / 2 + 20, $py + 28, $label, 'caps', 13, self::B_ORANGE_L, 'start', 1.6);
+        $s->text(270 + $iw / 2 - 20, $py + 31, $idNo, 'monoB', 23, '#FFFFFF', 'end', 1.2);
+
+        $gy = min(max($py + 86, 652), 690);
+        foreach (self::idFacts($m) as $i => [$lab, $val]) {
+            $x  = $i % 2 === 0 ? 50 : 300;
+            $ry = $gy + intdiv($i, 2) * 50;
+            $s->rect($x - 14, $ry - 13, 4.5, 40, self::B_ORANGE, 2);
+            $s->text($x, $ry, $lab, 'caps', 13, self::MUTED, 'start', 1.6);
+            $s->text($x, $ry + 22, $val, 'sansB', 17, self::INK, 'start', 0, 1.0, $i % 2 === 0 ? 232 : 206);
+        }
+
+        $s->shape([['M', 0, 796], ['C', 180, 774, 360, 808, 540, 782], ['L', 540, 856], ['L', 0, 856], ['Z']], self::B_NAVY);
+        $s->shape([['M', 0, 790], ['C', 180, 768, 360, 802, 540, 776], ['L', 540, 782], ['C', 360, 808, 180, 774, 0, 796], ['Z']], self::B_ORANGE);
+        $s->text(270, 826, self::idClass($m), 'caps', 17, '#FFFFFF', 'middle', 5);
+        $s->text(270, 846, 'www.' . self::web($co), 'mono', 13, self::B_ORANGE_L, 'middle', 0.4);
+        return $s;
+    }
+
+    private static function idFrontMinimal(array $m): ApScene
+    {
+        $co = $m['company'];
+        [$w1, $w2] = self::wordmark($co);
+        $s = new ApScene(540, 856, 32);
+        $s->rect(0, 0, 540, 856, '#FFFFFF');
+        $s->rect(0, 0, 22, 856, self::B_NAVY);
+        $s->rect(22, 0, 5, 856, self::B_ORANGE);
+
+        $s->art(160, 22, 246, 112, self::LOGO, 'middle');
+        $s->text(283, 160, $w1, 'sansB', 25, self::B_NAVY, 'middle', 0.6, 1.0, 470);
+        if ($w2 !== '') {
+            $s->text(283, 182, $w2, 'caps', 12.5, self::B_ORANGE_D, 'middle', 3, 1.0, 470);
+        }
+
+        $s->rect(173, 204, 220, 258, '#FFFFFF', 26, ['stroke' => '#D3DBEA', 'sw' => 3]);
+        self::portrait($s, $m, 181, 212, 204, 242, 20);
+        self::kycMark($s, $m, 384, 446, 283, 462);
+
+        $last = $s->textFit(283, 520, (string) $m['name'], 'sansB', 36, self::INK, 'middle', 470);
+        $y = 548 + ($last - 520);
+        $s->textFit(283, $y, mb_strtoupper((string) $m['designation']), 'caps', 15.5, self::B_BLUE, 'middle', 460, 3.4, 1);
+
+        $idNo  = $m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING';
+        $label = self::codeLabel($m);
+        $py = $y + 40;
+        $s->text(283, $py, $label, 'caps', 12.5, self::MUTED, 'middle', 2);
+        $s->text(283, $py + 30, $idNo, 'monoB', 26, self::B_NAVY, 'middle', 1.4);
+        $s->rect(283 - 40, $py + 40, 80, 4, self::B_ORANGE, 2);
+
+        $gy = min(max($py + 82, 690), 712);
+        foreach (self::idFacts($m) as $i => [$lab, $val]) {
+            $x  = $i % 2 === 0 ? 56 : 300;
+            $ry = $gy + intdiv($i, 2) * 46;
+            $s->text($x, $ry, $lab, 'caps', 12.5, self::MUTED, 'start', 1.6);
+            $s->text($x, $ry + 21, $val, 'sansB', 16.5, self::INK, 'start', 0, 1.0, $i % 2 === 0 ? 228 : 210);
+        }
+        $s->rect(56, 806, 456, 1.6, '#D3DBEA');
+        $s->text(56, 834, self::idClass($m), 'caps', 15, self::B_ORANGE_D, 'start', 3.4, 1.0, 280);
+        $s->text(512, 834, 'www.' . self::web($co), 'mono', 12.5, self::B_NAVY, 'end', 0.3, 1.0, 200);
+        return $s;
+    }
+
+    /** Contact rows for a visiting-card front: WhatsApp first and strongest. */
+    private static function vcRows(array $m): array
+    {
+        $rows = [];
+        if ($m['wa'] !== '') {
+            $rows[] = ['WA', (string) $m['waDisplay'], 'wa'];
+        }
+        if ($m['call'] !== '' && $m['call'] !== $m['wa']) {
+            $rows[] = ['TEL', (string) $m['callDisplay'], 'n'];
+        }
+        if ($m['email'] !== '') {
+            $rows[] = ['MAIL', (string) $m['email'], 'n'];
+        }
+        $place = trim((string) $m['branch'] . ($m['address'] !== '' && $m['branch'] === '' ? ' ' . $m['address'] : ''));
+        if ($place !== '') {
+            $rows[] = ['AT', $place, 'n'];
+        }
+        return $rows;
+    }
+
+    private static function vcFrontWave(array $m): ApScene
+    {
+        $co = $m['company'];
+        [$w1, $w2] = self::wordmark($co);
+        $s = new ApScene(889, 508, 18);
+        $s->rect(0, 0, 889, 508, '#FFFFFF');
+
+        // The right-hand swoosh panel.
+        $s->shape([['M', 604, 0], ['L', 889, 0], ['L', 889, 508], ['L', 566, 508], ['C', 646, 382, 526, 160, 604, 0], ['Z']], self::B_NAVY);
+        $s->shape([['M', 566, 508], ['C', 646, 382, 526, 160, 604, 0], ['L', 622, 0], ['C', 544, 160, 664, 382, 584, 508], ['Z']], self::B_ORANGE);
+        $s->shape([['M', 760, 0], ['L', 889, 0], ['L', 889, 130], ['C', 840, 96, 790, 50, 760, 0], ['Z']], self::B_BLUE, 0.8);
+
+        $s->art(30, 20, 150, 86, self::LOGO, 'start');
+        $s->text(192, 60, $w1, 'sansB', 29, self::B_NAVY, 'start', 0.6, 1.0, 372);
+        if ($w2 !== '') {
+            $s->text(193, 84, $w2, 'caps', 12.5, self::B_ORANGE_D, 'start', 3.2, 1.0, 360);
+        }
+        $s->text(193, 106, self::vcTagline($m), 'sans', 14, self::MUTED, 'start', 0.2, 1.0, 360);
+
+        $x = 36;
+        $last = $s->textFit($x, 182, (string) $m['name'], 'sansB', 38, self::INK, 'start', 500);
+        $y = 210 + ($last - 182);
+        $s->textFit($x, $y, mb_strtoupper((string) $m['designation']), 'caps', 15, self::B_ORANGE_D, 'start', 500, 3.2, 1);
+        $y += 28;
+        $label = self::codeLabel($m);
+        $s->text($x, $y, $label, 'caps', 13, self::MUTED, 'start', 1.4);
+        $s->text($x + self::measure('caps', 13, $label, 1.4) + 10, $y + 1, $m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING', 'monoB', 18, self::B_NAVY, 'start', 0.8);
+
+        $ry = $y + 44;
+        foreach (self::vcRows($m) as [$lab, $value, $kind]) {
+            if ($ry > 478) {
+                break;
+            }
+            if ($kind === 'wa') {
+                self::waGlyph($s, $x + 11, $ry - 8, 12);
+                $s->text($x + 32, $ry, $value, 'sansB', 21, self::INK, 'start', 0.2, 1.0, 470);
+            } else {
+                $s->text($x, $ry, $lab, 'caps', 13, self::B_ORANGE_D, 'start', 1.4);
+                $s->text($x + 62, $ry, $value, 'sans', 17, self::INK, 'start', 0, 1.0, 450);
+            }
+            $ry += 33;
+        }
+
+        self::flags($s, 862, 26, 24, 'end');
+        if ($m['wa'] !== '') {
+            self::qrPlate($s, 690, 132, 158, ['https://wa.me/' . $m['wa']], self::B_ORANGE);
+            $s->text(769, 318, 'SCAN · WHATSAPP', 'caps', 13, '#FFFFFF', 'middle', 1, 1.0, 180);
+        }
+        $s->text(769, 470, 'www.' . self::web($co), 'sansB', 15, self::B_ORANGE_L, 'middle', 0.4, 1.0, 250);
+        return $s;
+    }
+
+    private static function vcFrontMinimal(array $m): ApScene
+    {
+        $co = $m['company'];
+        [$w1, $w2] = self::wordmark($co);
+        $s = new ApScene(889, 508, 18);
+        $s->rect(0, 0, 889, 508, '#FFFFFF');
+        $s->rect(0, 0, 889, 10, self::B_NAVY);
+        $s->rect(0, 10, 889, 4, self::B_ORANGE);
+
+        $s->art(30, 30, 140, 80, self::LOGO, 'start');
+        $s->text(182, 66, $w1, 'sansB', 27, self::B_NAVY, 'start', 0.6, 1.0, 420);
+        if ($w2 !== '') {
+            $s->text(183, 88, $w2, 'caps', 12.5, self::B_ORANGE_D, 'start', 3, 1.0, 400);
+        }
+        self::flags($s, 858, 34, 24, 'end');
+        $s->text(858, 96, 'CIN ' . (string) ($co['cin'] ?? ''), 'mono', 12.5, self::MUTED, 'end', 0, 1.0, 240);
+        $s->rect(30, 128, 829, 1.6, '#E1E7F0');
+
+        $x = 36;
+        $last = $s->textFit($x, 192, (string) $m['name'], 'sansB', 38, self::B_NAVY, 'start', 600);
+        $y = 220 + ($last - 192);
+        $s->textFit($x, $y, mb_strtoupper((string) $m['designation']), 'caps', 15, self::B_BLUE, 'start', 600, 3.2, 1);
+        $y += 28;
+        $label = self::codeLabel($m);
+        $s->text($x, $y, $label, 'caps', 13, self::MUTED, 'start', 1.4);
+        $s->text($x + self::measure('caps', 13, $label, 1.4) + 10, $y + 1, $m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING', 'monoB', 18, self::B_ORANGE_D, 'start', 0.8);
+
+        $ry = $y + 42;
+        foreach (self::vcRows($m) as [$lab, $value, $kind]) {
+            if ($ry > 444) {
+                break;
+            }
+            if ($kind === 'wa') {
+                self::waGlyph($s, $x + 11, $ry - 8, 12);
+                $s->text($x + 32, $ry, $value, 'sansB', 21, self::INK, 'start', 0.2, 1.0, 560);
+            } else {
+                $s->text($x, $ry, $lab, 'caps', 13, self::B_BLUE, 'start', 1.4);
+                $s->text($x + 62, $ry, $value, 'sans', 17, self::INK, 'start', 0, 1.0, 560);
+            }
+            $ry += 33;
+        }
+        if ($m['wa'] !== '') {
+            self::qrPlate($s, 704, 160, 150, ['https://wa.me/' . $m['wa']], self::B_NAVY);
+            $s->text(779, 334, 'SCAN · WHATSAPP', 'caps', 12.5, self::B_NAVY, 'middle', 1, 1.0, 170);
+        }
+        $s->rect(0, 466, 889, 42, self::B_NAVY);
+        $s->text($x, 493, mb_strtoupper(self::featureLine($co)), 'caps', 13, '#FFFFFF', 'start', 1, 0.92, 580);
+        $s->text(858, 493, 'www.' . self::web($co), 'sansB', 15, self::B_ORANGE_L, 'end', 0.4, 1.0, 240);
+        return $s;
+    }
+
     private static function vcPalette(string $theme): array
     {
         return match ($theme) {
@@ -732,6 +1007,12 @@ final class ApCard
             'night' => ['panel' => '#0C0D12', 'panelInk' => '#FFFFFF', 'panelSub' => self::GOLD_L, 'panelLine' => '#FFFFFF',
                         'ground' => '#15171F', 'ink' => '#F4F1E8', 'muted' => '#A6A9B6', 'accent' => self::GOLD_L, 'rule' => self::GOLD,
                         'back' => '#0C0D12', 'backInk' => '#FFFFFF', 'backSub' => self::GOLD_L, 'pattern' => '#FFFFFF'],
+            'wave'  => ['panel' => self::B_NAVY, 'panelInk' => '#FFFFFF', 'panelSub' => self::B_ORANGE_L, 'panelLine' => '#FFFFFF',
+                        'ground' => '#FFFFFF', 'ink' => self::INK, 'muted' => self::MUTED, 'accent' => self::B_ORANGE_D, 'rule' => self::B_ORANGE,
+                        'back' => self::B_NAVY, 'backInk' => '#FFFFFF', 'backSub' => self::B_ORANGE_L, 'pattern' => '#FFFFFF'],
+            'minimal' => ['panel' => self::B_NAVY, 'panelInk' => '#FFFFFF', 'panelSub' => self::B_ORANGE_L, 'panelLine' => '#FFFFFF',
+                        'ground' => '#FFFFFF', 'ink' => self::INK, 'muted' => self::MUTED, 'accent' => self::B_BLUE, 'rule' => self::B_ORANGE,
+                        'back' => '#F5F7FB', 'backInk' => self::B_NAVY, 'backSub' => self::B_ORANGE_D, 'pattern' => self::B_NAVY],
             default => ['panel' => self::NAVY, 'panelInk' => '#FFFFFF', 'panelSub' => self::GOLD_L, 'panelLine' => '#FFFFFF',
                         'ground' => self::IVORY, 'ink' => self::INK, 'muted' => self::MUTED, 'accent' => self::GOLD_D, 'rule' => self::GOLD,
                         'back' => self::NAVY, 'backInk' => '#FFFFFF', 'backSub' => self::GOLD_L, 'pattern' => '#FFFFFF'],
@@ -1550,8 +1831,20 @@ final class ApCard
      * @param list<array<string, mixed>> $members AgentPro::member() rows
      * @param string $what 'all' | 'id' | 'vc'
      */
-    public static function printHtml(array $members, string $what = 'all', string $title = 'Cards'): string
+    public static function printHtml(array $members, string $what = 'all', string $title = 'Cards', string $tpl = ''): string
     {
+        /* 6 Nov 2026 (owner: "katne thau ni fix line gardeu, A4 size ma ready — kahabata katne"):
+           every card at true size, crop marks just OUTSIDE each corner (the old dashed outline sat
+           1.2 mm outside the edge, so a card cut on it came out 2.4 mm too big), and one design for
+           the whole sheet when the office picks one (?tpl=). */
+        if ($tpl !== '' && isset(self::THEMES[$tpl])) {
+            foreach ($members as &$mm0) {
+                $mm0['theme'] = $tpl;
+            }
+            unset($mm0);
+        }
+        $mark = '<i class="cm tl-h"></i><i class="cm tl-v"></i><i class="cm tr-h"></i><i class="cm tr-v"></i>'
+              . '<i class="cm bl-h"></i><i class="cm bl-v"></i><i class="cm br-h"></i><i class="cm br-v"></i>';
         $pages = [];
         $kinds = $what === 'id' ? ['id'] : ($what === 'vc' ? ['vc'] : ['id', 'vc']);
         foreach ($kinds as $kind) {
@@ -1569,11 +1862,11 @@ final class ApCard
                     }
                     $grid = '';
                     foreach ($cells as $cell) {
-                        $grid .= '<div class="cut" style="width:' . $w . 'mm;height:' . $h . 'mm">' . $cell . '</div>';
+                        $grid .= '<div class="cut" style="width:' . $w . 'mm;height:' . $h . 'mm">' . $cell . ($cell !== '' ? $mark : '') . '</div>';
                     }
                     $pages[] = '<section class="sheet"><div class="grid" style="grid-template-columns:repeat(' . $cols . ',' . $w . 'mm);gap:' . $gap . 'mm">'
                         . $grid . '</div><p class="foot">' . htmlspecialchars($title, ENT_QUOTES) . ' · ' . ($kind === 'id' ? 'ID cards' : 'Visiting cards') . ' · '
-                        . $face . ' · print at 100% (no "fit to page"), A4' . '</p></section>';
+                        . $face . ' · ' . ($kind === 'id' ? '54 × 85.6 mm' : '88.9 × 50.8 mm') . ' · ✂ cut on the corner marks · print at 100% (no "fit to page"), A4' . '</p></section>';
                 }
             }
         }
@@ -1586,10 +1879,19 @@ final class ApCard
             . '.bar{position:sticky;top:0;display:flex;gap:10px;align-items:center;justify-content:center;padding:10px;background:#13224F;color:#fff;font-size:14px;z-index:2}'
             . '.bar button{font:inherit;font-weight:700;padding:10px 18px;border-radius:10px;border:0;background:#C9973A;color:#1A1406;cursor:pointer}'
             . '.sheet{width:210mm;height:297mm;margin:10px auto;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;page-break-after:always;box-shadow:0 2px 12px rgba(0,0,0,.15);position:relative}'
-            . '.grid{display:grid}.cut{outline:0.15mm dashed #B9B2A0;outline-offset:1.2mm}.cut svg{display:block;width:100%;height:100%}'
+            . '.grid{display:grid}.cut{position:relative}.cut svg{display:block;width:100%;height:100%}'
+            . '.cm{position:absolute;display:block;background:#111;pointer-events:none}'
+            . '.tl-h,.tr-h,.bl-h,.br-h{height:0.18mm;width:2.6mm}.tl-v,.tr-v,.bl-v,.br-v{width:0.18mm;height:2.6mm}'
+            . '.tl-h{top:-0.09mm;left:-3.4mm}.tl-v{left:-0.09mm;top:-3.4mm}.tr-h{top:-0.09mm;right:-3.4mm}.tr-v{right:-0.09mm;top:-3.4mm}'
+            . '.bl-h{bottom:-0.09mm;left:-3.4mm}.bl-v{left:-0.09mm;bottom:-3.4mm}.br-h{bottom:-0.09mm;right:-3.4mm}.br-v{right:-0.09mm;bottom:-3.4mm}'
+            . '.bar select{font:inherit;padding:8px 10px;border-radius:10px;border:0}'
             . '.foot{position:absolute;bottom:5mm;margin:0;font-size:8pt;color:#8A8577}'
             . '@media print{body{background:#fff}.bar{display:none}.sheet{margin:0;box-shadow:none}}</style></head><body>'
-            . '<div class="bar">' . count($members) . ' × ' . htmlspecialchars($title, ENT_QUOTES) . ' <button onclick="window.print()">🖨 Print</button></div>'
+            . '<div class="bar">' . count($members) . ' × ' . htmlspecialchars($title, ENT_QUOTES)
+            . ' <select aria-label="Design" onchange="var u=new URL(location.href);u.searchParams.set(\'tpl\',this.value);location.href=u.toString()">'
+            . '<option value="">Each own design</option>'
+            . implode('', array_map(static fn(string $k, string $l): string => '<option value="' . $k . '"' . ($k === $tpl ? ' selected' : '') . '>' . htmlspecialchars($l, ENT_QUOTES) . '</option>', array_keys(self::THEMES), self::THEMES))
+            . '</select> <button onclick="window.print()">🖨 Print</button></div>'
             . implode('', $pages) . '</body></html>';
     }
 

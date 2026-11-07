@@ -19,7 +19,7 @@
       allCards: 'All cards (PDF)', allDocs: 'All my documents', docKind: 'What is it?', pickFile: 'Upload from phone', camera: 'Camera', docAddLead: 'Pick a photo or PDF from the phone, or take one with the camera — it is added to your form and the office sees it.', myForm: 'मेरो फारम · My form (PDF)', myFormLead: 'The application form you filled — A4, 2 pages, with your photo and code.',
       valid: 'Valid', suspended: 'Suspended', expired: 'Expired', revoked: 'Revoked', inactive: 'Not active', validTill: 'Valid till {d}',
       vcLead: 'Scanning the QR opens a WhatsApp chat with this number.', waOnCard: 'WhatsApp number printed on the card', otherPhone: 'Second phone (optional)', tagline: 'Line under the company name',
-      greeting: 'Message ready when someone scans', greetingHint: 'Keep it short (about 3 words) — a long message is left off the printed QR so it still scans.', theme: 'Style', royal: 'Royal', gold: 'Gold', night: 'Night', save: 'Save', saved: 'Saved — your cards are updated', shareWa: 'Share on WhatsApp',
+      greeting: 'Message ready when someone scans', greetingHint: 'Keep it short (about 3 words) — a long message is left off the printed QR so it still scans.', theme: 'Style', royal: 'Royal', gold: 'Gold', night: 'Night', wave: 'Wave', minimal: 'Minimal', save: 'Save', saved: 'Saved — your cards are updated', shareWa: 'Share on WhatsApp',
       available: 'Commission you can withdraw', holding: 'Company cash with you', month: 'Earned this month', withdraw: 'Withdraw', payIn: 'Pay company', statement: 'Statement', payout: 'Payout',
       passbook: 'Passbook', requests: 'Requests', none: 'Nothing yet', amount: 'Amount', all: 'All', note: 'Note (optional)', send: 'Send request', withdrawLead: 'The office pays it to', notSet: 'add payout details in Profile',
       payLead: 'Pay with any UPI app, then send the reference (UTR).', payUpi: 'Pay with UPI app', utr: 'UTR / reference', proof: 'Screenshot (optional)', purpose: 'What is it for?', handover: 'Cash I collected', security: 'Security deposit',
@@ -39,7 +39,7 @@
       allCards: 'सबै कार्ड (PDF)', allDocs: 'मेरा सबै कागजात', docKind: 'कुन कागजात?', pickFile: 'फोनबाट अपलोड', camera: 'क्यामेरा', docAddLead: 'फोनको फोटो वा PDF छान्नुहोस्, वा क्यामेराले खिच्नुहोस् — तपाईंको फारममा जोडिन्छ र अफिसले देख्छ।', myForm: 'मेरो फारम · My form (PDF)', myFormLead: 'तपाईंले भरेको आवेदन फारम — A4, २ पाना, फोटो र कोडसहित।',
       valid: 'मान्य', suspended: 'रोकिएको', expired: 'म्याद सकियो', revoked: 'रद्द', inactive: 'सक्रिय छैन', validTill: '{d} सम्म मान्य',
       vcLead: 'QR स्क्यान गर्दा यही नम्बरमा सिधै WhatsApp खुल्छ।', waOnCard: 'कार्डमा छापिने WhatsApp नम्बर', otherPhone: 'अर्को फोन (ऐच्छिक)', tagline: 'कम्पनीको नामतलको लाइन',
-      greeting: 'स्क्यान गर्दा तयार हुने सन्देश', greetingHint: 'छोटो राख्नुहोस् (३ शब्द जति) — लामो सन्देश छापिएको QR मा राखिँदैन, ताकि QR सजिलै स्क्यान होस्।', theme: 'शैली', royal: 'शाही', gold: 'सुनौलो', night: 'रात', save: 'सेभ', saved: 'सेभ भयो — कार्ड अपडेट भयो', shareWa: 'WhatsApp मा सेयर',
+      greeting: 'स्क्यान गर्दा तयार हुने सन्देश', greetingHint: 'छोटो राख्नुहोस् (३ शब्द जति) — लामो सन्देश छापिएको QR मा राखिँदैन, ताकि QR सजिलै स्क्यान होस्।', theme: 'शैली', royal: 'शाही', gold: 'सुनौलो', night: 'रात', wave: 'लहर', minimal: 'सादा', save: 'सेभ', saved: 'सेभ भयो — कार्ड अपडेट भयो', shareWa: 'WhatsApp मा सेयर',
       available: 'निकाल्न मिल्ने कमिसन', holding: 'तपाईंसँग कम्पनीको नगद', month: 'यो महिनाको कमाइ', withdraw: 'निकाल्ने', payIn: 'कम्पनीलाई तिर्ने', statement: 'स्टेटमेन्ट', payout: 'भुक्तानी',
       passbook: 'पासबुक', requests: 'अनुरोधहरू', none: 'अहिलेसम्म केही छैन', amount: 'रकम', all: 'सबै', note: 'टिप्पणी (ऐच्छिक)', send: 'अनुरोध पठाउनुहोस्', withdrawLead: 'अफिसले यहाँ पठाउँछ:', notSet: 'प्रोफाइलमा भुक्तानी विवरण थप्नुहोस्',
       payLead: 'कुनै पनि UPI एपले तिर्नुहोस्, अनि UTR पठाउनुहोस्।', payUpi: 'UPI एपले तिर्नुहोस्', utr: 'UTR / सन्दर्भ नम्बर', proof: 'स्क्रिनसट (ऐच्छिक)', purpose: 'केको लागि?', handover: 'मैले उठाएको नगद', security: 'धरौटी',
@@ -59,7 +59,7 @@
       allCards: 'सभी कार्ड (PDF)', allDocs: 'मेरे सभी दस्तावेज़', docKind: 'कौन सा दस्तावेज़?', pickFile: 'फ़ोन से अपलोड', camera: 'कैमरा', docAddLead: 'फ़ोन से फ़ोटो या PDF चुनें, या कैमरे से खींचें — यह आपके फ़ॉर्म में जुड़ता है और ऑफिस देखता है।', myForm: 'मेरा फ़ॉर्म · My form (PDF)', myFormLead: 'आपका भरा हुआ आवेदन फ़ॉर्म — A4, 2 पेज, फ़ोटो और कोड के साथ।',
       valid: 'मान्य', suspended: 'रोका गया', expired: 'समाप्त', revoked: 'रद्द', inactive: 'सक्रिय नहीं', validTill: '{d} तक मान्य',
       vcLead: 'QR स्कैन करते ही इसी नंबर पर WhatsApp खुलता है।', waOnCard: 'कार्ड पर छपने वाला WhatsApp नंबर', otherPhone: 'दूसरा फ़ोन (वैकल्पिक)', tagline: 'कंपनी के नाम के नीचे की लाइन',
-      greeting: 'स्कैन पर तैयार संदेश', greetingHint: 'छोटा रखें (लगभग 3 शब्द) — लंबा संदेश छपे QR में नहीं जाता, ताकि QR आसानी से स्कैन हो।', theme: 'शैली', royal: 'शाही', gold: 'सुनहरा', night: 'रात', save: 'सेव', saved: 'सेव हुआ — कार्ड अपडेट हुआ', shareWa: 'WhatsApp पर शेयर',
+      greeting: 'स्कैन पर तैयार संदेश', greetingHint: 'छोटा रखें (लगभग 3 शब्द) — लंबा संदेश छपे QR में नहीं जाता, ताकि QR आसानी से स्कैन हो।', theme: 'शैली', royal: 'शाही', gold: 'सुनहरा', night: 'रात', wave: 'लहर', minimal: 'सादा', save: 'सेव', saved: 'सेव हुआ — कार्ड अपडेट हुआ', shareWa: 'WhatsApp पर शेयर',
       available: 'निकालने लायक कमीशन', holding: 'आपके पास कंपनी का नकद', month: 'इस महीने की कमाई', withdraw: 'निकालें', payIn: 'कंपनी को भुगतान', statement: 'स्टेटमेंट', payout: 'भुगतान',
       passbook: 'पासबुक', requests: 'अनुरोध', none: 'अभी कुछ नहीं', amount: 'रकम', all: 'सब', note: 'टिप्पणी (वैकल्पिक)', send: 'अनुरोध भेजें', withdrawLead: 'ऑफिस यहाँ भेजेगा:', notSet: 'प्रोफ़ाइल में भुगतान विवरण जोड़ें',
       payLead: 'किसी भी UPI ऐप से भरें, फिर UTR भेजें।', payUpi: 'UPI ऐप से भरें', utr: 'UTR / संदर्भ', proof: 'स्क्रीनशॉट (वैकल्पिक)', purpose: 'किसलिए?', handover: 'मेरा जमा नकद', security: 'सिक्योरिटी डिपॉज़िट',
@@ -288,7 +288,7 @@
   /* ---- Visiting card ---- */
   function tabCard() {
     var m = S.me.member, c = S.me.cards, v = '&t=' + Date.now();
-    var themes = ['royal', 'gold', 'night'].map(function (x) { return '<button type="button" class="ap-chip" data-theme="' + x + '" aria-pressed="' + (m.theme === x) + '">' + esc(t(x)) + '</button>'; }).join('');
+    var themes = ['royal', 'gold', 'night', 'wave', 'minimal'].map(function (x) { return '<button type="button" class="ap-chip" data-theme="' + x + '" aria-pressed="' + (m.theme === x) + '">' + esc(t(x)) + '</button>'; }).join('');
     return '<section class="ap-card"><p class="lead">' + esc(t('vcLead')) + '</p>'
       + '<div class="ap-vc"><img alt="Visiting card front" src="' + esc(c['vc-front'] + v) + '" width="889" height="508"></div>'
       + '<div class="ap-vc" style="margin-top:12px"><img alt="Visiting card back" src="' + esc(c['vc-back'] + v) + '" width="889" height="508"></div>'
