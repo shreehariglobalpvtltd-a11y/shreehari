@@ -63,9 +63,48 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['mf_action'] ?? 
             $res = BookingService::cancel($cPnr, $reason !== '' ? $reason : 'Cancelled from chalani by staff', false);
             TicketEdit::closeOpenCancels((int) ($res['booking']['id'] ?? 0), (string) (($admin['full_name'] ?? '') ?: ($admin['username'] ?? 'staff')) . ' #' . (int) $admin['id']);
             Logger::audit('manifest.cancel', 'booking', $cPnr, null, null, 'Cancelled from chalani');
-            $mfFlash = ['ok', '🗑 ' . $cPnr . ' cancelled — seats are free again. Refund (if any) is settled by hand.'];
+            /* 6 Nov 2026 (owner: "cancel gare fine ni lagaun milos, admin chahe"): optional fine */
+            $fineMsg = '';
+            $fineIn  = (float) preg_replace('/[^0-9.]/', '', (string) ($_POST['fine'] ?? ''));
+            if ($fineIn > 0 && OpsHub::fineOn()) {
+                $fineMsg = OpsHub::applyCancelFine((int) ($res['booking']['id'] ?? 0), $fineIn, $reason, $admin);
+            }
+            $mfFlash = ['ok', '🗑 ' . $cPnr . ' cancelled — seats are free again. Refund (if any) is settled by hand.' . ($fineMsg !== '' ? ' ' . $fineMsg : '')];
         } catch (Throwable $ex) {
             $mfFlash = ['bad', $cPnr . ': ' . $ex->getMessage()];
+        }
+    }
+}
+
+/* 6 Nov 2026 (owner: "chalani ma admin le payment option add garn, kasko payment
+   vayo only admin le tick laune, due ra paid color"): the office's own tick per
+   booking (OpsHub::markPaid / markDue) and its payment options list. */
+$mfCanTick = OpsHub::canTick();
+$mfAct = (string) ($_POST['mf_action'] ?? '');
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($mfAct, ['paid', 'due', 'addmode', 'delmode'], true)) {
+    if (!Security::verifyCsrf()) {
+        $mfFlash = ['bad', 'Session expired — please try again.'];
+    } elseif (!$mfCanTick) {
+        $mfFlash = ['bad', 'Payment tick is for the office (admin) only.'];
+    } else {
+        try {
+            if ($mfAct === 'paid') {
+                $amtIn = trim((string) ($_POST['amount'] ?? ''));
+                $r = OpsHub::markPaid((int) ($_POST['booking_id'] ?? 0), (string) ($_POST['mode'] ?? 'Cash'),
+                    $amtIn !== '' ? (float) preg_replace('/[^0-9.]/', '', $amtIn) : null, (string) ($_POST['note'] ?? ''), $admin);
+                $mfFlash = [$r['ok'] ? 'ok' : 'bad', $r['msg']];
+            } elseif ($mfAct === 'due') {
+                $r = OpsHub::markDue((int) ($_POST['booking_id'] ?? 0), $admin);
+                $mfFlash = ['ok', $r['msg']];
+            } elseif ($mfAct === 'addmode') {
+                OpsHub::addPayMode((string) ($_POST['mode'] ?? ''), (int) $admin['id']);
+                $mfFlash = ['ok', '➕ Payment option added.'];
+            } else {
+                OpsHub::removePayMode((string) ($_POST['mode'] ?? ''), (int) $admin['id']);
+                $mfFlash = ['ok', '➖ Payment option removed.'];
+            }
+        } catch (Throwable $ex) {
+            $mfFlash = ['bad', $ex->getMessage()];
         }
     }
 }
@@ -175,6 +214,17 @@ if ($trip !== null) {
    single-departure manifest does not list. So divide by the booking's WHOLE
    passenger-seat count (all legs), not just the rows on this departure, or a
    round-trip fare would read double. */
+/* 6 Nov 2026: paid · with agent · due — one rule (OpsHub::payState) for this
+   screen, Bus Control and the public link. */
+$mfTicks = OpsHub::collections(array_map(static fn(array $r): int => (int) ($r['booking_id'] ?? 0), $rows));
+$mfState = [];
+foreach ($rows as $r) {
+    $bid = (int) ($r['booking_id'] ?? 0);
+    if (!isset($mfState[$bid])) {
+        $mfState[$bid] = OpsHub::payState($r, $mfTicks[$bid] ?? null);
+    }
+}
+
 $paxTotalPerBooking = [];
 $bids = array_values(array_unique(array_map(
     static fn(array $r): int => (int) ($r['booking_id'] ?? 0),
@@ -364,6 +414,7 @@ foreach ($rows as $r) {
             'ws'    => $isWomanSingle($r),
             'pnr'   => (string) $r['pnr'],
             'paid'  => ($r['pay_status'] ?? '') === 'verified',
+            'state' => $mfState[(int) ($r['booking_id'] ?? 0)] ?? 'due',
         ];
     }
 }
@@ -382,7 +433,7 @@ $seatChartHtml = static function () use ($layout, $seatInfo, $coachT): string {
         if ($i === null) {
             return '<div class="scx-s scx-free"><b>' . $e($lbl) . '</b></div>';
         }
-        $cls = 'scx-s scx-busy' . ($i['woman'] ? ' scx-w' : '') . ($i['ws'] ? ' scx-ws' : '');
+        $cls = 'scx-s scx-busy' . ($i['woman'] ? ' scx-w' : '') . ($i['ws'] ? ' scx-ws' : '') . ' scx-m-' . ($i['state'] ?? 'due');
         $first = mb_substr(trim(explode(' ', trim($i['name']))[0] ?? ''), 0, 9);
         return '<div class="' . $cls . '" title="' . $e($i['name'] . ' · ' . $i['stop'] . ' · ' . $i['pnr']) . '">'
              . '<b>' . $e($lbl) . '</b><span>' . $e($first) . '</span>'
@@ -407,6 +458,8 @@ $seatChartHtml = static function () use ($layout, $seatInfo, $coachT): string {
 .scx-w{border-color:#E06AA8;background:#FDE7F2}.scx-w b{color:#9D1C5E}
 .scx-ws{border:2.5px solid #C2185B;background:#F8BBD9;box-shadow:0 0 0 2px #FCE4EC}.scx-ws b,.scx-ws i{color:#880E4F}
 .scx-leg{display:flex;flex-wrap:wrap;gap:10px;font-size:11.5px;font-weight:700;color:#3B4A66;margin:4px 0 0}
+.scx-m-paid{box-shadow:inset 0 -4px 0 #16A34A}.scx-m-agent{box-shadow:inset 0 -4px 0 #F59E0B}.scx-m-due{box-shadow:inset 0 -4px 0 #DC2626}
+.scx-ex{display:flex;flex-wrap:wrap;gap:4px}.scx-ex .scx-s{min-width:52px}
 .scx-leg em{display:inline-block;width:14px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px;font-style:normal}
 .scx *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 </style><div class="scx">';
@@ -427,11 +480,23 @@ $seatChartHtml = static function () use ($layout, $seatInfo, $coachT): string {
         }
         $h .= '</div>';
     }
+    /* 6 Nov 2026 (owner: "extra seat ... chalani dekhi har ek thau ma entry hos"): the
+       extra seats sold on this bus, as their own block, beside the berths. */
+    $exBeds = array_values(array_filter(array_keys($seatInfo), static fn($b): bool => Seats::isExtraSeat((string) $b)));
+    if ($exBeds !== []) {
+        usort($exBeds, static fn($a, $b): int => (int) substr((string) $a, 2) <=> (int) substr((string) $b, 2));
+        $h .= '<div class="scx-deck"><h4>💺 EXTRA · थप सिट (' . count($exBeds) . ')</h4><div class="scx-ex">';
+        foreach ($exBeds as $bed) { $h .= $cell((string) $bed); }
+        $h .= '</div></div>';
+    }
     $h .= '</div><div class="scx-leg"><span><em style="background:#EAF7EE;border:1px solid #9FD3AE"></em>खाली · Free</span>'
         . '<span><em style="background:#DCE8FB;border:1px solid #6E95D8"></em>बुक · Booked</span>'
         . '<span><em style="background:#FDE7F2;border:1px solid #E06AA8"></em>महिला · Woman</span>'
         . '<span><em style="background:#F8BBD9;border:2px solid #C2185B"></em>♀ महिला सिंगल स्लिपर · Woman on single sleeper</span>'
-        . '<span>📍N = चढ्ने ठाउँ नं. · pickup place no.</span></div>';
+        . '<span>📍N = चढ्ने ठाउँ नं. · pickup place no.</span>'
+        . '<span><em style="background:#fff;box-shadow:inset 0 -4px 0 #16A34A;border:1px solid #ccc"></em>भुक्तानी · Paid</span>'
+        . '<span><em style="background:#fff;box-shadow:inset 0 -4px 0 #F59E0B;border:1px solid #ccc"></em>एजेन्टसँग · With agent</span>'
+        . '<span><em style="background:#fff;box-shadow:inset 0 -4px 0 #DC2626;border:1px solid #ccc"></em>बाँकी · Due</span></div>';
     return $h;
 };
 
@@ -969,6 +1034,14 @@ admin_header('Passenger manifest', 'manifest');
 $paxCount = count($rows);
 $boarded  = count(array_filter($rows, static fn($r) => !empty($r['boarded_at'])));
 $unpaid   = count(array_filter($rows, static fn($r) => ($r['pay_status'] ?? '') !== 'verified'));
+/* 6 Nov 2026: money on this bus by state — each passenger's share of their booking */
+$mfMoney = ['paid' => 0.0, 'agent' => 0.0, 'due' => 0.0];
+$mfCount = ['paid' => 0, 'agent' => 0, 'due' => 0];
+foreach ($rows as $r) {
+    $st = $mfState[(int) ($r['booking_id'] ?? 0)] ?? 'due';
+    $mfMoney[$st] += $farePer($r);
+    $mfCount[$st]++;
+}
 $revenue  = 0.0;
 $seenPnr  = [];
 foreach ($rows as $r) {
@@ -1009,6 +1082,21 @@ foreach ($rows as $r) {
   .mf-wtag { background:#F8BBD9; color:#880E4F; border-radius:9px; padding:1px 6px; font-weight:800; }
   details.mf-chart { margin:0 0 14px; } details.mf-chart summary { cursor:pointer; font-weight:800; font-size:15px; padding:6px 0; }
   tr.mf-ws td { background:#FCE4EC !important; }
+  /* 6 Nov 2026: paid green · with agent amber · due red */
+  tr.mf-st-paid td  { background:#ECFDF3; } tr.mf-st-paid td.seat  { box-shadow:inset 4px 0 0 #16A34A; }
+  tr.mf-st-agent td { background:#FFF7E6; } tr.mf-st-agent td.seat { box-shadow:inset 4px 0 0 #F59E0B; }
+  tr.mf-st-due td   { background:#FEF2F2; } tr.mf-st-due td.seat   { box-shadow:inset 4px 0 0 #DC2626; }
+  tr.mf-grp.mf-st-paid td  { border-left:6px solid #16A34A; }
+  tr.mf-grp.mf-st-agent td { border-left:6px solid #F59E0B; }
+  tr.mf-grp.mf-st-due td   { border-left:6px solid #DC2626; }
+  .pay-paid  { background:#16A34A; color:#fff; } .pay-agent { background:#F59E0B; color:#1F1300; } .pay-due { background:#DC2626; color:#fff; }
+  .mf-pay { display:inline-flex; gap:4px; align-items:center; flex-wrap:wrap; margin:0; }
+  .mf-pay select, .mf-pay input { min-height:30px; border-radius:8px; border:1px solid var(--line,#ccc); padding:0 6px; font-size:12.5px; max-width:110px; }
+  .mf-pay .btn { padding:3px 9px; min-height:30px; font-size:12.5px; }
+  .mf-money { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 0; }
+  .mf-money span { border-radius:10px; padding:6px 12px; font-weight:800; font-size:14px; }
+  .mf-link { display:flex; gap:6px; flex-wrap:wrap; align-items:center; border:1px dashed #F0B44C; border-radius:12px; padding:8px 10px; margin:0 0 12px; background:#FFFBEB; color:#3A2A00; }
+  .mf-link input { flex:1 1 260px; min-height:38px; border-radius:8px; border:1px solid #E5C77A; padding:0 8px; font-size:12.5px; }
   .mf-acts { display:inline-flex; gap:6px; flex-wrap:wrap; margin-left:6px; vertical-align:middle; }
   .mf-acts form { display:inline; margin:0; }
   .mf-acts .btn { padding:4px 10px; min-height:30px; font-size:12.5px; }
@@ -1109,7 +1197,31 @@ foreach ($rows as $r) {
       <span><b><?= Security::e(inr($revenue)) ?></b> booked value</span>
       <?php if ($womenSingleCount > 0): ?><span style="color:#880E4F"><b>♀ <?= (int) $womenSingleCount ?></b> women on single sleeper</span><?php endif; ?>
     </div>
+    <div class="mf-money">
+      <span class="pay-paid">✅ भुक्तानी · Paid <?= $mfCount['paid'] ?> · <?= Security::e(inr($mfMoney['paid'])) ?></span>
+      <span class="pay-agent">🟠 एजेन्टसँग · With agent <?= $mfCount['agent'] ?> · <?= Security::e(inr($mfMoney['agent'])) ?></span>
+      <span class="pay-due">🔴 बाँकी · Due <?= $mfCount['due'] ?> · <?= Security::e(inr($mfMoney['due'])) ?></span>
+    </div>
   </div>
+
+  <?php if (OpsHub::publicOn()): $mfPub = OpsHub::publicUrl($date); ?>
+  <div class="mf-link no-print">🔗 <b>Live chalani link</b> (login बिना · agent लाई share):
+    <input readonly value="<?= Security::e($mfPub) ?>" onclick="this.select()">
+    <a class="btn ghost" target="_blank" rel="noopener" href="https://wa.me/?text=<?= rawurlencode('🚌 Live chalani ' . date('d M', strtotime($date)) . ': ' . $mfPub) ?>">💬 WhatsApp</a>
+    <a class="btn ghost" target="_blank" href="<?= Security::e($mfPub) ?>">👁 Open</a>
+  </div>
+  <?php endif; ?>
+
+  <?php if ($mfCanTick): ?>
+  <details class="no-print" style="margin:0 0 12px"><summary style="cursor:pointer;font-weight:800">⚙️ Payment options (<?= Security::e(implode(' · ', OpsHub::payModes())) ?>)</summary>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+      <?php foreach (OpsHub::payModes() as $pm): ?>
+        <form method="post" style="margin:0" onsubmit="return confirm('<?= Security::e($pm) ?> हटाउने?')"><?= Security::csrfField() ?><input type="hidden" name="mf_action" value="delmode"><input type="hidden" name="mode" value="<?= Security::e($pm) ?>"><button class="btn ghost" type="submit"><?= Security::e($pm) ?> ✖</button></form>
+      <?php endforeach; ?>
+      <form method="post" style="margin:0;display:flex;gap:4px"><?= Security::csrfField() ?><input type="hidden" name="mf_action" value="addmode"><input name="mode" maxlength="30" placeholder="नयाँ option · e.g. PhonePe" style="min-height:38px;border-radius:8px;border:1px solid var(--line,#ccc);padding:0 8px"><button class="btn" type="submit">➕ Add</button></form>
+    </div>
+  </details>
+  <?php endif; ?>
 
   <?php if ($mfFlash !== null): ?><div class="flash <?= $mfFlash[0] === 'ok' ? 'ok' : 'bad' ?>"><?= Security::e($mfFlash[1]) ?></div><?php endif; ?>
 
@@ -1185,7 +1297,9 @@ foreach ($rows as $r) {
           <?php endif;
           $gid = (int) $r['booking_id'];
           if ($gid !== $lastGid): $lastGid = $gid; $g = $grp[$gid]; ?>
-        <tr class="mf-grp"><td colspan="11">
+        <?php $gSt = $mfState[$gid] ?? 'due'; [$gLbl, $gCls] = OpsHub::payLabel($gSt); $gTick = $mfTicks[$gid] ?? null; ?>
+        <tr class="mf-grp mf-st-<?= Security::e($gSt) ?>"><td colspan="11">
+          <span class="mf-tag <?= Security::e($gCls) ?>"><?= Security::e($gLbl) ?></span>
           👥 <b><?= Security::e($g['lead']) ?></b> — <?= (int) $g['n'] ?> passenger<?= $g['n'] === 1 ? '' : 's' ?>
           — <?= Security::e($stopNow) ?> → <?= Security::e($stopShort((string) ($r['drop_stop'] ?: $trip['to_city']))) ?>
           — <span class="mono"><?= Security::e((string) $r['contact_phone']) ?></span>
@@ -1194,9 +1308,21 @@ foreach ($rows as $r) {
           <span class="mf-acts no-print">
             <a class="btn ghost" href="<?= $base ?>/admin/reschedule.php?pnr=<?= urlencode((string) $r['pnr']) ?>" title="अर्को मिति / अर्को बसमा सार्नुहोस्">🔁 Transfer</a>
             <a class="btn ghost" href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>#seats" title="सिट बदल्नुहोस्">💺 Seat</a>
+            <?php if ($mfCanTick): ?>
+              <?php if ($gSt !== 'paid'): ?>
+              <form method="post" class="mf-pay" title="भुक्तानी आयो — tick"><?= Security::csrfField() ?><input type="hidden" name="mf_action" value="paid"><input type="hidden" name="booking_id" value="<?= $gid ?>">
+                <select name="mode" aria-label="Payment option"><?php foreach (OpsHub::payModes() as $pm): ?><option><?= Security::e($pm) ?></option><?php endforeach; ?></select>
+                <input name="amount" inputmode="numeric" placeholder="₹ <?= (int) round((float) $r['total_amount']) ?>" aria-label="Amount">
+                <button class="btn ok" type="submit">✅ Paid</button></form>
+              <?php else: ?>
+              <small><?= $gTick !== null ? Security::e(trim((string) $gTick['mode'] . ' · ' . inr((float) $gTick['amount']) . ' · ' . ((string) ($gTick['by_name'] ?? '') ?: (string) ($gTick['by_user'] ?? '')))) : 'auto' ?></small>
+              <form method="post" class="mf-pay" onsubmit="return confirm('<?= Security::e((string) $r['pnr']) ?> फेरि बाँकी (due) बनाउने?')"><?= Security::csrfField() ?><input type="hidden" name="mf_action" value="due"><input type="hidden" name="booking_id" value="<?= $gid ?>"><button class="btn ghost" type="submit">↩️ Due</button></form>
+              <?php endif; ?>
+            <?php endif; ?>
             <?php if ($mfCanCancel): ?>
             <form method="post" onsubmit="return confirm('<?= Security::e((string) $r['pnr']) ?> — <?= Security::e(addslashes($g['lead'])) ?> (<?= (int) $g['n'] ?>) cancel गर्ने? सिट खाली हुन्छ। Refund हातैले।')">
               <?= Security::csrfField() ?><input type="hidden" name="mf_action" value="cancel"><input type="hidden" name="pnr" value="<?= Security::e((string) $r['pnr']) ?>">
+              <?php if (OpsHub::fineOn()): ?><input name="fine" inputmode="numeric" placeholder="Fine ₹" value="<?= OpsHub::fineDefault() > 0 ? (int) OpsHub::fineDefault() : '' ?>" style="width:74px;min-height:30px;border-radius:8px;border:1px solid #ccc;padding:0 6px" title="जरिवाना (खाली = छैन)"><?php endif; ?>
               <button class="btn del" type="submit">🗑 Delete</button>
             </form>
             <?php else: ?>
@@ -1206,8 +1332,8 @@ foreach ($rows as $r) {
         </td></tr>
           <?php endif; ?>
         <?php endif; ?>
-        <?php $rowWs = $isWomanSingle($r); ?>
-        <tr<?= $rowWs ? ' class="mf-ws"' : '' ?>>
+        <?php $rowWs = $isWomanSingle($r); $rSt = $mfState[(int) $r['booking_id']] ?? 'due'; ?>
+        <tr class="mf-st-<?= Security::e($rSt) ?><?= $rowWs ? ' mf-ws' : '' ?>">
           <td class="seat"><?= Security::e(Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing'))) ?></td>
           <td>
             <?= $rowWs ? '<b style="color:#C2185B" title="Woman on a single sleeper">♀ </b>' : '' ?><?= Security::e((string) $r['full_name']) ?>
@@ -1254,7 +1380,8 @@ foreach ($rows as $r) {
                      only a confirmed booking has a ticket the composer will send. */ ?>
             <?php if ((string) ($r['pnr'] ?? '') !== '' && (string) ($r['booking_status'] ?? '') === 'confirmed'): ?><?= admin_wa_button('booking_ticket', ['pnr' => (string) $r['pnr']], '💬', ['class' => 'btn ghost sm', 'title' => 'Send the ticket to this passenger on WhatsApp — opens a preview first']) ?><?php endif; ?>
           </td>
-          <td><span class="mf-tag <?= $paid ? 'mf-paid' : 'mf-unpaid' ?>"><?= Security::e($payLabel($r)) ?></span></td>
+          <td><?php [$rLbl, $rCls] = OpsHub::payLabel($rSt); ?><span class="mf-tag <?= Security::e($rCls) ?>"><?= Security::e($rLbl) ?></span>
+            <br><small class="muted"><?= Security::e($payLabel($r)) ?><?= !empty($r['pay_method']) ? ' · ' . Security::e(strtoupper((string) $r['pay_method'])) : '' ?></small></td>
           <td><?= Security::e($sourceLabel($r)) ?>
             <?php if ($bookedTime($r) !== ''): ?>
               <br><small<?= $isLate($r) ? ' style="color:#8a1111;font-weight:700"' : ' class="muted"' ?>><?= $isLate($r) ? '⚠ after dep · ' : 'booked ' ?><?= Security::e($bookedTime($r)) ?></small>
