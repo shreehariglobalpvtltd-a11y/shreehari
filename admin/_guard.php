@@ -102,6 +102,7 @@ function admin_nav(): array
         // 29 Oct 2026 (management upgrade 3.5): the office's own to-do list - never for an agent login.
         ['href' => 'office-ops.php',   'icon' => 'clipboard',  'label' => 'Office Tasks & Daily Work', 'perm' => $agentView ? 'office.tasks' : 'bookings.view', 'section' => $S1],
         ['href' => 'company.php',      'icon' => 'building',   'label' => 'Pvt Ltd & Branches',     'perm' => 'dashboard.view',   'section' => $S1],
+        ['href' => 'ticket-statement.php', 'icon' => 'ticket', 'label' => $agentView ? 'My Ticket Statement · मेरो टिकट' : 'Ticket Statement · कसले कति टिकट', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S1],   // 9 Nov 2026: who cut how many tickets, date-wise
         ['href' => 'agent-sales.php',  'icon' => 'doc',        'label' => $agentView ? 'My Sales' : 'Agent Sales',        'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S1],
         ['href' => 'agent-passengers.php','icon' => 'user-solo','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S1],
         ['href' => 'agent-offline.php','icon' => 'notepad',    'label' => 'Offline / Paper Tickets','perm' => $agentView ? 'bookings.view' : 'commissions.view',  'section' => $S1],
@@ -224,7 +225,7 @@ function admin_nav_main(): array
         // 1 Tickets & Bus
         'quick-ticket.php', 'bookings.php', 'bus-control.php', 'manifest.php', 'reschedule.php',
         // 2 Agents & Staff
-        'agent-quick.php', 'people.php', 'team.php', 'staff.php', '/me/',
+        'ticket-statement.php', 'agent-quick.php', 'people.php', 'team.php', 'staff.php', '/me/',
         // 3 Money
         'payments.php', 'cash-book.php', 'settlements.php', 'accounting.php',
         // 4 Places & Map
