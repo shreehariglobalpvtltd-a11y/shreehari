@@ -31,6 +31,96 @@ $scope = Auth::bookingScopeAdminId();   // non-null = agent / counter: own ticke
 $hasBookedBy = Database::fetch("SHOW COLUMNS FROM bookings LIKE 'booked_by_admin_id'") !== null;
 $sellerSql   = $hasBookedBy ? 'COALESCE(b.booked_by_admin_id, b.sold_by_admin_id)' : 'b.sold_by_admin_id';
 
+/* ---- Agent commission, merged in (9 Nov 2026) ----------------------------
+   Owner: "agent system ma merge gardeu — commission jati bela nikalna milos,
+   agent lai per head jati pani rakhna, ghataun badhauna (200 ho), pachhi
+   man lageko". The rate is the same store the ticket engine already pays
+   from (TeamFinance terms > per-agent override > company rate), so a change
+   here applies to the next ticket and never rewrites a commission already
+   posted. Office: super-admin or staff.manage + settings. Agent: their own
+   commission and a Withdraw button (AgentWallet::requestPayout). */
+require_once dirname(__DIR__) . '/includes/teamfinance.php';
+$selfId   = (int) ($admin['id'] ?? 0);
+$isAgent  = (string) ($admin['role'] ?? '') === 'agent';
+$canComm  = $scope === null && (Auth::isSuperadmin() || (Auth::can('staff.manage') && Auth::canManageSettings()));
+$pctTxt   = static fn(float $p): string => rtrim(rtrim(number_format($p, 2), '0'), '.') . '%';
+$rateOf   = static function (int $aid) use ($pctTxt): array {   // [amount, label, source]
+    $t = TeamFinance::term($aid);
+    if ($t !== null) {
+        $r = (float) $t['rate'];
+        return match ((string) $t['basis']) {
+            'flat'    => [$r, inr($r) . ' / passenger', 'terms'],
+            'booking' => [$r, inr($r) . ' / booking', 'terms'],
+            'percent' => [$r, $pctTxt($r) . ' of fare', 'terms'],
+            default   => [0.0, 'Salary only', 'terms'],
+        };
+    }
+    $ov = AgentWallet::commissionOverrideFor($aid);
+    if ($ov['mode'] === 'flat' || ($ov['mode'] === 'booking')) {
+        $r = (float) ($ov['flat'] ?? AgentWallet::flatRateFor($aid));
+        return [$r, inr($r) . ($ov['mode'] === 'booking' ? ' / booking' : ' / passenger'), 'own'];
+    }
+    if ($ov['mode'] === 'percent' || !AgentWallet::flatMode()) {
+        $p = (float) AgentWallet::commissionPercentFor($aid);
+        return [$p, $pctTxt($p) . ' of fare', $ov['mode'] === 'percent' ? 'own' : 'company'];
+    }
+    $r = AgentWallet::flatRateFor($aid);
+    return [$r, inr($r) . ' / passenger', 'company'];
+};
+$payoutOk = static function (int $aid): bool {
+    require_once dirname(__DIR__) . '/includes/teamregistry.php';
+    if (!TeamRegistry::ready()) { return true; }
+    return Database::exists(
+        "SELECT 1 FROM team_identity i JOIN agent_applications a ON i.person_key = CONCAT('agent:', a.id)
+          WHERE a.admin_id = :a AND i.payout_verified = 1", ['a' => $aid]);
+};
+
+if (Security::isPost()) {
+    $back = 'admin/ticket-statement.php' . ((string) ($_SERVER['QUERY_STRING'] ?? '') !== '' ? '?' . $_SERVER['QUERY_STRING'] : '');
+    $act  = (string) ($_POST['act'] ?? '');
+    try {
+        if (!Security::verifyCsrf()) { throw new RuntimeException('Page was open too long — try again.'); }
+        if ($act === 'rate') {
+            if (!$canComm) { throw new RuntimeException('Only the super-admin / a settings manager sets commission.'); }
+            $aid = (int) ($_POST['id'] ?? 0);
+            if (!Database::exists("SELECT 1 FROM admins WHERE id = :i AND role = 'agent'", ['i' => $aid])) { throw new RuntimeException('Not an agent.'); }
+            $raw  = trim((string) ($_POST['rate'] ?? ''));
+            $rate = $raw === '' ? null : (float) preg_replace('/[^0-9.]/', '', $raw);
+            if ($rate !== null && ($rate < 0 || $rate > 10000)) { throw new RuntimeException('Commission must be ₹0 – ₹10,000 per passenger.'); }
+            $term = TeamFinance::term($aid);
+            if ($term !== null) {
+                // A signed terms row beats the override, so the change must be a new terms row (from now on).
+                AgentWallet::setCommissionOverride($aid, null, null, $selfId);
+                $use = $rate ?? AgentWallet::flatRateFor($aid);
+                TeamFinance::terms($aid, ['basis' => 'flat', 'rate' => $use, 'salary' => (float) ($term['salary'] ?? 0),
+                    'effective_at' => date('Y-m-d'), 'reason' => 'Ticket Statement: ' . inr($use) . ' per passenger'], $selfId);
+            } elseif ($rate === null) {
+                AgentWallet::setCommissionOverride($aid, null, null, $selfId);
+            } else {
+                AgentWallet::setCommissionOverride($aid, 'flat', $rate, $selfId);
+            }
+            $who = trim(AgentWallet::agentCodeLabel($aid) . ' ' . (string) Database::scalar("SELECT COALESCE(NULLIF(full_name, ''), username) FROM admins WHERE id = :i", ['i' => $aid], ''));
+            $_SESSION['shg_ts_flash'] = ['ok', $who . ': ' . $rateOf($aid)[1] . ' — from the next ticket'];
+        } elseif ($act === 'company_rate') {
+            if (!$canComm) { throw new RuntimeException('Only the super-admin / a settings manager sets commission.'); }
+            $d = (int) ($_POST['direct'] ?? 0); $j = (int) ($_POST['joint'] ?? 0);
+            if ($d < 0 || $d > 10000 || $j < 0 || $j > 10000) { throw new RuntimeException('Rate must be ₹0 – ₹10,000.'); }
+            AgentWallet::setFlatRates($d, $j, $selfId, 'Ticket Statement');
+            $_SESSION['shg_ts_flash'] = ['ok', 'Company commission: ' . inr($d) . ' direct · ' . inr($j) . ' team, per passenger — from the next ticket'];
+        } elseif ($act === 'withdraw') {
+            if (!$isAgent) { throw new RuntimeException('Only an agent withdraws commission.'); }
+            $amt = (float) preg_replace('/[^0-9.]/', '', (string) ($_POST['amount'] ?? ''));
+            AgentWallet::requestPayout($selfId, $amt, 'Ticket Statement');
+            $_SESSION['shg_ts_flash'] = ['ok', 'Withdrawal request sent to the office · पैसा निकाल्ने अनुरोध पठाइयो'];
+        }
+    } catch (Throwable $ex) {
+        $_SESSION['shg_ts_flash'] = ['bad', $ex->getMessage()];
+    }
+    Response::redirect($back);
+}
+$flash = $_SESSION['shg_ts_flash'] ?? null;
+unset($_SESSION['shg_ts_flash']);
+
 /* ---- Date window ---------------------------------------------------- */
 $isDate  = static fn(string $d): bool => preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) === 1;
 $presets = ['today' => 'Today', 'yesterday' => 'Yesterday', 'week' => 'This week', 'month' => 'This month', 'lastmonth' => 'Last month', 'custom' => 'Pick dates'];
@@ -51,6 +141,7 @@ switch ($range) {
     default:          $from = date('Y-m-01', strtotime($today)); $toIncl = $today; break;
 }
 $toExcl = addDaysISO($toIncl, 1);
+$period = $from === $toIncl ? formatDate($from, 'j M Y') : formatDate($from, 'j M') . ' – ' . formatDate($toIncl, 'j M Y');
 
 /* ---- Who: type filter + one person ----------------------------------- */
 $types = ['all' => 'All', 'agent' => 'Agents', 'staff' => 'Staff', 'counter' => 'Counter', 'online' => 'Online'];
@@ -158,6 +249,61 @@ foreach ($byDay as &$list) { usort($list, $rank); }
 unset($list);
 uasort($byPerson, $rank);
 
+/* ---- Commission earned in the window (credited agent, from the ledger) ---- */
+$commBy = [];
+try {
+    $cp = ['f' => $params['f'], 't' => $params['t']];
+    $cw = '';
+    if ($scope !== null) { $cw = ' AND agent_admin_id = :me'; $cp['me'] = $scope; }
+    foreach (Database::fetchAll(
+        "SELECT agent_admin_id AS a, COALESCE(SUM(amount), 0) AS s FROM agent_ledger
+          WHERE account = 'commission' AND entry_type IN ('commission','commission_void')
+            AND created_at >= :f AND created_at < :t$cw GROUP BY agent_admin_id", $cp) as $c) {
+        $commBy[(int) $c['a']] = round((float) $c['s'], 2);
+    }
+} catch (Throwable $ex) { $commBy = []; }
+
+/* One agent's commission card: rate (editable for the office), earned in
+   this period, due now, and how to take it out. */
+$agentCard = static function (int $aid, string $name, bool $self) use ($e, $rateOf, $payoutOk, $commBy, $canComm, $period): string {
+    [$amt, $lbl, $src] = $rateOf($aid);
+    $due   = AgentWallet::balances($aid)['commission'] ?? 0.0;
+    $open  = AgentWallet::openPayoutRequests($aid);
+    $okPay = $payoutOk($aid);
+    $srcTx = ['company' => 'company rate', 'own' => 'own rate', 'terms' => 'agreement rate'][$src] ?? '';
+    $h  = '<section class="pc-card ts-day ts-comm"><div class="pc-card-h"><h3>' . ($self ? 'My commission · मेरो कमिसन' : 'Commission · ' . $e($name)) . '</h3>'
+        . '<small>' . $e($srcTx) . '</small></div><div class="pc-card-b">';
+    $h .= '<div class="pc-kpis" style="margin:0 0 10px">'
+        . '<div class="pc-kpi"><small>Per head · प्रति यात्री</small><b>' . $e($lbl) . '</b><i>new tickets</i></div>'
+        . '<div class="pc-kpi ok"><small>Earned · कमाइ</small><b>' . $e(inr($commBy[$aid] ?? 0)) . '</b><i>' . $e($period) . '</i></div>'
+        . '<div class="pc-kpi warn"><small>Can withdraw · निकाल्न मिल्ने</small><b>' . $e(inr(max(0, (float) $due))) . '</b><i>commission due now</i></div></div>';
+    if ($canComm && !$self) {
+        $h .= '<form method="post" class="pc-form ts-pick">' . Security::csrfField()
+            . '<input type="hidden" name="act" value="rate"><input type="hidden" name="id" value="' . $aid . '">'
+            . '<label>₹ per passenger <input class="pc-in" name="rate" inputmode="numeric" style="width:110px" value="' . ($src !== 'company' ? (int) $amt : '') . '" placeholder="' . (int) AgentWallet::flatRateFor($aid) . '"></label>'
+            . '<button class="pc-btn sm pri" type="submit">' . pc_icon('check') . 'Save rate</button>'
+            . '<small class="pc-note">Blank = company rate. Badhauna / ghatauna jati bela pani — next ticket dekhi lagu.</small></form>';
+    }
+    if ($open !== []) {
+        $h .= '<p class="pc-note" style="margin-top:8px">' . pc_badge('Withdrawal requested', 'warn') . ' ' . $e(inr((float) $open[0]['amount'])) . ' · ' . $e(formatDate(substr((string) $open[0]['created_at'], 0, 10), 'j M')) . ' — '
+            . ($self ? 'office le pathaune kram ma chha.' : '<a href="/admin/agent-360.php?agent=' . $aid . '">Pay now →</a>') . '</p>';
+    } elseif ($self) {
+        if (!$okPay) {
+            $h .= '<p class="pc-note" style="margin-top:8px">' . pc_badge('Bank / UPI not verified', 'bad') . ' Office lai bank / UPI details verify garna bhannus, tyaspachhi jati bela pani nikalna milchha.</p>';
+        } elseif ($due > 0) {
+            $h .= '<form method="post" class="pc-form ts-pick" style="margin-top:8px">' . Security::csrfField()
+                . '<input type="hidden" name="act" value="withdraw">'
+                . '<label>Amount <input class="pc-in" name="amount" inputmode="numeric" style="width:130px" placeholder="' . (int) $due . ' (all)"></label>'
+                . '<button class="pc-btn pri" type="submit" onclick="return confirm(\'Withdraw request pathaune?\')">' . pc_icon('wallet') . 'Withdraw · निकाल्नुहोस्</button>'
+                . '<small class="pc-note">Khali = sabai.</small></form>';
+        }
+    } else {
+        $h .= '<p class="pc-note" style="margin-top:8px">' . ($okPay ? pc_badge('Can withdraw any time', 'ok') : pc_badge('Bank / UPI not verified — cannot withdraw', 'bad') . ' <a href="/admin/team.php">Verify on Team →</a>')
+            . ' · <a href="/admin/agent-360.php?agent=' . $aid . '">Wallet &amp; payouts →</a></p>';
+    }
+    return $h . '</div></section>';
+};
+
 /* ---- CSV download -------------------------------------------------------- */
 if (($_GET['format'] ?? '') === 'csv') {
     header('Content-Type: text/csv; charset=utf-8');
@@ -184,7 +330,6 @@ $keep = ['range' => $range, 'type' => $type];
 if ($range === 'custom') { $keep['from'] = $from; $keep['to'] = $toIncl; }
 if ($sellerPick > 0) { $keep['seller'] = (string) $sellerPick; } elseif ($sellerPick < 0) { $keep['seller'] = 'online'; }
 $q = static fn(array $over): string => '?' . http_build_query(array_filter($over + $keep, static fn($v) => $v !== null && $v !== ''));
-$period = $from === $toIncl ? formatDate($from, 'j M Y') : formatDate($from, 'j M') . ' – ' . formatDate($toIncl, 'j M Y');
 
 admin_header('Ticket Statement', 'ticket-statement');
 ?>
@@ -250,6 +395,26 @@ admin_header('Ticket Statement', 'ticket-statement');
 </form>
 <?php endif; ?>
 
+<?php if (is_array($flash)): ?><div class="flash <?= $flash[0] === 'ok' ? 'ok' : 'bad' ?>"><?= $e(admin_plain((string) $flash[1])) ?></div><?php endif; ?>
+
+<?php if ($scope !== null && $isAgent): ?>
+  <?= $agentCard($selfId, '', true) ?>
+<?php elseif ($sellerPick > 0 && Database::exists("SELECT 1 FROM admins WHERE id = :i AND role = 'agent'", ['i' => $sellerPick])): ?>
+  <?= $agentCard($sellerPick, (string) Database::scalar('SELECT COALESCE(NULLIF(full_name, \'\'), username) FROM admins WHERE id = :i', ['i' => $sellerPick], ''), false) ?>
+<?php endif; ?>
+
+<?php if ($canComm && $sellerPick === 0): ?>
+<form method="post" class="pc-card pc-card-b pc-form ts-pick" style="margin:0 0 12px">
+  <?= Security::csrfField() ?><input type="hidden" name="act" value="company_rate">
+  <b>Agent commission · कमिसन (company rate)</b>
+  <label>Direct ₹ <input class="pc-in" name="direct" inputmode="numeric" style="width:90px" value="<?= (int) Settings::getFloat('agent_flat_direct', 200.0) ?>"></label>
+  <label>Team ₹ <input class="pc-in" name="joint" inputmode="numeric" style="width:90px" value="<?= (int) Settings::getFloat('agent_flat_joint', 400.0) ?>"></label>
+  <span class="pc-note">per passenger</span>
+  <button class="pc-btn sm pri" type="submit" onclick="return confirm('Company commission change garne? Next ticket dekhi lagu hunchha.')"><?= pc_icon('check') ?>Save</button>
+  <small class="pc-note">One agent different? Click the agent's name below and set their own ₹.</small>
+</form>
+<?php endif; ?>
+
 <div class="pc-kpis">
   <div class="pc-kpi ok"><small>Tickets cut · टिकट</small><b><?= (int) $tot['tickets'] ?></b><i><?= (int) $tot['bookings'] ?> bookings</i></div>
   <div class="pc-kpi"><small>Amount · रकम</small><b><?= $e(inr($tot['amount'])) ?></b><i><?= $e($period) ?></i></div>
@@ -261,14 +426,15 @@ admin_header('Ticket Statement', 'ticket-statement');
   <div class="pc-card pc-empty">No ticket in <?= $e($period) ?>.</div>
 <?php else: ?>
 
-<?php if ($scope === null && $sellerPick === 0 && count($byPerson) > 1): ?>
+<?php if ($scope === null && $sellerPick === 0 && $byPerson !== []): ?>
 <section class="pc-card ts-day">
   <div class="pc-card-h"><h3>Total by person · जम्मा</h3><small><?= $e($period) ?> — click a name to see only their days</small></div>
   <?php $n = 0; foreach ($byPerson as $p): ?>
     <a class="ts-row" style="display:block;text-decoration:none;color:inherit" href="<?= $e($q(['seller' => $p['sid'] > 0 ? (string) $p['sid'] : 'online'])) ?>">
       <div style="display:grid;grid-template-columns:28px 1fr auto auto;gap:10px;align-items:center;padding:10px 14px">
         <span class="ts-n"><?= ++$n ?>.</span>
-        <span class="ts-nm"><b><?= $e($p['name']) ?></b><?= pc_badge($typeLabel[$p['type']], $typeTone[$p['type']]) ?> <small class="pc-note"><?= (int) $p['days'] ?> day<?= $p['days'] === 1 ? '' : 's' ?></small></span>
+        <span class="ts-nm"><b><?= $e($p['name']) ?></b><?= pc_badge($typeLabel[$p['type']], $typeTone[$p['type']]) ?> <small class="pc-note"><?= (int) $p['days'] ?> day<?= $p['days'] === 1 ? '' : 's' ?></small>
+          <?php if ($p['type'] === 'agent'): ?><br><small class="pc-note">Commission <?= $e($rateOf($p['sid'])[1]) ?> · earned <?= $e(inr($commBy[$p['sid']] ?? 0)) ?> · due <?= $e(inr(max(0, (float) (AgentWallet::balances($p['sid'])['commission'] ?? 0)))) ?></small><?php endif; ?></span>
         <span class="ts-big"><?= (int) $p['tickets'] ?> <small>tickets</small></span>
         <span class="ts-amt"><?= $e(inr($p['amount'])) ?><?= $p['cancelled'] > 0 ? '<br><small style="color:#b91c1c">' . (int) $p['cancelled'] . ' cancelled</small>' : '' ?></span>
       </div>
