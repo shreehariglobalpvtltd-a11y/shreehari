@@ -33,9 +33,26 @@ $cutSql      = $hasBookedBy ? 'COALESCE(b.booked_by_admin_id, b.sold_by_admin_id
 /* 9 Nov 2026 owner: "jasle jati kate ni kei hudaina, main kasko name jodeko ticket chha".
    Default = the agent whose name is on the ticket (sold_by_admin_id — the one the
    commission goes to; NULL = online). by=cut = the login that actually cut it. */
-$by          = (string) ($_GET['by'] ?? 'agent');
-if (!in_array($by, ['agent', 'cut'], true)) { $by = 'agent'; }
-$sellerSql   = $by === 'cut' ? $cutSql : 'b.sold_by_admin_id';
+/* 9 Nov 2026 owner (2nd): "agent ko list, counter ma basne ko list - ticket kasko
+   name ma assign, code kasko halyo, commission kaslai - counter j pani kasko ID
+   bata katya farak pardaina". Three lists:
+     agent   - by the agent CODE on the ticket (sold_by_admin_id), whoever cut it
+     counter - tickets cut at a desk (any non-agent login), by the COUNTER (place),
+               whichever login was used: the desk frozen on the sale, else the
+               clerk's profile desk, else "Office - no counter set"
+     online  - the customer booked it themself
+   'cut' (by the login that cut it) stays as a fourth, rarely needed view. */
+$hasProf   = (static function (): bool { try { return Database::fetch("SHOW COLUMNS FROM admin_profiles LIKE 'counter_code'") !== null; } catch (Throwable $e) { return false; } })();
+$deskParts = [];
+if (CounterDesk::stampColumn()) { $deskParts[] = "NULLIF(b.counter_code, '')"; }
+if ($hasProf) { $deskParts[] = "NULLIF(ap.counter_code, '')"; }
+$deskSql   = 'COALESCE(' . implode(', ', array_merge($deskParts, ["''"])) . ')';
+$views     = ['agent' => 'Agents · एजेन्ट', 'counter' => 'Counters · काउन्टर', 'online' => 'Online', 'cut' => 'Who cut it · कसले काट्यो'];
+$view      = (string) ($_GET['view'] ?? (($_GET['by'] ?? '') === 'cut' ? 'cut' : 'agent'));
+if (!isset($views[$view])) { $view = 'agent'; }
+if ($scope !== null) { $view = (string) ($admin['role'] ?? '') === 'agent' ? 'agent' : 'cut'; }
+$keySql    = match ($view) { 'counter' => $deskSql, 'cut' => $cutSql, default => 'b.sold_by_admin_id' };
+$sellerSql = $keySql;
 
 /* ---- Agent commission, merged in (9 Nov 2026) ----------------------------
    Owner: "agent system ma merge gardeu — commission jati bela nikalna milos,
@@ -150,11 +167,15 @@ $toExcl = addDaysISO($toIncl, 1);
 $period = $from === $toIncl ? formatDate($from, 'j M Y') : formatDate($from, 'j M') . ' – ' . formatDate($toIncl, 'j M Y');
 
 /* ---- Who: type filter + one person ----------------------------------- */
-$types = ['all' => 'All', 'agent' => 'Agents', 'staff' => 'Staff', 'counter' => 'Counter', 'online' => 'Online'];
-$type  = (string) ($_GET['type'] ?? 'all');
-if (!isset($types[$type]) || $scope !== null) { $type = 'all'; }
-$sellerPick = $scope ?? max(0, (int) ($_GET['seller'] ?? 0));   // 0 = everyone, -1 = online only
-if (isset($_GET['seller']) && (string) $_GET['seller'] === 'online' && $scope === null) { $sellerPick = -1; }
+$pick       = $scope !== null ? (string) $scope : preg_replace('/[^A-Za-z0-9_-]/', '', (string) ($_GET['seller'] ?? ''));
+if ($view === 'online') { $pick = ''; }
+$picked     = $pick !== '';
+$sellerPick = ($view !== 'counter' && ctype_digit($pick)) ? (int) $pick : 0;
+$pickFilter = static function (string $k, string $ph, array &$prm) use ($view, $keySql): string {
+    if ($k === 'online') { return " AND $keySql IS NULL"; }
+    $prm[$ph] = $view === 'counter' ? ($k === '-' ? '' : $k) : (int) $k;
+    return " AND $keySql = :$ph";
+};
 
 $typeOf = static function (?string $role, int $id): string {
     if ($id <= 0) { return 'online'; }
@@ -170,15 +191,18 @@ $where  = "b.created_at >= :f AND b.created_at < :t
            AND ( b.status IN ('confirmed','completed','cancelled')
                  OR (b.status = 'pending' AND $cutSql IS NOT NULL) )";
 $params = ['f' => $from . ' 00:00:00', 't' => $toExcl . ' 00:00:00'];
-if ($sellerPick > 0)      { $where .= " AND $sellerSql = :sp"; $params['sp'] = $sellerPick; }
-elseif ($sellerPick < 0)  { $where .= " AND $sellerSql IS NULL"; }
-if ($type === 'online')   { $where .= " AND $sellerSql IS NULL"; }
-elseif ($type === 'agent')   { $where .= " AND a.role = 'agent'"; }
-elseif ($type === 'counter') { $where .= " AND a.role = 'counter'"; }
-elseif ($type === 'staff')   { $where .= " AND a.id IS NOT NULL AND a.role NOT IN ('agent','counter')"; }
+$where .= match ($view) {
+    'agent'   => ' AND b.sold_by_admin_id IS NOT NULL',
+    'counter' => " AND $cutSql IS NOT NULL AND COALESCE(c.role, '') <> 'agent'",
+    'online'  => " AND b.sold_by_admin_id IS NULL AND $cutSql IS NULL",
+    default   => '',
+};
+if ($picked) { $where .= $pickFilter($pick, 'sp', $params); }
 
 $seatSql = "GREATEST(1, COALESCE((SELECT SUM(l.seat_count) FROM booking_legs l WHERE l.booking_id = b.id AND l.leg_type = 'outbound'), 0))";
-$from_   = "FROM bookings b LEFT JOIN admins a ON a.id = $sellerSql";
+$from_   = 'FROM bookings b LEFT JOIN admins a ON a.id = ' . ($view === 'cut' ? $cutSql : 'b.sold_by_admin_id')
+         . " LEFT JOIN admins c ON c.id = $cutSql"
+         . ($hasProf ? " LEFT JOIN admin_profiles ap ON ap.admin_id = $cutSql" : '');
 
 /* ---- Details (opened on click) -------------------------------------- */
 if (($_GET['ajax'] ?? '') === 'rows') {
@@ -187,8 +211,8 @@ if (($_GET['ajax'] ?? '') === 'rows') {
     if (!$isDate($d)) { http_response_code(400); exit('bad date'); }
     $w = $where . ' AND DATE(b.created_at) = :d';
     $p = $params + ['d' => $d];
-    if ($s === 'online') { $w .= " AND $sellerSql IS NULL"; }
-    elseif ((int) $s > 0) { $w .= " AND $sellerSql = :s1"; $p['s1'] = (int) $s; }
+    $s = preg_replace('/[^A-Za-z0-9_-]/', '', $s);
+    if ($s !== '' && $view !== 'online') { $w .= $pickFilter($s, 's1', $p); }
     $rows = Database::fetchAll(
         "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, $seatSql AS seats,
                 (SELECT COALESCE(NULLIF(x.full_name, ''), x.username) FROM admins x WHERE x.id = b.sold_by_admin_id) AS agent_name,
@@ -230,22 +254,31 @@ if (($_GET['ajax'] ?? '') === 'rows') {
 
 /* ---- Day x person totals ------------------------------------------------ */
 $grid = Database::fetchAll(
-    "SELECT DATE(b.created_at) AS d, $sellerSql AS sid, a.full_name, a.username, a.role,
+    "SELECT DATE(b.created_at) AS d, $keySql AS sid, MAX(COALESCE(NULLIF(a.full_name, ''), a.username)) AS nm, MAX(a.role) AS role,
             SUM(CASE WHEN b.status <> 'cancelled' THEN $seatSql ELSE 0 END) AS tickets,
             SUM(CASE WHEN b.status <> 'cancelled' THEN 1 ELSE 0 END) AS bookings,
             SUM(CASE WHEN b.status <> 'cancelled' THEN b.total_amount ELSE 0 END) AS amount,
             SUM(CASE WHEN b.status = 'cancelled' THEN $seatSql ELSE 0 END) AS cancelled
        $from_ WHERE $where
-      GROUP BY DATE(b.created_at), $sellerSql, a.full_name, a.username, a.role",
+      GROUP BY DATE(b.created_at), $keySql",
     $params
 );
 
 $byDay = []; $byPerson = []; $tot = ['tickets' => 0, 'bookings' => 0, 'amount' => 0.0, 'cancelled' => 0];
 foreach ($grid as $g) {
-    $sid  = (int) ($g['sid'] ?? 0);
-    $key  = $sid > 0 ? (string) $sid : 'online';
-    $name = $sid > 0 ? (string) ($g['full_name'] ?: $g['username'] ?: ('#' . $sid)) : 'Online · Website / App';
-    $row  = ['key' => $key, 'sid' => $sid, 'name' => $name, 'type' => $typeOf($g['role'] ?? null, $sid),
+    if ($view === 'counter') {
+        $code = (string) ($g['sid'] ?? '');
+        $sid  = 0;
+        $key  = $code === '' ? '-' : $code;
+        $name = $code === '' ? 'Office · no counter set' : CounterDesk::label($code);
+        $tp   = 'counter';
+    } else {
+        $sid  = (int) ($g['sid'] ?? 0);
+        $key  = $sid > 0 ? (string) $sid : 'online';
+        $name = $sid > 0 ? (string) ($g['nm'] ?: ('#' . $sid)) : 'Online · Website / App';
+        $tp   = $typeOf($g['role'] ?? null, $sid);
+    }
+    $row  = ['key' => $key, 'sid' => $sid, 'name' => $name, 'type' => $tp,
              'tickets' => (int) $g['tickets'], 'bookings' => (int) $g['bookings'], 'amount' => (float) $g['amount'], 'cancelled' => (int) $g['cancelled']];
     $byDay[(string) $g['d']][] = $row;
     if (!isset($byPerson[$key])) { $byPerson[$key] = $row; $byPerson[$key]['days'] = 0; }
@@ -332,13 +365,17 @@ if (($_GET['format'] ?? '') === 'csv') {
 }
 
 /* ---- People for the picker (office only) ---------------------------------- */
-$people = $scope === null
-    ? Database::fetchAll("SELECT id, full_name, username, role FROM admins WHERE is_active = 1 ORDER BY role = 'agent' DESC, full_name")
-    : [];
+$people = [];
+if ($scope === null && $view === 'agent') {
+    $people = Database::fetchAll("SELECT id, full_name, username, role FROM admins WHERE is_active = 1 AND role = 'agent' ORDER BY full_name");
+} elseif ($scope === null && $view === 'cut') {
+    $people = Database::fetchAll("SELECT id, full_name, username, role FROM admins WHERE is_active = 1 ORDER BY role = 'agent' DESC, full_name");
+}
+$desks = $scope === null && $view === 'counter' ? CounterDesk::options(false) : [];
 
-$keep = ['range' => $range, 'type' => $type, 'by' => $by];
+$keep = ['range' => $range, 'view' => $view];
 if ($range === 'custom') { $keep['from'] = $from; $keep['to'] = $toIncl; }
-if ($sellerPick > 0) { $keep['seller'] = (string) $sellerPick; } elseif ($sellerPick < 0) { $keep['seller'] = 'online'; }
+if ($picked && $scope === null) { $keep['seller'] = $pick; }
 $q = static fn(array $over): string => '?' . http_build_query(array_filter($over + $keep, static fn($v) => $v !== null && $v !== ''));
 
 admin_header('Ticket Statement', 'ticket-statement');
@@ -369,43 +406,47 @@ admin_header('Ticket Statement', 'ticket-statement');
 </style>
 <div class="pc">
 <?= pc_head('Ticket Statement · कसले कति टिकट काट्यो',
-    $period . ($by === 'agent' ? ($scope !== null ? ' — tickets in your name' : ' — tickets by the agent name on the ticket, day by day') : ($scope !== null ? ' — tickets you cut' : ' — who cut how many tickets, day by day')),
+    $period . ($scope !== null ? ($view === 'agent' ? ' — tickets in your name' : ' — tickets you cut') : match ($view) {
+        'agent'   => ' — by the agent code on the ticket (whoever cut it)',
+        'counter' => ' — by counter / place (whichever login cut it)',
+        'online'  => ' — customers who booked themselves',
+        default   => ' — by the login that cut it',
+    }),
     '<a class="pc-btn" href="' . $e($q(['format' => 'csv'])) . '">' . pc_icon('download') . 'Excel / CSV</a>'
   . '<button class="pc-btn" type="button" onclick="tsOpenAll().then(function(){window.print()})">' . pc_icon('printer') . 'Print</button>') ?>
 
-<div class="ts-chips" aria-label="Count by">
-  <a href="<?= $e($q(['by' => 'agent'])) ?>" class="<?= $by === 'agent' ? 'on' : '' ?>">Agent name on ticket · कसको नाममा</a>
-  <a href="<?= $e($q(['by' => 'cut'])) ?>" class="<?= $by === 'cut' ? 'on' : '' ?>">Who cut it · कसले काट्यो</a>
-</div>
+<?php if ($scope === null): ?>
+<?= pc_tabs(array_map(static fn(string $l): array => [$l, 'list', null], $views), $view, array_diff_key($keep, ['view' => 1, 'seller' => 1]), 'view') ?>
+<?php endif; ?>
 <div class="ts-chips" aria-label="Period">
   <?php foreach ($presets as $k => $lbl): if ($k === 'custom') { continue; } ?>
     <a href="<?= $e($q(['range' => $k, 'from' => null, 'to' => null])) ?>" class="<?= $range === $k ? 'on' : '' ?>"><?= $e($lbl) ?></a>
   <?php endforeach; ?>
 </div>
 <form method="get" class="pc-form ts-pick" style="margin:0 0 10px">
-  <input type="hidden" name="range" value="custom"><input type="hidden" name="type" value="<?= $e($type) ?>"><input type="hidden" name="by" value="<?= $e($by) ?>">
+  <input type="hidden" name="range" value="custom"><input type="hidden" name="view" value="<?= $e($view) ?>">
   <?php if (isset($keep['seller'])): ?><input type="hidden" name="seller" value="<?= $e($keep['seller']) ?>"><?php endif; ?>
   <label>From <input class="pc-in" type="date" name="from" value="<?= $e($from) ?>"></label>
   <label>To <input class="pc-in" type="date" name="to" value="<?= $e($toIncl) ?>"></label>
   <button class="pc-btn sm" type="submit"><?= pc_icon('check') ?>Show</button>
 </form>
 
-<?php if ($scope === null): ?>
-<div class="ts-chips" aria-label="Who">
-  <?php foreach ($types as $k => $lbl): ?>
-    <a href="<?= $e($q(['type' => $k, 'seller' => null])) ?>" class="<?= $type === $k && $sellerPick === 0 ? 'on' : '' ?>"><?= $e($lbl) ?></a>
-  <?php endforeach; ?>
-</div>
+<?php if ($scope === null && $view !== 'online'): ?>
 <form method="get" class="pc-form ts-pick" style="margin:0 0 12px">
-  <?php foreach ($keep as $k => $v): if ($k === 'seller' || $k === 'type') { continue; } ?><input type="hidden" name="<?= $e($k) ?>" value="<?= $e($v) ?>"><?php endforeach; ?>
-  <select class="pc-in" name="seller" onchange="this.form.submit()" aria-label="One person" style="min-width:240px">
-    <option value="">Everyone · सबै</option>
-    <option value="online"<?= $sellerPick < 0 ? ' selected' : '' ?>>Online · Website / App</option>
-    <?php foreach ($people as $p): $pt = $typeOf($p['role'], (int) $p['id']); ?>
-      <option value="<?= (int) $p['id'] ?>"<?= $sellerPick === (int) $p['id'] ? ' selected' : '' ?>><?= $e(($p['full_name'] ?: $p['username']) . ' · ' . $typeLabel[$pt]) ?></option>
-    <?php endforeach; ?>
+  <?php foreach ($keep as $k => $v): if ($k === 'seller') { continue; } ?><input type="hidden" name="<?= $e($k) ?>" value="<?= $e($v) ?>"><?php endforeach; ?>
+  <select class="pc-in" name="seller" onchange="this.form.submit()" aria-label="One name" style="min-width:240px">
+    <option value=""><?= $view === 'counter' ? 'All counters · सबै काउन्टर' : ($view === 'agent' ? 'All agents · सबै एजेन्ट' : 'Everyone · सबै') ?></option>
+    <?php if ($view === 'counter'): ?>
+      <?php foreach ($desks as $code => $dn): ?><option value="<?= $e($code) ?>"<?= $pick === (string) $code ? ' selected' : '' ?>><?= $e(CounterDesk::label((string) $code, (string) $dn)) ?></option><?php endforeach; ?>
+      <option value="-"<?= $pick === '-' ? ' selected' : '' ?>>Office · no counter set</option>
+    <?php else: ?>
+      <?php if ($view === 'cut'): ?><option value="online"<?= $pick === 'online' ? ' selected' : '' ?>>Online · Website / App</option><?php endif; ?>
+      <?php foreach ($people as $p): $pt = $typeOf($p['role'], (int) $p['id']); ?>
+        <option value="<?= (int) $p['id'] ?>"<?= $pick === (string) $p['id'] ? ' selected' : '' ?>><?= $e(trim(AgentWallet::agentCodeLabel((int) $p['id']) . ' ' . ($p['full_name'] ?: $p['username'])) . ' · ' . $typeLabel[$pt]) ?></option>
+      <?php endforeach; ?>
+    <?php endif; ?>
   </select>
-  <?php if ($sellerPick !== 0): ?><a class="pc-btn sm" href="<?= $e($q(['seller' => null])) ?>"><?= pc_icon('x') ?>Clear</a><?php endif; ?>
+  <?php if ($picked): ?><a class="pc-btn sm" href="<?= $e($q(['seller' => null])) ?>"><?= pc_icon('x') ?>Clear</a><?php endif; ?>
 </form>
 <?php endif; ?>
 
@@ -413,11 +454,11 @@ admin_header('Ticket Statement', 'ticket-statement');
 
 <?php if ($scope !== null && $isAgent): ?>
   <?= $agentCard($selfId, '', true) ?>
-<?php elseif ($sellerPick > 0 && Database::exists("SELECT 1 FROM admins WHERE id = :i AND role = 'agent'", ['i' => $sellerPick])): ?>
+<?php elseif ($view === 'agent' && $sellerPick > 0 && Database::exists("SELECT 1 FROM admins WHERE id = :i AND role = 'agent'", ['i' => $sellerPick])): ?>
   <?= $agentCard($sellerPick, (string) Database::scalar('SELECT COALESCE(NULLIF(full_name, \'\'), username) FROM admins WHERE id = :i', ['i' => $sellerPick], ''), false) ?>
 <?php endif; ?>
 
-<?php if ($canComm && $sellerPick === 0): ?>
+<?php if ($canComm && !$picked && $view === 'agent'): ?>
 <form method="post" class="pc-card pc-card-b pc-form ts-pick" style="margin:0 0 12px">
   <?= Security::csrfField() ?><input type="hidden" name="act" value="company_rate">
   <b>Agent commission · कमिसन (company rate)</b>
@@ -432,7 +473,7 @@ admin_header('Ticket Statement', 'ticket-statement');
 <div class="pc-kpis">
   <div class="pc-kpi ok"><small>Tickets cut · टिकट</small><b><?= (int) $tot['tickets'] ?></b><i><?= (int) $tot['bookings'] ?> bookings</i></div>
   <div class="pc-kpi"><small>Amount · रकम</small><b><?= $e(inr($tot['amount'])) ?></b><i><?= $e($period) ?></i></div>
-  <div class="pc-kpi"><small>People · जना</small><b><?= count(array_filter($byPerson, static fn($p) => $p['tickets'] > 0)) ?></b><i><?= $by === 'agent' ? 'names on tickets' : 'who cut tickets' ?></i></div>
+  <div class="pc-kpi"><small>People · जना</small><b><?= count(array_filter($byPerson, static fn($p) => $p['tickets'] > 0)) ?></b><i><?= $view === 'counter' ? 'counters' : ($view === 'agent' ? 'agent codes on tickets' : 'names') ?></i></div>
   <div class="pc-kpi bad"><small>Cancelled</small><b><?= (int) $tot['cancelled'] ?></b><i>not in the total</i></div>
 </div>
 
@@ -440,11 +481,11 @@ admin_header('Ticket Statement', 'ticket-statement');
   <div class="pc-card pc-empty">No ticket in <?= $e($period) ?>.</div>
 <?php else: ?>
 
-<?php if ($scope === null && $sellerPick === 0 && $byPerson !== []): ?>
+<?php if ($scope === null && !$picked && $byPerson !== []): ?>
 <section class="pc-card ts-day">
   <div class="pc-card-h"><h3>Total by person · जम्मा</h3><small><?= $e($period) ?> — click a name to see only their days</small></div>
   <?php $n = 0; foreach ($byPerson as $p): ?>
-    <a class="ts-row" style="display:block;text-decoration:none;color:inherit" href="<?= $e($q(['seller' => $p['sid'] > 0 ? (string) $p['sid'] : 'online'])) ?>">
+    <a class="ts-row" style="display:block;text-decoration:none;color:inherit" href="<?= $e($q(['seller' => $p['key']])) ?>">
       <div style="display:grid;grid-template-columns:28px 1fr auto auto;gap:10px;align-items:center;padding:10px 14px">
         <span class="ts-n"><?= ++$n ?>.</span>
         <span class="ts-nm"><b><?= $e($p['name']) ?></b><?= pc_badge($typeLabel[$p['type']], $typeTone[$p['type']]) ?> <small class="pc-note"><?= (int) $p['days'] ?> day<?= $p['days'] === 1 ? '' : 's' ?></small>
