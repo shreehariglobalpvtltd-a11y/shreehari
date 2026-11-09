@@ -97,7 +97,7 @@ if (($_GET['ajax'] ?? '') === 'rows') {
                 (SELECT bp.full_name FROM booking_passengers bp WHERE bp.booking_id = b.id ORDER BY bp.is_primary DESC, bp.id LIMIT 1) AS pax,
                 (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ', ') FROM booking_seats bs JOIN booking_legs l2 ON l2.id = bs.leg_id
                   WHERE bs.booking_id = b.id AND l2.leg_type = 'outbound') AS seat_nos,
-                (SELECT CONCAT(l.travel_date, '|', COALESCE(l.boarding_stop, r.from_city, ''), '|', COALESCE(l.drop_stop, r.to_city, ''))
+                (SELECT CONCAT(l.travel_date, '|', COALESCE(NULLIF(l.boarding_stop, ''), r.from_city, ''), '|', COALESCE(NULLIF(l.drop_stop, ''), r.to_city, ''))
                    FROM booking_legs l LEFT JOIN schedules sc ON sc.id = l.schedule_id LEFT JOIN routes r ON r.id = sc.route_id
                   WHERE l.booking_id = b.id ORDER BY l.leg_type = 'outbound' DESC, l.id LIMIT 1) AS trip
            $from_ WHERE $w ORDER BY b.created_at",
