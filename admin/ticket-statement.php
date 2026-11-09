@@ -29,7 +29,13 @@ $today = todayISO();
 $scope = Auth::bookingScopeAdminId();   // non-null = agent / counter: own tickets only
 
 $hasBookedBy = Database::fetch("SHOW COLUMNS FROM bookings LIKE 'booked_by_admin_id'") !== null;
-$sellerSql   = $hasBookedBy ? 'COALESCE(b.booked_by_admin_id, b.sold_by_admin_id)' : 'b.sold_by_admin_id';
+$cutSql      = $hasBookedBy ? 'COALESCE(b.booked_by_admin_id, b.sold_by_admin_id)' : 'b.sold_by_admin_id';
+/* 9 Nov 2026 owner: "jasle jati kate ni kei hudaina, main kasko name jodeko ticket chha".
+   Default = the agent whose name is on the ticket (sold_by_admin_id — the one the
+   commission goes to; NULL = online). by=cut = the login that actually cut it. */
+$by          = (string) ($_GET['by'] ?? 'agent');
+if (!in_array($by, ['agent', 'cut'], true)) { $by = 'agent'; }
+$sellerSql   = $by === 'cut' ? $cutSql : 'b.sold_by_admin_id';
 
 /* ---- Agent commission, merged in (9 Nov 2026) ----------------------------
    Owner: "agent system ma merge gardeu — commission jati bela nikalna milos,
@@ -162,7 +168,7 @@ $typeTone  = ['agent' => 'info', 'staff' => 'ok', 'counter' => 'warn', 'online' 
    leg row still shows as a ticket instead of vanishing. */
 $where  = "b.created_at >= :f AND b.created_at < :t
            AND ( b.status IN ('confirmed','completed','cancelled')
-                 OR (b.status = 'pending' AND $sellerSql IS NOT NULL) )";
+                 OR (b.status = 'pending' AND $cutSql IS NOT NULL) )";
 $params = ['f' => $from . ' 00:00:00', 't' => $toExcl . ' 00:00:00'];
 if ($sellerPick > 0)      { $where .= " AND $sellerSql = :sp"; $params['sp'] = $sellerPick; }
 elseif ($sellerPick < 0)  { $where .= " AND $sellerSql IS NULL"; }
@@ -185,6 +191,8 @@ if (($_GET['ajax'] ?? '') === 'rows') {
     elseif ((int) $s > 0) { $w .= " AND $sellerSql = :s1"; $p['s1'] = (int) $s; }
     $rows = Database::fetchAll(
         "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, $seatSql AS seats,
+                (SELECT COALESCE(NULLIF(x.full_name, ''), x.username) FROM admins x WHERE x.id = b.sold_by_admin_id) AS agent_name,
+                (SELECT COALESCE(NULLIF(y.full_name, ''), y.username) FROM admins y WHERE y.id = $cutSql) AS cut_name,
                 (SELECT bp.full_name FROM booking_passengers bp WHERE bp.booking_id = b.id ORDER BY bp.is_primary DESC, bp.id LIMIT 1) AS pax,
                 (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ', ') FROM booking_seats bs JOIN booking_legs l2 ON l2.id = bs.leg_id
                   WHERE bs.booking_id = b.id AND l2.leg_type = 'outbound') AS seat_nos,
@@ -196,7 +204,7 @@ if (($_GET['ajax'] ?? '') === 'rows') {
     );
     header('Content-Type: text/html; charset=utf-8');
     if ($rows === []) { echo '<p class="pc-note">No ticket.</p>'; exit; }
-    echo '<div style="overflow-x:auto"><table class="pc-table ts-det"><thead><tr><th>#</th><th>Time</th><th>PNR</th><th>Passenger</th><th>Journey</th><th>Seats</th><th>Amount</th><th>Status</th></tr></thead><tbody>';
+    echo '<div style="overflow-x:auto"><table class="pc-table ts-det"><thead><tr><th>#</th><th>Time</th><th>PNR</th><th>Passenger</th><th>Journey</th><th>Seats</th><th>Amount</th><th>Agent name · Cut by</th><th>Status</th></tr></thead><tbody>';
     $i = 0;
     foreach ($rows as $r) {
         $i++;
@@ -212,7 +220,9 @@ if (($_GET['ajax'] ?? '') === 'rows') {
            . '<td>' . $e($r['pax'] ?: '—') . '<br><small class="pc-note">' . $e($r['contact_phone']) . '</small></td>'
            . '<td>' . ($bf . $dr !== '' ? $e($bf) . ' → ' . $e($dr) : '—') . ($td !== '' ? '<br><small class="pc-note">' . $e(formatDate($td, 'j M Y')) . '</small>' : '') . '</td>'
            . '<td><b>' . (int) $r['seats'] . '</b>' . ($r['seat_nos'] ? '<br><small class="pc-note">' . $e($r['seat_nos']) . '</small>' : '') . '</td>'
-           . '<td>' . $e(inr((float) $r['total_amount'])) . '</td><td>' . $st . '</td></tr>';
+           . '<td>' . $e(inr((float) $r['total_amount'])) . '</td>'
+           . '<td><b>' . $e($r['agent_name'] ?: 'Online') . '</b><br><small class="pc-note">cut by ' . $e($r['cut_name'] ?: 'customer (online)') . '</small></td>'
+           . '<td>' . $st . '</td></tr>';
     }
     echo '</tbody></table></div>';
     exit;
@@ -326,7 +336,7 @@ $people = $scope === null
     ? Database::fetchAll("SELECT id, full_name, username, role FROM admins WHERE is_active = 1 ORDER BY role = 'agent' DESC, full_name")
     : [];
 
-$keep = ['range' => $range, 'type' => $type];
+$keep = ['range' => $range, 'type' => $type, 'by' => $by];
 if ($range === 'custom') { $keep['from'] = $from; $keep['to'] = $toIncl; }
 if ($sellerPick > 0) { $keep['seller'] = (string) $sellerPick; } elseif ($sellerPick < 0) { $keep['seller'] = 'online'; }
 $q = static fn(array $over): string => '?' . http_build_query(array_filter($over + $keep, static fn($v) => $v !== null && $v !== ''));
@@ -359,17 +369,21 @@ admin_header('Ticket Statement', 'ticket-statement');
 </style>
 <div class="pc">
 <?= pc_head('Ticket Statement · कसले कति टिकट काट्यो',
-    $period . ($scope !== null ? ' — tickets you cut' : ' — who cut how many tickets, day by day'),
+    $period . ($by === 'agent' ? ($scope !== null ? ' — tickets in your name' : ' — tickets by the agent name on the ticket, day by day') : ($scope !== null ? ' — tickets you cut' : ' — who cut how many tickets, day by day')),
     '<a class="pc-btn" href="' . $e($q(['format' => 'csv'])) . '">' . pc_icon('download') . 'Excel / CSV</a>'
   . '<button class="pc-btn" type="button" onclick="tsOpenAll().then(function(){window.print()})">' . pc_icon('printer') . 'Print</button>') ?>
 
+<div class="ts-chips" aria-label="Count by">
+  <a href="<?= $e($q(['by' => 'agent'])) ?>" class="<?= $by === 'agent' ? 'on' : '' ?>">Agent name on ticket · कसको नाममा</a>
+  <a href="<?= $e($q(['by' => 'cut'])) ?>" class="<?= $by === 'cut' ? 'on' : '' ?>">Who cut it · कसले काट्यो</a>
+</div>
 <div class="ts-chips" aria-label="Period">
   <?php foreach ($presets as $k => $lbl): if ($k === 'custom') { continue; } ?>
     <a href="<?= $e($q(['range' => $k, 'from' => null, 'to' => null])) ?>" class="<?= $range === $k ? 'on' : '' ?>"><?= $e($lbl) ?></a>
   <?php endforeach; ?>
 </div>
 <form method="get" class="pc-form ts-pick" style="margin:0 0 10px">
-  <input type="hidden" name="range" value="custom"><input type="hidden" name="type" value="<?= $e($type) ?>">
+  <input type="hidden" name="range" value="custom"><input type="hidden" name="type" value="<?= $e($type) ?>"><input type="hidden" name="by" value="<?= $e($by) ?>">
   <?php if (isset($keep['seller'])): ?><input type="hidden" name="seller" value="<?= $e($keep['seller']) ?>"><?php endif; ?>
   <label>From <input class="pc-in" type="date" name="from" value="<?= $e($from) ?>"></label>
   <label>To <input class="pc-in" type="date" name="to" value="<?= $e($toIncl) ?>"></label>
@@ -418,7 +432,7 @@ admin_header('Ticket Statement', 'ticket-statement');
 <div class="pc-kpis">
   <div class="pc-kpi ok"><small>Tickets cut · टिकट</small><b><?= (int) $tot['tickets'] ?></b><i><?= (int) $tot['bookings'] ?> bookings</i></div>
   <div class="pc-kpi"><small>Amount · रकम</small><b><?= $e(inr($tot['amount'])) ?></b><i><?= $e($period) ?></i></div>
-  <div class="pc-kpi"><small>People · जना</small><b><?= count(array_filter($byPerson, static fn($p) => $p['tickets'] > 0)) ?></b><i>who cut tickets</i></div>
+  <div class="pc-kpi"><small>People · जना</small><b><?= count(array_filter($byPerson, static fn($p) => $p['tickets'] > 0)) ?></b><i><?= $by === 'agent' ? 'names on tickets' : 'who cut tickets' ?></i></div>
   <div class="pc-kpi bad"><small>Cancelled</small><b><?= (int) $tot['cancelled'] ?></b><i>not in the total</i></div>
 </div>
 
@@ -435,7 +449,7 @@ admin_header('Ticket Statement', 'ticket-statement');
         <span class="ts-n"><?= ++$n ?>.</span>
         <span class="ts-nm"><b><?= $e($p['name']) ?></b><?= pc_badge($typeLabel[$p['type']], $typeTone[$p['type']]) ?> <small class="pc-note"><?= (int) $p['days'] ?> day<?= $p['days'] === 1 ? '' : 's' ?></small>
           <?php if ($p['type'] === 'agent'): ?><br><small class="pc-note">Commission <?= $e($rateOf($p['sid'])[1]) ?> · earned <?= $e(inr($commBy[$p['sid']] ?? 0)) ?> · due <?= $e(inr(max(0, (float) (AgentWallet::balances($p['sid'])['commission'] ?? 0)))) ?></small><?php endif; ?></span>
-        <span class="ts-big"><?= (int) $p['tickets'] ?> <small>tickets</small></span>
+        <span class="ts-big"><?= (int) $p['tickets'] ?> <small>ticket<?= $p['tickets'] === 1 ? '' : 's' ?></small></span>
         <span class="ts-amt"><?= $e(inr($p['amount'])) ?><?= $p['cancelled'] > 0 ? '<br><small style="color:#b91c1c">' . (int) $p['cancelled'] . ' cancelled</small>' : '' ?></span>
       </div>
     </a>
