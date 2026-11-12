@@ -3788,11 +3788,12 @@ s.addEventListener('click',function(e){e.preventDefault();
     </form>
   </div>
 </div>
-<button type="button" class="ai-fab" id="aiFab" aria-label="SHG Sahayak — AI Assistant">🤖</button>
-<div class="ai-panel" id="aiPanel" role="dialog" aria-label="SHG Sahayak AI Assistant">
+<!-- 12 Nov 2026 (owner: "customer ko lagi AI highlight — S Hari AI le sabai help garos"): a named pill, not a bare icon -->
+<button type="button" class="ai-fab" id="aiFab" aria-label="S Hari AI — help, ticket, tracking" style="width:auto !important;height:46px !important;padding:0 14px 0 12px;border-radius:99px;font-size:14px;font-weight:800;line-height:1;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;background:linear-gradient(135deg,#0054A8 0%,#F07C1F 100%) !important;color:#fff !important">⚡ S Hari AI</button>
+<div class="ai-panel" id="aiPanel" role="dialog" aria-label="S Hari AI Assistant">
   <div class="ai-head">
-    <span class="ai-ava">🤖</span>
-    <div style="flex:1;min-width:0"><b>SHG Sahayak <span id="aiPoweredBadge" class="hide" style="font-size:9px;letter-spacing:.08em;background:rgba(255,255,255,.18);padding:2px 7px;border-radius:999px;vertical-align:middle">⚡ AI</span> <span id="aiRoleBadge" class="hide ai-role"></span></b><small>AI Assistant · सहायक</small></div>
+    <span class="ai-ava">⚡</span>
+    <div style="flex:1;min-width:0"><b>S Hari AI <span id="aiPoweredBadge" class="hide" style="font-size:9px;letter-spacing:.08em;background:rgba(255,255,255,.18);padding:2px 7px;border-radius:999px;vertical-align:middle">⚡ AI</span> <span id="aiRoleBadge" class="hide ai-role"></span></b><small>टिकट · बस कहाँ · सहयोग</small></div>
     <button type="button" class="ai-close" id="aiExpand" aria-label="Expand chat" title="ठूलो बनाउनुहोस् · बड़ा करें">⛶</button>
     <button type="button" class="ai-close" id="aiVoiceTog" aria-label="Voice replies on/off" title="बोलेर जवाफ · आवाज़ में जवाब">🔇</button>
     <button type="button" class="ai-close" id="aiClearHist" aria-label="Clear chat" title="Clear chat · कुरा मेटाउनुहोस्">🗑️</button>
@@ -3804,10 +3805,34 @@ s.addEventListener('click',function(e){e.preventDefault();
     </select>
     <button type="button" class="ai-close" id="aiClose" aria-label="Close">✕</button>
   </div>
+  <div id="aiQuick" style="display:flex;gap:6px;overflow-x:auto;padding:8px 10px;border-bottom:1px solid var(--line);scrollbar-width:none">
+    <button type="button" data-go="book" style="flex:0 0 auto;min-height:38px;padding:0 12px;border-radius:99px;border:0;background:#F07C1F;color:#fff;font:inherit;font-weight:800;font-size:13px;cursor:pointer">🎫 टिकट काट्ने · Book</button>
+    <button type="button" data-go="#/track" style="flex:0 0 auto;min-height:38px;padding:0 12px;border-radius:99px;border:1px solid var(--line);background:transparent;color:inherit;font:inherit;font-weight:700;font-size:13px;cursor:pointer">📍 बस कहाँ छ · Track</button>
+    <button type="button" data-go="#/my" style="flex:0 0 auto;min-height:38px;padding:0 12px;border-radius:99px;border:1px solid var(--line);background:transparent;color:inherit;font:inherit;font-weight:700;font-size:13px;cursor:pointer">🧾 मेरो टिकट · My ticket</button>
+    <button type="button" data-go="#/nav" style="flex:0 0 auto;min-height:38px;padding:0 12px;border-radius:99px;border:1px solid var(--line);background:transparent;color:inherit;font:inherit;font-weight:700;font-size:13px;cursor:pointer">🗺 नक्सा · Map</button>
+  </div>
+  <script>
+  (function(){
+    var q = document.getElementById('aiQuick'); if (!q) return;
+    q.addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-go]'); if (!b) return;
+      var go = b.getAttribute('data-go'), x = document.getElementById('aiClose');
+      if (x) x.click();
+      if (go === 'book') {
+        if (location.hash && location.hash !== '#/' && location.hash !== '#/home') location.hash = '#/';
+        setTimeout(function () {
+          var i = document.getElementById('sbBotIn'); if (!i) return;
+          try { i.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+          setTimeout(function () { try { i.focus(); } catch (e) {} }, 350);
+        }, 250);
+      } else { location.hash = go; }
+    });
+  })();
+  </script>
   <div class="ai-msgs" id="aiMsgs"></div>
   <div class="ai-chips" id="aiChips"></div>
   <div class="ai-inrow">
-    <input id="aiInput" type="text" placeholder="Ask anything… केही सोध्नुहोस्…" autocomplete="off" data-i18n-title="aiInputLbl" aria-label="Ask SHG Sahayak">
+    <input id="aiInput" type="text" placeholder="Ask anything… केही सोध्नुहोस्…" autocomplete="off" data-i18n-title="aiInputLbl" aria-label="Ask S Hari AI">
     <button type="button" class="ai-mic" id="aiMic" aria-label="Voice input" title="बोलेर सोध्नुहोस् · बोलकर पूछें">🎤</button>
     <button type="button" class="ai-send" id="aiSend" aria-label="Send">➤</button>
   </div>
