@@ -70,6 +70,26 @@ if (Security::isPost()) {
                 Fleet::updateBus($bid, $nam !== '' ? $nam : (string) $old['bus_name'], $num !== '' ? $num : (string) $old['bus_number'], (int) $admin['id']);
                 $back(['ok', '🚌 ' . ($nam !== '' ? $nam : $old['bus_name']) . ' → ' . ($num !== '' ? $num : $old['bus_number']) . ' · tickets of coming trips redrawn'], $date, 'fleet');
 
+            /* 12 Nov 2026 (owner: "bus add garne, fleet, chalani, seat — sabai ekai thau ma") */
+            case 'bus_add':
+                if (!$canBus) { throw new RuntimeException('Adding a bus is for the office (routes / schedules manager).'); }
+                $nam = trim(Security::clean((string) ($_POST['bus_name'] ?? ''), 120));
+                $num = strtoupper(trim(Security::clean((string) ($_POST['bus_number'] ?? ''), 30)));
+                if ($nam === '') { throw new RuntimeException('Bus को नाम लेख्नुहोस् · Type a name for the bus.'); }
+                if ($num !== '' && preg_match('/^[A-Z0-9][A-Z0-9 \-]{2,29}$/', $num) !== 1) {
+                    throw new RuntimeException('Bus number: letters, digits, space or - only (e.g. GJ05AB1234).');
+                }
+                $typ = (string) ($_POST['coach_type'] ?? 'sleeper') === 'seater' ? 'seater' : 'sleeper';
+                Fleet::createBus($nam, $num !== '' ? $num : 'XXXX-' . strtoupper(substr(bin2hex(random_bytes(2)), 0, 4)), $typ, (int) ($_POST['total_seats'] ?? 40), '', (int) $admin['id']);
+                $back(['ok', '🚌 ' . $nam . ' थपियो · added to the fleet'], $date, 'fleet');
+
+            case 'bus_active':
+                if (!$canBus) { throw new RuntimeException('Bus on / off is for the office (routes / schedules manager).'); }
+                $bid = (int) ($_POST['bus_id'] ?? 0);
+                $on  = (string) ($_POST['on'] ?? '') === '1';
+                Fleet::setActive($bid, $on, (int) $admin['id']);
+                $back(['ok', $on ? 'Bus on · चालु' : 'Bus off · बन्द (old tickets stay)'], $date, 'fleet');
+
             case 'trip_sale':
                 if (!$canSale) { throw new RuntimeException('Only a schedules manager may switch a date on / off.'); }
                 $sid = (int) ($_POST['schedule_id'] ?? 0);
@@ -351,6 +371,7 @@ admin_header('Bus Control', 'bus-control');
         <?= $legend ?>
       </div>
       <div class="pc-card-f">
+        <?php if (Auth::can('bookings.view')): ?><a class="pc-btn pri sm" href="/admin/quick-ticket.php"><?= pc_icon('plus') ?>टिकट काट्ने · Ticket</a><?php endif; ?>
         <a class="pc-btn pri sm" href="/admin/manifest.php?<?= $e($q) ?>"><?= pc_icon('list') ?>Chalani</a>
         <a class="pc-btn sm" href="/admin/manifest.php?<?= $e($q . '&format=chalani') ?>" target="_blank"><?= pc_icon('printer') ?>Print</a>
         <a class="pc-btn sm" href="/admin/manifest.php?<?= $e($q . '&format=chalanipdf') ?>" target="_blank"><?= pc_icon('download') ?>PDF</a>
@@ -383,7 +404,8 @@ admin_header('Bus Control', 'bus-control');
         <tr<?= (int) $b['is_active'] !== 1 ? ' style="opacity:.6"' : '' ?>>
           <td><b><?= $e($b['bus_name']) ?></b><br><small class="pc-note"><?= $e($b['bus_number']) ?></small></td>
           <td><?= (int) $b['total_seats'] ?> seats · <?= $e($b['seat_model']) ?></td>
-          <td><?= (int) $b['is_active'] === 1 ? pc_badge('Active', 'ok') : pc_badge('Off', 'mute') ?></td>
+          <td><?= (int) $b['is_active'] === 1 ? pc_badge('Active', 'ok') : pc_badge('Off', 'mute') ?>
+            <?php if ($canBus): $bOn = (int) $b['is_active'] === 1; ?><form method="post" class="pc-form" style="display:inline" onsubmit="return confirm('<?= $bOn ? 'Switch this bus off? Old tickets stay.' : 'Switch this bus on?' ?>')"><?= Security::csrfField() ?><input type="hidden" name="act" value="bus_active"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="bus_id" value="<?= (int) $b['id'] ?>"><input type="hidden" name="on" value="<?= $bOn ? '0' : '1' ?>"><button class="pc-btn sm" type="submit"><?= $bOn ? 'Off' : 'On' ?></button></form><?php endif; ?></td>
           <td><?php if ($canBus): ?><form method="post" class="pc-form"><?= Security::csrfField() ?><input type="hidden" name="act" value="bus_save"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="bus_id" value="<?= (int) $b['id'] ?>">
             <input class="pc-in" name="bus_number" value="<?= $e($b['bus_number']) ?>" maxlength="30" style="text-transform:uppercase;width:150px" aria-label="Bus number">
             <input class="pc-in" name="bus_name" value="<?= $e($b['bus_name']) ?>" maxlength="120" style="width:180px" aria-label="Bus name">
@@ -392,7 +414,19 @@ admin_header('Bus Control', 'bus-control');
         </tr>
       <?php endforeach; ?>
       </tbody></table></div>
-    <div class="pc-card-f"><a class="pc-btn sm" href="/admin/buses.php"><?= pc_icon('plus') ?>Add bus / layout</a><a class="pc-btn sm" href="/admin/trips.php"><?= pc_icon('swap') ?>3-bus rotation</a><a class="pc-btn sm" href="/admin/calendar.php"><?= pc_icon('calendar') ?>Bus calendar</a></div>
+    <?php if ($canBus): ?>
+    <div class="pc-card-b" style="padding:12px 14px;border-top:1px solid var(--line)">
+      <form method="post" class="pc-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><?= Security::csrfField() ?><input type="hidden" name="act" value="bus_add"><input type="hidden" name="date" value="<?= $e($date) ?>">
+        <b style="font-size:13.5px">＋ नयाँ बस · Add a bus</b>
+        <input class="pc-in" name="bus_name" required maxlength="120" placeholder="Name (e.g. SHG Karnali Sleeper)" style="width:220px" aria-label="New bus name">
+        <input class="pc-in" name="bus_number" maxlength="30" placeholder="Number (later ok)" style="text-transform:uppercase;width:160px" aria-label="New bus number">
+        <select class="pc-in" name="coach_type" aria-label="Coach type"><option value="sleeper">AC Sleeper · 72</option><option value="seater">Seater</option></select>
+        <input class="pc-in" name="total_seats" type="number" min="1" max="120" value="40" style="width:76px" title="Seats (seater only — a sleeper is always 72)" aria-label="Seats for a seater">
+        <button class="pc-btn pri sm" type="submit"><?= pc_icon('plus') ?>Add</button>
+      </form>
+    </div>
+    <?php endif; ?>
+    <div class="pc-card-f"><a class="pc-btn sm" href="/admin/buses.php"><?= pc_icon('plus') ?>Layout / more</a><a class="pc-btn sm" href="/admin/trips.php"><?= pc_icon('swap') ?>3-bus rotation</a><a class="pc-btn sm" href="/admin/calendar.php"><?= pc_icon('calendar') ?>Bus calendar</a></div>
   </section>
 
 <?php elseif ($tab === 'routes'): ?>

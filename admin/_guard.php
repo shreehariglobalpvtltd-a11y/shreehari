@@ -445,7 +445,22 @@ function admin_header(string $title, string $active = ''): void
         }
         /* 6 Nov 2026: "⏱ हालै" — the last pages this person opened, newest
            first, always open on top of the tree. */
-        $recent = admin_nav_recent($items, 6);
+        /* 12 Nov 2026 (owner: "sabai option ekdam kam tara effectful"): the
+           few everyday pages first, flat — the tree below stays for the rest. */
+        $byHrefMain = [];
+        foreach ($items as $item) { $byHrefMain[(string) $item['href']] = $item; }
+        $mainNow = [];
+        foreach (['quick-ticket.php', 'bookings.php', 'bus-control.php', 'manifest.php', 'people.php', 'payments.php', 'easy-settings.php'] as $mh) {
+            if (isset($byHrefMain[$mh]) && (string) ($byHrefMain[$mh]['section'] ?? '') !== '') { $mainNow[] = $byHrefMain[$mh]; }
+        }
+        if (count($mainNow) >= 3) {
+            echo '<div class="side-group open side-recent" data-sec="main-now">';
+            echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-label="Toggle main"><span class="ss-en">Main</span><span class="ss-ne">मुख्य काम</span>'
+               . '<svg class="a-ic nav-caret"><use href="#a-chevron"/></svg></button><div class="side-items">';
+            foreach ($mainNow as $item) { $renderLink($item); }
+            echo '</div></div>';
+        }
+        $recent = admin_nav_recent($items, 4);
         if (count($recent) >= 2) {
             echo '<div class="side-group open side-recent" data-sec="recent">';
             echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-label="Toggle recent"><span class="ss-en">Recent</span><span class="ss-ne">हालै खोलेका</span>'

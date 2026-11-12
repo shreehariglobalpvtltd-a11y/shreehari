@@ -414,6 +414,27 @@ function booking_wa_message(array $b, string $base): string
 }
 
 admin_header($scopeId !== null ? 'My Tickets' : 'Tickets', 'bookings');
+/* 12 Nov 2026 (owner: "ticket katne, manage garne, herne — sabai ekai thau ma") */
+$tkBar = [
+    ['quick-ticket.php', '⚡ टिकट काट्ने · Cut ticket', 'bookings.view', true],
+    ['/index.php?counter=1#/', '💺 सिट हेरेर · Seat map', 'bookings.view', false],
+    ['payments.php', '✅ भुक्तानी जाँच · Verify', 'payments.view', false],
+    ['reschedule.php', '🔁 मिति / सिट सार्ने · Change', 'bookings.view', false],
+    ['refunds.php', '↩️ रद्द / फिर्ता · Cancel', 'refunds.view', false],
+    ['manifest.php', '📋 चलानी · Chalani', 'bookings.view', false],
+    ['scan.php', '📷 स्क्यान · Scan', 'tickets.scan', false],
+    ['ticket-statement.php', '📊 कसले कति · Statement', 'bookings.view', false],
+];
+$tkNav = [];
+foreach (admin_nav() as $tkN) { $tkNav[(string) ($tkN['href'] ?? '')] = true; }
+echo '<div style="display:flex;gap:8px;overflow-x:auto;margin:0 0 12px;padding-bottom:4px;scrollbar-width:thin">';
+foreach ($tkBar as [$tkHref, $tkLabel, $tkPerm, $tkPri]) {
+    if (!isset($tkNav[$tkHref]) || !Auth::can($tkPerm)) { continue; }
+    echo '<a href="' . Security::e(str_starts_with($tkHref, '/') ? $tkHref : '/admin/' . $tkHref) . '" style="flex:0 0 auto;display:inline-flex;align-items:center;min-height:42px;padding:0 14px;border-radius:99px;'
+       . 'font-weight:800;font-size:13.5px;text-decoration:none;white-space:nowrap;'
+       . ($tkPri ? 'background:#0054A8;color:#fff;border:1px solid #0054A8' : 'background:var(--card);color:inherit;border:1px solid var(--line)') . '">' . Security::e($tkLabel) . '</a>';
+}
+echo '</div>';
 
 // Live "new bookings" pill baseline (P2): admin_poll_js() reads this anchor and
 // shows a Refresh pill when a booking with a higher id appears, so the office
