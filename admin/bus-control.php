@@ -75,13 +75,16 @@ if (Security::isPost()) {
                 if (!$canBus) { throw new RuntimeException('Adding a bus is for the office (routes / schedules manager).'); }
                 $nam = trim(Security::clean((string) ($_POST['bus_name'] ?? ''), 120));
                 $num = strtoupper(trim(Security::clean((string) ($_POST['bus_number'] ?? ''), 30)));
-                if ($nam === '') { throw new RuntimeException('Bus को नाम लेख्नुहोस् · Type a name for the bus.'); }
+                if ($nam === '' && $num === '') { throw new RuntimeException('बसको नम्बर लेख्नुहोस् · Type the bus number.'); }
+                if ($nam === '') {   // 12 Nov 2026: the number alone is enough — the name follows the fleet ("Bus 04")
+                    $nam = 'Bus ' . str_pad((string) ((int) Database::scalar('SELECT COUNT(*) FROM buses', [], 0) + 1), 2, '0', STR_PAD_LEFT);
+                }
                 if ($num !== '' && preg_match('/^[A-Z0-9][A-Z0-9 \-]{2,29}$/', $num) !== 1) {
                     throw new RuntimeException('Bus number: letters, digits, space or - only (e.g. GJ05AB1234).');
                 }
                 $typ = (string) ($_POST['coach_type'] ?? 'sleeper') === 'seater' ? 'seater' : 'sleeper';
                 Fleet::createBus($nam, $num !== '' ? $num : 'XXXX-' . strtoupper(substr(bin2hex(random_bytes(2)), 0, 4)), $typ, (int) ($_POST['total_seats'] ?? 40), '', (int) $admin['id']);
-                $back(['ok', '🚌 ' . $nam . ' थपियो · added to the fleet'], $date, 'fleet');
+                $back(['ok', '🚌 ' . $nam . ($num !== '' ? ' (' . $num . ')' : '') . ' थपियो र चालु भयो · added and switched on'], $date, 'fleet');
 
             case 'bus_active':
                 if (!$canBus) { throw new RuntimeException('Bus on / off is for the office (routes / schedules manager).'); }
@@ -420,38 +423,71 @@ admin_header('Bus Control', 'bus-control');
   <?php endforeach; ?>
 
 <?php elseif ($tab === 'fleet'): ?>
-  <section class="pc-card">
-    <div class="pc-card-h"><h3>Fleet · बसहरू</h3><small>Number and name change here; tickets of coming trips redraw by themselves. XXXX = number not entered yet (hidden from customers).</small></div>
-    <div style="overflow-x:auto"><table class="pc-table">
-      <thead><tr><th>Bus</th><th>Layout</th><th>Status</th><th>Number · Name</th></tr></thead><tbody>
-      <?php foreach ($buses as $b): ?>
-        <tr<?= (int) $b['is_active'] !== 1 ? ' style="opacity:.6"' : '' ?>>
-          <td><b><?= $e($b['bus_name']) ?></b><br><small class="pc-note"><?= $e($b['bus_number']) ?></small></td>
-          <td><?= (int) $b['total_seats'] ?> seats · <?= $e($b['seat_model']) ?></td>
-          <td><?= (int) $b['is_active'] === 1 ? pc_badge('Active', 'ok') : pc_badge('Off', 'mute') ?>
-            <?php if ($canBus): $bOn = (int) $b['is_active'] === 1; ?><form method="post" class="pc-form" style="display:inline" onsubmit="return confirm('<?= $bOn ? 'Switch this bus off? Old tickets stay.' : 'Switch this bus on?' ?>')"><?= Security::csrfField() ?><input type="hidden" name="act" value="bus_active"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="bus_id" value="<?= (int) $b['id'] ?>"><input type="hidden" name="on" value="<?= $bOn ? '0' : '1' ?>"><button class="pc-btn sm" type="submit"><?= $bOn ? 'Off' : 'On' ?></button></form><?php endif; ?></td>
-          <td><?php if ($canBus): ?><form method="post" class="pc-form"><?= Security::csrfField() ?><input type="hidden" name="act" value="bus_save"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="bus_id" value="<?= (int) $b['id'] ?>">
-            <input class="pc-in" name="bus_number" value="<?= $e($b['bus_number']) ?>" maxlength="30" style="text-transform:uppercase;width:150px" aria-label="Bus number">
-            <input class="pc-in" name="bus_name" value="<?= $e($b['bus_name']) ?>" maxlength="120" style="width:180px" aria-label="Bus name">
-            <button class="pc-btn sm" type="submit"><?= pc_icon('check') ?>Save</button></form>
-            <?php else: ?><?= $e($b['bus_number']) ?><?php endif; ?></td>
-        </tr>
-      <?php endforeach; ?>
-      </tbody></table></div>
+  <?php /* 12 Nov 2026 (owner: "bus number halera live gardine, on/off sajilo, Nepali English ma"):
+           one card per bus — number, on/off, and when it runs next. */
+  $rotF  = Fleet::rotation();
+  $turns = [];   // busId => ['slot' => n, 'out' => [dates], 'back' => [dates]]
+  try {
+      foreach (Fleet::roundTripPreview(21, $today) as $pr) {
+          foreach ([['out', 'outSlot'], ['back', 'backSlot']] as [$k, $sk]) {
+              if ($pr[$k] !== null) {
+                  $turns[(int) $pr[$k]]['slot'] = (int) $pr[$sk];
+                  if (count($turns[(int) $pr[$k]][$k] ?? []) < 3) { $turns[(int) $pr[$k]][$k][] = formatDate((string) $pr['date'], 'j M'); }
+              }
+          }
+      }
+  } catch (Throwable $ex) {
+      $turns = [];
+  } ?>
+  <style>
+  .bf-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
+  .bf{border:1px solid var(--line);border-radius:14px;background:var(--card);padding:14px;display:grid;gap:10px}
+  .bf.off{opacity:.62}
+  .bf h4{margin:0;font-size:16px;display:flex;gap:8px;align-items:center;justify-content:space-between}
+  .bf .no{font-size:20px;font-weight:800;letter-spacing:.04em}
+  .bf small{color:var(--mut);font-size:12.5px;line-height:1.45}
+  .bf form{display:flex;gap:6px;flex-wrap:wrap;margin:0}
+  .bf input.pc-in{flex:1;min-width:0;min-height:42px;font-size:15px}
+  .bf .sw{min-height:42px;padding:0 16px;border-radius:99px;border:0;font:inherit;font-weight:800;cursor:pointer;color:#fff}
+  .bf .sw.on{background:#15803D}.bf .sw.no{background:#B91C1C}
+  .bf-new{border:2px dashed #F07C1F}
+  </style>
+  <div class="bf-grid">
     <?php if ($canBus): ?>
-    <div class="pc-card-b" style="padding:12px 14px;border-top:1px solid var(--line)">
-      <form method="post" class="pc-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><?= Security::csrfField() ?><input type="hidden" name="act" value="bus_add"><input type="hidden" name="date" value="<?= $e($date) ?>">
-        <b style="font-size:13.5px">＋ नयाँ बस · Add a bus</b>
-        <input class="pc-in" name="bus_name" required maxlength="120" placeholder="Name (e.g. SHG Karnali Sleeper)" style="width:220px" aria-label="New bus name">
-        <input class="pc-in" name="bus_number" maxlength="30" placeholder="Number (later ok)" style="text-transform:uppercase;width:160px" aria-label="New bus number">
-        <select class="pc-in" name="coach_type" aria-label="Coach type"><option value="sleeper">AC Sleeper · 72</option><option value="seater">Seater</option></select>
-        <input class="pc-in" name="total_seats" type="number" min="1" max="120" value="40" style="width:76px" title="Seats (seater only — a sleeper is always 72)" aria-label="Seats for a seater">
-        <button class="pc-btn pri sm" type="submit"><?= pc_icon('plus') ?>Add</button>
+    <section class="bf bf-new">
+      <h4>＋ नयाँ बस थप्ने · Add a bus</h4>
+      <form method="post" class="pc-form"><?= Security::csrfField() ?><input type="hidden" name="act" value="bus_add"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="coach_type" value="sleeper">
+        <input class="pc-in" name="bus_number" required maxlength="30" placeholder="बसको नम्बर · Bus number (GJ05AB1234)" style="text-transform:uppercase;flex-basis:100%" aria-label="New bus number">
+        <input class="pc-in" name="bus_name" maxlength="120" placeholder="नाम (नलेखे पनि हुन्छ) · Name, optional" aria-label="New bus name">
+        <button class="pc-btn pri" type="submit" style="min-height:42px"><?= pc_icon('plus') ?>थप्ने · Add</button>
       </form>
-    </div>
+      <small>नम्बर लेखेर “थप्ने” थिच्नुहोस् — बस तुरुन्त चालु हुन्छ (AC Sleeper 72)। · Type the number and tap Add; the bus is on at once. Seater वा अर्को layout: <a href="/admin/buses.php">Layout</a></small>
+    </section>
     <?php endif; ?>
-    <div class="pc-card-f"><a class="pc-btn sm" href="/admin/buses.php"><?= pc_icon('plus') ?>Layout / more</a><a class="pc-btn sm" href="/admin/trips.php"><?= pc_icon('swap') ?>3-bus rotation</a><a class="pc-btn sm" href="/admin/calendar.php"><?= pc_icon('calendar') ?>Bus calendar</a></div>
-  </section>
+    <?php foreach ($buses as $b):
+        $bOn = (int) $b['is_active'] === 1;
+        $bid = (int) $b['id'];
+        $ph  = Fleet::isPlaceholder((string) $b['bus_number']);
+        $tn  = $turns[$bid] ?? null; ?>
+    <section class="bf<?= $bOn ? '' : ' off' ?>">
+      <h4><span><?= $e($b['bus_name']) ?></span><?= $bOn ? pc_badge('चालु · On', 'ok') : pc_badge('बन्द · Off', 'mute') ?></h4>
+      <div class="no"><?= $ph ? '<span style="color:#B45309;font-size:14px">नम्बर राखिएको छैन · number not set</span>' : $e($b['bus_number']) ?></div>
+      <small><?= (int) $b['total_seats'] ?> सिट · seats
+        <?php if ($tn !== null): ?><br>पालो · Turn <b><?= (int) $tn['slot'] ?></b><?= !empty($tn['out']) ? ' — जाने · goes: <b>' . $e(implode(', ', $tn['out'])) . '</b>' : '' ?><?= !empty($tn['back']) ? ' · फर्कने · returns: <b>' . $e(implode(', ', $tn['back'])) . '</b>' : '' ?>
+        <?php elseif ($rotF['enabled'] && $bOn): ?><br>पालोमा छैन · not in the rotation — <a href="/admin/trips.php">पालो मिलाउने</a><?php endif; ?></small>
+      <?php if ($canBus): ?>
+      <form method="post" class="pc-form"><?= Security::csrfField() ?><input type="hidden" name="act" value="bus_save"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="bus_id" value="<?= $bid ?>">
+        <input class="pc-in" name="bus_number" value="<?= $ph ? '' : $e($b['bus_number']) ?>" maxlength="30" placeholder="बसको नम्बर · Bus number" style="text-transform:uppercase" aria-label="Bus number">
+        <button class="pc-btn pri" type="submit" style="min-height:42px"><?= pc_icon('check') ?>सेभ · Save</button>
+        <input class="pc-in" name="bus_name" value="<?= $e($b['bus_name']) ?>" maxlength="120" placeholder="नाम · Name" style="flex-basis:100%" aria-label="Bus name">
+      </form>
+      <form method="post" class="pc-form" onsubmit="return confirm('<?= $bOn ? 'यो बस बन्द गर्ने? पुराना टिकट जस्ताको तस्तै रहन्छन्। · Switch this bus off? Old tickets stay.' : 'यो बस चालु गर्ने? · Switch this bus on?' ?>')"><?= Security::csrfField() ?><input type="hidden" name="act" value="bus_active"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="bus_id" value="<?= $bid ?>"><input type="hidden" name="on" value="<?= $bOn ? '0' : '1' ?>">
+        <button class="sw <?= $bOn ? 'no' : 'on' ?>" type="submit"><?= $bOn ? '⏸ बन्द गर्ने · Switch off' : '▶ चालु गर्ने · Switch on' ?></button></form>
+      <?php endif; ?>
+    </section>
+    <?php endforeach; ?>
+  </div>
+  <div class="pc-card" style="margin-top:12px"><div class="pc-card-f"><a class="pc-btn sm" href="/admin/trips.php"><?= pc_icon('swap') ?>बसको पालो · 3-bus rotation</a><a class="pc-btn sm" href="/admin/calendar.php"><?= pc_icon('calendar') ?>Bus calendar</a><a class="pc-btn sm" href="/admin/buses.php"><?= pc_icon('plus') ?>Layout / more</a></div></div>
 
 <?php elseif ($tab === 'routes'): ?>
   <section class="pc-card">
