@@ -92,86 +92,262 @@ $tile = static function (array $t) use ($e): string {
          . ($t['badge'] > 0 ? '<span class="hb-badge">' . (int) $t['badge'] . '</span>' : '') . '</a>';
 };
 
-admin_header('🏠 गृह · Home', 'home.php');
-echo '<link rel="stylesheet" href="/assets/agentpro/admin.css?v=' . (int) @filemtime(ASSET_PATH . '/agentpro/admin.css') . '">';
+/* =====================================================================
+ *  12 Nov 2026 — "Management" home (owner: "khulepachhi dherai details —
+ *  ticket, bus chalani / seat / fleet, agent: sabai ekai thau ma, minimal,
+ *  mobile ra desktop dubai ma"). Three blocks, one screen:
+ *    Tickets · Bus · Agents — each: live numbers + the few actions that
+ *    matter. Every link is taken from admin_nav() (the permission-filtered
+ *    menu), so a block never shows a page the menu would hide. Everything
+ *    else stays one tap away under "More".
+ * ===================================================================== */
+require_once INCLUDE_PATH . '/quickunlock.php';
+$navOk = [];
+foreach (admin_nav() as $n) {
+    $navOk[(string) ($n['href'] ?? '')] = true;
+}
+$lnk = static function (string $href, string $icon, string $ne, string $en, int $badge = 0, bool $big = false) use ($navOk, $e): string {
+    if (!isset($navOk[$href])) {
+        return '';
+    }
+    $url = str_starts_with($href, '/') ? $href : '/admin/' . $href;
+    return '<a class="mg-a' . ($big ? ' big' : '') . '" href="' . $e($url) . '"><i aria-hidden="true">' . $icon . '</i><span><b>' . $e($ne) . '</b><small>' . $e($en) . '</small></span>'
+         . ($badge > 0 ? '<em>' . $badge . '</em>' : '') . '</a>';
+};
+
+/* numbers — an agent sees only their own tickets, a counter only its desk (same rule as admin/hub.php) */
+$scopeId = Auth::bookingScopeAdminId();
+$deskSc  = null;
+if ($scopeId === null) {
+    require_once INCLUDE_PATH . '/counterdesk.php';
+    $d = Auth::deskScopeCode();
+    $deskSc = ($d !== null && CounterDesk::stampColumn()) ? $d : null;
+}
+$bkCount = static function (string $cond) use ($scopeId, $deskSc): int {
+    $w = [$cond];
+    $pr = [];
+    if ($scopeId !== null) {
+        $w[] = 'b.sold_by_admin_id = :sc';
+        $pr['sc'] = $scopeId;
+    } elseif ($deskSc !== null) {
+        $w[] = CounterDesk::scopeClause('b', 'dk');
+        $pr['dk'] = $deskSc;
+    }
+    try {
+        return (int) Database::scalar('SELECT COUNT(*) FROM bookings b WHERE ' . implode(' AND ', $w), $pr, 0);
+    } catch (Throwable $ex) {
+        return 0;
+    }
+};
+$canTk   = Auth::can('bookings.view');
+$tkToday = $canTk ? $bkCount("b.status IN ('confirmed','completed') AND DATE(b.created_at) = CURDATE()") : 0;
+$tkPend  = $canTk ? $bkCount("b.status = 'pending'") : 0;
+
+$trips = [];
+if (Auth::can('schedules.view') && $scopeId === null) {
+    try {
+        $trips = Database::fetchAll(
+            "SELECT s.id AS sid, s.travel_date, s.seats_booked, s.total_seats,
+                    r.from_city, r.to_city, COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
+                    bu.bus_number, bu.bus_name
+               FROM schedules s
+               JOIN routes r      ON r.id = s.route_id
+               LEFT JOIN buses bu ON bu.id = COALESCE(s.bus_id, r.bus_id)
+              WHERE s.travel_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+                AND r.is_active = 1 AND s.is_blocked = 0
+              ORDER BY s.travel_date, COALESCE(s.dep_time_override, r.dep_time), s.id
+              LIMIT 8"
+        );
+    } catch (Throwable $ex) {
+        $trips = [];
+    }
+}
+$nAgents = (int) ($counts['agents'] ?? 0);
+$nApps   = (int) ($counts['applications'] ?? 0);
+$nMoney  = (int) ($counts['withdrawals'] ?? 0) + (int) ($counts['deposits'] ?? 0);
+$nLive   = (int) ($counts['liveBuses'] ?? 0);
+$qk      = QuickUnlock::on() ? QuickUnlock::status($me) : ['pin' => true, 'pattern' => true];
+$agentV  = $scopeId !== null;
+
+$colT = $lnk('quick-ticket.php', '⚡', 'टिकट काट्ने', 'Cut a ticket (10 s)', 0, true)
+      . $lnk('/index.php?counter=1#/', '💺', 'सिट हेरेर बुकिङ', 'Book on the seat map')
+      . $lnk('bookings.php', '🔎', $agentV ? 'मेरा टिकट' : 'सबै टिकट', 'Find · edit · print')
+      . $lnk('payments.php', '✅', 'भुक्तानी जाँच', 'Verify payments', $tkPend)
+      . $lnk('reschedule.php', '🔁', 'मिति / सिट सार्ने', 'Change date · transfer')
+      . $lnk('refunds.php', '↩️', 'रद्द / फिर्ता', 'Cancel & refund')
+      . $lnk('scan.php', '📷', 'टिकट स्क्यान', 'Scan boarding QR')
+      . $lnk('ticket-statement.php', '📊', 'कसले कति काट्यो', 'Ticket statement');
+$colB = $lnk('bus-control.php', '🚌', 'बस कन्ट्रोल', 'Trips · seats · fleet · add bus', 0, true)
+      . $lnk('manifest.php', '📋', 'चलानी', 'Chalani & seat chart')
+      . $lnk('schedule.php', '🗓️', 'बस रुटिन', 'Which bus, which day')
+      . $lnk('routes.php', '📍', 'स्टप र भाडा', 'Stops & fares')
+      . $lnk('map.php', '🛰️', 'बस कहाँ छ', 'Live bus map', $nLive)
+      . $lnk('drivers.php', '👨‍✈️', 'चालक / स्टाफ', 'Drivers & crew');
+$colA = $lnk('agent-quick.php', '➕', 'नयाँ एजेन्ट', 'Quick agent + ID card', 0, true)
+      . $lnk('people.php', '👥', 'एजेन्ट र स्टाफ', 'List · login · commission')
+      . $lnk('team.php', '🪪', 'स्वीकृति र पैसा', 'Approvals · wallets · ID cards', $nApps + $nMoney)
+      . $lnk('agent-360.php', '💰', 'एजेन्ट हिसाब', 'Per-agent money')
+      . $lnk('counters.php', '🏪', 'काउन्टर', 'Counters & collection');
+if ($agentV && isset($navOk['agent.php'])) {
+    $colA = $lnk('agent.php', '💼', 'मेरो हिसाब', 'My wallet & commission', 0, true);
+}
+$cols = array_filter(
+    ['t' => ['🎫', 'टिकट', 'Tickets', $colT], 'b' => ['🚌', 'बस', 'Bus', $colB], 'a' => ['👥', $agentV ? 'हिसाब' : 'एजेन्ट', $agentV ? 'Account' : 'Agents', $colA]],
+    static fn(array $c): bool => $c[3] !== ''
+);
+$fmtT = static fn($t): string => $t ? date('g:i A', (int) strtotime((string) $t)) : '';
+
+admin_header('Management', 'home.php');
 ?>
 <style>
-.hb{max-width:880px;margin:0 auto}
-.hb-me{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px;border:1px solid var(--line);border-radius:16px;background:var(--card);margin-bottom:12px}
-.hb-av{width:58px;height:58px;border-radius:50%;object-fit:cover;flex:0 0 auto;border:2px solid #0054A8}
-.hb-ini{width:58px;height:58px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:#fff;background:linear-gradient(135deg,#1F6CC8,#0A2A8F)}
-.hb-who{flex:1 1 200px;min-width:0}
-.hb-who h2{margin:0;font-size:20px;font-weight:800}
-.hb-who p{margin:3px 0 0;color:var(--mut);font-size:13.5px}
-.hb-chip{display:inline-block;margin-top:6px;padding:3px 9px;border-radius:99px;font-size:12px;font-weight:800}
-.hb-chip.ok{background:#DEF4E4;color:#14602E}.hb-chip.warn{background:#FFF4E0;color:#7A4A00}.hb-chip.bad{background:#F7DCDC;color:#8A1F1F}
-.hb-acts{display:flex;gap:8px;flex-wrap:wrap;width:100%}
-.hb-acts a,.hb-acts button{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border-radius:11px;border:1.5px solid var(--line);background:var(--card);color:inherit;font:inherit;font-size:13.5px;font-weight:700;text-decoration:none;cursor:pointer}
-.hb-acts .pri{border-color:#0054A8;color:#0054A8}
-.hb-strip{display:flex;flex-direction:column;gap:8px;margin:0 0 14px}
-.hb-strip a{display:block;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:inherit;text-decoration:none;font-weight:700;font-size:14.5px}
-.hb-strip a.hot{border-color:#F07C1F;background:linear-gradient(0deg,rgba(240,124,31,.08),rgba(240,124,31,.08)),var(--card)}
-.hb-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-@media (min-width:640px){.hb-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-.hb-tile{position:relative;display:flex;flex-direction:column;justify-content:center;gap:3px;min-height:104px;padding:14px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:inherit;text-decoration:none;box-shadow:0 2px 0 rgba(12,48,108,.12)}
-.hb-tile:active{transform:translateY(2px)}
-.hb-tile i{font-style:normal;font-size:28px;line-height:1}
-.hb-tile b{font-size:15px;line-height:1.25}
-.hb-tile small{font-size:12px;color:var(--mut)}
-.hb-badge{position:absolute;top:8px;right:8px;min-width:24px;height:24px;padding:0 7px;border-radius:99px;background:#D7263D;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center}
-details.hb-more{margin-top:14px}
-details.hb-more>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:12px;border:1.5px dashed var(--line);font-weight:800}
-details.hb-more>summary::-webkit-details-marker{display:none}
-details.hb-more[open]>summary{margin-bottom:10px}
-.hb-foot{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:22px 0 6px}
-.hb-foot a{min-height:44px;display:inline-flex;align-items:center;padding:0 14px;border-radius:11px;border:1px solid var(--line);text-decoration:none;color:inherit;font-weight:700;font-size:13.5px}
-.hb-flash{padding:11px 14px;border-radius:11px;font-weight:700;margin-bottom:12px}
-.hb-flash.ok{background:#DEF4E4;color:#14602E}.hb-flash.bad{background:#F7DCDC;color:#8A1F1F}
-@media (prefers-reduced-motion:reduce){.hb-tile:active{transform:none}}
+.mg{max-width:1120px;margin:0 auto}
+.mg-me{display:flex;align-items:center;gap:10px;margin:0 0 10px}
+.mg-av{width:40px;height:40px;border-radius:50%;object-fit:cover;flex:0 0 auto}
+.mg-ini{width:40px;height:40px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;background:#0054A8}
+.mg-me div{flex:1;min-width:0}.mg-me h2{margin:0;font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mg-me p{margin:1px 0 0;font-size:12px;color:var(--mut)}
+.mg-ib{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:40px;padding:0 12px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:inherit;font:inherit;font-size:13px;font-weight:700;text-decoration:none;cursor:pointer}
+.mg-ib.lock{background:#0B1220;color:#fff;border-color:#0B1220}
+.mg-bar{display:grid;gap:8px;margin:0 0 10px}
+.mg-bar form{display:flex;gap:6px}
+.mg-bar input{flex:1;min-width:0;min-height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:inherit;font:inherit;font-size:15px}
+.mg-bar button{min-height:44px;padding:0 14px;border-radius:12px;border:0;background:#0054A8;color:#fff;font:inherit;font-weight:800;cursor:pointer;white-space:nowrap}
+.mg-bar .ai button{background:#F07C1F}
+.mg-strip{display:flex;gap:8px;overflow-x:auto;margin:0 0 10px;padding-bottom:2px;scrollbar-width:none}
+.mg-strip a{flex:0 0 auto;max-width:86vw;padding:9px 13px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:inherit;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mg-strip a.hot{border-color:#F07C1F;color:#B4560C}
+.mg-tabs{display:flex;gap:6px;margin:0 0 10px;padding:4px;border-radius:14px;background:var(--card);border:1px solid var(--line);position:sticky;top:6px;z-index:5}
+.mg-tabs button{flex:1;min-height:42px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:14px;font-weight:800;cursor:pointer}
+.mg-tabs button.on{background:#0054A8;color:#fff}
+.mg-cols{display:grid;gap:12px}
+.mg-col{display:none;border:1px solid var(--line);border-radius:16px;background:var(--card);padding:12px;min-width:0}
+.mg-col.on{display:block}
+.mg-col>h3{display:none;margin:0 0 10px;font-size:15px}
+@media (min-width:980px){.mg-tabs{display:none}.mg-cols{grid-template-columns:repeat(auto-fit,minmax(290px,1fr));align-items:start}.mg-col{display:block}.mg-col>h3{display:block}}
+.mg-n{display:flex;gap:8px;margin:0 0 10px}
+.mg-n a{flex:1;padding:9px 10px;border-radius:12px;background:rgba(0,84,168,.07);color:inherit;text-decoration:none}
+.mg-n b{display:block;font-size:22px;line-height:1.1}.mg-n small{font-size:11.5px;color:var(--mut);font-weight:700}
+.mg-n a.hot{background:rgba(240,124,31,.14)}
+.mg-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.mg-a{position:relative;display:flex;align-items:center;gap:9px;min-height:56px;padding:8px 10px;border-radius:12px;border:1px solid var(--line);color:inherit;text-decoration:none;min-width:0}
+.mg-a:active{background:rgba(0,84,168,.08)}
+.mg-a i{font-style:normal;font-size:20px;flex:0 0 auto}
+.mg-a span{min-width:0}.mg-a b{display:block;font-size:13.5px;line-height:1.2}.mg-a small{display:block;font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mg-a.big{grid-column:1/-1;min-height:60px;background:#0054A8;border-color:#0054A8;color:#fff}
+.mg-a.big b{font-size:16px}.mg-a.big small{color:rgba(255,255,255,.85)}
+.mg-a em{position:absolute;top:-6px;right:-4px;min-width:22px;height:22px;padding:0 6px;border-radius:99px;background:#D7263D;color:#fff;font-style:normal;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.mg-trips{display:grid;gap:6px;margin:0 0 10px}
+.mg-trip{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:12px;border:1px solid var(--line);font-size:13px}
+.mg-trip div{flex:1;min-width:0}.mg-trip b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mg-trip small{color:var(--mut)}
+.mg-trip a{flex:0 0 auto;min-height:36px;display:inline-flex;align-items:center;padding:0 10px;border-radius:9px;border:1px solid var(--line);color:inherit;text-decoration:none;font-weight:700;font-size:12px}
+.mg-bar2{height:4px;border-radius:9px;background:rgba(127,127,127,.2);margin-top:4px;overflow:hidden}.mg-bar2 u{display:block;height:100%;background:#1E9E5A}
+details.mg-more{margin-top:12px}
+details.mg-more>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:center;min-height:44px;border-radius:12px;border:1.5px dashed var(--line);font-weight:800;font-size:13.5px}
+details.mg-more>summary::-webkit-details-marker{display:none}
+.mg-more .mg-list{margin-top:10px}
+@media (min-width:760px){.mg-more .mg-list{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.mg-foot{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:16px 0 4px}
+.mg-flash{padding:10px 13px;border-radius:11px;font-weight:700;margin-bottom:10px}
+.mg-flash.ok{background:#DEF4E4;color:#14602E}.mg-flash.bad{background:#F7DCDC;color:#8A1F1F}
 </style>
-<div class="ap-a hb">
-  <?php if ($flash !== null): ?><div class="hb-flash <?= $e($flash[0]) ?>" role="status"><?= $e($flash[1]) ?></div><?php endif; ?>
+<div class="mg">
+  <?php if ($flash !== null): ?><div class="mg-flash <?= $e($flash[0]) ?>" role="status"><?= $e($flash[1]) ?></div><?php endif; ?>
 
-  <section class="hb-me" aria-label="तपाईं · You">
-    <?php if ($photo !== ''): ?><img class="hb-av" src="<?= $e($photo) ?>" alt="" width="58" height="58">
-    <?php else: ?><span class="hb-ini" aria-hidden="true"><?= $e(mb_strtoupper(mb_substr($name, 0, 1)) ?: '★') ?></span><?php endif; ?>
-    <div class="hb-who">
-      <h2>नमस्ते, <?= $e($first) ?> 🙏</h2>
-      <p><?= $e($roleL) ?><?= $idNo !== '' ? ' · <b>' . $e($idNo) . '</b>' : '' ?></p>
-      <?php if ($chip !== null): ?><span class="hb-chip <?= $e($chip[0]) ?>"><?= $e($chip[1]) ?></span><?php endif; ?>
-    </div>
-    <div class="hb-acts">
-      <?php if ((string) ($admin['role'] ?? '') !== 'viewer'): ?><a href="/me/#id">🪪 मेरो ID कार्ड · My ID card</a><?php endif; ?>
-      <?php if ($office): ?><a class="pri" href="/admin/index.php">🏢 एडमिन प्यानल · Admin panel</a><?php endif; ?>
-      <?php if ($others > 0): ?>
-      <form method="post" action="/admin/home.php" style="display:contents"><?= Security::csrfField() ?><input type="hidden" name="action" value="switch">
-        <button type="submit" title="यो मोबाइलको अर्को ID खोल्नुहोस् · Open another ID on this mobile">🔁 ID बदल्नुहोस् · Switch ID</button></form>
-      <?php endif; ?>
-    </div>
+  <section class="mg-me" aria-label="You">
+    <?php if ($photo !== ''): ?><img class="mg-av" src="<?= $e($photo) ?>" alt="" width="40" height="40">
+    <?php else: ?><span class="mg-ini" aria-hidden="true"><?= $e(mb_strtoupper(mb_substr($name, 0, 1)) ?: '★') ?></span><?php endif; ?>
+    <div><h2><?= $e($first) ?></h2><p><?= $e($roleL) ?><?= $idNo !== '' ? ' · ' . $e($idNo) : '' ?><?= $chip !== null && $chip[0] !== 'ok' ? ' · ' . $e($chip[1]) : '' ?></p></div>
+    <?php if ($others > 0): ?>
+    <form method="post" action="/admin/home.php"><?= Security::csrfField() ?><input type="hidden" name="action" value="switch">
+      <button class="mg-ib" type="submit" title="ID बदल्नुहोस् · Switch ID" aria-label="Switch ID">🔁</button></form>
+    <?php endif; ?>
+    <a class="mg-ib lock" href="/admin/logout.php" title="Lock — opens again with your pattern / PIN">🔒 Lock</a>
   </section>
 
-  <?php if ($strip !== []): ?>
-  <div class="hb-strip">
+  <div class="mg-bar">
+    <?php if (isset($navOk['easy-settings.php'])): ?>
+    <form method="post" action="/admin/easy-settings.php" class="ai">
+      <?= Security::csrfField() ?><input type="hidden" name="act" value="cmd">
+      <input name="cmd" placeholder="AI लाई भन्नुहोस्: Surat ko bhada 2300 · 15 tarik bus band" aria-label="Tell S Hari AI" autocomplete="off"><button type="submit">AI ➜</button></form>
+    <?php endif; ?>
+  </div>
+
+  <?php $needQk = !($qk['pin'] || $qk['pattern']);
+  if ($strip !== [] || $needQk): ?>
+  <div class="mg-strip">
+    <?php if ($needQk): ?><a class="hot" href="/admin/quick-unlock.php">🔐 Pattern / PIN राख्नुहोस् — अर्को पटक छिटो खुल्छ · Set a pattern or PIN</a><?php endif; ?>
     <?php foreach ($strip as $s): ?><a class="<?= $s['hot'] ? 'hot' : '' ?>" href="<?= $e($s['href']) ?>"><?= $e($s['text']) ?></a><?php endforeach; ?>
   </div>
   <?php endif; ?>
 
-  <?php if ($tiles['hero'] === []): ?>
-    <div class="hb-strip"><a href="/me/">तपाईंको पदका लागि यहाँ काम छैन — ID र कागजात /me/ मा · Nothing to do here for your role — your ID and papers are at /me/</a></div>
-  <?php else: ?>
-  <div class="hb-grid"><?php foreach ($tiles['hero'] as $t) { echo $tile($t); } ?></div>
+  <?php if ($cols !== []): $firstKey = array_key_first($cols); ?>
+  <div class="mg-tabs" role="tablist">
+    <?php foreach ($cols as $k => $c): ?><button type="button" role="tab" data-mg="<?= $k ?>"<?= $k === $firstKey ? ' class="on"' : '' ?>><?= $c[0] ?> <?= $e($c[1]) ?></button><?php endforeach; ?>
+  </div>
+  <div class="mg-cols" style="--n:<?= count($cols) ?>">
+    <?php foreach ($cols as $k => $c): ?>
+    <section class="mg-col<?= $k === $firstKey ? ' on' : '' ?>" data-mgc="<?= $k ?>">
+      <h3><?= $c[0] ?> <?= $e($c[1]) ?> · <?= $e($c[2]) ?></h3>
+      <?php if ($k === 't' && $canTk): ?>
+        <div class="mg-n">
+          <a href="/admin/bookings.php"><b><?= $tkToday ?></b><small><?= $agentV ? 'मेरो आज · My tickets today' : 'आजको टिकट · Today' ?></small></a>
+          <a class="<?= $tkPend > 0 ? 'hot' : '' ?>" href="/admin/<?= isset($navOk['payments.php']) ? 'payments.php' : 'bookings.php?status=pending' ?>"><b><?= $tkPend ?></b><small>भुक्तानी बाँकी · Pending</small></a>
+        </div>
+      <?php elseif ($k === 'b' && $trips !== []): ?>
+        <div class="mg-trips">
+          <?php foreach ($trips as $t):
+              $tot  = max(1, (int) $t['total_seats']);
+              $sold = (int) $t['seats_booked'];
+              $day  = (string) $t['travel_date'] === date('Y-m-d') ? 'आज' : 'भोलि'; ?>
+          <div class="mg-trip">
+            <div><b><?= $e($t['from_city']) ?> → <?= $e($t['to_city']) ?></b>
+              <small><?= $e($day) ?> <?= $e($fmtT($t['dep_time'])) ?> · <?= $e($t['bus_name'] ?: ($t['bus_number'] ?: 'Bus —')) ?> · <?= $sold ?>/<?= $tot ?> seat</small>
+              <div class="mg-bar2"><u style="width:<?= min(100, (int) round($sold * 100 / $tot)) ?>%"></u></div></div>
+            <?php if (isset($navOk['manifest.php'])): ?><a href="/admin/manifest.php?date=<?= $e($t['travel_date']) ?>&amp;sid=<?= (int) $t['sid'] ?>">चलानी</a><?php endif; ?>
+            <a href="/admin/bus-control.php?date=<?= $e($t['travel_date']) ?>">सिट</a>
+          </div>
+          <?php endforeach; ?>
+        </div>
+      <?php elseif ($k === 'a' && !$agentV && $office): ?>
+        <div class="mg-n">
+          <a href="/admin/people.php"><b><?= $nAgents ?></b><small>सक्रिय एजेन्ट · Active</small></a>
+          <a class="<?= $nApps + $nMoney > 0 ? 'hot' : '' ?>" href="/admin/team.php?tab=approvals"><b><?= $nApps + $nMoney ?></b><small>पर्खिरहेको काम · Waiting</small></a>
+        </div>
+      <?php endif; ?>
+      <div class="mg-list"><?= $c[3] ?></div>
+    </section>
+    <?php endforeach; ?>
+  </div>
   <?php endif; ?>
 
-  <?php if ($tiles['more'] !== []): ?>
-  <details class="hb-more">
-    <summary>＋ थप काम · More (<?= count($tiles['more']) ?>)</summary>
-    <div class="hb-grid"><?php foreach ($tiles['more'] as $t) { echo $tile($t); } ?></div>
+  <?php $rest = array_merge($tiles['hero'], $tiles['more']);
+  if ($rest !== []): ?>
+  <details class="mg-more"<?= $cols === [] ? ' open' : '' ?>>
+    <summary>＋ अरू सबै · Everything else (<?= count($rest) ?>)</summary>
+    <div class="mg-list">
+      <?php foreach ($rest as $t): ?>
+        <a class="mg-a" href="<?= $e($t['href']) ?>"><i aria-hidden="true"><?= $e($t['icon']) ?></i><span><b><?= $e($t['ne']) ?></b><small><?= $e($t['en']) ?></small></span><?= $t['badge'] > 0 ? '<em>' . (int) $t['badge'] . '</em>' : '' ?></a>
+      <?php endforeach; ?>
+      <?php if ($office): ?><a class="mg-a" href="/admin/index.php"><i aria-hidden="true">📈</i><span><b>ड्यासबोर्ड</b><small>Full dashboard</small></span></a>
+      <a class="mg-a" href="/admin/hub.php"><i aria-hidden="true">🗂️</i><span><b>सबै पेज</b><small>All pages by category</small></span></a><?php endif; ?>
+    </div>
   </details>
   <?php endif; ?>
 
-  <div class="hb-foot">
-    <?php if (!$viaOtp): ?><a href="/admin/change-password.php">🔑 पासवर्ड बदल्नुहोस् · Change password</a><?php endif; ?>
-    <a href="/admin/logout.php">🚪 बाहिर निस्कनुहोस् · Sign out</a>
+  <div class="mg-foot">
+    <?php if ((string) ($admin['role'] ?? '') !== 'viewer'): ?><a class="mg-ib" href="/me/#id">🪪 My ID</a><?php endif; ?>
+    <a class="mg-ib" href="/admin/quick-unlock.php">🔐 Pattern / PIN</a>
+    <?php if (!$viaOtp): ?><a class="mg-ib" href="/admin/change-password.php">🔑 Password</a><?php endif; ?>
   </div>
 </div>
+<script>
+(function(){
+  var tabs=document.querySelectorAll('[data-mg]'),cols=document.querySelectorAll('[data-mgc]');
+  function show(k){var ok=false;cols.forEach(function(c){var on=c.getAttribute('data-mgc')===k;c.classList.toggle('on',on);ok=ok||on;});
+    if(!ok)return;tabs.forEach(function(t){t.classList.toggle('on',t.getAttribute('data-mg')===k);});try{localStorage.setItem('shg_mg_tab',k);}catch(e){}}
+  tabs.forEach(function(t){t.addEventListener('click',function(){show(t.getAttribute('data-mg'));});});
+  try{var s=localStorage.getItem('shg_mg_tab');if(s&&document.querySelector('[data-mgc="'+s+'"]'))show(s);}catch(e){}
+})();
+</script>
 <?php admin_footer();

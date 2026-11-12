@@ -325,7 +325,9 @@ function admin_header(string $title, string $active = ''): void
 
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">';
     echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
-    echo '<title>' . Security::e(admin_plain($title)) . ' · ' . Security::e($company) . ' Admin</title>';
+    echo '<title>' . Security::e(admin_plain($title)) . ' · ' . Security::e($company) . ' · Management</title>';
+    echo '<link rel="manifest" href="/admin/manifest.webmanifest"><meta name="theme-color" content="#0B1220">';
+    echo '<meta name="application-name" content="Management of S Hari"><meta name="apple-mobile-web-app-title" content="S Hari Manage">';
     echo '<link rel="icon" type="image/png" href="/assets/img/favicon-32.png">';
     echo '<link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">';
     echo '<meta name="csrf" content="' . Security::e(Security::csrfToken()) . '">';
@@ -351,7 +353,7 @@ function admin_header(string $title, string $active = ''): void
     // 30 Oct 2026: the logo goes home — the one home page when it is on (index.php 403'd scanners and officials)
     echo '<a class="brand" href="' . $base . (Auth::oneDoorOn() ? Auth::homeUrl() : '/admin/index.php') . '">'
        . '<img class="brand-logo" src="/assets/img/logo-mark-96h-tmw.png" alt="" width="50" height="26"> '
-       . Security::e($company) . ' <span>Admin</span></a>';
+       . Security::e($company) . ' <span>Manage</span></a>';
 
     // Phase 3 — Global search. Sits between the brand and the "who" strip
     // on wide viewports, drops below the top bar on small ones (see the

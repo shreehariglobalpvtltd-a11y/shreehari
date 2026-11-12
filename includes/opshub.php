@@ -676,4 +676,35 @@ final class OpsHub
         header('Location: https://' . $staff . $uri, true, 302);
         exit;
     }
+
+    /**
+     * 12 Nov 2026 (owner: ".network ra .in chhuttai app — .network kholda
+     * suru mai pattern / PIN lock"): the bare root of the staff door is not
+     * the customer site. "/" on shreehariglobal.network opens the staff lock
+     * screen; every other path (tickets, pay links, ?counter=1 booking) is
+     * untouched. Switch off with setting staff_root_lock = 0.
+     */
+    public static function enforceStaffRoot(): void
+    {
+        if (PHP_SAPI === 'cli' || strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+            return;
+        }
+        $host = strtolower((string) preg_replace('/:\d+$/', '', (string) ($_SERVER['HTTP_HOST'] ?? '')));
+        $uri  = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+        if ($uri !== '/' && $uri !== '/index.php') {
+            return;   // any query string (?counter=1, ?ref=) keeps the old behaviour
+        }
+        try {
+            $staff = self::staffHost();
+            if ($staff === '' || ($host !== $staff && $host !== 'www.' . $staff) || in_array($host, self::customerHosts(), true)
+                || !Settings::getBool('staff_root_lock', true)) {
+                return;
+            }
+        } catch (Throwable $e) {
+            return;
+        }
+        header('Cache-Control: no-store');
+        header('Location: /admin/login.php', true, 302);
+        exit;
+    }
 }

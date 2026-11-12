@@ -229,6 +229,7 @@ if (PHP_SAPI !== 'cli') {
        page opened on the customer domain moves to the .network door. */
     require_once INCLUDE_PATH . '/opshub.php';
     OpsHub::enforceStaffDoor();
+    OpsHub::enforceStaffRoot();   // 12 Nov 2026: "/" on the staff door = the lock screen
 }
 
 

@@ -371,7 +371,10 @@ self.addEventListener('fetch', function (event) {
        document under '/', so after opening verify-ticket.php or
        agent-signup.php an offline start of the app rendered that page
        instead (perf pass, 11 Sep 2026). */
+    /* 12 Nov 2026: the staff door (.network) is its own app - its "/" is the
+       lock screen, never the customer shell. */
     var isShell = url.origin === self.location.origin &&
+                  !/(^|\.)shreehariglobal\.network$/.test(self.location.hostname) &&
                   (url.pathname === '/' || url.pathname === '/index.php');
     event.respondWith((async function () {
       var cache = null;

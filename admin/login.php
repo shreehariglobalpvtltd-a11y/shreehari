@@ -292,10 +292,41 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
 :root[data-theme="dark"] a{color:#9ABFFF}
 :root[data-theme="dark"] .msg.bad{background:#30161B;color:#FFADB9}:root[data-theme="dark"] .msg.ok{background:#0F271B;color:#8CE4B8}:root[data-theme="dark"] .msg.warn{background:#2E2410;color:#FFD48A}
 @media (prefers-reduced-motion:reduce){.btn:active{transform:none}}
+/* 12 Nov 2026 — Android-style lock screen (a remembered phone) */
+body.lock{background:#070B14;background-image:radial-gradient(120% 70% at 50% -10%,#16305F 0%,rgba(22,48,95,0) 62%);border-top:0;color:#E8F0FB}
+body.lock .box{background:transparent;border:0;box-shadow:none;padding:8px 6px;max-width:340px;color:#E8F0FB}
+body.lock h1,body.lock .sub,body.lock .ceo{display:none}
+body.lock .logo img{height:40px;filter:none;opacity:.95}
+.lk-clock{text-align:center;font-size:54px;font-weight:200;letter-spacing:1px;line-height:1;margin:14px 0 2px;font-variant-numeric:tabular-nums}
+.lk-date{text-align:center;font-size:13px;color:#9FB2D0;margin:0 0 16px}
+body.lock .who{font-size:16px;color:#fff;margin-bottom:2px}
+body.lock .note{color:#9FB2D0}
+body.lock .qk-pad{background:transparent;width:264px;height:264px}
+body.lock .qk-dot{background:#5E7399;width:16px;height:16px;margin:-8px 0 0 -8px}
+body.lock .qk-dot.on{background:#F07C1F;transform:scale(1.5)}
+body.lock .qk-pad svg{color:#F07C1F}
+body.lock .qk-tabs button{background:transparent;border-color:#2B3F63;color:#C9D6EA;min-height:38px;border-radius:99px;font-size:13px}
+body.lock .qk-tabs button.on{background:#F07C1F;border-color:#F07C1F;color:#fff}
+body.lock .links a{color:#9ABFFF;font-weight:600;font-size:13px}
+body.lock .links~.links{display:none}body.lock .links a[href*="forget"]{color:#FF9AA5 !important;font-size:12px}
+body.lock .msg.bad{background:#30161B;color:#FFADB9}body.lock .msg.ok{background:#0F271B;color:#8CE4B8}
+.lk-dots{display:flex;gap:14px;justify-content:center;height:22px;margin:18px 0 14px}
+.lk-dots i{width:14px;height:14px;border-radius:50%;border:2px solid #7C90B4}
+.lk-dots i.on{background:#F07C1F;border-color:#F07C1F}
+.lk-keys{display:grid;grid-template-columns:repeat(3,72px);gap:12px 22px;justify-content:center}
+.lk-keys button{width:72px;height:72px;border-radius:50%;border:0;background:rgba(255,255,255,.08);color:#fff;font:400 26px/1 system-ui,sans-serif;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.lk-keys button:active{background:rgba(240,124,31,.55)}
+.lk-keys button.s{background:transparent;font-size:15px;font-weight:700;color:#9ABFFF}
+.lk-keys button.go{background:#F07C1F;font-size:17px;font-weight:800}
+body.lock.shake .qk,body.lock.shake .lk-dots{animation:lkshake .35s}
+@keyframes lkshake{20%,60%{transform:translateX(-9px)}40%,80%{transform:translateX(9px)}}
+@media (max-height:640px){.lk-clock{font-size:40px;margin-top:6px}.lk-keys{grid-template-columns:repeat(3,62px);gap:9px 20px}.lk-keys button{width:62px;height:62px;font-size:22px}body.lock .qk-pad{width:232px;height:232px}}
+@media (prefers-reduced-motion:reduce){body.lock.shake .qk,body.lock.shake .lk-dots{animation:none}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('shg_admin_theme');if(t==='dark'||t==='amoled')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+<link rel="manifest" href="/admin/manifest.webmanifest"><meta name="theme-color" content="#0B1220">
 </head>
-<body>
+<body<?= ($remembered ?? null) !== null ? ' class="lock"' : '' ?>>
 <main class="box" data-door="one">
   <div class="logo"><img src="<?= $h(Brand::markUrl(68)) ?>" alt="<?= $h($company) ?>" width="112" height="58"></div>
   <h1><?= $h($title) ?></h1>
@@ -308,7 +339,8 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
 
   <?php if ($step === 'start' && $remembered !== null): ?>
   <?php /* 6 Nov 2026: this phone remembers the account — pattern / PIN first, like an Android lock screen. */ ?>
-  <div class="who" style="font-size:17px">👋 <span><?= $h($remembered['name']) ?></span></div>
+  <div class="lk-clock" id="lkClock" aria-hidden="true">--:--</div><div class="lk-date" id="lkDate"></div>
+  <div class="who">🔒 <span><?= $h($remembered['name']) ?></span></div>
   <div class="qk" data-qk>
     <?php if ($remembered['pattern'] && $remembered['pin']): ?>
     <div class="qk-tabs" role="tablist">
@@ -328,6 +360,8 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
       <?= $hid() ?><input type="hidden" name="mode" value="quick_dev"><input type="hidden" name="qk_kind" value="pin">
       <label for="qkpin">PIN</label>
       <input id="qkpin" class="qk-pin" name="qk_val" type="password" inputmode="numeric" pattern="\d{4,6}" minlength="4" maxlength="6" autocomplete="off" required<?= $remembered['pattern'] ? '' : ' autofocus' ?>>
+      <div class="lk-dots" hidden aria-hidden="true"></div>
+      <div class="lk-keys" hidden><?php foreach (['1','2','3','4','5','6','7','8','9'] as $k): ?><button type="button" data-k="<?= $k ?>"><?= $k ?></button><?php endforeach; ?><button type="button" class="s" data-k="x" aria-label="Delete">⌫</button><button type="button" data-k="0">0</button><button type="button" class="go" data-k="ok" aria-label="Unlock">OK</button></div>
       <button class="btn" type="submit">PIN ले भित्र · Unlock</button>
     </form>
     <?php endif; ?>
@@ -531,6 +565,27 @@ a{color:var(--royal);font-weight:700;text-decoration:none}
 </script>
 <?php endif; ?>
 <?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261106b" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if (($remembered ?? null) !== null): ?><script>
+(function(){
+  var c=document.getElementById('lkClock'),d=document.getElementById('lkDate');
+  function tick(){var n=new Date();if(c)c.textContent=('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2);
+    if(d)d.textContent=n.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});}
+  tick();setInterval(tick,15000);
+  if(document.querySelector('.msg.bad')){document.body.classList.add('shake');if(navigator.vibrate)try{navigator.vibrate(120)}catch(e){}}
+  var f=document.querySelector('form[data-qk-form="pin"]');if(!f)return;
+  var inp=f.querySelector('input[name="qk_val"]'),dots=f.querySelector('.lk-dots'),keys=f.querySelector('.lk-keys'),busy=false;
+  if(!inp||!dots||!keys)return;
+  inp.type='hidden';inp.removeAttribute('required');var lab=f.querySelector('label');if(lab)lab.hidden=true;
+  var old=f.querySelector('button.btn');if(old)old.hidden=true;dots.hidden=false;keys.hidden=false;
+  function draw(){var h='';for(var i=0;i<6;i++)h+='<i'+(i<inp.value.length?' class="on"':'')+(i>3&&inp.value.length<=i?' style="opacity:.35"':'')+'></i>';dots.innerHTML=h;}
+  function send(){if(busy||inp.value.length<4)return;busy=true;f.submit();}
+  function press(k){if(busy)return;if(k==='x')inp.value=inp.value.slice(0,-1);else if(k==='ok'){send();return;}
+    else if(inp.value.length<6)inp.value+=k;draw();if(inp.value.length===6)send();}
+  keys.addEventListener('click',function(e){var b=e.target.closest('button');if(b)press(b.getAttribute('data-k'));});
+  document.addEventListener('keydown',function(e){if(f.hidden)return;if(/^\d$/.test(e.key))press(e.key);else if(e.key==='Backspace')press('x');else if(e.key==='Enter')press('ok');});
+  draw();
+})();
+</script><?php endif; ?>
 <?php if ((($step === 'mobile' || $step === 'id') && QuickUnlock::on()) || ($remembered ?? null) !== null): ?><script src="/assets/js/quick-unlock.js?v=20261101a"></script><?php endif; ?>
 </body></html>
 <?php

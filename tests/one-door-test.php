@@ -664,7 +664,7 @@ foreach ($ROLES as $role => $id) {
     $cmd = escapeshellarg($php) . ($ini !== '' ? ' -c ' . escapeshellarg($ini) : '') . ' ' . escapeshellarg(__FILE__) . ' --render ' . $id . ' 2>&1';
     $out = (string) shell_exec($cmd);
     $bad = preg_match('/Application error|Warning:|Notice:|Deprecated:|Fatal error|Uncaught/i', $out) === 1;
-    check("home.php as $role", !$bad && str_contains($out, 'hb-me') && str_contains($out, '🏠 गृह · Home'),
+    check("home.php as $role", !$bad && str_contains($out, 'mg-me') && str_contains($out, 'Management'),
         $bad ? mb_substr(strip_tags($out), 0, 300) : strlen($out) . ' bytes');
 }
 
