@@ -564,13 +564,76 @@ final class ApCard
         $s->rect($x, $y, $size, $size, '#FFFFFF', $size * 0.08, ['stroke' => $rule, 'sw' => 2]);
         [$mx, $lvl] = self::safeQr($texts, $badge ? QrCode::ECC_H : QrCode::ECC_M, $maxVersion);
         $q = $size - 2 * $pad;
-        $s->qr($x + $pad, $y + $pad, $q, $mx, self::INK);
+        $eye = match ($rule) {
+            self::WA     => '#0E7A40',
+            self::GOLD   => self::GOLD_D,
+            self::GOLD_L => self::GOLD_D,
+            default      => self::B_ORANGE_D,
+        };
+        self::qrArt($s, $x + $pad, $y + $pad, $q, $mx, self::B_NAVY, self::B_BLUE, $eye);
         if ($badge && $lvl === QrCode::ECC_H) {
             $c = $x + $size / 2;
             $b = $q * 0.2;
             $s->rect($c - $b / 2, $y + $size / 2 - $b / 2, $b, $b, '#FFFFFF', $b * 0.22);
             self::waGlyph($s, $c, $y + $size / 2, $b * 0.4);
         }
+    }
+
+    /**
+     * 12 Nov 2026 (owner: "QR ajai advance, colourful, print garera use garna
+     * milne"): the colour QR. Same matrix, so it scans exactly like the plain
+     * one — the modules run navy to blue top to bottom, and the three finder
+     * squares become rounded "eyes" with an accent heart. Every colour is
+     * dark on white (print and phone safe); nothing covers a data module.
+     *
+     * @param array<int, array<int, bool>> $mx
+     */
+    private static function qrArt(ApScene $s, float $x, float $y, float $size, array $mx, string $c1, string $c2, string $eye): void
+    {
+        $n = count($mx);
+        if ($n < 21) {
+            $s->qr($x, $y, $size, $mx, $c1);
+            return;
+        }
+        $cell = $size / $n;
+        $eyes = [[0, 0], [$n - 7, 0], [0, $n - 7]];   // [col, row] of each finder
+        foreach ($eyes as [$ex, $ey]) {
+            for ($r = 0; $r < 7; $r++) {
+                for ($c = 0; $c < 7; $c++) {
+                    $mx[$ey + $r][$ex + $c] = false;
+                }
+            }
+        }
+        $a = self::rgb($c1);
+        $z = self::rgb($c2);
+        $bands = 6;
+        $blank = array_fill(0, $n, false);
+        for ($b = 0; $b < $bands; $b++) {
+            $from = intdiv($n * $b, $bands);
+            $to   = intdiv($n * ($b + 1), $bands);
+            $part = [];
+            for ($r = 0; $r < $n; $r++) {
+                $part[$r] = ($r >= $from && $r < $to) ? $mx[$r] : $blank;
+            }
+            $t = $b / ($bands - 1);
+            $col = sprintf('#%02X%02X%02X',
+                (int) round($a[0] + ($z[0] - $a[0]) * $t), (int) round($a[1] + ($z[1] - $a[1]) * $t), (int) round($a[2] + ($z[2] - $a[2]) * $t));
+            $s->qr($x, $y, $size, $part, $col);
+        }
+        foreach ($eyes as [$ex, $ey]) {
+            $px = $x + $ex * $cell;
+            $py = $y + $ey * $cell;
+            $s->rect($px, $py, 7 * $cell, 7 * $cell, $c1, 0.7 * $cell);
+            $s->rect($px + $cell, $py + $cell, 5 * $cell, 5 * $cell, '#FFFFFF', 0.4 * $cell);
+            $s->rect($px + 2 * $cell, $py + 2 * $cell, 3 * $cell, 3 * $cell, $eye, 0.5 * $cell);
+        }
+    }
+
+    /** The member's own photo file, or '' when there is none on disk. */
+    private static function photoAbs(array $m): string
+    {
+        $abs = ((string) ($m['photo'] ?? '') !== '' && str_starts_with((string) $m['photo'], 'agents/')) ? UPLOAD_PATH . '/' . $m['photo'] : '';
+        return ($abs !== '' && is_file($abs)) ? $abs : '';
     }
 
     private static function idFront(array $m): ApScene
@@ -797,15 +860,15 @@ final class ApCard
 
         // The portrait: a white ring inside an orange one.
         $cx = 270;
-        $cy = 318;
-        $R  = 108;
+        $cy = 330;
+        $R  = 126;   // 12 Nov 2026: bigger photo
         $s->circle($cx, $cy, $R + 15, self::B_ORANGE);
         $s->circle($cx, $cy, $R + 8, '#FFFFFF');
         self::circlePhoto($s, $m, $cx, $cy, $R);
-        self::kycMark($s, $m, $cx + 84, $cy + 84, $cx, $cy + $R);
+        self::kycMark($s, $m, $cx + 96, $cy + 96, $cx, $cy + $R);
 
-        $last = $s->textFit(270, 486, (string) $m['name'], 'sansB', 36, self::INK, 'middle', 480);
-        $y = 514 + ($last - 486);
+        $last = $s->textFit(270, 516, (string) $m['name'], 'sansB', 36, self::INK, 'middle', 480);
+        $y = 544 + ($last - 516);
         $s->textFit(270, $y, mb_strtoupper((string) $m['designation']), 'caps', 15.5, self::B_ORANGE_D, 'middle', 470, 3.4, 1);
 
         $idNo  = $m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING';
@@ -816,7 +879,7 @@ final class ApCard
         $s->text(270 - $iw / 2 + 20, $py + 28, $label, 'caps', 13, self::B_ORANGE_L, 'start', 1.6);
         $s->text(270 + $iw / 2 - 20, $py + 31, $idNo, 'monoB', 23, '#FFFFFF', 'end', 1.2);
 
-        $gy = min(max($py + 86, 652), 690);
+        $gy = min(max($py + 80, 664), 700);
         foreach (self::idFacts($m) as $i => [$lab, $val]) {
             $x  = $i % 2 === 0 ? 50 : 300;
             $ry = $gy + intdiv($i, 2) * 50;
@@ -847,22 +910,23 @@ final class ApCard
             $s->text(283, 182, $w2, 'caps', 12.5, self::B_ORANGE_D, 'middle', 3, 1.0, 470);
         }
 
-        $s->rect(173, 204, 220, 258, '#FFFFFF', 26, ['stroke' => '#D3DBEA', 'sw' => 3]);
-        self::portrait($s, $m, 181, 212, 204, 242, 20);
-        self::kycMark($s, $m, 384, 446, 283, 462);
+        // 12 Nov 2026: bigger photo
+        $s->rect(157, 198, 252, 292, '#FFFFFF', 28, ['stroke' => self::B_ORANGE, 'sw' => 3]);
+        self::portrait($s, $m, 165, 206, 236, 276, 21);
+        self::kycMark($s, $m, 400, 474, 283, 490);
 
-        $last = $s->textFit(283, 520, (string) $m['name'], 'sansB', 36, self::INK, 'middle', 470);
-        $y = 548 + ($last - 520);
+        $last = $s->textFit(283, 546, (string) $m['name'], 'sansB', 36, self::INK, 'middle', 470);
+        $y = 574 + ($last - 546);
         $s->textFit(283, $y, mb_strtoupper((string) $m['designation']), 'caps', 15.5, self::B_BLUE, 'middle', 460, 3.4, 1);
 
         $idNo  = $m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING';
         $label = self::codeLabel($m);
-        $py = $y + 40;
+        $py = $y + 34;
         $s->text(283, $py, $label, 'caps', 12.5, self::MUTED, 'middle', 2);
         $s->text(283, $py + 30, $idNo, 'monoB', 26, self::B_NAVY, 'middle', 1.4);
         $s->rect(283 - 40, $py + 40, 80, 4, self::B_ORANGE, 2);
 
-        $gy = min(max($py + 82, 690), 712);
+        $gy = min(max($py + 78, 700), 716);
         foreach (self::idFacts($m) as $i => [$lab, $val]) {
             $x  = $i % 2 === 0 ? 56 : 300;
             $ry = $gy + intdiv($i, 2) * 46;
@@ -915,9 +979,17 @@ final class ApCard
         $s->text(193, 106, self::vcTagline($m), 'sans', 14, self::MUTED, 'start', 0.2, 1.0, 360);
 
         $x = 36;
-        $last = $s->textFit($x, 182, (string) $m['name'], 'sansB', 38, self::INK, 'start', 500);
+        $tw = 500;
+        if (self::photoAbs($m) !== '') {   // 12 Nov 2026: the member's photo on the visiting card
+            $s->circle(118, 266, 88, self::B_ORANGE);
+            $s->circle(118, 266, 82, '#FFFFFF');
+            self::circlePhoto($s, $m, 118, 266, 77);
+            $x = 226;
+            $tw = 330;
+        }
+        $last = $s->textFit($x, 182, (string) $m['name'], 'sansB', $tw < 500 ? 33 : 38, self::INK, 'start', $tw);
         $y = 210 + ($last - 182);
-        $s->textFit($x, $y, mb_strtoupper((string) $m['designation']), 'caps', 15, self::B_ORANGE_D, 'start', 500, 3.2, 1);
+        $s->textFit($x, $y, mb_strtoupper((string) $m['designation']), 'caps', 15, self::B_ORANGE_D, 'start', $tw, 3.2, 1);
         $y += 28;
         $label = self::codeLabel($m);
         $s->text($x, $y, $label, 'caps', 13, self::MUTED, 'start', 1.4);
@@ -930,10 +1002,10 @@ final class ApCard
             }
             if ($kind === 'wa') {
                 self::waGlyph($s, $x + 11, $ry - 8, 12);
-                $s->text($x + 32, $ry, $value, 'sansB', 21, self::INK, 'start', 0.2, 1.0, 470);
+                $s->text($x + 32, $ry, $value, 'sansB', 21, self::INK, 'start', 0.2, 1.0, $tw - 30);
             } else {
                 $s->text($x, $ry, $lab, 'caps', 13, self::B_ORANGE_D, 'start', 1.4);
-                $s->text($x + 62, $ry, $value, 'sans', 17, self::INK, 'start', 0, 1.0, 450);
+                $s->text($x + 62, $ry, $value, 'sans', 17, self::INK, 'start', 0, 1.0, $tw - 62);
             }
             $ry += 33;
         }
@@ -966,9 +1038,16 @@ final class ApCard
         $s->rect(30, 128, 829, 1.6, '#E1E7F0');
 
         $x = 36;
-        $last = $s->textFit($x, 192, (string) $m['name'], 'sansB', 38, self::B_NAVY, 'start', 600);
+        $tw = 600;
+        if (self::photoAbs($m) !== '') {   // 12 Nov 2026: the member's photo on the visiting card
+            $s->rect(34, 150, 168, 204, '#FFFFFF', 22, ['stroke' => self::B_ORANGE, 'sw' => 3]);
+            self::portrait($s, $m, 41, 157, 154, 190, 16);
+            $x = 226;
+            $tw = 456;
+        }
+        $last = $s->textFit($x, 192, (string) $m['name'], 'sansB', $tw < 600 ? 34 : 38, self::B_NAVY, 'start', $tw);
         $y = 220 + ($last - 192);
-        $s->textFit($x, $y, mb_strtoupper((string) $m['designation']), 'caps', 15, self::B_BLUE, 'start', 600, 3.2, 1);
+        $s->textFit($x, $y, mb_strtoupper((string) $m['designation']), 'caps', 15, self::B_BLUE, 'start', $tw, 3.2, 1);
         $y += 28;
         $label = self::codeLabel($m);
         $s->text($x, $y, $label, 'caps', 13, self::MUTED, 'start', 1.4);
@@ -981,10 +1060,10 @@ final class ApCard
             }
             if ($kind === 'wa') {
                 self::waGlyph($s, $x + 11, $ry - 8, 12);
-                $s->text($x + 32, $ry, $value, 'sansB', 21, self::INK, 'start', 0.2, 1.0, 560);
+                $s->text($x + 32, $ry, $value, 'sansB', 21, self::INK, 'start', 0.2, 1.0, $tw - 40);
             } else {
                 $s->text($x, $ry, $lab, 'caps', 13, self::B_BLUE, 'start', 1.4);
-                $s->text($x + 62, $ry, $value, 'sans', 17, self::INK, 'start', 0, 1.0, 560);
+                $s->text($x + 62, $ry, $value, 'sans', 17, self::INK, 'start', 0, 1.0, $tw - 70);
             }
             $ry += 33;
         }
@@ -993,7 +1072,7 @@ final class ApCard
             $s->text(779, 334, 'SCAN · WHATSAPP', 'caps', 12.5, self::B_NAVY, 'middle', 1, 1.0, 170);
         }
         $s->rect(0, 466, 889, 42, self::B_NAVY);
-        $s->text($x, 493, mb_strtoupper(self::featureLine($co)), 'caps', 13, '#FFFFFF', 'start', 1, 0.92, 580);
+        $s->text(36, 493, mb_strtoupper(self::featureLine($co)), 'caps', 13, '#FFFFFF', 'start', 1, 0.92, 580);
         $s->text(858, 493, 'www.' . self::web($co), 'sansB', 15, self::B_ORANGE_L, 'end', 0.4, 1.0, 240);
         return $s;
     }

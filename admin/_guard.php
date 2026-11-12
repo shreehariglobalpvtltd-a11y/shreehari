@@ -489,6 +489,34 @@ function admin_header(string $title, string $active = ''): void
 function admin_footer(): void
 {
     echo '</main>';
+
+    /* 12 Nov 2026 (owner: "login security — Android lock jastai"): a signed-in
+       screen left alone locks itself. Only for someone who HAS a pattern / PIN
+       (they get back in with it in two seconds; a password-only account is
+       never thrown out by this). Minutes = setting staff_idle_lock_min
+       (default 30, 0 = off). Any tap, key or scroll in any tab of this
+       browser counts as activity; a half-typed form warns before leaving. */
+    try {
+        $idleMin = (int) Settings::getString('staff_idle_lock_min', '30');
+        if ($idleMin > 0 && class_exists('QuickUnlock') === false && is_file(INCLUDE_PATH . '/quickunlock.php')) {
+            require_once INCLUDE_PATH . '/quickunlock.php';
+        }
+        $idleMe = (int) (Auth::admin()['id'] ?? 0);
+        if ($idleMin > 0 && $idleMe > 0 && class_exists('QuickUnlock') && QuickUnlock::on()) {
+            $st = QuickUnlock::status($idleMe);
+            if ($st['pin'] || $st['pattern']) {
+                echo '<script>(function(){var K="shg_last_act",L=' . ($idleMin * 60000) . ',t=0;'
+                   . 'function mark(){var n=Date.now();if(n-t>5000){t=n;try{localStorage.setItem(K,String(n));}catch(e){}}}'
+                   . 'function last(){try{return Math.max(t,parseInt(localStorage.getItem(K)||"0",10)||0);}catch(e){return t;}}'
+                   . 'function chk(){if(Date.now()-last()>L){location.href="/admin/logout.php";}}'
+                   . 't=Date.now();try{localStorage.setItem(K,String(t));}catch(e){}'
+                   . '["pointerdown","keydown","scroll","touchstart"].forEach(function(ev){addEventListener(ev,mark,{passive:true,capture:true});});'
+                   . 'setInterval(chk,30000);document.addEventListener("visibilitychange",function(){if(!document.hidden)chk();});})();</script>';
+            }
+        }
+    } catch (Throwable $e) {
+        // never let the lock timer break a page
+    }
     echo '<div class="scrim" onclick="document.body.classList.remove(\'nav-open\')"></div>';
 
     // Live pending-payments badge + chime, so staff don't have to keep

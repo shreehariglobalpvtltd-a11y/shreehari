@@ -124,6 +124,18 @@ $actions = static function (array $r) use ($e, $csrf, $isSuper, $desks, $tab, $a
     // 31 Oct 2026 (owner: "user ID, password matra edit huncha — purai details admin le change garna milos"):
     // name, number, code, photo, documents, form, cards, delete — all on the member page.
     $h    = '<div class="pp-acts"><a class="btn soft" href="/admin/team-member.php?id=' . $id . '">Edit</a>';
+    // 12 Nov 2026 (owner: "ID card, visiting card 2-2 type, WhatsApp sita merge"): print either design, or chat, from the row.
+    if (in_array((string) $r['role'], ['agent', 'counter'], true) || (string) $r['role'] !== 'superadmin') {
+        $h .= '<a class="btn ghost" target="_blank" rel="noopener" href="/admin/team-print.php?ids%5B%5D=' . $id . '&amp;tpl=wave" title="ID + visiting card — Wave design, print ready">🪪 Card A</a>'
+            . '<a class="btn ghost" target="_blank" rel="noopener" href="/admin/team-print.php?ids%5B%5D=' . $id . '&amp;tpl=minimal" title="ID + visiting card — Minimal design, print ready">🪪 Card B</a>';
+    }
+    $waNo = preg_replace('/\D+/', '', (string) ($r['phone'] ?? '')) ?? '';
+    if (strlen($waNo) === 10) {
+        $waNo = (str_starts_with($waNo, '98') || str_starts_with($waNo, '97') ? '977' : '91') . $waNo;
+    }
+    if (strlen($waNo) >= 11) {
+        $h .= '<a class="btn ghost" style="color:#128C4A;border-color:#128C4A" target="_blank" rel="noopener" href="https://wa.me/' . $e($waNo) . '">WhatsApp</a>';
+    }
     if (!$self) {
         $h .= '<form method="post" action="/admin/staff.php" onsubmit="return confirm(\'' . ((int) $r['is_active'] === 1 ? 'Disable' : 'Activate') . ' ' . $e(addslashes((string) ($r['full_name'] ?: $r['username']))) . '?\')">'
             . $csrf . $ret . '<input type="hidden" name="action" value="toggle"><button class="btn ' . ((int) $r['is_active'] === 1 ? 'ghost' : 'ok') . '" type="submit">' . ((int) $r['is_active'] === 1 ? 'Disable' : 'Activate') . '</button></form>';
