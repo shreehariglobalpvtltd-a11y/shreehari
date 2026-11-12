@@ -102,6 +102,16 @@ $tile = static function (array $t) use ($e): string {
  *    else stays one tap away under "More".
  * ===================================================================== */
 require_once INCLUDE_PATH . '/quickunlock.php';
+/* 12 Nov 2026 (owner: "app kholne bittikai setup boot jasto — PIN / pattern ra
+   security question"): once per sign-in, an account that has not finished
+   the two goes to admin/setup.php first ("Later" there skips it). */
+if (PHP_SAPI !== 'cli' && empty($_SESSION['setup_later']) && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET'
+    && !isset($_GET['q']) && $flash === null && QuickUnlock::on()) {
+    $suSt = QuickUnlock::status($me);
+    if (!($suSt['pin'] || $suSt['pattern']) || (QuickUnlock::secReady() && QuickUnlock::secQuestion($me) === '')) {
+        Response::redirect('admin/setup.php');
+    }
+}
 $navOk = [];
 foreach (admin_nav() as $n) {
     $navOk[(string) ($n['href'] ?? '')] = true;

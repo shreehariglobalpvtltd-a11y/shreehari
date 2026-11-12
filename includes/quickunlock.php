@@ -235,6 +235,88 @@ final class QuickUnlock
     }
 
     /* =================================================================
+     *  Security question (12 Nov 2026) — one per account, used only by
+     *  admin/recover.php to replace a forgotten PIN on a remembered phone.
+     * ================================================================= */
+
+    /** key => the question as shown and stored. */
+    public const SEC_QUESTIONS = [
+        'dob'    => 'तपाईंको जन्म मिति? · Your date of birth?',
+        'mother' => 'आमाको नाम? · Your mother\'s name?',
+        'school' => 'पहिलो स्कुलको नाम? · Name of your first school?',
+        'place'  => 'जन्मेको गाउँ / सहर? · Village or town you were born in?',
+    ];
+
+    private static ?bool $secReady = null;
+
+    /** The 12 Nov 2026 migration ran (the columns exist). */
+    public static function secReady(): bool
+    {
+        if (self::$secReady === null) {
+            try {
+                self::$secReady = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admins' AND COLUMN_NAME = 'sec_a_hash'",
+                    [], 0) > 0;
+            } catch (Throwable $e) {
+                self::$secReady = false;
+            }
+        }
+        return self::$secReady;
+    }
+
+    /** Lower case, letters and digits only — "Ram  Maya." equals "ram maya". */
+    private static function secTidy(string $answer): string
+    {
+        return (string) preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower(trim($answer)));
+    }
+
+    /** null = fine, else a user-safe reason. */
+    public static function secProblem(string $question, string $answer): ?string
+    {
+        if (trim($question) === '' || mb_strlen($question) > 160) {
+            return 'सुरक्षा प्रश्न छान्नुहोस् वा लेख्नुहोस् · Choose or type a security question.';
+        }
+        if (mb_strlen(self::secTidy($answer)) < 3) {
+            return 'उत्तर कम्तीमा ३ अक्षर / अङ्क · The answer needs at least 3 letters or digits.';
+        }
+        return null;
+    }
+
+    /** @throws RuntimeException with a user-safe message */
+    public static function secSet(int $adminId, string $question, string $answer): void
+    {
+        if (!self::secReady()) {
+            throw new RuntimeException('Security question is not switched on yet.');
+        }
+        if (($why = self::secProblem($question, $answer)) !== null) {
+            throw new RuntimeException($why);
+        }
+        Database::query('UPDATE admins SET sec_q = :q, sec_a_hash = :h WHERE id = :i',
+            ['q' => trim($question), 'h' => Security::hashPassword(self::secTidy($answer)), 'i' => $adminId]);
+        Logger::audit('admin.unlock.secq', 'admin', (string) $adminId, null, null, 'Security question set');
+    }
+
+    /** The saved question, or '' when none. */
+    public static function secQuestion(int $adminId): string
+    {
+        if (!self::secReady()) {
+            return '';
+        }
+        $r = Database::fetch('SELECT sec_q, sec_a_hash FROM admins WHERE id = :i', ['i' => $adminId]) ?? [];
+        return (string) ($r['sec_a_hash'] ?? '') !== '' ? (string) ($r['sec_q'] ?? '') : '';
+    }
+
+    public static function secCheck(int $adminId, string $answer): bool
+    {
+        if (!self::secReady()) {
+            return false;
+        }
+        $h = (string) Database::scalar('SELECT sec_a_hash FROM admins WHERE id = :i AND is_active = 1', ['i' => $adminId], '');
+        return $h !== '' && Security::verifyPassword(self::secTidy($answer), $h);
+    }
+
+    /* =================================================================
      *  Unlock
      * ================================================================= */
 

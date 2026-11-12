@@ -368,6 +368,7 @@ body.lock.shake .qk,body.lock.shake .lk-dots{animation:lkshake .35s}
   </div>
   <div class="links">
     <a href="<?= $h($odUrl(['step' => 'start'])) ?>&amp;other=1">🔑 पासवर्ड / अर्को खाता · Password or another account</a>
+    <?php if (QuickUnlock::secQuestion((int) $remembered['id']) !== ''): ?><a href="/admin/recover.php">❓ PIN / pattern बिर्सनुभयो? · Forgot PIN</a><?php endif; ?>
     <a href="/admin/login.php?forget=1&amp;other=1" style="color:#8A1F1F;font-weight:600">तपाईं होइन? यो फोनबाट हटाउने · Not you? Forget this phone</a>
   </div>
 
