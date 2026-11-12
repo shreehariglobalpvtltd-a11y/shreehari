@@ -78,6 +78,69 @@ if ($d !== null && isset($_GET['page'])) {
     Response::inline($png['path'], 'image/png');
 }
 
+/* ---- PDF, like a bank statement (12 Nov 2026) ------------------------
+   Owner: "agent ko statement PDF export — bank account statement jasto;
+   per head change garda PDF pani aafai badaliyos." Drawn from the SAME
+   AgentStatement::data() at the moment of the click, so a rate or ledger
+   change is in the very next download — nothing is stored. */
+if ($d !== null && ($_GET['format'] ?? '') === 'pdf') {
+    if (!$d['balanced']) {
+        http_response_code(409);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'This statement does not add up to the wallet balance yet - the office has been told. No PDF is made until it does.';
+        exit;
+    }
+    require_once INCLUDE_PATH . '/reportpdf.php';
+    $bal = static fn(float $n): string => abs($n) < 0.005 ? inr(0) : inr(abs($n)) . ($n > 0 ? ' Dr' : ' Cr');
+    $rpt = new ReportPdf('AGENT ACCOUNT STATEMENT', formatDate($from, 'j M Y') . ' - ' . formatDate($to, 'j M Y'));
+    $rateLabel = (string) ($d['rate']['label'] ?? '');
+    $rpt->infoBlock(array_values(array_filter([
+        ['Agent', $d['agent']['name']],
+        ['Agent ID', $d['agent']['code']],
+        $d['agent']['phone'] !== '' ? ['Mobile', $d['agent']['phone']] : null,
+        ['Period', formatDate($from, 'j M Y') . ' to ' . formatDate($to, 'j M Y')],
+        $rateLabel !== '' ? ['Commission now', $rateLabel] : null,
+        ['Printed', formatDate(substr($d['generated'], 0, 10), 'j M Y') . ' ' . substr($d['generated'], 11)],
+    ])), 3);
+    $drT = 0.0; $crT = 0.0;
+    foreach ($d['rows'] as $r) { $drT += $r['dr']; $crT += $r['cr']; }
+    $rpt->summaryCards([
+        ['label' => 'Opening balance', 'value' => $bal($d['opening']), 'sub' => 'on ' . formatDate($from, 'j M Y')],
+        ['label' => 'Total debit (Dr)', 'value' => inr($drT), 'sub' => 'agent owes more'],
+        ['label' => 'Total credit (Cr)', 'value' => inr($crT), 'sub' => 'paid in / commission'],
+        ['label' => 'Closing balance', 'value' => $bal($d['closing']), 'sub' => AgentStatement::owes($d['closing'])],
+    ]);
+    $rpt->sectionHeading('Transactions (' . count($d['rows']) . ')');
+    $rpt->setColumns([
+        ['label' => 'Date',        'width' => 78],
+        ['label' => 'Particulars', 'width' => 182],
+        ['label' => 'PNR / Ref',   'width' => 110],
+        ['label' => 'Travel',      'width' => 56],
+        ['label' => 'Pax',         'width' => 34, 'align' => 'R'],
+        ['label' => 'Debit (Dr)',  'width' => 92, 'align' => 'R'],
+        ['label' => 'Credit (Cr)', 'width' => 92, 'align' => 'R'],
+        ['label' => 'Balance',     'width' => 124, 'align' => 'R'],
+    ]);
+    $rpt->tableHeader();
+    $rpt->tableRow([formatDate($from, 'j M Y'), 'Opening balance', '', '', '', '', '', $bal($d['opening'])], false);
+    foreach ($d['rows'] as $i => $r) {
+        $rpt->tableRow([
+            formatDate($r['date'], 'j M Y') . ' ' . $r['time'],
+            $r['label'],
+            $r['ref'],
+            $r['travel'] !== '' ? formatDate($r['travel'], 'j M') : '',
+            $r['pax'] !== null ? (string) (int) $r['pax'] : '',
+            $r['dr'] > 0 ? inr($r['dr']) : '',
+            $r['cr'] > 0 ? inr($r['cr']) : '',
+            $bal($r['running']),
+        ], $i % 2 === 0);
+    }
+    $rpt->tableTotals(['', 'CLOSING BALANCE', '', '', '', inr($drT), inr($crT), $bal($d['closing'])]);
+    $rpt->sectionHeading(AgentStatement::owes($d['closing']) . '   |   Dr = agent owes the company, Cr = company owes the agent');
+    $rpt->stream('SHG-statement-' . preg_replace('/[^A-Za-z0-9-]/', '', $d['agent']['code']) . '-' . $from . '-to-' . $to . '.pdf');
+    exit;
+}
+
 /* ---- commission change history (office view only) ------------------ */
 $history = [];
 if (!$isAgent && $agentId > 0) {
@@ -149,7 +212,8 @@ admin_header('Agent statement', 'agent-statement');
     <div class="sg-card__head"><div><h2 class="sg-card__title">Statement images</h2><p class="sg-card__cap"><?= (int) $pages ?> page<?= $pages === 1 ? '' : 's' ?> · readable on a phone · the last page has the summary</p></div></div>
     <?php if ($d['balanced']): ?>
     <div class="stmt-actions">
-      <button type="button" class="sg-btn sg-btn--primary" id="stmtShare" data-pages="<?= (int) $pages ?>" data-base="<?= $e($qs()) ?>" data-name="<?= $e('SHG-statement-' . $d['agent']['code'] . '-' . $from . '-to-' . $to) ?>">Share images</button>
+      <a class="sg-btn sg-btn--primary" href="<?= $e($qs()) ?>&amp;format=pdf">📄 PDF स्टेटमेन्ट · Download PDF</a>
+      <button type="button" class="sg-btn sg-btn--secondary" id="stmtShare" data-pages="<?= (int) $pages ?>" data-base="<?= $e($qs()) ?>" data-name="<?= $e('SHG-statement-' . $d['agent']['code'] . '-' . $from . '-to-' . $to) ?>">Share images</button>
       <button type="button" class="sg-btn sg-btn--secondary" id="stmtAll" data-pages="<?= (int) $pages ?>" data-base="<?= $e($qs()) ?>">Download all (<?= (int) $pages ?>)</button>
     </div>
     <p class="stmt-status" id="stmtStatus" role="status" aria-live="polite"></p>
