@@ -131,7 +131,13 @@ $actions = static function (array $r) use ($e, $csrf, $isSuper, $desks, $tab, $a
     }
     $waNo = preg_replace('/\D+/', '', (string) ($r['phone'] ?? '')) ?? '';
     if (strlen($waNo) === 10) {
-        $waNo = (str_starts_with($waNo, '98') || str_starts_with($waNo, '97') ? '977' : '91') . $waNo;
+        // an Indian mobile can start with 97 / 98 too — take the country from the member's own record
+        try {
+            require_once INCLUDE_PATH . '/teamportal.php';
+            $waNo = TeamPortal::intlFor($waNo, ['id' => $id, 'phone' => (string) ($r['phone'] ?? '')]);
+        } catch (Throwable $ex) {
+            $waNo = '91' . $waNo;
+        }
     }
     if (strlen($waNo) >= 11) {
         $h .= '<a class="btn ghost" style="color:#128C4A;border-color:#128C4A" target="_blank" rel="noopener" href="https://wa.me/' . $e($waNo) . '">WhatsApp</a>';

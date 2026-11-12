@@ -187,6 +187,7 @@ $seatRows = [];
 if ($sids !== []) {
     $seatRows = Database::fetchAll(
         "SELECT bs.schedule_id, bs.seat_no, b.id AS booking_id, b.pnr, b.booking_mode, b.total_amount, b.status,
+                b.contact_phone, b.contact_country_code,
                 bp.full_name, bp.gender,
                 p.status AS pay_status, p.method AS pay_method,
                 a.role AS agent_role, a.full_name AS agent_name,
@@ -218,7 +219,7 @@ foreach ($seatRows as $r) {
     }
     foreach ($beds as $bed) {
         $bySid[$sid]['beds'][$bed] = ['state' => $state, 'name' => (string) $r['full_name'], 'pnr' => (string) $r['pnr'],
-            'agent' => (string) ($r['agent_name'] ?? ''), 'woman' => in_array(strtolower((string) $r['gender']), ['female', 'f'], true)];
+            'agent' => (string) ($r['agent_name'] ?? ''), 'phone' => (string) ($r['contact_phone'] ?? ''), 'cc' => (string) ($r['contact_country_code'] ?? ''), 'woman' => in_array(strtolower((string) $r['gender']), ['female', 'f'], true)];
     }
     $bySid[$sid]['money'][$state] = ($bySid[$sid]['money'][$state] ?? 0) + $share;
     $bySid[$sid]['seats'] = ($bySid[$sid]['seats'] ?? 0) + 1;
@@ -369,6 +370,29 @@ admin_header('Bus Control', 'bus-control');
         </div>
         <?= $seatPic($d, $info) ?>
         <?= $legend ?>
+        <?php /* 12 Nov 2026 (owner: "chalani pani yahi ekai thau ma"): the passenger list, right in the card */
+        $cl = (array) ($info['beds'] ?? []);
+        if ($cl !== []):
+            $coachC = (string) ($d['coach_type'] ?? 'sleeper');
+            uksort($cl, static fn($x, $y): int => strnatcmp(Seats::displayLabel((string) $x, $coachC, 'sharing'), Seats::displayLabel((string) $y, $coachC, 'sharing')));
+            $stL = ['paid' => ['Paid', 'ok'], 'agent' => ['Agent', 'warn'], 'due' => ['Due', 'bad']]; ?>
+        <details class="pc-chal">
+          <summary><?= pc_icon('list') ?> चलानी यहीँ हेर्ने · Passenger list (<?= count($cl) ?>)</summary>
+          <div style="overflow-x:auto"><table class="pc-table" style="min-width:520px"><thead><tr><th>Seat</th><th>Name</th><th>Mobile</th><th>Pay</th><th>Agent</th><th>PNR</th></tr></thead><tbody>
+          <?php foreach ($cl as $bed => $i):
+              $pd = preg_replace('/\D/', '', (string) ($i['phone'] ?? '')) ?? '';
+              $wa = strlen($pd) === 10 ? (in_array((string) ($i['cc'] ?? ''), ['91', '977'], true) ? $i['cc'] : '91') . $pd : $pd;
+              $sl = $stL[(string) $i['state']] ?? [(string) $i['state'], 'mute']; ?>
+            <tr><td><b><?= $e(Seats::displayLabel((string) $bed, $coachC, 'sharing')) ?></b></td>
+              <td><?= $e($i['name']) ?><?= $i['woman'] ? ' ♀' : '' ?></td>
+              <td><?php if ($pd !== ''): ?><a href="tel:<?= $e($pd) ?>"><?= $e($pd) ?></a><?php if (strlen($wa) >= 11): ?> <a href="https://wa.me/<?= $e($wa) ?>" target="_blank" rel="noopener" style="color:#128C4A;font-weight:800">WA</a><?php endif; endif; ?></td>
+              <td><?= pc_badge($sl[0], $sl[1]) ?></td>
+              <td><?= $e($i['agent']) ?></td>
+              <td><a href="/admin/booking-view.php?pnr=<?= urlencode((string) $i['pnr']) ?>"><?= $e($i['pnr']) ?></a></td></tr>
+          <?php endforeach; ?>
+          </tbody></table></div>
+        </details>
+        <?php endif; ?>
       </div>
       <div class="pc-card-f">
         <?php if (Auth::can('bookings.view')): ?><a class="pc-btn pri sm" href="/admin/quick-ticket.php"><?= pc_icon('plus') ?>टिकट काट्ने · Ticket</a><?php endif; ?>
