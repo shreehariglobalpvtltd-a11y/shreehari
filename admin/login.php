@@ -324,7 +324,7 @@ body.lock.shake .qk,body.lock.shake .lk-dots{animation:lkshake .35s}
 @media (prefers-reduced-motion:reduce){body.lock.shake .qk,body.lock.shake .lk-dots{animation:none}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('shg_admin_theme');if(t==='dark'||t==='amoled')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
-<link rel="manifest" href="/admin/manifest.webmanifest"><meta name="theme-color" content="#0B1220">
+<link rel="manifest" href="/admin/app-manifest.php"><meta name="theme-color" content="#0B1220">
 </head>
 <body<?= ($remembered ?? null) !== null ? ' class="lock"' : '' ?>>
 <main class="box" data-door="one">

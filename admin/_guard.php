@@ -326,7 +326,7 @@ function admin_header(string $title, string $active = ''): void
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">';
     echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
     echo '<title>' . Security::e(admin_plain($title)) . ' · ' . Security::e($company) . ' · Management</title>';
-    echo '<link rel="manifest" href="/admin/manifest.webmanifest"><meta name="theme-color" content="#0B1220">';
+    echo '<link rel="manifest" href="/admin/app-manifest.php"><meta name="theme-color" content="#0B1220">';
     echo '<meta name="application-name" content="Management of S Hari"><meta name="apple-mobile-web-app-title" content="S Hari Manage">';
     echo '<link rel="icon" type="image/png" href="/assets/img/favicon-32.png">';
     echo '<link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">';
