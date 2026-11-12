@@ -497,7 +497,7 @@ admin_header('Agents & Organization Hub', 'agents');
   <div class="dt-bar" id="agCtl">
     <input class="dt-q" type="search" placeholder="Search serial / name / mobile / SHG code / contact / city" aria-label="Search agents">
     <select data-dt-filter="kind" aria-label="Type">
-      <option value="">All types</option><option value="org">Organization (1–20)</option><option value="person">Person (21+)</option>
+      <option value="">All types</option><option value="org">Organization</option><option value="person">Person</option>
     </select>
     <select data-dt-filter="status" aria-label="Status">
       <option value="">All statuses</option><option value="active">Active</option><option value="inactive">Deactivated</option><option value="pending">Pending approval</option>
@@ -513,7 +513,7 @@ admin_header('Agents & Organization Hub', 'agents');
   </div>
   <p class="muted" style="margin:-4px 0 10px;font-size:12px">
     <?php if ($activeTier === 'master_agents'): ?>
-      <b>Master Agents:</b> Authorized booking distributors. Serial bands: <b>Org 1–20</b> (next free <?= $nextOrg ?? 'none' ?>) · <b>Person 21+</b> (next free <?= $nextPerson ?? 'none' ?>). Click 👥 Sub-Agents to inspect counter staff.
+      <b>Master Agents:</b> Authorized booking distributors. नम्बर 1, 2, 3… एउटै लहरमा · one run for everyone (next free <?= $nextOrg ?? 'none' ?>). Click 👥 Sub-Agents to inspect counter staff.
     <?php else: ?>
       <b>Agent Staff (Sub-Agents):</b> Registered counter staff operating under parent Master Agents. Every sale is tracked to both staff and parent agent.
     <?php endif; ?>
@@ -611,8 +611,8 @@ admin_header('Agents & Organization Hub', 'agents');
           <div class="dt-grid">
             <label>Type
               <select name="agent_kind">
-                <option value="org" <?= $isOrg ? 'selected' : '' ?>>Organization (serial 1–20)</option>
-                <option value="person" <?= !$isOrg ? 'selected' : '' ?>>Person (serial 21+)</option>
+                <option value="org" <?= $isOrg ? 'selected' : '' ?>>Organization</option>
+                <option value="person" <?= !$isOrg ? 'selected' : '' ?>>Person</option>
               </select></label>
             <label>Serial (<?= AgentWallet::AGENT_CODE_MIN ?>–<?= AgentWallet::AGENT_CODE_MAX ?>)<input name="agent_code" type="number" min="<?= AgentWallet::AGENT_CODE_MIN ?>" max="<?= AgentWallet::AGENT_CODE_MAX ?>" step="1" value="<?= $r['serial'] === null ? '' : (int) $r['serial'] ?>"></label>
             <label><?= $isOrg ? 'Organization Name' : 'Full Name' ?><input name="full_name" value="<?= $e($r['full_name']) ?>" required maxlength="120"></label>

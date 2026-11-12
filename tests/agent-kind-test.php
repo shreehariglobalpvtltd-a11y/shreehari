@@ -51,10 +51,10 @@ try {
     echo "\n== kind helpers ==\n";
     check('normaliseKind(person)', AgentWallet::normaliseKind('Person') === 'person');
     check('normaliseKind(anything else) = org', AgentWallet::normaliseKind('xyz') === 'org');
-    check('codeBandFor(org) = 1-20', AgentWallet::codeBandFor('org') === [1, 20]);
-    check('codeBandFor(person) = 21-1000', AgentWallet::codeBandFor('person') === [21, 1000]);
+    check('codeBandFor(org) = 1-1000', AgentWallet::codeBandFor('org') === [1, 1000]);
+    check('codeBandFor(person) = 1-1000 (one run since 12 Nov 2026)', AgentWallet::codeBandFor('person') === [1, 1000]);
     check('codeInBand(5, org)', AgentWallet::codeInBand(5, 'org'));
-    check('!codeInBand(5, person)', !AgentWallet::codeInBand(5, 'person'));
+    check('codeInBand(5, person)', AgentWallet::codeInBand(5, 'person'));
     check('cleanPhone strips to digits', AgentWallet::cleanPhone('+91 98765-43210') === '919876543210');
     check('cleanPhone rejects junk', AgentWallet::cleanPhone('abc') === '');
 
@@ -67,18 +67,18 @@ try {
     check('agentKindFor(person agent)', AgentWallet::agentKindFor($per1) === 'person');
 
     $c = AgentWallet::nextFreeAgentCode('org');   AgentWallet::setAgentCode($org1, $c);
-    check('first org serial = 1', $c === 1 && AgentWallet::agentCodeFor($org1) === 1);
+    check('first org serial = 2 (1 is kept for the company)', $c === 2 && AgentWallet::agentCodeFor($org1) === 2);
     $c = AgentWallet::nextFreeAgentCode('person'); AgentWallet::setAgentCode($per1, $c);
-    check('first person serial = 21', $c === 21 && AgentWallet::agentCodeFor($per1) === 21);
-    check('flat nextFreeAgentCode() still lowest overall (2)', AgentWallet::nextFreeAgentCode() === 2);
-    check('label still 4-digit SHG-0021', AgentWallet::agentCodeLabel($per1) === 'SHG-0021');
+    check('first person serial = 3 (straight after the org)', $c === 3 && AgentWallet::agentCodeFor($per1) === 3);
+    check('flat nextFreeAgentCode() still lowest overall (4)', AgentWallet::nextFreeAgentCode() === 4);
+    check('label still 4-digit SHG-0003', AgentWallet::agentCodeLabel($per1) === 'SHG-0003');
 
     // Fill the org band 2..20 with dummies (ids that never exist is fine for the map).
     $map = Settings::getArray('agent_codes', []);
-    for ($n = 2; $n <= 20; $n++) { $map['9' . str_pad((string) $n, 5, '0', STR_PAD_LEFT)] = $n; }
+    for ($n = 4; $n <= 20; $n++) { $map['9' . str_pad((string) $n, 5, '0', STR_PAD_LEFT)] = $n; }
     Settings::set('agent_codes', $map, 'json', 'agent', false);
-    check('org band full -> spills to lowest free >= 21 (22)', AgentWallet::nextFreeAgentCode('org') === 22);
-    check('person still 22', AgentWallet::nextFreeAgentCode('person') === 22);
+    check('1..20 held -> next org is 21', AgentWallet::nextFreeAgentCode('org') === 21);
+    check('next person is the same 21', AgentWallet::nextFreeAgentCode('person') === 21);
 
     echo "\n== switching kind keeps serial, ledger and tier ==\n";
     AgentWallet::setAgentType($org1, 'joint');
@@ -89,13 +89,13 @@ try {
     $ledgerBefore = (int) Database::scalar('SELECT COUNT(*) FROM agent_ledger WHERE agent_admin_id = :a', ['a' => $org1]);
     AgentWallet::setAgentKind($org1, 'person', 0);
     check('kind switched to person', AgentWallet::agentKindFor($org1) === 'person');
-    check('serial unchanged (1)', AgentWallet::agentCodeFor($org1) === 1);
+    check('serial unchanged (2)', AgentWallet::agentCodeFor($org1) === 2);
     check('tier unchanged (joint)', AgentWallet::agentTypeFor($org1) === 'joint');
     check('ledger rows unchanged', (int) Database::scalar('SELECT COUNT(*) FROM agent_ledger WHERE agent_admin_id = :a', ['a' => $org1]) === $ledgerBefore && $ledgerBefore >= 1);
     $aud = Database::fetch("SELECT old_value, new_value FROM audit_logs WHERE action = 'agent.kind_changed' AND entity_id = :e ORDER BY id DESC LIMIT 1", ['e' => (string) $org1]);
     check('audit row agent.kind_changed written', $aud !== null && str_contains((string) $aud['new_value'], 'person'));
     AgentWallet::setAgentKind($org1, 'org', 0);
-    check('switched back to org, serial still 1', AgentWallet::agentKindFor($org1) === 'org' && AgentWallet::agentCodeFor($org1) === 1);
+    check('switched back to org, serial still 2', AgentWallet::agentKindFor($org1) === 'org' && AgentWallet::agentCodeFor($org1) === 2);
 
     echo "\n== saveProfile whitelist ==\n";
     AgentWallet::saveProfile($per1, ['contact_person' => ' Sita Devi ', 'whatsapp' => '98765 43210', 'agent_kind' => 'bogus']);
@@ -114,7 +114,9 @@ try {
     $orgCodes = array_values(array_filter([$codes[(string) $org1] ?? null, $codes[(string) $org2] ?? null]));
     sort($orgCodes);
     check('orgs packed into 1,2', $orgCodes === [1, 2]);
-    check('person packed at 21', ($codes[(string) $per1] ?? null) === 21);
+    check('person follows the organizations, no gap to 21', ($codes[(string) $per1] ?? 0) > max($orgCodes) && ($codes[(string) $per1] ?? 0) <= count($codes));
+    $all = array_values($codes); sort($all);
+    check('codes run 1..N with no gap', $all === range(1, count($all)));
     $dummiesLeft = count(array_filter(array_keys($codes), static fn($k) => str_starts_with((string) $k, '9') && strlen((string) $k) === 6));
     check('dummy (non-admin) entries dropped', $dummiesLeft === 0);
 

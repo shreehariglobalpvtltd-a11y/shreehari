@@ -721,8 +721,8 @@ if ($pageIds !== []) {
     </label>
     <label style="display:block" data-agent-only>Agent type <span class="muted" style="font-weight:400">· sets the serial band</span>
       <select name="agent_kind" id="agentKindSel" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;margin-top:5px">
-        <option value="org">Organization — serial 1–20 (next <?= $nextOrgCode === null ? 'none free' : (int) $nextOrgCode ?>)</option>
-        <option value="person">Person — serial 21+ (next <?= $nextPersonCode === null ? 'none free' : (int) $nextPersonCode ?>)</option>
+        <option value="org">Organization (next <?= $nextOrgCode === null ? 'none free' : (int) $nextOrgCode ?>)</option>
+        <option value="person">Person (next <?= $nextPersonCode === null ? 'none free' : (int) $nextPersonCode ?>)</option>
       </select>
     </label>
     <label style="display:block" data-agent-only data-org-only>Contact person <span class="muted" style="font-weight:400">· inside the organization</span>

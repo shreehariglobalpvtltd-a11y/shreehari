@@ -230,12 +230,17 @@ final class AgentWallet
      *  admin_profiles.agent_kind; the serial stays in the agent_codes map
      *  above, so switching an agent's kind never touches their number,
      *  their wallet ledger or their commission tier.
+     *
+     *  12 Nov 2026 (owner: "serial wise 1 bata suru, staff dekhi agent sab
+     *  ko"): the two bands are now ONE run — every agent, organization or
+     *  person, is numbered 1, 2, 3... The kind stays (it still decides the
+     *  form and the label); it no longer decides the number.
      * ----------------------------------------------------------------- */
     public const KIND_ORG    = 'org';
     public const KIND_PERSON = 'person';
     public const ORG_CODE_MIN    = 1;
-    public const ORG_CODE_MAX    = 20;
-    public const PERSON_CODE_MIN = 21;
+    public const ORG_CODE_MAX    = 1000;
+    public const PERSON_CODE_MIN = 1;
 
     /** 'org' | 'person' — anything unknown reads as 'org'. */
     public static function normaliseKind(string $kind): string
@@ -681,10 +686,9 @@ final class AgentWallet
      */
     public static function resequenceAgentCodes(int $by = 0): array
     {
-        // Band-aware since 5 Sep 2026: organization agents are packed into
-        // 1, 2, 3... and person agents into 21, 22, 23... (each group ordered
-        // by its current number, then id). Should there ever be more than 20
-        // organizations, the extra ones simply continue after the persons.
+        // One run since 12 Nov 2026: organization agents first (S Hari Global
+        // keeps 1), then person agents straight after — 1, 2, 3... with no
+        // gap. Each group is ordered by its current number, then id.
         $agents = Database::fetchAll(
             "SELECT a.id, a.full_name, a.username, COALESCE(p.agent_kind, 'org') AS agent_kind
                FROM admins a LEFT JOIN admin_profiles p ON p.admin_id = a.id
@@ -719,7 +723,7 @@ final class AgentWallet
             if ($n > self::ORG_CODE_MAX) { $overflow[] = $a; continue; }
             $assign($a, $n++);
         }
-        $n = self::PERSON_CODE_MIN;
+        $n = max($n, self::PERSON_CODE_MIN);   // carry on where the organizations stopped
         foreach (array_merge($persons, $overflow) as $a) {
             if ($n > self::AGENT_CODE_MAX) { break; }   // never exceed the ceiling
             $assign($a, $n++);
@@ -728,7 +732,7 @@ final class AgentWallet
         Settings::set('agent_codes', $map, 'json', 'agent', false);
         Logger::audit('agent.resequence', 'settings', 'agent_codes',
             null, ['count' => count($map), 'org' => count($orgs), 'person' => count($persons)],
-            'Agents renumbered (org 1-20, person 21+) by admin #' . $by);
+            'Agents renumbered 1, 2, 3... (organizations first) by admin #' . $by);
 
         return ['count' => count($map), 'changes' => $changes];
     }

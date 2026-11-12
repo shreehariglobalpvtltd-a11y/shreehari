@@ -1710,8 +1710,8 @@ $ckHave = array_column($badges, 'label');
       <label style="font-size:12px;color:var(--mut)">Agent type <span class="muted">(serial band)</span>
         <select name="agent_kind"
                 style="width:100%;margin-top:4px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)">
-          <option value="org"    <?= (string) $profile['agent_kind'] !== 'person' ? 'selected' : '' ?>>Organization — serial 1–20</option>
-          <option value="person" <?= (string) $profile['agent_kind'] === 'person' ? 'selected' : '' ?>>Person — serial 21+</option>
+          <option value="org"    <?= (string) $profile['agent_kind'] !== 'person' ? 'selected' : '' ?>>Organization</option>
+          <option value="person" <?= (string) $profile['agent_kind'] === 'person' ? 'selected' : '' ?>>Person</option>
         </select>
         <span class="muted" style="font-size:11px">Switching keeps the current serial, wallet and commission tier.</span></label>
       <label style="font-size:12px;color:var(--mut)">Contact person <span class="muted">(organizations)</span>
