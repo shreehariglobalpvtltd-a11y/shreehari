@@ -45,6 +45,25 @@ $date  = (string) ($_GET['d'] ?? $today);
 if (!Security::isValidDate($date) || $date < date('Y-m-d', strtotime($today . ' -3 days')) || $date > date('Y-m-d', strtotime($today . ' +30 days'))) {
     $date = $today;
 }
+/* 12 Nov 2026 (owner: "chalani ko link daily change garnu napros — link tei,
+   file update bhaye bhayo"): the bare link (no &d=) is THE link to share. The
+   buses run on alternate days, so on a day with no departure it opens the
+   next day that has one instead of an empty page — same link, every day. */
+$autoNext = '';
+if (!isset($_GET['d'])) {
+    try {
+        $nx = (string) Database::scalar(
+            "SELECT MIN(s.travel_date) FROM schedules s JOIN routes r ON r.id = s.route_id
+              WHERE s.travel_date >= :a AND s.travel_date <= :b AND r.is_active = 1 AND s.status <> 'cancelled'",
+            ['a' => $today, 'b' => date('Y-m-d', strtotime($today . ' +7 days'))], '');
+        if ($nx !== '' && $nx !== $today && Security::isValidDate($nx)) {
+            $autoNext = $nx;
+            $date     = $nx;
+        }
+    } catch (Throwable $ex) {
+        $autoNext = '';
+    }
+}
 $company = Settings::getString('company_name', APP_NAME);
 
 $deps = Database::fetchAll(
@@ -155,6 +174,7 @@ header h1{margin:0;font-size:19px}header p{margin:4px 0 0;font-size:13px;opacity
       <a class="<?= $d === $date ? 'on' : '' ?>" href="?k=<?= $e(rawurlencode($key)) ?>&amp;d=<?= $e($d) ?>"><?= $e(formatDate($d, 'j M')) ?><small><?= $i === 0 ? 'आज' : ($i === 1 ? 'भोलि' : ($i === -1 ? 'हिजो' : $e(formatDate($d, 'D')))) ?></small></a>
     <?php endfor; ?>
   </nav>
+  <?php if ($autoNext !== ''): ?><p style="margin:8px 0;padding:8px 12px;border-radius:10px;background:#FEF3C7;color:#92400E;font-weight:700">आज बस छैन — अर्को बस <?= $e(formatDate($autoNext, 'l, j M')) ?> को चलानी देखाइएको छ · No bus today; showing the next one.</p><?php endif; ?>
   <div class="tools"><button type="button" onclick="location.reload()">🔄 Refresh</button><button type="button" onclick="window.print()">🖨 Print</button></div>
 
   <?php if ($trips === []): ?>
