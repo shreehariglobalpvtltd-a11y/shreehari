@@ -236,14 +236,14 @@ final class QuickUnlock
         if ((int) $m[2] < time() || !hash_equals(self::deviceSig($m[1] . '.' . $m[2]), $m[3])) {
             return null;
         }
-        $r = Database::fetch('SELECT id, full_name, username, pin_hash, pattern_hash FROM admins WHERE id = :i AND is_active = 1', ['i' => (int) $m[1]]);
+        $r = Database::fetch('SELECT id, full_name, username, phone, pin_hash, pattern_hash FROM admins WHERE id = :i AND is_active = 1', ['i' => (int) $m[1]]);
         if ($r === null) {
             return null;
         }
         $pin = (string) ($r['pin_hash'] ?? '') !== '';
         $pat = (string) ($r['pattern_hash'] ?? '') !== '';
         $name = trim((string) ($r['full_name'] ?? '')) ?: (string) $r['username'];
-        return ['id' => (int) $r['id'], 'name' => $name, 'username' => (string) $r['username'], 'pin' => $pin, 'pattern' => $pat];
+        return ['id' => (int) $r['id'], 'name' => $name, 'username' => (string) $r['username'], 'phone' => (string) ($r['phone'] ?? ''), 'pin' => $pin, 'pattern' => $pat];
     }
 
     /* =================================================================

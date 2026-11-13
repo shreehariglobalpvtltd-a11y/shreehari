@@ -417,6 +417,58 @@ final class OneDoor
         return ['step' => 'wa'];
     }
 
+    /**
+     * 13 Nov 2026 (mg19, owner: "lock screen ma PIN / pattern; natra WhatsApp OTP;
+     * PIN birse WhatsApp ma hi lekhepachhi OTP"): may the account this phone
+     * remembers open by WhatsApp? Only the roles the code door already opens
+     * (agent, counter, scanner — never an office account, never one with 2FA),
+     * and only with its own mobile on file. Read-only.
+     *
+     * @param array<string, mixed> $acc QuickUnlock::rememberedDevice()
+     */
+    public static function lockOtpOk(array $acc): bool
+    {
+        $p10 = TeamPortal::phone10((string) ($acc['phone'] ?? ''));
+        if ($p10 === '') {
+            return false;
+        }
+        foreach (Auth::otpDoorAccounts($p10) as $a) {
+            if ((int) $a['id'] === (int) ($acc['id'] ?? 0)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The lock screen's WhatsApp buttons: the remembered account's OWN mobile
+     * (from the signed device cookie, nothing typed) goes through the very same
+     * door as a typed number — who() then codeSend() ('code') or waStart() ('hi').
+     * Nothing about sending changes: whatever WhatsApp sender the office has
+     * configured is what delivers the code / reads the "hi".
+     *
+     * @return array{step?: string, go?: string, error?: string, notice?: string}
+     */
+    public static function lockOtp(string $how): array
+    {
+        $acc = QuickUnlock::rememberedDevice();
+        if ($acc === null || !self::lockOtpOk($acc)) {
+            return ['step' => 'start', 'error' => 'WhatsApp ले यो खाता खुल्दैन — पासवर्ड प्रयोग गर्नुहोस् · This account cannot open by WhatsApp — use the password.'];
+        }
+        $p10  = TeamPortal::phone10((string) $acc['phone']);
+        $intl = TeamPortal::intlFor($p10, ['id' => (int) $acc['id'], 'phone' => (string) $acc['phone']]);
+        $w = self::who($p10, str_starts_with($intl, '977') ? '977' : '91');
+        if ((string) ($w['step'] ?? '') !== 'mobile') {
+            return ['step' => 'start', 'error' => (string) ($w['error'] ?? 'फेरि प्रयास गर्नुहोस् · Please try again.')];
+        }
+        $r = $how === 'hi' && self::hiOn() ? self::waStart() : self::codeSend();
+        if (!isset($r['go']) && (string) ($r['step'] ?? '') === 'mobile') {
+            $r['step'] = 'start';   // a refusal (too many tries, sender down) is said on the lock screen
+            self::clear();
+        }
+        return $r;
+    }
+
     public static function waFinish(): array
     {
         $s = self::state();

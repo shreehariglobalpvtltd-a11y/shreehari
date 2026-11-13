@@ -98,6 +98,8 @@ if (Auth::oneDoorOn()) {
                    signed device cookie names (never a typed or posted one); the check is the one
                    door's own (who + password: agents, staff, office 2FA all as before). A miss
                    stays on the lock screen. */
+                'lock_code'      => OneDoor::lockOtp('code'),   // 13 Nov 2026 (mg19): WhatsApp code to the remembered account's own mobile
+                'lock_hi'        => OneDoor::lockOtp('hi'),     // … or "hi" from that WhatsApp
                 'lock_pw'        => (static function (): array {
                     $acc = QuickUnlock::rememberedDevice();
                     if ($acc === null) {
@@ -332,6 +334,12 @@ body.lock .links a{color:#9ABFFF;font-weight:600;font-size:13px}
 body.lock .links~.links{display:none}body.lock .links a[href*="forget"]{color:#FF9AA5 !important;font-size:12px}
 body.lock .msg.bad{background:#30161B;color:#FFADB9}body.lock .msg.ok{background:#0F271B;color:#8CE4B8}
 .lk-dots{display:flex;gap:14px;justify-content:center;height:22px;margin:18px 0 14px}
+body.lock .lk-otp{display:grid;gap:10px;margin-top:16px}
+body.lock .lk-otp form{margin:0}
+body.lock .lk-otp .btn{width:100%}
+body.lock .lk-otp .btn.alt{background:rgba(255,255,255,.07);color:#E8F0FB;border:1px solid #2B3F63}
+body.lock .lk-forgot{margin:0}
+body.lock .lk-forgot button{background:none;border:0;padding:4px 0;color:#9ABFFF;font:inherit;font-weight:600;font-size:13px;cursor:pointer;text-align:center}
 body.lock .lk-pw{display:grid;gap:10px;margin-top:14px}
 body.lock .lk-pw[hidden]{display:none}
 body.lock .lk-pw label{color:#9FB2D0;font-size:13px}
@@ -368,13 +376,18 @@ body.lock.shake .qk,body.lock.shake .lk-dots{animation:lkshake .35s}
   <?php /* 6 Nov 2026: this phone remembers the account — pattern / PIN first, like an Android lock screen. */ ?>
   <div class="lk-clock" id="lkClock" aria-hidden="true">--:--</div><div class="lk-date" id="lkDate"></div>
   <div class="who">🔒 <span><?= $h($remembered['name']) ?></span></div>
+  <?php /* 13 Nov 2026 (mg19, owner: "lock screen ma password box nadekhiyos — PIN / pattern
+           ma focus; natra WhatsApp OTP"): PIN / pattern lead; with neither, an agent /
+           counter opens by WhatsApp ("hi" or a code to their own mobile); only an office
+           account (which WhatsApp never opens) still sees the password box here. */
+  $lkQuick = $remembered['pin'] || $remembered['pattern'];
+  $lkOtp   = OneDoor::lockOtpOk($remembered);
+  $lkHi    = $lkOtp && OneDoor::hiOn(); ?>
   <div class="qk" data-qk>
-    <?php $lkFirst = $remembered['pattern'] ? 'pattern' : ($remembered['pin'] ? 'pin' : 'pw');
-    if ($remembered['pattern'] || $remembered['pin']): ?>
+    <?php if ($remembered['pattern'] && $remembered['pin']): ?>
     <div class="qk-tabs" role="tablist">
-      <?php if ($remembered['pattern']): ?><button type="button" class="on" data-qk-tab="pattern">◯ Pattern</button><?php endif; ?>
-      <?php if ($remembered['pin']): ?><button type="button"<?= $lkFirst === 'pin' ? ' class="on"' : '' ?> data-qk-tab="pin">🔢 PIN</button><?php endif; ?>
-      <button type="button" data-qk-tab="pw">🔑 Password</button>
+      <button type="button" class="on" data-qk-tab="pattern">◯ Pattern</button>
+      <button type="button" data-qk-tab="pin">🔢 PIN</button>
     </div>
     <?php endif; ?>
     <?php if ($remembered['pattern']): ?>
@@ -394,17 +407,34 @@ body.lock.shake .qk,body.lock.shake .lk-dots{animation:lkshake .35s}
       <button class="btn" type="submit">PIN ले भित्र · Unlock</button>
     </form>
     <?php endif; ?>
-    <form method="post" action="/admin/login.php" data-qk-form="pw" class="lk-pw"<?= $lkFirst === 'pw' ? '' : ' hidden' ?>>
+    <?php if (!$lkQuick && $lkOtp): ?>
+    <div class="lk-otp">
+      <?php if ($lkHi): ?>
+      <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="lock_hi">
+        <button class="btn wa" type="submit">💬 WhatsApp मा hi पठाएर खोल्ने<small>एक ट्याप — कोड टाइप गर्नु पर्दैन · One tap, no code to type</small></button></form>
+      <?php endif; ?>
+      <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="lock_code">
+        <button class="btn alt" type="submit">📩 WhatsApp मा ६ अङ्कको कोड · Get a code on WhatsApp</button></form>
+      <p class="note">छिटो खोल्न भित्र गएर <b>म → लक: Pattern / PIN</b> राख्नुहोस् · Set a PIN or pattern inside (Me) to open faster.</p>
+    </div>
+    <?php elseif (!$lkQuick): ?>
+    <form method="post" action="/admin/login.php" class="lk-pw">
       <?= $hid() ?><input type="hidden" name="mode" value="lock_pw">
       <label for="lkpw">पासवर्ड · Password</label>
-      <input id="lkpw" name="password" type="password" autocomplete="current-password" required<?= $lkFirst === 'pw' ? ' autofocus' : '' ?>>
+      <input id="lkpw" name="password" type="password" autocomplete="current-password" required autofocus>
       <button class="btn" type="submit">🔓 खोल्नुहोस् · Unlock</button>
-      <?php if (!$remembered['pin'] && !$remembered['pattern']): ?><p class="note">छिटो खोल्न भित्र गएर <b>म → लक: Pattern / PIN</b> राख्न सक्नुहुन्छ · Optional: set a PIN or pattern inside, under Me.</p><?php endif; ?>
+      <p class="note">छिटो खोल्न भित्र गएर <b>म → लक: Pattern / PIN</b> राख्न सक्नुहुन्छ · Optional: set a PIN or pattern inside, under Me.</p>
     </form>
+    <?php endif; ?>
   </div>
   <div class="links">
-    <a href="<?= $h($odUrl(['step' => 'start'])) ?>&amp;other=1">👤 अर्को खाता · Another account</a>
-    <?php if (QuickUnlock::secQuestion((int) $remembered['id']) !== ''): ?><a href="/admin/recover.php">❓ PIN / pattern बिर्सनुभयो? · Forgot PIN</a><?php endif; ?>
+    <?php if ($lkQuick && $lkOtp): /* forgot PIN: WhatsApp opens the door, then straight to "set a new PIN" */ ?>
+    <form method="post" action="/admin/login.php" class="lk-forgot"><?= Security::csrfField() ?><input type="hidden" name="next" value="quick-unlock.php">
+      <input type="hidden" name="mode" value="<?= $lkHi ? 'lock_hi' : 'lock_code' ?>">
+      <button type="submit">❓ PIN / pattern बिर्सनुभयो? WhatsApp बाट खोल्ने · Forgot PIN? Open with WhatsApp</button></form>
+    <?php endif; ?>
+    <?php if ($lkQuick && QuickUnlock::secQuestion((int) $remembered['id']) !== ''): ?><a href="/admin/recover.php">🛡️ सुरक्षा प्रश्नले नयाँ PIN · New PIN by security question</a><?php endif; ?>
+    <a href="<?= $h($odUrl(['step' => 'start'])) ?>&amp;other=1">🔑 पासवर्ड / अर्को खाता · Password or another account</a>
     <a href="/admin/login.php?forget=1&amp;other=1" style="color:#8A1F1F;font-weight:600">तपाईं होइन? यो फोनबाट हटाउने · Not you? Forget this phone</a>
   </div>
 
@@ -609,7 +639,6 @@ body.lock.shake .qk,body.lock.shake .lk-dots{animation:lkshake .35s}
     if(d)d.textContent=n.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});}
   tick();setInterval(tick,15000);
   if(document.querySelector('.msg.bad')){document.body.classList.add('shake');if(navigator.vibrate)try{navigator.vibrate(120)}catch(e){}}
-  document.querySelectorAll('[data-qk-tab="pw"]').forEach(function(t){t.addEventListener('click',function(){var p=document.getElementById('lkpw');if(p)setTimeout(function(){p.focus();},0);});});
   var f=document.querySelector('form[data-qk-form="pin"]');if(!f)return;
   var inp=f.querySelector('input[name="qk_val"]'),dots=f.querySelector('.lk-dots'),keys=f.querySelector('.lk-keys'),busy=false;
   if(!inp||!dots||!keys)return;
