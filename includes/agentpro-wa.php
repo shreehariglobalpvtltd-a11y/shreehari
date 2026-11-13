@@ -757,7 +757,8 @@ final class ApWa
         if (preg_match('/^(english|eng|nepali|hindi|नेपाली|हिन्दी|हिंदी|अंग्रेजी|अङ्ग्रेजी)$/u', $l)) {
             return self::out(self::t('lang_set', $lang));
         }
-        if (preg_match('/^(help|menu|madat|maddat|मद्दत|सहायता|सहयोग|\?|start|hi|hello|hey|namaste|namaskar|नमस्ते|नमस्कार|हेलो|hii+)$/u', $l)) {
+        // A greeting typed in a hurry ("Hlo", "Helo", "Hllo ji", "hy") is the menu too, never a question for the AI.
+        if (preg_match('/^\s*(help|menu|madat|maddat|मद्दत|सहायता|सहयोग|\?|start|hi+|hy+|hey+|hai|h+[ae]?l+o+w*|hlw|namaste|namaskar|namaskaar|नमस्ते|नमस्कार|हेलो|हेल्लो|हलो|हाई|हाय)(?:\s+(?:ji|jee|sir|dai|didi|bhai|dear|जी|सर|दाइ))?[\s!.,]*$/u', $l)) {
             self::$cmdIntent = ['intent' => 'help'];
             return self::help($member, $lang);
         }
