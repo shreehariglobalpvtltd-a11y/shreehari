@@ -676,7 +676,11 @@ final class ApCard
         $s->rect(0, 0, 540, 856, '#FFFFFF');
 
         // The photo first, so the spine and the foot lie over its edges.
-        self::portrait($s, $m, 176, 268, 364, 588, 0);
+        // 13 Nov 2026 (owner: "thulo white-background photo, front ko ~35% area"): the photo
+        // box is 364 x 470 of 540 x 856 (37 %; about 35 % shows above the slanted foot),
+        // on a white ground so a white-background portrait melts into the card.
+        $s->rect(176, 262, 364, 594, '#FFFFFF');
+        self::portrait($s, $m, 176, 262, 364, 470, 0);
 
         // The spine.
         $s->rect(0, 0, 176, 856, self::B_BLUE);
