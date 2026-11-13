@@ -129,6 +129,26 @@ final class ApScene
     }
 
     /**
+     * 13 Nov 2026 (mg15): one Latin word turned a quarter left, reading from
+     * the bottom of the card to the top, centred on ($x, $y) along its run.
+     * $x is the baseline. Shrinks to fit $maxLen. No tracking, no fallback
+     * glyphs — it is for a role word ("AGENT"), not for names.
+     */
+    public function vtext(float $x, float $y, string $text, string $font, float $size, string $color, float $opacity = 1.0, float $maxLen = 0): self
+    {
+        if ($text === '') {
+            return $this;
+        }
+        $w = ApCard::measure($font, $size, $text, 0);
+        if ($maxLen > 0 && $w > $maxLen) {
+            $size *= $maxLen / $w;
+            $w = ApCard::measure($font, $size, $text, 0);
+        }
+        $this->ops[] = ['t' => 'vtext', 'x' => $x, 'y' => $y, 'text' => $text, 'font' => $font, 'size' => $size, 'color' => $color, 'op' => $opacity, 'w' => $w];
+        return $this;
+    }
+
+    /**
      * Text that must fit $maxWidth: one line shrunk a little, else two
      * balanced lines (broken between words), else the second line ends in
      * "…". Returns the baseline of the last line drawn, so what follows can
@@ -362,7 +382,9 @@ final class ApCard
     {
         $tpl = (string) ($m['theme'] ?? '');
         return match ($side) {
-            'id-front' => $tpl === 'wave' ? self::idFrontWave($m) : ($tpl === 'minimal' ? self::idFrontMinimal($m) : self::idFront($m)),
+            // 13 Nov 2026 (mg15, owner: "sabai ko design yestai hos"): ONE ID front for every
+            // member and every theme — the portrait card. The three older fronts stay below, unused.
+            'id-front' => self::idFrontPortrait($m),
             'id-back'  => self::idBack($m),
             'vc-front' => $tpl === 'wave' ? self::vcFrontWave($m) : ($tpl === 'minimal' ? self::vcFrontMinimal($m) : self::vcFront($m)),
             'vc-back'  => self::vcBack($m),
@@ -636,6 +658,71 @@ final class ApCard
         return ($abs !== '' && is_file($abs)) ? $abs : '';
     }
 
+    /**
+     * 13 Nov 2026 (mg15) — the portrait ID front, after the owner's Canva
+     * reference ("front ma thulo photo; naam, code number, S Hari Global ko
+     * logo ra head office sano ma, pachhi agent ko barema; ajhai minimal"):
+     *   - a blue spine on the left: the logo, and the role word running up it;
+     *   - on white: the NAME, the code number, the member's own WhatsApp,
+     *     the head office in small print;
+     *   - the photo, large, down to the foot of the card;
+     *   - a navy foot cut on the slant: designation, validity, website.
+     * No QR on this side — the card's one scanner is on the back.
+     */
+    private static function idFrontPortrait(array $m): ApScene
+    {
+        $co = $m['company'];
+        $s  = new ApScene(540, 856, 32);
+        $s->rect(0, 0, 540, 856, '#FFFFFF');
+
+        // The photo first, so the spine and the foot lie over its edges.
+        self::portrait($s, $m, 176, 268, 364, 588, 0);
+
+        // The spine.
+        $s->rect(0, 0, 176, 856, self::B_BLUE);
+        $s->shape([['M', 0, 0], ['L', 176, 0], ['L', 176, 150], ['C', 120, 196, 56, 196, 0, 150], ['Z']], self::B_NAVY, 0.55);
+        $s->rect(18, 20, 140, 88, '#FFFFFF', 18);
+        $s->art(26, 27, 124, 74, self::LOGO, 'middle');
+        $role = $m['isAgent'] ? ($m['isOrg'] ? 'AGENCY' : 'AGENT') : 'STAFF';
+        $s->vtext(127, 440, $role, 'sansB', 112, '#FFFFFF', 1.0, 430);
+
+        // Who: name, number, WhatsApp, head office.
+        $x    = 198;
+        $last = $s->textFit($x, 62, mb_strtoupper((string) $m['name']), 'sansB', 36, self::INK, 'start', 322);
+        $y    = $last + 34;
+        $idNo = $m['idNo'] !== '' ? (string) $m['idNo'] : 'PENDING';
+        $s->text($x, $y, self::codeLabel($m), 'caps', 14, self::MUTED, 'start', 1.6);
+        $s->text($x, $y + 28, $idNo, 'monoB', 25, self::B_BLUE, 'start', 1, 1.0, 322);
+        $y += 62;
+        $wa = (string) ($m['waDisplay'] ?: $m['callDisplay']);
+        if ($wa !== '') {
+            self::waGlyph($s, $x + 11, $y - 6, 11);
+            $s->text($x + 30, $y, $wa, 'sansB', 19, self::INK, 'start', 0.2, 1.0, 292);
+            $y += 28;
+        }
+        $place = trim((string) ($m['branch'] !== '' ? $m['branch'] : ''));
+        $head  = trim((string) ($co['address'] ?? ''));
+        if ($place !== '' && $y <= 212) {
+            $s->text($x, $y, $place, 'sansB', 15, self::INK, 'start', 0, 1.0, 322);
+            $y += 22;
+        }
+        if ($head !== '') {   // the head office, in small print (as many lines as still fit above the photo)
+            foreach (self::wrap('Head Office: ' . $head, 'sans', 14, 322, max(1, min(2, (int) floor((258 - $y) / 18) + 1))) as $i => $ln) {
+                $s->text($x, $y + $i * 18, $ln, 'sans', 14, self::MUTED);
+            }
+        }
+
+        // The foot, on the slant: an orange filament over navy.
+        $s->shape([['M', 0, 728], ['L', 540, 652], ['L', 540, 668], ['L', 0, 744], ['Z']], self::B_ORANGE);
+        $s->shape([['M', 0, 744], ['L', 540, 668], ['L', 540, 856], ['L', 0, 856], ['Z']], self::B_NAVY);
+        self::kycMark($s, $m, 494, 612, 358, 636);
+        $s->textFit(28, 796, mb_strtoupper((string) ($m['designation'] !== '' ? $m['designation'] : self::idClass($m))), 'caps', 19, '#FFFFFF', 'start', 484, 3, 1);
+        $valid = $m['validUntil'] !== '' ? 'VALID TILL ' . mb_strtoupper(date('M Y', (int) strtotime((string) $m['validUntil']))) : ($m['designation'] !== '' ? self::idClass($m) : '');
+        $s->text(28, 828, $valid, 'caps', 14, self::B_ORANGE_L, 'start', 1.6, 1.0, 240);
+        $s->text(512, 828, 'www.' . self::web($co), 'mono', 14, '#FFFFFF', 'end', 0.2, 0.9, 230);
+        return $s;
+    }
+
     private static function idFront(array $m): ApScene
     {
         $co = $m['company'];
@@ -729,13 +816,19 @@ final class ApCard
         $s->rect(0, 62, 540, 2.4, self::GOLD);
         $s->text(270, 41, (string) ($co['mantra'] ?? 'ॐ नमो नारायणाय'), 'deva', 20, self::GOLD_L, 'middle', 0, 1.0, 480);
 
-        // Two codes: is this card real? · talk to the company on WhatsApp.
-        self::qrPlate($s, 36, 84, 214, [self::verifyUrl($m)], self::GOLD);
-        self::qrPlate($s, 290, 84, 214, [self::chatUrl($m)], self::WA, true);
-        $s->text(143, 324, 'SCAN TO VERIFY', 'caps', 15.5, self::INK, 'middle', 1.6);
-        $s->text(143, 346, preg_replace('#^https?://(www\.)?#', '', appUrl('id.php')) ?? '', 'mono', 14, self::MUTED, 'middle', 0, 1.0, 228);
-        $s->text(397, 324, 'SCAN TO CHAT', 'caps', 15.5, self::WA, 'middle', 1.6);
-        $s->text(397, 346, 'WA ' . AgentPro::displayPhone(substr(self::chatUrl($m), 14)), 'mono', 14, self::MUTED, 'middle', 0, 1.0, 228);
+        // 13 Nov 2026 (mg15, owner: "ID card ma euta matra scanner aos"): ONE code —
+        // is this card real? The WhatsApp numbers are printed, not coded.
+        self::qrPlate($s, 36, 84, 240, [self::verifyUrl($m)], self::GOLD);
+        $s->text(300, 122, 'SCAN TO VERIFY', 'caps', 17, self::INK, 'start', 1.6, 1.0, 204);
+        $s->text(300, 146, preg_replace('#^https?://(www\.)?#', '', appUrl('id.php')) ?? '', 'mono', 14, self::MUTED, 'start', 0, 1.0, 204);
+        $own = (string) ($m['waDisplay'] ?: $m['callDisplay']);
+        if ($own !== '') {
+            self::waGlyph($s, 311, 196, 11);
+            $s->text(330, 201, $m['isAgent'] ? 'AGENT WHATSAPP' : 'WHATSAPP', 'caps', 14, self::WA, 'start', 1.2, 1.0, 174);
+            $s->text(300, 230, $own, 'sansB', 19, self::INK, 'start', 0.2, 1.0, 204);
+        }
+        $s->text(300, 278, 'BOOKING', 'caps', 14, self::MUTED, 'start', 1.2);
+        $s->text(300, 304, AgentPro::displayPhone(substr(self::chatUrl($m), 14)), 'sansB', 17, self::INK, 'start', 0.2, 1.0, 204);
 
         $rows = [
             ['HOLDER', (string) $m['name']],
@@ -1011,10 +1104,9 @@ final class ApCard
         }
 
         self::flags($s, 862, 26, 24, 'end');
-        if ($m['wa'] !== '') {
-            self::qrPlate($s, 690, 132, 158, ['https://wa.me/' . $m['wa']], self::B_ORANGE);
-            $s->text(769, 318, 'SCAN · WHATSAPP', 'caps', 13, '#FFFFFF', 'middle', 1, 1.0, 180);
-        }
+        // 13 Nov 2026 (mg15): no code on the front — the card's one scanner is on the back.
+        $s->rect(690, 150, 158, 108, '#FFFFFF', 18);
+        $s->art(700, 158, 138, 92, self::LOGO, 'middle');
         $s->text(769, 470, 'www.' . self::web($co), 'sansB', 15, self::B_ORANGE_L, 'middle', 0.4, 1.0, 250);
         return $s;
     }
@@ -1067,10 +1159,7 @@ final class ApCard
             }
             $ry += 33;
         }
-        if ($m['wa'] !== '') {
-            self::qrPlate($s, 704, 160, 150, ['https://wa.me/' . $m['wa']], self::B_NAVY);
-            $s->text(779, 334, 'SCAN · WHATSAPP', 'caps', 12.5, self::B_NAVY, 'middle', 1, 1.0, 170);
-        }
+        // 13 Nov 2026 (mg15): no code on the front — the card's one scanner is on the back.
         $s->rect(0, 466, 889, 42, self::B_NAVY);
         $s->text(36, 493, mb_strtoupper(self::featureLine($co)), 'caps', 13, '#FFFFFF', 'start', 1, 0.92, 580);
         $s->text(858, 493, 'www.' . self::web($co), 'sansB', 15, self::B_ORANGE_L, 'end', 0.4, 1.0, 240);
@@ -1171,11 +1260,7 @@ final class ApCard
             $ry += 34;
         }
 
-        // Small WhatsApp QR so a one-sided print still opens the chat (just the number).
-        if ($m['wa'] !== '') {
-            self::qrPlate($s, 706, 194, 152, ['https://wa.me/' . $m['wa']], $p['rule']);
-            $s->text(782, 372, 'SCAN · WHATSAPP', 'caps', 14, $p['panelSub'], 'middle', 1, 1.0, 170);
-        }
+        // 13 Nov 2026 (mg15): no code on the front — the card's one scanner is on the back.
 
         // The strip: what the coaches offer, and the website.
         $s->rect(0, 462, 889, 1.4, $p['rule'], 0, ['op' => 0.8]);
@@ -1248,11 +1333,11 @@ final class ApCard
         $s->text($x + 70, $y, (string) ($co['phone247'] ?? ''), 'monoB', 16.5, $p['backInk'], 'start', 0.2);
 
         // Bottom right: book on the company's WhatsApp.
+        // 13 Nov 2026 (mg15): the second, small code is gone — one scanner per card (the big one, left).
         $chatUrl = self::chatUrl($m);
-        self::qrPlate($s, 754, 386, 106, [$chatUrl], self::WA);
-        $s->text(740, 424, 'BOOK ON WHATSAPP', 'caps', 14, $p['backSub'], 'end', 1);
-        $s->text(740, 450, AgentPro::displayPhone(substr($chatUrl, 14)), 'monoB', 17, $p['backInk'], 'end', 0.3);
-        $s->text(740, 480, 'www.' . self::web($co), 'sansB', 16, $p['backSub'], 'end', 0.4);
+        $s->text(858, 424, 'BOOK ON WHATSAPP', 'caps', 14, $p['backSub'], 'end', 1);
+        $s->text(858, 450, AgentPro::displayPhone(substr($chatUrl, 14)), 'monoB', 17, $p['backInk'], 'end', 0.3);
+        $s->text(858, 480, 'www.' . self::web($co), 'sansB', 16, $p['backSub'], 'end', 0.4);
         return $s;
     }
 
@@ -1446,6 +1531,12 @@ final class ApCard
                         . ($anchor !== 'start' ? ' text-anchor="' . $anchor . '"' : '')
                         . ($op['tr'] != 0 ? ' letter-spacing="' . $n($op['tr']) . '"' : '')
                         . ($op['op'] < 1 ? ' fill-opacity="' . $n($op['op']) . '"' : '') . ' xml:space="preserve">' . $e($op['text']) . '</text>';
+                    break;
+                case 'vtext':
+                    [, $fam, $wt] = self::FONTS[$op['font']];
+                    $body[] = '<text x="' . $n($op['x']) . '" y="' . $n($op['y']) . '" transform="rotate(-90 ' . $n($op['x']) . ' ' . $n($op['y']) . ')"'
+                        . ' font-family="' . $fam . ',sans-serif" font-size="' . $n($op['size']) . '" font-weight="' . $wt . '" fill="' . $op['color'] . '" text-anchor="middle"'
+                        . ($op['op'] < 1 ? ' fill-opacity="' . $n($op['op']) . '"' : '') . '>' . $e($op['text']) . '</text>';
                     break;
                 case 'image':
                     $id = $uid . 'i' . ($gi++);
@@ -1645,6 +1736,11 @@ final class ApCard
                     break;
                 case 'text':
                     self::gdText($im, $op, $k);
+                    break;
+                case 'vtext':
+                    // angle 90 = a quarter left: the run starts at the bottom (y + w/2) and climbs
+                    imagettftext($im, $op['size'] * 0.75 * $k, 90, (int) round($op['x'] * $k), (int) round(($op['y'] + $op['w'] / 2) * $k),
+                        self::col($im, $op['color'], $op['op']), self::fontFile((string) $op['font']), (string) $op['text']);
                     break;
                 case 'image':
                     self::gdImage($im, $op, $k);
