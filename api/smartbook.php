@@ -237,6 +237,12 @@ try {
                     'paymentMethod' => $pay === 'cash' ? 'cash' : (in_array($in['method'] ?? '', ['upi', 'esewa', 'bank'], true) ? (string) $in['method'] : 'upi'),
                     'note'          => Security::clean((string) ($in['note'] ?? ''), 255),
                 ];
+                // 13 Nov 2026 (mg17): the desk's discount — create() applies and caps it (counter_max_discount_pct)
+                $desk = SmartBook::deskDiscountIn($in, $mode);
+                if ($desk !== null) {
+                    $seller['discountType']  = $desk[0];
+                    $seller['discountValue'] = $desk[1];
+                }
             }
             /* WHO the sale is credited to (15 Oct 2026, owner prompt: agent code at
                the desk, automatic commission, synchronised accounting):

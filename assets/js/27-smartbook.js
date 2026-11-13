@@ -470,9 +470,32 @@
     qTimer = setTimeout(doQuote, ms == null ? 260 : ms);
   }
   function quoteBody() {
-    return { action: 'quote', direction: S.dir, date: S.date, point: S.point, type: S.type, cabin: S.cabin, berth: S.berth,
+    var b = { action: 'quote', direction: S.dir, date: S.date, point: S.point, type: S.type, cabin: S.cabin, berth: S.berth,
       pax: S.pax.map(function (p) { return { gender: p.gender, band: p.band, name: String(p.name || '').trim().slice(0, 60) }; }),
       seats: S.seatMode === 'manual' ? S.manual : [], phone: digits(S.phone) };
+    /* 13 Nov 2026 (mg17): the desk's discount (admin / counter page only — the
+       boxes exist nowhere else). The server caps it and prices the ticket. */
+    var dv = document.getElementById('sbxDiscVal');
+    if (dv && Number(dv.value) > 0) {
+      b.discountValue = Number(dv.value);
+      b.discountType = (document.getElementById('sbxDiscType') || {}).value === 'percent' ? 'percent' : 'flat';
+    }
+    return b;
+  }
+  (function () {
+    var dv = document.getElementById('sbxDiscVal'), dt = document.getElementById('sbxDiscType');
+    if (!dv || !dt) return;
+    var again = function () { S.idem = null; requote(250); };
+    dv.addEventListener('input', again);
+    dt.addEventListener('change', again);
+  })();
+  function discNote(q) {
+    var box = document.querySelector('.sbx-disc'), note = document.getElementById('sbxDiscNote');
+    if (!box || !note || !q || !q.price) return;
+    var cap = Number(q.price.deskCap) || 0, cut = !!q.price.deskCut, got = Number(q.price.desk) || 0;
+    box.classList.toggle('cut', cut);
+    if (!note.getAttribute('data-base')) note.setAttribute('data-base', note.textContent);
+    note.textContent = got > 0 ? ('− ' + money(got) + (cut ? ' (max ' + cap + '%)' : '')) : (cut ? 'offer already bigger' : note.getAttribute('data-base'));
   }
   function doQuote() {
     var my = ++qSeq;
@@ -485,13 +508,13 @@
         S.q = q;
         if (!S.date && q.date) { /* next departure chosen by the engine */ }
         renderDates(); renderQuote(flash);
-        syncButtons(); quoted();
+        syncButtons(); discNote(q); quoted();
       })
       .catch(function (e) {
         if (my !== qSeq) return;
         S.q = null;
         $('sbSeatLine').textContent = e && e.message ? e.message : '—';
-        renderQuote(); syncButtons(); quoted();
+        renderQuote(); syncButtons(); discNote(S.q); quoted();
       });
   }
   /* 15 Oct 2026 (staff one-line order, auto-book): who is waiting for the next quote. */
@@ -1532,6 +1555,7 @@
   new MutationObserver(function () { applyWords(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
   /* Staff: clear the card for the next customer after a sale (keeps the date / pickup / type). */
   function resetForNext() {
+    (function () { var dv = document.getElementById('sbxDiscVal'); if (dv) dv.value = ''; })();   // a discount never rides into the next ticket
     S.phone = ''; S.name = ''; S.pax = [{ gender: '', band: 'adult' }]; S.manual = []; S.seatMode = 'auto'; S.idem = null; S.touched = {};
     S.why = {}; fill(); applyWords(); store.set(); showErrs(false); requote(0);
   }

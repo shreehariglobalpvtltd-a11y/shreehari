@@ -101,6 +101,11 @@ admin_header('SmartBook', 'smartbook');
 .sbx-w b.low{color:#cd4154}
 .sbx-modes a{padding:6px 10px;border-radius:9px;border:1px solid var(--line,#e0e8f2);text-decoration:none;font-size:12.5px;margin-right:4px}
 .sbx-modes a.on{background:#1a44c8;color:#fff;border-color:#1a44c8}
+.sbx-disc{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;font-weight:700}
+.sbx-disc input{width:84px;min-height:40px;padding:0 10px;border-radius:9px;border:1px solid var(--line,#e0e8f2);background:transparent;color:inherit;font:inherit}
+.sbx-disc select{min-height:40px;padding:0 8px;border-radius:9px;border:1px solid var(--line,#e0e8f2);background:transparent;color:inherit;font:inherit}
+.sbx-disc small{font-weight:600;opacity:.7}
+.sbx-disc.cut small{color:#B45309;opacity:1}
 .sbx-reg{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:thin}
 .sbx-reg button{flex:0 0 auto;min-height:38px;border:1px solid var(--line,#e0e8f2);border-radius:10px;background:var(--card,#fff);color:inherit;font:inherit;font-size:12.5px;padding:0 10px;cursor:pointer;white-space:nowrap}
 .sbx-help{font-size:12px;color:var(--muted,#637491);margin:2px 0 0}
@@ -125,6 +130,15 @@ html.sbx-admin .sbx-ov{display:block}
     <span class="sbx-w">Cash to hand over <b class="<?= $wallet['limit'] > 0 && $wallet['cash'] >= $wallet['limit'] ? 'low' : '' ?>"><?= $e(inr($wallet['cash'])) ?></b> · Commission <b><?= $e(inr($wallet['commission'])) ?></b></span>
   <?php endif; ?>
   <label class="sbx-auto" title="A complete one-line order books at once as Cash: ticket confirmed, WhatsApp sent - no extra tap"><input type="checkbox" id="sbxAuto"> ⚡ Auto-book</label>
+  <?php if (in_array($mode, ['admin', 'counter'], true)):
+        $discCap = max(0.0, Settings::getFloat('counter_max_discount_pct', 15.0)); ?>
+  <span class="sbx-disc" title="Discount on this ticket — at most <?= $e(rtrim(rtrim(number_format($discCap, 1), '0'), '.')) ?>% of the fare (Settings → Agents &amp; counter)">
+    <label for="sbxDiscVal">🏷️ छुट · Discount</label>
+    <input type="number" id="sbxDiscVal" min="0" step="1" inputmode="numeric" placeholder="0" aria-describedby="sbxDiscNote">
+    <select id="sbxDiscType" aria-label="Discount type"><option value="flat">₹</option><option value="percent">%</option></select>
+    <small id="sbxDiscNote">max <?= $e(rtrim(rtrim(number_format($discCap, 1), '0'), '.')) ?>%</small>
+  </span>
+  <?php endif; ?>
   <details class="sbx-more"><summary>⚙</summary><div class="sbx-more-in">
     <?php if ($isAdmin): ?>
       <span class="sbx-modes"><?php foreach (['admin' => 'Admin', 'counter' => 'Counter mode', 'agent' => 'Agent mode'] as $k => $v): ?><a class="<?= $mode === $k ? 'on' : '' ?>" href="?mode=<?= $e($k) ?>"><?= $e($v) ?></a><?php endforeach; ?></span>

@@ -381,6 +381,66 @@ final class SmartBook
     }
 
     /**
+     * 13 Nov 2026 (mg17, owner: "admin portal bata ticket katda discount pani
+     * add garna milne"): the discount a desk typed on the fast form.
+     * Admin and counter sessions only — never a customer, never an agent
+     * (an agent's online sale has no desk seller, so create() would not
+     * apply it and the price shown would be a lie).
+     *
+     * @return array{0: string, 1: float}|null [flat|percent, value]
+     */
+    public static function deskDiscountIn(array $in, string $mode): ?array
+    {
+        if (!in_array($mode, ['admin', 'counter'], true)) {
+            return null;
+        }
+        $type = (string) ($in['discountType'] ?? '');
+        $val  = is_numeric($in['discountValue'] ?? null) ? round((float) $in['discountValue'], 2) : 0.0;
+        if (!in_array($type, ['flat', 'percent'], true) || $val <= 0) {
+            return null;
+        }
+        return [$type, min($val, $type === 'percent' ? 100.0 : 1000000.0)];
+    }
+
+    /**
+     * The desk discount laid on a priceFor() result — the SAME arithmetic as
+     * BookingService::create(): flat or % of the base, never above
+     * counter_max_discount_pct of the base nor above the payable, and never
+     * stacked on the office's running offer (the passenger gets the bigger).
+     * Keeping the two in step is what lets the quote's total equal the
+     * ticket's total (smartbook-discount-test compares them).
+     *
+     * @param array<string, mixed> $price
+     * @return array<string, mixed>
+     */
+    public static function withDeskDiscount(array $price, string $type, float $value): array
+    {
+        $base = (float) ($price['base'] ?? 0);
+        if ($base <= 0 || $value <= 0) {
+            return $price;
+        }
+        $raw    = $type === 'percent' ? round($base * $value / 100, 2) : round($value, 2);
+        $maxPct = max(0.0, Settings::getFloat('counter_max_discount_pct', 15.0));
+        $cd     = min($raw, round($base * $maxPct / 100, 2), (float) $price['total']);
+        $offer  = (float) ($price['couponDiscount'] ?? 0);
+        if ($cd > 0 && $offer > 0) {
+            if ($cd > $offer) {
+                $price['total']          = round((float) $price['total'] + $offer - $cd, 2);
+                $price['couponDiscount'] = round($cd, 2);
+                $price['couponCode']     = null;
+                $price['deskDiscount']   = round($cd, 2);
+            }
+        } elseif ($cd > 0) {
+            $price['couponDiscount'] = round($offer + $cd, 2);
+            $price['total']          = round((float) $price['total'] - $cd, 2);
+            $price['deskDiscount']   = round($cd, 2);
+        }
+        $price['deskCap'] = $maxPct;
+        $price['deskCut'] = $raw > $cd + 0.004;   // the typed amount was more than the rule allows
+        return $price;
+    }
+
+    /**
      * History may fill a card only for the number's proven owner (OTP
      * session) or for selling staff — a typed number never reveals a
      * stranger's name, party or habits.
@@ -684,6 +744,11 @@ final class SmartBook
         $price = null;
         if ($seats !== []) {
             $price = BookingService::priceFor($route, $schedule, $seats, $mode2, $req['cabin'], (string) $plan['boarding'], $req['phone'], $drop);
+            // 13 Nov 2026 (mg17): the desk's own discount, shown before the sale exactly as create() will charge it
+            $desk = self::deskDiscountIn($in, $mode);
+            if ($desk !== null) {
+                $price = self::withDeskDiscount($price, $desk[0], $desk[1]);
+            }
         }
         $npr = round(((float) ($price['total'] ?? 0)) * (float) SiteFacts::all()['npr']);
 
@@ -742,6 +807,9 @@ final class SmartBook
                 'base'     => (float) $price['base'],
                 'discount' => round((float) $price['groupDiscount'] + (float) $price['couponDiscount'] + (float) $price['tierDiscount'], 2),
                 'offer'    => (string) ($price['couponCode'] ?? ''),
+                'desk'     => (float) ($price['deskDiscount'] ?? 0),
+                'deskCap'  => (float) ($price['deskCap'] ?? 0),
+                'deskCut'  => !empty($price['deskCut']),
                 'fee'      => (float) $price['fee'],
                 'tax'      => (float) $price['tax'],
                 'total'    => (float) $price['total'],
