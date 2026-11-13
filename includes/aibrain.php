@@ -107,7 +107,14 @@ final class AiBrain
         if ($messages === []) {
             return null;
         }
+        require_once INCLUDE_PATH . '/aimeter.php';
+        AiMeter::context(['channel' => 'text', 'role' => '', 'tag' => $tag]);
         foreach (self::order() as $p) {
+            if ($p === 'anthropic' && AiMeter::overBudget()) {
+                // Today's ceiling is reached: the next brain answers instead.
+                Logger::warning('AI brain: daily budget reached, Claude skipped', ['tag' => $tag], 'ai');
+                continue;
+            }
             $t0 = microtime(true);
             $out = null;
             try {
@@ -123,6 +130,10 @@ final class AiBrain
             }
             $ms = (int) round((microtime(true) - $t0) * 1000);
             self::count($p, $out !== null && trim((string) $out) !== '', $ms, $tag);
+            if ($p !== 'anthropic') {
+                // Claude meters itself with its token counts; these two return words only.
+                AiMeter::record($p, self::model($p), [], $ms, $out !== null && trim((string) $out) !== '');
+            }
             if ($out !== null && trim($out) !== '') {
                 return ['text' => trim($out), 'provider' => $p, 'model' => self::model($p) ?: (string) Settings::getString('gemini_model', ''), 'ms' => $ms];
             }
@@ -211,6 +222,8 @@ final class AiBrain
             'anthropic-version: 2023-06-01',
             'Content-Type: application/json',
         ]);
+        require_once INCLUDE_PATH . '/aimeter.php';
+        $t0 = microtime(true);
         [$http, $body] = self::post('https://api.anthropic.com/v1/messages', $payload, $headers);
         if ($http === 400 && isset($payload['fallbacks']) && stripos($body, 'fallback') !== false) {
             // An account without the fallback beta must still get its answer.
@@ -218,11 +231,14 @@ final class AiBrain
             $headers = array_values(array_filter($headers, static fn(string $h): bool => stripos($h, 'server-side-fallback') === false));
             [$http, $body] = self::post('https://api.anthropic.com/v1/messages', $payload, $headers);
         }
+        $ms = (int) round((microtime(true) - $t0) * 1000);
         if ($http !== 200) {
+            AiMeter::record('anthropic', $model, [], $ms, false);
             Logger::warning('AI brain: Claude HTTP ' . $http, ['body' => self::redact($body)], 'whatsapp');
             return null;
         }
         $json = json_decode($body, true);
+        AiMeter::record('anthropic', (string) ($json['model'] ?? $model), AiMeter::fromAnthropic($json['usage'] ?? null), $ms, true);
         if (self::claudeRefusal(is_array($json) ? $json : []) !== null) {
             return null;                          // the next provider answers instead
         }
@@ -290,6 +306,7 @@ final class AiBrain
     public static function claudeShape(string $model, array $payload, array $headers): array
     {
         unset($payload['temperature'], $payload['top_p'], $payload['top_k']);
+        $payload = self::claudeCached($payload);
         if (!self::claudeAdaptive($model)) {
             return [$payload, $headers];
         }
@@ -301,6 +318,37 @@ final class AiBrain
             $headers[] = 'anthropic-beta: server-side-fallback-2026-07-01';
         }
         return [$payload, $headers];
+    }
+
+    /**
+     * Prompt caching (13 Nov 2026, Super AI). The briefing and the tool list
+     * are the same bytes on every round of a turn and for every sender of
+     * one role, and they are most of what a request costs. Marked as
+     * cacheable, a repeat within five minutes is read back at a fraction of
+     * the price and faster. Two marks: the last tool (the list is shared by
+     * a whole role) and the system text (which carries the sender's name).
+     * Switch: ai_claude_cache_on (default on). A system already sent as
+     * blocks (AiTeach places its own marks) is left alone.
+     *
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    public static function claudeCached(array $payload): array
+    {
+        if (!Settings::getBool('ai_claude_cache_on', true)) {
+            return $payload;
+        }
+        $mark = ['type' => 'ephemeral'];
+        if (is_string($payload['system'] ?? null) && trim($payload['system']) !== '') {
+            $payload['system'] = [['type' => 'text', 'text' => $payload['system'], 'cache_control' => $mark]];
+        }
+        if (is_array($payload['tools'] ?? null) && $payload['tools'] !== [] && array_is_list($payload['tools'])) {
+            $last = count($payload['tools']) - 1;
+            if (is_array($payload['tools'][$last])) {
+                $payload['tools'][$last]['cache_control'] = $mark;
+            }
+        }
+        return $payload;
     }
 
     /**

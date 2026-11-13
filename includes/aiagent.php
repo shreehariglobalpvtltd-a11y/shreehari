@@ -78,6 +78,8 @@ final class AiAgent
     private static ?float $deadline = null;
     /** HTTP status of the most recent model call (0 = network / no answer). */
     private static int $lastHttp = 0;
+    /** [model, token counts] of the model call just made, for AiMeter. */
+    private static ?array $lastUsage = null;
 
     /** "Start again" in the languages this desk actually receives. */
     private const RESET_WORDS = ['reset', 'restart', 'naya', 'नयाँ', 'फेरि सुरु', 'start over', 'clear'];
@@ -561,8 +563,20 @@ final class AiAgent
     private static function ask(string $system, array $history, array $tools, array $ctx = [], bool $noTools = false): ?array
     {
         $order = self::buildLadder();
+        require_once INCLUDE_PATH . '/aimeter.php';
+        AiMeter::context([
+            'channel' => (string) ($ctx['channel'] ?? 'whatsapp'),
+            'role'    => (string) ($ctx['role'] ?? 'customer'),
+            'tag'     => 'agent',
+        ]);
 
         foreach ($order as $brain) {
+            if ($brain === 'anthropic' && AiMeter::overBudget()) {
+                // 13 Nov 2026: the owner's daily ceiling is reached. The next
+                // brain (or the caller's own no-AI reply) answers instead.
+                Logger::warning('AI agent: daily budget reached, Claude skipped', ['spent' => AiMeter::spentToday()], 'ai');
+                continue;
+            }
             $key = match ($brain) {
                 'anthropic'  => self::anthropicKey(),
                 'gemini'     => self::geminiKey(),
@@ -578,6 +592,8 @@ final class AiAgent
 
             // $noTools = the loop's last call: words only (24 Sep 2026, AiTurn budget).
             $compatTools = $noTools ? [] : $tools;
+            self::$lastUsage = null;
+            $t0 = microtime(true);
             $out = match ($brain) {
                 'anthropic'  => self::askAnthropic($key, $system, $history, $tools, $noTools),
                 'gemini'     => self::askGemini($key, $system, $history, $tools, $ctx, $noTools),
@@ -587,6 +603,9 @@ final class AiAgent
                 'openai'     => self::askOpenAICompat($key, $system, $history, $compatTools, 'openai'),
                 default      => null,
             };
+            // One row per model call: tokens, cost where the price is known, speed.
+            AiMeter::record($brain, (string) (self::$lastUsage[0] ?? ''), (array) (self::$lastUsage[1] ?? []),
+                (int) round((microtime(true) - $t0) * 1000), $out !== null);
 
             if ($out !== null) {
                 return $out;
@@ -663,6 +682,13 @@ final class AiAgent
             if ($noTools) {
                 $payload['tool_choice'] = ['type' => 'none'];
             }
+            /* 13 Nov 2026: a turn with tools is several rounds over a growing
+               history. This mark lets round 2 read round 1 back from the cache
+               instead of paying for it again (AiBrain::claudeCached marks the
+               briefing and the tool list themselves). */
+            if (Settings::getBool('ai_claude_cache_on', true)) {
+                $payload['cache_control'] = ['type' => 'ephemeral'];
+            }
         }
 
         /* Adaptive thinking at the office's effort (default low: a WhatsApp
@@ -682,6 +708,11 @@ final class AiAgent
             unset($payload['fallbacks']);
             $headers = array_values(array_filter($headers, static fn(string $h): bool => stripos($h, 'server-side-fallback') === false));
             $res = self::http('https://api.anthropic.com/v1/messages', $payload, $headers);
+        }
+        if ($res !== null) {
+            self::$lastUsage = [(string) ($res['model'] ?? $model), AiMeter::fromAnthropic($res['usage'] ?? null)];
+        } else {
+            self::$lastUsage = [$model, []];
         }
         if ($res === null || AiBrain::claudeRefusal($res) !== null) {
             return null;
@@ -955,6 +986,7 @@ final class AiAgent
         if ($res === null) {
             return null;
         }
+        self::$lastUsage = [(string) ($res['modelVersion'] ?? ($model ?? '')), AiMeter::fromGemini($res['usageMetadata'] ?? null)];
 
         $text   = '';
         $calls  = [];
@@ -1221,8 +1253,10 @@ final class AiAgent
 
         $res = self::http($cfg['url'], $payload, $headers);
         if ($res === null) {
+            self::$lastUsage = [$model, []];
             return null;
         }
+        self::$lastUsage = [(string) ($res['model'] ?? $model), AiMeter::fromOpenAI($res['usage'] ?? null)];
 
         $choice = (array) ($res['choices'][0]['message'] ?? []);
         $text   = (string) ($choice['content'] ?? '');

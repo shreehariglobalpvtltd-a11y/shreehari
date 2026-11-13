@@ -150,6 +150,8 @@ const CORE_SUITES = [
     // 22 Sep 2026, registered with the knowledge base it guards.
     'ai-turn-test.php'            => 'the tool loop is bounded: budget, deadline, no repeated write on retry',
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
+    // 13 Nov 2026, registered with the cost ledger and Control Center it guards.
+    'super-ai-test.php'           => 'Super AI: cost ledger, prompt-cache marks, daily ceiling, finance_day is office-only and read-only',
     // 28 Sep 2026, registered with the admin AI panel it guards.
     'ai-panel-test.php'           => 'the panel door: role, liveness, the /api/ temp-password case, separate staging',
     // 28 Sep 2026, registered with the WhatsApp seller gaps they guard.

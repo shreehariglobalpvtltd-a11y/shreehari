@@ -666,6 +666,14 @@ final class AiTools
                 'The whole company for one day: tickets, seats, revenue by payment method, refunds, how full each departure is, and how many payments are waiting to be verified.',
                 ['date' => ['string', 'YYYY-MM-DD, default today']]);
 
+            /* 13 Nov 2026 (Super AI): the day's accounts and the ledger
+               check in one read-only answer. Every figure is the same query
+               the office report, Trip Expenses and "Ledger मिलान" already
+               use - the model reads numbers, it never computes them. */
+            $t[] = self::spec('finance_day',
+                'The accounts for one day, read-only: sales, money actually verified (INR and NPR), refunds, trip expenses entered, payments and refunds still waiting, and the ledger check - bookings where commission or cash held does not match the ticket (possible mistakes or misuse), with PNRs. Use for "aaja ko hisab", "hisab milcha?", "kehi gadbad cha?". Never changes anything; fixes are done by the office on the Ledger page.',
+                ['date' => ['string', 'YYYY-MM-DD, default today']]);
+
             $t[] = self::spec('office_search',
                 'Find bookings by PNR, mobile number or passenger name across the whole register.',
                 ['q' => ['string', 'PNR, 10-digit number, or part of a name']], ['q']);
@@ -836,6 +844,7 @@ final class AiTools
                 'bulk_quote'       => self::bulkQuote($args, $ctx),
                 'bulk_issue'       => self::bulkIssue($args, $ctx),
                 'office_day'       => self::officeDay($args, $ctx),
+                'finance_day'      => self::financeDay($args, $ctx),
                 'office_search'    => self::officeSearch($args, $ctx),
                 'office_alerts'    => self::officeAlerts($args, $ctx),
                 'office_confirm'   => self::officeConfirm($args, $ctx),
@@ -2212,6 +2221,84 @@ final class AiTools
                 'pendingPayments' => $pending,
                 'refundsToday'  => $refunds,
                 'departures'    => $buses,
+            ],
+            'media' => null,
+        ];
+    }
+
+    /**
+     * The day's accounts + the ledger check (13 Nov 2026). Read-only, and
+     * built only from logic the office already trusts: officeDay() for the
+     * sales, OfficeReport::collected() for verified money, trip_expenses
+     * as entered, and LedgerCheck for rows that no longer match a booking.
+     */
+    private static function financeDay(array $args, array $ctx): array
+    {
+        $date = self::cleanDate((string) ($args['date'] ?? '')) ?: todayISO();
+        $day  = self::officeDay(['date' => $date], $ctx)['data'];
+
+        require_once INCLUDE_PATH . '/officereport.php';
+        $got = OfficeReport::collected($date);
+
+        $expenses = null;                       // null = the table is not installed
+        try {
+            $expenses = (float) Database::scalar(
+                'SELECT COALESCE(SUM(total), 0) FROM trip_expenses WHERE expense_date = :d', ['d' => $date], 0);
+        } catch (Throwable $e) {
+        }
+
+        $refundsWaiting = 0;
+        try {
+            $refundsWaiting = (int) Database::scalar(
+                "SELECT COUNT(*) FROM bookings WHERE refund_status = 'pending'", [], 0);
+        } catch (Throwable $e) {
+        }
+
+        // The ledger check over the last 60 days: what, how many, which PNRs.
+        $findings = [];
+        $total    = 0;
+        try {
+            require_once INCLUDE_PATH . '/ledgercheck.php';
+            foreach (LedgerCheck::run(addDaysISO($date, -60)) as $kind => $rows) {
+                if ($rows === []) {
+                    continue;
+                }
+                $total += count($rows);
+                $findings[] = [
+                    'kind'    => (string) $kind,
+                    'meaning' => (string) (LedgerCheck::KINDS[$kind][0] ?? $kind),
+                    'count'   => count($rows),
+                    'pnrs'    => array_values(array_filter(array_map(
+                        static fn(array $r): string => (string) ($r['pnr'] ?? ''), array_slice($rows, 0, 5)))),
+                ];
+            }
+        } catch (Throwable $e) {
+            Logger::warning('finance_day: ledger check unavailable: ' . $e->getMessage(), [], 'ai');
+            $findings = null;                   // null = could not be checked, not "all clear"
+        }
+
+        return [
+            'ok'   => true,
+            'say'  => $findings === null
+                ? 'The day\'s accounts from the register. The ledger check could not run - say so, do not call it clean.'
+                : ($total === 0
+                    ? 'The day\'s accounts from the register. The ledger check found nothing that disagrees.'
+                    : 'The day\'s accounts from the register. The ledger check found ' . $total
+                      . ' row(s) to look at - read the kinds and PNRs out; the office fixes them on the Ledger page.'),
+            'data' => [
+                'date'             => $date,
+                'ticketsSold'      => $day['ticketsSold'],
+                'salesLabel'       => $day['revenueLabel'],
+                'salesByMethod'    => $day['byMethod'],
+                'verifiedMoneyInr' => $got['inr'],
+                'verifiedMoneyNpr' => $got['npr'],
+                'verifiedPayments' => $got['count'],
+                'refundsToday'     => $day['refundsToday'],
+                'tripExpenses'     => $expenses,
+                'paymentsWaiting'  => $day['pendingPayments'],
+                'refundsWaiting'   => $refundsWaiting,
+                'ledgerFindings'   => $findings,
+                'ledgerPage'       => '/admin/ledger-check.php',
             ],
             'media' => null,
         ];
