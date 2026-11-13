@@ -190,8 +190,17 @@ final class BookingService
         return $v !== '' ? $v : null;
     }
 
+    /** 13 Nov 2026 (mg20): the part of the last create()'s desk discount that is the seller's own (above any running offer). */
+    private static float $deskCharge = 0.0;
+
+    public static function deskCharge(): float
+    {
+        return self::$deskCharge;
+    }
+
     public static function create(array $request, ?array $seller = null): array
     {
+        self::$deskCharge = 0.0;
         $routeId    = (int) $request['routeId'];
         $travelDate = (string) $request['travelDate'];
         $seats      = array_values(array_unique(array_map('strval', $request['seats'] ?? [])));
@@ -557,6 +566,13 @@ final class BookingService
                     $maxPct = max(0.0, Settings::getFloat('counter_max_discount_pct', 15.0));
                     $cap    = round((float) $pricing['base'] * $maxPct / 100, 2);
                     $cd     = min($raw, $cap, (float) $pricing['total']);
+                    /* 13 Nov 2026 (mg20, owner: "agent le pani discount dina paos — commission bata
+                       katiyos"): an agent's own discount is never more than the commission this
+                       sale earns them (SmartBook::withDeskDiscount does the same sum for the quote). */
+                    $fromComm = (int) ($seller['discountFromCommission'] ?? 0);
+                    if ($fromComm > 0) {
+                        $cd = min($cd, AgentWallet::commissionForBooking((float) $pricing['total'], $fromComm, count($seats)));
+                    }
                     /* 6 Oct 2026: the clerk's discount and the office's running offer
                        (Dashain 10%) never stack - the passenger gets the BIGGER one,
                        as the desk form (counterSale) already did. Stacked, a 15%
@@ -569,10 +585,12 @@ final class BookingService
                             $pricing['total']          = round((float) $pricing['total'] + $offerCut - $cd, 2);
                             $pricing['couponDiscount'] = round($cd, 2);
                             $pricing['couponCode']     = null;      // the offer was not used: not redeemed
+                            self::$deskCharge          = round($cd - $offerCut, 2);   // only what went beyond the offer
                         }
                     } elseif ($cd > 0) {
                         $pricing['couponDiscount'] = round((float) $pricing['couponDiscount'] + $cd, 2);
                         $pricing['total']          = round((float) $pricing['total'] - $cd, 2);
+                        self::$deskCharge          = round($cd, 2);
                     }
                 }
             }

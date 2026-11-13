@@ -529,7 +529,7 @@ en: {
   /* ---- 13 Sep 2026: PWA layer (17-pwa.js) — install sheet, push alerts, border card, split-pay, seat-fill chart, route guide ---- */
   pwaInstallT: 'Install the S Hari Global app', pwaInstallP: 'Faster booking, offline ticket, delay alerts — no Play Store needed',
   pwaB1: 'Opens in a second, even on slow 3G', pwaB2: 'Your ticket works offline at the border', pwaB3: 'Bus delay alerts on your phone',
-  pwaInstallBtn: 'Install app', pwaLater: 'Not now', pwaGotIt: 'Got it', pwaNotNow: 'Open this site in Chrome or Safari to install the app',
+  pwaInstallBtn: 'Install app', pwaLater: 'Not now', pwaContinue: 'Continue in browser', pwaGotIt: 'Got it', pwaNotNow: 'Open this site in Chrome or Safari to install the app',
   pwaIos1: 'Tap the Share button at the bottom of Safari', pwaIos2: 'Choose “Add to Home Screen”', pwaIos3: 'Tap Add — the app is on your home screen',
   pwaDone: 'App installed — open it from your home screen',
   pushT: 'Bus delay alerts', pushP: 'Get a notification on this phone if the bus is delayed, 12 h and 2 h before departure, and when your ticket is ready.',
@@ -1115,7 +1115,7 @@ hi: {
   /* ---- 13 Sep 2026: PWA layer ---- */
   pwaInstallT: 'S Hari Global ऐप इंस्टॉल करें', pwaInstallP: 'तेज़ बुकिंग, ऑफलाइन टिकट, बस देरी की सूचना — Play Store की ज़रूरत नहीं',
   pwaB1: 'धीमे 3G पर भी एक सेकंड में खुलता है', pwaB2: 'बॉर्डर पर आपका टिकट ऑफलाइन भी चलता है', pwaB3: 'बस देरी की सूचना सीधे फोन पर',
-  pwaInstallBtn: 'ऐप इंस्टॉल करें', pwaLater: 'अभी नहीं', pwaGotIt: 'समझ गया', pwaNotNow: 'ऐप इंस्टॉल करने के लिए यह साइट Chrome या Safari में खोलें',
+  pwaInstallBtn: 'ऐप इंस्टॉल करें', pwaLater: 'अभी नहीं', pwaContinue: 'ब्राउज़र में जारी रखें', pwaGotIt: 'समझ गया', pwaNotNow: 'ऐप इंस्टॉल करने के लिए यह साइट Chrome या Safari में खोलें',
   pwaIos1: 'Safari के नीचे Share बटन दबाएँ', pwaIos2: '“Add to Home Screen” चुनें', pwaIos3: 'Add दबाएँ — ऐप होम स्क्रीन पर आ गया',
   pwaDone: 'ऐप इंस्टॉल हो गया — होम स्क्रीन से खोलें',
   pushT: 'बस देरी की सूचना', pushP: 'बस देरी हो, प्रस्थान से 12 और 2 घंटे पहले, और टिकट तैयार होने पर इस फोन पर सूचना पाएँ।',
@@ -1697,7 +1697,7 @@ ne: {
   /* ---- 13 Sep 2026: PWA layer ---- */
   pwaInstallT: 'S Hari Global एप इन्स्टल गर्नुहोस्', pwaInstallP: 'छिटो बुकिङ, अफलाइन टिकट, बस ढिलो भएको सूचना — Play Store चाहिँदैन',
   pwaB1: 'ढिलो 3G मा पनि एक सेकेन्डमा खुल्छ', pwaB2: 'बोर्डरमा तपाईंको टिकट अफलाइन पनि चल्छ', pwaB3: 'बस ढिलो भएको सूचना सीधै फोनमा',
-  pwaInstallBtn: 'एप इन्स्टल गर्नुहोस्', pwaLater: 'अहिले होइन', pwaGotIt: 'बुझें', pwaNotNow: 'एप इन्स्टल गर्न यो साइट Chrome वा Safari मा खोल्नुहोस्',
+  pwaInstallBtn: 'एप इन्स्टल गर्नुहोस्', pwaLater: 'अहिले होइन', pwaContinue: 'ब्राउजरमै चलाउनुहोस्', pwaGotIt: 'बुझें', pwaNotNow: 'एप इन्स्टल गर्न यो साइट Chrome वा Safari मा खोल्नुहोस्',
   pwaIos1: 'Safari को तल Share बटन थिच्नुहोस्', pwaIos2: '“Add to Home Screen” छान्नुहोस्', pwaIos3: 'Add थिच्नुहोस् — एप होम स्क्रिनमा आयो',
   pwaDone: 'एप इन्स्टल भयो — होम स्क्रिनबाट खोल्नुहोस्',
   pushT: 'बस ढिलो भएको सूचना', pushP: 'बस ढिलो भएमा, प्रस्थान भन्दा १२ र २ घण्टा अगाडि, र टिकट तयार हुँदा यो फोनमा सूचना पाउनुहोस्।',

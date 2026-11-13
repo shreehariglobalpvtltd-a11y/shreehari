@@ -18,6 +18,7 @@ $_SERVER['REQUEST_METHOD'] = 'GET';
 $_SERVER['HTTP_HOST']      = 'localhost';
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/smartbook.php';
+require_once INCLUDE_PATH . '/agentwallet.php';
 if (session_status() !== PHP_SESSION_ACTIVE) { @session_start(); }
 
 $PASS = 0; $FAIL = 0;
@@ -59,6 +60,25 @@ if ($capAmt > 200) {
 }
 $p = SmartBook::withDeskDiscount(['base' => 0.0, 'total' => 0.0, 'couponDiscount' => 0.0], 'flat', 100);
 check('nothing to discount: unchanged', (float) $p['total'] === 0.0 && !isset($p['deskDiscount']));
+
+echo "-- an agent's own discount (mg20) --\n";
+$p = SmartBook::withDeskDiscount($base, 'flat', 250, 200.0);
+check('never more than the commission (250 asked, 200 commission → 200)', abs($p['total'] - 1800.0) < 0.01 && abs($p['deskDiscount'] - 200.0) < 0.01 && !empty($p['deskCut']), (string) $p['total']);
+$p = SmartBook::withDeskDiscount($base, 'flat', 150, 200.0);
+check('inside the commission: as asked', abs($p['total'] - 1850.0) < 0.01 && empty($p['deskCut']), (string) $p['total']);
+$p = SmartBook::withDeskDiscount($base, 'flat', 150, 0.0);
+check('no commission on the sale: no discount', abs($p['total'] - 2000.0) < 0.01, (string) $p['total']);
+$agent = Database::fetch("SELECT * FROM admins WHERE role = 'agent' AND is_active = 1 ORDER BY id LIMIT 1");
+if ($agent !== null && AgentWallet::isAgentRow((int) $agent['id'])) {
+    $_SESSION[ADMIN_SESSION_KEY] = [
+        'id' => (int) $agent['id'], 'username' => (string) $agent['username'], 'full_name' => (string) $agent['full_name'],
+        'role' => (string) $agent['role'], 'permissions' => jsonColumn($agent['permissions'] ?? null), 'last_seen' => time(),
+        'must_change_pw' => false, 'via_otp' => false,
+    ];
+    check('an agent\'s own session: may discount', SmartBook::deskDiscountIn($in, 'agent') === ['flat', 200.0]);
+    unset($_SESSION[ADMIN_SESSION_KEY]);
+}
+check('agent mode with nobody signed in: no', SmartBook::deskDiscountIn($in, 'agent') === null);
 
 echo "-- a real quote --\n";
 $super = Database::fetch("SELECT * FROM admins WHERE role = 'superadmin' AND is_active = 1 ORDER BY id LIMIT 1");

@@ -607,6 +607,21 @@ final class OpsHub
         return in_array($host, self::customerHosts(), true);
     }
 
+    /**
+     * 13 Nov 2026: is this request on the staff door (S Hari Manage)? True
+     * only for the staff host itself, and never when that host is also the
+     * customer host (localhost, a one-domain test install).
+     */
+    public static function onStaffHost(?string $host = null): bool
+    {
+        $host  = strtolower((string) preg_replace('/:\d+$/', '', $host ?? (string) ($_SERVER['HTTP_HOST'] ?? '')));
+        $staff = self::staffHost();
+        if ($host === '' || $staff === '' || in_array($host, self::customerHosts(), true)) {
+            return false;
+        }
+        return $host === $staff || $host === 'www.' . $staff;
+    }
+
     /** Base URL for staff / agent links: the .network door on live, APP_URL elsewhere. */
     public static function staffBase(): string
     {

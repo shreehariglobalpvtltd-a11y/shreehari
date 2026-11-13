@@ -296,6 +296,15 @@
         S.type = 'sharing'; S.cabin = 'single'; S.berth = saved.berth || df.berth || 'any';
         if (!S.allowCod) $('sbCash').hidden = true;
         fill(); applyWords(); applyQuick(); requote(0);
+        /* 13 Nov 2026 (mg20): a ticket order typed in the Home AI box ("Ram 98…, Surat bholi 2 jana")
+           arrives as ?order= — read into the card here; the person checks it and taps Book. */
+        try {
+          var ord = new URLSearchParams(location.search).get('order');
+          if (ord && STAFF) {
+            $('sbBotIn').value = ord; fillFromText(ord);
+            history.replaceState(null, '', location.pathname + location.search.replace(/([?&])order=[^&]*&?/, '$1').replace(/[?&]$/, ''));
+          }
+        } catch (x) {}
       })
       .catch(function (e) {
         // the engine is unreachable: the classic search card takes over

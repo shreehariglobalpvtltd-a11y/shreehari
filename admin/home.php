@@ -150,6 +150,21 @@ if ($askQ !== '' && mb_strlen($askQ) >= 2) {
             $isCmd = false;
         }
     }
+    /* 13 Nov 2026 (mg20, owner: "AI lai agent jasto kam garne"): a line that reads as a
+       ticket ORDER — a name and a mobile, e.g. "Ram 9812345678 Surat bholi 2 jana" —
+       opens SmartBook with the order already read into the card (QuickBot). The person
+       checks it and taps Book: the AI fills, a human sells. A bare mobile stays a search. */
+    if (!$isCmd && Auth::isSellingStaff() && Auth::can('bookings.view') && preg_match('/\d{10}/', preg_replace('/[\s-]/', '', $askQ) ?? '') === 1) {
+        try {
+            require_once INCLUDE_PATH . '/smartbookbot.php';
+            $ord = SmartBookBot::fields($askQ, 'admin');
+            if ($ord['name'] !== '' && $ord['phone'] !== '') {
+                Response::redirect('admin/smartbook.php?order=' . rawurlencode($askQ));
+            }
+        } catch (Throwable $ex) {
+            // not an order after all: fall through to the search
+        }
+    }
     if (!$isCmd && $canFind) {
         try {
             $scopeId = Auth::bookingScopeAdminId();

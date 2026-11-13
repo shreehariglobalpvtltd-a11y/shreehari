@@ -61,12 +61,14 @@
     try { newSession = !sessionStorage.getItem('shg:visitSeen'); sessionStorage.setItem('shg:visitSeen', '1'); } catch (e) {}
     if (newSession) { visits += 1; lsSet(VKEY, String(visits)); }
     var isStaff = function () { try { return !!(window.SHG_BOOT && window.SHG_BOOT.staff); } catch (e) { return false; } };
+    var onStaffDoor = function () { try { return !!(window.SHG_BOOT && window.SHG_BOOT.door === 'staff'); } catch (e) { return false; } };
     var booked = function () { return !!lsGet(BKEY); };
     // May the sheet open by itself on the home screen right now?
     var eligible = function () { return isStaff() || visits >= 2 || booked(); };
 
     function quiet() {
       if (isStandalone()) return true;
+      if (onStaffDoor()) return true;   // 13 Nov 2026: the customer app is never offered from the staff door
       try {   // Settings -> Website buttons: the automatic pop-up is off (the menu's Install still works)
         var sw = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
         if (sw.btn_install_popup_on === false || sw.btn_install_popup_on === 0 || sw.btn_install_popup_on === '0') return true;
@@ -94,7 +96,7 @@
       beacon('install_prompt', { source: deferred ? 'android' : 'ios' });
     }
     function head() {
-      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261113b" alt="" width="52" height="52">'
+      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261113c" alt="" width="52" height="52">'
         + '<div><b>' + E(T('pwaInstallT')) + '</b><small>' + E(T('pwaInstallP')) + '</small></div></div>';
     }
     function showAndroid() {
@@ -142,8 +144,62 @@
          (afterBooking below) - only staff keep the 25 s first-visit timer. */
       if (visits >= 2 || booked()) setTimeout(laterHome, 6000);
       else if (isStaff()) setTimeout(laterHome, 25000);
-      // else: a customer's first visit - afterBooking() offers it once the ticket is out.
+      else setTimeout(invite, 1500);   // 13 Nov 2026: a customer's first visit - the small strip, never the sheet
     });
+    /* 13 Nov 2026 (owner: "install invitation on first visit with Continue in
+       browser"): a customer's FIRST visit gets one small strip at the top of
+       the home screen (over the brand bar, never over the booking card or
+       the Book buttons at the bottom) - "Install" and "Continue in browser". It is not a
+       dialog: nothing is covered or locked, the booking card stays usable
+       under it, and it leaves by itself the moment the passenger touches the
+       booking card or opens another screen. "Continue in browser" is
+       remembered for 30 days like the sheet's "Not now". Never for staff,
+       never on the staff door (S Hari Manage is a different app), never when
+       installed, and only where the browser can actually install (Android /
+       desktop prompt, or iOS Safari's Add to Home Screen steps). */
+    function inviteGone() { var n = q('#pwaInvite'); if (n && n.parentNode) n.parentNode.removeChild(n); }
+    function invite() {
+      if (isStaff() || onStaffDoor() || quiet() || shown || q('#pwaInvite')) return;
+      if (!deferred && !isIOSSafari) return;
+      var h = location.hash || '#/';
+      if (h !== '#/' && h !== '#') return;
+      if (!q('#pwaInviteCss')) {
+        var st = document.createElement('style'); st.id = 'pwaInviteCss';
+        st.textContent = '#pwaInvite{position:fixed;left:8px;right:8px;top:calc(6px + env(safe-area-inset-top,0px));z-index:120;display:flex;align-items:center;gap:10px;'
+          + 'padding:8px 10px;border-radius:14px;background:var(--surface,#fff);color:var(--ink,#16233C);border:1px solid var(--line-strong,#D5DCE8);box-shadow:0 6px 24px rgba(11,18,32,.18);font-size:14px;line-height:1.25;max-width:560px;margin:0 auto}'
+          + '#pwaInvite img{border-radius:9px;flex:none}#pwaInvite b{flex:1;min-width:0;font-weight:600}'
+          + '#pwaInvite button{min-height:44px;padding:0 12px;border-radius:10px;border:0;font:inherit;font-weight:600;cursor:pointer}'
+          + '#pwaInviteGo{background:var(--royal,#0054A8);color:var(--on-royal,#fff)}#pwaInviteNo{background:transparent;color:var(--royal,#0054A8)}'
+          + '#pwaInvite button:focus-visible{outline:2px solid var(--focus,#0054A8);outline-offset:2px}'
+          + '@media (max-width:380px){#pwaInvite{flex-wrap:wrap}#pwaInvite b{flex-basis:calc(100% - 46px)}#pwaInvite button{flex:1}}';
+        document.head.appendChild(st);
+      }
+      var n = document.createElement('div'); n.id = 'pwaInvite'; n.setAttribute('role', 'region'); n.setAttribute('aria-label', T('pwaInstallT'));
+      n.innerHTML = '<img src="/assets/img/icon-192.png?v=20261113c" alt="" width="36" height="36"><b>' + E(T('pwaInstallT')) + '</b>'
+        + '<button type="button" id="pwaInviteGo">' + E(T('pwaInstallBtn')) + '</button>'
+        + '<button type="button" id="pwaInviteNo">' + E(T('pwaContinue')) + '</button>';
+      document.body.appendChild(n);
+      shown = true;   // the automatic sheet does not follow in the same visit
+      beacon('install_prompt', { source: deferred ? 'android-strip' : 'ios-strip' });
+      q('#pwaInviteNo').addEventListener('click', function () { lsSet(DKEY, String(Date.now())); inviteGone(); });
+      q('#pwaInviteGo').addEventListener('click', function () {
+        inviteGone();
+        var p = deferred;
+        if (!p) { shown = false; showIOS(); return; }   // iOS: the Add to Home Screen steps
+        deferred = null;
+        try {
+          p.prompt();   // the browser's own prompt, straight from this tap
+          if (p.userChoice) p.userChoice.then(function (c) {
+            beacon('install_prompt', { ok: !!(c && c.outcome === 'accepted') });
+            if (!c || c.outcome !== 'accepted') lsSet(DKEY, String(Date.now()));
+          }).catch(function () {});
+        } catch (e) {}
+      });
+      // Out of the way the moment a booking starts or another screen opens.
+      var sb = q('#smartBook');
+      if (sb) { sb.addEventListener('focusin', inviteGone, { once: true }); sb.addEventListener('pointerdown', inviteGone, { once: true }); }
+      window.addEventListener('hashchange', function () { var x = location.hash || '#/'; if (x !== '#/' && x !== '#') inviteGone(); });
+    }
     window.addEventListener('appinstalled', function () {
       lsDel(DKEY); hide(); say('✅ ' + T('pwaDone'));
       beacon('install_prompt', { ok: true, source: 'installed' });
@@ -151,6 +207,8 @@
     // iOS: a later visit (or staff after 25 s) — never on a customer's first paint.
     if (isIOSSafari && !isStandalone() && !quiet() && eligible()) {
       setTimeout(laterHome, (visits >= 2 || booked()) ? 6000 : 25000);
+    } else if (isIOSSafari && !isStandalone() && !quiet()) {
+      setTimeout(invite, 2500);   // 13 Nov 2026: iOS first visit - the small strip
     }
     /* After a completed booking: remember it (so the next visit may offer the
        sheet too) and, ~8 s after the ticket screen opens, offer it once - the

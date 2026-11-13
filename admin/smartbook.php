@@ -130,13 +130,15 @@ html.sbx-admin .sbx-ov{display:block}
     <span class="sbx-w">Cash to hand over <b class="<?= $wallet['limit'] > 0 && $wallet['cash'] >= $wallet['limit'] ? 'low' : '' ?>"><?= $e(inr($wallet['cash'])) ?></b> · Commission <b><?= $e(inr($wallet['commission'])) ?></b></span>
   <?php endif; ?>
   <label class="sbx-auto" title="A complete one-line order books at once as Cash: ticket confirmed, WhatsApp sent - no extra tap"><input type="checkbox" id="sbxAuto"> ⚡ Auto-book</label>
-  <?php if (in_array($mode, ['admin', 'counter'], true)):
-        $discCap = max(0.0, Settings::getFloat('counter_max_discount_pct', 15.0)); ?>
-  <span class="sbx-disc" title="Discount on this ticket — at most <?= $e(rtrim(rtrim(number_format($discCap, 1), '0'), '.')) ?>% of the fare (Settings → Agents &amp; counter)">
+  <?php $discAgent = $mode === 'agent' && $ownAgent !== '';   // mg20: an agent's own discount, from their commission
+  if (in_array($mode, ['admin', 'counter'], true) || $discAgent):
+        $discCap = max(0.0, Settings::getFloat('counter_max_discount_pct', 15.0));
+        $capTxt  = rtrim(rtrim(number_format($discCap, 1), '0'), '.'); ?>
+  <span class="sbx-disc" title="<?= $discAgent ? 'Discount on this ticket — Cash sales only; at most ' . $e($capTxt) . '% of the fare and never more than your commission on it, which it is taken from' : 'Discount on this ticket — at most ' . $e($capTxt) . '% of the fare (Settings → Agents &amp; counter)' ?>">
     <label for="sbxDiscVal">🏷️ छुट · Discount</label>
     <input type="number" id="sbxDiscVal" min="0" step="1" inputmode="numeric" placeholder="0" aria-describedby="sbxDiscNote">
     <select id="sbxDiscType" aria-label="Discount type"><option value="flat">₹</option><option value="percent">%</option></select>
-    <small id="sbxDiscNote">max <?= $e(rtrim(rtrim(number_format($discCap, 1), '0'), '.')) ?>%</small>
+    <small id="sbxDiscNote"><?= $discAgent ? 'Cash · max ' . $e($capTxt) . '% · कमिसनबाट कट्छ' : 'max ' . $e($capTxt) . '%' ?></small>
   </span>
   <?php endif; ?>
   <details class="sbx-more"><summary>⚙</summary><div class="sbx-more-in">

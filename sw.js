@@ -16,13 +16,21 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v271';   // 2026-11-13 mg17: desk discount on SmartBook (admin / counter). asset ver 20261113b.
-var SHELL_CACHE = 'shg-shell-' + VERSION;
+var VERSION = 'shg-v272';   // 2026-11-13 mg20: agent discount from commission; Home AI order opens SmartBook. asset ver 20261113c.
+/* 13 Nov 2026 (owner: "two distinct apps"): the staff door (S Hari Manage,
+   shreehariglobal.network) keeps its caches under its own names (shm-…), the
+   customer app (S Hari Travel) under shg-…. The two were already apart - a
+   cache belongs to one origin - this makes it visible and testable, and
+   activate() below drops what the staff door once stored under the customer
+   names. Only code caches move: the saved-ticket cache keeps its fixed name. */
+var STAFF_DOOR = /(^|\.)shreehariglobal\.network$/.test(self.location.hostname);
+var CACHE_NS = STAFF_DOOR ? 'shm-' : 'shg-';
+var SHELL_CACHE = CACHE_NS + 'shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
 var SHELL_WAIT_MS = 3500;
-var TILE_CACHE = 'shg-tiles-' + VERSION;
-var ASSET_CACHE = 'shg-assets-' + VERSION;
+var TILE_CACHE = CACHE_NS + 'tiles-' + VERSION;
+var ASSET_CACHE = CACHE_NS + 'assets-' + VERSION;
 var MAX_TILES = 1500; // cap on cached map assets (FIFO eviction)
 
 /* The passenger's own ticket, kept for the border.
@@ -43,7 +51,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261113b';
+var ASSET_VER = '20261113c';
 var PRECACHE = [
   /* 16 Oct 2026 (owner, the logo): the full lockup WITH the ™ sign is now
      logo-tm.png (tools/make-logo-tm.php cuts it from logo.png). Neither is
@@ -161,7 +169,9 @@ self.addEventListener('activate', function (event) {
         // drop our own older-version caches; leave anything else alone.
         // TICKET_CACHE is spared on purpose — see its declaration above.
         if (k === TICKET_CACHE) return null;
-        if (k.indexOf('shg-') === 0 && k.indexOf(VERSION) === -1) return caches.delete(k);
+        // staff door: the code caches it held under the customer names before 13 Nov 2026
+        if (STAFF_DOOR && /^shg-(shell|tiles|assets)-/.test(k)) return caches.delete(k);
+        if ((k.indexOf('shg-') === 0 || k.indexOf('shm-') === 0) && k.indexOf(VERSION) === -1) return caches.delete(k);
         return null;
       }));
     } catch (e) {}

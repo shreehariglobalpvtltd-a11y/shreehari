@@ -387,3 +387,24 @@ a.sg-stat:hover { border-color: var(--royal); }
   .sg *, .sg *::before, .sg *::after { transition: none !important; animation: none !important; }
   .sg-skel::after { display: none; }
 }
+
+/* ---------- Weekly accent (13 Nov 2026) ----------
+   Mon blue, Tue teal, Wed violet, Thu green, Fri indigo, Sat burnt orange, Sun rose.
+   data-accent is stamped by the inline script in app.template.html (Asia/Kolkata weekday);
+   "Fixed brand colour" removes the attribute. Accent tokens only: the logo, the navy bar,
+   seat states and success / warning / danger never change. Every pair below was checked
+   at 4.5:1 or better in light and dark (tests/two-apps-test.php repeats the check). */
+:root:root[data-theme="light"][data-accent="mon"]{--royal:#1D4ED8;--royal-strong:#173DA8;--royal-soft:#DBE3F9;--royal-tint:#EFF3FC;--on-royal:#FFFFFF;--focus:#1D4ED8;--md-primary:#1D4ED8;--md-on-primary:#FFFFFF;--md-primary-container:#DBE3F9;--md-on-primary-container:#173DA8}
+:root:root[data-theme="dark"][data-accent="mon"]{--royal:#A0B5EF;--royal-strong:#CDD8F6;--royal-soft:#102457;--royal-tint:#0E1C3D;--on-royal:#0B1220;--focus:#CDD8F6;--md-primary:#A0B5EF;--md-on-primary:#0B1220;--md-primary-container:#102457;--md-on-primary-container:#CDD8F6}
+:root:root[data-theme="light"][data-accent="tue"]{--royal:#0F766E;--royal-strong:#0C5C56;--royal-soft:#D9E9E8;--royal-tint:#EEF5F5;--on-royal:#FFFFFF;--focus:#0F766E;--md-primary:#0F766E;--md-on-primary:#FFFFFF;--md-primary-container:#D9E9E8;--md-on-primary-container:#0C5C56}
+:root:root[data-theme="dark"][data-accent="tue"]{--royal:#9AC5C2;--royal-strong:#CAE1DF;--royal-soft:#0C3037;--royal-tint:#0C222C;--on-royal:#0B1220;--focus:#CAE1DF;--md-primary:#9AC5C2;--md-on-primary:#0B1220;--md-primary-container:#0C3037;--md-on-primary-container:#CAE1DF}
+:root:root[data-theme="light"][data-accent="wed"]{--royal:#6D28D9;--royal-strong:#551FA9;--royal-soft:#E8DDF9;--royal-tint:#F5F0FC;--on-royal:#FFFFFF;--focus:#6D28D9;--md-primary:#6D28D9;--md-on-primary:#FFFFFF;--md-primary-container:#E8DDF9;--md-on-primary-container:#551FA9}
+:root:root[data-theme="dark"][data-accent="wed"]{--royal:#C2A5EF;--royal-strong:#DFD0F7;--royal-soft:#281958;--royal-tint:#1B163E;--on-royal:#0B1220;--focus:#DFD0F7;--md-primary:#C2A5EF;--md-on-primary:#0B1220;--md-primary-container:#281958;--md-on-primary-container:#DFD0F7}
+:root:root[data-theme="light"][data-accent="thu"]{--royal:#166534;--royal-strong:#114F29;--royal-soft:#DAE6DF;--royal-tint:#EFF4F1;--on-royal:#FFFFFF;--focus:#166534;--md-primary:#166534;--md-on-primary:#FFFFFF;--md-primary-container:#DAE6DF;--md-on-primary-container:#114F29}
+:root:root[data-theme="dark"][data-accent="thu"]{--royal:#9DBEAA;--royal-strong:#CCDDD2;--royal-soft:#0E2B26;--royal-tint:#0D1F23;--on-royal:#0B1220;--focus:#CCDDD2;--md-primary:#9DBEAA;--md-on-primary:#0B1220;--md-primary-container:#0E2B26;--md-on-primary-container:#CCDDD2}
+:root:root[data-theme="light"][data-accent="fri"]{--royal:#4338CA;--royal-strong:#342C9E;--royal-soft:#E1DFF7;--royal-tint:#F2F1FB;--on-royal:#FFFFFF;--focus:#4338CA;--md-primary:#4338CA;--md-on-primary:#FFFFFF;--md-primary-container:#E1DFF7;--md-on-primary-container:#342C9E}
+:root:root[data-theme="dark"][data-accent="fri"]{--royal:#B0ABE9;--royal-strong:#D6D3F3;--royal-soft:#1C1D53;--royal-tint:#14183B;--on-royal:#0B1220;--focus:#D6D3F3;--md-primary:#B0ABE9;--md-on-primary:#0B1220;--md-primary-container:#1C1D53;--md-on-primary-container:#D6D3F3}
+:root:root[data-theme="light"][data-accent="sat"]{--royal:#9A3412;--royal-strong:#78290E;--royal-soft:#EFDFD9;--royal-tint:#F8F1EE;--on-royal:#FFFFFF;--focus:#9A3412;--md-primary:#9A3412;--md-on-primary:#FFFFFF;--md-primary-container:#EFDFD9;--md-on-primary-container:#78290E}
+:root:root[data-theme="dark"][data-accent="sat"]{--royal:#D5AA9B;--royal-strong:#E9D2CB;--royal-soft:#361C1C;--royal-tint:#22171E;--on-royal:#0B1220;--focus:#E9D2CB;--md-primary:#D5AA9B;--md-on-primary:#0B1220;--md-primary-container:#361C1C;--md-on-primary-container:#E9D2CB}
+:root:root[data-theme="light"][data-accent="sun"]{--royal:#BE123C;--royal-strong:#940E2F;--royal-soft:#F5D9E0;--royal-tint:#FAEEF1;--on-royal:#FFFFFF;--focus:#BE123C;--md-primary:#BE123C;--md-on-primary:#FFFFFF;--md-primary-container:#F5D9E0;--md-on-primary-container:#940E2F}
+:root:root[data-theme="dark"][data-accent="sun"]{--royal:#E49BAD;--royal-strong:#F1CBD4;--royal-soft:#411228;--royal-tint:#281224;--on-royal:#0B1220;--focus:#F1CBD4;--md-primary:#E49BAD;--md-on-primary:#0B1220;--md-primary-container:#411228;--md-on-primary-container:#F1CBD4}

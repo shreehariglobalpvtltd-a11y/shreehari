@@ -1843,6 +1843,32 @@ final class AgentWallet
      *
      * Cash is deliberately left alone: see the class docblock.
      */
+    /**
+     * 13 Nov 2026 (mg20): the discount an agent gave on their own sale comes out
+     * of their commission — one 'adjustment' row on the commission account,
+     * tied to the booking (UNIQUE(booking_id, entry_type) makes a replay a
+     * no-op), ref "DISCOUNT <PNR>". voidFor() hands it back if the ticket is
+     * cancelled or rejected.
+     */
+    public static function chargeDeskDiscount(int $agentId, int $bookingId, string $pnr, float $amount): void
+    {
+        $amount = round($amount, 2);
+        if ($agentId <= 0 || $bookingId <= 0 || $amount <= 0) {
+            return;
+        }
+        self::insertEntry([
+            'agent_admin_id' => $agentId,
+            'booking_id'     => $bookingId,
+            'account'        => 'commission',
+            'entry_type'     => 'adjustment',
+            'amount'         => -$amount,
+            'note'           => 'Discount given on ' . $pnr . ' — taken from commission · छुट कमिसनबाट',
+            'ref'            => 'DISCOUNT ' . $pnr,
+            'created_by'     => $agentId,
+        ]);
+        Logger::audit('agent.discount_from_commission', 'booking', $pnr, null, ['amount' => $amount], 'Agent #' . $agentId . ' gave a desk discount');
+    }
+
     public static function voidFor(array $booking, string $reason = ''): void
     {
         try {
@@ -1850,6 +1876,12 @@ final class AgentWallet
             if ($bookingId <= 0) {
                 return;
             }
+
+            // 13 Nov 2026 (mg20): a cancelled ticket gives the agent back the discount taken from their commission
+            Database::update('agent_ledger', [
+                'amount' => 0,
+                'note'   => 'Discount returned — ' . ($reason !== '' ? mb_substr($reason, 0, 80) : 'booking cancelled') . ' (' . ($booking['pnr'] ?? '') . ')',
+            ], "booking_id = :b AND entry_type = 'adjustment' AND ref LIKE 'DISCOUNT %' AND amount < 0", ['b' => $bookingId]);
 
             $earned = Database::fetch(
                 "SELECT agent_admin_id, amount FROM agent_ledger

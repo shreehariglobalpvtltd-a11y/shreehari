@@ -383,15 +383,21 @@ final class SmartBook
     /**
      * 13 Nov 2026 (mg17, owner: "admin portal bata ticket katda discount pani
      * add garna milne"): the discount a desk typed on the fast form.
-     * Admin and counter sessions only — never a customer, never an agent
-     * (an agent's online sale has no desk seller, so create() would not
-     * apply it and the price shown would be a lie).
+     * Admin and counter sessions; and (mg20) an AGENT's own session — on a
+     * Cash sale only (api/smartbook.php refuses it on Online), never above
+     * the commission that sale earns, taken from that commission.
+     * Never a customer.
      *
      * @return array{0: string, 1: float}|null [flat|percent, value]
      */
     public static function deskDiscountIn(array $in, string $mode): ?array
     {
-        if (!in_array($mode, ['admin', 'counter'], true)) {
+        if ($mode === 'agent') {
+            require_once __DIR__ . '/agentwallet.php';
+            if (!AgentWallet::isAgentRow((int) (Auth::admin()['id'] ?? 0))) {
+                return null;   // an admin looking through Agent mode gives discounts in Admin / Counter mode
+            }
+        } elseif (!in_array($mode, ['admin', 'counter'], true)) {
             return null;
         }
         $type = (string) ($in['discountType'] ?? '');
@@ -413,7 +419,7 @@ final class SmartBook
      * @param array<string, mixed> $price
      * @return array<string, mixed>
      */
-    public static function withDeskDiscount(array $price, string $type, float $value): array
+    public static function withDeskDiscount(array $price, string $type, float $value, ?float $maxAmt = null): array
     {
         $base = (float) ($price['base'] ?? 0);
         if ($base <= 0 || $value <= 0) {
@@ -422,6 +428,9 @@ final class SmartBook
         $raw    = $type === 'percent' ? round($base * $value / 100, 2) : round($value, 2);
         $maxPct = max(0.0, Settings::getFloat('counter_max_discount_pct', 15.0));
         $cd     = min($raw, round($base * $maxPct / 100, 2), (float) $price['total']);
+        if ($maxAmt !== null) {
+            $cd = min($cd, max(0.0, round($maxAmt, 2)));   // mg20: an agent's own discount stays inside their commission
+        }
         $offer  = (float) ($price['couponDiscount'] ?? 0);
         if ($cd > 0 && $offer > 0) {
             if ($cd > $offer) {
@@ -747,7 +756,11 @@ final class SmartBook
             // 13 Nov 2026 (mg17): the desk's own discount, shown before the sale exactly as create() will charge it
             $desk = self::deskDiscountIn($in, $mode);
             if ($desk !== null) {
-                $price = self::withDeskDiscount($price, $desk[0], $desk[1]);
+                // an agent's own discount: never more than this sale's commission (BookingService::create caps the same)
+                $maxAmt = $mode === 'agent'
+                    ? AgentWallet::commissionForBooking((float) $price['total'], (int) (Auth::admin()['id'] ?? 0), count($seats))
+                    : null;
+                $price = self::withDeskDiscount($price, $desk[0], $desk[1], $maxAmt);
             }
         }
         $npr = round(((float) ($price['total'] ?? 0)) * (float) SiteFacts::all()['npr']);

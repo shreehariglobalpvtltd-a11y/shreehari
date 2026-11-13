@@ -315,6 +315,19 @@ try {
     $boot['push'] = ['on' => false, 'key' => ''];
 }
 
+/* 13 Nov 2026 (owner: "two distinct apps - .in = S Hari Travel, .network =
+   S Hari Manage"): which door this page was opened on. The customer app is
+   never offered for install from the staff door (17-pwa.js), and the page
+   there names the staff app's manifest (below). Bookings, seats and payments
+   stay on the one shared server and database on purpose. */
+$shgStaffDoor = false;
+try {
+    $shgStaffDoor = OpsHub::onStaffHost();
+} catch (Throwable $e) {
+    $shgStaffDoor = false;
+}
+$boot['door'] = $shgStaffDoor ? 'staff' : 'customer';
+
 $bootJson = Security::jsonForHtml($boot);
 
 /* ---------------------------------------------------------------------
@@ -619,6 +632,11 @@ if ($F !== null) {
    mode needs the field); a customer's page carries no code entry at all. */
 if (empty($boot['staff'])) {
     $html = (string) (preg_replace('~<!--staff-->.*?<!--/staff-->~s', '', $html) ?? $html);
+}
+/* 13 Nov 2026: on the staff door the page belongs to the staff app
+   (S Hari Manage) - its manifest and status-bar colour, not the customer's. */
+if ($shgStaffDoor) {
+    $html = str_replace('<link rel="manifest" href="/manifest.webmanifest">', '<link rel="manifest" href="/admin/app-manifest.php">', $html);
 }
 
 /* Perf pass (11 Sep 2026): the template carries ~27 KB of HTML comments -

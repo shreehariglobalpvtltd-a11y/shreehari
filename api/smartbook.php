@@ -242,7 +242,13 @@ try {
                 if ($desk !== null) {
                     $seller['discountType']  = $desk[0];
                     $seller['discountValue'] = $desk[1];
+                    if ($mode === 'agent') {
+                        $seller['discountFromCommission'] = $me;   // mg20: capped at, and taken from, the agent's commission
+                    }
                 }
+            } elseif (SmartBook::deskDiscountIn($in, $mode) !== null) {
+                // mg20: an agent's Online sale has no desk seller — the discount could not reach the ticket
+                Response::error('छुट Cash बिक्रीमा मात्र मिल्छ — Cash रोज्नुहोस् वा छुट हटाउनुहोस् · A discount works on Cash sales only — choose Cash or clear the discount.');
             }
             /* WHO the sale is credited to (15 Oct 2026, owner prompt: agent code at
                the desk, automatic commission, synchronised accounting):
@@ -278,6 +284,10 @@ try {
             Response::error($e->getMessage(), 422, ['code' => 'verify', 'field' => $e->field]);
         } catch (RuntimeException $e) {
             Response::error($e->getMessage(), 409);
+        }
+        // mg20: the agent's own discount is taken from their commission (the part above any offer)
+        if ($mode === 'agent' && !empty($seller['discountFromCommission']) && BookingService::deskCharge() > 0) {
+            AgentWallet::chargeDeskDiscount((int) $seller['discountFromCommission'], (int) $out['bookingId'], (string) ($out['pnr'] ?? ''), BookingService::deskCharge());
         }
         if ($mode !== 'customer') {
             // The desk sees WHO got the sale and what it earned (accrued inside
