@@ -94,6 +94,26 @@ if (Auth::oneDoorOn()) {
                 'pw'             => OneDoor::password((string) ($_POST['password'] ?? '')),
                 'quick'          => OneDoor::quick((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),
                 'quick_dev'      => OneDoor::quickDevice((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),   // 6 Nov 2026: remembered phone
+                /* 13 Nov 2026 (mg18): the password on the lock screen. The account is the one the
+                   signed device cookie names (never a typed or posted one); the check is the one
+                   door's own (who + password: agents, staff, office 2FA all as before). A miss
+                   stays on the lock screen. */
+                'lock_pw'        => (static function (): array {
+                    $acc = QuickUnlock::rememberedDevice();
+                    if ($acc === null) {
+                        return ['step' => 'start', 'error' => 'मोबाइल नम्बर वा ID लेख्नुहोस् · Type your mobile number or ID.'];
+                    }
+                    $w = OneDoor::who($acc['username'], '91');
+                    if (!in_array((string) ($w['step'] ?? ''), ['id', 'mobile'], true)) {
+                        return ['step' => 'start', 'error' => (string) ($w['error'] ?? 'Please sign in again.')];
+                    }
+                    $r = OneDoor::password((string) ($_POST['password'] ?? ''));
+                    if (!isset($r['go']) && in_array((string) ($r['step'] ?? ''), ['id', 'mobile', 'start'], true)) {
+                        OneDoor::clear();
+                        $r['step'] = 'start';
+                    }
+                    return $r;
+                })(),
                 'code_send'      => OneDoor::codeSend(),
                 'code_verify'    => OneDoor::codeVerify((string) ($_POST['otp'] ?? '')),
                 'wa_start'       => OneDoor::waStart(),
@@ -188,7 +208,8 @@ if (Auth::oneDoorOn()) {
     };
     $reset = OneDoor::reset();
     // 6 Nov 2026: a remembered phone opens on its pattern / PIN (?other=1 = the normal box)
-    $remembered = ($step === 'start' && (string) ($_GET['other'] ?? '') !== '1') ? QuickUnlock::rememberedAccount() : null;
+    // 13 Nov 2026 (mg18): every remembered phone — with a PIN / pattern or only a password
+    $remembered = ($step === 'start' && (string) ($_GET['other'] ?? '') !== '1') ? QuickUnlock::rememberedDevice() : null;
 
     $company   = Settings::getString('company_name', APP_NAME);
     $ceoName   = trim(Settings::getString('company_ceo', '')) !== '' ? trim(Settings::getString('company_ceo', '')) : (string) Settings::company()['operator'];
@@ -311,6 +332,12 @@ body.lock .links a{color:#9ABFFF;font-weight:600;font-size:13px}
 body.lock .links~.links{display:none}body.lock .links a[href*="forget"]{color:#FF9AA5 !important;font-size:12px}
 body.lock .msg.bad{background:#30161B;color:#FFADB9}body.lock .msg.ok{background:#0F271B;color:#8CE4B8}
 .lk-dots{display:flex;gap:14px;justify-content:center;height:22px;margin:18px 0 14px}
+body.lock .lk-pw{display:grid;gap:10px;margin-top:14px}
+body.lock .lk-pw[hidden]{display:none}
+body.lock .lk-pw label{color:#9FB2D0;font-size:13px}
+body.lock .lk-pw input{min-height:52px;border-radius:14px;border:1px solid #2B3F63;background:rgba(255,255,255,.06);color:#fff;font-size:18px;padding:0 16px;text-align:center;letter-spacing:.08em}
+body.lock .lk-pw input:focus{outline:2px solid #F07C1F;outline-offset:2px}
+body.lock .lk-pw .btn{min-height:52px;border-radius:14px;background:#F07C1F;border:0;color:#fff;font-weight:800}
 .lk-dots i{width:14px;height:14px;border-radius:50%;border:2px solid #7C90B4}
 .lk-dots i.on{background:#F07C1F;border-color:#F07C1F}
 .lk-keys{display:grid;grid-template-columns:repeat(3,72px);gap:12px 22px;justify-content:center}
@@ -342,10 +369,12 @@ body.lock.shake .qk,body.lock.shake .lk-dots{animation:lkshake .35s}
   <div class="lk-clock" id="lkClock" aria-hidden="true">--:--</div><div class="lk-date" id="lkDate"></div>
   <div class="who">🔒 <span><?= $h($remembered['name']) ?></span></div>
   <div class="qk" data-qk>
-    <?php if ($remembered['pattern'] && $remembered['pin']): ?>
+    <?php $lkFirst = $remembered['pattern'] ? 'pattern' : ($remembered['pin'] ? 'pin' : 'pw');
+    if ($remembered['pattern'] || $remembered['pin']): ?>
     <div class="qk-tabs" role="tablist">
-      <button type="button" class="on" data-qk-tab="pattern">◯ Pattern</button>
-      <button type="button" data-qk-tab="pin">🔢 PIN</button>
+      <?php if ($remembered['pattern']): ?><button type="button" class="on" data-qk-tab="pattern">◯ Pattern</button><?php endif; ?>
+      <?php if ($remembered['pin']): ?><button type="button"<?= $lkFirst === 'pin' ? ' class="on"' : '' ?> data-qk-tab="pin">🔢 PIN</button><?php endif; ?>
+      <button type="button" data-qk-tab="pw">🔑 Password</button>
     </div>
     <?php endif; ?>
     <?php if ($remembered['pattern']): ?>
@@ -365,9 +394,16 @@ body.lock.shake .qk,body.lock.shake .lk-dots{animation:lkshake .35s}
       <button class="btn" type="submit">PIN ले भित्र · Unlock</button>
     </form>
     <?php endif; ?>
+    <form method="post" action="/admin/login.php" data-qk-form="pw" class="lk-pw"<?= $lkFirst === 'pw' ? '' : ' hidden' ?>>
+      <?= $hid() ?><input type="hidden" name="mode" value="lock_pw">
+      <label for="lkpw">पासवर्ड · Password</label>
+      <input id="lkpw" name="password" type="password" autocomplete="current-password" required<?= $lkFirst === 'pw' ? ' autofocus' : '' ?>>
+      <button class="btn" type="submit">🔓 खोल्नुहोस् · Unlock</button>
+      <?php if (!$remembered['pin'] && !$remembered['pattern']): ?><p class="note">छिटो खोल्न भित्र गएर <b>म → लक: Pattern / PIN</b> राख्न सक्नुहुन्छ · Optional: set a PIN or pattern inside, under Me.</p><?php endif; ?>
+    </form>
   </div>
   <div class="links">
-    <a href="<?= $h($odUrl(['step' => 'start'])) ?>&amp;other=1">🔑 पासवर्ड / अर्को खाता · Password or another account</a>
+    <a href="<?= $h($odUrl(['step' => 'start'])) ?>&amp;other=1">👤 अर्को खाता · Another account</a>
     <?php if (QuickUnlock::secQuestion((int) $remembered['id']) !== ''): ?><a href="/admin/recover.php">❓ PIN / pattern बिर्सनुभयो? · Forgot PIN</a><?php endif; ?>
     <a href="/admin/login.php?forget=1&amp;other=1" style="color:#8A1F1F;font-weight:600">तपाईं होइन? यो फोनबाट हटाउने · Not you? Forget this phone</a>
   </div>
@@ -573,6 +609,7 @@ body.lock.shake .qk,body.lock.shake .lk-dots{animation:lkshake .35s}
     if(d)d.textContent=n.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});}
   tick();setInterval(tick,15000);
   if(document.querySelector('.msg.bad')){document.body.classList.add('shake');if(navigator.vibrate)try{navigator.vibrate(120)}catch(e){}}
+  document.querySelectorAll('[data-qk-tab="pw"]').forEach(function(t){t.addEventListener('click',function(){var p=document.getElementById('lkpw');if(p)setTimeout(function(){p.focus();},0);});});
   var f=document.querySelector('form[data-qk-form="pin"]');if(!f)return;
   var inp=f.querySelector('input[name="qk_val"]'),dots=f.querySelector('.lk-dots'),keys=f.querySelector('.lk-keys'),busy=false;
   if(!inp||!dots||!keys)return;

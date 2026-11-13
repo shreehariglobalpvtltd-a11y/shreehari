@@ -211,6 +211,21 @@ final class QuickUnlock
      */
     public static function rememberedAccount(): ?array
     {
+        $d = self::rememberedDevice();
+        return ($d !== null && ($d['pin'] || $d['pattern'])) ? $d : null;
+    }
+
+    /**
+     * 13 Nov 2026 (mg18, owner: "lock system full flexed — PIN / pattern nabhaye
+     * password matra"): the account this browser remembers, WITH or without a
+     * PIN / pattern. The lock screen opens for every remembered phone; one
+     * without a PIN simply shows the password box. Only the signed cookie is
+     * read — nothing typed — and the password is still checked by the one door.
+     *
+     * @return array{id: int, name: string, username: string, pin: bool, pattern: bool}|null
+     */
+    public static function rememberedDevice(): ?array
+    {
         if (!self::on()) {
             return null;
         }
@@ -227,11 +242,8 @@ final class QuickUnlock
         }
         $pin = (string) ($r['pin_hash'] ?? '') !== '';
         $pat = (string) ($r['pattern_hash'] ?? '') !== '';
-        if (!$pin && !$pat) {
-            return null;
-        }
         $name = trim((string) ($r['full_name'] ?? '')) ?: (string) $r['username'];
-        return ['id' => (int) $r['id'], 'name' => $name, 'pin' => $pin, 'pattern' => $pat];
+        return ['id' => (int) $r['id'], 'name' => $name, 'username' => (string) $r['username'], 'pin' => $pin, 'pattern' => $pat];
     }
 
     /* =================================================================
