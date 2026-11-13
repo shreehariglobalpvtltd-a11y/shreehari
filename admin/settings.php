@@ -330,6 +330,50 @@ $catCount['fares']  += count($fareFp) + 2;
 $catCount['agents'] += count($curatedKeys) - count($fareFp);
 $catCount = array_filter($catCount, static fn(int $n, string $c): bool => $n > 0 || in_array($c, ['fares', 'agents'], true), ARRAY_FILTER_USE_BOTH);
 
+/* 12 Nov 2026 (mg12, owner: "setting ma dherai option chhariyeko chha — eutai
+   ma merge; WhatsApp, Messenger, AI message ra WhatsApp API eutai thau ma"):
+   the 14 categories fold into FIVE. Display only — no key moves. Every API
+   key goes with the thing it belongs to (a WhatsApp / AI / SMS key sits in
+   Messages & AI beside its switches, not on a separate "keys" tab). */
+$bigs = [
+    'messages' => ['💬', 'Messages & AI · म्यासेज र AI', 'WhatsApp, WhatsApp API, Messenger, AI answers, SMS / e-mail, alerts and marketing — with their API keys.'],
+    'tickets'  => ['🎫', 'Tickets & fares · टिकट र भाडा', 'Booking rules, seats, fares, offers, what the ticket carries, payments.'],
+    'agents'   => ['🤝', 'Agents & counter · एजेन्ट', 'Commission, cash limits, settlement, KYC, counter desks.'],
+    'company'  => ['🏢', 'Company & website · कम्पनी', 'Names, addresses, phones, what the public site and app show.'],
+    'security' => ['🔒', 'Security & backup · सुरक्षा', 'Sign-in protection, sessions, lock, backups, data checks.'],
+];
+$bigOf = ['company' => 'company', 'website' => 'company', 'booking' => 'tickets', 'fares' => 'tickets', 'tickets' => 'tickets', 'payments' => 'tickets',
+          'agents' => 'agents', 'whatsapp' => 'messages', 'notify' => 'messages', 'marketing' => 'messages', 'ai' => 'messages', 'keys' => 'messages',
+          'security' => 'security', 'other' => 'security'];
+$bigFor = static function (string $cat, string $group) use ($bigOf): string {
+    if ($cat === 'keys') {
+        return match (true) {
+            in_array($group, ['payment', 'payments'], true) => 'tickets',
+            in_array($group, ['maps', 'integrations', 'site', 'app', 'gps'], true) => 'company',
+            in_array($group, ['automation', 'security', 'backup'], true) => 'security',
+            default => 'messages',
+        };
+    }
+    return $bigOf[$cat] ?? 'security';
+};
+$bigCount = array_fill_keys(array_keys($bigs), 0);
+foreach ($byCat as $c => $gs) {
+    foreach ($gs as $g => $its) {
+        foreach ($its as $r) {
+            if (!in_array((string) $r['skey'], $curatedKeys, true)) { $bigCount[$bigFor((string) $c, (string) $g)]++; }
+        }
+    }
+}
+$bigCount['tickets'] += count($fareFp) + 2;
+$bigCount['agents']  += count($curatedKeys) - count($fareFp);
+/* the pages that go with Messages & AI — shown on that tab, only the ones this login's menu has */
+$setNav = [];
+foreach (admin_nav() as $nv) { $setNav[(string) ($nv['href'] ?? '')] = true; }
+$msgApps = array_filter([
+    'wa-manager.php' => '📲 WhatsApp Manager', 'wa-inbox.php' => '💬 Inbox', 'wa-templates.php' => '🧩 Templates', 'wa-outbox.php' => '📤 Outbox',
+    'facebook.php' => '📘 Messenger AI', 'ai-brain.php' => '🤖 One AI', 'ai-activity.php' => '🧠 AI activity', 'messages-log.php' => '🗒️ Logs',
+], static fn(string $k): bool => isset($setNav[$k]), ARRAY_FILTER_USE_KEY);
+
 admin_header('Settings', 'settings');
 
 if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>'; }
@@ -338,17 +382,22 @@ if (!$canEdit) { echo '<div class="flash bad">Your role can view settings but no
 $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
 ?>
 <nav class="sg set-jump" aria-label="Settings categories">
-  <p class="set-lede"><b><?= count($rows) ?> settings</b> in <?= count($catCount) ?> categories. Pick a category, or search. Changes apply after <b>Save all settings</b> (one button, saves every category); the page then confirms with “Settings saved.”</p>
+  <p class="set-lede"><b><?= count($rows) ?> settings</b> in <?= count($bigs) ?> groups. Pick a category, or search. Changes apply after <b>Save all settings</b> (one button, saves every category); the page then confirms with “Settings saved.”</p>
   <input type="search" id="setSearch" class="set-search" placeholder="🔍 Search a setting — e.g. fare, upi, whatsapp, key, women, ticket…" autocomplete="off" aria-label="Search settings">
   <div class="set-cats" role="tablist">
-    <?php foreach ($catCount as $c => $n): ?>
+    <?php foreach ($bigs as $c => $bi): ?>
       <button type="button" class="set-cat-btn" role="tab" data-cat="<?= Security::e($c) ?>">
-        <span class="sc-ic" aria-hidden="true"><?= $cats[$c][0] ?></span>
-        <span class="sc-t"><?= Security::e($cats[$c][1]) ?> <em><?= (int) $n ?></em></span>
-        <small><?= Security::e($cats[$c][2]) ?></small>
+        <span class="sc-ic" aria-hidden="true"><?= $bi[0] ?></span>
+        <span class="sc-t"><?= Security::e($bi[1]) ?> <em><?= (int) $bigCount[$c] ?></em></span>
+        <small><?= Security::e($bi[2]) ?></small>
       </button>
     <?php endforeach; ?>
   </div>
+  <?php if ($msgApps !== []): ?>
+  <div class="set-apps set-in" data-cat="messages" data-big="messages">
+    <?php foreach ($msgApps as $href => $lab): ?><a href="/admin/<?= Security::e($href) ?>"><?= Security::e($lab) ?></a><?php endforeach; ?>
+  </div>
+  <?php endif; ?>
 </nav>
 
 <!-- ── CEO / Brand Photo Upload ── -->
@@ -605,7 +654,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   <?php foreach ($cats as $cat => $catInfo): foreach ($byCat[$cat] ?? [] as $group => $items):
       $visible = array_values(array_filter($items, static fn($r) => !in_array((string) $r['skey'], $fpKeys, true)));
       if ($visible === []) { continue; } ?>
-    <div class="panel set-group set-in" data-cat="<?= Security::e($cat) ?>" id="grp-<?= Security::e($cat . '-' . (string) $group) ?>">
+    <div class="panel set-group set-in" data-cat="<?= Security::e($cat) ?>" data-big="<?= Security::e($bigFor((string) $cat, (string) $group)) ?>" id="grp-<?= Security::e($cat . '-' . (string) $group) ?>">
       <?php $subT = $subTitle[$cat][$group] ?? null; ?>
       <h2><?= $catInfo[0] ?> <?= Security::e($subT ?? ($groupInfo[$group][0] ?? ucfirst(str_replace(['-', '_'], ' ', (string) $group)))) ?> <small class="muted set-cnt"><?= count($visible) ?></small></h2>
       <?php if ($subT === null): ?><p class="muted set-why"><?= Security::e($groupInfo[$group][1] ?? 'Settings stored under "' . $group . '".') ?></p><?php endif; ?>
@@ -672,6 +721,13 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
 .set-cat-btn.on .sc-t em { background: var(--royal); color: var(--on-royal); }
 .set-cnt { font-size: 12px; font-weight: 700; }
 .set-hide { display: none !important; }
+.set-apps { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 0; }
+.set-apps a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); color: inherit; text-decoration: none; font-weight: 700; font-size: 13px; }
+.set-group.set-fold > h2 { cursor: pointer; margin-bottom: 0; display: flex; align-items: center; gap: 8px; }
+.set-group.set-fold > h2::after { content: '▸'; margin-left: auto; color: var(--muted); }
+.set-group.set-fold.open > h2 { margin-bottom: 10px; }
+.set-group.set-fold.open > h2::after { content: '▾'; }
+.set-group.set-fold:not(.open) > :not(h2) { display: none; }
 @media (max-width: 640px) {
   .set-cats { grid-template-columns: 1fr 1fr; gap: 8px; }
   .set-cat-btn { grid-template-columns: 26px 1fr; padding: 9px 10px; min-height: 52px; }
@@ -729,9 +785,25 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   // queried each time: the test panels come AFTER this script in the page
   var allPanels = function () { return Array.prototype.slice.call(document.querySelectorAll('.set-in')); };
   var search = document.getElementById('setSearch');
+  /* 12 Nov 2026 (mg12): five big groups. BIG maps an old category name (an
+     old #cat=whatsapp bookmark, a panel that only knows its old data-cat) to
+     its group; a panel with data-big says so itself. Inside a group each
+     slice is folded to its heading — tap to open — so a tab is a short list. */
+  var BIG = <?= json_encode($bigOf) ?>;
+  var bigOfPanel = function (p) { return p.getAttribute('data-big') || BIG[p.getAttribute('data-cat')] || p.getAttribute('data-cat'); };
+  document.querySelectorAll('.set-group').forEach(function (g) {
+    var h = g.querySelector('h2'); if (!h) return;
+    g.classList.add('set-fold'); h.setAttribute('tabindex', '0'); h.setAttribute('role', 'button');
+    var tog = function () { g.classList.toggle('open'); };
+    h.addEventListener('click', tog);
+    h.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); tog(); } });
+  });
   function show(cat) {
+    cat = BIG[cat] || cat;
     btns.forEach(function (b) { var on = b.getAttribute('data-cat') === cat; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
-    allPanels().forEach(function (p) { p.classList.toggle('set-hide', p.getAttribute('data-cat') !== cat); });
+    var shown = [];
+    allPanels().forEach(function (p) { var off = bigOfPanel(p) !== cat; p.classList.toggle('set-hide', off); if (!off && p.classList.contains('set-fold')) shown.push(p); });
+    shown.forEach(function (p) { p.classList.toggle('open', shown.length <= 2); });
     document.querySelectorAll('.set-row').forEach(function (r) { r.classList.remove('set-hide'); });
     try { history.replaceState(null, '', '#cat=' + cat); } catch (e) {}
   }
@@ -743,6 +815,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       var rows = p.querySelectorAll('.set-row'), any = false;
       if (rows.length) {
         rows.forEach(function (r) { var hit = r.getAttribute('data-q').indexOf(q) >= 0; r.classList.toggle('set-hide', !hit); if (hit) any = true; });
+        if (any) p.classList.add('open');
       } else {
         any = p.textContent.toLowerCase().indexOf(q) >= 0;
       }

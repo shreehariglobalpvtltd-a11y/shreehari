@@ -404,6 +404,7 @@ admin_header('Bus Control', 'bus-control');
         <a class="pc-btn sm" href="/admin/manifest.php?<?= $e($q . '&format=chalanipdf') ?>" target="_blank"><?= pc_icon('download') ?>PDF</a>
         <a class="pc-btn sm" href="/admin/manifest.php?<?= $e($q . '&format=chalanipng') ?>" target="_blank"><?= pc_icon('image') ?>Image</a>
         <a class="pc-btn sm" href="/admin/seatmap.php?<?= $e(http_build_query(['date' => $date, 'route' => (int) $d['route_id']])) ?>"><?= pc_icon('seat') ?>Seat map</a>
+        <a class="pc-btn sm" href="/admin/map.php">🛰 Live</a>
         <span class="pc-sep"></span>
         <?php if ($canSale && !$cx): ?>
           <form method="post" class="pc-form" onsubmit="return confirm('<?= $off ? 'Open sale for this date?' : 'Stop sale for this date? Existing tickets stay as they are.' ?>')"><?= Security::csrfField() ?><input type="hidden" name="act" value="trip_sale"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="schedule_id" value="<?= $sid ?>"><input type="hidden" name="on" value="<?= $off ? '1' : '0' ?>">
@@ -438,6 +439,17 @@ admin_header('Bus Control', 'bus-control');
       }
   } catch (Throwable $ex) {
       $turns = [];
+  }
+  /* 12 Nov 2026 (mg12, owner: "har ek bus ko live navigation connection tesmai
+     jodna milos"): each bus card says whether a GPS tracker is connected and
+     when it last reported, with the connect / live buttons right there. */
+  $gpsBy = [];   // busId => ['n' => active trackers, 'last' => newest fix time]
+  try {
+      foreach (Database::fetchAll('SELECT bus_id, SUM(is_active = 1) AS n, MAX(last_fix_at) AS last_fix FROM gps_trackers GROUP BY bus_id') as $g) {
+          $gpsBy[(int) $g['bus_id']] = ['n' => (int) $g['n'], 'last' => (string) ($g['last_fix'] ?? '')];
+      }
+  } catch (Throwable $ex) {
+      $gpsBy = [];
   } ?>
   <style>
   .bf-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
@@ -451,6 +463,9 @@ admin_header('Bus Control', 'bus-control');
   .bf .sw{min-height:42px;padding:0 16px;border-radius:99px;border:0;font:inherit;font-weight:800;cursor:pointer;color:#fff}
   .bf .sw.on{background:#15803D}.bf .sw.no{background:#B91C1C}
   .bf-new{border:2px dashed #F07C1F}
+  .bf-gps{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .bf-gps span{flex:1;min-width:150px;font-size:12.5px;font-weight:700}
+  .bf-gps span.on{color:#15803D}.bf-gps span.wait{color:#B45309}.bf-gps span.none{color:var(--mut)}
   </style>
   <div class="bf-grid">
     <?php if ($canBus): ?>
@@ -475,6 +490,14 @@ admin_header('Bus Control', 'bus-control');
       <small><?= (int) $b['total_seats'] ?> सिट · seats
         <?php if ($tn !== null): ?><br>पालो · Turn <b><?= (int) $tn['slot'] ?></b><?= !empty($tn['out']) ? ' — जाने · goes: <b>' . $e(implode(', ', $tn['out'])) . '</b>' : '' ?><?= !empty($tn['back']) ? ' · फर्कने · returns: <b>' . $e(implode(', ', $tn['back'])) . '</b>' : '' ?>
         <?php elseif ($rotF['enabled'] && $bOn): ?><br>पालोमा छैन · not in the rotation — <a href="/admin/trips.php">पालो मिलाउने</a><?php endif; ?></small>
+      <?php $gp = $gpsBy[$bid] ?? ['n' => 0, 'last' => ''];
+            $gAge = $gp['last'] !== '' ? time() - (int) strtotime($gp['last']) : null;
+            $gLive = $gp['n'] > 0 && $gAge !== null && $gAge < 900; ?>
+      <div class="bf-gps">
+        <span class="<?= $gLive ? 'on' : ($gp['n'] > 0 ? 'wait' : 'none') ?>">🛰 <?= $gLive ? 'लाइभ · Live now' : ($gp['n'] > 0 ? 'GPS जोडिएको · connected' . ($gp['last'] !== '' ? ' — ' . $e(formatDate($gp['last'], 'j M g:i A')) : ' — अझै सिग्नल आएको छैन · no signal yet') : 'GPS जोडिएको छैन · not connected') ?></span>
+        <a class="pc-btn sm" href="/admin/map.php">नक्सा · Map</a>
+        <?php if ($canSale): ?><a class="pc-btn sm" href="/admin/gps-trackers.php"><?= $gp['n'] > 0 ? 'GPS' : 'जोड्ने · Connect' ?></a><?php endif; ?>
+      </div>
       <?php if ($canBus): ?>
       <form method="post" class="pc-form"><?= Security::csrfField() ?><input type="hidden" name="act" value="bus_save"><input type="hidden" name="date" value="<?= $e($date) ?>"><input type="hidden" name="bus_id" value="<?= $bid ?>">
         <input class="pc-in" name="bus_number" value="<?= $ph ? '' : $e($b['bus_number']) ?>" maxlength="30" placeholder="बसको नम्बर · Bus number" style="text-transform:uppercase" aria-label="Bus number">

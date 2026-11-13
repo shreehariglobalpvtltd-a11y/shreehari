@@ -105,7 +105,12 @@ require_once INCLUDE_PATH . '/quickunlock.php';
 /* 12 Nov 2026 (owner: "app kholne bittikai setup boot jasto — PIN / pattern ra
    security question"): once per sign-in, an account that has not finished
    the two goes to admin/setup.php first ("Later" there skips it). */
-if (PHP_SAPI !== 'cli' && empty($_SESSION['setup_later']) && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET'
+/* 12 Nov 2026 (mg12, owner: "app khulne bittikai pattern / PIN setup hataideu —
+   tyo nabhaye password matra aos"): the wizard is no longer forced. It runs
+   only when the office switches it on (setting staff_setup_wizard, default
+   off); a PIN / pattern stays a choice under "Me". No PIN = the door asks
+   for the password, exactly as admin/login.php always did. */
+if (PHP_SAPI !== 'cli' && Settings::getBool('staff_setup_wizard', false) && empty($_SESSION['setup_later']) && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET'
     && !isset($_GET['q']) && $flash === null && QuickUnlock::on()) {
     $suSt = QuickUnlock::status($me);
     if (!($suSt['pin'] || $suSt['pattern']) || (QuickUnlock::secReady() && QuickUnlock::secQuestion($me) === '')) {
@@ -247,38 +252,195 @@ $nLive   = (int) ($counts['liveBuses'] ?? 0);
 $qk      = QuickUnlock::on() ? QuickUnlock::status($me) : ['pin' => true, 'pattern' => true];
 $agentV  = $scopeId !== null;
 
-$colT = $lnk('quick-ticket.php', '⚡', 'टिकट काट्ने', 'Cut a ticket (10 s)', 0, true)
-      . $lnk('/index.php?counter=1#/', '💺', 'सिट हेरेर बुकिङ', 'Book on the seat map')
-      . $lnk('bookings.php', '🔎', $agentV ? 'मेरा टिकट' : 'सबै टिकट', 'Find · edit · print')
-      . $lnk('payments.php', '✅', 'भुक्तानी जाँच', 'Verify payments', $tkPend)
-      . $lnk('reschedule.php', '🔁', 'मिति / सिट सार्ने', 'Change date · transfer')
-      . $lnk('refunds.php', '↩️', 'रद्द / फिर्ता', 'Cancel & refund')
-      . $lnk('scan.php', '📷', 'टिकट स्क्यान', 'Scan boarding QR')
-      . $lnk('ticket-statement.php', '📊', 'कसले कति काट्यो', 'Ticket statement');
-$colB = $lnk('bus-control.php', '🚌', 'बस कन्ट्रोल', 'Trips · seats · fleet · add bus', 0, true)
-      . $lnk('manifest.php', '📋', 'चलानी', 'Chalani & seat chart')
-      . $lnk('schedule.php', '🗓️', 'बस रुटिन', 'Which bus, which day')
-      . $lnk('routes.php', '📍', 'स्टप र भाडा', 'Stops & fares')
-      . $lnk('map.php', '🛰️', 'बस कहाँ छ', 'Live bus map', $nLive)
-      . $lnk('drivers.php', '👨‍✈️', 'चालक / स्टाफ', 'Drivers & crew');
-$colA = $lnk('agent-quick.php', '➕', 'नयाँ एजेन्ट', 'Quick agent + ID card', 0, true)
-      . $lnk('people.php', '👥', 'एजेन्ट र स्टाफ', 'List · login · commission')
-      . $lnk('team.php', '🪪', 'स्वीकृति र पैसा', 'Approvals · wallets · ID cards', $nApps + $nMoney)
-      . $lnk('agent-360.php', '💰', 'एजेन्ट हिसाब', 'Per-agent money')
-      . $lnk('counters.php', '🏪', 'काउन्टर', 'Counters & collection');
-if ($agentV && isset($navOk['agent.php'])) {
-    $colA = $lnk('agent.php', '💼', 'मेरो हिसाब', 'My wallet & commission', 0, true);
-}
-$cols = array_filter(
-    ['t' => ['🎫', 'टिकट', 'Tickets', $colT], 'b' => ['🚌', 'बस', 'Bus', $colB], 'a' => ['👥', $agentV ? 'हिसाब' : 'एजेन्ट', $agentV ? 'Account' : 'Agents', $colA]],
-    static fn(array $c): bool => $c[3] !== ''
-);
+/* =====================================================================
+ *  12 Nov 2026 (mg12) — the home is a LAUNCHER, like a phone's home screen
+ *  (owner: "open bhayepachhi main main widget haru ko list dekhiyos, tes
+ *  bhitra gayera management garna milos — tracking chuttai, chalani
+ *  chuttai, Android OS jasto"). One icon per job; a tap opens that app's
+ *  own window (a sheet on a phone, a window on a desktop) with its few
+ *  actions. Every link still comes from admin_nav(), so an app only shows
+ *  what the menu would, and an app with nothing in it is not drawn.
+ * ===================================================================== */
 $fmtT = static fn($t): string => $t ? date('g:i A', (int) strtotime((string) $t)) : '';
+$tripRows = static function (string $btn) use ($trips, $navOk, $e, $fmtT): string {
+    if ($trips === []) {
+        return '';
+    }
+    $h = '<h4 class="os-h">आज र भोलिका बस · Today &amp; tomorrow</h4><div class="mg-trips">';
+    foreach ($trips as $t) {
+        $tot  = max(1, (int) $t['total_seats']);
+        $sold = (int) $t['seats_booked'];
+        $day  = (string) $t['travel_date'] === date('Y-m-d') ? 'आज' : 'भोलि';
+        $h .= '<div class="mg-trip"><div><b>' . $e($t['from_city']) . ' → ' . $e($t['to_city']) . '</b>'
+            . '<small>' . $e($day) . ' ' . $e($fmtT($t['dep_time'])) . ' · ' . $e($t['bus_name'] ?: ($t['bus_number'] ?: 'Bus —')) . ' · ' . $sold . '/' . $tot . ' seat</small>'
+            . '<div class="mg-bar2"><u style="width:' . min(100, (int) round($sold * 100 / $tot)) . '%"></u></div></div>';
+        if ($btn === 'chalani' && isset($navOk['manifest.php'])) {
+            $h .= '<a href="/admin/manifest.php?date=' . $e($t['travel_date']) . '&amp;sid=' . (int) $t['sid'] . '">चलानी</a>';
+        }
+        if ($btn === 'seat' && isset($navOk['bus-control.php'])) {
+            $h .= '<a href="/admin/bus-control.php?date=' . $e($t['travel_date']) . '">सिट</a>';
+        }
+        if ($btn === 'live' && isset($navOk['map.php'])) {
+            $h .= '<a href="/admin/map.php">🛰 Live</a>';
+        }
+        $h .= '</div>';
+    }
+    return $h . '</div>';
+};
+$nums = static function (array $pairs) use ($e): string {
+    $h = '<div class="mg-n">';
+    foreach ($pairs as [$href, $n, $label, $hot]) {
+        $h .= '<a class="' . ($hot ? 'hot' : '') . '" href="' . $e($href) . '"><b>' . (int) $n . '</b><small>' . $e($label) . '</small></a>';
+    }
+    return $h . '</div>';
+};
+$raw = static fn(string $href, string $icon, string $ne, string $en): string
+    => '<a class="mg-a" href="' . $e($href) . '"><i aria-hidden="true">' . $icon . '</i><span><b>' . $e($ne) . '</b><small>' . $e($en) . '</small></span></a>';
+
+$apps = [];   // key => [icon, ne, en, colour, top widget html, links html, badge]
+$apps['t'] = ['🎫', 'टिकट', 'Tickets', '#0054A8',
+    $canTk ? $nums([
+        ['/admin/bookings.php', $tkToday, $agentV ? 'मेरो आज · Mine today' : 'आजको टिकट · Today', false],
+        ['/admin/' . (isset($navOk['payments.php']) ? 'payments.php' : 'bookings.php?status=pending'), $tkPend, 'भुक्तानी बाँकी · Pending', $tkPend > 0],
+    ]) : '',
+    $lnk('quick-ticket.php', '⚡', 'छिटो फारम', 'Fast form — ticket in 10 s', 0, true)
+    . $lnk('/index.php?counter=1#/', '📝', 'पूरा फारम (सिट नक्सा)', 'Full form — seat map, all details')
+    . $lnk('bookings.php', '🔎', $agentV ? 'मेरा टिकट' : 'सबै टिकट', 'Find · edit · print')
+    . $lnk('payments.php', '✅', 'भुक्तानी जाँच', 'Verify payments', $tkPend)
+    . $lnk('reschedule.php', '🔁', 'मिति / सिट सार्ने', 'Change date · transfer')
+    . $lnk('refunds.php', '↩️', 'रद्द / फिर्ता', 'Cancel & refund')
+    . $lnk('missed-bus.php', '⏰', 'बस छुटेको', 'Missed-bus rebooking')
+    . $lnk('scan.php', '📷', 'टिकट स्क्यान', 'Scan boarding QR')
+    . $lnk('wa-queue.php', '💬', 'WhatsApp टिकट', 'Tickets asked on WhatsApp')
+    . $lnk('offers.php', '🏷️', 'अफर / छुट', 'Offers & discounts'),
+    $tkPend];
+$apps['c'] = ['📋', 'चलानी', 'Chalani', '#0F766E',
+    $tripRows('chalani'),
+    $lnk('manifest.php', '📋', 'चलानी र सिट चार्ट', 'Chalani — screen · print · PDF', 0, true)
+    . $lnk('agent-passengers.php', '🧍', $agentV ? 'मेरा यात्रु' : 'एजेन्टका यात्रु', 'Passengers by agent')
+    . ($scopeId === null && isset($navOk['manifest.php']) ? $raw('/chalani-live.php', '🔗', 'लाइभ चलानी लिंक', 'Public live chalani') : ''),
+    0];
+$apps['s'] = ['💺', 'सिट', 'Seats', '#7C3AED',
+    $tripRows('seat'),
+    $lnk('bus-control.php', '💺', 'आजको सिट (पैसा अनुसार)', 'Seats of a date — paid · due · free', 0, true)
+    . $lnk('seatmap.php', '🪑', 'सिट नक्सा · सिट सार्ने', 'Seat layout & shift seat')
+    . $lnk('extra-seats.php', '➕', 'थप सिट (EX)', 'Extra seats'),
+    0];
+$apps['b'] = ['🚌', 'बस', 'Bus', '#B45309',
+    '',
+    $lnk('bus-control.php', '🚌', 'बस कन्ट्रोल', 'Trips · fleet · add bus · on/off', 0, true)
+    . $lnk('schedule.php', '🗓️', 'बस रुटिन', 'Which bus, which day')
+    . $lnk('calendar.php', '📅', 'बस क्यालेन्डर', 'Bus calendar')
+    . $lnk('trips.php', '🔄', 'बसको पालो', '3-bus rotation · trips board')
+    . $lnk('buses.php', '🛠️', 'बस र layout', 'Fleet & seat layout')
+    . $lnk('drivers.php', '👨‍✈️', 'चालक / स्टाफ', 'Drivers & crew'),
+    0];
+$apps['l'] = ['🛰️', 'ट्र्याकिङ', 'Tracking', '#0369A1',
+    $tripRows('live'),
+    $lnk('map.php', '🛰️', 'बस कहाँ छ (लाइभ)', 'Live bus map', $nLive, true)
+    . $lnk('gps-trackers.php', '📡', 'बसमा GPS जोड्ने', 'Connect a GPS tracker to a bus')
+    . $lnk('gps-center.php', '🧭', 'GPS कन्ट्रोल', 'GPS control center')
+    . $lnk('/navigate.html', '🗺️', 'यात्रुको नक्सा', 'Passenger live map')
+    . $lnk('nav-reports.php', '⚠️', 'बाटोको रिपोर्ट', 'Road reports'),
+    $nLive];
+$apps['p'] = ['📍', 'पिकअप / ड्रप', 'Pickup · Drop', '#BE123C',
+    '',
+    $lnk('routes.php', '📍', 'स्टप र भाडा', 'Pickup / drop stops & fares', 0, true)
+    . $lnk('counters.php', '🏪', 'काउन्टर', 'Counters & collection')
+    . $lnk('agreements.php', '🧭', 'ठाउँ अनुसार एजेन्ट', 'Agents by location')
+    . $lnk('places.php', '🏞️', 'घुम्ने ठाउँ', 'Places to visit'),
+    0];
+$apps['a'] = ['👥', $agentV ? 'हिसाब' : 'एजेन्ट', $agentV ? 'Account' : 'Agents', '#15803D',
+    !$agentV && $office ? $nums([
+        ['/admin/people.php', $nAgents, 'सक्रिय एजेन्ट · Active', false],
+        ['/admin/team.php?tab=approvals', $nApps + $nMoney, 'पर्खिरहेको काम · Waiting', $nApps + $nMoney > 0],
+    ]) : '',
+    $agentV
+        ? $lnk('agent.php', '💼', 'मेरो हिसाब', 'My wallet & commission', 0, true)
+        : $lnk('agent-quick.php', '➕', 'नयाँ एजेन्ट', 'Quick agent + ID card', 0, true)
+          . $lnk('people.php', '👥', 'एजेन्ट र स्टाफ', 'List · login · commission')
+          . $lnk('team.php', '🪪', 'स्वीकृति र ID कार्ड', 'Approvals · wallets · ID cards', $nApps + $nMoney)
+          . $lnk('staff.php', '🔑', 'लगइन र पासवर्ड', 'Staff logins & passwords')
+          . $lnk('permissions.php', '🛡️', 'अधिकार', 'Roles & permissions')
+          . $lnk('team-invite.php', '✉️', 'निम्तो / नवीकरण', 'Invites & renewals'),
+    $agentV ? 0 : $nApps + $nMoney];
+$apps['h'] = ['📊', 'एजेन्ट ३६० · हिसाब', 'Agent 360 · Statement', '#4338CA',
+    '',
+    $lnk('ticket-statement.php', '📊', $agentV ? 'मेरो टिकट (मिति अनुसार)' : 'कसले कति काट्यो (मिति अनुसार)', 'Date-wise tickets · fix commission', 0, true)
+    . $lnk('agent-statement.php', '📜', $agentV ? 'मेरो स्टेटमेन्ट' : 'एजेन्ट स्टेटमेन्ट', 'From–to date statement · PDF')
+    . $lnk('agent-360.php', '💰', 'एजेन्ट ३६०', 'Everything about one agent')
+    . $lnk('settlements.php', '🤝', 'हिसाब मिलान', 'Commission & wallet settlement')
+    . $lnk('agent-sales.php', '🧾', $agentV ? 'मेरो बिक्री' : 'एजेन्ट बिक्री', 'Sales by agent')
+    . $lnk('agent-ranking.php', '🏆', 'र्‍याङ्किङ', 'Agent rankings'),
+    0];
+$apps['m'] = ['💵', 'पैसा', 'Money', '#166534',
+    '',
+    $lnk('cash-book.php', '📒', 'क्यास बुक', 'Cash book', 0, true)
+    . $lnk('payments.php', '✅', 'भुक्तानी जाँच', 'Verify payments', $tkPend)
+    . $lnk('shift.php', '🕒', 'सिफ्ट र नगद', 'Shift & cash handover')
+    . $lnk('accounting.php', '📚', 'लेखा / ऋण', 'Accounting, loans & ledgers')
+    . $lnk('payroll.php', '💼', 'तलब', 'Salary / payroll')
+    . $lnk('reconcile.php', '⚖️', 'पैसा मिलान', 'Money reconciliation')
+    . $lnk('pnl.php', '📈', 'नाफा / घाटा', 'Profit & loss')
+    . $lnk('analytics.php', '📉', 'रिपोर्ट', 'Analytics'),
+    0];
+$apps['w'] = ['💬', 'म्यासेज र AI', 'Messages & AI', '#128C4A',
+    '',
+    $lnk('wa-inbox.php', '💬', 'WhatsApp इनबक्स', 'Chats & groups', 0, true)
+    . $lnk('wa-manager.php', '📲', 'WhatsApp म्यानेजर', 'Sending, wallet, API status')
+    . $lnk('wa-outbox.php', '📤', 'पठाएको', 'Outbox')
+    . $lnk('wa-templates.php', '🧩', 'टेम्प्लेट', 'WhatsApp templates')
+    . $lnk('facebook.php', '📘', 'Messenger AI', 'Facebook Messenger')
+    . $lnk('ai-brain.php', '🤖', 'AI ले के जवाफ दिन्छ', 'One AI — the WhatsApp brain')
+    . $lnk('ai-activity.php', '🧠', 'AI ले के गर्‍यो', 'AI activity')
+    . $lnk('messages-log.php', '🗒️', 'म्यासेज लग', 'WhatsApp & SMS logs')
+    . (isset($navOk['settings.php']) ? $raw('/admin/settings.php#cat=messages', '🔑', 'API key र सेटिङ', 'WhatsApp API · Messenger · AI keys') : ''),
+    0];
+$apps['g'] = ['⚙️', 'सेटिङ', 'Settings', '#475569',
+    '',
+    $lnk('easy-settings.php', '🤖', 'AI लाई भनेर बदल्ने', 'Tell S Hari AI — it shows, then changes', 0, true)
+    . $lnk('settings.php', '⚙️', 'सबै सेटिङ (५ भाग)', 'All settings in 5 groups')
+    . $lnk('company.php', '🏢', 'कम्पनी र शाखा', 'Company & branches')
+    . $lnk('sessions.php', '🛡️', 'लगइन सुरक्षा', 'Sessions & login security')
+    . $lnk('backup.php', '💾', 'ब्याकअप', 'Backups')
+    . $lnk('health.php', '🩺', 'सिस्टम ठीक छ?', 'System health')
+    . $lnk('activity-log.php', '🧾', 'कसले के गर्‍यो', 'Activity log'),
+    0];
+$meLinks = '';
+if ((string) ($admin['role'] ?? '') !== 'viewer') {
+    $meLinks .= '<a class="mg-a big" href="/me/"><i aria-hidden="true">🪪</i><span><b>मेरो विवरण र कागजात</b><small>My details · ID card · documents</small></span></a>';
+}
+$meLinks .= $raw('/admin/quick-unlock.php', '🔐', 'लक: Pattern / PIN', ($qk['pin'] || $qk['pattern']) ? 'Change or remove' : 'Optional — opens faster next time');
+if (!$viaOtp) {
+    $meLinks .= $raw('/admin/change-password.php', '🔑', 'पासवर्ड', 'Change password');
+}
+$meLinks .= $raw('/admin/logout.php', '🔒', 'लक गर्ने', 'Lock this app now');
+$apps['u'] = ['🙂', 'म', 'Me', '#0B1220', '', $meLinks, 0];
+
+$rest = array_merge($tiles['hero'], $tiles['more']);
+$restH = '';
+foreach ($rest as $t) {
+    $restH .= '<a class="mg-a" href="' . $e($t['href']) . '"><i aria-hidden="true">' . $e($t['icon']) . '</i><span><b>' . $e($t['ne']) . '</b><small>' . $e($t['en']) . '</small></span>'
+            . ($t['badge'] > 0 ? '<em>' . (int) $t['badge'] . '</em>' : '') . '</a>';
+}
+if ($office) {
+    $restH .= $raw('/admin/index.php', '📈', 'ड्यासबोर्ड', 'Full dashboard') . $raw('/admin/hub.php', '🗂️', 'सबै पेज', 'All pages by category');
+}
+$apps['x'] = ['🧩', 'अरू सबै', 'More', '#64748B', '', $restH, 0];
+$apps = array_filter($apps, static fn(array $a): bool => $a[5] !== '');
+
+/* the dock: the four things done all day, one tap, no window */
+$dock = array_filter([
+    isset($navOk['quick-ticket.php']) ? ['/admin/quick-ticket.php', '⚡', 'टिकट'] : null,
+    isset($navOk['manifest.php']) ? ['/admin/manifest.php', '📋', 'चलानी'] : null,
+    isset($navOk['map.php']) ? ['/admin/map.php', '🛰️', 'लाइभ'] : null,
+    isset($navOk['bookings.php']) ? ['/admin/bookings.php', '🔎', 'खोज'] : null,
+]);
 
 admin_header('Management', 'home.php');
 ?>
 <style>
-.mg{max-width:1120px;margin:0 auto}
+.mg{max-width:1120px;margin:0 auto;padding-bottom:84px}
 .mg-me{display:flex;align-items:center;gap:10px;margin:0 0 10px}
 .mg-av{width:40px;height:40px;border-radius:50%;object-fit:cover;flex:0 0 auto}
 .mg-ini{width:40px;height:40px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;background:#0054A8}
@@ -289,8 +451,7 @@ admin_header('Management', 'home.php');
 .mg-bar{display:grid;gap:8px;margin:0 0 10px}
 .mg-bar form{display:flex;gap:6px}
 .mg-bar input{flex:1;min-width:0;min-height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:inherit;font:inherit;font-size:15px}
-.mg-bar button{min-height:44px;padding:0 14px;border-radius:12px;border:0;background:#0054A8;color:#fff;font:inherit;font-weight:800;cursor:pointer;white-space:nowrap}
-.mg-bar .ai button{background:#F07C1F}
+.mg-bar button{min-height:44px;padding:0 14px;border-radius:12px;border:0;background:#F07C1F;color:#fff;font:inherit;font-weight:800;cursor:pointer;white-space:nowrap}
 .mg-ask{margin:0 0 12px;padding:10px;border-radius:14px;border:1px solid var(--line);background:var(--card);display:grid;gap:8px}
 .mg-ask p{margin:0;font-size:13.5px;opacity:.85}.mg-ask .more a{color:inherit}
 .mg-ask>button{justify-self:start;min-height:40px;padding:0 14px;border-radius:10px;border:0;background:#F07C1F;color:#fff;font:inherit;font-weight:800}
@@ -304,14 +465,6 @@ admin_header('Management', 'home.php');
 .mg-strip{display:flex;gap:8px;overflow-x:auto;margin:0 0 10px;padding-bottom:2px;scrollbar-width:none}
 .mg-strip a{flex:0 0 auto;max-width:86vw;padding:9px 13px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:inherit;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mg-strip a.hot{border-color:#F07C1F;color:#B4560C}
-.mg-tabs{display:flex;gap:6px;margin:0 0 10px;padding:4px;border-radius:14px;background:var(--card);border:1px solid var(--line);position:sticky;top:6px;z-index:5}
-.mg-tabs button{flex:1;min-height:42px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:14px;font-weight:800;cursor:pointer}
-.mg-tabs button.on{background:#0054A8;color:#fff}
-.mg-cols{display:grid;gap:12px}
-.mg-col{display:none;border:1px solid var(--line);border-radius:16px;background:var(--card);padding:12px;min-width:0}
-.mg-col.on{display:block}
-.mg-col>h3{display:none;margin:0 0 10px;font-size:15px}
-@media (min-width:980px){.mg-tabs{display:none}.mg-cols{grid-template-columns:repeat(auto-fit,minmax(290px,1fr));align-items:start}.mg-col{display:block}.mg-col>h3{display:block}}
 .mg-n{display:flex;gap:8px;margin:0 0 10px}
 .mg-n a{flex:1;padding:9px 10px;border-radius:12px;background:rgba(0,84,168,.07);color:inherit;text-decoration:none}
 .mg-n b{display:block;font-size:22px;line-height:1.1}.mg-n small{font-size:11.5px;color:var(--mut);font-weight:700}
@@ -321,7 +474,7 @@ admin_header('Management', 'home.php');
 .mg-a:active{background:rgba(0,84,168,.08)}
 .mg-a i{font-style:normal;font-size:20px;flex:0 0 auto}
 .mg-a span{min-width:0}.mg-a b{display:block;font-size:13.5px;line-height:1.2}.mg-a small{display:block;font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mg-a.big{grid-column:1/-1;min-height:60px;background:#0054A8;border-color:#0054A8;color:#fff}
+.mg-a.big{grid-column:1/-1;min-height:60px;background:var(--osc,#0054A8);border-color:var(--osc,#0054A8);color:#fff}
 .mg-a.big b{font-size:16px}.mg-a.big small{color:rgba(255,255,255,.85)}
 .mg-a em{position:absolute;top:-6px;right:-4px;min-width:22px;height:22px;padding:0 6px;border-radius:99px;background:#D7263D;color:#fff;font-style:normal;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center}
 .mg-trips{display:grid;gap:6px;margin:0 0 10px}
@@ -330,14 +483,39 @@ admin_header('Management', 'home.php');
 .mg-trip small{color:var(--mut)}
 .mg-trip a{flex:0 0 auto;min-height:36px;display:inline-flex;align-items:center;padding:0 10px;border-radius:9px;border:1px solid var(--line);color:inherit;text-decoration:none;font-weight:700;font-size:12px}
 .mg-bar2{height:4px;border-radius:9px;background:rgba(127,127,127,.2);margin-top:4px;overflow:hidden}.mg-bar2 u{display:block;height:100%;background:#1E9E5A}
-details.mg-more{margin-top:12px}
-details.mg-more>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:center;min-height:44px;border-radius:12px;border:1.5px dashed var(--line);font-weight:800;font-size:13.5px}
-details.mg-more>summary::-webkit-details-marker{display:none}
-.mg-more .mg-list{margin-top:10px}
-@media (min-width:760px){.mg-more .mg-list{grid-template-columns:repeat(4,minmax(0,1fr))}}
-.mg-foot{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:16px 0 4px}
 .mg-flash{padding:10px 13px;border-radius:11px;font-weight:700;margin-bottom:10px}
 .mg-flash.ok{background:#DEF4E4;color:#14602E}.mg-flash.bad{background:#F7DCDC;color:#8A1F1F}
+/* ---- launcher ---- */
+.os-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px 8px;margin:14px 0 8px}
+@media (min-width:620px){.os-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:22px 12px}}
+@media (min-width:980px){.os-grid{grid-template-columns:repeat(8,minmax(0,1fr));gap:26px 14px;margin-top:22px}}
+.os-app{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer;min-width:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.os-app i{font-style:normal;width:60px;height:60px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:28px;background:var(--c);background-image:linear-gradient(160deg,rgba(255,255,255,.28),rgba(255,255,255,0) 55%);box-shadow:0 6px 14px -6px var(--c),0 1px 0 rgba(255,255,255,.25) inset;transition:transform .12s ease}
+.os-app:active i{transform:scale(.9)}
+.os-app:focus-visible i{outline:3px solid #F07C1F;outline-offset:3px}
+.os-app b{font-size:12.5px;font-weight:700;line-height:1.15;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.os-app small{font-size:10.5px;color:var(--mut);margin-top:-4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.os-app em{position:absolute;top:-5px;left:calc(50% + 14px);min-width:22px;height:22px;padding:0 6px;border-radius:99px;background:#D7263D;color:#fff;font-style:normal;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg,#fff)}
+@media (min-width:980px){.os-app i{width:68px;height:68px;font-size:32px;border-radius:20px}.os-app b{font-size:13.5px}}
+.os-dock{position:fixed;left:50%;bottom:calc(10px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:30;display:flex;gap:6px;padding:7px;border-radius:22px;background:rgba(11,18,32,.86);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 12px 30px -10px rgba(0,0,0,.5)}
+.os-dock a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:68px;min-height:52px;border-radius:16px;color:#fff;text-decoration:none;font-size:11px;font-weight:700}
+.os-dock a i{font-style:normal;font-size:21px;line-height:1}
+.os-dock a:active{background:rgba(255,255,255,.16)}
+.os-win{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-end;justify-content:center;background:rgba(7,11,20,.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.os-win[hidden]{display:none}
+.os-sheet{width:100%;max-width:760px;max-height:88vh;max-height:88dvh;display:flex;flex-direction:column;border-radius:22px 22px 0 0;background:var(--bg,#fff);color:var(--ink,inherit);box-shadow:0 -18px 50px -18px rgba(0,0,0,.6);animation:osUp .2s ease-out}
+.os-sheet header{display:flex;align-items:center;gap:10px;padding:12px 14px 10px;border-bottom:1px solid var(--line)}
+.os-sheet header i{font-style:normal;width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;background:var(--osc)}
+.os-sheet header h3{flex:1;margin:0;font-size:17px;font-weight:800;min-width:0}
+.os-sheet header h3 small{display:block;font-size:12px;font-weight:600;color:var(--mut)}
+.os-x{width:44px;height:44px;border-radius:50%;border:0;background:rgba(127,127,127,.16);color:inherit;font-size:20px;cursor:pointer}
+.os-body{overflow-y:auto;overscroll-behavior:contain;padding:12px 14px calc(18px + env(safe-area-inset-bottom,0px))}
+.os-body section[hidden]{display:none}
+.os-h{margin:16px 0 8px;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--mut)}
+@media (min-width:760px){.os-win{align-items:center}.os-sheet{border-radius:20px;max-height:80vh;animation-name:osIn}.os-body .mg-list{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@keyframes osUp{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+@keyframes osIn{from{transform:scale(.96);opacity:.4}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.os-sheet{animation:none}.os-app i{transition:none}}
 </style>
 <div class="mg">
   <?php if ($flash !== null): ?><div class="mg-flash <?= $e($flash[0]) ?>" role="status"><?= $e($flash[1]) ?></div><?php endif; ?>
@@ -350,7 +528,7 @@ details.mg-more>summary::-webkit-details-marker{display:none}
     <form method="post" action="/admin/home.php"><?= Security::csrfField() ?><input type="hidden" name="action" value="switch">
       <button class="mg-ib" type="submit" title="ID बदल्नुहोस् · Switch ID" aria-label="Switch ID">🔁</button></form>
     <?php endif; ?>
-    <a class="mg-ib lock" href="/admin/logout.php" title="Lock — opens again with your pattern / PIN">🔒 Lock</a>
+    <a class="mg-ib lock" href="/admin/logout.php" title="Lock the app">🔒 Lock</a>
   </section>
 
   <div class="mg-bar">
@@ -407,6 +585,7 @@ details.mg-more>summary::-webkit-details-marker{display:none}
       <div><b><?= $e($t['full_name']) ?></b> <span class="st"><?= $e($t['role']) ?></span><small><?= $e($t['phone']) ?></small></div>
       <div class="go">
         <a href="/admin/team-member.php?id=<?= (int) $t['id'] ?>">खोल्ने</a>
+        <a href="/admin/agent-statement.php?agent=<?= (int) $t['id'] ?>">हिसाब</a>
         <a href="/admin/bookings.php?agent=<?= (int) $t['id'] ?>">टिकट</a>
         <?php if ($tWa !== ''): ?><a class="wa" target="_blank" rel="noopener" href="<?= $e($tWa) ?>">💬</a><?php endif; ?>
       </div>
@@ -416,81 +595,67 @@ details.mg-more>summary::-webkit-details-marker{display:none}
   </section>
   <?php endif; ?>
 
-  <?php $needQk = !($qk['pin'] || $qk['pattern']);
-  if ($strip !== [] || $needQk): ?>
+  <?php if ($strip !== []): ?>
   <div class="mg-strip">
-    <?php if ($needQk): ?><a class="hot" href="/admin/quick-unlock.php">🔐 Pattern / PIN राख्नुहोस् — अर्को पटक छिटो खुल्छ · Set a pattern or PIN</a><?php endif; ?>
     <?php foreach ($strip as $s): ?><a class="<?= $s['hot'] ? 'hot' : '' ?>" href="<?= $e($s['href']) ?>"><?= $e($s['text']) ?></a><?php endforeach; ?>
   </div>
   <?php endif; ?>
 
-  <?php if ($cols !== []): $firstKey = array_key_first($cols); ?>
-  <div class="mg-tabs" role="tablist">
-    <?php foreach ($cols as $k => $c): ?><button type="button" role="tab" data-mg="<?= $k ?>"<?= $k === $firstKey ? ' class="on"' : '' ?>><?= $c[0] ?> <?= $e($c[1]) ?></button><?php endforeach; ?>
-  </div>
-  <div class="mg-cols" style="--n:<?= count($cols) ?>">
-    <?php foreach ($cols as $k => $c): ?>
-    <section class="mg-col<?= $k === $firstKey ? ' on' : '' ?>" data-mgc="<?= $k ?>">
-      <h3><?= $c[0] ?> <?= $e($c[1]) ?> · <?= $e($c[2]) ?></h3>
-      <?php if ($k === 't' && $canTk): ?>
-        <div class="mg-n">
-          <a href="/admin/bookings.php"><b><?= $tkToday ?></b><small><?= $agentV ? 'मेरो आज · My tickets today' : 'आजको टिकट · Today' ?></small></a>
-          <a class="<?= $tkPend > 0 ? 'hot' : '' ?>" href="/admin/<?= isset($navOk['payments.php']) ? 'payments.php' : 'bookings.php?status=pending' ?>"><b><?= $tkPend ?></b><small>भुक्तानी बाँकी · Pending</small></a>
-        </div>
-      <?php elseif ($k === 'b' && $trips !== []): ?>
-        <div class="mg-trips">
-          <?php foreach ($trips as $t):
-              $tot  = max(1, (int) $t['total_seats']);
-              $sold = (int) $t['seats_booked'];
-              $day  = (string) $t['travel_date'] === date('Y-m-d') ? 'आज' : 'भोलि'; ?>
-          <div class="mg-trip">
-            <div><b><?= $e($t['from_city']) ?> → <?= $e($t['to_city']) ?></b>
-              <small><?= $e($day) ?> <?= $e($fmtT($t['dep_time'])) ?> · <?= $e($t['bus_name'] ?: ($t['bus_number'] ?: 'Bus —')) ?> · <?= $sold ?>/<?= $tot ?> seat</small>
-              <div class="mg-bar2"><u style="width:<?= min(100, (int) round($sold * 100 / $tot)) ?>%"></u></div></div>
-            <?php if (isset($navOk['manifest.php'])): ?><a href="/admin/manifest.php?date=<?= $e($t['travel_date']) ?>&amp;sid=<?= (int) $t['sid'] ?>">चलानी</a><?php endif; ?>
-            <a href="/admin/bus-control.php?date=<?= $e($t['travel_date']) ?>">सिट</a>
-          </div>
-          <?php endforeach; ?>
-        </div>
-      <?php elseif ($k === 'a' && !$agentV && $office): ?>
-        <div class="mg-n">
-          <a href="/admin/people.php"><b><?= $nAgents ?></b><small>सक्रिय एजेन्ट · Active</small></a>
-          <a class="<?= $nApps + $nMoney > 0 ? 'hot' : '' ?>" href="/admin/team.php?tab=approvals"><b><?= $nApps + $nMoney ?></b><small>पर्खिरहेको काम · Waiting</small></a>
-        </div>
-      <?php endif; ?>
-      <div class="mg-list"><?= $c[3] ?></div>
-    </section>
+  <nav class="os-grid" aria-label="Apps">
+    <?php foreach ($apps as $k => $a): ?>
+    <button type="button" class="os-app" data-os="<?= $k ?>" style="--c:<?= $e($a[3]) ?>" aria-haspopup="dialog">
+      <i aria-hidden="true"><?= $a[0] ?></i><b><?= $e($a[1]) ?></b><small><?= $e($a[2]) ?></small><?= $a[6] > 0 ? '<em>' . (int) $a[6] . '</em>' : '' ?>
+    </button>
     <?php endforeach; ?>
-  </div>
-  <?php endif; ?>
+  </nav>
+</div>
 
-  <?php $rest = array_merge($tiles['hero'], $tiles['more']);
-  if ($rest !== []): ?>
-  <details class="mg-more"<?= $cols === [] ? ' open' : '' ?>>
-    <summary>＋ अरू सबै · Everything else (<?= count($rest) ?>)</summary>
-    <div class="mg-list">
-      <?php foreach ($rest as $t): ?>
-        <a class="mg-a" href="<?= $e($t['href']) ?>"><i aria-hidden="true"><?= $e($t['icon']) ?></i><span><b><?= $e($t['ne']) ?></b><small><?= $e($t['en']) ?></small></span><?= $t['badge'] > 0 ? '<em>' . (int) $t['badge'] . '</em>' : '' ?></a>
+<?php if ($dock !== []): ?>
+<nav class="os-dock" aria-label="Quick actions">
+  <?php foreach ($dock as $d): ?><a href="<?= $e($d[0]) ?>"><i aria-hidden="true"><?= $d[1] ?></i><?= $e($d[2]) ?></a><?php endforeach; ?>
+</nav>
+<?php endif; ?>
+
+<div class="os-win" id="osWin" hidden>
+  <div class="os-sheet" role="dialog" aria-modal="true" aria-labelledby="osTitle">
+    <header><i id="osIcon" aria-hidden="true"></i><h3 id="osTitle"></h3><button type="button" class="os-x" id="osX" aria-label="Close">✕</button></header>
+    <div class="os-body">
+      <?php foreach ($apps as $k => $a): ?>
+      <section data-osw="<?= $k ?>" data-icon="<?= $a[0] ?>" data-ne="<?= $e($a[1]) ?>" data-en="<?= $e($a[2]) ?>" style="--osc:<?= $e($a[3]) ?>" hidden>
+        <?php $numsTop = str_starts_with($a[4], '<div class="mg-n"'); /* live numbers lead; a trip list follows the actions */ ?>
+        <?= $numsTop ? $a[4] : '' ?>
+        <div class="mg-list"><?= $a[5] ?></div>
+        <?= $numsTop ? '' : $a[4] ?>
+      </section>
       <?php endforeach; ?>
-      <?php if ($office): ?><a class="mg-a" href="/admin/index.php"><i aria-hidden="true">📈</i><span><b>ड्यासबोर्ड</b><small>Full dashboard</small></span></a>
-      <a class="mg-a" href="/admin/hub.php"><i aria-hidden="true">🗂️</i><span><b>सबै पेज</b><small>All pages by category</small></span></a><?php endif; ?>
     </div>
-  </details>
-  <?php endif; ?>
-
-  <div class="mg-foot">
-    <?php if ((string) ($admin['role'] ?? '') !== 'viewer'): ?><a class="mg-ib" href="/me/#id">🪪 My ID</a><?php endif; ?>
-    <a class="mg-ib" href="/admin/quick-unlock.php">🔐 Pattern / PIN</a>
-    <?php if (!$viaOtp): ?><a class="mg-ib" href="/admin/change-password.php">🔑 Password</a><?php endif; ?>
   </div>
 </div>
 <script>
 (function(){
-  var tabs=document.querySelectorAll('[data-mg]'),cols=document.querySelectorAll('[data-mgc]');
-  function show(k){var ok=false;cols.forEach(function(c){var on=c.getAttribute('data-mgc')===k;c.classList.toggle('on',on);ok=ok||on;});
-    if(!ok)return;tabs.forEach(function(t){t.classList.toggle('on',t.getAttribute('data-mg')===k);});try{localStorage.setItem('shg_mg_tab',k);}catch(e){}}
-  tabs.forEach(function(t){t.addEventListener('click',function(){show(t.getAttribute('data-mg'));});});
-  try{var s=localStorage.getItem('shg_mg_tab');if(s&&document.querySelector('[data-mgc="'+s+'"]'))show(s);}catch(e){}
+  var win=document.getElementById('osWin'),ttl=document.getElementById('osTitle'),ic=document.getElementById('osIcon'),last=null;
+  if(!win)return;
+  function secs(){return win.querySelectorAll('[data-osw]');}
+  function open(k,push){
+    var hit=null;secs().forEach(function(s){var on=s.getAttribute('data-osw')===k;s.hidden=!on;if(on)hit=s;});
+    if(!hit)return;
+    ttl.textContent=hit.getAttribute('data-ne');
+    var sm=document.createElement('small');sm.textContent=hit.getAttribute('data-en');ttl.appendChild(sm);
+    ic.textContent=hit.getAttribute('data-icon');
+    win.querySelector('.os-sheet').style.setProperty('--osc',hit.style.getPropertyValue('--osc'));
+    win.hidden=false;document.documentElement.style.overflow='hidden';
+    win.querySelector('.os-body').scrollTop=0;
+    if(push!==false){try{history.pushState({os:k},'','#app-'+k);}catch(e){}}
+    var f=hit.querySelector('a');if(f&&window.matchMedia('(min-width:760px)').matches)f.focus();
+  }
+  function shut(){win.hidden=true;document.documentElement.style.overflow='';if(last){try{last.focus();}catch(e){}}}
+  function close(){if(win.hidden)return;if(/^#app-/.test(location.hash)){try{history.back();return;}catch(e){}}shut();}
+  document.querySelectorAll('[data-os]').forEach(function(b){b.addEventListener('click',function(){last=b;open(b.getAttribute('data-os'));});});
+  document.getElementById('osX').addEventListener('click',close);
+  win.addEventListener('click',function(ev){if(ev.target===win)close();});
+  document.addEventListener('keydown',function(ev){if(ev.key==='Escape')close();});
+  window.addEventListener('popstate',function(){var m=location.hash.match(/^#app-([a-z])$/);if(m)open(m[1],false);else shut();});
+  var m=location.hash.match(/^#app-([a-z])$/);if(m)open(m[1],false);
 })();
 </script>
 <?php admin_footer();
