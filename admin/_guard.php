@@ -300,6 +300,7 @@ function admin_side_css(): string
 .side-recent .side-sec{color:var(--mut)!important}
 .side-recent a{padding:7px 10px;font-size:13px}
 .side-more>summary{font-weight:600;font-size:12.5px;color:var(--mut)}
+.side-tail{margin:8px 0 0;border-left:0;padding-left:0;border-top:1px solid var(--line)}
 .wrap h1{font-size:21px;font-weight:650;letter-spacing:-.01em}
 CSS;
 }
@@ -439,10 +440,30 @@ function admin_header(string $title, string $active = ''): void
         // the active item is always visible; the rest collapse into tidy
         // headers. The client then restores the admin's remembered open/closed
         // set from localStorage on top of this (see admin_nav_js).
+        /* 13 Nov 2026 (mg14, owner: "side menu chhoto, minimal"): the menu is now
+             Home · Main (the 7 everyday pages) · Recent (folded) · five trunks.
+           - a page listed in Main is not repeated inside its trunk;
+           - a trunk shows at most 5 pages, the rest under "＋ थप · More";
+           - only ONE trunk is open at a time (opening one closes the others);
+           - Dashboard / Control Center sit in one small fold at the bottom.
+           Nothing is removed: every page is still reachable from here, from
+           the Home launcher and from the search box. Display only —
+           admin_nav() (permissions, hub, home) is untouched. */
+        $mainHrefs = ['quick-ticket.php', 'bookings.php', 'bus-control.php', 'manifest.php', 'people.php', 'payments.php', 'easy-settings.php'];
         $activeSec = '';
         foreach ($items as $item) {
-            if ($active !== '' && str_contains($item['href'], $active)) { $activeSec = (string) ($item['section'] ?? ''); break; }
+            if ($active !== '' && str_contains($item['href'], $active) && !in_array((string) $item['href'], $mainHrefs, true)) {
+                $activeSec = (string) ($item['section'] ?? '');
+                break;
+            }
         }
+        // the one home leads; the other unsectioned links fold at the bottom
+        $topLinks = [];
+        $tailLinks = [];
+        foreach ($groups[''] ?? [] as $item) {
+            if ((string) $item['href'] === 'home.php') { $topLinks[] = $item; } else { $tailLinks[] = $item; }
+        }
+        foreach ($topLinks as $item) { $renderLink($item); }
         /* 6 Nov 2026: "⏱ हालै" — the last pages this person opened, newest
            first, always open on top of the tree. */
         /* 12 Nov 2026 (owner: "sabai option ekdam kam tara effectful"): the
@@ -450,26 +471,33 @@ function admin_header(string $title, string $active = ''): void
         $byHrefMain = [];
         foreach ($items as $item) { $byHrefMain[(string) $item['href']] = $item; }
         $mainNow = [];
-        foreach (['quick-ticket.php', 'bookings.php', 'bus-control.php', 'manifest.php', 'people.php', 'payments.php', 'easy-settings.php'] as $mh) {
+        foreach ($mainHrefs as $mh) {
             if (isset($byHrefMain[$mh]) && (string) ($byHrefMain[$mh]['section'] ?? '') !== '') { $mainNow[] = $byHrefMain[$mh]; }
         }
+        $inMain = [];
         if (count($mainNow) >= 3) {
+            foreach ($mainNow as $item) { $inMain[(string) $item['href']] = true; }
             echo '<div class="side-group open side-recent" data-sec="main-now">';
             echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-label="Toggle main"><span class="ss-en">Main</span><span class="ss-ne">मुख्य काम</span>'
                . '<svg class="a-ic nav-caret"><use href="#a-chevron"/></svg></button><div class="side-items">';
             foreach ($mainNow as $item) { $renderLink($item); }
             echo '</div></div>';
         }
-        $recent = admin_nav_recent($items, 4);
+        $recent = array_slice(array_values(array_filter(
+            admin_nav_recent($items, 8),
+            static fn(array $i): bool => !isset($inMain[(string) $i['href']])
+        )), 0, 3);
         if (count($recent) >= 2) {
-            echo '<div class="side-group open side-recent" data-sec="recent">';
+            echo '<div class="side-group side-recent" data-sec="recent">';
             echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-label="Toggle recent"><span class="ss-en">Recent</span><span class="ss-ne">हालै खोलेका</span>'
                . '<svg class="a-ic nav-caret"><use href="#a-chevron"/></svg></button><div class="side-items">';
             foreach ($recent as $item) { $renderLink($item); }
             echo '</div></div>';
         }
         foreach ($groups as $sec => $groupItems) {
-            if ($sec === '') { foreach ($groupItems as $item) { $renderLink($item); } continue; }
+            if ($sec === '') { continue; }   // Home is on top, the rest in the bottom fold
+            $groupItems = array_values(array_filter($groupItems, static fn(array $i): bool => !isset($inMain[(string) $i['href']])));
+            if ($groupItems === []) { continue; }
             $open = ($sec === $activeSec) ? ' open' : '';
             echo '<div class="side-group' . $open . '" data-sec="' . Security::e($sec) . '">';
             echo '<button type="button" class="side-sec side-toggle" onclick="shgNavToggle(this)" aria-label="Toggle ' . Security::e(admin_plain($sec)) . '">'
@@ -481,6 +509,13 @@ function admin_header(string $title, string $active = ''): void
             $mainItems = array_values(array_filter($groupItems, static fn(array $i): bool => !empty($i['main'])));
             $moreItems = array_values(array_filter($groupItems, static fn(array $i): bool => empty($i['main'])));
             if ($mainItems === [] || count($moreItems) < 2) { $mainItems = $groupItems; $moreItems = []; }
+            while (count($mainItems) < 4 && count($moreItems) > 2) {   // Main took this trunk's everyday pages: show its next ones
+                $mainItems[] = array_shift($moreItems);
+            }
+            if (count($mainItems) > 5) {   // a trunk never opens longer than 5 rows + the fold
+                $moreItems = array_merge(array_slice($mainItems, 5), $moreItems);
+                $mainItems = array_slice($mainItems, 0, 5);
+            }
             foreach ($mainItems as $item) { $renderLink($item); }
             if ($moreItems !== []) {
                 $moreOpen = false;
@@ -490,6 +525,13 @@ function admin_header(string $title, string $active = ''): void
                 echo '</details>';
             }
             echo '</div></div>';
+        }
+        if ($tailLinks !== []) {
+            $tailOpen = false;
+            foreach ($tailLinks as $ti) { if ($active !== '' && !str_starts_with($ti['href'], '/') && str_contains($ti['href'], $active)) { $tailOpen = true; break; } }
+            echo '<details class="side-more side-tail"' . ($tailOpen ? ' open' : '') . '><summary>＋ ड्यासबोर्ड · Dashboard (' . count($tailLinks) . ')</summary>';
+            foreach ($tailLinks as $item) { $renderLink($item); }
+            echo '</details>';
         }
     }
     // View-site stays outside the collapsible groups so it is always reachable.
@@ -725,6 +767,10 @@ function shgNavToggle(btn){
   try{
     var g = btn.closest('.side-group'); if(!g) return;
     g.classList.toggle('open');
+    // 13 Nov 2026 (mg14): one trunk at a time — Main and Recent are not trunks
+    if(g.classList.contains('open') && !g.classList.contains('side-recent')){
+      document.querySelectorAll('.side-group.open:not(.side-recent)').forEach(function(x){ if(x !== g) x.classList.remove('open'); });
+    }
     var open = [];
     document.querySelectorAll('.side-group.open').forEach(function(x){ open.push(x.getAttribute('data-sec')); });
     localStorage.setItem('shg_nav_open', JSON.stringify(open));
@@ -735,9 +781,18 @@ function shgNavToggle(btn){
     var raw = localStorage.getItem('shg_nav_open');
     if(!raw) return;                 // first visit: keep the server default (active section open)
     var open = JSON.parse(raw) || [];
-    document.querySelectorAll('.side-group').forEach(function(g){
-      if(open.indexOf(g.getAttribute('data-sec')) >= 0){ g.classList.add('open'); }
+    // the page's own trunk (opened by the server) wins; otherwise the last trunk the person left open
+    var hasTrunk = !!document.querySelector('.side-group.open:not(.side-recent)');
+    var groups = Array.prototype.slice.call(document.querySelectorAll('.side-group'));
+    groups.forEach(function(g){
+      if(g.classList.contains('side-recent') && open.indexOf(g.getAttribute('data-sec')) >= 0){ g.classList.add('open'); }
     });
+    if(!hasTrunk){
+      for(var i = open.length - 1; i >= 0; i--){
+        var t = groups.filter(function(g){ return !g.classList.contains('side-recent') && g.getAttribute('data-sec') === open[i]; })[0];
+        if(t){ t.classList.add('open'); break; }
+      }
+    }
   }catch(e){}
 })();
 JS;
