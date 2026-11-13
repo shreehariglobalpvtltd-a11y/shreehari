@@ -171,6 +171,14 @@ try {
         ], $rows));
     }
 
+    /* 13 Nov 2026 (mg13): the typed mobile's last party, for both ticket forms
+       (SmartBook::who — staff, or the number's own verified owner; anyone else
+       gets found=false, the same answer as a number that never travelled). */
+    if ($action === 'who') {
+        Security::requireRateLimit('smartbook_who', $ip, 90, 300);
+        Response::success(SmartBook::who(Security::clean((string) ($in['phone'] ?? ''), 20), $mode));
+    }
+
     if ($action === 'agents') {
         // The desk's agent picker (15 Oct 2026, owner: "Agent Code entry in
         // Agent Mode and especially Counter Mode, with agent selection/search").

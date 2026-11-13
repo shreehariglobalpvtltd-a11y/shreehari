@@ -314,6 +314,73 @@ final class SmartBook
     }
 
     /**
+     * 13 Nov 2026 (mg13, owner: "full form ma naam, number, female / male,
+     * miti jasta details automatic bhariyos — agent bhaye agent code, customer
+     * bhaye kei garnu naparos"): who is this mobile? The last confirmed
+     * ticket's party — name, age, gender per passenger — plus the usual
+     * direction and pickup, for the two ticket forms to fill by themselves.
+     *
+     * Same door as defaults(): selling staff, or the number's own proven
+     * owner — a typed number never shows a stranger's party to a customer.
+     * An agent reads only the customers of their own sales.
+     *
+     * @return array{found: bool, name: string, people: list<array{name: string, age: int, gender: string, band: string}>, direction: string, boarding: string, drop: string, trips: int}
+     */
+    public static function who(string $phone, string $mode = 'customer'): array
+    {
+        $none  = ['found' => false, 'name' => '', 'people' => [], 'direction' => '', 'boarding' => '', 'drop' => '', 'trips' => 0];
+        $phone = normalisePhone($phone);
+        if ($phone === '' || !self::mayReadHistory($phone, $mode)) {
+            return $none;
+        }
+        $soldBy = $mode === 'agent' ? (int) (Auth::admin()['id'] ?? 0) : null;
+        $h      = self::history($phone, $soldBy);
+        if ($h === null) {
+            return $none;
+        }
+        $own    = $soldBy !== null ? ' AND b.sold_by_admin_id = :sb' : '';
+        $params = ['p' => $phone] + ($soldBy !== null ? ['sb' => $soldBy] : []);
+        $rows   = Database::fetchAll(
+            "SELECT bp.full_name, bp.age, bp.gender, bp.special_need, bp.is_primary
+               FROM booking_passengers bp
+              WHERE bp.booking_id = (SELECT b.id FROM bookings b
+                                       JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
+                                      WHERE b.contact_phone = :p AND b.status IN ('confirmed','completed'){$own}
+                                   ORDER BY l.travel_date DESC, b.id DESC LIMIT 1)
+           ORDER BY bp.is_primary DESC, bp.id LIMIT 6",
+            $params
+        );
+        $bands  = self::paxFromRows($rows);
+        $people = [];
+        foreach ($rows as $i => $r) {
+            $nm = trim((string) preg_replace('/\s*\(\d+\)$/', '', (string) $r['full_name']));
+            // "Passenger 2" is the form's own filler, not a name worth bringing back
+            if (preg_match('/^(passenger|यात्री|यात्रु)\s*\d+$/iu', $nm) === 1) {
+                $nm = '';
+            }
+            $people[] = [
+                'name'   => $nm,
+                'age'    => ($r['age'] ?? null) !== null && (int) $r['age'] > 0 && (int) $r['age'] < 100 ? (int) $r['age'] : 0,
+                'gender' => (string) ($bands[$i]['gender'] ?? ''),
+                'band'   => (string) ($bands[$i]['band'] ?? 'adult'),
+            ];
+        }
+        $trips = (int) Database::scalar(
+            "SELECT COUNT(*) FROM bookings b WHERE b.contact_phone = :p AND b.status IN ('confirmed','completed'){$own}",
+            $params, 0
+        );
+        return [
+            'found'     => true,
+            'name'      => $h['name'],
+            'people'    => $people,
+            'direction' => $h['direction'],
+            'boarding'  => $h['boarding'],
+            'drop'      => $h['drop'],
+            'trips'     => $trips,
+        ];
+    }
+
+    /**
      * History may fill a card only for the number's proven owner (OTP
      * session) or for selling staff — a typed number never reveals a
      * stranger's name, party or habits.

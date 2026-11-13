@@ -137,8 +137,35 @@ function checkWelcomeBack() {
 }
 
 /* Auto-fill passenger name from PaxMemory when a known phone is entered */
+/* 13 Nov 2026 (mg13, owner: "full form ma naam, female / male, umer automatic"):
+   a staff sale has no PaxMemory (every sale starts blank), so the typed mobile
+   is looked up on the server instead — SmartBook::who, staff only. The last
+   ticket's party fills the rows that are still EMPTY; a typed box is kept. */
+let whoTimer = 0;
+function staffFillFromPhone() {
+  clearTimeout(whoTimer);
+  const p = digits(($('#cPhone') || {}).value || '');
+  if (p.length !== 10) return;
+  if (typeof shgApi === 'undefined' || !shgApi || typeof shgApi.post !== 'function') return;
+  whoTimer = setTimeout(() => {
+    shgApi.post('/smartbook.php', { action: 'who', phone: p, mode: 'counter' }).then(r => {
+      if (!r || !r.found || !r.people || digits(($('#cPhone') || {}).value || '') !== p) return;
+      const rows = $$('#paxRows .pax-row');
+      let filled = 0;
+      rows.forEach((row, i) => {
+        const person = r.people[i], n = $('.pxName', row);
+        if (!person || !n || n.value.trim()) return;
+        if (!person.name && !person.gender && !person.age) return;
+        fillPaxRow(row, person);
+        filled++;
+      });
+      if (filled && typeof toast === 'function') toast('🤖 ' + (r.name || p) + ' · ' + r.trips + ' trip' + (r.trips === 1 ? '' : 's') + ' — auto-filled');
+    }).catch(() => {});
+  }, 350);
+}
+
 function autoFillFromPhone() {
-  if (isCounterSale()) return;
+  if (isCounterSale()) { staffFillFromPhone(); return; }
   const rec = PaxMemory.read();
   if (!rec) return;
   const p = digits($('#cPhone').value);
@@ -2857,10 +2884,10 @@ function renderStatus(id) {
     <div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ${esc(tkMantraLine())} <span aria-hidden="true">❖</span></div>
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo-mark-tm.webp?v=20261106b" width="439" height="228" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo-mark-tm.webp?v=20261113a" width="439" height="228" alt="" loading="lazy" decoding="async">
         <div>${tkBrandHtml(CONFIG.company.name)}<small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261106b" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261113a" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${secBand}

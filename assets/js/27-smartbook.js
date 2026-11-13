@@ -615,7 +615,31 @@
   $('sbPoint').addEventListener('change', function () { S.point = this.value; S.why.point = null; $('sbPointWhy').textContent = ''; S.manual = []; changed(); });
   $('sbDateIn').addEventListener('change', function () { if (this.value) { S.date = this.value; S.manual = []; renderDates(); changed(); } });
   $('sbCc').addEventListener('change', function () { S.cc = this.value; changed('phone'); });
-  $('sbPhone').addEventListener('input', function () { S.phone = this.value; S.idem = null; store.set(); showErrs(false); syncButtons(); });
+  $('sbPhone').addEventListener('input', function () { S.phone = this.value; S.idem = null; store.set(); showErrs(false); syncButtons(); whoSoon(); });
+  /* 13 Nov 2026 (mg13, owner: "mobile halda naam, female / male aafai bhariyos"):
+     ten digits typed -> ask the server who this is (staff, or the number's own
+     verified owner; otherwise it answers "nobody"). Fills ONLY what is still
+     empty or was filled by the machine: the name, the party's F / M and
+     child / senior. A box somebody typed in is never overwritten. */
+  var whoT = 0;
+  function whoSoon() {
+    clearTimeout(whoT);
+    var p = digits(S.phone);
+    if (p.length !== 10) return;
+        whoT = setTimeout(function () {
+      api({ action: 'who', phone: p }).then(function (r) {
+        if (!r || !r.found || digits(S.phone) !== p) return;
+        var did = false, nm = String(S.name || '').trim();
+        if (r.name && (nm === '' || S.autoName === nm)) { S.name = r.name; S.autoName = r.name; $('sbName').value = r.name; did = true; }
+        var plain = !S.touched.pax && S.pax.every(function (x) { return !x.gender || x.ai; });
+        if (plain && r.people && r.people.length) {
+          S.pax = r.people.slice(0, S.maxPax || 6).map(function (x) { return { gender: x.gender === 'Female' || x.gender === 'Male' ? x.gender : '', band: x.band || 'adult', ai: true }; });
+          S.manual = []; renderPax(); did = true;
+        }
+        if (did) { store.set(); showErrs(false); syncButtons(); requote(); say('🤖 ' + (r.name || p) + ' — ' + r.trips + ' trip' + (r.trips === 1 ? '' : 's') + ' · auto-filled'); }
+      }).catch(function () {});
+    }, 350);
+  }
   $('sbPhone').addEventListener('blur', function () { S.touched.phone = true; showErrs(false); if (S.q) requote(); });
   $('sbName').addEventListener('input', function () { S.name = this.value; S.idem = null; store.set(); showErrs(false); syncButtons(); guessSoon(); });
   /* 15 Oct 2026 (owner: "naam bata gender guess"): the lead passenger's F / M
