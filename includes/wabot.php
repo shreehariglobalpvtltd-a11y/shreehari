@@ -45,6 +45,18 @@ final class WaBot
         $phone        = Settings::officePhone();
         $body         = trim($body);
         $senderDigits = normalisePhone($from);
+        /* 14 Nov 2026: the owner's and the CEO's own papers (includes/wavault.php).
+           Answers only those two numbers and only vault words / "save" attachments;
+           null for everything else, which carries on below exactly as before. */
+        try {
+            require_once INCLUDE_PATH . '/wavault.php';
+            $vault = WaVault::handle($from, $body, $kind, $media);
+            if ($vault !== null) {
+                return self::out($vault['text'], null);
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
         // Agent Pro (Oct 2026): the agents' and staff WhatsApp desk
         if (is_file(INCLUDE_PATH . '/agentpro-wa.php')) {
             require_once INCLUDE_PATH . '/agentpro-wa.php';
