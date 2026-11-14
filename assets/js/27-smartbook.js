@@ -901,7 +901,10 @@
     });
     function cell(s) {
       var cls = 'sb-berth' + (fem[s] ? ' w' : '') + (!free[s] ? ' x' : '') + (pick.indexOf(s) >= 0 ? ' sel' : '');
-      return '<button type="button" class="' + cls + '" data-seat="' + esc(s) + '"' + (!free[s] ? ' disabled aria-disabled="true"' : '') + ' aria-pressed="' + (pick.indexOf(s) >= 0) + '">' + esc((m.labels || {})[s] || s) + '</button>';
+      var lb = (m.labels || {})[s] || s;
+      // 14 Nov 2026 (d360): the state is read out too, not shown by colour alone (the marks are in polish.css §7.4)
+      var al = lb + (pick.indexOf(s) >= 0 ? ' · ' + tr('mine') : (!free[s] ? ' · ' + tr('taken') : (fem[s] ? ' · ' + tr('women') : '')));
+      return '<button type="button" class="' + cls + '" data-seat="' + esc(s) + '"' + (!free[s] ? ' disabled aria-disabled="true"' : '') + ' aria-pressed="' + (pick.indexOf(s) >= 0) + '" aria-label="' + esc(al) + '">' + esc(lb) + '</button>';
     }
     $('sbMap').innerHTML = h;
     $('sbPickN').textContent = tr('pickN', { a: pick.length, b: need });
@@ -1556,11 +1559,28 @@
   }
   window.addEventListener('hashchange', function () { setTimeout(function () { homeFlag(); ticketFromHash(); }, 0); });
   // While the card is on screen the floating WhatsApp / Sahayak buttons step aside (phone).
+  // 14 Nov 2026 (d360): .sb-fab-ok = "the observer has decided" - until then polish.css §7.1 keeps the two
+  // buttons hidden, so they no longer flash over the form while the page loads.
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(function (en) {
       document.documentElement.classList.toggle('sb-in-view', !!(en[0] && en[0].isIntersecting));
+      document.documentElement.classList.add('sb-fab-ok');
     }, { threshold: 0.25 }).observe($('sbCard'));
+  } else { document.documentElement.classList.add('sb-fab-ok'); }
+  // 14 Nov 2026 (d360): a focused field must not sit under the fixed book bar / bottom nav. The browser counts a
+  // field at the bottom edge as "visible", so focus alone does not move it; scrollIntoView does honour the
+  // scroll-padding polish.css §7.3 sets for the nav + bar. Phone only (on desktop the bar is not fixed).
+  function clearOfBar(el) {
+    var bar = $('sbBar');
+    if (!el || !bar || !bar.getClientRects().length || getComputedStyle(bar).position !== 'fixed') return;
+    var r = el.getBoundingClientRect();
+    if (r.bottom > bar.getBoundingClientRect().top - 8 || r.top < 60) { try { el.scrollIntoView({ block: 'nearest' }); } catch (e) {} }
   }
+  $('sbCard').addEventListener('focusin', function (e) {
+    var el = e.target; if (!el || !/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return;
+    setTimeout(function () { clearOfBar(el); }, 60);
+    setTimeout(function () { if (document.activeElement === el) clearOfBar(el); }, 450);   // again once the keyboard is up
+  });
   new MutationObserver(function () { applyWords(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
   /* Staff: clear the card for the next customer after a sale (keeps the date / pickup / type). */
   function resetForNext() {
