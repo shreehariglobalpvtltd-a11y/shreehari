@@ -80,6 +80,14 @@ final class Logger
         }
         self::$inWrite = true;
 
+        // 15 Nov 2026: no password, token, OTP or PIN reaches a log in clear.
+        try {
+            $message = self::scrubText($message);
+            $context = $context === [] ? [] : self::redact($context);
+        } catch (Throwable) {
+            $context = $context === [] ? [] : ['redaction' => 'failed'];   // never the raw values
+        }
+
         $encodedContext = $context === []
             ? null
             : json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
@@ -105,6 +113,128 @@ final class Logger
         }
 
         self::$inWrite = false;
+    }
+
+    /* =================================================================
+     *  Redaction (15 Nov 2026)
+     *
+     *  A context value whose KEY looks secret (password, token, OTP, PIN,
+     *  API key, cookie, Authorization, any "code") is written as its first
+     *  two characters + '***', at any depth. The shape stays the same —
+     *  same keys, same nesting — so every log reader keeps working.
+     *  Integers under an error-number key ('code' => 63016, 'http_code')
+     *  stay readable: those are provider / HTTP status numbers, and every
+     *  OTP, PIN and verify code in this codebase is a string.
+     *  Free text (the message and every string value) also loses a
+     *  6-character verify code written after "code / OTP / PIN /
+     *  password", a "token=…" style query value and a Bearer token.
+     * ================================================================= */
+
+    /** Whole words (snake_case / camelCase / kebab split) that make a key secret. */
+    private const SECRET_WORDS = [
+        'pass', 'password', 'passwd', 'passcode', 'pwd', 'secret', 'token', 'otp', 'pin',
+        'authorization', 'auth', 'cookie', 'code', 'apikey', 'signature', 'sig', 'credential', 'credentials',
+    ];
+    /** "key" is secret only after one of these words (api_key, secretKey, private-key…). */
+    private const KEY_PREFIX = ['api', 'secret', 'private', 'access', 'app', 'auth', 'signing', 'client', 'master'];
+    /** "code" right after one of these words is a plain label, not a secret. */
+    private const PLAIN_CODE = ['country', 'dial', 'postal', 'zip', 'pnr', 'route', 'station', 'agent', 'staff', 'seat',
+        'lang', 'language', 'iso', 'currency', 'error', 'status', 'http', 'response', 'reason', 'promo', 'coupon', 'bus', 'desk', 'counter'];
+
+    /** True when a context key names a secret — word by word, so "passengers", "pincode", "keyword", "mapping" stay readable. */
+    public static function isSecretKey(string $key): bool
+    {
+        $spaced = (string) preg_replace('/([a-z0-9])([A-Z])/', '$1 $2', $key);
+        $words  = preg_split('/[^a-z0-9]+/', strtolower($spaced), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        foreach ($words as $i => $w) {
+            $one  = (strlen($w) > 3 && str_ends_with($w, 's')) ? substr($w, 0, -1) : $w;   // tokens, cookies, codes
+            $prev = $words[$i - 1] ?? '';
+            if ($one === 'key') {
+                if (in_array($prev, self::KEY_PREFIX, true)) {
+                    return true;
+                }
+                continue;
+            }
+            if ($one === 'code' && in_array($prev, self::PLAIN_CODE, true)) {
+                continue;
+            }
+            if (in_array($one, self::SECRET_WORDS, true) || in_array($w, self::SECRET_WORDS, true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @param array<mixed> $context
+     * @return array<mixed>
+     */
+    public static function redact(array $context, int $depth = 0): array
+    {
+        foreach ($context as $k => $v) {
+            $secret = is_string($k) && self::isSecretKey($k);
+            if (is_array($v)) {
+                $context[$k] = $depth >= 8 ? '[deep]' : ($secret ? self::maskAll($v, $depth + 1) : self::redact($v, $depth + 1));
+            } elseif ($secret && !self::isErrorNumber((string) $k, $v)) {
+                $context[$k] = self::mask($v);
+            } elseif (is_string($v)) {
+                $context[$k] = self::scrubText($v);
+            }
+        }
+        return $context;
+    }
+
+    /** First two characters + '***'. true / false / null stay as they are (nothing secret in them). */
+    public static function mask(mixed $v): mixed
+    {
+        if ($v === null || is_bool($v) || $v === '') {
+            return $v;
+        }
+        if (!is_scalar($v)) {
+            return '***';
+        }
+        return mb_substr((string) $v, 0, 2) . '***';
+    }
+
+    /**
+     * Mask every masked-scalar leaf of a secret-named list ('tokens' => [...]).
+     *
+     * @param array<mixed> $list
+     * @return array<mixed>
+     */
+    private static function maskAll(array $list, int $depth): array
+    {
+        foreach ($list as $k => $v) {
+            $list[$k] = is_array($v) ? ($depth >= 8 ? '[deep]' : self::maskAll($v, $depth + 1)) : self::mask($v);
+        }
+        return $list;
+    }
+
+    private static function isErrorNumber(string $key, mixed $v): bool
+    {
+        return is_int($v)
+            && preg_match('/code$/i', $key) === 1
+            && preg_match('/otp|pin|pass|pwd|secret|token|verif|key|auth/i', $key) !== 1;
+    }
+
+    /** Verify codes, token=… values and Bearer tokens out of free text. */
+    public static function scrubText(string $text): string
+    {
+        if ($text === '' || preg_match('/code|otp|pin|pass|pwd|token|key|secret|sig|bearer/i', $text) !== 1) {
+            return $text;   // the common case: nothing to look at
+        }
+        $keep = static fn(array $m): string => $m[1] . mb_substr($m[2], 0, 2) . '***';
+        $text = (string) (preg_replace_callback(
+            '/(?<![A-Za-z_])(?<!error )(?<!status )(?<!http )(?<!response )((?:otp|pin|passcode|password|code)(?:\s+(?:is|was))?\s*[:=#-]?\s*)((?=[A-Za-z]*\d)[A-Za-z0-9]{6})(?![A-Za-z0-9])/i',
+            $keep,
+            $text
+        ) ?? $text);
+        $text = (string) (preg_replace_callback(
+            '/(?<![A-Za-z0-9])((?:access_token|api_?key|key|token|secret|password|pwd|otp|pin|sig|signature)=)([^&\s"\'<>]{3,})/i',
+            $keep,
+            $text
+        ) ?? $text);
+        return (string) (preg_replace_callback('/\b(Bearer\s+)([A-Za-z0-9._~+\/=-]{6,})/', $keep, $text) ?? $text);
     }
 
     private static function toFile(string $level, string $channel, string $message, ?string $context): void

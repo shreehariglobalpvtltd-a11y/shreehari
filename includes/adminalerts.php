@@ -17,8 +17,16 @@
  *                   sold, once the account is N days old — 15 Oct 2026)
  *   online_booking  a customer booked on the website with no agent in between
  *
+ * 15 Nov 2026 (fleet watch, fleetWatch()): the coach on the road -
+ *   driver_sos      a driver's SOS / breakdown still not marked handled N minutes
+ *                   after the driver app rang it (TripEvents::alertOffice) - top of the bell
+ *   gps_silent      a running trip whose newest GPS fix is older than N minutes
+ *   overspeed       3+ fixes above N km/h in the last 15 minutes
+ *   route_deviation the newest fix is more than N km from the route's road line
+ *
  * Every rule has an on/off switch and its own numbers (settings rows
- * alert_<rule>_on / alert_<rule>_<param>, edited on the notifications page).
+ * alert_<rule>_on / alert_<rule>_<param>, edited on the notifications page;
+ * a rule may name its own setting key per number in RULES[rule][4]).
  * An alert is a READ of the ledger and the bookings - it never changes money.
  * Each one is stored once per agent per week (or per day for the day rules),
  * claimed through EventBus so a cron that runs every 30 minutes cannot repeat it.
@@ -57,7 +65,31 @@ final class AdminAlerts
         'agent_low_target' => ['Agent behind target', 'From the 15th of the month, active agents whose sales are below this share of their monthly target (their own, else the company target) — one list a week.', true,
                              ['pct' => ['Below (% of target)', 50]]],
         'challan_stale'  => ['Challan out of date', 'A trip today or tomorrow gained or lost a ticket after its challan picture was drawn — reprint and resend it to the driver.', true, []],
+        /* 15 Nov 2026 (fleet watch). The fifth element names the setting each number lives in. */
+        'driver_sos'     => ['Driver SOS / breakdown still open 🆘', 'The driver app rings the bell (and the owner\'s WhatsApp) the moment SOS or breakdown is pressed. This rings it once more, on top of the bell, when nobody has marked it handled after this many minutes.', true,
+                             ['min' => ['Still open after (minutes)', 15]]],
+        'gps_silent'     => ['Bus GPS silent', 'A running trip (the bus should have left) whose newest GPS position is older than this. The phone may be off, out of signal or the app closed.', true,
+                             ['min' => ['Silent for more than (minutes)', 10]], ['min' => 'gps_silent_alert_min']],
+        'overspeed'      => ['Over-speed', 'A running coach sent 3 or more positions above this speed, spread over at least a minute, in the last 15 minutes (impossible GPS jumps are ignored).', true,
+                             ['kmh' => ['Above (km/h)', 90]], ['kmh' => 'overspeed_kmh']],
+        'route_deviation' => ['Bus off its route', 'A running coach\'s newest position is further than this from the route\'s road line. Routes without a road line are skipped.', true,
+                             ['km' => ['More than (km)', 3]], ['km' => 'route_deviation_km']],
     ];
+
+    /** The driver app's SOS / breakdown / delay rows (includes/tripevents.php, TripEvents::TABLE). Tests point it at a fixture. */
+    public static string $eventsTable = 'driver_events';
+
+    /** A press of the same kind on the same trip this soon after another is that emergency again (= TripEvents::ALERT_REPEAT_SEC). */
+    private const SOS_REPEAT_SEC = 300;
+
+    /** @var array<string, bool> table => has the incident columns */
+    private static array $eventsReady = [];
+
+    /** The setting row behind one number of one rule. */
+    private static function paramKey(string $rule, string $p): string
+    {
+        return (string) (self::RULES[$rule][4][$p] ?? 'alert_' . $rule . '_' . $p);
+    }
 
     /**
      * The saved switches and numbers, defaults filled in.
@@ -70,7 +102,7 @@ final class AdminAlerts
         foreach (self::RULES as $rule => [, , $defOn, $params]) {
             $out[$rule] = ['on' => Settings::getBool('alert_' . $rule . '_on', $defOn)];
             foreach ($params as $p => [, $def]) {
-                $out[$rule][$p] = max(0, Settings::getInt('alert_' . $rule . '_' . $p, (int) $def));
+                $out[$rule][$p] = max(0, Settings::getInt(self::paramKey($rule, $p), (int) $def));
             }
         }
         return $out;
@@ -90,7 +122,7 @@ final class AdminAlerts
             foreach ($params as $p => [, $def]) {
                 $v = max(0, min(100000000, (int) ($in[$rule][$p] ?? $def)));
                 if ($v !== $old[$rule][$p]) {
-                    Settings::set('alert_' . $rule . '_' . $p, $v, 'int', 'alerts');
+                    Settings::set(self::paramKey($rule, $p), $v, 'int', 'alerts');
                     $changed++;
                 }
             }
@@ -191,16 +223,22 @@ final class AdminAlerts
      * with $store they are also written to the notification centre (once each).
      *
      * @param  array<string, array<string, mixed>>|null $prefs null = the saved preferences
+     * @param  int|null $now  the fleet-watch clock (tests); the day rules keep today's date
      * @return list<array{type: string, key: string, title: string, body: string, link: string, icon: string, new: bool}>
      */
-    public static function evaluate(?array $prefs = null, bool $store = true): array
+    public static function evaluate(?array $prefs = null, bool $store = true, ?int $now = null): array
     {
         $prefs ??= self::prefs();
         $on    = static fn(string $rule): bool => !empty($prefs[$rule]['on']);
         $num   = static fn(string $rule, string $p): int => (int) ($prefs[$rule][$p] ?? (self::RULES[$rule][3][$p][1] ?? 0));
         $today = todayISO();
         $week  = date('o-\WW');
-        $found = [];
+        /* 15 Nov 2026: the coach on the road. A driver's SOS / breakdown leads
+           the list (the WhatsApp digest takes the first eight); the GPS rules
+           join at the end. */
+        $watch = self::fleetWatch($prefs, $now);
+        $found = array_values(array_filter($watch, static fn(array $a): bool => $a['type'] === 'driver_sos'));
+        $watch = array_values(array_filter($watch, static fn(array $a): bool => $a['type'] !== 'driver_sos'));
         $add   = static function (string $type, string $key, string $title, string $body, string $link, string $icon) use (&$found): void {
             $found[] = ['type' => $type, 'key' => $key, 'title' => $title, 'body' => $body, 'link' => $link, 'icon' => $icon, 'new' => false];
         };
@@ -410,12 +448,340 @@ final class AdminAlerts
             }
         }
 
+        foreach ($watch as $a) {
+            $found[] = $a;
+        }
+
         if ($store) {
-            foreach ($found as $i => $a) {
+            /* The bell lists newest first (ORDER BY id DESC): an SOS is stored
+               LAST in the run, so it is the row on top. */
+            $order = array_keys($found);
+            usort($order, static fn(int $x, int $y): int => [(int) ($found[$x]['type'] === 'driver_sos'), $x] <=> [(int) ($found[$y]['type'] === 'driver_sos'), $y]);
+            foreach ($order as $i) {
+                $a = $found[$i];
                 $found[$i]['new'] = self::push($a['type'], $a['title'], $a['body'], $a['link'], $a['icon'], $a['key']) > 0;
             }
         }
         return $found;
+    }
+
+    /* =================================================================
+     *  15 Nov 2026 - fleet watch: the coach on the road
+     * ================================================================= */
+
+    /**
+     * The driver's SOS / breakdown rows and the GPS rules. Reads only
+     * (the incident table, live_trips, trip_locations, gps_trackers,
+     * route_geometry); a missing table or column is "nothing to say". In-app
+     * only - nothing here ever reaches a passenger.
+     *
+     *   gps_silent       status 'running', the bus due on the road
+     *                    (departure_at passed), newest fix - trip_locations,
+     *                    the trip's own last_ping_at or the bus's tracker -
+     *                    older than the minutes. Once per silence (the key
+     *                    carries the last fix's time).
+     *   overspeed        3+ fixes above the km/h in the last 15 minutes: the
+     *                    stored speed, else derived from the fix before;
+     *                    coarse fixes (> LiveTrips::MOVE_MAX_ACC_M) and
+     *                    anything implying > LiveTrips::MAX_JUMP_KMH are GPS
+     *                    noise. Once per trip per clock hour.
+     *   route_deviation  the trip's shown position (last_lat/lng, already
+     *                    accuracy- and jump-checked by LiveTrips::ingest) more
+     *                    than the km from the route's stored road line
+     *                    (RouteGeo); no road line = skipped. Once per trip per
+     *                    hour of the fix.
+     *
+     * @param  array<string, array<string, mixed>> $prefs  prefs() shape
+     * @return list<array{type: string, key: string, title: string, body: string, link: string, icon: string, new: bool}>
+     */
+    public static function fleetWatch(array $prefs, ?int $now = null): array
+    {
+        $now ??= time();
+        $on  = static fn(string $rule): bool => !empty($prefs[$rule]['on']);
+        $num = static fn(string $rule, string $p): int => (int) ($prefs[$rule][$p] ?? (self::RULES[$rule][3][$p][1] ?? 0));
+        $out = [];
+
+        /* a) The driver app already rang the bell when it was pressed; this is
+              the reminder for one nobody has closed. */
+        if ($on('driver_sos')) {
+            $after  = max(1, min(1440, $num('driver_sos', 'min')));
+            $events = self::openIncidents();   // newest first
+            /* The driver app rings ONE bell for a press repeated on the same
+               trip within SOS_REPEAT_SEC of an earlier one (the same
+               emergency, TripEvents::alertOffice); it gets no reminder of its
+               own either - one emergency, one reminder. */
+            $repeat = [];
+            $prevAt = [];
+            foreach (array_reverse($events) as $ev) {   // oldest first
+                if ($ev['live_trip_id'] === null) {
+                    continue;
+                }
+                $g  = (int) $ev['live_trip_id'] . ':' . (string) $ev['kind'];
+                $at = (int) strtotime((string) $ev['created_at']);
+                if (isset($prevAt[$g]) && $prevAt[$g] >= $at - self::SOS_REPEAT_SEC) {
+                    $repeat[(int) $ev['id']] = true;
+                }
+                $prevAt[$g] = max($prevAt[$g] ?? 0, $at);
+            }
+            foreach ($events as $ev) {
+                if (isset($repeat[(int) $ev['id']])) {
+                    continue;
+                }
+                $age = $now - (int) strtotime((string) $ev['created_at']);
+                if ($age >= $after * 60) {
+                    $out[] = self::incidentAlert($ev, intdiv($age, 60));
+                }
+            }
+        }
+        if (!$on('gps_silent') && !$on('overspeed') && !$on('route_deviation')) {
+            return $out;
+        }
+
+        try {
+            require_once INCLUDE_PATH . '/routegeo.php';   // + etaalerts.php, livetrips.php
+            if (!LiveTrips::available()) {
+                return $out;
+            }
+            $trips = Database::fetchAll(
+                "SELECT lt.id, lt.route_id, lt.departure_at, lt.started_at, lt.last_ping_at, lt.last_lat, lt.last_lng,
+                        COALESCE(lt.bus_id, s.bus_id) AS bus_ref,
+                        (SELECT MAX(tl.recorded_at) FROM trip_locations tl WHERE tl.trip_id = lt.id) AS last_fix,
+                        r.from_city, r.to_city, COALESCE(s.dep_time_override, r.dep_time) AS dep,
+                        b.bus_number, d.full_name AS driver_name, d.phone AS driver_phone
+                   FROM live_trips lt
+                   JOIN routes r ON r.id = lt.route_id
+                   LEFT JOIN schedules s ON s.id = lt.schedule_id
+                   LEFT JOIN buses b ON b.id = COALESCE(lt.bus_id, s.bus_id)
+                   LEFT JOIN drivers d ON d.id = lt.driver_id
+                  WHERE lt.status = 'running'
+                    AND (s.id IS NULL OR s.status NOT IN ('arrived','cancelled'))
+                    AND COALESCE(lt.last_ping_at, lt.started_at, lt.departure_at) >= :since
+                  ORDER BY lt.id
+                  LIMIT 200",
+                ['since' => date('Y-m-d H:i:s', $now - LiveTrips::STALE_TRIP_H * 3600)]
+            );
+        } catch (Throwable $e) {
+            try {
+                Logger::warning('AdminAlerts fleet watch failed', ['error' => $e->getMessage()]);
+            } catch (Throwable $ignored) {
+            }
+            return $out;
+        }
+        if ($trips === []) {
+            return $out;
+        }
+
+        $ts   = static fn($v): int => $v === null || $v === '' ? 0 : (int) strtotime((string) $v);
+        $name = static fn(array $t): string => ((string) ($t['bus_number'] ?? '') !== '' ? 'Bus ' . $t['bus_number'] . ' · ' : '')
+            . trim($t['from_city'] . ' → ' . $t['to_city']) . ((string) ($t['dep'] ?? '') !== '' ? ' ' . substr((string) $t['dep'], 0, 5) : '');
+        $crew = static fn(array $t): string => (string) ($t['driver_name'] ?? '') !== ''
+            ? 'Driver ' . $t['driver_name'] . ((string) ($t['driver_phone'] ?? '') !== '' ? ' (' . $t['driver_phone'] . ')' : '') . '. '
+            : '';
+        $span = static fn(int $min): string => $min < 120 ? $min . ' min' : intdiv($min, 60) . ' h ' . ($min % 60) . ' min';
+        $link = '/admin/map.php';   // the live GPS radar: driver phones, trackers, road lines
+
+        /* --- b) GPS silent --- */
+        if ($on('gps_silent')) {
+            $limit   = max(2, min(1440, $num('gps_silent', 'min')));
+            $tracker = [];
+            try {
+                foreach (Database::fetchAll(
+                    'SELECT bus_id, MAX(last_fix_at) AS f FROM gps_trackers WHERE is_active = 1 AND last_fix_at IS NOT NULL GROUP BY bus_id'
+                ) as $r) {
+                    $tracker[(int) $r['bus_id']] = $ts($r['f']);
+                }
+            } catch (Throwable $e) {
+                // no tracker table on this server: the trip's own fixes decide
+            }
+            foreach ($trips as $t) {
+                $dep = $ts($t['departure_at']);
+                if ($dep <= 0 || $dep > $now) {
+                    continue;   // not due on the road yet
+                }
+                $last = max($ts($t['last_ping_at']), $ts($t['last_fix']), $tracker[(int) ($t['bus_ref'] ?? 0)] ?? 0);
+                $ref  = $last > 0 ? $last : max($ts($t['started_at']), $dep);
+                $mins = intdiv($now - $ref, 60);
+                if ($ref <= 0 || $now - $ref <= $limit * 60) {
+                    continue;
+                }
+                $out[] = ['type' => 'gps_silent', 'key' => 'gpssilent:' . (int) $t['id'] . ':' . $ref,
+                    'title' => 'GPS silent ' . $span($mins) . ' · ' . $name($t),
+                    'body'  => ($last > 0 ? 'Last position ' . date('j M H:i', $last) . '. ' : 'No GPS position since the trip started (' . date('j M H:i', $ref) . '). ')
+                             . $crew($t) . 'The phone may be off, out of signal or the app closed — call the driver.',
+                    'link' => $link, 'icon' => '📡', 'new' => false];
+            }
+        }
+
+        /* --- c) over-speed: the last 15 minutes of fixes --- */
+        if ($on('overspeed')) {
+            $limit = max(30, min(LiveTrips::MAX_JUMP_KMH, $num('overspeed', 'kmh')));
+            $since = $now - 15 * 60;
+            $ids   = array_map(static fn(array $t): int => (int) $t['id'], $trips);
+            $byId  = array_combine($ids, $trips);
+            $fixes = [];
+            try {
+                $in = implode(',', array_fill(0, count($ids), '?'));
+                foreach (Database::fetchAll(
+                    "SELECT trip_id, recorded_at, latitude, longitude, speed_kmh, accuracy_m FROM trip_locations
+                      WHERE trip_id IN ($in) AND recorded_at >= ? AND recorded_at <= ?
+                      ORDER BY trip_id, recorded_at, id",
+                    array_merge($ids, [date('Y-m-d H:i:s', $since - 10 * 60), date('Y-m-d H:i:s', $now + 120)])
+                ) as $f) {
+                    $fixes[(int) $f['trip_id']][] = $f;
+                }
+            } catch (Throwable $e) {
+            }
+            foreach ($fixes as $tripId => $list) {
+                $prev = null; $fast = 0; $top = 0.0; $topAt = 0; $firstFast = 0; $lastFast = 0;
+                foreach ($list as $f) {
+                    if ($f['accuracy_m'] !== null && (float) $f['accuracy_m'] > LiveTrips::MOVE_MAX_ACC_M) {
+                        continue;   // too coarse to say anything
+                    }
+                    $pt  = ['lat' => (float) $f['latitude'], 'lng' => (float) $f['longitude'], 'ts' => $ts($f['recorded_at'])];
+                    $kmh = $f['speed_kmh'] !== null ? (float) $f['speed_kmh'] : null;
+                    if ($kmh === null && $prev !== null && $pt['ts'] - $prev['ts'] >= 10) {
+                        $kmh = EtaAlerts::haversineKm($prev['lat'], $prev['lng'], $pt['lat'], $pt['lng']) / (($pt['ts'] - $prev['ts']) / 3600);
+                        if ($kmh > LiveTrips::MAX_JUMP_KMH) {
+                            continue;   // a jump no coach can make: this fix is noise, the one before stays the reference
+                        }
+                    }
+                    $prev = $pt;
+                    if ($pt['ts'] < $since || $kmh === null || $kmh > LiveTrips::MAX_JUMP_KMH) {
+                        continue;
+                    }
+                    if ($kmh > $limit) {
+                        $fast++;
+                        $firstFast = $firstFast ?: $pt['ts'];
+                        $lastFast  = $pt['ts'];
+                        if ($kmh > $top) { $top = $kmh; $topAt = $pt['ts']; }
+                    }
+                }
+                // 3+ fast fixes spread over at least a minute: a 1 Hz tracker's 3-second burst is not over-speeding.
+                if ($fast >= 3 && $lastFast - $firstFast >= 60 && isset($byId[$tripId])) {
+                    $t = $byId[$tripId];
+                    $out[] = ['type' => 'overspeed', 'key' => 'speed:' . $tripId . ':' . date('YmdH', $now),
+                        'title' => 'Over-speed ' . (int) round($top) . ' km/h · ' . $name($t),
+                        'body'  => $fast . ' positions above ' . $limit . ' km/h in the last 15 minutes (fastest ' . (int) round($top) . ' km/h at ' . date('H:i', $topAt) . '). '
+                                 . $crew($t) . 'Call the driver to slow down.',
+                        'link' => $link, 'icon' => '🚨', 'new' => false];
+                }
+            }
+        }
+
+        /* --- d) off the road line --- */
+        if ($on('route_deviation')) {
+            $limit = max(1, min(50, $num('route_deviation', 'km')));
+            foreach ($trips as $t) {
+                $at = $ts($t['last_ping_at']);
+                if ($t['last_lat'] === null || $t['last_lng'] === null || $at <= 0 || $at < $now - 2 * 3600 || $at > $now + 120
+                    || $ts($t['departure_at']) > $now) {
+                    continue;   // no recent position, or the bus is not due on the road yet (a depot off the line)
+                }
+                try {
+                    $road = RouteGeo::load((int) $t['route_id']);
+                    $pos  = $road !== null ? RouteGeo::locate($road, (float) $t['last_lat'], (float) $t['last_lng']) : null;
+                } catch (Throwable $e) {
+                    $pos = null;
+                }
+                if ($pos === null || $pos['off'] <= $limit) {
+                    continue;
+                }
+                $out[] = ['type' => 'route_deviation', 'key' => 'offroute:' . (int) $t['id'] . ':' . date('YmdH', $at),
+                    'title' => 'Off the route ' . number_format($pos['off'], 1) . ' km · ' . $name($t),
+                    'body'  => 'Position at ' . date('H:i', $at) . ' is ' . number_format($pos['off'], 1) . ' km from the road line (about km '
+                             . (int) round($pos['km']) . ' of the route). ' . $crew($t) . 'Check with the driver: a diversion, a wrong turn or a stop off the road.',
+                    'link' => $link, 'icon' => '🧭', 'new' => false];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Does the incident table carry the incident columns? A server without
+     * database/upgrade-2026-11-15-trip-events.sql says no (as would the older
+     * passenger-reminder `trip_events`, booking_id / event), and the SOS rule
+     * stays quiet.
+     */
+    private static function incidentsReady(): bool
+    {
+        $t = self::$eventsTable;
+        if (preg_match('/^[A-Za-z0-9_]+$/', $t) !== 1) {
+            return false;
+        }
+        if (!array_key_exists($t, self::$eventsReady)) {
+            try {
+                Database::fetchAll("SELECT id, kind, live_trip_id, resolved_at FROM `$t` LIMIT 0");
+                self::$eventsReady[$t] = true;
+            } catch (Throwable $e) {
+                self::$eventsReady[$t] = false;
+            }
+        }
+        return self::$eventsReady[$t];
+    }
+
+    /**
+     * Open SOS / breakdown rows (resolved_at NULL), newest first, with the
+     * trip's route and bus and the driver who pressed it (driver_ref
+     * 'D<drivers.id>', as TripEvents writes it) when those tables are there.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function openIncidents(): array
+    {
+        if (!self::incidentsReady()) {
+            return [];
+        }
+        $t     = self::$eventsTable;
+        $where = "e.kind IN ('sos','breakdown') AND e.resolved_at IS NULL";
+        try {
+            return Database::fetchAll(
+                "SELECT e.id, e.kind, e.live_trip_id, e.schedule_id, e.bus_label, e.driver_ref, e.stop_name, e.note, e.created_at,
+                        r.from_city, r.to_city, COALESCE(s.dep_time_override, r.dep_time) AS dep,
+                        b.bus_number, d.full_name AS driver_name, d.phone AS driver_phone
+                   FROM `$t` e
+                   LEFT JOIN live_trips lt ON lt.id = e.live_trip_id
+                   LEFT JOIN schedules s ON s.id = COALESCE(e.schedule_id, lt.schedule_id)
+                   LEFT JOIN routes r ON r.id = COALESCE(s.route_id, lt.route_id)
+                   LEFT JOIN buses b ON b.id = COALESCE(lt.bus_id, s.bus_id)
+                   LEFT JOIN drivers d ON e.driver_ref = CONCAT('D', d.id)
+                  WHERE $where ORDER BY e.id DESC LIMIT 50"
+            );
+        } catch (Throwable $e) {
+            try {   // live-tracking tables missing: the incident alone still rings the bell
+                return Database::fetchAll(
+                    "SELECT e.id, e.kind, e.live_trip_id, e.schedule_id, e.bus_label, e.driver_ref, e.stop_name, e.note, e.created_at
+                       FROM `$t` e WHERE $where ORDER BY e.id DESC LIMIT 50"
+                );
+            } catch (Throwable $e2) {
+                return [];
+            }
+        }
+    }
+
+    /** @param array<string, mixed> $ev  an openIncidents() row */
+    private static function incidentAlert(array $ev, int $openMin): array
+    {
+        $sos   = (string) $ev['kind'] === 'sos';
+        $at    = (int) strtotime((string) $ev['created_at']);
+        $bus   = trim((string) (($ev['bus_number'] ?? '') !== '' ? $ev['bus_number'] : ($ev['bus_label'] ?? '')));
+        $route = ($ev['from_city'] ?? null) !== null ? trim($ev['from_city'] . ' → ' . $ev['to_city']) . (($ev['dep'] ?? '') !== '' ? ' ' . substr((string) $ev['dep'], 0, 5) : '') : '';
+        $ref   = trim((string) ($ev['driver_ref'] ?? ''));
+        $who   = ($ev['driver_name'] ?? '') !== '' ? $ev['driver_name'] . (($ev['driver_phone'] ?? '') !== '' ? ' (' . $ev['driver_phone'] . ')' : '')
+               : (preg_match('/^D\d+$/', $ref) === 1 ? '' : $ref);   // a bare id says nothing to the office
+        $note  = trim((string) ($ev['note'] ?? ''));
+        $stop  = trim((string) ($ev['stop_name'] ?? ''));
+        $open  = $openMin < 120 ? $openMin . ' min' : intdiv($openMin, 60) . ' h ' . ($openMin % 60) . ' min';
+        return [
+            'type'  => 'driver_sos',
+            'key'   => 'sos:' . (int) $ev['id'] . ':' . date('ymdHi', $at),
+            'title' => ($sos ? '🆘 SOS' : '🛠️ Breakdown') . ' still open ' . $open . ($bus !== '' ? ' · Bus ' . $bus : '') . ($route !== '' ? ' · ' . $route : ''),
+            'body'  => ($note !== '' ? $note . '. ' : '') . ($stop !== '' ? 'Near ' . $stop . '. ' : '') . ($who !== '' ? 'Driver ' . $who . '. ' : '')
+                     . 'Pressed ' . date('j M H:i', $at) . ' and nobody has marked it handled. '
+                     . ($sos ? 'Call the driver now.' : 'Arrange help for the coach.') . ' Mark it handled once dealt with.',
+            'link'  => '/admin/map.php',
+            'icon'  => $sos ? '🆘' : '🛠️',
+            'new'   => false,
+        ];
     }
 
     /**

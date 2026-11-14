@@ -135,6 +135,39 @@ final class RoutePages
         ];
     }
 
+    /**
+     * The passengers' own rating (15 Nov 2026) - or null, and then the page
+     * shows none. Counted only from APPROVED reviews (feedback.is_public = 1,
+     * the office's publish toggle in Admin -> Customer Ratings) of a REAL
+     * journey (a confirmed / completed booking), one per booking, and only
+     * once there are at least review_min_for_rating of them (default 5). A
+     * rating is never made up or shown from too few reviews.
+     *
+     * @return array{avg: float, count: int}|null
+     */
+    public static function rating(): ?array
+    {
+        $min = max(1, Settings::getInt('review_min_for_rating', 5));
+        try {
+            $row = Database::fetch(
+                "SELECT COUNT(*) AS n, AVG(f.rating) AS a
+                   FROM feedback f
+                   JOIN bookings b ON b.id = f.booking_id
+                  WHERE f.is_public = 1
+                    AND f.rating BETWEEN 1 AND 5
+                    AND b.status IN ('confirmed', 'completed')
+                    AND f.id = (SELECT MAX(f2.id) FROM feedback f2 WHERE f2.booking_id = f.booking_id AND f2.is_public = 1)"
+            );
+        } catch (Throwable $e) {
+            return null;   // no feedback table on this database: no rating
+        }
+        $n = (int) ($row['n'] ?? 0);
+        if ($n < $min || $row['a'] === null) {
+            return null;
+        }
+        return ['avg' => round((float) $row['a'], 1), 'count' => $n];
+    }
+
     /* ----------------------------------------------------------------
      *  Town names in Devanagari, so the Hindi page says "सूरत से नेपाल बस"
      *  and the Nepali page "सुरत देखि" — the words people actually search.
@@ -278,6 +311,7 @@ final class RoutePages
                 'refundPromise' => 'If the bus is cancelled by us, the full amount is returned.',
                 'amen'    => 'On board', 'book' => 'Book a seat online', 'wa' => 'Book on WhatsApp', 'call' => 'Call the office',
                 'faq'     => 'Questions people ask', 'other' => 'Other routes', 'trust' => 'A registered Indian company · CIN %s · %s',
+                'rating'  => '%s / 5 · %d passenger ratings',
                 'q1' => 'Which documents do I need at the Rupaidiha (India–Nepal) border?', 'a1' => 'Indian citizens: a valid Indian passport or Voter ID (EPIC). Aadhaar alone is often not accepted at the border, so do not travel with only Aadhaar. Nepali citizens: citizenship certificate or passport. Children: birth certificate or a school ID with a photo. Carry the photo ID whose name is on the ticket. Details: /travel-info',
                 'q2' => 'Where exactly do I board in %s?', 'a2' => 'At the boarding point on your ticket, 30 minutes before the printed time. Every ticket carries a "Where is my bus?" link that shows the coach live and the minutes to your stop.',
                 'q3' => 'Can I pay from Nepal?', 'a3' => 'Yes — an eSewa QR is on the payment page, or a friend in India can pay by UPI, or pay cash to the crew on boarding. The seat is confirmed once the office sees the payment.',
@@ -298,6 +332,7 @@ final class RoutePages
                 'refundPromise' => 'बस हमारी ओर से रद्द हो तो पूरा पैसा वापस।',
                 'amen'    => 'बस में', 'book' => 'ऑनलाइन सीट बुक करें', 'wa' => 'WhatsApp पर बुक करें', 'call' => 'ऑफ़िस को कॉल करें',
                 'faq'     => 'लोग क्या पूछते हैं', 'other' => 'दूसरे रूट', 'trust' => 'रजिस्टर्ड भारतीय कंपनी · CIN %s · %s',
+                'rating'  => '%s / 5 · %d यात्रियों की रेटिंग',
                 'q1' => 'रूपईडीहा (भारत–नेपाल) बॉर्डर पर कौन से कागज़ चाहिए?', 'a1' => 'भारतीय नागरिक: वैध भारतीय पासपोर्ट या वोटर ID (EPIC)। बॉर्डर पर अकेले आधार को अक्सर नहीं माना जाता, इसलिए सिर्फ़ आधार लेकर यात्रा न करें। नेपाली नागरिक: नागरिकता प्रमाणपत्र या पासपोर्ट। बच्चों के लिए जन्म प्रमाणपत्र या फोटो वाला स्कूल ID। टिकट वाले नाम की फोटो ID साथ रखें। विस्तार: /travel-info',
                 'q2' => '%s में ठीक कहाँ चढ़ना है?', 'a2' => 'टिकट पर लिखे बोर्डिंग पॉइंट पर, समय से 30 मिनट पहले। हर टिकट में "मेरी बस कहाँ है?" लिंक होता है जो बस को लाइव और आपके स्टॉप तक के मिनट दिखाता है।',
                 'q3' => 'क्या नेपाल से पैसे दे सकते हैं?', 'a3' => 'हाँ — पेमेंट पेज पर eSewa QR है, या भारत में कोई मित्र UPI से दे सकता है, या बस में चढ़ते समय नकद। ऑफ़िस को पेमेंट दिखते ही सीट पक्की।',
@@ -318,6 +353,7 @@ final class RoutePages
                 'refundPromise' => 'बस हाम्रो तर्फबाट रद्द भए पूरै रकम फिर्ता।',
                 'amen'    => 'बसमा', 'book' => 'अनलाइन सिट बुक गर्नुहोस्', 'wa' => 'WhatsApp मा बुक गर्नुहोस्', 'call' => 'कार्यालयलाई फोन',
                 'faq'     => 'मानिसहरूले सोध्ने प्रश्न', 'other' => 'अरू रुट', 'trust' => 'दर्ता भएको भारतीय कम्पनी · CIN %s · %s',
+                'rating'  => '%s / 5 · %d यात्रुको रेटिङ',
                 'q1' => 'रुपैडिहा (भारत–नेपाल) बोर्डरमा के कागज चाहिन्छ?', 'a1' => 'भारतीय नागरिक: वैध भारतीय राहदानी (पासपोर्ट) वा मतदाता परिचयपत्र (EPIC)। बोर्डरमा आधार मात्र प्रायः मान्य हुँदैन, त्यसैले आधार मात्र लिएर यात्रा नगर्नुहोस्। नेपाली नागरिक: नागरिकता प्रमाणपत्र वा राहदानी। बालबालिकाका लागि जन्मदर्ता वा फोटो भएको स्कुल ID। टिकटमा भएकै नामको फोटो ID साथमा राख्नुहोस्। विस्तृत: /travel-info',
                 'q2' => '%s मा ठ्याक्कै कहाँ चढ्ने?', 'a2' => 'टिकटमा लेखिएको चढ्ने ठाउँमा, समयभन्दा ३० मिनेट अघि। हरेक टिकटमा "मेरो बस कहाँ छ?" लिङ्क हुन्छ जसले बस लाइभ र तपाईंको स्टपसम्मको मिनेट देखाउँछ।',
                 'q3' => 'नेपालबाट पैसा तिर्न मिल्छ?', 'a3' => 'मिल्छ — भुक्तानी पेजमा eSewa QR छ, वा भारतमा साथीले UPI बाट तिर्न सक्छ, वा बस चढ्दा नगद। कार्यालयले भुक्तानी देखेपछि सिट पक्का।',
@@ -410,10 +446,21 @@ final class RoutePages
         $guj     = strtolower(trim((string) ($f['toNepal'] ? $r['from_city'] : $r['to_city'])));
         $bookUrl = '/?src=route&dir=' . ($f['toNepal'] ? 'go' : 'back') . '&town=' . rawurlencode($guj) . '#/';
 
+        /* 15 Nov 2026: the passengers' own rating - only from enough approved real
+           reviews (rating()), else nothing at all on the page or in the JSON-LD. */
+        $rating   = self::rating();
+        $rateHtml = $rating === null ? '' : '<p class="rate"><b aria-hidden="true">★</b> '
+            . $e(sprintf($w['rating'], number_format($rating['avg'], 1), $rating['count'])) . '</p>';
+        $org = ['@type' => 'LocalBusiness', '@id' => rtrim(APP_URL, '/') . '/#org', 'name' => $f['company'], 'telephone' => $f['phone'], 'address' => ['@type' => 'PostalAddress', 'streetAddress' => $f['address'], 'addressRegion' => 'Gujarat', 'addressCountry' => 'IN'], 'url' => rtrim(APP_URL, '/') . '/', 'areaServed' => ['India', 'Nepal'], 'openingHours' => 'Mo-Su 07:00-23:00'];
+        if ($rating !== null) {
+            $org['aggregateRating'] = ['@type' => 'AggregateRating', 'ratingValue' => number_format($rating['avg'], 1),
+                'reviewCount' => (string) $rating['count'], 'bestRating' => '5', 'worstRating' => '1'];
+        }
+
         $ld = [
             '@context' => 'https://schema.org',
             '@graph' => [
-                ['@type' => 'LocalBusiness', '@id' => rtrim(APP_URL, '/') . '/#org', 'name' => $f['company'], 'telephone' => $f['phone'], 'address' => ['@type' => 'PostalAddress', 'streetAddress' => $f['address'], 'addressRegion' => 'Gujarat', 'addressCountry' => 'IN'], 'url' => rtrim(APP_URL, '/') . '/', 'areaServed' => ['India', 'Nepal'], 'openingHours' => 'Mo-Su 07:00-23:00'],
+                $org,
                 ['@type' => 'Trip', 'name' => $h1, 'description' => $lead, 'url' => $canon, 'inLanguage' => $lang, 'provider' => ['@id' => rtrim(APP_URL, '/') . '/#org'],
                  'departureTime' => $f['dep'], 'arrivalTime' => $f['arr'],
                  'itinerary' => array_map(static fn(array $s): array => ['@type' => 'Place', 'name' => (string) $s['stop_name']], array_merge($f['boarding'], $f['drop'])),
@@ -446,6 +493,7 @@ final class RoutePages
 <main>
 <h1>{$e($h1)}</h1>
 <p class="lead">{$e($lead)}</p>
+{$rateHtml}
 <div class="cta">
   <a class="btn hot" href="{$e($bookUrl)}">🎫 {$e($w['book'])}</a>
   <a class="btn wa" href="{$waLink}" target="_blank" rel="noopener">💬 {$e($w['wa'])}</a>
@@ -553,6 +601,7 @@ main{max-width:860px;margin:0 auto;padding:6px 16px 40px}
 h1{font-size:28px;line-height:1.2;margin:8px 0 8px}
 h2{font-size:18px;margin:0 0 10px}
 .lead{font-size:16.5px;color:var(--muted);margin-bottom:14px}
+.rate{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:700;margin:-4px 0 14px}.rate b{color:var(--gold);font-size:18px;line-height:1}
 .cta{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px}
 .btn{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:10px 18px;border-radius:14px;font-weight:800;text-decoration:none;border:1.5px solid var(--line);background:var(--card);color:var(--royal)}
 .btn:hover{background:var(--royal-tint);border-color:var(--royal)}

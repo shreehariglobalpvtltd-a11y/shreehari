@@ -18,6 +18,9 @@ require_once __DIR__ . '/_init.php';
 require_once INCLUDE_PATH . '/sitefacts.php';
 
 try {
+    // 15 Nov 2026: per-IP ceiling far above any real visitor (cached for 60 s anyway)
+    Security::requireRateLimit('timetable', Security::clientIp(), 120, 60);
+
     $date = Security::clean($_GET['date'] ?? '', 10);
     if ($date === '' || !Security::isValidDate($date)) {
         $date = todayISO();

@@ -18,6 +18,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require __DIR__ . '/_export.php';
+require_once INCLUDE_PATH . '/desktools.php';   // 15 Nov 2026 (P4): ID numbers masked in the list
 $admin = admin_boot('customers.view');
 if (Auth::isCounterAgent()) {
     admin_header('Customers', 'customers');
@@ -451,7 +452,15 @@ if ($flash !== null) {
   <?php foreach ($rows as $i => $r):
     $name   = $r['uname'] ?: ($r['lead_name'] ?: '—');
     $status = (int) ($r['is_blocked'] ?? 0) === 1 ? 'blocked' : ((int) $r['uid'] > 0 ? 'active' : 'guest');
-    $doc    = trim((string) (($r['u_id_type'] ?: $r['b_id_type']) ?? '') . ' ' . (string) (($r['u_id_number'] ?: $r['b_id_number']) ?? ''));
+    /* 15 Nov 2026 (P4): the list and the View panel show the ID masked
+       (DeskTools::maskId); the full number stays in the Edit form, and a
+       super-admin's "dekhau" fetches it once with an audit row. The search
+       index carries the masked text too - ?q= still finds a full number
+       server-side. */
+    $docType = (string) (($r['u_id_type'] ?: $r['b_id_type']) ?? '');
+    $docNum  = (string) (($r['u_id_number'] ?: $r['b_id_number']) ?? '');
+    $doc     = DeskTools::idLabel($docType, $docNum);
+    $docHtml = DeskTools::idHtml($docType, $docNum, 'cu', (string) $r['phone']);
     $trips  = (int) $r['cnt'] >= 2 ? '2' : (string) (int) $r['cnt'];
     $rid    = 'c' . $i;
     $search = strtolower(implode(' ', [$name, $r['phone'], $r['email'] ?? '', $r['last_pnr'] ?? '', $doc]));
@@ -459,7 +468,7 @@ if ($flash !== null) {
     <tr data-search="<?= $e($search) ?>" data-status="<?= $status ?>" data-trips="<?= $trips ?>" data-lastym="<?= $e(substr((string) ($r['last_at'] ?? ''), 0, 7)) ?>"<?= $status === 'blocked' ? ' style="background:#fbeaea"' : '' ?>>
       <td><b><?= $e($name) ?></b><?php if (!empty($r['email'])): ?><div class="muted" style="font-size:11.5px"><?= $e($r['email']) ?></div><?php endif; ?></td>
       <td class="mono" data-sort="<?= $e($r['phone']) ?>">+<?= $e($r['country_code'] ?: '91') ?> <?= $e($r['phone']) ?></td>
-      <td><?= $doc !== '' ? $e($doc) : '<span class="muted">—</span>' ?></td>
+      <td><?= $docHtml ?></td>
       <td class="num"><?= (int) $r['cnt'] ?></td>
       <td class="num"><?= (int) $r['pax'] ?></td>
       <td class="num" data-sort="<?= (float) $r['spent'] ?>"><?= number_format((float) $r['spent']) ?></td>
@@ -478,7 +487,7 @@ if ($flash !== null) {
         <div class="kv"><label>Full name</label><b><?= $e($name) ?></b></div>
         <div class="kv"><label>Mobile</label><b>+<?= $e($r['country_code'] ?: '91') ?> <?= $e($r['phone']) ?></b></div>
         <div class="kv"><label>Email</label><b><?= $e($r['email'] ?: '—') ?></b></div>
-        <div class="kv"><label>Document</label><b><?= $doc !== '' ? $e($doc) : '—' ?></b></div>
+        <div class="kv"><label>Document</label><b><?= $doc !== '' ? $e($doc) : '—' ?></b></div><?php /* masked; the full number is in Edit or behind "dekhau" in the row */ ?>
         <div class="kv"><label>Bookings · seats · spent</label><b><?= (int) $r['cnt'] ?> · <?= (int) $r['pax'] ?> · ₹<?= number_format((float) $r['spent']) ?></b></div>
         <div class="kv"><label>First / last booking</label><b><?= $e($r['first_at'] ?: '—') ?><br><?= $e($r['last_at'] ?: '—') ?></b></div>
         <div class="kv"><label>Loyalty points</label><b><?= (int) ($r['loyalty_points'] ?? 0) ?></b></div>
@@ -531,5 +540,6 @@ if ($flash !== null) {
   </span>
 </div>
 <?php endif; ?>
+<?= DeskTools::revealAssets() ?>
 <p class="muted" style="font-size:12px;margin-top:8px">Every booking collects the traveller's name and mobile (sign-in) and the boarding details; document type / number are optional at booking and can be completed here. Mobile numbers on tickets are never rewritten — a customer's new number is set on their profile (📋 Profile → Change mobile number), which keeps the old number linked so the history stays together.</p>
 <?php admin_footer(); ?>

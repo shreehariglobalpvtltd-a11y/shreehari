@@ -12,6 +12,10 @@
  *    lat/lng line across fields — and it never moves on its own: no live
  *    fix = no moving bus; a "last seen" coach is grey and still.
  *  · auto-fit to bus + pickup until the passenger moves the map.
+ *  · 15 Nov 2026: the coach is the real coach photo (owner rule: realistic
+ *    only) with a small arrow badge turned to its heading - the phone's /
+ *    tracker's course, else the road's direction under it, else the step
+ *    between two fixes. OpenFreeMap down = a plain OpenStreetMap map.
  *
  *  Updates ride on the page's own 15 s refresh (track.php paint() calls
  *  SHG_TRACK.mapUpdate) — no second poll.
@@ -24,11 +28,37 @@
   var card = document.getElementById('mapCard'), btn = document.getElementById('mapBtn'), sub = document.getElementById('mapSub');
   var MLG = '4.7.1', OWN = '/assets/vendor/maplibre-gl-' + MLG + '/maplibre-gl', CDN = 'https://unpkg.com/maplibre-gl@' + MLG + '/dist/maplibre-gl';
   var GREY = '#9AA5B8', BLUE = '#2F7BE5';
+  var COACH = '/assets/img/bus-shg-sm.webp', HD = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l5.2 12.8L8 11.2l-5.2 3.1z"/></svg>';
+  var OFM = 'https://tiles.openfreemap.org/styles/';
+  /* Raster tiles load as <img> with refreshExpiredTiles:false (the page CSP allows https images). */
+  var OSM = { version: 8, sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' } },
+    layers: [{ id: 'osm', type: 'raster', source: 'osm' }] };
   var reduce = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   var map = null, ready = false, box = null, V = null, line = null, cum = [], merc = [], stops = [], stopEls = [];
   var bus = null, busEl = null, busLbl = null, busKm = null, anim = 0, userMoved = false, fitBtn = null, chip = null, lastD = null;
+  var hd = null, lastLL = null;
 
   function css(href) { var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; document.head.appendChild(l); }
+  function ownCss() {
+    var s = document.createElement('style');
+    s.textContent = '.tm-bus img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;background:#fff}'
+      + '.tm-hd{position:absolute;top:-9px;right:-9px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;pointer-events:none}'
+      + '.tm-hd[hidden],.tm-bus.last .tm-hd{display:none}.tm-hd svg{width:13px;height:13px;display:block}.tm-hd path{fill:#1F4FA3}';
+    document.head.appendChild(s);
+  }
+  /* The OpenFreeMap style, read first; anything wrong with it (down, slow, blocked) = the plain OSM raster map. */
+  function pickStyle(url) {
+    return new Promise(function (res) {
+      var done = false, ctl = window.AbortController ? new AbortController() : null, tm = 0;
+      function fin(s) { if (done) return; done = true; clearTimeout(tm); res(s); }
+      tm = setTimeout(function () { if (ctl) ctl.abort(); fin(OSM); }, 8000);
+      fetch(url, { credentials: 'omit', signal: ctl ? ctl.signal : undefined })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (j) { fin(j && j.version === 8 && j.sources && j.layers ? j : OSM); })
+        .catch(function () { fin(OSM); });
+    });
+  }
   function fail() {
     if (box) box.remove();
     btn.classList.remove('hidden'); btn.disabled = false; btn.textContent = T.mapFail;
@@ -107,14 +137,50 @@
   function busAt(ll) {
     if (!bus) {
       busEl = document.createElement('div'); busEl.className = 'tm-bus';
-      busEl.innerHTML = '<i></i>🚌<span></span>';
+      busEl.innerHTML = '<i></i><img alt="" decoding="async"><b class="tm-hd" hidden>' + HD + '</b><span></span>';
+      busEl.querySelector('img').src = COACH;
       busLbl = busEl.querySelector('span');
       bus = new maplibregl.Marker({ element: busEl }).setLngLat(ll).addTo(map);
+      setHd(hd);
     } else {
       bus.setLngLat(ll);
     }
   }
-  function busOff() { cancelAnimationFrame(anim); anim = 0; busKm = null; if (bus) { bus.remove(); bus = null; } }
+  function busOff() { cancelAnimationFrame(anim); anim = 0; busKm = null; hd = null; lastLL = null; if (bus) { bus.remove(); bus = null; } }
+  /* Heading A -> B ([lng, lat]); null under 25 m (GPS jitter, or standing still). */
+  function brgOf(a, b) {
+    if (!a || !b || hav(a, b) * 1000 < 25) return null;
+    var p1 = rad(a[1]), p2 = rad(b[1]), dl = rad(b[0] - a[0]);
+    var deg = Math.atan2(Math.sin(dl) * Math.cos(p2), Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl)) * 180 / Math.PI;
+    return (Math.round(deg) % 360 + 360) % 360;
+  }
+  /* The road's own direction at km (the line runs in travel order). */
+  function roadBrg(km) {
+    var n = cum.length;
+    if (n < 2) return null;
+    km = Math.max(0, Math.min(cum[n - 1], km));
+    var lo = 0, hi = n - 1;
+    while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (cum[mid] <= km) lo = mid; else hi = mid; }
+    for (var j = lo + 1; j < n && j <= lo + 50; j++) { var b = brgOf(line[lo], line[j]); if (b !== null) return b; }
+    return null;
+  }
+  function setHd(v) {
+    var i = busEl && busEl.querySelector('.tm-hd');
+    if (!i) return;
+    if (v === null) { i.hidden = true; return; }
+    i.hidden = false;
+    i.style.transform = 'rotate(' + Math.round(v - (map ? map.getBearing() : 0)) + 'deg)';
+  }
+  /* The phone's / tracker's course while it moves; else the road under the coach; else the step since the last fix. */
+  function heading(d, road) {
+    var b = null, rep = d.bearing;
+    if (rep !== null && rep !== undefined && isFinite(rep) && (d.kmh == null || d.kmh >= 3 || hd === null)) b = (Math.round(+rep) % 360 + 360) % 360;
+    else if (road) b = roadBrg(road.km);
+    else b = brgOf(lastLL, [d.lng, d.lat]);
+    if (b !== null) hd = b;
+    lastLL = [d.lng, d.lat];
+    setHd(hd);
+  }
   function paintStops(km) {
     stopEls.forEach(function (el, i) { el.classList.toggle('done', km != null && stops[i].km <= km + 0.5); });
   }
@@ -165,13 +231,15 @@
     if (done) {
       busOff(); split(1); paintStops(1e9);
     } else if (d.live && d.lat != null) {
-      if (r && r.on && (r.off == null || r.off <= 1)) {
+      var onRoad = !!(r && r.on && (r.off == null || r.off <= 1));
+      if (onRoad) {
         glideTo(r.km);   // on the road: glide along it
       } else {
         cancelAnimationFrame(anim); anim = 0; busKm = null;
         busAt([d.lng, d.lat]);   // near the route but not on the stored road: where it really is
         if (r) { split(at(r.km).frac); paintStops(r.km); }
       }
+      heading(d, onRoad ? r : null);
       busEl.className = 'tm-bus live';
       busLbl.textContent = d.kmh != null ? d.kmh + ' km/h' : '';
     } else if (d.lastKnown && d.lastLat != null) {
@@ -189,11 +257,11 @@
     fit(d);
   }
 
-  function draw(info) {
+  function draw(info, style) {
     var dark = document.documentElement.getAttribute('data-theme') === 'dark';
     try {
       map = new maplibregl.Map({
-        container: 'tmMap', style: dark ? 'https://tiles.openfreemap.org/styles/dark' : 'https://tiles.openfreemap.org/styles/liberty',
+        container: 'tmMap', style: style, refreshExpiredTiles: false,
         bounds: [line.reduce(function (a, p) { return [Math.min(a[0], p[0]), Math.min(a[1], p[1])]; }, [180, 90]),
                  line.reduce(function (a, p) { return [Math.max(a[0], p[0]), Math.max(a[1], p[1])]; }, [-180, -90])],
         fitBoundsOptions: { padding: 30 }, maxBounds: [[61.0, 4.5], [99.5, 38.5]], minZoom: 3.8,
@@ -229,6 +297,7 @@
   }
 
   css(C.css);
+  ownCss();
   Promise.all([lib(), getJSON(C.url)]).then(function (res) {
     var info = res[1];
     if (!info || !info.v) throw new Error('no road line');
@@ -247,7 +316,8 @@
       if (info.mineMissing && sub) sub.textContent = T.mapNoPick;
       else if (sub) sub.classList.add('hidden');
       S.mapUpdate = update;
-      draw(info);
+      return pickStyle(OFM + (document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'liberty'))
+        .then(function (st) { draw(info, st); });
     });
   }).catch(fail);
 })(window.SHG_TRACK);

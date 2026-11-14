@@ -8,6 +8,7 @@ require_once INCLUDE_PATH . '/staffmsg.php';   // 31 Oct 2026: StaffMsg is no lo
 require_once INCLUDE_PATH . '/tripstatus.php';   // edit-window gate for seat changes (5 Sep 2026)
 require_once INCLUDE_PATH . '/passengerdocs.php'; // passenger photo / ID documents (17 Sep 2026)
 require_once INCLUDE_PATH . '/ticketedit.php';    // Quick Edit: fare fix, correction requests, Auto Assign (15 Oct 2026)
+require_once INCLUDE_PATH . '/desktools.php';     // 15 Nov 2026 (P4): ticket resend by email / SMS, masked IDs
 $admin = admin_boot('bookings.view');
 
 $base  = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
@@ -907,6 +908,51 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
     }
 }
 
+/* ---- Resend the ticket by email / SMS (15 Nov 2026, P4) ------------
+   Same gates as the WhatsApp resend above: CSRF, a confirmed ticket and
+   payments.verify. Each send is one audit row; the email also leaves a
+   message_logs row (Notify::sms writes its own). Both buttons stay grey
+   until the office turns on desk_resend_email_on / desk_resend_sms_on
+   (SMS also needs sms_enabled) - DeskTools re-checks the switches. Ten
+   sends per channel per 10 minutes per staff member. */
+if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array(($_POST['action'] ?? ''), ['resend_email', 'resend_sms'], true)) {
+    $rsAct = (string) $_POST['action'];
+    $rsCh  = $rsAct === 'resend_email' ? 'email' : 'sms';
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } elseif (($b['status'] ?? '') !== 'confirmed') {
+        $flash = ['bad', 'Tickets can only be re-sent for confirmed bookings.'];
+    } elseif (!Auth::can('payments.verify')) {
+        $flash = ['bad', 'Your role cannot re-send tickets.'];
+    } elseif (!Security::rateLimit('ticket_resend_' . $rsCh, 'admin:' . (int) $admin['id'], 10, 600)) {
+        $flash = ['bad', 'Too many re-sends in a few minutes — please wait a little.'];
+    } else {
+        try {
+            if ($rsCh === 'email') {
+                $rsTyped = Security::email($_POST['resend_email'] ?? '');
+                $r = DeskTools::sendTicketEmail($b, $rsTyped, (int) $admin['id']);
+                $rsOwn = $r['to'] !== '' && strcasecmp($r['to'], (string) ($b['contact_email'] ?? '')) === 0;
+                Logger::audit('booking.resend_email', 'booking', $pnr, null,
+                    ['status' => $r['ok'] ? 'sent' : 'failed', 'to' => $r['to'], 'own_address' => $rsOwn],
+                    'Ticket resend by email by admin #' . $admin['id'] . ($r['ok'] ? '' : ' - ' . $r['reason']));
+                $flash = $r['ok']
+                    ? ['ok', 'Ticket emailed to ' . $r['to'] . '. · टिकट इमेलमा पठाइयो।']
+                    : ['bad', 'Email not sent: ' . $r['reason']];
+            } else {
+                $r = DeskTools::sendTicketSms($b);
+                Logger::audit('booking.resend_sms', 'booking', $pnr, null,
+                    ['status' => $r['ok'] ? 'sent' : 'failed', 'to' => $r['to']],
+                    'Ticket resend by SMS by admin #' . $admin['id'] . ($r['ok'] ? '' : ' - ' . $r['reason']));
+                $flash = $r['ok']
+                    ? ['ok', 'Ticket link sent by SMS to ' . $r['to'] . '. · SMS पठाइयो।']
+                    : ['bad', 'SMS not sent: ' . $r['reason']];
+            }
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
 /* ---- Cash on delivery: record the money as collected --------------
    COD confirms on submit so the passenger's ticket works, but the fare is
    still owed and the payment row stays 'cod_pending'. This is the only place
@@ -1694,7 +1740,8 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
     <b>🛡️ Cash verification · नगद प्रमाणीकरण</b>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px 14px;margin-top:6px;font-size:14px">
       <?php if ($cvAddr !== ''): ?><div><small class="muted">Address · ठेगाना</small><br><?= Security::e($cvAddr) ?></div><?php endif; ?>
-      <?php if (trim((string) ($b['id_number'] ?? '')) !== ''): ?><div><small class="muted">ID · परिचयपत्र</small><br><?= Security::e(trim((string) ($b['id_type'] ?? '') . ' ' . (string) $b['id_number'])) ?></div><?php endif; ?>
+      <?php /* 15 Nov 2026 (P4): masked; the full number is in Quick Edit, or "dekhau" for a super-admin (audited). */ ?>
+      <?php if (trim((string) ($b['id_number'] ?? '')) !== ''): ?><div><small class="muted">ID · परिचयपत्र</small><br><?= DeskTools::idHtml((string) ($b['id_type'] ?? ''), (string) $b['id_number'], 'bk', (string) (int) $b['id']) ?></div><?php endif; ?>
       <?php if (trim((string) ($b['alt_phone'] ?? '')) !== ''): ?><div><small class="muted">Second mobile · दोस्रो मोबाइल</small><br><a href="tel:+<?= Security::e(preg_replace('/\D/', '', (string) ($b['alt_country_code'] ?? '')) . preg_replace('/\D/', '', (string) $b['alt_phone'])) ?>"><?= Security::e((string) $b['alt_phone']) ?></a></div><?php endif; ?>
     </div>
   </div>
@@ -2005,7 +2052,7 @@ $qePhone = Notify::usablePhone($b['contact_phone'] ?? '') !== '' ? (string) $b['
         <form method="get" action="<?= $base ?>/admin/booking-view.php#seat" class="qe-actions" style="margin-bottom:8px">
           <input type="hidden" name="pnr" value="<?= Security::e($pnr) ?>">
           <select name="auto_from" aria-label="Passenger to place" style="flex:1 1 90px">
-            <?php foreach ($qeLeg['seats'] as $sn): ?><option value="<?= Security::e((string) $sn) ?>" <?= (string) $sn === $qeFirstFrom ? 'selected' : '' ?>><?= Security::e($qeLbl((string) $sn) . ' · ' . (string) ($qePaxBySeat[(string) $sn]['full_name'] ?? '')) ?></option><?php endforeach; ?>
+            <?php foreach (($qeLeg['seats'] ?? []) as $sn): ?><option value="<?= Security::e((string) $sn) ?>" <?= (string) $sn === $qeFirstFrom ? 'selected' : '' ?>><?= Security::e($qeLbl((string) $sn) . ' · ' . (string) ($qePaxBySeat[(string) $sn]['full_name'] ?? '')) ?></option><?php endforeach; ?>
           </select>
           <select name="pref" aria-label="Berth preference" style="flex:1 1 90px">
             <?php foreach (['any' => 'Any berth', 'lower' => 'Lower first', 'upper' => 'Upper first'] as $pv => $pl): ?><option value="<?= $pv ?>" <?= (string) ($_GET['pref'] ?? 'any') === $pv ? 'selected' : '' ?>><?= $pl ?></option><?php endforeach; ?>
@@ -2020,7 +2067,7 @@ $qePhone = Notify::usablePhone($b['contact_phone'] ?? '') !== '' ? (string) $b['
           <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
           <input type="hidden" name="action" value="change_seat">
           <select name="from_seat" id="qe-from" aria-label="From seat" style="flex:1 1 90px">
-            <?php foreach ($qeLeg['seats'] as $sn): ?><option value="<?= Security::e((string) $sn) ?>" <?= (string) $sn === $qeFirstFrom ? 'selected' : '' ?>><?= Security::e($qeLbl((string) $sn)) ?></option><?php endforeach; ?>
+            <?php foreach (($qeLeg['seats'] ?? []) as $sn): ?><option value="<?= Security::e((string) $sn) ?>" <?= (string) $sn === $qeFirstFrom ? 'selected' : '' ?>><?= Security::e($qeLbl((string) $sn)) ?></option><?php endforeach; ?>
           </select>
           <select name="to_seat" id="qe-to" aria-label="To seat" required style="flex:1 1 90px">
             <option value="">— free seat —</option>
@@ -2097,7 +2144,7 @@ $qePhone = Notify::usablePhone($b['contact_phone'] ?? '') !== '' ? (string) $b['
         <p class="qe-hint" style="margin:0 0 8px">This PNR is never changed by these — a new ticket is sold through the normal counter checkout, then shows under "Other tickets on this number".</p>
         <div class="qe-actions">
           <?php if ($qeLive && $qeRoute > 0 && !empty($qeLeg['travel_date'])): ?>
-          <a class="btn ghost" href="<?= $base ?>/admin/new-booking.php?<?= Security::e(http_build_query(array_filter(['route' => $qeRoute, 'date' => (string) $qeLeg['travel_date'], 'sid' => $qeSid, 'cphone' => $qePhone, 'cname' => $qePrimary], static fn($v) => $v !== '' && $v !== 0))) ?>">➕ Add passenger (new ticket)</a>
+          <a class="btn ghost" href="<?= $base ?>/admin/new-booking.php?<?= Security::e(http_build_query(array_filter(['route' => $qeRoute, 'date' => (string) ($qeLeg['travel_date'] ?? ''), 'sid' => $qeSid, 'cphone' => $qePhone, 'cname' => $qePrimary], static fn($v) => $v !== '' && $v !== 0))) ?>">➕ Add passenger (new ticket)</a>
           <?php endif; ?>
           <a class="btn ghost" href="<?= $base ?>/admin/new-booking.php?<?= Security::e(http_build_query(array_filter(['cphone' => $qePhone, 'cname' => $qePrimary], static fn($v) => $v !== ''))) ?>">🔀 Different route → new ticket</a>
         </div>
@@ -2560,7 +2607,7 @@ $ticket = $b['ticket'] ?? null;
     <div class="pdoc-pax">
       <div class="pdoc-who">
         <span class="mono"><?= Security::e(Seats::displayLabel((string) $pax['seat_no'], 'sleeper', (string) ($b['booking_mode'] ?? 'sharing'))) ?></span><?= Security::e((string) $pax['full_name']) ?>
-        <small><?= Security::e(trim((string) ($pax['id_type'] ?? '') . ' ' . (string) ($pax['id_number'] ?? '')) ?: 'no ID number on file') ?></small>
+        <small><?= DeskTools::idHtml((string) ($pax['id_type'] ?? ''), (string) ($pax['id_number'] ?? ''), 'px', (string) (int) $pax['id'], 'no ID number on file') ?></small>
       </div>
       <div class="pdoc-strip">
         <?php if ($pdList === []): ?>
@@ -2794,7 +2841,7 @@ $ticket = $b['ticket'] ?? null;
     <?php if (Auth::can('payments.verify')): ?>
       <form method="post" style="display:inline-flex;align-items:center;gap:8px" onsubmit="return confirm('Re-send the ticket to <?= Security::e((string) $b['contact_phone']) ?> on WhatsApp?')">
         <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
-        <button class="btn ok" type="submit" name="action" value="resend_wa">📲 Resend WhatsApp ticket</button>
+        <button class="btn ok" type="submit" name="action" value="resend_wa" data-kbd="w" aria-keyshortcuts="W">📲 Resend WhatsApp ticket</button>
         <?php if ($waPillLabel !== null): ?>
           <span class="wa-pill wa-<?= Security::e($waPillLabel[0]) ?>"
                 title="<?= Security::e($waPillLabel[1] . ' · ' . $waPillLabel[2] . ($waPillLabel[3] !== '' ? ' · ' . $waPillLabel[3] : '')) ?>">
@@ -2809,12 +2856,38 @@ $ticket = $b['ticket'] ?? null;
       <?php /* 15 Oct 2026 (1F-resend): roles without payments.verify (agents) send
            through the WhatsApp composer — admin/api/wa-send.php scopes an agent
            to their own sales, so this never offers a ticket it would refuse. */ ?>
-      <?= admin_wa_button('booking_ticket', ['pnr' => $pnr], '📲 Send ticket on WhatsApp', ['class' => 'btn ok']) ?>
+      <span data-kbd-wrap="w" style="display:contents"><?= admin_wa_button('booking_ticket', ['pnr' => $pnr], '📲 Send ticket on WhatsApp', ['class' => 'btn ok']) ?></span>
     <?php endif; ?>
     <button type="button" class="btn ghost" data-share-url="<?= Security::e(Ticket::imageUrl($pnr)) ?>" data-share-title="<?= Security::e('Ticket ' . $pnr) ?>">🔗 Share ticket</button>
+    <?php /* 15 Nov 2026 (P4): the ticket again by email (the passenger's address or
+         a typed one) and by SMS. Same right as the WhatsApp resend; each button is
+         grey with its reason until the office switch for it is on. */
+    if (Auth::can('payments.verify')):
+      $rsEmailOn = DeskTools::emailResendOn();
+      $rsSmsOn   = DeskTools::smsResendOn();
+      $rsPhoneOk = Notify::usablePhone($b['contact_phone'] ?? '') !== ''; ?>
+    <details class="bv-resend" id="bvResend">
+      <summary class="btn ghost">✉️ Email / SMS</summary>
+      <div class="bv-rs-p">
+        <form method="post" class="bv-rs-row" onsubmit="return confirm('Email the ticket to ' + this.resend_email.value + '?')">
+          <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+          <input type="email" name="resend_email" value="<?= Security::e((string) ($b['contact_email'] ?? '')) ?>" placeholder="passenger@email.com" maxlength="191" required aria-label="Email address · इमेल ठेगाना"<?= $rsEmailOn ? '' : ' disabled' ?>>
+          <button class="btn ok" type="submit" name="action" value="resend_email"<?= $rsEmailOn ? '' : ' disabled title="' . Security::e(DeskTools::emailOffReason()) . '"' ?>>📧 Email मा पठाउ</button>
+        </form>
+        <?php if (!$rsEmailOn): ?><p class="bv-rs-why">📧 <?= Security::e(DeskTools::emailOffReason()) ?></p><?php endif; ?>
+        <form method="post" class="bv-rs-row" onsubmit="return confirm('Send the ticket link by SMS to the contact phone?')">
+          <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+          <?php $rsSmsWhy = !$rsSmsOn ? DeskTools::smsOffReason() : (!$rsPhoneOk ? 'This booking has no usable contact phone number on file.' : ''); ?>
+          <button class="btn ok" type="submit" name="action" value="resend_sms"<?= $rsSmsWhy === '' ? '' : ' disabled title="' . Security::e($rsSmsWhy) . '"' ?>>💬 SMS पठाउ<?= $rsPhoneOk ? ' · ' . Security::e((string) $b['contact_phone']) : '' ?></button>
+        </form>
+        <?php if ($rsSmsWhy !== ''): ?><p class="bv-rs-why">💬 <?= Security::e($rsSmsWhy) ?></p><?php endif; ?>
+      </div>
+    </details>
+    <?php endif; ?>
   <?php elseif ($b['status'] === 'pending'): ?>
     <a class="btn ok" href="<?= $base ?>/admin/payments.php">Go to verification queue →</a>
   <?php endif; ?>
+  <button type="button" class="btn ghost bv-kbd-hint" data-keys-open title="Keyboard shortcuts · किबोर्ड">⌨️ ?</button>
 
   <?php /* Change date / trip — same-route date move that keeps the PNR /
            payment / commission (vs cancel + rebook). Same door as
@@ -2984,5 +3057,104 @@ try {
     </div>
   <?php endif; ?>
 </div>
+
+<?php /* 15 Nov 2026 (P4): keyboard shortcuts for the desk. P print, W WhatsApp
+     resend (its own confirm still asks), E opens the email form, Esc back,
+     ? this list. Keys are ignored while typing in a box and with Ctrl / Alt /
+     Cmd held. Nothing that cancels or changes a ticket sits on a single key. */
+$bvPrintUrl = (string) ($b['status'] ?? '') === 'confirmed' ? $base . '/download-ticket.php?pnr=' . urlencode($pnr) . '&print=1' : ''; ?>
+<style>
+.bv-resend{min-width:0;max-width:100%}
+.bv-resend[open]{flex:1 1 100%}
+.bv-resend>summary{list-style:none;cursor:pointer;min-height:44px;display:inline-flex;align-items:center}
+.bv-resend>summary::-webkit-details-marker{display:none}
+.bv-rs-p{display:flex;flex-direction:column;gap:8px;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--card);box-sizing:border-box;max-width:100%}
+.bv-rs-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0}
+.bv-rs-row input[type=email]{flex:1 1 200px;min-width:0;width:100%;min-height:44px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font-size:15px;box-sizing:border-box}
+.bv-rs-row .btn{min-height:44px;white-space:normal}
+.bv-rs-why{margin:0;font-size:12px;color:var(--mut);overflow-wrap:anywhere}
+.bv-kbd-hint{min-height:44px}
+@media (hover:none),(max-width:820px){.bv-kbd-hint{display:none}}
+@media (max-width:820px){.toolbar .bv-resend{align-self:stretch;width:100%;box-sizing:border-box}.bv-resend>summary{width:100%;justify-content:center;box-sizing:border-box}}
+.bv-keys{position:fixed;inset:0;z-index:300;background:rgba(10,20,40,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.bv-keys[hidden]{display:none}
+.bv-keys-box{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:16px 18px;width:100%;max-width:360px;box-sizing:border-box;box-shadow:0 18px 50px rgba(0,0,0,.3)}
+.bv-keys-box h3{margin:0 0 10px;font-size:16px}
+.bv-keys-box dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 12px;margin:0 0 14px;font-size:14px;align-items:center}
+.bv-keys-box dd{margin:0}
+.bv-keys-box kbd{display:inline-block;min-width:30px;text-align:center;padding:3px 7px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;font:700 12px ui-monospace,Consolas,monospace;background:var(--soft,#eef2fa);color:var(--ink)}
+.bv-keys-box .btn{min-height:44px;width:100%}
+</style>
+<div id="bvKeys" class="bv-keys" hidden role="dialog" aria-modal="true" aria-labelledby="bvKeysT" data-print-url="<?= Security::e($bvPrintUrl) ?>">
+  <div class="bv-keys-box">
+    <h3 id="bvKeysT">⌨️ Keyboard shortcuts · किबोर्ड</h3>
+    <dl>
+      <dt><kbd>P</kbd></dt><dd><?= $bvPrintUrl !== '' ? 'Print the ticket · टिकट प्रिन्ट' : 'Print this page · प्रिन्ट' ?></dd>
+      <dt><kbd>W</kbd></dt><dd>WhatsApp resend (asks first) · WhatsApp मा पठाउ</dd>
+      <dt><kbd>E</kbd></dt><dd>Email form · इमेल</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Back · पछाडि</dd>
+      <dt><kbd>?</kbd></dt><dd>This list · यो सूची</dd>
+    </dl>
+    <button type="button" class="btn" data-keys-close>Close · बन्द</button>
+  </div>
+</div>
+<script>
+(function () {
+  var ov = document.getElementById('bvKeys'); if (!ov) return;
+  function typing(t) { if (!t || !t.tagName) return false; var n = t.tagName; return n === 'INPUT' || n === 'TEXTAREA' || n === 'SELECT' || !!t.isContentEditable; }
+  function show(on) { ov.hidden = !on; if (on) { var c = ov.querySelector('[data-keys-close]'); if (c) c.focus(); } }
+  function first(sel) { var l = document.querySelectorAll(sel); for (var i = 0; i < l.length; i++) { if (!l[i].disabled && l[i].offsetParent !== null) return l[i]; } return null; }
+  /* Another sheet is open (the WhatsApp preview from admin_wa_js, a dialog):
+     its own Esc closes it, so these keys stay out of the way - Esc must not
+     leave the page from under it, and W / P / E must not act behind it. */
+  function otherModal() {
+    var l = document.querySelectorAll('[aria-modal="true"], dialog[open], .wa-sheet:not([hidden])');
+    for (var i = 0; i < l.length; i++) { if (l[i] !== ov && !ov.contains(l[i]) && l[i].getClientRects().length > 0) return true; }
+    return false;
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target && e.target.closest ? e.target : null; if (!t) return;
+    if (t.closest('[data-keys-open]')) { e.preventDefault(); show(true); }
+    else if (t.closest('[data-keys-close]') || t === ov) { e.preventDefault(); show(false); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || typing(e.target)) return;
+    if (ov.hidden && otherModal()) return;
+    var k = e.key || '';
+    if (k === 'Escape') {
+      e.preventDefault();
+      if (!ov.hidden) { show(false); return; }
+      var rs = document.getElementById('bvResend');
+      if (rs && rs.open) { rs.open = false; return; }   // close the open Email / SMS form first
+      // After a form post on this page the referrer is this same page, and
+      // "back" would only land on it again: go to the register instead.
+      var ref = document.referrer || '', same = false;
+      try { same = ref !== '' && new URL(ref).origin === location.origin && ref.split('#')[0] !== location.href.split('#')[0]; } catch (x) {}
+      if (same && history.length > 1) history.back(); else location.href = '/admin/bookings.php';
+      return;
+    }
+    if (k === '?') { e.preventDefault(); show(ov.hidden); return; }
+    if (!ov.hidden) return;
+    k = k.toLowerCase();
+    if (k === 'p') {
+      e.preventDefault();
+      var u = ov.getAttribute('data-print-url');
+      if (u) window.open(u, '_blank', 'noopener'); else window.print();
+    } else if (k === 'w') {
+      var w = first('[data-kbd="w"], [data-kbd-wrap="w"] button, [data-kbd-wrap="w"] a');
+      if (w) { e.preventDefault(); w.click(); }
+    } else if (k === 'e') {
+      var d = document.getElementById('bvResend');
+      if (d) {
+        e.preventDefault(); d.open = true;
+        var i = d.querySelector('input[type=email]:not([disabled])');
+        d.scrollIntoView({ block: 'center' });
+        if (i) { i.focus(); i.select(); }
+      }
+    }
+  });
+})();
+</script>
+<?= DeskTools::revealAssets() ?>
 <?php
 admin_footer();

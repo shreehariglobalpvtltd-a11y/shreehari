@@ -13,6 +13,11 @@ declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 
 try {
+    /* 15 Nov 2026: per-IP ceiling. An open seat map polls every 8 s and a whole
+       family / office (or a mobile carrier's shared IP) can sit behind one
+       address, so the number is generous: only a scraper reaches it. */
+    Security::requireRateLimit('seats', Security::clientIp(), 300, 60);
+
     $routeId     = (int) Response::field('routeId', 0);
     $routeCode   = Security::clean((string) Response::field('routeCode', ''), 20);
     $date        = Security::clean(Response::field('date', ''), 10);

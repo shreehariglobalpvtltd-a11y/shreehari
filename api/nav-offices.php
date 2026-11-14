@@ -16,6 +16,16 @@ require_once dirname(__DIR__) . '/includes/bootstrap.php';
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 
+/* 15 Nov 2026: per-IP ceiling, the house 429. A rate-limit hiccup never costs the map its pins. */
+try {
+    $navOk = Security::rateLimit('nav_offices', Security::clientIp(), 120, 60);
+} catch (Throwable $e) {
+    $navOk = true;
+}
+if (!$navOk) {
+    Response::error('Too many attempts. Please wait a minute and try again.', 429);
+}
+
 $out = [];
 try {
     foreach (Database::fetchAll(

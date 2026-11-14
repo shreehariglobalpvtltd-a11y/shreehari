@@ -39,11 +39,18 @@ final class WhereIs
      * customer door is Auth::customerMayOpen() — an OTP-verified session for
      * this number or a PNR booked in this browser session — once that exists;
      * until then the old phone match, with the walk-in placeholder refused.
+     *
+     * 15 Nov 2026: the keyed link stops working once the ticket's last travel
+     * date is more than track_link_days (default 2, 0 = never) in the past -
+     * a forwarded link no longer follows the coach on its next runs. The
+     * customer and staff doors are unaffected; the caller answers its usual
+     * "not found".
      */
     public static function authorised(array $booking, string $token): bool
     {
         $pnr = (string) ($booking['pnr'] ?? '');
-        if ($token !== '' && (Ticket::checkTrackToken($pnr, $token) || Ticket::checkDownloadToken($pnr, $token))) {
+        if ($token !== '' && (Ticket::checkTrackToken($pnr, $token) || Ticket::checkDownloadToken($pnr, $token))
+            && !self::linkExpired($booking)) {
             return true;
         }
         if (method_exists('Auth', 'customerMayOpen')) {
@@ -62,6 +69,29 @@ final class WhereIs
             return $scope === null || $scope === (int) ($booking['sold_by_admin_id'] ?? 0);
         }
         return false;
+    }
+
+    /**
+     * Has the public tracking link of this booking run out? True once the
+     * LAST travel date on its legs (a return ticket lives until its return)
+     * is more than track_link_days days before today. 0 = links never run
+     * out; a booking without legs, or a database hiccup, never expires.
+     */
+    public static function linkExpired(array $booking, ?int $now = null): bool
+    {
+        $days = Settings::getInt('track_link_days', 2);
+        if ($days <= 0) {
+            return false;
+        }
+        try {
+            $last = (string) Database::scalar('SELECT MAX(travel_date) FROM booking_legs WHERE booking_id = :b', ['b' => (int) ($booking['id'] ?? 0)], '');
+        } catch (Throwable $e) {
+            return false;
+        }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}/', $last) !== 1) {
+            return false;
+        }
+        return substr($last, 0, 10) < addDaysISO(date('Y-m-d', $now ?? time()), -min(365, $days));
     }
 
     /**

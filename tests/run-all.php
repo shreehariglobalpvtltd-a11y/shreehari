@@ -160,6 +160,12 @@ const CORE_SUITES = [
     'wa-vault-test.php'           => 'personal vault: owner / CEO numbers only, each sees only its own, encrypted, Drive from Google only',
     // 15 Nov 2026, registered with the staff / agent discount on WhatsApp and Quick Ticket it guards.
     'staff-discount-test.php'     => 'staff discount: % or ₹ read from a WhatsApp order, capped, stored; an agent discount is Cash only and from commission',
+    // 15 Nov 2026 (spec3 gap pass), registered with the features they guard.
+    'driver-actions-test.php'     => 'driver app: stop reached / delay / breakdown / SOS stored once, office alerted, manifest without IDs, Maps hand-off',
+    'fleet-watch-test.php'        => 'fleet bell: SOS open, GPS silent, over-speed over a minute, off the road line; GPS purge OFF by default; old track links expire',
+    'fleet-map-test.php'          => 'fleet map: heading, trail replay thinned and staff-only, status counts',
+    'desk-tools-test.php'         => 'desk tools: ID masking + audited reveal, cash aging buckets, cancel bands, email/SMS resend behind OFF switches and CSRF',
+    'customer-security-test.php'  => 'customer + security: per-IP limits, coupon guessing, log redaction word by word, first-booking coupons, promo link only while a coupon runs, real ratings only',
     // 14 Nov 2026, registered with the web research tool and the no-key quality eval they guard.
     'ai-web-research-test.php'    => 'web research: staff and office only, off by default, server blocks replayed unchanged, pause_turn bounded',
     'ai-eval-test.php'            => 'the golden set with no AI key: 88 questions in 6 languages, knowledge scope, offer guard, who may run which tool',

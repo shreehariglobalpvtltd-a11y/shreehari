@@ -138,8 +138,22 @@ if (Settings::getBool('data_retention_on', false)) {
     }
 }
 
+// 15 Nov 2026 - GPS history (includes/gpsretention.php): trip_locations
+// rows, and finished live_trips that ended, older than gps_history_days.
+// 0 = keep for ever (the default, OFF). A running or paused trip is never
+// touched. Batches of 5000 through the (trip_id, recorded_at) index. The
+// counts (points, trips) are logged with the job's result by cron_done().
+$gpsRetention = ['on' => false];
+try {
+    require_once INCLUDE_PATH . '/gpsretention.php';
+    $gpsRetention = GpsRetention::prune();
+} catch (Throwable $e) {
+    $gpsRetention = ['on' => true, 'error' => $e->getMessage()];
+}
+
 cron_done([
     'retention'        => $retention,
+    'gpsRetention'     => $gpsRetention,
     'logFilesRemoved'  => $logsRemoved,
     'waMediaPurged'    => $mediaPurged,
     'chartsPurged'     => $chartsPurged,

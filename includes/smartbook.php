@@ -118,6 +118,95 @@ final class SmartBook
     }
 
     /* =================================================================
+     *  Promo code (15 Nov 2026)
+     * ================================================================= */
+
+    private static ?bool $promoOn = null;
+
+    /**
+     * Is a coupon running that a passenger TYPES — active, a code (auto_apply
+     * = 0; a running offer needs no field), in date, not used up? The customer
+     * card shows its "Promo code छ?" link only then, so with no coupon live
+     * nothing renders. Cached for the request ($fresh re-reads); false when
+     * the table cannot be read.
+     */
+    public static function promoOn(bool $fresh = false): bool
+    {
+        if (self::$promoOn !== null && !$fresh) {
+            return self::$promoOn;
+        }
+        try {
+            $today = todayISO();
+            self::$promoOn = (int) Database::scalar(
+                'SELECT COUNT(*) FROM coupons
+                  WHERE is_active = 1 AND auto_apply = 0
+                    AND (valid_from  IS NULL OR valid_from  <= :d1)
+                    AND (valid_until IS NULL OR valid_until >= :d2)
+                    AND (usage_limit IS NULL OR used_count < usage_limit)',
+                ['d1' => $today, 'd2' => $today],
+                0
+            ) > 0;
+        } catch (Throwable $e) {
+            self::$promoOn = false;
+        }
+        return self::$promoOn;
+    }
+
+    /**
+     * The typed promo code on a customer quote. The price comes from the same
+     * Fare::quote() call BookingService::priceBooking() makes for a typed code,
+     * so the card's total is the total the sale charges (bookNow then sends the
+     * code to create()). Applied only when valid AND cheaper than the running
+     * offer the card already has — a typed code replaces that offer, it never
+     * stacks on it, and a passenger is never made to pay more by typing one.
+     *
+     * @param array<string, mixed> $price priceFor()'s answer
+     * @return array{0: array<string, mixed>, 1: array{code: string, ok: bool, amount: float, error: string}}
+     */
+    private static function withPromo(array $price, string $code, array $route, array $schedule, int $seatCount, string $phone): array
+    {
+        $res = ['code' => $code, 'ok' => false, 'amount' => 0.0, 'error' => ''];
+        if (!self::promoOn()) {
+            $res['error'] = 'That coupon code is not valid.';
+            return [$price, $res];
+        }
+        require_once __DIR__ . '/couponguard.php';
+        if (!CouponGuard::allow($code)) {
+            $res['error'] = 'Too many promo codes tried — please wait 10 minutes. / धेरै code प्रयास भयो — १० मिनेट पर्खनुहोस्।';
+            return [$price, $res];
+        }
+        $departTs = Fare::departTs($schedule, $route);
+        $chk = Fare::couponDiscount($code, (float) $price['base'] - (float) $price['groupDiscount'], $phone, (int) $route['id'], $departTs);
+        if (empty($chk['ok'])) {
+            $res['error'] = (string) ($chk['error'] ?? 'That coupon code is not valid.');
+            return [$price, $res];
+        }
+        $user  = Auth::userRecord();
+        $typed = Fare::quote(
+            (float) $price['base'],
+            $seatCount,
+            $user !== null ? (int) $user['lifetime_points'] : 0,
+            0,
+            $user !== null ? (int) $user['loyalty_points'] : 0,
+            $code,
+            $phone,
+            (int) $route['id'],
+            $departTs
+        );
+        if ((float) $typed['couponDiscount'] <= 0 || (float) $typed['total'] >= (float) $price['total']) {
+            $res['error'] = 'The running offer already gives this much or more. / चलिरहेको अफर नै यति वा बढी छ।';
+            return [$price, $res];
+        }
+        foreach (['groupDiscount', 'couponDiscount', 'tierDiscount', 'tierName', 'pointsUsed', 'pointsValue', 'fee', 'tax', 'total'] as $k) {
+            $price[$k] = $typed[$k];
+        }
+        $price['couponCode'] = strtoupper($code);
+        $res['ok']     = true;
+        $res['amount'] = (float) $typed['couponDiscount'];
+        return [$price, $res];
+    }
+
+    /* =================================================================
      *  Lists
      * ================================================================= */
 
@@ -797,6 +886,11 @@ final class SmartBook
                 $price = self::withDeskDiscount($price, $desk[0], $desk[1], $maxAmt);
             }
         }
+        // 15 Nov 2026: the promo code a passenger typed (customer card only; normalise() drops it elsewhere)
+        $promo = null;
+        if ($price !== null && $req['promo'] !== '') {
+            [$price, $promo] = self::withPromo($price, $req['promo'], $route, $schedule, count($seats), $req['phone']);
+        }
         $npr = round(((float) ($price['total'] ?? 0)) * (float) SiteFacts::all()['npr']);
 
         /* 5 Nov 2026 (master upgrade §1): the confirm sheet names the real coach —
@@ -866,6 +960,7 @@ final class SmartBook
                 'npr'      => $npr,
             ] : null,
             'override'     => $override,
+            'promo'        => $promo,   // {code, ok, amount, error} when a promo code was sent, else null
             'suggest'      => null,
             'alternatives' => [],
             'ms'           => 0,
@@ -1191,7 +1286,8 @@ final class SmartBook
             'boarding'        => (string) $q['boarding'],
             'drop'            => (string) $q['drop'],
             'originTown'      => (string) $q['boardingName'],
-            'couponCode'      => '',
+            // 15 Nov 2026: a promo code only when the quote above applied it (customer card)
+            'couponCode'      => !empty($q['promo']['ok']) ? (string) $q['promo']['code'] : '',
             'pointsRequested' => 0,
             // D13: a customer's request never carries a code. For staff the code
             // is set by api/smartbook.php only: an agent's OWN code from the
@@ -1448,6 +1544,9 @@ final class SmartBook
             'seats'     => array_values(array_unique($seats)),
             'prefer'    => $prefer,
             'phone'     => normalisePhone((string) ($in['phone'] ?? '')),
+            // 15 Nov 2026: the promo field exists on the customer card only
+            'promo'     => $mode === 'customer' && is_scalar($in['promo'] ?? null)
+                ? strtoupper(Security::clean((string) $in['promo'], 40)) : '',
         ];
     }
 

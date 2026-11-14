@@ -24,6 +24,7 @@ try {
     if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
         Response::error('This endpoint only answers GET.', 405);
     }
+    Security::requireRateLimit('explore', Security::clientIp(), 120, 60);   // 15 Nov 2026: per-IP ceiling
     $what = (string) ($_GET['what'] ?? 'featured');
     $lang = (string) ($_GET['lang'] ?? 'en');
     $lang = in_array($lang, PublicLayout::LANGS, true) ? $lang : 'en';

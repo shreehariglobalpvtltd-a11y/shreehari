@@ -29,6 +29,7 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require __DIR__ . '/_export.php';
 require_once INCLUDE_PATH . '/passengerdocs.php';
+require_once INCLUDE_PATH . '/desktools.php';
 $admin = admin_boot('bookings.view');
 
 $base    = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
@@ -305,7 +306,7 @@ if ($loadErr !== '') {
     $special = trim((string) ($r['special_need'] ?? ''));
     $openUrl = $base . '/admin/booking-view.php?pnr=' . urlencode((string) $r['pnr']) . '#pax';
     $docsUrl = $base . '/admin/booking-view.php?pnr=' . urlencode((string) $r['pnr']) . '#paxdocs';
-    $search  =strtolower(implode(' ', [$r['full_name'], $r['pnr'], $r['contact_phone'], $idType, $idNum, $seatLbl, $r['seat_no'],
+    $search  =strtolower(implode(' ', [$r['full_name'], $r['pnr'], $r['contact_phone'], $idType, DeskTools::maskId($idType, $idNum), $seatLbl, $r['seat_no'],
                   $r['from_city'] ?? '', $r['to_city'] ?? '', $r['route_code'] ?? '', $r['travel_date'] ?? '', $status]));
   ?>
     <tr data-search="<?= $e($search) ?>" data-status="<?= $e($status) ?>" data-idfile="<?= $idNum !== '' ? '1' : '0' ?>" data-docs="<?= $docs > 0 ? '1' : '0' ?>" data-gender="<?= $e(strtolower((string) ($r['gender'] ?? ''))) ?>"<?= in_array($status, ['cancelled', 'rejected', 'expired'], true) ? ' style="opacity:.7"' : '' ?>>
@@ -316,7 +317,7 @@ if ($loadErr !== '') {
       <td><b><?= $e($r['full_name']) ?></b><?php if ((int) ($r['is_primary'] ?? 0) === 1): ?> <span class="pill st-info nodot" style="font-size:10px;padding:1px 6px">Primary</span><?php endif; ?><?php if (!empty($r['boarded_at'])): ?> <span class="pill st-ok nodot" style="font-size:10px;padding:1px 6px" title="<?= $e($r['boarded_at']) ?>">✓ boarded</span><?php endif; ?><div class="muted mono" style="font-size:11px"><?= $e($r['contact_phone']) ?></div></td>
       <td class="num"><?= $r['age'] !== null ? (int) $r['age'] : '<span class="muted">—</span>' ?></td>
       <td><?= $e($r['gender'] ?: '—') ?></td>
-      <td><?php if ($idType !== '' || $idNum !== ''): ?><?= $e($idType) ?><?= $idType !== '' && $idNum !== '' ? ' ' : '' ?><span class="mono"><?= $e($idNum) ?></span><?php if (!empty($r['nationality'])): ?><div class="muted" style="font-size:11px"><?= $e($r['nationality']) ?></div><?php endif; ?><?php else: ?><span class="muted">—</span><?php endif; ?></td>
+      <td><?php if ($idType !== '' || $idNum !== ''): ?><span class="mono"><?= DeskTools::idHtml($idType, $idNum, 'px', (string) ($r['pax_id'] ?? '')) ?></span><?php if (!empty($r['nationality'])): ?><div class="muted" style="font-size:11px"><?= $e($r['nationality']) ?></div><?php endif; ?><?php else: ?><span class="muted">—</span><?php endif; ?></td>
       <td><?= $special !== '' ? '<span class="pill st-ok nodot" style="font-size:10px;padding:1px 6px" title="Priority boarding">🩺 ' . $e(ucfirst($special)) . '</span>' : '<span class="muted">—</span>' ?></td>
       <td class="num" data-sort="<?= $docs ?>"><?= $docs > 0 ? '<a href="' . $e($docsUrl) . '" title="Open the photo / ID documents">📎 ' . $docs . '</a>' : '<span class="muted">—</span>' ?></td>
       <td data-sort="<?= $e($status) ?>"><?= admin_pill($status) ?></td>
@@ -327,4 +328,5 @@ if ($loadErr !== '') {
 </table>
 </div>
 <p class="muted" style="font-size:12px;margin-top:8px">Documents open from the ticket page (Edit booking details → Passenger photos &amp; ID documents); they are stored privately and never printed on the ticket. <?= $scopeId !== null ? 'You see the travellers on tickets you sold.' : 'Counter agents see only the travellers on their own sales.' ?></p>
+<?= DeskTools::revealAssets() ?>
 <?php admin_footer(); ?>

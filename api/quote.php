@@ -7,8 +7,19 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
+require_once INCLUDE_PATH . '/couponguard.php';
 
 try {
+    Security::requireRateLimit('quote', Security::clientIp(), 120, 60);
+    /* 15 Nov 2026: a request carrying a coupon code is a guess at a code -
+       10 different codes per IP per 10 minutes (CouponGuard; the same code
+       sent again by a re-quote is not counted). */
+    $couponIn = Response::field('couponCode', '');
+    $couponIn = is_scalar($couponIn) ? Security::clean($couponIn, 40) : '';
+    if ($couponIn !== '' && !CouponGuard::allow($couponIn)) {
+        Response::error('Too many promo codes tried. Please wait 10 minutes and try again.', 429);
+    }
+
     $routeId = (int) Response::field('routeId', 0);
     $seats   = Response::field('seats', []);
     $seats   = is_array($seats) ? array_values(array_unique(array_map('strval', $seats))) : [];
@@ -92,7 +103,7 @@ try {
         $lifetime,
         (int) Response::field('pointsRequested', 0),
         $avail,
-        Security::clean(Response::field('couponCode', ''), 40),
+        $couponIn,
         $phone,
         $routeId,
         isset($qs) && $qs !== null && (int) $qs['route_id'] === $routeId ? Fare::departTs(['id' => $quoteSid], $route) : null

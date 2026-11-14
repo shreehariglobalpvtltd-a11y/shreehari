@@ -16,6 +16,8 @@ require_once __DIR__ . '/_init.php';
 require_once INCLUDE_PATH . '/busroutine.php';
 
 try {
+    Security::requireRateLimit('routine', Security::clientIp(), 120, 60);   // 15 Nov 2026: per-IP ceiling
+
     $days = max(1, min(30, (int) ($_GET['days'] ?? 14)));
     $out  = [];
     $now = date('H:i');

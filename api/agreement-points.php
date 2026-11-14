@@ -18,6 +18,7 @@ require_once INCLUDE_PATH . '/agreementtext.php';
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
     Response::error('GET only.', 405);
 }
+Security::requireRateLimit('agr_points', Security::clientIp(), 120, 60);   // 15 Nov 2026: per-IP ceiling
 
 $doc  = (string) ($_GET['doc'] ?? '');
 $lang = (string) ($_GET['lang'] ?? '');

@@ -8,9 +8,18 @@
  *                                              - a conductor shares the bus location exactly like the driver)
  *    GET  ?action=me                         -> {driver, trip, trips[], pingSec}
  *    POST {action:'start', scheduleId}       -> {trip}
- *    POST {action:'ping', tripId, points[]}  -> {ack, stored, moved}
+ *    POST {action:'ping', tripId, points[], battery?}  -> {ack, stored, moved}
+ *                                              (battery {pct, charging}: TripEvents::noteBattery, optional)
  *    POST {action:'end', tripId}             -> {}
  *    POST {action:'logout'}                  -> {}
+ *
+ *  15 Nov 2026 (includes/tripevents.php, table driver_events):
+ *    GET  ?action=trip&tripId=N              -> {nav, manifest, rest, recent, startedTs, now}
+ *    POST {action:'event', tripId, kind, stop?, minutes?, note?, lat?, lng?, t?}
+ *                                            -> {event, repeat, alert, nav?, rest?}
+ *         kind: stop_reached | delay | breakdown | sos | rest_start | rest_end.
+ *         SOS / breakdown tell the owner + office at once (bell + WhatsApp).
+ *    `me` also carries crew {actions, speedWarnKmh, restSoftMin, …, officeTel}.
  *
  *  Every action but login needs the device token (X-Driver-Token). No
  *  session cookie is read or written, so no CSRF token is needed: a page on
@@ -27,6 +36,7 @@ require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/etaalerts.php';
 require_once INCLUDE_PATH . '/livetrips.php';
 require_once INCLUDE_PATH . '/driverauth.php';
+require_once INCLUDE_PATH . '/tripevents.php';
 
 header('X-Content-Type-Options: nosniff');
 
@@ -74,7 +84,7 @@ try {
     /* ---------------- who am I, what can I start ---------------- */
     if ($action === 'me') {
         $trip = Database::fetch(
-            "SELECT id, schedule_id, status, last_seq, last_ping_at FROM live_trips
+            "SELECT id, schedule_id, status, last_seq, last_ping_at, started_at FROM live_trips
               WHERE device_id = :dev AND status = 'running' ORDER BY id DESC LIMIT 1",
             ['dev' => $driver['deviceId']]
         );
@@ -83,10 +93,35 @@ try {
             'trip'    => $trip === null ? null : [
                 'tripId' => (int) $trip['id'], 'scheduleId' => (int) $trip['schedule_id'],
                 'lastSeq' => (int) $trip['last_seq'], 'lastPingAt' => $trip['last_ping_at'],
+                'startedTs' => $trip['started_at'] !== null ? (int) strtotime((string) $trip['started_at']) : null,
             ],
             'trips'   => LiveTrips::choosable(),
             'pingSec' => LiveTrips::pingSeconds(),
+            'crew'    => TripEvents::config(),
         ]);
+    }
+
+    /* The trip this phone runs, or 409: a driver can only ever read or write
+       the trip HIS phone started (the co-driver's phone took it over, or it
+       never existed - the app drops its queue and goes back to the list). */
+    $ownTrip = static function () use ($driver): array {
+        $tripId = (int) Response::field('tripId', 0);
+        $trip   = $tripId > 0 ? LiveTrips::find($tripId) : null;
+        if ($trip === null || (int) ($trip['device_id'] ?? 0) !== $driver['deviceId']) {
+            Response::error('This trip is now with another phone.', 409);
+        }
+        return $trip;
+    };
+
+    /* ---------------- the running-trip screen: stops, manifest, rest ---------------- */
+    if ($action === 'trip') {
+        Security::requireRateLimit('driver_trip', 'dev' . $driver['deviceId'], 60, 600);
+        $trip = $ownTrip();
+        if (!in_array((string) $trip['status'], ['running', 'paused'], true)) {
+            // An ended trip's passengers (first names, phones) are no longer this phone's to read.
+            Response::error('This trip has ended.', 409);
+        }
+        Response::success(TripEvents::tripInfo($trip));
     }
 
     if ($method !== 'POST') {
@@ -106,13 +141,21 @@ try {
             'lastSeq' => (int) $row['last_seq']], 'pingSec' => LiveTrips::pingSeconds()]);
     }
 
-    /* ---------------- GPS points / End Trip: only on this phone's trip ---------------- */
-    $tripId = (int) Response::field('tripId', 0);
-    $trip   = $tripId > 0 ? LiveTrips::find($tripId) : null;
-    if ($trip === null || (int) ($trip['device_id'] ?? 0) !== $driver['deviceId']) {
-        // Another phone took the trip over (co-driver) or it never existed:
-        // the app drops its queue for it and goes back to the trip list.
-        Response::error('This trip is now with another phone.', 409);
+    /* ---------------- GPS points / End Trip / buttons: only on this phone's trip ---------------- */
+    $trip   = $ownTrip();
+    $tripId = (int) $trip['id'];
+
+    /* "Stop pugyo", "Dhilo", "Bus bigriyo", SOS, rest (rate-limited per driver inside) */
+    if ($action === 'event') {
+        try {
+            $res = TripEvents::report($driver, $trip, Response::input());
+        } catch (TripEventRefused $e) {
+            // Only a refusal is the driver's message. A PDOException is a RuntimeException
+            // too: it falls through to serverError (500), so the phone keeps the tap.
+            $code = (int) $e->getCode();
+            Response::error($e->getMessage(), in_array($code, [409, 422, 429, 503], true) ? $code : 422);
+        }
+        Response::success($res);
     }
 
     if ($action === 'ping') {
@@ -128,7 +171,9 @@ try {
             foreach ($points as $p) { if (is_array($p)) { $max = max($max, (int) ($p['seq'] ?? 0)); } }
             Response::success(['ack' => $max, 'stored' => 0, 'moved' => false, 'ended' => true]);
         }
-        Response::success(LiveTrips::ingest($trip, array_values($points)) + ['pingSec' => LiveTrips::pingSeconds()]);
+        $res = LiveTrips::ingest($trip, array_values($points));
+        TripEvents::noteBattery($tripId, Response::field('battery', null));   // optional, never throws
+        Response::success($res + ['pingSec' => LiveTrips::pingSeconds()]);
     }
 
     if ($action === 'end') {

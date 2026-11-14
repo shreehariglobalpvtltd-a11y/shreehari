@@ -152,10 +152,12 @@ function admin_nav(): array
         ['href' => 'settlements.php',  'icon' => 'refund',    'label' => $agentView ? 'My Settlements' : 'Commission & Wallet Settlements', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S4],
         ['href' => 'agent-statement.php','icon' => 'doc',     'label' => $agentView ? 'My Monthly Statement' : 'Monthly Statements', 'perm' => 'bookings.view', 'section' => $S4],
         ['href' => 'agent-360.php',    'icon' => 'chart-up',  'label' => 'Agent 360 (per-person money)', 'perm' => 'customers.view', 'section' => $S4],
+        ['href' => 'agent-aging.php',  'icon' => 'clock',     'label' => 'Agent Cash Aging · नगद बाँकी दिन', 'perm' => 'reports.view', 'section' => $S4],   // 15 Nov 2026 (P4): 0-7 / 8-15 / 16-30 / 30+ days
         ['href' => 'cash-book.php',    'icon' => 'ledger',    'label' => 'Cash Book',              'perm' => 'bookings.view',    'section' => $S4],
         ['href' => 'shift.php',        'icon' => 'clock',     'label' => 'Shift & Cash Handover',  'perm' => 'bookings.view',    'section' => $S4],
         ['href' => 'reconcile.php',    'icon' => 'ledger',    'label' => 'Money Reconciliation',   'perm' => 'reports.view',     'section' => $S4],
         ['href' => 'pnl.php',          'icon' => 'chart-up',  'label' => 'Profit & Loss (route · agent)', 'perm' => 'reports.view', 'section' => $S4],   // 29 Oct 2026 (management upgrade 4.4)
+        ['href' => 'ops-reports.php',  'icon' => 'chart-up',  'label' => 'Cancellations & Bus Use · रद्द र बस प्रयोग', 'perm' => 'reports.view', 'section' => $S4],   // 15 Nov 2026 (P4)
         ['href' => 'ledger-check.php', 'icon' => 'shield',    'label' => 'Ledger Check (मिलान)',   'perm' => 'commissions.view', 'section' => $S4],
         ['href' => 'analytics.php',    'icon' => 'chart-up',  'label' => 'Executive Analytics',    'perm' => 'dashboard.view',   'section' => $S4],
 

@@ -748,6 +748,25 @@ final class Fare
         if ($coupon['usage_limit'] !== null && (int) $coupon['used_count'] >= (int) $coupon['usage_limit']) {
             return ['ok' => false, 'error' => 'This coupon has been fully redeemed.'];
         }
+        /* 15 Nov 2026 - a "first booking only" coupon (coupons.first_booking_only,
+           upgrade-2026-11-15-coupon-first.sql): refused once this mobile has any
+           confirmed or completed booking. No real mobile = no discount, never
+           guessed in the passenger's favour. A database that has not run the
+           migration has no such column, so no such rule. */
+        if (!empty($coupon['first_booking_only']) || !empty($coupon['first_time'])) {
+            $firstPhone = normalisePhone($phone);
+            if ($firstPhone === '' || isPlaceholderPhone($firstPhone)) {
+                return ['ok' => false, 'error' => 'This offer is for a first booking — enter your mobile number first.'];
+            }
+            $before = (int) Database::scalar(
+                "SELECT COUNT(*) FROM bookings WHERE contact_phone = :p AND status IN ('confirmed', 'completed')",
+                ['p' => $firstPhone],
+                0
+            );
+            if ($before > 0) {
+                return ['ok' => false, 'error' => 'This offer is only for a first booking.'];
+            }
+        }
 
         $perUser = (int) $coupon['per_user_limit'];
         if ($perUser > 0 && $phone !== '') {

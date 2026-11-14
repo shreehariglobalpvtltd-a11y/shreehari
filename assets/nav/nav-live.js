@@ -292,6 +292,9 @@ function css() {
     '@media (prefers-reduced-motion:reduce){.nl-bi::before{animation:none}}body.saver .nl-bi::before,body.lowdata .nl-bi::before{animation:none}',
     '.nl-plate{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:5px;background:#FFD66B;color:#1a1a1a;font:700 12px Inter,system-ui,sans-serif;letter-spacing:.05em;vertical-align:middle}',
     '.nl-bi.nl-mine{border-color:#E8652E;background:#E8652E;box-shadow:0 0 0 6px rgba(232,101,46,.28),0 4px 12px rgba(0,0,0,.45)}',
+    /* 15 Nov 2026: heading badge on the real coach photo (b.brg from api/nav-buses.php) */
+    '.nl-hd{position:absolute;left:-5px;top:-5px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:1}',
+    '.nl-hd[hidden]{display:none}.nl-hd svg{width:12px;height:12px;display:block}.nl-hd path{fill:#1F4FA3}',
     '.nl-rep{cursor:pointer}.nl-ri{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:19px;background:#fff;border:2px solid #E8652E;box-shadow:0 3px 10px rgba(0,0,0,.4)}',
     '.nl-puck{width:26px;height:26px;border-radius:50%;background:#2F80ED;border:3px solid #fff;box-shadow:0 0 0 8px rgba(47,128,237,.25),0 3px 10px rgba(0,0,0,.4);position:relative}',
     '.nl-puck i{position:absolute;left:50%;top:-11px;margin-left:-6px;border:6px solid transparent;border-bottom:9px solid #2F80ED;transform-origin:6px 24px}',
@@ -570,6 +573,15 @@ function removeBus(id) {
   var mk = BUS.m[id]; if (mk) { if (mk._shgAnim) cancelAnimationFrame(mk._shgAnim); mk.remove(); }
   delete BUS.m[id]; delete BUS.by[id];
 }
+/* 15 Nov 2026: the small arrow on the coach photo, turned to the bus's heading (0 = north), relative to the map's own rotation. */
+var NL_HD = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l5.2 12.8L8 11.2l-5.2 3.1z"/></svg>';
+function busHd(mk, brg) {
+  var i = mk && mk.getElement().querySelector('.nl-hd');
+  if (!i) return;
+  if (brg == null || !isFinite(brg)) { i.hidden = true; return; }
+  i.hidden = false;
+  i.style.transform = 'rotate(' + Math.round(brg - (X.S.map ? X.S.map.getBearing() : 0)) + 'deg)';
+}
 function busStop() { off('bus'); Object.keys(BUS.m).forEach(function (id) { var m = BUS.m[id]; if (m._shgAnim) cancelAnimationFrame(m._shgAnim); m.remove(); delete BUS.m[id]; }); busRows(); }
 function busApply(snap) {
   if (!snap || !Number.isFinite(snap.t)) return;
@@ -587,13 +599,15 @@ function busApply(snap) {
       if (!prev || prev.fixAt !== b.fixAt || prev.lat !== b.lat || prev.lng !== b.lng) {
         moveMarker(BUS.m[b.id], [b.lng, b.lat], !BUS.animate);
       }
-      BUS.m[b.id].getElement().querySelector('span').innerHTML = lbl; return;
+      BUS.m[b.id].getElement().querySelector('span').innerHTML = lbl; busHd(BUS.m[b.id], b.brg); return;
     }
-    var el = wrapM('<img src="/assets/img/bus-shg-sm.webp" alt="S Hari Global" loading="lazy"><span>' + lbl + '</span>', 'nl-bi');
+    var el = wrapM('<img src="/assets/img/bus-shg-sm.webp" alt="S Hari Global" loading="lazy"><i class="nl-hd" hidden>' + NL_HD + '</i><span>' + lbl + '</span>', 'nl-bi');
     el.className = 'nl-bus'; el.tabIndex = 0; el.setAttribute('role', 'button'); el.setAttribute('aria-label', b.bus + ' · ' + b.to);
     el.addEventListener('click', function (e) { e.stopPropagation(); busSheet(b.id); });
     el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); busSheet(b.id); } });
     BUS.m[b.id] = new maplibregl.Marker({ element: el, anchor: 'left' }).setLngLat([b.lng, b.lat]).addTo(m);
+    busHd(BUS.m[b.id], b.brg);
+    if (!m._shgHdHook) { m._shgHdHook = true; m.on('rotate', function () { Object.keys(BUS.m).forEach(function (id) { busHd(BUS.m[id], BUS.by[id] && BUS.by[id].brg); }); }); }
   });
   Object.keys(BUS.by).forEach(function (id) { if (!seen[id]) removeBus(id); });
   busRows();

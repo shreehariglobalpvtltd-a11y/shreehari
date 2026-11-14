@@ -198,6 +198,16 @@
   OW.hi.cvMoved = 'बुकिंग की जानकारी बदल गई। ऊपर देखकर फिर पक्का करें।';
   OW.ne.cvMoved = 'बुकिङको विवरण बदलियो। माथि हेरेर फेरि पक्का गर्नुहोस्।';
   ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in OW[l]) { W[l][k] = OW[l][k]; } } });
+  /* 15 Nov 2026: the promo code link - customer card only, and only while the office runs a typed coupon. */
+  var PW = {
+    en: { promoAsk: '🏷️ Have a promo code?', promoPh: 'PROMO CODE', promoGo: 'Apply', promoRm: 'Remove', promoBad: 'Promo not applied',
+      promoOk: '{c} applied · − {a} · new total {t}', promoWait: 'Checking the code…' },
+    hi: { promoAsk: '🏷️ Promo code है?', promoPh: 'PROMO CODE', promoGo: 'Apply करें', promoRm: 'हटाएँ', promoBad: 'Promo लागू नहीं हुआ',
+      promoOk: '{c} लागू · − {a} · नया कुल {t}', promoWait: 'Code जाँच रहे हैं…' },
+    ne: { promoAsk: '🏷️ Promo code छ?', promoPh: 'PROMO CODE', promoGo: 'Apply गर्नुहोस्', promoRm: 'हटाउनुहोस्', promoBad: 'Promo लागू भएन',
+      promoOk: '{c} लागू भयो · − {a} · नयाँ जम्मा {t}', promoWait: 'Code जाँच्दै…' }
+  };
+  ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in PW[l]) { W[l][k] = PW[l][k]; } } });
   function tr(k, v) {
     var s = (W[lang()] && W[lang()][k]) || W.en[k] || k;
     if (v) Object.keys(v).forEach(function (x) { s = s.split('{' + x + '}').join(v[x]); });
@@ -223,6 +233,7 @@
     /* Cash verification (customer only) - kept in memory for this visit, never
        in localStorage (an ID number must not sit on a shared phone). */
     codVerify: false, idTypes: [], qrSeconds: 60, seatPickFirst: true,
+    promoOn: false, promo: '',   // 15 Nov 2026: the typed promo code (memory only, never saved)
     verify: { address: '', idType: '', idNum: '', altPhone: '', altCc: 'NP' }
   };
   var store = {
@@ -287,6 +298,8 @@
         S.idTypes = d.idTypes || [];
         S.qrSeconds = d.qrSeconds || 60;
         S.seatPickFirst = d.seatPickFirst !== false;
+        S.promoOn = !STAFF && !!d.promo;
+        buildPromo();
         if (d.prefill) {
           ['address', 'idType'].forEach(function (k) { if (d.prefill[k] && !S.verify[k]) S.verify[k] = d.prefill[k]; });
           if (d.prefill.idNum && !S.verify.idNum) S.verify.idNum = d.prefill.idNum;
@@ -499,6 +512,7 @@
     var b = { action: 'quote', direction: S.dir, date: S.date, point: S.point, type: S.type, cabin: S.cabin, berth: S.berth,
       pax: S.pax.map(function (p) { return { gender: p.gender, band: p.band, name: String(p.name || '').trim().slice(0, 60) }; }),
       seats: S.seatMode === 'manual' ? S.manual : [], phone: digits(S.phone) };
+    if (S.promoOn && S.promo) b.promo = S.promo;   // 15 Nov 2026: the server prices it (and the sale charges the same)
     /* 13 Nov 2026 (mg17): the desk's discount (admin / counter page only — the
        boxes exist nowhere else). The server caps it and prices the ticket. */
     var dv = document.getElementById('sbxDiscVal');
@@ -522,6 +536,60 @@
     box.classList.toggle('cut', cut);
     if (!note.getAttribute('data-base')) note.setAttribute('data-base', note.textContent);
     note.textContent = got > 0 ? ('− ' + money(got) + (cut ? ' (max ' + cap + '%)' : '')) : (cut ? 'offer already bigger' : note.getAttribute('data-base'));
+  }
+  /* 15 Nov 2026: "Promo code छ?" — one link that opens one box + Apply. Built only when the
+     boot says a typed coupon is running (customer card); otherwise nothing renders at all.
+     Apply re-quotes with the code; the server answers q.promo {code, ok, amount, error} and
+     the card's own total already carries the discount. */
+  function buildPromo() {
+    if (!S.promoOn || $('sbPromo')) return;
+    var terms = root.querySelector('.sb-terms');
+    if (!terms) return;
+    var wrap = document.createElement('div');
+    wrap.id = 'sbPromo';
+    wrap.style.cssText = 'margin:6px 0 8px';
+    wrap.innerHTML = '<button type="button" id="sbPromoAsk" aria-expanded="false" aria-controls="sbPromoBox" data-sbi="promoAsk"'
+      + ' style="min-height:44px;padding:0 4px;border:0;background:none;color:var(--sb-text,inherit);font:inherit;font-size:14px;font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer"></button>'
+      + '<div id="sbPromoBox" style="display:none;flex-wrap:wrap;gap:8px;align-items:center">'
+      + '<input id="sbPromoIn" type="text" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Promo code" data-sbi-ph="promoPh"'
+      + ' style="flex:1 1 150px;min-width:0;min-height:44px;padding:0 12px;border:1px solid var(--sb-line,#cfd8e6);border-radius:10px;background:var(--sb-panel,#fff);color:var(--sb-text,#16233C);font:inherit;font-size:16px;text-transform:uppercase;letter-spacing:.04em">'
+      + '<button type="button" id="sbPromoGo" data-sbi="promoGo" style="min-height:44px;padding:0 16px;border:1px solid var(--sb-primary,#0054A8);border-radius:10px;background:var(--sb-primary,#0054A8);color:#fff;font:inherit;font-size:14px;font-weight:800;cursor:pointer"></button>'
+      + '<button type="button" id="sbPromoRm" data-sbi="promoRm" style="display:none;min-height:44px;padding:0 12px;border:1px solid var(--sb-line,#cfd8e6);border-radius:10px;background:var(--sb-panel,#fff);color:var(--sb-text,#16233C);font:inherit;font-size:13px;font-weight:700;cursor:pointer"></button>'
+      + '</div><p id="sbPromoMsg" aria-live="polite" style="margin:6px 0 0;font-size:13px;overflow-wrap:anywhere"></p>';
+    terms.parentNode.insertBefore(wrap, terms);
+    var ask = $('sbPromoAsk'), box = $('sbPromoBox'), inp = $('sbPromoIn');
+    ask.addEventListener('click', function () {
+      var open = box.style.display === 'none';
+      box.style.display = open ? 'flex' : 'none';
+      ask.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) { try { inp.focus(); } catch (e) {} }
+    });
+    var go = function () {
+      var c = String(inp.value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 40);
+      inp.value = c;
+      // an emptied box + Apply takes the code off (a wrong code must never stick to the card)
+      if (!c) { if (S.promo) { S.promo = ''; renderPromo(); requote(0); } else { try { inp.focus(); } catch (e) {} } return; }
+      S.promo = c; $('sbPromoMsg').textContent = tr('promoWait'); $('sbPromoMsg').style.color = 'var(--sb-muted,#5C6B85)';
+      requote(0);
+    };
+    $('sbPromoGo').addEventListener('click', go);
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+    $('sbPromoRm').addEventListener('click', function () { S.promo = ''; inp.value = ''; renderPromo(); requote(0); });
+  }
+  function renderPromo() {
+    var msg = $('sbPromoMsg');
+    if (!msg) return;
+    var p = S.promo && S.q && S.q.promo && S.q.promo.code === S.promo ? S.q.promo : null;
+    $('sbPromoRm').style.display = S.promo ? '' : 'none';   // also after a refused code, so its red line can be cleared
+    if (!S.promo) { msg.textContent = ''; return; }
+    if (!p) { if (!qPend) msg.textContent = ''; return; }
+    if (p.ok) {
+      msg.style.color = 'var(--sb-ok,#11703F)';
+      msg.textContent = '✅ ' + tr('promoOk', { c: p.code, a: money(p.amount), t: S.q.price ? money(S.q.price.total) : '—' });
+    } else {
+      msg.style.color = 'var(--sb-err,#C62828)';
+      msg.textContent = tr('promoBad') + ': ' + (p.error || '—');
+    }
   }
   function doQuote() {
     var my = ++qSeq;
@@ -591,6 +659,7 @@
     $('sbBarSeats').textContent = q && q.ok ? (seatSummary(q) + (q.price ? ' · ≈ ' + npr(q.price.npr) : '')) : (q && q.error ? q.error : tr('loading'));
     syncPoint();
     renderQLine();
+    renderPromo();
   }
   /* 14 Nov 2026: the pickup box shows the pickup that will really be booked.
      A pickup that is past / inside the boarding cut-off for the day is still in the
@@ -1579,7 +1648,7 @@
     var b = e.target.closest('[data-tk]'); if (!b || !root.contains(b)) return;
     var r = lastTicket; var act = b.getAttribute('data-tk');
     if (act === 'close') { closeTicket(); return; }
-    if (act === 'new') { closeTicket(); S.manual = []; S.seatMode = 'auto'; S.date = ''; fill(); requote(0); window.scrollTo({ top: root.offsetTop - 60, behavior: 'smooth' }); return; }
+    if (act === 'new') { closeTicket(); S.manual = []; S.seatMode = 'auto'; S.date = ''; S.promo = ''; if ($('sbPromoIn')) $('sbPromoIn').value = ''; fill(); requote(0); window.scrollTo({ top: root.offsetTop - 60, behavior: 'smooth' }); return; }
     if (!r) return;
     if (act === 'copy') { try { navigator.clipboard.writeText(r.pnr).then(function () { say(tr('copied')); }); } catch (x) { say(r.pnr); } return; }
     if (act === 'share') {

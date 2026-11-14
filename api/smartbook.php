@@ -76,6 +76,8 @@ try {
             'qrSeconds'  => max(30, min(600, Settings::getInt('smartbook_qr_seconds', 60))),
             // 6 Nov 2026 (owner: "automatic bhanda seat selection prefer"): the berths are chosen on the map before a sale
             'seatPickFirst' => Settings::getBool('seat_pick_manual_first', true),
+            // 15 Nov 2026: the "Promo code छ?" link - customer card only, and only while a typed coupon is running
+            'promo'      => $mode === 'customer' && SmartBook::promoOn(),
         ]);
     }
 
