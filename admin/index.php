@@ -461,6 +461,8 @@ admin_header('Dashboard', 'index');
 .exec-quick-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
 .exec-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 15px;border-radius:10px;font-size:13px;font-weight:800;text-decoration:none;cursor:pointer;border:0;transition:all .18s;box-shadow:0 2px 6px rgba(0,0,0,.08)}
 .exec-btn:hover{transform:translateY(-1px);filter:brightness(1.08)}
+/* 14 Nov 2026 (staff 360px audit): 37px quick buttons -> 42px on a touch phone */
+@media(max-width:820px) and (pointer:coarse){.exec-btn{min-height:42px}}
 .eb-orange{background:linear-gradient(135deg,#f07c1f,#c95f0c);color:#fff}
 .eb-blue{background:linear-gradient(135deg,#2E5FA8,#1a3d6e);color:#fff}
 .eb-green{background:linear-gradient(135deg,#0a8b4b,#065a30);color:#fff}

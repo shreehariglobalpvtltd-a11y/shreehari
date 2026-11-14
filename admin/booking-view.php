@@ -1519,6 +1519,8 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
 .power-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 .power-panel details{margin-top:10px}
 .power-panel summary{font-size:13px;font-weight:700;cursor:pointer;color:#8a1f1f;padding:6px 0}
+/* 14 Nov 2026 (staff 360px audit): 30px rows on a touch phone -> 40px */
+@media(max-width:820px) and (pointer:coarse){.power-panel summary{padding:12px 0}}
 .power-panel .sub-form{margin-top:10px;display:grid;gap:8px}
 .power-panel label{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:2px}
 .power-panel input,.power-panel textarea{width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:7px;font-size:14px}
@@ -1618,6 +1620,7 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
   .qe-pax{grid-template-columns:44px minmax(0,1fr) 64px;}
   .qe-pax .qe-wide{grid-column:2 / -1}
   .qe-bar{top:var(--tb-h,52px)}
+  .qe-bar a,.qe-bar button{min-height:40px}   /* 14 Nov 2026 (360px audit): 39px -> 40px */
 }
 </style>
 

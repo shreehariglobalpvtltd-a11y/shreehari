@@ -194,6 +194,11 @@ admin_header('Agents & Staff', 'people');
 .pp-off td{opacity:.55}
 .pp-st{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:800}
 .pp-st.open{background:#d7f4e3;color:#0a6b3b}.pp-st.closed{background:#e1ecfb;color:#1f4f96}.pp-st.closed_diff{background:#fde2e1;color:#a12a22}.pp-st.none{background:var(--head);color:var(--mut)}
+/* 14 Nov 2026 (staff 360px audit): in the phone card the one-line action row
+   was 428px wide and set the width of every card; it wraps now, and its
+   buttons / desk select are finger-sized. Desktop keeps the compact 32px row. */
+:root[data-theme="dark"] .pp-acts .btn.soft{color:#9cc0ff!important;border-color:#3b5b99!important}   /* navy text on the dark card: "Edit" could not be read */
+@media(max-width:820px){.pp-acts{flex-wrap:wrap;justify-content:flex-end}.pp-acts .btn,.pp-comm input,.pp-comm .btn{min-height:40px}.pp-desk select{min-height:40px!important}}
 </style>
 
 <?php if ($flash !== null): ?><div class="flash <?= $e($flash[0]) ?>"><?= $e($flash[1]) ?></div><?php endif; ?>

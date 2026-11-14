@@ -123,6 +123,20 @@ html.sbx-admin .sbx-ov{display:block}
 .sbx-line li.now{border-color:#f07a1e;color:#d4570c;box-shadow:0 0 0 3px rgba(240,122,30,.18)}
 .sbx-line li.sbx-go::before{content:'→'}.sbx-line li.sbx-go.ok{background:linear-gradient(120deg,#ffa24d,#f07a1e 50%,#d4570c);color:#fff;border-color:transparent;box-shadow:0 6px 14px -6px rgba(212,87,12,.6)}
 #smartBook{padding-left:0;padding-right:0}
+/* 14 Nov 2026 (staff 360px audit): under 860px the Pay bar is fixed. The
+   customer page parks it above its 64px tab bar and pads #view-home to clear
+   it; the staff page has neither, so here the bar floated 64px above the
+   bottom edge and hid the last 88px of the card for good. On this page it
+   sits on the bottom edge, the page ends below it, and a field reached with
+   "next" stops above it. Layout only - the card, its script and its rules
+   in assets/css/smartbook.css are untouched. */
+@media (max-width:859px){
+  #smartBook{--bottomnav-h:0px}
+  main.wrap{padding-bottom:calc(var(--sb-bar-h,66px) + 24px + env(safe-area-inset-bottom,0px))}
+  html{scroll-padding-bottom:calc(var(--sb-bar-h,66px) + 14px)}
+  .sbx-more>summary{width:42px;height:42px;padding:0}
+  .sbx-reg button{min-height:42px}
+}
 </style>
 <div class="sbx-top">
   <span class="sbx-badge">⚡ SmartBook · <?= $e($label) ?></span>

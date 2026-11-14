@@ -1,0 +1,42 @@
+BEFORE (commit f56bb227), superadmin, iframe 360x640, pointer:coarse, 14 Nov 2026
+Columns: over=page px wider than screen | off=elements cut off right (count/max px) | scroll=sideways scroll boxes |
+card=card-tables, widest px, cells off-screen (count/max px), spill=cells whose content overflows |
+tap=controls under 40px (count/smallest px) | link=text links under 40px | text=elements under 12px (count/smallest) |
+bar=bottom bar | top=sticky top bar height px | focus=fields hidden when focused / fields tested
+
+/admin/home.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=2/33 | link=5 | text=35/10.5 | bar=- | top=234 | focus=1/2
+/admin/index.php | over=0 | off=0/0 | scroll=1 | card=2t w334 tdOff0/0 spill0 | tap=4/33 | link=36 | text=95/3 | bar=- | top=234 | focus=0/2
+/admin/hub.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=2/33 | link=8 | text=18/11 | bar=- | top=234 | focus=0/1
+/admin/smartbook.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=28/32 | link=5 | text=32/9.6 | bar=- | top=234 | focus=1/8
+/admin/bookings.php | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill25 | tap=29/20 | link=29 | text=210/10 | bar=- | top=234 | focus=6/9
+/admin/booking-view.php?pnr=SHG-2026-01317 | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill0 | tap=20/30 | link=14 | text=30/10 | bar=- | top=234 | focus=0/28
+/admin/manifest.php?date=2026-11-03&sid=2776 | over=15 | off=2/15 | scroll=1 | card=2t w509 tdOff26/160 spill0 | tap=20/30 | link=12 | text=49/9 | bar=- | top=234 | focus=0/6
+/admin/chalan.php?date=2026-11-03&sid=2776 | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=3/22 | link=10 | text=31/11 | bar=- | top=234 | focus=2/8
+/admin/seatmap.php | over=68 | off=1/68 | scroll=1 | card=2t w334 tdOff0/0 spill0 | tap=8/25 | link=7 | text=110/10 | bar=- | top=234 | focus=1/13
+/admin/payments.php | over=4 | off=1/4 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=2/33 | link=4 | text=32/10 | bar=- | top=234 | focus=0/1
+/admin/agents.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=3/33 | link=15 | text=89/11 | bar=- | top=234 | focus=0/6
+/admin/agent-360.php?agent=11 | over=0 | off=0/0 | scroll=1 | card=2t w382 tdOff1/35 spill0 | tap=12/18 | link=23 | text=25/11 | bar=- | top=234 | focus=0/9
+/admin/agent.php?agent=11 | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill0 | tap=3/33 | link=13 | text=23/11 | bar=- | top=234 | focus=0/2
+/admin/ticket-statement.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=9/30 | link=10 | text=26/11 | bar=- | top=234 | focus=0/6
+/admin/reconcile.php | over=0 | off=0/0 | scroll=2 | card=2t w760 tdOff234/417 spill0 | tap=3/33 | link=48 | text=28/11 | bar=- | top=234 | focus=0/1
+/admin/wa-inbox.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=3/33 | link=4 | text=18/11 | bar=- | top=234 | focus=0/1
+/admin/settings.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=6/33 | link=4 | text=18/11 | bar=- | top=234 | focus=1/7
+/admin/easy-settings.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=12/27 | link=6 | text=18/11 | bar=- | top=234 | focus=1/4
+/admin/bus-control.php | over=1 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=35/20 | link=48 | text=633/10 | bar=- | top=234 | focus=0/15
+/admin/people.php | over=0 | off=0/0 | scroll=1 | card=1t w760 tdOff128/414 spill0 | tap=135/32 | link=25 | text=38/11 | bar=- | top=234 | focus=1/30
+/admin/team.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=3/33 | link=10 | text=19/11 | bar=- | top=234 | focus=0/1
+/admin/customers.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=3/33 | link=23 | text=41/11 | bar=- | top=234 | focus=0/5
+/admin/accounting.php | over=0 | off=0/0 | scroll=0 | card=5t w334 tdOff0/0 spill0 | tap=3/33 | link=8 | text=19/11 | bar=- | top=234 | focus=0/7
+/admin/settlements.php | over=0 | off=0/0 | scroll=1 | card=1t w760 tdOff32/413 spill0 | tap=3/33 | link=7 | text=20/10.5 | bar=- | top=234 | focus=0/1
+/admin/cash-book.php | over=0 | off=0/0 | scroll=0 | card=2t w334 tdOff0/0 spill0 | tap=3/33 | link=5 | text=19/11 | bar=- | top=234 | focus=1/6
+/admin/trips.php | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill0 | tap=138/29 | link=25 | text=152/11 | bar=- | top=234 | focus=0/30
+/admin/schedule.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=40/32 | link=16 | text=48/10 | bar=- | top=234 | focus=0/2
+/admin/refunds.php | over=0 | off=0/0 | scroll=0 | card=1t w334 tdOff0/0 spill0 | tap=30/33 | link=13 | text=18/11 | bar=- | top=234 | focus=0/28
+/admin/my-desk.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=2/33 | link=4 | text=18/11 | bar=- | top=234 | focus=0/2
+/admin/support-inbox.php | over=0 | off=0/0 | scroll=1 | card=1t w760 tdOff30/414 spill0 | tap=2/33 | link=20 | text=24/11 | bar=- | top=234 | focus=0/7
+/admin/shift.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=3/33 | link=4 | text=18/11 | bar=- | top=234 | focus=0/1
+/admin/sessions.php | over=0 | off=0/0 | scroll=2 | card=2t w760 tdOff13/414 spill0 | tap=3/33 | link=10 | text=21/11 | bar=- | top=234 | focus=0/1
+/admin/permissions.php | over=0 | off=0/0 | scroll=1 | card=1t w860 tdOff388/514 spill0 | tap=3/33 | link=4 | text=56/11 | bar=- | top=234 | focus=0/2
+/admin/pnl.php | over=0 | off=0/0 | scroll=1 | card=2t w760 tdOff60/414 spill0 | tap=3/33 | link=6 | text=31/11 | bar=- | top=234 | focus=0/3
+/admin/agent-statement.php?agent=11 | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=6/22 | link=11 | text=52/10.8 | bar=- | top=234 | focus=3/4
+/admin/search.php?q=SHG | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=2/33 | link=4 | text=18/11 | bar=- | top=234 | focus=0/1

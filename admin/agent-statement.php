@@ -294,6 +294,11 @@ admin_header('Agent statement', 'agent-statement');
 .stmt-l3 { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .stmt-run { color: var(--ink); font-weight: 600; }
 @media (max-width: 560px) { .stmt-range { grid-template-columns: 1fr 1fr; } .stmt-range .sg-btn { grid-column: 1 / -1; } }
+/* 14 Nov 2026 (staff 360px audit): the sg-* skin (assets/css/ds.css) is not
+   loaded in the staff shell, so Show / Share images / Download all were bare
+   22px browser buttons. On a touch phone they are finger-sized; desktop is
+   left as it was. */
+@media (max-width: 820px) and (pointer: coarse) { .stmt .sg-btn { min-height: 44px; padding: 0 14px; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; } }
 </style>
 <script>
 (function () {

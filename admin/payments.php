@@ -674,7 +674,8 @@ tr.row-done td{background:var(--hover)}
   .pay-filter label,.pay-filter input,.pay-filter select{width:100%}
   .pq-main{gap:4px 14px}
   .pq-amt b{font-size:22px}
-  .pq-sub{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;margin-right:-16px;padding-right:16px}
+  /* 14 Nov 2026: bleed = the phone gutter (.wrap is 12px on a phone, not 16) - it ran 4px past the screen */
+  .pq-sub{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;margin-right:-12px;padding-right:12px}
   .pq-sub a{flex:0 0 auto;font-size:13px;padding:8px 13px}
   .pq-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
   .pq-actions .ghost{grid-column:1/-1;min-height:44px}

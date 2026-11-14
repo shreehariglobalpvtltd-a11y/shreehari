@@ -650,7 +650,11 @@ table.dt tr.dt-x[hidden]{display:none}
 .dt-grid label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--mut)}
 .dt-grid label input,.dt-grid label select{font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);text-transform:none;letter-spacing:0}
 .dt-grid .kv b{display:block;font-size:14px;color:var(--ink);font-weight:600;text-transform:none;letter-spacing:0;white-space:normal}
-@media (max-width:820px){table.dt{min-width:760px;font-size:13px}.dt-wrap{max-height:none;border-radius:10px}.dt-bar .dt-count{margin-left:0}}
+@media (max-width:820px){table.dt{min-width:760px;font-size:13px}.dt-wrap{max-height:none;border-radius:10px}.dt-bar .dt-count{margin-left:0}
+/* 14 Nov 2026: a .dt that is also a phone card-table (20 pages hard-code
+   "dt card-table") is not a spreadsheet - no sticky first column inside a card.
+   Its 760px min-width is lifted by the shared card-table rule in admin_css(). */
+table.dt.card-table td:first-child{position:static;box-shadow:none}}
 /* Phones: row buttons and the filter bar meet the 44px touch target the rest
    of the admin already keeps (the compact 32px is a desktop-only density). */
 @media (pointer:coarse){.dt-acts .btn{min-height:44px;padding:8px 12px}.dt-bar input,.dt-bar select{min-height:44px}}
@@ -732,14 +736,31 @@ function admin_cards_js(): string
   if (mq.addEventListener) mq.addEventListener('change', function (e) { if (e.matches) run(); });
   else if (mq.addListener) mq.addListener(function (e) { if (e.matches) run(); });
   if (mq.matches) run();
+  // 14 Nov 2026: a total row (<tfoot>) is shown as one more card on a phone;
+  // give its cells the header text of the column they sit under. The first
+  // cell with text is the row's own caption ("Total") and a cell spanning
+  // several columns belongs to none of them - both stay unlabelled.
+  function foot(t, labels) {
+    if (!t.tFoot) return;
+    for (var r = 0; r < t.tFoot.rows.length; r++) {
+      var cs = t.tFoot.rows[r].cells, col = 0, caption = false;
+      for (var c = 0; c < cs.length; c++) {
+        var span = cs[c].colSpan || 1, has = (cs[c].textContent || '').replace(/\s+/g, '') !== '';
+        if (has && !caption) caption = true;
+        else if (has && span === 1 && labels[col] && !cs[c].hasAttribute('data-label')) cs[c].setAttribute('data-label', labels[col]);
+        col += span;
+      }
+    }
+  }
   function run() {
   var tables = document.querySelectorAll('table');
   for (var k = 0; k < tables.length; k++) {
     var t = tables[k];
-    if (t.classList.contains('card-table') || /(^|\s)(no-card|sm-table)(\s|$)/.test(t.className)) continue;
+    if (/(^|\s)(no-card|sm-table)(\s|$)/.test(t.className)) continue;
     if (!t.tHead || !t.tHead.rows[0]) continue;
     var ths = t.tHead.rows[0].cells, labels = [];
     for (var i = 0; i < ths.length; i++) labels.push((ths[i].textContent || '').replace(/\s+/g, ' ').trim());
+    if (t.classList.contains('card-table')) { foot(t, labels); continue; }   // hand-written card-table: body labels are its own
     if (labels.length < 3) continue;                      // 1-2 column tables read fine as they are
     var ok = true, rows = [];
     for (var b = 0; b < t.tBodies.length; b++) for (var r = 0; r < t.tBodies[b].rows.length; r++) rows.push(t.tBodies[b].rows[r]);
@@ -754,6 +775,7 @@ function admin_cards_js(): string
       if (cs.length === 1 && cs[0].colSpan > 1) continue;
       for (var c = 0; c < cs.length; c++) if (!cs[c].hasAttribute('data-label') && labels[c]) cs[c].setAttribute('data-label', labels[c]);
     }
+    foot(t, labels);
     t.classList.add('card-table');
   }
   }
@@ -1257,6 +1279,105 @@ img,pre{max-width:100%}
   details.advanced-section>summary{font-size:13px;font-weight:600;cursor:pointer;color:var(--blue);padding:8px 0;list-style:none}
   details.advanced-section>summary::before{content:'▶ ';font-size:11px}
   details.advanced-section[open]>summary::before{content:'▼ '}
+  /* 14 Nov 2026 (staff 360px audit): a card-table is stacked cards, so a
+     table min-width never belongs on it. `table.dt` (760px), `table.pm`
+     (860px) and a few page tables kept theirs, which left every card 2-3
+     screens wide inside its scroll box and put the right-aligned VALUE of
+     each row off-screen (Reconcile: 234 cells, People: 128). Values may now
+     wrap inside the card instead of pushing it wider. Sideways tables
+     (.no-card / .sm-table) never get the card-table class, so they keep
+     scrolling exactly as before. */
+  table.card-table{min-width:0!important}
+  /* The cell is a flex row: label left (auto margin), value right. A value
+     made of several pieces (name + small note, tag + buttons) used to be
+     spread across the row and could not wrap, so one long row set the width
+     of every card (Chalani 398px on a 336px panel). Pieces now stay
+     together on the right and wrap to a second line when they must. */
+  table.card-table tbody td{flex-wrap:wrap;justify-content:flex-end;gap:4px 10px;min-width:0;white-space:normal;text-align:right;overflow-wrap:anywhere}
+  table.card-table tbody td::before{flex:0 0 auto;margin-right:auto;text-align:left}
+  /* full-width rows with no label (group headers, "nothing here") read left */
+  table.card-table tbody td:not([data-label]){justify-content:flex-start;text-align:left}
+  table.card-table tbody td:not([data-label])::before{content:none}
+  /* Total rows. A <tfoot> kept table layout beside the block cards, so the
+     browser gave the cards column one only and the totals the rest: every
+     card was squeezed (Accounting 218px of 334, Chalani place list) and the
+     table grew past its panel. The total row is now one more card; its
+     cells get their labels from admin_cards_js(). */
+  table.card-table tfoot tr{display:block;border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--head)}
+  table.card-table tfoot td,table.card-table tfoot th{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:4px 10px;
+    padding:4px 0;border:none;font-size:14px;min-width:0;white-space:normal;text-align:right;overflow-wrap:anywhere;background:none}
+  table.card-table tfoot td::before,table.card-table tfoot th::before{content:attr(data-label);flex:0 0 auto;margin-right:auto;font-weight:700;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;text-align:left}
+  table.card-table tfoot td:not([data-label]),table.card-table tfoot th:not([data-label]){justify-content:flex-start;text-align:left}
+  table.card-table tfoot td:not([data-label])::before,table.card-table tfoot th:not([data-label])::before{content:none}
+  table.card-table tfoot td:empty,table.card-table tfoot th:empty{display:none}
+  /* 14 Nov 2026 (staff 360px audit): a <select> is as wide as its longest
+     option ("13:00 · Surat → Rupaidiha · Bus 2 (extra)" = 399px), and a label
+     or flex row around it grew with it - Seat Map ran 68px off the screen and
+     the Chalani bus picker sat outside it. Outside tables a field may never
+     be wider than its box; inside a phone card likewise. Sideways tables
+     (.no-card / .sm-table) are left alone so their columns keep their width. */
+  select:not(table select),input:not(table input),textarea:not(table textarea),label:not(table label){max-width:100%}
+  /* :where() = lowest specificity: a page that caps its own field (People's
+     desk select, max-width:190px) keeps that cap */
+  :where(table.card-table) select,:where(table.card-table) input,:where(table.card-table) textarea{max-width:100%}
+}
+/* ── Phones <=560px (14 Nov 2026, staff 360px audit) ─────────────────────
+   Top bar. Wrapped into four rows it stood 234px tall and stayed stuck to
+   the top: 37% of a 360x640 screen on every staff page, and a field focused
+   from below landed underneath it. Now a grid - brand row and who row
+   scroll away with the page (negative sticky top = their fixed height),
+   only the last row (menu + search, 52px) stays. Pure CSS, same markup,
+   same links; nothing above 560px changes. */
+@media(max-width:560px){
+  .tb{display:grid;grid-template-columns:44px minmax(0,1fr);grid-template-rows:30px 44px 44px;
+      grid-template-areas:"brand brand" "who who" "menu search";gap:4px 8px;padding:6px 12px 8px;height:auto;top:-88px}
+  .tb .menu{grid-area:menu;display:flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0}
+  .tb .brand{grid-area:brand;display:block;min-width:0;line-height:30px;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tb .brand-logo{vertical-align:middle;margin-right:4px}
+  .tb .who{grid-area:who;margin-left:0;min-width:0;display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;overflow-x:auto;scrollbar-width:none}
+  .tb .who::-webkit-scrollbar{display:none}
+  .tb .who a{display:inline-flex;align-items:center;min-height:40px;padding:0 5px}
+  /* a long name scrolls the strip sideways; Sign out (the last link) stays in view */
+  .tb .who a:last-child{position:sticky;right:0;background:var(--navy);padding-left:8px;box-shadow:-8px 0 8px var(--navy)}
+  .tb-search{grid-area:search;align-self:center;max-width:none;margin-top:0;height:40px;flex-basis:auto;order:0}
+  /* roles without the search box: who row scrolls away, menu + brand stay */
+  .tb:not(:has(.tb-search)){grid-template-rows:44px 44px;grid-template-areas:"who who" "menu brand";top:-54px}
+  .tb:not(:has(.tb-search)) .brand{align-self:center}
+  /* the drawer and its scrim start under the 52px strip that stays; while
+     the drawer is open the bar is pinned in that collapsed state so the
+     menu button that opened it is never covered by it */
+  .side{top:52px;height:calc(100vh - 52px)}
+  body.nav-open .scrim{inset:52px 0 0}
+  body.nav-open .tb{position:fixed;left:0;right:0}
+  body.nav-open{padding-top:140px}
+  body.nav-open:not(:has(.tb-search)){padding-top:106px}
+  /* a focused / jumped-to field stops below the stuck strip, not under it */
+  html{scroll-padding-top:60px}
+  /* the "new payment" / "new booking" pop-ups are placed for the 56px desktop
+     bar (top:66px / 112px, set inline by admin_poll_js) - on a phone that is
+     on top of the search row. Here they open below the whole bar. */
+  #newPaymentBanner{top:148px!important;right:12px!important;left:12px;max-width:none!important}
+  #newBookingsPill{top:222px!important;right:12px!important;left:12px;max-width:none!important}
+}
+/* 14 Nov 2026: the drawer's group headers and "More" rows were 33px on a
+   phone; every other drawer row already keeps 44px. */
+@media(max-width:820px) and (pointer:coarse){
+  .side-more>summary,.side-toggle{min-height:44px;display:flex;align-items:center}
+}
+/* 14 Nov 2026 (staff 360px audit), touch phones only. A field with no rule
+   of its own was 25px high (Tickets search, Seat Map passenger name) and a
+   bare <summary> 22px (Chalani history). :where() keeps these at zero
+   specificity, so any page rule that sizes its own control still wins - this
+   only lifts what nobody styled. A .pill that is a <button> is an action
+   (Tickets "ID Baaki (Verify)" was 20px high with 10px text). */
+@media(max-width:820px) and (pointer:coarse){
+  :where(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=hidden]),select,textarea){min-height:40px}
+  :where(summary){padding-top:12px;padding-bottom:12px}
+  .tb-search input{min-height:0}
+  details.advanced-section>summary{padding:12px 0}
+  button.pill{min-height:40px;padding:8px 14px;font-size:12px!important}
+  /* the "new payment / new booking - Refresh" pop-ups: their button was 26px */
+  #newPaymentBanner button,#newBookingsPill button{min-height:40px;padding-left:14px!important;padding-right:14px!important}
 }
 /* ── Toast animation — auto-fade after 4s ── */
 .flash{animation:flashIn .3s ease}

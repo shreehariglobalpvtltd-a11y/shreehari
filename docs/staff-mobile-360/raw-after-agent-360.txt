@@ -1,0 +1,21 @@
+AFTER (working tree on top of f56bb227), agent (qa-sm360-agent), iframe 360x640, pointer:coarse, 14 Nov 2026
+/admin/home.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=3 | text=14/10.5 | bar=- | top=52 | focus=0/2
+/admin/smartbook.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=11/32 | link=2 | text=13/9.6 | bar=69 covers0 | top=52 | focus=0/6
+/admin/bookings.php | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=1 | text=7/11 | bar=- | top=52 | focus=0/8
+/admin/bus-control.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=615/10 | bar=- | top=52 | focus=0/2
+/admin/seatmap.php | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=2 | text=89/10.5 | bar=- | top=52 | focus=0/11
+/admin/manifest.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=0/0 | bar=- | top=52 | focus=0/5
+/admin/agent.php | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=1 | text=5/11.5 | bar=- | top=52 | focus=0/1
+/admin/ticket-statement.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=6 | text=7/11 | bar=- | top=52 | focus=0/3
+/admin/agent-sales.php | over=0 | off=0/0 | scroll=0 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=1 | text=0/0 | bar=- | top=52 | focus=0/4
+/admin/agent-passengers.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=0/0 | bar=- | top=52 | focus=0/3
+/admin/agent-passengers.php?view=manifest | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=0/0 | bar=- | top=52 | focus=0/3
+/admin/agent-offline.php | over=0 | off=0/0 | scroll=0 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=1 | text=0/0 | bar=- | top=52 | focus=0/13
+/admin/settlements.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=0/0 | bar=- | top=140 | focus=0/1
+/admin/agent-statement.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=5 | text=0/0 | bar=- | top=52 | focus=0/3
+/admin/cash-book.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=0/0 | bar=- | top=52 | focus=0/5
+/admin/shift.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=0/0 | bar=- | top=140 | focus=0/1
+/admin/trips.php | over=0 | off=0/0 | scroll=0 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=159 | text=321/11 | bar=- | top=52 | focus=0/1
+/admin/scan.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=0/0 | bar=- | top=140 | focus=0/3
+/admin/reschedule.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=3 | text=0/0 | bar=- | top=140 | focus=0/1
+/admin/missed-bus.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=0/0 | bar=- | top=140 | focus=0/1

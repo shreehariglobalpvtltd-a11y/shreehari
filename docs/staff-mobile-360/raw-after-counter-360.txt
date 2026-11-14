@@ -1,0 +1,22 @@
+AFTER (working tree on top of f56bb227), counter (qa-sm360-counter), iframe 360x640, pointer:coarse, 14 Nov 2026
+/admin/home.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=2 | text=30/10.5 | bar=- | top=52 | focus=0/2
+/admin/smartbook.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=11/32 | link=2 | text=28/9.6 | bar=69 covers0 | top=52 | focus=0/8
+/admin/bookings.php | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=40 | text=276/10 | bar=- | top=52 | focus=0/9
+/admin/booking-view.php?pnr=SHG-2026-01317 | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=10 | text=14/11 | bar=- | top=52 | focus=0/13
+/admin/manifest.php?date=2026-11-03&sid=2776 | over=0 | off=0/0 | scroll=0 | card=2t w336 tdOff0/0 spill0 | tap=0/0 | link=11 | text=45/9 | bar=- | top=52 | focus=0/6
+/admin/chalan.php?date=2026-11-03&sid=2776 | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=4 | text=27/11 | bar=- | top=52 | focus=0/8
+/admin/seatmap.php | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=2 | text=103/10.5 | bar=- | top=52 | focus=0/13
+/admin/payments.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=2 | text=26/10 | bar=- | top=52 | focus=0/1
+/admin/bus-control.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=630/10 | bar=- | top=52 | focus=0/2
+/admin/agents.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=15/11 | bar=- | top=140 | focus=0/1
+/admin/customers.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=23 | text=41/11 | bar=- | top=52 | focus=0/5
+/admin/refunds.php | over=0 | off=0/0 | scroll=0 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=17 | text=15/11 | bar=- | top=52 | focus=0/1
+/admin/cash-book.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=15/11 | bar=- | top=52 | focus=0/5
+/admin/shift.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=15/11 | bar=- | top=140 | focus=0/1
+/admin/my-desk.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=15/11 | bar=- | top=140 | focus=0/1
+/admin/wa-inbox.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=4 | text=15/11 | bar=- | top=140 | focus=0/1
+/admin/support-inbox.php | over=0 | off=0/0 | scroll=0 | card=1t w332 tdOff0/0 spill0 | tap=0/0 | link=17 | text=21/11 | bar=- | top=52 | focus=0/7
+/admin/accounting.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=15/11 | bar=- | top=140 | focus=0/1
+
+smartbook tap=11: the buttons that remain under 40px are inside the shared booking card
+(assets/css/smartbook.css, 32-38px) - not touched here. The staff page's own controls are 42px.

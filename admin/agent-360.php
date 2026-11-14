@@ -1057,6 +1057,8 @@ $imgData = [
   .rp-step{display:flex;gap:6px;align-items:center;margin-top:8px}
   .rp-step button.st{min-width:46px;padding:8px 0;border-radius:10px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font-weight:800;cursor:pointer}
   .rp-step button.st.dn{color:var(--bad)} .rp-step button.st.up{color:var(--ok)}
+  /* 14 Nov 2026 (staff 360px audit): the rate steppers were 38px on a touch phone */
+  @media(max-width:820px) and (pointer:coarse){.rp-step button.st{min-height:42px}}
   .rp-step input{width:90px;text-align:center;font-weight:800;font-size:16px;padding:8px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
   .rp-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .rp-row input,.rp-row select{padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;min-width:0}
