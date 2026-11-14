@@ -522,6 +522,12 @@ final class WaLocal
         }
         // "Mehsana counter ko number dinu", "Surat counter ko phone number": the counters' numbers (with the office)
         if (preg_match('/(?<![\p{L}])(?:counter|kaunter|branch|office|अफिस|काउन्टर)\s*(?:ko|ka|ki|को|का)?\s*(?:phone\s*|mobile\s*|contact\s*|whatsapp\s*)?(?:number|nambar|nmbr|no|phone|mobile|contact|नम्बर|नंबर|फोन)(?![\p{L}])/u', $t) === 1) {
+            /* 14 Nov 2026 (AI eval): "Nepal office ko phone number", "rupaidiha office number", "नेपाल अफिस को नम्बर"
+               were caught here and answered with the Mehsana head office and the Gujarat counters — no Nepal number at
+               all. A line that names the Nepal side gets the Nepal office answer (not "nepali", the language). */
+            if (preg_match('/(?<![\p{L}])(?:nepal(?!i(?![\p{L}]))|rupaidiha|rupaidiya|rupediha|kohalpur|dhamboji|नेपाल(?!ी)|रुपैडिहा)/u', $t) === 1) {
+                return 'nepal_office';
+            }
             return 'office_map';
         }
         /* 31 Oct 2026 (passenger sim: "tapai ko bus ta Kathmandu samma janchha hoina?" / "Jodhpur bata bus cha?" got

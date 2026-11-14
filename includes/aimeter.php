@@ -92,8 +92,13 @@ final class AiMeter
             + $u['cache_write'] * $p[0] * 1.25
             + $u['cache_read'] * $p[2]
             + $u['out'] * $p[1]
-        ) / 1_000_000, 6);
+        ) / 1_000_000
+            // 14 Nov 2026: web research is billed per search, on top of the tokens.
+            + max(0, (int) ($u['web_searches'] ?? 0)) * self::WEB_SEARCH_USD, 6);
     }
+
+    /** Anthropic web search: USD 10 per 1,000 searches. */
+    public const WEB_SEARCH_USD = 0.01;
 
     /** Anthropic `usage`: input_tokens excludes the cached part. */
     public static function fromAnthropic(mixed $usage): array
