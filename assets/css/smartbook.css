@@ -692,3 +692,16 @@ html #view-home > #sbDesk{order:-1 !important}
 #smartBook .sb-qline .sb-q-priv{text-decoration:none;border:1px dashed color-mix(in srgb,var(--sb-org) 55%,var(--sb-line));border-radius:999px;padding:4px 10px;color:var(--sb-org-d);background:transparent}
 #smartBook .sb-qline .sb-q-priv.on{border-style:solid;background:var(--sb-ograd);color:#fff;border-color:transparent}
 :root[data-theme="dark"] #smartBook .sb-qline .sb-q-priv:not(.on){color:var(--sb-org-l)}
+
+/* 14 Nov 2026: on a touch screen every control in the card is at least 44px tall (staff audit at
+   360px found 11 at 32-40px: the ask box and its send key, Quick / Full form, "?", Private?, Change, +/-,
+   gender and age chips). Height only - widths and the layout stay; the customer card and the staff desk
+   (admin/smartbook.php) both load this file. */
+@media (pointer:coarse){
+  #smartBook button,#smartBook select,#smartBook input:not([type=hidden]):not([type=checkbox]):not([type=radio]),#smartBook .sb-q-priv{min-height:44px}
+  #smartBook .sb-bot input,#smartBook .sb-bot-go{min-height:44px}
+  #smartBook .sb-help-btn,#smartBook #sbHelpBtn{min-width:44px}
+  #smartBook .sb-qline .sb-q-priv{display:inline-flex;align-items:center}
+  /* these five carry 40px from more specific rules (polish.css 7.3, depth.css): named here so 44 wins */
+  #smartBook .sb-qbar .sb-qmode button,#smartBook .sb-card .sb-qbar .sb-qhelp,#smartBook .sb-card .sb-qline button,#smartBook .sb-card .sb-qline .sb-q-priv{min-height:44px;height:auto}
+}

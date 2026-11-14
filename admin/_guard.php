@@ -1327,8 +1327,11 @@ img,pre{max-width:100%}
    from below landed underneath it. Now a grid - brand row and who row
    scroll away with the page (negative sticky top = their fixed height),
    only the last row (menu + search, 52px) stays. Pure CSS, same markup,
-   same links; nothing above 560px changes. */
-@media(max-width:560px){
+   same links. 14 Nov 2026 (later): widened from 560px to 820px, the width up
+   to which the side menu is already a drawer with a menu button - on a 768px
+   tablet the old bar wrapped to 113px and stayed stuck; now 52px stays.
+   Nothing above 820px (the desktop bar) changes. */
+@media(max-width:820px){
   .tb{display:grid;grid-template-columns:44px minmax(0,1fr);grid-template-rows:30px 44px 44px;
       grid-template-areas:"brand brand" "who who" "menu search";gap:4px 8px;padding:6px 12px 8px;height:auto;top:-88px}
   .tb .menu{grid-area:menu;display:flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0}

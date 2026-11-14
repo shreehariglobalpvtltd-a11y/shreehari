@@ -198,6 +198,9 @@ html[data-tier="low"] #smartBook .sb-tk-imgw.ok .sb-tk-pnr::after{display:none}
   /* the vibration switch sat on the coach: icon only, parked on the faded
      end of the badge row; its tap area stays 44px */
   html.sb-on.sb-home #hero3d .lq-vib{top:auto;bottom:4px;right:8px;width:30px;height:30px;padding:0;justify-content:center;font-size:13px}
+  /* 14 Nov 2026: app.css's touch floor (button[type=button]{min-width/height:44px}) made it 44px, so it rose onto
+     the coach and the badge row; the 44px tap area is the ::before below, not the drawn circle */
+  html.sb-on.sb-home #hero3d .lq-vib{min-width:30px;min-height:30px}
   html.sb-on.sb-home #hero3d .lq-vib b,html.sb-on.sb-home #hero3d .lq-vib span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   html.sb-on.sb-home #hero3d .lq-vib::before{content:"";position:absolute;inset:-7px}
   html.sb-on.sb-home #hero3d .lq-vib[aria-pressed="false"]::after{content:"";position:absolute;left:4px;right:4px;top:50%;height:2px;
