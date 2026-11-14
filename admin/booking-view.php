@@ -3082,7 +3082,7 @@ $bvPrintUrl = (string) ($b['status'] ?? '') === 'confirmed' ? $base . '/download
 .bv-keys-box h3{margin:0 0 10px;font-size:16px}
 .bv-keys-box dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 12px;margin:0 0 14px;font-size:14px;align-items:center}
 .bv-keys-box dd{margin:0}
-.bv-keys-box kbd{display:inline-block;min-width:30px;text-align:center;padding:3px 7px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;font:700 12px ui-monospace,Consolas,monospace;background:var(--soft,#eef2fa);color:var(--ink)}
+.bv-keys-box kbd{display:inline-block;min-width:30px;text-align:center;padding:3px 7px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;font:700 12px ui-monospace,Consolas,monospace;background:var(--line,#e2e8f0);color:var(--ink)}
 .bv-keys-box .btn{min-height:44px;width:100%}
 </style>
 <div id="bvKeys" class="bv-keys" hidden role="dialog" aria-modal="true" aria-labelledby="bvKeysT" data-print-url="<?= Security::e($bvPrintUrl) ?>">
