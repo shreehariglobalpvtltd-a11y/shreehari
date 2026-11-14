@@ -797,7 +797,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20261113c';
+  el.src = '/assets/js/terms-data.js?v=20261114a';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;
@@ -1339,6 +1339,9 @@ function toast(msg) {
     if (bar && getComputedStyle(bar).position === 'fixed' && bar.offsetHeight) lift = Math.max(lift, window.innerHeight - bar.getBoundingClientRect().top);
     const bn = overSheet ? null : document.querySelector('.bottom-nav');
     if (bn && getComputedStyle(bn).display !== 'none' && bn.offsetHeight) lift = Math.max(lift, window.innerHeight - bn.getBoundingClientRect().top);
+    /* 14 Nov 2026 (d360): the SmartBook book bar is a fixed action bar too - an error toast used to land on the two Book keys. */
+    const sb = overSheet ? null : document.getElementById('sbBar');
+    if (sb && sb.offsetHeight && getComputedStyle(sb).position === 'fixed') lift = Math.max(lift, window.innerHeight - sb.getBoundingClientRect().top);
   } catch (e) {}
   t.style.bottom = lift > 0 ? Math.round(lift + 12) + 'px' : '';
   t.classList.add('show');

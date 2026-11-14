@@ -149,3 +149,158 @@ html[data-tier="low"] #smartBook .sb-tk-imgw.ok .sb-tk-pnr::after{display:none}
   .seat-row.slp-shr6.sgl-first{grid-template-columns:repeat(2,minmax(0,1fr)) 12px repeat(4,minmax(0,1fr)) !important}
   .berth-labels6.sgl-first{grid-template-columns:2fr 12px 4fr !important}
 }
+
+/* =====================================================================
+   7. SMALL-PHONE BOOKING PASS  (14 Nov 2026, "d360" — measured at 360x640)
+
+   Presentation only: no id, hook, label, fare, seat or payment logic moves.
+   What was measured on a 360x640 phone before this block:
+     - the hero band was 192px, so the booking card started at y=254 and the
+       date / pickup / seat chips sat under the sticky book bar
+     - .sb-head (screen-reader only on a phone) had been made position:relative
+       again by premium3d.css, so an invisible 16px strip pushed the card down
+     - the "?" help button took a 44px row of its own
+     - the book bar sat at bottom:64px but the bottom nav is really 79px tall,
+       so the nav covered the lower edge of the two Book buttons
+     - a focused field at y=599 stayed under the bar (the browser thinks it is
+       visible), and the error toast landed on top of the Book buttons
+       (those two are fixed in 27-smartbook.js clearOfBar() and 02-config.js toast())
+     - the WhatsApp / S Hari AI buttons flashed over the form for 1-3 s on load
+     - seat map: 43px berths, state shown by colour alone
+   ===================================================================== */
+
+/* ---- 7.1 the floating buttons wait for the card observer -------------
+   27-smartbook.js adds .sb-fab-ok to <html> the first time its
+   IntersectionObserver reports. Until then the two buttons stay out of the
+   way. The hold is an animation with only a "from" frame, so if the bundle
+   never runs they simply appear after 10 s (the WhatsApp link needs no JS). */
+@media (max-width:859px){
+  html:not(.sb-fab-ok) #waFab,html:not(.sb-fab-ok) #aiFab{animation:d360FabHold 10s steps(1,end) both !important}
+}
+@keyframes d360FabHold{from{opacity:0;visibility:hidden}}
+
+/* ---- 7.2 short phone: a compact hero, the card starts ~90px higher ----
+   Nothing is removed: the eyebrow, the headline, the coach and the five
+   feature badges all stay; the badges become one slim scrolling row. Taller
+   phones and desktop keep the full band. (premium3d.css already hides the
+   band below 600px tall.) */
+@media (max-width:859px) and (max-height:740px){
+  html.sb-on.sb-home #hero3d .p3-in{grid-template-columns:minmax(0,1fr) 122px;padding:5px 12px 4px;gap:0 8px}
+  html.sb-on.sb-home #hero3d .p3-eye{font-size:11.5px;margin:0 0 1px}
+  html.sb-on.sb-home #hero3d .p3-title{font-size:18px;line-height:1.22;margin:0}
+  html.sb-on.sb-home #hero3d .p3-art{justify-self:end;width:100%}
+  html.sb-on.sb-home #hero3d .p3-feats{margin:4px 46px 0 0;padding:0;gap:0 12px}
+  html.sb-on.sb-home #hero3d .p3-feats li{flex-direction:row;align-items:center;gap:5px;width:auto;min-width:0;
+    text-align:left;font-size:10.5px;line-height:1.15;white-space:nowrap}
+  html.sb-on.sb-home #hero3d .p3-fi{flex:0 0 26px;width:26px;height:26px;font-size:12px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 0 0 2px rgba(255,255,255,.06)}
+  html.sb-on.sb-home #hero3d .p3-fi .ic{width:14px;height:14px}
+  /* the vibration switch sat on the coach: icon only, parked on the faded
+     end of the badge row; its tap area stays 44px */
+  html.sb-on.sb-home #hero3d .lq-vib{top:auto;bottom:4px;right:8px;width:30px;height:30px;padding:0;justify-content:center;font-size:13px}
+  html.sb-on.sb-home #hero3d .lq-vib b,html.sb-on.sb-home #hero3d .lq-vib span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  html.sb-on.sb-home #hero3d .lq-vib::before{content:"";position:absolute;inset:-7px}
+  html.sb-on.sb-home #hero3d .lq-vib[aria-pressed="false"]::after{content:"";position:absolute;left:4px;right:4px;top:50%;height:2px;
+    margin-top:-1px;border-radius:2px;background:#fff;transform:rotate(-45deg)}
+  /* a slimmer book bar (the two keys stay 46px) */
+  html.sb-on.sb-home #smartBook .sb-bar{padding-top:5px;padding-bottom:5px;min-height:56px}
+  html.sb-on.sb-home #smartBook .sb-pay{min-height:46px}
+  html.sb-on.sb-home #smartBook{--sb-bar-h:57px}
+  /* a few pixels off each gap, so in the FULL form the phone + name row also
+     clears the book bar without scrolling (it ended 14px under it) */
+  html.sb-on.sb-home #smartBook .sb-card{padding-top:13px}
+  html.sb-on.sb-home #smartBook .sb-bot,html.sb-on.sb-home #smartBook .sb-qbar,html.sb-on.sb-home #smartBook .sb-dir{margin-bottom:5px}
+  html.sb-on.sb-home #smartBook .sb-grid{row-gap:5px}
+  html.sb-on.sb-home #smartBook .sb-why{margin-top:0;line-height:1.25}
+}
+
+/* ---- 7.3 phone: the card itself -------------------------------------- */
+@media (max-width:859px){
+  /* screen-reader only again (smartbook.css line 210 intends this) */
+  #smartBook .sb-head{position:absolute;margin:0;padding:0}
+  #smartBook .sb-card{padding-top:14px}
+  #smartBook .sb-bot{margin-bottom:6px}
+  /* the book bar sits ON the bottom nav, not under its top edge: the nav is
+     --bottomnav-h (item min-height) + 2 x 6px padding + borders = 15px taller */
+  #smartBook .sb-bar{bottom:calc(var(--bottomnav-h,64px) + 15px + env(safe-area-inset-bottom,0px))}
+  html.sb-on.sb-home #view-home{padding-bottom:calc(var(--sb-bar-h,66px) + 24px)}
+  /* a focused field scrolls clear of the nav + book bar: clearOfBar() in
+     27-smartbook.js calls scrollIntoView, which honours this scroll-padding
+     (focus alone does not move a field the browser already counts as visible) */
+  html.sb-on.sb-home{scroll-padding-bottom:calc(var(--bottomnav-h,64px) + 15px + 66px + 16px + env(safe-area-inset-bottom,0px))}
+  /* (the toast is lifted above the book bar in toast(), 02-config.js - it sets an inline bottom) */
+
+  /* tap targets: 44px for what a thumb hits most */
+  #smartBook{--sb-h:44px}
+  #smartBook .sb-qmode button,#smartBook .sb-dir-b{min-height:40px}
+  #smartBook .sb-chip{min-height:44px}
+  #smartBook .sb-step button{width:40px;height:44px}
+  #smartBook .sb-p,#smartBook .sb-p button{height:44px}
+  #smartBook .sb-p button{padding:0 10px;font-size:13px}
+  #smartBook .sb-seg button{min-height:40px}
+  #smartBook .sb-qline button{min-height:40px;padding:0 8px}
+  #smartBook .sb-bot-go{min-width:44px;height:38px}
+  #smartBook .sb-terms a{display:inline-block;padding:10px 6px;margin:-10px -2px}
+}
+@media (max-width:520px){
+  /* mode switch + help + progress ring on ONE row (help was a row of its own) */
+  #smartBook .sb-qbar{flex-wrap:nowrap;gap:5px;margin-bottom:7px}
+  #smartBook .sb-qmode{flex:1 1 auto;min-width:0}
+  #smartBook .sb-qmode button{padding:7px 8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  #smartBook .sb-qmode button:first-child{flex:1 1 auto}
+  #smartBook .sb-qmode button:last-child{flex:0 0 auto}
+  #smartBook .sb-qbar .sb-ring{order:3;margin-left:0;width:30px;height:30px}
+  #smartBook .sb-qhelp{order:2;flex:0 0 40px;width:40px;min-width:40px;height:40px;min-height:40px;padding:0;font-size:0;line-height:0;
+    display:inline-grid;place-items:center;position:relative}
+  #smartBook .sb-qhelp::before{content:"?";font-size:17px;line-height:1;font-weight:800}
+  #smartBook .sb-qhelp::after{content:"";position:absolute;inset:-4px}
+}
+
+/* ---- 7.4 seat sheet: 44px berths, state by mark as well as colour ----- */
+#smartBook .sb-sheet-f{bottom:calc(-14px - env(safe-area-inset-bottom,0px));margin:0 -14px calc(-14px - env(safe-area-inset-bottom,0px));
+  padding:8px 14px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--sb-line);
+  box-shadow:0 -10px 18px -14px rgba(0,0,0,.45)}
+#smartBook .sb-mrow{gap:5px}
+#smartBook .sb-mrow .sb-aisle{flex:0 0 12px;width:12px}
+#smartBook .sb-mrow .sb-rl{flex:0 0 13px;width:13px;font-size:11px;font-weight:700;text-align:center}
+#smartBook .sb-deck h4{font-size:13px;font-weight:800;color:var(--sb-text);letter-spacing:.01em}
+#smartBook .sb-berth{position:relative;height:46px;min-width:44px;font-size:13px;line-height:1}
+#smartBook .sb-berth::after{position:absolute;right:3px;top:2px;font-size:10px;font-weight:800;line-height:1}
+#smartBook .sb-berth.w{color:#9d174d}
+:root[data-theme="dark"] #smartBook .sb-berth.w{color:#fbcfe8}
+#smartBook .sb-berth.w::after{content:"\2640"}                 /* women only */
+#smartBook .sb-berth.x{color:var(--sb-muted);text-decoration:line-through}
+#smartBook .sb-berth.x::after{content:"\2715";text-decoration:none}   /* booked */
+#smartBook .sb-berth.sel,:root[data-theme="dark"] #smartBook .sb-berth.sel{color:#fff;text-decoration:none}
+#smartBook .sb-berth.sel::after{content:"\2713";color:#fff}    /* yours */
+#smartBook .sb-berth:focus-visible{outline:3px solid var(--sb-gold);outline-offset:2px}
+#smartBook .sb-legend{gap:6px 12px;font-size:12.5px;color:var(--sb-text);margin-bottom:10px}
+#smartBook .sb-legend span{display:inline-flex;align-items:center;gap:5px}
+#smartBook .sb-legend i{display:inline-grid;place-items:center;width:18px;height:18px;margin:0;border-radius:5px;
+  font:800 11px/1 system-ui,sans-serif;font-style:normal;vertical-align:0}
+#smartBook .sb-legend span:nth-child(2) i{color:#9d174d}
+:root[data-theme="dark"] #smartBook .sb-legend span:nth-child(2) i{color:#fbcfe8}
+#smartBook .sb-legend span:nth-child(2) i::before{content:"\2640"}
+#smartBook .sb-legend span:nth-child(3) i{color:var(--sb-muted)}
+#smartBook .sb-legend span:nth-child(3) i::before{content:"\2715"}
+#smartBook .sb-legend span:nth-child(4) i{color:#fff}
+#smartBook .sb-legend span:nth-child(4) i::before{content:"\2713"}
+
+/* ---- 7.5 a heading focused by the router is not a control: no ring ---- */
+main h1[tabindex="-1"]:focus,main h2[tabindex="-1"]:focus{outline:none}
+
+/* ---- 7.6 text contrast on the booking card (4.5:1), measured in both themes
+   Each line: the ratio before -> after. The two Book keys keep the brand
+   orange / blue with white text; white on the orange measures 2.8:1, which
+   is a brand decision left to the owner - only a soft dark edge is added to
+   the letters so they read better on the gradient. */
+:root[data-theme="light"] #smartBook{--sb-muted:#5a6a86}                              /* 4.4 -> 5.1 (chip grey) */
+:root[data-theme="light"] #smartBook .sb-qline .sb-q-priv:not(.on){color:#b3470a}      /* 3.9 -> 5.2 */
+:root[data-theme="light"] #smartBook .sb-p .sb-g.f{color:#9d174d}                      /* 3.0 -> 7.1 */
+:root[data-theme="dark"] #smartBook .sb-p .sb-g.f{color:#f9a8d4}                       /* 4.5 -> 8.9 */
+:root[data-theme="light"] #smartBook .sb-seg-seat em{color:#087a57}                    /* 3.4 -> 5.3 */
+:root[data-theme="dark"] #smartBook .sb-terms a{color:#9dbbff}                         /* 2.3 -> 8.6 */
+#smartBook .sb-cash span,#smartBook .sb-cash small{text-shadow:0 1px 2px rgba(92,36,0,.6)}
+
+/* (no new motion in this block: 7.1 is a hold, not a movement, so there is
+   nothing extra to switch off for prefers-reduced-motion) */
