@@ -688,6 +688,40 @@ final class SmartBook
         $coach = Seats::effectiveCoach($schedule, $route);
         $drop  = $points['type'] === 'drop' ? $point : '';
 
+        /* 14 Nov 2026: the pickup the plan REALLY chose, as the card's list names it.
+           A passenger's plan drops a pickup that is past / inside the boarding cut-off
+           for the day and boards them at the first pickup still ahead (QuickTicket::
+           nextDeparture — the same bus, never a silent jump to tomorrow). The card's
+           pickup box must then show that pickup, with the reason, not the one asked. */
+        $boardStop = '';
+        $pointNote = null;
+        if ($points['type'] === 'boarding') {
+            $boardStop = self::matchPoint((string) $plan['boarding'], array_map(static fn(array $p): string => $p['name'], $points['list']));
+            if ($point !== '' && $boardStop !== '' && $boardStop !== $point) {
+                $town  = self::short($point);
+                $asked = $town;
+                foreach ($points['list'] as $p) {
+                    if ($p['name'] === $point) {
+                        $town  = $p['short'] !== '' ? $p['short'] : $town;
+                        $asked = trim($town . ' ' . $p['time']);
+                        break;
+                    }
+                }
+                $got  = trim((string) $plan['boardingName'] . ' ' . (string) $plan['boardingTime']);
+                $pointNote = !empty($plan['isToday'])
+                    ? self::why(
+                        $asked . ' is closed for today. Today you board at ' . $got . ' — to board at ' . $town . ', choose a later date.',
+                        $asked . ' आज के लिए बंद है। आज ' . $got . ' से चढ़ें — ' . $town . ' से चढ़ने के लिए आगे की तारीख चुनें।',
+                        $asked . ' आजका लागि बन्द भयो। आज ' . $got . ' बाट चढ्नुहोस् — ' . $town . ' बाट चढ्न पछिको मिति छान्नुहोस्।'
+                    )
+                    : self::why(
+                        $asked . ' is not a pickup on this bus — you board at ' . $got . '.',
+                        $asked . ' इस बस का पिकअप नहीं है — ' . $got . ' से चढ़ें।',
+                        $asked . ' यो बसको पिकअप होइन — ' . $got . ' बाट चढ्नुहोस्।'
+                    );
+            }
+        }
+
         /* ---- berths --------------------------------------------------- */
         $mode2   = $coach === 'sleeper' ? $req['type'] : null;
         $seats   = [];
@@ -805,6 +839,8 @@ final class SmartBook
             'busNumber'    => $busNumber,
             'pointType'    => $points['type'],
             'point'        => $point !== '' ? $point : (string) $plan['boardingName'],
+            'boardingStop' => $boardStop,   // the list name of the pickup really booked ('' on a drop run)
+            'pointNote'    => $pointNote,   // {en,hi,ne} when the plan moved the pickup that was asked, else null
             'coach'        => $coach,
             'type'         => $mode2 ?? 'seater',
             'cabin'        => $req['cabin'],

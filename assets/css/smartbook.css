@@ -56,6 +56,8 @@ html.sb-on #search-anchor, html.sb-on #quick-ticket{display:none}
 #smartBook .sb-sel{display:flex;gap:6px}
 #smartBook .sb-near{flex:0 0 44px;height:var(--sb-h);border:1px solid var(--sb-line);border-radius:var(--sb-ri);background:var(--sb-chip);cursor:pointer;font-size:16px}
 #smartBook .sb-why{display:block;min-height:14px;margin-top:2px;font-size:11.5px;color:var(--sb-muted)}
+/* 14 Nov 2026: the quote moved the pickup that was asked (closed for today) - the reason, not a hint */
+#smartBook .sb-why.sb-why-moved{margin-top:4px;padding:6px 8px;border-radius:8px;background:rgba(205,65,84,.1);color:var(--sb-err);font-size:12.5px;font-weight:600;line-height:1.35}
 #smartBook .sb-tel{display:flex;gap:6px}
 #smartBook .sb-tel select{flex:0 0 92px;padding:0 6px}
 #smartBook .sb-fe{display:block;margin-top:3px;font-size:11.5px;color:var(--sb-err);font-weight:600}
