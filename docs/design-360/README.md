@@ -105,6 +105,9 @@ All CSS is one dated block, `assets/css/polish.css` section 7 (the last styleshe
 
 ## 6. Found on the way, not touched (logic, outside this pass)
 
+Items 1 and 2 were fixed afterwards on branch `shari/vigilant-margulis-ffde0a` —
+see [smartbook-pickup-seat-fix.md](smartbook-pickup-seat-fix.md).
+
 1. Pickup shown vs pickup booked. At ~12:35 IST the full form's pickup select showed "Surat · 13:00" while the
    quick chips, the confirm sheet and both tickets said "Baroda · 17:00" (Surat was inside the boarding cut-off,
    so the quote moved the pickup). The select is not updated to the quote's pickup.
