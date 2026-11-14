@@ -895,6 +895,7 @@ final class WaSend
             return ['state' => 'queued', 'wamid' => '', 'error' => 'daily cap', 'how' => 'held by the daily cap'];
         }
 
+        $row['media_url'] = self::freshMedia((string) ($row['media_url'] ?? ''));
         $to     = (string) $row['to_number'];
         $window = (int) $row['no_free'] !== 1 && trim((string) ($row['body'] ?? '')) !== '' && self::windowOpen($to);
         $tpl    = self::rowTemplate($row);
@@ -1035,6 +1036,37 @@ final class WaSend
         $label = trim((string) ($row['label'] ?? '')) !== '' ? (string) $row['label'] : ucfirst(str_replace('_', ' ', (string) $row['purpose']));
         return ['name' => $g['name'], 'lang' => $g['lang'],
                 'vars' => [self::flat(mb_substr($label, 0, 60)), $flat], 'header' => ''];
+    }
+
+    /**
+     * 14 Nov 2026: the office report's chart link is signed and lives 6 h
+     * (ReportChart::url). A report that waited in this outbox for the office
+     * number's 24 h window went out the next day with its old link, and Meta
+     * answered "Media upload error ... 403" (131053) - ten times on 13 Nov.
+     * A chart link is therefore signed again at the moment of sending. Any
+     * other link is returned unchanged.
+     */
+    public static function freshMedia(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '' || !str_contains($url, 'report-chart.php')) {
+            return $url;
+        }
+        $path = (string) parse_url($url, PHP_URL_PATH);
+        if (basename($path) !== 'report-chart.php') {
+            return $url;
+        }
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $q);
+        $d = (string) ($q['d'] ?? '');
+        if (!Security::isValidDate($d)) {
+            return $url;
+        }
+        try {
+            require_once INCLUDE_PATH . '/reportchart.php';
+            return ReportChart::url($d, 6 * 3600);
+        } catch (Throwable $e) {
+            return $url;
+        }
     }
 
     /** Free text / picture / document inside the window. */

@@ -537,6 +537,17 @@ final class WaQueue
                 Logger::warning('wa outbox drain failed', ['e' => $e->getMessage()]);
             }
         }
+        /* 14 Nov 2026: remind the office numbers before their free 24 h
+           window closes, so reports keep arriving (includes/wakeepalive.php). */
+        if (PHP_SAPI === 'cli') {
+            try {
+                require_once INCLUDE_PATH . '/wakeepalive.php';
+                $k = WaKeepAlive::run();
+                $out['keepalive_sent'] = $k['sent'];
+            } catch (Throwable $e) {
+                Logger::warning('wa keep-alive failed', ['e' => $e->getMessage()]);
+            }
+        }
         return $out;
     }
 
