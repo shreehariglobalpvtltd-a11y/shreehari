@@ -2138,7 +2138,7 @@ final class ApWa
         if ($ctx['role'] === 'member' || !in_array((string) $member['role'], self::SELLERS, true) || !Settings::getBool('ap_wa_sell', true)) {
             return self::out(self::t('no_permission', $lang));
         }
-        $b = array_intersect_key($seed, array_flip(['direction', 'date', 'boarding', 'seats', 'name', 'phone', 'country', 'names', 'gender', 'pay', 'agentCode']));
+        $b = array_intersect_key($seed, array_flip(['direction', 'date', 'boarding', 'seats', 'name', 'phone', 'country', 'names', 'gender', 'pay', 'agentCode', 'discType', 'discValue']));
         return self::bookNext($b, $member, $ctx, $lang, '');
     }
 
@@ -2201,6 +2201,7 @@ final class ApWa
                 'seats' => (int) $b['seats'], 'date' => (string) $b['date'], 'direction' => (string) ($b['direction'] ?? ''),
                 'boarding' => (string) $b['boarding'], 'gender' => (string) ($b['gender'] ?? ''), 'pay' => (string) ($b['pay'] ?? ''),
                 'names' => (array) ($b['names'] ?? []), 'agentCode' => (string) ($b['agentCode'] ?? ''),
+                'discType' => (string) ($b['discType'] ?? ''), 'discValue' => (float) ($b['discValue'] ?? 0),   // 15 Nov 2026
             ];
             $r = self::saleQuote($sale, $member, $ctx, $lang);
             if (str_starts_with((string) $r['text'], '⚠️')) {
@@ -3361,6 +3362,10 @@ final class ApWa
             $agentCode = strtoupper(Settings::getString('company_agent_code', 'SHG-0001'));
             $work = (string) substr($work, strlen($mc[0]));
         }
+        /* 15 Nov 2026: a desk discount typed in the line ("chhut 10%", "discount 200",
+           "10% off", "रु 150 छुट") — read and taken out before the booking parser,
+           so its number is never mistaken for seats or a date. */
+        $disc = self::discountParse($work);
         $text = $work;
         if (preg_match('/\b(?:names?|naam(?:haru)?|नामहरू|नाम)\s*[:\-]\s*([^\d\n]+?)(?=\s*(?:\+?\d{8,}|$))/iu', $text, $m) === 1
             || preg_match('/\b(?:names|naamharu|नामहरू)\s+([^\d\n]+?)(?=\s*(?:\+?\d{8,}|$))/iu', $text, $m) === 1) {
@@ -3397,6 +3402,62 @@ final class ApWa
             'name' => $name, 'phone' => (string) $p['phone'], 'country' => (string) $p['country'], 'seats' => $seats,
             'date' => (string) $p['date'], 'direction' => (string) $p['direction'], 'boarding' => (string) $p['boarding'],
             'gender' => (string) $p['gender'], 'pay' => (string) $p['pay'], 'names' => $names, 'agentCode' => $agentCode,
+            'discType' => $disc[0] ?? '', 'discValue' => (float) ($disc[1] ?? 0),
+        ];
+    }
+
+    /**
+     * A discount written in a sale line, taken out of $text. Percent when the
+     * line says % / percent / pratishat / प्रतिशत, else rupees. The engine
+     * (BookingService::create) still caps it; this only reads what was asked.
+     *
+     * @return array{0: string, 1: float}|null ['percent'|'flat', value]
+     */
+    public static function discountParse(string &$text): ?array
+    {
+        $word = '(?:chhut|chut|chhoot|choot|chhoot|छुट|छूट|डिस्काउन्ट|डिस्काउंट|discount|disc|off|कम)';
+        $num  = '(\d{1,6}(?:\.\d{1,2})?)';
+        $pct  = '(%|\s*(?:percent|pct|pratishat|pratisat|प्रतिशत|पर्सेन्ट))';
+        $rs   = '(?:rs\.?|inr|₹|रु\.?|रू\.?|rupees?|rupaiya|रुपैयाँ|रुपये)';
+        $tries = [
+            '/(?<![\p{L}\d])' . $word . '\s*[:\-=]?\s*' . $rs . '?\s*' . $num . $pct . '?(?![\p{L}\d])/iu',   // chhut 10% · discount 200 · छुट रु 150
+            '/(?<![\p{L}\d])' . $rs . '?\s*' . $num . $pct . '?\s*' . $word . '(?![\p{L}\d])/iu',               // 10% chhut · 200 off · रु 150 छुट
+        ];
+        foreach ($tries as $re) {
+            if (preg_match($re, $text, $m) === 1 && (float) $m[1] > 0) {
+                $isPct = isset($m[2]) && trim((string) $m[2]) !== '';
+                $text = (string) preg_replace('/\s{2,}/u', ' ', str_replace($m[0], ' ', $text));
+                return [$isPct ? 'percent' : 'flat', min((float) $m[1], $isPct ? 100.0 : 1000000.0)];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * What the discount on this quote comes to, by the same sum the sale will
+     * use (SmartBook::withDeskDiscount = BookingService::create's rule). An
+     * agent's own discount is also capped at the commission the sale earns.
+     *
+     * @return array{cut: float, total: float, capped: bool, cashOnly: bool}|null
+     */
+    private static function discountPreview(array $sale, array $plan, array $member): ?array
+    {
+        $type = (string) ($sale['discType'] ?? '');
+        $val  = (float) ($sale['discValue'] ?? 0);
+        if (!in_array($type, ['flat', 'percent'], true) || $val <= 0) {
+            return null;
+        }
+        require_once __DIR__ . '/smartbook.php';
+        require_once __DIR__ . '/agentwallet.php';
+        $isAgent = AgentWallet::isAgentRow((int) ($member['id'] ?? 0));
+        $max = $isAgent ? AgentWallet::commissionForBooking((float) $plan['fare']['total'], (int) $member['id'], (int) $plan['seatCount']) : null;
+        $p = SmartBook::withDeskDiscount((array) $plan['fare'], $type, $val, $max);
+        return [
+            'cut'      => (float) ($p['deskDiscount'] ?? 0),
+            'total'    => (float) $p['total'],
+            'capped'   => !empty($p['deskCut']) || ($max !== null && (float) ($p['deskDiscount'] ?? 0) + 0.004 < ($type === 'percent' ? round((float) $plan['fare']['base'] * $val / 100, 2) : $val)),
+            'cashOnly' => $isAgent && in_array((string) ($sale['pay'] ?? ''), ['upi', 'esewa', 'bank'], true),
+            'cap'      => (float) ($p['deskCap'] ?? 0),
         ];
     }
 
@@ -3453,6 +3514,24 @@ final class ApWa
         ]) . $agentLine;
         if (in_array((string) ($sale['pay'] ?? ''), ['upi', 'esewa', 'bank'], true)) {
             $text .= "\n💳 " . ['upi' => 'UPI', 'esewa' => 'eSewa', 'bank' => 'Bank'][(string) $sale['pay']];   // round 2: "upi bata tircha" shows on the quote
+        }
+        // 15 Nov 2026: the desk discount, worked out exactly as the sale will charge it
+        $dp = self::discountPreview($sale, $plan, $member);
+        if ($dp !== null) {
+            if ($dp['cashOnly']) {
+                $text .= "\n" . ['ne' => '🏷️ छुट Cash बिक्रीमा मात्र मिल्छ — UPI/eSewa मा छुट लाग्दैन। Cash लेख्नुहोस् वा छुट हटाउनुहोस्।',
+                                 'hi' => '🏷️ छूट सिर्फ Cash बिक्री पर — UPI/eSewa पर छूट नहीं। Cash लिखें या छूट हटाएँ।',
+                                 'en' => '🏷️ A discount works on Cash sales only — not on UPI / eSewa. Say cash, or drop the discount.'][$lang];
+            } elseif ($dp['cut'] > 0) {
+                $text .= "\n🏷️ " . ['ne' => 'छुट', 'hi' => 'छूट', 'en' => 'Discount'][$lang] . ' −' . inr($dp['cut'])
+                    . ' → ' . ['ne' => 'तिर्ने', 'hi' => 'देय', 'en' => 'to pay'][$lang] . ' ' . inr($dp['total'])
+                    . ($dp['capped'] ? ' (' . ['ne' => 'सीमा', 'hi' => 'सीमा', 'en' => 'limit'][$lang]
+                        . (AgentWallet::isAgentRow((int) $member['id']) ? ': ' . ['ne' => 'कमिसन / ', 'hi' => 'कमीशन / ', 'en' => 'commission / '][$lang] : ': ')
+                        . rtrim(rtrim(number_format($dp['cap'], 1), '0'), '.') . '%)' : '');
+            } else {
+                $text .= "\n" . ['ne' => '🏷️ छुट लागेन (अहिलेको offer नै ठूलो छ)।', 'hi' => '🏷️ छूट नहीं लगी (मौजूदा offer बड़ा है)।',
+                                 'en' => '🏷️ No extra discount: the running offer is already bigger.'][$lang];
+            }
         }
         if (!empty($sale['to_seller'])) {
             $text .= "\n" . ['ne' => '📲 यात्रुको नम्बर नभएकोले टिकट तपाईंकै WhatsApp मा आउँछ (नम्बर पठाए त्यहीँ जान्छ)।',
@@ -3609,6 +3688,24 @@ final class ApWa
         // round 3 (agent sim: "ho, naam Sita Thapa" got the menu): a yes-word in front of a correction is not the yes
         $text = (string) preg_replace('/^\s*(?:ho|hoo|ha|haan|han|ok|okay|yes|thik\s*cha|theek\s*hai|हो|हाँ)\s*[,.:;-]+\s*(?=(?:naam|name|names|नाम)(?![\p{L}\p{M}]))/iu', '', $text);
         $ask = (string) ($sale['ask'] ?? '');
+        /* 15 Nov 2026: "chhut 10%" / "discount 200" / "chhut hatau" on a waiting quote changes only the
+           discount; the quote is drawn again with the new total and still waits for "ho". */
+        if (preg_match('/^\s*(?:chhut|chut|छुट|छूट|discount|disc)\s*(?:hatau|hatāu|hata|nahi|nai|chaidaina|remove|cancel|0|हटाउ|हटाऊ|नहीं|चाहिँदैन)\s*$/iu', $text) === 1) {
+            $sale['discType'] = '';
+            $sale['discValue'] = 0.0;
+            return self::saleQuote($sale, $member, $ctx, $lang);
+        }
+        $discLine = $text;
+        $disc = self::discountParse($discLine);
+        if ($disc !== null) {
+            $sale['discType'] = $disc[0];
+            $sale['discValue'] = $disc[1];
+            if (trim((string) preg_replace('/[\s,.;:!-]+/u', '', $discLine)) === '') {
+                return self::saleQuote($sale, $member, $ctx, $lang);   // the line was only the discount
+            }
+            $text = $discLine;   // anything else in the line is read below, with the discount already kept
+            $pending['sale'] = $sale;
+        }
         /* 31 Oct 2026 (usability leftover b: "non AC nahi chahiyo" / "no luggage" on a waiting quote were read as a name
            change): a "no" aimed at a THING of the trip is a wish — noted, the quote waits as it was. Whatever else the line
            says (a day, a name) is still read. */
@@ -4074,6 +4171,9 @@ final class ApWa
                 'gender' => $opts['gender'], 'pay' => in_array($sale['pay'], ['cash', 'upi', 'esewa', 'bank'], true) ? $sale['pay'] : 'cash',
                 'passengers' => count($party) >= 2 ? $party : [], 'note' => 'WhatsApp desk (Agent Pro)',
                 'agentCode' => (string) $member['role'] !== 'agent' ? (string) ($sale['agentCode'] ?? '') : '',
+                // 15 Nov 2026: the desk discount read from the order line; the engine caps it, an agent's comes from commission
+                'discountType' => in_array((string) ($sale['discType'] ?? ''), ['flat', 'percent'], true) ? (string) $sale['discType'] : '',
+                'discountValue' => (float) ($sale['discValue'] ?? 0),
             ], $member);
         } catch (RuntimeException $e) {
             return self::out('⚠️ ' . $e->getMessage());
@@ -4418,9 +4518,9 @@ final class ApWa
     {
         return [
             'help_seller' => [
-                'ne' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनम्बर वा शब्द पठाउनुहोस्:\n\n1️⃣ 🎫 टिकट बुक — *ticket* (वा सिधै: *2 सिट भोलि Mehsana, Ram Thapa 98XXXXXXXX*)\n2️⃣ 📋 मेरा टिकट — *tickets* · *tickets bholi*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लगइन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n8️⃣ 📊 *aaja* (आजको हिसाब) · *passengers bholi* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ सच्याउने: *SHG-… नाम Sita Thapa* (pickup / seat / phone / date पनि)\n❌ रद्द अनुरोध: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
-                'hi' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनंबर या शब्द भेजें:\n\n1️⃣ 🎫 टिकट बुक — *ticket* (या सीधे: *2 सीट कल Mehsana, Ram Thapa 98XXXXXXXX*)\n2️⃣ 📋 मेरे टिकट — *tickets* · *tickets kal*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लॉगिन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n8️⃣ 📊 *today* · *passengers kal* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ बदलें: *SHG-… नाम Sita Thapa* (pickup / seat / phone / date भी)\n❌ रद्द अनुरोध: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
-                'en' => "🙏 Hello {name}{code}! {company} WhatsApp desk.\nSend a number or a word:\n\n1️⃣ 🎫 Ticket — *ticket* (or in one line: *2 seats tomorrow Mehsana, Ram Thapa 98XXXXXXXX*)\n2️⃣ 📋 My tickets — *tickets* · *tickets tomorrow*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 Portal sign-in — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n8️⃣ 📊 *today* · *passengers tomorrow* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ Fix: *SHG-… name Sita Thapa* (or pickup / seat / phone / date)\n❌ Cancel request: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *pay* · 🌐 *english* / *hindi* / *nepali*",
+                'ne' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनम्बर वा शब्द पठाउनुहोस्:\n\n1️⃣ 🎫 टिकट बुक — *ticket* (वा सिधै: *2 सिट भोलि Mehsana, Ram Thapa 98XXXXXXXX* · छुट: *chhut 10%*)\n2️⃣ 📋 मेरा टिकट — *tickets* · *tickets bholi*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लगइन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n8️⃣ 📊 *aaja* (आजको हिसाब) · *passengers bholi* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ सच्याउने: *SHG-… नाम Sita Thapa* (pickup / seat / phone / date पनि)\n❌ रद्द अनुरोध: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
+                'hi' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनंबर या शब्द भेजें:\n\n1️⃣ 🎫 टिकट बुक — *ticket* (या सीधे: *2 सीट कल Mehsana, Ram Thapa 98XXXXXXXX* · छूट: *chhut 10%*)\n2️⃣ 📋 मेरे टिकट — *tickets* · *tickets kal*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लॉगिन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n8️⃣ 📊 *today* · *passengers kal* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ बदलें: *SHG-… नाम Sita Thapa* (pickup / seat / phone / date भी)\n❌ रद्द अनुरोध: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
+                'en' => "🙏 Hello {name}{code}! {company} WhatsApp desk.\nSend a number or a word:\n\n1️⃣ 🎫 Ticket — *ticket* (or in one line: *2 seats tomorrow Mehsana, Ram Thapa 98XXXXXXXX* · discount: *chhut 10%*)\n2️⃣ 📋 My tickets — *tickets* · *tickets tomorrow*\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 Portal sign-in — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n8️⃣ 📊 *today* · *passengers tomorrow* · *bus*\n9️⃣ 📞 *office* · *contacts*\n\n✏️ Fix: *SHG-… name Sita Thapa* (or pickup / seat / phone / date)\n❌ Cancel request: *SHG-… cancel* · 🔁 *SHG-… resend*\n💵 *pay* · 🌐 *english* / *hindi* / *nepali*",
             ],
             'help_member' => [
                 'ne' => "🙏 नमस्ते {name}{code}! {company} WhatsApp डेस्क।\nनम्बर वा शब्द पठाउनुहोस्:\n\n3️⃣ 💰 *balance* · 4️⃣ 📒 *statement* · 5️⃣ 💸 *withdraw 2000*\n6️⃣ 🔑 पोर्टल लगइन — *portal*\n7️⃣ 🪪 *id card* · *visiting card* · *me* · 📄 *form*\n9️⃣ 📞 *office* · *contacts* · *bus*\n💵 *jama* · 🌐 *english* / *hindi* / *nepali*",
@@ -4583,7 +4683,7 @@ final class ApWa
             'sale_names_first' => ['ne' => "✋ टिकट काटिएको छैन — थपिएको यात्रुको नाम चाहियो:\n{q}", 'hi' => "✋ टिकट नहीं कटा — जोड़े गए यात्री का नाम चाहिए:\n{q}", 'en' => "✋ No ticket issued — the added traveller's name is needed first:\n{q}"],
             'sale_avail'  => ['ne' => "✅ हो, सिट पाइन्छ — अझै बुक गरिएको छैन\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} सिट: {seats} (बाँकी {left})\n👤 {who}\n💰 जम्मा *{total}*", 'hi' => "✅ हाँ, सीट मिल जाएगी — अभी बुक नहीं किया\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} सीट: {seats} (बाकी {left})\n👤 {who}\n💰 कुल *{total}*", 'en' => "✅ Yes, seats are available — nothing booked yet\n📅 {date} · {dep} · {route}\n📍 {pickup} {ptime}\n💺 {n} seat(s): {seats} ({left} left)\n👤 {who}\n💰 Total *{total}*"],
             'sale_avail_ask' => ['ne' => "काट्ने हो भने *ho* लेख्नुहोस् (नाम / नम्बर फरक भए पहिले पठाउनुहोस्)।", 'hi' => "काटना है तो *ha* लिखिए (नाम / नंबर अलग हो तो पहले भेजिए)।", 'en' => "Want it issued? Reply *yes* (send a different name / number first if needed)."],
-            'sale_ask_yes'=> ['ne' => "टिकट काट्ने भए *ho* वा *CONFIRM* लेख्नुहोस्। (UPI भए *upi*, धेरै नाम: *names Ram, Sita*)", 'hi' => "टिकट काटना है तो *ha* या *CONFIRM* लिखें। (UPI हो तो *upi*, कई नाम: *names Ram, Sita*)", 'en' => "Reply *yes* or *CONFIRM* to issue. (UPI: *upi*; several travellers: *names Ram, Sita*)"],
+            'sale_ask_yes'=> ['ne' => "टिकट काट्ने भए *ho* वा *CONFIRM* लेख्नुहोस्। (UPI भए *upi*, धेरै नाम: *names Ram, Sita*, छुट: *chhut 10%* वा *chhut 200*)", 'hi' => "टिकट काटना है तो *ha* या *CONFIRM* लिखें। (UPI हो तो *upi*, कई नाम: *names Ram, Sita*, छूट: *chhut 10%* या *chhut 200*)", 'en' => "Reply *yes* or *CONFIRM* to issue. (UPI: *upi*; several travellers: *names Ram, Sita*; discount: *chhut 10%* or *chhut 200*)"],
             'sale_need'   => ['ne' => "✍️ अझै चाहियो: {what}। जस्तै: *Ram Thapa 98XXXXXXXX*", 'hi' => "✍️ अभी चाहिए: {what}। जैसे: *Ram Thapa 98XXXXXXXX*", 'en' => "✍️ Still needed: {what}. E.g. *Ram Thapa 98XXXXXXXX*"],
             'sale_done'   => ['ne' => "✅ टिकट काटियो! PNR *{pnr}*\n💺 {seats} · {total}\n{sent}{tail}", 'hi' => "✅ टिकट कट गया! PNR *{pnr}*\n💺 {seats} · {total}\n{sent}{tail}", 'en' => "✅ Ticket issued! PNR *{pnr}*\n💺 {seats} · {total}\n{sent}{tail}"],
             'sale_sent'   => ['ne' => "📲 टिकट {phone} को WhatsApp मा गयो।", 'hi' => "📲 टिकट {phone} के WhatsApp पर गया।", 'en' => "📲 The ticket went to {phone} on WhatsApp."],

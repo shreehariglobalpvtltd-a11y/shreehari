@@ -154,6 +154,9 @@ html.sbx-admin .sbx-ov{display:block}
     <select id="sbxDiscType" aria-label="Discount type"><option value="flat">₹</option><option value="percent">%</option></select>
     <small id="sbxDiscNote"><?= $discAgent ? 'Cash · max ' . $e($capTxt) . '% · कमिसनबाट कट्छ' : 'max ' . $e($capTxt) . '%' ?></small>
   </span>
+  <?php elseif ($mode === 'agent'): ?>
+  <!-- 15 Nov 2026: the box used to vanish here with no word; an office login gives a discount from Admin / Counter mode -->
+  <a class="sbx-disc" href="?mode=admin" title="Agent mode sells on the agent's terms; open Admin mode to give a discount on this sale">🏷️ छुट दिन: Admin mode · Discount in Admin mode</a>
   <?php endif; ?>
   <details class="sbx-more"><summary>⚙</summary><div class="sbx-more-in">
     <?php if ($isAdmin): ?>

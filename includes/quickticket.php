@@ -803,6 +803,23 @@ final class QuickTicket
             'discountValue' => (float) ($input['discountValue'] ?? 0),
             'note'          => self::NOTE . ($note !== '' ? ' · ' . $note : ''),
         ];
+        /* 15 Nov 2026 (owner: "staff agent haru le ticket katda percentage ya amount ko
+           hisab le discount"): the same rule as the SmartBook desk (api/smartbook.php,
+           mg20). An AGENT's own discount works on Cash sales only, is capped at the
+           commission this sale earns and is taken from it; an office / counter
+           discount is capped at counter_max_discount_pct inside create(). Before this,
+           an agent selling through this path gave a discount that no commission paid. */
+        $agentDisc = 0;
+        if ($seller['discountType'] !== '' && $seller['discountValue'] > 0) {
+            require_once __DIR__ . '/agentwallet.php';
+            if (AgentWallet::isAgentRow((int) ($staff['id'] ?? 0))) {
+                if ($pay !== 'cash') {
+                    throw new RuntimeException('छुट Cash बिक्रीमा मात्र मिल्छ — Cash रोज्नुहोस् वा छुट हटाउनुहोस् · A discount works on Cash sales only — choose Cash or clear the discount.');
+                }
+                $agentDisc = (int) $staff['id'];
+                $seller['discountFromCommission'] = $agentDisc;
+            }
+        }
 
         $plan    = [];
         $booking = [];
@@ -832,6 +849,10 @@ final class QuickTicket
         }
         if ($booking === [] || empty($booking['id'])) {
             throw new RuntimeException('The ticket could not be issued — please try again. / टिकट बन्न सकेन, फेरि प्रयास गर्नुहोस्।');
+        }
+        // 15 Nov 2026: an agent's own discount is taken from their commission (the part above any running offer)
+        if ($agentDisc > 0 && BookingService::deskCharge() > 0) {
+            AgentWallet::chargeDeskDiscount($agentDisc, (int) $booking['id'], (string) ($booking['pnr'] ?? ''), BookingService::deskCharge());
         }
 
         return self::result($booking, $plan, $name, $phone, $t0);
