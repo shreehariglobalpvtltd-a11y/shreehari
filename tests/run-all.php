@@ -152,6 +152,8 @@ const CORE_SUITES = [
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
     // 13 Nov 2026, registered with the cost ledger and Control Center it guards.
     'super-ai-test.php'           => 'Super AI: cost ledger, prompt-cache marks, daily ceiling, finance_day is office-only and read-only',
+    // 14 Nov 2026, registered with the owner's-number reset exception it guards.
+    'office-reset-test.php'       => 'office reset by WhatsApp: only the owner / CEO number, only superadmin or manager, only while switched on',
     // 14 Nov 2026, registered with the web research tool and the no-key quality eval they guard.
     'ai-web-research-test.php'    => 'web research: staff and office only, off by default, server blocks replayed unchanged, pause_turn bounded',
     'ai-eval-test.php'            => 'the golden set with no AI key: 88 questions in 6 languages, knowledge scope, offer guard, who may run which tool',

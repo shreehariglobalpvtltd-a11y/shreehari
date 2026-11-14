@@ -166,6 +166,44 @@ final class TeamPortal
         return (int) $a['is_active'] === 1 && !self::staffBlocked($a, self::adminIntl($phone10, $a), $phone10);
     }
 
+    /** Office roles the owner's-number exception below may reset. */
+    public const OFFICE_RESET_ROLES = ['superadmin', 'manager'];
+
+    /**
+     * 14 Nov 2026 (owner: "OTP aayena" - his own Forgot password sent nothing,
+     * because an office role is never reset by WhatsApp; asked, he said open
+     * it for his and the CEO's number only).
+     *
+     * One narrow exception to the rule under resetTargets(): a superadmin or
+     * manager account may be reset by a WhatsApp code when ALL of these hold
+     *   - the switch office_reset_by_whatsapp is on (default OFF);
+     *   - the number asking is exactly the owner's or the CEO's WhatsApp
+     *     number in Settings (admin_whatsapp / ceo_whatsapp), and that same
+     *     number is the one on the account;
+     *   - the account has no 2FA (checked by the caller, as for every role).
+     * Every other office account, on every other number, stays closed. The
+     * passwordless "mobile + code" door (Auth::OTP_DOOR_ROLES) is untouched:
+     * this resets a password, it never signs anyone in without one.
+     */
+    public static function officeResetAllowed(string $phone10, array $a): bool
+    {
+        if (!in_array((string) ($a['role'] ?? ''), self::OFFICE_RESET_ROLES, true)
+            || !Settings::getBool('office_reset_by_whatsapp', false)) {
+            return false;
+        }
+        $phone10 = substr((string) preg_replace('/\D/', '', $phone10), -10);
+        if (strlen($phone10) !== 10) {
+            return false;
+        }
+        foreach (['admin_whatsapp', 'ceo_whatsapp'] as $key) {
+            $own = (string) preg_replace('/\D/', '', Settings::getString($key, ''));
+            if (strlen($own) >= 10 && substr($own, -10) === $phone10) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * @param bool $any 30 Oct 2026 (one door): the accounts the one door's WhatsApp reset covers.
      *                  31 Oct 2026 (review): exactly the IDs WhatsApp may open anyway —
@@ -179,7 +217,8 @@ final class TeamPortal
         $acc = self::accounts($phone10);
         if ($any) {
             $acc['admins'] = array_values(array_filter(Auth::adminsByPhone($phone10), static fn(array $a): bool =>
-                in_array((string) $a['role'], Auth::OTP_DOOR_ROLES, true) && !Auth::admin2faEnabled((int) $a['id'])));
+                (in_array((string) $a['role'], Auth::OTP_DOOR_ROLES, true) || self::officeResetAllowed($phone10, $a))
+                && !Auth::admin2faEnabled((int) $a['id'])));
         }
         $groups = [];
         $add = static function (string $intl, string $kind, array $row) use (&$groups): void {
