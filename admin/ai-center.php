@@ -30,15 +30,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } elseif (!$canEdit) {
         $flash = ['bad', 'Changing the AI needs the Settings permission.'];
     } else {
-        $before = ['budget' => AiMeter::budget(), 'cache' => Settings::getBool('ai_claude_cache_on', true)];
+        $before = ['budget' => AiMeter::budget(), 'cache' => Settings::getBool('ai_claude_cache_on', true),
+            'web' => Settings::getBool('ai_web_research_on', false), 'webMax' => Settings::getInt('ai_web_research_max_uses', 3)];
         $budget = round(max(0.0, min(500.0, (float) ($_POST['ai_daily_budget_usd'] ?? 0))), 2);
         $cache  = isset($_POST['ai_claude_cache_on']);
+        // 14 Nov 2026: web research for the office and staff (never a customer).
+        $web    = isset($_POST['ai_web_research_on']);
+        $webMax = max(1, min(10, (int) ($_POST['ai_web_research_max_uses'] ?? 3)));
         Settings::set('ai_daily_budget_usd', (string) $budget, 'string', 'ai');
         Settings::set('ai_claude_cache_on', $cache ? '1' : '0', 'bool', 'ai');
-        Logger::audit('ai.center_saved', 'settings', 'ai', $before, ['budget' => $budget, 'cache' => $cache], 'AI Control Center');
+        Settings::set('ai_web_research_on', $web ? '1' : '0', 'bool', 'ai');
+        Settings::set('ai_web_research_max_uses', (string) $webMax, 'int', 'ai');
+        Logger::audit('ai.center_saved', 'settings', 'ai', $before,
+            ['budget' => $budget, 'cache' => $cache, 'web' => $web, 'webMax' => $webMax], 'AI Control Center');
         AiMeter::reset();
         $flash = ['ok', 'Saved. Daily ceiling: ' . ($budget > 0 ? '$' . number_format($budget, 2) : 'none')
-            . ' · prompt cache ' . ($cache ? 'on' : 'off') . '.'];
+            . ' · prompt cache ' . ($cache ? 'on' : 'off')
+            . ' · web research ' . ($web ? 'on, up to ' . $webMax . ' searches a message' : 'off') . '.'];
     }
 }
 
@@ -65,6 +73,8 @@ $cacheP  = $promptT > 0 ? (int) round((int) ($t['cr'] ?? 0) * 100 / $promptT) : 
 $avgMs   = (int) round((float) ($t['ms'] ?? 0));
 $budget  = AiMeter::budget();
 $cacheOn = Settings::getBool('ai_claude_cache_on', true);
+$webOn   = Settings::getBool('ai_web_research_on', false);
+$webMax  = max(1, min(10, Settings::getInt('ai_web_research_max_uses', 3)));
 
 $byModel = $haveUsage ? $q(static fn() => Database::fetchAll(
     'SELECT provider, model, COUNT(*) AS n, SUM(ok) AS oks, SUM(in_tokens) AS tin, SUM(out_tokens) AS tout,
@@ -205,6 +215,7 @@ admin_header('AI Control Center', 'ai-center');
       <span class="ac-chip<?= $i === 0 ? ' gold' : '' ?>"><?= $i === 0 ? 'Answers first: ' : 'Then: ' ?><?= $e(AiBrain::PROVIDERS[$b]['label'] ?? $b) ?></span>
     <?php endforeach; endif; ?>
     <span class="ac-chip">Prompt cache <?= $cacheOn ? 'on' : 'off' ?></span>
+    <?php if ($webOn): ?><span class="ac-chip">Web research on · office &amp; staff</span><?php endif; ?>
     <span class="ac-chip<?= AiMeter::overBudget() ? ' warn' : '' ?>"><?= $budget > 0
         ? (AiMeter::overBudget() ? 'Daily ceiling reached — Claude paused' : 'Daily ceiling ' . $money($budget))
         : 'No daily ceiling' ?></span>
@@ -243,7 +254,7 @@ admin_header('AI Control Center', 'ai-center');
   </div>
 
   <div class="panel">
-    <h2>Spending ceiling &amp; cache</h2>
+    <h2>Spending ceiling, cache &amp; web research</h2>
     <form method="post" class="ac-form">
       <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf ?>">
       <label>Most to spend in one day (US dollars)
@@ -255,6 +266,16 @@ admin_header('AI Control Center', 'ai-center');
       <label class="chk"><input type="checkbox" name="ai_claude_cache_on" <?= $cacheOn ? 'checked' : '' ?> <?= $canEdit ? '' : 'disabled' ?>>
         <span>Prompt cache for Claude<br><span class="ac-note" style="margin:0">The briefing and tool list are re-read from cache
           instead of paid for again on every message. Leave on.</span></span></label>
+      <label class="chk"><input type="checkbox" name="ai_web_research_on" <?= $webOn ? 'checked' : '' ?> <?= $canEdit ? '' : 'disabled' ?>>
+        <span>Web research for the office and staff<br><span class="ac-note" style="margin:0">Lets Claude look up roads, weather,
+          festival dates, border notices and other operators' public pages when the office or an agent asks. Never for a customer,
+          and never for our own fares, seats, bookings or money — those still come only from the register. Each search costs about
+          one US cent on top of the normal answer cost, and is counted in the daily ceiling above. Works with the Claude brain only.</span></span></label>
+      <label>Most web searches in one message
+        <input type="number" name="ai_web_research_max_uses" min="1" max="10" step="1" inputmode="numeric"
+               value="<?= $e($webMax) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+        <span class="ac-note" style="margin:0;font-weight:400">1 to 10. Three is enough for most questions.</span>
+      </label>
       <?php if ($canEdit): ?><div><button class="btn btn-primary" type="submit">Save</button></div>
       <?php else: ?><p class="ac-note">Changing these needs the Settings permission.</p><?php endif; ?>
     </form>
