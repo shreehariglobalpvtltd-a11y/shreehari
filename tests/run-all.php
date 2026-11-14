@@ -159,7 +159,7 @@ const CORE_SUITES = [
     // 14 Nov 2026, registered with the owner's / CEO's WhatsApp vault it guards.
     'wa-vault-test.php'           => 'personal vault: owner / CEO numbers only, each sees only its own, encrypted, Drive from Google only',
     // 15 Nov 2026, registered with the staff / agent discount on WhatsApp and Quick Ticket it guards.
-    'staff-discount-test.php'     => 'staff discount: % or ₹ read from a WhatsApp order, capped, stored; an agent's Cash-only and from commission',
+    'staff-discount-test.php'     => 'staff discount: % or ₹ read from a WhatsApp order, capped, stored; an agent discount is Cash only and from commission',
     // 14 Nov 2026, registered with the web research tool and the no-key quality eval they guard.
     'ai-web-research-test.php'    => 'web research: staff and office only, off by default, server blocks replayed unchanged, pause_turn bounded',
     'ai-eval-test.php'            => 'the golden set with no AI key: 88 questions in 6 languages, knowledge scope, offer guard, who may run which tool',
