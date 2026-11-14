@@ -189,6 +189,14 @@
   OW.en.sBus = 'Bus'; OW.en.sDrop = 'Getting off'; OW.en.sFare = 'Fare'; OW.en.sDisc = 'Discount'; OW.en.sPay = 'Payment'; OW.en.sPayCash = 'Cash — ticket issued on confirm';
   OW.hi.sBus = 'बस'; OW.hi.sDrop = 'उतरना'; OW.hi.sFare = 'भाड़ा'; OW.hi.sDisc = 'छूट'; OW.hi.sPay = 'भुगतान'; OW.hi.sPayCash = 'कैश — पक्का करने पर टिकट';
   OW.ne.sBus = 'बस'; OW.ne.sDrop = 'ओर्लने'; OW.ne.sFare = 'भाडा'; OW.ne.sDisc = 'छुट'; OW.ne.sPay = 'भुक्तानी'; OW.ne.sPayCash = 'नगद — पक्का गरेपछि टिकट';
+  /* 14 Nov 2026: the sheet's Confirm sells what the sheet shows — if the quote moved
+     while it was open, the sheet is drawn again with one of these lines. */
+  OW.en.seatMoved = 'The seat changed: {a} → {b}.'; OW.en.cvAgain = 'Check the details above and confirm again.';
+  OW.hi.seatMoved = 'सीट बदल गई: {a} → {b}।'; OW.hi.cvAgain = 'ऊपर की जानकारी देखकर फिर पक्का करें।';
+  OW.ne.seatMoved = 'सिट बदलियो: {a} → {b}।'; OW.ne.cvAgain = 'माथिको विवरण हेरेर फेरि पक्का गर्नुहोस्।';
+  OW.en.cvMoved = 'The booking details changed. Check them above and confirm again.';
+  OW.hi.cvMoved = 'बुकिंग की जानकारी बदल गई। ऊपर देखकर फिर पक्का करें।';
+  OW.ne.cvMoved = 'बुकिङको विवरण बदलियो। माथि हेरेर फेरि पक्का गर्नुहोस्।';
   ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in OW[l]) { W[l][k] = OW[l][k]; } } });
   function tr(k, v) {
     var s = (W[lang()] && W[lang()][k]) || W.en[k] || k;
@@ -473,9 +481,18 @@
 
   /* ------------------------------------------------------------ quote */
   var qTimer = null, qSeq = 0;
+  /* 14 Nov 2026: qPend = the card changed and the new quote has not come back yet.
+     While it is true S.q is the OLD answer (old berth, old pickup): book() waits for
+     the new one before it opens the seat map / a confirm sheet or sells. */
+  var qPend = false;
   function requote(ms) {
     clearTimeout(qTimer);
     S.idem = null;   // anything changed → a new booking intent
+    /* A hand pick that a change dropped (gender, age band, date, pickup, +/-, type) is
+       an AutoBerth sale again: back to Auto, so the seat map opens once more before
+       the sale (seat_pick_manual_first) with the new berth marked. */
+    if (S.seatMode === 'manual' && !S.manual.length) { S.seatMode = 'auto'; seg('sbSeatMode', 'auto'); }
+    qPend = true;
     qTimer = setTimeout(doQuote, ms == null ? 260 : ms);
   }
   function quoteBody() {
@@ -514,14 +531,14 @@
       .then(function (q) {
         if (my !== qSeq) return;
         var flash = S.q && q.seats && S.q.seats && q.seats.join() !== S.q.seats.join();
-        S.q = q;
+        S.q = q; qPend = false;
         if (!S.date && q.date) { /* next departure chosen by the engine */ }
         renderDates(); renderQuote(flash);
         syncButtons(); discNote(q); quoted();
       })
       .catch(function (e) {
         if (my !== qSeq) return;
-        S.q = null;
+        S.q = null; qPend = false;
         $('sbSeatLine').textContent = e && e.message ? e.message : '—';
         renderQuote(); syncButtons(); discNote(S.q); quoted();
       });
@@ -572,7 +589,25 @@
     $('sbNpr').textContent = q && q.ok && q.price ? '≈ ' + npr(q.price.npr) : '';
     $('sbBarTotal').textContent = tot;
     $('sbBarSeats').textContent = q && q.ok ? (seatSummary(q) + (q.price ? ' · ≈ ' + npr(q.price.npr) : '')) : (q && q.error ? q.error : tr('loading'));
+    syncPoint();
     renderQLine();
+  }
+  /* 14 Nov 2026: the pickup box shows the pickup that will really be booked.
+     A pickup that is past / inside the boarding cut-off for the day is still in the
+     list (it is open again on a later date), but the quote boards the passenger at
+     the first pickup still ahead on the same bus (quote.boardingStop). The box then
+     follows the quote and the line under it says why (quote.pointNote). S.point stays
+     the pickup that was asked, so choosing a later date brings it back. */
+  var pointMoved = false;
+  function syncPoint() {
+    var q = S.q, sel = $('sbPoint'), why = $('sbPointWhy');
+    if (!sel || !why) return;
+    var moved = !!(q && q.direction === S.dir && q.pointType !== 'drop' && q.boardingStop && q.boardingStop !== S.point && hasPoint(S.dir, q.boardingStop));
+    var show = moved ? q.boardingStop : S.point;
+    if (show && sel.value !== show && hasPoint(S.dir, show)) sel.value = show;
+    why.classList.toggle('sb-why-moved', moved);
+    if (moved) { why.textContent = '⚠️ ' + (q.pointNote ? L3(q.pointNote) : (q.boardingName || '') + (q.boardingTime ? ' · ' + q.boardingTime : '')); pointMoved = true; }
+    else if (pointMoved) { pointMoved = false; why.textContent = S.why.point ? L3(S.why.point) : ''; }
   }
   /* Quick form: everything that was not typed, on one line, each a default the
      engine chose (next catchable bus, this mobile's / the most-used pickup,
@@ -707,7 +742,7 @@
         if (!best || km < best.km) best = { name: p.name, km: Math.round(km), short: p.short };
       });
       if (!best) { say(tr('geoNo')); return; }
-      S.point = best.name; $('sbPoint').value = best.name;
+      S.point = best.name; $('sbPoint').value = best.name; pointMoved = false;
       $('sbPointWhy').textContent = '📍 ' + (best.short || best.name) + ' · ~' + best.km + ' km';
       changed();
     }, function () { say(tr('geoNo')); }, { timeout: 6000, maximumAge: 600000 });
@@ -936,6 +971,14 @@
       return;
     }
     if (S.busy) return;
+    /* 14 Nov 2026: the card just changed (gender, date, pickup …) and its new quote is
+       still on the way — S.q is the OLD berth / pickup. Wait for the new one, then go
+       on: the seat map and the confirm sheet are never drawn from a stale quote.
+       (A sheet's own Confirm is checked by sheetFresh() before it comes here.) */
+    if (qPend && !verify && !okGo) {
+      if (!bookWait) { bookWait = true; whenQuoted().then(function () { bookWait = false; book(pay, wantPrint, verify, tap); }); }
+      return;
+    }
     if (!S.q || !S.q.ok) { say(S.q && S.q.error ? S.q.error : tr('loading')); if (!S.q) requote(0); return; }
     /* 6 Nov 2026 (owner: "customer, agent le book garda automatic bhanda seat selection
        prefer"): the seat map opens first, AutoBerth's berths already marked — one tap on
@@ -991,7 +1034,7 @@
       syncButtons();
     });
   }
-  var printNext = false;
+  var printNext = false, bookWait = false;
   function staffPrint() { try { return localStorage.getItem('sb:print80') !== '0'; } catch (e) { return true; } }
 
   /* ------------------------------------------------ Cash verification sheet
@@ -1016,9 +1059,32 @@
     box.addEventListener('submit', function (e) { e.preventDefault(); if (box.getAttribute('data-kind') === 'ok') submitOk(); else submitCash(); });
     return box;
   }
+  /* 14 Nov 2026: Confirm sells what the sheet SHOWS. sumHtml() notes the quote it drew
+     (berths, pickup, drop, date, total); a sheet's Confirm goes through sheetFresh():
+     it waits for a quote still on the way, and if the quote is no longer the one on
+     the sheet (a late name → gender guess, a remembered party, a berth just taken)
+     the sheet is drawn again with the new summary and a line saying what changed —
+     nothing is sold until the passenger confirms what is on the screen. */
+  var cvSig = '', cvSeat = '';
+  function quoteSig(q) {
+    return q && q.ok ? [(q.seats || []).join(','), q.boarding || '', q.drop || '', q.date || '', q.price ? q.price.total : ''].join('|') : '';
+  }
+  function sheetFresh(redraw, go) {
+    if (qPend) { whenQuoted().then(function () { sheetFresh(redraw, go); }); return; }
+    var box = $('sbCv'); if (!box || box.hidden) return;   // closed while it waited
+    if (!S.q || !S.q.ok) { closeCash(); say(S.q && S.q.error ? S.q.error : tr('loading')); if (!S.q) requote(0); return; }
+    var was = cvSeat, now = seatSummary(S.q);
+    var moved = '⚠️ ' + tr('seatMoved', { a: was, b: now });
+    /* the hand pick was dropped under the open sheet: the seat map comes first again
+       (seat_pick_manual_first), with the new berth marked — then Cash shows this sheet */
+    if (S.seatPickFirst && S.seatMode !== 'manual') { closeCash(); if (was !== now) say(moved); openSheet(); return; }
+    if (quoteSig(S.q) === cvSig) { go(); return; }
+    redraw(was !== now ? moved + ' ' + tr('cvAgain') : '⚠️ ' + tr('cvMoved'));
+  }
   /* The booking at a glance - the one summary both Cash sheets lead with. */
   function sumHtml() {
     var q = S.q || {}, drop = q.pointType === 'drop';
+    cvSig = quoteSig(q); cvSeat = seatSummary(q);
     var rows = [
       [tr('sRoute'), (q.from || '') + ' → ' + (q.to || '')],
       [tr('sDate'), (q.dateLabel || '') + bsFull(q.date, ' · ') + (q.depTime ? ' · ' + q.depTime : '')],
@@ -1064,8 +1130,10 @@
   function submitOk() {
     var go = $('sbCv').querySelector('.sb-cv-go'); if (!go || go.disabled) return;
     go.disabled = true; go.classList.add('sb-busy');
-    okGo = true;
-    try { book('cash', okPrint); } finally { okGo = false; }
+    sheetFresh(function (msg) { openOk(okPrint); cashErr(msg); }, function () {
+      okGo = true;
+      try { book('cash', okPrint); } finally { okGo = false; }
+    });
     setTimeout(function () { go.disabled = false; go.classList.remove('sb-busy'); }, 1500);
   }
   function cvComplete() {
@@ -1125,7 +1193,9 @@
     if (nm !== S.name) { S.name = nm; $('sbName').value = nm; store.set(); }
     $('sbCvE').hidden = true;
     var go = $('sbCv').querySelector('.sb-cv-go'); go.disabled = true; go.classList.add('sb-busy');
-    book('cash', false, { address: v.address, idType: v.idType, idNum: v.idNum, altPhone: v.altPhone, altCountry: v.altCc });
+    sheetFresh(function (msg) { openCash(null, msg); }, function () {
+      book('cash', false, { address: v.address, idType: v.idType, idNum: v.idNum, altPhone: v.altPhone, altCountry: v.altCc });
+    });
     setTimeout(function () { if (go) { go.disabled = false; go.classList.remove('sb-busy'); } }, 1500);
   }
 
