@@ -231,6 +231,12 @@ final class AiBrain
             $headers = array_values(array_filter($headers, static fn(string $h): bool => stripos($h, 'server-side-fallback') === false));
             [$http, $body] = self::post('https://api.anthropic.com/v1/messages', $payload, $headers);
         }
+        if ($http === 400 && self::claudeHasCacheMarks($payload)) {
+            // 14 Nov 2026: a refused cache mark must not cost the answer - once more, the old shape.
+            Logger::warning('AI brain: Claude refused the request (400) - retried without prompt-cache marks', ['model' => $model], 'ai');
+            $payload = self::claudeUncached($payload);
+            [$http, $body] = self::post('https://api.anthropic.com/v1/messages', $payload, $headers);
+        }
         $ms = (int) round((microtime(true) - $t0) * 1000);
         if ($http !== 200) {
             AiMeter::record('anthropic', $model, [], $ms, false);
@@ -347,6 +353,51 @@ final class AiBrain
             if (is_array($payload['tools'][$last])) {
                 $payload['tools'][$last]['cache_control'] = $mark;
             }
+        }
+        return $payload;
+    }
+
+    /** Does this request carry any prompt-cache mark placed by claudeCached() or the agent? */
+    public static function claudeHasCacheMarks(array $payload): bool
+    {
+        if (isset($payload['cache_control'])) {
+            return true;
+        }
+        foreach (['system', 'tools'] as $part) {
+            foreach ((array) (is_array($payload[$part] ?? null) ? $payload[$part] : []) as $b) {
+                if (is_array($b) && isset($b['cache_control'])) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The same request with every prompt-cache mark taken off again: the
+     * shape that was sent before 13 Nov 2026. Used once, after a 400, so a
+     * rejected mark can never cost an answer. A one-block system text goes
+     * back to the plain string it was.
+     *
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    public static function claudeUncached(array $payload): array
+    {
+        unset($payload['cache_control']);
+        foreach (['system', 'tools'] as $part) {
+            if (!is_array($payload[$part] ?? null)) {
+                continue;
+            }
+            foreach ($payload[$part] as $i => $b) {
+                if (is_array($b)) {
+                    unset($payload[$part][$i]['cache_control']);
+                }
+            }
+        }
+        $sys = $payload['system'] ?? null;
+        if (is_array($sys) && count($sys) === 1 && array_keys($sys[0] ?? []) === ['type', 'text'] && ($sys[0]['type'] ?? '') === 'text') {
+            $payload['system'] = (string) $sys[0]['text'];
         }
         return $payload;
     }

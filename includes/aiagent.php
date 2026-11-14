@@ -828,6 +828,16 @@ final class AiAgent
                 $headers = array_values(array_filter($headers, static fn(string $h): bool => stripos($h, 'server-side-fallback') === false));
                 $res = self::http('https://api.anthropic.com/v1/messages', $payload, $headers, $timeout);
             }
+            if ($res === null && self::$lastHttp === 400 && AiBrain::claudeHasCacheMarks($payload)) {
+                /* 14 Nov 2026: the cache marks are new and were never sent to
+                   the real API before release. If the request is refused as
+                   malformed, send it once more exactly as it was sent before
+                   caching existed - a passenger must not lose the answer to
+                   a cost saving. Logged, so the office sees it happened. */
+                Logger::warning('AI agent: Claude refused the request (400) - retried without prompt-cache marks', ['model' => $model], 'ai');
+                $payload = AiBrain::claudeUncached($payload);
+                $res = self::http('https://api.anthropic.com/v1/messages', $payload, $headers, $timeout);
+            }
             if ($res === null) {
                 self::$lastUsage = [$used, $usage];
                 return null;

@@ -89,6 +89,17 @@ $ok(is_array($p3['system']) && !isset($p3['thinking']), 'older models get the ca
 Settings::set('ai_claude_cache_on', '0', 'bool', 'ai');
 [$p4] = AiBrain::claudeShape('claude-opus-5-5', ['model' => 'claude-opus-5-5', 'max_tokens' => 700, 'system' => 'BRIEF', 'messages' => [], 'tools' => $tools], []);
 $ok($p4['system'] === 'BRIEF' && !isset($p4['tools'][1]['cache_control']), 'switch off = the request exactly as before');
+/* 14 Nov 2026: a 400 on a marked request is retried once in the old shape */
+Settings::set('ai_claude_cache_on', '1', 'bool', 'ai');
+$plain = ['model' => 'claude-opus-5-5', 'max_tokens' => 700, 'system' => 'BRIEF', 'messages' => [['role' => 'user', 'content' => 'hi']], 'tools' => $tools];
+$marked = AiBrain::claudeCached($plain) + ['cache_control' => ['type' => 'ephemeral']];
+$ok(AiBrain::claudeHasCacheMarks($marked) === true && AiBrain::claudeHasCacheMarks($plain) === false, 'cache marks are detected on a marked request and not on a plain one');
+$ok(AiBrain::claudeUncached($marked) == $plain, 'taking the marks off gives back the request exactly as it was before caching');
+$ok(AiBrain::claudeUncached(['system' => $blocks, 'messages' => []])['system'] === [['type' => 'text', 'text' => 'FACTS'], ['type' => 'text', 'text' => 'tail']], 'a multi-block system keeps its blocks, only the marks go');
+$srcB = (string) file_get_contents('includes/aibrain.php');
+$srcA = (string) file_get_contents('includes/aiagent.php');
+$ok(str_contains($srcA, 'AiBrain::claudeUncached($payload)') && str_contains($srcB, 'self::claudeUncached($payload)'), 'both Claude callers retry a refused (400) marked request without the marks');
+Settings::set('ai_claude_cache_on', '0', 'bool', 'ai');
 $src = (string) file_get_contents('includes/aiagent.php');
 $ok(str_contains($src, "AiMeter::overBudget()") && str_contains($src, "AiMeter::record(\$brain"), 'the agent checks the ceiling and meters every brain call');
 
