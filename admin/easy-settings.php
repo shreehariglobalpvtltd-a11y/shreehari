@@ -292,6 +292,8 @@ admin_header('🤖 S Hari AI · सेटिङ र काम (बोलेर)'
 .es .cmd .btn{min-height:54px;font-size:16px;font-weight:800}
 .es .ex{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .es .ex button{border:1px dashed var(--line,#c9d3e3);background:transparent;color:inherit;border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
+/* 14 Nov 2026 (staff 360px audit): the example chips were 27px on a touch phone */
+@media(max-width:820px) and (pointer:coarse){.es .ex button{min-height:40px;padding:5px 14px;font-size:13px}}
 .es .prop{border:2px solid #F0B44C;background:#FFF8E6;color:#3A2A00;border-radius:14px;padding:12px 14px;margin-top:10px}
 .es .prop li{margin:4px 0;font-size:15px}
 .es .sw{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}

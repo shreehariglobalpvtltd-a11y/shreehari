@@ -1,0 +1,19 @@
+BEFORE (commit f56bb227), counter (qa-sm360-counter), iframe 360x640, pointer:coarse, 14 Nov 2026
+/admin/home.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=1/34 | link=5 | text=32/10.5 | bar=- | top=199 | focus=1/2
+/admin/smartbook.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=27/32 | link=5 | text=30/9.6 | bar=- | top=199 | focus=1/8
+/admin/bookings.php | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill25 | tap=28/20 | link=29 | text=208/10 | bar=- | top=199 | focus=0/9
+/admin/booking-view.php?pnr=SHG-2026-01317 | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill0 | tap=16/34 | link=14 | text=23/10 | bar=- | top=199 | focus=0/27
+/admin/manifest.php?date=2026-11-03&sid=2776 | over=15 | off=2/15 | scroll=1 | card=2t w509 tdOff26/160 spill0 | tap=19/30 | link=12 | text=47/9 | bar=- | top=199 | focus=0/6
+/admin/chalan.php?date=2026-11-03&sid=2776 | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=2/22 | link=10 | text=29/11 | bar=- | top=199 | focus=2/8
+/admin/seatmap.php | over=68 | off=1/68 | scroll=1 | card=2t w334 tdOff0/0 spill0 | tap=7/25 | link=7 | text=108/10 | bar=- | top=199 | focus=1/13
+/admin/payments.php | over=4 | off=1/4 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=1/34 | link=4 | text=27/10 | bar=- | top=199 | focus=0/1
+/admin/bus-control.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=2/22 | link=48 | text=631/10 | bar=- | top=199 | focus=0/2
+/admin/agents.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=1/34 | link=4 | text=18/11 | bar=- | top=199 | focus=0/1
+/admin/customers.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=2/33 | link=23 | text=41/11 | bar=- | top=199 | focus=0/5
+/admin/refunds.php | over=0 | off=0/0 | scroll=0 | card=1t w334 tdOff0/0 spill0 | tap=2/33 | link=13 | text=18/11 | bar=- | top=199 | focus=0/1
+/admin/cash-book.php | over=0 | off=0/0 | scroll=0 | card=2t w334 tdOff0/0 spill0 | tap=2/33 | link=5 | text=19/11 | bar=- | top=199 | focus=1/6
+/admin/shift.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=2/33 | link=4 | text=18/11 | bar=- | top=199 | focus=0/1
+/admin/my-desk.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=1/34 | link=4 | text=18/11 | bar=- | top=199 | focus=0/1
+/admin/wa-inbox.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=1/34 | link=4 | text=18/11 | bar=- | top=199 | focus=0/1
+/admin/support-inbox.php | over=0 | off=0/0 | scroll=1 | card=1t w760 tdOff30/414 spill0 | tap=1/34 | link=20 | text=24/11 | bar=- | top=199 | focus=0/7
+/admin/accounting.php | over=0 | off=0/0 | scroll=0 | card=0t w0 tdOff0/0 spill0 | tap=1/34 | link=4 | text=18/11 | bar=- | top=199 | focus=0/1

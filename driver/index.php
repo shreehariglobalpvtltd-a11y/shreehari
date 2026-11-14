@@ -48,6 +48,8 @@ header b{font-size:17px}
 header small{display:block;color:var(--mut);font-size:12.5px}
 header .who{margin-left:auto;text-align:right;font-size:12.5px;color:var(--mut)}
 header .who button{background:none;border:0;color:var(--gold);font:inherit;padding:2px 0;cursor:pointer}
+/* 14 Nov 2026 (staff 360px audit): Sign out was a 22px line of text - 40px to tap */
+header .who button{min-height:40px;padding:0 0 0 12px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
 h1{font-size:20px;margin:0 0 4px}
 p{margin:6px 0}

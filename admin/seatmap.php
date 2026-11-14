@@ -729,6 +729,8 @@ admin_header('Seat Map · सिट नक्सा', 'seatmap');
 .qa-panel .qa-tab[aria-selected="true"]{background:var(--card,#fff);border-color:var(--line,#e5e7eb);
   color:var(--ink,#1f2937);position:relative;top:1px}
 .qa-panel .qa-tab-body{padding:16px 18px}
+/* 14 Nov 2026 (staff 360px audit): the three tabs were 36px on a touch phone */
+@media(max-width:820px) and (pointer:coarse){.qa-panel .qa-tab{min-height:40px}}
 .qa-panel .qa-pane{display:flex;flex-direction:column;gap:8px;max-width:520px}
 
 /* ── Bookings-on-this-trip panel ─────────────────────────────────── */

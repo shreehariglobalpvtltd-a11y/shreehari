@@ -178,6 +178,8 @@ admin_header('Schedule Manager', 'schedule');
   width:32px;height:32px;padding:0;border-radius:8px;border:1px solid var(--line);
   background:var(--bg);color:var(--ink);cursor:pointer;font-size:15px;transition:all .12s;line-height:1}
 .sm-btn:hover{background:var(--hover);border-color:var(--blue);color:var(--blue)}
+/* 14 Nov 2026 (staff 360px audit): 32px icon buttons -> 40px on a touch phone */
+@media(max-width:820px) and (pointer:coarse){.sm-btn{width:40px;height:40px;font-size:17px}.btn-new-trip{min-height:40px}}
 .sm-btn.warn:hover{border-color:#c05e0e;color:#c05e0e;background:rgba(240,124,31,.08)}
 .sm-btn.danger:hover{border-color:#8a1f1f;color:#8a1f1f;background:rgba(138,31,31,.08)}
 .sm-btn.ok:hover{border-color:#0a6b3b;color:#0a6b3b;background:rgba(10,107,59,.08)}

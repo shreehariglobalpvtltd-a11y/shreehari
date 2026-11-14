@@ -153,6 +153,13 @@ function admin_pro_css(): string
 .pc-ai .pc-in{flex:1 1 300px}
 .pc-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
 @media(max-width:640px){.pc-head h2{font-size:18px}.pc-seat{min-width:28px;height:26px;font-size:10px}.pc-card-b{padding:12px}}
+/* 14 Nov 2026 (staff 360px audit): finger-sized on a touch phone. The compact
+   30 / 36px buttons and fields and the 20px switch stay as they are on desktop. */
+@media(max-width:820px) and (pointer:coarse){.pc-btn,.pc-btn.sm,.pc-in,.pc-sel,.pc-switch{min-height:40px}}
+/* The page grid's one column took the width of its widest unbreakable child
+   (349px on a 336px phone column - Bus Control ran 1px past the screen with
+   its right gutter gone). On a phone the column is the screen. */
+@media(max-width:820px){.pc{grid-template-columns:minmax(0,1fr)}}
 CSS;
 }
 

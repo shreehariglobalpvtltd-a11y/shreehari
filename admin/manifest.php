@@ -1146,6 +1146,18 @@ foreach ($rows as $r) {
   .wa-mini { display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#25D366;vertical-align:middle;margin-left:4px;transition:background .15s }
   .wa-mini:hover { background:#1da851 }
   .wa-mini svg { display:block }
+  /* 14 Nov 2026 (staff 360px audit): on a touch phone the row buttons
+     (Transfer / Seat / Mark due / Delete), the fine box and the tools row are
+     finger-sized. Desktop keeps the compact 30 / 36px. !important only beats
+     the fine box's inline min-height:30px. */
+  @media (max-width:820px) and (pointer:coarse) {
+    .mf-tools .btn, .mf-tools input, .mf-tools select, .mf-link input { min-height:40px; }
+    .mf-acts .btn, .mf-pay .btn, .mf-pay select, .mf-pay input { min-height:40px; }
+    .mf-acts input { min-height:40px !important; }
+    details.mf-chart summary { padding:10px 0; }
+  }
+  /* the place list's total row is a card on a phone: no rule above each line */
+  @media (max-width:820px) { table.mf-pl.card-table tfoot td { border-top:0; } }
 
   @media print {
     /* §16 "PRINT MANIFEST": the crew needs the list, not the console. */

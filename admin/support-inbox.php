@@ -366,6 +366,8 @@ admin_header('Help Desk', 'support-inbox');
   .hd-search{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
   .hd-search input,.hd-search select{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font:inherit;min-height:38px}
   .hd-search input[type=search]{flex:1;min-width:180px}
+  /* 14 Nov 2026 (staff 360px audit): 39px -> 42px on a phone */
+  @media(max-width:820px){.hd-search input,.hd-search select{min-height:42px}}
   .hd-inline{display:inline} .hd-inline .btn{padding:5px 9px;font-size:12px;min-height:32px}
   .hd-inline select{padding:4px 6px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;font-size:12px;max-width:150px}
   .hd-msg{white-space:pre-wrap;max-width:440px;font-size:13.5px;line-height:1.45}

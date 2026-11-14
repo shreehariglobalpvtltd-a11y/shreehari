@@ -1,0 +1,49 @@
+AFTER (working tree on top of f56bb227), superadmin, iframe 360x640, pointer:coarse, 14 Nov 2026
+Same script, same URLs as raw-before-superadmin-360.txt. Row counts differ a little from the "before" run
+because other sessions' test suites were writing to the shared test DB between the two runs.
+
+/admin/home.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=2 | text=31/10.5 | bar=- | top=52 | focus=0/2
+/admin/index.php | over=0 | off=0/0 | scroll=2 | card=2t w334 tdOff0/0 spill0 | tap=0/0 | link=30 | text=91/3 | bar=- | top=52 | focus=0/2
+/admin/hub.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=5 | text=14/11 | bar=- | top=52 | focus=0/1
+/admin/smartbook.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=11/32 | link=2 | text=28/9.6 | bar=69 covers0 | top=52 | focus=0/8
+/admin/bookings.php | over=0 | off=0/0 | scroll=2 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=33 | text=226/10 | bar=- | top=52 | focus=0/9
+/admin/booking-view.php?pnr=SHG-2026-01317 | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=10 | text=15/11 | bar=- | top=52 | focus=0/13
+/admin/manifest.php?date=2026-11-03&sid=2776 | over=0 | off=0/0 | scroll=1 | card=2t w336 tdOff0/0 spill0 | tap=0/0 | link=11 | text=45/9 | bar=- | top=52 | focus=0/6
+/admin/chalan.php?date=2026-11-03&sid=2776 | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=4 | text=27/11 | bar=- | top=52 | focus=0/8
+/admin/seatmap.php | over=0 | off=0/0 | scroll=2 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=2 | text=103/10.5 | bar=- | top=52 | focus=0/13
+/admin/payments.php | over=0 | off=0/0 | scroll=3 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=28/10 | bar=- | top=52 | focus=0/1
+/admin/agents.php | over=0 | off=0/0 | scroll=3 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=12 | text=88/11 | bar=- | top=52 | focus=0/6
+/admin/agent-360.php?agent=11 | over=0 | off=0/0 | scroll=1 | card=2t w334 tdOff0/0 spill0 | tap=0/0 | link=20 | text=21/11 | bar=- | top=52 | focus=0/9
+/admin/agent.php?agent=11 | over=0 | off=0/0 | scroll=2 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=16 | text=19/11 | bar=- | top=52 | focus=0/2
+/admin/ticket-statement.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=6 | text=23/11 | bar=- | top=52 | focus=0/6
+/admin/reconcile.php | over=0 | off=0/0 | scroll=1 | card=2t w332 tdOff0/0 spill0 | tap=0/0 | link=55 | text=24/11 | bar=- | top=52 | focus=0/1
+/admin/wa-inbox.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=4 | text=14/11 | bar=- | top=140 | focus=0/1
+/admin/settings.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=14/11 | bar=- | top=52 | focus=0/7
+/admin/easy-settings.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=3 | text=14/11 | bar=- | top=52 | focus=0/4
+/admin/bus-control.php | over=0 | off=0/0 | scroll=3 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=629/10 | bar=- | top=52 | focus=0/15
+/admin/people.php | over=0 | off=0/0 | scroll=1 | card=1t w332 tdOff0/0 spill0 | tap=0/0 | link=18 | text=34/11 | bar=- | top=52 | focus=0/30
+/admin/team.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=7 | text=15/11 | bar=- | top=52 | focus=0/1
+/admin/customers.php | over=0 | off=0/0 | scroll=2 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=20 | text=37/11 | bar=- | top=52 | focus=0/5
+/admin/accounting.php | over=0 | off=0/0 | scroll=1 | card=5t w334 tdOff0/0 spill0 | tap=0/0 | link=5 | text=15/11 | bar=- | top=52 | focus=0/7
+/admin/settlements.php | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=4 | text=16/10.5 | bar=- | top=52 | focus=0/1
+/admin/cash-book.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=14/11 | bar=- | top=52 | focus=0/5
+/admin/trips.php | over=0 | off=0/0 | scroll=2 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=164 | text=514/11 | bar=- | top=52 | focus=0/30
+/admin/schedule.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=44/10 | bar=- | top=52 | focus=0/2
+/admin/refunds.php | over=0 | off=0/0 | scroll=1 | card=1t w334 tdOff0/0 spill0 | tap=0/0 | link=16 | text=14/11 | bar=- | top=52 | focus=0/30
+/admin/my-desk.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=14/11 | bar=- | top=140 | focus=0/2
+/admin/support-inbox.php | over=0 | off=0/0 | scroll=1 | card=1t w332 tdOff0/0 spill0 | tap=0/0 | link=17 | text=20/11 | bar=- | top=52 | focus=0/7
+/admin/shift.php | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=14/11 | bar=- | top=140 | focus=0/1
+/admin/sessions.php | over=0 | off=0/0 | scroll=1 | card=2t w332 tdOff0/0 spill0 | tap=0/0 | link=7 | text=17/11 | bar=- | top=52 | focus=0/1
+/admin/permissions.php | over=0 | off=0/0 | scroll=1 | card=1t w332 tdOff0/0 spill0 | tap=0/0 | link=1 | text=52/11 | bar=- | top=52 | focus=0/2
+/admin/pnl.php | over=0 | off=0/0 | scroll=1 | card=2t w332 tdOff0/0 spill0 | tap=0/0 | link=3 | text=27/11 | bar=- | top=52 | focus=0/3
+/admin/agent-statement.php?agent=11 | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=7 | text=68/10.8 | bar=- | top=52 | focus=0/4
+/admin/search.php?q=SHG | over=0 | off=0/0 | scroll=1 | card=0t w0 tdOff0/0 spill0 | tap=0/0 | link=1 | text=14/11 | bar=- | top=52 | focus=0/1
+
+Notes
+- top=140 on wa-inbox / my-desk / shift: those pages are shorter than the screen, nothing scrolls, so the full
+  bar (140px, was 234px) is simply on show. On any page that scrolls the stuck part is 52px.
+- scroll=N counts boxes that scroll sideways ON PURPOSE (date strips, tab strips, the who strip when the name
+  is long, spreadsheet tables marked no-card). None of them holds a card-table any more.
+- smartbook tap=11: buttons inside the shared booking card (assets/css/smartbook.css - the customer
+  front-end session's file), 32-38px. Not touched here.
+- index.php text .../3: text inside SVG charts (drawn in viewBox units, not real 3px).
