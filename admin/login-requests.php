@@ -92,7 +92,20 @@ if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
     } elseif (($act === 'auth_tpl_create' || $act === 'auth_tpl_check') && $isSa) {
         // 15 Nov 2026: our own Meta AUTHENTICATION template for WhatsApp login codes
-        if ($act === 'auth_tpl_create') {
+        if ($act === 'auth_tpl_manual') {
+            WaAuthOtp::markManual(!empty($_POST['on']), $me);
+            $flash = ['ok', !empty($_POST['on']) ? 'ठीक छ — अब लगइन कोड यो template बाट जान्छ। तल "Test code" ले जाँच्नुहोस् · Marked approved. Send a test code below.' : 'हटाइयो · Removed.'];
+        } elseif ($act === 'auth_tpl_test') {
+            $mine = TeamPortal::phone10((string) (Database::scalar('SELECT phone FROM admins WHERE id = :i', ['i' => $me], '') ?: ''));
+            if ($mine === '' || !Security::rateLimit('auth_tpl_test', (string) $me, 3, 600)) {
+                $flash = ['bad', $mine === '' ? 'तपाईंको खातामा मोबाइल छैन · No mobile on your account.' : 'केही बेर पर्खनुहोस् · Wait a few minutes.'];
+            } else {
+                $intl = TeamPortal::intlFor($mine, ['id' => $me, 'phone' => $mine]);
+                $r = WaAuthOtp::send($intl, (string) random_int(100000, 999999));
+                $flash = $r['success'] ? ['ok', '✅ Meta ले स्वीकार्यो — तपाईंको WhatsApp (' . maskPhone($intl) . ') हेर्नुहोस् · Accepted by Meta, check your WhatsApp.']
+                                       : ['bad', 'Meta: ' . $r['error']];
+            }
+        } elseif ($act === 'auth_tpl_create') {
             $r = WaAuthOtp::create();
             $flash = $r['ok'] ? ['ok', 'Meta लाई पठाइयो — स्थिति: ' . $r['status'] . ' · Sent to Meta, status ' . $r['status']] : ['bad', 'Meta: ' . $r['error']];
         } else {
@@ -202,7 +215,21 @@ admin_header('Login setup & PIN · लगइन तयार', 'login-requests.p
       <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="auth_tpl_create"><button class="btn ok" type="submit">Meta मा बनाउने · Create on Meta</button></form>
       <?php endif; ?>
       <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="auth_tpl_check"><button class="btn" type="submit">स्थिति जाँच · Check status</button></form>
+      <?php if ($atSt === 'APPROVED'): ?>
+      <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="auth_tpl_test"><button class="btn ok" type="submit">📩 मेरो नम्बरमा test code · Test code to my number</button></form>
+      <?php endif; ?>
     </div>
+    <details style="margin-top:10px"<?= $atSt !== 'APPROVED' ? ' open' : '' ?>><summary><b>Meta ले API बाट बनाउन दिएन भने (हातैले, ५ मिनेट) · If Meta refuses the API (by hand)</b></summary>
+      <ol style="font-size:14px;line-height:1.6;margin:8px 0">
+        <li>business.facebook.com → <b>WhatsApp Manager</b> → <b>Message templates</b> → <b>Create template</b></li>
+        <li>Category: <b>Authentication</b> · Name: <b><?= $e(WaAuthOtp::NAME) ?></b> · Language: <b>English</b></li>
+        <li>Code delivery: <b>Copy code</b> · ✅ "Add security recommendation" · ✅ "Add expiry time" = <?= (int) (defined('OTP_EXPIRY_MINUTES') ? OTP_EXPIRY_MINUTES : 10) ?> minutes</li>
+        <li>Submit → status <b>Active</b> भएपछि यहाँ तलको बटन थिच्नुहोस्, अनि "Test code" ले जाँच्नुहोस्।</li>
+      </ol>
+      <form method="post" style="display:inline-flex;gap:8px;flex-wrap:wrap"><?= Security::csrfField() ?><input type="hidden" name="act" value="auth_tpl_manual">
+        <?php if (!WaAuthOtp::manual()): ?><input type="hidden" name="on" value="1"><button class="btn ok" type="submit">✅ WhatsApp Manager मा Active भयो · It is Active in WhatsApp Manager</button>
+        <?php else: ?><button class="btn" type="submit">↺ हातको approval हटाउने · Remove manual approval</button><?php endif; ?></form>
+    </details>
   </div>
   <?php endif; ?>
 

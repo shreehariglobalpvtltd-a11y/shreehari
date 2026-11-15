@@ -115,7 +115,7 @@ final class WaAuthOtp
             return false;
         }
         $st = self::status();
-        if (in_array($st, ['PENDING', 'IN_APPEAL', ''], true) && Settings::getString('wa_auth_tpl_id', '') !== ''
+        if (!self::manual() && in_array($st, ['PENDING', 'IN_APPEAL', ''], true) && Settings::getString('wa_auth_tpl_id', '') !== ''
             && time() - Settings::getInt('wa_auth_tpl_checked', 0) > 600) {
             self::refresh();
             $st = self::status();
@@ -158,6 +158,25 @@ final class WaAuthOtp
         }
         Logger::warning('WhatsApp auth template: create refused: ' . $why, [], 'whatsapp');
         return ['ok' => false, 'status' => self::status(), 'error' => $why];
+    }
+
+    /**
+     * Some WABAs refuse the template API (Meta 2388339 "This API is not supported for this
+     * WhatsApp Business Account") while sending still works. Then the owner creates the same
+     * template in WhatsApp Manager by hand and marks it approved here (audited); a test code to
+     * their own number proves it.
+     */
+    public static function manual(): bool
+    {
+        return Settings::getBool('wa_auth_tpl_manual', false);
+    }
+
+    public static function markManual(bool $on, int $by): void
+    {
+        Settings::set('wa_auth_tpl_manual', $on, 'bool', 'whatsapp', false);
+        Settings::set('wa_auth_tpl_status', $on ? 'APPROVED' : '', 'string', 'whatsapp', false);
+        Logger::audit('whatsapp.auth_template_manual', 'setting', self::NAME, null, ['on' => $on],
+            ($on ? 'Marked approved in WhatsApp Manager' : 'Manual approval removed') . ' by admin #' . $by);
     }
 
     /** @return array{status: string, reason: string, error: string} */
