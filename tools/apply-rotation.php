@@ -62,7 +62,7 @@ $rows = Database::fetchAll(
     ['f' => $opt['from'], 't' => $to]
 );
 
-$count = ['bus' => 0, 'off' => 0, 'same' => 0, 'conflict' => 0, 'keep' => 0];
+$count = ['bus' => 0, 'off' => 0, 'on' => 0, 'keepoff' => 0, 'same' => 0, 'conflict' => 0, 'keep' => 0];
 foreach ($rows as $r) {
     // planFor() matches the slot's routes by ROUTE id - $r['id'] is the schedule id here.
     $plan = Fleet::planFor(['id' => (int) $r['route_id'], 'from_city' => $r['from_city'], 'to_city' => $r['to_city']], (string) $r['travel_date']);
@@ -85,6 +85,28 @@ foreach ($rows as $r) {
         continue;
     }
 
+    /* 15 Nov 2026 (owner: "bijod jod thiyo, ailey bata daily"): a row the OLD rotation switched
+       off now runs -> switch it back ON. A row the office switched off by hand (Trips board block,
+       Bus Control sale OFF, a day OFF) stays off and is listed. */
+    if ((int) $r['is_blocked'] === 1) {
+        $manual = Database::exists(
+            "SELECT 1 FROM audit_logs WHERE (action IN ('trip.block', 'schedule.sale_toggle') AND entity_id = :sid)
+                 OR (action = 'day.off' AND entity_id = :d)",
+            ['sid' => (string) $r['id'], 'd' => (string) $r['travel_date']]
+        );
+        if ($manual) {
+            $count['keepoff']++;
+            echo "  KEEPOFF  $tag switched off by the office — left off\n";
+            continue;
+        }
+        $count['on']++;
+        echo "  ON       $tag the rotation runs this way today -> switched on\n";
+        if ($opt['go']) {
+            Database::update('schedules', ['is_blocked' => 0], "id = :id AND status = 'scheduled'", ['id' => (int) $r['id']]);
+            Logger::audit('fleet.rotation_applied', 'schedule', (string) $r['id'], ['is_blocked' => 1], ['is_blocked' => 0], 'rotation: runs today');
+        }
+    }
+
     $want = $plan['bus'];
     if ($want === null || (int) $r['bus_id'] === $want) { $count['same']++; continue; }
     if ($used) {
@@ -99,5 +121,5 @@ foreach ($rows as $r) {
         Logger::audit('fleet.rotation_applied', 'schedule', (string) $r['id'], ['bus_id' => (int) $r['bus_id']], ['bus_id' => $want], 'rotation bus');
     }
 }
-printf("\nbus changed %d · switched off %d · already right %d · KEEP %d · CONFLICT %d%s\n",
-    $count['bus'], $count['off'], $count['same'], $count['keep'], $count['conflict'], $opt['go'] ? '' : '  (dry run — nothing written)');
+printf("\nbus changed %d · switched off %d · switched on %d · already right %d · KEEP %d · KEEPOFF %d · CONFLICT %d%s\n",
+    $count['bus'], $count['off'], $count['on'], $count['same'], $count['keep'], $count['keepoff'], $count['conflict'], $opt['go'] ? '' : '  (dry run — nothing written)');
