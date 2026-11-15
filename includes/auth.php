@@ -608,6 +608,30 @@ final class Auth
            with the password alone rather than stranding the admin. (31 Oct
            2026: a code REFUSED by the resend limits no longer does that — see
            below; the code step is held instead.) */
+        $held = self::begin2fa($admin, $ip);
+        if ($held !== null) {
+            return $held;
+        }
+
+        // 22 Oct 2026 (review #11 re-attack): stamped with the password checked above, never re-read.
+        self::finishAdminSession($admin, $ip, false, self::pwStamp((string) $admin['password_hash']));
+
+        return ['ok' => true];
+    }
+
+    /**
+     * The office second factor, lifted out of adminLogin() on 15 Nov 2026 so the
+     * code + PIN / pattern door (includes/codelogin.php) asks a 2FA account for the
+     * same WhatsApp code after its PIN, exactly as after its password. null = this
+     * account has no 2FA (or no phone on file: the old no-lockout rule) — the
+     * caller opens the session itself. Otherwise the result to return: the code
+     * step is held in $_SESSION['admin_2fa_pending'] and NOTHING is open yet.
+     *
+     * @param array<string, mixed> $admin admins row with id, phone, password_hash
+     * @return array<string, mixed>|null
+     */
+    public static function begin2fa(array $admin, string $ip): ?array
+    {
         if (self::admin2faEnabled((int) $admin['id'])) {
             $phone = normalisePhone((string) ($admin['phone'] ?? ''));
             if ($phone !== '') {
@@ -654,10 +678,39 @@ final class Auth
                     '2FA enabled but no phone on file — signed in with password only');
             }
         }
+        return null;
+    }
 
-        // 22 Oct 2026 (review #11 re-attack): stamped with the password checked above, never re-read.
-        self::finishAdminSession($admin, $ip, false, self::pwStamp((string) $admin['password_hash']));
-
+    /**
+     * 15 Nov 2026 (code-first login): open the session after a PIN / pattern the
+     * code door checked. Same refusals as openAdminWithoutPassword() (switched off,
+     * locked, no password on file); a 2FA account is NOT refused any more but held
+     * at the WhatsApp code step (begin2fa), so the PIN is its first factor and the
+     * office MFA still applies. Returns ['ok'=>true] or the 2FA hold.
+     *
+     * @param array<string, mixed> $admin
+     * @return array<string, mixed>
+     * @throws RuntimeException with a user-safe message
+     */
+    public static function openAfterQuick(array $admin, string $how): array
+    {
+        if ((int) ($admin['is_active'] ?? 0) !== 1) {
+            throw new RuntimeException('This account is switched off.');
+        }
+        if ((string) ($admin['password_hash'] ?? '') === '') {
+            throw new RuntimeException('This account has no password yet - ask the office to set one.');
+        }
+        if (!empty($admin['locked_until']) && strtotime((string) $admin['locked_until']) > time()) {
+            throw new RuntimeException('This account is locked for a few minutes.');
+        }
+        $ip = Security::clientIp();
+        $held = self::begin2fa($admin, $ip);
+        if ($held !== null) {
+            Logger::audit('admin.login.' . $how . '_2fa', 'admin', (string) $admin['id'], null, null, 'PIN / pattern accepted; WhatsApp 2FA code step held');
+            return $held;
+        }
+        self::finishAdminSession($admin, $ip, true, self::pwStamp((string) $admin['password_hash']));
+        Logger::audit('admin.login.' . $how, 'admin', (string) $admin['id'], null, null, 'Signed in with code + ' . $how);
         return ['ok' => true];
     }
 
@@ -818,7 +871,7 @@ final class Auth
      * step. Cleared on every sign-in, sign-out, "Start again" and new door start, so the next
      * person on a shared counter PC can never finish someone else's step.
      */
-    public const DOOR_KEYS = ['one_door', 'ap_login_pick', 'team_pick', 'team_reset', 'admin_2fa_pending'];
+    public const DOOR_KEYS = ['one_door', 'ap_login_pick', 'team_pick', 'team_reset', 'admin_2fa_pending', 'code_login'];
 
     public static function clearDoorState(): void
     {
@@ -1880,6 +1933,31 @@ final class Auth
      * Require a signed-in admin, optionally holding a permission.
      * Redirects HTML requests to the login page; answers JSON for the API.
      */
+    /** Tests set this to run the PIN gate from the CLI (hand-built sessions skip it otherwise). */
+    public static bool $pinGateInCli = false;
+
+    /** Must this signed-in account set a PIN / pattern before any page opens? (cached once true) */
+    public static function pinSetupNeeded(int $adminId): bool
+    {
+        if (!empty($_SESSION[ADMIN_SESSION_KEY]['qk_ok']) || (PHP_SAPI === 'cli' && !self::$pinGateInCli)) {
+            return false;
+        }
+        try {
+            require_once __DIR__ . '/codelogin.php';
+            if (!CodeLogin::required()) {
+                return false;
+            }
+            $st = QuickUnlock::status($adminId);
+        } catch (Throwable $e) {
+            return false;   // never lock the office out over a missing table
+        }
+        if ($st['pin'] || $st['pattern']) {
+            $_SESSION[ADMIN_SESSION_KEY]['qk_ok'] = true;
+            return false;
+        }
+        return true;
+    }
+
     public static function requireAdmin(string $permission = ''): array
     {
         $admin = self::admin();
@@ -1916,6 +1994,15 @@ final class Auth
                 Response::forbidden('Change your temporary password first. / पहिले अस्थायी पासवर्ड बदल्नुहोस्।');
             }
             Response::redirect('admin/change-password.php');
+        }
+
+        /* 15 Nov 2026 (code-first login): no dashboard without a PIN / pattern.
+           Whatever door opened this session (the old password / WhatsApp door,
+           a passkey), an account with neither is sent to pin-setup.php first.
+           Pages only: the APIs a page already open is calling keep answering. */
+        if (!$wantsJson && !in_array($file, ['pin-setup.php', 'logout.php', 'change-password.php'], true)
+            && self::pinSetupNeeded((int) $admin['id'])) {
+            Response::redirect('admin/pin-setup.php');
         }
 
         /* 5 Oct 2026: the viewer role is read-only everywhere - pages and APIs.

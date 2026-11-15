@@ -138,6 +138,9 @@ final class QuickUnlock
             "UPDATE admins SET {$col} = :h, unlock_failed = 0, unlock_locked_until = NULL WHERE id = :i",
             ['h' => Security::hashPassword($value), 'i' => $adminId]
         );
+        if ($kind === 'pin' && self::pinLenReady()) {
+            Database::query('UPDATE admins SET pin_len = :l WHERE id = :i', ['l' => strlen($value), 'i' => $adminId]);
+        }
         Logger::audit('admin.unlock.set', 'admin', (string) $adminId, null, ['kind' => $kind], 'Quick unlock ' . $kind . ' set');
     }
 
@@ -382,7 +385,7 @@ final class QuickUnlock
         }
 
         if (count($hit) === 1) {
-            Database::query('UPDATE admins SET unlock_failed = 0, unlock_locked_until = NULL WHERE id = :i', ['i' => $hit[0]]);
+            Database::query('UPDATE admins SET unlock_failed = 0, unlock_locked_until = NULL' . (self::strikesReady() ? ', unlock_strikes = 0' : '') . ' WHERE id = :i', ['i' => $hit[0]]);
             $admin = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $hit[0]]);
             return $admin !== null ? ['ok' => true, 'admin' => $admin] : $no;
         }
@@ -392,17 +395,103 @@ final class QuickUnlock
         }
 
         foreach ($tried as $id) {
-            Database::query(
-                // MySQL assigns left to right: unlock_failed below is already the new count
-                'UPDATE admins SET unlock_failed = unlock_failed + 1,
-                        unlock_locked_until = IF(unlock_failed >= :m, :u, unlock_locked_until)
-                  WHERE id = :i',
-                ['m' => self::MAX_FAILS, 'u' => date('Y-m-d H:i:s', time() + self::LOCK_MIN * 60), 'i' => $id]
-            );
+            self::countFail($id);
         }
         if ($locked && $tried === []) {
             return ['ok' => false, 'error' => 'PIN / pattern केही मिनेट बन्द छ — पासवर्डले भित्र जानुहोस् · PIN / pattern is paused for a few minutes: use your password.'];
         }
         return $no;
+    }
+
+    /* =================================================================
+     *  15 Nov 2026 (code-first login): progressive cooldown. MAX_FAILS wrong
+     *  tries lock quick unlock; every lock in a row lasts twice as long as
+     *  the one before (15, 30, 60 ... capped at 24 h). A correct PIN /
+     *  pattern sets the run back to 0. Before the migration (no
+     *  unlock_strikes column) every lock is the old flat LOCK_MIN.
+     * ================================================================= */
+
+    public const LOCK_MAX_MIN = 1440;
+
+    private static ?bool $pinLenReady = null;
+
+    /** 15 Nov 2026: admins.pin_len exists (how many PIN boxes to draw). */
+    public static function pinLenReady(): bool
+    {
+        if (self::$pinLenReady === null) {
+            try {
+                self::$pinLenReady = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admins' AND COLUMN_NAME = 'pin_len'",
+                    [], 0) > 0;
+            } catch (Throwable $e) {
+                self::$pinLenReady = false;
+            }
+        }
+        return self::$pinLenReady;
+    }
+
+    /** 4 or 6 when known (the lock screen then opens by itself, like a phone), else 0 (older PIN: OK button). */
+    public static function pinLen(int $adminId): int
+    {
+        if ($adminId <= 0 || !self::pinLenReady()) {
+            return 0;
+        }
+        $l = (int) Database::scalar('SELECT pin_len FROM admins WHERE id = :i AND pin_hash IS NOT NULL', ['i' => $adminId], 0);
+        return in_array($l, [4, 6], true) ? $l : 0;
+    }
+
+    private static ?bool $strikesReady = null;
+
+    public static function strikesReady(): bool
+    {
+        if (self::$strikesReady === null) {
+            try {
+                self::$strikesReady = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admins' AND COLUMN_NAME = 'unlock_strikes'",
+                    [], 0) > 0;
+            } catch (Throwable $e) {
+                self::$strikesReady = false;
+            }
+        }
+        return self::$strikesReady;
+    }
+
+    /** Minutes the next lock lasts after $strikes earlier locks in a row. */
+    public static function lockMinutes(int $strikes): int
+    {
+        return (int) min(self::LOCK_MAX_MIN, self::LOCK_MIN * (2 ** max(0, min(7, $strikes))));
+    }
+
+    /** One wrong PIN / pattern on this account (public: the code door counts its misses here too). */
+    public static function countFail(int $adminId): void
+    {
+        $sk = self::strikesReady();
+        $r = Database::fetch('SELECT unlock_failed' . ($sk ? ', unlock_strikes' : '') . ' FROM admins WHERE id = :i', ['i' => $adminId]);
+        if ($r === null) {
+            return;
+        }
+        $fails = (int) $r['unlock_failed'] + 1;
+        if ($fails < self::MAX_FAILS) {
+            Database::query('UPDATE admins SET unlock_failed = :f WHERE id = :i', ['f' => $fails, 'i' => $adminId]);
+            return;
+        }
+        $strikes = $sk ? (int) $r['unlock_strikes'] : 0;
+        $mins = self::lockMinutes($strikes);
+        Database::query(
+            'UPDATE admins SET unlock_failed = 0, unlock_locked_until = :u' . ($sk ? ', unlock_strikes = :s' : '') . ' WHERE id = :i',
+            ['u' => date('Y-m-d H:i:s', time() + $mins * 60), 'i' => $adminId] + ($sk ? ['s' => $strikes + 1] : [])
+        );
+        Logger::audit('admin.unlock.locked', 'admin', (string) $adminId, null, ['minutes' => $mins, 'strike' => $strikes + 1],
+            'PIN / pattern locked for ' . $mins . ' min after ' . self::MAX_FAILS . ' wrong tries');
+    }
+
+    /** The lock still running on this account, as a Unix time, or 0. */
+    public static function lockedUntil(int $adminId): int
+    {
+        $u = (string) Database::scalar('SELECT unlock_locked_until FROM admins WHERE id = :i', ['i' => $adminId], '');
+        $t = $u !== '' ? (int) strtotime($u) : 0;
+        return $t > time() ? $t : 0;
     }
 }

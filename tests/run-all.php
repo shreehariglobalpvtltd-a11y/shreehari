@@ -67,6 +67,7 @@ const CORE_SUITES = [
     // added 2026-09-06 with the fix it guards
     'forced-password-change-test.php' => 'a temporary password cannot be kept',
     'otp-forced-password-test.php' => '...and the OTP door cannot skip that',
+    'code-login-test.php'          => 'code -> PIN / pattern; setup + reset need a WhatsApp or office proof',
     'asset-version-test.php'       => 'no ?v= stamp has drifted from sw.js',
     'staff-any-date-test.php'      => 'staff may book any date; customers may not',
     'quick-ticket-test.php'        => 'name + mobile → auto bus/seat/fare → confirmed ticket',
