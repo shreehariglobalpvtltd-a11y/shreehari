@@ -166,7 +166,9 @@ html.sbx-admin .sbx-ov{display:block}
            into the summary rail, right above Book · Cash / Online (#sbRail, before #sbBar). */ ?>
   <div class="sbx-desk" id="sbxDesk">
   <?php $discAgent = $mode === 'agent' && $ownAgent !== '';   // mg20: an agent's own discount, from their commission
-  if (in_array($mode, ['admin', 'counter'], true) || $discAgent):
+  // 15 Nov 2026 (owner: "discount garne option harayo"): the office selling in Agent mode keeps the box
+  $discOffice = $mode === 'agent' && $ownAgent === '' && (string) ($admin['role'] ?? '') !== 'agent';
+  if (in_array($mode, ['admin', 'counter'], true) || $discAgent || $discOffice):
         $discCap = max(0.0, Settings::getFloat('counter_max_discount_pct', 15.0));
         $capTxt  = rtrim(rtrim(number_format($discCap, 1), '0'), '.'); ?>
   <span class="sbx-disc" title="<?= $discAgent ? 'Discount on this ticket — Cash sales only; at most ' . $e($capTxt) . '% of the fare and never more than your commission on it, which it is taken from' : 'Discount on this ticket — at most ' . $e($capTxt) . '% of the fare (Settings → Agents &amp; counter)' ?>">
@@ -185,8 +187,8 @@ html.sbx-admin .sbx-ov{display:block}
     </span>
   </span>
   <?php elseif ($mode === 'agent'): ?>
-  <!-- 15 Nov 2026: the box used to vanish here with no word; an office login gives a discount from Admin / Counter mode -->
-  <a class="sbx-disc" href="?mode=admin" title="Agent mode sells on the agent's terms; open Admin mode to give a discount on this sale">🏷️ छुट दिन: Admin mode · Discount in Admin mode</a>
+  <!-- an agent account with no agent code: no commission to take a discount from -->
+  <span class="sbx-disc"><small>🏷️ छुट दिन आफ्नो agent code चाहिन्छ — कार्यालयलाई भन्नुहोस् · A discount needs your agent code: ask the office</small></span>
   <?php endif; ?>
   <?php /* 15 Nov 2026 (owner: "customer lai discount / note haru lekhna milos ticket ma"): a short
            note for the PASSENGER, printed on the ticket (bookings.ticket_note). Desk sales only:

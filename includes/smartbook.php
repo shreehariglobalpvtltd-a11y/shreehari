@@ -484,8 +484,12 @@ final class SmartBook
     {
         if ($mode === 'agent') {
             require_once __DIR__ . '/agentwallet.php';
-            if (!AgentWallet::isAgentRow((int) (Auth::admin()['id'] ?? 0))) {
-                return null;   // an admin looking through Agent mode gives discounts in Admin / Counter mode
+            /* 15 Nov 2026 (owner: "discount garne option harayo"): an office login selling in Agent
+               mode (for a picked agent) gives a discount too - the company's, capped like Admin mode.
+               An agent account with no agent code has no commission to take it from: none. */
+            $who = Auth::admin();
+            if ($who === null || (!AgentWallet::isAgentRow((int) $who['id']) && (string) ($who['role'] ?? '') === 'agent')) {
+                return null;
             }
         } elseif (!in_array($mode, ['admin', 'counter'], true)) {
             return null;
@@ -881,7 +885,7 @@ final class SmartBook
             $desk = self::deskDiscountIn($in, $mode);
             if ($desk !== null) {
                 // an agent's own discount: never more than this sale's commission (BookingService::create caps the same)
-                $maxAmt = $mode === 'agent'
+                $maxAmt = $mode === 'agent' && AgentWallet::isAgentRow((int) (Auth::admin()['id'] ?? 0))
                     ? AgentWallet::commissionForBooking((float) $price['total'], (int) (Auth::admin()['id'] ?? 0), count($seats))
                     : null;
                 $price = self::withDeskDiscount($price, $desk[0], $desk[1], $maxAmt);

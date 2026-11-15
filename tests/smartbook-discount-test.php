@@ -33,7 +33,7 @@ echo "-- who may discount --\n";
 $in = ['discountType' => 'flat', 'discountValue' => 200];
 check('admin: yes', SmartBook::deskDiscountIn($in, 'admin') === ['flat', 200.0]);
 check('counter: yes', SmartBook::deskDiscountIn($in, 'counter') === ['flat', 200.0]);
-check('agent: no', SmartBook::deskDiscountIn($in, 'agent') === null);
+check('agent mode, nobody signed in: no', SmartBook::deskDiscountIn($in, 'agent') === null);
 check('customer: no', SmartBook::deskDiscountIn($in, 'customer') === null);
 check('zero / negative / rubbish: no', SmartBook::deskDiscountIn(['discountType' => 'flat', 'discountValue' => 0], 'admin') === null
     && SmartBook::deskDiscountIn(['discountType' => 'flat', 'discountValue' => -50], 'admin') === null
@@ -79,6 +79,26 @@ if ($agent !== null && AgentWallet::isAgentRow((int) $agent['id'])) {
     unset($_SESSION[ADMIN_SESSION_KEY]);
 }
 check('agent mode with nobody signed in: no', SmartBook::deskDiscountIn($in, 'agent') === null);
+// 15 Nov 2026 (owner: "discount garne option harayo"): the office selling in Agent mode may discount
+$off = Database::fetch("SELECT * FROM admins WHERE role IN ('superadmin', 'manager') AND is_active = 1 ORDER BY id LIMIT 1");
+if ($off !== null) {
+    $_SESSION[ADMIN_SESSION_KEY] = [
+        'id' => (int) $off['id'], 'username' => (string) $off['username'], 'full_name' => (string) $off['full_name'],
+        'role' => (string) $off['role'], 'permissions' => jsonColumn($off['permissions'] ?? null), 'last_seen' => time(),
+        'must_change_pw' => false, 'via_otp' => false,
+    ];
+    check('an office login in Agent mode: may discount', SmartBook::deskDiscountIn($in, 'agent') === ['flat', 200.0]);
+    unset($_SESSION[ADMIN_SESSION_KEY]);
+}
+foreach (Database::fetchAll("SELECT * FROM admins WHERE role = 'agent' AND is_active = 1 ORDER BY id") as $ag) {
+    if (!AgentWallet::isAgentRow((int) $ag['id'])) {
+        $_SESSION[ADMIN_SESSION_KEY] = ['id' => (int) $ag['id'], 'username' => (string) $ag['username'], 'full_name' => (string) $ag['full_name'],
+            'role' => 'agent', 'permissions' => [], 'last_seen' => time(), 'must_change_pw' => false, 'via_otp' => false];
+        check('an agent account with no agent code: no', SmartBook::deskDiscountIn($in, 'agent') === null);
+        unset($_SESSION[ADMIN_SESSION_KEY]);
+        break;
+    }
+}
 
 echo "-- a real quote --\n";
 $super = Database::fetch("SELECT * FROM admins WHERE role = 'superadmin' AND is_active = 1 ORDER BY id LIMIT 1");

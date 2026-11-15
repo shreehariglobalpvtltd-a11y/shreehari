@@ -262,7 +262,7 @@ try {
                 if ($desk !== null) {
                     $seller['discountType']  = $desk[0];
                     $seller['discountValue'] = $desk[1];
-                    if ($mode === 'agent') {
+                    if ($mode === 'agent' && AgentWallet::isAgentRow($me)) {   // an office login in Agent mode: the company's discount
                         $seller['discountFromCommission'] = $me;   // mg20: capped at, and taken from, the agent's commission
                     }
                 }
