@@ -39,13 +39,24 @@ printf("%s · mode %s · buses %s · cycle starts %s · from %s for %d days\n",
     $opt['go'] ? 'APPLY' : 'DRY RUN', $rot['mode'], implode(',', $rot['buses']), $rot['startDate'], $opt['from'], $opt['days']);
 
 $to   = addDaysISO($opt['from'], $opt['days'] - 1);
+// 15 Nov 2026: also the routes the rotation names (a return route switched off for sale still
+// shows on the public routine, so its rows must follow the same plan)
+$namedIds = [0];
+foreach ($rot['routes'] as $pair) {
+    foreach (['out', 'back'] as $leg) {
+        if ((int) ($pair[$leg] ?? 0) > 0) {
+            $namedIds[] = (int) $pair[$leg];
+        }
+    }
+}
+$named = implode(',', array_unique($namedIds));
 $rows = Database::fetchAll(
     "SELECT s.id, s.route_id, s.travel_date, s.bus_id, s.is_blocked, r.route_code, r.from_city, r.to_city,
             (SELECT COUNT(*) FROM booking_legs bl  WHERE bl.schedule_id = s.id)
           + (SELECT COUNT(*) FROM booking_seats bs WHERE bs.schedule_id = s.id AND bs.released_at IS NULL)
           + (SELECT COUNT(*) FROM seat_locks sl    WHERE sl.schedule_id = s.id) AS used
        FROM schedules s JOIN routes r ON r.id = s.route_id
-      WHERE r.is_active = 1 AND s.slot = 1 AND s.status = 'scheduled'
+      WHERE (r.is_active = 1 OR r.id IN ($named)) AND s.slot = 1 AND s.status = 'scheduled'
         AND s.travel_date BETWEEN :f AND :t
       ORDER BY s.travel_date, r.sort_order, r.id",
     ['f' => $opt['from'], 't' => $to]

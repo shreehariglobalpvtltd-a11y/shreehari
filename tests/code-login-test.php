@@ -61,6 +61,13 @@ register_shutdown_function(static function () use ($oldDob): void {
                      : Database::run("UPDATE settings SET svalue = :v WHERE skey = 'login_ask_dob'", ['v' => (string) $oldDob]);
 });
 Settings::set('login_ask_dob', true, 'bool', 'security', false);
+// 15 Nov 2026: the mobile + WhatsApp proof is OFF by default now; this suite covers it switched on
+$oldWa = Database::scalar("SELECT svalue FROM settings WHERE skey = 'code_login_wa_on'", [], null);
+register_shutdown_function(static function () use ($oldWa): void {
+    $oldWa === null ? Database::run("DELETE FROM settings WHERE skey = 'code_login_wa_on'")
+                    : Database::run("UPDATE settings SET svalue = :v WHERE skey = 'code_login_wa_on'", ['v' => (string) $oldWa]);
+});
+Settings::set('code_login_wa_on', true, 'bool', 'security', false);
 CodeLogin::$evenTiming = false;
 // the local box has no whatsapp/config.php: the 2FA send goes through the no-network driver here
 $oldDrv = Database::scalar("SELECT svalue FROM settings WHERE skey = 'whatsapp_driver'", [], null);

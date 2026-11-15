@@ -53,6 +53,7 @@ final class CodeLogin
     public const ACT_TTL_H    = 24;     // an office activation code lives 24 hours
     public const ACT_TRIES    = 5;
     public const PIN_LEN      = 6;
+    public const OPEN_MIN     = 60;     // 15 Nov 2026: the office "opens" a first login / reset for 1 hour
     public const STEPS = ['c_code', 'c_unlock', 'c_setup', 'c_forgot', 'c_prove', 'c_create', 'c_confirm', 'c_walogin'];
 
     /** Tests switch the ~1 s even-timing pad off and catch the WhatsApp code here. */
@@ -212,7 +213,130 @@ final class CodeLogin
         if ($aid === 0) {
             Logger::info('Code door: a code that names no account', ['ip' => Security::clientIp()], 'security');
         }
-        return ['step' => self::nextAfterCode()];
+        $next = self::nextAfterCode();
+        if ($next === 'c_setup' && ($p = self::tryOpened()) !== null) {
+            return $p;   // the office opened it: straight to the PIN / pattern
+        }
+        return ['step' => $next];
+    }
+
+    /* =================================================================
+     *  15 Nov 2026 (owner: "number system jhau bhayo, hatau — sabai control admin le, reset dina
+     *  milne, forget lai security question"): the mobile + WhatsApp proof is OFF by default
+     *  (setting code_login_wa_on = 1 brings it back). Now:
+     *    first time   code → the office "opens" the account (1 hour, one use, audited) or gives an
+     *                 activation code → own PIN / pattern → security question
+     *    forgot       code → security-question answer → new PIN / pattern; no question → office
+     *    office reset admin/login-requests.php "Open" (1 hour) or an activation code
+     * ================================================================= */
+
+    /** The old mobile + WhatsApp proof on the code door (off unless the office switches it back on). */
+    public static function waOn(): bool
+    {
+        return Settings::getBool('code_login_wa_on', false);
+    }
+
+    /** Office: open a first login / PIN reset for one account for OPEN_MIN minutes (one use). */
+    public static function officeOpen(int $aid, int $by, int $rid = 0): bool
+    {
+        if (!self::ready() || $aid <= 0) {
+            return false;
+        }
+        $k = QuickUnlock::status($aid);
+        $row = [
+            'status' => 'opened', 'act_hash' => null, 'act_tries' => 0,
+            'act_expires' => date('Y-m-d H:i:s', time() + self::OPEN_MIN * 60),
+            'decided_by' => $by, 'decided_at' => date('Y-m-d H:i:s'),
+        ];
+        Database::query("UPDATE login_recovery_requests SET status = 'expired' WHERE admin_id = :a AND status = 'opened'", ['a' => $aid]);
+        if ($rid <= 0) {
+            $rid = (int) Database::scalar("SELECT id FROM login_recovery_requests WHERE admin_id = :a AND status = 'open' ORDER BY id DESC LIMIT 1", ['a' => $aid], 0);
+        }
+        if ($rid > 0) {
+            Database::update('login_recovery_requests', $row, "id = :i AND admin_id = :a AND status = 'open'", ['i' => $rid, 'a' => $aid]);
+        }
+        if ($rid <= 0 || !Database::exists("SELECT 1 FROM login_recovery_requests WHERE id = :i AND status = 'opened'", ['i' => $rid])) {
+            Database::insert('login_recovery_requests', $row + [
+                'admin_id' => $aid, 'code_typed' => self::codeFor($aid), 'kind' => $k['pin'] || $k['pattern'] ? 'reset' : 'setup',
+                'reason' => 'office', 'ip_address' => mb_substr(Security::clientIp(), 0, 45),
+            ]);
+        }
+        Logger::audit('admin.login.office_opened', 'admin', (string) $aid, null, ['minutes' => self::OPEN_MIN, 'request' => $rid ?: null],
+            'Office opened a first login / PIN reset for ' . self::OPEN_MIN . ' minutes');
+        return true;
+    }
+
+    /** Until when the office has this account open ('' = not open). */
+    public static function openUntil(int $aid): string
+    {
+        if (!self::ready() || $aid <= 0) {
+            return '';
+        }
+        return (string) Database::scalar("SELECT MAX(act_expires) FROM login_recovery_requests WHERE admin_id = :a AND status = 'opened' AND act_expires > NOW()", ['a' => $aid], '');
+    }
+
+    /** The account in the door was opened by the office: use it up (once) and go to the PIN. */
+    private static function tryOpened(): ?array
+    {
+        $aid = (int) (self::state()['aid'] ?? 0);
+        if ($aid <= 0 || !self::ready()
+            || (int) Database::scalar('SELECT is_active FROM admins WHERE id = :i', ['i' => $aid], 0) !== 1) {
+            return null;
+        }
+        $id = (int) Database::scalar("SELECT id FROM login_recovery_requests WHERE admin_id = :a AND status = 'opened' AND act_expires > NOW() ORDER BY id DESC LIMIT 1", ['a' => $aid], 0);
+        if ($id === 0 || Database::run("UPDATE login_recovery_requests SET status = 'used' WHERE id = :i AND status = 'opened'", ['i' => $id]) !== 1) {
+            return null;
+        }
+        Logger::audit('admin.login.office_open_used', 'admin', (string) $aid, null, ['request' => $id], 'Code door: used the office-opened setup / reset');
+        return self::proven('office_open');
+    }
+
+    /** "The office opened it — continue" on the setup / forgot screen. */
+    public static function openCheck(): array
+    {
+        $s = self::state();
+        if ($s === null) {
+            return ['step' => 'c_code', 'error' => 'फेरि कोड लेख्नुहोस् · Please type your code again.'];
+        }
+        $back = ($s['purpose'] ?? 'setup') === 'reset' ? 'c_forgot' : 'c_setup';
+        if (!Security::rateLimit('code_login_open_chk', Security::clientIp(), 60, 600)) {
+            return ['step' => $back, 'error' => 'धेरै पटक भयो — केही बेरपछि · Too many tries, wait a few minutes.'];
+        }
+        return self::tryOpened() ?? ['step' => $back, 'error' => 'कार्यालयले अझै खोलेको छैन — कार्यालयमा फोन गर्नुहोस्, खोलेपछि फेरि थिच्नुहोस् · The office has not opened it yet. Call the office, then tap again.'];
+    }
+
+    /** Forgot without the mobile: the security question alone (5 tries a day per account). */
+    private static function secOnly(string $answer): array
+    {
+        $s = (array) self::state();
+        $reset = ($s['purpose'] ?? 'setup') === 'reset';
+        if (!$reset) {
+            return ['step' => 'c_setup', 'error' => 'पहिलो पटक कार्यालयले खाता खोलिदिनुपर्छ — तल "कार्यालयलाई भन्ने" थिच्नुहोस् · The first time, the office opens your account: tap "Ask the office" below.'];
+        }
+        $aid  = (int) ($s['aid'] ?? 0);
+        $secQ = $aid > 0 ? QuickUnlock::secQuestion($aid) : '';
+        if ($secQ === '') {
+            return ['step' => 'c_forgot', 'error' => 'यो खातामा सुरक्षा प्रश्न छैन — कार्यालयलाई खोलिदिन भन्नुहोस् · No security question on this account: ask the office to open it.'];
+        }
+        if (trim($answer) === '') {
+            return ['step' => 'c_forgot', 'error' => 'सुरक्षा प्रश्नको उत्तर लेख्नुहोस् · Type the answer to your security question.'];
+        }
+        if (!Security::rateLimit('code_login_id_ip', Security::clientIp(), 10, 3600, 3600)
+            || !Security::rateLimit('code_login_id_acc', 'a' . $aid, 5, 86400, 86400)) {
+            return ['step' => 'c_forgot', 'error' => 'धेरै पटक प्रयास भयो — भोलि फेरि, वा कार्यालयलाई भन्नुहोस् · Too many tries. Try tomorrow, or ask the office below.'];
+        }
+        $t0 = microtime(true);
+        $active = (int) Database::scalar('SELECT is_active FROM admins WHERE id = :i', ['i' => $aid], 0) === 1;
+        $ok = $active && QuickUnlock::secCheck($aid, $answer);
+        Logger::audit('admin.login.secq_check', 'admin', (string) $aid, null, ['result' => $ok ? 'match' : ($active ? 'answer_wrong' : 'inactive')],
+            'Code door: forgot PIN by security question (values not logged)');
+        self::evenTime($t0);
+        if (!$ok) {
+            return ['step' => 'c_forgot', 'error' => $active ? 'उत्तर मिलेन · The answer did not match.' : 'यो खाता बन्द छ — कार्यालयमा फोन गर्नुहोस् · This account is switched off. Please call the office.'];
+        }
+        $_SESSION[self::KEY]['idok']  = true;
+        $_SESSION[self::KEY]['idwhy'] = 'match';
+        return self::proven('security_question');
     }
 
     /** Remembered phone: start from the account the signed device cookie names (nothing typed). */
@@ -224,7 +348,11 @@ final class CodeLogin
         }
         Auth::clearDoorState();
         $_SESSION[self::KEY] = ['aid' => (int) $d['id'], 'code' => self::codeFor((int) $d['id']), 't' => time(), 'dev' => true];
-        return ['step' => self::nextAfterCode()];
+        $next = self::nextAfterCode();
+        if ($next === 'c_setup' && ($p = self::tryOpened()) !== null) {
+            return $p;
+        }
+        return ['step' => $next];
     }
 
     /** An active account with no PIN / pattern sets one up; everyone else (unknown codes too) sees the unlock. */
@@ -407,6 +535,9 @@ final class CodeLogin
     /** "📲 WhatsApp कोड" on the unlock screen: send the code (only where allowed), same reply for everyone. */
     public static function waLoginSend(): array
     {
+        if (!self::waOn()) {
+            return ['step' => 'c_unlock', 'error' => 'WhatsApp लगइन बन्द छ — PIN / pattern, पासवर्ड वा "बिर्सनुभयो?" · WhatsApp sign-in is off: use your PIN / pattern, your password or "Forgot".'];
+        }
         $s = self::state();
         if ($s === null) {
             return ['step' => 'c_code', 'error' => 'फेरि कोड लेख्नुहोस् · Please type your code again.'];
@@ -538,7 +669,7 @@ final class CodeLogin
         }
         $_SESSION[self::KEY]['purpose'] = 'reset';
         unset($_SESSION[self::KEY]['idok'], $_SESSION[self::KEY]['ver'], $_SESSION[self::KEY]['pend'], $_SESSION[self::KEY]['wa']);
-        return ['step' => 'c_forgot'];
+        return self::tryOpened() ?? ['step' => 'c_forgot'];   // the office opened a reset: straight to the new PIN
     }
 
     /** The DOB on the approved member record, or ''. */
@@ -584,6 +715,9 @@ final class CodeLogin
         $s = self::state();
         if ($s === null) {
             return ['step' => 'c_code', 'error' => 'फेरि कोड लेख्नुहोस् · Please type your code again.'];
+        }
+        if (!self::waOn()) {
+            return self::secOnly($answer);   // 15 Nov 2026: no mobile step — security question / office
         }
         $reset = ($s['purpose'] ?? 'setup') === 'reset';
         $back  = $reset ? 'c_forgot' : 'c_setup';
@@ -671,6 +805,9 @@ final class CodeLogin
     public static function hiStart(): array
     {
         $s = self::state();
+        if ($s !== null && !self::waOn()) {
+            return ['step' => (($s['purpose'] ?? 'setup') === 'reset' ? 'c_forgot' : 'c_setup'), 'error' => 'मोबाइल / WhatsApp पुष्टि बन्द छ — सुरक्षा प्रश्न वा कार्यालय · Mobile / WhatsApp proof is off: use the security question or ask the office.'];
+        }
         if ($s === null || !isset($s['idok'])) {
             return ['step' => 'c_code', 'error' => 'फेरि सुरु गर्नुहोस् · Please start again.'];
         }
@@ -719,6 +856,9 @@ final class CodeLogin
     public static function codeSend(): array
     {
         $s = self::state();
+        if ($s !== null && !self::waOn()) {
+            return ['step' => (($s['purpose'] ?? 'setup') === 'reset' ? 'c_forgot' : 'c_setup'), 'error' => 'मोबाइल / WhatsApp पुष्टि बन्द छ — सुरक्षा प्रश्न वा कार्यालय · Mobile / WhatsApp proof is off: use the security question or ask the office.'];
+        }
         if ($s === null || !isset($s['idok'])) {
             return ['step' => 'c_code', 'error' => 'फेरि सुरु गर्नुहोस् · Please start again.'];
         }

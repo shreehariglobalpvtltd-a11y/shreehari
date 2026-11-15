@@ -70,6 +70,7 @@ const CORE_SUITES = [
     'code-login-test.php'          => 'code -> PIN / pattern; setup + reset need a WhatsApp or office proof',
     'wa-otp-login-test.php'        => 'unlock screen WhatsApp code opens agents only; ticket note + discount %',
     'wa-auth-otp-test.php'         => 'login codes on our own Meta authentication template, only once approved',
+    'code-login-office-test.php'   => 'code door without the mobile: office opens it (1 h), security question resets',
     'asset-version-test.php'       => 'no ?v= stamp has drifted from sw.js',
     'staff-any-date-test.php'      => 'staff may book any date; customers may not',
     'quick-ticket-test.php'        => 'name + mobile → auto bus/seat/fare → confirmed ticket',

@@ -108,6 +108,7 @@ if (Auth::oneDoorOn()) {
                 'c_otp'          => CodeLogin::codeCheck((string) ($_POST['otp'] ?? '')),
                 'c_act'          => CodeLogin::activation((string) ($_POST['act'] ?? '')),
                 'c_req'          => CodeLogin::request((string) ($_POST['note'] ?? '')),
+                'c_open_check'   => CodeLogin::openCheck(),                                    // 15 Nov 2026: "the office opened it — continue"
                 'c_create'       => CodeLogin::createFirst((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),
                 'c_confirm'      => CodeLogin::createConfirm((string) ($_POST['qk_val'] ?? '')),
                 'c_wl_send'      => CodeLogin::waLoginSend(),                                  // 15 Nov 2026: PIN / pattern not working → WhatsApp code
@@ -448,6 +449,9 @@ body:not(.lock) .lk-keys button.go{background:var(--royal);color:#fff;border-col
 .cl-more{margin-top:16px;border-top:1px solid #E1E6EF;padding-top:10px}
 .cl-more summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--mut);text-align:center;list-style:none}
 .cl-more summary::-webkit-details-marker{display:none}
+.cl-steps{margin:10px 0 12px;padding:10px 12px 10px 30px;border-radius:12px;background:#F6F8FC;border:1px solid #E1E6EF;font-size:13.5px;line-height:1.5;color:#22314F}
+.cl-steps li{margin:2px 0}
+body.lock .cl-steps{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.25);color:#fff}
 .cl-small{font-size:12.5px;font-weight:600;opacity:.85}
 .cl-forgot{margin:0}.cl-forgot button{background:none;border:0;padding:6px 0;color:var(--royal);font:inherit;font-weight:600;font-size:13px;cursor:pointer}
 body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
@@ -601,14 +605,21 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
   <?php /* 15 Nov 2026 (owner: "PIN / pattern le khulos; tyo ni vayena code ra password, natra
            WhatsApp OTP; ani forget"): the other ways in, one tap each, under the keypad. */ ?>
   <div class="cl-alt" role="group" aria-label="Other ways to sign in">
+    <?php if (CodeLogin::waOn()): ?>
     <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="c_wl_send">
       <button type="submit" class="cl-alt-b wa">📲 <span>WhatsApp<small>OTP कोड · code</small></span></button></form>
+    <?php else: /* 15 Nov 2026 (owner: "number OTP hatau"): forgot = security question / office */ ?>
+    <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="c_forgot">
+      <button type="submit" class="cl-alt-b">🛡️ <span>बिर्सनुभयो?<small>Forgot PIN</small></span></button></form>
+    <?php endif; ?>
     <a class="cl-alt-b" href="/admin/login.php?classic=1&amp;other=1">🔑 <span>पासवर्ड<small>Code + password</small></span></a>
   </div>
+  <?php if (CodeLogin::waOn()): ?>
   <div class="links">
     <form method="post" action="/admin/login.php" class="lk-forgot cl-forgot"><?= $hid() ?><input type="hidden" name="mode" value="c_forgot">
       <button type="submit">PIN / Pattern बिर्सनुभयो? · Forgot PIN / Pattern?</button></form>
   </div>
+  <?php endif; ?>
 
   <?php elseif ($step === 'c_walogin'): ?>
   <?= $codeLine() ?>
@@ -631,6 +642,39 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
   </details>
   <p class="note">कार्यालय (admin / manager) खाता WhatsApp ले खुल्दैन — PIN / pattern वा "बिर्सनुभयो?" · Office accounts do not open by WhatsApp: use PIN / pattern or "Forgot".</p>
   <div class="links"><a href="/admin/login.php?step=c_unlock">← PIN / Pattern मा फर्कने · Back to PIN / Pattern</a></div>
+
+  <?php elseif (($step === 'c_setup' || $step === 'c_forgot') && !CodeLogin::waOn()): $fq = $step === 'c_forgot' ? CodeLogin::forgotQuestion() : ''; ?>
+  <?= $codeLine() ?>
+  <?php /* 15 Nov 2026 (owner: "number system jhau bhayo, hatau — sabai control admin le, forget lai
+           security question"): no mobile, no WhatsApp. First time = the office opens it; forgot =
+           the security question (or the office). */ ?>
+  <?php if ($fq !== ''): ?>
+  <p class="sub" style="display:block">आफ्नो सुरक्षा प्रश्नको उत्तर लेख्नुहोस् — मिलेपछि नयाँ PIN / pattern · Answer your security question, then choose a new PIN / pattern.</p>
+  <form method="post" action="/admin/login.php" autocomplete="off" class="cl-id">
+    <?= $hid() ?><input type="hidden" name="mode" value="c_identity">
+    <label for="seca">🛡️ <?= $h($fq) ?></label>
+    <input id="seca" name="sec_a" type="<?= str_contains($fq, 'जन्म मिति') ? 'date' : 'text' ?>" maxlength="80" required autofocus autocomplete="off" style="font-size:19px;text-align:center">
+    <button class="btn" type="submit">नयाँ PIN राख्ने · Set a new PIN →</button>
+  </form>
+  <div class="or">वा कार्यालयबाट · or the office</div>
+  <?php elseif ($step === 'c_forgot'): ?>
+  <p class="sub" style="display:block">यो खातामा सुरक्षा प्रश्न छैन — कार्यालयले खोलिदिएपछि नयाँ PIN / pattern · No security question on this account: the office opens it, then you choose a new PIN / pattern.</p>
+  <?php endif; ?>
+  <ol class="cl-steps">
+    <li>📨 तलको बटनले कार्यालयलाई भन्नुहोस् (वा फोन गर्नुहोस्) · Ask the office below (or call)</li>
+    <li>🔓 कार्यालयले "खोलिदिने" थिच्छ — १ घण्टा · The office taps "Open" (1 hour)</li>
+    <li>✅ यहाँ "खोलियो — अगाडि" थिच्नुहोस्, अनि आफ्नै PIN / pattern · Tap "Opened — continue", then choose your own PIN / pattern</li>
+  </ol>
+  <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="c_open_check">
+    <button class="btn<?= $fq !== '' ? ' alt' : '' ?>" type="submit" id="openChk">✅ कार्यालयले खोलियो — अगाडि · The office opened it — continue</button></form>
+  <form method="post" action="/admin/login.php" autocomplete="off"><?= $hid() ?><input type="hidden" name="mode" value="c_req">
+    <input name="note" maxlength="160" placeholder="नाम / सम्पर्क नम्बर (ऐच्छिक) · name / contact (optional)" aria-label="How can the office reach you? (optional)">
+    <button class="btn alt" type="submit">📨 कार्यालयलाई खोलिदिन भन्ने · Ask the office to open it</button></form>
+  <details class="cl-more"><summary>🔐 कार्यालयले ८ अक्षरको कोड दियो? · Got an 8-character code from the office?</summary>
+    <form method="post" action="/admin/login.php" autocomplete="off"><?= $hid() ?><input type="hidden" name="mode" value="c_act">
+      <input id="act" name="act" maxlength="12" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" style="text-align:center;letter-spacing:.2em" aria-label="Activation code">
+      <button class="btn alt" type="submit">कोडले खोल्ने · Use the code</button></form></details>
+  <div class="links"><a href="/admin/login.php?classic=1&amp;other=1">🔑 पासवर्डले · Sign in with password</a> · <a href="<?= $h($odUrl(['step' => 'c_code'])) ?>">← फिर्ता · Back</a></div>
 
   <?php elseif ($step === 'c_setup' || $step === 'c_forgot'): $askDob = CodeLogin::askDob(); $fq = $step === 'c_forgot' ? CodeLogin::forgotQuestion() : ''; ?>
   <?= $codeLine() ?>

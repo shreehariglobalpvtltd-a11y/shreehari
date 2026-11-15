@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v280';   // 2026-11-15 lockdisc3: code + mobile first time, security-question forgot, WhatsApp hi + YES, lock fits phone + desktop
+var VERSION = 'shg-v281';   // 2026-11-15 ld7: no mobile on the code door (office opens it, security-question forgot), buses daily both ways
 /* 13 Nov 2026 (owner: "two distinct apps"): the staff door (S Hari Manage,
    shreehariglobal.network) keeps its caches under its own names (shm-…), the
    customer app (S Hari Travel) under shg-…. The two were already apart - a

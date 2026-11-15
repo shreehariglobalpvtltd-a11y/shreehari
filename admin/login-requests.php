@@ -52,13 +52,32 @@ $newCode = static function (): string {
 };
 
 if ($ready) {
-    Database::query("UPDATE login_recovery_requests SET status = 'expired', act_hash = NULL WHERE status = 'approved' AND act_expires < NOW()");
+    Database::query("UPDATE login_recovery_requests SET status = 'expired', act_hash = NULL WHERE status IN ('approved', 'opened') AND act_expires < NOW()");
 }
 
 if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $act = (string) ($_POST['act'] ?? '');
     if (!Security::verifyCsrf()) {
         $flash = ['bad', 'Session expired — please try again.'];
+    } elseif ($act === 'open') {
+        /* 15 Nov 2026 (owner: "sabai control admin le, reset dina milne"): one tap opens a first
+           login / PIN reset for this account for an hour. The person types their own code and goes
+           straight to choosing their own PIN / pattern; one use, audited. */
+        $aid  = (int) ($_POST['aid'] ?? 0);
+        $rid  = (int) ($_POST['rid'] ?? 0);
+        if ($rid > 0) {
+            $aid = (int) Database::scalar("SELECT admin_id FROM login_recovery_requests WHERE id = :i AND status = 'open'", ['i' => $rid], 0);
+        }
+        $acct = $aid > 0 ? Database::fetch('SELECT id, username, full_name, role, is_active FROM admins WHERE id = :i', ['i' => $aid]) : null;
+        if (($why = $mayIssue($acct)) !== null) {
+            $flash = ['bad', $why];
+        } elseif (CodeLogin::officeOpen($aid, $me, $rid)) {
+            $flash = ['ok', '🔓 ' . CodeLogin::codeFor($aid) . ' · ' . (string) ($acct['full_name'] ?? '') . ' — ' . CodeLogin::OPEN_MIN
+                . ' मिनेटका लागि खुल्यो। उहाँले आफ्नो code लेखेर आफ्नै PIN / pattern राख्नुहुन्छ · Open for ' . CodeLogin::OPEN_MIN
+                . ' minutes: they type their code and choose their own PIN / pattern.'];
+        } else {
+            $flash = ['bad', 'अहिले मिलेन · Could not open it right now.'];
+        }
     } elseif ($act === 'approve' || $act === 'issue') {
         $rid  = (int) ($_POST['rid'] ?? 0);
         $req  = $act === 'approve' ? Database::fetch("SELECT * FROM login_recovery_requests WHERE id = :i AND status = 'open'", ['i' => $rid]) : null;
@@ -117,7 +136,7 @@ if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $r = CodeLogin::officeSetDetails((int) ($_POST['aid'] ?? 0), (string) ($_POST['dob'] ?? ''), (string) ($_POST['mobile'] ?? ''),
             (string) ($_POST['cc'] ?? '91'), $me, $isSa);
         $flash = $r['ok']
-            ? ['ok', '✅ ' . $r['name'] . ' — लगइन तयार। पहिलो पटक: आफ्नो code → मोबाइल → WhatsApp (hi / QR) → आफ्नै PIN / pattern · Login ready: code → mobile → WhatsApp hi + YES → own PIN / pattern.']
+            ? ['ok', '✅ ' . $r['name'] . ' — विवरण सेभ भयो · Details saved.']
             : ['bad', (string) $r['error']];
     } elseif ($act === 'reject') {
         $n = Database::run("UPDATE login_recovery_requests SET status = 'rejected', decided_by = :m, decided_at = NOW() WHERE id = :i AND status = 'open'",
@@ -184,8 +203,20 @@ admin_header('Login setup & PIN · लगइन तयार', 'login-requests.p
   <?php /* 15 Nov 2026: the office readies a login in one place - pick the person, DOB, mobile. */
   $pre = (int) ($_GET['aid'] ?? 0); ?>
   <div class="lr-card" id="ready">
-    <h2>🆔 लगइन तयार गर्ने · Set up a login</h2>
-    <p class="muted">एजेन्ट / स्टाफ छान्नुहोस् र WhatsApp मोबाइल राख्नुहोस्। पहिलो पटक उहाँले आफ्नो code र यही मोबाइल हाल्नुहुन्छ, WhatsApp मा hi (वा QR scan) गरेर YES गर्नुहुन्छ, अनि आफ्नै PIN / pattern र सुरक्षा प्रश्न राख्नुहुन्छ। Office ले PIN कहिल्यै राख्दैन।</p>
+    <h2>🔓 लगइन खोलिदिने · Open a first login / PIN reset</h2>
+    <p class="muted">एजेन्ट / स्टाफ छान्नुहोस् र "खोलिदिने" थिच्नुहोस् — <?= (int) CodeLogin::OPEN_MIN ?> मिनेटसम्म, एक पटक। उहाँले आफ्नो code (SHG-…) लेखेर आफ्नै PIN / pattern र सुरक्षा प्रश्न राख्नुहुन्छ। मोबाइल / OTP चाहिँदैन। Office ले PIN कहिल्यै देख्दैन · Pick the person and tap Open: for <?= (int) CodeLogin::OPEN_MIN ?> minutes, one use, they type their code and choose their own PIN / pattern. No mobile, no OTP.</p>
+    <form method="post" class="lr-ready" autocomplete="off"><?= Security::csrfField() ?><input type="hidden" name="act" value="open">
+      <label>👤 को? · Who
+        <select name="aid" required>
+          <option value="">— छान्नुहोस् · choose —</option>
+          <?php foreach ($accts as $a): if ((int) $a['id'] === $me || (!in_array((string) $a['role'], Auth::OTP_DOOR_ROLES, true) && !$isSa)) { continue; } ?>
+          <option value="<?= (int) $a['id'] ?>"<?= $pre === (int) $a['id'] ? ' selected' : '' ?>><?= $e(($a['full_name'] ?: '?') . ' · ' . CodeLogin::codeFor((int) $a['id']) . ' · ' . $a['role']
+              . (((string) ($a['pin_hash'] ?? '') !== '' || (string) ($a['pattern_hash'] ?? '') !== '') ? ' · PIN ✓' : '')) ?></option>
+          <?php endforeach; ?>
+        </select></label>
+      <button class="btn ok" type="submit">🔓 खोलिदिने · Open (<?= (int) CodeLogin::OPEN_MIN ?> min)</button>
+    </form>
+    <details style="margin-top:12px"><summary><b>📱 मोबाइल / जन्म मिति (ऐच्छिक, सूचनाका लागि) · Mobile / date of birth (optional)</b></summary>
     <form method="post" class="lr-ready" autocomplete="off"><?= Security::csrfField() ?><input type="hidden" name="act" value="details">
       <label>👤 को? · Who
         <select name="aid" required>
@@ -201,6 +232,7 @@ admin_header('Login setup & PIN · लगइन तयार', 'login-requests.p
         <input name="mobile" type="tel" inputmode="numeric" maxlength="14" required placeholder="98XXXXXXXX"></span></label>
       <button class="btn ok" type="submit">✅ सेभ गर्ने · Save — login ready</button>
     </form>
+    </details>
   </div>
 
   <?php if ($isSa): $atSt = WaAuthOtp::status(); ?>
@@ -246,9 +278,11 @@ admin_header('Login setup & PIN · लगइन तयार', 'login-requests.p
         <td><?= $e($r['contact_note']) ?></td>
         <td class="lr-act">
           <?php if ($r['admin_id']): ?>
+          <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="open"><input type="hidden" name="rid" value="<?= (int) $r['id'] ?>">
+            <button class="btn ok" type="submit">🔓 खोलिदिने · Open (<?= (int) CodeLogin::OPEN_MIN ?> min)</button></form>
           <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="approve"><input type="hidden" name="rid" value="<?= (int) $r['id'] ?>">
             <label><input type="checkbox" name="checked" value="1" required> I confirmed who this person is</label>
-            <button class="btn ok" type="submit">Issue code</button></form>
+            <button class="btn" type="submit">8-char code</button></form>
           <?php endif; ?>
           <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="reject"><input type="hidden" name="rid" value="<?= (int) $r['id'] ?>">
             <button class="btn" type="submit">Close</button></form>
@@ -261,20 +295,23 @@ admin_header('Login setup & PIN · लगइन तयार', 'login-requests.p
 
   <div class="lr-card">
     <h2>👥 Accounts — who still needs a PIN / pattern</h2>
-    <p class="muted">"DOB" and "Mobile" say only whether they are on file (self-setup needs both). Missing ones: fix the record on the member page, or confirm the person and issue a code here. Nothing is ever filled in automatically.</p>
-    <table class="lr-t"><thead><tr><th>Code</th><th>Name · role</th><th>PIN / pattern</th><th>DOB</th><th>Mobile</th><th></th></tr></thead><tbody>
+    <p class="muted">"🔓 खोलिदिने" = पहिलो लगइन / PIN रिसेट <?= (int) CodeLogin::OPEN_MIN ?> मिनेटका लागि। सुरक्षा प्रश्न भएका व्यक्ति आफैं "बिर्सनुभयो?" बाट नयाँ PIN राख्न सक्छन् · "Open" lets them set a PIN for <?= (int) CodeLogin::OPEN_MIN ?> minutes. People with a security question can reset by themselves.</p>
+    <table class="lr-t"><thead><tr><th>Code</th><th>Name · role</th><th>PIN / pattern</th><th>🛡️ Security Q</th><th>Mobile</th><th></th></tr></thead><tbody>
     <?php foreach ($accts as $a): $has = (string) ($a['pin_hash'] ?? '') !== '' || (string) ($a['pattern_hash'] ?? '') !== ''; ?>
       <tr>
         <td><b><?= $e(CodeLogin::codeFor((int) $a['id'])) ?></b></td>
         <td><?= $e($a['full_name']) ?> · <small><?= $e($a['role']) ?></small></td>
         <td><?= $has ? '<span class="lr-ok">set</span>' : '<span class="lr-no">not yet</span>' ?></td>
-        <td><?= isset($dobs[(int) $a['id']]) ? '<span class="lr-ok">on file</span>' : '<span class="lr-no">missing</span>' ?></td>
+        <td><?= QuickUnlock::secQuestion((int) $a['id']) !== '' ? '<span class="lr-ok">set</span>' : '<span class="lr-no">not yet</span>' ?></td>
         <td><?= TeamPortal::phone10((string) ($a['phone'] ?? '')) !== '' ? '<span class="lr-ok">on file</span>' : '<span class="lr-no">missing</span>' ?></td>
-        <td class="lr-act"><?php if ($ready && $mayIssue($a) === null): ?>
-          <a class="btn" href="?aid=<?= (int) $a['id'] ?>#ready">✏️ DOB / mobile</a>
+        <td class="lr-act"><?php if ($ready && $mayIssue($a) === null): $until = CodeLogin::openUntil((int) $a['id']); ?>
+          <?php if ($until !== ''): ?><span class="lr-ok">🔓 खुला · open till <?= $e(date('H:i', strtotime($until) ?: time())) ?></span><?php endif; ?>
+          <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="open"><input type="hidden" name="aid" value="<?= (int) $a['id'] ?>">
+            <button class="btn ok" type="submit">🔓 <?= $has ? 'रिसेट खोल्ने · Open reset' : 'खोलिदिने · Open' ?></button></form>
+          <a class="btn" href="?aid=<?= (int) $a['id'] ?>#ready">✏️ Mobile</a>
           <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="issue"><input type="hidden" name="aid" value="<?= (int) $a['id'] ?>">
             <label><input type="checkbox" name="checked" value="1" required> confirmed</label>
-            <button class="btn" type="submit"><?= $has ? 'Reset code' : 'Activation code' ?></button></form>
+            <button class="btn" type="submit"><?= $has ? '8-char reset code' : '8-char code' ?></button></form>
         <?php endif; ?></td>
       </tr>
     <?php endforeach; ?>

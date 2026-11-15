@@ -53,7 +53,7 @@ if (!CodeLogin::ready()) {
     exit(1);
 }
 $keep = [];
-foreach (['quick_unlock_on', 'login_code_first_on', 'login_pin_required', 'whatsapp_driver'] as $k) {
+foreach (['quick_unlock_on', 'login_code_first_on', 'login_pin_required', 'whatsapp_driver', 'code_login_wa_on'] as $k) {
     $keep[$k] = Database::fetch('SELECT svalue, stype, sgroup, is_public FROM settings WHERE skey = :k', ['k' => $k]);
 }
 register_shutdown_function(static function () use ($keep): void {
@@ -64,6 +64,7 @@ register_shutdown_function(static function () use ($keep): void {
 });
 Settings::set('quick_unlock_on', true, 'bool', 'security', false);
 Settings::set('login_code_first_on', true, 'bool', 'security', false);
+Settings::set('code_login_wa_on', true, 'bool', 'security', false);   // 15 Nov 2026: off by default; this suite covers it on
 Settings::set('login_pin_required', true, 'bool', 'security', false);
 Settings::set('whatsapp_driver', 'click_to_chat', 'string', 'notify', false);
 CodeLogin::$evenTiming = false;
