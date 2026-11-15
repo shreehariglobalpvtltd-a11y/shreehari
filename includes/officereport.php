@@ -17,7 +17,10 @@
  *    · payments waiting for approval, refunds;
  *    · today's and tomorrow's buses with seats sold / free — the same
  *      departures the occupancy tool counts, without creating a schedule
- *      row for a day nobody has searched yet.
+ *      row for a day nobody has searched yet;
+ *    · the FIRST slot of the day only (16 Nov 2026): yesterday's sales,
+ *      complaints open / overdue (HelpDesk::stats), unread bell alerts and
+ *      WhatsApp sends that failed in the last 24 h (morning()).
  *
  *  Who gets it: numbers() — admin_whatsapp, ceo_whatsapp and any extra in
  *  office_report_numbers, one message per person however the number was
@@ -237,9 +240,31 @@ final class OfficeReport
             }
         }
         $lines[] = '📅 ७ दिन: ' . $w['tickets'] . ' टिकट · ' . inr($w['revenue']);
+
+        /* 16 Nov 2026 (Master v2 P6-5, owner's 07:00 digest): the FIRST slot of
+           the day also carries yesterday's sales and what is waiting on the
+           office — open / overdue complaints, unread bell alerts, WhatsApp
+           sends that failed. Counts only, the same office numbers. */
+        $morning = null;
+        if (self::isFirstSlot($slot, Settings::getString('office_report_times', '07:00,13:00,20:00'))) {
+            $morning = self::morning($day);
+            $y = $morning['yesterday'];
+            array_splice($lines, 1, 0, [
+                '🌅 हिजो (' . date('j M', (int) strtotime($y['date'])) . '): ' . $y['tickets'] . ' टिकट · ' . $y['seats'] . ' सिट · ' . inr($y['revenue']),
+            ]);
+            $lines[] = '🛎️ गुनासो: ' . $morning['complaints_open'] . ' खुला · ' . $morning['complaints_overdue'] . ' समय नाघेको'
+                . ' · 🔔 नपढेको सूचना: ' . $morning['alerts_unread']
+                . ' · ⚠️ WhatsApp नपुगेको (२४ घण्टा): ' . $morning['wa_failed'];
+        }
+
         $lines[] = 'EN: today ' . $t['tickets'] . ' tickets · ' . $t['seats'] . ' seats · ' . inr($t['revenue'])
             . ' · verified ' . inr($money['inr']) . ' · waiting ' . $t['pending']
-            . ' · buses today ' . count($today) . ', tomorrow ' . count($tmrw) . '.';
+            . ' · buses today ' . count($today) . ', tomorrow ' . count($tmrw) . '.'
+            . ($morning !== null
+                ? ' Yesterday ' . $morning['yesterday']['tickets'] . ' tickets · ' . inr($morning['yesterday']['revenue'])
+                  . ' · complaints ' . $morning['complaints_open'] . ' open / ' . $morning['complaints_overdue'] . ' overdue'
+                  . ' · unread alerts ' . $morning['alerts_unread'] . ' · failed WhatsApp ' . $morning['wa_failed'] . '.'
+                : '');
 
         $media = Settings::getBool('wa_report_chart_on', true) ? ReportChart::url($day, 6 * 3600) : null;
         return [
@@ -250,7 +275,75 @@ final class OfficeReport
                 'pending' => (int) $t['pending'], 'refunds' => (float) $t['refunds'],
                 'verified' => $money, 'today' => $today, 'tomorrow' => $tmrw,
                 'week' => ['tickets' => (int) $w['tickets'], 'revenue' => (float) $w['revenue']],
+                'morning' => $morning,
             ],
+        ];
+    }
+
+    /**
+     * Is $slot ('Y-m-d H:i') the earliest valid time in office_report_times?
+     * An empty slot (a report built by hand) is not.
+     */
+    public static function isFirstSlot(string $slot, string $times): bool
+    {
+        if (preg_match('/^\d{4}-\d{2}-\d{2} (\d{2}):(\d{2})$/', trim($slot), $s) !== 1) {
+            return false;
+        }
+        $first = null;
+        foreach (preg_split('/[\s,;]+/', $times) ?: [] as $t) {
+            if (preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', trim($t), $m) === 1) {
+                $min = (int) $m[1] * 60 + (int) $m[2];
+                $first = $first === null ? $min : min($first, $min);
+            }
+        }
+        return $first !== null && (int) $s[1] * 60 + (int) $s[2] === $first;
+    }
+
+    /**
+     * The morning extras for $day: yesterday's sales (ReportChart, the same
+     * figures as the chart) and the office's open items.
+     *
+     * @return array{yesterday: array{date: string, tickets: int, seats: int, revenue: float},
+     *               complaints_open: int, complaints_overdue: int, alerts_unread: int, wa_failed: int}
+     */
+    public static function morning(string $day): array
+    {
+        $yday = addDaysISO($day, -1);
+        $y    = ReportChart::data($yday, 1)['today'];
+        $help = ['open' => 0, 'in_progress' => 0, 'overdue' => 0];
+        try {
+            require_once INCLUDE_PATH . '/helpdesk.php';
+            $help = HelpDesk::stats() + $help;
+        } catch (Throwable $e) {
+            // no help desk tables on a bare database
+        }
+        $unread = 0;
+        try {
+            require_once INCLUDE_PATH . '/adminalerts.php';
+            $unread = AdminAlerts::unreadCount();
+        } catch (Throwable $e) {
+        }
+        $failed = 0;
+        try {
+            // A WhatsApp send that failed and was not followed by a good send to the same number.
+            $failed = (int) Database::scalar(
+                "SELECT COUNT(DISTINCT m.to_number) FROM message_logs m
+                  WHERE m.channel = 'whatsapp' AND m.status = 'failed'
+                    AND m.created_at >= NOW() - INTERVAL 1 DAY
+                    AND NOT EXISTS (SELECT 1 FROM message_logs m2
+                                     WHERE m2.created_at >= NOW() - INTERVAL 1 DAY
+                                       AND m2.to_number = m.to_number AND m2.channel = 'whatsapp'
+                                       AND m2.status = 'sent' AND m2.id > m.id)",
+                [], 0
+            );
+        } catch (Throwable $e) {
+        }
+        return [
+            'yesterday'          => ['date' => $yday, 'tickets' => (int) $y['tickets'], 'seats' => (int) $y['seats'], 'revenue' => (float) $y['revenue']],
+            'complaints_open'    => (int) $help['open'] + (int) $help['in_progress'],
+            'complaints_overdue' => (int) $help['overdue'],
+            'alerts_unread'      => $unread,
+            'wa_failed'          => $failed,
         ];
     }
 

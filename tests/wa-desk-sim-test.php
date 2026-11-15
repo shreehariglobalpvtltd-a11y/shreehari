@@ -198,6 +198,7 @@ try {
     check('"bhada kati ho?" gets the fare (₹), not "the desk will confirm"', str_contains(txt($r), '₹') && !str_contains(txt($r), 'अनुरोध प्राप्त भयो') && $drafts($P[0]) === 0, txt($r));
     $r = pax($P[1], 'kal ki bus kitne baje hai Surat se');
     check('"kitne baje" gets the time, in Hindi', preg_match('/\d:\d\d (AM|PM)/', txt($r)) === 1 && str_contains(txt($r), 'बस') && $drafts($P[1]) === 0, txt($r));
+    check('…and ONE booking-link line under the time (P6-2a), in Hindi', substr_count(txt($r), appUrl('')) === 1 && str_contains(txt($r), '🎫 ऑनलाइन बुक करें'), txt($r));
     $r = pax($P[2], 'Mehsana dekhi Rupaidiha samma 2 jana ko kati lagcha?');
     check('a fare for 2 people is the total for 2', str_contains(txt($r), '2 जनाको') && $drafts($P[2]) === 0, txt($r));
     $r = pax($P[3], 'bhada ta 1500 matra ho ni Surat bata?');
@@ -569,6 +570,7 @@ try {
     check('another passenger\'s number is politely refused, with the office line', str_contains(txt($r), Settings::officePhone()) && str_contains(txt($r), 'निजी'), txt($r));
     $r = pax($P[28], 'Baroda bata bus kati baje?');
     check('the time answer names the stop as shown ("Baroda", never "Barauda")', str_contains(txt($r), 'Baroda') && !str_contains(txt($r), 'Barauda'), txt($r));
+    check('…with the booking link once, in Nepali (P6-2a)', substr_count(txt($r), appUrl('')) === 1 && str_contains(txt($r), '🎫 अनलाइन बुक'), txt($r));
     pax($P[29], 'bholi 1 jana Surat bata');
     pax($P[29], 'Sunil Rai, phone ' . $PAXN[5]);
     $r = pax($P[29], 'UPI');

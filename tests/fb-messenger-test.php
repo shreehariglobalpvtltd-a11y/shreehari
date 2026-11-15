@@ -239,4 +239,56 @@ check(str_contains($tools, "Settings::getBool('fb_msgr_sell', false)"), 'selling
 $agent = (string) file_get_contents(dirname(__DIR__) . '/includes/aiagent.php');
 check(str_contains($agent, 'self::webChannelRules($ctx) . self::facebookRules($ctx)'), 'Messenger rules are added to the web rules');
 
+/* ---- 12. the conversation log + office reply (16 Nov 2026, P6-6a) ---- */
+check($evs[0]['kind'] === 'message' && $evs[1]['kind'] === 'postback' && $evs[2]['kind'] === 'attachment', 'events carry their kind (message / postback / attachment)');
+FbMessenger::$memLog = [];
+FbMessenger::$memStore = [];
+$sent = []; $asked = [];
+$brainOut = ['text' => 'Bholi 2 seat cha.', 'media' => null, 'actions' => []];
+FbMessenger::handle($ev('bholi 2 seat', 'L1', '', 'U7'));
+$log = FbMessenger::$memLog;
+check(count($log) === 2 && $log[0]['direction'] === 'in' && $log[0]['body'] === 'bholi 2 seat' && $log[0]['mid'] === 'L1', 'the person\'s message is logged first');
+check($log[1]['direction'] === 'out' && $log[1]['purpose'] === 'bot_reply' && $log[1]['status'] === 'sent' && $log[1]['body'] === 'Bholi 2 seat cha.', 'the AI answer is logged as bot_reply');
+check(($asked[0]['ctx']['psid'] ?? '') === 'U7', 'the AI gets the Messenger id in ctx (help desk without a number)');
+FbMessenger::$memStore = [];
+FbMessenger::handle($ev('bholi 2 seat', 'L1', '', 'U7'));
+check(count(array_filter(FbMessenger::$memLog, static fn($r) => $r['direction'] === 'in')) === 1, 'a re-delivered message id is logged once');
+FbMessenger::handle($ev('654321', 'L2', '', 'U7'));
+check(end(FbMessenger::$memLog)['direction'] === 'out' && FbMessenger::$memLog[count(FbMessenger::$memLog) - 2]['body'] === '[code hidden]', 'a typed code is logged hidden');
+Security::$allow = false;
+$n = count(FbMessenger::$memLog);
+FbMessenger::handle($ev('spam spam', 'L3', '', 'U7'));
+check(count(FbMessenger::$memLog) === $n + 1, 'a rate-limited message is still logged for the office (no answer)');
+Security::$allow = true;
+
+$sent = [];
+check(FbMessenger::windowOpen('U7') === true, 'window open after the person wrote');
+$r = FbMessenger::inboxReply('U7', 'Namaste, office bata', 42);
+$lastRow = end(FbMessenger::$memLog);
+check($r['ok'] && count($sent) === 1 && ($sent[0]['body']['message']['text'] ?? '') === 'Namaste, office bata', 'the office reply is sent inside the window');
+check($lastRow['purpose'] === 'inbox_reply' && $lastRow['admin_id'] === 42, 'the reply is logged as inbox_reply with the admin id');
+check((bool) array_filter(Logger::$lines, static fn($l) => str_starts_with($l, 'audit: fb.inbox_reply')), 'the reply is audited');
+$sent = [];
+check(FbMessenger::inboxReply('U7', '', 42)['ok'] === false && FbMessenger::inboxReply('U7', str_repeat('a', 1001), 42)['ok'] === false && $sent === [], 'empty / too long replies refused');
+check(FbMessenger::inboxReply('no such!', 'hi', 42)['ok'] === false, 'a malformed id refused');
+check(FbMessenger::inboxReply('U8', 'hi', 42)['ok'] === false && $sent === [], 'nobody wrote from that id → window closed, nothing sent');
+foreach (FbMessenger::$memLog as $i => $row) {
+    FbMessenger::$memLog[$i]['created_at'] = date('Y-m-d H:i:s', time() - 25 * 3600);
+}
+check(FbMessenger::windowOpen('U7') === false && FbMessenger::inboxReply('U7', 'late', 42)['ok'] === false && $sent === [], 'after 24 hours the window is closed and nothing is sent');
+$failImage = true;
+FbMessenger::sendImage('U7', 'https://www.shreehariglobal.in/t.png');
+check(end(FbMessenger::$memLog)['status'] === 'failed' && end(FbMessenger::$memLog)['error'] === 'bad url', 'a refused send is logged as failed with the reason');
+$failImage = false;
+FbMessenger::sendText('U7', 'Ticket: https://x.test/ticket/view.php?code=AB12CD34 · PDF https://x.test/t.php?p=1&k=abcdef123456');
+$kept = (string) end(FbMessenger::$memLog)['body'];
+check(!str_contains($kept, 'AB12CD34') && !str_contains($kept, 'abcdef123456') && str_contains($kept, 'view.php?code=[hidden]'), 'a ticket key / short code is never kept in the conversation log');
+FbMessenger::$memLog = null;
+
+/* ---- 13. help desk hand-off without a number (P6-7c) ---- */
+check(AiHandoff::psidOf(['via' => 'facebook', 'psid' => '123456']) === '123456', 'a Messenger sender has a PSID for the help desk');
+check(AiHandoff::psidOf(['via' => 'facebook', 'stageKey' => 'fb-555']) === '555', 'read from the conversation key too');
+check(AiHandoff::psidOf(['channel' => 'web', 'psid' => '123456']) === '', 'a website guest has none');
+check(AiHandoff::psidMarker('123') === '[Messenger PSID 123]', 'the ticket tag');
+
 echo "OK $checks checks\n";

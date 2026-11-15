@@ -560,7 +560,7 @@ final class Auth
 
         if ($admin === null) {
             // Spend roughly the same time as a real verify would.
-            password_verify($password, '$2y$11$usesomesillystringfoeu1f3.O0hOZ8W4l0sN2q7dPzYlXqR5Z8Vy');
+            password_verify($password, '$2y$12$usesomesillystringfoeu1f3.O0hOZ8W4l0sN2q7dPzYlXqR5Z8Vy');   // Security::HASH_COST
             Logger::warning('Admin login: unknown username', ['username' => $username, 'ip' => $ip]);
             LoginLog::record($username, 'unknown_user');
             return $genericFailure;
@@ -594,6 +594,12 @@ final class Auth
 
             return $genericFailure;
         }
+
+        /* 16 Nov 2026: an older, cheaper hash (cost 10 / 11) moves to Security::HASH_COST now that the
+           right password is in hand. The 2FA hold and the session below are stamped with the hash now
+           on file; the account's OTHER open sessions end on their 30 s re-check, as after a password
+           change (once per account, only on this password door). */
+        $admin['password_hash'] = self::upgradePasswordHash((int) $admin['id'], $password, (string) $admin['password_hash']);
 
         /* ---- Optional second factor (Point 10) -----------------------
            OPT-IN per admin and DEFAULT OFF, so for every account that has
@@ -706,10 +712,13 @@ final class Auth
         $ip = Security::clientIp();
         $held = self::begin2fa($admin, $ip);
         if ($held !== null) {
+            $_SESSION['admin_2fa_pending']['via'] = $how;   // 16 Nov 2026: the session the code opens says PIN / pattern, not password
             Logger::audit('admin.login.' . $how . '_2fa', 'admin', (string) $admin['id'], null, null, 'PIN / pattern accepted; WhatsApp 2FA code step held');
             return $held;
         }
-        self::finishAdminSession($admin, $ip, true, self::pwStamp((string) $admin['password_hash']));
+        // 16 Nov 2026: via = the door ('pin' / 'pattern' / 'whatsapp_hi' / 'whatsapp_otp'); a PIN / pattern
+        // sign-in under a forced change is NOT via_otp, so it still asks for the current password (viaOtpFor).
+        self::finishAdminSession($admin, $ip, self::viaOtpFor($how, $admin), self::pwStamp((string) $admin['password_hash']), $how);
         Logger::audit('admin.login.' . $how, 'admin', (string) $admin['id'], null, null, 'Signed in with code + ' . $how);
         return ['ok' => true];
     }
@@ -767,7 +776,7 @@ final class Auth
             return ['ok' => false, 'error' => 'This account\'s password was changed — please sign in again with the new password.'];
         }
 
-        self::finishAdminSession($admin, $ip, false, $pw);
+        self::finishAdminSession($admin, $ip, false, $pw, (string) ($pending['via'] ?? ''));
         return ['ok' => true];
     }
 
@@ -897,8 +906,14 @@ final class Auth
      *                     checks no password (agent code + mobile OTP): that
      *                     session takes the stamp of the row as it is now.
      */
-    private static function finishAdminSession(array $admin, string $ip, bool $viaOtp = false, ?string $pwStamp = null): void
+    private static function finishAdminSession(array $admin, string $ip, bool $viaOtp = false, ?string $pwStamp = null, string $via = ''): void
     {
+        // 16 Nov 2026: the door that opened this session ('password', 'otp', 'pin', 'pattern',
+        // 'whatsapp_hi', 'passkey' ...) — shown in Sessions (live + history), never a permission input.
+        $via = mb_substr(preg_replace('/[^a-z0-9_]/', '', strtolower($via)) ?? '', 0, 20);
+        if ($via === '') {
+            $via = $viaOtp ? 'otp' : 'password';
+        }
         self::clearDoorState();   // 31 Oct 2026 (review): no leftover pick / reset / 2FA step outlives a sign-in
 
         // Success — clear counters and start a fresh session id.
@@ -945,6 +960,7 @@ final class Auth
                locked out — which was the owner's constraint all along. */
             'must_change_pw' => (int) $admin['must_change_pw'] === 1,
             'via_otp'        => $viaOtp,
+            'via'            => $via,
             'logged_in_at'   => time(),
             'last_seen'      => time(),
             // Stamped only by a real sign-in: admin() re-reads the admins row
@@ -960,16 +976,16 @@ final class Auth
         // account. Runs before any output, since it may mint the device
         // cookie. A failure in here is swallowed by LoginLog — logging must
         // never be the reason someone cannot sign in.
-        $newDevice = LoginLog::record((string) $admin['username'], 'success', (int) $admin['id']);
+        $newDevice = LoginLog::record((string) $admin['username'], 'success', (int) $admin['id'], $via);
         $_SESSION[ADMIN_SESSION_KEY]['new_device'] = $newDevice;
 
         // 29 Oct 2026: one row per signed-in browser, so the office can see
         // it and end it (admin/sessions.php). After LoginLog, which mints the
         // device cookie the row records. '' (no registry) changes nothing.
-        $_SESSION[ADMIN_SESSION_KEY]['sk'] = AdminSessions::open((int) $admin['id'], $viaOtp ? 'otp' : 'password');
+        $_SESSION[ADMIN_SESSION_KEY]['sk'] = AdminSessions::open((int) $admin['id'], $via);
 
         Logger::audit('admin.login', 'admin', (string) $admin['id'], null, null,
-            'Signed in from ' . $ip . ($viaOtp ? ' (agent OTP)' : ''));
+            'Signed in from ' . $ip . ($via === 'password' ? '' : ' (' . ($via === 'otp' ? 'agent OTP' : str_replace('_', ' ', $via)) . ')'));
 
         if ($newDevice) {
             Logger::audit('admin.login.newdevice', 'admin', (string) $admin['id'], null,
@@ -990,6 +1006,45 @@ final class Auth
     public static function pwStamp(string $hash): string
     {
         return substr(hash('sha256', APP_KEY . '|' . $hash), 0, 16);
+    }
+
+    /**
+     * 16 Nov 2026: re-hash a password the caller has JUST verified when its hash is older /
+     * cheaper than Security::HASH_COST. Written only while the row still holds the hash that
+     * was checked (a reset landing in between wins). Returns the hash now on file; any failure
+     * leaves the old one, which still verifies — never a reason a sign-in fails.
+     */
+    private static function upgradePasswordHash(int $adminId, string $plain, string $hash): string
+    {
+        if ($adminId <= 0 || $plain === '' || !Security::needsRehash($hash)) {
+            return $hash;
+        }
+        try {
+            $new = Security::hashPassword($plain);
+            return Database::run('UPDATE admins SET password_hash = :n WHERE id = :i AND password_hash = :o',
+                ['n' => $new, 'i' => $adminId, 'o' => $hash]) === 1 ? $new : $hash;
+        } catch (Throwable $e) {
+            return $hash;
+        }
+    }
+
+    /**
+     * 16 Nov 2026 (P1-6d): 'via_otp' for a session opened by a no-password door. It does two jobs:
+     * change-password.php lets a FORCED change (must_change_pw) skip the current password, and the
+     * top bar / home hide "change password" (no password was typed). A WhatsApp proof, a passkey or
+     * an office check keep via_otp = true as before. A PIN / pattern must never be enough to replace
+     * the account's password, so a PIN / pattern sign-in on an account under a forced change is NOT
+     * via_otp (the current password is asked). Every other PIN / pattern session keeps via_otp = true:
+     * nothing is forced there (must_change_pw is only ever set together with a new password, and a
+     * new password ends this session on its 30 s re-check), so change-password.php asks the current
+     * password anyway and the "change password" link stays hidden as before. The door itself is
+     * carried explicitly in the session as 'via' ('pin' / 'pattern' / ...).
+     *
+     * @param array<string, mixed> $admin
+     */
+    private static function viaOtpFor(string $how, array $admin): bool
+    {
+        return !in_array($how, ['pin', 'pattern'], true) || (int) ($admin['must_change_pw'] ?? 0) !== 1;
     }
 
     /** The stamp of the password on file for this account right now. */
@@ -1416,7 +1471,7 @@ final class Auth
         );
 
         if ($admin === null) {
-            password_verify($password, '$2y$11$usesomesillystringfoeu1f3.O0hOZ8W4l0sN2q7dPzYlXqR5Z8Vy');
+            password_verify($password, '$2y$12$usesomesillystringfoeu1f3.O0hOZ8W4l0sN2q7dPzYlXqR5Z8Vy');   // Security::HASH_COST
             Logger::warning('Agent login: unknown username', ['username' => $username, 'ip' => $ip]);
             LoginLog::record($username, 'unknown_user');
             return $generic;
@@ -1544,7 +1599,8 @@ final class Auth
         }
         // via_otp = true: no password was typed, so a forced change (must_change_pw) asks for the new one only -
         // change-password.php would otherwise demand a "current password" the person never received (23 Oct 2026).
-        self::finishAdminSession($admin, Security::clientIp(), true, self::pwStamp((string) $admin['password_hash']));
+        // 16 Nov 2026: except a PIN / pattern (the classic door's quick unlock) under a forced change: that asks the current password.
+        self::finishAdminSession($admin, Security::clientIp(), self::viaOtpFor($how, $admin), self::pwStamp((string) $admin['password_hash']), $how);
         Logger::audit('admin.login.' . $how, 'admin', (string) $admin['id'], null, null, 'Signed in without a password: ' . $how);
     }
 
@@ -1686,7 +1742,8 @@ final class Auth
             LoginLog::record(
                 (string) ($_SESSION[ADMIN_SESSION_KEY]['username'] ?? ''),
                 'logout',
-                (int) $_SESSION[ADMIN_SESSION_KEY]['id']
+                (int) $_SESSION[ADMIN_SESSION_KEY]['id'],
+                (string) ($_SESSION[ADMIN_SESSION_KEY]['via'] ?? '')   // 16 Nov 2026: the door the session came in by
             );
             AdminSessions::close((string) ($_SESSION[ADMIN_SESSION_KEY]['sk'] ?? ''));
         }

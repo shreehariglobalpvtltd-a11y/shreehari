@@ -438,6 +438,8 @@ final class AiTools
                 'gender'    => ['string', 'Male, Female or Other — needed for a shared cabin berth'],
                 'name'      => ['string', 'The passenger\'s full name, exactly as they gave it, if already known'],
                 'phone'     => ['string', 'Desk sale only: the passenger\'s mobile, with +977 when it is a Nepali number'],
+                // P8-6b (16 Nov 2026): "book A3 and A4"
+                'berths'    => ['array', 'Optional: the exact berths the passenger asked for, as printed on a ticket or the seat map (e.g. A3, A4; at most 6). They are tried first when free and allowed for this passenger; the result says which were honoured — read that back.'],
             ], ['seats']);
 
         /* A guest on the website has no number to sell to: the quote still
@@ -982,6 +984,56 @@ final class AiTools
         return ['ok' => true, 'say' => 'Recent bookings on ' . $phone . '.', 'data' => ['bookings' => $list], 'media' => null];
     }
 
+    /**
+     * P8-6b (16 Nov 2026): the berths a passenger named — "A3", "a-4" as the
+     * ticket and the seat map print them, or the stored id "L3" — as the
+     * canonical seat ids the engine prefers (Seats). At most 6. A word that
+     * is no berth on either coach comes back in the second list so the
+     * read-back can say so; nothing is guessed.
+     *
+     * @return array{0: list<string>, 1: list<string>}
+     */
+    public static function cleanBerths(mixed $raw): array
+    {
+        $items = is_array($raw) ? $raw : (is_string($raw) ? (preg_split('/[\s,;\/&]+/', $raw) ?: []) : []);
+        static $map = null;
+        if ($map === null) {
+            $map = [];
+            $all = ['sleeper' => Seats::seatIds('sleeper', 'sharing'), 'seater' => Seats::seatIds('seater', 'seater')];
+            foreach ($all as $ids) {
+                foreach ($ids as $id) {
+                    $map[strtoupper((string) $id)] = strtoupper((string) $id);       // the stored id first: it always wins
+                }
+            }
+            foreach ($all as $coach => $ids) {
+                foreach ($ids as $id) {
+                    $lbl = strtoupper(Seats::displayLabel((string) $id, $coach, 'sharing'));
+                    if ($lbl !== '' && !isset($map[$lbl])) {
+                        $map[$lbl] = strtoupper((string) $id);
+                    }
+                }
+            }
+        }
+        $ok  = [];
+        $bad = [];
+        foreach (array_slice(array_values($items), 0, 6) as $b) {
+            if (!is_scalar($b)) {
+                continue;
+            }
+            $s = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', (string) $b));
+            if ($s === '') {
+                continue;
+            }
+            if (Security::isValidSeat($s) && isset($map[$s])) {
+                $ok[] = $map[$s];
+            } else {
+                $bad[] = mb_substr($s, 0, 10);
+            }
+        }
+
+        return [array_values(array_unique($ok)), array_values(array_unique($bad))];
+    }
+
     private static function planTicket(array $args, array $ctx): array
     {
         $role     = (string) ($ctx['role'] ?? 'customer');
@@ -997,8 +1049,47 @@ final class AiTools
             // A passenger's own number, so a per-passenger office offer is priced as the sale will price it.
             'phone'     => $customer ? (string) ($ctx['phone'] ?? '') : '',
         ];
+        /* P8-6b (16 Nov 2026): "book A3 and A4". The named berths go to the
+           engine as its preferred seats: tried first when free, and only when
+           every seat rule allows them (women-only berths, a cabin's gender),
+           otherwise skipped. The read-back below says which were honoured. */
+        [$prefer, $badBerths] = self::cleanBerths($args['berths'] ?? null);
+        if ($prefer !== []) {
+            $opts['prefer'] = $prefer;
+        }
 
         $plan = QuickTicket::plan($opts);           // throws a desk-safe RuntimeException
+
+        $berthNote = '';
+        $berthData = [];
+        if ($prefer !== [] || $badBerths !== []) {
+            $coach  = (string) ($plan['coach'] ?? 'sleeper');
+            $label  = static fn(string $s): string => Seats::displayLabel($s, $coach !== '' ? $coach : 'sleeper', (string) ($plan['bookingMode'] ?? 'sharing') ?: 'sharing');
+            $quoted = array_map('strval', (array) $plan['seats']);
+            $got    = array_values(array_intersect($prefer, $quoted));
+            $miss   = array_values(array_diff($prefer, $got));
+            $berthData = [
+                'berthsAsked'    => array_merge(array_map($label, $prefer), $badBerths),
+                'berthsHonoured' => array_map($label, $got),
+                'berthsNotGiven' => array_map($label, $miss),
+                'berthsUnknown'  => $badBerths,
+            ];
+            if ($got !== []) {
+                $berthNote .= ' Berth(s) the passenger asked for and GOT: ' . implode(', ', $berthData['berthsHonoured']) . '.';
+            }
+            if ($miss !== []) {
+                $berthNote .= ' NOT given: ' . implode(', ', $berthData['berthsNotGiven'])
+                    . (count($prefer) > (int) $plan['seatCount']
+                        ? ' (more berths than the ' . (int) $plan['seatCount'] . ' seat(s) asked, or already taken / kept for women)'
+                        : ' (already taken, or kept for women / another cabin)')
+                    . ' — say so plainly and read the berths actually quoted.';
+            }
+            if ($badBerths !== []) {
+                $berthNote .= ' "' . implode(', ', $badBerths) . '" is not a berth on this bus — ask them to check the seat number.';
+            }
+            // The sale re-plans: the honoured berths travel with the quote, so the ticket gets the berths read out.
+            $opts['prefer'] = $got;
+        }
 
         /* 24 Sep 2026 (owner: "naam ra mobile number ma mistake nahos").
            A name or a number given before the quote is PINNED with it and
@@ -1041,7 +1132,7 @@ final class AiTools
             ],
             'opts'     => ['seats' => (int) $plan['seatCount'], 'date' => (string) $plan['date'],
                            'direction' => (string) $plan['direction'], 'boarding' => (string) $plan['boarding'],
-                           'gender' => $opts['gender']],
+                           'gender' => $opts['gender'], 'prefer' => (array) ($opts['prefer'] ?? [])],
             'pin'      => $pin,
         ]);
 
@@ -1050,8 +1141,8 @@ final class AiTools
             'say'  => 'This is a QUOTE, nothing is booked yet. Read the bus, date, pickup, berth and the TOTAL to the passenger'
                     . ($pin['name'] !== '' ? ', and the NAME "' . $pin['name'] . '"' : '')
                     . ($pin['phone'] !== '' ? ' and the MOBILE ' . $pin['phone'] . ($pin['country'] === 'NP' ? ' (+977)' : '') : '')
-                    . ', and ask them to reply ho / yes to confirm.' . $nameNote,
-            'data' => [
+                    . ', and ask them to reply ho / yes to confirm.' . $nameNote . $berthNote,
+            'data' => $berthData + [
                 'pinnedName'   => $pin['name'],
                 'pinnedPhone'  => $pin['phone'],
                 'pinnedCountry' => $pin['country'],
@@ -1353,6 +1444,8 @@ final class AiTools
             // never offered the model anywhere to put them.
             'passengers' => $party,
             'expect'    => $staged['expect'] ?? null,
+            // P8-6b: the berths the quote honoured, so the ticket carries the ones read out
+            'prefer'    => (array) ($staged['opts']['prefer'] ?? []),
         ];
 
         $res = QuickTicket::sellCustomer($input, null);
@@ -1445,6 +1538,8 @@ final class AiTools
                passenger's number and the sale with it, so a per-number
                offer could differ and block an honest sale. */
             'expect'    => array_diff_key((array) ($staged['expect'] ?? []), ['total' => true]) ?: null,
+            // P8-6b: the berths the quote honoured, so the ticket carries the ones read out
+            'prefer'    => (array) ($staged['opts']['prefer'] ?? []),
         ];
 
         $res = QuickTicket::sell($input, $admin);
@@ -3582,9 +3677,21 @@ final class AiTools
         self::log($tool, $args, $ctx, $ok, $detail, $bookingId, $t0);
     }
 
+    /**
+     * P7-9a (16 Nov 2026): the tool names called during the current turn, in
+     * order — the caller that writes the ai_turns row (whatsapp/webhook.php,
+     * AiAgent::handleWeb) empties it before the turn and reads it after.
+     *
+     * @var list<string>
+     */
+    public static array $turnTools = [];
+
     /** The audit row. Never throws — a missing table must not cost a reply. */
     private static function log(string $tool, array $args, array $ctx, bool $ok, string $detail, ?int $bookingId, float $t0): void
     {
+        if (count(self::$turnTools) < 40) {
+            self::$turnTools[] = mb_substr($tool, 0, 40);
+        }
         try {
             // Structured arguments only: the passenger's own sentence stays in
             // message_logs, it is not copied into a second table.

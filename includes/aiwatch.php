@@ -14,7 +14,10 @@
  *             WhatsApp tickets, agents sitting on cash, payouts asked for
  *             or overdue, refunds due, customers asking to cancel / for a
  *             refund, support / offline-desk / enquiry queues, yesterday's
- *             expenses not entered, a pickup with no time, unpaid staff.
+ *             expenses not entered, a pickup with no time, unpaid staff,
+ *             agents with no sale for a week (16 Nov 2026). Shown on
+ *             admin/home.php for the office; the slow buses, refunds and
+ *             idle agents also feed the 06:00 brief (cron/brain-digest.php).
  *    seller — their own bookings waiting for payment, cash to hand over,
  *             passengers travelling tomorrow, free berths on the next bus,
  *             commission earned this month (agents; a counter clerk's
@@ -61,7 +64,7 @@ final class AiWatch
         foreach ([
             'pendingPayments', 'tripsMissingCrew', 'seatFill', 'waFailed',
             'agentCash', 'payoutsDue', 'refundsDue', 'cancelRequests', 'supportOpen', 'offlineDesk',
-            'enquiriesNew', 'expensesMissing', 'pickupTimes', 'payrollDue',
+            'enquiriesNew', 'expensesMissing', 'pickupTimes', 'payrollDue', 'agentsIdle',
         ] as $watcher) {
             try {
                 foreach (self::$watcher() as $s) {
@@ -237,35 +240,24 @@ final class AiWatch
         if (!self::can('dashboard.view')) {
             return [];
         }
-        $trips = self::upcomingTrips(2);
-        if ($trips === []) {
+        $rows = self::fillRows(2);
+        if ($rows === []) {
             return [];
         }
-        $sold = Seats::occupiedBedsFor(array_column($trips, 'id'));
-        $out  = [];
-        $slow = [];
-        foreach ($trips as $t) {
-            $cap  = (int) $t['_cap'];
-            $have = (int) ($sold[(int) $t['id']] ?? 0);
-            $free = max(0, $cap - $have);
-            $pct  = (int) round($have * 100 / $cap);
-            $when = self::dayWord((string) $t['travel_date']) . ' ' . self::hm((string) $t['dep']);
-            $trip = $t['from_city'] . ' → ' . $t['to_city'];
-            $hrs  = (int) $t['_hours'];
+        $out = [];
+        foreach ($rows as $t) {
             // 15 Oct 2026: "Plan extra bus" opens Bus Fleet (schedules.view) —
             // a support / viewer desk without it was handed a refused page.
-            if ($pct >= 90 && self::can('schedules.view')) {
+            if ($t['pct'] >= 90 && self::can('schedules.view')) {
                 $out[] = self::item(
-                    'full-' . (int) $t['id'], 'info', '🔥',
-                    $when . ' ' . $trip . ' is ' . $pct . '% full — only ' . $free . ' berth' . self::s($free) . ' left',
+                    'full-' . $t['id'], 'info', '🔥',
+                    $t['when'] . ' ' . $t['trip'] . ' is ' . $t['pct'] . '% full — only ' . $t['free'] . ' berth' . self::s($t['free']) . ' left',
                     'Demand is high. Run an extra coach on this date, or keep the last berths for the office.',
                     '/admin/buses.php', 'Plan extra bus'
                 );
-            } elseif ($pct < 40 && $hrs <= 48 && self::can('payments.view')) {
-                $slow[] = ['id' => (int) $t['id'], 'line' => $when . ' ' . $trip . ': ' . $have . '/' . $cap . ' sold (' . $pct . '%)',
-                           'free' => $free, 'hrs' => $hrs];
             }
         }
+        $slow = self::can('payments.view') ? self::slowFrom($rows, 48, 40) : [];
         // Slow sellers fold into ONE line — one nudge to market, not one per bus.
         if (count($slow) === 1) {
             $out[] = self::item(
@@ -370,17 +362,92 @@ final class AiWatch
         if (!self::can('refunds.view')) {
             return [];
         }
-        $r = Database::fetch("SELECT COUNT(*) AS n, COALESCE(SUM(refund_amount), 0) AS amt FROM bookings WHERE refund_status = 'pending'");
-        $n = (int) ($r['n'] ?? 0);
+        $r = self::refundsPending();
+        $n = $r['n'];
         if ($n === 0) {
             return [];
         }
         return [self::item(
             'refund', 'warn', '↩️',
-            $n . ' refund' . self::s($n) . ' due · ' . inr((float) $r['amt']),
+            $n . ' refund' . self::s($n) . ' due · ' . inr($r['amt']),
             'Cancelled passengers are waiting for their money. Mark each one paid or refused.',
             '/admin/refunds.php', 'Open refunds'
         )];
+    }
+
+    /**
+     * Active agents with no sale for the bell's agent_inactive days (16 Nov
+     * 2026, Master v2 P3-3a). A suggestion only: the card opens the agents
+     * list; nothing is sent to anyone from here.
+     */
+    private static function agentsIdle(): array
+    {
+        if (!self::can('customers.view')) {           // admin/agents.php boots with customers.view
+            return [];
+        }
+        $days = max(1, Settings::getInt('alert_agent_inactive_days', 7));
+        $idle = self::idleAgents($days);
+        $n    = count($idle);
+        if ($n === 0) {
+            return [];
+        }
+        $names = array_map(static fn(array $a): string => $a['name'] . ($a['last_sale'] === null ? ' (never sold)' : ''), array_slice($idle, 0, 4));
+        return [self::item(
+            'idle', 'info', '😴',
+            $n . ' agent' . self::s($n) . ' with no sale for ' . $days . '+ days',
+            implode(', ', $names) . ($n > 4 ? ' +' . ($n - 4) : '') . '. A call or an offer may bring them back.',
+            '/admin/agents.php', 'See agents'
+        )];
+    }
+
+    /* =================================================================
+     *  Shared figures (16 Nov 2026) — the panel above and the 06:00
+     *  WhatsApp brief (cron/brain-digest.php) read the same numbers.
+     *  No permission check here: the caller decides who sees them.
+     * ================================================================= */
+
+    /**
+     * Departures in the next $hours under $underPct % sold, soonest first.
+     *
+     * @return list<array{id:int, line:string, free:int, hrs:int, pct:int}>
+     */
+    public static function slowDepartures(int $hours = 48, int $underPct = 40): array
+    {
+        return self::slowFrom(self::fillRows(max(1, (int) ceil($hours / 24))), $hours, $underPct);
+    }
+
+    /** Refunds waiting to be settled BY HAND. @return array{n:int, amt:float} */
+    public static function refundsPending(): array
+    {
+        $r = Database::fetch("SELECT COUNT(*) AS n, COALESCE(SUM(refund_amount), 0) AS amt FROM bookings WHERE refund_status = 'pending'");
+        return ['n' => (int) ($r['n'] ?? 0), 'amt' => (float) ($r['amt'] ?? 0)];
+    }
+
+    /**
+     * Active agents who have sold nothing for $days — or never, once the
+     * account is that old. The same query as the bell's agent_inactive rule
+     * (includes/adminalerts.php).
+     *
+     * @return list<array{id:int, name:string, last_sale:?string}>
+     */
+    public static function idleAgents(int $days = 7, int $limit = 50): array
+    {
+        $cut  = addDaysISO(todayISO(), -max(1, $days)) . ' 00:00:00';
+        $rows = Database::fetchAll(
+            "SELECT a.id, a.full_name, a.username, MAX(b.created_at) AS last_sale
+               FROM admins a LEFT JOIN bookings b ON b.sold_by_admin_id = a.id
+              WHERE a.role = 'agent' AND a.is_active = 1 AND a.created_at < :cut1
+              GROUP BY a.id, a.full_name, a.username
+             HAVING last_sale IS NULL OR last_sale < :cut2
+              ORDER BY last_sale
+              LIMIT " . max(1, min(500, $limit)),
+            ['cut1' => $cut, 'cut2' => $cut]
+        );
+        return array_map(static fn(array $r): array => [
+            'id'        => (int) $r['id'],
+            'name'      => (string) (($r['full_name'] ?? '') !== '' ? $r['full_name'] : $r['username']),
+            'last_sale' => $r['last_sale'] !== null ? (string) $r['last_sale'] : null,
+        ], $rows);
     }
 
     /**
@@ -915,6 +982,49 @@ final class AiWatch
             $out[] = $r;
         }
         return $out;
+    }
+
+    /**
+     * upcomingTrips() with the seats sold on each.
+     *
+     * @return list<array{id:int, when:string, trip:string, have:int, cap:int, free:int, pct:int, hrs:int}>
+     */
+    private static function fillRows(int $days): array
+    {
+        $trips = self::upcomingTrips($days);
+        if ($trips === []) {
+            return [];
+        }
+        $sold = Seats::occupiedBedsFor(array_column($trips, 'id'));
+        $out  = [];
+        foreach ($trips as $t) {
+            $cap  = (int) $t['_cap'];
+            $have = (int) ($sold[(int) $t['id']] ?? 0);
+            $out[] = [
+                'id'   => (int) $t['id'],
+                'when' => self::dayWord((string) $t['travel_date']) . ' ' . self::hm((string) $t['dep']),
+                'trip' => $t['from_city'] . ' → ' . $t['to_city'],
+                'have' => $have,
+                'cap'  => $cap,
+                'free' => max(0, $cap - $have),
+                'pct'  => (int) round($have * 100 / $cap),
+                'hrs'  => (int) $t['_hours'],
+            ];
+        }
+        return $out;
+    }
+
+    /** @return list<array{id:int, line:string, free:int, hrs:int, pct:int}> */
+    private static function slowFrom(array $rows, int $hours, int $underPct): array
+    {
+        $slow = [];
+        foreach ($rows as $t) {
+            if ($t['pct'] < $underPct && $t['hrs'] <= $hours) {
+                $slow[] = ['id' => $t['id'], 'line' => $t['when'] . ' ' . $t['trip'] . ': ' . $t['have'] . '/' . $t['cap'] . ' sold (' . $t['pct'] . '%)',
+                           'free' => $t['free'], 'hrs' => $t['hrs'], 'pct' => $t['pct']];
+            }
+        }
+        return $slow;
     }
 
     /**

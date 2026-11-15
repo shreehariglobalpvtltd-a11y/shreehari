@@ -93,6 +93,12 @@ final class Boarding
     /** @var bool|null do route_stops.km_from_origin + route_halts exist yet? (9 Oct 2026) */
     private static ?bool $hasDetails = null;
 
+    /** @var bool|null does route_stops.visible_to exist yet? (16 Nov 2026, addStop) */
+    private static ?bool $hasVisibleTo = null;
+
+    /** @var array<string, array{0: ?string, 1: ?string}> per-request [route dep_time, slot-1 dep_time_override] by "route|date" */
+    private static array $depCache = [];
+
     /**
      * Forget the per-request caches. Admin edits call this so the page that
      * saved a change renders the new state; tests call it between steps.
@@ -103,6 +109,8 @@ final class Boarding
         self::$locCache  = null;
         self::$hasControls = null;
         self::$hasDetails  = null;
+        self::$hasVisibleTo = null;
+        self::$depCache    = [];
     }
 
     /**
@@ -659,24 +667,263 @@ final class Boarding
             return ['open' => false, 'time' => null, 'reason' => 'That travel date has already passed.'];
         }
 
-        $time = self::timeForStop($routeId, $boardingStop);
-        if ($time === null) {
+        $stopAt = self::stopAt($routeId, $travelDate, $boardingStop);
+        if ($stopAt === null) {
             return ['open' => true, 'time' => null, 'reason' => ''];
         }
 
-        $stopAt   = strtotime($travelDate . ' ' . $time);
         $closesAt = $stopAt - (self::cutoffMinutes() * 60);
+        $hm       = date('H:i', $stopAt);
 
-        if ($stopAt === false || time() < $closesAt) {
-            return ['open' => true, 'time' => substr($time, 0, 5), 'reason' => ''];
+        if (time() < $closesAt) {
+            return ['open' => true, 'time' => $hm, 'reason' => ''];
         }
 
         return [
             'open'   => false,
-            'time'   => substr($time, 0, 5),
+            'time'   => $hm,
             'reason' => 'The bus has already left this pickup point today ('
-                        . substr($time, 0, 5) . '). Please choose a later pickup, or tomorrow’s bus.',
+                        . $hm . '). Please choose a later pickup, or tomorrow’s bus.',
         ];
+    }
+
+    /**
+     * WHEN the daily bus (slot 1) that departs on $travelDate reaches this
+     * pickup, as unix time — what the cut-off above is judged by (16 Nov 2026).
+     *
+     *  - P4-2b2: a stop time more than an hour EARLIER than the route's
+     *    departure is past midnight on the same run — the next calendar day
+     *    (pickupTs() rule). Mehsana 00:30 / Palanpur 01:45 on the 13:00 r2 run
+     *    used to close at 00:00 of the travel date, unsellable all day.
+     *  - P4-2e: a retimed daily bus (schedules.dep_time_override on slot 1)
+     *    moves every stop by (override - routes.dep_time): 13:00 -> 16:00
+     *    closes Surat at 15:30, not 12:30; moved earlier, the pickups close
+     *    earlier instead of selling after the bus has gone. Extra buses
+     *    (slot 2+) keep their own departure check in the callers.
+     *
+     * Null when no time can be determined (the caller fails open).
+     */
+    public static function stopAt(int $routeId, string $travelDate, string $boardingStop): ?int
+    {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $travelDate) !== 1) {
+            return null;
+        }
+        $time = self::timeForStop($routeId, $boardingStop);
+        $stop = self::hmToMin($time);
+        if ($stop === null) {
+            return null;
+        }
+        [$routeDep, $override] = self::depFor($routeId, $travelDate);
+        $base = self::hmToMin($routeDep);
+        if ($base === null) {
+            $ts = strtotime($travelDate . ' ' . self::minToHm($stop));
+            return $ts === false ? null : (int) $ts;
+        }
+        // Offset from the timetable departure: -60 min .. +23 h (pickupTs()).
+        $off = (($stop - $base) % 1440 + 1440) % 1440;
+        if ($off > 1380) {
+            $off -= 1440;
+        }
+        $dep = self::hmToMin($override) ?? $base;
+        $ts  = strtotime($travelDate . ' ' . self::minToHm($dep));
+
+        return $ts === false ? null : (int) $ts + $off * 60;
+    }
+
+    /**
+     * [routes.dep_time, slot-1 dep_time_override] for a route on a date,
+     * cached for the request (status() runs once per pickup per search).
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    private static function depFor(int $routeId, string $travelDate): array
+    {
+        $ck = $routeId . '|' . $travelDate;
+        if (!isset(self::$depCache[$ck])) {
+            $row = null;
+            try {
+                $row = Database::fetch(
+                    'SELECT r.dep_time, s.dep_time_override
+                       FROM routes r
+                  LEFT JOIN schedules s ON s.route_id = r.id AND s.travel_date = :d AND s.slot = 1
+                      WHERE r.id = :r LIMIT 1',
+                    ['r' => $routeId, 'd' => $travelDate]
+                );
+            } catch (Throwable $e) {
+                $row = Database::fetch('SELECT dep_time, NULL AS dep_time_override FROM routes WHERE id = :r LIMIT 1', ['r' => $routeId]);
+            }
+            $dep = $row !== null && $row['dep_time'] !== null && $row['dep_time'] !== '' ? (string) $row['dep_time'] : null;
+            $ovr = $row !== null && ($row['dep_time_override'] ?? null) !== null && $row['dep_time_override'] !== '' ? (string) $row['dep_time_override'] : null;
+            self::$depCache[$ck] = [$dep, $ovr];
+        }
+
+        return self::$depCache[$ck];
+    }
+
+    /* =================================================================
+     *  ADD A PICKUP / DROP POINT (16 Nov 2026, C1 — the one writer)
+     *
+     *  Admin -> Routes (add_stop and the "+ नयाँ पिकअप / ड्रप" box) and the
+     *  SHARI NAV map page used two different inserts: the map one wrote any
+     *  posted stop_type into enum('boarding','drop') (HTTP 500 on live's
+     *  strict mode), sorted every new stop 99th and never flushed the
+     *  caches. Both now call this. Callers check routes.edit themselves.
+     * ================================================================= */
+
+    /** Parse "2,200" / "₹2200" / "2 200" -> 2200.0; '' -> null; anything else -> false. */
+    public static function parseRupees(mixed $v): float|false|null
+    {
+        if ($v === null) {
+            return null;
+        }
+        if (is_int($v) || is_float($v)) {
+            return (float) $v;
+        }
+        $s = trim(str_ireplace(['₹', 'rs.', 'rs', 'inr', ',', ' ', "\u{00A0}"], '', (string) $v));
+        if ($s === '') {
+            return null;
+        }
+
+        return is_numeric($s) ? (float) $s : false;
+    }
+
+    /**
+     * Insert one boarding / drop stop and return its id.
+     *
+     * $d keys: route_id (int, required), stop_type 'boarding'|'drop' (required),
+     * stop_name (required, <= 191), landmark?, stop_time? 'HH:MM', fare?
+     * (number|null; blank / 0 = the direction default), latitude?, longitude?,
+     * visible_to? (default 'customer,agent,counter'), is_active (default 1),
+     * is_border?, is_meal_halt?, km? (road km from the route start).
+     *
+     * @param array<string, mixed> $d
+     * @throws InvalidArgumentException with a short bilingual message
+     */
+    public static function addStop(array $d, int $adminId): int
+    {
+        $bad = static fn(string $ne, string $en): InvalidArgumentException => new InvalidArgumentException($ne . ' · ' . $en);
+
+        $rid  = (int) ($d['route_id'] ?? 0);
+        $type = (string) ($d['stop_type'] ?? '');
+        if (!in_array($type, ['boarding', 'drop'], true)) {
+            throw $bad('पिकअप वा ड्रप छान्नुहोस्', 'Choose Boarding (pickup) or Drop. A tea / meal halt goes under Admin → Routes → Halts on the way.');
+        }
+        $name = trim((string) preg_replace('/\s+/u', ' ', strip_tags((string) ($d['stop_name'] ?? ''))));
+        if ($name === '') {
+            throw $bad('ठाउँको नाम लेख्नुहोस्', 'Stop name is required.');
+        }
+        if (mb_strlen($name) > 191) {
+            throw $bad('नाम धेरै लामो भयो', 'Stop name is too long (191 characters at most).');
+        }
+        $route = $rid > 0 ? Database::fetch('SELECT id, route_code FROM routes WHERE id = :r', ['r' => $rid]) : null;
+        if ($route === null) {
+            throw $bad('रुट भेटिएन', 'Route not found.');
+        }
+        $land = trim((string) preg_replace('/\s+/u', ' ', strip_tags((string) ($d['landmark'] ?? ''))));
+        if (mb_strlen($land) > 191) {
+            $land = mb_substr($land, 0, 191);
+        }
+
+        $time = trim((string) ($d['stop_time'] ?? ''));
+        if ($time !== '') {
+            if (preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $time) !== 1) {
+                throw $bad('समय HH:MM मा लेख्नुहोस्', 'Enter the stop time as HH:MM, e.g. 22:30.');
+            }
+            $time = strlen($time) === 5 ? $time . ':00' : $time;
+        }
+
+        $fare = self::parseRupees($d['fare'] ?? null);
+        if ($fare === false || ($fare !== null && ($fare < 0 || $fare > 100000))) {
+            throw $bad('भाडा रुपैयाँमा लेख्नुहोस्', 'Enter the fare in rupees (e.g. 2200), or leave it blank for the default.');
+        }
+        $fare = $fare !== null && $fare > 0 ? round($fare, 2) : null;
+
+        $coord = static function (mixed $v, float $limit, string $what) use ($bad): ?float {
+            $v = trim((string) ($v ?? ''));
+            if ($v === '') {
+                return null;
+            }
+            if (!is_numeric($v) || abs((float) $v) > $limit) {
+                throw $bad('नक्साको स्थान मिलेन', 'Enter a valid ' . $what . ' (decimal degrees), or leave it blank.');
+            }
+            return round((float) $v, 7);
+        };
+        $lat = $coord($d['latitude'] ?? null, 90.0, 'latitude');
+        $lng = $coord($d['longitude'] ?? null, 180.0, 'longitude');
+        if (($lat === null) !== ($lng === null)) {
+            throw $bad('अक्षांश र देशान्तर दुवै चाहिन्छ', 'Enter both latitude and longitude, or leave both blank.');
+        }
+
+        $km = trim((string) ($d['km'] ?? ''));
+        if ($km !== '' && (!is_numeric($km) || (float) $km < 0 || (float) $km > 9999)) {
+            throw $bad('किलोमिटर मिलेन', 'Enter the road km from the route start (0 to 9999), or leave it blank.');
+        }
+
+        $vis = trim((string) ($d['visible_to'] ?? ''));
+        if ($vis !== '') {
+            $parts = array_values(array_unique(array_filter(array_map('trim', explode(',', $vis)), 'strlen')));
+            if ($parts === [] || array_diff($parts, ['customer', 'agent', 'counter']) !== []) {
+                throw $bad('कसले देख्ने मिलेन', 'visible_to must list customer, agent and/or counter.');
+            }
+            $vis = implode(',', $parts);
+        } else {
+            $vis = 'customer,agent,counter';
+        }
+
+        $next = (int) Database::scalar(
+            'SELECT COALESCE(MAX(sort_order), 0) FROM route_stops WHERE route_id = :r AND stop_type = :t',
+            ['r' => $rid, 't' => $type], 0
+        ) + 1;
+
+        $row = [
+            'route_id'     => $rid,
+            'stop_type'    => $type,
+            'stop_name'    => $name,
+            'landmark'     => $land !== '' ? $land : null,
+            'stop_time'    => $time !== '' ? $time : null,
+            'latitude'     => $lat,
+            'longitude'    => $lng,
+            'is_border'    => !empty($d['is_border']) ? 1 : 0,
+            'is_meal_halt' => !empty($d['is_meal_halt']) ? 1 : 0,
+            'sort_order'   => $next,
+        ];
+        if (self::hasStopControls()) {
+            $row['fare']      = $fare;
+            $row['is_active'] = array_key_exists('is_active', $d) && empty($d['is_active']) ? 0 : 1;
+        }
+        if (self::hasRouteDetails() && $km !== '') {
+            $row['km_from_origin'] = round((float) $km, 1);
+        }
+        if (self::hasVisibleTo()) {
+            $row['visible_to'] = $vis;
+        }
+        $id = (int) Database::insert('route_stops', $row);
+        self::flush();
+
+        Logger::audit('route_stop.add', 'routes', (string) $rid, null,
+            ['id' => $id, 'stop' => $name, 'type' => $type, 'time' => $row['stop_time'], 'fare' => $fare,
+             'lat' => $lat, 'lng' => $lng, 'landmark' => $row['landmark'], 'by' => $adminId],
+            'Added ' . $type . ' stop: ' . $name . ' (' . (string) $route['route_code'] . ')');
+
+        return $id;
+    }
+
+    /** True once route_stops.visible_to exists (who sees a stop in SmartBook). */
+    private static function hasVisibleTo(): bool
+    {
+        if (self::$hasVisibleTo === null) {
+            try {
+                self::$hasVisibleTo = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'route_stops' AND COLUMN_NAME = 'visible_to'",
+                    [], 0
+                ) === 1;
+            } catch (Throwable $e) {
+                self::$hasVisibleTo = false;
+            }
+        }
+
+        return self::$hasVisibleTo;
     }
 
     /** Convenience wrapper — just the yes/no. */
@@ -1268,12 +1515,18 @@ final class Boarding
      * press. A stop without coordinates is skipped and reported, never
      * guessed; the first stop must have a pin (every km counts from it).
      *
-     * @param callable|null $engine  fn(list<array{lat:float,lon:float}>): ?list<float> (leg km) - test seam
-     * @return array{ok: bool, error: string, rows: array<int, float>, names: array<string, float>, skipped: list<string>, totalKm: ?float, calls: int}
+     * 16 Nov 2026 (P4-3c): a leg may also come back as {km, min} — the
+     * engine's own driving time — summed into totalMin (null when the engine
+     * gives lengths only). Admin -> Routes shows it as a suggestion only.
+     *
+     * @param callable|null $engine  fn(list<array{lat:float,lon:float}>): ?list<float|array{km: float, min: ?float}> (leg km) - test seam
+     * @return array{ok: bool, error: string, rows: array<int, float>, names: array<string, float>, skipped: list<string>, totalKm: ?float, totalMin: ?int, calls: int}
      */
     public static function measureRoadKm(int $routeId, ?callable $engine = null): array
     {
-        $res   = ['ok' => false, 'error' => '', 'rows' => [], 'names' => [], 'skipped' => [], 'totalKm' => null, 'calls' => 0];
+        $res   = ['ok' => false, 'error' => '', 'rows' => [], 'names' => [], 'skipped' => [], 'totalKm' => null, 'totalMin' => null, 'calls' => 0];
+        $mins  = 0.0;
+        $timed = true;
         $route = Database::fetch('SELECT id, dep_time FROM routes WHERE id = :r', ['r' => $routeId]);
         if ($route === null) {
             $res['error'] = 'Route not found.';
@@ -1329,6 +1582,16 @@ final class Boarding
                 return $res;
             }
             foreach (array_values($legs) as $j => $km) {
+                if (is_array($km)) {
+                    if (isset($km['min']) && is_numeric($km['min'])) {
+                        $mins += max(0.0, (float) $km['min']);
+                    } else {
+                        $timed = false;
+                    }
+                    $km = $km['km'] ?? 0;
+                } else {
+                    $timed = false;
+                }
                 $cum[$i + $j + 1] = $cum[$i + $j] + max(0.0, (float) $km);
             }
             $i += count($locs) - 1;
@@ -1342,8 +1605,9 @@ final class Boarding
                 $res['names'][$line[$n]['name']] = $km;
             }
         }
-        $res['totalKm'] = round((float) end($cum), 1);
-        $res['ok']      = true;
+        $res['totalKm']  = round((float) end($cum), 1);
+        $res['totalMin'] = $timed ? (int) round($mins) : null;
+        $res['ok']       = true;
 
         return $res;
     }
@@ -1374,7 +1638,11 @@ final class Boarding
                 return null;
             }
 
-            return array_map(static fn(mixed $l): float => is_array($l) ? (float) ($l['summary']['length'] ?? 0) : 0.0, $legs);
+            // leg km + the engine's driving minutes (summary.time is seconds)
+            return array_map(static fn(mixed $l): array => [
+                'km'  => is_array($l) ? (float) ($l['summary']['length'] ?? 0) : 0.0,
+                'min' => is_array($l) && isset($l['summary']['time']) ? (float) $l['summary']['time'] / 60 : null,
+            ], $legs);
         };
     }
 }

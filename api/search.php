@@ -461,6 +461,7 @@ try {
        is untouched — it keeps every pickup and never rolls forward. */
     $nextAvailable = false;
     $effectiveDate = $date;
+    $nextRouteId   = 0;   // P4-2f: the bus the board rolled to, for the stop's own time
     if (!$agentMode) {
         $fromOpenToday = false;
         foreach ($routes as $route) {
@@ -472,9 +473,10 @@ try {
                 $probe = addDaysISO($probe, 1);
                 if ($probe > $window['to']) { break; }
                 $anyOpen = false;
+                $openId  = 0;
                 foreach ($routes as $route) {
                     if (Boarding::routeSellable((int) $route['id'], $probe)
-                        && Boarding::isOpen((int) $route['id'], $probe, $from)) { $anyOpen = true; break; }
+                        && Boarding::isOpen((int) $route['id'], $probe, $from)) { $anyOpen = true; $openId = (int) $route['id']; break; }
                 }
                 if ($anyOpen) {
                     $rolled = $buildResults($probe);
@@ -482,10 +484,25 @@ try {
                         $results       = $rolled;
                         $nextAvailable = true;
                         $effectiveDate = $probe;
+                        /* Prefer a bus that is really on the rolled board (an
+                           extra/rotation route can be blocked that day). */
+                        $onBoard = array_map(static fn(array $r): int => (int) $r['routeId'], $rolled);
+                        $nextRouteId = in_array($openId, $onBoard, true) ? $openId : (int) ($onBoard[0] ?? $openId);
                     }
                     break;
                 }
             }
+        }
+    }
+
+    /* P4-2f (16 Nov 2026): the searched stop's own pickup time on the bus the board
+       rolled to ('HH:MM'), so the banner stops saying 1:00 PM for Rupaidiha (18:00)
+       and every later Gujarat pickup. '' when nothing rolled or no time is known. */
+    $nextTime = '';
+    if ($nextAvailable && $nextRouteId > 0) {
+        $tm = Boarding::timeForStop($nextRouteId, $from);
+        if ($tm !== null && preg_match('/^\d{2}:\d{2}/', $tm) === 1) {
+            $nextTime = substr($tm, 0, 5);
         }
     }
 
@@ -494,6 +511,7 @@ try {
         'requestedDate'     => $date,
         'nextAvailable'     => $nextAvailable,
         'nextAvailableStop' => $nextAvailable ? $from : '',
+        'nextAvailableTime' => $nextTime,
         'from'              => $from,
         'to'                => $to,
         'count'             => count($results),

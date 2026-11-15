@@ -28,12 +28,13 @@ final class HomeBoard
     public const HERO = 8;
 
     /** The order for field people (agent, counter, scanner, crew, official). */
-    private const FIELD = ['sell', 'counter', 'mytix', 'cut', 'mychalani', 'chalani', 'seat', 'wallet', 'desk', 'id', 'shift',
+    // 16 Nov 2026 (v2.0): 'ai' (AI सहायक, admin/ai-copilot.php) after the shift tile
+    private const FIELD = ['sell', 'counter', 'mytix', 'cut', 'mychalani', 'chalani', 'seat', 'wallet', 'desk', 'id', 'shift', 'ai',
                            'scan', 'bus', 'pay', 'support', 'register', 'statement', 'cashbook', 'reschedule', 'map', 'refunds', 'papers'];
 
     /** The order for the office (anyone holding dashboard.view). */
     // 31 Oct 2026 (owner: "admin le form bharna milnu paryo"): "Add a member" (the office form) up front, next to the team
-    private const OFFICE = ['sell', 'counter', 'approvals', 'pay', 'team', 'addmember', 'reports', 'admin', 'support', 'refunds', 'cut',
+    private const OFFICE = ['sell', 'counter', 'approvals', 'pay', 'team', 'addmember', 'reports', 'admin', 'support', 'ai', 'refunds', 'cut',
                             'register', 'chalani', 'seat', 'scan', 'map', 'statement', 'cashbook', 'reschedule', 'shift', 'desk',
                             'id', 'papers', 'bus', 'alltools'];
 
@@ -92,6 +93,7 @@ final class HomeBoard
                             $badge((int) ($counts['applications'] ?? 0) + (int) ($counts['withdrawals'] ?? 0) + (int) ($counts['deposits'] ?? 0))],
             'team'      => ['👥', 'टिम र ID कार्ड', 'Team & ID cards', '/admin/team.php', Auth::can('staff.manage') || Auth::can('commissions.view')],
             'support'   => ['💬', 'ग्राहक सेवा', 'Support inbox', '/admin/support-inbox.php', Auth::can('support.view')],
+            'ai'        => ['🤖', 'AI सहायक', 'AI Sahayak', '/admin/ai-copilot.php', $bv],   // ai-copilot.php boots with bookings.view
             'refunds'   => ['↩️', 'रिफन्ड', 'Refunds', '/admin/refunds.php', Auth::can('refunds.view')],
             'reports'   => ['📊', 'रिपोर्ट', 'Reports', '/admin/analytics.php', $office],
             'admin'     => ['🏢', 'एडमिन प्यानल', 'Admin panel', '/admin/index.php', $office],

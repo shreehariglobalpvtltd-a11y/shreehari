@@ -367,6 +367,57 @@ try {
     check('  and NOT the ticket the passenger bought for themselves', !in_array($pnr, $flat1, true), implode(',', $flat1));
 
     /* ================================================================
+     *  7b. Named berths — "book A3 and A4" (P8-6b, 16 Nov 2026)
+     * ================================================================ */
+    echo "\n== named berths through plan_ticket ==\n";
+    $l1 = Seats::displayLabel('L1', 'sleeper', 'sharing');
+    [$okB, $badB] = AiTools::cleanBerths([strtolower($l1), 'l-4', 'zz9', ' ']);
+    check('berths are cleaned: the printed "' . $l1 . '" and the stored "L4" both read; junk is reported, never guessed',
+        $okB === ['L1', 'L4'] && $badB === ['ZZ9'], json_encode([$okB, $badB]));
+    check('  plan_ticket offers an optional berths list',
+        str_contains($src('includes/aitools.php'), "'berths'    => ['array'"));
+
+    $probe = QuickTicket::plan(['seats' => 1, 'date' => $D2, 'direction' => 'toNepal', 'gender' => 'Male']);
+    $bCoach = (string) ($probe['coach'] ?? 'sleeper');
+    $bAv    = Seats::availabilityForSchedule((int) $probe['scheduleId'], 'sharing');
+    $bTaken = array_map('strval', array_merge($bAv['booked'] ?? [], $bAv['locked'] ?? []));
+    $bFree  = array_values(array_diff(array_map('strval', $bAv['available'] ?? []), array_map('strval', $bAv['female'] ?? [])));
+    $byUnitB = [];
+    foreach ($bFree as $s) { $byUnitB[Seats::unitKey($s)][] = $s; }
+    $pair = [];
+    foreach (array_reverse($byUnitB, true) as $unit => $seats) {     // from the back: never what the engine picks by itself
+        if (count($seats) >= 2 && array_intersect(Seats::unitSeats((string) $unit, $bCoach), $bTaken) === []) {
+            $pair = array_slice($seats, 0, 2);
+            break;
+        }
+    }
+    if ($pair === []) {
+        echo "  SKIP  no empty two-berth cabin left on $D2\n";
+    } else {
+        $lbls = array_map(static fn(string $s): string => Seats::displayLabel($s, $bCoach, 'sharing'), $pair);
+        $qb = AiTools::run('plan_ticket', ['seats' => 2, 'date' => $D2, 'direction' => 'toNepal', 'gender' => 'Male',
+            'berths' => [$lbls[0], $lbls[1], 'ZZ9']], $ctxFor(WA_AGENT, 6));
+        check('plan_ticket honours the named berths', $qb['ok'] === true && ($qb['data']['berthsHonoured'] ?? []) === $lbls,
+            json_encode([$lbls, $qb['data']['berthsHonoured'] ?? null, $qb['data']['seatNumbers'] ?? null]));
+        check('  they are the berths quoted', count(array_intersect($lbls, (array) ($qb['data']['seatNumbers'] ?? []))) === 2);
+        check('  the read-back names what was honoured', str_contains((string) $qb['say'], 'GOT: ' . implode(', ', $lbls)), (string) $qb['say']);
+        check('  a label that is no berth is reported, not guessed', ($qb['data']['berthsUnknown'] ?? []) === ['ZZ9'] && str_contains((string) $qb['say'], 'not a berth'));
+        $sb = AiTools::run('staff_sell', [
+            'name' => 'Ramesh Rai', 'phone' => WA_OTHER, 'gender' => 'Male', 'pay' => 'cash', 'confirm' => true,
+            'names' => ['Ramesh Rai', 'Suresh Rai'],
+        ], $ctxFor(WA_AGENT, 7));
+        $sbDetail = !empty($sb['data']['pnr']) ? BookingService::detail((string) $sb['data']['pnr']) : null;
+        check('  the sale lands on exactly the berths read out', $sbDetail !== null
+            && count(array_intersect($pair, array_map('strval', (array) $sbDetail['seats']))) === 2,
+            json_encode([$pair, $sbDetail['seats'] ?? ($sb['say'] ?? '')]));
+        $qTaken = AiTools::run('plan_ticket', ['seats' => 1, 'date' => $D2, 'direction' => 'toNepal', 'gender' => 'Male',
+            'berths' => [$lbls[0]]], $ctxFor(WA_AGENT, 8));
+        check('a berth already sold is NOT given, and the read-back says so', $qTaken['ok'] === true
+            && ($qTaken['data']['berthsNotGiven'] ?? []) === [$lbls[0]] && str_contains((string) $qTaken['say'], 'NOT given'),
+            (string) $qTaken['say']);
+    }
+
+    /* ================================================================
      *  8. The office
      * ================================================================ */
     echo "\n== the office ==\n";

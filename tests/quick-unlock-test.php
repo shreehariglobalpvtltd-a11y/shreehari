@@ -71,6 +71,12 @@ check('setting a trivial PIN throws', $threw);
 /* ---- match ---- */
 $m = QuickUnlock::match([$a], 'pin', '4826');
 check('right PIN opens the account', $m['ok'] && (int) $m['admin']['id'] === $a);
+/* 16 Nov 2026: a PIN set before pin_len existed learns its length on a correct unlock */
+if (QuickUnlock::pinLenReady()) {
+    Database::query('UPDATE admins SET pin_len = NULL WHERE id = :i', ['i' => $a]);
+    check('older PIN: no length on file (6 boxes + OK)', QuickUnlock::pinLen($a) === 0);
+    check('a correct unlock stores its length (4 boxes, opens by itself)', QuickUnlock::match([$a], 'pin', '4826')['ok'] && QuickUnlock::pinLen($a) === 4);
+}
 $m = QuickUnlock::match([$a], 'pattern', '0-4-8-5');
 check('right pattern opens the account', $m['ok'] && (int) $m['admin']['id'] === $a);
 check('the same pattern drawn backwards does not', !QuickUnlock::match([$a], 'pattern', '5-8-4-0')['ok']);

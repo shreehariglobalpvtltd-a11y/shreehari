@@ -408,3 +408,18 @@ a.sg-stat:hover { border-color: var(--royal); }
 :root:root[data-theme="dark"][data-accent="sat"]{--royal:#D5AA9B;--royal-strong:#E9D2CB;--royal-soft:#361C1C;--royal-tint:#22171E;--on-royal:#0B1220;--focus:#E9D2CB;--md-primary:#D5AA9B;--md-on-primary:#0B1220;--md-primary-container:#361C1C;--md-on-primary-container:#E9D2CB}
 :root:root[data-theme="light"][data-accent="sun"]{--royal:#BE123C;--royal-strong:#940E2F;--royal-soft:#F5D9E0;--royal-tint:#FAEEF1;--on-royal:#FFFFFF;--focus:#BE123C;--md-primary:#BE123C;--md-on-primary:#FFFFFF;--md-primary-container:#F5D9E0;--md-on-primary-container:#940E2F}
 :root:root[data-theme="dark"][data-accent="sun"]{--royal:#E49BAD;--royal-strong:#F1CBD4;--royal-soft:#411228;--royal-tint:#281224;--on-royal:#0B1220;--focus:#F1CBD4;--md-primary:#E49BAD;--md-on-primary:#0B1220;--md-primary-container:#411228;--md-on-primary-container:#F1CBD4}
+
+/* ---------- Accent cross-fade (16 Nov 2026, P5-5) ----------
+   When the accent changes after the page is up (midnight in Asia/Kolkata, coming back next
+   morning, the Weekly / Fixed choice) the inline script in app.template.html sets
+   html.accent-fade for 1.1 s. Only colour properties transition - keyframe animations keep
+   running, nothing moves or fades out - and never under the in-app "Reduced" motion
+   (html[data-motion="reduced"]) or the phone's own reduce-motion setting. */
+@media (prefers-reduced-motion: no-preference) {
+  html.accent-fade:not([data-motion="reduced"]),
+  html.accent-fade:not([data-motion="reduced"]) *,
+  html.accent-fade:not([data-motion="reduced"]) *::before,
+  html.accent-fade:not([data-motion="reduced"]) *::after {
+    transition: background-color 1s ease, color 1s ease, border-color 1s ease, outline-color 1s ease, fill 1s ease, stroke 1s ease !important;
+  }
+}

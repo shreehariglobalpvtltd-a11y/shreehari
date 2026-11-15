@@ -325,6 +325,18 @@ if (Auth::oneDoorOn()) {
     $cAid    = (int) ($cs['aid'] ?? 0);
     $cKinds  = CodeLogin::kinds($cAid);
     $cLock   = $step === 'c_unlock' && !empty($cs['dev']);   // remembered phone: Android-style lock look
+    /* 16 Nov 2026 (P1-1d): a PIN / pattern lock this browser was told about ticks down on the screen,
+       the keypad and pattern switched off until it ends — after a reload too. */
+    $cUntil  = $step === 'c_unlock' ? CodeLogin::lockUntil() : 0;
+    $cHeld   = false;
+    if ($cUntil > 0 && $error === '') {
+        $error = '🔒 धेरै पटक गलत भयो — पर्खनुहोस् · Too many wrong tries, please wait';
+        $cHeld = true;
+    }
+    $fmtLeft = static function (int $s): string {
+        $s = max(0, $s);
+        return $s >= 3600 ? sprintf('%d:%02d:%02d', intdiv($s, 3600), intdiv($s % 3600, 60), $s % 60) : sprintf('%02d:%02d', intdiv($s, 60), $s % 60);
+    };
     $cWa     = $step === 'c_prove' && is_array($cs['wa'] ?? null) ? (array) $cs['wa']
              : ($step === 'c_walogin' && is_array($cs['wlhi'] ?? null) ? (array) $cs['wlhi'] : null);   // 15 Nov 2026: hi + YES opens it too
     if ($cWa !== null) {
@@ -340,15 +352,21 @@ if (Auth::oneDoorOn()) {
     }
     ?><!doctype html>
 <html lang="ne"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>लगइन · Sign in · <?= $h($company) ?></title>
 <meta name="robots" content="noindex,nofollow">
 <meta name="csrf-token" content="<?= $h($csrfTok) ?>">
-<?= Brand::iconLinks() ?>
+<?php /* 16 Nov 2026 (P2-7e): the staff app's own icon + name on an iPhone home screen (Brand::iconLinks()
+         carries the customer app's apple-touch-icon, so the two apps looked the same). */
+      $mgmtApple = is_file(dirname(__DIR__) . '/assets/img/mgmt-apple-180.png') ? 'assets/img/mgmt-apple-180.png' : 'assets/img/mgmt-192.png'; ?>
+<link rel="icon" type="image/png" sizes="32x32" href="<?= $h(Brand::asset('assets/img/favicon-32.png')) ?>">
+<link rel="icon" type="image/svg+xml" href="<?= $h(Brand::asset('icon-shg.svg')) ?>">
+<link rel="apple-touch-icon" sizes="180x180" href="<?= $h(Brand::asset($mgmtApple)) ?>">
 <style>
 *{box-sizing:border-box}
 :root{--ink:#16233C;--mut:#5C6B85;--line:#C9D3E3;--royal:#0054A8;--wa:#128C4A;--card:#fff;--well:#F6F8FC}
 body{margin:0;min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:16px;
+  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
   font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif;color:var(--ink);
   background:#0A2A8F;background-image:radial-gradient(90% 60% at 20% 0%,#1F4FD8 0%,rgba(31,79,216,0) 60%),linear-gradient(160deg,#0A2A8F 0%,#1036B4 60%,#1846CC 100%);background-attachment:fixed;border-top:3px solid #F07800}
 .box{background:var(--card);width:100%;max-width:400px;padding:26px 22px 20px;border-radius:22px;border:1px solid #D5DEEB;
@@ -379,11 +397,17 @@ input::placeholder{font-size:14px;opacity:.7}
 .or{display:flex;align-items:center;gap:10px;margin:16px 0 0;font-size:12px;color:#8a94a6}
 .or::before,.or::after{content:'';flex:1;border-top:1px solid #E1E6EF}
 .who{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 6px;font-weight:800;font-size:15px}
-.who a{font-size:13px;font-weight:700}
+.who a{font-size:13px;font-weight:700;display:inline-flex;align-items:center;min-height:48px;padding:0 8px}
 .msg{padding:10px 13px;border-radius:10px;font-size:13.5px;font-weight:650;margin:10px 0 0;line-height:1.45}
 .msg.bad{background:#F7DCDC;color:#8A1F1F}.msg.ok{background:#DEF4E4;color:#14602E}.msg.warn{background:#FFF4E0;color:#7A4A00}
 .note{font-size:12.5px;color:var(--mut);margin:10px 0 0;line-height:1.45;text-align:center}
-.links{display:flex;flex-direction:column;align-items:center;gap:9px;margin-top:18px;font-size:13.5px}
+.links{display:flex;flex-direction:column;align-items:center;gap:0;margin-top:10px;font-size:13.5px}
+/* 16 Nov 2026 (P1-4e): every text link / small button on the door is a 48px touch target */
+.links a,.links button{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 10px;text-align:center}
+.links.cl-row{flex-direction:row;flex-wrap:wrap;justify-content:center;column-gap:4px}
+.note a[href^="tel:"]{display:inline-block;padding:15px 8px;margin:-15px -8px}
+.note:has(a[href^="tel:"]){margin-top:16px}
+body .qk-tabs button{min-height:48px}
 a{color:var(--royal);font-weight:700;text-decoration:none}
 .qr{display:none;text-align:center;margin-top:12px}.qr img{width:150px;height:150px;image-rendering:pixelated;border-radius:8px;border:1px solid #E1E6EF}
 @media (min-width:760px) and (hover:hover){.qr{display:block}}
@@ -411,7 +435,7 @@ body.lock .qk-pad{background:transparent;width:264px;height:264px}
 body.lock .qk-dot{background:#5E7399;width:16px;height:16px;margin:-8px 0 0 -8px}
 body.lock .qk-dot.on{background:#F07C1F;transform:scale(1.5)}
 body.lock .qk-pad svg{color:#F07C1F}
-body.lock .qk-tabs button{background:transparent;border-color:#2B3F63;color:#C9D6EA;min-height:38px;border-radius:99px;font-size:13px}
+body.lock .qk-tabs button{background:transparent;border-color:#2B3F63;color:#C9D6EA;min-height:48px;border-radius:99px;font-size:13px}
 body.lock .qk-tabs button.on{background:#F07C1F;border-color:#F07C1F;color:#fff}
 body.lock .links a{color:#9ABFFF;font-weight:600;font-size:13px}
 body.lock .links~.links{display:none}body.lock .links a[href*="forget"]{color:#FF9AA5 !important;font-size:12px}
@@ -422,7 +446,7 @@ body.lock .lk-otp form{margin:0}
 body.lock .lk-otp .btn{width:100%}
 body.lock .lk-otp .btn.alt{background:rgba(255,255,255,.07);color:#E8F0FB;border:1px solid #2B3F63}
 body.lock .lk-forgot{margin:0}
-body.lock .lk-forgot button{background:none;border:0;padding:4px 0;color:#9ABFFF;font:inherit;font-weight:600;font-size:13px;cursor:pointer;text-align:center}
+body.lock .lk-forgot button{background:none;border:0;padding:4px 10px;min-height:48px;color:#9ABFFF;font:inherit;font-weight:600;font-size:13px;cursor:pointer;text-align:center}
 body.lock .lk-pw{display:grid;gap:10px;margin-top:14px}
 body.lock .lk-pw[hidden]{display:none}
 body.lock .lk-pw label{color:#9FB2D0;font-size:13px}
@@ -447,18 +471,19 @@ body:not(.lock) .lk-keys button.s{background:transparent;border-color:transparen
 body:not(.lock) .lk-keys button.go{background:var(--royal);color:#fff;border-color:var(--royal)}
 :root[data-theme="dark"] body:not(.lock) .lk-keys button{background:#1C2E4D;color:#E8F0FB;border-color:#3A5178}
 .cl-more{margin-top:16px;border-top:1px solid #E1E6EF;padding-top:10px}
-.cl-more summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--mut);text-align:center;list-style:none}
+.cl-more summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--mut);text-align:center;list-style:none;min-height:48px;display:flex;align-items:center;justify-content:center}
 .cl-more summary::-webkit-details-marker{display:none}
 .cl-steps{margin:10px 0 12px;padding:10px 12px 10px 30px;border-radius:12px;background:#F6F8FC;border:1px solid #E1E6EF;font-size:13.5px;line-height:1.5;color:#22314F}
 .cl-steps li{margin:2px 0}
+.cl-steps a.cl-tel{display:inline-block;white-space:nowrap;padding:17px 4px;margin:-17px -4px}
 body.lock .cl-steps{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.25);color:#fff}
 .cl-small{font-size:12.5px;font-weight:600;opacity:.85}
-.cl-forgot{margin:0}.cl-forgot button{background:none;border:0;padding:6px 0;color:var(--royal);font:inherit;font-weight:600;font-size:13px;cursor:pointer}
+.cl-forgot{margin:0}.cl-forgot button{background:none;border:0;padding:6px 10px;min-height:48px;color:var(--royal);font:inherit;font-weight:600;font-size:13px;cursor:pointer}
 body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
 .who span{word-break:break-all}
 /* 15 Nov 2026 — calm, secure motion on the code-first door */
 .cl-len{display:flex;gap:8px;justify-content:center;margin:4px 0 0}.cl-len[hidden]{display:none}
-.cl-len button{min-height:34px;padding:0 14px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--mut);font:700 13px/1 inherit;cursor:pointer}
+.cl-len button{min-height:48px;padding:0 16px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--mut);font:700 13px/1 inherit;cursor:pointer}
 .cl-len button.on{background:var(--royal);border-color:var(--royal);color:#fff}
 body.cf .box{animation:cfIn .5s cubic-bezier(.2,.8,.2,1) both}
 body.cf .logo{position:relative}
@@ -478,7 +503,7 @@ body.cf.shake .lk-dots,body.cf.shake .qk{animation:lkshake .35s}
 .who-av{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,#2f6bff,#0a2a8f);color:#fff;font-size:24px;font-weight:800;box-shadow:0 6px 16px -6px rgba(10,42,143,.6);margin-bottom:4px}
 .who-nm{font-size:19px;font-weight:800;line-height:1.2;word-break:break-word}
 .who-cd{font-size:12.5px;font-weight:700;opacity:.65;letter-spacing:.04em}
-.who-card a{font-size:12.5px;font-weight:700;margin-top:2px}
+.who-card a{font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;min-height:48px;padding:0 12px;margin:-4px 0 -6px}
 body.lock .who-nm{color:#fff}body.lock .who-cd{color:#C9D6EE}body.lock .who-card a{color:#9ABFFF}
 @media (prefers-reduced-motion:reduce){.who-card{animation:none}}
 /* 15 Nov 2026: the other ways in, under the keypad (WhatsApp code / password) */
@@ -503,7 +528,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
   body.cu .lk-clock{font-size:42px;margin-top:4px}body.cu .lk-date{margin-bottom:8px}
   body.cu .who-av{width:40px;height:40px;font-size:18px}body.cu .who-nm{font-size:17px}
   body.cu .lk-keys{grid-template-columns:repeat(3,64px);gap:10px 22px}body.cu .lk-keys button{width:64px;height:64px;font-size:24px}
-  body.cu .lk-dots{margin:10px 0 10px}body.cu .cl-alt{margin-top:10px}body.cu .cl-alt-b{min-height:46px}
+  body.cu .lk-dots{margin:10px 0 10px}body.cu .cl-alt{margin-top:10px}body.cu .cl-alt-b{min-height:48px}
 }
 @media (min-width:900px) and (min-height:500px){
   body.cu{align-items:center}
@@ -522,15 +547,34 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
   body.cu .logo img{height:28px}body.cu .who-av{display:none}body.cu .lk-date{display:none}
   body.cu .lk-clock{font-size:34px;margin:0 0 4px}body.cu .who-card{margin-bottom:4px}body.cu .who-nm{font-size:16px}
   body.cu .lk-keys{grid-template-columns:repeat(3,58px);gap:7px 20px}body.cu .lk-keys button{width:58px;height:58px;font-size:22px}
-  body.cu .lk-dots{margin:6px 0 8px}body.cu .qk-tabs button{min-height:36px}body.cu .cl-alt{margin-top:8px}body.cu .cl-alt-b{min-height:42px;font-size:14px}
+  body.cu .lk-dots{margin:6px 0 8px}body.cu .qk-tabs button{min-height:48px}body.cu .cl-alt{margin-top:8px}body.cu .cl-alt-b{min-height:48px;font-size:14px}
   body.cu .box{padding-top:4px;padding-bottom:4px}
+  body.cu .msg{font-size:12.5px;padding:6px 10px;margin:4px 0 0;line-height:1.35}
+  body.cu .box:has(> .msg) .lk-keys{gap:5px 20px}body.cu .box:has(> .msg) .lk-keys button{width:54px;height:54px}body.cu .box:has(> .msg) .lk-dots{margin:4px 0 6px}
+  /* 16 Nov 2026 (P1-4d): first-time setup / forgot PIN on a short phone — the same small header */
+  body.cs .logo img{height:28px}body.cs .who-av{display:none}body.cs .box{padding-top:10px;padding-bottom:8px}
+  body.cs h1{font-size:15px;margin:4px 0 0}body.cs-f h1{display:none}body.cs .who-nm{font-size:16px}body.cs .who-card{margin-bottom:0}
+  body.cs .sub{font-size:12.5px;margin-bottom:6px}body.cs .cl-steps{font-size:12px;line-height:1.3;margin:4px 0 2px;padding:6px 10px 6px 24px}
+  body.cs .btn{margin-top:8px;padding:6px 12px;font-size:14px;min-height:48px}body.cs label{margin-top:8px}body.cs .cl-more{margin-top:8px;padding-top:0}
+  body.cs .links{margin-top:2px}body.cs .note:has(a[href^="tel:"]){margin-top:12px}
+  body.cs .msg{font-size:12.5px;padding:6px 10px;margin:4px 0 0;line-height:1.35}body.cs .note{font-size:12px;margin-top:4px}
+  body.cs .qk-tabs{margin:6px 0 4px}body.cs .lk-dots{margin:8px 0 8px}
+  body.cs .lk-keys{grid-template-columns:repeat(3,58px);gap:7px 20px}body.cs .lk-keys button{width:58px;height:58px;font-size:22px}
 }
+/* 16 Nov 2026 (P1-1d): a lock ticks down; the keypad and pattern wait until it ends */
+.cl-until{display:inline-block;margin-left:4px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.qk.cl-locked .lk-keys,.qk.cl-locked .qk-pad,.qk.cl-locked .qk-tabs,.qk.cl-locked .lk-dots{opacity:.38;pointer-events:none;filter:grayscale(.6)}
 @media (min-width:900px) and (max-height:700px){body.cu .lk-keys{gap:8px 22px}body.cu .lk-keys button{width:60px;height:60px;font-size:22px}body.cu .lk-clock{font-size:60px}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('shg_admin_theme');if(t==='dark'||t==='amoled')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 <link rel="manifest" href="/admin/app-manifest.php"><meta name="theme-color" content="#0B1220">
+<?php /* 16 Nov 2026 (P1-4c): opened from the home screen it runs full screen like an app (older iOS reads
+         these, newer ones the manifest). black-translucent + viewport-fit=cover: the body padding above
+         keeps the card clear of the notch / status bar. */ ?>
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="S Hari Manage">
 </head>
-<body class="<?= trim((($remembered ?? null) !== null || $cLock ? 'lock ' : '') . (in_array($step, CodeLogin::STEPS, true) ? 'cf' : '') . ($step === 'c_unlock' || ($step === 'start' && ($remembered ?? null) !== null) ? ' cu' : '')) ?>">
+<body class="<?= trim((($remembered ?? null) !== null || $cLock ? 'lock ' : '') . (in_array($step, CodeLogin::STEPS, true) ? 'cf' : '') . ($step === 'c_unlock' || ($step === 'start' && ($remembered ?? null) !== null) ? ' cu' : '') . (in_array($step, ['c_setup', 'c_forgot', 'c_create', 'c_confirm'], true) ? ' cs' . ($step === 'c_forgot' ? ' cs-f' : '') : '')) ?>">
 <main class="box" data-door="one">
   <div class="logo"><img src="<?= $h(Brand::markUrl(68)) ?>" alt="<?= $h($company) ?>" width="112" height="58"></div>
   <h1><?= $h($title) ?></h1>
@@ -538,7 +582,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
     <p class="sub">एजेन्ट, काउन्टर, स्टाफ, अफिस — सबैको एउटै ढोका · One door for agents, counters, staff and office</p>
     <div class="ceo"><img src="/assets/img/ceo.jpg" alt="" onerror="this.style.display='none'"><div><b><?= $h($ceoName) ?></b><span>👑 Founder &amp; CEO · <?= $h($company) ?></span></div></div>
   <?php endif; ?>
-  <?php if ($error !== ''): ?><div class="msg bad" role="alert"><?= $h($error) ?></div><?php endif; ?>
+  <?php if ($error !== ''): ?><div class="msg bad<?= $cUntil > 0 ? ' cl-wait' . ($cHeld ? ' cl-held' : '') : '' ?>" role="alert"><?= $h($error) ?><?php if ($cUntil > 0): ?> <b class="cl-until" role="timer" data-left="<?= max(0, $cUntil - time()) ?>">⏳ <span><?= $h($fmtLeft($cUntil - time())) ?></span></b><?php endif; ?></div><?php endif; ?>
   <?php if ($notice !== ''): ?><div class="msg ok" role="status"><?= $h($notice) ?></div><?php endif; ?>
 
   <?php
@@ -594,7 +638,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
   <?php elseif ($step === 'c_unlock'): $cPat = $cKinds['pattern'] && !$cKinds['pin']; ?>
   <?php if ($cLock): ?><div class="lk-clock" id="lkClock" aria-hidden="true">--:--</div><div class="lk-date" id="lkDate"></div><?php endif; ?>
   <?= $codeLine($cLock) ?>
-  <div class="qk" data-qk>
+  <div class="qk<?= $cUntil > 0 ? ' cl-locked' : '' ?>" data-qk>
     <div class="qk-tabs" role="tablist">
       <button type="button"<?= $cPat ? '' : ' class="on"' ?> data-qk-tab="pin">🔢 PIN</button>
       <button type="button"<?= $cPat ? ' class="on"' : '' ?> data-qk-tab="pattern">◯ Pattern</button>
@@ -656,14 +700,16 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
     <input id="seca" name="sec_a" type="<?= str_contains($fq, 'जन्म मिति') ? 'date' : 'text' ?>" maxlength="80" required autofocus autocomplete="off" style="font-size:19px;text-align:center">
     <button class="btn" type="submit">नयाँ PIN राख्ने · Set a new PIN →</button>
   </form>
-  <div class="or">वा कार्यालयबाट · or the office</div>
+  <?php /* 16 Nov 2026 (P1-4d): with a security question the office route is the second way — closed,
+           so the whole screen fits a 360 x 640 phone. */ ?>
+  <details class="cl-more cl-office"<?= in_array((string) ($_POST['mode'] ?? ''), ['c_open_check', 'c_req', 'c_act'], true) ? ' open' : '' ?>><summary>🏢 उत्तर थाहा छैन? कार्यालयबाट · No answer? Ask the office</summary>
   <?php elseif ($step === 'c_forgot'): ?>
-  <p class="sub" style="display:block">यो खातामा सुरक्षा प्रश्न छैन — कार्यालयले खोलिदिएपछि नयाँ PIN / pattern · No security question on this account: the office opens it, then you choose a new PIN / pattern.</p>
-  <?php endif; ?>
+  <p class="sub" style="display:block">🔑 PIN / pattern बिर्सनुभयो? सुरक्षा प्रश्न छैन — कार्यालयले खोलिदिन्छ · Forgot it? No security question: the office opens it.</p>
+  <?php endif; $clStepsShown = $fq === ''; /* the office phone sits in step 1 then (no separate help line) */ ?>
   <ol class="cl-steps">
-    <li>📨 तलको बटनले कार्यालयलाई भन्नुहोस् (वा फोन गर्नुहोस्) · Ask the office below (or call)</li>
+    <li>📨 तलको बटनले कार्यालयलाई भन्नुहोस्, वा फोन <a class="cl-tel" href="tel:+<?= $h($helpTel) ?>"><?= $h($helpPhone) ?></a> · Ask the office below, or call</li>
     <li>🔓 कार्यालयले "खोलिदिने" थिच्छ — १ घण्टा · The office taps "Open" (1 hour)</li>
-    <li>✅ यहाँ "खोलियो — अगाडि" थिच्नुहोस्, अनि आफ्नै PIN / pattern · Tap "Opened — continue", then choose your own PIN / pattern</li>
+    <li>✅ "खोलियो — अगाडि" थिचेर आफ्नै PIN / pattern · Tap "Opened", then your own PIN / pattern</li>
   </ol>
   <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="c_open_check">
     <button class="btn<?= $fq !== '' ? ' alt' : '' ?>" type="submit" id="openChk">✅ कार्यालयले खोलियो — अगाडि · The office opened it — continue</button></form>
@@ -674,7 +720,8 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
     <form method="post" action="/admin/login.php" autocomplete="off"><?= $hid() ?><input type="hidden" name="mode" value="c_act">
       <input id="act" name="act" maxlength="12" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" style="text-align:center;letter-spacing:.2em" aria-label="Activation code">
       <button class="btn alt" type="submit">कोडले खोल्ने · Use the code</button></form></details>
-  <div class="links"><a href="/admin/login.php?classic=1&amp;other=1">🔑 पासवर्डले · Sign in with password</a> · <a href="<?= $h($odUrl(['step' => 'c_code'])) ?>">← फिर्ता · Back</a></div>
+  <?php if ($fq !== ''): ?></details><?php endif; ?>
+  <div class="links cl-row"><a href="/admin/login.php?classic=1&amp;other=1">🔑 पासवर्डले · Password</a><a href="<?= $h($odUrl(['step' => 'c_code'])) ?>">← फिर्ता · Back</a></div>
 
   <?php elseif ($step === 'c_setup' || $step === 'c_forgot'): $askDob = CodeLogin::askDob(); $fq = $step === 'c_forgot' ? CodeLogin::forgotQuestion() : ''; ?>
   <?= $codeLine() ?>
@@ -985,7 +1032,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
     <a href="<?= $h(rtrim(APP_URL, '/')) ?>/guide/?v=agent">▶ एजेन्ट गाइड भिडियो — लगइन, टिकट, चलानी, पैसा निकाल्ने · Agent guide video</a>
   </div>
   <?php endif; ?>
-  <?php if (!in_array($step, ['c_code', 'c_unlock', 'c_create', 'c_confirm'], true)): ?><p class="note">📞 मद्दत · Help: <a href="tel:+<?= $h($helpTel) ?>" style="white-space:nowrap"><?= $h($helpPhone) ?></a></p><?php endif; ?>
+  <?php if (!in_array($step, ['c_code', 'c_unlock', 'c_create', 'c_confirm'], true) && empty($clStepsShown)): ?><p class="note">📞 मद्दत · Help: <a href="tel:+<?= $h($helpTel) ?>" style="white-space:nowrap"><?= $h($helpPhone) ?></a></p><?php endif; ?>
 </main>
 <?php if ($waPoll !== null): ?>
 <script>
@@ -1010,7 +1057,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 })();
 </script>
 <?php endif; ?>
-<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115e" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116a" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
 <?php if (($remembered ?? null) !== null || $cPad): ?><script>
 (function(){
@@ -1018,10 +1065,10 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
   function tick(){var n=new Date();if(c)c.textContent=('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2);
     if(d)d.textContent=n.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});}
   if(c){tick();setInterval(tick,15000);}
-  if(document.querySelector('.msg.bad')){document.body.classList.add('shake');if(navigator.vibrate)try{navigator.vibrate(120)}catch(e){}}
+  if(document.querySelector('.msg.bad:not(.cl-held)')){document.body.classList.add('shake');if(navigator.vibrate)try{navigator.vibrate(120)}catch(e){}}
   /* 15 Nov 2026: every PIN form with a keypad (lock screen, code door, choose / confirm).
      The digits live only in this form until it is posted; nothing goes to browser storage. */
-  var pads=[];
+  var pads=[],locked=false;
   document.querySelectorAll('form[data-qk-form="pin"]').forEach(function(f){
     var inp=f.querySelector('input[name="qk_val"]'),dots=f.querySelector('.lk-dots'),keys=f.querySelector('.lk-keys'),busy=false;
     if(!inp||!dots||!keys)return;
@@ -1032,7 +1079,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
     function max(){return len||6;}
     function draw(){var h='';for(var i=0;i<max();i++)h+='<i'+(i<inp.value.length?' class="on"':'')+(!len&&i>3&&inp.value.length<=i?' style="opacity:.35"':'')+'></i>';dots.innerHTML=h;if(okb)okb.style.visibility=len?'hidden':'';}
     function send(){if(busy||inp.value.length<(len||4))return;busy=true;dots.classList.add('done');setTimeout(function(){f.submit();},len?180:0);}
-    function press(k){if(busy)return;if(k==='x')inp.value=inp.value.slice(0,-1);else if(k==='ok'){send();return;}
+    function press(k){if(busy||locked)return;if(k==='x')inp.value=inp.value.slice(0,-1);else if(k==='ok'){send();return;}
       else if(inp.value.length<max())inp.value+=k;draw();if(inp.value.length===max())send();}
     f.setLen=function(l){len=l;inp.value='';draw();};
     keys.addEventListener('click',function(e){var b=e.target.closest('button');if(b)press(b.getAttribute('data-k'));});
@@ -1046,6 +1093,22 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
     var t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'))return;
     pads.forEach(function(p){if(p.f.hidden)return;if(/^\d$/.test(e.key))p.press(e.key);else if(e.key==='Backspace')p.press('x');else if(e.key==='Enter')p.press('ok');});
   });
+  /* 16 Nov 2026 (P1-1d): a lock ticks down (mm:ss, h:mm:ss past an hour); keypad, pattern and the
+     PIN / pattern switch stay off until it ends, then come back by themselves. */
+  var cw=document.querySelector('.cl-until');
+  if(cw){
+    var qk=document.querySelector('.qk.cl-locked'),sp=cw.querySelector('span'),end=Date.now()+(parseInt(cw.getAttribute('data-left'),10)||0)*1000;
+    var two=function(n){return (n<10?'0':'')+n;};
+    var hold=function(on){locked=on;if(qk){qk.classList.toggle('cl-locked',on);qk.querySelectorAll('button').forEach(function(b){b.disabled=on;});}};
+    hold(true);
+    (function tk(){
+      var s=Math.max(0,Math.ceil((end-Date.now())/1000));
+      if(sp)sp.textContent=s>=3600?Math.floor(s/3600)+':'+two(Math.floor(s%3600/60))+':'+two(s%60):two(Math.floor(s/60))+':'+two(s%60);
+      if(s>0){setTimeout(tk,1000);return;}
+      hold(false);
+      var m=cw.parentNode;m.className='msg ok';m.setAttribute('role','status');m.textContent='✅ अब फेरि प्रयास गर्नुहोस् · You can try again now.';
+    })();
+  }
 })();
 </script><?php endif; ?>
 <?php if ((($step === 'mobile' || $step === 'id') && QuickUnlock::on()) || ($remembered ?? null) !== null || $cPad): ?><script src="/assets/js/quick-unlock.js?v=20261101a"></script><?php endif; ?>
@@ -1506,6 +1569,6 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115e" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116a" data-next="<?= $meUrl ?>"></script><?php endif; ?>
 <?php endif; ?>
 </body></html>

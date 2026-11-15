@@ -34,29 +34,11 @@ require_once INCLUDE_PATH . '/aiops.php';
 $canCmd = $canEdit || Auth::can('routes.edit') || Auth::can('schedules.manage');
 $e = static fn($v): string => Security::e((string) ($v ?? ''));
 
-/* ---- the whitelist: key => [label, type, words that name it, options] ---- */
-$ES_KEYS = [
-    'quick_unlock_on'          => ['🔐 PIN / Pattern login', 'bool', ['pin', 'pattern', 'पिन', 'प्याटर्न', 'quick unlock', 'lock']],
-    'login_one_door_hi_on'     => ['💬 WhatsApp "hi" login', 'bool', ['hi login', 'whatsapp login', 'wa login', 'hi pathaune', 'login hi']],
-    'agent_chalani_on'         => ['🧾 Agent ले आफ्नो chalani हेर्ने', 'bool', ['agent chalani', 'chalani agent', 'agent copy', 'एजेन्ट चलानी']],
-    'ap_join_open'             => ['📝 नयाँ agent form (public) खुला', 'bool', ['join form', 'agent form', 'apply form', 'naya agent', 'registration', 'join']],
-    'whatsapp_notify_customer' => ['📲 Customer लाई WhatsApp ticket', 'bool', ['customer whatsapp', 'ticket whatsapp', 'whatsapp ticket', 'customer lai whatsapp']],
-    'whatsapp_notify_admin'    => ['🔔 Office लाई WhatsApp alert', 'bool', ['admin whatsapp', 'office alert', 'admin alert', 'office lai whatsapp']],
-    'wa_booking_on'            => ['🤖 WhatsApp बाट booking (bot)', 'bool', ['whatsapp bot', 'wa bot', 'whatsapp booking', 'bot booking', 'bot', 'बोट']],
-    'ai_web_agent_on'          => ['🧠 Website AI assistant', 'bool', ['website ai', 'web ai', 'ai assistant', 'sahayak', 'chat ai', 'website chat']],
-    'ai_kb_on'                 => ['📚 AI knowledge base', 'bool', ['knowledge', 'kb', 'gyan', 'ज्ञान']],
-    'fb_msgr_on'               => ['📘 Facebook Messenger AI', 'bool', ['facebook', 'messenger', 'fb']],
-    'allow_cod'                => ['💵 Cash on boarding (COD)', 'bool', ['cod', 'cash on', 'nagad', 'नगद', 'cash']],
-    'trip_reminders_enabled'   => ['⏰ Trip reminder message', 'bool', ['reminder', 'yaad', 'सम्झना', 'remind']],
-    'eta_alert_on'             => ['🛰 Bus aaune samay (ETA) alert', 'bool', ['eta', 'arrival alert', 'bus aaune', 'gps alert']],
-    'wa_marketing_on'          => ['📣 WhatsApp marketing', 'bool', ['marketing', 'promotion', 'offer message', 'campaign']],
-    'seat_pick_manual_first'   => ['💺 सिट आफैं छान्ने (auto भन्दा पहिले)', 'bool', ['seat select', 'seat chhan', 'auto seat', 'seat pick', 'सिट छान', 'manual seat']],
-    'smartbook_desk_seat_auto' => ['💺 Desk (agent / counter / admin) मा सिट auto, चाहिए map बाट', 'bool', ['desk seat', 'counter seat auto', 'agent seat auto', 'quick book seat', 'सिट auto']],
-    'staff_door_only'          => ['🔐 Agent/staff only on .network', 'bool', ['network', '.network', 'staff door', 'agent door', 'network matra']],
-    'chalani_public_on'        => ['🔗 Public chalani link (login बिना)', 'bool', ['public chalani', 'chalani link', 'public link', 'chalani public']],
-    'cancel_fine_on'           => ['💸 Cancel गर्दा fine', 'bool', ['cancel fine', 'fine', 'jariwana', 'जरिवाना']],
-    'agent_cancel_mode'        => ['🗑 Agent cancel: direct / request', 'enum', ['agent cancel', 'cancel mode', 'agent le cancel'], ['direct' => 'Direct (agent cancels)', 'request' => 'Request (office cancels)']],
-];
+/* ---- the whitelist: key => [label, type, words that name it, options] ----
+   16 Nov 2026 (v2.0): the switches, their words and the whole command path live in
+   AiOps (EASY_KEYS, propose, confirm) so the in-page bubble (admin/api/ai-settings.php)
+   answers exactly like this page. */
+$ES_KEYS = AiOps::EASY_KEYS;
 $ES_SECRETS = [
     'anthropic_api_key'  => ['🟠 Claude (Anthropic)', '/^sk-ant-[A-Za-z0-9_\-]{20,}$/'],
     'gemini_api_key'     => ['🔵 Gemini (Google)', '/^AIza[0-9A-Za-z_\-]{30,}$/'],
@@ -66,121 +48,10 @@ $ES_SECRETS = [
     'whatsapp_api_token' => ['💬 Meta WhatsApp token', '/^EAA[A-Za-z0-9]{40,}$/'],
     'aisensy_api_key'    => ['💬 AiSensy key', '/^eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$/'],
 ];
-$ON  = ['on', 'chalu', 'chalau', 'chalaideu', 'chalaidinu', 'chalaunu', 'khol', 'kholdeu', 'kholdinu', 'enable', 'start', 'activate', 'yes', 'haan', 'gar on',
-        'चालु', 'खोल', 'चलाउ', 'सुरु', 'अन', 'शुरू', 'चालू', 'करो चालू', 'खोलो', 'shuru', 'suru', 'lagau', 'lagaideu', 'lagaa'];
-$OFF = ['off', 'band', 'banda', 'bandh', 'bnd', 'disable', 'stop', 'roka', 'rok', 'rokdeu', 'hatau', 'hatai', 'na chalau', 'nachalau', 'deactivate',
-        'बन्द', 'बंद', 'रोक', 'हटाउ', 'अफ', 'रोको', 'hatao'];
-
-$curVal = static function (string $k) use ($ES_KEYS): string {
-    $t = $ES_KEYS[$k][1] ?? 'bool';
-    if ($t === 'bool') {
-        // the default each switch has in the code that reads it (6 Nov 2026), so an unsaved switch shows what really happens
-        $codeDefaultOn = ['quick_unlock_on', 'login_one_door_hi_on', 'agent_chalani_on', 'ap_join_open', 'whatsapp_notify_customer',
-                          'whatsapp_notify_admin', 'wa_booking_on', 'allow_cod', 'trip_reminders_enabled', 'seat_pick_manual_first',
-                          'smartbook_desk_seat_auto', 'staff_door_only', 'chalani_public_on', 'cancel_fine_on'];
-        return Settings::getBool($k, in_array($k, $codeDefaultOn, true)) ? '1' : '0';
-    }
-    return Settings::getString($k, $t === 'enum' ? (string) array_key_first($ES_KEYS[$k][3]) : '');
-};
-$show = static function (string $k, string $v) use ($ES_KEYS): string {
-    $t = $ES_KEYS[$k][1] ?? 'bool';
-    if ($t === 'bool') { return $v === '1' ? 'ON ✅' : 'OFF ⛔'; }
-    return (string) ($ES_KEYS[$k][3][$v] ?? $v);
-};
-
-/* ---- 1a. words first: which whitelisted setting(s) + on/off ---- */
-$parseWords = static function (string $text) use ($ES_KEYS, $ON, $OFF): array {
-    $t = ' ' . mb_strtolower(preg_replace('/\s+/u', ' ', $text) ?? $text) . ' ';
-    // last position (bytes) of any of the words; a latin word must stand alone
-    // ("on" is not the "on" inside "promotion")
-    $hasAny = static function (string $t, array $words): int {
-        $best = -1;
-        foreach ($words as $w) {
-            $w = mb_strtolower(trim($w));
-            if ($w === '') { continue; }
-            if (preg_match('/^[a-z ]+$/', $w) === 1) {
-                if (preg_match_all('/(?<![a-z])' . preg_quote($w, '/') . '(?![a-z])/', $t, $mm, PREG_OFFSET_CAPTURE) > 0) {
-                    $best = max($best, (int) end($mm[0])[1]);
-                }
-            } elseif (($p = strrpos($t, $w)) !== false) {
-                $best = max($best, (int) $p);
-            }
-        }
-        return $best;
-    };
-    $onAt  = $hasAny($t, $ON);
-    $offAt = $hasAny($t, $OFF);
-    $out = [];
-    foreach ($ES_KEYS as $k => $def) {
-        $hit = false;
-        foreach ($def[2] as $w) {
-            if (mb_strpos($t, mb_strtolower($w)) !== false) { $hit = true; break; }
-        }
-        if (!$hit) { continue; }
-        if ($def[1] === 'bool') {
-            if ($onAt < 0 && $offAt < 0) { continue; }
-            // the verb said LAST wins ("on chha, band gara" → off)
-            $out[$k] = $offAt > $onAt ? '0' : '1';
-        } elseif ($def[1] === 'enum') {
-            foreach ($def[3] as $opt => $lbl) {
-                if (mb_strpos($t, $opt) !== false) { $out[$k] = $opt; }
-            }
-            if (!isset($out[$k]) && preg_match('/(request|anurodh|अनुरोध|office)/u', $t) === 1) { $out[$k] = 'request'; }
-        }
-    }
-    return $out;
-};
-
-/* ---- 1b. the AI, only for what the words missed; held to the whitelist ---- */
-$parseAi = static function (string $text) use ($ES_KEYS): array {
-    $catalog = [];
-    foreach ($ES_KEYS as $k => $def) {
-        $catalog[] = $k . ' (' . $def[0] . ', ' . ($def[1] === 'bool' ? 'value "1" or "0"' : 'one of: ' . implode('|', array_keys($def[3]))) . ')';
-    }
-    $sys = "You turn an office manager's instruction (any language: Nepali, Hindi, English, romanised) into settings changes.\n"
-         . "Allowed settings ONLY:\n- " . implode("\n- ", $catalog) . "\n"
-         . 'Reply JSON {"changes":[{"key":"...","value":"..."}]}. Use an empty list when the instruction does not clearly name one of these. Never invent keys.';
-    $j = null;
-    try {
-        require_once INCLUDE_PATH . '/agentpro-ai.php';
-        if (ApAi::enabled()) {
-            $j = ApAi::json($sys, $text, ['type' => 'object', 'properties' => ['changes' => ['type' => 'array', 'items' => ['type' => 'object',
-                'properties' => ['key' => ['type' => 'string'], 'value' => ['type' => 'string']], 'required' => ['key', 'value']]]], 'required' => ['changes']],
-                [], ['purpose' => 'settings', 'max_tokens' => 300, 'timeout' => 25, 'lock_wait' => 5]);
-        }
-    } catch (Throwable $ex) {
-        $j = null;
-    }
-    if (!is_array($j)) {
-        try {
-            require_once INCLUDE_PATH . '/aibrain.php';
-            if (AiBrain::configured()) {
-                $r = AiBrain::text($sys . "\nJSON only.", [['role' => 'user', 'content' => $text]], 300, 'settings');
-                $raw = trim((string) ($r['text'] ?? ''));
-                if (preg_match('/\{.*\}/s', $raw, $m) === 1) { $j = json_decode($m[0], true); }
-            }
-        } catch (Throwable $ex) {
-            $j = null;
-        }
-    }
-    $out = [];
-    foreach ((array) ($j['changes'] ?? []) as $c) {
-        $k = (string) ($c['key'] ?? '');
-        $v = (string) ($c['value'] ?? '');
-        if (!isset($ES_KEYS[$k])) { continue; }
-        if ($ES_KEYS[$k][1] === 'bool') { $v = in_array(strtolower($v), ['1', 'true', 'on', 'yes'], true) ? '1' : '0'; }
-        elseif ($ES_KEYS[$k][1] === 'enum' && !isset($ES_KEYS[$k][3][$v])) { continue; }
-        $out[$k] = $v;
-    }
-    return $out;
-};
-
-$save = static function (string $k, string $v) use ($ES_KEYS, $curVal, $admin): void {
-    $old = $curVal($k);
-    $type = $ES_KEYS[$k][1] === 'bool' ? 'bool' : 'string';
-    // seat_pick_manual_first is read by the public booking page too (SHG_BOOT.settings) — public on first save
-    Settings::set($k, $type === 'bool' ? ($v === '1') : $v, $type, 'general', $k === 'seat_pick_manual_first');
-    Logger::audit('settings.easy', 'setting', $k, ['value' => $old], ['value' => $v], 'Easy Settings by admin #' . (int) $admin['id']);
+$curVal = static fn(string $k): string => AiOps::easyCurrent($k);
+$show   = static fn(string $k, string $v): string => AiOps::easyShow($k, $v);
+$save   = static function (string $k, string $v) use ($admin): void {
+    AiOps::saveSwitch($k, $v, (int) $admin['id']);
 };
 
 $flash = null;
@@ -189,16 +60,12 @@ $opsProp  = [];     // AiOps actions waiting for "Yes"
 $cmdText = '';
 $backTo  = '';
 /* the switches above are known to S Hari AI too (label, type, options, value now) */
-$reg = [];
-foreach ($ES_KEYS as $k => $def) {
-    $reg[$k] = [$def[0], $def[1], $def[3] ?? [], $curVal($k)];
-}
-AiOps::registerKeys($reg);
+AiOps::registerEasyKeys();
 $cleanBack = static function (string $b): string {
     return preg_match('/^[a-z0-9\-]+\.php(\?[A-Za-z0-9_=&%\-.:]*)?$/', $b) === 1 ? $b : '';
 };
-// a routes / schedules manager may send commands (cmd / yes) only — never switches or keys
-if (($canEdit || ($canCmd && in_array((string) ($_POST['act'] ?? ''), ['cmd', 'yes'], true))) && Security::isPost()) {
+// a routes / schedules manager may send commands (cmd / yes / no) only — never switches or keys
+if (($canEdit || ($canCmd && in_array((string) ($_POST['act'] ?? ''), ['cmd', 'yes', 'no'], true))) && Security::isPost()) {
     $act = (string) ($_POST['act'] ?? '');
     if (!Security::verifyCsrf()) {
         $flash = ['bad', 'Page was open too long — try again.'];
@@ -206,32 +73,17 @@ if (($canEdit || ($canCmd && in_array((string) ($_POST['act'] ?? ''), ['cmd', 'y
         $cmdText = Security::clean((string) ($_POST['cmd'] ?? ''), 400);
         $backTo  = $cleanBack((string) ($_POST['back'] ?? ''));
         if ($cmdText !== '') {
-            /* words first: the operations (fare, route, bus, extra, commission, fine),
-               then the one-tap switches; the AI only when the words found nothing */
-            $ops  = AiOps::parseWords($cmdText);
-            $prop = $canEdit ? $parseWords($cmdText) : [];
-            $via  = 'words';
-            if ($ops === [] && $prop === []) {
-                $ops = AiOps::parseAi($cmdText);
-                $via = 'AI';
-            }
-            // drop no-ops and what this login may not do
-            $prop = array_filter($prop, static fn($v, $k): bool => $curVal((string) $k) !== (string) $v, ARRAY_FILTER_USE_BOTH);
-            $denied = [];
-            $ops = array_values(array_filter($ops, static function (array $a) use (&$denied): bool {
-                if (!AiOps::allowed($a)) { $denied[] = $a['type']; return false; }
-                $rows = AiOps::preview($a);
-                foreach ($rows as $r) { if ((string) $r[1] !== (string) $r[2]) { return true; } }
-                return false;
-            }));
-            if ($prop === [] && $ops === []) {
-                $flash = ['bad', $denied !== []
-                    ? '⛔ यो बदल्ने अनुमति तपाईंसँग छैन · Not allowed for your login (' . implode(', ', array_unique($denied)) . ').'
-                    : '🤔 बुझिएन वा पहिल्यै त्यस्तै छ · Not understood, or already like that. अर्को शब्दमा भन्नुहोस्, वा तलको switch / खोज प्रयोग गर्नुहोस्।'];
+            /* words first: the operations (fare, route, bus, extra, commission, fine, seat,
+               new pickup), then the one-tap switches; the AI only when the words found
+               nothing and asked nothing (AiOps::propose) */
+            $pr = AiOps::propose($cmdText, $canEdit);
+            if ($pr['switches'] === [] && $pr['ops'] === []) {
+                $flash = ['bad', AiOps::emptyMessage($pr)];
             } else {
-                $proposal = $prop;
-                $opsProp  = $ops;
-                $_SESSION['es_prop'] = ['p' => $prop, 'ops' => $ops, 't' => time(), 'via' => $via, 'cmd' => $cmdText, 'back' => $backTo];
+                $proposal = $pr['switches'];
+                $opsProp  = $pr['ops'];
+                $_SESSION['es_prop'] = ['p' => $pr['switches'], 'ops' => $pr['ops'], 't' => time(), 'via' => $pr['via'], 'cmd' => $cmdText, 'back' => $backTo];
+                AiOps::auditProposed($pr);   // 16 Nov 2026 (P3-1c): what was shown, with the parsed actions
             }
         }
     } elseif ($act === 'yes') {
@@ -240,19 +92,19 @@ if (($canEdit || ($canCmd && in_array((string) ($_POST['act'] ?? ''), ['cmd', 'y
         if (!is_array($p) || (int) ($p['t'] ?? 0) < time() - 600) {
             $flash = ['bad', 'Time ran out — say it again.'];
         } else {
-            $done = [];
-            if ($canEdit) {
-                foreach ((array) ($p['p'] ?? []) as $k => $v) {
-                    if (isset($ES_KEYS[$k])) { $save((string) $k, (string) $v); $done[] = $ES_KEYS[$k][0] . ' → ' . $show((string) $k, (string) $v); }
-                }
-            }
-            foreach (AiOps::apply((array) ($p['ops'] ?? []), $admin) as $line) {
-                $done[] = $line;
-            }
-            Logger::audit('settings.ai_command', 'setting', 'easy-settings', null, ['cmd' => (string) ($p['cmd'] ?? ''), 'via' => (string) ($p['via'] ?? '')], implode(' | ', $done));
+            $done = AiOps::confirm(['switches' => (array) ($p['p'] ?? []), 'ops' => (array) ($p['ops'] ?? []), 'cmd' => (string) ($p['cmd'] ?? ''), 'via' => (string) ($p['via'] ?? '')], $admin, $canEdit);
             $backTo = (string) ($p['back'] ?? '');
             $flash = ['ok', '✅ ' . ($done !== [] ? implode(' · ', $done) : 'Nothing changed.')];
         }
+    } elseif ($act === 'no') {
+        // 16 Nov 2026 (P3-1c): a "No" is logged too (settings.ai_declined), nothing is written
+        $p = $_SESSION['es_prop'] ?? null;
+        unset($_SESSION['es_prop']);
+        if (is_array($p)) {
+            AiOps::auditDeclined(['switches' => (array) ($p['p'] ?? []), 'ops' => (array) ($p['ops'] ?? []), 'cmd' => (string) ($p['cmd'] ?? ''), 'via' => (string) ($p['via'] ?? '')]);
+            $backTo = (string) ($p['back'] ?? '');
+        }
+        $flash = ['ok', '✖ केही बदलिएन · Nothing changed.'];
     } elseif ($act === 'toggle') {
         $k = (string) ($_POST['key'] ?? '');
         if (isset($ES_KEYS[$k]) && $ES_KEYS[$k][1] === 'bool') {
@@ -324,7 +176,7 @@ admin_header('🤖 S Hari AI · सेटिङ र काम (बोलेर)'
       <button class="btn ok" type="submit" <?= $canCmd ? '' : 'disabled' ?>>पठाउनुहोस् →</button>
     </form>
     <div class="ex">
-      <?php foreach (['Surat ko bhada 2300', 'bholi ko bus band', 'Bus 02 ko number GJ05AB1234', 'Rajkot route band', 'Surat Rupaidiha matra', '10 extra seat', 'cancel fine 500', 'SHG-0027 commission 250', 'whatsapp bot band gara', 'PIN pattern login chalu'] as $x): ?>
+      <?php foreach (['Surat ko bhada 2300', 'sabai pickup ko bhada 100 badha do', 'bholi 1 baje jane bus band', 'Seat U15 block karo kal', 'Naya pickup: Gandhinagar 22:30', 'Bus 02 ko number GJ05AB1234', 'Rajkot route band', 'Surat Rupaidiha matra', '10 extra seat', 'cancel fine 500', 'SHG-0027 commission 250', 'whatsapp bot band gara', 'PIN pattern login chalu'] as $x): ?>
         <button type="button" onclick="document.getElementById('esCmd').value=this.textContent;document.getElementById('esCmd').focus()"><?= $e($x) ?></button>
       <?php endforeach; ?>
     </div>
@@ -339,11 +191,16 @@ admin_header('🤖 S Hari AI · सेटिङ र काम (बोलेर)'
             <li><?= $e($what) ?>: <s><?= $e($old) ?></s> → <b><?= $e($new) ?></b></li>
           <?php endforeach; endforeach; ?>
         </ul>
-        <form method="post" style="display:flex;gap:8px;flex-wrap:wrap">
-          <?= Security::csrfField() ?><input type="hidden" name="act" value="yes">
-          <button class="btn ok" type="submit">✅ हो, बदल्नुहोस् · Yes, change</button>
-          <a class="btn ghost" href="/admin/easy-settings.php">✖ होइन · No</a>
-        </form>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <form method="post" style="margin:0">
+            <?= Security::csrfField() ?><input type="hidden" name="act" value="yes">
+            <button class="btn ok" type="submit">✅ हो, बदल्नुहोस् · Yes, change</button>
+          </form>
+          <form method="post" style="margin:0">
+            <?= Security::csrfField() ?><input type="hidden" name="act" value="no">
+            <button class="btn ghost" type="submit">✖ होइन · No</button>
+          </form>
+        </div>
       </div>
     <?php endif; ?>
     <p class="muted">नेपाली, हिन्दी, English — जुन भाषामा पनि। शब्दले बुझिएन भने VPS को AI ले बुझ्छ। सधैं पहिला देखाउँछ, अनि मात्र बदल्छ।</p>

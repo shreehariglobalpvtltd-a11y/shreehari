@@ -2310,11 +2310,28 @@ final class Ticket
         /* What the offer saved them, on the ticket itself (owner ask, 20 Sep
            2026). The fare band already shows what they paid; without this the
            discount lived only in the checkout screen they have closed. */
-        $offerCut = (float) ($booking['coupon_discount'] ?? 0);
+        /* 16 Nov 2026 (P4-5f): every discount (offer / desk + group + tier)
+           and where it came from - "GROUP10", "काउन्टर छुट", "GROUP". The
+           source is dropped only when even 15 px will not fit beside the
+           TOTAL FARE label; the SAVED amount always prints. */
+        $offerCut = self::discountTotal($booking);
         if ($offerCut > 0) {
-            $offerTxt = 'तपाईंले बचाउनुभयो  ·  SAVED ₹ ' . number_format($offerCut) . self::discountPctTxt($booking);
-            $ow = self::gdWidth(18, $offerTxt);
-            self::gdText($im, 18, $W - 88 - $ow, 1192 + $grow, $gold, $offerTxt, true);
+            $offerTxt = 'तपाईंले बचाउनुभयो  ·  SAVED ₹ ' . number_format($offerCut) . self::discountPctTxt($booking, $offerCut);
+            $offerSrc = self::discountSource($booking);
+            $oMax = $W - 88 - (88 + self::gdWidth(17, 'जम्मा भाडा  ·  TOTAL FARE') + 24);
+            $oSz  = 18;
+            if ($offerSrc !== '') {
+                $withSrc = $offerTxt . '  ·  ' . $offerSrc;
+                foreach ([18, 16, 15] as $try) {
+                    if (self::gdWidth($try, $withSrc) <= $oMax) {
+                        $offerTxt = $withSrc;
+                        $oSz      = $try;
+                        break;
+                    }
+                }
+            }
+            $ow = self::gdWidth($oSz, $offerTxt);
+            self::gdText($im, $oSz, $W - 88 - $ow, 1192 + $grow, $gold, $offerTxt, true);
         }
 
         /* Separate, labelled QR cards. Integer modules + four-module quiet
@@ -2809,15 +2826,46 @@ final class Ticket
     }
 
     /** 15 Nov 2026 (owner: "discount amount percentage ticket ma"): " (10%)" after a discount, '' when none. */
-    public static function discountPctTxt(array $booking): string
+    public static function discountPctTxt(array $booking, ?float $cut = null): string
     {
         $base = (float) ($booking['base_total'] ?? 0);
-        $cut  = (float) ($booking['coupon_discount'] ?? 0);
+        $cut ??= (float) ($booking['coupon_discount'] ?? 0);   // 16 Nov 2026: or the sum discountTotal() gives
         if ($base <= 0 || $cut <= 0) {
             return '';
         }
         $pct = round($cut / $base * 100, 1);
         return $pct >= 0.1 ? ' (' . rtrim(rtrim(number_format($pct, 1), '0'), '.') . '%)' : '';
+    }
+
+    /** 16 Nov 2026 (P4-5f): every discount the ticket carries - the offer / desk cut (coupon_discount) + group + member tier. */
+    public static function discountTotal(array $booking): float
+    {
+        return round(max(0.0, (float) ($booking['coupon_discount'] ?? 0))
+            + max(0.0, (float) ($booking['group_discount'] ?? 0))
+            + max(0.0, (float) ($booking['tier_discount'] ?? 0)), 2);
+    }
+
+    /**
+     * 16 Nov 2026 (P4-5f): where that discount came from, Nepali-first, ''
+     * when none: the offer code (GROUP10), 'काउन्टर छुट' for a desk discount
+     * (coupon_discount with no code - booking.php stores it so), 'GROUP' for
+     * the group discount, the tier name (or 'सदस्य छुट') for a member one.
+     */
+    public static function discountSource(array $booking): string
+    {
+        $src = [];
+        if ((float) ($booking['coupon_discount'] ?? 0) > 0) {
+            $code  = strtoupper(trim((string) ($booking['coupon_code'] ?? '')));
+            $src[] = $code !== '' ? $code : 'काउन्टर छुट';
+        }
+        if ((float) ($booking['group_discount'] ?? 0) > 0) {
+            $src[] = 'GROUP';
+        }
+        if ((float) ($booking['tier_discount'] ?? 0) > 0) {
+            $tier  = strtoupper(trim((string) ($booking['tier_name'] ?? '')));
+            $src[] = $tier !== '' ? $tier : 'सदस्य छुट';
+        }
+        return implode(' + ', $src);
     }
     /** 15 Oct 2026: the centred letterhead - the band grows from 254 to 254 + this; the body is copied down by it (pngHeader / the splice in renderTicketPng). Public: the PNG tests add it to every body coordinate. */
     public const PNG_HEAD_EXTRA = 298;   // 184 until 15 Oct 2026 noon; +114 for the bigger free emblem and the logo-style name (brand + TM, PRIVATE LIMITED line)
@@ -3394,8 +3442,20 @@ final class Ticket
         while ($fareSz > 12 && $pdf->textWidth($fareTx, $fareSz, 'F2') > 165) { $fareSz -= 1; }
         $pdf->text($W - 205, $boardY + 23, $fareTx, $fareSz, 'F2', [255, 255, 255]);
         // Base → Discount breakdown (Task 9) when a counter discount was applied.
-        if ((float) ($booking['coupon_discount'] ?? 0) > 0) {
-            $pdf->text($W - 205, $boardY + 45, 'Base ' . $money((float) $booking['base_total']) . '  -  Disc ' . $money((float) $booking['coupon_discount']) . self::discountPctTxt($booking), 7.5, 'F1', [220, 210, 195]);
+        /* 16 Nov 2026 (P4-5f): the whole discount (offer / desk + group +
+           tier), and its source on the label row, right side: "छुट · GROUP10". */
+        $discAll = self::discountTotal($booking);
+        if ($discAll > 0) {
+            $pdf->text($W - 205, $boardY + 45, 'Base ' . $money((float) $booking['base_total']) . '  -  Disc ' . $money($discAll) . self::discountPctTxt($booking, $discAll), 7.5, 'F1', [220, 210, 195]);
+            $discSrc = self::discountSource($booking);
+            if ($discSrc !== '') {
+                $srcTx = 'छुट · ' . mb_substr($discSrc, 0, 26);
+                $srcSz = 7.5;
+                while ($srcSz > 5.5 && $pdf->textWidthCID($srcTx, $srcSz, $F7) > 104) {
+                    $srcSz -= 0.5;
+                }
+                self::devText($pdf, $W - 148, $boardY + 11, $srcTx, $srcSz, $F7, self::GOLD);
+            }
         }
         // Fare by passenger count (4 Sep 2026): "3 x Rs 2,000" for a party,
         // so the family sees how the total was built; a solo ticket keeps

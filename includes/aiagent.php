@@ -176,8 +176,24 @@ final class AiAgent
             return null;
         }
 
+        /* P7-9a: one ai_turns row for this web / Messenger turn (no text kept). */
+        $turnT0 = microtime(true);
+        AiTools::$turnTools = [];
+        $turnRow = static function (string $router, bool $ok) use (&$ctx, $who, $turnT0): void {
+            self::recordTurn([
+                'channel' => (string) ($ctx['via'] ?? '') === 'facebook' ? 'messenger' : 'web',
+                'role'    => (string) ($ctx['role'] ?? 'customer'),
+                'owner'   => (string) ($ctx['phone'] ?? '') !== '' ? normalisePhone((string) $ctx['phone']) : $who,
+                'router'  => $router,
+                'tools'   => AiTools::$turnTools,
+                'ok'      => $ok,
+                'ms'      => (int) round((microtime(true) - $turnT0) * 1000),
+            ]);
+        };
+
         if (self::isReset($text)) {
             self::forget($who);
+            $turnRow('reset', true);
             return ['text' => self::resetLine($ctx), 'media' => null, 'charts' => [], 'actions' => [], 'role' => (string) ($ctx['role'] ?? 'customer')];
         }
 
@@ -188,6 +204,7 @@ final class AiAgent
 
             $answer = self::converse($ctx, $history);
             if ($answer === null || trim((string) $answer['text']) === '') {
+                $turnRow('agent', false);
                 return null;
             }
 
@@ -195,17 +212,89 @@ final class AiAgent
             self::saveHistory($who, $history);
 
             $outcomes = (array) ($answer['outcomes'] ?? []);
-
-            return [
+            $reply = [
                 'text'    => mb_substr(trim((string) $answer['text']), 0, 4000),
                 'media'   => $answer['media'] ?? null,
                 'charts'  => self::charts($outcomes),
                 'actions' => self::webActions($outcomes, $ctx),
                 'role'    => (string) ($ctx['role'] ?? 'customer'),
             ];
+            $turnRow('agent', true);
+
+            return $reply;
         } catch (Throwable $e) {
             Logger::error('Web agent failed: ' . $e->getMessage(), ['who' => $who], 'ai');
+            $turnRow('agent', false);
             return null;
+        }
+    }
+
+    /** P7-9a: null = not checked yet this request. */
+    private static ?bool $turnsReady = null;
+
+    /** True once database/upgrade-2026-11-16-ai-turns.sql has created ai_turns. */
+    public static function turnsReady(): bool
+    {
+        if (self::$turnsReady === null) {
+            try {
+                self::$turnsReady = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.TABLES
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_turns'",
+                    [], 0) > 0;
+            } catch (Throwable $e) {
+                self::$turnsReady = false;
+            }
+        }
+        return self::$turnsReady;
+    }
+
+    /**
+     * P7-9a (16 Nov 2026): one `ai_turns` row per answered turn — which
+     * branch answered (router), which tools ran, whether the reply went out,
+     * how long the whole turn took. NO message text is stored: the words stay
+     * in wa_inbound / message_logs under their 7-day rule, and the sender is
+     * only a sha256 of the phone digits (a website guest: of the session key).
+     * Never throws: with the migration not yet applied, or any write error,
+     * the reply carries on exactly as before.
+     *
+     * @param array{channel?: string, role?: string, owner?: string, router?: string,
+     *              tools?: array<int,string>, ok?: bool, ms?: int, wamid?: string, replySid?: string} $t
+     */
+    public static function recordTurn(array $t): void
+    {
+        try {
+            if (!self::turnsReady()) {
+                return;
+            }
+            $owner  = trim((string) ($t['owner'] ?? ''));
+            $digits = (string) preg_replace('/\D/', '', $owner);
+            $key    = $owner === '' ? '' : hash('sha256', ($digits !== '' && $digits === $owner) ? $digits : $owner);
+            $tools  = array_values(array_unique(array_filter(array_map('strval', (array) ($t['tools'] ?? [])))));
+            $role   = (string) ($t['role'] ?? 'customer');
+            $wamid  = trim((string) ($t['wamid'] ?? ''));
+            $sid    = trim((string) ($t['replySid'] ?? ''));
+            $logId  = null;
+            if ($sid !== '') {
+                // The reply's own message_logs row (provider_ref is indexed).
+                $found = Database::scalar(
+                    'SELECT id FROM message_logs WHERE provider_ref = :r ORDER BY id DESC LIMIT 1',
+                    ['r' => substr($sid, 0, 64)], null);
+                $logId = $found !== null ? (int) $found : null;
+            }
+            Database::insert('ai_turns', [
+                'created_at'   => date('Y-m-d H:i:s'),
+                'channel'      => mb_substr((string) ($t['channel'] ?? 'whatsapp'), 0, 20),
+                'role'         => in_array($role, ['customer', 'staff', 'admin'], true) ? $role : 'customer',
+                'owner_key'    => $key,
+                'router'       => mb_substr((string) ($t['router'] ?? ''), 0, 20),
+                'tools'        => mb_substr(implode(',', $tools), 0, 255),
+                'ok'           => !empty($t['ok']) ? 1 : 0,
+                'ms'           => max(0, (int) ($t['ms'] ?? 0)),
+                'wamid'        => $wamid !== '' ? substr($wamid, 0, 80) : null,
+                'reply_log_id' => $logId,
+            ]);
+        } catch (Throwable $e) {
+            Logger::warning('ai_turns write failed: ' . $e->getMessage(), [], 'ai');
         }
     }
 

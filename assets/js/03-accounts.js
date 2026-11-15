@@ -620,6 +620,10 @@ document.addEventListener('click', (e) => {
     /* 10 Oct 2026: the two group labels, each naming its own radiogroup */
     brandLooks: ['ब्रान्ड रूप · Brand looks', 'Brand looks · ब्रान्ड रूप', 'ब्रांड रूप · Brand looks'],
     moreColours: ['थप रङहरू · Material You', 'More colours · Material You', 'और रंग · Material You'],
+    /* 16 Nov 2026 (P5-8a): the weekly accent on / off, same choice as the phone menu */
+    accent: ['दिनको रङ · Colour of the day', 'Colour of the day · दिनको रङ', 'दिन का रंग · Colour of the day'],
+    weekly: ['हप्ताको रङ', 'Weekly', 'हफ़्ते का रंग'], weeklyS: ['हरेक दिन नयाँ रङ', 'A new colour each day', 'हर दिन नया रंग'],
+    fixed: ['एउटै रङ', 'Fixed', 'एक ही रंग'], fixedS: ['रोजेको रङ मात्र', 'Only the colour you pick', 'सिर्फ़ चुना हुआ रंग'],
     style: ['शैली', 'Style', 'शैली'],
     pixel: ['Pixel', 'Pixel', 'Pixel'], pixelS: ['गोलो र नरम', 'Round & soft', 'गोल और नरम'],
     classic: ['क्लासिक 3D', 'Classic 3D', 'क्लासिक 3D'], classicS: ['उठेको गहिराइ', 'Raised depth', 'उभरी गहराई'],
@@ -645,7 +649,10 @@ document.addEventListener('click', (e) => {
   function applyPalette(id, save) {
     const ok = SHG_PAL_IDS.indexOf(id) >= 0;
     if (ok) d.setAttribute('data-palette', id); else d.removeAttribute('data-palette');
-    if (save !== false) lsSet('shg:palette', ok ? id : 'shg');
+    /* 16 Nov 2026 (P5-8a): a colour the visitor picks is the colour they see -
+       the weekly accent steps aside ("Fixed"); the sheet's Weekly / Fixed row
+       (and the phone menu's) turns the rotation back on. */
+    if (save !== false) { lsSet('shg:palette', ok ? id : 'shg'); if (window.shgAccent) { try { window.shgAccent.set('fixed'); } catch (e) {} } }
     shgPalGuard();   /* 10 Oct 2026: a stale cached themes.css -> brand look, never colourless */
     shgPaintChrome(currentTheme());
   }
@@ -719,6 +726,14 @@ document.addEventListener('click', (e) => {
        palettes. rove() gives each group one tab stop and the arrow keys stay
        inside a group; mark('[data-palette-set]') clears across both. */
     const grp = (k, id) => '<p class="ap-grp" id="' + id + '">' + esc(tx(k)) + '</p><div class="ap-sw-grid" role="radiogroup" aria-labelledby="' + id + '">';
+    /* 16 Nov 2026 (P5-8a): Weekly / Fixed. The accent script in app.template.html owns the
+       choice (window.shgAccent): its document click handler saves it and re-marks every
+       [data-accent-set] button, here and in the phone menu. */
+    const am = (window.shgAccent && typeof window.shgAccent.mode === 'function') ? window.shgAccent.mode() : 'weekly';
+    h += '<p class="ap-grp" id="apGrpAcc">' + esc(tx('accent')) + '</p><div class="ap-seg" role="radiogroup" aria-labelledby="apGrpAcc">'
+      + opt('data-accent-set="weekly"', '🗓️', tx('weekly'), tx('weeklyS'), am === 'weekly')
+      + opt('data-accent-set="fixed"', '🔵', tx('fixed'), tx('fixedS'), am === 'fixed')
+      + '</div>';
     h += grp('brandLooks', 'apGrpBrand');
     h += sw('shg', ['#0054A8', '#0C306C', '#DC143C'], tx('brand'), tx('brandS'));
     SHG_PALETTES.forEach((p) => { if (SHG_BRAND_LOOK_IDS.indexOf(p[0]) >= 0) h += sw(p[0], p[1], p[4 + li]); });
@@ -796,6 +811,7 @@ document.addEventListener('click', (e) => {
       return;
     }
     if (t.closest('[data-theme-set]')) { setTimeout(rove, 0); return; }   /* the document handler above applies it */
+    if (t.closest('[data-accent-set]')) { setTimeout(rove, 0); shgFeelFire('select'); return; }   /* app.template.html's accent script applies it */
     const u = t.closest('[data-ap-ui]');
     if (u) { applyUi(u.getAttribute('data-ap-ui')); mark('[data-ap-ui]', (b) => b === u); shgFeelFire('select'); return; }
     const m = t.closest('[data-ap-motion]');

@@ -95,6 +95,30 @@ if ($migrated && isset($_GET['edit'])) {
     $editing = Database::fetch('SELECT * FROM ai_kb_articles WHERE id = :id', ['id' => (int) $_GET['edit']]);
 }
 
+/* 16 Nov 2026 (P7-9b): the bot replies the office marked 👎 in the WhatsApp
+   inbox (ai_feedback_log, last 7 days), each with "write the article" — the
+   form below then starts from the customer's question. Read-only here. */
+$badReplies = [];
+$prefill    = [];
+try {
+    $badReplies = Database::fetchAll(
+        "SELECT id, channel, user_text, reply_text, note, created_at FROM ai_feedback_log
+          WHERE verdict = 'down' AND created_at >= NOW() - INTERVAL 7 DAY ORDER BY id DESC LIMIT 50");
+    if ($editing === null && isset($_GET['from_fb'])) {
+        $fb = Database::fetch('SELECT user_text, note FROM ai_feedback_log WHERE id = :id', ['id' => (int) $_GET['from_fb']]);
+        if ($fb !== null) {
+            $askd    = trim((string) ($fb['user_text'] ?? ''));
+            $prefill = [
+                'canonical_title'       => mb_substr($askd, 0, 200),
+                'roman_nepali_examples' => $askd,
+                'source_reference'      => 'Office, ' . date('j M Y') . ' (👎 on a bot reply)',
+            ];
+        }
+    }
+} catch (Throwable $e) {
+    $badReplies = [];                              // no ai_feedback_log on this server yet
+}
+
 $kbOn      = Settings::getBool('ai_kb_on', false);
 $articles  = $migrated ? Database::fetchAll(
     "SELECT id, category, canonical_title, applicable_roles, publication_status, verification_status, version, updated_at
@@ -106,8 +130,8 @@ $unanswered = $migrated ? Database::fetchAll(
       ORDER BY frequency DESC, updated_at DESC LIMIT 100") : [];
 
 /* Form field values (edit target, or blank). */
-$f = static function (string $key, string $default = '') use ($editing): string {
-    return Security::e((string) ($editing[$key] ?? $default));
+$f = static function (string $key, string $default = '') use ($editing, $prefill): string {
+    return Security::e((string) ($editing[$key] ?? ($prefill[$key] ?? $default)));
 };
 $editRoles = [];
 if ($editing !== null) {
@@ -307,6 +331,32 @@ admin_header('AI Knowledge', 'ai-knowledge');
           <td data-label="Action">
             <form method="post" class="kb-inline"><?= $csrf ?><input type="hidden" name="action" value="dismiss_q"><input type="hidden" name="id" value="<?= (int) $q['id'] ?>"><button class="btn ghost" type="submit">Mark handled</button></form>
           </td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+  <?php endif; ?>
+</div>
+
+<div class="panel">
+  <h2>👎 गलत जवाफ · Bot replies marked wrong — last 7 days (<?= count($badReplies) ?>)</h2>
+  <p class="kb-note">The office pressed 👎 on these WhatsApp bot replies (WhatsApp Inbox). Write the article the bot
+    was missing, then publish it. Phone numbers are removed automatically.</p>
+  <?php if ($badReplies === []): ?>
+    <p class="kb-note">Nothing marked wrong in the last 7 days.</p>
+  <?php else: ?>
+  <div class="dt-wrap">
+    <table class="dt card-table">
+      <thead><tr><th>When</th><th>They asked</th><th>The bot said</th><th>Office note</th><th data-nosort>Action</th></tr></thead>
+      <tbody>
+      <?php foreach ($badReplies as $b): ?>
+        <tr>
+          <td data-label="When"><?= Security::e(substr((string) $b['created_at'], 0, 16)) ?></td>
+          <td data-label="They asked" class="wrap"><?= Security::e(mb_substr((string) ($b['user_text'] ?? ''), 0, 200)) ?: '<span class="muted">—</span>' ?></td>
+          <td data-label="The bot said" class="wrap"><?= Security::e(mb_substr((string) ($b['reply_text'] ?? ''), 0, 240)) ?></td>
+          <td data-label="Office note" class="wrap"><?= Security::e((string) ($b['note'] ?? '')) ?></td>
+          <td data-label="Action"><a class="btn ghost" href="/admin/ai-knowledge.php?from_fb=<?= (int) $b['id'] ?>">✍ Write article</a></td>
         </tr>
       <?php endforeach; ?>
       </tbody>

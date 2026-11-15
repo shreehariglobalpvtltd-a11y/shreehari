@@ -110,6 +110,7 @@ function router() {
   $('#hamburger').setAttribute('aria-expanded', 'false');   // D2-M1: a followed menu link closes the menu for AT too
   /* The pending-ticket poll (TicketPoll, below) lives only on its own view. */
   if (typeof TicketPoll !== 'undefined' && TicketPoll._id && h.indexOf('#/ticket/') !== 0) TicketPoll.stop();
+  if (typeof MyPoll !== 'undefined' && MyPoll._t && !MyPoll.onMy(h)) MyPoll.stop();   // P2-3a: My Trips only
   /* Both ticket views re-read the database before trusting what this browser
      remembers, so an approval, rejection or cancellation made by staff shows
      up on the passenger's next look instead of never. Fire-and-forget: the
@@ -146,6 +147,7 @@ function router() {
   else if (h === '#/my' || h.indexOf('#/my?') === 0) {   // '#/my?pnr=…' = an older keyless ticket link (D4-13)
     showView('my'); renderMyBookings();
     syncBookings().then((changed) => { if (changed && location.hash === h) renderMyBookings(); });
+    if (typeof MyPoll !== 'undefined') { MyPoll._at = Date.now(); MyPoll.start(); }   // P2-3a: then quietly every 60 s
   }
   else if (h === '#/admin')    { window.open('/admin/', '_blank'); location.hash = '#/'; return; }
   /* 22 Oct 2026 (owner: "AI wala map matra rakhideu, purano map delete"): the
@@ -558,20 +560,59 @@ document.addEventListener('click', (e) => {
   scrollHomeTarget('search-anchor');
 });
 
-/* Seasonal notice banner (text managed from Admin → Settings) */
+/* Seasonal notice banner (text managed from Admin → Settings).
+   16 Nov 2026 (P5-6): the office's "Notice banner text" (Settings → Website,
+   notice_text, public) is the source - it used to reach nothing. It shows for
+   24 h after it was saved (SHG_BOOT.notice_since = when that row last changed,
+   0 = unknown: no expiry), and ✕ is remembered on this phone for THAT text only
+   (a short hash), so a new notice shows again. The old local kv notice
+   (S().noticeOn / noticeText) stays as the fallback. A plain info icon, no emoji. */
+const NOTICE_KEY = 'shg:noticeDismissed';
+let noticeTimer = 0;
+function noticeHash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+function noticeNow() {
+  const B = window.SHG_BOOT || {};
+  const txt = String((B.settings && B.settings.notice_text) || '').trim();
+  if (txt) {
+    const since = Number(B.notice_since) || 0;
+    const ends = since > 0 ? (since + 86400) * 1000 : 0;
+    if (ends && Date.now() >= ends) return null;   // older than 24 h
+    return { text: txt, ends: ends };
+  }
+  const st = S();
+  const old = String(st.noticeText || '').trim();
+  return st.noticeOn && old ? { text: old, ends: 0 } : null;
+}
 function renderNotice() {
   const bar = $('#noticeBar'); if (!bar) return;
-  const st = S();
+  clearTimeout(noticeTimer);
+  const n = noticeNow();
+  const h = n ? noticeHash(n.text) : '';
   let hidden = false;
-  try { hidden = sessionStorage.getItem('shg:noticeHide') === '1'; } catch (e) {}
-  if (!st.noticeOn || !String(st.noticeText || '').trim() || hidden) { bar.classList.add('hide'); return; }
+  try { hidden = !!h && localStorage.getItem(NOTICE_KEY) === h; } catch (e) {}
+  if (!n || hidden) { bar.classList.add('hide'); return; }
+  const txt = $('#noticeText');
+  if (txt && !bar.querySelector('.notice-ico')) {
+    txt.insertAdjacentHTML('beforebegin', '<svg class="notice-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">'
+      + '<circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" stroke-width="1.8"/>'
+      + '<path d="M12 10.8v5.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+      + '<circle cx="12" cy="7.7" r="1.2" fill="currentColor"/></svg>');
+  }
+  bar.setAttribute('data-nh', h);
   bar.classList.remove('hide');
-  $('#noticeText').textContent = st.noticeText;
+  if (txt) txt.textContent = n.text;
+  // Still open when the 24 h run out: leave on time (setTimeout caps near 24.8 days).
+  if (n.ends) noticeTimer = setTimeout(renderNotice, Math.min(Math.max(1000, n.ends - Date.now() + 500), 2147000000));
 }
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#noticeClose')) return;
-  try { sessionStorage.setItem('shg:noticeHide', '1'); } catch (e2) {}
-  $('#noticeBar').classList.add('hide');
+  const bar = $('#noticeBar'); if (!bar) return;
+  try { localStorage.setItem(NOTICE_KEY, bar.getAttribute('data-nh') || ''); } catch (e2) {}
+  bar.classList.add('hide');
 });
 
 /* FAQ accordion */
@@ -1686,7 +1727,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261115e" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261116a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
@@ -2748,6 +2789,8 @@ const SrvCatalog = {
           // can show the banner and the select handler can adopt it as Flow.date.
           nextAvailable: !!d.nextAvailable, nextDate: d.date || date,
           requestedDate: d.requestedDate || date, nextStop: d.nextAvailableStop || '',
+          // P4-2f (16 Nov 2026): that stop's own time on the rolled bus, 'HH:MM' ('' = an older server)
+          nextTime: /^\d{2}:\d{2}$/.test(String(d.nextAvailableTime || '')) ? String(d.nextAvailableTime) : '',
           // Master switch (4 Sep 2026): the office paused the daily service.
           serviceOff: !!d.serviceOff, offNote: d.note || '' };
         const sig = (s) => s ? Object.keys(s.byCode).sort().map(c =>
@@ -3091,6 +3134,29 @@ function myHoldExpiry() {
    resolves true only then), so a quiet bus costs one small request and
    zero DOM work.
 ================================================================ */
+/* 16 Nov 2026 (P2-3e): a 14 px ring in the top-right corner while a background
+   refresh is on the way - syncBookings (07-checkout.js), the seat polls (SeatPoll
+   below, the SmartBook seat sheet). An in-flight counter: the ring stays while
+   any of them is still asking. Never in the way (no clicks, hidden from screen
+   readers); polish.css draws it, still under reduced motion, and shows it only
+   when a refresh takes longer than a blink. */
+const SHGSync = {
+  n: 0,
+  begin() { this.n++; this._paint(); },
+  end() { this.n = Math.max(0, this.n - 1); this._paint(); },
+  _paint() {
+    let el = document.getElementById('shgSync');
+    if (!el) {
+      if (!this.n || !document.body) return;
+      el = document.createElement('span');
+      el.id = 'shgSync'; el.className = 'shg-sync'; el.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(el);
+    }
+    el.classList.toggle('on', this.n > 0);
+  }
+};
+window.SHGSync = SHGSync;
+
 const SeatPoll = {
   EVERY_MS: 8000,
   /* While the live stream is connected the poll is only a safety net. */
@@ -3153,7 +3219,10 @@ const SeatPoll = {
        a private picker got "just booked by another customer" for the wrong
        berth and its own bucket never refreshed inside the 20 s TTL. */
     const mode = (typeof Flow !== 'undefined' && Flow.bookingType) ? Flow.bookingType : undefined;
-    SeatSrv.load(c.routeId, c.date, true, mode).then(changed => {
+    SHGSync.begin();
+    const ask = SeatSrv.load(c.routeId, c.date, true, mode);
+    ask.then(() => SHGSync.end(), () => SHGSync.end());
+    ask.then(changed => {
       if (!changed) return;
       /* Somebody else's booking landed. Repaint, and if it took a seat
          this visitor had selected, say so rather than silently dropping
@@ -3260,6 +3329,61 @@ window.addEventListener('hashchange', () => {
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) TicketPoll.pause(); else TicketPoll.resume();
+});
+
+/* ================================================================
+   MY TRIPS, LIVE (16 Nov 2026, P2-3a)
+
+   #/my synced once on open, so an office cancellation, approval or new
+   pickup showed only after the passenger navigated away and back. While
+   My Trips is the visible view and the tab is in front, the next few
+   UPCOMING tickets (pending / confirmed, soonest first, at most 4) are
+   re-read every 60 s through syncBookings - silent, read-only, and far
+   inside track.php's 40 / 60 s limit even for phones sharing one carrier
+   address. The list is redrawn only when something really changed. Any
+   other view, or a hidden tab, has no timer at all.
+================================================================ */
+const MyPoll = {
+  EVERY_MS: 60000,
+  MAX: 4,
+  _t: null,
+
+  onMy(h) { h = h || location.hash || ''; return h === '#/my' || h.indexOf('#/my?') === 0; },
+  start() {
+    if (this._t || document.hidden || !this.onMy()) return;
+    this._t = setInterval(() => this._tick(), this.EVERY_MS);
+  },
+  stop() { clearInterval(this._t); this._t = null; },
+
+  ids() {
+    const now = Date.now();
+    const dep = (b) => (typeof depTimestamp === 'function') ? depTimestamp(b) : 0;
+    return (DB.bookings || [])
+      .filter(b => b && typeof b.id === 'string' && b.id.indexOf('SHG-') === 0
+        && (b.status === 'pending' || b.status === 'confirmed') && dep(b) > now)
+      .sort((a, b) => dep(a) - dep(b))
+      .slice(0, this.MAX)
+      .map(b => b.id);
+  },
+
+  _at: 0,
+  _tick() {
+    if (!this.onMy()) return this.stop();
+    if (document.hidden || typeof syncBookings !== 'function') return;
+    if (Date.now() - this._at < 15000) return;   // flicking between tabs is not a reason to ask again
+    const ids = this.ids();
+    if (!ids.length) return;
+    this._at = Date.now();
+    const h = location.hash;
+    syncBookings(ids).then((changed) => {
+      if (changed && location.hash === h && typeof renderMyBookings === 'function') renderMyBookings();
+    }).catch(() => {});
+  }
+};
+window.addEventListener('hashchange', () => { if (MyPoll._t && !MyPoll.onMy()) MyPoll.stop(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { MyPoll.stop(); return; }
+  if (MyPoll.onMy()) { MyPoll.start(); MyPoll._tick(); }   // back on the tab: ask at once
 });
 let holdInt = null;
 function startHoldTicker() {

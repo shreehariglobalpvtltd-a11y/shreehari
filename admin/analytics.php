@@ -152,6 +152,9 @@ function an_window(array $q, string $today): array
         case 'month':
             $from = substr($today, 0, 8) . '01';
             break;
+        case 'year':        // 16 Nov 2026 (P8-9b): 1 Jan .. today, the dashboard's YTD (<= 366 days)
+            $from = substr($today, 0, 4) . '-01-01';
+            break;
         case '7d':
             $from = addDaysISO($today, -6);
             break;
@@ -813,7 +816,7 @@ admin_page_head(
 
 <div class="panel an-range">
   <nav class="an-chips" aria-label="Date range">
-    <?php foreach (['today' => 'Today', 'yesterday' => 'Yesterday', 'week' => 'This week', 'month' => 'This month', 'lastmonth' => 'Last month', '30d' => 'Last 30 days'] as $k => $lbl): ?>
+    <?php foreach (['today' => 'Today', 'yesterday' => 'Yesterday', 'week' => 'This week', 'month' => 'This month', 'lastmonth' => 'Last month', '30d' => 'Last 30 days', 'year' => 'This year'] as $k => $lbl): ?>
       <a class="chip<?= $win['key'] === $k ? ' on' : '' ?>" href="<?= $e($self . '?range=' . $k) ?>"<?= $win['key'] === $k ? ' aria-current="true"' : '' ?>><?= $e($lbl) ?></a>
     <?php endforeach; ?>
     <button type="button" class="chip<?= $win['key'] === 'custom' ? ' on' : '' ?>" id="anCustomBtn"

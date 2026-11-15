@@ -120,12 +120,47 @@ if ($alerts !== []) {
     }
 }
 
+/* ---- suggestions (16 Nov 2026, Master v2 P3-3c) ------------------------
+   The same figures as the AI Watch panel on Home (includes/aiwatch.php):
+   buses selling slowly, refunds waiting (the office settles them by hand)
+   and agents who have stopped selling. Suggestions only — this job sends
+   no offer, refunds nothing and messages no agent. */
+$sugg = [];
+try {
+    require_once INCLUDE_PATH . '/aiwatch.php';
+    $slow = AiWatch::slowDepartures(48, 40);
+    if ($slow !== []) {
+        $sugg[] = '📣 Slow buses (<40% in 48 h): ' . implode(' · ', array_slice(array_column($slow, 'line'), 0, 4))
+                . (count($slow) > 4 ? ' +' . (count($slow) - 4) . ' more' : '')
+                . ' — share an offer / promo card, remind agents.';
+    }
+    $refunds = AiWatch::refundsPending();
+    if ($refunds['n'] > 0) {
+        $sugg[] = '↩️ Refunds waiting: ' . $refunds['n'] . ' · ' . inr($refunds['amt']) . ' (settle by hand)';
+    }
+    $idleDays = max(1, Settings::getInt('alert_agent_inactive_days', 7));
+    $idle     = AiWatch::idleAgents($idleDays);
+    if ($idle !== []) {
+        $sugg[] = '😴 Agents with no sale ' . $idleDays . '+ days: ' . implode(', ', array_slice(array_column($idle, 'name'), 0, 6))
+                . (count($idle) > 6 ? ' +' . (count($idle) - 6) . ' more' : '');
+    }
+} catch (Throwable $e) {
+    Logger::warning('brain-digest: suggestions skipped', ['error' => $e->getMessage()], 'cron');
+}
+if ($sugg !== []) {
+    $lines[] = '';
+    $lines[] = 'सुझाव · Suggestions:';
+    foreach ($sugg as $s) {
+        $lines[] = $s;
+    }
+}
+
 if ((int) $acc['sample'] >= 10) {
     $lines[] = '';
     $lines[] = sprintf('Brain accuracy (30 days): %d%% of %d cards became tickets.', (int) round(((float) $acc['hitRate']) * 100), (int) $acc['sample']);
 }
 
-if ($cards === [] && $drafts === [] && $alerts === []) {
+if ($cards === [] && $drafts === [] && $alerts === [] && $sugg === []) {
     $lines[] = '';
     $lines[] = 'Quiet start — nothing predicted and nothing waiting.';
 }
@@ -136,6 +171,7 @@ $out  = [
     'cards'  => count($cards),
     'drafts' => count($drafts),
     'alerts' => count($alerts),
+    'suggestions' => count($sugg),
 ];
 
 if ($dry) {

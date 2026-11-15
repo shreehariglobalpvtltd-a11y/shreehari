@@ -461,9 +461,21 @@ final class Security
         return $out;
     }
 
+    /** 16 Nov 2026: bcrypt cost for every password / PIN / pattern / answer hash (was 11). */
+    public const HASH_COST = 12;
+
     public static function hashPassword(string $plain): string
     {
-        return password_hash($plain, PASSWORD_BCRYPT, ['cost' => 11]);
+        return password_hash($plain, PASSWORD_BCRYPT, ['cost' => self::HASH_COST]);
+    }
+
+    /**
+     * 16 Nov 2026: a hash made at an older / cheaper setting (PASSWORD_DEFAULT cost 10,
+     * the old cost 11). Callers that have just VERIFIED the plain value re-hash it then.
+     */
+    public static function needsRehash(string $hash): bool
+    {
+        return $hash !== '' && password_needs_rehash($hash, PASSWORD_BCRYPT, ['cost' => self::HASH_COST]);
     }
 
     public static function verifyPassword(string $plain, string $hash): bool

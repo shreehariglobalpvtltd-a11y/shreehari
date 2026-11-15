@@ -627,6 +627,12 @@ final class TicketBot
             $work = $pos === false ? $work : substr_replace($work, ' ', $pos, strlen($ac[0]));
         }
 
+        /* P7-7b / P7-7c (16 Nov 2026): "9826 O12345", "14/O2/2027" — a letter
+           typed for a digit, repaired inside a number only (see
+           repairDigitTypos); before this the mobile was lost and "O12345" /
+           "O2" became part of the passenger's name. */
+        $work = self::repairDigitTypos($work);
+
         /* phone: a run of digits (spaces / dashes allowed inside — "98765 43210",
            "+977 9812345678") that strips to 10–13 digits. A run that is too long
            as a whole ("9876543210 2" = number + seat count) is retried piece by
@@ -913,7 +919,9 @@ final class TicketBot
            back" is a return and "back to nepal" is not. Nepal-side TOWNS
            (rupaidiha, nepalganj, kathmandu, in any script) are PICKUPS for the
            boarding pass below, never a direction by themselves. */
-        $phrasesNepal = ['to nepal', 'nepal jane', 'nepal jana', 'nepal tak', 'nepal samma', 'nepal side', 'to rupaidiha', 'rupaidiha jane', 'rupaidiha jana', 'to nepalgunj', 'nepalgunj jane', 'nepalganj jane', 'to kathmandu', 'kathmandu jane',
+        $phrasesNepal = ['to nepal', 'nepal jane', 'nepal jana', 'nepal tak', 'nepal samma', 'nepal side', 'to rupaidiha', 'rupaidiha jane', 'rupaidiha jana',
+                         // P7-7d (16 Nov 2026): the common misspellings, now pickup aliases too — as a destination they stay a direction
+                         'to rupaidiya', 'rupaidiya jane', 'to rupedia', 'rupedia jane', 'to rupaidia', 'rupaidia jane', 'to nepalgunj', 'nepalgunj jane', 'nepalganj jane', 'to kathmandu', 'kathmandu jane',
                          'नेपाल जाना है', 'नेपाल जाना', 'नेपाल जाने', 'नेपाल जानु', 'नेपाल तर्फ', 'नेपाल तिर', 'नेपालगंज जाने', 'रुपैडिया जाने', 'काठमाडौं जाने',
                          'નેપાળ જવું', 'નેપાળ જવાનું', 'નેપાળ જવા', 'નેપાળગંજ જવું'];
         $phrasesIndia = ['to india', 'india jane', 'india jana', 'to gujarat', 'gujarat jane', 'to surat', 'surat jane', 'surat jana', 'to ahmedabad', 'ahmedabad jane', 'to mehsana', 'mehsana jane',
@@ -923,14 +931,32 @@ final class TicketBot
                          'वापस', 'वापसी', 'फर्कने', 'फर्किने', 'फर्केर', 'फिर्ता', 'પાછા', 'પાછું', 'પરત'];
         $bareNepal    = ['nepal', 'nepalganj', 'kohalpur', 'kathmandu', 'नेपाल', 'નેપાળ', 'નેપાલ'];
         $bareIndia    = ['india', 'gujarat', 'भारत', 'इंडिया', 'इण्डिया', 'गुजरात', 'ભારત', 'ઈન્ડિયા', 'ગુજરાત'];
-        $nepalTowns   = ['rupaidiha', 'rupaideha', 'nepalgunj', 'रुपैडिया', 'रूपैडिया', 'रुपैडिहा', 'नेपालगंज', 'नेपालगन्ज', 'काठमाडौं', 'काठमांडू', 'कोहलपुर', 'રૂપૈડિયા', 'નેપાળગંજ', 'કાઠમંડુ'];
-        $indiaTowns   = ['surat', 'ahmedabad', 'amdavad', 'mehsana', 'baroda', 'vadodara', 'kamrej', 'ankleshwar', 'bharuch', 'nadiad', 'rajkot', 'राजकोट', 'રાજકોટ', 'कामरेज', 'अंकलेश्वर', 'भरूच', 'भरुच', 'नडियाद', 'કામરેજ', 'અંકલેશ્વર', 'ભરૂચ', 'નડિયાદ', 'सूरत', 'सुरत', 'अहमदाबाद', 'अमदावाद', 'मेहसाणा', 'मेहसाना', 'बड़ौदा', 'बडौदा', 'वडोदरा', 'સુરત', 'અમદાવાદ', 'મહેસાણા', 'વડોદરા', 'બરોડા'];
+        $nepalTowns   = ['rupaidiha', 'rupaideha', 'rupaidiya', 'rupedia', 'rupaidia', 'nepalgunj', 'रुपैडिया', 'रूपैडिया', 'रुपैडिहा', 'नेपालगंज', 'नेपालगन्ज', 'काठमाडौं', 'काठमांडू', 'कोहलपुर', 'રૂપૈડિયા', 'નેપાળગંજ', 'કાઠમંડુ'];
+        $indiaTowns   = ['surat', 'ahmedabad', 'amdavad', 'mehsana', 'baroda', 'vadodara', 'vadodra', 'kamrej', 'ankleshwar', 'bharuch', 'nadiad', 'rajkot', 'राजकोट', 'રાજકોટ', 'कामरेज', 'अंकलेश्वर', 'भरूच', 'भरुच', 'नडियाद', 'કામરેજ', 'અંકલેશ્વર', 'ભરૂચ', 'નડિયાદ', 'सूरत', 'सुरत', 'अहमदाबाद', 'अमदावाद', 'मेहसाणा', 'मेहसाना', 'बड़ौदा', 'बडौदा', 'वडोदरा', 'સુરત', 'અમદાવાદ', 'મહેસાણા', 'વડોદરા', 'બરોડા'];
         $sideOf = static function (string $w) use ($bareNepal, $bareIndia, $nepalTowns, $indiaTowns): string {
             if (in_array($w, $bareNepal, true) || in_array($w, $nepalTowns, true)) { return 'toNepal'; }
             if (in_array($w, $bareIndia, true) || in_array($w, $indiaTowns, true)) { return 'toIndia'; }
             return '';
         };
         $placeAlt = implode('|', array_map(static fn(string $w): string => preg_quote($w, '/'), array_merge($bareNepal, $bareIndia, $nepalTowns, $indiaTowns)));
+        /* P7-7d (16 Nov 2026): a one-letter town typo ("Ahemadabad bata",
+           "Suratt se", "Mehsaana jane") lost the pickup and was printed as the
+           passenger's NAME. A word is corrected ONLY where the sentence says
+           it is a place: right before se / bata / dekhi / देखि / થી / jane /
+           janu, or right after from / to. Anywhere else a near-miss stays as
+           typed, because real names sit one letter from a town (Anant / Anand,
+           Nadia / Nadiad). The corrected word then reads exactly as its right
+           spelling does below, and the pickup is read back in the quote. */
+        $fixSlot = static function (string $word): string {
+            $hit = self::fuzzyStop($word);
+            return ($hit !== null && $hit['distance'] > 0) ? $hit['alias'] : $word;
+        };
+        $lower = (string) preg_replace_callback(
+            '/(?<![\p{L}\p{M}\p{N}])([a-z]{4,})([\s,]+)(se|bata|dekhi|jane|janu|देखि|થી|से|बाट)(?![\p{L}\p{M}])/u',
+            static fn(array $m): string => $fixSlot($m[1]) . $m[2] . $m[3], $lower);
+        $lower = (string) preg_replace_callback(
+            '/(?<![\p{L}\p{M}\p{N}])(from|to)(\s+)([a-z]{4,})(?![\p{L}\p{M}\p{N}])/u',
+            static fn(array $m): string => $m[1] . $m[2] . $fixSlot($m[3]), $lower);
         if (preg_match('/(?<![\p{L}\p{M}])(' . $placeAlt . ')\s+(?:se|bata|dekhi|from|से|बाट|देखि|થી)\s+(' . $placeAlt . ')' . self::NB . '/u', $lower, $ab)) {
             $side = $sideOf($ab[2]);
             if ($side !== '' && $side !== $sideOf($ab[1])) {
@@ -1733,9 +1759,9 @@ final class TicketBot
             'BRH' => ['bharuch', 'broach', 'भरूच', 'भरुच', 'ભરૂચ'],
             'ANA' => ['anand', 'आनंद', 'आनन्द', 'આણંદ'],
             'NAD' => ['nadiad', 'नडियाद', 'नाडियाद', 'નડિયાદ'],
-            'BRC' => ['baroda', 'barauda', 'vadodara', 'badoda', 'बड़ौदा', 'बडौदा', 'बरोडा', 'वडोदरा', 'बड़ोदरा', 'વડોદરા', 'બરોડા'],
+            'BRC' => ['baroda', 'barauda', 'vadodara', 'vadodra', 'badoda', 'बड़ौदा', 'बडौदा', 'बरोडा', 'वडोदरा', 'बड़ोदरा', 'વડોદરા', 'બરોડા'],
             'EMB' => ['emli', 'emli bhupal', 'bhupal', 'limbli', 'limli', 'इमली', 'इमली भूपाल', 'एमली', 'एमली भूपाल', 'लिंबली', 'लिम्बली', 'लिम्बली भूपाल', 'લીંબલી', 'લિંબલી', 'એમલી', 'એમલી ભૂપાલ'],
-            'RPD' => ['rupaidiha', 'rupaideha', 'rupediha', 'jamunaha', 'border', 'रुपैडिया', 'रूपैडिया', 'रुपैडिहा', 'रुपैदिया', 'बॉर्डर', 'बोर्डर', 'जमुनाहा', 'રૂપૈડિયા', 'રુપૈડિયા', 'બોર્ડર'],
+            'RPD' => ['rupaidiha', 'rupaideha', 'rupediha', 'rupaidiya', 'rupedia', 'rupaidia', 'jamunaha', 'border', 'रुपैडिया', 'रूपैडिया', 'रुपैडिहा', 'रुपैदिया', 'बॉर्डर', 'बोर्डर', 'जमुनाहा', 'રૂપૈડિયા', 'રુપૈડિયા', 'બોર્ડર'],
             'NPJ' => ['nepalgunj', 'nepalganj', 'नेपालगंज', 'नेपालगन्ज', 'नेपालगञ्ज', 'નેપાળગંજ', 'નેપાલગંજ'],
             'RJT' => ['rajkot', 'राजकोट', 'રાજકોટ'],
         ];
@@ -1771,6 +1797,133 @@ final class TicketBot
         }
 
         return $cat;
+    }
+
+    /**
+     * P7-7d (16 Nov 2026): the ONE pickup a mistyped town word is nearest to.
+     * Levenshtein <= 1 (<= 2 from 9 letters up) against the roman one-word
+     * aliases of the catalogue. Null when the word is short or not roman, or
+     * when it is near TWO different stops — it never guesses between towns.
+     * distance 0 = the word already is an alias. parse() asks this ONLY for a
+     * word in a place position (before "bata / se", after "from / to"); it is
+     * deliberately not used to judge names (PersonName::looksLikePlace).
+     *
+     * @return array{value: string, name: string, code: string, alias: string, distance: int}|null
+     */
+    public static function fuzzyStop(string $word): ?array
+    {
+        $w = mb_strtolower(trim($word));
+        if (preg_match('/^[a-z]{4,30}$/', $w) !== 1) {
+            return null;
+        }
+        /* Review (16 Nov 2026): aliases that are ordinary English words match
+           only when typed exactly — "I want to order 2 tickets" read "to
+           border" and quoted the Rupaidiha pickup ("marking / packing" ->
+           parking). And real places that are NOT one of our stops are never
+           "corrected" into one: Naroda is Ahmedabad (beside Nana Chiloda),
+           not Baroda; Bhopal, Limdi and Rupandehi are other towns. */
+        $exactOnly = ['border', 'parking', 'broach'];
+        if (in_array($w, ['naroda', 'bhopal', 'limdi', 'rupandehi'], true)) {
+            return null;
+        }
+        $max   = strlen($w) >= 9 ? 2 : 1;
+        $best  = null;
+        $stops = [];
+        foreach (self::stopCatalogue() as $stop) {
+            foreach ($stop['aliases'] as $alias) {
+                if (preg_match('/^[a-z]{4,}$/', $alias) !== 1 || abs(strlen($alias) - strlen($w)) > $max) {
+                    continue;
+                }
+                $d = levenshtein($w, $alias);
+                if ($d > $max || ($d > 0 && in_array($alias, $exactOnly, true))) {
+                    continue;
+                }
+                // Two catalogue rows of one town (the same code) are one stop.
+                $stops[$stop['code'] !== '' ? $stop['code'] : $stop['value']] = true;
+                if ($best === null || $d < $best['distance']) {
+                    $best = ['value' => $stop['value'], 'name' => $stop['name'], 'code' => $stop['code'], 'alias' => $alias, 'distance' => $d];
+                }
+            }
+        }
+        if ($best === null) {
+            return null;
+        }
+
+        return ($best['distance'] === 0 || count($stops) === 1) ? $best : null;
+    }
+
+    /**
+     * P7-7b / P7-7c (16 Nov 2026): a letter typed for a digit, inside a number
+     * only — O / o -> 0 and I / l -> 1.
+     *   · a numeric date "14/O2/2027": the day is digits, the month and the
+     *     year each still hold real digits;
+     *   · a mobile "9826 O12345": neighbouring pieces made of digits and those
+     *     letters, each piece holding a real digit, 8 or more real digits in
+     *     all, that become EXACTLY 10 digits of a mobile (6-9 first). A short
+     *     1-2 digit piece at either end (a seat count) is never part of it,
+     *     and when two different repairs would fit, nothing is repaired.
+     * A missing digit is never invented: everything else stays as typed and
+     * the phone pass refuses it as before. The quote reads both back.
+     */
+    public static function repairDigitTypos(string $text): string
+    {
+        if (preg_match('/[OoIl]/', $text) !== 1) {
+            return $text;
+        }
+        $fix = static fn(string $s): string => strtr($s, ['O' => '0', 'o' => '0', 'I' => '1', 'l' => '1']);
+
+        $text = (string) preg_replace_callback(
+            '/(?<![\p{L}\p{N}])(\d{1,2})([\/.\-])([\dOoIl]{1,2})([\/.\-])([\dOoIl]{2,4})(?![\p{L}\p{N}])/u',
+            static function (array $m) use ($fix): string {
+                if (preg_match('/\d/', $m[3]) !== 1 || preg_match_all('/\d/', $m[5]) < 2) {
+                    return $m[0];
+                }
+                return $m[1] . $m[2] . $fix($m[3]) . $m[4] . $fix($m[5]);
+            }, $text);
+
+        return (string) preg_replace_callback(
+            '/(?<![\p{L}\p{N}])[\dOoIl][\dOoIl\-]*(?: +[\dOoIl][\dOoIl\-]*)*(?![\p{L}\p{N}])/u',
+            static function (array $m) use ($fix): string {
+                $run = $m[0];
+                if (preg_match('/[OoIl]/', $run) !== 1 || preg_match_all('/\S+/', $run, $pm, PREG_OFFSET_CAPTURE) < 1) {
+                    return $run;
+                }
+                $pieces = $pm[0];
+                $n      = count($pieces);
+                $real   = static fn(string $p): int => (int) preg_match_all('/\d/', $p);
+                $chars  = static fn(string $p): int => (int) preg_match_all('/[\dOoIl]/', $p);
+                $fits   = [];
+                for ($i = 0; $i < $n; $i++) {
+                    $digits = 0; $all = 0; $letter = false;
+                    for ($j = $i; $j < $n; $j++) {
+                        $p = (string) $pieces[$j][0];
+                        if ($real($p) === 0) {
+                            break;                          // a word like "lo" or "I" splits the number
+                        }
+                        $digits += $real($p);
+                        $all    += $chars($p);
+                        $letter  = $letter || preg_match('/[OoIl]/', $p) === 1;
+                        if ($all > 10) {
+                            break;
+                        }
+                        $short = $j > $i && ($chars((string) $pieces[$i][0]) <= 2 || $chars($p) <= 2);
+                        if ($letter && $all === 10 && $digits >= 8 && !$short) {
+                            $from = (int) $pieces[$i][1];
+                            $len  = (int) $pieces[$j][1] + strlen($p) - $from;
+                            $num  = (string) preg_replace('/\D/', '', $fix(substr($run, $from, $len)));
+                            if (preg_match('/^[6-9]\d{9}$/', $num) === 1) {
+                                $fits[] = [$from, $len];
+                            }
+                        }
+                    }
+                }
+                if (count($fits) !== 1) {
+                    return $run;
+                }
+                [$from, $len] = $fits[0];
+
+                return substr($run, 0, $from) . $fix(substr($run, $from, $len)) . substr($run, $from + $len);
+            }, $text);
     }
 
     /* =================================================================

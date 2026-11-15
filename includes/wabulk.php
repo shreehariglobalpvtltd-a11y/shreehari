@@ -194,6 +194,80 @@ final class WaBulk
      * ================================================================= */
 
     /**
+     * 16 Nov 2026 (P8-7c, admin/bulk-tickets.php): a CSV (Excel "Save as
+     * CSV" - comma, semicolon or tab) -> one passenger per line, the way
+     * parse() reads a pasted list. A first row that names its columns
+     * (Name, Mobile, Gender, Age - English or Nepali) sets the order;
+     * without one the order is Name, Mobile, Gender, Age. Nothing is
+     * judged here: parse() still checks every name and number.
+     *
+     * @return list<string>
+     */
+    public static function csvLines(string $raw): array
+    {
+        if (str_starts_with($raw, "\xEF\xBB\xBF")) {
+            $raw = substr($raw, 3);
+        }
+        if (!mb_check_encoding($raw, 'UTF-8')) {
+            $raw = (string) mb_convert_encoding($raw, 'UTF-8', 'Windows-1252');   // an old "CSV (Comma delimited)" save
+        }
+        $lines = preg_split('/\r\n|\r|\n/', $raw) ?: [];
+        $first = '';
+        foreach ($lines as $l) {
+            if (trim($l) !== '') {
+                $first = $l;
+                break;
+            }
+        }
+        $delim = ',';
+        $best  = -1;
+        foreach ([',', ';', "\t"] as $d) {
+            if (substr_count($first, $d) > $best) {
+                $best  = substr_count($first, $d);
+                $delim = $d;
+            }
+        }
+        $col = ['name' => 0, 'phone' => 1, 'gender' => 2, 'age' => 3];
+        $re  = ['name' => '/^(name|naam|full name|passenger|yatri|नाम|यात्रु)/u', 'phone' => '/(mobile|phone|number|whatsapp|मोबाइल|फोन|नम्बर)/u',
+                'gender' => '/^(gender|sex|m\/f|लिङ्ग)/u', 'age' => '/^(age|umer|उमेर)/u'];
+        $out = [];
+        $row = 0;
+        foreach ($lines as $l) {
+            if (trim($l) === '') {
+                continue;
+            }
+            $cells = array_map(static fn($c): string => trim((string) $c), str_getcsv($l, $delim, '"', ''));
+            if (++$row === 1) {
+                $named = [];
+                foreach ($cells as $i => $c) {
+                    foreach ($re as $k => $rx) {
+                        if (!isset($named[$k]) && preg_match($rx, mb_strtolower($c)) === 1) {
+                            $named[$k] = $i;
+                            break;
+                        }
+                    }
+                }
+                if ($named !== []) {
+                    // a column the header does not name is not there (-1), never guessed by position
+                    $col = $named + ['name' => -1, 'phone' => -1, 'gender' => -1, 'age' => -1];
+                    continue;
+                }
+            }
+            $parts = [];
+            foreach (['name', 'phone', 'gender', 'age'] as $k) {
+                $v = (string) ($cells[$col[$k]] ?? '');
+                if ($v !== '') {
+                    $parts[] = $v;
+                }
+            }
+            if ($parts !== []) {
+                $out[] = implode(' ', $parts);
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Read the list into bookings. Never throws; every problem is a
      * numbered line in errors[] the seller can fix.
      *
@@ -452,8 +526,11 @@ final class WaBulk
             'items' => $items,
             'seats' => $seats,
             'total' => $total,
+            // 16 Nov 2026 (P8-7c): the one-shot token the panel's Confirm button carries
+            'tok'   => bin2hex(random_bytes(12)),
         ];
         self::save($phone, $stage);
+        $panel = self::isPanel($ctx);
 
         $lines = ['🧾 BULK QUOTE — ' . count($items) . ' बुकिङ · ' . $seats . ' सिट'];
         if ($bus !== null) {
@@ -498,7 +575,7 @@ final class WaBulk
         }
         $lines[] = 'नाम र नम्बर जाँच्नुहोस्। सबै काट्न "ho" लेख्नुहोस्, रद्द गर्न "no"।';
 
-        return ['ok' => true, 'text' => implode("\n", $lines), 'data' => [
+        $data = [
             'bookings' => array_map(static fn (array $it): array => [
                 'passengers' => array_column($it['passengers'], 'name'),
                 'phone'      => $it['phone'],
@@ -513,7 +590,34 @@ final class WaBulk
             'totalLabel' => inr($total),
             'pay'    => $pay,
             'errors' => $errors,
-        ]];
+        ];
+        if ($panel) {
+            /* The staff panel (admin/bulk-tickets.php) draws its own table: the
+               bus heading, per booking the bus/day it landed on, and the token
+               its Confirm button must post back. Never handed to the model. */
+            $data['token'] = $stage['tok'];
+            $data['bus']   = $bus === null ? null : [
+                'route' => $bus['from'] . ' → ' . $bus['to'], 'dateLabel' => (string) $bus['dateLabel'], 'depTime' => (string) $bus['depTime'],
+                'pickup' => (string) $bus['boardingName'], 'pickupTime' => (string) $bus['boardingTime'], 'seatsLeft' => (int) $left,
+            ];
+            foreach ($items as $k => $it) {
+                $data['bookings'][$k]['genders']   = array_column($it['passengers'], 'gender');
+                $data['bookings'][$k]['ages']      = array_column($it['passengers'], 'age');
+                $data['bookings'][$k]['dateLabel'] = $it['dateLabel'];
+                $data['bookings'][$k]['depTime']   = $it['depTime'];
+                $data['bookings'][$k]['route']     = $it['route'];
+                $data['bookings'][$k]['sameBus']   = $bus !== null && $it['expect']['date'] === (string) $bus['date']
+                    && $it['expect']['direction'] === (string) $bus['direction'] && $it['expect']['boardingCode'] === (string) $bus['boardingCode'];
+            }
+        }
+
+        return ['ok' => true, 'text' => implode("\n", $lines), 'data' => $data];
+    }
+
+    /** 16 Nov 2026 (P8-7c): the call comes from the staff panel (admin/bulk-tickets.php), not WhatsApp / the model. */
+    private static function isPanel(array $ctx): bool
+    {
+        return (string) ($ctx['channel'] ?? '') === 'panel' && str_starts_with((string) ($ctx['phone'] ?? ''), 'panel:');
     }
 
     /**
@@ -521,21 +625,27 @@ final class WaBulk
      * refused if it no longer matches what was read back. The stage is
      * consumed FIRST, so a repeat "ho" can never sell the list twice.
      *
-     * @param array<string,mixed> $ctx   from AiTools::whoIs()
+     * 16 Nov 2026 (P8-7c): the staff panel (ctx channel 'panel', key
+     * 'panel:<admin id>') also sells through here. It is not behind the
+     * WhatsApp switch wa_bulk_on (the page has its own staff gate), and it
+     * passes the $token its preview carried: a token that is not the
+     * staged quote's sells nothing and leaves that quote alone.
+     *
+     * @param array<string,mixed> $ctx   from AiTools::whoIs(), or the panel's
      * @param array<string,mixed> $admin the seller's admins row
      * @return array{ok: bool, text: string, data: array<string,mixed>}
      */
-    public static function issue(array $ctx, array $admin): array
+    public static function issue(array $ctx, array $admin, string $token = ''): array
     {
         require_once INCLUDE_PATH . '/quickticket.php';
         $phone = (string) ($ctx['phone'] ?? '');
-        if (!self::enabled()) {
+        if (!self::enabled() && !self::isPanel($ctx)) {
             return ['ok' => false, 'text' => 'Bulk ticket WhatsApp मा बन्द छ।', 'data' => []];
         }
         if ((int) ($admin['id'] ?? 0) <= 0) {
             return ['ok' => false, 'text' => 'स्टाफ नम्बर वा लगइन बिना बिक्री हुँदैन।', 'data' => []];
         }
-        $stage = self::take($phone, (int) ($ctx['turn'] ?? 0));
+        $stage = self::take($phone, (int) ($ctx['turn'] ?? 0), $token);
         if ($stage === null) {
             return ['ok' => false, 'text' => 'कुनै सूची quote भएको छैन, वा quote पुरानो भयो। सूची फेरि पठाउनुहोस्।', 'data' => []];
         }
@@ -661,7 +771,7 @@ final class WaBulk
      * sit in different turns (the seller must have read it); from the
      * deterministic path the "ho" is by construction a later message.
      */
-    private static function take(string $phone, int $turn): ?array
+    private static function take(string $phone, int $turn, string $token = ''): ?array
     {
         $v = self::staged($phone);
         if ($v === null) {
@@ -670,8 +780,20 @@ final class WaBulk
         if ($turn > 0 && (int) ($v['turn'] ?? 0) >= $turn && !Settings::getBool('wa_agent_oneshot', false)) {
             return null;
         }
-        self::clear($phone);
-        return $v;
+        /* 16 Nov 2026 (P8-7c): the panel's Confirm carries the token of the
+           preview the seller looked at; a newer quote (another tab) is not it. */
+        if ($token !== '' && !hash_equals((string) ($v['tok'] ?? ''), $token)) {
+            return null;
+        }
+        /* Consumed by exactly ONE caller: two "ho" / two Confirm clicks that
+           read the stage at the same moment race on this DELETE, and only the
+           one that removed the row may sell (16 Nov 2026). */
+        try {
+            $gone = Database::delete('kv_store', 'kscope = :s AND kkey = :k', ['s' => self::SCOPE, 'k' => $phone]);
+        } catch (Throwable $e) {
+            return null;
+        }
+        return $gone > 0 ? $v : null;
     }
 
     private static function save(string $phone, array $stage): void
@@ -943,6 +1065,9 @@ final class WaBulk
     /** One ai_agent_calls row per booking attempted, so the office sees bulk sales beside the rest. */
     private static function record(array $ctx, bool $ok, string $detail, ?int $bookingId, float $t0): void
     {
+        if (self::isPanel($ctx)) {
+            return;   // the panel writes its own audit row (admin/bulk-tickets.php)
+        }
         try {
             require_once INCLUDE_PATH . '/aitools.php';
             AiTools::logCall('bulk_issue', [], $ctx, $ok, $detail, $bookingId, $t0);

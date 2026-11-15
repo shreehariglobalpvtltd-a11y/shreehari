@@ -171,7 +171,9 @@ for ($i = 0; $i < QuickUnlock::MAX_FAILS; $i++) {
 $row = Database::fetch('SELECT unlock_locked_until, unlock_strikes FROM admins WHERE id = :i', ['i' => $aPin]);
 $mins = (int) round((strtotime((string) $row['unlock_locked_until']) - time()) / 60);
 check('5 wrong PINs lock for 15 min (strike 1)', (int) $row['unlock_strikes'] === 1 && $mins >= 14 && $mins <= 15, $mins . ' min');
-check('the screen says how long', str_contains((string) ($r['error'] ?? ''), 'minutes'));
+// 16 Nov 2026 (P1-1d): how long = 'until' (the page ticks it down mm:ss), plus the whole minutes
+check('the screen says how long (until + minutes)', (int) ($r['until'] ?? 0) >= time() + 14 * 60 && (int) ($r['minutes'] ?? 0) === 15
+    && (string) ($r['error'] ?? '') !== '', ((int) ($r['until'] ?? 0) - time()) . ' s');
 $r = CodeLogin::unlock('pin', '4826');
 check('even the right PIN waits while locked', sid() === 0);
 Database::update('admins', ['unlock_locked_until' => null], 'id = :i', ['i' => $aPin]);

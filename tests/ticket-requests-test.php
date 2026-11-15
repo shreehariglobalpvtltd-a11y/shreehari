@@ -20,6 +20,10 @@
  *    - the booking, its legs and its passengers are byte-for-byte the
  *      same after every request and after the office closes them
  *    - rate limits: per visitor IP and per ticket answer 429
+ *    - seat change (P8-3e, 16 Nov 2026): no seat / not a label / more seats
+ *      than the ticket refused; a good one writes one open row with the
+ *      wanted labels + bell + audit, the booking unchanged; the ticket page
+ *      and the office page show it
  *    - ticket/view.php shows the two buttons, the refund-rule link and
  *      the request list; a past ticket shows no buttons; at the cap the
  *      buttons give way to the "waiting" line
@@ -380,6 +384,39 @@ try {
     $v2 = child(['what' => 'view', 'get' => ['code' => $code2], 'ip' => $ip(32)]);
     check('a ticket whose bus left shows no request buttons', !str_contains($v2, 'Request date change') && !str_contains($v2, 'id="treq"') && str_contains($v2, 'CONFIRMED'));
 
+    /* 2e2. seat change (P8-3e, 16 Nov 2026) - a request row only, like the other two */
+    echo "\n-- Seat change requests\n";
+    TicketRequests::resetReady();
+    check('the seat-change migration has run (kind change_seat + wanted_seats)', TicketRequests::seatChangeReady(),
+        'run tests/apply-sql.php database/upgrade-2026-11-16-ticket-seat-change.sql');
+    check('wanted seats are read as printed labels, each once', TicketRequests::parseWantedSeats(' a5, A6 a5 ') === ['A5', 'A6']
+        && TicketRequests::parseWantedSeats('A5; <b>') === null && TicketRequests::parseWantedSeats('   ') === []);
+    $B6 = $mkBooking('S', $sFut, $future, 'confirmed');
+    $snapB6 = $snap($B6['id']);
+    $r = api(['pnr' => $B6['pnr'], 'k' => $B6['k'], 'kind' => 'change_seat', 'wanted_seats' => ''], $ip(50));
+    check('no seat written: refused (422)', ($r['code'] ?? 0) === 422 && isset($r['fields']['wanted_seats']), json_encode($r, JSON_UNESCAPED_UNICODE));
+    $r = api(['pnr' => $B6['pnr'], 'k' => $B6['k'], 'kind' => 'change_seat', 'wanted_seats' => 'A5 <script>'], $ip(50));
+    check('something that is not a seat label: refused (422)', ($r['code'] ?? 0) === 422 && isset($r['fields']['wanted_seats']));
+    $r = api(['pnr' => $B6['pnr'], 'k' => $B6['k'], 'kind' => 'change_seat', 'wanted_seats' => 'A1, A2, A3'], $ip(50));
+    check('more seats than the ticket holds: refused (422)', ($r['code'] ?? 0) === 422 && str_contains((string) ($r['error'] ?? ''), 'at most 2'), json_encode($r, JSON_UNESCAPED_UNICODE));
+    check('nothing written by the refused seat-change calls', $rowsOf($B6['id']) === []);
+    Database::delete('rate_limits', "bucket = 'ticket_request_bk' AND identifier = :i", ['i' => (string) $B6['id']]);
+    $r = api(['pnr' => $B6['pnr'], 'k' => $B6['k'], 'kind' => 'change_seat', 'wanted_seats' => 'a5, a6', 'note' => 'Window side <i>please</i>'], $ip(51));
+    $rows = $rowsOf($B6['id']);
+    check('seat change accepted: one open row with the wanted labels',
+        !empty($r['ok']) && count($rows) === 1 && $rows[0]['kind'] === 'change_seat' && $rows[0]['wanted_seats'] === 'A5,A6'
+        && $rows[0]['seats'] === null && $rows[0]['wanted_date'] === null && $rows[0]['status'] === 'open', json_encode($rows[0] ?? $r, JSON_UNESCAPED_UNICODE));
+    $bell6 = Database::fetchAll("SELECT * FROM notifications WHERE id > :s AND booking_id = :b AND link = '/admin/ticket-requests.php'", ['s' => $startNote, 'b' => $B6['id']]);
+    check('the office bell names the seat change and the wanted seats',
+        count($bell6) === 1 && str_contains((string) $bell6[0]['title'], 'Seat change request') && str_contains((string) $bell6[0]['body'] . (string) ($bell6[0]['message'] ?? ''), 'A5, A6'), json_encode($bell6[0] ?? null, JSON_UNESCAPED_UNICODE));
+    check('the audit log has the seat-change request', (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE id > :s AND action = 'ticket_request.create' AND entity_id = :p", ['s' => $startAudit, 'p' => $B6['pnr']], 0) === 1);
+    check('the booking, legs and passengers are unchanged by a seat-change request', $snap($B6['id']) === $snapB6);
+    $code6 = $mkLink($B6['id']);
+    $v6 = child(['what' => 'view', 'get' => ['code' => $code6], 'ip' => $ip(52)]);
+    check('the ticket page offers the seat-change form', str_contains($v6, 'Request seat change') && str_contains($v6, 'name="wanted_seats"') && str_contains($v6, 'data-kind="change_seat"'));
+    check('the request list shows the wanted seats', str_contains($v6, 'सिट परिवर्तन · Seat change') && str_contains($v6, '→ A5, A6'));
+    check('no PHP warning on the page with a seat-change request', !preg_match('/(Warning|Notice|Deprecated|Fatal error):/', $v6));
+
     /* 2f. the office page */
     echo "\n-- Office page\n";
     $rows   = $rowsOf($B1['id']);
@@ -390,6 +427,9 @@ try {
     check('the open list shows the PNR with a link to the booking', str_contains($page, 'booking-view.php?pnr=' . urlencode($B1['pnr'])) && str_contains($page, 'id="tr-' . $idDate . '"'));
     check('tap-to-call and WhatsApp links (ticket country code)', str_contains($page, 'href="tel:+9779812345678"') && str_contains($page, 'https://wa.me/9779812345678'));
     check('the wanted date and the seats are shown', str_contains($page, formatDate($wanted, 'D, j M Y')) && str_contains($page, 'whole ticket'));
+    check('a seat change shows its label, the wanted seats and the seats held now',
+        str_contains($page, 'सिट परिवर्तन · Seat change') && str_contains($page, 'Wants seat: <b>A5, A6</b>')
+        && str_contains($page, 'now: ' . TicketRequests::seatLabels('L1,L2', 'sharing')) && str_contains($page, 'Window side &lt;i&gt;please&lt;/i&gt;'));
     check("the passenger's note is escaped", str_contains($page, 'Morning bus &lt;b&gt;please&lt;/b&gt;') && !str_contains($page, 'Morning bus <b>please</b>'));
     check('the menu carries the page', str_contains($page, 'ticket-requests.php"'));
     check('no PHP warning on the office page', !preg_match('/(Warning|Notice|Deprecated|Fatal error):/', $page));
@@ -468,7 +508,7 @@ try {
     Database::query('RENAME TABLE ticket_requests TO ticket_requests_p6hold');
     $renamed = true;
     TicketRequests::resetReady();
-    check('ready() / enabled() are false', !TicketRequests::ready() && !TicketRequests::enabled());
+    check('ready() / enabled() / seatChangeReady() are false', !TicketRequests::ready() && !TicketRequests::enabled() && !TicketRequests::seatChangeReady());
     check("refusal() is 'off' and the lists are empty", (TicketRequests::refusal(Database::fetch('SELECT * FROM bookings WHERE id = :b', ['b' => $B4['id']]) ?? [])['reason'] ?? '') === 'off'
         && TicketRequests::forBooking($B4['id']) === [] && TicketRequests::listFor('open') === [] && TicketRequests::counts()['all'] === 0);
     Database::delete('rate_limits', "bucket = 'ticket_request_bk' AND identifier = :i", ['i' => (string) $B4['id']]);

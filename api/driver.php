@@ -58,7 +58,12 @@ try {
         $phone = Security::clean((string) Response::field('phone', ''), 20);
         $pin   = Security::clean((string) Response::field('pin', ''), 6);
         Security::requireRateLimit('driver_login', Security::clientIp(), 10, 600);
-        Security::requireRateLimit('driver_login_phone', normalisePhone($phone) ?: 'x', 6, 600);
+        /* 16 Nov 2026: 5 tries per phone in 15 minutes, then that phone waits 15 minutes. The old
+           6 per 10 minutes never locked, so a 4-digit PIN could be walked through in days.
+           Failed tries are audited in DriverAuth::login (driver.app_login_fail). */
+        if (!Security::rateLimit('driver_login_phone', normalisePhone($phone) ?: 'x', 5, 900, 900)) {
+            Response::error('धेरै पटक प्रयास भयो — १५ मिनेटपछि फेरि, वा कार्यालयलाई PIN बदल्न भन्नुहोस् · Too many tries: wait 15 minutes, or ask the office to reset your PIN.', 429);
+        }
         $ua  = Security::clean((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 160);
         $res = DriverAuth::login($phone, $pin, $ua);
         if ($res === null) {

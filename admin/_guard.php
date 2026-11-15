@@ -122,6 +122,8 @@ function admin_nav(): array
 
         // 3. Ticketing & Bus Management — sell, change date / name, cancel, the alternate-day routine
         ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket (10s)', 'perm' => 'bookings.view', 'section' => $S3, 'hot' => true],
+        // 16 Nov 2026 (v2.0): many tickets from one CSV - the same gate as the SmartBook desk sale
+        ...(is_file(__DIR__ . '/bulk-tickets.php') ? [['href' => 'bulk-tickets.php', 'icon' => 'ticket-alt', 'label' => 'धेरै टिकट एकैचोटि · Bulk Tickets (CSV)', 'perm' => 'bookings.view', 'section' => $S3]] : []),
         /* 6 Nov 2026 (owner: "bus fleet ma seat, chalani, bus management — sapai eutai setting vitra"):
            one page for the bus of a date — seats, chalani money, bus number, routes, extra seats, AI. */
         ['href' => 'bus-control.php',  'icon' => 'bus',       'label' => 'Bus Control · बस, सिट, चलानी', 'perm' => 'schedules.view', 'section' => $S3],
@@ -165,8 +167,14 @@ function admin_nav(): array
 
         // 5. Settings & Configuration — company, WhatsApp AI, logs, backups
         ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'System Settings',        'perm' => 'dashboard.view',   'section' => $S5],
+        // 16 Nov 2026 (v2.0): the weekly colours customers see (read-only), the same gate as easy-settings.php
+        ['href' => 'themes.php',       'icon' => 'theme',     'label' => 'रङ र थिम · Colours & Themes', 'perm' => 'dashboard.view', 'section' => $S5],
+        // 16 Nov 2026 (v2.0): the AI assistant page had no menu entry; the server scopes every answer (ai-copilot.php)
+        ['href' => 'ai-copilot.php',   'icon' => 'star',      'label' => '🤖 AI सहायक · AI Sahayak', 'perm' => 'bookings.view',    'section' => $S5],
         ['href' => 'wa-manager.php',   'icon' => 'msg',       'label' => 'WhatsApp Manager',       'perm' => 'reports.view',     'section' => $S5],
         ['href' => 'wa-inbox.php',     'icon' => 'msg',       'label' => 'WhatsApp Inbox & Groups', 'perm' => 'customers.view',  'section' => $S5],
+        // 16 Nov 2026 (v2.0): the Facebook Messenger chats, the same gate as the WhatsApp inbox
+        ...(is_file(__DIR__ . '/messenger-inbox.php') ? [['href' => 'messenger-inbox.php', 'icon' => 'msg', 'label' => 'मेसेन्जर इनबक्स · Messenger Inbox', 'perm' => 'customers.view', 'section' => $S5]] : []),
         ['href' => 'wa-outbox.php',    'icon' => 'msg',       'label' => '📤 WhatsApp outbox',      'perm' => 'marketing.send',   'section' => $S5],   // 30 Oct 2026: official Cloud API sends, contacts, wa.me fallback
         ['href' => 'wa-templates.php', 'icon' => 'msg',       'label' => 'WhatsApp Templates',     'perm' => 'customers.view',   'section' => $S5],
         ['href' => 'ai-brain.php',     'icon' => 'star',      'label' => 'One AI (WhatsApp brain)', 'perm' => 'dashboard.view',  'section' => $S5],
@@ -334,9 +342,19 @@ function admin_header(string $title, string $active = ''): void
     echo '<title>' . Security::e(admin_plain($title)) . ' · ' . Security::e($company) . ' · Management</title>';
     echo '<link rel="manifest" href="/admin/app-manifest.php"><meta name="theme-color" content="#0B1220">';
     echo '<meta name="application-name" content="Management of S Hari"><meta name="apple-mobile-web-app-title" content="S Hari Manage">';
+    /* 16 Nov 2026 (v2.0): the staff app opens full-screen from an iPhone /
+       Android home screen like the customer app. Status bar "black" (opaque),
+       not "black-translucent": this head has no viewport-fit=cover and the top
+       bar no safe-area padding, so a translucent bar would sit on the brand row. */
+    echo '<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">'
+       . '<meta name="apple-mobile-web-app-status-bar-style" content="black">';
     echo '<link rel="icon" type="image/png" href="/assets/img/favicon-32.png">';
-    echo '<link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">';
+    // the staff icon (MANAGE band), so the two apps differ on an iPhone home screen
+    echo '<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/mgmt-apple-180.png">';
     echo '<meta name="csrf" content="' . Security::e(Security::csrfToken()) . '">';
+    // the same session token the admin POST forms carry (Security::csrfField / verifyCsrf),
+    // for staff JS that posts JSON with an X-CSRF-Token header (inline edit, AI bubble)
+    echo '<meta name="shg-admin-csrf" content="' . Security::e(Security::csrfToken()) . '">';
     echo '<style>' . admin_css() . admin_pro_css() . admin_side_css() . '</style>';
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
     echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
@@ -610,7 +628,37 @@ function admin_footer(): void
     // column filters, click-to-sort, sticky header, detail + edit rows.
     echo admin_datatable_assets();
     echo '<script>' . admin_wa_js() . '</script>';
+    if (admin_ai_bubble_on()) {
+        echo '<script src="/assets/js/admin-ai-bubble.js" defer></script>';
+    }
     echo '</body></html>';
+}
+
+/**
+ * 16 Nov 2026 (v2.0, P3-1a): the small "S Hari AI" settings button on every
+ * staff page, for the people the AI command box on easy-settings.php accepts
+ * a command from (the same $canCmd rule). Not on the AI pages themselves, the
+ * lock / PIN / password pages or a print view. One deferred script, nothing
+ * else; it posts to admin/api/ai-settings.php (same preview -> Yes -> apply
+ * path and audit as easy-settings.php). Its bottom offset clears the phone
+ * dock on admin/home.php: --admin-fab-bottom in admin_css().
+ */
+function admin_ai_bubble_on(): bool
+{
+    try {
+        $page = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+        $skip = ['easy-settings.php', 'ai-copilot.php', 'login.php', 'quick-unlock.php', 'pin-setup.php', 'setup.php',
+                 'change-password.php', 'logout.php', 'payslip.php'];
+        if (in_array($page, $skip, true) || isset($_GET['print'])) {
+            return false;
+        }
+        if (!(Auth::canManageSettings() || Auth::can('routes.edit') || Auth::can('schedules.manage'))) {
+            return false;
+        }
+        return is_file(dirname(__DIR__) . '/assets/js/admin-ai-bubble.js');
+    } catch (Throwable $e) {
+        return false;   // never let the button break a page
+    }
 }
 
 /**
@@ -1386,6 +1434,11 @@ img,pre{max-width:100%}
   /* the "new payment / new booking - Refresh" pop-ups: their button was 26px */
   #newPaymentBanner button,#newBookingsPill button{min-height:40px;padding-left:14px!important;padding-right:14px!important}
 }
+/* 16 Nov 2026 (v2.0): how far a small fixed button (the AI settings bubble,
+   admin_ai_bubble_on) sits above the screen bottom. The Home page's phone dock
+   (.os-dock, admin/home.php) is 76px tall from the bottom, so there it moves up. */
+:root{--admin-fab-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+body:has(.os-dock){--admin-fab-bottom:calc(88px + env(safe-area-inset-bottom,0px))}
 /* ── Toast animation — auto-fade after 4s ── */
 .flash{animation:flashIn .3s ease}
 @keyframes flashIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}

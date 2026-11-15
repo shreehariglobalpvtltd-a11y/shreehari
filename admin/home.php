@@ -399,9 +399,41 @@ $apps['m'] = ['💵', 'पैसा', 'Money', '#166534',
     . $lnk('pnl.php', '📈', 'नाफा / घाटा', 'Profit & loss')
     . $lnk('analytics.php', '📉', 'रिपोर्ट', 'Analytics'),
     0];
+/* 16 Nov 2026 (Master v2 P6-10b): today's WhatsApp reply time — the AI against
+   its 30-second target, a person against 5 minutes — on top of Messages & AI.
+   Shown only once WaInbox::responseStats() exists and to whoever may open the inbox. */
+$replyTime = '';
+if (isset($navOk['wa-inbox.php'])) {
+    try {
+        require_once INCLUDE_PATH . '/wainbox.php';
+        if (method_exists('WaInbox', 'responseStats')) {
+            $rs   = WaInbox::responseStats(date('Y-m-d'));
+            $secs = static function ($s): string {
+                if ($s === null) {
+                    return '—';
+                }
+                $s = (int) round((float) $s);
+                return $s < 60 ? $s . ' s' : intdiv($s, 60) . 'm ' . ($s % 60) . 's';
+            };
+            $pct  = static fn($p): string => $p === null ? '' : ' · ' . (int) round((float) $p) . '% ✓';
+            $cell = static function (string $val, string $label, bool $hot) use ($e): string {
+                return '<a class="' . ($hot ? 'hot' : '') . '" href="/admin/wa-inbox.php"><b>' . $e($val) . '</b><small>' . $e($label) . '</small></a>';
+            };
+            $replyTime = '<div class="mg-n" aria-label="Reply time today">'
+                . $cell($secs($rs['ai_avg_s'] ?? null), 'AI जवाफ · AI reply (' . (int) ($rs['ai_n'] ?? 0) . ') · target <30 s' . $pct($rs['ai_within_30s_pct'] ?? null),
+                    ($rs['ai_avg_s'] ?? null) !== null && (float) $rs['ai_avg_s'] > 30)
+                . $cell($secs($rs['agent_avg_s'] ?? null), 'मान्छे · Person (' . (int) ($rs['agent_n'] ?? 0) . ') · target <5 min' . $pct($rs['agent_within_5m_pct'] ?? null),
+                    ($rs['agent_avg_s'] ?? null) !== null && (float) $rs['agent_avg_s'] > 300)
+                . '</div>';
+        }
+    } catch (Throwable $ex) {
+        $replyTime = '';
+    }
+}
 $apps['w'] = ['💬', 'म्यासेज र AI', 'Messages & AI', '#128C4A',
-    '',
+    $replyTime,
     $lnk('wa-inbox.php', '💬', 'WhatsApp इनबक्स', 'Chats & groups', 0, true)
+    . $lnk('messenger-inbox.php', '📘', 'Messenger इनबक्स', 'Facebook chats — reply in 24 h')
     . $lnk('wa-manager.php', '📲', 'WhatsApp म्यानेजर', 'Sending, wallet, API status')
     . $lnk('wa-outbox.php', '📤', 'पठाएको', 'Outbox')
     . $lnk('wa-templates.php', '🧩', 'टेम्प्लेट', 'WhatsApp templates')
@@ -443,6 +475,20 @@ if ($office) {
 }
 $apps['x'] = ['🧩', 'अरू सबै', 'More', '#64748B', '', $restH, 0];
 $apps = array_filter($apps, static fn(array $a): bool => $a[5] !== '');
+
+/* 16 Nov 2026 (Master v2 P3-3a): the office's "what needs you now" under the
+   apps — slow buses (make a promo card), refunds waiting (settled by hand),
+   idle agents, payments to verify … Read-only: every card only opens the
+   page that does the job, and each is gated on that page's permission. */
+$watchHtml = '';
+if ($office) {
+    try {
+        require_once INCLUDE_PATH . '/aiwatch.php';
+        $watchHtml = AiWatch::render(AiWatch::forOffice());
+    } catch (Throwable $ex) {
+        $watchHtml = '';
+    }
+}
 
 /* the dock: the four things done all day, one tap, no window */
 $dock = array_filter([
@@ -623,6 +669,8 @@ admin_header('Management', 'home.php');
     </button>
     <?php endforeach; ?>
   </nav>
+
+  <?= $watchHtml /* AiWatch::render escapes every value itself */ ?>
 </div>
 
 <?php if ($dock !== []): ?>

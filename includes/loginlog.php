@@ -123,31 +123,56 @@ final class LoginLog
         return $browser . ' on ' . $os;
     }
 
+    private static ?bool $viaReady = null;
+
+    /** 16 Nov 2026: admin_login_events.via exists (database/upgrade-2026-11-16-login-via.sql). */
+    public static function viaReady(): bool
+    {
+        if (self::$viaReady === null) {
+            try {
+                self::$viaReady = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_login_events' AND COLUMN_NAME = 'via'",
+                    [], 0) > 0;
+            } catch (Throwable $e) {
+                self::$viaReady = false;
+            }
+        }
+        return self::$viaReady;
+    }
+
     /**
      * Record one sign-in attempt.
      *
      * @param string $outcome one of the admin_login_events enum values
+     * @param string $via     16 Nov 2026: how — 'password', 'otp', 'pin', 'pattern', 'whatsapp_hi' …
+     *                        ('' = not said). Stored only once the via column exists.
      * @return bool true when a SUCCESSFUL sign-in came from a browser this
      *              account has not used before (or one that was revoked)
      */
-    public static function record(string $username, string $outcome, ?int $adminId = null): bool
+    public static function record(string $username, string $outcome, ?int $adminId = null, string $via = ''): bool
     {
         $valid = ['success', 'bad_password', 'unknown_user', 'locked', 'disabled', 'logout'];
         if (!in_array($outcome, $valid, true)) {
             $outcome = 'bad_password';
         }
+        $via = substr(preg_replace('/[^a-z0-9_]/', '', strtolower($via)) ?? '', 0, 20);
 
         try {
             $ua = substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255);
 
-            Database::insert('admin_login_events', [
+            $row = [
                 'admin_id'    => $adminId ?: null,
                 'username'    => Security::clean($username, 60),
                 'outcome'     => $outcome,
                 'ip_address'  => Security::clientIp(),
                 'user_agent'  => $ua !== '' ? $ua : null,
                 'device_hash' => self::deviceHash() ?: null,
-            ]);
+            ];
+            if ($via !== '' && self::viaReady()) {
+                $row['via'] = $via;
+            }
+            Database::insert('admin_login_events', $row);
 
             // Mirror failed logins into audit_logs so the Security lens on
             // activity-log.php picks them up alongside the successful sign-ins
@@ -155,7 +180,10 @@ final class LoginLog
             // Successes are NOT re-logged from here — that would produce two
             // rows per successful login. The Security lens matches on the
             // admin.login. prefix (activity-log.php:37).
-            if ($outcome !== 'success' && $outcome !== 'logout') {
+            // 16 Nov 2026: a PIN / pattern miss on a known account is already in
+            // audit_logs as admin.login.code_fail (CodeLogin::unlock) — not twice.
+            $selfAudited = $adminId && in_array($via, ['pin', 'pattern'], true);
+            if ($outcome !== 'success' && $outcome !== 'logout' && !$selfAudited) {
                 Logger::audit(
                     'admin.login.' . $outcome,
                     'admin',

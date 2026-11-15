@@ -180,6 +180,53 @@ check('save() rejects an empty title', $threw(static fn() => AiKb::save(['canoni
 check('save() rejects no audience', $threw(static fn() => AiKb::save(['canonical_title' => 'Zztest T', 'canonical_answer' => 'x', 'applicable_roles' => [], 'source_reference' => 's'], 1)));
 check('save() rejects a missing source', $threw(static fn() => AiKb::save(['canonical_title' => 'Zztest T', 'canonical_answer' => 'x', 'applicable_roles' => ['public'], 'source_reference' => ''], 1)));
 
+/* ---- P7-3c (16 Nov 2026): rare words weigh more; WaFaq's no-AI bar --- */
+require_once INCLUDE_PATH . '/wafaq.php';
+$mk = static function (string $slug, string $title, string $kw, array $roles = ['public'], string $src = 'test'): int {
+    return (int) Database::insert('ai_kb_articles', [
+        'category' => 'test', 'slug' => $slug, 'canonical_title' => $title, 'canonical_answer' => $title . ' answer.',
+        'english_content' => $title . ' answer.', 'keywords' => $kw, 'applicable_roles' => json_encode($roles),
+        'source_type' => $src, 'source_reference' => 'ai-kb-test', 'verification_status' => 'verified', 'publication_status' => 'published',
+    ]);
+};
+for ($i = 1; $i <= 6; $i++) {
+    $mk('zztest-idf-common-' . $i, 'Zztest common ' . $i, 'zzqcommon zzqticket zzqfiller' . $i);
+}
+$mk('zztest-idf-luggage', 'Zztest luggage rule', 'zzqcommon zzqbaggage zzqkilo');
+check('idf(): a rare word weighs more than a common one', AiKb::idf(400, 1) > AiKb::idf(400, 50) && AiKb::idf(400, 50) > AiKb::idf(400, 400));
+check('idf(): one article of 400 ≈ 12, every article ≈ 1.4', AiKb::idf(400, 1) === 12.0 && AiKb::idf(400, 400) === 1.4);
+check('idf(): no articles / no match = 0', AiKb::idf(0, 1) === 0.0 && AiKb::idf(10, 0) === 0.0);
+$rare = AiKb::search('zzqbaggage zzqkilo zzqcommon', 'customer', 2);
+check('rare words pick the right article', ($rare[0]['canonical_title'] ?? '') === 'Zztest luggage rule' && (int) ($rare[0]['_words'] ?? 0) === 3);
+check('…far ahead of an article sharing only the common word', (float) ($rare[0]['_score'] ?? 0) >= 2 * (float) ($rare[1]['_score'] ?? 0));
+check('…so WaFaq may answer it without the assistant', WaFaq::kbSure($rare));
+$common = AiKb::search('zzqcommon zzqticket', 'customer', 2);
+check('a common-words-only question hits many articles alike', count($common) === 2 && (float) $common[0]['_score'] === (float) $common[1]['_score']);
+check('…and does NOT pass the WaFaq no-AI bar', !WaFaq::kbSure($common));
+check('…and scores below a rare-word match', (float) ($common[0]['_score'] ?? 0) < (float) ($rare[0]['_score'] ?? 0));
+$single = AiKb::search('zzqbaggage', 'customer', 2);
+check('one rare word alone finds the article…', ($single[0]['canonical_title'] ?? '') === 'Zztest luggage rule');
+check('…but one word is not enough to answer without the assistant', !WaFaq::kbSure($single));
+check('kbSure(): an exact title (+20) passes on its own', WaFaq::kbSure([['_score' => 21.4, '_words' => 1], ['_score' => 3.0, '_words' => 1]]));
+check('kbSure(): a close second (under 1.3x) fails', !WaFaq::kbSure([['_score' => 12.0, '_words' => 3], ['_score' => 10.0, '_words' => 3]]));
+check('kbSure(): under 6 fails', !WaFaq::kbSure([['_score' => 5.9, '_words' => 3]]));
+check('kbSure(): nothing found fails', !WaFaq::kbSure([]));
+
+/* ---- P7-3e (16 Nov 2026): the office's articles are always searched -- */
+$seedId = $mk('zztest-win-seed', 'Zztest window seed', 'zzqwindowseed border documents', ['public'], 'seed');
+$vals = [];
+for ($i = 1; $i <= AiKb::SEARCH_WINDOW + 1; $i++) {
+    $vals[] = "('test', 'zztest-win-" . $i . "', 'Zztest learned " . $i . "', 'x', 'zzqlearned', '[\"manager\"]', 'ai_learned', 'ai-kb-test', 'verified', 'published')";
+}
+Database::run('INSERT INTO ai_kb_articles (category, slug, canonical_title, canonical_answer, keywords, applicable_roles, source_type,
+    source_reference, verification_status, publication_status) VALUES ' . implode(',', $vals));
+$newer = (int) Database::scalar("SELECT COUNT(*) FROM ai_kb_articles WHERE id > :i AND publication_status = 'published' AND verification_status = 'verified'", ['i' => $seedId], 0);
+check('setup: more AI-written articles than the window, all newer than the seed', $newer > AiKb::SEARCH_WINDOW);
+$win = AiKb::search('zzqwindowseed', 'customer', 3);
+check('the seed article is still found (read before the AI-written ones)', ($win[0]['canonical_title'] ?? '') === 'Zztest window seed');
+check('AI-written articles are still searched too', AiKb::search('zzqlearned', 'admin', 1) !== []);
+Database::delete('ai_kb_articles', "slug LIKE 'zztest-win-%' OR slug LIKE 'zztest-idf-%'", []);
+
 /* ---- registered in the battery ------------------------------------- */
 $runAll = @file_get_contents(dirname(__DIR__) . '/tests/run-all.php') ?: '';
 check('this suite is registered in the battery', str_contains($runAll, 'ai-kb-test.php'));

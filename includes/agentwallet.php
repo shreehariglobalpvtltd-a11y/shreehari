@@ -1244,7 +1244,7 @@ final class AgentWallet
 
         $newId = Database::insert('admins', [
             'username'       => $username,
-            'password_hash'  => password_hash($password !== '' ? $password : bin2hex(random_bytes(12)), PASSWORD_DEFAULT),
+            'password_hash'  => Security::hashPassword($password !== '' ? $password : bin2hex(random_bytes(12))),
             'full_name'      => $name,
             'email'          => $emailOk !== '' ? $emailOk : null,
             'phone'          => $phone !== '' ? $phone : null,

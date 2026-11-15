@@ -210,24 +210,32 @@ try {
 $seatsAvailToday = max(0, $seatsTotalToday - $seatsOccToday - $seatsHeldToday);
 $occPct = $seatsTotalToday > 0 ? round(($seatsOccToday / $seatsTotalToday) * 100) : 0;
 
-/* 7-day revenue sparkline — one GROUP BY over the window (was 7 queries;
-   5 Sep 2026), gaps filled with 0 so the chart keeps every day. */
+/* Revenue sparkline — one GROUP BY over the window (was 7 queries;
+   5 Sep 2026), gaps filled with 0 so the chart keeps every day.
+   16 Nov 2026 (P8-9c): 30 days (was 7) and a bookings-count series from the
+   same GROUP BY - bars = revenue, line = confirmed bookings per day. */
+$sparkDays = 30;
 $spark = [];
-$sparkFrom = date('Y-m-d', strtotime('-6 days'));
+$sparkFrom = date('Y-m-d', strtotime('-' . ($sparkDays - 1) . ' days'));
 $sparkTo   = date('Y-m-d', strtotime('+1 day'));
 $sparkRows = [];
+$sparkCnt  = [];
 try {
     foreach (Database::fetchAll(
-        "SELECT DATE(confirmed_at) AS d, COALESCE(SUM(total_amount),0) AS v FROM bookings
+        "SELECT DATE(confirmed_at) AS d, COALESCE(SUM(total_amount),0) AS v, COUNT(*) AS n FROM bookings
           WHERE status='confirmed' AND confirmed_at >= :d0 AND confirmed_at < :d1 GROUP BY DATE(confirmed_at)",
         ['d0' => $sparkFrom, 'd1' => $sparkTo]
-    ) as $sr) { $sparkRows[(string) $sr['d']] = (float) $sr['v']; }
-} catch (Throwable $e) { $sparkRows = []; }
-for ($i = 6; $i >= 0; $i--) {
+    ) as $sr) { $sparkRows[(string) $sr['d']] = (float) $sr['v']; $sparkCnt[(string) $sr['d']] = (int) $sr['n']; }
+} catch (Throwable $e) { $sparkRows = []; $sparkCnt = []; }
+for ($i = $sparkDays - 1; $i >= 0; $i--) {
     $d = date('Y-m-d', strtotime("-{$i} days"));
-    $spark[] = ['day' => date('D', strtotime($d)), 'date' => date('d', strtotime($d)), 'val' => $sparkRows[$d] ?? 0.0];
+    $spark[] = ['day' => date('D', strtotime($d)), 'date' => date('d', strtotime($d)), 'label' => date('j M', strtotime($d)),
+                'val' => $sparkRows[$d] ?? 0.0, 'n' => $sparkCnt[$d] ?? 0];
 }
-$sparkMax = max(1, max(array_column($spark, 'val')));
+$sparkMax  = max(1, max(array_column($spark, 'val')));
+$sparkNMax = max(1, max(array_column($spark, 'n')));
+$sparkSum  = array_sum(array_column($spark, 'val'));
+$sparkNSum = array_sum(array_column($spark, 'n'));
 
 /* Today's trips with occupancy + the columns TripStatus needs to
    compute a state (arr_time, day_offset, delay_minutes) and the
@@ -334,15 +342,19 @@ admin_header('Dashboard', 'index');
 .dash-panel .dp-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;background:var(--head)}
 .dash-panel .dp-body{padding:20px}
 
-.spark-wrap{display:flex;align-items:flex-end;gap:6px;height:100px;padding:0 4px}
-.spark-bar{flex:1;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#2E5FA8,#1a3d6e);min-width:8px;position:relative;transition:height .3s}
-.spark-bar:hover{filter:brightness(1.2)}
-.spark-bar .spark-tip{display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;font-size:11px;padding:3px 8px;border-radius:6px;white-space:nowrap;margin-bottom:4px;font-weight:700}
-.spark-bar:hover .spark-tip{display:block}
-/* Touch screens have no hover: keep each day's value visible above its bar. */
-@media(pointer:coarse){.spark-bar .spark-tip{display:block;font-size:9px;padding:2px 4px;margin-bottom:2px}}
-.spark-labels{display:flex;gap:6px;padding:8px 4px 0;font-size:11px;color:var(--mut);text-align:center}
-.spark-labels span{flex:1;min-width:8px}
+/* 16 Nov 2026 (P8-9c): 30-day chart - revenue bars + bookings line in one SVG
+   (stretches to any width, 360 px included); every 5th day labelled. */
+.spark-svg{display:block;width:100%;height:120px}
+.spark-svg .sb{fill:#2E5FA8}
+.spark-svg .sb:hover{fill:#1a3d6e}
+.spark-svg .sl{fill:none;stroke:var(--orange,#F07C1F);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.spark-svg .sbase{stroke:var(--line);stroke-width:1}
+.spark-labels{display:grid;grid-template-columns:repeat(30,minmax(0,1fr));padding:6px 0 0;font-size:10.5px;color:var(--mut);white-space:nowrap}
+.spark-labels span{overflow:visible}
+.spark-key{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:12px;color:var(--mut)}
+.spark-key i{display:inline-block;width:12px;height:8px;border-radius:2px;background:#2E5FA8;margin-right:5px;vertical-align:middle}
+.spark-key i.ln{height:3px;background:var(--orange,#F07C1F)}
+.spark-key b{color:var(--ink)}
 
 .occ-bar{height:20px;border-radius:10px;background:var(--hover);overflow:hidden;margin:6px 0}
 .occ-fill{height:100%;border-radius:10px;transition:width .4s}
@@ -691,6 +703,8 @@ $ccDiff  = $ccRev['last_month_same'] > 0 ? (int) round(($ccRev['mtd'] - $ccRev['
       <div class="k">Revenue · आम्दानी</div>
       <div class="v"><?= Security::e(inr($ccRev['today'])) ?> <small style="font-size:12px;color:var(--mut);font-weight:600">today</small></div>
       <div class="s">MTD <b><?= Security::e(inr($ccRev['mtd'])) ?></b><?= $ccDiff !== null ? ' (' . ($ccDiff >= 0 ? '▲' : '▼') . abs($ccDiff) . '% vs last month)' : '' ?><br>
+        <?php /* 16 Nov 2026 (P8-9b): year to date, 1 Jan .. today (Analytics → This year) */ ?>
+        YTD · यो वर्ष <b><?= Security::e(inr((float) ($ccRev['ytd'] ?? 0))) ?></b><br>
         Projected <b><?= Security::e(inr($ccRev['projected'])) ?></b> · 7-day avg <?= Security::e(inr($ccRev['avg7'])) ?>/day</div>
     </a>
     <a class="cc-tile t-cash" href="/admin/reconcile.php">
@@ -1083,19 +1097,30 @@ function switchCategory(cat) {
 <!-- Middle grid: Revenue chart + Channel donut -->
 <div class="dash-grid" data-cat-section="ticketing">
   <div class="dash-panel">
-    <div class="dp-head">📊 Revenue — Last 7 Days</div>
+    <div class="dp-head">📊 Revenue &amp; bookings — last 30 days · ३० दिन</div>
     <div class="dp-body">
-      <div class="spark-wrap">
-        <?php foreach ($spark as $s): $h = $sparkMax > 0 ? max(4, ($s['val'] / $sparkMax) * 100) : 4; ?>
-        <div class="spark-bar" style="height:<?= $h ?>%">
-          <div class="spark-tip"><?= Security::e(inr($s['val'])) ?></div>
-        </div>
+      <?php /* 16 Nov 2026 (P8-9c): one SVG, 10 units per day - bar = revenue, line = confirmed bookings. Hover a bar for the day. */
+      $sparkPts = [];
+      foreach ($spark as $si => $s) {
+          $sparkPts[] = ($si * 10 + 5) . ',' . round(100 - ($s['n'] / $sparkNMax) * 92, 1);
+      } ?>
+      <svg class="spark-svg" viewBox="0 0 <?= $sparkDays * 10 ?> 104" preserveAspectRatio="none" role="img"
+           aria-label="<?= Security::e('Last 30 days: ' . inr($sparkSum) . ' revenue, ' . $sparkNSum . ' bookings') ?>">
+        <?php foreach ($spark as $si => $s): $h = round(max(1.5, ($s['val'] / $sparkMax) * 92), 1); ?>
+        <rect class="sb" x="<?= $si * 10 + 1.5 ?>" y="<?= 100 - $h ?>" width="7" height="<?= $h ?>" rx="1"><title><?= Security::e($s['label'] . ': ' . inr($s['val']) . ' · ' . $s['n'] . ' booking' . ($s['n'] === 1 ? '' : 's')) ?></title></rect>
+        <?php endforeach; ?>
+        <line class="sbase" x1="0" y1="100" x2="<?= $sparkDays * 10 ?>" y2="100" vector-effect="non-scaling-stroke"/>
+        <polyline class="sl" points="<?= Security::e(implode(' ', $sparkPts)) ?>" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <div class="spark-labels" aria-hidden="true">
+        <?php foreach ($spark as $si => $s): ?>
+        <span><?= ($si % 5 === 0 || $si === $sparkDays - 1) ? Security::e($si === $sparkDays - 1 ? 'Today' : $s['label']) : '' ?></span>
         <?php endforeach; ?>
       </div>
-      <div class="spark-labels">
-        <?php foreach ($spark as $s): ?>
-        <span><?= $s['day'] ?><br><?= $s['date'] ?></span>
-        <?php endforeach; ?>
+      <div class="spark-key">
+        <span><i></i>Revenue · आम्दानी <b><?= Security::e(inr($sparkSum)) ?></b></span>
+        <span><i class="ln"></i>Bookings · बुकिङ <b><?= (int) $sparkNSum ?></b></span>
+        <a href="/admin/analytics.php?range=30d">Full 30-day charts →</a>
       </div>
     </div>
   </div>

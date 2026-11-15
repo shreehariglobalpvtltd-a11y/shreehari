@@ -126,6 +126,40 @@ if ($r['ok'] === true) {
 $ok($bookingsBefore === (int) Database::scalar('SELECT COUNT(*) FROM bookings', [], 0)
     && $ledgerBefore === (string) Database::scalar('SELECT CONCAT(COUNT(*), ":", COALESCE(SUM(amount), 0)) FROM agent_ledger', [], ''), 'finance_day changed no booking and no ledger row');
 
+echo "\n6. Office report: the morning slot (16 Nov 2026, Master v2 P6-5)\n";
+require_once INCLUDE_PATH . '/officereport.php';
+require_once INCLUDE_PATH . '/helpdesk.php';
+require_once INCLUDE_PATH . '/adminalerts.php';
+$ok(OfficeReport::isFirstSlot('2026-11-16 07:00', '13:00, 7:00 ,20:00') === true, 'the earliest time is the first slot, whatever order / spacing it was typed in');
+$ok(OfficeReport::isFirstSlot('2026-11-16 13:00', '07:00,13:00,20:00') === false && OfficeReport::isFirstSlot('', '07:00') === false
+    && OfficeReport::isFirstSlot('2026-11-16 07:00', 'soon') === false, 'a later slot, a hand-built report and a bad times list are not');
+/* this process only: the report times are read from the Settings cache, never written */
+$rpS = new ReflectionProperty(Settings::class, 'cache');
+$cS  = (array) $rpS->getValue();
+$cS['office_report_times'] = ['value' => '07:00,13:00,20:00', 'type' => 'string', 'public' => false];
+$cS['wa_report_chart_on']  = ['value' => '0', 'type' => 'bool', 'public' => false];
+$rpS->setValue(null, $cS);
+$day  = date('Y-m-d');
+$sentBefore = (int) Database::scalar("SELECT COUNT(*) FROM message_logs WHERE purpose = 'office_report'", [], 0);
+$am   = OfficeReport::build($day, $day . ' 07:00');
+$noon = OfficeReport::build($day, $day . ' 13:00');
+$m    = $am['figures']['morning'] ?? null;
+$ok(is_array($m) && $noon['figures']['morning'] === null, 'the 07:00 report carries the morning block, the 13:00 one does not');
+$yd = ReportChart::data(addDaysISO($day, -1), 1)['today'];
+$ok(is_array($m) && $m['yesterday']['tickets'] === (int) $yd['tickets'] && abs($m['yesterday']['revenue'] - (float) $yd['revenue']) < 0.01,
+    'yesterday\'s tickets and revenue are ReportChart\'s own figures');
+$hs = HelpDesk::stats();
+$ok(is_array($m) && $m['complaints_open'] === (int) $hs['open'] + (int) $hs['in_progress'] && $m['complaints_overdue'] === (int) $hs['overdue'],
+    'complaints open / overdue are the Help Desk\'s own counts');
+$ok(is_array($m) && $m['alerts_unread'] === AdminAlerts::unreadCount() && $m['wa_failed'] >= 0, 'unread bell alerts and failed WhatsApp counts are read');
+$ok(str_contains($am['text'], '🌅 हिजो') && str_contains($am['text'], '🛎️ गुनासो') && str_contains($am['text'], 'नपढेको सूचना')
+    && str_contains($am['text'], 'WhatsApp नपुगेको') && str_contains($am['text'], 'Yesterday '), 'the 07:00 text has the yesterday, complaints and alert lines (Nepali first, then EN)');
+$ok(!str_contains($noon['text'], 'हिजो') && !str_contains($noon['text'], 'गुनासो'), 'the 13:00 text is unchanged');
+$ok(str_starts_with(explode("\n", $am['text'])[1] ?? '', '🌅 हिजो'), 'yesterday is the line right under the heading');
+$ok(!preg_match('/\b[6-9]\d{9}\b/', $am['text']), 'no phone number in the report');
+$ok($sentBefore === (int) Database::scalar("SELECT COUNT(*) FROM message_logs WHERE purpose = 'office_report'", [], 0), 'building the report sends nothing');
+$rpS->setValue(null, null);
+
 /* put everything back */
 Database::run("DELETE FROM ai_usage WHERE tag = 'satest'");
 Database::run("DELETE FROM ai_agent_calls WHERE tool = 'finance_day' AND phone = '9800000000'");

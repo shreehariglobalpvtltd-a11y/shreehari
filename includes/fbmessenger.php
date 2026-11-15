@@ -33,7 +33,17 @@
  *    fb_page_token    Page access token (pages_messaging)        — secret
  *    fb_app_secret    the Meta app's secret, checks every webhook — secret
  *    fb_verify_token  what the webhook answers Meta's set-up check with
- *  Settings → admin/facebook.php. Nothing here needs a migration.
+ *  Settings → admin/facebook.php. Answering needs no migration.
+ *
+ *  THE CONVERSATION LOG (16 Nov 2026, Master v2 P6-6a)
+ *  ----------------------------------------------------
+ *  Each message the person sends and each one we send back is written to
+ *  fb_inbound (database/upgrade-2026-11-16-fb-inbound.sql) so the office
+ *  can read the conversation and answer by hand on admin/messenger-inbox.php
+ *  — free text, only while Meta's 24-hour window from the person's last
+ *  message is open, every reply audited. A typed login code, a card number
+ *  or a password is stored hidden. Without the table nothing is stored and
+ *  the assistant answers exactly as before.
  *
  *  NEVER THROWS at its caller: a failed send is logged and the next part
  *  of the reply still goes.
@@ -58,6 +68,10 @@ final class FbMessenger
     public static ?Closure $issueCode = null;   // fn(string $phone, string $country): array{ok, error}
     public static ?Closure $checkCode = null;   // fn(string $phone, string $code): array{ok, error}
     public static ?array   $memStore  = null;   // per-person state in memory instead of kv_store
+    public static ?array   $memLog    = null;   // conversation rows in memory instead of fb_inbound
+
+    /** Meta's free-reply window after the person's last message. */
+    public const WINDOW_HOURS = 24;
 
     private function __construct() {}
 
@@ -163,7 +177,7 @@ final class FbMessenger
      * replies, delivery and read receipts are dropped; a button tap
      * (postback / quick reply) arrives as its payload.
      *
-     * @return list<array{psid: string, page: string, text: string, payload: string, mid: string, attachment: bool}>
+     * @return list<array{psid: string, page: string, text: string, payload: string, mid: string, attachment: bool, kind: string}>
      */
     public static function events(array $payload): array
     {
@@ -190,6 +204,7 @@ final class FbMessenger
                         'payload'    => (string) ($msg['quick_reply']['payload'] ?? ''),
                         'mid'        => (string) ($msg['mid'] ?? ''),
                         'attachment' => !empty($msg['attachments']),
+                        'kind'       => !empty($msg['attachments']) ? 'attachment' : 'message',
                     ];
                 } elseif (isset($m['postback']) && is_array($m['postback'])) {
                     $out[] = [
@@ -199,6 +214,7 @@ final class FbMessenger
                         'payload'    => (string) ($m['postback']['payload'] ?? ''),
                         'mid'        => (string) ($m['postback']['mid'] ?? ('pb-' . ($m['timestamp'] ?? ''))),
                         'attachment' => false,
+                        'kind'       => 'postback',
                     ];
                 }
             }
@@ -231,6 +247,10 @@ final class FbMessenger
         if ($page !== '' && (string) ($ev['page'] ?? '') !== '' && (string) $ev['page'] !== $page) {
             return;
         }
+
+        // Written down first (a re-delivered message id is stored once), so the
+        // office sees it even when the rate limit below keeps the bot quiet.
+        self::logIn($psid, $ev);
 
         $st  = self::state($psid);
         $mid = (string) ($ev['mid'] ?? '');
@@ -330,6 +350,9 @@ final class FbMessenger
             'userId'       => 0,
             'stageKey'     => 'fb-' . $psid,
             'verified'     => $phone !== '',
+            // 16 Nov 2026: lets a help desk ticket be opened without a proven
+            // number (AiHandoff::open, source 'facebook').
+            'psid'         => $psid,
         ];
         $answer = self::ask($ctx, $text);
         if ($answer === null || trim((string) ($answer['text'] ?? '')) === '') {
@@ -388,15 +411,16 @@ final class FbMessenger
         }
     }
 
-    public static function sendText(string $psid, string $text): bool
+    /** $purpose / $adminId only label the logged row: bot_reply (automatic) or inbox_reply (a person). */
+    public static function sendText(string $psid, string $text, string $purpose = 'bot_reply', int $adminId = 0): bool
     {
         $text = trim($text);
-        return $text !== '' && self::send($psid, ['text' => mb_substr($text, 0, 2000)]);
+        return $text !== '' && self::send($psid, ['text' => mb_substr($text, 0, 2000)], $purpose, $adminId);
     }
 
-    public static function sendImage(string $psid, string $url): bool
+    public static function sendImage(string $psid, string $url, string $purpose = 'bot_reply', int $adminId = 0): bool
     {
-        return self::send($psid, ['attachment' => ['type' => 'image', 'payload' => ['url' => $url, 'is_reusable' => true]]]);
+        return self::send($psid, ['attachment' => ['type' => 'image', 'payload' => ['url' => $url, 'is_reusable' => true]]], $purpose, $adminId);
     }
 
     /** "…typing" while the assistant thinks. */
@@ -405,18 +429,368 @@ final class FbMessenger
         self::graph('POST', 'me/messages', ['recipient' => ['id' => $psid], 'sender_action' => 'typing_on']);
     }
 
-    private static function send(string $psid, array $message): bool
+    private static function send(string $psid, array $message, string $purpose = 'bot_reply', int $adminId = 0): bool
     {
         $r = self::graph('POST', 'me/messages', [
             'recipient'      => ['id' => $psid],
             'messaging_type' => 'RESPONSE',
             'message'        => $message,
         ]);
+        $err = '';
         if (!$r['ok']) {
             $err = (string) (json_decode((string) $r['body'], true)['error']['message'] ?? '');
             Logger::warning('Facebook send failed (HTTP ' . $r['http'] . ')', ['psid' => self::tag($psid), 'error' => mb_substr($err, 0, 200)], 'facebook');
+            if ($err === '') {
+                $err = 'HTTP ' . $r['http'];
+            }
         }
+        self::logOut($psid, $message, $r['ok'], $purpose, $adminId, $err);
         return $r['ok'];
+    }
+
+    /* =================================================================
+     *  The conversation log and the office inbox (16 Nov 2026)
+     *  fb_inbound — admin/messenger-inbox.php reads it, replies through
+     *  inboxReply(). Every write is best-effort: a log that cannot be
+     *  written never stops an answer.
+     * ================================================================= */
+
+    /** fb_inbound is installed (database/upgrade-2026-11-16-fb-inbound.sql). */
+    public static function logReady(bool $recheck = false): bool
+    {
+        static $has = null;
+        if (self::$memLog !== null) {
+            return true;
+        }
+        if ($has === null || $recheck) {
+            try {
+                $has = Database::fetch("SHOW TABLES LIKE 'fb_inbound'") !== null;
+            } catch (Throwable $e) {
+                $has = false;
+            }
+        }
+        return $has;
+    }
+
+    /** A Page-scoped id as Meta sends it (digits); nothing else ever reaches a query or a send. */
+    public static function validPsid(string $psid): bool
+    {
+        return preg_match('/^[0-9A-Za-z_\-]{1,40}$/', $psid) === 1;
+    }
+
+    /** What is kept of the person's words: a typed login code, a card number or a password never is. */
+    public static function forLog(string $text): string
+    {
+        $text = trim($text);
+        if (self::codeFrom($text) !== null) {
+            return '[code hidden]';
+        }
+        require_once __DIR__ . '/aihandoff.php';
+        return mb_substr(AiHandoff::redact($text), 0, 2000);
+    }
+
+    /** True while Meta lets the Page answer freely: the person wrote in the last 24 hours. */
+    public static function windowOpen(string $psid): bool
+    {
+        if (!self::validPsid($psid)) {
+            return false;
+        }
+        if (self::$memLog !== null) {
+            foreach (array_reverse(self::$memLog) as $r) {
+                if ($r['psid'] === $psid && $r['direction'] === 'in') {
+                    return (int) strtotime((string) $r['created_at']) >= time() - self::WINDOW_HOURS * 3600;
+                }
+            }
+            return false;
+        }
+        if (!self::logReady()) {
+            return false;
+        }
+        try {
+            // On the database clock: created_at is a MySQL default.
+            return Database::exists(
+                "SELECT 1 FROM fb_inbound WHERE psid = :p AND direction = 'in'
+                    AND created_at >= NOW() - INTERVAL " . self::WINDOW_HOURS . ' HOUR',
+                ['p' => $psid]
+            );
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * One row per person who wrote or was written to in the last $days.
+     *
+     * @return list<array{psid: string, last_at: string, msgs: int, last_text: string, unread: int, open: bool, phone: string}>
+     */
+    public static function threads(int $adminId, int $days = 7, int $limit = 80): array
+    {
+        if (!self::logReady() || self::$memLog !== null) {
+            return [];
+        }
+        $rows = Database::fetchAll(
+            "SELECT psid, COUNT(*) AS msgs, MAX(id) AS last_id, MAX(created_at) AS last_at,
+                    SUM(direction = 'in' AND id > :seen) AS unread,
+                    MAX(direction = 'in' AND created_at >= NOW() - INTERVAL " . self::WINDOW_HOURS . " HOUR) AS open_now
+               FROM fb_inbound
+              WHERE created_at >= NOW() - INTERVAL :d DAY
+              GROUP BY psid ORDER BY last_at DESC LIMIT " . max(1, min(300, $limit)),
+            ['seen' => self::seenId($adminId), 'd' => max(1, $days)]
+        );
+        if ($rows === []) {
+            return [];
+        }
+        $lastIds = array_map(static fn(array $r): int => (int) $r['last_id'], $rows);
+        $texts = [];
+        foreach (Database::fetchAll('SELECT id, direction, body FROM fb_inbound WHERE id IN (' . implode(',', $lastIds) . ')') as $m) {
+            $texts[(int) $m['id']] = ((string) $m['direction'] === 'out' ? '↩ ' : '') . (string) ($m['body'] ?? '');
+        }
+        $phones = self::provenPhones(array_map(static fn(array $r): string => (string) $r['psid'], $rows));
+        $out = [];
+        foreach ($rows as $r) {
+            $p = (string) $r['psid'];
+            $out[] = [
+                'psid'      => $p,
+                'last_at'   => (string) $r['last_at'],
+                'msgs'      => (int) $r['msgs'],
+                'last_text' => $texts[(int) $r['last_id']] ?? '',
+                'unread'    => (int) $r['unread'],
+                'open'      => (int) ($r['open_now'] ?? 0) === 1,
+                'phone'     => $phones[$p] ?? '',
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * One person's conversation, oldest first.
+     *
+     * @return list<array{dir: string, at: string, text: string, kind: string, status: string, purpose: string, by: string}>
+     */
+    public static function thread(string $psid, int $days = 7): array
+    {
+        if (!self::validPsid($psid) || !self::logReady() || self::$memLog !== null) {
+            return [];
+        }
+        $rows = Database::fetchAll(
+            'SELECT f.direction, f.kind, f.body, f.purpose, f.status, f.error, f.created_at, a.full_name
+               FROM fb_inbound f LEFT JOIN admins a ON a.id = f.admin_id
+              WHERE f.psid = :p AND f.created_at >= NOW() - INTERVAL :n DAY
+              ORDER BY f.id DESC LIMIT 200',
+            ['p' => $psid, 'n' => max(1, $days)]
+        );
+        $out = [];
+        foreach (array_reverse($rows) as $m) {
+            $out[] = [
+                'dir'     => (string) $m['direction'] === 'out' ? 'out' : 'in',
+                'at'      => (string) $m['created_at'],
+                'text'    => (string) ($m['body'] ?? ''),
+                'kind'    => (string) $m['kind'],
+                'status'  => (string) $m['status'] . ((string) ($m['error'] ?? '') !== '' ? ' — ' . (string) $m['error'] : ''),
+                'purpose' => (string) ($m['purpose'] ?? ''),
+                'by'      => (string) ($m['full_name'] ?? ''),
+            ];
+        }
+        return $out;
+    }
+
+    /** The number this Messenger account proved with the WhatsApp code ('' = none), as international digits. */
+    public static function provenPhone(string $psid): string
+    {
+        return self::provenPhones([$psid])[$psid] ?? '';
+    }
+
+    /** New messages for this admin since they last opened the inbox (the nav count). */
+    public static function unread(int $adminId): int
+    {
+        if (!self::logReady() || self::$memLog !== null) {
+            return 0;
+        }
+        try {
+            return (int) Database::scalar(
+                "SELECT COUNT(*) FROM fb_inbound WHERE direction = 'in' AND id > :s AND created_at >= NOW() - INTERVAL 7 DAY",
+                ['s' => self::seenId($adminId)], 0
+            );
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    public static function markSeen(int $adminId): void
+    {
+        if (!self::logReady() || self::$memLog !== null) {
+            return;
+        }
+        try {
+            $max = (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM fb_inbound', [], 0);
+            Database::run(
+                "INSERT INTO kv_store (kscope, kkey, kvalue, updated_by) VALUES ('fb_inbox_seen', :k, :v, 'inbox')
+                 ON DUPLICATE KEY UPDATE kvalue = VALUES(kvalue)",
+                ['k' => (string) $adminId, 'v' => (string) $max]
+            );
+        } catch (Throwable $e) {
+        }
+    }
+
+    /**
+     * A person from the office answers. Free text only while the 24-hour
+     * window from the person's last message is open (Meta's rule); outside
+     * it nothing is sent — no message tag, no paid route. Audited either way.
+     *
+     * @return array{ok: bool, why: string}
+     */
+    public static function inboxReply(string $psid, string $text, int $adminId): array
+    {
+        $text = trim($text);
+        if (!self::validPsid($psid) || $text === '') {
+            return ['ok' => false, 'why' => 'पहिले सन्देश लेख्नुहोस् · Write a message first.'];
+        }
+        if (mb_strlen($text) > 1000) {
+            return ['ok' => false, 'why' => '१००० अक्षरभित्र लेख्नुहोस् · Keep it under 1000 characters.'];
+        }
+        if (self::token() === '' || (self::$transport === null && !function_exists('curl_init'))) {
+            return ['ok' => false, 'why' => 'Messenger जोडिएको छैन · No Page token is saved — see Facebook Messenger AI.'];
+        }
+        if (!self::windowOpen($psid)) {
+            return ['ok' => false, 'why' => '२४ घण्टाको झ्याल बन्द छ · Their 24-hour Messenger window is closed (they have not written in the last day). Wait until they write again.'];
+        }
+        $ok = self::sendText($psid, $text, 'inbox_reply', $adminId);
+        Logger::audit('fb.inbox_reply', 'facebook', self::tag($psid), null, ['chars' => mb_strlen($text), 'ok' => $ok],
+            'Messenger inbox reply by admin #' . $adminId);
+        return $ok
+            ? ['ok' => true, 'why' => '']
+            : ['ok' => false, 'why' => 'Facebook ले लिएन · Facebook did not accept it — the reason is shown in the conversation.'];
+    }
+
+    private static function logIn(string $psid, array $ev): void
+    {
+        $text    = trim((string) ($ev['text'] ?? ''));
+        $payload = (string) ($ev['payload'] ?? '');
+        $kind    = (string) ($ev['kind'] ?? (!empty($ev['attachment']) ? 'attachment' : 'message'));
+        if ($text === '' && $payload !== '') {
+            $text = '[' . mb_substr($payload, 0, 60) . ']';
+        } elseif ($text === '' && !empty($ev['attachment'])) {
+            $text = '[photo / file]';
+        }
+        $mid = (string) ($ev['mid'] ?? '');
+        self::logRow([
+            'mid'       => $mid !== '' ? mb_substr($mid, 0, 191) : null,
+            'psid'      => $psid,
+            'direction' => 'in',
+            'kind'      => in_array($kind, ['message', 'postback', 'attachment'], true) ? $kind : 'message',
+            'body'      => self::forLog($text),
+            'purpose'   => null,
+            'status'    => 'received',
+            'admin_id'  => null,
+            'error'     => null,
+        ]);
+    }
+
+    private static function logOut(string $psid, array $message, bool $ok, string $purpose, int $adminId, string $err): void
+    {
+        if (isset($message['text'])) {
+            $kind = 'text';
+            $body = (string) $message['text'];
+        } elseif (($message['attachment']['type'] ?? '') === 'image') {
+            $kind = 'image';
+            $body = '[image] ' . (string) ($message['attachment']['payload']['url'] ?? '');
+        } else {
+            $kind   = 'buttons';
+            $titles = array_map(static fn($b): string => (string) ($b['title'] ?? ''), (array) ($message['attachment']['payload']['buttons'] ?? []));
+            $body   = '[buttons] ' . implode(' · ', array_filter($titles, static fn(string $t): bool => $t !== ''));
+        }
+        // The same keys Notify keeps out of message_logs (2F-logs, 15 Oct 2026):
+        // a ticket's download key / short code and a one-time link token each
+        // open something, so the inbox never stores or shows them.
+        try {
+            require_once __DIR__ . '/wasend.php';
+            $body = WaSend::maskSecrets($body);
+        } catch (Throwable $ignored) {
+        }
+        $body = preg_replace('~([?&]t=)[A-Za-z0-9]{16,}~', '$1[hidden]', $body) ?? $body;
+        $body = preg_replace('~([?&]k=)[A-Za-z0-9]{8,}~', '$1[hidden]', $body) ?? $body;
+        $body = preg_replace('~(view\.php\?code=)[A-Za-z0-9]{6,}~', '$1[hidden]', $body) ?? $body;
+        self::logRow([
+            'mid'       => null,
+            'psid'      => $psid,
+            'direction' => 'out',
+            'kind'      => $kind,
+            'body'      => mb_substr($body, 0, 2000),
+            'purpose'   => preg_match('/^[a-z_]{1,40}$/', $purpose) === 1 ? $purpose : 'bot_reply',
+            'status'    => $ok ? 'sent' : 'failed',
+            'admin_id'  => $adminId > 0 ? $adminId : null,
+            'error'     => $ok ? null : mb_substr($err, 0, 255),
+        ]);
+    }
+
+    private static function logRow(array $row): void
+    {
+        if (self::$memLog !== null) {
+            if ($row['mid'] !== null) {
+                foreach (self::$memLog as $r) {
+                    if (($r['mid'] ?? null) === $row['mid']) {
+                        return;                                // INSERT IGNORE on the UNIQUE mid
+                    }
+                }
+            }
+            $row['id']         = count(self::$memLog) + 1;
+            $row['created_at'] = date('Y-m-d H:i:s');
+            self::$memLog[]    = $row;
+            return;
+        }
+        try {
+            if (!self::logReady()) {
+                return;
+            }
+            Database::run(
+                'INSERT IGNORE INTO fb_inbound (mid, psid, direction, kind, body, purpose, status, admin_id, error)
+                 VALUES (:mid, :psid, :dir, :kind, :body, :purpose, :status, :admin, :err)',
+                [
+                    'mid' => $row['mid'], 'psid' => $row['psid'], 'dir' => $row['direction'], 'kind' => $row['kind'],
+                    'body' => $row['body'], 'purpose' => $row['purpose'], 'status' => $row['status'],
+                    'admin' => $row['admin_id'], 'err' => $row['error'],
+                ]
+            );
+        } catch (Throwable $e) {
+            try {
+                Logger::warning('Facebook conversation log not written: ' . $e->getMessage(), ['psid' => self::tag((string) $row['psid'])], 'facebook');
+            } catch (Throwable $ignored) {
+            }
+        }
+    }
+
+    private static function seenId(int $adminId): int
+    {
+        try {
+            return (int) Database::scalar("SELECT kvalue FROM kv_store WHERE kscope = 'fb_inbox_seen' AND kkey = :k", ['k' => (string) $adminId], 0);
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    /** @param list<string> $psids @return array<string, string> psid => international digits */
+    private static function provenPhones(array $psids): array
+    {
+        $psids = array_values(array_filter(array_unique($psids), [self::class, 'validPsid']));
+        if ($psids === []) {
+            return [];
+        }
+        $out = [];
+        try {
+            $ph = implode(',', array_fill(0, count($psids), '?'));
+            foreach (Database::fetchAll(
+                'SELECT kkey, kvalue FROM kv_store WHERE kscope = ? AND kkey IN (' . $ph . ')',
+                array_merge([self::SCOPE], $psids)
+            ) as $r) {
+                $st = json_decode((string) $r['kvalue'], true);
+                $phone = is_array($st) ? (string) ($st['phone'] ?? '') : '';
+                if ($phone !== '') {
+                    $out[(string) $r['kkey']] = (((string) ($st['country'] ?? '') === 'NP') ? '977' : '91') . $phone;
+                }
+            }
+        } catch (Throwable $e) {
+        }
+        return $out;
     }
 
     /* =================================================================

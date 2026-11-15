@@ -94,7 +94,7 @@ $inv = substr($pwa, (int) strpos($pwa, 'function invite()'), 4200);
 $ok(!str_contains($inv, 'aria-modal') && !str_contains($inv, 'pwa-backdrop'), 'the strip is not a dialog and has no backdrop');
 $ok(str_contains($inv, "sb.addEventListener('focusin', inviteGone") && str_contains($inv, "'hashchange'"), 'it leaves when a booking starts or another screen opens');
 $ok(str_contains($inv, 'min-height:44px'), 'buttons are 44px touch targets');
-$ok(str_contains($inv, 'p.prompt()') && str_contains($inv, 'showIOS()'), "Android: the browser's own prompt from the tap; iOS: the real steps");
+$ok(str_contains($inv, 'p.prompt()') && (bool) preg_match('~showIOS\((true)?\)~', $inv), "Android: the browser's own prompt from the tap; iOS: the real steps");   // 16 Nov 2026: showIOS(true) = asked for (U2a, P2-1h)
 $i18n = $read('assets/js/04-i18n.js');
 $ok(substr_count($i18n, 'pwaContinue:') === 3, '"Continue in browser" in English, Hindi and Nepali');
 
@@ -141,8 +141,13 @@ foreach ($want as $d => $hex) {
 $ok($low === [], '63 colour pairs are 4.5:1 or better' . ($low === [] ? '' : ' — ' . implode('; ', $low)));
 $ok(!preg_match('~data-accent="[a-z]+"\]\{[^}]*--(success|warning|danger|seat-|navy|red|orange)~', $css), 'accent never touches seat, status, navy or logo colours');
 $ok(str_contains($tpl, "K = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'], IST = 19800000"), 'weekday is taken in Asia/Kolkata (UTC+5:30)');
-$ok(str_contains($tpl, "localStorage.getItem('shg:accent') === 'fixed'") && str_contains($tpl, 'data-accent-set="weekly"') && str_contains($tpl, 'data-accent-set="fixed"'), 'Weekly / Fixed choice, remembered on the phone');
-$acc = substr($tpl, (int) strpos($tpl, '13 Nov 2026: weekly accent'), 2600);
+/* 16 Nov 2026 (P5-8a): tri-state - a saved Weekly / Fixed wins; with nothing saved a palette the
+   visitor picked means Fixed, the owner-default visitor keeps Weekly (tests/u2b-customer-shell-test.php runs it) */
+$ok(str_contains($tpl, "var a = localStorage.getItem('shg:accent');") && str_contains($tpl, "if (a === 'fixed' || a === 'weekly') return a;")
+    && str_contains($tpl, 'data-accent-set="weekly"') && str_contains($tpl, 'data-accent-set="fixed"'), 'Weekly / Fixed choice, remembered on the phone');
+$accAt = (int) strpos($tpl, '13 Nov 2026: weekly accent');
+$accEnd = strpos($tpl, '9 Oct 2026: colour palette, UI style and motion', $accAt);
+$acc = substr($tpl, $accAt, $accEnd === false ? 2600 : $accEnd - $accAt);   // the accent script alone
 $ok(!str_contains($acc, 'location.reload') && str_contains($acc, 'visibilitychange') && str_contains($acc, 'setTimeout'), 'midnight + app-resume recheck without a reload (a form in progress is kept)');
 /* the same weekday arithmetic as the page, checked against PHP's own calendar */
 $bad = 0;

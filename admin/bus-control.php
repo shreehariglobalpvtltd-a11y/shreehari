@@ -38,7 +38,8 @@ if (!Security::isValidDate($date)) {
 $flash = $_SESSION['bc_flash'] ?? null;
 unset($_SESSION['bc_flash']);
 /* 7 Nov 2026: one category per tab (departures · fleet · routes · extra seats · share link) */
-$TABS = ['trips', 'fleet', 'routes', 'extra', 'link'];
+/* 16 Nov 2026 (P4-6a): + stops · offers · fares - read-only health counts and links, no new write path */
+$TABS = ['trips', 'fleet', 'routes', 'stops', 'offers', 'fares', 'extra', 'link'];
 $tab  = (string) ($_GET['tab'] ?? $_POST['tab'] ?? 'trips');
 if (!in_array($tab, $TABS, true)) {
     $tab = 'trips';
@@ -235,6 +236,56 @@ $buses  = Database::fetchAll('SELECT id, bus_number, bus_name, total_seats, seat
 $routes = Database::fetchAll('SELECT id, route_code, from_city, to_city, is_active, bus_id, dep_time FROM routes ORDER BY is_active DESC, sort_order, id');
 $extraN = Seats::extraSeatCount();
 
+/* 16 Nov 2026 (P4-6a, owner's "sapai eutai setting vitra"): the stops of the
+   routes on sale, with the gaps that hurt on the road - a pickup with no map
+   point, a pickup with no time - and how many have their own fare. Read only;
+   editing stays on Routes & stops / Offers / Settings. */
+$stopHealth = [];
+try {
+    $stopHealth = Database::fetchAll(
+        "SELECT r.id, r.route_code, r.from_city, r.to_city, r.base_fare,
+                SUM(s.stop_type = 'boarding') AS pickups,
+                SUM(s.stop_type = 'drop') AS drops,
+                SUM(s.latitude IS NULL OR s.longitude IS NULL OR (s.latitude = 0 AND s.longitude = 0)) AS no_gps,
+                SUM(s.stop_type = 'boarding' AND s.stop_time IS NULL) AS no_time,
+                SUM(s.stop_type = 'boarding' AND s.fare IS NOT NULL AND s.fare > 0) AS own_fare
+           FROM routes r
+           JOIN route_stops s ON s.route_id = r.id AND s.is_active = 1
+          WHERE r.is_active = 1
+          GROUP BY r.id, r.route_code, r.from_city, r.to_city, r.base_fare
+          ORDER BY r.sort_order, r.id"
+    );
+} catch (Throwable $ex) {
+    $stopHealth = [];
+}
+$stopSum = ['all' => 0, 'no_gps' => 0, 'no_time' => 0];
+foreach ($stopHealth as $sh) {
+    $stopSum['all']     += (int) $sh['pickups'] + (int) $sh['drops'];
+    $stopSum['no_gps']  += (int) $sh['no_gps'];
+    $stopSum['no_time'] += (int) $sh['no_time'];
+}
+$runOffers = [];
+try {
+    $runOffers = Database::fetchAll(
+        'SELECT code, title, discount_type, discount_value, max_discount, auto_apply, valid_until, usage_limit, used_count, route_id
+           FROM coupons
+          WHERE is_active = 1 AND (valid_from IS NULL OR valid_from <= :d1) AND (valid_until IS NULL OR valid_until >= :d2)
+          ORDER BY auto_apply DESC, id DESC LIMIT 30',
+        ['d1' => $today, 'd2' => $today]
+    );
+} catch (Throwable $ex) {
+    $runOffers = [];
+}
+$discSwitches = [
+    'group_discount_on'        => 'Group discount · समूह छुट',
+    'loyalty_tier_discount_on' => 'Member tier discount · सदस्य छुट',
+    'sharing_short_run_on'     => 'Short-run sharing cut · छोटो यात्रा छुट',
+];
+$fareOverN = 0;
+foreach ($deps as $d) {
+    if ($d['fare_override'] !== null) { $fareOverN++; }
+}
+
 /* ---------------------------------------------------------------- VIEW */
 /* 7 Nov 2026 (owner: "professional look deu, cartoon jasto bhayo; category ma design"):
    one category per tab, quiet cards, small text badges, line icons, no emoji. */
@@ -334,6 +385,9 @@ admin_header('Bus Control', 'bus-control');
     'trips'  => ['Departures', 'calendar', count($deps)],
     'fleet'  => ['Fleet', 'bus', count(array_filter($buses, static fn($b) => (int) $b['is_active'] === 1))],
     'routes' => ['Routes', 'route', count(array_filter($routes, static fn($r) => (int) $r['is_active'] === 1))],
+    'stops'  => ['Stops & times', 'pin', $stopSum['all']],
+    'offers' => ['Offers', 'wallet', count($runOffers)],
+    'fares'  => ['Fares', 'cash', null],
     'extra'  => ['Extra seats', 'seat', $extraN],
     'link'   => ['Share link', 'link', null],
 ], $tab, $keep) ?>
@@ -529,6 +583,87 @@ admin_header('Bus Control', 'bus-control');
       <?php endforeach; ?>
       </tbody></table></div>
     <div class="pc-card-f"><a class="pc-btn sm" href="/admin/routes.php"><?= pc_icon('pin') ?>Stops &amp; fares</a></div>
+  </section>
+
+<?php elseif ($tab === 'stops'): /* 16 Nov 2026 (P4-6a): read-only stop health */ ?>
+  <div class="pc-kpis">
+    <div class="pc-kpi"><small>Active stops · चालु ठाउँ</small><b><?= (int) $stopSum['all'] ?></b><i>on routes that are selling</i></div>
+    <div class="pc-kpi <?= $stopSum['no_gps'] > 0 ? 'warn' : 'ok' ?>"><small>No map point · GPS छैन</small><b><?= (int) $stopSum['no_gps'] ?></b><i>pickups / drops without GPS</i></div>
+    <div class="pc-kpi <?= $stopSum['no_time'] > 0 ? 'warn' : 'ok' ?>"><small>Pickup without time · समय छैन</small><b><?= (int) $stopSum['no_time'] ?></b><i>the ticket falls back to the bus time</i></div>
+  </div>
+  <section class="pc-card">
+    <div class="pc-card-h"><h3>Stops &amp; times · चढ्ने / झर्ने ठाउँ</h3><small>Read only. Add or fix a stop, its time, map point or fare on Routes &amp; stops.</small></div>
+    <div style="overflow-x:auto"><table class="pc-table">
+      <thead><tr><th>Route</th><th>Pickups</th><th>Drops</th><th>No GPS</th><th>Pickup no time</th></tr></thead><tbody>
+      <?php if ($stopHealth === []): ?>
+        <tr><td colspan="5" class="pc-note">No active stops on a selling route.</td></tr>
+      <?php endif; ?>
+      <?php foreach ($stopHealth as $sh): ?>
+        <tr>
+          <td><b><?= $e($sh['from_city']) ?> → <?= $e($sh['to_city']) ?></b> <small class="pc-note"><?= $e($sh['route_code']) ?></small></td>
+          <td><?= (int) $sh['pickups'] ?></td>
+          <td><?= (int) $sh['drops'] ?></td>
+          <td><?= (int) $sh['no_gps'] > 0 ? pc_badge((string) (int) $sh['no_gps'], 'warn') : pc_badge('0', 'ok') ?></td>
+          <td><?= (int) $sh['no_time'] > 0 ? pc_badge((string) (int) $sh['no_time'], 'warn') : pc_badge('0', 'ok') ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody></table></div>
+    <div class="pc-card-f"><a class="pc-btn pri sm" href="/admin/routes.php#pickups"><?= pc_icon('pin') ?>ठाउँ मिलाउने · Fix stops</a></div>
+  </section>
+
+<?php elseif ($tab === 'offers'): /* 16 Nov 2026 (P4-6a): running offers + the discount switches, read only */ ?>
+  <section class="pc-card">
+    <div class="pc-card-h"><h3>Offers running today · आजका अफर</h3><small>Read only. Create, edit or switch an offer off on Offers &amp; Discounts.</small></div>
+    <div style="overflow-x:auto"><table class="pc-table">
+      <thead><tr><th>Offer</th><th>Discount</th><th>Kind</th><th>Until</th><th>Used</th></tr></thead><tbody>
+      <?php if ($runOffers === []): ?>
+        <tr><td colspan="5" class="pc-note">No offer is running today.</td></tr>
+      <?php endif; ?>
+      <?php foreach ($runOffers as $o): ?>
+        <tr>
+          <td><b><?= $e(trim((string) ($o['title'] ?? '')) !== '' ? $o['title'] : $o['code']) ?></b> <small class="pc-note"><?= $e($o['code']) ?></small></td>
+          <td><?= (string) $o['discount_type'] === 'percent'
+                ? $e(rtrim(rtrim(number_format((float) $o['discount_value'], 2), '0'), '.') . '%' . ($o['max_discount'] !== null ? ' (max ' . inr((float) $o['max_discount']) . ')' : ''))
+                : $e(inr((float) $o['discount_value'])) ?></td>
+          <td><?= (int) $o['auto_apply'] === 1 ? pc_badge('Automatic', 'ok') : pc_badge('Needs code', 'info') ?></td>
+          <td><?= $o['valid_until'] ? $e(formatDate((string) $o['valid_until'], 'j M Y')) : 'no end' ?></td>
+          <td><?= (int) $o['used_count'] ?><?= $o['usage_limit'] !== null ? ' / ' . (int) $o['usage_limit'] : '' ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody></table></div>
+    <div class="pc-card-b">
+      <div class="pc-meta">
+        <?php foreach ($discSwitches as $sk => $sl): $son = Settings::getBool($sk, false); ?>
+          <span><?= $e($sl) ?> <?= $son ? pc_badge('ON', 'ok') : pc_badge('OFF', 'mute') ?></span>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php if (Auth::can('payments.view')): ?>
+    <div class="pc-card-f"><a class="pc-btn pri sm" href="/admin/offers.php"><?= pc_icon('wallet') ?>अफर मिलाउने · Offers &amp; discounts</a><a class="pc-btn sm" href="/admin/offers.php#discount-report"><?= pc_icon('list') ?>Usage report</a></div>
+    <?php endif; ?>
+  </section>
+
+<?php elseif ($tab === 'fares'): /* 16 Nov 2026 (P4-6a): fares are set in Settings and on each pickup - links + a health line */ ?>
+  <section class="pc-card">
+    <div class="pc-card-h"><h3>Fares · भाडा</h3><small>Read only. Default fares and cabin prices are in Settings → Fares; each pickup's own fare is on Routes &amp; stops.</small></div>
+    <div style="overflow-x:auto"><table class="pc-table">
+      <thead><tr><th>Route</th><th>Route fare</th><th>Pickups with own fare</th></tr></thead><tbody>
+      <?php if ($stopHealth === []): ?>
+        <tr><td colspan="3" class="pc-note">No route is selling.</td></tr>
+      <?php endif; ?>
+      <?php foreach ($stopHealth as $sh): ?>
+        <tr>
+          <td><b><?= $e($sh['from_city']) ?> → <?= $e($sh['to_city']) ?></b> <small class="pc-note"><?= $e($sh['route_code']) ?></small></td>
+          <td><?= (float) $sh['base_fare'] > 0 ? $e(inr((float) $sh['base_fare'])) : pc_badge('default fare', 'mute') ?></td>
+          <td><?= (int) $sh['own_fare'] ?> / <?= (int) $sh['pickups'] ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody></table></div>
+    <div class="pc-card-b"><p class="pc-note"><?= $fareOverN > 0 ? $fareOverN . ' departure(s) on ' . $e(formatDate($date, 'j M')) . ' carry their own fare (Departures tab).' : 'No departure on ' . $e(formatDate($date, 'j M')) . ' has its own fare.' ?></p></div>
+    <div class="pc-card-f">
+      <?php if (Auth::can('dashboard.view')): ?><a class="pc-btn pri sm" href="/admin/settings.php#faresPanel"><?= pc_icon('cash') ?>भाडा मिलाउने · Settings → Fares</a><?php endif; ?>
+      <a class="pc-btn sm" href="/admin/routes.php#pickups"><?= pc_icon('pin') ?>Pickup fares</a>
+    </div>
   </section>
 
 <?php elseif ($tab === 'extra'): ?>

@@ -130,7 +130,7 @@ admin_header('Ticket Requests', 'ticket-requests');
 
 <div class="panel">
   <h2>यात्रुका अनुरोध · Passenger requests</h2>
-  <p class="tr-help">Passengers ask from their own ticket page for <b>another date</b> or to <b>cancel seats</b>. These are only <b>requests — nothing on the ticket has changed</b>. Call or WhatsApp the passenger, do the change with the booking tools (booking page, Change Date, Refunds desk) under the refund rules, then press <b>Done</b> with what you did, or <b>Reject</b> with why. The note stays in the office (the passenger does not see it).</p>
+  <p class="tr-help">Passengers ask from their own ticket page for <b>another date</b>, <b>another seat</b> or to <b>cancel seats</b>. These are only <b>requests — nothing on the ticket has changed</b>. Call or WhatsApp the passenger, do the change with the booking tools (booking page, Change Date, Refunds desk) under the refund rules, then press <b>Done</b> with what you did, or <b>Reject</b> with why. The note stays in the office (the passenger does not see it).</p>
   <p class="tr-help" style="color:var(--mut)">यी अनुरोध मात्र हुन् — टिकट आफैं बदलिएको छैन। यात्रुलाई फोन / WhatsApp गर्नुहोस्, बुकिङ पेजबाट परिवर्तन गर्नुहोस्, अनि के गरियो लेखेर “Done” वा किन मिलेन लेखेर “Reject” थिच्नुहोस्।</p>
   <?php if (!$ready): ?>
     <p class="flash bad" style="margin-top:10px">Not set up yet: run <code>database/upgrade-2026-11-15-ticket-requests.sql</code>. Until then the ticket page shows no request buttons.</p>
@@ -167,7 +167,7 @@ admin_header('Ticket Requests', 'ticket-requests');
   ?>
     <div class="tr-card <?= Security::e($kind) ?><?= $open ? '' : ' closed' ?>" id="tr-<?= $id ?>">
       <h3>
-        <span class="tr-tag"><?= $kind === 'change_date' ? '📅' : '🪑' ?> <?= Security::e($kl[0] . ' · ' . $kl[1]) ?></span>
+        <span class="tr-tag"><?= match ($kind) { 'change_date' => '📅', 'change_seat' => '🔁', default => '🪑' } ?> <?= Security::e($kl[0] . ' · ' . $kl[1]) ?></span>
         <a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode($pnr) ?>"><?= Security::e($pnr) ?></a>
         <span class="tr-pill <?= Security::e((string) $r['status']) ?>"><?= Security::e((string) $r['status']) ?></span>
         <span class="tr-age" title="<?= Security::e((string) $r['created_at']) ?>">⏱ <?= Security::e($age((string) $r['created_at'])) ?> ago · #<?= $id ?></span>
@@ -178,6 +178,9 @@ admin_header('Ticket Requests', 'ticket-requests');
         <?php endif; ?>
         <?php if ($kind === 'change_date'): ?>
           चाहिएको मिति · Wants: <b><?= Security::e(formatDate((string) ($r['wanted_date'] ?? ''), 'D, j M Y')) ?></b>
+        <?php elseif ($kind === 'change_seat'): /* 16 Nov 2026 (P8-3e): labels as printed; check the seat map before moving */ ?>
+          चाहिएको सिट · Wants seat: <b><?= Security::e(str_replace(',', ', ', (string) ($r['wanted_seats'] ?? ''))) ?></b>
+          · अहिले · now: <?= Security::e(TicketRequests::seatLabels(implode(',', TicketRequests::seatsOf((int) $r['booking_id'])), $mode)) ?>
         <?php else: ?>
           रद्द गर्ने सिट · Cancel: <b><?= Security::e(TicketRequests::seatLabels($seatCsv, $mode)) ?></b>
           <?= $total > 0 ? ' (' . ($nSeats >= $total ? 'whole ticket · पूरा टिकट' : $nSeats . ' of ' . $total . ' seats') . ')' : '' ?>

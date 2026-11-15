@@ -39,7 +39,13 @@ final class CommandCenter
         ), 2);
     }
 
-    /** @return array{today: float, mtd: float, avg7: float, projected: float, days_left: int, last_month_same: float} */
+    /**
+     * ytd (16 Nov 2026, P8-9b): 1 January of $today's year .. today, the same
+     * confirmed-revenue sum as mtd (calendar year; the dashboard tile and the
+     * Analytics "This year" chip read the same window).
+     *
+     * @return array{today: float, mtd: float, ytd: float, avg7: float, projected: float, days_left: int, last_month_same: float}
+     */
     public static function revenue(string $today): array
     {
         $tomorrow = addDaysISO($today, 1);
@@ -57,6 +63,7 @@ final class CommandCenter
         return [
             'today'           => $todayRev,
             'mtd'             => $mtd,
+            'ytd'             => self::sum(substr($today, 0, 4) . '-01-01', $tomorrow),
             'avg7'            => $avg7,
             'projected'       => round($mtd + $avg7 * $left, 2),
             'days_left'       => $left,

@@ -82,48 +82,75 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         // 3. Edit boarding stop details
         } elseif ($act === 'update_stop') {
-            $stopId = (int) ($_POST['stop_id'] ?? 0);
-            $time   = trim((string) ($_POST['stop_time'] ?? ''));
-            $fare   = (float) ($_POST['fare'] ?? 0);
-            $land   = trim(Security::clean((string) ($_POST['landmark'] ?? ''), 120));
-            if ($stopId > 0) {
-                Database::run(
-                    "UPDATE route_stops SET stop_time = :st, fare = :f, landmark = :l WHERE id = :id",
-                    ['st' => $time ?: null, 'f' => $fare > 0 ? $fare : null, 'l' => $land ?: null, 'id' => $stopId]
-                );
-                Logger::audit('map.stop_update', 'route_stop', (string) $stopId, null, ['time' => $time, 'fare' => $fare, 'landmark' => $land], 'Route stop updated');
-                $flash = ['ok', 'Boarding point details updated successfully.'];
+            /* 16 Nov 2026 (BUG1/BUG2): a pickup fare is money - the same routes.edit
+               gate as Admin -> Routes (counter / agent logins hold schedules.view
+               and could re-price any pickup here). "2,200" was (float) 2.0. */
+            Auth::requireAdmin('routes.edit');
+            try {
+                $stopId = (int) ($_POST['stop_id'] ?? 0);
+                $time   = trim((string) ($_POST['stop_time'] ?? ''));
+                $fareIn = Boarding::parseRupees($_POST['fare'] ?? '');
+                $land   = trim(Security::clean((string) ($_POST['landmark'] ?? ''), 191));
+                if ($time !== '' && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $time) !== 1) {
+                    throw new InvalidArgumentException('समय HH:MM मा लेख्नुहोस् · Enter the time as HH:MM.');
+                }
+                if ($fareIn === false || ($fareIn !== null && ($fareIn < 0 || $fareIn > 100000))) {
+                    throw new InvalidArgumentException('भाडा रुपैयाँमा लेख्नुहोस् · Enter the fare in rupees (e.g. 2200), or 0 / blank for the default.');
+                }
+                $before = Database::fetch('SELECT stop_name, stop_time, fare, landmark FROM route_stops WHERE id = :id', ['id' => $stopId]);
+                if ($before === null) {
+                    throw new InvalidArgumentException('ठाउँ भेटिएन · Stop not found.');
+                }
+                $after = [
+                    'stop_time' => $time !== '' ? (strlen($time) === 5 ? $time . ':00' : $time) : null,
+                    'fare'      => $fareIn !== null && $fareIn > 0 ? round($fareIn, 2) : null,
+                    'landmark'  => $land !== '' ? $land : null,
+                ];
+                Database::update('route_stops', $after, 'id = :id', ['id' => $stopId]);
+                Boarding::flush();
+                Logger::audit('map.stop_update', 'route_stop', (string) $stopId,
+                    ['stop' => $before['stop_name'], 'time' => $before['stop_time'], 'fare' => $before['fare'] !== null ? (float) $before['fare'] : null, 'landmark' => $before['landmark']],
+                    ['stop' => $before['stop_name'], 'time' => $after['stop_time'], 'fare' => $after['fare'], 'landmark' => $after['landmark']],
+                    'Route stop updated');
+                $flash = ['ok', 'Saved ' . $before['stop_name'] . ': '
+                    . ($after['fare'] !== null ? inr($after['fare']) : 'default fare')
+                    . ($after['stop_time'] !== null ? ' · ' . substr($after['stop_time'], 0, 5) : ' · no time set') . '.'];
+            } catch (Throwable $e) {
+                $flash = ['bad', $e instanceof InvalidArgumentException ? $e->getMessage() : 'Not saved - ' . $e->getMessage()];
             }
 
-        // 4. Add new boarding / waypoint stop
+        // 4. Add new boarding / drop stop
         } elseif ($act === 'add_stop') {
-            $rId    = (int) ($_POST['route_id'] ?? 1);
-            $sName  = trim(Security::clean((string) ($_POST['stop_name'] ?? ''), 120));
-            $sType  = (string) ($_POST['stop_type'] ?? 'boarding');
-            $sTime  = trim((string) ($_POST['stop_time'] ?? ''));
-            $sFare  = (float) ($_POST['fare'] ?? 0);
-            $sLand  = trim(Security::clean((string) ($_POST['landmark'] ?? ''), 120));
-            $sBorder= !empty($_POST['is_border']) ? 1 : 0;
-            $sLat   = (float) ($_POST['latitude'] ?? 0);
-            $sLng   = (float) ($_POST['longitude'] ?? 0);
-            if ($sName === '') {
-                throw new RuntimeException('Stop / Waypoint name is required.');
+            /* 16 Nov 2026 (BUG2, owner: "location add nahi ho raha"): this ran
+               outside any try, never asked for routes.edit, sorted every stop 99th
+               and wrote the posted stop_type into enum('boarding','drop') - the
+               form's "Transit / Meal Checkpoint" was SQLSTATE 1265 = HTTP 500.
+               One writer now: Boarding::addStop (same as Admin -> Routes). */
+            Auth::requireAdmin('routes.edit');
+            try {
+                $sName = (string) ($_POST['stop_name'] ?? '');
+                $sTime = trim((string) ($_POST['stop_time'] ?? ''));
+                Boarding::addStop([
+                    'route_id'   => (int) ($_POST['route_id'] ?? 0),
+                    'stop_type'  => (string) ($_POST['stop_type'] ?? ''),
+                    'stop_name'  => Security::clean($sName, 191),
+                    'stop_time'  => $sTime,
+                    'fare'       => (string) ($_POST['fare'] ?? ''),
+                    'landmark'   => Security::clean((string) ($_POST['landmark'] ?? ''), 191),
+                    'is_border'  => !empty($_POST['is_border']),
+                    'latitude'   => (string) ($_POST['latitude'] ?? ''),
+                    'longitude'  => (string) ($_POST['longitude'] ?? ''),
+                ], (int) ($admin['id'] ?? 0));
+                $flash = ['ok', 'Added "' . trim($sName) . '".'
+                    . ($sTime === '' && ($_POST['stop_type'] ?? '') === 'boarding'
+                        ? ' No time set: on the travel day it stops selling ' . Boarding::cutoffMinutes() . ' min before the route leaves - set its time in Admin → Routes (✎).'
+                        : '')];
+            } catch (InvalidArgumentException $e) {
+                $flash = ['bad', $e->getMessage()];
+            } catch (Throwable $e) {
+                Logger::error('map.php add_stop failed: ' . $e->getMessage());
+                $flash = ['bad', 'Not added - the database refused it (' . mb_substr($e->getMessage(), 0, 120) . ').'];
             }
-            Database::insert('route_stops', [
-                'route_id'   => $rId,
-                'stop_type'  => $sType,
-                'stop_name'  => $sName,
-                'stop_time'  => $sTime ?: null,
-                'fare'       => $sFare > 0 ? $sFare : null,
-                'landmark'   => $sLand ?: null,
-                'is_border'  => $sBorder,
-                'latitude'   => $sLat != 0.0 ? $sLat : null,
-                'longitude'  => $sLng != 0.0 ? $sLng : null,
-                'is_active'  => 1,
-                'sort_order' => 99
-            ]);
-            Logger::audit('map.stop_add', 'route_stop', $sName, null, ['route_id' => $rId], 'Added new boarding/drop stop');
-            $flash = ['ok', 'New waypoint / boarding stop "' . $sName . '" added successfully.'];
 
         // 5. Office closes a driver SOS / breakdown (15 Nov 2026)
         } elseif ($act === 'resolve_driver_event') {
@@ -241,15 +268,18 @@ foreach ($jsTrips as $t) {
     $paxTrips[] = ['trip' => $t, 'groups' => $groups];
 }
 
-// All Stops for Boarding Manager
+// All Stops for Boarding Manager - only routes that sell (16 Nov 2026: nine
+// "Mehsana — SHG Head Office" rows of switched-OFF routes were listed first,
+// and editing one re-priced a route that never sells).
 $allStops = Database::fetchAll(
     "SELECT rs.id, rs.route_id, rs.stop_type, rs.stop_name, rs.landmark, rs.stop_time, rs.fare, rs.is_border, rs.sort_order,
             r.route_code, r.from_city, r.to_city
        FROM route_stops rs
        JOIN routes r ON r.id = rs.route_id
-      WHERE rs.is_active = 1
-      ORDER BY rs.route_id, rs.stop_type, rs.sort_order"
+      WHERE rs.is_active = 1 AND r.is_active = 1
+      ORDER BY r.sort_order, rs.route_id, rs.stop_type, rs.sort_order"
 );
+$canEditStops = Auth::can('routes.edit');
 
 // Today's Booked Passengers for Quick Radar Link Dispatch
 $todayPaxBookings = Database::fetchAll(
@@ -389,6 +419,14 @@ admin_header('SHARI NAV — Global Map & Live Bus Tracking', 'map');
 @media(prefers-reduced-motion:reduce){.lm-coach.live::before{animation:none}}
 @media(max-width:520px){.fm-c{flex:1 1 calc(50% - 8px)}}
 @media(max-width:1020px){.lm-wrap{grid-template-columns:1fr}#lmMap{height:58vh;min-height:360px}.lm-side{max-height:none}}
+/* 16 Nov 2026 (BUG2): the Boarding tab's Add / Edit stop boxes had no styles on
+   this page (the class lives inline in agents.php), so "+ Add New Boarding"
+   opened the form in page flow under the whole stop table - off screen. */
+.id-preview-modal{position:fixed;inset:0;z-index:1000;background:rgba(10,20,40,.6);display:flex;align-items:center;justify-content:center;padding:16px}
+.id-preview-modal[hidden]{display:none}
+.id-preview-box{background:var(--card,#fff);color:var(--ink,#1e293b);border-radius:14px;width:100%;padding:16px;max-height:calc(100vh - 32px);overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.35)}
+.id-preview-box input,.id-preview-box select{font-size:16px;background:var(--card,#fff);color:var(--ink,#1e293b);min-width:0}
+@media(max-width:420px){.id-preview-modal{padding:8px}.id-preview-box{padding:12px}.id-preview-box div[style*="grid-template-columns"]{grid-template-columns:1fr !important}}
 </style>
 
 <!-- CATEGORY TABS -->
@@ -982,9 +1020,11 @@ window.ADMAP = {
   <div style="font-size:13.5px;color:var(--mut)">
     Manage Gujarat &amp; Nepal pickup stops, timings, fare adjustments, and customs border checkpoints.
   </div>
+  <?php if ($canEditStops): ?>
   <button type="button" class="btn ok" onclick="document.getElementById('addStopModal').hidden=false">
-    + Add New Boarding / Waypoint
+    + नयाँ पिकअप / ड्रप · Add pickup / drop point
   </button>
+  <?php endif; ?>
 </div>
 <div class="dt-wrap">
   <table class="dt no-card">
@@ -1003,7 +1043,9 @@ window.ADMAP = {
           <td><?= !empty($st['landmark']) ? Security::e($st['landmark']) : '<span class="muted">—</span>' ?></td>
           <td><?= (int)$st['is_border'] === 1 ? '<span class="pill" style="background:#fef3c7;color:#92400e">🛃 Border Point</span>' : '<span class="muted">—</span>' ?></td>
           <td>
+            <?php if ($canEditStops): ?>
             <button type="button" class="btn ghost" onclick="openStopModal(<?= (int)$st['id'] ?>, '<?= Security::e(addslashes($st['stop_name'])) ?>', '<?= substr((string)($st['stop_time'] ?? ''), 0, 5) ?>', <?= (float)($st['fare'] ?? 0) ?>, '<?= Security::e(addslashes($st['landmark'] ?? '')) ?>')">✏️ Edit</button>
+            <?php endif; ?>
           </td>
         </tr>
       <?php endforeach; ?>
@@ -1011,11 +1053,12 @@ window.ADMAP = {
   </table>
 </div>
 
+<?php if ($canEditStops): /* 16 Nov 2026: the edit / add forms only for routes.edit (the handlers refuse the rest) */ ?>
 <!-- STOP EDIT MODAL -->
 <div class="id-preview-modal" id="stopEditModal" hidden onclick="if(event.target===this)this.hidden=true">
   <div class="id-preview-box" style="max-width:440px">
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px">
-      <h3 style="margin:0;font-size:16px;color:#0d3b66">📍 Edit Boarding Point</h3>
+      <h3 style="margin:0;font-size:16px">📍 ठाउँ बदल्नुहोस् · Edit boarding / drop point</h3>
       <button type="button" class="btn ghost" onclick="document.getElementById('stopEditModal').hidden=true">&times;</button>
     </div>
     <form method="post">
@@ -1026,7 +1069,7 @@ window.ADMAP = {
           <input type="time" name="stop_time" id="editStopTime" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
         </label>
         <label>Fare from / to this point (₹)
-          <input type="number" step="50" min="0" name="fare" id="editStopFare" placeholder="Leave 0 for default route fare" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+          <input type="number" step="1" min="0" max="100000" inputmode="numeric" name="fare" id="editStopFare" placeholder="blank / 0 = default fare" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
         </label>
         <label>Landmark / Meeting Spot
           <input type="text" name="landmark" id="editStopLandmark" placeholder="e.g. Near Char Rasta Petrol Pump" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
@@ -1044,7 +1087,7 @@ window.ADMAP = {
 <div class="id-preview-modal" id="addStopModal" hidden onclick="if(event.target===this)this.hidden=true">
   <div class="id-preview-box" style="max-width:480px">
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px">
-      <h3 style="margin:0;font-size:16px;color:#0d3b66">📍 Add New Boarding / Waypoint Stop</h3>
+      <h3 style="margin:0;font-size:16px">📍 नयाँ पिकअप / ड्रप · Add pickup / drop point</h3>
       <button type="button" class="btn ghost" onclick="document.getElementById('addStopModal').hidden=true">&times;</button>
     </div>
     <form method="post">
@@ -1063,10 +1106,10 @@ window.ADMAP = {
           </label>
           <label>Stop Type
             <select name="stop_type" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
-              <option value="boarding">Boarding</option>
-              <option value="drop">Drop Off</option>
-              <option value="checkpoint">Transit / Meal Checkpoint</option>
+              <option value="boarding">पिकअप · Boarding</option>
+              <option value="drop">ड्रप · Drop off</option>
             </select>
+            <small class="muted" style="display:block;margin-top:3px">Tea / meal halt: Admin → Routes → Halts on the way</small>
           </label>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1074,7 +1117,7 @@ window.ADMAP = {
             <input type="time" name="stop_time" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
           </label>
           <label>Special Fare (₹)
-            <input type="number" step="50" min="0" name="fare" placeholder="0 = default" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+            <input type="number" step="1" min="0" max="100000" inputmode="numeric" name="fare" placeholder="blank = default" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
           </label>
         </div>
         <label>Landmark / Specific Pickup Point
@@ -1082,10 +1125,10 @@ window.ADMAP = {
         </label>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <label>Latitude (Optional GPS)
-            <input type="number" step="0.0001" name="latitude" placeholder="e.g. 22.5645" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+            <input type="number" step="any" min="-90" max="90" inputmode="decimal" name="latitude" placeholder="e.g. 22.5645" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
           </label>
           <label>Longitude (Optional GPS)
-            <input type="number" step="0.0001" name="longitude" placeholder="e.g. 72.9289" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
+            <input type="number" step="any" min="-180" max="180" inputmode="decimal" name="longitude" placeholder="e.g. 72.9289" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px">
           </label>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin-top:4px;cursor:pointer">
@@ -1094,7 +1137,7 @@ window.ADMAP = {
         </label>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
           <button type="button" class="btn ghost" onclick="document.getElementById('addStopModal').hidden=true">Cancel</button>
-          <button type="submit" class="btn ok">✓ Add Waypoint Stop</button>
+          <button type="submit" class="btn ok">✓ थप्नुहोस् · Add point</button>
         </div>
       </div>
     </form>
@@ -1111,6 +1154,7 @@ function openStopModal(id, name, time, fare, landmark) {
   document.getElementById('stopEditModal').hidden = false;
 }
 </script>
+<?php endif; ?>
 
 <!-- =====================================================================
      TAB 3: LIVE STATUS DISPATCHER & PASSENGER WHATSAPP SHARE

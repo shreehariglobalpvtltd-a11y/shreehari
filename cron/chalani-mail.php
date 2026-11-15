@@ -29,11 +29,10 @@ require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/challanpng.php';
 require_once INCLUDE_PATH . '/seats.php';
 
-$t0  = microtime(true);
 $out = ['departures' => 0, 'office' => 0, 'sellers' => 0, 'failed' => 0, 'skipped' => 0];
 
 if (!Settings::getBool('chalani_mail_enabled', true)) {
-    echo json_encode(['ok' => true, 'off' => true]), "\n";
+    cron_done(['ok' => true, 'off' => true]);
     exit;
 }
 
@@ -161,5 +160,6 @@ foreach ($deps as $d) {
     }
 }
 
-$out['ms'] = (int) round((microtime(true) - $t0) * 1000);
-echo '[' . date('Y-m-d H:i:s') . '] ' . json_encode($out) . "\n";
+// 16 Nov 2026: the heartbeat (cron_runs) like every other job; cron_done
+// adds the run time ('ms') and prints the one-line result for the log file.
+cron_done($out);

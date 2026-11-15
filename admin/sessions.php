@@ -22,11 +22,23 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/walogin.php';
+require_once INCLUDE_PATH . '/quickunlock.php';   // 16 Nov 2026: PIN / pattern locks seen + cleared here too
 $admin = admin_boot('staff.manage');
 $me    = (int) ($admin['id'] ?? 0);
 $isSa  = Auth::isSuperadmin();
 $e     = static fn($v): string => Security::e((string) $v);
 $flash = null;
+$qkReady = QuickUnlock::ready();                     // admins.unlock_failed / unlock_locked_until exist
+$skReady = $qkReady && QuickUnlock::strikesReady();  // admins.unlock_strikes exists
+$qkCols  = $qkReady ? ', unlock_failed, unlock_locked_until' . ($skReady ? ', unlock_strikes' : ', 0 AS unlock_strikes')
+                    : ', 0 AS unlock_failed, NULL AS unlock_locked_until, 0 AS unlock_strikes';
+/** HH:MM today, else MM-DD HH:MM. */
+$when = static function (?string $ts): string {
+    if ($ts === null || $ts === '') {
+        return '—';
+    }
+    return substr($ts, 0, 10) === date('Y-m-d') ? substr($ts, 11, 5) : substr($ts, 5, 11);
+};
 
 $tab = (string) ($_GET['tab'] ?? 'live');
 if (!in_array($tab, ['live', 'history', 'person'], true)) {
@@ -39,7 +51,7 @@ $mayTouch = static function (?array $acct) use ($isSa): bool {
     return $acct !== null && ($isSa || (string) ($acct['role'] ?? '') !== 'superadmin');
 };
 $account = static fn(int $id): ?array => $id > 0
-    ? Database::fetch('SELECT id, username, full_name, role, phone, is_active, failed_logins, locked_until, last_login_at, last_login_ip
+    ? Database::fetch('SELECT id, username, full_name, role, phone, is_active, failed_logins, locked_until, last_login_at, last_login_ip' . $qkCols . '
                          FROM admins WHERE id = :id', ['id' => $id])
     : null;
 
@@ -94,11 +106,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if (!$mayTouch($acct)) {
             $flash = ['bad', $acct === null ? 'No such account.' : 'Only a super-admin may unlock a super-admin.'];
         } else {
-            Database::update('admins', ['failed_logins' => 0, 'locked_until' => null], 'id = :id', ['id' => (int) $acct['id']]);
-            Logger::audit('staff.unlock', 'admin', (string) $acct['username'],
-                ['failed_logins' => (int) $acct['failed_logins'], 'locked_until' => $acct['locked_until']],
-                ['failed_logins' => 0, 'locked_until' => null], 'office cleared failed sign-ins / lock');
-            $flash = ['ok', $acct['full_name'] . ' unlocked — failed attempts reset to 0. / अनलक भयो।'];
+            /* 16 Nov 2026 (P1-1f): the PIN / pattern lock too — its wrong tries, the lock and the run of
+               locks (unlock_strikes, which doubles the next lock up to 24 h). PIN / pattern stay as set. */
+            $set = ['failed_logins' => 0, 'locked_until' => null];
+            $old = ['failed_logins' => (int) $acct['failed_logins'], 'locked_until' => $acct['locked_until']];
+            if ($qkReady) {
+                $set += ['unlock_failed' => 0, 'unlock_locked_until' => null];
+                $old += ['unlock_failed' => (int) $acct['unlock_failed'], 'unlock_locked_until' => $acct['unlock_locked_until']];
+            }
+            if ($skReady) {
+                $set['unlock_strikes'] = 0;
+                $old['unlock_strikes'] = (int) $acct['unlock_strikes'];
+            }
+            Database::update('admins', $set, 'id = :id', ['id' => (int) $acct['id']]);
+            Logger::audit('staff.unlock', 'admin', (string) $acct['username'], $old, $set,
+                'office cleared failed sign-ins / password lock' . ($qkReady ? ' + PIN / pattern lock' : ''));
+            $flash = ['ok', $acct['full_name'] . ' unlocked — password' . ($qkReady ? ' and PIN / pattern' : '') . ' attempts reset to 0. / अनलक भयो।'];
         }
     } elseif ($act === 'revoke_device') {
         $acct = $account($personId);
@@ -141,8 +164,22 @@ if ($tab === 'live') {
 $people = Database::fetchAll(
     "SELECT id, username, full_name, role, is_active FROM admins ORDER BY is_active DESC, full_name LIMIT 1000");
 $locked = Database::fetchAll(
-    "SELECT id, username, full_name, role, failed_logins, locked_until FROM admins
-      WHERE locked_until > NOW() OR failed_logins >= 3 ORDER BY locked_until DESC LIMIT 50");
+    "SELECT id, username, full_name, role, failed_logins, locked_until" . $qkCols . " FROM admins
+      WHERE locked_until > NOW() OR failed_logins >= 3" . ($qkReady ? ' OR unlock_locked_until > NOW()' : '') . "
+      ORDER BY locked_until DESC, unlock_locked_until DESC LIMIT 50");
+$pinLocked = static fn(array $r): bool => !empty($r['unlock_locked_until']) && strtotime((string) $r['unlock_locked_until']) > time();
+/** 16 Nov 2026: how a sign-in was made (admin_login_events.via / admin_sessions.via). */
+$viaLabel = static fn($v): string => match ((string) $v) {
+    ''                    => '—',
+    'password'            => '🔑 पासवर्ड · Password',
+    'pin'                 => '🔢 PIN',
+    'pattern'             => '◯ Pattern',
+    'otp', 'whatsapp_otp' => '📲 WhatsApp कोड · code',
+    'whatsapp_hi'         => '💬 WhatsApp hi',
+    'passkey'             => '👆 Passkey',
+    'earlier'             => 'पहिलेको · earlier',
+    default               => str_replace('_', ' ', (string) $v),
+};
 
 $ago = static function (?string $ts): string {
     if ($ts === null || $ts === '') {
@@ -156,6 +193,14 @@ $outLabel = [
     'unknown_user' => ['? unknown user', 'ss-bad'], 'locked' => ['🔒 locked', 'ss-bad'],
     'disabled' => ['⏻ switched off', 'ss-bad'], 'logout' => ['↩ signed out', 'ss-mut'],
 ];
+/** 16 Nov 2026: a PIN / pattern miss is "wrong PIN / pattern", not "wrong password". */
+$outcomeOf = static function (array $h) use ($outLabel): array {
+    $o = $outLabel[(string) $h['outcome']] ?? [(string) $h['outcome'], 'ss-mut'];
+    if ((string) $h['outcome'] === 'bad_password' && in_array((string) ($h['via'] ?? ''), ['pin', 'pattern'], true)) {
+        $o[0] = '✗ wrong PIN / pattern';
+    }
+    return $o;
+};
 $csrf = Security::csrfField();
 
 admin_header('Sessions & Login Security', 'sessions');
@@ -189,7 +234,7 @@ form.ss-inline{display:inline}
 <div class="panel">
   <h2>🔒 Locked or failing sign-ins (<?= count($locked) ?>)</h2>
   <div class="dt-wrap"><table class="dt card-table">
-    <thead><tr><th>Account</th><th>Role</th><th data-type="num">Failed</th><th>Locked until</th><th></th></tr></thead>
+    <thead><tr><th>Account</th><th>Role</th><th data-type="num">Failed</th><th>Locked until</th><?php if ($qkReady): ?><th>PIN / Pattern</th><?php endif; ?><th></th></tr></thead>
     <tbody>
     <?php foreach ($locked as $l): ?>
       <tr>
@@ -197,6 +242,11 @@ form.ss-inline{display:inline}
         <td data-label="Role"><span class="ss-role"><?= $e($l['role']) ?></span></td>
         <td data-label="Failed" class="num"><?= (int) $l['failed_logins'] ?></td>
         <td data-label="Locked until"><?= $e($l['locked_until'] ? substr((string) $l['locked_until'], 0, 16) : '—') ?></td>
+        <?php if ($qkReady): ?>
+        <td data-label="PIN / Pattern"><?= $pinLocked($l)
+            ? '<span class="ss-bad">🔒 PIN लक ' . $e($when((string) $l['unlock_locked_until'])) . ' सम्म · locked till ' . $e($when((string) $l['unlock_locked_until'])) . '</span>'
+            : ((int) $l['unlock_failed'] > 0 ? (int) $l['unlock_failed'] . ' wrong' : '—') ?></td>
+        <?php endif; ?>
         <td data-label="">
           <?php if ($isSa || $l['role'] !== 'superadmin'): ?>
           <form method="post" class="ss-inline"><?= $csrf ?><input type="hidden" name="act" value="unlock"><input type="hidden" name="person" value="<?= (int) $l['id'] ?>">
@@ -228,7 +278,7 @@ form.ss-inline{display:inline}
         <td data-label="Role"><span class="ss-role"><?= $e($s['role']) ?></span></td>
         <td data-label="Device"><?= $e($s['label'] ?? '') ?></td>
         <td data-label="IP"><?= $e($s['ip'] ?? '') ?></td>
-        <td data-label="How"><?= $e($s['via']) ?></td>
+        <td data-label="How"><?= $e($viaLabel($s['via'] ?? '')) ?></td>
         <td data-label="Signed in" data-sort="<?= $e($s['created_at']) ?>"><?= $e(substr((string) $s['created_at'], 0, 16)) ?></td>
         <td data-label="Last used" data-sort="<?= $e($s['last_seen']) ?>"><?= $e($ago((string) $s['last_seen'])) ?></td>
         <td data-label="">
@@ -299,14 +349,15 @@ form.ss-inline{display:inline}
     <p class="ss-note">Nothing recorded for this filter.</p>
   <?php else: ?>
   <div class="dt-wrap"><table class="dt card-table">
-    <thead><tr><th>When</th><th>Username typed</th><th>Account</th><th>Outcome</th><th>IP</th><th>Device</th></tr></thead>
+    <thead><tr><th>When</th><th>Username typed</th><th>Account</th><th>Outcome</th><th>How · कसरी</th><th>IP</th><th>Device</th></tr></thead>
     <tbody>
-    <?php foreach ($hist as $h): $o = $outLabel[(string) $h['outcome']] ?? [(string) $h['outcome'], 'ss-mut']; ?>
+    <?php foreach ($hist as $h): $o = $outcomeOf($h); ?>
       <tr>
         <td data-label="When" data-sort="<?= $e($h['created_at'] ?? '') ?>"><?= $e(substr((string) ($h['created_at'] ?? ''), 0, 16)) ?></td>
         <td data-label="Username"><?= $e($h['username']) ?></td>
         <td data-label="Account"><?php if (!empty($h['admin_id'])): ?><a href="?tab=person&id=<?= (int) $h['admin_id'] ?>"><?= $e($h['full_name'] ?? ('#' . $h['admin_id'])) ?></a><?php else: ?>—<?php endif; ?></td>
         <td data-label="Outcome"><span class="<?= $o[1] ?>"><?= $e($o[0]) ?></span></td>
+        <td data-label="How"><?= $e($viaLabel($h['via'] ?? '')) ?></td>
         <td data-label="IP"><?= $e($h['ip_address'] ?? '') ?></td>
         <td data-label="Device"><?= $e(LoginLog::deviceLabel((string) ($h['user_agent'] ?? ''))) ?></td>
       </tr>
@@ -330,17 +381,23 @@ form.ss-inline{display:inline}
   </form>
   <?php if ($person === null): ?>
     <p class="ss-note">Pick a person to see their devices, open sessions and sign-ins.</p>
-  <?php else: $can = $mayTouch($person); $isLocked = !empty($person['locked_until']) && strtotime((string) $person['locked_until']) > time(); ?>
+  <?php else: $can = $mayTouch($person); $isLocked = !empty($person['locked_until']) && strtotime((string) $person['locked_until']) > time();
+        $pLock = $qkReady && $pinLocked($person); ?>
     <h2 style="margin-top:4px"><?= $e($person['full_name'] ?: $person['username']) ?> <span class="ss-role"><?= $e($person['role']) ?></span></h2>
     <div class="ss-facts">
       <div><b>Account</b><?= (int) $person['is_active'] === 1 ? '<span class="ss-ok">On</span>' : '<span class="ss-bad">Switched off</span>' ?></div>
       <div><b>Lock</b><?= $isLocked ? '<span class="ss-bad">Locked till ' . $e(substr((string) $person['locked_until'], 11, 5)) . '</span>' : '<span class="ss-ok">Not locked</span>' ?></div>
       <div><b>Failed attempts</b><?= (int) $person['failed_logins'] ?></div>
+      <?php if ($qkReady): ?>
+      <div><b>PIN / Pattern लक · lock</b><?= $pLock
+          ? '<span class="ss-bad">🔒 ' . $e($when((string) $person['unlock_locked_until'])) . ' सम्म · till ' . $e($when((string) $person['unlock_locked_until'])) . '</span>'
+          : '<span class="ss-ok">Not locked</span>' ?><br><span class="ss-mut"><?= (int) $person['unlock_failed'] ?> wrong<?= (int) $person['unlock_strikes'] > 0 ? ' · ' . (int) $person['unlock_strikes'] . ' lock(s) in a row' : '' ?></span></div>
+      <?php endif; ?>
       <div><b>Last sign-in</b><?= $e($person['last_login_at'] ? substr((string) $person['last_login_at'], 0, 16) : '—') ?><br><span class="ss-mut"><?= $e($person['last_login_ip'] ?? '') ?></span></div>
     </div>
     <?php if ($can): ?>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 6px">
-      <?php if ($isLocked || (int) $person['failed_logins'] > 0): ?>
+      <?php if ($isLocked || (int) $person['failed_logins'] > 0 || $pLock || (int) $person['unlock_failed'] > 0 || (int) $person['unlock_strikes'] > 0): ?>
       <form method="post" class="ss-inline"><?= $csrf ?><input type="hidden" name="act" value="unlock"><input type="hidden" name="person" value="<?= (int) $person['id'] ?>">
         <button class="btn ok">🔓 Unlock / reset attempts</button></form>
       <?php endif; ?>
@@ -408,12 +465,13 @@ form.ss-inline{display:inline}
   <h2>Last sign-ins</h2>
   <?php if ($hist === []): ?><p class="ss-note">None recorded.</p><?php else: ?>
   <div class="dt-wrap"><table class="dt card-table">
-    <thead><tr><th>When</th><th>Outcome</th><th>IP</th><th>Device</th></tr></thead>
+    <thead><tr><th>When</th><th>Outcome</th><th>How · कसरी</th><th>IP</th><th>Device</th></tr></thead>
     <tbody>
-    <?php foreach ($hist as $h): $o = $outLabel[(string) $h['outcome']] ?? [(string) $h['outcome'], 'ss-mut']; ?>
+    <?php foreach ($hist as $h): $o = $outcomeOf($h); ?>
       <tr>
         <td data-label="When"><?= $e(substr((string) ($h['created_at'] ?? ''), 0, 16)) ?></td>
         <td data-label="Outcome"><span class="<?= $o[1] ?>"><?= $e($o[0]) ?></span></td>
+        <td data-label="How"><?= $e($viaLabel($h['via'] ?? '')) ?></td>
         <td data-label="IP"><?= $e($h['ip_address'] ?? '') ?></td>
         <td data-label="Device"><?= $e(LoginLog::deviceLabel((string) ($h['user_agent'] ?? ''))) ?></td>
       </tr>

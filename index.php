@@ -328,6 +328,19 @@ try {
 }
 $boot['door'] = $shgStaffDoor ? 'staff' : 'customer';
 
+/* 16 Nov 2026 (C7): when the office last changed the notice banner text
+   (Admin -> Settings, notice_text) - unix seconds of that settings row's
+   updated_at, which moves only when the text itself changes (Settings::set
+   updates svalue/stype only). renderNotice() in 05-router.js hides the
+   banner 24 h after it. 0 = no row / unreadable. */
+try {
+    $boot['notice_since'] = (int) Database::scalar(
+        "SELECT UNIX_TIMESTAMP(updated_at) FROM settings WHERE skey = 'notice_text' LIMIT 1", [], 0
+    );
+} catch (Throwable $e) {
+    $boot['notice_since'] = 0;
+}
+
 $bootJson = Security::jsonForHtml($boot);
 
 /* ---------------------------------------------------------------------

@@ -307,3 +307,41 @@ main h1[tabindex="-1"]:focus,main h2[tabindex="-1"]:focus{outline:none}
 
 /* (no new motion in this block: 7.1 is a hold, not a movement, so there is
    nothing extra to switch off for prefers-reduced-motion) */
+
+/* =====================================================================
+   8. LIVE CUSTOMER BITS  (16 Nov 2026, master upgrade v2.0 — U2a)
+
+   8.1 the background-sync ring (05-router.js SHGSync, P2-3e): 14px, fixed in
+       the top-right corner, never takes a tap. It fades in only when a refresh
+       takes longer than ~0.4 s, so a quick one does not blink. Under reduced
+       motion it is a still ring (no spin).
+   8.2 the notice banner's plain info icon (05-router.js renderNotice, P5-6) —
+       the old emoji stays hidden (redesign.css).
+   8.3 SmartBook's 📍 suggestion line (27-smartbook.js nearMe, P4-1f): the
+       "Use this stop" key and the "not checked yet" list under it.
+   8.4 the departure-alerts card inside the SmartBook ticket (P2-2c).
+   ===================================================================== */
+.shg-sync{position:fixed;top:calc(6px + env(safe-area-inset-top,0px));right:6px;z-index:1300;
+  width:14px;height:14px;box-sizing:border-box;border-radius:50%;pointer-events:none;
+  border:2px solid var(--line-strong,#D5DCE8);border-top-color:var(--royal,#0054A8);
+  opacity:0;visibility:hidden;transition:opacity .2s ease,visibility 0s linear .2s;
+  animation:shgSyncSpin .8s linear infinite;animation-play-state:paused}
+.shg-sync.on{opacity:.9;visibility:visible;transition:opacity .2s ease .4s,visibility 0s linear .4s;animation-play-state:running}
+@keyframes shgSyncSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.shg-sync,.shg-sync.on{animation:none;border-color:var(--royal,#0054A8);border-right-color:var(--line-strong,#D5DCE8)}}
+html[data-motion="reduced"] .shg-sync,html[data-motion="reduced"] .shg-sync.on,
+html[data-tier="low"] .shg-sync,html[data-tier="low"] .shg-sync.on{animation:none;border-color:var(--royal,#0054A8);border-right-color:var(--line-strong,#D5DCE8)}
+@media print{.shg-sync{display:none!important}}
+
+.notice-bar .notice-ico{flex:none;width:18px;height:18px;color:var(--royal,#0054A8)}
+:root[data-theme="dark"] .notice-bar .notice-ico{color:currentColor}
+
+#smartBook .sb-near[hidden]{display:none!important}
+#smartBook .sb-why .sb-near-use{display:inline-flex;align-items:center;min-height:36px;margin:4px 0 0;padding:0 12px;
+  border:1px solid var(--sb-blue,#1a44c8);border-radius:999px;background:transparent;color:var(--sb-blue,#1a44c8);
+  font:inherit;font-weight:700;cursor:pointer}
+#smartBook .sb-why .sb-near-use:focus-visible{outline:3px solid var(--sb-gold,#C9A227);outline-offset:2px}
+:root[data-theme="dark"] #smartBook .sb-why .sb-near-use{color:#9dbbff;border-color:#9dbbff}
+#smartBook .sb-why .sb-near-un{display:block;margin-top:2px;opacity:.85}
+
+#smartBook .sb-tk-push .push-card{margin:0;text-align:left}   /* .sb-tk is a column with its own 10px gap */

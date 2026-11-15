@@ -138,8 +138,12 @@ function renderResults(instant) {
     if (srvSnap && srvSnap.nextAvailable) {
       const stop = srvSnap.nextStop || ctx.from;
       const rd = $('#resDate'); if (rd) rd.textContent = fmtDate(srvSnap.nextDate);
+      /* P4-2f (16 Nov 2026): the real time of that stop on the next bus (api/search.php
+         nextAvailableTime) - it used to say 1:00 PM for every stop and both directions. */
+      const nt = srvSnap.nextTime ? fmt12h(srvSnap.nextTime) : '';
       boardBanner += '<div class="next-dep-banner reveal">🕒 <b>' + tf('nextDepT', { stop: esc(stop) })
-        + '</b><div class="ndb-sub">' + tf('nextDepP', { date: esc(fmtDate(srvSnap.nextDate)) }) + '</div></div>';
+        + '</b><div class="ndb-sub">' + (nt ? tf('nextDepP', { date: esc(fmtDate(srvSnap.nextDate)), time: esc(nt) })
+                                            : tf('nextDepP0', { date: esc(fmtDate(srvSnap.nextDate)) })) + '</div></div>';
     }
     boardBanner += '<div class="daily-service-note reveal">🚌 ' + t('dailyOnly') + '</div>';
     /* One card per departure. cardHTML(r, srv, extra) draws the daily bus

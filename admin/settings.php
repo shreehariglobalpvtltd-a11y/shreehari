@@ -82,7 +82,41 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
            rather than exposing the blob. Flat pricing: online == offline. */
         $fpSingle = isset($_POST['fp_private_single']) ? (float) $_POST['fp_private_single'] : 0.0;
         $fpDouble = isset($_POST['fp_private_double']) ? (float) $_POST['fp_private_double'] : 0.0;
+        // 16 Nov 2026 (BUG1): "2,200" / "₹2200" in a default-fare box is 2200, not refused or read as 2.
+        foreach (['fare_to_nepal', 'fare_to_india'] as $fk) {
+            if (isset($pairs[$fk])) {
+                $fv = Boarding::parseRupees($pairs[$fk]);
+                if (is_float($fv)) { $pairs[$fk] = (string) $fv; }
+            }
+        }
+        $pfSaid = [];   // 16 Nov 2026 (BUG1): the flash names every seat-fare row that changed, old -> new
         try {
+            /* 16 Nov 2026 (P4-4a2): the rows/cols rule is a raw JSON box. A valid
+               JSON of the wrong shape made every seat read throw (booking stops),
+               and a ratio change silently moved sold passengers off the berth on
+               their ticket. Check the shape, then refuse a change that re-seats
+               any live future booking - naming the PNRs. */
+            if (isset($pairs['seat_mode_map'])) {
+                $smNew = json_decode(trim((string) $pairs['seat_mode_map']) === '' ? '{}' : (string) $pairs['seat_mode_map'], true);
+                if (!is_array($smNew)) {
+                    throw new InvalidArgumentException('seat_mode_map is not valid JSON');
+                }
+                $smOld = Settings::getArray('seat_mode_map', []);
+                if ($smNew != $smOld) {
+                    try {
+                        Seats::assertValidModeMap($smNew);
+                        $smMoved = Seats::mapChangeImpact($smNew);
+                    } catch (RuntimeException $e) {
+                        throw new InvalidArgumentException('seat layout rule: ' . rtrim($e->getMessage(), '.'));
+                    }
+                    if ($smMoved !== []) {
+                        $pnrs = array_values(array_unique(array_map(static fn(array $m): string => (string) $m['pnr'], $smMoved)));
+                        throw new InvalidArgumentException('the seat layout change would move ' . count($smMoved) . ' sold seat' . (count($smMoved) === 1 ? '' : 's')
+                            . ' off the berth printed on the ticket (' . implode(', ', array_slice($pnrs, 0, 12)) . (count($pnrs) > 12 ? ' and ' . (count($pnrs) - 12) . ' more' : '')
+                            . '). Change it only when no future booking uses the affected coach / mode');
+                    }
+                }
+            }
             /* 4 Sep 2026: the private-cabin prices are merged into cabin_pricing
                AFTER the generic rows are saved, so an edited cabin_pricing
                textarea and the two number fields cannot overwrite each other
@@ -112,18 +146,31 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
             if ($pfPosted !== [] && Boarding::hasStopControls()) {
                 $pfPlan = []; $pfBefore = []; $pfAfter = [];
                 $ids = array_values(array_filter(array_map('intval', array_keys($pfPosted))));
-                $rowsPf = $ids === [] ? [] : Database::fetchAll('SELECT id, stop_name, fare FROM route_stops WHERE id IN (' . implode(',', $ids) . ')');
+                $rowsPf = $ids === [] ? [] : Database::fetchAll(
+                    'SELECT rs.id, rs.stop_name, rs.stop_type, rs.fare, r.route_code
+                       FROM route_stops rs JOIN routes r ON r.id = rs.route_id
+                      WHERE rs.id IN (' . implode(',', $ids) . ')');
+                /* pf_was[<id>] = the value the page was drawn with: a box nobody
+                   touched is skipped, so a fare changed meanwhile on Routes is
+                   never put back by a Save here. */
+                $pfWas = is_array($_POST['pf_was'] ?? null) ? $_POST['pf_was'] : null;
                 foreach ($rowsPf as $row) {
-                    $raw = trim((string) ($pfPosted[(int) $row['id']] ?? $pfPosted[(string) $row['id']] ?? ''));
-                    if ($raw !== '' && (!is_numeric($raw) || (float) $raw < 1 || (float) $raw > 100000)) {
-                        throw new InvalidArgumentException('pickup fare for ' . $row['stop_name'] . ' must be 1-100000 or blank');
+                    $sid = (int) $row['id'];
+                    $rawIn = trim((string) ($pfPosted[$sid] ?? ''));
+                    if ($pfWas !== null && array_key_exists($sid, $pfWas) && $rawIn === trim((string) $pfWas[$sid])) { continue; }
+                    $raw = Boarding::parseRupees($rawIn);   // "2,200" / "₹2200" = 2200
+                    $dirLab = $row['stop_type'] === 'drop' ? 'ड्रप (फर्कने)' : 'पिकअप (जाने)';
+                    if ($raw === false || ($raw !== null && ($raw < 1 || $raw > 100000))) {
+                        throw new InvalidArgumentException('seat fare for ' . $row['stop_name'] . ' · ' . $dirLab . ' must be a rupee amount 1-100000, or blank for the default');
                     }
-                    $new = $raw === '' ? null : round((float) $raw, 2);
+                    $new = $raw === null ? null : round($raw, 2);
                     $old = $row['fare'] !== null ? round((float) $row['fare'], 2) : null;
                     if ($new === $old) { continue; }
-                    $pfPlan[(int) $row['id']] = $new;
-                    $pfBefore[(string) $row['stop_name'] . ' #' . $row['id']] = $old;
-                    $pfAfter[(string) $row['stop_name'] . ' #' . $row['id']]  = $new;
+                    $pfPlan[$sid] = $new;
+                    $pfBefore[(string) $row['stop_name'] . ' #' . $sid] = $old;
+                    $pfAfter[(string) $row['stop_name'] . ' #' . $sid]  = $new;
+                    $pfSaid[] = $row['stop_name'] . ' · ' . $dirLab . ' ' . $row['route_code'] . ': '
+                        . ($old === null ? 'default' : inr($old)) . ' → ' . ($new === null ? 'default' : inr($new));
                 }
                 if ($pfPlan !== []) {
                     Database::transaction(static function () use ($pfPlan): void {
@@ -143,7 +190,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
                 Settings::set('main_fares', ['toNepal' => (float) $pairs['fare_to_nepal'], 'toIndia' => (float) $pairs['fare_to_india']], 'json', 'pricing', false);
             }
             Settings::flush();
-            $flash = ['ok', 'Settings saved.'];
+            Seats::forgetModeMap();
+            $flash = ['ok', 'Settings saved.' . ($pfSaid !== [] ? ' Seat fares changed: ' . implode('; ', $pfSaid) . '.' : '')];
         } catch (InvalidArgumentException $e) {
             // A JSON textarea with a typo: nothing was written (the bulk write
             // is one transaction), so say which key and keep the old values.
@@ -289,6 +337,50 @@ $catOf = static function (string $key, string $group): string {
     ];
     return $byGroup[$group] ?? 'other';
 };
+
+/* ── Settings JSON export (16 Nov 2026, P4-6d) ──
+   A portable copy of the configuration: settings rows WITHOUT any secret
+   (Settings::isSecretKey) and without the "API keys & connections" rows
+   (ids, hosts, endpoints), plus routes, route_stops and coupons. Read-only,
+   for the people who may change settings, and audited. */
+if (($_GET['export'] ?? '') === 'json') {
+    if (!$canEdit) {
+        http_response_code(403);
+        exit('Your role cannot export settings. / तपाईंको भूमिकाले सेटिङ निर्यात गर्न मिल्दैन।');
+    }
+    $exp = ['exported_at' => date('c'), 'app' => APP_NAME, 'by' => (string) ($admin['username'] ?? ''),
+            'note' => 'Secrets and API keys / connection ids are left out on purpose.',
+            'settings' => [], 'routes' => [], 'route_stops' => [], 'coupons' => []];
+    $expSkipped = 0;
+    foreach ($rows as $r) {
+        $key = (string) $r['skey'];
+        if (Settings::isSecretKey($key) || $catOf($key, (string) ($r['sgroup'] ?: 'general')) === 'keys') { $expSkipped++; continue; }
+        $exp['settings'][] = ['skey' => $key, 'svalue' => $r['svalue'], 'stype' => $r['stype'], 'sgroup' => $r['sgroup'],
+                              'label' => $r['label'], 'is_public' => (int) $r['is_public']];
+    }
+    // crew_phone is a person's number, not configuration
+    $exp['routes'] = Database::fetchAll(
+        'SELECT id, route_code, from_city, to_city, bus_id, coach_type, path_id, dep_time, arr_time, day_offset, duration_text,
+                distance_km, base_fare, amenities, is_active, sort_order FROM routes ORDER BY id');
+    $exp['route_stops'] = Database::fetchAll('SELECT * FROM route_stops ORDER BY route_id, stop_type, sort_order, id');
+    try {
+        $exp['coupons'] = Database::fetchAll('SELECT * FROM coupons ORDER BY id');
+    } catch (Throwable $e) {
+        $exp['coupons'] = [];
+    }
+    Logger::audit('settings.export', 'settings', 'json', null,
+        ['settings' => count($exp['settings']), 'left_out_secret_or_key' => $expSkipped, 'routes' => count($exp['routes']),
+         'route_stops' => count($exp['route_stops']), 'coupons' => count($exp['coupons'])],
+        'Settings JSON exported');
+    $json = json_encode($exp, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    while (ob_get_level() > 0) { ob_end_clean(); }
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Disposition: attachment; filename="shg-settings-' . date('Ymd-His') . '.json"');
+    header('Cache-Control: private, no-store');
+    header('X-Content-Type-Options: nosniff');
+    echo $json === false ? '{}' : $json;
+    exit;
+}
 /* Sub-heading inside a category: what that slice means THERE (a WhatsApp
    key stored under "ai" is a WhatsApp-bot setting, not an AI-assistant one). */
 $subTitle = [
@@ -393,6 +485,9 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       </button>
     <?php endforeach; ?>
   </div>
+  <?php if ($canEdit): ?>
+  <p class="set-lede" style="margin-top:-2px"><a href="settings.php?export=json" download>⬇ सेटिङ निर्यात · Export settings (JSON)</a> <span class="muted">— settings, routes, stops and coupons; secrets and API keys are left out.</span></p>
+  <?php endif; ?>
   <?php if ($msgApps !== []): ?>
   <div class="set-apps set-in" data-cat="messages" data-big="messages">
     <?php foreach ($msgApps as $href => $lab): ?><a href="/admin/<?= Security::e($href) ?>"><?= Security::e($lab) ?></a><?php endforeach; ?>
@@ -461,7 +556,8 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
               );
               if ($stopsR !== []) {
                   $pfGroups[] = ['title' => ($dirR === 'toNepal' ? 'Going · जाने' : 'Return · फर्कने') . ' — ' . $rt['from_city'] . ' → ' . $rt['to_city'] . ($rt['route_code'] ? ' (' . $rt['route_code'] . ')' : ''),
-                                 'def' => $dirR === 'toNepal' ? $dirFares['toNepal'] : $dirFares['toIndia'], 'stops' => $stopsR];
+                                 'def' => $dirR === 'toNepal' ? $dirFares['toNepal'] : $dirFares['toIndia'], 'stops' => $stopsR, 'type' => $type,
+                                 'code' => (string) $rt['route_code']];
               }
           }
       } catch (Throwable $e) {
@@ -498,7 +594,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
     <?php if ($pfGroups !== []): ?>
     <div class="pf-wrap">
       <b>🪑 Sharing seat fare per pickup (₹ / person)</b>
-      <small class="muted">This is the price a sharing seat is sold at from each pickup. Blank = the default fare above. Use the buttons to raise or lower a whole list, then press <b>Save all settings</b>. Existing bookings keep the price they paid.</small>
+      <small class="muted">This is the price a sharing seat is sold at from each pickup. Blank = the default fare above. Each box says which trip it prices: <b>पिकअप (जाने)</b> = where the passenger boards going to Nepal, <b>ड्रप (फर्कने)</b> = where they get off coming back. Use the buttons to raise or lower a whole list, then press <b>Save all settings</b> — the message after saving names every fare that changed. Existing bookings keep the price they paid.</small>
       <?php foreach ($pfGroups as $gi => $grp): ?>
         <div class="pf-group" data-pf-group="<?= (int) $gi ?>">
           <div class="pf-head"><span><?= Security::e($grp['title']) ?></span>
@@ -507,9 +603,20 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
             </span><?php endif; ?>
           </div>
           <div class="pf-grid">
-            <?php foreach ($grp['stops'] as $st): ?>
-              <label class="<?= (int) $st['is_active'] ? '' : 'pf-off' ?>"><?= Security::e((string) $st['stop_name']) ?><?= (int) $st['is_active'] ? '' : ' <em>(OFF)</em>' ?>
-                <input type="number" name="pf[<?= (int) $st['id'] ?>]" min="1" max="100000" step="1" value="<?= $st['fare'] !== null ? (int) round((float) $st['fare']) : '' ?>" placeholder="<?= (int) round((float) $grp['def']) ?> (default)" data-def="<?= (int) round((float) $grp['def']) ?>" <?= $fpRo ?>>
+            <?php foreach ($grp['stops'] as $st):
+              /* 16 Nov 2026 (BUG1, Mehsana): two boxes both read "Mehsana" - the going
+                 pickup (r2) and the return drop (r7) - with a grey "2000 (default)"
+                 placeholder that looked like a saved price. Each box now says which
+                 trip it prices, and an unset one says so in words. */
+              $pfVal = $st['fare'] !== null ? (string) (int) round((float) $st['fare']) : '';
+              $pfDir = $grp['type'] === 'drop' ? 'ड्रप (फर्कने) · drop, return' : 'पिकअप (जाने) · pickup, going'; ?>
+              <label class="<?= (int) $st['is_active'] ? '' : 'pf-off' ?>">
+                <span class="pf-name"><?= Security::e((string) $st['stop_name']) ?><?= (int) $st['is_active'] ? '' : ' <em>(OFF)</em>' ?></span>
+                <span class="pf-dir"><?= Security::e($pfDir . ($grp['code'] !== '' ? ' · ' . $grp['code'] : '')) ?></span>
+                <input type="text" inputmode="numeric" maxlength="12" name="pf[<?= (int) $st['id'] ?>]" value="<?= $pfVal ?>" placeholder="₹ not set" data-def="<?= (int) round((float) $grp['def']) ?>"
+                       aria-label="<?= Security::e((string) $st['stop_name'] . ' · ' . $pfDir . ' seat fare') ?>" <?= $fpRo ?>>
+                <input type="hidden" name="pf_was[<?= (int) $st['id'] ?>]" value="<?= $pfVal ?>">
+                <small class="pf-state<?= $pfVal === '' ? ' is-def' : '' ?>"><?= $pfVal === '' ? 'not set — default ' . Security::e(inr((float) $grp['def'])) . ' applies' : 'saved ' . Security::e(inr((float) $pfVal)) ?></small>
               </label>
             <?php endforeach; ?>
           </div>
@@ -521,7 +628,8 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       btn.addEventListener('click', function () {
         var d = parseInt(btn.getAttribute('data-pf-bump'), 10) || 0;
         btn.closest('.pf-group').querySelectorAll('input[name^="pf["]').forEach(function (inp) {
-          var v = inp.value === '' ? parseInt(inp.getAttribute('data-def'), 10) : parseInt(inp.value, 10);
+          var typed = inp.value.replace(/[^0-9.]/g, '');   // "2,200" / "₹2200" -> 2200
+          var v = typed === '' ? parseInt(inp.getAttribute('data-def'), 10) : parseInt(typed, 10);
           if (!isNaN(v)) { inp.value = Math.max(1, v + d); inp.dispatchEvent(new Event('input', { bubbles: true })); }
         });
       });
@@ -534,27 +642,44 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
        own fare + ON/OFF in Admin -> Routes; the two numbers above are only the
        default for a pickup left blank. A link, not a form — this panel sits
        inside the settings form. */
-    $pkLoc = Boarding::bootLocations();
-    $pkGo  = (array) ($pkLoc['go'] ?? []);
+    /* 16 Nov 2026 (BUG1): read AFTER a save (Boarding::flush ran), and both
+       directions - the going pickups AND the return drops - each labelled, so
+       a saved return-drop fare is not mistaken for the going pickup. */
+    $pkSets = [];
+    foreach ($pfGroups as $grp) {   // the stop rows themselves (route_stops.fare), per active route
+        $pkList = [];
+        foreach ($grp['stops'] as $st) {
+            if ((int) $st['is_active'] === 1) {
+                $pkList[] = ['name' => (string) $st['stop_name'], 'fare' => $st['fare'] !== null && (float) $st['fare'] > 0 ? (float) $st['fare'] : null];
+            }
+        }
+        $pkSets[] = [($grp['type'] === 'drop' ? 'ड्रप (फर्कने) · return drops' : 'पिकअप (जाने) · going pickups') . ($grp['code'] !== '' ? ' · ' . $grp['code'] : ''), $pkList, (float) $grp['def']];
+    }
+    if ($pkSets === []) {
+        Boarding::flush();
+        $pkLoc  = Boarding::bootLocations();
+        $pkSets = [['पिकअप (जाने) · going pickups', (array) ($pkLoc['go'] ?? []), (float) $dirFares['toNepal']]];
+    }
     ?>
     <div class="pk-card">
       <div>
         <b>📍 Pickup points &amp; fares</b>
         <small class="muted">Every pickup's own fare, ON/OFF, order and edit — Rajkot included. Customers, agents, the counter and the AI see only the pickups switched ON, at the fare set there.</small>
-        <?php if ($pkGo !== []): ?>
-        <div class="pk-chips">
-          <?php foreach ($pkGo as $pk): ?>
-            <span><?= Security::e((string) $pk['name']) ?> · <b><?= Security::e(inr((float) ($pk['fare'] ?? $dirFares['toNepal']))) ?></b><?= ($pk['fare'] ?? null) === null ? ' <em class="muted">default</em>' : '' ?></span>
+        <?php foreach ($pkSets as [$pkTitle, $pkList, $pkDef]): if ($pkList === []) { continue; } ?>
+        <div class="pk-chips" aria-label="<?= Security::e($pkTitle) ?>">
+          <span class="pk-chip-h"><?= Security::e($pkTitle) ?></span>
+          <?php foreach ($pkList as $pk): ?>
+            <span><?= Security::e((string) $pk['name']) ?> · <?php if (($pk['fare'] ?? null) === null): ?><em class="muted">not set (default <?= Security::e(inr($pkDef)) ?>)</em><?php else: ?><b><?= Security::e(inr((float) $pk['fare'])) ?></b><?php endif; ?></span>
           <?php endforeach; ?>
         </div>
-        <?php endif; ?>
+        <?php endforeach; ?>
       </div>
       <?php if (Auth::can('routes.view')): ?>
       <a class="btn" href="routes.php#pickups">Manage pickup points →</a>
       <?php endif; ?>
     </div>
   </div>
-  <style>.fp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;padding:16px 18px}.fp-grid label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.3px}.fp-grid input{padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-size:16px;font-weight:700;background:var(--card);color:var(--ink);min-width:0}.fp-grid input:disabled{opacity:.5}.fp-grid small{font-weight:500;text-transform:none;letter-spacing:0}.pk-card{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 18px 16px;padding:12px 14px;border:1px dashed var(--line);border-radius:10px;background:var(--hover)}.pk-card small{display:block;margin-top:2px}.pk-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.pk-chips span{font-size:12px;padding:3px 8px;border-radius:999px;background:var(--card);border:1px solid var(--line)}.pf-wrap{margin:0 18px 16px;padding:12px 14px;border:1px solid var(--line);border-radius:10px}.pf-wrap>small{display:block;margin:3px 0 8px}.pf-group{margin-top:10px}.pf-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;font-weight:700;font-size:13.5px}.pf-bump{display:flex;flex-wrap:wrap;gap:6px}.pf-bump .btn{min-height:36px;padding:4px 10px;font-size:13px}.pf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-top:8px}.pf-grid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;font-weight:600;color:var(--ink)}.pf-grid input{padding:9px 10px;border:1px solid var(--line);border-radius:9px;font-size:16px;font-weight:700;background:var(--card);color:var(--ink);min-width:0}.pf-off{opacity:.6}.pf-off em{font-style:normal;color:var(--mut)}</style>
+  <style>.fp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;padding:16px 18px}.fp-grid label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.3px}.fp-grid input{padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-size:16px;font-weight:700;background:var(--card);color:var(--ink);min-width:0}.fp-grid input:disabled{opacity:.5}.fp-grid small{font-weight:500;text-transform:none;letter-spacing:0}.pk-card{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 18px 16px;padding:12px 14px;border:1px dashed var(--line);border-radius:10px;background:var(--hover)}.pk-card small{display:block;margin-top:2px}.pk-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.pk-chips span{font-size:12px;padding:3px 8px;border-radius:999px;background:var(--card);border:1px solid var(--line)}.pf-wrap{margin:0 18px 16px;padding:12px 14px;border:1px solid var(--line);border-radius:10px}.pf-wrap>small{display:block;margin:3px 0 8px}.pf-group{margin-top:10px}.pf-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;font-weight:700;font-size:13.5px}.pf-bump{display:flex;flex-wrap:wrap;gap:6px}.pf-bump .btn{min-height:36px;padding:4px 10px;font-size:13px}.pf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-top:8px}.pf-grid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;font-weight:600;color:var(--ink)}.pf-grid input{padding:9px 10px;border:1px solid var(--line);border-radius:9px;font-size:16px;font-weight:700;background:var(--card);color:var(--ink);min-width:0}.pf-grid input::placeholder{font-weight:400;font-style:italic;color:var(--mut)}.pf-off{opacity:.6}.pf-off em{font-style:normal;color:var(--mut)}.pf-name{font-weight:700}.pf-dir{font-size:11.5px;font-weight:600;color:var(--mut)}.pf-state{font-size:11.5px;font-weight:600;color:var(--success,#0a6b3b)}.pf-state.is-def{color:var(--warning,#8a5a00)}.pk-chip-h{font-weight:800;background:none !important;border:0 !important;padding-left:0 !important}</style>
 
 
   <?php
@@ -643,6 +768,10 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       'company_instagram'                   => 'Paste the full profile URL (https://www.instagram.com/…). Empty = not shown.',
       'company_tiktok'                      => 'Paste the full profile URL (https://www.tiktok.com/@…). Empty = not shown.',
       'ceo_facebook'                        => 'The Director\'s own Facebook profile URL - the home-page footer links it beside the company channels. Empty = not shown.',
+      // 16 Nov 2026 (P4-5h): a dead knob - kept (not deleted) so nothing that might read it later breaks.
+      'online_discount_pct'                 => 'NOT USED · प्रयोगमा छैन. There is no online discount: fares are flat online and at the counter since 26 Aug 2026, and nothing reads this number. Changing it changes no price.',
+      // 16 Nov 2026 (P5-6): the website banner reads this row's text and its save time.
+      'notice_text'                         => 'The banner across the top of the website. It shows for 24 h after you save it, then hides by itself; saving new text shows it again for 24 h. Blank = no banner. A visitor who closes it does not see the same text again.',
   ];
   /* 14 Oct 2026 (review): the same checks the website applies (SiteFacts), so a
      value it would silently drop gets a warning under its box. */
@@ -663,6 +792,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
           $key = (string) $r['skey'];
           if (in_array($key, $fpKeys, true)) { continue; }   // shown in the Fares panel above
           $label = $r['label'] ?: ucwords(str_replace('_', ' ', $key));
+          if ($key === 'online_discount_pct') { $label .= ' — not used · प्रयोगमा छैन'; }   // P4-5h: flat fare since 26 Aug 2026
           $val = (string) ($r['svalue'] ?? '');
           $isJson = $r['stype'] === 'json';
           $isSecret = Settings::isSecretKey($key);   // one rule, shared with the audit mask

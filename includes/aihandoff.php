@@ -97,12 +97,16 @@ final class AiHandoff
             return self::no('Human handoff is switched off. Give the office number and say a person will help there.');
         }
         $phone = (string) ($ctx['phone'] ?? '');
-        if ($phone === '') {
+        // 16 Nov 2026 (P6-7c): a Facebook Messenger visitor who has not proved a
+        // number is still flagged to staff — the ticket carries their Messenger
+        // id instead of a phone (source 'facebook'), and nobody is messaged.
+        $psid = $phone === '' ? self::psidOf($ctx) : '';
+        if ($phone === '' && $psid === '') {
             return self::no('The sender has no usable number, so a request cannot be opened. Give the office number.');
         }
         // Stored WITH the country code so the desk's reply and wa.me link reach
         // a +977 sender in Nepal, not +91 + the same digits in India.
-        $intl = (string) ($ctx['intl'] ?? '') !== '' ? (string) $ctx['intl'] : $phone;
+        $intl = $psid !== '' ? '' : ((string) ($ctx['intl'] ?? '') !== '' ? (string) $ctx['intl'] : $phone);
         $category = (string) ($args['category'] ?? 'other');
         if (!isset(self::CATEGORIES[$category])) {
             $category = 'other';
@@ -144,7 +148,7 @@ final class AiHandoff
             $pnr = '';
         }
 
-        $key = hash('sha256', $phone . '|' . $category . '|' . mb_strtolower($summary));
+        $key = hash('sha256', ($psid !== '' ? 'fb:' . $psid : $phone) . '|' . $category . '|' . mb_strtolower($summary));
         try {
             // Compared on the database clock: created_at is a MySQL default,
             // so a PHP timestamp here would drift by the two clocks' offset.
@@ -171,11 +175,14 @@ final class AiHandoff
 
         $name = trim((string) ($ctx['name'] ?? ''));
         if ($name === '') {
-            $name = 'WhatsApp ' . maskPhone($phone);
+            $name = $psid !== '' ? 'Facebook Messenger' : 'WhatsApp ' . maskPhone($phone);
         }
         $attachment = is_array($ctx['attachment'] ?? null) ? $ctx['attachment'] : [];
         $evidence   = (string) ($attachment['stash'] ?? '');
-        $message    = $summary;
+        // The Messenger id leads the message: the desk list shows its start,
+        // and status() matches a later "where is my request" on it.
+        $message    = ($psid !== '' ? self::psidMarker($psid) . ' Facebook Messenger, no phone number — answer in Admin → Messenger Inbox (within 24 h of their last message) or Meta Business Suite.' . "\n\n" : '')
+                    . $summary;
         if ($attachment !== []) {
             $message .= "\n\n[Attachment received on WhatsApp: " . (string) ($attachment['kind'] ?? 'file')
                       . ((string) ($attachment['mime'] ?? '') !== '' ? ', ' . (string) $attachment['mime'] : '')
@@ -194,8 +201,9 @@ final class AiHandoff
         }
 
         try {
+            $source = $psid !== '' ? 'facebook' : 'whatsapp_ai';
             $id = Database::transaction(static function () use (
-                $ref, $bookingId, $name, $intl, $category, $pnr, $message, $priority, $role, $lang, $key, $evidence
+                $ref, $bookingId, $name, $intl, $category, $pnr, $message, $priority, $role, $lang, $key, $evidence, $source
             ): int {
                 $id = (int) Database::insert('support_tickets', [
                     'ticket_ref'  => $ref,
@@ -207,7 +215,7 @@ final class AiHandoff
                     'category'    => substr($category, 0, 60),
                     'priority'    => $priority,
                     'status'      => 'open',
-                    'source'      => 'whatsapp_ai',
+                    'source'      => $source,
                     'sender_role' => $role,
                     'language'    => $lang,
                     'dedupe_key'  => $key,
@@ -237,10 +245,13 @@ final class AiHandoff
 
         Logger::audit('support.handoff', 'support_ticket', $ref, null, [
             'category' => $category, 'priority' => $priority, 'role' => $role, 'lang' => $lang,
-            'phone' => maskPhone($phone), 'booking' => $bookingId,
-        ], 'opened by the WhatsApp assistant');
+            'booking' => $bookingId,
+        ] + ($psid !== '' ? ['source' => 'facebook', 'psid' => substr(hash('sha256', $psid), 0, 10)] : ['phone' => maskPhone($phone)]),
+            $psid !== '' ? 'opened by the Messenger assistant' : 'opened by the WhatsApp assistant');
 
-        $notified = self::notifyOffice($ref, $category, $priority, $intl, $summary, $pnr, $bookingId);
+        // A Messenger flag stays an internal queue item: no office WhatsApp
+        // (16 Nov 2026 — no new outbound message), staff see it in the inbox.
+        $notified = $psid === '' && self::notifyOffice($ref, $category, $priority, $intl, $summary, $pnr, $bookingId);
         if ($notified) {
             try {
                 Database::update('support_tickets', ['office_notified_at' => date('Y-m-d H:i:s')], 'id = :id', ['id' => $id]);
@@ -279,13 +290,23 @@ final class AiHandoff
         }
         try {
             $t = Database::fetch(
-                'SELECT id, ticket_ref, phone, subject, category, priority, status, created_at, updated_at, resolved_at
+                'SELECT id, ticket_ref, phone, subject, message, category, priority, status, created_at, updated_at, resolved_at
                    FROM support_tickets WHERE ticket_ref = :r LIMIT 1', ['r' => $ref]);
         } catch (Throwable $e) {
             $t = null;
         }
         $role = (string) ($ctx['role'] ?? 'customer');
-        if ($t === null || ($role !== 'admin' && normalisePhone((string) $t['phone']) !== (string) ($ctx['phone'] ?? ''))) {
+        $mine = false;
+        if ($t !== null) {
+            $askPhone = (string) ($ctx['phone'] ?? '');
+            $psid     = $askPhone === '' ? self::psidOf($ctx) : '';
+            // 16 Nov 2026: a ticket with no phone (a Messenger flag) is read back
+            // only to the same Messenger account — never to any number-less guest.
+            $mine = $role === 'admin'
+                || ($askPhone !== '' && normalisePhone((string) $t['phone']) === $askPhone)
+                || ($psid !== '' && (string) $t['phone'] === '' && str_starts_with((string) $t['message'], self::psidMarker($psid)));
+        }
+        if ($t === null || !$mine) {
             // Not found and not-yours read the same: confirming a reference exists is a disclosure.
             return self::no('No request with that reference is on this number.');
         }
@@ -316,6 +337,29 @@ final class AiHandoff
     /* -----------------------------------------------------------------
      *  Helpers
      * ----------------------------------------------------------------- */
+
+    /**
+     * The Facebook Messenger id of a sender with no proven number ('' when
+     * the sender is not on Messenger). FbMessenger hands it over as ctx psid
+     * (and keys the conversation 'fb-<psid>').
+     */
+    public static function psidOf(array $ctx): string
+    {
+        if ((string) ($ctx['via'] ?? '') !== 'facebook' && (string) ($ctx['channel'] ?? '') !== 'facebook') {
+            return '';
+        }
+        $psid = (string) ($ctx['psid'] ?? '');
+        if ($psid === '' && str_starts_with((string) ($ctx['stageKey'] ?? ''), 'fb-')) {
+            $psid = substr((string) $ctx['stageKey'], 3);
+        }
+        return preg_match('/^[0-9A-Za-z_\-]{1,40}$/', $psid) === 1 ? $psid : '';
+    }
+
+    /** The tag a Messenger ticket's message starts with (staff search on it). */
+    public static function psidMarker(string $psid): string
+    {
+        return '[Messenger PSID ' . $psid . ']';
+    }
 
     /** One-time codes, passwords, card numbers and CVVs never reach the queue. */
     public static function redact(string $text): string

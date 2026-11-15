@@ -17,8 +17,9 @@
  *  endpoint cannot be used to test whether a PNR exists.
  *
  *  Request  (form or JSON; CSRF token in X-CSRF-Token or the body)
- *    { pnr, k, kind: change_date|cancel_seats,
+ *    { pnr, k, kind: change_date|cancel_seats|change_seat,
  *      wanted_date? (YYYY-MM-DD), seats? [..] | "L1,L2", whole?: 1,
+ *      wanted_seats? "A5, A6" (change_seat, 16 Nov 2026 - P8-3e),
  *      note?, contact_phone? }
  *  Response { ok, data: { id, kind, status: 'open' }, message }
  *
@@ -69,6 +70,7 @@ try {
         'wanted_date'   => $str('wanted_date'),
         'seats'         => is_array($seats) ? array_values(array_filter($seats, 'is_scalar')) : (is_scalar($seats) ? (string) $seats : ''),
         'whole'         => $str('whole'),
+        'wanted_seats'  => $str('wanted_seats'),
         'note'          => $str('note'),
         'contact_phone' => $str('contact_phone'),
     ], $ip);

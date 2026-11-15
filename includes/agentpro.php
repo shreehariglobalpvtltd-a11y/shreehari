@@ -2275,7 +2275,7 @@ final class AgentPro
             $adminId = (int) Database::transaction(static function () use ($loginRole, $display, $username, $email, $phone, $office): int {
                 $id = (int) Database::insert('admins', [
                     'username'       => $username,
-                    'password_hash'  => password_hash(bin2hex(random_bytes(12)), PASSWORD_DEFAULT),
+                    'password_hash'  => Security::hashPassword(bin2hex(random_bytes(12))),
                     'full_name'      => $display,
                     'email'          => $email !== '' ? $email : null,
                     'phone'          => $phone,
@@ -2421,7 +2421,7 @@ final class AgentPro
         if ($role !== 'agent') {
             // Office staff sign in with a password; the first sign-in must change it.
             $password = substr(strtr(base64_encode(random_bytes(9)), '+/=', 'xyz'), 0, 10);
-            $upd['password_hash']  = password_hash($password, PASSWORD_DEFAULT);
+            $upd['password_hash']  = Security::hashPassword($password);
             $upd['must_change_pw'] = 1;
         }
         Database::update('admins', $upd, 'id = :i', ['i' => $adminId]);

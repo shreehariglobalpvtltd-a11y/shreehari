@@ -1,9 +1,16 @@
 <?php
 /**
  * tests/aiops-test.php — S Hari AI word parser + OpsHub rules (6 Nov 2026).
- * Reads the local test DB (routes, stops, buses); writes nothing.
+ * Reads the local test DB (routes, stops, buses).
  *
- *    php tests/aiops-test.php
+ * 16 Nov 2026 (v2.0, unit U5): + "2,200" amounts, Mehsana spellings, Gujarati,
+ * plates vs "do 2200", no widening on a non-pickup city, time / direction
+ * filters, commission %, fare_delta, add_stop, seat_block, the shared command
+ * path (propose / confirm / audits). Those parts make their own throwaway rows
+ * (an OFF route "Zu5town…", an OFF stop "Zu5ville Depot - Gate 2", one seat
+ * block on a far-future bus) and delete them again; settings are not touched.
+ *
+ *    php -c .claude/php-dev.ini tests/aiops-test.php
  */
 declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { exit; }
@@ -26,6 +33,49 @@ $routeIds = static function (string $from, string $to): array {
     return $ids;
 };
 $tomorrow = date('Y-m-d', strtotime(todayISO() . ' +1 day'));
+
+/* ---- U5 fixtures: made BEFORE the first AiOps call (AiOps::routes() is cached per run) ---- */
+$tag      = substr(str_shuffle('abcdefghjkmnpqrstvwxyz'), 0, 5);   // letters only: a digit run in the name would read as an amount
+$u5Town   = 'Zu5town' . $tag;   // an OFF route's city that is no pickup anywhere
+$startId  = (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM audit_logs', [], 0);
+$u5       = ['route' => 0, 'stops' => [], 'blocks' => []];
+$u5Clean  = static function () use (&$u5, $startId): void {
+    foreach ($u5['blocks'] as [$sid, $seat]) {
+        Database::delete('seat_blocks', 'schedule_id = :s AND seat_no = :n', ['s' => $sid, 'n' => $seat]);
+    }
+    foreach ($u5['stops'] as $sid) {
+        Database::delete('route_stops', 'id = :i', ['i' => $sid]);
+    }
+    Database::delete('route_stops', "stop_name LIKE 'Zu5%'", []);
+    if ($u5['route'] > 0) {
+        Database::delete('routes', 'id = :i', ['i' => $u5['route']]);
+    }
+    // only this run's rows: every one names a Zu5 fixture or one of its blocked seats
+    Database::delete('audit_logs', "id > :s AND action IN ('routes.stop_fare','settings.ai_proposed','settings.ai_declined','settings.ai_command','route_stop.add')
+                                    AND (entity_id LIKE 'Zu5%' OR old_value LIKE '%Zu5%' OR new_value LIKE '%Zu5%' OR detail LIKE '%Zu5%')", ['s' => $startId]);
+    foreach ($u5['blocks'] as [$sid, $seat]) {
+        Database::delete('audit_logs', "id > :s AND action IN ('seat.block','seat.unblock') AND entity_id = :e", ['s' => $startId, 'e' => (string) $sid]);
+    }
+    $u5['blocks'] = $u5['stops'] = [];
+    $u5['route'] = 0;
+};
+register_shutdown_function($u5Clean);
+$u5['route'] = Database::insert('routes', ['route_code' => 'u5t' . $tag, 'from_city' => $u5Town, 'to_city' => 'Rupaidiha',
+    'dep_time' => '13:00:00', 'arr_time' => '13:00:00', 'is_active' => 0, 'sort_order' => 999]);
+$goRoute = Database::fetch("SELECT id, route_code FROM routes WHERE is_active = 1 AND to_city = 'Rupaidiha' ORDER BY sort_order, id LIMIT 1");
+$fixStop = 0;
+if ($goRoute !== null) {
+    // OFF (is_active 0) so no customer or desk ever sees it; the AI fare rules still find it by name
+    $fixStop = Database::insert('route_stops', ['route_id' => (int) $goRoute['id'], 'stop_type' => 'boarding', 'stop_name' => 'Zu5ville Depot - Gate 2',
+        'fare' => 2150, 'is_active' => 0, 'sort_order' => 990]);
+    $u5['stops'][] = $fixStop;
+}
+$hasMehsana = Database::exists("SELECT 1 FROM route_stops rs JOIN routes r ON r.id = rs.route_id
+                                 WHERE r.is_active = 1 AND r.to_city = 'Rupaidiha' AND rs.stop_type = 'boarding' AND rs.stop_name LIKE 'Mehsana%'");
+if (!$hasMehsana && $goRoute !== null) {
+    $u5['stops'][] = Database::insert('route_stops', ['route_id' => (int) $goRoute['id'], 'stop_type' => 'boarding', 'stop_name' => 'Mehsana',
+        'landmark' => 'Zu5 fixture', 'is_active' => 0, 'sort_order' => 991]);
+}
 
 /* dates */
 $ok(AiOps::findDate(AiOps::norm('bholi ko bus band')) === $tomorrow, 'bholi = tomorrow');
@@ -89,6 +139,200 @@ $pv = AiOps::preview(['type' => 'extra_seats', 'n' => 7]);
 $ok(count($pv) === 1 && $pv[0][2] === '7', 'extra preview');
 $pv = AiOps::preview(['type' => 'stop_fare', 'stop' => 'Surat', 'fare' => 2300.0]);
 $ok($pv !== [] && str_contains($pv[0][2], '2,300'), 'stop fare preview');
+
+/* ================= 16 Nov 2026 (v2.0, U5) ================= */
+$note  = static fn(): string => AiOps::lastNote();
+$isMeh = static fn(array $a): bool => ($a['type'] ?? '') === 'stop_fare' && mb_stripos((string) ($a['stop'] ?? ''), 'mehsana') === 0;
+
+/* BUG1: one amount, Mehsana spellings */
+$ok(str_contains(AiOps::norm('Mehsana price 2,200'), ' 2200 ') && str_contains(AiOps::norm('fare 1,00,000'), ' 100000 '), 'norm: 2,200 / 1,00,000 are one amount');
+$ok(str_contains(AiOps::norm('seat 1,2'), ' 1 2 ') && str_contains(AiOps::norm('12,13'), '12 13'), 'norm: a list "1,2" / "12,13" still splits');
+$a = $first('Mehsana price 2,200');
+$ok($isMeh($a) && (float) $a['fare'] === 2200.0, 'BUG1 "Mehsana price 2,200" = ₹2,200 (was ₹200)');
+$a = $first('Mehsana ₹2,200 rate');
+$ok($isMeh($a) && (float) $a['fare'] === 2200.0, '₹2,200 = 2200');
+foreach (['Mahesana fare 2200', 'मेहसाणा भाडा २२००', 'महेसाणा भाडा 2200', 'મહેસાણા ભાડું ૨૨૦૦'] as $s) {
+    $a = $first($s);
+    $ok($isMeh($a) && (float) ($a['fare'] ?? 0) === 2200.0, 'Mehsana spelling: ' . $s);
+}
+$a = $first('Surat ko bhada 2200/-');
+$ok(($a['stop'] ?? '') === 'Surat' && (float) ($a['fare'] ?? 0) === 2200.0, '"2200/-" = 2200');
+$a = $first('Surat ko bhada Rs.2300');
+$ok(($a['stop'] ?? '') === 'Surat' && (float) ($a['fare'] ?? 0) === 2300.0, '"Rs.2300" = 2300');
+
+/* P3-2a: plate shape, " - " in a stop name, no widening */
+$a = $first('Mehsana ka price badha do 2200 kar do');
+$ok($isMeh($a) && (float) $a['fare'] === 2200.0, 'SPEC "Mehsana ka price badha do 2200 kar do" → Mehsana ₹2,200');
+$a = $first('Surat ka price badha do 2300 kar do');
+$ok(($a['type'] ?? '') === 'stop_fare' && (float) ($a['fare'] ?? 0) === 2300.0, '"do 2300" is no plate');
+$a = $first('Zu5ville Depot ko bhada 2400');
+$ok(($a['type'] ?? '') === 'stop_fare' && ($a['stop'] ?? '') === 'Zu5ville Depot - Gate 2', 'stop name cut at " - "');
+$ok(AiOps::parseWords($u5Town . ' ko bhada 2500') === [] && str_contains($note(), 'pickup'), 'a city that is no pickup → [] + "which pickup?" (no widening)');
+$ok(AiOps::parseWords('jane bhada 2300') === [] && $note() !== '', '"jane bhada" alone → asked, not every pickup');
+$ok(AiOps::parseWords('Vapi ko bhada 2500') === [] && $note() !== '', 'unknown place → asked');
+$p = AiOps::parse('Vapi ko bhada 2500', true);
+$ok($p['actions'] === [] && $p['via'] === 'words' && $p['note'] !== '', 'a pending question never goes to the AI');
+
+/* P3-2b: time + direction */
+$ft = AiOps::findTime(AiOps::norm('raat 10 baje'));
+$ok(($ft['time'] ?? '') === '22:00' && $ft['alt'] === null, 'raat 10 baje = 22:00');
+$ft = AiOps::findTime(AiOps::norm('subah 10 baje'));
+$ok(($ft['time'] ?? '') === '10:00' && $ft['alt'] === null, 'subah 10 baje = 10:00');
+$ft = AiOps::findTime(AiOps::norm('10 baje'));
+$ok(($ft['time'] ?? '') === '10:00' && $ft['alt'] === '22:00', 'bare 10 baje = 10:00 or 22:00');
+$ok((AiOps::findTime(AiOps::norm('22:30'))['time'] ?? '') === '22:30' && (AiOps::findTime(AiOps::norm('1:30 pm'))['time'] ?? '') === '13:30', '22:30 and 1:30 pm');
+$ok((AiOps::findTime(AiOps::norm('સાંજે 6 વાગ્યે'))['time'] ?? '') === '18:00', 'Gujarati sanje 6 vagye = 18:00');
+$ok(AiOps::findTime(AiOps::norm('Surat ko bhada 2300')) === null, 'no time in a fare');
+$ok(AiOps::findDir(AiOps::norm('jane bus')) === 'toNepal' && AiOps::findDir(AiOps::norm('aaune bus')) === 'toIndia' && AiOps::findDir(AiOps::norm('bus')) === null, 'jane / aaune');
+$near = static function (string $date, string $hm): bool {
+    foreach (Database::fetchAll("SELECT COALESCE(s.dep_time_override, r.dep_time) dep FROM schedules s JOIN routes r ON r.id = s.route_id
+                                  WHERE s.travel_date = :d AND r.is_active = 1 AND s.status <> 'cancelled'", ['d' => $date]) as $r) {
+        $m = (int) substr((string) $r['dep'], 0, 2) * 60 + (int) substr((string) $r['dep'], 3, 2);
+        if (abs($m - ((int) substr($hm, 0, 2) * 60 + (int) substr($hm, 3, 2))) <= 60) {
+            return true;
+        }
+    }
+    return false;
+};
+$a = AiOps::parseWords('Kal 10 baje bus band karo');
+if ($near($tomorrow, '10:00') || $near($tomorrow, '22:00')) {
+    $ok(($a[0]['type'] ?? '') === 'trip_sale' && ($a[0]['time'] ?? '') === '10:00', 'SPEC "Kal 10 baje bus band karo" → that bus only');
+} else {
+    $ok($a === [] && str_contains($note(), '10:00'), 'SPEC "Kal 10 baje bus band karo" → no bus at 10 → asked, never every bus');
+}
+$a = $first('kal 1 baje bus band');
+$ok(($a['type'] ?? '') === 'trip_sale' && $a['time'] === '01:00' && $a['alt'] === '13:00' || ($a === [] && !$near($tomorrow, '13:00')), '"1 baje" = 01:00 / 13:00');
+$rowsOk = true;
+foreach ($a !== [] ? AiOps::preview($a) : [] as $r) {
+    if (preg_match('/(\d\d):(\d\d)$/', $r[0], $mm) !== 1 || abs((int) $mm[1] * 60 + (int) $mm[2] - 780) > 60) { $rowsOk = false; }
+}
+$ok($rowsOk, 'the 1 baje preview lists only the ~13:00 buses');
+$a = $first('kal 6 baje aaune bus band');
+$ok(($a === [] && !$near($tomorrow, '18:00')) || (($a['dir'] ?? '') === 'toIndia' && ($a['alt'] ?? '') === '18:00'), 'aaune + 6 baje → toIndia, 18:00');
+$rid = (int) ($goRoute['id'] ?? 0);
+$c = AiOps::clean(['type' => 'trip_sale', 'date' => $tomorrow, 'on' => false, 'route_ids' => [$rid], 'time' => '13:00', 'dir' => 'toNepal']);
+$ok(($c['route_ids'] ?? []) === [$rid] && ($c['time'] ?? '') === '13:00' && ($c['dir'] ?? '') === 'toNepal', 'clean() keeps route_ids / time / dir (apply used to drop them)');
+$ok(AiOps::clean(['type' => 'trip_sale', 'date' => $tomorrow, 'on' => false, 'route_ids' => [999999]]) === null, 'route filter matching nothing is refused, never "every bus"');
+$ok(AiOps::clean(['type' => 'trip_sale', 'date' => $tomorrow, 'on' => false, 'time' => '25:00']) === null, 'bad time refused');
+
+/* P3-2c: commission % */
+$ok(AiOps::parseWords('Agent Ramesh ko commission 10% kar do') === [] && str_contains($note(), '₹'), 'SPEC "commission 10%" → refused: ₹ per seat');
+$ok(AiOps::parseWords('SHG-0001 commission 10 percent') === [], '"10 percent" refused too');
+$a = $first('agent_commission_percent 6');
+$ok(($a['type'] ?? '') !== 'commission', 'a snake_case key goes to the setting rule, not commission');
+
+/* P3-2d: fare_delta */
+$a = AiOps::parseWords('sab route ka fare 100 badha do');
+$ok(count($a) === 1 && $a[0]['type'] === 'fare_delta' && $a[0]['stop'] === '*' && (float) $a[0]['delta'] === 100.0 && $a[0]['dir'] === 'both', 'SPEC "sab route ka fare 100 badha do" → +₹100 every fare');
+$a = $first('Surat ka fare 100 kam karo');
+$ok(($a['type'] ?? '') === 'fare_delta' && $a['stop'] === 'Surat' && (float) $a['delta'] === -100.0, '"100 kam" = −100 (was a ₹100 fare)');
+$a = $first('Surat fare +100');
+$ok(($a['type'] ?? '') === 'fare_delta' && (float) $a['delta'] === 100.0, '"+100"');
+$a = $first('increase all fares by 100');
+$ok(($a['type'] ?? '') === 'fare_delta' && $a['stop'] === '*' && (float) $a['delta'] === 100.0, '"increase all fares by 100"');
+$a = $first('Surat ko bhada 100 le badhau');
+$ok(($a['type'] ?? '') === 'fare_delta' && (float) $a['delta'] === 100.0, '"100 le badhau" (Nepali)');
+$ok(AiOps::parseWords('Surat ko bhada badha 2300') === [] && $note() !== '', 'relative word + untied number → asked');
+$a = $first('2000 se 2200 Surat ko bhada kar do');
+$ok(($a['type'] ?? '') === 'stop_fare' && (float) $a['fare'] === 2200.0, '"2000 se 2200" = set 2200');
+$ok(AiOps::parseWords('route ka fare 100 ghata do') === [] && $note() !== '', 'a delta with no pickup and no "all" → asked');
+$a = $first('sabai pickup ko bhada 100 thap');
+$ok(($a['type'] ?? '') === 'fare_delta' && $a['stop'] === '*' && (float) $a['delta'] === 100.0, '"pickup … 100 thap" is a fare +100, not a new pickup');
+$pv = AiOps::preview(['type' => 'fare_delta', 'stop' => 'Zu5ville Depot - Gate 2', 'delta' => 100.0, 'dir' => 'toNepal']);
+$ok(count($pv) === 1 && str_contains($pv[0][1], '2,150') && str_contains($pv[0][2], '2,250'), 'fare_delta preview old → old + 100');
+$pv = AiOps::preview(['type' => 'fare_delta', 'stop' => 'Zu5ville Depot - Gate 2', 'delta' => -2100.0, 'dir' => 'toNepal']);
+$ok($pv !== [] && str_contains($pv[0][2], '⚠'), 'fare_delta out of ₹100–₹20,000 is flagged');
+$ok(AiOps::clean(['type' => 'fare_delta', 'stop' => '*', 'delta' => 0, 'dir' => 'toNepal']) === null && AiOps::clean(['type' => 'fare_delta', 'stop' => '*', 'delta' => 6000, 'dir' => 'toNepal']) === null, 'delta 0 / 6000 refused');
+
+/* P3-2e: add_stop */
+$ok(AiOps::parseWords('Naya location add karo: Gandhinagar, Gujarat') === [] && str_contains($note(), 'Gandhinagar') && str_contains($note(), ':'), 'SPEC "Naya location add karo: Gandhinagar, Gujarat" → asks the time');
+$a = $first('Naya pickup add karo: Zu5newtown 22:30 bhada 2100');
+$ok(($a['type'] ?? '') === 'add_stop' && $a['stop_name'] === 'Zu5newtown' && $a['stop_time'] === '22:30' && (float) $a['fare'] === 2100.0
+    && $a['stop_type'] === 'boarding' && (int) $a['route_id'] === $rid, 'add_stop: name, time, fare, first route going');
+$a = $first('Zu5newtown pickup jodnu raat 10 baje');
+$ok(($a['type'] ?? '') === 'add_stop' && $a['stop_name'] === 'Zu5newtown' && $a['stop_time'] === '22:00' && $a['fare'] === null, 'add_stop without colon, raat 10 baje = 22:00');
+$ok(AiOps::parseWords('Zu5newtown pickup add 10 baje') === [] && str_contains($note(), '22:00'), 'add_stop "10 baje" → morning or night?');
+$ok(AiOps::parseWords('Naya pickup: Zu5ville Depot 21:00') === [] && str_contains($note(), 'already'), 'add_stop refuses a stop that is already there');
+$pv = AiOps::preview(['type' => 'add_stop', 'route_id' => $rid, 'stop_type' => 'boarding', 'stop_name' => 'Zu5newtown', 'stop_time' => '22:30', 'fare' => null]);
+$ok($pv !== [] && str_contains($pv[0][2], 'Zu5newtown') && str_contains($pv[0][2], 'default'), 'add_stop preview');
+$ok(AiOps::clean(['type' => 'add_stop', 'route_id' => $u5['route'], 'stop_type' => 'boarding', 'stop_name' => 'X y', 'stop_time' => '22:30']) === null, 'add_stop on an OFF route refused');
+
+/* P3-2g: seat_block */
+$a = $first('Seat U15 block karo kal');
+if (Database::exists("SELECT 1 FROM schedules s JOIN routes r ON r.id = s.route_id WHERE s.travel_date = :d AND r.is_active = 1 AND s.status <> 'cancelled'", ['d' => $tomorrow])) {
+    $ok(($a['type'] ?? '') === 'seat_block' && $a['seat'] === 'U15' && $a['date'] === $tomorrow && $a['on'] === false, 'SPEC "Seat U15 block karo kal"');
+} else {
+    $ok($a === [] && $note() !== '', 'SPEC "Seat U15 block karo kal" (no bus tomorrow → said so)');
+}
+$ok(AiOps::parseWords('Seat U15 block karo') === [] && str_contains($note(), 'date'), 'seat_block without a date → which date?');
+$a = $first('U15 unblock kal');
+$ok($a === [] || (($a['type'] ?? '') === 'seat_block' && $a['on'] === true), 'unblock = back in service');
+$ok(AiOps::parseWords('U99 block kal') === [], 'a seat the bus does not have → []');
+
+/* P3-7b: Gujarati */
+$ok(AiOps::findDate(AiOps::norm('આજે')) === todayISO() && AiOps::findDate(AiOps::norm('કાલે બસ')) === $tomorrow, 'Gujarati aaje / kale');
+$a = $first('કાલે બસ બંધ');
+$ok(($a['type'] ?? '') === 'trip_sale' && $a['on'] === false || ($a === [] && $note() !== ''), 'Gujarati "kale bas bandh"');
+$a = $first('સુરત ભાડું ૨૩૦૦ કરો');
+$ok(($a['stop'] ?? '') === 'Surat' && (float) ($a['fare'] ?? 0) === 2300.0, 'Gujarati Surat fare 2300');
+$ok((AiOps::parseSwitches('whatsapp bot બંધ')['wa_booking_on'] ?? '') === '0', 'Gujarati bandh on a switch');
+
+/* P3-1c + P3-4a: the shared command path, its audits, and the old fares in the log */
+$super = Database::fetch("SELECT * FROM admins WHERE role = 'superadmin' AND is_active = 1 ORDER BY id LIMIT 1");
+if ($super !== null && $fixStop > 0) {
+    $_SESSION[ADMIN_SESSION_KEY] = ['id' => (int) $super['id'], 'username' => (string) $super['username'], 'full_name' => (string) ($super['full_name'] ?? ''),
+        'role' => 'superadmin', 'permissions' => jsonColumn($super['permissions'] ?? null), 'last_seen' => time()];
+    $pr = AiOps::propose('Zu5ville Depot ko bhada 2300', true, false);
+    $ok(count($pr['ops']) === 1 && $pr['via'] === 'words' && AiOps::changes($pr) !== [], 'propose: one change, words');
+    AiOps::auditProposed($pr);
+    $row = Database::fetch("SELECT new_value FROM audit_logs WHERE id > :s AND action = 'settings.ai_proposed' ORDER BY id DESC LIMIT 1", ['s' => $startId]);
+    $ok($row !== null && str_contains((string) $row['new_value'], '"stop_fare"') && str_contains((string) $row['new_value'], 'Zu5ville'), 'settings.ai_proposed keeps the parsed actions');
+    AiOps::auditDeclined($pr);
+    $ok(Database::exists("SELECT 1 FROM audit_logs WHERE id > :s AND action = 'settings.ai_declined' AND new_value LIKE '%Zu5ville%'", ['s' => $startId]), 'a "No" is logged (settings.ai_declined)');
+    $done = AiOps::confirm($pr, $super, true);
+    $ok(count($done) === 1 && (float) Database::scalar('SELECT fare FROM route_stops WHERE id = :i', ['i' => $fixStop]) === 2300.0, 'confirm writes the fare');
+    $log = Database::fetch("SELECT old_value, new_value FROM audit_logs WHERE id > :s AND action = 'routes.stop_fare' AND entity_id = 'Zu5ville Depot - Gate 2' ORDER BY id DESC LIMIT 1", ['s' => $startId]);
+    $ok($log !== null && str_contains((string) $log['old_value'], '"Zu5ville Depot - Gate 2 #' . $fixStop . '":2150'), 'stop_fare audit keeps the OLD fare per stop (P3-1c)');
+    $ok(Database::exists("SELECT 1 FROM audit_logs WHERE id > :s AND action = 'settings.ai_command' AND new_value LIKE '%\"actions\"%Zu5ville%'", ['s' => $startId]), 'settings.ai_command carries the actions');
+    $lines = AiOps::apply(AiOps::parseWords('Zu5ville Depot ko bhada 50 badha do'), $super);
+    $ok(count($lines) === 1 && (float) Database::scalar('SELECT fare FROM route_stops WHERE id = :i', ['i' => $fixStop]) === 2350.0, 'fare_delta +50 applied (2300 → 2350)');
+    $lines = AiOps::apply([['type' => 'fare_delta', 'stop' => 'Zu5ville Depot - Gate 2', 'delta' => -2300.0, 'dir' => 'toNepal']], $super);
+    $ok(str_starts_with($lines[0] ?? '', '⚠️') && (float) Database::scalar('SELECT fare FROM route_stops WHERE id = :i', ['i' => $fixStop]) === 2350.0, 'fare_delta below ₹100 refused, nothing written');
+
+    /* add_stop through Boarding::addStop (unit U4a's C1) */
+    $addA = $first('Naya pickup add karo: Zu5newtown 22:30 bhada 2100');
+    if (method_exists('Boarding', 'addStop')) {
+        $lines = AiOps::apply([$addA], $super);
+        $made  = Database::fetch("SELECT id, stop_time, fare, route_id FROM route_stops WHERE stop_name = 'Zu5newtown' ORDER BY id DESC LIMIT 1");
+        $ok(str_starts_with($lines[0] ?? '', '➕') && $made !== null && substr((string) $made['stop_time'], 0, 5) === '22:30' && (float) $made['fare'] === 2100.0
+            && (int) $made['route_id'] === $rid, 'add_stop applied via Boarding::addStop');
+    } else {
+        $lines = AiOps::apply([$addA], $super);
+        echo "SKIP: Boarding::addStop not in includes/boarding.php yet (U4a) — apply says: " . ($lines[0] ?? '') . "\n";
+        $ok(str_contains($lines[0] ?? '', 'addStop'), 'add_stop says clearly when Boarding::addStop is missing');
+    }
+
+    /* seat_block through Seats::blockSeat / unblockSeat, on one far-future bus */
+    $far = Database::fetch("SELECT s.id, s.travel_date FROM schedules s JOIN routes r ON r.id = s.route_id
+                             WHERE r.is_active = 1 AND s.status <> 'cancelled' AND s.travel_date BETWEEN :a AND :b ORDER BY s.travel_date DESC, s.id LIMIT 1",
+                           ['a' => date('Y-m-d', strtotime(todayISO() . ' +30 days')), 'b' => date('Y-m-d', strtotime(todayISO() . ' +400 days'))]);
+    if ($far !== null && in_array('U17', Seats::seatIdsForSchedule((int) $far['id']), true)
+        && !in_array('U17', Seats::blockedSeats((int) $far['id']), true)) {
+        $u5['blocks'][] = [(int) $far['id'], 'U17'];
+        $sa = AiOps::parseWords('Seat U17 block ' . $far['travel_date']);
+        $sa = array_map(static fn(array $x): array => $x + ['route_ids' => [(int) Database::scalar('SELECT route_id FROM schedules WHERE id = :i', ['i' => (int) $far['id']])]], $sa);
+        $lines = AiOps::apply($sa, $super);
+        $ok(in_array('U17', Seats::blockedSeats((int) $far['id']), true) && str_starts_with($lines[0] ?? '', '💺'), 'seat_block blocks U17 on that bus');
+        AiOps::apply([['type' => 'seat_block', 'seat' => 'U17', 'date' => $far['travel_date'], 'on' => true] + ['route_ids' => $sa[0]['route_ids'] ?? []]], $super);
+        $ok(!in_array('U17', Seats::blockedSeats((int) $far['id']), true), 'seat_block on = back in service');
+    } else {
+        echo "SKIP: no far-future bus with a free U17 for the seat_block apply test\n";
+    }
+    unset($_SESSION[ADMIN_SESSION_KEY]);
+} else {
+    echo "SKIP: no super-admin or route for the command-path tests\n";
+}
+$u5Clean();
 
 /* OpsHub money rule */
 $ok(OpsHub::payState(['pay_status' => 'verified', 'pay_method' => 'upi'], null) === 'paid', 'UPI verified = paid');

@@ -183,6 +183,26 @@ const CORE_SUITES = [
     'wa-advance-test.php'         => 'a bare hello opens a booking, and a near-miss pickup never guesses between two towns',
     // 29 Oct 2026, registered with the S HARI AI master brief build it guards.
     'master-brief-test.php'       => 'Opus 5.5 request shape, the master brief, a no is never a yes, groups say only public facts',
+    // 16 Nov 2026, registered with the master prompt v2.0 build (units U1..U7) they guard.
+    'u1-login-test.php'               => 'bcrypt cost 12 + rehash, PIN length backfill, lockout countdown, login method logged, driver PIN limit',
+    'u2a-customer-live-test.php'      => 'install offer quiet after 2 no, menu install, push card, 60/30 s refresh, near-me rules, notice 24 h',
+    'u2a-search-next-time-test.php'   => 'the next-departure banner shows the chosen stop time, not a fixed 1:00 PM',
+    'u2b-customer-shell-test.php'     => 'accent fade, picked palette stays fixed, accent preview 5 min, notice_since boot',
+    'u3a-wa-inbox-test.php'           => 'per-chat unread, names, status chips, search, reply-time stats, IDF KB search, thumbs',
+    'u3a-wa-inbox-render-test.php'    => 'the WhatsApp hub and AI knowledge pages render',
+    'u3b-fb-inbox-test.php'           => 'Messenger inbound stored, threads, office reply only inside the 24 h window',
+    'u3b-noreply-alert-test.php'      => 'no-reply alert is OFF by default and fires once per number per hour when ON',
+    'u3b-pages-render-test.php'       => 'home AI Watch + reply-time tile, Messenger inbox render',
+    'u4a-boarding-cutoff-test.php'    => 'past-midnight pickups and retimed buses close at the right minute',
+    'u4a-admin-pages-test.php'        => 'map/routes/settings: add point works, checkpoint no 500, counter 403, Mehsana labels, JSON export',
+    'u4b-offers-test.php'             => 'offer rules (route, per mobile, first booking, max uses), used offer cannot be deleted, report',
+    'u4b-dashboard-test.php'          => 'YTD revenue and the 30-day bookings chart',
+    'u4b-ticket-discount-test.php'    => 'ticket PNG/PDF name the discount source',
+    'u4b-bulk-tickets-test.php'       => 'bulk CSV tickets: preview, one-shot confirm, no double booking',
+    'u5-endpoints-test.php'           => 'AI settings API + inline save: CSRF, permission, preview -> confirm, 2,200 = 2200',
+    'u5-easy-settings-test.php'       => 'S Hari AI page: command, No is logged, Yes applies',
+    'u6-staff-chrome-test.php'        => 'staff head metas, csrf meta, AI bubble wiring, nav entries, themes page',
+    'u7-ai-turns-test.php'            => 'ai_turns row per bot turn with no message text; missing table never breaks a reply',
 ];
 
 /**

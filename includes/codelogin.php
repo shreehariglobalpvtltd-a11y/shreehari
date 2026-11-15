@@ -388,11 +388,13 @@ final class CodeLogin
             return $no;
         }
         $aid = (int) ($s['aid'] ?? 0);
-        if (!Security::rateLimit('code_login_try', strtoupper((string) $s['code']), 12, 900, 900)) {
-            return ['step' => 'c_unlock', 'error' => 'धेरै पटक गलत भयो — १५ मिनेटपछि फेरि · Too many tries, wait 15 minutes.'];
+        $typed = (string) $s['code'];
+        if (!Security::rateLimit('code_login_try', strtoupper($typed), 12, 900, 900)) {
+            return self::lockedReply(self::budgetUntil('code_login_try', strtoupper($typed)));
         }
         if ($aid === 0) {
             Security::rateLimit('quick_unlock', Security::clientIp(), 20, 900, 900);   // an unknown code spends the same IP budget
+            LoginLog::record($typed, 'unknown_user', null, $kind);   // 16 Nov 2026: on the sign-in history too
             self::evenTime($t0);
             return $no;
         }
@@ -407,23 +409,78 @@ final class CodeLogin
             $v = $kind === 'pattern' ? (string) (QuickUnlock::canonicalPattern($value) ?? '') : $value;
             $ok = $v !== '' && (string) ($row[$col] ?? '') !== '' && Security::verifyPassword($v, (string) $row[$col]);
             Logger::audit('admin.login.code_blocked', 'admin', (string) $aid, null, null, 'Code door: switched-off account tried to sign in');
+            LoginLog::record($typed, 'disabled', $aid, $kind);
             self::evenTime($t0);
             return $ok
                 ? ['step' => 'c_unlock', 'error' => 'यो खाता बन्द छ — कार्यालयमा सम्पर्क गर्नुहोस् · This account is switched off. Please call the office.']
                 : $no;
         }
+        $wasLocked = QuickUnlock::lockedUntil($aid) > 0;
         $m = QuickUnlock::match([$aid], $kind, $value);
         if (!$m['ok']) {
             Logger::audit('admin.login.code_fail', 'admin', (string) $aid, null, ['kind' => $kind], 'Code door: wrong ' . $kind);
+            // 16 Nov 2026 (P1-6d): PIN / pattern misses reach Sessions -> Login history, with how (never the value)
+            LoginLog::record($typed, $wasLocked ? 'locked' : 'bad_password', $aid, $kind);
             self::evenTime($t0);
             $until = QuickUnlock::lockedUntil($aid);
             if ($until > 0) {
-                $min = max(1, (int) ceil(($until - time()) / 60));
-                return ['step' => 'c_unlock', 'error' => 'धेरै पटक गलत भयो — ' . $min . ' मिनेटपछि फेरि, वा "PIN / Pattern बिर्सनुभयो?" · Too many wrong tries: wait ' . $min . ' minutes, or use "Forgot PIN / Pattern?".'];
+                return self::lockedReply($until, true);
             }
-            return str_contains((string) ($m['error'] ?? ''), 'Too many') ? ['step' => 'c_unlock', 'error' => (string) $m['error']] : $no;
+            return str_contains((string) ($m['error'] ?? ''), 'Too many')
+                ? self::lockedReply(self::budgetUntil('quick_unlock', Security::clientIp()))
+                : $no;
         }
         return self::open($m['admin'], $kind);
+    }
+
+    /* 16 Nov 2026 (P1-1d): a lock answers with WHEN it ends ('until', Unix time). The page ticks
+       it down (mm:ss) with the keypad and pattern switched off, and this browser session keeps it
+       so a reload still shows it. Nothing new is told: the same lock was said in words before. */
+
+    /**
+     * @param bool $acct the account's own PIN / pattern lock (the office may clear it early) — else a try budget
+     * @return array{step: string, error: string, until: int}
+     */
+    private static function lockedReply(int $until, bool $acct = false): array
+    {
+        $min = max(1, (int) ceil(($until - time()) / 60));
+        if (isset($_SESSION[self::KEY])) {
+            $_SESSION[self::KEY]['until'] = $until;
+            $_SESSION[self::KEY]['until_acct'] = $acct;
+        }
+        // short: the page puts the ticking timer right after it (admin/login.php)
+        return ['step' => 'c_unlock', 'until' => $until, 'minutes' => $min,
+            'error' => '🔒 धेरै पटक गलत भयो — पर्खनुहोस् · Too many wrong tries, please wait'];
+    }
+
+    /** When a Security::rateLimit lockout on this bucket ends (Unix time); now + $fallback when unknown. */
+    private static function budgetUntil(string $bucket, string $id, int $fallback = 900): int
+    {
+        try {
+            $u = (string) Database::scalar('SELECT blocked_until FROM rate_limits WHERE bucket = :b AND identifier = :i',
+                ['b' => $bucket, 'i' => $id], '');
+        } catch (Throwable $e) {
+            $u = '';
+        }
+        $t = $u !== '' ? (int) strtotime($u) : 0;
+        return $t > time() ? $t : time() + $fallback;
+    }
+
+    /** The lock this browser was told about for the code in the door, still running (Unix time), or 0. */
+    public static function lockUntil(): int
+    {
+        $s = self::state();
+        $u = (int) ($s['until'] ?? 0);
+        if ($u > 0 && !empty($s['until_acct']) && (int) ($s['aid'] ?? 0) > 0) {
+            $u = QuickUnlock::lockedUntil((int) $s['aid']);   // the office cleared it (Sessions → Unlock): the timer goes too
+        }
+        if ($u > 0 && $u <= time()) {
+            $u = 0;
+        }
+        if ($u === 0) {
+            unset($_SESSION[self::KEY]['until'], $_SESSION[self::KEY]['until_acct']);
+        }
+        return $u;
     }
 
     /** @param array<string, mixed> $admin */

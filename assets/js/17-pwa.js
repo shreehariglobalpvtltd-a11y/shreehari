@@ -53,8 +53,13 @@
      a "later visit". Signed-in staff (SHG_BOOT.staff: counter, agent, office)
      keep the old timing. The menu's Install button (SHGInstall.show) works
      any time for everyone. */
+  /* 16 Nov 2026 (P2-1d): a passenger who said no TWICE is never offered again
+     by itself - 'shg:installDismissN' counts the refusals ("Not now", a tap
+     outside the sheet, "Continue in browser", a declined browser prompt).
+     The iOS sheet's "Got it" is not a refusal (the steps were read). The
+     menu's Install item (P2-1h, #pwaInstallMenu) still opens it on request. */
   var SHGInstall = (function () {
-    var DKEY = 'shg:installDismiss', VKEY = 'shg:visits', BKEY = 'shg:installBooked';
+    var DKEY = 'shg:installDismiss', VKEY = 'shg:visits', BKEY = 'shg:installBooked', NKEY = 'shg:installDismissN';
     var deferred = null, shown = false, afterBookingTimer = 0;
     var visits = parseInt(lsGet(VKEY) || '0', 10) || 0;
     var newSession = true;
@@ -73,10 +78,16 @@
         var sw = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
         if (sw.btn_install_popup_on === false || sw.btn_install_popup_on === 0 || sw.btn_install_popup_on === '0') return true;
       } catch (e) {}
+      if (refusals() >= 2) return true;   // P2-1d: said no twice - never again by itself
       var at = +(lsGet(DKEY) || 0);
       return at && (Date.now() - at) < 30 * 86400000;
     }
-    function dismiss() { lsSet(DKEY, String(Date.now())); hide(); }
+    function refusals() { return parseInt(lsGet(NKEY) || '0', 10) || 0; }
+    // A refusal: quiet for 30 days and counted (P2-1d).
+    function refused() { lsSet(DKEY, String(Date.now())); lsSet(NKEY, String(refusals() + 1)); }
+    function dismiss() { refused(); hide(); }
+    // The iOS "Got it": the steps were read - quiet for 30 days, not counted.
+    function gotIt() { lsSet(DKEY, String(Date.now())); hide(); }
     function hide() {
       var s = q('#pwaSheet'), b = q('#pwaBackdrop');
       if (s) { s.classList.remove('open'); setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 320); }
@@ -91,35 +102,37 @@
       document.body.appendChild(bd); document.body.appendChild(s);
       requestAnimationFrame(function () { bd.classList.add('open'); s.classList.add('open'); });
       bd.addEventListener('click', dismiss);
-      var no = q('#pwaInstallNo'); if (no) no.addEventListener('click', dismiss);
+      var ios = !deferred;
+      var no = q('#pwaInstallNo'); if (no) no.addEventListener('click', ios ? gotIt : dismiss);
       shown = true;
       beacon('install_prompt', { source: deferred ? 'android' : 'ios' });
     }
     function head() {
-      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261115e" alt="" width="52" height="52">'
+      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261116a" alt="" width="52" height="52">'
         + '<div><b>' + E(T('pwaInstallT')) + '</b><small>' + E(T('pwaInstallP')) + '</small></div></div>';
     }
-    function showAndroid() {
-      if (!deferred || quiet() || shown) return;
+    // force = the passenger asked (menu Install, the iOS alerts card): no quiet rule applies.
+    function showAndroid(force) {
+      if (!deferred || (!force && quiet()) || shown) return;
       sheet(head()
         + '<ul class="pwa-benefits"><li>⚡ ' + E(T('pwaB1')) + '</li><li>🎫 ' + E(T('pwaB2')) + '</li><li>🔔 ' + E(T('pwaB3')) + '</li></ul>'
         + '<div class="pwa-actions"><button type="button" class="btn btn-orange" id="pwaInstallGo">📱 ' + E(T('pwaInstallBtn')) + '</button>'
         + '<button type="button" class="btn btn-ghost" id="pwaInstallNo">' + E(T('pwaLater')) + '</button></div>');
       var go = q('#pwaInstallGo');
       if (go) go.addEventListener('click', function () {
-        var p = deferred; deferred = null; hide();
+        var p = deferred; deferred = null; hide(); menuSync();
         if (!p) return;
         try {
           p.prompt();
           if (p.userChoice) p.userChoice.then(function (c) {
             beacon('install_prompt', { ok: !!(c && c.outcome === 'accepted') });
-            if (!c || c.outcome !== 'accepted') lsSet(DKEY, String(Date.now()));
+            if (!c || c.outcome !== 'accepted') refused();
           }).catch(function () {});
         } catch (e) {}
       });
     }
-    function showIOS() {
-      if (!isIOSSafari || quiet() || shown) return;
+    function showIOS(force) {
+      if (!isIOSSafari || (!force && quiet()) || shown) return;
       sheet(head()
         + '<ol class="pwa-steps"><li><span class="pwa-ico">' + shareIcon() + '</span>' + E(T('pwaIos1')) + '</li>'
         + '<li><span class="pwa-ico">➕</span>' + E(T('pwaIos2')) + '</li>'
@@ -138,6 +151,7 @@
     };
     window.addEventListener('beforeinstallprompt', function (e) {
       e.preventDefault(); deferred = e;
+      menuSync();   // P2-1h: the menu's Install item works from now on, quiet or not
       if (quiet()) return;
       /* 20 Sep 2026 (brief P5): 25 s on the first visit, 6 s after that.
          31 Oct 2026: a customer's first visit waits for a booking instead
@@ -175,23 +189,23 @@
         document.head.appendChild(st);
       }
       var n = document.createElement('div'); n.id = 'pwaInvite'; n.setAttribute('role', 'region'); n.setAttribute('aria-label', T('pwaInstallT'));
-      n.innerHTML = '<img src="/assets/img/icon-192.png?v=20261115e" alt="" width="36" height="36"><b>' + E(T('pwaInstallT')) + '</b>'
+      n.innerHTML = '<img src="/assets/img/icon-192.png?v=20261116a" alt="" width="36" height="36"><b>' + E(T('pwaInstallT')) + '</b>'
         + '<button type="button" id="pwaInviteGo">' + E(T('pwaInstallBtn')) + '</button>'
         + '<button type="button" id="pwaInviteNo">' + E(T('pwaContinue')) + '</button>';
       document.body.appendChild(n);
       shown = true;   // the automatic sheet does not follow in the same visit
       beacon('install_prompt', { source: deferred ? 'android-strip' : 'ios-strip' });
-      q('#pwaInviteNo').addEventListener('click', function () { lsSet(DKEY, String(Date.now())); inviteGone(); });
+      q('#pwaInviteNo').addEventListener('click', function () { refused(); inviteGone(); });
       q('#pwaInviteGo').addEventListener('click', function () {
         inviteGone();
         var p = deferred;
-        if (!p) { shown = false; showIOS(); return; }   // iOS: the Add to Home Screen steps
-        deferred = null;
+        if (!p) { shown = false; showIOS(true); return; }   // iOS: the Add to Home Screen steps (asked for)
+        deferred = null; menuSync();
         try {
           p.prompt();   // the browser's own prompt, straight from this tap
           if (p.userChoice) p.userChoice.then(function (c) {
             beacon('install_prompt', { ok: !!(c && c.outcome === 'accepted') });
-            if (!c || c.outcome !== 'accepted') lsSet(DKEY, String(Date.now()));
+            if (!c || c.outcome !== 'accepted') refused();
           }).catch(function () {});
         } catch (e) {}
       });
@@ -201,9 +215,31 @@
       window.addEventListener('hashchange', function () { var x = location.hash || '#/'; if (x !== '#/' && x !== '#') inviteGone(); });
     }
     window.addEventListener('appinstalled', function () {
-      lsDel(DKEY); hide(); say('✅ ' + T('pwaDone'));
+      lsDel(DKEY); lsDel(NKEY); hide(); say('✅ ' + T('pwaDone'));
+      deferred = null; menuSync(true);
       beacon('install_prompt', { ok: true, source: 'installed' });
     });
+    /* P2-1h (16 Nov 2026): the mobile menu's "Install app" item (#pwaInstallMenu,
+       hidden in the markup). Shown only while this browser can really install
+       (a held Android / desktop prompt, or iOS Safari's Add to Home Screen) and
+       the app is not already open as an app; never on the staff door. A tap
+       opens the sheet even after "Not now" - the passenger asked for it. */
+    function menuSync(gone) {
+      var m = q('#pwaInstallMenu'); if (!m) return;
+      m.hidden = !!gone || onStaffDoor() || isStandalone() || !(deferred || (isIOSSafari && !isStandalone()));
+    }
+    function menuWire() {
+      var m = q('#pwaInstallMenu'); if (!m || m.getAttribute('data-wired')) return;
+      m.setAttribute('data-wired', '1');
+      m.addEventListener('click', function (e) {
+        e.preventDefault();   // href="#" must not send the passenger to the home screen
+        var mm = q('#mobileMenu'), hb = q('#hamburger');
+        if (mm) mm.classList.remove('open');
+        if (hb) { hb.classList.remove('open'); hb.setAttribute('aria-expanded', 'false'); }
+        api.show();
+      });
+      menuSync();
+    }
     // iOS: a later visit (or staff after 25 s) — never on a customer's first paint.
     if (isIOSSafari && !isStandalone() && !quiet() && eligible()) {
       setTimeout(laterHome, (visits >= 2 || booked()) ? 6000 : 25000);
@@ -240,12 +276,15 @@
     }
     window.addEventListener('hashchange', watchTicket);
     watchTicket();
-    return {
+    var api = {
       available: function () { return !!deferred || (isIOSSafari && !isStandalone()); },
-      show: function () { if (deferred) { shown = false; showAndroid(); } else if (isIOSSafari) { shown = false; showIOS(); } else say(T('pwaNotNow')); },
+      // Asked for (menu, alerts card): opens even inside the quiet period (P2-1h).
+      show: function () { if (deferred) { shown = false; showAndroid(true); } else if (isIOSSafari && !isStandalone()) { shown = false; showIOS(true); } else say(T('pwaNotNow')); },
       afterBooking: afterBooking,
       hide: hide
     };
+    menuWire();
+    return api;
   })();
   window.SHGInstall = SHGInstall;
 
@@ -339,9 +378,11 @@
         + '<div class="push-act"><button type="button" class="btn btn-blue btn-sm" id="pushBtn">' + E(T('pushOn')) + '</button></div>'
         + '</div>';
     },
-    wire: function (b) {
-      var self = this, card = q('#pushCard'); if (!card) return;
-      var btn = q('#pushBtn'), sub = q('#pushSub');
+    /* root (optional): the box the card was drawn in - the SmartBook ticket
+       (27-smartbook.js, P2-2c) draws its own copy next to the classic view's. */
+    wire: function (b, root) {
+      var self = this, R = root || document, card = q('#pushCard', R); if (!card) return;
+      var btn = q('#pushBtn', R), sub = q('#pushSub', R);
       var paint = function (st) {
         card.setAttribute('data-state', st);
         if (st === 'unsupported') {
@@ -358,7 +399,7 @@
               .catch(function (e) { say('⚠️ ' + (e && e.message || T('pushTestFail'))); })
               .then(function () { btn.disabled = false; });
           };
-          var off = q('#pushOffBtn');
+          var off = q('#pushOffBtn', R);
           if (!off) {
             off = document.createElement('button'); off.type = 'button'; off.id = 'pushOffBtn'; off.className = 'btn btn-ghost btn-sm';
             off.textContent = T('pushOff'); btn.parentNode.appendChild(off);

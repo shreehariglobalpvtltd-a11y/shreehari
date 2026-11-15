@@ -134,8 +134,9 @@ final class QuickUnlock
         } else {
             throw new RuntimeException('Unknown unlock type.');
         }
+        // 16 Nov 2026: a new PIN / pattern also ends the run of locks (the next lock starts at 15 min again)
         Database::query(
-            "UPDATE admins SET {$col} = :h, unlock_failed = 0, unlock_locked_until = NULL WHERE id = :i",
+            "UPDATE admins SET {$col} = :h, unlock_failed = 0, unlock_locked_until = NULL" . (self::strikesReady() ? ', unlock_strikes = 0' : '') . ' WHERE id = :i',
             ['h' => Security::hashPassword($value), 'i' => $adminId]
         );
         if ($kind === 'pin' && self::pinLenReady()) {
@@ -373,6 +374,7 @@ final class QuickUnlock
         $hit = [];
         $tried = [];
         $locked = false;
+        $hashOf = [];
         foreach ($rows as $r) {
             if (!empty($r['unlock_locked_until']) && strtotime((string) $r['unlock_locked_until']) > time()) {
                 $locked = true;
@@ -381,11 +383,25 @@ final class QuickUnlock
             $tried[] = (int) $r['id'];
             if (Security::verifyPassword($value, (string) $r['h'])) {
                 $hit[] = (int) $r['id'];
+                $hashOf[(int) $r['id']] = (string) $r['h'];
             }
         }
 
         if (count($hit) === 1) {
-            Database::query('UPDATE admins SET unlock_failed = 0, unlock_locked_until = NULL' . (self::strikesReady() ? ', unlock_strikes = 0' : '') . ' WHERE id = :i', ['i' => $hit[0]]);
+            /* 16 Nov 2026: with the right value in hand, (a) a PIN set before 15 Nov learns its length
+               (pin_len NULL drew 6 boxes + OK; now the lock screen opens by itself at 4 / 6 digits) and
+               (b) an older cost-10 / 11 hash moves to Security::HASH_COST. Only the length is stored. */
+            $sets = 'unlock_failed = 0, unlock_locked_until = NULL' . (self::strikesReady() ? ', unlock_strikes = 0' : '');
+            $args = ['i' => $hit[0]];
+            if ($kind === 'pin' && self::pinLenReady()) {
+                $sets .= ', pin_len = :l';
+                $args['l'] = strlen($value);
+            }
+            Database::query('UPDATE admins SET ' . $sets . ' WHERE id = :i', $args);
+            if (Security::needsRehash($hashOf[$hit[0]])) {
+                Database::query("UPDATE admins SET {$col} = :n WHERE id = :i AND {$col} = :o",
+                    ['n' => Security::hashPassword($value), 'i' => $hit[0], 'o' => $hashOf[$hit[0]]]);
+            }
             $admin = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $hit[0]]);
             return $admin !== null ? ['ok' => true, 'admin' => $admin] : $no;
         }

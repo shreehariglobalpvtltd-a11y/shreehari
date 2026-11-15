@@ -85,13 +85,38 @@ final class WaFaq
         return Settings::getBool('wa_faq_on', false);
     }
 
+    /** True while suggest() runs: nothing is remembered, logged or stamped. */
+    private static bool $dry = false;
+
+    /**
+     * 16 Nov 2026 (P6-9b, admin/wa-inbox.php "Suggest reply"): the answer this
+     * desk would give to $text, for the office to read, edit and send itself.
+     * SIDE-EFFECT FREE — no conversation memory, no ai_agent_calls row, no
+     * greeting stamp — and it never sends anything. Works with wa_faq_on off
+     * (it is a draft for a person, not an automatic answer). null = no idea.
+     */
+    public static function suggest(string $fromRaw, string $text): ?string
+    {
+        $was = self::$dry;
+        self::$dry = true;
+        try {
+            $r = self::answer($fromRaw, $text) ?? self::factAnswer($fromRaw, $text);
+            $t = trim((string) ($r['text'] ?? ''));
+            return $t !== '' ? $t : null;
+        } catch (Throwable $e) {
+            return null;
+        } finally {
+            self::$dry = $was;
+        }
+    }
+
     /**
      * @return array{text: string, media: ?string, intent: string}|null null = not sure, let the assistant answer
      */
     public static function answer(string $fromRaw, string $text): ?array
     {
         $text = trim($text);
-        if ($text === '' || mb_strlen($text) > 300 || !self::enabled()) {
+        if ($text === '' || mb_strlen($text) > 300 || (!self::enabled() && !self::$dry)) {
             return null;
         }
         $t0 = microtime(true);
@@ -574,7 +599,8 @@ final class WaFaq
                         return self::t($lang,
                             $at . ' बाट ' . $r['to'] . ' जाने बस हरेक दिन ' . self::clock($s['time']) . ' मा छुट्छ। ' . $early,
                             $at . ' से ' . $r['to'] . ' जाने वाली बस रोज़ ' . self::clock($s['time']) . ' पर निकलती है। ' . $early,
-                            'The bus from ' . $at . ' to ' . $r['to'] . ' leaves daily at ' . self::clock($s['time']) . '. ' . $early);
+                            'The bus from ' . $at . ' to ' . $r['to'] . ' leaves daily at ' . self::clock($s['time']) . '. ' . $early)
+                            . "\n" . self::bookLine($lang);
                     }
                 }
             }
@@ -587,7 +613,17 @@ final class WaFaq
             $lines[] = $r['from'] . ' → ' . $r['to'] . ': ' . implode(' · ', $stops);
         }
         $lines[] = self::t($lang, 'कुन ठाउँबाट चढ्नुहुन्छ?', 'आप कहाँ से चढ़ेंगे?', 'Where will you board?');
+        $lines[] = self::bookLine($lang);
         return implode("\n", $lines);
+    }
+
+    /**
+     * 16 Nov 2026 (P6-2a): one line under a timetable answer — where to book.
+     * The same reply (free 24 h window), never a message of its own.
+     */
+    private static function bookLine(string $lang): string
+    {
+        return '🎫 ' . self::t($lang, 'अनलाइन बुक: ', 'ऑनलाइन बुक करें: ', 'Book online: ', 'ઓનલાઇન બુક: ') . appUrl('');
     }
 
     private static function offers(string $lang): string
@@ -636,15 +672,30 @@ final class WaFaq
         } catch (Throwable $e) {
             return null;
         }
-        if ($hits === []) {
-            return null;
-        }
-        $top    = (int) ($hits[0]['_score'] ?? 0);
-        $second = (int) ($hits[1]['_score'] ?? 0);
-        if ($top < 6 || $top - $second < 2) {
+        if (!self::kbSure($hits)) {
             return null;                        // not sure which article: the assistant decides
         }
         return AiKb::answer($hits[0], $lang === 'en' ? 'en' : $lang);
+    }
+
+    /**
+     * 16 Nov 2026 (P7-3c) — re-calibrated for AiKb's rarity-weighted score:
+     * the top article answers WITHOUT the assistant only when it scores 6+,
+     * clearly beats the next one (1.3x), and matched two different words of
+     * the question (or its exact title). Common words alone ("bus ticket kati
+     * ho") hit many articles alike, so they never pass.
+     *
+     * @param list<array<string,mixed>> $hits AiKb::search() output, best first
+     */
+    public static function kbSure(array $hits): bool
+    {
+        if ($hits === []) {
+            return false;
+        }
+        $top    = (float) ($hits[0]['_score'] ?? 0);
+        $second = (float) ($hits[1]['_score'] ?? 0);
+        $words  = (int) ($hits[0]['_words'] ?? 0);
+        return $top >= 6.0 && $top >= 1.3 * $second && ($words >= 2 || $top >= 20.0);
     }
 
     /* =================================================================
@@ -806,6 +857,9 @@ final class WaFaq
         }
         try {
             $at = (int) Database::scalar("SELECT kvalue FROM kv_store WHERE kscope = 'wa_greet' AND kkey = :k", ['k' => $who], 0);
+            if (self::$dry) {
+                return $at > time() - 7200;     // a suggestion stamps nothing
+            }
             Database::run("INSERT INTO kv_store (kscope, kkey, kvalue, updated_by) VALUES ('wa_greet', :k, :v, 'wafaq')
                            ON DUPLICATE KEY UPDATE kvalue = :v2", ['k' => $who, 'v' => (string) time(), 'v2' => (string) time()]);
             return $at > time() - 7200;
@@ -817,6 +871,9 @@ final class WaFaq
     /** A local answer joins the assistant's memory, so "ani bholi ko?" still has its context. */
     private static function remember(string $who, string $user, string $reply): void
     {
+        if (self::$dry) {
+            return;
+        }
         try {
             require_once INCLUDE_PATH . '/aiagent.php';
             AiAgent::remember($who, $user, $reply);
@@ -827,6 +884,9 @@ final class WaFaq
     /** Admin → AI Activity counts these as "local:<intent>" — the share that never needed AI. */
     private static function log(string $fromRaw, string $who, string $intent, float $t0): void
     {
+        if (self::$dry) {
+            return;
+        }
         try {
             require_once INCLUDE_PATH . '/aitools.php';
             $role = (string) (AiTools::whoIs($fromRaw)['role'] ?? 'customer');

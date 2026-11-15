@@ -8,6 +8,9 @@
  *
  *   change_date   another travel date (tomorrow .. ticket_request_max_days)
  *   cancel_seats  one or more seats of THIS ticket, or the whole ticket
+ *   change_seat   other seat(s) on the same bus, by the label printed on
+ *                 tickets (A5, A6) - 16 Nov 2026 (P8-3e), once
+ *                 upgrade-2026-11-16-ticket-seat-change.sql has run
  *
  * A request is a row in ticket_requests and a ring of the office bell -
  * nothing more. Owner's standing rule: refunds, cancellations and date
@@ -55,11 +58,15 @@ final class TicketRequests
     public const RL_IP      = [10, 3600];
     public const RL_BOOKING = [6, 3600];
 
-    /** kind => [Nepali, English] */
+    /** kind => [Nepali, English]. change_seat (16 Nov 2026, P8-3e) needs upgrade-2026-11-16-ticket-seat-change.sql - see seatChangeReady(). */
     public const KINDS = [
         'change_date'  => ['मिति परिवर्तन', 'Date change'],
         'cancel_seats' => ['सिट रद्द', 'Seat cancel'],
+        'change_seat'  => ['सिट परिवर्तन', 'Seat change'],
     ];
+
+    /** Most seat labels one change_seat request may name. */
+    public const MAX_WANTED_SEATS = 6;
 
     /** status => [Nepali, English] as the PASSENGER reads it */
     public const STATUS_CUSTOMER = [
@@ -69,8 +76,54 @@ final class TicketRequests
     ];
 
     private static ?bool $ready = null;
+    private static ?bool $seatReady = null;
 
     private function __construct() {}
+
+    /**
+     * 16 Nov 2026 (P8-3e): the table takes a 'change_seat' request - its kind
+     * ENUM names it and the wanted_seats column is there
+     * (upgrade-2026-11-16-ticket-seat-change.sql). Until then the ticket page
+     * offers no seat-change form and the API refuses that kind as "off".
+     */
+    public static function seatChangeReady(): bool
+    {
+        if (self::$seatReady === null) {
+            try {
+                $kind = self::ready() ? Database::fetch("SHOW COLUMNS FROM ticket_requests LIKE 'kind'") : null;
+                self::$seatReady = $kind !== null
+                    && str_contains((string) ($kind['Type'] ?? ''), "'change_seat'")
+                    && Database::fetch("SHOW COLUMNS FROM ticket_requests LIKE 'wanted_seats'") !== null;
+            } catch (Throwable $e) {
+                self::$seatReady = false;
+            }
+        }
+        return self::$seatReady;
+    }
+
+    /**
+     * "a5, a6" / "A5 A6" -> ['A5', 'A6']: seat labels as printed on tickets
+     * (letters + digits, up to 6 characters each), each once. null when a
+     * token is not a seat label.
+     *
+     * @return list<string>|null
+     */
+    public static function parseWantedSeats(string $raw): ?array
+    {
+        $out = [];
+        foreach (preg_split('/[\s,;\/]+/', strtoupper(trim($raw))) ?: [] as $t) {
+            if ($t === '') {
+                continue;
+            }
+            if (preg_match('/^[A-Z0-9]{1,6}$/', $t) !== 1) {
+                return null;
+            }
+            if (!in_array($t, $out, true)) {
+                $out[] = $t;
+            }
+        }
+        return $out;
+    }
 
     /** The table exists. */
     public static function ready(): bool
@@ -88,7 +141,8 @@ final class TicketRequests
     /** Tests: forget the memo after creating / dropping the table. */
     public static function resetReady(): void
     {
-        self::$ready = null;
+        self::$ready     = null;
+        self::$seatReady = null;
     }
 
     /** The two buttons are offered (switch ticket_requests_on, ON by default) and the table is there. */
@@ -197,7 +251,7 @@ final class TicketRequests
         }
         try {
             return Database::fetchAll(
-                'SELECT id, kind, wanted_date, seats, note, status, created_at, handled_at
+                'SELECT id, kind, wanted_date, seats, ' . (self::seatChangeReady() ? 'wanted_seats' : 'NULL AS wanted_seats') . ', note, status, created_at, handled_at
                    FROM ticket_requests WHERE booking_id = :b ORDER BY id DESC LIMIT ' . max(1, min(50, $limit)),
                 ['b' => $bookingId]
             );
@@ -237,11 +291,12 @@ final class TicketRequests
      * Write one request for this booking. Never touches the booking itself.
      *
      * $in: kind, wanted_date (change_date), seats (list or "L1,L2") and/or
-     * whole=1 (cancel_seats), note, contact_phone (optional).
+     * whole=1 (cancel_seats), wanted_seats ("A5, A6" - change_seat), note,
+     * contact_phone (optional).
      *
      * @param array<string, mixed> $booking bookings row
      * @param array<string, mixed> $in
-     * @return array{id: int, kind: string, wanted_date: ?string, seats: ?string, alert: int}
+     * @return array{id: int, kind: string, wanted_date: ?string, seats: ?string, wanted_seats: ?string, alert: int}
      * @throws TicketRequestRefused
      */
     public static function create(array $booking, array $in, string $ip, ?int $now = null): array
@@ -259,7 +314,10 @@ final class TicketRequests
 
         $kind = (string) ($in['kind'] ?? '');
         if (!isset(self::KINDS[$kind])) {
-            throw new TicketRequestRefused('Choose date change or seat cancel. · मिति परिवर्तन वा सिट रद्द छान्नुहोस्।', 'kind', 422, ['kind' => 'Choose one.']);
+            throw new TicketRequestRefused('Choose date change, seat change or seat cancel. · मिति परिवर्तन, सिट परिवर्तन वा सिट रद्द छान्नुहोस्।', 'kind', 422, ['kind' => 'Choose one.']);
+        }
+        if ($kind === 'change_seat' && !self::seatChangeReady()) {
+            throw new TicketRequestRefused('Seat change requests are not available here yet - please call or WhatsApp the office. · सिट परिवर्तन अनुरोध अहिले मिल्दैन - कार्यालयमा सम्पर्क गर्नुहोस्।', 'off', 503);
         }
         $note = Security::clean((string) ($in['note'] ?? ''), 255);
 
@@ -279,9 +337,26 @@ final class TicketRequests
             throw new TicketRequestRefused('Please write a phone number so the office can call you. · कार्यालयले फोन गर्न नम्बर लेख्नुहोस्।', 'phone', 422, ['contact_phone' => 'A number is needed.']);
         }
 
-        $wanted = null;
-        $seats  = null;
-        if ($kind === 'change_date') {
+        $wanted     = null;
+        $seats      = null;
+        $wantSeats  = null;
+        if ($kind === 'change_seat') {
+            /* 16 Nov 2026 (P8-3e): the seat label(s) wanted, as printed on
+               tickets. Only the shape is checked here - whether the seat is
+               free is the office's call on the seat map, when it acts. */
+            $want = self::parseWantedSeats((string) ($in['wanted_seats'] ?? ''));
+            if ($want === null) {
+                throw new TicketRequestRefused('Write the seat as it is printed on tickets, e.g. A5 or A5, A6. · सिट टिकटमा जस्तै लेख्नुहोस्, जस्तै A5 वा A5, A6।', 'seat', 422, ['wanted_seats' => 'Seat labels only.']);
+            }
+            if ($want === []) {
+                throw new TicketRequestRefused('Write the seat you would like, e.g. A5. · चाहिएको सिट लेख्नुहोस्, जस्तै A5।', 'seat', 422, ['wanted_seats' => 'Write a seat.']);
+            }
+            $max = min(self::MAX_WANTED_SEATS, max(1, count(self::seatsOf($bid))));
+            if (count($want) > $max) {
+                throw new TicketRequestRefused('This ticket has ' . $max . ' seat(s) - ask for at most ' . $max . '. For more seats please book a new ticket. · यो टिकटमा ' . $max . ' सिट छ - बढीमा ' . $max . ' सिट माग्नुहोस्।', 'seat', 422, ['wanted_seats' => 'Too many seats.']);
+            }
+            $wantSeats = implode(',', $want);
+        } elseif ($kind === 'change_date') {
             $d = trim((string) ($in['wanted_date'] ?? ''));
             if (!Security::isValidDate($d)) {
                 throw new TicketRequestRefused('Choose the new date. · नयाँ मिति छान्नुहोस्।', 'date', 422, ['wanted_date' => 'Choose a date.']);
@@ -327,32 +402,36 @@ final class TicketRequests
         /* The cap again, under a lock on this booking's request rows, so two
            taps at once cannot make a fourth open request. Only ticket_requests
            is locked or written - the booking row is not. */
-        $id = (int) Database::transaction(static function () use ($bid, $pnr, $kind, $wanted, $seats, $note, $phone, $ip): int {
+        $row = [
+            'booking_id'    => $bid,
+            'pnr'           => $pnr,
+            'kind'          => $kind,
+            'wanted_date'   => $wanted,
+            'seats'         => $seats,
+            'note'          => $note !== '' ? $note : null,
+            'contact_phone' => mb_substr($phone, 0, 20),
+            'status'        => 'open',
+            'ip'            => mb_substr($ip, 0, 45),
+        ];
+        if ($wantSeats !== null) {
+            $row['wanted_seats'] = $wantSeats;   // change_seat only (column checked by seatChangeReady())
+        }
+        $id = (int) Database::transaction(static function () use ($bid, $row): int {
             $rows = Database::fetchForUpdate('SELECT id, status FROM ticket_requests WHERE booking_id = :b', ['b' => $bid]);
             $open = count(array_filter($rows, static fn(array $r): bool => (string) $r['status'] === 'open'));
             if ($open >= self::MAX_OPEN) {
                 throw new TicketRequestRefused('You already have ' . self::MAX_OPEN . ' requests waiting - the office will contact you. · तपाईंका ' . self::MAX_OPEN . ' अनुरोध पर्खँदै छन्।', 'cap', 409);
             }
-            return Database::insert(self::TABLE, [
-                'booking_id'    => $bid,
-                'pnr'           => $pnr,
-                'kind'          => $kind,
-                'wanted_date'   => $wanted,
-                'seats'         => $seats,
-                'note'          => $note !== '' ? $note : null,
-                'contact_phone' => mb_substr($phone, 0, 20),
-                'status'        => 'open',
-                'ip'            => mb_substr($ip, 0, 45),
-            ]);
+            return Database::insert(self::TABLE, $row);
         });
 
         Logger::audit('ticket_request.create', 'booking', $pnr, null, [
-            'request' => $id, 'kind' => $kind, 'wanted_date' => $wanted, 'seats' => $seats, 'phone' => maskPhone($phone),
+            'request' => $id, 'kind' => $kind, 'wanted_date' => $wanted, 'seats' => $seats, 'wanted_seats' => $wantSeats, 'phone' => maskPhone($phone),
         ], 'Passenger asked from the ticket page (request #' . $id . ', ' . $ip . ')');
 
-        $alert = self::ringBell($id, $bid, $pnr, $kind, $wanted, $seats, $note, (string) ($booking['booking_mode'] ?? ''));
+        $alert = self::ringBell($id, $bid, $pnr, $kind, $wanted, $kind === 'change_seat' ? $wantSeats : $seats, $note, (string) ($booking['booking_mode'] ?? ''));
 
-        return ['id' => $id, 'kind' => $kind, 'wanted_date' => $wanted, 'seats' => $seats, 'alert' => $alert];
+        return ['id' => $id, 'kind' => $kind, 'wanted_date' => $wanted, 'seats' => $seats, 'wanted_seats' => $wantSeats, 'alert' => $alert];
     }
 
     /** One bell row for the office (in-app only). Returns the notifications id (0 when it could not be stored). */
@@ -360,12 +439,16 @@ final class TicketRequests
     {
         try {
             require_once INCLUDE_PATH . '/adminalerts.php';
-            $what = $kind === 'change_date'
-                ? 'New date asked: ' . formatDate((string) $wanted, 'D, j M Y')
-                : 'Cancel asked: ' . (count(explode(',', (string) $seats)) === count(self::seatsOf($bid)) ? 'whole ticket · ' : '') . self::seatLabels((string) $seats, $mode);
-            $title = ($kind === 'change_date' ? '📅 Date change request · ' : '🪑 Seat cancel request · ') . $pnr;
+            /* change_seat: $seats carries the WANTED labels (already as printed) */
+            $what = match ($kind) {
+                'change_date' => 'New date asked: ' . formatDate((string) $wanted, 'D, j M Y'),
+                'change_seat' => 'Seat wanted: ' . str_replace(',', ', ', (string) $seats) . ' (now: ' . self::seatLabels(implode(',', self::seatsOf($bid)), $mode) . ')',
+                default       => 'Cancel asked: ' . (count(explode(',', (string) $seats)) === count(self::seatsOf($bid)) ? 'whole ticket · ' : '') . self::seatLabels((string) $seats, $mode),
+            };
+            $icon  = match ($kind) { 'change_date' => '📅', 'change_seat' => '🔁', default => '🪑' };
+            $title = $icon . ' ' . match ($kind) { 'change_date' => 'Date change request', 'change_seat' => 'Seat change request', default => 'Seat cancel request' } . ' · ' . $pnr;
             $nid = AdminAlerts::push('ticket_request', $title, $what . ($note !== '' ? ' — “' . mb_substr($note, 0, 140) . '”' : '') . ' · #' . $id,
-                '/admin/ticket-requests.php', $kind === 'change_date' ? '📅' : '🪑');
+                '/admin/ticket-requests.php', $icon);
             if ($nid > 0) {
                 try {
                     Database::run('UPDATE notifications SET booking_id = :b WHERE id = :n', ['b' => $bid, 'n' => $nid]);

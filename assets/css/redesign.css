@@ -173,6 +173,14 @@ body { color: var(--ink); font-family: var(--font-sans); }
 .mobile-menu a { color: var(--ink) !important; min-height: var(--tap-min); display: flex !important; align-items: center; gap: 10px; border-radius: var(--radius-sm); }
 .mobile-menu a:hover { background: var(--surface-hover) !important; }
 .mobile-menu .mm-hot { background: var(--royal-tint) !important; color: var(--royal-strong) !important; }
+/* 16 Nov 2026 (C7): the menu's "Install app" row stays [hidden] until 17-pwa.js unhides it (the
+   display:flex above would show it); its download icon is drawn here because i18n rewrites the text. */
+.mobile-menu a[hidden] { display: none !important; }
+#pwaInstallMenu::before {
+  content: ""; flex: none; width: 1em; height: 1em; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3Cpath d='M7 10l5 5 5-5M12 15V3'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3Cpath d='M7 10l5 5 5-5M12 15V3'/%3E%3C/svg%3E") center / contain no-repeat;
+}
 .num-strip { background: var(--navy) !important; background-image: none !important; border-bottom: 1px solid rgba(255, 255, 255, .12) !important; }
 .num-strip .num-pill { background: rgba(255, 255, 255, .08) !important; border: 1px solid rgba(255, 255, 255, .16) !important; color: var(--on-navy) !important; box-shadow: none !important; }
 .num-strip .num-pill * { color: inherit !important; opacity: 1 !important; }

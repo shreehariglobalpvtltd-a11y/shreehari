@@ -61,9 +61,23 @@ final class AiKb
     }
 
     /**
+     * How many published rows one search reads (16 Nov 2026, P7-3e). The
+     * office's own articles (seed / admin) are read FIRST, so the nightly
+     * AI-written ones can never push them out of the window.
+     */
+    public const SEARCH_WINDOW = 2000;
+
+    /**
      * The best few verified, published, in-date articles for this query and
      * role. Scoring mirrors the parked gen-2 reader: an exact word match is
      * worth more than a one-edit typo, and an exact title match wins.
+     *
+     * 16 Nov 2026 (P7-3c): an exact word is weighted by how RARE it is among
+     * the articles this reader may see — round(2 * ln(1 + N / df), 1) — so
+     * "ticket" / "kati" / "bus", which half the AI-written articles carry,
+     * count far less than "luggage" or "border". Each hit also carries
+     * `_words` (how many different query words it matched exactly), which
+     * WaFaq::kbSure() reads before it answers without the assistant.
      *
      * @return list<array<string,mixed>>
      */
@@ -89,13 +103,16 @@ final class AiKb
                   WHERE publication_status = 'published' AND verification_status = 'verified'
                     AND (effective_from IS NULL OR effective_from <= NOW())
                     AND (review_after   IS NULL OR review_after   > NOW())
-                  ORDER BY id DESC LIMIT 500"
+                  ORDER BY (source_type = 'ai_learned'), id DESC LIMIT " . self::SEARCH_WINDOW
             );
         } catch (Throwable $e) {
             return [];          // table not migrated yet: no knowledge, no error
         }
 
-        $ranked = [];
+        /* Pass 1: which query words each readable article holds (exact), its
+           typo matches and its title match; document frequency per word. */
+        $docs = [];
+        $df   = [];
         foreach ($rows as $a) {
             $roles = json_decode((string) ($a['applicable_roles'] ?? '[]'), true);
             if (!is_array($roles) || array_intersect($allow, $roles) === []) {
@@ -108,24 +125,47 @@ final class AiKb
             )));
             $terms   = preg_split('/[^\p{L}\p{M}\p{N}]+/u', $hay, -1, PREG_SPLIT_NO_EMPTY) ?: [];
             $termSet = array_flip($terms);
-            $score   = 0;
+            $exact   = [];
+            $typo    = 0;
             foreach ($words as $w) {
                 if (isset($termSet[$w])) {
-                    $score += 2;
+                    $exact[] = $w;
+                    $df[$w]  = ($df[$w] ?? 0) + 1;
                 } elseif (preg_match('/^[a-z]{5,}$/', $w)) {
                     foreach ($terms as $t) {
                         if (strlen($t) > 4 && strlen($t) < 30 && levenshtein($w, $t) === 1) {
-                            $score++;
+                            $typo++;
                             break;
                         }
                     }
                 }
             }
-            if ($q === self::normalize((string) $a['canonical_title'])) {
+            $title = $q === self::normalize((string) $a['canonical_title']);
+            if ($exact !== [] || $typo > 0 || $title) {
+                $docs[] = [$a, $exact, $typo, $title];
+            } else {
+                $docs[] = null;                 // counted in N, never ranked
+            }
+        }
+
+        /* Pass 2: score. N = the articles this reader may see. */
+        $n      = count($docs);
+        $ranked = [];
+        foreach ($docs as $d) {
+            if ($d === null) {
+                continue;
+            }
+            [$a, $exact, $typo, $title] = $d;
+            $score = (float) $typo;
+            foreach ($exact as $w) {
+                $score += self::idf($n, (int) $df[$w]);
+            }
+            if ($title) {
                 $score += 20;
             }
             if ($score > 0) {
-                $a['_score'] = $score;
+                $a['_score'] = round($score, 1);
+                $a['_words'] = count($exact);
                 $ranked[]    = $a;
             }
         }
@@ -134,6 +174,18 @@ final class AiKb
             => ($y['_score'] <=> $x['_score']) ?: ((int) $y['id'] <=> (int) $x['id']));
 
         return array_slice($ranked, 0, max(1, $limit));
+    }
+
+    /**
+     * The weight of one exact word: 2 * ln(1 + N / df), one decimal. A word in
+     * one article of 400 weighs ~12; a word in every article ~1.4.
+     */
+    public static function idf(int $n, int $df): float
+    {
+        if ($n <= 0 || $df <= 0) {
+            return 0.0;
+        }
+        return round(2 * log(1 + $n / $df), 1);
     }
 
     /** One article's body in the reader's language, falling back to the canonical answer. */
@@ -286,8 +338,12 @@ final class AiKb
         return preg_replace('/\s+/u', ' ', mb_strtolower(trim($text))) ?? mb_strtolower(trim($text));
     }
 
-    /** Strip the PII a free-text question might carry before it is stored. */
-    private static function redact(string $text): string
+    /**
+     * Strip the PII a free-text question might carry before it is stored.
+     * Public since 16 Nov 2026: the office's 👍/👎 on a bot reply stores the
+     * customer's words the same way (WaInbox::verdict).
+     */
+    public static function redact(string $text): string
     {
         $text = preg_replace('/[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/iu', '[email]', $text) ?? $text;
         $text = preg_replace('/\bshg[- ][a-z0-9-]+/iu', '[booking]', $text) ?? $text;

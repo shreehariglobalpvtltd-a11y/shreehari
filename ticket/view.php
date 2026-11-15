@@ -128,7 +128,7 @@ if ($od !== '') {
 
 /* 15 Nov 2026 (P6, owner's rule: date changes and cancellations are settled
    BY HAND): a confirmed ticket whose bus has not left may ASK the office for
-   another date or to cancel seats. The two forms post to
+   another date, another seat (16 Nov 2026, P8-3e) or to cancel seats. The forms post to
    api/ticket-request.php with the ticket's signed key (never the PNR alone);
    that writes a request row and rings the office bell - the ticket itself is
    not touched. Earlier requests and their status are listed here. */
@@ -156,6 +156,8 @@ if ($facts !== null && TicketRequests::ready()) {
             'now'    => $rqNext !== null ? formatDate($rqNext['travel_date'], 'D, j M Y') : '',
             'key'    => Ticket::downloadToken($pnr),
             'csrf'   => Security::csrfToken(),
+            // 16 Nov 2026 (P8-3e): "change my seat" once its migration has run
+            'seatCh' => TicketRequests::seatChangeReady(),
         ];
     }
 }
@@ -206,7 +208,7 @@ details.rq>summary::-webkit-details-marker{display:none}
 details.rq[open]>summary{border-color:var(--brand)}
 .rq form{border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0 0}
 .rq label.f{display:block;font-size:13px;color:var(--mut);margin:0 0 10px}
-.rq input[type=date],.rq input[type=tel],.rq textarea{display:block;width:100%;min-height:46px;margin:4px 0 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;color-scheme:light dark}
+.rq input[type=date],.rq input[type=tel],.rq input[type=text],.rq textarea{display:block;width:100%;min-height:46px;margin:4px 0 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;color-scheme:light dark}
 .rq textarea{min-height:64px;resize:vertical}
 .rq fieldset{border:0;margin:0 0 10px;padding:0;min-width:0}
 .rq legend{font-size:13px;color:var(--mut);padding:0;margin:0 0 4px}
@@ -284,6 +286,22 @@ details.rq[open]>summary{border-color:var(--brand)}
       </form>
     </details>
 
+    <?php if ($rq['seatCh'] && $rq['seats'] !== []): /* 16 Nov 2026 (P8-3e): ask for another seat on the same bus */ ?>
+    <details class="rq">
+      <summary class="btn">🔁 सिट परिवर्तन माग्नुहोस् · Request seat change</summary>
+      <form data-kind="change_seat" novalidate>
+        <label class="f">चाहिएको सिट · Seat you would like (अहिले · now: <?= $e(implode(', ', array_map(static fn(array $s): string => $s['label'] !== '' ? $s['label'] : $s['seat'], $rq['seats']))) ?>)
+          <input type="text" name="wanted_seats" required maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="जस्तै: A5 वा A5, A6 · e.g. A5 or A5, A6"></label>
+        <label class="f">फोन (ऐच्छिक) · Phone to call (optional)
+          <input type="tel" name="contact_phone" inputmode="tel" autocomplete="tel" maxlength="16" placeholder="खाली = टिकटको नम्बर · blank = ticket's number"></label>
+        <label class="f">टिप्पणी (ऐच्छिक) · Note (optional)
+          <textarea name="note" maxlength="255" rows="2" placeholder="जस्तै: झ्यालतिर, सँगै · e.g. window side, together"></textarea></label>
+        <button class="btn pri" type="submit">अनुरोध पठाउनुहोस् · Send request</button>
+        <p class="rq-msg" role="status" aria-live="polite"></p>
+      </form>
+    </details>
+    <?php endif; ?>
+
     <?php if ($rq['seats'] !== []): ?>
     <details class="rq">
       <summary class="btn">🪑 सिट रद्द माग्नुहोस् · Request seat cancel</summary>
@@ -318,9 +336,11 @@ details.rq[open]>summary{border-color:var(--brand)}
         $rk  = TicketRequests::KINDS[(string) $r['kind']] ?? ['', (string) $r['kind']];
         $rs  = TicketRequests::STATUS_CUSTOMER[(string) $r['status']] ?? ['', (string) $r['status']];
         $rb  = match ((string) $r['status']) { 'done' => 'ok', 'rejected' => 'bad', default => 'wait' };
-        $rd  = (string) $r['kind'] === 'change_date'
-            ? '→ ' . formatDate((string) ($r['wanted_date'] ?? ''), 'D, j M Y')
-            : '— ' . (count(explode(',', (string) ($r['seats'] ?? ''))) === count($rq['seats']) && count($rq['seats']) > 1 ? 'पूरा टिकट · whole ticket' : TicketRequests::seatLabels((string) ($r['seats'] ?? ''), $rq['mode'])); ?>
+        $rd  = match ((string) $r['kind']) {
+            'change_date' => '→ ' . formatDate((string) ($r['wanted_date'] ?? ''), 'D, j M Y'),
+            'change_seat' => '→ ' . str_replace(',', ', ', (string) ($r['wanted_seats'] ?? '')),   // labels as printed
+            default       => '— ' . (count(explode(',', (string) ($r['seats'] ?? ''))) === count($rq['seats']) && count($rq['seats']) > 1 ? 'पूरा टिकट · whole ticket' : TicketRequests::seatLabels((string) ($r['seats'] ?? ''), $rq['mode'])),
+        }; ?>
       <li>
         <b><?= $e($rk[0] . ' · ' . $rk[1]) ?> <?= $e($rd) ?></b>
         <span class="badge <?= $e($rb) ?>"><?= $e(($rb === 'ok' ? '✅ ' : ($rb === 'bad' ? '✖ ' : '⏳ ')) . $rs[0] . ' · ' . $rs[1]) ?></span>
@@ -357,6 +377,7 @@ details.rq[open]>summary{border-color:var(--brand)}
         var fd = new FormData(f);
         if (kind === 'change_date' && !fd.get('wanted_date')) { say('bad', 'नयाँ मिति छान्नुहोस् · Choose the new date.'); return; }
         if (kind === 'cancel_seats' && !fd.get('whole') && fd.getAll('seats[]').length === 0) { say('bad', 'कम्तीमा एउटा सिट छान्नुहोस् · Tick at least one seat.'); return; }
+        if (kind === 'change_seat' && !String(fd.get('wanted_seats') || '').trim()) { say('bad', 'चाहिएको सिट लेख्नुहोस् · Write the seat you would like.'); return; }
         fd.append('kind', kind); fd.append('pnr', pnr); fd.append('k', key);
         btn.disabled = true; say('', 'पठाउँदै… · Sending…');
         fetch(api, { method: 'POST', body: fd, credentials: 'same-origin', cache: 'no-store',

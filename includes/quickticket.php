@@ -331,6 +331,14 @@ final class QuickTicket
             foreach ($stops as $s) {
                 $t  = ($s['time'] !== null && $s['time'] !== '') ? (string) $s['time'] : $depTime;
                 $ts = $t !== '' ? strtotime($date . ' ' . $t) : false;
+                // 16 Nov 2026: the same clock BookingService::create() judges by (a past-midnight
+                // pickup is the next day; a retimed slot-1 bus moves every stop)
+                if ((int) ($route['id'] ?? 0) > 0 && method_exists('Boarding', 'stopAt')) {
+                    $at = Boarding::stopAt((int) $route['id'], $date, (string) $s['name']);
+                    if ($at !== null) {
+                        $ts = $at;
+                    }
+                }
                 $list[] = ['name' => (string) $s['name'], 'time' => $t, 'ts' => $ts === false ? null : $ts];
             }
             if ($list === [] && $depTime !== '') {

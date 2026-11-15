@@ -385,6 +385,7 @@
     $('sbCc').value = S.cc; $('sbPhone').value = S.phone; $('sbName').value = S.name;
     seg('sbType', S.type); seg('sbCabin', S.cabin); seg('sbBerth', S.berth); seg('sbSeatMode', S.seatMode);
     $('sbCabin').hidden = S.type !== 'private';
+    nearSync();   // P4-1f: the 📍 button only where it can answer
     renderPax(); renderDates();
   }
   function seg(id, v) {
@@ -524,7 +525,7 @@
   /* 14 Nov 2026: qPend = the card changed and the new quote has not come back yet.
      While it is true S.q is the OLD answer (old berth, old pickup): book() waits for
      the new one before it opens the seat map / a confirm sheet or sells. */
-  var qPend = false;
+  var qPend = false, quoteAt = 0;
   function requote(ms) {
     clearTimeout(qTimer);
     S.idem = null;   // anything changed → a new booking intent
@@ -746,7 +747,7 @@
       .then(function (q) {
         if (my !== qSeq) return;
         var flash = S.q && q.seats && S.q.seats && q.seats.join() !== S.q.seats.join();
-        S.q = q; qPend = false;
+        S.q = q; qPend = false; quoteAt = Date.now();
         if (!S.date && q.date) { /* next departure chosen by the engine */ }
         renderDates(); renderQuote(flash);
         syncButtons(); discNote(q); quoted();
@@ -961,21 +962,75 @@
   }
   $('sbName').addEventListener('blur', function () { S.touched.name = true; showErrs(false); });
 
+  /* 16 Nov 2026 (P4-1f): the same rules as the classic pickup list (06-results.js
+     nearMeWire, D7-10): the 📍 button only while Settings -> Near-me pickup is on
+     and a point of this direction has a map position; nothing beyond
+     nearme_max_km; and while any point has NO map position (it cannot be
+     measured - coordinates are never guessed) the nearest measured point is only
+     SUGGESTED with a "Use this stop" tap - selecting it silently changed the
+     pickup time for someone standing at an unmeasured stop. The position itself
+     goes nowhere. */
+  /* The site's own words (04-i18n.js); the staff desk page does not load that
+     file, so it gets the English line given here. */
+  var GW_EN = {
+    nearMeNone: 'No pickup within {km} km of you — please choose from the list.',
+    nearMeSuggest: 'Nearest pickup with a map location: {s} — about {km} km away (straight line).',
+    nearMeUse: 'Use this stop', nearMeSet: '✓ {s} selected — change it if you board elsewhere.',
+    nearMeUnchecked: 'Not checked (no map location yet): {list}',
+    tSeatGone: 'Sorry — seat(s) {s} were just taken. Please pick again.'
+  };
+  function gw(k, v) {
+    var s = '';
+    try { if (typeof t === 'function' && typeof I18N !== 'undefined') s = t(k); } catch (x) { s = ''; }
+    if (!s || s === k) s = GW_EN[k] || k;
+    if (v) Object.keys(v).forEach(function (x) { s = s.split('{' + x + '}').join(v[x]); });
+    return s;
+  }
+  function nearCfg() {
+    var s = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
+    return { on: !(s.nearme_on === false || s.nearme_on === 0 || s.nearme_on === '0'), maxKm: Math.max(1, parseInt(s.nearme_max_km, 10) || 150) };
+  }
+  function hasXY(p) { return p && p.lat != null && p.lng != null; }
+  function nearSync() {
+    var b = $('sbNear'); if (!b) return;
+    b.hidden = !(nearCfg().on && navigator.geolocation && pointList().some(hasXY));
+  }
   function nearMe() {
+    var cfg = nearCfg();
+    if (!cfg.on) { nearSync(); return; }
     if (!navigator.geolocation) { say(tr('geoNo')); return; }
+    var why = $('sbPointWhy'), dir = S.dir;
     navigator.geolocation.getCurrentPosition(function (pos) {
-      var best = null;
+      if (S.dir !== dir) return;   // the direction changed while the phone looked
+      var best = null, unchecked = [];
       pointList().forEach(function (p) {
-        if (p.lat == null || p.lng == null) return;
+        if (!hasXY(p)) { unchecked.push(p.short || p.name); return; }
         var dLat = (p.lat - pos.coords.latitude) * Math.PI / 180, dLng = (p.lng - pos.coords.longitude) * Math.PI / 180;
         var a = Math.pow(Math.sin(dLat / 2), 2) + Math.cos(pos.coords.latitude * Math.PI / 180) * Math.cos(p.lat * Math.PI / 180) * Math.pow(Math.sin(dLng / 2), 2);
         var km = 12742 * Math.asin(Math.min(1, Math.sqrt(a)));
-        if (!best || km < best.km) best = { name: p.name, km: Math.round(km), short: p.short };
+        if (!best || km < best.km) best = { name: p.name, km: km, short: p.short };
       });
       if (!best) { say(tr('geoNo')); return; }
-      S.point = best.name; $('sbPoint').value = best.name; pointMoved = false;
-      $('sbPointWhy').textContent = '📍 ' + (best.short || best.name) + ' · ~' + best.km + ' km';
-      changed();
+      if (best.km > cfg.maxKm) { var none = gw('nearMeNone', { km: cfg.maxKm }); why.textContent = '📍 ' + none; say(none); return; }
+      var kmTxt = best.km < 10 ? best.km.toFixed(1) : String(Math.round(best.km));
+      var use = function () {
+        S.point = best.name; $('sbPoint').value = best.name; pointMoved = false; S.why.point = null; S.manual = [];
+        why.textContent = '📍 ' + (best.short || best.name) + ' · ~' + kmTxt + ' km';
+        changed();
+      };
+      if (!unchecked.length) { use(); return; }   // every point measured: select it, as before
+      why.textContent = '📍 ' + gw('nearMeSuggest', { s: best.short || best.name, km: kmTxt }) + ' ';
+      if (S.point === best.name) {
+        why.appendChild(document.createTextNode(gw('nearMeSet', { s: best.short || best.name })));
+      } else {
+        var bt = document.createElement('button');
+        bt.type = 'button'; bt.className = 'sb-near-use'; bt.textContent = gw('nearMeUse');
+        bt.addEventListener('click', use);
+        why.appendChild(bt);
+      }
+      var un = document.createElement('small');
+      un.className = 'sb-near-un'; un.textContent = gw('nearMeUnchecked', { list: unchecked.join(', ') });
+      why.appendChild(un);
     }, function () { say(tr('geoNo')); }, { timeout: 6000, maximumAge: 600000 });
   }
 
@@ -1137,13 +1192,61 @@
     api({ action: 'seats', scheduleId: S.q.scheduleId, type: S.type }).then(function (m) {
       var sh = $('sbSheet'); sh.hidden = false; document.body.classList.add('shg-modal-open');
       drawMap(m, need);
+      seatPoll(need, m);
       $('sbSheetOk').onclick = function () {
         if (pick.length !== need) { say(tr('pickAll')); return; }
         S.manual = pick.slice(); S.seatMode = 'manual'; seg('sbSeatMode', 'manual'); closeSheet(); changed();
       };
     }).catch(function (er) { say(er.message); });
   }
-  function closeSheet() { $('sbSheet').hidden = true; document.body.classList.remove('shg-modal-open'); }
+  function closeSheet() { seatPollStop(); $('sbSheet').hidden = true; document.body.classList.remove('shg-modal-open'); }
+  /* 16 Nov 2026 (P2-3b): while the seat sheet is open and the tab is in front, the
+     coach is read again every 30 s (read-only - the sale still re-checks every berth
+     on the server). A berth somebody else took in the meantime leaves this pick with
+     a toast, like the classic map's SeatPoll. A hidden tab asks nothing; coming back
+     asks at once (the visibilitychange below). */
+  var SEAT_MS = 30000, seatT = 0, seatNeed = 0, seatBusy = false, seatSig = '';
+  // What the map shows: redrawn only when this changes (a redraw drops a keyboard user's focus).
+  function seatSigOf(m) { return ((m && m.available) || []).join() + '|' + ((m && m.female) || []).join(); }
+  function seatPoll(need, m) { seatPollStop(); seatNeed = need; seatSig = seatSigOf(m); seatT = setInterval(seatTick, SEAT_MS); }
+  function seatPollStop() { clearInterval(seatT); seatT = 0; }
+  function seatTick() {
+    var sh = $('sbSheet');
+    if (!sh || sh.hidden || !S.q || !S.q.scheduleId) { seatPollStop(); return; }
+    if (document.hidden || seatBusy) return;
+    var sid = S.q.scheduleId, typ = S.type, need = seatNeed, sync = window.SHGSync;
+    seatBusy = true;
+    if (sync) sync.begin();
+    api({ action: 'seats', scheduleId: sid, type: typ }).then(function (m) {
+      if (sh.hidden || !S.q || S.q.scheduleId !== sid || S.type !== typ) return;
+      var free = {};
+      (m.available || []).forEach(function (s) { free[s] = 1; });
+      var gone = pick.filter(function (s) { return !free[s]; });
+      if (gone.length) {
+        pick = pick.filter(function (s) { return free[s]; });
+        say('⚠️ ' + gw('tSeatGone', { s: gone.map(function (s) { return (m.labels || {})[s] || s; }).join(', ') }));
+      }
+      var sig = seatSigOf(m);
+      if (!gone.length && sig === seatSig) return;   // nothing new on the coach
+      seatSig = sig;
+      drawMap(m, need);
+    }).catch(function () {}).then(function () { seatBusy = false; if (sync) sync.end(); });
+  }
+  /* Back on the tab: the open sheet asks at once; an idle card (nothing open on top,
+     no sale or quote on the way, last quote over 30 s old) is priced again, so the
+     auto-picked berths are not the ones somebody bought while the tab was away. */
+  function overlayOpen() {
+    return ['sbSheet', 'sbPayOv', 'sbCv', 'sbModal'].some(function (id) { var el = $(id); return !!(el && !el.hidden); });
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden || DESK || root.hidden) return;
+    var sh = $('sbSheet');
+    if (sh && !sh.hidden) { if (seatT) seatTick(); return; }
+    /* S.idem still set = a sale whose answer was lost (timeout / offline) keeps its key so
+       the retry gets the SAME booking back - requote() would drop that key (a double sale). */
+    if (!S.q || S.busy || S.idem || qPend || overlayOpen() || (Date.now() - quoteAt) < SEAT_MS) return;
+    requote(0);
+  });
   $('sbSheetX').addEventListener('click', closeSheet);
   $('sbSheet').addEventListener('click', function (e) { if (e.target === this) closeSheet(); });
   function drawMap(m, need) {
@@ -1788,6 +1891,7 @@
     if (wide()) { host = $('sbTicket'); host.innerHTML = html; host.hidden = false; host.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
     else { host = $('sbModalIn'); host.innerHTML = html; $('sbModal').hidden = false; document.body.classList.add('shg-modal-open'); }
     wireTicketImg(host);
+    if (!STAFF) pushCard(host, r);
     try { if (!STAFF && location.hash.indexOf('#/?ticket=') !== 0) history.replaceState(null, '', '#/?ticket=' + encodeURIComponent(r.pnr)); } catch (e) {}
     /* 31 Oct 2026 (review): SmartBook is the home page's booking path and replaceState fires no
        hashchange - tell the install sheet a customer's booking just finished (never a staff sale). */
@@ -1796,6 +1900,29 @@
        navigation closed the ticket the customer had just been shown. The PNG
        on the page is the delivery (the server pre-draws it while the booking
        answer is still in flight); Share / Download are one tap away. */
+  }
+  /* 16 Nov 2026 (P2-2c): a customer's own ticket offers departure alerts right here,
+     the moment it is booked - the same card (17-pwa.js SHGPush) the classic
+     #/ticket view shows, with its own denied / unsupported / iPhone-install states.
+     No new message: it only lets this phone receive the trip reminders and
+     delay notices that already go out. Never on a staff sale (another person's
+     phone). The server ties the ticket to this browser's own sale only. */
+  function pushCard(host, r) {
+    try {
+      var P = window.SHGPush; if (!P || typeof P.card !== 'function' || !r || !r.pnr) return;
+      var b = null;
+      if (typeof DB !== 'undefined' && DB.bookings) {
+        for (var i = 0; i < DB.bookings.length; i++) { if (DB.bookings[i] && DB.bookings[i].id === r.pnr) { b = DB.bookings[i]; break; } }
+      }
+      b = b ? Object.assign({}, b) : { id: r.pnr, date: r.date || '' };
+      if (!b.status) b.status = r.status || 'confirmed';
+      var html = P.card(b); if (!html) return;
+      var tk = host.querySelector('.sb-tk'); if (!tk) return;
+      var at = tk.querySelector('.sb-tk-new');
+      var box = document.createElement('div'); box.className = 'sb-tk-push'; box.innerHTML = html;
+      tk.insertBefore(box, at || null);
+      P.wire(b, box);
+    } catch (e) {}
   }
   /* The ticket picture: a "preparing…" shimmer until it has loaded, and a
      couple of quiet retries if the first fetch failed (a cold render on a

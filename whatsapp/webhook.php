@@ -532,6 +532,10 @@ function wh_process_inbound(array $msg): void
     }
 
     require_once INCLUDE_PATH . '/wabot.php';
+    $turnT0 = microtime(true);                 // P7-9a: the whole turn, reply built and sent
+    if (class_exists('AiTools', false)) {
+        AiTools::$turnTools = [];
+    }
     $reply = WaBot::reply('+' . $from, $text, $type, $media);
     if ($heard !== '') {
         $reply['text'] = $heard . "\n" . $reply['text'];
@@ -581,6 +585,27 @@ function wh_process_inbound(array $msg): void
         'purpose'  => 'bot_reply',
         'error'    => $r['success'] ? null : $r['error'],
     ]);
+
+    /* P7-9a (16 Nov 2026): one ai_turns row — which branch answered, the
+       tools it ran, sent or not, and how long the turn took. No message
+       text (the words stay in wa_inbound / message_logs); the sender is a
+       hash. recordTurn() never throws and does nothing until the table exists. */
+    try {
+        require_once INCLUDE_PATH . '/aiagent.php';
+        AiAgent::recordTurn([
+            'channel'  => 'whatsapp',
+            'role'     => WaBot::$lastRole,
+            'owner'    => normalisePhone($from),
+            'router'   => WaBot::$lastRouter,
+            'tools'    => class_exists('AiTools', false) ? AiTools::$turnTools : [],
+            'ok'       => (bool) ($r['success'] ?? false),
+            'ms'       => (int) round((microtime(true) - $turnT0) * 1000),
+            'wamid'    => $wamid,
+            'replySid' => (string) ($r['message_id'] ?? ''),
+        ]);
+    } catch (Throwable $e) {
+        Logger::exception($e, 'whatsapp');
+    }
 }
 
 try {

@@ -194,6 +194,63 @@ try {
     $p = TicketBot::parse('');
     check('an empty line yields nothing (no crash)', $p['name'] === '' && $p['phone'] === '' && $p['found'] === []);
 
+    /* ---- P7-7b / 7c / 7d (16 Nov 2026): the correction engine ---------- */
+    echo "\n== parse(): a letter typed for a digit, a one-letter town typo ==\n";
+    $pick = static fn(array $p): string => (string) json_encode(array_intersect_key($p, array_flip(['name', 'phone', 'seats', 'date', 'boarding', 'direction'])), JSON_UNESCAPED_UNICODE);
+    $p = TicketBot::parse('Ramesh 9826 O12345 kal');
+    check('"9826 O12345" → mobile 9826012345, and "O12345" is no longer in the name', $p['phone'] === '9826012345' && $p['name'] === 'Ramesh' && $p['date'] === addDaysISO($today, 1), $pick($p));
+    $p = TicketBot::parse('Gita 98260 I2345 2 seats');
+    check('  I → 1 inside a mobile; the seat count beside it survives', $p['phone'] === '9826012345' && $p['seats'] === 2 && $p['name'] === 'Gita', $pick($p));
+    $p = TicketBot::parse('Ram 98765432 I 2 seats');
+    check('  a lone "I" beside a short number is never turned into a digit (no invented mobile)', $p['phone'] === '' && $p['seats'] === 2, $pick($p));
+    check('  a 9-digit typo with a letter stays as typed (a missing digit is never invented)', TicketBot::repairDigitTypos(' Ram 98765432O 2 ') === ' Ram 98765432O 2 ');
+    check('  names with O / I / l are never touched', TicketBot::repairDigitTypos('Olivia Iliyas Lal 9876543210 Ilam') === 'Olivia Iliyas Lal 9876543210 Ilam');
+    check('  a number that would not start like a mobile is left alone', TicketBot::repairDigitTypos('Ram O123456789') === 'Ram O123456789');
+    $p = TicketBot::parse('Ramesh 14/O2/2027 9876543210');
+    check('"14/O2/2027" → 14 Feb 2027, and "O2" is no longer in the name', $p['date'] === '2027-02-14' && $p['name'] === 'Ramesh' && $p['phone'] === '9876543210', $pick($p));
+    $p = TicketBot::parse('Sita 14-O2-27 9876543210');
+    check('  the same with dashes and a 2-digit year', $p['date'] === '2027-02-14' && $p['name'] === 'Sita', $pick($p));
+    $catCodes = array_values(array_unique(array_map(static fn(array $s): string => (string) $s['code'], TicketBot::stopCatalogue())));
+    $codeOf   = static fn(array $p): string => (string) Boarding::stopDisplay((string) $p['boarding'])['code'];
+    if (in_array('AMD', $catCodes, true)) {
+        $p = TicketBot::parse('Ahemadabad bata 2 seat Ram 9876543210');
+        check('"Ahemadabad bata" → the Ahmedabad pickup; the typo is not the passenger\'s name', $p['boarding'] !== '' && $codeOf($p) === 'AMD' && $p['name'] === 'Ram' && $p['seats'] === 2, $pick($p));
+        $p = TicketBot::parse('from Ahemdabad Raju 9876543210');
+        check('  "from Ahemdabad" too', $p['boarding'] !== '' && $codeOf($p) === 'AMD' && $p['name'] === 'Raju', $pick($p));
+    }
+    if (in_array('STV', $catCodes, true)) {
+        $p = TicketBot::parse('Ram Suratt se 9876543210');
+        check('"Suratt se" → Surat', $p['boarding'] !== '' && $codeOf($p) === 'STV' && $p['name'] === 'Ram', $pick($p));
+    }
+    if (in_array('RPD', $catCodes, true)) {
+        $p = TicketBot::parse('Rupaidya bata Gita 9812345678');
+        check('"Rupaidya bata" → the Rupaidiha pickup', $p['boarding'] !== '' && $codeOf($p) === 'RPD' && $p['name'] === 'Gita', $pick($p));
+        $p = TicketBot::parse('Rupedia jane Ram 9876543210');
+        check('  "Rupedia jane" is a DESTINATION: towards Nepal, never the Rupaidiha pickup', $p['direction'] === 'toNepal' && $p['boarding'] === '' && $p['name'] === 'Ram', $pick($p));
+        $hit = TicketBot::fuzzyStop('rupaidiya');
+        check('  "rupaidiya" is now a plain alias of Rupaidiha', $hit !== null && $hit['code'] === 'RPD' && $hit['distance'] === 0, (string) json_encode($hit));
+    }
+    if (in_array('BRC', $catCodes, true)) {
+        $p = TicketBot::parse('Ram Vadodra se 9876543210');
+        check('"Vadodra" is an alias of Vadodara', $p['boarding'] !== '' && $codeOf($p) === 'BRC' && $p['name'] === 'Ram', $pick($p));
+    }
+    if (in_array('ANA', $catCodes, true)) {
+        $hit = TicketBot::fuzzyStop('anant');
+        check('"anant" IS one letter from Anand…', $hit !== null && $hit['code'] === 'ANA' && $hit['distance'] === 1, (string) json_encode($hit));
+        $p = TicketBot::parse('Anant Kumar 9876543210 kal');
+        check('  …so outside a place position the name stays "Anant Kumar" and no pickup is set', $p['name'] === 'Anant Kumar' && $p['boarding'] === '', $pick($p));
+    }
+    check('fuzzyStop: short, non-roman and far words give nothing', TicketBot::fuzzyStop('ram') === null && TicketBot::fuzzyStop('सूरत') === null && TicketBot::fuzzyStop('qwertyzz') === null);
+    check('  near TWO different stops it refuses to choose (one stop only)', str_contains($src('includes/ticketbot.php'), "count(\$stops) === 1) ? \$best : null"));
+    // review (16 Nov 2026): an English verb after "to" is not a town, and a real non-stop place is not "corrected"
+    $p = TicketBot::parse('I want to order 2 tickets Ram 9876543210');
+    check('"want to order" never becomes the Rupaidiha "border" pickup', $p['boarding'] === '' && $p['seats'] === 2, $pick($p));
+    check('  ordinary-word aliases match only exactly; real non-stop places are never corrected',
+        TicketBot::fuzzyStop('order') === null && TicketBot::fuzzyStop('packing') === null
+        && TicketBot::fuzzyStop('naroda') === null && TicketBot::fuzzyStop('bhopal') === null);
+    $p = TicketBot::parse('Ram 9876543210 Naroda se');
+    check('  "Naroda se" (Ahmedabad) is never quoted as the Baroda pickup', $p['boarding'] === '' || $codeOf($p) !== 'BRC', $pick($p));
+
     /* ================================================================
      *  2. profile() — passenger memory from VERIFIED tickets only
      * ================================================================ */

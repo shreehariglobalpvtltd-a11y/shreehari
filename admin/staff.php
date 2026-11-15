@@ -91,7 +91,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 } else {
                     $newId = Database::insert('admins', [
                         'username'       => $username,
-                        'password_hash'  => password_hash($pw, PASSWORD_DEFAULT),
+                        'password_hash'  => Security::hashPassword($pw),
                         'full_name'      => $fullName,
                         'email'          => $email !== '' ? $email : null,
                         'phone'          => $phone !== '' ? $phone : null,
@@ -180,7 +180,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 // other role must change the temporary password on next login.
                 $mustChange = (string) ($target['role'] ?? '') === 'agent' ? 0 : 1;
                 Database::update('admins', [
-                    'password_hash'  => password_hash($pw, PASSWORD_DEFAULT),
+                    'password_hash'  => Security::hashPassword($pw),
                     'must_change_pw' => $mustChange,
                 ], 'id = :id', ['id' => $id]);
                 // 22 Oct 2026 (review #11, office part): their open sessions end within 30 s; resetting your OWN keeps this one

@@ -28,6 +28,15 @@
 declare(strict_types=1);
 require __DIR__ . '/_cron.php';
 
+const WAI_NOREPLY_MIN      = 10;    // 16 Nov 2026: the no-reply alert (wai_noreply_alerts below)
+const WAI_NOREPLY_LOOK_MIN = 60;
+
+/* tests/u3b-noreply-alert-test.php loads only this file's functions (PHP
+   declares them before the file runs) - not the webhook, not the replay. */
+if (defined('SHG_WAI_FUNCS_ONLY')) {
+    return;
+}
+
 /* The webhook's own functions, without its HTTP part (see the guard there). */
 define('SHG_WA_INBOUND_REPLAY', true);
 require_once ROOT_PATH . '/whatsapp/webhook.php';
@@ -35,6 +44,131 @@ require_once ROOT_PATH . '/whatsapp/webhook.php';
 const WAI_MAX_ATTEMPTS = 3;
 const WAI_BATCH        = 20;
 const WAI_MAX_AGE_MIN  = 60;
+
+/**
+ * 16 Nov 2026 (Master v2 P6-10c): nobody answered. A WhatsApp message
+ * 10-60 minutes old with nothing sent back to that number since it arrived
+ * (the bot paused for a person who never replied, a failed answer, a
+ * replay that gave up) tells the OFFICE once per number per hour: one bell
+ * alert and one office WhatsApp. Never the customer. Behind
+ * wa_noreply_alert_on, default OFF. Only the last hour is looked at, so
+ * switching it on never alerts an old backlog.
+ *
+ * @param null|callable(string $to, string $text): bool $send  the office WhatsApp (tests pass a recorder)
+ * @return array<string, int|bool>
+ */
+function wai_noreply_alerts(?callable $send = null): array
+{
+    if (!Settings::getBool('wa_noreply_alert_on', false)) {
+        return ['off' => true];
+    }
+    require_once INCLUDE_PATH . '/adminalerts.php';
+    require_once INCLUDE_PATH . '/wainbox.php';
+    require_once INCLUDE_PATH . '/aihandoff.php';
+    require_once INCLUDE_PATH . '/notify.php';
+
+    // The office's own numbers write to the bot too; an alert about them is noise.
+    $own = [];
+    foreach ([Settings::officeWhatsApp(), Settings::getString('admin_whatsapp', '')] as $n) {
+        $d = preg_replace('/\D/', '', (string) $n) ?? '';
+        if (strlen($d) >= 10) {
+            $own[substr($d, -10)] = true;
+        }
+    }
+    $rows = Database::fetchAll(
+        "SELECT from_digits, MAX(id) AS last_id, MAX(created_at) AS last_at
+           FROM wa_inbound
+          WHERE created_at <  NOW() - INTERVAL " . WAI_NOREPLY_MIN . " MINUTE
+            AND created_at >= NOW() - INTERVAL " . WAI_NOREPLY_LOOK_MIN . " MINUTE
+            AND msg_type NOT IN ('reaction', 'unsupported', 'system', 'ephemeral', 'request_welcome')
+          GROUP BY from_digits
+          ORDER BY last_at
+          LIMIT 50"
+    );
+    $out = ['checked' => 0, 'waiting' => 0, 'alerted' => 0, 'office_wa' => 0];
+    $office = Settings::officeWhatsApp();
+    foreach ($rows as $r) {
+        $d = preg_replace('/\D/', '', (string) $r['from_digits']) ?? '';
+        if (strlen($d) < 10 || isset($own[substr($d, -10)])) {
+            continue;
+        }
+        $out['checked']++;
+        // message_logs keeps the number either as international digits or as the bare 10.
+        $answered = Database::exists(
+            "SELECT 1 FROM message_logs
+              WHERE created_at >= :t AND channel = 'whatsapp' AND status IN ('sent', 'queued')
+                AND to_number IN (:a, :b)",
+            ['t' => (string) $r['last_at'], 'a' => $d, 'b' => substr($d, -10)]
+        );
+        if ($answered) {
+            continue;
+        }
+        $out['waiting']++;
+        $paused = WaInbox::botPaused($d);
+        $msg    = Database::fetch('SELECT msg_type, payload FROM wa_inbound WHERE id = :i', ['i' => (int) $r['last_id']]);
+        $said   = $msg !== null ? AiHandoff::redact(WaInbox::textOf((string) $msg['msg_type'], (string) ($msg['payload'] ?? ''))) : '';
+        $said   = mb_substr(trim(preg_replace('/\s+/u', ' ', $said) ?? ''), 0, 80);
+        $title  = 'No reply for ' . WAI_NOREPLY_MIN . '+ min · +' . $d . ($paused ? ' (bot paused)' : '');
+        $id = AdminAlerts::push(
+            'wa_noreply', $title,
+            ($said !== '' ? '"' . $said . '" — ' : '') . 'nothing has gone back to this number since it wrote. Open the chat and answer.',
+            '/admin/wa-inbox.php?tab=inbox&p=' . $d, '⏰',
+            'wa_noreply:' . $d . ':' . date('Y-m-d H')            // once per number per hour
+        );
+        if ($id <= 0) {
+            continue;                                           // already told this hour
+        }
+        $out['alerted']++;
+        if ($office !== '') {
+            try {
+                $text = '⏰ WhatsApp: १० मिनेटदेखि जवाफ गएको छैन · No reply for ' . WAI_NOREPLY_MIN . '+ min' . "\n"
+                      . '+' . $d . ($paused ? ' (bot paused / बोट रोकिएको)' : '') . "\n"
+                      . ($said !== '' ? '"' . $said . '"' . "\n" : '')
+                      . appUrl('/admin/wa-inbox.php?tab=inbox&p=' . $d);
+                $sent = $send !== null
+                    ? (bool) $send($office, $text)
+                    : Notify::whatsapp($office, $text, null, null, [], null, ['purpose' => 'noreply_alert']) === true;
+                if ($sent) {
+                    $out['office_wa']++;
+                }
+            } catch (Throwable $e) {
+                Logger::warning('No-reply office alert failed', ['error' => $e->getMessage()], 'whatsapp');
+            }
+        }
+    }
+    return $out;
+}
+
+/**
+ * 16 Nov 2026: the Messenger conversation (fb_inbound, admin/messenger-inbox.php)
+ * keeps the words 30 days; the row stays (the message id is the dedupe key).
+ * Runs on every pass, also with the replay switched off. Never throws.
+ */
+function wai_fb_blank(): int
+{
+    try {
+        if (Database::fetch("SHOW TABLES LIKE 'fb_inbound'") === null) {
+            return 0;
+        }
+        return (int) Database::run(
+            'UPDATE fb_inbound SET body = NULL WHERE body IS NOT NULL AND created_at < NOW() - INTERVAL 30 DAY'
+        );
+    } catch (Throwable $e) {
+        Logger::warning('fb_inbound clean-up skipped', ['error' => $e->getMessage()], 'facebook');
+        return 0;
+    }
+}
+
+/** wai_noreply_alerts() that can never stop the replay below. @return array<string, int|bool|string> */
+function wai_noreply_safe(): array
+{
+    try {
+        return wai_noreply_alerts();
+    } catch (Throwable $e) {
+        Logger::warning('No-reply alert check failed', ['error' => $e->getMessage()], 'whatsapp');
+        return ['error' => mb_substr($e->getMessage(), 0, 120)];
+    }
+}
 
 $hasTable = (int) Database::scalar(
     "SELECT COUNT(*) FROM information_schema.TABLES
@@ -45,11 +179,13 @@ $hasTable = (int) Database::scalar(
    wa_inbound_replay_on = 0). Messages are still written down by the webhook;
    nothing is answered late. */
 if (!Settings::getBool('wa_inbound_replay_on', true)) {
-    cron_done(['skipped' => 'replay switched off (wa_inbound_replay_on = 0)']);
+    // The no-reply alert is its own switch: it still runs with the replay off.
+    cron_done(['skipped' => 'replay switched off (wa_inbound_replay_on = 0)', 'fb_blanked' => wai_fb_blank()]
+        + ($hasTable ? ['noreply' => wai_noreply_safe()] : []));
     exit;
 }
 if (!$hasTable) {
-    cron_done(['skipped' => 'wa_inbound table not installed (database/upgrade-2026-10-15-wa-booking.sql)']);
+    cron_done(['skipped' => 'wa_inbound table not installed (database/upgrade-2026-10-15-wa-booking.sql)', 'fb_blanked' => wai_fb_blank()]);
     exit;
 }
 
@@ -130,4 +266,6 @@ cron_done([
     'skipped'  => $skipped,
     'expired'  => $expired,
     'blanked'  => $blanked,
+    'fb_blanked' => wai_fb_blank(),
+    'noreply'  => wai_noreply_safe(),
 ]);

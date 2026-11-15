@@ -58,7 +58,7 @@ final class DriverAuth
         if ($pin !== '' && !self::validPin($pin)) {
             throw new RuntimeException('The PIN must be 4 to 6 digits.');
         }
-        Database::update('drivers', ['pin_hash' => $pin === '' ? null : password_hash($pin, PASSWORD_DEFAULT)],
+        Database::update('drivers', ['pin_hash' => $pin === '' ? null : Security::hashPassword($pin)],
             'id = :id', ['id' => $driverId]);
         Database::update('driver_devices', ['revoked_at' => date('Y-m-d H:i:s')],
             'driver_id = :d AND revoked_at IS NULL', ['d' => $driverId]);
@@ -80,8 +80,15 @@ final class DriverAuth
               WHERE d.phone = :p AND d.is_active = 1 AND d.pin_hash IS NOT NULL' . self::crewGate(),
             ['p' => $phone]
         );
-        if ($d === null || !password_verify($pin, (string) $d['pin_hash'])) {
+        if ($d === null || !Security::verifyPassword($pin, (string) $d['pin_hash'])) {
+            // 16 Nov 2026: every failed try is on the record (the PIN itself never is)
+            Logger::audit('driver.app_login_fail', 'driver', $d !== null ? (string) $d['id'] : '…' . substr($phone, -4), null,
+                ['reason' => $d !== null ? 'wrong_pin' : 'no_driver'], 'driver app: wrong phone or PIN');
             return null;
+        }
+        if (Security::needsRehash((string) $d['pin_hash'])) {   // an older cost-10 PIN hash moves to cost 12 now
+            Database::update('drivers', ['pin_hash' => Security::hashPassword($pin)],
+                'id = :id AND pin_hash = :old', ['id' => (int) $d['id'], 'old' => (string) $d['pin_hash']]);
         }
         $token = bin2hex(random_bytes(24));
         $id    = Database::insert('driver_devices', [

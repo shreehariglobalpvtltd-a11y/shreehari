@@ -33,6 +33,14 @@ require_once INCLUDE_PATH . '/booking.php';
 final class WaBot
 {
     /**
+     * P7-9a (16 Nov 2026): which branch answered the last reply() and for
+     * whom (customer / staff / admin). whatsapp/webhook.php reads both right
+     * after reply() for the ai_turns row; nothing else depends on them.
+     */
+    public static string $lastRouter = '';
+    public static string $lastRole = 'customer';
+
+    /**
      * Build the reply for one inbound message.
      *
      * @param string $from raw sender ("whatsapp:+9198…", "+9198…" or "9198…")
@@ -41,6 +49,8 @@ final class WaBot
      */
     public static function reply(string $from, string $body, string $kind = 'text', array $media = []): array
     {
+        self::$lastRouter = '';
+        self::$lastRole   = 'customer';
         $company      = Settings::getString('company_name', APP_NAME);
         $phone        = Settings::officePhone();
         $body         = trim($body);
@@ -52,6 +62,8 @@ final class WaBot
             require_once INCLUDE_PATH . '/wavault.php';
             $vault = WaVault::handle($from, $body, $kind, $media);
             if ($vault !== null) {
+                self::$lastRouter = 'vault';
+                self::$lastRole   = 'admin';
                 return self::out($vault['text'], null);
             }
         } catch (Throwable $e) {
@@ -62,6 +74,8 @@ final class WaBot
             require_once INCLUDE_PATH . '/agentpro-wa.php';
             $apReply = ApWa::reply($from, $body, $kind);
             if ($apReply !== null) {
+                self::$lastRouter = 'apwa';
+                self::$lastRole   = 'staff';
                 return self::out($apReply['text'], $apReply['media'] ?? null);
             }
         }
@@ -75,6 +89,7 @@ final class WaBot
                 require_once INCLUDE_PATH . '/wabooking.php';
                 $nameFix = WaBooking::answerNameFix($senderDigits, $body);
                 if ($nameFix !== null) {
+                    self::$lastRouter = 'namefix';
                     return self::out($nameFix['text'], $nameFix['media'] ?? null, $nameFix['ui'] ?? null);
                 }
             } catch (Throwable $e) {
@@ -95,6 +110,7 @@ final class WaBot
                 require_once INCLUDE_PATH . '/walogin.php';
                 $auth = WaLogin::handle($from, $body);   // the raw sender: +91 / +977 keeps the session apart
                 if ($auth !== null) {
+                    self::$lastRouter = 'walogin';
                     return self::out($auth['text'], $auth['media'] ?? null);
                 }
             } catch (Throwable $e) {
@@ -115,16 +131,20 @@ final class WaBot
            Each returns null for anything it does not own. */
         if ($senderDigits !== '' && $body !== '') {
             $early = null;
+            $earlyVia = 'agentroute';
             try {
                 require_once INCLUDE_PATH . '/waagentroute.php';
                 $early = WaAgentRoute::handle($from, $body);
                 if ($early === null) {
                     require_once INCLUDE_PATH . '/aitools.php';
                     $whoEarly = AiTools::whoIs($from);
+                    self::$lastRole = (string) ($whoEarly['role'] ?? 'customer');
                     require_once INCLUDE_PATH . '/wateach.php';
+                    $earlyVia = 'wateach';
                     $early = WaTeach::handle($from, $body, $whoEarly);
                     if ($early === null) {
                         require_once INCLUDE_PATH . '/waedit.php';
+                        $earlyVia = 'waedit';
                         $early = WaEdit::handle($from, $body, $whoEarly);
                     }
                 }
@@ -133,6 +153,7 @@ final class WaBot
                 $early = null;
             }
             if ($early !== null) {
+                self::$lastRouter = $earlyVia;
                 return self::out((string) $early['text'], $early['media'] ?? null, $early['ui'] ?? null);
             }
         }
@@ -144,6 +165,7 @@ final class WaBot
                 require_once INCLUDE_PATH . '/wahabit.php';
                 $habit = WaHabit::handle($from, $body);
                 if ($habit !== null) {
+                    self::$lastRouter = 'wahabit';
                     return self::out($habit['text'], $habit['media'] ?? null, $habit['ui'] ?? null);
                 }
             } catch (Throwable $e) {
@@ -162,6 +184,7 @@ final class WaBot
                     if (Campaigns::ready()) {
                         Campaigns::optOut($senderDigits, 'said STOP on WhatsApp', 0);
                         if (!Settings::getBool('wa_marketing_on', false)) {
+                            self::$lastRouter = 'optout';
                             return self::out("✅ ठिक छ — अब यस्ता अफर/सूचना सन्देश पठाइने छैन।\nDone — you will not get offer messages any more.");
                         }
                     }
@@ -194,6 +217,7 @@ final class WaBot
                             Logger::exception($e);
                         }
                     }
+                    self::$lastRouter = 'consent';
                     return self::out((string) $consent['text'], $consent['media'] ?? null);
                 }
             } catch (Throwable $e) {
@@ -227,6 +251,7 @@ final class WaBot
                 require_once INCLUDE_PATH . '/wapayproof.php';
                 $proof = WaPayProof::handle($senderDigits, $body, $media);
                 if ($proof !== null) {
+                    self::$lastRouter = 'payproof';
                     return self::out($proof);
                 }
             } catch (Throwable $e) {
@@ -243,6 +268,7 @@ final class WaBot
                     if (AiAgent::enabled()) {
                         $agent = AiAgent::handle($from, '[' . $kind . ' attached without any words]', 'whatsapp', ['attachment' => $attachment]);
                         if ($agent !== null) {
+                            self::$lastRouter = 'agent';
                             return self::out($agent['text'], $agent['media']);
                         }
                     }
@@ -257,6 +283,7 @@ final class WaBot
            the sender nothing about the money they had just sent, so say
            what happens next and ask for the one thing we need to match it. */
         if ($body === '' && in_array($kind, ['image', 'document', 'video'], true)) {
+            self::$lastRouter = 'photo';
             return self::out(
                 "📩 " . $company . "\n"
                 . "तपाईंले पठाउनुभएको फोटो प्राप्त भयो।\n\n"
@@ -275,10 +302,12 @@ final class WaBot
         if ($body === '' && in_array($kind, ['audio', 'voice'], true) && $media !== [] && $senderDigits !== '') {
             $heard = self::transcribeVoice($senderDigits, $media);
             if ($heard !== null) {
+                self::$lastRouter = 'voice';
                 return self::out($heard);
             }
         }
         if ($body === '' && in_array($kind, ['audio', 'voice'], true)) {
+            self::$lastRouter = 'voice';
             return self::out(
                 "🎤 " . $company . "\n"
                 . "अहिले म आवाज सुन्न सक्दिनँ। कृपया लेखेर पठाउनुहोस् — "
@@ -354,6 +383,9 @@ final class WaBot
             }
         }
         $isStaff = is_array($who) && in_array((string) ($who['role'] ?? ''), ['staff', 'admin'], true);
+        if (is_array($who) && in_array((string) ($who['role'] ?? ''), ['customer', 'staff', 'admin'], true)) {
+            self::$lastRole = (string) $who['role'];
+        }
 
         /* 6 Oct 2026 - a customer's question the knowledge base cannot answer
            yet is written down; tonight the AI drafts the article (AiLearn). */
@@ -382,11 +414,13 @@ final class WaBot
                 require_once INCLUDE_PATH . '/waorder.php';
                 $menu = WaOrder::handle($senderDigits, $body, $who);
                 if ($menu !== null) {
+                    self::$lastRouter = 'waorder';
                     return self::out($menu['text'], $menu['media'] ?? null, $menu['ui'] ?? null);
                 }
                 if ($isStaff && Settings::getBool('wa_order_staff_on', true)) {
                     $order = WaOrder::sellerOrder($senderDigits, $body, $senderCountry, $who);
                     if ($order !== null) {
+                        self::$lastRouter = 'waorder';
                         return self::out($order['text'], $order['media'] ?? null, $order['ui'] ?? null);
                     }
                 }
@@ -406,6 +440,7 @@ final class WaBot
                 require_once INCLUDE_PATH . '/wabulk.php';
                 $bulk = WaBulk::handle($who, $body);
                 if ($bulk !== null) {
+                    self::$lastRouter = 'wabulk';
                     return self::out($bulk['text'], $bulk['media'] ?? null);
                 }
             } catch (Throwable $e) {
@@ -428,6 +463,7 @@ final class WaBot
                 require_once INCLUDE_PATH . '/walocal.php';
                 $local = WaLocal::answer($from, $body, $who);
                 if ($local !== null) {
+                    self::$lastRouter = 'walocal';
                     return self::out($local['text'], $local['media'] ?? null, $local['ui'] ?? null);
                 }
             } catch (Throwable $e) {
@@ -483,6 +519,7 @@ final class WaBot
                 } catch (Throwable $e) {
                     Logger::exception($e);
                 }
+                self::$lastRouter = 'wabooking';
                 return self::out($booking['text'], $booking['media'] ?? null, $booking['ui'] ?? null);
             }
         }
@@ -498,6 +535,7 @@ final class WaBot
                 require_once INCLUDE_PATH . '/wafaq.php';
                 $faq = WaFaq::answer($from, $body);
                 if ($faq !== null) {
+                    self::$lastRouter = 'wafaq';
                     return self::out($faq['text'], $faq['media'], $faq['ui'] ?? null);
                 }
             } catch (Throwable $e) {
@@ -514,6 +552,7 @@ final class WaBot
                 }
                 $agent = AiAgent::handle($from, $body, 'whatsapp', $extra);
                 if ($agent !== null) {
+                    self::$lastRouter = 'agent';
                     return self::out($agent['text'], $agent['media']);
                 }
             } catch (Throwable $e) {
@@ -524,6 +563,7 @@ final class WaBot
                they would park a customer draft under the agent's own number
                or sell them a ticket — so staff get a plain "try again". */
             if ($staffToAssistant) {
+                self::$lastRouter = 'agent-busy';
                 return self::out(
                     "⏳ सहायक अहिले व्यस्त छ — एक मिनेटपछि फेरि पठाउनुहोस्, वा app को ⚡ Quick Ticket प्रयोग गर्नुहोस्।"
                     . ($phone !== '' ? "\nहतार छ भने अफिस: " . $phone : '')
@@ -556,6 +596,7 @@ final class WaBot
             if (!$localFirst && !$staffToAssistant) {
                 $booking = $tryLocalBooking();
                 if ($booking !== null) {
+                    self::$lastRouter = 'wabooking';
                     return self::out($booking['text'], $booking['media'] ?? null, $booking['ui'] ?? null);
                 }
             }
@@ -569,6 +610,7 @@ final class WaBot
                 require_once INCLUDE_PATH . '/aichat.php';
                 $ai = AiChat::whatsappReply($senderDigits, $body);
                 if ($ai !== null) {
+                    self::$lastRouter = 'aichat';
                     return self::out($ai);
                 }
             } catch (Throwable $e) {
@@ -583,11 +625,13 @@ final class WaBot
                 require_once INCLUDE_PATH . '/wafaq.php';
                 $fact = WaFaq::factAnswer($from, $body);
                 if ($fact !== null) {
+                    self::$lastRouter = 'wafaq';
                     return self::out($fact['text'], $fact['media'] ?? null);
                 }
                 // round 2: a bare question is answered by the office line — it is never parked as a ticket on its way
                 $ask = WaFaq::questionFallback($body);
                 if ($ask !== null) {
+                    self::$lastRouter = 'wafaq';
                     return self::out($ask);
                 }
             } catch (Throwable $e) {
@@ -620,6 +664,7 @@ final class WaBot
                     $got[] = self::tr($fl, $stop . ' बाट', $stop . ' से', 'from ' . $stop);
                 }
 
+                self::$lastRouter = 'draft';
                 return self::out(
                     self::tr($fl, "🙏 नमस्ते! तपाईंको अनुरोध प्राप्त भयो।\n\n", "🙏 नमस्ते! आपका अनुरोध मिल गया।\n\n", "🙏 Hello! We have your request.\n\n")
                     . ($got !== [] ? self::tr($fl, "मैले बुझेँ: ", "मैंने समझा: ", "I understood: ") . implode(' · ', $got) . "\n\n" : '')
@@ -633,6 +678,7 @@ final class WaBot
                 );
             }
 
+            self::$lastRouter = 'welcome';
             return self::out(
                 self::tr($fl,
                     "🙏 नमस्ते! म " . $company . " को टिकट सहायक हुँ।\n\n"
@@ -669,6 +715,7 @@ final class WaBot
 
         $detail = BookingService::detail($pnr);
         $fl = self::fallbackLang($body);                 // post-deploy probe B4: the writer's language
+        self::$lastRouter = 'pnr';                       // every answer below is the PNR lookup
         if ($detail === null) {
             return self::out(self::tr($fl,
                 "❌ PNR " . $pnr . " को कुनै बुकिङ भेटिएन।\nकृपया कोड जाँचेर फेरि पठाउनुहोस्।",
