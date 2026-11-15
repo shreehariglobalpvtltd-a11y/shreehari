@@ -94,7 +94,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 if ($time !== '' && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $time) !== 1) {
                     throw new InvalidArgumentException('समय HH:MM मा लेख्नुहोस् · Enter the time as HH:MM.');
                 }
-                if ($fareIn === false || ($fareIn !== null && ($fareIn < 0 || $fareIn > 100000))) {
+                if ($fareIn === false || ($fareIn !== null && ($fareIn < 0 || ($fareIn > 0 && $fareIn < 1) || $fareIn > 100000))) {
                     throw new InvalidArgumentException('भाडा रुपैयाँमा लेख्नुहोस् · Enter the fare in rupees (e.g. 2200), or 0 / blank for the default.');
                 }
                 $before = Database::fetch('SELECT stop_name, stop_time, fare, landmark FROM route_stops WHERE id = :id', ['id' => $stopId]);

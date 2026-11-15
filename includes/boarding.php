@@ -833,7 +833,8 @@ final class Boarding
         }
 
         $fare = self::parseRupees($d['fare'] ?? null);
-        if ($fare === false || ($fare !== null && ($fare < 0 || $fare > 100000))) {
+        // 0 / blank = the default; otherwise 1-100000, the same rule as Routes -> save_stop_fares
+        if ($fare === false || ($fare !== null && ($fare < 0 || ($fare > 0 && $fare < 1) || $fare > 100000))) {
             throw $bad('भाडा रुपैयाँमा लेख्नुहोस्', 'Enter the fare in rupees (e.g. 2200), or leave it blank for the default.');
         }
         $fare = $fare !== null && $fare > 0 ? round($fare, 2) : null;

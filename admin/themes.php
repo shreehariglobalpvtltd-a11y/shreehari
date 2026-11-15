@@ -150,8 +150,8 @@ admin_header('Colours & Themes · रङ र थिम', 'themes.php');
 <div class="th-intro">
   <p>ग्राहक एपको मुख्य रङ हप्ताको दिनअनुसार आफैं फेरिन्छ (भारतीय समय, रातको १२ बजे)। लोगो, नेभी बार, सिटका रङ र सफल / चेतावनी रङ कहिल्यै फेरिँदैनन्।
     <span class="en">The customer app's accent colour changes by itself with the weekday (India time, at midnight). The logo, the navy bar, seat colours and success / warning colours never change.</span></p>
-  <p>ग्राहकले "Fixed · एउटै रङ" छाने ब्रान्डकै रङ देखिन्छ; काउन्टर मोडमा पनि सधैं ब्रान्डकै रङ।
-    <span class="en">A customer who picks "Fixed" keeps the brand colour; counter mode always keeps the brand colour.</span></p>
+  <p>ग्राहकले "Fixed · एउटै रङ" वा आफ्नै रङ (palette) छानेको छ भने हप्ताको रङ देखिँदैन; काउन्टर मोडमा पनि देखिँदैन।
+    <span class="en">A customer who picked "Fixed", or picked a colour palette of their own, does not get the weekly colour; counter mode never does either.</span></p>
   <p><b>Preview</b>: नयाँ ट्याबमा ग्राहक एप त्यो रङमा ५ मिनेट देखिन्छ — त्यही ट्याबमा मात्र। केही सेभ हुँदैन, कुनै ग्राहकले देख्दैन।
     <span class="en">Opens the customer app in a new tab in that colour for 5 minutes, in that tab only. Nothing is saved and no customer sees it.</span></p>
   <p class="en">यो पेज हेर्ने मात्र हो, यहाँबाट केही बदलिँदैन। · This page only shows the colours; it changes nothing.</p>

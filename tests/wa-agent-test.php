@@ -374,6 +374,9 @@ try {
     [$okB, $badB] = AiTools::cleanBerths([strtolower($l1), 'l-4', 'zz9', ' ']);
     check('berths are cleaned: the printed "' . $l1 . '" and the stored "L4" both read; junk is reported, never guessed',
         $okB === ['L1', 'L4'] && $badB === ['ZZ9'], json_encode([$okB, $badB]));
+    [$okS, $badS] = AiTools::cleanBerths('L1 and L4');
+    check('  a berths STRING is split; a word with no number ("and") is no berth and is not reported',
+        $okS === ['L1', 'L4'] && $badS === [], json_encode([$okS, $badS]));
     check('  plan_ticket offers an optional berths list',
         str_contains($src('includes/aitools.php'), "'berths'    => ['array'"));
 

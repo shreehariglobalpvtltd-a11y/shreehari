@@ -210,6 +210,9 @@ try {
     check('"14/O2/2027" → 14 Feb 2027, and "O2" is no longer in the name', $p['date'] === '2027-02-14' && $p['name'] === 'Ramesh' && $p['phone'] === '9876543210', $pick($p));
     $p = TicketBot::parse('Sita 14-O2-27 9876543210');
     check('  the same with dashes and a 2-digit year', $p['date'] === '2027-02-14' && $p['name'] === 'Sita', $pick($p));
+    $p = TicketBot::parse('Ram 1O/12/2027 9876543210');
+    check('  a slip in the DAY too ("1O/12/2027" → 10 Dec 2027), and "1O" is not in the name', $p['date'] === '2027-12-10' && $p['name'] === 'Ram', $pick($p));
+    check('  a day with no real digit is left as typed', TicketBot::repairDigitTypos(' lO/12/2027 ') === ' lO/12/2027 ');
     $catCodes = array_values(array_unique(array_map(static fn(array $s): string => (string) $s['code'], TicketBot::stopCatalogue())));
     $codeOf   = static fn(array $p): string => (string) Boarding::stopDisplay((string) $p['boarding'])['code'];
     if (in_array('AMD', $catCodes, true)) {
@@ -229,6 +232,15 @@ try {
         check('  "Rupedia jane" is a DESTINATION: towards Nepal, never the Rupaidiha pickup', $p['direction'] === 'toNepal' && $p['boarding'] === '' && $p['name'] === 'Ram', $pick($p));
         $hit = TicketBot::fuzzyStop('rupaidiya');
         check('  "rupaidiya" is now a plain alias of Rupaidiha', $hit !== null && $hit['code'] === 'RPD' && $hit['distance'] === 0, (string) json_encode($hit));
+        // review (16 Nov 2026): a destination typo must never become the Rupaidiha PICKUP (the opposite bus)
+        $p = TicketBot::parse('Rupaideh jane Ram 9876543210');
+        check('  "Rupaideh jane" (a typo of a destination) is never the Rupaidiha pickup', $p['boarding'] === '' && $p['direction'] === 'toNepal', $pick($p));
+        $p = TicketBot::parse('Rupaideha jane Ram 9876543210');
+        check('  "Rupaideha jane" is a destination too', $p['boarding'] === '' && $p['direction'] === 'toNepal' && $p['name'] === 'Ram', $pick($p));
+        $p = TicketBot::parse('Ram 9876543210 to Rupaideh');
+        check('  "to Rupaideh" likewise', $p['boarding'] === '' && $p['direction'] === 'toNepal', $pick($p));
+        $p = TicketBot::parse('Rupaidha janu Ram 9876543210');
+        check('  a typo before "janu" (no "X janu" direction phrase) stays as typed — never a pickup', $p['boarding'] === '', $pick($p));
     }
     if (in_array('BRC', $catCodes, true)) {
         $p = TicketBot::parse('Ram Vadodra se 9876543210');

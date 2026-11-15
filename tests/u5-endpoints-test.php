@@ -225,6 +225,8 @@ try {
     check('fare "abc" refused', ($r['ok'] ?? null) === false && (float) $fare() === 2200.0, json_encode($r, JSON_UNESCAPED_UNICODE));
     $r = $ie(['entity' => 'route_stop', 'field' => 'fare', 'id' => $sid, 'value' => '0'], $super);
     check('fare 0 refused (₹1–₹100000)', ($r['ok'] ?? null) === false && (float) $fare() === 2200.0, json_encode($r, JSON_UNESCAPED_UNICODE));
+    $r = $ie(['entity' => 'route_stop', 'field' => 'fare', 'id' => $sid, 'value' => 'Rs 2,200'], $super);
+    check('"Rs 2,200" read like routes.php (= 2200, no change)', ($r['ok'] ?? false) === true && (float) ($r['new'] ?? 0) === 2200.0, json_encode($r, JSON_UNESCAPED_UNICODE));
     $r = $ie(['entity' => 'route_stop', 'field' => 'fare', 'id' => $sid, 'value' => '2200'], $super);
     check('same value = no change', ($r['ok'] ?? false) === true && str_contains((string) ($r['message'] ?? ''), 'No change'), json_encode($r, JSON_UNESCAPED_UNICODE));
     $r = $ie(['entity' => 'route_stop', 'field' => 'fare', 'id' => $sid, 'value' => ''], $super, 'header');

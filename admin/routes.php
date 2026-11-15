@@ -555,6 +555,19 @@ $stopKmIn = static function (mixed $v): ?float {
     }
     return round((float) $v, 1);
 };
+/* 16 Nov 2026 (P4-2b2): a pickup an hour or more BEFORE the route's departure
+   clock is read as after midnight on the same run (ticket time and booking
+   cut-off). Say so when such a time is saved, so a pickup the bus really
+   passes before it leaves is not sold for a day longer unnoticed. */
+$nightHint = static function (?string $stopTime, ?string $depTime): string {
+    $s = Boarding::hmToMin($stopTime);
+    $d = Boarding::hmToMin($depTime);
+    if ($s === null || $d === null || $s > $d - 60) {
+        return '';
+    }
+    return ' ' . Boarding::minToHm($s) . ' is read as the NEXT day (after midnight) on this ' . Boarding::minToHm($d)
+         . ' run - right for a night pickup; if the bus passes here BEFORE ' . Boarding::minToHm($d) . ', change the route\'s departure time instead.';
+};
 
 /* ── Pickup fares: one Save for a whole list (1 Oct 2026, owner ask) ──
    fare[<stop id>] => rupees, blank = the direction default. Only rows of the
@@ -717,6 +730,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             if ($time === '' && $stopType === 'boarding') {
                 $why .= ' No time set: on the travel day it stops selling ' . Boarding::cutoffMinutes() . ' min before the route leaves ('
                       . substr((string) ($route['dep_time'] ?? ''), 0, 5) . ') - set its time with ✎.';
+            } elseif ($stopType === 'boarding') {
+                $why .= $nightHint($time, isset($route['dep_time']) ? (string) $route['dep_time'] : null);
             }
             $flash = ['ok', 'Added ' . ($stopType === 'drop' ? 'drop (ड्रप)' : 'pickup (पिकअप)') . ' stop: ' . trim($name)
                 . ' on ' . (string) ($route['route_code'] ?? $rid) . '.' . $why];
@@ -781,7 +796,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                  'fare' => array_key_exists('fare', $set) ? $set['fare'] : ($old['fare'] ?? null),
                  'km' => array_key_exists('km_from_origin', $set) ? $set['km_from_origin'] : ($old['km_from_origin'] ?? null)],
                 'Edited stop: ' . $old['stop_name'] . ' → ' . $name);
-            $flash = ['ok', 'Stop updated: ' . $name . '.'];
+            $flash = ['ok', 'Stop updated: ' . $name . '.'
+                . (($old['stop_type'] ?? '') === 'boarding' && $timeVal !== null && $timeVal !== $old['stop_time']
+                    ? $nightHint($timeVal, (string) Database::scalar('SELECT dep_time FROM routes WHERE id = :r', ['r' => (int) $old['route_id']], ''))
+                    : '')];
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
         }
@@ -1568,6 +1586,15 @@ if (window.MutationObserver) {
       if (was) { was.value = v; }
       tag.classList.toggle('is-def', v === '');
     }).observe(tag, { attributes: true, attributeFilter: ['data-ie-value'] });
+  });
+  /* ...and the ✎ form of that stop: its time / landmark boxes were drawn with
+     the old value, so a later ✎ Save would quietly put the old one back. */
+  document.querySelectorAll('[data-ie-entity="route_stop"][data-ie-field="stop_time"],[data-ie-entity="route_stop"][data-ie-field="landmark"]').forEach(function (el) {
+    new MutationObserver(function () {
+      var f = el.getAttribute('data-ie-field'), v = el.getAttribute('data-ie-value') || '';
+      var inp = document.querySelector('#stop-edit-' + el.getAttribute('data-ie-id') + ' input[name="' + f + '"]');
+      if (inp && inp.value === inp.defaultValue) { inp.value = v; inp.defaultValue = v; }
+    }).observe(el, { attributes: true, attributeFilter: ['data-ie-value'] });
   });
 }
 /* P4-3b (16 Nov 2026): "📍 Pick on map" beside latitude / longitude. Opens the

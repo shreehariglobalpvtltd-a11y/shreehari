@@ -299,9 +299,10 @@ final class AiHandoff
         $mine = false;
         if ($t !== null) {
             $askPhone = (string) ($ctx['phone'] ?? '');
-            $psid     = $askPhone === '' ? self::psidOf($ctx) : '';
+            $psid     = self::psidOf($ctx);
             // 16 Nov 2026: a ticket with no phone (a Messenger flag) is read back
-            // only to the same Messenger account — never to any number-less guest.
+            // only to the same Messenger account — never to any number-less guest
+            // (also after that account proved a number: the flag still has none).
             $mine = $role === 'admin'
                 || ($askPhone !== '' && normalisePhone((string) $t['phone']) === $askPhone)
                 || ($psid !== '' && (string) $t['phone'] === '' && str_starts_with((string) $t['message'], self::psidMarker($psid)));

@@ -78,13 +78,19 @@ try {
             if (!Boarding::hasStopControls()) {
                 throw new InvalidArgumentException('Run database/upgrade-2026-10-01-stop-fares.sql first - the fare column does not exist yet.');
             }
-            $v = str_replace([',', ' ', '₹'], '', $value);   // "2,200" is 2200 (a (float) cast would make it 2)
-            if ($v === '') {
+            // "2,200" / "₹2200" / "Rs 2200" is 2200 — the same reader as routes.php $stopFareIn
+            if (method_exists('Boarding', 'parseRupees')) {
+                $v = Boarding::parseRupees($value);
+            } else {
+                $v = str_replace([',', ' ', '₹'], '', $value);
+                $v = $v === '' ? null : (is_numeric($v) ? (float) $v : false);
+            }
+            if ($v === null) {
                 $new = null;
-            } elseif (!is_numeric($v) || (float) $v < 1 || (float) $v > 100000) {
+            } elseif ($v === false || $v < 1 || $v > 100000) {
                 throw new InvalidArgumentException('भाडा ₹1–₹100000 वा खाली (default) · Enter the fare as a rupee amount between 1 and 100000, or leave it blank for the default.');
             } else {
-                $new = round((float) $v, 2);
+                $new = round($v, 2);
             }
             $old = $stop['fare'] !== null ? round((float) $stop['fare'], 2) : null;
         } elseif ($field === 'stop_time') {

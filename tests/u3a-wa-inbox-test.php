@@ -230,10 +230,17 @@ try {
     check('channelTabs(): its small style is printed once', substr_count($tabs . WaInbox::channelTabs('messenger'), '<style>') === 1);
     $outbound($P[1], 'Your login code is 482913', 'login_code');
     $outbound($P[1], 'Bus leaves 13:00', 'bot_reply');
+    $outbound($P[1], 'Username: u3agita Password: Xy7pqLmz', 'team_credentials');
+    $outbound($P[1], 'Office note: your PIN: 7731 for the door', 'admin_note');
     $sent = WaInbox::sent(7, substr($P[1], -8));
     $codes = array_values(array_filter($sent, static fn(array $m): bool => $m['purpose'] === 'login_code'));
+    $creds = array_values(array_filter($sent, static fn(array $m): bool => $m['purpose'] === 'team_credentials'));
+    $note  = array_values(array_filter($sent, static fn(array $m): bool => $m['purpose'] === 'admin_note'));
     check('Sent lists what went to the number', count($sent) >= 2);
     check('…with one-time codes masked', $codes !== [] && !str_contains($codes[0]['body'], '482913') && str_contains($codes[0]['body'], '••••'));
+    check('…a password message (team_credentials) is not shown at all', $creds !== [] && !str_contains($creds[0]['body'], 'Xy7pqLmz') && !str_contains($creds[0]['body'], 'u3agita'));
+    check('…a PIN inside any other message is masked (WaSend rules)', $note !== [] && !str_contains($note[0]['body'], '7731'));
+    check('…an ordinary bot reply is shown as sent', in_array('Bus leaves 13:00', array_column($sent, 'body'), true));
 
     /* ---------------------------------------------------------- P6-9b + 2a */
     echo "-- P6-9b suggest (side-effect free) + P6-2a booking link --\n";

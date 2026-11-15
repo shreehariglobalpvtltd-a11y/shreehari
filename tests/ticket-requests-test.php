@@ -391,6 +391,10 @@ try {
         'run tests/apply-sql.php database/upgrade-2026-11-16-ticket-seat-change.sql');
     check('wanted seats are read as printed labels, each once', TicketRequests::parseWantedSeats(' a5, A6 a5 ') === ['A5', 'A6']
         && TicketRequests::parseWantedSeats('A5; <b>') === null && TicketRequests::parseWantedSeats('   ') === []);
+    check('a cabin label is read as printed, one seat ("A3-4", "A9 – 10", "A3+A5")',
+        TicketRequests::parseWantedSeats('a3-4, A9 – 10 A3+A5') === ['A3-4', 'A9-10', 'A3+A5']
+        && TicketRequests::parseWantedSeats('-A5') === null && TicketRequests::parseWantedSeats('A3-4-5') === null,
+        (string) json_encode(TicketRequests::parseWantedSeats('a3-4, A9 – 10 A3+A5')));
     $B6 = $mkBooking('S', $sFut, $future, 'confirmed');
     $snapB6 = $snap($B6['id']);
     $r = api(['pnr' => $B6['pnr'], 'k' => $B6['k'], 'kind' => 'change_seat', 'wanted_seats' => ''], $ip(50));

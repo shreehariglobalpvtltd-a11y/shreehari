@@ -177,6 +177,9 @@ try {
     $ok($st['ok'] === true && ($st['data']['status'] ?? '') === 'open', 'the same Messenger account can read its status');
     $other = ['psid' => $P3, 'stageKey' => 'fb-' . $P3] + $fbCtx;
     $ok(AiHandoff::status($other, ['ref' => $ref])['ok'] === false, 'another Messenger account cannot');
+    $proven = ['phone' => '9812345678', 'intl' => '9779812345678'] + $fbCtx;
+    $ok(AiHandoff::status($proven, ['ref' => $ref])['ok'] === true, 'the same Messenger account still reads it after proving a number');
+    $ok(AiHandoff::status(['psid' => $P3, 'stageKey' => 'fb-' . $P3] + $proven, ['ref' => $ref])['ok'] === false, '…another account with a proven number does not');
     $guest = ['role' => 'customer', 'phone' => '', 'channel' => 'web', 'stageKey' => 'web-guest-x'];
     $ok(AiHandoff::status($guest, ['ref' => $ref])['ok'] === false, 'a website guest with no number cannot (no empty-phone match)');
     $ok(AiHandoff::open($guest, ['category' => 'complaint', 'summary' => 'website guest complaint'])['ok'] === false, 'a website guest with no number still cannot open one');

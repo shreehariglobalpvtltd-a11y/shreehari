@@ -68,6 +68,24 @@ final class AiKb
     public const SEARCH_WINDOW = 2000;
 
     /**
+     * Words that say nothing about a question's topic (roman Nepali / Hindi /
+     * English / Devanagari: "kati", "milcha", "lana", "chahincha", "bus",
+     * "ticket"...). They still count in the ranking; `_topic` leaves them out,
+     * so WaFaq never answers WITHOUT the assistant on them alone (live, 16 Nov:
+     * "pet lana milcha?" matched the luggage article on "lana" + "milcha").
+     */
+    public const STOP = ['bus', 'gadi', 'gaadi', 'cha', 'chha', 'xa', 'hola', 'huncha', 'hunchha', 'hunxa', 'milcha', 'milchha', 'milxa',
+        'nai', 'lai', 'pani', 'kati', 'keti', 'kaha', 'kahan', 'kahile', 'kasari', 'kun', 'kaun', 'kya', 'kitna', 'kitne', 'kitni', 'kab',
+        'kaise', 'hai', 'hain', 'hoga', 'hogi', 'milega', 'milegi', 'sakincha', 'parcha', 'parchha', 'padcha', 'chahincha', 'chaincha',
+        'chaiyo', 'chahiyo', 'chahiye', 'chaiye', 'lagcha', 'lagchha', 'lagxa', 'lagta', 'lagega', 'lana', 'laana', 'lane', 'garna', 'garne',
+        'garnu', 'garda', 'gareko', 'garnus', 'dinus', 'dinu', 'dine', 'dekhi', 'bata', 'samma', 'jane', 'aaune', 'aaucha', 'aauchha',
+        'aayena', 'bhayo', 'bhaena', 'sakte', 'sakta', 'sakti', 'kare', 'karna', 'karen', 'mein', 'nahi', 'nahin', 'aur',
+        'the', 'and', 'for', 'you', 'your', 'can', 'how', 'what', 'when', 'where', 'which', 'with', 'are', 'does', 'need', 'much', 'many',
+        'will', 'have', 'from', 'want', 'get', 'there', 'this', 'that', 'please', 'sir', 'dai', 'bhai', 'hajur', 'mero', 'hamro', 'tapai',
+        'tapaai', 'ticket', 'टिकट', 'बस', 'गाडी', 'हुन्छ', 'मिल्छ', 'कति', 'कहाँ', 'कहिले', 'कसरी', 'कुन', 'लाई', 'पनि', 'हुनुहुन्छ',
+        'सकिन्छ', 'पर्छ', 'चाहिन्छ', 'कितना', 'कहां', 'कैसे', 'क्या', 'है', 'मिलेगा', 'होगा', 'हामी', 'तपाईं', 'मेरो'];
+
+    /**
      * The best few verified, published, in-date articles for this query and
      * role. Scoring mirrors the parked gen-2 reader: an exact word match is
      * worth more than a one-edit typo, and an exact title match wins.
@@ -76,7 +94,8 @@ final class AiKb
      * the articles this reader may see — round(2 * ln(1 + N / df), 1) — so
      * "ticket" / "kati" / "bus", which half the AI-written articles carry,
      * count far less than "luggage" or "border". Each hit also carries
-     * `_words` (how many different query words it matched exactly), which
+     * `_words` (how many different query words it matched exactly), `_topic`
+     * (the same without STOP words) and `_title` (exact title match), which
      * WaFaq::kbSure() reads before it answers without the assistant.
      *
      * @return list<array<string,mixed>>
@@ -166,6 +185,8 @@ final class AiKb
             if ($score > 0) {
                 $a['_score'] = round($score, 1);
                 $a['_words'] = count($exact);
+                $a['_topic'] = count(array_diff($exact, self::STOP));   // matched words that name a topic
+                $a['_title'] = $title;                                  // the question IS this article's title
                 $ranked[]    = $a;
             }
         }

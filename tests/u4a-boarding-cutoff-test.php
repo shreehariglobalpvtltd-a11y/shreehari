@@ -162,6 +162,7 @@ try {
     check('unknown route refused', $refused(['route_id' => 99999999, 'stop_type' => 'boarding', 'stop_name' => 'X']) !== '');
     check('time 25:99 refused', $refused(['route_id' => $rid, 'stop_type' => 'boarding', 'stop_name' => 'X', 'stop_time' => '25:99']) !== '');
     check('fare "abc" refused', $refused(['route_id' => $rid, 'stop_type' => 'boarding', 'stop_name' => 'X', 'fare' => 'abc']) !== '');
+    check('fare "0.5" refused - 0 / blank = default, else 1-100000 as on Routes', $refused(['route_id' => $rid, 'stop_type' => 'boarding', 'stop_name' => 'X', 'fare' => '0.5']) !== '');
     check('latitude 123 refused', $refused(['route_id' => $rid, 'stop_type' => 'boarding', 'stop_name' => 'X', 'latitude' => '123', 'longitude' => '72']) !== '');
     check('latitude without longitude refused', $refused(['route_id' => $rid, 'stop_type' => 'boarding', 'stop_name' => 'X', 'latitude' => '23.2']) !== '');
     check('visible_to "staff" refused', $refused(['route_id' => $rid, 'stop_type' => 'boarding', 'stop_name' => 'X', 'visible_to' => 'staff']) !== '');

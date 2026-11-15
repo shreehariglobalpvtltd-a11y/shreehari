@@ -250,7 +250,12 @@ final class FbMessenger
 
         // Written down first (a re-delivered message id is stored once), so the
         // office sees it even when the rate limit below keeps the bot quiet.
-        self::logIn($psid, $ev);
+        // Best-effort: the log can never cost the person their answer.
+        try {
+            self::logIn($psid, $ev);
+        } catch (Throwable $e) {
+            Logger::warning('Facebook conversation log skipped: ' . $e->getMessage(), ['psid' => self::tag($psid)], 'facebook');
+        }
 
         $st  = self::state($psid);
         $mid = (string) ($ev['mid'] ?? '');

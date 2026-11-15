@@ -256,6 +256,17 @@ $ok(AiOps::parseWords('Naya pickup: Zu5ville Depot 21:00') === [] && str_contain
 $pv = AiOps::preview(['type' => 'add_stop', 'route_id' => $rid, 'stop_type' => 'boarding', 'stop_name' => 'Zu5newtown', 'stop_time' => '22:30', 'fare' => null]);
 $ok($pv !== [] && str_contains($pv[0][2], 'Zu5newtown') && str_contains($pv[0][2], 'default'), 'add_stop preview');
 $ok(AiOps::clean(['type' => 'add_stop', 'route_id' => $u5['route'], 'stop_type' => 'boarding', 'stop_name' => 'X y', 'stop_time' => '22:30']) === null, 'add_stop on an OFF route refused');
+/* review 16 Nov 2026: "naya / new" + "pickup / point" with a fare for a pickup that exists is a NEW FARE */
+$a = $first('Surat pickup ko naya bhada 2300');
+$ok(($a['type'] ?? '') === 'stop_fare' && ($a['stop'] ?? '') === 'Surat' && (float) ($a['fare'] ?? 0) === 2300.0, '"Surat pickup ko naya bhada 2300" = Surat fare 2300, not a new stop');
+// review: a name ending in "ी" / "ી" keeps its last byte (trim() used to cut it → "Which place?")
+$a = $first('Naya pickup: વાપી 22:30');
+$ok(($a['type'] ?? '') === 'add_stop' && ($a['stop_name'] ?? '') === 'વાપી' && mb_check_encoding((string) $a['stop_name'], 'UTF-8'), 'add_stop Gujarati "વાપી" kept whole');
+$a = $first('Naya pickup: वापी 22:30');
+$ok(($a['type'] ?? '') === 'add_stop' && ($a['stop_name'] ?? '') === 'वापी', 'add_stop Devanagari "वापी" kept whole');
+// review: the AI fills every schema field — route_ids [] is no filter, not a refusal
+$c = AiOps::clean(['type' => 'trip_sale', 'date' => $tomorrow, 'on' => false, 'route_ids' => []]);
+$ok($c !== null && !isset($c['route_ids']), 'clean() trip_sale with route_ids [] = every bus that day (as the preview shows)');
 
 /* P3-2g: seat_block */
 $a = $first('Seat U15 block karo kal');
@@ -276,6 +287,10 @@ $ok(($a['type'] ?? '') === 'trip_sale' && $a['on'] === false || ($a === [] && $n
 $a = $first('સુરત ભાડું ૨૩૦૦ કરો');
 $ok(($a['stop'] ?? '') === 'Surat' && (float) ($a['fare'] ?? 0) === 2300.0, 'Gujarati Surat fare 2300');
 $ok((AiOps::parseSwitches('whatsapp bot બંધ')['wa_booking_on'] ?? '') === '0', 'Gujarati bandh on a switch');
+/* review 16 Nov 2026: a roman switch word must start a word */
+$ok(!isset(AiOps::parseSwitches('Seat U15 block karo, bholi ko bus band')['quick_unlock_on']), '"block … band" does not turn PIN / pattern login off');
+$ok(!isset(AiOps::parseSwitches('meta whatsapp alert band')['eta_alert_on']), '"meta" is not the ETA alert');
+$ok((AiOps::parseSwitches('PIN pattern login chalu')['quick_unlock_on'] ?? '') === '1' && (AiOps::parseSwitches('fb messenger band')['fb_msgr_on'] ?? '') === '0', 'switch words still found');
 
 /* P3-1c + P3-4a: the shared command path, its audits, and the old fares in the log */
 $super = Database::fetch("SELECT * FROM admins WHERE role = 'superadmin' AND is_active = 1 ORDER BY id LIMIT 1");

@@ -118,7 +118,8 @@
       el.innerHTML = html;
       el.classList.remove('ie-open');
     }
-    function cancel() { close(before); el.focus(); }
+    // focus back on the value after Esc / ✕ only — a blur-close must not pull focus off what was tapped next
+    function cancel(refocus) { close(before); if (refocus !== false) el.focus(); }
     function save() {
       var val = inp.value.trim();
       if (val === cur.trim()) { cancel(); return; }
@@ -164,7 +165,7 @@
     inp.addEventListener('click', function (e) { e.stopPropagation(); });
     inp.addEventListener('blur', function () {
       // leaving an unchanged box closes it; a typed value stays until Enter / ✓ / Esc
-      setTimeout(function () { if (!done && inp.value.trim() === cur.trim() && document.activeElement !== inp) cancel(); }, 150);
+      setTimeout(function () { if (!done && inp.value.trim() === cur.trim() && document.activeElement !== inp) cancel(false); }, 150);
     });
   }
 

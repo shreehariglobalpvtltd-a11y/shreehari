@@ -509,7 +509,11 @@ final class AiOps
 
         /* 1b. a new pickup / drop point: "Naya pickup add karo: Gandhinagar 22:30" (16 Nov 2026, P3-2e)
               — not "sabai pickup ko bhada 100 thap" (that is a fare change BY ₹100) */
-        $add = ($isFare && $nums !== [] && self::fareAmount($t, $nums)[0] === 'delta') ? null : self::addStopAction($raw, $t);
+        /*    — nor "Mehsana boarding point ko new price 2,200" / "Surat pickup ko naya bhada 2300": a fare
+                said for a pickup that already exists, with no time, is a NEW FARE, not a new stop */
+        $fareFirst = $isFare && $nums !== [] && (self::fareAmount($t, $nums)[0] === 'delta'
+            || (self::findTime($t) === null && self::findStops($t) !== []));
+        $add = $fareFirst ? null : self::addStopAction($raw, $t);
         if ($add !== null) {
             return $add;
         }
@@ -817,7 +821,8 @@ final class AiOps
         $name = (string) preg_replace('/(?:₹|rs\.?|inr)?\s*(?<![\p{L}])\d[\d,]*(?:\.\d+)?\s*(?:\/-)?/iu', ' ', $name);
         $name = (string) preg_replace('/(?<![\p{L}\p{M}])(?:bhada|fare|price|rate|time|samay|subah|savere|bihana|raat|rati|shaam|sham|beluka|dopahar|diuso'
             . '|morning|evening|night|baje|भाडा|किराया|बजे|रात|बिहान|सुबह|सांझ|साँझ|ભાડું|સવારે|સાંજે|રાત્રે)(?![\p{L}\p{M}])/iu', ' ', $name);
-        $name = trim(Security::clean((string) preg_replace('/\s+/u', ' ', $name), 191), " \t,.;:-–—/|");
+        // a /u trim: trim()'s byte list would also eat the last byte of "ी" / "ી" (वापी, નવસારી)
+        $name = (string) preg_replace('/^[\s,.;:\-–—\/|]+|[\s,.;:\-–—\/|]+$/u', '', Security::clean((string) preg_replace('/\s+/u', ' ', $name), 191));
         $alias = self::CITY_ALIAS[mb_strtolower($name)] ?? null;
         if ($alias !== null) {
             $name = mb_convert_case($alias, MB_CASE_TITLE);   // "ગાંધીનગર" → "Gandhinagar"
@@ -1240,7 +1245,8 @@ final class AiOps
      */
     private static function cleanTrip(array $a, array $out, array $routeIds): ?array
     {
-        if (array_key_exists('route_ids', $a)) {
+        // an empty list (the AI fills every schema field) = no route filter, the same as the preview reads it
+        if (array_key_exists('route_ids', $a) && (array) $a['route_ids'] !== []) {
             $ids = array_values(array_intersect(array_map('intval', (array) $a['route_ids']), $routeIds));
             if ($ids === []) {
                 return null;   // a filter that matches nothing must never widen to every bus
@@ -1773,7 +1779,12 @@ final class AiOps
         foreach (self::EASY_KEYS as $k => $def) {
             $hit = false;
             foreach ($def[2] as $w) {
-                if (mb_strpos($t, mb_strtolower($w)) !== false) {
+                $w = mb_strtolower($w);
+                /* a roman word must START a word (16 Nov 2026 review): "Seat U15 block … band" is not the
+                   "lock" of PIN login, "meta" not "eta", "chatbot" not the WhatsApp "bot" */
+                if (preg_match('/^[a-z]/', $w) === 1
+                    ? preg_match('/(?<![a-z])' . preg_quote($w, '/') . '/u', $t) === 1
+                    : mb_strpos($t, $w) !== false) {
                     $hit = true;
                     break;
                 }

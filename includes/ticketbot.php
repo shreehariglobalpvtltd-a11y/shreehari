@@ -922,6 +922,8 @@ final class TicketBot
         $phrasesNepal = ['to nepal', 'nepal jane', 'nepal jana', 'nepal tak', 'nepal samma', 'nepal side', 'to rupaidiha', 'rupaidiha jane', 'rupaidiha jana',
                          // P7-7d (16 Nov 2026): the common misspellings, now pickup aliases too — as a destination they stay a direction
                          'to rupaidiya', 'rupaidiya jane', 'to rupedia', 'rupedia jane', 'to rupaidia', 'rupaidia jane', 'to nepalgunj', 'nepalgunj jane', 'nepalganj jane', 'to kathmandu', 'kathmandu jane',
+                         // review (16 Nov 2026): the older spellings too, so "Rupaideha jane" is never the Rupaidiha PICKUP (the opposite bus)
+                         'to rupaideha', 'rupaideha jane', 'to rupediha', 'rupediha jane',
                          'नेपाल जाना है', 'नेपाल जाना', 'नेपाल जाने', 'नेपाल जानु', 'नेपाल तर्फ', 'नेपाल तिर', 'नेपालगंज जाने', 'रुपैडिया जाने', 'काठमाडौं जाने',
                          'નેપાળ જવું', 'નેપાળ જવાનું', 'નેપાળ જવા', 'નેપાળગંજ જવું'];
         $phrasesIndia = ['to india', 'india jane', 'india jana', 'to gujarat', 'gujarat jane', 'to surat', 'surat jane', 'surat jana', 'to ahmedabad', 'ahmedabad jane', 'to mehsana', 'mehsana jane',
@@ -951,12 +953,31 @@ final class TicketBot
             $hit = self::fuzzyStop($word);
             return ($hit !== null && $hit['distance'] > 0) ? $hit['alias'] : $word;
         };
+        /* Review (16 Nov 2026): before jane / janu and after "to" the word is
+           the DESTINATION. A fix there is kept only when it then reads as a
+           known direction phrase ("surat jane", "to rupaidiha"); otherwise the
+           typo stays as typed and is asked about, as before. Without this
+           "Rupaideh jane" became the Rupaidiha PICKUP: a quote on the
+           opposite bus. Before se / bata / from it is the pickup: kept. */
+        $destPhrases = array_flip(array_merge($phrasesNepal, $phrasesIndia));
         $lower = (string) preg_replace_callback(
             '/(?<![\p{L}\p{M}\p{N}])([a-z]{4,})([\s,]+)(se|bata|dekhi|jane|janu|देखि|થી|से|बाट)(?![\p{L}\p{M}])/u',
-            static fn(array $m): string => $fixSlot($m[1]) . $m[2] . $m[3], $lower);
+            static function (array $m) use ($fixSlot, $destPhrases): string {
+                $fixed = $fixSlot($m[1]);
+                if ($fixed !== $m[1] && in_array($m[3], ['jane', 'janu'], true) && !isset($destPhrases[$fixed . ' ' . $m[3]])) {
+                    return $m[0];
+                }
+                return $fixed . $m[2] . $m[3];
+            }, $lower);
         $lower = (string) preg_replace_callback(
             '/(?<![\p{L}\p{M}\p{N}])(from|to)(\s+)([a-z]{4,})(?![\p{L}\p{M}\p{N}])/u',
-            static fn(array $m): string => $m[1] . $m[2] . $fixSlot($m[3]), $lower);
+            static function (array $m) use ($fixSlot, $destPhrases): string {
+                $fixed = $fixSlot($m[3]);
+                if ($fixed !== $m[3] && $m[1] === 'to' && !isset($destPhrases['to ' . $fixed])) {
+                    return $m[0];
+                }
+                return $m[1] . $m[2] . $fixed;
+            }, $lower);
         if (preg_match('/(?<![\p{L}\p{M}])(' . $placeAlt . ')\s+(?:se|bata|dekhi|from|से|बाट|देखि|થી)\s+(' . $placeAlt . ')' . self::NB . '/u', $lower, $ab)) {
             $side = $sideOf($ab[2]);
             if ($side !== '' && $side !== $sideOf($ab[1])) {
@@ -1855,8 +1876,8 @@ final class TicketBot
     /**
      * P7-7b / P7-7c (16 Nov 2026): a letter typed for a digit, inside a number
      * only — O / o -> 0 and I / l -> 1.
-     *   · a numeric date "14/O2/2027": the day is digits, the month and the
-     *     year each still hold real digits;
+     *   · a numeric date "14/O2/2027" / "1O/12/2026": the day and the month
+     *     each still hold a real digit, the year two;
      *   · a mobile "9826 O12345": neighbouring pieces made of digits and those
      *     letters, each piece holding a real digit, 8 or more real digits in
      *     all, that become EXACTLY 10 digits of a mobile (6-9 first). A short
@@ -1872,13 +1893,14 @@ final class TicketBot
         }
         $fix = static fn(string $s): string => strtr($s, ['O' => '0', 'o' => '0', 'I' => '1', 'l' => '1']);
 
+        // Review (16 Nov 2026): the day may carry the slip too ("1O/12/2026" left "1O" in the name) — it still needs a real digit.
         $text = (string) preg_replace_callback(
-            '/(?<![\p{L}\p{N}])(\d{1,2})([\/.\-])([\dOoIl]{1,2})([\/.\-])([\dOoIl]{2,4})(?![\p{L}\p{N}])/u',
+            '/(?<![\p{L}\p{N}])([\dOoIl]{1,2})([\/.\-])([\dOoIl]{1,2})([\/.\-])([\dOoIl]{2,4})(?![\p{L}\p{N}])/u',
             static function (array $m) use ($fix): string {
-                if (preg_match('/\d/', $m[3]) !== 1 || preg_match_all('/\d/', $m[5]) < 2) {
+                if (preg_match('/\d/', $m[1]) !== 1 || preg_match('/\d/', $m[3]) !== 1 || preg_match_all('/\d/', $m[5]) < 2) {
                     return $m[0];
                 }
-                return $m[1] . $m[2] . $fix($m[3]) . $m[4] . $fix($m[5]);
+                return $fix($m[1]) . $m[2] . $fix($m[3]) . $m[4] . $fix($m[5]);
             }, $text);
 
         return (string) preg_replace_callback(

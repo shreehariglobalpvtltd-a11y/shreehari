@@ -386,7 +386,7 @@ final class AiWatch
             return [];
         }
         $days = max(1, Settings::getInt('alert_agent_inactive_days', 7));
-        $idle = self::idleAgents($days);
+        $idle = self::idleAgents($days, 500);          // the count must not stop at the default 50
         $n    = count($idle);
         if ($n === 0) {
             return [];
@@ -959,6 +959,8 @@ final class AiWatch
      */
     private static function upcomingTrips(int $days): array
     {
+        // berths() / fillRows() need Seats; a cron (brain-digest) may not have loaded it.
+        require_once __DIR__ . '/seats.php';
         $today = todayISO();
         $rows = Database::fetchAll(
             "SELECT s.id, s.travel_date, r.from_city, r.to_city,

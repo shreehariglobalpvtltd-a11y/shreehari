@@ -139,7 +139,7 @@ try {
         $sugg[] = '↩️ Refunds waiting: ' . $refunds['n'] . ' · ' . inr($refunds['amt']) . ' (settle by hand)';
     }
     $idleDays = max(1, Settings::getInt('alert_agent_inactive_days', 7));
-    $idle     = AiWatch::idleAgents($idleDays);
+    $idle     = AiWatch::idleAgents($idleDays, 500);
     if ($idle !== []) {
         $sugg[] = '😴 Agents with no sale ' . $idleDays . '+ days: ' . implode(', ', array_slice(array_column($idle, 'name'), 0, 6))
                 . (count($idle) > 6 ? ' +' . (count($idle) - 6) . ' more' : '');

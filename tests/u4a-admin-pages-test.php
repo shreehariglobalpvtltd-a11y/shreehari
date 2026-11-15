@@ -166,6 +166,14 @@ try {
     check('fare "2,200" accepted on Routes', (float) Database::scalar("SELECT fare FROM route_stops WHERE route_id = :r AND stop_name = 'U4a Kalol'", ['r' => $rid], 0) === 2200.0);
     check('hint: the route is OFF', str_contains($f, 'This route is OFF'), $f);
     check('hint: no time -> cut-off warning', str_contains($f, 'No time set'), $f);
+    // P4-2b2: a pickup an hour+ before the 13:00 departure is read as after midnight - the flash says so.
+    $r = page('admin/routes.php', ['action' => 'add_stop', 'route_id' => $rid, 'stop_type' => 'boarding', 'stop_name' => 'U4a Night', 'stop_time' => '00:30']);
+    check('hint: 00:30 on a 13:00 run is read as the NEXT day', str_contains($flashOf($r), 'read as the NEXT day') && $countStops('U4a Night') === 1, $flashOf($r));
+    $r = page('admin/routes.php', ['action' => 'add_stop', 'route_id' => $rid, 'stop_type' => 'boarding', 'stop_name' => 'U4a Day', 'stop_time' => '13:30']);
+    check('... no such hint for 13:30', !str_contains($flashOf($r), 'NEXT day') && $countStops('U4a Day') === 1, $flashOf($r));
+    $night = (int) Database::scalar("SELECT id FROM route_stops WHERE route_id = :r AND stop_name = 'U4a Night'", ['r' => $rid], 0);
+    $r = page('admin/routes.php', ['action' => 'edit_stop', 'stop_id' => $night, 'stop_name' => 'U4a Night', 'landmark' => '', 'stop_time' => '01:45']);
+    check('edit_stop: a new 01:45 time gets the same hint', str_contains($flashOf($r), 'Stop updated') && str_contains($flashOf($r), 'read as the NEXT day'), $flashOf($r));
     $r = page('admin/routes.php', ['action' => 'add_stop', 'route_id' => $rid, 'stop_type' => 'checkpoint', 'stop_name' => 'U4a Bad', 'stop_time' => '25:99']);
     check('a bad time is refused with a message', str_contains($flashOf($r), 'bad:') && $countStops('U4a Bad') === 0, $flashOf($r));
 
@@ -274,6 +282,7 @@ try {
         check('no secret key in the export', $leak === [], implode(',', $leak));
         check('connection ids left out too (e.g. whatsapp_phone_id / smtp_host)', !in_array('whatsapp_phone_id', $keys, true) && !in_array('smtp_host', $keys, true));
         check('ordinary settings are in it (fare_to_nepal)', in_array('fare_to_nepal', $keys, true));
+        check('no *_key link key (chalani_public_key opens the public chalani)', array_values(array_filter($keys, static fn(string $k): bool => str_ends_with($k, '_key'))) === []);
         check('routes carry no crew phone', !array_key_exists('crew_phone', (array) ($j['routes'][0] ?? [])));
         $exAud = (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE id > :a AND action = 'settings.export'", ['a' => $auditFrom], 0);
         check('the download is audited', $exAud >= 1);

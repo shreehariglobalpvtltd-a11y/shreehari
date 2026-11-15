@@ -652,7 +652,10 @@ function admin_ai_bubble_on(): bool
         if (in_array($page, $skip, true) || isset($_GET['print'])) {
             return false;
         }
-        if (!(Auth::canManageSettings() || Auth::can('routes.edit') || Auth::can('schedules.manage'))) {
+        // admin/api/ai-settings.php and easy-settings.php both boot with dashboard.view:
+        // a role ticked routes.edit / schedules.manage without it would get a button that only 403s
+        if (!Auth::can('dashboard.view')
+            || !(Auth::canManageSettings() || Auth::can('routes.edit') || Auth::can('schedules.manage'))) {
             return false;
         }
         return is_file(dirname(__DIR__) . '/assets/js/admin-ai-bubble.js');
@@ -1439,6 +1442,8 @@ img,pre{max-width:100%}
    (.os-dock, admin/home.php) is 76px tall from the bottom, so there it moves up. */
 :root{--admin-fab-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
 body:has(.os-dock){--admin-fab-bottom:calc(88px + env(safe-area-inset-bottom,0px))}
+/* SmartBook's Pay bar (#smartBook .sb-bar, 66px) is fixed on the bottom edge under 860px */
+@media(max-width:859px){body:has(#smartBook){--admin-fab-bottom:calc(88px + env(safe-area-inset-bottom,0px))}}
 /* ── Toast animation — auto-fade after 4s ── */
 .flash{animation:flashIn .3s ease}
 @keyframes flashIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}

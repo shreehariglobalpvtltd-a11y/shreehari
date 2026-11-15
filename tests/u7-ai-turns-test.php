@@ -52,6 +52,8 @@ $cleanup = static function () use ($TAG, $SID): void {
     try { Database::delete('ai_turns', "router = 'u7test' OR wamid LIKE :w", ['w' => 'wamid.' . $TAG . '%']); } catch (Throwable $e) {}
     try { Database::delete('message_logs', 'provider_ref = :r', ['r' => $SID]); } catch (Throwable $e) {}
     try { Database::delete('kv_store', "kscope IN ('wa_stage','wa_agent','wa_turn') AND kkey LIKE '9100079%'", []); } catch (Throwable $e) {}
+    // review: the WaBot::reply probe below leaves the desk-chat state row for its number
+    try { Database::delete('ap_wa_state', "phone LIKE '9100079%'", []); } catch (Throwable $e) {}
 };
 $cleanup();
 $turnsProp = new ReflectionProperty(AiAgent::class, 'turnsReady');

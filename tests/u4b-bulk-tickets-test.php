@@ -101,6 +101,10 @@ check('header row + BOM: one line per passenger, in Name Mobile Gender Age order
 $csv2 = "Mobile;Age;Name\n9876543210;35;राम थापा\n";
 check('semicolons and columns in another order (named by the header)', WaBulk::csvLines($csv2) === ['राम थापा 9876543210 35'], json_encode(WaBulk::csvLines($csv2), JSON_UNESCAPED_UNICODE));
 check('no header row: Name, Mobile, Gender, Age', WaBulk::csvLines("Hari Gurung,977 9812345678,M\n") === ['Hari Gurung 977 9812345678 M']);
+check('a first passenger named like a header word ("Naamdev", "Yatri") is a passenger, not a header',
+    WaBulk::csvLines("Naamdev Sharma,9876543210,M,30\nRam Thapa,9876543211,M,20\n") === ['Naamdev Sharma 9876543210 M 30', 'Ram Thapa 9876543211 M 20']
+    && WaBulk::csvLines("Yatri Prasad;98765 43212;M;40\n") === ['Yatri Prasad 98765 43212 M 40'],
+    (string) json_encode(WaBulk::csvLines("Naamdev Sharma,9876543210,M,30\nRam Thapa,9876543211,M,20\n"), JSON_UNESCAPED_UNICODE));
 check('an old Windows-1252 save becomes UTF-8', WaBulk::csvLines("Jos\xE9 Kumar,9876543212\n") === ['José Kumar 9876543212']);
 check('quoted cells with a comma inside are one cell', WaBulk::csvLines("\"Thapa, Ram\",9876543210\n") === ['Thapa, Ram 9876543210']);
 $parsed = WaBulk::parse(implode("\n", WaBulk::csvLines($csv)));

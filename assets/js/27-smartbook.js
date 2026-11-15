@@ -1245,6 +1245,7 @@
     /* S.idem still set = a sale whose answer was lost (timeout / offline) keeps its key so
        the retry gets the SAME booking back - requote() would drop that key (a double sale). */
     if (!S.q || S.busy || S.idem || qPend || overlayOpen() || (Date.now() - quoteAt) < SEAT_MS) return;
+    if (!root.getClientRects().length) return;   // another screen is showing (results, My trips …): nothing to re-price
     requote(0);
   });
   $('sbSheetX').addEventListener('click', closeSheet);

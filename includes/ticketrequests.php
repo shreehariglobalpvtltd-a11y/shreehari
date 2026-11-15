@@ -111,11 +111,15 @@ final class TicketRequests
     public static function parseWantedSeats(string $raw): ?array
     {
         $out = [];
-        foreach (preg_split('/[\s,;\/]+/', strtoupper(trim($raw))) ?: [] as $t) {
+        /* A cabin prints as a joined label ("A3-4", "A3+A5", Seats::joinBedLabels):
+           that is ONE seat, so "A3 - 4" / "A3–4" are read as written. */
+        $raw = str_replace('–', '-', strtoupper(trim($raw)));
+        $raw = (string) preg_replace('/\s*([-+])\s*/', '$1', $raw);
+        foreach (preg_split('/[\s,;\/]+/', $raw) ?: [] as $t) {
             if ($t === '') {
                 continue;
             }
-            if (preg_match('/^[A-Z0-9]{1,6}$/', $t) !== 1) {
+            if (preg_match('/^(?:[A-Z0-9]{1,6}|[A-Z0-9]{1,4}[-+][A-Z0-9]{1,4})$/', $t) !== 1) {   // <= 9 chars: 6 of them fit wanted_seats VARCHAR(60)
                 return null;
             }
             if (!in_array($t, $out, true)) {

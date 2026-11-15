@@ -237,7 +237,10 @@ final class WaBulk
                 continue;
             }
             $cells = array_map(static fn($c): string => trim((string) $c), str_getcsv($l, $delim, '"', ''));
-            if (++$row === 1) {
+            /* A header names columns and carries no mobile number: a first
+               DATA row whose name starts like a header word ("Naamdev",
+               "Yatri Prasad") is a passenger, never swallowed as a header. */
+            if (++$row === 1 && preg_match('/\d{7,}/', (string) preg_replace('/[\s\-+().]/', '', implode('', $cells))) !== 1) {
                 $named = [];
                 foreach ($cells as $i => $c) {
                     foreach ($re as $k => $rx) {
@@ -692,7 +695,7 @@ final class WaBulk
                     'gender'     => $it['opts']['gender'] ?? null,
                     'pay'        => (string) $stage['pay'],
                     'passengers' => $it['passengers'],
-                    'note'       => 'WhatsApp bulk',
+                    'note'       => self::isPanel($ctx) ? 'Bulk tickets (panel)' : 'WhatsApp bulk',
                 ], $admin);
 
                 $done[] = [

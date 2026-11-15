@@ -1021,8 +1021,8 @@ final class AiTools
                 continue;
             }
             $s = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', (string) $b));
-            if ($s === '') {
-                continue;
+            if ($s === '' || preg_match('/\d/', $s) !== 1) {
+                continue;               // review: every berth carries a number — "A3 and A4" must not report "AND" as a berth
             }
             if (Security::isValidSeat($s) && isset($map[$s])) {
                 $ok[] = $map[$s];

@@ -354,7 +354,9 @@ if (($_GET['export'] ?? '') === 'json') {
     $expSkipped = 0;
     foreach ($rows as $r) {
         $key = (string) $r['skey'];
-        if (Settings::isSecretKey($key) || $catOf($key, (string) ($r['sgroup'] ?: 'general')) === 'keys') { $expSkipped++; continue; }
+        // *_key rows are link keys (chalani_public_key opens the public passenger chalani) - not configuration
+        if (Settings::isSecretKey($key) || str_ends_with($key, '_key')
+            || $catOf($key, (string) ($r['sgroup'] ?: 'general')) === 'keys') { $expSkipped++; continue; }
         $exp['settings'][] = ['skey' => $key, 'svalue' => $r['svalue'], 'stype' => $r['stype'], 'sgroup' => $r['sgroup'],
                               'label' => $r['label'], 'is_public' => (int) $r['is_public']];
     }

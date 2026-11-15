@@ -101,6 +101,8 @@ $agent  = $roleId('agent');
 
 $P = '9901' . random_int(100000000, 999999999);
 $tag = 'u3bpg' . random_int(1000, 9999);
+/* opening the inbox marks it read for that admin (kv_store fb_inbox_seen): put it back afterwards */
+$seenBefore = Database::fetch("SELECT kvalue FROM kv_store WHERE kscope = 'fb_inbox_seen' AND kkey = :k", ['k' => (string) $super]);
 
 try {
     $ok(FbMessenger::logReady(true), 'fb_inbound is installed on the test database (database/upgrade-2026-11-16-fb-inbound.sql)');
@@ -175,6 +177,11 @@ try {
     Database::run('DELETE FROM fb_inbound WHERE psid = :p', ['p' => $P]);
     Database::run("DELETE FROM audit_logs WHERE action = 'fb.inbox_reply' AND entity_id = :e", ['e' => substr(hash('sha256', $P), 0, 10)]);
     Database::run("DELETE FROM rate_limits WHERE identifier = :p", ['p' => $P]);
+    if ($seenBefore === null) {
+        Database::run("DELETE FROM kv_store WHERE kscope = 'fb_inbox_seen' AND kkey = :k", ['k' => (string) $super]);
+    } else {
+        Database::run("UPDATE kv_store SET kvalue = :v WHERE kscope = 'fb_inbox_seen' AND kkey = :k", ['v' => $seenBefore['kvalue'], 'k' => (string) $super]);
+    }
 }
 $ok((int) Database::scalar('SELECT COUNT(*) FROM fb_inbound WHERE psid = :p', ['p' => $P], 0) === 0, 'every test row was removed');
 

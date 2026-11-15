@@ -158,6 +158,8 @@ check('the bubble rule = easy-settings $canCmd (settings / routes.edit / schedul
     str_contains($g, "Auth::canManageSettings() || Auth::can('routes.edit') || Auth::can('schedules.manage')")
     && str_contains($es, "\$canEdit || Auth::can('routes.edit') || Auth::can('schedules.manage')"));
 check('the bubble clears the Home phone dock (--admin-fab-bottom)', str_contains($g, 'body:has(.os-dock){--admin-fab-bottom:calc(88px'));
+check('…and the SmartBook Pay bar under 860px', str_contains($g, '@media(max-width:859px){body:has(#smartBook){--admin-fab-bottom:calc(88px'));
+check('the bubble also needs dashboard.view (the gate of admin/api/ai-settings.php)', str_contains($g, "if (!Auth::can('dashboard.view')\n            || !(Auth::canManageSettings()"));
 $hb = (string) file_get_contents($ROOT . '/includes/homeboard.php');
 check("Home 'ai' tile -> /admin/ai-copilot.php on bookings.view", str_contains($hb, "'ai'        => ['🤖', 'AI सहायक', 'AI Sahayak', '/admin/ai-copilot.php', \$bv]"));
 
@@ -180,9 +182,10 @@ $cleanup = static function () use (&$made): void {
     $made = [];
 };
 register_shutdown_function($cleanup);
-$mk = static function (string $role) use ($tag, &$made): int {
+$mk = static function (string $role, array $extra = []) use ($tag, &$made): int {
     $id = (int) Database::insert('admins', ['username' => 'u6-' . $role . '-' . $tag, 'password_hash' => password_hash(bin2hex(random_bytes(8)), PASSWORD_DEFAULT),
-        'full_name' => 'U6 ' . ucfirst($role) . ' Test', 'role' => $role, 'is_active' => 1, 'must_change_pw' => 0]);
+        'full_name' => 'U6 ' . ucfirst($role) . ' Test', 'role' => $role, 'is_active' => 1, 'must_change_pw' => 0]
+        + ($extra !== [] ? ['permissions' => json_encode(array_values($extra))] : []));
     $made[] = $id;
     return $id;
 };
@@ -192,6 +195,9 @@ try {
     $OPS = $mk('operations');
     $SPT = $mk('support');
     $AGT = $mk('agent');
+    // a counter login ticked schedules.manage (permission matrix) but no dashboard.view:
+    // admin/api/ai-settings.php would refuse it, so it must not get the button
+    $CTR = $mk('counter', ['schedules.manage']);
 
     echo "\n-- admin/themes.php as a super-admin\n";
     $html = child(['what' => 'page', 'admin' => $SUP, 'script' => 'themes.php']);
@@ -249,6 +255,11 @@ try {
     check('support: off (no settings / routes / schedules right)', ($p['bubble'] ?? true) === false && ($p['cmd'] ?? true) === false);
     $p = probe($AGT);
     check('agent: off', ($p['bubble'] ?? true) === false);
+    $p = probe($CTR);
+    check('counter + schedules.manage but no dashboard.view: off (the endpoint boots with dashboard.view)',
+        ($p['cmd'] ?? false) === true && ($p['bubble'] ?? true) === false, json_encode(['cmd' => $p['cmd'] ?? null, 'bubble' => $p['bubble'] ?? null]));
+    $aiApi = (string) @file_get_contents($ROOT . '/admin/api/ai-settings.php');
+    check("…admin/api/ai-settings.php really boots with dashboard.view", str_contains($aiApi, "admin_boot('dashboard.view')"));
     foreach (['easy-settings.php', 'ai-copilot.php', 'quick-unlock.php', 'pin-setup.php', 'change-password.php', 'payslip.php'] as $pg) {
         $p = probe($SUP, $pg);
         check("off on $pg", ($p['bubble'] ?? true) === false);

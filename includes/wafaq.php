@@ -681,9 +681,12 @@ final class WaFaq
     /**
      * 16 Nov 2026 (P7-3c) — re-calibrated for AiKb's rarity-weighted score:
      * the top article answers WITHOUT the assistant only when it scores 6+,
-     * clearly beats the next one (1.3x), and matched two different words of
-     * the question (or its exact title). Common words alone ("bus ticket kati
-     * ho") hit many articles alike, so they never pass.
+     * clearly beats the next one (1.3x), and matched two different TOPIC
+     * words of the question (AiKb::STOP words such as "kati", "milcha",
+     * "lana", "bus", "ticket" do not count), or is its exact title. Common
+     * words alone ("bus ticket kati ho", "pet lana milcha?") never pass: on
+     * the rarity scale a filler word can weigh as much as a topic word, and a
+     * score of 20+ is reachable without the title.
      *
      * @param list<array<string,mixed>> $hits AiKb::search() output, best first
      */
@@ -694,8 +697,8 @@ final class WaFaq
         }
         $top    = (float) ($hits[0]['_score'] ?? 0);
         $second = (float) ($hits[1]['_score'] ?? 0);
-        $words  = (int) ($hits[0]['_words'] ?? 0);
-        return $top >= 6.0 && $top >= 1.3 * $second && ($words >= 2 || $top >= 20.0);
+        $topic  = (int) ($hits[0]['_topic'] ?? ($hits[0]['_words'] ?? 0));
+        return $top >= 6.0 && $top >= 1.3 * $second && ($topic >= 2 || !empty($hits[0]['_title']));
     }
 
     /* =================================================================

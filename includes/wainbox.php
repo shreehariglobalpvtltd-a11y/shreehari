@@ -812,14 +812,17 @@ final class WaInbox
         }
         $out = [];
         try {
+            require_once INCLUDE_PATH . '/wasend.php';         // the sender's own secret rules (WaSend::SECRET / isSecret)
             foreach (Database::fetchAll(
                 "SELECT id, to_number, purpose, status, body, error, created_at FROM message_logs WHERE $where ORDER BY id DESC LIMIT " . max(1, min(500, $limit)),
                 $p
             ) as $m) {
                 $purpose = (string) ($m['purpose'] ?? '');
                 $body = (string) ($m['body'] ?? '');
-                if (preg_match('/otp|code|verify|pin|password/i', $purpose) === 1) {
-                    $body = preg_replace('/\d{4,8}/u', '••••', $body) ?? '';
+                if (in_array($purpose, WaSend::SECRET, true) || preg_match('/credential|password/i', $purpose) === 1) {
+                    $body = WaSend::SCRUBBED;                   // e.g. team_credentials: a password is not only digits
+                } elseif (preg_match('/otp|code|verify|pin/i', $purpose) === 1 || WaSend::isSecret($purpose, $body)) {
+                    $body = WaSend::maskSecrets(preg_replace('/\d{4,8}/u', '••••', $body) ?? '');
                 }
                 $out[] = ['id' => (int) $m['id'], 'to' => (string) $m['to_number'], 'purpose' => $purpose, 'status' => (string) $m['status'],
                           'body' => $body, 'error' => (string) ($m['error'] ?? ''), 'at' => (string) $m['created_at']];

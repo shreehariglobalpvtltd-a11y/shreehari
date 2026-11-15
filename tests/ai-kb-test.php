@@ -207,7 +207,16 @@ check('…and scores below a rare-word match', (float) ($common[0]['_score'] ?? 
 $single = AiKb::search('zzqbaggage', 'customer', 2);
 check('one rare word alone finds the article…', ($single[0]['canonical_title'] ?? '') === 'Zztest luggage rule');
 check('…but one word is not enough to answer without the assistant', !WaFaq::kbSure($single));
-check('kbSure(): an exact title (+20) passes on its own', WaFaq::kbSure([['_score' => 21.4, '_words' => 1], ['_score' => 3.0, '_words' => 1]]));
+check('kbSure(): an exact title (+20) passes on its own', WaFaq::kbSure([['_score' => 21.4, '_words' => 1, '_topic' => 1, '_title' => true], ['_score' => 3.0, '_words' => 1]]));
+check('kbSure(): 20+ from words alone is NOT a title (one topic word fails)', !WaFaq::kbSure([['_score' => 22.7, '_words' => 4, '_topic' => 1, '_title' => false], ['_score' => 12.0, '_words' => 2]]));
+/* live, 16 Nov: "pet lana milcha?" matched the luggage article on the filler words "lana" + "milcha" */
+$mk('zztest-idf-stop', 'Zztest carry rule', 'zzqcarry lana milcha');
+$stopOnly = AiKb::search('zzqpet lana milcha', 'customer', 2);
+check('search() marks filler words: _topic leaves STOP words out', ($stopOnly[0]['canonical_title'] ?? '') === 'Zztest carry rule'
+    && (int) ($stopOnly[0]['_words'] ?? 0) === 2 && (int) ($stopOnly[0]['_topic'] ?? -1) === 0 && ($stopOnly[0]['_title'] ?? null) === false);
+check('…so filler words alone NEVER answer without the assistant', !WaFaq::kbSure($stopOnly), json_encode(array_map(static fn($h) => [$h['_score'], $h['_topic']], $stopOnly)));
+$titled = AiKb::search('Zztest carry rule', 'customer', 2);
+check('search() flags an exact title match', ($titled[0]['_title'] ?? null) === true && WaFaq::kbSure($titled));
 check('kbSure(): a close second (under 1.3x) fails', !WaFaq::kbSure([['_score' => 12.0, '_words' => 3], ['_score' => 10.0, '_words' => 3]]));
 check('kbSure(): under 6 fails', !WaFaq::kbSure([['_score' => 5.9, '_words' => 3]]));
 check('kbSure(): nothing found fails', !WaFaq::kbSure([]));
