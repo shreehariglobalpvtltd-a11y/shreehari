@@ -28,6 +28,14 @@ SET @sql := IF(@col = 0,
   'SELECT 1');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'admins' AND COLUMN_NAME = 'pin_len');
+SET @sql := IF(@col = 0,
+  'ALTER TABLE `admins` ADD COLUMN `pin_len` TINYINT UNSIGNED NULL COMMENT ''4 or 6: how many PIN boxes the lock screen draws (NULL = older PIN, OK button)''',
+  'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
 CREATE TABLE IF NOT EXISTS `login_recovery_requests` (
   `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `admin_id`      BIGINT UNSIGNED NULL COMMENT 'the account the typed code points at (NULL = no such code)',

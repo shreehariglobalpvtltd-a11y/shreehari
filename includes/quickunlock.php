@@ -138,6 +138,9 @@ final class QuickUnlock
             "UPDATE admins SET {$col} = :h, unlock_failed = 0, unlock_locked_until = NULL WHERE id = :i",
             ['h' => Security::hashPassword($value), 'i' => $adminId]
         );
+        if ($kind === 'pin' && self::pinLenReady()) {
+            Database::query('UPDATE admins SET pin_len = :l WHERE id = :i', ['l' => strlen($value), 'i' => $adminId]);
+        }
         Logger::audit('admin.unlock.set', 'admin', (string) $adminId, null, ['kind' => $kind], 'Quick unlock ' . $kind . ' set');
     }
 
@@ -409,6 +412,34 @@ final class QuickUnlock
      * ================================================================= */
 
     public const LOCK_MAX_MIN = 1440;
+
+    private static ?bool $pinLenReady = null;
+
+    /** 15 Nov 2026: admins.pin_len exists (how many PIN boxes to draw). */
+    public static function pinLenReady(): bool
+    {
+        if (self::$pinLenReady === null) {
+            try {
+                self::$pinLenReady = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admins' AND COLUMN_NAME = 'pin_len'",
+                    [], 0) > 0;
+            } catch (Throwable $e) {
+                self::$pinLenReady = false;
+            }
+        }
+        return self::$pinLenReady;
+    }
+
+    /** 4 or 6 when known (the lock screen then opens by itself, like a phone), else 0 (older PIN: OK button). */
+    public static function pinLen(int $adminId): int
+    {
+        if ($adminId <= 0 || !self::pinLenReady()) {
+            return 0;
+        }
+        $l = (int) Database::scalar('SELECT pin_len FROM admins WHERE id = :i AND pin_hash IS NOT NULL', ['i' => $adminId], 0);
+        return in_array($l, [4, 6], true) ? $l : 0;
+    }
 
     private static ?bool $strikesReady = null;
 

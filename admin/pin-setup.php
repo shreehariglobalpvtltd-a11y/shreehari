@@ -19,7 +19,10 @@ $fresh = (time() - (int) ($_SESSION[ADMIN_SESSION_KEY]['logged_in_at'] ?? 0)) <=
 $st    = QuickUnlock::status($id);
 $flash = null;
 
-if ($st['pin'] || $st['pattern']) {
+$secOn  = QuickUnlock::secReady();
+$hasQ   = $secOn && QuickUnlock::secQuestion($id) !== '';
+$secAsk = ($st['pin'] || $st['pattern']) && $secOn && !$hasQ && (string) ($_GET['secq'] ?? ($_POST['secq'] ?? '')) === '1';
+if (($st['pin'] || $st['pattern']) && !$secAsk) {
     $_SESSION[ADMIN_SESSION_KEY]['qk_ok'] = true;
     Response::redirect(ltrim(Auth::homeUrl(), '/'));
 }
@@ -34,6 +37,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             throw new RuntimeException('धेरै पटक प्रयास भयो — १५ मिनेटपछि · Too many tries, wait 15 minutes.');
         }
         $kind = (string) ($_POST['qk_kind'] ?? '');
+        if ($kind === 'secq') {
+            // 15 Nov 2026 (owner): security question right after the PIN / pattern, optional
+            $qk = (string) ($_POST['sec_q'] ?? '');
+            $q  = $qk === 'own' ? trim(Security::clean((string) ($_POST['sec_own'] ?? ''), 150)) : (QuickUnlock::SEC_QUESTIONS[$qk] ?? '');
+            QuickUnlock::secSet($id, $q, (string) ($_POST['sec_a'] ?? ''));
+            $_SESSION['home_flash'] = '✅ सुरक्षा प्रश्न राखियो · Security question saved.';
+            Response::redirect(ltrim(Auth::homeUrl(), '/'));
+        }
         if ($kind === 'pin') {
             $pin = trim((string) ($_POST['pin'] ?? ''));
             if (($why = CodeLogin::newProblem('pin', $pin)) !== null) {
@@ -56,7 +67,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $_SESSION[ADMIN_SESSION_KEY]['qk_ok'] = true;
         QuickUnlock::rememberDevice($id);
         $_SESSION['home_flash'] = '✅ PIN / pattern राखियो — अबदेखि कोड र PIN / pattern ले भित्र आउनुहोस् · Saved. From now on sign in with your code and PIN / pattern.';
-        Response::redirect(ltrim(Auth::homeUrl(), '/'));
+        Response::redirect($secOn && !$hasQ ? 'admin/pin-setup.php?secq=1' : ltrim(Auth::homeUrl(), '/'));
     } catch (RuntimeException $e) {
         $flash = $e->getMessage();
     }
@@ -73,10 +84,12 @@ admin_header('PIN / Pattern', '');
 .ps-card input[type=password]{width:100%;min-height:48px;margin-top:6px;padding:8px 12px;border-radius:10px;border:1px solid #c9d3e4;font-size:20px;letter-spacing:.4em;text-align:center}
 .ps-card .btn{min-height:48px;margin-top:12px;width:100%}
 .ps-code{font-weight:800;font-size:18px;text-align:center}
+.ps-card label[hidden]{display:none}
+.ps-card select,.ps-card input[type=text],.ps-card input[type=date]{width:100%;min-height:44px;margin-top:6px;padding:8px 12px;border-radius:10px;border:1px solid #c9d3e4;font-size:16px;background:var(--well,#fff);color:inherit}
 </style>
 <div class="ps-wrap">
   <div class="ps-card">
-    <h2>🔐 PIN वा Pattern अनिवार्य · A PIN or pattern is required</h2>
+    <h2><?= $secAsk ? '✅ PIN / pattern राखियो · PIN / pattern saved' : '🔐 PIN वा Pattern अनिवार्य · A PIN or pattern is required' ?></h2>
     <p class="muted">अबदेखि लगइन: <b>कोड → PIN / pattern</b>। एक पटक मात्र राख्नुहोस् · From now on you sign in with your code and a PIN or pattern. Set it once.</p>
     <p class="ps-code">🪪 <?= Security::e($code) ?></p>
     <?php if ($flash !== null): ?><p class="pill" style="display:block;padding:10px 12px;background:#ffdede;color:#8a1f1f"><?= Security::e($flash) ?></p><?php endif; ?>
@@ -85,13 +98,30 @@ admin_header('PIN / Pattern', '');
       <a class="btn" href="/admin/logout.php">फेरि लगइन · Sign in again</a>
     <?php endif; ?>
   </div>
-  <?php if ($fresh): ?>
+  <?php if ($secAsk): ?>
   <div class="ps-card">
-    <h2>🔢 ६ अङ्कको PIN · 6-digit PIN</h2>
+    <h2>🛡️ सुरक्षा प्रश्न (ऐच्छिक) · Security question (optional)</h2>
+    <form method="post" autocomplete="off">
+      <?= Security::csrfField() ?><input type="hidden" name="qk_kind" value="secq"><input type="hidden" name="secq" value="1">
+      <label>प्रश्न · Question
+        <select name="sec_q" onchange="document.getElementById('psOwn').hidden=this.value!=='own';var a=document.getElementById('psA');a.type=this.value==='dob'?'date':'text'">
+          <?php foreach (QuickUnlock::SEC_QUESTIONS as $k => $label): ?><option value="<?= Security::e($k) ?>"><?= Security::e($label) ?></option><?php endforeach; ?>
+          <option value="own">आफ्नै प्रश्न लेख्ने · Write my own</option>
+        </select></label>
+      <label id="psOwn" hidden>तपाईंको प्रश्न · Your question<input name="sec_own" maxlength="150"></label>
+      <label>उत्तर · Answer<input id="psA" name="sec_a" type="date" maxlength="80" required></label>
+      <p class="note">यही फोनमा PIN बिर्सिँदा यसले नयाँ PIN राख्न मिल्छ · On this phone, it lets you set a new PIN if you forget it.</p>
+      <button class="btn ok" type="submit">सेभ गर्नुहोस् · Save</button>
+    </form>
+    <a class="btn" href="/admin/home.php">पछि · Later</a>
+  </div>
+  <?php elseif ($fresh): ?>
+  <div class="ps-card">
+    <h2>🔢 ४ वा ६ अङ्कको PIN · 4 or 6-digit PIN</h2>
     <form method="post" autocomplete="off">
       <?= Security::csrfField() ?><input type="hidden" name="qk_kind" value="pin">
-      <label>नयाँ PIN · New PIN<input type="password" name="pin" inputmode="numeric" pattern="\d{6}" minlength="6" maxlength="6" required autofocus></label>
-      <label>फेरि उही PIN · Same PIN again<input type="password" name="pin2" inputmode="numeric" pattern="\d{6}" minlength="6" maxlength="6" required></label>
+      <label>नयाँ PIN · New PIN<input type="password" name="pin" inputmode="numeric" pattern="\d{4}|\d{6}" minlength="4" maxlength="6" required autofocus></label>
+      <label>फेरि उही PIN · Same PIN again<input type="password" name="pin2" inputmode="numeric" pattern="\d{4}|\d{6}" minlength="4" maxlength="6" required></label>
       <button class="btn ok" type="submit">PIN राख्नुहोस् · Save PIN</button>
     </form>
   </div>

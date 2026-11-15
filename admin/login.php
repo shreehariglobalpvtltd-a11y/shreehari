@@ -192,6 +192,10 @@ if (Auth::oneDoorOn()) {
                 }
                 if (($r['flash'] ?? '') === 'pin_saved') {
                     $_SESSION['home_flash'] = '✅ PIN / pattern राखियो — अबदेखि कोड र PIN / pattern ले मात्र भित्र आउनुहोस् · Saved. From now on sign in with your code and PIN / pattern.';
+                    if (($me = Auth::admin()) !== null && QuickUnlock::secReady() && QuickUnlock::secQuestion((int) $me['id']) === '') {
+                        QuickUnlock::rememberDevice((int) $me['id']);
+                        Response::redirect('/admin/pin-setup.php?secq=1');   // 15 Nov 2026: offer the security question once (optional)
+                    }
                 }
                 if (($r['flash'] ?? '') === 'saved') {
                     $_SESSION['home_flash'] = '✅ नयाँ पासवर्ड राखियो, तपाईं भित्र आउनुभयो · New password saved — you are signed in.';
@@ -443,16 +447,34 @@ body:not(.lock) .lk-keys button.go{background:var(--royal);color:#fff;border-col
 .cl-forgot{margin:0}.cl-forgot button{background:none;border:0;padding:6px 0;color:var(--royal);font:inherit;font-weight:600;font-size:13px;cursor:pointer}
 body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
 .who span{word-break:break-all}
+/* 15 Nov 2026 — calm, secure motion on the code-first door */
+.cl-len{display:flex;gap:8px;justify-content:center;margin:4px 0 0}.cl-len[hidden]{display:none}
+.cl-len button{min-height:34px;padding:0 14px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--mut);font:700 13px/1 inherit;cursor:pointer}
+.cl-len button.on{background:var(--royal);border-color:var(--royal);color:#fff}
+body.cf .box{animation:cfIn .5s cubic-bezier(.2,.8,.2,1) both}
+body.cf .logo{position:relative}
+body.cf .logo::after{content:'';position:absolute;left:50%;top:50%;width:84px;height:84px;margin:-42px 0 0 -42px;border-radius:50%;border:2px solid rgba(240,124,31,.55);animation:cfRing 2.6s ease-out infinite;pointer-events:none}
+body.cf .lk-dots i{transition:transform .18s,background .18s,border-color .18s}
+body.cf .lk-dots i.on{animation:cfPop .22s ease-out}
+.lk-dots.done i{background:#16A34A !important;border-color:#16A34A !important;transform:scale(1.15)}
+body.cf .lk-keys button{transition:transform .08s,background .15s}
+body.cf .lk-keys button:active{transform:scale(.92)}
+body.cf .qk-pad{animation:cfIn .45s .08s both}
+body.cf.shake .lk-dots,body.cf.shake .qk{animation:lkshake .35s}
+@keyframes cfIn{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes cfRing{0%{transform:scale(.7);opacity:.9}100%{transform:scale(1.35);opacity:0}}
+@keyframes cfPop{0%{transform:scale(.6)}60%{transform:scale(1.3)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){body.cf .box,body.cf .qk-pad,body.cf .lk-dots i.on,body.cf .logo::after{animation:none}}
 @media (max-width:359px){.lk-keys{grid-template-columns:repeat(3,62px);gap:9px 18px}.lk-keys button{width:62px;height:62px;font-size:22px}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('shg_admin_theme');if(t==='dark'||t==='amoled')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 <link rel="manifest" href="/admin/app-manifest.php"><meta name="theme-color" content="#0B1220">
 </head>
-<body<?= ($remembered ?? null) !== null || $cLock ? ' class="lock"' : '' ?>>
+<body class="<?= trim((($remembered ?? null) !== null || $cLock ? 'lock ' : '') . (in_array($step, CodeLogin::STEPS, true) ? 'cf' : '')) ?>">
 <main class="box" data-door="one">
   <div class="logo"><img src="<?= $h(Brand::markUrl(68)) ?>" alt="<?= $h($company) ?>" width="112" height="58"></div>
   <h1><?= $h($title) ?></h1>
-  <?php if ($step === 'start' || $step === 'c_code'): ?>
+  <?php if ($step === 'start'): ?>
     <p class="sub">एजेन्ट, काउन्टर, स्टाफ, अफिस — सबैको एउटै ढोका · One door for agents, counters, staff and office</p>
     <div class="ceo"><img src="/assets/img/ceo.jpg" alt="" onerror="this.style.display='none'"><div><b><?= $h($ceoName) ?></b><span>👑 Founder &amp; CEO · <?= $h($company) ?></span></div></div>
   <?php endif; ?>
@@ -463,8 +485,8 @@ body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
   /* ---- 15 Nov 2026: code-first screens. The PIN keypad and the pattern pad are the
      same widgets as the lock screen; the account is always the one in the server
      session (CodeLogin::state), never a field of these forms. ---- */
-  $pinForm = static function (string $mode, string $btn, bool $hide = false) use ($hid): string {
-      return '<form method="post" action="/admin/login.php" data-qk-form="pin"' . ($hide ? ' hidden' : '') . ' autocomplete="off">' . $hid()
+  $pinForm = static function (string $mode, string $btn, bool $hide = false, int $len = 0) use ($hid): string {
+      return '<form method="post" action="/admin/login.php" data-qk-form="pin" data-len="' . $len . '"' . ($hide ? ' hidden' : '') . ' autocomplete="off">' . $hid()
           . '<input type="hidden" name="mode" value="' . Security::e($mode) . '"><input type="hidden" name="qk_kind" value="pin">'
           . '<label for="qkpin_' . Security::e($mode) . '">PIN</label>'
           . '<input id="qkpin_' . Security::e($mode) . '" class="qk-pin" name="qk_val" type="password" inputmode="numeric" pattern="\d{4,6}" minlength="4" maxlength="6" autocomplete="off" required>'
@@ -502,12 +524,6 @@ body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
            placeholder="SHG-0008 / SHG-S-0003" value="<?= $h($cs['code'] ?? '') ?>">
     <button class="btn" type="submit">अगाडि बढ्नुहोस् · Continue →</button>
   </form>
-  <p class="note">कोड तपाईंको ID कार्डमा छ · Your code is on your ID card.</p>
-  <?php if (Passkeys::ready()): ?>
-    <div id="pkMsg" class="msg ok" data-cls="msg" hidden></div>
-    <button type="button" class="btn pk" data-pk="login" data-pk-soft hidden>👆 फिंगरप्रिन्ट / Face ID ले भित्र · Fingerprint / Face ID</button>
-  <?php endif; ?>
-  <div class="links"><a href="<?= $h($odUrl(['step' => 'start', 'classic' => true])) ?>" class="cl-small">🔑 पासवर्ड / WhatsApp ले भित्र (पुरानो ढोका) · Password or WhatsApp sign-in</a></div>
 
   <?php elseif ($step === 'c_unlock'): $cPat = $cKinds['pattern'] && !$cKinds['pin']; ?>
   <?php if ($cLock): ?><div class="lk-clock" id="lkClock" aria-hidden="true">--:--</div><div class="lk-date" id="lkDate"></div><?php endif; ?>
@@ -517,7 +533,7 @@ body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
       <button type="button"<?= $cPat ? '' : ' class="on"' ?> data-qk-tab="pin">🔢 PIN</button>
       <button type="button"<?= $cPat ? ' class="on"' : '' ?> data-qk-tab="pattern">◯ Pattern</button>
     </div>
-    <?= $pinForm('c_unlock', 'PIN ले भित्र · Unlock', $cPat) ?>
+    <?= $pinForm('c_unlock', 'PIN ले भित्र · Unlock', $cPat, $cAid > 0 ? QuickUnlock::pinLen($cAid) : 6) ?>
     <?= $patForm('c_unlock', 'आफ्नो pattern कोर्नुहोस् · Draw your pattern', !$cPat) ?>
   </div>
   <div class="links">
@@ -573,10 +589,11 @@ body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
   <p class="note">यो PIN / pattern कसैलाई नदेखाउनुहोस् — फोनमा सेभ हुँदैन · Keep it to yourself; it is never saved on the phone.</p>
   <div class="qk" data-qk>
     <div class="qk-tabs" role="tablist">
-      <button type="button" class="on" data-qk-tab="pin">🔢 ६ अङ्क PIN · 6-digit PIN</button>
+      <button type="button" class="on" data-qk-tab="pin">🔢 PIN</button>
       <button type="button" data-qk-tab="pattern">◯ Pattern</button>
     </div>
-    <?= $pinForm('c_create', 'अगाडि · Next →') ?>
+    <div class="cl-len" data-cl-len role="group" aria-label="PIN length"><button type="button" class="on" data-l="4">४ अङ्क · 4</button><button type="button" data-l="6">६ अङ्क · 6</button></div>
+    <?= $pinForm('c_create', 'अगाडि · Next →', false, 4) ?>
     <?= $patForm('c_create', 'कम्तीमा ४ थोप्ला जोड्नुहोस् · Join at least 4 dots', true) ?>
   </div>
 
@@ -585,9 +602,9 @@ body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
   <div class="qk" data-qk>
     <?= $cpk === 'pattern'
         ? $patForm('c_confirm', 'उही pattern फेरि कोर्नुहोस् · Draw the same pattern again')
-        : $pinForm('c_confirm', 'सेभ गरेर भित्र · Save & sign in') ?>
+        : $pinForm('c_confirm', 'सेभ गरेर भित्र · Save & sign in', false, (int) ($cs['pend']['len'] ?? 6)) ?>
   </div>
-  <p class="note"><?= $cpk === 'pattern' ? 'पक्का गर्न उही pattern फेरि · Same pattern once more' : 'पक्का गर्न उही ६ अङ्क फेरि · Same 6 digits once more' ?></p>
+  <p class="note"><?= $cpk === 'pattern' ? 'पक्का गर्न उही pattern फेरि · Same pattern once more' : 'पक्का गर्न उही PIN फेरि · Same PIN once more' ?></p>
   <div class="links"><a href="<?= $h($odUrl(['step' => 'c_create'])) ?>">↺ फेरि सुरुदेखि · Start over</a></div>
 
   <?php elseif ($step === 'start' && $remembered !== null): ?>
@@ -817,7 +834,7 @@ body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
   <?php if ((bool) ($fw['twofa'] ?? false)): ?><p class="note">यो खातामा 2FA छ — सेभपछि WhatsApp कोड पनि चाहिन्छ · This account uses 2FA: a WhatsApp code follows.</p><?php endif; ?>
   <?php endif; ?>
 
-  <?php if (!in_array($step, ['forgot', 'forgot_code', 'forgot_pick', 'forgot_pw', 'wa', 'c_unlock', 'c_setup', 'c_forgot', 'c_prove', 'c_create', 'c_confirm'], true)): ?>
+  <?php if (!in_array($step, ['forgot', 'forgot_code', 'forgot_pick', 'forgot_pw', 'wa', 'c_code', 'c_unlock', 'c_setup', 'c_forgot', 'c_prove', 'c_create', 'c_confirm'], true)): ?>
   <div class="links">
     <?php if ($step === 'start' && $codeFirst): ?><a href="<?= $h($odUrl(['step' => 'c_code', 'classic' => false])) ?>">🪪 कोड + PIN / Pattern ले भित्र · Sign in with code + PIN</a><?php endif; ?>
     <?php if ($step === 'start'): ?><a href="<?= $h($odUrl(['step' => 'forgot'])) ?>">🔑 पासवर्ड बिर्सनुभयो? · Forgot password?</a><?php endif; ?>
@@ -825,7 +842,7 @@ body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
     <a href="<?= $h(rtrim(APP_URL, '/')) ?>/guide/?v=agent">▶ एजेन्ट गाइड भिडियो — लगइन, टिकट, चलानी, पैसा निकाल्ने · Agent guide video</a>
   </div>
   <?php endif; ?>
-  <p class="note">📞 मद्दत · Help: <a href="tel:+<?= $h($helpTel) ?>" style="white-space:nowrap"><?= $h($helpPhone) ?></a></p>
+  <?php if (!in_array($step, ['c_code', 'c_unlock', 'c_create', 'c_confirm'], true)): ?><p class="note">📞 मद्दत · Help: <a href="tel:+<?= $h($helpTel) ?>" style="white-space:nowrap"><?= $h($helpPhone) ?></a></p><?php endif; ?>
 </main>
 <?php if ($waPoll !== null): ?>
 <script>
@@ -865,16 +882,23 @@ body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
   document.querySelectorAll('form[data-qk-form="pin"]').forEach(function(f){
     var inp=f.querySelector('input[name="qk_val"]'),dots=f.querySelector('.lk-dots'),keys=f.querySelector('.lk-keys'),busy=false;
     if(!inp||!dots||!keys)return;
-    var md=f.querySelector('input[name="mode"]'),six=!!md&&(md.value==='c_create'||md.value==='c_confirm');   // a NEW PIN is exactly 6 digits
+    var len=parseInt(f.getAttribute('data-len')||'0',10)||0;   // 4 or 6: that many boxes, opens by itself when full (0 = older PIN: 6 boxes + OK)
     inp.type='hidden';inp.removeAttribute('required');var lab=f.querySelector('label');if(lab)lab.hidden=true;
     var old=f.querySelector('button.btn');if(old)old.hidden=true;dots.hidden=false;keys.hidden=false;
-    function draw(){var h='';for(var i=0;i<6;i++)h+='<i'+(i<inp.value.length?' class="on"':'')+(!six&&i>3&&inp.value.length<=i?' style="opacity:.35"':'')+'></i>';dots.innerHTML=h;}
-    function send(){if(busy||inp.value.length<(six?6:4))return;busy=true;f.submit();}
+    var okb=keys.querySelector('[data-k="ok"]');
+    function max(){return len||6;}
+    function draw(){var h='';for(var i=0;i<max();i++)h+='<i'+(i<inp.value.length?' class="on"':'')+(!len&&i>3&&inp.value.length<=i?' style="opacity:.35"':'')+'></i>';dots.innerHTML=h;if(okb)okb.style.visibility=len?'hidden':'';}
+    function send(){if(busy||inp.value.length<(len||4))return;busy=true;dots.classList.add('done');setTimeout(function(){f.submit();},len?180:0);}
     function press(k){if(busy)return;if(k==='x')inp.value=inp.value.slice(0,-1);else if(k==='ok'){send();return;}
-      else if(inp.value.length<6)inp.value+=k;draw();if(inp.value.length===6)send();}
+      else if(inp.value.length<max())inp.value+=k;draw();if(inp.value.length===max())send();}
+    f.setLen=function(l){len=l;inp.value='';draw();};
     keys.addEventListener('click',function(e){var b=e.target.closest('button');if(b)press(b.getAttribute('data-k'));});
     pads.push({f:f,press:press});draw();
   });
+  document.querySelectorAll('[data-cl-len] button').forEach(function(b){b.addEventListener('click',function(){
+    b.parentNode.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x===b);});
+    var f=document.querySelector('form[data-qk-form="pin"]');if(f&&f.setLen)f.setLen(parseInt(b.getAttribute('data-l'),10));});});
+  document.querySelectorAll('[data-qk-tab]').forEach(function(t){t.addEventListener('click',function(){var g=document.querySelector('[data-cl-len]');if(g)g.hidden=t.getAttribute('data-qk-tab')!=='pin';});});
   document.addEventListener('keydown',function(e){
     var t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'))return;
     pads.forEach(function(p){if(p.f.hidden)return;if(/^\d$/.test(e.key))p.press(e.key);else if(e.key==='Backspace')p.press('x');else if(e.key==='Enter')p.press('ok');});
@@ -882,7 +906,7 @@ body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
 })();
 </script><?php endif; ?>
 <?php if ((($step === 'mobile' || $step === 'id') && QuickUnlock::on()) || ($remembered ?? null) !== null || $cPad): ?><script src="/assets/js/quick-unlock.js?v=20261101a"></script><?php endif; ?>
-<?php if ($step === 'c_code' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115a" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+
 </body></html>
 <?php
     exit;

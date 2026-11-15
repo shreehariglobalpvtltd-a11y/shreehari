@@ -217,7 +217,8 @@ check('a wrong code is refused', CodeLogin::codeCheck('000000')['step'] === 'c_p
 $r = CodeLogin::codeCheck($sent);
 check('the right code -> choose PIN / pattern', $r['step'] === 'c_create' && CodeLogin::proved());
 check('PIN 123456 (too easy) refused', isset(CodeLogin::createFirst('pin', '123456')['error']));
-check('a 4-digit PIN is refused for a NEW PIN', isset(CodeLogin::createFirst('pin', '4826')['error']));
+check('a 5-digit PIN is refused (4 or 6 only)', isset(CodeLogin::createFirst('pin', '48261')['error']));
+check('a 4-digit PIN is allowed', (CodeLogin::createFirst('pin', '4826')['step'] ?? '') === 'c_confirm' && (int) ($_SESSION['code_login']['pend']['len'] ?? 0) === 4);
 $r = CodeLogin::createFirst('pin', '482613');
 check('6-digit PIN -> confirm step', $r['step'] === 'c_confirm');
 check('the first entry waits as a hash, not the digits', !str_contains(json_encode($_SESSION), '482613'));
@@ -228,6 +229,7 @@ $r = CodeLogin::createConfirm('482613');
 check('matching confirm saves and opens the dashboard', ($r['go'] ?? '') === 'home' && sid() === $aNew);
 $h = (string) Database::scalar('SELECT pin_hash FROM admins WHERE id = :i', ['i' => $aNew], '');
 check('PIN stored only as bcrypt', $h !== '482613' && str_starts_with($h, '$2') && password_verify('482613', $h));
+check('PIN length kept (6 boxes, opens by itself)', QuickUnlock::pinLen($aNew) === 6 && QuickUnlock::pinLen($aPin) === 4);
 check('audit: setup_done written, without the PIN', (function () use ($aNew): bool {
     $r = Database::fetch("SELECT * FROM audit_logs WHERE action = 'admin.login.setup_done' AND entity_id = :i ORDER BY id DESC LIMIT 1", ['i' => (string) $aNew]);
     return $r !== null && !str_contains(json_encode($r), '482613');

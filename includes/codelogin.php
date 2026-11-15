@@ -576,8 +576,8 @@ final class CodeLogin
     public static function newProblem(string $kind, string $value): ?string
     {
         if ($kind === 'pin') {
-            if (preg_match('/^\d{' . self::PIN_LEN . '}$/', $value) !== 1) {
-                return 'PIN ठ्याक्कै ६ अङ्कको हुनुपर्छ · The PIN must be exactly 6 digits.';
+            if (preg_match('/^(\d{4}|\d{6})$/', $value) !== 1) {
+                return 'PIN ४ वा ६ अङ्कको हुनुपर्छ · The PIN must be 4 or 6 digits.';
             }
             return QuickUnlock::pinProblem($value);
         }
@@ -596,7 +596,7 @@ final class CodeLogin
             return ['step' => 'c_create', 'error' => $why];
         }
         $v = $kind === 'pattern' ? (string) QuickUnlock::canonicalPattern($value) : $value;
-        $_SESSION[self::KEY]['pend'] = ['kind' => $kind, 'h' => Security::hashPassword($v)];
+        $_SESSION[self::KEY]['pend'] = ['kind' => $kind, 'h' => Security::hashPassword($v), 'len' => $kind === 'pin' ? strlen($v) : 0];
         return ['step' => 'c_confirm'];
     }
 

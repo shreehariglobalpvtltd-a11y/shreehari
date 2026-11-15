@@ -16,6 +16,8 @@ require_once INCLUDE_PATH . '/quickunlock.php';
 $admin = admin_boot();
 $id    = (int) $admin['id'];
 $flash = null;
+// 15 Nov 2026: someone who signed in within 15 minutes (code + PIN / WhatsApp / password) is not asked for a password they may never have used
+$fresh = (time() - (int) ($_SESSION[ADMIN_SESSION_KEY]['logged_in_at'] ?? 0)) <= 900;
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     Security::requireCsrf();
@@ -28,7 +30,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             throw new RuntimeException('धेरै पटक प्रयास भयो — १५ मिनेटपछि · Too many tries, wait 15 minutes.');
         }
         $hash = (string) Database::scalar('SELECT password_hash FROM admins WHERE id = :i', ['i' => $id], '');
-        if ($hash === '' || !Security::verifyPassword((string) ($_POST['current_password'] ?? ''), $hash)) {
+        if (!$fresh && ($hash === '' || !Security::verifyPassword((string) ($_POST['current_password'] ?? ''), $hash))) {
             throw new RuntimeException('हालको पासवर्ड मिलेन · Your current password did not match.');
         }
         // 15 Nov 2026 (code-first login): new PINs are 6 digits, and the last way in cannot be removed
@@ -37,8 +39,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if (CodeLogin::required() && (($act === 'remove_pin' && !$stNow['pattern']) || ($act === 'remove_pattern' && !$stNow['pin']))) {
             throw new RuntimeException('PIN वा pattern मध्ये एउटा अनिवार्य छ — पहिले अर्को राख्नुहोस् · One of PIN or pattern is required: set the other one first.');
         }
-        if ($act === 'set_pin' && CodeLogin::on() && preg_match('/^\d{6}$/', trim((string) ($_POST['pin'] ?? ''))) !== 1) {
-            throw new RuntimeException('PIN ठ्याक्कै ६ अङ्कको हुनुपर्छ · The PIN must be exactly 6 digits.');
+        if ($act === 'set_pin' && CodeLogin::on() && preg_match('/^(\d{4}|\d{6})$/', trim((string) ($_POST['pin'] ?? ''))) !== 1) {
+            throw new RuntimeException('PIN ४ वा ६ अङ्कको हुनुपर्छ · The PIN must be 4 or 6 digits.');
         }
         switch ($act) {
             case 'set_pin':
@@ -52,6 +54,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             case 'set_pattern':
                 QuickUnlock::set($id, 'pattern', (string) ($_POST['qk_val'] ?? ''));
                 $flash = ['ok', '✅ Pattern राखियो — अब लगइनमा pattern कोरेर भित्र आउन सकिन्छ · Pattern saved.'];
+                break;
+            case 'set_secq':
+                $qk = (string) ($_POST['sec_q'] ?? '');
+                $q  = $qk === 'own' ? trim(Security::clean((string) ($_POST['sec_own'] ?? ''), 150)) : (QuickUnlock::SEC_QUESTIONS[$qk] ?? '');
+                QuickUnlock::secSet($id, $q, (string) ($_POST['sec_a'] ?? ''));
+                $flash = ['ok', '✅ सुरक्षा प्रश्न राखियो · Security question saved.'];
                 break;
             case 'remove_pin':
                 QuickUnlock::remove($id, 'pin');
@@ -71,7 +79,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 $st = QuickUnlock::status($id);
 admin_header('PIN / Pattern', '');
-$pwField = '<label>हालको पासवर्ड · Current password<input type="password" name="current_password" autocomplete="current-password" required></label>';
+$pwField = $fresh ? '' : '<label>हालको पासवर्ड · Current password<input type="password" name="current_password" autocomplete="current-password" required></label>';
 ?>
 <style>
 .qk-wrap{max-width:560px;margin:0 auto;display:grid;gap:16px}
@@ -82,6 +90,8 @@ $pwField = '<label>हालको पासवर्ड · Current password<inp
 .qk-card .btn{min-height:44px;margin-top:12px}
 .qk-state{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .qk-state.on{background:#d9f5e3;color:#0a6b33}.qk-state.off{background:#eef1f6;color:#5b6577}
+.qk-card label[hidden]{display:none}
+.qk-card select,.qk-card input[type=text],.qk-card input[type=date]{width:100%;min-height:44px;margin-top:6px;padding:8px 12px;border-radius:10px;border:1px solid #c9d3e4;font-size:16px;background:var(--well,#fff);color:inherit}
 </style>
 <div class="qk-wrap">
   <?php if ($flash !== null): ?>
@@ -123,6 +133,23 @@ $pwField = '<label>हालको पासवर्ड · Current password<inp
     </form>
     <?php endif; ?>
   </div>
+<?php if (QuickUnlock::secReady()): $hasQ = QuickUnlock::secQuestion($id) !== ''; ?>
+  <div class="qk-card">
+    <h2>🛡️ सुरक्षा प्रश्न · Security question <span class="qk-state <?= $hasQ ? 'on' : 'off' ?>"><?= $hasQ ? 'राखिएको · set' : 'छैन · not set' ?></span></h2>
+    <form method="post" autocomplete="off">
+      <?= Security::csrfField() ?><input type="hidden" name="action" value="set_secq">
+      <?= $pwField ?>
+      <label>प्रश्न · Question
+        <select name="sec_q" onchange="document.getElementById('quOwn').hidden=this.value!=='own';document.getElementById('quA').type=this.value==='dob'?'date':'text'">
+          <?php foreach (QuickUnlock::SEC_QUESTIONS as $k => $label): ?><option value="<?= Security::e($k) ?>"><?= Security::e($label) ?></option><?php endforeach; ?>
+          <option value="own">आफ्नै प्रश्न लेख्ने · Write my own</option>
+        </select></label>
+      <label id="quOwn" hidden>तपाईंको प्रश्न · Your question<input type="text" name="sec_own" maxlength="150"></label>
+      <label>उत्तर · Answer<input id="quA" type="date" name="sec_a" maxlength="80" required></label>
+      <button class="btn ok" type="submit"><?= $hasQ ? 'बदल्नुहोस् · Change' : 'राख्नुहोस् · Save' ?></button>
+    </form>
+  </div>
+<?php endif; ?>
 </div>
 <script src="/assets/js/quick-unlock.js?v=20261101a"></script>
 <?php
