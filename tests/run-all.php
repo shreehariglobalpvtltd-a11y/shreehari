@@ -69,6 +69,7 @@ const CORE_SUITES = [
     'otp-forced-password-test.php' => '...and the OTP door cannot skip that',
     'code-login-test.php'          => 'code -> PIN / pattern; setup + reset need a WhatsApp or office proof',
     'wa-otp-login-test.php'        => 'unlock screen WhatsApp code opens agents only; ticket note + discount %',
+    'wa-auth-otp-test.php'         => 'login codes on our own Meta authentication template, only once approved',
     'asset-version-test.php'       => 'no ?v= stamp has drifted from sw.js',
     'staff-any-date-test.php'      => 'staff may book any date; customers may not',
     'quick-ticket-test.php'        => 'name + mobile → auto bus/seat/fare → confirmed ticket',

@@ -17,6 +17,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/codelogin.php';
+require_once INCLUDE_PATH . '/waauthotp.php';
 
 $admin = admin_boot('staff.manage');
 $me    = (int) ($admin['id'] ?? 0);
@@ -88,6 +89,15 @@ if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
             Logger::audit('admin.login.activation_issued', 'admin', (string) $aid, null, ['request' => $rid ?: null], 'Office issued a one-time PIN activation code (24 h)');
             $issued = [substr($code, 0, 4) . '-' . substr($code, 4), CodeLogin::codeFor($aid) . ' · ' . (string) ($acct['full_name'] ?? '')];
+        }
+    } elseif (($act === 'auth_tpl_create' || $act === 'auth_tpl_check') && $isSa) {
+        // 15 Nov 2026: our own Meta AUTHENTICATION template for WhatsApp login codes
+        if ($act === 'auth_tpl_create') {
+            $r = WaAuthOtp::create();
+            $flash = $r['ok'] ? ['ok', 'Meta लाई पठाइयो — स्थिति: ' . $r['status'] . ' · Sent to Meta, status ' . $r['status']] : ['bad', 'Meta: ' . $r['error']];
+        } else {
+            $r = WaAuthOtp::refresh();
+            $flash = $r['error'] === '' ? ['ok', 'स्थिति · Status: ' . $r['status'] . ($r['reason'] !== '' && $r['reason'] !== 'NONE' ? ' (' . $r['reason'] . ')' : '')] : ['bad', 'Meta: ' . $r['error']];
         }
     } elseif ($act === 'details') {
         // 15 Nov 2026 (owner: "agent select garne, date of birth, mobile number — ID pass hunchha")
@@ -179,6 +189,22 @@ admin_header('Login setup & PIN · लगइन तयार', 'login-requests.p
       <button class="btn ok" type="submit">✅ सेभ गर्ने · Save — login ready</button>
     </form>
   </div>
+
+  <?php if ($isSa): $atSt = WaAuthOtp::status(); ?>
+  <div class="lr-card">
+    <h2>📲 WhatsApp लगइन कोड · Login-code template</h2>
+    <p class="muted">हाम्रो आफ्नै Meta template (<b><?= $e(WaAuthOtp::NAME) ?></b>) — approve भएपछि लगइन / OTP कोड जुनसुकै बेला WhatsApp मा पुग्छ (२४ घण्टा भित्र लेखेको हुनु पर्दैन)। Meta को शुल्क: भारत ~₹0.13, नेपाल ~₹1 प्रति कोड · Once approved, login codes reach any WhatsApp at any time.</p>
+    <p>स्थिति · Status: <b class="<?= $atSt === 'APPROVED' ? 'lr-ok' : 'lr-no' ?>"><?= $e($atSt !== '' ? $atSt : 'NOT CREATED') ?></b>
+      <?= !WaAuthOtp::configured() ? ' · <span class="lr-no">Meta token / WABA id missing</span>' : '' ?>
+      <?= !Settings::getBool('wa_auth_otp_on', true) ? ' · <span class="lr-no">switched off (wa_auth_otp_on)</span>' : '' ?></p>
+    <div class="lr-act">
+      <?php if ($atSt === '' || $atSt === 'REJECTED'): ?>
+      <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="auth_tpl_create"><button class="btn ok" type="submit">Meta मा बनाउने · Create on Meta</button></form>
+      <?php endif; ?>
+      <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="auth_tpl_check"><button class="btn" type="submit">स्थिति जाँच · Check status</button></form>
+    </div>
+  </div>
+  <?php endif; ?>
 
   <div class="lr-card">
     <h2>📨 Open requests (<?= count($open) ?>)</h2>

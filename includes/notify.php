@@ -493,6 +493,20 @@ final class Notify
             Logger::warning('WaRoute meta-first failed: ' . $e->getMessage(), ['to' => $number], 'whatsapp');
         }
 
+        /* 15 Nov 2026 (owner: "WhatsApp OTP strong"): a login / one-time code that no free
+           window carried goes on our own approved Meta AUTHENTICATION template
+           (includes/waauthotp.php) - it reaches the number any time. Inert until approved. */
+        try {
+            require_once __DIR__ . '/waauthotp.php';
+            $ao = WaAuthOtp::sendFromText($number, $message, (string) ($meta['purpose'] ?? ''));
+            if ($ao !== null && $ao['success']) {
+                self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => 'meta_auth_template', 'ref' => $ao['message_id']];
+                return true;
+            }
+        } catch (Throwable $e) {
+            Logger::warning('auth template send failed: ' . $e->getMessage(), [], 'whatsapp');
+        }
+
         // 5 Oct 2026: AiSensy is the ticket sender while aisensy_mode = always.
         if (in_array((string) ($meta['purpose'] ?? ''), ['ticket', 'ticket_update'], true) && $bookingId !== null && $bookingId > 0) {
             $ais = self::whatsappAiSensyTicket($number, $message, (int) $bookingId, $meta);

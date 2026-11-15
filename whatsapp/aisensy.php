@@ -535,6 +535,17 @@ final class AiSensyAPI
                 return $free;
             }
         }
+        // 15 Nov 2026: our own approved Meta AUTHENTICATION template (includes/waauthotp.php) before AiSensy
+        if ($to !== '') {
+            try {
+                require_once dirname(__DIR__) . '/includes/waauthotp.php';
+                $ao = WaAuthOtp::send($to, $code);
+                if ($ao['success']) {
+                    return ['success' => true, 'message_id' => $ao['message_id'], 'http' => 200, 'error' => '', 'response' => null, 'how' => 'meta auth template ' . WaAuthOtp::NAME];
+                }
+            } catch (Throwable $e) {
+            }
+        }
         if ($to !== '' && $tpl !== '' && preg_match('/^[a-z0-9_]{1,512}$/', $tpl) && self::apiKey() !== '') {
             $out = ['success' => false, 'message_id' => '', 'http' => 0, 'error' => '', 'response' => null];
             $r = self::post($to, $tpl, self::apiKey(), ['to' => $to, 'type' => 'template', 'template' => [
