@@ -586,6 +586,11 @@ final class AiOps
                 }
                 $stops = self::findStops($t);
                 if ($stops !== [] && !$isAll) {
+                    // review 16 Nov 2026: "Surat 2300 aur Kamrej 2100" gave BOTH ₹2,300 — two pickups and two fares are asked
+                    if (count($stops) > 1 && count(array_unique(array_filter($nums, static fn(int $n): bool => $n >= 100))) > 1) {
+                        self::$note = '🤔 एक पटकमा एउटा भाडा · One fare per sentence — say e.g. "Surat ko bhada 2300", then "Kamrej ko bhada 2100".';
+                        return [];
+                    }
                     foreach ($stops as $s) {
                         $acts[] = ['type' => 'stop_fare', 'stop' => $s, 'fare' => $fare];
                     }
@@ -725,7 +730,8 @@ final class AiOps
         if ($abs !== []) {
             return ['abs', (float) $abs[0]];
         }
-        if ($upSaid || $downSaid) {
+        // review 16 Nov 2026: "add 100 to Surat fare" was a ₹100 fare — "add / jod" with an untied number is asked too
+        if ($upSaid || $downSaid || preg_match('/(?<![a-z])(?:add|jod[a-z]*)(?![a-z])/', $x) === 1) {
             return ['ask', 0.0];
         }
         return ['abs', (float) max($nums)];
@@ -823,6 +829,8 @@ final class AiOps
             . '|morning|evening|night|baje|भाडा|किराया|बजे|रात|बिहान|सुबह|सांझ|साँझ|ભાડું|સવારે|સાંજે|રાત્રે)(?![\p{L}\p{M}])/iu', ' ', $name);
         // a /u trim: trim()'s byte list would also eat the last byte of "ी" / "ી" (वापी, નવસારી)
         $name = (string) preg_replace('/^[\s,.;:\-–—\/|]+|[\s,.;:\-–—\/|]+$/u', '', Security::clean((string) preg_replace('/\s+/u', ' ', $name), 191));
+        // review 16 Nov 2026: "Gandhinagar, Gujarat" names the stop "Gandhinagar" — the state is not part of a ticket label
+        $name = trim((string) preg_replace('/\s*,\s*(?:gujarat|gujrat|गुजरात|ગુજરાત|india|bharat|भारत|ભારત)\s*$/iu', '', $name));
         $alias = self::CITY_ALIAS[mb_strtolower($name)] ?? null;
         if ($alias !== null) {
             $name = mb_convert_case($alias, MB_CASE_TITLE);   // "ગાંધીનગર" → "Gandhinagar"
@@ -902,6 +910,12 @@ final class AiOps
             return null;
         }
         $seat = strtoupper($m[1]) . (int) $m[2];
+        // review 16 Nov 2026: "L1 L2 block bholi" used to block L1 only, without a word about L2
+        preg_match_all('/(?<![a-z0-9])([lu])-?(\d{1,2})(?![\d:])/u', $t, $all, PREG_SET_ORDER);
+        if (count(array_unique(array_map(static fn(array $x): string => strtoupper($x[1]) . (int) $x[2], $all))) > 1) {
+            self::$note = '💺 एक पटकमा एउटा सिट · One seat per sentence — say e.g. "Seat ' . $seat . ' block karo kal", then the next seat.';
+            return [];
+        }
         if ($date === null) {
             self::$note = '📅 कुन दिनको बस? · Which date? Say e.g. "Seat ' . $seat . ' block karo kal" or "' . $seat . ' block 20 Nov".';
             return [];
@@ -1782,8 +1796,10 @@ final class AiOps
                 $w = mb_strtolower($w);
                 /* a roman word must START a word (16 Nov 2026 review): "Seat U15 block … band" is not the
                    "lock" of PIN login, "meta" not "eta", "chatbot" not the WhatsApp "bot" */
+                /* review 2: a short one (cod, pin, kb, fb, eta, bot) must also END the word — "code login band"
+                   proposed Cash on boarding OFF, "pincode" the PIN login */
                 if (preg_match('/^[a-z]/', $w) === 1
-                    ? preg_match('/(?<![a-z])' . preg_quote($w, '/') . '/u', $t) === 1
+                    ? preg_match('/(?<![a-z])' . preg_quote($w, '/') . (strlen($w) <= 3 ? '(?![a-z])' : '') . '/u', $t) === 1
                     : mb_strpos($t, $w) !== false) {
                     $hit = true;
                     break;
@@ -1920,6 +1936,10 @@ final class AiOps
      */
     public static function confirm(array $prop, array $admin, bool $canEdit): array
     {
+        /* review 16 Nov 2026: the "Yes" request must know the switches too — a 'setting' action on a
+           switch with no settings row yet (live: agent_chalani_on, seat_pick_manual_first …) was
+           dropped by clean() in admin/api/ai-settings.php, so "Haan" saved nothing */
+        self::registerEasyKeys();
         $done = [];
         if ($canEdit) {
             foreach ((array) ($prop['switches'] ?? []) as $k => $v) {

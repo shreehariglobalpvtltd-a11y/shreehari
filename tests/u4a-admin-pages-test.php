@@ -250,6 +250,20 @@ try {
     check('an untouched Settings box never reverts a newer fare (pf_was)', (float) Database::scalar('SELECT fare FROM route_stops WHERE id = :i', ['i' => $seedId], 0) === 2600.0);
     $r = page('admin/settings.php', ['_boolkeys' => '', 'pf' => [$seedId => 'abc'], 'pf_was' => [$seedId => '2600']]);
     check('a non-number seat fare is refused, nothing saved', str_contains($flashOf($r), 'Not saved') && (float) Database::scalar('SELECT fare FROM route_stops WHERE id = :i', ['i' => $seedId], 0) === 2600.0, $flashOf($r));
+    // Review 16 Nov: the seat fares are checked BEFORE Settings::setMany, so "Not saved"
+    // is true for the other boxes of the same press too (company_tiktok put back in finally).
+    $ttBefore = Database::fetch("SELECT svalue, updated_at FROM settings WHERE skey = 'company_tiktok'");
+    if ($ttBefore !== null) {
+        try {
+            $r = page('admin/settings.php', ['_boolkeys' => '', 's' => ['company_tiktok' => 'https://www.tiktok.com/@u4a-' . getmypid()],
+                                             'pf' => [$seedId => 'abc'], 'pf_was' => [$seedId => '2600']]);
+            check('... and a bad seat fare writes no other box of that press either', str_contains($flashOf($r), 'Not saved')
+                && (string) Database::scalar("SELECT svalue FROM settings WHERE skey = 'company_tiktok'", [], '') === (string) $ttBefore['svalue'], $flashOf($r));
+        } finally {
+            Database::run("UPDATE settings SET svalue = :v, updated_at = :u WHERE skey = 'company_tiktok'", ['v' => $ttBefore['svalue'], 'u' => $ttBefore['updated_at']]);
+            Settings::flush();
+        }
+    }
 
     $smBefore = (string) Database::scalar("SELECT svalue FROM settings WHERE skey = 'seat_mode_map'", [], '');
     if ($smBefore !== '') {

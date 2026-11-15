@@ -20,7 +20,9 @@
  *
  *  shari_test only. Every row it makes (a settings knob "zu5_test_knob",
  *  two throwaway logins, one OFF stop) is deleted at the end; the shared
- *  rate-limit buckets are cleared for its own logins only.
+ *  rate-limit buckets are cleared for its own logins only. The one switch it
+ *  saves through the API (agent_chalani_on, review 16 Nov 2026) is put back
+ *  exactly as it was (no row = no row).
  *
  *    php -c .claude/php-dev.ini tests/u5-endpoints-test.php
  * =====================================================================
@@ -117,6 +119,17 @@ $cleanup = static function () use (&$made, $startId, $tmp, $super, $super2): voi
         Database::delete('settings', "skey = 'zu5_test_knob'");
         Settings::flush();
     }
+    if (($made['swKey'] ?? '') !== '') {
+        // the switch the review case flips: back to exactly what was there (no row = no row)
+        Database::delete('settings', 'skey = :k', ['k' => $made['swKey']]);
+        if (is_array($made['swRow'] ?? null)) {
+            Database::insert('settings', $made['swRow']);
+        }
+        Database::delete('audit_logs', "id > :s AND ((action = 'settings.ai' AND entity_id = :k)
+                                         OR (action IN ('settings.ai_proposed', 'settings.ai_command') AND new_value LIKE :l))",
+            ['s' => $startId, 'k' => $made['swKey'], 'l' => '%' . $made['swKey'] . '%']);
+        Settings::flush();
+    }
     foreach ($made['admins'] as $id) {
         Database::delete('admins', 'id = :i', ['i' => $id]);
     }
@@ -194,6 +207,20 @@ try {
     check('{setting_key,new_value} → confirm → saved', ($r['changes'][0]['new'] ?? '') === '11' && ($r2['success'] ?? false) === true && $knob() === '11', json_encode([$r, $r2], JSON_UNESCAPED_UNICODE));
     $r = call(['page' => 'ai-settings.php', 'admin' => $super, 'post' => ['setting_key' => 'anthropic_api_key', 'new_value' => 'x']]);
     check('a protected key is refused', ($r['ok'] ?? null) === false && $isNull($r, 'proposal_id'), json_encode($r, JSON_UNESCAPED_UNICODE));
+    /* review 16 Nov 2026: a one-tap switch with no settings row yet (live has none for agent_chalani_on,
+       seat_pick_manual_first …) — the confirm request must know the switch list too, or "Haan" saves nothing */
+    $made['swRow'] = Database::fetch("SELECT * FROM settings WHERE skey = 'agent_chalani_on'");
+    $made['swKey'] = 'agent_chalani_on';
+    if ($made['swRow'] !== null) {
+        Database::delete('settings', "skey = 'agent_chalani_on'");   // put back in cleanup
+    }
+    Settings::flush();
+    $r = call(['page' => 'ai-settings.php', 'admin' => $super, 'post' => ['setting_key' => 'agent_chalani_on', 'new_value' => '0'], 'session_out' => $tmp]);
+    $sess = json_decode((string) @file_get_contents($tmp), true) ?: [];
+    $r2 = call(['page' => 'ai-settings.php', 'admin' => $super, 'post' => ['confirm' => (string) ($r['proposal_id'] ?? '')], 'session' => $sess]);
+    Settings::flush();
+    check('a switch with no settings row: {setting_key} → confirm → saved', ($r['changes'][0]['new'] ?? '') === 'OFF' && ($r2['success'] ?? false) === true
+        && Settings::getBool('agent_chalani_on', true) === false, json_encode([$r, $r2], JSON_UNESCAPED_UNICODE));
     $r = call(['page' => 'ai-settings.php', 'admin' => $router, 'post' => ['cmd' => 'zu5_test_knob 4']]);
     check('a routes-only login may not change a setting', $isNull($r, 'proposal_id') && str_contains((string) ($r['message'] ?? ''), '⛔') && $knob() === '11', json_encode($r, JSON_UNESCAPED_UNICODE));
     $r = call(['page' => 'ai-settings.php', 'admin' => $super, 'post' => ['cmd' => 'Vapi ko bhada 2500']]);

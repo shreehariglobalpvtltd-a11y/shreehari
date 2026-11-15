@@ -1035,10 +1035,10 @@ final class Auth
      * an office check keep via_otp = true as before. A PIN / pattern must never be enough to replace
      * the account's password, so a PIN / pattern sign-in on an account under a forced change is NOT
      * via_otp (the current password is asked). Every other PIN / pattern session keeps via_otp = true:
-     * nothing is forced there (must_change_pw is only ever set together with a new password, and a
-     * new password ends this session on its 30 s re-check), so change-password.php asks the current
-     * password anyway and the "change password" link stays hidden as before. The door itself is
-     * carried explicitly in the session as 'via' ('pin' / 'pattern' / ...).
+     * nothing is forced there, so change-password.php asks the current password anyway and the
+     * "change password" link stays hidden as before. A forced change switched on later (a new password
+     * ends the session; "must change" alone does not) drops via_otp in admin()'s 30 s re-check. The
+     * door itself is carried explicitly in the session as 'via' ('pin' / 'pattern' / ...).
      *
      * @param array<string, mixed> $admin
      */
@@ -1835,6 +1835,13 @@ final class Auth
                 $_SESSION[ADMIN_SESSION_KEY]['role']           = (string) $row['role'];
                 $_SESSION[ADMIN_SESSION_KEY]['permissions']    = jsonColumn($row['permissions']);
                 $_SESSION[ADMIN_SESSION_KEY]['must_change_pw'] = (int) $row['must_change_pw'] === 1;
+                /* 16 Nov 2026 (P1-6d review): the office can switch "must change" on WITHOUT a new
+                   password (setStaffCredentials), so the forced change may start mid-session. A PIN /
+                   pattern session then asks the current password too, same as viaOtpFor() at sign-in. */
+                if ((int) $row['must_change_pw'] === 1
+                    && in_array((string) ($_SESSION[ADMIN_SESSION_KEY]['via'] ?? ''), ['pin', 'pattern'], true)) {
+                    $_SESSION[ADMIN_SESSION_KEY]['via_otp'] = false;
+                }
                 $_SESSION[ADMIN_SESSION_KEY]['checked_at']     = time();
                 $_SESSION[ADMIN_SESSION_KEY]['pw']             = $stamp;   // same value, or the first stamp of an older session
                 $admin = $_SESSION[ADMIN_SESSION_KEY];

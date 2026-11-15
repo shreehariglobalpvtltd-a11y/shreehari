@@ -154,6 +154,9 @@ final class WaBot
             }
             if ($early !== null) {
                 self::$lastRouter = $earlyVia;
+                if ($earlyVia === 'agentroute') {
+                    self::$lastRole = 'staff';        // review: WaAgentRoute answers only agent / counter logins (whoIs calls them staff)
+                }
                 return self::out((string) $early['text'], $early['media'] ?? null, $early['ui'] ?? null);
             }
         }

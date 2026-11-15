@@ -377,6 +377,12 @@ try {
     [$okS, $badS] = AiTools::cleanBerths('L1 and L4');
     check('  a berths STRING is split; a word with no number ("and") is no berth and is not reported',
         $okS === ['L1', 'L4'] && $badS === [], json_encode([$okS, $badS]));
+    // review 2: one array item holding two berths is two berths; "A 3" stays one; junk words never eat the cap of 6
+    [$okI, $badI] = AiTools::cleanBerths(['L1, L4', 'L 7']);
+    check('  one item holding two berths ("L1, L4") is two berths, "L 7" is one — never the non-berth "L1L4"',
+        $okI === ['L1', 'L4', 'L7'] && $badI === [], json_encode([$okI, $badI]));
+    [$okC, $badC] = AiTools::cleanBerths('L1 and L2 and L3 and L4');
+    check('  "and" does not count towards the cap: all four berths are read', $okC === ['L1', 'L2', 'L3', 'L4'] && $badC === [], json_encode([$okC, $badC]));
     check('  plan_ticket offers an optional berths list',
         str_contains($src('includes/aitools.php'), "'berths'    => ['array'"));
 

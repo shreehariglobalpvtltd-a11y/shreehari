@@ -117,34 +117,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
                     }
                 }
             }
-            /* 4 Sep 2026: the private-cabin prices are merged into cabin_pricing
-               AFTER the generic rows are saved, so an edited cabin_pricing
-               textarea and the two number fields cannot overwrite each other
-               (the number fields win, as they are the curated place). */
-            Settings::setMany($pairs);
-            if ($fpSingle > 0 || $fpDouble > 0) {
-                Settings::flush();
-                $cp = Settings::getArray('cabin_pricing', []);
-                /* 8 Oct 2026: a cabin_pricing row without a 'private' block used to
-                   drop the two prices silently ("saved" but unchanged). Start from
-                   the engine's own shape instead. */
-                if (!isset($cp['private']) || !is_array($cp['private'])) {
-                    $base = Fare::pricing();
-                    $cp['private'] = is_array($base['private'] ?? null) ? $base['private'] : [];
-                }
-                if ($fpSingle > 0) { $cp['private']['single_1pax']['offline'] = $fpSingle; $cp['private']['single_1pax']['online'] = $fpSingle; }
-                if ($fpDouble > 0) { $cp['private']['double_2pax']['offline'] = $fpDouble; $cp['private']['double_2pax']['online'] = $fpDouble; }
-                Settings::set('cabin_pricing', $cp, 'json', 'pricing', true);
-            }
             /* Sharing fare per pickup (8 Oct 2026, owner: "private / sharing anusar
                price badhauna ghataauna milos, setting bata"). Every pickup carries
                its own fare (Routes -> Pickup points) and that fare is what a
                sharing seat costs, so the default above alone changed nothing the
                customer saw. pf[<stop id>] = rupees, blank = the direction default.
-               Same rule as routes.php save_stop_fares; one audit row. */
+               Same rule as routes.php save_stop_fares; one audit row.
+               16 Nov 2026 (review): checked BEFORE Settings::setMany, written after
+               it - a bad seat fare used to say "Not saved" while every other box
+               of the same press had already been written. */
+            $pfPlan = []; $pfBefore = []; $pfAfter = [];
             $pfPosted = is_array($_POST['pf'] ?? null) ? $_POST['pf'] : [];
             if ($pfPosted !== [] && Boarding::hasStopControls()) {
-                $pfPlan = []; $pfBefore = []; $pfAfter = [];
                 $ids = array_values(array_filter(array_map('intval', array_keys($pfPosted))));
                 $rowsPf = $ids === [] ? [] : Database::fetchAll(
                     'SELECT rs.id, rs.stop_name, rs.stop_type, rs.fare, r.route_code
@@ -172,16 +156,36 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
                     $pfSaid[] = $row['stop_name'] . ' · ' . $dirLab . ' ' . $row['route_code'] . ': '
                         . ($old === null ? 'default' : inr($old)) . ' → ' . ($new === null ? 'default' : inr($new));
                 }
-                if ($pfPlan !== []) {
-                    Database::transaction(static function () use ($pfPlan): void {
-                        foreach ($pfPlan as $sid => $fare) {
-                            Database::update('route_stops', ['fare' => $fare], 'id = :id', ['id' => $sid]);
-                        }
-                    });
-                    Boarding::flush();
-                    Logger::audit('route_stop.fares', 'settings', 'fares-panel', $pfBefore, $pfAfter,
-                        'Pickup fares changed from Settings (' . count($pfPlan) . ' stop' . (count($pfPlan) === 1 ? '' : 's') . ')');
+            }
+            /* 4 Sep 2026: the private-cabin prices are merged into cabin_pricing
+               AFTER the generic rows are saved, so an edited cabin_pricing
+               textarea and the two number fields cannot overwrite each other
+               (the number fields win, as they are the curated place). */
+            Settings::setMany($pairs);
+            if ($fpSingle > 0 || $fpDouble > 0) {
+                Settings::flush();
+                $cp = Settings::getArray('cabin_pricing', []);
+                /* 8 Oct 2026: a cabin_pricing row without a 'private' block used to
+                   drop the two prices silently ("saved" but unchanged). Start from
+                   the engine's own shape instead. */
+                if (!isset($cp['private']) || !is_array($cp['private'])) {
+                    $base = Fare::pricing();
+                    $cp['private'] = is_array($base['private'] ?? null) ? $base['private'] : [];
                 }
+                if ($fpSingle > 0) { $cp['private']['single_1pax']['offline'] = $fpSingle; $cp['private']['single_1pax']['online'] = $fpSingle; }
+                if ($fpDouble > 0) { $cp['private']['double_2pax']['offline'] = $fpDouble; $cp['private']['double_2pax']['online'] = $fpDouble; }
+                Settings::set('cabin_pricing', $cp, 'json', 'pricing', true);
+            }
+            // The seat fares checked above (before setMany), written now.
+            if ($pfPlan !== []) {
+                Database::transaction(static function () use ($pfPlan): void {
+                    foreach ($pfPlan as $sid => $fare) {
+                        Database::update('route_stops', ['fare' => $fare], 'id = :id', ['id' => $sid]);
+                    }
+                });
+                Boarding::flush();
+                Logger::audit('route_stop.fares', 'settings', 'fares-panel', $pfBefore, $pfAfter,
+                    'Pickup fares changed from Settings (' . count($pfPlan) . ' stop' . (count($pfPlan) === 1 ? '' : 's') . ')');
             }
             /* The legacy in-app "Main-point fares" override (main_fares) would win
                over fare_to_* inside Fare::dirFares(); keep it in step when it exists. */
@@ -196,7 +200,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
             // A JSON textarea with a typo: nothing was written (the bulk write
             // is one transaction), so say which key and keep the old values.
             Settings::flush();
-            $flash = ['bad', 'Not saved — ' . $e->getMessage() . '. Fix the JSON and press Save again.'];
+            $flash = ['bad', 'Not saved — ' . $e->getMessage() . '. Nothing was changed; fix it and press Save again.'];
         } catch (Throwable $e) {
             /* 8 Oct 2026: a database refusal used to end in the bare 500 page, so
                the office only saw "it does not save". Say so, keep the log. */

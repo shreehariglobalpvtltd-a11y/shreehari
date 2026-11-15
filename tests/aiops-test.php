@@ -267,6 +267,18 @@ $ok(($a['type'] ?? '') === 'add_stop' && ($a['stop_name'] ?? '') === 'वाप�
 // review: the AI fills every schema field — route_ids [] is no filter, not a refusal
 $c = AiOps::clean(['type' => 'trip_sale', 'date' => $tomorrow, 'on' => false, 'route_ids' => []]);
 $ok($c !== null && !isset($c['route_ids']), 'clean() trip_sale with route_ids [] = every bus that day (as the preview shows)');
+/* review 2 (16 Nov 2026): two pickups + two fares is asked, never one fare for both; "add 100" is not a ₹100 fare;
+   the state after a comma is not part of a new stop's name */
+if (Database::exists("SELECT 1 FROM route_stops rs JOIN routes r ON r.id = rs.route_id WHERE r.is_active = 1 AND rs.stop_type = 'boarding' AND rs.stop_name = 'Kamrej'")) {
+    $ok(AiOps::parseWords('Surat ko bhada 2300 kar do aur Kamrej 2100') === [] && str_contains($note(), 'One fare'), '"Surat 2300 aur Kamrej 2100" asked, not ₹2,300 for both');
+    $ok(count(AiOps::parseWords('Surat aur Kamrej ko bhada 2300')) === 2, '"Surat aur Kamrej ko bhada 2300" = both ₹2,300');
+}
+$ok(AiOps::parseWords('add 100 to Surat fare') === [] && $note() !== '', '"add 100 to Surat fare" asked, not a ₹100 fare');
+$a = $first('Naya pickup add karo: Vapi 22:30 bhada 2100');
+$ok(($a['type'] ?? '') === 'add_stop' && ($a['stop_name'] ?? '') === 'Vapi' && (float) ($a['fare'] ?? 0) === 2100.0, 'add_stop with "add" + a fare still a new stop');
+$a = $first('Naya location add karo: Gandhinagar, Gujarat 22:30');
+$ok(($a['type'] ?? '') === 'add_stop' && ($a['stop_name'] ?? '') === 'Gandhinagar', 'add_stop "Gandhinagar, Gujarat" → "Gandhinagar"');
+$ok(AiOps::parseWords('L1 L2 block bholi') === [] && str_contains($note(), 'One seat'), 'two seats in one sentence asked, not L1 only');
 
 /* P3-2g: seat_block */
 $a = $first('Seat U15 block karo kal');
@@ -291,6 +303,9 @@ $ok((AiOps::parseSwitches('whatsapp bot બંધ')['wa_booking_on'] ?? '') === 
 $ok(!isset(AiOps::parseSwitches('Seat U15 block karo, bholi ko bus band')['quick_unlock_on']), '"block … band" does not turn PIN / pattern login off');
 $ok(!isset(AiOps::parseSwitches('meta whatsapp alert band')['eta_alert_on']), '"meta" is not the ETA alert');
 $ok((AiOps::parseSwitches('PIN pattern login chalu')['quick_unlock_on'] ?? '') === '1' && (AiOps::parseSwitches('fb messenger band')['fb_msgr_on'] ?? '') === '0', 'switch words still found');
+// review 2: a short switch word must be a whole word
+$ok(!isset(AiOps::parseSwitches('code login band')['allow_cod']) && !isset(AiOps::parseSwitches('pincode band')['quick_unlock_on']), '"code login band" is not COD, "pincode" not the PIN login');
+$ok((AiOps::parseSwitches('cod band')['allow_cod'] ?? '') === '0' && (AiOps::parseSwitches('reminders band')['trip_reminders_enabled'] ?? '') === '0', 'COD / reminder words still found');
 
 /* P3-1c + P3-4a: the shared command path, its audits, and the old fares in the log */
 $super = Database::fetch("SELECT * FROM admins WHERE role = 'superadmin' AND is_active = 1 ORDER BY id LIMIT 1");

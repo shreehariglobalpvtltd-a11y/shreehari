@@ -186,6 +186,13 @@ try {
     check('…admin_sessions.via = pin (Sessions → Live "How")', ($as['via'] ?? '') === 'pin');
     $ok = Database::fetch("SELECT outcome, via FROM admin_login_events WHERE admin_id = :a ORDER BY id DESC LIMIT 1", ['a' => $aLk]) ?? [];
     check('…success on the history' . ($viaOk ? ' with via = pin' : ''), ($ok['outcome'] ?? '') === 'success' && (!$viaOk || ($ok['via'] ?? '') === 'pin'));
+    // the office ticks "must change" (no new password) while this PIN session is open
+    Database::run('UPDATE admins SET must_change_pw = 1 WHERE id = :i', ['i' => $aLk]);
+    $forceRecheck();
+    $still = Auth::admin();
+    check('a forced change switched on mid-session: the PIN session stays…', $still !== null && !empty($still['must_change_pw']));
+    check('…but is no longer via_otp (change-password.php asks the current password)', ($_SESSION[ADMIN_SESSION_KEY]['via_otp'] ?? null) === false);
+    Database::run('UPDATE admins SET must_change_pw = 0 WHERE id = :i', ['i' => $aLk]);
     Auth::adminLogout();
     $lo = Database::fetch("SELECT outcome, via FROM admin_login_events WHERE admin_id = :a ORDER BY id DESC LIMIT 1", ['a' => $aLk]) ?? [];
     check('sign-out is logged with the same via', ($lo['outcome'] ?? '') === 'logout' && (!$viaOk || ($lo['via'] ?? '') === 'pin'));

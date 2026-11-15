@@ -137,6 +137,8 @@ echo "\n6. P2-3e the sync ring\n";
 $ring = $fn($rt, 'const SHGSync = {');
 $ok(str_contains($ring, 'begin()') && str_contains($ring, 'end()') && str_contains($ring, "aria-hidden', 'true'"), 'an in-flight counter, hidden from screen readers');
 $ok(str_contains($rt, 'window.SHGSync = SHGSync;'), 'exposed as window.SHGSync');
+// Review fix: a brand-new ring is painted hidden first, so even the first refresh keeps the 0.4 s delay (no blink).
+$ok((bool) preg_match('~document\.body\.appendChild\(el\);\s*void el\.offsetWidth;~', $ring), 'the first ring is painted hidden before it turns on (no blink on the first refresh)');
 $sbk = $fn($co, 'async function syncBookings(');
 $ok(str_contains($sbk, 'ring.begin()') && str_contains($sbk, 'finally') && str_contains($sbk, 'ring.end()'), 'syncBookings counts itself in and always out');
 $ok(str_contains($fn($rt, '_tick() {'), 'SHGSync.begin()') || (bool) preg_match('~SHGSync\.begin\(\);\s*const ask = SeatSrv\.load~', $rt), 'the classic seat poll counts too');

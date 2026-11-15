@@ -1657,7 +1657,8 @@ if (window.MutationObserver) {
   function close() { if (modal) modal.hidden = true; }
   function setPin(ll) {
     picked = { lat: ll.lat, lng: ll.lng };
-    if (!marker) { var el = document.createElement('div'); el.className = 'mp-pin'; marker = new maplibregl.Marker({ element: el, anchor: 'bottom' }); }
+    // MapLibre writes its own transform on the marker element, so the rotated pin sits inside a wrapper
+    if (!marker) { var el = document.createElement('div'); el.innerHTML = '<div class="mp-pin"></div>'; marker = new maplibregl.Marker({ element: el, anchor: 'bottom' }); }
     marker.setLngLat([ll.lng, ll.lat]).addTo(map);
     modal.querySelector('.mp-out').textContent = picked.lat.toFixed(7) + ', ' + picked.lng.toFixed(7);
     modal.querySelector('[data-mp-use]').disabled = false;

@@ -3151,6 +3151,7 @@ const SHGSync = {
       el = document.createElement('span');
       el.id = 'shgSync'; el.className = 'shg-sync'; el.setAttribute('aria-hidden', 'true');
       document.body.appendChild(el);
+      void el.offsetWidth;   // paint it hidden first: otherwise the very first refresh skips the 0.4 s delay and blinks
     }
     el.classList.toggle('on', this.n > 0);
   }

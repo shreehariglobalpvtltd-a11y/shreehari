@@ -128,6 +128,7 @@ try {
     check('AiAgent::handleWeb writes one row per web / Messenger turn', str_contains($ag, "\$turnRow('agent', true)") && str_contains($ag, "\$turnRow('agent', false)") && str_contains($ag, "'messenger' : 'web'"));
     check('every write is guarded by the table check and a catch', str_contains($ag, 'if (!self::turnsReady())') && str_contains($ag, "ai_turns write failed"));
     $wb = $src('includes/wabot.php');
+    check('  an agent-route answer is filed as staff, not customer', str_contains($wb, "if (\$earlyVia === 'agentroute') {") && str_contains($wb, "self::\$lastRole = 'staff';"));
     foreach (['apwa', 'waedit', 'walocal', 'wabooking', 'wafaq', 'agent', 'pnr'] as $r) {
         check("WaBot labels the \"$r\" branch", preg_match("/(?:lastRouter = |\\\$earlyVia = )'" . preg_quote($r, '/') . "'/", $wb) === 1);
     }

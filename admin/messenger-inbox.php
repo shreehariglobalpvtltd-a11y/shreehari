@@ -128,7 +128,7 @@ admin_page_head('Facebook Messenger chats to the Page, with what the AI answered
         </div>
         <div class="panel-body">
           <div class="mi-chat" id="miChat">
-            <?php if ($chat === []): ?><p class="muted">No messages in the last 7 days.</p><?php endif; ?>
+            <?php if ($chat === []): ?><p class="muted">पछिल्लो ७ दिनमा सन्देश छैन · No messages in the last 7 days.</p><?php endif; ?>
             <?php foreach ($chat as $m):
                 $who = $m['dir'] === 'out'
                     ? ($m['purpose'] === 'inbox_reply' ? 'कार्यालय · Office' . ($m['by'] !== '' ? ' (' . $m['by'] . ')' : '') : 'AI') . ' · ' . $m['status']

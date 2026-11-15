@@ -995,7 +995,6 @@ final class AiTools
      */
     public static function cleanBerths(mixed $raw): array
     {
-        $items = is_array($raw) ? $raw : (is_string($raw) ? (preg_split('/[\s,;\/&]+/', $raw) ?: []) : []);
         static $map = null;
         if ($map === null) {
             $map = [];
@@ -1014,16 +1013,30 @@ final class AiTools
                 }
             }
         }
-        $ok  = [];
-        $bad = [];
-        foreach (array_slice(array_values($items), 0, 6) as $b) {
-            if (!is_scalar($b)) {
+        /* Review 2 (16 Nov 2026): a string and every array item are read the
+           same way. An item that is ONE berth as typed ("A 3", "a-4", "1 A")
+           stays one; otherwise it is split, so one item holding two berths
+           ("A3, A4" / "A3 A4") is two berths, not the non-berth "A3A4". Words
+           with no number ("and") are dropped BEFORE the cap of 6, so
+           "A1 and A2 and A3 and A4" keeps all four. */
+        $words = [];
+        foreach (is_array($raw) ? $raw : [$raw] as $item) {
+            if (!is_scalar($item)) {
                 continue;
             }
-            $s = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', (string) $b));
-            if ($s === '' || preg_match('/\d/', $s) !== 1) {
-                continue;               // review: every berth carries a number — "A3 and A4" must not report "AND" as a berth
+            $whole = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', (string) $item));
+            $parts = isset($map[$whole]) ? [$whole] : (preg_split('/[\s,;\/&+]+/',
+                (string) preg_replace('/(?<![A-Za-z0-9])([A-Za-z]{1,2})[\s\-]+(\d{1,2})(?!\d)/', '$1$2', (string) $item)) ?: []);
+            foreach ($parts as $w) {
+                $s = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', (string) $w));
+                if ($s !== '' && preg_match('/\d/', $s) === 1) {
+                    $words[] = $s;      // review: every berth carries a number — "A3 and A4" must not report "AND" as a berth
+                }
             }
+        }
+        $ok  = [];
+        $bad = [];
+        foreach (array_slice(array_values(array_unique($words)), 0, 6) as $s) {
             if (Security::isValidSeat($s) && isset($map[$s])) {
                 $ok[] = $map[$s];
             } else {

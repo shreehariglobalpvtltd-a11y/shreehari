@@ -87,8 +87,10 @@ try {
         }
         $done = AiOps::confirm($p, $admin, $canEdit);
         $bad  = array_filter($done, static fn(string $l): bool => str_starts_with($l, '⛔') || str_starts_with($l, '⚠️'));
-        $out(['ok' => true, 'success' => $done !== [] && $bad === [], 'changes' => (array) ($p['rows'] ?? []),
-              'message' => '✅ ' . ($done !== [] ? implode(' · ', $done) : 'केही बदलिएन · Nothing changed.')]);
+        $won  = $done !== [] && $bad === [];
+        // a refused / failed line ("⚠️ fare_delta: … out of range — nothing changed") is not led by a ✅
+        $out(['ok' => true, 'success' => $won, 'changes' => (array) ($p['rows'] ?? []),
+              'message' => ($won ? '✅ ' : '') . ($done !== [] ? implode(' · ', $done) : 'केही बदलिएन · Nothing changed.')]);
     }
 
     /* ---- No ---- */
