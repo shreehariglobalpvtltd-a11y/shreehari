@@ -645,6 +645,18 @@ final class CodeLogin
         Logger::audit('admin.login.identity_check', 'admin', (string) $aid, null,
             ['purpose' => (string) ($s['purpose'] ?? 'setup'), 'result' => $why], 'Code door: mobile' . ($askDob ? ' + DOB' : '') . ' checked (values not logged)');
         self::evenTime($t0);
+        /* 15 Nov 2026 (owner's screenshot: "hi VERIFY … — This code has expired"): a mobile that
+           did not match, or an account with no mobile on file, used to get a decoy WhatsApp link —
+           the person sent it and WhatsApp said "expired". Now the screen says why, at once, and
+           points at the office. (The WhatsApp proof below still needs the registered number.) */
+        if (!$match) {
+            return ['step' => $back, 'error' => match ($why) {
+                'no_details' => 'यो खातामा मोबाइल नम्बर दर्ता छैन — कार्यालयलाई "🆔 लगइन तयार" मा तपाईंको WhatsApp नम्बर राख्न भन्नुहोस्, वा तल "कार्यालयबाट" थिच्नुहोस् · No mobile is registered on this account. Ask the office to add your WhatsApp number (Login setup), or use "Ask the office" below.',
+                'inactive'   => 'यो खाता बन्द छ — कार्यालयमा फोन गर्नुहोस् · This account is switched off. Please call the office.',
+                'no_match'   => 'यो मोबाइल यो खातामा दर्ता भएको होइन — दर्ता गरेको नम्बर लेख्नुहोस्, नभए कार्यालयलाई भन्नुहोस् · This mobile is not the one registered on this account. Type the registered number, or ask the office.',
+                default      => 'कोड वा मोबाइल मिलेन — आफ्नो ID कार्डको code र दर्ता गरेको मोबाइल हेर्नुहोस् · The code or the mobile did not match. Check the code on your ID card and your registered mobile.',
+            }];
+        }
         // the WhatsApp "hi" link + QR are ready on the next screen (no extra tap)
         $h = self::hiStart();
         return ['step' => 'c_prove', 'notice' => 'अब दर्ता गरिएको WhatsApp बाट hi पठाएर YES गर्नुहोस् · Now send hi from your REGISTERED WhatsApp and reply YES.']

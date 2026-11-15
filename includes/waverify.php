@@ -234,7 +234,7 @@ final class WaVerify
         $r = Database::fetch('SELECT * FROM wa_verify WHERE token = :t', ['t' => $token]);
         $co = Settings::getString('company_name', 'S Hari Global');
         if ($r === null || strtotime((string) $r['expires_at']) < time()) {
-            return "यो कोड पुरानो भयो वा मिलेन। फारममा फर्केर फेरि \"WhatsApp मा hi पठाउनुहोस्\" थिच्नुहोस्।\nThis code has expired - please tap the WhatsApp button on the form again.";
+            return "यो कोड पुरानो भयो वा मिलेन। App / फारममा फर्केर फेरि सुरु गर्नुहोस् — दर्ता गरेको मोबाइल नम्बर नै लेख्नुहोस्। अझै भएन भने कार्यालयलाई फोन गर्नुहोस्।\nThis code has expired or did not match. Go back to the app and start again with your REGISTERED mobile number, or call the office.";
         }
         if (!empty($r['verified_at'])) {
             return "✅ यो नम्बर पहिले नै प्रमाणित भइसक्यो। फारममा फर्कनुहोस्।\nAlready verified - please go back to the form.";
