@@ -9,6 +9,7 @@ require_once INCLUDE_PATH . '/tripstatus.php';   // edit-window gate for seat ch
 require_once INCLUDE_PATH . '/passengerdocs.php'; // passenger photo / ID documents (17 Sep 2026)
 require_once INCLUDE_PATH . '/ticketedit.php';    // Quick Edit: fare fix, correction requests, Auto Assign (15 Oct 2026)
 require_once INCLUDE_PATH . '/desktools.php';     // 15 Nov 2026 (P4): ticket resend by email / SMS, masked IDs
+require_once INCLUDE_PATH . '/emergencycontact.php';   // 15 Nov 2026 (P7): the passenger's emergency contact
 $admin = admin_boot('bookings.view');
 
 $base  = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
@@ -280,6 +281,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             $remark   = Security::clean($_POST['remark'] ?? '', 180);
             $paxIn    = is_array($_POST['pax'] ?? null) ? $_POST['pax'] : [];
             $staffWho = (string) (($admin['full_name'] ?? '') ?: ($admin['username'] ?? 'staff'));
+            /* 15 Nov 2026 (P7): the emergency contact boxes (Contact block; em_form marks
+               that they were on the form). Prefilled like every Quick Edit box: an empty
+               box keeps what is stored; "Remove" clears all three. */
+            $emIn = null;
+            if (($_POST['em_form'] ?? '') === '1' && EmergencyContact::available()) {
+                $emIn = [
+                    'remove'   => ($_POST['emergency_remove'] ?? '') === 'remove',
+                    'name'     => is_scalar($_POST['emergency_name'] ?? null) ? (string) $_POST['emergency_name'] : '',
+                    'phone'    => is_scalar($_POST['emergency_phone'] ?? null) ? (string) $_POST['emergency_phone'] : '',
+                    'country'  => is_scalar($_POST['emergency_cc'] ?? null) ? (string) $_POST['emergency_cc'] : '',
+                    'relation' => is_scalar($_POST['emergency_relation'] ?? null) ? (string) $_POST['emergency_relation'] : '',
+                ];
+            }
 
             /* 15 Oct 2026 (1G-rollback): ONE transaction - a failure halfway
                (say the stops saved but a name refused) used to leave a
@@ -287,7 +301,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                the ticket is re-synced after the commit. */
             $done = Database::transaction(static function () use (
                 $bid, $pnr, $admin, $reason, $isSuper, $mayF, $deny,
-                $newPhone, $newEmail, $newBoard, $newDrop, $remark, $paxIn, $staffWho
+                $newPhone, $newEmail, $newBoard, $newDrop, $remark, $paxIn, $staffWho, $emIn
             ): array {
                 $changes  = [];
                 $oldVals  = [];   // 5 Sep 2026: every edit records what it was → what it is now
@@ -364,6 +378,70 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                     // desk); a corrected contact must not leave it stale (17 Sep 2026).
                     if (isset($upd['contact_phone'])) {
                         Database::update('payments', ['payer_phone' => $newPhone], 'booking_id = :b', ['b' => $bid]);
+                    }
+                }
+
+                /* 15 Nov 2026 (P7): the emergency contact - not on the ticket, never
+                   messaged; the contact right ('phone') decides who may change it.
+                   Unlike the customer card (which quietly ignores a bad number), the
+                   office is told what is wrong. */
+                if ($emIn !== null) {
+                    $emCur = Database::fetch('SELECT emergency_name, emergency_phone, emergency_relation FROM bookings WHERE id = :id', ['id' => $bid]) ?? [];
+                    $emOld = [
+                        'emergency_name'     => ($emCur['emergency_name'] ?? null) !== null ? (string) $emCur['emergency_name'] : null,
+                        'emergency_phone'    => ($emCur['emergency_phone'] ?? null) !== null ? (string) $emCur['emergency_phone'] : null,
+                        'emergency_relation' => ($emCur['emergency_relation'] ?? null) !== null ? (string) $emCur['emergency_relation'] : null,
+                    ];
+                    $emNew = $emOld;
+                    /* An untouched block (every box empty or exactly as prefilled below) is no
+                       edit: it must neither refuse nor rewrite an unrelated save - say a stored
+                       number that another path has since made the passenger's own, or a stored
+                       relation word that is not one of the eight. A changed passenger mobile
+                       still re-checks it ('own'). */
+                    $emWas  = EmergencyContact::fromRow($emOld);
+                    $emWasT = $emWas !== null ? (string) $emWas['tel'] : '';
+                    $emTyped = (string) preg_replace('/\D/', '', $emIn['phone']);
+                    $emUntouched = !$emIn['remove'] && !isset($upd['contact_phone'])
+                        && (trim($emIn['name']) === '' || trim($emIn['name']) === ($emWas['name'] ?? ''))
+                        && ($emTyped === '' || ($emWasT !== '' && $emTyped === EmergencyContact::national($emWasT)
+                            && (strtoupper(trim($emIn['country'])) === 'IN') === str_starts_with($emWasT, '+91')))
+                        && (trim($emIn['relation']) === '' || trim($emIn['relation']) === ($emWas['relation'] ?? ''));
+                    if ($emUntouched) {
+                        // nothing typed / nothing changed: $emNew stays $emOld
+                    } elseif ($emIn['remove']) {
+                        $emNew = ['emergency_name' => null, 'emergency_phone' => null, 'emergency_relation' => null];
+                    } else {
+                        $emName = trim($emIn['name']) !== '' ? $emIn['name'] : (string) ($emOld['emergency_name'] ?? '');
+                        $emTel  = (string) preg_replace('/\D/', '', $emIn['phone']) !== '' ? $emIn['phone'] : (string) ($emOld['emergency_phone'] ?? '');
+                        $emRel  = trim($emIn['relation']) !== '' ? $emIn['relation'] : (string) ($emOld['emergency_relation'] ?? '');
+                        if ($emName !== '' || $emTel !== '' || $emRel !== '') {
+                            $emRead = EmergencyContact::read(['name' => $emName, 'phone' => $emTel, 'country' => $emIn['country'], 'relation' => $emRel],
+                                (string) ($upd['contact_phone'] ?? $cur['contact_phone']));
+                            if ($emRead['note'] === 'invalid') {
+                                throw new RuntimeException('Emergency mobile: 10 digits — Nepal 96 / 97 / 98…, India 6–9… (pick +977 or +91). / आपतकालीन मोबाइल मिलेन।');
+                            }
+                            if ($emRead['note'] === 'own') {
+                                throw new RuntimeException('The emergency mobile is the passenger\'s own number — give another person\'s. / आपतकालीन नम्बर यात्रुकै हो — अर्को व्यक्तिको दिनुहोस्।');
+                            }
+                            if ($emRead['contact'] === null) {
+                                throw new RuntimeException('Add the emergency mobile too — a name alone cannot be called. / आपतकालीन मोबाइल पनि लेख्नुहोस्।');
+                            }
+                            $emNew = [
+                                'emergency_name'     => $emRead['contact']['name'],
+                                'emergency_phone'    => $emRead['contact']['phone'],
+                                // an untouched box (empty, or the stored value it was prefilled with) keeps
+                                // even a stored word that is not one of the eight
+                                'emergency_relation' => $emRead['contact']['relation']
+                                    ?? ((trim($emIn['relation']) === '' || trim($emIn['relation']) === trim((string) ($emOld['emergency_relation'] ?? '')))
+                                        ? $emOld['emergency_relation'] : null),
+                            ];
+                        }
+                    }
+                    if ($emNew !== $emOld) {
+                        if (!$mayF('phone')) { $deny('emergency contact'); }
+                        Database::update('bookings', $emNew, 'id = :id', ['id' => $bid]);
+                        $changes[] = 'emergency contact';
+                        $oldVals += $emOld; $newVals += $emNew;
                     }
                 }
 
@@ -469,12 +547,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             });
 
             $changes = $done['changes'];
-            $onTicket = array_values(array_diff($changes, ['remark']));
+            // 15 Nov 2026 (P7): the emergency contact is not on the ticket either
+            $onTicket = array_values(array_diff($changes, ['remark', 'emergency contact']));
             if ($changes === []) {
                 $flash = ['ok', 'Nothing changed — the values you typed match the booking already.'];
             } elseif ($onTicket === []) {
-                // An internal remark is not on the ticket: no re-issue, no message.
-                $flash = ['ok', 'Remark added to the booking (internal — the passenger is not told).'];
+                // An internal remark / the emergency contact is not on the ticket: no re-issue, no message.
+                $flash = ['ok', in_array('emergency contact', $changes, true)
+                    ? 'Emergency contact saved' . (in_array('remark', $changes, true) ? ' and remark added' : '') . ' (internal — not on the ticket, nobody is messaged). / आपतकालीन सम्पर्क सेभ भयो।'
+                    : 'Remark added to the booking (internal — the passenger is not told).'];
             } else {
                 // Any edit: new QR / REV, dropped caches, redrawn PNG, one audit row.
                 // A phone / email change is a 'contact' notice (it reaches the NEW
@@ -1278,6 +1359,18 @@ if ($b === null) {
     exit;
 }
 
+// 15 Nov 2026: the passenger asked for a date change / seat cancel from the ticket page.
+try {
+    require_once INCLUDE_PATH . '/ticketrequests.php';
+    $bvOpenReq = Auth::can('refunds.view') ? TicketRequests::openCount((int) $b['id']) : 0;
+} catch (Throwable) {
+    $bvOpenReq = 0;
+}
+if ($bvOpenReq > 0) {
+    echo '<div class="flash bad" style="margin-bottom:12px">📝 ' . $bvOpenReq . ' open passenger request(s) on this ticket · यात्रुको अनुरोध खुला छ — '
+        . '<a href="' . $base . '/admin/ticket-requests.php">see requests · हेर्नुहोस्</a></div>';
+}
+
 /**
  * Share + Send-ticket buttons (15 Oct 2026, 1F-resend). Share hands the
  * keyed ticket picture link to the phone's share sheet (clipboard copy on a
@@ -1662,6 +1755,13 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
 .qe-req-list form{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .qe-after{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:-6px 0 14px}
 .qe-after .muted{font-size:12.5px}
+/* 15 Nov 2026 (P7): the emergency contact boxes (44px touch) and its tap-to-call */
+.qe-em{border-top:1px dashed var(--line);margin-top:4px;padding-top:8px}
+.qe-em input,.qe-em select{min-height:44px}
+.qe-em-tel{display:flex;gap:6px;min-width:0}
+.qe .qe-em-tel select{flex:0 0 84px;width:84px}
+.qe-em-tel input{flex:1 1 auto}
+.bv-em-call{display:inline-flex;align-items:center;min-height:44px;padding:0 4px;overflow-wrap:anywhere}
 @media(max-width:640px){
   .qe-pax{grid-template-columns:44px minmax(0,1fr) 64px;}
   .qe-pax .qe-wide{grid-column:2 / -1}
@@ -1990,6 +2090,37 @@ $qePhone = Notify::usablePhone($b['contact_phone'] ?? '') !== '' ? (string) $b['
           <div class="qe-row"><label for="qe-email">Email</label>
             <input type="email" id="qe-email" name="contact_email" maxlength="120" value="<?= Security::e((string) ($b['contact_email'] ?? '')) ?>" data-old="<?= Security::e((string) ($b['contact_email'] ?? '')) ?>" data-label="Email"></div>
           <?php endif; ?>
+          <?php /* 15 Nov 2026 (P7): the emergency contact, with the contact right. Empty = keep (as every box here). */
+          if ($qeMay['phone'] && EmergencyContact::available()):
+            $qeEm    = EmergencyContact::fromRow($b);
+            $qeEmNat = $qeEm !== null ? EmergencyContact::national($qeEm['tel']) : '';
+            $qeEmCc  = $qeEm !== null && str_starts_with($qeEm['tel'], '+91') ? 'IN' : 'NP';
+            $qeEmRel = $qeEm !== null ? $qeEm['relation'] : ''; ?>
+          <div class="qe-em">
+            <input type="hidden" name="em_form" value="1">
+            <div class="qe-row"><label for="qe-em-name">🆘 Emergency contact · आपतकालीन सम्पर्क <span style="font-weight:500">(optional · not on the ticket)</span></label>
+              <input type="text" id="qe-em-name" name="emergency_name" maxlength="80" autocomplete="off" placeholder="Name · नाम" value="<?= Security::e($qeEm['name'] ?? '') ?>" data-old="<?= Security::e($qeEm['name'] ?? '') ?>" data-label="Emergency name"></div>
+            <div class="qe-row"><label for="qe-em-phone">Emergency mobile · आपतकालीन मोबाइल</label>
+              <div class="qe-em-tel">
+                <select name="emergency_cc" aria-label="Emergency mobile country code" data-old="<?= $qeEmCc ?>" data-label="Emergency country">
+                  <option value="NP"<?= $qeEmCc === 'NP' ? ' selected' : '' ?>>+977</option><option value="IN"<?= $qeEmCc === 'IN' ? ' selected' : '' ?>>+91</option>
+                </select>
+                <input type="tel" id="qe-em-phone" name="emergency_phone" inputmode="tel" maxlength="15" placeholder="98XXXXXXXX" value="<?= Security::e($qeEmNat) ?>" data-old="<?= Security::e($qeEmNat) ?>" data-label="Emergency mobile">
+              </div></div>
+            <div class="qe-row"><label for="qe-em-rel">Relation · नाता</label>
+              <select id="qe-em-rel" name="emergency_relation" data-old="<?= Security::e($qeEmRel) ?>" data-label="Emergency relation">
+                <?php if ($qeEmRel === ''): ?><option value="" selected>— नाता छान्नुहोस् · choose —</option><?php endif; ?>
+                <?php if ($qeEmRel !== '' && !isset(EmergencyContact::RELATIONS[$qeEmRel])): ?><option value="<?= Security::e($qeEmRel) ?>" selected><?= Security::e($qeEmRel) ?></option><?php endif; ?>
+                <?php foreach (EmergencyContact::RELATIONS as $relKey => [$relNe, $relEn]): ?><option value="<?= $relKey ?>"<?= $relKey === $qeEmRel ? ' selected' : '' ?>><?= Security::e($relNe . ' · ' . $relEn) ?></option><?php endforeach; ?>
+              </select></div>
+            <?php if ($qeEm !== null): ?>
+            <div class="qe-row"><label for="qe-em-rm">Remove · हटाउने</label>
+              <select id="qe-em-rm" name="emergency_remove" data-old="" data-label="Emergency contact">
+                <option value="" selected>Keep it · राख्ने</option><option value="remove">Remove the emergency contact · हटाउने</option>
+              </select></div>
+            <?php endif; ?>
+          </div>
+          <?php endif; ?>
         </div>
         <?php endif; ?>
         <?php if ($qeMay['pickup']): ?>
@@ -2303,6 +2434,14 @@ $qePhone = Notify::usablePhone($b['contact_phone'] ?? '') !== '' ? (string) $b['
       <tr><th>Contact</th><td class="mono"><?= Notify::usablePhone($b['contact_phone'] ?? '') !== ''
             ? Security::e((string) $b['contact_phone'])
             : '<span class="muted">walk-in · no phone</span>' ?><?= !empty($b['contact_email']) ? ' · ' . Security::e((string) $b['contact_email']) : '' ?></td></tr>
+      <?php /* 15 Nov 2026 (P7): the emergency contact the passenger gave (optional) -
+           for the office to ring if something happens on the road. Never messaged. */
+      if (EmergencyContact::available()): $bvEm = EmergencyContact::fromRow($b); ?>
+      <tr class="bv-em"><th>Emergency · आपतकालीन</th><td><?php if ($bvEm === null): ?><span class="muted">not given · दिइएको छैन</span><?php else: ?>
+        🆘 <?= $bvEm['name'] !== '' ? '<b>' . Security::e($bvEm['name']) . '</b>' : '<span class="muted">(no name)</span>' ?><?= $bvEm['relationLabel'] !== '' ? ' <span class="muted">(' . Security::e($bvEm['relationLabel']) . ')</span>' : '' ?>
+        · <a class="mono bv-em-call" href="tel:<?= Security::e($bvEm['tel']) ?>" aria-label="Call the emergency contact <?= Security::e($bvEm['name']) ?>">📞 <?= Security::e($bvEm['phone']) ?></a>
+      <?php endif; ?></td></tr>
+      <?php endif; ?>
       <tr><th>Booked by</th><td>
         <?php if (!empty($b['agent'])): ?>
           <strong><?= Security::e((string) ($b['agent']['full_name'] ?: $b['agent']['username'])) ?></strong><?php if (!empty($b['agent']['phone'])): ?> <span class="mono">· <?= Security::e((string) $b['agent']['phone']) ?></span><?php endif; ?>

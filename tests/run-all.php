@@ -165,7 +165,10 @@ const CORE_SUITES = [
     'fleet-watch-test.php'        => 'fleet bell: SOS open, GPS silent, over-speed over a minute, off the road line; GPS purge OFF by default; old track links expire',
     'fleet-map-test.php'          => 'fleet map: heading, trail replay thinned and staff-only, status counts',
     'desk-tools-test.php'         => 'desk tools: ID masking + audited reveal, cash aging buckets, cancel bands, email/SMS resend behind OFF switches and CSRF',
-    'customer-security-test.php'  => 'customer + security: per-IP limits, coupon guessing, log redaction word by word, first-booking coupons, promo link only while a coupon runs, real ratings only',
+    'ticket-requests-test.php'    => 'passenger date-change / seat-cancel REQUESTS: signed key only, rules, cap, rate limits, office bell, Done/Reject; booking never changed',
+    'emergency-contact-test.php'  => 'emergency contact: optional on SmartBook, own number ignored, stored, on booking-view and the driver manifest',
+    'eta-steps-test.php'          => 'near-stop web push at 15 / 5 min: OFF by default, once per step, silent on stale GPS',
+    'customer-security-test.php'  =>'customer + security: per-IP limits, coupon guessing, log redaction word by word, first-booking coupons, promo link only while a coupon runs, real ratings only',
     // 14 Nov 2026, registered with the web research tool and the no-key quality eval they guard.
     'ai-web-research-test.php'    => 'web research: staff and office only, off by default, server blocks replayed unchanged, pause_turn bounded',
     'ai-eval-test.php'            => 'the golden set with no AI key: 88 questions in 6 languages, knowledge scope, offer guard, who may run which tool',

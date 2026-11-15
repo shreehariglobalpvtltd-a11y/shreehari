@@ -114,6 +114,9 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
 .mf h3{font-size:14px;color:var(--gold);margin:16px 0 4px}
 .pax{display:grid;grid-template-columns:46px minmax(0,1fr) auto 44px;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--line);min-height:52px}
 .pax .seat{font-weight:800;font-variant-numeric:tabular-nums}
+.pax-em{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 0 6px 54px;font-size:12.5px;color:var(--warn)}
+.pax-em span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.pax-em a.call{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;background:#3A1616;color:#F5BFBF;text-decoration:none;font-size:18px;flex:none}
 .pax .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pax .tag{font-size:11.5px;color:var(--warn);margin-left:6px;font-weight:700}
 .pax a.call{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;background:#163A2A;color:#BFF5D6;text-decoration:none;font-size:18px}
@@ -573,6 +576,15 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
           row.appendChild(a);
         } else row.appendChild(el('span', ''));
         box.appendChild(row);
+        /* 15 Nov 2026: the booking's emergency contact - for an accident, kept small */
+        if (p.emergency && p.emergency.phone) {
+          var em = el('div'); em.className = 'pax-em';
+          em.appendChild(el('span', '🆘 ' + (p.emergency.name || '') + (p.emergency.relation ? ' (' + p.emergency.relation + ')' : '')));
+          var ea = el('a', '📞'); ea.className = 'call'; ea.href = 'tel:' + p.emergency.phone;
+          ea.setAttribute('aria-label', 'Call emergency contact of seat ' + p.seat);
+          em.appendChild(ea);
+          box.appendChild(em);
+        }
       });
     });
   }

@@ -208,6 +208,27 @@
       promoOk: '{c} लागू भयो · − {a} · नयाँ जम्मा {t}', promoWait: 'Code जाँच्दै…' }
   };
   ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in PW[l]) { W[l][k] = PW[l][k]; } } });
+  /* 15 Nov 2026 (P7): the optional emergency contact - customer card only, never required,
+     never messaged. The row's title stays Nepali-first with the English kept in every language. */
+  var EW = {
+    en: { emT: 'आपतकालीन सम्पर्क (ऐच्छिक) · Emergency contact (optional)', emName: 'Name', emNamePh: 'e.g. Hari Thapa', emPhone: 'Mobile',
+      emRel: 'Relation', emPick: 'Choose the relation…', emHint: 'Only for an accident or emergency on the road — no message is ever sent to this number.',
+      emOwn: 'This is the passenger\'s own mobile — it will not be saved. Write another person\'s number.',
+      emBadNp: 'Nepal mobile: 10 digits starting 96 / 97 / 98 — otherwise it is not saved', emBadIn: 'India mobile: 10 digits starting 6–9 — otherwise it is not saved',
+      emNoPhone: 'Add the mobile too — without it the contact is not saved', emOk: 'Emergency contact saved with the ticket' },
+    hi: { emT: 'आपातकालीन संपर्क (वैकल्पिक) · Emergency contact (optional)', emName: 'नाम', emNamePh: 'जैसे Hari Thapa', emPhone: 'मोबाइल',
+      emRel: 'रिश्ता', emPick: 'रिश्ता चुनें…', emHint: 'रास्ते में दुर्घटना या आपात स्थिति में ही — इस नंबर पर कभी कोई मैसेज नहीं भेजा जाता।',
+      emOwn: 'यह यात्री का अपना मोबाइल है — सेव नहीं होगा। किसी और का नंबर लिखें।',
+      emBadNp: 'नेपाल मोबाइल: 96 / 97 / 98 से 10 अंक — नहीं तो सेव नहीं होगा', emBadIn: 'भारत मोबाइल: 6–9 से 10 अंक — नहीं तो सेव नहीं होगा',
+      emNoPhone: 'मोबाइल भी लिखें — नहीं तो संपर्क सेव नहीं होगा', emOk: 'आपातकालीन संपर्क टिकट के साथ सेव हुआ' },
+    ne: { emT: 'आपतकालीन सम्पर्क (ऐच्छिक) · Emergency contact (optional)', emName: 'नाम', emNamePh: 'जस्तै Hari Thapa', emPhone: 'मोबाइल',
+      emRel: 'नाता', emPick: 'नाता छान्नुहोस्…', emHint: 'बाटोमा दुर्घटना वा आपतकालमा मात्र — यो नम्बरमा कहिल्यै कुनै सन्देश पठाइँदैन।',
+      emOwn: 'यो यात्रुकै मोबाइल हो — सेभ हुँदैन। अर्को व्यक्तिको नम्बर लेख्नुहोस्।',
+      emBadNp: 'नेपाल मोबाइल: ९६ / ९७ / ९८ बाट १० अङ्क — नत्र सेभ हुँदैन', emBadIn: 'भारत मोबाइल: ६–९ बाट १० अङ्क — नत्र सेभ हुँदैन',
+      emNoPhone: 'मोबाइल पनि लेख्नुहोस् — नत्र सम्पर्क सेभ हुँदैन', emOk: 'आपतकालीन सम्पर्क टिकटसँगै सेभ भयो' }
+  };
+  EW.en.emS = 'Emergency contact'; EW.hi.emS = 'आपातकालीन संपर्क'; EW.ne.emS = 'आपतकालीन सम्पर्क';
+  ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in EW[l]) { W[l][k] = EW[l][k]; } } });
   function tr(k, v) {
     var s = (W[lang()] && W[lang()][k]) || W.en[k] || k;
     if (v) Object.keys(v).forEach(function (x) { s = s.split('{' + x + '}').join(v[x]); });
@@ -234,7 +255,10 @@
        in localStorage (an ID number must not sit on a shared phone). */
     codVerify: false, idTypes: [], qrSeconds: 60, seatPickFirst: true,
     promoOn: false, promo: '',   // 15 Nov 2026: the typed promo code (memory only, never saved)
-    verify: { address: '', idType: '', idNum: '', altPhone: '', altCc: 'NP' }
+    verify: { address: '', idType: '', idNum: '', altPhone: '', altCc: 'NP' },
+    /* 15 Nov 2026 (P7): the emergency contact - memory only (another person's number never
+       sits in localStorage on a shared phone). Nepal by default: the family at home. */
+    emOn: false, relations: [], em: { name: '', phone: '', cc: 'NP', rel: '', touched: false }
   };
   var store = {
     get: function () { try { return JSON.parse(localStorage.getItem('sb:v1') || 'null') || {}; } catch (e) { return {}; } },
@@ -300,6 +324,9 @@
         S.seatPickFirst = d.seatPickFirst !== false;
         S.promoOn = !STAFF && !!d.promo;
         buildPromo();
+        S.emOn = !STAFF && !!d.emergency;   // the server says so only once its columns exist
+        S.relations = d.relations || [];
+        buildEm();
         if (d.prefill) {
           ['address', 'idType'].forEach(function (k) { if (d.prefill[k] && !S.verify[k]) S.verify[k] = d.prefill[k]; });
           if (d.prefill.idNum && !S.verify.idNum) S.verify.idNum = d.prefill.idNum;
@@ -591,6 +618,104 @@
       msg.textContent = tr('promoBad') + ': ' + (p.error || '—');
     }
   }
+  /* 15 Nov 2026 (P7): "आपतकालीन सम्पर्क (ऐच्छिक)" — one collapsed row under the passengers
+     (Quick and Full form alike), opening name + mobile (+977 / +91, the main mobile's rules)
+     + relation. Never required, never blocks a booking: a number that is not a valid mobile,
+     or is the passenger's own, is not sent — the note under it says so (the server ignores
+     it too, SmartBook::bookNow → EmergencyContact::read). Built only when the boot says the
+     database can keep it; staff faces never get it. */
+  function nat10(s) {
+    var d = digits(s);
+    if (d.indexOf('00') === 0) d = d.slice(2);
+    if (d.length === 13 && d.indexOf('977') === 0) d = d.slice(3);
+    else if (d.length === 12 && d.indexOf('91') === 0) d = d.slice(2);
+    else if (d.length === 11 && d.charAt(0) === '0') d = d.slice(1);
+    return d;
+  }
+  function emParse() {
+    var d = digits(S.em.phone), cc = S.em.cc === 'IN' ? 'IN' : 'NP';
+    if (d.indexOf('00') === 0) d = d.slice(2);
+    if (d.length === 13 && d.indexOf('977') === 0) { d = d.slice(3); cc = 'NP'; }        // a typed prefix wins over the box
+    else if (d.length === 12 && d.indexOf('91') === 0) { d = d.slice(2); cc = 'IN'; }
+    else if (d.length === 11 && d.charAt(0) === '0') d = d.slice(1);
+    return { d: d, cc: cc };
+  }
+  /* 'empty' | 'nophone' | 'bad' | 'own' | 'ok' */
+  function emState() {
+    var nm = String(S.em.name || '').trim();
+    if (!digits(S.em.phone)) return (nm || S.em.rel) ? 'nophone' : 'empty';
+    var p = emParse();
+    var ok = !/^(\d)\1+$/.test(p.d) && (p.cc === 'NP' ? /^9[678]\d{8}$/.test(p.d) : /^[6-9]\d{9}$/.test(p.d));
+    if (!ok) return 'bad';
+    var own = nat10(S.phone);
+    return own && own.slice(-10) === p.d ? 'own' : 'ok';
+  }
+  function emBody() {
+    if (!S.emOn || emState() !== 'ok') return null;
+    var p = emParse();
+    return { name: String(S.em.name || '').trim().replace(/\s+/g, ' ').slice(0, 80), phone: p.d, country: p.cc, relation: S.em.rel || '' };
+  }
+  function buildEm() {
+    if (!S.emOn || STAFF || $('sbEm')) return;
+    var after = $('sbPNames');
+    if (!after || !after.parentNode) return;
+    var fld = 'width:100%;min-width:0;box-sizing:border-box;height:44px;min-height:44px;';
+    // its own labels: the card's .sb-l is visually hidden on a phone, and these boxes have no other caption
+    var lab = ' style="display:block;margin:0 0 4px;font-size:12px;font-weight:700;color:var(--sb-muted,#637491)"';
+    var wrap = document.createElement('div');
+    wrap.id = 'sbEm';
+    wrap.style.cssText = 'margin:0 0 8px;min-width:0';
+    wrap.innerHTML = '<button type="button" id="sbEmAsk" aria-expanded="false" aria-controls="sbEmBox"'
+      + ' style="width:100%;min-height:44px;display:flex;align-items:center;gap:8px;padding:6px 12px;border:1px dashed var(--sb-line,#cfd8e6);border-radius:var(--sb-ri,11px);background:var(--sb-chip,#f3f7fc);color:var(--sb-text,#16233C);font:inherit;font-size:14px;font-weight:700;text-align:left;cursor:pointer">'
+      + '<span aria-hidden="true">🆘</span><span data-sbi="emT" style="flex:1 1 auto;min-width:0;overflow-wrap:anywhere"></span>'
+      + '<span id="sbEmOk" aria-hidden="true" style="color:var(--sb-ok,#0b9e71);font-weight:800"></span><span id="sbEmCaret" aria-hidden="true">▾</span></button>'
+      + '<div id="sbEmBox" style="display:none;gap:8px;padding:10px 2px 2px;min-width:0">'
+      + '<div><label for="sbEmName" data-sbi="emName"' + lab + '></label><input id="sbEmName" type="text" maxlength="80" autocomplete="off" data-sbi-ph="emNamePh" style="' + fld + '"></div>'
+      + '<div><label for="sbEmPhone" data-sbi="emPhone"' + lab + '></label><div class="sb-tel">'
+      + '<select id="sbEmCc" aria-label="Country code" style="flex:0 0 84px;height:44px;min-height:44px;padding:0 4px 0 8px"><option value="NP">+977</option><option value="IN">+91</option></select>'
+      + '<input id="sbEmPhone" type="tel" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="98XXXXXXXX" style="' + fld + '"></div></div>'
+      + '<div><label for="sbEmRel" data-sbi="emRel"' + lab + '></label><select id="sbEmRel" style="' + fld + '"><option value="" data-sbi="emPick"></option>'
+      + S.relations.map(function (r) { return '<option value="' + esc(r.v) + '">' + esc(r.ne + ' · ' + r.en) + '</option>'; }).join('') + '</select></div>'
+      + '<p id="sbEmNote" aria-live="polite" style="margin:0;font-size:12.5px;font-weight:600;line-height:1.35;overflow-wrap:anywhere"></p>'
+      + '<p data-sbi="emHint" style="margin:0;font-size:12px;line-height:1.35;color:var(--sb-muted,#637491);overflow-wrap:anywhere"></p>'
+      + '</div>';
+    after.parentNode.insertBefore(wrap, after.nextSibling);
+    var ask = $('sbEmAsk'), box = $('sbEmBox');
+    ask.addEventListener('click', function () {
+      var open = box.style.display === 'none';
+      box.style.display = open ? 'grid' : 'none';
+      ask.setAttribute('aria-expanded', open ? 'true' : 'false');
+      $('sbEmCaret').textContent = open ? '▴' : '▾';
+      if (open) { try { $('sbEmName').focus(); } catch (e) {} }
+    });
+    var edit = function () {
+      S.em.name = $('sbEmName').value; S.em.phone = $('sbEmPhone').value; S.em.cc = $('sbEmCc').value; S.em.rel = $('sbEmRel').value;
+      S.idem = null;   // another emergency contact = another booking request
+      renderEm();
+    };
+    ['sbEmName', 'sbEmPhone'].forEach(function (id) { $(id).addEventListener('input', edit); });
+    ['sbEmCc', 'sbEmRel'].forEach(function (id) { $(id).addEventListener('change', edit); });
+    ['sbEmName', 'sbEmPhone', 'sbEmRel'].forEach(function (id) { $(id).addEventListener('blur', function () { S.em.touched = true; renderEm(); }); });
+    renderEm();
+  }
+  function renderEm() {
+    var note = $('sbEmNote'); if (!note) return;
+    var st = emState(), d = digits(S.em.phone), show = S.em.touched || d.length >= 10;
+    var p = emParse(), msg = '';
+    if (st === 'own' && show) msg = '⚠️ ' + tr('emOwn');
+    else if (st === 'bad' && show) msg = '⚠️ ' + tr(p.cc === 'IN' ? 'emBadIn' : 'emBadNp');
+    else if (st === 'nophone' && S.em.touched) msg = 'ℹ️ ' + tr('emNoPhone');
+    note.textContent = msg;
+    note.style.color = st === 'nophone' ? 'var(--sb-muted,#637491)' : 'var(--sb-err,#cd4154)';
+    $('sbEmPhone').classList.toggle('sb-bad', (st === 'own' || st === 'bad') && show);
+    $('sbEmOk').textContent = st === 'ok' ? '✓' : '';
+  }
+  function emReset() {
+    S.em = { name: '', phone: '', cc: 'NP', rel: '', touched: false };
+    if (!$('sbEm')) return;
+    $('sbEmName').value = ''; $('sbEmPhone').value = ''; $('sbEmCc').value = 'NP'; $('sbEmRel').value = '';
+    renderEm();
+  }
   function doQuote() {
     var my = ++qSeq;
     $('sbSeatLine').innerHTML = '<span class="sb-skel sb-skel-w"></span>';
@@ -751,7 +876,7 @@
   $('sbPoint').addEventListener('change', function () { S.point = this.value; S.why.point = null; $('sbPointWhy').textContent = ''; S.manual = []; changed(); });
   $('sbDateIn').addEventListener('change', function () { if (this.value) { S.date = this.value; S.manual = []; renderDates(); changed(); } });
   $('sbCc').addEventListener('change', function () { S.cc = this.value; changed('phone'); });
-  $('sbPhone').addEventListener('input', function () { S.phone = this.value; S.idem = null; store.set(); showErrs(false); syncButtons(); whoSoon(); });
+  $('sbPhone').addEventListener('input', function () { S.phone = this.value; S.idem = null; store.set(); showErrs(false); syncButtons(); whoSoon(); renderEm(); });
   /* 13 Nov 2026 (mg13, owner: "mobile halda naam, female / male aafai bhariyos"):
      ten digits typed -> ask the server who this is (staff, or the number's own
      verified owner; otherwise it answers "nobody"). Fills ONLY what is still
@@ -1070,6 +1195,7 @@
     body.expect = { total: S.q.price ? S.q.price.total : null, date: S.q.date };
     if (STAFF && $('sbAgent')) body.agentCode = S.agent;   // the desk's pick (the server validates; an agent login never sends one)
     if (verify) body.verify = verify;
+    var emB = emBody(); if (emB) body.emergency = emB;   // 15 Nov 2026 (P7): only a valid number that is not the passenger's own
     store.set();
     api(body).then(function (r) {
       S.busy = false; btn.classList.remove('sb-busy'); lbl.textContent = old;
@@ -1168,6 +1294,11 @@
       rows.push([tr('sDisc'), '− ' + money(q.price.discount) + (q.price.offer ? ' · ' + q.price.offer : '')]);
     }
     rows.push([tr('sPay'), tr('sPayCash')]);
+    var emS = emBody();   // 15 Nov 2026 (P7): the emergency contact that goes with this ticket
+    if (emS) {
+      var emR = S.relations.filter(function (r) { return r.v === emS.relation; })[0];
+      rows.push(['🆘 ' + tr('emS'), [emS.name, emR ? emR.ne : '', (emS.country === 'IN' ? '+91 ' : '+977 ') + emS.phone].filter(Boolean).join(' · ')]);
+    }
     if (STAFF && (S.agent || STAFF.ownCode)) rows.push([tr('credited'), S.agent === 'OTHER' ? (STAFF.company || '') : (S.agent || STAFF.ownCode)]);
     return '<div class="sb-ok-sum"><div class="sb-ok-tot"><small>' + esc(tr('total')) + '</small><b>' + esc(q.price ? money(q.price.total) : '—') + '</b>'
       + (q.price ? '<span>≈ ' + esc(npr(q.price.npr)) + '</span>' : '') + '</div><dl>'
@@ -1648,7 +1779,7 @@
     var b = e.target.closest('[data-tk]'); if (!b || !root.contains(b)) return;
     var r = lastTicket; var act = b.getAttribute('data-tk');
     if (act === 'close') { closeTicket(); return; }
-    if (act === 'new') { closeTicket(); S.manual = []; S.seatMode = 'auto'; S.date = ''; S.promo = ''; if ($('sbPromoIn')) $('sbPromoIn').value = ''; fill(); requote(0); window.scrollTo({ top: root.offsetTop - 60, behavior: 'smooth' }); return; }
+    if (act === 'new') { closeTicket(); S.manual = []; S.seatMode = 'auto'; S.date = ''; S.promo = ''; if ($('sbPromoIn')) $('sbPromoIn').value = ''; emReset(); fill(); requote(0); window.scrollTo({ top: root.offsetTop - 60, behavior: 'smooth' }); return; }
     if (!r) return;
     if (act === 'copy') { try { navigator.clipboard.writeText(r.pnr).then(function () { say(tr('copied')); }); } catch (x) { say(r.pnr); } return; }
     if (act === 'share') {

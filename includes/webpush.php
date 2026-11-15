@@ -681,9 +681,13 @@ final class WebPush
      * Push one message to every phone that subscribed on this booking (or
      * with its mobile number). Never throws.
      *
+     * 15 Nov 2026: $ttl - a time-bound message ("bus about 15 min from your
+     * stop", EtaAlerts::runSteps) must expire before it turns false; every
+     * other caller keeps the one-day default.
+     *
      * @return array{sent:int, failed:int, skipped:int}
      */
-    public static function sendToBooking(int $bookingId, array $payload, string $event = ''): array
+    public static function sendToBooking(int $bookingId, array $payload, string $event = '', int $ttl = self::TTL_DEFAULT): array
     {
         $out = ['sent' => 0, 'failed' => 0, 'skipped' => 0];
         try {
@@ -699,7 +703,7 @@ final class WebPush
         $payload['bookingId'] = $bookingId;
         $payload['event']     = $event;
         foreach ($subs as $sub) {
-            $r = self::send($sub, $payload);
+            $r = self::send($sub, $payload, $ttl);
             $r['ok'] ? $out['sent']++ : $out['failed']++;
         }
         return $out;

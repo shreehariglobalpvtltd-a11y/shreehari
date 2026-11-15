@@ -129,6 +129,7 @@ function admin_nav(): array
         ['href' => 'reschedule.php',   'icon' => 'calendar-plus',  'label' => 'Change Date / Reschedule', 'perm' => 'bookings.view',  'section' => $S3],
         ['href' => 'missed-bus.php',   'icon' => 'clock',     'label' => 'Missed-bus Rebooking',   'perm' => 'bookings.view',    'section' => $S3],
         ['href' => 'refunds.php',      'icon' => 'refund',    'label' => 'Refunds & Cancellations','perm' => 'refunds.view',     'section' => $S3],
+        ['href' => 'ticket-requests.php', 'icon' => 'calendar-plus', 'label' => 'यात्रु अनुरोध · Date / Seat Requests', 'perm' => 'refunds.view', 'section' => $S3],   // 15 Nov 2026 (P6): passengers ask, the office does it by hand
         ['href' => 'wa-queue.php',     'icon' => 'msg',       'label' => 'WhatsApp Tickets',       'perm' => 'bookings.view',    'section' => $S3],
         ['href' => 'schedule.php',     'icon' => 'calendar-plus','label' => 'Bus Routine (alternate days)','perm' => 'schedules.manage','section' => $S3],
         ['href' => 'calendar.php',     'icon' => 'calendar-plus',  'label' => 'Bus Calendar',           'perm' => 'schedules.manage', 'section' => $S3],

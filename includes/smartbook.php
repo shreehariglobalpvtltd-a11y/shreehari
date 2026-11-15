@@ -40,6 +40,7 @@ require_once __DIR__ . '/autoberth.php';
 require_once __DIR__ . '/quickticket.php';
 require_once __DIR__ . '/boarding.php';
 require_once __DIR__ . '/sitefacts.php';
+require_once __DIR__ . '/emergencycontact.php';   // 15 Nov 2026 (P7): the optional emergency contact
 
 /** An idempotency key presented with another request / by another browser: the card makes a new key. */
 final class SmartBookKeyReused extends RuntimeException
@@ -1153,13 +1154,20 @@ final class SmartBook
         }
         $seats = array_map(static fn($x): string => strtoupper((string) $x), (array) ($in['seats'] ?? []));
         sort($seats);
-        return hash('sha256', implode('|', [
+        $parts = [
             $mode, $pay, normalisePhone((string) ($in['phone'] ?? '')), mb_strtolower(trim((string) ($in['name'] ?? ''))),
             implode(',', $pax), implode(',', $seats), (string) ($in['direction'] ?? ''), (string) ($in['date'] ?? ''),
             (string) ($in['point'] ?? ''), (string) ($in['type'] ?? ''), (string) ($in['cabin'] ?? ''),
             // the agent a desk credits (api/smartbook.php sets it; '' for customers): another agent = another request
             $mode !== 'customer' ? strtoupper((string) ($in['referralCode'] ?? '')) : '',
-        ]));
+        ];
+        /* 15 Nov 2026 (P7): another emergency contact = another request. Added only when
+           one was sent, so every request without one keeps the fingerprint it had. */
+        $em = EmergencyContact::read($in['emergency'] ?? null, (string) ($in['phone'] ?? ''))['contact'];
+        if ($em !== null) {
+            $parts[] = 'em:' . $em['phone'] . ':' . mb_strtolower((string) $em['name']) . ':' . (string) $em['relation'];
+        }
+        return hash('sha256', implode('|', $parts));
     }
 
     /**
@@ -1329,6 +1337,15 @@ final class SmartBook
                 Logger::warning('contact_address not saved', ['pnr' => $pnr, 'e' => $e->getMessage()]);
             }
         }
+        /* 15 Nov 2026 (P7): the optional emergency contact {name, phone, country, relation},
+           stored on the booking the way the Cash address is. Never required: a number that
+           is not a valid mobile, or is the passenger's own, is ignored and the card is told
+           why (emergency.note) - the sale stands either way. Nothing is ever sent to it. */
+        $em = EmergencyContact::read($in['emergency'] ?? null, $phone);
+        $emergency = [
+            'saved' => $em['contact'] !== null && EmergencyContact::save((int) $booking['id'], $em['contact']),
+            'note'  => $em['note'],
+        ];
         // Online: the berths are held for the QR payment window, then released by cron/expire.php.
         if (($booking['status'] ?? '') === 'pending') {
             $hold = max(5, Settings::getInt('smartbook_online_hold_min', 15));
@@ -1339,7 +1356,7 @@ final class SmartBook
             $booking['expires_at'] = date('Y-m-d H:i:s', time() + $hold * 60);
         }
 
-        return self::result($booking, $q, $name, $phone, $pay, $t0);
+        return self::result($booking, $q, $name, $phone, $pay, $t0) + ['emergency' => $emergency];
     }
 
     /**

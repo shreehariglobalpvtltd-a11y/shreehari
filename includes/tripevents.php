@@ -64,6 +64,7 @@ if (!defined('SHG_APP')) {
 
 require_once __DIR__ . '/livetrips.php';
 require_once __DIR__ . '/etaalerts.php';
+require_once __DIR__ . '/emergencycontact.php';   // 15 Nov 2026 (P7): the manifest's emergency contact
 
 /**
  * A tap the server refuses, with a message for the driver; getCode() = the
@@ -853,13 +854,20 @@ final class TripEvents
      * listed and flagged, as on the office manifest and the chalani. No ID
      * numbers, no fares.
      *
+     * 15 Nov 2026 (P7): each passenger also carries their booking's emergency
+     * contact - `emergency` {name (first name, the list's rule), relation
+     * ("बुबा · Father"), phone (tap-to-call, dial code kept)} or null - for
+     * the driver to ring after an accident. Before the migration the column
+     * list is the old one and `emergency` is null.
+     *
      * @return array{groups: list<array{stop: string, pax: list<array<string,mixed>>, booked: int, boarded: int}>, totals: array{booked: int, boarded: int, left: int}}
      */
     public static function manifest(int $scheduleId, int $routeId): array
     {
+        $emCols = EmergencyContact::available() ? ', b.emergency_name, b.emergency_phone, b.emergency_relation' : '';
         $rows = Database::fetchAll(
             "SELECT bp.seat_no, bp.full_name, bp.boarded_at, b.contact_phone, b.contact_country_code,
-                    b.status AS booking_status, bl.boarding_stop
+                    b.status AS booking_status, bl.boarding_stop{$emCols}
                FROM booking_passengers bp
                JOIN bookings b      ON b.id = bp.booking_id
                JOIN booking_legs bl ON bl.id = bp.leg_id
@@ -875,12 +883,19 @@ final class TripEvents
             [$key, $label, $order] = self::pickupOf((string) ($r['boarding_stop'] ?? ''), $pickups);
             $groups[$key] ??= ['stop' => $label, 'order' => $order, 'pax' => [], 'booked' => 0, 'boarded' => 0];
             $on = $r['boarded_at'] !== null;
+            $em = EmergencyContact::fromRow($r);
+            $emTel = $em !== null ? self::callable($em['tel']) : '';
             $groups[$key]['pax'][] = [
                 'seat'    => (string) $r['seat_no'],
                 'name'    => self::firstName((string) $r['full_name']),
                 'phone'   => self::callable((string) ($r['contact_phone'] ?? ''), (string) ($r['contact_country_code'] ?? '')),
                 'boarded' => $on,
                 'pending' => (string) $r['booking_status'] === 'pending',
+                'emergency' => $emTel !== '' ? [
+                    'name'     => self::firstName((string) $em['name']),
+                    'relation' => (string) $em['relationLabel'],
+                    'phone'    => $emTel,
+                ] : null,
             ];
             $groups[$key]['booked']++;
             if ($on) {

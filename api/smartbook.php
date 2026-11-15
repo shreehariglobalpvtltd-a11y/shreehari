@@ -26,6 +26,11 @@
  *         (payPage stays as the full-page fallback). `idem` makes a double
  *         tap / retry return the first booking.
  *         A moved price / date answers 409 fields{code:'changed', quote}.
+ *         Optional emergency{name?, phone, country 'NP'|'IN', relation?}
+ *         (15 Nov 2026, P7): stored on the booking, never required; the
+ *         answer's emergency{saved, note} says if it was ignored ('own' =
+ *         the passenger's own mobile, 'invalid', 'nophone'). Nothing is
+ *         sent to that number.
  *   { action: "payinfo", pnr, k? } → the QR popup again for a pending booking
  *         this browser / owner may open.
  *   { action: "parse", text } → QuickBot: the free-text line read on the
@@ -78,6 +83,11 @@ try {
             'seatPickFirst' => Settings::getBool('seat_pick_manual_first', true),
             // 15 Nov 2026: the "Promo code छ?" link - customer card only, and only while a typed coupon is running
             'promo'      => $mode === 'customer' && SmartBook::promoOn(),
+            /* 15 Nov 2026 (P7): the optional emergency contact row - customer card only, and
+               only once its columns exist (upgrade-2026-11-15-emergency-contact.sql) */
+            'emergency'  => $mode === 'customer' && EmergencyContact::available(),
+            'relations'  => array_map(static fn(string $k, array $w): array => ['v' => $k, 'ne' => $w[0], 'en' => $w[1]],
+                array_keys(EmergencyContact::RELATIONS), array_values(EmergencyContact::RELATIONS)),
         ]);
     }
 
