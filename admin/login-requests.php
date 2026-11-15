@@ -89,6 +89,13 @@ if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             Logger::audit('admin.login.activation_issued', 'admin', (string) $aid, null, ['request' => $rid ?: null], 'Office issued a one-time PIN activation code (24 h)');
             $issued = [substr($code, 0, 4) . '-' . substr($code, 4), CodeLogin::codeFor($aid) . ' · ' . (string) ($acct['full_name'] ?? '')];
         }
+    } elseif ($act === 'details') {
+        // 15 Nov 2026 (owner: "agent select garne, date of birth, mobile number — ID pass hunchha")
+        $r = CodeLogin::officeSetDetails((int) ($_POST['aid'] ?? 0), (string) ($_POST['dob'] ?? ''), (string) ($_POST['mobile'] ?? ''),
+            (string) ($_POST['cc'] ?? '91'), $me, $isSa);
+        $flash = $r['ok']
+            ? ['ok', '✅ ' . $r['name'] . ' — लगइन तयार। पहिलो पटक: आफ्नो code → जन्म मिति + मोबाइल → WhatsApp (hi / QR) → आफ्नै PIN / pattern · Login ready: code → DOB + mobile → WhatsApp → own PIN / pattern.']
+            : ['bad', (string) $r['error']];
     } elseif ($act === 'reject') {
         $n = Database::run("UPDATE login_recovery_requests SET status = 'rejected', decided_by = :m, decided_at = NOW() WHERE id = :i AND status = 'open'",
             ['m' => $me, 'i' => (int) ($_POST['rid'] ?? 0)]);
@@ -117,7 +124,7 @@ try {
 $why = ['no_details' => 'DOB / mobile not on file', 'no_match' => 'details did not match', 'no_number' => 'details matched, number not available',
         'inactive' => 'account switched off', 'no_account' => 'no account has that code', 'asked' => 'asked directly', 'office' => 'office'];
 
-admin_header('PIN Activation & Recovery', 'login-requests.php');
+admin_header('Login setup & PIN · लगइन तयार', 'login-requests.php');
 ?>
 <style>
 .lr-wrap{display:grid;gap:16px;max-width:1000px}
@@ -129,6 +136,11 @@ admin_header('PIN Activation & Recovery', 'login-requests.php');
 .lr-code{font:800 28px/1.2 ui-monospace,Consolas,monospace;letter-spacing:.12em;text-align:center;padding:12px;border-radius:12px;background:#fff4d6;color:#5a3d00}
 .lr-act form{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;margin:2px 0}
 .lr-act label{font-size:12px;display:inline-flex;gap:4px;align-items:center}
+.lr-ready{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:end}
+.lr-ready label{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:700}
+.lr-ready select,.lr-ready input{min-height:44px;padding:0 10px;border-radius:10px;border:1px solid var(--line,#dfe5ef);font:inherit;font-size:15px;background:var(--card,#fff);color:inherit;width:100%;box-sizing:border-box}
+.lr-ph{display:flex;gap:6px}.lr-ph select{width:96px;flex:none}
+.lr-ready .btn{min-height:46px}
 @media (max-width:640px){.lr-t thead{display:none}.lr-t tr{display:block;border-bottom:1px solid var(--line,#dfe5ef);padding:6px 0}.lr-t td{display:block;border:0;padding:3px 0}}
 </style>
 <div class="lr-wrap">
@@ -145,6 +157,28 @@ admin_header('PIN Activation & Recovery', 'login-requests.php');
     <p class="muted">Shown once. Tell it to the person yourself (in person or by a call you made). Valid 24 hours, one use, only for this account. They type their code, then this activation code, then choose their own PIN / pattern.</p>
   </div>
   <?php endif; ?>
+
+  <?php /* 15 Nov 2026: the office readies a login in one place - pick the person, DOB, mobile. */
+  $pre = (int) ($_GET['aid'] ?? 0); ?>
+  <div class="lr-card" id="ready">
+    <h2>🆔 लगइन तयार गर्ने · Set up a login</h2>
+    <p class="muted">एजेन्ट / स्टाफ छान्नुहोस्, जन्म मिति र WhatsApp मोबाइल राख्नुहोस्। पहिलो पटक उहाँले आफ्नो code, यही जन्म मिति र मोबाइल हाल्नुहुन्छ, WhatsApp मा hi (वा QR scan) गर्नुहुन्छ, अनि आफ्नै PIN / pattern राख्नुहुन्छ। Office ले PIN कहिल्यै राख्दैन।</p>
+    <form method="post" class="lr-ready" autocomplete="off"><?= Security::csrfField() ?><input type="hidden" name="act" value="details">
+      <label>👤 को? · Who
+        <select name="aid" required>
+          <option value="">— छान्नुहोस् · choose —</option>
+          <?php foreach ($accts as $a): if ((int) $a['id'] === $me || (!in_array((string) $a['role'], Auth::OTP_DOOR_ROLES, true) && !$isSa)) { continue; } ?>
+          <option value="<?= (int) $a['id'] ?>"<?= $pre === (int) $a['id'] ? ' selected' : '' ?>><?= $e(($a['full_name'] ?: '?') . ' · ' . CodeLogin::codeFor((int) $a['id']) . ' · ' . $a['role']
+              . (((string) ($a['pin_hash'] ?? '') !== '' || (string) ($a['pattern_hash'] ?? '') !== '') ? ' · PIN ✓' : '')) ?></option>
+          <?php endforeach; ?>
+        </select></label>
+      <label>🎂 जन्म मिति · Date of birth<input type="date" name="dob" required min="1930-01-01" max="<?= $e(date('Y-m-d', strtotime('-1 day'))) ?>"></label>
+      <label>📱 WhatsApp मोबाइल · Mobile
+        <span class="lr-ph"><select name="cc" aria-label="Country"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>
+        <input name="mobile" type="tel" inputmode="numeric" maxlength="14" required placeholder="98XXXXXXXX"></span></label>
+      <button class="btn ok" type="submit">✅ सेभ गर्ने · Save — login ready</button>
+    </form>
+  </div>
 
   <div class="lr-card">
     <h2>📨 Open requests (<?= count($open) ?>)</h2>
@@ -184,6 +218,7 @@ admin_header('PIN Activation & Recovery', 'login-requests.php');
         <td><?= isset($dobs[(int) $a['id']]) ? '<span class="lr-ok">on file</span>' : '<span class="lr-no">missing</span>' ?></td>
         <td><?= TeamPortal::phone10((string) ($a['phone'] ?? '')) !== '' ? '<span class="lr-ok">on file</span>' : '<span class="lr-no">missing</span>' ?></td>
         <td class="lr-act"><?php if ($ready && $mayIssue($a) === null): ?>
+          <a class="btn" href="?aid=<?= (int) $a['id'] ?>#ready">✏️ DOB / mobile</a>
           <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="issue"><input type="hidden" name="aid" value="<?= (int) $a['id'] ?>">
             <label><input type="checkbox" name="checked" value="1" required> confirmed</label>
             <button class="btn" type="submit"><?= $has ? 'Reset code' : 'Activation code' ?></button></form>

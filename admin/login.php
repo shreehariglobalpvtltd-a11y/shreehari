@@ -467,6 +467,14 @@ body.cf.shake .lk-dots,body.cf.shake .qk{animation:lkshake .35s}
 @keyframes cfIn{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
 @keyframes cfRing{0%{transform:scale(.7);opacity:.9}100%{transform:scale(1.35);opacity:0}}
 @keyframes cfPop{0%{transform:scale(.6)}60%{transform:scale(1.3)}100%{transform:scale(1)}}
+/* 15 Nov 2026: whose door this is - name big, code small */
+.who-card{display:flex;flex-direction:column;align-items:center;gap:2px;margin:0 0 8px;text-align:center;animation:cfIn .28s ease-out}
+.who-av{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,#2f6bff,#0a2a8f);color:#fff;font-size:24px;font-weight:800;box-shadow:0 6px 16px -6px rgba(10,42,143,.6);margin-bottom:4px}
+.who-nm{font-size:19px;font-weight:800;line-height:1.2;word-break:break-word}
+.who-cd{font-size:12.5px;font-weight:700;opacity:.65;letter-spacing:.04em}
+.who-card a{font-size:12.5px;font-weight:700;margin-top:2px}
+body.lock .who-nm{color:#fff}body.lock .who-cd{color:#C9D6EE}body.lock .who-card a{color:#9ABFFF}
+@media (prefers-reduced-motion:reduce){.who-card{animation:none}}
 /* 15 Nov 2026: the other ways in, under the keypad (WhatsApp code / password) */
 .cl-alt{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0 4px}
 .cl-alt form{margin:0}
@@ -515,7 +523,13 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
           . '<div class="qk-pad" data-qk-pad aria-label="Pattern"></div><p class="note">' . Security::e($note) . '</p></form>';
   };
   $codeLine = static function (bool $lock = false) use ($h, $cs, $odUrl): string {
-      return '<div class="who">' . ($lock ? '🔒 ' : '🪪 ') . '<span>' . $h($cs['code'] ?? '') . '</span> · <a href="' . $h($odUrl(['step' => 'c_code'])) . '&amp;forget=1">⇄ खाता बदल्ने · Change account</a></div>';
+      /* 15 Nov 2026 (owner: "kasko name bata login garne ho, name matra aos"): the person's name, big;
+         the code small under it. A code that names no account shows only what was typed. */
+      $nm = CodeLogin::shownName();
+      return '<div class="who-card">' . ($nm !== '' ? '<div class="who-av" aria-hidden="true">' . $h(mb_strtoupper(mb_substr($nm, 0, 1))) . '</div>' : '')
+          . '<div class="who-nm">' . ($nm !== '' ? $h($nm) : ($lock ? '🔒 ' : '🪪 ') . $h($cs['code'] ?? '')) . '</div>'
+          . ($nm !== '' ? '<div class="who-cd">' . $h($cs['code'] ?? '') . '</div>' : '')
+          . '<a href="' . $h($odUrl(['step' => 'c_code'])) . '&amp;forget=1">⇄ खाता बदल्ने · Change account</a></div>';
   };
   $officeBox = static function () use ($hid): string {
       return '<details class="cl-more"><summary>🏢 नम्बर छैन / विवरण मिलेन? कार्यालयबाट · No access to that number? Ask the office</summary>'
@@ -901,7 +915,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 })();
 </script>
 <?php endif; ?>
-<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115c" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115d" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
 <?php if (($remembered ?? null) !== null || $cPad): ?><script>
 (function(){
@@ -1397,6 +1411,6 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115c" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115d" data-next="<?= $meUrl ?>"></script><?php endif; ?>
 <?php endif; ?>
 </body></html>

@@ -121,6 +121,23 @@ final class CodeLogin
         return (string) (self::state()['code'] ?? '');
     }
 
+    /**
+     * 15 Nov 2026 (owner: "login garda kasko name bata login garne ho, name matra aos"):
+     * the person's own name on the PIN / pattern screen. Agent names are already public
+     * (website agent cards); nothing else (mobile, DOB, role) is ever shown. '' for a code
+     * that names no account.
+     */
+    public static function shownName(): string
+    {
+        $aid = (int) (self::state()['aid'] ?? 0);
+        if ($aid <= 0) {
+            return '';
+        }
+        $r = Database::fetch('SELECT full_name, username FROM admins WHERE id = :i', ['i' => $aid]);
+        $n = trim((string) ($r['full_name'] ?? ''));
+        return mb_substr($n !== '' ? $n : (string) ($r['username'] ?? ''), 0, 60);
+    }
+
     /* =================================================================
      *  Codes
      * ================================================================= */
@@ -294,6 +311,60 @@ final class CodeLogin
             return ['step' => 'admin_otp', 'notice' => 'तपाईंको WhatsApp मा ६ अङ्कको कोड पठाइयो · A 6-digit code was sent to your registered WhatsApp.'];
         }
         return ['go' => 'home'];
+    }
+
+    /* =================================================================
+     *  15 Nov 2026 — the office readies a login (admin/login-requests.php).
+     *
+     *  Owner: "admin le ID kholda / create garda agent select garne, date of
+     *  birth select garne, mobile number add garne — ID pass hunchha." The
+     *  office writes the two details the first-time door compares (DOB on
+     *  ap_members, mobile on admins.phone + its country). The person still
+     *  proves the WhatsApp (hi / QR / code) and chooses their OWN PIN /
+     *  pattern; the office never sets one.
+     * ================================================================= */
+
+    /**
+     * @return array{ok: bool, error?: string, name?: string}
+     */
+    public static function officeSetDetails(int $aid, string $dob, string $mobile, string $cc, int $by, bool $bySuper): array
+    {
+        $acct = $aid > 0 ? Database::fetch('SELECT id, full_name, username, role, phone, is_active FROM admins WHERE id = :i', ['i' => $aid]) : null;
+        if ($acct === null) {
+            return ['ok' => false, 'error' => 'खाता छान्नुहोस् · Choose the account.'];
+        }
+        if ($aid === $by) {
+            return ['ok' => false, 'error' => 'आफ्नै खाता यहाँबाट होइन · Not your own account from here.'];
+        }
+        if (!in_array((string) $acct['role'], Auth::OTP_DOOR_ROLES, true) && !$bySuper) {
+            return ['ok' => false, 'error' => 'अफिस खाता super-admin ले मात्र · Only a super-admin may set up an office account.'];
+        }
+        $dob = trim($dob);
+        if (!Security::isValidDate($dob) || $dob >= date('Y-m-d') || $dob < '1930-01-01') {
+            return ['ok' => false, 'error' => 'सही जन्म मिति छान्नुहोस् · Choose a valid date of birth.'];
+        }
+        $cc  = $cc === '977' ? '977' : '91';
+        $p10 = substr(preg_replace('/\D/', '', $mobile) ?? '', -10);
+        if (strlen($p10) !== 10 || ($cc === '91' ? preg_match('/^[6-9]/', $p10) : preg_match('/^9[6-8]/', $p10)) !== 1) {
+            return ['ok' => false, 'error' => 'सही १० अङ्कको मोबाइल लेख्नुहोस् · Enter a valid 10-digit mobile.'];
+        }
+        require_once __DIR__ . '/agentpro.php';
+        $oldP10 = TeamPortal::phone10((string) ($acct['phone'] ?? ''));
+        Database::transaction(static function () use ($aid, $dob, $p10, $cc, $by): void {
+            AgentPro::saveCard($aid, ['dob' => $dob], $by);   // creates the member row when missing
+            Database::update('admins', ['phone' => $p10], 'id = :i', ['i' => $aid]);
+            try {
+                Database::run('INSERT INTO admin_profiles (admin_id, country_code) VALUES (:a, :c) ON DUPLICATE KEY UPDATE country_code = VALUES(country_code)',
+                    ['a' => $aid, 'c' => $cc]);
+            } catch (Throwable $e) {
+                // no profile table on an old box: the number's own shape decides the country
+            }
+        });
+        Logger::audit('admin.login.details_set', 'admin', (string) $aid,
+            ['mobile' => $oldP10 !== '' ? maskPhone($oldP10) : null], ['mobile' => maskPhone($p10), 'cc' => $cc, 'dob' => 'set'],
+            'Office set DOB + mobile for the first-time PIN door (admin #' . $by . ')');
+        $nm = trim((string) ($acct['full_name'] ?? ''));
+        return ['ok' => true, 'name' => $nm !== '' ? $nm : (string) $acct['username']];
     }
 
     /* =================================================================

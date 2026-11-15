@@ -95,7 +95,7 @@ function admin_nav(): array
         ['href' => 'staff.php',        'icon' => 'users',      'label' => 'Staff Logins & Passwords', 'perm' => 'staff.manage',   'section' => $S1],
         ['href' => 'permissions.php',  'icon' => 'shield',     'label' => 'Roles & Permissions',    'perm' => 'staff.manage',     'section' => $S1],
         ['href' => 'sessions.php',     'icon' => 'shield',     'label' => 'Sessions & Login Security', 'perm' => 'staff.manage',  'section' => $S1],
-        ['href' => 'login-requests.php', 'icon' => 'shield',   'label' => '🔐 PIN Activation & Recovery', 'perm' => 'staff.manage', 'section' => $S1],   // 15 Nov 2026: code-first login
+        ['href' => 'login-requests.php', 'icon' => 'shield',   'label' => '🆔 लगइन तयार · Login setup & PIN', 'perm' => 'staff.manage', 'section' => $S1],   // 15 Nov 2026: code-first login
         // 29 Oct 2026 audit: Staff Applications left the menu — one approval
         // queue (Team & Approvals), which links to it. The page is unchanged.
         ['href' => 'team-invite.php',  'icon' => 'mail',       'label' => 'Invites & Renewals',     'perm' => 'customers.view',   'section' => $S1],

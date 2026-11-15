@@ -115,6 +115,14 @@ admin_header('SmartBook', 'smartbook');
 .sbx-tnote{display:flex;flex-direction:column;gap:4px;flex:1 1 260px;font-size:13px;font-weight:700}
 .sbx-tnote input{min-height:40px;padding:0 10px;border-radius:9px;border:1px solid var(--line,#e0e8f2);background:transparent;color:inherit;font:inherit;font-weight:600}
 .sbx-tnote small{font-weight:600;opacity:.7;font-size:11.5px}
+/* 15 Nov 2026: the desk box inside the summary rail, right above the Book buttons */
+#sbRail .sbx-desk{display:flex;flex-direction:column;gap:10px;margin:12px 0;padding:12px 12px 10px;border-radius:14px;border:1.5px dashed #F07C1F;background:rgba(240,124,31,.07)}
+#sbRail .sbx-desk .sbx-disc{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#sbRail .sbx-desk .sbx-disc>label{flex-basis:100%;font-size:14px;font-weight:800}
+#sbRail .sbx-desk .sbx-disc input{flex:1 1 90px;width:auto;font-size:16px}
+#sbRail .sbx-desk .sbx-tnote{flex:none}
+#sbRail .sbx-desk .sbx-tnote input{font-size:15px}
+.sb-dl .sbx-disc-row dd{color:#0E6B35;font-weight:800}
 .sbx-reg{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:thin}
 .sbx-reg button{flex:0 0 auto;min-height:38px;border:1px solid var(--line,#e0e8f2);border-radius:10px;background:var(--card,#fff);color:inherit;font:inherit;font-size:12.5px;padding:0 10px;cursor:pointer;white-space:nowrap}
 .sbx-help{font-size:12px;color:var(--muted,#637491);margin:2px 0 0}
@@ -153,6 +161,10 @@ html.sbx-admin .sbx-ov{display:block}
     <span class="sbx-w">Cash to hand over <b class="<?= $wallet['limit'] > 0 && $wallet['cash'] >= $wallet['limit'] ? 'low' : '' ?>"><?= $e(inr($wallet['cash'])) ?></b> · Commission <b><?= $e(inr($wallet['commission'])) ?></b></span>
   <?php endif; ?>
   <label class="sbx-auto" title="A complete one-line order books at once as Cash: ticket confirmed, WhatsApp sent - no extra tap"><input type="checkbox" id="sbxAuto"> ⚡ Auto-book</label>
+  <?php /* 15 Nov 2026 (owner, screenshot of the Journey Summary: "yesma discount aako xaina — main ta
+           yei ho"): the discount + ticket note box is ONE block, moved by the script under the card
+           into the summary rail, right above Book · Cash / Online (#sbRail, before #sbBar). */ ?>
+  <div class="sbx-desk" id="sbxDesk">
   <?php $discAgent = $mode === 'agent' && $ownAgent !== '';   // mg20: an agent's own discount, from their commission
   if (in_array($mode, ['admin', 'counter'], true) || $discAgent):
         $discCap = max(0.0, Settings::getFloat('counter_max_discount_pct', 15.0));
@@ -184,6 +196,7 @@ html.sbx-admin .sbx-ov{display:block}
     <input id="sbxTNote" maxlength="80" autocomplete="off" placeholder="जस्तै: दशैं छुट · family offer" aria-describedby="sbxTNoteHint">
     <small id="sbxTNoteHint">यात्रुको टिकटमा छापिन्छ · printed on the ticket</small>
   </span>
+  </div>
   <details class="sbx-more"><summary>⚙</summary><div class="sbx-more-in">
     <?php if ($isAdmin): ?>
       <span class="sbx-modes"><?php foreach (['admin' => 'Admin', 'counter' => 'Counter mode', 'agent' => 'Agent mode'] as $k => $v): ?><a class="<?= $mode === $k ? 'on' : '' ?>" href="?mode=<?= $e($k) ?>"><?= $e($v) ?></a><?php endforeach; ?></span>
@@ -211,6 +224,11 @@ html.sbx-admin .sbx-ov{display:block}
 window.SHG_BOOT = window.SHG_BOOT || {};
 window.SHG_BOOT.csrf = <?= json_encode(Security::csrfToken()) ?>;
 window.SHG_BOOT.apiBase = '/api';
+/* 15 Nov 2026: the discount + note box sits in the summary rail, right above Book · Cash / Online. */
+(function () {
+  var desk = document.getElementById('sbxDesk'), rail = document.getElementById('sbRail'), bar = document.getElementById('sbBar');
+  if (desk && rail && bar && desk.querySelector('input')) rail.insertBefore(desk, bar);
+})();
 window.SB_STAFF = <?= json_encode([
     'mode' => $mode, 'label' => $label, 'id' => $me, 'role' => (string) $admin['role'],
     'ownCode' => $ownAgent, 'agents' => $agents, 'agentRequired' => $agentReq, 'company' => $coCode,

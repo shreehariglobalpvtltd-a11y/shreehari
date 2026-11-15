@@ -182,5 +182,35 @@ check('no discount, no text', Ticket::discountPctTxt(['base_total' => 2200, 'cou
 $col = CounterDesk::hasColumn('bookings', 'ticket_note');
 check('bookings.ticket_note exists (upgrade-2026-11-15-ticket-note.sql)', $col);
 
+/* ------------------------------------------------------------------ */
+section('Name on the PIN screen');
+fresh();
+CodeLogin::enter($code(980));
+check('known code shows the person\'s name', CodeLogin::shownName() === 'WA Login agent', CodeLogin::shownName());
+fresh();
+CodeLogin::enter('SHG-0979');
+check('unknown code shows no name', CodeLogin::shownName() === '');
+
+section('Office readies a login: pick the person, DOB, mobile');
+$aNew = $mk('fresh', 'agent', '', 984);
+$r = CodeLogin::officeSetDetails($aNew, '1992-02-29', '9812345611', '977', $aMgr, false);
+check('office sets DOB + Nepal mobile', $r['ok'] === true && ($r['name'] ?? '') === 'WA Login fresh', json_encode($r));
+check('mobile saved as 10 digits', (string) Database::scalar('SELECT phone FROM admins WHERE id = :i', ['i' => $aNew]) === '9812345611');
+check('DOB saved on the member record', (string) Database::scalar('SELECT dob FROM ap_members WHERE admin_id = :i', ['i' => $aNew]) === '1992-02-29');
+check('country saved as 977', (string) Database::scalar('SELECT country_code FROM admin_profiles WHERE admin_id = :i', ['i' => $aNew]) === '977');
+check('the number now opens by WhatsApp as +977', CodeLogin::waLoginIntl($aNew) === '9779812345611', CodeLogin::waLoginIntl($aNew));
+fresh();
+$r = CodeLogin::enter($code(984));
+check('no PIN yet -> first-time setup screen', ($r['step'] ?? '') === 'c_setup', json_encode($r));
+$r = CodeLogin::identity('1992-02-29', '9812345611');
+check('the DOB + mobile the office set now match', !empty($_SESSION[CodeLogin::KEY]['idok']), json_encode($r));
+check('bad date refused', CodeLogin::officeSetDetails($aNew, '2099-01-01', '9812345611', '977', $aMgr, false)['ok'] === false);
+check('bad mobile refused', CodeLogin::officeSetDetails($aNew, '1992-02-29', '12345', '91', $aMgr, false)['ok'] === false);
+check('India number must start 6-9', CodeLogin::officeSetDetails($aNew, '1992-02-29', '5812345611', '91', $aMgr, false)['ok'] === false);
+check('own account refused', CodeLogin::officeSetDetails($aNew, '1992-02-29', '9812345611', '977', $aNew, true)['ok'] === false);
+check('office account only by a super-admin', CodeLogin::officeSetDetails($aMgr, '1980-01-01', '9812345612', '977', $aOk, false)['ok'] === false);
+check('...and a super-admin may', CodeLogin::officeSetDetails($aMgr, '1980-01-01', '7000002202', '91', $aOk, true)['ok'] === true);
+try { Database::run('DELETE FROM admin_profiles WHERE admin_id IN (' . (int) $aNew . ',' . (int) $aMgr . ')'); } catch (Throwable $e) {}
+
 echo "\n" . ($FAIL === 0 ? "ALL PASS: $PASS" : "FAILED: $FAIL (passed $PASS)") . "\n";
 exit($FAIL === 0 ? 0 : 1);

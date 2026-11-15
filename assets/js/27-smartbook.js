@@ -186,9 +186,9 @@
   };
   /* 5 Nov 2026 (master upgrade §1): the sheet names the coach, the drop, the fare
      breakdown and the payment, and every desk (agent / counter / admin) must confirm. */
-  OW.en.sBus = 'Bus'; OW.en.sDrop = 'Getting off'; OW.en.sFare = 'Fare'; OW.en.sDisc = 'Discount'; OW.en.tNote = 'Note on ticket'; OW.en.sPay = 'Payment'; OW.en.sPayCash = 'Cash — ticket issued on confirm';
-  OW.hi.sBus = 'बस'; OW.hi.sDrop = 'उतरना'; OW.hi.sFare = 'भाड़ा'; OW.hi.sDisc = 'छूट'; OW.hi.tNote = 'टिकट पर नोट'; OW.hi.sPay = 'भुगतान'; OW.hi.sPayCash = 'कैश — पक्का करने पर टिकट';
-  OW.ne.sBus = 'बस'; OW.ne.sDrop = 'ओर्लने'; OW.ne.sFare = 'भाडा'; OW.ne.sDisc = 'छुट'; OW.ne.tNote = 'टिकटमा नोट'; OW.ne.sPay = 'भुक्तानी'; OW.ne.sPayCash = 'नगद — पक्का गरेपछि टिकट';
+  OW.en.sBus = 'Bus'; OW.en.sDrop = 'Getting off'; OW.en.sFare = 'Fare'; OW.en.sDisc = 'Discount'; OW.en.tNote = 'Note on ticket'; OW.en.noDisc = 'None — add one in the discount box'; OW.en.sPay = 'Payment'; OW.en.sPayCash = 'Cash — ticket issued on confirm';
+  OW.hi.sBus = 'बस'; OW.hi.sDrop = 'उतरना'; OW.hi.sFare = 'भाड़ा'; OW.hi.sDisc = 'छूट'; OW.hi.tNote = 'टिकट पर नोट'; OW.hi.noDisc = 'नहीं — चाहिए तो छूट बॉक्स में'; OW.hi.sPay = 'भुगतान'; OW.hi.sPayCash = 'कैश — पक्का करने पर टिकट';
+  OW.ne.sBus = 'बस'; OW.ne.sDrop = 'ओर्लने'; OW.ne.sFare = 'भाडा'; OW.ne.sDisc = 'छुट'; OW.ne.tNote = 'टिकटमा नोट'; OW.ne.noDisc = 'छैन — चाहिए माथिको छुट बक्स'; OW.ne.sPay = 'भुक्तानी'; OW.ne.sPayCash = 'नगद — पक्का गरेपछि टिकट';
   /* 14 Nov 2026: the sheet's Confirm sells what the sheet shows — if the quote moved
      while it was open, the sheet is drawn again with one of these lines. */
   OW.en.seatMoved = 'The seat changed: {a} → {b}.'; OW.en.cvAgain = 'Check the details above and confirm again.';
@@ -799,6 +799,21 @@
     $('sbSBoard').textContent = q ? ((q.pointType === 'drop' ? q.point : q.boardingName + (q.boardingTime ? ' ' + q.boardingTime : '')) + (q.reportTime && q.pointType !== 'drop' ? ' (' + tr('report') + ' ' + q.reportTime + ')' : '')) : '—';
     $('sbSPax').textContent = tr('paxN', { n: S.pax.length }) + ' · ' + tr(S.type);
     $('sbSSeats').textContent = q && q.ok ? seatSummary(q) : '—';
+    /* 15 Nov 2026 (owner: "Journey Summary ma discount"): fare and discount rows, only while a discount applies. */
+    (function () {
+      var dl = $('sbSum'); if (!dl) return;
+      var row = dl.querySelector('.sbx-disc-row');
+      var d = q && q.ok && q.price ? Number(q.price.discount) || 0 : 0;
+      if (d <= 0) { if (row) row.remove(); var fr = dl.querySelector('.sbx-fare-row'); if (fr) fr.remove(); return; }
+      var pct = Number(q.price.base) > 0 ? Math.round(d / Number(q.price.base) * 1000) / 10 : 0;
+      if (!row) {
+        var f = document.createElement('div'); f.className = 'sbx-fare-row'; f.innerHTML = '<dt></dt><dd></dd>'; dl.appendChild(f);
+        row = document.createElement('div'); row.className = 'sbx-disc-row'; row.innerHTML = '<dt></dt><dd></dd>'; dl.appendChild(row);
+      }
+      var fr2 = dl.querySelector('.sbx-fare-row');
+      fr2.firstChild.textContent = tr('sFare'); fr2.lastChild.textContent = money(q.price.base);
+      row.firstChild.textContent = '🏷️ ' + tr('sDisc'); row.lastChild.textContent = '− ' + money(d) + (pct > 0 ? ' (' + pct + '%)' : '');
+    })();
     var tot = q && q.ok && q.price ? money(q.price.total) : '—';
     $('sbTotal').textContent = tot;
     $('sbNpr').textContent = q && q.ok && q.price ? '≈ ' + npr(q.price.npr) : '';
@@ -1312,6 +1327,7 @@
       [tr('sSeats'), seatSummary(q)]
     ];
     if (q.busNumber) rows.push([tr('sBus'), q.busNumber]);
+    if (STAFF && q.price && !(Number(q.price.discount) > 0)) rows.push(['🏷️ ' + tr('sDisc'), tr('noDisc')]);   // 15 Nov 2026: the desk sees "no discount" before it confirms
     if (q.price && Number(q.price.discount) > 0) {
       rows.push([tr('sFare'), money(q.price.base)]);
       var dPct = Number(q.price.base) > 0 ? Math.round(Number(q.price.discount) / Number(q.price.base) * 1000) / 10 : 0;   // 15 Nov 2026: and how much that is
