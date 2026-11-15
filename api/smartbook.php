@@ -80,7 +80,13 @@ try {
             'prefill'    => $mode === 'customer' ? SmartBook::verifyPrefill() : null,
             'qrSeconds'  => max(30, min(600, Settings::getInt('smartbook_qr_seconds', 60))),
             // 6 Nov 2026 (owner: "automatic bhanda seat selection prefer"): the berths are chosen on the map before a sale
-            'seatPickFirst' => Settings::getBool('seat_pick_manual_first', true),
+            /* 15 Nov 2026 (owner: "QuickSmart Book ma agent / admin / counter: seat automatic
+               select gardinu, need pare manually select garxa"): a staff desk sells on the
+               auto-picked berths (shown on the confirm sheet); the seat map stays one tap away.
+               Setting smartbook_desk_seat_auto = 0 brings back the map-first desk. */
+            'seatPickFirst' => $mode !== 'customer' && Settings::getBool('smartbook_desk_seat_auto', true)
+                ? false
+                : Settings::getBool('seat_pick_manual_first', true),
             // 15 Nov 2026: the "Promo code छ?" link - customer card only, and only while a typed coupon is running
             'promo'      => $mode === 'customer' && SmartBook::promoOn(),
             /* 15 Nov 2026 (P7): the optional emergency contact row - customer card only, and
@@ -248,6 +254,8 @@ try {
                     'source'        => $mode === 'admin' ? 'admin' : $mode,
                     'paymentMethod' => $pay === 'cash' ? 'cash' : (in_array($in['method'] ?? '', ['upi', 'esewa', 'bank'], true) ? (string) $in['method'] : 'upi'),
                     'note'          => Security::clean((string) ($in['note'] ?? ''), 255),
+                    // 15 Nov 2026: the desk's note FOR THE PASSENGER, printed on the ticket
+                    'ticketNote'    => BookingService::ticketNoteClean((string) ($in['ticketNote'] ?? '')),
                 ];
                 // 13 Nov 2026 (mg17): the desk's discount — create() applies and caps it (counter_max_discount_pct)
                 $desk = SmartBook::deskDiscountIn($in, $mode);

@@ -186,9 +186,9 @@
   };
   /* 5 Nov 2026 (master upgrade §1): the sheet names the coach, the drop, the fare
      breakdown and the payment, and every desk (agent / counter / admin) must confirm. */
-  OW.en.sBus = 'Bus'; OW.en.sDrop = 'Getting off'; OW.en.sFare = 'Fare'; OW.en.sDisc = 'Discount'; OW.en.sPay = 'Payment'; OW.en.sPayCash = 'Cash — ticket issued on confirm';
-  OW.hi.sBus = 'बस'; OW.hi.sDrop = 'उतरना'; OW.hi.sFare = 'भाड़ा'; OW.hi.sDisc = 'छूट'; OW.hi.sPay = 'भुगतान'; OW.hi.sPayCash = 'कैश — पक्का करने पर टिकट';
-  OW.ne.sBus = 'बस'; OW.ne.sDrop = 'ओर्लने'; OW.ne.sFare = 'भाडा'; OW.ne.sDisc = 'छुट'; OW.ne.sPay = 'भुक्तानी'; OW.ne.sPayCash = 'नगद — पक्का गरेपछि टिकट';
+  OW.en.sBus = 'Bus'; OW.en.sDrop = 'Getting off'; OW.en.sFare = 'Fare'; OW.en.sDisc = 'Discount'; OW.en.tNote = 'Note on ticket'; OW.en.sPay = 'Payment'; OW.en.sPayCash = 'Cash — ticket issued on confirm';
+  OW.hi.sBus = 'बस'; OW.hi.sDrop = 'उतरना'; OW.hi.sFare = 'भाड़ा'; OW.hi.sDisc = 'छूट'; OW.hi.tNote = 'टिकट पर नोट'; OW.hi.sPay = 'भुगतान'; OW.hi.sPayCash = 'कैश — पक्का करने पर टिकट';
+  OW.ne.sBus = 'बस'; OW.ne.sDrop = 'ओर्लने'; OW.ne.sFare = 'भाडा'; OW.ne.sDisc = 'छुट'; OW.ne.tNote = 'टिकटमा नोट'; OW.ne.sPay = 'भुक्तानी'; OW.ne.sPayCash = 'नगद — पक्का गरेपछि टिकट';
   /* 14 Nov 2026: the sheet's Confirm sells what the sheet shows — if the quote moved
      while it was open, the sheet is drawn again with one of these lines. */
   OW.en.seatMoved = 'The seat changed: {a} → {b}.'; OW.en.cvAgain = 'Check the details above and confirm again.';
@@ -552,10 +552,32 @@
   (function () {
     var dv = document.getElementById('sbxDiscVal'), dt = document.getElementById('sbxDiscType');
     if (!dv || !dt) return;
-    var again = function () { S.idem = null; requote(250); };
+    var chips = document.querySelectorAll('.sbx-chips button');
+    var mark = function () {   // 15 Nov 2026: the chip matching what is typed lights up
+      for (var i = 0; i < chips.length; i++) {
+        var c = chips[i], v = Number(dv.value) || 0;
+        c.classList.toggle('on', c.getAttribute('data-dt') !== '' && Number(c.getAttribute('data-dv')) === v && c.getAttribute('data-dt') === dt.value && v > 0);
+      }
+    };
+    var again = function () { S.idem = null; mark(); requote(250); };
     dv.addEventListener('input', again);
     dt.addEventListener('change', again);
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].addEventListener('click', function () {
+        var t = this.getAttribute('data-dt'), v = Number(this.getAttribute('data-dv')) || 0;
+        if (t) dt.value = t;
+        dv.value = v > 0 ? String(v) : '';
+        if (navigator.vibrate) { try { navigator.vibrate(12); } catch (x) {} }
+        again();
+      });
+    }
+    window.SB_DISC_MARK = mark;
   })();
+  /* 15 Nov 2026: the desk's note for the passenger, printed on the ticket (staff page only). */
+  function ticketNote() {
+    var n = document.getElementById('sbxTNote');
+    return n ? String(n.value || '').replace(/\s+/g, ' ').trim().slice(0, 80) : '';
+  }
   function discNote(q) {
     var box = document.querySelector('.sbx-disc'), note = document.getElementById('sbxDiscNote');
     if (!box || !note || !q || !q.price) return;
@@ -1195,6 +1217,7 @@
     body.expect = { total: S.q.price ? S.q.price.total : null, date: S.q.date };
     if (STAFF && $('sbAgent')) body.agentCode = S.agent;   // the desk's pick (the server validates; an agent login never sends one)
     if (verify) body.verify = verify;
+    if (STAFF && ticketNote()) body.ticketNote = ticketNote();
     var emB = emBody(); if (emB) body.emergency = emB;   // 15 Nov 2026 (P7): only a valid number that is not the passenger's own
     store.set();
     api(body).then(function (r) {
@@ -1291,7 +1314,8 @@
     if (q.busNumber) rows.push([tr('sBus'), q.busNumber]);
     if (q.price && Number(q.price.discount) > 0) {
       rows.push([tr('sFare'), money(q.price.base)]);
-      rows.push([tr('sDisc'), '− ' + money(q.price.discount) + (q.price.offer ? ' · ' + q.price.offer : '')]);
+      var dPct = Number(q.price.base) > 0 ? Math.round(Number(q.price.discount) / Number(q.price.base) * 1000) / 10 : 0;   // 15 Nov 2026: and how much that is
+      rows.push([tr('sDisc'), '− ' + money(q.price.discount) + (dPct > 0 ? ' (' + dPct + '%)' : '') + (q.price.offer ? ' · ' + q.price.offer : '')]);
     }
     rows.push([tr('sPay'), tr('sPayCash')]);
     var emS = emBody();   // 15 Nov 2026 (P7): the emergency contact that goes with this ticket
@@ -1299,6 +1323,7 @@
       var emR = S.relations.filter(function (r) { return r.v === emS.relation; })[0];
       rows.push(['🆘 ' + tr('emS'), [emS.name, emR ? emR.ne : '', (emS.country === 'IN' ? '+91 ' : '+977 ') + emS.phone].filter(Boolean).join(' · ')]);
     }
+    if (STAFF && ticketNote()) rows.push(['🧾 ' + tr('tNote'), ticketNote()]);
     if (STAFF && (S.agent || STAFF.ownCode)) rows.push([tr('credited'), S.agent === 'OTHER' ? (STAFF.company || '') : (S.agent || STAFF.ownCode)]);
     return '<div class="sb-ok-sum"><div class="sb-ok-tot"><small>' + esc(tr('total')) + '</small><b>' + esc(q.price ? money(q.price.total) : '—') + '</b>'
       + (q.price ? '<span>≈ ' + esc(npr(q.price.npr)) + '</span>' : '') + '</div><dl>'
@@ -1854,7 +1879,7 @@
   new MutationObserver(function () { applyWords(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
   /* Staff: clear the card for the next customer after a sale (keeps the date / pickup / type). */
   function resetForNext() {
-    (function () { var dv = document.getElementById('sbxDiscVal'); if (dv) dv.value = ''; })();   // a discount never rides into the next ticket
+    (function () { var dv = document.getElementById('sbxDiscVal'); if (dv) dv.value = ''; var tn = document.getElementById('sbxTNote'); if (tn) tn.value = ''; if (window.SB_DISC_MARK) window.SB_DISC_MARK(); })();   // a discount or a ticket note never rides into the next ticket
     S.phone = ''; S.name = ''; S.pax = [{ gender: '', band: 'adult' }]; S.manual = []; S.seatMode = 'auto'; S.idem = null; S.touched = {};
     S.why = {}; fill(); applyWords(); store.set(); showErrs(false); requote(0);
   }

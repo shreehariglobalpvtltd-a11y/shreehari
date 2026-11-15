@@ -1,0 +1,186 @@
+<?php
+/**
+ * =====================================================================
+ *  wa-otp-login-test.php — 15 Nov 2026 (lockdisc).
+ *
+ *  1. The unlock screen's "📲 WhatsApp कोड": CodeLogin::waLoginSend /
+ *     waLoginCheck on the LOCAL shari_test database with throwaway accounts
+ *     (deleted before and after): an agent with a PIN opens by a WhatsApp
+ *     code; the reply is the same for unknown / office / switched-off / 2FA
+ *     codes and no code is sent to them; wrong, reused and unsent codes fail.
+ *  2. The desk's ticket note + discount share: BookingService::ticketNoteClean,
+ *     Ticket::ticketNote, Ticket::discountPctTxt.
+ *
+ *     php -c .claude/php-dev.ini tests/wa-otp-login-test.php
+ * =====================================================================
+ */
+declare(strict_types=1);
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
+
+require_once dirname(__DIR__) . '/includes/bootstrap.php';
+require_once INCLUDE_PATH . '/codelogin.php';
+require_once INCLUDE_PATH . '/agentwallet.php';
+require_once INCLUDE_PATH . '/booking.php';
+require_once INCLUDE_PATH . '/ticket.php';
+
+set_exception_handler(static function (Throwable $e): void {
+    echo "\n  UNCAUGHT " . get_class($e) . ': ' . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n\nFAILED: 1 (uncaught)\n";
+    exit(1);
+});
+ob_start();
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    @session_start();
+}
+register_shutdown_function(static function (): void { while (ob_get_level() > 0) { ob_end_flush(); } });
+
+$PASS = 0; $FAIL = 0;
+function check(string $l, bool $ok, string $extra = ''): void {
+    global $PASS, $FAIL;
+    if ($ok) { $PASS++; echo "  \033[32mPASS\033[0m  $l" . ($extra !== '' ? " — $extra" : '') . "\n"; }
+    else     { $FAIL++; echo "  \033[31mFAIL\033[0m  $l" . ($extra !== '' ? " — $extra" : '') . "\n"; }
+}
+function section(string $s): void { echo "-- $s --\n"; }
+function sid(): int { return (int) ($_SESSION[ADMIN_SESSION_KEY]['id'] ?? 0); }
+function fresh(): void {
+    $_SESSION = [];
+    Database::run("DELETE FROM rate_limits WHERE bucket LIKE 'code_login%' OR bucket LIKE 'quick_unlock%' OR bucket LIKE 'otp\\_%'
+        OR bucket = 'otp_verify' OR bucket LIKE 'admin_2fa%'");
+}
+
+echo "\n=== WhatsApp code on the unlock screen + ticket note ===\n\n";
+if (!CodeLogin::ready()) {
+    echo "  SKIP  run database/upgrade-2026-11-15-code-login.sql first\n";
+    exit(1);
+}
+$keep = [];
+foreach (['quick_unlock_on', 'login_code_first_on', 'login_pin_required', 'whatsapp_driver'] as $k) {
+    $keep[$k] = Database::fetch('SELECT svalue, stype, sgroup, is_public FROM settings WHERE skey = :k', ['k' => $k]);
+}
+register_shutdown_function(static function () use ($keep): void {
+    foreach ($keep as $k => $row) {
+        $row === null ? Database::run('DELETE FROM settings WHERE skey = :k', ['k' => $k])
+                      : Database::run('UPDATE settings SET svalue = :v WHERE skey = :k', ['v' => (string) $row['svalue'], 'k' => $k]);
+    }
+});
+Settings::set('quick_unlock_on', true, 'bool', 'security', false);
+Settings::set('login_code_first_on', true, 'bool', 'security', false);
+Settings::set('login_pin_required', true, 'bool', 'security', false);
+Settings::set('whatsapp_driver', 'click_to_chat', 'string', 'notify', false);
+CodeLogin::$evenTiming = false;
+$CODES = [];
+CodeLogin::$deliverHook = static function (string $intl, string $code) use (&$CODES): bool { $CODES[$intl] = $code; return true; };
+
+$PFX = 'wl1_';
+$PH = ['7000002201', '7000002202', '7000002203', '7000002204'];
+$cleanup = static function () use ($PFX): void {
+    foreach (Database::fetchAll("SELECT id FROM admins WHERE username LIKE '{$PFX}%'") as $r) {
+        $id = (int) $r['id'];
+        try { AgentWallet::setAgentCode($id, null); } catch (Throwable $e) {}
+        try { Auth::setAdmin2fa($id, false); } catch (Throwable $e) {}
+        foreach (['ap_members', 'admin_profiles', 'admin_sessions'] as $t) {
+            try { Database::delete($t, 'admin_id = :i', ['i' => $id]); } catch (Throwable $e) {}
+        }
+        Database::delete('admins', 'id = :i', ['i' => $id]);
+    }
+    Database::run("DELETE FROM otp_codes WHERE identifier LIKE 'wl:%'");
+};
+$cleanup();
+register_shutdown_function($cleanup);
+
+$mk = static function (string $u, string $role, string $phone, ?int $agentCode = null) use ($PFX): int {
+    $id = (int) Database::insert('admins', [
+        'username' => $PFX . $u, 'password_hash' => password_hash('Pw@' . $u . '9z', PASSWORD_BCRYPT),
+        'full_name' => 'WA Login ' . $u, 'role' => $role, 'phone' => $phone, 'is_active' => 1, 'must_change_pw' => 0,
+    ]);
+    if ($agentCode !== null) {
+        AgentWallet::setAgentCode($id, $agentCode);
+    }
+    return $id;
+};
+$code  = static fn(int $n): string => 'SHG-' . str_pad((string) $n, 4, '0', STR_PAD_LEFT);
+$aOk   = $mk('agent', 'agent', $PH[0], 980);
+$aMgr  = $mk('mgr', 'manager', $PH[1]);
+$aOff  = $mk('off', 'agent', $PH[2], 982);
+$a2fa  = $mk('twofa', 'counter', $PH[3], 983);
+foreach ([$aOk, $aMgr, $aOff, $a2fa] as $i => $id) {
+    QuickUnlock::set($id, 'pin', ['4826', '602718', '5937', '7391'][$i]);
+}
+Database::update('admins', ['is_active' => 0], 'id = :i', ['i' => $aOff]);
+Auth::setAdmin2fa($a2fa, true);
+$sent = static function () use (&$CODES): int { return count($CODES); };
+
+/* ------------------------------------------------------------------ */
+section('Agent with a PIN opens by a WhatsApp code');
+fresh(); $CODES = [];
+$r = CodeLogin::enter($code(980));
+check('code -> unlock screen', ($r['step'] ?? '') === 'c_unlock', json_encode($r));
+check('waLoginIntl names the registered WhatsApp', str_ends_with(CodeLogin::waLoginIntl($aOk), $PH[0]), CodeLogin::waLoginIntl($aOk));
+$r = CodeLogin::waLoginSend();
+check('send -> code screen + generic notice', ($r['step'] ?? '') === 'c_walogin' && str_contains((string) ($r['notice'] ?? ''), 'If this account'), json_encode($r));
+$intl = (string) array_key_first($CODES);
+$otp  = (string) ($CODES[$intl] ?? '');
+check('one code went to the agent\'s own number', $sent() === 1 && str_ends_with($intl, $PH[0]) && strlen($otp) === OTP_LENGTH, $intl);
+$wrong = $otp === '000000' ? '111111' : '000000';
+$r = CodeLogin::waLoginCheck($wrong);
+check('wrong code refused, stays on the code screen', ($r['step'] ?? '') === 'c_walogin' && sid() === 0, json_encode($r));
+$r = CodeLogin::waLoginCheck($otp);
+check('right code opens the session', ($r['go'] ?? '') === 'home' && sid() === $aOk, json_encode($r) . ' sid=' . sid());
+check('door state cleared after sign-in', CodeLogin::state() === null);
+check('audit row admin.login.whatsapp_otp', (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'admin.login.whatsapp_otp' AND entity_id = :i", ['i' => (string) $aOk]) >= 1);
+
+section('A used code does not open again');
+fresh();
+CodeLogin::enter($code(980));
+$_SESSION[CodeLogin::KEY]['wl'] = time();   // as if a code had been asked for
+$r = CodeLogin::waLoginCheck($otp);
+check('reused code refused', empty($r['go']) && sid() === 0, json_encode($r));
+
+section('No send, no check');
+fresh();
+CodeLogin::enter($code(980));
+$r = CodeLogin::waLoginCheck('123456');
+check('check before any send -> back to the code box', ($r['step'] ?? '') === 'c_code' && sid() === 0, json_encode($r));
+$_SESSION = [];
+$r = CodeLogin::waLoginSend();
+check('send with no code typed -> code box', ($r['step'] ?? '') === 'c_code');
+
+section('Same reply, nothing sent: unknown / office / switched off / 2FA');
+foreach ([['unknown code', 'SHG-0979'], ['manager (office)', 'wl1_mgr'], ['switched-off agent', $code(982)], ['counter with 2FA', $code(983)]] as [$lbl, $typed]) {
+    fresh(); $CODES = [];
+    CodeLogin::enter($typed);
+    $r = CodeLogin::waLoginSend();
+    check($lbl . ': same notice', ($r['step'] ?? '') === 'c_walogin' && str_contains((string) ($r['notice'] ?? ''), 'If this account'), json_encode($r));
+    check($lbl . ': no code sent', $sent() === 0);
+    $r = CodeLogin::waLoginCheck('482611');
+    check($lbl . ': any code refused', empty($r['go']) && sid() === 0);
+}
+check('waLoginIntl empty for office / off / 2FA / nobody',
+    CodeLogin::waLoginIntl($aMgr) === '' && CodeLogin::waLoginIntl($aOff) === '' && CodeLogin::waLoginIntl($a2fa) === '' && CodeLogin::waLoginIntl(0) === '');
+
+section('Wrong-code budget');
+fresh(); $CODES = [];
+CodeLogin::enter($code(980));
+CodeLogin::waLoginSend();
+$last = [];
+for ($i = 0; $i < 7; $i++) { $last = CodeLogin::waLoginCheck('99999' . $i); }
+check('7th wrong try says too many', str_contains((string) ($last['error'] ?? ''), 'Too many'), json_encode($last));
+$good = (string) ($CODES[(string) array_key_first($CODES)] ?? '');
+$r = CodeLogin::waLoginCheck($good);
+check('even the right code waits once the budget is spent', empty($r['go']) && sid() === 0);
+
+/* ------------------------------------------------------------------ */
+section('Ticket note + discount share');
+check('note: one line, trimmed', BookingService::ticketNoteClean("  Dashain\n chhut \t 10%  ") === 'Dashain chhut 10%', BookingService::ticketNoteClean("  Dashain\n chhut \t 10%  "));
+check('note: at most 80 characters', mb_strlen(BookingService::ticketNoteClean(str_repeat('छुट ', 60))) === 80);
+check('note: blank stays blank', BookingService::ticketNoteClean("  \n ") === '');
+check('Ticket::ticketNote reads the column', Ticket::ticketNote(['ticket_note' => " family\n offer "]) === 'family offer');
+check('Ticket::ticketNote without the column', Ticket::ticketNote([]) === '');
+check('10% of 2200', Ticket::discountPctTxt(['base_total' => 2200, 'coupon_discount' => 220]) === ' (10%)', Ticket::discountPctTxt(['base_total' => 2200, 'coupon_discount' => 220]));
+check('₹50 of 2200 = 2.3%', Ticket::discountPctTxt(['base_total' => 2200, 'coupon_discount' => 50]) === ' (2.3%)');
+check('no discount, no text', Ticket::discountPctTxt(['base_total' => 2200, 'coupon_discount' => 0]) === '' && Ticket::discountPctTxt([]) === '');
+
+$col = CounterDesk::hasColumn('bookings', 'ticket_note');
+check('bookings.ticket_note exists (upgrade-2026-11-15-ticket-note.sql)', $col);
+
+echo "\n" . ($FAIL === 0 ? "ALL PASS: $PASS" : "FAILED: $FAIL (passed $PASS)") . "\n";
+exit($FAIL === 0 ? 0 : 1);

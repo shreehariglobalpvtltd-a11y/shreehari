@@ -2471,6 +2471,9 @@ $qePhone = Notify::usablePhone($b['contact_phone'] ?? '') !== '' ? (string) $b['
       <?php endforeach; ?>
       <?php if ((float) ($b['tax_amount'] ?? 0) > 0): ?><tr><th>Tax</th><td><?= Security::e(inr((float) $b['tax_amount'])) ?></td></tr><?php endif; ?>
       <tr><th>Total</th><td><strong style="font-size:17px"><?= Security::e(inr((float) $b['total_amount'])) ?></strong></td></tr>
+      <?php if (trim((string) ($b['ticket_note'] ?? '')) !== ''): /* 15 Nov 2026: the desk's note, as printed on the ticket */ ?>
+      <tr><th>🧾 Note on ticket</th><td><?= Security::e((string) $b['ticket_note']) ?></td></tr>
+      <?php endif; ?>
       <tr><th>Method</th><td><?= Security::e(strtoupper((string) ($pay['method'] ?? '—'))) ?> · <?= admin_pill((string) ($pay['status'] ?? 'pending')) ?></td></tr>
       <tr><th>UTR / Ref</th><td class="mono"><?= Security::e($pay['utr_number'] ?? '—') ?><?= $alsoOnPill('UTR', $utrAlsoOn) ?></td></tr>
       <?php if ($hasProof): ?>

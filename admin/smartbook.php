@@ -106,6 +106,15 @@ admin_header('SmartBook', 'smartbook');
 .sbx-disc select{min-height:40px;padding:0 8px;border-radius:9px;border:1px solid var(--line,#e0e8f2);background:transparent;color:inherit;font:inherit}
 .sbx-disc small{font-weight:600;opacity:.7}
 .sbx-disc.cut small{color:#B45309;opacity:1}
+/* 15 Nov 2026: quick discount chips + the passenger's ticket note */
+.sbx-chips{display:inline-flex;flex-wrap:wrap;gap:6px;flex-basis:100%}
+.sbx-chips button{min-height:34px;min-width:44px;padding:0 10px;border-radius:999px;border:1px solid var(--line,#e0e8f2);background:transparent;color:inherit;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;transition:background .15s,border-color .15s,transform .1s}
+.sbx-chips button:active{transform:scale(.94)}
+.sbx-chips button.on{background:#F07C1F;border-color:#F07C1F;color:#fff}
+.sbx-chips button.x{min-width:34px;opacity:.7}
+.sbx-tnote{display:flex;flex-direction:column;gap:4px;flex:1 1 260px;font-size:13px;font-weight:700}
+.sbx-tnote input{min-height:40px;padding:0 10px;border-radius:9px;border:1px solid var(--line,#e0e8f2);background:transparent;color:inherit;font:inherit;font-weight:600}
+.sbx-tnote small{font-weight:600;opacity:.7;font-size:11.5px}
 .sbx-reg{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:thin}
 .sbx-reg button{flex:0 0 auto;min-height:38px;border:1px solid var(--line,#e0e8f2);border-radius:10px;background:var(--card,#fff);color:inherit;font:inherit;font-size:12.5px;padding:0 10px;cursor:pointer;white-space:nowrap}
 .sbx-help{font-size:12px;color:var(--muted,#637491);margin:2px 0 0}
@@ -153,11 +162,28 @@ html.sbx-admin .sbx-ov{display:block}
     <input type="number" id="sbxDiscVal" min="0" step="1" inputmode="numeric" placeholder="0" aria-describedby="sbxDiscNote">
     <select id="sbxDiscType" aria-label="Discount type"><option value="flat">₹</option><option value="percent">%</option></select>
     <small id="sbxDiscNote"><?= $discAgent ? 'Cash · max ' . $e($capTxt) . '% · कमिसनबाट कट्छ' : 'max ' . $e($capTxt) . '%' ?></small>
+    <?php /* 15 Nov 2026 (owner: "sano amount ni discount dina milos"): one tap for the usual amounts; any
+             typed amount still works (₹1 up). The server caps every one of them. */ ?>
+    <span class="sbx-chips" role="group" aria-label="Quick discount">
+      <?php foreach ([['flat', 20], ['flat', 50], ['flat', 100], ['flat', 200], ['percent', 5], ['percent', 10]] as [$ct, $cv]):
+            if ($ct === 'percent' && $cv > $discCap) { continue; } ?>
+      <button type="button" data-dt="<?= $ct ?>" data-dv="<?= $cv ?>"><?= $ct === 'flat' ? '₹' . $cv : $cv . '%' ?></button>
+      <?php endforeach; ?>
+      <button type="button" data-dt="" data-dv="0" class="x" aria-label="Clear discount">✕</button>
+    </span>
   </span>
   <?php elseif ($mode === 'agent'): ?>
   <!-- 15 Nov 2026: the box used to vanish here with no word; an office login gives a discount from Admin / Counter mode -->
   <a class="sbx-disc" href="?mode=admin" title="Agent mode sells on the agent's terms; open Admin mode to give a discount on this sale">🏷️ छुट दिन: Admin mode · Discount in Admin mode</a>
   <?php endif; ?>
+  <?php /* 15 Nov 2026 (owner: "customer lai discount / note haru lekhna milos ticket ma"): a short
+           note for the PASSENGER, printed on the ticket (bookings.ticket_note). Desk sales only:
+           an agent's Online link has no desk seller, so the server keeps no note there. */ ?>
+  <span class="sbx-tnote">
+    <label for="sbxTNote">🧾 टिकटमा नोट · Note on ticket</label>
+    <input id="sbxTNote" maxlength="80" autocomplete="off" placeholder="जस्तै: दशैं छुट · family offer" aria-describedby="sbxTNoteHint">
+    <small id="sbxTNoteHint">यात्रुको टिकटमा छापिन्छ · printed on the ticket</small>
+  </span>
   <details class="sbx-more"><summary>⚙</summary><div class="sbx-more-in">
     <?php if ($isAdmin): ?>
       <span class="sbx-modes"><?php foreach (['admin' => 'Admin', 'counter' => 'Counter mode', 'agent' => 'Agent mode'] as $k => $v): ?><a class="<?= $mode === $k ? 'on' : '' ?>" href="?mode=<?= $e($k) ?>"><?= $e($v) ?></a><?php endforeach; ?></span>

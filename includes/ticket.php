@@ -1947,6 +1947,10 @@ final class Ticket
         $listN = min($paxN, self::PNG_MAX_PAX_ROWS);
         $listH = 60 + $listN * 44 + 16 + ($paxN > $listN ? 32 : 0);
         $grow  = max(0, $listH - 108);          // 108 = the seat-chip band it replaced
+        /* 15 Nov 2026 (owner: "customer lai note ticket ma"): the desk's note gets its own
+           strip under the passenger list; everything below moves down by it. */
+        $tNote = self::ticketNote($booking);
+        $grow += $tNote !== '' ? self::PNG_NOTE_H : 0;
 
         /* PAYMENT QR — MANDATORY on every ticket (9 Oct 2026, owner: "ticket
            ma sadhai payment QR hunu parcha"), always BESIDE the signed verify
@@ -2243,6 +2247,25 @@ final class Ticket
                 '+ ' . self::nepaliDigits((string) ($paxN - $listN)) . ' जना थप  ·  ' . ($paxN - $listN) . ' more', false);
         }
 
+        /* 15 Nov 2026: the desk's note for the passenger, in a pale orange strip
+           between the passenger list and the fare band (the gap PNG_NOTE_H made). */
+        if ($tNote !== '') {
+            $ny0 = $panelY + $listH + 12;
+            $ny1 = $ny0 + self::PNG_NOTE_H - 22;
+            self::gdRounded($im, 60, $ny0, $W - 60, $ny1, 14, imagecolorallocate($im, 255, 243, 230));
+            DocArt::roundOutline($im, 60, $ny0, $W - 60, $ny1, 14, imagecolorallocate($im, 246, 190, 140), 1);
+            imagefilledrectangle($im, 60, $ny0 + 12, 65, $ny1 - 12, imagecolorallocate($im, 240, 124, 31));
+            $nLab = 'टिप्पणी  ·  NOTE';
+            self::gdText($im, 16, 82, $ny0 + 30, imagecolorallocate($im, 180, 83, 9), $nLab, true);
+            $nx   = 82 + self::gdWidth(16, $nLab) + 18;
+            $nMax = $W - 84 - $nx;
+            $nSz  = 21;
+            foreach ([21, 19, 17] as $try) { $nSz = $try; if (self::gdWidth($try, $tNote) <= $nMax) { break; } }
+            $nTxt = $tNote;
+            while ($nTxt !== '' && self::gdWidth($nSz, $nTxt) > $nMax) { $nTxt = rtrim(mb_substr($nTxt, 0, mb_strlen($nTxt) - 2)) . '…'; }
+            self::gdText($im, $nSz, $nx, $ny0 + 31, $ink, $nTxt, true);
+        }
+
         /* Fare band — the one number everybody looks for, so it gets the
            deepest treatment on the ticket: its own shadow, a navy gradient
            instead of a flat fill, and a gold hairline along the top edge
@@ -2289,7 +2312,7 @@ final class Ticket
            discount lived only in the checkout screen they have closed. */
         $offerCut = (float) ($booking['coupon_discount'] ?? 0);
         if ($offerCut > 0) {
-            $offerTxt = 'तपाईंले बचाउनुभयो  ·  SAVED ₹ ' . number_format($offerCut);
+            $offerTxt = 'तपाईंले बचाउनुभयो  ·  SAVED ₹ ' . number_format($offerCut) . self::discountPctTxt($booking);
             $ow = self::gdWidth(18, $offerTxt);
             self::gdText($im, 18, $W - 88 - $ow, 1192 + $grow, $gold, $offerTxt, true);
         }
@@ -2775,6 +2798,27 @@ final class Ticket
      * picture is a manifest, and the chalani is the document for that.
      */
     private const PNG_MAX_PAX_ROWS = 12;
+    /** 15 Nov 2026: height the desk's ticket note adds to the PNG (its strip + the gap under it). */
+    private const PNG_NOTE_H = 74;
+
+    /** 15 Nov 2026: the desk's note for the passenger (bookings.ticket_note), one clean line or ''. */
+    public static function ticketNote(array $booking): string
+    {
+        $n = trim(preg_replace('/\s+/u', ' ', (string) ($booking['ticket_note'] ?? '')) ?? '');
+        return mb_substr($n, 0, 80);
+    }
+
+    /** 15 Nov 2026 (owner: "discount amount percentage ticket ma"): " (10%)" after a discount, '' when none. */
+    public static function discountPctTxt(array $booking): string
+    {
+        $base = (float) ($booking['base_total'] ?? 0);
+        $cut  = (float) ($booking['coupon_discount'] ?? 0);
+        if ($base <= 0 || $cut <= 0) {
+            return '';
+        }
+        $pct = round($cut / $base * 100, 1);
+        return $pct >= 0.1 ? ' (' . rtrim(rtrim(number_format($pct, 1), '0'), '.') . '%)' : '';
+    }
     /** 15 Oct 2026: the centred letterhead - the band grows from 254 to 254 + this; the body is copied down by it (pngHeader / the splice in renderTicketPng). Public: the PNG tests add it to every body coordinate. */
     public const PNG_HEAD_EXTRA = 298;   // 184 until 15 Oct 2026 noon; +114 for the bigger free emblem and the logo-style name (brand + TM, PRIVATE LIMITED line)
     /** The letterhead emblem box (15 Oct 2026): ~1.9x the old seal face, top-centred under the mantra strip. */
@@ -3351,7 +3395,7 @@ final class Ticket
         $pdf->text($W - 205, $boardY + 23, $fareTx, $fareSz, 'F2', [255, 255, 255]);
         // Base → Discount breakdown (Task 9) when a counter discount was applied.
         if ((float) ($booking['coupon_discount'] ?? 0) > 0) {
-            $pdf->text($W - 205, $boardY + 45, 'Base ' . $money((float) $booking['base_total']) . '  -  Disc ' . $money((float) $booking['coupon_discount']), 7.5, 'F1', [220, 210, 195]);
+            $pdf->text($W - 205, $boardY + 45, 'Base ' . $money((float) $booking['base_total']) . '  -  Disc ' . $money((float) $booking['coupon_discount']) . self::discountPctTxt($booking), 7.5, 'F1', [220, 210, 195]);
         }
         // Fare by passenger count (4 Sep 2026): "3 x Rs 2,000" for a party,
         // so the family sees how the total was built; a solo ticket keeps
@@ -3403,6 +3447,26 @@ final class Ticket
            CONTACT + AGENT
            ============================================================== */
         $cY = $boardY + 84;
+        /* 15 Nov 2026 (owner: "customer lai note ticket ma"): the desk's note for the passenger,
+           one line above the contact row; everything under it moves down 18 pt. */
+        $tNotePdf = self::ticketNote($booking);
+        if ($tNotePdf !== '') {
+            $pdf->roundedRect(40, $cY - 4, $W - 80, 15, 4, [255, 243, 230], true);
+            self::devText($pdf, 46, $cY - 1, 'टिप्पणी', 8, $F7, [180, 83, 9]);
+            $pdf->text(46 + 34, $cY + 1, '·  NOTE', 7, 'F2', [180, 83, 9]);
+            $nIsDev = preg_match('/\p{Devanagari}/u', $tNotePdf) === 1 && $pdf->hasCIDFont($F7);
+            $nMaxW  = $W - 80 - 90;
+            $nTx    = $tNotePdf;
+            while ($nTx !== '' && ($nIsDev ? $pdf->textWidthCID($nTx, 8.5, $F7) : $pdf->textWidth(self::latin($nTx), 8.5, 'F2')) > $nMaxW) {
+                $nTx = rtrim(mb_substr($nTx, 0, mb_strlen($nTx) - 2)) . '..';
+            }
+            if ($nIsDev) {
+                self::devText($pdf, 126, $cY - 1, $nTx, 8.5, $F7, self::INK);
+            } else {
+                $pdf->text(126, $cY + 1, self::latin($nTx), 8.5, 'F2', self::INK);
+            }
+            $cY += 18;
+        }
         self::devText($pdf, 40, $cY, 'सम्पर्क', 8, $F7, self::MUTE);
         $pdf->text(40 + 42, $cY + 2, '·  CONTACT', 7, 'F1', self::MUTE);
         $pdf->text(40, $cY + 14, self::latin((string) ($booking['contact_phone'] ?? '-')), 10, 'F1', self::INK);

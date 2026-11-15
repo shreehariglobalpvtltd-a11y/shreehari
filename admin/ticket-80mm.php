@@ -86,7 +86,12 @@ table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}td
 <?php endforeach; ?>
 </table>
 <hr>
+<?php if ((float) ($b['coupon_discount'] ?? 0) > 0): /* 15 Nov 2026: the discount and its share of the fare */ ?>
+<table><tr><td>Fare</td><td class="b"><?= $e(inr((float) $b['base_total'])) ?></td></tr>
+<tr><td>Discount / छुट</td><td class="b">− <?= $e(inr((float) $b['coupon_discount']) . Ticket::discountPctTxt($b)) ?></td></tr></table>
+<?php endif; ?>
 <table><tr><td>Total</td><td class="big"><?= $e(inr((float) $b['total_amount'])) ?></td></tr></table>
+<?php if (($tn80 = Ticket::ticketNote($b)) !== ''): ?><div class="box">Note / टिप्पणी: <?= $e($tn80) ?></div><?php endif; ?>
 <div class="box"><?= $paid ? 'PAID' : ((int) $b['is_cod'] === 1 ? 'CASH — PAY AT BOARDING' : 'PAYMENT PENDING') ?></div>
 <div class="sm"><?= $e(Fare::refundPolicyLine('en')) ?></div>
 <hr>

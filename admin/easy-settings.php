@@ -51,6 +51,7 @@ $ES_KEYS = [
     'eta_alert_on'             => ['🛰 Bus aaune samay (ETA) alert', 'bool', ['eta', 'arrival alert', 'bus aaune', 'gps alert']],
     'wa_marketing_on'          => ['📣 WhatsApp marketing', 'bool', ['marketing', 'promotion', 'offer message', 'campaign']],
     'seat_pick_manual_first'   => ['💺 सिट आफैं छान्ने (auto भन्दा पहिले)', 'bool', ['seat select', 'seat chhan', 'auto seat', 'seat pick', 'सिट छान', 'manual seat']],
+    'smartbook_desk_seat_auto' => ['💺 Desk (agent / counter / admin) मा सिट auto, चाहिए map बाट', 'bool', ['desk seat', 'counter seat auto', 'agent seat auto', 'quick book seat', 'सिट auto']],
     'staff_door_only'          => ['🔐 Agent/staff only on .network', 'bool', ['network', '.network', 'staff door', 'agent door', 'network matra']],
     'chalani_public_on'        => ['🔗 Public chalani link (login बिना)', 'bool', ['public chalani', 'chalani link', 'public link', 'chalani public']],
     'cancel_fine_on'           => ['💸 Cancel गर्दा fine', 'bool', ['cancel fine', 'fine', 'jariwana', 'जरिवाना']],
@@ -76,7 +77,7 @@ $curVal = static function (string $k) use ($ES_KEYS): string {
         // the default each switch has in the code that reads it (6 Nov 2026), so an unsaved switch shows what really happens
         $codeDefaultOn = ['quick_unlock_on', 'login_one_door_hi_on', 'agent_chalani_on', 'ap_join_open', 'whatsapp_notify_customer',
                           'whatsapp_notify_admin', 'wa_booking_on', 'allow_cod', 'trip_reminders_enabled', 'seat_pick_manual_first',
-                          'staff_door_only', 'chalani_public_on', 'cancel_fine_on'];
+                          'smartbook_desk_seat_auto', 'staff_door_only', 'chalani_public_on', 'cancel_fine_on'];
         return Settings::getBool($k, in_array($k, $codeDefaultOn, true)) ? '1' : '0';
     }
     return Settings::getString($k, $t === 'enum' ? (string) array_key_first($ES_KEYS[$k][3]) : '');

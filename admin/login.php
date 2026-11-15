@@ -110,6 +110,8 @@ if (Auth::oneDoorOn()) {
                 'c_req'          => CodeLogin::request((string) ($_POST['note'] ?? '')),
                 'c_create'       => CodeLogin::createFirst((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),
                 'c_confirm'      => CodeLogin::createConfirm((string) ($_POST['qk_val'] ?? '')),
+                'c_wl_send'      => CodeLogin::waLoginSend(),                                  // 15 Nov 2026: PIN / pattern not working → WhatsApp code
+                'c_wl'           => CodeLogin::waLoginCheck((string) ($_POST['otp'] ?? '')),
                 'who'            => OneDoor::who((string) ($_POST['who'] ?? ''), (string) ($_POST['cc'] ?? '91')),
                 'pw'             => OneDoor::password((string) ($_POST['password'] ?? '')),
                 'quick'          => OneDoor::quick((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),
@@ -241,6 +243,7 @@ if (Auth::oneDoorOn()) {
             $cs === null                                                     => 'c_code',
             in_array($step, ['c_create', 'c_confirm'], true) && !CodeLogin::proved() => (isset($cs['idok']) ? 'c_prove' : 'c_unlock'),
             $step === 'c_confirm' && !is_array($cs['pend'] ?? null)          => 'c_create',
+            $step === 'c_walogin' && empty($cs['wl'])                        => 'c_unlock',
             $step === 'c_prove' && !isset($cs['idok'])                       => (($cs['purpose'] ?? '') === 'reset' ? 'c_forgot' : (($cs['purpose'] ?? '') === 'setup' ? 'c_setup' : 'c_unlock')),
             default                                                          => $step,
         };
@@ -464,6 +467,17 @@ body.cf.shake .lk-dots,body.cf.shake .qk{animation:lkshake .35s}
 @keyframes cfIn{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
 @keyframes cfRing{0%{transform:scale(.7);opacity:.9}100%{transform:scale(1.35);opacity:0}}
 @keyframes cfPop{0%{transform:scale(.6)}60%{transform:scale(1.3)}100%{transform:scale(1)}}
+/* 15 Nov 2026: the other ways in, under the keypad (WhatsApp code / password) */
+.cl-alt{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0 4px}
+.cl-alt form{margin:0}
+.cl-alt-b{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:52px;padding:8px 10px;border-radius:14px;border:1px solid #D5DEEC;background:#F6F8FC;color:#0B2A6F;font:inherit;font-size:15px;font-weight:800;text-decoration:none;cursor:pointer;transition:transform .12s,background .15s,border-color .15s}
+.cl-alt-b span{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;text-align:left;white-space:nowrap}
+.cl-alt-b small{font-size:11.5px;font-weight:600;opacity:.75}
+.cl-alt-b.wa{background:#E9F9EF;border-color:#A7E3BD;color:#0E6B35}
+.cl-alt-b:active{transform:scale(.96)}
+body.lock .cl-alt-b{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.28);color:#fff}
+body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,102,.55)}
+@media (prefers-reduced-motion:reduce){.cl-alt-b{transition:none}}
 @media (prefers-reduced-motion:reduce){body.cf .box,body.cf .qk-pad,body.cf .lk-dots i.on,body.cf .logo::after{animation:none}}
 @media (max-width:359px){.lk-keys{grid-template-columns:repeat(3,62px);gap:9px 18px}.lk-keys button{width:62px;height:62px;font-size:22px}}
 </style>
@@ -536,10 +550,30 @@ body.cf.shake .lk-dots,body.cf.shake .qk{animation:lkshake .35s}
     <?= $pinForm('c_unlock', 'PIN ले भित्र · Unlock', $cPat, $cAid > 0 ? QuickUnlock::pinLen($cAid) : 6) ?>
     <?= $patForm('c_unlock', 'आफ्नो pattern कोर्नुहोस् · Draw your pattern', !$cPat) ?>
   </div>
+  <?php /* 15 Nov 2026 (owner: "PIN / pattern le khulos; tyo ni vayena code ra password, natra
+           WhatsApp OTP; ani forget"): the other ways in, one tap each, under the keypad. */ ?>
+  <div class="cl-alt" role="group" aria-label="Other ways to sign in">
+    <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="c_wl_send">
+      <button type="submit" class="cl-alt-b wa">📲 <span>WhatsApp<small>OTP कोड · code</small></span></button></form>
+    <a class="cl-alt-b" href="/admin/login.php?classic=1&amp;other=1">🔑 <span>पासवर्ड<small>Code + password</small></span></a>
+  </div>
   <div class="links">
     <form method="post" action="/admin/login.php" class="lk-forgot cl-forgot"><?= $hid() ?><input type="hidden" name="mode" value="c_forgot">
       <button type="submit">PIN / Pattern बिर्सनुभयो? · Forgot PIN / Pattern?</button></form>
   </div>
+
+  <?php elseif ($step === 'c_walogin'): ?>
+  <?= $codeLine() ?>
+  <div class="msg warn" role="note">🔒 यो कोड आफैं लगइन गर्दा मात्र — अरूले मागे नदिनुहोस् · Use this code only to sign in yourself. Never give it to anyone.</div>
+  <?php if (!empty($cs['debug']) && APP_DEBUG): ?><div class="msg ok">DEV code: <?= $h($cs['debug']) ?></div><?php endif; ?>
+  <form method="post" action="/admin/login.php" autocomplete="off" id="wlForm"><?= $hid() ?><input type="hidden" name="mode" value="c_wl">
+    <label for="wlotp">WhatsApp मा आएको ६ अङ्कको कोड · 6-digit code from WhatsApp</label>
+    <input id="wlotp" name="otp" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" required autofocus placeholder="______" style="letter-spacing:.35em;text-align:center;font-size:24px">
+    <button class="btn" type="submit">भित्र जाने · Sign in</button></form>
+  <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="c_wl_send">
+    <button class="btn alt" type="submit">📩 नयाँ कोड पठाउने · Send a new code</button></form>
+  <p class="note">कार्यालय (admin / manager) खाता WhatsApp कोडले खुल्दैन — PIN / pattern वा "बिर्सनुभयो?" · Office accounts do not open by WhatsApp code: use PIN / pattern or "Forgot".</p>
+  <div class="links"><a href="/admin/login.php?step=c_unlock">← PIN / Pattern मा फर्कने · Back to PIN / Pattern</a></div>
 
   <?php elseif ($step === 'c_setup' || $step === 'c_forgot'): ?>
   <?= $codeLine() ?>
@@ -867,7 +901,7 @@ body.cf.shake .lk-dots,body.cf.shake .qk{animation:lkshake .35s}
 })();
 </script>
 <?php endif; ?>
-<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115b" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115c" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
 <?php if (($remembered ?? null) !== null || $cPad): ?><script>
 (function(){
@@ -1363,6 +1397,6 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115b" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115c" data-next="<?= $meUrl ?>"></script><?php endif; ?>
 <?php endif; ?>
 </body></html>

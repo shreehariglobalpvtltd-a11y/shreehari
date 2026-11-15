@@ -198,6 +198,14 @@ final class BookingService
         return self::$deskCharge;
     }
 
+    /** 15 Nov 2026: the desk's note for the ticket — one line, at most 80 characters, '' when blank. */
+    public static function ticketNoteClean(string $raw): string
+    {
+        $one = preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $raw) ?? '';
+        $one = trim(preg_replace('/\s{2,}/u', ' ', $one) ?? '');
+        return mb_substr(Security::clean($one, 100), 0, 80);
+    }
+
     public static function create(array $request, ?array $seller = null): array
     {
         self::$deskCharge = 0.0;
@@ -637,6 +645,15 @@ final class BookingService
                 && CounterDesk::hasColumn('bookings', 'alt_phone')) {
                 $altStamp = ['alt_phone' => $altRaw,
                              'alt_country_code' => countryDialCode(strtoupper((string) ($contact['altCountry'] ?? '')) === 'IN' ? 'IN' : 'NP')];
+            }
+
+            /* 15 Nov 2026 (owner: "customer lai discount / note ticket ma lekhna milos"): a short
+               note the DESK writes for the passenger, printed on the ticket. Only a signed-in
+               seller carries one (api/smartbook.php builds $seller from the session); stored
+               only where the column exists (database/upgrade-2026-11-15-ticket-note.sql). */
+            $tnote = $seller !== null ? self::ticketNoteClean((string) ($seller['ticketNote'] ?? '')) : '';
+            if ($tnote !== '' && CounterDesk::hasColumn('bookings', 'ticket_note')) {
+                $altStamp['ticket_note'] = $tnote;
             }
 
             $bookingId = Database::insert('bookings', $altStamp + self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total']) + [

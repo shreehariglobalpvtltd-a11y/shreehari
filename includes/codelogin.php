@@ -53,7 +53,7 @@ final class CodeLogin
     public const ACT_TTL_H    = 24;     // an office activation code lives 24 hours
     public const ACT_TRIES    = 5;
     public const PIN_LEN      = 6;
-    public const STEPS = ['c_code', 'c_unlock', 'c_setup', 'c_forgot', 'c_prove', 'c_create', 'c_confirm'];
+    public const STEPS = ['c_code', 'c_unlock', 'c_setup', 'c_forgot', 'c_prove', 'c_create', 'c_confirm', 'c_walogin'];
 
     /** Tests switch the ~1 s even-timing pad off and catch the WhatsApp code here. */
     public static bool $evenTiming = true;
@@ -294,6 +294,105 @@ final class CodeLogin
             return ['step' => 'admin_otp', 'notice' => 'तपाईंको WhatsApp मा ६ अङ्कको कोड पठाइयो · A 6-digit code was sent to your registered WhatsApp.'];
         }
         return ['go' => 'home'];
+    }
+
+    /* =================================================================
+     *  15 Nov 2026 — PIN / pattern not working? WhatsApp OTP opens it.
+     *
+     *  Owner: "sajilai pattern ya PIN le khulos; tyo ni vayena natra
+     *  WhatsApp ma OTP code; ani forget garne." From the unlock screen,
+     *  a 6-digit code to the account's OWN registered WhatsApp opens the
+     *  session (Auth::openAfterQuick, so switched-off / locked accounts are
+     *  refused). Only the roles the WhatsApp door already opens (agent,
+     *  counter, scanner — Auth::OTP_DOOR_ROLES, no 2FA): an office account
+     *  keeps PIN / pattern + "Forgot". The reply is the same for every code
+     *  (unknown, office, no mobile): nobody learns which codes exist.
+     * ================================================================= */
+
+    /** May this account open with a WhatsApp code? Returns its WhatsApp number (intl digits) or ''. */
+    public static function waLoginIntl(int $aid): string
+    {
+        if ($aid <= 0) {
+            return '';
+        }
+        $row = Database::fetch('SELECT id, phone, role, is_active FROM admins WHERE id = :i', ['i' => $aid]);
+        if ($row === null || (int) $row['is_active'] !== 1 || !in_array((string) $row['role'], Auth::OTP_DOOR_ROLES, true)) {
+            return '';
+        }
+        $p10 = TeamPortal::phone10((string) ($row['phone'] ?? ''));
+        if ($p10 === '') {
+            return '';
+        }
+        foreach (Auth::otpDoorAccounts($p10) as $a) {   // same rules as the mobile door: active, not locked, no 2FA
+            if ((int) $a['id'] === $aid) {
+                return TeamPortal::intlFor($p10, ['id' => $aid, 'phone' => (string) $row['phone']]);
+            }
+        }
+        return '';
+    }
+
+    /** "📲 WhatsApp कोड" on the unlock screen: send the code (only where allowed), same reply for everyone. */
+    public static function waLoginSend(): array
+    {
+        $s = self::state();
+        if ($s === null) {
+            return ['step' => 'c_code', 'error' => 'फेरि कोड लेख्नुहोस् · Please type your code again.'];
+        }
+        $t0 = microtime(true);
+        if (!Security::rateLimit('code_login_wl_ip', Security::clientIp(), 8, 3600, 3600)) {
+            return ['step' => 'c_walogin', 'error' => 'धेरै पटक भयो — एक घण्टापछि फेरि · Too many tries, try again in an hour.'];
+        }
+        $aid  = (int) ($s['aid'] ?? 0);
+        $intl = self::waLoginIntl($aid);
+        if ($intl !== '') {
+            $res = Auth::issueOtp('wl:' . $aid, 'login', 'whatsapp');
+            if (!empty($res['ok'])) {
+                $sent = self::deliver($intl, (string) $res['code'], 'login');
+                Logger::info('Code door: WhatsApp sign-in code ' . ($sent ? 'sent' : 'NOT delivered'), ['admin' => $aid], 'otp');
+                if (APP_DEBUG && self::$deliverHook === null) {
+                    $_SESSION[self::KEY]['debug'] = (string) $res['code'];
+                }
+            } elseif (str_contains((string) ($res['error'] ?? ''), 'wait')) {
+                self::evenTime($t0);
+                return ['step' => 'c_walogin', 'error' => 'एक मिनेट पर्खेर फेरि मगाउनुहोस् · Please wait a minute before asking for another code.'];
+            }
+        } else {
+            Logger::info('Code door: WhatsApp sign-in asked for a code that does not open by WhatsApp', ['admin' => $aid], 'otp');
+        }
+        $_SESSION[self::KEY]['wl'] = time();
+        self::evenTime($t0);
+        return ['step' => 'c_walogin', 'notice' => 'यो खाता WhatsApp ले खुल्ने भए दर्ता गरिएको WhatsApp मा ६ अङ्कको कोड पठाइयो · If this account opens by WhatsApp, a 6-digit code went to its registered WhatsApp.'];
+    }
+
+    /** The 6-digit WhatsApp code typed on c_walogin → the session opens. */
+    public static function waLoginCheck(string $otp): array
+    {
+        $s = self::state();
+        if ($s === null || empty($s['wl'])) {
+            return ['step' => 'c_code', 'error' => 'फेरि सुरु गर्नुहोस् · Please start again.'];
+        }
+        $aid = (int) ($s['aid'] ?? 0);
+        if (!Security::rateLimit('code_login_wl_try', Security::clientIp(), 10, 600, 900)
+            || !Security::rateLimit('code_login_wl_acc', 'a' . $aid . ':' . strtoupper((string) ($s['code'] ?? '')), 6, 900, 900)) {
+            return ['step' => 'c_walogin', 'error' => 'धेरै पटक गलत भयो — नयाँ कोड माग्नुहोस् वा १५ मिनेटपछि · Too many tries: ask for a new code or wait 15 minutes.'];
+        }
+        $t0 = microtime(true);
+        $ok = $aid > 0 && self::waLoginIntl($aid) !== '' && !empty(Auth::verifyOtp('wl:' . $aid, $otp, 'login')['ok']);
+        if (!$ok) {
+            Logger::audit('admin.login.wa_code_fail', 'admin', (string) $aid, null, null, 'Code door: wrong / expired WhatsApp sign-in code');
+            self::evenTime($t0);
+            return ['step' => 'c_walogin', 'error' => 'कोड मिलेन वा पुरानो भयो · That code did not match or has expired.'];
+        }
+        unset($_SESSION[self::KEY]['debug']);
+        $admin = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $aid]);
+        if ($admin === null) {
+            return ['step' => 'c_code', 'error' => 'फेरि सुरु गर्नुहोस् · Please start again.'];
+        }
+        $r = self::open($admin, 'whatsapp_otp');
+        if (($r['step'] ?? '') === 'c_unlock') {
+            $r['step'] = 'c_walogin';   // a refusal (switched off, locked) is said on the code screen
+        }
+        return $r;
     }
 
     /* =================================================================
@@ -641,14 +740,17 @@ final class CodeLogin
 
     /* ================================================================= */
 
-    private static function deliver(string $intl, string $code): bool
+    private static function deliver(string $intl, string $code, string $why = 'setup'): bool
     {
         if (self::$deliverHook !== null) {
             return (bool) (self::$deliverHook)($intl, $code);
         }
         require_once __DIR__ . '/notify.php';
         try {
-            $text = Settings::getString('company_name', APP_NAME) . ' — PIN / pattern राख्ने कोड: ' . $code . ' (' . OTP_EXPIRY_MINUTES
+            $text = $why === 'login'
+                ? Settings::getString('company_name', APP_NAME) . ' — लगइन कोड: ' . $code . ' (' . OTP_EXPIRY_MINUTES
+                  . ' मिनेट)। अरूले मागे नपठाउनुहोस्। · Sign-in code. Never share it.'
+                : Settings::getString('company_name', APP_NAME) . ' — PIN / pattern राख्ने कोड: ' . $code . ' (' . OTP_EXPIRY_MINUTES
                   . ' मिनेट)। अरूले मागे नपठाउनुहोस्। · PIN setup code. Never share it.';
             return Notify::whatsapp($intl, $text, null, null, [], null, ['purpose' => 'otp']) === true;
         } catch (Throwable $e) {
