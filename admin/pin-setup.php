@@ -100,7 +100,8 @@ admin_header('PIN / Pattern', '');
   </div>
   <?php if ($secAsk): ?>
   <div class="ps-card">
-    <h2>🛡️ सुरक्षा प्रश्न (ऐच्छिक) · Security question (optional)</h2>
+    <h2>🛡️ सुरक्षा प्रश्न · Security question</h2>
+    <p class="note">PIN / pattern बिर्सिँदा: code + मोबाइल + यही उत्तर = नयाँ PIN। सजिलो तर अरूले थाहा नपाउने उत्तर राख्नुहोस् · If you forget your PIN: code + mobile + this answer gives a new one. Pick an answer others do not know.</p>
     <form method="post" autocomplete="off">
       <?= Security::csrfField() ?><input type="hidden" name="qk_kind" value="secq"><input type="hidden" name="secq" value="1">
       <label>प्रश्न · Question
@@ -109,11 +110,10 @@ admin_header('PIN / Pattern', '');
           <option value="own">आफ्नै प्रश्न लेख्ने · Write my own</option>
         </select></label>
       <label id="psOwn" hidden>तपाईंको प्रश्न · Your question<input name="sec_own" maxlength="150"></label>
-      <label>उत्तर · Answer<input id="psA" name="sec_a" type="date" maxlength="80" required></label>
-      <p class="note">यही फोनमा PIN बिर्सिँदा यसले नयाँ PIN राख्न मिल्छ · On this phone, it lets you set a new PIN if you forget it.</p>
+      <label>उत्तर · Answer<input id="psA" name="sec_a" type="text" maxlength="80" required></label>
+
       <button class="btn ok" type="submit">सेभ गर्नुहोस् · Save</button>
     </form>
-    <a class="btn" href="/admin/home.php">पछि · Later</a>
   </div>
   <?php elseif ($fresh): ?>
   <div class="ps-card">

@@ -101,7 +101,7 @@ if (Auth::oneDoorOn()) {
                 'c_code'         => CodeLogin::enter((string) ($_POST['code'] ?? '')),
                 'c_unlock'       => CodeLogin::unlock((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),
                 'c_forgot'       => CodeLogin::forgot(),
-                'c_identity'     => CodeLogin::identity((string) ($_POST['dob'] ?? ''), (string) ($_POST['mobile'] ?? '')),
+                'c_identity'     => CodeLogin::identity((string) ($_POST['dob'] ?? ''), (string) ($_POST['mobile'] ?? ''), (string) ($_POST['sec_a'] ?? '')),
                 'c_hi'           => CodeLogin::hiStart(),
                 'c_hi_done'      => CodeLogin::hiDone(),
                 'c_code_send'    => CodeLogin::codeSend(),
@@ -112,6 +112,7 @@ if (Auth::oneDoorOn()) {
                 'c_confirm'      => CodeLogin::createConfirm((string) ($_POST['qk_val'] ?? '')),
                 'c_wl_send'      => CodeLogin::waLoginSend(),                                  // 15 Nov 2026: PIN / pattern not working → WhatsApp code
                 'c_wl'           => CodeLogin::waLoginCheck((string) ($_POST['otp'] ?? '')),
+                'c_wl_hi'        => CodeLogin::waLoginHiDone(),                                 // "hi" + YES from the account's own WhatsApp
                 'who'            => OneDoor::who((string) ($_POST['who'] ?? ''), (string) ($_POST['cc'] ?? '91')),
                 'pw'             => OneDoor::password((string) ($_POST['password'] ?? '')),
                 'quick'          => OneDoor::quick((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),
@@ -323,7 +324,8 @@ if (Auth::oneDoorOn()) {
     $cAid    = (int) ($cs['aid'] ?? 0);
     $cKinds  = CodeLogin::kinds($cAid);
     $cLock   = $step === 'c_unlock' && !empty($cs['dev']);   // remembered phone: Android-style lock look
-    $cWa     = $step === 'c_prove' && is_array($cs['wa'] ?? null) ? (array) $cs['wa'] : null;
+    $cWa     = $step === 'c_prove' && is_array($cs['wa'] ?? null) ? (array) $cs['wa']
+             : ($step === 'c_walogin' && is_array($cs['wlhi'] ?? null) ? (array) $cs['wlhi'] : null);   // 15 Nov 2026: hi + YES opens it too
     if ($cWa !== null) {
         $waPoll = $cWa;   // same polling whether the details matched or not (the page tells nothing)
     }
@@ -478,6 +480,8 @@ body.lock .who-nm{color:#fff}body.lock .who-cd{color:#C9D6EE}body.lock .who-card
 /* 15 Nov 2026: the other ways in, under the keypad (WhatsApp code / password) */
 .cl-alt{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0 4px}
 .cl-alt form{margin:0}
+.cl-qr{display:flex;flex-direction:column;align-items:center;gap:6px;margin:10px 0}.cl-qr small{font-size:12px;opacity:.75;text-align:center}
+@media (hover:none) and (pointer:coarse){.cl-qr{display:none}}   /* a phone opens WhatsApp by the button; the QR is for a computer */
 .cl-alt-b{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:52px;padding:8px 10px;border-radius:14px;border:1px solid #D5DEEC;background:#F6F8FC;color:#0B2A6F;font:inherit;font-size:15px;font-weight:800;text-decoration:none;cursor:pointer;transition:transform .12s,background .15s,border-color .15s}
 .cl-alt-b span{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;text-align:left;white-space:nowrap}
 .cl-alt-b small{font-size:11.5px;font-weight:600;opacity:.75}
@@ -488,11 +492,41 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 @media (prefers-reduced-motion:reduce){.cl-alt-b{transition:none}}
 @media (prefers-reduced-motion:reduce){body.cf .box,body.cf .qk-pad,body.cf .lk-dots i.on,body.cf .logo::after{animation:none}}
 @media (max-width:359px){.lk-keys{grid-template-columns:repeat(3,62px);gap:9px 18px}.lk-keys button{width:62px;height:62px;font-size:22px}}
+/* 15 Nov 2026 (owner: "lock PIN ra pattern mobile ra desktop ko lagi milayera"):
+   phones — everything on one screen down to 640px tall; computers — two columns
+   (clock + name + other ways on the left, the keypad / pattern on the right), no scrolling on a 768px laptop. */
+@media (max-height:870px) and (max-width:899px){
+  body.cu .lk-clock{font-size:42px;margin-top:4px}body.cu .lk-date{margin-bottom:8px}
+  body.cu .who-av{width:40px;height:40px;font-size:18px}body.cu .who-nm{font-size:17px}
+  body.cu .lk-keys{grid-template-columns:repeat(3,64px);gap:10px 22px}body.cu .lk-keys button{width:64px;height:64px;font-size:24px}
+  body.cu .lk-dots{margin:10px 0 10px}body.cu .cl-alt{margin-top:10px}body.cu .cl-alt-b{min-height:46px}
+}
+@media (min-width:900px) and (min-height:500px){
+  body.cu{align-items:center}
+  body.cu .box{max-width:800px;display:grid;grid-template-columns:minmax(0,1fr) 340px;column-gap:56px;align-items:center;align-content:center;padding:30px 40px}
+  body.cu .box>*{grid-column:1}
+  body.cu .box>.qk{grid-column:2;grid-row:1 / span 12;align-self:center}
+  body.cu .box>.msg{grid-column:1 / -1}
+  body.cu .lk-clock{font-size:76px;margin-top:6px}
+  body.cu .who-card{margin-top:6px}
+  body.cu .cl-alt{grid-template-columns:1fr 1fr;margin-top:18px}
+  body.cu .lk-keys button{width:70px;height:70px}
+  body.cu .lk-keys button:hover{background:rgba(255,255,255,.16)}
+  body.cu:not(.lock) .lk-keys button:hover{background:#DCE7F7}
+}
+@media (max-height:700px) and (max-width:899px){
+  body.cu .logo img{height:28px}body.cu .who-av{display:none}body.cu .lk-date{display:none}
+  body.cu .lk-clock{font-size:34px;margin:0 0 4px}body.cu .who-card{margin-bottom:4px}body.cu .who-nm{font-size:16px}
+  body.cu .lk-keys{grid-template-columns:repeat(3,58px);gap:7px 20px}body.cu .lk-keys button{width:58px;height:58px;font-size:22px}
+  body.cu .lk-dots{margin:6px 0 8px}body.cu .qk-tabs button{min-height:36px}body.cu .cl-alt{margin-top:8px}body.cu .cl-alt-b{min-height:42px;font-size:14px}
+  body.cu .box{padding-top:4px;padding-bottom:4px}
+}
+@media (min-width:900px) and (max-height:700px){body.cu .lk-keys{gap:8px 22px}body.cu .lk-keys button{width:60px;height:60px;font-size:22px}body.cu .lk-clock{font-size:60px}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('shg_admin_theme');if(t==='dark'||t==='amoled')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 <link rel="manifest" href="/admin/app-manifest.php"><meta name="theme-color" content="#0B1220">
 </head>
-<body class="<?= trim((($remembered ?? null) !== null || $cLock ? 'lock ' : '') . (in_array($step, CodeLogin::STEPS, true) ? 'cf' : '')) ?>">
+<body class="<?= trim((($remembered ?? null) !== null || $cLock ? 'lock ' : '') . (in_array($step, CodeLogin::STEPS, true) ? 'cf' : '') . ($step === 'c_unlock' || ($step === 'start' && ($remembered ?? null) !== null) ? ' cu' : '')) ?>">
 <main class="box" data-door="one">
   <div class="logo"><img src="<?= $h(Brand::markUrl(68)) ?>" alt="<?= $h($company) ?>" width="112" height="58"></div>
   <h1><?= $h($title) ?></h1>
@@ -578,29 +612,46 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 
   <?php elseif ($step === 'c_walogin'): ?>
   <?= $codeLine() ?>
-  <div class="msg warn" role="note">🔒 यो कोड आफैं लगइन गर्दा मात्र — अरूले मागे नदिनुहोस् · Use this code only to sign in yourself. Never give it to anyone.</div>
+  <div class="msg warn" role="note">🔒 आफैं लगइन गर्दा मात्र — अरूले मागे नपठाउनुहोस् · Only to sign in yourself. Never because someone asked.</div>
+  <?php if ($cWa !== null): ?>
+    <a class="btn wa" href="<?= $h($cWa['url']) ?>" target="_blank" rel="noopener">💬 WhatsApp मा hi पठाउनुहोस् · Send hi on WhatsApp<small>जवाफमा YES लेख्नुहोस् — यो पेज आफैं खुल्छ · Reply YES, this page opens by itself</small></a>
+    <?php if ($qr !== ''): ?><div class="qr cl-qr"><img src="<?= $h($qr) ?>" alt="WhatsApp QR" width="168" height="168"><small>कम्प्युटरमा? फोनले scan गर्नुहोस् · On a computer? Scan with your phone</small></div><?php endif; ?>
+    <p class="wait" id="waWait">⏳ तपाईंको सन्देश पर्खँदै… · Waiting for your message…</p>
+    <form method="post" action="/admin/login.php" id="waDone"><?= $hid() ?><input type="hidden" name="mode" value="c_wl_hi">
+      <button class="btn alt" type="submit">✅ मैले YES पठाएँ · I replied YES</button></form>
+  <?php endif; ?>
+  <details class="cl-more"><summary>🔢 WhatsApp मा ६ अङ्कको कोड आयो? · Got a 6-digit code?</summary>
   <?php if (!empty($cs['debug']) && APP_DEBUG): ?><div class="msg ok">DEV code: <?= $h($cs['debug']) ?></div><?php endif; ?>
   <form method="post" action="/admin/login.php" autocomplete="off" id="wlForm"><?= $hid() ?><input type="hidden" name="mode" value="c_wl">
-    <label for="wlotp">WhatsApp मा आएको ६ अङ्कको कोड · 6-digit code from WhatsApp</label>
-    <input id="wlotp" name="otp" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" required autofocus placeholder="______" style="letter-spacing:.35em;text-align:center;font-size:24px">
+    <label for="wlotp">६ अङ्कको कोड · 6-digit code</label>
+    <input id="wlotp" name="otp" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="______" style="letter-spacing:.35em;text-align:center;font-size:24px">
     <button class="btn" type="submit">भित्र जाने · Sign in</button></form>
   <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="c_wl_send">
-    <button class="btn alt" type="submit">📩 नयाँ कोड पठाउने · Send a new code</button></form>
-  <p class="note">कार्यालय (admin / manager) खाता WhatsApp कोडले खुल्दैन — PIN / pattern वा "बिर्सनुभयो?" · Office accounts do not open by WhatsApp code: use PIN / pattern or "Forgot".</p>
+    <button class="btn alt" type="submit">📩 नयाँ कोड · Send a new code</button></form>
+  </details>
+  <p class="note">कार्यालय (admin / manager) खाता WhatsApp ले खुल्दैन — PIN / pattern वा "बिर्सनुभयो?" · Office accounts do not open by WhatsApp: use PIN / pattern or "Forgot".</p>
   <div class="links"><a href="/admin/login.php?step=c_unlock">← PIN / Pattern मा फर्कने · Back to PIN / Pattern</a></div>
 
-  <?php elseif ($step === 'c_setup' || $step === 'c_forgot'): ?>
+  <?php elseif ($step === 'c_setup' || $step === 'c_forgot'): $askDob = CodeLogin::askDob(); $fq = $step === 'c_forgot' ? CodeLogin::forgotQuestion() : ''; ?>
   <?= $codeLine() ?>
+  <?php /* 15 Nov 2026 (owner: "suru ma mobile number ra agent code matra; DOB hatau; forget lai security question"). */ ?>
   <p class="sub" style="display:block"><?= $step === 'c_setup'
-      ? 'यो खातामा PIN / pattern छैन। एक पटक मात्र: दर्ता गरिएको जन्म मिति र मोबाइल, अनि त्यही नम्बरको WhatsApp बाट पुष्टि · No PIN / pattern yet. Once only: your registered date of birth and mobile, then a confirmation from that WhatsApp.'
-      : 'दर्ता गरिएको जन्म मिति र मोबाइल लेख्नुहोस्, अनि त्यही नम्बरको WhatsApp बाट पुष्टि गरेर नयाँ PIN / pattern राख्नुहोस् · Enter your registered date of birth and mobile, confirm from that WhatsApp, then set a new PIN / pattern.' ?></p>
-  <form method="post" action="/admin/login.php" autocomplete="off">
+      ? 'पहिलो पटक: दर्ता गरिएको मोबाइल लेख्नुहोस्, अनि त्यही WhatsApp बाट hi पठाएर YES गर्नुहोस्। त्यसपछि आफ्नै PIN / pattern · First time: your registered mobile, then hi + YES from that WhatsApp, then your own PIN / pattern.'
+      : ($fq !== '' ? 'दर्ता गरिएको मोबाइल र आफ्नो सुरक्षा प्रश्नको उत्तर — मिलेपछि नयाँ PIN / pattern · Your registered mobile and the answer to your security question, then a new PIN / pattern.'
+                    : 'दर्ता गरिएको मोबाइल लेख्नुहोस्, त्यही WhatsApp बाट पुष्टि गरेर नयाँ PIN / pattern राख्नुहोस् · Enter your registered mobile, confirm from that WhatsApp, then set a new PIN / pattern.') ?></p>
+  <form method="post" action="/admin/login.php" autocomplete="off" class="cl-id">
     <?= $hid() ?><input type="hidden" name="mode" value="c_identity">
+    <label for="mob">📱 दर्ता गरिएको मोबाइल / WhatsApp · Registered mobile</label>
+    <input id="mob" name="mobile" type="tel" inputmode="numeric" maxlength="16" required autofocus placeholder="98XXXXXXXX" autocomplete="off" style="font-size:20px;letter-spacing:.06em;text-align:center">
+    <?php if ($askDob): ?>
     <label for="dob">जन्म मिति · Date of birth</label>
-    <input id="dob" name="dob" type="date" max="<?= $h(date('Y-m-d')) ?>" min="1930-01-01" required autofocus>
-    <label for="mob">दर्ता गरिएको मोबाइल / WhatsApp · Registered mobile / WhatsApp</label>
-    <input id="mob" name="mobile" type="tel" inputmode="tel" maxlength="16" required placeholder="98XXXXXXXX" autocomplete="off">
-    <button class="btn" type="submit">अगाडि · Continue →</button>
+    <input id="dob" name="dob" type="date" max="<?= $h(date('Y-m-d')) ?>" min="1930-01-01" required>
+    <?php endif; ?>
+    <?php if ($fq !== ''): ?>
+    <label for="seca">🛡️ <?= $h($fq) ?></label>
+    <input id="seca" name="sec_a" type="<?= str_contains($fq, 'जन्म मिति') ? 'date' : 'text' ?>" maxlength="80" required autocomplete="off">
+    <?php endif; ?>
+    <button class="btn" type="submit"><?= $fq !== '' ? 'नयाँ PIN राख्ने · Set a new PIN →' : 'अगाडि · Continue →' ?></button>
   </form>
   <?= $officeBox() ?>
   <div class="links"><a href="<?= $h($odUrl(['step' => 'c_code'])) ?>">← फिर्ता · Back</a></div>
@@ -882,7 +933,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
   <?php if ((bool) ($fw['twofa'] ?? false)): ?><p class="note">यो खातामा 2FA छ — सेभपछि WhatsApp कोड पनि चाहिन्छ · This account uses 2FA: a WhatsApp code follows.</p><?php endif; ?>
   <?php endif; ?>
 
-  <?php if (!in_array($step, ['forgot', 'forgot_code', 'forgot_pick', 'forgot_pw', 'wa', 'c_code', 'c_unlock', 'c_setup', 'c_forgot', 'c_prove', 'c_create', 'c_confirm'], true)): ?>
+  <?php if (!in_array($step, ['forgot', 'forgot_code', 'forgot_pick', 'forgot_pw', 'wa', 'c_code', 'c_unlock', 'c_setup', 'c_forgot', 'c_prove', 'c_create', 'c_confirm', 'c_walogin'], true)): ?>
   <div class="links">
     <?php if ($step === 'start' && $codeFirst): ?><a href="<?= $h($odUrl(['step' => 'c_code', 'classic' => false])) ?>">🪪 कोड + PIN / Pattern ले भित्र · Sign in with code + PIN</a><?php endif; ?>
     <?php if ($step === 'start'): ?><a href="<?= $h($odUrl(['step' => 'forgot'])) ?>">🔑 पासवर्ड बिर्सनुभयो? · Forgot password?</a><?php endif; ?>
@@ -915,7 +966,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 })();
 </script>
 <?php endif; ?>
-<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115d" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115e" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
 <?php if (($remembered ?? null) !== null || $cPad): ?><script>
 (function(){
@@ -1411,6 +1462,6 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115d" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115e" data-next="<?= $meUrl ?>"></script><?php endif; ?>
 <?php endif; ?>
 </body></html>

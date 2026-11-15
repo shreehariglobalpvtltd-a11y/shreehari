@@ -94,7 +94,7 @@ if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $r = CodeLogin::officeSetDetails((int) ($_POST['aid'] ?? 0), (string) ($_POST['dob'] ?? ''), (string) ($_POST['mobile'] ?? ''),
             (string) ($_POST['cc'] ?? '91'), $me, $isSa);
         $flash = $r['ok']
-            ? ['ok', '✅ ' . $r['name'] . ' — लगइन तयार। पहिलो पटक: आफ्नो code → जन्म मिति + मोबाइल → WhatsApp (hi / QR) → आफ्नै PIN / pattern · Login ready: code → DOB + mobile → WhatsApp → own PIN / pattern.']
+            ? ['ok', '✅ ' . $r['name'] . ' — लगइन तयार। पहिलो पटक: आफ्नो code → मोबाइल → WhatsApp (hi / QR) → आफ्नै PIN / pattern · Login ready: code → mobile → WhatsApp hi + YES → own PIN / pattern.']
             : ['bad', (string) $r['error']];
     } elseif ($act === 'reject') {
         $n = Database::run("UPDATE login_recovery_requests SET status = 'rejected', decided_by = :m, decided_at = NOW() WHERE id = :i AND status = 'open'",
@@ -162,7 +162,7 @@ admin_header('Login setup & PIN · लगइन तयार', 'login-requests.p
   $pre = (int) ($_GET['aid'] ?? 0); ?>
   <div class="lr-card" id="ready">
     <h2>🆔 लगइन तयार गर्ने · Set up a login</h2>
-    <p class="muted">एजेन्ट / स्टाफ छान्नुहोस्, जन्म मिति र WhatsApp मोबाइल राख्नुहोस्। पहिलो पटक उहाँले आफ्नो code, यही जन्म मिति र मोबाइल हाल्नुहुन्छ, WhatsApp मा hi (वा QR scan) गर्नुहुन्छ, अनि आफ्नै PIN / pattern राख्नुहुन्छ। Office ले PIN कहिल्यै राख्दैन।</p>
+    <p class="muted">एजेन्ट / स्टाफ छान्नुहोस् र WhatsApp मोबाइल राख्नुहोस्। पहिलो पटक उहाँले आफ्नो code र यही मोबाइल हाल्नुहुन्छ, WhatsApp मा hi (वा QR scan) गरेर YES गर्नुहुन्छ, अनि आफ्नै PIN / pattern र सुरक्षा प्रश्न राख्नुहुन्छ। Office ले PIN कहिल्यै राख्दैन।</p>
     <form method="post" class="lr-ready" autocomplete="off"><?= Security::csrfField() ?><input type="hidden" name="act" value="details">
       <label>👤 को? · Who
         <select name="aid" required>
@@ -172,7 +172,7 @@ admin_header('Login setup & PIN · लगइन तयार', 'login-requests.p
               . (((string) ($a['pin_hash'] ?? '') !== '' || (string) ($a['pattern_hash'] ?? '') !== '') ? ' · PIN ✓' : '')) ?></option>
           <?php endforeach; ?>
         </select></label>
-      <label>🎂 जन्म मिति · Date of birth<input type="date" name="dob" required min="1930-01-01" max="<?= $e(date('Y-m-d', strtotime('-1 day'))) ?>"></label>
+      <label>🎂 जन्म मिति (ऐच्छिक) · Date of birth (optional)<input type="date" name="dob" min="1930-01-01" max="<?= $e(date('Y-m-d', strtotime('-1 day'))) ?>"></label>
       <label>📱 WhatsApp मोबाइल · Mobile
         <span class="lr-ph"><select name="cc" aria-label="Country"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>
         <input name="mobile" type="tel" inputmode="numeric" maxlength="14" required placeholder="98XXXXXXXX"></span></label>

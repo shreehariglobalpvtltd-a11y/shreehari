@@ -145,7 +145,7 @@ $pwField = $fresh ? '' : '<label>हालको पासवर्ड · Curren
           <option value="own">आफ्नै प्रश्न लेख्ने · Write my own</option>
         </select></label>
       <label id="quOwn" hidden>तपाईंको प्रश्न · Your question<input type="text" name="sec_own" maxlength="150"></label>
-      <label>उत्तर · Answer<input id="quA" type="date" name="sec_a" maxlength="80" required></label>
+      <label>उत्तर · Answer<input id="quA" type="text" name="sec_a" maxlength="80" required></label>
       <button class="btn ok" type="submit"><?= $hasQ ? 'बदल्नुहोस् · Change' : 'राख्नुहोस् · Save' ?></button>
     </form>
   </div>

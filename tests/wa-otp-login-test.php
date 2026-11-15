@@ -210,6 +210,82 @@ check('India number must start 6-9', CodeLogin::officeSetDetails($aNew, '1992-02
 check('own account refused', CodeLogin::officeSetDetails($aNew, '1992-02-29', '9812345611', '977', $aNew, true)['ok'] === false);
 check('office account only by a super-admin', CodeLogin::officeSetDetails($aMgr, '1980-01-01', '9812345612', '977', $aOk, false)['ok'] === false);
 check('...and a super-admin may', CodeLogin::officeSetDetails($aMgr, '1980-01-01', '7000002202', '91', $aOk, true)['ok'] === true);
+/* ------------------------------------------------------------------ */
+Settings::set('login_ask_dob', false, 'bool', 'security', false);   // the default door
+$hiYes = static function (string $intl, string $text): void {
+    WaVerify::inbound($intl, $text);
+    WaVerify::inbound($intl, 'YES');
+};
+
+section('First time: agent code + mobile only, then WhatsApp hi + YES');
+Database::run('DELETE FROM ap_members WHERE admin_id = :i', ['i' => $aNew]);   // no DOB on file at all
+fresh();
+CodeLogin::enter($code(984));
+$r = CodeLogin::identity('', '9812345611');
+$w = $_SESSION[CodeLogin::KEY]['wa'] ?? null;
+check('mobile alone (no DOB) -> WhatsApp step with the hi link ready', ($r['step'] ?? '') === 'c_prove' && is_array($w) && empty($w['decoy']), json_encode($r));
+check('the hi link is a real token for the registered number',
+    (string) Database::scalar('SELECT intl FROM wa_verify WHERE token = :t', ['t' => (string) ($w['token'] ?? '')], '') === '9779812345611');
+$hiYes('9779812345611', (string) ($w['text'] ?? ''));
+$r = CodeLogin::hiDone();
+check('hi + YES from that WhatsApp -> choose the PIN', ($r['step'] ?? '') === 'c_create', json_encode($r));
+fresh();
+CodeLogin::enter($code(984));
+CodeLogin::identity('', '9812345699');
+check('wrong mobile -> same screen, but the hi link is a decoy', !empty($_SESSION[CodeLogin::KEY]['wa']['decoy']));
+fresh();
+CodeLogin::enter($code(984));
+$r = CodeLogin::identity('', '');
+check('no mobile -> asked again', ($r['step'] ?? '') === 'c_setup');
+
+section('Forgot: code + mobile + security question -> new PIN straight away');
+QuickUnlock::secSet($aOk, QuickUnlock::SEC_QUESTIONS['mother'], 'Sita Devi');
+fresh();
+CodeLogin::enter($code(980));
+CodeLogin::forgot();
+check('the forgot screen shows the account\'s question', CodeLogin::forgotQuestion() === QuickUnlock::SEC_QUESTIONS['mother']);
+$r = CodeLogin::identity('', $PH[0], 'Gita');
+check('wrong answer: "did not match", no PIN step', ($r['step'] ?? '') === 'c_forgot' && !CodeLogin::proved(), json_encode($r));
+$r = CodeLogin::identity('', '9800000000', 'sita devi');
+check('right answer + wrong mobile: refused', ($r['step'] ?? '') === 'c_forgot' && !CodeLogin::proved());
+$r = CodeLogin::identity('', $PH[0], '  sita  DEVI ');
+check('mobile + answer (any case / spaces) -> new PIN step', ($r['step'] ?? '') === 'c_create' && CodeLogin::proved(), json_encode($r));
+$r = CodeLogin::createFirst('pin', '913572');
+$r = CodeLogin::createConfirm('913572');
+check('new PIN saved and signed in', ($r['go'] ?? '') === 'home' && sid() === $aOk, json_encode($r));
+fresh();
+CodeLogin::enter($code(980));
+check('old PIN stops', empty(CodeLogin::unlock('pin', '4826')['go']));
+fresh();
+CodeLogin::enter($code(980));
+check('new PIN opens', (CodeLogin::unlock('pin', '913572')['go'] ?? '') === 'home');
+fresh();
+CodeLogin::enter($code(980));
+CodeLogin::forgot();
+$last = [];
+for ($i = 0; $i < 6; $i++) { $last = CodeLogin::identity('', $PH[0], 'wrong' . $i); }
+check('answer tries are limited (5 a day per account)', str_contains((string) ($last['error'] ?? ''), 'Too many'), json_encode($last));
+Database::run("DELETE FROM rate_limits WHERE bucket LIKE 'code_login%'");
+
+section('Unlock screen: WhatsApp hi + YES opens an agent');
+fresh();
+CodeLogin::enter($code(980));
+CodeLogin::waLoginSend();
+$wl = $_SESSION[CodeLogin::KEY]['wlhi'] ?? null;
+check('hi link ready on the WhatsApp screen (real token)', is_array($wl) && empty($wl['decoy']));
+$r = CodeLogin::waLoginHiDone();
+check('before YES: not opened', empty($r['go']) && sid() === 0);
+$hiYes('91' . $PH[0], (string) ($wl['text'] ?? ''));
+$r = CodeLogin::waLoginHiDone();
+check('hi + YES -> signed in', ($r['go'] ?? '') === 'home' && sid() === $aOk, json_encode($r) . ' sid=' . sid());
+fresh();
+CodeLogin::enter('wl1_mgr');
+CodeLogin::waLoginSend();
+check('office account: the hi link is a decoy', !empty($_SESSION[CodeLogin::KEY]['wlhi']['decoy']));
+check('...and never opens', empty(CodeLogin::waLoginHiDone()['go']) && sid() === 0);
+Database::run("DELETE FROM wa_verify WHERE phone IN ('" . implode("','", $PH) . "', '9812345611')");
+Database::run("UPDATE admins SET sec_q = NULL, sec_a_hash = NULL WHERE id = :i", ['i' => $aOk]);
+Database::run("DELETE FROM settings WHERE skey = 'login_ask_dob'");
 try { Database::run('DELETE FROM admin_profiles WHERE admin_id IN (' . (int) $aNew . ',' . (int) $aMgr . ')'); } catch (Throwable $e) {}
 
 echo "\n" . ($FAIL === 0 ? "ALL PASS: $PASS" : "FAILED: $FAIL (passed $PASS)") . "\n";

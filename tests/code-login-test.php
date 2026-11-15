@@ -54,6 +54,13 @@ if (!CodeLogin::ready() || !QuickUnlock::strikesReady()) {
 Settings::set('quick_unlock_on', true, 'bool', 'security', false);
 Settings::set('login_code_first_on', true, 'bool', 'security', false);
 Settings::set('login_pin_required', true, 'bool', 'security', false);
+// 15 Nov 2026: the default door asks the mobile only; this suite keeps covering the DOB variant
+$oldDob = Database::scalar("SELECT svalue FROM settings WHERE skey = 'login_ask_dob'", [], null);
+register_shutdown_function(static function () use ($oldDob): void {
+    $oldDob === null ? Database::run("DELETE FROM settings WHERE skey = 'login_ask_dob'")
+                     : Database::run("UPDATE settings SET svalue = :v WHERE skey = 'login_ask_dob'", ['v' => (string) $oldDob]);
+});
+Settings::set('login_ask_dob', true, 'bool', 'security', false);
 CodeLogin::$evenTiming = false;
 // the local box has no whatsapp/config.php: the 2FA send goes through the no-network driver here
 $oldDrv = Database::scalar("SELECT svalue FROM settings WHERE skey = 'whatsapp_driver'", [], null);

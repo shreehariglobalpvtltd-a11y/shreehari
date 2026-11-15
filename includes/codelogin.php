@@ -339,8 +339,8 @@ final class CodeLogin
         if (!in_array((string) $acct['role'], Auth::OTP_DOOR_ROLES, true) && !$bySuper) {
             return ['ok' => false, 'error' => 'अफिस खाता super-admin ले मात्र · Only a super-admin may set up an office account.'];
         }
-        $dob = trim($dob);
-        if (!Security::isValidDate($dob) || $dob >= date('Y-m-d') || $dob < '1930-01-01') {
+        $dob = trim($dob);   // 15 Nov 2026: optional now (the first-time door asks the mobile only)
+        if ($dob !== '' && (!Security::isValidDate($dob) || $dob >= date('Y-m-d') || $dob < '1930-01-01')) {
             return ['ok' => false, 'error' => 'सही जन्म मिति छान्नुहोस् · Choose a valid date of birth.'];
         }
         $cc  = $cc === '977' ? '977' : '91';
@@ -351,7 +351,9 @@ final class CodeLogin
         require_once __DIR__ . '/agentpro.php';
         $oldP10 = TeamPortal::phone10((string) ($acct['phone'] ?? ''));
         Database::transaction(static function () use ($aid, $dob, $p10, $cc, $by): void {
-            AgentPro::saveCard($aid, ['dob' => $dob], $by);   // creates the member row when missing
+            if ($dob !== '') {
+                AgentPro::saveCard($aid, ['dob' => $dob], $by);   // creates the member row when missing
+            }
             Database::update('admins', ['phone' => $p10], 'id = :i', ['i' => $aid]);
             try {
                 Database::run('INSERT INTO admin_profiles (admin_id, country_code) VALUES (:a, :c) ON DUPLICATE KEY UPDATE country_code = VALUES(country_code)',
@@ -361,7 +363,7 @@ final class CodeLogin
             }
         });
         Logger::audit('admin.login.details_set', 'admin', (string) $aid,
-            ['mobile' => $oldP10 !== '' ? maskPhone($oldP10) : null], ['mobile' => maskPhone($p10), 'cc' => $cc, 'dob' => 'set'],
+            ['mobile' => $oldP10 !== '' ? maskPhone($oldP10) : null], ['mobile' => maskPhone($p10), 'cc' => $cc, 'dob' => $dob !== '' ? 'set' : 'unchanged'],
             'Office set DOB + mobile for the first-time PIN door (admin #' . $by . ')');
         $nm = trim((string) ($acct['full_name'] ?? ''));
         return ['ok' => true, 'name' => $nm !== '' ? $nm : (string) $acct['username']];
@@ -431,8 +433,65 @@ final class CodeLogin
             Logger::info('Code door: WhatsApp sign-in asked for a code that does not open by WhatsApp', ['admin' => $aid], 'otp');
         }
         $_SESSION[self::KEY]['wl'] = time();
+        /* 15 Nov 2026 (owner: "WhatsApp OTP strong — API le automatic message garne, uta bata reply"):
+           the sure way is the person's own "hi" (one tap, or the QR from a desktop): it opens the
+           WhatsApp window, the bot answers at once and asks YES, and the page opens by itself.
+           The 6-digit code above only reaches a number whose window is already open. */
+        $_SESSION[self::KEY]['wlhi'] = self::hiToken($intl !== '' ? $intl : '', 'login');
         self::evenTime($t0);
         return ['step' => 'c_walogin', 'notice' => 'यो खाता WhatsApp ले खुल्ने भए दर्ता गरिएको WhatsApp मा ६ अङ्कको कोड पठाइयो · If this account opens by WhatsApp, a 6-digit code went to its registered WhatsApp.'];
+    }
+
+    /**
+     * A WhatsApp "hi VERIFY …" token: real (WaVerify row bound to $intl) when $intl is given,
+     * else a decoy that proves nothing — the screen looks the same either way.
+     *
+     * @return array{token: string, url: string, text: string, decoy?: bool}
+     */
+    private static function hiToken(string $intl, string $purpose): array
+    {
+        if ($intl !== '' && WaVerify::ready()) {
+            try {
+                $w = WaVerify::start($purpose, substr($intl, -10), '', Security::clientIp(), $intl);
+                return ['token' => $w['token'], 'url' => $w['url'], 'text' => $w['text']];
+            } catch (Throwable $e) {
+                Logger::warning('Code door: WhatsApp hi could not start: ' . $e->getMessage(), [], 'security');
+            }
+        }
+        $tok = '';
+        for ($i = 0; $i < 6; $i++) {
+            $tok .= 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[random_int(0, 31)];
+        }
+        $text = 'hi VERIFY ' . $tok . ($purpose === 'login' ? ' — LOGIN · लगइन' : ' — PASSWORD RESET · पासवर्ड रिसेट');
+        return ['token' => $tok, 'url' => 'https://wa.me/' . WaVerify::companyNumber() . '?text=' . rawurlencode($text), 'text' => $text, 'decoy' => true];
+    }
+
+    /** The person sent "hi" and replied YES from the account's own WhatsApp → the session opens. */
+    public static function waLoginHiDone(): array
+    {
+        $s = self::state();
+        if ($s === null || !is_array($s['wlhi'] ?? null)) {
+            return ['step' => 'c_code', 'error' => 'फेरि सुरु गर्नुहोस् · Please start again.'];
+        }
+        if (!Security::rateLimit('code_login_wl_hi', Security::clientIp(), 30, 600)) {
+            return ['step' => 'c_walogin', 'error' => 'धेरै पटक भयो — १० मिनेटपछि फेरि · Too many tries, wait 10 minutes.'];
+        }
+        $aid  = (int) ($s['aid'] ?? 0);
+        $intl = self::waLoginIntl($aid);
+        $ok = $intl !== '' && empty($s['wlhi']['decoy']) && WaVerify::consumeLogin((string) $s['wlhi']['token'], $intl);
+        if (!$ok) {
+            return ['step' => 'c_walogin', 'error' => 'अझै पुष्टि भएन — दर्ता गरिएको WhatsApp बाट hi पठाएर YES गर्नुहोस् · Not confirmed yet: send hi from your REGISTERED WhatsApp, then reply YES.'];
+        }
+        unset($_SESSION[self::KEY]['wlhi'], $_SESSION[self::KEY]['debug']);
+        $admin = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $aid]);
+        if ($admin === null) {
+            return ['step' => 'c_code', 'error' => 'फेरि सुरु गर्नुहोस् · Please start again.'];
+        }
+        $r = self::open($admin, 'whatsapp_hi');
+        if (($r['step'] ?? '') === 'c_unlock') {
+            $r['step'] = 'c_walogin';
+        }
+        return $r;
     }
 
     /** The 6-digit WhatsApp code typed on c_walogin → the session opens. */
@@ -494,25 +553,53 @@ final class CodeLogin
     }
 
     /**
-     * Compare what was typed with the record. The reply is the same whatever the
-     * result; the result is kept in this session only and decides whether the
-     * WhatsApp proof below is real.
+     * 15 Nov 2026 (owner: "suru ma boot garda mobile number ra agent code matra — date of birth
+     * hatau; forget garna security question"): the first-time door asks the REGISTERED mobile
+     * only (DOB again only with setting login_ask_dob = 1). Then the registered WhatsApp proves it
+     * ("hi" + YES, QR, or a code) — the WhatsApp is the real proof, the mobile only points at it.
+     *
+     * Forgot PIN / pattern: an account WITH a security question answers it with its mobile and
+     * goes straight to a new PIN / pattern (5 tries a day per account, audited, the old PIN /
+     * pattern stops). Without a question it proves the WhatsApp as above.
+     *
+     * The setup reply is the same whatever the result (the WhatsApp step tells nothing); a
+     * security-question miss says "did not match" (it has no WhatsApp step to hide behind).
      *
      * @return array{step: string, error?: string, notice?: string}
      */
-    public static function identity(string $dob, string $mobile): array
+    public static function askDob(): bool
+    {
+        return Settings::getBool('login_ask_dob', false);
+    }
+
+    /** The question shown on "Forgot" for this account ('' = none: the WhatsApp proves it). */
+    public static function forgotQuestion(): string
+    {
+        $aid = (int) (self::state()['aid'] ?? 0);
+        return $aid > 0 ? QuickUnlock::secQuestion($aid) : '';
+    }
+
+    public static function identity(string $dob, string $mobile, string $answer = ''): array
     {
         $s = self::state();
         if ($s === null) {
             return ['step' => 'c_code', 'error' => 'फेरि कोड लेख्नुहोस् · Please type your code again.'];
         }
-        $back = ($s['purpose'] ?? 'setup') === 'reset' ? 'c_forgot' : 'c_setup';
+        $reset = ($s['purpose'] ?? 'setup') === 'reset';
+        $back  = $reset ? 'c_forgot' : 'c_setup';
         $dob = trim($dob);
         $p10 = TeamPortal::phone10($mobile);
-        if (!Security::isValidDate($dob) || $p10 === '') {
-            return ['step' => $back, 'error' => 'जन्म मिति र १० अङ्कको मोबाइल नम्बर लेख्नुहोस् · Enter your date of birth and 10-digit mobile number.'];
+        $askDob = self::askDob();
+        if ($p10 === '' || ($askDob && !Security::isValidDate($dob))) {
+            return ['step' => $back, 'error' => $askDob
+                ? 'जन्म मिति र १० अङ्कको मोबाइल नम्बर लेख्नुहोस् · Enter your date of birth and 10-digit mobile number.'
+                : 'दर्ता गरिएको १० अङ्कको मोबाइल नम्बर लेख्नुहोस् · Enter your registered 10-digit mobile number.'];
         }
         $aid = (int) ($s['aid'] ?? 0);
+        $secQ = $reset && $aid > 0 ? QuickUnlock::secQuestion($aid) : '';
+        if ($secQ !== '' && trim($answer) === '') {
+            return ['step' => $back, 'error' => 'सुरक्षा प्रश्नको उत्तर लेख्नुहोस् · Type the answer to your security question.'];
+        }
         $ip  = Security::clientIp();
         if (!Security::rateLimit('code_login_id_ip', $ip, 10, 3600, 3600)
             || !Security::rateLimit('code_login_id_acc', $aid > 0 ? 'a' . $aid : 'c' . strtoupper((string) $s['code']), 5, 86400, 86400)) {
@@ -523,13 +610,13 @@ final class CodeLogin
         $why = 'no_account';
         if ($aid > 0) {
             $row = Database::fetch('SELECT id, phone, is_active FROM admins WHERE id = :i', ['i' => $aid]);
-            $recDob = self::recordDob($aid);
+            $recDob = $askDob ? self::recordDob($aid) : '';
             $recP10 = TeamPortal::phone10((string) ($row['phone'] ?? ''));
             if ($row === null || (int) $row['is_active'] !== 1) {
                 $why = 'inactive';
-            } elseif ($recDob === '' || $recP10 === '') {
+            } elseif ($recP10 === '' || ($askDob && $recDob === '')) {
                 $why = 'no_details';
-            } elseif (hash_equals($recDob, $dob) && hash_equals($recP10, $p10)) {
+            } elseif (hash_equals($recP10, $p10) && (!$askDob || hash_equals($recDob, $dob))) {
                 $match = true;
                 $why = 'match';
                 $_SESSION[self::KEY]['p10']  = $recP10;
@@ -538,14 +625,30 @@ final class CodeLogin
                 $why = 'no_match';
             }
         }
+        if ($secQ !== '') {
+            $okQ = $match && QuickUnlock::secCheck($aid, $answer);
+            Logger::audit('admin.login.secq_check', 'admin', (string) $aid, null, ['result' => $okQ ? 'match' : ($match ? 'answer_wrong' : $why)],
+                'Code door: forgot PIN by mobile + security question (values not logged)');
+            self::evenTime($t0);
+            if (!$okQ) {
+                return ['step' => $back, 'error' => 'मोबाइल वा उत्तर मिलेन · The mobile or the answer did not match.'];
+            }
+            $_SESSION[self::KEY]['idok'] = true;
+            $_SESSION[self::KEY]['idwhy'] = 'match';
+            unset($_SESSION[self::KEY]['wa']);
+            return self::proven('security_question');
+        }
         $_SESSION[self::KEY]['idok'] = $match;
         $_SESSION[self::KEY]['idwhy'] = $why;
         $_SESSION[self::KEY]['t'] = time();
         unset($_SESSION[self::KEY]['wa'], $_SESSION[self::KEY]['ver']);
         Logger::audit('admin.login.identity_check', 'admin', (string) $aid, null,
-            ['purpose' => (string) ($s['purpose'] ?? 'setup'), 'result' => $why], 'Code door: DOB + mobile checked (values not logged)');
+            ['purpose' => (string) ($s['purpose'] ?? 'setup'), 'result' => $why], 'Code door: mobile' . ($askDob ? ' + DOB' : '') . ' checked (values not logged)');
         self::evenTime($t0);
-        return ['step' => 'c_prove', 'notice' => 'अब दर्ता गरिएको WhatsApp बाट पुष्टि गर्नुहोस् · Now confirm from your REGISTERED WhatsApp number.'];
+        // the WhatsApp "hi" link + QR are ready on the next screen (no extra tap)
+        $h = self::hiStart();
+        return ['step' => 'c_prove', 'notice' => 'अब दर्ता गरिएको WhatsApp बाट hi पठाएर YES गर्नुहोस् · Now send hi from your REGISTERED WhatsApp and reply YES.']
+            + (isset($h['error']) ? ['error' => (string) $h['error']] : []);
     }
 
     /* =================================================================
@@ -802,6 +905,9 @@ final class CodeLogin
         if ($admin === null) {
             return ['step' => 'c_code'];
         }
+        if ($reset && ($s['how'] ?? '') === 'security_question') {
+            self::alertReset($admin);   // the owner of the number hears that the PIN / pattern changed
+        }
         $r = self::open($admin, $kind);
         if (isset($r['go'])) {
             $r['flash'] = 'pin_saved';
@@ -826,6 +932,23 @@ final class CodeLogin
             return Notify::whatsapp($intl, $text, null, null, [], null, ['purpose' => 'otp']) === true;
         } catch (Throwable $e) {
             return false;
+        }
+    }
+
+    /** Best effort: "your PIN / pattern was changed" to the account's own WhatsApp (never blocks the reset). */
+    private static function alertReset(array $admin): void
+    {
+        try {
+            $p10 = TeamPortal::phone10((string) ($admin['phone'] ?? ''));
+            if ($p10 === '' || self::$deliverHook !== null) {
+                return;
+            }
+            require_once __DIR__ . '/notify.php';
+            $intl = TeamPortal::intlFor($p10, ['id' => (int) $admin['id'], 'phone' => (string) $admin['phone']]);
+            Notify::whatsapp($intl, Settings::getString('company_name', APP_NAME) . ' — तपाईंको PIN / pattern अहिले सुरक्षा प्रश्नबाट बदलियो ('
+                . date('d M H:i') . ')। तपाईं होइन भने तुरुन्त कार्यालयलाई फोन गर्नुहोस्। · Your PIN / pattern was just changed. Not you? Call the office now.',
+                null, null, [], null, ['purpose' => 'staff_note']);
+        } catch (Throwable $e) {
         }
     }
 

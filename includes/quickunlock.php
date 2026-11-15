@@ -256,10 +256,10 @@ final class QuickUnlock
 
     /** key => the question as shown and stored. */
     public const SEC_QUESTIONS = [
-        'dob'    => 'तपाईंको जन्म मिति? · Your date of birth?',
         'mother' => 'आमाको नाम? · Your mother\'s name?',
         'school' => 'पहिलो स्कुलको नाम? · Name of your first school?',
         'place'  => 'जन्मेको गाउँ / सहर? · Village or town you were born in?',
+        'dob'    => 'तपाईंको जन्म मिति? · Your date of birth?',
     ];
 
     private static ?bool $secReady = null;
