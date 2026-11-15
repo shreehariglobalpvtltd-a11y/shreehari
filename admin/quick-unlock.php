@@ -31,6 +31,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if ($hash === '' || !Security::verifyPassword((string) ($_POST['current_password'] ?? ''), $hash)) {
             throw new RuntimeException('हालको पासवर्ड मिलेन · Your current password did not match.');
         }
+        // 15 Nov 2026 (code-first login): new PINs are 6 digits, and the last way in cannot be removed
+        require_once INCLUDE_PATH . '/codelogin.php';
+        $stNow = QuickUnlock::status($id);
+        if (CodeLogin::required() && (($act === 'remove_pin' && !$stNow['pattern']) || ($act === 'remove_pattern' && !$stNow['pin']))) {
+            throw new RuntimeException('PIN वा pattern मध्ये एउटा अनिवार्य छ — पहिले अर्को राख्नुहोस् · One of PIN or pattern is required: set the other one first.');
+        }
+        if ($act === 'set_pin' && CodeLogin::on() && preg_match('/^\d{6}$/', trim((string) ($_POST['pin'] ?? ''))) !== 1) {
+            throw new RuntimeException('PIN ठ्याक्कै ६ अङ्कको हुनुपर्छ · The PIN must be exactly 6 digits.');
+        }
         switch ($act) {
             case 'set_pin':
                 $pin = trim((string) ($_POST['pin'] ?? ''));

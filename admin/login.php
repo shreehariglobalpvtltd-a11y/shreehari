@@ -40,11 +40,18 @@ $safeNext = (preg_match('/^[A-Za-z0-9_\-]+\.php(\?[A-Za-z0-9_=&%.\-]*)?$/', $nex
    ===================================================================== */
 if (Auth::oneDoorOn()) {
     require_once INCLUDE_PATH . '/onedoor.php';
+    require_once INCLUDE_PATH . '/codelogin.php';   // 15 Nov 2026: code -> PIN / pattern -> own dashboard
 
     // where to go back to: only these two pages (never a URL from the request)
     $back = (string) ($_GET['back'] ?? ($_POST['back'] ?? ''));
     $back = in_array($back, ['me', 'team'], true) ? $back : '';
     $keepNext = $safeNext !== 'index.php' ? $safeNext : '';
+    /* 15 Nov 2026: the code-first door leads (CodeLogin::on, setting login_code_first_on).
+       ?classic=1 keeps the old one door (mobile / ID + password, WhatsApp code / hi) as
+       the office's recovery route while everyone moves to a PIN / pattern; a sign-in
+       there still has to set a PIN / pattern before any page opens (Auth::requireAdmin). */
+    $codeFirst = CodeLogin::on();
+    $classic   = $codeFirst && (string) ($_GET['classic'] ?? ($_POST['classic'] ?? '')) === '1';
     $odDest = static function (string $go = 'home') use ($keepNext, $back): string {
         if ($go === 'team') {
             return '/team/';
@@ -58,8 +65,8 @@ if (Auth::oneDoorOn()) {
             default => Auth::homeUrl(),
         };
     };
-    $odUrl = static function (array $q = []) use ($keepNext, $back): string {
-        $q = array_filter(['step' => $q['step'] ?? null, 'next' => $keepNext !== '' ? $keepNext : null, 'back' => $back !== '' ? $back : null],
+    $odUrl = static function (array $q = []) use ($keepNext, $back, $classic): string {
+        $q = array_filter(['step' => $q['step'] ?? null, 'classic' => ($q['classic'] ?? $classic) ? '1' : null, 'next' => $keepNext !== '' ? $keepNext : null, 'back' => $back !== '' ? $back : null],
             static fn($v): bool => $v !== null && $v !== '');
         return '/admin/login.php' . ($q !== [] ? '?' . http_build_query($q) : '');
     };
@@ -90,6 +97,19 @@ if (Auth::oneDoorOn()) {
                 return $then === 'send' ? OneDoor::codeSend() : OneDoor::codeVerify((string) ($_POST['otp'] ?? ''));
             };
             $r = match ($mode) {
+                // ---- 15 Nov 2026: the code-first door (includes/codelogin.php holds every decision) ----
+                'c_code'         => CodeLogin::enter((string) ($_POST['code'] ?? '')),
+                'c_unlock'       => CodeLogin::unlock((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),
+                'c_forgot'       => CodeLogin::forgot(),
+                'c_identity'     => CodeLogin::identity((string) ($_POST['dob'] ?? ''), (string) ($_POST['mobile'] ?? '')),
+                'c_hi'           => CodeLogin::hiStart(),
+                'c_hi_done'      => CodeLogin::hiDone(),
+                'c_code_send'    => CodeLogin::codeSend(),
+                'c_otp'          => CodeLogin::codeCheck((string) ($_POST['otp'] ?? '')),
+                'c_act'          => CodeLogin::activation((string) ($_POST['act'] ?? '')),
+                'c_req'          => CodeLogin::request((string) ($_POST['note'] ?? '')),
+                'c_create'       => CodeLogin::createFirst((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),
+                'c_confirm'      => CodeLogin::createConfirm((string) ($_POST['qk_val'] ?? '')),
                 'who'            => OneDoor::who((string) ($_POST['who'] ?? ''), (string) ($_POST['cc'] ?? '91')),
                 'pw'             => OneDoor::password((string) ($_POST['password'] ?? '')),
                 'quick'          => OneDoor::quick((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),
@@ -170,6 +190,9 @@ if (Auth::oneDoorOn()) {
                 if (($me = Auth::admin()) !== null) {
                     QuickUnlock::rememberDevice((int) $me['id']);
                 }
+                if (($r['flash'] ?? '') === 'pin_saved') {
+                    $_SESSION['home_flash'] = '✅ PIN / pattern राखियो — अबदेखि कोड र PIN / pattern ले मात्र भित्र आउनुहोस् · Saved. From now on sign in with your code and PIN / pattern.';
+                }
                 if (($r['flash'] ?? '') === 'saved') {
                     $_SESSION['home_flash'] = '✅ नयाँ पासवर्ड राखियो, तपाईं भित्र आउनुभयो · New password saved — you are signed in.';
                     if ($r['go'] === 'team') {
@@ -189,8 +212,36 @@ if (Auth::oneDoorOn()) {
         }
         if ((string) ($_GET['forget'] ?? '') === '1') {
             QuickUnlock::forgetDevice();   // "Not you?" — this browser forgets the account
+            CodeLogin::clear();
         }
-        $step = in_array($want, OneDoor::STEPS, true) ? $want : 'start';
+        $step = in_array($want, OneDoor::STEPS, true) || in_array($want, CodeLogin::STEPS, true) ? $want : 'start';
+        if ($want === 'c_code') {
+            CodeLogin::clear();
+        }
+        // a remembered phone opens straight on its own code (never a typed or posted one)
+        if ($codeFirst && !$classic && $step === 'start' && (string) ($_GET['other'] ?? '') !== '1'
+            && (string) ($_GET['forget'] ?? '') !== '1' && QuickUnlock::rememberedDevice() !== null) {
+            $step = CodeLogin::enterRemembered()['step'];
+        }
+    }
+    /* 15 Nov 2026: code-first steps show only with what they need; the classic "start"
+       becomes the code box unless ?classic=1 asked for the old door. */
+    if ($codeFirst) {
+        $cs = CodeLogin::state();
+        if ($step === 'start' && !$classic) {
+            $step = 'c_code';
+        }
+        $step = match (true) {
+            !in_array($step, CodeLogin::STEPS, true)                         => $step,
+            $step === 'c_code'                                               => 'c_code',
+            $cs === null                                                     => 'c_code',
+            in_array($step, ['c_create', 'c_confirm'], true) && !CodeLogin::proved() => (isset($cs['idok']) ? 'c_prove' : 'c_unlock'),
+            $step === 'c_confirm' && !is_array($cs['pend'] ?? null)          => 'c_create',
+            $step === 'c_prove' && !isset($cs['idok'])                       => (($cs['purpose'] ?? '') === 'reset' ? 'c_forgot' : (($cs['purpose'] ?? '') === 'setup' ? 'c_setup' : 'c_unlock')),
+            default                                                          => $step,
+        };
+    } elseif (in_array($step, CodeLogin::STEPS, true)) {
+        $step = 'start';
     }
 
     // a step only shows with what it needs; otherwise one step back
@@ -221,7 +272,8 @@ if (Auth::oneDoorOn()) {
     $h   = static fn($v): string => Security::e((string) ($v ?? ''));
     $hid = static fn(): string => Security::csrfField()
         . ($keepNext !== '' ? '<input type="hidden" name="next" value="' . Security::e($keepNext) . '">' : '')
-        . ($back !== '' ? '<input type="hidden" name="back" value="' . Security::e($back) . '">' : '');
+        . ($back !== '' ? '<input type="hidden" name="back" value="' . Security::e($back) . '">' : '')
+        . ($classic ? '<input type="hidden" name="classic" value="1">' : '');
     $ccSel = static function (string $sel) use ($h): string {
         $o = '';
         foreach (TeamPortal::COUNTRIES as $k => $lbl) {
@@ -253,8 +305,29 @@ if (Auth::oneDoorOn()) {
         'pick'      => '🪪 कुन ID खोल्ने? · Which ID?',
         'admin_otp' => '🔐 WhatsApp कोड · Login code',
         'wa'        => '💬 WhatsApp मा hi पठाउनुहोस् · Send hi',
+        'c_setup'   => '🆕 पहिलो पटक · First-time setup',
+        'c_forgot'  => '🔑 PIN / Pattern बिर्सनुभयो? · Forgot PIN / Pattern',
+        'c_prove'   => '✅ आफ्नो नम्बर पुष्टि · Confirm it is you',
+        'c_create'  => '🔐 PIN वा Pattern राख्नुहोस् · Choose a PIN or pattern',
+        'c_confirm' => '🔁 फेरि उही · Once more to confirm',
         default     => 'लगइन · Sign in',
     };
+    $cs      = $codeFirst ? CodeLogin::state() : null;
+    $cAid    = (int) ($cs['aid'] ?? 0);
+    $cKinds  = CodeLogin::kinds($cAid);
+    $cLock   = $step === 'c_unlock' && !empty($cs['dev']);   // remembered phone: Android-style lock look
+    $cWa     = $step === 'c_prove' && is_array($cs['wa'] ?? null) ? (array) $cs['wa'] : null;
+    if ($cWa !== null) {
+        $waPoll = $cWa;   // same polling whether the details matched or not (the page tells nothing)
+    }
+    if ($cWa !== null && $qr === '') {
+        try {
+            require_once INCLUDE_PATH . '/qr.php';
+            $qr = QrCode::dataUri((string) $cWa['url'], 4, 2);
+        } catch (Throwable $e) {
+            $qr = '';
+        }
+    }
     ?><!doctype html>
 <html lang="ne"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -357,22 +430,167 @@ body.lock.shake .qk,body.lock.shake .lk-dots{animation:lkshake .35s}
 @keyframes lkshake{20%,60%{transform:translateX(-9px)}40%,80%{transform:translateX(9px)}}
 @media (max-height:640px){.lk-clock{font-size:40px;margin-top:6px}.lk-keys{grid-template-columns:repeat(3,62px);gap:9px 20px}.lk-keys button{width:62px;height:62px;font-size:22px}body.lock .qk-pad{width:232px;height:232px}}
 @media (prefers-reduced-motion:reduce){body.lock.shake .qk,body.lock.shake .lk-dots{animation:none}}
+/* 15 Nov 2026 — code-first door: the keypad on the white card too */
+body:not(.lock) .lk-keys button{background:#EEF3FA;color:var(--ink);border:1px solid #D5DEEB}
+body:not(.lock) .lk-keys button:active{background:#D9E7FA}
+body:not(.lock) .lk-keys button.s{background:transparent;border-color:transparent;color:var(--royal)}
+body:not(.lock) .lk-keys button.go{background:var(--royal);color:#fff;border-color:var(--royal)}
+:root[data-theme="dark"] body:not(.lock) .lk-keys button{background:#1C2E4D;color:#E8F0FB;border-color:#3A5178}
+.cl-more{margin-top:16px;border-top:1px solid #E1E6EF;padding-top:10px}
+.cl-more summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--mut);text-align:center;list-style:none}
+.cl-more summary::-webkit-details-marker{display:none}
+.cl-small{font-size:12.5px;font-weight:600;opacity:.85}
+.cl-forgot{margin:0}.cl-forgot button{background:none;border:0;padding:6px 0;color:var(--royal);font:inherit;font-weight:600;font-size:13px;cursor:pointer}
+body.lock .cl-forgot button,body.lock .who a{color:#9ABFFF}
+.who span{word-break:break-all}
+@media (max-width:359px){.lk-keys{grid-template-columns:repeat(3,62px);gap:9px 18px}.lk-keys button{width:62px;height:62px;font-size:22px}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('shg_admin_theme');if(t==='dark'||t==='amoled')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 <link rel="manifest" href="/admin/app-manifest.php"><meta name="theme-color" content="#0B1220">
 </head>
-<body<?= ($remembered ?? null) !== null ? ' class="lock"' : '' ?>>
+<body<?= ($remembered ?? null) !== null || $cLock ? ' class="lock"' : '' ?>>
 <main class="box" data-door="one">
   <div class="logo"><img src="<?= $h(Brand::markUrl(68)) ?>" alt="<?= $h($company) ?>" width="112" height="58"></div>
   <h1><?= $h($title) ?></h1>
-  <?php if ($step === 'start'): ?>
+  <?php if ($step === 'start' || $step === 'c_code'): ?>
     <p class="sub">एजेन्ट, काउन्टर, स्टाफ, अफिस — सबैको एउटै ढोका · One door for agents, counters, staff and office</p>
     <div class="ceo"><img src="/assets/img/ceo.jpg" alt="" onerror="this.style.display='none'"><div><b><?= $h($ceoName) ?></b><span>👑 Founder &amp; CEO · <?= $h($company) ?></span></div></div>
   <?php endif; ?>
   <?php if ($error !== ''): ?><div class="msg bad" role="alert"><?= $h($error) ?></div><?php endif; ?>
   <?php if ($notice !== ''): ?><div class="msg ok" role="status"><?= $h($notice) ?></div><?php endif; ?>
 
-  <?php if ($step === 'start' && $remembered !== null): ?>
+  <?php
+  /* ---- 15 Nov 2026: code-first screens. The PIN keypad and the pattern pad are the
+     same widgets as the lock screen; the account is always the one in the server
+     session (CodeLogin::state), never a field of these forms. ---- */
+  $pinForm = static function (string $mode, string $btn, bool $hide = false) use ($hid): string {
+      return '<form method="post" action="/admin/login.php" data-qk-form="pin"' . ($hide ? ' hidden' : '') . ' autocomplete="off">' . $hid()
+          . '<input type="hidden" name="mode" value="' . Security::e($mode) . '"><input type="hidden" name="qk_kind" value="pin">'
+          . '<label for="qkpin_' . Security::e($mode) . '">PIN</label>'
+          . '<input id="qkpin_' . Security::e($mode) . '" class="qk-pin" name="qk_val" type="password" inputmode="numeric" pattern="\d{4,6}" minlength="4" maxlength="6" autocomplete="off" required>'
+          . '<div class="lk-dots" hidden aria-hidden="true"></div>'
+          . '<div class="lk-keys" hidden>' . implode('', array_map(static fn(string $k): string => '<button type="button" data-k="' . $k . '">' . $k . '</button>', ['1','2','3','4','5','6','7','8','9']))
+          . '<button type="button" class="s" data-k="x" aria-label="Delete">⌫</button><button type="button" data-k="0">0</button><button type="button" class="go" data-k="ok" aria-label="OK">OK</button></div>'
+          . '<button class="btn" type="submit">' . Security::e($btn) . '</button></form>';
+  };
+  $patForm = static function (string $mode, string $note, bool $hide = false) use ($hid): string {
+      return '<form method="post" action="/admin/login.php" data-qk-form="pattern"' . ($hide ? ' hidden' : '') . '>' . $hid()
+          . '<input type="hidden" name="mode" value="' . Security::e($mode) . '"><input type="hidden" name="qk_kind" value="pattern"><input type="hidden" name="qk_val" value="">'
+          . '<div class="qk-pad" data-qk-pad aria-label="Pattern"></div><p class="note">' . Security::e($note) . '</p></form>';
+  };
+  $codeLine = static function (bool $lock = false) use ($h, $cs, $odUrl): string {
+      return '<div class="who">' . ($lock ? '🔒 ' : '🪪 ') . '<span>' . $h($cs['code'] ?? '') . '</span> · <a href="' . $h($odUrl(['step' => 'c_code'])) . '&amp;forget=1">⇄ खाता बदल्ने · Change account</a></div>';
+  };
+  $officeBox = static function () use ($hid): string {
+      return '<details class="cl-more"><summary>🏢 नम्बर छैन / विवरण मिलेन? कार्यालयबाट · No access to that number? Ask the office</summary>'
+          . '<form method="post" action="/admin/login.php" autocomplete="off">' . $hid() . '<input type="hidden" name="mode" value="c_act">'
+          . '<label for="act">कार्यालयले दिएको सक्रिय कोड · Activation code from the office</label>'
+          . '<input id="act" name="act" maxlength="12" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" style="text-align:center;letter-spacing:.2em">'
+          . '<button class="btn alt" type="submit">कोडले सक्रिय गर्ने · Use activation code</button></form>'
+          . '<form method="post" action="/admin/login.php" autocomplete="off">' . $hid() . '<input type="hidden" name="mode" value="c_req">'
+          . '<label for="note">कार्यालयले कसरी सम्पर्क गर्ने? (ऐच्छिक) · How can the office reach you? (optional)</label>'
+          . '<input id="note" name="note" maxlength="160" placeholder="नाम / अर्को नम्बर · name / another number">'
+          . '<button class="btn alt" type="submit">📨 कार्यालयलाई प्रमाणित गर्न भन्ने · Ask the office to verify me</button></form>'
+          . '<p class="note">कार्यालयले तपाईंलाई चिनेपछि मात्र कोड दिन्छ · The office gives a code only after confirming who you are.</p></details>';
+  };
+  ?>
+  <?php if ($step === 'c_code'): ?>
+  <form method="post" action="/admin/login.php" autocomplete="on">
+    <?= $hid() ?><input type="hidden" name="mode" value="c_code">
+    <label for="code">एजेन्ट / स्टाफ / एडमिन कोड · Agent / Staff / Admin code</label>
+    <input id="code" name="code" autocomplete="username" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="60" required autofocus
+           placeholder="SHG-0008 / SHG-S-0003" value="<?= $h($cs['code'] ?? '') ?>">
+    <button class="btn" type="submit">अगाडि बढ्नुहोस् · Continue →</button>
+  </form>
+  <p class="note">कोड तपाईंको ID कार्डमा छ · Your code is on your ID card.</p>
+  <?php if (Passkeys::ready()): ?>
+    <div id="pkMsg" class="msg ok" data-cls="msg" hidden></div>
+    <button type="button" class="btn pk" data-pk="login" data-pk-soft hidden>👆 फिंगरप्रिन्ट / Face ID ले भित्र · Fingerprint / Face ID</button>
+  <?php endif; ?>
+  <div class="links"><a href="<?= $h($odUrl(['step' => 'start', 'classic' => true])) ?>" class="cl-small">🔑 पासवर्ड / WhatsApp ले भित्र (पुरानो ढोका) · Password or WhatsApp sign-in</a></div>
+
+  <?php elseif ($step === 'c_unlock'): $cPat = $cKinds['pattern'] && !$cKinds['pin']; ?>
+  <?php if ($cLock): ?><div class="lk-clock" id="lkClock" aria-hidden="true">--:--</div><div class="lk-date" id="lkDate"></div><?php endif; ?>
+  <?= $codeLine($cLock) ?>
+  <div class="qk" data-qk>
+    <div class="qk-tabs" role="tablist">
+      <button type="button"<?= $cPat ? '' : ' class="on"' ?> data-qk-tab="pin">🔢 PIN</button>
+      <button type="button"<?= $cPat ? ' class="on"' : '' ?> data-qk-tab="pattern">◯ Pattern</button>
+    </div>
+    <?= $pinForm('c_unlock', 'PIN ले भित्र · Unlock', $cPat) ?>
+    <?= $patForm('c_unlock', 'आफ्नो pattern कोर्नुहोस् · Draw your pattern', !$cPat) ?>
+  </div>
+  <div class="links">
+    <form method="post" action="/admin/login.php" class="lk-forgot cl-forgot"><?= $hid() ?><input type="hidden" name="mode" value="c_forgot">
+      <button type="submit">PIN / Pattern बिर्सनुभयो? · Forgot PIN / Pattern?</button></form>
+  </div>
+
+  <?php elseif ($step === 'c_setup' || $step === 'c_forgot'): ?>
+  <?= $codeLine() ?>
+  <p class="sub" style="display:block"><?= $step === 'c_setup'
+      ? 'यो खातामा PIN / pattern छैन। एक पटक मात्र: दर्ता गरिएको जन्म मिति र मोबाइल, अनि त्यही नम्बरको WhatsApp बाट पुष्टि · No PIN / pattern yet. Once only: your registered date of birth and mobile, then a confirmation from that WhatsApp.'
+      : 'दर्ता गरिएको जन्म मिति र मोबाइल लेख्नुहोस्, अनि त्यही नम्बरको WhatsApp बाट पुष्टि गरेर नयाँ PIN / pattern राख्नुहोस् · Enter your registered date of birth and mobile, confirm from that WhatsApp, then set a new PIN / pattern.' ?></p>
+  <form method="post" action="/admin/login.php" autocomplete="off">
+    <?= $hid() ?><input type="hidden" name="mode" value="c_identity">
+    <label for="dob">जन्म मिति · Date of birth</label>
+    <input id="dob" name="dob" type="date" max="<?= $h(date('Y-m-d')) ?>" min="1930-01-01" required autofocus>
+    <label for="mob">दर्ता गरिएको मोबाइल / WhatsApp · Registered mobile / WhatsApp</label>
+    <input id="mob" name="mobile" type="tel" inputmode="tel" maxlength="16" required placeholder="98XXXXXXXX" autocomplete="off">
+    <button class="btn" type="submit">अगाडि · Continue →</button>
+  </form>
+  <?= $officeBox() ?>
+  <div class="links"><a href="<?= $h($odUrl(['step' => 'c_code'])) ?>">← फिर्ता · Back</a></div>
+
+  <?php elseif ($step === 'c_prove'): ?>
+  <?= $codeLine() ?>
+  <div class="msg warn" role="note">🔒 आफैंले PIN राख्दा मात्र पठाउनुहोस् — अरूले मागे नपठाउनुहोस् · Only when YOU are setting your PIN. Never because someone asked.</div>
+  <?php if ($cWa !== null): ?>
+    <a class="btn wa" href="<?= $h($cWa['url']) ?>" target="_blank" rel="noopener">WhatsApp खोल्नुहोस् · Open WhatsApp<small><?= $h($cWa['text']) ?></small></a>
+    <?php if ($qr !== ''): ?><div class="qr"><img src="<?= $h($qr) ?>" alt="WhatsApp QR" width="150" height="150"></div><?php endif; ?>
+    <p class="note">दर्ता गरिएको नम्बरबाट Send थिच्नुहोस्, जवाफमा YES पठाउनुहोस्, अनि यहाँ फर्कनुहोस् · Send it from your REGISTERED number, reply YES, then come back.</p>
+    <p class="wait" id="waWait">⏳ तपाईंको सन्देश पर्खँदै… · Waiting for your message…</p>
+    <form method="post" action="/admin/login.php" id="waDone"><?= $hid() ?><input type="hidden" name="mode" value="c_hi_done">
+      <button class="btn alt" type="submit">✅ मैले पठाएँ · I have sent it</button></form>
+  <?php else: ?>
+    <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="c_hi">
+      <button class="btn wa" type="submit">💬 दर्ता गरिएको WhatsApp बाट hi पठाउने · Send hi from your registered WhatsApp<small>कोड टाइप गर्नु पर्दैन · No code to type</small></button></form>
+  <?php endif; ?>
+  <div class="or">वा कोड · or a code</div>
+  <?php if (!empty($cs['debug']) && APP_DEBUG): ?><div class="msg ok">DEV code: <?= $h($cs['debug']) ?></div><?php endif; ?>
+  <?php if (!empty($cs['sent'])): ?>
+  <form method="post" action="/admin/login.php" autocomplete="off"><?= $hid() ?><input type="hidden" name="mode" value="c_otp">
+    <label for="cotp">WhatsApp कोड · 6-digit code</label>
+    <input id="cotp" name="otp" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" required placeholder="______" style="letter-spacing:.35em;text-align:center;font-size:22px">
+    <button class="btn" type="submit">पुष्टि गर्नुहोस् · Confirm</button></form>
+  <?php endif; ?>
+  <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="c_code_send">
+    <button class="btn alt" type="submit">📩 <?= !empty($cs['sent']) ? 'नयाँ कोड · Send a new code' : 'दर्ता गरिएको WhatsApp मा ६ अङ्कको कोड · Get a 6-digit code' ?></button></form>
+  <?= $officeBox() ?>
+  <div class="links"><a href="<?= $h($odUrl(['step' => (($cs['purpose'] ?? '') === 'reset' ? 'c_forgot' : 'c_setup')])) ?>">← विवरण फेरि · Re-enter details</a></div>
+
+  <?php elseif ($step === 'c_create'): ?>
+  <?= $codeLine() ?>
+  <p class="note">यो PIN / pattern कसैलाई नदेखाउनुहोस् — फोनमा सेभ हुँदैन · Keep it to yourself; it is never saved on the phone.</p>
+  <div class="qk" data-qk>
+    <div class="qk-tabs" role="tablist">
+      <button type="button" class="on" data-qk-tab="pin">🔢 ६ अङ्क PIN · 6-digit PIN</button>
+      <button type="button" data-qk-tab="pattern">◯ Pattern</button>
+    </div>
+    <?= $pinForm('c_create', 'अगाडि · Next →') ?>
+    <?= $patForm('c_create', 'कम्तीमा ४ थोप्ला जोड्नुहोस् · Join at least 4 dots', true) ?>
+  </div>
+
+  <?php elseif ($step === 'c_confirm'): $cpk = (string) ($cs['pend']['kind'] ?? 'pin'); ?>
+  <?= $codeLine() ?>
+  <div class="qk" data-qk>
+    <?= $cpk === 'pattern'
+        ? $patForm('c_confirm', 'उही pattern फेरि कोर्नुहोस् · Draw the same pattern again')
+        : $pinForm('c_confirm', 'सेभ गरेर भित्र · Save & sign in') ?>
+  </div>
+  <p class="note"><?= $cpk === 'pattern' ? 'पक्का गर्न उही pattern फेरि · Same pattern once more' : 'पक्का गर्न उही ६ अङ्क फेरि · Same 6 digits once more' ?></p>
+  <div class="links"><a href="<?= $h($odUrl(['step' => 'c_create'])) ?>">↺ फेरि सुरुदेखि · Start over</a></div>
+
+  <?php elseif ($step === 'start' && $remembered !== null): ?>
   <?php /* 6 Nov 2026: this phone remembers the account — pattern / PIN first, like an Android lock screen. */ ?>
   <div class="lk-clock" id="lkClock" aria-hidden="true">--:--</div><div class="lk-date" id="lkDate"></div>
   <div class="who">🔒 <span><?= $h($remembered['name']) ?></span></div>
@@ -599,8 +817,9 @@ body.lock.shake .qk,body.lock.shake .lk-dots{animation:lkshake .35s}
   <?php if ((bool) ($fw['twofa'] ?? false)): ?><p class="note">यो खातामा 2FA छ — सेभपछि WhatsApp कोड पनि चाहिन्छ · This account uses 2FA: a WhatsApp code follows.</p><?php endif; ?>
   <?php endif; ?>
 
-  <?php if (!in_array($step, ['forgot', 'forgot_code', 'forgot_pick', 'forgot_pw', 'wa'], true)): ?>
+  <?php if (!in_array($step, ['forgot', 'forgot_code', 'forgot_pick', 'forgot_pw', 'wa', 'c_unlock', 'c_setup', 'c_forgot', 'c_prove', 'c_create', 'c_confirm'], true)): ?>
   <div class="links">
+    <?php if ($step === 'start' && $codeFirst): ?><a href="<?= $h($odUrl(['step' => 'c_code', 'classic' => false])) ?>">🪪 कोड + PIN / Pattern ले भित्र · Sign in with code + PIN</a><?php endif; ?>
     <?php if ($step === 'start'): ?><a href="<?= $h($odUrl(['step' => 'forgot'])) ?>">🔑 पासवर्ड बिर्सनुभयो? · Forgot password?</a><?php endif; ?>
     <a href="<?= $h(rtrim(APP_URL, '/')) ?>/">🎫 यात्री? लगइन बिना टिकट बुक गर्नुहोस् · Passenger? Book without signing in →</a>
     <a href="<?= $h(rtrim(APP_URL, '/')) ?>/guide/?v=agent">▶ एजेन्ट गाइड भिडियो — लगइन, टिकट, चलानी, पैसा निकाल्ने · Agent guide video</a>
@@ -632,28 +851,38 @@ body.lock.shake .qk,body.lock.shake .lk-dots{animation:lkshake .35s}
 </script>
 <?php endif; ?>
 <?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115a" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
-<?php if (($remembered ?? null) !== null): ?><script>
+<?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
+<?php if (($remembered ?? null) !== null || $cPad): ?><script>
 (function(){
   var c=document.getElementById('lkClock'),d=document.getElementById('lkDate');
   function tick(){var n=new Date();if(c)c.textContent=('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2);
     if(d)d.textContent=n.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});}
-  tick();setInterval(tick,15000);
+  if(c){tick();setInterval(tick,15000);}
   if(document.querySelector('.msg.bad')){document.body.classList.add('shake');if(navigator.vibrate)try{navigator.vibrate(120)}catch(e){}}
-  var f=document.querySelector('form[data-qk-form="pin"]');if(!f)return;
-  var inp=f.querySelector('input[name="qk_val"]'),dots=f.querySelector('.lk-dots'),keys=f.querySelector('.lk-keys'),busy=false;
-  if(!inp||!dots||!keys)return;
-  inp.type='hidden';inp.removeAttribute('required');var lab=f.querySelector('label');if(lab)lab.hidden=true;
-  var old=f.querySelector('button.btn');if(old)old.hidden=true;dots.hidden=false;keys.hidden=false;
-  function draw(){var h='';for(var i=0;i<6;i++)h+='<i'+(i<inp.value.length?' class="on"':'')+(i>3&&inp.value.length<=i?' style="opacity:.35"':'')+'></i>';dots.innerHTML=h;}
-  function send(){if(busy||inp.value.length<4)return;busy=true;f.submit();}
-  function press(k){if(busy)return;if(k==='x')inp.value=inp.value.slice(0,-1);else if(k==='ok'){send();return;}
-    else if(inp.value.length<6)inp.value+=k;draw();if(inp.value.length===6)send();}
-  keys.addEventListener('click',function(e){var b=e.target.closest('button');if(b)press(b.getAttribute('data-k'));});
-  document.addEventListener('keydown',function(e){if(f.hidden)return;if(/^\d$/.test(e.key))press(e.key);else if(e.key==='Backspace')press('x');else if(e.key==='Enter')press('ok');});
-  draw();
+  /* 15 Nov 2026: every PIN form with a keypad (lock screen, code door, choose / confirm).
+     The digits live only in this form until it is posted; nothing goes to browser storage. */
+  var pads=[];
+  document.querySelectorAll('form[data-qk-form="pin"]').forEach(function(f){
+    var inp=f.querySelector('input[name="qk_val"]'),dots=f.querySelector('.lk-dots'),keys=f.querySelector('.lk-keys'),busy=false;
+    if(!inp||!dots||!keys)return;
+    var md=f.querySelector('input[name="mode"]'),six=!!md&&(md.value==='c_create'||md.value==='c_confirm');   // a NEW PIN is exactly 6 digits
+    inp.type='hidden';inp.removeAttribute('required');var lab=f.querySelector('label');if(lab)lab.hidden=true;
+    var old=f.querySelector('button.btn');if(old)old.hidden=true;dots.hidden=false;keys.hidden=false;
+    function draw(){var h='';for(var i=0;i<6;i++)h+='<i'+(i<inp.value.length?' class="on"':'')+(!six&&i>3&&inp.value.length<=i?' style="opacity:.35"':'')+'></i>';dots.innerHTML=h;}
+    function send(){if(busy||inp.value.length<(six?6:4))return;busy=true;f.submit();}
+    function press(k){if(busy)return;if(k==='x')inp.value=inp.value.slice(0,-1);else if(k==='ok'){send();return;}
+      else if(inp.value.length<6)inp.value+=k;draw();if(inp.value.length===6)send();}
+    keys.addEventListener('click',function(e){var b=e.target.closest('button');if(b)press(b.getAttribute('data-k'));});
+    pads.push({f:f,press:press});draw();
+  });
+  document.addEventListener('keydown',function(e){
+    var t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'))return;
+    pads.forEach(function(p){if(p.f.hidden)return;if(/^\d$/.test(e.key))p.press(e.key);else if(e.key==='Backspace')p.press('x');else if(e.key==='Enter')p.press('ok');});
+  });
 })();
 </script><?php endif; ?>
-<?php if ((($step === 'mobile' || $step === 'id') && QuickUnlock::on()) || ($remembered ?? null) !== null): ?><script src="/assets/js/quick-unlock.js?v=20261101a"></script><?php endif; ?>
+<?php if ((($step === 'mobile' || $step === 'id') && QuickUnlock::on()) || ($remembered ?? null) !== null || $cPad): ?><script src="/assets/js/quick-unlock.js?v=20261101a"></script><?php endif; ?>
+<?php if ($step === 'c_code' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261115a" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 </body></html>
 <?php
     exit;
