@@ -635,12 +635,16 @@ final class BookingService
                        desk cap plus a 10% offer let a sale go out at 25% off. A counter
                        sale carries no typed code (api/book.php), so couponDiscount here
                        is only the automatic offer. */
-                    $offerCut = (float) ($pricing['couponDiscount'] ?? 0);
+                    /* 16 Nov 2026 (owner: "thik j thik lagchha gara"): the return-journey
+                       discount (P4-5d) is an automatic discount too, so it joins the offer
+                       in that rule - desk discount OR (offer + return), whichever is bigger. */
+                    $offerCut = (float) ($pricing['couponDiscount'] ?? 0) + (float) ($pricing['returnDiscount'] ?? 0);
                     if ($cd > 0 && $offerCut > 0) {
                         if ($cd > $offerCut) {
                             $pricing['total']          = round((float) $pricing['total'] + $offerCut - $cd, 2);
                             $pricing['couponDiscount'] = round($cd, 2);
                             $pricing['couponCode']     = null;      // the offer was not used: not redeemed
+                            $pricing['returnDiscount'] = 0.0;       // nor the return discount: nothing to stamp
                             self::$deskCharge          = round($cd - $offerCut, 2);   // only what went beyond the offer
                         }
                     } elseif ($cd > 0) {

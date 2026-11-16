@@ -241,7 +241,11 @@ final class ChalaniPdf
         // 6 Nov 2026: a woman on a single sleeper reads pink; the pickup carries its place number
         $womanSingle = isset($fmt['womanSingle']) && is_callable($fmt['womanSingle']) ? $fmt['womanSingle'] : static fn(array $r): bool => false;
         $placeNo     = isset($fmt['placeNo']) && is_callable($fmt['placeNo']) ? $fmt['placeNo'] : static fn(string $s): int => 0;
-        $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach, $womanSingle, $placeNo): void {
+        /* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai"): desk extras */
+        $infantsOf = isset($fmt['infantsOf']) && is_callable($fmt['infantsOf']) ? $fmt['infantsOf'] : static fn(array $r): int => 0;
+        $rowState  = isset($fmt['rowState']) && is_callable($fmt['rowState']) ? $fmt['rowState'] : static fn(array $r): string => 'due';
+        $stateNe   = static fn(string $s): string => $s === 'paid' ? 'भयो' : ($s === 'agent' ? 'भयो (एजेन्टसँग)' : 'बाँकी');
+        $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach, $womanSingle, $placeNo, $infantsOf, $rowState, $stateNe): void {
             $ws = $r !== null && $womanSingle($r);
             if ($ws) { $pdf->rect($M, $y, $inner, $rowH, self::PINK, true); }
             foreach ($cw as $i => $w) { $pdf->rect($cx[$i], $y, $w, $rowH, self::LINE, false); }
@@ -251,6 +255,8 @@ final class ChalaniPdf
             $m = $money($r);
             $txtC($cx[1], $cx[1] + $cw[1], $ty, Seats::displayLabel((string) $r['seat_no'], $seatCoach, (string) ($r['booking_mode'] ?? 'sharing')), 8, true, $ws ? self::ROSE : self::INK);
             $name = (string) ($r['full_name'] ?? '');
+            $inf  = (int) $infantsOf($r);
+            if ($inf > 0) { $name .= ' + शिशु ' . $neDigits((string) $inf); }
             $tail = ' ' . (string) ($r['ticket_number'] ?: $r['pnr']);
             $txt($cx[2] + 3, $ty, $fit($name, 7.8, $cw[2] - 6 - 52), 7.8, false, self::INK);
             $txtR($cx[2] + $cw[2] - 3, $ty, $fit(trim($tail), 5.6, 50), 5.6, false, $isLate($r) ? self::RED : self::MUTE);
@@ -263,7 +269,9 @@ final class ChalaniPdf
             $txtR($cx[6] + $cw[6] - 3, $ty, number_format($m['ticket']), 7.6, false, self::INK);
             if ($m['cash']   > 0) { $txtR($cx[7] + $cw[7] - 3, $ty, number_format($m['cash']),   7.6, false, self::INK); }
             if ($m['online'] > 0) { $txtR($cx[8] + $cw[8] - 3, $ty, number_format($m['online']), 7.6, false, self::INK); }
-            $txt($cx[10] + 3, $ty, $fit($soldByNe($bookedBy($r)) . ($isLate($r) ? ' · बस चलेपछि' : ''), 6.8, $cw[10] - 6), 6.8, false, $isLate($r) ? self::RED : self::MUTE);
+            $xTxt = (float) ($m['extra'] ?? 0) > 0 ? ' · थप ₹' . number_format((float) $m['extra']) . ' ' . $stateNe($rowState($r)) : '';
+            $txt($cx[10] + 3, $ty, $fit($soldByNe($bookedBy($r)) . ($isLate($r) ? ' · बस चलेपछि' : '') . $xTxt, 6.8, $cw[10] - 6), 6.8, false,
+                $isLate($r) ? self::RED : ($xTxt !== '' && $rowState($r) === 'due' ? self::RED : self::MUTE));
         };
 
         /* ==============================================================
@@ -298,6 +306,7 @@ final class ChalaniPdf
         if ($places !== []) {
             $head = 'बस : ' . ((string) ($fmt['busName'] ?? '') !== '' ? (string) $fmt['busName'] : '—')
                   . '   ·   जम्मा यात्रु : ' . $neDigits((string) count($rows))
+                  . ((int) ($totals['infants'] ?? 0) > 0 ? ' + शिशु ' . $neDigits((string) (int) $totals['infants']) . ' (काखमा)' : '')
                   . ((int) ($fmt['womenSingleCount'] ?? 0) > 0 ? '   ·   महिला सिंगल स्लिपर : ' . $neDigits((string) (int) $fmt['womenSingleCount']) : '');
             $lines = [];
             $cur = '';
@@ -321,11 +330,18 @@ final class ChalaniPdf
 
         /* ---- table, paginated ---------------------------------------- */
         $limit  = $H - $M - 16;                  // the footer rule sits just below this
-        $boxesH = 80;                            // summary / authorisation boxes
-        $bottomReserve = 6 + $boxesH + 8;        // gap + boxes + breathing room, on the LAST page
+        $boxesH = 100;                           // summary / authorisation boxes (16 Nov 2026: + 2 special-payment lines)
+        /* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai thapaune
+           line"): one line per booking with desk extras + blank pen lines */
+        $xLines = array_values((array) ($fmt['extrasLines'] ?? []));
+        $xPen   = max(0, (int) ($fmt['penLines'] ?? 2));
+        $xRowH  = 11.5;
+        $xBoxH  = 16 + $xRowH * (1 + count($xLines) + $xPen) + 4;
+        $bottomReserve = 6 + $xBoxH + 6 + $boxesH + 8;   // gap + special payments + boxes + breathing room, on the LAST page
         $y = $tableHead($y);
         // the place strip takes the room of a few blank pen rows, so a short list still fits on page 1
-        $total = max(self::MIN_ROWS - ($places !== [] ? (int) ceil(($bh + 4) / $rowH) : 0), count($rows));
+        // 16 Nov 2026: the special-payment box (and the 2 new summary lines) take the room of a few more blank rows
+        $total = max(self::MIN_ROWS - ($places !== [] ? (int) ceil(($bh + 4) / $rowH) : 0) - (int) ceil(($xBoxH + 6 + 20) / $rowH), count($rows));
         for ($i = 0; $i < $total; $i++) {
             $isLast = ($i === $total - 1);
             $need   = $rowH + ($isLast ? $bottomReserve : 0);
@@ -340,6 +356,42 @@ final class ChalaniPdf
         }
         $y += 6;
 
+        /* ---- 16 Nov 2026: विशेष भुक्तानी — desk extras, paid or not, + pen lines ---- */
+        if ($y + $xBoxH + 6 > $limit) { $footer(); $pdf->newPage(); $y = $header(); }
+        $pdf->roundedRect($M, $y, $inner, $xBoxH, 4, self::NAVY, false);
+        $txt($M + 8, $y + 11, 'विशेष भुक्तानी · थप सामान / शिशु / अन्य — भयो कि भएन', 7.8, true, self::NAVY);
+        $xw = [118, 150, 80, 0, 64, 110];
+        $xw[3] = ($inner - 16) - ($xw[0] + $xw[1] + $xw[2] + $xw[4] + $xw[5]);
+        $xx = []; $acc = $M + 8;
+        foreach ($xw as $k => $w) { $xx[$k] = $acc; $acc += $w; }
+        $xy = $y + 16;
+        $xCell = static function (float $yy, array $vals, bool $head, ?array $rgbLast = null) use ($pdf, $xx, $xw, $xRowH, $txt, $txtR, $fit): void {
+            if ($head) { $pdf->rect($xx[0], $yy, array_sum($xw), $xRowH, self::SOFT, true); }
+            foreach ($xw as $k => $w) {
+                $pdf->rect($xx[$k], $yy, $w, $xRowH, self::LINE, false);
+                $v = (string) ($vals[$k] ?? '');
+                if ($v === '') { continue; }
+                $rgb = ($k === 5 && $rgbLast !== null) ? $rgbLast : self::INK;
+                if ($k === 4) { $txtR($xx[$k] + $w - 3, $yy + 8.4, $v, 7, $head || $k === 4, $rgb); }
+                else          { $txt($xx[$k] + 3, $yy + 8.4, $fit($v, 7, $w - 6), 7, $head || $k === 5, $rgb); }
+            }
+        };
+        $xCell($xy, ['PNR', 'यात्रु', 'सिट', 'विवरण', 'रकम ₹', 'भयो / भएन'], true);
+        $xy += $xRowH;
+        foreach ($xLines as $xl) {
+            $what = ((int) $xl['lug'] > 0 ? 'थप सामान ' . $neDigits((string) (int) $xl['lug']) . ' थान ₹' . number_format((float) $xl['lugFee']) : '')
+                  . (((int) $xl['lug'] > 0 && (int) $xl['inf'] > 0) ? ' · ' : '')
+                  . ((int) $xl['inf'] > 0 ? 'शिशु ' . $neDigits((string) (int) $xl['inf']) . ' ' . ((float) $xl['infFee'] > 0 ? '₹' . number_format((float) $xl['infFee']) : '(निःशुल्क)') : '');
+            $xCell($xy, [(string) $xl['pnr'], (string) $xl['lead'], (string) ($xl['seatsLbl'] ?? ''), $what, number_format((float) $xl['amt']), $stateNe((string) $xl['state'])],
+                false, (string) $xl['state'] === 'due' ? self::RED : [21, 128, 61]);
+            $xy += $xRowH;
+        }
+        for ($p = 0; $p < $xPen; $p++) {
+            $xCell($xy, ['', '', '', '', '', 'भयो [   ]    भएन [   ]'], false, self::MUTE);
+            $xy += $xRowH;
+        }
+        $y += $xBoxH + 6;
+
         /* ---- summary + authorisation ---------------------------------- */
         if ($y + $boxesH + 8 > $limit) { $footer(); $pdf->newPage(); $y = $header(); }
         $halfW = ($inner - 10) / 2;
@@ -352,6 +404,8 @@ final class ChalaniPdf
             ['नगद संकलन',               '₹ ' . number_format((float) ($totals['cash'] ?? 0))],
             ['अनलाइन / UPI प्राप्ति',     '₹ ' . number_format((float) ($totals['online'] ?? 0))],
             ['छुट / सहुलियत',            '₹ ' . number_format((float) ($totals['discount'] ?? 0))],
+            ['विशेष भुक्तानी (थप सामान / शिशु)', '₹ ' . number_format((float) ($totals['extras'] ?? 0))],
+            ['   भयो / बाँकी',            '₹ ' . number_format((float) ($totals['extrasPaid'] ?? 0)) . ' / ' . number_format((float) ($totals['extrasDue'] ?? 0))],
             ['खुद जम्मा संकलन',          '₹ ' . number_format((float) ($totals['net'] ?? 0))],
         ];
         $sy = $y + 21.5;

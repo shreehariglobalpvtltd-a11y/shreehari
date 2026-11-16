@@ -216,6 +216,12 @@ final class WaMarketing
                     $out['skipped']++;
                     continue;
                 }
+                /* 16 Nov 2026: the office's ceiling on ALL WhatsApp a day (wa_global_daily_cap,
+                   0 = none). This send goes straight to Meta, so it asks WaRoute itself; the
+                   recipient stays queued for tomorrow. */
+                $capWhy = '';
+                try { require_once INCLUDE_PATH . '/waroute.php'; $capWhy = WaRoute::capRefusal('marketing'); } catch (Throwable $ignored) { $capWhy = ''; }
+                if ($capWhy !== '') { $out['blocked'][] = $capWhy; break; }
                 $claimed = Database::update('wa_marketing_recipients', ['state' => 'sending', 'attempted_at' => self::now(), 'updated_at' => self::now()],
                     'id = :id AND state = \'queued\'', ['id' => (int) $r['recipient_id']]);
                 if ($claimed !== 1) { continue; }
@@ -227,6 +233,9 @@ final class WaMarketing
                     continue;
                 }
                 $result = self::sendOnce((string) $r['phone'], $r);
+                if ($result['state'] === 'accepted') {
+                    try { WaRoute::noteSent(); } catch (Throwable $ignored) {}   // counts toward the daily ceiling
+                }
                 $out['attempted']++;
                 $out[$result['state']]++;
                 Database::update('wa_marketing_recipients', ['state' => $result['state'], 'provider_ref' => $result['message_id'] ?: null,

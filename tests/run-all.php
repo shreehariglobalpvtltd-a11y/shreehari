@@ -258,6 +258,7 @@ const HTTP_SUITES = [
     'feedback-test.php'           => 'post-journey rating: who may rate, and once',
     'beacon-test.php'             => 'the product beacon stores behaviour, never people',
     'pwa-http-test.php'           => 'PWA layer: push key + subscribe gates, seat fill, split-pay, offline page',
+    'u10-chalani-extras-test.php' => 'chalani: special payments (luggage / infant) paid or due + pen lines, berth-true free count, no stacked discounts',
 ];
 
 /* ---------------------------------------------------------------------

@@ -239,7 +239,7 @@ final class Campaigns
             $left = $cap - self::sentToday();
             foreach (Database::fetchAll("SELECT * FROM mk_campaigns WHERE status = 'running' AND channel IN ('wa_template','sms') ORDER BY id") as $c) {
                 if ($left <= 0) {
-                    $out['cap'] = 'daily cap reached';
+                    $out['cap'] = $out['cap'] ?? 'daily cap reached';
                     break;
                 }
                 $out['campaigns']++;
@@ -258,8 +258,24 @@ final class Campaigns
                         Database::update('mk_recipients', ['state' => 'optout'], 'id = :id', ['id' => (int) $r['id']]);
                         continue;
                     }
+                    /* 16 Nov 2026: the office's ceiling on ALL WhatsApp a day
+                       (wa_global_daily_cap, 0 = none) holds campaigns too - this
+                       send bypasses Notify, so it asks WaRoute itself. The person
+                       stays queued for tomorrow. */
+                    if ($c['channel'] === 'wa_template') {
+                        $capWhy = '';
+                        try { require_once INCLUDE_PATH . '/waroute.php'; $capWhy = WaRoute::capRefusal('campaign'); } catch (Throwable $ignored) { $capWhy = ''; }
+                        if ($capWhy !== '') {
+                            $out['cap'] = $capWhy;
+                            $left = 0;
+                            break;
+                        }
+                    }
                     Database::update('mk_recipients', ['state' => 'sending'], "id = :id AND state = 'queued'", ['id' => (int) $r['id']]);
                     $x = self::sendOne($c, $r);
+                    if ($x['ok'] && $c['channel'] === 'wa_template') {
+                        try { WaRoute::noteSent(); } catch (Throwable $ignored) {}   // counts toward the daily ceiling
+                    }
                     /* 7 Oct 2026: an empty AiSensy wallet refuses EVERY number the
                        same way. Put this person back in the queue, pause the
                        campaign and stop - instead of marking the whole list

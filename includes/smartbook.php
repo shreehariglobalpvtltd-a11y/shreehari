@@ -527,12 +527,17 @@ final class SmartBook
         if ($maxAmt !== null) {
             $cd = min($cd, max(0.0, round($maxAmt, 2)));   // mg20: an agent's own discount stays inside their commission
         }
+        /* 16 Nov 2026: the return-journey discount is automatic like the offer -
+           the desk discount never stacks on (offer + return); the bigger one wins,
+           exactly as BookingService::create() charges it. */
+        $ret    = (float) ($price['returnDiscount'] ?? 0);
         $offer  = (float) ($price['couponDiscount'] ?? 0);
-        if ($cd > 0 && $offer > 0) {
-            if ($cd > $offer) {
-                $price['total']          = round((float) $price['total'] + $offer - $cd, 2);
+        if ($cd > 0 && $offer + $ret > 0) {
+            if ($cd > $offer + $ret) {
+                $price['total']          = round((float) $price['total'] + $offer + $ret - $cd, 2);
                 $price['couponDiscount'] = round($cd, 2);
                 $price['couponCode']     = null;
+                $price['returnDiscount'] = 0.0;
                 $price['deskDiscount']   = round($cd, 2);
             }
         } elseif ($cd > 0) {

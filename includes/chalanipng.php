@@ -48,7 +48,7 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 14;  // 14 = single column drawn LEFT of the aisle (6 Nov 2026)   // 13 was:  // 13 = berth numbers: single side first (A1 A2 | A3..A6) (6 Nov 2026)   // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 15;  // 15 = special (desk-extra) payments: row remark, infants, 2 summary lines (16 Nov 2026)   // 14 = single column drawn LEFT of the aisle (6 Nov 2026)   // 13 was:  // 13 = berth numbers: single side first (A1 A2 | A3..A6) (6 Nov 2026)   // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
@@ -165,7 +165,11 @@ final class ChalaniPng
                 // drawn on the page, and previously unhashed:
                 $r['agent_role'] ?? '', $r['agent_name'] ?? '', $r['agent_user'] ?? '',
                 $r['boarded_at'] ?? '', $r['special_need'] ?? '', $r['booking_status'] ?? '',
+                // 16 Nov 2026: desk extras (luggage / infant) are drawn too
+                $r['luggage_pieces'] ?? 0, $r['luggage_fee'] ?? 0, $r['infant_count'] ?? 0, $r['infant_fee'] ?? 0,
             ], $rows),
+            'xstate' => isset($fmt['rowState']) && is_callable($fmt['rowState'])
+                ? array_map(static fn(array $r): string => (string) $fmt['rowState']($r), $rows) : [],
             'seller' => $seller,
             'stops'  => (string) ($fmt['stopsLineRoman'] ?? $fmt['stopsLine'] ?? ''),
             'totals' => $totals,
@@ -257,7 +261,7 @@ final class ChalaniPng
         $ws = (int) ($fmt['womenSingleCount'] ?? 0);
         self::t($im, 30, $M, 14, $white, 'SEAT CHART  ·  ' . self::chalaniNo($trip, $date), true);
         self::t($im, 17, $M, 56, $goldL, self::fit(17, self::ro((string) ($fmt['busName'] ?? '')) . '  ·  ' . strtoupper(formatDate($date, 'D, j M Y'))
-            . '  ·  ' . count($rows) . ' PASSENGERS' . ($ws > 0 ? '  ·  WOMEN SINGLE ' . $ws : ''), $W - 2 * $M - 260), false);
+            . '  ·  ' . count($rows) . ' PASSENGERS' . ((int) ($totals['infants'] ?? 0) > 0 ? ' + ' . (int) $totals['infants'] . ' INFANT' : '') . ($ws > 0 ? '  ·  WOMEN SINGLE ' . $ws : ''), $W - 2 * $M - 260), false);
         self::tR($im, 18, $W - $M, 34, $goldL, 'PAGE ' . $page . ' OF ' . $pages, true);
 
         $layout = (array) ($fmt['layout'] ?? []);
@@ -606,7 +610,7 @@ final class ChalaniPng
         $places = (array) ($fmt['placeList'] ?? []);
         if ($places !== []) {
             $ws  = (int) ($fmt['womenSingleCount'] ?? 0);
-            $hd  = 'BUS ' . $roman((string) ($fmt['busName'] ?? '')) . '  ·  ' . count($rows) . ' PASSENGERS' . ($ws > 0 ? '  ·  WOMEN SINGLE ' . $ws : '') . '  ·  ';
+            $hd  = 'BUS ' . $roman((string) ($fmt['busName'] ?? '')) . '  ·  ' . count($rows) . ' PASSENGERS' . ((int) ($totals['infants'] ?? 0) > 0 ? ' + ' . (int) $totals['infants'] . ' INFANT (LAP)' : '') . ($ws > 0 ? '  ·  WOMEN SINGLE ' . $ws : '') . '  ·  ';
             $pl  = implode('   ', array_map(static fn(array $p): string => (int) $p['no'] . '. ' . self::ro((string) $p['name']) . ' ' . (int) $p['n'], $places));
             self::t($im, 15, $M, $y, $navy, self::fit(15, $hd, $stripW), true);
             self::t($im, 15, $M + self::w(15, $hd) + 4, $y, $ink, self::fit(15, $pl, max(40, $stripW - self::w(15, $hd) - 4)), false);
@@ -689,6 +693,8 @@ final class ChalaniPng
             $name = Ticket::display((string) ($r['full_name'] ?? ''));
             $tkt  = $roman((string) (($r['ticket_number'] ?? '') ?: ($r['pnr'] ?? '')));
             if ($name === '') { $name = $tkt !== '' ? $tkt : '(name not in Latin or Devanagari)'; }
+            $rInf = isset($fmt['infantsOf']) && is_callable($fmt['infantsOf']) ? (int) $fmt['infantsOf']($r) : 0;   // 16 Nov 2026
+            if ($rInf > 0) { $name .= ' +' . $rInf . ' infant'; }
             $tktW = $tkt !== '' ? self::w(11, $tkt) + 14 : 0;
             self::t($im, 18, $cx[2] + 10, $vy + 1, $ink, self::fit(18, $name, $cw[2] - 20 - $tktW), false);
             if ($tkt !== '') {
@@ -735,10 +741,16 @@ final class ChalaniPng
             }
 
             $rem = $late ? 'Booked after departure' : ($wsRow ? 'WOMAN · single sleeper' : '');
+            /* 16 Nov 2026 (owner: "bisesh payment bhayo ki nai"): the booking's desk extras, paid or due */
+            $xSt = isset($fmt['rowState']) && is_callable($fmt['rowState']) ? (string) $fmt['rowState']($r) : 'due';
+            if (!$late && (float) ($m['extra'] ?? 0) > 0) {
+                $rem = 'Extra Rs ' . number_format((float) $m['extra']) . ' ' . ($xSt === 'due' ? 'DUE' : 'PAID');
+            }
             if ($rem === '' && !empty($r['boarded_at']))     { $rem = 'Boarded'; }
             if ($rem === '' && !empty($r['special_need']))   { $rem = $roman((string) $r['special_need']); }
             if ($rem === '' && (string) ($r['booking_status'] ?? '') === 'pending') { $rem = 'Booking pending'; }
-            self::t($im, 15, $cx[10] + 10, $vy + 3, $late ? $maroon : ($wsRow ? $rose : $muted), self::fit(15, $rem, $cw[10] - 20), $wsRow);
+            $xDueRow = !$late && (float) ($m['extra'] ?? 0) > 0 && $xSt === 'due';
+            self::t($im, 15, $cx[10] + 10, $vy + 3, ($late || $xDueRow) ? $maroon : ($wsRow ? $rose : $muted), self::fit(15, $rem, $cw[10] - 20), $wsRow || $xDueRow);
         }
 
         /* Page subtotal — a crew counting cash counts THIS sheet, not the trip. */
@@ -770,15 +782,18 @@ final class ChalaniPng
                 ['Cash collected',          'Rs ' . number_format((float) ($totals['cash'] ?? 0))],
                 ['Online / UPI received',   'Rs ' . number_format((float) ($totals['online'] ?? 0))],
                 ['Discount / concession',   'Rs ' . number_format((float) ($totals['discount'] ?? 0))],
+                ['Special pay (luggage/infant)', 'Rs ' . number_format((float) ($totals['extras'] ?? 0))],
+                ['   paid / due',           'Rs ' . number_format((float) ($totals['extrasPaid'] ?? 0)) . ' / ' . number_format((float) ($totals['extrasDue'] ?? 0))],
                 ['NET COLLECTION',          'Rs ' . number_format((float) ($totals['net'] ?? 0))],
             ];
-            $ly = $by + 46;
+            $ly = $by + 44;
             foreach ($sum as $i => [$lab, $val]) {
                 $last = $i === count($sum) - 1;
-                self::t($im, $last ? 18 : 15, $M + 22, $ly, $last ? $maroon : $muted, $lab, $last);
-                imageline($im, $M + $halfW - 260, $ly + 21, $M + $halfW - 22, $ly + 21, $hair);
-                self::tR($im, $last ? 19 : 16, $M + $halfW - 24, $ly - 1, $last ? $maroon : $ink, $val, true);
-                $ly += 25;
+                if ($last) { $ly += 4; }   // 16 Nov 2026: a little air above NET COLLECTION (8 lines now)
+                self::t($im, $last ? 17 : 14, $M + 22, $ly, $last ? $maroon : $muted, $lab, $last);
+                imageline($im, $M + $halfW - 260, $ly + 18, $M + $halfW - 22, $ly + 18, $hair);
+                self::tR($im, $last ? 18 : 15, $M + $halfW - 24, $ly - 1, $last ? $maroon : $ink, $val, true);
+                $ly += 18;   // 16 Nov 2026: 8 lines now (special payments), was 25 for 6
             }
 
             $ax = $M + $halfW + 16;

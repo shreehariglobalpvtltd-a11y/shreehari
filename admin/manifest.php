@@ -181,10 +181,17 @@ if ($trip !== null) {
         $params['scope'] = $scopeId;
     }
 
+    /* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai thapaune
+       line"): the desk extras ride on every row - extra luggage and lap infants
+       (database/upgrade-2026-11-16c-X1-money.sql). 0 where a column is missing. */
+    $xCols = '';
+    foreach (['luggage_pieces', 'luggage_fee', 'infant_count', 'infant_fee'] as $xc) {
+        $xCols .= CounterDesk::hasColumn('bookings', $xc) ? ', b.' . $xc : ', 0 AS ' . $xc;
+    }
     $rows = Database::fetchAll(
-        "SELECT bp.seat_no, bp.full_name, bp.age, bp.gender, bp.boarded_at,
+        "SELECT bp.id AS pax_id, bp.seat_no, bp.full_name, bp.age, bp.gender, bp.boarded_at,
                 bp.id_type, bp.id_number, bp.special_need,
-                b.booking_mode,
+                b.booking_mode" . $xCols . ",
                 b.id AS booking_id, b.pnr, b.contact_phone, b.status AS booking_status,
                 b.source, b.is_cod, b.total_amount, b.base_total, b.sold_by_admin_id, b.created_at,
                 bl.boarding_stop, bl.drop_stop,
@@ -240,6 +247,51 @@ if ($bids !== []) {
     }
 }
 
+/* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai thapaune
+   line rakheu"): the desk EXTRAS of each booking on this bus - extra luggage
+   pieces and lap infants (no berth) - with whether that money came in.
+   total_amount carries them, so the per-seat fare below takes them OFF first
+   (they are not a seat's fare) and they print once, on the booking's first row
+   here, in their own "विशेष भुक्तानी" lines. A round trip's extras are split
+   across its legs the same way its fare is, so the two chalanis add up. */
+$legsPerBooking = [];
+if ($bids !== []) {
+    foreach (Database::fetchAll(
+        'SELECT booking_id, COUNT(*) c FROM booking_legs WHERE booking_id IN (' . implode(',', $bids) . ') GROUP BY booking_id'
+    ) as $lr) {
+        $legsPerBooking[(int) $lr['booking_id']] = max(1, (int) $lr['c']);
+    }
+}
+$extrasOf = static fn(array $r): float => round(max(0.0, (float) ($r['luggage_fee'] ?? 0)) + max(0.0, (float) ($r['infant_fee'] ?? 0)), 2);
+$xBook  = [];   // booking id => the extras block line
+$xFirst = [];   // booking id => pax_id of its first row on this chalani
+foreach ($rows as $r) {
+    $bid = (int) ($r['booking_id'] ?? 0);
+    if (!isset($xFirst[$bid])) { $xFirst[$bid] = (int) ($r['pax_id'] ?? 0); }
+    $lug = max(0, (int) ($r['luggage_pieces'] ?? 0));
+    $inf = max(0, (int) ($r['infant_count'] ?? 0));
+    if ($lug === 0 && $inf === 0 && $extrasOf($r) <= 0) { continue; }
+    if (!isset($xBook[$bid])) {
+        $xBook[$bid] = [
+            'pnr' => (string) $r['pnr'], 'lead' => (string) $r['full_name'], 'phone' => (string) ($r['contact_phone'] ?? ''),
+            'mode' => (string) (($r['booking_mode'] ?? '') ?: 'sharing'),
+            'seats' => [], 'lug' => $lug, 'lugFee' => max(0.0, (float) ($r['luggage_fee'] ?? 0)),
+            'inf' => $inf, 'infFee' => max(0.0, (float) ($r['infant_fee'] ?? 0)),
+            'amt' => round($extrasOf($r) / ($legsPerBooking[$bid] ?? 1), 2),
+            'state' => $mfState[$bid] ?? 'due',
+        ];
+    }
+    $xBook[$bid]['seats'][] = (string) $r['seat_no'];
+}
+$xInfants = array_sum(array_map(static fn(array $x): int => $x['inf'], $xBook));
+/** The extras money that rides on THIS row: the booking's leg share, on its first row only. */
+$extraOnRow = static function (array $r) use ($xBook, $xFirst): float {
+    $bid = (int) ($r['booking_id'] ?? 0);
+    return (isset($xBook[$bid]) && ($xFirst[$bid] ?? -1) === (int) ($r['pax_id'] ?? 0)) ? (float) $xBook[$bid]['amt'] : 0.0;
+};
+/** "भयो" / "बाँकी" for an extras line — the same paid · with agent · due rule as the row colour. */
+$xStateNe = static fn(string $st): string => match ($st) { 'paid' => '✓ भयो', 'agent' => '✓ भयो (एजेन्टसँग)', default => '✗ बाँकी' };
+
 /* ---- shared field formatting (screen and CSV must not drift) --------- */
 /* The seller, decided in ONE place — Ticket::issuedBy(), the same call the
    ticket PNG, the ticket PDF and the chalani make. This used to answer AGENT
@@ -267,9 +319,10 @@ $stopShort = static function (string $label): string {
 };
 /* What one passenger paid — the booking total split across every seat on the
    whole booking (both legs of a round trip). */
-$farePer = static function (array $r) use ($paxTotalPerBooking): float {
+$farePer = static function (array $r) use ($paxTotalPerBooking, $extrasOf): float {
     $n = max(1, (int) ($paxTotalPerBooking[(int) ($r['booking_id'] ?? 0)] ?? 1));
-    return round((float) $r['total_amount'] / $n);
+    // 16 Nov 2026: the desk extras (luggage / infant) are not a seat's fare
+    return round(max(0.0, (float) $r['total_amount'] - $extrasOf($r)) / $n);
 };
 /* Compact "who sold this seat" for the printed waybill: the seller's SHG
    code, or the channel when there is no numbered agent behind it.
@@ -405,8 +458,12 @@ $womenSingleCount = count(array_filter($rows, $isWomanSingle));
 $seatInfo = [];   // physical bed => info
 foreach ($rows as $r) {
     $pk = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—';
-    foreach ($physOf($r) as $bed) {
+    // 16 Nov 2026: a lap infant shows on the berth of its booking's first passenger
+    $bInf = ($xFirst[(int) ($r['booking_id'] ?? 0)] ?? -1) === (int) ($r['pax_id'] ?? 0)
+        ? (int) ($xBook[(int) $r['booking_id']]['inf'] ?? 0) : 0;
+    foreach ($physOf($r) as $bi => $bed) {
         $seatInfo[$bed] = [
+            'inf'   => $bi === 0 ? $bInf : 0,
             'name'  => (string) $r['full_name'],
             'place' => (int) ($placeList[$pk]['no'] ?? 0),
             'stop'  => $pk,
@@ -437,7 +494,7 @@ $seatChartHtml = static function () use ($layout, $seatInfo, $coachT): string {
         $first = mb_substr(trim(explode(' ', trim($i['name']))[0] ?? ''), 0, 9);
         return '<div class="' . $cls . '" title="' . $e($i['name'] . ' · ' . $i['stop'] . ' · ' . $i['pnr']) . '">'
              . '<b>' . $e($lbl) . '</b><span>' . $e($first) . '</span>'
-             . '<i>' . ($i['ws'] ? '♀ ' : '') . ($i['place'] > 0 ? '📍' . (int) $i['place'] : '') . '</i></div>';
+             . '<i>' . ($i['ws'] ? '♀ ' : '') . ($i['place'] > 0 ? '📍' . (int) $i['place'] : '') . ((int) ($i['inf'] ?? 0) > 0 ? ' 👶' . (int) $i['inf'] : '') . '</i></div>';
     };
     $h = '<style>
 .scx{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin:10px 0}
@@ -494,6 +551,7 @@ $seatChartHtml = static function () use ($layout, $seatInfo, $coachT): string {
         . '<span><em style="background:#FDE7F2;border:1px solid #E06AA8"></em>महिला · Woman</span>'
         . '<span><em style="background:#F8BBD9;border:2px solid #C2185B"></em>♀ महिला सिंगल स्लिपर · Woman on single sleeper</span>'
         . '<span>📍N = चढ्ने ठाउँ नं. · pickup place no.</span>'
+        . '<span>👶N = काखमा शिशु · lap infant</span>'
         . '<span><em style="background:#fff;box-shadow:inset 0 -4px 0 #16A34A;border:1px solid #ccc"></em>भुक्तानी · Paid</span>'
         . '<span><em style="background:#fff;box-shadow:inset 0 -4px 0 #F59E0B;border:1px solid #ccc"></em>एजेन्टसँग · With agent</span>'
         . '<span><em style="background:#fff;box-shadow:inset 0 -4px 0 #DC2626;border:1px solid #ccc"></em>बाँकी · Due</span></div>';
@@ -518,17 +576,24 @@ if ($format === 'csv') {
     csv_put($out, ['Departure', substr((string) ($trip['dep_time'] ?? ''), 0, 5)]);
     csv_put($out, ['Bus number', (string) ($trip['bus_number'] ?? 'not assigned')]);
     csv_put($out, ['Passengers', (string) count($rows)]);
+    if ($xInfants > 0) { csv_put($out, ['Infants (lap, no berth)', (string) $xInfants]); }
     csv_put($out, []);
     csv_put($out, ['Seat', 'Passenger', 'Age', 'Gender', 'Phone', 'Boarding point',
-                   'Destination', 'Fare', 'Booking ID', 'Payment', 'Source', 'Agent', 'Ticket', 'Booked']);
+                   'Destination', 'Fare', 'Booking ID', 'Payment', 'Source', 'Agent', 'Ticket', 'Booked',
+                   'Extra luggage', 'Infants', 'Extra Rs', 'Extra paid']);
 
     foreach ($rows as $r) {
+        $xRow = $extraOnRow($r);
+        $xB   = $xBook[(int) ($r['booking_id'] ?? 0)] ?? null;
+        $xHere = $xB !== null && ($xFirst[(int) $r['booking_id']] ?? -1) === (int) ($r['pax_id'] ?? 0);
         csv_put($out, [
             Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing')),
             $r['full_name'], $r['age'], $r['gender'], $r['contact_phone'],
             $stopShort((string) $r['boarding_stop']), $stopShort((string) $r['drop_stop']), $farePer($r), $r['pnr'],
             $payLabel($r), $sourceLabel($r), $agentLabel($r), $ticketLabel($r),
             $bookedTime($r) . ($isLate($r) ? ' (after departure)' : ''),
+            $xHere ? (string) $xB['lug'] : '', $xHere ? (string) $xB['inf'] : '',
+            $xHere ? (string) $xRow : '', $xHere ? ($xB['state'] === 'due' ? 'DUE' : ($xB['state'] === 'agent' ? 'PAID (with agent)' : 'PAID')) : '',
         ]);
     }
     fclose($out);
@@ -668,18 +733,22 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
        ticket = this passenger's share of the booking; it lands in the
        नगद column when the verified payment was cash / COD, in अनलाइन for
        UPI / eSewa / bank / wallet, and in neither while still unpaid. */
-    $money = static function (array $r) use ($farePer): array {
+    /* 16 Nov 2026: + 'extra' — the booking's desk extras (luggage / infant),
+       on its first row only. It is collected WITH the fare, so a paid row's
+       नगद / अनलाइन carries fare + extra; टिकट stays the seat's fare alone. */
+    $money = static function (array $r) use ($farePer, $extraOnRow): array {
         $fare   = (float) $farePer($r);
+        $extra  = (float) $extraOnRow($r);
         $paid   = (($r['pay_status'] ?? '') === 'verified');
         $method = strtolower((string) ($r['pay_method'] ?? ''));
-        $cash   = $paid && in_array($method, ['cash', 'cod'], true) ? $fare : 0.0;
-        $online = $paid && in_array($method, ['upi', 'esewa', 'bank', 'wallet'], true) ? $fare : 0.0;
-        return ['ticket' => $fare, 'cash' => $cash, 'online' => $online];
+        $cash   = $paid && in_array($method, ['cash', 'cod'], true) ? $fare + $extra : 0.0;
+        $online = $paid && in_array($method, ['upi', 'esewa', 'bank', 'wallet'], true) ? $fare + $extra : 0.0;
+        return ['ticket' => $fare, 'extra' => $extra, 'cash' => $cash, 'online' => $online];
     };
-    $tTicket = 0.0; $tCash = 0.0; $tOnline = 0.0; $tDisc = 0.0; $seenB = [];
+    $tTicket = 0.0; $tCash = 0.0; $tOnline = 0.0; $tDisc = 0.0; $tExtra = 0.0; $seenB = [];
     foreach ($rows as $r) {
         $m = $money($r);
-        $tTicket += $m['ticket']; $tCash += $m['cash']; $tOnline += $m['online'];
+        $tTicket += $m['ticket']; $tCash += $m['cash']; $tOnline += $m['online']; $tExtra += $m['extra'];
         $bid = (int) ($r['booking_id'] ?? 0);
         if ($bid > 0 && !isset($seenB[$bid])) {
             $seenB[$bid] = true;
@@ -692,14 +761,28 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
             // a fare — which is why the chalani sheet's PDF link came out as
             // "2000/admin/manifest.php?..." and 404'd.
             $baseAmt = (float) ($r['base_total'] ?? 0);
-            if ($baseAmt > 0) { $tDisc += max(0.0, $baseAmt - (float) ($r['total_amount'] ?? 0)); }
+            // 16 Nov 2026: base_total never held the desk extras, so take them off the total first
+            if ($baseAmt > 0) { $tDisc += max(0.0, $baseAmt - max(0.0, (float) ($r['total_amount'] ?? 0) - $extrasOf($r))); }
         }
+    }
+    $xPaid = 0.0; $xDue = 0.0;
+    foreach ($xBook as $xb) {
+        if ($xb['state'] === 'due') { $xDue += $xb['amt']; } else { $xPaid += $xb['amt']; }
     }
     $totals = [
         'passengers' => count($rows), 'ticket' => $tTicket, 'cash' => $tCash,
         'online' => $tOnline, 'discount' => $tDisc, 'net' => $tCash + $tOnline,
         'chalaniNo' => $chalaniNo,
+        // 16 Nov 2026: special (desk extras) payments — whole, came in, still to collect
+        'extras' => $tExtra, 'extrasPaid' => $xPaid, 'extrasDue' => $xDue, 'infants' => $xInfants,
     ];
+    /* the "विशेष भुक्तानी" lines, in chalani row order, seat labels as printed */
+    $xLines = [];
+    foreach ($xBook as $xb) {
+        $xb['seatsLbl'] = implode(', ', array_map(static fn(string $s): string =>
+            Seats::displayLabel($s, (string) ($trip['coach_type'] ?? 'sleeper'), $xb['mode']), array_values(array_unique($xb['seats']))));
+        $xLines[] = $xb;
+    }
 
     /* Boarding points line, from the route's own stop rows. Built twice: the
        Nepali-digit form the print sheet and the PDF use, and a Roman-digit
@@ -734,7 +817,13 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
                    'placeList' => array_values($placeList), 'placeNo' => static fn(string $stop): int => (int) ($placeList[$stop]['no'] ?? 0),
                    'womanSingle' => $isWomanSingle, 'womenSingleCount' => $womenSingleCount,
                    'seatInfo' => $seatInfo, 'layout' => $layout,
-                   'busName' => trim((string) ($trip['bus_name'] ?? '') . ' ' . (string) ($trip['bus_number'] ?? ''))];
+                   'busName' => trim((string) ($trip['bus_name'] ?? '') . ' ' . (string) ($trip['bus_number'] ?? '')),
+                   /* 16 Nov 2026: the special-payment lines (one per booking with
+                      desk extras) and the state of the booking a row belongs to */
+                   'extrasLines' => $xLines, 'penLines' => 2,
+                   'rowState' => static fn(array $r): string => (string) ($mfState[(int) ($r['booking_id'] ?? 0)] ?? 'due'),
+                   'infantsOf' => static fn(array $r): int => ($xFirst[(int) ($r['booking_id'] ?? 0)] ?? -1) === (int) ($r['pax_id'] ?? 0)
+                        ? (int) ($xBook[(int) $r['booking_id']]['inf'] ?? 0) : 0];
 
     /* Where the three chalani surfaces live. Defined HERE, before any of
        the branches: the PNG picker links back to the PDF, so leaving these
@@ -886,6 +975,16 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   .pl-list i, i.pno { font-style:normal; display:inline-block; min-width:16px; height:16px; line-height:16px; text-align:center; border-radius:50%; background:#12264E; color:#fff; font-size:9.5px; font-weight:800; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   table.ps tr.ws td { background:#FCE4EC; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   .wsb { color:#C2185B; }
+  /* 16 Nov 2026: special (extra) payments — paid or not, plus pen lines */
+  .xp { border:1.5px solid #12264E; border-radius:6px; padding:6px 9px 7px; margin-top:8px; break-inside:avoid; }
+  .xp h3 { margin:0 0 5px; font-size:10.5px; letter-spacing:.4px; color:#12264E; }
+  .xp table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  .xp th, .xp td { border:1px solid #8090A8; padding:2px 5px; font-size:10px; height:18px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; text-align:left; }
+  .xp th { background:#EEF2F8; font-weight:600; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .xp .r { text-align:right; }
+  .xp tr.pen td { height:21px; color:#5C6B85; }
+  .xok { color:#15803D; } .xdue { color:#B91C1C; }
+  b.inf { color:#7C2D12; font-size:9.5px; }
   .chartpg { break-before:page; page-break-before:always; padding-top:6px; }
   .chartpg h2 { margin:0 0 4px; font-size:16px; color:#12264E; }
 
@@ -945,6 +1044,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
 <div class="pl">
   <div class="pl-bus">🚌 <b><?= $e(trim((string) ($trip['bus_name'] ?? '') . ' ' . (string) ($trip['bus_number'] ?? ''))) ?: 'बस' ?></b>
     · जम्मा यात्रु <b><?= $e($neDigits((string) count($rows))) ?></b>
+    <?php if ($xInfants > 0): ?> + शिशु <b><?= $e($neDigits((string) $xInfants)) ?></b> <small>(काखमा, बर्थ बिना)</small><?php endif; ?>
     <?php if ($womenSingleCount > 0): ?> · <span class="pl-ws">♀ महिला सिंगल <?= $e($neDigits((string) $womenSingleCount)) ?></span><?php endif; ?></div>
   <div class="pl-list">
     <?php foreach ($placeList as $pl): ?>
@@ -968,11 +1068,12 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   </tr></thead>
   <tbody>
   <?php for ($i = 0; $i < $sheetRows; $i++): $r = $rows[$i] ?? null; $m = $r ? $money($r) : null;
-        $ws = $r !== null && $isWomanSingle($r); ?>
+        $ws = $r !== null && $isWomanSingle($r);
+        $rInf = $r !== null ? (int) $chalaniFmt['infantsOf']($r) : 0; ?>
     <tr<?= $ws ? ' class="ws"' : '' ?>>
       <td class="c n"><?= $e($neDigits((string) ($i + 1))) ?></td>
       <td class="c"><b><?= $r ? $e(Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing'))) : '' ?></b></td>
-      <td><?php if ($r): ?><?= $ws ? '<b class="wsb">♀</b> ' : '' ?><?= $e($r['full_name']) ?> <small><?= $e($r['ticket_number'] ?: $r['pnr']) ?><?php if ($isLate($r)): ?> · <span class="late">बस चलेपछि</span><?php endif; ?></small><?php endif; ?></td>
+      <td><?php if ($r): ?><?= $ws ? '<b class="wsb">♀</b> ' : '' ?><?= $e($r['full_name']) ?><?php if ($rInf > 0): ?> <b class="inf">+ शिशु <?= $e($neDigits((string) $rInf)) ?></b><?php endif; ?> <small><?= $e($r['ticket_number'] ?: $r['pnr']) ?><?php if ($isLate($r)): ?> · <span class="late">बस चलेपछि</span><?php endif; ?></small><?php endif; ?></td>
       <td><?= $r ? $e($r['contact_phone'] === '0000000000' ? '' : $r['contact_phone']) : '' ?></td>
       <td><?php if ($r): $pk = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—'; ?><i class="pno"><?= $e($neDigits((string) ($placeList[$pk]['no'] ?? ''))) ?></i> <?= $e($pk) ?><?php endif; ?></td>
       <td><?= $r ? $e($stopShort((string) $r['drop_stop'])) : '' ?></td>
@@ -980,11 +1081,35 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
       <td class="r"><?= ($m && $m['cash'] > 0) ? $e(number_format($m['cash'])) : '' ?></td>
       <td class="r"><?= ($m && $m['online'] > 0) ? $e(number_format($m['online'])) : '' ?></td>
       <td class="c"></td>
-      <td><?= $r ? $e($bookedByShort($r) === 'ONLINE' ? 'अनलाइन' : ($bookedByShort($r) === 'OFFICE' ? 'कार्यालय' : ($bookedByShort($r) === 'COUNTER' ? 'काउन्टर' : $bookedByShort($r)))) : '' ?></td>
+      <td><?= $r ? $e($bookedByShort($r) === 'ONLINE' ? 'अनलाइन' : ($bookedByShort($r) === 'OFFICE' ? 'कार्यालय' : ($bookedByShort($r) === 'COUNTER' ? 'काउन्टर' : $bookedByShort($r)))) : '' ?><?php if ($m && $m['extra'] > 0): $xs = $chalaniFmt['rowState']($r); ?> · <b class="<?= $xs === 'due' ? 'xdue' : 'xok' ?>">थप ₹<?= $e(number_format($m['extra'])) ?> <?= $e($xStateNe($xs)) ?></b><?php endif; ?></td>
     </tr>
   <?php endfor; ?>
   </tbody>
 </table>
+
+<?php /* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai thapaune line rakheu"):
+         every booking with desk extras on its own line — what, how much, came in or not —
+         and blank lines for what the crew collects on the road. */ ?>
+<div class="xp">
+  <h3>विशेष भुक्तानी · थप सामान / शिशु / अन्य — भयो कि भएन</h3>
+  <table>
+    <colgroup><col style="width:150px"><col style="width:170px"><col style="width:110px"><col><col style="width:90px"><col style="width:150px"></colgroup>
+    <thead><tr><th>PNR</th><th>यात्रु</th><th>सिट</th><th>विवरण</th><th class="r">रकम ₹</th><th>भयो / भएन</th></tr></thead>
+    <tbody>
+    <?php foreach ($xLines as $xl): ?>
+      <tr>
+        <td><?= $e($xl['pnr']) ?></td><td><?= $e($xl['lead']) ?></td><td><?= $e($xl['seatsLbl']) ?></td>
+        <td><?= $xl['lug'] > 0 ? 'थप सामान ' . $e($neDigits((string) $xl['lug'])) . ' थान ₹' . $e(number_format($xl['lugFee'])) : '' ?><?= ($xl['lug'] > 0 && $xl['inf'] > 0) ? ' · ' : '' ?><?= $xl['inf'] > 0 ? 'शिशु ' . $e($neDigits((string) $xl['inf'])) . ' ' . ($xl['infFee'] > 0 ? '₹' . $e(number_format($xl['infFee'])) : '(निःशुल्क)') : '' ?></td>
+        <td class="r"><b><?= $e(number_format($xl['amt'])) ?></b></td>
+        <td><b class="<?= $xl['state'] === 'due' ? 'xdue' : 'xok' ?>"><?= $e($xStateNe($xl['state'])) ?></b></td>
+      </tr>
+    <?php endforeach; ?>
+    <?php for ($p = 0; $p < (int) $chalaniFmt['penLines']; $p++): ?>
+      <tr class="pen"><td></td><td></td><td></td><td></td><td></td><td>भयो ☐ &nbsp; भएन ☐</td></tr>
+    <?php endfor; ?>
+    </tbody>
+  </table>
+</div>
 
 <div class="bottom">
   <div class="box">
@@ -995,6 +1120,8 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
       <span>नगद संकलन</span><b>₹ <?= $e(number_format($totals['cash'])) ?></b>
       <span>अनलाइन / UPI प्राप्ति</span><b>₹ <?= $e(number_format($totals['online'])) ?></b>
       <span>छुट / सहुलियत</span><b>₹ <?= $e(number_format($totals['discount'])) ?></b>
+      <span>विशेष भुक्तानी (थप सामान / शिशु)</span><b>₹ <?= $e(number_format($totals['extras'])) ?></b>
+      <span>&nbsp;&nbsp;↳ भयो / बाँकी</span><b>₹ <?= $e(number_format($totals['extrasPaid'])) ?> / <?= $e(number_format($totals['extrasDue'])) ?></b>
       <span class="net">खुद जम्मा संकलन</span><b class="net">₹ <?= $e(number_format($totals['net'])) ?></b>
     </div>
   </div>
@@ -1039,9 +1166,15 @@ $mfMoney = ['paid' => 0.0, 'agent' => 0.0, 'due' => 0.0];
 $mfCount = ['paid' => 0, 'agent' => 0, 'due' => 0];
 foreach ($rows as $r) {
     $st = $mfState[(int) ($r['booking_id'] ?? 0)] ?? 'due';
-    $mfMoney[$st] += $farePer($r);
+    $mfMoney[$st] += $farePer($r) + $extraOnRow($r);   // 16 Nov 2026: + the booking's desk extras, once
     $mfCount[$st]++;
 }
+/* 16 Nov 2026 (owner: "chalani ma seat ma sabai ma thik hos"): free = berths
+   not taken. A private double cabin is ONE passenger on TWO berths, so
+   "total - passengers" said one more free berth than the bus had. */
+$bedsTaken = count(array_filter(array_keys($seatInfo), static fn($b): bool => !Seats::isExtraSeat((string) $b)));
+$xScreenPaid = 0.0; $xScreenDue = 0.0;
+foreach ($xBook as $xb) { if ($xb['state'] === 'due') { $xScreenDue += $xb['amt']; } else { $xScreenPaid += $xb['amt']; } }
 $revenue  = 0.0;
 $seenPnr  = [];
 foreach ($rows as $r) {
@@ -1245,7 +1378,8 @@ foreach ($rows as $r) {
     </div>
     <div class="mf-stats">
       <span><b><?= $paxCount ?></b> passengers</span>
-      <span><b><?= (int) $trip['total_seats'] - $paxCount ?></b> seats free</span>
+      <span><b><?= max(0, (int) $trip['total_seats'] - $bedsTaken) ?></b> seats free</span>
+      <?php if ($xInfants > 0): ?><span><b>+<?= (int) $xInfants ?></b> शिशु · infants (lap)</span><?php endif; ?>
       <span><b><?= $boarded ?></b> boarded</span>
       <span><b><?= $unpaid ?></b> unpaid</span>
       <span><b><?= Security::e(inr($revenue)) ?></b> booked value</span>
@@ -1255,6 +1389,9 @@ foreach ($rows as $r) {
       <?= pc_badge('Paid ' . $mfCount['paid'] . ' · ' . inr($mfMoney['paid']), 'ok') ?>
       <?= pc_badge('With agents ' . $mfCount['agent'] . ' · ' . inr($mfMoney['agent']), 'warn') ?>
       <?= pc_badge('Due ' . $mfCount['due'] . ' · ' . inr($mfMoney['due']), 'bad') ?>
+      <?php if ($xBook !== []): ?>
+        <?= pc_badge('विशेष भुक्तानी · Extras ' . inr($xScreenPaid + $xScreenDue) . ' — भयो ' . inr($xScreenPaid) . ' · बाँकी ' . inr($xScreenDue), $xScreenDue > 0 ? 'warn' : 'ok') ?>
+      <?php endif; ?>
     </div>
   </div>
 
@@ -1293,7 +1430,7 @@ foreach ($rows as $r) {
               <td class="r"><b><?= (int) $pl['n'] ?></b></td><td class="mf-seats"><?= Security::e(implode(', ', $pl['seats'])) ?></td></tr>
         <?php endforeach; ?>
         </tbody>
-        <tfoot><tr><td></td><td><b>जम्मा · Total</b></td><td class="r"><b><?= $paxCount ?></b></td><td></td></tr></tfoot>
+        <tfoot><tr><td></td><td><b>जम्मा · Total</b></td><td class="r"><b><?= $paxCount ?></b></td><td><?= $xInfants > 0 ? '+ ' . (int) $xInfants . ' शिशु · infant (lap)' : '' ?></td></tr></tfoot>
       </table>
     </div>
     <div class="mf-pl-card">
@@ -1358,6 +1495,10 @@ foreach ($rows as $r) {
           — <?= Security::e($stopNow) ?> → <?= Security::e($stopShort((string) ($r['drop_stop'] ?: $trip['to_city']))) ?>
           — <span class="mono"><?= Security::e((string) $r['contact_phone']) ?></span>
           — seats <b><?= Security::e(implode(', ', $g['seats'])) ?></b>
+          <?php if (isset($xBook[$gid])): $xg = $xBook[$gid]; ?>
+            — <span class="mf-tag <?= $xg['state'] === 'due' ? 'pay-due' : 'pay-paid' ?>" title="विशेष भुक्तानी · desk extras">
+              <?= $xg['lug'] > 0 ? '🧳 ' . (int) $xg['lug'] . ' ' : '' ?><?= $xg['inf'] > 0 ? '👶 ' . (int) $xg['inf'] . ' ' : '' ?>थप <?= Security::e(inr($xg['amt'])) ?> · <?= Security::e($xStateNe($xg['state'])) ?></span>
+          <?php endif; ?>
           · <a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>"><?= Security::e((string) $r['pnr']) ?></a>
           <span class="mf-acts no-print">
             <a class="btn ghost" href="<?= $base ?>/admin/reschedule.php?pnr=<?= urlencode((string) $r['pnr']) ?>" title="अर्को मिति / अर्को बसमा सार्नुहोस्"><?= pc_icon('swap') ?> Transfer</a>

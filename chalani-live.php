@@ -82,9 +82,15 @@ $deps = Database::fetchAll(
 );
 
 $trips = [];
+/* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai"): the desk
+   extras - extra luggage, lap infants - on each booking card. 0 without the columns. */
+$xCols = '';
+foreach (['luggage_pieces', 'luggage_fee', 'infant_count', 'infant_fee'] as $xc) {
+    $xCols .= CounterDesk::hasColumn('bookings', $xc) ? ', b.' . $xc : ', 0 AS ' . $xc;
+}
 foreach ($deps as $dep) {
     $rows = Database::fetchAll(
-        "SELECT bp.seat_no, bp.full_name, bp.gender, b.id AS booking_id, b.pnr, b.booking_mode, b.contact_phone,
+        "SELECT bp.seat_no, bp.full_name, bp.gender, b.id AS booking_id, b.pnr, b.booking_mode, b.contact_phone" . $xCols . ",
                 bl.boarding_stop, bl.drop_stop,
                 p.status AS pay_status, p.method AS pay_method,
                 ad.full_name AS agent_name, ad.phone AS agent_phone, ad.role AS agent_role, b.sold_by_admin_id, b.source
@@ -203,14 +209,19 @@ header h1{margin:0;font-size:19px}header p{margin:4px 0 0;font-size:13px;opacity
           }
       }
       $total = (int) ($dep['total_seats'] ?: 72);
+      /* 16 Nov 2026 (owner: "chalani ma seat ma sabai ma thik hos"): free = berths not
+         taken — a private double cabin is one passenger on two berths */
+      $bedsTaken = count(array_filter(array_keys($beds), static fn($b): bool => !Seats::isExtraSeat((string) $b)));
+      $infN = 0;
+      foreach ($groups as $bksX) { foreach ($bksX as $gX) { $infN += max(0, (int) ($gX['r']['infant_count'] ?? 0)); } }
       $plate = Fleet::publicNumber((string) $dep['bus_number']);
       $layout = Seats::layoutFor($coach, 'sharing'); ?>
     <section class="trip">
       <h2><?= $e($dep['from_city']) ?> → <?= $e($dep['to_city']) ?> · <?= $e(date('g:i A', strtotime((string) $dep['dep_time']))) ?></h2>
       <div class="sub">🚌 <?= $e(trim((string) $dep['bus_name'] . ' ' . $plate)) ?: 'Bus' ?><?= !empty($dep['driver_name']) ? ' · 👤 ' . $e($dep['driver_name']) . (!empty($dep['driver_phone']) ? ' ' . $e($dep['driver_phone']) : '') : '' ?></div>
       <div class="chips">
-        <span class="c-n">👥 <?= count($rows) ?> यात्रु</span>
-        <span class="c-n">💺 <?= max(0, $total - (count($rows) - $exN)) ?> खाली / <?= $total ?></span>
+        <span class="c-n">👥 <?= count($rows) ?> यात्रु<?= $infN > 0 ? ' + 👶 ' . $infN . ' शिशु' : '' ?></span>
+        <span class="c-n">💺 <?= max(0, $total - $bedsTaken) ?> खाली / <?= $total ?></span>
         <?php if ($exN > 0): ?><span class="c-n">➕ Extra <?= $exN ?></span><?php endif; ?>
         <span class="c-paid">✅ Paid <?= $cnt['paid'] ?></span><span class="c-agent">🟠 Agent <?= $cnt['agent'] ?></span><span class="c-due">🔴 Due <?= $cnt['due'] ?></span>
       </div>
@@ -220,6 +231,11 @@ header h1{margin:0;font-size:19px}header p{margin:4px 0 0;font-size:13px;opacity
           <div class="bk <?= $e($g['state']) ?>">
             <b><?= $e($g['lead']) ?><?= $g['n'] > 1 ? ' + ' . ($g['n'] - 1) : '' ?> · 💺 <?= $e(implode(', ', $g['seats'])) ?></b>
             <div class="row"><span>➡️ <?= $e($stopShort((string) ($r['drop_stop'] ?: $dep['to_city']))) ?></span><span>📱 <?= $e(OpsHub::maskPhone((string) $r['contact_phone'])) ?></span><span>🧑‍💼 <?= $e($seller($r)) ?></span><span><?= $e($r['pnr']) ?></span></div>
+            <?php $xLug = max(0, (int) ($r['luggage_pieces'] ?? 0)); $xInf = max(0, (int) ($r['infant_count'] ?? 0));
+                  $xAmt = max(0.0, (float) ($r['luggage_fee'] ?? 0)) + max(0.0, (float) ($r['infant_fee'] ?? 0));
+                  if ($xLug > 0 || $xInf > 0): ?>
+            <div class="row"><span style="font-weight:800;color:<?= $g['state'] === 'due' ? '#B91C1C' : '#15803D' ?>">विशेष भुक्तानी · <?= $xLug > 0 ? '🧳 ' . $xLug . ' थप सामान ' : '' ?><?= $xInf > 0 ? '👶 ' . $xInf . ' शिशु ' : '' ?><?= $xAmt > 0 ? '₹' . $e(number_format($xAmt)) . ' ' : '' ?>— <?= $g['state'] === 'due' ? '✗ बाँकी' : '✓ भयो' ?></span></div>
+            <?php endif; ?>
             <span class="st <?= $e($cls) ?>"><?= $e($lbl) ?></span>
           </div>
         <?php endforeach; ?>

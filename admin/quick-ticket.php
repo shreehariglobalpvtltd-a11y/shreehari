@@ -1003,12 +1003,17 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       : requested;
     var discount = Math.round(Math.min(rawDiscount, base * Math.max(0, MAX_DISC) / 100, base) * 100) / 100;
     var x = deskExtras();
+    /* 16 Nov 2026: the desk discount never stacks on the automatic ones (running
+       offer + return discount) - the bigger wins, as BookingService::create() charges. */
+    var auto = Math.max(0, Number(f.couponDiscount || 0)) + Math.max(0, Number(f.returnDiscount || 0));
+    var payable = base - discount;
+    if (discount > 0 && auto > 0) { payable = discount > auto ? base + auto - discount : base; }
     return {
       base: base,
-      discount: discount,
+      discount: (discount > 0 && auto > 0) ? Math.max(0, discount - auto) : discount,
       lug: x.lug, inf: x.inf, extras: x.amt,
       // P8-3f / P4-4d: the extras go on AFTER the discount (never discounted, never commission)
-      finalTotal: Math.round((Math.max(0, base - discount) + x.amt) * 100) / 100
+      finalTotal: Math.round((Math.max(0, payable) + x.amt) * 100) / 100
     };
   }
   /* 16 Nov 2026 (P8-3f / P4-4d): luggage pieces x LUG_FEE + lap infants x INF_FARE -

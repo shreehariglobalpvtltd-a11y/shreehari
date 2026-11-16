@@ -226,7 +226,9 @@ foreach ($seatRows as $r) {
             'agent' => (string) ($r['agent_name'] ?? ''), 'phone' => (string) ($r['contact_phone'] ?? ''), 'cc' => (string) ($r['contact_country_code'] ?? ''), 'woman' => in_array(strtolower((string) $r['gender']), ['female', 'f'], true)];
     }
     $bySid[$sid]['money'][$state] = ($bySid[$sid]['money'][$state] ?? 0) + $share;
-    $bySid[$sid]['seats'] = ($bySid[$sid]['seats'] ?? 0) + 1;
+    /* 16 Nov 2026 (owner: "chalani ma seat ma sabai ma thik hos"): count BERTHS -
+       a private double cabin is one seat row on two berths, so +1 said one more free */
+    $bySid[$sid]['seats'] = ($bySid[$sid]['seats'] ?? 0) + (Seats::isExtraSeat((string) $r['seat_no']) ? 1 : max(1, count($beds)));
     if (Seats::isExtraSeat((string) $r['seat_no'])) {
         $bySid[$sid]['extra'] = ($bySid[$sid]['extra'] ?? 0) + 1;
     }

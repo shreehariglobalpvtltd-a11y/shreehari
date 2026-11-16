@@ -76,6 +76,7 @@ function http(string $url, array $opt = []): array
     return ['code' => $code, 'body' => substr($raw, $hlen), 'headers' => substr($raw, 0, $hlen)];
 }
 function csrfFrom(string $h): string {
+    if (preg_match('/<meta name="csrf-token" content="([^"]+)"/', $h, $m) === 1) { return html_entity_decode($m[1]); }
     return preg_match('/name="' . preg_quote(CSRF_TOKEN_NAME, '/') . '"\s+value="([^"]+)"/', $h, $m) ? $m[1] : '';
 }
 
@@ -108,11 +109,15 @@ try {
         'full_name' => 'Manifest Seller', 'role' => 'agent',
         'permissions' => json_encode([]), 'is_active' => 1, 'must_change_pw' => 0,
     ]);
-    Database::insert('admins', [
+    $bossId = (int) Database::insert('admins', [
         'username' => BOSS, 'password_hash' => password_hash(BOSS_PW, PASSWORD_DEFAULT),
         'full_name' => 'Manifest Boss', 'role' => 'superadmin',
         'permissions' => json_encode([]), 'is_active' => 1, 'must_change_pw' => 0,
     ]);
+    /* 16 Nov 2026: the code-first door (15 Nov) sends an account with no PIN to
+       pin-setup.php before any page - give the reader one, as a real office login has. */
+    require_once INCLUDE_PATH . '/quickunlock.php';
+    QuickUnlock::set($bossId, 'pin', '615273');
 
     /* ---- three passengers, three different sources -------------------- */
     $web = BookingService::create([
@@ -146,9 +151,11 @@ try {
           "agent view = $agentScoped of 3 passengers");
 
     /* ---- sign in and open the manifest -------------------------------- */
-    $login = http('/admin/login.php');
+    // 16 Nov 2026: the classic username + password door is ?classic=1 since the code-first login
+    try { Database::run("DELETE FROM rate_limits WHERE identifier IN ('127.0.0.1', '::1') AND bucket IN ('admin_login', 'code_login_enter', 'quick_unlock', 'code_login_try')"); } catch (Throwable $e) {}
+    $login = http('/admin/login.php?classic=1&other=1');
     $r = http('/admin/login.php', ['form' => [
-        CSRF_TOKEN_NAME => csrfFrom($login['body']), 'username' => BOSS, 'password' => BOSS_PW]]);
+        CSRF_TOKEN_NAME => csrfFrom($login['body']), 'classic' => '1', 'username' => BOSS, 'password' => BOSS_PW]]);
     check('superadmin signs in', in_array($r['code'], [200, 302], true), 'HTTP ' . $r['code']);
 
     $page = http('/admin/manifest.php?date=' . TD . '&route=' . $routeId);
@@ -156,7 +163,10 @@ try {
 
     // Seats are STORED canonically (L8/L4/L6) but DISPLAYED as the row-letter
     // grid (Seats::displayLabel) since 11 Sep 2026: L8→LB2, L4→LA4, L6→LA6.
-    foreach ([['Web Customer', 'LB2'], ['Cod Customer', 'LA4'], ['Counter Customer', 'LA6']] as [$who, $seat]) {
+    // 16 Nov 2026: labels come from Seats::displayLabel() itself (the grid was renumbered
+    // A1 A2 | A3-A6 on 6 Nov 2026, so hard-coded LB2 / LA4 / LA6 went stale)
+    $lbl = static fn(string $s): string => Seats::displayLabel($s, 'sleeper', 'sharing');
+    foreach ([['Web Customer', $lbl('L8')], ['Cod Customer', $lbl('L4')], ['Counter Customer', $lbl('L6')]] as [$who, $seat]) {
         check("manifest lists $who ($seat)",
               str_contains($page['body'], $who) && str_contains($page['body'], '>' . $seat . '<'));
     }
