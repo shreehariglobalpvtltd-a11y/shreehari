@@ -106,6 +106,17 @@ if ($out === null) { echo "  SKIP  no active sleeper route towards Nepal\n"; exi
 $rid   = (int) $out['id'];
 $stops = Boarding::stopsFor($rid);
 $dir   = Fare::dirFares();
+/* 16 Nov 2026 (battery Y7): a pickup may carry its OWN fare (Admin -> Routes,
+   1 Oct 2026 - Fare::stopFare), and the checkout (BookingService::priceBooking)
+   and Quick Ticket (fareFor) both charge it before the direction default. The
+   fare checks below compared against the bare toNepal default (2000) and went
+   red the day Surat was priced 2200 on this route. The expectation is now the
+   checkout's own per-seat rule for the PLANNED pickup: its stop fare, else the
+   direction fare - read from the database, never hard-coded. */
+$seatFare = static function (array $route, string $boarding): float {
+    $own = Fare::stopFare((int) $route['id'], $boarding, '');
+    return $own ?? (float) Fare::dirFares()[Fare::routeDir($route)];
+};
 
 $today = todayISO();
 $D  = addDaysISO($today, 40);   // explicit staff any-date fixture: every pickup still ahead
@@ -169,7 +180,10 @@ try {
     check('  pickup label carries its time ("Name @ HH:MM")', preg_match('/@ \d\d:\d\d$/', (string) $p['boarding']) === 1, (string) $p['boarding']);
     $firstStop = (string) ($stops[0]['name'] ?? $out['from_city']);
     check('  first pickup by default', Boarding::townKey((string) $p['boarding']) === Boarding::townKey($firstStop), (string) $p['boardingName']);
-    check('  fare per seat = the toNepal direction fare', abs((float) $p['fare']['perSeat'] - (float) $dir['toNepal']) < 0.01, (string) $p['fare']['perSeat']);
+    $pSeat = $seatFare($out, (string) $p['boarding']);
+    check('  fare per seat = the pickup\'s own fare, else the toNepal direction fare', abs((float) $p['fare']['perSeat'] - $pSeat) < 0.01,
+        $p['fare']['perSeat'] . ' (expected ' . $pSeat . ', direction default ' . $dir['toNepal'] . ')');
+    check('  …the same per-seat price the checkout charges (Fare::perSeatFor)', abs((float) $p['fare']['perSeat'] - Fare::perSeatFor($out, (string) $p['boarding'], '')) < 0.01);
     $q = Fare::quote((float) $p['fare']['perSeat'], 1, 0, 0, 0, '', '', $rid);
     check('  total = Fare::quote of that base', abs((float) $p['fare']['total'] - (float) $q['total']) < 0.01, (string) $p['fare']['total']);
     check('  no women-only berth for an unstated gender', !in_array($p['seats'][0], Seats::femaleSeats('sleeper'), true), $p['seats'][0]);
@@ -234,7 +248,7 @@ try {
     check('a man never gets a women-only berth', !in_array($mm['seats'][0], Seats::femaleSeats('sleeper'), true), $mm['seats'][0]);
     $pair = QuickTicket::plan(['date' => $D, 'direction' => 'toNepal', 'seats' => 2]);
     check('a pair shares one cabin', count($pair['seats']) === 2 && Seats::unitKey($pair['seats'][0]) === Seats::unitKey($pair['seats'][1]), implode(',', $pair['seats']));
-    check('  priced for two', abs((float) $pair['fare']['base'] - 2 * (float) $dir['toNepal']) < 0.01, (string) $pair['fare']['base']);
+    check('  priced for two', abs((float) $pair['fare']['base'] - 2 * $seatFare($out, (string) $pair['boarding'])) < 0.01, (string) $pair['fare']['base']);
 
     /* ================================================================
      *  5. refusals
@@ -258,8 +272,16 @@ try {
 
     throws('a short mobile is still refused', fn() => QuickTicket::sell(['name' => 'Quick Pax', 'phone' => '12345', 'date' => $D], $staffRow), 'mobile');
     throws('a CUSTOMER with no mobile is still refused', fn() => QuickTicket::sell(['name' => 'Quick Pax', 'phone' => '', 'date' => $D], []), 'mobile');
-    Seats::schedule($rid, $D2);
-    Database::update('schedules', ['status' => 'cancelled'], 'route_id = :r AND travel_date = :d', ['r' => $rid, 'd' => $D2]);
+    /* "Cancelled date" = no bus towards Nepal runs that day. Only $rid used to
+       be cancelled; with a second active Surat -> Rupaidiha route (the bus
+       rotation, 31 Oct 2026) plan() rightly sold the other bus, so the refusal
+       never came. Every route in that direction is cancelled for $D2. */
+    foreach ($routes as $r) {
+        if ($r['direction'] === 'toNepal') {
+            Seats::schedule((int) $r['id'], $D2);
+            Database::update('schedules', ['status' => 'cancelled'], 'route_id = :r AND travel_date = :d', ['r' => (int) $r['id'], 'd' => $D2]);
+        }
+    }
     throws('a cancelled date cannot be planned', fn() => QuickTicket::plan(['date' => $D2, 'direction' => 'toNepal']), 'not running');
     check('no booking was written by the refusals', (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE contact_phone LIKE '" . QT_PHONE . "%'") === 0);
 
@@ -324,7 +346,7 @@ try {
     check('a party of two gets two seats', count($resP['seats']) === 2, implode(',', $resP['seats']));
     $names = array_map('strval', pluck(Database::fetchAll('SELECT full_name FROM booking_passengers WHERE booking_id = :b ORDER BY is_primary DESC, id', ['b' => (int) $resP['bookingId']]), 'full_name'));
     check('  second passenger numbered after the buyer', $names === ['Quick Test Family', 'Quick Test Family (2)'], implode(' | ', $names));
-    $qP = Fare::quote(2 * (float) $dir['toNepal'], 2, 0, 0, 0, '', '', $rid);
+    $qP = Fare::quote(2 * $seatFare($out, (string) $resP['boarding']), 2, 0, 0, 0, '', '', $rid);
     check('  total = Fare::quote for two', abs((float) $resP['total'] - (float) $qP['total']) < 0.01, (string) $resP['total']);
 
     /* ================================================================
@@ -402,6 +424,17 @@ try {
     $owner = ['id' => 1, 'phone' => QT_PHONE . '013', 'full_name' => 'Quick Pinned', 'role' => 'customer', 'last_seen' => time()];
     throws('undo is refused to a session that is not the ticket\'s number', fn() => QuickTicket::customerUndo($resPin['pnr'], ['id' => 2, 'phone' => QT_PHONE . '099', 'last_seen' => time()]), 'not on this mobile');
     throws('  …and to a guest', fn() => QuickTicket::customerUndo($resPin['pnr'], null), 'Sign in');
+    /* 8 Oct 2026 (owner: a typed name + mobile is never proof): only a session
+       that OWNS the ticket may undo it - Auth::customerMayOpen(): the browser
+       that booked it, or a WhatsApp-code-verified owner. A session signed in
+       on the ticket's number WITHOUT the code is refused, and the undo below
+       runs from the booking browser, which api/quick-ticket.php marks with
+       Auth::rememberOwnPnr() right after every passenger sale. */
+    $_SESSION[USER_SESSION_KEY] = $owner;
+    throws('  …and to a session on the ticket\'s number that never proved it with the WhatsApp code', fn() => QuickTicket::customerUndo($resPin['pnr'], $owner), 'Verify your number');
+    unset($_SESSION[USER_SESSION_KEY]);
+    $ownBrowser = static function (string $pnr): void { Auth::rememberOwnPnr($pnr); };   // as api/quick-ticket.php does after a customer sale
+    $ownBrowser((string) $resPin['pnr']);
     $jBefore = count(Notify::whatsappJournal());
     $u = QuickTicket::customerUndo($resPin['pnr'], $owner);
     // Snapshot the undo's own messages HERE: the journal is request-scoped and
@@ -413,6 +446,7 @@ try {
     throws('  a second undo of the same ticket is refused', fn() => QuickTicket::customerUndo($resPin['pnr'], $owner), 'undo');
     $resOld = QuickTicket::sellCustomer(['name' => 'Quick Pinned', 'phone' => QT_PHONE . '013', 'date' => $DC, 'direction' => 'toNepal'], null);
     check('after an undo the same passenger may book the bus again', $resOld['status'] === 'confirmed');
+    $ownBrowser((string) $resOld['pnr']);
     Database::update('bookings', ['created_at' => date('Y-m-d H:i:s', time() - 3 * 3600)], 'pnr = :p', ['p' => $resOld['pnr']]);
     throws('an old ticket is past the free undo window (use Cancel)', fn() => QuickTicket::customerUndo($resOld['pnr'], $owner), 'window');
 
@@ -429,6 +463,7 @@ try {
        real money, so the passenger and the office must get the ordinary cancel
        copy — a silent "nothing to pay" would strand the refund. */
     $resCash = QuickTicket::sellCustomer(['name' => 'Quick Pinned', 'phone' => QT_PHONE . '013', 'date' => $DC2, 'direction' => 'toNepal'], null);
+    $ownBrowser((string) $resCash['pnr']);
     Database::update('payments', ['status' => 'verified'], 'booking_id = :b', ['b' => (int) $resCash['bookingId']]);
     $jCashBefore = count(Notify::whatsappJournal());
     $uCash = QuickTicket::customerUndo($resCash['pnr'], $owner);
@@ -561,7 +596,11 @@ try {
         check("i18n key $k in en / hi / ne", substr_count($i18n, ' ' . $k . ': ') === 3, substr_count($i18n, ' ' . $k . ': ') . ' found');
     }
     check('the banner is wired at boot', str_contains($src('assets/js/05-router.js'), 'function initQuickTicket') && str_contains($src('assets/js/13-admin-routes.js'), 'initQuickTicket()'));
-    check('counter mode links the desk', str_contains($src('assets/js/14-counter.js'), '/admin/quick-ticket.php'));
+    /* 16 Oct 2026 (owner: "3 ta booking system lai eutai ma"): SmartBook is the one
+       booking screen. Counter mode links it, and the old desk URL forwards there
+       with the customer filled in (?legacy=1 keeps the old page, unlinked). */
+    check('counter mode links the desk (SmartBook, the one booking screen)', str_contains($src('assets/js/14-counter.js'), 'href="/admin/smartbook.php" id="cbQuick"'));
+    check('  …and the old Quick Ticket desk URL forwards to SmartBook with the customer', str_contains($src('admin/quick-ticket.php'), "header('Location: /admin/smartbook.php'") && str_contains($src('admin/quick-ticket.php'), "\$go['cphone']"));
     check('run-all lists this suite', str_contains($src('tests/run-all.php'), 'quick-ticket-test.php'));
     check('role-gates walks the desk page + API', str_contains($src('tests/role-gates-test.php'), '/admin/quick-ticket.php') && str_contains($src('tests/role-gates-test.php'), '/api/quick-ticket.php'));
     check('Notify keeps the WhatsApp journal the desk reads', str_contains($src('includes/notify.php'), 'function whatsappJournal') && str_contains($src('includes/notify.php'), 'function whatsappNumberFor'));
@@ -573,7 +612,7 @@ try {
 } finally {
     $cleanup();
     $restoreSettings();
-    unset($_SESSION[ADMIN_SESSION_KEY]);
+    unset($_SESSION[ADMIN_SESSION_KEY], $_SESSION[USER_SESSION_KEY], $_SESSION[Auth::OWN_PNRS_KEY]);
 }
 
 echo "\n----------------------------------------\n";

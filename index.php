@@ -263,7 +263,8 @@ if ($staffRow !== null) {
         'name'           => (string) ($staffRow['full_name'] ?? ($staffRow['username'] ?? '')),
         'role'           => (string) ($staffRow['role'] ?? ''),
         'code'           => AgentWallet::agentCodeLabel($staffId) ?: null,
-        'canSell'        => Auth::can('bookings.edit') || Auth::can('schedules.edit') || Auth::isSuperadmin(),
+        'canSell'        => (Auth::can('bookings.edit') || Auth::can('schedules.edit') || Auth::isSuperadmin())
+                            && empty($staffRow['must_change_pw']),   // 16 Nov 2026 (mv5): /api/ refuses it anyway
         'maxDiscountPct' => Settings::getFloat('counter_max_discount_pct', 15.0),
         'maxSeats'       => Settings::getInt('counter_max_seats_per_booking', 20),
         'panelUrl'       => Auth::isCounterAgent() ? '/admin/agent.php' : '/admin/',

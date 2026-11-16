@@ -293,6 +293,8 @@ try {
     echo "\n== correcting the name ==\n";
     $bid    = (int) $booking['id'];
     $before = Database::fetch('SELECT id, full_name, seat_no FROM booking_passengers WHERE booking_id = :b ORDER BY id LIMIT 1', ['b' => $bid]);
+    $tktBefore = Database::fetch('SELECT reissue_count, qr_hash FROM tickets WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => $bid]);
+    $renameT0  = time();
 
     $bad = AiTools::run('rename_passenger', ['pnr' => $pnr, 'new_name' => 'Sita 99'], $ctxFor(WA_CUST, 6));
     check('a name with digits in it is refused', $bad['ok'] === false, $bad['say']);
@@ -306,8 +308,18 @@ try {
     check('  the date and the fare did not move',
         (string) ($fresh['legs'][0]['travel_date'] ?? '') === $D1
         && abs((float) $fresh['total_amount'] - (float) $booking['total_amount']) < 0.01);
-    check('  the cached ticket picture was dropped, so the next one redraws',
-        (string) Database::scalar('SELECT COALESCE(png_path, \'\') FROM tickets WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => $bid], '') === '');
+    /* 1 Oct 2026: the rename goes through TicketSync, which RE-ISSUES the ticket
+       (REV n+1, old PNG/PDF deleted) and redraws the PNG on the spot - instead
+       of only dropping png_path and leaving the redraw to the next open. The
+       guard is the same: no picture with the old name is served after the
+       correction. (The QR carries no name since 8 Oct, so its hash may stay.) */
+    $tktAfter = Database::fetch('SELECT reissue_count, qr_hash, COALESCE(png_path, \'\') AS png FROM tickets WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => $bid]);
+    $pngFile  = TICKET_PATH . '/ticket_' . $pnr . '.png';
+    check('  the ticket was re-issued (REV +1) and its picture redrawn after the rename, so no stale one is served',
+        $tktBefore !== null && $tktAfter !== null
+        && (int) $tktAfter['reissue_count'] === (int) $tktBefore['reissue_count'] + 1
+        && ((string) $tktAfter['png'] === '' || (is_file($pngFile) && filemtime($pngFile) >= $renameT0 - 1)),
+        $tktBefore === null ? 'no ticket row before the rename' : ('REV ' . (int) $tktBefore['reissue_count'] . ' -> ' . (int) ($tktAfter['reissue_count'] ?? -1)));
     check('  and the correction is in the audit log',
         Database::exists("SELECT 1 FROM audit_logs WHERE action = 'booking.rename_whatsapp' AND entity_id = :p", ['p' => $pnr]));
 
@@ -528,9 +540,42 @@ try {
     check('  and a bare PNR still takes the instant path', str_contains($wabot, '$pnrOnly'));
     check('  a fresh PNR clears the assistant\'s thread', str_contains($wabot, 'AiAgent::forget'));
 
+    /* 16 Nov 2026 (battery Y7): this code line is the recovered live source
+       (checkpoint 739f95ec, 26 Oct 2026) and carries only the .sql
+       migrations from 24 Oct on; upgrade-2026-09-wa-agent.sql was applied on
+       the server long ago and is not in this checkout. When the file IS here
+       it is read exactly as before. When it is not, the same two properties
+       are checked where they live now: the switch ships OFF because every
+       read of wa_agent_on defaults to OFF and no migration in the checkout
+       seeds it ON (a missing row = OFF), and the audit table has every column
+       the two writers (AiTools, WaFaq) insert. */
     $sql = $src('database/upgrade-2026-09-wa-agent.sql');
-    check('the migration seeds the master switch OFF', str_contains($sql, "('wa_agent_on',         '0'"));
-    check('  and creates the audit table', str_contains($sql, 'CREATE TABLE IF NOT EXISTS `ai_agent_calls`'));
+    if ($sql !== '') {
+        check('the migration seeds the master switch OFF', str_contains($sql, "('wa_agent_on',         '0'"));
+        check('  and creates the audit table', str_contains($sql, 'CREATE TABLE IF NOT EXISTS `ai_agent_calls`'));
+    } else {
+        $reads = []; $seedsOn = [];
+        foreach (['includes', 'admin', 'admin/api', 'api', 'whatsapp', 'cron', 'database'] as $dir) {
+            foreach (glob($root . '/' . $dir . '/*.{php,sql}', GLOB_BRACE) ?: [] as $f) {
+                $code = (string) file_get_contents($f);
+                if (!str_contains($code, 'wa_agent_on')) { continue; }
+                if (preg_match_all("/Settings::get(?:Bool|Int|String)?\(\s*'wa_agent_on'\s*,\s*([^)]+)\)/", $code, $rm)) {
+                    foreach ($rm[1] as $def) { $reads[] = [basename($f), strtolower(trim($def, " '\""))]; }
+                }
+                if ($dir === 'database' && preg_match("/\(\s*'wa_agent_on'\s*,\s*'(?!0')/", $code)) { $seedsOn[] = basename($f); }
+            }
+        }
+        $onByDefault = array_values(array_filter($reads, static fn(array $r): bool => !in_array($r[1], ['false', '0'], true)));
+        check('the master switch ships OFF (every read defaults OFF, no migration seeds it ON; the .sql predates this checkout)',
+            $reads !== [] && $onByDefault === [] && $seedsOn === [],
+            count($reads) . ' reads' . ($onByDefault !== [] ? '; ON by default in ' . implode(', ', array_map(static fn(array $r): string => $r[0], $onByDefault)) : '')
+            . ($seedsOn !== [] ? '; seeded ON by ' . implode(', ', $seedsOn) : ''));
+        $have = array_map('strval', pluck(Database::fetchAll(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_agent_calls'"), 'COLUMN_NAME'));
+        $gap  = array_values(array_diff(['created_at', 'phone', 'role', 'channel', 'tool', 'args', 'ok', 'detail', 'booking_id', 'ms'], $have));
+        check('  and the audit table holds every column the assistant writes', $have !== [] && $gap === [],
+            $have === [] ? 'no ai_agent_calls table' : ($gap === [] ? count($have) . ' columns' : 'missing: ' . implode(', ', $gap)));
+    }
 
     $runAll = $src('tests/run-all.php');
     check('this suite is registered in the battery', str_contains($runAll, 'wa-agent-test.php'));

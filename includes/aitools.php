@@ -260,7 +260,18 @@ final class AiTools
         try {
             $admin = Auth::admin();
             if (is_array($admin) && (int) ($admin['id'] ?? 0) > 0 && (int) ($admin['is_active'] ?? 1) === 1) {
-                $role = (string) ($admin['role'] ?? '');
+                /* 16 Nov 2026 (F1-1, security): the same gates whoIs() puts on a
+                   phone, read from the admins row NOW. Auth::admin() re-reads the
+                   row only every 30 s and keeps must_change_pw as a flag that only
+                   Auth::requireAdmin() acts on - which api/ai-chat.php never calls
+                   (it also serves guests). A temporary password, a suspended,
+                   locked or deleted account, or a role changed meanwhile reaches no
+                   staff / office tool and no office summary (WaLocal::answerWeb). */
+                $live = self::webStaffRow((int) $admin['id'], $admin);
+                $role = $live !== null ? (string) $live['role'] : '';
+                if ($live !== null) {
+                    $admin['role'] = $role;
+                }
                 // Same door as WhatsApp: only these four roles hold the
                 // assistant's staff / office powers. Support, scanner and the
                 // like keep the customer tools plus their own sign-in name.
@@ -309,6 +320,42 @@ final class AiTools
         $out['stageKey'] = 'web-guest-' . substr(hash('sha256', $sid . '|' . (defined('APP_KEY') ? APP_KEY : '')), 0, 24);
 
         return $out;
+    }
+
+    /**
+     * 16 Nov 2026 (F1-1): the admins row behind a signed-in staff session, when
+     * that account may hold staff powers on the web right now - else null. The
+     * gates are whoIs()'s: active, past the first temporary password
+     * (must_change_pw, also as the session carries it), not locked. A deleted
+     * account or a database that cannot answer gives null: no staff powers.
+     * A device-limit hold opens no session at all (Auth::finishAdminSession),
+     * and a PIN / pattern lockout locks only that door, never a session - so
+     * neither needs a gate here, exactly as on every admin page.
+     *
+     * @param array<string,mixed> $session Auth::admin()
+     * @return array{role: string}|null
+     */
+    private static function webStaffRow(int $adminId, array $session): ?array
+    {
+        if ($adminId <= 0 || !empty($session['must_change_pw'])) {
+            return null;
+        }
+        try {
+            $row = Database::fetch(
+                'SELECT role, is_active, must_change_pw, locked_until FROM admins WHERE id = :id',
+                ['id' => $adminId]
+            );
+        } catch (Throwable $e) {
+            Logger::exception($e, 'ai');
+            return null;
+        }
+        if ($row === null
+            || (int) ($row['is_active'] ?? 0) !== 1
+            || (int) ($row['must_change_pw'] ?? 1) !== 0
+            || (!empty($row['locked_until']) && strtotime((string) $row['locked_until']) > time())) {
+            return null;
+        }
+        return ['role' => (string) $row['role']];
     }
 
     /**
@@ -616,6 +663,21 @@ final class AiTools
                         'note'    => ['string', 'Optional note for the office'],
                         'confirm' => ['boolean', 'True only after the agent agreed in a later message'],
                     ]);
+            }
+            /* P8-6c (16 Nov 2026): an AGENT records the cash THEY collected on
+               their OWN pay-at-boarding booking — the office's two-step tool
+               (preview + pin, then ho in a LATER message), behind
+               wa_agent_settle_cod_on (OFF). Only bookings this agent sold,
+               only cash-on-boarding still unpaid; officeSettleCod() checks all
+               of it again on every call. */
+            if (self::agentMaySettleCod($ctx)) {
+                $t[] = self::spec('office_settle_cod',
+                    'Record that YOU (the agent) collected the CASH on one of YOUR OWN pay-at-boarding bookings. Only a booking you sold, only one still unpaid. First call without confirm previews the booking and amount; read it back and ask for ho; after ho in the NEXT message call again with confirm true. The cash then shows in my_wallet as cash you owe the office.',
+                    [
+                        'pnr'     => ['string', 'The PNR of your own pay-at-boarding booking'],
+                        'note'    => ['string', 'Where / when the cash was taken'],
+                        'confirm' => ['boolean', 'True only after the agent said ho to the preview in a later message'],
+                    ], ['pnr']);
             }
             /* 24 Sep 2026 — REPORTS AND GRAPHS (owner: "report, graph, real
                time data, kati ticket bikri bhayo"). Read-only, drawn from
@@ -3147,16 +3209,26 @@ final class AiTools
      */
     private static function officeSettleCod(array $args, array $ctx): array
     {
-        if (!Settings::getBool('wa_agent_admin_write', false)) {
+        /* P8-6c (16 Nov 2026): an agent on their OWN pay-at-boarding booking,
+           behind wa_agent_settle_cod_on (OFF). Everything else is the office's
+           path, unchanged. */
+        $asAgent = (string) ($ctx['role'] ?? '') !== 'admin';
+        if ($asAgent) {
+            if (!self::agentMaySettleCod($ctx)) {
+                return self::no('Only an office number may record cash.');
+            }
+        } elseif (!Settings::getBool('wa_agent_admin_write', false)) {
             return self::no('Office writes from WhatsApp are switched off — do it in Admin → Payments.');
         }
-        if ((string) ($ctx['role'] ?? '') !== 'admin') {
-            return self::no('Only an office number may record cash.');
-        }
+        $agentId = $asAgent ? (int) ($ctx['adminId'] ?? 0) : 0;
         $pnr    = strtoupper(trim((string) ($args['pnr'] ?? '')));
         $detail = $pnr !== '' ? BookingService::detail($pnr) : null;
         if ($detail === null) {
             return self::no('No booking with that PNR.');
+        }
+        // An agent's own sale only — refused before anything about the booking is said.
+        if ($asAgent && (int) ($detail['sold_by_admin_id'] ?? 0) !== $agentId) {
+            return self::no('Booking ' . $pnr . ' is not one of your own sales. Only the office can record cash on it.');
         }
         if ((int) ($detail['is_cod'] ?? 0) !== 1) {
             return self::no('Booking ' . $pnr . ' is not a pay-at-boarding booking.');
@@ -3164,33 +3236,73 @@ final class AiTools
         if ((string) ($detail['payment']['status'] ?? '') === 'verified') {
             return self::no('The cash on ' . $pnr . ' is already recorded as collected.');
         }
-        $note = Security::clean((string) ($args['note'] ?? 'Cash recorded on WhatsApp'), 200);
+        if ($asAgent) {
+            // Cash on boarding still owed — never an online payment waiting for proof.
+            if ((string) ($detail['payment']['status'] ?? '') !== 'cod_pending') {
+                return self::no('Booking ' . $pnr . ' has no cash-on-boarding fare waiting. Only the office can change its payment.');
+            }
+            if (!in_array((string) $detail['status'], ['confirmed', 'pending', 'completed'], true)) {
+                return self::no('Booking ' . $pnr . ' is ' . strtoupper((string) $detail['status']) . ' — no cash is due on it.');
+            }
+        }
+        $note = Security::clean((string) ($args['note'] ?? ($asAgent ? 'Cash collected by the agent (WhatsApp)' : 'Cash recorded on WhatsApp')), 200);
 
         if (($args['confirm'] ?? false) !== true) {
-            self::stage($ctx, 'office', ['action' => 'settle_cod', 'pnr' => $pnr, 'note' => $note]);
+            self::stage($ctx, 'office', ['action' => 'settle_cod', 'pnr' => $pnr, 'note' => $note, 'agent' => $agentId]);
             return [
                 'ok'   => true,
-                'say'  => 'Nothing is recorded yet. Read the PNR, passenger and amount back and ask for ho; then call again with confirm true.',
+                'say'  => $asAgent
+                    ? 'Nothing is recorded yet. Read the PNR, passenger and amount back, say the cash will then show as cash they owe the office, and ask for ho; then call again with confirm true.'
+                    : 'Nothing is recorded yet. Read the PNR, passenger and amount back and ask for ho; then call again with confirm true.',
                 'data' => self::bookingCard($detail),
                 'media' => null,
             ];
         }
         if (!self::saidYes($ctx)) {
-            return self::no('The office has not replied ho to the preview in a new message. A confirm flag alone is not consent.');
+            return self::no(($asAgent ? 'The agent' : 'The office') . ' has not replied ho to the preview in a new message. A confirm flag alone is not consent.');
         }
         $staged = self::takeStage($ctx, 'office');
-        if ($staged === null || ($staged['action'] ?? '') !== 'settle_cod' || ($staged['pnr'] ?? '') !== $pnr) {
+        if ($staged === null || ($staged['action'] ?? '') !== 'settle_cod' || ($staged['pnr'] ?? '') !== $pnr
+            || (int) ($staged['agent'] ?? 0) !== $agentId) {
             return self::no('Preview this exact PNR first (office_settle_cod without confirm) and get a ho in the next message.');
         }
         $res = BookingService::settleCod((int) $detail['id'], (int) ($ctx['adminId'] ?? 0), (string) ($staged['note'] ?? $note));
 
+        if ($asAgent) {
+            /* AgentWallet::accrue (inside settleCod) keys on sold_by_admin_id =
+               this agent: their commission plus a cash_due of the fare — the
+               cash they now hold for the office, exactly as a desk cash sale. */
+            Logger::audit('booking.cod.settle_agent', 'booking', $pnr,
+                ['payment' => 'cod_pending'], ['payment' => 'verified', 'agent' => $agentId],
+                'Cash ' . inr((float) $detail['total_amount']) . ' recorded on WhatsApp by agent #' . $agentId
+                . ' ' . (string) ($ctx['name'] ?? '') . ' (' . AgentWallet::agentCodeLabel($agentId) . ') — agent holds the cash');
+        }
+
         return [
             'ok'   => true,
-            'say'  => 'Cash recorded as collected on ' . $pnr . '.',
+            'say'  => $asAgent
+                ? 'Cash recorded as collected on ' . $pnr . '. It now shows in your wallet as cash you owe the office.'
+                : 'Cash recorded as collected on ' . $pnr . '.',
             'data' => ['pnr' => $pnr, 'bookingId' => (int) $detail['id'], 'total' => (float) $detail['total_amount'],
                        'changed' => (bool) ($res['changed'] ?? true)],
             'media' => null,
         ];
+    }
+
+    /**
+     * P8-6c: may THIS sender record cash on their own pay-at-boarding sale?
+     * Switch on, a WhatsApp sender (not the website / Messenger), an AGENT
+     * account (admins.role 'agent', the own-book scoped role).
+     */
+    private static function agentMaySettleCod(array $ctx): bool
+    {
+        return Settings::getBool('wa_agent_settle_cod_on', false)
+            && (string) ($ctx['role'] ?? '') === 'staff'
+            && self::adminRole($ctx) === 'agent'
+            && (int) ($ctx['adminId'] ?? 0) > 0
+            && (int) ($ctx['scopeAdminId'] ?? 0) === (int) ($ctx['adminId'] ?? 0)
+            && ((string) ($ctx['channel'] ?? 'whatsapp')) === 'whatsapp'
+            && (string) ($ctx['via'] ?? '') !== 'facebook';
     }
 
     private static function officeReject(array $args, array $ctx): array

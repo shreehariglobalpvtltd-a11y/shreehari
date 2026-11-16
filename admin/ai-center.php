@@ -12,6 +12,14 @@
  * Read-only apart from those two settings. It shows counts and outcomes,
  * never a passenger's own words. Office only (dashboard.view); saving
  * needs the Settings permission.
+ *
+ * 16 Nov 2026 (v2.0 P7-9c): "Could not answer" counts the questions still
+ * waiting (status 'new' or 'needs_owner'; it read a status that never
+ * exists and always said 0). Answer quality gains a read-only "Last 7 days"
+ * block (WaInbox::quality): the office's 👎 by channel and answering branch,
+ * the 10 most-asked open questions (the redacted text AI Knowledge already
+ * shows - numbers and booking codes removed when stored) and the VPS AI's
+ * practice score per day for 14 days. A missing table shows '—'.
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
@@ -96,8 +104,29 @@ $waits = [
     ['Refunds to settle', (int) $q(static fn() => Database::scalar("SELECT COUNT(*) FROM bookings WHERE refund_status = 'pending'", [], 0), 0), 'reconcile.php', 'settled by the owner, never by the AI'],
     ['Handed to staff', (int) $q(static fn() => Database::scalar("SELECT COUNT(*) FROM support_tickets WHERE status IN ('open','in_progress')", [], 0), 0), 'support-inbox.php', 'conversations the AI passed to a person'],
     ['Knowledge drafts', (int) $q(static fn() => Database::scalar("SELECT COUNT(*) FROM ai_kb_articles WHERE publication_status <> 'published'", [], 0), 0), 'ai-knowledge.php', 'the AI answers only from published articles'],
-    ['Questions it could not answer', (int) $q(static fn() => Database::scalar("SELECT COUNT(*) FROM ai_unanswered_questions WHERE status = 'open'", [], 0), 0), 'ai-knowledge.php', 'write an article and the next person gets an answer'],
+    // 16 Nov 2026 (v2.0 P7-9c): the table never had an 'open' status (this was always 0) -
+    // a question waits as 'new' (AI Knowledge) or 'needs_owner' (AI Marketing: the owner's answer)
+    ['Questions it could not answer', (int) $q(static fn() => Database::scalar("SELECT COUNT(*) FROM ai_unanswered_questions WHERE status IN ('new', 'needs_owner')", [], 0), 0), 'ai-knowledge.php', 'write an article and the next person gets an answer'],
 ];
+
+/* 16 Nov 2026 (v2.0 P7-9c): the "Last 7 days" block of Answer quality - 👎 by channel and
+   branch, the most-asked open questions, the VPS model's practice score. Read-only; every
+   part is null when its table is missing (shown as '—'). */
+require_once INCLUDE_PATH . '/wainbox.php';
+$qual = $q(static fn() => WaInbox::quality(7, 14), ['down' => null, 'down_total' => null, 'unanswered' => null, 'practice' => null]);
+$branchLabel = static fn(string $r): string => match ($r) {
+    ''          => '— (no turn record)',
+    'agent'     => 'AI एजेन्ट · AI agent',
+    'aichat'    => 'AI च्याट · AI chat',
+    'apwa'      => 'VPS AI',
+    'pnr'       => 'PNR खोज · PNR lookup',
+    'wabooking' => 'बुकिङ · Booking flow',
+    'walocal'   => 'छिटो बुकिङ · Local booking engine',
+    'wafaq'     => 'FAQ',
+    'waorder'   => 'WhatsApp order',
+    'voice'     => 'भ्वाइस · Voice note',
+    default     => $r,
+};
 
 /* Tool permissions, straight from the catalogue each role is actually handed */
 $roles = [];
@@ -191,6 +220,12 @@ admin_header('AI Control Center', 'ai-center');
   .ac-log time{color:var(--mut,#6b7688);font-variant-numeric:tabular-nums;margin-right:6px}
   .ac-log .lv{font-weight:700;color:var(--ac-orange);margin-right:6px}
   .ac table.dt{min-width:0}
+  .ac-q7{margin-top:14px;padding-top:12px;border-top:1px solid var(--line,#e5e9f0);min-width:0}
+  .ac-q7 h3{margin:0 0 4px;font-size:15px;line-height:1.3}
+  .ac-q7 .dt-wrap{margin:6px 0 4px}
+  .ac-q7 td.wrap{min-width:0;overflow-wrap:anywhere}
+  .ac-q7 td a{overflow-wrap:anywhere}
+  :root[data-theme="dark"] .ac-q7 a{color:#9cc0ff}
   .ac td.num,.ac th.num{text-align:right;font-variant-numeric:tabular-nums}
   @media (min-width:720px){
     .ac-hero{padding:24px 26px 22px}.ac-hero h1{font-size:26px}
@@ -368,6 +403,68 @@ admin_header('AI Control Center', 'ai-center');
       <div class="ac-log"><b><?= $e(AiBrain::PROVIDERS[$p]['label'] ?? $p) ?></b> — <?= $num($s['ok']) ?> answered, <?= $num($s['fail']) ?> failed
         (all time)<?= (string) $s['last_ok'] !== '' ? ', last answer ' . $e(substr((string) $s['last_ok'], 0, 16)) : '' ?></div>
     <?php endforeach; ?>
+
+    <div class="ac-q7" id="acLast7">
+      <h3>पछिल्लो ७ दिन · Last 7 days</h3>
+      <p class="ac-note">हेर्न मात्र · Read-only. 👎 = a bot reply the office marked wrong in the
+        <a href="/admin/wa-inbox.php">WhatsApp inbox</a>; the branch is the part of the bot that answered.</p>
+
+      <p class="ac-role">👎 गलत जवाफ · Marked wrong <em>· <?= $qual['down_total'] === null ? '—' : $num($qual['down_total']) ?></em></p>
+      <?php if ($qual['down'] === null): ?>
+        <p class="ac-note" data-q7="down-missing">— (the feedback table <code>ai_feedback_log</code> is not on this server)</p>
+      <?php elseif ($qual['down'] === []): ?>
+        <p class="ac-note">No bot reply was marked 👎 in the last 7 days.</p>
+      <?php else: ?>
+        <div class="dt-wrap"><table class="dt card-table" data-q7="down">
+          <thead><tr><th>च्यानल · Channel</th><th>शाखा · Branch</th><th class="num">👎</th></tr></thead>
+          <tbody>
+          <?php foreach ($qual['down'] as $r): ?>
+            <tr><td data-label="Channel"><?= $e($r['channel'] !== '' ? $r['channel'] : '—') ?></td>
+              <td data-label="Branch"><?= $e($branchLabel($r['router'])) ?></td>
+              <td data-label="👎" class="num"><?= $num($r['n']) ?></td></tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table></div>
+      <?php endif; ?>
+
+      <p class="ac-role">❓ जवाफ नभएका प्रश्न · Could not answer <em>· top 10 asked this week</em></p>
+      <?php if ($qual['unanswered'] === null): ?>
+        <p class="ac-note" data-q7="unanswered-missing">— (the table <code>ai_unanswered_questions</code> is not on this server)</p>
+      <?php elseif ($qual['unanswered'] === []): ?>
+        <p class="ac-note">No open question was asked in the last 7 days.</p>
+      <?php else: ?>
+        <div class="dt-wrap"><table class="dt card-table" data-q7="unanswered">
+          <thead><tr><th>प्रश्न · Question</th><th class="num">पटक · Asked</th><th>अवस्था · State</th></tr></thead>
+          <tbody>
+          <?php foreach ($qual['unanswered'] as $r): ?>
+            <tr><td data-label="Question" class="wrap"><a href="/admin/ai-knowledge.php"><?= $e(mb_strimwidth($r['question'], 0, 140, '…')) ?></a></td>
+              <td data-label="Asked" class="num"><?= $num($r['frequency']) ?></td>
+              <td data-label="State"><?= $r['status'] === 'needs_owner' ? 'तपाईंको जवाफ चाहिन्छ · Needs your answer' : 'नयाँ · New' ?></td></tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table></div>
+        <p class="ac-note" style="margin-top:6px"><a href="/admin/ai-knowledge.php">ज्ञानमा लेख्ने · Write the answers in Knowledge →</a></p>
+      <?php endif; ?>
+
+      <p class="ac-role">🎯 VPS AI अभ्यास · Practice accuracy <em>· 14 days</em></p>
+      <?php if ($qual['practice'] === null): ?>
+        <p class="ac-note" data-q7="practice-missing">— (the practice table <code>ap_ai_practice</code> is not on this server)</p>
+      <?php elseif ($qual['practice'] === []): ?>
+        <p class="ac-note">No practice run in the last 14 days (the VPS AI practises at night only while it is switched on).</p>
+      <?php else: ?>
+        <div class="dt-wrap"><table class="dt card-table" data-q7="practice">
+          <thead><tr><th>दिन · Day</th><th class="num">प्रयास · Tries</th><th class="num">सही · Right</th><th class="num">%</th></tr></thead>
+          <tbody>
+          <?php foreach ($qual['practice'] as $r): ?>
+            <tr><td data-label="Day"><?= $e(date('D j M', (int) strtotime($r['day']))) ?></td>
+              <td data-label="Tries" class="num"><?= $num($r['n']) ?></td>
+              <td data-label="Right" class="num"><?= $num($r['correct']) ?></td>
+              <td data-label="%" class="num"><?= $r['pct'] === null ? '—' : (int) $r['pct'] . '%' ?></td></tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table></div>
+      <?php endif; ?>
+    </div>
   </div>
 
   <div class="panel">

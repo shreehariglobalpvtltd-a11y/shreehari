@@ -14,6 +14,11 @@
  *
  * Opted-out (STOP), staff and placeholder numbers are never queued.
  * customers.view to look; marketing.send (manager, superadmin) to act.
+ *
+ * 16 Nov 2026 (v2.0 P6-9d): ?new=1&aud=phone%3D<10 digits> (the WhatsApp
+ * inbox "🎁 Offer" link, switch wa_inbox_promo_link_on) opens a new
+ * campaign for that ONE number and shows who exactly would be on the list
+ * (0 or 1 person). It saves and sends nothing; the usual steps follow.
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
@@ -145,6 +150,22 @@ if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 $c = $ready && $id > 0 ? Campaigns::get($id) : null;
 $isNew = $ready && $c === null && isset($_GET['new']);
 $audQs = $c !== null ? (string) $c['audience'] : (string) ($_GET['aud'] ?? '');
+/* 16 Nov 2026 (v2.0 P6-9d): a NEW campaign for ONE number (?new=1&aud=phone%3D<10 digits>,
+   the WhatsApp inbox "🎁 Offer" link) shows exactly who would be on the list - the same
+   rule "Save & build" uses (CustomerDirectory::phones for marketing: STOP, opt-in only,
+   staff and placeholder numbers removed). Read-only: nothing is saved or sent here; the
+   send stays the usual Save -> Test -> tick -> Launch, inside quiet hours and the caps. */
+$audPrev = null;
+if ($isNew && $audQs !== '' && !str_starts_with($audQs, 'autopilot=')) {
+    parse_str($audQs, $audQ);
+    if (isset($audQ['phone'])) {
+        try {
+            $audPrev = CustomerDirectory::phones(CustomerDirectory::filters($audQ), true, 5);
+        } catch (Throwable $ex) {
+            $audPrev = [];
+        }
+    }
+}
 $templates = [];
 if ($ready && ($c !== null || $isNew) && $mayAct) {
     try {
@@ -168,6 +189,11 @@ $audLabel = static function (string $qs): string {
     }
     parse_str($qs, $q);
     $bits = [];
+    if (isset($q['phone']) && is_scalar($q['phone']) && trim((string) $q['phone']) !== '') {
+        // P6-9d: one number from the WhatsApp inbox ("🎁 Offer")
+        $one = substr(preg_replace('/\D/', '', (string) $q['phone']) ?? '', -10);
+        $bits[] = '📱 एक नम्बर · One number ' . (strlen($one) === 10 ? $one : '(not a 10-digit number — nobody)');
+    }
     if (!empty($q['from']) || !empty($q['to'])) {
         $bits[] = (($q['mode'] ?? '') === 'travel' ? 'travelled ' : 'booked ') . ($q['from'] ?? '…') . ' → ' . ($q['to'] ?? 'today');
     }
@@ -212,6 +238,9 @@ admin_header('Campaigns', 'campaigns');
   .mk-one{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .mk-tpl{font-size:12px;color:var(--mut);white-space:pre-wrap;border-left:3px solid var(--line);padding-left:8px;margin:4px 0}
   .mk-inline{display:inline}
+  .mk-aud{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:13px;line-height:1.5;margin:-4px 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);overflow-wrap:anywhere}
+  .mk-aud small{flex-basis:100%;color:var(--mut)}
+  .mk-who{font-weight:600;padding:2px 10px;border-radius:999px;border:1px solid var(--line);white-space:normal}
 </style>
 
 <?php if ($flash !== null): ?>
@@ -233,6 +262,19 @@ admin_header('Campaigns', 'campaigns');
 <div class="panel">
   <h2><?= $c !== null ? '📣 ' . $e($cc['name']) . ' <small style="color:' . ($stTone[$cc['status']] ?? 'var(--ink)') . '">· ' . $e($cc['status']) . '</small>' : '📣 New campaign' ?></h2>
   <p class="mk-note">Audience: <b><?= $e($audLabel($audQs)) ?></b> — <a href="/admin/customer-directory.php?<?= $e($audQs) ?>">see / change this list</a></p>
+  <?php if ($audPrev !== null): ?>
+    <div class="mk-aud" id="mkAudPrev" data-n="<?= count($audPrev) ?>">
+      <?php if ($audPrev === []): ?>
+        <b style="color:var(--bad)">० जना · 0 recipients</b> — यो नम्बर सूचीमा आउँदैन · this number is not on the list: no confirmed booking with it,
+        it said STOP / no offers, it is a staff or placeholder number<?= $optinReq ? ', or it has not opted in (Settings → Marketing → opted in only)' : '' ?>.
+        Saving builds an empty list — nothing can be sent.
+      <?php else: ?>
+        <b>👤 <?= count($audPrev) ?> जना · <?= count($audPrev) === 1 ? '1 recipient' : count($audPrev) . ' recipients' ?></b>
+        <?php foreach ($audPrev as $ap): ?><span class="mk-who"><?= $e($ap['name'] !== '' ? $ap['name'] : '—') ?> · +<?= $e($ap['intl']) ?></span><?php endforeach; ?>
+        <small>सेभ गरेपछि मात्र सूची बन्छ; पठाउन Test → ✔ → Launch · The list is built on Save; nothing is sent until you Launch.</small>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
   <form method="post"><?= $csrf ?><input type="hidden" name="id" value="<?= (int) $cc['id'] ?>"><input type="hidden" name="audience" value="<?= $e($audQs) ?>">
     <fieldset <?= $editable ? '' : 'disabled' ?> style="border:0;padding:0;margin:0">
     <div class="mk-grid">
@@ -267,7 +309,7 @@ admin_header('Campaigns', 'campaigns');
     <?php endif; ?>
   </form>
   <p class="mk-note" style="margin-top:8px">Preview (first person):</p>
-  <div class="mk-prev" id="mkPrev"><?= $e(Campaigns::textFor($cc + ['id' => (int) $cc['id']], ['name' => (string) ($recips[0]['name'] ?? 'Ram Bahadur')])) ?></div>
+  <div class="mk-prev" id="mkPrev"><?= $e(Campaigns::textFor($cc + ['id' => (int) $cc['id']], ['name' => (string) ($recips[0]['name'] ?? (($audPrev[0]['name'] ?? '') !== '' ? $audPrev[0]['name'] : 'Ram Bahadur'))])) ?></div>
 
   <?php if ($c !== null): ?>
   <div class="kpis" style="margin-top:14px">

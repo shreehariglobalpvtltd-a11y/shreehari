@@ -81,7 +81,11 @@ $seen  = 0;
 foreach ($files as $f) {
     if (!is_file($f)) { continue; }
     $src = (string) file_get_contents($f);
-    if (!preg_match_all('/\?v=([0-9a-zA-Z._-]+)/', $src, $hits)) { continue; }
+    /* A cache stamp always follows a FILE name (x.js?v=…, icon.png?v=…). A
+       page link such as /guide/?v=full (the guide's full-page view, a query
+       parameter, not a stamp) ends in "/" and is not an asset the service
+       worker caches - so it is skipped, nothing else is. */
+    if (!preg_match_all('#(?<!/)\?v=([0-9a-zA-Z._-]+)#', $src, $hits)) { continue; }
     foreach ($hits[1] as $v) {
         $seen++;
         if ($v !== $assetVer) {

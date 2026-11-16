@@ -458,6 +458,251 @@ if ($super !== null && $fixStop > 0) {
 }
 $u5Clean();
 
+/* ================= 16 Nov 2026 (Master v2, unit Y2): AI Sahayak makes an offer / coupon =================
+   Parse, preview and refusals read only; the apply part makes coupons named ZY2<tag>… and deletes them
+   (and their audit rows) again. A new offer is ALWAYS written is_active = 0 and auto_apply = 0. */
+$y2Tag   = strtoupper(substr(str_shuffle('ABCDEFGHJKMNPQRSTVWXYZ'), 0, 4));
+$y2      = static fn(string $s): string => 'ZY2' . $y2Tag . $s;
+$y2Start = (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM audit_logs', [], 0);
+$y2Clean = static function () use ($y2Tag, $y2Start): void {
+    Database::delete('coupons', 'code LIKE :c', ['c' => 'ZY2' . $y2Tag . '%']);
+    Database::delete('coupons', 'code LIKE :c', ['c' => 'ZYY' . $y2Tag . '%']);   // review fixture: a code whose start is letters only
+    Database::delete('audit_logs', "id > :s AND action IN ('offer.create','offer.toggle','settings.ai_proposed','settings.ai_command','settings.ai_declined')
+                                    AND (entity_id LIKE :c1 OR new_value LIKE :c2 OR detail LIKE :c3)",
+        ['s' => $y2Start, 'c1' => 'ZY2' . $y2Tag . '%', 'c2' => '%ZY2' . $y2Tag . '%', 'c3' => '%ZY2' . $y2Tag . '%']);
+};
+register_shutdown_function($y2Clean);
+$d10 = date('Y-m-d', strtotime(todayISO() . ' +10 days'));
+$d20 = date('Y-m-d', strtotime(todayISO() . ' +20 days'));
+$say = static fn(string $iso): string => date('j M', strtotime($iso));   // "26 Nov"
+
+/* the spec sentences */
+$a = $first('coupon ' . $y2('D10') . ' 10% max 200 till ' . $say($d20));
+$ok(($a['type'] ?? '') === 'coupon' && $a['code'] === $y2('D10') && $a['discount_type'] === 'percent' && (float) $a['discount_value'] === 10.0
+    && (float) $a['max_discount'] === 200.0 && $a['valid_from'] === null && $a['valid_until'] === $d20 && $a['auto_code'] === false, 'Y2 "coupon CODE 10% max 200 till <date>"');
+$a = AiOps::parseWords('coupon DIWALI10 10% max 200 till 30 Nov');
+$ok((($a[0]['type'] ?? '') === 'coupon' && substr((string) $a[0]['valid_until'], 5) === '11-30')
+    || ($a === [] && (str_contains($note(), 'past') || str_contains($note(), 'already exists'))), 'Y2 SPEC "coupon DIWALI10 10% max 200 till 30 Nov"');
+$a = $first('offer 5% max ₹100 ' . $say($d10) . ' to ' . $say($d20));
+$ok(($a['type'] ?? '') === 'coupon' && $a['auto_code'] === true && preg_match('/^OFFER5-\d{1,2}[A-Z]{3}(-\d+)?$/', (string) $a['code']) === 1
+    && (float) $a['discount_value'] === 5.0 && (float) $a['max_discount'] === 100.0 && $a['valid_from'] === $d10 && $a['valid_until'] === $d20, 'Y2 SPEC "offer 5% max ₹100 <d1> to <d2>" (code made for you)');
+$a = $first('naya coupon ' . $y2('S50') . ' ₹50 off 50 jana');
+$ok(($a['type'] ?? '') === 'coupon' && $a['discount_type'] === 'flat' && (float) $a['discount_value'] === 50.0 && $a['max_discount'] === null
+    && $a['usage_limit'] === 50 && $a['per_user_limit'] === 1, 'Y2 SPEC "naya coupon CODE ₹50 off 50 jana"');
+$a = $first('नयाँ कुपन ' . $y2('N20') . ' २०% बढीमा ₹३०० ' . $say($d20) . ' सम्म');
+$ok(($a['type'] ?? '') === 'coupon' && (float) $a['discount_value'] === 20.0 && (float) $a['max_discount'] === 300.0 && $a['valid_until'] === $d20, 'Y2 Nepali: २०% बढीमा ₹३०० … सम्म');
+$a = $first('naya offer ' . $y2('H5') . ' 5% 100 rupaye tak ' . $say($d20) . ' tak');
+$ok(($a['type'] ?? '') === 'coupon' && (float) $a['max_discount'] === 100.0 && $a['valid_until'] === $d20, 'Y2 Hindi "100 rupaye tak" = the cap, "<date> tak" = the end');
+$a = $first('coupon ' . $y2('DM') . ' 10% max 200 ' . date('j-n', strtotime($d20)));
+$ok(($a['valid_until'] ?? '') === $d20, 'Y2 date as 30-11');
+$a = $first('coupon ' . $y2('IS') . ' 10 percent max 300 ' . $d10 . ' to ' . $d20 . ' per user 2 min 1500');
+$ok(($a['valid_from'] ?? '') === $d10 && $a['valid_until'] === $d20 && $a['per_user_limit'] === 2 && (float) $a['min_amount'] === 1500.0, 'Y2 ISO dates, per user 2, min 1500');
+$a = $first('coupon ' . $y2('AD') . ' 10% upto 250 aaja dekhi ' . $say($d20) . ' samma');
+$ok(($a['valid_from'] ?? '') === todayISO() && $a['valid_until'] === $d20 && (float) $a['max_discount'] === 250.0, 'Y2 "aaja dekhi … samma", "upto 250"');
+if ($goRoute !== null) {
+    $a = $first('coupon ' . $y2('RT') . ' ₹100 off route ' . $goRoute['route_code']);
+    $ok(($a['route_id'] ?? 0) === (int) $goRoute['id'], 'Y2 a route said by its code');
+}
+// "₹50 off <date> tak" used to read as "that date's buses OFF" — it is an offer now
+$a = $first('₹50 off coupon ' . $say($d10) . ' tak');
+$ok(($a['type'] ?? '') === 'coupon' && $a['discount_type'] === 'flat' && $a['valid_until'] === $d10, 'Y2 "₹50 off coupon <date> tak" is an offer, never a trip sale OFF');
+
+/* preview: code, % / ₹, cap, dates, limit, created OFF */
+$pv = AiOps::preview(AiOps::parseWords('coupon ' . $y2('PV') . ' 10% max 200 ' . $say($d10) . ' to ' . $say($d20) . ' 50 jana')[0] ?? ['type' => 'x']);
+$pvs = implode(' | ', $pv[0] ?? []);
+$ok(count($pv) === 1 && str_contains($pvs, $y2('PV')) && str_contains($pvs, '10%') && str_contains($pvs, '₹200') && str_contains($pvs, date('j M Y', strtotime($d10)))
+    && str_contains($pvs, date('j M Y', strtotime($d20))) && str_contains($pvs, '50 पटक') && str_contains($pvs, 'बन्द अवस्थामा बन्छ · created OFF') && $pv[0][1] === '—', 'Y2 preview row: ' . $pvs);
+
+/* refusals */
+$ok(AiOps::parseWords('coupon ' . $y2('NC') . ' 10% till ' . $say($d20)) === [] && str_contains($note(), 'needs a cap'), 'Y2 refuse: percent without a cap');
+$ok(AiOps::parseWords('coupon ' . $y2('BG') . ' 60% max 200') === [] && str_contains($note(), 'too big, use the Offers page'), 'Y2 refuse: percent over 50 (too big, use the Offers page)');
+$ok(AiOps::parseWords('coupon ' . $y2('BF') . ' ₹6000 off') === [] && str_contains($note(), 'too big'), 'Y2 refuse: ₹ over 5,000');
+$ok(AiOps::parseWords('coupon ' . $y2('PS') . ' 10% max 200 till ' . $say(date('Y-m-d', strtotime(todayISO() . ' -3 days')))) === [] && str_contains($note(), 'already past'), 'Y2 refuse: a date in the past');
+$ok(AiOps::parseWords('coupon ' . $y2('BD') . ' 10% max 200 till 31 Feb') === [] && str_contains($note(), 'not a real date'), 'Y2 refuse: 31 Feb');
+$ok(AiOps::parseWords('coupon ' . $y2('RV') . ' 10% max 200 ' . $say($d20) . ' to ' . $say($d10)) === [] && str_contains($note(), 'end date is before'), 'Y2 refuse: end before start (OfferRules)');
+$ok(AiOps::parseWords('coupon ' . $y2('TW') . ' 10% ₹50 off max 200') === [] && str_contains($note(), 'One discount'), 'Y2 refuse: % and ₹ in one offer');
+$ok(AiOps::parseWords('coupon ' . $y2('LF') . ' ₹50 off 25') === [] && str_contains($note(), 'What is 25'), 'Y2 a number nobody named is asked');
+$ok(AiOps::parseWords('coupon ' . $y2('Z0') . ' 10% max 200 0 jana') === [] && str_contains($note(), 'Max uses must be 1'), 'Y2 refuse: 0 uses (OfferRules)');
+$ok(AiOps::parseWords('naya coupon') === [] && str_contains($note(), 'How much off'), 'Y2 "naya coupon" alone asks how much');
+$ok(AiOps::clean(['type' => 'coupon', 'code' => $y2('CL'), 'discount_type' => 'percent', 'discount_value' => 10]) === null, 'Y2 clean(): a percent without a cap is refused on the "Yes" path too');
+$ok(AiOps::clean(['type' => 'coupon', 'code' => 'x', 'discount_type' => 'flat', 'discount_value' => 50]) === null, 'Y2 clean(): a bad code is refused (OfferRules)');
+
+/* switch sentences are not offers */
+$ok(AiOps::parseWords('offer message band') === [] && $note() === '' && AiOps::parseSwitches('offer message band') === ['wa_marketing_on' => '0'], 'Y2 "offer message band" stays the marketing switch');
+$ok(AiOps::parseWords('inbox offer link on') === [] && $note() === '' && AiOps::parseSwitches('inbox offer link on') === ['wa_inbox_promo_link_on' => '1'], 'Y2 "inbox offer link on" is the inbox switch');
+$ok(AiOps::parseWords('group discount 8 percent') === [] && AiOps::parseSwitches('group discount 8 percent') === ['group_discount_percent' => '8'], 'Y2 "group discount 8 percent" is no offer');
+
+/* off switch: an ACTIVE offer OFF; never ON; an OFF one says so */
+$onId  = (int) Database::insert('coupons', ['code' => $y2('ON1'), 'title' => 'Y2 fixture', 'discount_type' => 'flat', 'discount_value' => 10, 'is_active' => 1, 'auto_apply' => 0, 'per_user_limit' => 1]);
+$offId = (int) Database::insert('coupons', ['code' => $y2('OFF1'), 'title' => 'Y2 fixture', 'discount_type' => 'flat', 'discount_value' => 10, 'is_active' => 0, 'auto_apply' => 0, 'per_user_limit' => 1]);
+$a = $first('offer band ' . $y2('ON1'));
+$ok(($a['type'] ?? '') === 'coupon_off' && (int) $a['coupon_id'] === $onId, 'Y2 "offer band CODE" = that offer OFF');
+$a = $first(strtolower($y2('ON1')) . ' offer off karo');
+$ok(($a['type'] ?? '') === 'coupon_off' && (int) $a['coupon_id'] === $onId, 'Y2 "code offer off karo" (code first, lower-case)');
+$pv = AiOps::preview(['type' => 'coupon_off', 'coupon_id' => $onId, 'code' => $y2('ON1')]);
+$ok(($pv[0][1] ?? '') === 'ON 🟢' && ($pv[0][2] ?? '') === 'OFF ⛔' && str_contains($pv[0][0], $y2('ON1')), 'Y2 off preview ON → OFF');
+$ok(AiOps::parseWords('offer on ' . $y2('OFF1')) === [] && str_contains($note(), 'never switches an offer ON'), 'Y2 the AI never switches an offer ON');
+$ok(AiOps::parseWords('offer chalu karo ' . $y2('ON1')) === [] && str_contains($note(), 'never switches an offer ON'), 'Y2 "offer chalu" is never an action');
+$ok(AiOps::parseWords('offer band ' . $y2('OFF1')) === [] && str_contains($note(), 'already OFF'), 'Y2 an OFF offer: already OFF');
+$ok(AiOps::parseWords('offer band') === [] && str_contains($note(), 'Which offer'), 'Y2 "offer band" with no code asks which');
+$ok(AiOps::parseWords('coupon ' . $y2('ON1') . ' 5% max 100') === [] && str_contains($note(), 'already exists'), 'Y2 refuse: a code already used');
+$ok(AiOps::clean(['type' => 'coupon_off', 'coupon_id' => $offId]) === null && AiOps::clean(['type' => 'coupon_off', 'coupon_id' => $onId]) !== null, 'Y2 clean(): only an ACTIVE offer can be switched off');
+
+/* apply: made OFF + never auto-applied, audited; the off switch; the permission */
+$super = Database::fetch("SELECT * FROM admins WHERE role = 'superadmin' AND is_active = 1 ORDER BY id LIMIT 1");
+if ($super !== null) {
+    $_SESSION[ADMIN_SESSION_KEY] = ['id' => (int) $super['id'], 'username' => (string) $super['username'], 'full_name' => (string) ($super['full_name'] ?? ''),
+        'role' => 'superadmin', 'permissions' => jsonColumn($super['permissions'] ?? null), 'last_seen' => time()];
+    $pr = AiOps::propose('coupon ' . $y2('AP') . ' 10% max 200 till ' . $say($d20) . ' 30 jana', true, false);
+    $ch = AiOps::changes($pr);
+    $ok(count($pr['ops']) === 1 && $pr['ops'][0]['type'] === 'coupon' && $pr['switches'] === [] && str_contains($ch[0]['new'] ?? '', 'created OFF'), 'Y2 propose: one coupon, preview says created OFF');
+    $ok(!Database::exists('SELECT 1 FROM coupons WHERE code = :c', ['c' => $y2('AP')]), 'Y2 propose writes nothing');
+    $done = AiOps::confirm($pr, $super, true);
+    $row  = Database::fetch('SELECT * FROM coupons WHERE code = :c', ['c' => $y2('AP')]);
+    $ok($row !== null && (int) $row['is_active'] === 0 && (int) $row['auto_apply'] === 0 && $row['discount_type'] === 'percent' && (float) $row['discount_value'] === 10.0
+        && (float) $row['max_discount'] === 200.0 && $row['valid_until'] === $d20 && (int) $row['usage_limit'] === 30 && (int) $row['per_user_limit'] === 1, 'Y2 "Yes" makes the coupon OFF and not auto-applied');
+    $ok(str_contains($done[0] ?? '', 'created OFF'), 'Y2 the done line says created OFF: ' . ($done[0] ?? ''));
+    $ok(Database::exists("SELECT 1 FROM audit_logs WHERE id > :s AND action = 'offer.create' AND entity_id = :c AND detail LIKE '%S Hari AI%'", ['s' => $y2Start, 'c' => $y2('AP')]), 'Y2 offer.create audited');
+    $again = AiOps::apply($pr['ops'], $super);
+    $ok(str_starts_with($again[0] ?? '', '⚠️ coupon') && str_contains($again[0], 'already exists') && (int) Database::scalar('SELECT COUNT(*) FROM coupons WHERE code = :c', ['c' => $y2('AP')], 0) === 1,
+        'Y2 a second "Yes" is refused with the reason (code already used)');
+    $pr = AiOps::propose('offer band ' . $y2('ON1'), true, false);
+    AiOps::confirm($pr, $super, true);
+    $ok((int) Database::scalar('SELECT is_active FROM coupons WHERE id = :i', ['i' => $onId], 1) === 0
+        && Database::exists("SELECT 1 FROM audit_logs WHERE id > :s AND action = 'offer.toggle' AND entity_id = :c", ['s' => $y2Start, 'c' => $y2('ON1')]), 'Y2 "offer band CODE" → OFF, audited offer.toggle');
+    $again = AiOps::apply([['type' => 'coupon_off', 'coupon_id' => $onId, 'code' => $y2('ON1')]], $super);
+    $ok(str_contains($again[0] ?? '', 'already OFF'), 'Y2 switching an OFF offer off again says so');
+    // an operations login (routes / schedules, coupons.view only) may command, but not make an offer
+    $_SESSION[ADMIN_SESSION_KEY] = ['id' => 987654321, 'username' => 'y2ops', 'role' => 'operations', 'permissions' => [], 'last_seen' => time()];
+    $pr = AiOps::propose('coupon ' . $y2('OP') . ' 10% max 200', false, false);
+    $ok($pr['ops'] === [] && in_array('coupon', $pr['denied'], true) && !AiOps::allowed(['type' => 'coupon_off']), 'Y2 no coupons.edit → denied');
+    $_SESSION[ADMIN_SESSION_KEY]['permissions'] = ['coupons.edit'];
+    $ok(AiOps::allowed(['type' => 'coupon']) && AiOps::allowed(['type' => 'coupon_off']), 'Y2 coupons.edit → allowed');
+    unset($_SESSION[ADMIN_SESSION_KEY]);
+} else {
+    echo "SKIP: no super-admin for the Y2 apply tests\n";
+}
+
+/* the four new Easy Settings switches (Y5 / inbox units' migrations make the rows) */
+$y2Keys = ['agent_followups_on' => 'bool', 'helpdesk_cancel_escalate_inr' => 'int', 'wa_agent_settle_cod_on' => 'bool', 'wa_inbox_promo_link_on' => 'bool'];
+foreach ($y2Keys as $k => $ty) {
+    $def = AiOps::EASY_KEYS[$k] ?? null;
+    $ok($def !== null && $def[1] === $ty && str_contains($def[0], ' · ') && preg_match('/\p{Devanagari}/u', $def[0]) === 1, 'Y2 ' . $k . ' is an Easy Settings ' . $ty . ' with a bilingual label');
+}
+$y2Sw = [
+    'agent followup on karo'        => ['agent_followups_on' => '1'],
+    'agent ko gunaso band'          => ['agent_followups_on' => '0'],
+    'cancel followup 3000'          => ['helpdesk_cancel_escalate_inr' => '3000'],
+    'helpdesk cancel band'          => ['helpdesk_cancel_escalate_inr' => '0'],
+    'cancel followup 200000'        => [],                                         // over ₹1,00,000 → not taken
+    'agent cod settle on'           => ['wa_agent_settle_cod_on' => '1'],          // never Cash on boarding too
+    'agent cash whatsapp band'      => ['wa_agent_settle_cod_on' => '0'],
+    'whatsapp inbox offer link chalu' => ['wa_inbox_promo_link_on' => '1'],
+    'offer link band'               => ['wa_inbox_promo_link_on' => '0'],
+    'cod band'                      => ['allow_cod' => '0'],                       // unchanged
+    'marketing band'                => ['wa_marketing_on' => '0'],                 // unchanged
+];
+foreach ($y2Sw as $s => $want) {
+    $got = AiOps::parseSwitches($s);
+    $ok($got === $want, 'Y2 "' . $s . '" → ' . json_encode($want) . ' (got ' . json_encode($got) . ')');
+}
+$ok(AiOps::easyNumber('helpdesk_cancel_escalate_inr', '0') === '0' && AiOps::easyNumber('helpdesk_cancel_escalate_inr', '100000') === '100000'
+    && AiOps::easyNumber('helpdesk_cancel_escalate_inr', '100001') === null && AiOps::easyNumber('helpdesk_cancel_escalate_inr', '-5') === null, 'Y2 cancel follow-up ₹0 – ₹1,00,000');
+foreach (array_keys($y2Keys) as $k) {
+    if (!Database::exists('SELECT 1 FROM settings WHERE skey = :k', ['k' => $k])) {
+        $ok(AiOps::easyCurrent($k) === '0', 'Y2 ' . $k . ' is OFF / 0 by the code default (no row yet)');
+    }
+}
+$y2Hit = [];
+foreach ($x5Old as $s) {
+    $hit = array_intersect(array_keys($y2Keys), array_keys(AiOps::parseSwitches($s)));
+    if ($hit !== []) { $y2Hit[] = $s . ' → ' . implode(',', $hit); }
+    if (AiOps::parseWords($s) !== [] && in_array((string) (AiOps::parseWords($s)[0]['type'] ?? ''), ['coupon', 'coupon_off'], true)) { $y2Hit[] = $s . ' → coupon'; }
+}
+$ok($y2Hit === [], 'Y2 no existing sentence now names a new switch or an offer: ' . implode(' | ', $y2Hit));
+
+/* Y2 review (16 Nov 2026): the offer step must not take over other sentences, never make a code of a
+   town / an ordinary word, and never widen a route the office named to every route. */
+$offerAnswer = static fn(array $acts, string $n): bool => in_array((string) ($acts[0]['type'] ?? ''), ['coupon', 'coupon_off'], true)
+    || preg_match('/^(🏷|🔒 AI ले अफर|💸|📍 अफर)/u', $n) === 1;
+// 1. a fare / fine sentence with "offer" in it is still that sentence (it used to become coupon SURAT ₹2,000 off, all routes)
+foreach (['Diwali offer Surat ko bhada ₹2000' => 'Surat ko bhada ₹2000', 'offer: Surat ko bhada 2000 rs' => 'Surat ko bhada 2000 rs',
+          'Diwali offer Surat ko bhada 2000' => 'Surat ko bhada 2000', 'cancel fine 500 offer' => 'cancel fine 500'] as $s => $plain) {
+    $got  = AiOps::parseWords($s);
+    $want = AiOps::parseWords($plain);
+    $ok($got === $want && $got !== [], 'Y2 review: "' . $s . '" = "' . $plain . '" (got ' . json_encode($got, JSON_UNESCAPED_UNICODE) . ')');
+}
+$a = $first('Diwali offer Surat ko bhada ₹2000');
+$ok(($a['type'] ?? '') === 'stop_fare' && (float) $a['fare'] === 2000.0, 'Y2 review: "Diwali offer Surat ko bhada ₹2000" is Surat\'s fare');
+// … but a fare sentence that says a discount is an offer
+$ok(($first('offer ma bhada 10% chhut max 200')['type'] ?? '') === 'coupon', 'Y2 review: "offer ma bhada 10% chhut max 200" is an offer');
+// 2. a setting named by its key, and plain sentences that only contain an offer word, are not offers
+if (AiOps::settingRow('btn_offer_ribbon_on') !== null) {
+    $ok(AiOps::parseWords('btn_offer_ribbon_on band') === [['type' => 'setting', 'key' => 'btn_offer_ribbon_on', 'value' => '0']]
+        && AiOps::parseWords('btn_offer_ribbon_on on') === [['type' => 'setting', 'key' => 'btn_offer_ribbon_on', 'value' => '1']], 'Y2 review: "btn_offer_ribbon_on band / on" is rule 8 again');
+}
+$y2Keys2 = array_column(Database::fetchAll("SELECT skey FROM settings WHERE skey LIKE '%offer%' OR skey LIKE '%promo%' OR skey LIKE '%coupon%' OR skey LIKE '%discount%'"), 'skey');
+$y2Bad   = [];
+foreach ($y2Keys2 as $k) {
+    foreach ([' on', ' band', ' 5'] as $suf) {
+        $acts = AiOps::parseWords($k . $suf);
+        if ($offerAnswer($acts, $note())) { $y2Bad[] = $k . $suf . ' → ' . (json_encode($acts) ?: '') . ' ' . mb_substr($note(), 0, 40); }
+    }
+}
+$ok($y2Bad === [], 'Y2 review: no setting key (' . count($y2Keys2) . ' with offer / promo / coupon / discount) gets an offer answer: ' . implode(' | ', $y2Bad));
+foreach (['offer ribbon band', 'offer ribbon on', 'home offer ribbon band', 'promo message band', 'promo message on', 'group discount offer 8 percent', 'offer band 9 nov'] as $s) {
+    $acts = AiOps::parseWords($s);
+    $ok(!$offerAnswer($acts, $note()), 'Y2 review: "' . $s . '" gets no offer answer (goes on to the other rules / the AI): ' . json_encode($acts) . ' ' . $note());
+}
+$ok(AiOps::parseWords('Diwali offer: bholi ko bus band') === AiOps::parseWords('bholi ko bus band') && ($first('Diwali offer: bholi ko bus band')['type'] ?? '') === 'trip_sale',
+    'Y2 review: "Diwali offer: bholi ko bus band" is still tomorrow\'s sale OFF');
+// 3. a town or an ordinary word is never the code
+foreach (['offer dinus ₹100 off', 'offer wala ₹100 off', 'offer chahiyo ₹100 off', 'offer DINUS ₹100 off'] as $s) {
+    $a = $first($s);
+    $ok(($a['type'] ?? '') === 'coupon' && $a['auto_code'] === true && str_starts_with((string) $a['code'], 'FLAT100'), 'Y2 review: "' . $s . '" → a made code, not the word (' . ($a['code'] ?? '-') . ')');
+}
+$a = $first('coupon code ' . strtolower('ZYY' . $y2Tag . 'WL') . ' 10% max 200');   // letters only (ZY2… carries a digit)
+$ok(($a['code'] ?? '') === 'ZYY' . $y2Tag . 'WL' && $a['auto_code'] === false, 'Y2 review: after "code" any word is the code');
+$a = $first('coupon ' . strtolower('ZYY' . $y2Tag . 'WL') . ' 10% max 200');
+$ok(($a['type'] ?? '') === 'coupon' && $a['auto_code'] === true, 'Y2 review: a lower-case word after "coupon" with no digit is not taken for a code');
+// 4. a route the office names is never widened to every route
+$rjTown = (string) Database::scalar("SELECT from_city FROM routes WHERE is_active = 1 GROUP BY from_city HAVING COUNT(*) >= 1 ORDER BY from_city LIMIT 1", [], '');
+foreach (array_filter(['offer Rajkot route ₹100 off', 'naya offer Rajkot route ₹100 off', 'offer ' . $rjTown . ' route ₹100 off']) as $s) {
+    $acts = AiOps::parseWords($s);
+    $a    = $acts[0] ?? [];
+    $ok(($acts === [] && str_contains($note(), 'route')) || (($a['type'] ?? '') === 'coupon' && $a['route_id'] !== null && !in_array((string) $a['code'], ['RAJKOT', strtoupper($rjTown)], true)),
+        'Y2 review: "' . $s . '" → its one route, or "which route?" — never every route, never the town as the code: ' . json_encode($acts) . ' ' . mb_substr($note(), 0, 60));
+}
+$offRoute = Database::fetch("SELECT id, route_code FROM routes WHERE is_active = 0 AND route_code <> '' AND route_code NOT LIKE 'zu5%' ORDER BY id LIMIT 1");
+if ($offRoute !== null) {
+    $a = $first('offer 10% max 200 route ' . $offRoute['route_code']);
+    $ok(($a['route_id'] ?? 0) === (int) $offRoute['id'], 'Y2 review: an OFF route said by its code is that route (as on the Offers page), not every route');
+    $pv = implode(' | ', AiOps::preview($a)[0] ?? []);
+    $ok(str_contains($pv, 'route is OFF'), 'Y2 review: the preview says that route is OFF: ' . $pv);
+}
+foreach (['offer 10% max 200 route', 'offer 10% max 200 route xyzq'] as $s) {
+    $ok(AiOps::parseWords($s) === [] && str_contains($note(), 'Which route'), 'Y2 review: "' . $s . '" asks which route');
+}
+$a = $first('offer 10% max 200 sabai route');
+$ok(($a['type'] ?? '') === 'coupon' && array_key_exists('route_id', $a) && $a['route_id'] === null, 'Y2 review: "sabai route" = every route');
+$pk = (string) Database::scalar("SELECT rs.stop_name FROM route_stops rs JOIN routes r ON r.id = rs.route_id WHERE r.is_active = 1 AND rs.stop_type = 'boarding'
+                                  AND rs.stop_name NOT LIKE '%-%' AND rs.stop_name NOT LIKE '%/%' AND rs.stop_name NOT LIKE '% %'
+                                  AND rs.stop_name NOT IN (SELECT from_city FROM routes) AND rs.stop_name NOT IN (SELECT to_city FROM routes) ORDER BY rs.stop_name LIMIT 1", [], '');
+if ($pk !== '') {
+    $ok(AiOps::parseWords('offer ' . $pk . ' ₹100 off') === [] && str_contains($note(), 'per route, not per pickup'), 'Y2 review: "offer ' . $pk . ' ₹100 off" (a pickup) is asked, not every route');
+}
+if (!Database::exists("SELECT 1 FROM routes WHERE from_city = 'Vadodara' OR to_city = 'Vadodara'")) {
+    $ok(AiOps::parseWords('offer Baroda ₹100 off') === [] && str_contains($note(), 'No route found for Vadodara'), 'Y2 review: a town with no route is asked, not every route');
+}
+// 5. the off switch by the offer's own word; "अफर" itself is no OFF verb
+Database::insert('coupons', ['code' => 'ZYY' . $y2Tag . '10', 'title' => 'Y2 review fixture', 'discount_type' => 'flat', 'discount_value' => 10, 'is_active' => 1, 'auto_apply' => 0, 'per_user_limit' => 1]);
+$a = $first(strtolower('ZYY' . $y2Tag) . ' offer band karo');
+$ok(($a['type'] ?? '') === 'coupon_off' && $a['code'] === 'ZYY' . $y2Tag . '10', 'Y2 review: "<word> offer band karo" → the one ON offer whose code starts with it');
+$ok(AiOps::parseWords(strtolower('ZYY' . $y2Tag) . ' offer chalu karo') === [] && str_contains($note(), 'never switches an offer ON'), 'Y2 review: … and never ON');
+$ok(AiOps::parseWords('ZYY' . $y2Tag . '10 अफर') === [] && str_contains($note(), 'is ON now'), 'Y2 review: "CODE अफर" (no verb) only says it is ON');
+$ok(AiOps::parseWords('अफर बन्द गर') === [] && str_contains($note(), 'Which offer'), 'Y2 review: "अफर बन्द गर" asks which offer');
+$y2Clean();
+
 /* OpsHub money rule */
 $ok(OpsHub::payState(['pay_status' => 'verified', 'pay_method' => 'upi'], null) === 'paid', 'UPI verified = paid');
 $ok(OpsHub::payState(['pay_status' => 'verified', 'pay_method' => 'cash', 'agent_role' => 'agent'], null) === 'agent', 'agent cash = with agent');

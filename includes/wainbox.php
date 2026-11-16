@@ -34,9 +34,12 @@
  *    resolve()     resumes the bot and resolves that number's open tickets
  *    escalate()    opens a help-desk ticket (no message to the customer)
  *    responseStats() inbound -> first bot_reply / inbox_reply, per day
- *    channelTabs() WhatsApp | Messenger | Sent strip for the comms pages
+ *    channelTabs() WhatsApp | Messenger | Comments | Sent strip for the comms pages
  *    sent()        what went out on WhatsApp (message_logs), newest first
  *    verdict()     the office's 👍 / 👎 on one bot reply -> ai_feedback_log
+ *    quality()     read-only: 👎 by channel / branch, open questions and the
+ *                  VPS practice score for admin/ai-center.php (P7-9c)
+ *    promoLinkOn() the "🎁 Offer" link in a chat header (P6-9d, switch OFF)
  *  Nothing here sends a message except reply(), as before — and, only
  *  while wa_handoff_msg_on is ON (default OFF), handoffNotice(): the one
  *  fixed "a person from the office will help you now" line when the office
@@ -822,9 +825,12 @@ final class WaInbox
 
     /**
      * The channel strip every communications page shows on top:
-     * WhatsApp | Messenger | Sent. $active: whatsapp, messenger or sent.
-     * Messenger appears once admin/messenger-inbox.php exists; Sent needs
-     * the same permission as the outbound log (dashboard.view).
+     * WhatsApp | Messenger | Comments | Sent. $active: whatsapp, messenger,
+     * comments or sent. Messenger appears once admin/messenger-inbox.php
+     * exists; Comments (P6-9a) once admin/fb-comments.php exists, for the
+     * people that page itself lets in (customers.view); Sent needs the same
+     * permission as the outbound log (dashboard.view). The strip wraps on a
+     * 360 px phone.
      */
     public static function channelTabs(string $active): string
     {
@@ -833,6 +839,9 @@ final class WaInbox
         if (is_file(ROOT_PATH . '/admin/messenger-inbox.php')) {
             $tabs['messenger'] = ['messenger-inbox.php', '📘 Messenger'];
         }
+        if (is_file(ROOT_PATH . '/admin/fb-comments.php') && (!class_exists('Auth') || Auth::can('customers.view'))) {
+            $tabs['comments'] = ['fb-comments.php', '💬 FB कमेन्ट · Comments'];
+        }
         if (!class_exists('Auth') || Auth::can('dashboard.view')) {
             $tabs['sent'] = ['wa-inbox.php?tab=sent', '📤 पठाइएको · Sent'];
         }
@@ -840,7 +849,9 @@ final class WaInbox
         if (!$css) {
             $css = true;
             $h .= '<style>.wi-chan{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;padding:4px;border:1px solid var(--line);border-radius:14px;background:var(--card);width:max-content;max-width:100%}'
-                . '.wi-chan a{padding:7px 14px;border-radius:10px;font-weight:700;font-size:13.5px;text-decoration:none;color:inherit;white-space:nowrap}'
+                . '.wi-chan a{padding:7px 14px;border-radius:10px;font-weight:700;font-size:13.5px;text-decoration:none;color:inherit;white-space:nowrap;'
+                . 'min-height:40px;box-sizing:border-box;display:inline-flex;align-items:center;max-width:100%;overflow:hidden}'
+                . '@media (max-width:420px){.wi-chan{gap:4px}.wi-chan a{padding:7px 10px;font-size:13px}}'
                 . '.wi-chan a.on{background:var(--ink,#0b1220);color:var(--card,#fff)}</style>';
         }
         $h .= '<nav class="wi-chan" aria-label="Channels">';
@@ -1001,5 +1012,149 @@ final class WaInbox
         } catch (Throwable $e) {
         }
         return $out;
+    }
+
+    /* ---------------- AI answer quality, last 7 days (P7-9c) ---------------- */
+
+    /**
+     * Read-only figures for the "पछिल्लो ७ दिन · Last 7 days" block of the
+     * Answer-quality panel on admin/ai-center.php. Every part is null when
+     * its table (or a column it reads) is missing - the page shows '—' -
+     * and nothing here ever throws or writes.
+     *   down        the office's 👎 by channel and answering branch:
+     *               ai_feedback_log (verdict 'down') LEFT JOIN ai_turns on
+     *               the reply's message_logs id (msg_id = reply_log_id);
+     *               branch '' = no turn row for that reply. Without the
+     *               msg_id column or ai_turns: by channel only.
+     *   down_total  all 👎 in the window (a reply is counted once)
+     *   unanswered  the 10 most-asked questions still open (status 'new' or
+     *               'needs_owner') that were asked in the window - the text
+     *               as stored, numbers and booking codes already removed
+     *   practice    the VPS model's practice runs (ap_ai_practice) per day
+     *               over $practiceDays days, newest first: tries, right, %
+     * $tables renames a source table (a test points one at a missing table).
+     *
+     * @param array<string,string> $tables feedback|turns|unanswered|practice => table
+     * @return array{down: ?list<array{channel:string,router:string,n:int}>, down_total: ?int,
+     *               unanswered: ?list<array{id:int,question:string,frequency:int,status:string,at:string}>,
+     *               practice: ?list<array{day:string,n:int,correct:int,pct:?int}>}
+     */
+    public static function quality(int $days = 7, int $practiceDays = 14, array $tables = []): array
+    {
+        $t = [];
+        foreach (['feedback' => 'ai_feedback_log', 'turns' => 'ai_turns', 'unanswered' => 'ai_unanswered_questions', 'practice' => 'ap_ai_practice'] as $k => $def) {
+            $name = (string) ($tables[$k] ?? $def);
+            $t[$k] = preg_match('/^[a-z][a-z0-9_]{0,63}$/', $name) === 1 ? $name : $def;
+        }
+        $since  = date('Y-m-d', (int) strtotime('-' . (max(1, min(90, $days)) - 1) . ' days')) . ' 00:00:00';
+        $pSince = date('Y-m-d', (int) strtotime('-' . (max(1, min(90, $practiceDays)) - 1) . ' days')) . ' 00:00:00';
+        $out = ['down' => null, 'down_total' => null, 'unanswered' => null, 'practice' => null];
+
+        /* 👎 by channel / branch */
+        $rows = null;
+        try {
+            $rows = Database::fetchAll(
+                "SELECT f.channel, COALESCE(t.router, '') AS branch, COUNT(DISTINCT f.id) AS n
+                   FROM `{$t['feedback']}` f LEFT JOIN `{$t['turns']}` t ON t.reply_log_id = f.msg_id
+                  WHERE f.verdict = 'down' AND f.created_at >= :d
+                  GROUP BY f.channel, branch ORDER BY n DESC, f.channel, branch LIMIT 20",
+                ['d' => $since]
+            );
+        } catch (Throwable $e) {
+            try {                                   // no msg_id column or no ai_turns: by channel only
+                $rows = Database::fetchAll(
+                    "SELECT channel, '' AS branch, COUNT(*) AS n FROM `{$t['feedback']}`
+                      WHERE verdict = 'down' AND created_at >= :d GROUP BY channel ORDER BY n DESC, channel LIMIT 20",
+                    ['d' => $since]
+                );
+            } catch (Throwable $e2) {
+                $rows = null;
+            }
+        }
+        if ($rows !== null) {
+            $out['down'] = array_map(static fn(array $r): array => [
+                'channel' => (string) ($r['channel'] ?? ''),
+                'router'  => (string) ($r['branch'] ?? ''),
+                'n'       => (int) ($r['n'] ?? 0),
+            ], $rows);
+            try {
+                $out['down_total'] = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM `{$t['feedback']}` WHERE verdict = 'down' AND created_at >= :d", ['d' => $since], 0);
+            } catch (Throwable $e) {
+                $out['down_total'] = array_sum(array_column($out['down'], 'n'));
+            }
+        }
+
+        /* the questions it could not answer */
+        try {
+            $out['unanswered'] = array_map(static fn(array $r): array => [
+                'id'        => (int) $r['id'],
+                'question'  => (string) ($r['normalized_question'] ?? ''),
+                'frequency' => (int) ($r['frequency'] ?? 0),
+                'status'    => (string) ($r['status'] ?? ''),
+                'at'        => (string) ($r['updated_at'] ?? ''),
+            ], Database::fetchAll(
+                "SELECT id, normalized_question, frequency, status, updated_at FROM `{$t['unanswered']}`
+                  WHERE status IN ('new', 'needs_owner') AND updated_at >= :d
+                  ORDER BY frequency DESC, updated_at DESC LIMIT 10",
+                ['d' => $since]
+            ));
+        } catch (Throwable $e) {
+            $out['unanswered'] = null;
+        }
+
+        /* the VPS model's practice score per day */
+        try {
+            $out['practice'] = array_map(static function (array $r): array {
+                $n  = (int) ($r['n'] ?? 0);
+                $ok = (int) ($r['ok'] ?? 0);
+                return ['day' => (string) $r['d'], 'n' => $n, 'correct' => $ok, 'pct' => $n > 0 ? (int) round($ok * 100 / $n) : null];
+            }, Database::fetchAll(
+                "SELECT DATE(run_at) AS d, SUM(n) AS n, SUM(correct) AS ok FROM `{$t['practice']}`
+                  WHERE run_at >= :d GROUP BY DATE(run_at) ORDER BY d DESC LIMIT 31",
+                ['d' => $pSince]
+            ));
+        } catch (Throwable $e) {
+            $out['practice'] = null;
+        }
+        return $out;
+    }
+
+    /* ---------------- "🎁 Offer" from a chat (P6-9d) ---------------- */
+
+    /**
+     * Whether a chat header shows "🎁 अफर · Offer": only while the switch
+     * wa_inbox_promo_link_on is on (default OFF - database/upgrade-2026-11-16d-
+     * Y4-promo-link.sql) and only for someone who may create a campaign on
+     * admin/campaigns.php (marketing.send, or the owner; never a counter
+     * agent). The link itself sends nothing.
+     */
+    public static function promoLinkOn(): bool
+    {
+        try {
+            if (!Settings::getBool('wa_inbox_promo_link_on', false) || !class_exists('Auth') || Auth::isCounterAgent()) {
+                return false;
+            }
+            return Auth::isSuperadmin() || Auth::can('marketing.send');
+        } catch (Throwable $e) {
+            return false;                           // never let the link break the inbox
+        }
+    }
+
+    /**
+     * A NEW campaign for exactly this one number: admin/campaigns.php with the
+     * audience "phone=<10-digit local number>" (CustomerDirectory's exact
+     * phone filter). The campaign page keeps every check of its own - STOP /
+     * opt-in, staff and placeholder numbers, quiet hours, the daily caps, the
+     * approved template, a test send and the launch tick. '' for a number
+     * that is not 10 digits.
+     */
+    public static function promoLink(string $phone): string
+    {
+        $local = substr(preg_replace('/\D/', '', $phone) ?? '', -10);
+        if (strlen($local) !== 10) {
+            return '';
+        }
+        return 'campaigns.php?new=1&aud=' . rawurlencode('phone=' . $local);
     }
 }

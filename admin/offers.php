@@ -479,14 +479,31 @@ $srCut     = Settings::getFloat('sharing_short_run_discount_inr', 200.0);
         <strong><?= Security::e((string) ($o['title'] !== '' ? $o['title'] : $o['code'])) ?></strong>
         <div class="mono muted" style="font-size:11px"><?= Security::e((string) $o['code']) ?></div>
       </td>
+      <?php
+        /* 16 Nov 2026 (v2.0 P3-6): tap the discount to change it in place
+           (assets/js/admin-inline-edit.js -> admin/api/inline-save.php: the
+           form's own rules - more than 0, a percent at most 100 and only with
+           a maximum - plus an "old -> new?" question and the offer.update
+           audit row). Edit stays the full form. A percent offer with no
+           maximum (an old row) is not offered inline: Edit sets the cap first. */
+        $isPct  = $o['discount_type'] === 'percent';
+        $dvRaw  = rtrim(rtrim(number_format((float) $o['discount_value'], 2, '.', ''), '0'), '.');
+        $ieDisc = $canManage && !($isPct && $o['max_discount'] === null)
+            ? ' data-ie-entity="coupon" data-ie-field="discount_value" data-ie-id="' . (int) $o['id'] . '" data-ie-value="' . Security::e($dvRaw) . '"'
+              . ' data-ie-type="' . ($isPct ? 'percent' : 'money') . '" data-ie-confirm="1" data-ie-placeholder=""'
+              . ' data-ie-label="' . Security::e((string) $o['code'] . ' — छुट · discount' . ($isPct ? ' (%)' : ' (₹)')) . '"'
+            : '';
+      ?>
       <td>
-        <?php if ($o['discount_type'] === 'percent'): ?>
-          <?= Security::e(rtrim(rtrim(number_format((float) $o['discount_value'], 2), '0'), '.')) ?>%
+        <?php if ($isPct): ?>
+          <span<?= $ieDisc ?>><?= Security::e(rtrim(rtrim(number_format((float) $o['discount_value'], 2), '0'), '.')) ?>%</span>
           <?php if ($o['max_discount'] !== null): ?>
             <div class="muted" style="font-size:11px">max <?= Security::e(inr((float) $o['max_discount'])) ?></div>
+          <?php elseif ($canManage): ?>
+            <div class="muted" style="font-size:11px">⚠️ अधिकतम छैन · no maximum — <a href="offers.php?edit=<?= (int) $o['id'] ?>">Edit</a></div>
           <?php endif; ?>
         <?php else: ?>
-          <?= Security::e(inr((float) $o['discount_value'])) ?>
+          <span<?= $ieDisc ?>><?= Security::e(inr((float) $o['discount_value'])) ?></span>
         <?php endif; ?>
       </td>
       <td>
@@ -599,4 +616,5 @@ $repQs = static fn(array $extra = []): string => 'offers.php?' . http_build_quer
   </div>
 </div>
 
+<?php if ($canManage): ?><script src="<?= e(admin_asset_url('assets/js/admin-inline-edit.js')) ?>" defer></script><?php endif; ?>
 <?php admin_footer(); ?>

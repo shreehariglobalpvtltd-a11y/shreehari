@@ -345,3 +345,43 @@ html[data-tier="low"] .shg-sync,html[data-tier="low"] .shg-sync.on{animation:non
 #smartBook .sb-why .sb-near-un{display:block;margin-top:2px;opacity:.85}
 
 #smartBook .sb-tk-push .push-card{margin:0;text-align:left}   /* .sb-tk is a column with its own 10px gap */
+
+/* =====================================================================
+   9. OFFLINE BAR  (16 Nov 2026, master upgrade v2.0 — P2-4f)
+
+   The customer app's "📵 Offline" indicator (13-admin-routes.js, #shgNetPill)
+   was a small centred red pill. Owner's spec: a full-width amber bar across
+   the very top, under the notch / status bar (safe-area padding), centred
+   text. It shows ONLY while the phone is offline (the script sets display),
+   it never takes a tap (pointer-events:none: the nav buttons under it still
+   work) and the text wraps at 360px instead of running off the edge.
+   Light #FFF0D1 / #7A4A00 (about 6.6:1), dark #3A2A0A / #FFD48A (about 9.9:1)
+   — both pass WCAG AA for the 12px bold text.
+   ===================================================================== */
+.shg-offline-bar{position:fixed;top:0;left:0;right:0;transform:none;z-index:70;
+  box-sizing:border-box;margin:0;border-radius:0;
+  padding:calc(4px + env(safe-area-inset-top,0px)) 12px 4px;
+  text-align:center;font-size:12px;line-height:1.35;font-weight:700;
+  overflow-wrap:anywhere;pointer-events:none;
+  background:#FFF0D1;color:#7A4A00;
+  border-bottom:1px solid rgba(122,74,0,.22);box-shadow:0 2px 8px rgba(0,0,0,.12)}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .shg-offline-bar{background:#3A2A0A;color:#FFD48A;border-bottom-color:rgba(255,212,138,.22)}
+}
+html[data-theme="dark"] .shg-offline-bar{background:#3A2A0A;color:#FFD48A;border-bottom-color:rgba(255,212,138,.22)}
+@media print{.shg-offline-bar{display:none!important}}
+
+/* =====================================================================
+   10. TICKET PNR IN THE LIGHT THEME  (16 Nov 2026, master v2 unit F3-ui)
+
+   The customer's ticket confirmation (SmartBook modal) showed an EMPTY pill
+   above the ticket picture in the light theme. smartbook.css paints
+   .sb-tk-pnr as gradient text (background-clip:text + color:transparent);
+   premium3d.css, loaded after it, draws the pill with the `background`
+   SHORTHAND, which resets background-clip to border-box - the gradient
+   became the pill and the letters stayed transparent. The dark theme was
+   never hit (smartbook.css gives it a real colour, liquid.css the white
+   glow). The PNR is now the brand colour - each palette's own
+   --sb-primary - on the same pill; no dark-theme rule changes.
+   ===================================================================== */
+:root:not([data-theme="dark"]) #smartBook .sb-tk-pnr{color:var(--sb-primary,#1a44c8);-webkit-text-fill-color:currentColor}

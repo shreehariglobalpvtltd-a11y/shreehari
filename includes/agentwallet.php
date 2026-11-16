@@ -2515,7 +2515,9 @@ final class AgentWallet
                 if (mb_strlen(trim((string)($meta['ref']??'')))<5) { throw new RuntimeException('Confirmed payment reference is required before recording a payout.'); }
                 $req=(int)($meta['request_id']??0);
                 $reserved=(float)Database::scalar("SELECT COALESCE(SUM(amount),0) FROM agent_payout_requests WHERE agent_admin_id=:a AND status='open' AND id<>:i",['a'=>$agentId,'i'=>$req],0);
-                if (abs($amount)>self::balances($agentId)['commission']-$reserved+0.001) { throw new RuntimeException('Funds are reserved for an open withdrawal. Use Team Management → Withdrawals.'); }
+                $due=self::balances($agentId)['commission'];
+                // 16 Nov 2026 (F1-3): "reserved" only when an open withdrawal is what stands in the way; a balance simply too low says so
+                if (abs($amount)>$due-$reserved+0.001) { throw new RuntimeException($reserved>0.001 && abs($amount)<=$due+0.001 ? 'Funds are reserved for an open withdrawal. Use Team Management → Withdrawals.' : 'That is more than the ' . inr(max(0.0,$due)) . ' currently owed to this agent.'); }
                 if(Database::exists("SELECT 1 FROM agent_ledger WHERE entry_type='payout' AND ref=:r",['r'=>$meta['ref']])) { throw new RuntimeException('Payment reference already recorded.'); }
             }
             return self::recordLocked($agentId,$entryType,$amount,$meta);

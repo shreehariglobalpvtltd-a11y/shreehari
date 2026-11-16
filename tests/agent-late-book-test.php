@@ -71,6 +71,8 @@ function bookReq(int $rid, string $date, string $seat, ?string $refCode): array 
 
 echo "\n=== Agent 24h late-booking on a departed bus ===\n\n";
 
+// Restored raw, exactly as found (it used to be put back as a hard-coded L5/L6).
+$priorStaffSeats = Database::fetch('SELECT svalue FROM settings WHERE skey = :k', ['k' => 'staff_seats']);
 Settings::set('staff_seats', ['sleeper' => ['L1'], 'seater' => ['1A']], 'json', 'seats', false);
 
 try {
@@ -126,9 +128,24 @@ try {
     // Invalid agent code → treated as anonymous → refused.
     throws('an INVALID agent code cannot book the departed bus', fn() => BookingService::create(bookReq($rid, $D1, 'L9', 'SHG-9999')));
 
-    // Valid agent code inside 24h → SUCCEEDS, attributed to the agent.
+    /* SmartBook v5 D1 (15 Oct 2026): a code typed or carried by a CUSTOMER
+       still credits the agent, but only a signed-in selling-staff session may
+       book a bus that has already left (agent mode on the .network door) -
+       BookingService::create() asks Auth::isSellingStaff() as well as the
+       code. This suite used to book the departed bus with a typed code and no
+       session at all, which is exactly the door that rule closed. */
+    throws('a VALID agent code typed by a customer (no staff session) cannot book the departed bus',
+        fn() => BookingService::create(bookReq($rid, $D1, 'L9', $code)));
+
+    // The agent's own signed-in session (role agent = selling staff).
+    $agentUser = (string) Database::scalar('SELECT username FROM admins WHERE id = :i', ['i' => $agentId], '');
+    $_SESSION[ADMIN_SESSION_KEY] = ['id' => $agentId, 'username' => $agentUser, 'role' => 'agent', 'permissions' => [],
+                                    'last_seen' => time(), 'logged_in_at' => time()];
+    check('the agent session is selling staff', Auth::isSellingStaff());
+
+    // Valid agent code + the agent's session, inside 24h → SUCCEEDS, attributed to the agent.
     $res = BookingService::create(bookReq($rid, $D1, 'L9', $code));
-    check('valid agent code BOOKS the departed bus (within 24h)', !empty($res['pnr']));
+    check('valid agent code BOOKS the departed bus (within 24h, agent signed in)', !empty($res['pnr']));
     $soldBy = (int) Database::scalar('SELECT sold_by_admin_id FROM bookings WHERE pnr = :p', ['p' => $res['pnr'] ?? ''], 0);
     check('  booking attributed to the selling agent', $soldBy === $agentId);
 
@@ -142,8 +159,14 @@ try {
 } catch (Throwable $e) {
     check('unexpected error: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine(), false);
 } finally {
+    unset($_SESSION[ADMIN_SESSION_KEY]);
     cleanupAll();
-    Settings::set('staff_seats', ['sleeper' => ['L5', 'L6'], 'seater' => ['1A']], 'json', 'seats', false);
+    if ($priorStaffSeats === null) {
+        Database::delete('settings', 'skey = :k', ['k' => 'staff_seats']);
+    } else {
+        Database::run('UPDATE settings SET svalue = :v WHERE skey = :k', ['v' => (string) $priorStaffSeats['svalue'], 'k' => 'staff_seats']);
+    }
+    Settings::flush();
 }
 
 echo "\n  $PASS passed, $FAIL failed\n";

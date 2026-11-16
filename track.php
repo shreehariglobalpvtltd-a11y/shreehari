@@ -23,6 +23,7 @@ require_once __DIR__ . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/booking.php';
 require_once INCLUDE_PATH . '/whereis.php';
+require_once INCLUDE_PATH . '/themetokens.php';   // the app's weekly accent (16 Nov 2026, P5-4a)
 
 Security::requireRateLimit('track_page', Security::clientIp(), 60, 60);
 
@@ -193,12 +194,28 @@ header('X-Robots-Tag: noindex');
 <link rel="icon" href="/assets/img/favicon-32.png">
 <script>/* The app's saved theme, before the first frame (8 Oct 2026): localStorage 'shg:theme' = light | dark | amoled, else the phone's setting. */
 (function(){try{var d=document.documentElement,t=(localStorage.getItem('shg:theme')||'').replace(/"/g,'');if(t!=='light'&&t!=='dark'&&t!=='amoled')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.setAttribute('data-theme',t==='light'?'light':'dark');if(t==='amoled')d.setAttribute('data-display','amoled');if(t!=='light'){var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',t==='amoled'?'#000000':'#0E1626')}}catch(e){}})();</script>
+<?= ThemeTokens::accentHead() ?>
 <style>
 /* 9 Oct 2026: the live screen - hero state, real progress, the whole run. Tokens follow the app (light / dark / AMOLED). */
 :root{--pri:#1F4FA3;--orange:#F07C1F;--ink:#14213D;--muted:#56657F;--line:#E2E9F4;--bg:#F2F5FB;--card:#fff;--soft:#EAF0FB;--h1:#0F2550;--h2:#1F4FA3;--h3:#3D7BE0}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--pri:#8DB4FF;--ink:#EEF3FB;--muted:#A6B4CB;--line:#24324F;--bg:#0B1220;--card:#141E33;--soft:#1B2A47;--h1:#0B1A38;--h2:#173C82;--h3:#2559B8}}
 :root[data-theme="dark"]{--pri:#8DB4FF;--ink:#EEF3FB;--muted:#A6B4CB;--line:#24324F;--bg:#0B1220;--card:#141E33;--soft:#1B2A47;--h1:#0B1A38;--h2:#173C82;--h3:#2559B8;color-scheme:dark}
 :root[data-display="amoled"]{--bg:#000;--card:#0A0E15;--line:#1E2A3C;--soft:#121B2B;--h1:#000;--h2:#06122A;--h3:#0E2A5C}
+/* 16 Nov 2026 (P5-4a): the app's weekly accent (includes/themetokens.php) on the page's own blue only.
+   --pri is text / rings (dark = the light tint); --h2 / --h3 carry white text (dark = the solid accent).
+   No data-accent (Fixed brand colour, a palette, ds.css unreadable) = the colours above, unchanged. */
+:root[data-theme="light"][data-accent]{--pri:var(--royal);--h2:var(--royal);--h3:var(--royal)}
+:root[data-theme="dark"][data-accent]{--pri:var(--royal)}
+:root[data-theme="dark"][data-accent]:not([data-display="amoled"]){--h2:var(--accent-fill-strong);--h3:var(--accent-fill)}
+/* The journey rail is status, not brand (16 Nov 2026 fix): its 'your stop' pill (.r em = --h2) and upcoming-stop rings
+   (--pri) keep the page's own blue on every day, in every theme, so they never look like the orange 'Next' pill and
+   next / passed rings (Saturday's burnt orange, Sunday's rose). Same values as the theme rows above; the accent above
+   stays on the hero, the language tabs, the ETA tiles and the buttons. */
+:root{--rail-ring:#1F4FA3;--rail-mine:#1F4FA3}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--rail-ring:#8DB4FF;--rail-mine:#173C82}}
+:root[data-theme="dark"]{--rail-ring:#8DB4FF;--rail-mine:#173C82}
+:root[data-display="amoled"]{--rail-mine:#06122A}
+.rail{--pri:var(--rail-ring);--h2:var(--rail-mine)}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif}
 .pulse{display:inline-block;width:10px;height:10px;border-radius:50%;background:#4ADE80;box-shadow:0 0 0 0 rgba(74,222,128,.6);margin-right:8px;vertical-align:middle}
 @media (prefers-reduced-motion:no-preference){.pulse{animation:p 1.6s infinite}.r.nx i::after{animation:p2 1.8s infinite}.tick.go circle{animation:tk 15s linear forwards}.bar>i,.bar>b{transition:all .8s}}

@@ -16,6 +16,11 @@
     { "src": "/assets/img/mgmt-512.png?v=20261112a", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "/assets/img/mgmt-maskable-512.png?v=20261112a", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
+  "screenshots": [
+    { "src": "/assets/img/mgmt-shot-lock.webp", "sizes": "1080x1920", "type": "image/webp", "form_factor": "narrow", "label": "Sign in with your staff code" },
+    { "src": "/assets/img/mgmt-shot-home.webp", "sizes": "1080x1920", "type": "image/webp", "form_factor": "narrow", "label": "Management home: tickets, bus, agents" },
+    { "src": "/assets/img/mgmt-shot-chalani.webp", "sizes": "1080x1920", "type": "image/webp", "form_factor": "narrow", "label": "Chalani seat chart" }
+  ],
   "shortcuts": [
     { "name": "Cut ticket", "short_name": "Ticket", "url": "/admin/quick-ticket.php" },
     { "name": "Bus & Chalani", "short_name": "Bus", "url": "/admin/bus-control.php" },

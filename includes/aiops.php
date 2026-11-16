@@ -42,6 +42,15 @@
  *                  (schedules.manage), only while ai_trip_delay_on is ON; never from the AI path.
  *     ai_settings_engine 'cloud' asks the cloud brain before the VPS model; ai_change_wa_on
  *     sends the office one WhatsApp line after a "Yes"; every v2.0 switch is in EASY_KEYS.
+ *  16 Nov 2026 (Master v2, unit Y2 — P3-2f + P8-10e):
+ *     coupon       {code, discount_type, discount_value, max_discount, min_amount, valid_from,
+ *                   valid_until, usage_limit, per_user_limit, route_id}  "coupon DIWALI10 10% max 200
+ *                  till 30 Nov": a NEW offer row, held to admin/offers.php's rules (OfferRules), always
+ *                  written is_active = 0 AND auto_apply = 0 — no fare changes until the office switches
+ *                  it ON on Offers. Refused: a percent without a cap, over 50 %, a past date, a code
+ *                  already used. coupons.edit (or super-admin) only; never from the AI path.
+ *     coupon_off   {coupon_id, code}  "offer band DIWALI10": an ACTIVE offer OFF (it only takes a
+ *                  discount away). The AI never switches an offer ON.
  *  A sentence the words half-understand ("which pickup?", "what time?")
  *  returns [] with lastNote() set, and the AI is not asked to guess.
  * =====================================================================
@@ -57,7 +66,7 @@ if (!defined('SHG_APP')) {
 final class AiOps
 {
     public const TYPES = ['route', 'stop_fare', 'dir_fare', 'trip_fare', 'trip_sale', 'bus_number', 'bus_name', 'extra_seats', 'commission', 'setting',
-                          'fare_delta', 'add_stop', 'seat_block', 'trip_delay'];
+                          'fare_delta', 'add_stop', 'seat_block', 'trip_delay', 'coupon', 'coupon_off'];
 
     private const ON  = ['on', 'chalu', 'chalau', 'chalaideu', 'chalaidinu', 'khol', 'kholdeu', 'kholdinu', 'enable', 'start', 'activate', 'open', 'suru', 'shuru',
                          'चालु', 'खोल', 'चलाउ', 'सुरु', 'अन', 'शुरू', 'चालू', 'खोलो', 'chalu gara', 'चलाऊ',
@@ -505,6 +514,16 @@ final class AiOps
         // a setting said by its own key ("agent_commission_percent 6") belongs to rule 8, not to the commission rule (P3-2c)
         $keyName = preg_match('/(?<![a-z_])([a-z][a-z0-9]+(?:_[a-z0-9]+)+)(?![a-z_])/', $t, $km) === 1 ? $km[1] : '';
         $keyRow  = $keyName !== '' ? self::settingRow($keyName) : null;
+
+        /* 0. an offer / coupon (16 Nov 2026, Y2: P3-2f + P8-10e): "coupon DIWALI10 10% max 200 till 30 Nov",
+              "offer band DIWALI10". First, so "₹50 off coupon 20 Nov tak" is never a date's sale OFF — but
+              (Y2 review) never over a commission / fine sentence or a setting named by its key (rule 8), and a
+              fare / extra-seat sentence is an offer only when it says a discount ("10%", "₹100 off"):
+              "Diwali offer Surat ko bhada ₹2000" is Surat's fare, as before. */
+        $coupon = ($isComm || $isFine || $keyRow !== null) ? null : self::couponAction($raw, $t, $isFare || $isExtra);
+        if ($coupon !== null) {
+            return $coupon;
+        }
 
         /* 1. commission for one agent: "Ram ko commission 250", "SHG-0027 commission 300" */
         if ($isComm && $nums !== [] && $keyRow === null) {
@@ -1072,6 +1091,683 @@ final class AiOps
     }
 
     /* =================================================================
+     *  Offers / coupons by sentence (16 Nov 2026, Master v2 unit Y2 —
+     *  P3-2f + P8-10e). The office's own words only: parseAi() drops
+     *  these types. A NEW offer is held to admin/offers.php's rules
+     *  (OfferRules) and always written OFF, never auto-applied; an ACTIVE
+     *  offer may be switched OFF; none is ever switched ON from here.
+     * ================================================================= */
+
+    /** an offer is meant — never a bare "discount": "group / return discount" are switches */
+    private const COUPON_WORDS = ['coupon', 'coupons', 'coupan', 'cupon', 'kupan', 'kupon', 'promo', 'promo code', 'promocode', 'offer', 'offers', 'ofar', 'offar',
+                                  'discount code', 'chhut code', 'chut code', 'कुपन', 'कूपन', 'अफर', 'ऑफर', 'ओफर', 'प्रोमो', 'छुट कोड', 'ઓફર', 'કૂપન', 'કુપન'];
+    /** "naya / new / banau": a new offer is meant even before its amount is said */
+    private const COUPON_NEW = ['naya', 'nayaa', 'new', 'banau', 'banao', 'banaau', 'banaideu', 'banaunu', 'banaye', 'create', 'make',
+                                'नयाँ', 'नया', 'नई', 'नयां', 'बनाउ', 'बनाऊ', 'बनाओ', 'बनाउनु', 'નવું', 'નવો', 'નવી', 'બનાવો'];
+    /** the words around a code that are never the code itself */
+    private const COUPON_STOP = ['band', 'banda', 'bandh', 'bnd', 'off', 'on', 'chalu', 'chalau', 'khol', 'naya', 'nayaa', 'new', 'banau', 'banao', 'banaau', 'banaideu',
+                                 'banaunu', 'bana', 'create', 'make', 'add', 'max', 'maximum', 'upto', 'till', 'until', 'from', 'tak', 'samma', 'sama', 'dekhi', 'bata',
+                                 'the', 'for', 'and', 'aur', 'percent', 'pct', 'flat', 'code', 'kod', 'coupon', 'coupons', 'coupan', 'cupon', 'kupan', 'kupon', 'offer',
+                                 'offers', 'ofar', 'offar', 'promo', 'promocode', 'karo', 'kardo', 'gara', 'garnu', 'garideu', 'please', 'plz', 'disable', 'stop', 'hatau',
+                                 'hatao', 'deactivate', 'roka', 'rokdeu', 'close', 'this', 'name', 'naam', 'with', 'valid', 'chhut', 'chut', 'discount', 'jana', 'jaana',
+                                 'log', 'people', 'uses', 'times', 'choti', 'patak', 'baar', 'per', 'user', 'mobile', 'min', 'minimum', 'limit', 'route', 'only', 'matra',
+                                 'sirf', 'all', 'sabai', 'today', 'aaja', 'bholi', 'tomorrow', 'link', 'message', 'inbox', 'whatsapp', 'enable', 'start', 'activate',
+                                 'open', 'lagau', 'rupees', 'rupaiya', 'rupaye', 'inr', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov',
+                                 'dec', 'january', 'february', 'march', 'april', 'june', 'july', 'august', 'september', 'october', 'november', 'december', 'ticket',
+                                 'tickets', 'seat', 'seats', 'customer', 'customers', 'sabko', 'sabhi', 'every', 'kul', 'total', 'yatri', 'passenger', 'passengers'];
+    /** the little words of an offer sentence that never name WHICH offer, nor are its code (Y2 review) */
+    private const COUPON_FILLER = ['karo', 'kar', 'kardo', 'kardijiye', 'kijiye', 'karde', 'karna', 'karnu', 'karne', 'do', 'de', 'dey', 'deu', 'dinu', 'dinus',
+                                   'dinuhos', 'dinos', 'dijiye', 'gara', 'garnu', 'garideu', 'garidinu', 'gardinu', 'garnuhos', 'garau', 'please', 'plz', 'pls', 'the',
+                                   'this', 'that', 'yo', 'yah', 'ye', 'is', 'it', 'ko', 'ka', 'ki', 'ke', 'lai', 'ma', 'me', 'mein', 'pe', 'par', 'now', 'abhi', 'aba',
+                                   'ahile', 'ab', 'turant', 'hai', 'cha', 'chha', 'ho', 'wala', 'wali', 'vala', 'vali', 'chahiyo', 'chahiye', 'chaiyo', 'chaiye',
+                                   'lagi', 'for', 'code', 'kod', 'naam', 'name',
+                                   'गर', 'गर्नु', 'गरिदेउ', 'गरिदिनु', 'गर्नुहोस्', 'गर्नुस्', 'करो', 'कर', 'करें', 'दो', 'दें', 'दीजिए', 'दिनु', 'दिनुस्', 'दिनुहोस्',
+                                   'को', 'का', 'की', 'के', 'लाई', 'मा', 'में', 'यो', 'यह', 'अब', 'अहिले', 'अभी', 'है', 'छ', 'हो', 'वाला', 'वाली', 'कोड', 'नाम',
+                                   'કરો', 'કર', 'હવે', 'ને', 'નો', 'ની', 'નું', 'કોડ'];
+    /** a discount said in so many words: "10%", "₹100 off", "50 chhut", "flat 50" (a fare sentence needs one to be an offer) */
+    private const COUPON_DISCOUNT_RE = '/\d\s*(?:%|percent|per ?cent|pct|pratishat|pratisat|प्रतिशत|फीसदी|ટકા)'
+                                     . '|\d\s*(?:₹|rs\.?|rupaiya|rupiya|rupees?|rupaye|रु\.?)?\s*(?:off|chhut|chut|chhoot|discount|छुट|छूट|ऑफ|ओफ)(?![a-z])'
+                                     . '|(?<![a-z])(?:flat|sidha|सिधा)\s*(?:₹|rs\.?)?\s*\d/u';
+    /** "route" as the office says it (the same words as parseWords' $isRoute) */
+    private const COUPON_ROUTE_WORDS = ['route', 'routes', 'rut', 'root', 'रुट', 'रूट', 'line', 'लाइन'];
+    /** the AI's own ceiling for an offer; a bigger one is made by a person on admin/offers.php */
+    public const COUPON_MAX_PCT  = 50;
+    public const COUPON_MAX_FLAT = 5000;
+    private const COUPON_MONTHS  = 'january|february|march|april|june|july|august|september|october|november|december|sept|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec'
+                                 . '|जनवरी|फरवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितम्बर|अक्टूबर|नवम्बर|नोभेम्बर|दिसम्बर|डिसेम्बर';
+
+    /**
+     * "coupon DIWALI10 10% max 200 till 30 Nov", "offer 5% max ₹100 20 Nov to 30 Nov",
+     * "naya coupon SHG50 ₹50 off 50 jana", "offer band DIWALI10".
+     *
+     * @param bool $needDiscount a fare / extra-seat word is in the sentence: an offer only when a discount is said
+     * @return list<array<string,mixed>>|null null = not an offer sentence; [] = one with a note
+     */
+    private static function couponAction(string $raw, string $t, bool $needDiscount = false): ?array
+    {
+        // a setting's own key is no offer word: "btn_offer_ribbon_on band", "mk_auto_offer" stay rule 8 / the AI (Y2 review)
+        $tw = (string) preg_replace('/(?<![a-z0-9])[a-z0-9]+(?:_[a-z0-9]+)+(?![a-z0-9])/u', ' ', $t);
+        if (self::hasWord($tw, self::COUPON_WORDS) < 0) {
+            return null;
+        }
+        $r = strtr($raw, self::DIGITS);
+        // lower-case, ₹ and % kept: "1,000" is one amount, "200/-" is ₹200
+        $c = (string) preg_replace_callback('/(?<![\d,])\d{1,3}(?:,\d{2,3})*,\d{3}(?![\d,])/u', static fn(array $m): string => str_replace(',', '', $m[0]), $r);
+        $c = (string) preg_replace('/(\d)\s*\/-/u', '$1 rs ', $c);
+        $c = ' ' . mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', str_replace(',', ' ', $c)))) . ' ';
+        if ($needDiscount && preg_match(self::COUPON_DISCOUNT_RE, $c) !== 1) {
+            return null;   // "Diwali offer Surat ko bhada ₹2000" = Surat's fare, never a ₹2,000-off offer (Y2 review)
+        }
+
+        $routeCodes = [];
+        foreach (self::routes() as $rt) {
+            if (trim((string) $rt['route_code']) !== '') {
+                // an OFF route too ("route r1"): admin/offers.php takes one, and it must never fall back to every route (Y2 review)
+                $routeCodes[mb_strtolower(trim((string) $rt['route_code']))] = $rt;
+            }
+        }
+        [$explicit, $any] = self::couponTokens($r, array_keys($routeCodes));
+        $blank = static fn(string $s, string $word): string => (string) preg_replace_callback('/(?<![a-z0-9_\-])' . preg_quote(mb_strtolower($word), '/') . '(?![a-z0-9_\-])/u',
+            static fn(array $m): string => str_repeat(' ', strlen($m[0])), $s);
+
+        // the offer the sentence names, if one exists already
+        $found = null;
+        foreach (array_unique(array_merge($explicit, array_map('strtoupper', $any))) as $tok) {
+            $row = Database::fetch('SELECT id, code, title, discount_type, discount_value, max_discount, is_active FROM coupons WHERE code = :c', ['c' => $tok]);
+            if ($row !== null) {
+                $found = $row;
+                break;
+            }
+        }
+        // the code for a NEW offer: said after "coupon / code …", else one typed like a code (DIWALI10, SHG50, WELCOME)
+        $code = $explicit[0] ?? null;
+        if ($code === null) {
+            foreach ($any as $x) {
+                if (self::couponCodeLike($x, 4)) {
+                    $code = strtoupper($x);
+                    break;
+                }
+            }
+        }
+        if ($explicit === [] && $found === null && self::parseSwitches($raw) !== []) {
+            return null;   // "offer link on", "offer message band", "group discount offer 8 percent" are one-tap switches
+        }
+        foreach ([$code, $found['code'] ?? null] as $w) {
+            // a town said as the code ("coupon code SURAT") stays in the sentence, so its route is still asked
+            if ($w !== null && (preg_match('/\d/', (string) $w) === 1 || !self::couponPlace(mb_strtolower((string) $w)))) {
+                $c = $blank($c, (string) $w);
+            }
+        }
+        // a route named by its code ("route r2")
+        $route = null;
+        foreach ($routeCodes as $rc => $rt) {
+            if (preg_match('/(?<![a-z0-9_\-])' . preg_quote($rc, '/') . '(?![a-z0-9_\-])/u', $c) === 1) {
+                $route = $rt;
+                $c = $blank($c, $rc);
+                break;
+            }
+        }
+        $dates = self::couponDates($c);
+        $n     = self::couponNumbers($c);
+        $oo    = self::onOff(self::couponUnword($tw));   // "अफर" holds the OFF word "अफ" — the offer word itself is no verb
+        $isNew = self::hasWord($tw, self::COUPON_NEW) >= 0;
+
+        /* no amount: switch an offer OFF ("offer band DIWALI10"), never ON */
+        if ($n['pct'] === [] && $n['flat'] === []) {
+            $never = '🔒 AI ले अफर चालु गर्दैन · The AI never switches an offer ON — switch it ON on the Offers page (admin/offers.php).';
+            if ($found !== null && !$isNew) {
+                if ($oo === false) {
+                    if ((int) $found['is_active'] !== 1) {
+                        self::$note = '🏷 ' . $found['code'] . ' पहिल्यै बन्द छ · is already OFF.';
+                        return [];
+                    }
+                    return [['type' => 'coupon_off', 'coupon_id' => (int) $found['id'], 'code' => (string) $found['code']]];
+                }
+                self::$note = $oo === true ? $never
+                    : '🏷 ' . $found['code'] . ' अहिले ' . ((int) $found['is_active'] === 1 ? 'ON' : 'OFF') . ' छ · is ' . ((int) $found['is_active'] === 1 ? 'ON' : 'OFF')
+                      . ' now. बन्द गर्न · To stop it: "offer band ' . $found['code'] . '".';
+                return [];
+            }
+            if ($isNew) {
+                self::$note = $found !== null
+                    ? '🏷 ' . $found['code'] . ' कोडको अफर पहिल्यै छ · An offer with code ' . $found['code'] . ' already exists — choose another code.'
+                    : '💸 कति छुट? · How much off? Say e.g. "coupon DIWALI10 10% max 200 till 30 Nov" or "naya coupon SHG50 ₹50 off 50 jana".';
+                return [];
+            }
+            if ($oo === null) {
+                return null;
+            }
+            /* Y2 review: only a sentence that names an offer gets an offer's answer. Words left over that
+               name something else ("offer ribbon band", "promo message band", "Diwali offer: bholi ko bus
+               band") go on to the other rules and the AI, as before. */
+            $rest = self::couponRest($tw, [(string) $code, (string) ($found['code'] ?? '')]);
+            // the one word that may start an offer's code: "dashain offer band karo", "offer band DASHAIN" = DASHAIN10 (shown, and only after "Yes")
+            $word = $rest === [] ? (string) $code : ($code === null && count($rest) === 1 ? $rest[0] : '');
+            if (preg_match('/^[a-z][a-z0-9]{2,19}$/i', $word) === 1) {
+                $hits = Database::fetchAll('SELECT id, code, is_active FROM coupons WHERE code LIKE :p ORDER BY is_active DESC, id DESC LIMIT 8', ['p' => strtoupper($word) . '%']);
+                if ($hits !== []) {
+                    $on = array_values(array_filter($hits, static fn(array $h): bool => (int) $h['is_active'] === 1));
+                    if ($oo === true) {
+                        self::$note = $never;
+                        return [];
+                    }
+                    if (count($on) === 1) {
+                        return [['type' => 'coupon_off', 'coupon_id' => (int) $on[0]['id'], 'code' => (string) $on[0]['code']]];
+                    }
+                    self::$note = $on === []
+                        ? '🏷 ' . implode(', ', array_column($hits, 'code')) . ' पहिल्यै बन्द छ · is already OFF.'
+                        : '🏷 कुन अफर? · Which offer? Say its code: ' . implode(', ', array_column($on, 'code')) . '.';
+                    return [];
+                }
+            }
+            if ($rest !== []) {
+                return null;
+            }
+            if ($oo === true) {
+                self::$note = $never;
+            } elseif ($code !== null) {
+                self::$note = '🏷 ' . $code . ' कोडको अफर भेटिएन · No offer with code ' . $code . '.';
+            } else {
+                $on = array_column(Database::fetchAll('SELECT code FROM coupons WHERE is_active = 1 ORDER BY id DESC LIMIT 8'), 'code');
+                self::$note = '🏷 कुन अफर? · Which offer? Say its code, e.g. "offer band ' . ($on[0] ?? 'DIWALI10') . '".'
+                    . ($on !== [] ? ' अहिले ON · ON now: ' . implode(', ', $on) . '.' : ' कुनै अफर ON छैन · No offer is ON.');
+            }
+            return [];
+        }
+
+        /* an amount: a NEW offer */
+        if (count($n['pct']) + count($n['flat']) > 1) {
+            self::$note = '💸 एउटा अफरमा एउटै छुट · One discount per offer — say "10% max 200" or "₹50 off".';
+            return [];
+        }
+        if ($n['left'] !== []) {
+            self::$note = '🤔 "' . $n['left'][0] . '" के हो? · What is ' . $n['left'][0] . '? Say e.g. "max 200", "50 jana", "till 30 Nov", "min 1000".';
+            return [];
+        }
+        foreach (['cap' => 'max', 'min' => 'min', 'uses' => 'jana', 'per' => 'per mobile'] as $k => $w) {
+            if (count($n[$k]) > 1) {
+                self::$note = '🤔 दुई वटा "' . $w . '" · Two "' . $w . '" amounts — say one.';
+                return [];
+            }
+        }
+        if ($dates['err'] !== '') {
+            self::$note = $dates['err'];
+            return [];
+        }
+        /* the route: by its code, else by its town(s). A place or a "route" word that names no single route
+           is asked — never silently widened to every route (Y2 review: "offer Rajkot route ₹100 off"). */
+        if ($route === null) {
+            $nc     = self::norm($c);
+            $cities = self::findCities($nc);
+            $list   = static fn(array $rs): string => implode(', ', array_map(static fn(array $x): string => (string) $x['route_code'] . ' ' . $x['from_city'] . ' → ' . $x['to_city'], $rs));
+            if ($cities !== []) {
+                $rs = self::routesFor($cities, true);
+                if (count($rs) !== 1) {
+                    self::$note = $rs === []
+                        ? '🛣 ' . implode(', ', array_map('ucfirst', $cities)) . ' को कुनै रुट चालु छैन · No route is ON for that town.'
+                        : '🛣 कुन रुट? · Which route? Say its code, e.g. "route ' . $rs[0]['route_code'] . '" (' . $list($rs) . ').';
+                    return [];
+                }
+                $route = $rs[0];
+            } elseif (($stops = self::findStops($nc)) !== []) {
+                self::$note = '📍 अफर pickup अनुसार होइन, रुट अनुसार हुन्छ · An offer is per route, not per pickup (' . implode(', ', $stops)
+                    . '). Say the route code, e.g. "route r2", or leave the place out for every route.';
+                return [];
+            } elseif (($towns = array_values(array_unique(array_filter(preg_split('/[^\p{L}]+/u', $nc, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    static fn(string $w): bool => isset(self::knownTowns()[$w]))))) !== []) {
+                // a town with no route and no pickup ("offer Baroda ₹100 off") — asked, never every route
+                self::$note = '🛣 ' . implode(', ', array_map('ucfirst', $towns)) . ' को रुट भेटिएन · No route found for ' . implode(', ', array_map('ucfirst', $towns))
+                    . '. Say the route code, e.g. "route r2", or leave the place out for every route.';
+                return [];
+            } elseif (self::hasWord($nc, self::COUPON_ROUTE_WORDS) >= 0 && self::hasWord($nc, self::ALL_WORDS) < 0) {
+                $on = array_values(array_filter(self::routes(), static fn(array $x): bool => (int) $x['is_active'] === 1));
+                self::$note = '🛣 कुन रुट? · Which route? Say its code, e.g. "route ' . ($on[0]['route_code'] ?? 'r2') . '"'
+                    . ($on !== [] ? ' (' . $list($on) . ')' : '') . ', or "sabai route" for every route.';
+                return [];
+            }
+        }
+        $pct  = $n['pct'] !== [];
+        $val  = $pct ? $n['pct'][0] : $n['flat'][0];
+        $auto = $code === null;
+        $a = [
+            'type'           => 'coupon',
+            'code'           => $code ?? self::couponAutoCode($pct ? 'percent' : 'flat', $val, $dates['from']),
+            'discount_type'  => $pct ? 'percent' : 'flat',
+            'discount_value' => $val,
+            'max_discount'   => $n['cap'][0] ?? null,
+            'min_amount'     => $n['min'][0] ?? 0.0,
+            'valid_from'     => $dates['from'],
+            'valid_until'    => $dates['until'],
+            'usage_limit'    => isset($n['uses'][0]) ? (int) $n['uses'][0] : null,
+            'per_user_limit' => isset($n['per'][0]) ? (int) $n['per'][0] : 1,
+            'route_id'       => $route !== null ? (int) $route['id'] : null,
+            'auto_code'      => $auto,
+        ];
+        [$err, $clean] = self::couponCheck($a);
+        if ($err !== null) {
+            self::$note = $err;
+            return [];
+        }
+        return [$clean];
+    }
+
+    /**
+     * Word-like tokens that could be a code: said as one (explicit, upper-cased), and every other one
+     * (case kept). Y2 review: right after "code / naam" any word is the code; right after "coupon /
+     * offer / promo" only one typed like a code (DIWALI10, SHG50, WELCOME) — "offer dinus / wala /
+     * chahiyo" are ordinary words, and a town or a pickup ("offer Rajkot route", "offer Surat ko
+     * bhada") is never a code unless it carries a digit (SURAT50) or "code" names it.
+     *
+     * @param list<string> $routeCodes lower-case route codes, ON or OFF (never a coupon code)
+     * @return array{0:list<string>, 1:list<string>}
+     */
+    private static function couponTokens(string $r, array $routeCodes): array
+    {
+        $ok = static function (string $tok, bool $named) use ($routeCodes): bool {
+            $l = strtolower($tok);
+            if (preg_match('/[a-z]/', $l) !== 1 || in_array($l, self::COUPON_STOP, true) || in_array($l, self::COUPON_FILLER, true) || in_array($l, $routeCodes, true)) {
+                return false;
+            }
+            if (!$named && preg_match('/\d/', $l) !== 1 && self::couponPlace($l)) {
+                return false;
+            }
+            $mon = 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
+            return preg_match('/^\d{1,2}(?:st|nd|rd|th)?(?:' . $mon . ')[a-z]*$|^(?:' . $mon . ')[a-z]*\d{1,4}$/', $l) !== 1       // 30nov, nov30
+                && preg_match('/^(?:rs|inr|max|min|upto)\d+$|^\d+(?:\.\d+)?(?:rs|inr|rupees?|rupaiya|jana|log|people|times?|x|pct|percent|off|baje|min|mins|hrs?|h|am|pm|st|nd|rd|th|k)$/', $l) !== 1
+                && preg_match('/^[lu]\d{1,2}$/', $l) !== 1;                                                                        // a berth (U15)
+        };
+        $explicit = [];
+        // [1] "code" after a coupon word, [2] "code / naam" alone, [3] the word said as the code
+        if (preg_match_all('/(?<![\p{L}\p{N}])(?:(?:coupon|coupan|cupon|kupan|kupon|promo|offer|ofar|offar|कुपन|कूपन|अफर|ऑफर|ओफर|ઓફર|કૂપન|કુપન)(?:\s+(code|kod|naam|name|कोड|नाम|કોડ))?'
+                . '|(code|kod|naam|name|कोड|नाम|કોડ))(?:\s*[:#=]\s*|\s+)["\'“‘]?([A-Za-z0-9][A-Za-z0-9_\-]{2,39})(?![A-Za-z0-9_\-])/iu', $r, $mm, PREG_SET_ORDER) > 0) {
+            foreach ($mm as $m) {
+                $tok   = (string) ($m[3] ?? '');
+                $named = ($m[1] ?? '') !== '' || ($m[2] ?? '') !== '';
+                if ($tok !== '' && $ok($tok, $named) && ($named || self::couponCodeLike($tok, 3))) {
+                    $explicit[] = strtoupper($tok);
+                }
+            }
+        }
+        $any = [];
+        if (preg_match_all('/(?<![A-Za-z0-9_\-₹])([A-Za-z0-9][A-Za-z0-9_\-]{2,39})(?![A-Za-z0-9_\-])/u', $r, $mm) > 0) {
+            foreach ($mm[1] as $tok) {
+                if ($ok($tok, false)) {
+                    $any[] = $tok;
+                }
+            }
+        }
+        return [array_values(array_unique($explicit)), array_values(array_unique($any))];
+    }
+
+    /** Typed like a code: letters with a digit (DIWALI10, shg50), or capitals ($capsMin+ long: WELCOME). */
+    private static function couponCodeLike(string $x, int $capsMin): bool
+    {
+        return (preg_match('/[A-Za-z]/', $x) === 1 && preg_match('/\d/', $x) === 1)
+            || (strlen($x) >= $capsMin && preg_match('/[A-Z]/', $x) === 1 && $x === strtoupper($x));
+    }
+
+    /** A town or a pickup's own word (lower-case): never taken for a code (Y2 review). */
+    private static function couponPlace(string $l): bool
+    {
+        static $words = null;
+        if ($words === null) {
+            $words = self::knownTowns();
+            foreach (array_keys(self::CITY_ALIAS) as $k) {
+                if (preg_match('/^[a-z]+$/', (string) $k) === 1) {
+                    $words[(string) $k] = true;   // baroda, amdavad, rupaidiya …
+                }
+            }
+            foreach (Database::fetchAll("SELECT DISTINCT stop_name FROM route_stops WHERE stop_name <> ''") as $s) {
+                $key = mb_strtolower(trim((string) preg_replace('/(?:[,(]| [-—–] ).*$/u', '', (string) $s['stop_name'])));
+                foreach (preg_split('/[^\p{L}]+/u', $key, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $w) {
+                    if (mb_strlen($w) >= 4) {
+                        $words[$w] = true;   // kamrej, limbli, bhupal, barauda …
+                    }
+                }
+            }
+        }
+        return isset($words[$l]);
+    }
+
+    /** $tw without the offer words themselves ("अफर" holds the OFF word "अफ"). */
+    private static function couponUnword(string $s): string
+    {
+        $words = array_map(static fn(string $w): string => mb_strtolower($w), self::COUPON_WORDS);
+        usort($words, static fn(string $a, string $b): int => mb_strlen($b) <=> mb_strlen($a));   // "promo code" before "promo"
+        foreach ($words as $w) {
+            $s = preg_match('/^[a-z ]+$/', $w) === 1
+                ? (string) preg_replace('/(?<![a-z])' . preg_quote($w, '/') . '(?![a-z])/u', ' ', $s)
+                : str_replace($w, ' ', $s);
+        }
+        return $s;
+    }
+
+    /**
+     * The words of an offer sentence that are not the offer word, an on / off / "new" verb, a
+     * little filler word or one of $codes: what else the sentence talks about. [] = it names
+     * an offer and nothing else ("offer band", "अफर बन्द गर", "offer band XYZ99").
+     *
+     * @param list<string> $codes
+     * @return list<string> lower-case
+     */
+    private static function couponRest(string $tw, array $codes): array
+    {
+        $s = self::couponUnword(' ' . $tw . ' ');
+        $multi = [];
+        foreach (array_merge(self::ON, self::OFF) as $w) {
+            if (str_contains($w, ' ')) {
+                $multi[] = mb_strtolower($w);
+            }
+        }
+        foreach ($multi as $w) {   // "chalu gara", "na chalau", "બંધ કરો"
+            $s = preg_match('/^[a-z ]+$/', $w) === 1 ? (string) preg_replace('/(?<![a-z])' . preg_quote($w, '/') . '(?![a-z])/u', ' ', $s) : str_replace($w, ' ', $s);
+        }
+        $drop = [];
+        foreach (array_merge(self::ON, self::OFF, self::COUPON_NEW, self::COUPON_FILLER, self::ALL_WORDS, $codes) as $w) {
+            if ($w !== '') {
+                $drop[mb_strtolower($w)] = true;
+            }
+        }
+        $out = [];
+        foreach (preg_split('/[^\p{L}\p{M}\p{N}_\-]+/u', $s, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $w) {
+            $w = trim($w, '-_');
+            if ($w !== '' && !isset($drop[$w])) {
+                $out[] = $w;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * The offer's dates said in $c, blanked out of it (same byte length): "till 30 Nov", "20 Nov to
+     * 30 Nov", "30-11", "2026-11-30", "aaja dekhi 30 nov samma". Two dates = from → until; one date
+     * = until, unless "dekhi / from" marks it the start.
+     *
+     * @return array{from:?string, until:?string, err:string}
+     */
+    private static function couponDates(string &$c): array
+    {
+        $today = todayISO();
+        $found = [];   // [start byte, end byte, iso|null]
+        $mk = static function (int $d, int $mo, ?int $y) use ($today): ?string {
+            $yy = $y === null ? (int) substr($today, 0, 4) : ($y < 100 ? 2000 + $y : $y);
+            if (!checkdate($mo, $d, $yy)) {
+                return null;
+            }
+            $iso = sprintf('%04d-%02d-%02d', $yy, $mo, $d);
+            if ($y === null && $iso < addDaysISO($today, -60)) {   // "5 Jan" said in November = next year
+                $iso = sprintf('%04d-%02d-%02d', $yy + 1, $mo, $d);
+            }
+            return $iso;
+        };
+        $mon = static function (string $w): int {
+            $dev = ['जनवरी' => 1, 'फरवरी' => 2, 'मार्च' => 3, 'अप्रैल' => 4, 'मई' => 5, 'जून' => 6, 'जुलाई' => 7, 'अगस्त' => 8, 'सितम्बर' => 9, 'अक्टूबर' => 10,
+                    'नवम्बर' => 11, 'नोभेम्बर' => 11, 'दिसम्बर' => 12, 'डिसेम्बर' => 12];
+            return $dev[$w] ?? (int) (array_search(substr($w, 0, 3), ['', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'], true) ?: 0);
+        };
+        $grab = static function (string $re, callable $iso) use (&$c, &$found): void {
+            if (preg_match_all($re, $c, $mm, PREG_SET_ORDER | PREG_OFFSET_CAPTURE) > 0) {
+                foreach ($mm as $m) {
+                    $g = array_map(static fn(array $x): string => (string) $x[0], $m);
+                    $found[] = [(int) $m[0][1], (int) $m[0][1] + strlen($m[0][0]), $iso($g)];
+                    $c = substr_replace($c, str_repeat(' ', strlen($m[0][0])), (int) $m[0][1], strlen($m[0][0]));
+                }
+            }
+        };
+        $M   = self::COUPON_MONTHS;
+        $pct = '(?!\s?(?:%|percent|pct|pratishat|प्रतिशत|फीसदी))';
+        $grab('/(?<![\d\-\/])(20\d\d)-(\d{1,2})-(\d{1,2})(?![\d\-\/])/', static fn(array $g): ?string => $mk((int) $g[3], (int) $g[2], (int) $g[1]));
+        $grab('/(?<![\d\-\/.])(\d{1,2})[\-\/](\d{1,2})(?:[\-\/](20\d\d|\d\d))?(?![\d\-\/])' . $pct . '/', static function (array $g) use ($mk): ?string {
+            [$d, $mo] = [(int) $g[1], (int) $g[2]];
+            if ($mo > 12 && $d <= 12) {
+                [$d, $mo] = [$mo, $d];   // "11-30" = 30 Nov
+            }
+            return $mk($d, $mo, ($g[3] ?? '') !== '' ? (int) $g[3] : null);
+        });
+        $grab('/(?<![\d.])(\d{1,2}) ?(?:st|nd|rd|th|tarik|गते)? ?(?:of )?(' . $M . ')(?![a-z])(?: ?(20\d\d))?/u',
+            static fn(array $g): ?string => $mk((int) $g[1], $mon($g[2]), ($g[3] ?? '') !== '' ? (int) $g[3] : null));
+        $grab('/(?<![a-z])(' . $M . ')\.? ?(\d{1,2})(?![\d.])' . $pct . '(?! ?(?:rs|₹|rupaiya|rupees?|jana|log|people|uses|times|off)(?![a-z]))(?: ?(20\d\d))?/u',
+            static fn(array $g): ?string => $mk((int) $g[2], $mon($g[1]), ($g[3] ?? '') !== '' ? (int) $g[3] : null));
+        $grab('/(?<![a-z])(?:aaja|aaj|today|आज|આજે)(?![a-z])/u', static fn(array $g): ?string => $today);
+        $grab('/(?<![a-z])(?:bholi|tomorrow|kal|भोलि|भोली|कल|કાલે)(?![a-z])/u', static fn(array $g): ?string => addDaysISO($today, 1));
+        $grab('/(?<![a-z])(?:parsi|parso|parson|पर्सि|पर्सी|परसों)(?![a-z])/u', static fn(array $g): ?string => addDaysISO($today, 2));
+
+        $out = ['from' => null, 'until' => null, 'err' => ''];
+        if ($found === []) {
+            return $out;
+        }
+        usort($found, static fn(array $x, array $y): int => $x[0] <=> $y[0]);
+        if (count($found) > 2) {
+            $out['err'] = '📅 एउटा सुरु र एउटा अन्त्य मिति मात्र · Say one start and one end date, e.g. "20 Nov to 30 Nov".';
+            return $out;
+        }
+        foreach ($found as $f) {
+            if ($f[2] === null) {
+                $out['err'] = '📅 मिति मिलेन · That is not a real date — say e.g. "30 Nov", "30-11" or "2026-11-30".';
+                return $out;
+            }
+        }
+        $role = static function (array $f) use ($c): ?string {
+            $after  = substr($c, $f[1], 40);
+            $before = substr($c, max(0, $f[0] - 30), min(30, $f[0]));
+            if (preg_match('/^\s*(?:dekhi|bata|se|from|onwards?|देखि|बाट|से|થી)(?![a-z])/u', $after) === 1
+                || preg_match('/(?:from|starting|starts?|suru|shuru|सुरु|शुरू)\s*$/u', $before) === 1) {
+                return 'from';
+            }
+            if (preg_match('/^\s*(?:tak|tk|samma|sama|sammo|sudhi|सम्म|तक|સુધી)(?![a-z])/u', $after) === 1
+                || preg_match('/(?:till|until|upto|up to|expiry|expires|ends?)\s*$/u', $before) === 1) {
+                return 'until';
+            }
+            return null;
+        };
+        if (count($found) === 2) {
+            [$a, $b] = $found;
+            if ($role($a) === 'until' && $role($b) === 'from') {
+                [$a, $b] = [$b, $a];
+            }
+            $out['from']  = $a[2];
+            $out['until'] = $b[2];
+        } elseif ($role($found[0]) === 'from') {
+            $out['from'] = $found[0][2];
+        } else {
+            $out['until'] = $found[0][2];
+        }
+        return $out;
+    }
+
+    /**
+     * The amounts of an offer sentence (dates and the code already blanked out): each kind is
+     * taken by its own word and blanked, so what is left over is a number nobody named.
+     *
+     * @return array{pct:list<float>, flat:list<float>, cap:list<float>, min:list<float>, uses:list<int>, per:list<int>, left:list<string>}
+     */
+    private static function couponNumbers(string $c): array
+    {
+        $take = static function (string $re) use (&$c): array {
+            $vals = [];
+            if (preg_match_all($re, $c, $mm, PREG_SET_ORDER | PREG_OFFSET_CAPTURE) > 0) {
+                foreach ($mm as $m) {
+                    $vals[] = (float) $m[1][0];
+                    $c = substr_replace($c, str_repeat(' ', strlen($m[0][0])), (int) $m[0][1], strlen($m[0][0]));
+                }
+            }
+            return $vals;
+        };
+        $N    = '(\d{1,7}(?:\.\d{1,2})?)(?![\d.])';
+        $RS   = '(?:₹|(?<![a-z])rs\.?|(?<![a-z])inr|रु\.?)';
+        $RUP  = '(?:₹|rs\.?|rupaiya|rupiya|rupees?|rupaye|rupya|रुपैयाँ|रुपैया|रुपये|रुपया|रु|inr)(?![a-z])';
+        $PCT  = '(?:%|percent|per ?cent|pct|pratishat|pratisat|प्रतिशत|फीसदी|ટકા)';
+        $WHO  = '(?:user|mobile|number|customer|person|jana|phone|grahak|yatri|यात्रु|जना|मोबाइल|नम्बर|ग्राहक)';
+        $TIME = '(?:choti|chot|patak|baar|bar|times?|पटक|बार|वटा)';
+        $out = [];
+        $out['min'] = $take('/(?<![a-z])(?:minimum|min|kamtima|kam ?se ?kam|न्यूनतम|कम्तीमा|कम से कम)(?![a-z]) ?(?:booking|ticket|amount|order|ko|ka|ki|को|का)? ?[:=]? ?' . $RS . '? ?' . $N . '(?! ?' . $PCT . ')(?: ?' . $RUP . ')?/u');
+        $out['per'] = array_merge(
+            $take('/(?<![a-z])(?:per|prati|har|हर|प्रति) ?' . $WHO . ' ?(?:ko|lai|ke|ka|को|लाई)? ?[:=]? ?(\d{1,3})(?![\d.])(?: ?' . $TIME . '(?![a-z]))?/u'),
+            $take('/(?<![\d.a-z])(\d{1,3}) ?' . $TIME . ' ?(?:per|prati|प्रति|har|हर|ek|एक) ?' . $WHO . '(?![a-z])/u'),
+            $take('/(?<![a-z])(?:ek|एक) ?' . $WHO . ' ?(?:ko|lai|le|ke|ka|को|लाई|ले)? ?(\d{1,3}) ?' . $TIME . '(?![a-z])/u')
+        );
+        $out['uses'] = array_merge(
+            $take('/(?<![a-z])(?:max ?uses?|uses?|usage|use ?limit|usage ?limit|kul|कुल)(?![a-z]) ?[:=]? ?(\d{1,7})(?![\d.])(?! ?' . $PCT . ')(?! ?' . $RUP . ')/u'),
+            $take('/(?<![\d.a-z])(\d{1,7}) ?(?:jana|jaana|janalai|janako|log|logon|logo|people|persons?|customers?|users?|passengers?|yatri|uses|times|choti|patak|baar|bar|seats?|tickets?'
+                . '|जना|जनालाई|जनाको|लोग|लोगों|यात्रु|पटक|बार|टिकट|જણ|લોકો|વખત)(?![a-z])/u')
+        );
+        $out['cap'] = array_merge(
+            $take('/(?<![a-z])(?:maximum|max|upto|up ?to|cap|badhima|badhi ?ma|jyada ?se ?jyada|zyada ?se ?zyada|adhiktam|अधिकतम|बढीमा|बढी ?मा|ज्यादा ?से ?ज्यादा|વધુમાં ?વધુ)(?![a-z])'
+                . ' ?[:=]? ?(?:discount|chhut|छुट)? ?' . $RS . '? ?' . $N . '(?! ?' . $PCT . ')(?: ?' . $RUP . ')?/u'),
+            $take('/(?:₹ ?|(?<![a-z])rs\.? ?|(?<![a-z])inr ?)?(?<![\d.a-z])' . $N . ' ?(?:' . $RUP . ')? ?(?:samma|sama|sammo|tak|tk|sudhi|सम्म|तक|સુધી)(?![a-z])/u')
+        );
+        $out['pct']  = $take('/(?<![\d.a-z])(\d{1,3}(?:\.\d{1,2})?) ?' . $PCT . '/u');
+        $out['flat'] = array_merge(
+            $take('/' . $RS . ' ?' . $N . '/u'),
+            $take('/(?<![\d.a-z])' . $N . ' ?(?:rs\.?|rupaiya|rupiya|rupees?|rupaye|rupya|रुपैयाँ|रुपैया|रुपये|रुपया|रु|inr)(?![a-z])/u'),
+            $take('/(?<![\d.a-z])(\d{1,7})(?![\d.]) ?(?:off|chhut|chut|chhoot|discount|छुट|ऑफ|ओफ)(?![a-z])/u'),
+            $take('/(?<![a-z])(?:flat|sidha|सिधा) ?(\d{1,7})(?![\d.])/u')
+        );
+        preg_match_all('/(?<![\d.a-z_\-])(\d+(?:\.\d+)?)(?![\d.a-z_\-])/u', $c, $mm);
+        $out['left'] = $mm[1];
+        $out['uses'] = array_map('intval', $out['uses']);
+        $out['per']  = array_map('intval', $out['per']);
+        return $out;
+    }
+
+    /** "OFFER10-20NOV" / "FLAT50-16NOV" (+ "-2" … while taken) for an offer said without a code. */
+    private static function couponAutoCode(string $type, float $v, ?string $from): string
+    {
+        $num  = str_replace('.', '_', self::couponNum($v));
+        $base = ($type === 'percent' ? 'OFFER' : 'FLAT') . $num . '-' . strtoupper(date('jM', (int) strtotime($from ?? todayISO())));
+        $code = $base;
+        for ($i = 2; $i < 100 && Database::exists('SELECT 1 FROM coupons WHERE code = :c', ['c' => $code]); $i++) {
+            $code = $base . '-' . $i;
+        }
+        return $code;
+    }
+
+    /** 10 → "10", 7.5 → "7.5" */
+    private static function couponNum(float $v): string
+    {
+        return rtrim(rtrim(number_format($v, 2, '.', ''), '0'), '.');
+    }
+
+    /** "10% छुट · off, बढीमा · max ₹200" / "₹50 छुट · off" — an action or a coupons row. */
+    private static function couponValue(array $c): string
+    {
+        $cap = ($c['max_discount'] ?? null) !== null && (float) $c['max_discount'] > 0 ? (float) $c['max_discount'] : null;
+        return ((string) ($c['discount_type'] ?? '') === 'percent' ? self::couponNum((float) $c['discount_value']) . '%' : inr((float) $c['discount_value']))
+            . ' छुट · off' . ($cap !== null ? ', बढीमा · max ' . inr($cap) : '');
+    }
+
+    /** The preview line of a new offer: value, dates, limits, route — and that it is made OFF. */
+    private static function couponSummary(array $a): string
+    {
+        $p   = [self::couponValue($a)];
+        $p[] = ($a['valid_from'] !== null ? formatDate((string) $a['valid_from'], 'j M Y') : 'अहिलेदेखि · from now') . ' → '
+             . ($a['valid_until'] !== null ? formatDate((string) $a['valid_until'], 'j M Y') : 'अन्त्य छैन · no end');
+        $p[] = $a['usage_limit'] !== null ? (int) $a['usage_limit'] . ' पटक · uses' : 'जति पनि पटक · no use limit';
+        $p[] = (int) $a['per_user_limit'] > 0 ? (int) $a['per_user_limit'] . '/मोबाइल · per mobile' : 'मोबाइल सीमा छैन · no per-mobile limit';
+        if ((float) $a['min_amount'] > 0) {
+            $p[] = 'कम्तीमा · min ' . inr((float) $a['min_amount']);
+        }
+        $rt  = $a['route_id'] !== null ? self::routeById((int) $a['route_id']) : null;
+        $p[] = $rt !== null ? 'रुट · route ' . $rt['route_code'] . ' ' . $rt['from_city'] . ' → ' . $rt['to_city'] . ((int) $rt['is_active'] === 1 ? '' : ' (रुट बन्द · route is OFF)')
+             : 'सबै रुट · all routes';
+        $p[] = 'बन्द अवस्थामा बन्छ · created OFF';
+        return implode(' · ', $p);
+    }
+
+    /** An action → the input OfferRules::validate() takes (always OFF, never auto-applied). */
+    private static function couponIn(array $a): array
+    {
+        $cap = ($a['max_discount'] ?? null) !== null && $a['max_discount'] !== '' && (float) $a['max_discount'] > 0 ? (string) round((float) $a['max_discount'], 2) : '';
+        $uses = ($a['usage_limit'] ?? null) !== null && $a['usage_limit'] !== '' ? (string) (int) $a['usage_limit'] : '';
+        $code = strtoupper(trim((string) ($a['code'] ?? '')));
+        return [
+            'code'           => $code,
+            'title'          => $code,
+            'discount_type'  => (string) ($a['discount_type'] ?? '') === 'percent' ? 'percent' : 'flat',
+            'discount_value' => round((float) ($a['discount_value'] ?? 0), 2),
+            'max_discount'   => $cap,
+            'min_amount'     => max(0.0, round((float) ($a['min_amount'] ?? 0), 2)),
+            'valid_from'     => (string) ($a['valid_from'] ?? ''),
+            'valid_until'    => (string) ($a['valid_until'] ?? ''),
+            'usage_limit'    => $uses,
+            'per_user_limit' => (string) (int) ($a['per_user_limit'] ?? 1),
+            'route_id'       => (int) ($a['route_id'] ?? 0),
+            'auto_apply'     => 0,
+            'is_active'      => 0,
+        ];
+    }
+
+    /**
+     * A new offer, checked: the AI's own limits (a percent needs a cap and stays ≤ 50 %, ₹ ≤ 5,000,
+     * no past date, no code already used), then admin/offers.php's rules (OfferRules).
+     *
+     * @return array{0:?string, 1:?array<string,mixed>} [why not, the clean action]
+     */
+    private static function couponCheck(array $a): array
+    {
+        require_once __DIR__ . '/offerrules.php';
+        $in    = self::couponIn($a);
+        $code  = $in['code'];
+        $pct   = $in['discount_type'] === 'percent';
+        $v     = (float) $in['discount_value'];
+        $cap   = $in['max_discount'] !== '' ? (float) $in['max_discount'] : null;
+        $today = todayISO();
+        if ($code !== '' && Database::exists('SELECT 1 FROM coupons WHERE code = :c', ['c' => $code])) {
+            return ['🏷 ' . $code . ' कोडको अफर पहिल्यै छ · An offer with code ' . $code . ' already exists — choose another code, or change it on the Offers page.', null];
+        }
+        if ($pct && $cap === null) {
+            return ['💸 प्रतिशत छुटमा "max ₹" चाहिन्छ · A percent offer needs a cap — say e.g. "10% max 200".', null];
+        }
+        if ($pct && $v > self::COUPON_MAX_PCT) {
+            return ['⛔ ' . self::couponNum($v) . '% धेरै ठूलो — Offers पेजमा बनाउनुहोस् · too big, use the Offers page (AI: ' . self::COUPON_MAX_PCT . '% सम्म · up to ' . self::COUPON_MAX_PCT . '%).', null];
+        }
+        if ((!$pct && $v > self::COUPON_MAX_FLAT) || ($cap !== null && $cap > self::COUPON_MAX_FLAT)) {
+            return ['⛔ ' . inr(max($pct ? 0.0 : $v, (float) $cap)) . ' धेरै ठूलो — Offers पेजमा बनाउनुहोस् · too big, use the Offers page (AI: '
+                . inr(self::COUPON_MAX_FLAT) . ' सम्म · up to ' . inr(self::COUPON_MAX_FLAT) . ').', null];
+        }
+        foreach ([$in['valid_from'], $in['valid_until']] as $d) {
+            if ($d !== '' && Security::isValidDate($d) && $d < $today) {
+                return ['📅 ' . formatDate($d, 'j M Y') . ' बितिसक्यो · That date is already past — an offer runs from today on.', null];
+            }
+        }
+        try {
+            $row = OfferRules::validate($in);
+        } catch (InvalidArgumentException $e) {
+            return ['⛔ ' . $e->getMessage(), null];
+        }
+        return [null, [
+            'type'           => 'coupon',
+            'code'           => (string) $row['code'],
+            'discount_type'  => (string) $row['discount_type'],
+            'discount_value' => (float) $row['discount_value'],
+            'max_discount'   => $row['max_discount'] !== null ? (float) $row['max_discount'] : null,
+            'min_amount'     => (float) $row['min_amount'],
+            'valid_from'     => $row['valid_from'],
+            'valid_until'    => $row['valid_until'],
+            'usage_limit'    => ($row['usage_limit'] ?? null) !== null ? (int) $row['usage_limit'] : null,
+            'per_user_limit' => (int) ($row['per_user_limit'] ?? 1),
+            'route_id'       => ($row['route_id'] ?? null) !== null ? (int) $row['route_id'] : null,
+            'auto_code'      => !empty($a['auto_code']),
+        ]];
+    }
+
+    /** @return array{0:?string, 1:?array<string,mixed>} an ACTIVE offer only (the AI only ever takes a discount away) */
+    private static function couponOffCheck(array $a): array
+    {
+        $id   = (int) ($a['coupon_id'] ?? 0);
+        $code = strtoupper(trim((string) ($a['code'] ?? '')));
+        $row  = $id > 0 ? Database::fetch('SELECT id, code, is_active FROM coupons WHERE id = :i', ['i' => $id])
+              : ($code !== '' ? Database::fetch('SELECT id, code, is_active FROM coupons WHERE code = :c', ['c' => $code]) : null);
+        if ($row === null) {
+            return ['🏷 अफर भेटिएन · Offer not found.', null];
+        }
+        if ((int) $row['is_active'] !== 1) {
+            return ['🏷 ' . $row['code'] . ' पहिल्यै बन्द छ · is already OFF.', null];
+        }
+        return [null, ['type' => 'coupon_off', 'coupon_id' => (int) $row['id'], 'code' => (string) $row['code']]];
+    }
+
+    /* =================================================================
      *  Settings — every plain (non-secret) one is reachable
      * ================================================================= */
 
@@ -1284,8 +1980,8 @@ final class AiOps
         $j = self::settingsEngine() === 'cloud' ? ($cloud() ?? $local()) : ($local() ?? $cloud());
         $out = [];
         foreach ((array) ($j['actions'] ?? []) as $a) {
-            // a passenger broadcast (trip_delay) is only ever proposed from the office's own words
-            $a = is_array($a) && (string) ($a['type'] ?? '') !== 'trip_delay' ? self::clean($a, $text) : null;
+            // a passenger broadcast (trip_delay) and an offer (coupon / coupon_off, Y2) are only ever proposed from the office's own words
+            $a = is_array($a) && !in_array((string) ($a['type'] ?? ''), ['trip_delay', 'coupon', 'coupon_off'], true) ? self::clean($a, $text) : null;
             if ($a !== null) {
                 $out[] = $a;
             }
@@ -1414,6 +2110,11 @@ final class AiOps
                     return null;
                 }
                 return ['type' => 'trip_delay', 'schedule_id' => $sid, 'date' => $d, 'minutes' => $mins];
+            case 'coupon':
+                // 16 Nov 2026 (Y2): admin/offers.php's rules (OfferRules) + the AI's own limits, checked again on "Yes"
+                return self::couponCheck($a)[1];
+            case 'coupon_off':
+                return self::couponOffCheck($a)[1];
         }
         return null;
     }
@@ -1469,6 +2170,7 @@ final class AiOps
             'trip_delay'                     => Auth::can('schedules.manage') && !Auth::isCounterAgent(),   // office only (P8-10d)
             'bus_number', 'bus_name'          => Auth::can('routes.edit') || Auth::can('schedules.manage'),
             'commission'                      => Auth::can('staff.manage') && Auth::canManageSettings(),
+            'coupon', 'coupon_off'            => Auth::can('coupons.edit'),   // Y2: the Offers page's own gate (super-admin passed above)
             default                           => Auth::canManageSettings(),
         };
     }
@@ -1532,6 +2234,18 @@ final class AiOps
             case 'dir_fare':
                 $cur = Fare::dirFares()[$a['dir']] ?? 0;
                 $rows[] = ['💰 Default fare ' . ($a['dir'] === 'toNepal' ? 'जाने · to Nepal' : 'आउने · to India'), inr((float) $cur), inr((float) $a['fare'])];
+                break;
+            case 'coupon':
+                // Y2: code, % / ₹, cap, dates, limits — and that it is made OFF (nothing changes before the office switches it ON)
+                $rows[] = ['🏷 नयाँ अफर · New offer ' . $a['code'] . (!empty($a['auto_code']) ? ' (कोड आफैं बनाइयो · code made for you)' : ''),
+                    '—', self::couponSummary($a)];
+                break;
+            case 'coupon_off':
+                $c = Database::fetch('SELECT code, title, discount_type, discount_value, max_discount, is_active FROM coupons WHERE id = :i', ['i' => (int) $a['coupon_id']]);
+                if ($c !== null) {
+                    $rows[] = ['🏷 अफर · Offer ' . $c['code'] . ' · ' . self::couponValue($c),
+                        (int) $c['is_active'] === 1 ? 'ON 🟢' : 'OFF ⛔', 'OFF ⛔'];
+                }
                 break;
             case 'trip_fare':
                 foreach (self::dateSchedules((string) $a['date'], (array) ($a['route_ids'] ?? []), $a) as $s) {
@@ -1720,6 +2434,11 @@ final class AiOps
         foreach ($actions as $a0) {
             $a = self::clean($a0);
             if ($a === null) {
+                // Y2: an offer refused at "Yes" (the code was taken meanwhile, the date passed, it is already OFF) says why
+                $ty = (string) ($a0['type'] ?? '');
+                if ($ty === 'coupon' || $ty === 'coupon_off') {
+                    $out[] = '⚠️ ' . $ty . ': ' . (string) ($ty === 'coupon' ? self::couponCheck($a0)[0] : self::couponOffCheck($a0)[0]);
+                }
                 continue;
             }
             if (!self::allowed($a)) {
@@ -1869,6 +2588,36 @@ final class AiOps
                 Logger::audit('trip.set_delay', 'schedule', (string) $sid, $before, ['delay_minutes' => $mins, 'notified' => (int) ($res['notified'] ?? 0),
                     'failed' => (int) ($res['failed'] ?? 0)], 'via S Hari AI by admin #' . $by . ' · ' . (string) ($res['message'] ?? ''));
                 return '⏰ ' . formatDate((string) $a['date'], 'j M') . ' bus ' . self::hm($mins) . ' late · ' . (string) ($res['message'] ?? '');
+            case 'coupon':
+                /* 16 Nov 2026 (Y2): the same row admin/offers.php would write — but ALWAYS is_active = 0 and
+                   auto_apply = 0, so no fare changes until a person switches it ON on the Offers page */
+                require_once __DIR__ . '/offerrules.php';
+                $row = OfferRules::validate(self::couponIn($a));
+                $row['is_active']  = 0;
+                $row['auto_apply'] = 0;
+                try {
+                    $id = (int) Database::insert('coupons', $row);
+                } catch (Throwable $e) {
+                    if (stripos($e->getMessage(), 'duplicate') !== false) {
+                        throw new RuntimeException($row['code'] . ' कोडको अफर पहिल्यै छ · An offer with that code already exists — nothing made');
+                    }
+                    throw $e;
+                }
+                Logger::audit('offer.create', 'coupon', (string) $row['code'], null, $row,
+                    'Offer created OFF via S Hari AI by admin #' . $by . ' — switched ON only on admin/offers.php');
+                return '🏷 ' . $row['code'] . ' · ' . self::couponValue($row) . ' — बन्द अवस्थामा बन्यो · created OFF (#' . $id . '). '
+                    . 'Offers पेजमा ON गर्नुहोस् · Switch it ON on Offers.';
+            case 'coupon_off':
+                $c = Database::fetch('SELECT id, code, is_active FROM coupons WHERE id = :i', ['i' => (int) $a['coupon_id']]);
+                if ($c === null) {
+                    throw new RuntimeException('अफर भेटिएन · offer not found');
+                }
+                // only ever ON → OFF (it takes a discount away); the AI never switches an offer ON
+                if (Database::update('coupons', ['is_active' => 0], 'id = :i AND is_active = 1', ['i' => (int) $c['id']]) > 0) {
+                    Logger::audit('offer.toggle', 'coupon', (string) $c['code'], ['is_active' => 1], ['is_active' => 0], 'disabled via S Hari AI by admin #' . $by);
+                    return '🏷 ' . $c['code'] . ' अफर बन्द · offer OFF ⛔';
+                }
+                return '🏷 ' . $c['code'] . ' पहिल्यै बन्द · already OFF';
             case 'trip_fare':
                 $rows = self::dateSchedules((string) $a['date'], (array) ($a['route_ids'] ?? []), $a);
                 foreach ($rows as $s) {
@@ -2060,6 +2809,26 @@ final class AiOps
         'fb_comment_ai_on'         => ['🤖 Facebook कमेन्टमा AI जवाफ · AI replies to FB comments', 'bool',
                                        ['fb comment ai', 'facebook comment ai', 'comment ai', 'comments ai', 'ai comment', 'ai comments', 'comment reply ai',
                                         'comment ma ai', 'comment ko ai', 'कमेन्ट ai', 'कमेन्टमा ai']],
+
+        /* 16 Nov 2026 (Master v2, unit Y2): the switches the Y-units' migrations create (Y5 agents and
+           help-desk, the WhatsApp inbox) — all OFF / 0 until the owner flips them here. Never a bare
+           "followup", "cod" or "offer": each is named by its own two-word phrase. */
+        'agent_followups_on'       => ['🧑‍💼 एजेन्टलाई आफ्नो यात्रुको सेवा फलो-अप देखाउने · Agents see service follow-ups on their own passengers', 'bool',
+                                       ['agent followup', 'agent followups', 'agent follow up', 'agent follow ups', 'agent follow-up', 'agent follow-ups',
+                                        'agent ko followup', 'agent lai followup', 'agent ko follow up', 'agent lai follow up', 'agent gunaso', 'agent ko gunaso',
+                                        'agent lai gunaso', 'mera followup', 'mero followup', 'एजेन्ट गुनासो', 'एजेन्टलाई गुनासो', 'एजेन्ट फलो-अप', 'एजेन्टको फलो-अप', 'मेरा फलो-अप']],
+        'helpdesk_cancel_escalate_inr' => ['🎫 रिफन्ड बाँकी भएको यति ₹ भन्दा माथिको रद्द टिकटमा फलो-अप खोल्ने · Open a follow-up when a cancelled ticket at or above ₹ has a refund owed', 'int',
+                                       ['cancel escalate', 'cancel escalation', 'cancel followup', 'cancel follow up', 'cancel follow-up', 'cancelled followup',
+                                        'helpdesk cancel', 'cancel ticket followup', 'refund followup', 'refund follow up', 'radda followup', 'रद्द फलो-अप', 'रद्द फलोअप',
+                                        'रद्द टिकट फलो-अप'],
+                                       ['min' => 0, 'max' => 100000, 'def' => '0', 'zero' => 'बन्द · off', 'unit' => '₹']],
+        'wa_agent_settle_cod_on'   => ['💵 एजेन्टले आफ्नो बेचेको टिकटको नगद WhatsApp बाट मिलाउन पाउने · Agents may record cash for their own pay-at-boarding tickets on WhatsApp', 'bool',
+                                       ['agent cod settle', 'agent settle cod', 'agent cod whatsapp', 'whatsapp cod settle', 'wa cod settle', 'cod settle', 'settle cod',
+                                        'agent cash whatsapp', 'agent nagad whatsapp', 'whatsapp ma nagad', 'whatsapp nagad', 'agent ko nagad whatsapp',
+                                        'एजेन्ट नगद whatsapp', 'एजेन्ट नगद व्हाट्सएप']],
+        'wa_inbox_promo_link_on'   => ['🔗 WhatsApp इनबक्समा अफर लिङ्क · Offer link in the WhatsApp inbox', 'bool',
+                                       ['promo link', 'offer link', 'inbox offer', 'inbox promo', 'inbox offer link', 'whatsapp inbox offer', 'wa inbox offer', 'inbox link',
+                                        'अफर लिङ्क', 'अफर लिंक', 'इनबक्स अफर']],
     ];
     /** where a switch's row goes when the Easy Settings page writes it first (an existing row keeps its own group) */
     private const EASY_GROUPS = [
@@ -2073,6 +2842,8 @@ final class AiOps
         'return_discount_pct' => 'booking', 'return_discount_days' => 'booking', 'luggage_fee_per_piece' => 'booking',
         'infant_seat_on' => 'booking', 'infant_seat_fare' => 'booking', 'festival_theme_on' => 'app', 'login_theme' => 'app',
         'fb_comments_on' => 'facebook', 'fb_comment_ai_on' => 'facebook',
+        // Y2: the groups upgrade-2026-11-16d-Y5-agents.sql uses (wa_inbox_promo_link_on: the WhatsApp inbox)
+        'agent_followups_on' => 'agent', 'helpdesk_cancel_escalate_inr' => 'helpdesk', 'wa_agent_settle_cod_on' => 'ai', 'wa_inbox_promo_link_on' => 'whatsapp',
     ];
     /** a switch named in a sentence that also carries the wider one's word: "24 ghanta ko reminder band" is
         the 24-hour reminder, never also the trip-reminder master switch */
@@ -2082,6 +2853,8 @@ final class AiOps
         'social_publish_on'          => ['fb_msgr_on'],
         'fb_comments_on'             => ['fb_msgr_on'],
         'fb_comment_ai_on'           => ['fb_msgr_on', 'fb_comments_on'],
+        'wa_agent_settle_cod_on'     => ['allow_cod'],   // Y2: "agent cod settle on" is not Cash on boarding
+        'wa_inbox_promo_link_on'     => ['wa_marketing_on'],
     ];
     /** read by the public booking page (SHG_BOOT.settings) — public when the page writes the row first */
     private const EASY_PUBLIC = ['seat_pick_manual_first', 'group_discount_on', 'group_discount_min_seats', 'group_discount_percent', 'offline_callback_on',

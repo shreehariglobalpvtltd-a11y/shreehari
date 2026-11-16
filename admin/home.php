@@ -577,6 +577,18 @@ admin_header('Management', 'home.php');
 @keyframes osUp{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
 @keyframes osIn{from{transform:scale(.96);opacity:.4}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){.os-sheet{animation:none}.os-app i{transition:none}}
+/* ---- 16 Nov 2026 (P2-1g): "Install app" chip - hidden until the browser can install ---- */
+.mg-inst{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+.mg-inst[hidden],.mg-inst ol[hidden]{display:none}
+.mg-inst-go{flex:1 1 0;min-width:0;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;padding:6px 14px;border-radius:14px;border:0;background:#0054A8;color:#fff;font:inherit;font-size:15px;font-weight:800;line-height:1.2;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.mg-inst-go:active{transform:scale(.98)}
+.mg-inst-x{flex:0 0 48px;width:48px;min-height:48px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:inherit;font:inherit;font-size:18px;cursor:pointer}
+.mg-inst-go:focus-visible,.mg-inst-x:focus-visible{outline:3px solid #F07C1F;outline-offset:2px}
+.mg-inst ol{flex:1 1 100%;margin:0;padding:10px 12px 10px 32px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13.5px;line-height:1.45}
+.mg-inst ol li+li{margin-top:4px}
+.mg-inst ol small{display:block;color:var(--mut);font-size:12px}
+:root[data-theme="dark"] .mg-inst-go{background:#2F6FD0}
+@media (prefers-reduced-motion:reduce){.mg-inst-go:active{transform:none}}
 </style>
 <div class="mg">
   <?php if ($flash !== null): ?><div class="mg-flash <?= $e($flash[0]) ?>" role="status"><?= $e($flash[1]) ?></div><?php endif; ?>
@@ -591,6 +603,19 @@ admin_header('Management', 'home.php');
     <?php endif; ?>
     <a class="mg-ib lock" href="/admin/logout.php" title="Lock the app">🔒 Lock</a>
   </section>
+
+  <?php /* 16 Nov 2026 (P2-1g): install S Hari Manage on this phone. Hidden until the browser can
+           install (beforeinstallprompt) or on iPhone Safari (Share -> Add to Home Screen steps);
+           never inside the installed app; "✕" keeps it away for 30 days (shm:installDismiss). */ ?>
+  <div class="mg-inst" id="mgInst" hidden>
+    <button type="button" class="mg-inst-go" id="mgInstGo" aria-controls="mgInstIos">📲 एप राख्नुहोस् · Install app</button>
+    <button type="button" class="mg-inst-x" id="mgInstX" title="पछि · Not now" aria-label="पछि · Not now">✕</button>
+    <ol id="mgInstIos" hidden>
+      <li>Safari मा <b>Share ⬆️</b> थिच्नुहोस्<small>Tap Share in Safari</small></li>
+      <li><b>Add to Home Screen ➕</b> छान्नुहोस्<small>Choose Add to Home Screen</small></li>
+      <li><b>Add</b> थिच्नुहोस् — होम स्क्रिनमा S Hari Manage<small>Tap Add — S Hari Manage is on your home screen</small></li>
+    </ol>
+  </div>
 
   <div class="mg-bar">
     <?php if ($canAi || $canFind): ?>
@@ -719,6 +744,34 @@ admin_header('Management', 'home.php');
   document.addEventListener('keydown',function(ev){if(ev.key==='Escape')close();});
   window.addEventListener('popstate',function(){var m=location.hash.match(/^#app-([a-z])$/);if(m)open(m[1],false);else shut();});
   var m=location.hash.match(/^#app-([a-z])$/);if(m)open(m[1],false);
+})();
+/* 16 Nov 2026 (P2-1g): the "Install app" chip. Every storage access is in try/catch (private
+   mode, blocked storage): without it the chip simply shows. */
+(function(){
+  var box=document.getElementById('mgInst'),go=document.getElementById('mgInstGo'),x=document.getElementById('mgInstX'),ios=document.getElementById('mgInstIos');
+  if(!box||!go||!x||!ios)return;
+  var KEY='shm:installDismiss',KEEP=30*86400000,deferred=null;
+  function standalone(){try{return (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone===true;}catch(e){return false;}}
+  function quiet(){var at=0;try{at=+(localStorage.getItem(KEY)||0)||0;}catch(e){at=0;}return at>0&&(Date.now()-at)<KEEP;}
+  function show(){if(standalone()||quiet())return;box.hidden=false;}
+  function hide(){box.hidden=true;ios.hidden=true;}
+  var ua=navigator.userAgent||'';
+  var iosSafari=(/iPhone|iPad|iPod/i.test(ua)||(/Macintosh/i.test(ua)&&(navigator.maxTouchPoints||0)>1))&&/Safari/i.test(ua)&&!/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+  window.addEventListener('beforeinstallprompt',function(ev){ev.preventDefault();deferred=ev;ios.hidden=true;go.removeAttribute('aria-expanded');show();});
+  window.addEventListener('appinstalled',function(){deferred=null;hide();});
+  go.addEventListener('click',function(){
+    if(deferred){
+      var p=deferred;deferred=null;hide();   /* a prompt can be used once; Chrome sends a new one later */
+      try{p.prompt();if(p.userChoice)p.userChoice.catch(function(){});}catch(e){}
+      return;
+    }
+    if(iosSafari){var open=ios.hidden;ios.hidden=!open;go.setAttribute('aria-expanded',open?'true':'false');}
+  });
+  x.addEventListener('click',function(){try{localStorage.setItem(KEY,String(Date.now()));}catch(e){}hide();});
+  if(iosSafari&&!standalone()){go.setAttribute('aria-expanded','false');show();}
+  /* the same service worker the sign-in door registers (scope '/', /admin/* stays network-only),
+     for a session that reached this page without passing the door */
+  try{if('serviceWorker' in navigator){var reg=function(){try{navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(function(){});}catch(e){}};if(document.readyState==='complete')reg();else window.addEventListener('load',reg);}}catch(e){}
 })();
 </script>
 <?php admin_footer();

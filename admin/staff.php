@@ -678,6 +678,21 @@ if ($pageIds !== []) {
 // $csrf / $k are defined near the top of the render (just after the flash),
 // so both the pending-applications forms above and every form below share one
 // valid token.
+
+/* 16 Nov 2026 (v2.0 P3-6): tap a name to correct it in place
+   (assets/js/admin-inline-edit.js -> admin/api/inline-save.php: staff.manage,
+   audited staff.setname). A super-admin's row - and your own - only for a
+   super-admin, the wall team-member.php keeps; "✏️ All details" stays the
+   full form for everything else. */
+$ieName = static function (array $s) use ($isSuper, $admin): string {
+    $mine = (int) $s['id'] === (int) ($admin['id'] ?? 0);
+    if (!Auth::can('staff.manage') || (!$isSuper && ($mine || (string) $s['role'] === 'superadmin'))) {
+        return '';
+    }
+    return ' data-ie-entity="staff" data-ie-field="full_name" data-ie-id="' . (int) $s['id'] . '"'
+         . ' data-ie-value="' . Security::e((string) $s['full_name']) . '" data-ie-type="text"'
+         . ' data-ie-label="पूरा नाम · Full name" title="ट्याप गरेर नाम सच्याउनुहोस् · Tap to correct the name"';
+};
 ?>
 <div class="panel" id="addStaff">
   <h2>➕ Add staff / agent</h2>
@@ -834,7 +849,7 @@ if ($pageIds !== []) {
             <?= Security::e($initials ?: '?') ?>
           </div>
           <div class="acard-info">
-            <div class="acard-name"><?= Security::e((string) $s['full_name']) ?><?= $self ? ' <span class="muted" style="font-size:11px">(you)</span>' : '' ?></div>
+            <div class="acard-name"><span<?= $ieName($s) ?>><?= Security::e((string) $s['full_name']) ?></span><?= $self ? ' <span class="muted" style="font-size:11px">(you)</span>' : '' ?></div>
             <div class="acard-meta">
               <?php if ($isAgent): ?>
                 <form method="post" class="code-edit" title="Edit agent code — type a number and press 💾">
@@ -928,7 +943,7 @@ if ($pageIds !== []) {
     ?>
       <tr<?= (int) $s['is_active'] === 0 ? ' style="opacity:.55"' : '' ?>>
         <td>
-          <strong><?= Security::e((string) $s['full_name']) ?></strong><?= $self ? ' <span class="muted">(you)</span>' : '' ?>
+          <strong<?= $ieName($s) ?>><?= Security::e((string) $s['full_name']) ?></strong><?= $self ? ' <span class="muted">(you)</span>' : '' ?>
           <div class="mono muted" style="font-size:11px">@<?= Security::e((string) $s['username']) ?></div>
           <?php if ((string) $s['role'] !== 'superadmin' || $self): ?>
             <a class="btn sm soft" style="margin-top:4px" href="/admin/team-member.php?id=<?= (int) $s['id'] ?>" title="Name, number, code, photo, documents, form, ID card — everything">✏️ All details</a>
@@ -1179,5 +1194,6 @@ if ($pageIds !== []) {
   try { var saved = localStorage.getItem('shg_staff_view'); if (saved === 'cards') window.setView('cards'); } catch(e){}
 })();
 </script>
+<script src="<?= e(admin_asset_url('assets/js/admin-inline-edit.js')) ?>" defer></script>
 <?php
 admin_footer();

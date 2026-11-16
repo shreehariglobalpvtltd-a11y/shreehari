@@ -17,6 +17,12 @@
  * never deletes a schedule, so past bookings are untouched. All writes go
  * through admin/api/schedule-action.php (CSRF, rate-limited, audited).
  *
+ * 16 Nov 2026 (v2.0 P3-6): in the day panel the departure time and the bus
+ * price are tap-to-edit (assets/js/admin-inline-edit.js -> admin/api/
+ * inline-save.php, which calls the same scheduleSetDepTime / scheduleSetPrice
+ * as set_dep_time / set_price). The ⏰ Time / 💰 Price buttons stay as the
+ * fallback.
+ *
  * Permission: schedules.manage (manager + superadmin).
  */
 declare(strict_types=1);
@@ -252,7 +258,7 @@ admin_header('Bus Calendar · ' . date('F Y', strtotime($first)), 'calendar');
 .trip{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .trip.off{border-color:#e3b4b4;background:#fff7f7}
 .trip.cx{opacity:.7}
-.trip .t1{display:flex;align-items:center;gap:8px;font-weight:700}
+.trip .t1{display:flex;align-items:center;gap:8px;font-weight:700;flex-wrap:wrap}
 .trip .t1 .time{font-size:18px;font-variant-numeric:tabular-nums}
 .trip .meta{font-size:12px;color:var(--mut);display:flex;gap:10px;flex-wrap:wrap}
 .trip .acts{display:flex;gap:5px;flex-wrap:wrap}
@@ -367,7 +373,7 @@ admin_header('Bus Calendar · ' . date('F Y', strtotime($first)), 'calendar');
           $marks = ((string) ($r['dep_time_override'] ?? '') !== '' ? '⏰' : '')
                  . (((int) ($r['bus_id'] ?? 0) > 0 && (int) $r['bus_id'] !== (int) ($r['route_bus_id'] ?? 0)) ? '🚌' : '');
       ?>
-        <div class="<?= $c ?>" title="<?= Security::e((string) $r['from_city'] . ' → ' . (string) $r['to_city'] . ' · ' . $hm((string) $r['dep_time']) . ' · ' . (string) ($r['bus_number'] ?? 'no bus') . ' · ' . (int) $r['sold'] . '/' . $seatTotal($r)) ?>">
+        <div class="<?= $c ?>" data-sid="<?= (int) $r['id'] ?>" title="<?= Security::e((string) $r['from_city'] . ' → ' . (string) $r['to_city'] . ' · ' . $hm((string) $r['dep_time']) . ' · ' . (string) ($r['bus_number'] ?? 'no bus') . ' · ' . (int) $r['sold'] . '/' . $seatTotal($r)) ?>">
           <b><?= Security::e($short($r)) ?></b> <span class="t"><?= $hm((string) $r['dep_time']) ?><?= (int) $r['slot'] > 1 ? ' ·B' . (int) $r['slot'] : '' ?> <?= $marks ?></span><span class="n"><?= (int) $r['sold'] ?>/<?= $seatTotal($r) ?></span>
         </div>
       <?php endforeach; endif; ?>
@@ -396,6 +402,7 @@ window.CAL = {
   var C = window.CAL, panel = document.getElementById('dayPanel'), body = document.getElementById('dpBody'), title = document.getElementById('dpTitle');
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function fmtDate(d){ var x = new Date(d + 'T00:00:00'); return x.toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric' }); }
+  function rupee(n){ var x = Number(n); return isFinite(x) ? '₹' + x.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '₹' + esc(n); }
   /* 8 Oct 2026 (D9-01): the message box is found - or made again - every
      time, so a dismissed or missing box can never swallow an error. While
      the day panel is open the message shows at the top of the panel, next
@@ -447,6 +454,38 @@ window.CAL = {
     return '<select id="' + id + '" style="padding:7px 9px;border:1px solid var(--line);border-radius:8px;max-width:100%">' + o + '</select>';
   }
 
+  /* 16 Nov 2026 (P3-6): the two lines of a trip a time / price change touches.
+     calOpen draws them, and refreshTrip() redraws just these after a value is
+     saved in place, so the rest of the panel - a half-filled Vehicle or Extra
+     bus form on any trip - is left alone. Tap the time or the price to change
+     it in place - shown exactly where the ⏰ Time / 💰 Price buttons are (those
+     stay). */
+  function tripT1Html(t, past){
+    var canEdit = t.status !== 'cancelled' && !past;
+    var timeHtml = canEdit && !t.departed
+      ? '<span class="time" data-ie-entity="schedule" data-ie-field="dep_time" data-ie-id="' + t.id + '" data-ie-value="' + esc(t.time) + '" data-ie-type="time"' +
+        ' data-ie-label="प्रस्थान समय · Departure time" title="ट्याप गरेर समय बदल्नुहोस् · Tap to change the time (empty = route time ' + esc(t.routeTime) + ')">' + esc(t.time) + '</span>'
+      : '<span class="time">' + esc(t.time) + '</span>';
+    return timeHtml + '<span>' + esc(t.label) + '</span>' + (t.slot > 1 ? '<span class="pill" style="background:#efeaff;color:#5a3fb0">Bus ' + t.slot + '</span>' : '');
+  }
+  function tripMetaHtml(t, past){
+    var canEdit = t.status !== 'cancelled' && !past;
+    var priceHtml = canEdit
+      ? '<span>💰 <span data-ie-entity="schedule" data-ie-field="fare" data-ie-id="' + t.id + '" data-ie-value="' + (t.fare > 0 ? t.fare : '') + '" data-ie-type="money" data-ie-confirm="1"' +
+        ' data-ie-label="यो बसको भाडा (प्रति सिट) · Price for this bus, per seat" data-ie-empty="सामान्य भाडा · normal fare" data-ie-placeholder="खाली = सामान्य · blank = normal"' +
+        ' title="ट्याप गरेर भाडा बदल्नुहोस् · Tap to change this bus\'s price">' + (t.fare > 0 ? rupee(t.fare) : 'सामान्य भाडा · normal fare') + '</span>' + (t.fare > 0 ? ' / seat' : '') + '</span>'
+      : (t.fare > 0 ? '<span title="This bus has its own price">💰 ' + rupee(t.fare) + ' / seat</span>' : '');
+    return '<span>' + (t.bus ? '🚌 ' + esc(t.bus) + (t.otherBus ? ' <b title="Different from the route default">(other vehicle)</b>' : '') : '🚌 no vehicle') + '</span>' +
+      (t.driver ? '<span>👤 ' + esc(t.driver) + '</span>' : '') +
+      '<span>🎟 ' + t.sold + ' / ' + t.total + ' sold</span>' +
+      priceHtml +
+      (t.ownCoach ? '<span title="This bus runs a different coach than the route">🪑 ' + esc(t.coach) + ' coach</span>' : '') +
+      (t.retimed ? '<span>⏰ retimed (route ' + esc(t.routeTime) + ')</span>' : '') +
+      (t.state ? '<span class="pill" style="background:var(--head)">' + esc(t.state) + '</span>' : '') +
+      (t.blocked ? '<span class="pill" style="background:#f7dcdc;color:#8a1f1f">🚫 OFF / blocked</span>' : '') +
+      (t.status === 'cancelled' ? '<span class="pill" style="background:#ececec;color:#666">❌ cancelled' + (t.reason ? ' · ' + esc(t.reason) : '') + '</span>' : '');
+  }
+
   window.calClose = function(){ panel.hidden = true; document.querySelectorAll('.cal-cell.open').forEach(function(c){ c.classList.remove('open'); }); };
 
   window.calOpen = function(date){
@@ -475,18 +514,8 @@ window.CAL = {
     trips.forEach(function(t){
       var cls = 'trip' + (t.blocked ? ' off' : '') + (t.status === 'cancelled' ? ' cx' : '');
       html += '<div class="' + cls + '" data-sid="' + t.id + '">';
-      html += '<div class="t1"><span class="time">' + esc(t.time) + '</span><span>' + esc(t.label) + '</span>' + (t.slot > 1 ? '<span class="pill" style="background:#efeaff;color:#5a3fb0">Bus ' + t.slot + '</span>' : '') + '</div>';
-      html += '<div class="meta">' +
-        '<span>' + (t.bus ? '🚌 ' + esc(t.bus) + (t.otherBus ? ' <b title="Different from the route default">(other vehicle)</b>' : '') : '🚌 no vehicle') + '</span>' +
-        (t.driver ? '<span>👤 ' + esc(t.driver) + '</span>' : '') +
-        '<span>🎟 ' + t.sold + ' / ' + t.total + ' sold</span>' +
-        (t.fare > 0 ? '<span title="This bus has its own price">💰 ₹' + t.fare + ' / seat</span>' : '') +
-        (t.ownCoach ? '<span title="This bus runs a different coach than the route">🪑 ' + esc(t.coach) + ' coach</span>' : '') +
-        (t.retimed ? '<span>⏰ retimed (route ' + esc(t.routeTime) + ')</span>' : '') +
-        (t.state ? '<span class="pill" style="background:var(--head)">' + esc(t.state) + '</span>' : '') +
-        (t.blocked ? '<span class="pill" style="background:#f7dcdc;color:#8a1f1f">🚫 OFF / blocked</span>' : '') +
-        (t.status === 'cancelled' ? '<span class="pill" style="background:#ececec;color:#666">❌ cancelled' + (t.reason ? ' · ' + esc(t.reason) : '') + '</span>' : '') +
-        '</div>';
+      html += '<div class="t1">' + tripT1Html(t, past) + '</div>';
+      html += '<div class="meta">' + tripMetaHtml(t, past) + '</div>';
       html += '<div class="acts">';
       html += '<a class="btn ghost" href="' + C.base + '/admin/seatmap.php?sid=' + t.id + '">🪑 Seats</a>';
       html += '<a class="btn ghost" href="' + C.base + '/admin/manifest.php?sid=' + t.id + '&date=' + encodeURIComponent(date) + '">📋 Manifest</a>';
@@ -505,6 +534,8 @@ window.CAL = {
       html += '</div><div class="sub" id="sub' + t.id + '"></div></div>';
     });
     body.innerHTML = html;
+    C.openDate = date;
+    if (window.shgInlineEditArm) { window.shgInlineEditArm(body); }
     panel.hidden = false;
     if (window.matchMedia('(max-width:1020px)').matches) { panel.scrollIntoView({ block:'end' }); }
 
@@ -541,6 +572,8 @@ window.CAL = {
           var v = prompt('Price for THIS bus, ₹ per seat.\n\nLeave empty to use the normal fare for the route and direction.\nTickets already sold keep the amount they were sold at.', cur);
           if (v === null) return; v = v.trim();
           if (v !== '' && !/^\d+(\.\d{1,2})?$/.test(v)) { flash('The price must be a number, e.g. 2200.', false); return; }
+          var showFare = function(x){ return x === '' || Number(x) <= 0 ? 'सामान्य भाडा · normal fare' : rupee(x); };
+          if (v !== cur && !confirm('पुरानो → नयाँ ? · old → new?\n\n' + showFare(cur) + '  →  ' + showFare(v) + '\n\nबदल्ने हो? · Save this change?')) return;
           api('set_price', { schedule_id: sid, fare: v }, btn).then(function(j){ if (j) reloadTo(date, j.message); });
         } else if (act === 'coach') {
           var soldC = parseInt(btn.getAttribute('data-sold'), 10) || 0;
@@ -582,6 +615,50 @@ window.CAL = {
     });
   };
 
+  /* 16 Nov 2026 (P3-6): a time / price saved in place (admin-inline-edit.js)
+     updates this page's own copy of the trip (C.days), the chip in the month
+     grid and - when that trip's day is the one open - just that trip's two
+     lines in the panel. No reload, so the office stays on the day it is
+     working, and no whole-panel redraw, so a form open on another trip stays.
+     Listened for on document and keyed on detail.id, never on e.target or the
+     open day: when the office taps another day while a save is still running,
+     the edited value is no longer on the page, the script then fires the event
+     on document, and the trip is found in whichever day it belongs to. */
+  function updateChip(t){
+    var chip = document.querySelector('.chip[data-sid="' + t.id + '"]');
+    if (!chip) return;
+    var s = chip.querySelector('.t');
+    if (s) s.textContent = t.time + (t.slot > 1 ? ' ·B' + t.slot : '') + ' ' + (t.retimed ? '⏰' : '') + (t.otherBus ? '🚌' : '');
+    chip.title = chip.title.replace(/ · \d{1,2}:\d{2} · /, ' · ' + t.time + ' · ');
+  }
+  function refreshTrip(t, date){
+    var box = body.querySelector('.trip[data-sid="' + t.id + '"]');
+    if (!box || C.openDate !== date) return;
+    var past = date < C.today, busy = '.ie-open, .ie-busy';
+    // a line with a value still being typed or saved keeps it; C.days is right, so the next calOpen draws it
+    var t1 = box.querySelector('.t1'), meta = box.querySelector('.meta');
+    if (t1 && !t1.querySelector(busy)) t1.innerHTML = tripT1Html(t, past);
+    if (meta && !meta.querySelector(busy)) meta.innerHTML = tripMetaHtml(t, past);
+    box.querySelectorAll('[data-act="retime"], [data-act="extra"]').forEach(function(b){ b.setAttribute('data-time', t.time); });
+    box.querySelectorAll('[data-act="price"]').forEach(function(b){ b.setAttribute('data-fare', t.fare > 0 ? String(t.fare) : ''); });
+    if (window.shgInlineEditArm) { window.shgInlineEditArm(box); }
+  }
+  document.addEventListener('shg:inline-saved', function(e){
+    var det = e.detail || {}, d = det.res && det.res.data;
+    if (det.entity !== 'schedule' || !d) return;
+    var sid = parseInt(det.id, 10);
+    if (!(sid > 0)) return;
+    Object.keys(C.days).forEach(function(date){
+      (C.days[date] || []).forEach(function(t){
+        if (t.id !== sid) return;
+        if (d.time !== undefined) { t.time = d.time; t.retimed = !!d.retimed; if (d.routeTime) t.routeTime = d.routeTime; }
+        if (d.fare !== undefined) { t.fare = Number(d.fare) || 0; }
+        updateChip(t);
+        refreshTrip(t, date);
+      });
+    });
+  });
+
   /* Manual top-up of the automatic daily bus — the same call the nightly cron
      makes, so it can only ADD missing departures; existing trips are skipped. */
   var seedBtn = document.getElementById('seedDailyBtn');
@@ -597,4 +674,5 @@ window.CAL = {
   <?php if ($openDay !== '' && substr($openDay, 0, 7) === $ym): ?>calOpen(<?= json_encode($openDay) ?>);<?php endif; ?>
 })();
 </script>
+<script src="<?= e(admin_asset_url('assets/js/admin-inline-edit.js')) ?>" defer></script>
 <?php admin_footer(); ?>

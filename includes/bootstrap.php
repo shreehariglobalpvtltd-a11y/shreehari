@@ -123,6 +123,19 @@ require_once INCLUDE_PATH . '/events.php';
 set_exception_handler(static function (Throwable $e): void {
     Logger::exception($e);
 
+    /* 16 Nov 2026 (F1-2): under the CLI (the test battery, cron, tools/) an
+       uncaught exception must END THE PROCESS WITH A FAILURE. Every way out
+       below is a bare exit - status 0, Response::serverError() included - so
+       tests/run-all.php, which judges a suite by its exit code alone, counted a
+       suite that crashed half way as "ok". What prints below is unchanged; the
+       status is set by a shutdown step registered now, so it runs after every
+       one registered earlier (a suite's own clean-up). Web requests: untouched. */
+    if (PHP_SAPI === 'cli') {
+        register_shutdown_function(static function (): void {
+            exit(1);
+        });
+    }
+
     $wantsJson = str_contains((string) ($_SERVER['REQUEST_URI'] ?? ''), '/api/')
         || str_contains(strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? '')), 'application/json')
         || strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';
@@ -230,6 +243,72 @@ if (PHP_SAPI !== 'cli') {
     require_once INCLUDE_PATH . '/opshub.php';
     OpsHub::enforceStaffDoor();
     OpsHub::enforceStaffRoot();   // 12 Nov 2026: "/" on the staff door = the lock screen
+}
+
+
+/* =====================================================================
+ *  6b. A staff session on a temporary password reaches no /api/
+ *
+ *  16 Nov 2026 (F1 review): Auth::requireAdmin() is the only place that
+ *  enforces must_change_pw, and no endpoint in /api/ calls it - they serve
+ *  guests too and only ask Auth::admin() / can() / isSellingStaff(), which
+ *  never look at the flag. So a superadmin or manager signed in on a
+ *  temporary password (sent to change-password.php, which hands out the
+ *  CSRF token) could still sell through api/book.php counter mode and
+ *  api/quick-ticket.php, use SmartBook, cancel, split a payment... - the
+ *  exact hole the 4 Oct 2026 note in requireAdmin() closed for admin/api.
+ *  (Pages outside admin/ - index.php's counter mode, the download-*.php
+ *  staff branches, verify-ticket.php - are not covered here.)
+ *
+ *  Deny by default, the same rule as requireAdmin: while the session's
+ *  account must change its password, every endpoint in /api/ answers 403,
+ *  except the three that carry no staff power and keep a sign-in / page
+ *  working (a CSRF refresh, the language switch, the WhatsApp sign-in
+ *  check). A new endpoint cannot forget this.
+ *
+ *    - which endpoint: the real script (SCRIPT_FILENAME, symlinks resolved)
+ *      is in ROOT_PATH/api - not REQUEST_URI, which a percent-encoded path
+ *      would slip past. admin/api/ already goes through requireAdmin.
+ *    - fresh: the session flag (set at sign-in) OR the admins row, read
+ *      now, so a "must change" the office switches on mid-session bites
+ *      on the next call, not 30 s later.
+ *    - Auth::admin() is asked only for such a session (it alone knows the
+ *      idle timeout, a revoked or ended session): one it signs out runs on
+ *      as a guest. Any other session never calls it here, so a public
+ *      page's polling cannot keep a staff idle timer alive.
+ *  Webhooks and guests carry no staff session and are untouched.
+ * ===================================================================== */
+
+if (PHP_SAPI !== 'cli'
+    && is_array($_SESSION[ADMIN_SESSION_KEY] ?? null)
+    && !empty($_SESSION[ADMIN_SESSION_KEY]['id'])) {
+    $shgScript = (string) ($_SERVER['SCRIPT_FILENAME'] ?? '');
+    $shgApiDir = realpath(ROOT_PATH . '/api');
+    $shgDir    = $shgScript !== '' ? realpath(dirname($shgScript)) : false;
+    if ($shgApiDir !== false && $shgDir !== false && $shgDir === $shgApiDir
+        && !in_array(basename($shgScript), ['csrf.php', 'lang.php', 'wa-verify.php'], true)) {
+        $shgRowSays    = false;
+        $shgMustChange = !empty($_SESSION[ADMIN_SESSION_KEY]['must_change_pw']);
+        if (!$shgMustChange) {
+            try {
+                $shgRowSays = (int) Database::scalar(
+                    'SELECT must_change_pw FROM admins WHERE id = :id',
+                    ['id' => (int) $_SESSION[ADMIN_SESSION_KEY]['id']],
+                    0
+                ) === 1;
+            } catch (Throwable) {
+                // database unreachable: the session flag decides; the endpoint fails for a better reason anyway
+            }
+            $shgMustChange = $shgRowSays;
+        }
+        // Auth::admin() re-reads the row every 30 s: a "must change" the office has since cleared is gone from the session.
+        if ($shgMustChange && Auth::admin() !== null
+            && ($shgRowSays || !empty($_SESSION[ADMIN_SESSION_KEY]['must_change_pw']))) {
+            Response::forbidden('पहिले अस्थायी पासवर्ड बदल्नुहोस् · Change your temporary password first.');
+        }
+        unset($shgRowSays, $shgMustChange);
+    }
+    unset($shgScript, $shgApiDir, $shgDir);
 }
 
 

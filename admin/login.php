@@ -709,6 +709,12 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 </style><?php endif; ?>
 <script>(function(){try{var t=localStorage.getItem('shg_admin_theme');if(t==='dark'||t==='amoled')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 <link rel="manifest" href="/admin/app-manifest.php"><meta name="theme-color" content="#0B1220">
+<?php /* 16 Nov 2026 (P2-1g): the service worker, registered exactly like admin/staff-chat.php does
+         (/sw.js, scope '/'), so Chrome can offer "Install app" for S Hari Manage from the door. sw.js
+         passes every /admin/* request and every POST straight to the network (the sign-in, CSRF and
+         sessions are never cached), and on the staff door it keeps its own shm- caches. Fail-safe:
+         no serviceWorker (old phone, http) or a failed register = nothing happens, the door works. */ ?>
+<script>(function(){try{if(!('serviceWorker' in navigator))return;var go=function(){try{navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(function(){});}catch(e){}};if(document.readyState==='complete')go();else window.addEventListener('load',go);}catch(e){}})();</script>
 <?php /* 16 Nov 2026 (P1-4c): opened from the home screen it runs full screen like an app (older iOS reads
          these, newer ones the manifest). black-translucent + viewport-fit=cover: the body padding above
          keeps the card clear of the notch / status bar. */ ?>
@@ -1201,7 +1207,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 })();
 </script>
 <?php endif; ?>
-<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116c" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116d" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
 <?php if (($remembered ?? null) !== null || $cPad): ?><script>
 (function(){
@@ -1729,6 +1735,6 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116c" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116d" data-next="<?= $meUrl ?>"></script><?php endif; ?>
 <?php endif; ?>
 </body></html>

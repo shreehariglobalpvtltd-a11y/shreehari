@@ -1772,9 +1772,12 @@ function shgToastLooksBad(msg) {
     if (!el) {
       el = document.createElement('div');
       el.id = 'shgNetPill';
-      el.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:70;'
-        + 'background:#8a1f1f;color:#fff;padding:5px 14px;border-radius:999px;font-size:12px;font-weight:700;'
-        + 'box-shadow:0 4px 14px rgba(0,0,0,.3);display:none';
+      /* 16 Nov 2026 (P2-4f): a full-width amber bar across the top, no longer a centred red
+         pill. The look (light + dark, safe-area, never takes a tap) is .shg-offline-bar in
+         assets/css/polish.css section 9; only display is set here, by refresh(). */
+      el.className = 'shg-offline-bar';
+      el.setAttribute('role', 'status');
+      el.style.display = 'none';
       el.textContent = '📵 Offline — cached data · अफलाइन';
       document.body.appendChild(el);
     }

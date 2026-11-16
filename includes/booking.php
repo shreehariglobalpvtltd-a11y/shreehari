@@ -2810,6 +2810,23 @@ final class BookingService
             ]);
         }
 
+        /* P8-12e (16 Nov 2026): a cancel at or above helpdesk_cancel_escalate_inr
+           (₹, 0 = off, the default) on which money is owed back opens one
+           'refund' help-desk ticket for the office's refund follow-up — no
+           customer message, refunds stay manual. The refund and $via go along:
+           an unpaid / auto / undo / 0%-slab cancel owes nothing, opens nothing.
+           After the commit and fenced: a help-desk failure never breaks a cancel. */
+        if (!empty($result['booking'])) {
+            try {
+                if (Settings::getInt('helpdesk_cancel_escalate_inr', 0) > 0) {
+                    require_once INCLUDE_PATH . '/helpdesk.php';
+                    HelpDesk::cancelFollowUp((array) $result['booking'], (array) ($result['refund'] ?? []), $via);
+                }
+            } catch (Throwable $e) {
+                Logger::warning('cancel follow-up skipped: ' . $e->getMessage(), ['pnr' => $pnr], 'helpdesk');
+            }
+        }
+
         return $result;
     }
 

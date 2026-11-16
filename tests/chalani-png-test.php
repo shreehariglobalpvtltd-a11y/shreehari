@@ -346,8 +346,20 @@ check('the report PDF can reach the Devanagari face', str_contains($rsrc, "regis
 /* Every seat-changing path re-mints the ticket; the seat map's transfer
    was the one that did not, so the passenger kept a picture of the old
    berth while the chalani showed the new one. */
+/* 1 Oct 2026: every booking change re-mints through ONE hook, TicketSync
+   (QR + REV, PNG redrawn, audit row, the passenger's "seat changed" WhatsApp,
+   run after the transaction commits). transferSeat() calls it with kind
+   'seat' instead of Ticket::reissue() directly - so the guard is now: the
+   transfer hands its booking to TicketSync as a 'seat' change, and that
+   hook's regenerate path really calls Ticket::reissue(). */
 $ssrc = (string) file_get_contents(dirname(__DIR__) . '/includes/seats.php');
-check('a seat transfer re-mints the ticket', str_contains($ssrc, 'Ticket::reissue((int) $row[\'booking_id\'])'));
+$tsrc = (string) file_get_contents(dirname(__DIR__) . '/includes/ticketsync.php');
+$xfer = '';
+if (preg_match('/public static function transferSeat\(.*?\n    public static function /s', $ssrc, $xm) === 1) { $xfer = $xm[0]; }
+check('a seat transfer re-mints the ticket',
+    $xfer !== '' && str_contains($xfer, "TicketSync::afterBookingChange((int) \$row['booking_id'], 'seat',")
+    && str_contains($tsrc, 'Ticket::reissue($bookingId, !$silent);'),
+    $xfer === '' ? 'transferSeat() not found' : 'transferSeat -> TicketSync(seat) -> Ticket::reissue');
 
 /* The chalani page cache hashed twelve columns and drew eighteen. */
 $fpRows = [[

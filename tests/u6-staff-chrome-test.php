@@ -155,7 +155,7 @@ check("…wa-inbox.php really boots with customers.view", str_contains($wi, "adm
 $es = (string) @file_get_contents($ROOT . '/admin/easy-settings.php');
 check("…easy-settings.php really boots with dashboard.view", str_contains($es, "admin_boot('dashboard.view')"));
 check('admin_footer prints the bubble script behind admin_ai_bubble_on()',
-    str_contains($g, "if (admin_ai_bubble_on()) {\n        echo '<script src=\"/assets/js/admin-ai-bubble.js\" defer></script>';"));
+    str_contains($g, "if (admin_ai_bubble_on()) {\n        echo '<script src=\"' . admin_asset_url('assets/js/admin-ai-bubble.js') . '\" defer></script>';"));
 check('the bubble rule = easy-settings $canCmd (settings / routes.edit / schedules.manage)',
     str_contains($g, "Auth::canManageSettings() || Auth::can('routes.edit') || Auth::can('schedules.manage')")
     && str_contains($es, "\$canEdit || Auth::can('routes.edit') || Auth::can('schedules.manage')"));
@@ -248,7 +248,7 @@ try {
     check('the menu marks Colours & Themes as the open page', preg_match('~<a class="on" href="/admin/themes\.php">~', $html) === 1);
     $bubbleFile = is_file($ROOT . '/assets/js/admin-ai-bubble.js');
     check('bubble script tag on the page for a super-admin ' . ($bubbleFile ? '(file present)' : '(file not built yet -> no tag)'),
-        str_contains($html, '<script src="/assets/js/admin-ai-bubble.js" defer></script>') === $bubbleFile);
+        (bool) preg_match('#<script src="/assets/js/admin-ai-bubble\.js\?v=\d+" defer></script>#', $html) === $bubbleFile);
 
     echo "\n-- admin/themes.php as support (dashboard.view, no settings.manage)\n";
     $sh = child(['what' => 'page', 'admin' => $SPT, 'script' => 'themes.php']);

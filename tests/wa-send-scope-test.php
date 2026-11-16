@@ -9,7 +9,8 @@
  * summary or a departure document. The office (superadmin) may do all of
  * it. CSRF is enforced on every call. Preview only — nothing is sent.
  *
- *   php tests/wa-send-scope-test.php          (needs php -S 127.0.0.1:8899)
+ *   SHG_TEST_BASE=http://localhost:<port> php -c <ini> tests/wa-send-scope-test.php
+ *   (no SHG_TEST_BASE: the suite starts its own php -S on this checkout)
  * Throwaway agents + bookings on a far-future date; cleans up after itself
  * and restores the settings it pins. CLI only.
  */
@@ -24,8 +25,46 @@ require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/notify.php';
 require_once INCLUDE_PATH . '/booking.php';
 require_once INCLUDE_PATH . '/watemplates.php';
+require_once INCLUDE_PATH . '/quickunlock.php';
 
-define('BASE', getenv('SHG_TEST_BASE') ?: 'http://localhost:8899');
+/* 16 Nov 2026 (battery Y7): with no SHG_TEST_BASE the suite starts its OWN
+   `php -S` on a free port, serving THIS checkout with this run's php + ini,
+   and stops it on exit. The battery (run-all.php) passes no base, and :8899
+   is whichever checkout happens to own it - on the build machine an older
+   lineage - so the suite reported red (or green) about code it was not
+   testing. SHG_TEST_BASE still wins when it is set. */
+function shg_test_base(): string
+{
+    $env = trim((string) getenv('SHG_TEST_BASE'));
+    if ($env !== '') {
+        return rtrim($env, '/');
+    }
+    $probe = @stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+    if ($probe === false) {
+        return 'http://localhost:8899';
+    }
+    $name = (string) stream_socket_get_name($probe, false);
+    fclose($probe);
+    $port = (int) substr($name, (int) strrpos($name, ':') + 1);
+    $ini  = (string) php_ini_loaded_file();
+    $null = DIRECTORY_SEPARATOR === '\\' ? 'NUL' : '/dev/null';
+    $cmd  = array_merge([PHP_BINARY], $ini !== '' ? ['-c', $ini] : [], ['-S', '127.0.0.1:' . $port, '-t', dirname(__DIR__)]);
+    $proc = @proc_open($cmd, [0 => ['file', $null, 'r'], 1 => ['file', $null, 'w'], 2 => ['file', $null, 'w']], $pipes, dirname(__DIR__));
+    if (!is_resource($proc)) {
+        return 'http://localhost:8899';
+    }
+    register_shutdown_function(static function () use ($proc): void {
+        @proc_terminate($proc);
+        @proc_close($proc);
+    });
+    for ($i = 0; $i < 100; $i++) {   // up to ~10 s for the server to answer
+        $c = @fsockopen('127.0.0.1', $port, $e1, $e2, 0.2);
+        if ($c !== false) { fclose($c); break; }
+        usleep(100000);
+    }
+    return 'http://127.0.0.1:' . $port;
+}
+define('BASE', shg_test_base());
 const TD      = '2099-09-24';
 const AGENT_A = 'wss-agent-a';
 const AGENT_B = 'wss-agent-b';
@@ -59,12 +98,24 @@ function req(string $jar, string $method, string $url, array $opt = []): array {
     return ['code' => $code, 'body' => $body, 'json' => is_array($json) ? $json : null];
 }
 function jar(string $n): string { $p = sys_get_temp_dir() . '/shg_wss_' . $n . '_' . getmypid() . '.cookies'; @unlink($p); return $p; }
-/** Sign a staff account in and return [jar, csrf from the admin shell's <meta name="csrf">]. */
+/**
+ * Sign a staff account in and return [jar, csrf from the admin shell's
+ * <meta name="csrf">, HTTP code of the admin page].
+ *
+ * 15 Nov 2026: the default /admin/login.php is the code-first door (code ->
+ * PIN / pattern); the username + password form is the CLASSIC door,
+ * ?classic=1&other=1 with classic=1 posted. Every account this suite makes
+ * carries a PIN (QuickUnlock::set in $mk), or every page would send it to
+ * pin-setup.php before the wallet page could hand out its CSRF token. The
+ * login throttle for this machine is cleared first, as run-all.php does.
+ */
 function signIn(string $user, string $pw): array {
     $j  = jar($user);
-    $lp = req($j, 'GET', '/admin/login.php');
-    preg_match('/name="shg_csrf" value="([a-f0-9]+)"/', $lp['body'], $m);
-    req($j, 'POST', '/admin/login.php', ['form' => ['shg_csrf' => $m[1] ?? '', 'username' => $user, 'password' => $pw]]);
+    try { Database::run("DELETE FROM rate_limits WHERE identifier IN ('127.0.0.1', '::1') AND bucket IN ('admin_login', 'code_login_enter', 'quick_unlock', 'code_login_try')"); } catch (Throwable $e) {}
+    $lp  = req($j, 'GET', '/admin/login.php?classic=1&other=1');
+    $tok = preg_match('/<meta name="csrf-token" content="([^"]+)"/', $lp['body'], $m) === 1 ? html_entity_decode($m[1])
+         : (preg_match('/name="' . preg_quote(CSRF_TOKEN_NAME, '/') . '"\s+value="([^"]+)"/', $lp['body'], $m) === 1 ? $m[1] : '');
+    req($j, 'POST', '/admin/login.php', ['form' => [CSRF_TOKEN_NAME => $tok, 'classic' => '1', 'username' => $user, 'password' => $pw]]);
     $page = req($j, 'GET', '/admin/agent.php');
     preg_match('/<meta name="csrf" content="([^"]+)"/', $page['body'], $c);
     return [$j, (string) ($c[1] ?? ''), $page['code']];
@@ -111,8 +162,11 @@ function cleanup(): void {
         if ($id > 0) {
             try { Database::delete('agent_ledger', 'agent_admin_id = :a', ['a' => $id]); } catch (Throwable $e) {}
             try { Database::delete('admin_profiles', 'admin_id = :a', ['a' => $id]); } catch (Throwable $e) {}
+            try { Database::delete('admin_sessions', 'admin_id = :a', ['a' => $id]); } catch (Throwable $e) {}
             Database::delete('admins', 'id = :i', ['i' => $id]);
         }
+        // every sign-in over HTTP leaves a login-history row (no FK to admins)
+        try { Database::delete('admin_login_events', 'username = :u', ['u' => $u]); } catch (Throwable $e) {}
     }
     try { Database::query("DELETE FROM rate_limits WHERE bucket LIKE 'admin_login%' OR bucket LIKE 'wa_send%'"); } catch (Throwable $e) {}
 }
@@ -137,8 +191,10 @@ try {
     if (count($free) < 2) { echo "  SKIP  fewer than two free seats on the fixture day\n"; exit(0); }
 
     $mk = static function (string $user, string $name, string $role, string $pw): int {
-        return (int) Database::insert('admins', ['username' => $user, 'password_hash' => password_hash($pw, PASSWORD_BCRYPT),
+        $id = (int) Database::insert('admins', ['username' => $user, 'password_hash' => password_hash($pw, PASSWORD_BCRYPT),
             'full_name' => $name, 'role' => $role, 'permissions' => json_encode([]), 'is_active' => 1, 'must_change_pw' => 0]);
+        QuickUnlock::set($id, 'pin', '583941');   // the code-first door sends a PIN-less account to pin-setup first
+        return $id;
     };
     $aId = $mk(AGENT_A, 'Scope Agent A', 'agent', $PW);
     $bId = $mk(AGENT_B, 'Scope Agent B', 'agent', $PW);

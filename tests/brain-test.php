@@ -497,10 +497,48 @@ check('the card tap no longer truncates a 91-series mobile',
 check('capacity excludes permanently reserved staff berths',
     str_contains($read('/includes/ticketbrain.php'), 'Seats::staffSeats'));
 
-check('the schema migration creates all three tables',
-    (bool) preg_match('/brain_predictions/', $read('/database/upgrade-2026-09-quickbot-brain.sql'))
-    && str_contains($read('/database/upgrade-2026-09-quickbot-brain.sql'), 'brain_drafts')
-    && str_contains($read('/database/upgrade-2026-09-quickbot-brain.sql'), 'brain_alerts'));
+/* 16 Nov 2026 (battery Y7): this code line is the recovered live source
+   (checkpoint 739f95ec, 26 Oct 2026). It carries only the .sql migrations
+   from 24 Oct on - the 73 older ones, upgrade-2026-09-quickbot-brain.sql
+   among them, were applied on the server long ago and are not in this
+   checkout, so reading the file proved nothing but its absence. When the
+   file IS present it is still read exactly as before. When it is not, the
+   same property is checked where it now lives - the schema itself, as the
+   other suites of this line do (webpush, eta-alerts, counter-shift): all
+   three tables, every column the engine writes, and the two UNIQUE keys its
+   upserts depend on (a nightly re-run must update a card, never add a
+   second one; an alert is raised once per day/kind/ref). */
+$brainSql = $read('/database/upgrade-2026-09-quickbot-brain.sql');
+if ($brainSql !== '') {
+    check('the schema migration creates all three tables',
+        (bool) preg_match('/brain_predictions/', $brainSql)
+        && str_contains($brainSql, 'brain_drafts')
+        && str_contains($brainSql, 'brain_alerts'));
+} else {
+    $brainCols = [
+        'brain_predictions' => ['predict_date', 'phone', 'passenger', 'score', 'band', 'travel_date', 'direction', 'boarding', 'seats', 'reason', 'signals', 'status', 'resolved_at'],
+        'brain_drafts'      => ['channel', 'phone', 'passenger', 'raw_text', 'parsed', 'travel_date', 'direction', 'boarding', 'seats', 'flags', 'confidence', 'status'],
+        'brain_alerts'      => ['alert_date', 'kind', 'ref', 'severity', 'title', 'body', 'meta', 'status'],
+    ];
+    $schemaGaps = [];
+    foreach ($brainCols as $tbl => $cols) {
+        $have = array_map('strval', pluck(Database::fetchAll(
+            'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t', ['t' => $tbl]), 'COLUMN_NAME'));
+        if ($have === []) { $schemaGaps[] = $tbl . ' (no table)'; continue; }
+        foreach (array_diff($cols, $have) as $c) { $schemaGaps[] = $tbl . '.' . $c; }
+    }
+    $uniqueOn = static function (string $tbl, string $cols): bool {
+        return (int) Database::scalar(
+            "SELECT COUNT(*) FROM (SELECT INDEX_NAME, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS c
+               FROM information_schema.STATISTICS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND NON_UNIQUE = 0
+              GROUP BY INDEX_NAME) k WHERE k.c = :c", ['t' => $tbl, 'c' => $cols], 0) > 0;
+    };
+    if (!$uniqueOn('brain_predictions', 'predict_date,phone')) { $schemaGaps[] = 'UNIQUE brain_predictions(predict_date, phone)'; }
+    if (!$uniqueOn('brain_alerts', 'alert_date,kind,ref'))      { $schemaGaps[] = 'UNIQUE brain_alerts(alert_date, kind, ref)'; }
+    check('the brain schema has all three tables, every column the engine writes and its two upsert keys (the .sql migration predates this checkout)',
+        $schemaGaps === [], $schemaGaps === [] ? '3 tables' : 'missing: ' . implode(', ', $schemaGaps));
+}
 
 /* =====================================================================
  *  Result

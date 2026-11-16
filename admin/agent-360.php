@@ -243,26 +243,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $needPay();
             $notSelf();
             $amount   = round(abs((float) ($_POST['amount'] ?? 0)), 2);
-            $ledgerId = AgentWallet::record($targetId, $action, $amount, [
-                'note' => $_POST['note'] ?? '',
-                'ref'  => $_POST['ref'] ?? '',
-                'by'   => $selfId,
-            ]);
-            $voucher = AgentWallet::voucherFor($ledgerId);
-            // A payout that covers the agent's open request settles it — the
-            // request is bookkeeping about this very payment, not more money.
-            if ($action === 'payout') {
-                foreach (AgentWallet::openPayoutRequests($targetId) as $oreq) {
-                    if ($amount + 0.009 >= (float) $oreq['amount']) {
-                        try {
-                            AgentWallet::decidePayoutRequest((int) $oreq['id'], 'paid', $selfId, 'Settled by payout ' . $voucher, $ledgerId);
-                        } catch (Throwable $e) {
-                            Logger::warning('payout request not auto-settled: ' . $e->getMessage(), [], 'agent');
-                        }
-                    }
-                    break;   // requestPayout() allows one open request at a time
+            $setMeta  = ['note' => $_POST['note'] ?? '', 'ref' => $_POST['ref'] ?? '', 'by' => $selfId];
+            /* 16 Nov 2026 (mv5): a payout that covers the agent's open request settles it - the
+               request is bookkeeping about this very payment, not more money. AgentWallet::record()
+               RESERVES an open request, so the covering payout must name it (request_id) or a
+               whole-balance request (₹700 due, ₹700 asked) refused every payout with "Funds are
+               reserved". Same as agent.php / Team Management → Withdrawals: agent row locked,
+               payout written with request_id and the request marked paid in ONE transaction. */
+            $ledgerId = Database::transaction(static function () use ($targetId, $action, $amount, $setMeta, $selfId): int {
+                if ($action !== 'payout') {
+                    return AgentWallet::record($targetId, $action, $amount, $setMeta);
                 }
-            }
+                Database::fetch('SELECT id FROM admins WHERE id = :a FOR UPDATE', ['a' => $targetId]);
+                $oreq = AgentWallet::openPayoutRequests($targetId)[0] ?? null;   // requestPayout() allows one open request at a time
+                if ($oreq === null || $amount + 0.009 < (float) $oreq['amount']) {
+                    return AgentWallet::record($targetId, 'payout', $amount, $setMeta);
+                }
+                $lid = AgentWallet::record($targetId, 'payout', $amount, $setMeta + ['request_id' => (int) $oreq['id']]);
+                AgentWallet::decidePayoutRequest((int) $oreq['id'], 'paid', $selfId, 'Settled by payout ' . AgentWallet::voucherFor($lid), $lid);
+                return $lid;
+            }, 1);
+            $voucher = AgentWallet::voucherFor($ledgerId);
             $wa = a360_notify_settlement($agent, $profile, $action, $amount, $ledgerId);
             a360_flash('ok', ($action === 'payout' ? 'Commission payout of ' : 'Cash handover of ') . inr($amount)
                 . ' recorded' . ($voucher !== '' ? ' — voucher ' . $voucher : '') . '.', $wa);
@@ -328,12 +329,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $notSelf();
             $req      = a360_own_request((int) ($_POST['request_id'] ?? 0), $targetId);
             $amount   = round((float) $req['amount'], 2);
-            $ledgerId = AgentWallet::record($targetId, 'payout', $amount, [
-                'note' => 'Payout request #' . (int) $req['id'] . ((string) ($req['note'] ?? '') !== '' ? ' — ' . $req['note'] : ''),
-                'ref'  => $_POST['ref'] ?? '',
-                'by'   => $selfId,
-            ]);
-            AgentWallet::decidePayoutRequest((int) $req['id'], 'paid', $selfId, '', $ledgerId);
+            /* 16 Nov 2026 (mv5): name the request being paid (request_id) - record() reserves every
+               OTHER open request only. Before, this very request was reserved against itself, so any
+               request above half the balance was refused "Funds are reserved". Payout + "paid" in ONE
+               transaction: both or neither. */
+            $ledgerId = Database::transaction(static function () use ($targetId, $amount, $req, $selfId): int {
+                $lid = AgentWallet::record($targetId, 'payout', $amount, [
+                    'note'       => 'Payout request #' . (int) $req['id'] . ((string) ($req['note'] ?? '') !== '' ? ' — ' . $req['note'] : ''),
+                    'ref'        => $_POST['ref'] ?? '',
+                    'by'         => $selfId,
+                    'request_id' => (int) $req['id'],
+                ]);
+                AgentWallet::decidePayoutRequest((int) $req['id'], 'paid', $selfId, '', $lid);
+                return $lid;
+            }, 1);
             $voucher = AgentWallet::voucherFor($ledgerId);
             $wa      = a360_notify_settlement($agent, $profile, 'payout', $amount, $ledgerId);
             a360_flash('ok', 'Payout request #' . (int) $req['id'] . ' paid — ' . inr($amount)

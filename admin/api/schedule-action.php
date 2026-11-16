@@ -36,7 +36,16 @@
  */
 
 declare(strict_types=1);
-require dirname(__DIR__) . '/_guard.php';
+/* Library mode (16 Nov 2026, v2.0 P3-6 inline edit): admin/api/inline-save.php
+   defines SHG_SCHEDULE_ACTION_LIB and includes this file to call
+   scheduleSetDepTime() / scheduleSetPrice() — the very rules and trip.* audit
+   rows behind set_dep_time / set_price. In that mode nothing is booted, no
+   header is sent and no action runs (the caller has already checked the login,
+   the CSRF token and schedules.manage); the functions below are declared all
+   the same, because top-level functions bind when the file is compiled. */
+if (!defined('SHG_SCHEDULE_ACTION_LIB')) {
+    require dirname(__DIR__) . '/_guard.php';
+}
 // ScheduleMaker is NOT part of the admin bootstrap (_guard.php), and every
 // row-creating action here goes through it — add_trip, duplicate_trip,
 // add_extra_bus, seed_daily. Without this require those actions died as
@@ -44,6 +53,9 @@ require dirname(__DIR__) . '/_guard.php';
 // to the operator as a generic failure. Same omission as the TripStatus one
 // fixed on 5 Sep 2026; required explicitly here for the same reason.
 require_once INCLUDE_PATH . '/schedulemaker.php';
+if (defined('SHG_SCHEDULE_ACTION_LIB')) {
+    return;
+}
 $admin = admin_boot('schedules.manage');   // 403s non-manage roles.
 
 header('Content-Type: application/json; charset=utf-8');
@@ -397,21 +409,39 @@ function handleUnblock(int $adminId): void
  */
 function handleSetDepTime(int $adminId): void
 {
-    $sid    = scheduleIdInput();
-    $depRaw = trim((string) ($_POST['dep_time'] ?? ''));
+    $sid = scheduleIdInput();
+    $res = scheduleSetDepTime($sid, trim((string) ($_POST['dep_time'] ?? '')), $adminId);
+    if (!$res['ok']) {
+        jsonErr((string) $res['error']);
+    }
+    jsonOk((string) $res['message'], $sid, (array) $res['extra']);
+}
+
+/**
+ * The set_dep_time rules without a request (16 Nov 2026, P3-6): the endpoint
+ * above and the inline editor (admin/api/inline-save.php) both come here, so
+ * the gates, the HH:MM rule and the trip.set_dep_time audit row are one code.
+ * $note is appended to the audit detail ('' for the endpoint, unchanged).
+ *
+ * @return array{ok:bool, error?:string, same?:bool, message?:string,
+ *               extra?:array<string,mixed>, old?:?string, new?:?string}
+ */
+function scheduleSetDepTime(int $sid, string $depRaw, int $adminId, string $note = ''): array
+{
+    $depRaw = trim($depRaw);
 
     $before = Database::fetch(
         'SELECT id, dep_time_override, status FROM schedules WHERE id = :id',
         ['id' => $sid]
     );
     if ($before === null) {
-        jsonErr('That trip no longer exists.');
+        return ['ok' => false, 'error' => 'That trip no longer exists.'];
     }
     if (strtolower((string) $before['status']) === 'cancelled') {
-        jsonErr('That trip is cancelled — reopen it before changing its time.');
+        return ['ok' => false, 'error' => 'That trip is cancelled — reopen it before changing its time.'];
     }
     if (strtolower((string) $before['status']) === 'arrived') {
-        jsonErr('That trip has arrived — cannot change its scheduled time now.');
+        return ['ok' => false, 'error' => 'That trip has arrived — cannot change its scheduled time now.'];
     }
 
     // Milestone gate — departed/border/arrived means the bus has moved;
@@ -424,21 +454,21 @@ function handleSetDepTime(int $adminId): void
         ['s' => $sid]
     );
     if ($milestone !== null && !Auth::isSuperadmin()) {
-        jsonErr('This trip has already been marked ' . (string) $milestone['event']
-            . ' — its scheduled time can no longer be changed.');
+        return ['ok' => false, 'error' => 'This trip has already been marked ' . (string) $milestone['event']
+            . ' — its scheduled time can no longer be changed.'];
     }
 
     if ($depRaw === '' || strtolower($depRaw) === 'clear') {
         $newOverride = null;   // fall back to route default
     } else {
         if (!preg_match('/^([01]?\d|2[0-3]):[0-5]\d$/', $depRaw)) {
-            jsonErr('Time must be HH:MM (24-hour), e.g. 07:30 or 18:15.');
+            return ['ok' => false, 'error' => 'Time must be HH:MM (24-hour), e.g. 07:30 or 18:15.'];
         }
         $newOverride = str_pad($depRaw, 5, '0', STR_PAD_LEFT) . ':00';
     }
 
     if ($newOverride === $before['dep_time_override']) {
-        jsonErr('That is already the current departure time.');
+        return ['ok' => false, 'same' => true, 'error' => 'That is already the current departure time.'];
     }
 
     Database::update('schedules',
@@ -450,16 +480,20 @@ function handleSetDepTime(int $adminId): void
         (string) $sid,
         ['dep_time_override' => $before['dep_time_override']],
         ['dep_time_override' => $newOverride],
-        'by admin #' . $adminId
+        'by admin #' . $adminId . $note
     );
 
     $msg = $newOverride === null
         ? 'Departure time reset to route default.'
         : 'Departure time set to ' . substr($newOverride, 0, 5) . '.';
 
-    jsonOk($msg, $sid, [
-        'depTimeOverride' => $newOverride !== null ? substr($newOverride, 0, 5) : null,
-    ]);
+    return [
+        'ok'      => true,
+        'message' => $msg,
+        'extra'   => ['depTimeOverride' => $newOverride !== null ? substr($newOverride, 0, 5) : null],
+        'old'     => $before['dep_time_override'] !== null ? (string) $before['dep_time_override'] : null,
+        'new'     => $newOverride,
+    ];
 }
 
 /**
@@ -713,8 +747,25 @@ function handleAdd(int $adminId): void
 
 function handleSetPrice(int $adminId): void
 {
-    $sid    = scheduleIdInput();
-    $rawIn  = trim((string) ($_POST['fare'] ?? ''));
+    $sid = scheduleIdInput();
+    $res = scheduleSetPrice($sid, trim((string) ($_POST['fare'] ?? '')), $adminId);
+    if (!$res['ok']) {
+        jsonErr((string) $res['error']);
+    }
+    jsonOk((string) $res['message'], $sid, (array) $res['extra']);
+}
+
+/**
+ * The set_price rules without a request (16 Nov 2026, P3-6) — shared with the
+ * inline editor like scheduleSetDepTime(): ScheduleMaker::fareInput() (blank
+ * or 0 = the normal fare, up to ₹1,00,000) and the trip.set_price audit row.
+ *
+ * @return array{ok:bool, error?:string, same?:bool, message?:string,
+ *               extra?:array<string,mixed>, old?:?float, new?:?float}
+ */
+function scheduleSetPrice(int $sid, string $rawIn, int $adminId, string $note = ''): array
+{
+    $rawIn = trim($rawIn);
 
     $before = Database::fetch(
         'SELECT s.id, s.fare_override, s.status, s.travel_date, r.route_code, r.base_fare
@@ -722,22 +773,22 @@ function handleSetPrice(int $adminId): void
         ['id' => $sid]
     );
     if ($before === null) {
-        jsonErr('That trip no longer exists.');
+        return ['ok' => false, 'error' => 'That trip no longer exists.'];
     }
     if (strtolower((string) $before['status']) === 'cancelled') {
-        jsonErr('That trip is cancelled — reopen it before changing its price.');
+        return ['ok' => false, 'error' => 'That trip is cancelled — reopen it before changing its price.'];
     }
 
     try {
         $new = ScheduleMaker::fareInput($rawIn === '' ? null : $rawIn);
     } catch (RuntimeException $e) {
-        jsonErr($e->getMessage());
-        return;
+        return ['ok' => false, 'error' => $e->getMessage()];
     }
 
     $old = $before['fare_override'] === null ? null : round((float) $before['fare_override'], 2);
     if ($old === $new) {
-        jsonErr($new === null ? 'That trip already runs at the normal fare.' : 'That is already the price for this trip.');
+        return ['ok' => false, 'same' => true,
+                'error' => $new === null ? 'That trip already runs at the normal fare.' : 'That is already the price for this trip.'];
     }
 
     Database::update('schedules', ['fare_override' => $new], 'id = :id', ['id' => $sid]);
@@ -745,15 +796,17 @@ function handleSetPrice(int $adminId): void
     Logger::audit('trip.set_price', 'schedule', (string) $sid,
         ['fare_override' => $old], ['fare_override' => $new],
         'price ' . ($new === null ? 'cleared (back to the normal fare)' : 'set to ' . inr($new) . ' per seat')
-        . ' by admin #' . $adminId);
+        . ' by admin #' . $adminId . $note);
 
-    jsonOk(
-        $new === null
+    return [
+        'ok'      => true,
+        'message' => $new === null
             ? 'Price cleared — this bus is back on the normal fare. Tickets already sold keep the amount they were sold at.'
             : 'Price set to ' . inr($new) . ' per seat for this bus. Tickets already sold are unchanged.',
-        $sid,
-        ['fare' => $new]
-    );
+        'extra'   => ['fare' => $new],
+        'old'     => $old,
+        'new'     => $new,
+    ];
 }
 
 /**

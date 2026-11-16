@@ -1689,7 +1689,7 @@ if (window.MutationObserver) {
 })();
 </script>
 <?php if (Auth::can('routes.edit')): ?>
-<script src="/assets/js/admin-inline-edit.js" defer></script>
+<script src="<?= e(admin_asset_url('assets/js/admin-inline-edit.js')) ?>" defer></script>
 <?php endif; ?>
 <?php
 admin_footer();

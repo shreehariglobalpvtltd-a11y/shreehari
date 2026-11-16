@@ -6,6 +6,10 @@
  * drops it. The same command path as Admin → S Hari AI (easy-settings.php),
  * through /admin/api/ai-settings.php; nothing changes before "Haan".
  * Self-contained (own CSS, no library), works at 360 px, light + dark.
+ * The sheet's footer also links the AI assistant ("🤖 एआई सहायक · AI Sahayak",
+ * admin/ai-copilot.php) beside "Full page →" when the page carries
+ * <i hidden data-shg-copilot="1"></i> (P8-14b, admin_footer) - pages with this
+ * bubble get no separate floating AI link.
  * Load: <script src="/assets/js/admin-ai-bubble.js" defer></script>
  */
 (function () {
@@ -16,6 +20,10 @@
 
   var API = '/admin/api/ai-settings.php';
   var EXAMPLES = ['Surat ko bhada 2300', 'bholi 1 baje jane bus band', 'Seat U15 block karo kal'];
+  // 16 Nov 2026 (v2.0 P8-14b): admin_footer() prints <i hidden data-shg-copilot="1"> when this
+  // person may open the AI assistant (admin/ai-copilot.php, bookings.view); a deferred script
+  // runs after the whole page is parsed, so the marker is already there
+  var COPILOT = !!document.querySelector('[data-shg-copilot="1"]') && !/\/admin\/ai-copilot\.php$/.test(location.pathname);
 
   function csrf() {
     var m = document.querySelector('meta[name="shg-admin-csrf"]') || document.querySelector('meta[name="csrf"]');
@@ -61,8 +69,12 @@
     '.shg-aib-btns{display:flex;gap:8px;flex-wrap:wrap}' +
     '.shg-aib-btns button{flex:1 1 140px;min-height:46px;border-radius:12px;font-weight:700;font-size:15px;cursor:pointer}' +
     '.shg-aib-yes{border:0;background:#16A34A;color:#fff}.shg-aib-no{border:1px solid #c9b27a;background:transparent;color:#3A2A00}' +
-    '.shg-aib-ft{margin-top:12px;font-size:12.5px;color:var(--mut,#6b7688);display:flex;gap:12px;flex-wrap:wrap}' +
+    '.shg-aib-ft{margin-top:12px;font-size:12.5px;color:var(--mut,#6b7688);display:flex;gap:0 12px;flex-wrap:wrap;align-items:center}' +
     '.shg-aib-ft a{color:var(--blue,#2E5FA8)}' +
+    // the two footer links sit side by side, never stacked: one row, each shrinks with … at 360 px
+    '.shg-aib-ftl{display:flex;flex-wrap:nowrap;gap:12px;flex:1 1 auto;min-width:0;max-width:100%}' +
+    '.shg-aib-ftl a{display:block;flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:10px 0;line-height:20px}' +
+    '[data-theme="dark"] .shg-aib-ft a{color:#9cc0ff}' +
     '[data-theme="dark"] .shg-aib-prop{background:#2a2312;color:#f5e6c4;border-color:#a8822f}[data-theme="dark"] .shg-aib-no{color:#f5e6c4}';
   document.head.appendChild(style);
 
@@ -125,13 +137,21 @@
   prop.appendChild(pTitle); prop.appendChild(list); prop.appendChild(btns);
 
   var ft = el('div', 'shg-aib-ft');
+  var links = el('div', 'shg-aib-ftl');
   var full = el('a', '', 'पूरा पेज · Full page →');
   full.href = '/admin/easy-settings.php';
+  links.appendChild(full);
+  if (COPILOT) {
+    var sahayak = el('a', 'shg-aib-copilot', '🤖 एआई सहायक · AI Sahayak');
+    sahayak.href = '/admin/ai-copilot.php';
+    sahayak.title = 'एआई सहायक · AI Sahayak';
+    links.appendChild(sahayak);
+  }
   var reload = el('a', '', '↻ पेज ताजा गर्नुहोस् · Reload page');
   reload.href = '#';
   reload.hidden = true;
   reload.addEventListener('click', function (e) { e.preventDefault(); location.reload(); });
-  ft.appendChild(full); ft.appendChild(reload);
+  ft.appendChild(links); ft.appendChild(reload);
 
   sheet.appendChild(hd); sheet.appendChild(form); sheet.appendChild(ex); sheet.appendChild(msg); sheet.appendChild(prop); sheet.appendChild(ft);
 

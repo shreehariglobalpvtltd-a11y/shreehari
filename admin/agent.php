@@ -31,7 +31,10 @@ $canManage    = Auth::can('staff.manage');         // may set the commission rat
 $selfId       = (int) ($admin['id'] ?? 0);
 $viewId       = $selfId;
 $base         = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
-$flash        = null;
+// 16 Nov 2026 (F2 refix): every post redirects back here (end of the actions
+// block), so the result rides the session for exactly one page view.
+$flash        = is_array($_SESSION['shg_agent_flash'] ?? null) ? $_SESSION['shg_agent_flash'] : null;
+unset($_SESSION['shg_agent_flash']);
 
 if ($isSupervisor && isset($_GET['agent']) && (int) $_GET['agent'] > 0) {
     $viewId = (int) $_GET['agent'];
@@ -39,6 +42,93 @@ if ($isSupervisor && isset($_GET['agent']) && (int) $_GET['agent'] > 0) {
 // An agent's own-book scope wins even if a custom permission grants dashboard access.
 $agentScopeId = Auth::bookingScopeAdminId();
 if ($agentScopeId !== null) { $viewId = $agentScopeId; }
+
+/**
+ * 16 Nov 2026 (F2): tell the agent a payout / cash handover was recorded on
+ * this panel - the same owner switch (agent_notify_settlement, Settings →
+ * Agent rules, "WhatsApp the agent on payout / cash handover"), the same
+ * number and the same words as Agent 360's a360_notify_settlement(), so a
+ * settlement reads alike whichever page recorded it. Best effort: a send
+ * failure never undoes the ledger row. Returns the wa.me link when the
+ * WhatsApp driver is click-to-chat (the flash offers it as a one-tap send),
+ * '' otherwise.
+ */
+function agent_settlement_notify(int $agentId, string $entryType, float $amount, int $ledgerId): string
+{
+    if (!Settings::getBool('agent_notify_settlement', true)) {
+        return '';
+    }
+    try {
+        $agent = Database::fetch('SELECT id, phone FROM admins WHERE id = :i', ['i' => $agentId]);
+        if ($agent === null) {
+            return '';
+        }
+        $profile = AgentWallet::profile($agentId);
+        require_once INCLUDE_PATH . '/staffmsg.php';
+        $to = StaffMsg::waDigitsFrom($agent, $profile);
+        if ($to === '') {
+            return '';
+        }
+        $company = Settings::getString('company_name', APP_NAME);
+        $voucher = AgentWallet::voucherFor($ledgerId);
+        $bal     = AgentWallet::balances($agentId);
+        $when    = formatDate(todayISO(), 'j M Y');
+        if ($entryType === 'payout') {
+            $text = $company . ': ' . inr($amount) . ' paid out to you on ' . $when . '.'
+                  . ($voucher !== '' ? ' Voucher ' . $voucher . '.' : '')
+                  . ' Commission balance now ' . inr($bal['commission']) . '.';
+        } else {
+            $text = $company . ': cash handover of ' . inr($amount) . ' received from you on ' . $when . '.'
+                  . ($voucher !== '' ? ' Receipt ' . $voucher . '.' : '')
+                  . ' Cash in hand now ' . inr($bal['cash']) . '.';
+        }
+        $country = resolvePhoneCountry('', (string) (($profile['whatsapp'] ?? '') ?: ($agent['phone'] ?? '')));
+        if ($country === '' && (string) ($profile['id_type'] ?? '') === 'Citizenship') {
+            $country = 'NP';
+        }
+        $res = Notify::whatsapp($to, $text, null, $country !== '' ? $country : null);
+        return is_string($res) && str_starts_with($res, 'https://wa.me/') ? $res : '';
+    } catch (Throwable $e) {
+        Logger::error('agent panel settlement notify failed', ['agent' => $agentId, 'e' => $e->getMessage()]);
+        return '';
+    }
+}
+
+/**
+ * 16 Nov 2026 (F2 refix): advance still out from BEFORE the loans register.
+ * The old Settle block's "Advance given" wrote a bare recordAdvance() debit
+ * (ref 'ADVANCE …', no agent_loans row) - still live until this ships - so
+ * those advances have no register row to repay against. What is left of
+ * them = the ledger's outstanding (advanceSummary: how far the commission
+ * balance is below zero) less what the open register rows still carry,
+ * never more than the bare advances given less the bare repayments (so a
+ * balance pushed negative by something else - a reversed commission - is
+ * not offered as an "advance"). Register rows are 'ADVANCE L<id>'; every
+ * other ADVANCE ref is pre-register. $openLoans must be freshly synced
+ * (AgentWallet::syncLoanRecovery) - their outstanding is the register's.
+ */
+function agent_preregister_advance_out(int $agentId, float $ledgerOut, array $openLoans): float
+{
+    if ($ledgerOut <= 0.009) {
+        return 0.0;
+    }
+    $registerOut = 0.0;
+    foreach ($openLoans as $ol) {
+        $registerOut += (float) ($ol['outstanding'] ?? 0);
+    }
+    try {
+        $bareNet = -(float) Database::scalar(
+            "SELECT COALESCE(SUM(amount), 0) FROM agent_ledger
+              WHERE agent_admin_id = :a AND entry_type = 'adjustment' AND account = 'commission'
+                AND ref LIKE 'ADVANCE%' AND ref NOT REGEXP '^ADVANCE L[0-9]+( |$)'",
+            ['a' => $agentId],
+            0
+        );
+    } catch (Throwable $e) {
+        return 0.0;
+    }
+    return round(max(0.0, min($bareNet, $ledgerOut - $registerOut)), 2);
+}
 
 /* ---- Actions ------------------------------------------------------- */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -231,53 +321,74 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     throw new RuntimeException('Someone else must settle your own account.');
                 }
 
-                AgentWallet::record($targetId, $action, (float) ($_POST['amount'] ?? 0), [
-                    'note' => $_POST['note'] ?? '',
-                    'ref'  => $_POST['ref'] ?? '',
-                    'by'   => $selfId,
-                ]);
+                $setAmt  = round(abs((float) ($_POST['amount'] ?? 0)), 2);
+                $setMeta = ['note' => $_POST['note'] ?? '', 'ref' => $_POST['ref'] ?? '', 'by' => $selfId];
+                /* 16 Nov 2026 (F2 refix): the agent's open request (requestPayout()
+                   allows one at a time) is RESERVED inside AgentWallet::record(), so a
+                   payout that covers it must name it (request_id) - otherwise the usual
+                   whole-balance request (₹700 due, ₹700 asked) refused every payout here
+                   with "Funds are reserved", and the office's WhatsApp "Settle:" link led
+                   to a form that could not settle it. Same as Team Management →
+                   Withdrawals: the agent row locked, the payout written with request_id
+                   and the request marked paid against it in ONE transaction - both or
+                   neither. A payout smaller than the request leaves it open (and held). */
+                $ledgerId = Database::transaction(static function () use ($targetId, $action, $setAmt, $setMeta, $selfId): int {
+                    if ($action !== 'payout') {
+                        return AgentWallet::record($targetId, $action, $setAmt, $setMeta);
+                    }
+                    Database::fetch('SELECT id FROM admins WHERE id = :a FOR UPDATE', ['a' => $targetId]);
+                    $oreq = AgentWallet::openPayoutRequests($targetId)[0] ?? null;
+                    if ($oreq === null) {
+                        return AgentWallet::record($targetId, 'payout', $setAmt, $setMeta);
+                    }
+                    $reqAmt = round((float) $oreq['amount'], 2);
+                    if ($setAmt + 0.009 < $reqAmt) {
+                        $due = AgentWallet::balances($targetId)['commission'];
+                        if ($setAmt > $due - $reqAmt + 0.001 && $setAmt <= $due + 0.001) {
+                            throw new RuntimeException(inr($reqAmt) . ' of the ' . inr($due) . ' due is held for this agent’s open payout request — pay at least '
+                                . inr($reqAmt) . ' here to settle it, or decline the request first (Agent 360 → Requests).');
+                        }
+                        return AgentWallet::record($targetId, 'payout', $setAmt, $setMeta);
+                    }
+                    $lid = AgentWallet::record($targetId, 'payout', $setAmt, $setMeta + ['request_id' => (int) $oreq['id']]);
+                    AgentWallet::decidePayoutRequest((int) $oreq['id'], 'paid', $selfId, 'Settled by payout ' . AgentWallet::voucherFor($lid), $lid);
+                    return $lid;
+                }, 1);
+                $voucher = AgentWallet::voucherFor($ledgerId);
+                // 16 Nov 2026 (F2): tell the agent, like Agent 360 does (agent_notify_settlement).
+                $waLink  = agent_settlement_notify($targetId, $action, $setAmt, $ledgerId);
 
-                $flash = ['ok', $action === 'payout'
-                    ? 'Commission payout recorded.'
-                    : 'Cash handover recorded.'];
+                $flash = ['ok', ($action === 'payout' ? 'Commission payout of ' : 'Cash handover of ') . inr($setAmt)
+                    . ' recorded' . ($voucher !== '' ? ' — voucher ' . $voucher : '') . '.', $waLink];
                 $viewId = $targetId;
 
             } elseif ($action === 'payout_request') {
                 // Self-serve (3 Sep 2026): a counter agent asks the office to pay out
-                // their commission balance. Nothing moves here — the request is an
-                // audit row + a WhatsApp to the office; a supervisor still records
-                // the actual payout (above), which is what clears the balance and
-                // the request.
+                // their commission balance. Nothing moves here; a supervisor still
+                // records the actual payout. 16 Nov 2026 (F2): the request is now an
+                // agent_payout_requests row through AgentWallet::requestPayout() -
+                // the door ticket-statement, the AgentPro app, AgentPro WhatsApp and
+                // the AI tool already use - so accounting's "Open payout requests",
+                // Agent 360 → Requests and the reservation inside AgentWallet::record()
+                // see it. requestPayout() owns the checks (amount up to the
+                // commission due, agent_payout_min, one open request at a time, payout
+                // details verified) and writes the same 'agent.payout_request' audit
+                // row this branch used to write itself.
                 if (!Auth::isCounterAgent() || $targetId !== $selfId) {
                     throw new RuntimeException('Only an agent can request their own payout.');
                 }
-                $bal    = AgentWallet::balances($selfId);
-                $due    = (float) ($bal['commission'] ?? 0);
-                $amount = round((float) ($_POST['amount'] ?? 0), 2);
+                $due     = (float) (AgentWallet::balances($selfId)['commission'] ?? 0);
+                $amount  = round((float) ($_POST['amount'] ?? 0), 2);
                 if ($amount <= 0) { $amount = $due; }
-                if ($due <= 0 || $amount > $due + 0.009) {
-                    throw new RuntimeException('You can request up to your commission due (' . inr($due) . ').');
-                }
-                $pendingReq = Database::fetch(
-                    "SELECT id, created_at FROM audit_logs
-                      WHERE action = 'agent.payout_request' AND entity_type = 'admin' AND entity_id = :a
-                        AND created_at > COALESCE((SELECT MAX(created_at) FROM agent_ledger WHERE agent_admin_id = :b AND entry_type = 'payout'), '1970-01-01')
-                      ORDER BY id DESC LIMIT 1",
-                    ['a' => (string) $selfId, 'b' => $selfId]
-                );
-                if ($pendingReq !== null) {
-                    throw new RuntimeException('Your payout request from ' . formatDate(substr((string) $pendingReq['created_at'], 0, 10)) . ' is still with the office.');
-                }
                 $reqNote = Security::clean((string) ($_POST['note'] ?? ''), 200);
-                Logger::audit('agent.payout_request', 'admin', (string) $selfId, null,
-                    ['amount' => $amount, 'due' => $due, 'note' => $reqNote], 'Agent requested a commission payout');
+                AgentWallet::requestPayout($selfId, $amount, $reqNote);
                 try {
                     $office = Settings::getString('admin_whatsapp', Settings::officePhone());
                     if ($office !== '') {
                         Notify::whatsapp($office, "💸 Payout request\n" . (string) ($admin['full_name'] ?? ($admin['username'] ?? 'Agent'))
                             . ' (' . AgentWallet::agentCodeLabel($selfId) . ') asks for ' . inr($amount) . ' of ' . inr($due) . ' commission due.'
                             . ($reqNote !== '' ? "\nNote: " . $reqNote : '')
-                            . "\nSettle: " . appUrl('admin/agent.php?agent=' . $selfId));
+                            . "\nSettle: " . appUrl('admin/agent.php?agent=' . $selfId . '&tab=wallet#settleBox'));   // the Settle block lives on the Wallet tab
                     }
                 } catch (Throwable $e) {
                     Logger::error('payout_request notify failed', ['e' => $e->getMessage()]);
@@ -308,25 +419,71 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $flash = ['ok', 'Salary ' . inr($paid) . ' credited — pay it out from the commission balance below.'];
                 $viewId = $targetId;
 
-            } elseif ($action === 'advance') {
+            } elseif ($action === 'advance' || $action === 'loan_issue' || $action === 'loan_repay') {
                 // Advance against future commission (Point 7). Same settle-desk
                 // right as a payout; nobody may advance to their own account.
+                // 16 Nov 2026 (F2): through the loans register, like Agent 360.
+                // issueLoan() writes the SAME recordAdvance() commission debit
+                // (ref 'ADVANCE L<id>') plus the agent_loans row that Agent 360's
+                // Loans tab and syncLoanRecovery() read; recovery 'full' = future
+                // commission nets it, exactly what the bare advance did. A cash
+                // repayment is repayLoan() against one of THIS agent's open
+                // register rows: the same recordAdvance() credit, capped at what
+                // is still out on that advance (the bare "repaid" credit had no
+                // cap at all). The form posts loan_issue / loan_repay; 'advance'
+                // (+ advance_kind) is still read, so a panel left open from before
+                // goes through the register too and never writes a bare advance.
+                // F2 refix: an advance given BEFORE the register (bare 'ADVANCE'
+                // debit, no agent_loans row) is repaid as loan_id 'pre' - or by an
+                // old panel's "repaid", which never sent a loan_id - with the same
+                // bare 'ADVANCE' credit the old form wrote, now capped at what is
+                // still out on those advances (agent_preregister_advance_out).
                 if (!$canSettle) {
                     throw new RuntimeException('You are not allowed to settle agent accounts.');
                 }
                 if ($targetId === $selfId && !Auth::isSuperadmin()) {
                     throw new RuntimeException('Someone else must record your own advance.');
                 }
-                $advKind = (($_POST['advance_kind'] ?? 'given') === 'repaid') ? 'repaid' : 'given';
-                $advAmt  = abs((float) ($_POST['amount'] ?? 0));
-                AgentWallet::recordAdvance($targetId, $advKind === 'repaid' ? -$advAmt : $advAmt, [
-                    'note' => $_POST['note'] ?? '',
-                    'ref'  => $_POST['ref'] ?? '',
-                    'by'   => $selfId,
-                ]);
-                $flash = ['ok', $advKind === 'repaid'
-                    ? 'Advance repayment recorded — commission balance updated.'
-                    : 'Advance recorded — it will auto-deduct from this agent’s future commission until settled.'];
+                $advAmt  = round(abs((float) ($_POST['amount'] ?? 0)), 2);
+                $advRef  = trim(Security::clean((string) ($_POST['ref'] ?? ''), 60));
+                $advNote = trim(Security::clean((string) ($_POST['note'] ?? ''), 180));
+                $advNote = trim($advNote . ($advRef !== '' ? ($advNote !== '' ? ' · ' : '') . 'ref ' . $advRef : ''));
+                $repay   = $action === 'loan_repay' || ($action === 'advance' && ($_POST['advance_kind'] ?? 'given') === 'repaid');
+                $loanPick = trim((string) ($_POST['loan_id'] ?? ''));
+                if ($repay && ($loanPick === 'pre' || ($action === 'advance' && $loanPick === ''))) {
+                    if ($advAmt <= 0) {
+                        throw new RuntimeException('Enter the amount repaid.');
+                    }
+                    Database::transaction(static function () use ($targetId, $advAmt, $advNote, $selfId, $loanPick): void {
+                        Database::fetch('SELECT id FROM admins WHERE id = :a FOR UPDATE', ['a' => $targetId]);
+                        AgentWallet::syncLoanRecovery($targetId);
+                        $preOut = agent_preregister_advance_out($targetId, AgentWallet::advanceSummary($targetId)['outstanding'], AgentWallet::loans($targetId, 'open'));
+                        if ($preOut <= 0.009) {
+                            throw new RuntimeException($loanPick === 'pre'
+                                ? 'Nothing is still out on this agent’s advances from before the register.'
+                                : 'Choose which of this agent’s open advances is being repaid.');
+                        }
+                        if ($advAmt > $preOut + 0.009) {
+                            throw new RuntimeException('That is more than the ' . inr($preOut) . ' still out on this agent’s advances from before the register.');
+                        }
+                        AgentWallet::recordAdvance($targetId, -$advAmt, [
+                            'note' => 'Repayment on the advance from before the register' . ($advNote !== '' ? ' — ' . $advNote : ''),
+                            'ref'  => '',   // bare 'ADVANCE' (never 'ADVANCE L<n>': that would read as register row n's cash)
+                            'by'   => $selfId,
+                        ]);
+                    }, 1);
+                    $flash = ['ok', 'Repayment of ' . inr($advAmt) . ' recorded on the advance from before the register — commission balance updated.'];
+                } elseif ($repay) {
+                    $loan = AgentWallet::loan((int) $loanPick);
+                    if ($loan === null || (int) $loan['agent_admin_id'] !== $targetId) {
+                        throw new RuntimeException('Choose which of this agent’s open advances is being repaid.');
+                    }
+                    AgentWallet::repayLoan((int) $loan['id'], $advAmt, $advNote, $selfId);
+                    $flash = ['ok', 'Repayment of ' . inr($advAmt) . ' recorded on ' . AgentWallet::loanLabel($loan) . ' — commission balance updated.'];
+                } else {
+                    $loanId = AgentWallet::issueLoan($targetId, 'advance', $advAmt, 'full', 0.0, $advNote, $selfId);
+                    $flash  = ['ok', 'Advance #' . $loanId . ' of ' . inr($advAmt) . ' recorded — it will auto-deduct from this agent’s future commission until settled.'];
+                }
                 $viewId = $targetId;
 
             } elseif ($action === 'tier_rates') {
@@ -426,6 +583,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $flash = ['bad', $e->getMessage()];
         }
     }
+    /* 16 Nov 2026 (F2 refix): redirect after EVERY post, like agents.php and
+       Agent 360. The CSRF token does not rotate, so a refresh of a rendered
+       POST response sent the form again: a second cash handover, a second
+       advance on the register, a second WhatsApp to the agent. The result
+       (and any wa.me send link) rides the session to the next view; the
+       agent being viewed and the tab come back with it. */
+    $_SESSION['shg_agent_flash'] = $flash;
+    $backQ = [];
+    if ($isSupervisor && $agentScopeId === null && $viewId !== $selfId) {
+        $backQ['agent'] = $viewId;
+    }
+    $backTab = (string) ($_GET['tab'] ?? '');
+    if (preg_match('/^[a-z]{1,20}$/', $backTab) === 1) {
+        $backQ['tab'] = $backTab;
+    }
+    Response::redirect('admin/agent.php' . ($backQ !== [] ? '?' . http_build_query($backQ) : ''));
 }
 
 $viewing = Database::fetch('SELECT id, username, email, full_name, role, is_active, last_login_at, last_login_ip, must_change_pw, locked_until FROM admins WHERE id = :id', ['id' => $viewId]);
@@ -475,23 +648,14 @@ if (($_GET['export'] ?? '') === 'ledger') {
 $profile  = AgentWallet::profile($viewId);
 $balances = AgentWallet::balances($viewId);
 
-/* Open payout request (self-serve, 3 Sep 2026): the newest request logged
-   after the last recorded payout. Shown to the agent as "waiting" and to a
-   supervisor as a nudge above the settle panel. */
-$payoutReq    = null;
-$payoutReqAmt = 0.0;
-try {
-    $payoutReq = Database::fetch(
-        "SELECT new_value, created_at FROM audit_logs
-          WHERE action = 'agent.payout_request' AND entity_type = 'admin' AND entity_id = :a
-            AND created_at > COALESCE((SELECT MAX(created_at) FROM agent_ledger WHERE agent_admin_id = :b AND entry_type = 'payout'), '1970-01-01')
-          ORDER BY id DESC LIMIT 1",
-        ['a' => (string) $viewId, 'b' => $viewId]
-    );
-    if ($payoutReq !== null) {
-        $payoutReqAmt = (float) ((json_decode((string) $payoutReq['new_value'], true) ?: [])['amount'] ?? 0);
-    }
-} catch (Throwable $e) { $payoutReq = null; }
+/* Open payout request (self-serve, 3 Sep 2026): shown to the agent as
+   "waiting" and to a supervisor as a nudge above the settle panel.
+   16 Nov 2026 (F2): read from agent_payout_requests (AgentWallet::requestPayout
+   writes it), not inferred from audit rows - a request the office declined is
+   no longer "waiting" forever, and one made from the app / WhatsApp / Ticket
+   Statement shows here too. */
+$payoutReq    = AgentWallet::openPayoutRequests($viewId)[0] ?? null;
+$payoutReqAmt = $payoutReq !== null ? (float) $payoutReq['amount'] : 0.0;
 
 $summary  = AgentWallet::summary($viewId);
 $pct      = AgentWallet::commissionPercentFor($viewId);
@@ -503,6 +667,16 @@ $deposit    = AgentWallet::depositInfo($viewId);
 $advance    = AgentWallet::advanceSummary($viewId);
 $ledger   = AgentWallet::entries($viewId, 25);
 $papers   = AgentWallet::offlineTickets($viewId, 10);
+/* 16 Nov 2026 (F2): the Settle block's "advance repaid" picks one of this
+   agent's open register rows - synced first, as Agent 360 does, so the
+   outstanding figures are today's. Only for someone who may settle. */
+$openLoans = [];
+$preAdvOut = 0.0;   // F2 refix: still out on advances given before the register (repaid as loan_id 'pre')
+if ($canSettle && !($viewId === $selfId && !Auth::isSuperadmin())) {
+    AgentWallet::syncLoanRecovery($viewId);
+    $openLoans = AgentWallet::loans($viewId, 'open');
+    $preAdvOut = agent_preregister_advance_out($viewId, $advance['outstanding'], $openLoans);
+}
 
 /* ---- Date windows -------------------------------------------------- */
 $today      = todayISO();
@@ -640,6 +814,21 @@ $recent = Database::fetchAll(
     ['a' => $viewId]
 );
 
+/* ---- P8-5d (16 Nov 2026): मेरा फलो-अप · My follow-ups ------------------
+   Open help-desk tickets on THIS agent's own sales ($viewId is already
+   scope-checked above: an agent reaches only their own, office staff the
+   agent they opened). Number, category, status, due and PNR only — never
+   the message or the customer's phone, and SERVICE tickets only
+   (HelpDesk::SELLER_CATEGORIES): a fake-ticket report, complaint, staff,
+   safety or payment case may be about this seller and never shows here.
+   Hidden while agent_followups_on is 0. */
+$followupsOn = Settings::getBool('agent_followups_on', false);
+$followups   = [];
+if ($followupsOn) {
+    require_once INCLUDE_PATH . '/helpdesk.php';
+    $followups = HelpDesk::forSeller($viewId, 20);
+}
+
 /* ---- Daily Quota & Sub-Agent Staff Hierarchy (2026 upgrade) -------- */
 $dailyLimit = (int) ($profile['daily_booking_limit'] ?? 0);
 $todayBookedSeats = (int) Database::scalar(
@@ -732,7 +921,11 @@ admin_header($isOwn ? 'My Agent Panel' : 'Agent · ' . (string) $viewing['full_n
 echo LiveSync::anchor('agent:' . $viewId, 'pill');
 
 if ($flash !== null) {
-    echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>';
+    // A settlement flash may carry the click-to-chat link of the agent's WhatsApp receipt (agent_settlement_notify).
+    $flashWa = (string) ($flash[2] ?? '');
+    echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1])
+        . (str_starts_with($flashWa, 'https://wa.me/') ? ' <a class="btn ok" href="' . Security::e($flashWa) . '" target="_blank" rel="noopener">📲 एजेन्टलाई WhatsApp · Send to the agent</a>' : '')
+        . '</div>';
 }
 ?>
 <?php if ($isSupervisor && $agentList !== []): ?>
@@ -1121,7 +1314,8 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
   </div>
 </div>
 <?php elseif ($payoutReq !== null && $canSettle): ?>
-<div class="flash" data-pane="balance wallet" style="background:#fff3e0;color:#7a3e00">💸 Pending payout request: <strong><?= Security::e(inr($payoutReqAmt)) ?></strong> asked on <?= Security::e(formatDate(substr((string) $payoutReq['created_at'], 0, 10))) ?> — record the payout below to clear it.</div>
+<div class="flash" data-pane="balance wallet" style="background:#fff3e0;color:#7a3e00">💸 Pending payout request: <strong><?= Security::e(inr($payoutReqAmt)) ?></strong> asked on <?= Security::e(formatDate(substr((string) $payoutReq['created_at'], 0, 10))) ?> — the amount is held for it. A payout of at least that much in Wallet → Settle pays it; to decline it, use Agent 360 → Requests.
+  <?php if ($ckCan360): ?><a class="btn ghost" href="/admin/agent-360.php?agent=<?= $viewId ?>&amp;tab=requests" style="margin-left:6px">अनुरोध · Requests →</a><?php endif; ?></div>
 <?php endif; ?>
 
 <!-- MY COUNTER STAFF (SUB-AGENTS) MANAGER -->
@@ -1493,9 +1687,11 @@ $ckHave = array_column($badges, 'label');
       <input type="hidden" name="agent_id" value="<?= $viewId ?>">
       <input type="hidden" name="action" value="payout">
       <strong style="font-size:13px">Pay commission to the agent</strong>
-      <div class="muted" style="font-size:12px;margin:4px 0 8px"><?= Security::e(inr($balances['commission'])) ?> currently owed</div>
+      <div class="muted" style="font-size:12px;margin:4px 0 8px"><?= Security::e(inr($balances['commission'])) ?> currently owed<?php if ($payoutReq !== null): ?>
+        · the agent asked for <?= Security::e(inr($payoutReqAmt)) ?> — paying at least that settles the request<?php endif; ?></div>
       <div class="row-actions">
         <input type="number" name="amount" step="0.01" min="0.01" max="<?= Security::e(number_format($balances['commission'], 2, '.', '')) ?>"
+               <?= $payoutReq !== null ? 'value="' . Security::e(number_format($payoutReqAmt, 2, '.', '')) . '"' : '' ?>
                placeholder="Amount" required style="width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
         <input type="text" name="ref" maxlength="80" placeholder="UPI / voucher ref"
                style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
@@ -1519,8 +1715,8 @@ $ckHave = array_column($badges, 'label');
     <form method="post">
       <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
       <input type="hidden" name="agent_id" value="<?= $viewId ?>">
-      <input type="hidden" name="action" value="advance">
-      <strong style="font-size:13px">💸 Advance against future commission</strong>
+      <input type="hidden" name="action" value="loan_issue">
+      <strong style="font-size:13px">💸 पेश्की · Advance against future commission</strong>
       <div class="muted" style="font-size:12px;margin:4px 0 8px">
         <?php if ($advance['outstanding'] > 0): ?>
           <?= Security::e(inr($advance['outstanding'])) ?> still to recover from this agent’s commission.
@@ -1529,20 +1725,41 @@ $ckHave = array_column($badges, 'label');
         <?php endif; ?>
       </div>
       <div class="row-actions">
-        <select name="advance_kind" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-          <option value="given">Advance given</option>
-          <option value="repaid">Repayment / correction</option>
-        </select>
         <input type="number" name="amount" step="0.01" min="0.01"
                placeholder="Amount" required style="width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
         <input type="text" name="ref" maxlength="60" placeholder="Voucher / note ref"
                style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-        <button class="btn" type="submit">Record advance</button>
+        <button class="btn" type="submit">Give advance</button>
       </div>
       <div class="muted" style="font-size:11px;margin-top:6px">
         Unlike a payout, an advance may exceed the commission owed today — it is fronted before it is earned.
+        It goes on the loans register (Agent 360 → Loans).
       </div>
     </form>
+    <?php if ($openLoans !== [] || $preAdvOut > 0.009): ?>
+    <form method="post">
+      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+      <input type="hidden" name="agent_id" value="<?= $viewId ?>">
+      <input type="hidden" name="action" value="loan_repay">
+      <strong style="font-size:13px">↩ पेश्की फिर्ता · Advance repaid in cash</strong>
+      <div class="muted" style="font-size:12px;margin:4px 0 8px">Cash the agent returned against one advance — up to what is still out on it.</div>
+      <div class="row-actions">
+        <select name="loan_id" required style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;max-width:100%">
+          <?php foreach ($openLoans as $ol): ?>
+            <option value="<?= (int) $ol['id'] ?>"><?= Security::e(AgentWallet::loanLabel($ol) . ' · ' . inr((float) $ol['outstanding']) . ' out') ?></option>
+          <?php endforeach; ?>
+          <?php if ($preAdvOut > 0.009): ?>
+            <option value="pre"><?= Security::e('पुरानो पेश्की · Advance from before the register · ' . inr($preAdvOut) . ' out') ?></option>
+          <?php endif; ?>
+        </select>
+        <input type="number" name="amount" step="0.01" min="0.01"
+               placeholder="Amount" required style="width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+        <input type="text" name="ref" maxlength="60" placeholder="Receipt no"
+               style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+        <button class="btn" type="submit">Record repayment</button>
+      </div>
+    </form>
+    <?php endif; ?>
   </div>
   <p class="muted" style="padding:0 18px 14px;font-size:12px;margin:0">
     Cancelling a booking takes its commission back automatically. Cash is never reversed automatically —
@@ -1583,6 +1800,12 @@ $ckHave = array_column($badges, 'label');
               · <a class="mono" href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $l['pnr']) ?>"><?= Security::e((string) $l['pnr']) ?></a>
             <?php elseif ((string) ($l['ref'] ?? '') !== ''): ?>
               <span class="mono muted" style="font-weight:600"> · <?= Security::e((string) $l['ref']) ?></span>
+            <?php endif; ?>
+            <?php /* 16 Nov 2026 (F2): the printable voucher for a row that is not a sale -
+                     payout, cash handover, advance, salary, correction. agent-receipt.php
+                     opens it for the office (commissions.view) and for this agent's own rows. */
+            if (empty($l['pnr'])): ?>
+              <a class="no-print" href="<?= $base ?>/admin/agent-receipt.php?id=<?= (int) $l['id'] ?>" target="_blank" rel="noopener" title="रसिद · Printable receipt" style="font-size:12.5px;font-weight:600;white-space:nowrap">🧾 रसिद · Receipt</a>
             <?php endif; ?></div>
           <div class="sub"><?= Security::e(ucfirst((string) $l['account'])) ?> account<?= $l['by_name'] ? ' · by ' . Security::e((string) $l['by_name']) : '' ?><?= (string) ($l['note'] ?? '') !== '' ? ' · ' . Security::e(truncate((string) $l['note'], 90)) : '' ?></div>
         </div>
@@ -1959,6 +2182,39 @@ $ckHave = array_column($badges, 'label');
       <?php endforeach; ?>
     </tbody>
   </table>
+</div>
+<?php endif; ?>
+
+<?php if ($followupsOn): ?>
+<!-- ============ P8-5d: मेरा फलो-अप · My follow-ups ============ -->
+<div class="panel" id="followupsBox" data-pane="sales balance">
+  <h2>🛟 <?= $isOwn ? 'मेरा फलो-अप · My follow-ups' : 'एजेन्टको फलो-अप · Agent follow-ups' ?>
+    <span class="pill" style="color:#1f4f96;background:#e1ecfb;font-size:12px"><?= count($followups) ?></span></h2>
+  <table class="card-table">
+    <thead><tr><th>नम्बर · Ref</th><th>विषय · Category</th><th>स्थिति · Status</th><th>म्याद · Due</th><th>PNR</th></tr></thead>
+    <tbody>
+      <?php if ($followups === []): ?>
+        <tr><td colspan="5" class="muted" style="padding:16px">खुला फलो-अप छैन · No open follow-ups on <?= $isOwn ? 'your' : 'these' ?> sales.</td></tr>
+      <?php else: foreach ($followups as $fu):
+        $fuSt   = $fu['status'] === 'in_progress' ? ['#1f4f96', '#e1ecfb', 'हेर्दैछ · In progress'] : ['#8a6d00', '#fff4d1', 'खुला · Open'];
+        $fuDue  = $fu['due_at'] !== null ? (int) strtotime($fu['due_at']) : 0;
+        $fuLate = $fuDue > 0 && $fuDue < time();
+      ?>
+        <tr>
+          <td class="mono" data-label="नम्बर · Ref"><strong><?= Security::e($fu['ticket_ref']) ?></strong></td>
+          <td data-label="विषय · Category"><span><?= Security::e(HelpDesk::label($fu['category'], 'ne')) ?>
+            <span class="muted"> · <?= Security::e(HelpDesk::label($fu['category'])) ?></span></span></td>
+          <td data-label="स्थिति · Status"><span class="pill" style="color:<?= $fuSt[0] ?>;background:<?= $fuSt[1] ?>"><?= Security::e($fuSt[2]) ?></span></td>
+          <td data-label="म्याद · Due"><?php if ($fuDue <= 0): ?><span class="muted">—</span><?php else: ?>
+            <span><?= Security::e(formatDate(date('Y-m-d', $fuDue)) . ' ' . date('H:i', $fuDue)) ?>
+            <?php if ($fuLate): ?> <span class="pill" style="color:#8a1f1f;background:#f7dcdc">⏰ ढिलो · Overdue</span><?php endif; ?></span>
+          <?php endif; ?></td>
+          <td class="mono" data-label="PNR"><a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode($fu['pnr']) ?>"><?= Security::e($fu['pnr']) ?></a></td>
+        </tr>
+      <?php endforeach; endif; ?>
+    </tbody>
+  </table>
+  <p class="muted" style="font-size:12px;margin:8px 0 0">कार्यालयले यी टिकट हेर्छ — यात्रुसँग कुरा गर्दा नम्बर भन्नुहोस् · The office handles these tickets; quote the number when you talk to the passenger.</p>
 </div>
 <?php endif; ?>
 

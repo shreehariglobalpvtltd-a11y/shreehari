@@ -26,6 +26,10 @@
  * (the same as the outbound message log). No new message to any customer —
  * except P6-3b: with wa_handoff_msg_on ON (default OFF) "Pause bot" offers a
  * "Tell the customer" tick that sends ONE fixed in-window line (WaInbox::handoffNotice).
+ * P6-9d: with wa_inbox_promo_link_on ON (default OFF) a chat header shows
+ * "🎁 अफर · Offer" to someone who may create campaigns (marketing.send):
+ * a link to a NEW campaign for this one number — it sends nothing; the
+ * Campaigns page keeps its STOP / opt-in, template, test and daily-cap rules.
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
@@ -38,6 +42,7 @@ $canSet  = Auth::canManageSettings();
 $canDesk = Auth::can('support.reply');
 $canBook = Auth::can('bookings.view');
 $canSent = Auth::can('dashboard.view');
+$canPromo = WaInbox::promoLinkOn();                 // P6-9d: wa_inbox_promo_link_on (OFF) + may create a campaign
 $e       = static fn($v): string => Security::e((string) $v);
 $tab     = in_array($_GET['tab'] ?? '', ['inbox', 'contacts', 'groups', 'sent'], true) ? (string) $_GET['tab'] : 'inbox';
 if ($tab === 'sent' && !$canSent) {
@@ -269,6 +274,13 @@ admin_page_head('Every WhatsApp message to the office number, with what the bot 
 .wi-tell{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;min-height:40px;font-size:13px;font-weight:700;cursor:pointer}
 .wi-tell input{width:18px;height:18px;margin:0}
 .wi-tell small{font-weight:400;flex-basis:100%}
+/* 16 Nov 2026 (F3): the floating corner button sat on the right end of "Pause bot 2 h" at 360px
+   whenever the page scrolled that row past it - the AI settings bubble (.shg-aib-fab, 52px, 14-16px
+   from the right edge) or, for staff without it, the "🤖 AI" link (.adm-ai-go, about 67px, 16px in).
+   The Pause / Resume row keeps that corner's width free, so its buttons wrap before the button's
+   column and no scroll position puts one under it. No floating button = no padding (as before). */
+body:has(.shg-aib-fab) .wi-pause{padding-right:64px}
+body:has(.adm-ai-go) .wi-pause{padding-right:80px}
 </style>
 
 <?php if ($flash): ?><div class="flash <?= $flash[0] === 'ok' ? 'ok' : 'bad' ?>"><?= $e($flash[1]) ?></div><?php endif; ?>
@@ -405,6 +417,7 @@ admin_page_head('Every WhatsApp message to the office number, with what the bot 
           <div class="wi-acts">
             <a class="btn btn-ghost btn-sm" href="customers.php?q=<?= $e($local) ?>">Customer 360</a>
             <?php if ($canBook): ?><a class="btn btn-ghost btn-sm" href="<?= $e('smartbook.php?' . http_build_query(['cphone' => $local, 'cname' => $name])) ?>">🎫 टिकट बुक · Book for them</a><?php endif; ?>
+            <?php if ($canPromo && ($promoHref = WaInbox::promoLink($local)) !== ''): ?><a class="btn btn-ghost btn-sm" id="wiPromo" href="<?= $e($promoHref) ?>" title="नयाँ campaign यो एउटा नम्बरका लागि — केही पठाइँदैन · A new campaign for this one number — nothing is sent from here">🎁 अफर · Offer</a><?php endif; ?>
             <?php if ($canDesk): ?>
               <form method="post" onsubmit="return confirm('Open a Help Desk ticket for this chat? The customer is not messaged.')"><?= Security::csrfField() ?>
                 <input type="hidden" name="action" value="escalate"><input type="hidden" name="phone" value="<?= $e($open) ?>">
@@ -437,7 +450,7 @@ admin_page_head('Every WhatsApp message to the office number, with what the bot 
               <textarea name="text" id="wiText" maxlength="1000" placeholder="नमस्ते, ..."></textarea></label>
             <p class="wi-inline"><button class="btn" type="submit" id="wiSend">Send on WhatsApp</button><span class="wi-say" id="wiSay" role="status" aria-live="polite"></span></p>
           </form>
-          <form method="post" class="wi-inline">
+          <form method="post" class="wi-inline wi-pause">
             <?= Security::csrfField() ?>
             <input type="hidden" name="action" value="pause"><input type="hidden" name="phone" value="<?= $e($open) ?>">
             <?php if ($pausedTo > time()): ?>

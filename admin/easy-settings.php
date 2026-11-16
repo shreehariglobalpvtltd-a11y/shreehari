@@ -32,6 +32,15 @@
  * replies. All OFF / 0 / classic until the owner flips them; the festival
  * dates themselves are edited on admin/themes.php.
  *
+ * 16 Nov 2026 (Master v2, Y2): S Hari AI makes an offer / coupon from a
+ * sentence ("coupon DIWALI10 10% max 200 till 30 Nov") — shown first, made
+ * only on "Yes", and always made OFF (never auto-applied): it gives no
+ * discount until the office switches it ON on admin/offers.php. "offer band
+ * DIWALI10" switches an ON offer OFF; the AI never switches one ON. Needs
+ * coupons.edit (the Offers page's own gate). Four more switches from the Y
+ * units: agent follow-ups, cancel follow-up ₹ threshold, agent cash on
+ * WhatsApp, offer link in the WhatsApp inbox — all OFF / 0.
+ *
  * Nothing here can touch a setting outside $ES_KEYS; every save is audited
  * (Settings::set + Logger::audit, secrets masked). Super-admin / settings
  * managers only (Auth::canManageSettings, the same gate as settings.php).
@@ -43,7 +52,7 @@ $canEdit = Auth::canManageSettings();
 require_once INCLUDE_PATH . '/aiops.php';
 /* 6 Nov 2026: S Hari AI also changes fares, routes, bus numbers, extra seats, commission — each
    action checks its own permission (AiOps::allowed), so a routes / schedules manager may command too. */
-$canCmd = $canEdit || Auth::can('routes.edit') || Auth::can('schedules.manage');
+$canCmd = $canEdit || Auth::can('routes.edit') || Auth::can('schedules.manage') || Auth::can('coupons.edit');   // Y2: an offers manager may make an offer by sentence
 $e = static fn($v): string => Security::e((string) ($v ?? ''));
 
 /* ---- the whitelist: key => [label, type, words that name it, options] ----
@@ -209,7 +218,7 @@ admin_header('🤖 S Hari AI · सेटिङ र काम (बोलेर)'
     </form>
     <div class="ex">
       <?php foreach (['Surat ko bhada 2300', 'sabai pickup ko bhada 100 badha do', 'bholi 1 baje jane bus band', 'Seat U15 block karo kal', 'Naya pickup: Gandhinagar 22:30', 'Bus 02 ko number GJ05AB1234', 'Rajkot route band', 'Surat Rupaidiha matra', '10 extra seat', 'cancel fine 500', 'SHG-0027 commission 250', 'whatsapp bot band gara', 'PIN pattern login chalu',
-                      '24 ghanta reminder on karo', 'device limit agent 2', 'bholi jane bus 2 ghanta late'] as $x): ?>
+                      '24 ghanta reminder on karo', 'device limit agent 2', 'bholi jane bus 2 ghanta late', 'coupon DIWALI10 10% max 200 till 30 Nov', 'naya coupon SHG50 ₹50 off 50 jana'] as $x): ?>
         <button type="button" onclick="document.getElementById('esCmd').value=this.textContent;document.getElementById('esCmd').focus()"><?= $e($x) ?></button>
       <?php endforeach; ?>
     </div>
@@ -318,7 +327,7 @@ admin_header('🤖 S Hari AI · सेटिङ र काम (बोलेर)'
         </form>
       <?php endforeach; ?>
     </div>
-    <p class="muted">यिनलाई बोलेर पनि बदल्न सकिन्छ — जस्तै "device limit agent 2", "whatsapp daily cap 500", "group discount 10 percent", "return discount 5 percent", "luggage fee 200"।</p>
+    <p class="muted">यिनलाई बोलेर पनि बदल्न सकिन्छ — जस्तै "device limit agent 2", "whatsapp daily cap 500", "group discount 10 percent", "return discount 5 percent", "luggage fee 200", "cancel followup 3000"।</p>
   </div>
 
   <div class="card">

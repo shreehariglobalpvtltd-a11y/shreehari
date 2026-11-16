@@ -18,6 +18,7 @@ define('SHG_APP', true);
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/helpdesk.php';
 require_once INCLUDE_PATH . '/brand.php';   // emblem (no baked name, no white tile) + SVG flags — 9 Oct 2026
+require_once INCLUDE_PATH . '/themetokens.php';   // the app's weekly accent (16 Nov 2026, P5-4a)
 
 Security::requireRateLimit('help_page', Security::clientIp(), 60, 60);
 
@@ -80,11 +81,20 @@ header('X-Robots-Tag: noindex');
 <?= Brand::iconLinks() ?>
 <script>/* The app's saved theme before the first frame (8 Oct 2026): localStorage 'shg:theme' = light | dark | amoled, else the phone's setting. */
 (function(){try{var d=document.documentElement,t=(localStorage.getItem('shg:theme')||'').replace(/"/g,'');if(t!=='light'&&t!=='dark'&&t!=='amoled')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.setAttribute('data-theme',t==='light'?'light':'dark');if(t==='amoled')d.setAttribute('data-display','amoled')}catch(e){}})();</script>
+<?= ThemeTokens::accentHead() ?>
 <style>
 :root{--blue:#2E5FA8;--navy:#12264E;--orange:#F07C1F;--ok:#178A50;--warn:#B7791F;--bad:#C53030;--ink:#16233C;--muted:#5C6B85;--line:#E2E9F4;--bg:#F6F8FC;--card:#fff;--chip:#EEF3FB}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#F1F5FB;--muted:#A9B6CC;--line:#243352;--bg:#0E1626;--card:#16213A;--chip:#1C2A47}}
 :root[data-theme="dark"]{--ink:#F1F5FB;--muted:#A9B6CC;--line:#243352;--bg:#0E1626;--card:#16213A;--chip:#1C2A47;color-scheme:dark}
 :root[data-display="amoled"]{--ink:#EEF4FF;--muted:#ACBBD0;--line:#2C3D55;--bg:#000;--card:#101822;--chip:#1A2638;--blue:#28579C}
+/* 16 Nov 2026 (P5-4a): the app's weekly accent (includes/themetokens.php) on the page's own blue only.
+   --blue carries white text in every theme, so dark takes the solid accent. No data-accent = the blue above. */
+:root[data-theme="light"][data-accent]{--blue:var(--royal)}
+:root[data-theme="dark"][data-accent]{--blue:var(--accent-fill)}
+/* The complaint-status dot is status, not brand (16 Nov 2026 fix): 'in progress' keeps its own blue (--prog, the --blue
+   values above) on every day, so it never looks like 'resolved' green (Thursday) or 'open' amber (Saturday). */
+:root{--prog:#2E5FA8}
+:root[data-display="amoled"]{--prog:#28579C}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Devanagari','Noto Sans',sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
 .wrap{max-width:560px;margin:0 auto;padding:16px 16px calc(28px + env(safe-area-inset-bottom))}
@@ -134,7 +144,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--blue)}
 .muted{color:var(--muted);font-size:13.5px}
 .st{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px}
 .dot{width:12px;height:12px;border-radius:50%;background:var(--warn)}
-.dot.in_progress{background:var(--blue)}.dot.resolved,.dot.closed{background:var(--ok)}
+.dot.in_progress{background:var(--prog)}.dot.resolved,.dot.closed{background:var(--ok)}
 .msgs{display:flex;flex-direction:column;gap:8px;margin-top:12px}
 .m{max-width:88%;padding:9px 12px;border-radius:14px;font-size:14px;white-space:pre-wrap;word-break:break-word}
 .m.you{align-self:flex-end;background:var(--chip)}

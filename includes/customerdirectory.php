@@ -9,7 +9,9 @@
  *  for marketing:
  *
  *    date (booking date or travel date) · agent / counter / online ·
- *    route · country (IN/NP) · status · min trips · lapsed since · search
+ *    route · country (IN/NP) · status · min trips · lapsed since · search ·
+ *    phone (16 Nov 2026, P6-9d: ONE number, exact match - the WhatsApp
+ *    inbox "🎁 Offer" link builds a campaign for just that person)
  *
  *  agentBreakdown() answers "whose customers, how many" for the same
  *  filters. phones() feeds the campaign audience and the exports, and
@@ -52,6 +54,11 @@ final class CustomerDirectory
             'alt'     => (string) ($in['alt'] ?? '1') !== '0',
             'leads'   => (string) ($in['leads'] ?? '0') === '1',
             'q'       => trim(Security::clean((string) ($in['q'] ?? ''), 60)),
+            // 16 Nov 2026 (v2.0 P6-9d): ONE number, matched exactly (never a LIKE) - the
+            // "🎁 Offer" link in the WhatsApp inbox. The last 10 digits of what was given;
+            // a number shorter than 10 digits stays as given and then matches nobody (base()),
+            // so a bad link can never widen into "all customers".
+            'phone'   => self::phoneFilter($in['phone'] ?? ''),
         ];
         $range = (string) ($in['range'] ?? '');
         $today = date('Y-m-d');
@@ -68,12 +75,40 @@ final class CustomerDirectory
         return $f;
     }
 
+    /**
+     * The exact-number filter: '' = not asked; otherwise the digits given, cut
+     * to the last 10 when longer (+91 / +977 prefixes). Anything that is not
+     * then exactly 10 digits matches nobody in base() / leads().
+     */
+    private static function phoneFilter(mixed $v): string
+    {
+        if (!is_scalar($v)) {
+            return 'x';                              // asked, but not a number: match nobody
+        }
+        $raw = trim((string) $v);
+        if ($raw === '') {
+            return '';
+        }
+        $d = preg_replace('/\D/', '', $raw) ?? '';
+        if (strlen($d) > 10) {
+            $d = substr($d, -10);
+        }
+        return $d !== '' ? $d : 'x';
+    }
+
+    /** True when the exact-number filter is set but is not a usable 10-digit number. */
+    private static function phoneBad(array $f): bool
+    {
+        $ph = (string) ($f['phone'] ?? '');
+        return $ph !== '' && preg_match('/^\d{10}$/', $ph) !== 1;
+    }
+
     /** The filters as a query string (for links, exports, a campaign audience). */
     public static function qs(array $f, array $over = []): string
     {
         $f = array_merge($f, $over);
         $out = [];
-        foreach (['mode', 'from', 'to', 'agent', 'route', 'country', 'status', 'min', 'lapsed', 'q'] as $k) {
+        foreach (['mode', 'from', 'to', 'agent', 'route', 'country', 'status', 'min', 'lapsed', 'q', 'phone'] as $k) {
             if (($f[$k] ?? '') !== '' && ($f[$k] ?? 0) !== 0) {
                 $out[$k] = $f[$k];
             }
@@ -128,6 +163,13 @@ final class CustomerDirectory
         }
         if ($f['country'] !== '') {
             $w[] = $f['country'] === 'NP' ? "x.cc = '977'" : "x.cc <> '977'";
+        }
+        // P6-9d: one number, exactly (x.ph is already the last 10 digits)
+        if (self::phoneBad($f)) {
+            $w[] = '1 = 0';
+        } elseif (($f['phone'] ?? '') !== '') {
+            $w[] = 'x.ph = :xph';
+            $p['xph'] = (string) $f['phone'];
         }
         // bookings: phone normalised to its last 10 digits; country from the stored code or a 977 prefix
         $one = static function (string $phoneCol, string $kind): string {
@@ -221,6 +263,10 @@ final class CustomerDirectory
      */
     private static function leads(array $f, array $have): array
     {
+        if (self::phoneBad($f)) {
+            return [];
+        }
+        $only = (string) ($f['phone'] ?? '');       // P6-9d: one exact number, or '' for all
         $out = [];
         $seen = array_flip(array_map('strval', $have));
         $w = ["phone <> ''"];
@@ -232,6 +278,10 @@ final class CustomerDirectory
         if ($f['to'] !== '') {
             $w[] = 'DATE(created_at) <= :lt';
             $p['lt'] = $f['to'];
+        }
+        if ($only !== '') {                          // the one number, however it was typed
+            $w[] = "RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10) = :lph";
+            $p['lph'] = $only;
         }
         // 31 Oct 2026 (owner: "sab delete — customer name number for data"): when old tickets are deleted
         // with an agent (TeamPurge, tickets = delete), the customers stay in user_profiles — listed here
@@ -249,7 +299,7 @@ final class CustomerDirectory
         foreach ($list as $l) {
             $digits = preg_replace('/\D/', '', (string) $l['phone']) ?? '';
             $ph = substr($digits, -10);
-            if (strlen($ph) < 9 || isset($seen[$ph])) {
+            if (strlen($ph) < 9 || isset($seen[$ph]) || ($only !== '' && $ph !== $only)) {
                 continue;
             }
             if ($f['country'] !== '' && ($f['country'] === 'NP') !== str_starts_with($digits, '977')) {

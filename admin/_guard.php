@@ -570,6 +570,20 @@ function admin_header(string $title, string $active = ''): void
     echo '<main class="wrap"><h1>' . Security::e(admin_plain($title)) . '</h1>';
 }
 
+/**
+ * 16 Nov 2026 (mv5): staff scripts are served with a 7-day browser cache and,
+ * unlike the customer app, carried no ?v= stamp - a phone kept the old copy
+ * for up to a week after a deploy. The file's own change time is the stamp,
+ * so a changed file reaches every phone on its next page load.
+ */
+function admin_asset_url(string $rel): string
+{
+    $rel = '/' . ltrim($rel, '/');
+    $file = dirname(__DIR__) . $rel;
+    $t = is_file($file) ? filemtime($file) : false;
+    return $rel . ($t ? '?v=' . $t : '');
+}
+
 function admin_footer(): void
 {
     echo '</main>';
@@ -633,9 +647,93 @@ function admin_footer(): void
     echo admin_datatable_assets();
     echo '<script>' . admin_wa_js() . '</script>';
     if (admin_ai_bubble_on()) {
-        echo '<script src="/assets/js/admin-ai-bubble.js" defer></script>';
+        echo '<script src="' . admin_asset_url('assets/js/admin-ai-bubble.js') . '" defer></script>';
+        // P8-14b: the bubble's sheet also links the AI assistant for whoever may open it (read by the deferred script)
+        if (admin_ai_link_ok()) {
+            echo '<i hidden data-shg-copilot="1"></i>';
+        }
+    } elseif (admin_ai_link_ok()) {
+        echo admin_ai_link_html();
     }
     echo '</body></html>';
+}
+
+/**
+ * 16 Nov 2026 (v2.0, P8-14b): may this page carry a way to the AI assistant
+ * (admin/ai-copilot.php)? For the people that page lets in (bookings.view; it
+ * scopes every answer itself), never on the AI page itself, the login / lock /
+ * PIN / password pages or a print view. admin_footer() prints the small
+ * "🤖 AI" link only when the settings bubble is NOT on the page - the bubble's
+ * sheet carries the same link - so there is never a second floating button.
+ */
+function admin_ai_link_ok(): bool
+{
+    try {
+        $page = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+        $skip = ['ai-copilot.php', 'login.php', 'quick-unlock.php', 'pin-setup.php', 'setup.php', 'change-password.php',
+                 'logout.php', 'payslip.php', 'application-print.php', 'team-print.php'];
+        if (in_array($page, $skip, true) || isset($_GET['print'])) {
+            return false;
+        }
+        return Auth::can('bookings.view') && is_file(__DIR__ . '/ai-copilot.php');
+    } catch (Throwable $e) {
+        return false;   // never let the link break a page
+    }
+}
+
+/**
+ * Every page's own bottom action bar that shares the "🤖 AI" link's corner,
+ * written as the selector that matches it WHILE IT IS SHOWING. The link hides
+ * while any of them is up, so a tap meant for the bar's button can never land
+ * on the link (review of P8-14b: payments.php "✓ Approve picked" was half
+ * under the link at 360px - its .pq-bulk is sticky 10px off the bottom, z 20).
+ *
+ * A new sticky / fixed bottom bar either carries data-adm-bottom-bar (counted
+ * while it is not [hidden]; nothing to change here) or is added below.
+ * tests/u11-Y4-comms-test.php scans the admin pages and fails on a bottom bar
+ * that is in neither. Bars that LIFT the link instead (home.php .os-dock,
+ * SmartBook .sb-bar) set --admin-fab-bottom in admin_css().
+ */
+function admin_ai_link_bars(): array
+{
+    return [
+        '[data-adm-bottom-bar]:not([hidden])',  // shared marker for any page's bottom bar
+        '.bulk-bar:not([hidden])',              // bookings.php / agents.php bulk actions
+        '.pq-bulk:not([hidden])',               // payments.php "✓ Approve picked"
+        '.cmp-bar.on',                          // agent-ranking.php "⚖️ Compare"
+        '.ap-save',                             // agreement-points.php save bar (always pinned)
+        '.co-save',                             // company.php save bar (always pinned)
+        '.ct-save',                             // places.php / tours.php save bar (includes/contentpages.php)
+    ];
+}
+
+/**
+ * The fixed "🤖 AI" link (P8-14b): bottom-right, above the phone dock / the
+ * SmartBook pay bar (--admin-fab-bottom, admin_css), 42px tall, theme tokens
+ * so it reads in light and dark. It steps aside while a page's own bottom
+ * bar is up (admin_ai_link_bars()) or the menu drawer is open, the page gets
+ * room at the bottom so it never covers the last row, and it never prints.
+ * A browser without :has() cannot tell when a bar is up, so there the link is
+ * not shown at all (the menu still opens the AI page) rather than risk
+ * covering a bar's button.
+ */
+function admin_ai_link_html(): string
+{
+    return '<style>'
+        . '.adm-ai-go{position:fixed;right:16px;bottom:var(--admin-fab-bottom,16px);z-index:34;display:inline-flex;align-items:center;justify-content:center;gap:6px;'
+        . 'box-sizing:border-box;min-height:42px;min-width:42px;padding:0 14px;border-radius:999px;background:var(--card,#fff);color:var(--ink,#1b2436);'
+        . 'border:1px solid var(--line,#e5e9f0);box-shadow:0 6px 18px rgba(11,18,32,.18);font:700 14px/1 system-ui,-apple-system,"Segoe UI",sans-serif;'
+        . 'text-decoration:none;white-space:nowrap}'
+        . '.adm-ai-go:hover{background:var(--hover,#eef2fa);color:var(--ink,#1b2436)}'
+        . '.adm-ai-go:focus-visible{outline:3px solid var(--orange,#F07C1F);outline-offset:2px}'
+        . ':root[data-theme="dark"] .adm-ai-go{box-shadow:0 6px 18px rgba(0,0,0,.55)}'
+        . 'body:has(.adm-ai-go) main.wrap{padding-bottom:calc(var(--admin-fab-bottom,16px) + 64px)}'
+        . 'body:has(' . implode(',', admin_ai_link_bars()) . ') .adm-ai-go{display:none}'
+        . 'body.nav-open .adm-ai-go{display:none}'
+        . '@supports not selector(:has(a)){.adm-ai-go{display:none}}'
+        . '@media print{.adm-ai-go{display:none!important}}'
+        . '</style>'
+        . '<a class="adm-ai-go" id="admAiGo" href="/admin/ai-copilot.php" aria-label="एआई सहायक · AI Sahayak" title="एआई सहायक · AI Sahayak">🤖 AI</a>';
 }
 
 /**

@@ -11,7 +11,7 @@
  * a web customer, a COD customer and a counter agent — then checks that the
  * manifest screen and the CSV both carry all three, with the §16 columns.
  *
- *   1. dev server running on :8899
+ *   1. SHG_TEST_BASE=http://localhost:<port> (else the suite starts its own php -S)
  *   2. php -c .claude/php-dev.ini -d extension=php_curl.dll tests/manifest-test.php
  *
  * Throwaway rows on a far-future date, plus one temporary superadmin.
@@ -37,7 +37,44 @@ if (!function_exists('curl_init')) {
 // SHG_TEST_BASE, like every other HTTP suite (10 Sep 2026): with the port
 // hard-coded, running this from a worktree silently tested whichever OTHER
 // checkout happened to own :8899 — and reported it green.
-define('BASE', rtrim((string) (getenv('SHG_TEST_BASE') ?: 'http://localhost:8899'), '/'));
+/* 16 Nov 2026 (battery Y7): with no SHG_TEST_BASE the suite starts its OWN
+   `php -S` on a free port, serving THIS checkout with this run's php + ini,
+   and stops it on exit. The battery (run-all.php) passes no base, and :8899
+   is whichever checkout happens to own it - on the build machine an older
+   lineage - so the suite reported red (or green) about code it was not
+   testing. SHG_TEST_BASE still wins when it is set. */
+function shg_test_base(): string
+{
+    $env = trim((string) getenv('SHG_TEST_BASE'));
+    if ($env !== '') {
+        return rtrim($env, '/');
+    }
+    $probe = @stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+    if ($probe === false) {
+        return 'http://localhost:8899';
+    }
+    $name = (string) stream_socket_get_name($probe, false);
+    fclose($probe);
+    $port = (int) substr($name, (int) strrpos($name, ':') + 1);
+    $ini  = (string) php_ini_loaded_file();
+    $null = DIRECTORY_SEPARATOR === '\\' ? 'NUL' : '/dev/null';
+    $cmd  = array_merge([PHP_BINARY], $ini !== '' ? ['-c', $ini] : [], ['-S', '127.0.0.1:' . $port, '-t', dirname(__DIR__)]);
+    $proc = @proc_open($cmd, [0 => ['file', $null, 'r'], 1 => ['file', $null, 'w'], 2 => ['file', $null, 'w']], $pipes, dirname(__DIR__));
+    if (!is_resource($proc)) {
+        return 'http://localhost:8899';
+    }
+    register_shutdown_function(static function () use ($proc): void {
+        @proc_terminate($proc);
+        @proc_close($proc);
+    });
+    for ($i = 0; $i < 100; $i++) {   // up to ~10 s for the server to answer
+        $c = @fsockopen('127.0.0.1', $port, $e1, $e2, 0.2);
+        if ($c !== false) { fclose($c); break; }
+        usleep(100000);
+    }
+    return 'http://127.0.0.1:' . $port;
+}
+define('BASE', shg_test_base());
 const TD        = '2099-08-08';
 const PHONE_WEB = '9100000881';
 const PHONE_COD = '9100000882';
@@ -88,7 +125,20 @@ function cleanup(): void {
     }
     Database::delete('booking_legs', 'travel_date = :d', ['d' => TD]);
     Database::delete('schedules',    'travel_date = :d', ['d' => TD]);
-    Database::delete('admins', 'username IN (:a, :b)', ['a' => BOSS, 'b' => SELLER]);
+    /* 16 Nov 2026 (Y7 fix round): the HTTP sign-in opens an admin_sessions row
+       (Auth -> AdminSessions::open) and admin_sessions has NO foreign key to
+       admins, so deleting the accounts alone left one orphan session per run.
+       Look the ids up first, remove their sessions, then the accounts.
+       (admin_devices cascades on its own: fk_dev_admin ON DELETE CASCADE.) */
+    foreach ([BOSS, SELLER] as $u) {
+        $id = (int) Database::scalar('SELECT id FROM admins WHERE username = :u', ['u' => $u], 0);
+        if ($id > 0) {
+            try { Database::delete('admin_sessions', 'admin_id = :a', ['a' => $id]); } catch (Throwable $e) {}
+            Database::delete('admins', 'id = :i', ['i' => $id]);
+        }
+    }
+    // the HTTP sign-in leaves a login-history row (no FK to admins)
+    try { Database::delete('admin_login_events', 'username IN (:a, :b)', ['a' => BOSS, 'b' => SELLER]); } catch (Throwable $e) {}
 }
 
 echo "\n=== Passenger manifest (§16) ===\n\n";
@@ -157,6 +207,9 @@ try {
     $r = http('/admin/login.php', ['form' => [
         CSRF_TOKEN_NAME => csrfFrom($login['body']), 'classic' => '1', 'username' => BOSS, 'password' => BOSS_PW]]);
     check('superadmin signs in', in_array($r['code'], [200, 302], true), 'HTTP ' . $r['code']);
+    // the sign-in must have opened a session row - that row is what cleanup() has to remove
+    $sessOpened = (int) Database::scalar('SELECT COUNT(*) FROM admin_sessions WHERE admin_id = :a', ['a' => $bossId], 0);
+    check('the sign-in opened an admin_sessions row', $sessOpened >= 1, "$sessOpened row(s)");
 
     $page = http('/admin/manifest.php?date=' . TD . '&route=' . $routeId);
     check('manifest page renders', $page['code'] === 200, 'HTTP ' . $page['code']);
@@ -233,6 +286,17 @@ try {
 
 cleanup();
 @unlink($JAR);
+/* 16 Nov 2026 (Y7 fix round): nothing this run made may outlive it. admin_sessions
+   has no FK to admins, so a cleanup that only deleted the accounts left an orphan
+   session row behind on every run - this is the check that would have caught it. */
+$madeIds = array_values(array_filter([(int) ($sellerId ?? 0), (int) ($bossId ?? 0)]));
+if ($madeIds !== []) {
+    $in   = implode(',', $madeIds);   // ints only
+    $left = (int) Database::scalar("SELECT COUNT(*) FROM admin_sessions WHERE admin_id IN ($in)", [], 0);
+    check('cleanup leaves no admin_sessions row for the test accounts', $left === 0, "$left left");
+    $acc  = (int) Database::scalar("SELECT COUNT(*) FROM admins WHERE id IN ($in)", [], 0);
+    check('cleanup removes the test accounts', $acc === 0, "$acc left");
+}
 Settings::set('staff_seats', ['sleeper' => ['L5', 'L6'], 'seater' => ['1A']], 'json', 'seats', false);
 echo "\n----------------------------------------\n";
 echo "PASSED: $PASS   FAILED: $FAIL\n\n";

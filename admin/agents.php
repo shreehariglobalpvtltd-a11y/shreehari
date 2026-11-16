@@ -39,8 +39,12 @@ if (Auth::isCounterAgent()) {
 }
 
 $canManage = Auth::isSuperadmin() || Auth::can('staff.manage');
+// The wallet-settlement modal posts through the $canManage gate below AND needs
+// the settle right Agent 360 asks for - the button is only offered to both.
+$canSettleWallet = $canManage && Auth::can('commissions.pay');
 $selfId    = (int) ($admin['id'] ?? 0);
-$flash     = null;
+$flash     = is_array($_SESSION['shg_agents_flash'] ?? null) ? $_SESSION['shg_agents_flash'] : null;   // carried over the settlement redirect
+unset($_SESSION['shg_agents_flash']);
 
 /* ---------- actions ---------- */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -79,19 +83,44 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $flash = ['ok', 'Daily booking quota updated to ' . ($quota ?: 'unlimited') . ' for ' . count($ids) . ' agent(s).'];
             }
         } elseif ($act === 'record_settlement') {
+            /* 16 Nov 2026 (F2): this modal called two wallet methods that never
+               existed (recordCashReceived / recordPayout) - every submit was a 500 -
+               and stamped its own 'SETTL-<time>' reference, which would have got
+               round the confirmed-payment-reference rule. It now writes the same
+               AgentWallet::record() row Agent 360's settle tab writes: 'payout'
+               (company paid the agent's commission; record() refuses a reference
+               under 5 characters, one already used, more than is owed, and money
+               reserved for an open withdrawal request) or 'cash_handover' (the
+               agent paid cash in; a blank reference gets the SV voucher number).
+               Same walls as Agent 360: commissions.pay, an agent account, never
+               your own. record() writes the audit row. */
             $agentId = (int) ($_POST['agent_id'] ?? 0);
-            $amount  = max(0.0, (float) ($_POST['amount'] ?? 0));
-            $accType = (string) ($_POST['account_type'] ?? 'commission');
-            $note    = trim(Security::clean($_POST['settle_note'] ?? 'Settlement via unified panel', 255));
-            if ($agentId > 0 && $amount > 0) {
-                $ref = 'SETTL-' . date('YmdHis');
-                if ($accType === 'cash') {
-                    AgentWallet::recordCashReceived($agentId, $amount, $ref, $note, $selfId);
-                } else {
-                    AgentWallet::recordPayout($agentId, $amount, $ref, $note, $selfId);
+            $amount  = round(abs((float) ($_POST['amount'] ?? 0)), 2);
+            $entry   = (string) ($_POST['account_type'] ?? '') === 'cash' ? 'cash_handover' : 'payout';
+            $ref     = trim(Security::clean((string) ($_POST['settle_ref'] ?? ''), 80));
+            $note    = trim(Security::clean((string) ($_POST['settle_note'] ?? ''), 255));
+            if (!Auth::can('commissions.pay')) {
+                $flash = ['bad', 'You are not allowed to settle agent accounts.'];
+            } elseif (!AgentWallet::isAgentRow($agentId)) {
+                $flash = ['bad', 'Agent not found.'];
+            } elseif ($agentId === $selfId && !Auth::isSuperadmin()) {
+                $flash = ['bad', 'Someone else must settle your own account.'];
+            } elseif ($entry === 'payout' && mb_strlen($ref) < 5) {
+                $flash = ['bad', 'भुक्तानीको UTR / रसिद नम्बर लेख्नुहोस् · Enter the payment reference (UTR / receipt no., at least 5 characters) before recording a payout.'];
+            } else {
+                try {
+                    $ledgerId = AgentWallet::record($agentId, $entry, $amount, ['note' => $note, 'ref' => $ref, 'by' => $selfId]);
+                    $voucher  = AgentWallet::voucherFor($ledgerId);
+                    $flash    = ['ok', ($entry === 'payout' ? 'Commission payout of ' : 'Cash handover of ') . inr($amount)
+                        . ' recorded' . ($voucher !== '' ? ' — voucher ' . $voucher : '') . '.'];
+                } catch (RuntimeException $e) {
+                    $flash = ['bad', $e->getMessage()];
                 }
-                $flash = ['ok', 'Settlement of ₹' . number_format($amount, 2) . ' recorded for ' . $accType . ' account.'];
             }
+            // Redirect after the post, like Agent 360: a browser refresh must
+            // never record the same cash handover a second time.
+            $_SESSION['shg_agents_flash'] = $flash;
+            Response::redirect('admin/agents.php');
         } elseif ($act === 'save_branch') {
             $branchName = trim(Security::clean($_POST['branch_name'] ?? '', 120));
             $city       = trim(Security::clean($_POST['city'] ?? '', 120));
@@ -597,7 +626,7 @@ admin_header('Agents & Organization Hub', 'agents');
         </div>
         <div class="dt-acts" style="padding:6px 2px">
           <button type="button" class="btn" onclick="openIdModal('<?= $e($appRef) ?>','<?= $e($r['full_name'] ?: $r['username']) ?>','<?= $isOrg ? 'Master Agent (Partner)' : 'Authorized Booking Agent' ?>','<?= $e($r['code']) ?>','<?= $e($r['phone']) ?>','<?= $e($waDigits) ?>','<?= $e($r['joined_on'] ?: substr((string)$r['created_at'],0,10)) ?>')">🪪 ID Card &amp; Agreement Preview</button>
-          <button type="button" class="btn ghost" onclick="openSettleModal(<?= (int)$r['id'] ?>,'<?= $e($r['full_name'] ?: $r['username']) ?>',<?= (float)$r['comm_due'] ?>,<?= (float)$r['cash_bal'] ?>)">💵 Record Wallet Settlement</button>
+          <?php if ($canSettleWallet): ?><button type="button" class="btn ghost" onclick="openSettleModal(<?= (int)$r['id'] ?>,'<?= $e($r['full_name'] ?: $r['username']) ?>',<?= (float)$r['comm_due'] ?>,<?= (float)$r['cash_bal'] ?>)">💵 Record Wallet Settlement</button><?php endif; ?>
           <a class="btn ghost" href="agent-passengers.php?agent=<?= (int) $r['id'] ?>">🧑‍🤝‍🧑 Passengers</a>
           <a class="btn ghost" href="agent-offline.php?agent=<?= (int) $r['id'] ?>">🧾 Paper tickets</a>
         </div>
@@ -806,17 +835,21 @@ admin_header('Agents & Organization Hub', 'agents');
       <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
         <div>Agent: <b id="settleAgentName">—</b></div>
         <div>Current Commission Due: <b id="settleCommDue" style="color:#0a6b3b">₹0</b> · Cash Held: <b id="settleCashBal" style="color:#b02a2a">₹0</b></div>
-        <label>Settlement Account
-          <select name="account_type" style="width:100%;padding:8px;margin-top:4px;border-radius:6px;border:1px solid var(--line)">
+        <label>हिसाब · Settlement Account
+          <select name="account_type" id="settleAccType" onchange="settleRefRule()" style="width:100%;padding:8px;margin-top:4px;border-radius:6px;border:1px solid var(--line)">
             <option value="commission">Commission Payout (Deducts from commission due)</option>
             <option value="cash">Cash Collection Received (Reduces cash held by agent)</option>
           </select>
         </label>
-        <label>Settlement Amount (₹)
+        <label>रकम · Settlement Amount (₹)
           <input type="number" step="0.01" min="1" name="amount" required style="width:100%;padding:8px;margin-top:4px;border-radius:6px;border:1px solid var(--line)">
         </label>
-        <label>Payment Mode / Reference / Note
-          <input type="text" name="settle_note" placeholder="e.g. Bank Transfer UTR #... or Cash Received by Head Office" required style="width:100%;padding:8px;margin-top:4px;border-radius:6px;border:1px solid var(--line)">
+        <label>UTR / रसिद नम्बर · Payment reference
+          <input type="text" name="settle_ref" id="settleRef" maxlength="80" minlength="5" required placeholder="Bank / UPI UTR or receipt no." style="width:100%;padding:8px;margin-top:4px;border-radius:6px;border:1px solid var(--line)">
+          <span class="muted" id="settleRefHelp" style="font-size:11.5px">A payout needs the real UTR / receipt number (5+ characters, used once).</span>
+        </label>
+        <label>टिप्पणी · Note (optional)
+          <input type="text" name="settle_note" maxlength="255" placeholder="e.g. Bank transfer, or cash received at head office" style="width:100%;padding:8px;margin-top:4px;border-radius:6px;border:1px solid var(--line)">
         </label>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
           <button type="button" class="btn ghost" onclick="closeSettleModal()">Cancel</button>
@@ -847,9 +880,21 @@ function openSettleModal(id, name, comm, cash) {
   document.getElementById('settleAgentName').textContent = name;
   document.getElementById('settleCommDue').textContent = '₹' + Number(comm).toLocaleString('en-IN');
   document.getElementById('settleCashBal').textContent = '₹' + Number(cash).toLocaleString('en-IN');
+  settleRefRule();
   document.getElementById('settleModal').hidden = false;
 }
 function closeSettleModal() { document.getElementById('settleModal').hidden = true; }
+// A payout needs the real UTR / receipt no.; a cash handover may leave it blank (SV voucher number).
+function settleRefRule() {
+  var cash = document.getElementById('settleAccType').value === 'cash';
+  var ref = document.getElementById('settleRef');
+  ref.required = !cash;
+  ref.minLength = cash ? 0 : 5;
+  ref.placeholder = cash ? 'Receipt no. (blank = auto SV-number)' : 'Bank / UPI UTR or receipt no.';
+  document.getElementById('settleRefHelp').textContent = cash
+    ? 'Blank gets an automatic SV voucher number.'
+    : 'A payout needs the real UTR / receipt number (5+ characters, used once).';
+}
 
 // BULK CHECKBOX LOGIC
 (function() {

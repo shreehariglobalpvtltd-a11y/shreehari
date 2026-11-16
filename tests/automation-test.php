@@ -308,8 +308,15 @@ try {
     $sess = $_SESSION[ADMIN_SESSION_KEY] ?? [];
     check('  session role is agent (never portal-decided)', ($sess['role'] ?? '') === 'agent');
     check('  data scope points at this agent', Auth::bookingScopeAdminId() === $agentId);
-    check('  must_change_pw is bypassed for OTP sessions (no password deadlock)',
-        ($sess['must_change_pw'] ?? true) === false && ($sess['via_otp'] ?? false) === true);
+    /* 6 Sep 2026 (forced-password-change fix, guarded by
+       otp-forced-password-test.php): the OTP door no longer BYPASSES
+       must_change_pw - that bypass let a temporary password live forever.
+       The flag is carried honestly, and the deadlock the bypass avoided is
+       solved at the other end: via_otp lets change-password.php take the
+       forced change without a "current password" the agent never had. */
+    check('  must_change_pw is carried for OTP sessions, without a password deadlock (via_otp: no current password asked)',
+        ($sess['must_change_pw'] ?? false) === true && ($sess['via_otp'] ?? false) === true
+        && str_contains((string) file_get_contents(dirname(__DIR__) . '/admin/change-password.php'), "\$otpForced = \$forced && !empty(\$_SESSION[ADMIN_SESSION_KEY]['via_otp']);"));
     unset($_SESSION[ADMIN_SESSION_KEY]);
 
     Database::update('admins', ['is_active' => 0], 'id = :i', ['i' => $agentId]);

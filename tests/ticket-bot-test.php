@@ -308,8 +308,24 @@ try {
         json_encode($s['prefill'], JSON_UNESCAPED_UNICODE));
     $s = TicketBot::suggest(['phone' => TB_PHONE . '003'], $staffRow);
     check('an unknown number: no name, gender NOT guessed', ($s['prefill']['name'] ?? 'x') === '' && array_key_exists('gender', $s['prefill']) && $s['prefill']['gender'] === null && $s['profile'] === null);
+    /* 15 Oct 2026 (owner: "AI le naam bata gender guess garos"): a CLEAR name for
+       a LONE traveller ("Sita Devi" - devi at NameGuess::AUTO) now pre-sets the
+       gender, as a GUESS: source 'name', flagged check:true so the desk looks at
+       it before the sale - never silent, never from history. A party is never
+       seated by a guess (women-only berths / the shared-cabin lock), and a name
+       below the AUTO bar sets nothing. This check used to say "never sets a
+       gender", which was the rule before NameGuess. */
     $s = TicketBot::suggest(['text' => 'Sita Devi 9000000009'], $staffRow);
-    check('a feminine-looking name never sets a gender', array_key_exists('gender', $s['prefill']) && $s['prefill']['gender'] === null && ($s['prefill']['name'] ?? '') === 'Sita Devi');
+    check('a clear feminine name for ONE traveller is a flagged guess, never silent',
+        ($s['prefill']['name'] ?? '') === 'Sita Devi' && ($s['prefill']['gender'] ?? null) === 'Female'
+        && ($s['fields']['gender']['source'] ?? '') === 'name' && ($s['fields']['gender']['check'] ?? false) === true,
+        json_encode($s['fields']['gender'] ?? null, JSON_UNESCAPED_UNICODE));
+    $s = TicketBot::suggest(['text' => 'Sita Devi 9000000009 2 seats'], $staffRow);
+    check('  …but a party is never given a gender from the name', array_key_exists('gender', $s['prefill']) && $s['prefill']['gender'] === null && (int) ($s['prefill']['seats'] ?? 0) === 2,
+        json_encode(['gender' => $s['prefill']['gender'] ?? 'missing', 'seats' => $s['prefill']['seats'] ?? null]));
+    $s = TicketBot::suggest(['text' => 'Xyzq Abcd 9000000009'], $staffRow);
+    check('  …and a name with no clear signal sets nothing', array_key_exists('gender', $s['prefill']) && $s['prefill']['gender'] === null,
+        json_encode($s['fields']['gender'] ?? null, JSON_UNESCAPED_UNICODE));
     $cap = max(1, Settings::getInt('max_seats_per_booking', MAX_SEATS_BOOKING));
     $s = TicketBot::suggest(['text' => '9 seats 9000000010'], null);
     check('a customer suggestion keeps the public seat cap', (int) ($s['prefill']['seats'] ?? 0) === $cap, (string) ($s['prefill']['seats'] ?? ''));

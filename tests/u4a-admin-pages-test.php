@@ -217,7 +217,7 @@ try {
     check('GPS inputs step="any"', !str_contains($b, 'step="0.0000001"'));
     check('C2: fare tag with data-ie-confirm', (bool) preg_match('/data-ie-entity="route_stop" data-ie-field="fare" data-ie-id="\d+" data-ie-value="\d*" data-ie-type="money" data-ie-confirm="1"/', $b));
     check('C2: time + landmark tags', str_contains($b, 'data-ie-field="stop_time"') && str_contains($b, 'data-ie-type="time"') && str_contains($b, 'data-ie-field="landmark"'));
-    check('C2: admin-inline-edit.js included', str_contains($b, '<script src="/assets/js/admin-inline-edit.js" defer></script>'));
+    check('C2: admin-inline-edit.js included', (bool) preg_match('#<script src="/assets/js/admin-inline-edit\.js\?v=\d+" defer></script>#', $b));
     check('batch fare form carries fare_was', str_contains($b, 'name="fare_was['));
     $active = array_column(Database::fetchAll('SELECT route_code FROM routes WHERE is_active = 1 ORDER BY id'), 'route_code');
     $conf = preg_match('#onsubmit="return confirm\(([^"]*)\)"[^>]*>\s*<input[^>]*>\s*<input type="hidden" name="action" value="daily_setup">#s', $b, $cm)

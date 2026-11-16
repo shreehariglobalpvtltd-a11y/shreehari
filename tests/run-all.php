@@ -222,6 +222,11 @@ const CORE_SUITES = [
     'u9-X4-fb-comments-test.php'      => 'FB comments: poll only when ON, permission error once, public reply audited, AI reply rules',
     'u9-X5-settings-import-test.php'  => 'settings import preview / one-shot apply / audit, 60-min texts everywhere, Easy Settings keys',
     'u10-chalani-pdf-pages-test.php'  => 'chalani PDF: special-payment lines keep one sheet page to 21 passengers, a long list continues over pages, nothing off the sheet',
+    'u11-Y2-aioffers-test.php'        => 'AI Sahayak makes an offer / coupon OFF (never ON), offer band switches one OFF, 4 new switches in Easy Settings',
+    'u11-Y6-themes-test.php'          => 'weekday accent on track / help / pay / verify-ticket = the owner ds.css weekday table, festival pick = index.php',
+    'automation-test.php'             => 'automation rules (49/0 since mv5: the old OTP-bypass check rewritten)',
+    'u11-F1-test.php'                 => 'temporary-password session: no office AI, no /api/, crashing CLI suite exits 1, system notes are not the customer words',
+    'u11-F3-test.php'                 => 'SmartBook PNR readable in light theme, inbox Pause row clear of the floating button, follow-up labels, every u11 suite registered',
 ];
 
 /**
@@ -229,14 +234,13 @@ const CORE_SUITES = [
  * silently omitted: an unlisted test file is invisible, and this directory
  * already lost 35 suites that way. Printed at the end of every run.
  *
- * Both entries below fail on ORIGINAL code at cec7dc1 — verified 8 Sep 2026 by
- * reverting and re-running — so they are stale tests, not regressions:
- *   automation-test.php     7 of 49 fail
+ * The entry below fails on ORIGINAL code at cec7dc1 — verified 8 Sep 2026 by
+ * reverting and re-running — so it is a stale test, not a regression
+ * (automation-test.php was fixed and moved to CORE_SUITES on 16 Nov, mv5):
  *   boarding-stop-fix-test.php  3 of 17 fail: it hard-codes seat L1, which the
  *       later women-only rule now reserves, so book.php correctly returns 409.
  */
 const KNOWN_STALE = [
-    'automation-test.php'          => '7/49 fail on unmodified code — stale expectations',
     'boarding-stop-fix-test.php'   => '3/17 fail: hard-codes L1, now women-reserved',
 ];
 
@@ -260,6 +264,11 @@ const HTTP_SUITES = [
     'beacon-test.php'             => 'the product beacon stores behaviour, never people',
     'pwa-http-test.php'           => 'PWA layer: push key + subscribe gates, seat fill, split-pay, offline page',
     'u10-chalani-extras-test.php' => 'chalani: special payments (luggage / infant) paid or due + pen lines, berth-true free count, no stacked discounts',
+    'u11-Y1-pwa-test.php'         => 'staff install chip, staff door registers sw.js, amber offline bar, 1.5 s shell wait, manifest screenshots',
+    'u11-Y3-inline-test.php'      => 'inline edit: bus time / price, extra seats, offer value, staff name - same permission, rules and audit as the forms',
+    'u11-Y4-comms-test.php'       => 'FB comments tab, inbox Offer link (OFF), AI Centre last-7-days block, AI link that never covers a bottom bar',
+    'u11-Y5-agents-test.php'      => 'agent follow-ups (service only), cancel follow-up only when a refund is owed, agent records own COD cash (all OFF)',
+    'u11-F2-test.php'             => 'agent money doors: register settlement needs a real UTR, payout request reaches the list, advance in the loans register, receipts, PRG',
 ];
 
 /* ---------------------------------------------------------------------

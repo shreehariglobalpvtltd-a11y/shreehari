@@ -19,28 +19,51 @@
   ],
   "icons": [
     {
-      "src": "/assets/img/icon-192.png?v=20261105a",
+      "src": "/assets/img/icon-192.png?v=20261116d",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "/assets/img/icon-512.png?v=20261105a",
+      "src": "/assets/img/icon-512.png?v=20261116d",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any"
     },
     {
-      "src": "/assets/img/icon-maskable-512.png?v=20261105a",
+      "src": "/assets/img/icon-maskable-512.png?v=20261116d",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "maskable"
     },
     {
-      "src": "/assets/img/badge-96.png?v=20261105a",
+      "src": "/assets/img/badge-96.png?v=20261116d",
       "type": "image/png",
       "sizes": "96x96",
       "purpose": "monochrome"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/assets/img/shot-home.webp",
+      "sizes": "1080x1920",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "Book a bus seat in one screen"
+    },
+    {
+      "src": "/assets/img/shot-seats.webp",
+      "sizes": "1080x1920",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "Pick your own berth"
+    },
+    {
+      "src": "/assets/img/shot-ticket.webp",
+      "sizes": "1080x1920",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "Your e-ticket, also offline"
     }
   ],
   "shortcuts": [

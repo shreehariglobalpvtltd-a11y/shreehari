@@ -56,6 +56,15 @@ final class HelpDesk
         'other'        => ['Other',                 'अन्य',                 'normal'],
     ];
 
+    /**
+     * P8-5d: the only categories a SELLING agent may see on their own sales
+     * ("My follow-ups", forSeller). Plain service work the agent can help
+     * with. Never fake_ticket, staff, safety, payment, other, nor AiHandoff's
+     * complaint / payment_dispute / refund_exception / identity / … — those
+     * can be about the seller, and the office handles them alone.
+     */
+    public const SELLER_CATEGORIES = ['booking_help', 'ticket', 'refund', 'seat', 'bus_late', 'luggage', 'callback'];
+
     public const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 
     /** minutes until a ticket is overdue, per priority (settings override) */
@@ -174,7 +183,10 @@ final class HelpDesk
     /**
      * @param array<string,mixed> $in name, phone, country (IN|NP), category, message,
      *        pnr, source (web|chat|callback|desk|admin), priority, created_by,
-     *        lang, ack (bool), trusted (bool: staff typed it, PNR need not match the phone)
+     *        lang, ack (bool), trusted (bool: staff typed it, PNR need not match the phone),
+     *        system_note (bool: the SYSTEM wrote the message, for the office - stored as an
+     *        internal "सिस्टम · System" note, never as the customer's words; grants nothing
+     *        else: the PNR must still be this phone's, no priority override)
      * @return array{ok:bool, error?:string, id?:int, ref?:string, token?:int, status?:string,
      *               due_at?:?string, assigned?:string, ack?:bool, ack_via?:string, duplicate?:bool}
      */
@@ -259,18 +271,56 @@ final class HelpDesk
             $extra['counter_code'] = $deskCode !== '' ? $deskCode : null;
             $extra['created_by']   = isset($in['created_by']) ? (int) $in['created_by'] : null;
         }
+        /* 16 Nov 2026 (F1-4): who wrote the first line. A ticket staff or the
+           system opened (trusted: the desk form, the WhatsApp inbox, an agent's
+           desk request, the cancel follow-up) carries the OFFICE's words, not the
+           customer's: stored as an office note - sender 'admin' (the schema's
+           sender_type is customer | admin), named after the staff member who
+           opened it (else the system), is_internal = 1 because nothing of it was
+           sent. The inbox then shows it under that name as an internal note, and
+           help.php / the assistant (publicView, AiHandoff) never read it back to
+           the customer as their own words or as a staff reply. A ticket the
+           customer opened stays 'customer'.
+           16 Nov 2026 (F1 review): 'trusted' is not the only office voice. A
+           note the SYSTEM wrote on the customer's behalf without staff powers
+           (WaPayProof: "the passenger typed a payment reference ... Please
+           check the bank and confirm in Verify Payments") passes system_note
+           instead - the same internal System line, and nothing else of
+           'trusted' (linkBooking's PNR-belongs-to-this-phone check and the
+           priority stay as for the customer). */
+        $systemNote = ($in['system_note'] ?? false) === true;
+        $officeLine = $trusted || $systemNote;
+        $first = ['sender_type' => 'customer', 'sender_name' => mb_substr($name, 0, 120)];
+        if ($officeLine) {
+            $by = isset($in['created_by']) ? (int) $in['created_by'] : 0;
+            $staffName = '';
+            if ($by > 0) {
+                try {
+                    $staffName = trim((string) Database::scalar('SELECT full_name FROM admins WHERE id = :i', ['i' => $by], ''));
+                } catch (Throwable $ignored) {
+                }
+            }
+            $first = ['sender_type' => 'admin', 'sender_name' => mb_substr($staffName !== '' ? $staffName : 'सिस्टम · System', 0, 120)];
+        }
         try {
-            $id = Database::transaction(static function () use ($row, $extra, $name, $message): int {
+            $id = Database::transaction(static function () use ($row, $extra, $first, $message, $officeLine): int {
                 try {
                     $id = (int) Database::insert('support_tickets', $row + $extra);
                 } catch (Throwable $e) {
                     $id = (int) Database::insert('support_tickets', $row);   // pre-migration database
                 }
                 Database::update('support_tickets', ['ticket_ref' => self::refFor($id)], 'id = :id', ['id' => $id]);
-                Database::insert('support_messages', [
-                    'ticket_id' => $id, 'sender_type' => 'customer',
-                    'sender_name' => mb_substr($name, 0, 120), 'message' => $message,
-                ]);
+                $msg = ['ticket_id' => $id] + $first + ['message' => $message];
+                if ($officeLine) {
+                    try {
+                        Database::insert('support_messages', $msg + ['is_internal' => 1]);
+                    } catch (Throwable $e) {
+                        // no is_internal column yet: publicView() then shows no office line at all
+                        Database::insert('support_messages', $msg);
+                    }
+                } else {
+                    Database::insert('support_messages', $msg);
+                }
                 return $id;
             });
         } catch (Throwable $e) {
@@ -283,7 +333,7 @@ final class HelpDesk
         Logger::audit('support.open', 'support_ticket', $ref, null, [
             'category' => $cat, 'priority' => $prio, 'source' => $source,
             'phone' => maskPhone($digits), 'booking' => $bookingId,
-        ], $trusted ? 'opened by staff #' . (int) ($in['created_by'] ?? 0) : 'opened by the customer');
+        ], $trusted ? 'opened by staff #' . (int) ($in['created_by'] ?? 0) : ($systemNote ? 'opened by the system' : 'opened by the customer'));
 
         $assigned = '';
         if ($ready && Settings::getBool('helpdesk_autoassign', true)) {
@@ -756,6 +806,183 @@ final class HelpDesk
         } catch (Throwable $ignored) {
         }
         return $s;
+    }
+
+    /**
+     * P8-5d (16 Nov 2026): "मेरा फलो-अप · My follow-ups" on the Agent Panel —
+     * the help-desk tickets still open on bookings THIS seller sold
+     * (bookings.sold_by_admin_id, the same key the panel's sales are scoped
+     * by). Read-only and narrow on purpose: the number, category, status,
+     * due time and PNR. Never the message body and never the customer's
+     * phone — the office owns the conversation; the agent only sees that
+     * one of their passengers is waiting. A ticket with no booking, or on
+     * someone else's sale, never shows (INNER JOIN + the seller id).
+     *
+     * SERVICE tickets only (SELLER_CATEGORIES, an allow-list): a fake-ticket
+     * report, a staff-behaviour complaint, an AI-desk complaint / payment
+     * dispute, a safety case or a payment query may be ABOUT the seller, so
+     * the accused agent must never learn it is open or which passenger
+     * filed it. A new category stays hidden until it is added to the list.
+     *
+     * @return list<array{ticket_ref:string, category:string, status:string, due_at:?string, pnr:string}>
+     */
+    public static function forSeller(int $adminId, int $limit = 20): array
+    {
+        if ($adminId <= 0) {
+            return [];
+        }
+        $limit = max(1, min(100, $limit));
+        // Before the 5 Oct migration there is no due_at: newest first, no due time.
+        $ready = self::ready();
+        $due   = $ready ? 't.due_at' : 'NULL';
+        $order = $ready ? 't.due_at IS NULL, t.due_at, t.id DESC' : 't.id DESC';
+        $params = ['a' => $adminId];
+        $cats   = [];
+        foreach (array_values(self::SELLER_CATEGORIES) as $i => $c) {
+            $cats[] = ':c' . $i;
+            $params['c' . $i] = $c;
+        }
+        try {
+            $rows = Database::fetchAll(
+                "SELECT t.ticket_ref, t.category, t.status, {$due} AS due_at, b.pnr
+                   FROM support_tickets t
+                  INNER JOIN bookings b ON b.id = t.booking_id
+                  WHERE b.sold_by_admin_id = :a
+                    AND t.status IN ('open','in_progress')
+                    AND t.category IN (" . implode(', ', $cats) . ")
+                  ORDER BY {$order}
+                  LIMIT {$limit}",
+                $params
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            $out[] = [
+                'ticket_ref' => (string) $r['ticket_ref'],
+                'category'   => (string) ($r['category'] ?? 'other'),
+                'status'     => (string) $r['status'],
+                'due_at'     => ($r['due_at'] ?? null) !== null ? (string) $r['due_at'] : null,
+                'pnr'        => (string) $r['pnr'],
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * P8-12e (16 Nov 2026): a cancelled ticket whose total is at or above
+     * helpdesk_cancel_escalate_inr (₹, 0 = off, the default) AND on which
+     * money is owed back opens ONE 'refund' help-desk ticket, so a big
+     * refund cannot slip past the office's follow-up. Called by
+     * BookingService::cancel AFTER its commit, with that cancel's refund.
+     *
+     *   - only when a refund is owed (refundOwed): an unpaid pay-at-boarding
+     *     cancel, the cron's "cash not paid" auto-cancel, a QuickBot undo or
+     *     a late cancel in the 0% slab owe nothing, so nothing opens — no
+     *     high-priority refund ticket, no office alert, no AiWatch count;
+     *   - no customer message: the ticket is opened with ack off;
+     *   - never a second one while a refund ticket on this booking is still
+     *     open / in progress;
+     *   - refunds stay manual — this is a note for the office, nothing moves;
+     *   - never throws: a help-desk failure must not break a cancel.
+     *
+     * When the booking was sold by an agent the ticket shows in that agent's
+     * "My follow-ups" (forSeller) while the switch agent_followups_on is on.
+     *
+     * @param array<string,mixed>      $booking the bookings row (after the cancel)
+     * @param array<string,mixed>|null $refund  that cancel's refund (['amount' => ₹, ...]),
+     *                                          null when called outside a cancel
+     * @param string                   $via     the cancel's $via ('', 'undo', 'auto', 'whatsapp')
+     * @return string|null the HD number opened, or null when nothing was opened
+     */
+    public static function cancelFollowUp(array $booking, ?array $refund = null, string $via = ''): ?string
+    {
+        try {
+            $min       = Settings::getInt('helpdesk_cancel_escalate_inr', 0);
+            $bookingId = (int) ($booking['id'] ?? 0);
+            $total     = round((float) ($booking['total_amount'] ?? 0), 2);
+            if ($min <= 0 || $bookingId <= 0 || $total < $min) {
+                return null;
+            }
+            $owed = self::refundOwed($booking, $refund);
+            if ($owed <= 0) {
+                return null;                              // nothing collected / nothing to pay back
+            }
+            $already = Database::fetch(
+                "SELECT ticket_ref FROM support_tickets
+                  WHERE booking_id = :b AND category = 'refund' AND status IN ('open','in_progress')
+                  ORDER BY id DESC LIMIT 1",
+                ['b' => $bookingId]
+            );
+            if ($already !== null) {
+                return null;                              // one open follow-up per booking
+            }
+            $cc = preg_replace('/\D/', '', (string) ($booking['contact_country_code'] ?? '')) ?? '';
+            $in = [
+                'phone'      => (string) ($booking['contact_phone'] ?? ''),
+                'country'    => $cc === '977' ? 'NP' : 'IN',
+                'category'   => 'refund',
+                'message'    => 'Cancelled ticket above ' . inr($min) . ' - refund follow-up',
+                'pnr'        => (string) ($booking['pnr'] ?? ''),
+                'source'     => 'admin',
+                'lang'       => 'ne',
+                'trusted'    => true,
+                'ack'        => false,                    // NO message to the customer
+            ];
+            $res = self::open($in);
+            /* open() folds the same number + category + words inside 15 minutes
+               into one ticket. When that ticket belongs to the number's OTHER
+               booking (two big cancels in a row), this booking gets its own. */
+            if (!empty($res['ok']) && !empty($res['duplicate']) && (int) Database::scalar(
+                    'SELECT COALESCE(booking_id, 0) FROM support_tickets WHERE id = :i', ['i' => (int) $res['id']], 0) !== $bookingId) {
+                $in['message'] .= ' · ' . (string) ($booking['pnr'] ?? '#' . $bookingId);
+                $res = self::open($in);
+            }
+            if (empty($res['ok']) || empty($res['id'])) {
+                Logger::warning('cancel follow-up ticket not opened: ' . (string) ($res['error'] ?? '?'),
+                    ['booking' => $bookingId], 'helpdesk');
+                return null;
+            }
+            if (!empty($res['duplicate'])) {
+                return null;                              // already there (same booking, minutes ago)
+            }
+            // Pinned to THIS booking: linkBooking() falls back to the number's
+            // latest trip when a PNR does not parse, which may be another one.
+            Database::update('support_tickets', ['booking_id' => $bookingId],
+                'id = :id AND (booking_id IS NULL OR booking_id <> :b)', ['id' => (int) $res['id'], 'b' => $bookingId]);
+            Logger::audit('support.cancel_followup', 'booking', (string) ($booking['pnr'] ?? ''), null,
+                ['ticket' => (string) $res['ref'], 'total' => $total, 'threshold' => $min, 'refund_due' => $owed, 'via' => $via],
+                'Cancelled ticket above ' . inr($min) . ' - refund follow-up opened, refund due ' . inr($owed) . ' (no customer message)');
+            return (string) $res['ref'];
+        } catch (Throwable $e) {
+            Logger::exception($e, 'helpdesk');
+            return null;
+        }
+    }
+
+    /**
+     * What the office still has to pay back by hand on a cancelled booking
+     * (₹, 0 = nothing): the refund parked on the row (refund_status
+     * 'pending' — it also carries an earlier per-seat refund), or this
+     * cancel's own slab when the row could not take it (an earlier refund
+     * already 'processed': cancel() notes the remainder "settle by hand").
+     * BookingService::cancel only gives a slab refund on a VERIFIED payment,
+     * so an unpaid cancel is always 0 here.
+     *
+     * @param array<string,mixed>      $booking the bookings row (after the cancel)
+     * @param array<string,mixed>|null $refund  that cancel's refund array, if any
+     */
+    public static function refundOwed(array $booking, ?array $refund = null): float
+    {
+        $owed = 0.0;
+        if ((string) ($booking['refund_status'] ?? '') === 'pending') {
+            $owed = round((float) ($booking['refund_amount'] ?? 0), 2);
+        }
+        if ($refund !== null) {
+            $owed = max($owed, round((float) ($refund['amount'] ?? 0), 2));
+        }
+        return max(0.0, $owed);
     }
 
     /** One-time codes, card numbers and passwords never reach the queue. */

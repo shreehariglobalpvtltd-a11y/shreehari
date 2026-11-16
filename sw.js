@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v284';   // 2026-11-16 mv3: return discount line, special-day colour + banner, desk luggage/infant (all behind OFF switches)
+var VERSION = 'shg-v285';   // 2026-11-16 mv5: staff install chip, amber offline bar, 1.5 s shell wait, weekday accent on track/help/verify, inline edit
 /* 13 Nov 2026 (owner: "two distinct apps"): the staff door (S Hari Manage,
    shreehariglobal.network) keeps its caches under its own names (shm-…), the
    customer app (S Hari Travel) under shg-…. The two were already apart - a
@@ -27,8 +27,12 @@ var STAFF_DOOR = /(^|\.)shreehariglobal\.network$/.test(self.location.hostname);
 var CACHE_NS = STAFF_DOOR ? 'shm-' : 'shg-';
 var SHELL_CACHE = CACHE_NS + 'shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
-   cached app shell opens instead (see the navigate handler). */
-var SHELL_WAIT_MS = 3500;
+   cached app shell opens instead (see the navigate handler).
+   16 Nov 2026 (P2-5a): 3500 -> 1500 ms. On slow 3G a returning visitor now
+   opens the cached shell of THIS same VERSION after 1.5 s; the network
+   fetch keeps running and refreshes the cache for the next open. A first
+   visit (no shell yet) still waits for the network. */
+var SHELL_WAIT_MS = 1500;
 var TILE_CACHE = CACHE_NS + 'tiles-' + VERSION;
 var ASSET_CACHE = CACHE_NS + 'assets-' + VERSION;
 var MAX_TILES = 1500; // cap on cached map assets (FIFO eviction)
@@ -51,7 +55,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261116c';
+var ASSET_VER = '20261116d';
 var PRECACHE = [
   /* 16 Oct 2026 (owner, the logo): the full lockup WITH the ™ sign is now
      logo-tm.png (tools/make-logo-tm.php cuts it from logo.png). Neither is

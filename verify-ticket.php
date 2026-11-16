@@ -33,6 +33,7 @@ require_once INCLUDE_PATH . '/booking.php';
 if (is_file(INCLUDE_PATH . '/brand.php')) {
     require_once INCLUDE_PATH . '/brand.php';   // Brand::flagSvg() — SVG flags (9 Oct 2026)
 }
+require_once INCLUDE_PATH . '/themetokens.php';   // the app's weekly accent (16 Nov 2026, P5-4a)
 
 /* An HTML 429 (9 Oct 2026): requireRateLimit() answers in JSON, which a
    phone camera opening this page showed as raw text. */
@@ -374,6 +375,7 @@ $company = (string) $issuer['name'];
   } catch (e) { /* storage blocked: light, as before */ }
 })();
 </script>
+<?= ThemeTokens::accentHead() ?>
 <style>
   :root { --bg: #f5f6fa; --card: #fff; --text: #0f172a; --sub: #475569; --key: #64748b; --line: #eef2f7;
     --foot: #4b5b70; --link: #1A3A6A; --cta: #1A3A6A; --cta-alt-line: #C9D6EA; --shadow: rgba(15, 23, 42, 0.08);
@@ -386,6 +388,11 @@ $company = (string) $issuer['name'];
     --foot: #a9b8cc; --link: #9cc2ff; --cta: #2b5aa8; --cta-alt-line: #3b5b8c; --shadow: rgba(0, 0, 0, 0.45);
     --due-bg: #3a2806; --due-text: #ffd48a; --due-line: #9a6a1c; color-scheme: dark; }
   :root[data-theme="dark"][data-display="amoled"] { --bg: #000; --card: #0b0f16; --line: #1b2535; --shadow: rgba(0, 0, 0, 0); }
+  /* 16 Nov 2026 (P5-4a): the app's weekly accent (includes/themetokens.php) on the page's own blue only:
+     --link is text (dark = the light tint), --cta carries white text (dark = the solid accent). The
+     status colours never change. No data-accent = the colours above, unchanged. */
+  :root[data-theme="light"][data-accent] { --link: var(--royal); --cta: var(--royal); }
+  :root[data-theme="dark"][data-accent] { --link: var(--royal); --cta: var(--accent-fill); }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans Devanagari', 'Nirmala UI', sans-serif;

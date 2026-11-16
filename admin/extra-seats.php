@@ -135,6 +135,14 @@ admin_header('Extra seats', 'extra-seats');
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
 $qs   = static fn(array $extra = []): string => Security::e(http_build_query(array_merge(['from' => $from, 'to' => $to], $extra)));
+/* 16 Nov 2026 (v2.0 P3-6): the super-admin taps the number to change it in
+   place (assets/js/admin-inline-edit.js -> admin/api/inline-save.php: the
+   same 0-40, Settings::set and settings.extra_seats audit as the form below,
+   which stays as the fallback). */
+$ieSeats = Auth::isSuperadmin()
+    ? ' data-ie-entity="setting" data-ie-field="extra_seats_per_bus" data-ie-id="1" data-ie-value="' . $perBus . '" data-ie-type="int" data-ie-confirm="1"'
+      . ' data-ie-label="हरेक बसमा थप सिट (० = बन्द, बढीमा ४०) · Extra seats on every bus (0 = off, max 40)" data-ie-placeholder="0–40"'
+    : '';
 ?>
 <style>
 .xs-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
@@ -164,7 +172,7 @@ table.xs td.num,table.xs th.num{text-align:right;white-space:nowrap}
   <div class="xs-kpi"><b><?= count($rows) ?></b><span>extra-seat passengers</span></div>
   <div class="xs-kpi"><b><?= Security::e(inr($totalAmt)) ?></b><span>their fare (share of each ticket)</span></div>
   <div class="xs-kpi"><b><?= count($byBus) ?></b><span>buses carried extra passengers</span></div>
-  <div class="xs-kpi"><b><?= $perBus ?></b><span>extra seats per bus (EX1–EX<?= max(1, $perBus) ?>)</span></div>
+  <div class="xs-kpi"><b<?= $ieSeats ?>><?= $perBus ?></b><span>extra seats per bus (EX1–EX<?= max(1, $perBus) ?>)<?= $ieSeats !== '' ? ' · ट्याप गरेर बदल्नुहोस् · tap to change' : '' ?></span></div>
 </div>
 
 <?php if ($byBus !== []): ?>
@@ -228,7 +236,7 @@ table.xs td.num,table.xs th.num{text-align:right;white-space:nowrap}
 
 <?php if (Auth::isSuperadmin()): ?>
 <div class="panel">
-  <h2>⚙️ Extra seats per bus</h2>
+  <h2>⚙️ थप सिट प्रति बस · Extra seats per bus: <span<?= $ieSeats ?>><?= $perBus ?></span></h2>
   <form method="post" class="xs-filter">
     <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
     <label>Seats (0 = off, max 40) <input type="number" name="extra_seats_per_bus" min="0" max="40" value="<?= $perBus ?>" style="width:110px"></label>
@@ -236,6 +244,14 @@ table.xs td.num,table.xs th.num{text-align:right;white-space:nowrap}
   </form>
   <p class="muted" style="font-size:12px;margin:8px 0 0">Applies to every bus and date at once. Fare = the normal seat fare (pickup / bus price); give a counter discount when the extra seat is sold cheaper. Lowering the number never removes seats already sold.</p>
 </div>
+<script src="<?= e(admin_asset_url('assets/js/admin-inline-edit.js')) ?>" defer></script>
+<script>
+/* keep the form's number in step with a value saved in place */
+document.addEventListener('shg:inline-saved', function (e) {
+  var d = e.detail || {}, box = document.querySelector('input[name="extra_seats_per_bus"]');
+  if (box && d.field === 'extra_seats_per_bus' && d['new'] !== null && d['new'] !== undefined) { box.value = String(d['new']); }
+});
+</script>
 <?php endif; ?>
 <?php
 admin_footer();

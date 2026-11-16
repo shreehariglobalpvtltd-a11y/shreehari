@@ -42,18 +42,53 @@ function check(string $l, bool $ok, string $extra = ''): void {
    cascade takes the leg with it — has a ticket row but cannot be rendered, and
    this test died with a fatal on it. Matching the renderer's own joins here
    makes the choice honest instead of hopeful. */
-$b = Database::fetch(
-    "SELECT b.id, b.pnr
-       FROM bookings b
-       JOIN tickets t ON t.booking_id = b.id
-       JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
-       JOIN schedules s ON s.id = l.schedule_id
-       JOIN routes r ON r.id = s.route_id
-      WHERE b.status = 'confirmed'
-      ORDER BY b.id DESC LIMIT 1"
-);
-if ($b === null) { echo "  SKIP  no confirmed booking with a renderable ticket\n"; exit(0); }
-$bid = (int) $b['id']; $pnr = (string) $b['pnr'];
+/* 16 Nov 2026 (battery Y7): the suite used to BORROW the newest confirmed
+   booking. With suites running side by side, that booking belongs to another
+   suite which deletes it mid-run ("Booking not found for ticket generation"
+   after the first checks), and the borrowed ticket was re-issued under that
+   suite's feet (its REV checks moved). It now seeds its OWN confirmed booking
+   - its own schedule slot on a far date, blocked so search never shows it -
+   and removes every row and file it made at the end. */
+$route = Database::fetch("SELECT id FROM routes WHERE is_active = 1 AND to_city = 'Rupaidiha' ORDER BY id LIMIT 1")
+      ?? Database::fetch('SELECT id FROM routes WHERE is_active = 1 ORDER BY id LIMIT 1');
+if ($route === null) { echo "  SKIP  no active route to seed a ticket on\n"; exit(0); }
+const TPNG_DATE = '2099-09-27';
+$made = ['sched' => 0, 'book' => 0];
+$pnr  = 'SHG-2099-' . random_int(70000, 79999);
+$cleanupFixture = static function () use (&$made, &$pnr): void {
+    if ($made['book'] > 0) {
+        $t = Database::fetch('SELECT png_path, pdf_path FROM tickets WHERE booking_id = :b', ['b' => $made['book']]);
+        foreach (['.png', '.pdf', '.png.lock', '.pdf.lock'] as $ext) { @unlink(TICKET_PATH . '/ticket_' . $pnr . $ext); }
+        foreach (['png_path', 'pdf_path'] as $c) { if (!empty($t[$c])) { @unlink(TICKET_PATH . '/' . basename((string) $t[$c])); } }
+        foreach (['tickets', 'payments', 'booking_passengers', 'booking_seats', 'booking_legs', 'notifications'] as $tb) {
+            try { Database::delete($tb, 'booking_id = :b', ['b' => $made['book']]); } catch (Throwable $e) {}
+        }
+        try { Database::delete('audit_logs', "entity_type = 'booking' AND entity_id = :p", ['p' => $pnr]); } catch (Throwable $e) {}
+        Database::delete('bookings', 'id = :b', ['b' => $made['book']]);
+        $made['book'] = 0;
+    }
+    if ($made['sched'] > 0) {
+        Database::delete('schedules', 'id = :s', ['s' => $made['sched']]);
+        $made['sched'] = 0;
+    }
+};
+try {
+for ($slot = 96; $slot >= 80; $slot--) {
+    if (Database::scalar('SELECT id FROM schedules WHERE route_id = :r AND travel_date = :d AND slot = :s', ['r' => (int) $route['id'], 'd' => TPNG_DATE, 's' => $slot]) === null) {
+        $made['sched'] = (int) Database::insert('schedules', ['route_id' => (int) $route['id'], 'travel_date' => TPNG_DATE, 'slot' => $slot,
+            'dep_time_override' => '13:00:00', 'total_seats' => 40, 'status' => 'scheduled', 'is_blocked' => 1]);
+        break;
+    }
+}
+if ($made['sched'] === 0) { echo "  SKIP  no free schedule slot on " . TPNG_DATE . "\n"; exit(0); }
+$made['book'] = (int) Database::insert('bookings', ['pnr' => $pnr, 'contact_phone' => '9100007301', 'contact_country_code' => '91',
+    'booking_mode' => 'sharing', 'fare_per_seat' => 2200, 'base_total' => 2200, 'total_amount' => 2200,
+    'status' => 'confirmed', 'source' => 'admin', 'confirmed_at' => date('Y-m-d H:i:s')]);
+$tpLeg = (int) Database::insert('booking_legs', ['booking_id' => $made['book'], 'schedule_id' => $made['sched'], 'travel_date' => TPNG_DATE,
+    'boarding_stop' => 'Surat', 'drop_stop' => 'Rupaidiha', 'fare_per_seat' => 2200, 'seat_count' => 1, 'leg_total' => 2200]);
+Database::insert('booking_passengers', ['booking_id' => $made['book'], 'leg_id' => $tpLeg, 'passenger_ref' => 'TPNG' . substr($pnr, -5),
+    'seat_no' => 'L9', 'full_name' => 'Png Test Passenger', 'gender' => 'Male', 'is_primary' => 1]);
+$bid = $made['book'];
 
 echo "\n== render + cache ==\n";
 $path = Ticket::pngPath($bid, true);
@@ -86,13 +121,23 @@ check('foreign URL is refused', Ticket::verifyQrPayload('https://evil.example/?p
 $tk = Database::fetch('SELECT qr_payload FROM tickets WHERE booking_id = :b', ['b' => $bid]);
 check('legacy pipe payload still verifies', $tk !== null && Ticket::verifyQrPayload((string) $tk['qr_payload']) === $pnr);
 check('imageUrl carries the key', str_contains(Ticket::imageUrl($pnr), 'img=1') && str_contains(Ticket::imageUrl($pnr), '&k='));
+} catch (Throwable $e) {
+    // A crash here must be a FAIL with exit 1, never the app error page (which exits 0).
+    check('the render / QR checks ran without an exception', false, get_class($e) . ': ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine());
+} finally {
+    $cleanupFixture();
+}
 
 echo "\n== surfaces ship the image first (static) ==\n";
 $root = dirname(__DIR__);
 $src  = static fn(string $p): string => (string) file_get_contents($root . '/' . $p);
 check('download-ticket.php serves ?img=1', str_contains($src('download-ticket.php'), "_GET['img']"));
 check('notify confirm links the image', substr_count($src('includes/notify.php'), 'Ticket::imageUrl') >= 3);
-check('checkout relaxes the phone rule at the counter only', str_contains($src('assets/js/07-checkout.js'), "ctrSell ? (phoneVal === '' || /^\\d{8,15}\$/.test(phoneVal)) : /^\\d{10}\$/.test(phoneVal)"));
+/* The customer side of this rule moved into coPhoneShapeOk() - still exactly 10
+   digits, now also starting the way an Indian / a Nepali mobile does (by the
+   country picker); the counter keeps its relaxed 8-15 digits or a blank walk-in. */
+check('checkout relaxes the phone rule at the counter only', str_contains($src('assets/js/07-checkout.js'), "ctrSell ? (phoneVal === '' || /^\\d{8,15}\$/.test(phoneVal)) : coPhoneShapeOk(phoneVal)")
+    && str_contains($src('assets/js/07-checkout.js'), "function coPhoneShapeOk(phv) {\n  if (!/^\\d{10}\$/.test(phv)) return false;"));
 check('app auto-download ships the image', str_contains($src('assets/js/07-checkout.js'), 'downloadTicketImage(b); } catch'));
 check('reissue deletes the stale rendered files', str_contains($src('includes/ticket.php'), "@unlink(TICKET_PATH . '/ticket_' . \$pnr . '.png')"));
 check('share fetches the server PNG', str_contains($src('assets/js/11-pdf-ticket.js'), 'serverTicketPngBlob'));
@@ -106,8 +151,15 @@ check('share fetches the server PNG', str_contains($src('assets/js/11-pdf-ticket
    these guard the new shape. The behaviour of issuedBy() has its own
    suite: chalani-png-test.php. */
 check('PNG names who issued the ticket', str_contains($src('includes/ticket.php'), '$issued = self::issuedBy($booking);'));
+/* 15 Oct 2026 (letterhead): the issued-by chip sits top right of the header -
+   the channel label in gold, then the BIG line, which for an agent is the SHG
+   code itself (30px, shrunk only to fit the chip). The stamped "टिकट काट्ने"
+   strip still names the seller lower down. '154, $gold, $issued' was the
+   pre-letterhead geometry. */
 check('the agent code is drawn big, and the channel is named',
-    str_contains($src('includes/ticket.php'), '154, $gold, $issued')
+    str_contains($src('includes/ticket.php'), "self::gdText(\$im, 15, \$chipX1 + 20, 126, \$gold, \$issued['label'], false);")
+    && (bool) preg_match("/\\\$iBig = \\\$issued\\['kind'\\] === 'agent'\\s*\\? \\\$iCode/", $src('includes/ticket.php'))
+    && str_contains($src('includes/ticket.php'), 'foreach ([30, 26, 22, 19, 17] as $try) { $cSz = $try; if (self::gdWidth($try, $iBig) <= $chipT) { break; } }')
     && str_contains($src('includes/ticket.php'), 'टिकट काट्ने'));
 check('the PDF names the same seller too', substr_count($src('includes/ticket.php'), 'self::issuedBy($booking)') >= 2);
 check('PNG fits a long stop name before adding an ellipsis', str_contains($src('includes/ticket.php'), 'foreach ([23, 20, 18] as $try)'));

@@ -25,7 +25,23 @@ require_once INCLUDE_PATH . '/booking.php';
 $PASS = 0; $FAIL = 0;
 function check(string $l, bool $ok): void { global $PASS, $FAIL; if ($ok) { $PASS++; echo "  \033[32mPASS\033[0m  $l\n"; } else { $FAIL++; echo "  \033[31mFAIL\033[0m  $l\n"; } }
 function expectThrow(string $l, callable $fn): void { try { $fn(); check($l . ' (expected rejection)', false); } catch (Throwable $e) { check($l . ' → "' . $e->getMessage() . '"', true); } }
+/* A refusal for the RIGHT reason: $why must match the message. Since the payout
+   rule (a confirmed payment reference of 5+ characters before any payout) every
+   payout without a reference is refused for THAT reason, so a bare expectThrow()
+   proved nothing about the cap it was written for. */
+function expectRefusal(string $l, callable $fn, string $why): void {
+    try { $fn(); check($l . ' (expected rejection)', false); }
+    catch (Throwable $e) { check($l . ' → "' . $e->getMessage() . '"', preg_match($why, $e->getMessage()) === 1); }
+}
+/* 16 Nov 2026 (F1-3): the EXACT refusal - "reserved for an open withdrawal" when
+   one really is open, "more than the ₹X currently owed" when the balance is
+   simply too low. The old /reserved|owed|balance/ let either pass for both. */
+function expectMessage(string $l, callable $fn, string $exact): void {
+    try { $fn(); check($l . ' (expected rejection)', false); }
+    catch (Throwable $e) { check($l . ' → "' . $e->getMessage() . '"' . ($e->getMessage() === $exact ? '' : ' (wanted "' . $exact . '")'), $e->getMessage() === $exact); }
+}
 function money_is(float $a, float $b): bool { return abs($a - $b) < 0.005; }
+const MSG_RESERVED = 'Funds are reserved for an open withdrawal. Use Team Management → Withdrawals.';
 
 const TD      = '2099-09-22';
 const AGENT_U = 'testadvance-agent';
@@ -33,6 +49,7 @@ const AGENT_U = 'testadvance-agent';
 function cleanup(int $agentId, int $sid): void {
     if ($agentId > 0) {
         Database::delete('agent_ledger', 'agent_admin_id = :a', ['a' => $agentId]);
+        try { Database::delete('agent_payout_requests', 'agent_admin_id = :a', ['a' => $agentId]); } catch (Throwable $e) {}
         foreach (pluck(Database::fetchAll('SELECT id FROM bookings WHERE sold_by_admin_id = :a', ['a' => $agentId]), 'id') as $id) {
             Database::delete('bookings', 'id = :i', ['i' => (int) $id]);
         }
@@ -79,8 +96,17 @@ try {
     check('advance never touches the cash account', money_is($bal['cash'], 0.0));
 
     // 2) A payout cannot run while the balance is negative (nothing owed yet).
-    expectThrow('payout refused while an advance is outstanding',
-        fn() => AgentWallet::record($agentId, 'payout', 1000.0, ['by' => 0]));
+    //    Every payout carries a confirmed payment reference (UTR / receipt no.,
+    //    5+ characters, never reused) - without one it is refused before the cap.
+    $utr = static fn(int $n): string => 'UTR-ADV-' . $agentId . '-' . $n;
+    expectRefusal('a payout with no confirmed payment reference is refused',
+        fn() => AgentWallet::record($agentId, 'payout', 1000.0, ['by' => 0]), '/payment reference is required/i');
+    $openReqs = static fn(): int => (int) Database::scalar(
+        "SELECT COUNT(*) FROM agent_payout_requests WHERE agent_admin_id = :a AND status = 'open'", ['a' => $agentId], 0);
+    check('no withdrawal is open for this agent (so nothing is "reserved")', $openReqs() === 0);
+    expectMessage('payout refused while an advance is outstanding: nothing is owed, nothing reserved',
+        fn() => AgentWallet::record($agentId, 'payout', 1000.0, ['by' => 0, 'ref' => $utr(1)]),
+        'That is more than the ₹0 currently owed to this agent.');
 
     // 3) A real sale accrues commission and nets against the advance automatically.
     $b1 = BookingService::counterSale($route, $sid, TD, [$free[0]], [
@@ -100,8 +126,10 @@ try {
     check('advance fully recovered → outstanding 0', money_is($adv['outstanding'], 0.0));
 
     // 5) Payout now works but is still capped at the (advance-adjusted) balance.
-    expectThrow('payout still capped at the net balance', fn() => AgentWallet::record($agentId, 'payout', 200.0, ['by' => 0]));
-    AgentWallet::record($agentId, 'payout', 100.0, ['by' => 0]);
+    expectMessage('payout still capped at the net balance (no withdrawal open: the owed amount, not "reserved")',
+        fn() => AgentWallet::record($agentId, 'payout', 200.0, ['by' => 0, 'ref' => $utr(2)]),
+        'That is more than the ₹100 currently owed to this agent.');
+    AgentWallet::record($agentId, 'payout', 100.0, ['by' => 0, 'ref' => $utr(3)]);
     check('exact-balance payout succeeds', money_is(AgentWallet::balances($agentId)['commission'], 0.0));
 
     // 6) A repayment (agent returns cash) is a credit tagged ADVANCE.
@@ -110,6 +138,20 @@ try {
     $adv = AgentWallet::advanceSummary($agentId);
     check('repayment credits commission by 2,000', money_is($bal['commission'], 2000.0));
     check('advanceSummary repaid = 2,000', money_is($adv['repaid'], 2000.0));
+    expectRefusal('the same payment reference cannot settle a second payout', fn() => AgentWallet::record($agentId, 'payout', 50.0, ['by' => 0, 'ref' => $utr(3)]), '/already recorded/i');
+    check('  …and nothing was paid by the refused one', money_is(AgentWallet::balances($agentId)['commission'], 2000.0));
+
+    // 6b) An OPEN withdrawal really reserves its amount: ₹1,500 of the ₹2,000 owed.
+    $reqId = (int) Database::insert('agent_payout_requests', [
+        'agent_admin_id' => $agentId, 'amount' => 1500.00, 'note' => 'F1-3 test request', 'status' => 'open',
+    ]);
+    expectMessage('with ₹1,500 of ₹2,000 reserved, a ₹1,000 payout is refused as RESERVED',
+        fn() => AgentWallet::record($agentId, 'payout', 1000.0, ['by' => 0, 'ref' => $utr(4)]), MSG_RESERVED);
+    expectMessage('…but ₹2,500 is more than is owed at all: the owed message, even with a withdrawal open',
+        fn() => AgentWallet::record($agentId, 'payout', 2500.0, ['by' => 0, 'ref' => $utr(5)]),
+        'That is more than the ₹2,000 currently owed to this agent.');
+    check('  …and neither refused payout moved the balance', money_is(AgentWallet::balances($agentId)['commission'], 2000.0));
+    Database::delete('agent_payout_requests', 'id = :i', ['i' => $reqId]);
 
     // 7) Advance rows are tagged ADVANCE and audited as agent.advance.
     $tagged = (int) Database::scalar("SELECT COUNT(*) FROM agent_ledger WHERE agent_admin_id=:a AND ref LIKE 'ADVANCE%'", ['a' => $agentId], 0);
@@ -128,7 +170,7 @@ try {
     check('unexpected error: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine(), false);
 } finally {
     cleanup($agentId, $sid);
-    Database::delete('audit_logs', "action='agent.advance' AND entity_id = :a", ['a' => (string) $agentId]);
+    Database::delete('audit_logs', "action IN ('agent.advance', 'agent.payout', 'agent.commission') AND entity_id = :a", ['a' => (string) $agentId]);
 }
 
 echo "\n  $PASS passed, $FAIL failed\n";

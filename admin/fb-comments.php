@@ -15,12 +15,15 @@
  * is ever posted without the office pressing Send.
  *
  * Seeing and replying: customers.view — the same as admin/messenger-inbox.php.
+ * The comms strip (WaInbox::channelTabs, P6-9a) sits under the page head, so
+ * WhatsApp | Messenger | Comments | Sent are one tap apart.
  * The Page token is the Messenger page's (admin/facebook.php): never shown
  * or changed here.
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/fbcomments.php';
+require_once INCLUDE_PATH . '/wainbox.php';       // P6-9a: the WhatsApp | Messenger | Comments | Sent strip
 
 $admin   = admin_boot('customers.view');
 $adminId = (int) $admin['id'];
@@ -94,6 +97,7 @@ $pill = static function (array $r): string {
 
 admin_header('FB comments', 'fb-comments');
 admin_page_head('Facebook पेजका पोस्टमा आएका कमेन्ट — हेर्ने र सार्वजनिक जवाफ दिने · Comments under our Facebook Page posts: read them, and reply in public.');
+echo WaInbox::channelTabs('comments');
 ?>
 <style>
 .fc-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:0 0 16px;display:grid;gap:10px;min-width:0}

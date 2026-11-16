@@ -103,6 +103,11 @@ $payThemeCss = ':root[data-theme="dark"] { color-scheme: dark; }'
 require_once INCLUDE_PATH . '/brand.php';
 $payCompany   = Settings::getString('company_name', APP_NAME);
 $payThemeHead .= Brand::iconLinks();
+/* 16 Nov 2026 (P5-4a): the app's weekly accent (includes/themetokens.php) rides in the head
+   like on track / help / verify-ticket, but the "UPI app" pay button deliberately stays GREEN
+   every day: green = pay is the one colour cue a passenger must never lose. */
+require_once INCLUDE_PATH . '/themetokens.php';
+$payThemeHead .= ThemeTokens::accentHead();
 $payBrand     = '<div class="pb"><img src="' . htmlspecialchars(Brand::markUrl(36), ENT_QUOTES, 'UTF-8') . '" alt="" width="69" height="36">'
     . '<b>' . htmlspecialchars($payCompany, ENT_QUOTES, 'UTF-8') . '</b>' . Brand::flagPair(13) . '</div>';
 $payThemeCss .= ' .pb { display:flex; align-items:center; gap:10px; margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid rgba(127,140,160,.22); }'

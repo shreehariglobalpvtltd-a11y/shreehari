@@ -344,9 +344,19 @@ try {
         'contact' => ['phone' => PHONE], 'bookingMode' => 'sharing', 'paymentMethod' => 'upi',
         'isCod' => false, 'boarding' => '', 'referralCode' => '',
     ]);
-    $normal = Fare::cabinFare('single', 'sharing', 1, true, (string) $route['to_city'])['perPerson'];
-    check('the daily bus still charges the normal fare',
-        (float) $bd['total_amount'] === (float) $normal, 'charged ' . $bd['total_amount'] . ' vs ' . $normal);
+    /* "Normal" = what the daily bus charges for THIS pickup: the pickup's own
+       fare (Admin -> Routes, 1 Oct 2026 - Fare::stopFare, which create() passes
+       to cabinFare) else the direction fare. It was the bare direction fare
+       (2000), which went red the day the first pickup was priced 2200. The
+       property guarded is unchanged: the extra bus's 2600 never leaks onto the
+       daily bus. */
+    $bdLeg  = Database::fetch('SELECT boarding_stop, drop_stop FROM booking_legs WHERE booking_id = (SELECT id FROM bookings WHERE pnr = :p) ORDER BY id LIMIT 1',
+                              ['p' => (string) $bd['pnr']]) ?? [];
+    $normal = Fare::cabinFare('single', 'sharing', 1, true, (string) $route['to_city'], 4,
+                              Fare::stopFare($rid, (string) ($bdLeg['boarding_stop'] ?? ''), (string) ($bdLeg['drop_stop'] ?? '')))['perPerson'];
+    check('the daily bus still charges the normal fare (the pickup own fare, else the direction fare)',
+        (float) $bd['total_amount'] === (float) $normal, 'charged ' . $bd['total_amount'] . ' vs ' . $normal . ' at ' . ($bdLeg['boarding_stop'] ?? '?'));
+    check('  …never the price of the extra bus', (float) $bd['total_amount'] !== 2600.0);
     /* ================================================================
      *  7. A manually added bus with its OWN SEAT LAYOUT
      * ================================================================ */

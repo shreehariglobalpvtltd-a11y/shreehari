@@ -388,7 +388,7 @@ final class WaPayProof
         $ref = '';
         try {
             require_once INCLUDE_PATH . '/helpdesk.php';
-            $r = HelpDesk::open(['name' => '', 'phone' => $local, 'category' => 'payment', 'pnr' => $pnr, 'source' => 'chat', 'lang' => $lang, 'ack' => false,
+            $r = HelpDesk::open(['name' => '', 'phone' => $local, 'category' => 'payment', 'pnr' => $pnr, 'source' => 'chat', 'lang' => $lang, 'ack' => false, 'system_note' => true,
                 'message' => 'WhatsApp: the passenger typed a payment reference for ' . $pnr . ' and confirmed it — UTR ' . $utr
                     . ($amount !== null ? ', amount ' . inr($amount) : '') . ' (booking ' . inr((float) ($p['total'] ?? 0)) . ', status ' . $status
                     . ((string) ($p['kind'] ?? '') === 'cod' ? ', booked as pay-on-bus' : '') . ').'
