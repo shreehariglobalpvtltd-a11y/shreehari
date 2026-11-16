@@ -107,7 +107,8 @@ if ($valid) {
             // The owning customer: booked in this browser session, or an
             // OTP-verified owner (8 Oct 2026). The walk-in placeholder never.
             $authed = Auth::customerMayOpen($booking);
-            if (!$authed && Auth::can('bookings.view')) {
+            // 16 Nov 2026 (G1): staffActive() - a session on a temporary password sees the guest card
+            if (!$authed && Auth::staffActive() !== null && Auth::can('bookings.view')) {
                 $scope = Auth::bookingScopeAdminId();
                 if ($scope === null || $scope === (int) ($booking['sold_by_admin_id'] ?? 0)) {
                     $authed = true;

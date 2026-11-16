@@ -22,6 +22,7 @@ require __DIR__ . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/fare.php';
 require_once INCLUDE_PATH . '/seats.php';
 require_once INCLUDE_PATH . '/opshub.php';
+require_once INCLUDE_PATH . '/chalanipng.php';   // 16 Nov 2026: ChalaniPng::payMode - the pay-at-boarding rule the office chalani uses
 
 header('X-Robots-Tag: noindex, nofollow');
 header('Cache-Control: no-store, max-age=0');
@@ -41,6 +42,26 @@ if (!OpsHub::checkPublicKey($key)) {
 
 $e     = static fn($v): string => Security::e((string) ($v ?? ''));
 $today = todayISO();
+
+/* 16 Nov 2026 (owner: "redirect payment lina sab suvidha hunu paryo, free wala"):
+   ?k=..&qr=<PNR> - the crew's 💳 QR to the passenger's own pay page (pay.php:
+   UPI, UPI QR, eSewa, UTR claim - all free). READ-ONLY: it never marks anything
+   paid (an online payment lands 'pending' for the office to verify) and there is
+   no cash-confirm here. Only a pay-at-boarding booking still unpaid, travelling
+   inside this link's own date window, gets a picture - not a QR service. */
+if (isset($_GET['qr'])) {
+    $qrPng = ChalaniPng::payQrPng((string) $_GET['qr'], null,
+        date('Y-m-d', strtotime($today . ' -3 days')), date('Y-m-d', strtotime($today . ' +30 days')));
+    if ($qrPng === null) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        exit('बसमा तिर्न बाँकी छैन · Nothing is due on boarding for this booking.');
+    }
+    header('Content-Type: image/png');
+    header('Content-Length: ' . strlen($qrPng));
+    echo $qrPng;
+    exit;
+}
 $date  = (string) ($_GET['d'] ?? $today);
 if (!Security::isValidDate($date) || $date < date('Y-m-d', strtotime($today . ' -3 days')) || $date > date('Y-m-d', strtotime($today . ' +30 days'))) {
     $date = $today;
@@ -90,9 +111,10 @@ foreach (['luggage_pieces', 'luggage_fee', 'infant_count', 'infant_fee'] as $xc)
 }
 foreach ($deps as $dep) {
     $rows = Database::fetchAll(
-        "SELECT bp.seat_no, bp.full_name, bp.gender, b.id AS booking_id, b.pnr, b.booking_mode, b.contact_phone" . $xCols . ",
+        "SELECT bp.id AS pax_id, bp.seat_no, bp.full_name, bp.gender, b.id AS booking_id, b.pnr, b.booking_mode, b.contact_phone,
+                b.is_cod, b.total_amount" . $xCols . ",
                 bl.boarding_stop, bl.drop_stop,
-                p.status AS pay_status, p.method AS pay_method,
+                p.status AS pay_status, p.method AS pay_method, p.utr_number AS pay_utr, p.admin_note AS pay_note,
                 ad.full_name AS agent_name, ad.phone AS agent_phone, ad.role AS agent_role, b.sold_by_admin_id, b.source
            FROM booking_passengers bp
            JOIN bookings b      ON b.id = bp.booking_id
@@ -117,6 +139,23 @@ foreach ($trips as $t) {
     }
 }
 $ticks = OpsHub::collections($allIds);
+
+/* 16 Nov 2026 (pay at boarding): what a booking still owes on THIS bus - the
+   same split as the office chalani (admin/manifest.php): the fare less the desk
+   extras over every passenger of the booking (both legs of a round trip), plus
+   the extras' leg share once. */
+$paxPerBooking = []; $legsPerBooking = [];
+$idList = implode(',', array_values(array_unique(array_filter(array_map('intval', $allIds)))));   // ints from the DB
+if ($idList !== '') {
+    foreach (Database::fetchAll("SELECT booking_id, COUNT(*) c FROM booking_passengers WHERE booking_id IN ($idList) GROUP BY booking_id") as $pr) {
+        $paxPerBooking[(int) $pr['booking_id']] = max(1, (int) $pr['c']);
+    }
+    foreach (Database::fetchAll("SELECT booking_id, COUNT(*) c FROM booking_legs WHERE booking_id IN ($idList) GROUP BY booking_id") as $lr) {
+        $legsPerBooking[(int) $lr['booking_id']] = max(1, (int) $lr['c']);
+    }
+}
+$extrasOf = static fn(array $r): float => round(max(0.0, (float) ($r['luggage_fee'] ?? 0)) + max(0.0, (float) ($r['infant_fee'] ?? 0)), 2);
+$qrBase   = '?k=' . rawurlencode($key) . '&qr=';
 
 $stopShort = static function (string $label): string {
     $s = (string) preg_replace('/\s*\[[^\]]*\]\s*/u', ' ', $label);
@@ -170,7 +209,33 @@ header h1{margin:0;font-size:19px}header p{margin:4px 0 0;font-size:13px;opacity
 .foot{font-size:12px;color:var(--mut);text-align:center;margin-top:18px}
 .tools{display:flex;gap:8px;justify-content:flex-end;margin:0 0 8px}
 .tools button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
-@media print{.days,.tools{display:none}body{background:#fff}.trip{break-inside:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+/* 16 Nov 2026: pay at boarding - the pay mark on each booking, the to-collect chip, the crew's 💳 QR */
+.c-board{background:#FEF2F2;color:#B91C1C;border:1px solid #F6C9C9}
+.pmrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.pm{font-size:12px;font-weight:800;border-radius:99px;padding:1px 9px;border:1px solid transparent}
+.pm-boarding,.pm-due{background:#FEF2F2;color:#B91C1C;border-color:#F6C9C9}
+.pm-cash,.pm-online,.pm-paid{background:#ECFDF3;color:#15803D;border-color:#BBF0CF}
+.pm-agent,.pm-pending{background:#FFF7E8;color:#B45309;border-color:#F5D9A8}
+.qrb{min-height:34px;padding:0 12px;border-radius:9px;border:1px solid #1D4FA3;background:#EEF4FF;color:#1D4FA3;font:inherit;font-size:13px;font-weight:800;cursor:pointer}
+dialog.pq{width:min(92vw,360px);max-width:calc(100vw - 32px);border:1px solid var(--line);border-radius:16px;padding:14px 16px 16px;background:var(--card);color:var(--ink)}
+dialog.pq::backdrop{background:rgba(8,15,30,.55)}
+.pq h3{margin:0 30px 4px 0;font-size:16px}
+.pq .pq-x{position:absolute;top:8px;right:8px;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:16px;cursor:pointer}
+.pq p{margin:4px 0;font-size:13px;color:var(--mut);overflow-wrap:anywhere}
+.pq .pq-amt{font-size:22px;font-weight:900;color:#B91C1C;margin:2px 0 6px}
+.pq .pq-img{background:#fff;border-radius:10px;padding:8px;display:flex;justify-content:center;margin:6px 0}
+.pq .pq-img img{width:100%;max-width:240px;height:auto;aspect-ratio:1/1;image-rendering:pixelated}
+.pq .pq-link{display:flex;gap:6px;margin-top:8px}
+.pq .pq-link input{flex:1 1 auto;min-width:0;min-height:38px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 8px;font-size:12px}
+.pq .pq-link button,.pq .pq-link a{display:inline-flex;align-items:center;min-height:38px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:12.5px;font-weight:700;text-decoration:none;cursor:pointer}
+@media (prefers-color-scheme:dark){
+  .c-board,.pm-boarding,.pm-due{background:rgba(220,38,38,.16);border-color:rgba(220,38,38,.4);color:#FCA5A5}
+  .pm-cash,.pm-online,.pm-paid{background:rgba(22,163,74,.16);border-color:rgba(22,163,74,.4);color:#6EE7A0}
+  .pm-agent,.pm-pending{background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.4);color:#FBC56B}
+  .qrb{background:rgba(59,130,246,.18);border-color:rgba(147,197,253,.5);color:#BFDBFE}
+  .pq .pq-amt{color:#FCA5A5}
+}
+@media print{.days,.tools,.qrb{display:none}body{background:#fff}.trip{break-inside:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 <header><h1>🚌 <?= $e($company) ?> — Live Chalani</h1>
 <p><?= $e(formatDate($date, 'l, j F Y')) ?> · <span id="upd">updated <?= $e(date('g:i:s A')) ?></span> · हरेक ३० सेकेन्डमा आफैं update</p></header>
@@ -191,10 +256,20 @@ header h1{margin:0;font-size:19px}header p{margin:4px 0 0;font-size:13px;opacity
       $dep = $t['dep']; $rows = $t['rows'];
       $coach = (string) ($dep['coach_type'] ?? 'sleeper');
       $groups = []; $beds = []; $cnt = ['paid' => 0, 'agent' => 0, 'due' => 0]; $exN = 0;
+      $pmB = []; $boardDue = 0.0; $boardDueN = 0;   // 16 Nov 2026: pay mode + ₹ due on boarding, per booking
       foreach ($rows as $r) {
           $bid = (int) $r['booking_id'];
           $st  = OpsHub::payState($r, $ticks[$bid] ?? null);
           $cnt[$st]++;
+          if (!isset($pmB[$bid])) {
+              $pmMode    = ChalaniPng::payMode($r, $st, $ticks[$bid] ?? null);   // cash or online: the office tick's mode, as on the ticket
+              $pmB[$bid] = ['mode' => $pmMode, 'amt' => $pmMode === 'boarding' ? round($extrasOf($r) / ($legsPerBooking[$bid] ?? 1), 2) : 0.0,
+                            'claim' => $pmMode === 'boarding' && ChalaniPng::payClaimSent($r)];   // a UTR sent - the office checks it
+          }
+          if ($pmB[$bid]['mode'] === 'boarding') {
+              $pmB[$bid]['amt'] += round(max(0.0, (float) ($r['total_amount'] ?? 0) - $extrasOf($r)) / ($paxPerBooking[$bid] ?? 1));
+              $boardDueN++;
+          }
           if (Seats::isExtraSeat((string) $r['seat_no'])) { $exN++; }
           $place = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—';
           if (!isset($groups[$place][$bid])) {
@@ -208,6 +283,7 @@ header h1{margin:0;font-size:19px}header p{margin:4px 0 0;font-size:13px;opacity
               $beds[strtoupper((string) $r['seat_no'])] = $st;
           }
       }
+      foreach ($pmB as $pmX) { if ($pmX['mode'] === 'boarding') { $boardDue += $pmX['amt']; } }
       $total = (int) ($dep['total_seats'] ?: 72);
       /* 16 Nov 2026 (owner: "chalani ma seat ma sabai ma thik hos"): free = berths not
          taken — a private double cabin is one passenger on two berths */
@@ -224,6 +300,7 @@ header h1{margin:0;font-size:19px}header p{margin:4px 0 0;font-size:13px;opacity
         <span class="c-n">💺 <?= max(0, $total - $bedsTaken) ?> खाली / <?= $total ?></span>
         <?php if ($exN > 0): ?><span class="c-n">➕ Extra <?= $exN ?></span><?php endif; ?>
         <span class="c-paid">✅ Paid <?= $cnt['paid'] ?></span><span class="c-agent">🟠 Agent <?= $cnt['agent'] ?></span><span class="c-due">🔴 Due <?= $cnt['due'] ?></span>
+        <span class="<?= $boardDue > 0 ? 'c-board' : 'c-n' ?>">🚌 बसमा उठाउनु पर्ने · To collect on boarding: <?= (int) $boardDueN ?> जना · ₹<?= $e(number_format($boardDue)) ?></span>
       </div>
       <?php $no = 0; foreach ($groups as $place => $bks): $no++; $paxHere = array_sum(array_map(static fn(array $g): int => $g['n'], $bks)); ?>
         <div class="place">📍 <?= $no ?> · <?= $e($place) ?> · <?= $paxHere ?> यात्रु</div>
@@ -237,7 +314,13 @@ header h1{margin:0;font-size:19px}header p{margin:4px 0 0;font-size:13px;opacity
             <?php $xSt = $xAmt > 0 ? (string) $g['state'] : 'free';   // a ₹0 line (free lap infant) owes nothing ?>
             <div class="row"><span style="font-weight:800;color:<?= $xSt === 'due' ? '#B91C1C' : ($xSt === 'free' ? 'inherit' : '#15803D') ?>">विशेष भुक्तानी · <?= $xLug > 0 ? '🧳 ' . $xLug . ' थप सामान ' : '' ?><?= $xInf > 0 ? '👶 ' . $xInf . ' शिशु ' : '' ?><?= $xAmt > 0 ? '₹' . $e(number_format($xAmt)) . ' ' : '' ?>— <?= $xSt === 'due' ? '✗ बाँकी' : ($xSt === 'free' ? 'निःशुल्क' : '✓ भयो') ?></span></div>
             <?php endif; ?>
-            <span class="st <?= $e($cls) ?>"><?= $e($lbl) ?></span>
+            <?php $gPm = $pmB[(int) $r['booking_id']] ?? ['mode' => 'due', 'amt' => 0.0]; ?>
+            <div class="pmrow"><span class="st <?= $e($cls) ?>"><?= $e($lbl) ?></span>
+              <span class="pm pm-<?= $e($gPm['mode']) ?>"><?= $e(ChalaniPng::payModeLabel($gPm['mode'], 'ne') . ($gPm['mode'] === 'boarding' && $gPm['amt'] > 0 ? ' ₹' . number_format($gPm['amt']) : '')) ?></span>
+              <?php if (!empty($gPm['claim'])): ?><span class="pm pm-pending"><?= $e(ChalaniPng::payClaimLabel('ne')) ?></span><?php endif; ?>
+              <?php if ($gPm['mode'] === 'boarding'): ?><button type="button" class="qrb" data-payqr data-pnr="<?= $e($r['pnr']) ?>" data-name="<?= $e($g['lead']) ?>"
+                data-amt="₹<?= $e(number_format($gPm['amt'])) ?>" data-link="<?= $e(ChalaniPng::payLink((string) $r['pnr'])) ?>" data-qr="<?= $e($qrBase . rawurlencode((string) $r['pnr'])) ?>"
+                title="यात्रुलाई अनलाइन तिर्ने QR देखाउनुहोस् · Show the passenger a QR to pay online (free)">💳 QR</button><?php endif; ?></div>
           </div>
         <?php endforeach; ?>
       <?php endforeach; ?>
@@ -257,8 +340,53 @@ header h1{margin:0;font-size:19px}header p{margin:4px 0 0;font-size:13px;opacity
   <?php endforeach; ?>
   <p class="foot">© <?= $e($company) ?> · यो link गोप्य राख्नुहोस् · Mobile number लुकेको · Office ले बदलेको तुरुन्त यहाँ देखिन्छ</p>
 </div>
+<?php /* 16 Nov 2026: the 💳 QR card - shows the passenger's pay page as a QR. Nothing here marks a payment. */ ?>
+<dialog class="pq" id="lvPayQr" aria-labelledby="lvPayQrH">
+  <form method="dialog" style="margin:0"><button class="pq-x" type="submit" aria-label="Close · बन्द">✕</button></form>
+  <h3 id="lvPayQrH">💳 बसमा भुक्तानी · Pay on boarding</h3>
+  <p><b data-f="name"></b> · <span data-f="pnr"></span></p>
+  <div class="pq-amt" data-f="amt"></div>
+  <div class="pq-img"><img alt="Pay QR" width="240" height="240" data-f="img"></div>
+  <p>यात्रुले फोनको UPI / eSewa एपले स्क्यान गरेर निःशुल्क तिर्नुहोस् · The passenger scans with any UPI / eSewa app and pays free.</p>
+  <p>कार्यालयले जाँचेपछि मात्र "भुक्तानी" हुन्छ · It counts as paid only after the office checks it.</p>
+  <div class="pq-link"><input readonly data-f="link" aria-label="Pay link" onclick="this.select()"><button type="button" data-f="copy">Copy</button><a data-f="open" target="_blank" rel="noopener">Open</a></div>
+</dialog>
 <script>
-setTimeout(function(){ try { sessionStorage.setItem('chl_y', String(window.scrollY)); } catch (e) {} location.reload(); }, 30000);
+(function () {
+  var d = document.getElementById('lvPayQr');
+  var f = function (k) { return d ? d.querySelector('[data-f="' + k + '"]') : null; };
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-payqr]') : null;
+    if (!b || !d) { return; }
+    ev.preventDefault();
+    var link = b.getAttribute('data-link') || '';
+    if (typeof d.showModal !== 'function') { window.open(link, '_blank', 'noopener'); return; }
+    f('name').textContent = b.getAttribute('data-name') || '';
+    f('pnr').textContent = b.getAttribute('data-pnr') || '';
+    f('amt').textContent = b.getAttribute('data-amt') || '';
+    f('img').src = b.getAttribute('data-qr') || '';
+    f('link').value = link;
+    f('open').href = link;
+    d.showModal();
+  });
+  if (d) {
+    f('copy').addEventListener('click', function () {
+      var v = f('link').value, btn = this;
+      var done = function () { btn.textContent = 'Copied ✓'; setTimeout(function () { btn.textContent = 'Copy'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(v).then(done, function () { f('link').select(); }); }
+      else { f('link').select(); try { document.execCommand('copy'); done(); } catch (e) {} }
+    });
+  }
+  /* the page re-reads itself every 30 s - but never while the QR card is open
+     in front of a passenger who is scanning it */
+  (function later() {
+    setTimeout(function () {
+      if (d && d.open) { later(); return; }
+      try { sessionStorage.setItem('chl_y', String(window.scrollY)); } catch (e) {}
+      location.reload();
+    }, 30000);
+  })();
+})();
 try { var y = sessionStorage.getItem('chl_y'); if (y) { window.scrollTo(0, parseInt(y, 10) || 0); sessionStorage.removeItem('chl_y'); } } catch (e) {}
 </script>
 </body></html>

@@ -928,8 +928,34 @@ final class Ticket
         /* 6 Nov 2026: + the moment barcode.php reached this server (the deploy of the
            barcode ticket), so a ticket the OLD code drew on deploy day is redrawn too. */
         // 6 Nov 2026: + seats.php (the berth numbering moved: single side first), so every ticket redraws with the new labels.
+        /* 16 Nov 2026 (P1 refix): + this file itself. The layout stamps can only name a
+           moment BEFORE the code ships, so a ticket the old code drew between the stamp
+           and the deploy kept the old words for good (the P1 stamp said 22:50 IST while
+           live still drew "PAY CASH ON BOARDING"). deploy-prod.sh writes each file it ships
+           with a plain cp (mtime = the deploy minute) and the live-branch pull does the same,
+           so a release that changes the renderer redraws every ticket ONCE, on its next
+           open, whether or not someone remembered to move the stamps. */
         return max((int) strtotime($layoutStamp), Settings::getInt('ticket_identity_changed_at', 0), (int) @filemtime(__DIR__ . '/barcode.php'),
-            (int) @filemtime(__DIR__ . '/seats.php'));
+            (int) @filemtime(__DIR__ . '/seats.php'), (int) @filemtime(__FILE__));
+    }
+
+    /**
+     * P1 refix (16 Nov 2026): a cached ticket drawn before the office last changed its
+     * chalani tick is stale - the tick says cash or UPI / eSewa on the PAID words
+     * (payWords), but OpsHub::markPaid / markDue on an already-settled row redraw
+     * nothing. Equal seconds count as stale: settleCod draws and the tick lands in the
+     * same second, and one extra redraw is cheaper than a wrong word. A tick time
+     * ahead of this server's clock (a DB clock running fast) is ignored rather than
+     * redrawing the ticket on every open.
+     */
+    private static function tickNewer(array $booking, string $path): bool
+    {
+        $at = (int) (is_array($booking['pay_tick'] ?? null) ? ($booking['pay_tick']['marked_ts'] ?? 0) : 0);
+        if ($at <= 0 || $at > time() + 2 || !is_file($path)) {
+            return false;
+        }
+        clearstatcache(true, $path);
+        return $at >= (int) @filemtime($path);
     }
 
     public static function logoFile(string $prefer = ''): ?string
@@ -1367,7 +1393,7 @@ final class Ticket
         /* A PDF rendered before the layout last changed is stale — mirrors the
            PNG staleness check so a seat-label change re-renders each ticket ONCE
            on its next open rather than serving the pre-change document forever. */
-        $stale = is_file($path) && (int) @filemtime($path) < self::staleBefore(self::PDF_LAYOUT_CHANGED);
+        $stale = is_file($path) && ((int) @filemtime($path) < self::staleBefore(self::PDF_LAYOUT_CHANGED) || self::tickNewer($booking, $path));
         if (!$force && !$stale && is_file($path) && !empty($ticket['pdf_path'])) {
             return $path;
         }
@@ -1463,7 +1489,7 @@ final class Ticket
            line, fitted stop names). Compared by file mtime against a stamp
            bumped on every layout change, so an already-issued ticket
            re-renders ONCE on its next open instead of never. */
-        $stale = is_file($path) && (int) @filemtime($path) < self::staleBefore(self::PNG_LAYOUT_CHANGED);
+        $stale = is_file($path) && ((int) @filemtime($path) < self::staleBefore(self::PNG_LAYOUT_CHANGED) || self::tickNewer($booking, $path));
         if (!$force && !$stale && is_file($path) && !empty($ticket['png_path'])) {
             return $path;
         }
@@ -1736,22 +1762,25 @@ final class Ticket
             DocArt::mark($im, $embX, self::PNG_EMBLEM_Y, self::PNG_EMBLEM_W, self::PNG_EMBLEM_H, true, self::ownLogo($co), 'center');
         }
 
-        /* Payment pill - top LEFT under the mantra, clear of the seal. */
-        $pay  = $booking['payment'] ?? null;
-        $paid = self::paymentSummary($booking)['due'] <= 0;
-        if ($paid) {
-            $pillCol = $green;
-            $method  = strtoupper((string) ($pay['method'] ?? ''));
-            $pillTxt = 'PAID' . ($method !== '' ? ' · ' . ($method === 'COD' ? 'CASH' : $method) : '');
-        } elseif ((int) ($booking['is_cod'] ?? 0) === 1) {
-            $pillCol = $goldD;
-            $pillTxt = 'PAY CASH ON BOARDING';
-        } else {
-            $pillCol = $red;
-            $pillTxt = 'PAYMENT PENDING';
+        /* Payment pill - top LEFT under the mantra, clear of the seal.
+           16 Nov 2026 (P1): Nepali first - बसमा तिर्ने · PAY ON BOARDING while a
+           pay-at-boarding ticket owes money, and once paid HOW: भुक्तानी भयो · PAID ·
+           नगद/CASH or अनलाइन/ONLINE (payWords). The longest wording that still fits
+           at 12 px or more wins; the pill's room is unchanged. */
+        $payW    = self::payWords($booking);
+        $pillCol = $payW['state'] === 'paid' ? $green : ($payW['state'] === 'board' ? $goldD : $red);
+        $pillRoom = $embX + 50 - 60 - 40;   // the emblem's top-left corner is empty sky: the pill may run under its glow to x = embX + 50, clear of the globe
+        $pillTxt = (string) end($payW['pill']);
+        $pSz     = 0;
+        foreach ($payW['pill'] as $try) {
+            for ($s = 16; $s >= 12; $s--) {
+                if (self::gdWidth($s, $try) <= $pillRoom) { $pillTxt = $try; $pSz = $s; break 2; }
+            }
         }
-        $pSz = 16;
-        while ($pSz > 11 && self::gdWidth($pSz, $pillTxt) + 40 > $embX + 50 - 60) { $pSz--; }   // the emblem's top-left corner is empty sky: the pill may run under its glow to x = embX + 50, clear of the globe
+        if ($pSz === 0) {
+            $pSz = 16;
+            while ($pSz > 11 && self::gdWidth($pSz, $pillTxt) > $pillRoom) { $pSz--; }
+        }
         $pw = self::gdWidth($pSz, $pillTxt) + 40;
         self::gdRounded($im, 58, 97, 60 + $pw + 2, 133, 18, $white);
         self::gdRounded($im, 60, 99, 60 + $pw, 131, 16, $pillCol);
@@ -2402,8 +2431,13 @@ final class Ticket
         }
         catch (Throwable $e) { Logger::error('Ticket verification barcode: ' . $e->getMessage()); }
         $paidNow = $settlement['due'] <= 0;
-        $stWord  = $paidNow ? 'PAID' : 'PAYMENT DUE';
-        self::gdText($im, 24, 76, 1504 + $grow, $paidNow ? $green : $orange, $stWord, true);
+        /* 16 Nov 2026 (P1): the same words as the pill - PAID · नगद/CASH or
+           अनलाइन/ONLINE, बसमा तिर्ने · PAY ON BOARDING, else PAYMENT DUE. */
+        $stPay   = self::payWords($booking);
+        $stWord  = $stPay['word'];
+        $stSz    = 24;
+        while ($stSz > 18 && self::gdWidth($stSz, $stWord) > 464) { $stSz--; }
+        self::gdText($im, $stSz, 76, 1504 + $grow, $paidNow ? $green : $orange, $stWord, true);
         self::gdText($im, 15, 76, 1532 + $grow, $mut, 'बोर्डिङमा देखाउनुहोस् · Show at boarding', false);
         /* SECURITY CODE (9 Oct 2026, anti-fake) — keyed to this revision of
            the ticket; verify-ticket.php shows the same letters. */
@@ -2457,7 +2491,10 @@ final class Ticket
             self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'कार्यालयले भुक्तानी विवरण पठाउनेछ', 410), false);
         } else {
             self::gdText($im, 18, 576, 1716 + $grow, $ink, $clampTo(18, 'UPI: ' . $upiVpa, 410), true);
-            self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, $payQ['name'], 410), false);
+            /* 16 Nov 2026 (P1): a pay-at-boarding ticket says both ways under its QR -
+               cash on the bus, or online now through this QR (UPI / eSewa, no fee). */
+            $cardLine = $stPay['state'] === 'board' ? 'बसमा नगद वा अनलाइन · Cash on bus or online' : $payQ['name'];
+            self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, $cardLine, 410), false);
         }
         imageline($im, 576, 1756 + $grow, 984, 1756 + $grow, $edge);
         self::gdText($im, 18, 576, 1782 + $grow, $ink,
@@ -2692,6 +2729,32 @@ final class Ticket
             "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE booking_id = :b AND status = 'verified'",
             ['b' => $bookingId], 0
         );
+
+        /* 16 Nov 2026 (P1, owner: "cash ho ki online ho tyo ni"): HOW the fare was paid,
+           for the PAID pill and band - the newest VERIFIED money row (a later unverified
+           row never says "paid"), and the office's chalani tick, which is where a settled
+           pay-at-boarding ticket says whether the money came as cash or UPI / eSewa
+           (payWords()). The tick table is created on first use by OpsHub: absent = no tick.
+           P1 refix: the row's UTR and the passenger's claim way (CodPayClaim marks
+           gateway_payload {"pay_claim":{"method":…}}) come along too - Payments → COD,
+           the booking page and the cash book settle a claimed row as method 'cod' /
+           'Cash collected', and only the UTR they keep says the money came online.
+           The tick's own time (marked_ts, read through the same DB clock that wrote it)
+           lets pngPath() / pdfPath() redraw a file drawn before the tick changed. */
+        $booking['paid_row'] = Database::fetch(
+            "SELECT method, admin_note, utr_number,
+                    CASE WHEN gateway_payload LIKE '{\"pay_claim\":{\"method\":\"esewa\"%' THEN 'esewa'
+                         WHEN gateway_payload LIKE '{\"pay_claim\":{\"method\":\"upi\"%' THEN 'upi'
+                         ELSE '' END AS claim_way
+               FROM payments WHERE booking_id = :b AND status = 'verified' ORDER BY id DESC LIMIT 1",
+            ['b' => $bookingId]
+        );
+        $booking['pay_tick'] = null;
+        try {
+            $booking['pay_tick'] = Database::fetch('SELECT status, mode, UNIX_TIMESTAMP(marked_at) AS marked_ts FROM booking_collections WHERE booking_id = :b', ['b' => $bookingId]);
+        } catch (Throwable $e) {
+            $booking['pay_tick'] = null;
+        }
         return $booking;
     }
 
@@ -2726,6 +2789,14 @@ final class Ticket
         $live = appUrl('pay.php') . '?pnr=' . rawurlencode($pnr);
         if ($vpa !== '' && $due > 0 && $cur === 'INR' && in_array($booking['status'] ?? '', ['pending', 'confirmed'], true)) {
             $amt = number_format($due, fmod($due, 1.0) > 0 ? 2 : 0);
+            if ((int) ($booking['is_cod'] ?? 0) === 1) {
+                /* 16 Nov 2026 (P1): a pay-at-boarding ticket's QR opens the free online
+                   page (UPI app / UPI QR / eSewa + "I paid, here is the UTR"). The
+                   ticket's own download key rides along, so the holder of the ticket
+                   can send the UTR without typing the booking's mobile again - the
+                   same key the ticket's download link already carries. */
+                $live .= '&k=' . rawurlencode(self::downloadToken($pnr));
+            }
             return $out + ['mode' => 'due', 'payload' => $live,
                 'label' => 'SCAN & PAY ₹' . $amt . ' · भुक्तानी गर्नुहोस्'];
         }
@@ -2748,6 +2819,146 @@ final class Ticket
         $paid = max(0, (float) ($booking['verified_paid'] ??
             (($payment['status'] ?? '') === 'verified' ? ($payment['amount'] ?? 0) : 0)));
         return ['paid' => round($paid, 2), 'due' => round(max(0, $total - $paid), 2)];
+    }
+
+    /**
+     * The ticket's payment words in one place (16 Nov 2026, P1 - owner: "pay at boarding
+     * vane option ticket chalani ma add gardeu, cash ho ki online ho tyo ni"). Nepali
+     * first, English after. Presentation only: money counts as paid only when a VERIFIED
+     * row covers the fare (paymentSummary) - a UTR the passenger sent is never "paid".
+     *
+     *   state 'paid'    - nothing due; way 'cash' (नगद) or 'online' (अनलाइन) + detail (UPI / eSewa / BANK)
+     *   state 'board'   - a pay-at-boarding ticket (is_cod) with money due: बसमा तिर्ने
+     *   state 'pending' - an online booking not approved yet (unchanged: PAYMENT PENDING)
+     *
+     * pill = PNG pill texts, longest first (the renderer takes the first that fits);
+     * band = the PDF band as runs [text, isDevanagari]; word = the PNG status line.
+     *
+     * @return array{state:string, way:string, detail:string, pill:list<string>, band:list<array{0:string,1:bool}>, word:string}
+     */
+    public static function payWords(array $booking): array
+    {
+        $sum   = self::paymentSummary($booking);
+        $money = 'INR ' . indianNumber((float) ($sum['due'] > 0 ? $sum['due'] : ($booking['total_amount'] ?? 0)));
+        if ($sum['due'] <= 0) {
+            $row = is_array($booking['paid_row'] ?? null) ? $booking['paid_row']
+                : ((($booking['payment']['status'] ?? '') === 'verified') ? $booking['payment'] : []);
+            [$way, $detail] = self::paidWay((string) ($row['method'] ?? ''), is_array($booking['pay_tick'] ?? null) ? $booking['pay_tick'] : null,
+                (string) ($row['admin_note'] ?? ''), (string) ($row['utr_number'] ?? ''), (string) ($row['claim_way'] ?? ''));
+            $ne = $way === 'online' ? 'अनलाइन' : ($way === 'cash' ? 'नगद' : '');
+            $en = $way === 'online' ? 'ONLINE' : ($way === 'cash' ? 'CASH' : '');
+            if (strtoupper(trim($detail)) === $en) {
+                $detail = '';   // a tick named "Online" adds nothing to ONLINE
+            }
+            $pill = $ne === '' ? ['भुक्तानी भयो · PAID', 'PAID'] : array_values(array_unique(array_filter([
+                $detail !== '' ? 'भुक्तानी भयो · PAID · ' . $ne . '/' . $en . ' · ' . $detail : '',
+                'भुक्तानी भयो · PAID · ' . $ne . '/' . $en,
+                $detail !== '' ? 'PAID · ' . $ne . '/' . $en . ' · ' . $detail : '',
+                'PAID · ' . $ne . '/' . $en,
+                'PAID · ' . $en,
+            ])));
+            $band = [['भुक्तानी भयो · ', true], ['PAID  ·  ' . $money, false]];
+            if ($ne !== '') {
+                $band[] = ['  ·  ', false];
+                $band[] = [$ne . ' · ', true];
+                $band[] = [$en . ($detail !== '' ? ' (' . $detail . ')' : ''), false];
+            }
+            return ['state' => 'paid', 'way' => $way, 'detail' => $detail, 'pill' => $pill, 'band' => $band,
+                'word' => $ne === '' ? 'PAID' : 'PAID · ' . $ne . '/' . $en];
+        }
+        if ((int) ($booking['is_cod'] ?? 0) === 1) {
+            return ['state' => 'board', 'way' => '', 'detail' => '',
+                'pill' => ['बसमा तिर्ने · PAY ON BOARDING', 'PAY ON BOARDING'],
+                'band' => [['बसमा तिर्ने · ', true], ['PAY ON BOARDING  ·  ' . $money . '  ·  ', false], ['नगद वा अनलाइन · ', true], ['CASH OR ONLINE', false]],
+                'word' => 'बसमा तिर्ने · PAY ON BOARDING'];
+        }
+        return ['state' => 'pending', 'way' => '', 'detail' => '', 'pill' => ['PAYMENT PENDING'],
+            'band' => [['PAYMENT PENDING  ·  NOT VALID UNTIL APPROVED', false]], 'word' => 'PAYMENT DUE'];
+    }
+
+    /**
+     * Cash or online, from the verified row's method. A settled pay-at-boarding row
+     * always says 'cod' (BookingService::settleCod), so for 'cod' / no method the
+     * office's own word decides: the chalani tick's mode (OpsHub::markPaid - Cash / UPI
+     * / Bank / eSewa / Agent / Office or an office-added name), else the note that tick
+     * leaves on the row ("Chalani tick: paid (UPI)" - the ticket is redrawn by
+     * settleCod a moment before the tick row itself is written). An explicit 'cash'
+     * or online method on the row is never overridden.
+     *
+     * P1 refix (16 Nov 2026): with no tick, a 'cod' row that still carries a real UTR
+     * (6+ letters / digits - the passenger's pay.php claim, CodPayClaim) was paid
+     * ONLINE: Payments → COD, the booking page and the cash book settle it as 'cod' /
+     * "Cash collected" and keep only that UTR. Its way is the claim's ($claimWay, from
+     * the row's pay_claim marker), else the claim note, else a 12-digit UTR = UPI.
+     * Last, the office's own settle note: words like UPI / eSewa / bank / online with
+     * no cash word in it mean online too. A tick always wins - "Cash" on the chalani
+     * says cash even when a UTR was sent.
+     *
+     * @param array<string, mixed>|null $tick booking_collections row (status, mode)
+     * @param string $utr      the verified row's utr_number
+     * @param string $claimWay 'upi' | 'esewa' | '' - CodPayClaim's marker on that row
+     * @return array{0:string, 1:string} [way 'cash'|'online'|'', detail 'UPI'|'eSewa'|'BANK'|…]
+     */
+    public static function paidWay(string $method, ?array $tick = null, string $note = '', string $utr = '', string $claimWay = ''): array
+    {
+        $method = strtolower(trim($method));
+        $online = ['upi' => 'UPI', 'esewa' => 'eSewa', 'bank' => 'BANK', 'wallet' => 'WALLET'];
+        if (isset($online[$method])) {
+            return ['online', $online[$method]];
+        }
+        if ($method === 'cash') {
+            return ['cash', ''];
+        }
+        $mode = '';
+        if ($tick !== null && (string) ($tick['status'] ?? '') === 'paid') {
+            $mode = trim((string) ($tick['mode'] ?? ''));
+        }
+        if ($mode === '' && preg_match('/Chalani tick: paid \(([^)]{1,40})\)/u', $note, $m) === 1) {
+            $mode = trim($m[1]);
+        }
+        if ($mode !== '') {
+            $low = mb_strtolower($mode);
+            if (preg_match('/e-?sewa/u', $low) === 1) {
+                return ['online', 'eSewa'];
+            }
+            if (preg_match('/upi|gpay|google ?pay|phonepe|paytm|bhim/u', $low) === 1) {
+                return ['online', 'UPI'];
+            }
+            if (preg_match('/bank|neft|imps|rtgs|online|qr|khalti|fonepay|card|wallet|अनलाइन/u', $low) === 1) {
+                return ['online', mb_strtoupper(self::latin(mb_substr($mode, 0, 14)))];
+            }
+            return ['cash', ''];
+        }
+        if ($method !== 'cod') {
+            return ['', ''];
+        }
+        $utr = trim($utr);
+        if ($utr !== '' && preg_match('/[A-Za-z0-9]{6,}/', $utr) === 1) {
+            $claimWay = strtolower(trim($claimWay));
+            if ($claimWay === 'esewa' || preg_match('/ONLINE CLAIM · eSewa/u', $note) === 1) {
+                return ['online', 'eSewa'];
+            }
+            if ($claimWay === 'upi' || preg_match('/ONLINE CLAIM · UPI/u', $note) === 1 || preg_match('/^\d{12}$/', $utr) === 1) {
+                return ['online', 'UPI'];
+            }
+            return ['online', ''];
+        }
+        $low = mb_strtolower($note);
+        if ($low !== '' && preg_match('/cash|नगद|nagad|nakad/u', $low) !== 1) {
+            if (preg_match('/e-?sewa/u', $low) === 1) {
+                return ['online', 'eSewa'];
+            }
+            if (preg_match('/\b(upi|gpay|google ?pay|phonepe|paytm|bhim)\b/u', $low) === 1) {
+                return ['online', 'UPI'];
+            }
+            if (preg_match('/\b(bank|neft|imps|rtgs)\b/u', $low) === 1) {
+                return ['online', 'BANK'];
+            }
+            if (preg_match('/\bonline\b|अनलाइन/u', $low) === 1) {
+                return ['online', ''];
+            }
+        }
+        return ['cash', ''];
     }
 
     /**
@@ -2823,13 +3034,13 @@ final class Ticket
      *  the later of the two) to the moment it is applied - apply it AFTER the
      *  files are live. The integrator may still move both stamps to the
      *  deploy minute. */
-    private const PNG_LAYOUT_CHANGED = '2026-11-16 12:19:00';   // IST: REPORT 60 MIN - footer note says ६० मिनेट (was ३०), like every other place. Was 2026-11-07 11:00:00:   // IST: AGENT MOBILE - the issued-by chip and the "टिकट काट्ने" tile always print the agent's mobile (the name is shortened first). Was 2026-11-06 00:30:00:   // IST: BARCODE - verify QR + map QR replaced by a Code 128 barcode (Ticket::scanCode); pay QR only while money is due, else a PAID stamp. Was 2026-10-17 13:56:00:   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-11-16 22:50:00';   // IST: PAY ON BOARDING (P1) - the pay pill and the status line say बसमा तिर्ने · PAY ON BOARDING while a pay-at-boarding ticket owes money, PAID · नगद/CASH or अनलाइन/ONLINE once paid (Ticket::payWords); the pay card under a pay-at-boarding QR says cash on the bus or online. Geometry unchanged. Was 2026-11-16 12:19:00:   // IST: REPORT 60 MIN - footer note says ६० मिनेट (was ३०), like every other place. Was 2026-11-07 11:00:00:   // IST: AGENT MOBILE - the issued-by chip and the "टिकट काट्ने" tile always print the agent's mobile (the name is shortened first). Was 2026-11-06 00:30:00:   // IST: BARCODE - verify QR + map QR replaced by a Code 128 barcode (Ticket::scanCode); pay QR only while money is due, else a PAID stamp. Was 2026-10-17 13:56:00:   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-11-16 12:19:00';   // IST: REPORT 60 MIN - the 'reach early' note says ६० मिनेट (was ३०). Was 2026-11-07 11:00:00:   // IST: AGENT MOBILE - the ISSUED BY line keeps the agent's mobile, bold. Was 2026-11-06 00:30:00:   // IST: BARCODE - stub QR -> Code 128 barcode, live-status QR removed, pay QR only while due. Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - bigger gold seal (116x74), brand + TM sign with the legal form letter-spaced in gold under it. Was 2026-10-14 22:15:00:   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-11-16 22:50:00';   // IST: PAY ON BOARDING (P1) - the payment band is Nepali first: बसमा तिर्ने · PAY ON BOARDING · INR X · नगद वा अनलाइन · CASH OR ONLINE, and PAID · INR X · नगद · CASH or अनलाइन · ONLINE (UPI); the footer pay QR is captioned अनलाइन भुक्तानी QR on such a ticket. Was 2026-11-16 12:19:00:   // IST: REPORT 60 MIN - the 'reach early' note says ६० मिनेट (was ३०). Was 2026-11-07 11:00:00:   // IST: AGENT MOBILE - the ISSUED BY line keeps the agent's mobile, bold. Was 2026-11-06 00:30:00:   // IST: BARCODE - stub QR -> Code 128 barcode, live-status QR removed, pay QR only while due. Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - bigger gold seal (116x74), brand + TM sign with the legal form letter-spaced in gold under it. Was 2026-10-14 22:15:00:   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -3012,6 +3223,47 @@ final class Ticket
         $pdf->textCenter($xL, $xR, $y, self::romanize($nepali), $size, 'F2', $rgb);
     }
 
+    /**
+     * One centred line of mixed runs (16 Nov 2026, P1 payment band): a Devanagari run
+     * through the CID font, a Latin run in Helvetica Bold (so the English stays the
+     * band's old face and stays searchable in the PDF). Shrinks to fit [$xL, $xR] less
+     * 8 pt each side; without the CID font only the Latin runs are drawn.
+     *
+     * @param list<array{0:string, 1:bool}> $runs [text, isDevanagari]
+     */
+    private static function pdfRuns(Pdf $pdf, float $xL, float $xR, float $y, array $runs, float $size, string $devKey, array $rgb): void
+    {
+        $dev  = $pdf->hasCIDFont($devKey);
+        $runs = array_values(array_filter($runs, static fn(array $r): bool => $r[0] !== '' && ($dev || !$r[1])));
+        if ($runs === []) {
+            return;
+        }
+        $width = static function (float $s) use ($pdf, $runs, $devKey): float {
+            $w = 0.0;
+            foreach ($runs as [$t, $isDev]) {
+                $w += $isDev ? $pdf->textWidthCID($t, $s, $devKey) : $pdf->textWidth($t, $s, 'F2');
+            }
+            return $w;
+        };
+        while ($size > 6 && $width($size) > ($xR - $xL - 16)) {
+            $size -= 0.25;
+        }
+        $x = $xL + (($xR - $xL) - $width($size)) / 2;
+        foreach ($runs as [$t, $isDev]) {
+            if ($isDev) {
+                try {
+                    $pdf->textCID($x, $y, $t, $size, $devKey, $rgb);
+                } catch (\Throwable $e) {
+                    // the CID font refused this run: leave its room empty rather than print boxes
+                }
+                $x += $pdf->textWidthCID($t, $size, $devKey);
+            } else {
+                $pdf->text($x, $y, $t, $size, 'F2', $rgb);
+                $x += $pdf->textWidth($t, $size, 'F2');
+            }
+        }
+    }
+
     /** Best-effort Roman Nepali transliteration for Latin-1 fallback. */
     private static function romanize(string $text): string
     {
@@ -3172,28 +3424,23 @@ final class Ticket
         /* ==============================================================
            PAYMENT BAND — bilingual (keeps the existing logic)
            ============================================================== */
-        $pay  = $booking['payment'] ?? null;
         $sumP = self::paymentSummary($booking);
         $paid = $sumP['due'] <= 0;
         /* Helvetica has no ₹, so the rupee helper printed a bare "6,210" — which reads as
            NPR on a cross-border ticket (8 Oct 2026, D6-15). Spelled out now,
            and the cash band asks for what is actually DUE, not the total. */
         $money = static fn(float $a): string => 'INR ' . indianNumber($a);
-        $due  = $money((float) $booking['total_amount']);
-        if ($paid) {
-            $method = strtoupper((string) ($pay['method'] ?? ''));
-            $bandBg = [20, 110, 64];
-            $band   = 'PAID  ·  ' . $due . ($method !== '' ? '  ·  ' . ($method === 'COD' ? 'CASH' : $method) : '');
-        } elseif ((int) $booking['is_cod'] === 1) {
-            $bandBg = DocArt::GOLD_DEEP;
-            $band   = 'CASH ON BOARDING  ·  PAY ' . $money((float) $sumP['due']) . ' TO THE CREW';
-        } else {
-            $bandBg = self::ORANGE;
-            $band   = 'PAYMENT PENDING  ·  NOT VALID UNTIL APPROVED';
-        }
+        /* 16 Nov 2026 (P1): Nepali first, from payWords() - "बसमा तिर्ने · PAY ON BOARDING
+           · INR X · नगद वा अनलाइन · CASH OR ONLINE" on a pay-at-boarding ticket, and once
+           paid "भुक्तानी भयो · PAID · INR X · नगद · CASH" or "· अनलाइन · ONLINE (UPI)".
+           The Nepali runs go through the Devanagari CID font, the rest stays Helvetica
+           Bold; without the CID font the band is the English runs alone. The online
+           pending band is the old text, unchanged. */
+        $payW   = self::payWords($booking);
+        $bandBg = $payW['state'] === 'paid' ? [20, 110, 64] : ($payW['state'] === 'board' ? DocArt::GOLD_DEEP : self::ORANGE);
         $pdf->rect(0, 96, $W, 20, $bandBg, true);
         $pdf->line(0, 116.3, $W, 116.3, DocArt::GOLD, 0.8);
-        $pdf->textCenter(0, $W, 101, $band, 9, 'F2', [255, 255, 255]);
+        self::pdfRuns($pdf, 0, $W, 101, $payW['band'], 9, $F8, [255, 255, 255]);
         /* CORRECTED / DUPLICATE: its own strip under the payment band (the
            mantra owns the very top since 9 Oct 2026); the card moves down. */
         $markH = 0.0;
@@ -3754,7 +4001,8 @@ final class Ticket
             };
             $capSz = 6.5;
             while ($capSz > 5 && $pdf->textWidth($payCap, $capSz, 'F2') > 80) { $capSz -= 0.25; }
-            self::devCenter($pdf, $pqx - 10, $pqx + 72, $footY + 73, 'भुक्तानी QR', 6.5, $F7, self::MUTE);
+            // 16 Nov 2026 (P1): on a pay-at-boarding ticket this QR is the ONLINE way (cash goes to the crew)
+            self::devCenter($pdf, $pqx - 10, $pqx + 72, $footY + 73, $payW['state'] === 'board' ? 'अनलाइन भुक्तानी QR' : 'भुक्तानी QR', 6.5, $F7, self::MUTE);
             $pdf->textCenter($pqx - 10, $pqx + 72, $footY + 82, $payCap, $capSz, 'F2', $payPdf['mode'] === 'due' ? self::ORANGE : self::BROWN);
         }
 

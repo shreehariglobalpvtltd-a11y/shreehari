@@ -17,9 +17,12 @@ require_once __DIR__ . '/icici_booking.php';
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
 
-if (Auth::admin() === null) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Staff sign-in required']);
+/* 16 Nov 2026 (G1): staffActive(), not admin() - a session on a temporary password
+   (must_change_pw) asks the bank nothing until the password is changed. */
+if (Auth::staffActive() === null) {
+    $tempPw = Auth::admin() !== null;
+    http_response_code($tempPw ? 403 : 401);
+    echo json_encode(['error' => $tempPw ? 'Change your temporary password first' : 'Staff sign-in required']);
     exit;
 }
 

@@ -182,7 +182,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     Auth::requireAdmin('payments.verify');
                     $b = BookingService::settleCod($bookingId, (int) $admin['id'], $note);
                     $pnr = $b['pnr'] ?? '';
-                    $flash = ['ok', 'Cash recorded for ' . $pnr . ' — that payment is settled.'];
+                    $online = preg_match('/[A-Za-z0-9]{6,}/', (string) ($b['payment']['utr_number'] ?? Database::scalar('SELECT utr_number FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => $bookingId], ''))) === 1;
+                    $flash = ['ok', ($online ? 'Online payment (UTR) recorded for ' : 'Cash recorded for ') . $pnr . ' — that payment is settled.'];
                 } else {
                     $flash = ['bad', 'Unknown action.'];
                 }
@@ -1160,9 +1161,20 @@ html[data-motion="reduced"] .pq-card,html[data-motion="reduced"] .pq-btn{transit
             <form method="post" class="note-inline pay-action-form" data-booking-id="<?= $bId ?>">
               <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
               <input type="hidden" name="booking_id" value="<?= $bId ?>">
-              <input type="text" name="note" placeholder="Receipt / who collected" class="action-note">
+              <?php
+              /* 16 Nov 2026 (mv6, pay at boarding): the passenger sent a UTR from the pay page
+                 (CodPayClaim) - the office checks the bank first; settling it keeps the UTR, so the
+                 ticket and the chalani say अनलाइन. Paid cash on the bus instead? Tick "Cash" on the chalani. */
+              $codClaim = preg_match('/[A-Za-z0-9]{6,}/', (string) ($q['utr_number'] ?? '')) === 1;
+              ?>
+              <input type="text" name="note" placeholder="<?= $codClaim ? 'बैंकमा जाँचेँ · Checked in bank' : 'Receipt / who collected' ?>" class="action-note">
+              <?php if ($codClaim): ?>
+              <button class="btn ok btn-pay-action" type="submit" name="action" value="cod_settle"
+                      data-confirm="UTR <?= Security::e((string) $q['utr_number']) ?> - <?= Security::e(inr((float) $q['total_amount'])) ?> बैंकमा आएको जाँच्नुभयो? · Checked in the bank? Record it as received ONLINE for <?= Security::e($bPnr) ?>?">✓ अनलाइन मिल्यो · Online received</button>
+              <?php else: ?>
               <button class="btn ok btn-pay-action" type="submit" name="action" value="cod_settle"
                       data-confirm="Record <?= Security::e(inr((float) $q['total_amount'])) ?> cash as collected for <?= Security::e($bPnr) ?>?">Cash Collected</button>
+              <?php endif; ?>
             </form>
           <?php elseif ($isPendingRow && Auth::can('payments.verify')): ?>
             <a class="btn ok" style="font-size:12px;padding:6px 12px" href="<?= Security::e(tabUrl('pending', [], 'all')) ?>&amp;q=<?= urlencode($bPnr) ?>">Review in queue →</a>

@@ -2055,6 +2055,46 @@ final class Auth
         return $admin;
     }
 
+    /**
+     * The signed-in staff member, but only while the account may use its staff
+     * powers: null for a guest AND for a session whose account must change its
+     * temporary password (must_change_pw).
+     *
+     * 16 Nov 2026 (G1): requireAdmin() sends such a session to change-password.php
+     * and bootstrap.php section 6b answers it 403 on every /api/ endpoint, but the
+     * pages outside admin/ that serve guests too (download-ticket.php,
+     * verify-ticket.php, download-chalan.php, download-statement.php,
+     * payment/check_payment_status.php) asked only admin() / can(), which never
+     * look at the flag - so a temporary password could still open any passenger's
+     * ticket, a chalan, an agent statement or a bank status there. Their STAFF
+     * branch asks this instead: such a session is a guest there, and the signed-key
+     * and customer paths are untouched. can() itself is unchanged.
+     *
+     * Same rule as bootstrap 6b: the session flag (set at sign-in, refreshed by
+     * admin() every 30 s) OR the admins row read now, so a "must change" the office
+     * switches on mid-session bites on the next request.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function staffActive(): ?array
+    {
+        $admin = self::admin();
+        if ($admin === null || !empty($admin['must_change_pw'])) {
+            return null;
+        }
+        try {
+            $must = (int) Database::scalar(
+                'SELECT must_change_pw FROM admins WHERE id = :id',
+                ['id' => (int) $admin['id']],
+                0
+            ) === 1;
+        } catch (Throwable) {
+            $must = false;   // database unreachable: the session flag decided; the page fails for a better reason anyway
+        }
+
+        return $must ? null : $admin;
+    }
+
     public static function isAdmin(): bool
     {
         return self::admin() !== null;

@@ -143,6 +143,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 }
 $csrf = Security::csrfField();
 
+/* 16 Nov 2026 (G1): a temporary password is a guest until it is changed. TeamPortal::current() rides on the
+   admin session, so this home and the pages under team/ ask Auth::staffActive() (session flag OR the row now)
+   themselves. The POSTs above still run: "password" (it clears the flag) and "logout". */
+if ($me !== null && $me['via'] === 'admin' && Auth::staffActive() === null) {
+    TeamUi::go('/admin/change-password.php');
+}
+
 /* ---------------- signed in: home ---------------- */
 if ($me !== null && $v !== 'reset') {
     $staff = $me['staff'];

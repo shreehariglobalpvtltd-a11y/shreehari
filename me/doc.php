@@ -21,6 +21,11 @@ $admin = Auth::admin();
 if ($admin === null || !AgentPro::available()) {
     Response::unauthorized('Please sign in.');
 }
+/* 16 Nov 2026 (G1): a temporary password is a guest until changed - no KYC image, no list, no
+   upload into the KYC record. Asked before the CSRF check, same answer as /api/ (bootstrap 6b). */
+if (Auth::staffActive() === null) {
+    Response::forbidden('पहिले अस्थायी पासवर्ड बदल्नुहोस् · Change your temporary password first.');
+}
 $id = (int) $admin['id'];
 
 try {

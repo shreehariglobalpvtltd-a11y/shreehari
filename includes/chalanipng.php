@@ -48,7 +48,7 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 15;  // 15 = special (desk-extra) payments: row remark, infants, 2 summary lines (16 Nov 2026)   // 14 = single column drawn LEFT of the aisle (6 Nov 2026)   // 13 was:  // 13 = berth numbers: single side first (A1 A2 | A3..A6) (6 Nov 2026)   // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 16;  // 16 = pay at boarding: ON BOARDING Rs X / PAID / AGENT / ONLINE PENDING marks per row + a two-column summary with "To collect on boarding" (16 Nov 2026)   // 15 = special (desk-extra) payments: row remark, infants, 2 summary lines (16 Nov 2026)   // 14 = single column drawn LEFT of the aisle (6 Nov 2026)   // 13 was:  // 13 = berth numbers: single side first (A1 A2 | A3..A6) (6 Nov 2026)   // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
@@ -125,6 +125,189 @@ final class ChalaniPng
              . ($slot > 1 ? '-' . $slot : '');
     }
 
+    /* ------------------------------------------------------------------ */
+    /*  16 Nov 2026 - PAY AT BOARDING (owner: "pay at boarding vane option  */
+    /*  ticket chalani ma add gardeu - cash ho ki online ho; ani redirect    */
+    /*  payment lina sab suvidha hunu paryo, free wala"). ONE rule and ONE   */
+    /*  set of words for every chalani surface: the manifest screen, the     */
+    /*  print sheet, the CSV, the PDF, these PNG pages, the public link.     */
+    /* ------------------------------------------------------------------ */
+
+    /** Verified methods whose money sits in the अनलाइन column (manifest $money reads this too). */
+    public const ONLINE_METHODS = ['upi', 'esewa', 'bank', 'wallet', 'online'];
+
+    /**
+     * HOW a booking pays. Never a second paid rule: $state is OpsHub::payState()
+     * (paid | agent | due - the row colour) and the method is the verified
+     * payment's, the one the नगद / अनलाइन columns read.
+     *
+     *   boarding  pay at boarding (COD), nothing verified, not ticked paid  "बसमा ₹X"
+     *   cash      verified cash / COD (COD: unless the office ticked online) "नगद ✓"
+     *   online    verified UPI / eSewa / bank / wallet, or a COD the office
+     *             ticked UPI / eSewa / Bank (paidWay)                        "अनलाइन ✓"
+     *   agent     verified cash still with the agent (its old wording)      "एजेन्टसँग"
+     *   pending   an online payment the office has not checked (not COD)    "अनलाइन जाँचमा"
+     *   paid      an office tick with no verified payment row                "भुक्तानी ✓"
+     *   due       anything else unpaid, or the office marked a paid row due "बाँकी"
+     *
+     * "boarding" needs the payment NOT verified, so one rupee is either in a
+     * नगद / अनलाइन column or in "बसमा उठाउनु पर्ने" - never in both.
+     *
+     * Cash or online is paidWay() - the passenger's ticket's own rule, so a
+     * pay-at-boarding fare the office ticked "UPI" / "eSewa" reads अनलाइन ✓ here
+     * as it does on the ticket (review 16 Nov 2026: it read नगद ✓).
+     *
+     * @param array<string,mixed>      $r     needs is_cod, pay_status, pay_method (+ pay_note = payments.admin_note)
+     * @param array<string,mixed>|null $tick  the booking's office tick (OpsHub::collections row: status, mode)
+     */
+    public static function payMode(array $r, string $state, ?array $tick = null): string
+    {
+        $verified = (string) ($r['pay_status'] ?? '') === 'verified';
+        if ($verified) {
+            if ($state === 'agent') { return 'agent'; }
+            if ($state === 'due')   { return 'due'; }     // the office's "Mark due" on a paid row
+            return match (self::paidWay($r, $tick)) { 'cash' => 'cash', 'online' => 'online', default => 'paid' };
+        }
+        if ($state === 'paid') { return 'paid'; }
+        if ((int) ($r['is_cod'] ?? 0) === 1) { return 'boarding'; }
+        return (string) ($r['pay_status'] ?? '') === 'pending' ? 'pending' : 'due';
+    }
+
+    /**
+     * Cash or online for a VERIFIED payment: 'cash' | 'online' | '' (unknown).
+     * The नगद / अनलाइन columns (manifest $money) and payMode() both read this.
+     *
+     * An explicit method decides: 'cash' = cash, UPI / eSewa / bank / wallet =
+     * online. A settled pay-at-boarding row always says 'cod'
+     * (BookingService::settleCod), so for 'cod' / no method the office's own
+     * word decides - the chalani tick's mode, else the note that tick leaves on
+     * the row ("Chalani tick: paid (UPI)") - through Ticket::paidWay(), the
+     * passenger's ticket's rule, so the chalani and the ticket never disagree.
+     * Any other method stays '' (it was never in either column).
+     *
+     * @param array<string,mixed>      $r     needs pay_method (+ pay_note = payments.admin_note)
+     * @param array<string,mixed>|null $tick  OpsHub::collections row (status, mode)
+     */
+    public static function paidWay(array $r, ?array $tick = null): string
+    {
+        $method = strtolower(trim((string) ($r['pay_method'] ?? '')));
+        if ($method === 'cash') {
+            return 'cash';
+        }
+        if (in_array($method, self::ONLINE_METHODS, true)) {
+            return 'online';
+        }
+        if ($method !== 'cod' && $method !== '') {
+            return '';
+        }
+        // 16 Nov 2026 (mv6 lead): the UTR too - a pay-at-boarding row the office settled from the
+        // Payments COD tab after an online claim keeps method 'cod'; the ticket reads its UTR as online.
+        $way = (string) (Ticket::paidWay($method, $tick, (string) ($r['pay_note'] ?? ''), (string) ($r['pay_utr'] ?? ''))[0] ?? '');
+        return in_array($way, ['cash', 'online'], true) ? $way : '';
+    }
+
+    /**
+     * The words for a pay mode. $kind: 'ne' (print sheet, PDF, public link),
+     * 'staff' (Nepali · English), 'csv', 'ro' (these GD pages - Roman).
+     */
+    public static function payModeLabel(string $mode, string $kind = 'ne'): string
+    {
+        $t = match ($mode) {
+            'boarding' => ['बसमा', 'बसमा · On boarding', 'ON BOARDING DUE', 'ON BOARDING'],
+            'cash'     => ['नगद ✓', 'नगद ✓ · Cash', 'CASH', 'CASH PAID'],
+            'online'   => ['अनलाइन ✓', 'अनलाइन ✓ · Online', 'ONLINE', 'ONLINE PAID'],
+            'agent'    => ['एजेन्टसँग', 'एजेन्टसँग · With agent', 'AGENT', 'WITH AGENT'],
+            'pending'  => ['अनलाइन जाँचमा', 'अनलाइन जाँचमा · Online, office checking', 'ONLINE PENDING', 'ONLINE PENDING'],
+            'paid'     => ['भुक्तानी ✓', 'भुक्तानी ✓ · Paid', 'PAID', 'PAID'],
+            default    => ['बाँकी', 'बाँकी · Due', 'DUE', 'TO COLLECT'],
+        };
+        return $t[match ($kind) { 'staff' => 1, 'csv' => 2, 'ro' => 3, default => 0 }];
+    }
+
+    /**
+     * A pay-at-boarding passenger already sent an online payment (a UTR on the
+     * still-unsettled money row - CodPayClaim, pay.php). Still due: only the
+     * office's check turns it into money; the crew just knows not to ask twice.
+     *
+     * @param array<string,mixed> $r  needs pay_status, pay_utr
+     */
+    public static function payClaimSent(array $r): bool
+    {
+        return in_array((string) ($r['pay_status'] ?? ''), ['cod_pending', 'pending'], true)
+            && trim((string) ($r['pay_utr'] ?? '')) !== '';
+    }
+
+    /** The words for a sent-but-unchecked online payment; $kind as payModeLabel(). */
+    public static function payClaimLabel(string $kind = 'ne'): string
+    {
+        return match ($kind) {
+            'staff' => 'UTR जाँचमा · Online sent, office checking',
+            'csv'   => 'UTR SENT',
+            'ro'    => 'UTR SENT · CHECKING',
+            default => 'UTR जाँचमा',
+        };
+    }
+
+    /**
+     * The passenger's own pay page (pay.php: UPI, UPI QR, eSewa, UTR claim - all
+     * free). $withKey adds the ticket's own download key (k), as the ticket's pay
+     * QR does, so the passenger can send the UTR without typing their mobile -
+     * for the office screen only, never the login-free public link.
+     */
+    public static function payLink(string $pnr, bool $withKey = false): string
+    {
+        $pnr = strtoupper(trim($pnr));
+        return appUrl('pay.php') . '?pnr=' . rawurlencode($pnr) . ($withKey ? '&k=' . rawurlencode(Ticket::downloadToken($pnr)) : '');
+    }
+
+    /**
+     * The crew's "💳 QR": PNG bytes of a QR to payLink(), or null when this
+     * booking has no pay-at-boarding money due (unknown PNR, cancelled, paid,
+     * ticked paid, not COD...). Read-only - it never marks anything paid; an
+     * online payment still lands as 'pending' for the office to verify.
+     *
+     * @param int|null    $sellerOnly an agent login: only its own sales
+     * @param string|null $from       the public link: only a booking travelling
+     * @param string|null $to         between these dates
+     * @param bool        $withKey    the office screen: the link carries the ticket key (payLink)
+     */
+    public static function payQrPng(string $pnr, ?int $sellerOnly = null, ?string $from = null, ?string $to = null, bool $withKey = false): ?string
+    {
+        $pnr = strtoupper(trim($pnr));
+        if (preg_match('/^[A-Z0-9-]{6,40}$/', $pnr) !== 1) {
+            return null;
+        }
+        $b = Database::fetch(
+            'SELECT b.id, b.pnr, b.is_cod, b.status, b.sold_by_admin_id, a.role AS agent_role,
+                    p.status AS pay_status, p.method AS pay_method
+               FROM bookings b
+               LEFT JOIN admins a   ON a.id = b.sold_by_admin_id
+               LEFT JOIN payments p ON p.id = (SELECT MAX(p2.id) FROM payments p2 WHERE p2.booking_id = b.id)
+              WHERE b.pnr = :p LIMIT 1',
+            ['p' => $pnr]
+        );
+        if ($b === null || !in_array((string) $b['status'], ['confirmed', 'pending'], true)) {
+            return null;
+        }
+        if ($sellerOnly !== null && (int) ($b['sold_by_admin_id'] ?? 0) !== $sellerOnly) {
+            return null;
+        }
+        if ($from !== null && $to !== null && (int) Database::scalar(
+            'SELECT COUNT(*) FROM booking_legs WHERE booking_id = :b AND travel_date BETWEEN :f AND :t',
+            ['b' => (int) $b['id'], 'f' => $from, 't' => $to], 0) === 0) {
+            return null;
+        }
+        require_once INCLUDE_PATH . '/opshub.php';
+        $tick = OpsHub::collections([(int) $b['id']])[(int) $b['id']] ?? null;
+        if (self::payMode($b, OpsHub::payState($b, $tick), $tick) !== 'boarding') {
+            return null;
+        }
+        require_once INCLUDE_PATH . '/qr.php';
+        $uri = QrCode::dataUri(self::payLink($pnr, $withKey), 8, 2);
+        $png = base64_decode(substr($uri, (int) strpos($uri, ',') + 1), true);
+        return is_string($png) && $png !== '' ? $png : null;
+    }
+
     /**
      * What the page was drawn FROM. Any change to a seat, a name, a phone,
      * a stop, a payment or the layout produces a different file name, so a
@@ -168,6 +351,9 @@ final class ChalaniPng
                 // 16 Nov 2026: desk extras (luggage / infant) are drawn too
                 $r['luggage_pieces'] ?? 0, $r['luggage_fee'] ?? 0, $r['infant_count'] ?? 0, $r['infant_fee'] ?? 0,
             ], $rows),
+            // 16 Nov 2026: the pay-at-boarding / cash / online mark each row carries
+            'paymark' => isset($fmt['payMark']) && is_callable($fmt['payMark'])
+                ? array_map(static fn(array $r): string => implode('|', array_map('strval', (array) $fmt['payMark']($r))), $rows) : [],
             'xstate' => isset($fmt['rowState']) && is_callable($fmt['rowState'])
                 ? array_map(static fn(array $r): string => (string) $fmt['rowState']($r), $rows) : [],
             'seller' => $seller,
@@ -715,10 +901,27 @@ final class ChalaniPng
             self::tR($im, 18, $cx[6] + $cw[6] - 10, $vy + 2, $ink, number_format($m['ticket']), false);
             if ($m['cash']   > 0) { self::tR($im, 18, $cx[7] + $cw[7] - 10, $vy + 2, $ink,   number_format($m['cash']),   false); }
             if ($m['online'] > 0) { self::tR($im, 18, $cx[8] + $cw[8] - 10, $vy + 2, $green, number_format($m['online']), false); }
+            /* 16 Nov 2026 (pay at boarding): HOW the row pays (ChalaniPng::payMode via
+               $fmt['payMark']). Money in a column gets a small PAID / AGENT / DUE word
+               beside it; an empty pair reads ON BOARDING Rs X (the booking's amount, on
+               its first row), ONLINE PENDING or TO COLLECT across both columns. */
+            $pm   = isset($fmt['payMark']) && is_callable($fmt['payMark']) ? (array) $fmt['payMark']($r) : [];
+            $mode = (string) ($pm['mode'] ?? '');
+            if ($mode !== '' && ($m['cash'] > 0 || $m['online'] > 0)) {
+                $tagCol = $m['cash'] > 0 ? 7 : 8;
+                self::t($im, 10, $cx[$tagCol] + 8, $vy + 8, $mode === 'agent' ? $goldD : ($mode === 'due' ? $maroon : $green),
+                    $mode === 'agent' ? 'AGENT' : ($mode === 'due' ? 'DUE' : 'PAID'), true);
+            }
             if ($m['cash'] <= 0 && $m['online'] <= 0) {
-                /* Nothing in either money column = the crew still collects.
-                   Written ACROSS both so it never reads as an amount. */
-                self::tC($im, 15, $cx[7], $cx[8] + $cw[8], $vy + 3, $maroon, 'TO COLLECT', true);
+                /* Nothing in either money column = the crew still collects (or the
+                   office is checking an online payment). Written ACROSS both so it
+                   never reads as an amount. */
+                $across = $mode !== '' ? self::payModeLabel($mode, 'ro') : 'TO COLLECT';
+                if ($mode === 'boarding' && !empty($pm['first']) && (float) ($pm['amt'] ?? 0) > 0) {
+                    $across .= ' Rs ' . number_format((float) $pm['amt']);
+                }
+                $acrossCol = in_array($mode, ['', 'boarding', 'due'], true) ? $maroon : ($mode === 'pending' || $mode === 'agent' ? $goldD : $green);
+                self::tC($im, 15, $cx[7], $cx[8] + $cw[8], $vy + 3, $acrossCol, self::fit(15, $across, $cw[7] + $cw[8] - 12), true);
             }
 
             /* WHO CUT THE TICKET (10 Sep 2026). A numbered agent gets a
@@ -747,6 +950,7 @@ final class ChalaniPng
             $xSt  = isset($fmt['rowState']) && is_callable($fmt['rowState']) ? (string) $fmt['rowState']($r) : 'due';
             $parts = [];
             if ($xAmt > 0)  { $parts[] = 'Extra Rs ' . number_format($xAmt) . ' ' . ($xSt === 'due' ? 'DUE' : 'PAID'); }
+            if (!empty($pm['claim'])) { $parts[] = self::payClaimLabel('ro'); }   // 16 Nov 2026: a UTR sent, the office checks it
             if ($late)      { $parts[] = $xAmt > 0 ? 'late' : 'Booked after departure'; }
             elseif ($wsRow) { $parts[] = $xAmt > 0 ? 'WOMAN single' : 'WOMAN · single sleeper'; }
             $rem = implode(' · ', $parts);
@@ -780,25 +984,42 @@ final class ChalaniPng
             GoldSheet::card($im, $M, $by, $M + $halfW, $by + self::BOXES_H, 12, [255, 253, 246]);
             GoldSheet::foilRound($im, $M + 2, $by + 2, $M + $halfW - 2, $by + 38, 10);
             self::t($im, 17, $M + 18, $by + 9, $navy, 'PAYMENT SUMMARY  ·  WHOLE BUS', true);
-            $sum = [
-                ['Total passengers',        number_format((float) ($totals['passengers'] ?? 0))],
-                ['Total ticket value',      'Rs ' . number_format((float) ($totals['ticket'] ?? 0))],
-                ['Cash collected',          'Rs ' . number_format((float) ($totals['cash'] ?? 0))],
-                ['Online / UPI received',   'Rs ' . number_format((float) ($totals['online'] ?? 0))],
-                ['Discount / concession',   'Rs ' . number_format((float) ($totals['discount'] ?? 0))],
-                ['Special pay (luggage/infant)', 'Rs ' . number_format((float) ($totals['extras'] ?? 0))],
-                ['   paid / due',           'Rs ' . number_format((float) ($totals['extrasPaid'] ?? 0)) . ' / ' . number_format((float) ($totals['extrasDue'] ?? 0))],
-                ['NET COLLECTION',          'Rs ' . number_format((float) ($totals['net'] ?? 0))],
+            /* 16 Nov 2026: 9 lines no longer fit one column of this 200px box, so it
+               reads in two - the booking side left; the money side right (cash,
+               online, and the pay-at-boarding money the crew still collects, never
+               also counted in cash / online) - and NET COLLECTION across the foot. */
+            $cols = [
+                [
+                    ['Total passengers',        number_format((float) ($totals['passengers'] ?? 0))],
+                    ['Total ticket value',      'Rs ' . number_format((float) ($totals['ticket'] ?? 0))],
+                    ['Discount / concession',   'Rs ' . number_format((float) ($totals['discount'] ?? 0))],
+                    ['Special pay (luggage/infant)', 'Rs ' . number_format((float) ($totals['extras'] ?? 0))],
+                    ['   paid / due',           'Rs ' . number_format((float) ($totals['extrasPaid'] ?? 0)) . ' / ' . number_format((float) ($totals['extrasDue'] ?? 0))],
+                ],
+                [
+                    ['Cash collected',          'Rs ' . number_format((float) ($totals['cash'] ?? 0))],
+                    ['Online / UPI received',   'Rs ' . number_format((float) ($totals['online'] ?? 0))],
+                    ['To collect on boarding',  (int) ($totals['boardDueN'] ?? 0) . ' pax  ·  Rs ' . number_format((float) ($totals['boardDue'] ?? 0)), 'due'],
+                ],
             ];
-            $ly = $by + 44;
-            foreach ($sum as $i => [$lab, $val]) {
-                $last = $i === count($sum) - 1;
-                if ($last) { $ly += 4; }   // 16 Nov 2026: a little air above NET COLLECTION (8 lines now)
-                self::t($im, $last ? 17 : 14, $M + 22, $ly, $last ? $maroon : $muted, $lab, $last);
-                imageline($im, $M + $halfW - 260, $ly + 18, $M + $halfW - 22, $ly + 18, $hair);
-                self::tR($im, $last ? 18 : 15, $M + $halfW - 24, $ly - 1, $last ? $maroon : $ink, $val, true);
-                $ly += 18;   // 16 Nov 2026: 8 lines now (special payments), was 25 for 6
+            $colW = (int) (($halfW - 44 - 40) / 2);
+            foreach ($cols as $ci => $lines) {
+                $x0 = $M + 22 + $ci * ($colW + 40);
+                $x1 = $x0 + $colW;
+                $ly = $by + 48;
+                foreach ($lines as $line) {
+                    [$lab, $val] = $line;
+                    $hot = ($line[2] ?? '') === 'due' && (float) ($totals['boardDue'] ?? 0) > 0;   // still to collect: maroon
+                    self::t($im, 14, $x0, $ly, $hot ? $maroon : $muted, $lab, $hot);
+                    imageline($im, $x1 - 170, $ly + 20, $x1, $ly + 20, $hair);
+                    self::tR($im, 15, $x1 - 2, $ly - 1, $hot ? $maroon : $ink, $val, true);
+                    $ly += 22;
+                }
             }
+            $ly = $by + 48 + 5 * 22 + 8;
+            self::t($im, 17, $M + 22, $ly, $maroon, 'NET COLLECTION', true);
+            imageline($im, $M + $halfW - 260, $ly + 22, $M + $halfW - 22, $ly + 22, $hair);
+            self::tR($im, 18, $M + $halfW - 24, $ly - 1, $maroon, 'Rs ' . number_format((float) ($totals['net'] ?? 0)), true);
 
             $ax = $M + $halfW + 16;
             GoldSheet::card($im, $ax, $by, $W - $M, $by + self::BOXES_H, 12, [255, 253, 246]);

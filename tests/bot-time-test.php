@@ -31,6 +31,16 @@
  *  meant.
  *
  *      php -c .claude/php-dev.ini tests/bot-time-test.php
+ *
+ *  16 Nov 2026 (T3): the time pass and the name fix were built in commit
+ *  14c15a7f (branch claude/quirky-ramanujan-emtd6f), which never reached
+ *  this lineage — only this suite arrived (with the recovered live source,
+ *  739f95ec). parse() has no time / timeOfDay / timeHour keys, so the suite
+ *  died on the first "Undefined array key" and reported nothing. It now
+ *  checks the keys once up front, reads them with defaults so every check
+ *  still runs, and the checks that would pass only BECAUSE a key is missing
+ *  ("sets no time") also require the keys. Nothing was dropped: the suite
+ *  stays red until the time pass is ported, because the name bug is live.
  * =====================================================================
  */
 declare(strict_types=1);
@@ -46,10 +56,16 @@ function check(string $l, bool $ok, string $extra = ''): void {
     if ($ok) { $PASS++; echo "  \033[32mPASS\033[0m  $l" . ($extra !== '' ? " — $extra" : '') . "\n"; }
     else     { $FAIL++; echo "  \033[31mFAIL\033[0m  $l" . ($extra !== '' ? " — $extra" : '') . "\n"; }
 }
-/** @return array<string, mixed> */
-function p(string $text): array { return TicketBot::parse($text); }
+/** parse(), with the time keys defaulted so a missing pass FAILS checks instead of crashing the suite.
+ *  @return array<string, mixed> */
+function p(string $text): array { return TicketBot::parse($text) + ['time' => '', 'timeOfDay' => '', 'timeHour' => -1]; }
 
 echo "\n=== TicketBot::parse — the time of day ===\n\n";
+
+$raw      = TicketBot::parse('beluka 7 baje 2 seat nepal');
+$HAS_TIME = array_key_exists('time', $raw) && array_key_exists('timeOfDay', $raw) && array_key_exists('timeHour', $raw);
+check('parse() carries time / timeOfDay / timeHour', $HAS_TIME,
+    $HAS_TIME ? '' : 'missing — the time pass (commit 14c15a7f) is not in includes/ticketbot.php');
 
 echo "-- a part of the day resolves the hour --\n";
 foreach ([
@@ -94,7 +110,7 @@ foreach ([
 
 echo "\n-- an ambiguous hour is REFUSED, not guessed --\n";
 $amb = p('7 baje nepal 2 seat');
-check('"7 baje" alone sets no time', $amb['time'] === '', $amb['time']);
+check('"7 baje" alone sets no time', $HAS_TIME && $amb['time'] === '', $HAS_TIME ? $amb['time'] : 'no time pass');
 check('  …but the literal hour is kept for the desk to ask', (int) $amb['timeHour'] === 7, (string) $amb['timeHour']);
 check('  …and the seat count is untouched', (int) $amb['seats'] === 2, (string) $amb['seats']);
 
@@ -117,6 +133,56 @@ foreach ([
     check("\"{$text}\" leaves no time word in the name", $dirty === '', $dirty !== '' ? 'name="' . p($text)['name'] . '"' : '');
 }
 
+echo "\n-- …and a NAME is never a time word (B1 refix, 17 Nov 2026) --\n";
+/* The first port dropped every part-of-day word from the name with no
+   guard, so "Subah Khan 98…" printed "Khan", "Shaam Lal" lost "Shaam" (and
+   its gender guess), "naam Saanjh" lost the whole name, and the leftover
+   clock sweep took "Baj" out of "Baj Singh". A cut name that still looks
+   valid is never asked about, so it prints on the ticket. These words are a
+   part of the day only when an hour follows at once — the rule "Sham",
+   "Shyam" and "Rati" already had. */
+foreach ([
+    ['Subah Khan 9812345678',                   'Subah Khan'],
+    ['Shaam Lal 9812345678 bholi 1 seat surat', 'Shaam Lal'],
+    ['शाम लाल 9812345678 कल 1 सीट सूरत',        'शाम लाल'],
+    ['सुबह खान 9876543210 2 seat',               'सुबह खान'],
+    ['Saanjh Sharma 9876543210 2 seat nepal',   'Saanjh Sharma'],
+    ['Saanjh 9876543210 2 seat',                'Saanjh'],
+    ['naam Subah 9876543210 2 seat',            'Subah'],
+    ['Noon Khan 9876543210 2 seat',             'Noon Khan'],
+    ['Baj Singh 9876543210 2 seat',             'Baj Singh'],
+    ['Raati Maya 9876543210 2 seat',            'Raati Maya'],
+    ['Raat Bahadur 9876543210 2 seat',          'Raat Bahadur'],
+    ['Bihan Gurung 9876543210 2 seat',          'Bihan Gurung'],
+    ['Savar Patel 9876543210 2 seat',           'Savar Patel'],
+    ['Sanjha Thapa 9876543210 2 seat',          'Sanjha Thapa'],
+    ['Shyam 9876543210 7 baje 2 seat',          'Shyam'],
+] as [$text, $name]) {
+    $r = p($text);
+    check("\"{$text}\" keeps the name \"{$name}\", no part of the day",
+        $HAS_TIME && $r['name'] === $name && $r['timeOfDay'] === '', 'name="' . $r['name'] . '" timeOfDay=' . ($r['timeOfDay'] ?: '(none)'));
+}
+echo "  with an hour right after, the same words are still a time:\n";
+foreach ([
+    ['subah 6 baje 2 seat',      '06:00', 'morning'],
+    ['shaam 7 baje 2 seat',      '19:00', 'evening'],
+    ['saanjh 6 baje 2 seat',     '18:00', 'evening'],
+    ['raat 10 baje 2 seat',      '22:00', 'night'],
+    ['noon 12 baje 2 seat',      '12:00', 'afternoon'],
+    ['bihan 6 baje 2 seat',      '06:00', 'morning'],
+    ['savar 6 baje 2 seat',      '06:00', 'morning'],
+    ['shaam 7:30 ko bus 2 seat', '19:30', 'evening'],
+    ['शामको 7 बजे 2 सीट',       '19:00', 'evening'],
+] as [$text, $time, $period]) {
+    $r = p($text);
+    check("\"{$text}\" -> {$time} {$period}, no name", $r['time'] === $time && $r['timeOfDay'] === $period && $r['name'] === '',
+        ($r['time'] ?: '(none)') . ' ' . ($r['timeOfDay'] ?: '(none)') . ' name="' . $r['name'] . '"');
+}
+$both = p('Shaam Lal 9812345678 shaam 7 baje 2 seat');
+check('"Shaam Lal … shaam 7 baje": only the "shaam" the hour follows is the time',
+    $both['name'] === 'Shaam Lal' && $both['time'] === '19:00', 'name="' . $both['name'] . '" time=' . ($both['time'] ?: '(none)'));
+check('"baje ko bus" alone is still no name (only "baj" is kept)', p('baje ko bus 2 seat')['name'] === '', 'name="' . p('baje ko bus 2 seat')['name'] . '"');
+
 echo "\n-- the passes either side are untouched --\n";
 $keep = p('Ram Bahadur 9876543210 2 seats nepal');
 check('a plain line still reads its name', $keep['name'] === 'Ram Bahadur', $keep['name']);
@@ -124,11 +190,11 @@ check('  …its phone', $keep['phone'] === '9876543210', $keep['phone']);
 check('  …its seats', (int) $keep['seats'] === 2, (string) $keep['seats']);
 check('a bare hour is never a date', p('7 baje nepal 2 seat')['date'] === '', p('7 baje nepal 2 seat')['date']);
 check('"25 tarikh" is still a date, not a time', p('2 seat nepal 25 tarikh')['date'] !== '');
-check('  …and sets no time', p('2 seat nepal 25 tarikh')['time'] === '');
+check('  …and sets no time', $HAS_TIME && p('2 seat nepal 25 tarikh')['time'] === '', $HAS_TIME ? '' : 'no time pass');
 check('"seat 12" is still a POSITION, not 12 seats', (int) p('Ram 9876543210 seat 12 kal')['seats'] === 0);
 check('"2 seats" is still a count', (int) p('Ram 9876543210 2 seats')['seats'] === 2);
 check('an empty message still carries lang en', p('')['lang'] === 'en');
-check('  …and no time', p('')['time'] === '' && (int) p('')['timeHour'] === -1);
+check('  …and no time', $HAS_TIME && p('')['time'] === '' && (int) p('')['timeHour'] === -1, $HAS_TIME ? '' : 'no time pass');
 
 echo "\n" . ($FAIL === 0
         ? "\033[32mALL {$PASS} CHECKS PASSED\033[0m\n\n"

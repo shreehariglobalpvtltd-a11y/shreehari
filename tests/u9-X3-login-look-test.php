@@ -6,8 +6,10 @@
  *    P1-2e + P1-7a + P1-7a2  the optional gold look on the staff door
  *    (admin/login.php, the one door). Setting login_theme:
  *      'classic' (default, a missing row, any other value) = the page exactly
- *                as before — rendered byte for byte against the git base
- *                (U9X3_BASE, default HEAD) for every step drawn here;
+ *                as before — rendered byte for byte against the same page
+ *                with its gold code taken out of the source (or, with
+ *                U9X3_BASE=<rev>, against that git revision) for every step
+ *                drawn here;
  *      'gold'    = <html class="lt-gold"> + one <style id="lt-gold"> block and
  *                nothing else: same <body> classes, same markup, same text.
  *    The gold block: every rule scoped under :root.lt-gold, colours / borders /
@@ -139,19 +141,50 @@ $CUR = $ROOT . '/admin/login.php';
 check('CodeLogin / Auth session keys this test fakes are the real ones',
     CodeLogin::KEY === 'code_login' && Auth::DEVICE_HOLD_KEY === 'admin_device_pending');
 
-/* ---- the git base copy of the page (the same includes, its own markup) ---- */
-$BASE = (string) (getenv('U9X3_BASE') ?: 'HEAD');
+/* ---- the base copy of the page (the same includes, its own markup) --------
+   16 Nov 2026 (battery T1): the base was `git show HEAD:admin/login.php`. That
+   proved the point only while the X3 change itself was uncommitted; once it
+   was committed it compared the working file with HEAD, so ANY later edit to
+   login.php not yet committed (mv5's service-worker line, a ?v= stamp) made
+   all 11 "classic = base" checks fail although the look had not changed, and
+   any committed edit passed whatever it did. The promise is "classic = the
+   page as if the gold look did not exist", so the base is now THIS working
+   file with its two gold pieces taken out of the source (the class on <html>
+   and the <?php if ($ltGold): ... </style><?php endif; ?> block) - and it must
+   find each exactly once, and $ltGold nowhere else. U9X3_BASE=<rev> still
+   compares with a git revision, for reviewing one change against its parent. */
+$BASE = trim((string) getenv('U9X3_BASE'));
 $baseFile = null;
-$src = (string) @shell_exec('git -C ' . escapeshellarg($ROOT) . ' show ' . escapeshellarg($BASE . ':admin/login.php') . ' 2>' . (PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null'));
-if (str_contains($src, 'Auth::oneDoorOn()')) {
-    // a git run from PHP may hand the file back with other line endings: use the working file's
-    if (str_contains((string) file_get_contents($CUR), "\r\n")) {
-        $src = (string) preg_replace("/\r?\n/", "\r\n", $src);
+$baseLabel = '';
+$curSrc = (string) file_get_contents($CUR);
+if ($BASE === '') {
+    $baseLabel = 'the page without its gold code';
+    $htmlGold  = '<html lang="ne"<?= $ltGold ? \' class="lt-gold"\' : \'\' ?>>';
+    $src = str_replace($htmlGold, '<html lang="ne">', $curSrc, $nHtml);
+    // (\r?\n)?: PHP's closing tag swallows the one newline right after it, so it goes with the block
+    $src = (string) preg_replace('~<\?php if \(\$ltGold\):.*?</style><\?php endif; \?>(\r?\n)?~s', '', $src, -1, $nBlock);
+    // what is left of $ltGold once both pieces are out: its own assignment, nothing else
+    $uses = substr_count($src, '$ltGold');
+    check('the gold look lives in exactly two places of admin/login.php (the <html> class, one style block)',
+        $nHtml === 1 && $nBlock === 1 && $uses === 1,
+        "html=$nHtml block=$nBlock \$ltGold left=$uses");
+    if ($nHtml === 1 && $nBlock === 1) {
+        $baseFile = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . 'u9x3-base-login-' . getmypid() . '.php';
+        file_put_contents($baseFile, str_replace('dirname(__DIR__)', var_export($ROOT, true), $src));
     }
-    $baseFile = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . 'u9x3-base-login-' . getmypid() . '.php';
-    file_put_contents($baseFile, str_replace('dirname(__DIR__)', var_export($ROOT, true), $src));
 } else {
-    skip("git base $BASE:admin/login.php not readable — the classic = base comparison is skipped");
+    $baseLabel = "the $BASE page";
+    $src = (string) @shell_exec('git -C ' . escapeshellarg($ROOT) . ' show ' . escapeshellarg($BASE . ':admin/login.php') . ' 2>' . (PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null'));
+    if (str_contains($src, 'Auth::oneDoorOn()')) {
+        // a git run from PHP may hand the file back with other line endings: use the working file's
+        if (str_contains($curSrc, "\r\n")) {
+            $src = (string) preg_replace("/\r?\n/", "\r\n", $src);
+        }
+        $baseFile = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . 'u9x3-base-login-' . getmypid() . '.php';
+        file_put_contents($baseFile, str_replace('dirname(__DIR__)', var_export($ROOT, true), $src));
+    } else {
+        check("git base $BASE:admin/login.php is readable (U9X3_BASE was asked for)", false);
+    }
 }
 
 $AID = 999999901;   // no such admin: the page draws what it needs from the session only
@@ -185,7 +218,7 @@ foreach ($S as $name => [$get, $sess, $marker]) {
         // drawn at 'classic': the pre-gold base ignores the setting, and once this change is committed
         // (base = HEAD = the gold-aware page) a 'gold' draw would compare the gold page to classic
         $base = draw($baseFile, $get, $sess, 'classic');
-        check("$name: classic = the $BASE page, byte for byte", norm($classic) === norm($base),
+        check("$name: classic = $baseLabel, byte for byte", norm($classic) === norm($base),
             norm($classic) === norm($base) ? strlen($classic) . ' bytes' : 'first difference at byte ' . strspn(norm($classic) ^ norm($base), "\0"));
     }
     check("$name: no row (migration not run) = classic", norm(draw($CUR, $get, $sess, null)) === norm($classic));

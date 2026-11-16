@@ -738,7 +738,8 @@ final class WaFaq
         $s = trim(preg_replace('/[!.,?🙏\s]+/u', ' ', $t) ?? $t);
         return preg_match('/^(namaste|namaskar|namaskaar|hello|hi|hii|hey|hlo|helo|jai shree ram|ram ram|good morning|good evening|'
             . 'k cha|ke cha|kasto cha|kasto chha|k xa|kem cho|kem chho|'
-            . 'नमस्ते|नमस्कार|हेलो|राम राम|सुप्रभात|નમસ્તે|કેમ છો)'
+            // 16 Nov 2026 (B1): Gujarati "હેલો" (hello) beside the Hindi "हेलो" - a Gujarati hello got the menu, not the booking line
+            . 'नमस्ते|नमस्कार|हेलो|राम राम|सुप्रभात|નમસ્તે|હેલો|કેમ છો)'
             . '( (ji|jee|dai|daju|bhai|sir|hajur|didi|saheb|જી|जी|दाइ|हजुर))?$/u', $s) === 1;
     }
 

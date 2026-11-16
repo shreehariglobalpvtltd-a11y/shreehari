@@ -30,7 +30,8 @@ if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
     $date = todayISO();
 }
 $routeId = (int) ($_GET['route'] ?? 0);
-$format  = in_array($_GET['format'] ?? '', ['csv', 'chalani', 'chalanipdf', 'chalanipng', 'pdf'], true) ? (string) $_GET['format'] : 'html';
+$format  = in_array($_GET['format'] ?? '', ['csv', 'chalani', 'chalanipdf', 'chalanipng', 'pdf', 'payqr'], true) ? (string) $_GET['format'] : 'html';
+require_once INCLUDE_PATH . '/chalanipng.php';   // 16 Nov 2026: ChalaniPng::payMode - the pay-at-boarding rule every chalani surface shares
 /* 29 Oct 2026 (management upgrade 3.2): passengers in the order the coach
    picks them up — the route's own boarding-stop order (route_stops.sort_order),
    seat order inside one stop. ?order=seat keeps the old seat-only list. */
@@ -43,6 +44,26 @@ $order    = in_array($orderReq, ['group', 'stop', 'seat'], true) ? $orderReq : '
 /* An agent must not be handed the whole coach through a URL the sidebar
    does not show them. Same scope rule the bookings list and CSV export use. */
 $scopeId = Auth::bookingScopeAdminId();
+
+/* 16 Nov 2026 (owner: "ani redirect payment lina sab suvidha hunu paryo, free wala"):
+   the crew's 💳 QR - the passenger's own pay page (pay.php: UPI, UPI QR, eSewa, a
+   UTR claim; all free) as a picture to show at the bus door. READ-ONLY: it never
+   marks anything paid - an online payment lands 'pending' and only the office
+   approves it. Only a pay-at-boarding booking still unpaid gets one, and an agent
+   login only for its own sales. */
+if ($format === 'payqr') {
+    $qrPng = ChalaniPng::payQrPng((string) ($_GET['pnr'] ?? ''), $scopeId, null, null, true);   // the ticket key rides along (staff screen)
+    if ($qrPng === null) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        exit('बसमा तिर्न बाँकी छैन · Nothing is due on boarding for this booking.');
+    }
+    header('Content-Type: image/png');
+    header('Cache-Control: private, no-store');
+    header('Content-Length: ' . strlen($qrPng));
+    echo $qrPng;
+    exit;
+}
 
 /* 6 Nov 2026 (owner: "ticket transfer / delete garna — admin le click garera
    sajilai"): a one-click CANCEL from the chalani for the office (bookings.cancel).
@@ -195,7 +216,7 @@ if ($trip !== null) {
                 b.id AS booking_id, b.pnr, b.contact_phone, b.status AS booking_status,
                 b.source, b.is_cod, b.total_amount, b.base_total, b.sold_by_admin_id, b.created_at,
                 bl.boarding_stop, bl.drop_stop,
-                p.status AS pay_status, p.method AS pay_method,
+                p.status AS pay_status, p.method AS pay_method, p.utr_number AS pay_utr, p.admin_note AS pay_note,
                 t.ticket_number, t.scanned_at, t.is_void,
                 ad.full_name AS agent_name, ad.username AS agent_user, ad.role AS agent_role
            FROM booking_passengers bp
@@ -326,6 +347,77 @@ $farePer = static function (array $r) use ($paxTotalPerBooking, $extrasOf): floa
     // 16 Nov 2026: the desk extras (luggage / infant) are not a seat's fare
     return round(max(0.0, (float) $r['total_amount'] - $extrasOf($r)) / $n);
 };
+/* Money per ROW, one rule shared by the screen, the print sheet, the PDF and
+   the PNG pages: ticket = this passenger's share of the booking; it lands in
+   the नगद column when the verified payment was cash / COD, in अनलाइन for
+   UPI / eSewa / bank / wallet, and in neither while still unpaid.
+   16 Nov 2026: + 'extra' — the booking's desk extras (luggage / infant), on
+   its first row only. It is collected WITH the fare, so a paid row's नगद /
+   अनलाइन carries fare + extra; टिकट stays the seat's fare alone.
+   (Moved up from the chalani branch, 16 Nov 2026, so the screen's नगद /
+   अनलाइन badges read the very same rule.)
+   Review 16 Nov 2026: cash or online is ChalaniPng::paidWay() - a settled pay-at-
+   boarding row always says 'cod', so the office tick's mode (UPI / eSewa / Bank)
+   puts it in अनलाइन, as the passenger's ticket says; it used to land in नगद. */
+$money = static function (array $r) use ($farePer, $extraOnRow, $mfState, $mfTicks): array {
+    $fare   = (float) $farePer($r);
+    $extra  = (float) $extraOnRow($r);
+    $bid    = (int) ($r['booking_id'] ?? 0);
+    $way    = (($r['pay_status'] ?? '') === 'verified') ? ChalaniPng::paidWay($r, $mfTicks[$bid] ?? null) : '';
+    /* review: the extras sit in नगद / अनलाइन only where their own line says भयो -
+       an office "Mark due" keeps the payment row verified, and the same rupees
+       must not read as collected AND still to collect on one sheet */
+    $xIn    = (($mfState[$bid] ?? 'due') !== 'due') ? $extra : 0.0;
+    $cash   = $way === 'cash' ? $fare + $xIn : 0.0;
+    $online = $way === 'online' ? $fare + $xIn : 0.0;
+    return ['ticket' => $fare, 'extra' => $extra, 'cash' => $cash, 'online' => $online];
+};
+
+/* 16 Nov 2026 (owner: "pay at boarding vane option ticket chalani ma add gardeu -
+   cash ho ki online ho"): HOW each booking pays - ChalaniPng::payMode(), read from
+   the row colour ($mfState = OpsHub::payState) and the verified payment the नगद /
+   अनलाइन columns read; never a second paid rule. A pay-at-boarding booking still
+   unpaid owes its fare share + desk extras on THIS bus: "बसमा ₹X", printed once
+   (on its first row, like the extras line). 'boarding' never has a verified
+   payment, so its rupees are never also in नगद / अनलाइन. */
+$pmBook = [];   // booking id => pay mode
+$pmDue  = [];   // booking id => ₹ the crew collects on boarding, this bus
+$pmPax  = [];   // booking id => passengers on this bus
+$pmLead = [];   // booking id => its first passenger here (the 💳 QR card names them)
+$pmClaim = [];  // booking id => the passenger already sent a UTR (CodPayClaim) - still due, the office checks it
+foreach ($rows as $r) {
+    $bid = (int) ($r['booking_id'] ?? 0);
+    if (!isset($pmBook[$bid])) {
+        $pmBook[$bid] = ChalaniPng::payMode($r, $mfState[$bid] ?? 'due', $mfTicks[$bid] ?? null);
+        $pmDue[$bid]  = 0.0;
+        $pmPax[$bid]  = 0;
+        $pmLead[$bid] = (string) ($r['full_name'] ?? '');
+        $pmClaim[$bid] = $pmBook[$bid] === 'boarding' && ChalaniPng::payClaimSent($r);
+    }
+    $pmPax[$bid]++;
+    if ($pmBook[$bid] === 'boarding') {
+        $pmDue[$bid] += $farePer($r) + $extraOnRow($r);
+    }
+}
+$boardDue = 0.0; $boardDueN = 0;
+foreach ($pmBook as $bid => $pmMode) {
+    if ($pmMode === 'boarding') { $boardDue += $pmDue[$bid]; $boardDueN += $pmPax[$bid]; }
+}
+/** ['mode', 'amt', 'first', 'ne', 'claim'] for one row - the PDF and the PNG pages read this too. */
+$payMark = static function (array $r) use ($pmBook, $pmDue, $xFirst, $pmClaim): array {
+    $bid   = (int) ($r['booking_id'] ?? 0);
+    $mode  = $pmBook[$bid] ?? 'due';
+    $first = ($xFirst[$bid] ?? -1) === (int) ($r['pax_id'] ?? 0);
+    $amt   = $mode === 'boarding' ? round((float) ($pmDue[$bid] ?? 0), 2) : 0.0;
+    $ne    = ChalaniPng::payModeLabel($mode, 'ne') . ($mode === 'boarding' && $first && $amt > 0 ? ' ₹' . number_format($amt) : '');
+    return ['mode' => $mode, 'amt' => $amt, 'first' => $first, 'ne' => $ne, 'claim' => (bool) ($pmClaim[$bid] ?? false)];
+};
+/* The staff words (Nepali · English): "बसमा ₹2,200 · On boarding", "नगद ✓ · Cash" ... */
+$pmStaff = static fn(array $pmk, bool $withAmt = true): string => $pmk['mode'] === 'boarding'
+    ? 'बसमा' . ($withAmt && (float) $pmk['amt'] > 0 ? ' ' . inr((float) $pmk['amt']) : '') . ' · On boarding'
+    : ChalaniPng::payModeLabel((string) $pmk['mode'], 'staff');
+/* The 💳 QR picture for a booking still due on boarding (format=payqr above). */
+$payQrSrc = static fn(string $pnr): string => $base . '/admin/manifest.php?' . http_build_query(['format' => 'payqr', 'pnr' => $pnr]);
 /* Compact "who sold this seat" for the printed waybill: the seller's SHG
    code, or the channel when there is no numbered agent behind it.
    Ticket::issuedBy() is the one place that decides — the same call the
@@ -579,9 +671,11 @@ if ($format === 'csv') {
     csv_put($out, ['Bus number', (string) ($trip['bus_number'] ?? 'not assigned')]);
     csv_put($out, ['Passengers', (string) count($rows)]);
     if ($xInfants > 0) { csv_put($out, ['Infants (lap, no berth)', (string) $xInfants]); }
+    // 16 Nov 2026: pay-at-boarding money still to collect on this bus (never also in cash / online)
+    csv_put($out, ['To collect on boarding', $boardDueN . ' passengers', (string) round($boardDue, 2)]);
     csv_put($out, []);
     csv_put($out, ['Seat', 'Passenger', 'Age', 'Gender', 'Phone', 'Boarding point',
-                   'Destination', 'Fare', 'Booking ID', 'Payment', 'Source', 'Agent', 'Ticket', 'Booked',
+                   'Destination', 'Fare', 'Booking ID', 'Payment', 'Pay mode', 'Source', 'Agent', 'Ticket', 'Booked',
                    'Extra luggage', 'Infants', 'Extra Rs', 'Extra paid']);
 
     foreach ($rows as $r) {
@@ -592,7 +686,7 @@ if ($format === 'csv') {
             Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing')),
             $r['full_name'], $r['age'], $r['gender'], $r['contact_phone'],
             $stopShort((string) $r['boarding_stop']), $stopShort((string) $r['drop_stop']), $farePer($r), $r['pnr'],
-            $payLabel($r), $sourceLabel($r), $agentLabel($r), $ticketLabel($r),
+            $payLabel($r), ChalaniPng::payModeLabel($payMark($r)['mode'], 'csv') . ($payMark($r)['claim'] ? ' (' . ChalaniPng::payClaimLabel('csv') . ')' : ''), $sourceLabel($r), $agentLabel($r), $ticketLabel($r),
             $bookedTime($r) . ($isLate($r) ? ' (after departure)' : ''),
             $xHere ? (string) $xB['lug'] : '', $xHere ? (string) $xB['inf'] : '',
             $xHere ? (string) $xRow : '', $xHere ? match ($xB['state']) { 'due' => 'DUE', 'agent' => 'PAID (with agent)', 'free' => 'FREE', default => 'PAID' } : '',
@@ -731,26 +825,8 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     /* $stopShort is defined once, in the shared formatting block above — the
        chalani, the screen and the CSV all read the same rule. */
 
-    /* Money per ROW, one rule shared by this page and the PDF:
-       ticket = this passenger's share of the booking; it lands in the
-       नगद column when the verified payment was cash / COD, in अनलाइन for
-       UPI / eSewa / bank / wallet, and in neither while still unpaid. */
-    /* 16 Nov 2026: + 'extra' — the booking's desk extras (luggage / infant),
-       on its first row only. It is collected WITH the fare, so a paid row's
-       नगद / अनलाइन carries fare + extra; टिकट stays the seat's fare alone. */
-    $money = static function (array $r) use ($farePer, $extraOnRow, $mfState): array {
-        $fare   = (float) $farePer($r);
-        $extra  = (float) $extraOnRow($r);
-        $paid   = (($r['pay_status'] ?? '') === 'verified');
-        $method = strtolower((string) ($r['pay_method'] ?? ''));
-        /* review: the extras sit in नगद / अनलाइन only where their own line says भयो -
-           an office "Mark due" keeps the payment row verified, and the same rupees
-           must not read as collected AND still to collect on one sheet */
-        $xIn    = (($mfState[(int) ($r['booking_id'] ?? 0)] ?? 'due') !== 'due') ? $extra : 0.0;
-        $cash   = $paid && in_array($method, ['cash', 'cod'], true) ? $fare + $xIn : 0.0;
-        $online = $paid && in_array($method, ['upi', 'esewa', 'bank', 'wallet'], true) ? $fare + $xIn : 0.0;
-        return ['ticket' => $fare, 'extra' => $extra, 'cash' => $cash, 'online' => $online];
-    };
+    /* $money — the per-row money rule — is defined once in the shared block
+       above (16 Nov 2026), so the screen badges read it too. */
     $tTicket = 0.0; $tCash = 0.0; $tOnline = 0.0; $tDisc = 0.0; $tExtra = 0.0; $seenB = [];
     foreach ($rows as $r) {
         $m = $money($r);
@@ -781,6 +857,8 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
         'chalaniNo' => $chalaniNo,
         // 16 Nov 2026: special (desk extras) payments — whole, came in, still to collect
         'extras' => $tExtra, 'extrasPaid' => $xPaid, 'extrasDue' => $xDue, 'infants' => $xInfants,
+        // 16 Nov 2026: pay at boarding still to collect - passengers and ₹ (not in cash / online)
+        'boardDue' => round($boardDue, 2), 'boardDueN' => $boardDueN,
     ];
     /* the "विशेष भुक्तानी" lines, in chalani row order, seat labels as printed */
     $xLines = [];
@@ -828,6 +906,8 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
                       desk extras) and the state of the booking a row belongs to */
                    'extrasLines' => $xLines, 'penLines' => 2,
                    'rowState' => static fn(array $r): string => (string) ($mfState[(int) ($r['booking_id'] ?? 0)] ?? 'due'),
+                   /* 16 Nov 2026: how the row pays - बसमा ₹X / नगद ✓ / अनलाइन ✓ (ChalaniPng::payMode) */
+                   'payMark' => $payMark,
                    'infantsOf' => static fn(array $r): int => ($xFirst[(int) ($r['booking_id'] ?? 0)] ?? -1) === (int) ($r['pax_id'] ?? 0)
                         ? (int) ($xBook[(int) $r['booking_id']]['inf'] ?? 0) : 0];
 
@@ -990,6 +1070,9 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   .xp .r { text-align:right; }
   .xp tr.pen td { height:21px; color:#5C6B85; }
   .xok { color:#15803D; } .xdue { color:#B91C1C; }
+  /* 16 Nov 2026: how the row pays - बसमा ₹X (red) · नगद ✓ / अनलाइन ✓ (green) · एजेन्टसँग / जाँचमा (amber) */
+  b.pm { font-weight:700; } .pm-boarding, .pm-due { color:#B91C1C; } .pm-cash, .pm-online, .pm-paid { color:#15803D; } .pm-agent, .pm-pending { color:#B45309; }
+  .sum span.bd, .sum b.bd { color:#B91C1C; font-weight:700; }
   b.inf { color:#7C2D12; font-size:9.5px; }
   .sum .penl { display:flex; gap:6px; align-items:flex-end; } .sum .penl i { flex:1; border-bottom:1px dotted #5C6B85; min-height:12px; }
   .sum b.penb { border-bottom:0; font-weight:400; color:#5C6B85; white-space:nowrap; }
@@ -1089,7 +1172,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
       <td class="r"><?= ($m && $m['cash'] > 0) ? $e(number_format($m['cash'])) : '' ?></td>
       <td class="r"><?= ($m && $m['online'] > 0) ? $e(number_format($m['online'])) : '' ?></td>
       <td class="c"></td>
-      <td><?= $r ? $e($bookedByShort($r) === 'ONLINE' ? 'अनलाइन' : ($bookedByShort($r) === 'OFFICE' ? 'कार्यालय' : ($bookedByShort($r) === 'COUNTER' ? 'काउन्टर' : $bookedByShort($r)))) : '' ?><?php if ($m && $m['extra'] > 0): $xs = $chalaniFmt['rowState']($r); ?> · <b class="<?= $xCls($xs) ?>">थप ₹<?= $e(number_format($m['extra'])) ?> <?= $e($xStateNe($xs)) ?></b><?php endif; ?></td>
+      <td><?php if ($r): $pmk = $payMark($r); ?><b class="pm pm-<?= $e($pmk['mode']) ?>"><?= $e($pmk['ne']) ?></b><?= $pmk['claim'] ? ' <b class="pm pm-pending">' . $e(ChalaniPng::payClaimLabel('ne')) . '</b>' : '' ?> · <?php endif; ?><?= $r ? $e($bookedByShort($r) === 'ONLINE' ? 'अनलाइन' : ($bookedByShort($r) === 'OFFICE' ? 'कार्यालय' : ($bookedByShort($r) === 'COUNTER' ? 'काउन्टर' : $bookedByShort($r)))) : '' ?><?php if ($m && $m['extra'] > 0): $xs = $chalaniFmt['rowState']($r); ?> · <b class="<?= $xCls($xs) ?>">थप ₹<?= $e(number_format($m['extra'])) ?> <?= $e($xStateNe($xs)) ?></b><?php endif; ?></td>
     </tr>
   <?php endfor; ?>
   </tbody>
@@ -1130,6 +1213,8 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
       <span>जम्मा टिकट रकम</span><b>₹ <?= $e(number_format($totals['ticket'])) ?></b>
       <span>नगद संकलन</span><b>₹ <?= $e(number_format($totals['cash'])) ?></b>
       <span>अनलाइन / UPI प्राप्ति</span><b>₹ <?= $e(number_format($totals['online'])) ?></b>
+      <?php $bdCls = $totals['boardDue'] > 0 ? ' class="bd"' : ''; ?>
+      <span<?= $bdCls ?>>बसमा उठाउनु पर्ने · To collect on boarding</span><b<?= $bdCls ?>><?= $e($neDigits((string) $totals['boardDueN'])) ?> जना · ₹ <?= $e(number_format($totals['boardDue'])) ?></b>
       <span>छुट / सहुलियत</span><b>₹ <?= $e(number_format($totals['discount'])) ?></b>
       <?php if ($xLines !== []): ?>
       <span>विशेष भुक्तानी (थप सामान / शिशु)</span><b>₹ <?= $e(number_format($totals['extras'])) ?></b>
@@ -1190,6 +1275,9 @@ foreach ($rows as $r) {
 $bedsTaken = count(array_filter(array_keys($seatInfo), static fn($b): bool => !Seats::isExtraSeat((string) $b)));
 $xScreenPaid = 0.0; $xScreenDue = 0.0;
 foreach ($xBook as $xb) { if ($xb['state'] === 'due') { $xScreenDue += $xb['amt']; } else { $xScreenPaid += $xb['amt']; } }
+/* 16 Nov 2026: नगद / अनलाइन on the screen, from the same $money rule as the sheet's columns */
+$scrCash = 0.0; $scrOnline = 0.0;
+foreach ($rows as $r) { $sm = $money($r); $scrCash += $sm['cash']; $scrOnline += $sm['online']; }
 $revenue  = 0.0;
 $seenPnr  = [];
 foreach ($rows as $r) {
@@ -1307,6 +1395,31 @@ foreach ($rows as $r) {
   /* the place list's total row is a card on a phone: no rule above each line */
   @media (max-width:820px) { table.mf-pl.card-table tfoot td { border-top:0; } }
 
+  /* 16 Nov 2026: pay at boarding - the row's pay mark and the crew's 💳 QR */
+  .mf-pm { display:inline-block; max-width:100%; margin-top:3px; border-radius:6px; padding:1px 7px; font-size:12px; font-weight:700; border:1px solid transparent; }
+  .mf-money .pc-badge { white-space:normal; max-width:100%; }   /* the long "To collect on boarding" line wraps on a 360px phone */
+  .mf-pm.pm-boarding, .mf-pm.pm-due { background:#FEF2F2; color:#B91C1C; border-color:#F6C9C9; }
+  .mf-pm.pm-cash, .mf-pm.pm-online, .mf-pm.pm-paid { background:#ECFDF3; color:#15803D; border-color:#BBF0CF; }
+  .mf-pm.pm-agent, .mf-pm.pm-pending { background:#FFF7E8; color:#B45309; border-color:#F5D9A8; }
+  :root[data-theme="dark"] .mf-pm.pm-boarding, :root[data-theme="dark"] .mf-pm.pm-due { background:rgba(220,38,38,.14); border-color:rgba(220,38,38,.35); color:#FCA5A5; }
+  :root[data-theme="dark"] .mf-pm.pm-cash, :root[data-theme="dark"] .mf-pm.pm-online, :root[data-theme="dark"] .mf-pm.pm-paid { background:rgba(22,163,74,.15); border-color:rgba(22,163,74,.35); color:#6EE7A0; }
+  :root[data-theme="dark"] .mf-pm.pm-agent, :root[data-theme="dark"] .mf-pm.pm-pending { background:rgba(245,158,11,.14); border-color:rgba(245,158,11,.35); color:#FBC56B; }
+  .mf-qr { display:inline-flex; align-items:center; gap:4px; margin:3px 0 0 4px; min-height:30px; padding:0 10px; border-radius:7px; border:1px solid #1D4FA3; background:#EEF4FF; color:#1D4FA3; font:inherit; font-size:12.5px; font-weight:700; cursor:pointer; white-space:nowrap; }
+  :root[data-theme="dark"] .mf-qr { background:rgba(59,130,246,.16); border-color:rgba(147,197,253,.5); color:#BFDBFE; }
+  @media (max-width:820px) and (pointer:coarse) { .mf-qr { min-height:40px; } }
+  dialog.pq { width:min(92vw, 360px); max-width:calc(100vw - 32px); border:1px solid var(--line); border-radius:14px; padding:14px 16px 16px; background:var(--card); color:var(--ink); }
+  dialog.pq::backdrop { background:rgba(8,15,30,.55); }
+  .pq h3 { margin:0 28px 4px 0; font-size:16px; }
+  .pq .pq-x { position:absolute; top:8px; right:8px; width:36px; height:36px; border-radius:50%; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:16px; cursor:pointer; }
+  .pq p { margin:4px 0; font-size:13px; color:var(--mut); overflow-wrap:anywhere; }
+  .pq .pq-amt { font-size:22px; font-weight:800; color:#B91C1C; margin:2px 0 6px; }
+  :root[data-theme="dark"] .pq .pq-amt { color:#FCA5A5; }
+  .pq .pq-img { background:#fff; border-radius:10px; padding:8px; display:flex; justify-content:center; margin:6px 0; }
+  .pq .pq-img img { width:100%; max-width:240px; height:auto; aspect-ratio:1/1; image-rendering:pixelated; }
+  .pq .pq-link { display:flex; gap:6px; margin-top:8px; }
+  .pq .pq-link input { flex:1 1 auto; min-width:0; min-height:38px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); padding:0 8px; font-size:12px; }
+  .pq .pq-link button, .pq .pq-link a { display:inline-flex; align-items:center; min-height:38px; padding:0 10px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink); font:inherit; font-size:12.5px; font-weight:650; text-decoration:none; cursor:pointer; }
+
   @media print {
     /* §16 "PRINT MANIFEST": the crew needs the list, not the console. */
     header.tb, nav.side, .mf-tools, .no-print { display:none !important; }
@@ -1404,6 +1517,9 @@ foreach ($rows as $r) {
       <?= pc_badge('Paid ' . $mfCount['paid'] . ' · ' . inr($mfMoney['paid']), 'ok') ?>
       <?= pc_badge('With agents ' . $mfCount['agent'] . ' · ' . inr($mfMoney['agent']), 'warn') ?>
       <?= pc_badge('Due ' . $mfCount['due'] . ' · ' . inr($mfMoney['due']), 'bad') ?>
+      <?php /* 16 Nov 2026: cash vs online that came in, and the pay-at-boarding money the crew still collects */ ?>
+      <?= pc_badge('नगद · Cash ' . inr($scrCash) . ' — अनलाइन · Online ' . inr($scrOnline), 'info') ?>
+      <?= pc_badge('बसमा उठाउनु पर्ने · To collect on boarding: ' . $boardDueN . ' जना · ' . inr($boardDue), $boardDue > 0 ? 'bad' : 'ok') ?>
       <?php if ($xBook !== []): ?>
         <?= pc_badge('विशेष भुक्तानी · Extras ' . inr($xScreenPaid + $xScreenDue) . ' — भयो ' . inr($xScreenPaid) . ' · बाँकी ' . inr($xScreenDue), $xScreenDue > 0 ? 'warn' : 'ok') ?>
       <?php endif; ?>
@@ -1503,9 +1619,11 @@ foreach ($rows as $r) {
           <?php endif;
           $gid = (int) $r['booking_id'];
           if ($gid !== $lastGid): $lastGid = $gid; $g = $grp[$gid]; ?>
-        <?php $gSt = $mfState[$gid] ?? 'due'; [$gLbl, $gCls] = OpsHub::payLabel($gSt); $gTick = $mfTicks[$gid] ?? null; ?>
+        <?php $gSt = $mfState[$gid] ?? 'due'; [$gLbl, $gCls] = OpsHub::payLabel($gSt); $gTick = $mfTicks[$gid] ?? null; $gPm = $payMark($r); ?>
         <tr class="mf-grp mf-st-<?= Security::e($gSt) ?>"><td colspan="11">
           <span class="mf-tag <?= Security::e($gCls) ?>"><?= Security::e($gLbl) ?></span>
+          <span class="mf-pm pm-<?= Security::e($gPm['mode']) ?>"><?= Security::e($pmStaff($gPm, true)) ?></span>
+          <?php if ($gPm['claim']): ?><span class="mf-pm pm-pending"><?= Security::e(ChalaniPng::payClaimLabel('staff')) ?></span><?php endif; ?>
           <b><?= Security::e($g['lead']) ?></b> — <?= (int) $g['n'] ?> passenger<?= $g['n'] === 1 ? '' : 's' ?>
           — <?= Security::e($stopNow) ?> → <?= Security::e($stopShort((string) ($r['drop_stop'] ?: $trip['to_city']))) ?>
           — <span class="mono"><?= Security::e((string) $r['contact_phone']) ?></span>
@@ -1591,7 +1709,14 @@ foreach ($rows as $r) {
             <?php if ((string) ($r['pnr'] ?? '') !== '' && (string) ($r['booking_status'] ?? '') === 'confirmed'): ?><?= admin_wa_button('booking_ticket', ['pnr' => (string) $r['pnr']], '💬', ['class' => 'btn ghost sm', 'title' => 'Send the ticket to this passenger on WhatsApp — opens a preview first']) ?><?php endif; ?>
           </td>
           <td><?php [$rLbl, $rCls] = OpsHub::payLabel($rSt); ?><span class="mf-tag <?= Security::e($rCls) ?>"><?= Security::e($rLbl) ?></span>
-            <br><small class="muted"><?= Security::e($payLabel($r)) ?><?= !empty($r['pay_method']) ? ' · ' . Security::e(strtoupper((string) $r['pay_method'])) : '' ?></small></td>
+            <br><small class="muted"><?= Security::e($payLabel($r)) ?><?= !empty($r['pay_method']) ? ' · ' . Security::e(strtoupper((string) $r['pay_method'])) : '' ?></small>
+            <?php /* 16 Nov 2026: how this row pays (the amount once per booking), and for a
+                     pay-at-boarding passenger still due the crew's 💳 QR to their pay page */ ?>
+            <?php $rPm = $payMark($r); ?><br><span class="mf-pm pm-<?= Security::e($rPm['mode']) ?>"><?= Security::e($pmStaff($rPm, $rPm['first'])) ?></span><?php if ($rPm['claim']): ?> <span class="mf-pm pm-pending"><?= Security::e(ChalaniPng::payClaimLabel('staff')) ?></span><?php endif; ?>
+            <?php if ($rPm['mode'] === 'boarding'): ?><button type="button" class="mf-qr no-print" data-payqr
+              data-pnr="<?= Security::e((string) $r['pnr']) ?>" data-name="<?= Security::e($pmLead[(int) $r['booking_id']] ?? (string) $r['full_name']) ?>"
+              data-amt="<?= Security::e(inr((float) $rPm['amt'])) ?>" data-link="<?= Security::e(ChalaniPng::payLink((string) $r['pnr'], true)) ?>"
+              data-qr="<?= Security::e($payQrSrc((string) $r['pnr'])) ?>" title="यात्रुलाई अनलाइन तिर्ने QR देखाउनुहोस् · Show the passenger a QR to pay online (free)">💳 QR</button><?php endif; ?></td>
           <td><?= Security::e($sourceLabel($r)) ?>
             <?php if ($bookedTime($r) !== ''): ?>
               <br><small<?= $isLate($r) ? ' style="color:#8a1111;font-weight:700"' : ' class="muted"' ?>><?= $isLate($r) ? '⚠ after dep · ' : 'booked ' ?><?= Security::e($bookedTime($r)) ?></small>
@@ -1604,6 +1729,46 @@ foreach ($rows as $r) {
       </tbody>
     </table>
     </div>
+    <?php /* 16 Nov 2026 (owner: "redirect payment lina sab suvidha hunu paryo, free wala"):
+             the 💳 QR card - the passenger scans and pays on their own pay page (UPI / eSewa,
+             free). Nothing here marks a payment: the office verifies it on Payments. */ ?>
+    <dialog class="pq" id="mfPayQr" aria-labelledby="mfPayQrH">
+      <form method="dialog" style="margin:0"><button class="pq-x" type="submit" aria-label="Close · बन्द">✕</button></form>
+      <h3 id="mfPayQrH">💳 बसमा भुक्तानी · Pay on boarding</h3>
+      <p><b data-f="name"></b> · <span data-f="pnr"></span></p>
+      <div class="pq-amt" data-f="amt"></div>
+      <div class="pq-img"><img alt="Pay QR" width="240" height="240" data-f="img"></div>
+      <p>यात्रुले फोनको UPI / eSewa एपले स्क्यान गरेर निःशुल्क तिर्नुहोस् · The passenger scans with any UPI / eSewa app and pays free.</p>
+      <p>कार्यालयले जाँचेपछि मात्र "भुक्तानी" हुन्छ — यहाँबाट केही paid हुँदैन · It counts as paid only after the office checks it.</p>
+      <div class="pq-link"><input readonly data-f="link" aria-label="Pay link" onclick="this.select()"><button type="button" data-f="copy">Copy</button><a data-f="open" target="_blank" rel="noopener">Open</a></div>
+    </dialog>
+    <script>
+    (function () {
+      var d = document.getElementById('mfPayQr');
+      if (!d) { return; }
+      var f = function (k) { return d.querySelector('[data-f="' + k + '"]'); };
+      document.addEventListener('click', function (ev) {
+        var b = ev.target && ev.target.closest ? ev.target.closest('[data-payqr]') : null;
+        if (!b) { return; }
+        ev.preventDefault();
+        var link = b.getAttribute('data-link') || '';
+        if (typeof d.showModal !== 'function') { window.open(link, '_blank', 'noopener'); return; }
+        f('name').textContent = b.getAttribute('data-name') || '';
+        f('pnr').textContent = b.getAttribute('data-pnr') || '';
+        f('amt').textContent = b.getAttribute('data-amt') || '';
+        f('img').src = b.getAttribute('data-qr') || '';
+        f('link').value = link;
+        f('open').href = link;
+        d.showModal();
+      });
+      f('copy').addEventListener('click', function () {
+        var v = f('link').value, btn = this;
+        var done = function () { btn.textContent = 'Copied ✓'; setTimeout(function () { btn.textContent = 'Copy'; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(v).then(done, function () { f('link').select(); }); }
+        else { f('link').select(); try { document.execCommand('copy'); done(); } catch (e) {} }
+      });
+    })();
+    </script>
   <?php endif; ?>
 <?php endif; ?>
 <?php

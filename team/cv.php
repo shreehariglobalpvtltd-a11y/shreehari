@@ -23,6 +23,10 @@ $me = TeamPortal::current();
 if ($me === null) {
     TeamUi::go('/team/');
 }
+// 16 Nov 2026 (G1): a temporary password is a guest until changed - TeamPortal::current() rides on the admin session
+if ($me['via'] === 'admin' && Auth::staffActive() === null) {
+    TeamUi::go('/admin/change-password.php');
+}
 $h = static fn($v): string => Security::e((string) ($v ?? ''));
 $t = (string) ($_GET['t'] ?? '');
 if (!in_array($t, ['staff', 'agent'], true)) {

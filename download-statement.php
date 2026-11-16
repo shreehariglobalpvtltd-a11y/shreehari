@@ -39,9 +39,10 @@ try {
 
     $allowed = $exp > time() && $key !== '' && hash_equals(Statement::token($file, $exp), $key);
 
-    if (!$allowed && Auth::admin() !== null) {
+    if (!$allowed && Auth::staffActive() !== null) {
         // Supervisors, or the agent whose statement it is (id is the first
-        // number in the file name), while signed in.
+        // number in the file name), while signed in. 16 Nov 2026 (G1): and not
+        // on a temporary password - staffActive(), not admin().
         $agentId = (int) (explode('-', $file)[1] ?? 0);
         $scope   = Auth::bookingScopeAdminId();
         if (Auth::can('commissions.view') || ($scope !== null && $scope === $agentId)) {

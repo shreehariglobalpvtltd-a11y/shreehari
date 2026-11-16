@@ -47,13 +47,17 @@ final class ChalaniPdf
     private const ROSE  = [194, 24, 91];
     private const WHITE = [255, 255, 255];
     private const RED   = [138, 17, 17];
+    private const GREEN = [21, 128, 61];     // 16 Nov 2026: paid (नगद / अनलाइन)
+    private const AMBER = [180, 83, 9];      // 16 Nov 2026: with the agent / online being checked
 
     private const M        = 20.0;   // page margin (pt) — the reference runs edge to edge
     private const MIN_ROWS = 25;
 
     /** What the last send() drew - passenger rows, special-payment lines, the lowest
-        box edge vs the footer limit (tests/u10-chalani-pdf-pages-test.php reads it). */
-    public static array $drawn = ['rows' => 0, 'xLines' => 0, 'maxBottom' => 0.0, 'limit' => 0.0];
+        box edge vs the footer limit (tests/u10-chalani-pdf-pages-test.php reads it);
+        16 Nov 2026: + each row's pay mark and the payment-summary lines
+        (tests/u12-P2-chalani-pay-test.php reads those). */
+    public static array $drawn = ['rows' => 0, 'xLines' => 0, 'maxBottom' => 0.0, 'limit' => 0.0, 'marks' => [], 'sum' => []];
 
     /**
      * Stream the PDF and exit.
@@ -249,7 +253,10 @@ final class ChalaniPdf
         $infantsOf = isset($fmt['infantsOf']) && is_callable($fmt['infantsOf']) ? $fmt['infantsOf'] : static fn(array $r): int => 0;
         $rowState  = isset($fmt['rowState']) && is_callable($fmt['rowState']) ? $fmt['rowState'] : static fn(array $r): string => 'due';
         $stateNe   = static fn(string $s): string => match ($s) { 'paid' => 'भयो', 'agent' => 'भयो (एजेन्टसँग)', 'free' => 'निःशुल्क', default => 'बाँकी' };
-        $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach, $womanSingle, $placeNo, $infantsOf, $rowState, $stateNe): void {
+        /* 16 Nov 2026 (owner: "pay at boarding vane option ... cash ho ki online ho"): how the
+           row pays - ['mode', 'amt', 'first', 'ne'] from ChalaniPng::payMode via the caller */
+        $payMark   = isset($fmt['payMark']) && is_callable($fmt['payMark']) ? $fmt['payMark'] : static fn(array $r): array => [];
+        $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $width, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach, $womanSingle, $placeNo, $infantsOf, $rowState, $stateNe, $payMark): void {
             $ws = $r !== null && $womanSingle($r);
             if ($ws) { $pdf->rect($M, $y, $inner, $rowH, self::PINK, true); }
             foreach ($cw as $i => $w) { $pdf->rect($cx[$i], $y, $w, $rowH, self::LINE, false); }
@@ -275,8 +282,34 @@ final class ChalaniPdf
             if ($m['cash']   > 0) { $txtR($cx[7] + $cw[7] - 3, $ty, number_format($m['cash']),   7.6, false, self::INK); }
             if ($m['online'] > 0) { $txtR($cx[8] + $cw[8] - 3, $ty, number_format($m['online']), 7.6, false, self::INK); }
             $xTxt = (float) ($m['extra'] ?? 0) > 0 ? ' · थप ₹' . number_format((float) $m['extra']) . ' ' . $stateNe($rowState($r)) : '';
-            $txt($cx[10] + 3, $ty, $fit($soldByNe($bookedBy($r)) . ($isLate($r) ? ' · बस चलेपछि' : '') . $xTxt, 6.8, $cw[10] - 6), 6.8, false,
-                $isLate($r) ? self::RED : ($xTxt !== '' && $rowState($r) === 'due' ? self::RED : self::MUTE));
+            /* 16 Nov 2026: the pay mark leads the remarks ("बसमा ₹2,200", "नगद ✓", "अनलाइन ✓"),
+               in its own colour; the font has no ✓, so the tick is drawn. */
+            $kx = $cx[10] + 3;
+            $pm = (array) $payMark($r);
+            $pmTxt = trim((string) ($pm['ne'] ?? '')) . (!empty($pm['claim']) ? ' · UTR जाँचमा' : '');   // a UTR sent, the office checks it
+            if ($pmTxt !== '') {
+                self::$drawn['marks'][] = $pmTxt;
+                $pmMode = (string) ($pm['mode'] ?? '');
+                $tick   = str_contains($pmTxt, '✓');
+                $pmLab  = trim(str_replace('✓', '', $pmTxt));
+                $pmRgb  = in_array($pmMode, ['cash', 'online', 'paid'], true) ? self::GREEN
+                        : (in_array($pmMode, ['agent', 'pending'], true) ? self::AMBER : self::RED);
+                $pmLab  = $fit($pmLab, 6.8, $cw[10] - 14);
+                $txt($kx, $ty, $pmLab, 6.8, true, $pmRgb);
+                $kx += $width($pmLab, 6.8) + 1.6;
+                if ($tick) {
+                    $pdf->line($kx, $ty - 2.6, $kx + 1.5, $ty - 0.7, $pmRgb, 0.8);
+                    $pdf->line($kx + 1.5, $ty - 0.7, $kx + 4.4, $ty - 5.0, $pmRgb, 0.8);
+                    $kx += 5.4;
+                }
+                $kx += 2.2;
+            }
+            $rest = ($pmTxt !== '' ? '· ' : '') . $soldByNe($bookedBy($r)) . ($isLate($r) ? ' · बस चलेपछि' : '') . $xTxt;
+            $restRoom = $cx[10] + $cw[10] - 3 - $kx;
+            if ($restRoom > 12) {
+                $txt($kx, $ty, $fit($rest, 6.8, $restRoom), 6.8, false,
+                    $isLate($r) ? self::RED : ($xTxt !== '' && $rowState($r) === 'due' ? self::RED : self::MUTE));
+            }
         };
 
         /* ==============================================================
@@ -335,7 +368,7 @@ final class ChalaniPdf
 
         /* ---- table, paginated ---------------------------------------- */
         $limit  = $H - $M - 16;                  // the footer rule sits just below this
-        self::$drawn = ['rows' => 0, 'xLines' => 0, 'maxBottom' => 0.0, 'limit' => $limit];
+        self::$drawn = ['rows' => 0, 'xLines' => 0, 'maxBottom' => 0.0, 'limit' => $limit, 'marks' => [], 'sum' => []];
         /* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai thapaune
            line"): one line per booking with desk extras + blank pen lines.
            Page economy (review): with NO extras on the bus (the usual case) there is
@@ -439,6 +472,8 @@ final class ChalaniPdf
             ['जम्मा टिकट रकम',          '₹ ' . number_format((float) ($totals['ticket'] ?? 0))],
             ['नगद संकलन',               '₹ ' . number_format((float) ($totals['cash'] ?? 0))],
             ['अनलाइन / UPI प्राप्ति',     '₹ ' . number_format((float) ($totals['online'] ?? 0))],
+            // 16 Nov 2026: pay-at-boarding money still to collect (never also counted above)
+            ['बसमा उठाउनु पर्ने',          $neDigits((string) (int) ($totals['boardDueN'] ?? 0)) . ' जना · ₹ ' . number_format((float) ($totals['boardDue'] ?? 0)), 'due'],
             ['छुट / सहुलियत',            '₹ ' . number_format((float) ($totals['discount'] ?? 0))],
         ];
         if ($hasX) {
@@ -450,10 +485,21 @@ final class ChalaniPdf
         }
         $sum[] = ['खुद जम्मा संकलन', '₹ ' . number_format((float) ($totals['net'] ?? 0))];
         $sy = $y + 21.5;
+        // 16 Nov 2026: 9 lines now (+ बसमा उठाउनु पर्ने) - the pitch shrinks to keep the same box
+        $sumGap = min($sumGap, ($boxesH - 21.5 - 6) / max(1, count($sum) - 1));
         foreach ($sum as $k => $line) {
             [$lab, $val] = $line;
+            self::$drawn['sum'][] = $lab . ' = ' . $val;
             $last = $k === count($sum) - 1;
             $pen  = ($line[2] ?? '') === 'pen';
+            $hot  = ($line[2] ?? '') === 'due' && (float) ($totals['boardDue'] ?? 0) > 0;
+            if ($hot) {
+                $txt($M + 10, $sy, $lab, 7.2, true, self::RED);
+                $pdf->line($M + $halfW - 116, $sy + 1.5, $M + $halfW - 10, $sy + 1.5, self::LINE, 0.5);
+                $txtR($M + $halfW - 12, $sy, $val, 7.4, true, self::RED);
+                $sy += $sumGap;
+                continue;
+            }
             $txt($M + 10, $sy, $lab, 7.2, $last, $last ? self::NAVY : self::MUTE);
             if ($pen) {   // a line to write on: who / what / ₹, then the two tick boxes
                 $pdf->line($M + 70, $sy + 1.5, $M + $halfW - 82, $sy + 1.5, self::MUTE, 0.4);

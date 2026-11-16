@@ -15,8 +15,9 @@
  *      an agent is locked out of everything that is not theirs
  *
  *  REQUIREMENTS
- *    1. The dev server must already be running on :8899
- *       (Claude Code: preview_start "shari-php").
+ *    1. SHG_TEST_BASE=http://localhost:<port> names the dev server; with it
+ *       unset the suite starts its OWN php -S on a free port serving THIS
+ *       checkout and stops it on exit (16 Nov 2026, as manifest-test.php).
  *    2. curl must be loaded — the dev ini does not enable it:
  *
  *       php -c .claude/php-dev.ini -d extension=php_curl.dll \
@@ -31,7 +32,9 @@
  *
  *  It writes one real booking per run (a COD sale on the next free seat),
  *  which is why it points at the local shari_test database and must never
- *  be aimed at production.
+ *  be aimed at production. Since 16 Nov 2026 it removes that booking (and
+ *  its message / delivery / audit rows and ticket files), the two sign-in
+ *  accounts and their sessions / login history again on exit.
  * =====================================================================
  */
 declare(strict_types=1);
@@ -42,11 +45,55 @@ declare(strict_types=1);
    writes to whichever database the server it is uploaded to is pointed at. */
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
 
+/* 16 Nov 2026: the app is loaded for the FIXTURES only - QuickUnlock::set
+   gives the sign-in accounts a PIN (the code-first door, 15 Nov, sends a
+   PIN-less account to pin-setup.php before any page) and Seats /
+   Database remove the run's booking cleanly at the end. Every check still
+   goes over real HTTP and reads the DB through pdo() below. */
+require_once dirname(__DIR__) . '/includes/bootstrap.php';
+require_once INCLUDE_PATH . '/seats.php';
+require_once INCLUDE_PATH . '/quickunlock.php';
+
 /* Overridable so a second worktree can be tested without stealing :8899
    from the one that already holds it — a suite pointed at ANOTHER
    checkout's server reports green for code you did not change.
-       SHG_TEST_BASE=http://localhost:8898 php ... */
-define('BASE', getenv('SHG_TEST_BASE') ?: 'http://localhost:8899');
+       SHG_TEST_BASE=http://localhost:8898 php ...
+   16 Nov 2026: with SHG_TEST_BASE unset the suite starts its OWN php -S on
+   a free port serving THIS checkout (same php + ini as this run) and stops
+   it on exit - the battery passes no base, and :8899 is whichever checkout
+   owns it (the manifest-test.php Y7 fix). SHG_TEST_BASE still wins. */
+function shg_test_base(): string
+{
+    $env = trim((string) getenv('SHG_TEST_BASE'));
+    if ($env !== '') {
+        return rtrim($env, '/');
+    }
+    $probe = @stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+    if ($probe === false) {
+        return 'http://localhost:8899';
+    }
+    $name = (string) stream_socket_get_name($probe, false);
+    fclose($probe);
+    $port = (int) substr($name, (int) strrpos($name, ':') + 1);
+    $ini  = (string) php_ini_loaded_file();
+    $null = DIRECTORY_SEPARATOR === '\\' ? 'NUL' : '/dev/null';
+    $cmd  = array_merge([PHP_BINARY], $ini !== '' ? ['-c', $ini] : [], ['-S', '127.0.0.1:' . $port, '-t', dirname(__DIR__)]);
+    $proc = @proc_open($cmd, [0 => ['file', $null, 'r'], 1 => ['file', $null, 'w'], 2 => ['file', $null, 'w']], $pipes, dirname(__DIR__));
+    if (!is_resource($proc)) {
+        return 'http://localhost:8899';
+    }
+    register_shutdown_function(static function () use ($proc): void {
+        @proc_terminate($proc);
+        @proc_close($proc);
+    });
+    for ($i = 0; $i < 100; $i++) {   // up to ~10 s for the server to answer
+        $c = @fsockopen('127.0.0.1', $port, $e1, $e2, 0.2);
+        if ($c !== false) { fclose($c); break; }
+        usleep(100000);
+    }
+    return 'http://127.0.0.1:' . $port;
+}
+define('BASE', shg_test_base());
 $jar = sys_get_temp_dir() . '/shg_e2e_' . getmypid() . '.cookies';
 $adminJar = sys_get_temp_dir() . '/shg_e2e_admin_' . getmypid() . '.cookies';
 @unlink($jar); @unlink($adminJar);
@@ -73,8 +120,28 @@ function req(string $method, string $url, array $opt = []): array {
     $body = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err  = curl_error($ch);
+    $loc  = (string) curl_getinfo($ch, CURLINFO_REDIRECT_URL);   // where a 302 points (not followed)
     curl_close($ch);
-    return ['code' => $code, 'body' => (string) $body, 'err' => $err];
+    return ['code' => $code, 'body' => (string) $body, 'err' => $err, 'location' => $loc];
+}
+
+/* The page's CSRF token: the <meta name="csrf-token"> every staff page
+   carries, else the hidden form field. */
+function csrfOfPage(string $html): string {
+    if (preg_match('/<meta name="csrf-token" content="([^"]+)"/', $html, $m) === 1) { return html_entity_decode($m[1]); }
+    return preg_match('/name="' . preg_quote(CSRF_TOKEN_NAME, '/') . '"\s+value="([^"]+)"/', $html, $m) === 1 ? $m[1] : '';
+}
+
+/* 16 Nov 2026: the staff door is code-first (15 Nov) - the bare
+   /admin/login.php is the code box. The username + password sign-in is the
+   classic door, ?classic=1 (the office's recovery route, and the one every
+   HTTP suite uses); its post carries classic=1. Returns [page, post]. */
+function staffSignIn(string $jar, string $user, string $pw): array {
+    $page = req('GET', '/admin/login.php?classic=1&other=1', ['jar' => $jar]);
+    $post = req('POST', '/admin/login.php', ['jar' => $jar, 'form' => [
+        CSRF_TOKEN_NAME => csrfOfPage($page['body']), 'classic' => '1', 'username' => $user, 'password' => $pw,
+    ]]);
+    return [$page, $post];
 }
 
 function pdo(): PDO {
@@ -125,31 +192,146 @@ function check(string $label, bool $ok, string $detail = ''): void {
    depend on (and risk clobbering) the operator's own 'superadmin' / 'agent1'
    dev passwords, it provisions two DEDICATED throwaway accounts with known
    passwords and must_change_pw=0, and deletes them at the end. Passwords may
-   still be overridden with SHG_ADMIN_PW / SHG_AGENT_PW. */
-const E2E_ADMIN_USER = 'e2e-superadmin';
-const E2E_AGENT_USER = 'e2e-agent';
+   still be overridden with SHG_ADMIN_PW / SHG_AGENT_PW.
+   16 Nov 2026: the names carry a per-run tag. Several agents and the battery
+   run suites against the same shari_test at once; with fixed names one run's
+   cleanup deleted the other's live accounts mid-run and orphaned their
+   sessions. E2E_STALE_PREFIXES finds what an older run left behind. */
+const E2E_STALE_PREFIXES = ['e2e-superadmin', 'e2e-agent'];
+define('E2E_RUN', bin2hex(random_bytes(3)));
+define('E2E_ADMIN_USER', 'e2e-superadmin-' . E2E_RUN);
+define('E2E_AGENT_USER', 'e2e-agent-' . E2E_RUN);
 $E2E_ADMIN_PW = getenv('SHG_ADMIN_PW') ?: 'Admin@12345';
 $E2E_AGENT_PW = getenv('SHG_AGENT_PW') ?: 'Agent@12345';
 
-function ensureStaff(string $username, string $role, string $password, ?string $phone): void {
+const E2E_PIN        = '582614';   // any valid 6-digit PIN (QuickUnlock::pinProblem)
+const E2E_EMAIL      = 'e2e@example.com';
+const E2E_PAX        = 'E2E Guest Tester';
+
+function ensureStaff(string $username, string $role, string $password, ?string $phone): int {
     $hash = password_hash($password, PASSWORD_BCRYPT);
     $existing = pdo()->prepare('SELECT id FROM admins WHERE username = ?');
     $existing->execute([$username]);
-    $id = $existing->fetchColumn();
-    if ($id) {
+    $id = (int) $existing->fetchColumn();
+    if ($id > 0) {
         $u = pdo()->prepare('UPDATE admins SET password_hash=?, role=?, phone=?, is_active=1, must_change_pw=0, failed_logins=0, locked_until=NULL WHERE id=?');
         $u->execute([$hash, $role, $phone, $id]);
     } else {
         $i = pdo()->prepare('INSERT INTO admins (username, password_hash, full_name, phone, role, is_active, must_change_pw) VALUES (?,?,?,?,?,1,0)');
         $i->execute([$username, $hash, 'E2E ' . ucfirst($role), $phone, $role]);
+        $id = (int) pdo()->lastInsertId();
+    }
+    /* 16 Nov 2026: the code-first door (15 Nov) sends an account with no PIN /
+       pattern to pin-setup.php before any page (Auth::pinSetupNeeded) - give
+       it one, as every real office / agent login now has. */
+    QuickUnlock::set($id, 'pin', E2E_PIN);
+    return $id;
+}
+
+/* Everything one run leaves behind, removed on exit (also after a crash):
+   the booking (seats released first, so the berth is sellable again; its
+   children cascade) plus the rows that point at it without a foreign key
+   (message / delivery logs, the ticket link, its audit trail) and the
+   ticket files; then the two accounts with their sessions (admin_sessions
+   has no FK to admins), login history and audit rows. */
+function e2eRemoveBooking(int $id, string $pnr): void {
+    if ($id <= 0) { return; }
+    $row = Database::fetch('SELECT contact_phone, created_at FROM bookings WHERE id = :i', ['i' => $id]);
+    try { Seats::releaseBooking($id); } catch (Throwable $e) {}
+    foreach (['message_logs', 'delivery_log', 'ticket_links', 'wa_outbox', 'wa_ticket_queue', 'msg_ledger', 'payment_events'] as $t) {
+        try { Database::delete($t, 'booking_id = :b', ['b' => $id]); } catch (Throwable $e) {}
+    }
+    try { Database::query("DELETE FROM audit_logs WHERE entity_type = 'booking' AND entity_id IN (:p, :i)", ['p' => $pnr, 'i' => (string) $id]); } catch (Throwable $e) {}
+    e2eForgetPnr($pnr);
+    try { Database::delete('bookings', 'id = :i', ['i' => $id]); } catch (Throwable $e) {}
+    if ($row !== null) {
+        e2eForgetProfile((string) $row['contact_phone'], (string) $row['created_at']);
+    }
+    if ($pnr !== '') {
+        foreach (glob(dirname(__DIR__) . '/tickets/ticket_' . $pnr . '.*') ?: [] as $f) { @unlink($f); }
     }
 }
+/* Rows that name the PNR without a foreign key (16 Nov 2026): the guest
+   booking rings the office bell "New online customer · <PNR>"
+   (AdminAlerts::onlineBooking - a notifications row with booking_id NULL,
+   so deleting the booking does not cascade to it, plus its automation_log
+   claim alert:online:<PNR>), and the EventBus journal names the PNR in the
+   booking.created / approved / cod_settled rows' `data`. */
+function e2eForgetPnr(string $pnr): void {
+    if ($pnr === '') { return; }
+    try { Database::query('DELETE FROM automation_log WHERE data LIKE :d OR dedupe_key LIKE :k1 OR dedupe_key LIKE :k2',
+        ['d' => '%"' . $pnr . '"%', 'k1' => '%:' . $pnr, 'k2' => '%:' . $pnr . ':%']); } catch (Throwable $e) {}
+    try { Database::query('DELETE FROM notifications WHERE booking_id IS NULL AND (link LIKE :l1 OR link LIKE :l2)',
+        ['l1' => '%pnr=' . $pnr, 'l2' => '%pnr=' . $pnr . '&%']); } catch (Throwable $e) {}
+}
+/* The customer-master row (user_profiles) the booking opened for its contact
+   number - only one the booking itself created (not older than the booking)
+   and only when no other booking is on that number. */
+function e2eForgetProfile(string $phone, string $bookedAt): void {
+    if ($phone === '' || $bookedAt === '') { return; }
+    try { Database::query('DELETE FROM user_profiles WHERE phone = :p AND created_at >= :c - INTERVAL 1 MINUTE
+                            AND NOT EXISTS (SELECT 1 FROM bookings WHERE contact_phone = :p2)', ['p' => $phone, 'p2' => $phone, 'c' => $bookedAt]); } catch (Throwable $e) {}
+}
+function e2eRemoveAccount(int $aid): void {
+    try { Database::delete('admin_sessions', 'admin_id = :a', ['a' => $aid]); } catch (Throwable $e) {}
+    try { Database::query("DELETE FROM audit_logs WHERE entity_type = 'admin' AND entity_id = :a", ['a' => (string) $aid]); } catch (Throwable $e) {}
+    // the "recent pages" menu row admin/_guard.php keeps per account (OpsHub::trackPage; no FK to admins)
+    try { Database::query("DELETE FROM kv_store WHERE kscope = 'nav_use' AND kkey = :k", ['k' => 'a' . $aid]); } catch (Throwable $e) {}
+    try { Database::delete('admins', 'id = :a', ['a' => $aid]); } catch (Throwable $e) {}   // admin_devices cascades
+}
+function e2eCleanup(string $pnr): void {
+    if ($pnr !== '') {
+        foreach (Database::fetchAll('SELECT id, pnr FROM bookings WHERE pnr = :p', ['p' => $pnr]) as $r) {
+            e2eRemoveBooking((int) $r['id'], (string) $r['pnr']);
+        }
+    }
+    foreach ([E2E_ADMIN_USER, E2E_AGENT_USER] as $u) {
+        $aid = (int) Database::scalar('SELECT id FROM admins WHERE username = :u', ['u' => $u], 0);
+        if ($aid > 0) {
+            e2eRemoveAccount($aid);
+        }
+        try { Database::delete('admin_login_events', 'username = :u', ['u' => $u]); } catch (Throwable $e) {}
+    }
+}
+/* What an EARLIER run left (it died, or ran an older copy with fixed names):
+   only bookings / accounts over an hour old, so a run going on right now is
+   never touched; accounts already deleted (whose sessions were orphaned) are
+   found through their login history. */
+function e2eSweepStale(): void {
+    foreach (Database::fetchAll(
+        "SELECT DISTINCT b.id, b.pnr FROM bookings b JOIN booking_passengers p ON p.booking_id = b.id
+          WHERE b.contact_email = :e AND p.full_name = :n AND b.created_at < NOW() - INTERVAL 1 HOUR",
+        ['e' => E2E_EMAIL, 'n' => E2E_PAX]) as $r) {
+        e2eRemoveBooking((int) $r['id'], (string) $r['pnr']);
+    }
+    foreach (E2E_STALE_PREFIXES as $pre) {
+        $like = $pre . '%';
+        foreach (Database::fetchAll('SELECT id FROM admins WHERE username LIKE :u AND created_at < NOW() - INTERVAL 1 HOUR', ['u' => $like]) as $a) {
+            e2eRemoveAccount((int) $a['id']);
+        }
+        $gone = Database::fetchAll('SELECT DISTINCT e.admin_id AS id FROM admin_login_events e LEFT JOIN admins a ON a.id = e.admin_id
+                                     WHERE e.username LIKE :u AND e.admin_id IS NOT NULL AND a.id IS NULL', ['u' => $like]);
+        $gone = array_merge($gone, Database::fetchAll("SELECT DISTINCT l.actor_id AS id FROM audit_logs l LEFT JOIN admins a ON a.id = l.actor_id
+                                     WHERE l.action = 'admin.login' AND l.actor_name LIKE :u AND l.actor_id IS NOT NULL AND a.id IS NULL", ['u' => $like]));
+        foreach ($gone as $o) {
+            e2eRemoveAccount((int) $o['id']);   // the account is gone; its sessions / audit rows are not
+        }
+        try { Database::query('DELETE e FROM admin_login_events e LEFT JOIN admins a ON a.id = e.admin_id
+                                WHERE e.username LIKE :u AND a.id IS NULL', ['u' => $like]); } catch (Throwable $e) {}
+    }
+}
+$pnr = '';
+register_shutdown_function(static function (): void {
+    global $pnr;
+    e2eCleanup((string) $pnr);
+});
 
 // Clear this IP's login throttle (repeated e2e runs would otherwise trip it —
 // a known local trap) and provision the sign-in accounts before TEST 4 runs.
 try { pdo()->exec("DELETE FROM rate_limits WHERE bucket LIKE 'admin_login%'"); } catch (Throwable $e) {}
-ensureStaff(E2E_ADMIN_USER, 'superadmin', $E2E_ADMIN_PW, null);
-ensureStaff(E2E_AGENT_USER, 'agent', $E2E_AGENT_PW, '919812300000');
+e2eSweepStale();
+$E2E_ADMIN_ID = ensureStaff(E2E_ADMIN_USER, 'superadmin', $E2E_ADMIN_PW, null);
+$E2E_AGENT_ID = ensureStaff(E2E_AGENT_USER, 'agent', $E2E_AGENT_PW, '919812300000');
 
 // TEST 11 compares against this: the run must not LOSE a legacy row.
 $legacyBefore = (int) pdo()->query("SELECT COUNT(*) FROM bookings WHERE pnr LIKE 'SHG-R%'")->fetchColumn();
@@ -222,14 +404,19 @@ foreach ($free as $cand) { if (!in_array($cand, $femList, true)) { $seat = $cand
 $seat = $seat ?? $free[0];
 
 echo "\n=== TEST 10 — guest books with CASH ON DELIVERY ===\n";
-$phone = '98' . random_int(10000000, 99999999);
+/* 16 Nov 2026: a number nobody has yet (no booking, account or customer
+   profile), so the profile the booking opens is this run's own to remove. */
+do {
+    $phone = '98' . random_int(10000000, 99999999);
+} while ((int) Database::scalar('SELECT (SELECT COUNT(*) FROM bookings WHERE contact_phone = :a) + (SELECT COUNT(*) FROM users WHERE phone = :b)
+                                  + (SELECT COUNT(*) FROM user_profiles WHERE phone = :c)', ['a' => $phone, 'b' => $phone, 'c' => $phone], 0) > 0);
 $bk = req('POST', '/api/book.php', [
     'jar' => $jar,
     'headers' => ['X-CSRF-Token: ' . $csrf],
     'json' => [
         'routeId' => $route['routeId'], 'travelDate' => $date, 'seats' => [$seat],
-        'passengers' => [['seat' => $seat, 'name' => 'E2E Guest Tester', 'age' => 30, 'gender' => 'Male']],
-        'contact' => ['phone' => $phone, 'email' => 'e2e@example.com', 'idType' => 'Voter ID', 'idNum' => 'GJE2E0001'],
+        'passengers' => [['seat' => $seat, 'name' => E2E_PAX, 'age' => 30, 'gender' => 'Male']],
+        'contact' => ['phone' => $phone, 'email' => E2E_EMAIL, 'idType' => 'Voter ID', 'idNum' => 'GJE2E0001'],
         'bookingMode' => $bookingMode, 'boarding' => $boardStop, 'drop' => $dropStop,
         'paymentMethod' => 'cod', 'isCod' => true,
     ],
@@ -274,20 +461,22 @@ $pc = req('GET', '/admin/pending-count.php', ['jar' => $jar]);
 check('GET /admin/pending-count.php refuses guest', $pc['code'] !== 200 || !str_contains($pc['body'], 'pending"'), 'HTTP ' . $pc['code'] . ' ' . substr($pc['body'], 0, 120));
 
 echo "\n=== TEST 4 — ADMIN signs in and fetches the new ticket ===\n";
-$lp = req('GET', '/admin/login.php', ['jar' => $adminJar]);
-preg_match('/name="' . preg_quote('shg_csrf', '/') . '" value="([a-f0-9]+)"/', $lp['body'], $cm);
-if (!$cm) preg_match('/name="([a-z_]*csrf[a-z_]*)" value="([a-f0-9]+)"/i', $lp['body'], $cm2);
-$loginCsrf = $cm[1] ?? ($cm2[2] ?? '');
-$csrfName  = $cm ? 'shg_csrf' : ($cm2[1] ?? 'shg_csrf');
+/* 16 Nov 2026: the bare door is the code box now (code-first, 15 Nov; the
+   one "mobile or ID" box while login_code_first_on is switched off) - it
+   still renders with its CSRF token; the password sign-in is ?classic=1. */
+$door = req('GET', '/admin/login.php', ['jar' => $adminJar]);
+check('the staff door renders (the code box, or the one-door box, + CSRF)',
+    $door['code'] === 200 && (str_contains($door['body'], 'name="code"') || str_contains($door['body'], 'name="who"')) && csrfOfPage($door['body']) !== '',
+    'HTTP ' . $door['code']);
+[$lp, $li] = staffSignIn($adminJar, E2E_ADMIN_USER, $E2E_ADMIN_PW);
+$loginCsrf = csrfOfPage($lp['body']);
 check('admin login page renders', $lp['code'] === 200 && $loginCsrf !== '', 'HTTP ' . $lp['code'] . ' csrf=' . ($loginCsrf !== '' ? 'yes' : 'NO'));
-
-$li = req('POST', '/admin/login.php', ['jar' => $adminJar, 'form' => [
-    $csrfName => $loginCsrf, 'username' => E2E_ADMIN_USER, 'password' => $E2E_ADMIN_PW,
-]]);
 $dash = req('GET', '/admin/index.php', ['jar' => $adminJar]);
-$loggedIn = $dash['code'] === 200
+$loggedIn = $li['code'] === 302 && !str_contains($li['location'], 'login.php') && !str_contains($li['location'], 'pin-setup')
+    && $dash['code'] === 200
     && (str_contains($dash['body'], 'Recent Bookings') || str_contains($dash['body'], 'Latest bookings') || str_contains($dash['body'], 'Recent tickets'));
-check('admin session established', $loggedIn, 'login HTTP ' . $li['code'] . ', dash HTTP ' . $dash['code']);
+check('admin session established', $loggedIn,
+    'login HTTP ' . $li['code'] . ' -> ' . $li['location'] . ', dash HTTP ' . $dash['code'] . ($dash['location'] !== '' ? ' -> ' . $dash['location'] : ''));
 
 if ($loggedIn) {
     check('TEST 4: dashboard "Latest bookings" contains the new PNR', str_contains($dash['body'], $pnr));
@@ -336,14 +525,12 @@ if ($loggedIn) {
 echo "\n=== TEST 8/9 — AGENT is separated from ADMIN ===\n";
 $agentJar = sys_get_temp_dir() . '/shg_e2e_agent_' . getmypid() . '.cookies';
 @unlink($agentJar);
-$lp2 = req('GET', '/admin/login.php?portal=agent', ['jar' => $agentJar]);
-preg_match('/name="shg_csrf" value="([a-f0-9]+)"/', $lp2['body'], $cm3);
-$ag = req('POST', '/admin/login.php', ['jar' => $agentJar, 'form' => [
-    'shg_csrf' => $cm3[1] ?? '', 'username' => E2E_AGENT_USER, 'password' => $E2E_AGENT_PW,
-]]);
+// 16 Nov 2026: ?portal=agent is the same one door; the password sign-in is ?classic=1 (see staffSignIn)
+[, $ag] = staffSignIn($agentJar, E2E_AGENT_USER, $E2E_AGENT_PW);
 $agHome = req('GET', '/admin/agent.php', ['jar' => $agentJar]);
 $agentIn = $agHome['code'] === 200;
-check('agent can sign in', $agentIn, 'HTTP ' . $agHome['code'] . ' (set SHG_AGENT_PW if the password differs)');
+check('agent can sign in', $agentIn, 'login HTTP ' . $ag['code'] . ' -> ' . $ag['location'] . ', agent.php HTTP ' . $agHome['code']
+    . ($agHome['location'] !== '' ? ' -> ' . $agHome['location'] : '') . ' (set SHG_AGENT_PW if the password differs)');
 if ($agentIn) {
     $agDash = req('GET', '/admin/index.php', ['jar' => $agentJar, 'follow' => false]);
     check('TEST 8: agent is redirected off the finance dashboard', $agDash['code'] === 302, 'HTTP ' . $agDash['code']);
@@ -365,12 +552,27 @@ $cnt = (int) pdo()->query("SELECT COUNT(*) FROM bookings WHERE pnr LIKE 'SHG-R%'
    What the test is FOR: the run must not lose a legacy row. */
 check('legacy bookings still present', $cnt === $legacyBefore, $legacyBefore . ' before, ' . $cnt . ' after');
 
-// Remove the throwaway sign-in accounts (they carry no sales / wallet rows).
-try { $d = pdo()->prepare('DELETE FROM admins WHERE username IN (?, ?)'); $d->execute([E2E_ADMIN_USER, E2E_AGENT_USER]); } catch (Throwable $e) {}
+// Remove what this run made: the booking first (its payment names the admin
+// who settled it), then the throwaway sign-in accounts and their sessions.
+e2eCleanup($pnr);
+$leftBy = [
+    'booking'       => (int) Database::scalar('SELECT COUNT(*) FROM bookings WHERE pnr = :p', ['p' => $pnr], 0),
+    'accounts'      => (int) Database::scalar('SELECT COUNT(*) FROM admins WHERE username IN (:a, :b)', ['a' => E2E_ADMIN_USER, 'b' => E2E_AGENT_USER], 0),
+    'login history' => (int) Database::scalar('SELECT COUNT(*) FROM admin_login_events WHERE username IN (:a, :b)', ['a' => E2E_ADMIN_USER, 'b' => E2E_AGENT_USER], 0),
+    // 16 Nov 2026: the rows that name the run without a foreign key
+    'nav_use'       => (int) Database::scalar("SELECT COUNT(*) FROM kv_store WHERE kscope = 'nav_use' AND kkey IN (:a, :b)", ['a' => 'a' . $E2E_ADMIN_ID, 'b' => 'a' . $E2E_AGENT_ID], 0),
+    'profile'       => (int) Database::scalar('SELECT COUNT(*) FROM user_profiles WHERE phone = :p', ['p' => $phone], 0),
+    'event journal' => $pnr === '' ? 0 : (int) Database::scalar('SELECT COUNT(*) FROM automation_log WHERE data LIKE :d OR dedupe_key LIKE :k', ['d' => '%"' . $pnr . '"%', 'k' => '%:' . $pnr . '%'], 0),
+    'office bell'   => $pnr === '' ? 0 : (int) Database::scalar('SELECT COUNT(*) FROM notifications WHERE link LIKE :l', ['l' => '%pnr=' . $pnr . '%'], 0),
+];
+$left = array_sum($leftBy);
+check('cleanup: the run\'s booking (+ its bell / journal rows and customer profile), sign-in accounts (+ menu rows) and login history are gone', $left === 0,
+    $left . ' row(s) left ' . json_encode(array_filter($leftBy)));
 
 echo "\n----------------------------------------\n";
 echo "TEST TICKET ID: $pnr\n";
 echo "PASSED: $pass   FAILED: $fail\n";
+echo "$pass passed, $fail failed\n";   // 16 Nov 2026: the line run-all.php's tally() reads, as every other suite prints
 @unlink($jar); @unlink($adminJar); @unlink($agentJar);
 
 /* This suite had no exit() and fell off the end, so PHP returned 0 — it

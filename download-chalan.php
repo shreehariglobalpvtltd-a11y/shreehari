@@ -48,7 +48,8 @@ try {
 
     $expected = substr(Security::sign('chalan-dl|' . $sid . '|' . $doc . '|' . $page . '|' . $exp), 0, 20);
     $allowed  = $exp > time() && $key !== '' && hash_equals($expected, $key);
-    if (!$allowed && Auth::admin() !== null && Auth::can('bookings.view') && Auth::bookingScopeAdminId() === null) {
+    // 16 Nov 2026 (G1): staffActive(), not admin() - a session on a temporary password is a guest here
+    if (!$allowed && Auth::staffActive() !== null && Auth::can('bookings.view') && Auth::bookingScopeAdminId() === null) {
         $allowed = true;
     }
     if (!$allowed) {

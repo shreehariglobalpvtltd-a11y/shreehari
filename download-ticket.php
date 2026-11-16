@@ -81,10 +81,11 @@ try {
         $allowed = Auth::customerMayOpen($booking);
     }
 
-    if (!$allowed && Auth::can('bookings.view')) {
+    if (!$allowed && Auth::staffActive() !== null && Auth::can('bookings.view')) {
         // Office / counter staff working the manifest — but a counter agent
         // must only see the tickets they themselves sold. Same scoping rule
-        // as admin/bookings.php and api/track.php.
+        // as admin/bookings.php and api/track.php. 16 Nov 2026 (G1): never a
+        // session on a temporary password (staffActive) - it is a guest here.
         $scope = Auth::bookingScopeAdminId();
         if ($scope === null || $scope === (int) ($booking['sold_by_admin_id'] ?? 0)) {
             $allowed = true;
@@ -123,7 +124,7 @@ try {
     // button use this. ?view=1 shows it inline instead of saving.
     /* ?dup=1 (19 Sep 2026): office reprint stamped DUPLICATE COPY, staff only;
        a one-off temp render, deleted once sent. */
-    $dup = !empty($_GET['dup']) && Auth::can('bookings.view');
+    $dup = !empty($_GET['dup']) && Auth::staffActive() !== null && Auth::can('bookings.view');
     if (!empty($_GET['img'])) {
         $path = $dup ? Ticket::pngDuplicatePath((int) $booking['id']) : Ticket::pngPath((int) $booking['id']);
         if ($dup) { register_shutdown_function(static function () use ($path) { @unlink($path); }); }

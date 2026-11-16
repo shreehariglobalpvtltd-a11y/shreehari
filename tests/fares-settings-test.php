@@ -8,13 +8,17 @@
  *  fare_to_india settings rows, and a zero/blank row falls back to the
  *  code default instead of pricing a ticket at ₹0.
  *
- *  Part B (HTTP, needs the dev server on :8899): the "Fares & booking rules"
+ *  Part B (HTTP: SHG_TEST_BASE=http://localhost:<port>, else the suite starts
+ *  its own php -S on this checkout): the "Fares & booking rules"
  *  panel renders once (no duplicate generic row), and saving it writes the
  *  two fare rows AND merges the private-cabin prices into cabin_pricing.
  *
  *  Run the migration first:  php -c .claude/php-dev.ini database/upgrade-2026-09-fares.php
  *  Then: php -c .claude/php-dev.ini -d extension=php_curl.dll tests/fares-settings-test.php
- *  Restores every value it touched.
+ *  Restores every value it touched (the settings rows byte for byte at the
+ *  end) and removes its throwaway superadmin with its sessions / login rows
+ *  (and the sessions any older or crashed run left), and the admin_login
+ *  throttle row its sign-in counts for this machine.
  * =====================================================================
  */
 declare(strict_types=1);
@@ -22,12 +26,48 @@ if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
 
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/fare.php';
+require_once INCLUDE_PATH . '/quickunlock.php';
 
 /* Overridable so a second worktree can be tested without stealing :8899
    from the one that already holds it — a suite pointed at ANOTHER
    checkout's server reports green for code you did not change.
-       SHG_TEST_BASE=http://localhost:8898 php ... */
-define('BASE', getenv('SHG_TEST_BASE') ?: 'http://localhost:8899');
+       SHG_TEST_BASE=http://localhost:8898 php ...
+   16 Nov 2026 (battery T1): with no SHG_TEST_BASE the suite starts its OWN
+   `php -S` on a free port, serving THIS checkout with this run's php + ini,
+   and stops it on exit (same helper as manifest-test.php) - the battery
+   passes no base, and :8899 is whichever checkout happens to own it. */
+function shg_test_base(): string
+{
+    $env = trim((string) getenv('SHG_TEST_BASE'));
+    if ($env !== '') {
+        return rtrim($env, '/');
+    }
+    $probe = @stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+    if ($probe === false) {
+        return 'http://localhost:8899';
+    }
+    $name = (string) stream_socket_get_name($probe, false);
+    fclose($probe);
+    $port = (int) substr($name, (int) strrpos($name, ':') + 1);
+    $ini  = (string) php_ini_loaded_file();
+    $null = DIRECTORY_SEPARATOR === '\\' ? 'NUL' : '/dev/null';
+    $cmd  = array_merge([PHP_BINARY], $ini !== '' ? ['-c', $ini] : [], ['-S', '127.0.0.1:' . $port, '-t', dirname(__DIR__)]);
+    $proc = @proc_open($cmd, [0 => ['file', $null, 'r'], 1 => ['file', $null, 'w'], 2 => ['file', $null, 'w']], $pipes, dirname(__DIR__));
+    if (!is_resource($proc)) {
+        return 'http://localhost:8899';
+    }
+    register_shutdown_function(static function () use ($proc): void {
+        @proc_terminate($proc);
+        @proc_close($proc);
+    });
+    for ($i = 0; $i < 100; $i++) {   // up to ~10 s for the server to answer
+        $c = @fsockopen('127.0.0.1', $port, $e1, $e2, 0.2);
+        if ($c !== false) { fclose($c); break; }
+        usleep(100000);
+    }
+    return 'http://127.0.0.1:' . $port;
+}
+define('BASE', shg_test_base());
 
 $PASS = 0; $FAIL = 0;
 function check(string $l, bool $ok, string $extra = ''): void {
@@ -35,6 +75,30 @@ function check(string $l, bool $ok, string $extra = ''): void {
     if ($ok) { $PASS++; echo "  \033[32mPASS\033[0m  $l" . ($extra !== '' ? " — $extra" : '') . "\n"; }
     else     { $FAIL++; echo "  \033[31mFAIL\033[0m  $l" . ($extra !== '' ? " — $extra" : '') . "\n"; }
 }
+
+/* 16 Nov 2026 (battery T1): every settings row this suite writes (Part A sets
+   them with Settings::set - which can also change the row's type/group - and
+   Part B through the form), saved raw now and put back raw at the end, so a
+   failed save in the middle can never leave a test fare on the shared DB. */
+$TOUCHED = ['fare_to_nepal', 'fare_to_india', 'main_fares', 'cabin_pricing', 'max_seats_per_booking', 'counter_max_discount_pct'];
+$rawPrior = [];
+foreach ($TOUCHED as $k) {
+    $rawPrior[$k] = Database::fetch('SELECT svalue, stype, sgroup, label, is_public FROM settings WHERE skey = :k', ['k' => $k]);
+}
+$restoreRaw = static function () use ($TOUCHED, $rawPrior): void {
+    foreach ($TOUCHED as $k) {
+        $row = $rawPrior[$k];
+        try {
+            if ($row === null) {
+                Database::delete('settings', 'skey = :k', ['k' => $k]);
+            } else {
+                Database::update('settings', ['svalue' => $row['svalue'], 'stype' => (string) $row['stype'], 'sgroup' => (string) $row['sgroup'],
+                    'label' => $row['label'], 'is_public' => (int) $row['is_public']], 'skey = :k', ['k' => $k]);
+            }
+        } catch (Throwable $e) {}
+    }
+    try { Settings::flush(); } catch (Throwable $e) {}
+};
 
 echo "\n=== A. Fare::dirFares() follows the settings rows ===\n";
 $origN    = Settings::get('fare_to_nepal', null);
@@ -91,16 +155,57 @@ if (!function_exists('curl_init')) {
 
     // Throwaway superadmin, like e2e-booking-test.php.
     $user = 'fares-super'; $pw = 'Fares@12345';
-    try { Database::query("DELETE FROM rate_limits WHERE bucket LIKE 'admin_login%'"); } catch (Throwable $e) {}
+    /* 16 Nov 2026 (battery T1): an HTTP sign-in opens an admin_sessions row and a
+       login-history row; neither has a foreign key to admins, so deleting the
+       account alone left both behind on every run. */
+    /* 16 Nov 2026 (T1 refix): every admins.id this username has ever had - the
+       live row, the login history (read BEFORE $dropUser deletes it: once the
+       account is gone it is the only link from the name to an id) and the audit
+       trail (actor_name = the username; it outlives both, so the sessions of an
+       older or crashed run are found too - deleting by the CURRENT id alone left
+       them for good). An id that is now a different live account is never included. */
+    $userIds = static function () use ($user): array {
+        $ids = [(int) Database::scalar('SELECT id FROM admins WHERE username = :u', ['u' => $user], 0)];
+        foreach (['SELECT DISTINCT admin_id FROM admin_login_events WHERE username = :u AND admin_id IS NOT NULL',
+                  "SELECT DISTINCT actor_id FROM audit_logs WHERE actor_type = 'admin' AND actor_name = :u AND actor_id IS NOT NULL"] as $sql) {
+            try {
+                foreach (Database::fetchAll($sql, ['u' => $user]) as $r) { $ids[] = (int) reset($r); }
+            } catch (Throwable $e) {}
+        }
+        $ids = array_values(array_unique(array_filter($ids)));
+        if ($ids === []) {
+            return [];
+        }
+        $taken = array_map('intval', array_column(Database::fetchAll(
+            'SELECT id FROM admins WHERE id IN (' . implode(',', $ids) . ') AND username <> :u', ['u' => $user]), 'id'));
+        return array_values(array_diff($ids, $taken));
+    };
+    $dropUser = static function () use ($user, $userIds): void {
+        $ids = $userIds();
+        if ($ids !== []) {
+            try { Database::query('DELETE FROM admin_sessions WHERE admin_id IN (' . implode(',', $ids) . ')'); } catch (Throwable $e) {}
+        }
+        try { Database::delete('admin_login_events', 'username = :u', ['u' => $user]); } catch (Throwable $e) {}
+        try { Database::query('DELETE FROM admins WHERE username = :u', ['u' => $user]); } catch (Throwable $e) {}
+    };
+    /* the classic door counts every sign-in in the admin_login bucket of the caller's
+       IP (Auth::adminLogin): cleared before signing in and again at the end (T1 refix) */
+    $loginBuckets = "'admin_login', 'code_login_enter', 'quick_unlock', 'code_login_try'";
+    $clearThrottle = static function () use ($loginBuckets): void {
+        try { Database::run("DELETE FROM rate_limits WHERE identifier IN ('127.0.0.1', '::1') AND bucket IN ({$loginBuckets})"); } catch (Throwable $e) {}
+    };
+    $dropUser();
+    $clearThrottle();
     $hash = password_hash($pw, PASSWORD_BCRYPT);
-    $id = Database::scalar('SELECT id FROM admins WHERE username = :u', ['u' => $user], 0);
-    if ($id) {
-        Database::query('UPDATE admins SET password_hash=:h, role=\'superadmin\', is_active=1, must_change_pw=0, failed_logins=0, locked_until=NULL WHERE id=:i', ['h' => $hash, 'i' => $id]);
-    } else {
-        Database::query("INSERT INTO admins (username, password_hash, full_name, role, is_active, must_change_pw) VALUES (:u, :h, 'Fares Test', 'superadmin', 1, 0)", ['u' => $user, 'h' => $hash]);
-    }
-    $lp = $req('GET', '/admin/login.php');
-    $li = $req('POST', '/admin/login.php', ['shg_csrf' => $csrfOf($lp['body']), 'username' => $user, 'password' => $pw]);
+    $id = (int) Database::insert('admins', ['username' => $user, 'password_hash' => $hash, 'full_name' => 'Fares Test',
+        'role' => 'superadmin', 'permissions' => json_encode([]), 'is_active' => 1, 'must_change_pw' => 0]);
+    /* 16 Nov 2026 (battery T1): the staff door is code-first since 15 Nov - an
+       account with no PIN / pattern is sent to pin-setup.php before any page, so
+       the reader gets one, as a real office login has. The username + password
+       form is the CLASSIC door (?classic=1&other=1, classic=1 posted). */
+    QuickUnlock::set($id, 'pin', '615273');
+    $lp = $req('GET', '/admin/login.php?classic=1&other=1');
+    $li = $req('POST', '/admin/login.php', ['shg_csrf' => $csrfOf($lp['body']), 'classic' => '1', 'username' => $user, 'password' => $pw]);
     check('superadmin signs in', $li['code'] === 302, 'HTTP ' . $li['code']);
 
     $sp = $req('GET', '/admin/settings.php');
@@ -145,9 +250,29 @@ if (!function_exists('curl_init')) {
     $dbN2 = Database::scalar('SELECT svalue FROM settings WHERE skey = :k', ['k' => 'fare_to_nepal'], '');
     check('restored via the form', (int) (float) $dbN2 === (int) ($origN ?? 2000), 'db=' . $dbN2);
 
-    try { Database::query('DELETE FROM admins WHERE username = :u', ['u' => $user]); } catch (Throwable $e) {}
+    $dropUser();
+    $clearThrottle();
     @unlink($jar);
+    $left = (int) Database::scalar('SELECT COUNT(*) FROM admin_login_events WHERE username = :u', ['u' => $user], 0)
+          + (int) Database::scalar('SELECT COUNT(*) FROM admins WHERE id = :a', ['a' => $id], 0);
+    check('cleanup leaves no account or login row behind', $left === 0, "$left left");
+    // T1 refix: every id the test user has had (this run's and any older run's, via the audit trail)
+    $ids  = array_values(array_unique(array_merge([$id], $userIds())));
+    $sess = (int) Database::scalar('SELECT COUNT(*) FROM admin_sessions WHERE admin_id IN (' . implode(',', array_map('intval', $ids)) . ')', [], 0);
+    check("cleanup leaves no admin_sessions row for any account {$user} has had (this run or an older one)", $sess === 0,
+        "$sess left over " . count($ids) . ' id(s)');
+    $rl = (int) Database::scalar("SELECT COUNT(*) FROM rate_limits WHERE identifier IN ('127.0.0.1', '::1') AND bucket IN ({$loginBuckets})", [], 0);
+    check('cleanup leaves no login-throttle row for this machine (its sign-in counted in admin_login)', $rl === 0, "$rl left");
 }
+
+// 16 Nov 2026 (battery T1): every touched settings row back exactly as it was
+$restoreRaw();
+$drift = [];
+foreach ($TOUCHED as $k) {
+    $now = Database::fetch('SELECT svalue, stype, sgroup, label, is_public FROM settings WHERE skey = :k', ['k' => $k]);
+    if ($now != $rawPrior[$k]) { $drift[] = $k; }
+}
+check('every settings row it touched is back byte for byte', $drift === [], implode(', ', $drift));
 
 echo "\n$PASS passed, $FAIL failed\n";
 exit($FAIL === 0 ? 0 : 1);

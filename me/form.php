@@ -18,6 +18,10 @@ $admin = Auth::admin();
 if ($admin === null) {
     Response::redirect('me/');
 }
+// 16 Nov 2026 (G1): a temporary password is a guest until changed - no full ID / PAN / bank numbers
+if (Auth::staffActive() === null) {
+    Response::redirect('admin/change-password.php');
+}
 if (!AgentPro::available()) {
     http_response_code(503);
     header('Content-Type: text/plain; charset=utf-8');

@@ -10,6 +10,10 @@ $admin = Auth::admin();
 if ($admin === null) {
     Response::redirect('me/');
 }
+// 16 Nov 2026 (G1): a temporary password is a guest until changed - no company ID card on it
+if (Auth::staffActive() === null) {
+    Response::redirect('admin/change-password.php');
+}
 $m = AgentPro::member((int) $admin['id']);
 if ($m === null) {
     http_response_code(404);

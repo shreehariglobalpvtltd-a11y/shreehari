@@ -18,6 +18,12 @@ require_once INCLUDE_PATH . '/agentpro.php';
 
 Security::sendHeaders();
 $admin = Auth::admin();
+/* 16 Nov 2026 (G1): a temporary password is a guest until it is changed. Every page under me/
+   (ID / PAN / bank numbers, KYC images, the ID card) is the member's own data on the admin session,
+   outside admin/ and api/, so it asks Auth::staffActive() (session flag OR the row now) itself. */
+if ($admin !== null && Auth::staffActive() === null) {
+    Response::redirect('admin/change-password.php');
+}
 /* 30 Oct 2026 (owner: "login sabai ko lagi eutai"): with the one staff door on, a signed-out visitor
    signs in at /admin/login.php and comes straight back here (back=me). /me/ stays the page AFTER sign-in. */
 $oneDoor = Auth::oneDoorOn();

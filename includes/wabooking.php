@@ -3082,6 +3082,28 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 break;
             }
         }
+        /* 16 Nov 2026 (B1, ported from 14c15a7f, 28 Sep 2026): the list above
+           trusts सिट and चाहियो but not the way most people actually type
+           them. "namaste 2 sit chahiyo" carried a seat count and a request
+           word and was still refused, because only the Devanagari spellings
+           were listed. Matched on word boundaries, not as substrings like the
+           list above: "sit" inside "visit", "site" or "sitara" is not a
+           booking, and str_contains() cannot tell the difference. */
+        if (!$said && preg_match('/(?<![\p{L}\p{M}])(sit|sits|tikat|tiket|tikit|tkt)(?![\p{L}\p{M}])/u', $t) === 1) {
+            $said = true;
+        }
+        /* 17 Nov 2026 (B1 refix): a romanised NEED word ("chahiyo", "chahiye",
+           "joie" ...) is a booking only beside a seat count. Counted alone it
+           opened a sale for anything a passenger needs: "malai job chahiyo"
+           became a ready summary for a passenger named "Job" (and "receipt",
+           "bill", "schedule" the same) that one "ho" would have sold, because
+           a request with no facts is filled with defaults (next bus, the usual
+           pickup, 1 seat). With a seat word the line is already claimed above;
+           with a count ("2 jana chahiyo") it is a party asking for seats. */
+        if (!$said && preg_match('/(?<![\p{L}\p{M}])(chahiyo|chahiye|chaiyo|chaiye|chahincha|chahinchha|joiye|joie)(?![\p{L}\p{M}])/u', $t) === 1
+            && (int) (TicketBot::parse($text)['seats'] ?? 0) > 0) {
+            $said = true;
+        }
         if ($said) {
             /* 23 Sep 2026: "Dashain ma ghar jana ticket milcha?" is a QUESTION
                that mentions a ticket. With no party and no day there is nothing

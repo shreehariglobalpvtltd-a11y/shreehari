@@ -234,14 +234,11 @@ const CORE_SUITES = [
  * silently omitted: an unlisted test file is invisible, and this directory
  * already lost 35 suites that way. Printed at the end of every run.
  *
- * The entry below fails on ORIGINAL code at cec7dc1 — verified 8 Sep 2026 by
- * reverting and re-running — so it is a stale test, not a regression
- * (automation-test.php was fixed and moved to CORE_SUITES on 16 Nov, mv5):
- *   boarding-stop-fix-test.php  3 of 17 fail: it hard-codes seat L1, which the
- *       later women-only rule now reserves, so book.php correctly returns 409.
+ * Empty since 16 Nov 2026 (mv6): automation-test.php (mv5) and
+ * boarding-stop-fix-test.php (mv6: picks a seat the women-only rule allows,
+ * starts its own php -S, cleans up) were both fixed and now run.
  */
 const KNOWN_STALE = [
-    'boarding-stop-fix-test.php'   => '3/17 fail: hard-codes L1, now women-reserved',
 ];
 
 /**
@@ -269,6 +266,10 @@ const HTTP_SUITES = [
     'u11-Y4-comms-test.php'       => 'FB comments tab, inbox Offer link (OFF), AI Centre last-7-days block, AI link that never covers a bottom bar',
     'u11-Y5-agents-test.php'      => 'agent follow-ups (service only), cancel follow-up only when a refund is owed, agent records own COD cash (all OFF)',
     'u11-F2-test.php'             => 'agent money doors: register settlement needs a real UTR, payout request reaches the list, advance in the loans register, receipts, PRG',
+    'boarding-stop-fix-test.php'  => 'an empty boarding is backfilled from the searched town, an explicit one round-trips, the ticket renders',
+    'u12-G1-temp-pw-pages-test.php' => 'a temporary password gets no staff power outside admin/ (download-*, verify-ticket, me/, team/)',
+    'u12-P1-ticket-pay-test.php'  => 'pay at boarding on the ticket (Nepali-first, cash or online), pay.php free UPI/eSewa + UTR claim to the COD queue, never auto-confirmed',
+    'u12-P2-chalani-pay-test.php' => 'chalani pay mode per booking (बसमा / नगद / अनलाइन), to-collect total, crew QR to the pay page, no double counting',
 ];
 
 /* ---------------------------------------------------------------------

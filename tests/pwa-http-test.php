@@ -26,7 +26,45 @@ declare(strict_types=1);
 
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
 
-define('BASE', getenv('SHG_TEST_BASE') ?: 'http://localhost:8899');
+/* 16 Nov 2026: with SHG_TEST_BASE unset the suite starts its OWN php -S on a
+   free port serving THIS checkout (same php + ini as this run) and stops it
+   on exit - the battery passes no base, and :8899 is whichever checkout owns
+   it (the manifest-test.php Y7 fix). SHG_TEST_BASE still wins. */
+function shg_test_base(): string
+{
+    $env = trim((string) getenv('SHG_TEST_BASE'));
+    if ($env !== '') {
+        return rtrim($env, '/');
+    }
+    $probe = @stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+    if ($probe === false) {
+        return 'http://localhost:8899';
+    }
+    $name = (string) stream_socket_get_name($probe, false);
+    fclose($probe);
+    $port = (int) substr($name, (int) strrpos($name, ':') + 1);
+    $ini  = (string) php_ini_loaded_file();
+    $null = DIRECTORY_SEPARATOR === '\\' ? 'NUL' : '/dev/null';
+    $cmd  = array_merge([PHP_BINARY], $ini !== '' ? ['-c', $ini] : [], ['-S', '127.0.0.1:' . $port, '-t', dirname(__DIR__)]);
+    $proc = @proc_open($cmd, [0 => ['file', $null, 'r'], 1 => ['file', $null, 'w'], 2 => ['file', $null, 'w']], $pipes, dirname(__DIR__));
+    if (!is_resource($proc)) {
+        return 'http://localhost:8899';
+    }
+    register_shutdown_function(static function () use ($proc): void {
+        @proc_terminate($proc);
+        @proc_close($proc);
+    });
+    for ($i = 0; $i < 100; $i++) {   // up to ~10 s for the server to answer
+        $c = @fsockopen('127.0.0.1', $port, $e1, $e2, 0.2);
+        if ($c !== false) { fclose($c); break; }
+        usleep(100000);
+    }
+    return 'http://127.0.0.1:' . $port;
+}
+define('BASE', shg_test_base());
+const APP_NAME_CUSTOMER = 'S Hari Travel';   // the customer app's name since the two-apps split (13 Nov 2026)
+const PWA_EMAIL         = 'pwa@example.com';
+const PWA_PAX           = 'PWA Split Tester';
 
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/fare.php';
@@ -98,8 +136,63 @@ function fakeSub(): array
     ];
 }
 
-// Rate buckets from earlier local runs must not fail this one (test DB only).
-try { Database::query('DELETE FROM rate_limits'); } catch (Throwable $e) {}
+/* Rate buckets from earlier local runs must not fail this one (test DB only).
+   16 Nov 2026: only the buckets this suite's requests fill, for this
+   machine - the whole table went before, which reset the counters of any
+   rate-limit suite running against the same database at that moment. */
+try {
+    Database::query("DELETE FROM rate_limits WHERE identifier IN ('127.0.0.1', '::1')
+                       AND bucket IN ('push', 'split_pay', 'book_create', 'search', 'seats', 'occupancy', 'pay_share')");
+} catch (Throwable $e) {}
+
+/* One booking per run, removed at the end with every row that points at it
+   without a foreign key (message / delivery logs, the ticket link, the
+   audit trail) and its ticket files; a run that died before its cleanup is
+   swept on the next run (same guest name + e-mail, over an hour old). */
+function pwaRemoveBooking(int $id, string $pnr): void {
+    if ($id <= 0) { return; }
+    $row = Database::fetch('SELECT contact_phone, created_at FROM bookings WHERE id = :i', ['i' => $id]);
+    try { Seats::releaseBooking($id); } catch (Throwable $e) {}
+    foreach (['message_logs', 'delivery_log', 'ticket_links', 'wa_outbox', 'wa_ticket_queue', 'msg_ledger', 'payment_events', 'push_log'] as $t) {
+        try { Database::delete($t, 'booking_id = :b', ['b' => $id]); } catch (Throwable $e) {}
+    }
+    try { Database::query("DELETE FROM audit_logs WHERE entity_type = 'booking' AND entity_id IN (:p, :i)", ['p' => $pnr, 'i' => (string) $id]); } catch (Throwable $e) {}
+    pwaForgetPnr($pnr);
+    Database::delete('bookings', 'id = :i', ['i' => $id]);   // shares, seats, legs, payments, tickets cascade
+    if ($row !== null) {
+        pwaForgetProfile((string) $row['contact_phone'], (string) $row['created_at']);
+    }
+    if ($pnr !== '') {
+        foreach (glob(dirname(__DIR__) . '/tickets/ticket_' . $pnr . '.*') ?: [] as $f) { @unlink($f); }
+    }
+}
+/* Rows that name the PNR without a foreign key (16 Nov 2026): the guest
+   booking rings the office bell "New online customer · <PNR>"
+   (AdminAlerts::onlineBooking - a notifications row with booking_id NULL,
+   so deleting the booking does not cascade to it, plus its automation_log
+   claim alert:online:<PNR>), and the EventBus journal names the PNR in the
+   booking.created row's `data`. */
+function pwaForgetPnr(string $pnr): void {
+    if ($pnr === '') { return; }
+    try { Database::query('DELETE FROM automation_log WHERE data LIKE :d OR dedupe_key LIKE :k1 OR dedupe_key LIKE :k2',
+        ['d' => '%"' . $pnr . '"%', 'k1' => '%:' . $pnr, 'k2' => '%:' . $pnr . ':%']); } catch (Throwable $e) {}
+    try { Database::query('DELETE FROM notifications WHERE booking_id IS NULL AND (link LIKE :l1 OR link LIKE :l2)',
+        ['l1' => '%pnr=' . $pnr, 'l2' => '%pnr=' . $pnr . '&%']); } catch (Throwable $e) {}
+}
+/* The customer-master row (user_profiles) the booking opened for its contact
+   number - only one the booking itself created (not older than the booking)
+   and only when no other booking is on that number. */
+function pwaForgetProfile(string $phone, string $bookedAt): void {
+    if ($phone === '' || $bookedAt === '') { return; }
+    try { Database::query('DELETE FROM user_profiles WHERE phone = :p AND created_at >= :c - INTERVAL 1 MINUTE
+                            AND NOT EXISTS (SELECT 1 FROM bookings WHERE contact_phone = :p2)', ['p' => $phone, 'p2' => $phone, 'c' => $bookedAt]); } catch (Throwable $e) {}
+}
+foreach (Database::fetchAll(
+    "SELECT DISTINCT b.id, b.pnr FROM bookings b JOIN booking_passengers p ON p.booking_id = b.id
+      WHERE b.contact_email = :e AND p.full_name = :n AND b.created_at < NOW() - INTERVAL 1 HOUR",
+    ['e' => PWA_EMAIL, 'n' => PWA_PAX]) as $stale) {
+    try { pwaRemoveBooking((int) $stale['id'], (string) $stale['pnr']); } catch (Throwable $e) {}
+}
 
 echo "\n=== PWA master upgrade — over HTTP (" . BASE . ") ===\n\n";
 
@@ -121,15 +214,24 @@ try {
     check('push is on and the VAPID public key reaches the page',
         ($boot['push']['on'] ?? false) === true && strlen($rawKey) === 65 && $rawKey[0] === "\x04", strlen($pushKey) . ' chars');
     check('the PWA script is on the page', str_contains($home['body'], '/assets/js/17-pwa.js?v='));
-    check('iOS home-screen title is SHG Bus', str_contains($home['body'], 'name="apple-mobile-web-app-title" content="SHG Bus"'));
-    check('route guide + UPI app hosts are in the markup',
-        str_contains($home['body'], 'id="snRouteGuide"') && str_contains($home['body'], 'id="upiApps"'));
+    /* 12-13 Nov 2026 (20a9f067 / 45695000, two apps): the customer app is
+       "S Hari Travel" (the staff app is "S Hari Manage"), so the iOS title and
+       the manifest name are checked against that - and against each other. */
+    check('iOS home-screen title is S Hari Travel', str_contains($home['body'], 'name="apple-mobile-web-app-title" content="' . APP_NAME_CUSTOMER . '"'));
+    /* 22 Oct 2026 (a1517459, "AI map only"): the in-page route guide
+       (#snRouteGuide, SHGRoute + IndexedDB) was removed with the old #/nav
+       map - route + stops now live in SHARI NAV (/navigate.html). The UPI app
+       host is unchanged; the route view is checked where it now lives. */
+    check('UPI app host is in the markup, and the route + stops map (SHARI NAV) is linked',
+        str_contains($home['body'], 'id="upiApps"') && str_contains($home['body'], 'href="/navigate.html"'));
+    $nav = req('GET', '/navigate.html');
+    check('  ...and /navigate.html is served', $nav['code'] === 200, 'HTTP ' . $nav['code']);
 
     $man = req('GET', '/manifest.webmanifest');
     $mj  = is_array($man['json']) ? $man['json'] : [];
-    check('manifest: SHG Bus, standalone, portrait, start /',
-        ($mj['short_name'] ?? '') === 'SHG Bus' && ($mj['display'] ?? '') === 'standalone'
-        && ($mj['orientation'] ?? '') === 'portrait' && ($mj['start_url'] ?? '') === '/');
+    check('manifest: S Hari Travel, standalone, portrait, start /',
+        ($mj['short_name'] ?? '') === APP_NAME_CUSTOMER && ($mj['display'] ?? '') === 'standalone'
+        && ($mj['orientation'] ?? '') === 'portrait' && ($mj['start_url'] ?? '') === '/', json_encode(array_intersect_key($mj, array_flip(['short_name', 'display', 'orientation', 'start_url']))));
     $maskable = false;
     foreach ((array) ($mj['icons'] ?? []) as $ic) {
         if (str_contains((string) ($ic['purpose'] ?? ''), 'maskable')) { $maskable = true; }
@@ -199,17 +301,22 @@ try {
         throw new RuntimeException('not enough free berths');
     }
 
-    $phone     = '97' . random_int(10000000, 99999999);
+    /* 16 Nov 2026: a number nobody has yet (no booking, account or customer
+       profile), so the profile the booking opens is this run's own to remove. */
+    do {
+        $phone = '97' . random_int(10000000, 99999999);
+    } while ((int) Database::scalar('SELECT (SELECT COUNT(*) FROM bookings WHERE contact_phone = :a) + (SELECT COUNT(*) FROM users WHERE phone = :b)
+                                      + (SELECT COUNT(*) FROM user_profiles WHERE phone = :c)', ['a' => $phone, 'b' => $phone, 'c' => $phone], 0) > 0);
     $isSleeper = ($res['coachType'] ?? '') === 'sleeper';
     $bk = req('POST', '/api/book.php', [
         'headers' => ['X-CSRF-Token: ' . $csrf],
         'json'    => [
             'routeId'    => $res['routeId'], 'travelDate' => $date, 'seats' => $pick,
             'passengers' => [
-                ['seat' => $pick[0], 'name' => 'PWA Split Tester', 'age' => 31, 'gender' => 'Male'],
+                ['seat' => $pick[0], 'name' => PWA_PAX, 'age' => 31, 'gender' => 'Male'],
                 ['seat' => $pick[1], 'name' => 'PWA Split Friend', 'age' => 29, 'gender' => 'Male'],
             ],
-            'contact'       => ['phone' => $phone, 'email' => 'pwa@example.com', 'idType' => 'Voter ID', 'idNum' => 'GJPWA0001'],
+            'contact'       => ['phone' => $phone, 'email' => PWA_EMAIL, 'idType' => 'Voter ID', 'idNum' => 'GJPWA0001'],
             'bookingMode'   => $isSleeper ? 'sharing' : null,
             'boarding'      => is_string($res['boarding'][0] ?? null) ? $res['boarding'][0] : $from,
             'drop'          => is_string($res['drop'][0] ?? null) ? $res['drop'][0] : $to,
@@ -283,8 +390,13 @@ try {
         'json' => ['action' => 'subscribe', 'subscription' => $sub2, 'pnr' => $pnr, 'k' => Ticket::downloadToken($pnr), 'lang' => 'ne']]);
     check('the keyed ticket link subscribes this phone', ($r['json']['ok'] ?? false) === true, 'HTTP ' . $r['code'] . ' ' . substr($r['body'], 0, 200));
     $ps = Database::fetch('SELECT booking_id, phone, lang FROM push_subscriptions WHERE endpoint_hash = :h', ['h' => sha1($sub2['endpoint'])]) ?? [];
-    check('  ...tied to the booking and its mobile',
-        (int) ($ps['booking_id'] ?? 0) === $bookingId && ($ps['phone'] ?? '') === normalisePhone($phone), json_encode($ps));
+    /* 8 Oct 2026 (api/push.php "WHO MAY SUBSCRIBE"): a phone-tied
+       subscription gets a delay on EVERY ticket of that number, so the phone
+       is stored only for a session that passed the WhatsApp code; a keyed
+       ticket link subscribes that ONE booking. This asserted the booking's
+       mobile was stored too - the hand-over the rule now forbids. */
+    check('  ...tied to that booking only, never to its mobile (no WhatsApp code)',
+        (int) ($ps['booking_id'] ?? 0) === $bookingId && ($ps['phone'] ?? null) === '' && ($ps['lang'] ?? '') === 'ne', json_encode($ps));
     check('  ...so a delay alert for this ticket reaches it', count(WebPush::forBooking($bookingId)) === 1);
     $st = req('POST', '/api/push.php', ['jar' => $JAR2, 'headers' => $H2, 'json' => ['action' => 'status', 'endpoint' => $sub2['endpoint']]]);
     check('status reports it registered without echoing the full mobile',
@@ -317,11 +429,22 @@ try {
     }
     if ($bookingId > 0) {
         try {
-            Seats::releaseBooking($bookingId);
-            Database::delete('bookings', 'id = :i', ['i' => $bookingId]);
+            pwaRemoveBooking($bookingId, (string) ($pnr ?? ''));
         } catch (Throwable $e) {
             echo "  (cleanup: booking {$bookingId} not removed: {$e->getMessage()})\n";
         }
+        $pnrNow = (string) ($pnr ?? '');
+        $leftBy = [
+            'booking'       => (int) Database::scalar('SELECT COUNT(*) FROM bookings WHERE id = :i', ['i' => $bookingId], 0),
+            'shares'        => (int) Database::scalar('SELECT COUNT(*) FROM payment_shares WHERE booking_id = :i', ['i' => $bookingId], 0),
+            'push'          => (int) Database::scalar('SELECT COUNT(*) FROM push_subscriptions WHERE booking_id = :i', ['i' => $bookingId], 0),
+            // 16 Nov 2026: the rows that name the run without a foreign key
+            'profile'       => (int) Database::scalar('SELECT COUNT(*) FROM user_profiles WHERE phone = :p', ['p' => (string) ($phone ?? '')], 0),
+            'event journal' => $pnrNow === '' ? 0 : (int) Database::scalar('SELECT COUNT(*) FROM automation_log WHERE data LIKE :d OR dedupe_key LIKE :k', ['d' => '%"' . $pnrNow . '"%', 'k' => '%:' . $pnrNow . '%'], 0),
+            'office bell'   => $pnrNow === '' ? 0 : (int) Database::scalar('SELECT COUNT(*) FROM notifications WHERE link LIKE :l', ['l' => '%pnr=' . $pnrNow . '%'], 0),
+        ];
+        check('cleanup: the run\'s booking, its shares and push rows (+ its bell / journal rows and customer profile) are gone',
+            array_sum($leftBy) === 0, json_encode(array_filter($leftBy)));
     }
     @unlink($JAR);
     @unlink($JAR2);

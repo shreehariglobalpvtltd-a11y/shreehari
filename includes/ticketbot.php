@@ -594,7 +594,13 @@ final class TicketBot
     {
         $raw = trim((string) preg_replace('/\s+/u', ' ', $text));
         $out = ['name' => '', 'phone' => '', 'country' => '', 'seats' => 0, 'date' => '', 'direction' => '',
-                'boarding' => '', 'gender' => '', 'pay' => '', 'agentCode' => '', 'found' => [], 'residual' => '', 'lang' => 'en'];
+                'boarding' => '', 'gender' => '', 'pay' => '', 'agentCode' => '', 'found' => [], 'residual' => '', 'lang' => 'en',
+                // 16 Nov 2026 (B1, ported from 14c15a7f of 28 Sep 2026) — what the
+                // passenger said about WHEN. `time` is 24-hour and only set when it
+                // is unambiguous; `timeHour` is the literal hour they wrote, so a
+                // caller can ask "bihana ki beluka?" rather than guess a bus twelve
+                // hours out. Read only: nothing picks a bus from it.
+                'time' => '', 'timeOfDay' => '', 'timeText' => '', 'timeHour' => -1];
         if ($raw === '') {
             return $out;
         }
@@ -833,6 +839,177 @@ final class TicketBot
             $lower = (string) preg_replace('/(?<![\p{L}\p{M}])' . preg_quote($tok, '/') . '' . self::NB . '/u', ' ', $lower);
         }
 
+        /* TIME OF DAY (16 Nov 2026, B1 — ported from 14c15a7f of 28 Sep 2026):
+           "beluka 7 baje", "7pm", "19:30", "शाम 7 बजे", "સાંજે 7 વાગ્યે".
+
+           Until this pass the words fell through every other pass into the
+           RESIDUAL — which is the passenger's NAME: "beluka 7 baje ko bus 2
+           seat nepal" named the passenger "Beluka Baje", "7pm nepal 2 seat"
+           "7Pm", "शाम 7 बजे नेपाल 2 सीट" "शाम बजे". The same failure the date
+           words above were stripped for ("Ram Kal"). A wrong name is what
+           prints on the ticket and what the border manifest is checked against.
+
+           An hour is only ever read next to a clock word, am / pm or a written
+           clock face — never a bare number, which is a seat count or a date and
+           is claimed by the passes either side of this one. An hour with NO
+           part of the day and no am / pm is genuinely ambiguous (7 baje is
+           07:00 or 19:00), so `time` stays empty and `timeHour` carries the
+           literal hour: guessing would put a passenger on a bus twelve hours
+           from the one they meant.
+
+           Adapted to this file (B1), each to keep a real name or number safe:
+             · words that are ALSO people's names (Shyam, Sham, Shaam, Saanjh,
+               Sanjha, Subah, Bihan, Savar, Noon, Rati, Raati, Raat, शाम, सुबह,
+               सांझ / साँझ, रात) are a part of the day ONLY when an hour follows
+               at once in what was typed ("shaam 7 baje", "शाम 7 बजे", "raat
+               10:30"); "Shyam 98… 2 seat", "Subah Khan 98…" and "Shaam Lal …
+               1 seat" keep their passenger whole (B1 refix, 17 Nov 2026: only
+               the first three were guarded, so "Subah Khan" printed as "Khan"
+               and "naam Saanjh" lost the name altogether).
+             · "baj" is a clock word only right after an hour ("7 baj"); alone it
+               is a name ("Baj Singh"), so the leftover clock sweep skips it.
+             · "good morning / evening …" is a greeting, never a time: dropped
+               whole, it sets no part of the day.
+             · am / pm must end the word, so "2 amdavad" is never 02:00, and a
+               dotted clock ("7.30") needs am / pm or a clock word after it.
+             · every part-of-day word that is not also a name is dropped from
+               the name, not just the first (the date words above learned that
+               with "Ram Kal").
+             · a clock face WITH a part of the day ("beluka 7:30") follows it. */
+        $clock   = '(?:bajey|baje|baj|bje|बजे|बज्यो|बजी|वागे|વાગ્યે|વાગે|vagye|vage|o\'?clock)';
+        $meriAny = '(?:a\.?m\.?|p\.?m\.?)(?![\p{L}\p{M}])';
+        $hourAt  = '(?:[01]?\d|2[0-3])(?:[:.][0-5]\d)?\s*(?:' . $clock . self::NB . '|' . $meriAny . ')';
+        $lower   = (string) preg_replace('/(?<![\p{L}\p{M}])(?:good|gud)\s+(?:morning|afternoon|evening|night)(?![\p{L}\p{M}])/u', ' ', $lower);
+        // Never a name: dropped wherever they stand. The name-like ones are $namePeriods below.
+        $periodWords = [
+            'bihana' => 'morning', 'morning' => 'morning',
+            'savare' => 'morning', 'bihana ko' => 'morning',
+            'diuso' => 'afternoon', 'diusoo' => 'afternoon', 'afternoon' => 'afternoon',
+            'dopahar' => 'afternoon', 'madhyanha' => 'afternoon',
+            'beluka' => 'evening', 'belukaa' => 'evening',
+            'evening' => 'evening',
+            'night' => 'night',
+            // Devanagari (Hindi / Nepali)
+            'बिहान' => 'morning', 'बिहानै' => 'morning', 'प्रातः' => 'morning',
+            'दिउँसो' => 'afternoon', 'दिउसो' => 'afternoon', 'दोपहर' => 'afternoon', 'मध्यान्ह' => 'afternoon',
+            'बेलुका' => 'evening', 'बेलुकी' => 'evening',
+            'राति' => 'night', 'राती' => 'night',
+            // Gujarati
+            'સવારે' => 'morning', 'સવાર' => 'morning',
+            'બપોરે' => 'afternoon', 'બપોર' => 'afternoon',
+            'સાંજે' => 'evening', 'સાંજ' => 'evening',
+            'રાત્રે' => 'night', 'રાત' => 'night',
+        ];
+        // Longest first, so "bihana ko" is tried before "bihana".
+        uksort($periodWords, static fn(string $a, string $b): int => mb_strlen($b) <=> mb_strlen($a));
+        $timeText = [];
+        foreach ($periodWords as $word => $period) {
+            $re = '/(?<![\p{L}\p{M}])' . preg_quote($word, '/') . self::NB . '/u';
+            if (preg_match($re, $lower) === 1) {
+                if ($out['timeOfDay'] === '') {
+                    $out['timeOfDay'] = $period;
+                    $timeText[]       = $word;
+                }
+                $lower = (string) preg_replace($re, ' ', $lower);
+            }
+        }
+        /* The name-like ones: an hour (or a written clock face, "7:30") must
+           follow at once in the TYPED text — read before the phone was lifted
+           out, so "Shyam 9876543210 7 baje" is still Shyam, 7 baje — and only
+           the occurrence the hour follows is dropped, so "Shaam Lal 98… shaam
+           7 baje" keeps "Shaam Lal". Without an hour the word stays where it
+           was before this pass existed: in the name. */
+        $namePeriods = [
+            'shyam' => 'evening', 'sham' => 'evening', 'shaam' => 'evening', 'saanjh' => 'evening', 'sanjha' => 'evening',
+            'subah' => 'morning', 'bihan' => 'morning', 'savar' => 'morning',
+            'noon'  => 'afternoon',
+            'rati'  => 'night', 'raati' => 'night', 'raat' => 'night',
+            'शाम' => 'evening', 'सांझ' => 'evening', 'साँझ' => 'evening', 'सुबह' => 'morning', 'रात' => 'night',
+        ];
+        $hourNext = '(?=\s*(?:' . $hourAt . '|(?:[01]?\d|2[0-3]):[0-5]\d(?![\d:])))';
+        $typed    = mb_strtolower(self::asciiDigits($raw));
+        foreach ($namePeriods as $word => $period) {
+            $re = '/(?<![\p{L}\p{M}])' . preg_quote($word, '/') . self::NB . $hourNext . '/u';
+            $n  = (int) preg_match_all($re, $typed);
+            if ($n > 0 && preg_match($re, $lower) === 1) {
+                if ($out['timeOfDay'] === '') {
+                    $out['timeOfDay'] = $period;
+                    $timeText[]       = $word;
+                }
+                $lower = (string) preg_replace($re, ' ', $lower, $n);
+            }
+        }
+
+        $hour    = -1;
+        $min     = 0;
+        $meri    = '';                                  // 'am' | 'pm' when written
+        $onClock = false;                               // a written clock face, "06:15"
+        $faceRes = [
+            // "19:30", "7:30 pm"
+            '/(?<![\d:])(?<!\d\.)([01]?\d|2[0-3]):([0-5]\d)(?![\d:])(?:\s*(a\.?m\.?|p\.?m\.?)(?![\p{L}\p{M}]))?/u',
+            // "7.30 pm", "7.30 baje" — a bare "22.50" may be money, so a dot needs am / pm or a clock word
+            '/(?<![\d:])(?<!\d\.)([01]?\d|2[0-3])\.([0-5]\d)(?![\d.])(?=\s*(?:' . $meriAny . '|' . $clock . self::NB . '))(?:\s*(a\.?m\.?|p\.?m\.?)(?![\p{L}\p{M}]))?/u',
+        ];
+        foreach ($faceRes as $re) {
+            if (preg_match($re, $lower, $m) === 1) {
+                $hour       = (int) $m[1];
+                $min        = (int) $m[2];
+                $meri       = ($m[3] ?? '') !== '' ? $m[3][0] . 'm' : '';
+                $onClock    = true;
+                $timeText[] = trim($m[0]);
+                $lower      = (string) preg_replace($re, ' ', $lower, 1);
+                break;
+            }
+        }
+        if ($hour < 0) {
+            $re = '/(?<![\d:])(?<!\d\.)([01]?\d|2[0-3])\s*(a\.?m\.?|p\.?m\.?)(?![\p{L}\p{M}])/u';          // "7pm", "7 pm"
+            if (preg_match($re, $lower, $m) === 1) {
+                $hour = (int) $m[1];
+                $meri = $m[2][0] . 'm';
+            } else {
+                $re = '/(?<![\d:])(?<!\d\.)([01]?\d|2[0-3])\s*' . $clock . self::NB . '/u';     // "7 baje", "7 बजे"
+                $hour = preg_match($re, $lower, $m) === 1 ? (int) $m[1] : -1;
+            }
+            if ($hour >= 0) {
+                $timeText[] = trim($m[0]);
+                $lower      = (string) preg_replace($re, ' ', $lower, 1);
+            }
+        }
+        // A clock word with no hour beside it ("baje ko bus") is still not a name —
+        // except "baj", which alone is one ("Baj Singh"); after an hour it went above.
+        $lower = (string) preg_replace('/(?<![\p{L}\p{M}])(?:bajey|baje|bje|बजे|बज्यो|बजी|वागे|વાગ્યે|વાગે|vagye|vage|o\'?clock)' . self::NB . '/u', ' ', $lower);
+
+        if ($hour >= 0) {
+            $out['timeHour'] = $hour;
+            $h = -1;
+            if ($meri === 'am') {
+                $h = ($hour === 12) ? 0 : ($hour < 12 ? $hour : -1);
+            } elseif ($meri === 'pm') {
+                $h = ($hour === 12) ? 12 : ($hour < 12 ? $hour + 12 : -1);
+            } elseif ($hour > 12 || $hour === 0) {
+                $h = $hour;                                   // already 24-hour
+            } elseif ($out['timeOfDay'] !== '') {
+                switch ($out['timeOfDay']) {
+                    case 'morning':   $h = ($hour === 12) ? 0 : $hour; break;
+                    case 'afternoon': $h = ($hour >= 1 && $hour <= 6) ? $hour + 12 : $hour; break;
+                    case 'evening':   $h = ($hour >= 1 && $hour <= 11) ? $hour + 12 : $hour; break;
+                    case 'night':     $h = ($hour >= 7 && $hour <= 11) ? $hour + 12 : (($hour === 12) ? 0 : $hour); break;
+                }
+            } elseif ($onClock) {
+                $h = $hour;                                   // "06:15" is written as meant
+            }                                                 // else: "7 baje" alone — ambiguous on purpose, see above
+            if ($h >= 0 && $h <= 23) {
+                $out['time']    = sprintf('%02d:%02d', $h, $min);
+                $out['found'][] = 'time';
+            }
+        }
+        if ($timeText !== []) {
+            $out['timeText'] = trim(implode(' ', $timeText));
+            if ($out['timeOfDay'] !== '' && !in_array('time', $out['found'], true)) {
+                $out['found'][] = 'time';
+            }
+        }
+
         /* seats — a number next to a seat / person word, "x3", "for 3", or a
            number word ("dui jana"). "jane"/"jana" alone mean "going", so only
            the counted form "2 jana" is a party size. */
@@ -1022,9 +1199,11 @@ final class TicketBot
 
         /* 31 Oct 2026 (counter sim: "kaat do Surat se, naam Mohan Lal" named the passenger "Kaat Do Mohan Lal"):
            after an explicit "naam / name / नाम", only what follows it is the name. */
+        $afterNaam = false;
         if (preg_match('/(?<![\p{L}\p{M}])(?:naam|name|nam|नाम)(?![\p{L}\p{M}])\s*[:\-]?\s*(\S.*)$/u', $lower, $nmAfter) === 1
             && preg_match('/\p{L}/u', $nmAfter[1]) === 1) {
-            $lower = $nmAfter[1];
+            $lower     = $nmAfter[1];
+            $afterNaam = true;
         }
 
         /* name = what is left, minus filler */
@@ -1065,7 +1244,14 @@ final class TicketBot
                    // payment-reference words and pause / refusal words are never a passenger's name
                    'utr', 'ref', 'refno', 'reference', 'txn', 'txnid', 'transaction', 'rrn', 'paisa', 'paise', 'pathaye', 'pathae', 'pathaeko',
                    'pathayeko', 'pathayo', 'pathaisake', 'pathaisakeko', 'payment', 'paid', 'wait', 'hold', 'ruko', 'ruka', 'rukiye', 'ekchin',
-                   'pakhnus', 'parkhanus', 'nakaat', 'nakat', 'nagarnu', 'hoina', 'baad', 'pachhi', 'pachi', 'later', 'sochchu', 'sodhchu'];
+                   'pakhnus', 'parkhanus', 'nakaat', 'nakat', 'nagarnu', 'hoina', 'baad', 'pachhi', 'pachi', 'later', 'sochchu', 'sodhchu',
+                   // B1 refix (17 Nov 2026): romanised Gujarati "need" / "from" — the script forms (જોઈએ, થી) are above.
+                   // "mane 1 sit joie surat thi" named the passenger "Mane Joie Thi", "Ram 1 sit joie" "Ram Joie".
+                   'joie', 'joiye', 'joiee', 'thi'];
+        /* "mane" / "amne" (me / us) open a romanised Gujarati request, but "Mane"
+           is also a surname ("Sunil Mane"): dropped only as the FIRST word left,
+           and never right after an explicit "naam". */
+        $leadPronouns = ['mane', 'amne'];
         /* \p{M} keeps a combining mark WITH its letter. Devanagari vowel signs
            (matras) are category Mn and match neither \p{L} nor \p{N}, so every
            matra was treated as a word break: "राम बहादुर" came out as
@@ -1078,7 +1264,8 @@ final class TicketBot
             // "2nd", "3rd", "12th" — an ordinal left behind by a position
             // ("2nd bus") is never a passenger's name.
             if ($tk === '' || in_array($tk, $filler, true) || ctype_digit($tk)
-                || preg_match('/^\d{1,2}(?:st|nd|rd|th)$/u', $tk) === 1) {
+                || preg_match('/^\d{1,2}(?:st|nd|rd|th)$/u', $tk) === 1
+                || ($keep === [] && !$afterNaam && in_array($tk, $leadPronouns, true))) {
                 continue;
             }
             $keep[] = $tk;

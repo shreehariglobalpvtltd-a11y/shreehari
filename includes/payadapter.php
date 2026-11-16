@@ -185,3 +185,263 @@ final class PaymentAdapters
         return max(0.0, round((float) $booking['total_amount'] - $paid, 2));
     }
 }
+
+/**
+ * =====================================================================
+ *  CodPayClaim — a pay-at-boarding ticket paid ONLINE before boarding
+ *  (16 Nov 2026, P1 - owner: "pay at boarding vane option ... redirect
+ *  payment lina sab suvidha hunu paryo, free wala").
+ *
+ *  A pay-at-boarding (COD) ticket is confirmed at once and its ONE money
+ *  row stays 'cod_pending' until the office has the money
+ *  (BookingService::settleCod - the Payments page "Cash owed" tab, the
+ *  chalani tick, the agent WhatsApp tool). A passenger may instead pay
+ *  online through the free ways on pay.php (UPI app / UPI QR / eSewa) and
+ *  type the UTR. That claim is written onto the SAME money row - the UTR,
+ *  the amount due as the claimed amount, mode 'utr' and an "ONLINE CLAIM ·
+ *  UPI …" note - so it shows up where the office already works that row:
+ *  the Payments page COD tab (with its "UTR also on" duplicate check) and
+ *  the booking page. A second row is never added (the fare would be
+ *  counted twice), and checkout's submitPaymentProof() is not used - it
+ *  would flip the row to 'pending' on a confirmed booking, which drops it
+ *  out of every queue.
+ *
+ *  NEVER A CONFIRMATION (house rule). Nothing here marks the ticket paid,
+ *  changes is_cod, the booking status or the row's status / method: the
+ *  office checks the bank and settles the row (chalani tick "UPI" / "eSewa"
+ *  records it as online money on the ticket). No message goes to the
+ *  customer; the office gets a bell notification and its usual WhatsApp
+ *  note (as for a UTR typed on WhatsApp, WaPayProof).
+ *
+ *  Who may claim: api/payment.php's rule - this browser booked it, the
+ *  signed-in owner, the ticket's own download key (k), or the booking's
+ *  mobile typed on the form (never the walk-in placeholder number).
+ *  Checks: UTR shape (PaymentRisk::utrLooksWrong - 12-digit UPI UTR,
+ *  6-20 letters/digits for eSewa, no made-up numbers), one claim per
+ *  ticket, one use per UTR (any booking, any split-pay share), amount =
+ *  what is due (server side). The caller rate-limits ('payment_proof',
+ *  like the checkout's proof form).
+ * =====================================================================
+ */
+final class CodPayClaim
+{
+    public const TAG = 'ONLINE CLAIM';
+
+    /** The pay-at-boarding money row: the booking's latest payments row while it is still 'cod_pending'. */
+    public static function row(int $bookingId, bool $forUpdate = false): ?array
+    {
+        $sql = 'SELECT * FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1';
+        $p = $forUpdate ? (Database::fetchForUpdate($sql, ['b' => $bookingId])[0] ?? null) : Database::fetch($sql, ['b' => $bookingId]);
+        return $p !== null && (string) $p['status'] === 'cod_pending' ? $p : null;
+    }
+
+    /** A confirmed pay-at-boarding ticket that still owes money on an unsettled money row. */
+    public static function eligible(array $booking): bool
+    {
+        return (int) ($booking['is_cod'] ?? 0) === 1
+            && (string) ($booking['status'] ?? '') === 'confirmed'
+            && PaymentAdapters::due($booking) > 0
+            && self::row((int) $booking['id']) !== null;
+    }
+
+    /**
+     * The claim already sent for this ticket (a UTR on its unsettled money row), or null.
+     *
+     * @return array{utr:string, method:string, amount:float, at:string}|null
+     */
+    public static function current(int $bookingId): ?array
+    {
+        $p = self::row($bookingId);
+        if ($p === null || trim((string) ($p['utr_number'] ?? '')) === '') {
+            return null;
+        }
+        $m = preg_match('/' . self::TAG . ' · eSewa/u', (string) ($p['admin_note'] ?? '')) === 1
+            || str_starts_with((string) ($p['gateway_payload'] ?? ''), '{"pay_claim":{"method":"esewa"') ? 'esewa' : 'upi';
+        return [
+            'utr'    => (string) $p['utr_number'],
+            'method' => $m,
+            'amount' => (float) ($p['claimed_amount'] ?? 0),
+            'at'     => (string) ($p['updated_at'] ?? ''),
+        ];
+    }
+
+    /** "4321 8765 1234", "4321-8765-1234", Devanagari digits -> "432187651234" (upper case, no spaces). */
+    public static function normaliseUtr(string $raw): string
+    {
+        $s = strtr($raw, ['०' => '0', '१' => '1', '२' => '2', '३' => '3', '४' => '4', '५' => '5', '६' => '6', '७' => '7', '८' => '8', '९' => '9']);
+        $s = preg_replace('/[\s\-.\x{00A0}]+/u', '', $s) ?? '';
+        return strtoupper(Security::clean($s, 40));
+    }
+
+    /** Does this request belong to the booking? The same rule as api/payment.php. */
+    public static function owns(array $booking, string $key = '', string $typedPhone = ''): bool
+    {
+        $pnr         = strtoupper((string) ($booking['pnr'] ?? ''));
+        $contact     = (string) ($booking['contact_phone'] ?? '');
+        $realContact = $contact !== '' && !isPlaceholderPhone($contact);
+        if (in_array($pnr, Auth::ownPnrs(), true)) {
+            return true;
+        }
+        $me = Auth::user();
+        if ($me !== null && (
+            ((int) ($booking['user_id'] ?? 0) > 0 && (int) $booking['user_id'] === (int) ($me['id'] ?? 0))
+            || ($realContact && normalisePhone((string) ($me['phone'] ?? '')) === normalisePhone($contact))
+        )) {
+            return true;
+        }
+        if ($key !== '') {
+            require_once __DIR__ . '/ticket.php';
+            if (Ticket::checkDownloadToken($pnr, $key)) {
+                return true;
+            }
+        }
+        $typed = $typedPhone !== '' ? normalisePhone($typedPhone) : '';
+        return $realContact && $typed !== '' && $typed === normalisePhone($contact);
+    }
+
+    /**
+     * Record the passenger's online payment claim on the pay-at-boarding money row.
+     * Never confirms anything. Refusals throw RuntimeException with a Nepali · English
+     * message and the HTTP status as the code (403 not yours, 409 already sent / UTR
+     * used / nothing to pay, 422 bad UTR).
+     *
+     * @param array<string, mixed> $booking bookings row (id, pnr, status, is_cod, total_amount, contact_phone, user_id)
+     * @return array{utr:string, method:string, amount:float}
+     */
+    public static function submit(array $booking, string $utrRaw, string $method, string $typedPhone = '', string $key = '', string $payer = ''): array
+    {
+        $bid = (int) ($booking['id'] ?? 0);
+        $pnr = strtoupper((string) ($booking['pnr'] ?? ''));
+        if ($bid <= 0) {
+            throw new RuntimeException('बुकिङ भेटिएन · Booking not found.', 404);
+        }
+        if (!self::owns($booking, $key, $typedPhone)) {
+            throw new RuntimeException('बुकिङ गर्दा दिएको मोबाइल नम्बर हाल्नुहोस् · Enter the mobile number used for this booking.', 403);
+        }
+        $method = strtolower(trim($method)) === 'esewa' ? 'esewa' : 'upi';
+        $utr    = self::normaliseUtr($utrRaw);
+        if ($utr === '') {
+            throw new RuntimeException('UTR / कारोबार नम्बर लेख्नुहोस् · Type the UTR / transaction number.', 422);
+        }
+        require_once __DIR__ . '/paymentrisk.php';
+        $bad = PaymentRisk::utrLooksWrong($utr, $method);
+        if ($bad !== null) {
+            throw new RuntimeException(($method === 'upi'
+                ? 'UPI को UTR १२ अङ्कको हुन्छ — भुक्तानी एपमा हेरेर फेरि लेख्नुहोस् · '
+                : 'eSewa को कारोबार कोड ६-२० अक्षर/अङ्कको हुन्छ · ') . $bad . '.', 422);
+        }
+        $payer = Security::clean($payer, 120);
+
+        /* One UTR, one claim - even when two tickets send the same number in the same
+           second: the check and the write run under a lock named after the UTR. */
+        $lock = 'shg_payclaim_' . substr(hash('sha256', $utr), 0, 40);
+        if ((int) Database::scalar('SELECT GET_LOCK(:k, 5)', ['k' => $lock], 0) !== 1) {
+            throw new RuntimeException('अहिले व्यस्त छ, एकछिनमा फेरि पठाउनुहोस् · Busy right now - please send it again in a moment.', 409);
+        }
+        try {
+            $saved = Database::transaction(static function () use ($bid, $utr, $method, $payer): array {
+                $b = Database::fetchForUpdate('SELECT * FROM bookings WHERE id = :id', ['id' => $bid])[0] ?? null;
+                if ($b === null || (int) $b['is_cod'] !== 1 || (string) $b['status'] !== 'confirmed') {
+                    throw new RuntimeException('यो टिकटमा अनलाइन भुक्तानी लिन मिल्दैन · This ticket cannot take an online payment.', 409);
+                }
+                $due = PaymentAdapters::due($b);
+                $p   = self::row($bid, true);
+                if ($due <= 0 || $p === null) {
+                    throw new RuntimeException('यो टिकटमा तिर्न बाँकी छैन · Nothing is due on this ticket.', 409);
+                }
+                if (trim((string) ($p['utr_number'] ?? '')) !== '') {
+                    throw new RuntimeException('यो टिकटको भुक्तानी पहिले नै जाँचमा छ — अफिसले जाँचेपछि टिकटमा देखिन्छ · A payment for this ticket is already being checked.', 409);
+                }
+                $used = Database::fetch(
+                    "SELECT p.id FROM payments p
+                      WHERE p.utr_number = :u OR REPLACE(REPLACE(TRIM(p.utr_number), ' ', ''), '-', '') = :u2
+                      LIMIT 1",
+                    ['u' => $utr, 'u2' => $utr]
+                );
+                if ($used === null) {
+                    try {
+                        $used = Database::fetch(
+                            "SELECT id FROM payment_shares WHERE utr = :u OR REPLACE(REPLACE(TRIM(utr), ' ', ''), '-', '') = :u2 LIMIT 1",
+                            ['u' => $utr, 'u2' => $utr]
+                        );
+                    } catch (Throwable $e) {
+                        $used = null;   // no split-pay table on this install
+                    }
+                }
+                if ($used !== null) {
+                    throw new RuntimeException('यो UTR पहिले नै प्रयोग भइसकेको छ · This UTR has already been used.', 409);
+                }
+                $note = self::TAG . ' · ' . ($method === 'esewa' ? 'eSewa' : 'UPI') . ' · INR ' . number_format($due, 2)
+                    . ' · ' . date('j M H:i') . ' (pay link) - check the bank, then settle; nothing changed automatically';
+                $old = trim((string) ($p['admin_note'] ?? ''));
+                $upd = [
+                    'utr_number' => $utr,
+                    'mode'       => 'utr',
+                    'admin_note' => mb_substr($note . ($old !== '' ? ' | ' . $old : ''), 0, 255),
+                ];
+                if ($payer !== '') {
+                    $upd['payer_name'] = $payer;
+                }
+                if (PaymentRisk::hasCol('payments', 'claimed_amount')) {
+                    $upd['claimed_amount'] = $due;
+                }
+                /* P1 refix: the claim's WAY survives the settle. Payments → COD, the booking
+                   page and the cash book settle this row as method 'cod' with their own note
+                   ("Cash collected"), which wipes the ONLINE CLAIM note; the ticket then reads
+                   the UTR plus this marker to print PAID · अनलाइन (UPI / eSewa), not CASH
+                   (Ticket::paidWay). Written only on an empty payload - a gateway's own
+                   payload is never touched - and with no amount key, so PaymentRisk's
+                   claimed-amount reader ignores it. */
+                if (trim((string) ($p['gateway_payload'] ?? '')) === '') {
+                    $upd['gateway_payload'] = (string) json_encode(['pay_claim' => ['method' => $method, 'utr' => $utr, 'at' => date('c')]],
+                        JSON_UNESCAPED_SLASHES);
+                }
+                Database::update('payments', $upd, 'id = :id', ['id' => (int) $p['id']]);
+                return ['due' => $due];
+            });
+        } finally {
+            try {
+                Database::scalar('SELECT RELEASE_LOCK(:k)', ['k' => $lock], 0);
+            } catch (Throwable $e) {
+                // the lock dies with the connection anyway
+            }
+        }
+
+        $due  = (float) $saved['due'];
+        $way  = $method === 'esewa' ? 'eSewa' : 'UPI';
+        $tail = substr($utr, -4);
+        require_once __DIR__ . '/payevents.php';
+        PayEvents::log($bid, $pnr, 'pay_claim');
+        Logger::audit('payment.cod_online_claim', 'booking', $pnr, null,
+            ['method' => $method, 'utr_tail' => $tail, 'amount' => $due],
+            'Pay-at-boarding ticket: the passenger says it was paid online (pay link); waiting for the office - nothing changed automatically');
+        try {
+            Database::insert('notifications', [
+                'audience'   => 'admin',
+                'booking_id' => $bid,
+                'icon'       => '🧾',
+                'title'      => Security::clean('Online payment to check · ' . $pnr, 191),
+                'body'       => Security::clean('बसमा तिर्ने टिकट: यात्रुले ' . $way . ' बाट ' . inr($due) . ' तिरेको भन्छन् (UTR …' . $tail
+                    . ')। बैंक जाँचेर Payments → COD वा चलानीमा ' . $way . ' टिक गर्नुहोस्। · Pay-on-boarding ticket: the passenger says '
+                    . inr($due) . ' was paid by ' . $way . ', UTR …' . $tail . '. Check the bank, then settle (Payments → COD, or the chalani tick '
+                    . $way . '). Nothing changed automatically.', 500),
+            ]);
+        } catch (Throwable $e) {
+            Logger::warning('Online claim bell not written: ' . $e->getMessage(), ['pnr' => $pnr]);
+        }
+        try {
+            require_once __DIR__ . '/notify.php';
+            Notify::adminNote('🧾 Pay-on-boarding ticket paid online? Check the bank', [
+                'PNR'    => $pnr,
+                'Way'    => $way,
+                'UTR'    => $utr,
+                'Amount' => inr($due),
+                'Open'   => appUrl('admin/payments.php?tab=cod&q=' . rawurlencode($pnr)),
+            ], $bid);
+        } catch (Throwable $e) {
+            // the bell above and the money row are the record
+        }
+
+        return ['utr' => $utr, 'method' => $method, 'amount' => $due];
+    }
+}
