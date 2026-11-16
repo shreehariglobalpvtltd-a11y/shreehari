@@ -234,7 +234,8 @@ header h1{margin:0;font-size:19px}header p{margin:4px 0 0;font-size:13px;opacity
             <?php $xLug = max(0, (int) ($r['luggage_pieces'] ?? 0)); $xInf = max(0, (int) ($r['infant_count'] ?? 0));
                   $xAmt = max(0.0, (float) ($r['luggage_fee'] ?? 0)) + max(0.0, (float) ($r['infant_fee'] ?? 0));
                   if ($xLug > 0 || $xInf > 0): ?>
-            <div class="row"><span style="font-weight:800;color:<?= $g['state'] === 'due' ? '#B91C1C' : '#15803D' ?>">विशेष भुक्तानी · <?= $xLug > 0 ? '🧳 ' . $xLug . ' थप सामान ' : '' ?><?= $xInf > 0 ? '👶 ' . $xInf . ' शिशु ' : '' ?><?= $xAmt > 0 ? '₹' . $e(number_format($xAmt)) . ' ' : '' ?>— <?= $g['state'] === 'due' ? '✗ बाँकी' : '✓ भयो' ?></span></div>
+            <?php $xSt = $xAmt > 0 ? (string) $g['state'] : 'free';   // a ₹0 line (free lap infant) owes nothing ?>
+            <div class="row"><span style="font-weight:800;color:<?= $xSt === 'due' ? '#B91C1C' : ($xSt === 'free' ? 'inherit' : '#15803D') ?>">विशेष भुक्तानी · <?= $xLug > 0 ? '🧳 ' . $xLug . ' थप सामान ' : '' ?><?= $xInf > 0 ? '👶 ' . $xInf . ' शिशु ' : '' ?><?= $xAmt > 0 ? '₹' . $e(number_format($xAmt)) . ' ' : '' ?>— <?= $xSt === 'due' ? '✗ बाँकी' : ($xSt === 'free' ? 'निःशुल्क' : '✓ भयो') ?></span></div>
             <?php endif; ?>
             <span class="st <?= $e($cls) ?>"><?= $e($lbl) ?></span>
           </div>

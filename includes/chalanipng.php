@@ -740,16 +740,20 @@ final class ChalaniPng
                 self::t($im, 12, $cx[9] + 10, $ry + 25, $muted, self::fit(12, $who, $cw[9] - 20), false);
             }
 
-            $rem = $late ? 'Booked after departure' : ($wsRow ? 'WOMAN · single sleeper' : '');
-            /* 16 Nov 2026 (owner: "bisesh payment bhayo ki nai"): the booking's desk extras, paid or due */
-            $xSt = isset($fmt['rowState']) && is_callable($fmt['rowState']) ? (string) $fmt['rowState']($r) : 'due';
-            if (!$late && (float) ($m['extra'] ?? 0) > 0) {
-                $rem = 'Extra Rs ' . number_format((float) $m['extra']) . ' ' . ($xSt === 'due' ? 'DUE' : 'PAID');
-            }
+            /* 16 Nov 2026 (owner: "bisesh payment bhayo ki nai"): the booking's desk extras, paid or
+               due - first, so fit() never trims the money off; a late / woman-single marker follows
+               in short form (review: a late row used to lose its due extra here) */
+            $xAmt = (float) ($m['extra'] ?? 0);
+            $xSt  = isset($fmt['rowState']) && is_callable($fmt['rowState']) ? (string) $fmt['rowState']($r) : 'due';
+            $parts = [];
+            if ($xAmt > 0)  { $parts[] = 'Extra Rs ' . number_format($xAmt) . ' ' . ($xSt === 'due' ? 'DUE' : 'PAID'); }
+            if ($late)      { $parts[] = $xAmt > 0 ? 'late' : 'Booked after departure'; }
+            elseif ($wsRow) { $parts[] = $xAmt > 0 ? 'WOMAN single' : 'WOMAN · single sleeper'; }
+            $rem = implode(' · ', $parts);
             if ($rem === '' && !empty($r['boarded_at']))     { $rem = 'Boarded'; }
             if ($rem === '' && !empty($r['special_need']))   { $rem = $roman((string) $r['special_need']); }
             if ($rem === '' && (string) ($r['booking_status'] ?? '') === 'pending') { $rem = 'Booking pending'; }
-            $xDueRow = !$late && (float) ($m['extra'] ?? 0) > 0 && $xSt === 'due';
+            $xDueRow = $xAmt > 0 && $xSt === 'due';
             self::t($im, 15, $cx[10] + 10, $vy + 3, ($late || $xDueRow) ? $maroon : ($wsRow ? $rose : $muted), self::fit(15, $rem, $cw[10] - 20), $wsRow || $xDueRow);
         }
 

@@ -996,21 +996,30 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   }
   function currentDiscountAmounts() {
     var f = plan && plan.fare ? plan.fare : {};
-    var base = Math.max(0, Number(f.total || 0));
+    var base = Math.max(0, Number(f.total || 0));          // payable before the desk discount (shown as भाडा)
+    /* 16 Nov 2026 (review): the same steps as BookingService::create() - the % and
+       the cap are worked on the fare BEFORE any discount (f.base), the result is
+       capped at the payable, and it never stacks on the automatic discounts
+       (running offer + return discount): the bigger one wins. */
+    var gross = Math.max(0, Number(f.base || 0)) || base;
     var requested = Math.max(0, parseFloat($('#qtDisc').value) || 0);
-    var rawDiscount = $('#qtDiscType').value === 'percent'
-      ? base * requested / 100
-      : requested;
-    var discount = Math.round(Math.min(rawDiscount, base * Math.max(0, MAX_DISC) / 100, base) * 100) / 100;
+    var cd = 0;
+    if (gross > 0 && requested > 0) {
+      var rawDiscount = $('#qtDiscType').value === 'percent' ? Math.round(gross * requested) / 100 : Math.round(requested * 100) / 100;
+      cd = Math.min(rawDiscount, Math.round(gross * Math.max(0, MAX_DISC)) / 100, base);
+    }
     var x = deskExtras();
-    /* 16 Nov 2026: the desk discount never stacks on the automatic ones (running
-       offer + return discount) - the bigger wins, as BookingService::create() charges. */
     var auto = Math.max(0, Number(f.couponDiscount || 0)) + Math.max(0, Number(f.returnDiscount || 0));
-    var payable = base - discount;
-    if (discount > 0 && auto > 0) { payable = discount > auto ? base + auto - discount : base; }
+    var payable = base, shown = 0;
+    if (cd > 0 && auto > 0) {
+      if (cd > auto) { payable = base + auto - cd; shown = cd - auto; }   // desk wins: only what goes beyond the automatic ones
+    } else if (cd > 0) {
+      payable = base - cd; shown = cd;
+    }
+    var discount = Math.round(shown * 100) / 100;
     return {
       base: base,
-      discount: (discount > 0 && auto > 0) ? Math.max(0, discount - auto) : discount,
+      discount: discount,
       lug: x.lug, inf: x.inf, extras: x.amt,
       // P8-3f / P4-4d: the extras go on AFTER the discount (never discounted, never commission)
       finalTotal: Math.round((Math.max(0, payable) + x.amt) * 100) / 100

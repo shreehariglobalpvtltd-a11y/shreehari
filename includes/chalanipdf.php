@@ -51,6 +51,10 @@ final class ChalaniPdf
     private const M        = 20.0;   // page margin (pt) — the reference runs edge to edge
     private const MIN_ROWS = 25;
 
+    /** What the last send() drew - passenger rows, special-payment lines, the lowest
+        box edge vs the footer limit (tests/u10-chalani-pdf-pages-test.php reads it). */
+    public static array $drawn = ['rows' => 0, 'xLines' => 0, 'maxBottom' => 0.0, 'limit' => 0.0];
+
     /**
      * Stream the PDF and exit.
      *
@@ -244,7 +248,7 @@ final class ChalaniPdf
         /* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai"): desk extras */
         $infantsOf = isset($fmt['infantsOf']) && is_callable($fmt['infantsOf']) ? $fmt['infantsOf'] : static fn(array $r): int => 0;
         $rowState  = isset($fmt['rowState']) && is_callable($fmt['rowState']) ? $fmt['rowState'] : static fn(array $r): string => 'due';
-        $stateNe   = static fn(string $s): string => $s === 'paid' ? 'भयो' : ($s === 'agent' ? 'भयो (एजेन्टसँग)' : 'बाँकी');
+        $stateNe   = static fn(string $s): string => match ($s) { 'paid' => 'भयो', 'agent' => 'भयो (एजेन्टसँग)', 'free' => 'निःशुल्क', default => 'बाँकी' };
         $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach, $womanSingle, $placeNo, $infantsOf, $rowState, $stateNe): void {
             $ws = $r !== null && $womanSingle($r);
             if ($ws) { $pdf->rect($M, $y, $inner, $rowH, self::PINK, true); }
@@ -252,6 +256,7 @@ final class ChalaniPdf
             $ty = $y + 9.4;
             $txtC($cx[0], $cx[0] + $cw[0], $ty, $neDigits((string) $n), 6.8, false, self::MUTE);
             if ($r === null) { return; }
+            self::$drawn['rows']++;
             $m = $money($r);
             $txtC($cx[1], $cx[1] + $cw[1], $ty, Seats::displayLabel((string) $r['seat_no'], $seatCoach, (string) ($r['booking_mode'] ?? 'sharing')), 8, true, $ws ? self::ROSE : self::INK);
             $name = (string) ($r['full_name'] ?? '');
@@ -330,18 +335,30 @@ final class ChalaniPdf
 
         /* ---- table, paginated ---------------------------------------- */
         $limit  = $H - $M - 16;                  // the footer rule sits just below this
-        $boxesH = 100;                           // summary / authorisation boxes (16 Nov 2026: + 2 special-payment lines)
+        self::$drawn = ['rows' => 0, 'xLines' => 0, 'maxBottom' => 0.0, 'limit' => $limit];
         /* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai thapaune
-           line"): one line per booking with desk extras + blank pen lines */
+           line"): one line per booking with desk extras + blank pen lines.
+           Page economy (review): with NO extras on the bus (the usual case) there is
+           no separate box - the pen lines ride inside the payment summary, so a
+           20-passenger bus still fits its sheet on one page as before. The full-width
+           box (head row + one line per booking + pen lines) appears only when a
+           booking really carries extras, and it continues over pages when long. */
         $xLines = array_values((array) ($fmt['extrasLines'] ?? []));
         $xPen   = max(0, (int) ($fmt['penLines'] ?? 2));
+        $hasX   = $xLines !== [];
         $xRowH  = 11.5;
-        $xBoxH  = 16 + $xRowH * (1 + count($xLines) + $xPen) + 4;
-        $bottomReserve = 6 + $xBoxH + 6 + $boxesH + 8;   // gap + special payments + boxes + breathing room, on the LAST page
+        $sumGap = 9.5;                           // summary line pitch (8 lines now)
+        $boxesH = 95;                            // summary / authorisation boxes (was 80 for 6 lines)
+        $xBoxH  = $hasX ? 16 + $xRowH * (1 + count($xLines) + $xPen) + 4 : 0.0;      // the whole box, in one piece
+        $xMinH  = $hasX ? 16 + $xRowH * (1 + min(3, count($xLines) + $xPen)) + 4 : 0.0;
+        $bottomReserve = $hasX
+            ? 6 + $xMinH + 6 + ($xMinH >= $xBoxH ? $boxesH + 8 : 0)   // gap + special payments (+ boxes), on the LAST page
+            : 6 + $boxesH + 8;
         $y = $tableHead($y);
         // the place strip takes the room of a few blank pen rows, so a short list still fits on page 1
-        // 16 Nov 2026: the special-payment box (and the 2 new summary lines) take the room of a few more blank rows
-        $total = max(self::MIN_ROWS - ($places !== [] ? (int) ceil(($bh + 4) / $rowH) : 0) - (int) ceil(($xBoxH + 6 + 20) / $rowH), count($rows));
+        // 16 Nov 2026: the taller summary (and the special-payment box, when there is one) take a few more
+        $total = max(self::MIN_ROWS - ($places !== [] ? (int) ceil(($bh + 4) / $rowH) : 0)
+            - (int) ceil((($hasX ? $xBoxH + 6 : 0) + $boxesH - 80) / $rowH), count($rows));
         for ($i = 0; $i < $total; $i++) {
             $isLast = ($i === $total - 1);
             $need   = $rowH + ($isLast ? $bottomReserve : 0);
@@ -356,15 +373,13 @@ final class ChalaniPdf
         }
         $y += 6;
 
-        /* ---- 16 Nov 2026: विशेष भुक्तानी — desk extras, paid or not, + pen lines ---- */
-        if ($y + $xBoxH + 6 > $limit) { $footer(); $pdf->newPage(); $y = $header(); }
-        $pdf->roundedRect($M, $y, $inner, $xBoxH, 4, self::NAVY, false);
-        $txt($M + 8, $y + 11, 'विशेष भुक्तानी · थप सामान / शिशु / अन्य — भयो कि भएन', 7.8, true, self::NAVY);
+        /* ---- 16 Nov 2026: विशेष भुक्तानी — desk extras, paid or not, + pen lines ----
+           Drawn in page-sized pieces (review): a long list continues on the next page
+           under its own title + head row "(क्रमशः)" instead of running off the sheet. */
         $xw = [118, 150, 80, 0, 64, 110];
         $xw[3] = ($inner - 16) - ($xw[0] + $xw[1] + $xw[2] + $xw[4] + $xw[5]);
         $xx = []; $acc = $M + 8;
         foreach ($xw as $k => $w) { $xx[$k] = $acc; $acc += $w; }
-        $xy = $y + 16;
         $xCell = static function (float $yy, array $vals, bool $head, ?array $rgbLast = null) use ($pdf, $xx, $xw, $xRowH, $txt, $txtR, $fit): void {
             if ($head) { $pdf->rect($xx[0], $yy, array_sum($xw), $xRowH, self::SOFT, true); }
             foreach ($xw as $k => $w) {
@@ -376,27 +391,48 @@ final class ChalaniPdf
                 else          { $txt($xx[$k] + 3, $yy + 8.4, $fit($v, 7, $w - 6), 7, $head || $k === 5, $rgb); }
             }
         };
-        $xCell($xy, ['PNR', 'यात्रु', 'सिट', 'विवरण', 'रकम ₹', 'भयो / भएन'], true);
-        $xy += $xRowH;
+        $xItems = [];
         foreach ($xLines as $xl) {
             $what = ((int) $xl['lug'] > 0 ? 'थप सामान ' . $neDigits((string) (int) $xl['lug']) . ' थान ₹' . number_format((float) $xl['lugFee']) : '')
                   . (((int) $xl['lug'] > 0 && (int) $xl['inf'] > 0) ? ' · ' : '')
                   . ((int) $xl['inf'] > 0 ? 'शिशु ' . $neDigits((string) (int) $xl['inf']) . ' ' . ((float) $xl['infFee'] > 0 ? '₹' . number_format((float) $xl['infFee']) : '(निःशुल्क)') : '');
-            $xCell($xy, [(string) $xl['pnr'], (string) $xl['lead'], (string) ($xl['seatsLbl'] ?? ''), $what, number_format((float) $xl['amt']), $stateNe((string) $xl['state'])],
-                false, (string) $xl['state'] === 'due' ? self::RED : [21, 128, 61]);
-            $xy += $xRowH;
+            $st = (string) $xl['state'];
+            $xItems[] = [[(string) $xl['pnr'], (string) $xl['lead'], (string) ($xl['seatsLbl'] ?? ''), $what, number_format((float) $xl['amt']), $stateNe($st)],
+                $st === 'due' ? self::RED : ($st === 'free' ? self::MUTE : [21, 128, 61])];
         }
         for ($p = 0; $p < $xPen; $p++) {
-            $xCell($xy, ['', '', '', '', '', 'भयो [   ]    भएन [   ]'], false, self::MUTE);
-            $xy += $xRowH;
+            $xItems[] = [['', '', '', '', '', 'भयो [   ]    भएन [   ]'], self::MUTE];
         }
-        $y += $xBoxH + 6;
+        if ($hasX && $y + $xMinH + 6 > $limit) { $footer(); $pdf->newPage(); $y = $header(); }
+        $xk = 0; $xn = count($xItems); $xCont = false; $xFresh = false;
+        while ($hasX) {
+            $room = (int) floor(($limit - 6 - $y - 16 - $xRowH - 4) / $xRowH);   // lines that fit under the title + head here
+            if ($room < 1 && $xk < $xn && !$xFresh) { $footer(); $pdf->newPage(); $y = $header(); $xFresh = true; continue; }
+            $take = max(0, min($room, $xn - $xk));
+            $bh2  = 16 + $xRowH * (1 + $take) + 4;
+            $pdf->roundedRect($M, $y, $inner, $bh2, 4, self::NAVY, false);
+            $txt($M + 8, $y + 11, 'विशेष भुक्तानी · थप सामान / शिशु / अन्य — भयो कि भएन' . ($xCont ? ' (क्रमशः)' : ''), 7.8, true, self::NAVY);
+            $xy = $y + 16;
+            $xCell($xy, ['PNR', 'यात्रु', 'सिट', 'विवरण', 'रकम ₹', 'भयो / भएन'], true);
+            $xy += $xRowH;
+            for ($j = 0; $j < $take; $j++) {
+                $xCell($xy, $xItems[$xk + $j][0], false, $xItems[$xk + $j][1]);
+                $xy += $xRowH;
+            }
+            $xk += $take;
+            self::$drawn['xLines'] += $take;
+            self::$drawn['maxBottom'] = max(self::$drawn['maxBottom'], $y + $bh2);
+            $y  += $bh2 + 6;
+            if ($xk >= $xn || $take === 0) { break; }
+            $footer(); $pdf->newPage(); $y = $header(); $xCont = true; $xFresh = true;
+        }
 
         /* ---- summary + authorisation ---------------------------------- */
         if ($y + $boxesH + 8 > $limit) { $footer(); $pdf->newPage(); $y = $header(); }
         $halfW = ($inner - 10) / 2;
         // Payment summary
         $pdf->roundedRect($M, $y, $halfW, $boxesH, 4, self::NAVY, false);
+        self::$drawn['maxBottom'] = max(self::$drawn['maxBottom'], $y + $boxesH);
         $txt($M + 8, $y + 11, 'भुक्तानी सारांश', 7.8, true, self::NAVY);
         $sum = [
             ['जम्मा यात्रु',            $neDigits((string) ($totals['passengers'] ?? 0))],
@@ -404,17 +440,29 @@ final class ChalaniPdf
             ['नगद संकलन',               '₹ ' . number_format((float) ($totals['cash'] ?? 0))],
             ['अनलाइन / UPI प्राप्ति',     '₹ ' . number_format((float) ($totals['online'] ?? 0))],
             ['छुट / सहुलियत',            '₹ ' . number_format((float) ($totals['discount'] ?? 0))],
-            ['विशेष भुक्तानी (थप सामान / शिशु)', '₹ ' . number_format((float) ($totals['extras'] ?? 0))],
-            ['   भयो / बाँकी',            '₹ ' . number_format((float) ($totals['extrasPaid'] ?? 0)) . ' / ' . number_format((float) ($totals['extrasDue'] ?? 0))],
-            ['खुद जम्मा संकलन',          '₹ ' . number_format((float) ($totals['net'] ?? 0))],
         ];
+        if ($hasX) {
+            $sum[] = ['विशेष भुक्तानी (थप सामान / शिशु)', '₹ ' . number_format((float) ($totals['extras'] ?? 0))];
+            $sum[] = ['   भयो / बाँकी', '₹ ' . number_format((float) ($totals['extrasPaid'] ?? 0)) . ' / ' . number_format((float) ($totals['extrasDue'] ?? 0))];
+        } else {
+            // no extras on this bus: the blank special-payment lines for the road, here
+            for ($p = 0; $p < min(2, $xPen); $p++) { $sum[] = ['विशेष भुक्तानी', 'भयो [  ]  भएन [  ]', 'pen']; }
+        }
+        $sum[] = ['खुद जम्मा संकलन', '₹ ' . number_format((float) ($totals['net'] ?? 0))];
         $sy = $y + 21.5;
-        foreach ($sum as $k => [$lab, $val]) {
+        foreach ($sum as $k => $line) {
+            [$lab, $val] = $line;
             $last = $k === count($sum) - 1;
+            $pen  = ($line[2] ?? '') === 'pen';
             $txt($M + 10, $sy, $lab, 7.2, $last, $last ? self::NAVY : self::MUTE);
-            $pdf->line($M + $halfW - 116, $sy + 1.5, $M + $halfW - 10, $sy + 1.5, self::LINE, $last ? 0.9 : 0.5);
-            $txtR($M + $halfW - 12, $sy, $val, 7.4, $last, $last ? self::NAVY : self::INK);
-            $sy += 10;
+            if ($pen) {   // a line to write on: who / what / ₹, then the two tick boxes
+                $pdf->line($M + 70, $sy + 1.5, $M + $halfW - 82, $sy + 1.5, self::MUTE, 0.4);
+                $txtR($M + $halfW - 12, $sy, $val, 7, false, self::MUTE);
+            } else {
+                $pdf->line($M + $halfW - 116, $sy + 1.5, $M + $halfW - 10, $sy + 1.5, self::LINE, $last ? 0.9 : 0.5);
+                $txtR($M + $halfW - 12, $sy, $val, 7.4, $last, $last ? self::NAVY : self::INK);
+            }
+            $sy += $sumGap;
         }
         // Authorisation
         $ax = $M + $halfW + 10;

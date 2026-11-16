@@ -221,6 +221,7 @@ const CORE_SUITES = [
     'u9-X3-login-look-test.php'       => 'login_theme classic = today byte for byte, gold adds only its class',
     'u9-X4-fb-comments-test.php'      => 'FB comments: poll only when ON, permission error once, public reply audited, AI reply rules',
     'u9-X5-settings-import-test.php'  => 'settings import preview / one-shot apply / audit, 60-min texts everywhere, Easy Settings keys',
+    'u10-chalani-pdf-pages-test.php'  => 'chalani PDF: special-payment lines keep one sheet page to 21 passengers, a long list continues over pages, nothing off the sheet',
 ];
 
 /**

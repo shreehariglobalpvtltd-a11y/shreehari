@@ -278,7 +278,8 @@ foreach ($rows as $r) {
             'seats' => [], 'lug' => $lug, 'lugFee' => max(0.0, (float) ($r['luggage_fee'] ?? 0)),
             'inf' => $inf, 'infFee' => max(0.0, (float) ($r['infant_fee'] ?? 0)),
             'amt' => round($extrasOf($r) / ($legsPerBooking[$bid] ?? 1), 2),
-            'state' => $mfState[$bid] ?? 'due',
+            // review: a ₹0 line (a free lap infant) owes nothing - never "✗ बाँकी"
+            'state' => $extrasOf($r) > 0 ? ($mfState[$bid] ?? 'due') : 'free',
         ];
     }
     $xBook[$bid]['seats'][] = (string) $r['seat_no'];
@@ -290,7 +291,8 @@ $extraOnRow = static function (array $r) use ($xBook, $xFirst): float {
     return (isset($xBook[$bid]) && ($xFirst[$bid] ?? -1) === (int) ($r['pax_id'] ?? 0)) ? (float) $xBook[$bid]['amt'] : 0.0;
 };
 /** "भयो" / "बाँकी" for an extras line — the same paid · with agent · due rule as the row colour. */
-$xStateNe = static fn(string $st): string => match ($st) { 'paid' => '✓ भयो', 'agent' => '✓ भयो (एजेन्टसँग)', default => '✗ बाँकी' };
+$xStateNe = static fn(string $st): string => match ($st) { 'paid' => '✓ भयो', 'agent' => '✓ भयो (एजेन्टसँग)', 'free' => '— निःशुल्क', default => '✗ बाँकी' };
+$xCls     = static fn(string $st): string => $st === 'due' ? 'xdue' : ($st === 'free' ? '' : 'xok');
 
 /* ---- shared field formatting (screen and CSV must not drift) --------- */
 /* The seller, decided in ONE place — Ticket::issuedBy(), the same call the
@@ -593,7 +595,7 @@ if ($format === 'csv') {
             $payLabel($r), $sourceLabel($r), $agentLabel($r), $ticketLabel($r),
             $bookedTime($r) . ($isLate($r) ? ' (after departure)' : ''),
             $xHere ? (string) $xB['lug'] : '', $xHere ? (string) $xB['inf'] : '',
-            $xHere ? (string) $xRow : '', $xHere ? ($xB['state'] === 'due' ? 'DUE' : ($xB['state'] === 'agent' ? 'PAID (with agent)' : 'PAID')) : '',
+            $xHere ? (string) $xRow : '', $xHere ? match ($xB['state']) { 'due' => 'DUE', 'agent' => 'PAID (with agent)', 'free' => 'FREE', default => 'PAID' } : '',
         ]);
     }
     fclose($out);
@@ -736,13 +738,17 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     /* 16 Nov 2026: + 'extra' — the booking's desk extras (luggage / infant),
        on its first row only. It is collected WITH the fare, so a paid row's
        नगद / अनलाइन carries fare + extra; टिकट stays the seat's fare alone. */
-    $money = static function (array $r) use ($farePer, $extraOnRow): array {
+    $money = static function (array $r) use ($farePer, $extraOnRow, $mfState): array {
         $fare   = (float) $farePer($r);
         $extra  = (float) $extraOnRow($r);
         $paid   = (($r['pay_status'] ?? '') === 'verified');
         $method = strtolower((string) ($r['pay_method'] ?? ''));
-        $cash   = $paid && in_array($method, ['cash', 'cod'], true) ? $fare + $extra : 0.0;
-        $online = $paid && in_array($method, ['upi', 'esewa', 'bank', 'wallet'], true) ? $fare + $extra : 0.0;
+        /* review: the extras sit in नगद / अनलाइन only where their own line says भयो -
+           an office "Mark due" keeps the payment row verified, and the same rupees
+           must not read as collected AND still to collect on one sheet */
+        $xIn    = (($mfState[(int) ($r['booking_id'] ?? 0)] ?? 'due') !== 'due') ? $extra : 0.0;
+        $cash   = $paid && in_array($method, ['cash', 'cod'], true) ? $fare + $xIn : 0.0;
+        $online = $paid && in_array($method, ['upi', 'esewa', 'bank', 'wallet'], true) ? $fare + $xIn : 0.0;
         return ['ticket' => $fare, 'extra' => $extra, 'cash' => $cash, 'online' => $online];
     };
     $tTicket = 0.0; $tCash = 0.0; $tOnline = 0.0; $tDisc = 0.0; $tExtra = 0.0; $seenB = [];
@@ -985,6 +991,8 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   .xp tr.pen td { height:21px; color:#5C6B85; }
   .xok { color:#15803D; } .xdue { color:#B91C1C; }
   b.inf { color:#7C2D12; font-size:9.5px; }
+  .sum .penl { display:flex; gap:6px; align-items:flex-end; } .sum .penl i { flex:1; border-bottom:1px dotted #5C6B85; min-height:12px; }
+  .sum b.penb { border-bottom:0; font-weight:400; color:#5C6B85; white-space:nowrap; }
   .chartpg { break-before:page; page-break-before:always; padding-top:6px; }
   .chartpg h2 { margin:0 0 4px; font-size:16px; color:#12264E; }
 
@@ -1081,7 +1089,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
       <td class="r"><?= ($m && $m['cash'] > 0) ? $e(number_format($m['cash'])) : '' ?></td>
       <td class="r"><?= ($m && $m['online'] > 0) ? $e(number_format($m['online'])) : '' ?></td>
       <td class="c"></td>
-      <td><?= $r ? $e($bookedByShort($r) === 'ONLINE' ? 'अनलाइन' : ($bookedByShort($r) === 'OFFICE' ? 'कार्यालय' : ($bookedByShort($r) === 'COUNTER' ? 'काउन्टर' : $bookedByShort($r)))) : '' ?><?php if ($m && $m['extra'] > 0): $xs = $chalaniFmt['rowState']($r); ?> · <b class="<?= $xs === 'due' ? 'xdue' : 'xok' ?>">थप ₹<?= $e(number_format($m['extra'])) ?> <?= $e($xStateNe($xs)) ?></b><?php endif; ?></td>
+      <td><?= $r ? $e($bookedByShort($r) === 'ONLINE' ? 'अनलाइन' : ($bookedByShort($r) === 'OFFICE' ? 'कार्यालय' : ($bookedByShort($r) === 'COUNTER' ? 'काउन्टर' : $bookedByShort($r)))) : '' ?><?php if ($m && $m['extra'] > 0): $xs = $chalaniFmt['rowState']($r); ?> · <b class="<?= $xCls($xs) ?>">थप ₹<?= $e(number_format($m['extra'])) ?> <?= $e($xStateNe($xs)) ?></b><?php endif; ?></td>
     </tr>
   <?php endfor; ?>
   </tbody>
@@ -1089,7 +1097,9 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
 
 <?php /* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai thapaune line rakheu"):
          every booking with desk extras on its own line — what, how much, came in or not —
-         and blank lines for what the crew collects on the road. */ ?>
+         and blank lines for what the crew collects on the road. With no extras on the bus
+         the blank lines sit inside the payment summary instead (same as the PDF). */ ?>
+<?php if ($xLines !== []): ?>
 <div class="xp">
   <h3>विशेष भुक्तानी · थप सामान / शिशु / अन्य — भयो कि भएन</h3>
   <table>
@@ -1101,7 +1111,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
         <td><?= $e($xl['pnr']) ?></td><td><?= $e($xl['lead']) ?></td><td><?= $e($xl['seatsLbl']) ?></td>
         <td><?= $xl['lug'] > 0 ? 'थप सामान ' . $e($neDigits((string) $xl['lug'])) . ' थान ₹' . $e(number_format($xl['lugFee'])) : '' ?><?= ($xl['lug'] > 0 && $xl['inf'] > 0) ? ' · ' : '' ?><?= $xl['inf'] > 0 ? 'शिशु ' . $e($neDigits((string) $xl['inf'])) . ' ' . ($xl['infFee'] > 0 ? '₹' . $e(number_format($xl['infFee'])) : '(निःशुल्क)') : '' ?></td>
         <td class="r"><b><?= $e(number_format($xl['amt'])) ?></b></td>
-        <td><b class="<?= $xl['state'] === 'due' ? 'xdue' : 'xok' ?>"><?= $e($xStateNe($xl['state'])) ?></b></td>
+        <td><b class="<?= $xCls($xl['state']) ?>"><?= $e($xStateNe($xl['state'])) ?></b></td>
       </tr>
     <?php endforeach; ?>
     <?php for ($p = 0; $p < (int) $chalaniFmt['penLines']; $p++): ?>
@@ -1110,6 +1120,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     </tbody>
   </table>
 </div>
+<?php endif; ?>
 
 <div class="bottom">
   <div class="box">
@@ -1120,8 +1131,12 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
       <span>नगद संकलन</span><b>₹ <?= $e(number_format($totals['cash'])) ?></b>
       <span>अनलाइन / UPI प्राप्ति</span><b>₹ <?= $e(number_format($totals['online'])) ?></b>
       <span>छुट / सहुलियत</span><b>₹ <?= $e(number_format($totals['discount'])) ?></b>
+      <?php if ($xLines !== []): ?>
       <span>विशेष भुक्तानी (थप सामान / शिशु)</span><b>₹ <?= $e(number_format($totals['extras'])) ?></b>
       <span>&nbsp;&nbsp;↳ भयो / बाँकी</span><b>₹ <?= $e(number_format($totals['extrasPaid'])) ?> / <?= $e(number_format($totals['extrasDue'])) ?></b>
+      <?php else: for ($p = 0; $p < min(2, (int) $chalaniFmt['penLines']); $p++): ?>
+      <span class="penl">विशेष भुक्तानी <i></i></span><b class="penb">भयो ☐ &nbsp; भएन ☐</b>
+      <?php endfor; endif; ?>
       <span class="net">खुद जम्मा संकलन</span><b class="net">₹ <?= $e(number_format($totals['net'])) ?></b>
     </div>
   </div>
@@ -1496,7 +1511,7 @@ foreach ($rows as $r) {
           — <span class="mono"><?= Security::e((string) $r['contact_phone']) ?></span>
           — seats <b><?= Security::e(implode(', ', $g['seats'])) ?></b>
           <?php if (isset($xBook[$gid])): $xg = $xBook[$gid]; ?>
-            — <span class="mf-tag <?= $xg['state'] === 'due' ? 'pay-due' : 'pay-paid' ?>" title="विशेष भुक्तानी · desk extras">
+            — <span class="mf-tag <?= $xg['state'] === 'due' ? 'pay-due' : ($xg['state'] === 'free' ? '' : 'pay-paid') ?>" title="विशेष भुक्तानी · desk extras">
               <?= $xg['lug'] > 0 ? '🧳 ' . (int) $xg['lug'] . ' ' : '' ?><?= $xg['inf'] > 0 ? '👶 ' . (int) $xg['inf'] . ' ' : '' ?>थप <?= Security::e(inr($xg['amt'])) ?> · <?= Security::e($xStateNe($xg['state'])) ?></span>
           <?php endif; ?>
           · <a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>"><?= Security::e((string) $r['pnr']) ?></a>

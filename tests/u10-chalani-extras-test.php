@@ -34,6 +34,7 @@ const TD      = '2099-09-19';
 const PH_A    = '9100000991';
 const PH_B    = '9100000992';
 const PH_C    = '9100000993';
+const PH_D    = '9100000994';
 const BOSS    = 'u10_chalani_boss';
 const BOSS_PW = 'U10ChalaniBoss77';
 
@@ -62,7 +63,7 @@ function csrfFrom(string $h): string {
     return preg_match('/name="' . preg_quote(CSRF_TOKEN_NAME, '/') . '"\s+value="([^"]+)"/', $h, $m) ? $m[1] : '';
 }
 function cleanup(): void {
-    foreach ([PH_A, PH_B, PH_C] as $p) {
+    foreach ([PH_A, PH_B, PH_C, PH_D] as $p) {
         foreach (Database::fetchAll('SELECT id FROM bookings WHERE contact_phone = :p', ['p' => $p]) as $r) {
             try { Database::run('DELETE FROM booking_collections WHERE booking_id = :b', ['b' => (int) $r['id']]); } catch (Throwable $e) {}
             Database::delete('bookings', 'id = :i', ['i' => (int) $r['id']]);
@@ -127,6 +128,16 @@ try {
         && (int) $rowA['infant_count'] === 1 && (float) $rowA['infant_fee'] === 300.0, 'total ' . $rowA['total_amount']);
     check('seeded: B has 1 luggage (₹100)', (int) $rowB['luggage_pieces'] === 1 && (float) $rowB['luggage_fee'] === 100.0);
     OpsHub::markDue((int) $rowB['id'], ['id' => $bossId, 'username' => BOSS, 'full_name' => 'U10 Chalani Boss']);
+    // D: a FREE lap infant (infant_seat_fare 0), the booking marked due - nothing is owed for the infant
+    Settings::set('infant_seat_fare', '0', 'int', 'booking', false); Settings::flush();
+    $d = BookingService::create(['routeId' => $routeId, 'travelDate' => TD, 'seats' => ['L14'],
+        'passengers' => [['name' => 'Free Infant Pax', 'age' => 26, 'gender' => 'Female']],
+        'contact' => ['phone' => PH_D], 'bookingMode' => 'sharing', 'paymentMethod' => 'cash', 'isCod' => false, 'boarding' => ''],
+        $desk(['infantCount' => 1]));
+    Settings::set('infant_seat_fare', '300', 'int', 'booking', false); Settings::flush();
+    $rowD = Database::fetch('SELECT * FROM bookings WHERE pnr = :p', ['p' => $d['pnr']]);
+    check('seeded: D has 1 free lap infant (₹0)', (int) $rowD['infant_count'] === 1 && (float) $rowD['infant_fee'] === 0.0);
+    OpsHub::markDue((int) $rowD['id'], ['id' => $bossId, 'username' => BOSS, 'full_name' => 'U10 Chalani Boss']);
     $bedsC = Seats::physicalSeats('L12', 'private', 'sleeper');
     check('seeded: C is a private cabin on ' . count($bedsC) . ' berth(s)', count($bedsC) >= 1, implode('+', $bedsC));
     $fareA = (float) $rowA['total_amount'] - 500.0;
@@ -142,10 +153,10 @@ try {
     $page = http($q);
     check('manifest screen renders', $page['code'] === 200, 'HTTP ' . $page['code'] . (preg_match('/^Location:\s*(\S+)/mi', $page['headers'], $lm) ? ' -> ' . $lm[1] : '') . ' (login -> ' . (preg_match('/^Location:\s*(\S+)/mi', $r['headers'], $lm2) ? $lm2[1] : '?') . ')');
     $total = (int) Database::scalar('SELECT total_seats FROM schedules WHERE id = :i', ['i' => (int) $sched['id']]);
-    $beds  = 2 + count($bedsC);
+    $beds  = 3 + count($bedsC);
     check('seats free counts BERTHS (a cabin is more than one)', str_contains($page['body'], '<b>' . ($total - $beds) . '</b> seats free'),
         'expected ' . ($total - $beds) . ' of ' . $total);
-    check('screen shows the infant', str_contains($page['body'], '+1</b> शिशु'));
+    check('screen shows the infants (A 1 + D 1)', str_contains($page['body'], '+2</b> शिशु'));
     check('screen: the extras badge (₹600 — paid ₹500, due ₹100)', str_contains($page['body'], 'विशेष भुक्तानी · Extras ₹600') && str_contains($page['body'], 'भयो ₹500') && str_contains($page['body'], 'बाँकी ₹100'));
     check('screen: A\'s group line carries 🧳 2 👶 1 · ✓ भयो', (bool) preg_match('/🧳 2 👶 1 थप ₹500 · ✓ भयो/u', $page['body']));
     check('screen: B\'s group line says ✗ बाँकी', (bool) preg_match('/🧳 1 थप ₹100 · ✗ बाँकी/u', $page['body']));
@@ -163,7 +174,13 @@ try {
     check('chalani: summary paid / due ₹500 / 100', str_contains($ch['body'], '₹ 500 / 100'));
     check('chalani: name row carries + शिशु १', str_contains($ch['body'], '+ शिशु १'));
     check('chalani: the extras note in the remarks column', str_contains($ch['body'], 'थप ₹500 ✓ भयो'));
-    check('chalani: place strip counts the infant', str_contains($ch['body'], '+ शिशु <b>१</b>'));
+    check('chalani: place strip counts the infants', str_contains($ch['body'], '+ शिशु <b>२</b>'));
+    check('chalani: the free infant line says — निःशुल्क, not ✗ बाँकी (review)', (bool) preg_match('/' . preg_quote((string) $d['pnr'], '/') . '.*?— निःशुल्क/su', $ch['body'])
+        && !preg_match('/' . preg_quote((string) $d['pnr'], '/') . '(?:(?!<\/tr>).)*✗ बाँकी/su', $ch['body']));
+    check('chalani: B (marked due) keeps its extras OUT of the cash column - only the fare (review)', str_contains($ch['body'], '<td class="r">' . number_format($fareA) . '</td>')
+        && substr_count($ch['body'], '<td class="r">' . number_format($fareA + 100) . '</td>') === 0, number_format($fareA));
+    $netWant = ($fareA + 500) + $fareA + ((float) $rowD['total_amount']);
+    check('chalani: net = A fare+extras + B fare + D fare (no due extras counted as collected)', str_contains($ch['body'], 'खुद जम्मा संकलन</span><b class="net">₹ ' . number_format($netWant) . '</b>'), number_format($netWant));
     check('chalani: A\'s ticket column = seat fare only', str_contains($ch['body'], '<td class="r">' . number_format($fareA) . '</td>'), number_format($fareA));
     check('chalani: A\'s cash column = fare + extras', str_contains($ch['body'], '<td class="r">' . number_format($fareA + 500) . '</td>'), number_format($fareA + 500));
 
@@ -173,6 +190,7 @@ try {
     check('CSV: extras columns', str_contains($csv['body'], '"Extra luggage",Infants,"Extra Rs","Extra paid"'));
     check('CSV: A = 2,1,500,PAID (cash with the desk / agent counts as paid)', (bool) preg_match('/,2,1,500,"?PAID/', $csv['body']));
     check('CSV: B = 1,0,100,DUE', str_contains($csv['body'], ',1,0,100,DUE'));
+    check('CSV: D = 0,1,0,FREE', str_contains($csv['body'], ',0,1,0,FREE'));
     check('CSV: infants line', str_contains($csv['body'], 'Infants (lap, no berth)'));
 
     /* ---- PDF + PNG ---- */
@@ -214,6 +232,19 @@ try {
     $ms = (string) file_get_contents(INCLUDE_PATH . '/wamarketing.php');
     check('campaign worker asks the daily cap', str_contains($cs, "WaRoute::capRefusal('campaign')") && str_contains($cs, 'WaRoute::noteSent()'));
     check('marketing worker asks the daily cap', str_contains($ms, "WaRoute::capRefusal('marketing')") && str_contains($ms, 'WaRoute::noteSent()'));
+    check('the WhatsApp cap never stops SMS campaigns (review)', str_contains($cs, '$waCapped = true;') && str_contains($cs, "if (\$waCapped && \$c['channel'] === 'wa_template')") && preg_match('/\$capWhy;\s*\$left = 0;/', $cs) !== 1);
+    $qt = (string) file_get_contents(dirname(__DIR__) . '/admin/quick-ticket.php');
+    check('Quick Ticket preview works the desk % on the fare before discounts, like the sale (review)', str_contains($qt, 'var gross = Math.max(0, Number(f.base || 0)) || base;'));
+    $pngSrc = (string) file_get_contents(INCLUDE_PATH . '/chalanipng.php');
+    check('PNG remark keeps the extras money on a late row (review)', str_contains($pngSrc, "if (\$late)      { \$parts[] = \$xAmt > 0 ? 'late' : 'Booked after departure'; }"));
+
+    /* ---- a bus with NO extras: no separate box, the blank lines sit in the summary ---- */
+    foreach ([$a['pnr'], $b['pnr'], $d['pnr']] as $cx) { BookingService::cancel((string) $cx, 'u10 test', false); }
+    $ch2 = http($q . '&format=chalani');
+    check('no extras on the bus: no separate special-payment box', $ch2['code'] === 200 && !str_contains($ch2['body'], '<div class="xp">'));
+    check('  …the 2 blank special-payment lines are in the payment summary', substr_count($ch2['body'], '<b class="penb">भयो ☐ &nbsp; भएन ☐</b>') === 2);
+    $pdf2 = http($q . '&format=chalanipdf');
+    check('  …and the PDF still builds', $pdf2['code'] === 200 && str_starts_with($pdf2['body'], '%PDF'));
 } catch (Throwable $e) {
     $FAIL++;
     echo "  ERROR  " . $e->getMessage() . "\n  " . $e->getFile() . ':' . $e->getLine() . "\n";

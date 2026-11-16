@@ -237,6 +237,7 @@ final class Campaigns
             }
             $cap  = max(1, Settings::getInt('mk_daily_cap', 300));
             $left = $cap - self::sentToday();
+            $waCapped = false;   // wa_global_daily_cap reached: WhatsApp waits, SMS campaigns keep going (review)
             foreach (Database::fetchAll("SELECT * FROM mk_campaigns WHERE status = 'running' AND channel IN ('wa_template','sms') ORDER BY id") as $c) {
                 if ($left <= 0) {
                     $out['cap'] = $out['cap'] ?? 'daily cap reached';
@@ -249,6 +250,9 @@ final class Campaigns
                     Database::update('mk_campaigns', ['status' => 'done', 'finished_at' => date('Y-m-d H:i:s')], 'id = :id', ['id' => (int) $c['id']]);
                     self::recount((int) $c['id']);
                     continue;
+                }
+                if ($waCapped && $c['channel'] === 'wa_template') {
+                    continue;   // the WhatsApp ceiling was reached this run; its people stay queued for tomorrow
                 }
                 $opt = CustomerDirectory::optedOut();
                 $in  = CustomerDirectory::optedIn();     // null = no opt-in required (Settings -> Marketing)
@@ -267,7 +271,7 @@ final class Campaigns
                         try { require_once INCLUDE_PATH . '/waroute.php'; $capWhy = WaRoute::capRefusal('campaign'); } catch (Throwable $ignored) { $capWhy = ''; }
                         if ($capWhy !== '') {
                             $out['cap'] = $capWhy;
-                            $left = 0;
+                            $waCapped = true;   // never zero $left: mk_daily_cap alone governs SMS
                             break;
                         }
                     }
