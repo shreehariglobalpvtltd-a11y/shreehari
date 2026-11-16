@@ -597,6 +597,10 @@ try {
         case 'login_otp_verify':
             Security::requirePost();
             $r = Auth::agentLoginVerify((string) Response::field('code', ''), (string) Response::field('mobile', ''), (string) Response::field('otp', ''));
+            if ($r['ok'] && !empty($r['devices'])) {
+                // 16 Nov 2026 (P1-5b): held at the device limit - no session was opened
+                Response::error('यन्त्र सीमा पुग्यो · Signed in on too many devices. Open /admin/login.php to sign another device out, or ask the office.', 409);
+            }
             if ($r['ok'] && !empty($r['choose'])) {
                 // one WhatsApp number, several IDs: name + code + role of each, the person picks (login_pick)
                 Response::success(['choose' => array_map(static function (array $c): array {
@@ -610,6 +614,9 @@ try {
             Security::requirePost();
             Security::requireRateLimit('ap_login_pick', Security::clientIp(), 20, 600);
             $r = Auth::agentLoginPick((int) Response::field('id', 0));
+            if ($r['ok'] && !empty($r['devices'])) {
+                Response::error('यन्त्र सीमा पुग्यो · Signed in on too many devices. Open /admin/login.php to sign another device out, or ask the office.', 409);
+            }
             $r['ok'] ? Response::success(['csrf' => Security::csrfToken()]) : Response::error((string) $r['error'], 422);
 
         case 'pk_login_options':
@@ -622,7 +629,9 @@ try {
             require_once INCLUDE_PATH . '/agentpro-passkey.php';
             Security::requireRateLimit('appk_login', Security::clientIp(), 20, 600);
             $admin = ApPasskey::loginVerify((array) Response::field('credential', []));
-            ApPasskey::startSession($admin);
+            if (!ApPasskey::startSession($admin)) {
+                Response::error('यन्त्र सीमा पुग्यो · Signed in on too many devices. Open /admin/login.php to sign another device out, or ask the office.', 409);
+            }
             Response::success(['csrf' => Security::csrfToken()]);
 
         case 'csrf':

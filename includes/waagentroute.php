@@ -968,16 +968,27 @@ final class WaAgentRoute
                     $lines[] = '🚌 ' . $tr['route'] . ($tr['dep'] !== '' ? ' · ' . $tr['dep'] : '') . ' · बुक: ' . $tr['sold'] . ' सिट';
                 }
             }
+            // 16 Nov 2026 (P8-8a): one line of this month's sales vs target, % and rank.
+            $perf = self::performanceLine((int) $a['id']);
             $text = "🌅 शुभ प्रभात " . self::first($a['name']) . "!\nआजका बस:\n" . implode("\n", array_slice($lines, 0, 6))
+                . ($perf !== '' ? "\n\n" . $perf : '')
                 . "\n\nआज टिकट पुर्‍याउन तयार हुनुहुन्छ? तल थिच्नुहोस्।";
-            if (self::windowOpen($a['intl'])) {
+            /* 16 Nov 2026 (P6-11e): a good-morning is not essential - past the
+               office's daily WhatsApp cap it waits; the free push below still goes. */
+            $capped = false;
+            try {
+                require_once INCLUDE_PATH . '/waroute.php';
+                $capped = WaRoute::capRefusal('good_morning') !== '';
+            } catch (Throwable $ignored) {
+            }
+            if (!$capped && self::windowOpen($a['intl'])) {
                 $r = self::send($a['intl'], $text, null, $ui, 'good_morning', null);
                 if ($r['success']) {
                     $out['sent']++;
                     continue;
                 }
             }
-            if (Settings::getBool('wa_good_morning_tpl_on', false)) {
+            if (!$capped && Settings::getBool('wa_good_morning_tpl_on', false)) {
                 try {
                     require_once INCLUDE_PATH . '/waroute.php';
                     $first = $trips[array_key_first($routes)][0] ?? ['route' => '-', 'dep' => '-', 'sold' => 0];
@@ -997,6 +1008,45 @@ final class WaAgentRoute
             $out['skipped']++;
         }
         return $out;
+    }
+
+    /**
+     * This month in one line for the good-morning text (16 Nov 2026, P8-8a):
+     * confirmed sales against the agent's target, the per cent and the rank
+     * among active agents - AgentTargets::progress() / rankFor(), the same
+     * figures Agent 360 and the agent panel draw. '' when there is nothing to
+     * say yet (no sale and no target) or the helper is missing. Never throws.
+     */
+    public static function performanceLine(int $agentId): string
+    {
+        if ($agentId <= 0) {
+            return '';
+        }
+        try {
+            if (!class_exists('AgentTargets')) {
+                if (!is_file(INCLUDE_PATH . '/agenttargets.php')) {
+                    return '';
+                }
+                require_once INCLUDE_PATH . '/agenttargets.php';
+            }
+            $p      = AgentTargets::progress($agentId);
+            $money  = (float) ($p['sales']['money'] ?? 0);
+            $target = (float) ($p['target']['amount'] ?? 0);
+            if ($money <= 0 && $target <= 0) {
+                return '';
+            }
+            $line = '📊 यो महिना · This month: ' . inr($money);
+            if ($target > 0) {
+                $line .= ' / ' . inr($target) . ' लक्ष्य · target (' . (int) ($p['pct'] ?? 0) . '%)';
+            }
+            $rank = AgentTargets::rankFor($agentId, (string) ($p['month'] ?? date('Y-m')));
+            if ((int) $rank['rank'] > 0 && (int) $rank['of'] > 1) {
+                $line .= ' · स्थान · rank #' . (int) $rank['rank'] . '/' . (int) $rank['of'];
+            }
+            return $line;
+        } catch (Throwable $e) {
+            return '';
+        }
     }
 
     /* -----------------------------------------------------------------

@@ -181,6 +181,8 @@ function admin_nav(): array
         ['href' => 'ai-center.php',    'icon' => 'star',      'label' => 'AI Control Center',      'perm' => 'dashboard.view',   'section' => $S5],   // 13 Nov 2026: spend, speed, approvals, tool permissions
         ['href' => 'ai-activity.php',  'icon' => 'shield',    'label' => 'AI Activity',            'perm' => 'dashboard.view',   'section' => $S5],
         ['href' => 'facebook.php',     'icon' => 'msg',       'label' => 'Facebook Messenger AI',  'perm' => 'dashboard.view',   'section' => $S5],   // 1 Nov 2026
+        // 16 Nov 2026 (v2.0 P6-8a): Facebook Page posts — draft, approve, the cron posts (social_publish_on, OFF); the same gate as facebook.php
+        ...(is_file(__DIR__ . '/social-posts.php') ? [['href' => 'social-posts.php', 'icon' => 'msg', 'label' => '📣 FB पोस्ट · FB posts', 'perm' => 'dashboard.view', 'section' => $S5]] : []),
         ['href' => 'ai-local.php',     'icon' => 'sparkle',   'label' => 'AI (VPS) & WhatsApp', 'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'WhatsApp & SMS Logs',    'perm' => 'dashboard.view',   'section' => $S5],
         ['href' => 'activity-log.php', 'icon' => 'shield',    'label' => 'Activity & Security Audit','perm'=> 'dashboard.view',  'section' => $S5],

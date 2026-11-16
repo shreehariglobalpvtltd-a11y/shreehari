@@ -7,6 +7,11 @@
  * touches anything: this is V6's "12 Hours Before Departure → Send
  * Reminder Automatically" requirement.
  *
+ * 16 Nov 2026 (P8-4b): also the 24-hours-before reminder, once the office
+ * switches reminder_24h_enabled on (default off; the event needs
+ * database/upgrade-2026-11-16b-W5-notify.sql - until then the output says
+ * so in "note" and nothing is claimed).
+ *
  * Recommended: every 15 minutes (every 5 is also fine — the exactly-once
  * claim in trip_events means a passenger can never be messaged twice).
  *

@@ -1780,7 +1780,22 @@ function shgToastLooksBad(msg) {
     }
     return el;
   }
-  function refresh() { pill().style.display = navigator.onLine ? 'none' : 'block'; }
+  /* 16 Nov 2026 (P2-4g): "· N queued" = requests saved on this phone for the office (the
+     offline queue 'shg:cq': call-back requests + Sahayak complaints, sent by 16-lazy.js
+     when the network is back). Only with offline_callback_on, like the call-back itself. */
+  function queued() {
+    var s = (window.SHG_BOOT && window.SHG_BOOT.settings) || {}, on = s.offline_callback_on;
+    if (on !== true && on !== 1 && on !== '1') return 0;
+    try { var q = JSON.parse(localStorage.getItem('shg:cq') || '[]'); return Array.isArray(q) ? q.length : 0; } catch (e) { return 0; }
+  }
+  function refresh() {
+    var el = pill(), n = queued();
+    el.style.display = navigator.onLine ? 'none' : 'block';
+    el.textContent = '📵 Offline — cached data · अफलाइन'
+      + (n > 0 ? ' · ' + (typeof tf === 'function' ? tf('netQueued', { n: n }) : n + ' queued') : '');
+  }
+  window.addEventListener('shg:cq', refresh);   // saved / sent (27-smartbook.js, 16-lazy.js)
+  window.addEventListener('storage', function (e) { if (!e.key || e.key === 'shg:cq') refresh(); });
   window.addEventListener('offline', function () {
     refresh();
     try { toast('📵 Offline — booking रोकिन्छ, ticket/map चल्छ'); } catch (e) {}

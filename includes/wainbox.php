@@ -37,7 +37,10 @@
  *    channelTabs() WhatsApp | Messenger | Sent strip for the comms pages
  *    sent()        what went out on WhatsApp (message_logs), newest first
  *    verdict()     the office's 👍 / 👎 on one bot reply -> ai_feedback_log
- *  Nothing here sends a message except reply(), as before.
+ *  Nothing here sends a message except reply(), as before — and, only
+ *  while wa_handoff_msg_on is ON (default OFF), handoffNotice(): the one
+ *  fixed "a person from the office will help you now" line when the office
+ *  pauses the bot with "tell the customer" ticked (P6-3b), in-window only.
  * =====================================================================
  */
 
@@ -545,6 +548,62 @@ final class WaInbox
         $ok = is_array($r) && !empty($r['success'] ?? ($r['ok'] ?? false));
         Logger::audit('wa.inbox_reply', 'whatsapp', $d, null, ['chars' => mb_strlen($text), 'ok' => $ok], 'Inbox reply by admin #' . $adminId);
         return $ok ? ['ok' => true, 'why' => ''] : ['ok' => false, 'why' => 'WhatsApp did not accept it — see WhatsApp Manager for the reason.'];
+    }
+
+    /* ---------------- hand-off line (P6-3b) ---------------- */
+
+    /** The one fixed line a customer gets when a person takes the chat over. Nepali first. */
+    public const HANDOFF_TEXT = "Namaste, S Hari office bata ek jana le aba tapai lai sahayog garnuhunchha.\nA person from our office will help you now.";
+
+    /** Switch wa_handoff_msg_on (default OFF): may "Pause bot" offer to tell the customer? */
+    public static function handoffOn(): bool
+    {
+        try {
+            return Settings::getBool('wa_handoff_msg_on', false);
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * P6-3b (16 Nov 2026): the office paused the bot with "tell the customer"
+     * ticked — ONE fixed line (HANDOFF_TEXT), free, ONLY inside the Meta 24 h
+     * window, on the same path as reply(); audited like inbox_reply. Never a
+     * template, never typed by anyone, nothing while the switch is off. A second
+     * tick within 10 minutes is not sent again.
+     *
+     * @return array{sent: bool, why: string}
+     */
+    public static function handoffNotice(string $phone, int $adminId): array
+    {
+        if (!self::handoffOn()) {
+            return ['sent' => false, 'why' => 'The hand-off message is switched off (wa_handoff_msg_on).'];
+        }
+        $d = self::intl($phone);
+        if ($d === '') {
+            return ['sent' => false, 'why' => 'That is not a phone number.'];
+        }
+        require_once INCLUDE_PATH . '/waroute.php';
+        if (!WaRoute::metaWindowOpen($d)) {
+            return ['sent' => false, 'why' => 'Their 24-hour WhatsApp window is closed, so the customer was not told.'];
+        }
+        try {
+            if (!Security::rateLimit('wa_inbox_handoff', $d, 1, 600)) {
+                return ['sent' => false, 'why' => 'They were told a few minutes ago.'];
+            }
+        } catch (Throwable $ignored) {
+            // no rate-limit table: still one line per click
+        }
+        $r = WaRoute::freeFirst($d, self::HANDOFF_TEXT, null, 'inbox_handoff', ['admin_id' => $adminId]);
+        $ok = is_array($r) && !empty($r['success'] ?? ($r['ok'] ?? false));
+        if (!$ok) {
+            try {   // nothing went, so the next tick may try again (never "they were told" after a failure)
+                Database::delete('rate_limits', 'bucket = :b AND identifier = :i', ['b' => 'wa_inbox_handoff', 'i' => $d]);
+            } catch (Throwable $ignored) {
+            }
+        }
+        Logger::audit('wa.inbox_handoff', 'whatsapp', $d, null, ['chars' => mb_strlen(self::HANDOFF_TEXT), 'ok' => $ok], 'Hand-off line by admin #' . $adminId);
+        return $ok ? ['sent' => true, 'why' => ''] : ['sent' => false, 'why' => 'WhatsApp did not accept the hand-off line — see WhatsApp Manager for the reason.'];
     }
 
     /* ---------------- contacts ---------------- */

@@ -23,6 +23,9 @@
  *    and expires after 10 minutes.
  *  - 30 calls / minute per admin. Audited: settings.ai_proposed,
  *    settings.ai_command (+ each action's own row), settings.ai_declined.
+ *  - 16 Nov 2026 (W3, P3-4b): after a confirm, AiOps::confirm WhatsApps the
+ *    office one line "🤖 <who> changed: …" — only while ai_change_wa_on is
+ *    ON (default OFF), audited settings.ai_change_wa.
  * =====================================================================
  */
 declare(strict_types=1);

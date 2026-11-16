@@ -20,6 +20,12 @@
  *                    Meta WhatsApp/Facebook …) and files it. Keys are
  *                    write-only: this page shows only ✅ set / ❌ missing.
  *
+ * 16 Nov 2026 (Master v2, W3): every v2.0 switch (all OFF until the owner
+ * flips it) is here too, plus a 🔢 card for the number knobs (device limit,
+ * daily WhatsApp cap, group discount, auto-arrive, agent settlement days);
+ * "Yes" on an AI change may WhatsApp the office one line (ai_change_wa_on,
+ * default OFF — AiOps::confirm). Same words work by sentence.
+ *
  * Nothing here can touch a setting outside $ES_KEYS; every save is audited
  * (Settings::set + Logger::audit, secrets masked). Super-admin / settings
  * managers only (Auth::canManageSettings, the same gate as settings.php).
@@ -115,6 +121,19 @@ if (($canEdit || ($canCmd && in_array((string) ($_POST['act'] ?? ''), ['cmd', 'y
             $v = (string) ($_POST['value'] ?? '');
             if (isset($ES_KEYS[$k][3][$v])) { $save($k, $v); $flash = ['ok', '✅ ' . $ES_KEYS[$k][0] . ' → ' . $show($k, $v)]; }
         }
+    } elseif ($act === 'setnum') {
+        // 16 Nov 2026 (Master v2, W3): the number knobs (device limit, daily WhatsApp cap, group discount …)
+        $k = (string) ($_POST['key'] ?? '');
+        $v = isset($ES_KEYS[$k]) ? AiOps::easyNumber($k, (string) ($_POST['value'] ?? '')) : null;
+        if ($v === null) {
+            $spec  = isset($ES_KEYS[$k][3]['min']) ? $ES_KEYS[$k][3] : ['min' => '?', 'max' => '?'];
+            $flash = ['bad', '🔢 यो संख्या मिलेन · Not a valid value — use ' . $spec['min'] . ' to ' . $spec['max'] . '.'];
+        } elseif ($v === $curVal($k)) {
+            $flash = ['ok', '✖ केही बदलिएन · Nothing changed.'];
+        } else {
+            $save($k, $v);
+            $flash = ['ok', '✅ ' . $ES_KEYS[$k][0] . ' → ' . $show($k, $v)];
+        }
     } elseif ($act === 'key') {
         $raw = trim((string) ($_POST['secret'] ?? ''));
         $raw = trim($raw, " \t\n\r\"'");
@@ -161,6 +180,13 @@ admin_header('🤖 S Hari AI · सेटिङ र काम (बोलेर)'
 .es-find{display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:420px;overflow:auto}
 .es-hit{display:block;text-align:left;border:1px solid var(--line,#dcdcdc);border-radius:10px;padding:8px 10px;background:var(--card,#fff);color:inherit;text-decoration:none;font:inherit;font-size:14px;cursor:pointer}
 .es-hit small{display:block;color:var(--mut,#5c6b85);font-size:11.5px}.es-hit.pg{border-left:4px solid #2E5FA8}.es-hit.st{border-left:4px solid #F0B44C}
+/* 16 Nov 2026 (W3): the number knobs */
+.es .sw form.num{display:flex;flex-direction:column;gap:6px;border:1.5px solid var(--line,#c9d3e3);border-radius:12px;padding:8px 12px;background:var(--bg,#f6f8fc)}
+.es .num label{display:flex;flex-direction:column;gap:2px;font-size:14px;font-weight:700}
+.es .num label small{font-weight:600;font-size:12px;color:var(--mut,#5c6b85)}
+.es .num .nr{display:flex;gap:6px}
+.es .num input{flex:1 1 auto;min-width:0;min-height:44px;font-size:16px;padding:6px 10px;border-radius:10px;border:1.5px solid var(--line,#9aa6ba);background:var(--card,#fff);color:inherit}
+.es .sw .num button{width:auto;flex:0 0 auto;min-height:44px;justify-content:center;background:#16A34A;border-color:#16A34A;color:#fff}
 </style>
 <div class="es">
 <?php if ($flash !== null): ?><div class="flash <?= $flash[0] === 'ok' ? 'ok' : 'bad' ?>"><?= $e($flash[1]) ?></div><?php endif; ?>
@@ -176,7 +202,8 @@ admin_header('🤖 S Hari AI · सेटिङ र काम (बोलेर)'
       <button class="btn ok" type="submit" <?= $canCmd ? '' : 'disabled' ?>>पठाउनुहोस् →</button>
     </form>
     <div class="ex">
-      <?php foreach (['Surat ko bhada 2300', 'sabai pickup ko bhada 100 badha do', 'bholi 1 baje jane bus band', 'Seat U15 block karo kal', 'Naya pickup: Gandhinagar 22:30', 'Bus 02 ko number GJ05AB1234', 'Rajkot route band', 'Surat Rupaidiha matra', '10 extra seat', 'cancel fine 500', 'SHG-0027 commission 250', 'whatsapp bot band gara', 'PIN pattern login chalu'] as $x): ?>
+      <?php foreach (['Surat ko bhada 2300', 'sabai pickup ko bhada 100 badha do', 'bholi 1 baje jane bus band', 'Seat U15 block karo kal', 'Naya pickup: Gandhinagar 22:30', 'Bus 02 ko number GJ05AB1234', 'Rajkot route band', 'Surat Rupaidiha matra', '10 extra seat', 'cancel fine 500', 'SHG-0027 commission 250', 'whatsapp bot band gara', 'PIN pattern login chalu',
+                      '24 ghanta reminder on karo', 'device limit agent 2', 'bholi jane bus 2 ghanta late'] as $x): ?>
         <button type="button" onclick="document.getElementById('esCmd').value=this.textContent;document.getElementById('esCmd').focus()"><?= $e($x) ?></button>
       <?php endforeach; ?>
     </div>
@@ -253,18 +280,39 @@ admin_header('🤖 S Hari AI · सेटिङ र काम (बोलेर)'
   <div class="card">
     <h2>⚡ एक ट्याप switch · One-tap switches</h2>
     <div class="sw">
-      <?php foreach ($ES_KEYS as $k => $def): $v = $curVal($k); ?>
+      <?php foreach ($ES_KEYS as $k => $def): if ($def[1] !== 'bool' && $def[1] !== 'enum') { continue; } $v = $curVal($k); ?>
         <form method="post">
           <?= Security::csrfField() ?><input type="hidden" name="act" value="toggle"><input type="hidden" name="key" value="<?= $e($k) ?>">
           <?php if ($def[1] === 'bool'): ?>
             <button type="submit" <?= $canEdit ? '' : 'disabled' ?>><span><?= $e($def[0]) ?></span><span class="pill <?= $v === '1' ? 'on' : 'off' ?>"><?= $v === '1' ? 'ON' : 'OFF' ?></span></button>
-          <?php else: $next = $v === 'direct' ? 'request' : 'direct'; ?>
+          <?php else:
+            /* 16 Nov 2026 (W3): the next choice in the list — there are three two-way switches now, not only direct / request */
+            $opts = array_keys($def[3]);
+            $at   = array_search($v, $opts, true);
+            $next = (string) $opts[$at === false ? 0 : ($at + 1) % count($opts)]; ?>
             <input type="hidden" name="value" value="<?= $e($next) ?>">
-            <button type="submit" <?= $canEdit ? '' : 'disabled' ?>><span><?= $e($def[0]) ?></span><span class="pill on"><?= $e(strtoupper($v)) ?></span></button>
+            <button type="submit" <?= $canEdit ? '' : 'disabled' ?> title="<?= $e($show($k, $v)) ?>"><span><?= $e($def[0]) ?></span><span class="pill on"><?= $e(strtoupper($v)) ?></span></button>
           <?php endif; ?>
         </form>
       <?php endforeach; ?>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>🔢 संख्या सेटिङ · Number settings</h2>
+    <div class="sw">
+      <?php foreach ($ES_KEYS as $k => $def): if ($def[1] !== 'int' && $def[1] !== 'float') { continue; } $v = $curVal($k); $spec = (array) $def[3]; ?>
+        <form method="post" class="num">
+          <?= Security::csrfField() ?><input type="hidden" name="act" value="setnum"><input type="hidden" name="key" value="<?= $e($k) ?>">
+          <label for="esn-<?= $e($k) ?>"><span><?= $e($def[0]) ?></span><small><?= $e($show($k, $v)) ?><?= (string) ($spec['zero'] ?? '') !== '' ? ' · 0 = ' . $e($spec['zero']) : '' ?></small></label>
+          <span class="nr">
+            <input id="esn-<?= $e($k) ?>" type="number" name="value" value="<?= $e($v) ?>" min="<?= $e($spec['min']) ?>" max="<?= $e($spec['max']) ?>" step="<?= $def[1] === 'float' ? '0.5' : '1' ?>" inputmode="<?= $def[1] === 'float' ? 'decimal' : 'numeric' ?>" <?= $canEdit ? '' : 'disabled' ?>>
+            <button class="btn ok" type="submit" <?= $canEdit ? '' : 'disabled' ?>>💾</button>
+          </span>
+        </form>
+      <?php endforeach; ?>
+    </div>
+    <p class="muted">यिनलाई बोलेर पनि बदल्न सकिन्छ — जस्तै "device limit agent 2", "whatsapp daily cap 500", "group discount 10 percent"।</p>
   </div>
 
   <div class="card">

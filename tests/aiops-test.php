@@ -10,6 +10,10 @@
  * (an OFF route "Zu5town…", an OFF stop "Zu5ville Depot - Gate 2", one seat
  * block on a far-future bus) and delete them again; settings are not touched.
  *
+ * 16 Nov 2026 (Master v2, unit W3): + the v2.0 switches and number knobs by
+ * sentence ("24 ghanta reminder on karo", "device limit agent 2"), the delay
+ * words and the settings engine — parse only.
+ *
  *    php -c .claude/php-dev.ini tests/aiops-test.php
  */
 declare(strict_types=1);
@@ -306,6 +310,31 @@ $ok((AiOps::parseSwitches('PIN pattern login chalu')['quick_unlock_on'] ?? '') =
 // review 2: a short switch word must be a whole word
 $ok(!isset(AiOps::parseSwitches('code login band')['allow_cod']) && !isset(AiOps::parseSwitches('pincode band')['quick_unlock_on']), '"code login band" is not COD, "pincode" not the PIN login');
 $ok((AiOps::parseSwitches('cod band')['allow_cod'] ?? '') === '0' && (AiOps::parseSwitches('reminders band')['trip_reminders_enabled'] ?? '') === '0', 'COD / reminder words still found');
+
+/* 16 Nov 2026 (Master v2, unit W3): the v2.0 switches by sentence, the number knobs, the delay words.
+   Parse only — nothing is written (the writes are in tests/u8-W3-ai-staff-test.php). */
+$sw = AiOps::parseSwitches('24 ghanta reminder on karo');
+$ok(($sw['reminder_24h_enabled'] ?? '') === '1' && !isset($sw['trip_reminders_enabled']), 'W3 "24 ghanta reminder on karo" = the 24-hour reminder only');
+$ok(AiOps::parseSwitches('device limit agent 2') === ['device_limit_agent' => '2'], 'W3 "device limit agent 2"');
+$ok(AiOps::parseSwitches('device limit counter band') === ['device_limit_counter' => '0'], 'W3 "device limit counter band" = 0 (no limit)');
+$ok(AiOps::parseSwitches('device limit agent 50') === [], 'W3 a device limit over 10 is not taken');
+$ok(AiOps::parseSwitches('whatsapp daily cap 800') === ['wa_global_daily_cap' => '800'], 'W3 "whatsapp daily cap 800"');
+$ok(AiOps::parseSwitches('group discount 8 percent') === ['group_discount_percent' => '8'], 'W3 "group discount 8 percent"');
+$ok(AiOps::parseSwitches('ai change whatsapp on') === ['ai_change_wa_on' => '1'] && AiOps::parseSwitches('ai trip delay band') === ['ai_trip_delay_on' => '0'], 'W3 AI switches');
+$ok(AiOps::parseSwitches('ai engine cloud') === ['ai_settings_engine' => 'cloud'] && !isset(AiOps::parseSwitches('ai engine office')['ai_settings_engine']),
+    'W3 ai_settings_engine: cloud; "office" is no engine (the old request fallback is for request switches only)');
+$ok(AiOps::parseSwitches('whatsapp cancel request') === ['wa_ai_cancel_mode' => 'request'], 'W3 "whatsapp cancel request"');
+$ok(AiOps::parseSwitches('facebook post band') === ['social_publish_on' => '0'], 'W3 "facebook post band" is not Messenger');
+$ok(AiOps::parseSwitches('typing on') === ['wa_typing_on' => '1'] && AiOps::parseSwitches('handoff message on') === ['wa_handoff_msg_on' => '1'], 'W3 typing / hand-off');
+$ok(AiOps::delayMinutes(AiOps::norm('2 ghanta')) === 120 && AiOps::delayMinutes(AiOps::norm('४५ मिनेट')) === 45, 'W3 delay: 2 ghanta = 120, ४५ मिनेट = 45');
+if (!Settings::getBool('ai_trip_delay_on', false)) {
+    $ok(AiOps::parseWords('bholi jane bus 2 ghanta late') === [] && str_contains($note(), 'ai_trip_delay_on'), 'W3 "bholi jane bus 2 ghanta late" with the switch OFF → says it is off');
+}
+$ok((AiOps::parseWords('bus late fine 500')[0]['key'] ?? '') === 'cancel_fine_default', 'W3 a fine sentence with "late" is not a delay');
+// review 16 Nov 2026: "प्लेट" (plate) holds "लेट" — a bus-plate sentence must not be read as a delay (its note would block the AI)
+AiOps::parseWords('बस 02 को प्लेट नम्बर GJ05AB1234');
+$ok(!str_contains($note(), 'ai_trip_delay_on') && !str_contains($note(), 'How late'), 'W3 "बस 02 को प्लेट नम्बर …" is no delay sentence');
+$ok(AiOps::settingsEngine() === (Settings::getString('ai_settings_engine', 'local') === 'cloud' ? 'cloud' : 'local'), 'W3 settingsEngine reads ai_settings_engine (default local)');
 
 /* P3-1c + P3-4a: the shared command path, its audits, and the old fares in the log */
 $super = Database::fetch("SELECT * FROM admins WHERE role = 'superadmin' AND is_active = 1 ORDER BY id LIMIT 1");

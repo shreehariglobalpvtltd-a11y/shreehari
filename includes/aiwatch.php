@@ -29,6 +29,14 @@
  *  try/catch — a missing table or column silences that one watcher, never
  *  the panel and never the page. Each is gated on the permission of the
  *  screen it points at, so nobody is told to open a page that refuses them.
+ *
+ *  16 Nov 2026 (Master v2 P3-3b): each office card also has "Later" (4 h,
+ *  or tomorrow 08:00 IST) and "Ignore" (hidden while the card says the
+ *  same thing, at most 7 days), through admin/api/ai-suggestion.php. The
+ *  choice is kept in the setting 'ai_watch_state' {key: {status, until}}
+ *  for the whole office (expired entries are pruned); forOffice() leaves
+ *  the hidden cards out and "↺ show" brings them all back. The card's own
+ *  button still only OPENS the page that does the job — nothing here acts.
  * ===================================================================== */
 
 declare(strict_types=1);
@@ -51,11 +59,24 @@ final class AiWatch
     /** Role of the seller forSeller() is building for ('agent', 'counter' …). */
     private static string $sellerRole = '';
 
+    /** The setting that keeps the office's Ignore / Later choices (P3-3b). */
+    public const STATE_KEY = 'ai_watch_state';
+
+    /** An "Ignore" holds while the card says the same thing, at most this many days. */
+    private const IGNORE_DAYS = 7;
+
+    /** Cards the last forOffice() left out (ignored / later) — render() offers "show". */
+    private static int $lastHidden = 0;
+
     /**
      * The office list (owner, manager, accountant …).
      *
+     * 16 Nov 2026 (P3-3b): the cards the office put off ("Later") or
+     * ignored are left out; each card that stays carries snooze = true so
+     * render() gives it the Later / Ignore buttons.
+     *
      * @param null|callable(string):bool $can permission probe (tests inject one)
-     * @return list<array{key:string,level:string,icon:string,title:string,detail:string,href:string,cta:string}>
+     * @return list<array{key:string,level:string,icon:string,title:string,detail:string,href:string,cta:string,snooze:bool}>
      */
     public static function forOffice(?callable $can = null): array
     {
@@ -75,7 +96,117 @@ final class AiWatch
             }
         }
         self::$can = null;
-        return self::rank($out);
+        $state = self::state();
+        $shown = [];
+        foreach ($out as $s) {
+            if (!self::isHidden($s, $state)) {
+                $shown[] = $s + ['snooze' => true];
+            }
+        }
+        self::$lastHidden = count($out) - count($shown);
+        return self::rank($shown);
+    }
+
+    /* =================================================================
+     *  Ignore / Later (16 Nov 2026, P3-3b) — one shared list for the
+     *  office in the setting 'ai_watch_state'. Never throws on a read: a
+     *  missing or broken row simply hides nothing.
+     * ================================================================= */
+
+    /**
+     * The choices still in force, expired ones pruned.
+     *
+     * @return array<string, array{status:string, until:int, sig?:string, by?:int}>
+     */
+    public static function state(): array
+    {
+        try {
+            $raw = Settings::getArray(self::STATE_KEY, []);
+        } catch (Throwable $e) {
+            return [];
+        }
+        $now = time();
+        $out = [];
+        foreach ($raw as $k => $e) {
+            if (is_string($k) && is_array($e) && (int) ($e['until'] ?? 0) > $now
+                && in_array((string) ($e['status'] ?? ''), ['ignored', 'later'], true)) {
+                $out[$k] = $e;
+            }
+        }
+        return $out;
+    }
+
+    /** A short fingerprint of what a card says now — an "Ignore" only holds while it is the same. */
+    public static function sig(array $s): string
+    {
+        return substr(sha1((string) ($s['key'] ?? '') . '|' . (string) ($s['title'] ?? '')), 0, 12);
+    }
+
+    /** @param array<string, array<string,mixed>> $state */
+    public static function isHidden(array $s, array $state): bool
+    {
+        $e = $state[(string) ($s['key'] ?? '')] ?? null;
+        if (!is_array($e) || (int) ($e['until'] ?? 0) <= time()) {
+            return false;
+        }
+        if (($e['status'] ?? '') === 'later') {
+            return true;
+        }
+        return ($e['status'] ?? '') === 'ignored' && (string) ($e['sig'] ?? '') === self::sig($s);
+    }
+
+    /** When "Later" ends: '4h' = four hours from now, 'tomorrow' = tomorrow 08:00 IST. */
+    public static function laterUntil(string $when, ?int $now = null): int
+    {
+        $now ??= time();
+        if ($when === 'tomorrow') {
+            return (new DateTimeImmutable('@' . $now))->setTimezone(new DateTimeZone('Asia/Kolkata'))
+                ->modify('+1 day')->setTime(8, 0)->getTimestamp();
+        }
+        return $now + 4 * 3600;
+    }
+
+    /**
+     * Put one card off, or ignore it. $do: '4h' | 'tomorrow' | 'ignore'. Audited
+     * (ai_watch.later / ai_watch.ignore). Throws InvalidArgumentException on a bad key.
+     *
+     * @return array{status:string, until:int, sig?:string, by:int}
+     */
+    public static function snooze(string $key, string $do, string $sig, int $adminId): array
+    {
+        if (preg_match('/^[a-z][a-z0-9\-]{0,59}$/', $key) !== 1) {
+            throw new InvalidArgumentException('bad key');
+        }
+        if ($do === 'ignore') {
+            if (preg_match('/^[a-f0-9]{12}$/', $sig) !== 1) {
+                throw new InvalidArgumentException('bad sig');
+            }
+            $entry = ['status' => 'ignored', 'until' => time() + self::IGNORE_DAYS * 86400, 'sig' => $sig, 'by' => $adminId];
+        } elseif ($do === '4h' || $do === 'tomorrow') {
+            $entry = ['status' => 'later', 'until' => self::laterUntil($do), 'by' => $adminId];
+        } else {
+            throw new InvalidArgumentException('bad action');
+        }
+        $state = self::state();
+        $old   = $state[$key] ?? null;
+        $state[$key] = $entry;
+        if (count($state) > 200) {   // never a runaway row: the 200 that end last stay
+            uasort($state, static fn(array $a, array $b): int => (int) $b['until'] <=> (int) $a['until']);
+            $state = array_slice($state, 0, 200, true);
+        }
+        Settings::set(self::STATE_KEY, $state, 'json', 'ai');
+        Logger::audit('ai_watch.' . ($do === 'ignore' ? 'ignore' : 'later'), 'ai_watch', $key, $old, $entry,
+            ($do === 'ignore' ? 'Ignored' : 'Later until ' . date('Y-m-d H:i', (int) $entry['until'])) . ' by admin #' . $adminId);
+        return $entry;
+    }
+
+    /** "↺ show": every hidden card comes back. Audited ai_watch.reset. @return int how many were hidden */
+    public static function resetState(int $adminId): int
+    {
+        $old = self::state();
+        Settings::set(self::STATE_KEY, [], 'json', 'ai');
+        Logger::audit('ai_watch.reset', 'ai_watch', 'all', ['hidden' => array_keys($old)], ['hidden' => []], 'Show all again by admin #' . $adminId);
+        return count($old);
     }
 
     /**
@@ -102,6 +233,7 @@ final class AiWatch
             }
         }
         self::$sellerRole = $role;
+        self::$lastHidden = 0;   // a seller's list has no Ignore / Later
         $watchers = ['sellerPending', 'sellerCash', 'sellerTomorrow', 'nextBusFree'];
         if ($role !== 'counter') {
             $watchers[] = 'sellerMonth';   // a counter's commission is not settled to the clerk
@@ -894,28 +1026,81 @@ final class AiWatch
     public static function render(array $items, string $title = '🤖 AI Watch'): string
     {
         $e = static fn(string $v): string => Security::e($v);
+        /* 16 Nov 2026 (P3-3b): Later / Ignore for the office — the same gate as the
+           endpoint (admin/api/ai-suggestion.php boots with dashboard.view) */
+        $snz    = Auth::can('dashboard.view') && (string) (Auth::admin()['role'] ?? '') !== 'viewer';   // a viewer may not change anything
+        $hidden = self::$lastHidden;
+        $tok    = $snz ? $e(Security::csrfToken()) : '';
+        $csrf   = $snz ? '<input type="hidden" name="' . $e(CSRF_TOKEN_NAME) . '" value="' . $tok . '">' : '';
         $html = self::css()
             . '<section class="aw" aria-label="AI Watch">'
             . '<div class="aw-head"><b>' . $e($title) . '</b><span class="aw-sub">AI ले हेरिरहेको छ · what needs you now</span>'
+            . ($snz && $hidden > 0
+                ? '<form class="aw-snzf aw-reset" method="post" action="/admin/api/ai-suggestion.php">' . $csrf
+                  . '<button type="submit" name="do" value="reset" title="पछि वा बेवास्ता गरिएका सबै फेरि देखाउने · Show every card put off or ignored">↺ '
+                  . $hidden . ' लुकाइएको · hidden — show</button></form>'
+                : '')
             . (Auth::can('bookings.view') ? '<a class="aw-ask" href="/admin/ai-copilot.php">🤖 Ask AI Sahayak</a>' : '')
             . '</div>';
         if ($items === []) {
-            return $html . '<div class="aw-clear">✅ All clear — nothing is waiting on you right now. सबै ठीक छ।</div></section>';
+            return $html . '<div class="aw-clear">✅ All clear — nothing is waiting on you right now. सबै ठीक छ।</div></section>' . ($snz && $hidden > 0 ? self::snoozeJs() : '');
         }
         $html .= '<div class="aw-list">';
+        $anySnz = false;
         foreach ($items as $i => $s) {
             $more = $i >= self::SHOW ? ' aw-more' : '';
             $html .= '<div class="aw-item aw-' . $e($s['level']) . $more . '">'
                 . '<span class="aw-ic" aria-hidden="true">' . $e($s['icon']) . '</span>'
                 . '<div class="aw-txt"><b>' . $e($s['title']) . '</b><small>' . $e($s['detail']) . '</small></div>'
-                . '<a class="btn aw-go" href="' . $e($s['href']) . '">' . $e($s['cta']) . ' →</a>'
-                . '</div>';
+                . '<a class="btn aw-go" href="' . $e($s['href']) . '">' . $e($s['cta']) . ' →</a>';
+            if ($snz && !empty($s['snooze'])) {
+                $anySnz = true;
+                $html .= '<form class="aw-snzf aw-snz" method="post" action="/admin/api/ai-suggestion.php">' . $csrf
+                    . '<input type="hidden" name="key" value="' . $e((string) $s['key']) . '">'
+                    . '<input type="hidden" name="sig" value="' . $e(self::sig($s)) . '">'
+                    . '<button type="submit" name="do" value="4h" title="४ घण्टापछि फेरि देखाउने · Show again in 4 hours">⏰ ४ घण्टा · 4 h</button>'
+                    . '<button type="submit" name="do" value="tomorrow" title="भोलि बिहान ८ बजे फेरि · Show again tomorrow 08:00">🌅 भोलि ८ बजे · Tomorrow 8 am</button>'
+                    . '<button type="submit" name="do" value="ignore" title="यही कुरा रहुन्जेल नदेखाउने (७ दिनसम्म) · Hide while it says the same (up to 7 days)">✖ बेवास्ता · Ignore</button>'
+                    . '<span class="aw-snzm" role="status"></span>'
+                    . '</form>';
+            }
+            $html .= '</div>';
         }
         $html .= '</div>';
         if (count($items) > self::SHOW) {
             $html .= '<button type="button" class="aw-all" onclick="this.closest(\'.aw\').classList.add(\'aw-open\');this.remove()">Show all ' . count($items) . '</button>';
         }
-        return $html . '</section>';
+        return $html . '</section>' . ($anySnz || ($snz && $hidden > 0) ? self::snoozeJs() : '');
+    }
+
+    /**
+     * Later / Ignore without a page reload (P3-3b): the form posts by fetch and the card
+     * leaves the list; without JavaScript the same form posts and the endpoint sends
+     * the browser back to Home.
+     */
+    private static function snoozeJs(): string
+    {
+        static $done = false;
+        if ($done) {
+            return '';
+        }
+        $done = true;
+        return '<script>(function(){'
+            . 'document.addEventListener("submit",function(ev){'
+            . 'var f=ev.target;if(!f||!f.classList||!f.classList.contains("aw-snzf")||!window.fetch||!window.FormData||!ev.submitter)return;'
+            . 'ev.preventDefault();var b=ev.submitter,fd=new FormData(f),m=f.querySelector(".aw-snzm");'
+            . 'if(b&&b.name)fd.append(b.name,b.value);'
+            . 'var bs=f.querySelectorAll("button");bs.forEach(function(x){x.disabled=true;});'
+            . 'fetch(f.action,{method:"POST",body:fd,credentials:"same-origin",headers:{"Accept":"application/json","X-Requested-With":"fetch"}})'
+            . '.then(function(r){return r.json();}).then(function(j){'
+            . 'if(j&&j.ok){if(j.reload){location.reload();return;}'
+            . 'var it=f.closest(".aw-item"),w=f.closest(".aw");if(it)it.remove();'
+            . 'var nx=w&&!w.classList.contains("aw-open")?w.querySelector(".aw-more"):null;if(nx)nx.classList.remove("aw-more");'
+            . 'if(w&&!w.querySelector(".aw-item")){var l=w.querySelector(".aw-list");if(l)l.outerHTML=\'<div class="aw-clear">✅ All clear — सबै ठीक छ।</div>\';}'
+            . 'return;}'
+            . 'bs.forEach(function(x){x.disabled=false;});if(m)m.textContent=(j&&j.message)||"Try again";'
+            . '}).catch(function(){bs.forEach(function(x){x.disabled=false;});if(m)m.textContent="Network — try again";});'
+            . '});})();</script>';
     }
 
     private static function css(): string
@@ -943,7 +1128,14 @@ final class AiWatch
             . '.aw-more{display:none}.aw-open .aw-more{display:flex}'
             . '.aw-all{display:block;width:100%;min-height:46px;border:0;border-top:1px solid var(--line);background:var(--soft);color:var(--blue);font:700 14px var(--f-ui);cursor:pointer}'
             . '.aw-clear{padding:14px 16px;font-weight:600;color:var(--ok)}'
-            . '@media(max-width:820px){.aw-item{flex-wrap:wrap;padding:12px}.aw-txt{flex-basis:calc(100% - 56px)}.aw-go{width:100%;min-height:48px}.aw-ask{margin-left:0}}'
+            // 16 Nov 2026 (P3-3b): Later / Ignore under each office card
+            . '.aw-item{flex-wrap:wrap}.aw-txt{flex-basis:0}'
+            . '.aw-snz{flex:1 0 100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0;padding-left:52px}'
+            . '.aw-snzf button{border:1px solid var(--line);background:transparent;color:var(--mut);border-radius:999px;padding:4px 11px;min-height:32px;font:600 12px var(--f-ui);cursor:pointer}'
+            . '.aw-snzf button:hover{border-color:var(--blue);color:var(--blue)}.aw-snzf button:disabled{opacity:.55;cursor:wait}'
+            . '.aw-snzm{font-size:12px;color:var(--bad)}.aw-reset{margin:0}'
+            . '@media(max-width:820px){.aw-item{flex-wrap:wrap;padding:12px}.aw-txt{flex-basis:calc(100% - 56px)}.aw-go{width:100%;min-height:48px}.aw-ask{margin-left:0}.aw-snz{padding-left:0}}'
+            . '@media(pointer:coarse){.aw-snzf button{min-height:40px;padding:6px 13px}}'
             . '</style>';
     }
 

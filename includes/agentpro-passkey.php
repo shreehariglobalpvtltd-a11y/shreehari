@@ -175,12 +175,16 @@ final class ApPasskey
      * Auth's own session bootstrap (counters, LoginLog, device check, audit),
      * reached by reflection because it is deliberately private.
      */
-    public static function startSession(array $admin): void
+    public static function startSession(array $admin): bool
     {
         $m = new ReflectionMethod(Auth::class, 'finishAdminSession');
         $m->setAccessible(true);
-        $m->invoke(null, $admin, Security::clientIp(), true);
+        // 16 Nov 2026 (P1-5b): false = held at the device-limit step, no session opened
+        if ($m->invoke(null, $admin, Security::clientIp(), true) === false) {
+            return false;
+        }
         Logger::audit('agentpro.passkey_login', 'admin', (string) $admin['id'], null, null, 'Signed in with fingerprint / face');
+        return true;
     }
 
     /* ---------------- pieces ---------------- */

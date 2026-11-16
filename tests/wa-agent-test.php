@@ -21,7 +21,9 @@
  *                it cannot be renamed, resent or cancelled
  *    • REWRITE   a wrong name is corrected and the ticket re-minted,
  *                twice per booking and never after departure
- *    • CANCEL    refund_quote first, cancel second, seats released
+ *    • CANCEL    refund_quote first; a WhatsApp passenger's yes only files
+ *                a REQUEST to the office (P6-2d, wa_ai_cancel_mode 'request');
+ *                in 'self' mode the cancel itself, seats released
  *    • AUDIT     every call — allowed or refused — is in ai_agent_calls
  *
  *  Creates real bookings on throwaway dates and cleans up after itself.
@@ -35,6 +37,7 @@ require_once dirname(__DIR__) . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/quickticket.php';
 require_once INCLUDE_PATH . '/aitools.php';
 require_once INCLUDE_PATH . '/aiagent.php';
+require_once INCLUDE_PATH . '/waagentroute.php';
 
 const WA_CUST  = '9100006001';   // the passenger writing to us
 const WA_OTHER = '9100006002';   // somebody else entirely
@@ -54,7 +57,8 @@ echo "\n=== WhatsApp assistant — the tools, the gates, the audit ===\n\n";
 /* ---- switches this suite drives; restored exactly as found ----------- */
 $PINNED = ['wa_agent_on', 'wa_agent_sell', 'wa_agent_oneshot', 'wa_agent_rewrite', 'wa_agent_admin_write',
            'daily_service_on', 'allow_cod', 'quick_ticket_customer_on', 'quick_ticket_customer_boarding',
-           'quick_ticket_max_open', 'whatsapp_driver', 'whatsapp_notify_customer', 'whatsapp_notify_admin'];
+           'quick_ticket_max_open', 'whatsapp_driver', 'whatsapp_notify_customer', 'whatsapp_notify_admin',
+           'wa_ai_cancel_mode'];
 $prior = [];
 foreach ($PINNED as $k) {
     $prior[$k] = Database::fetch('SELECT svalue, stype, sgroup, is_public FROM settings WHERE skey = :k', ['k' => $k]);
@@ -130,6 +134,12 @@ $cleanup = static function () use ($dates): void {
             try { Database::delete($t, 'booking_id = :b', ['b' => $bid]); } catch (Throwable $e) {}
         }
         try { Database::delete('ai_agent_calls', 'booking_id = :b', ['b' => $bid]); } catch (Throwable $e) {}
+        // P6-2d: the cancel REQUEST's own rows (audit row, office bell + its dedupe claim, audit log)
+        try { Database::delete('ticket_edit_audit', 'booking_id = :b', ['b' => $bid]); } catch (Throwable $e) {}
+        try { Database::delete('automation_log', 'dedupe_key = :k', ['k' => 'alert:wa_cancel:' . $bid]); } catch (Throwable $e) {}
+        try { Database::delete('notifications', "audience = 'admin' AND title = :t", ['t' => 'Cancel request · ' . $r['pnr']]); } catch (Throwable $e) {}
+        try { Database::delete('audit_logs', "action = 'booking.whatsapp_cancel_request' AND entity_id = :p", ['p' => $r['pnr']]); } catch (Throwable $e) {}
+        try { Database::delete('rate_limits', "bucket = 'wa_ai_cancel_req' AND identifier = :i", ['i' => (string) $bid]); } catch (Throwable $e) {}
         Database::delete('bookings', 'id = :i', ['i' => $bid]);
         @unlink(TICKET_PATH . '/ticket_' . $r['pnr'] . '.png');
         @unlink(TICKET_PATH . '/ticket_' . $r['pnr'] . '.pdf');
@@ -314,19 +324,84 @@ try {
     Settings::flush();
 
     /* ================================================================
-     *  6. Cancelling — the figure first, the seats second
+     *  6. Cancelling — the figure first; a passenger only REQUESTS
+     *     (P6-2d, wa_ai_cancel_mode 'request' = the default), 'self'
+     *     keeps the old self-cancel
      * ================================================================ */
     echo "\n== cancelling ==\n";
+    $officeSent = [];
+    WaAgentRoute::$transport = static function (string $to, string $text, ?string $image, ?array $ui) use (&$officeSent): array {
+        $officeSent[] = $text;                                          // never the network
+        return ['success' => true, 'message_id' => 'wamid.wa-agent-test'];
+    };
+    Settings::set('wa_ai_cancel_mode', 'request', 'string', 'whatsapp', false);
+    Settings::flush();
+    $descOf = static function (array $tools, string $name): string {
+        foreach ($tools as $t) { if (($t['name'] ?? '') === $name) { return (string) ($t['description'] ?? ''); } }
+        return '';
+    };
+    check('P6-2d: a passenger is offered cancel_ticket as a REQUEST to the office',
+        str_contains($descOf(AiTools::catalogue($ctxFor(WA_CUST, 10)), 'cancel_ticket'), 'CANCEL REQUEST'));
+    check('  an agent and the office keep the real cancel',
+        str_starts_with($descOf(AiTools::catalogue($agent), 'cancel_ticket'), 'CANCEL a booking')
+        && str_starts_with($descOf(AiTools::catalogue($boss), 'cancel_ticket'), 'CANCEL a booking'));
+    $asReq = new ReflectionMethod('AiTools', 'cancelAsRequest');
+    check('  request mode is for a WhatsApp passenger only (not the website, Messenger, staff or office)',
+        $asReq->invoke(null, ['role' => 'customer', 'channel' => 'whatsapp']) === true
+        && $asReq->invoke(null, ['role' => 'customer']) === true
+        && $asReq->invoke(null, ['role' => 'customer', 'channel' => 'web', 'verified' => true]) === false
+        && $asReq->invoke(null, ['role' => 'customer', 'channel' => 'web', 'via' => 'facebook']) === false
+        && $asReq->invoke(null, ['role' => 'staff', 'channel' => 'whatsapp']) === false
+        && $asReq->invoke(null, ['role' => 'admin', 'channel' => 'whatsapp']) === false
+        && $asReq->invoke(null, ['role' => 'member', 'channel' => 'whatsapp']) === false);
+
     $blind = AiTools::run('cancel_ticket', ['pnr' => $pnr, 'confirm' => true], $ctxFor(WA_CUST, 10));
-    check('cancelling before the refund was quoted is refused', $blind['ok'] === false, $blind['say']);
+    check('cancelling before the refund was quoted is refused', $blind['ok'] === false && empty($blind['data']['requested']), $blind['say']);
     check('  the booking is still alive',
         (string) Database::scalar('SELECT status FROM bookings WHERE id = :b', ['b' => $bid], '') === 'confirmed');
 
     $rq = AiTools::run('refund_quote', ['pnr' => $pnr], $ctxFor(WA_CUST, 11));
     check('refund_quote states the figure', $rq['ok'] === true && isset($rq['data']['refund']), (string) ($rq['data']['refundLabel'] ?? ''));
+    check('  and tells the model the yes only files a REQUEST', str_contains((string) $rq['say'], 'REQUEST'), (string) $rq['say']);
 
     $seatsBefore = (int) Database::scalar('SELECT COUNT(*) FROM booking_seats WHERE booking_id = :b AND released_at IS NULL', ['b' => $bid], 0);
-    $cancel = AiTools::run('cancel_ticket', ['pnr' => $pnr, 'reason' => 'Plan badliyo', 'confirm' => true], $ctxFor(WA_CUST, 12));
+    $req = AiTools::run('cancel_ticket', ['pnr' => $pnr, 'reason' => 'Plan badliyo', 'confirm' => true], $ctxFor(WA_CUST, 12));
+    check('P6-2d: the yes files a cancel REQUEST', !empty($req['data']['requested']) && empty($req['data']['repeat']), (string) $req['say']);
+    check('  ok is false, so no caller can print "cancelled"', $req['ok'] === false);
+    check('  the passenger is told the office confirms and settles any refund by hand',
+        str_contains((string) $req['say'], 'अनुरोध') && str_contains((string) $req['say'], 'by hand')
+        && str_contains((string) $req['say'], (string) $rq['data']['refundLabel']), (string) $req['say']);
+    check('  BookingService::cancel() was NOT called: still confirmed, refund untouched',
+        (string) Database::scalar('SELECT status FROM bookings WHERE id = :b', ['b' => $bid], '') === 'confirmed'
+        && (string) Database::scalar('SELECT refund_status FROM bookings WHERE id = :b', ['b' => $bid], '') !== 'pending');
+    check('  every berth is still held',
+        (int) Database::scalar('SELECT COUNT(*) FROM booking_seats WHERE booking_id = :b AND released_at IS NULL', ['b' => $bid], 0) === $seatsBefore);
+    $ted = Database::fetch("SELECT * FROM ticket_edit_audit WHERE booking_id = :b AND field_changed = 'cancel_request' ORDER BY id DESC LIMIT 1", ['b' => $bid]);
+    check('  a ticket_edit_audit row: requested, not code-verified, reason + quoted figure',
+        $ted !== null && (string) $ted['outcome'] === 'requested' && (int) $ted['otp_verified'] === 0
+        && str_contains((string) $ted['detail'], 'Plan badliyo') && str_contains((string) $ted['detail'], (string) $rq['data']['refundLabel']),
+        (string) ($ted['detail'] ?? 'no row'));
+    $bell = Database::fetch("SELECT body FROM notifications WHERE audience = 'admin' AND title = :t ORDER BY id DESC LIMIT 1", ['t' => 'Cancel request · ' . $pnr]);
+    check('  the office bell carries the reason and the quoted refund',
+        $bell !== null && str_contains((string) $bell['body'], 'Plan badliyo') && str_contains((string) $bell['body'], 'Quoted refund'), (string) ($bell['body'] ?? 'no bell'));
+    check('  and the audit log has it', Database::exists("SELECT 1 FROM audit_logs WHERE action = 'booking.whatsapp_cancel_request' AND entity_id = :p", ['p' => $pnr]));
+
+    $again = AiTools::run('cancel_ticket', ['pnr' => $pnr, 'reason' => 'Plan badliyo', 'confirm' => true], $ctxFor(WA_CUST, 13));
+    check('  the same quote cannot file twice', empty($again['data']['requested']), (string) $again['say']);
+    AiTools::run('refund_quote', ['pnr' => $pnr], $ctxFor(WA_CUST, 13));
+    $officeBefore = count($officeSent);
+    $rep = AiTools::run('cancel_ticket', ['pnr' => $pnr, 'confirm' => true], $ctxFor(WA_CUST, 14));
+    check('  a second request within 6 h is noted, not re-sent to the office',
+        !empty($rep['data']['requested']) && !empty($rep['data']['repeat']) && count($officeSent) === $officeBefore
+        && (int) Database::scalar("SELECT COUNT(*) FROM ticket_edit_audit WHERE booking_id = :b AND field_changed = 'cancel_request'", ['b' => $bid], 0) === 1);
+    WaAgentRoute::$transport = null;
+
+    echo "  -- wa_ai_cancel_mode = self (the old self-cancel) --\n";
+    Settings::set('wa_ai_cancel_mode', 'self', 'string', 'whatsapp', false);
+    Settings::flush();
+    $rq = AiTools::run('refund_quote', ['pnr' => $pnr], $ctxFor(WA_CUST, 15));
+    check('refund_quote states the figure', $rq['ok'] === true && isset($rq['data']['refund']), (string) ($rq['data']['refundLabel'] ?? ''));
+    $cancel = AiTools::run('cancel_ticket', ['pnr' => $pnr, 'reason' => 'Plan badliyo', 'confirm' => true], $ctxFor(WA_CUST, 16));
     check('the next message cancels it', $cancel['ok'] === true, (string) ($cancel['data']['refundLabel'] ?? $cancel['say']));
     check('  the booking is cancelled',
         (string) Database::scalar('SELECT status FROM bookings WHERE id = :b', ['b' => $bid], '') === 'cancelled');
@@ -467,6 +542,7 @@ try {
 } catch (Throwable $e) {
     check('suite completed without an unexpected error', false, $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine());
 } finally {
+    WaAgentRoute::$transport = null;
     $cleanup();
     $restoreSettings();
 }

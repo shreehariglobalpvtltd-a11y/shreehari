@@ -497,6 +497,21 @@ function wh_process_inbound(array $msg): void
         Logger::exception($e, 'whatsapp');
     }
 
+    /* P7-8d (16 Nov 2026, switch wa_typing_on - default OFF): the bot is about
+       to answer, so the passenger sees blue ticks + "typing…" while it thinks
+       (and while a voice note is heard). WaSend's own stored credentials, a hard
+       3 s cap (normally well under a second), never throws: it can never cost
+       the reply below, at worst it holds it up to 3 s. */
+    try {
+        if (Settings::getBool('wa_typing_on', false)) {
+            require_once INCLUDE_PATH . '/wasend.php';
+            if (method_exists('WaSend', 'typing')) {
+                WaSend::typing($wamid);
+            }
+        }
+    } catch (Throwable $ignored) {
+    }
+
     /* A voice note becomes the words that were spoken (23 Sep 2026, owner:
        "sunne"), and then takes exactly the path a typed message takes. The
        reply opens with what we heard, so a mis-heard word is visible before

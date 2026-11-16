@@ -620,7 +620,11 @@ final class Auth
         }
 
         // 22 Oct 2026 (review #11 re-attack): stamped with the password checked above, never re-read.
-        self::finishAdminSession($admin, $ip, false, self::pwStamp((string) $admin['password_hash']));
+        // 16 Nov 2026 (P1-5b): 'devices' = the door passed but the session is held at the device-limit
+        // step (deviceHold); 'ok' stays true so every caller moves on, and admin/login.php shows the step.
+        if (!self::finishAdminSession($admin, $ip, false, self::pwStamp((string) $admin['password_hash']))) {
+            return ['ok' => true, 'devices' => true];
+        }
 
         return ['ok' => true];
     }
@@ -718,7 +722,9 @@ final class Auth
         }
         // 16 Nov 2026: via = the door ('pin' / 'pattern' / 'whatsapp_hi' / 'whatsapp_otp'); a PIN / pattern
         // sign-in under a forced change is NOT via_otp, so it still asks for the current password (viaOtpFor).
-        self::finishAdminSession($admin, $ip, self::viaOtpFor($how, $admin), self::pwStamp((string) $admin['password_hash']), $how);
+        if (!self::finishAdminSession($admin, $ip, self::viaOtpFor($how, $admin), self::pwStamp((string) $admin['password_hash']), $how)) {
+            return ['ok' => true, 'devices' => true];   // 16 Nov 2026 (P1-5b): held at the device-limit step
+        }
         Logger::audit('admin.login.' . $how, 'admin', (string) $admin['id'], null, null, 'Signed in with code + ' . $how);
         return ['ok' => true];
     }
@@ -776,7 +782,9 @@ final class Auth
             return ['ok' => false, 'error' => 'This account\'s password was changed — please sign in again with the new password.'];
         }
 
-        self::finishAdminSession($admin, $ip, false, $pw, (string) ($pending['via'] ?? ''));
+        if (!self::finishAdminSession($admin, $ip, false, $pw, (string) ($pending['via'] ?? ''))) {
+            return ['ok' => true, 'devices' => true];   // 16 Nov 2026 (P1-5b): held at the device-limit step
+        }
         return ['ok' => true];
     }
 
@@ -880,11 +888,17 @@ final class Auth
      * step. Cleared on every sign-in, sign-out, "Start again" and new door start, so the next
      * person on a shared counter PC can never finish someone else's step.
      */
-    public const DOOR_KEYS = ['one_door', 'ap_login_pick', 'team_pick', 'team_reset', 'admin_2fa_pending', 'code_login'];
+    public const DOOR_KEYS = ['one_door', 'ap_login_pick', 'team_pick', 'team_reset', 'admin_2fa_pending', 'code_login', 'admin_device_pending'];
 
     public static function clearDoorState(): void
     {
         foreach (self::DOOR_KEYS as $k) {
+            /* 16 Nov 2026 (P1-5b): the request that just HELD a sign-in at the device limit keeps the
+               hold — the doors tidy up after a "successful" sign-in (OneDoor::clear(), TeamPortal) and
+               would otherwise drop it before the page can show the step. Any later request clears it. */
+            if ($k === self::DEVICE_HOLD_KEY && self::$heldThisRequest) {
+                continue;
+            }
             unset($_SESSION[$k]);
         }
     }
@@ -905,8 +919,12 @@ final class Auth
      *                     for a reset, just wrote). Null only for a door that
      *                     checks no password (agent code + mobile OTP): that
      *                     session takes the stamp of the row as it is now.
+     * @param bool $deviceChecked 16 Nov 2026 (P1-5b): true only from deviceForce(),
+     *                     which has just made room — the device limit is not asked again.
+     * @return bool true = the session is open; false = held at the device-limit step
+     *                     (deviceHold(); nothing is open and nothing about the account changed)
      */
-    private static function finishAdminSession(array $admin, string $ip, bool $viaOtp = false, ?string $pwStamp = null, string $via = ''): void
+    private static function finishAdminSession(array $admin, string $ip, bool $viaOtp = false, ?string $pwStamp = null, string $via = '', bool $deviceChecked = false): bool
     {
         // 16 Nov 2026: the door that opened this session ('password', 'otp', 'pin', 'pattern',
         // 'whatsapp_hi', 'passkey' ...) — shown in Sessions (live + history), never a permission input.
@@ -914,7 +932,17 @@ final class Auth
         if ($via === '') {
             $via = $viaOtp ? 'otp' : 'password';
         }
+        self::$heldThisRequest = false;   // a new sign-in: an older hold goes with the rest
         self::clearDoorState();   // 31 Oct 2026 (review): no leftover pick / reset / 2FA step outlives a sign-in
+
+        /* 16 Nov 2026 (master v2.0, P1-5b): every door ends here, so the per-role device limit is
+           asked here, after every factor the door wanted (password, PIN, 2FA code ...). Over the
+           limit the sign-in is HELD, like admin_2fa_pending; admin/login.php shows the other
+           devices and "sign the other device out and continue" (deviceForce) or Cancel. Limit 0
+           (the default for every role) = exactly as before. */
+        if (!$deviceChecked && self::holdForDeviceLimit($admin, $viaOtp, $pwStamp, $via)) {
+            return false;
+        }
 
         // Success — clear counters and start a fresh session id.
         Database::update('admins', [
@@ -992,6 +1020,169 @@ final class Auth
                 ['device' => LoginLog::deviceLabel((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''))],
                 'First sign-in from this device');
         }
+        return true;
+    }
+
+    /* =================================================================
+     *  16 Nov 2026 (master v2.0, P1-5b + P1-5c): per-role device limit.
+     *  Setting device_limit_<role> (AdminSessions::deviceLimit; 0 = no
+     *  limit, the default). A door that would open a session on one device
+     *  too many is held in $_SESSION['admin_device_pending'] (a DOOR_KEY, so
+     *  "start again" / sign-out drop it). The hold carries only what the
+     *  door had proven — the account id, its password stamp, how — and the
+     *  list of the OTHER devices offered (kept server-side; the form posts
+     *  only 'd1', 'd2' ...). Nothing in the hold is a secret of another
+     *  device: session tokens are never in it.
+     * ================================================================= */
+
+    public const DEVICE_HOLD_KEY = 'admin_device_pending';
+    public const DEVICE_HOLD_TTL = 300;   // 5 minutes to choose; then sign in again
+
+    /** Set when THIS request held a sign-in (clearDoorState then keeps the hold; see there). */
+    private static bool $heldThisRequest = false;
+
+    /**
+     * @param array<string, mixed> $admin
+     * @return bool true = held (the caller opens nothing)
+     */
+    private static function holdForDeviceLimit(array $admin, bool $viaOtp, ?string $pwStamp, string $via): bool
+    {
+        try {
+            $id    = (int) ($admin['id'] ?? 0);
+            $limit = AdminSessions::deviceLimit((string) ($admin['role'] ?? ''));
+            if ($id <= 0 || $limit <= 0) {
+                return false;
+            }
+            $others = AdminSessions::liveDevices($id, LoginLog::deviceHash());
+            if (count($others) < $limit) {
+                return false;
+            }
+            $_SESSION[self::DEVICE_HOLD_KEY] = [
+                'id' => $id, 'at' => time(), 'otp' => $viaOtp, 'pw' => $pwStamp, 'via' => $via,
+                'limit' => $limit, 'offer' => self::deviceOffer($others),
+            ];
+            self::$heldThisRequest = true;
+            Logger::audit('admin.login.device_limit', 'admin', (string) $id, null,
+                ['limit' => $limit, 'other_devices' => count($others), 'via' => $via,
+                 'device' => LoginLog::deviceLabel((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''))],
+                'Sign-in held: the account is already on its device limit');
+            return true;
+        } catch (Throwable $e) {
+            // never the reason a sign-in fails: no limit check = how it always was
+            unset($_SESSION[self::DEVICE_HOLD_KEY]);
+            return false;
+        }
+    }
+
+    /**
+     * The other devices as the step offers them: 'd1' => device, oldest use first
+     * (the stale one is the likely one to sign out, so it is pre-ticked).
+     *
+     * @param list<array{hash: string, label: string, last_seen: string, ids: list<int>}> $devices
+     * @return array<string, array{hash: string, label: string, last_seen: string, ids: list<int>}>
+     */
+    private static function deviceOffer(array $devices): array
+    {
+        usort($devices, static fn(array $a, array $b): int => strcmp((string) $a['last_seen'], (string) $b['last_seen']));
+        $out = [];
+        foreach (array_values($devices) as $i => $d) {
+            $out['d' . ($i + 1)] = [
+                'hash'      => (string) $d['hash'],
+                'label'     => mb_substr((string) $d['label'] !== '' ? (string) $d['label'] : 'Unknown device', 0, 120),
+                'last_seen' => (string) $d['last_seen'],
+                'ids'       => array_map('intval', (array) $d['ids']),
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * The sign-in this browser has held at the device-limit step, or null.
+     *
+     * @return array{id: int, at: int, otp: bool, pw: ?string, via: string, limit: int,
+     *               offer: array<string, array{hash: string, label: string, last_seen: string, ids: list<int>}>}|null
+     */
+    public static function deviceHold(): ?array
+    {
+        $p = $_SESSION[self::DEVICE_HOLD_KEY] ?? null;
+        if (!is_array($p) || (int) ($p['id'] ?? 0) <= 0) {
+            return null;
+        }
+        if ((int) ($p['at'] ?? 0) < time() - self::DEVICE_HOLD_TTL) {
+            unset($_SESSION[self::DEVICE_HOLD_KEY]);
+            return null;
+        }
+        return $p;
+    }
+
+    /** "Cancel" on the device step: nothing opens, the other devices stay signed in. */
+    public static function deviceCancel(): void
+    {
+        $p = self::deviceHold();
+        unset($_SESSION[self::DEVICE_HOLD_KEY]);
+        if ($p !== null) {
+            Logger::audit('admin.login.device_cancel', 'admin', (string) (int) $p['id'], null, null,
+                'Device limit: sign-in cancelled — nothing opened, the other devices stay signed in');
+        }
+    }
+
+    /**
+     * "अर्को यन्त्र बन्द गरी जारी राख्नुहोस् · Sign the other device out and continue": end every
+     * session of the device the person ticked (one of the offer keys), audit admin.login.force, and
+     * open the held session. The account is re-read and must still be active with the password the
+     * door checked (as adminLogin2faVerify does). Still over the limit (the limit was lowered, or a
+     * device signed in meanwhile) -> the step again with what is left.
+     *
+     * @return array{ok: bool, error?: string, expired?: bool}
+     */
+    public static function deviceForce(string $key): array
+    {
+        $p = self::deviceHold();
+        if ($p === null) {
+            return ['ok' => false, 'expired' => true, 'error' => 'समय सकियो — फेरि लगइन गर्नुहोस् · That took too long, please sign in again.'];
+        }
+        $dev = ((array) ($p['offer'] ?? []))[$key] ?? null;
+        if (!is_array($dev)) {
+            return ['ok' => false, 'error' => 'बन्द गर्ने यन्त्र छान्नुहोस् · Choose the device to sign out.'];
+        }
+        $id = (int) $p['id'];
+        $admin = Database::fetch(
+            'SELECT id, username, full_name, role, permissions, is_active, must_change_pw, password_hash
+               FROM admins WHERE id = :id AND is_active = 1 LIMIT 1',
+            ['id' => $id]
+        );
+        $pw = isset($p['pw']) && is_string($p['pw']) ? $p['pw'] : null;
+        if ($admin === null || ($pw !== null && !hash_equals(self::pwStamp((string) $admin['password_hash']), $pw))) {
+            unset($_SESSION[self::DEVICE_HOLD_KEY]);
+            Logger::audit('admin.login.device_stale', 'admin', (string) $id, null, null,
+                'Device limit: held sign-in dropped (account switched off or password changed meanwhile)');
+            return ['ok' => false, 'expired' => true, 'error' => 'फेरि लगइन गर्नुहोस् · Please sign in again.'];
+        }
+
+        $reason = 'signed out from another device (device limit)';
+        $ended  = 0;
+        if ((string) $dev['hash'] !== '') {
+            $ended = AdminSessions::endDevice($id, (string) $dev['hash'], $id, $reason);
+        } else {
+            foreach ((array) $dev['ids'] as $sid) {   // ids came from this account's own live rows (deviceOffer)
+                $ended += AdminSessions::end((int) $sid, $id, $reason) ? 1 : 0;
+            }
+        }
+        $limit = AdminSessions::deviceLimit((string) $admin['role']);
+        Logger::audit('admin.login.force', 'admin', (string) $id,
+            ['device' => (string) $dev['label'], 'last_seen' => (string) $dev['last_seen'], 'sessions' => count((array) $dev['ids'])],
+            ['device' => LoginLog::deviceLabel((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')), 'sessions_ended' => $ended, 'limit' => $limit],
+            'Device limit: signed the other device out and continued');
+
+        $left = $limit > 0 ? AdminSessions::liveDevices($id, LoginLog::deviceHash()) : [];
+        if ($limit > 0 && count($left) >= $limit) {
+            $_SESSION[self::DEVICE_HOLD_KEY]['offer'] = self::deviceOffer($left);
+            $_SESSION[self::DEVICE_HOLD_KEY]['limit'] = $limit;
+            return ['ok' => false, 'error' => 'अझै ' . count($left) . ' यन्त्रमा खुला छ — अर्को एउटा पनि बन्द गर्नुहोस् · Still signed in on '
+                . count($left) . ' other device(s): sign out one more.'];
+        }
+        $open = self::finishAdminSession($admin, Security::clientIp(), !empty($p['otp']), $pw, (string) ($p['via'] ?? ''), true);
+        return ['ok' => $open];
     }
 
     /**
@@ -1248,7 +1439,9 @@ final class Auth
             return self::otpPickList($phone, $list, $intl);
         }
 
-        self::finishAdminSession($admin, $ip, true);
+        if (!self::finishAdminSession($admin, $ip, true)) {
+            return ['ok' => true, 'devices' => true];   // 16 Nov 2026 (P1-5b): held at the device-limit step
+        }
 
         return ['ok' => true];
     }
@@ -1358,7 +1551,9 @@ final class Auth
         if (count($list) > 1) {
             return self::otpPickList($phone, $list, (string) preg_replace('/\D/', '', $intl));
         }
-        self::finishAdminSession($list[0], Security::clientIp(), true);
+        if (!self::finishAdminSession($list[0], Security::clientIp(), true)) {
+            return ['ok' => true, 'devices' => true];   // 16 Nov 2026 (P1-5b): held at the device-limit step
+        }
         Logger::audit('admin.login.' . preg_replace('/[^a-z_]/', '', $how), 'admin', (string) $list[0]['id'], null, null,
             'Signed in with WhatsApp (' . $how . ') — no password typed');
         return ['ok' => true];
@@ -1426,7 +1621,9 @@ final class Auth
         if ($admin === null) {
             return ['ok' => false, 'error' => 'यो ID अहिले खुल्दैन · That ID cannot be opened now — please sign in again.'];
         }
-        self::finishAdminSession($admin, Security::clientIp(), true);
+        if (!self::finishAdminSession($admin, Security::clientIp(), true)) {
+            return ['ok' => true, 'devices' => true];   // 16 Nov 2026 (P1-5b): held at the device-limit step
+        }
         Logger::audit('agent.login.pick', 'admin', (string) $adminId, null, null, 'Picked one of ' . count((array) $p['ids']) . ' IDs on one WhatsApp number');
         return ['ok' => true];
     }
@@ -1505,7 +1702,9 @@ final class Auth
         // Password-authenticated (viaOtp = false): a temporary password
         // handed out by the office with "must change" ticked is still
         // funnelled to change-password.php exactly like other staff.
-        self::finishAdminSession($admin, $ip, false, self::pwStamp((string) $admin['password_hash']));
+        if (!self::finishAdminSession($admin, $ip, false, self::pwStamp((string) $admin['password_hash']))) {
+            return ['ok' => true, 'devices' => true];   // 16 Nov 2026 (P1-5b): held at the device-limit step
+        }
         Logger::audit('agent.login', 'admin', (string) $admin['id'], null, null, 'Agent signed in with email + username + password');
 
         return ['ok' => true];
@@ -1600,8 +1799,11 @@ final class Auth
         // via_otp = true: no password was typed, so a forced change (must_change_pw) asks for the new one only -
         // change-password.php would otherwise demand a "current password" the person never received (23 Oct 2026).
         // 16 Nov 2026: except a PIN / pattern (the classic door's quick unlock) under a forced change: that asks the current password.
-        self::finishAdminSession($admin, Security::clientIp(), self::viaOtpFor($how, $admin), self::pwStamp((string) $admin['password_hash']), $how);
-        Logger::audit('admin.login.' . $how, 'admin', (string) $admin['id'], null, null, 'Signed in without a password: ' . $how);
+        // 16 Nov 2026 (P1-5b): false = held at the device-limit step (Auth::deviceHold); the page the
+        // caller sends the person to bounces to admin/login.php, which shows that step.
+        if (self::finishAdminSession($admin, Security::clientIp(), self::viaOtpFor($how, $admin), self::pwStamp((string) $admin['password_hash']), $how)) {
+            Logger::audit('admin.login.' . $how, 'admin', (string) $admin['id'], null, null, 'Signed in without a password: ' . $how);
+        }
     }
 
     /**
@@ -1622,9 +1824,11 @@ final class Auth
         if ((string) ($admin['password_hash'] ?? '') === '') {
             throw new RuntimeException('The team portal opens a session only for the password it checked.');
         }
-        self::finishAdminSession($admin, Security::clientIp(), $viaOtp, self::pwStamp((string) $admin['password_hash']));
-        Logger::audit('team.login', 'admin', (string) $admin['id'], null, null,
-            'Team portal: mobile + ' . ($viaOtp ? 'new password after a WhatsApp code' : 'password'));
+        // 16 Nov 2026 (P1-5b): false = held at the device-limit step (Auth::deviceHold).
+        if (self::finishAdminSession($admin, Security::clientIp(), $viaOtp, self::pwStamp((string) $admin['password_hash']))) {
+            Logger::audit('team.login', 'admin', (string) $admin['id'], null, null,
+                'Team portal: mobile + ' . ($viaOtp ? 'new password after a WhatsApp code' : 'password'));
+        }
     }
 
     /**

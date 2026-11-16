@@ -203,6 +203,17 @@ const CORE_SUITES = [
     'u5-easy-settings-test.php'       => 'S Hari AI page: command, No is logged, Yes applies',
     'u6-staff-chrome-test.php'        => 'staff head metas, csrf meta, AI bubble wiring, nav entries, themes page',
     'u7-ai-turns-test.php'            => 'ai_turns row per bot turn with no message text; missing table never breaks a reply',
+    // 16 Nov 2026 (later), the "baki kam" build (units W1..W6): every new behaviour ships switched OFF.
+    'u8-W1-devices-limit-test.php'    => 'per-role device limit (0 = none), held sign-in, sign the other device out, cancel',
+    'u8-W2-offline-test.php'          => 'offline call-back request queued (not a ticket), N queued counter, enquiry accepts callback',
+    'u8-W3-ai-staff-test.php'         => 'AI Watch ignore/later, AI-change WhatsApp switch, settings engine, trip delay two-step, Easy Settings keys',
+    'u8-W4-wa-bot-test.php'           => 'WhatsApp AI cancel = office request by default, hand-off line and typing switches OFF',
+    'u8-W4-wa-inbox-render-test.php'  => 'WhatsApp inbox renders with the hand-off tick',
+    'u8-W5-reminder24-test.php'       => '24 h trip reminder OFF by default, claimed once, skipped without the ENUM value',
+    'u8-W5-agent-alerts-test.php'     => 'breakdown / SOS reaches the agents only when the switch is ON',
+    'u8-W5-wa-cap-test.php'           => 'daily WhatsApp cap: 0 = none, tickets / OTP / bot replies never blocked, 80 % alert once',
+    'social-posts-test.php'           => 'Facebook post queue: drafts, approve, publish only approved + switch ON, permission error marks failed',
+    'u8-W6-facebook-pages-test.php'   => 'FB posts page + nav entry, support inbox shows Facebook source',
 ];
 
 /**

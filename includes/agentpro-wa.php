@@ -4105,8 +4105,10 @@ final class ApWa
             case 'cancel':
                 require_once __DIR__ . '/aitools.php';
                 $r = AiTools::run('cancel_ticket', ['pnr' => (string) $p['pnr'], 'reason' => 'Cancelled on WhatsApp', 'confirm' => true], $ctx);
+                // 16 Nov 2026: a passenger's cancel is only a REQUEST to the office now
+                // (wa_ai_cancel_mode = request) - not a failure, so no warning icon
                 return self::out($r['ok'] ? self::t('cancel_done', $lang, ['pnr' => (string) $p['pnr'], 'v' => (string) ($r['data']['refundLabel'] ?? '')])
-                                          : '⚠️ ' . $r['say']);
+                                          : (!empty($r['data']['requested']) ? '📨 ' : '⚠️ ') . $r['say']);
 
             case 'cancel_req':
                 if ($member === null) {

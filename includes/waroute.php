@@ -412,6 +412,132 @@ final class WaRoute
         self::count($pricing['billable'] === true ? 'billable' : 'metafree');
     }
 
+    /* -----------------------------------------------------------------
+     *  The ceiling on ALL outbound WhatsApp (16 Nov 2026, P6-11e)
+     *
+     *  wa_global_daily_cap  0 (default) = no ceiling, exactly as before;
+     *                       N = at most N WhatsApp a day before the
+     *                           non-essential ones wait for tomorrow.
+     *  Counted in Notify::logMessage() (kv wa_route 'Y-m-d:all') for every
+     *  WhatsApp a sender ACCEPTED - tickets, bot replies, alerts, all of it
+     *  - so the figure is the whole day. Only an offer / campaign /
+     *  marketing / broadcast message or the agents' good-morning is ever
+     *  held back; a ticket, a login or one-time code, a bot reply, an office
+     *  alert, a trip update or anything about money always goes. At 80 %
+     *  the office is told once a day (panel bell + one WhatsApp note).
+     * ----------------------------------------------------------------- */
+
+    /** Purposes the daily ceiling may hold back - nothing else is ever stopped. */
+    public const CAP_BLOCKABLE = ['offer', 'campaign', 'marketing', 'promo', 'broadcast', 'good_morning'];
+
+    /** Never held back, even when a word above also matches. */
+    public const CAP_NEVER = ['ticket', 'otp', 'login', 'auth', 'verify', 'reset', 'security', 'credential', 'code',
+                              'bot_reply', 'inbox_reply', 'alert', 'admin', 'office', 'trip', 'sos', 'payment', 'refund',
+                              'booking', 'seller', 'cancel', 'support'];
+
+    /** The ceiling, 0 = none. */
+    public static function globalCap(): int
+    {
+        try {
+            return max(0, Settings::getInt('wa_global_daily_cap', 0));
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    /** Every WhatsApp a sender accepted today (all purposes). */
+    public static function allToday(): int
+    {
+        return self::counter(date('Y-m-d') . ':all');
+    }
+
+    /** May the ceiling hold a message with this purpose back? Conservative: unknown = no. */
+    public static function capBlockable(string $purpose): bool
+    {
+        $p = strtolower(trim($purpose));
+        if ($p === '') {
+            return false;
+        }
+        foreach (self::CAP_NEVER as $w) {
+            if (str_contains($p, $w)) {
+                return false;
+            }
+        }
+        foreach (self::CAP_BLOCKABLE as $w) {
+            if (str_contains($p, $w)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** '' when this message may go now, else why it waits. */
+    public static function capRefusal(string $purpose): string
+    {
+        $cap = self::globalCap();
+        if ($cap <= 0 || !self::capBlockable($purpose)) {
+            return '';
+        }
+        $used = self::allToday();
+        return $used >= $cap
+            ? 'daily WhatsApp cap reached (' . $used . '/' . $cap . ', wa_global_daily_cap) - ' . $purpose . ' waits until tomorrow'
+            : '';
+    }
+
+    /**
+     * One more WhatsApp went out (Notify::logMessage, status sent). Counts
+     * it and, with a ceiling set, tells the office once a day at 80 %.
+     * Never throws - it runs inside every send, the webhook's included.
+     */
+    public static function noteSent(): void
+    {
+        self::count('all');
+        try {
+            $cap = self::globalCap();
+            if ($cap <= 0) {
+                return;
+            }
+            $used = self::allToday();
+            if ($used * 100 < $cap * 80) {
+                return;
+            }
+            require_once INCLUDE_PATH . '/adminalerts.php';
+            $title = '📵 WhatsApp दैनिक सीमा ' . (int) floor($used * 100 / $cap) . '% · Daily cap';
+            $body  = 'आज ' . $used . ' / ' . $cap . ' WhatsApp गयो। सीमा पुगेपछि अफर र क्याम्पेन मात्र रोकिन्छ - टिकट, OTP, बोट जवाफ र कार्यालय अलर्ट जान्छन्। '
+                   . 'Today ' . $used . ' of ' . $cap . ' WhatsApp sent. At the cap only offers and campaigns wait; tickets, codes, bot replies and office alerts still go.';
+            // The bell's own dedupe key is the once-a-day guard; the WhatsApp note rides on the first ring only.
+            $bell = AdminAlerts::push('wa_daily_cap', $title, $body, '/admin/wa-manager.php', '📵', 'wa_cap80:' . date('Y-m-d'));
+            if ($bell <= 0) {
+                return;
+            }
+            $head  = '📵 WhatsApp daily cap ' . (int) floor($used * 100 / $cap) . '% · दैनिक सीमा';
+            $facts = [
+                'Today / आज' => $used . ' / ' . $cap,
+                'At the cap' => 'only offers / campaigns wait - tickets, codes, bot replies, office alerts still go',
+                'Change'     => appUrl('admin/wa-manager.php'),
+            ];
+            if (self::$capAlert !== null) {
+                (self::$capAlert)($head, $facts);
+                return;
+            }
+            /* After this request's own work: this runs INSIDE another send's
+               logging, and a nested send would land in that send's journal
+               (Notify::whatsappJournal) as if it were the message itself. */
+            register_shutdown_function(static function () use ($head, $facts): void {
+                try {
+                    if (class_exists('Notify')) {
+                        Notify::adminNote($head, $facts);
+                    }
+                } catch (Throwable $e) {
+                }
+            });
+        } catch (Throwable $e) {
+        }
+    }
+
+    /** Tests: fn(string $headline, array $facts) - replaces the office WhatsApp note at 80 %. */
+    public static ?Closure $capAlert = null;
+
     /** Free allowance per month (wa_meta_free_allowance; 0 = not tracked). */
     public static function freeAllowance(): int
     {
@@ -440,7 +566,8 @@ final class WaRoute
      * @return array{policy:string, metaReady:bool, windows:int, freeToday:int, free7:int,
      *               aisToday:int, ais7:int, savedToday:float, saved7:float, lastInbound:string, rate:float,
      *               metaTplToday:int, metaTpl7:int, paidToday:int, paidLimit:?int,
-     *               billableMonth:int, metaFreeMonth:int, allowance:int, allowanceLeft:?int}
+     *               billableMonth:int, metaFreeMonth:int, allowance:int, allowanceLeft:?int,
+     *               allToday:int, globalCap:int}
      */
     public static function stats(): array
     {
@@ -449,7 +576,8 @@ final class WaRoute
                 'lastInbound' => '', 'rate' => 0.13,
                 'metaTplToday' => 0, 'metaTpl7' => 0, 'paidToday' => self::paidToday(), 'paidLimit' => self::paidLimit(),
                 'billableMonth' => self::monthCount('billable'), 'metaFreeMonth' => self::monthCount('metafree'),
-                'allowance' => self::freeAllowance(), 'allowanceLeft' => null];
+                'allowance' => self::freeAllowance(), 'allowanceLeft' => null,
+                'allToday' => self::allToday(), 'globalCap' => self::globalCap()];
         if ($out['allowance'] > 0) {
             $out['allowanceLeft'] = max(0, $out['allowance'] - $out['billableMonth']);
         }

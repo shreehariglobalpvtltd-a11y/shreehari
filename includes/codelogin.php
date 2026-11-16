@@ -495,6 +495,9 @@ final class CodeLogin
         if (!empty($r['twofa'])) {
             return ['step' => 'admin_otp', 'notice' => 'तपाईंको WhatsApp मा ६ अङ्कको कोड पठाइयो · A 6-digit code was sent to your registered WhatsApp.'];
         }
+        if (!empty($r['devices'])) {
+            return ['step' => 'devices'];   // 16 Nov 2026 (P1-5b/5c): on its device limit — held (Auth::deviceHold)
+        }
         return ['go' => 'home'];
     }
 
@@ -1118,8 +1121,8 @@ final class CodeLogin
             self::alertReset($admin);   // the owner of the number hears that the PIN / pattern changed
         }
         $r = self::open($admin, $kind);
-        if (isset($r['go'])) {
-            $r['flash'] = 'pin_saved';
+        if (isset($r['go']) || ($r['step'] ?? '') === 'devices') {
+            $r['flash'] = 'pin_saved';   // the PIN is saved either way (a device-limit hold opens after it)
         }
         return $r;
     }

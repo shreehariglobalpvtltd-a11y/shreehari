@@ -408,6 +408,26 @@ final class Notify
             return false;
         }
 
+        /* 16 Nov 2026 (P6-11e): the office's ceiling on ALL WhatsApp a day
+           (wa_global_daily_cap, 0 = none - the default). At the ceiling only
+           an offer / campaign / broadcast / good-morning waits for tomorrow
+           (WaRoute::capBlockable); a ticket, a code, a bot reply, an office
+           alert or a trip update is never held. Never allowed to break a send. */
+        $capWhy = '';
+        try {
+            require_once __DIR__ . '/waroute.php';
+            $capWhy = WaRoute::capRefusal((string) ($meta['purpose'] ?? ''));
+        } catch (Throwable $ignored) {
+            $capWhy = '';
+        }
+        if ($capWhy !== '') {
+            self::$journal[] = ['to' => $number, 'ok' => false, 'link' => null, 'driver' => $driver, 'reason' => 'daily_cap'];
+            self::logMessage('whatsapp', $number, $message, 'skipped', [
+                'provider' => $driver, 'bookingId' => $bookingId, 'error' => $capWhy,
+            ] + $meta);
+            return false;
+        }
+
         /* Idempotency guard (21 Sep 2026): a confirmed booking must never
            be handed the same ticket twice. bookingConfirmed() runs inside
            the EventBus fan-out, so if a payment webhook re-fires (Razorpay
@@ -2110,6 +2130,19 @@ final class Notify
 
     private static function logMessage(string $channel, string $to, string $body, string $status, array $meta = []): void
     {
+        /* 16 Nov 2026 (P6-11e): every WhatsApp a sender accepted is counted
+           for the day (kv wa_route 'Y-m-d:all') - every send path, the bot's
+           replies included, writes its row through here. One cheap upsert;
+           the 80 % office note only exists while wa_global_daily_cap > 0.
+           Facebook Messenger replies share this log (logOutbound, provider
+           'messenger') but are not WhatsApp: never counted. */
+        if ($channel === 'whatsapp' && $status === 'sent' && (string) ($meta['provider'] ?? '') !== 'messenger') {
+            try {
+                require_once __DIR__ . '/waroute.php';
+                WaRoute::noteSent();
+            } catch (Throwable $ignored) {
+            }
+        }
         // 4 Sep 2026: never keep a one-time code at rest. Customer OTPs and
         // staff 2FA texts read "… code: 123456 …"; the digits are masked
         // before the row is written, so admin/messages-log.php can show the
@@ -3271,7 +3304,8 @@ final class Notify
     // 'cancelled' (8 Oct 2026, D7-01): TripNotify::notifyCancellation() always
     // sent it, and this list refused it as "Unknown trip event." — so a trip
     // the office cancelled reached no passenger at all.
-    public const TRIP_EVENTS = ['reminder_12h', 'reminder_2h', 'delayed', 'cancelled', 'departed', 'border', 'arrived', 'bus_near'];
+    // 'reminder_24h' (16 Nov 2026, P8-4b): its own switch, off by default.
+    public const TRIP_EVENTS = ['reminder_24h', 'reminder_12h', 'reminder_2h', 'delayed', 'cancelled', 'departed', 'border', 'arrived', 'bus_near'];
 
     /**
      * Is this lifecycle event switched on? Callers check this BEFORE they
@@ -3285,6 +3319,8 @@ final class Notify
         }
 
         return match ($event) {
+            // 16 Nov 2026 (P8-4b): one more customer message a trip - the owner switches it on.
+            'reminder_24h' => Settings::getBool('reminder_24h_enabled', false),
             'reminder_12h' => Settings::getBool('reminder_12h_enabled', true),
             'reminder_2h'  => Settings::getBool('reminder_2h_enabled', true),
             'departed', 'border', 'arrived' => Settings::getBool('trip_status_notify', true),
@@ -3424,6 +3460,7 @@ final class Notify
     private static function tripEventLine(string $event, array $f): array
     {
         $head = match ($event) {
+            'reminder_24h' => 'Your trip is about 24 hours away. Keep your ticket and a photo ID ready',
             'reminder_12h' => 'Your bus leaves in about 12 hours. Carry a photo ID for the border',
             'reminder_2h'  => 'Your bus leaves in about 2 hours. Please reach the boarding point on time',
             'delayed'      => 'Your bus is delayed' . (!empty($f['delayMinutes']) ? ' by about ' . (int) $f['delayMinutes'] . ' minutes' : '')
@@ -3486,6 +3523,31 @@ final class Notify
         };
 
         return match ($event) {
+            /* 16 Nov 2026 (P8-4b): the day-before reminder, Nepali first - the
+               passenger's own pickup time and stop, the seat and the ticket
+               link (the same signed picture link the ticket message carries). */
+            'reminder_24h' => [
+                'whatsapp' => "🚌 " . $company . "\n"
+                    . match ((string) ($f['pickupToday'] ?? '')) {
+                        '1'     => 'आज यात्रा · Trip today',
+                        '0'     => 'भोलि यात्रा · Trip tomorrow',
+                        default => 'यात्रा सम्झना · Trip reminder',
+                    } . " — " . $pnr . "\n"
+                    . ($f['route'] !== '' ? "रुट · Route: " . $f['route'] . "\n" : '')
+                    . ($when !== '' ? "चढ्ने समय · Pickup: " . $when . "\n" : '')
+                    . ($f['boarding'] !== '' ? "चढ्ने ठाउँ · Boarding: " . $f['boarding'] . "\n" : '')
+                    . ($f['seats'] !== '' ? "सिट · Seat: " . $f['seats'] . "\n" : '')
+                    . (($tl = self::tripTicketLink($pnr)) !== '' ? "टिकट · Ticket: " . $tl . "\n" : '')
+                    . "\n📄 फोटो भएको परिचयपत्र साथमा ल्याउनुहोस् — बोर्डरमा चाहिन्छ।\n"
+                    . "Carry a valid photo ID for the border crossing.\n"
+                    . ($helpline !== '' ? "सहयोग · Help: " . $helpline : ''),
+                'sms' => $company . ': Trip reminder ' . $pnr . '.'
+                    . ($f['route'] !== '' ? ' ' . $f['route'] . '.' : '')
+                    . ($when !== '' ? ' Pickup ' . $when . '.' : '')
+                    . ($f['boarding'] !== '' ? ' At ' . trim(explode('@', (string) $f['boarding'])[0]) . '.' : '')
+                    . ($f['seats'] !== '' ? ' Seat ' . $f['seats'] . '.' : '')
+                    . ' Carry photo ID for the border.',
+            ],
             'reminder_12h' => [
                 'whatsapp' => "🚌 " . $company . "\n"
                     . $dayHead . " — booking " . $pnr . "\n"
@@ -3584,6 +3646,19 @@ final class Notify
             ],
             default => ['whatsapp' => '', 'sms' => ''],
         };
+    }
+
+    /** The signed ticket-picture link for a reminder ('' when it cannot be built - the reminder still goes). */
+    private static function tripTicketLink(string $pnr): string
+    {
+        if ($pnr === '' || !class_exists('Ticket')) {
+            return '';
+        }
+        try {
+            return Ticket::imageUrl($pnr);
+        } catch (Throwable $e) {
+            return '';
+        }
     }
 
 

@@ -65,6 +65,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
                 $r = TeamPortal::login($p, (string) ($_POST['password'] ?? ''), $ccIn);
                 if ($r['ok']) {
+                    if (Auth::deviceHold() !== null) { TeamUi::go('/admin/login.php'); }   // 16 Nov 2026 (P1-5b): device-limit step
                     TeamUi::go(($r['kind'] ?? '') === 'pick' ? '/team/?v=pick' : (($r['kind'] ?? '') === 'admin' ? $afterAdmin : '/team/'));   // one mobile, several IDs: which one?
                 }
                 $err = (string) $r['error'];
@@ -101,6 +102,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $r = TeamPortal::resetPassword($p, (string) ($_POST['code'] ?? ''), (string) ($_POST['pw'] ?? ''), (string) ($_POST['pw2'] ?? ''));
                 if ($r['ok']) {
                     unset($_SESSION['team_reset']);
+                    if (Auth::deviceHold() !== null) { TeamUi::go('/admin/login.php'); }   // 16 Nov 2026 (P1-5b): device-limit step
                     if (($r['kind'] ?? '') === 'pick') {
                         TeamUi::setFlash('ok', '✅ नयाँ पासवर्ड राखियो — कुन ID खोल्ने? · New password saved — which ID do you want to open?');
                         TeamUi::go('/team/?v=pick');
@@ -117,6 +119,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             } elseif ($act === 'pick') {
                 $r = TeamPortal::pick((int) ($_POST['id'] ?? 0));
                 if ($r['ok']) {
+                    if (Auth::deviceHold() !== null) { TeamUi::go('/admin/login.php'); }   // 16 Nov 2026 (P1-5b): device-limit step
                     TeamUi::go($afterAdmin);
                 }
                 $err = (string) $r['error'];
@@ -191,7 +194,7 @@ if ($me !== null && $v !== 'reset') {
       <?php endif; ?>
       <p class="tp-links"><a href="/team/">← Back</a></p>
     </div>
-    <script src="/assets/js/team-passkey.js?v=20261116a"></script>
+    <script src="/assets/js/team-passkey.js?v=20261116b"></script>
     <?php elseif ($v === 'password'): ?>
     <div class="tp-card">
       <h1>🔑 पासवर्ड बदल्नुहोस् · Change password</h1>
@@ -416,7 +419,7 @@ if ($v === 'pick'): ?>
     <a href="/agreements/apply.html?kind=staff">🧑‍✈️ स्टाफ बन्नुहोस्</a>
     <a href="/agreements/apply.html?kind=partner">🏢 साझेदार बन्नुहोस्</a>
   </p>
-  <?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116a"></script><?php endif; ?>
+  <?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116b"></script><?php endif; ?>
   <p class="tp-links" style="font-weight:400"><a href="/admin/login.php?portal=admin">Office login (admin)</a></p>
 </div>
 <?php endif;

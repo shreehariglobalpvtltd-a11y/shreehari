@@ -20,6 +20,10 @@
  *            and refund by hand — never automated)
  * Each one is a row in ticket_edit_audit (ticket, field, old, new, by, when,
  * otp_verified). All messages are free (the person just wrote to us).
+ *
+ * 16 Nov 2026 (P6-2d): requestCancel() files the same cancel REQUEST for the
+ * WhatsApp assistant (AiTools cancel_ticket, a passenger, wa_ai_cancel_mode
+ * 'request' = the default), with the passenger's reason and the quoted refund.
  */
 
 declare(strict_types=1);
@@ -480,10 +484,19 @@ final class WaEdit
         return self::say('बुझिएन। · Not understood.');
     }
 
-    /** A cancel request: free WhatsApp to the admin in its window, the panel bell always. */
-    private static function tellOffice(array $b, string $intl): void
+    /**
+     * A cancel request: free WhatsApp to the admin in its window, the panel bell always.
+     * P6-2d (16 Nov 2026): the assistant's request also carries the passenger's reason and
+     * the refund the published slabs quoted ($otp false = proven by the booking's own
+     * number + the quote-then-yes, not by a code). The code path's note is unchanged.
+     */
+    private static function tellOffice(array $b, string $intl, string $reason = '', ?float $refund = null, bool $otp = true): void
     {
-        $text = "📝 रद्द अनुरोध · Cancel request\nPNR: " . (string) $b['pnr'] . "\nयात्रु नम्बर: +" . $intl . "\n(कोडले पुष्टि गरिएको · code verified)\nAdmin → Bookings मा हेर्नुहोस्।";
+        $extra = ($reason !== '' ? "\nकारण · Reason: " . $reason : '')
+            . ($refund !== null ? "\nनियम अनुसार फिर्ता · Refund by the slabs: " . inr($refund) . ' (अनुमान मात्र · quoted only, nothing paid)' : '');
+        $how = $otp ? '(कोडले पुष्टि गरिएको · code verified)'
+                    : "(WhatsApp AI — बुकिङकै नम्बरबाट, रकम सुनेर 'हो' भनेको · from the booking's own number, after hearing the figure)\nकेही रद्द वा फिर्ता भएको छैन · Nothing was cancelled or refunded.";
+        $text = "📝 रद्द अनुरोध · Cancel request\nPNR: " . (string) $b['pnr'] . "\nयात्रु नम्बर: +" . $intl . $extra . "\n" . $how . "\nAdmin → Bookings मा हेर्नुहोस्।";
         try {
             $admin = WaAgentRoute::adminNumber();
             if ($admin !== '') {
@@ -493,11 +506,57 @@ final class WaEdit
         }
         try {
             require_once INCLUDE_PATH . '/adminalerts.php';
-            AdminAlerts::push('wa_cancel_request', 'Cancel request · ' . (string) $b['pnr'], 'Passenger +' . $intl . ' asked to cancel on WhatsApp (code verified). Settle by hand.',
+            AdminAlerts::push('wa_cancel_request', 'Cancel request · ' . (string) $b['pnr'],
+                'Passenger +' . $intl . ' asked to cancel on WhatsApp (' . ($otp ? 'code verified' : 'via the assistant') . ').'
+                . ($reason !== '' ? ' Reason: ' . $reason . '.' : '')
+                . ($refund !== null ? ' Quoted refund: ' . inr($refund) . '.' : '') . ' Settle by hand.',
                 '/admin/booking-view.php?pnr=' . rawurlencode((string) $b['pnr']), '📝', 'wa_cancel:' . (int) $b['id']);
         } catch (Throwable $e) {
             Logger::warning('cancel request alert failed: ' . $e->getMessage(), [], 'whatsapp');
         }
+    }
+
+    /**
+     * P6-2d (16 Nov 2026) — the WhatsApp assistant's cancel_ticket for a PASSENGER while
+     * wa_ai_cancel_mode is 'request' (the default): the same REQUEST the ❌ button files —
+     * a ticket_edit_audit row (+ audit_logs), the office WhatsApp in its window and the
+     * panel bell — with the passenger's reason and the quoted refund. Nothing is cancelled
+     * and no money moves: the owner settles every cancel and refund by hand. The caller
+     * (AiTools::cancelTicket) has already checked the number owns the booking.
+     * A second request for the same booking within 6 h is noted, not re-sent.
+     *
+     * @return array{ok: bool, repeat: bool, why: string}
+     */
+    public static function requestCancel(string $pnr, string $fromRaw, string $countryHint = '', string $reason = '', ?float $refund = null): array
+    {
+        $b = Database::fetch('SELECT * FROM bookings WHERE pnr = :p LIMIT 1', ['p' => strtoupper(trim($pnr))]);
+        if ($b === null) {
+            return ['ok' => false, 'repeat' => false, 'why' => 'No booking with that PNR.'];
+        }
+        if (!in_array((string) $b['status'], ['confirmed', 'completed', 'pending'], true)) {
+            return ['ok' => false, 'repeat' => false, 'why' => 'Booking ' . (string) $b['pnr'] . ' is ' . strtoupper((string) $b['status']) . ' — there is nothing to cancel.'];
+        }
+        require_once INCLUDE_PATH . '/waagentroute.php';
+        // A bare 10-digit number (the members' desk context) takes the booking's own country code.
+        $hint = $countryHint !== '' ? $countryHint : (preg_replace('/\D+/', '', (string) ($b['contact_country_code'] ?? '')) ?? '');
+        $intl = WaAgentRoute::intl($fromRaw, $hint);
+        if ($intl === '') {
+            $intl = preg_replace('/\D+/', '', $fromRaw) ?? '';
+        }
+        $reason = trim(mb_substr((string) preg_replace('/\s+/u', ' ', $reason), 0, 200));
+        $fresh = true;
+        try {
+            $fresh = Security::rateLimit('wa_ai_cancel_req', (string) (int) $b['id'], 1, 21600);
+        } catch (Throwable $ignored) {
+        }
+        if (!$fresh) {
+            return ['ok' => true, 'repeat' => true, 'why' => ''];
+        }
+        self::audit($b, 'cancel_request', (string) $b['status'], 'cancel requested', $fromRaw, false, 'requested',
+            'WhatsApp AI request; office settles cancel + refund by hand'
+            . ($refund !== null ? '; quoted ' . inr($refund) : '') . ($reason !== '' ? '; reason: ' . $reason : ''));
+        self::tellOffice($b, $intl, $reason, $refund, false);
+        return ['ok' => true, 'repeat' => false, 'why' => ''];
     }
 
     /** "Ticket confirm bhayo?" — status + the ticket picture + the change buttons. */

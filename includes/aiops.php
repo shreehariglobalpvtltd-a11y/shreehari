@@ -36,6 +36,12 @@
  *     add_stop     {route_id, stop_type, stop_name, stop_time, fare}  Boarding::addStop
  *     seat_block   {seat, date, on}           one berth out of / back in service per departure
  *     trip_fare / trip_sale also take time (+ alt for "10 baje" am/pm) and dir.
+ *  16 Nov 2026 (v2.0, unit W3):
+ *     trip_delay   {schedule_id, date, minutes} "bholi jane bus 2 ghanta late": the trips board's
+ *                  Delay (delay_minutes + TripNotify::notifyDelay) for ONE bus, office only
+ *                  (schedules.manage), only while ai_trip_delay_on is ON; never from the AI path.
+ *     ai_settings_engine 'cloud' asks the cloud brain before the VPS model; ai_change_wa_on
+ *     sends the office one WhatsApp line after a "Yes"; every v2.0 switch is in EASY_KEYS.
  *  A sentence the words half-understand ("which pickup?", "what time?")
  *  returns [] with lastNote() set, and the AI is not asked to guess.
  * =====================================================================
@@ -51,7 +57,7 @@ if (!defined('SHG_APP')) {
 final class AiOps
 {
     public const TYPES = ['route', 'stop_fare', 'dir_fare', 'trip_fare', 'trip_sale', 'bus_number', 'bus_name', 'extra_seats', 'commission', 'setting',
-                          'fare_delta', 'add_stop', 'seat_block'];
+                          'fare_delta', 'add_stop', 'seat_block', 'trip_delay'];
 
     private const ON  = ['on', 'chalu', 'chalau', 'chalaideu', 'chalaidinu', 'khol', 'kholdeu', 'kholdinu', 'enable', 'start', 'activate', 'open', 'suru', 'shuru',
                          'चालु', 'खोल', 'चलाउ', 'सुरु', 'अन', 'शुरू', 'चालू', 'खोलो', 'chalu gara', 'चलाऊ',
@@ -122,10 +128,13 @@ final class AiOps
         return ['actions' => [], 'via' => '', 'note' => ''];
     }
 
+    /** Devanagari / Gujarati digits → 0-9 (norm() and the switch words read the same). */
+    private const DIGITS = ['०' => '0', '१' => '1', '२' => '2', '३' => '3', '४' => '4', '५' => '5', '६' => '6', '७' => '7', '८' => '8', '९' => '9',
+                            '૦' => '0', '૧' => '1', '૨' => '2', '૩' => '3', '૪' => '4', '૫' => '5', '૬' => '6', '૭' => '7', '૮' => '8', '૯' => '9'];
+
     public static function norm(string $text): string
     {
-        $t = strtr($text, ['०' => '0', '१' => '1', '२' => '2', '३' => '3', '४' => '4', '५' => '5', '६' => '6', '७' => '7', '८' => '8', '९' => '9',
-                           '૦' => '0', '૧' => '1', '૨' => '2', '૩' => '3', '૪' => '4', '૫' => '5', '૬' => '6', '૭' => '7', '૮' => '8', '૯' => '9', '₹' => ' ']);
+        $t = strtr($text, self::DIGITS + ['₹' => ' ']);
         /* 16 Nov 2026 (BUG1): "2,200" / "1,00,000" / "2,200/-" / "Rs.2200" is ONE amount — the comma
            used to split "Mehsana price 2,200" into a ₹200 fare. A list ("seat 1,2", "12,13": the last
            group is not 3 digits) still splits. */
@@ -505,6 +514,13 @@ final class AiOps
             if ($agent !== null && $val >= 0 && $val <= 10000) {
                 return [['type' => 'commission', 'agent_id' => (int) $agent['id'], 'value' => $val]];
             }
+        }
+
+        /* 1a. a bus running late: "bholi jane bus 2 ghanta late" (16 Nov 2026, P8-10d) — office only,
+              behind ai_trip_delay_on; the passengers are told only after "Yes" */
+        $delay = self::delayAction($t, $date, $dirSaid);
+        if ($delay !== null) {
+            return $delay;
         }
 
         /* 1b. a new pickup / drop point: "Naya pickup add karo: Gandhinagar 22:30" (16 Nov 2026, P3-2e)
@@ -938,6 +954,119 @@ final class AiOps
         return [];
     }
 
+    /**
+     * "bholi jane bus 2 ghanta late", "aaja aaune bus 90 min dhilo", "9 Nov 13:00 bus 1.5 ghanta
+     * late" (16 Nov 2026, P8-10d). Exactly ONE departure (date + jane / aaune / a time / a town
+     * narrow it); "Yes" then runs the trips board's own Delay (schedules.delay_minutes +
+     * TripNotify::notifyDelay, which messages that bus's confirmed passengers once). Only while
+     * the office keeps ai_trip_delay_on ON — otherwise the note says the switch is off.
+     *
+     * @return list<array<string,mixed>>|null null = not this kind of sentence
+     */
+    private static function delayAction(string $t, ?string $date, ?string $dirSaid): ?array
+    {
+        /* a whole word in every script (review 16 Nov 2026): hasWord() finds a Devanagari / Gujarati word
+           anywhere, so "बस 02 को प्लेट GJ05AB1234" (प्लेट = plate) read as "late" and its note kept the AI
+           from reading the plate; "મોડાસા" (Modasa) is not "late" either */
+        if (preg_match('/(?<![\p{L}\p{M}])(?:late|delay|delayed|dhilo|dhilai|dhila|deri|ढिलो|ढिला|ढिलाइ|लेट|देरी|મોડી|મોડું|મોડા|લેટ)(?![\p{L}\p{M}])/u', $t) !== 1) {
+            return null;
+        }
+        $mins  = self::delayMinutes($t);
+        $isBus = self::hasWord($t, ['bus', 'gadi', 'gaadi', 'trip', 'बस', 'गाडी', 'गाड़ी', 'બસ']) >= 0;
+        if ($mins === null && (!$isBus || self::onOff($t) !== null
+                || self::hasWord($t, ['fine', 'jariwana', 'jarimana', 'penalty', 'जरिवाना', 'जुर्माना', 'bhada', 'fare', 'भाडा']) >= 0)) {
+            return null;   // "late cancel fine 500", "bus late fine 500", "ai trip delay on" … are not a running bus
+        }
+        if (!Settings::getBool('ai_trip_delay_on', false)) {
+            self::$note = '⏸ AI बाट "बस ढिलो" सन्देश बन्द छ · The AI bus-delay message is switched OFF (ai_trip_delay_on). '
+                . 'Use Trips → Delay, or switch it ON in Easy Settings.';
+            return [];
+        }
+        if ($mins === null) {
+            self::$note = '⏰ कति ढिलो? · How late? Say e.g. "bholi jane bus 2 ghanta late" or "aaja aaune bus 90 min late".';
+            return [];
+        }
+        if ($mins < 5 || $mins > 600) {
+            self::$note = '⏰ ५ मिनेट देखि १० घण्टा सम्म · A delay of 5 minutes to 10 hours.';
+            return [];
+        }
+        if ($date === null) {
+            self::$note = '📅 कुन दिनको बस? · Which date? Say e.g. "aaja jane bus 2 ghanta late".';
+            return [];
+        }
+        $f = self::tripFilter($t, $dirSaid);
+        $cities = self::findCities($t);
+        $ids = $cities !== [] ? array_map(static fn(array $r): int => (int) $r['id'], self::routesFor($cities, true)) : [];
+        if ($cities !== [] && $ids === []) {
+            self::$note = '🛣 ' . implode(', ', array_map('ucfirst', $cities)) . ' को कुनै रुट चालु छैन · No route is ON for that town.';
+            return [];
+        }
+        $rows = self::dateSchedules($date, $ids, $f);
+        $list = static fn(array $rs): string => implode(', ', array_map(static fn(array $s): string => substr((string) $s['dep'], 0, 5) . ' ' . $s['from_city'] . ' → ' . $s['to_city'], $rs));
+        if ($rows === []) {
+            $day = self::dateSchedules($date);
+            self::$note = '🚌 ' . formatDate($date, 'j M') . ' मा त्यस्तो बस छैन · No such bus that day.'
+                . ($day !== [] ? ' त्यो दिन · That day: ' . $list($day) . '.' : '');
+            return [];
+        }
+        if (count($rows) > 1) {
+            self::$note = '🚌 ' . formatDate($date, 'j M') . ' मा ' . count($rows) . ' बस · ' . count($rows) . ' buses that day: ' . $list($rows)
+                . '. कुन? · Which one? Say jane / aaune or its time, e.g. "' . formatDate($date, 'j M') . ' ' . substr((string) $rows[0]['dep'], 0, 5) . ' bus 2 ghanta late".';
+            return [];
+        }
+        if (in_array((string) $rows[0]['status'], ['departed', 'arrived'], true)) {
+            self::$note = '🚌 ' . $list($rows) . ' छुटिसक्यो · has already left — passengers are on board, nothing to send.';
+            return [];
+        }
+        return [['type' => 'trip_delay', 'schedule_id' => (int) $rows[0]['id'], 'date' => $date, 'minutes' => $mins]];
+    }
+
+    /** "2 ghanta", "1.5 hours", "90 min", "1 ghanta 30 minat", "dedh ghanta", "aadha ghanta" → minutes; null = none said. */
+    public static function delayMinutes(string $t): ?int
+    {
+        $m = 0;
+        $said = false;
+        if (preg_match('/(?<![\d.:])(\d{1,2}(?:\.\d{1,2})?)\s*(?:ghanta|ghante|ghanto|ghnta|hours?|hrs?|h(?![a-z])|घण्टा|घंटा|घन्टा|કલાક)/u', $t, $x) === 1) {
+            $m += (int) round((float) $x[1] * 60);
+            $said = true;
+        } elseif (preg_match('/(?<![a-z])(?:dedh|derh|डेढ|દોઢ)\s*(?:ghanta|ghante|hours?|घण्टा|घंटा|કલાક)/u', $t) === 1) {
+            $m += 90;
+            $said = true;
+        } elseif (preg_match('/(?<![a-z])(?:aadha|adha|आधा|અડધો)\s*(?:ghanta|ghante|hour|घण्टा|घंटा|કલાક)/u', $t) === 1) {
+            $m += 30;
+            $said = true;
+        }
+        if (preg_match('/(?<![\d.:])(\d{1,3})\s*(?:minutes?|mins?|minat|minet|मिनेट|मिनट|મિનિટ)/u', $t, $x) === 1) {
+            $m += (int) $x[1];
+            $said = true;
+        }
+        return $said ? $m : null;
+    }
+
+    /** @return array{bookings:int, people:int, status:string, delay:int} who a delay on this departure would reach */
+    private static function delayReach(int $scheduleId): array
+    {
+        $s = Database::fetch('SELECT status, delay_minutes FROM schedules WHERE id = :s', ['s' => $scheduleId]) ?? [];
+        // the same passengers TripNotify::notifyDelay messages: confirmed, with a phone
+        $r = Database::fetch(
+            "SELECT COUNT(DISTINCT b.id) AS n,
+                    (SELECT COUNT(*) FROM booking_passengers bp JOIN booking_legs bl2 ON bl2.id = bp.leg_id JOIN bookings b2 ON b2.id = bl2.booking_id
+                      WHERE bl2.schedule_id = :s2 AND b2.status = 'confirmed' AND b2.contact_phone <> '') AS p
+               FROM booking_legs bl JOIN bookings b ON b.id = bl.booking_id
+              WHERE bl.schedule_id = :s1 AND b.status = 'confirmed' AND b.contact_phone <> ''",
+            ['s1' => $scheduleId, 's2' => $scheduleId]
+        ) ?? [];
+        return ['bookings' => (int) ($r['n'] ?? 0), 'people' => (int) ($r['p'] ?? 0), 'status' => (string) ($s['status'] ?? ''), 'delay' => (int) ($s['delay_minutes'] ?? 0)];
+    }
+
+    /** "2 h 30 min" */
+    private static function hm(int $mins): string
+    {
+        $h = intdiv($mins, 60);
+        $m = $mins % 60;
+        return ($h > 0 ? $h . ' h' : '') . ($h > 0 && $m > 0 ? ' ' : '') . ($m > 0 || $h === 0 ? $m . ' min' : '');
+    }
+
     /* =================================================================
      *  Settings — every plain (non-secret) one is reachable
      * ================================================================= */
@@ -970,7 +1099,8 @@ final class AiOps
     public static function registerKeys(array $keys): void
     {
         foreach ($keys as $k => $d) {
-            self::$extra[(string) $k] = [(string) $d[0], (string) $d[1], (array) ($d[2] ?? []), 'general', isset($d[3]) ? (string) $d[3] : null];
+            // 16 Nov 2026 (W3): an Easy Settings switch with no row yet is written to its own group
+            self::$extra[(string) $k] = [(string) $d[0], (string) $d[1], (array) ($d[2] ?? []), self::EASY_GROUPS[(string) $k] ?? 'general', isset($d[3]) ? (string) $d[3] : null];
         }
     }
 
@@ -1007,7 +1137,7 @@ final class AiOps
             'options' => $ex !== null ? $ex[2] : [],
             'current' => $cur,
             'group'   => $row !== null ? (string) $row['sgroup'] : (string) ($ex[3] ?? 'general'),
-            'public'  => ($row !== null && (int) $row['is_public'] === 1) || $key === 'seat_pick_manual_first',
+            'public'  => ($row !== null && (int) $row['is_public'] === 1) || in_array($key, self::EASY_PUBLIC, true),
         ];
     }
 
@@ -1116,16 +1246,19 @@ final class AiOps
             'delta' => ['type' => 'number'], 'seat' => ['type' => 'string'], 'route_id' => ['type' => 'integer'], 'stop_type' => ['type' => 'string'],
             'stop_name' => ['type' => 'string'], 'stop_time' => ['type' => 'string'], 'time' => ['type' => 'string'],
         ], 'required' => ['type']]]], 'required' => ['actions']];
-        $j = null;
-        try {
-            require_once __DIR__ . '/agentpro-ai.php';
-            if (class_exists('ApAi') && ApAi::enabled()) {
-                $j = ApAi::json($sys, $text, $schema, [], ['purpose' => 'settings', 'max_tokens' => 400, 'timeout' => 30, 'lock_wait' => 5]);
+        $local = static function () use ($sys, $text, $schema): ?array {
+            try {
+                require_once __DIR__ . '/agentpro-ai.php';
+                if (class_exists('ApAi') && ApAi::enabled()) {
+                    $j = ApAi::json($sys, $text, $schema, [], ['purpose' => 'settings', 'max_tokens' => 400, 'timeout' => 30, 'lock_wait' => 5]);
+                    return is_array($j) ? $j : null;
+                }
+            } catch (Throwable $e) {
+                // the cloud brain may still answer
             }
-        } catch (Throwable $e) {
-            $j = null;
-        }
-        if (!is_array($j)) {
+            return null;
+        };
+        $cloud = static function () use ($sys, $text): ?array {
             try {
                 require_once __DIR__ . '/aibrain.php';
                 if (class_exists('AiBrain') && AiBrain::configured()) {
@@ -1133,20 +1266,37 @@ final class AiOps
                     $rawOut = trim((string) ($r['text'] ?? ''));
                     if (preg_match('/\{.*\}/s', $rawOut, $m) === 1) {
                         $j = json_decode($m[0], true);
+                        return is_array($j) ? $j : null;
                     }
                 }
             } catch (Throwable $e) {
-                $j = null;
+                // the VPS model may still answer
             }
-        }
+            return null;
+        };
+        /* 16 Nov 2026 (P3-7a / P3-7d): ai_settings_engine 'cloud' asks the cloud brain first (~1-2 s on
+           live), then the VPS model; 'local' (the default) keeps the order as it was — VPS model first
+           (up to 30 s on the 2-CPU VPS), the cloud brain only when it gives nothing. */
+        $j = self::settingsEngine() === 'cloud' ? ($cloud() ?? $local()) : ($local() ?? $cloud());
         $out = [];
         foreach ((array) ($j['actions'] ?? []) as $a) {
-            $a = is_array($a) ? self::clean($a, $text) : null;
+            // a passenger broadcast (trip_delay) is only ever proposed from the office's own words
+            $a = is_array($a) && (string) ($a['type'] ?? '') !== 'trip_delay' ? self::clean($a, $text) : null;
             if ($a !== null) {
                 $out[] = $a;
             }
         }
         return $out;
+    }
+
+    /** 'local' (default: the VPS model first) or 'cloud' (the cloud brain first) for the settings AI path. */
+    public static function settingsEngine(): string
+    {
+        try {
+            return Settings::getString('ai_settings_engine', 'local') === 'cloud' ? 'cloud' : 'local';
+        } catch (Throwable $e) {
+            return 'local';
+        }
     }
 
     /**
@@ -1245,7 +1395,21 @@ final class AiOps
                     'enum'  => isset($info['options'][$v]) ? $v : '',
                     default => mb_substr(trim($v), 0, 500),
                 };
+                // 16 Nov 2026 (W3): an Easy Settings number knob stays inside its own range ("device limit 500" is refused)
+                if ($v !== '' && in_array(self::EASY_KEYS[$key][1] ?? '', ['int', 'float'], true)) {
+                    $v = self::easyNumber($key, $v) ?? '';
+                }
                 return ($v === '' && $info['type'] !== 'string') ? null : ['type' => 'setting', 'key' => $key, 'value' => $v];
+            case 'trip_delay':
+                // 16 Nov 2026 (P8-10d): one known, not-yet-left departure on that date; 5 min – 10 h; only while the switch is ON
+                $sid  = (int) ($a['schedule_id'] ?? 0);
+                $d    = (string) ($a['date'] ?? '');
+                $mins = (int) ($a['minutes'] ?? 0);
+                if (!Settings::getBool('ai_trip_delay_on', false) || $sid <= 0 || !Security::isValidDate($d) || $mins < 5 || $mins > 600
+                    || !Database::exists("SELECT 1 FROM schedules WHERE id = :s AND travel_date = :d AND status NOT IN ('cancelled', 'departed', 'arrived')", ['s' => $sid, 'd' => $d])) {
+                    return null;
+                }
+                return ['type' => 'trip_delay', 'schedule_id' => $sid, 'date' => $d, 'minutes' => $mins];
         }
         return null;
     }
@@ -1298,6 +1462,7 @@ final class AiOps
             'fare_delta', 'add_stop'         => Auth::can('routes.edit'),
             'trip_fare', 'trip_sale'         => Auth::can('schedules.manage'),
             'seat_block'                     => Auth::can('schedules.manage') && !Auth::isCounterAgent(),
+            'trip_delay'                     => Auth::can('schedules.manage') && !Auth::isCounterAgent(),   // office only (P8-10d)
             'bus_number', 'bus_name'          => Auth::can('routes.edit') || Auth::can('schedules.manage'),
             'commission'                      => Auth::can('staff.manage') && Auth::canManageSettings(),
             default                           => Auth::canManageSettings(),
@@ -1347,6 +1512,19 @@ final class AiOps
                     $rows[] = ['💺 ' . $a['seat'] . ' · ' . formatDate((string) $a['date'], 'j M') . ' · ' . $p['bus'], $p['old'], $p['new']];
                 }
                 break;
+            case 'trip_delay':
+                // the bus and who would be told — nothing is sent before "Yes" (P8-10d)
+                foreach (self::dateSchedules((string) $a['date']) as $s) {
+                    if ((int) $s['id'] !== (int) $a['schedule_id']) {
+                        continue;
+                    }
+                    $r = self::delayReach((int) $s['id']);
+                    $rows[] = ['⏰ ' . formatDate((string) $a['date'], 'j M') . ' · ' . $s['from_city'] . ' → ' . $s['to_city'] . ' ' . substr((string) $s['dep'], 0, 5)
+                            . ' · ' . $r['bookings'] . ' booking (' . $r['people'] . ' यात्रु · passengers) लाई WhatsApp/SMS',
+                        $r['delay'] > 0 ? self::hm($r['delay']) . ' late' : 'समयमै · on time',
+                        self::hm((int) $a['minutes']) . ' late 📣'];
+                }
+                break;
             case 'dir_fare':
                 $cur = Fare::dirFares()[$a['dir']] ?? 0;
                 $rows[] = ['💰 Default fare ' . ($a['dir'] === 'toNepal' ? 'जाने · to Nepal' : 'आउने · to India'), inr((float) $cur), inr((float) $a['fare'])];
@@ -1389,8 +1567,9 @@ final class AiOps
             case 'setting':
                 $info = self::keyInfo((string) $a['key']);
                 if ($info !== null) {
+                    $easy = isset(self::EASY_KEYS[(string) $a['key']]) && in_array(self::EASY_KEYS[(string) $a['key']][1], ['int', 'float'], true);
                     $show = static fn(string $v): string => $info['type'] === 'bool' ? ($v === '1' ? 'ON' : 'OFF')
-                        : ($info['type'] === 'enum' ? (string) ($info['options'][$v] ?? $v) : $v);
+                        : ($info['type'] === 'enum' ? (string) ($info['options'][$v] ?? $v) : ($easy ? self::easyShow((string) $a['key'], $v) : $v));
                     $rows[] = ['⚙️ ' . $info['label'] . ' (' . $a['key'] . ')', $show($info['current']), $show((string) $a['value'])];
                 }
                 break;
@@ -1659,6 +1838,33 @@ final class AiOps
                 }
                 return '💺 ' . $a['seat'] . ' · ' . formatDate((string) $a['date'], 'j M') . ': ' . $n . ' bus ' . ($a['on'] ? 'open 🟢' : 'blocked ⛔')
                     . ($skip !== [] ? ' · ' . implode('; ', $skip) : '');
+            case 'trip_delay':
+                /* 16 Nov 2026 (P8-10d): exactly what the trips board's "Delay" does (admin/trips.php
+                   set_delay) — the delay on the bus, audited trip.set_delay, then the EXISTING
+                   TripNotify::notifyDelay messages its confirmed passengers once. */
+                if (!Settings::getBool('ai_trip_delay_on', false)) {
+                    throw new RuntimeException('AI bus-delay message is switched OFF (ai_trip_delay_on) — nothing sent');
+                }
+                if (!class_exists('TripNotify')) {
+                    require_once __DIR__ . '/tripnotify.php';
+                }
+                if (!method_exists('TripNotify', 'notifyDelay')) {
+                    throw new RuntimeException('TripNotify::notifyDelay यो server मा छैन · not on this server — use Trips → Delay');
+                }
+                $sid    = (int) $a['schedule_id'];
+                $mins   = (int) $a['minutes'];
+                $before = Database::fetch('SELECT delay_minutes, delay_note FROM schedules WHERE id = :id', ['id' => $sid]);
+                Database::update('schedules', ['delay_minutes' => $mins], 'id = :id', ['id' => $sid]);
+                try {
+                    $res = TripNotify::notifyDelay($sid, $mins, '', $by);
+                } catch (Throwable $e) {
+                    // as on the trips board: the delay stays saved even when WhatsApp / SMS fails
+                    Logger::error('trip.set_delay.notify', ['err' => $e->getMessage(), 'schedule' => $sid], 'admin');
+                    $res = ['notified' => 0, 'failed' => 1, 'message' => 'Passengers could not be messaged — see the error log.'];
+                }
+                Logger::audit('trip.set_delay', 'schedule', (string) $sid, $before, ['delay_minutes' => $mins, 'notified' => (int) ($res['notified'] ?? 0),
+                    'failed' => (int) ($res['failed'] ?? 0)], 'via S Hari AI by admin #' . $by . ' · ' . (string) ($res['message'] ?? ''));
+                return '⏰ ' . formatDate((string) $a['date'], 'j M') . ' bus ' . self::hm($mins) . ' late · ' . (string) ($res['message'] ?? '');
             case 'trip_fare':
                 $rows = self::dateSchedules((string) $a['date'], (array) ($a['route_ids'] ?? []), $a);
                 foreach ($rows as $s) {
@@ -1754,7 +1960,82 @@ final class AiOps
         'chalani_public_on'        => ['🔗 Public chalani link (login बिना)', 'bool', ['public chalani', 'chalani link', 'public link', 'chalani public']],
         'cancel_fine_on'           => ['💸 Cancel गर्दा fine', 'bool', ['cancel fine', 'fine', 'jariwana', 'जरिवाना']],
         'agent_cancel_mode'        => ['🗑 Agent cancel: direct / request', 'enum', ['agent cancel', 'cancel mode', 'agent le cancel'], ['direct' => 'Direct (agent cancels)', 'request' => 'Request (office cancels)']],
+
+        /* 16 Nov 2026 (Master v2, unit W3): every new switch of the v2.0 build — all OFF until the
+           owner says so — and the older knobs the office asked to reach by sentence. 'int' / 'float'
+           carry [min, max, code default, what 0 means, unit, words that must sit next to the number]. */
+        'ai_change_wa_on'          => ['🤖 AI ले बदल्दा office लाई WhatsApp · WhatsApp the office after an AI change', 'bool',
+                                       ['ai change whatsapp', 'ai change wa', 'ai change message', 'change receipt', 'ai receipt', 'ai le badleko', 'ai badlav']],
+        'ai_settings_engine'       => ['🧠 S Hari AI इन्जिन · Settings AI engine', 'enum', ['ai engine', 'settings engine', 'setting engine', 'settings ai', 'cloud ai', 'local ai'],
+                                       ['local' => 'Local — VPS model पहिले · VPS model first', 'cloud' => 'Cloud — छिटो, थोरै खर्च · cloud first, faster, small cost']],
+        'ai_trip_delay_on'         => ['⏰ AI बाट बस ढिलो सन्देश यात्रुलाई · AI bus-delay message to passengers', 'bool',
+                                       ['ai trip delay', 'trip delay', 'ai delay', 'delay message', 'late message', 'dhilo message', 'ढिलो सन्देश']],
+        'reminder_24h_enabled'     => ['⏰ २४ घण्टा अगाडि reminder · 24-hour trip reminder', 'bool',
+                                       ['24 ghanta reminder', '24 ghante reminder', '24 ghanta ko reminder', '24 ghante ka reminder', '24 hour reminder', '24 hours reminder',
+                                        '24h reminder', '24 hr reminder', '24 घण्टा', '24 घंटा', 'ek din agadi reminder', 'ek din pahle reminder', '24 કલાક']],
+        'trip_alert_agents_on'     => ['🧑‍💼 Trip alert agent लाई पनि · Trip alerts to the agents', 'bool',
+                                       ['trip alert agent', 'agent trip alert', 'agent lai trip alert', 'agent ko trip alert', 'agent alert', 'एजेन्ट alert']],
+        // never a bare "handoff": wa_ops_handoff_on / wa_ops_handoff_notify are other switches
+        'wa_handoff_msg_on'        => ['🙋 Staff ले लिँदा customer लाई सूचना · WhatsApp hand-off message', 'bool',
+                                       ['handoff message', 'hand off message', 'hand-off message', 'handover message', 'takeover message', 'staff le liyo message']],
+        'wa_typing_on'             => ['⌨️ WhatsApp मा typing… देखाउने · WhatsApp typing indicator', 'bool', ['typing', 'टाइपिङ', 'ટાઇપિંગ']],
+        'wa_ai_cancel_mode'        => ['🗑 WhatsApp AI बाट cancel · WhatsApp AI cancel: request / self', 'enum', ['whatsapp cancel', 'wa cancel', 'ai cancel', 'whatsapp ma cancel', 'chat cancel'],
+                                       ['request' => 'Request — office लाई अनुरोध मात्र · a request to the office', 'self' => 'Self — AI ले आफैं cancel · the AI cancels the ticket']],
+        'offline_callback_on'      => ['📴 Offline हुँदा call-back माग्ने · Offline call-back request', 'bool',
+                                       ['offline callback', 'offline call back', 'offline call-back', 'callback request', 'call-back request', 'offline booking request']],
+        'social_publish_on'        => ['📣 Social post आफैं publish · Social posts auto-publish', 'bool',
+                                       ['social publish', 'social post', 'facebook post', 'fb post', 'auto post', 'social media']],
+        'wa_global_daily_cap'      => ['🚦 WhatsApp दिनको सीमा · Daily WhatsApp cap', 'int',
+                                       // never a bare "daily cap / limit": social_daily_cap and wa_paid_daily_limit are other knobs
+                                       ['whatsapp daily cap', 'wa daily cap', 'whatsapp cap', 'wa cap', 'global cap', 'global daily cap', 'whatsapp daily limit',
+                                        'wa daily limit', 'whatsapp दैनिक सीमा'],
+                                       ['min' => 0, 'max' => 100000, 'def' => '0', 'zero' => 'सीमा छैन · no cap', 'unit' => '/day']],
+        'device_limit_agent'       => ['📱 Agent: कति device · Device limit (agent)', 'int',
+                                       ['device limit agent', 'agent device limit', 'agent ko device limit', 'agent ko phone limit', 'agent ko mobile limit'],
+                                       ['min' => 0, 'max' => 10, 'def' => '0', 'zero' => 'सीमा छैन · no limit', 'unit' => 'device']],
+        'device_limit_counter'     => ['📱 Counter: कति device · Device limit (counter)', 'int',
+                                       ['device limit counter', 'counter device limit', 'counter ko device limit', 'counter ko phone limit', 'counter ko mobile limit'],
+                                       ['min' => 0, 'max' => 10, 'def' => '0', 'zero' => 'सीमा छैन · no limit', 'unit' => 'device']],
+        'group_discount_on'        => ['👥 समूह छुट · Group discount', 'bool', ['group discount', 'group chhut', 'group chut', 'समूह छुट', 'ગ્રુપ ડિસ્કાઉન્ટ']],
+        'group_discount_min_seats' => ['👥 समूह छुट: कम्तीमा सिट · Group discount from', 'int', ['group discount', 'group chhut', 'group chut', 'समूह छुट'],
+                                       ['min' => 2, 'max' => 50, 'def' => '5', 'zero' => '', 'unit' => 'seats',
+                                        'need' => ['seat', 'seats', 'sit', 'jana', 'jaana', 'people', 'passenger', 'passengers', 'सिट', 'जना', 'यात्रु', 'સીટ']]],
+        'group_discount_percent'   => ['👥 समूह छुट % · Group discount %', 'float', ['group discount', 'group chhut', 'group chut', 'समूह छुट'],
+                                       ['min' => 0, 'max' => 50, 'def' => '5', 'zero' => '', 'unit' => '%',
+                                        'need' => ['%', 'percent', 'pratishat', 'प्रतिशत', 'ટકા']]],
+        // review 16 Nov 2026: > 0 = cron/lifecycle.php marks departed buses Arrived and WhatsApps every passenger
+        'auto_arrive_hours'        => ['🏁 छुटेको यति घण्टापछि आफैं "पुग्यो" ⚠ यात्रुलाई सन्देश · Auto-arrive after ⚠ messages every passenger', 'int',
+                                       ['auto arrive', 'auto arrived', 'auto arrival', 'arrive hours', 'auto pugyo', 'आफैं पुग्यो'],
+                                       ['min' => 0, 'max' => 120, 'def' => '0', 'zero' => 'बन्द · off', 'unit' => 'h']],
+        'agent_settlement_due_days' => ['💰 Agent नगद बुझाउने दिन · Agent settlement due in', 'int',
+                                       ['settlement due', 'settle due', 'settlement days', 'hisab din', 'cash due'],
+                                       ['min' => 0, 'max' => 365, 'def' => '0', 'zero' => 'कहिल्यै होइन · never flag', 'unit' => 'days']],
+        'agent_settle_reminder_days' => ['💰 Agent लाई हिसाब reminder · Agent settlement reminder after', 'int',
+                                       ['settle reminder', 'settlement reminder', 'hisab reminder', 'payment reminder agent', 'agent payment reminder'],
+                                       ['min' => 0, 'max' => 365, 'def' => '0', 'zero' => 'बन्द · off', 'unit' => 'days']],
+        // the TEMPLATE switch only — "good morning band" alone is wa_good_morning_on, not this one
+        'wa_good_morning_tpl_on'   => ['🌅 Good morning सन्देशमा paid template · Good-morning paid template', 'bool',
+                                       ['good morning template', 'good morning tpl', 'gm template', 'good morning paid', 'शुभ प्रभात template']],
+        'ap_ai_on'                 => ['🖥 VPS को AI (WhatsApp) · VPS AI for WhatsApp', 'bool', ['vps ai', 'ollama', 'vps model', 'local model']],
     ];
+    /** where a switch's row goes when the Easy Settings page writes it first (an existing row keeps its own group) */
+    private const EASY_GROUPS = [
+        'ai_change_wa_on' => 'ai', 'ai_settings_engine' => 'ai', 'ai_trip_delay_on' => 'ai', 'reminder_24h_enabled' => 'notify',
+        'trip_alert_agents_on' => 'notify', 'wa_handoff_msg_on' => 'whatsapp', 'wa_typing_on' => 'whatsapp', 'wa_ai_cancel_mode' => 'whatsapp',
+        'offline_callback_on' => 'app', 'social_publish_on' => 'marketing', 'wa_global_daily_cap' => 'whatsapp', 'device_limit_agent' => 'security',
+        'device_limit_counter' => 'security', 'group_discount_on' => 'booking', 'group_discount_min_seats' => 'booking', 'group_discount_percent' => 'booking',
+        'auto_arrive_hours' => 'booking', 'agent_settlement_due_days' => 'agent', 'agent_settle_reminder_days' => 'agent',
+        'wa_good_morning_tpl_on' => 'whatsapp', 'ap_ai_on' => 'agentpro', 'agent_cancel_mode' => 'booking',
+    ];
+    /** a switch named in a sentence that also carries the wider one's word: "24 ghanta ko reminder band" is
+        the 24-hour reminder, never also the trip-reminder master switch */
+    private const EASY_OVER = [
+        'reminder_24h_enabled'       => ['trip_reminders_enabled'],
+        'agent_settle_reminder_days' => ['trip_reminders_enabled'],
+        'social_publish_on'          => ['fb_msgr_on'],
+    ];
+    /** read by the public booking page (SHG_BOOT.settings) — public when the page writes the row first */
+    private const EASY_PUBLIC = ['seat_pick_manual_first', 'group_discount_on', 'group_discount_min_seats', 'group_discount_percent', 'offline_callback_on'];
     private const EASY_ON  = ['on', 'chalu', 'chalau', 'chalaideu', 'chalaidinu', 'chalaunu', 'khol', 'kholdeu', 'kholdinu', 'enable', 'start', 'activate', 'yes', 'haan', 'gar on',
                               'चालु', 'खोल', 'चलाउ', 'सुरु', 'अन', 'शुरू', 'चालू', 'करो चालू', 'खोलो', 'shuru', 'suru', 'lagau', 'lagaideu', 'lagaa',
                               'ચાલુ', 'શરૂ', 'ખોલો'];
@@ -1771,6 +2052,10 @@ final class AiOps
         if ($t === 'bool') {
             return Settings::getBool($k, in_array($k, self::EASY_DEFAULT_ON, true)) ? '1' : '0';
         }
+        if ($t === 'int' || $t === 'float') {   // 16 Nov 2026 (W3): number knobs, with the default the code reads them with
+            $def = (string) (self::EASY_KEYS[$k][3]['def'] ?? '0');
+            return $t === 'int' ? (string) Settings::getInt($k, (int) $def) : (string) Settings::getFloat($k, (float) $def);
+        }
         return Settings::getString($k, $t === 'enum' ? (string) array_key_first(self::EASY_KEYS[$k][3]) : '');
     }
 
@@ -1780,32 +2065,62 @@ final class AiOps
         if ($t === 'bool') {
             return $v === '1' ? 'ON ✅' : 'OFF ⛔';
         }
+        if ($t === 'int' || $t === 'float') {
+            $spec = (array) (self::EASY_KEYS[$k][3] ?? []);
+            if ((float) $v === 0.0 && (string) ($spec['zero'] ?? '') !== '') {
+                return '0 · ' . $spec['zero'];
+            }
+            $u = (string) ($spec['unit'] ?? '');
+            return $v . ($u === '' ? '' : ($u === '%' || $u[0] === '/' ? $u : ' ' . $u));
+        }
         return (string) (self::EASY_KEYS[$k][3][$v] ?? $v);
+    }
+
+    /** A number knob's value, or null when it is not a number or out of its range. */
+    public static function easyNumber(string $k, string $v): ?string
+    {
+        $t = self::EASY_KEYS[$k][1] ?? '';
+        $v = trim($v);
+        if (($t !== 'int' && $t !== 'float') || !is_numeric($v)) {
+            return null;
+        }
+        $spec = (array) self::EASY_KEYS[$k][3];
+        $n = $t === 'int' ? (float) (int) round((float) $v) : round((float) $v, 2);
+        if ($n < (float) $spec['min'] || $n > (float) $spec['max']) {
+            return null;
+        }
+        return $t === 'int' ? (string) (int) $n : (string) $n;
     }
 
     /** The switches a sentence names, with on / off (the verb said LAST wins). @return array<string,string> */
     public static function parseSwitches(string $text): array
     {
-        $t     = ' ' . mb_strtolower(preg_replace('/\s+/u', ' ', $text) ?? $text) . ' ';
+        $t     = ' ' . mb_strtolower(preg_replace('/\s+/u', ' ', strtr($text, self::DIGITS)) ?? $text) . ' ';
         $onAt  = self::hasWord($t, self::EASY_ON);
         $offAt = self::hasWord($t, self::EASY_OFF);
         $out   = [];
+        $spans = [];   // key => [byte offset, length] of the longest word it was named by
         foreach (self::EASY_KEYS as $k => $def) {
-            $hit = false;
-            foreach ($def[2] as $w) {
+            $hit = null;
+            foreach (array_merge([$k], $def[2]) as $w) {   // the key itself ("device_limit_agent 2") names it too
                 $w = mb_strtolower($w);
                 /* a roman word must START a word (16 Nov 2026 review): "Seat U15 block … band" is not the
                    "lock" of PIN login, "meta" not "eta", "chatbot" not the WhatsApp "bot" */
                 /* review 2: a short one (cod, pin, kb, fb, eta, bot) must also END the word — "code login band"
                    proposed Cash on boarding OFF, "pincode" the PIN login */
-                if (preg_match('/^[a-z]/', $w) === 1
-                    ? preg_match('/(?<![a-z])' . preg_quote($w, '/') . (strlen($w) <= 3 ? '(?![a-z])' : '') . '/u', $t) === 1
-                    : mb_strpos($t, $w) !== false) {
-                    $hit = true;
-                    break;
+                $at = -1;
+                if (preg_match('/^[a-z]/', $w) === 1) {
+                    if (preg_match('/(?<![a-z])' . preg_quote($w, '/') . (strlen($w) <= 3 ? '(?![a-z])' : '') . '/u', $t, $m, PREG_OFFSET_CAPTURE) === 1) {
+                        $at = (int) $m[0][1];
+                    }
+                } elseif (($p = strpos($t, $w)) !== false) {
+                    $at = (int) $p;
+                }
+                if ($at >= 0 && ($hit === null || strlen($w) > $hit[1])) {
+                    $hit = [$at, strlen($w), $w];
                 }
             }
-            if (!$hit) {
+            if ($hit === null) {
                 continue;
             }
             if ($def[1] === 'bool') {
@@ -1819,8 +2134,55 @@ final class AiOps
                         $out[$k] = (string) $opt;
                     }
                 }
-                if (!isset($out[$k]) && preg_match('/(request|anurodh|अनुरोध|office)/u', $t) === 1) {
+                // only a switch that HAS a 'request' choice may take it from "anurodh / office" (W3: two more enums now)
+                if (!isset($out[$k]) && isset($def[3]['request']) && preg_match('/(request|anurodh|अनुरोध|office)/u', $t) === 1) {
                     $out[$k] = 'request';
+                }
+            } else {
+                /* a number knob (16 Nov 2026, W3): "device limit agent 2", "whatsapp daily cap 500",
+                   "group discount 10 percent" / "group discount 6 seat" (the number next to its own
+                   word), "auto arrive band" = 0 */
+                $before = substr($t, 0, $hit[0]);
+                $after  = substr($t, $hit[0] + $hit[1]);
+                $numRe  = '/(?<![\d.:\-])(\d{1,6}(?:\.\d{1,2})?)(?![\d.:\-])/';
+                $num    = null;
+                if (isset($def[3]['need'])) {
+                    $rest = $before . ' ' . $after;
+                    $need = implode('|', array_map(static fn(string $x): string => preg_quote(mb_strtolower($x), '/'), $def[3]['need']));
+                    if (preg_match('/(?<![\d.])(\d{1,6}(?:\.\d{1,2})?)\s*(?:' . $need . ')(?![a-z])/u', $rest, $m) === 1
+                        || preg_match('/(?<![a-z])(?:' . $need . ')\s*(\d{1,6}(?:\.\d{1,2})?)(?![\d.])/u', $rest, $m) === 1) {
+                        $num = $m[1];
+                    }
+                } elseif (preg_match($numRe, $after, $m) === 1) {          // the number said after the knob's name …
+                    $num = $m[1];
+                } elseif (preg_match_all($numRe, $before, $m) > 0) {       // … or the last one before it
+                    $num = (string) end($m[1]);
+                } elseif ($offAt >= 0 && $offAt > $onAt) {
+                    $num = '0';
+                }
+                $v = $num !== null ? self::easyNumber((string) $k, $num) : null;
+                if ($v === null) {
+                    continue;
+                }
+                $out[$k] = $v;
+            }
+            $spans[$k] = $hit;
+        }
+        /* "24 ghanta reminder on" names the 24-hour reminder, not also the trip-reminder master
+           switch ("reminder"); "facebook post" is not Messenger ("facebook"): a key named only by
+           a word INSIDE another key's longer word is dropped */
+        foreach ($spans as $k => [$at, $len]) {
+            foreach ($spans as $k2 => [$at2, $len2]) {
+                if ($k2 !== $k && $len2 > $len && $at >= $at2 && $at + $len <= $at2 + $len2) {
+                    unset($out[$k]);
+                    break;
+                }
+            }
+        }
+        foreach (self::EASY_OVER as $k => $wider) {
+            if (isset($out[$k])) {
+                foreach ($wider as $w) {
+                    unset($out[$w]);
                 }
             }
         }
@@ -1831,9 +2193,10 @@ final class AiOps
     public static function saveSwitch(string $k, string $v, int $adminId): void
     {
         $old  = self::easyCurrent($k);
-        $type = self::EASY_KEYS[$k][1] === 'bool' ? 'bool' : 'string';
+        $t    = self::EASY_KEYS[$k][1];
+        $type = $t === 'bool' ? 'bool' : ($t === 'int' || $t === 'float' ? $t : 'string');
         // seat_pick_manual_first is read by the public booking page too (SHG_BOOT.settings) — public on first save
-        Settings::set($k, $type === 'bool' ? ($v === '1') : $v, $type, 'general', $k === 'seat_pick_manual_first');
+        Settings::set($k, $type === 'bool' ? ($v === '1') : $v, $type, self::EASY_GROUPS[$k] ?? 'general', in_array($k, self::EASY_PUBLIC, true));
         Logger::audit('settings.easy', 'setting', $k, ['value' => $old], ['value' => $v], 'Easy Settings by admin #' . $adminId);
     }
 
@@ -1842,7 +2205,7 @@ final class AiOps
     {
         $reg = [];
         foreach (self::EASY_KEYS as $k => $def) {
-            $reg[$k] = [$def[0], $def[1], $def[3] ?? [], self::easyCurrent($k)];
+            $reg[$k] = [$def[0], $def[1], $def[1] === 'enum' ? (array) $def[3] : [], self::easyCurrent($k)];
         }
         self::registerKeys($reg);
     }
@@ -1866,7 +2229,10 @@ final class AiOps
         // drop no-ops and what this login may not do
         $sw = array_filter($sw, static fn($v, $k): bool => self::easyCurrent((string) $k) !== (string) $v, ARRAY_FILTER_USE_BOTH);
         $denied = [];
-        $ops = array_values(array_filter($ops, static function (array $a) use (&$denied): bool {
+        $ops = array_values(array_filter($ops, static function (array $a) use (&$denied, $sw): bool {
+            if ((string) $a['type'] === 'setting' && isset($sw[(string) ($a['key'] ?? '')])) {
+                return false;   // "ap_ai_on band" is one switch, not a switch AND the same setting twice (W3)
+            }
             if (!self::allowed($a)) {
                 $denied[] = (string) $a['type'];
                 return false;
@@ -1955,6 +2321,60 @@ final class AiOps
         Logger::audit('settings.ai_command', 'setting', 'easy-settings', null,
             ['cmd' => (string) ($prop['cmd'] ?? ''), 'via' => (string) ($prop['via'] ?? ''), 'actions' => array_values((array) ($prop['ops'] ?? []))],
             implode(' | ', $done));
+        // 16 Nov 2026 (P3-4b): admin/easy-settings.php act=yes and admin/api/ai-settings.php confirm both land here
+        self::notifyChange($admin, $done);
         return $done;
+    }
+
+    /* =================================================================
+     *  P3-4b (16 Nov 2026): one WhatsApp line to the office after an AI
+     *  change — "🤖 <who> changed: <lines>" — only while ai_change_wa_on
+     *  is ON (default OFF) and the office alerts are on (the same number
+     *  and switch every office alert uses). Audited; never throws.
+     * ================================================================= */
+
+    /** @var null|Closure(string, string): (bool|string) tests catch the send here instead of WhatsApp */
+    public static ?Closure $waSend = null;
+
+    /** The one line, or '' when nothing was changed (refused / failed lines are left out). @param list<string> $done */
+    public static function changeMessage(array $admin, array $done): string
+    {
+        $lines = array_values(array_filter(array_map('strval', $done),
+            static fn(string $l): bool => trim($l) !== '' && !str_starts_with($l, '⛔') && !str_starts_with($l, '⚠️')));
+        if ($lines === []) {
+            return '';
+        }
+        $who = trim((string) ($admin['full_name'] ?? ''));
+        if ($who === '') {
+            $who = trim((string) ($admin['username'] ?? '')) !== '' ? trim((string) $admin['username']) : 'admin #' . (int) ($admin['id'] ?? 0);
+        }
+        return mb_substr('🤖 ' . $who . ' changed: ' . implode(' · ', $lines), 0, 1000);
+    }
+
+    /** @param list<string> $done @return bool true when a message was handed to WhatsApp */
+    public static function notifyChange(array $admin, array $done): bool
+    {
+        try {
+            if (!Settings::getBool('ai_change_wa_on', false)) {
+                return false;
+            }
+            $msg = self::changeMessage($admin, $done);
+            if ($msg !== '' && !class_exists('Notify')) {
+                require_once __DIR__ . '/notify.php';   // admin pages have it already; a CLI caller may not
+            }
+            if ($msg === '' || !class_exists('Notify') || !method_exists('Notify', 'adminWhatsappReady') || !Notify::adminWhatsappReady()) {
+                return false;
+            }
+            $phone = Settings::getString('admin_whatsapp', Settings::officePhone());
+            $send  = self::$waSend;
+            $r = $send !== null ? $send($phone, $msg)
+                : Notify::whatsapp($phone, $msg, null, null, [], null, ['purpose' => 'ai_change', 'admin_id' => (int) ($admin['id'] ?? 0)]);
+            Logger::audit('settings.ai_change_wa', 'setting', 'ai_change_wa_on', null,
+                ['to' => '…' . substr((string) preg_replace('/\D+/', '', $phone), -4), 'sent' => $r === true, 'link' => is_string($r)], $msg);
+            return $r !== false;
+        } catch (Throwable $e) {
+            Logger::warning('AI change WhatsApp not sent: ' . $e->getMessage(), [], 'whatsapp');
+            return false;
+        }
     }
 }

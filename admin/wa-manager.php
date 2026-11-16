@@ -210,6 +210,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
             if (!in_array($pol, [WaRoute::META_FIRST, WaRoute::META_ONLY, WaRoute::AISENSY_ONLY], true)) {
                 throw new RuntimeException('Unknown sending policy.');
             }
+            /* 16 Nov 2026 (P6-11e): the ceiling on ALL WhatsApp a day. A form
+               from before this field (no input posted) keeps the stored value. */
+            $gcap = isset($_POST['wa_global_daily_cap']) ? trim((string) $_POST['wa_global_daily_cap']) : (string) WaRoute::globalCap();
+            if ($gcap !== '' && (!ctype_digit($gcap) || (int) $gcap > 100000)) {
+                throw new RuntimeException('All WhatsApp per day: a whole number, 0 = no cap. / ० = सीमा छैन।');
+            }
             $switches = ['wa_booking_on' => true, 'wa_book_combo_on' => true, 'wa_agent_on' => false, 'wa_route_on' => true, 'wa_inbound_replay_on' => true];
             $before = [];
             $after  = [];
@@ -218,15 +224,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
                 $after[$k]  = (string) ($_POST[$k] ?? '0') === '1' ? 1 : 0;
             }
             $before += ['wa_policy' => WaRoute::policy(), 'wa_paid_daily_limit' => Settings::getString('wa_paid_daily_limit', ''),
-                        'wa_meta_free_allowance' => (string) Settings::getInt('wa_meta_free_allowance', 0)];
+                        'wa_meta_free_allowance' => (string) Settings::getInt('wa_meta_free_allowance', 0),
+                        'wa_global_daily_cap' => (string) WaRoute::globalCap()];
             $after  += ['wa_policy' => $pol, 'wa_paid_daily_limit' => $lim === '' ? '' : (string) (int) $lim,
-                        'wa_meta_free_allowance' => (string) (int) ($allow === '' ? 0 : $allow)];
+                        'wa_meta_free_allowance' => (string) (int) ($allow === '' ? 0 : $allow),
+                        'wa_global_daily_cap' => (string) (int) ($gcap === '' ? 0 : $gcap)];
             foreach ($switches as $k => $default) {
                 Settings::set($k, $after[$k] === 1 ? '1' : '0', 'bool', 'whatsapp');
             }
             Settings::set('wa_policy', $after['wa_policy'], 'string', 'whatsapp');
             Settings::set('wa_paid_daily_limit', $after['wa_paid_daily_limit'], 'string', 'whatsapp');
             Settings::set('wa_meta_free_allowance', $after['wa_meta_free_allowance'], 'int', 'whatsapp');
+            if ($after['wa_global_daily_cap'] !== $before['wa_global_daily_cap']) {
+                Settings::set('wa_global_daily_cap', $after['wa_global_daily_cap'], 'int', 'whatsapp');
+            }
             Logger::audit('wam.switches', 'settings', 'whatsapp', $before, $after, 'WhatsApp switches saved by admin #' . (int) $admin['id']);
             $flash = ['ok', 'WhatsApp switches saved. / स्विच सेभ भयो।'];
         }
@@ -428,6 +439,12 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
       <dt>Meta templates</dt><dd><?= WaRoute::metaTemplatesOn() ? 'ON (Meta first)' : 'off — AiSensy carries templates' ?></dd>
       <dt>AiSensy pays for</dt><dd><?= AiSensyAPI::ticketOnly() ? 'the customer\'s ticket only (cold number)' : 'everything' ?> · <?= WaRoute::utilityOnly() ? 'utility templates only' : 'any template' ?></dd>
       <dt>Paid today</dt><dd><?= (int) $rt['paidToday'] ?> <?= $rt['paidLimit'] === null ? '· no daily limit' : '/ ' . (int) $rt['paidLimit'] . ' allowed' . ((int) $rt['paidLimit'] === 0 ? ' (never pay)' : '') ?></dd>
+      <?php /* 16 Nov 2026 (P6-11e): every WhatsApp a sender accepted today vs the office's daily ceiling. */
+        $capAll = (int) ($rt['allToday'] ?? 0); $capMax = (int) ($rt['globalCap'] ?? 0);
+        $capPct = $capMax > 0 ? (int) floor($capAll * 100 / $capMax) : 0; ?>
+      <dt>सबै आज · All today</dt><dd><?= $e($capAll . ' ' . ($capMax > 0
+        ? '/ ' . $capMax . ' daily cap (' . $capPct . '%)' . ($capAll >= $capMax ? ' — offers / campaigns wait' : ($capPct >= 80 ? ' — near the cap' : ''))
+        : '· no daily cap')) ?></dd>
       <dt>Meta this month</dt><dd><?= (int) $rt['metaFreeMonth'] ?> free · <?= (int) $rt['billableMonth'] ?> billable<?= $rt['allowanceLeft'] !== null ? ' · ' . (int) $rt['allowanceLeft'] . ' of ' . (int) $rt['allowance'] . ' allowance left' : '' ?></dd>
     </dl>
     <p class="text-xs">A customer who wrote to the Meta number in the last 24 h is answered there for free (tickets, OTP, bus updates, staff notes). Everyone else gets the AiSensy utility template. "Billable / free" is Meta's own word on each delivered message. Change below under <b>Switches</b>, or in <a href="/admin/settings.php#cat=whatsapp">Settings → WhatsApp</a> (wa_policy, wa_meta_templates_on, aisensy_utility_only).</p>
@@ -622,7 +639,11 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
       <label>Meta free allowance per month (0 = not tracked)
         <input type="number" min="0" step="1" name="wa_meta_free_allowance" value="<?= (int) Settings::getInt('wa_meta_free_allowance', 0) ?>" <?= $canEdit ? '' : 'disabled' ?>>
       </label>
+      <label>सबै WhatsApp प्रति दिन · All WhatsApp per day (0 = no cap)
+        <input type="number" min="0" max="100000" step="1" name="wa_global_daily_cap" value="<?= (int) WaRoute::globalCap() ?>" <?= $canEdit ? '' : 'disabled' ?>>
+      </label>
     </div>
+    <p class="muted text-xs" style="margin:8px 0 0">At the daily cap only offers, campaigns, broadcasts and the agents' good-morning wait for tomorrow — tickets, OTP / login codes, bot replies, trip updates and office alerts always go. The office gets one bell + WhatsApp note at 80 %. The Campaigns and WhatsApp-marketing pages still use their own daily caps. / सीमामा अफर र क्याम्पेन मात्र रोकिन्छ।</p>
     <p class="muted text-xs" style="margin:8px 0 0">Past the paid limit a ticket is not lost: it waits for the customer's "hi" on the Meta number (free) and shows on <a href="/admin/wa-pending.php">Tickets to hand over</a>.</p>
     <?php if ($canEdit): ?><p style="margin:10px 0 0"><button class="btn" type="submit">Save switches</button></p><?php else: ?><p class="muted text-xs">Changing these needs the Settings permission.</p><?php endif; ?>
   </form></div>

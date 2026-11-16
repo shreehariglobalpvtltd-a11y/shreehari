@@ -270,7 +270,7 @@ switch ($view) {
         $where[] = 't.status = :st'; $params['st'] = $view; break;
     default:            $view = 'all';
 }
-if ($migrated && in_array($source, ['whatsapp_ai', 'web', 'chat', 'callback', 'desk', 'admin'], true)) {
+if ($migrated && in_array($source, ['whatsapp_ai', 'facebook', 'web', 'chat', 'callback', 'desk', 'admin'], true)) {
     $where[]       = 't.source = :src';
     $params['src'] = $source;
 }
@@ -349,7 +349,12 @@ $slaText = static function (array $r): string {
         ? '<b class="hd-late">overdue ' . $fmt($left) . '</b>'
         : '<span class="' . ($left < 3600 ? 'hd-soon' : 'hd-ok') . '">due in ' . $fmt($left) . '</span>';
 };
-$srcLabel = ['whatsapp_ai' => 'WhatsApp assistant', 'web' => 'Help page', 'chat' => 'Chat', 'callback' => 'Call me back', 'desk' => 'Desk / phone', 'admin' => 'Office'];
+// 16 Nov 2026 (v2.0): 'facebook' = a Messenger visitor the assistant handed over (AiHandoff, no phone, Messenger id only)
+$srcLabel = ['whatsapp_ai' => 'WhatsApp assistant', 'facebook' => 'Facebook', 'web' => 'Help page', 'chat' => 'Chat', 'callback' => 'Call me back', 'desk' => 'Desk / phone', 'admin' => 'Office'];
+$srcHtml  = static function (string $src) use ($srcLabel): string {
+    $txt = Security::e($srcLabel[$src] ?? $src);
+    return $src === 'facebook' ? '<svg class="a-ic sm" aria-hidden="true"><use href="#a-msg"/></svg> ' . $txt : $txt;
+};
 $keep = static function (array $over = []) use ($view, $source, $catF, $q): string {
     $p = array_filter(['status' => $view, 'source' => $source, 'cat' => $catF, 'q' => $q] + [], static fn ($v) => $v !== '');
     return '?' . http_build_query(array_merge($p, $over));
@@ -459,11 +464,12 @@ admin_header('Help Desk', 'support-inbox');
         <tr>
           <td data-label="Number"><b class="hd-ref"><?= Security::e((string) $r['ticket_ref']) ?></b><?php if (!empty($r['day_token'])): ?><span class="hd-tok" title="Token of the day">#<?= (int) $r['day_token'] ?></span><?php endif; ?>
             <?php if ((string) ($r['pnr'] ?? '') !== ''): ?><br><a href="/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>"><?= Security::e((string) $r['pnr']) ?></a><?php endif; ?></td>
-          <td data-label="When" data-sort="<?= Security::e((string) $r['created_at']) ?>"><?= Security::e(substr((string) $r['created_at'], 5, 11)) ?><br><small><?= Security::e($srcLabel[(string) ($r['source'] ?? 'web')] ?? (string) ($r['source'] ?? 'web')) ?></small></td>
+          <td data-label="When" data-sort="<?= Security::e((string) $r['created_at']) ?>"><?= Security::e(substr((string) $r['created_at'], 5, 11)) ?><br><small><?= $srcHtml((string) ($r['source'] ?? 'web')) ?></small></td>
           <td data-label="Priority"><?= $prio((string) $r['priority']) ?><?= !empty($r['escalated_at']) ? '<br><span class="hd-esc">escalated</span>' : '' ?></td>
           <td data-label="Topic"><?= Security::e(HelpDesk::label((string) ($r['category'] ?? 'other'))) ?></td>
           <td data-label="Who"><?= Security::e((string) $r['name']) ?><br>
-            <a href="tel:+<?= Security::e($phoneIntl) ?>">📞</a> <a href="https://wa.me/<?= Security::e($phoneIntl) ?>" target="_blank" rel="noopener">+<?= Security::e($phoneIntl) ?></a>
+            <?php if ($phoneIntl !== ''): ?><a href="tel:+<?= Security::e($phoneIntl) ?>">📞</a> <a href="https://wa.me/<?= Security::e($phoneIntl) ?>" target="_blank" rel="noopener">+<?= Security::e($phoneIntl) ?></a>
+            <?php elseif ((string) ($r['source'] ?? '') === 'facebook' && Auth::can('customers.view')): ?><a href="/admin/messenger-inbox.php">Messenger inbox</a><?php endif; ?>
             <?php if ($ready && !empty($r['ack_sent_at'])): ?><br><small class="hd-ok">number sent</small><?php endif; ?></td>
           <td data-label="Problem" class="wrap"><div class="hd-msg"><?= Security::e(mb_strimwidth((string) $r['message'], 0, 260, '…')) ?></div>
             <?php if ((string) ($r['evidence_path'] ?? '') !== ''): ?><a href="?evidence=<?= $rid ?>" target="_blank" rel="noopener">📎 attachment</a><?php endif; ?></td>

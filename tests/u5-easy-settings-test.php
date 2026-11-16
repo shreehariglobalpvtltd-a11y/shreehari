@@ -12,8 +12,13 @@
  *    - a question ("which pickup?") is shown as the flash, no proposal
  *    - a one-tap switch still saves through AiOps::saveSwitch (settings.easy)
  *
+ *    - W3 (16 Nov 2026): the v2.0 switches and the 🔢 number card render;
+ *      act=setnum saves inside the range and refuses outside it; a two-way
+ *      switch offers its other choice (ai_settings_engine)
+ *
  *  shari_test only; its knob "zu5_es_knob" and its audit rows are deleted;
- *  the one switch it flips (wa_marketing_on) is put back.
+ *  the switches it flips (wa_marketing_on, auto_arrive_hours,
+ *  ai_settings_engine) are put back exactly (no row = no row).
  *
  *    php -c .claude/php-dev.ini tests/u5-easy-settings-test.php
  * =====================================================================
@@ -77,14 +82,25 @@ if ($super <= 0) { echo "  SKIP  no super-admin\n"; exit(0); }
 $tmp     = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'u5-es-' . bin2hex(random_bytes(4)) . '.json';
 $startId = (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM audit_logs', [], 0);
 $wasMkt  = Database::fetch("SELECT svalue FROM settings WHERE skey = 'wa_marketing_on'");
-$cleanup = static function () use ($startId, $tmp, $wasMkt): void {
+// W3 (16 Nov 2026): the number knob and the two-way switch it saves — put back exactly (no row = no row)
+$wasRows = [];
+foreach (['auto_arrive_hours', 'ai_settings_engine'] as $k) {
+    $wasRows[$k] = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $k]);
+}
+$cleanup = static function () use ($startId, $tmp, $wasMkt, $wasRows): void {
     Database::delete('settings', "skey = 'zu5_es_knob'");
     if ($wasMkt === null) {
         Database::delete('settings', "skey = 'wa_marketing_on'");
     } else {
         Database::update('settings', ['svalue' => $wasMkt['svalue']], "skey = 'wa_marketing_on'");
     }
-    Database::delete('audit_logs', "id > :s AND (entity_id IN ('zu5_es_knob', 'wa_marketing_on') OR new_value LIKE '%zu5_es_knob%')", ['s' => $startId]);
+    foreach ($wasRows as $k => $row) {
+        Database::delete('settings', 'skey = :k', ['k' => $k]);
+        if (is_array($row)) {
+            Database::insert('settings', $row);
+        }
+    }
+    Database::delete('audit_logs', "id > :s AND (entity_id IN ('zu5_es_knob', 'wa_marketing_on', 'auto_arrive_hours', 'ai_settings_engine') OR new_value LIKE '%zu5_es_knob%')", ['s' => $startId]);
     if (is_file($tmp)) { @unlink($tmp); }
 };
 register_shutdown_function($cleanup);
@@ -120,6 +136,30 @@ try {
     page(['admin' => $super, 'post' => ['act' => 'toggle', 'key' => 'wa_marketing_on']]);
     check('a one-tap switch still saves (settings.easy)', Database::exists("SELECT 1 FROM audit_logs WHERE id > :s AND action = 'settings.easy' AND entity_id = 'wa_marketing_on'", ['s' => $startId])
         && (string) Database::scalar("SELECT svalue FROM settings WHERE skey = 'wa_marketing_on'", [], '') !== $before);
+
+    /* ---- 16 Nov 2026 (Master v2, W3): the v2.0 switches, the number knobs ---- */
+    $h = page(['admin' => $super]);
+    check('W3: the v2.0 switches are on the page (24-hour reminder, AI change WhatsApp, AI bus delay, typing)',
+        str_contains($h, 'value="reminder_24h_enabled"') && str_contains($h, 'value="ai_change_wa_on"') && str_contains($h, 'value="ai_trip_delay_on"') && str_contains($h, 'value="wa_typing_on"'));
+    check('W3: the 🔢 Number settings card (device limit, daily WhatsApp cap, group discount %)', str_contains($h, 'Number settings') && str_contains($h, 'name="act" value="setnum"')
+        && str_contains($h, 'value="device_limit_agent"') && str_contains($h, 'value="wa_global_daily_cap"') && str_contains($h, 'value="group_discount_percent"'));
+    check('W3: no PHP warning with the new cards', !preg_match('/(<b>(Warning|Notice|Fatal error|Deprecated)<\/b>|PHP (Warning|Notice|Fatal|Deprecated)|(Warning|Notice|Deprecated): .* on line \d)/', $h));
+    $aah = static fn(): string => (string) (Database::scalar("SELECT svalue FROM settings WHERE skey = 'auto_arrive_hours'", [], '') ?? '');
+    $was = $aah();
+    page(['admin' => $super, 'post' => ['act' => 'setnum', 'key' => 'auto_arrive_hours', 'value' => '500']]);
+    check('W3: setnum out of range (500 h) refused, nothing written', $aah() === $was);
+    $h = page(['admin' => $super, 'post' => ['act' => 'setnum', 'key' => 'auto_arrive_hours', 'value' => '38']]);
+    check('W3: setnum 38 saved and audited (settings.easy)', $aah() === '38' && str_contains($h, '✅')
+        && Database::exists("SELECT 1 FROM audit_logs WHERE id > :s AND action = 'settings.easy' AND entity_id = 'auto_arrive_hours'", ['s' => $startId]));
+    page(['admin' => $super, 'post' => ['act' => 'setnum', 'key' => 'zu5_es_knob', 'value' => '3']]);
+    check('W3: setnum never writes a key outside Easy Settings', $knob() === '8');
+    $eng = static fn(): string => (string) (Database::scalar("SELECT svalue FROM settings WHERE skey = 'ai_settings_engine'", [], 'local') ?? 'local');
+    $e0  = $eng();
+    $h   = page(['admin' => $super]);
+    $next = $e0 === 'cloud' ? 'local' : 'cloud';
+    check('W3: a two-way switch offers its OTHER choice (not the old direct / request)', preg_match('/value="ai_settings_engine">\s*<input type="hidden" name="value" value="' . $next . '"/', $h) === 1);
+    page(['admin' => $super, 'post' => ['act' => 'toggle', 'key' => 'ai_settings_engine', 'value' => $next]]);
+    check('W3: the engine switch saves the choice', $eng() === $next);
 } catch (Throwable $e) {
     check('no exception', false, $e->getMessage() . ' @' . $e->getLine());
 } finally {

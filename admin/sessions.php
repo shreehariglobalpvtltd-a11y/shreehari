@@ -144,6 +144,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 /* ---------- data for the tab ---------- */
 $live = $waLive = $hist = $devices = $personSessions = [];
 $person = null;
+/* 16 Nov 2026 (master v2.0, P1-5b): the per-role device limits, shown read-only here.
+   Set in Settings → Security (device_limit_<role>); 0 = no limit; a superadmin is never limited. */
+$devLimits = [];
+foreach (Auth::MATRIX_ROLES as $r) {
+    $devLimits[$r] = AdminSessions::deviceLimit($r);
+}
 if ($tab === 'live') {
     $live   = AdminSessions::active();
     $waLive = WaLogin::active(200);
@@ -219,6 +225,9 @@ admin_header('Sessions & Login Security', 'sessions');
 .ss-facts div{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--card)}
 .ss-facts b{display:block;font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
 form.ss-inline{display:inline}
+.ss-lims{display:flex;gap:6px;flex-wrap:wrap;margin:0}
+.ss-lims span{font-size:12.5px;font-weight:700;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--bg,#F4F6FB);white-space:nowrap}
+.ss-lims span.on{border-color:var(--blue,#1d4ed8);background:var(--blue,#1d4ed8);color:#fff}
 </style>
 
 <?php if ($flash !== null): ?><div class="flash <?= $e($flash[0]) ?>"><?= $e($flash[1]) ?></div><?php endif; ?>
@@ -261,6 +270,20 @@ form.ss-inline{display:inline}
 <?php endif; ?>
 
 <?php if ($tab === 'live'): ?>
+<div class="panel">
+  <h2>📱 यन्त्र सीमा · Device limits</h2>
+  <p class="ss-note">एउटा खाता एकैपटक यति यन्त्रमा मात्र खुल्छ · How many devices one account of each role may be signed in on at once.
+    Over the limit, the sign-in asks to sign one of the other devices out first. 0 = no limit; a super-admin is never limited.
+    <?= array_sum($devLimits) === 0 ? '<b>No limit is set for any role.</b>' : '' ?>
+    <?php if (Auth::canManageSettings()): ?><a href="settings.php#cat=security">Change in Settings → Security</a><?php else: ?>Set in Settings → Security.<?php endif; ?></p>
+  <div class="ss-lims">
+    <?php foreach ($devLimits as $r => $n): ?>
+      <span class="<?= $n > 0 ? 'on' : '' ?>"><?= $e($r) ?> · <?= $n > 0 ? (int) $n : '∞' ?></span>
+    <?php endforeach; ?>
+    <span>superadmin · ∞</span>
+  </div>
+</div>
+
 <div class="panel">
   <h2>Signed-in browsers (<?= count($live) ?>)</h2>
   <p class="ss-note">Everyone using the panel right now. <b>End</b> signs that one browser out within 30 seconds — the account stays
@@ -394,6 +417,8 @@ form.ss-inline{display:inline}
           : '<span class="ss-ok">Not locked</span>' ?><br><span class="ss-mut"><?= (int) $person['unlock_failed'] ?> wrong<?= (int) $person['unlock_strikes'] > 0 ? ' · ' . (int) $person['unlock_strikes'] . ' lock(s) in a row' : '' ?></span></div>
       <?php endif; ?>
       <div><b>Last sign-in</b><?= $e($person['last_login_at'] ? substr((string) $person['last_login_at'], 0, 16) : '—') ?><br><span class="ss-mut"><?= $e($person['last_login_ip'] ?? '') ?></span></div>
+      <?php $pLim = AdminSessions::deviceLimit((string) $person['role']); /* 16 Nov 2026 (P1-5b): read-only */ ?>
+      <div><b>यन्त्र · Devices now / limit</b><?= count(AdminSessions::liveDevices((int) $person['id'])) ?> / <?= $pLim > 0 ? $pLim : '∞' ?></div>
     </div>
     <?php if ($can): ?>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 6px">

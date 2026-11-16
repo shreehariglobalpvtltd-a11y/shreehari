@@ -1164,6 +1164,53 @@ final class WaSend
         return ['success' => false, 'message_id' => '', 'error' => mb_substr($msg, 0, 300), 'http' => $http, 'code' => $code];
     }
 
+    /**
+     * P7-8d (16 Nov 2026; the CALLER checks switch wa_typing_on, default OFF):
+     * mark one inbound message read and show "typing…" while the bot thinks —
+     * the Cloud API's status read + typing_indicator on that wamid (Meta clears
+     * it when our reply lands, or after 25 s). The same stored credentials as
+     * every other send here, never changed. A hard 3 s cap; it never throws,
+     * never retries and is not a message (no message_logs row). True = Meta took it.
+     */
+    public static function typing(string $wamid): bool
+    {
+        $wamid = trim($wamid);
+        if ($wamid === '' || strlen($wamid) > 256) {
+            return false;
+        }
+        try {
+            $c = self::creds();
+            if ($c['token'] === '' || $c['phone_id'] === '') {
+                return false;
+            }
+            $url  = rtrim($c['base'], '/') . '/' . rawurlencode($c['phone_id']) . '/messages';
+            $body = ['messaging_product' => 'whatsapp', 'status' => 'read', 'message_id' => $wamid, 'typing_indicator' => ['type' => 'text']];
+            if (self::$http !== null) {
+                $http = (int) ((self::$http)($url, $body)['http'] ?? 0);
+            } else {
+                if (!function_exists('curl_init')) {
+                    return false;
+                }
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST              => true,
+                    CURLOPT_RETURNTRANSFER    => true,
+                    CURLOPT_NOSIGNAL          => true,
+                    CURLOPT_CONNECTTIMEOUT_MS => 2000,
+                    CURLOPT_TIMEOUT_MS        => 3000,
+                    CURLOPT_HTTPHEADER        => ['Authorization: Bearer ' . $c['token'], 'Content-Type: application/json'],
+                    CURLOPT_POSTFIELDS        => (string) json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ]);
+                curl_exec($ch);
+                $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+            }
+            return $http >= 200 && $http < 300;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
     /** One message_logs row per attempt that reached Meta (msg_ledger copies it). */
     private static function logAttempt(array $row, string $route, string $tplName, array $r, bool $ok): void
     {

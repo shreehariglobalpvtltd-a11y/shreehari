@@ -7,6 +7,8 @@
  *  Five events reach the passenger without anyone in the office pressing
  *  anything twice:
  *
+ *      reminder_24h  24 hours before the pickup  (cron/reminders.php; OFF
+ *                    until reminder_24h_enabled = 1, 16 Nov 2026 P8-4b)
  *      reminder_12h  12 hours before the pickup  (cron/reminders.php)
  *      reminder_2h    2 hours before the pickup  (cron/reminders.php)
  *                    (the passenger's own pickup time — Boarding::pickupTs)
@@ -43,6 +45,7 @@ final class TripNotify
 
     /** Human labels — shared by the admin buttons and the audit trail. */
     public const LABELS = [
+        'reminder_24h' => '24-hour reminder',
         'reminder_12h' => '12-hour reminder',
         'reminder_2h'  => '2-hour reminder',
         'departed'     => 'Bus started',
@@ -112,11 +115,17 @@ final class TripNotify
 
         $now = time();
         $due = [];
+        /* 16 Nov 2026 (P8-4b): the 24-hour reminder looks a day ahead, but only
+           while its own switch (reminder_24h_enabled, default off) is on - with
+           it off this scan is exactly the 12-hour one it always was. Pickups
+           up to 24 h away still fall inside the travel_date window above
+           (yesterday .. tomorrow): a pickup never comes before its leg's date. */
+        $horizon = Notify::tripEventEnabled('reminder_24h') ? 24 * 3600 : 12 * 3600;
         foreach ($rows as $row) {
             $pickTs = Boarding::pickupTs((string) $row['travel_date'], (string) ($row['boarding_stop'] ?? ''),
                 $row['boarding_time'] !== null ? (string) $row['boarding_time'] : null, (string) ($row['dep_time'] ?? ''),
                 (string) ($row['route_dep_time'] ?? ''), (int) ($row['slot'] ?? 1), (int) ($row['route_id'] ?? 0));
-            if ($pickTs <= $now || $pickTs > $now + 12 * 3600) {
+            if ($pickTs <= $now || $pickTs > $now + $horizon) {
                 continue;
             }
             // Safety net: a departed bus never gets a "reach your stop"
@@ -145,13 +154,20 @@ final class TripNotify
                 continue;
             }
 
+            // P8-4b: switched on before its migration ran - never claim a '' ENUM slot.
+            if (!self::eventStorable($event)) {
+                $out['skipped']++;
+                $out['note'] = $event . ' waits for database/upgrade-2026-11-16b-W5-notify.sql (trip_events.event)';
+                continue;
+            }
+
             $res = self::deliver($row, $event);
             if ($res === null) {
                 $out['skipped']++;          // already sent by an earlier run
                 continue;
             }
 
-            $out['byEvent'][$event]++;
+            $out['byEvent'][$event] = ($out['byEvent'][$event] ?? 0) + 1;
             $res['ok'] ? $out['sent']++ : $out['failed']++;
         }
 
@@ -166,9 +182,17 @@ final class TripNotify
      * hours before its pickup is not sent a "your trip is tomorrow / soon"
      * reminder it would read half a day early; the 2-10h dead band waits for
      * the 2h window. The 15-min cron sweeps every booking through 600-720.
+     *
+     * 16 Nov 2026 (P8-4b): 1320-1440 (22-24 h) is the 24-hour reminder's
+     * band, the same two-hour width as the 12-hour one. runReminders() only
+     * looks that far ahead while reminder_24h_enabled is on; a booking made
+     * 13-22 h before its pickup simply starts with the 12-hour reminder.
      */
     public static function reminderEvent(int $minsToPickup): ?string
     {
+        if ($minsToPickup > 1320 && $minsToPickup <= 1440) {
+            return 'reminder_24h';
+        }
         if ($minsToPickup <= 0 || $minsToPickup > 720) {
             return null;
         }
@@ -371,16 +395,20 @@ final class TripNotify
             return 0;   // feature off
         }
 
+        // 16 Nov 2026: only RECENT trips. Old trips never marked arrived would
+        // otherwise all be promoted (and their passengers messaged) on the
+        // first tick after the owner switches this on.
         $rows = Database::fetchAll(
             "SELECT s.id, r.from_city, r.to_city
                FROM schedules s
                JOIN routes r ON r.id = s.route_id
               WHERE s.status = 'departed'
+                AND s.travel_date >= DATE_SUB(CURDATE(), INTERVAL :d DAY)
                 AND TIMESTAMP(s.travel_date, COALESCE(s.dep_time_override, r.dep_time))
                     <= DATE_SUB(NOW(), INTERVAL :h HOUR)
               ORDER BY s.travel_date ASC, s.id ASC
               LIMIT 200",
-            ['h' => $hours]
+            ['h' => $hours, 'd' => intdiv($hours, 24) + 3]
         );
 
         $promoted = 0;
@@ -449,6 +477,40 @@ final class TripNotify
     /* =================================================================
      *  Internals
      * ================================================================= */
+
+    /** @var list<string>|null the values trip_events.event accepts (per request) */
+    private static ?array $enumValues = null;
+
+    /**
+     * Does trip_events.event accept this value? Read once per request from
+     * the column's own definition; when that cannot be read, only the five
+     * values every database has had since the 2026-08 migration count.
+     */
+    public static function eventStorable(string $event): bool
+    {
+        if (self::$enumValues === null) {
+            $vals = [];
+            try {
+                $col  = Database::fetch("SHOW COLUMNS FROM `trip_events` LIKE 'event'");
+                $type = (string) ($col['Type'] ?? ($col['type'] ?? ''));
+                if (preg_match('/^enum\((.*)\)$/i', $type, $m) === 1 && preg_match_all("/'((?:[^']|'')*)'/", $m[1], $mm) > 0) {
+                    $vals = array_map(static fn(string $v): string => str_replace("''", "'", $v), $mm[1]);
+                } elseif ($type !== '' && stripos($type, 'char') !== false) {
+                    $vals = ['*'];   // a VARCHAR column takes any event name
+                }
+            } catch (Throwable $e) {
+                $vals = [];
+            }
+            self::$enumValues = $vals !== [] ? $vals : ['reminder_12h', 'reminder_2h', 'departed', 'border', 'arrived'];
+        }
+        return self::$enumValues === ['*'] || in_array($event, self::$enumValues, true);
+    }
+
+    /** Tests: forget the cached column definition (after an ALTER). */
+    public static function resetEventCache(): void
+    {
+        self::$enumValues = null;
+    }
 
     /**
      * Every confirmed passenger booked onto one schedule, with the facts
@@ -661,6 +723,13 @@ final class TripNotify
                 return null;                   // this exact notice already went (or no ledger: never spam)
             }
         } else {
+            /* 16 Nov 2026 (P8-4b): an event trip_events' ENUM does not know
+               (reminder_24h before its migration) would INSERT IGNORE as ''
+               and block every later invalid event for that booking - the
+               D7-01 bug. Not claimed, not sent. */
+            if (!self::eventStorable($event)) {
+                return null;
+            }
             $claim = Database::query(
                 'INSERT IGNORE INTO `trip_events` (`booking_id`, `schedule_id`, `event`) VALUES (:b, :s, :e)',
                 ['b' => $bookingId, 's' => $scheduleId, 'e' => $event]

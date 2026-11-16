@@ -78,7 +78,13 @@ try {
 
     $travelDate = Security::clean(Response::field('travelDate', ''), 10);
     if ($travelDate !== '' && (!Security::isValidDate($travelDate) || $travelDate < todayISO())) {
-        Response::invalid(['travelDate' => 'Choose a valid travel date.']);
+        /* 16 Nov 2026 (P2-4e): a call-back request saved on a phone with no signal is sent
+           when the network returns - maybe after its travel day. The office still calls
+           (the date stays in its note); a 422 here would only jam that phone's queue. */
+        if (Response::field('source', '') !== 'callback') {
+            Response::invalid(['travelDate' => 'Choose a valid travel date.']);
+        }
+        $travelDate = '';
     }
     $travelDate = $travelDate !== '' ? $travelDate : null;
 

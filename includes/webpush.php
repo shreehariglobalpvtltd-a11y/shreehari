@@ -772,6 +772,12 @@ final class WebPush
                 ($route !== '' ? $route . "\n" : '') . ((string) ($f['date'] ?? '') !== '' ? (string) $f['date'] . "\n" : '')
                 . 'कार्यालयले टिकटबारे सम्पर्क गर्नेछ · The office will contact you about your ticket.',
             ],
+            // 16 Nov 2026 (P8-4b): the 24 h reminder (switch reminder_24h_enabled, default off)
+            'reminder_24h' => [
+                '🚌 भोलि यात्रा · Trip tomorrow — ' . $pnr,
+                ($route !== '' ? $route . "\n" : '') . ($when !== '' ? 'Pickup: ' . $when . "\n" : '')
+                . ($seats !== '' ? 'Seat ' . $seats . "\n" : '') . 'Photo ID sathai lyaunuhos — border ma chahincha.',
+            ],
             'reminder_2h' => [
                 '⏰ Bus in ~2 hours · २ घण्टामा बस — ' . $pnr,
                 ($route !== '' ? $route . "\n" : '') . ($seats !== '' ? 'Seat ' . $seats . "\n" : '') . 'Please reach the boarding point on time · समयमै आउनुहोस्।',

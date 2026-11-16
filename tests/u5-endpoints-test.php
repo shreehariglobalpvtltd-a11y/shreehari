@@ -12,6 +12,9 @@
  *      nothing and audits settings.ai_declined; {setting_key,new_value};
  *      a protected key refused; a routes-only login may not touch a setting;
  *      a question ("which pickup?") comes back with no proposal; 30/min limit
+ *    - W3 (16 Nov 2026, P3-4b): with ai_change_wa_on ON (in the child's
+ *      Settings cache only) a confirm WhatsApps the office ONE "🤖 … changed:"
+ *      line (caught by AiOps::$waSend), audited; OFF sends nothing
  *  admin/api/inline-save.php (C2, click-to-edit):
  *    - bad CSRF / no right / unknown field refused
  *    - route_stop fare "2,200" → 2200 (audit route_stop.fares old/new),
@@ -58,6 +61,19 @@ if (($argv[1] ?? '') === '--child') {
             file_put_contents($outFile, json_encode($_SESSION['ai_props'] ?? [], JSON_UNESCAPED_UNICODE));
         });
     }
+    if (!empty($cfg['w3wa'])) {
+        /* W3 (16 Nov 2026, P3-4b): ai_change_wa_on ON in THIS process only (Settings cache, no row
+           written) and the WhatsApp send caught on STDERR — nothing leaves the machine */
+        require_once INCLUDE_PATH . '/aiops.php';
+        Settings::get('company_name');
+        $rp = new ReflectionProperty(Settings::class, 'cache');
+        $c  = (array) $rp->getValue();
+        foreach (['ai_change_wa_on' => ['1', 'bool'], 'whatsapp_notify_admin' => ['1', 'bool'], 'admin_whatsapp' => ['919990001234', 'string']] as $k => [$v, $t]) {
+            $c[$k] = ['value' => $v, 'type' => $t, 'public' => false];
+        }
+        $rp->setValue(null, $c);
+        AiOps::$waSend = static function (string $to, string $m): bool { fwrite(STDERR, "\nWA-SEND " . $to . ' ' . $m . "\n"); return true; };
+    }
     $_POST = $post;
     $mode = (string) ($cfg['csrf'] ?? 'valid');
     if ($mode === 'valid') {
@@ -92,7 +108,7 @@ function call(array $cfg): array {
     $err = (string) stream_get_contents($pipes[2]);
     fclose($pipes[1]); fclose($pipes[2]); proc_close($p);
     $j = json_decode(trim($out), true);
-    return is_array($j) ? $j : ['_raw' => $out . $err];
+    return is_array($j) ? $j + ['_err' => $err] : ['_raw' => $out . $err];
 }
 
 echo "\n=== U5 endpoints: ai-settings + inline-save ===\n\n";
@@ -134,7 +150,8 @@ $cleanup = static function () use (&$made, $startId, $tmp, $super, $super2): voi
         Database::delete('admins', 'id = :i', ['i' => $id]);
     }
     Database::delete('audit_logs', "id > :s AND (entity_id = 'zu5_test_knob' OR old_value LIKE '%Zu5 Inline%' OR new_value LIKE '%Zu5 Inline%'
-                                     OR new_value LIKE '%zu5_test_knob%' OR detail LIKE '%Zu5 Inline%')", ['s' => $startId]);
+                                     OR new_value LIKE '%zu5_test_knob%' OR detail LIKE '%Zu5 Inline%'
+                                     OR (action = 'settings.ai_change_wa' AND detail LIKE '%U5 test knob%'))", ['s' => $startId]);
     foreach (array_merge([$super, $super2], $made['admins']) as $id) {
         foreach (['ai_settings', 'inline_save'] as $b) {
             Database::delete('rate_limits', 'bucket = :b AND identifier = :i', ['b' => $b, 'i' => 'admin:' . $id]);
@@ -205,6 +222,17 @@ try {
     $sess = json_decode((string) @file_get_contents($tmp), true) ?: [];
     $r2 = call(['page' => 'ai-settings.php', 'admin' => $super, 'post' => ['confirm' => (string) ($r['proposal_id'] ?? '')], 'session' => $sess]);
     check('{setting_key,new_value} → confirm → saved', ($r['changes'][0]['new'] ?? '') === '11' && ($r2['success'] ?? false) === true && $knob() === '11', json_encode([$r, $r2], JSON_UNESCAPED_UNICODE));
+    /* W3 (16 Nov 2026, P3-4b): after the API's confirm, one WhatsApp line to the office — only with ai_change_wa_on ON */
+    Settings::flush();
+    if (!Settings::getBool('ai_change_wa_on', false)) {
+        check('W3: switch OFF (the default) — the confirms above sent no WhatsApp', !Database::exists("SELECT 1 FROM audit_logs WHERE id > :s AND action = 'settings.ai_change_wa'", ['s' => $startId]));
+    }
+    $r = call(['page' => 'ai-settings.php', 'admin' => $super, 'post' => ['setting_key' => 'zu5_test_knob', 'new_value' => '12'], 'session_out' => $tmp]);
+    $sess = json_decode((string) @file_get_contents($tmp), true) ?: [];
+    $r2 = call(['page' => 'ai-settings.php', 'admin' => $super, 'post' => ['confirm' => (string) ($r['proposal_id'] ?? '')], 'session' => $sess, 'w3wa' => true]);
+    check('W3: ai_change_wa_on ON — confirm saves and WhatsApps the office one "🤖 … changed:" line', ($r2['success'] ?? false) === true && $knob() === '12'
+        && substr_count((string) ($r2['_err'] ?? ''), 'WA-SEND 919990001234 🤖 ') === 1 && str_contains((string) $r2['_err'], 'changed: '), json_encode($r2, JSON_UNESCAPED_UNICODE));
+    check('W3: the send is audited (settings.ai_change_wa)', Database::exists("SELECT 1 FROM audit_logs WHERE id > :s AND action = 'settings.ai_change_wa'", ['s' => $startId]));
     $r = call(['page' => 'ai-settings.php', 'admin' => $super, 'post' => ['setting_key' => 'anthropic_api_key', 'new_value' => 'x']]);
     check('a protected key is refused', ($r['ok'] ?? null) === false && $isNull($r, 'proposal_id'), json_encode($r, JSON_UNESCAPED_UNICODE));
     /* review 16 Nov 2026: a one-tap switch with no settings row yet (live has none for agent_chalani_on,
@@ -222,14 +250,14 @@ try {
     check('a switch with no settings row: {setting_key} → confirm → saved', ($r['changes'][0]['new'] ?? '') === 'OFF' && ($r2['success'] ?? false) === true
         && Settings::getBool('agent_chalani_on', true) === false, json_encode([$r, $r2], JSON_UNESCAPED_UNICODE));
     $r = call(['page' => 'ai-settings.php', 'admin' => $router, 'post' => ['cmd' => 'zu5_test_knob 4']]);
-    check('a routes-only login may not change a setting', $isNull($r, 'proposal_id') && str_contains((string) ($r['message'] ?? ''), '⛔') && $knob() === '11', json_encode($r, JSON_UNESCAPED_UNICODE));
+    check('a routes-only login may not change a setting', $isNull($r, 'proposal_id') && str_contains((string) ($r['message'] ?? ''), '⛔') && $knob() === '12', json_encode($r, JSON_UNESCAPED_UNICODE));
     $r = call(['page' => 'ai-settings.php', 'admin' => $super, 'post' => ['cmd' => 'Vapi ko bhada 2500']]);
     check('"which pickup?" comes back as a question, no proposal', ($r['ok'] ?? false) === true && $isNull($r, 'proposal_id')
         && str_contains((string) ($r['message'] ?? ''), 'pickup'), json_encode($r, JSON_UNESCAPED_UNICODE));
     Database::query("INSERT INTO rate_limits (bucket, identifier, hits, window_start) VALUES ('ai_settings', :i, 999, NOW())
                      ON DUPLICATE KEY UPDATE hits = 999, window_start = NOW(), blocked_until = NULL", ['i' => 'admin:' . $super]);
     $r = call(['page' => 'ai-settings.php', 'admin' => $super, 'post' => ['cmd' => 'zu5_test_knob 5']]);
-    check('rate limited (30 / min)', ($r['ok'] ?? null) === false && str_contains((string) ($r['message'] ?? ''), 'Too many') && $knob() === '11', json_encode($r, JSON_UNESCAPED_UNICODE));
+    check('rate limited (30 / min)', ($r['ok'] ?? null) === false && str_contains((string) ($r['message'] ?? ''), 'Too many') && $knob() === '12', json_encode($r, JSON_UNESCAPED_UNICODE));
     Database::delete('rate_limits', 'bucket = :b AND identifier = :i', ['b' => 'ai_settings', 'i' => 'admin:' . $super]);
 
     echo "\n-- inline-save.php\n";

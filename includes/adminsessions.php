@@ -266,7 +266,7 @@ final class AdminSessions
     }
 
     /** A revoked device takes its open browsers with it. */
-    public static function endDevice(int $adminId, string $deviceHash, int $by): int
+    public static function endDevice(int $adminId, string $deviceHash, int $by, string $reason = 'device revoked'): int
     {
         if ($adminId <= 0 || $deviceHash === '' || !self::ensure()) {
             return 0;
@@ -274,8 +274,58 @@ final class AdminSessions
         return Database::update('admin_sessions', [
             'ended_at'   => date('Y-m-d H:i:s'),
             'ended_by'   => $by > 0 ? $by : null,
-            'end_reason' => 'device revoked',
+            'end_reason' => mb_substr($reason, 0, 120),
         ], 'admin_id = :a AND device_hash = :d AND ended_at IS NULL', ['a' => $adminId, 'd' => $deviceHash]);
+    }
+
+    /* =================================================================
+     *  16 Nov 2026 (master v2.0, P1-5b): per-role device limit.
+     *  Setting device_limit_<role> (int, 0 = no limit = how it always was).
+     *  The roles are Auth::MATRIX_ROLES; a superadmin is never limited.
+     *  Auth::finishAdminSession() asks before it opens a session; over the
+     *  limit the sign-in is held (Auth::deviceHold) and admin/login.php
+     *  offers to sign one of the other devices out.
+     * ================================================================= */
+
+    /** The most devices one account of this role may be signed in on at once; 0 = no limit. */
+    public static function deviceLimit(string $role): int
+    {
+        if ($role === '' || $role === 'superadmin' || !in_array($role, Auth::MATRIX_ROLES, true)) {
+            return 0;
+        }
+        try {
+            return max(0, min(50, Settings::getInt('device_limit_' . $role, 0)));
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    /**
+     * The devices this account is signed in on right now (live rows of active(),
+     * so a device idle past the timeout is not counted), one entry per device —
+     * a row with no device id counts as a device of its own. $exceptHash (this
+     * browser's LoginLog::deviceHash()) is left out. Newest first.
+     *
+     * @return list<array{hash: string, label: string, last_seen: string, ids: list<int>}>
+     */
+    public static function liveDevices(int $adminId, string $exceptHash = ''): array
+    {
+        if ($adminId <= 0) {
+            return [];
+        }
+        $out = [];
+        foreach (self::active($adminId) as $s) {
+            $h = (string) ($s['device_hash'] ?? '');
+            if ($h !== '' && $exceptHash !== '' && hash_equals($h, $exceptHash)) {
+                continue;
+            }
+            $k = $h !== '' ? 'h:' . $h : 's:' . (int) $s['id'];
+            if (!isset($out[$k])) {
+                $out[$k] = ['hash' => $h, 'label' => (string) ($s['label'] ?? ''), 'last_seen' => (string) ($s['last_seen'] ?? ''), 'ids' => []];
+            }
+            $out[$k]['ids'][] = (int) $s['id'];
+        }
+        return array_values($out);
     }
 
     /** Housekeeping: drop rows that ended (or went idle) long ago. */

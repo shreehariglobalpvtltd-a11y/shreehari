@@ -23,7 +23,9 @@
  * customer panel with the last 5 bookings; today's reply times against the
  * 30 s (AI) / 5 min (agent) targets; 👍 / 👎 on each bot reply.
  * Resolved / Escalate touch the Help Desk: support.reply. Sent: dashboard.view
- * (the same as the outbound message log). No new message to any customer.
+ * (the same as the outbound message log). No new message to any customer —
+ * except P6-3b: with wa_handoff_msg_on ON (default OFF) "Pause bot" offers a
+ * "Tell the customer" tick that sends ONE fixed in-window line (WaInbox::handoffNotice).
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
@@ -109,6 +111,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $h = (int) ($_POST['hours'] ?? 0);
             WaInbox::pause($who, $h, $adminId);
             $flash = ['ok', $h > 0 ? 'The bot is quiet for this number for ' . $h . ' h. / बोट रोकियो।' : 'The bot answers this number again. / बोट फेरि चालु।'];
+            /* P6-3b (switch wa_handoff_msg_on, OFF): "tell the customer" ticked — one fixed in-window line. */
+            if ($h > 0 && (string) ($_POST['tell'] ?? '') === '1' && WaInbox::handoffOn()) {
+                $hn = WaInbox::handoffNotice($who, $adminId);
+                $flash[1] .= $hn['sent'] ? ' The customer was told a person will help now. / ग्राहकलाई भनियो।' : ' ' . $hn['why'];
+            }
             $open = $who;
         } elseif ($act === 'resolve') {
             if (!$canDesk || Auth::bookingScopeAdminId() !== null) {
@@ -259,6 +266,9 @@ admin_page_head('Every WhatsApp message to the office number, with what the bot 
 .wi-bk{display:grid;gap:6px;margin:0;padding:0;list-style:none}
 .wi-bk li{border:1px solid var(--line);border-radius:10px;padding:7px 9px;font-size:12.5px;display:grid;gap:2px}
 .wi-bk li b{display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap}
+.wi-tell{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;min-height:40px;font-size:13px;font-weight:700;cursor:pointer}
+.wi-tell input{width:18px;height:18px;margin:0}
+.wi-tell small{font-weight:400;flex-basis:100%}
 </style>
 
 <?php if ($flash): ?><div class="flash <?= $flash[0] === 'ok' ? 'ok' : 'bad' ?>"><?= $e($flash[1]) ?></div><?php endif; ?>
@@ -437,6 +447,9 @@ admin_page_head('Every WhatsApp message to the office number, with what the bot 
               <span class="muted">Handling them yourself?</span>
               <button class="btn btn-ghost" type="submit" name="hours" value="2">Pause bot 2 h</button>
               <button class="btn btn-ghost" type="submit" name="hours" value="24">Pause 24 h</button>
+              <?php if (WaInbox::handoffOn()): ?>
+                <label class="wi-tell" title="<?= $e(WaInbox::HANDOFF_TEXT) ?>"><input type="checkbox" name="tell" value="1"> ग्राहकलाई भन्नुहोस् · Tell the customer <small class="muted">(one fixed line, free, only inside their 24 h window)</small></label>
+              <?php endif; ?>
             <?php endif; ?>
           </form>
         </div>

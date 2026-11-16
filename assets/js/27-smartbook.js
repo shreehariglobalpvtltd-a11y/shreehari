@@ -229,6 +229,37 @@
   };
   EW.en.emS = 'Emergency contact'; EW.hi.emS = 'आपातकालीन संपर्क'; EW.ne.emS = 'आपतकालीन सम्पर्क';
   ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in EW[l]) { W[l][k] = EW[l][k]; } } });
+  /* 16 Nov 2026 (P2-4e): the offline call-back request - every line says it is NOT a ticket. */
+  var CW = {
+    en: { cbBtn: '📞 Call-back request', cbBtnSub: 'offline · not a ticket', cbOffT: '📵 No internet — booking needs the network',
+      cbOffSub: 'Leave a call-back request: the office will call you to book. It is not a ticket.',
+      cbT: 'Call-back request', cbSub: 'You are offline', cbNotT: 'This is NOT a ticket.',
+      cbNot: 'No seat is held and nothing is paid. The request is saved on this phone and goes to the office when the network returns — the office will call you to book.',
+      cbRoute: 'Route', cbDate: 'Travel date', cbSeats: 'Seats', cbName: 'Your name', cbPhone: 'Mobile (the office calls this number)',
+      cbGo: '📨 Save call-back request', cbBack: '← Back', cbClose: 'Close', cbDone: 'Request saved on this phone',
+      cbDoneSub: 'It goes to the office by itself when the network returns. The office will call {p} to book. This is not a ticket.',
+      cbDup: 'This request is already saved — it goes to the office when the network returns. This is not a ticket.',
+      cbWait: '{n} waiting to send', cbNoStore: 'This phone could not save the request — please call the office:' },
+    hi: { cbBtn: '📞 कॉल का अनुरोध', cbBtnSub: 'ऑफ़लाइन · टिकट नहीं', cbOffT: '📵 इंटरनेट नहीं — बुकिंग के लिए नेटवर्क चाहिए',
+      cbOffSub: 'कॉल का अनुरोध छोड़ें: बुकिंग के लिए ऑफ़िस आपको कॉल करेगा। यह टिकट नहीं है।',
+      cbT: 'कॉल का अनुरोध', cbSub: 'आप ऑफ़लाइन हैं', cbNotT: 'यह टिकट नहीं है।',
+      cbNot: 'कोई सीट रोकी नहीं गई और कोई भुगतान नहीं हुआ। अनुरोध इसी फ़ोन में सेव होगा और नेटवर्क आते ही ऑफ़िस पहुँचेगा — बुकिंग के लिए ऑफ़िस आपको कॉल करेगा।',
+      cbRoute: 'रूट', cbDate: 'यात्रा की तारीख', cbSeats: 'सीट', cbName: 'आपका नाम', cbPhone: 'मोबाइल (इसी नंबर पर ऑफ़िस कॉल करेगा)',
+      cbGo: '📨 कॉल का अनुरोध सेव करें', cbBack: '← वापस', cbClose: 'बंद करें', cbDone: 'अनुरोध इस फ़ोन में सेव हुआ',
+      cbDoneSub: 'नेटवर्क आते ही यह अपने-आप ऑफ़िस पहुँचेगा। बुकिंग के लिए ऑफ़िस {p} पर कॉल करेगा। यह टिकट नहीं है।',
+      cbDup: 'यह अनुरोध पहले से सेव है — नेटवर्क आते ही ऑफ़िस पहुँचेगा। यह टिकट नहीं है।',
+      cbWait: '{n} भेजना बाकी', cbNoStore: 'यह फ़ोन अनुरोध सेव नहीं कर पाया — कृपया ऑफ़िस को कॉल करें:' },
+    ne: { cbBtn: '📞 फोनको अनुरोध', cbBtnSub: 'अफलाइन · टिकट होइन', cbOffT: '📵 इन्टरनेट छैन — बुकिङका लागि नेटवर्क चाहिन्छ',
+      cbOffSub: 'फोनको अनुरोध छोड्नुहोस्: बुकिङका लागि कार्यालयले फोन गर्नेछ। यो टिकट होइन।',
+      cbT: 'फोनको अनुरोध', cbSub: 'तपाईं अफलाइन हुनुहुन्छ', cbNotT: 'यो टिकट होइन।',
+      cbNot: 'कुनै सिट राखिएको छैन र कुनै भुक्तानी भएको छैन। अनुरोध यही फोनमा सेभ हुन्छ र नेटवर्क आएपछि कार्यालयमा पुग्छ — बुकिङका लागि कार्यालयले फोन गर्नेछ।',
+      cbRoute: 'रुट', cbDate: 'यात्रा मिति', cbSeats: 'सिट', cbName: 'तपाईंको नाम', cbPhone: 'मोबाइल (यही नम्बरमा कार्यालयले फोन गर्छ)',
+      cbGo: '📨 फोनको अनुरोध सेभ गर्नुहोस्', cbBack: '← पछाडि', cbClose: 'बन्द गर्नुहोस्', cbDone: 'अनुरोध यो फोनमा सेभ भयो',
+      cbDoneSub: 'नेटवर्क आएपछि आफैं कार्यालयमा पुग्छ। बुकिङका लागि कार्यालयले {p} मा फोन गर्नेछ। यो टिकट होइन।',
+      cbDup: 'यो अनुरोध पहिले नै सेभ छ — नेटवर्क आएपछि कार्यालयमा पुग्छ। यो टिकट होइन।',
+      cbWait: '{n} पठाउन बाँकी', cbNoStore: 'यो फोनले अनुरोध सेभ गर्न सकेन — कृपया कार्यालयमा फोन गर्नुहोस्:' }
+  };
+  ['en', 'hi', 'ne'].forEach(function (l) { if (W[l]) { for (var k in CW[l]) { W[l][k] = CW[l][k]; } } });
   function tr(k, v) {
     var s = (W[lang()] && W[lang()][k]) || W.en[k] || k;
     if (v) Object.keys(v).forEach(function (x) { s = s.split('{' + x + '}').join(v[x]); });
@@ -353,12 +384,16 @@
             history.replaceState(null, '', location.pathname + location.search.replace(/([?&])order=[^&]*&?/, '$1').replace(/[?&]$/, ''));
           }
         } catch (x) {}
+        cbBooted = true; cbSync();   // P2-4e: offline right now -> the call-back button in place of Book
       })
       .catch(function (e) {
         // the engine is unreachable: the classic search card takes over
         document.documentElement.classList.remove('sb-on');
         root.hidden = true;
         console.warn('SmartBook boot failed', e);
+        /* P2-4e: opened offline from the saved page - with offline_callback_on the card's
+           place shows "no internet" + the call-back request (it boots again once online) */
+        cbFailed = true; cbSync();
       });
   }
   function pointType() { return S.dir === 'toIndia' ? 'drop' : 'boarding'; }
@@ -2027,6 +2062,196 @@
     S.phone = ''; S.name = ''; S.pax = [{ gender: '', band: 'adult' }]; S.manual = []; S.seatMode = 'auto'; S.idem = null; S.touched = {};
     S.why = {}; fill(); applyWords(); store.set(); showErrs(false); requote(0);
   }
+  /* ------------------------------------------------ Offline call-back request
+     16 Nov 2026 (P2-4e + P2-4g, setting offline_callback_on, default OFF): the card cannot
+     sell without the network (the engine is on the server). While navigator.onLine is
+     false the bar shows ONE button - "Call-back request" - in place of a dead Book, and a
+     card whose engine could not boot (the saved page opened offline) shows a short "no
+     internet" panel with the same button. The sheet asks the route, date, seats, name and
+     mobile and puts ONE item in the Sahayak complaint desk's offline queue 'shg:cq'
+     (16-lazy.js), which goes to /api/enquiry.php as source 'callback' once the network is
+     back: the Enquiries inbox + a Help Desk number, like the contact button's "call me
+     back". It is NOT a ticket - no berth is held, nothing is charged or sold; the office
+     phones the passenger. Customer face only (the desks have their own offline desk).
+     With the switch off none of this runs. */
+  var CQ = 'shg:cq', cbBooted = false, cbFailed = false, cbPanel = null;
+  function cbOn() {
+    if (STAFF || DESK) return false;
+    var v = ((window.SHG_BOOT && window.SHG_BOOT.settings) || {}).offline_callback_on;
+    return v === true || v === 1 || v === '1';
+  }
+  function cbOffline() { return cbOn() && navigator.onLine === false; }
+  function cbQueue() { try { var q = JSON.parse(localStorage.getItem(CQ) || '[]'); return Array.isArray(q) ? q : []; } catch (e) { return []; } }
+  function cbNepal() { var n = ((window.SHG_BOOT && window.SHG_BOOT.locations) || {}).nepal; return (n && n[0]) || 'Rupaidiha'; }
+  function cbTowns(dir) {
+    var l = pointList(dir).map(function (p) { return p.name; });
+    if (!l.length) {   // engine never answered (opened offline): the pickup list inside the saved page
+      var loc = (window.SHG_BOOT && window.SHG_BOOT.locations) || {};
+      l = ((dir === 'toIndia' ? loc.back : loc.go) || []).map(function (x) { return x && x.name; });
+    }
+    return l.filter(Boolean);
+  }
+  /* the same mobile rules as the card (phoneErr); a Nepal number goes as 977 + 10 digits */
+  function cbPhone(cc, raw) {
+    var d = digits(raw);
+    if (cc === 'NP') { if (d.length === 13 && d.indexOf('977') === 0) d = d.slice(3); return /^9[678]\d{8}$/.test(d) && !/^(\d)\1+$/.test(d) ? '977' + d : ''; }
+    if (d.length === 12 && d.indexOf('91') === 0) d = d.slice(2);
+    if (d.length === 11 && d.charAt(0) === '0') d = d.slice(1);
+    return /^[6-9]\d{9}$/.test(d) && !/^(\d)\1+$/.test(d) ? d : '';
+  }
+  function cbStamp() { var d = new Date(); return todayIso() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+  /* 16-lazy.js owns the flush (one at a time, safe to call twice); not loaded yet -> load it, its own timer sends */
+  function cbFlush() {
+    if (navigator.onLine === false) return;
+    if (typeof window.shgCqFlush === 'function') { window.shgCqFlush(); return; }
+    try { if (typeof shgLazyLoad === 'function') shgLazyLoad().catch(function () {}); } catch (e) {}
+  }
+  function cbSync() {
+    if (!cbOn()) return;
+    var off = navigator.onLine === false;
+    if (!cbBooted) { if (cbFailed) cbPanelSync(off); return; }
+    if (cbPanel) cbPanelSync(false);
+    var bar = $('sbBar'), btn = $('sbCbBtn');
+    if (!bar) return;
+    if (off && !btn) {
+      btn = document.createElement('button');
+      btn.type = 'button'; btn.id = 'sbCbBtn'; btn.className = 'sb-pay sb-online';
+      btn.style.flex = '2 1 auto';
+      btn.innerHTML = '<span></span><small></small>';
+      btn.addEventListener('click', cbOpen);
+      bar.appendChild(btn);
+    }
+    if (btn) {
+      btn.style.display = off ? '' : 'none';
+      btn.querySelector('span').textContent = tr('cbBtn'); btn.querySelector('small').textContent = tr('cbBtnSub');
+    }
+    ['sbCash', 'sbOnline'].forEach(function (id) { var b = $(id); if (b) b.style.display = off ? 'none' : ''; });
+  }
+  function cbPanelSync(show) {
+    if (!show && !cbPanel) return;
+    if (!cbPanel) {
+      cbPanel = document.createElement('div');
+      cbPanel.id = 'sbCbOff'; cbPanel.className = 'sb-card';
+      cbPanel.setAttribute('role', 'region'); cbPanel.setAttribute('aria-labelledby', 'sbCbOffT');
+      cbPanel.addEventListener('click', function (e) { if (e.target.closest('[data-cb="open"]')) cbOpen(); });
+      root.insertBefore(cbPanel, root.firstChild);
+    }
+    if (show) {
+      var n = cbQueue().length;
+      cbPanel.innerHTML = '<h2 class="sb-title" id="sbCbOffT">' + esc(tr('cbOffT')) + '</h2>'
+        + '<p class="sb-sub">' + esc(tr('cbOffSub')) + '</p>'
+        + '<button type="button" class="sb-pay sb-online" data-cb="open" style="width:100%;margin-top:10px"><span>' + esc(tr('cbBtn')) + '</span><small>' + esc(tr('cbBtnSub')) + '</small></button>'
+        + '<p class="sb-sub" data-cb="wait"' + (n ? '' : ' hidden') + ' style="margin-top:6px">⏳ ' + esc(tr('cbWait', { n: n })) + '</p>';
+    }
+    cbPanel.style.display = show ? '' : 'none';
+    var inner = root.querySelector('.sb-in'); if (inner) inner.style.display = show ? 'none' : '';
+    root.style.display = show ? 'block' : '';   // the classic search card stays below it (html:not(.sb-on))
+    if (show) root.hidden = false; else if (!cbBooted) root.hidden = true;
+  }
+  function cbSheet() {
+    var box = $('sbCb'); if (box) return box;
+    box = document.createElement('div'); box.id = 'sbCb'; box.className = 'sb-cv'; box.hidden = true;
+    box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'sbCbT');
+    root.appendChild(box);
+    box.addEventListener('click', function (e) { if (e.target === box || e.target.closest('[data-cb="x"]')) cbClose(); });
+    box.addEventListener('change', function (e) { if (e.target && e.target.id === 'sbCbDir') cbTownOpts(e.target.value, ''); });
+    box.addEventListener('submit', function (e) { e.preventDefault(); cbSave(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !box.hidden) cbClose(); });
+    return box;
+  }
+  function cbTownOpts(dir, want) {
+    var sel = $('sbCbPt'), l = cbTowns(dir); if (!sel) return;
+    if (want && l.indexOf(want) < 0) want = '';
+    sel.innerHTML = l.length ? l.map(function (n) { return '<option value="' + esc(n) + '"' + (n === want ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('')
+      : '<option value="">Gujarat</option>';
+    $('sbCbPtL').textContent = tr(dir === 'toIndia' ? 'drop' : 'board');
+  }
+  function cbOpen() {
+    var sv = cbBooted ? S : store.get();   // never booted: what this phone typed last time (sb:v1)
+    var box = cbSheet(), dir = sv.dir === 'toIndia' ? 'toIndia' : 'toNepal', t0 = todayIso();
+    var date = S.date || (S.q && S.q.date) || t0; if (date < t0) date = t0;
+    var nm = String(sv.name || ''), phv = String(sv.phone || ''), ccv = sv.cc === 'NP' ? 'NP' : 'IN';
+    var seats = Math.max(1, Math.min(10, (sv.pax && sv.pax.length) || 1)), opts = '';
+    for (var i = 1; i <= 10; i++) opts += '<option value="' + i + '"' + (i === seats ? ' selected' : '') + '>' + i + '</option>';
+    box.innerHTML = '<form class="sb-cv-in" novalidate>'
+      + '<div class="sb-cv-hd"><span class="sb-cv-ic" aria-hidden="true">📞</span><div><h3 id="sbCbT">' + esc(tr('cbT')) + '</h3><small>📵 ' + esc(tr('cbSub')) + '</small></div></div>'
+      + '<p class="sb-cv-sum" style="display:block;font-size:13px;color:var(--sb-text)">⚠️ <strong>' + esc(tr('cbNotT')) + '</strong> ' + esc(tr('cbNot')) + '</p>'
+      + '<label class="sb-cv-f"><span>' + esc(tr('cbRoute')) + '</span><select id="sbCbDir">'
+      + '<option value="toNepal"' + (dir === 'toNepal' ? ' selected' : '') + '>' + esc(tr('dirGo')) + '</option>'
+      + '<option value="toIndia"' + (dir === 'toIndia' ? ' selected' : '') + '>' + esc(tr('dirBack')) + '</option></select></label>'
+      + '<label class="sb-cv-f"><span id="sbCbPtL"></span><select id="sbCbPt"></select></label>'
+      + '<div class="sb-cv-2"><label class="sb-cv-f"><span>' + esc(tr('cbDate')) + '</span><input type="date" id="sbCbDate" min="' + t0 + '" value="' + esc(date) + '"></label>'
+      + '<label class="sb-cv-f"><span>' + esc(tr('cbSeats')) + '</span><select id="sbCbSeats">' + opts + '</select></label></div>'
+      + '<label class="sb-cv-f"><span>' + esc(tr('cbName')) + ' <i>*</i></span><input id="sbCbName" autocomplete="name" maxlength="60" value="' + esc(nm) + '"></label>'
+      + '<label class="sb-cv-f"><span>' + esc(tr('cbPhone')) + ' <i>*</i></span><span class="sb-cv-ph"><select id="sbCbCc" aria-label="Country">'
+      + '<option value="IN"' + (ccv !== 'NP' ? ' selected' : '') + '>+91</option><option value="NP"' + (ccv === 'NP' ? ' selected' : '') + '>+977</option></select>'
+      + '<input id="sbCbPhone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="14" value="' + esc(phv) + '"></span></label>'
+      + '<p class="sb-cv-e" id="sbCbE" role="alert" hidden></p>'
+      + '<button type="submit" class="sb-cv-go">' + esc(tr('cbGo')) + '</button>'
+      + '<button type="button" class="sb-cv-alt" data-cb="x">' + esc(tr('cbBack')) + '</button>'
+      + '</form>';
+    cbTownOpts(dir, String(sv.point || ''));
+    box.hidden = false; document.body.classList.add('shg-modal-open');
+    setTimeout(function () { var f = $(nm.trim().length < 2 ? 'sbCbName' : 'sbCbPhone'); if (f) try { f.focus(); } catch (x) {} }, 60);
+  }
+  function cbClose() {
+    var box = $('sbCb'); if (!box || box.hidden) return;
+    box.hidden = true; document.body.classList.remove('shg-modal-open');
+  }
+  function cbSave() {
+    var e = $('sbCbE'), t0 = todayIso();
+    var dir = $('sbCbDir').value === 'toIndia' ? 'toIndia' : 'toNepal';
+    var pt = String($('sbCbPt').value || '').trim().slice(0, 60);
+    var date = String($('sbCbDate').value || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < t0) date = '';
+    var seats = Math.max(1, Math.min(10, parseInt($('sbCbSeats').value, 10) || 1));
+    var name = String($('sbCbName').value || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    var cc = $('sbCbCc').value === 'NP' ? 'NP' : 'IN', ph = cbPhone(cc, $('sbCbPhone').value);
+    var bad = name.length < 2 ? 'sbCbName' : (!ph ? 'sbCbPhone' : '');
+    if (bad) {
+      e.textContent = tr(bad === 'sbCbName' ? 'needName' : (cc === 'NP' ? 'needPhoneNp' : 'needPhoneIn')); e.hidden = false;
+      try { $(bad).focus(); } catch (x) {}
+      return;
+    }
+    var nep = cbNepal(), from = dir === 'toNepal' ? (pt || 'Gujarat') : nep, to = dir === 'toNepal' ? nep : (pt || 'Gujarat');
+    var note = 'Offline booking request: ' + from + ' -> ' + to + ' ' + (date || 'any date') + ' x' + seats;
+    var item = { name: name, phone: ph, country: cc, seats: seats, source: 'callback', lang: lang(), note: (note + ' · saved ' + cbStamp()).slice(0, 250) };
+    if (date) item.travelDate = date;
+    var q = cbQueue();
+    var dup = q.some(function (x) { return x && x.source === 'callback' && x.phone === ph && String(x.note || '').indexOf(note) === 0; });
+    if (!dup) {
+      q.push(item);
+      try { localStorage.setItem(CQ, JSON.stringify(q)); }
+      catch (x) {
+        var tel = String(((window.SHG_BOOT && window.SHG_BOOT.contact) || {}).phone || '');
+        e.innerHTML = esc(tr('cbNoStore')) + (tel ? ' <a href="tel:' + esc(tel.replace(/[^\d+]/g, '')) + '">' + esc(tel) + '</a>' : ''); e.hidden = false;
+        return;
+      }
+      try { window.dispatchEvent(new CustomEvent('shg:cq')); } catch (x) {}
+    }
+    var shown = (cc === 'NP' ? '+977 ' + ph.slice(3) : '+91 ' + ph);
+    $('sbCb').innerHTML = '<div class="sb-cv-in">'
+      + '<div class="sb-cv-hd"><span class="sb-cv-ic" aria-hidden="true">✅</span><div><h3 id="sbCbT">' + esc(tr('cbDone')) + '</h3><small data-cb="wait">⏳ ' + esc(tr('cbWait', { n: cbQueue().length })) + '</small></div></div>'
+      + '<p class="sb-cv-sum" style="display:block;font-size:13px;color:var(--sb-text)">' + esc(dup ? tr('cbDup') : tr('cbDoneSub', { p: shown })) + '</p>'
+      + '<button type="button" class="sb-cv-go" data-cb="x">' + esc(tr('cbClose')) + '</button></div>';
+    cbFlush();   // already back online: send it now
+  }
+  /* P2-4g: the "N waiting" lines follow the queue (a save, a flush, another tab) */
+  function cbCount() {
+    if (!cbOn()) return;
+    var n = cbQueue().length;
+    // style.display too: '.sb-cv-hd small{display:block}' would keep a [hidden] "⏳ 0 waiting" line on screen
+    root.querySelectorAll('[data-cb="wait"]').forEach(function (el) { el.textContent = '⏳ ' + tr('cbWait', { n: n }); el.hidden = !n; el.style.display = n ? '' : 'none'; });
+  }
+  window.addEventListener('shg:cq', cbCount);
+  window.addEventListener('offline', cbSync);
+  window.addEventListener('online', function () {
+    if (!cbOn()) return;
+    var retry = !cbBooted && cbPanel && cbPanel.style.display !== 'none';
+    cbSync(); cbFlush();
+    if (retry) { cbFailed = false; boot(); }   // the panel came from a boot that failed offline: try the engine again
+  });
+  new MutationObserver(function () { cbSync(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
+
   window.SmartBook = { quote: function () { return S.q; }, state: S, requote: requote, loadCustomer: loadCustomer, fillText: fillFromText, resetForNext: resetForNext, mode: MODE,
     errors: errs, canBook: canBook, book: book,
     setAgent: function (code) { setAgent(code, true); } };

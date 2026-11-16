@@ -139,6 +139,10 @@ $boot = [
         'country'=> $userCountry,
     ] : null,
 ];
+/* 16 Nov 2026 (P2-4e): the SmartBook card's offline call-back request (and the
+   offline pill's "N queued") - default OFF. Always in the feed, so the saved page a
+   phone opens with no signal knows the answer even before the settings row exists. */
+$boot['settings']['offline_callback_on'] = Settings::getBool('offline_callback_on', false);
 
 /* Counter mode (3 Sep 2026): when a staff member who may sell is signed in,
    tell the app so it runs the SAME search -> seats -> checkout as a counter

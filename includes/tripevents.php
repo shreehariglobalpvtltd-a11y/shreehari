@@ -28,6 +28,10 @@
  *                                   owner's rule allows WhatsApp to the owner
  *                                   by default only for SOS / breakdown).
  *                                   One alert per kind per trip per 5 min.
+ *                                   16 Nov 2026 (P8-12b): with
+ *                                   trip_alert_agents_on (off by default)
+ *                                   the agents / counters with passengers
+ *                                   on that bus get one office-chat line.
  *    rest_start / rest_end        the driver's rest, for the continuous-
  *                                 driving timer (4 h gentle, 5 h strong)
  *
@@ -399,11 +403,11 @@ final class TripEvents
      *
      * @param array<string,mixed> $ev  the stored row (with id)
      * @param array<string,mixed> $ctx context() + driver, approx, fixAt
-     * @return array{bell: int, whatsapp: int, to: int, skipped: string}
+     * @return array{bell: int, whatsapp: int, to: int, skipped: string, agents: int}
      */
     public static function alertOffice(array $ev, array $ctx): array
     {
-        $out = ['bell' => 0, 'whatsapp' => 0, 'to' => 0, 'skipped' => ''];
+        $out = ['bell' => 0, 'whatsapp' => 0, 'to' => 0, 'skipped' => '', 'agents' => 0];
         try {
             $at = (int) strtotime((string) $ev['created_at']);
             /* An alert the office has already closed no longer means "the
@@ -421,16 +425,13 @@ final class TripEvents
             require_once __DIR__ . '/adminalerts.php';
             $out['bell'] = AdminAlerts::push('driver_' . $ev['kind'], $msg['title'], $msg['body'], '/admin/map.php',
                 $ev['kind'] === 'sos' ? '🆘' : '🛠️');
+            $nums = Settings::getBool('driver_sos_whatsapp_on', true) ? self::officeNumbers() : [];
             if (!Settings::getBool('driver_sos_whatsapp_on', true)) {
                 $out['skipped'] = 'whatsapp off';
-                return $out;
-            }
-            $nums = self::officeNumbers();
-            $out['to'] = count($nums);
-            if ($nums === []) {
+            } elseif ($nums === []) {
                 $out['skipped'] = 'no office number';
-                return $out;
             }
+            $out['to'] = count($nums);
             $purpose = 'trip_' . $ev['kind'];   // WaSend: 'trip_' office alerts may use the generic template outside the 24 h window
             foreach ($nums as $n) {
                 try {
@@ -447,6 +448,9 @@ final class TripEvents
                     Logger::warning('driver alert WhatsApp not sent', ['event' => (int) $ev['id'], 'error' => $e->getMessage()]);
                 }
             }
+            // 16 Nov 2026 (P8-12b): the agents with passengers on this bus (trip_alert_agents_on, off by
+            // default) - AFTER the owner / office WhatsApp so an emergency never waits on them.
+            $out['agents'] = self::alertAgents($ev, $ctx);
         } catch (Throwable $e) {
             try {
                 Logger::warning('driver alert failed', ['event' => (int) ($ev['id'] ?? 0), 'error' => $e->getMessage()]);
@@ -454,6 +458,90 @@ final class TripEvents
             }
         }
         return $out;
+    }
+
+    /**
+     * 16 Nov 2026 (P8-12b): a breakdown / SOS also reaches the agents and
+     * counters who sold seats on this bus - one line in each one's own
+     * office chat (StaffMsg 'general' thread, office side), which also
+     * pushes their phone. The internal path on purpose: free, no template,
+     * and the office stays the one who speaks to the passengers. No
+     * passenger names or phones, no GPS, no driver number in it. Once per
+     * event per agent (the message's client uuid is derived from both).
+     *
+     * Off until the office switches trip_alert_agents_on on. Never throws.
+     *
+     * @param array<string,mixed> $ev  the stored row (with id)
+     * @param array<string,mixed> $ctx context() (bus, route, date, dep)
+     * @return int agents told
+     */
+    public static function alertAgents(array $ev, array $ctx): int
+    {
+        try {
+            if (!Settings::getBool('trip_alert_agents_on', false) || !in_array((string) ($ev['kind'] ?? ''), self::ALERT_KINDS, true)) {
+                return 0;
+            }
+            $sid = (int) ($ev['schedule_id'] ?? 0);
+            if ($sid <= 0 && ($ev['live_trip_id'] ?? null) !== null) {
+                $sid = (int) Database::scalar('SELECT schedule_id FROM live_trips WHERE id = :t', ['t' => (int) $ev['live_trip_id']], 0);
+            }
+            if ($sid <= 0) {
+                return 0;
+            }
+            require_once __DIR__ . '/staffmsg.php';
+            if (!StaffMsg::available()) {
+                return 0;
+            }
+            // The same passengers the driver's manifest lists (confirmed, pending, completed).
+            $agents = Database::fetchAll(
+                "SELECT b.sold_by_admin_id AS aid, COALESCE(SUM(bl.seat_count), 0) AS seats
+                   FROM booking_legs bl
+                   JOIN bookings b ON b.id = bl.booking_id
+                   JOIN admins a   ON a.id = b.sold_by_admin_id
+                  WHERE bl.schedule_id = :s AND b.status IN ('confirmed','pending','completed')
+                    AND a.is_active = 1 AND a.role IN ('agent','counter')
+                  GROUP BY b.sold_by_admin_id
+                  ORDER BY b.sold_by_admin_id
+                  LIMIT 200",
+                ['s' => $sid]
+            );
+            if ($agents === []) {
+                return 0;
+            }
+            $sos   = (string) $ev['kind'] === 'sos';
+            $bus   = (string) ($ctx['bus'] ?? '') !== '' ? (string) $ctx['bus'] : 'Bus';
+            $route = (string) ($ctx['route'] ?? '');
+            $dep   = trim(((string) ($ctx['dep'] ?? '')) . ((string) ($ctx['date'] ?? '') !== '' ? ', ' . formatDate((string) $ctx['date'], 'j M') : ''), ', ');
+            $when  = date('j M H:i', (int) strtotime((string) ($ev['created_at'] ?? 'now')));
+            $told  = 0;
+            foreach ($agents as $r) {
+                $aid = (int) $r['aid'];
+                try {
+                    $text = ($sos ? '🆘 आपतकाल · Emergency (SOS)' : '🛠️ बस बिग्रियो · Bus breakdown') . ' — ' . $bus . "\n"
+                        . ($route !== '' ? 'रुट · Route: ' . $route . ($dep !== '' ? ' (' . $dep . ')' : '') . "\n" : '')
+                        . 'यो बसमा तपाईंका सिट · Your seats on this bus: ' . (int) $r['seats'] . "\n"
+                        . 'समय · Time: ' . $when . "\n"
+                        . "कार्यालयले हेर्दैछ। यात्रुलाई के भन्ने - कार्यालयको अर्को सन्देश पर्खनुहोस्।\n"
+                        . "The office is handling it - please wait for the office's next message before telling passengers.";
+                    $tid = StaffMsg::ensureThread('general', $aid);
+                    StaffMsg::post($tid, $text, 'office', null, null,
+                        StaffMsg::derivedUuid('trip-event-' . (int) ($ev['id'] ?? 0), $aid), false);
+                    $told++;
+                } catch (Throwable $e) {
+                    Logger::warning('driver alert to agent failed', ['event' => (int) ($ev['id'] ?? 0), 'agent' => $aid, 'error' => $e->getMessage()]);
+                }
+            }
+            Logger::audit('trip.driver_alert_agents', 'schedule', (string) $sid, null,
+                ['event' => (int) ($ev['id'] ?? 0), 'kind' => (string) $ev['kind'], 'agents' => $told],
+                'office chat line to the agents with passengers on this bus');
+            return $told;
+        } catch (Throwable $e) {
+            try {
+                Logger::warning('driver alert to agents failed', ['event' => (int) ($ev['id'] ?? 0), 'error' => $e->getMessage()]);
+            } catch (Throwable $ignored) {
+            }
+            return 0;
+        }
     }
 
     /**

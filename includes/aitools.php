@@ -21,7 +21,9 @@
  *      plan_ticket      -> QuickTicket::plan()          (live availability)
  *      issue_ticket     -> QuickTicket::sellCustomer()  (the app's own path)
  *      staff_sell       -> QuickTicket::sell()          (the counter's path)
- *      cancel_ticket    -> BookingService::cancel()     (refund slabs, audit)
+ *      cancel_ticket    -> BookingService::cancel()     (refund slabs, audit;
+ *                          a WhatsApp passenger only files WaEdit::requestCancel()
+ *                          while wa_ai_cancel_mode = 'request', 16 Nov 2026)
  *      rename_passenger -> Ticket::reissue()            (CORRECTED · REV n)
  *      resend_ticket    -> Notify::resendTicketWhatsApp()
  *      agent_day        -> AgentWallet::summary()
@@ -501,7 +503,10 @@ final class AiTools
 
         if (!$webUnverified) {
             $t[] = self::spec('cancel_ticket',
-                'CANCEL a booking after refund_quote was read out and the passenger confirmed. The seats go back and the refund is registered.',
+                self::cancelAsRequest($ctx)
+                    // P6-2d: a passenger on WhatsApp only ASKS — the owner settles every cancel and refund by hand.
+                    ? 'Send a CANCEL REQUEST for one booking to the office, after refund_quote was read out and the passenger confirmed. NOTHING is cancelled here and no money moves: tell the passenger the office will confirm the cancellation and settle any refund by hand.'
+                    : 'CANCEL a booking after refund_quote was read out and the passenger confirmed. The seats go back and the refund is registered.',
                 [
                     'pnr'     => ['string', 'The PNR'],
                     'reason'  => ['string', 'Short reason in the passenger\'s own words'],
@@ -1210,7 +1215,9 @@ final class AiTools
 
         return [
             'ok'   => true,
-            'say'  => 'Nothing is cancelled yet. Tell the passenger this refund figure and ask them to confirm.',
+            'say'  => self::cancelAsRequest($ctx)
+                ? 'Nothing is cancelled. Tell the passenger this refund figure by the published slabs and ask them to confirm. On their yes, cancel_ticket only sends a cancel REQUEST to the office, which confirms it and settles any refund by hand.'
+                : 'Nothing is cancelled yet. Tell the passenger this refund figure and ask them to confirm.',
             'data' => [
                 'pnr'       => (string) $detail['pnr'],
                 'status'    => (string) $detail['status'],
@@ -1618,6 +1625,38 @@ final class AiTools
         }
         if (!self::mayWrite($detail, $ctx)) {
             return self::no('This booking belongs to another number, so it cannot be cancelled from here.');
+        }
+
+        /* P6-2d (16 Nov 2026, owner: refunds AND cancellations are settled by hand): a
+           passenger on WhatsApp files the WaEdit cancel REQUEST — reason + the quoted
+           figure in the office note — and BookingService::cancel() is never called.
+           wa_ai_cancel_mode = 'self' keeps the old self-cancel. ok is false on purpose:
+           a caller that prints "cancelled" on ok (the members' desk) must not say so. */
+        if (self::cancelAsRequest($ctx)) {
+            require_once INCLUDE_PATH . '/waedit.php';
+            $quoted = (float) ($staged['amount'] ?? 0);
+            $req = WaEdit::requestCancel($pnr, (string) (($ctx['intl'] ?? '') !== '' ? $ctx['intl'] : ($ctx['phone'] ?? '')),
+                (string) ($ctx['country'] ?? ''), Security::clean((string) ($args['reason'] ?? ''), 200), $quoted);
+            if (!$req['ok']) {
+                return self::no((string) $req['why']);
+            }
+            return [
+                'ok'   => false,
+                'say'  => '📝 टिकट ' . $pnr . ' रद्द गर्ने अनुरोध कार्यालयमा पुग्यो — टिकट अहिले रद्द भएको छैन। '
+                    . ($quoted > 0 ? 'कार्यालयले पुष्टि गरेर नियम अनुसार रकम फिर्ता (' . inr($quoted) . ') हातैले मिलाउनेछ।' : 'कार्यालयले पुष्टि गर्नेछ (नियम अनुसार फिर्ता: ' . inr(0) . ')।')
+                    . "\nCancel request for " . $pnr . ' sent to the office — nothing is cancelled yet. The office will confirm it'
+                    . ($quoted > 0 ? ' and settle the refund (' . inr($quoted) . ' by the slabs) by hand.' : ' (refund by the slabs: ' . inr(0) . '); anything else is settled by hand.')
+                    . "\nकार्यालय · Office: " . Settings::officePhone(),
+                'data' => [
+                    'pnr'         => $pnr,
+                    'requested'   => true,
+                    'repeat'      => (bool) $req['repeat'],
+                    'refund'      => $quoted,
+                    'refundLabel' => inr($quoted),
+                    'bookingId'   => (int) $detail['id'],
+                ],
+                'media' => null,
+            ];
         }
 
         $reason = Security::clean((string) ($args['reason'] ?? 'Cancelled on WhatsApp'), 200);
@@ -3516,6 +3555,20 @@ final class AiTools
         return ((string) ($ctx['channel'] ?? 'whatsapp')) === 'web'
             && ((string) ($ctx['role'] ?? 'customer')) === 'customer'
             && empty($ctx['verified']);
+    }
+
+    /**
+     * P6-2d (16 Nov 2026): does cancel_ticket only FILE a request for this sender?
+     * A passenger (role customer) on WhatsApp, while wa_ai_cancel_mode is 'request'
+     * (the default; 'self' = the old self-cancel). Staff, agents, the office, the
+     * website and Messenger are unchanged.
+     */
+    private static function cancelAsRequest(array $ctx): bool
+    {
+        return ((string) ($ctx['role'] ?? 'customer')) === 'customer'
+            && ((string) ($ctx['channel'] ?? 'whatsapp')) === 'whatsapp'
+            && ((string) ($ctx['via'] ?? '')) !== 'facebook'
+            && strtolower(trim(Settings::getString('wa_ai_cancel_mode', 'request'))) !== 'self';
     }
 
     /**

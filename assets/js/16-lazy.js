@@ -2191,22 +2191,56 @@ document.addEventListener('click', function(e) {
           'ઑફલાઇન છો — નેટવર્ક આવતાં આપમેળે મોકલાશે.') + escal, 'bot');
       });
     },
+    /* 16 Nov 2026 (P2-4e / P2-4g): the SmartBook card's offline call-back request
+       (27-smartbook.js, source 'callback') shares this queue, so the flush is safe with
+       two callers at once ('online' there and here, the 4 s timer): one flush at a time;
+       a sent item is taken out of the CURRENT stored queue (a request saved while a
+       flush runs is kept, never overwritten by an old copy); an item the server refuses
+       for good (400 / 422) is dropped instead of blocking everything behind it forever;
+       each change is announced ('shg:cq') so the offline pill can count what waits. */
+    busy: false,
+    changed() { try { window.dispatchEvent(new CustomEvent('shg:cq')); } catch (e) {} },
+    take(item) {
+      try {
+        const cur = JSON.parse(localStorage.getItem(this.QKEY) || '[]');
+        const s = JSON.stringify(item);
+        const i = Array.isArray(cur) ? cur.findIndex(x => JSON.stringify(x) === s) : -1;
+        if (i >= 0) { cur.splice(i, 1); localStorage.setItem(this.QKEY, JSON.stringify(cur)); }
+      } catch (e) {}
+      this.changed();
+    },
+    again: false,
     flush() {
+      if (this.busy) { this.again = true; return; }   // asked again mid-flush (a request saved meanwhile): one more pass after this one
+      this.again = false;
       let qd = [];
       try { qd = JSON.parse(localStorage.getItem(this.QKEY) || '[]'); } catch (e) { return; }
-      if (!qd.length) return;
-      const rest = qd.slice();
+      if (!Array.isArray(qd) || !qd.length) return;
+      this.busy = true;
       const next = () => {
-        if (!rest.length) { localStorage.setItem(this.QKEY, '[]'); return; }
-        shgApi.post('/enquiry.php', rest[0])
-          .then(() => { rest.shift(); localStorage.setItem(this.QKEY, JSON.stringify(rest)); next(); })
-          .catch(() => { localStorage.setItem(this.QKEY, JSON.stringify(rest)); });
+        if (!qd.length) { this.busy = false; this.changed(); if (this.again) this.flush(); return; }
+        const item = qd[0];
+        shgApi.post('/enquiry.php', item)
+          .then((d) => {
+            this.take(item); qd.shift();
+            if (item && item.source === 'callback') {   // the passenger's own screen only - no message goes anywhere
+              const tk = d && d.ticket && d.ticket.ref ? ' · ' + String(d.ticket.ref).replace(/[^A-Z0-9-]/gi, '') : '';
+              try { if (typeof toast === 'function') toast((typeof t === 'function' ? t('cbSent') : 'Call-back request sent — the office will call you. It is not a ticket.') + tk); } catch (e) {}
+            }
+            next();
+          })
+          .catch((err) => {
+            const st = err && err.status;
+            if (st === 400 || st === 422) { this.take(item); qd.shift(); next(); return; }
+            this.busy = false; this.changed();   // offline again / server busy: kept, sent next time
+          });
       };
       next();
     }
   };
   window.addEventListener('online', function () { Complaint.flush(); });
   setTimeout(function () { Complaint.flush(); }, 4000);   // queued while offline last visit
+  window.shgCqFlush = function () { Complaint.flush(); };   // P2-4e: the SmartBook call-back sheet sends at once when online
 
   /* ================================================================
      "WHERE AM I?" (Blueprint Module 1.1) — GPS → nearest boarding

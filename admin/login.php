@@ -29,6 +29,51 @@ $next     = (string) ($_GET['next'] ?? ($_POST['next'] ?? ''));
 $safeNext = (preg_match('/^[A-Za-z0-9_\-]+\.php(\?[A-Za-z0-9_=&%.\-]*)?$/', $next) === 1) ? $next : 'index.php';
 
 /* =====================================================================
+   16 Nov 2026 (master v2.0, P1-5b + P1-5c) — the device-limit step.
+   A door accepted the sign-in, but the account's role is on its device
+   limit (setting device_limit_<role>; 0 = no limit, the default for every
+   role, so this step never shows until the owner sets one). Nothing is open
+   yet (Auth::deviceHold). The step lists the account's OTHER signed-in
+   devices (label + last used) and offers "sign the other device out and
+   continue" (Auth::deviceForce, audited admin.login.force) or Cancel. Every
+   door lands here: code + PIN / pattern, ?classic=1, the 2FA code step, and
+   the pages other doors send the person to (they bounce back to this page).
+   The form posts only an offer key ('d1', 'd2' ...); which device that is
+   lives in the server session. Used by both page styles below.
+   ===================================================================== */
+$devPanel = static function (array $hold, string $btnCls, string $altCls): string {
+    $ago = static function (string $ts): string {
+        $s = max(0, time() - (int) strtotime($ts));
+        return $s < 60 ? 'अहिले · just now' : ($s < 3600 ? intdiv($s, 60) . ' मिनेट अघि · min ago' : intdiv($s, 3600) . ' घण्टा अघि · h ago');
+    };
+    $offer = (array) ($hold['offer'] ?? []);
+    $n     = count($offer);
+    $lim   = (int) ($hold['limit'] ?? 0);
+    $o = '<style>.dv-sub{font-size:13.5px;line-height:1.45;margin:4px 0 10px;text-align:center}'
+       . '.dv-list{display:grid;gap:8px;margin:0 0 4px}'
+       . '.dv-row{display:flex;align-items:flex-start;gap:10px;margin:0;padding:12px;min-height:48px;border:1.5px solid #C9D3E3;border-radius:12px;cursor:pointer;font-weight:400;font-size:14px}'
+       . '.dv-row input{width:20px;height:20px;min-height:0;margin:2px 0 0;padding:0;flex:0 0 auto;box-shadow:none;accent-color:#0054A8}'
+       . '.dv-row b{display:block;font-size:15px;word-break:break-word}.dv-row small{display:block;font-size:12.5px;opacity:.75;margin-top:2px}'
+       . '.dv-row:has(input:checked){border-color:#0054A8;background:rgba(0,84,168,.06)}'
+       . '.dv-note{font-size:12.5px;opacity:.8;text-align:center;margin:10px 0 0;line-height:1.45}'
+       . ':root[data-theme="dark"] .dv-row{border-color:#3A5178}</style>';
+    $o .= '<p class="dv-sub">यो खाता पहिले नै ' . $n . ' अर्को यन्त्रमा खुला छ — सीमा ' . $lim . ' · This account is already signed in on '
+        . $n . ' other device' . ($n === 1 ? '' : 's') . ' (limit ' . $lim . ').</p>';
+    $o .= '<div class="dv-list" role="radiogroup" aria-label="Signed-in devices">';
+    $first = true;
+    foreach ($offer as $k => $d) {
+        $o .= '<label class="dv-row"><input type="radio" name="dev" value="' . Security::e((string) $k) . '"' . ($first ? ' checked' : '') . ' required>'
+            . '<span><b>' . Security::e((string) ($d['label'] ?? '')) . '</b><small>अन्तिम प्रयोग · Last used: ' . Security::e($ago((string) ($d['last_seen'] ?? ''))) . '</small></span></label>';
+        $first = false;
+    }
+    $o .= '</div>';
+    $o .= '<button class="' . Security::e($btnCls) . '" type="submit" name="mode" value="dev_force">अर्को यन्त्र बन्द गरी जारी राख्नुहोस् · Sign the other device out and continue</button>';
+    $o .= '<button class="' . Security::e($altCls) . '" type="submit" name="mode" value="dev_cancel" formnovalidate>रद्द गर्नुहोस् · Cancel</button>';
+    $o .= '<p class="dv-note">बन्द गरिएको यन्त्र ३० सेकेन्डभित्र बाहिरिन्छ। तपाईंको होइन भने रद्द गरेर कार्यालयमा फोन गर्नुहोस् · The device you sign out leaves within 30 seconds. Not yours? Cancel and call the office.</p>';
+    return $o;
+};
+
+/* =====================================================================
    30 Oct 2026 — THE ONE DOOR. Owner: "login system dherai messy chha …
    number diyo bhane number + WhatsApp OTP, natra 'hi' pathaune; natra simple
    agent ID ra simple password. Login minimalistic, smooth, sabai ko lagi
@@ -161,6 +206,21 @@ if (Auth::oneDoorOn()) {
                         ? ['step' => 'admin_otp', 'error' => 'कोड मिलेन · ' . (string) ($a['error'] ?? 'That code is not right.')]
                         : ['step' => 'start', 'error' => 'फेरि लगइन गर्नुहोस् · ' . (string) ($a['error'] ?? 'Please sign in again.')];
                 })(),
+                // ---- 16 Nov 2026 (P1-5b/5c): the device-limit step ----
+                'dev_force'      => (static function (): array {
+                    $a = Auth::deviceForce((string) ($_POST['dev'] ?? ''));
+                    if (!empty($a['ok'])) {
+                        OneDoor::clear();
+                        return ['go' => 'home'];
+                    }
+                    return !empty($a['expired'])
+                        ? ['step' => 'start', 'error' => (string) ($a['error'] ?? 'Please sign in again.')]
+                        : ['step' => 'devices', 'error' => (string) ($a['error'] ?? '')];
+                })(),
+                'dev_cancel'     => (static function (): array {
+                    Auth::deviceCancel();
+                    return ['step' => 'start', 'notice' => 'रद्द गरियो — केही खुलेन · Cancelled. Nothing was opened.'];
+                })(),
                 'admin_2fa_resend' => (static function (): array {
                     $a = Auth::adminLogin2faResend();
                     if (!empty($a['ok'])) {
@@ -188,6 +248,14 @@ if (Auth::oneDoorOn()) {
                         : ['step' => 'start', 'error' => (string) ($a['error'] ?? 'Sign in failed.')];
                 })(),
             };
+            /* 16 Nov 2026 (P1-5b/5c): whichever door ran, a sign-in held at the device limit
+               shows the device step (nothing is open yet, so it must not "go" anywhere). */
+            if ($mode !== 'dev_cancel' && Auth::deviceHold() !== null) {
+                if (($r['flash'] ?? '') === 'pin_saved') {
+                    $_SESSION['home_flash'] = '✅ PIN / pattern राखियो — अबदेखि कोड र PIN / pattern ले मात्र भित्र आउनुहोस् · Saved. From now on sign in with your code and PIN / pattern.';
+                }
+                $r = ['step' => 'devices'] + ($mode === 'dev_force' && isset($r['error']) ? ['error' => (string) $r['error']] : []);
+            }
             if (isset($r['go'])) {
                 // 6 Nov 2026: remember WHO signed in on this browser — next time the
                 // door opens straight on their pattern / PIN (QuickUnlock::rememberedAccount).
@@ -227,10 +295,19 @@ if (Auth::oneDoorOn()) {
             CodeLogin::clear();
         }
         // a remembered phone opens straight on its own code (never a typed or posted one)
+        // 16 Nov 2026 (W1 review): not while a sign-in is held at the device limit —
+        // enterRemembered() starts a new door (Auth::clearDoorState) and would drop the hold.
         if ($codeFirst && !$classic && $step === 'start' && (string) ($_GET['other'] ?? '') !== '1'
-            && (string) ($_GET['forget'] ?? '') !== '1' && QuickUnlock::rememberedDevice() !== null) {
+            && (string) ($_GET['forget'] ?? '') !== '1' && Auth::deviceHold() === null && QuickUnlock::rememberedDevice() !== null) {
             $step = CodeLogin::enterRemembered()['step'];
         }
+        // 16 Nov 2026 (P1-5b/5c): a held sign-in (device limit) — continue or cancel first
+        if (Auth::deviceHold() !== null) {
+            $step = 'devices';
+        }
+    }
+    if ($step === 'devices' && Auth::deviceHold() === null) {
+        $step = 'start';   // the hold ran out (5 minutes) or was used: one step back
     }
     /* 15 Nov 2026: code-first steps show only with what they need; the classic "start"
        becomes the code box unless ?classic=1 asked for the old door. */
@@ -319,6 +396,7 @@ if (Auth::oneDoorOn()) {
         'c_prove'   => '✅ आफ्नो नम्बर पुष्टि · Confirm it is you',
         'c_create'  => '🔐 PIN वा Pattern राख्नुहोस् · Choose a PIN or pattern',
         'c_confirm' => '🔁 फेरि उही · Once more to confirm',
+        'devices'   => '📱 अर्को यन्त्रमा खुला छ · Signed in on another device',   // 16 Nov 2026 (P1-5c)
         default     => 'लगइन · Sign in',
     };
     $cs      = $codeFirst ? CodeLogin::state() : null;
@@ -797,6 +875,9 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
   <p class="note"><?= $cpk === 'pattern' ? 'पक्का गर्न उही pattern फेरि · Same pattern once more' : 'पक्का गर्न उही PIN फेरि · Same PIN once more' ?></p>
   <div class="links"><a href="<?= $h($odUrl(['step' => 'c_create'])) ?>">↺ फेरि सुरुदेखि · Start over</a></div>
 
+  <?php elseif ($step === 'devices' && ($devHold = Auth::deviceHold()) !== null): /* 16 Nov 2026 (P1-5b/5c) */ ?>
+  <form method="post" action="/admin/login.php" autocomplete="off"><?= $hid() ?><?= $devPanel($devHold, 'btn', 'btn alt') ?></form>
+
   <?php elseif ($step === 'start' && $remembered !== null): ?>
   <?php /* 6 Nov 2026: this phone remembers the account — pattern / PIN first, like an Android lock screen. */ ?>
   <div class="lk-clock" id="lkClock" aria-hidden="true">--:--</div><div class="lk-date" id="lkDate"></div>
@@ -1024,7 +1105,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
   <?php if ((bool) ($fw['twofa'] ?? false)): ?><p class="note">यो खातामा 2FA छ — सेभपछि WhatsApp कोड पनि चाहिन्छ · This account uses 2FA: a WhatsApp code follows.</p><?php endif; ?>
   <?php endif; ?>
 
-  <?php if (!in_array($step, ['forgot', 'forgot_code', 'forgot_pick', 'forgot_pw', 'wa', 'c_code', 'c_unlock', 'c_setup', 'c_forgot', 'c_prove', 'c_create', 'c_confirm', 'c_walogin'], true)): ?>
+  <?php if (!in_array($step, ['forgot', 'forgot_code', 'forgot_pick', 'forgot_pw', 'wa', 'c_code', 'c_unlock', 'c_setup', 'c_forgot', 'c_prove', 'c_create', 'c_confirm', 'c_walogin', 'devices'], true)): ?>
   <div class="links">
     <?php if ($step === 'start' && $codeFirst): ?><a href="<?= $h($odUrl(['step' => 'c_code', 'classic' => false])) ?>">🪪 कोड + PIN / Pattern ले भित्र · Sign in with code + PIN</a><?php endif; ?>
     <?php if ($step === 'start'): ?><a href="<?= $h($odUrl(['step' => 'forgot'])) ?>">🔑 पासवर्ड बिर्सनुभयो? · Forgot password?</a><?php endif; ?>
@@ -1057,7 +1138,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 })();
 </script>
 <?php endif; ?>
-<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116a" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116b" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
 <?php if (($remembered ?? null) !== null || $cPad): ?><script>
 (function(){
@@ -1278,6 +1359,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         } else {
             $error = $result['error'] ?? 'Please sign in again.';
         }
+    } elseif ($mode === 'dev_force') {
+        // 16 Nov 2026 (P1-5b/5c): the device-limit step (see $devPanel at the top)
+        $result = Auth::deviceForce((string) ($_POST['dev'] ?? ''));
+        if (!empty($result['ok'])) {
+            Response::redirect('admin/' . login_destination($safeNext));
+        }
+        $error = (string) ($result['error'] ?? 'Please sign in again.');
+    } elseif ($mode === 'dev_cancel') {
+        Auth::deviceCancel();
+        $notice = 'रद्द गरियो — केही खुलेन · Cancelled. Nothing was opened.';
     } else {
         $result = Auth::adminLogin((string) ($_POST['username'] ?? ''), (string) ($_POST['password'] ?? ''));
         if ($result['ok']) {
@@ -1292,6 +1383,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $error = $result['error'] ?? 'Sign in failed.';
         }
     }
+}
+if (Auth::deviceHold() !== null) {
+    $step = 'devices';   // 16 Nov 2026 (P1-5b/5c): a sign-in held at the device limit
 }
 
 $company = Settings::getString('company_name', APP_NAME);
@@ -1487,7 +1581,10 @@ $doors = static function (string $title) use ($next): string {
   <input type="hidden" name="next" value="<?= Security::e($next) ?>">
   <input type="hidden" name="portal" value="<?= Security::e($portal) ?>">
 
-  <?php if ($step === 'admin_otp'): ?>
+  <?php if ($step === 'devices' && ($devHold = Auth::deviceHold()) !== null): ?>
+    <!-- 16 Nov 2026 (P1-5b/5c): held at the device limit -->
+    <?= $devPanel($devHold, '', 'alt') ?>
+  <?php elseif ($step === 'admin_otp'): ?>
     <!-- Admin flow · step 2: opt-in second factor (password already verified) -->
     <input type="hidden" name="mode" value="admin_2fa_verify">
     <label for="aotp">One-time code</label>
@@ -1569,6 +1666,6 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116a" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116b" data-next="<?= $meUrl ?>"></script><?php endif; ?>
 <?php endif; ?>
 </body></html>
