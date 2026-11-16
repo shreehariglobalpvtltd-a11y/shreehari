@@ -60,6 +60,14 @@ $prePhone = Security::clean((string) ($_GET['phone'] ?? ''), 20);
    render the party sizes the engine would happily sell. */
 $maxSeats = BookingService::maxSeatsFor(true);
 $maxDisc  = Settings::getFloat('counter_max_discount_pct', 15.0);
+/* 16 Nov 2026 (P8-3f / P4-4d): the desk's extras - each field only while its owner
+   switch is on AND its columns exist (upgrade-2026-11-16c-X1-money.sql), the same
+   test BookingService::deskExtras() charges by, so the desk never shows a charge
+   the sale would not take. luggage_fee_per_piece 0 / infant_seat_on off = hidden. */
+$lugFee  = CounterDesk::hasColumn('bookings', 'luggage_pieces') && CounterDesk::hasColumn('bookings', 'luggage_fee')
+    ? max(0, Settings::getInt('luggage_fee_per_piece', 0)) : 0;
+$infOn   = Settings::getBool('infant_seat_on', false) && CounterDesk::hasColumn('bookings', 'infant_count') && CounterDesk::hasColumn('bookings', 'infant_fee');
+$infFare = $infOn ? max(0, Settings::getInt('infant_seat_fare', 0)) : 0;
 /* Nepal counters (24 Sep 2026, owner: "Nepalgunj and other authorised
    counters in Nepal … INR/NPR currency handling where required"). Fares are
    held in INR everywhere — the database, the ticket, the accounts — and that
@@ -209,6 +217,8 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 .qt-disc{display:flex;gap:6px;flex-wrap:wrap;flex:1 1 200px}
 .qt-disc input,.qt-disc select{border:1.5px solid var(--line);border-radius:9px;padding:7px 10px;background:var(--card);color:var(--ink);font-size:14px;min-height:36px;min-width:0}
 .qt-disc input[type=number]{width:90px}.qt-disc input[type=text]{flex:1 1 140px}
+.qt-xf{display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex:1 1 220px;font-size:13px;font-weight:700;color:#78350f}/* the discount box is #fffbeb in both themes: dark ink, never the theme's light text */
+.qt-xf>span{flex-basis:100%}.qt-xf input[type=number]{width:72px;min-height:40px}.qt-xf small{font-weight:600;opacity:.75}
 .qt-go{width:100%;margin-top:14px;min-height:60px;border:0;border-radius:14px;font-size:19px;font-weight:900;color:#fff;cursor:pointer;
   background:linear-gradient(135deg,#F07C1F,#D96A10);box-shadow:0 8px 24px rgba(240,124,31,.4);transition:transform .15s,box-shadow .15s}
 .qt-go:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 28px rgba(240,124,31,.5)}
@@ -501,6 +511,20 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
           <select id="qtDiscType" aria-label="Discount type"><option value="flat">₹ amount off</option><option value="percent">% percent off</option></select>
           <input type="text" id="qtNote" maxlength="120" placeholder="Note (optional) · receipt no.">
         </div>
+        <?php if ($lugFee > 0 || $infOn): /* P8-3f / P4-4d: desk-only extras, hidden while their switches are off */ ?>
+        <div class="qt-disc qt-extras" style="width:100%;margin-top:8px">
+          <?php if ($lugFee > 0): ?>
+          <label class="qt-xf"><span>🧳 अतिरिक्त सामान · Extra luggage (pieces)</span>
+            <input type="number" id="qtLug" min="0" max="<?= BookingService::LUGGAGE_MAX ?>" step="1" value="0" inputmode="numeric">
+            <small>× <?= Security::e(inr((float) $lugFee)) ?></small></label>
+          <?php endif; ?>
+          <?php if ($infOn): ?>
+          <label class="qt-xf"><span>👶 शिशु · Infant (lap, no berth)</span>
+            <input type="number" id="qtInf" min="0" max="<?= BookingService::INFANT_MAX ?>" step="1" value="0" inputmode="numeric">
+            <small><?= $infFare > 0 ? '× ' . Security::e(inr((float) $infFare)) : 'निःशुल्क · free' ?></small></label>
+          <?php endif; ?>
+        </div>
+        <?php endif; ?>
         <div id="qtDiscountPreview" style="width:100%;margin-top:7px;font-size:14px;font-weight:800;color:#92400e">Fare loading…</div>
         <div class="qt-hint" style="width:100%">Example: fare ₹2,000 − discount ₹200 = final ₹1,800. Max <?= Security::e((string) $maxDisc) ?>%.</div>
       </div>
@@ -581,6 +605,8 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   var STAFF_ID = <?= (int) $staffId ?>;   // desk memory key owner (shg_ctr_agent_<id>, shared with counter mode)
   var CAN = <?= $canSell ? 'true' : 'false' ?>;
   var MAX_DISC = <?= json_encode($maxDisc) ?>;
+  /* 16 Nov 2026 (P8-3f / P4-4d): desk extras - 0 / false = the field is not on the page */
+  var LUG_FEE = <?= (int) $lugFee ?>, INF_FARE = <?= (int) $infFare ?>, LUG_MAX = <?= BookingService::LUGGAGE_MAX ?>, INF_MAX = <?= BookingService::INFANT_MAX ?>;
   var AGENTS = <?= json_encode($agentList, JSON_UNESCAPED_UNICODE) ?>;
   var COMM_FLAT = <?= $commFlat ? 'true' : 'false' ?>;
   var COMM_DIRECT = <?= json_encode($commDirect) ?>;
@@ -871,7 +897,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       + '<div><small>Bus departs</small><b>' + esc(plan.depTime || '—') + '</b><em>' + esc(plan.from) + '</em></div>'
       + '<div><small>Boarding · चढ्ने ठाउँ</small><b>' + esc(plan.boardingCode) + ' · ' + esc(plan.boardingName) + '</b><em>' + esc(plan.boardingTime || '') + (plan.departsInMin != null ? ' · ' + inLabel(plan.departsInMin) : '') + '</em></div>'
       + '<div><small>Seat' + ((plan.seats || []).length > 1 ? 's' : '') + '</small><b>' + esc(seatsTxt) + '</b><em>' + esc(plan.seatsLeft) + ' free · ' + esc(plan.coach) + '</em></div>'
-      + '<div class="big"><small>Fare · भाडा</small><b>' + money(f.total) + nprNote(f.total) + '</b><em>' + esc(plan.seatCount) + ' × ' + money(f.perSeat) + (f.groupDiscount > 0 ? ' · group −' + money(f.groupDiscount) : '') + (f.fee > 0 ? ' + fee ' + money(f.fee) : '') + '</em></div>'
+      + '<div class="big"><small>Fare · भाडा</small><b>' + money(f.total) + nprNote(f.total) + '</b><em>' + esc(plan.seatCount) + ' × ' + money(f.perSeat) + (f.groupDiscount > 0 ? ' · group −' + money(f.groupDiscount) : '') + (f.returnDiscount > 0 ? ' · फिर्ती छुट · return −' + money(f.returnDiscount) : '') + (f.fee > 0 ? ' + fee ' + money(f.fee) : '') + '</em></div>'
       + commLine(plan.seatCount)
       + '</div>'
       + '<div class="qt-why">' + (plan.matchedDesk ? '📍 Desk pickup remembered — <b>' + esc(plan.boardingName) + '</b>.' : '📍 First pickup still ahead. Tap a stop under Options → Boarding to make it this desk\'s default.') + '</div>';
@@ -976,21 +1002,37 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       ? base * requested / 100
       : requested;
     var discount = Math.round(Math.min(rawDiscount, base * Math.max(0, MAX_DISC) / 100, base) * 100) / 100;
+    var x = deskExtras();
     return {
       base: base,
       discount: discount,
-      finalTotal: Math.round(Math.max(0, base - discount) * 100) / 100
+      lug: x.lug, inf: x.inf, extras: x.amt,
+      // P8-3f / P4-4d: the extras go on AFTER the discount (never discounted, never commission)
+      finalTotal: Math.round((Math.max(0, base - discount) + x.amt) * 100) / 100
     };
+  }
+  /* 16 Nov 2026 (P8-3f / P4-4d): luggage pieces x LUG_FEE + lap infants x INF_FARE -
+     the same caps BookingService::deskExtras() charges with (infants: one per seat). */
+  function deskExtras() {
+    var lEl = $('#qtLug'), iEl = $('#qtInf');
+    var lug = lEl && LUG_FEE > 0 ? Math.max(0, Math.min(LUG_MAX, parseInt(lEl.value, 10) || 0)) : 0;
+    var inf = iEl ? Math.max(0, Math.min(INF_MAX, Number(st.seats) || 1, parseInt(iEl.value, 10) || 0)) : 0;
+    return { lug: lug, inf: inf, amt: lug * LUG_FEE + inf * INF_FARE };
   }
   function renderDiscountPreview() {
     var el = $('#qtDiscountPreview');
     if (!el) return;
     if (!plan) { el.textContent = 'Fare loading…'; return; }
     var amounts = currentDiscountAmounts();
-    el.textContent = 'भाडा ' + money(amounts.base) + ' − छुट ' + money(amounts.discount) + ' = तिर्ने ' + money(amounts.finalTotal);
+    el.textContent = 'भाडा ' + money(amounts.base) + ' − छुट ' + money(amounts.discount)
+      + (amounts.lug > 0 ? ' + सामान ' + money(amounts.lug * LUG_FEE) : '')
+      + (amounts.inf > 0 && INF_FARE > 0 ? ' + शिशु ' + money(amounts.inf * INF_FARE) : '')
+      + ' = तिर्ने ' + money(amounts.finalTotal);
   }
   $('#qtDisc').addEventListener('input', renderDiscountPreview);
   $('#qtDiscType').addEventListener('change', renderDiscountPreview);
+  if ($('#qtLug')) $('#qtLug').addEventListener('input', renderDiscountPreview);
+  if ($('#qtInf')) $('#qtInf').addEventListener('input', renderDiscountPreview);
   function confirmSale(name) {
     if (!plan) {
       showErr('Live fare is still loading. Please wait a moment and confirm again.');
@@ -1016,14 +1058,19 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       'Seat: ' + seatText,
       'Bus: ' + (plan.busNumber || plan.busName || '—'),
       'Base fare: ' + money(base),
-      'Discount: -' + money(discount),
+      'Discount: -' + money(discount)
+    ];
+    // P8-3f / P4-4d: the desk's extras, only when typed
+    if (amounts.lug > 0) lines.push('अतिरिक्त सामान · Extra luggage: ' + amounts.lug + ' × ' + money(LUG_FEE) + ' = ' + money(amounts.lug * LUG_FEE));
+    if (amounts.inf > 0) lines.push('शिशु · Infant (lap, no berth): ' + amounts.inf + (INF_FARE > 0 ? ' × ' + money(INF_FARE) + ' = ' + money(amounts.inf * INF_FARE) : ' · free'));
+    lines = lines.concat([
       'Final total: ' + money(finalTotal),
       'Received by: ' + String(st.pay || 'cash').toUpperCase(),
       'Agent: ' + agentText,
       'Note: ' + ($('#qtNote').value.trim() || '—'),
       '',
       'OK थिचेपछि मात्र ticket issue हुन्छ।'
-    ];
+    ]);
     return window.confirm(lines.join('\n'));
   }
   $('#qtForm').addEventListener('submit', function (e) {
@@ -1034,6 +1081,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     if (err) { showErr(err); ($('#qtName').value.trim().length < 2 ? $('#qtName') : $('#qtPhone')).focus(); return; }
     hideErr();
     var dv = parseFloat($('#qtDisc').value) || 0;
+    var dx = deskExtras();   // P8-3f / P4-4d
     if (!confirmSale(name)) return;
     if (!t0) startClock();
     step(2); setBusy(true);
@@ -1043,6 +1091,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       agentCode: ($('#qtAgent') ? $('#qtAgent').value : ''),
       viaWhatsapp: ($('#qtViaWa') && $('#qtViaWa').checked) ? 1 : 0,
       discountType: dv > 0 ? $('#qtDiscType').value : '', discountValue: dv, note: $('#qtNote').value.trim(),
+      luggagePieces: dx.lug, infantCount: dx.inf,
       // 🤖 what the bot proposed for this sale (null when it proposed nothing) — scores the outcome loop
       bot: botPrefill || undefined,
       // 🌙 the Ready Queue card this sale came from, so the brain can score
@@ -1058,6 +1107,8 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       sayTicket(j.data);
       prependRecent(j.data);
       $('#qtLine').value = ''; $('#qtName').value = ''; $('#qtPhone').value = ''; $('#qtDisc').value = ''; $('#qtNote').value = '';
+      if ($('#qtLug')) $('#qtLug').value = '0';   // P8-3f / P4-4d: the next passenger starts with no extras
+      if ($('#qtInf')) $('#qtInf').value = '0';
       if ($('#qtViaWa')) $('#qtViaWa').checked = false;   // the next passenger starts unticked
       st.prefer = []; st.preferPhone = '';
       botReset();

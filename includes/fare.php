@@ -462,6 +462,101 @@ final class Fare
     }
 
     /**
+     * 16 Nov 2026 (P4-5d, owner switch return_discount_pct - 0 = off, the
+     * default): the RETURN-JOURNEY discount. There is no two-leg round-trip
+     * engine, so this is the small honest version: when the SAME mobile
+     * already holds a live ticket the OTHER way (Gujarat -> Rupaidiha against
+     * Rupaidiha -> Gujarat) travelling within return_discount_days (default
+     * 30) of this departure, this booking gets return_discount_pct % off.
+     *
+     * Live = confirmed / completed, or pending with a payment proof (UTR or
+     * screenshot) waiting in the verify queue. Each other-way ticket pays for
+     * ONE return discount: same-way tickets that already carry one are
+     * counted against them, so one Surat -> Rupaidiha ticket never discounts
+     * three trips back.
+     *
+     * 0 while the switch is off (no query at all), when the mobile is unknown
+     * or the walk-in placeholder, the departure is unknown, or
+     * bookings.return_discount does not exist yet (a discount the booking
+     * could not store is never given). Never throws: a failed read is 0.
+     */
+    public static function returnDiscountPct(string $phone, ?int $routeId, ?int $departTs): float
+    {
+        $pct = Settings::getFloat('return_discount_pct', 0.0);
+        if (!($pct > 0)) {
+            return 0.0;
+        }
+        $pct   = min(100.0, $pct);
+        $phone = substr(preg_replace('/\D/', '', $phone) ?? '', -10);
+        if (strlen($phone) < 8 || trim($phone, '0') === '' || $routeId === null || $routeId <= 0 || $departTs === null) {
+            return 0.0;
+        }
+        try {
+            if (!CounterDesk::hasColumn('bookings', 'return_discount')) {
+                return 0.0;
+            }
+            $route = Database::fetch('SELECT to_city FROM routes WHERE id = :r LIMIT 1', ['r' => $routeId]);
+            if ($route === null) {
+                return 0.0;
+            }
+            $toNepal = self::isNepalPoint((string) ($route['to_city'] ?? ''));
+            $nepal   = self::nepalPoints();
+            $count   = static function (bool $otherWay, bool $usedOnly) use ($phone, $departTs, $toNepal, $nepal): int {
+                $params = [
+                    'ph'   => $phone,
+                    'd'    => date('Y-m-d', $departTs),
+                    'days' => max(0, Settings::getInt('return_discount_days', 30)),
+                ];
+                $in = [];
+                foreach (array_values($nepal) as $i => $city) {
+                    $in[] = ':np' . $i;
+                    $params['np' . $i] = $city;
+                }
+                // The other way of a trip TO Nepal is a trip whose destination is NOT a Nepal point.
+                $wantNepal = $otherWay ? !$toNepal : $toNepal;
+                $dirSql    = 'r.to_city ' . ($wantNepal ? 'IN' : 'NOT IN') . ' (' . implode(', ', $in) . ')';
+                return (int) Database::scalar(
+                    "SELECT COUNT(DISTINCT b.id)
+                       FROM bookings b
+                       JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
+                       JOIN schedules s ON s.id = l.schedule_id
+                       JOIN routes r ON r.id = s.route_id
+                      WHERE b.contact_phone = :ph
+                        AND ABS(DATEDIFF(l.travel_date, :d)) <= :days
+                        AND $dirSql"
+                    . ($usedOnly ? ' AND b.return_discount > 0' : '') . "
+                        AND (b.status IN ('confirmed', 'completed')
+                             OR (b.status = 'pending' AND EXISTS (
+                                   SELECT 1 FROM payments p
+                                    WHERE p.booking_id = b.id AND p.status = 'pending'
+                                      AND (COALESCE(p.utr_number, '') <> ''
+                                           OR EXISTS (SELECT 1 FROM payment_screenshots ps WHERE ps.booking_id = b.id)))))",
+                    $params,
+                    0
+                );
+            };
+            $other = $count(true, false);
+            if ($other <= 0) {
+                return 0.0;
+            }
+            return $other > $count(false, true) ? $pct : 0.0;
+        } catch (Throwable $e) {
+            Logger::warning('Return discount check failed', ['e' => $e->getMessage()]);
+            return 0.0;
+        }
+    }
+
+    /** P4-5d: the return-journey discount in rupees on $amount — 0 while the switch is off or the mobile does not qualify. */
+    public static function returnDiscount(float $amount, string $phone, ?int $routeId, ?int $departTs): float
+    {
+        if (!($amount > 0)) {
+            return 0.0;
+        }
+        $pct = self::returnDiscountPct($phone, $routeId, $departTs);
+        return $pct > 0 ? min($amount, round($amount * $pct / 100)) : 0.0;
+    }
+
+    /**
      * Seater / simple per-seat pricing, plus the group discount.
      *
      * @return array{base: float, groupDiscount: float, fee: float, total: float, perSeat: float}
@@ -1006,10 +1101,15 @@ final class Fare
      * Assemble a complete, authoritative quote for a booking request.
      *
      * Every discount is applied in a fixed order so the arithmetic is
-     * reproducible: base -> group -> coupon -> tier -> points -> tax -> fee.
+     * reproducible: base -> group -> return -> coupon -> tier -> points -> tax -> fee.
+     *
+     * $returnOk = false leaves the return-journey discount out (a channel
+     * that could not show it before the money moved: api/book.php's website
+     * checkout when the page did not ask). With return_discount_pct at 0 the
+     * flag changes nothing.
      *
      * @return array{
-     *   base: float, groupDiscount: float, couponDiscount: float,
+     *   base: float, groupDiscount: float, returnDiscount: float, couponDiscount: float,
      *   tierDiscount: float, tierName: string, pointsUsed: int,
      *   pointsValue: float, tax: float, fee: float, total: float,
      *   breakdown: array<int, array{label: string, amount: float}>
@@ -1024,7 +1124,8 @@ final class Fare
         string $couponCode = '',
         string $phone = '',
         ?int $routeId = null,
-        ?int $departTs = null
+        ?int $departTs = null,
+        bool $returnOk = true
     ): array {
         $breakdown = [['label' => 'Base fare', 'amount' => $baseAmount]];
 
@@ -1034,6 +1135,13 @@ final class Fare
 
         if ($groupCut > 0) {
             $breakdown[] = ['label' => 'Group discount (' . $seatCount . ' seats)', 'amount' => -$groupCut];
+        }
+
+        // 1b. Return-journey discount (P4-5d, 16 Nov 2026; only when switched on)
+        $returnCut = $returnOk ? self::returnDiscount($running, $phone, $routeId, $departTs) : 0.0;
+        if ($returnCut > 0) {
+            $running    -= $returnCut;
+            $breakdown[] = ['label' => 'फिर्ती छुट · Return discount', 'amount' => -$returnCut];
         }
 
         // 2. Coupon — typed by the passenger, or the running offer
@@ -1089,6 +1197,7 @@ final class Fare
         return [
             'base'           => $baseAmount,
             'groupDiscount'  => $groupCut,
+            'returnDiscount' => $returnCut,
             'couponDiscount' => $couponCut,
             'couponCode'     => $couponCut > 0 ? strtoupper($couponCode) : '',
             'tierDiscount'   => $tierCut,

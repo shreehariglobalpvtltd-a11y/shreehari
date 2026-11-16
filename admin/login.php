@@ -428,8 +428,15 @@ if (Auth::oneDoorOn()) {
             $qr = '';
         }
     }
+    /* 16 Nov 2026 (master v2.0, P1-2e + P1-7a + P1-7a2): the optional gold look. Setting login_theme:
+       'classic' (the default; a missing row or any other value reads as classic) = this page exactly as
+       before, byte for byte. 'gold' = <html class="lt-gold"> + the <style id="lt-gold"> block below: a dark
+       navy glass card, circular keys with a gold ring, gold on the active dot / tab and the primary
+       button, and on a phone the PIN / pattern steps full-screen dark. Colours only: no new font (Poppins
+       would add ~160 KB to the lock screen), no step, size or text change. */
+    $ltGold = strtolower(trim(Settings::getString('login_theme', 'classic'))) === 'gold';
     ?><!doctype html>
-<html lang="ne"><head>
+<html lang="ne"<?= $ltGold ? ' class="lt-gold"' : '' ?>><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>लगइन · Sign in · <?= $h($company) ?></title>
 <meta name="robots" content="noindex,nofollow">
@@ -644,6 +651,62 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 .qk.cl-locked .lk-keys,.qk.cl-locked .qk-pad,.qk.cl-locked .qk-tabs,.qk.cl-locked .lk-dots{opacity:.38;pointer-events:none;filter:grayscale(.6)}
 @media (min-width:900px) and (max-height:700px){body.cu .lk-keys{gap:8px 22px}body.cu .lk-keys button{width:60px;height:60px;font-size:22px}body.cu .lk-clock{font-size:60px}}
 </style>
+<?php if ($ltGold): /* login_theme = gold (see $ltGold): colours, borders and glass only — every size, gap and text as classic.
+   Under :root.lt-gold so it also wins over the admin dark-mode rules (same weight, later) and the PIN / pattern styles
+   quick-unlock.js adds at the end of <head> (one element more). Text >= 4.5:1 (tests/u9-X3-login-look-test.php). */ ?><style id="lt-gold">
+:root.lt-gold{color-scheme:dark;--ink:#EEF2FA;--mut:#B3BFD4;--line:#3D4F75;--royal:#E2B650;--card:#13223F;--well:rgba(4,10,24,.5)}
+:root.lt-gold body{color:var(--ink);border-top-color:#C7982F;background:#091530;background-attachment:fixed;
+  background-image:radial-gradient(90% 55% at 50% -8%,#1D3C7A 0%,rgba(29,60,122,0) 62%),radial-gradient(70% 45% at 88% 108%,rgba(226,182,80,.13) 0%,rgba(226,182,80,0) 70%),linear-gradient(170deg,#0C1936 0%,#081228 55%,#050B1A 100%)}
+:root.lt-gold .box{background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.045));border:1px solid rgba(255,255,255,.14);
+  box-shadow:inset 0 1px 0 rgba(226,182,80,.38),0 24px 48px -12px rgba(0,0,0,.65);-webkit-backdrop-filter:blur(16px) saturate(140%);backdrop-filter:blur(16px) saturate(140%)}
+:root.lt-gold body.lock .box{background:transparent;border:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+/* P1-2e: on a phone the PIN / pattern steps go full-screen dark (the card melts into the page; same 1px edge, so nothing moves) */
+@media (max-width:899px){:root.lt-gold body .box:has(> .qk){background:transparent;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}}
+:root.lt-gold a{color:#E2B650}
+:root.lt-gold .ceo{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12)}
+:root.lt-gold .ceo span{color:var(--mut)}:root.lt-gold .ceo img{border-color:#E2B650}
+:root.lt-gold input,:root.lt-gold select{background:var(--well);border-color:#5A6C90;color:var(--ink)}
+:root.lt-gold input:focus,:root.lt-gold select:focus{border-color:#E2B650;box-shadow:0 0 0 3px rgba(226,182,80,.3)}
+:root.lt-gold input::placeholder{color:#93A1BC;opacity:1}
+:root.lt-gold option{background:#0B1730;color:var(--ink)}
+:root.lt-gold .btn{background:linear-gradient(180deg,#F5D98A,#E2B650 55%,#C7982F);color:#10182B;box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 3px 0 #8A6519,0 10px 18px -6px rgba(0,0,0,.6)}
+:root.lt-gold .btn.wa{background:linear-gradient(180deg,#12844A,#0F7A3F 55%,#0B6A36);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 3px 0 #08502A,0 10px 18px -6px rgba(0,0,0,.6)}
+:root.lt-gold .btn.alt{background:rgba(255,255,255,.04);color:#E2B650;border-color:rgba(226,182,80,.75);box-shadow:none}
+:root.lt-gold .btn.pick{background:rgba(255,255,255,.05);color:var(--ink);border-color:var(--line);box-shadow:none}
+:root.lt-gold .btn.pick small{color:var(--mut)}
+:root.lt-gold .btn.pk{background:transparent;color:#E2B650;border-color:rgba(226,182,80,.65);box-shadow:none}
+:root.lt-gold body.lock .lk-pw .btn{background:linear-gradient(180deg,#F5D98A,#E2B650 55%,#C7982F);color:#10182B}
+:root.lt-gold body.lock .lk-pw input:focus{outline-color:#E2B650}
+:root.lt-gold .or{color:#A3AEC2}:root.lt-gold .or::before,:root.lt-gold .or::after{border-top-color:rgba(255,255,255,.14)}
+:root.lt-gold .msg.bad{background:#30161B;color:#FFADB9}:root.lt-gold .msg.ok{background:#0F271B;color:#8CE4B8}:root.lt-gold .msg.warn{background:#2E2410;color:#FFD48A}
+:root.lt-gold .cl-more{border-top-color:rgba(255,255,255,.12)}
+:root.lt-gold .cl-steps{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.14);color:var(--ink)}
+:root.lt-gold .who-av{background:linear-gradient(135deg,#F5D98A,#C7982F);color:#10182B;box-shadow:0 6px 16px -6px rgba(0,0,0,.6)}
+:root.lt-gold body.cf .logo::after{border-color:rgba(226,182,80,.6)}
+:root.lt-gold .cl-alt-b{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.2);color:var(--ink)}
+:root.lt-gold .cl-alt-b.wa{background:rgba(37,211,102,.16);border-color:rgba(37,211,102,.5)}
+:root.lt-gold .cl-len button.on{color:#10182B}
+:root.lt-gold body.lock .links a,:root.lt-gold body.lock .who a,:root.lt-gold body.lock .who-card a,:root.lt-gold body.lock .cl-forgot button,:root.lt-gold body.lock .lk-forgot button{color:#E2B650}
+:root.lt-gold body .dv-row{border-color:var(--line)}
+:root.lt-gold body .dv-row:has(input:checked){border-color:#E2B650;background:rgba(226,182,80,.08)}
+:root.lt-gold body .dv-row input{accent-color:#E2B650}
+/* PIN keypad: circular keys with a gold ring, gold OK; the dots fill gold */
+:root.lt-gold body .qk .lk-keys button{background:rgba(255,255,255,.06);color:#fff;border:1.5px solid rgba(226,182,80,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+@media (hover:hover){:root.lt-gold body .qk .lk-keys button:hover{background:rgba(226,182,80,.16)}}
+:root.lt-gold body .qk .lk-keys button:active{background:rgba(226,182,80,.42)}
+:root.lt-gold body .qk .lk-keys button.s{background:transparent;border-color:transparent;color:#E2B650;box-shadow:none}
+:root.lt-gold body .qk .lk-keys button.go{background:linear-gradient(180deg,#F5D98A,#E2B650 55%,#C7982F);border-color:#E2B650;color:#10182B}
+:root.lt-gold .lk-dots i{border-color:rgba(226,182,80,.72)}
+:root.lt-gold .lk-dots i.on{background:#E2B650;border-color:#E2B650}
+/* pattern pad + PIN / Pattern switch (a wrong / right drawing keeps its red / green) */
+:root.lt-gold body .qk-pad{background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+:root.lt-gold body.lock .qk-pad{background:transparent;box-shadow:none}
+:root.lt-gold body .qk-dot{background:#7F8FB0}
+:root.lt-gold body .qk-pad:not(.bad):not(.good) .qk-dot.on{background:#E2B650}
+:root.lt-gold body .qk-pad:not(.bad):not(.good) polyline{stroke:#E2B650}
+:root.lt-gold body .qk-tabs button{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.18);color:#D5DEEE}
+:root.lt-gold body .qk-tabs button.on{background:#E2B650;border-color:#E2B650;color:#10182B}
+</style><?php endif; ?>
 <script>(function(){try{var t=localStorage.getItem('shg_admin_theme');if(t==='dark'||t==='amoled')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 <link rel="manifest" href="/admin/app-manifest.php"><meta name="theme-color" content="#0B1220">
 <?php /* 16 Nov 2026 (P1-4c): opened from the home screen it runs full screen like an app (older iOS reads
@@ -1138,7 +1201,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 })();
 </script>
 <?php endif; ?>
-<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116b" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116c" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
 <?php if (($remembered ?? null) !== null || $cPad): ?><script>
 (function(){
@@ -1666,6 +1729,6 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116b" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116c" data-next="<?= $meUrl ?>"></script><?php endif; ?>
 <?php endif; ?>
 </body></html>

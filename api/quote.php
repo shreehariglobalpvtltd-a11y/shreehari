@@ -11,6 +11,34 @@ require_once INCLUDE_PATH . '/couponguard.php';
 
 try {
     Security::requireRateLimit('quote', Security::clientIp(), 120, 60);
+
+    /* 16 Nov 2026 (P4-5d): { returnCheck: 1, phone, routeCode | routeId, travelDate,
+       scheduleId? } -> { returnPct } - the return-journey discount % this mobile gets
+       on this departure (0 = none), for the website checkout, which shows it before
+       the payment and only then sends returnSeen to api/book.php. While
+       return_discount_pct is 0 (off) the answer is 0 and nothing is read. Says only
+       "a % applies", never which ticket; its own tighter per-IP limit. */
+    if (!empty(Response::field('returnCheck', null))) {
+        if (!(Settings::getFloat('return_discount_pct', 0.0) > 0)) {
+            Response::success(['returnPct' => 0]);
+        }
+        Security::requireRateLimit('quote_return', Security::clientIp(), 20, 600);
+        $rcCode  = Response::field('routeCode', '');
+        $rcRoute = is_scalar($rcCode) && trim((string) $rcCode) !== ''
+            ? Database::fetch('SELECT * FROM routes WHERE route_code = :c AND is_active = 1 LIMIT 1', ['c' => Security::clean((string) $rcCode, 40)])
+            : Database::fetch('SELECT * FROM routes WHERE id = :i AND is_active = 1 LIMIT 1', ['i' => (int) Response::field('routeId', 0)]);
+        $rcDate  = Security::clean(Response::field('travelDate', ''), 10);
+        $rcPhone = normalisePhone(Security::clean(Response::field('phone', ''), 20));
+        $rcPct   = 0.0;
+        if ($rcRoute !== null && Security::isValidDate($rcDate) && Security::isValidPhone($rcPhone)) {
+            $rcSid   = (int) Response::field('scheduleId', 0);
+            $rcSched = $rcSid > 0
+                ? Database::fetch('SELECT * FROM schedules WHERE id = :i AND route_id = :r AND travel_date = :d LIMIT 1', ['i' => $rcSid, 'r' => (int) $rcRoute['id'], 'd' => $rcDate])
+                : null;
+            $rcPct = Fare::returnDiscountPct($rcPhone, (int) $rcRoute['id'], Fare::departTs($rcSched ?? ['travel_date' => $rcDate], $rcRoute));
+        }
+        Response::success(['returnPct' => $rcPct]);
+    }
     /* 15 Nov 2026: a request carrying a coupon code is a guess at a code -
        10 different codes per IP per 10 minutes (CouponGuard; the same code
        sent again by a re-quote is not counted). */
@@ -97,6 +125,20 @@ try {
 
     $phone = normalisePhone(Security::clean(Response::field('phone', ''), 20));
 
+    /* The departure prices the "booked N hours ahead" offers and (16 Nov 2026,
+       P4-5d) the return-journey discount: an extra bus by its scheduleId, else
+       the daily bus on travelDate when the caller sends one - the same moment
+       BookingService::priceBooking() charges by. No date = null, as before. */
+    $quoteDep = null;
+    if (isset($qs) && $qs !== null && (int) $qs['route_id'] === $routeId) {
+        $quoteDep = Fare::departTs(['id' => $quoteSid], $route);
+    } else {
+        $quoteDate = Security::clean(Response::field('travelDate', ''), 10);
+        if (Security::isValidDate($quoteDate)) {
+            $quoteDep = Fare::departTs(['travel_date' => $quoteDate], $route);
+        }
+    }
+
     $quote = Fare::quote(
         $base,
         $seatCount,
@@ -106,7 +148,7 @@ try {
         $couponIn,
         $phone,
         $routeId,
-        isset($qs) && $qs !== null && (int) $qs['route_id'] === $routeId ? Fare::departTs(['id' => $quoteSid], $route) : null
+        $quoteDep
     );
 
     Response::success([

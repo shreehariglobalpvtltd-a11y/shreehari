@@ -214,6 +214,13 @@ const CORE_SUITES = [
     'u8-W5-wa-cap-test.php'           => 'daily WhatsApp cap: 0 = none, tickets / OTP / bot replies never blocked, 80 % alert once',
     'social-posts-test.php'           => 'Facebook post queue: drafts, approve, publish only approved + switch ON, permission error marks failed',
     'u8-W6-facebook-pages-test.php'   => 'FB posts page + nav entry, support inbox shows Facebook source',
+    // 16 Nov 2026 (mv3, units X1..X5): the last owner-decision items, every one switched OFF / 0.
+    'u9-X1-money-test.php'            => 'return discount, desk luggage + infant fees: totals identical while OFF, ticket lines, no commission',
+    'u9-lead-commission-test.php'     => 'commission is worked on the total minus luggage / infant fees; cash due keeps the full total',
+    'u9-X2-festival-test.php'         => 'special dates: themes.php editor, SHG_BOOT.festival, head accent + notice strip',
+    'u9-X3-login-look-test.php'       => 'login_theme classic = today byte for byte, gold adds only its class',
+    'u9-X4-fb-comments-test.php'      => 'FB comments: poll only when ON, permission error once, public reply audited, AI reply rules',
+    'u9-X5-settings-import-test.php'  => 'settings import preview / one-shot apply / audit, 60-min texts everywhere, Easy Settings keys',
 ];
 
 /**

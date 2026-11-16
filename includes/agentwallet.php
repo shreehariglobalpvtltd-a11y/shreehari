@@ -880,6 +880,33 @@ final class AgentWallet
     }
 
     /**
+     * 16 Nov 2026 (X1): the part of a booking's total that commission is
+     * worked on = total_amount minus the desk extras (extra-luggage fee +
+     * infant fee). Those are charges, never commissionable; cash_due keeps
+     * the full total. Reads the extras from the row, or from the DB when the
+     * caller's row did not select them; a DB without the columns gives 0.
+     */
+    public static function commissionBase(array $booking, int $bookingId = 0): float
+    {
+        $total = (float) ($booking['total_amount'] ?? 0);
+        if (array_key_exists('luggage_fee', $booking) || array_key_exists('infant_fee', $booking)) {
+            $extras = max(0.0, (float) ($booking['luggage_fee'] ?? 0)) + max(0.0, (float) ($booking['infant_fee'] ?? 0));
+        } else {
+            $extras = 0.0;
+            $id = $bookingId > 0 ? $bookingId : (int) ($booking['id'] ?? 0);
+            if ($id > 0) {
+                try {
+                    $row = Database::fetch('SELECT luggage_fee, infant_fee FROM bookings WHERE id = :i', ['i' => $id]);
+                    $extras = max(0.0, (float) ($row['luggage_fee'] ?? 0)) + max(0.0, (float) ($row['infant_fee'] ?? 0));
+                } catch (Throwable $e) {
+                    $extras = 0.0;   // columns not migrated yet: no extras can exist
+                }
+            }
+        }
+        return max(0.0, round($total - $extras, 2));
+    }
+
+    /**
      * What one confirmed booking earns its seller, under whichever scheme is
      * active. Flat mode pays per passenger; percent mode is the original
      * "x% of the sale" behaviour.
@@ -1783,7 +1810,8 @@ final class AgentWallet
             // of the sum — read from the live seat rows rather than trusting a
             // caller-supplied figure.
             $seats = self::seatCountFor($bookingId);
-            $comm  = self::commissionForBooking($total, $agentId, $seats, (string)($booking['created_at'] ?? date('Y-m-d H:i:s')));
+            $commBase = self::commissionBase($booking, $bookingId);   // 16 Nov 2026 (X1): no commission on luggage / infant fees
+            $comm  = self::commissionForBooking($commBase, $agentId, $seats, (string)($booking['created_at'] ?? date('Y-m-d H:i:s')));
 
             if ($comm > 0) {
                 self::insertEntry([
@@ -1793,7 +1821,7 @@ final class AgentWallet
                     'entry_type'     => 'commission',
                     'amount'         => $comm,
                     'note'           => 'Commission on ' . ($booking['pnr'] ?? '')
-                                        . ' (' . self::commissionNoteFor($agentId, $seats, $total, (string)($booking['created_at']??date('Y-m-d H:i:s'))) . ')',
+                                        . ' (' . self::commissionNoteFor($agentId, $seats, $commBase, (string)($booking['created_at']??date('Y-m-d H:i:s'))) . ')',
                     'ref'            => (string) ($booking['pnr'] ?? ''),
                 ]);
             }
@@ -2141,9 +2169,10 @@ final class AgentWallet
             }
 
             $seats      = self::seatCountFor($bookingId);
-            $commission = self::commissionForBooking($total, $newAgentId, $seats);
+            $commBase   = self::commissionBase($booking, $bookingId);   // 16 Nov 2026 (X1): no commission on luggage / infant fees
+            $commission = self::commissionForBooking($commBase, $newAgentId, $seats);
             $note       = 'Commission on ' . $pnr . ' ('
-                        . self::commissionNoteFor($newAgentId, $seats, $total) . ') · reassigned';
+                        . self::commissionNoteFor($newAgentId, $seats, $commBase) . ') · reassigned';
 
             $commRow = Database::fetch(
                 "SELECT id FROM agent_ledger WHERE booking_id = :b AND entry_type = 'commission' LIMIT 1",

@@ -222,7 +222,8 @@ final class QuickTicket
                 continue;
             }
             try {
-                $opt = self::nextDeparture($route, $wantDate, $wantStop, $count, $gender, $exclude, $customer, $prefer);
+                $opt = self::nextDeparture($route, $wantDate, $wantStop, $count, $gender, $exclude, $customer, $prefer,
+                                           normalisePhone((string) ($opts['phone'] ?? '')));
             } catch (RuntimeException $e) {
                 $why[] = $e->getMessage();
                 continue;
@@ -282,7 +283,10 @@ final class QuickTicket
      * Null when nothing inside the lookahead runs; throws only for an
      * explicit date that cannot be sold (so the desk gets the reason).
      */
-    private static function nextDeparture(array $route, string $wantDate, string $wantStop, int $count, ?string $gender, array $exclude, bool $customer = false, array $prefer = []): ?array
+    /* 16 Nov 2026 (P4-5d): $phone is the passenger's mobile, so the plan's fare is priced
+       exactly like the sale (fareFor's per-passenger rules: offer limits, the return-journey
+       discount). It was read from an $opts this function never had, so it was always ''. */
+    private static function nextDeparture(array $route, string $wantDate, string $wantStop, int $count, ?string $gender, array $exclude, bool $customer = false, array $prefer = [], string $phone = ''): ?array
     {
         $routeId  = (int) $route['id'];
         $today    = todayISO();
@@ -424,7 +428,7 @@ final class QuickTicket
             $boardLabel = trim($chosen['name']) . ($chosen['time'] !== '' ? ' @ ' . substr($chosen['time'], 0, 5) : '');
             $display    = Boarding::stopDisplay($boardLabel, (string) ($route['from_city'] ?? ''));
             $fare       = self::fareFor($route, $chosenSchedule, $seatPick['bookingMode'], count($seatPick['seats']),
-                                        normalisePhone((string) ($opts['phone'] ?? '')), $boardLabel);
+                                        $phone, $boardLabel);
 
             $aheadNames = array_map(static fn(array $s): string => $s['name'], $ahead);
 
@@ -703,7 +707,8 @@ final class QuickTicket
         $offerTitle = '';
         if ($offerCut > 0) {
             foreach ((array) ($quote['breakdown'] ?? []) as $line) {
-                if (abs((float) ($line['amount'] ?? 0) + $offerCut) < 0.01 && !str_starts_with((string) ($line['label'] ?? ''), 'Group')) {
+                if (abs((float) ($line['amount'] ?? 0) + $offerCut) < 0.01 && !str_starts_with((string) ($line['label'] ?? ''), 'Group')
+                    && !str_starts_with((string) ($line['label'] ?? ''), 'फिर्ती छुट')) {   // P4-5d: never the return-journey line
                     $offerTitle = (string) $line['label'];
                     break;
                 }
@@ -715,6 +720,7 @@ final class QuickTicket
             'base'           => (float) $quote['base'],
             'total'          => (float) $quote['total'],
             'groupDiscount'  => (float) $quote['groupDiscount'],
+            'returnDiscount' => (float) ($quote['returnDiscount'] ?? 0),   // P4-5d (16 Nov 2026), 0 while return_discount_pct is off
             'tax'            => (float) $quote['tax'],
             'fee'            => (float) $quote['fee'],
             'label'          => $label,
@@ -810,6 +816,11 @@ final class QuickTicket
             'discountType'  => in_array($input['discountType'] ?? '', ['flat', 'percent'], true) ? (string) $input['discountType'] : '',
             'discountValue' => (float) ($input['discountValue'] ?? 0),
             'note'          => self::NOTE . ($note !== '' ? ' · ' . $note : ''),
+            /* 16 Nov 2026 (P8-3f / P4-4d): extra luggage pieces and lap infants the desk
+               typed. create() charges them only behind luggage_fee_per_piece /
+               infant_seat_on (both off by default) - BookingService::deskExtras(). */
+            'luggagePieces' => max(0, (int) (is_scalar($input['luggagePieces'] ?? null) ? $input['luggagePieces'] : 0)),
+            'infantCount'   => max(0, (int) (is_scalar($input['infantCount'] ?? null) ? $input['infantCount'] : 0)),
         ];
         /* 15 Nov 2026 (owner: "staff agent haru le ticket katda percentage ya amount ko
            hisab le discount"): the same rule as the SmartBook desk (api/smartbook.php,

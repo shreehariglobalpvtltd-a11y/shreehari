@@ -2464,12 +2464,15 @@ $qePhone = Notify::usablePhone($b['contact_phone'] ?? '') !== '' ? (string) $b['
     <h2>Fare &amp; payment</h2>
     <table>
       <tr><th>Base total</th><td><?= Security::e(inr((float) $b['base_total'])) ?></td></tr>
-      <?php foreach ([['group_discount','Group discount'],['coupon_discount', ((string)($b['coupon_code'] ?? '') !== '' ? 'Coupon' : 'Discount')],['tier_discount','Member discount'],['points_value','Loyalty points']] as $d): ?>
+      <?php foreach ([['group_discount','Group discount'],['return_discount','फिर्ती छुट · Return discount'],['coupon_discount', ((string)($b['coupon_code'] ?? '') !== '' ? 'Coupon' : 'Discount')],['tier_discount','Member discount'],['points_value','Loyalty points']] as $d): ?>
         <?php if ((float) ($b[$d[0]] ?? 0) > 0): ?>
           <tr><th><?= $d[1] ?></th><td>− <?= Security::e(inr((float) $b[$d[0]])) ?></td></tr>
         <?php endif; ?>
       <?php endforeach; ?>
       <?php if ((float) ($b['tax_amount'] ?? 0) > 0): ?><tr><th>Tax</th><td><?= Security::e(inr((float) $b['tax_amount'])) ?></td></tr><?php endif; ?>
+      <?php /* 16 Nov 2026 (P8-3f / P4-4d): the desk's extras - not commissionable; absent columns read as 0 */ ?>
+      <?php if ((int) ($b['luggage_pieces'] ?? 0) > 0): ?><tr><th>🧳 अतिरिक्त सामान · Extra luggage</th><td><?= (int) $b['luggage_pieces'] ?> pc · <?= Security::e(inr((float) ($b['luggage_fee'] ?? 0))) ?></td></tr><?php endif; ?>
+      <?php if ((int) ($b['infant_count'] ?? 0) > 0): ?><tr><th>👶 शिशु · Infant (lap, no berth)</th><td><?= (int) $b['infant_count'] ?> · <?= (float) ($b['infant_fee'] ?? 0) > 0 ? Security::e(inr((float) $b['infant_fee'])) : 'निःशुल्क · free' ?></td></tr><?php endif; ?>
       <tr><th>Total</th><td><strong style="font-size:17px"><?= Security::e(inr((float) $b['total_amount'])) ?></strong></td></tr>
       <?php if (trim((string) ($b['ticket_note'] ?? '')) !== ''): /* 15 Nov 2026: the desk's note, as printed on the ticket */ ?>
       <tr><th>🧾 Note on ticket</th><td><?= Security::e((string) $b['ticket_note']) ?></td></tr>

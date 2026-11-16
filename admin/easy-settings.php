@@ -26,6 +26,12 @@
  * "Yes" on an AI change may WhatsApp the office one line (ai_change_wa_on,
  * default OFF — AiOps::confirm). Same words work by sentence.
  *
+ * 16 Nov 2026 (Master v2, X5): + the last owner-decision switches — return
+ * discount % / days, luggage fee per piece, infant on the lap + its fare,
+ * festival colours, login look (classic | gold), Facebook comments + their AI
+ * replies. All OFF / 0 / classic until the owner flips them; the festival
+ * dates themselves are edited on admin/themes.php.
+ *
  * Nothing here can touch a setting outside $ES_KEYS; every save is audited
  * (Settings::set + Logger::audit, secrets masked). Super-admin / settings
  * managers only (Auth::canManageSettings, the same gate as settings.php).
@@ -312,7 +318,7 @@ admin_header('🤖 S Hari AI · सेटिङ र काम (बोलेर)'
         </form>
       <?php endforeach; ?>
     </div>
-    <p class="muted">यिनलाई बोलेर पनि बदल्न सकिन्छ — जस्तै "device limit agent 2", "whatsapp daily cap 500", "group discount 10 percent"।</p>
+    <p class="muted">यिनलाई बोलेर पनि बदल्न सकिन्छ — जस्तै "device limit agent 2", "whatsapp daily cap 500", "group discount 10 percent", "return discount 5 percent", "luggage fee 200"।</p>
   </div>
 
   <div class="card">

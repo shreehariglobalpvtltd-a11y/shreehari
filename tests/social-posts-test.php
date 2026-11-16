@@ -287,6 +287,9 @@ try {
     $inactive = Database::fetch("SELECT from_city, to_city FROM routes WHERE is_active = 0 AND CONCAT(from_city, '→', to_city) NOT IN (SELECT CONCAT(from_city, '→', to_city) FROM routes WHERE is_active = 1) LIMIT 1");
     check('…and no route that is switched off', $inactive === null || !str_contains($tt, trim((string) $inactive['from_city']) . ' → ' . trim((string) $inactive['to_city'])));
     check('…the lowest fares from the fare board', str_contains($tt, '₹' . number_format(OfferCard::fareFrom('go')['min'])));
+    // 16 Nov 2026: 60 minutes, as the website, terms, report time, WhatsApp and (now) the ticket say.
+    check('…reach the pickup 60 minutes early, as everywhere else', str_contains($tt, '६० मिनेट') && str_contains($tt, '60 minutes early')
+        && !str_contains($tt, '30 minutes') && !str_contains($tt, '३० मिनेट'));
     $tid = SocialPosts::fromTimetable($admin);
     $trow = SocialPosts::get($tid);
     check('Draft from timetable makes a DRAFT only', $trow['status'] === 'draft' && $trow['approved_by'] === null && $trow['caption_ne'] === $tt);

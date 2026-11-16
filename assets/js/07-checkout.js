@@ -1151,13 +1151,21 @@ function renderCheckout() {
     return best;
   };
 
+  /* 16 Nov 2026 (P4-5d): the return-journey discount, as Fare::quote() takes it -
+     after the group discount, before the offer. Flow.returnPct is set only by the
+     server's answer (askReturn below) and only while the office has switched
+     return_discount_pct on; 0 = nothing changes on this page. */
+  Flow.returnPct = 0; Flow.returnFor = '';
+  const returnBase = useCabin ? fareBase : Math.max(0, f.base - f.discount);
   const checkoutTotals = () => {
-    const offer = offerFor(fareBase);
-    const afterOffer = fareBase - offer.amt;
+    const retDisc = Flow.returnPct > 0 ? Math.min(returnBase, Math.round(returnBase * Flow.returnPct / 100)) : 0;
+    const offer = offerFor(fareBase - retDisc);
+    const afterOffer = fareBase - retDisc - offer.amt;
     const tierDisc = (CONFIG.loyaltyTierDiscountOn && tierInfo && tierInfo.tier.discountPct > 0) ? Math.round(afterOffer * tierInfo.tier.discountPct / 100) : 0;
     const afterTier = afterOffer - tierDisc;
     const red = Flow.usePoints ? loyaltyRedemption(me, (me && me.loyaltyPoints) || 0, afterTier) : { points: 0, rupees: 0 };
     return { tierDisc: tierDisc, tierName: tierInfo ? tierInfo.tier.icon + ' ' + tierInfo.tier.name : '',
+             retDisc: retDisc,
              offerDisc: offer.amt, offerTitle: offer.title,
              points: red.points, pointsValue: red.rupees, total: Math.max(1, afterTier - red.rupees),
              fareBad: !fareOk(fareBase) };
@@ -1196,6 +1204,7 @@ function renderCheckout() {
   const updatePayment = () => {
     const x = checkoutTotals();
     let rows = useCabin ? cabinRows : fareRowsHTML(f);
+    if (x.retDisc > 0) rows += '<div class="sum-row disc"><span>↩️ फिर्ती छुट · Return journey (' + Flow.returnPct + '%)</span><b>− ' + inr(x.retDisc) + '</b></div>';
     if (x.offerDisc > 0) rows += '<div class="sum-row disc offer-row"><span>🪔 ' + esc(x.offerTitle) + '</span><b>− ' + inr(x.offerDisc) + '</b></div>';
     if (x.tierDisc > 0) rows += '<div class="sum-row disc"><span>' + tf('loyRowTier', { t: tierInfo.tier.icon + ' ' + tierInfo.tier.name }) + '</span><b>− ' + inr(x.tierDisc) + '</b></div>';
     if (x.pointsValue > 0) rows += '<div class="sum-row disc"><span>' + t('loyRowPoints') + ' (' + x.points + ')</span><b>− ' + inr(x.pointsValue) + '</b></div>';
@@ -1252,6 +1261,42 @@ function renderCheckout() {
   };
   Flow.checkoutTotals = checkoutTotals;   // submitBooking reads the same maths
   updatePayment();
+
+  /* 16 Nov 2026 (P4-5d): ask the server once per mobile + bus whether this booking is
+     a return journey (api/quote.php {returnCheck}). Only while the office's public
+     return_discount_pct is above 0 and for a one-bus booking; the number asked about is
+     the one the booking will carry (a signed-in customer's own, unless booking for
+     somebody else). submitBooking sends returnSeen only when the row was shown. */
+  const retOn = (() => { try { return Number(window.SHG_BOOT.settings.return_discount_pct) > 0; } catch (e) { return false; } })();
+  const askReturn = () => {
+    if (!retOn || legs.length !== 1 || !legs[0]) return;
+    const own = (typeof USER !== 'undefined' && USER && USER.phone && !(typeof shgForOther === 'function' && shgForOther()));
+    const p = digits(own ? USER.phone : (($('#cPhone') || {}).value || '')).slice(-10);
+    const key = p + '|' + legs[0].routeId + '|' + legs[0].date + '|' + (legs[0].sid || 0);
+    if (p.length !== 10) {
+      if (Flow.returnPct) { Flow.returnPct = 0; Flow.returnFor = ''; updatePayment(); }
+      return;
+    }
+    if (key === Flow.returnFor) return;
+    Flow.returnFor = key;
+    shgApi.post('/quote.php', { returnCheck: 1, phone: p, routeCode: legs[0].routeId, travelDate: legs[0].date, scheduleId: legs[0].sid || 0 })
+      .then((r) => {
+        if (Flow.returnFor !== key) return;   // the number changed meanwhile
+        const pct = Math.max(0, Math.min(100, Number(r && r.returnPct) || 0));
+        if (pct !== Flow.returnPct) { Flow.returnPct = pct; updatePayment(); }
+      })
+      .catch(() => { if (Flow.returnFor === key) Flow.returnFor = ''; });
+  };
+  if (retOn) {
+    const rp = $('#cPhone');
+    if (rp) {
+      // one listener per field: a re-rendered checkout replaces the last one's
+      if (rp._shgRet) { rp.removeEventListener('blur', rp._shgRet); rp.removeEventListener('change', rp._shgRet); }
+      rp._shgRet = askReturn;
+      rp.addEventListener('blur', askReturn); rp.addEventListener('change', askReturn);
+    }
+    askReturn();
+  }
 
   setPayMethod(PAY_METHOD);
   $('#payMethodUpi').onclick = () => setPayMethod('upi');
@@ -1614,6 +1659,8 @@ async function submitBooking() {
       // the client posted an empty boarding (SHG-2026-00056 fix).
       originTown: Flow.from || '',
       pointsRequested: x.points || 0,
+      // 16 Nov 2026 (P4-5d): the return-journey discount was on the screen the passenger paid from
+      returnSeen: x.retDisc > 0 ? 1 : 0,
       referralCode: refCode,
       paymentMethod: PAY_METHOD,
       isCod: isCod,
@@ -2891,10 +2938,10 @@ function renderStatus(id) {
     <div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ${esc(tkMantraLine())} <span aria-hidden="true">❖</span></div>
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo-mark-tm.webp?v=20261116b" width="439" height="228" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo-mark-tm.webp?v=20261116c" width="439" height="228" alt="" loading="lazy" decoding="async">
         <div>${tkBrandHtml(CONFIG.company.name)}<small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261116b" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261116c" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${secBand}

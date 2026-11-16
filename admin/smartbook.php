@@ -87,6 +87,18 @@ if ($mode === 'agent') {
     $desk  = Auth::deskScopeCode() ?? (string) (Database::scalar('SELECT counter_code FROM bookings WHERE sold_by_admin_id = :a AND counter_code IS NOT NULL ORDER BY id DESC LIMIT 1', ['a' => $me], '') ?: '');
     $label = 'Counter' . ($desk !== '' ? ' ' . $desk : '');
 }
+/* 16 Nov 2026 (P8-3f / P4-4d): the desk's extras - extra luggage pieces and an infant on
+   the lap (no berth). Each field shows only while its owner switch is on
+   (luggage_fee_per_piece > 0 / infant_seat_on) AND its columns exist - the same test
+   BookingService::deskExtras() charges by - AND api/smartbook.php hands the two
+   counts to the sale (its $seller context). Until that API carries them the fields
+   stay hidden, so this card never shows a charge the ticket would not take. */
+$sbExtrasWired = str_contains((string) @file_get_contents(dirname(__DIR__) . '/api/smartbook.php'), "'luggagePieces'");
+$sbLugFee  = $sbExtrasWired && CounterDesk::hasColumn('bookings', 'luggage_pieces') && CounterDesk::hasColumn('bookings', 'luggage_fee')
+    ? max(0, Settings::getInt('luggage_fee_per_piece', 0)) : 0;
+$sbInfOn   = $sbExtrasWired && Settings::getBool('infant_seat_on', false)
+    && CounterDesk::hasColumn('bookings', 'infant_count') && CounterDesk::hasColumn('bookings', 'infant_fee');
+$sbInfFare = $sbInfOn ? max(0, Settings::getInt('infant_seat_fare', 0)) : 0;
 $isAdmin = in_array((string) $admin['role'], ['superadmin', 'manager'], true) || Auth::isSuperadmin();
 $ver     = (string) (preg_match("/var ASSET_VER = '([^']+)'/", (string) @file_get_contents(dirname(__DIR__) . '/sw.js'), $vm) === 1 ? $vm[1] : '1');
 $F       = SiteFacts::all();
@@ -115,6 +127,14 @@ admin_header('SmartBook', 'smartbook');
 .sbx-tnote{display:flex;flex-direction:column;gap:4px;flex:1 1 260px;font-size:13px;font-weight:700}
 .sbx-tnote input{min-height:40px;padding:0 10px;border-radius:9px;border:1px solid var(--line,#e0e8f2);background:transparent;color:inherit;font:inherit;font-weight:600}
 .sbx-tnote small{font-weight:600;opacity:.7;font-size:11.5px}
+/* 16 Nov 2026 (P8-3f / P4-4d): extra luggage / lap infant counts (only while switched on) */
+.sbx-xtra{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:13px;font-weight:700}
+.sbx-xtra label{display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex:1 1 220px}
+.sbx-xtra label>span{flex-basis:100%}
+.sbx-xtra input{width:72px;min-height:40px;padding:0 10px;border-radius:9px;border:1px solid var(--line,#e0e8f2);background:transparent;color:inherit;font:inherit;font-size:16px}
+.sbx-xtra small{font-weight:600;opacity:.7;font-size:11.5px}
+.sbx-xtra .sbx-xnote{flex-basis:100%}
+#sbRail .sbx-desk .sbx-xtra input{flex:0 0 84px;width:84px}
 /* 15 Nov 2026: the desk box inside the summary rail, right above the Book buttons */
 #sbRail .sbx-desk{display:flex;flex-direction:column;gap:10px;margin:12px 0;padding:12px 12px 10px;border-radius:14px;border:1.5px dashed #F07C1F;background:rgba(240,124,31,.07)}
 #sbRail .sbx-desk .sbx-disc{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -198,6 +218,21 @@ html.sbx-admin .sbx-ov{display:block}
     <input id="sbxTNote" maxlength="80" autocomplete="off" placeholder="जस्तै: दशैं छुट · family offer" aria-describedby="sbxTNoteHint">
     <small id="sbxTNoteHint">यात्रुको टिकटमा छापिन्छ · printed on the ticket</small>
   </span>
+  <?php if ($sbLugFee > 0 || $sbInfOn): /* P8-3f / P4-4d: desk-only extras, on Cash / desk sales (a desk seller) */ ?>
+  <span class="sbx-xtra">
+    <?php if ($sbLugFee > 0): ?>
+    <label><span>🧳 अतिरिक्त सामान · Extra luggage (pieces)</span>
+      <input type="number" id="sbxLug" min="0" max="<?= BookingService::LUGGAGE_MAX ?>" step="1" value="0" inputmode="numeric">
+      <small>× <?= $e(inr((float) $sbLugFee)) ?></small></label>
+    <?php endif; ?>
+    <?php if ($sbInfOn): ?>
+    <label><span>👶 शिशु · Infant (lap, no berth)</span>
+      <input type="number" id="sbxInf" min="0" max="<?= BookingService::INFANT_MAX ?>" step="1" value="0" inputmode="numeric">
+      <small><?= $sbInfFare > 0 ? '× ' . $e(inr((float) $sbInfFare)) : 'निःशुल्क · free' ?></small></label>
+    <?php endif; ?>
+    <small class="sbx-xnote">Cash · desk sale · कमिसन लाग्दैन / no commission</small>
+  </span>
+  <?php endif; ?>
   </div>
   <details class="sbx-more"><summary>⚙</summary><div class="sbx-more-in">
     <?php if ($isAdmin): ?>
@@ -235,6 +270,8 @@ window.SB_STAFF = <?= json_encode([
     'mode' => $mode, 'label' => $label, 'id' => $me, 'role' => (string) $admin['role'],
     'ownCode' => $ownAgent, 'agents' => $agents, 'agentRequired' => $agentReq, 'company' => $coCode,
     'commDirect' => Settings::getFloat('agent_flat_direct', 200.0), 'commJoint' => Settings::getFloat('agent_flat_joint', 400.0), 'commFlat' => AgentWallet::flatMode(),
+    // P8-3f / P4-4d: 0 = the field is not on the page
+    'luggageFee' => $sbLugFee, 'infantFare' => $sbInfFare, 'lugMax' => BookingService::LUGGAGE_MAX, 'infMax' => BookingService::INFANT_MAX,
 ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>;
 if (<?= $mode === 'admin' ? 'true' : 'false' ?>) document.documentElement.classList.add('sbx-admin');
 /* The few app globals the card uses, for a panel page that does not load the app bundle. */

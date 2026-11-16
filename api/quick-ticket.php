@@ -328,6 +328,9 @@ try {
             'note'          => $in['note'] ?? '',
             'passengers'    => $in['passengers'] ?? null,
             'agentCode'     => Security::clean($in['agentCode'] ?? '', 20),
+            // 16 Nov 2026 (P8-3f / P4-4d): the desk's extras; charged only behind their owner switches
+            'luggagePieces' => (int) ($in['luggagePieces'] ?? 0),
+            'infantCount'   => (int) ($in['infantCount'] ?? 0),
         ];
         /* 5 Oct 2026 (owner): the agent is compulsory on Quick Ticket as well.
            The page already asks for it, but the server used to fall back to

@@ -187,6 +187,14 @@ try {
         Response::invalid(['travelDate' => 'Choose a valid travel date.']);
     }
 
+    /* 16 Nov 2026 (P4-5d): this checkout takes the payment BEFORE the booking
+       exists, so the return-journey discount (return_discount_pct, 0 = off) is
+       given here only when the page showed it first - assets/js/07-checkout.js
+       asks api/quote.php {returnCheck} and then sends returnSeen. Without it the
+       passenger may already have paid the full amount on the screen. The server
+       still decides whether the mobile qualifies; the flag only allows it. */
+    $request['skipReturnDiscount'] = empty($input['returnSeen']);
+
     $booking = BookingService::create($request, $seller);
 
     /* 8 Oct 2026: the browser that just booked may open THIS ticket (image,

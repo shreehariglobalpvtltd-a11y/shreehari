@@ -614,6 +614,34 @@
     var n = document.getElementById('sbxTNote');
     return n ? String(n.value || '').replace(/\s+/g, ' ').trim().slice(0, 80) : '';
   }
+  /* 16 Nov 2026 (P8-3f / P4-4d): the desk's extras - extra luggage pieces x
+     STAFF.luggageFee and infants on the lap x STAFF.infantFare (the staff page draws
+     the fields only while the owner's switches are on). They ride on a DESK sale
+     only - the one api/smartbook.php gives a seller (Cash, or any counter / admin
+     sale) - and are added after the fare and its discount, never commissioned.
+     The same caps BookingService::deskExtras() charges with. */
+  function deskExtras(pay) {
+    var none = { lug: 0, inf: 0, amt: 0 };
+    if (!STAFF || !(pay === 'cash' || MODE === 'counter' || MODE === 'admin')) return none;
+    var lFee = Number(STAFF.luggageFee) || 0, iFare = Number(STAFF.infantFare) || 0;
+    var lEl = document.getElementById('sbxLug'), iEl = document.getElementById('sbxInf');
+    var seats = S.q && S.q.seats && S.q.seats.length ? S.q.seats.length : S.pax.length;
+    var lug = lEl && lFee > 0 ? Math.max(0, Math.min(Number(STAFF.lugMax) || 5, parseInt(lEl.value, 10) || 0)) : 0;
+    var inf = iEl ? Math.max(0, Math.min(Number(STAFF.infMax) || 4, Math.max(1, seats), parseInt(iEl.value, 10) || 0)) : 0;
+    return { lug: lug, inf: inf, amt: lug * lFee + inf * iFare };
+  }
+  (function () {
+    var lEl = document.getElementById('sbxLug'), iEl = document.getElementById('sbxInf');
+    var note = document.querySelector('.sbx-xnote');
+    if ((!lEl && !iEl) || !note) return;
+    var base = note.textContent;
+    var paint = function () {
+      var x = deskExtras('cash');
+      note.textContent = (x.amt > 0 ? '+ ' + money(x.amt) + ' · ' : '') + base;
+    };
+    if (lEl) lEl.addEventListener('input', paint);
+    if (iEl) iEl.addEventListener('input', paint);
+  })();
   function discNote(q) {
     var box = document.querySelector('.sbx-disc'), note = document.getElementById('sbxDiscNote');
     if (!box || !note || !q || !q.price) return;
@@ -1372,6 +1400,9 @@
     if (STAFF && $('sbAgent')) body.agentCode = S.agent;   // the desk's pick (the server validates; an agent login never sends one)
     if (verify) body.verify = verify;
     if (STAFF && ticketNote()) body.ticketNote = ticketNote();
+    var dx = deskExtras(pay);   // P8-3f / P4-4d: luggage / lap infant (desk seller only; 0 = not sent)
+    if (dx.lug > 0) body.luggagePieces = dx.lug;
+    if (dx.inf > 0) body.infantCount = dx.inf;
     var emB = emBody(); if (emB) body.emergency = emB;   // 15 Nov 2026 (P7): only a valid number that is not the passenger's own
     store.set();
     api(body).then(function (r) {
@@ -1470,8 +1501,13 @@
     if (q.price && Number(q.price.discount) > 0) {
       rows.push([tr('sFare'), money(q.price.base)]);
       var dPct = Number(q.price.base) > 0 ? Math.round(Number(q.price.discount) / Number(q.price.base) * 1000) / 10 : 0;   // 15 Nov 2026: and how much that is
-      rows.push([tr('sDisc'), '− ' + money(q.price.discount) + (dPct > 0 ? ' (' + dPct + '%)' : '') + (q.price.offer ? ' · ' + q.price.offer : '')]);
+      rows.push([tr('sDisc'), '− ' + money(q.price.discount) + (dPct > 0 ? ' (' + dPct + '%)' : '') + (q.price.offer ? ' · ' + q.price.offer : '')
+        + (Number(q.price.returnDiscount) > 0 ? ' · फिर्ती छुट / Return ' + money(q.price.returnDiscount) : '')]);   // P4-5d
     }
+    /* P8-3f / P4-4d: the desk's extras on this Cash sale, added after the fare */
+    var dxS = deskExtras('cash');
+    if (dxS.lug > 0) rows.push(['🧳 अतिरिक्त सामान · Luggage', dxS.lug + ' × ' + money(STAFF.luggageFee) + ' = ' + money(dxS.lug * STAFF.luggageFee)]);
+    if (dxS.inf > 0) rows.push(['👶 शिशु · Infant (lap)', dxS.inf + (Number(STAFF.infantFare) > 0 ? ' × ' + money(STAFF.infantFare) + ' = ' + money(dxS.inf * STAFF.infantFare) : ' · free')]);
     rows.push([tr('sPay'), tr('sPayCash')]);
     var emS = emBody();   // 15 Nov 2026 (P7): the emergency contact that goes with this ticket
     if (emS) {
@@ -1480,8 +1516,8 @@
     }
     if (STAFF && ticketNote()) rows.push(['🧾 ' + tr('tNote'), ticketNote()]);
     if (STAFF && (S.agent || STAFF.ownCode)) rows.push([tr('credited'), S.agent === 'OTHER' ? (STAFF.company || '') : (S.agent || STAFF.ownCode)]);
-    return '<div class="sb-ok-sum"><div class="sb-ok-tot"><small>' + esc(tr('total')) + '</small><b>' + esc(q.price ? money(q.price.total) : '—') + '</b>'
-      + (q.price ? '<span>≈ ' + esc(npr(q.price.npr)) + '</span>' : '') + '</div><dl>'
+    return '<div class="sb-ok-sum"><div class="sb-ok-tot"><small>' + esc(tr('total')) + '</small><b>' + esc(q.price ? money(Number(q.price.total) + dxS.amt) : '—') + '</b>'
+      + (q.price ? '<span>≈ ' + esc(npr(dxS.amt > 0 && Number(q.price.total) > 0 ? Math.round(Number(q.price.npr) * (Number(q.price.total) + dxS.amt) / Number(q.price.total)) : q.price.npr)) + '</span>' : '') + '</div><dl>'
       + rows.filter(function (r) { return String(r[1] || '').replace(/[\s·→+]/g, '') !== ''; })
           .map(function (r) { return '<div><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('')
       + '</dl></div>';
@@ -1491,7 +1527,7 @@
   var okPrint = false, okGo = false;
   function openOk(wantPrint) {
     var box = cashSheet(), q = S.q || {};
-    var tot = q.price ? money(q.price.total) : '';
+    var tot = q.price ? money(Number(q.price.total) + deskExtras('cash').amt) : '';   // P8-3f / P4-4d: + the desk's extras
     okPrint = !!wantPrint;
     box.setAttribute('data-kind', 'ok');
     box.innerHTML = '<form class="sb-cv-in sb-ok" novalidate>'
@@ -2059,6 +2095,9 @@
   /* Staff: clear the card for the next customer after a sale (keeps the date / pickup / type). */
   function resetForNext() {
     (function () { var dv = document.getElementById('sbxDiscVal'); if (dv) dv.value = ''; var tn = document.getElementById('sbxTNote'); if (tn) tn.value = ''; if (window.SB_DISC_MARK) window.SB_DISC_MARK(); })();   // a discount or a ticket note never rides into the next ticket
+    ['sbxLug', 'sbxInf'].forEach(function (id) {   // P8-3f / P4-4d: nor luggage / an infant
+      var el = document.getElementById(id); if (el && el.value !== '0') { el.value = '0'; try { el.dispatchEvent(new Event('input')); } catch (x) {} }
+    });
     S.phone = ''; S.name = ''; S.pax = [{ gender: '', band: 'adult' }]; S.manual = []; S.seatMode = 'auto'; S.idem = null; S.touched = {};
     S.why = {}; fill(); applyWords(); store.set(); showErrs(false); requote(0);
   }

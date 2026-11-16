@@ -127,7 +127,7 @@ final class LedgerCheck
                     $bid = (int) $r['id'];
                     if (!AgentWallet::moneyInHand($bid, $r)) { continue; }   // unpaid COD: earns on collection
                     $seats = AgentWallet::seatCountFor($bid);
-                    $due   = AgentWallet::commissionForBooking((float) $r['total_amount'], (int) $r['sold_by_admin_id'], $seats);
+                    $due   = AgentWallet::commissionForBooking(AgentWallet::commissionBase($r, $bid), (int) $r['sold_by_admin_id'], $seats);   // 16 Nov 2026 (X1): fees excluded
                     if ($due <= 0) { continue; }
                     $out[] = [
                         'booking_id' => $bid, 'pnr' => (string) $r['pnr'], 'status' => (string) $r['status'],

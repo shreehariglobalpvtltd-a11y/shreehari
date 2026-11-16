@@ -198,8 +198,10 @@ final class SmartBook
             $res['error'] = 'The running offer already gives this much or more. / चलिरहेको अफर नै यति वा बढी छ।';
             return [$price, $res];
         }
-        foreach (['groupDiscount', 'couponDiscount', 'tierDiscount', 'tierName', 'pointsUsed', 'pointsValue', 'fee', 'tax', 'total'] as $k) {
-            $price[$k] = $typed[$k];
+        foreach (['groupDiscount', 'returnDiscount', 'couponDiscount', 'tierDiscount', 'tierName', 'pointsUsed', 'pointsValue', 'fee', 'tax', 'total'] as $k) {
+            if (array_key_exists($k, $typed)) {   // 16 Nov 2026 (X1): + returnDiscount
+                $price[$k] = $typed[$k];
+            }
         }
         $price['couponCode'] = strtoupper($code);
         $res['ok']     = true;
@@ -953,7 +955,8 @@ final class SmartBook
             'price'        => $price !== null ? [
                 'perSeat'  => (float) $price['perSeat'],
                 'base'     => (float) $price['base'],
-                'discount' => round((float) $price['groupDiscount'] + (float) $price['couponDiscount'] + (float) $price['tierDiscount'], 2),
+                'discount' => round((float) $price['groupDiscount'] + (float) ($price['returnDiscount'] ?? 0) + (float) $price['couponDiscount'] + (float) $price['tierDiscount'], 2),
+                'returnDiscount' => (float) ($price['returnDiscount'] ?? 0),   // 16 Nov 2026 (X1): the 'फिर्ती छुट · Return' line
                 'offer'    => (string) ($price['couponCode'] ?? ''),
                 'desk'     => (float) ($price['deskDiscount'] ?? 0),
                 'deskCap'  => (float) ($price['deskCap'] ?? 0),

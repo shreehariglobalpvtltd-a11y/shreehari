@@ -488,9 +488,13 @@ final class AiOps
         $acts = [];
 
         $isFare  = self::hasWord($t, ['bhada', 'bhaada', 'bhara', 'fare', 'price', 'rate', 'kiraya', 'kiraaya', 'daam', 'dam', 'ticket price', 'भाडा', 'भाड़ा', 'किराया', 'दाम', 'मूल्य',
-                                      'fares', 'prices', 'rates', 'bhadu', 'kimat', 'kimmat', 'ભાડું', 'ભાડુ', 'ભાડા', 'કિંમત', 'ભાવ']) >= 0;
+                                      'fares', 'prices', 'rates', 'bhadu', 'kimat', 'kimmat', 'ભાડું', 'ભાડુ', 'ભાડા', 'કિંમત', 'ભાવ']) >= 0
+            // X5 (16 Nov 2026): "infant fare 500" is the lap-infant knob (infant_seat_fare), never a pickup's seat fare
+            && self::hasWord($t, ['infant', 'baby', 'lap baby', 'kakhe', 'kaakhe', 'शिशु', 'काखे', 'ખોળામાં']) < 0;
         $isComm  = self::hasWord($t, ['commission', 'comission', 'kamisan', 'kamishan', 'commision', 'कमिसन', 'कमीशन', 'कमिशन']) >= 0;
-        $isExtra = self::hasWord($t, ['extra seat', 'extra seats', 'extra', 'ex seat', 'थप सिट', 'एक्स्ट्रा', 'atirikt', 'अतिरिक्त']) >= 0;
+        $isExtra = self::hasWord($t, ['extra seat', 'extra seats', 'extra', 'ex seat', 'थप सिट', 'एक्स्ट्रा', 'atirikt', 'अतिरिक्त']) >= 0
+            // X5 (16 Nov 2026): "extra luggage fee 200" is the luggage knob, never 40 extra seats per bus
+            && self::hasWord($t, ['luggage', 'baggage', 'saman', 'samaan', 'लगेज', 'सामान', 'સામાન']) < 0;
         $isFine  = self::hasWord($t, ['fine', 'jariwana', 'jarimana', 'penalty', 'cancel charge', 'जरिवाना', 'जुर्माना', 'दण्ड', 'जरिमाना']) >= 0;
         $isNum   = self::hasWord($t, ['number', 'no.', 'plate', 'gadi no', 'नम्बर', 'नंबर', 'नं']) >= 0;
         $isRoute = self::hasWord($t, ['route', 'routes', 'rut', 'root', 'रुट', 'रूट', 'line', 'लाइन']) >= 0;
@@ -2017,6 +2021,45 @@ final class AiOps
         'wa_good_morning_tpl_on'   => ['🌅 Good morning सन्देशमा paid template · Good-morning paid template', 'bool',
                                        ['good morning template', 'good morning tpl', 'gm template', 'good morning paid', 'शुभ प्रभात template']],
         'ap_ai_on'                 => ['🖥 VPS को AI (WhatsApp) · VPS AI for WhatsApp', 'bool', ['vps ai', 'ollama', 'vps model', 'local model']],
+
+        /* 16 Nov 2026 (Master v2, unit X5): the last owner-decision switches (X1 money, X2 festival,
+           X3 login look, X4 Facebook comments) — every one OFF / 0 / classic until the owner says so.
+           festival_dates is edited on admin/themes.php, not here. The two return-discount knobs share
+           their words: the number goes to the one whose unit word sits next to it (% or din). */
+        'return_discount_pct'      => ['🔁 फर्कने टिकटमा छुट % · Return-journey discount %', 'float',
+                                       ['return discount', 'return chhut', 'return chut', 'return ko chhut', 'round trip discount', 'two way discount',
+                                        'aune jane chhut', 'jane aune chhut', 'फर्कने छुट', 'रिटर्न छुट', 'आउने जाने छुट', 'રિટર્ન ડિસ્કાઉન્ટ'],
+                                       ['min' => 0, 'max' => 20, 'def' => '0', 'zero' => 'बन्द · off', 'unit' => '%',
+                                        'need' => ['%', 'percent', 'pratishat', 'प्रतिशत', 'ટકા']]],
+        'return_discount_days'     => ['🔁 फर्कने छुट: कति दिनभित्र · Return discount within', 'int',
+                                       ['return discount', 'return chhut', 'return chut', 'return ko chhut', 'round trip discount', 'two way discount',
+                                        'aune jane chhut', 'jane aune chhut', 'फर्कने छुट', 'रिटर्न छुट', 'आउने जाने छुट', 'રિટર્ન ડિસ્કાઉન્ટ'],
+                                       ['min' => 1, 'max' => 90, 'def' => '30', 'zero' => '', 'unit' => 'days',
+                                        'need' => ['din', 'dinma', 'dinbhitra', 'day', 'days', 'दिन', 'दिनभित्र', 'દિવસ']]],
+        'luggage_fee_per_piece'    => ['🧳 थप सामान शुल्क, प्रति थान · Extra luggage fee per piece', 'int',
+                                       ['luggage fee', 'luggage charge', 'luggage ko paisa', 'luggage per piece', 'baggage fee', 'baggage charge',
+                                        'saman fee', 'saman charge', 'saman ko paisa', 'saman ko fee', 'लगेज शुल्क', 'सामान शुल्क', 'लगेज फी', 'सामान फी', 'સામાન ફી'],
+                                       ['min' => 0, 'max' => 2000, 'def' => '0', 'zero' => 'बन्द · off', 'unit' => '₹/piece']],
+        'infant_seat_on'           => ['👶 काखे बच्चा (सिट बिना) थप्ने · Infant on the lap (desk)', 'bool',
+                                       ['infant', 'infant seat', 'baby seat', 'lap baby', 'lap infant', 'kakhe bachcha', 'kaakhe bachcha', 'godi bachcha',
+                                        'काखे बच्चा', 'शिशु', 'गोदी बच्चा', 'ખોળામાં બાળક']],
+        'infant_seat_fare'         => ['👶 काखे बच्चाको भाडा · Infant (lap) fare', 'int',
+                                       ['infant fare', 'infant seat fare', 'infant price', 'infant charge', 'infant fee', 'baby fare', 'baby seat fare',
+                                        'lap baby fare', 'kakhe bachcha ko bhada', 'शिशु भाडा', 'शिशु सिट भाडा', 'काखे बच्चाको भाडा', 'બાળક ભાડું'],
+                                       ['min' => 0, 'max' => 3000, 'def' => '0', 'zero' => 'निःशुल्क · free', 'unit' => '₹']],
+        'festival_theme_on'        => ['🎉 चाडपर्वको रंग र ब्यानर · Festival colours & banner', 'bool',
+                                       ['festival', 'festival theme', 'festival colour', 'festival color', 'festival banner', 'festival rang',
+                                        'tyohar theme', 'chad theme', 'chaad theme', 'चाडपर्व', 'चाड थिम', 'त्योहार थीम', 'તહેવાર']],
+        'login_theme'              => ['🎨 लगइन पेजको रूप · Login page look', 'enum',
+                                       ['login theme', 'login look', 'login design', 'login colour', 'login color', 'login rang', 'gold login', 'golden login',
+                                        'classic login', 'लगइन थिम', 'लगइन रूप', 'लगइन रंग'],
+                                       ['classic' => 'Classic — अहिलेको जस्तै · as today', 'gold' => 'Gold — सुनौलो · golden']],
+        // a bare "facebook / fb" is Messenger (fb_msgr_on); "comment" names these two (EASY_OVER keeps the narrower one)
+        'fb_comments_on'           => ['💬 Facebook कमेन्ट पढ्ने र जवाफ · Facebook Page comments', 'bool',
+                                       ['fb comment', 'fb comments', 'facebook comment', 'facebook comments', 'comment', 'comments', 'कमेन्ट', 'टिप्पणी', 'કોમેન્ટ']],
+        'fb_comment_ai_on'         => ['🤖 Facebook कमेन्टमा AI जवाफ · AI replies to FB comments', 'bool',
+                                       ['fb comment ai', 'facebook comment ai', 'comment ai', 'comments ai', 'ai comment', 'ai comments', 'comment reply ai',
+                                        'comment ma ai', 'comment ko ai', 'कमेन्ट ai', 'कमेन्टमा ai']],
     ];
     /** where a switch's row goes when the Easy Settings page writes it first (an existing row keeps its own group) */
     private const EASY_GROUPS = [
@@ -2026,6 +2069,10 @@ final class AiOps
         'device_limit_counter' => 'security', 'group_discount_on' => 'booking', 'group_discount_min_seats' => 'booking', 'group_discount_percent' => 'booking',
         'auto_arrive_hours' => 'booking', 'agent_settlement_due_days' => 'agent', 'agent_settle_reminder_days' => 'agent',
         'wa_good_morning_tpl_on' => 'whatsapp', 'ap_ai_on' => 'agentpro', 'agent_cancel_mode' => 'booking',
+        // X5: the same groups the X1 / X2 / X4 migrations use (login_theme: X3, the look of a page)
+        'return_discount_pct' => 'booking', 'return_discount_days' => 'booking', 'luggage_fee_per_piece' => 'booking',
+        'infant_seat_on' => 'booking', 'infant_seat_fare' => 'booking', 'festival_theme_on' => 'app', 'login_theme' => 'app',
+        'fb_comments_on' => 'facebook', 'fb_comment_ai_on' => 'facebook',
     ];
     /** a switch named in a sentence that also carries the wider one's word: "24 ghanta ko reminder band" is
         the 24-hour reminder, never also the trip-reminder master switch */
@@ -2033,9 +2080,12 @@ final class AiOps
         'reminder_24h_enabled'       => ['trip_reminders_enabled'],
         'agent_settle_reminder_days' => ['trip_reminders_enabled'],
         'social_publish_on'          => ['fb_msgr_on'],
+        'fb_comments_on'             => ['fb_msgr_on'],
+        'fb_comment_ai_on'           => ['fb_msgr_on', 'fb_comments_on'],
     ];
     /** read by the public booking page (SHG_BOOT.settings) — public when the page writes the row first */
-    private const EASY_PUBLIC = ['seat_pick_manual_first', 'group_discount_on', 'group_discount_min_seats', 'group_discount_percent', 'offline_callback_on'];
+    private const EASY_PUBLIC = ['seat_pick_manual_first', 'group_discount_on', 'group_discount_min_seats', 'group_discount_percent', 'offline_callback_on',
+                                 'return_discount_pct'];   // X5: public as in the X1 migration
     private const EASY_ON  = ['on', 'chalu', 'chalau', 'chalaideu', 'chalaidinu', 'chalaunu', 'khol', 'kholdeu', 'kholdinu', 'enable', 'start', 'activate', 'yes', 'haan', 'gar on',
                               'चालु', 'खोल', 'चलाउ', 'सुरु', 'अन', 'शुरू', 'चालू', 'करो चालू', 'खोलो', 'shuru', 'suru', 'lagau', 'lagaideu', 'lagaa',
                               'ચાલુ', 'શરૂ', 'ખોલો'];
@@ -2149,9 +2199,18 @@ final class AiOps
                 if (isset($def[3]['need'])) {
                     $rest = $before . ' ' . $after;
                     $need = implode('|', array_map(static fn(string $x): string => preg_quote(mb_strtolower($x), '/'), $def[3]['need']));
-                    if (preg_match('/(?<![\d.])(\d{1,6}(?:\.\d{1,2})?)\s*(?:' . $need . ')(?![a-z])/u', $rest, $m) === 1
-                        || preg_match('/(?<![a-z])(?:' . $need . ')\s*(\d{1,6}(?:\.\d{1,2})?)(?![\d.])/u', $rest, $m) === 1) {
-                        $num = $m[1];
+                    /* X5 review: the number said AFTER the knob's own name first, else the nearest one before it -
+                       "group discount 10 percent return discount 5 percent" gave the return discount 10 */
+                    foreach ([$after, $before] as $pi => $part) {
+                        if (preg_match_all('/(?<![\d.])(\d{1,6}(?:\.\d{1,2})?)\s*(?:' . $need . ')(?![a-z])/u', $part, $m) > 0
+                            || preg_match_all('/(?<![a-z])(?:' . $need . ')\s*(\d{1,6}(?:\.\d{1,2})?)(?![\d.])/u', $part, $m) > 0) {
+                            $num = $pi === 0 ? (string) $m[1][0] : (string) end($m[1]);
+                            break;
+                        }
+                    }
+                    if ($num === null && (string) ($def[3]['zero'] ?? '') !== '' && $offAt >= 0 && $offAt > $onAt
+                        && preg_match('/\d/', $rest) !== 1) {
+                        $num = '0';   // X5: "return discount band" = 0 (only a knob whose 0 means off, and no number said at all)
                     }
                 } elseif (preg_match($numRe, $after, $m) === 1) {          // the number said after the knob's name …
                     $num = $m[1];

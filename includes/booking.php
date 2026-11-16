@@ -206,6 +206,54 @@ final class BookingService
         return mb_substr(Security::clean($one, 100), 0, 80);
     }
 
+    /** Most extra luggage pieces / lap infants one desk ticket may carry (P8-3f / P4-4d). */
+    public const LUGGAGE_MAX = 5;
+    public const INFANT_MAX  = 4;
+
+    /**
+     * 16 Nov 2026 (P8-3f / P4-4d): what the desk added to this ticket, as the
+     * bookings columns it is stored in. Read from a SELLER context only
+     * (luggagePieces / infantCount, put there by the desk's own API), each
+     * behind its owner switch and its column:
+     *   luggage  luggage_fee_per_piece > 0 (0 = off); 0..LUGGAGE_MAX pieces
+     *   infant   infant_seat_on (off by default); 0..INFANT_MAX and never more
+     *            infants than passengers (one lap each), infant_seat_fare each
+     *            (default 0 = free)
+     * Everything is 0 while a switch is off or a column is missing.
+     *
+     * @param array<string, mixed> $seller
+     * @return array{luggage_pieces: int, luggage_fee: float, infant_count: int, infant_fee: float}
+     */
+    public static function deskExtras(array $seller, int $paxCount): array
+    {
+        $out = ['luggage_pieces' => 0, 'luggage_fee' => 0.0, 'infant_count' => 0, 'infant_fee' => 0.0];
+        $fee = max(0, Settings::getInt('luggage_fee_per_piece', 0));
+        $pcs = max(0, min(self::LUGGAGE_MAX, (int) (is_scalar($seller['luggagePieces'] ?? null) ? $seller['luggagePieces'] : 0)));
+        if ($fee > 0 && $pcs > 0 && CounterDesk::hasColumn('bookings', 'luggage_pieces') && CounterDesk::hasColumn('bookings', 'luggage_fee')) {
+            $out['luggage_pieces'] = $pcs;
+            $out['luggage_fee']    = (float) ($pcs * $fee);
+        }
+        $inf = max(0, min(self::INFANT_MAX, $paxCount, (int) (is_scalar($seller['infantCount'] ?? null) ? $seller['infantCount'] : 0)));
+        if ($inf > 0 && Settings::getBool('infant_seat_on', false)
+            && CounterDesk::hasColumn('bookings', 'infant_count') && CounterDesk::hasColumn('bookings', 'infant_fee')) {
+            $out['infant_count'] = $inf;
+            $out['infant_fee']   = (float) ($inf * max(0, Settings::getInt('infant_seat_fare', 0)));
+        }
+        return $out;
+    }
+
+    /**
+     * P8-3f / P4-4d: the part of a booking's total that is desk extras (luggage +
+     * lap infants), never commissionable - commission engines take it off
+     * total_amount before working out a percent. 0 for every booking without them.
+     *
+     * @param array<string, mixed> $booking a bookings row
+     */
+    public static function extrasTotal(array $booking): float
+    {
+        return round(max(0.0, (float) ($booking['luggage_fee'] ?? 0)) + max(0.0, (float) ($booking['infant_fee'] ?? 0)), 2);
+    }
+
     public static function create(array $request, ?array $seller = null): array
     {
         self::$deskCharge = 0.0;
@@ -656,6 +704,28 @@ final class BookingService
                 $altStamp['ticket_note'] = $tnote;
             }
 
+            /* 16 Nov 2026 (P4-5d): the return-journey discount the quote took off.
+               Fare::returnDiscount() is 0 without the column, so it is always storable. */
+            if ((float) ($pricing['returnDiscount'] ?? 0) > 0 && CounterDesk::hasColumn('bookings', 'return_discount')) {
+                $altStamp['return_discount'] = round((float) $pricing['returnDiscount'], 2);
+            }
+
+            /* 16 Nov 2026 (P8-3f / P4-4d): the desk's extras - extra luggage pieces x
+               luggage_fee_per_piece and infants on the lap x infant_seat_fare. A SELLER
+               only (a customer's request never carries them), each behind its owner
+               switch (0 / off = nothing), added to the total AFTER the desk discount and
+               its commission cap, so neither is ever worked out on them. */
+            $extras = $seller !== null ? self::deskExtras($seller, count($seats)) : self::deskExtras([], 0);
+            foreach ($extras as $col => $val) {
+                if ($val > 0) {
+                    $altStamp[$col] = $val;
+                }
+            }
+            $extraAmt = round($extras['luggage_fee'] + $extras['infant_fee'], 2);
+            if ($extraAmt > 0) {
+                $pricing['total'] = round((float) $pricing['total'] + $extraAmt, 2);
+            }
+
             $bookingId = Database::insert('bookings', $altStamp + self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total']) + [
                 'pnr'             => $pnr,
                 'user_id'         => $userId,
@@ -823,7 +893,8 @@ final class BookingService
 
             if ($seller !== null) {
                 Logger::audit('booking.counter', 'booking', $pnr, null,
-                    ['seats' => implode(',', $seats), 'amount' => $pricing['total'], 'source' => $sellerSource, 'method' => $counterMethod],
+                    ['seats' => implode(',', $seats), 'amount' => $pricing['total'], 'source' => $sellerSource, 'method' => $counterMethod]
+                    + array_filter($extras, static fn($v): bool => $v > 0),   // P8-3f / P4-4d: luggage / infant extras, when any
                     'counter sale (app) by admin #' . $sellerId . ($counterNote !== '' ? ' · ' . $counterNote : ''));
             } else {
                 Logger::audit('booking.create', 'booking', $pnr, null, null, count($seats) . ' seats, ' . inr($pricing['total']) . ($isCod ? ' | COD auto-confirmed' : ''));
@@ -2917,7 +2988,10 @@ final class BookingService
         }
 
         /* ---- Compute the per-seat share of fare and refund --------------- */
-        $perSeatFare = round((float) $booking['total_amount'] / $seatCount, 2);
+        /* 16 Nov 2026 (P8-3f / P4-4d): the desk's extras (luggage / lap infants) belong to
+           the whole ticket, not to a seat - they stay on it and are never shared into a
+           seat's refund. extrasTotal() is 0 for every booking without them. */
+        $perSeatFare = round(max(0.0, (float) $booking['total_amount'] - self::extrasTotal($booking)) / $seatCount, 2);
         $newTotal    = round((float) $booking['total_amount'] - $perSeatFare, 2);
 
         // Refund only when a real payment is verified.
@@ -3371,13 +3445,16 @@ final class BookingService
             (string) ($request['couponCode'] ?? ''),
             $phone,
             (int) $route['id'],
-            Fare::departTs($schedule, $route)
+            Fare::departTs($schedule, $route),
+            // P4-5d: the website checkout (api/book.php) sets this when its page never showed a return discount
+            empty($request['skipReturnDiscount'])
         );
 
         return [
             'perSeat'         => $perSeat,
             'base'            => $quote['base'],
             'groupDiscount'   => $quote['groupDiscount'],
+            'returnDiscount'  => (float) ($quote['returnDiscount'] ?? 0),
             // The code the fare engine actually applied: what the passenger
             // typed, or the running offer it picked for them.
             'couponCode'      => ((string) ($quote['couponCode'] ?? '')) !== '' && $quote['couponDiscount'] > 0

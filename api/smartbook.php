@@ -256,6 +256,9 @@ try {
                     'note'          => Security::clean((string) ($in['note'] ?? ''), 255),
                     // 15 Nov 2026: the desk's note FOR THE PASSENGER, printed on the ticket
                     'ticketNote'    => BookingService::ticketNoteClean((string) ($in['ticketNote'] ?? '')),
+                    // 16 Nov 2026 (X1): desk-only extras - create() prices them only while their switches are on
+                    'luggagePieces' => (int) (is_scalar($in['luggagePieces'] ?? null) ? $in['luggagePieces'] : 0),
+                    'infantCount'   => (int) (is_scalar($in['infantCount'] ?? null) ? $in['infantCount'] : 0),
                 ];
                 // 13 Nov 2026 (mg17): the desk's discount — create() applies and caps it (counter_max_discount_pct)
                 $desk = SmartBook::deskDiscountIn($in, $mode);

@@ -21,6 +21,8 @@
  *    - admin/themes.php renders for a super-admin: 7 accents (light + dark),
  *      7 Preview links /?accent_preview=<key>, 7 next-day rows whose accent
  *      follows the IST weekday, the head metas and the csrf meta = session token
+ *    - 16 Nov 2026 (X2): the only POST forms are the Special dates ones
+ *      (back to themes.php); a support login reads the page with no form
  *    - an agent cannot open admin/themes.php
  *    - the bubble: on for super-admin + operations, off for support + agent,
  *      off on easy-settings.php / ai-copilot.php / quick-unlock.php / ?print=1
@@ -229,7 +231,14 @@ try {
     }
     check('festival panel present (AI Marketing dates)', str_contains($html, 'चाडपर्व · Festival dates'));
     check('owner text in नेपाली · English and says nothing is saved', str_contains($html, 'केही सेभ हुँदैन') && str_contains($html, 'Nothing is saved'));
-    check('read-only: no form, no POST', stripos($html, '<form method="post"') === false && stripos($html, "method='post'") === false);
+    /* 16 Nov 2026 (X2): the weekly colours stay read-only; only the Special dates panel posts,
+       back to this page, for a settings manager (tests/u9-X2-festival-test.php drives it) */
+    preg_match_all('~<form\b[^>]*method="post"[^>]*>~i', $html, $fm, PREG_OFFSET_CAPTURE);
+    $posts = array_column($fm[0], 0);
+    check('the only POST forms are the Special dates ones, posting back to themes.php',
+        count($posts) >= 3 && count(array_filter($posts, static fn(string $f): bool => !str_contains($f, 'action="/admin/themes.php#special"'))) === 0
+        && (int) ($fm[0][0][1] ?? 0) > (int) strpos($html, 'id="special"'), count($posts) . ' forms');
+    check('the weekly swatch cards have no form', !preg_match('~class="th-card[^"]*"[^>]*>(?:(?!</section>).)*<form~s', $html));
     check('head: capable + status bar + staff apple icon metas render',
         str_contains($html, '<meta name="apple-mobile-web-app-capable" content="yes">') && str_contains($html, '<meta name="mobile-web-app-capable" content="yes">')
         && str_contains($html, 'apple-mobile-web-app-status-bar-style') && str_contains($html, 'href="/assets/img/mgmt-apple-180.png"'));
@@ -240,6 +249,11 @@ try {
     $bubbleFile = is_file($ROOT . '/assets/js/admin-ai-bubble.js');
     check('bubble script tag on the page for a super-admin ' . ($bubbleFile ? '(file present)' : '(file not built yet -> no tag)'),
         str_contains($html, '<script src="/assets/js/admin-ai-bubble.js" defer></script>') === $bubbleFile);
+
+    echo "\n-- admin/themes.php as support (dashboard.view, no settings.manage)\n";
+    $sh = child(['what' => 'page', 'admin' => $SPT, 'script' => 'themes.php']);
+    check('support reads the page and the Special dates panel', str_contains($sh, 'class="th-grid"') && str_contains($sh, 'id="special"'));
+    check('…but gets no form to change anything', stripos($sh, '<form method="post"') === false && stripos($sh, 'name="act"') === false);
 
     echo "\n-- admin/themes.php as an agent\n";
     $ah = child(['what' => 'page', 'admin' => $AGT, 'script' => 'themes.php']);

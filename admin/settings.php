@@ -52,7 +52,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($canEdit) && isset($_FI
     }
 }
 
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FILES['ceo_photo'])) {
+// 16 Nov 2026 (P4-6e): the JSON import posts import_act and is handled further down (after $catOf)
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FILES['ceo_photo']) && !isset($_POST['import_act'])) {
     if (!Security::verifyCsrf()) {
         $flash = ['bad', 'Session expired — please try again.'];
     } else {
@@ -342,6 +343,269 @@ $catOf = static function (string $key, string $group): string {
     return $byGroup[$group] ?? 'other';
 };
 
+/* ── Settings JSON import / restore (16 Nov 2026, P4-6e) — the pair of ?export=json ──
+   SUPER-ADMIN only. Upload the exported file (max 2 MB) → a preview of every settings
+   key whose value would change (old → new); nothing is written yet. Never imported:
+   secrets (Settings::isSecretKey), the "API keys & connections" rows and *_key link
+   keys (the export leaves them out too), the seat layout rule (its own sold-seat check
+   lives in the Save path above), the app's own state rows, a key this app does not
+   have, and everything in the file that is not a settings row (routes, stops, coupons
+   are listed as "not imported"). "Apply" takes a one-shot token: the plan leaves the
+   session BEFORE anything is written, so a reload cannot apply it twice. Each ticked
+   row goes through Settings::set and is audited settings.import with its old value,
+   plus one settings.import_summary row holding every old value - undo by hand. */
+$impView = null;   // the preview drawn above the categories
+$impSkip = static function (string $key, ?array $row) use ($catOf): string {
+    if ($row === null) {
+        return 'यो app मा छैन · not a setting of this app';
+    }
+    if (Settings::isSecretKey($key)) {
+        return 'गोप्य · secret — never imported';
+    }
+    if (str_ends_with($key, '_key') || $catOf($key, (string) ($row['sgroup'] ?: 'general')) === 'keys') {
+        return 'API key / connection — set by hand';
+    }
+    if ($key === 'seat_mode_map') {
+        return 'सिट लेआउट नियम · seat layout rule — change it in Booking & seats (it checks sold seats)';
+    }
+    if (in_array($key, ['ticket_identity_changed_at', 'office_report_last', 'daily_schedule_last_run', 'ap_worker_seen'], true)
+        || preg_match('/(_last_run|_last|_seen|_state|_changed_at|_cursor)$/', $key) === 1) {
+        return 'app को आफ्नै अवस्था · written by the app itself';
+    }
+    return '';
+};
+/* The value as the settings row stores it (null = not a valid value of that type), so
+   "15" and "15.0", or two spellings of the same JSON, are not shown as a change. */
+$impNorm = static function (string $type, mixed $v): ?string {
+    if ($v === null) {
+        return null;
+    }
+    switch (Settings::safeType($type)) {
+        case 'bool':
+            if (is_bool($v)) { return $v ? '1' : '0'; }
+            if (!is_scalar($v)) { return null; }
+            $s = strtolower(trim((string) $v));
+            return in_array($s, ['1', 'true', 'yes', 'on'], true) ? '1' : (in_array($s, ['0', 'false', 'no', 'off', ''], true) ? '0' : null);
+        case 'int':
+            if (is_int($v)) { return (string) $v; }
+            if (is_float($v)) { return is_finite($v) && floor($v) === $v && abs($v) < 1e15 ? (string) (int) $v : null; }
+            return is_string($v) && preg_match('/^\s*-?\d{1,15}\s*$/', $v) === 1 ? (string) (int) trim($v) : null;
+        case 'float':
+            if (is_int($v) || is_float($v) || (is_string($v) && is_numeric(trim($v)))) {
+                $f = (float) (is_string($v) ? trim($v) : $v);
+                return is_finite($f) ? (string) $f : null;
+            }
+            return null;
+        case 'json':
+            try {
+                $d = is_string($v) ? Settings::decodeJsonLayers($v) : $v;
+            } catch (InvalidArgumentException $e) {
+                return null;
+            }
+            $j = json_encode($d, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            return $j === false ? null : $j;
+        default:
+            return is_scalar($v) ? (is_bool($v) ? ($v ? '1' : '0') : (string) $v) : null;
+    }
+};
+$impShow = static function (?string $v, string $type): string {
+    if ($v === null) {
+        return '— (खाली · empty)';
+    }
+    if ($type === 'bool') {
+        return $v === '1' ? 'ON' : 'OFF';
+    }
+    if ($v === '') {
+        return '"" (खाली · blank)';
+    }
+    return mb_strlen($v) > 140 ? mb_substr($v, 0, 140) . '…' : $v;
+};
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && isset($_POST['import_act'])) {
+    $impAct = is_string($_POST['import_act']) ? $_POST['import_act'] : '';   // review: an array here was a 500 (warnings throw)
+    $curRows = [];
+    foreach ($rows as $r) { $curRows[(string) $r['skey']] = $r; }
+    if (!Auth::isSuperadmin()) {
+        $flash = ['bad', 'सेटिङ आयात सुपर-एडमिनले मात्र गर्न मिल्छ · Only the super-admin can import settings. Nothing was changed.'];
+    } elseif (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again. Nothing was changed.'];
+    } elseif ($impAct === 'cancel') {
+        unset($_SESSION['settings_import']);
+        $flash = ['ok', '✖ आयात रद्द · Import cancelled — nothing was changed.'];
+    } elseif ($impAct === 'preview') {
+        unset($_SESSION['settings_import']);
+        $f   = is_array($_FILES['import_json'] ?? null) ? $_FILES['import_json'] : null;
+        $err = (int) ($f['error'] ?? UPLOAD_ERR_NO_FILE);
+        $raw = null;
+        if ($f === null || $err === UPLOAD_ERR_NO_FILE) {
+            $flash = ['bad', 'Choose the exported .json file first (⬇ Export settings).'];
+        } elseif (in_array($err, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true) || (int) ($f['size'] ?? 0) > 2 * 1024 * 1024) {
+            $flash = ['bad', 'File too large — the settings file may be at most 2 MB. Nothing was changed.'];
+        } elseif ($err !== UPLOAD_ERR_OK) {
+            $flash = ['bad', 'Upload failed (error ' . $err . '). Nothing was changed.'];
+        } else {
+            $raw = @file_get_contents((string) $f['tmp_name'], false, null, 0, 2 * 1024 * 1024 + 1);
+            if (!is_string($raw) || strlen($raw) > 2 * 1024 * 1024) {
+                $raw = null;
+                $flash = ['bad', 'The file could not be read, or it is over 2 MB. Nothing was changed.'];
+            }
+        }
+        $doc = null;
+        if ($raw !== null) {
+            $doc = json_decode(str_starts_with($raw, "\xEF\xBB\xBF") ? substr($raw, 3) : $raw, true, 64);
+            if (!is_array($doc) || !is_array($doc['settings'] ?? null) || array_is_list($doc)) {
+                $doc = null;
+                $flash = ['bad', 'This is not a settings file from “⬇ Export settings (JSON)” — no "settings" list in it. Nothing was changed.'];
+            } elseif (count($doc['settings']) > 5000) {
+                $doc = null;
+                $flash = ['bad', 'The file lists over 5,000 settings — not an export of this app. Nothing was changed.'];
+            }
+        }
+        if ($doc !== null) {
+            // the export's list of rows, or a plain {"key": value} map
+            $pairs = [];
+            if (array_is_list($doc['settings'])) {
+                foreach ($doc['settings'] as $it) {
+                    if (is_array($it) && is_string($it['skey'] ?? null)) {
+                        $pairs[] = [$it['skey'], array_key_exists('svalue', $it) ? $it['svalue'] : null, array_key_exists('svalue', $it)];
+                    }
+                }
+            } else {
+                foreach ($doc['settings'] as $sk => $sv) { $pairs[] = [(string) $sk, $sv, true]; }
+            }
+            $plan = []; $change = []; $refused = []; $same = 0; $seen = [];
+            foreach ($pairs as [$key, $val, $has]) {
+                $key = mb_substr(trim($key), 0, 100);
+                if ($key === '') { continue; }
+                if (isset($seen[$key])) { $refused[] = [$key, 'file मा दुई पटक · listed twice in the file']; continue; }
+                $seen[$key] = true;
+                $row = $curRows[$key] ?? null;
+                $why = $impSkip($key, $row);
+                if ($why === '' && (!$has || $val === null)) {
+                    $why = 'file मा मान छैन · no value in the file';
+                }
+                $type = $row !== null ? Settings::safeType((string) $row['stype']) : 'string';
+                $new  = $why === '' ? $impNorm($type, $val) : null;
+                if ($why === '' && $new === null) {
+                    $why = 'मान मिलेन · not a valid ' . $type . ' value';
+                }
+                if ($why !== '') {
+                    $refused[] = [$key, $why];
+                    continue;
+                }
+                $oldRaw = $row['svalue'] !== null ? (string) $row['svalue'] : null;
+                $oldN   = $oldRaw === null ? null : ($impNorm($type, $oldRaw) ?? $oldRaw);
+                if ($oldN === $new) {
+                    $same++;
+                    continue;
+                }
+                $plan[$key]   = ['type' => $type, 'old' => $oldRaw, 'new' => $new];
+                $change[$key] = ['label' => mb_substr((string) ($row['label'] ?: ucwords(str_replace('_', ' ', $key))), 0, 90), 'type' => $type,
+                                 'old' => $impShow($oldN, $type), 'new' => $impShow($new, $type)];
+            }
+            $other = [];
+            foreach ($doc as $top => $part) {
+                if (!in_array((string) $top, ['settings', 'exported_at', 'app', 'by', 'note'], true)) {
+                    $other[] = [(string) $top, is_array($part) ? count($part) : 1];
+                }
+            }
+            $fileName = mb_substr((string) preg_replace('/[^\w.\- ]+/u', '', basename((string) ($f['name'] ?? 'settings.json'))), 0, 80);
+            $token    = bin2hex(random_bytes(16));
+            if ($plan !== []) {
+                $_SESSION['settings_import'] = ['token' => $token, 'at' => time(), 'file' => $fileName, 'sha' => substr(hash('sha256', (string) $raw), 0, 16), 'rows' => $plan];
+            }
+            $impView = ['file' => $fileName, 'token' => $token, 'change' => $change, 'same' => $same, 'refused' => $refused, 'other' => $other,
+                        'exported_at' => is_scalar($doc['exported_at'] ?? null) ? (string) $doc['exported_at'] : '',
+                        'by' => is_scalar($doc['by'] ?? null) ? (string) $doc['by'] : ''];
+            Logger::audit('settings.import_preview', 'settings', 'json', null,
+                ['file' => $fileName, 'would_change' => array_keys($plan), 'same' => $same, 'refused' => count($refused), 'not_settings' => $other],
+                'Settings JSON import previewed (nothing written)');
+        }
+    } elseif ($impAct === 'apply') {
+        $p = $_SESSION['settings_import'] ?? null;
+        unset($_SESSION['settings_import']);   // one shot: a reload or a second press finds nothing to apply
+        if (!is_array($p) || !is_string($p['token'] ?? null) || !is_string($_POST['import_token'] ?? null) || !hash_equals($p['token'], $_POST['import_token'])) {
+            $flash = ['bad', 'This import was already applied, cancelled or replaced by a newer preview — upload the file again to see what would change. Nothing was changed now.'];
+        } elseif ((int) ($p['at'] ?? 0) < time() - 900) {
+            $flash = ['bad', 'The preview is older than 15 minutes — upload the file again. Nothing was changed.'];
+        } else {
+            $ticked = array_values(array_unique(array_map('strval', array_filter((array) ($_POST['imp'] ?? []), 'is_string'))));
+            Settings::flush();
+            $fresh = [];
+            foreach (Database::fetchAll('SELECT skey, svalue, stype, sgroup FROM settings') as $r) { $fresh[(string) $r['skey']] = $r; }
+            $todo = []; $skipped = [];
+            foreach ((array) ($p['rows'] ?? []) as $key => $pl) {
+                $key = (string) $key;
+                if (!in_array($key, $ticked, true)) { continue; }
+                $row = $fresh[$key] ?? null;
+                if ($impSkip($key, $row) !== '') { $skipped[$key] = 'not importable'; continue; }
+                $cur = $row['svalue'] !== null ? (string) $row['svalue'] : null;
+                if ($cur !== ($pl['old'] ?? null)) { $skipped[$key] = 'changed since the preview'; continue; }
+                $type = Settings::safeType((string) $row['stype']);
+                $new  = $impNorm($type, $pl['new'] ?? null);
+                if ($new === null) { $skipped[$key] = 'not a valid ' . $type . ' value'; continue; }
+                $todo[$key] = ['type' => $type, 'group' => (string) ($row['sgroup'] ?: 'general'), 'old' => $cur, 'new' => $new];
+            }
+            if ($todo === []) {
+                $flash = ['bad', 'Nothing was imported — ' . ($ticked === [] ? 'no row was ticked.' : 'every ticked row changed since the preview or cannot be imported (' . implode(', ', array_keys($skipped)) . ').')];
+            } else {
+                try {
+                    Database::transaction(static function () use ($todo): void {
+                        foreach ($todo as $key => $t) {
+                            Settings::set($key, $t['type'] === 'bool' ? $t['new'] === '1' : $t['new'], $t['type'], $t['group']);
+                        }
+                    });
+                    $src = 'Settings JSON import from ' . (string) ($p['file'] ?? '') . ' (sha256 ' . (string) ($p['sha'] ?? '') . ')';
+                    foreach ($todo as $key => $t) {
+                        Logger::audit('settings.import', 'settings', $key, ['value' => $t['old']], ['value' => $t['new']], $src);
+                    }
+                    $sumOld = array_map(static fn(array $t): ?string => $t['old'], $todo);
+                    $sumNew = array_map(static fn(array $t): string => $t['new'], $todo);
+                    /* the legacy "main-point fares" override wins over fare_to_* (Fare::dirFares) - kept in
+                       step as the Save path does, unless the file carried main_fares itself */
+                    $impFares = array_intersect(['fare_to_nepal', 'fare_to_india'], array_keys($todo));
+                    if ($impFares !== [] && !isset($todo['main_fares']) && Settings::get('main_fares', null) !== null) {
+                        Settings::flush();
+                        $fN = Settings::getFloat('fare_to_nepal', 0.0);
+                        $fI = Settings::getFloat('fare_to_india', 0.0);
+                        if ($fN > 0 && $fI > 0) {
+                            $sumOld['main_fares'] = (string) ($fresh['main_fares']['svalue'] ?? '');
+                            Settings::set('main_fares', ['toNepal' => $fN, 'toIndia' => $fI], 'json', 'pricing', false);
+                            $sumNew['main_fares'] = (string) json_encode(['toNepal' => $fN, 'toIndia' => $fI]);
+                        }
+                    }
+                    // company / ticket wording changed: cached ticket pictures redraw on their next open
+                    foreach (array_keys($todo) as $key) {
+                        if (in_array($catOf($key, $todo[$key]['group']), ['company', 'tickets'], true)) {
+                            Settings::touchTicketIdentity();
+                            break;
+                        }
+                    }
+                    Logger::audit('settings.import_summary', 'settings', 'json', ['values' => $sumOld],
+                        ['values' => $sumNew, 'file' => (string) ($p['file'] ?? ''), 'sha' => (string) ($p['sha'] ?? ''), 'skipped' => $skipped],
+                        'Settings JSON import: ' . count($todo) . ' applied, ' . count($skipped) . ' skipped (old values kept here)');
+                    Settings::flush();
+                    Seats::forgetModeMap();
+                    $names = array_keys($todo);
+                    $flash = ['ok', '✅ ' . count($todo) . ' setting' . (count($todo) === 1 ? '' : 's') . ' imported from ' . (string) ($p['file'] ?? 'the file') . ': '
+                        . implode(', ', array_slice($names, 0, 30)) . (count($names) > 30 ? ' and ' . (count($names) - 30) . ' more' : '') . '.'
+                        . ($skipped !== [] ? ' Skipped: ' . implode('; ', array_map(static fn(string $k, string $w): string => $k . ' (' . $w . ')', array_keys($skipped), $skipped)) . '.' : '')
+                        . ' Every old value is in the Activity log (settings.import).'];
+                    // the page below shows the new values
+                    $rows = Database::fetchAll('SELECT skey, svalue, stype, sgroup, label, is_public FROM settings ORDER BY sgroup, skey');
+                    $groups = [];
+                    foreach ($rows as $r) { $groups[$r['sgroup'] ?: 'general'][] = $r; }
+                    ksort($groups);
+                    $boolKeys = array_values(array_map(static fn($r) => $r['skey'], array_filter($rows, static fn($r) => $r['stype'] === 'bool')));
+                } catch (Throwable $e) {
+                    Settings::flush();
+                    Logger::error('Settings import failed: ' . $e->getMessage());
+                    $flash = ['bad', 'Not imported — the database refused one value (' . mb_substr($e->getMessage(), 0, 160) . '). Nothing was changed.'];
+                }
+            }
+        }
+    }
+}
+
 /* ── Settings JSON export (16 Nov 2026, P4-6d) ──
    A portable copy of the configuration: settings rows WITHOUT any secret
    (Settings::isSecretKey) and without the "API keys & connections" rows
@@ -479,6 +743,91 @@ if (!$canEdit) { echo '<div class="flash bad">Your role can view settings but no
 
 $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
 ?>
+<?php if ($impView !== null): /* 16 Nov 2026 (P4-6e): the import preview - outside the category tabs, always shown */ ?>
+<div class="panel imp-panel" id="importPreview">
+  <h2>⬆ आयात पूर्वावलोकन · Import preview <small class="muted"><?= Security::e($impView['file']) ?></small></h2>
+  <p class="muted imp-lede">
+    <?php if ($impView['exported_at'] !== '' || $impView['by'] !== ''): ?>Exported <?= Security::e($impView['exported_at']) ?><?= $impView['by'] !== '' ? ' by ' . Security::e($impView['by']) : '' ?>. <?php endif; ?>
+    <b>Nothing has changed yet.</b> <?= count($impView['change']) ?> setting<?= count($impView['change']) === 1 ? '' : 's' ?> would change · <?= (int) $impView['same'] ?> already the same · <?= count($impView['refused']) ?> not imported.
+    Each applied row is written to the Activity log (settings.import) with its old value, so it can be put back by hand.
+  </p>
+  <?php if ($impView['change'] !== []): ?>
+  <form method="post" id="impApply">
+    <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+    <input type="hidden" name="import_act" value="apply">
+    <input type="hidden" name="import_token" value="<?= Security::e($impView['token']) ?>">
+    <label class="imp-all"><input type="checkbox" id="impAll" checked> सबै छान्नुहोस् · Tick all (<?= count($impView['change']) ?>)</label>
+    <ul class="imp-list">
+      <?php foreach ($impView['change'] as $ik => $ic): ?>
+      <li><label>
+        <input type="checkbox" name="imp[]" value="<?= Security::e((string) $ik) ?>" checked>
+        <span class="imp-k"><b><?= Security::e($ic['label']) ?></b> <code><?= Security::e((string) $ik) ?></code></span>
+        <span class="imp-v"><s><?= Security::e($ic['old']) ?></s> → <b><?= Security::e($ic['new']) ?></b></span>
+      </label></li>
+      <?php endforeach; ?>
+    </ul>
+    <div class="imp-btns">
+      <button class="btn" type="submit">✅ टिक गरेका लागू गर्नुहोस् · Apply ticked</button>
+    </div>
+  </form>
+  <form method="post" class="imp-btns">
+    <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+    <input type="hidden" name="import_act" value="cancel">
+    <button class="btn ghost" type="submit">✖ रद्द · Cancel</button>
+  </form>
+  <?php else: ?>
+  <p><b>केही बदल्नु पर्दैन · Nothing to change</b> — every setting this file may import already has the same value.</p>
+  <?php endif; ?>
+  <?php if ($impView['refused'] !== [] || $impView['other'] !== []): ?>
+  <details class="imp-not">
+    <summary>आयात नहुने · Not imported (<?= count($impView['refused']) + count($impView['other']) ?>)</summary>
+    <ul>
+      <?php foreach ($impView['other'] as [$on, $oc]): ?>
+      <li><code><?= Security::e($on) ?></code> — <?= (int) $oc ?> row<?= $oc === 1 ? '' : 's' ?> · settings मात्र आयात हुन्छ · not imported (only settings rows are)</li>
+      <?php endforeach; ?>
+      <?php foreach ($impView['refused'] as [$rk, $rw]): ?>
+      <li><code><?= Security::e($rk) ?></code> — <?= Security::e($rw) ?></li>
+      <?php endforeach; ?>
+    </ul>
+  </details>
+  <?php endif; ?>
+</div>
+<script>
+(function () {
+  var all = document.getElementById('impAll'), f = document.getElementById('impApply');
+  if (!all || !f) return;
+  var boxes = function () { return Array.prototype.slice.call(f.querySelectorAll('input[name="imp[]"]')); };
+  all.addEventListener('change', function () { boxes().forEach(function (b) { b.checked = all.checked; }); });
+  f.addEventListener('submit', function (e) {
+    var n = boxes().filter(function (b) { return b.checked; }).length;
+    if (!n) { e.preventDefault(); alert('कम्तीमा एउटा टिक गर्नुहोस् · Tick at least one setting.'); return; }
+    if (!confirm(n + ' setting(s) will be overwritten now. Continue?')) { e.preventDefault(); return; }
+    var btn = f.querySelector('button[type=submit]'); if (btn) btn.disabled = true;
+  });
+})();
+</script>
+<?php endif; ?>
+<style>
+.imp-up { margin-top: 2px; }
+.imp-up > summary { cursor: pointer; font-weight: 700; font-size: 13.5px; color: var(--royal); min-height: 32px; display: flex; align-items: center; }
+.imp-up form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+.imp-up input[type=file] { max-width: 100%; font-size: 14px; }
+.imp-up small { display: block; font-size: 12px; line-height: 1.45; }
+.imp-panel { border-left: 4px solid var(--warning, #b7791f); }
+.imp-lede { font-size: 13px; line-height: 1.5; margin: -4px 0 10px; }
+.imp-all { display: inline-flex; gap: 8px; align-items: center; font-weight: 700; font-size: 13.5px; min-height: 40px; }
+.imp-list { list-style: none; margin: 6px 0 10px; padding: 0; display: grid; gap: 6px; }
+.imp-list label { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 2px 8px; align-items: start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.imp-list input[type=checkbox] { width: 20px; height: 20px; margin: 2px 0 0; grid-row: 1 / span 2; }
+.imp-k { font-size: 13.5px; overflow-wrap: anywhere; }
+.imp-k code { font-size: 11.5px; color: var(--muted); }
+.imp-v { font-size: 13px; overflow-wrap: anywhere; font-family: ui-monospace, monospace; }
+.imp-v s { color: var(--muted); }
+.imp-btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
+.imp-btns .btn { min-height: 44px; }
+.imp-not summary { cursor: pointer; font-weight: 700; font-size: 13px; min-height: 36px; display: flex; align-items: center; }
+.imp-not ul { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; }
+</style>
 <nav class="sg set-jump" aria-label="Settings categories">
   <p class="set-lede"><b><?= count($rows) ?> settings</b> in <?= count($bigs) ?> groups. Pick a category, or search. Changes apply after <b>Save all settings</b> (one button, saves every category); the page then confirms with “Settings saved.”</p>
   <input type="search" id="setSearch" class="set-search" placeholder="🔍 Search a setting — e.g. fare, upi, whatsapp, key, women, ticket…" autocomplete="off" aria-label="Search settings">
@@ -493,6 +842,18 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   </div>
   <?php if ($canEdit): ?>
   <p class="set-lede" style="margin-top:-2px"><a href="settings.php?export=json" download>⬇ सेटिङ निर्यात · Export settings (JSON)</a> <span class="muted">— settings, routes, stops and coupons; secrets and API keys are left out.</span></p>
+  <?php endif; ?>
+  <?php if ($canEdit && Auth::isSuperadmin()): /* 16 Nov 2026 (P4-6e): the pair of the export, super-admin only */ ?>
+  <details class="imp-up">
+    <summary>⬆ सेटिङ आयात · Import settings (JSON)</summary>
+    <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+      <input type="hidden" name="import_act" value="preview">
+      <input type="file" name="import_json" accept="application/json,.json" required aria-label="Exported settings file (.json)">
+      <button type="submit" class="btn btn-sm">पूर्वावलोकन · Preview</button>
+    </form>
+    <small class="muted">A file from “Export settings” (max 2 MB). You first see every setting that would change, old → new; nothing is written until you press Apply. Never imported: secrets, API keys / connections, the seat layout rule, the app’s own state, routes, stops and coupons.</small>
+  </details>
   <?php endif; ?>
   <?php if ($msgApps !== []): ?>
   <div class="set-apps set-in" data-cat="messages" data-big="messages">

@@ -423,3 +423,10 @@ a.sg-stat:hover { border-color: var(--royal); }
     transition: background-color 1s ease, color 1s ease, border-color 1s ease, outline-color 1s ease, fill 1s ease, stroke 1s ease !important;
   }
 }
+
+/* ---------- Special-day banner (16 Nov 2026, X2 / P5-3) ----------
+   A special date's banner (Admin -> Colours & Themes, festival_dates; switch festival_theme_on,
+   default OFF) rides in the notice strip (05-router.js renderNotice adds .is-fest). Only the
+   strip's left edge takes the day's accent; the strip, its text colours and the weekly accent
+   table above are unchanged. */
+:root:root .notice-bar.is-fest{border-left-color:var(--royal)}

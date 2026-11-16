@@ -587,13 +587,35 @@ function noticeNow() {
   const old = String(st.noticeText || '').trim();
   return st.noticeOn && old ? { text: old, ends: 0 } : null;
 }
+/* 16 Nov 2026 (X2, P5-3): a special date's banner (Admin -> Colours & Themes,
+   festival_dates; switch festival_theme_on, default OFF). index.php hands over
+   only the row covering today (SHG_BOOT.festival); it rides in this strip when
+   no office notice is showing, Nepali first, then English, and leaves at the
+   end of its last day (India time). Its ✕ is kept apart from the office
+   notice's (FEST_KEY), so closing one never brings the other back. */
+const FEST_KEY = 'shg:festDismissed';
+function festivalNotice() {
+  const B = window.SHG_BOOT || {}, f = B.festival, on = B.settings && B.settings.festival_theme_on;
+  if (!f || !(on === true || on === 1 || on === '1')) return null;
+  const IST = 19800000, today = new Date(Date.now() + IST).toISOString().slice(0, 10);
+  if (!(String(f.from) <= today && today <= String(f.to))) return null;
+  const text = [String(f.ne || '').trim(), String(f.en || '').trim()].filter(Boolean).join(' · ');
+  const ends = Date.parse(String(f.to) + 'T00:00:00Z') + 86400000 - IST;   // midnight IST after the last day
+  return text ? { text: text, ends: isNaN(ends) ? 0 : ends, fest: true } : null;
+}
 function renderNotice() {
   const bar = $('#noticeBar'); if (!bar) return;
   clearTimeout(noticeTimer);
-  const n = noticeNow();
-  const h = n ? noticeHash(n.text) : '';
+  let n = noticeNow();
+  let h = n ? noticeHash(n.text) : '';
   let hidden = false;
   try { hidden = !!h && localStorage.getItem(NOTICE_KEY) === h; } catch (e) {}
+  if (!n || hidden) {
+    const f = festivalNotice(), fh = f ? noticeHash(f.text) : '';
+    let fHidden = false;
+    try { fHidden = !!fh && localStorage.getItem(FEST_KEY) === fh; } catch (e) {}
+    if (f && !fHidden) { n = f; h = fh; hidden = false; }
+  }
   if (!n || hidden) { bar.classList.add('hide'); return; }
   const txt = $('#noticeText');
   if (txt && !bar.querySelector('.notice-ico')) {
@@ -603,6 +625,8 @@ function renderNotice() {
       + '<circle cx="12" cy="7.7" r="1.2" fill="currentColor"/></svg>');
   }
   bar.setAttribute('data-nh', h);
+  bar.setAttribute('data-nk', n.fest ? 'fest' : 'office');
+  bar.classList.toggle('is-fest', !!n.fest);
   bar.classList.remove('hide');
   if (txt) txt.textContent = n.text;
   // Still open when the 24 h run out: leave on time (setTimeout caps near 24.8 days).
@@ -611,7 +635,10 @@ function renderNotice() {
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#noticeClose')) return;
   const bar = $('#noticeBar'); if (!bar) return;
-  try { localStorage.setItem(NOTICE_KEY, bar.getAttribute('data-nh') || ''); } catch (e2) {}
+  try {
+    if (bar.getAttribute('data-nk') === 'fest') localStorage.setItem(FEST_KEY, bar.getAttribute('data-nh') || '');
+    else localStorage.setItem(NOTICE_KEY, bar.getAttribute('data-nh') || '');
+  } catch (e2) {}
   bar.classList.add('hide');
 });
 
@@ -1727,7 +1754,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261116b" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261116c" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

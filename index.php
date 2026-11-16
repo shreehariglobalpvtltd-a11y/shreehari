@@ -345,6 +345,66 @@ try {
     $boot['notice_since'] = 0;
 }
 
+/* 16 Nov 2026 (X2, P5-3): special dates (Admin -> Colours & Themes, settings
+   festival_dates - never public). Only while festival_theme_on is on (default
+   OFF) does the page get ONE row: the one covering today in India time (two
+   rows on one day: the shorter wins, then the later start, then the later row -
+   the same pick admin/themes.php shows), and only its dates, accent and banner
+   lines. The head accent script paints that accent unless the visitor chose
+   Fixed / a palette (or it is the counter), and renderNotice() (05-router.js)
+   shows its banner when no office notice is showing. Always in the feed, so the
+   page behaves the same before the settings rows exist. */
+$boot['settings']['festival_theme_on'] = false;
+$boot['festival'] = null;
+try {
+    if (Settings::getBool('festival_theme_on', false)) {
+        $boot['settings']['festival_theme_on'] = true;
+        $shgIst  = new DateTimeZone('Asia/Kolkata');
+        $shgDay  = (new DateTimeImmutable('now', $shgIst))->format('Y-m-d');
+        $shgBest = null;
+        $shgSpan = PHP_INT_MAX;
+        /* Review fix: the same row rules as admin/themes.php ($spRow / $spLoad) - a
+           row that page does not list (bad or rolled-over date, over 15 days, no
+           name, unknown colour, nothing to show, past the first 30 good rows; e.g.
+           typed by hand in Settings) never reaches a customer, and one junk row
+           never hides the good ones. */
+        $shgTxt = static fn(mixed $s, int $max): string => Security::clean((string) (preg_replace('/\s+/u', ' ', is_scalar($s) ? (string) $s : '') ?? ''), $max);
+        $shgOk  = 0;
+        foreach (Settings::getArray('festival_dates', []) as $shgF) {
+            if (!is_array($shgF) || $shgOk >= 30) {
+                continue;
+            }
+            $shgFs = is_string($shgF['from'] ?? null) ? trim($shgF['from']) : '';
+            $shgTs = is_string($shgF['to'] ?? null) ? trim($shgF['to']) : '';
+            $shgA  = preg_match('/^\d{4}-\d{2}-\d{2}$/', $shgFs) === 1 ? DateTimeImmutable::createFromFormat('!Y-m-d', $shgFs, $shgIst) : false;
+            $shgB  = preg_match('/^\d{4}-\d{2}-\d{2}$/', $shgTs) === 1 ? DateTimeImmutable::createFromFormat('!Y-m-d', $shgTs, $shgIst) : false;
+            if ($shgA === false || $shgB === false || $shgA->format('Y-m-d') !== $shgFs || $shgB->format('Y-m-d') !== $shgTs || $shgB < $shgA) {
+                continue;
+            }
+            $shgD   = (int) $shgA->diff($shgB)->days;
+            $shgAcc = is_string($shgF['accent'] ?? null) ? $shgF['accent'] : '';
+            $shgNe  = $shgTxt($shgF['banner_ne'] ?? '', 120);
+            $shgEn  = $shgTxt($shgF['banner_en'] ?? '', 120);
+            if ($shgD > 14 || mb_strlen($shgTxt($shgF['name'] ?? '', 60)) < 2
+                || ($shgAcc !== '' && !in_array($shgAcc, ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'], true))
+                || ($shgAcc === '' && $shgNe === '' && $shgEn === '')) {
+                continue;
+            }
+            $shgOk++;
+            if ($shgFs > $shgDay || $shgTs < $shgDay) {
+                continue;
+            }
+            if ($shgBest === null || $shgD < $shgSpan || ($shgD === $shgSpan && $shgFs >= $shgBest['from'])) {
+                $shgBest = ['from' => $shgFs, 'to' => $shgTs, 'accent' => $shgAcc, 'ne' => $shgNe, 'en' => $shgEn];
+                $shgSpan = $shgD;
+            }
+        }
+        $boot['festival'] = $shgBest;
+    }
+} catch (Throwable $shgErr) {
+    $boot['festival'] = null;
+}
+
 $bootJson = Security::jsonForHtml($boot);
 
 /* ---------------------------------------------------------------------
@@ -477,6 +537,8 @@ $inject = <<<HTML
 {$seoHead}
 <script>
 window.SHG_BOOT = {$bootJson};
+/* 16 Nov 2026 (X2, P5-3): the template's accent script ran before SHG_BOOT existed - one more pass for today's special date (nothing to do without SHG_BOOT.festival). */
+try { if (window.shgAccent && window.SHG_BOOT && window.SHG_BOOT.festival) window.shgAccent.apply(); } catch (e) {}
 /* 8 Oct 2026 (D2-05): <html lang> is the visitor's language from the first frame (saved choice, else a Hindi / Nepali phone, else Nepali) - the same pick 04-i18n.js makes. */
 try { (function () { var l = null; try { l = localStorage.getItem('shg:lang'); } catch (e) {} if (!/^(en|hi|ne|gu)$/.test(l || '')) { l = 'ne'; var n = navigator.languages || [navigator.language || '']; for (var i = 0; i < n.length; i++) { var c = String(n[i] || '').toLowerCase().slice(0, 2); if (c === 'ne' || c === 'hi') { l = c; break; } } } document.documentElement.lang = l; })(); } catch (e) {}
 /* 5 Oct 2026: an ad click (Google Ads / Facebook) sees the booking card first - set before first paint. */

@@ -1951,6 +1951,11 @@ final class Ticket
            strip under the passenger list; everything below moves down by it. */
         $tNote = self::ticketNote($booking);
         $grow += $tNote !== '' ? self::PNG_NOTE_H : 0;
+        /* 16 Nov 2026 (P8-3f / P4-4d): the desk's extras (luggage / lap infant) get a
+           strip of the same height under it - only on a ticket that has them, so
+           every other ticket keeps its height (no PNG_LAYOUT_CHANGED bump). */
+        $tExtra = self::extrasLine($booking);
+        $grow  += $tExtra !== '' ? self::PNG_NOTE_H : 0;
 
         /* PAYMENT QR — MANDATORY on every ticket (9 Oct 2026, owner: "ticket
            ma sadhai payment QR hunu parcha"), always BESIDE the signed verify
@@ -2265,6 +2270,23 @@ final class Ticket
             while ($nTxt !== '' && self::gdWidth($nSz, $nTxt) > $nMax) { $nTxt = rtrim(mb_substr($nTxt, 0, mb_strlen($nTxt) - 2)) . '…'; }
             self::gdText($im, $nSz, $nx, $ny0 + 31, $ink, $nTxt, true);
         }
+        /* 16 Nov 2026 (P8-3f / P4-4d): extra luggage / lap infant, pale blue, under the note. */
+        if ($tExtra !== '') {
+            $ey0 = $panelY + $listH + 12 + ($tNote !== '' ? self::PNG_NOTE_H : 0);
+            $ey1 = $ey0 + self::PNG_NOTE_H - 22;
+            self::gdRounded($im, 60, $ey0, $W - 60, $ey1, 14, imagecolorallocate($im, 234, 241, 255));
+            DocArt::roundOutline($im, 60, $ey0, $W - 60, $ey1, 14, imagecolorallocate($im, 160, 186, 236), 1);
+            imagefilledrectangle($im, 60, $ey0 + 12, 65, $ey1 - 12, imagecolorallocate($im, 26, 68, 200));
+            $eLab = 'थप  ·  EXTRAS';
+            self::gdText($im, 16, 82, $ey0 + 30, imagecolorallocate($im, 26, 68, 200), $eLab, true);
+            $ex   = 82 + self::gdWidth(16, $eLab) + 18;
+            $eMax = $W - 84 - $ex;
+            $eSz  = 21;
+            foreach ([21, 19, 17] as $try) { $eSz = $try; if (self::gdWidth($try, $tExtra) <= $eMax) { break; } }
+            $eTxt = $tExtra;
+            while ($eTxt !== '' && self::gdWidth($eSz, $eTxt) > $eMax) { $eTxt = rtrim(mb_substr($eTxt, 0, mb_strlen($eTxt) - 2)) . '…'; }
+            self::gdText($im, $eSz, $ex, $ey0 + 31, $ink, $eTxt, true);
+        }
 
         /* Fare band — the one number everybody looks for, so it gets the
            deepest treatment on the ticket: its own shadow, a navy gradient
@@ -2503,7 +2525,7 @@ final class Ticket
         self::gdText($im, 20, 82, 1530 + $grow + $qrExt, $ink, $who, true);
 
         /* Footer notes on the cream */
-        $n1 = 'सरकारी परिचयपत्र अनिवार्य  ·  बस छुट्नु ३० मिनेट अगाडि आउनुहोस्';
+        $n1 = 'सरकारी परिचयपत्र अनिवार्य  ·  बस छुट्नु ६० मिनेट अगाडि आउनुहोस्';   // 16 Nov 2026: 60 min, as the website, terms, report time and WhatsApp say
         self::gdText($im, 17, (int) (($W - self::gdWidth(17, $n1)) / 2), 1578 + $grow + $qrExt, $mut, $n1, false);
         // 10 Oct 2026 (trust): the LEGAL name beside the CIN (the registered name the CIN belongs to), the trading name otherwise
         $n2  = self::display(trim((string) ($co['legal'] ?? '')) !== '' ? (string) $co['legal'] : (string) $co['name'])
@@ -2801,13 +2823,13 @@ final class Ticket
      *  the later of the two) to the moment it is applied - apply it AFTER the
      *  files are live. The integrator may still move both stamps to the
      *  deploy minute. */
-    private const PNG_LAYOUT_CHANGED = '2026-11-07 11:00:00';   // IST: AGENT MOBILE - the issued-by chip and the "टिकट काट्ने" tile always print the agent's mobile (the name is shortened first). Was 2026-11-06 00:30:00:   // IST: BARCODE - verify QR + map QR replaced by a Code 128 barcode (Ticket::scanCode); pay QR only while money is due, else a PAID stamp. Was 2026-10-17 13:56:00:   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-11-16 12:19:00';   // IST: REPORT 60 MIN - footer note says ६० मिनेट (was ३०), like every other place. Was 2026-11-07 11:00:00:   // IST: AGENT MOBILE - the issued-by chip and the "टिकट काट्ने" tile always print the agent's mobile (the name is shortened first). Was 2026-11-06 00:30:00:   // IST: BARCODE - verify QR + map QR replaced by a Code 128 barcode (Ticket::scanCode); pay QR only while money is due, else a PAID stamp. Was 2026-10-17 13:56:00:   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-11-07 11:00:00';   // IST: AGENT MOBILE - the ISSUED BY line keeps the agent's mobile, bold. Was 2026-11-06 00:30:00:   // IST: BARCODE - stub QR -> Code 128 barcode, live-status QR removed, pay QR only while due. Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - bigger gold seal (116x74), brand + TM sign with the legal form letter-spaced in gold under it. Was 2026-10-14 22:15:00:   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-11-16 12:19:00';   // IST: REPORT 60 MIN - the 'reach early' note says ६० मिनेट (was ३०). Was 2026-11-07 11:00:00:   // IST: AGENT MOBILE - the ISSUED BY line keeps the agent's mobile, bold. Was 2026-11-06 00:30:00:   // IST: BARCODE - stub QR -> Code 128 barcode, live-status QR removed, pay QR only while due. Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - bigger gold seal (116x74), brand + TM sign with the legal form letter-spaced in gold under it. Was 2026-10-14 22:15:00:   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -2837,12 +2859,40 @@ final class Ticket
         return $pct >= 0.1 ? ' (' . rtrim(rtrim(number_format($pct, 1), '0'), '.') . '%)' : '';
     }
 
-    /** 16 Nov 2026 (P4-5f): every discount the ticket carries - the offer / desk cut (coupon_discount) + group + member tier. */
+    /** 16 Nov 2026 (P4-5f): every discount the ticket carries - the offer / desk cut (coupon_discount) + group + member tier
+     *  (+ P4-5d the return-journey discount, a column only after upgrade-2026-11-16c-X1-money.sql: absent = 0). */
     public static function discountTotal(array $booking): float
     {
         return round(max(0.0, (float) ($booking['coupon_discount'] ?? 0))
             + max(0.0, (float) ($booking['group_discount'] ?? 0))
+            + max(0.0, (float) ($booking['return_discount'] ?? 0))
             + max(0.0, (float) ($booking['tier_discount'] ?? 0)), 2);
+    }
+
+    /**
+     * 16 Nov 2026 (P8-3f / P4-4d): what the desk added to the ticket - extra
+     * luggage pieces and infants on the lap (no berth) - as one Nepali-first
+     * line for the PNG, '' when none (and for every booking before the
+     * columns exist). $latin = the Helvetica-safe English line for the PDF.
+     */
+    public static function extrasLine(array $booking, bool $latin = false): string
+    {
+        $parts = [];
+        $pcs   = max(0, (int) ($booking['luggage_pieces'] ?? 0));
+        $lFee  = max(0.0, (float) ($booking['luggage_fee'] ?? 0));
+        if ($pcs > 0) {
+            $parts[] = $latin
+                ? 'Extra luggage ' . $pcs . ' pc' . ($lFee > 0 ? ' = INR ' . indianNumber($lFee) : '')
+                : 'अतिरिक्त सामान ' . $pcs . ' थान' . ($lFee > 0 ? ' ₹' . number_format($lFee) : '');
+        }
+        $inf  = max(0, (int) ($booking['infant_count'] ?? 0));
+        $iFee = max(0.0, (float) ($booking['infant_fee'] ?? 0));
+        if ($inf > 0) {
+            $parts[] = $latin
+                ? 'Infant (lap, no berth) ' . $inf . ($iFee > 0 ? ' = INR ' . indianNumber($iFee) : ' - free')
+                : 'शिशु (काखमा, बर्थ छैन) ' . $inf . ($iFee > 0 ? ' ₹' . number_format($iFee) : ' · निःशुल्क');
+        }
+        return implode('  ·  ', $parts);
     }
 
     /**
@@ -2860,6 +2910,9 @@ final class Ticket
         }
         if ((float) ($booking['group_discount'] ?? 0) > 0) {
             $src[] = 'GROUP';
+        }
+        if ((float) ($booking['return_discount'] ?? 0) > 0) {
+            $src[] = 'फिर्ती छुट · Return';   // P4-5d (16 Nov 2026)
         }
         if ((float) ($booking['tier_discount'] ?? 0) > 0) {
             $tier  = strtoupper(trim((string) ($booking['tier_name'] ?? '')));
@@ -3527,6 +3580,20 @@ final class Ticket
             }
             $cY += 18;
         }
+        /* 16 Nov 2026 (P8-3f / P4-4d): the desk's extras (luggage / lap infant), one line
+           the same way, only on a ticket that has them. */
+        $tExtraPdf = self::extrasLine($booking, true);
+        if ($tExtraPdf !== '') {
+            $pdf->roundedRect(40, $cY - 4, $W - 80, 15, 4, [234, 241, 255], true);
+            self::devText($pdf, 46, $cY - 1, 'थप', 8, $F7, [26, 68, 200]);
+            $pdf->text(46 + 18, $cY + 1, '·  EXTRAS', 7, 'F2', [26, 68, 200]);
+            $eTx = self::latin($tExtraPdf);
+            while ($eTx !== '' && $pdf->textWidth($eTx, 8.5, 'F2') > $W - 80 - 90) {
+                $eTx = rtrim(substr($eTx, 0, strlen($eTx) - 2)) . '..';
+            }
+            $pdf->text(126, $cY + 1, $eTx, 8.5, 'F2', self::INK);
+            $cY += 18;
+        }
         self::devText($pdf, 40, $cY, 'सम्पर्क', 8, $F7, self::MUTE);
         $pdf->text(40 + 42, $cY + 2, '·  CONTACT', 7, 'F1', self::MUTE);
         $pdf->text(40, $cY + 14, self::latin((string) ($booking['contact_phone'] ?? '-')), 10, 'F1', self::INK);
@@ -3623,7 +3690,7 @@ final class Ticket
         $notes = [
             'यात्राको समयमा टिकट साथमा राख्नुहोस्।',
             'मान्य फोटो परिचयपत्र साथमा राख्नुहोस्।',
-            'चढ्ने समयभन्दा ३० मिनेट अगाडि पुग्नुहोस्।',
+            'चढ्ने समयभन्दा ६० मिनेट अगाडि पुग्नुहोस्।',   // 16 Nov 2026: was ३० - every other place says 60
             'भारत–नेपाल सीमा पार गर्दा कागजात साथमा राख्नुहोस्।',
         ];
         foreach ($notes as $ni => $note) {
@@ -3774,11 +3841,15 @@ final class Ticket
             ['Base fare (' . $booking['from_city'] . ' -> ' . $booking['to_city'] . ')', (float) $booking['base_total']],
         ];
         if ((float) $booking['group_discount'] > 0) $rows[] = ['Group discount', -(float) $booking['group_discount']];
+        if ((float) ($booking['return_discount'] ?? 0) > 0) $rows[] = ['Return journey discount', -(float) $booking['return_discount']];   // P4-5d
         if ((float) $booking['coupon_discount'] > 0) $rows[] = [((string) ($booking['coupon_code'] ?? '') !== '' ? 'Coupon ' . $booking['coupon_code'] : 'Discount'), -(float) $booking['coupon_discount']];
         if ((float) $booking['tier_discount'] > 0)   $rows[] = [($booking['tier_name'] ?? 'Member') . ' discount', -(float) $booking['tier_discount']];
         if ((float) $booking['points_value'] > 0)    $rows[] = ['Loyalty points redeemed', -(float) $booking['points_value']];
         if ((float) $booking['tax_amount'] > 0)      $rows[] = ['Taxes', (float) $booking['tax_amount']];
         if ((float) $booking['booking_fee'] > 0)     $rows[] = ['Booking fee', (float) $booking['booking_fee']];
+        // P8-3f / P4-4d (16 Nov 2026): the desk's extras, absent columns read as 0
+        if ((float) ($booking['luggage_fee'] ?? 0) > 0) $rows[] = ['Extra luggage (' . (int) ($booking['luggage_pieces'] ?? 0) . ' pc)', (float) $booking['luggage_fee']];
+        if ((int) ($booking['infant_count'] ?? 0) > 0)  $rows[] = ['Infant on lap, no berth (' . (int) $booking['infant_count'] . ')', (float) ($booking['infant_fee'] ?? 0)];
 
         foreach ($rows as $i => $row) {
             if ($i % 2 === 1) $pdf->rect(40, $y, $W - 80, 22, [242, 244, 249], true);

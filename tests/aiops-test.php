@@ -336,6 +336,71 @@ AiOps::parseWords('बस 02 को प्लेट नम्बर GJ05AB1234')
 $ok(!str_contains($note(), 'ai_trip_delay_on') && !str_contains($note(), 'How late'), 'W3 "बस 02 को प्लेट नम्बर …" is no delay sentence');
 $ok(AiOps::settingsEngine() === (Settings::getString('ai_settings_engine', 'local') === 'cloud' ? 'cloud' : 'local'), 'W3 settingsEngine reads ai_settings_engine (default local)');
 
+/* 16 Nov 2026 (Master v2, unit X5): the last owner-decision switches, one sentence (or more) each.
+   Parse only — nothing is written. */
+$x5 = [
+    'return discount 10 percent'          => ['return_discount_pct' => '10'],
+    'फर्कने छुट ५ प्रतिशत'                 => ['return_discount_pct' => '5'],
+    'return discount 30 din'              => ['return_discount_days' => '30'],
+    'return chhut 45 days'                => ['return_discount_days' => '45'],
+    'return discount 8% 20 din bhitra'    => ['return_discount_pct' => '8', 'return_discount_days' => '20'],
+    'return discount band'                => ['return_discount_pct' => '0'],
+    'return discount 25 percent'          => [],                                   // over 20 % → not taken
+    'return discount 120 din'             => [],                                   // over 90 days → not taken
+    'luggage fee 200'                     => ['luggage_fee_per_piece' => '200'],
+    'extra luggage fee 150 karo'          => ['luggage_fee_per_piece' => '150'],   // never 40 extra seats (parseWords checked below)
+    'saman fee band'                      => ['luggage_fee_per_piece' => '0'],
+    'luggage fee 5000'                    => [],                                   // over ₹2,000 → not taken
+    'infant seat on karo'                 => ['infant_seat_on' => '1'],
+    'काखे बच्चा बन्द'                      => ['infant_seat_on' => '0'],
+    'infant seat fare 500'                => ['infant_seat_fare' => '500'],
+    'infant fare 4000'                    => [],                                   // over ₹3,000 → not taken
+    'festival theme on'                   => ['festival_theme_on' => '1'],
+    'चाडपर्व बन्द'                         => ['festival_theme_on' => '0'],
+    'login theme gold'                    => ['login_theme' => 'gold'],
+    'login theme classic karo'            => ['login_theme' => 'classic'],
+    'fb comment on'                       => ['fb_comments_on' => '1'],
+    'facebook comment band'               => ['fb_comments_on' => '0'],            // not Messenger
+    'comment ai on'                       => ['fb_comment_ai_on' => '1'],
+    'facebook comment ko ai band'         => ['fb_comment_ai_on' => '0'],          // the narrower switch only
+    // review: each discount takes the number said next to its OWN name, not the first % in the sentence
+    'group discount 10 percent return discount 5 percent' => ['group_discount_percent' => '10', 'return_discount_pct' => '5'],
+    'return discount 5 percent group discount 10 percent' => ['group_discount_percent' => '10', 'return_discount_pct' => '5'],
+    '8 percent return discount'           => ['return_discount_pct' => '8'],
+];
+foreach ($x5 as $s => $want) {
+    $got = AiOps::parseSwitches($s);
+    $ok($got === $want, 'X5 "' . $s . '" → ' . json_encode($want, JSON_UNESCAPED_UNICODE) . ' (got ' . json_encode($got, JSON_UNESCAPED_UNICODE) . ')');
+}
+$ok(AiOps::parseWords('extra luggage fee 150 karo') === [], 'X5 "extra luggage fee 150" is no extra-seat change');
+$ok(AiOps::parseWords('infant seat fare 500') === [] && AiOps::lastNote() === '', 'X5 "infant seat fare 500" is no pickup fare (and asks no "which pickup?")');
+$ok(AiOps::parseWords('10 extra seat') !== [] && ($first('Surat ko bhada 2300')['type'] ?? '') === 'stop_fare', 'X5 the luggage / infant guards leave extra seats and pickup fares alone');
+// the new knobs stay inside their bounds on the AI / key path too (clean → easyNumber)
+$ok(AiOps::easyNumber('return_discount_pct', '20') === '20' && AiOps::easyNumber('return_discount_pct', '20.5') === null
+    && AiOps::easyNumber('return_discount_days', '0') === null && AiOps::easyNumber('return_discount_days', '90') === '90'
+    && AiOps::easyNumber('luggage_fee_per_piece', '2000') === '2000' && AiOps::easyNumber('luggage_fee_per_piece', '2001') === null
+    && AiOps::easyNumber('infant_seat_fare', '3000') === '3000' && AiOps::easyNumber('infant_seat_fare', '-1') === null, 'X5 bounds: 0-20 %, 1-90 days, ₹0-2,000, ₹0-3,000');
+// no sentence the office already uses (this file, the W3 / U5 suites, the page's example chips) names a new key by accident
+$x5Keys = ['return_discount_pct', 'return_discount_days', 'luggage_fee_per_piece', 'infant_seat_on', 'infant_seat_fare', 'festival_theme_on', 'login_theme',
+           'fb_comments_on', 'fb_comment_ai_on'];
+$x5Old  = ['Surat ko bhada 2300', 'sabai pickup ko bhada 100 badha do', 'bholi 1 baje jane bus band', 'Seat U15 block karo kal', 'Naya pickup: Gandhinagar 22:30',
+           'Bus 02 ko number GJ05AB1234', 'Rajkot route band', 'Surat Rupaidiha matra', '10 extra seat', 'extra seat band', 'cancel fine 500', 'SHG-0027 commission 250',
+           'whatsapp bot band gara', 'PIN pattern login chalu', '24 ghanta reminder on karo', '24 ghanta ko reminder band', 'device limit agent 2', 'device limit counter band',
+           'bholi jane bus 2 ghanta late', 'whatsapp daily cap 800', 'group discount 8 percent', 'group discount 6 seat dekhi', 'group discount on karo', 'ai change whatsapp on',
+           'ai trip delay band', 'ai engine cloud', 'whatsapp cancel request', 'facebook post band', 'fb messenger band', 'typing on', 'handoff message on', 'reminders band',
+           'cod band', 'code login band', 'pincode band', 'meta whatsapp alert band', 'whatsapp bot બંધ', 'जरिवाना बन्द', 'Mehsana price 2,200', 'मेहसाणा भाडा २२००',
+           'agent_commission_percent 6', 'Agent Ramesh ko commission 10% kar do', 'Kal 10 baje bus band karo', 'કાલે બસ બંધ', 'whatsapp notify customer off', 'hi login band',
+           'agent cancel request', 'website ai band', 'knowledge band', 'marketing band', 'trip alert agent on', 'social post on', 'auto arrive band', 'settle reminder 3 din',
+           'settlement due 7 days', 'good morning template band', 'vps ai band', 'offline callback on', 'public chalani band', 'eta alert on'];
+$x5Hit = [];
+foreach ($x5Old as $s) {
+    $hit = array_intersect($x5Keys, array_keys(AiOps::parseSwitches($s)));
+    if ($hit !== []) { $x5Hit[] = $s . ' → ' . implode(',', $hit); }
+}
+$ok($x5Hit === [], 'X5 no existing sentence now names a new switch: ' . implode(' | ', $x5Hit));
+$ok(AiOps::parseSwitches('fb messenger band') === ['fb_msgr_on' => '0'] && AiOps::parseSwitches('facebook post band') === ['social_publish_on' => '0']
+    && AiOps::parseSwitches('group discount band') === ['group_discount_on' => '0'], 'X5 Messenger / social post / group discount sentences unchanged');
+
 /* P3-1c + P3-4a: the shared command path, its audits, and the old fares in the log */
 $super = Database::fetch("SELECT * FROM admins WHERE role = 'superadmin' AND is_active = 1 ORDER BY id LIMIT 1");
 if ($super !== null && $fixStop > 0) {
