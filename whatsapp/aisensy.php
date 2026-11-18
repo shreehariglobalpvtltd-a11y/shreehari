@@ -302,6 +302,10 @@ final class AiSensyAPI
     /** POST one message; retries once on a network failure or AiSensy 5xx (a 4xx is final). */
     private static function post(string $to, string $label, string $key, array $body, array $out): array
     {
+        if (self::mode() === 'off' || Settings::getString('wa_policy', 'meta_first') === 'meta_only') {
+            $out['error'] = 'AiSensy outbound disabled';
+            return $out;
+        }
         // Only a TEMPLATE costs money; free-form text / pictures land only inside a window and are free.
         if (($body['type'] ?? '') === 'template' && self::ticketOnly() && !self::$ticketCtx) {
             $out['error'] = 'AiSensy is ticket-only (aisensy_scope) - template ' . $label . ' not sent';

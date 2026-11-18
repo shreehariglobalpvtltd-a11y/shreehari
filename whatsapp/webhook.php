@@ -371,7 +371,8 @@ function wh_process_inbound(array $msg): void
 
     $text = match ($type) {
         'text'        => (string) ($msg['text']['body'] ?? ''),
-        'button'      => (string) ($msg['button']['text'] ?? ''),
+        'button'      => preg_match('/^shg:(ticket book (?:en|ne|hi|gu))$/D', (string) ($msg['button']['payload'] ?? ''), $bookingButton) === 1
+            ? $bookingButton[1] : (string) ($msg['button']['text'] ?? ''),
         'interactive' => wh_tapped((array) ($msg['interactive'] ?? [])),
         default       => (string) ($msg[$type]['caption'] ?? ''),   // image/document captions
     };

@@ -51,6 +51,46 @@ function retry_stop(array $result): never
     exit;
 }
 
+// Activate each direct-Meta template only after the sending WABA approves it.
+if (Settings::getBool('wa_direct_meta_review', false)) {
+    require_once ROOT_PATH . '/whatsapp/config.php';
+    $ticketReady = Settings::getBool('wa_meta_templates_on', false)
+        && Settings::getString('whatsapp_template_name', '') === 'shg_ticket_image';
+    $officeReady = Settings::getString('wa_cloud_tpl_message', '') === 'shg_office_alert';
+    if (!$ticketReady || !$officeReady) {
+        $curl = curl_init(META_API_BASE . '/' . META_WABA_ID . '/message_templates?fields=name,status,language&limit=100');
+        curl_setopt_array($curl, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . META_ACCESS_TOKEN],
+            CURLOPT_TIMEOUT => 10,
+        ]);
+        $response = json_decode((string) curl_exec($curl), true);
+        curl_close($curl);
+        foreach ($response['data'] ?? [] as $template) {
+            if (($template['status'] ?? '') !== 'APPROVED' || ($template['language'] ?? '') !== 'en') {
+                continue;
+            }
+            if (!$ticketReady && ($template['name'] ?? '') === 'shg_ticket_image') {
+                Settings::set('whatsapp_template_lang', 'en', 'string', 'whatsapp');
+                Settings::set('whatsapp_template_name', 'shg_ticket_image', 'string', 'whatsapp');
+                Settings::set('wa_meta_templates_on', true, 'bool', 'whatsapp');
+                $ticketReady = true;
+            }
+            if (!$officeReady && ($template['name'] ?? '') === 'shg_office_alert') {
+                Settings::set('wa_cloud_tpl_lang', 'en', 'string', 'whatsapp');
+                Settings::set('wa_cloud_tpl_message', 'shg_office_alert', 'string', 'whatsapp');
+                $officeReady = true;
+            }
+        }
+    }
+    if (!$ticketReady) {
+        retry_stop(['skipped' => 'Meta ticket image template approval pending or unavailable']);
+    }
+    if ($officeReady) {
+        Settings::set('wa_direct_meta_review', false, 'bool', 'whatsapp');
+    }
+}
+
 // A paused sender means Twilio is refusing the whole ACCOUNT. Retrying now
 // would spend the per-booking cap on a sender we already know is down.
 $pause = Settings::getString('whatsapp_driver', 'click_to_chat') === 'twilio'
@@ -203,29 +243,38 @@ $alreadyHasTicket = " AND NOT EXISTS (SELECT 1 FROM message_logs a
    beat spent all MAX_TRIES inside ~90 minutes of one bad hour; spread out,
    the tries outlast an outage the owner fixes the same day. Bot replies are
    never retried here: a stale answer is worse than none. */
+// Include confirmed tickets that never reached the customer send path.
+$recoverFrom = Settings::getString('wa_meta_recover_from', '');
+$recoverMissing = $recoverFrom !== ''
+    ? " OR (m.id IS NULL AND b.confirmed_at >= :recover_from)"
+    : '';
+$retryParams = ['max' => MAX_TRIES];
+if ($recoverMissing !== '') {
+    $retryParams['recover_from'] = $recoverFrom;
+}
 $due = Database::fetchAll(
-    "SELECT b.id, b.pnr, b.contact_phone, m.created_at AS last_at,
+    "SELECT b.id, b.pnr, b.contact_phone, COALESCE(m.created_at, b.confirmed_at) AS last_at,
             (SELECT COUNT(*) FROM message_logs t
               WHERE t.booking_id = b.id AND t.channel = 'whatsapp'
                 AND t.status IN ('sent','failed')
                 -- an empty AiSensy wallet is not the passenger's fault: those
                 -- refusals must not use up the tries, or a recharge rescues nobody
-                AND NOT (t.status = 'failed' AND t.error LIKE '%Conversation Credits%')" . $purposeT . ") AS tries
+                AND NOT (t.status = 'failed' AND t.provider = 'aisensy' AND (COALESCE(t.error, '') LIKE '%Conversation Credits%' OR COALESCE(t.error, '') LIKE '%No active plan on the assistant%'))" . $purposeT . ") AS tries
        FROM bookings b
-       JOIN message_logs m
+       LEFT JOIN message_logs m
          ON m.id = (SELECT m2.id FROM message_logs m2
                      WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'" . $purposeM2 . "
                      ORDER BY m2.id DESC LIMIT 1)
       WHERE b.status = 'confirmed'
-        AND m.status = 'failed'
-        AND NOT " . UNREACHABLE_SQL . $alreadyHasTicket . "
+        AND ((m.status = 'failed' AND NOT " . UNREACHABLE_SQL . ")" . $recoverMissing . ")" . $alreadyHasTicket . "
+        AND b.contact_phone IS NOT NULL AND b.contact_phone <> '' AND b.contact_phone NOT REGEXP '^0+$'
         AND EXISTS (SELECT 1 FROM booking_legs bl
                      WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
       HAVING tries < :max
          AND last_at < NOW() - INTERVAL LEAST(720, 15 * POW(2, GREATEST(tries - 1, 0))) MINUTE
       ORDER BY b.id DESC
       LIMIT " . BATCH_SIZE,
-    ['max' => MAX_TRIES]
+    $retryParams
 );
 
 // Upcoming passengers whose number WhatsApp itself rejects — call them.
@@ -250,7 +299,7 @@ $stillFailing = 0;
 
 foreach ($due as $row) {
     $booking = Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => (int) $row['id']]);
-    if ($booking === null) {
+    if ($booking === null || $booking['status'] !== 'confirmed' || Notify::whatsappNumberFor($booking) === '') {
         continue;
     }
 

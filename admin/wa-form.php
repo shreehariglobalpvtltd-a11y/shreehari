@@ -145,11 +145,11 @@ admin_page_head('The one-sheet booking form inside WhatsApp: pickup, date, seats
     </div></div>
 
     <div class="panel"><h2>Try it</h2><div class="panel-body">
-      <p class="muted text-sm" style="margin-top:0">Sends the form to one number. Inside 24 h of their last message it is free; otherwise the template is used (once Meta approves it).</p>
+      <p class="muted text-sm" style="margin-top:0">Sends booking instructions to one customer who asked to book. While the form is in review, they can book by replying in chat. Sending the starter outside an open service window requires Meta template approval.</p>
       <form method="post" class="wf-row"><?= Security::csrfField() ?><input type="hidden" name="action" value="test">
         <input type="tel" name="phone" placeholder="98XXXXXXXX or +977 98…" required>
         <select name="lang"><option value="ne">नेपाली</option><option value="hi">हिन्दी</option><option value="en">English</option><option value="gu">ગુજરાતી</option></select>
-        <button class="btn" type="submit" <?= $canEdit && $id !== '' ? '' : 'disabled' ?>>Send form</button></form>
+        <button class="btn" type="submit" <?= $canEdit && $metaOk ? '' : 'disabled' ?>>Send booking instructions</button></form>
     </div></div>
 
     <?php if ($canEdit): ?>
