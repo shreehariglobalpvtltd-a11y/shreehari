@@ -241,6 +241,163 @@ final class Seats
     }
 
     /**
+     * 17 Nov 2026 (S1-cabin, owner: "women safety first"): the PARTNER berths of
+     * the women-reserved berths. In a shared cabin where one berth is
+     * women-reserved and the other is not (sleeper L3 shares cabin L-2 with L4),
+     * a man on the other berth locked the cabin male_only and the women's berth
+     * could then never be sold. So while a women's berth of the cabin is still
+     * free, its partner is sold to a woman only - except inside ONE booking
+     * that also puts a woman on that women's berth (a family / couple).
+     * A cabin whose berths are ALL women-reserved (L-1, seater 1-AB) has no
+     * partner; a private cabin is sold whole and is never asked.
+     *
+     * @return array<string, list<string>> partner bed => women-reserved bed(s) of its cabin
+     *                                     (canonical / sharing labels)
+     */
+    public static function womenPartnerMap(string $coachType): array
+    {
+        $fem = array_flip(array_map('strtoupper', self::toPhysical(self::femaleSeats($coachType), 'sharing', $coachType)));
+        if ($fem === []) {
+            return [];
+        }
+        $out  = [];
+        $seen = [];
+        foreach (array_keys($fem) as $w) {
+            $w = (string) $w;
+            if (self::isExtraSeat($w)) {
+                continue;
+            }
+            $unit = self::unitKey($w);
+            if (isset($seen[$unit])) {
+                continue;
+            }
+            $seen[$unit] = true;
+            $beds     = self::unitSeats($unit, $coachType);
+            $reserved = array_values(array_filter($beds, static fn(string $b): bool => isset($fem[$b])));
+            if ($reserved === [] || count($reserved) === count($beds)) {
+                continue;   // singleton or an all-women cabin: nothing to guard
+            }
+            foreach ($beds as $b) {
+                if (!isset($fem[$b])) {
+                    $out[$b] = $reserved;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Partner berths that are guarded RIGHT NOW on a schedule: at least one
+     * women-reserved berth of the cabin is still sellable (not sold in any
+     * mode, not out of service, not a staff berth).
+     *
+     * @param array<int, string>|null $occupied physical beds sold (null = read them)
+     * @param array<int, string>      $vacating physical beds this same operation frees
+     * @return array<string, list<string>> partner bed => its still-free women-reserved bed(s)
+     */
+    public static function womenPartnersGuarded(int $scheduleId, string $coachType, ?array $occupied = null, array $vacating = [], bool $locking = false): array
+    {
+        $map = self::womenPartnerMap($coachType);
+        if ($map === []) {
+            return [];
+        }
+        $occupied ??= self::bookedPhysical($scheduleId, $locking);
+        $taken = array_flip(array_map('strtoupper', array_merge(
+            $occupied,
+            self::blockedSeats($scheduleId),
+            self::staffSeats($coachType)
+        )));
+        foreach ($vacating as $v) {
+            unset($taken[strtoupper((string) $v)]);
+        }
+        $out = [];
+        foreach ($map as $partner => $reserved) {
+            $free = array_values(array_filter($reserved, static fn(string $r): bool => !isset($taken[$r])));
+            if ($free !== []) {
+                $out[(string) $partner] = $free;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * 18 Nov 2026 (S1-cabin refix): would this staff move / per-seat cancel FREE a
+     * women-reserved berth while a man stays on its partner? (The woman of a
+     * couple L3(F)+L4(M) moved or cancelled off L3, or the man the office put on
+     * L3 moved away from beside a man on L4.) The cabin would then hold one man,
+     * lock male_only, and women's berth L3 could never be sold - the exact state
+     * the 17 Nov rule exists to prevent. Read with a locking read; call inside the
+     * caller's transaction BEFORE the seat rows change.
+     *
+     * @param array<int, string> $freedPhys   physical beds the operation frees
+     * @param array<int, string> $addedPhys   physical beds it newly takes (a transfer's target)
+     * @param string|null        $addedGender gender of the passenger taking $addedPhys
+     * @return array{partner: string, women: string}|null the hole it would open, or null
+     */
+    public static function womenPartnerHoleAfter(int $scheduleId, string $coachType, array $freedPhys, array $addedPhys = [], ?string $addedGender = null): ?array
+    {
+        $map = self::womenPartnerMap($coachType);
+        if ($map === [] || $freedPhys === []) {
+            return null;
+        }
+        $womenBeds = [];
+        foreach ($map as $reserved) {
+            foreach ($reserved as $r) {
+                $womenBeds[$r] = true;
+            }
+        }
+        $freed = [];
+        foreach ($freedPhys as $f) {
+            $f = strtoupper((string) $f);
+            $freed[$f] = true;
+        }
+        if (array_intersect_key($freed, $womenBeds) === []) {
+            return null;   // no women's berth is freed: nothing to open
+        }
+        $added = array_flip(array_map(static fn($a): string => strtoupper((string) $a), $addedPhys));
+
+        $after = [];
+        foreach (self::bookedPhysical($scheduleId, true) as $b) {
+            $b = strtoupper((string) $b);
+            if (!isset($freed[$b])) {
+                $after[$b] = true;
+            }
+        }
+        $after += $added;
+
+        foreach (self::womenPartnersGuarded($scheduleId, $coachType, array_keys($after)) as $partner => $freeWomen) {
+            $partner = (string) $partner;
+            if (!isset($after[$partner])) {
+                continue;   // the partner is empty too: the cabin reopens to anyone
+            }
+            $opened = array_values(array_filter($freeWomen, static fn(string $w): bool => isset($freed[$w])));
+            if ($opened === []) {
+                continue;   // a hole that was there before is not this operation's doing
+            }
+            $male = isset($added[$partner])
+                ? self::normaliseGender($addedGender) === 'Male'
+                : in_array('Male', self::seatGenders($scheduleId, [$partner], true), true);
+            if ($male) {
+                return ['partner' => $partner, 'women' => $opened[0]];
+            }
+        }
+        return null;
+    }
+
+    /** User-safe refusal for womenPartnerHoleAfter(); $what = 'Moving' | 'Cancelling'. */
+    private static function womenPartnerHoleMessage(array $hole, string $coachType, string $what): string
+    {
+        $p = self::displayLabel($hole['partner'], $coachType, 'sharing');
+        $w = self::displayLabel($hole['women'], $coachType, 'sharing');
+        $np = $what === 'Moving' ? 'सार्दा' : 'रद्द गर्दा';
+        return $what . ' this passenger frees women\'s berth ' . $w . ' while a man stays on ' . $p
+            . ' in the same cabin, so ' . $w . ' could no longer be sold to a woman.'
+            . ' Move or cancel the passenger on ' . $p . ' first (or cancel the whole booking).'
+            . ' / यो यात्रु ' . $np . ' महिला बर्थ ' . $w . ' खाली हुन्छ तर सोही केबिनको ' . $p . ' मा पुरुष रहन्छ —'
+            . ' ' . $w . ' महिलालाई बेच्न मिल्दैन। पहिले ' . $p . ' को यात्रु सार्नुहोस् वा रद्द गर्नुहोस् (वा पूरै बुकिङ रद्द गर्नुहोस्)।';
+    }
+
+    /**
      * Seats permanently reserved for staff / emergency use (Master-prompt:
      * "Seat 1 reserved permanently — Staff/Emergency"). These are never sold
      * to a customer or an agent; only a super-admin may override and place a
@@ -1095,7 +1252,8 @@ final class Seats
         // OTHER mode still reads as booked here — the fix for cross-mode
         // double-booking (Task 4). Sharing/seater translation is identity; for
         // private a bed maps to its cabin (physical L5/L6 -> private L3).
-        $booked  = self::physicalSetToMode(self::bookedPhysical((int) $schedule['id']), $bookingType, $coachType);
+        $bookedPhys = self::bookedPhysical((int) $schedule['id']);
+        $booked  = self::physicalSetToMode($bookedPhys, $bookingType, $coachType);
         // Holds are stored as physical beds (4 Sep 2026) and translated into
         // the shown mode like everything else, so a private picker sees cabin
         // L4 held while someone holds sharing L7, and vice-versa.
@@ -1135,6 +1293,19 @@ final class Seats
         $unavailable = array_unique(array_merge($booked, $locked, $blocked, $staff, $emergency));
         $available   = array_values(array_diff($all, $unavailable));
 
+        /* 17 Nov 2026 (S1-cabin): the partner of a still-free women-reserved berth
+           (sleeper L4 beside L3) is a women's berth too, so it rides the SAME
+           `female` list every picker and AutoBerth already read - painted like
+           L1-L3, never auto-given to a man. `womenPair` names the women's berth it
+           guards, so a couple / family booking both together (woman on L3) still
+           passes AutoBerth::checkManual. Shared modes only; a private cabin is whole. */
+        $female    = self::femaleSeats($coachType);
+        $womenPair = [];
+        if ($bookingType !== 'private') {
+            $womenPair = self::womenPartnersGuarded((int) $schedule['id'], $coachType, $bookedPhys);
+            $female    = array_values(array_unique(array_merge($female, array_map('strval', array_keys($womenPair)))));
+        }
+
         return [
             'scheduleId'     => (int) $schedule['id'],
             'total'          => count($all),
@@ -1149,7 +1320,8 @@ final class Seats
             // than plain sold (SHG AI BRAIN 1.3 / 1.4, 10 Sep 2026). Subset of booked.
             'crossMode'      => self::crossModeSeats((int) $schedule['id'], $bookingType, $coachType),
             'available'      => $available,
-            'female'         => self::femaleSeats($coachType),
+            'female'         => $female,
+            'womenPair'      => $womenPair,
             'units'          => self::unitStates((int) $schedule['id'], $coachType, $booked),
             'availableCount' => count($available),
             // Geometry — every renderer should walk `layout.decks` rather than
@@ -1805,6 +1977,11 @@ final class Seats
      *
      * @param array<int, string>      $seats    seats being booked, in order
      * @param array<int, string|null> $genders  gender per seat, same order
+     * @param array<int, string>      $vacating physical beds this same operation frees
+     *                                          (a seat transfer's old berth)
+     * @param bool                    $womenPartnerRule false only to re-take a booking's
+     *                                          OWN earlier seats (re-approval): existing
+     *                                          bookings are not touched by the 17 Nov rule
      * @return array<int, string> unit keys touched
      * @throws RuntimeException on a rule violation (user-safe message)
      */
@@ -1813,10 +1990,50 @@ final class Seats
         string $coachType,
         ?string $bookingMode,
         array $seats,
-        array $genders
+        array $genders,
+        array $vacating = [],
+        bool $womenPartnerRule = true
     ): array {
         if (!self::isSharedBooking($coachType, $bookingMode)) {
             return [];
+        }
+
+        /* 17 Nov 2026 (S1-cabin, owner "as your wish" 00:40): a man on the partner
+           of a still-free women-reserved berth (L4 beside L3) is refused on every
+           sale path - website, desk, SmartBook, Quick Ticket, WhatsApp, seat
+           change, reschedule - unless this same booking puts a woman on that
+           women's berth (a couple / family taking the cabin together). Read with a
+           locking read so a sale of L3 committed a moment ago is seen. */
+        if ($womenPartnerRule) {
+            $femaleHere = [];
+            foreach (array_values($seats) as $i => $seat) {
+                if (self::normaliseGender($genders[$i] ?? null) === 'Female') {
+                    $femaleHere[strtoupper((string) $seat)] = true;
+                }
+            }
+            $guarded = null;
+            foreach (array_values($seats) as $i => $seat) {
+                $seat = strtoupper((string) $seat);
+                if ($seat === '' || self::isExtraSeat($seat) || self::normaliseGender($genders[$i] ?? null) !== 'Male') {
+                    continue;
+                }
+                $guarded ??= self::womenPartnersGuarded($scheduleId, $coachType, null, $vacating, true);
+                if (!isset($guarded[$seat])) {
+                    continue;
+                }
+                foreach ($guarded[$seat] as $womenBed) {
+                    if (!isset($femaleHere[$womenBed])) {
+                        $lbl  = self::displayLabel($seat, $coachType, 'sharing');
+                        $wLbl = self::displayLabel($womenBed, $coachType, 'sharing');
+                        throw new RuntimeException(
+                            'Berth ' . $lbl . ' shares a cabin with women\'s berth ' . $wLbl . ', so it is sold to a woman only'
+                            . ' (or together with ' . $wLbl . ' for a woman of the same booking). Please choose another berth.'
+                            . ' / बर्थ ' . $lbl . ' महिला बर्थ ' . $wLbl . ' सँगको केबिनमा छ — महिलालाई मात्र'
+                            . ' (वा सोही बुकिङमा ' . $wLbl . ' महिलाले लिए परिवार/जोडीलाई)। अर्को बर्थ छान्नुहोस्।'
+                        );
+                    }
+                }
+            }
         }
 
         $incoming = [];
@@ -2595,7 +2812,26 @@ final class Seats
             );
 
             // Same gender rule as booking, for the destination cabin.
-            self::assertGenderAllowed($scheduleId, $coachType, $row['booking_mode'] ?? null, [$toSeat], [$row['gender'] ?? null]);
+            // The old berth is freed by this very move (17 Nov: a man moved off
+            // a women's berth must not keep its partner open for himself).
+            self::assertGenderAllowed($scheduleId, $coachType, $row['booking_mode'] ?? null, [$toSeat], [$row['gender'] ?? null],
+                self::physicalSeats($fromSeat, (string) ($row['booking_mode'] ?? 'sharing'), $coachType));
+
+            /* 18 Nov 2026 (S1-cabin refix): and the move must not FREE a women's
+               berth while a man stays on its partner (the woman of a couple moved
+               off L3, the man on L3 moved away from beside a man on L4) - that
+               leaves a male_only cabin whose women's berth can never be sold. */
+            $mvMode = (string) ($row['booking_mode'] ?? 'sharing');
+            $hole   = self::womenPartnerHoleAfter(
+                $scheduleId,
+                $coachType,
+                self::physicalSeats($fromSeat, $mvMode, $coachType),
+                self::physicalSeats($toSeat, $mvMode, $coachType),
+                isset($row['gender']) ? (string) $row['gender'] : null
+            );
+            if ($hole !== null) {
+                throw new RuntimeException(self::womenPartnerHoleMessage($hole, $coachType, 'Moving'));
+            }
 
             // Move the seat claim; the UNIQUE key rejects a concurrent grab.
             Database::update(
@@ -2685,6 +2921,25 @@ final class Seats
 
         $scheduleId = (int) $row['schedule_id'];
 
+        // The vacated cabin's coach, read once (the lock recompute below needs it too).
+        $coach = (string) Database::scalar(
+            'SELECT r.coach_type FROM schedules s JOIN routes r ON r.id = s.route_id WHERE s.id = :s',
+            ['s' => $scheduleId],
+            'sleeper'
+        );
+
+        /* 18 Nov 2026 (S1-cabin refix): cancelling the woman of a couple off L3
+           (or the man on L3 beside a man on L4) would leave one man in the cabin
+           beside a free women's berth: male_only, and that berth unsellable to a
+           woman. Refused, so the office cancels / moves the man on the partner
+           first or cancels the booking whole (a whole-booking cancel never comes
+           here). Checked before the row goes, under the caller's transaction. */
+        $rsMode = (string) Database::scalar('SELECT booking_mode FROM bookings WHERE id = :b', ['b' => $bookingId], 'sharing');
+        $hole   = self::womenPartnerHoleAfter($scheduleId, $coach, self::physicalSeats($seatNo, $rsMode !== '' ? $rsMode : 'sharing', $coach));
+        if ($hole !== null) {
+            throw new RuntimeException(self::womenPartnerHoleMessage($hole, $coach, 'Cancelling'));
+        }
+
         // Hard-delete so the UNIQUE key frees the seat immediately.
         Database::delete(
             'booking_seats',
@@ -2704,11 +2959,6 @@ final class Seats
         );
 
         // Recompute the vacated cabin's gender lock.
-        $coach = (string) Database::scalar(
-            'SELECT r.coach_type FROM schedules s JOIN routes r ON r.id = s.route_id WHERE s.id = :s',
-            ['s' => $scheduleId],
-            'sleeper'
-        );
         self::recomputeUnitLock($scheduleId, self::unitKey($seatNo), $coach);
 
         return ['schedule_id' => $scheduleId, 'seat_no' => $seatNo];

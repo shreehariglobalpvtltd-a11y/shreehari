@@ -271,6 +271,18 @@ final class OpsHub
     }
 
     /**
+     * S2 (17 Nov 2026): who holds a pay-at-boarding fare the chalani ticks.
+     * An online mode (UPI / eSewa / bank / QR …) went to the company account;
+     * every other mode is the office / bus crew. Never 'agent' - an agent
+     * records their own cash through their own door.
+     */
+    public static function tickHolder(string $mode): string
+    {
+        return preg_match('/upi|e-?sewa|bank|online|\bqr\b|khalti|fone ?pay|\bime\b|neft|imps|rtgs|card|transfer|अनलाइन|बैंक/iu', $mode) === 1
+            ? 'online' : 'office';
+    }
+
+    /**
      * The office ticks "paid". Runs the payment engine first so the ticket,
      * the agent's wallet and the accounts agree with the tick.
      *
@@ -300,7 +312,10 @@ final class OpsHub
         $pay = Database::fetch('SELECT * FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => $bookingId]);
         if ($pay !== null && (string) $pay['status'] !== 'verified') {
             if ((int) $b['is_cod'] === 1 && in_array((string) $pay['status'], ['cod_pending', 'pending'], true)) {
-                BookingService::settleCod($bookingId, (int) ($admin['id'] ?? 0), 'Chalani tick: paid (' . $mode . ')');
+                /* S2 (17 Nov 2026): a chalani tick is the office / bus crew taking
+                   the fare - holder 'office' (an online mode = 'online'), so an
+                   agent seller earns the commission but owes no cash_due. */
+                BookingService::settleCod($bookingId, (int) ($admin['id'] ?? 0), 'Chalani tick: paid (' . $mode . ')', self::tickHolder($mode));
                 $msg[] = 'cash collected, ticket issued';
             } elseif ((string) $pay['status'] === 'pending') {
                 $res = BookingService::approveReviewed($bookingId, $admin, ['note' => 'Chalani tick (' . $mode . ')', 'via' => 'chalani']);

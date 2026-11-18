@@ -225,6 +225,7 @@ const CORE_SUITES = [
     'u11-Y2-aioffers-test.php'        => 'AI Sahayak makes an offer / coupon OFF (never ON), offer band switches one OFF, 4 new switches in Easy Settings',
     'u11-Y6-themes-test.php'          => 'weekday accent on track / help / pay / verify-ticket = the owner ds.css weekday table, festival pick = index.php',
     'automation-test.php'             => 'automation rules (49/0 since mv5: the old OTP-bypass check rewritten)',
+    'u13-S3-bot-polish-test.php'      => 'a help request (मलाई मदद चाहिए) never opens a booking; time words and names kept apart',
     'u11-F1-test.php'                 => 'temporary-password session: no office AI, no /api/, crashing CLI suite exits 1, system notes are not the customer words',
     'u11-F3-test.php'                 => 'SmartBook PNR readable in light theme, inbox Pause row clear of the floating button, follow-up labels, every u11 suite registered',
 ];
@@ -270,6 +271,8 @@ const HTTP_SUITES = [
     'u12-G1-temp-pw-pages-test.php' => 'a temporary password gets no staff power outside admin/ (download-*, verify-ticket, me/, team/)',
     'u12-P1-ticket-pay-test.php'  => 'pay at boarding on the ticket (Nepali-first, cash or online), pay.php free UPI/eSewa + UTR claim to the COD queue, never auto-confirmed',
     'u12-P2-chalani-pay-test.php' => 'chalani pay mode per booking (बसमा / नगद / अनलाइन), to-collect total, crew QR to the pay page, no double counting',
+    'u13-S1-cabin-test.php'       => 'the berth sharing a cabin with a free women-reserved berth goes to a woman only (couple in one booking allowed)',
+    'u13-S2-cod-holder-test.php'  => 'pay-at-boarding cash holder: office/chalani/online settle = commission only, agent holder = commission + cash due',
 ];
 
 /* ---------------------------------------------------------------------

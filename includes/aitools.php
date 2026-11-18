@@ -3244,6 +3244,13 @@ final class AiTools
             if (!in_array((string) $detail['status'], ['confirmed', 'pending', 'completed'], true)) {
                 return self::no('Booking ' . $pnr . ' is ' . strtoupper((string) $detail['status']) . ' — no cash is due on it.');
             }
+            /* S2 refix (17 Nov 2026): the passenger already sent an online payment
+               (UTR claim from the pay page, CodPayClaim) — that is company money the
+               office checks in the bank. The agent must not record it as cash they
+               hold (cash_due on the agent for money that went to the company). */
+            if (self::codRowHasOnlineClaim((int) $detail['id'])) {
+                return self::no('The passenger of ' . $pnr . ' already sent an online payment (UTR). The office checks it in the bank — it is not cash you hold, so it cannot be recorded here.');
+            }
         }
         $note = Security::clean((string) ($args['note'] ?? ($asAgent ? 'Cash collected by the agent (WhatsApp)' : 'Cash recorded on WhatsApp')), 200);
 
@@ -3266,12 +3273,16 @@ final class AiTools
             || (int) ($staged['agent'] ?? 0) !== $agentId) {
             return self::no('Preview this exact PNR first (office_settle_cod without confirm) and get a ho in the next message.');
         }
-        $res = BookingService::settleCod((int) $detail['id'], (int) ($ctx['adminId'] ?? 0), (string) ($staged['note'] ?? $note));
+        /* S2 (17 Nov 2026): an agent recording their OWN cash holds it ('agent');
+           the office path is the office / bus crew ('office', no cash_due). */
+        $res = BookingService::settleCod((int) $detail['id'], (int) ($ctx['adminId'] ?? 0), (string) ($staged['note'] ?? $note),
+            $asAgent ? 'agent' : 'office');
 
         if ($asAgent) {
             /* AgentWallet::accrue (inside settleCod) keys on sold_by_admin_id =
                this agent: their commission plus a cash_due of the fare — the
-               cash they now hold for the office, exactly as a desk cash sale. */
+               cash they now hold for the office, exactly as a desk cash sale
+               (holder 'agent'). */
             Logger::audit('booking.cod.settle_agent', 'booking', $pnr,
                 ['payment' => 'cod_pending'], ['payment' => 'verified', 'agent' => $agentId],
                 'Cash ' . inr((float) $detail['total_amount']) . ' recorded on WhatsApp by agent #' . $agentId
@@ -3287,6 +3298,19 @@ final class AiTools
                        'changed' => (bool) ($res['changed'] ?? true)],
             'media' => null,
         ];
+    }
+
+    /**
+     * S2 refix (17 Nov 2026): does the booking's money row carry the
+     * passenger's online claim (a UTR, or CodPayClaim's {"pay_claim":…}
+     * payload)? The same test settleCod() uses to turn 'office' into 'online'.
+     */
+    private static function codRowHasOnlineClaim(int $bookingId): bool
+    {
+        $p = Database::fetch('SELECT utr_number, gateway_payload FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => $bookingId]);
+        if ($p === null) { return false; }
+        return trim((string) ($p['utr_number'] ?? '')) !== ''
+            || str_starts_with(trim((string) ($p['gateway_payload'] ?? '')), '{"pay_claim"');
     }
 
     /**

@@ -247,6 +247,16 @@ final class AutoBerth
         $free  = array_flip(array_map('strval', (array) ($av['available'] ?? [])));
         $women = array_flip(array_map('strval', (array) ($av['female'] ?? [])));
         $locks = is_array($av['units'] ?? null) ? $av['units'] : [];
+        /* 17 Nov 2026 (S1-cabin): a partner berth (L4 beside women's L3) is in the
+           women list, but a couple / family taking both with a WOMAN on the
+           women's berth may still seat a man there (Seats::assertGenderAllowed). */
+        $pairOf = is_array($av['womenPair'] ?? null) ? $av['womenPair'] : [];
+        $femHere = [];
+        foreach (array_values($seats) as $i => $s) {
+            if (self::gender($pax[$i]['gender'] ?? null) === 'Female') {
+                $femHere[strtoupper((string) $s)] = true;
+            }
+        }
         $byUnit = [];
         foreach (array_values($seats) as $i => $s) {
             $s = strtoupper((string) $s);
@@ -254,7 +264,9 @@ final class AutoBerth
                 return 'Berth ' . Seats::displayLabel($s, $coach) . ' is not free any more — pick another. / बर्थ ' . Seats::displayLabel($s, $coach) . ' खाली छैन।';
             }
             $g = self::gender($pax[$i]['gender'] ?? null);
-            if (isset($women[$s]) && $g !== 'Female') {
+            $pairOk = $g === 'Male' && isset($pairOf[$s])
+                && array_diff(array_map('strval', (array) $pairOf[$s]), array_keys($femHere)) === [];
+            if (isset($women[$s]) && $g !== 'Female' && !$pairOk) {
                 return 'Berth ' . Seats::displayLabel($s, $coach) . ' is for women only. / यो बर्थ महिलाका लागि मात्र हो।';
             }
             $u    = self::unitOf($s, $coach);

@@ -256,6 +256,28 @@ try {
         check("\"{$t}\" is a request", (bool) $looks->invoke(null, $t));
     }
 
+    /* S3 (17 Nov 2026): the Devanagari need words were still booking words
+       on their own — "मुझे मदद चाहिए" opened a summary for "मदद". */
+    echo "\n-- …and the same for the Devanagari need words (S3) --\n";
+    foreach (['मुझे मदद चाहिए', 'मलाई सहयोग चाहियो', 'मलाई जागिर चाहियो', 'मुझे जानकारी चाहिये', 'मलाई बिल चाहियो'] as $t) {
+        check("\"{$t}\" opens no booking", !(bool) $looks->invoke(null, $t) && !(bool) $combo->invoke(null, $t));
+    }
+    foreach (['मलाई २ सिट चाहियो', '2 सीट चाहिए', 'नेपाल जाने २ जना चाहियो', 'मलाई दुई जना चाहियो', 'मुझे दो टिकट चाहिए', 'मलाई टिकट चाहियो'] as $t) {
+        check("\"{$t}\" is a request", (bool) $looks->invoke(null, $t));
+    }
+    $np = TicketBot::parse('मलाई २ सिट चाहियो');
+    check('"मलाई २ सिट चाहियो" reads 2 seats and no name', (int) $np['seats'] === 2 && $np['name'] === '', 'seats=' . $np['seats'] . ' name="' . $np['name'] . '"');
+
+    /* S3 refix (17 Nov 2026, review finding 4): a count beside a need word
+       that asks for a THING ("food for 1 person") is not a party. */
+    echo "\n-- …a counted need for a thing is not a seat (S3 refix) --\n";
+    foreach (['मलाई १ जना को खाना चाहियो', 'malai 1 jana ko khana chahiyo', 'malai 2 jana lai pani chahiyo', '1 jana ko bill chahiyo'] as $t) {
+        check("\"{$t}\" opens no booking", !(bool) $looks->invoke(null, $t));
+    }
+    foreach (['Ram 2 jana chahiyo', '2 jana bholi chahiyo', 'Ram Thapa 2 jana ko chahiyo', 'मलाई दुई जना चाहियो'] as $t) {
+        check("\"{$t}\" is still a request", (bool) $looks->invoke(null, $t));
+    }
+
     /* "mane 1 sit joie" was a summary for "Mane Joie" (and "Ram 1 sit joie"
        for "Ram Joie"): the Gujarati-script request words were fillers, the
        romanised ones were not. "Mane" is also a surname, so only a leading

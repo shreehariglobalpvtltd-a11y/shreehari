@@ -2286,12 +2286,27 @@ final class BookingService
      *
      * Idempotent: a payment already verified is returned untouched, so a
      * double-click at the counter cannot pay a commission twice.
+     *
+     * 17 Nov 2026 (S2, owner decision 2): $holder says who has the money —
+     *   'office' (DEFAULT: the bus crew or the office took it; every office /
+     *            chalani path) — an agent seller still earns the commission,
+     *            but NO cash_due is put on them;
+     *   'agent'  (the agent recorded their own cash on WhatsApp, or the office
+     *            chose "एजेन्ट") — commission + cash_due, as before;
+     *   'online' (UTR / UPI / eSewa into the company account) — no cash_due.
+     * A row carrying the passenger's UTR claim (CodPayClaim) settles as
+     * 'online' unless 'agent' is chosen explicitly. The holder is stamped on
+     * the payment row (gateway_payload "cod_holder") and on the audit row.
      */
-    public static function settleCod(int $bookingId, int $adminId, string $note = ''): array
+    public static function settleCod(int $bookingId, int $adminId, string $note = '', string $holder = 'office'): array
     {
+        $holder = strtolower(trim($holder));
+        if (!in_array($holder, ['office', 'agent', 'online'], true)) {
+            $holder = 'office';
+        }
         // {booking, changed} for the same reason as confirm(): the double-
         // click noop (payment already verified) must not re-message anyone.
-        $result = Database::transaction(function () use ($bookingId, $adminId, $note): array {
+        $result = Database::transaction(function () use ($bookingId, $adminId, $note, $holder): array {
             // Lock the row so two counter clicks cannot both pass the
             // "already verified" guard and both emit booking.cod_settled.
             $booking = Database::fetchForUpdate('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId])[0] ?? null;
@@ -2316,14 +2331,23 @@ final class BookingService
                 return ['booking' => $booking, 'changed' => false]; // already settled
             }
 
-            Database::update('payments', [
+            // S2: the passenger's online claim (a real UTR on the row) is company money.
+            if ($holder === 'office' && preg_match('/[A-Za-z0-9]{6,}/', (string) ($payment['utr_number'] ?? '')) === 1) {
+                $holder = 'online';
+            }
+            $payUpd = [
                 'status'      => 'verified',
                 'method'      => 'cod',
                 'mode'        => 'offline',
                 'verified_by' => $adminId,
                 'verified_at' => date('Y-m-d H:i:s'),
                 'admin_note'  => $note !== '' ? Security::clean($note, 255) : 'Cash collected',
-            ], 'id = :id', ['id' => $payment['id']]);
+            ];
+            $gp = self::codHolderPayload((string) ($payment['gateway_payload'] ?? ''), $holder);
+            if ($gp !== null) {
+                $payUpd['gateway_payload'] = $gp;
+            }
+            Database::update('payments', $payUpd, 'id = :id', ['id' => $payment['id']]);
 
             /* The cached ticket PNG/PDF still carry the CASH-DUE pill and the
                codSettled WhatsApp promises the ticket "now shows PAID". One hook
@@ -2356,11 +2380,13 @@ final class BookingService
             }
             self::awardLoyalty($booking);       // idempotent — one award per booking
             self::recordCommission($booking);   // idempotent — one referral commission
-            AgentWallet::accrue($booking);      // idempotent via UNIQUE(booking_id, entry_type)
+            // idempotent via UNIQUE(booking_id, entry_type); S2: cash_due only when the agent holds it
+            AgentWallet::accrue($booking + ['_cod_holder' => $holder]);
 
+            $holderWords = ['office' => 'office / bus crew holds the cash', 'agent' => 'agent holds the cash', 'online' => 'paid online to the company'][$holder];
             Logger::audit('booking.cod.settle', 'booking', (string) $booking['pnr'],
-                ['payment' => $payment['status']], ['payment' => 'verified'],
-                'Cash collected ' . inr((float) $booking['total_amount']) . ($note !== '' ? ' · ' . $note : ''));
+                ['payment' => $payment['status']], ['payment' => 'verified', 'holder' => $holder],
+                'Cash collected ' . inr((float) $booking['total_amount']) . ' · ' . $holderWords . ($note !== '' ? ' · ' . $note : ''));
 
             return [
                 'booking' => Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId]) ?? [],
@@ -2376,6 +2402,31 @@ final class BookingService
         }
 
         return $booking;
+    }
+
+    /**
+     * S2 (17 Nov 2026): the payment row's gateway_payload with "cod_holder"
+     * added. Keys already there keep their place, so CodPayClaim's
+     * {"pay_claim":{"method":…}} prefix (read by Ticket / CodPayClaim with a
+     * LIKE / str_starts_with) is untouched. A payload that is not a JSON
+     * object (a gateway's own text) is never rewritten — null.
+     */
+    private static function codHolderPayload(string $payload, string $holder): ?string
+    {
+        $payload = trim($payload);
+        $j = [];
+        if ($payload !== '') {
+            if ($payload[0] !== '{') {
+                return null;
+            }
+            $j = json_decode($payload, true);
+            if (!is_array($j)) {
+                return null;
+            }
+        }
+        $j['cod_holder'] = $holder;
+        $out = json_encode($j, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return is_string($out) ? $out : null;
     }
 
     /**
@@ -2514,9 +2565,13 @@ final class BookingService
                    passenger may have taken the other berth of the cabin; a woman
                    must not be re-seated next to a man (or the reverse) just
                    because her payment was approved later. Same rule, same lock
-                   row, as the original sale. */
+                   row, as the original sale.
+                   18 Nov 2026 (S1-cabin refix): the 17 Nov partner rule (a man on L4
+                   beside a free women's L3) is NOT re-asked here - these are the
+                   booking's OWN seats, legal when sold, and existing bookings are
+                   not touched by that rule; the cabin gender lock above still is. */
                 Seats::assertGenderAllowed($sid, $coach, $mode !== '' ? $mode : 'sharing', $seats,
-                    array_map(static fn($r) => $r['gender'] ?? null, $rows));
+                    array_map(static fn($r) => $r['gender'] ?? null, $rows), [], false);
 
                 Seats::claim($sid, $seats, $bookingId, (int) $leg['id']);
 

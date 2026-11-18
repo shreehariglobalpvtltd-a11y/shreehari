@@ -749,14 +749,26 @@ final class TicketBot
             $date = self::nextDate($dNum, $mon, $today);
             $lower = str_replace($m[0], ' ', $lower);
         }
-        if ($date === '' && preg_match('/\b(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?\b/u', $lower, $m)) {
-            $dNum = (int) $m[1]; $mon = (int) $m[2];
-            $yr = isset($m[3]) && $m[3] !== '' ? (int) $m[3] : 0;
+        /* 17 Nov 2026 (S3, mv6 review finding 4): a DOTTED CLOCK with am / pm
+           or a clock word after it ("7.05 pm", "9.10 baje") is a time, not a
+           date — but its minutes 01-12 also read as a month, so this pass took
+           "7.05 pm" as 7 May, the time pass never saw it, and "pm" was left in
+           the passenger's name ("Ram Pm"). Those spans are hidden from the date
+           pass (same length, so offsets still line up); "15.11" with no clock
+           word after it is still 15 Nov, as before. */
+        $dotClock  = '(?:bajey|baje|baj|bje|बजे|बज्यो|बजी|वागे|વાગ્યે|વાગે|vagye|vage|o\'?clock)';
+        $dotTimeRe = '/(?<![\d:])(?<!\d\.)(?:[01]?\d|2[0-3])\.[0-5]\d(?![\d.])(?=\s*(?:(?:a\.?m\.?|p\.?m\.?)(?![\p{L}\p{M}])|' . $dotClock . self::NB . '))/u';
+        $dateView  = (string) preg_replace_callback($dotTimeRe, static fn(array $t): string => str_repeat(' ', strlen($t[0])), $lower);
+        if ($date === '' && preg_match('/\b(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?\b/u', $dateView, $m, PREG_OFFSET_CAPTURE)) {
+            $dAt  = (int) $m[0][1];
+            $dLen = strlen((string) $m[0][0]);
+            $dNum = (int) $m[1][0]; $mon = (int) $m[2][0];
+            $yr = isset($m[3]) && $m[3][0] !== '' ? (int) $m[3][0] : 0;
             if ($yr > 0 && $yr < 100) { $yr += 2000; }
             if ($mon >= 1 && $mon <= 12 && $dNum >= 1 && $dNum <= 31) {
                 $date = $yr > 0 ? sprintf('%04d-%02d-%02d', $yr, $mon, $dNum) : self::nextDate($dNum, $mon, $today);
                 if (!Security::isValidDate($date)) { $date = ''; }
-                $lower = str_replace($m[0], ' ', $lower);
+                $lower = substr_replace($lower, ' ', $dAt, $dLen);
             }
         }
         /* a bare day of the month — "15th", "on the 3rd", "15 tarikh", "20 gate".
@@ -926,17 +938,61 @@ final class TicketBot
             'rati'  => 'night', 'raati' => 'night', 'raat' => 'night',
             'शाम' => 'evening', 'सांझ' => 'evening', 'साँझ' => 'evening', 'सुबह' => 'morning', 'रात' => 'night',
         ];
+        /* 17 Nov 2026 (S3, mv6 review findings 1 + 2):
+             · the hour is checked on an occurrence in the TYPED text and the
+               SAME occurrence (the k-th of that word) is the one dropped from
+               the name. It used to drop the first one in the line that had an
+               hour after it once the phone was lifted out, so "Shyam
+               9812345678 7pm, bholi shyam 7 baje" dropped the passenger's own
+               "Shyam" and kept the time word.
+             · "Shyam" right after a known compound head is the second half of
+               that name, not the evening: "Radhe Shyam 7 baje", "Ghan Shyam 7
+               baje" were printed as "Radhe" / "Ghan". The hour is then read
+               without a part of the day, so `time` stays empty and the desk asks.
+           17 Nov 2026 (S3 refix, review findings 1 + 2): this used to keep ANY
+           name-like part of the day after ANY Capitalised word, so a Title-Case
+           line (most phone keyboards) put the part of the day in the name and
+           lost the time: "Mehsana Shaam 7 Baje 1 Seat" was a summary for a
+           passenger called "Shaam", "Ram Thapa Raat 10 Baje" printed "Ram
+           Thapa Raat", "Sita Subah 7 Baje" "Sita Subah". Only shyam / sham /
+           shaam / शाम ever finish a given name, and only after a known head
+           (radhe / ghan / राधे / घन …) — capitals prove nothing (a town, a
+           surname and a given name all carry one). Every other case is the
+           part of the day, exactly as before this pass existed. */
         $hourNext = '(?=\s*(?:' . $hourAt . '|(?:[01]?\d|2[0-3]):[0-5]\d(?![\d:])))';
         $typed    = mb_strtolower(self::asciiDigits($raw));
+        $nameHeads   = ['radhe', 'radhey', 'radhay', 'ghan', 'ghana', 'राधे', 'राधेय', 'घन'];
+        $nameTails   = ['shyam', 'sham', 'shaam', 'शाम'];   // the only part-of-day words that finish a given name
         foreach ($namePeriods as $word => $period) {
-            $re = '/(?<![\p{L}\p{M}])' . preg_quote($word, '/') . self::NB . $hourNext . '/u';
-            $n  = (int) preg_match_all($re, $typed);
-            if ($n > 0 && preg_match($re, $lower) === 1) {
-                if ($out['timeOfDay'] === '') {
-                    $out['timeOfDay'] = $period;
-                    $timeText[]       = $word;
+            $bare = '/(?<![\p{L}\p{M}])' . preg_quote($word, '/') . self::NB . '/u';
+            $reAt = '/\G' . preg_quote($word, '/') . self::NB . $hourNext . '/u';
+            if (preg_match_all($bare, $typed, $occ, PREG_OFFSET_CAPTURE) < 1) {
+                continue;
+            }
+            $tail = in_array($word, $nameTails, true);
+            $drop = [];                                   // k => true: the k-th occurrence is a part of the day
+            foreach ($occ[0] as $k => [, $at]) {
+                $at = (int) $at;
+                if (preg_match($reAt, $typed, $unused, 0, $at) !== 1) {
+                    continue;                             // no hour right after this one: a name, as before
                 }
-                $lower = (string) preg_replace($re, ' ', $lower, $n);
+                if ($tail && preg_match('/([\p{L}\p{M}]+)\s+$/u', substr($typed, 0, $at), $pw) === 1
+                    && in_array($pw[1], $nameHeads, true)) {
+                    continue;                             // "Radhe Shyam 7 baje": the second half of a name
+                }
+                $drop[$k] = true;
+            }
+            if ($drop === []) {
+                continue;
+            }
+            $k     = -1;
+            $lower = (string) preg_replace_callback($bare, static function (array $mm) use (&$k, $drop): string {
+                $k++;
+                return isset($drop[$k]) ? ' ' : $mm[0];
+            }, $lower);
+            if ($out['timeOfDay'] === '') {
+                $out['timeOfDay'] = $period;
+                $timeText[]       = $word;
             }
         }
 
@@ -961,18 +1017,51 @@ final class TicketBot
                 break;
             }
         }
+        /* 17 Nov 2026 (S3, mv6 review finding 3): this pass runs BEFORE the
+           seat pass, so a noun-then-number seat COUNT followed by am / pm or a
+           clock word ("seats 3 pm surat", "tickets 2 pm", "seat: 2 baje") gave
+           its number to the clock and the party was lost (seats 0, 15:00).
+           The seat pass reads a number after a PLURAL noun or after "seat:"
+           as the count, so that number is not an hour here; the lone am / pm
+           after it is dropped from the name. A SINGULAR noun ("seat 2 pm") is
+           a position there, never a count, so it stays a time as before.
+           17 Nov 2026 (S3 refix, review finding 3): a noun that already HAS
+           its count in front ("2 seats 3 pm", "2 tickets 7 baje", "2 pax 7
+           pm", "2 seats: 7 pm") is not waiting for one, so the number after it
+           is the hour again — the commonest way a party and a time are typed. */
+        $countNoun   = '(?:(?:seats|sits|berths|pax|persons|passengers|tickets|tkts)\s*[:=]?|(?:seat|sit|berth|person|passenger|ticket|tkt)\s*[:=])\s*$';
+        $countBefore = '/(?<![\p{L}\p{M}])' . $countNoun . '/u';
+        $countGiven  = '/(?<![\d.:])\d+\s*' . $countNoun . '/u';
+        /* The first hour this regex finds that is NOT a seat count; the count's
+           am / pm (or clock word) is cut away and the count left for the seat pass. */
+        $hourMatch = static function (string $re, string &$lower) use ($countBefore, $countGiven): ?array {
+            $from = 0;
+            while (preg_match($re, $lower, $hm, PREG_OFFSET_CAPTURE, $from) === 1) {
+                $at     = (int) $hm[0][1];
+                $before = substr($lower, 0, $at);
+                if (preg_match($countBefore, $before) !== 1 || preg_match($countGiven, $before) === 1) {
+                    $lower = substr_replace($lower, ' ', $at, strlen((string) $hm[0][0]));
+                    return array_map(static fn(array $g): string => (string) $g[0], $hm);
+                }
+                $num   = (string) $hm[1][0];
+                $lower = substr_replace($lower, $num . ' ', $at, strlen((string) $hm[0][0]));
+                $from  = $at + strlen($num) + 1;
+            }
+            return null;
+        };
         if ($hour < 0) {
             $re = '/(?<![\d:])(?<!\d\.)([01]?\d|2[0-3])\s*(a\.?m\.?|p\.?m\.?)(?![\p{L}\p{M}])/u';          // "7pm", "7 pm"
-            if (preg_match($re, $lower, $m) === 1) {
+            $m  = $hourMatch($re, $lower);
+            if ($m !== null) {
                 $hour = (int) $m[1];
                 $meri = $m[2][0] . 'm';
             } else {
-                $re = '/(?<![\d:])(?<!\d\.)([01]?\d|2[0-3])\s*' . $clock . self::NB . '/u';     // "7 baje", "7 बजे"
-                $hour = preg_match($re, $lower, $m) === 1 ? (int) $m[1] : -1;
+                $re   = '/(?<![\d:])(?<!\d\.)([01]?\d|2[0-3])\s*' . $clock . self::NB . '/u';     // "7 baje", "7 बजे"
+                $m    = $hourMatch($re, $lower);
+                $hour = $m !== null ? (int) $m[1] : -1;
             }
-            if ($hour >= 0) {
+            if ($hour >= 0 && $m !== null) {
                 $timeText[] = trim($m[0]);
-                $lower      = (string) preg_replace($re, ' ', $lower, 1);
             }
         }
         // A clock word with no hour beside it ("baje ko bus") is still not a name —

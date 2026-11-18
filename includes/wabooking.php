@@ -3075,7 +3075,7 @@ Example: Ram Bahadur 35, Sita Gurung 30",
             return false;
         }
         $said = false;
-        foreach (['book', 'ticket', 'seat', 'टिकट', 'बुक', 'सिट', 'सीट', 'चाहियो', 'चाहिए', 'चाहिये',
+        foreach (['book', 'ticket', 'seat', 'टिकट', 'बुक', 'सिट', 'सीट',
                   'जानु', 'जाना', 'ટિકિટ', 'બુક', 'સીટ'] as $w) {
             if (str_contains($t, $w)) {
                 $said = true;
@@ -3100,9 +3100,35 @@ Example: Ram Bahadur 35, Sita Gurung 30",
            a request with no facts is filled with defaults (next bus, the usual
            pickup, 1 seat). With a seat word the line is already claimed above;
            with a count ("2 jana chahiyo") it is a party asking for seats. */
-        if (!$said && preg_match('/(?<![\p{L}\p{M}])(chahiyo|chahiye|chaiyo|chaiye|chahincha|chahinchha|joiye|joie)(?![\p{L}\p{M}])/u', $t) === 1
-            && (int) (TicketBot::parse($text)['seats'] ?? 0) > 0) {
-            $said = true;
+        /* 17 Nov 2026 (S3): the Devanagari need words (चाहियो / चाहिए /
+           चाहिये) were still in the list above as booking words on their own,
+           so "मुझे मदद चाहिए" / "मलाई सहयोग चाहियो" opened a summary for a
+           passenger named "मदद" that one "हो" would have sold. Same rule as the
+           romanised ones: a seat word (claimed above) or a seat count —
+           "मलाई २ सिट चाहियो", "नेपाल जाने २ जना चाहियो" still open a booking.
+           17 Nov 2026 (S3 refix, review finding 4): a count is not always a
+           party asking for seats. "malai 1 jana ko khana chahiyo" / "मलाई १
+           जना को खाना चाहियो" (food for one person) read seats 1 and opened a
+           summary for a passenger named "Khana" / "खाना". The need word asks
+           for the word right before it: when that word is what the parse
+           left as the NAME, the passenger needs that thing, not a seat, and
+           the assistant answers. "Ram 2 jana chahiyo", "2 jana bholi chahiyo"
+           (the word before is the count or the day) are still a booking. */
+        $needWord = '(?:(?:chahiyo|chahiye|chaiyo|chaiye|chahincha|chahinchha|joiye|joie)(?![\p{L}\p{M}])|चाहियो|चाहिए|चाहिये)';
+        if (!$said && preg_match('/(?<![\p{L}\p{M}])' . $needWord . '/u', $t) === 1) {
+            $np = TicketBot::parse($text);
+            if ((int) ($np['seats'] ?? 0) > 0) {
+                $said      = true;
+                $nameWords = preg_split('/\s+/u', mb_strtolower(trim((string) ($np['name'] ?? ''))), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+                if ($nameWords !== [] && preg_match_all('/([\p{L}\p{M}]+)[\s,.]*(?:(?:ko|ka|ke|ki|lai|lagi|को|का|के|की|लाई|लागि)\s+)?' . $needWord . '/u', $t, $nm) > 0) {
+                    foreach ($nm[1] as $wanted) {
+                        if (in_array($wanted, $nameWords, true)) {
+                            $said = false;          // "… khana chahiyo": the thing needed, not a passenger
+                            break;
+                        }
+                    }
+                }
+            }
         }
         if ($said) {
             /* 23 Sep 2026: "Dashain ma ghar jana ticket milcha?" is a QUESTION

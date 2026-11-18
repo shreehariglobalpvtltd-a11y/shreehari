@@ -1849,7 +1849,11 @@ final class AgentWallet
                 }
             }
 
-            // Cash across the counter is money the agent now holds for us.
+            /* Cash across the counter is money the agent now holds for us.
+               17 Nov 2026 (S2): a pay-at-boarding fare settled with the cash
+               holder 'office' (bus crew / office took it) or 'online' (UTR /
+               UPI / eSewa into the company account) is NOT with the selling
+               agent — commission above stays exactly as before, no cash_due. */
             if ($total > 0 && self::isCashSale($bookingId, $booking)) {
                 self::insertEntry([
                     'agent_admin_id' => $agentId,
@@ -1962,7 +1966,7 @@ final class AgentWallet
     private static function isCashSale(int $bookingId, array $booking): bool
     {
         if ((int) ($booking['is_cod'] ?? 0) === 1) {
-            return true;
+            return !self::codCashOffSeller($bookingId, $booking);
         }
 
         $method = (string) Database::scalar(
@@ -1972,6 +1976,65 @@ final class AgentWallet
         );
 
         return in_array($method, self::CASH_METHODS, true);
+    }
+
+    /** 17 Nov 2026 (S2): who may hold a settled pay-at-boarding fare. */
+    public const COD_HOLDERS = ['office', 'agent', 'online'];
+
+    /**
+     * 17 Nov 2026 (S2, owner decision 2): who holds the cash of a settled
+     * pay-at-boarding (COD) booking — 'office' (bus crew / office), 'agent'
+     * (the selling agent recorded it as theirs), 'online' (UTR / UPI / eSewa
+     * into the company account), or '' (not settled yet, or settled before
+     * this rule — those keep the old reading: the seller holds it).
+     *
+     * BookingService::settleCod() stamps it on the payment row's
+     * gateway_payload as "cod_holder" (no new column, no migration).
+     */
+    public static function codHolder(int $bookingId): string
+    {
+        if ($bookingId <= 0) { return ''; }
+        try {
+            $gp = trim((string) Database::scalar(
+                'SELECT gateway_payload FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1',
+                ['b' => $bookingId], ''
+            ));
+        } catch (Throwable $e) {
+            return '';
+        }
+        if ($gp === '' || $gp[0] !== '{') { return ''; }
+        $j = json_decode($gp, true);
+        $h = is_array($j) ? (string) ($j['cod_holder'] ?? '') : '';
+        return in_array($h, self::COD_HOLDERS, true) ? $h : '';
+    }
+
+    /**
+     * True when a COD fare is NOT in the selling AGENT's hands: settled with
+     * holder 'office' or 'online' and sold by an agent account. A staff /
+     * office seller and every pre-rule booking keep the old reading
+     * (non-agent COD unchanged). $booking['_cod_holder'] (set by settleCod
+     * for the accrue it runs) wins over the stored marker.
+     */
+    private static function codCashOffSeller(int $bookingId, array $booking): bool
+    {
+        $h = (string) ($booking['_cod_holder'] ?? '');
+        if (!in_array($h, self::COD_HOLDERS, true)) {
+            $h = self::codHolder($bookingId);
+        }
+        if ($h !== 'office' && $h !== 'online') {
+            return false;
+        }
+        $seller = (int) ($booking['sold_by_admin_id'] ?? 0);
+        return $seller > 0 && self::isAgentRow($seller);
+    }
+
+    /**
+     * Should the seller of this booking carry a cash_due row? The same rule
+     * accrue() and syncCashDue() use — for the ledger check and reports.
+     */
+    public static function sellerHoldsCash(int $bookingId, array $booking): bool
+    {
+        return self::isCashSale($bookingId, $booking);
     }
 
     /**

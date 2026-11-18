@@ -180,7 +180,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         : 'Hold recorded for ' . $pnr . '. WhatsApp did not go out by itself — tap "Send on WhatsApp" to send it.'];
                 } elseif ($action === 'cod_settle') {
                     Auth::requireAdmin('payments.verify');
-                    $b = BookingService::settleCod($bookingId, (int) $admin['id'], $note);
+                    /* S2 (17 Nov 2026): who has the cash - बस स्टाफ / अफिस (default) or the
+                       selling एजेन्ट. Only 'agent' puts a cash_due on the agent. */
+                    $holder = (string) ($_POST['cod_holder'] ?? '') === 'agent' ? 'agent' : 'office';
+                    /* S2 refix: a row carrying the passenger's UTR claim is company money -
+                       the page shows no holder choice there, so a posted 'agent' is ignored
+                       (settleCod then records it 'online', never cash_due on the agent). */
+                    if ($holder === 'agent' && preg_match('/[A-Za-z0-9]{6,}/', (string) Database::scalar('SELECT utr_number FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => $bookingId], '')) === 1) {
+                        $holder = 'office';
+                    }
+                    $b = BookingService::settleCod($bookingId, (int) $admin['id'], $note, $holder);
                     $pnr = $b['pnr'] ?? '';
                     $online = preg_match('/[A-Za-z0-9]{6,}/', (string) ($b['payment']['utr_number'] ?? Database::scalar('SELECT utr_number FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => $bookingId], ''))) === 1;
                     $flash = ['ok', ($online ? 'Online payment (UTR) recorded for ' : 'Cash recorded for ') . $pnr . ' — that payment is settled.'];
@@ -408,7 +417,7 @@ $sql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.source,
                   JOIN payment_screenshots s2 ON s2.sha256 = s1.sha256 AND s2.booking_id <> s1.booking_id
                   JOIN bookings bx ON bx.id = s2.booking_id
                  WHERE s1.booking_id = b.id AND s1.sha256 IS NOT NULL AND s1.sha256 <> '') AS shot_also_on,
-               seller.full_name AS seller_name
+               seller.full_name AS seller_name, seller.role AS seller_role
           FROM bookings b
           JOIN payments p ON p.id = (SELECT MAX(p2.id) FROM payments p2 WHERE p2.booking_id = b.id)
           LEFT JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
@@ -1172,6 +1181,15 @@ html[data-motion="reduced"] .pq-card,html[data-motion="reduced"] .pq-btn{transit
               <button class="btn ok btn-pay-action" type="submit" name="action" value="cod_settle"
                       data-confirm="UTR <?= Security::e((string) $q['utr_number']) ?> - <?= Security::e(inr((float) $q['total_amount'])) ?> बैंकमा आएको जाँच्नुभयो? · Checked in the bank? Record it as received ONLINE for <?= Security::e($bPnr) ?>?">✓ अनलाइन मिल्यो · Online received</button>
               <?php else: ?>
+              <?php if ($soldBy > 0 && (string) ($q['seller_role'] ?? '') === 'agent'): /* S2: an agent's sale - who has the cash? */ ?>
+              <label class="cod-holder" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:11.5px;margin:2px 0">
+                <span class="muted">कसले लियो · Who has the cash:</span>
+                <select name="cod_holder" style="font-size:12px;min-height:32px;max-width:100%">
+                  <option value="office" selected>बस स्टाफ / अफिस · Bus staff / office</option>
+                  <option value="agent">एजेन्ट · Agent</option>
+                </select>
+              </label>
+              <?php endif; ?>
               <button class="btn ok btn-pay-action" type="submit" name="action" value="cod_settle"
                       data-confirm="Record <?= Security::e(inr((float) $q['total_amount'])) ?> cash as collected for <?= Security::e($bPnr) ?>?">Cash Collected</button>
               <?php endif; ?>

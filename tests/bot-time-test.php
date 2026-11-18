@@ -183,6 +183,108 @@ check('"Shaam Lal … shaam 7 baje": only the "shaam" the hour follows is the ti
     $both['name'] === 'Shaam Lal' && $both['time'] === '19:00', 'name="' . $both['name'] . '" time=' . ($both['time'] ?: '(none)'));
 check('"baje ko bus" alone is still no name (only "baj" is kept)', p('baje ko bus 2 seat')['name'] === '', 'name="' . p('baje ko bus 2 seat')['name'] . '"');
 
+echo "\n-- S3 (17 Nov 2026): the four low findings of the mv6 review --\n";
+/* 1. A two-word given name: "Radhe Shyam 7 baje" printed "Radhe". The hour
+      is still read, without a part of the day (so the desk asks). */
+foreach ([
+    ['Radhe Shyam 7 baje 2 seat nepal',   'Radhe Shyam'],
+    ['Ghan Shyam 7 baje 2 seat',          'Ghan Shyam'],
+    ['naam Radhe Shyam 7 baje',           'Radhe Shyam'],
+    ['radhe shyam 7 baje 2 seat',         'Radhe Shyam'],
+    ['राधे श्याम 7 बजे 2 सीट',             'राधे श्याम'],
+    ['राधे शाम 7 बजे 2 सीट',               'राधे शाम'],
+] as [$text, $name]) {
+    $r = p($text);
+    check("1. \"{$text}\" keeps \"{$name}\"; hour 7, no guessed time",
+        $r['name'] === $name && (int) $r['timeHour'] === 7 && $r['time'] === '',
+        'name="' . $r['name'] . '" time=' . ($r['time'] ?: '(none)') . ' hour=' . $r['timeHour']);
+}
+foreach ([
+    ['Bholi Shaam 7 Baje 2 Seat Nepal', '19:00', ''],
+    ['Ram 2 seat shaam 7 baje',         '19:00', 'Ram'],
+    ['shaam 7 baje Ram 2 seat',         '19:00', 'Ram'],
+    ['शाम 7 बजे नेपाल 2 सीट',           '19:00', ''],
+] as [$text, $time, $name]) {
+    $r = p($text);
+    check("1. …\"{$text}\" is still the evening ({$time})", $r['time'] === $time && $r['name'] === $name,
+        'name="' . $r['name'] . '" time=' . ($r['time'] ?: '(none)'));
+}
+/* 2. The occurrence the hour follows (as typed) is the one dropped. */
+$occ = p('Shyam 9812345678 7 baje Thapa bholi shyam 8 baje 2 seat');
+check('2. "Shyam 98… 7 baje Thapa bholi shyam 8 baje": the passenger\'s own "Shyam" stays first',
+    $occ['name'] === 'Shyam Thapa' && $occ['timeOfDay'] === 'evening', 'name="' . $occ['name'] . '" timeOfDay=' . ($occ['timeOfDay'] ?: '(none)'));
+$occ2 = p('Rati 9812345678 10 baje Devi, bholi rati 10 baje 2 seat');
+check('2. "Rati 98… 10 baje Devi, bholi rati 10 baje": name "Rati Devi"', $occ2['name'] === 'Rati Devi', 'name="' . $occ2['name'] . '"');
+/* 3. A plural noun-then-number seat COUNT before am / pm stays a count. */
+foreach ([
+    ['Ram 9812345678 seats 2 pm',    2, ''],
+    ['Ram seats 3 pm surat',         3, ''],
+    ['Ram 9812345678 seat: 2 pm',    2, ''],
+    ['Ram 9812345678 tickets 2 pm',  2, ''],
+    ['Ram seats 3 pm 7 pm',          3, '19:00'],
+    ['Ram seats 2 baje 7 baje',      2, ''],
+] as [$text, $seats, $time]) {
+    $r = p($text);
+    check("3. \"{$text}\" -> {$seats} seats" . ($time !== '' ? ", {$time}" : ''),
+        (int) $r['seats'] === $seats && $r['time'] === $time && $r['name'] === 'Ram',
+        'seats=' . $r['seats'] . ' time=' . ($r['time'] ?: '(none)') . ' name="' . $r['name'] . '"');
+}
+$pos = p('Ram 9812345678 seat 2 pm bus');
+check('3. …a SINGULAR "seat 2 pm" is a position, so 2 pm is still the time', $pos['time'] === '14:00' && (int) $pos['seats'] === 0,
+    'seats=' . $pos['seats'] . ' time=' . ($pos['time'] ?: '(none)'));
+/* 4. A dotted clock with minutes 01-12 is a time, not a date. */
+foreach ([
+    ['Ram 9812345678 7.05 pm 2 seat',  '19:05', ''],
+    ['Ram 9812345678 9.10 baje 2 seat', '09:10', ''],
+    ['Ram 9812345678 7.12 am 2 seat',  '07:12', ''],
+    ['Ram 15.11 7.05 pm 2 seat',       '19:05', '2026-11-15'],
+] as [$text, $time, $dateMd]) {
+    $r = p($text);
+    $dOk = $dateMd === '' ? $r['date'] === '' : substr((string) $r['date'], 5) === substr($dateMd, 5);
+    check("4. \"{$text}\" -> {$time}" . ($dateMd !== '' ? ' on ' . substr($dateMd, 5) : ', no date'),
+        $r['time'] === $time && $dOk && $r['name'] === 'Ram' && (int) $r['seats'] === 2,
+        'time=' . ($r['time'] ?: '(none)') . ' date=' . ($r['date'] ?: '(none)') . ' name="' . $r['name'] . '"');
+}
+check('4. …"15.11" with no clock word is still a date', p('Ram 15.11 2 seat')['date'] !== '' && p('Ram 15.11 2 seat')['time'] === '');
+
+echo "\n-- S3 refix (17 Nov 2026): Title Case and count-then-noun --\n";
+/* review findings 1 + 2: a capital proves nothing — a town, a surname or any
+   other part of the day before the hour is still the time, never the name. */
+foreach ([
+    ['Mehsana Shaam 7 Baje 1 Seat',          '',          '19:00'],
+    ['Ahmedabad Shaam 7 baje 2 seat',        '',          '19:00'],
+    ['Kalol Raat 10 Baje 1 Seat',            'Kalol',     '22:00'],
+    ['Ram Thapa Raat 10 Baje 1 Seat Nepal',  'Ram Thapa', '22:00'],
+    ['Sita Subah 7 Baje 1 Seat Bholi',       'Sita',      '07:00'],
+    ['Ram Noon 12 Baje 1 Seat',              'Ram',       '12:00'],
+    ['Ram Bahadur Shaam 7 baje 2 seat',      'Ram Bahadur', '19:00'],
+    ['Hari Shyam 7 Baje 1 Seat',             'Hari',      '19:00'],
+] as [$text, $name, $time]) {
+    $r = p($text);
+    check("R1. \"{$text}\" -> name \"{$name}\", {$time}", $r['name'] === $name && $r['time'] === $time,
+        'name="' . $r['name'] . '" time=' . ($r['time'] ?: '(none)'));
+}
+foreach (['Radhe Shyam 7 Baje 2 Seat' => 'Radhe Shyam', 'Ghan Shyam 7 Baje 1 Seat' => 'Ghan Shyam'] as $text => $name) {
+    $r = p($text);
+    check("R1. …a known head still keeps \"{$name}\" in Title Case", $r['name'] === $name && $r['time'] === '' && (int) $r['timeHour'] === 7,
+        'name="' . $r['name'] . '" time=' . ($r['time'] ?: '(none)'));
+}
+/* review finding 3: a noun that already has its count is not waiting for one. */
+foreach ([
+    ['Ram 2 seats 3 pm surat',          2, '15:00', 3],
+    ['bholi 2 seats 7 pm nepal',        2, '19:00', 7],
+    ['Sita 3 seats 8 pm bholi',         3, '20:00', 8],
+    ['2 seats: 7 pm',                   2, '19:00', 7],
+    ['Ram 2 pax 7 pm',                  2, '19:00', 7],
+    ['Ram 9812345678 2 tickets 7 baje', 2, '',      7],
+    ['Ram 3 seats 2 pm',                3, '14:00', 2],
+] as [$text, $seats, $time, $hour]) {
+    $r = p($text);
+    check("R3. \"{$text}\" -> {$seats} seats, hour {$hour}" . ($time !== '' ? " ({$time})" : ''),
+        (int) $r['seats'] === $seats && $r['time'] === $time && (int) $r['timeHour'] === $hour,
+        'seats=' . $r['seats'] . ' time=' . ($r['time'] ?: '(none)') . ' hour=' . $r['timeHour']);
+}
+
 echo "\n-- the passes either side are untouched --\n";
 $keep = p('Ram Bahadur 9876543210 2 seats nepal');
 check('a plain line still reads its name', $keep['name'] === 'Ram Bahadur', $keep['name']);

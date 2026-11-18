@@ -152,12 +152,19 @@ final class LedgerCheck
                 $out = [];
                 foreach ($rows as $r) {
                     $bid  = (int) $r['id'];
-                    $cash = (int) $r['is_cod'] === 1 || in_array((string) $r['method'], ['cash', 'cod'], true);
+                    /* 17 Nov 2026 (S2 refix): the same rule accrue() / syncCashDue() use —
+                       an agent's COD settled by the office / bus crew or online
+                       (cod_holder) is NOT cash in the agent's hand. */
+                    $cod  = (int) $r['is_cod'] === 1;
+                    $cash = $cod ? AgentWallet::sellerHoldsCash($bid, $r) : in_array((string) $r['method'], ['cash', 'cod'], true);
                     $has  = $r['cash_due'] !== null;
                     if ($has && !$cash) {
+                        $paidBy = $cod
+                            ? (AgentWallet::codHolder($bid) === 'online' ? 'paid online to the company' : 'office / bus crew holds the cash')
+                            : 'paid by ' . strtoupper((string) ($r['method'] ?: '?'));
                         $out[] = ['booking_id' => $bid, 'pnr' => (string) $r['pnr'], 'status' => (string) $r['status'],
                                   'seller' => self::sellerName((int) $r['holder']), 'stored' => 'cash held ' . inr((float) $r['cash_due']),
-                                  'expected' => 'none — paid by ' . strtoupper((string) ($r['method'] ?: '?')), 'amount' => (float) $r['cash_due'], 'note' => 'not a cash sale'];
+                                  'expected' => 'none — ' . $paidBy, 'amount' => (float) $r['cash_due'], 'note' => 'not a cash sale'];
                     } elseif (!$has && $cash && in_array((string) $r['status'], self::LIVE, true) && AgentWallet::moneyInHand($bid, $r)) {
                         if ($agentOnly && !AgentWallet::isAgentRow((int) $r['sold_by_admin_id'])) { continue; }
                         $out[] = ['booking_id' => $bid, 'pnr' => (string) $r['pnr'], 'status' => (string) $r['status'],
