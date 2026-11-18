@@ -162,6 +162,8 @@ if ($lastFail !== null) {
     // template not found / not approved / paused, and the free-form-outside-
     // 24 h refusal (1014). Same shape: "(code N)".
     foreach (['63112', '63016', '63007', '20003', '(code 132000)', '(code 132001)', '(code 131031)', '(code 131042)',
+              // 19 Nov 2026: another app (AiSensy) controls the chat threads of this number.
+              '(code 131070)',
               '(code 1002)', '(code 1004)', '(code 1005)', '(code 1014)', '(code 62)', '(code 66)',
               // 7 Oct 2026: AiSensy wallet empty - every passenger fails the same way.
               'Insufficient WhatsApp Conversation Credits'] as $senderCode) {
@@ -259,7 +261,13 @@ $due = Database::fetchAll(
                 AND t.status IN ('sent','failed')
                 -- an empty AiSensy wallet is not the passenger's fault: those
                 -- refusals must not use up the tries, or a recharge rescues nobody
-                AND NOT (t.status = 'failed' AND t.provider = 'aisensy' AND (COALESCE(t.error, '') LIKE '%Conversation Credits%' OR COALESCE(t.error, '') LIKE '%No active plan on the assistant%'))" . $purposeT . ") AS tries
+                AND NOT (t.status = 'failed' AND t.provider = 'aisensy' AND (COALESCE(t.error, '') LIKE '%Conversation Credits%' OR COALESCE(t.error, '') LIKE '%No active plan on the assistant%'))
+                -- 19 Nov 2026: Meta-side refusals are the business account's fault, not the
+                -- passenger's: an approved template Meta still answers 132001 for, a paused /
+                -- disabled template (132015 / 132016), or another app (AiSensy) holding the
+                -- chat thread (131070). They must not use up the tries either.
+                AND NOT (t.status = 'failed' AND (COALESCE(t.error, '') LIKE '%(code 132001)%' OR COALESCE(t.error, '') LIKE '%(code 131070)%'
+                                                 OR COALESCE(t.error, '') LIKE '%(code 132015)%' OR COALESCE(t.error, '') LIKE '%(code 132016)%'))" . $purposeT . ") AS tries
        FROM bookings b
        LEFT JOIN message_logs m
          ON m.id = (SELECT m2.id FROM message_logs m2
