@@ -165,6 +165,7 @@ $ES_NEW = [
         'stop_learn_on'        => ['📍 GPS बाट stop समय सिक्ने · Learn stop times from GPS', 'bool', 'The night cron learns boarding / halt times; shown as suggestions only (Routes → Halts: "Use this time").', ['def' => true]],
         'stop_learn_trips'     => ['📍 कति trip हेर्ने · Trips to learn from', 'int', 'The last N trips of each route.', ['def' => 10, 'min' => 1, 'max' => 60]],
         'stop_learn_min'       => ['📍 कम्तीमा trip · Minimum trips for a suggestion', 'int', 'A stop needs this many trips before a time is suggested.', ['def' => 3, 'min' => 1, 'max' => 30]],
+        'ai_local_backup_on'   => ['🖥 Local AI ब्याकअप · Local AI backup', 'bool', 'When every cloud AI (Claude, Gemini) fails, the model on our own VPS answers in words only - it never books, changes or takes money.', ['def' => true]],
         'eta_learned_on'       => ['⏱ सिकेको समयले ETA · ETA uses learned times', 'bool', 'Customer ETAs use the learned stop times.', ['def' => false]],
     ],
     '💳 Payments / Search' => [

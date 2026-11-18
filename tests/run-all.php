@@ -257,6 +257,7 @@ const CORE_SUITES = [
     'i1-wa-glue-test.php'             => 'WhatsApp glue across units (19 Nov integrator i1)',
     'i3-agent-cards-login-test.php'   => 'agent / cards / login glue across units (19 Nov integrator i3)',
     'i4-halt-use-time-test.php'       => 'Routes → Halts: GPS-learned halt time + "Use this time" re-posts edit_halt (CSRF, audited)',
+    'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
 ];
 

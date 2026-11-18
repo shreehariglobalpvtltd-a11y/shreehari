@@ -799,9 +799,22 @@ final class AiAgent
                 'openrouter' => self::openrouterKey(),
                 'cerebras'   => self::cerebrasKey(),
                 'openai'     => self::openaiKey(),
+                'local'      => self::localBackupOk() ? 'local' : '',
                 default      => '',
             };
             if ($key === '') {
+                continue;
+            }
+            if ($brain === 'local') {
+                // 19 Nov 2026 (AI hub): every cloud brain failed - the model on our own VPS
+                // answers in words only (no tools: a 4B model must not cut tickets or move money).
+                $t0 = microtime(true);
+                $out = self::askLocal($system, $history);
+                AiMeter::record('local', (string) (self::$lastUsage[0] ?? ''), (array) (self::$lastUsage[1] ?? []),
+                    (int) round((microtime(true) - $t0) * 1000), $out !== null);
+                if ($out !== null) {
+                    return $out;
+                }
                 continue;
             }
 
@@ -914,7 +927,85 @@ final class AiAgent
             $ladder = array_values(array_unique(array_merge([$pick], $ladder)));
         }
 
+        // 19 Nov 2026 (AI hub): the VPS model is always the LAST rung - it answers only when
+        // every cloud brain failed (no key left, quota, outage). Words only, see askLocal().
+        if (Settings::getBool('ai_local_backup_on', true)) {
+            $ladder[] = 'local';
+        }
+
         return $ladder;
+    }
+
+    /**
+     * May the VPS model (Ollama, ap_ai_base) stand in for the cloud? Its own switch
+     * ai_local_backup_on (default on), independent of ap_ai_on, which would make it
+     * REPLACE the cloud for customers. Uses the cached health probe (no call when down).
+     */
+    public static function localBackupOk(): bool
+    {
+        if (!Settings::getBool('ai_local_backup_on', true) || !function_exists('curl_init')) {
+            return false;
+        }
+        try {
+            require_once INCLUDE_PATH . '/agentpro-ai.php';
+            return ApAi::base() !== '' && ApAi::available();
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * The VPS model as the last rung: plain words, no tools. History blocks become text
+     * (a tool result is shown as a short note), so the model can still answer from what
+     * the earlier rungs looked up. Same return shape as askOpenAICompat.
+     *
+     * @return array{text: string, calls: list<array>, blocks: list<array>}|null
+     */
+    private static function askLocal(string $system, array $history): ?array
+    {
+        require_once INCLUDE_PATH . '/agentpro-ai.php';
+        require_once INCLUDE_PATH . '/aimeter.php';
+        $messages = [['role' => 'system', 'content' => $system
+            . "\n\nYou are the backup assistant. You cannot book, change or cancel anything now. Answer briefly in the customer's language; for a booking, payment or change, say the office will reply soon and give the office number."]];
+        foreach ($history as $turn) {
+            $role = (string) ($turn['role'] ?? 'user') === 'assistant' ? 'assistant' : 'user';
+            $content = $turn['content'] ?? '';
+            if (is_array($content)) {
+                $parts = [];
+                foreach ($content as $b) {
+                    $type = (string) ($b['type'] ?? '');
+                    if ($type === 'text') {
+                        $parts[] = (string) ($b['text'] ?? '');
+                    } elseif ($type === 'tool_result') {
+                        $c = $b['content'] ?? '';
+                        $parts[] = '[looked up: ' . mb_substr(is_string($c) ? $c : (string) json_encode($c, JSON_UNESCAPED_UNICODE), 0, 600) . ']';
+                    }
+                }
+                $content = trim(implode("\n", $parts));
+            }
+            if ((string) $content === '') {
+                continue;
+            }
+            $messages[] = ['role' => $role, 'content' => (string) $content];
+        }
+        while (count($messages) > 1 && ($messages[1]['role'] ?? '') === 'assistant') {
+            array_splice($messages, 1, 1);
+        }
+        if (count($messages) < 2) {
+            return null;
+        }
+        $left = self::$deadline === null ? 45 : (int) floor(self::$deadline - microtime(true));
+        if ($left < 5) {
+            self::$lastUsage = ['', []];
+            return null;
+        }
+        $r = ApAi::chat($messages, ['purpose' => 'chat', 'timeout' => min(45, $left), 'max_tokens' => 400]);
+        self::$lastUsage = [(string) ($r['model'] ?? ''), AiMeter::fromOpenAI(['prompt_tokens' => (int) ($r['tokensIn'] ?? 0), 'completion_tokens' => (int) ($r['tokensOut'] ?? 0)])];
+        $text = trim((string) ($r['text'] ?? ''));
+        if (empty($r['ok']) || $text === '') {
+            return null;
+        }
+        return ['text' => $text, 'calls' => [], 'blocks' => [['type' => 'text', 'text' => $text]]];
     }
 
     /* ----------------------------------------------------------------
