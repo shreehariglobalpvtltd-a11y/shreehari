@@ -2001,6 +2001,13 @@ final class WaBooking
                 ));
                 if ($codDue > 0) {
                     $lines[] = sprintf(self::say('codDue', $lang), inr($codDue), inr($codDue));
+                    /* 19 Nov 2026 (owner: "ticket sangai payment QR"): the ticket is already
+                       confirmed; the passenger MAY pay now by UPI instead of cash. pay.php shows
+                       the exact-amount QR and takes the UTR as a claim (CodPayClaim) - the office
+                       still settles it; nothing here marks money as received. */
+                    if (Settings::getBool('wa_cod_pay_link_on', true)) {
+                        $lines[] = self::say('codPayNow', $lang) . ' ' . appUrl('pay.php?pnr=' . urlencode($pnr));
+                    }
                 }
             }
             /* 15 Oct 2026 (2C-links): the short View link, the printable PDF
@@ -2559,6 +2566,12 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 'hi' => 'काउंटर पर या बस में चढ़ते समय %s नकद दीजिए, बस छूटने से पहले। · Pay %s in cash before departure',
                 'ne' => 'काउन्टरमा / चढ्दा %s नगद तिर्नुहोस् · Pay %s in cash before departure',
                 'gu' => 'કાઉન્ટર પર કે બસમાં ચઢતી વખતે %s રોકડા ચૂકવો, ઉપડતા પહેલાં. · Pay %s in cash before departure',
+            ],
+            'codPayNow' => [
+                'en' => 'Or pay now by UPI (exact amount QR):',
+                'hi' => 'या अभी UPI से भुगतान करें (सही रकम का QR):',
+                'ne' => 'वा अहिले नै UPI बाट तिर्नुहोस् (रकम भरिएको QR) · Or pay now by UPI:',
+                'gu' => 'અથવા હમણાં UPI થી ચૂકવો (રકમ ભરેલો QR):',
             ],
             'payNow' => [
                 'en' => 'Scan the QR above to pay, or tap here. The ticket arrives here as soon as the payment is checked.',

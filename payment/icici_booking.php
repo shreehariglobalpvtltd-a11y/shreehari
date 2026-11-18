@@ -227,6 +227,21 @@ function icici_apply_result(array $data, string $source): array
     PayEvents::log((int) $booking['id'], $pnr, 'icici_paid');
     icici_log($source . '_RECORDED', ['pnr' => $pnr, 'txn' => $txnNo, 'bankTxn' => $txnId, 'amount' => $amount, 'env' => ICICI_ENVIRONMENT]);
 
+    /* 19 Nov 2026 (owner: auto-confirm only on an authenticated provider success): the secure
+       hash and merchant id were verified above, the booking id is bound into merchantTxnNo and
+       the amount equals bookings.total_amount. In PRODUCTION only, PayAuto confirms the booking
+       (same gate a person uses; one ticket). UAT / any mismatch: stays in Verify Payments. */
+    try {
+        require_once INCLUDE_PATH . '/payauto.php';
+        $cur = strtoupper((string) ($data['currencyCode'] ?? $data['currency'] ?? 'INR'));
+        $cur = $cur === '356' ? 'INR' : $cur;                       // ISO 4217 numeric for INR
+        $auto = PayAuto::confirmFromProvider((int) $booking['id'], 'icici', !icici_is_uat(), $txnId !== '' ? $txnId : $txnNo,
+            $utr, (float) ($amount !== '' ? $amount : $expected), $cur);
+        icici_log($source . '_AUTOCONFIRM', ['pnr' => $pnr, 'ok' => $auto['ok'], 'why' => $auto['why']]);
+    } catch (Throwable $e) {
+        icici_log($source . '_AUTOCONFIRM_ERROR', ['pnr' => $pnr, 'e' => $e->getMessage()]);
+    }
+
     return ['state' => 'success', 'booking' => icici_load_booking(null, (int) $booking['id']), 'message' => ''];
 }
 
