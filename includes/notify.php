@@ -1051,6 +1051,23 @@ final class Notify
         $pnr     = (string) ($booking['pnr'] ?? '');
         $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
 
+        if (Settings::getString('whatsapp_template_name', '') === 'shg_ticket_image') {
+            $name = trim((string) Database::scalar(
+                'SELECT full_name FROM booking_passengers WHERE booking_id = :id ORDER BY id LIMIT 1',
+                ['id' => (int) ($booking['id'] ?? 0)], ''
+            ));
+            [$from, $to] = array_pad(explode(' → ', $facts['route'], 2), 2, '');
+            return [
+                '1' => $name ?: 'Passenger',
+                '2' => $from ?: '-',
+                '3' => $to ?: '-',
+                '4' => $facts['date'] !== '' ? formatDate($facts['date'], 'j M Y') : '-',
+                '5' => $facts['seats'] ?: '-',
+                '6' => $pnr ?: '-',
+                '7' => Ticket::imageUrl($pnr),
+            ];
+        }
+
         $board = $facts['boardingStop'] !== ''
             ? $facts['boardingStop']
             : ($facts['route'] !== '' ? explode(' → ', $facts['route'])[0] : '');
@@ -2440,6 +2457,13 @@ final class Notify
             self::whatsapp((string) $booking['contact_phone'], $text, $mediaUrl, self::countryHint($booking), $templateVars, $bid > 0 ? $bid : null, ['purpose' => 'ticket']);
         }
 
+        $office = Settings::getString('admin_whatsapp', Settings::officePhone());
+        if (Settings::getBool('whatsapp_notify_admin', true) && trim($office) !== '') {
+            self::staffBookingWhatsApp($office, 'Booking confirmed',
+                implode(' · ', array_filter([$pnr, $facts['route'], $when, $facts['seats'], $amount])),
+                $bid, 'booking_office_confirmed');
+        }
+
         // SMS: compact plain text carrying the required Ticket No / Seat /
         // Route / Date. Sent only when the SMS channel is enabled.
         if (Settings::getBool('sms_notify_customer', true) && !empty($booking['contact_phone'])) {
@@ -2855,6 +2879,22 @@ final class Notify
         }
     }
 
+    private static function staffBookingWhatsApp(string $phone, string $label, string $text, int $bid, string $purpose, ?string $hint = null): void
+    {
+        $meta = ['purpose' => $purpose];
+        $vars = [];
+        if (Settings::getString('wa_cloud_tpl_message', '') === 'shg_office_alert') {
+            $meta['template_name'] = 'shg_office_alert';
+            $meta['template_lang'] = 'en';
+            $vars = ['1' => $label, '2' => mb_substr(trim((string) preg_replace('/\s*\R\s*/u', ' · ', $text)), 0, 600)];
+        }
+        try {
+            self::whatsapp($phone, $text, null, $hint, $vars, $bid > 0 ? $bid : null, $meta);
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
+    }
+
     /** WhatsApp the selling agent: their booking was approved + commission credited. */
     public static function agentBookingApproved(array $booking): void
     {
@@ -2887,7 +2927,8 @@ final class Notify
               . ($facts['seats'] !== '' ? "सिट: " . $facts['seats'] . "\n" : '')
               . $commission
               . "— " . ($agent['code'] !== '' ? $agent['code'] . ' · ' : '') . Settings::getString('company_name', APP_NAME);
-        self::whatsapp($agent['phone'], $text, null, $agent['hint'] ?? null);
+        self::staffBookingWhatsApp($agent['phone'], 'Agent booking approved', $text,
+            (int) ($booking['id'] ?? 0), 'booking_agent_approved', $agent['hint'] ?? null);
     }
 
     /** WhatsApp the selling agent: booking rejected, customer asked to re-upload. */

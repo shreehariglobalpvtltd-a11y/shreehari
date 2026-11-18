@@ -408,6 +408,7 @@ final class WaFlow
     }
 
     public const TEMPLATE = 'shg_book_form';
+    public const STARTER_TEMPLATE = 'shg_booking_start';
 
     /**
      * The approved TEMPLATE that carries the form button (owner: "euta
@@ -452,9 +453,11 @@ final class WaFlow
     {
         require_once ROOT_PATH . '/whatsapp/api.php';
         $to = waCleanPhone($phone);
-        // A test send works while the form is switched off for customers (a draft included).
-        if ($to === '' || self::flowId() === '') {
-            return ['success' => false, 'error' => $to === '' ? 'Not a mobile number.' : 'The form is not on Meta yet - press Publish first.', 'via' => ''];
+        if ($to === '') {
+            return ['success' => false, 'error' => 'Not a mobile number.', 'via' => ''];
+        }
+        if (!self::enabled() || Settings::getBool('wa_flow_draft', false)) {
+            return self::sendBookingStarter($to, $lang);
         }
         $ui = self::ui($to, $lang, $forSeller);
         $r  = sendWhatsAppInteractive($to, (string) $ui['body'], $ui);
@@ -475,6 +478,50 @@ final class WaFlow
             return ['success' => true, 'error' => '', 'via' => 'template ' . self::TEMPLATE . ' (paid, outside 24 h)'];
         }
         return ['success' => false, 'error' => 'Form: ' . $r['error'] . ' · Template: ' . $t['error'], 'via' => ''];
+    }
+
+    /** Send a chat booking invitation when the native form is unavailable. */
+    private static function sendBookingStarter(string $to, string $lang): array
+    {
+        require_once INCLUDE_PATH . '/waroute.php';
+        require_once INCLUDE_PATH . '/wabooking.php';
+        require_once INCLUDE_PATH . '/notify.php';
+
+        $lang = in_array($lang, ['en', 'ne', 'hi', 'gu'], true) ? $lang : 'ne';
+        if (WaRoute::metaWindowOpen($to)) {
+            $text = WaBooking::bookingPrompt($lang);
+            $reply = sendWhatsAppInteractive($to, $text, [
+                'kind' => 'buttons',
+                'buttons' => [['id' => 'shg:ticket book ' . $lang, 'title' => 'Book ticket']],
+            ]);
+            if ($reply['success']) {
+                return ['success' => true, 'error' => '', 'via' => 'booking chat (open service window)'];
+            }
+            if ((int) ($reply['code'] ?? 0) !== 131047) {
+                return ['success' => false, 'error' => (string) $reply['error'], 'via' => ''];
+            }
+        }
+
+        $refusal = WaRoute::paidRefusal();
+        if ($refusal !== '') {
+            return ['success' => false, 'error' => $refusal, 'via' => ''];
+        }
+        $reply = waGraphPost($to, ['type' => 'template', 'template' => [
+            'name' => self::STARTER_TEMPLATE, 'language' => ['code' => 'en'],
+            'components' => [[
+                'type' => 'button', 'sub_type' => 'quick_reply', 'index' => '0',
+                'parameters' => [['type' => 'payload', 'payload' => 'shg:ticket book ' . $lang]],
+            ]],
+        ]], 'template:' . self::STARTER_TEMPLATE);
+        if ($reply['success']) {
+            WaRoute::count('meta_tpl');
+        }
+        Notify::logOutbound($to, 'Meta booking starter', $reply['success'] ? 'sent' : 'failed', [
+            'provider' => 'cloud_api', 'purpose' => 'booking_start',
+            'sid' => (string) $reply['message_id'], 'error' => $reply['success'] ? null : (string) $reply['error'],
+        ]);
+        return ['success' => (bool) $reply['success'], 'error' => (string) $reply['error'],
+                'via' => $reply['success'] ? 'Meta booking starter template' : ''];
     }
 
     /** Status of the stored flow on Meta (PUBLISHED / DRAFT / DEPRECATED …). */

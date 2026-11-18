@@ -188,8 +188,8 @@ final class WaBooking
             $slots['name']   = $quick['name'];
             if ($seller !== null) {
                 $slots['custPhone'] = $quick['phone'];     // the passenger's own WhatsApp
-            } elseif ($quick['phone'] !== '' && normalisePhone($quick['phone']) !== normalisePhone($phoneDigits)) {
-                $slots['contact'] = $quick['phone'];       // booking for somebody else: their number gets it
+            } elseif (self::differentContact($quick['phone'], $phoneDigits)) {
+                $slots['contact'] = $quick['phone'];
             }
         } elseif ($seller === null && preg_match('/\+?\d[\d\s-]{8,14}\d\s*(?:ma|मा|pe|par|पर|me|में)\s*(?:pathau\w*|pathai\w*|pathae\w*|bhej\w*|send\w*|पठाउ\S*|पठाइ\S*|भेज\S*)/iu', $text) === 1) {
             // round 2: "ticket 9327055512 ma pathaunu" with no name yet — that number is where the ticket goes
@@ -470,6 +470,9 @@ final class WaBooking
            without this "3 seat" after a 2-seat summary changed nothing. */
         if ($text !== '') {
             $fresh = TicketBot::parse($text);
+            if ($awaiting === 'combo' && $seller === null) {
+                self::setContact($slots, $fresh, $phoneDigits);
+            }
             foreach (['seats', 'date', 'direction', 'boarding'] as $k) {
                 $v = $fresh[$k] ?? '';
                 if ($v !== '' && $v !== 0 && $v !== null) {
@@ -786,8 +789,7 @@ final class WaBooking
             return null;
         }
         $p     = TicketBot::parse($text);
-        $phone = trim((string) ($p['phone'] ?? ''));
-        $cust  = $phone !== '' ? self::readCustomerPhone($phone) : null;
+        $cust  = self::parsedContact($p);
         $name  = PersonName::clean((string) ($p['name'] ?? ''));
         if ($cust === null || $cust === '' || $name === '' || self::looksLikePlace($name, [])) {
             return null;
@@ -926,11 +928,16 @@ final class WaBooking
         return Settings::getBool('wa_book_combo_on', true);
     }
 
+    public static function bookingPrompt(string $lang): string
+    {
+        return self::say('comboAsk', $lang);
+    }
+
     /** "ticket" / the Book button from a customer: the one combined question. */
     private static function comboStart(string $who, string $lang): array
     {
         $last  = self::lastTrip($who);
-        $lines = [self::say('comboAsk', $lang)];
+        $lines = [self::bookingPrompt($lang)];
         if ($last !== null) {
             /* 2A-returning: their own last trip, offered - one tap fills it,
                the date is still theirs to say and the summary still waits
@@ -1648,11 +1655,41 @@ final class WaBooking
         if ($seller !== null) {
             return;
         }
-        $typed = (string) (TicketBot::parse($text)['phone'] ?? '');
-        $cust = $typed !== '' ? self::readCustomerPhone($typed) : null;
-        if ($cust !== null && $cust !== '' && normalisePhone($cust) !== normalisePhone($phoneDigits)) {
-            $slots['contact'] = $cust;
+        self::setContact($slots, TicketBot::parse($text), $phoneDigits);
+    }
+
+    private static function setContact(array &$slots, array $parsed, string $sender): void
+    {
+        $contact = self::parsedContact($parsed);
+        if ($contact === null || $contact === '') {
+            return;
         }
+        if (self::differentContact($contact, $sender)) {
+            $slots['contact'] = $contact;
+        } else {
+            unset($slots['contact']);
+        }
+    }
+
+    private static function parsedContact(array $parsed): ?string
+    {
+        $local = (string) ($parsed['phone'] ?? '');
+        if ($local === '') {
+            return null;
+        }
+        $prefix = match ($parsed['country'] ?? '') {
+            'NP' => '977',
+            'IN' => '91',
+            default => '',
+        };
+        return self::readCustomerPhone($prefix . $local);
+    }
+
+    private static function differentContact(string $contact, string $sender): bool
+    {
+        return $contact !== '' && (strlen($contact) > 10 && strlen($sender) > 10
+            ? $contact !== $sender
+            : normalisePhone($contact) !== normalisePhone($sender));
     }
 
     /** The last PNR this chat sold (a few minutes back), for a payment reference typed after the sale. */
@@ -1844,7 +1881,7 @@ final class WaBooking
             $media   = appUrl('pay-image.php?pnr=' . urlencode($pnr));
         }
         // round 2 (passenger sim: "the ticket comes HERE" while it went to the typed number): say where it goes
-        if ($seller === null && $contact !== '' && normalisePhone($contact) !== normalisePhone($phoneDigits)) {
+        if ($seller === null && self::differentContact($contact, $phoneDigits)) {
             $lines[] = self::label('ticketTo', $lang) . ': ' . $contact;
         }
 
@@ -2184,10 +2221,10 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                line the parser reads as it stands: name, a stop, a day word, a
                count. */
             'comboAsk' => [
-                'en' => "To book, send all four in ONE message:\nname, boarding point, date, how many\nExample: Ram, Surat, tomorrow, 2",
-                'hi' => "बुक करने के लिए चारों बातें एक ही संदेश में भेजिए:\nनाम, चढ़ने की जगह, तारीख, कितने लोग\nजैसे: Ram, Surat, kal, 2",
-                'ne' => "बुक गर्न चारवटै कुरा एउटै सन्देशमा पठाउनुहोस्:\nनाम, चढ्ने ठाउँ, मिति, कति जना\nजस्तै: Ram, Surat, bholi, 2",
-                'gu' => "બુક કરવા ચારેય વાત એક જ સંદેશમાં મોકલો:\nનામ, ચઢવાની જગ્યા, તારીખ, કેટલા લોકો\nદા.ત.: Ram, Surat, કાલે, 2",
+                'en' => "Send passenger names, boarding point, destination, travel date and seat count in one message. Add the WhatsApp number with country code if the ticket should go to another number.\nExample: Ram Kumar, Surat to Rupaidiha, tomorrow, 1 seat",
+                'hi' => "यात्रियों के नाम, चढ़ने की जगह, गंतव्य, यात्रा की तारीख और सीटों की संख्या एक संदेश में भेजिए। टिकट दूसरे नंबर पर चाहिए तो देश कोड सहित WhatsApp नंबर भी लिखिए।\nजैसे: Ram Kumar, Surat to Rupaidiha, kal, 1 seat",
+                'ne' => "यात्रुका नाम, चढ्ने ठाउँ, गन्तव्य, यात्रा मिति र सिट संख्या एउटै सन्देशमा पठाउनुहोस्। टिकट अर्को नम्बरमा चाहियो भने देशको कोडसहित WhatsApp नम्बर पनि लेख्नुहोस्।\nजस्तै: Ram Kumar, Surat to Rupaidiha, bholi, 1 seat",
+                'gu' => "મુસાફરોનાં નામ, ચઢવાની જગ્યા, ગંતવ્ય, મુસાફરીની તારીખ અને સીટની સંખ્યા એક જ સંદેશમાં મોકલો. ટિકિટ બીજા નંબર પર જોઈએ તો દેશના કોડ સાથે WhatsApp નંબર પણ લખો.\nદા.ત.: Ram Kumar, Surat to Rupaidiha, કાલે, 1 seat",
             ],
             'comboMore' => [
                 'en' => 'Please also send, in one message: %s',
